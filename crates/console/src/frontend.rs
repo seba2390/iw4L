@@ -154,6 +154,7 @@ pub(crate) fn route(
         );
     }
     if !state.rules_seeded
+        && dvars.get("ui_game_namespace").is_none()
         && let Some(config) = catalog.as_ref().and_then(|c| c.rawfile_text(MATCH_CONFIG))
     {
         seed_rules(&mut dvars, config);

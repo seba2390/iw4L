@@ -204,9 +204,16 @@ impl HudImages {
     }
 
     pub fn install_zone_catalog(&mut self, catalog: &MenuCatalog) {
-        if self.zone_installed {
-            return;
-        }
+        self.by_name.clear();
+        self.rgba_by_name.clear();
+        self.zone_rgba.clear();
+        self.zone_handles.clear();
+        self.zone_image_name.clear();
+        self.material_images.clear();
+        self.zone_states.clear();
+        self.zone_srgb_reads.clear();
+        self.zone_samplers.clear();
+        self.iwd_warmed = false;
         self.zone_installed = true;
         self.zone_uploaded = false;
         self.blood_plan = Some(blood_material_binding(catalog));

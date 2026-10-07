@@ -2,6 +2,7 @@ mod animtree;
 mod atr_compile;
 mod clip_scheduler;
 mod playeranim_parse;
+mod t6_player;
 mod xanim_catalog;
 
 pub use animtree::*;

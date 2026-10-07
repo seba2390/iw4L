@@ -3,7 +3,7 @@ use super::*;
 impl WeaponPreparationRecipe {
     pub(in crate::weapon_catalog) fn t6(
         row: &WeaponRow,
-        donor: AssetKey,
+        donor: Option<AssetKey>,
         own_view: &impl Fn(&str) -> bool,
         own_world: &impl Fn(&str) -> bool,
         own_sound: &impl Fn(&str) -> bool,
@@ -11,7 +11,7 @@ impl WeaponPreparationRecipe {
         hands: Option<&str>,
     ) -> Self {
         let mut recipe = Self::native(AssetNamespace::Iw4);
-        recipe.donor_weapon = Some(donor.clone());
+        recipe.donor_weapon = donor.clone();
         recipe.closed_references = true;
         recipe.attachment_mount_on_root = true;
         recipe.hide_mode = crate::FpvHideMode::Bones;
@@ -37,7 +37,7 @@ impl WeaponPreparationRecipe {
                 },
                 name: name.to_owned(),
                 storage_namespace: AssetNamespace::Iw4,
-                source_namespace: if converted {
+                source_namespace: if converted || donor.is_none() {
                     AssetNamespace::T6
                 } else {
                     AssetNamespace::Iw4
@@ -49,10 +49,14 @@ impl WeaponPreparationRecipe {
                 },
                 policy: if converted {
                     ComponentPreparationPolicy::T6Conversion
-                } else {
+                } else if let Some(donor) = &donor {
                     ComponentPreparationPolicy::T6WeaponDonor {
                         weapon: donor.clone(),
                     }
+                } else {
+                    ComponentPreparationPolicy::Unsupported(
+                        ComponentPreparationRefusal::CatalogMiss,
+                    )
                 },
             });
         };

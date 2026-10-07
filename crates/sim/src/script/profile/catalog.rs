@@ -53,6 +53,9 @@ impl Catalog {
     pub fn t5() -> Self {
         Self::from_list(crate::script::Realm::T5, super::t5_catalog::T5)
     }
+    pub fn t6() -> Self {
+        Self::from_list(crate::script::Realm::T6, super::iw4_catalog::IW4)
+    }
     fn from_list(realm: crate::script::Realm, list: &[Builtin]) -> Self {
         let mut catalog = Self {
             realm,

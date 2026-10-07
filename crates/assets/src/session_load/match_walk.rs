@@ -232,9 +232,14 @@ pub(super) async fn walk_prepared_match(
     }
     let map_scripts = match map_namespace {
         Some(asset_core::AssetNamespace::T5 | asset_core::AssetNamespace::T6) => {
-            let scripts = t5_map_under_iw4_rules(&map_scripts, &zone_name, &facts);
+            let scripts = t5_map_under_iw4_rules(
+                &map_scripts,
+                &zone_name,
+                &facts,
+                map_namespace == Some(asset_core::AssetNamespace::T6),
+            );
             report.push(format!(
-                "map script: maps/mp/{zone_name} written from the T5 map's declarations; T5 map scripts left out"
+                "map script: maps/mp/{zone_name} generated from map declarations; namespace={map_namespace:?}, original map scripts left out"
             ));
             scripts
         }
@@ -1243,6 +1248,7 @@ fn t5_map_under_iw4_rules(
     map_scripts: &crate::ScriptSources,
     zone_name: &str,
     facts: &crate::MapFacts,
+    minimal_t6: bool,
 ) -> crate::ScriptSources {
     let module = format!("maps/mp/{zone_name}");
     let main = map_scripts
@@ -1261,20 +1267,33 @@ fn t5_map_under_iw4_rules(
         .unwrap_or_default();
     let mut scripts = crate::ScriptSources::default();
     let mut map_main = declarations.map_script(&entities);
-    let end = map_main.rfind('}').expect("generated map main");
-    map_main.insert_str(end, "\tthread iw4l_maps\\destructibles::main();\n");
-    scripts.insert_source(
-        "iw4l_maps/destructibles",
-        crate::map_scripts::DESTRUCTIBLES.to_owned(),
-    );
-    if zone_name == "mp_radiation" {
+
+    if minimal_t6 {
+        map_main = map_main.replace("maps\\mp\\_load::main();", "");
+        assert!(
+            !map_main.contains("maps\\mp\\_load"),
+            "T6 generated map script still contains maps/mp/_load"
+        );
+    } else {
+        let end = map_main.rfind('}').expect("generated map main");
+        map_main.insert_str(end, "\tthread iw4l_maps\\destructibles::main();\n");
+
+        scripts.insert_source(
+            "iw4l_maps/destructibles",
+            crate::map_scripts::DESTRUCTIBLES.to_owned(),
+        );
+    }
+
+    if !minimal_t6 && zone_name == "mp_radiation" {
         let end = map_main.rfind('}').expect("generated map main");
         map_main.insert_str(end, "\tthread iw4l_maps\\radiation::main();\n");
+
         scripts.insert_source(
             "iw4l_maps/radiation",
             crate::map_scripts::RADIATION.to_owned(),
         );
     }
+
     scripts.insert_source(&module, map_main);
     scripts.set_entities(entities);
     scripts

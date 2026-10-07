@@ -15,6 +15,7 @@ pub const PLAYERANIM_TYPES_PATH: &str = "mp/playeranimtypes.txt";
 
 #[derive(Clone, Debug, Default, Resource)]
 pub struct PlayerAnimSources {
+    namespace: Option<crate::AssetNamespace>,
     multiplayer_atr: Option<Vec<u8>>,
     playeranim_script: Option<Vec<u8>>,
     playeranim_types: Option<Vec<u8>>,
@@ -30,6 +31,23 @@ pub struct PlayerAnimSources {
 }
 
 impl PlayerAnimSources {
+    pub fn namespace(&self) -> crate::AssetNamespace {
+        self.namespace.unwrap_or(crate::AssetNamespace::Iw4)
+    }
+
+    pub fn native_t6() -> Self {
+        let (tree, script) = crate::t6_player::compile();
+        Self {
+            namespace: Some(crate::AssetNamespace::T6),
+            compiled: Some(Ok(tree)),
+            parsed_script: Some(Ok(script)),
+            ..Default::default()
+        }
+    }
+
+    pub fn native_t6_clip_names() -> impl Iterator<Item = &'static str> {
+        crate::t6_player::clip_names()
+    }
     pub fn capture(&mut self, name: &str, data: &[u8], zlib_compressed: bool) {
         let (target, path) = match name {
             MULTIPLAYER_ANIMTREE_PATH => (&mut self.multiplayer_atr, MULTIPLAYER_ANIMTREE_PATH),
@@ -106,6 +124,16 @@ impl PlayerAnimSources {
     }
 
     pub fn compile_report_line(&self) -> String {
+        if self.namespace() == crate::AssetNamespace::T6 {
+            return match self.compiled() {
+                Some(Ok(tree)) => format!(
+                    "native T6 player profile: nodes={} leaves={}",
+                    tree.node_count(),
+                    tree.leaf_count()
+                ),
+                _ => "native T6 player profile not compiled".into(),
+            };
+        }
         match self.compiled() {
             Some(Ok(tree)) => format!(
                 "multiplayer.atr compiled: nodes={} leaves={} ignored={} script_names={} legs={} torso={} turning={}",
@@ -156,7 +184,7 @@ impl PlayerAnimSources {
         let mut missing_leaves = 0usize;
         let mut first_missing = None;
         for (index, name) in leaves {
-            if catalog.get(crate::AssetNamespace::Iw4, &name).is_some() {
+            if catalog.get(self.namespace(), &name).is_some() {
                 bound[index] = true;
                 bound_leaves += 1;
             } else {

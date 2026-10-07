@@ -55,12 +55,14 @@ pub fn stored_game_folders(artifacts: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-fn zone_game(game: OtherGame) -> asset_transport::ZoneGame {
-    match game {
+fn zone_game(game: OtherGame) -> Option<asset_transport::ZoneGame> {
+    Some(match game {
         OtherGame::BlackOps => asset_transport::ZoneGame::T5,
         OtherGame::BlackOps2 => asset_transport::ZoneGame::T6,
         OtherGame::ModernWarfare3 => asset_transport::ZoneGame::Iw5,
-    }
+        OtherGame::ModernWarfare2 => asset_transport::ZoneGame::Iw4,
+        OtherGame::ModernWarfare => return None,
+    })
 }
 
 #[derive(Resource)]
@@ -121,13 +123,24 @@ fn folder_line(games_root: Option<&Path>, game: OtherGame, folder: &str) -> Stri
     const WIDTH: usize = 40;
     if !folder.is_empty() {
         let path = Path::new(folder);
-        return if asset_transport::folder_holds_game(path, zone_game(game)) {
+        return if zone_game(game).map_or_else(
+            || asset_transport::folder_holds_modern_warfare(path),
+            |kind| asset_transport::folder_holds_game(path, kind),
+        ) {
             tail(folder, WIDTH)
         } else {
             format!("^1Not this game:^7 {}", tail(folder, WIDTH - 15))
         };
     }
-    match games_root.and_then(|root| asset_transport::find_game_install(root, zone_game(game))) {
+    match games_root.and_then(|root| {
+        zone_game(game)
+            .and_then(|kind| asset_transport::find_game_install(root, kind))
+            .or_else(|| {
+                (game == OtherGame::ModernWarfare)
+                    .then(|| asset_transport::find_modern_warfare_install(root))
+                    .flatten()
+            })
+    }) {
         Some(found) => format!("Found: {}", tail(&found.display().to_string(), WIDTH - 7)),
         None => "^3Not found^7 - choose its folder".to_owned(),
     }
@@ -138,8 +151,8 @@ pub(crate) fn game_folder_menu(
     picks: Res<FolderPicks>,
     mut settings: ResMut<frame::GameSettings>,
     mut dvars: ResMut<frame::UiMenuDvars>,
-    mut at_launch: Local<Option<[String; 3]>>,
-    mut shown: Local<Option<[String; 3]>>,
+    mut at_launch: Local<Option<[String; 5]>>,
+    mut shown: Local<Option<[String; 5]>>,
 ) {
     let launched = at_launch.get_or_insert_with(|| settings.game_folders.clone());
     for command in events.read() {
@@ -172,6 +185,18 @@ pub(crate) fn game_folder_menu(
     };
     for (game, folder) in received {
         let root = asset_transport::game_install_root(&folder);
+        let valid = zone_game(game).map_or_else(
+            || asset_transport::folder_holds_modern_warfare(&root),
+            |kind| asset_transport::folder_holds_game(&root, kind),
+        );
+        if !valid {
+            dvars.set(
+                "ui_folder_error",
+                format!("This folder does not contain {} assets.", game.title()),
+            );
+            continue;
+        }
+        dvars.set("ui_folder_error", "");
         settings.set_game_folder(game, root.display().to_string());
         settings.touch();
     }
@@ -189,9 +214,9 @@ pub(crate) fn game_folder_menu(
         dvars.set(&format!("ui_game_folder_{}", game.key()), line);
     }
     let hint = if settings.game_folders == *launched {
-        "Folders left empty are looked for next to the MW2 folder."
+        "Empty folders are detected in the configured games directory."
     } else {
-        "^3Restart the game to load content from the new folders."
+        "Installation folders updated."
     };
     dvars.set("ui_game_folders_hint", hint);
     *shown = Some(settings.game_folders.clone());

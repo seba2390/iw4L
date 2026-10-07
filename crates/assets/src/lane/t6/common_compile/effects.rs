@@ -27,7 +27,10 @@ pub(super) fn bind_t6_fx(
         return format!("t6 effects: no donor material ({T6_FX_DONOR_EFFECT} not loaded)");
     };
     let mut bound = 0usize;
+    let mut decoded = super::super::DecodedTextures::new();
+    let mut report = Vec::new();
     for (name, capture) in fx_materials {
+        let capture = capture.fallback.decode(&mut decoded, &mut report);
         let Some(color) = capture.color else {
             continue;
         };
@@ -60,5 +63,7 @@ pub(super) fn bind_t6_fx(
             refused.push(fx.name.as_str());
         }
     }
-    format!("t6 effects bound: {count} effects, {bound} materials; not convertible: {refused:?}")
+    format!(
+        "t6 effects bound: {count} effects, {bound} materials; not convertible: {refused:?}; material gaps: {report:?}"
+    )
 }

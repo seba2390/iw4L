@@ -50,10 +50,14 @@ impl PlayerAnimationBinding {
             .filter(|node| node.child_count == 0)
             .ok_or_else(|| format!("packed index {index} is not a character animation leaf"))?;
         let body = self.body();
-        let clip = self
-            .catalog
-            .body_clip(body.namespace, &leaf.name, &body.skel.bone_names)
-            .ok_or_else(|| format!("decode failed for character clip `{}`", leaf.name))?;
+        let clip = if self.policy == CharacterAnimationPolicy::NativeT6 {
+            self.catalog
+                .clip(asset_anim::AssetNamespace::T6, &leaf.name)
+        } else {
+            self.catalog
+                .body_clip(body.namespace, &leaf.name, &body.skel.bone_names)
+        }
+        .ok_or_else(|| format!("decode failed for character clip `{}`", leaf.name))?;
         if !self.rig.tracks_for(&clip).iter().any(Option::is_some) {
             return Err(format!(
                 "character clip `{}` has no tracks for body `{}`",
@@ -104,8 +108,10 @@ impl RemoteBodyTrees {
         profile: CharacterAnimationPolicy,
         persist_key: u32,
     ) -> Result<Arc<PlayerAnimationBinding>, String> {
-        if profile == CharacterAnimationPolicy::NativeT6 {
-            return Err("native T6 character animation profile is unsupported".into());
+        if (profile == CharacterAnimationPolicy::NativeT6)
+            != (sources.namespace() == asset_anim::AssetNamespace::T6)
+        {
+            return Err("character animation profile does not match its sources".into());
         }
         let tree = sources
             .compiled()
@@ -128,6 +134,11 @@ impl RemoteBodyTrees {
             return Ok(slot.binding.clone());
         }
         let body = bodies.0.get(&kit.body).ok_or("character body missing")?;
+        if profile == CharacterAnimationPolicy::NativeT6
+            && body.namespace != asset_anim::AssetNamespace::T6
+        {
+            return Err("native T6 character profile requires a T6 body".into());
+        }
         let pose = body
             .skel
             .pose

@@ -1,5 +1,8 @@
 use bevy::prelude::*;
 
+#[derive(Resource, Default)]
+pub struct UnifiedFrontend(pub bool);
+
 #[derive(Resource, Default, Debug)]
 pub struct UiPartyState {
     pub active: bool,

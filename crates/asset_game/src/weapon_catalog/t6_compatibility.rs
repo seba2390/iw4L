@@ -31,19 +31,20 @@ impl WeaponBuild {
                     .copied()
             });
             let Some(donor) = donor else {
-                census.missing.push(own.name.clone());
-                census
-                    .refusals
-                    .push(WeaponPreparationRefusal::MissingWeaponDonor {
-                        weapon: own.name.clone(),
-                        donor: crate::weapon_t6::stand_in_for(&own.name).map(str::to_owned),
-                    });
                 let row = &mut self.registry.rows[index];
-                row.preparation =
-                    WeaponPreparationRecipe::for_capture(crate::AssetNamespace::T6, &row.name);
-                row.fpv_hands = [None, None];
-                row.fpv_mount_plan = None;
-                row.fpv_assemblies = [None, None];
+                row.hand_xmodel = hands.map(str::to_owned);
+                row.sounds.notetrack_convention = NotetrackConvention::InlinePrefix;
+                row.preparation = WeaponPreparationRecipe::t6(
+                    row, None, &own_view, &own_world, &own_sound, &own_anim, hands,
+                );
+                census.own_view += usize::from(row.gun_xmodel.as_deref().is_some_and(&own_view));
+                census.own_world += usize::from(row.world_model.as_deref().is_some_and(&own_world));
+                census.own_anims += usize::from(
+                    row.sz_xanims[weap_anim::IDLE]
+                        .as_deref()
+                        .is_some_and(&own_anim),
+                );
+                census.dressed += 1;
                 continue;
             };
             let donor = donor as usize;
@@ -253,7 +254,13 @@ impl WeaponBuild {
             dressed.alternate_index = 0;
             dressed.display_name_key = own.display_name_key;
             dressed.preparation = WeaponPreparationRecipe::t6(
-                &dressed, donor_key, &own_view, &own_world, &own_sound, &own_anim, hands,
+                &dressed,
+                Some(donor_key),
+                &own_view,
+                &own_world,
+                &own_sound,
+                &own_anim,
+                hands,
             );
             self.registry.rows[index] = dressed;
             if let Some(&slots) = self.combat_slots.get(donor)

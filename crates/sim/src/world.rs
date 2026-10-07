@@ -1011,6 +1011,14 @@ impl SimState {
         self.phase = phase;
     }
 
+    pub(crate) fn set_match_elapsed_ms(&mut self, elapsed: u32) {
+        self.match_elapsed_ms = elapsed;
+    }
+
+    pub(crate) fn set_game_win_winner(&mut self, winner: Option<ClientId>) {
+        self.game_win_winner = winner;
+    }
+
     pub fn root_seed(&self) -> u64 {
         self.root_seed
     }

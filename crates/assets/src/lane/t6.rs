@@ -22,13 +22,24 @@ struct T6ModelCapture {
 }
 
 struct T6MaterialCapture {
-    pub color: Option<(String, Arc<Image>)>,
-    pub normal: Option<(String, Arc<Image>)>,
-    pub specular: Option<(String, Arc<Image>)>,
+    pub fallback: T6FallbackMaterial,
     pub native: Option<T6NativeMaterial>,
 }
 
+struct T6FallbackMaterial {
+    color: Option<T6Texels>,
+    normal: Option<T6Texels>,
+    specular: Option<T6Texels>,
+}
+
+struct T6DecodedMaterial {
+    pub color: Option<(String, Arc<Image>)>,
+    pub normal: Option<(String, Arc<Image>)>,
+    pub specular: Option<(String, Arc<Image>)>,
+}
+
 struct T6NativeMaterial {
+    pub header: Vec<u8>,
     pub technique_set: String,
     pub textures: Vec<asset_material::t6_techset::T6Texture>,
     pub constants: Vec<asset_material::MaterialConstant>,
@@ -37,6 +48,7 @@ struct T6NativeMaterial {
 
 #[derive(Default)]
 struct T6Content {
+    pub source_path: std::path::PathBuf,
     pub models: Vec<T6ModelCapture>,
     pub materials: BTreeMap<String, T6MaterialCapture>,
     pub sound_names: std::collections::BTreeSet<String>,
@@ -207,6 +219,26 @@ fn capture_xanims(
         "t6 xanims: {captured} of {total} weapon animations captured; {} notetrack sounds",
         content.note_sounds.len()
     ));
+    let mut body_names: std::collections::BTreeSet<_> =
+        asset_anim::PlayerAnimSources::native_t6_clip_names().collect();
+    let total = body_names.len();
+    let mut captured = 0;
+    for (source, asset) in std::iter::once(load)
+        .chain(others)
+        .flat_map(|source| source.assets.iter().map(move |asset| (source, asset)))
+    {
+        if asset.ty == fastfile_t6::AssetType::XAnimParts
+            && header_str(source, &asset.header, 0).is_some_and(|name| body_names.remove(name))
+            && content
+                .xanims
+                .capture_xanim_t6(asset_core::AssetNamespace::T6, "", source, asset)
+        {
+            captured += 1;
+        }
+    }
+    content.report.push(format!(
+        "t6 player clips: {captured}/{total} native clips captured"
+    ));
 }
 
 fn capture_sounds(
@@ -220,11 +252,9 @@ fn capture_sounds(
         let Some(weapon) = fastfile_t6::weapon::WeaponView::new(load, asset) else {
             continue;
         };
-        if weapon
-            .name()
-            .and_then(asset_game::t6_stand_in_for)
-            .is_some()
-        {
+        if weapon.name().is_some_and(|name| {
+            asset_game::t6_stand_in_for(name).is_some() || name == asset_game::T6_MELEE_WEAPON
+        }) {
             names.extend(asset_game::t6_weapon_sound_names(weapon));
             names.extend(asset_game::t6_attachment_sound_names(weapon));
         }
@@ -421,7 +451,7 @@ fn t6_sampler_state(state: u8) -> u8 {
 
 struct T6Texels {
     name: String,
-    iwi: Vec<u8>,
+    iwi: Arc<[u8]>,
     sampler_state: u8,
 }
 
@@ -471,7 +501,6 @@ fn capture_material(
     load: &fastfile_t6::ZoneLoad,
     material: &fastfile_t6::LoadedAsset,
     ipaks: &[asset_transport::IPak],
-    decoded: &mut DecodedTextures,
     report: &mut Vec<String>,
 ) -> T6MaterialCapture {
     let mut read = |samplers: &[u32]| {
@@ -485,40 +514,57 @@ fn capture_material(
         read(&NORMAL_SAMPLERS),
         read(&SPECULAR_SAMPLERS),
     );
-    let mut decode =
-        |texels: &T6Texels, key: String, decode: &dyn Fn() -> Result<Image, String>| {
-            if let Some(image) = decoded.get(&key) {
-                return Some((texels.name.clone(), image.clone()));
-            }
-            match decode() {
-                Ok(image) => {
-                    let image = Arc::new(image);
-                    decoded.insert(key, image.clone());
-                    Some((texels.name.clone(), image))
-                }
-                Err(error) => {
-                    report.push(format!("t6 content: {}: {error}", texels.name));
-                    None
-                }
-            }
-        };
-    let plain = |t: &T6Texels, is_normal: bool| {
-        asset_material::decode_iwi_texture(&t.iwi, t.sampler_state, is_normal, !is_normal)
-    };
     T6MaterialCapture {
         native: None,
-        color: color.as_ref().and_then(|c| match &specular {
-            Some(s) => decode(c, format!("{}+{}", c.name, s.name), &|| {
-                asset_material::decode_iwi_texture_t6_folded(&c.iwi, &s.iwi, c.sampler_state)
+        fallback: T6FallbackMaterial {
+            color,
+            normal,
+            specular,
+        },
+    }
+}
+
+impl T6FallbackMaterial {
+    fn decode(&self, decoded: &mut DecodedTextures, report: &mut Vec<String>) -> T6DecodedMaterial {
+        let Self {
+            color,
+            normal,
+            specular,
+        } = self;
+        let mut decode =
+            |texels: &T6Texels, key: String, decode: &dyn Fn() -> Result<Image, String>| {
+                if let Some(image) = decoded.get(&key) {
+                    return Some((texels.name.clone(), image.clone()));
+                }
+                match decode() {
+                    Ok(image) => {
+                        let image = Arc::new(image);
+                        decoded.insert(key, image.clone());
+                        Some((texels.name.clone(), image))
+                    }
+                    Err(error) => {
+                        report.push(format!("t6 content: {}: {error}", texels.name));
+                        None
+                    }
+                }
+            };
+        let plain = |t: &T6Texels, is_normal: bool| {
+            asset_material::decode_iwi_texture(&t.iwi, t.sampler_state, is_normal, !is_normal)
+        };
+        T6DecodedMaterial {
+            color: color.as_ref().and_then(|c| match &specular {
+                Some(s) => decode(c, format!("{}+{}", c.name, s.name), &|| {
+                    asset_material::decode_iwi_texture_t6_folded(&c.iwi, &s.iwi, c.sampler_state)
+                }),
+                None => decode(c, c.name.clone(), &|| plain(c, false)),
             }),
-            None => decode(c, c.name.clone(), &|| plain(c, false)),
-        }),
-        normal: normal
-            .as_ref()
-            .and_then(|n| decode(n, n.name.clone(), &|| plain(n, true))),
-        specular: specular
-            .as_ref()
-            .and_then(|s| decode(s, s.name.clone(), &|| plain(s, false))),
+            normal: normal
+                .as_ref()
+                .and_then(|n| decode(n, n.name.clone(), &|| plain(n, true))),
+            specular: specular
+                .as_ref()
+                .and_then(|s| decode(s, s.name.clone(), &|| plain(s, false))),
+        }
     }
 }
 
@@ -819,6 +865,7 @@ fn capture_native(
         .collect();
     let constants: Vec<asset_material::MaterialConstant> = constants;
     Some(T6NativeMaterial {
+        header: material.header.clone(),
         technique_set,
         textures,
         constants,
@@ -830,7 +877,7 @@ fn read_streamed_image(
     load: &fastfile_t6::ZoneLoad,
     image: &fastfile_t6::LoadedAsset,
     ipaks: &[asset_transport::IPak],
-) -> Result<(String, Vec<u8>), String> {
+) -> Result<(String, Arc<[u8]>), String> {
     let name = header_str(load, &image.header, IMAGE_NAME)
         .ok_or("image without a name")?
         .to_owned();
@@ -847,7 +894,7 @@ fn read_streamed_image(
     let part = header_u32(&image.header, IMAGE_STREAMED_PART_HASH).ok_or("short image")?;
     let bytes = ipaks
         .iter()
-        .find_map(|ipak| ipak.read(hash, part))
+        .find_map(|ipak| ipak.read_shared(hash, part))
         .ok_or_else(|| format!("{name}: in no image package"))??;
     Ok((name, bytes))
 }
@@ -1098,7 +1145,7 @@ fn capture_icon(
     Err("no colour map".to_owned())
 }
 
-fn checked_iwi(bytes: Vec<u8>) -> Result<Arc<[u8]>, String> {
+fn checked_iwi(bytes: Arc<[u8]>) -> Result<Arc<[u8]>, String> {
     asset_material::decode_iwi_rgba(&bytes)?;
     Ok(bytes.into())
 }
@@ -1112,12 +1159,16 @@ fn attachment_rest(offset: [f32; 3], angles: [f32; 3]) -> (bevy::math::Quat, bev
 }
 
 fn capture_content(
+    path: &Path,
     load: &fastfile_t6::ZoneLoad,
     others: &[fastfile_t6::ZoneLoad],
     ipaks: &[asset_transport::IPak],
 ) -> T6Content {
     use fastfile_t6::weapon::{WeaponView, def};
-    let mut content = T6Content::default();
+    let mut content = T6Content {
+        source_path: path.to_owned(),
+        ..Default::default()
+    };
     let zones: Vec<&fastfile_t6::ZoneLoad> = std::iter::once(load).chain(others).collect();
     let mut models: BTreeMap<&str, (&fastfile_t6::ZoneLoad, &fastfile_t6::LoadedAsset)> =
         BTreeMap::new();
@@ -1187,8 +1238,8 @@ fn capture_content(
         }
     }
     content.melee = melee_weapon(load);
-    let (mut failed, mut decoded, mut missing) = (0usize, 0usize, 0usize);
-    let mut textures = DecodedTextures::new();
+    let (mut failed, mut deferred, mut missing) = (0usize, 0usize, 0usize);
+    let mut geometry: BTreeMap<String, Option<asset_model::ModelSkel>> = BTreeMap::new();
     let mut native_textures = DecodedTextures::new();
     for (name, (view, hands, stand_in)) in wanted {
         let copy = copies.get(&name);
@@ -1202,7 +1253,11 @@ fn capture_content(
         let Some(model) = asset_model::T6Model::new(load, asset) else {
             continue;
         };
-        let Some(mut skel) = asset_model::capture_model_skel_t6(model, |_| None) else {
+        let Some(mut skel) = geometry
+            .entry(source.to_owned())
+            .or_insert_with(|| asset_model::capture_model_skel_t6(model, |_| None))
+            .clone()
+        else {
             failed += 1;
             content
                 .report
@@ -1230,8 +1285,7 @@ fn capture_content(
                 && !content.materials.contains_key(material_name)
             {
                 let reported = content.report.len();
-                let mut capture =
-                    capture_material(load, material, ipaks, &mut textures, &mut content.report);
+                let mut capture = capture_material(load, material, ipaks, &mut content.report);
                 capture.native = model
                     .material_slot(surface)
                     .and_then(|slot| load.blocks.ptr_at(slot).ok().flatten())
@@ -1249,10 +1303,14 @@ fn capture_content(
                         )
                     });
                 missing += content.report.len() - reported;
-                decoded += [&capture.color, &capture.normal, &capture.specular]
-                    .iter()
-                    .filter(|texture| texture.is_some())
-                    .count();
+                deferred += [
+                    &capture.fallback.color,
+                    &capture.fallback.normal,
+                    &capture.fallback.specular,
+                ]
+                .iter()
+                .filter(|texture| texture.is_some())
+                .count();
                 content.materials.insert(material_name.clone(), capture);
             }
             surface_materials.push(material_name);
@@ -1269,8 +1327,9 @@ fn capture_content(
         });
     }
     content.report.push(format!(
-        "t6 content: {} models ({failed} failed), {} materials, {decoded} colour, normal and specular maps decoded, {missing} missing; {} image packages",
+        "t6 content: {} models from {} source geometries ({failed} failed), {} materials, {deferred} donor texture conversions deferred, {missing} missing; {} image packages",
         content.models.len(),
+        geometry.len(),
         content.materials.len(),
         ipaks.len()
     ));
@@ -1297,7 +1356,6 @@ fn capture_effects(
     ipaks: &[asset_transport::IPak],
     content: &mut T6Content,
 ) {
-    let mut textures = DecodedTextures::new();
     let mut wanted: std::collections::BTreeSet<String> = asset_game::T6_EFFECTS
         .iter()
         .map(|&name| name.to_owned())
@@ -1315,7 +1373,7 @@ fn capture_effects(
                 if !wanted.contains(name) || content.fx.iter().any(|fx| fx.name == name) {
                     continue;
                 }
-                match capture_effect(load, asset, name, ipaks, &mut textures, content) {
+                match capture_effect(load, asset, name, ipaks, content) {
                     Some(fx) => content.fx.push(fx),
                     None => content
                         .report
@@ -1359,7 +1417,6 @@ fn capture_effect(
     asset: &fastfile_t6::LoadedAsset,
     name: &str,
     ipaks: &[asset_transport::IPak],
-    textures: &mut DecodedTextures,
     content: &mut T6Content,
 ) -> Option<asset_game::T6FxCapture> {
     let header = &asset.header;
@@ -1414,8 +1471,7 @@ fn capture_effect(
                     if let (Some(material), Some(name)) = (material, name)
                         && !content.fx_materials.contains_key(name)
                     {
-                        let capture =
-                            capture_material(load, material, ipaks, textures, &mut content.report);
+                        let capture = capture_material(load, material, ipaks, &mut content.report);
                         content.fx_materials.insert(name.to_owned(), capture);
                     }
                     name.map(str::to_owned)
@@ -1456,8 +1512,28 @@ fn native_material_seed(
     is_sky: bool,
     materials: &mut asset_material::MaterialCatalog,
 ) -> Result<usize, String> {
+    native_material_seed_from_header(
+        path,
+        name,
+        &material.header,
+        technique_set,
+        is_sky,
+        materials,
+    )
+}
+
+fn native_material_seed_from_header(
+    path: &Path,
+    name: &str,
+    h: &[u8],
+    technique_set: &str,
+    is_sky: bool,
+    materials: &mut asset_material::MaterialCatalog,
+) -> Result<usize, String> {
     use asset_world::world_t6::Reader;
-    let h = &material.header;
+    if h.len() < 89 {
+        return Err(format!("T6 material {name}: truncated header"));
+    }
     let seed = materials.link_material(asset_material::AuthoredMaterial {
         t6_preparation: None,
         name: asset_core::AssetRef::Real(name.to_owned()),
@@ -1802,6 +1878,8 @@ impl ZoneLane for T6Lane {
             let view = fastfile_t6::world::WorldView::new(&load, world_asset)
                 .map_err(|e| format!("T6 GfxWorld: {e:?}"))?;
             let ipaks = open_ipaks(path, &mut report);
+            let sources_stage =
+                progress.begin_scoped(StageId::MapAssets, "t6_shared_sources", None);
             let shared_loads = ["code_post_gfx_mp.ff", "common_mp.ff"]
                 .into_iter()
                 .map(|name| {
@@ -1813,6 +1891,7 @@ impl ZoneLane for T6Lane {
                     Ok(load)
                 })
                 .collect::<Result<Vec<_>, String>>()?;
+            sources_stage.done();
             let image_loads: Vec<_> = std::iter::once(&load).chain(&shared_loads).collect();
             let mut materials = material_seed;
             let mut decoded = DecodedTextures::new();
@@ -1888,6 +1967,8 @@ impl ZoneLane for T6Lane {
                 .collect();
             let mut surface_materials = Vec::with_capacity(world_materials.len());
             let mut surface_layer_formats = Vec::with_capacity(world_materials.len());
+            let materials_stage = progress.begin_scoped(StageId::MapAssets, "t6_materials", None);
+            let mut linked_techsets = std::collections::BTreeSet::new();
             for material in world_materials
                 .iter()
                 .chain(&sky_materials)
@@ -1916,7 +1997,9 @@ impl ZoneLane for T6Lane {
                     )
                     .ok_or_else(|| format!("T6 material {name}: native capture failed"))?;
                     let set = &techsets[&native.technique_set];
-                    materials.link_t6_technique_set(set, T6Draw::Lit, &mut report);
+                    if linked_techsets.insert(set.name.clone()) {
+                        materials.link_t6_technique_set(set, T6Draw::Lit, &mut report);
+                    }
                     let is_sky = sky_materials.iter().any(|sky| std::ptr::eq(*sky, material));
                     let seed = native_material_seed(
                         path,
@@ -1945,6 +2028,11 @@ impl ZoneLane for T6Lane {
                 surface_materials.push(Some(row));
                 surface_layer_formats.push(layer_formats.get(&row).copied().unwrap_or(0));
             }
+            materials_stage.done();
+            report.push(format!(
+                "T6 map materials: {} unique technique sets linked once",
+                linked_techsets.len()
+            ));
             surface_materials.truncate(world_materials.len());
             surface_layer_formats.truncate(world_materials.len());
             let mut draw = build_world_draw(
@@ -2420,18 +2508,37 @@ impl ZoneLane for T6Lane {
         }
         let captured = catalog.len();
         let content_stage = progress.begin_scoped(StageId::CommonAssets, "t6_content", None);
+        let sources_stage = progress.begin_scoped(StageId::CommonAssets, "t6_sources", None);
         let patch = patch_zone(path, &mut report);
         let ipaks = open_ipaks(path, &mut report);
         let others: Vec<_> = patch
             .into_iter()
             .chain(hands_zone(path, &mut report))
             .collect();
-        let mut content = capture_content(&load, &others, &ipaks);
+        sources_stage.done();
+        let models_stage = progress.begin_scoped(StageId::CommonAssets, "t6_models", None);
+        let mut content = capture_content(path, &load, &others, &ipaks);
+        models_stage.done();
+        let anims_stage = progress.begin_scoped(StageId::CommonAssets, "t6_anims", None);
         capture_xanims(&load, &others, &mut content);
+        anims_stage.done();
+        let icons_stage = progress.begin_scoped(StageId::CommonAssets, "t6_icons", None);
         let icon_loads: Vec<_> = others.iter().chain(std::iter::once(&load)).collect();
         let icons = capture_weapon_icons(path, &icon_loads, &ipaks, &mut report);
         asset_material::store_zone_ui_images(asset_core::AssetNamespace::T6, icons);
+        icons_stage.done();
+        let sounds_stage = progress.begin_scoped(StageId::CommonAssets, "t6_sounds", None);
         capture_sounds(path, &load, sound_claim, &mut content);
+        sounds_stage.done();
+        let (hits, misses, bytes) = ipaks
+            .iter()
+            .map(asset_transport::IPak::read_cache_stats)
+            .fold((0, 0, 0), |(h, m, b), (hits, misses, bytes)| {
+                (h + hits, m + misses, b + bytes)
+            });
+        report.push(format!(
+            "T6 common IPAK reuse: hits={hits} inflates={misses} retained_bytes={bytes}"
+        ));
         content_stage.done();
         report.extend(content.report.iter().cloned());
         let mut weapons = catalog.into_build();
@@ -2442,6 +2549,7 @@ impl ZoneLane for T6Lane {
         ));
         CommonCensus {
             weapons,
+            player_anim_sources: asset_anim::PlayerAnimSources::native_t6(),
             material_population: material_seed,
             report,
             preparation: Some(Box::new(common_compile::T6CommonCompiler {

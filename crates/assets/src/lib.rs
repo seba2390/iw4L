@@ -42,6 +42,7 @@ pub use prepared::{
     PreparedBodyClips, PreparedDestructibleDeath, PreparedFpvMeshes, PreparedGaps,
     PreparedLocalizedStrings, PreparedMap, PreparedProjectileMeshes, PreparedWeapons,
     PreparedWorldWeapons, PreparedXAnims, PreparedXModelWalkCensus, SessionCompass,
+    SessionMapIdentity,
 };
 pub use session_load::{
     MatchLoadOutcome, MatchMaterialSeed, PreparedMatch, PreparedWorld, ShellCommon,

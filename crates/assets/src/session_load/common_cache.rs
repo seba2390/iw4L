@@ -354,8 +354,9 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         pool.spawn(async move { t5_weapon_common_prep(anchor.as_deref(), &progress) })
     };
     let t6_weapon_walk = {
+        let anchor = anchor.clone();
         let progress = progress.clone();
-        pool.spawn(async move { walk_t6_weapon_bundle(&progress) })
+        pool.spawn(async move { walk_t6_weapon_bundle(anchor.as_deref(), &progress) })
     };
     let localize_walk = {
         let anchor = anchor.clone();
@@ -456,6 +457,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let mut common_film_visions = std::collections::BTreeMap::new();
     let mut fpv_plan = None;
     let mut iw4_census_stats = Vec::new();
+    let mut runtime_t6_preparation = None;
 
     let common_opened = common_open.await;
     let runtime_namespace = common_opened
@@ -464,6 +466,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         .map(|image| match image.game {
             asset_core::ZoneGame::T5 => asset_core::AssetNamespace::T5,
             asset_core::ZoneGame::Iw5 => asset_core::AssetNamespace::Iw5,
+            asset_core::ZoneGame::T6 => asset_core::AssetNamespace::T6,
             _ => asset_core::AssetNamespace::Iw4,
         })
         .unwrap_or(asset_core::AssetNamespace::Iw4);
@@ -484,6 +487,9 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         Some((path, Ok(image))) => {
             let mut census =
                 lane(image.game).load_common_mp(&path, &image, &progress, true, material_seed);
+            if image.game == asset_core::ZoneGame::T6 {
+                runtime_t6_preparation = census.preparation.take();
+            }
             fpv_plan = census.pending_images.take().filter(|plan| !plan.is_empty());
             shared_surfaces = census.shared_surfaces;
             common_scene_models = census.scene_models;
@@ -618,7 +624,10 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let (t6_weapons, preparation, t6_tables, t6_report) = t6_weapon_walk.await;
     common_report.extend(t6_report);
     weapons.absorb(t6_weapons);
-    if let Some(compiler) = preparation {
+    if runtime_namespace == asset_core::AssetNamespace::T6 {
+        weapons.apply_stats_tables(&t6_tables);
+    }
+    if let Some(compiler) = preparation.or(runtime_t6_preparation) {
         let prepared = compiler.compile(crate::lane::CommonPreparationProducts {
             weapons,
             materials: material_seed,

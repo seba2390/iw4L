@@ -593,10 +593,16 @@ fn pose_remote_bodies(
                     .unwrap_or_default(),
             })
         }
-        Some(sources) if sources.multiplayer_atr().is_none() => {
+        Some(sources)
+            if sources.namespace() != asset_anim::AssetNamespace::T6
+                && sources.multiplayer_atr().is_none() =>
+        {
             Some(RenderGapCause::MultiplayerAtrAbsent)
         }
-        Some(sources) if sources.playeranim_script().is_none() => {
+        Some(sources)
+            if sources.namespace() != asset_anim::AssetNamespace::T6
+                && sources.playeranim_script().is_none() =>
+        {
             Some(RenderGapCause::PlayeranimScriptAbsent)
         }
         Some(sources) => match sources.compiled() {
@@ -840,7 +846,11 @@ impl<'a> RemotePoseFrame<'a> {
                 bodies,
                 catalog,
                 axis,
-                crate::anim::remote_body::CharacterAnimationPolicy::MultiplayerBodyTracks,
+                if self.sources.namespace() == asset_anim::AssetNamespace::T6 {
+                    crate::anim::remote_body::CharacterAnimationPolicy::NativeT6
+                } else {
+                    crate::anim::remote_body::CharacterAnimationPolicy::MultiplayerBodyTracks
+                },
                 persist_key,
             )?;
             if !std::ptr::eq(binding.body(), model_set.body) {

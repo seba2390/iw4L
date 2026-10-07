@@ -22,6 +22,8 @@ pub(super) fn bind_t6_content(
     let mut donors_seen = std::collections::HashSet::new();
     let mut linked_techsets = std::collections::BTreeSet::new();
     let mut native_report = Vec::new();
+    let mut fallback_textures = super::super::DecodedTextures::new();
+    let mut fallback_n = 0usize;
     let mut native_n = 0usize;
     let mut donor_lines = Vec::new();
     for mut model in content.models {
@@ -78,15 +80,6 @@ pub(super) fn bind_t6_content(
                 m.textures.iter().map(|t| t.semantic).collect::<Vec<_>>()
             ));
         }
-        let Some(donor) = donor else {
-            no_donor += 1;
-            refusals.push(CommonDependencyRefusal::ModelDonor {
-                model: model.skel.name.clone(),
-                stand_in: model.stand_in,
-                fields: asset_material::t6_techset::T6MaterialFields::ALL,
-            });
-            continue;
-        };
         model.skel.surface_materials = model
             .surface_materials
             .iter()
@@ -127,8 +120,25 @@ pub(super) fn bind_t6_content(
                         materials.link_t6_technique_set(set, draw, &mut native_report);
                         linked_techsets.insert(linked);
                     }
+                    let source = match donor {
+                        Some(donor) => {
+                            asset_material::t6_techset::T6MaterialSource::RequiresDonor(donor)
+                        }
+                        None => {
+                            let seed = super::super::native_material_seed_from_header(
+                                &content.source_path,
+                                name,
+                                &native.header,
+                                &native.technique_set,
+                                false,
+                                materials,
+                            )
+                            .ok()?;
+                            asset_material::t6_techset::T6MaterialSource::NativeSeed(seed)
+                        }
+                    };
                     if let Ok(index) = materials.t6_material(
-                        asset_material::t6_techset::T6MaterialSource::RequiresDonor(donor),
+                        source,
                         name,
                         set,
                         &native.textures,
@@ -143,6 +153,19 @@ pub(super) fn bind_t6_content(
                         return Some(asset_core::WalkLocalMaterialIndex::from_walk(index));
                     }
                 }
+                let Some(donor) = donor else {
+                    no_donor += 1;
+                    refusals.push(CommonDependencyRefusal::ModelDonor {
+                        model: model.skel.name.clone(),
+                        stand_in: model.stand_in,
+                        fields: asset_material::t6_techset::T6MaterialFields::ALL,
+                    });
+                    return None;
+                };
+                let captured = captured
+                    .fallback
+                    .decode(&mut fallback_textures, &mut native_report);
+                fallback_n += 1;
                 let textures = asset_material::StandInTextures {
                     color: captured
                         .color
@@ -193,7 +216,7 @@ pub(super) fn bind_t6_content(
     }
     materials.resolve_technique_set_edges();
     format!(
-        "t6 content bound: {views} first-person and {worlds} world models, {} materials ({native_n} with their own technique sets: {linked_techsets:?}); {no_donor} models without an IW4 donor material; donors e.g. {donor_lines:?}; {native_report:?}",
+        "t6 content bound: {views} first-person and {worlds} world models, {} materials ({native_n} with their own technique sets: {linked_techsets:?}); {fallback_n} donor conversions; {no_donor} models without an IW4 donor material; donors e.g. {donor_lines:?}; {native_report:?}",
         bound.len()
     )
 }

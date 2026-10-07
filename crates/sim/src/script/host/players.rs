@@ -38,6 +38,10 @@ pub(crate) fn player_damage(world: &mut World, tick: crate::Tick, hit: &crate::s
     {
         return;
     }
+    if super::t6_gametype::active(world) {
+        super::t6_gametype::damage(world, tick, hit);
+        return;
+    }
     let attacker = match hit.attacker.map(|a| player_object(world, a.0)) {
         Some(attacker) if attacker != Value::Undefined => attacker,
         _ => world_entity(world),
@@ -177,6 +181,10 @@ pub(crate) fn owe(world: &mut World, client: u32, callback: &'static str, args: 
 
 pub(crate) fn suicide(world: &mut World, tick: crate::Tick, client: u32) {
     let id = crate::ClientId(client);
+    if super::t6_gametype::active(world) {
+        crate::script_player::debug_damage(&mut FrameWorld::from_world(world), tick, id, 100_000);
+        return;
+    }
     let mut frame = FrameWorld::from_world(world);
     if !frame
         .client_meta(id)
@@ -749,6 +757,9 @@ pub(crate) fn choose_class(world: &mut World, client: u32, class: &crate::ClassD
         .resource_mut::<Runtime>()
         .weapon_bridge
         .remove(&client);
+    if realm == Some(crate::script::Realm::T6) {
+        return;
+    }
     bridge_class_weapon(world, client, 0, class.primary);
     bridge_class_weapon(world, client, 1, class.secondary);
     if realm == Some(crate::script::Realm::T5) {
@@ -1138,13 +1149,15 @@ pub(crate) fn disconnect_player(world: &mut World, client: u32) {
         return;
     };
     let now = now_ms(world);
-    let _ = run_now(
-        world,
-        DISCONNECT,
-        Value::Object(slot.object),
-        Vec::new(),
-        now,
-    );
+    if !super::t6_gametype::active(world) {
+        let _ = run_now(
+            world,
+            DISCONNECT,
+            Value::Object(slot.object),
+            Vec::new(),
+            now,
+        );
+    }
     world
         .resource_mut::<crate::PersistentDataStore>()
         .unbind(crate::ClientId(client));
@@ -1230,12 +1243,19 @@ pub(crate) fn sync_players(world: &mut World) {
                         .set_object_field(object, "pers", pers),
                     Err(_) => return,
                 }
-                if run_now(world, CONNECT, Value::Object(object), Vec::new(), now).is_err() {
+                if !super::t6_gametype::active(world)
+                    && run_now(world, CONNECT, Value::Object(object), Vec::new(), now).is_err()
+                {
                     return;
                 }
             }
         }
-        deliver_answers(world, client);
+        if !super::t6_gametype::active(world) {
+            deliver_answers(world, client);
+        }
+    }
+    if super::t6_gametype::active(world) {
+        super::t6_gametype::advance(world);
     }
     settle_deaths(world);
 }

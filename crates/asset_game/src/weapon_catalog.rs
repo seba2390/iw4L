@@ -5,8 +5,8 @@ use catalog_linking::{material_hint_edge, stamp_combat_fx};
 mod capture_merge;
 use capture_merge::{
     apply_leftover_default_anim_overrides, apply_leftover_default_sound_overrides,
-    apply_leftover_hip_spread, idle_from_capture, kick_body_captured, leftover_hip_spread_block,
-    merge_body_facts, merge_combat_fx, merge_combat_slots, merge_sound_aliases, merge_sz_xanims,
+    apply_leftover_hip_spread, idle_from_capture, leftover_hip_spread_block, merge_body_facts,
+    merge_combat_fx, merge_combat_slots, merge_sound_aliases, merge_sz_xanims,
     movement_from_capture, read_hide_tags, read_name, read_script_string_map, read_sz_xanims,
     xanims_idle,
 };

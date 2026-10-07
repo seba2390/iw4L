@@ -890,6 +890,7 @@ fn t6_class_tables(
 }
 
 pub(super) fn walk_t6_weapon_bundle(
+    runtime_common: Option<&Path>,
     progress: &LoadProgress,
 ) -> (
     WeaponBuild,
@@ -912,6 +913,14 @@ pub(super) fn walk_t6_weapon_bundle(
             return (WeaponBuild::default(), None, Vec::new(), report);
         }
     };
+    let tables = t6_class_tables(&root, &mut report);
+    if runtime_common == Some(donor.path.as_path()) {
+        report.push(format!(
+            "t6 weapons: runtime common already owns {}; donor walk skipped",
+            donor.path.display()
+        ));
+        return (WeaponBuild::default(), None, tables, report);
+    }
     let stage = progress.begin_scoped(StageId::CommonAssets, "t6_weapons", None);
     let opened = open_zone_shared(&donor.path).map_err(|error| error.to_string());
     stage.finish_from(&opened);
@@ -925,7 +934,6 @@ pub(super) fn walk_t6_weapon_bundle(
             return (WeaponBuild::default(), None, Vec::new(), report);
         }
     };
-    let tables = t6_class_tables(&root, &mut report);
     let census = lane(image.game).load_common_mp(
         &donor.path,
         &image,

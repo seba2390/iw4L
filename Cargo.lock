@@ -6803,6 +6803,7 @@ dependencies = [
  "session",
  "sim",
  "updater",
+ "weapon_iw4",
 ]
 
 [[package]]

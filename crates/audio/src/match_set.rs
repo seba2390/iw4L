@@ -49,6 +49,9 @@ struct MatchClipPrep {
     generation: frame::WorldGeneration,
     submitted: bool,
     capacity_failure: bool,
+    allow_degraded: bool,
+    missing_aliases: usize,
+    failed_clips: usize,
     required: HashSet<ClipKey>,
     total: usize,
     stage: Option<asset_transport::StageHandle>,
@@ -315,6 +318,8 @@ fn queue_match_clips(
         );
     }
     prep.total = set.required.len();
+    prep.allow_degraded = namespace.namespace == AssetNamespace::T6;
+    prep.missing_aliases = set.missing.len();
     prep.required = set.required;
     prep.capacity_failure = set.capacity_failure;
     prep.submitted = true;
@@ -368,6 +373,7 @@ fn poll_match_audio_ready(
         return;
     };
     let mut capacity_failure = false;
+    let mut failed_clips = 0;
     let mut submissions = PREFETCH_PER_PASS;
     prep.required.retain(|key| {
         if submissions != 0 {
@@ -388,12 +394,18 @@ fn poll_match_audio_ready(
                 | crate::clip_store::ClipError::InvalidPcm(crate::media::PcmError::MemoryLimit),
             )) => {
                 capacity_failure = true;
+                failed_clips += 1;
+                false
+            }
+            Some(Err(_)) => {
+                failed_clips += 1;
                 false
             }
             Some(_) => false,
             None => true,
         }
     });
+    prep.failed_clips += failed_clips;
     if capacity_failure {
         prep.capacity_failure = true;
         fail_capacity(&mut ready, &mut prep, Some(&mut **clips));
@@ -420,7 +432,18 @@ fn fail_capacity(ready: &mut AudioReady, prep: &mut MatchClipPrep, clips: Option
         prep.required.len(),
         prep.total
     );
-    ready.0.state = frame::ReadinessState::Failed;
+    ready.0.state = if prep.allow_degraded {
+        frame::ReadinessState::Degraded
+    } else {
+        frame::ReadinessState::Failed
+    };
+    diag::warn!(
+        Audio,
+        "audio: readiness={:?}; optional prewarm incomplete, missing_aliases={} failed_clips={}",
+        ready.0.state,
+        prep.missing_aliases,
+        prep.failed_clips
+    );
     if let Some(clips) = clips {
         clips.arm_match_live();
     }
@@ -433,8 +456,20 @@ fn mark_ready(ready: &mut AudioReady, prep: &mut MatchClipPrep, clips: Option<&m
         stage.done();
     }
     if ready.0.generation == prep.generation && ready.0.state == frame::ReadinessState::Pending {
-        ready.0.state = frame::ReadinessState::Ready;
-        diag::info!(Audio, "audio: AudioReady ({} clips prepared)", prep.total);
+        ready.0.state =
+            if prep.allow_degraded && (prep.missing_aliases > 0 || prep.failed_clips > 0) {
+                frame::ReadinessState::Degraded
+            } else {
+                frame::ReadinessState::Ready
+            };
+        diag::info!(
+            Audio,
+            "audio: AudioReady state={:?} ({} clip attempts; {} failed, {} missing aliases)",
+            ready.0.state,
+            prep.total,
+            prep.failed_clips,
+            prep.missing_aliases
+        );
         if let Some(clips) = clips {
             clips.arm_match_live();
         }

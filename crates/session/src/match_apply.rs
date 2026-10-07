@@ -272,6 +272,14 @@ pub fn apply_prepared_match(
         } = plan;
         let spawn_count = prepared_map.spawns.len();
 
+        stage_resource(
+            &mut install,
+            assets::SessionMapIdentity {
+                namespace: prepared_map.namespace,
+                zone: prepared_map.zone.clone(),
+            },
+        );
+
         let facts = std::mem::take(&mut prepared_map.facts);
         let airstrike_height = facts.airstrike_height;
         stage_resource(
@@ -486,8 +494,9 @@ pub fn apply_prepared_match(
                 .compiled()
                 .and_then(|c| c.as_ref().ok())
                 .map(|t| t.as_ref());
-            let slots = map_anim_items(&parsed.slots, tree, &xanims.0);
-            let events = map_event_items(&parsed.events, tree, &xanims.0);
+            let namespace = player_anim_sources.namespace();
+            let slots = map_anim_items(&parsed.slots, tree, &xanims.0, namespace);
+            let events = map_event_items(&parsed.events, tree, &xanims.0, namespace);
             content.set_player_anim_script(Some(sim::PlayerAnimScript::from_tables(slots, events)));
         }
         stage_resource(&mut install, xanims);
@@ -519,7 +528,10 @@ pub fn apply_prepared_match(
             &mut input_gate,
             host_classes.as_deref(),
             kind,
+            prepared_map.namespace,
             allow_debug_actions,
+            &script_dvars,
+            gametype,
         )?;
         let script_facts = script_install_facts(&zone, gametype, &scripts, script_entries.len());
         if *role == frame::RuntimeRole::Listen {
@@ -532,6 +544,7 @@ pub fn apply_prepared_match(
         )
         .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
         if *role == frame::RuntimeRole::Listen
+            && prepared_map.namespace != Some(asset_core::AssetNamespace::T6)
             && let (Some(account), Some(local)) = (account.as_ref(), local.as_ref())
         {
             account
@@ -1082,9 +1095,31 @@ fn preflight_match_install(
             })
             .collect(),
     };
-    let startup = sim::script::Iw4Startup::new(&sources, gametype, zone);
-    let roots: Vec<&str> = startup.roots.iter().map(String::as_str).collect();
-    let scripts = sim::script::Program::load(&sources, &roots, &sim::script::Catalog::iw4())
+    let (startup_roots, startup_entries) =
+        if prepared_map.namespace == Some(asset_core::AssetNamespace::T6) {
+            let startup = sim::script::T6Startup::new(zone);
+            (startup.roots, startup.entries)
+        } else {
+            let startup = sim::script::Iw4Startup::new(&sources, gametype, zone);
+            (startup.roots, startup.entries)
+        };
+    diag::info!(
+        Sim,
+        "gsc: startup namespace={:?} roots={startup_roots:?} entries={startup_entries:?}",
+        prepared_map.namespace
+    );
+    let roots: Vec<&str> = startup_roots.iter().map(String::as_str).collect();
+    let native_catalog = if prepared_map.namespace == Some(asset_core::AssetNamespace::T6) {
+        if kind != gamemode_iw4::GameModeKind::FreeForAll {
+            return Err(InstallRefusal::new(
+                "T6 runtime profile currently supports dm only".to_owned(),
+            ));
+        }
+        sim::script::Catalog::t6()
+    } else {
+        sim::script::Catalog::iw4()
+    };
+    let scripts = sim::script::Program::load(&sources, &roots, &native_catalog)
         .map_err(|e| script_refusal(zone, gametype, "compile", &e))?;
     let config = sources
         .0
@@ -1132,7 +1167,7 @@ fn preflight_match_install(
         );
     }
     script_dvars.extend(script_dvar_overrides());
-    let script_entries = startup.entries;
+    let script_entries = startup_entries;
     let authority_models = authority_entity_model_install(&prepared.world);
     let model_spawns = script_model_spawns(&prepared.world.script_model_instances);
     let fx_catalog = PreparedFxCatalog(std::mem::take(&mut prepared.fx));
@@ -1291,6 +1326,7 @@ fn map_anim_items(
     slots: &[(u8, u8, Vec<asset_anim::ParsedAnimItem>)],
     tree: Option<&asset_anim::CompiledAnimTreeDefinition>,
     catalog: &asset_anim::XAnimCatalog,
+    namespace: asset_core::AssetNamespace,
 ) -> Vec<(u8, u8, Vec<sim::AnimScriptItem>)> {
     slots
         .iter()
@@ -1300,7 +1336,7 @@ fn map_anim_items(
                 *movetype,
                 items
                     .iter()
-                    .map(|item| map_script_item(item, tree, catalog))
+                    .map(|item| map_script_item(item, tree, catalog, namespace))
                     .collect(),
             )
         })
@@ -1311,6 +1347,7 @@ fn map_event_items(
     events: &[(u8, Vec<asset_anim::ParsedAnimItem>)],
     tree: Option<&asset_anim::CompiledAnimTreeDefinition>,
     catalog: &asset_anim::XAnimCatalog,
+    namespace: asset_core::AssetNamespace,
 ) -> Vec<(u8, Vec<sim::AnimScriptItem>)> {
     events
         .iter()
@@ -1319,7 +1356,7 @@ fn map_event_items(
                 *event,
                 items
                     .iter()
-                    .map(|item| map_script_item(item, tree, catalog))
+                    .map(|item| map_script_item(item, tree, catalog, namespace))
                     .collect(),
             )
         })
@@ -1330,6 +1367,7 @@ fn map_script_item(
     item: &asset_anim::ParsedAnimItem,
     tree: Option<&asset_anim::CompiledAnimTreeDefinition>,
     catalog: &asset_anim::XAnimCatalog,
+    namespace: asset_core::AssetNamespace,
 ) -> sim::AnimScriptItem {
     sim::AnimScriptItem {
         skip: item.skip,
@@ -1349,7 +1387,7 @@ fn map_script_item(
             .map(|cmd| sim::AnimScriptCommand {
                 body_part: cmd.body_part,
                 anim_index: cmd.anim_index,
-                duration_ms: command_duration_ms(tree, catalog, cmd),
+                duration_ms: command_duration_ms(tree, catalog, cmd, namespace),
             })
             .collect(),
     }
@@ -1359,6 +1397,7 @@ fn command_duration_ms(
     tree: Option<&asset_anim::CompiledAnimTreeDefinition>,
     catalog: &asset_anim::XAnimCatalog,
     cmd: &asset_anim::ParsedAnimCommand,
+    namespace: asset_core::AssetNamespace,
 ) -> i32 {
     if let Some(ms) = cmd.duration_ms {
         return if ms <= 0 { 500 } else { ms };
@@ -1366,7 +1405,7 @@ fn command_duration_ms(
     let Some(node) = tree.and_then(|t| t.node(cmd.anim_index)) else {
         return 500;
     };
-    let Some(captured) = catalog.get(asset_core::AssetNamespace::Iw4, &node.name) else {
+    let Some(captured) = catalog.get(namespace, &node.name) else {
         return 500;
     };
     if captured.parts.framerate > 0.0 {
@@ -1498,7 +1537,10 @@ fn install_clip_and_player(
     input_gate: &mut AuthorityInputGate,
     host_classes: Option<&HostClassLoadouts>,
     kind: gamemode_iw4::GameModeKind,
+    namespace: Option<asset_core::AssetNamespace>,
     allow_debug_actions: bool,
+    rules: &[(String, String)],
+    gametype: &str,
 ) -> Result<(&'static str, Vec<Option<String>>), InstallRefusal> {
     let clip = clip.ok_or_else(|| InstallRefusal::new("Required collision geometry is missing"))?;
     let static_models = &clip.static_models;
@@ -1654,6 +1696,24 @@ fn install_clip_and_player(
         .collect();
     let locked_n = lock_reasons.iter().filter(|r| r.is_some()).count();
     let has_intermission_view = intermission_view.is_some();
+    let native_rule = |suffix: &str| {
+        (namespace == Some(asset_core::AssetNamespace::T6))
+            .then(|| {
+                rules
+                    .iter()
+                    .rev()
+                    .find(|(key, _)| key == &format!("scr_{gametype}_{suffix}"))
+            })
+            .flatten()
+            .map(|(_, value)| value.as_str())
+    };
+    let native_score = native_rule("scorelimit")
+        .and_then(|value| value.parse::<i32>().ok())
+        .filter(|value| *value >= 0);
+    let native_time = native_rule("timelimit")
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && (0.0..=10000.0).contains(value))
+        .map(|minutes| (minutes * 60000.0).round() as u32);
     if let Err(err) = sim.bootstrap(sim::MatchBootstrap {
         spawns,
         classes,
@@ -1663,16 +1723,20 @@ fn install_clip_and_player(
         score_limit: std::env::var("IW4L_SCORE_LIMIT")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(match kind {
-                gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::SCORE_LIMIT,
-                gamemode_iw4::GameModeKind::Demolition => 0,
+            .or(native_score)
+            .unwrap_or(match (namespace, kind) {
+                (Some(asset_core::AssetNamespace::T6), gamemode_iw4::GameModeKind::FreeForAll) => {
+                    30
+                }
+                (_, gamemode_iw4::GameModeKind::Domination) => gamemode_iw4::dom::SCORE_LIMIT,
+                (_, gamemode_iw4::GameModeKind::Demolition) => 0,
                 _ => sim::FFA.score_limit,
             }),
-        time_limit_ms: match kind {
+        time_limit_ms: native_time.unwrap_or(match kind {
             gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::TIME_LIMIT_MS,
             gamemode_iw4::GameModeKind::Demolition => gamemode_iw4::dd::TIME_LIMIT_MS,
             _ => sim::FFA.time_limit_ms,
-        },
+        }),
         allow_debug_actions,
         intermission_view,
         airstrike_height,

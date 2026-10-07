@@ -37,5 +37,7 @@ impl Plugin for UiPlugin {
         register_equip_systems(app);
         register_gap_hud_systems(app);
         crate::menu_load::register_menu_load_systems(app);
+        crate::t6_hud::register(app);
+        crate::launcher::register(app);
     }
 }

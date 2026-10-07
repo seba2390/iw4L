@@ -15,7 +15,11 @@ those systems work.
 
 Explore maps, fight bots, and record and replay demos. Gameplay remains incomplete;
 expect missing behavior, bugs and desyncs. The asset readers also cover MW3 and Black
-Ops.
+Ops. Experimental [native Black Ops II gameplay](docs/T6.md) supports FFA using
+an owned BO2 installation, including native weapons, respawns and a basic HUD.
+
+Launching without a map opens the [game library](docs/FRONTEND.md), with
+installation selection, persistent settings and game-specific multiplayer menus.
 
 APIs, configuration, caches and the wire protocol change between commits;
 multiplayer peers must run the same build.

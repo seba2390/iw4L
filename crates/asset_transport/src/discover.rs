@@ -100,7 +100,14 @@ pub fn game_install_root(picked: &Path) -> PathBuf {
 }
 
 pub fn folder_holds_game(folder: &Path, game: crate::ZoneGame) -> bool {
-    let version = zone_version(game);
+    folder_holds_zone_version(folder, zone_version(game))
+}
+
+pub fn folder_holds_modern_warfare(folder: &Path) -> bool {
+    folder_holds_zone_version(folder, 5)
+}
+
+fn folder_holds_zone_version(folder: &Path, version: u32) -> bool {
     let mut pending = vec![(folder.join("zone"), 0)];
     while let Some((dir, depth)) = pending.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -124,9 +131,31 @@ pub fn folder_holds_game(folder: &Path, game: crate::ZoneGame) -> bool {
 }
 
 pub fn find_game_install(root: &Path, game: crate::ZoneGame) -> Option<PathBuf> {
-    search_roots(root)
+    installation_roots(root)
         .into_iter()
         .find(|folder| folder_holds_game(folder, game))
+}
+
+pub fn find_modern_warfare_install(root: &Path) -> Option<PathBuf> {
+    installation_roots(root)
+        .into_iter()
+        .find(|folder| folder_holds_modern_warfare(folder))
+}
+
+fn installation_roots(root: &Path) -> Vec<PathBuf> {
+    let mut roots = search_roots(root);
+    let children: Vec<_> = roots
+        .iter()
+        .flat_map(|root| std::fs::read_dir(root).into_iter().flatten().flatten())
+        .map(|entry| entry.path())
+        .filter(|path| path.join("zone").is_dir())
+        .collect();
+    for child in children {
+        if !roots.contains(&child) {
+            roots.push(child);
+        }
+    }
+    roots
 }
 
 pub fn search_roots(root: &Path) -> Vec<PathBuf> {
@@ -310,6 +339,7 @@ pub fn find_zone_file_under(search_root: &Path, zone: &str) -> Result<ZoneFile, 
     let mut iw4: Option<PathBuf> = None;
     let mut t5: Option<PathBuf> = None;
     let mut iw5: Option<PathBuf> = None;
+    let mut t6: Option<PathBuf> = None;
     let mut other: Option<(PathBuf, u32)> = None;
     let mut errors = Vec::new();
     for entry in game_files(search_root) {
@@ -330,6 +360,7 @@ pub fn find_zone_file_under(search_root: &Path, zone: &str) -> Result<ZoneFile, 
             Some(IW4_ZONE_VERSION) if iw4.is_none() => iw4 = Some(path),
             Some(T5_ZONE_VERSION) if t5.is_none() => t5 = Some(path),
             Some(IW5_ZONE_VERSION) if iw5.is_none() => iw5 = Some(path),
+            Some(T6_ZONE_VERSION) if t6.is_none() => t6 = Some(path),
             Some(v) if other.is_none() => other = Some((path, v)),
             None if other.is_none() => other = Some((path, 0)),
             _ => {}
@@ -350,6 +381,13 @@ pub fn find_zone_file_under(search_root: &Path, zone: &str) -> Result<ZoneFile, 
         });
     }
     if let Some(path) = iw5 {
+        return Ok(ZoneFile {
+            path,
+            zone_name: zone.to_owned(),
+            alias_note: None,
+        });
+    }
+    if let Some(path) = t6 {
         return Ok(ZoneFile {
             path,
             zone_name: zone.to_owned(),
@@ -536,7 +574,10 @@ pub fn find_common_mp_for_zone(zone_ff: &Path) -> Result<ZoneFile, String> {
 
 pub fn find_runtime_zone(root: &GamesRoot, zone_ff: &Path, zone: &str) -> Result<ZoneFile, String> {
     match zone_game_for_path(zone_ff) {
-        Some(crate::ZoneGame::Iw4) | None => find_zone_for_tree(zone_ff, zone),
+        Some(crate::ZoneGame::Iw4) | Some(crate::ZoneGame::T6) | None => {
+            find_zone_for_tree(zone_ff, zone)
+        }
+
         Some(_) => {
             let found = find_zone_file_under(&root.0, zone)?;
             match peek_zone_version(&found.path) {

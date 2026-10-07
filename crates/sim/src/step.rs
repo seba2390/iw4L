@@ -1907,9 +1907,32 @@ fn apply_select_class(
 }
 
 fn validate_class_content(
-    world: &FrameWorld,
+    world: &mut FrameWorld,
     def: &crate::ClassDef,
 ) -> Result<(), crate::ClassRejectReason> {
+    if world
+        .ecs()
+        .resource::<crate::script::Runtime>()
+        .program
+        .as_ref()
+        .is_some_and(|program| program.rules() == crate::script::Realm::T6)
+    {
+        if def.primary == 0
+            || def.perks != [0; 3]
+            || !def.deathstreak.is_empty()
+            || def
+                .weapon_slot_ids()
+                .into_iter()
+                .filter(|weapon| *weapon != 0)
+                .any(|weapon| {
+                    world
+                        .weapon_setup(weapon)
+                        .is_none_or(|setup| setup.realm != crate::script::Realm::T6)
+                })
+        {
+            return Err(crate::ClassRejectReason::LockedContent);
+        }
+    }
     for (slot, perk) in def.perks.iter().copied().enumerate() {
         if perk != 0 && crate::match_state::perk_slot_from_class_catalog(perk) != Some(slot) {
             return Err(crate::ClassRejectReason::LockedContent);

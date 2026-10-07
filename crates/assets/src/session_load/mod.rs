@@ -69,6 +69,7 @@ pub fn load_pool() -> &'static TaskPool {
     POOL.get_or_init(|| {
         TaskPoolBuilder::new()
             .num_threads(load_workers())
+            .stack_size(16 * 1024 * 1024)
             .thread_name("iw4l load".to_owned())
             .on_thread_spawn(|| {
                 if let Some(cpus) = PROCESS_CPUS.get() {

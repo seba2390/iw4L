@@ -260,13 +260,12 @@ fn sync_zone_atlases(
     catalog: Option<Res<asset_game::MenuCatalog>>,
     mut hud_images: ResMut<HudImages>,
 ) {
-    if hud_images.zone_installed() {
-        return;
-    }
     let Some(catalog) = catalog else {
         return;
     };
-    hud_images.install_zone_catalog(&catalog);
+    if catalog.is_changed() || !hud_images.zone_installed() {
+        hud_images.install_zone_catalog(&catalog);
+    }
 }
 
 fn warm_hud_images(
