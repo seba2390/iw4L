@@ -28,13 +28,16 @@ ends in a commit and a push.
 Done when both maps are playable locally.
 
 ### 1. Load a zombie map as a world
-- [ ] Teach the asset and match-loading pipeline about singleplayer zones
-      (singleplayer collision, path data and zombie common zones).
-- [ ] Spawn a player into Kino with free movement, no game mode running.
+- [x] Load Kino's singleplayer collision; static props whose models live in
+      another zone are reported, not fatal.
+- [x] Spawn a player into Kino and walk around (temporarily under the MP
+      free-for-all rules, using Kino's own player spawns and characters).
 
-Done when we can walk around Kino with correct collision and rendering.
+Done: Kino loads, players and bots spawn and move on correct collision.
+Left for later steps: path data, the zombie common zones, a zombies game mode.
 
 ### 2. One actor on the floor
+- [ ] Load the zombie common zones (`common_zombie`, its patch) next to the map.
 - [ ] Load animation trees from their `.atr` source and resolve `%anim` references.
 - [ ] Introduce an actor entity: spawn from a map spawner, run its aitype and
       character scripts, attach its models.
