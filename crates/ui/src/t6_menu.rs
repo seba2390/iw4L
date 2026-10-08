@@ -100,7 +100,13 @@ enum Action {
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<Menu>()
         .init_resource::<crate::t6_art::T6Art>()
-        .add_systems(Update, (drive, paint).chain().in_set(frame::ClientSet::Ui));
+        .add_systems(
+            Update,
+            (drive, paint)
+                .chain()
+                .in_set(frame::ClientSet::Ui)
+                .in_set(super::t6_text::NativeUiPaint),
+        );
 }
 
 fn native(slot: &ClassSlotState) -> bool {
@@ -1133,9 +1139,12 @@ fn paint(
         }
     };
     let accent = Color::srgb(1.0, 0.48, 0.12);
+    let row_back = art.image("menu_button_backing", &mut images);
+    let row_selected = art.image("menu_button_backing_highlight", &mut images);
     commands
         .spawn((
             Root,
+            super::t6_text::NativeUiRoot(true),
             UiLayer::Overlay,
             UiLayerVisibility,
             GlobalZIndex(100),
@@ -1148,13 +1157,13 @@ fn paint(
                 row_gap: Val::Px(12.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.012, 0.018, 0.025, 0.96)),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.74)),
         ))
         .with_children(|root| {
             root.spawn((
-                Text::new(format!("BLACK OPS II   /   {title}")),
-                game_text_font(&font.0, 28.0),
-                TextColor(accent),
+                Text::new(title),
+                game_text_font(&font.0, 36.0),
+                TextColor(Color::WHITE),
             ));
             root.spawn(Node {
                 width: Val::Percent(100.0),
@@ -1172,10 +1181,12 @@ fn paint(
                 })
                 .with_children(|panel| {
                     for (order, (label, action)) in buttons.into_iter().enumerate() {
+                        let backing = if order == menu.focus { row_selected.as_ref().or(row_back.as_ref()) } else { row_back.as_ref() };
                         panel
                             .spawn((
                                 Button,
                                 Choice { order, action },
+                                ImageNode { image: backing.cloned().unwrap_or_default(), color: if backing.is_none() { Color::NONE } else if order == menu.focus { Color::srgba(0.8, 0.3, 0.04, 0.8) } else { Color::srgba(0.08, 0.08, 0.08, 0.7) }, image_mode: bevy::ui::widget::NodeImageMode::Stretch, ..default() },
                                 Node {
                                     min_height: Val::Px(28.0),
                                     padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
@@ -1196,8 +1207,8 @@ fn paint(
                             .with_children(|row| {
                                 row.spawn((
                                     Text::new(label),
-                                    game_text_font(&font.0, 15.0),
-                                    TextColor(Color::srgb(0.94, 0.94, 0.92)),
+                                    game_text_font(&font.0, 22.0),
+                                    TextColor(if order == menu.focus { accent } else { Color::srgb(0.94, 0.94, 0.92) }),
                                 ));
                             });
                     }

@@ -40,5 +40,6 @@ impl Plugin for UiPlugin {
         crate::t6_hud::register(app);
         crate::t6_menu::register(app);
         crate::launcher::register(app);
+        crate::t6_text::register(app);
     }
 }

@@ -60,6 +60,8 @@ struct Survivor {
     last_round: u32,
     downed_since: Option<u32>,
     solo_revives_bought: u8,
+    perk_label: Option<u64>,
+    last_perks: String,
 }
 
 #[derive(Clone, Debug)]
@@ -997,6 +999,24 @@ fn interactions(
             purchase(world, state, &mut survivor, client, index, tick);
         }
         survivor.use_held = held;
+        if survivor.perk_label.is_none() {
+            survivor.perk_label = make_hud(world, client, 320.0, 1.0);
+        }
+        let perks = format!(
+            "PERKS: {}",
+            survivor
+                .perks
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        if survivor.last_perks != perks {
+            if let Some(object) = survivor.perk_label {
+                hud_text(world, object, &perks);
+            }
+            survivor.last_perks = perks;
+        }
         if survivor.hud.is_none() {
             survivor.hud = make_hud(world, client, 400.0, 1.8);
         }
@@ -1117,9 +1137,14 @@ pub(crate) fn advance(world: &mut World) {
         .collect();
     for id in departed {
         if let Some(survivor) = state.survivors.remove(&id) {
-            for object in [survivor.hud, survivor.prompt, survivor.round_label]
-                .into_iter()
-                .flatten()
+            for object in [
+                survivor.hud,
+                survivor.prompt,
+                survivor.round_label,
+                survivor.perk_label,
+            ]
+            .into_iter()
+            .flatten()
             {
                 super::hud::destroy(world, object);
             }

@@ -10,6 +10,10 @@ pub(crate) struct T6Art {
 }
 
 impl T6Art {
+    pub(crate) fn invalidate(&mut self) {
+        self.images.clear();
+        self.missing.clear();
+    }
     pub(crate) fn reset(&mut self, generation: frame::WorldGeneration) {
         if self.generation != generation {
             self.generation = generation;
@@ -44,11 +48,14 @@ impl T6Art {
             self.missing.insert(name);
             return None;
         };
-        let image = images.add(crate::classes::icons::rgba_ui_image(
-            width,
-            height,
-            (*pixels).clone(),
-        ));
+        let mut pixels = (*pixels).clone();
+        if name == "fonts/distfont" {
+            for pixel in pixels.chunks_exact_mut(4) {
+                let coverage = ((pixel[3] as f32 - 120.0) / 16.0).clamp(0.0, 1.0);
+                pixel[3] = (coverage * coverage * (3.0 - 2.0 * coverage) * 255.0) as u8;
+            }
+        }
+        let image = images.add(crate::classes::icons::rgba_ui_image(width, height, pixels));
         self.images.insert(name, image.clone());
         Some(image)
     }

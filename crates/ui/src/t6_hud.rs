@@ -19,11 +19,20 @@ struct WeaponArt;
 struct DamageEdge;
 
 #[derive(Component, Clone, Copy)]
+enum HudArt {
+    Round,
+    Score,
+    Damage,
+    Perk(u8),
+}
+
+#[derive(Component, Clone, Copy)]
 enum Field {
     Match,
     Round,
     Use,
     Weapon,
+    Ammo,
     Health,
     Status,
     Killfeed,
@@ -41,9 +50,10 @@ pub(crate) fn register(app: &mut App) {
         .add_observer(obituary)
         .add_systems(
             Update,
-            (spawn, refresh, refresh_graphics)
+            (spawn, refresh, refresh_graphics, refresh_art)
                 .chain()
-                .in_set(ClientSet::Ui),
+                .in_set(ClientSet::Ui)
+                .in_set(super::t6_text::NativeUiPaint),
         );
 }
 
@@ -89,6 +99,7 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
     commands
         .spawn((
             T6HudRoot,
+            super::t6_text::NativeUiRoot(true),
             UiLayer::Hud,
             Visibility::Hidden,
             Node {
@@ -99,22 +110,98 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
             },
         ))
         .with_children(|root| {
+            for (kind, left, right, bottom, width, height) in [
+                (
+                    HudArt::Score,
+                    Val::Px(32.0),
+                    Val::Auto,
+                    Val::Px(30.0),
+                    Val::Px(180.0),
+                    Val::Px(48.0),
+                ),
+                (
+                    HudArt::Round,
+                    Val::Px(32.0),
+                    Val::Auto,
+                    Val::Px(104.0),
+                    Val::Px(82.0),
+                    Val::Px(70.0),
+                ),
+                (
+                    HudArt::Damage,
+                    Val::Px(0.0),
+                    Val::Px(0.0),
+                    Val::Px(0.0),
+                    Val::Percent(100.0),
+                    Val::Percent(100.0),
+                ),
+                (
+                    HudArt::Perk(0),
+                    Val::Px(32.0),
+                    Val::Auto,
+                    Val::Px(180.0),
+                    Val::Px(38.0),
+                    Val::Px(38.0),
+                ),
+                (
+                    HudArt::Perk(1),
+                    Val::Px(76.0),
+                    Val::Auto,
+                    Val::Px(180.0),
+                    Val::Px(38.0),
+                    Val::Px(38.0),
+                ),
+                (
+                    HudArt::Perk(2),
+                    Val::Px(120.0),
+                    Val::Auto,
+                    Val::Px(180.0),
+                    Val::Px(38.0),
+                    Val::Px(38.0),
+                ),
+                (
+                    HudArt::Perk(3),
+                    Val::Px(164.0),
+                    Val::Auto,
+                    Val::Px(180.0),
+                    Val::Px(38.0),
+                    Val::Px(38.0),
+                ),
+            ] {
+                root.spawn((
+                    kind,
+                    ImageNode {
+                        image_mode: bevy::ui::widget::NodeImageMode::Stretch,
+                        ..default()
+                    },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left,
+                        right,
+                        bottom,
+                        width,
+                        height,
+                        display: Display::None,
+                        ..default()
+                    },
+                ));
+            }
             for (field, left, top, right, bottom, size) in [
                 (
                     Field::Match,
                     Val::Px(28.0),
                     Val::Auto,
                     Val::Auto,
-                    Val::Px(24.0),
-                    18.0,
+                    Val::Px(32.0),
+                    30.0,
                 ),
                 (
                     Field::Round,
                     Val::Px(28.0),
                     Val::Auto,
                     Val::Auto,
-                    Val::Px(88.0),
-                    24.0,
+                    Val::Px(110.0),
+                    40.0,
                 ),
                 (
                     Field::Use,
@@ -129,8 +216,16 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                     Val::Auto,
                     Val::Auto,
                     Val::Px(28.0),
-                    Val::Px(28.0),
-                    26.0,
+                    Val::Px(88.0),
+                    16.0,
+                ),
+                (
+                    Field::Ammo,
+                    Val::Auto,
+                    Val::Auto,
+                    Val::Px(32.0),
+                    Val::Px(34.0),
+                    36.0,
                 ),
                 (
                     Field::Health,
@@ -171,14 +266,12 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                     game_text_font(&font.0, size),
                     TextColor(Color::srgb(0.95, 0.95, 0.95)),
                     TextShadow::default(),
-                    BorderColor::all(Color::srgba(1.0, 0.48, 0.12, 0.8)),
-                    BackgroundColor(
-                        if matches!(field, Field::Scoreboard | Field::Match | Field::Weapon) {
-                            Color::srgba(0.025, 0.03, 0.04, 0.88)
-                        } else {
-                            Color::NONE
-                        },
-                    ),
+                    BorderColor::all(Color::NONE),
+                    BackgroundColor(if matches!(field, Field::Scoreboard) {
+                        Color::srgba(0.025, 0.03, 0.04, 0.88)
+                    } else {
+                        Color::NONE
+                    }),
                     Node {
                         position_type: PositionType::Absolute,
                         left,
@@ -186,8 +279,7 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                         right,
                         bottom,
                         padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-                        border: if matches!(field, Field::Match | Field::Weapon | Field::Scoreboard)
-                        {
+                        border: if matches!(field, Field::Scoreboard) {
                             UiRect::bottom(Val::Px(2.0))
                         } else {
                             UiRect::ZERO
@@ -387,7 +479,7 @@ fn refresh(
         let value = match field {
             Field::Match => {
                 let score = if snapshot.meta.kind.token() == "zclassic" {
-                    format!("{} POINTS", meta.score)
+                    meta.score.to_string()
                 } else if snapshot.meta.kind.is_team() {
                     let team = usize::try_from(meta.client_state_team)
                         .ok()
@@ -398,12 +490,16 @@ fn refresh(
                 } else {
                     format!("{}     LIMIT {}", meta.score, snapshot.meta.score_limit)
                 };
-                format!(
-                    "{}   {:02}:{:02}\n{score}",
-                    snapshot.meta.kind.display_name(),
-                    time / 60,
-                    time % 60
-                )
+                if snapshot.meta.kind.token() == "zclassic" {
+                    score
+                } else {
+                    format!(
+                        "{}   {:02}:{:02}\n{score}",
+                        snapshot.meta.kind.display_name(),
+                        time / 60,
+                        time % 60
+                    )
+                }
             }
             Field::Round | Field::Use
                 if snapshot.meta.kind.token() == "zclassic" && alive && !scores =>
@@ -445,9 +541,13 @@ fn refresh(
                     }
                 } else {
                     message
+                        .strip_prefix("ROUND ")
+                        .unwrap_or(&message)
+                        .to_owned()
                 }
             }
-            Field::Weapon if alive && !scores => format!("{name}\n{clip:02}  /  {stock:03}"),
+            Field::Weapon if alive && !scores => name.clone(),
+            Field::Ammo if alive && !scores => format!("{clip:02}  /  {stock:03}"),
             Field::Health if alive && !scores && ps.health < ps.max_health => {
                 format!("HEALTH {}", ps.health)
             }
@@ -495,12 +595,116 @@ fn refresh(
             text.0 = value;
         }
         color.0 = if (matches!(field, Field::Health) && ps.health < ps.max_health / 2)
-            || (matches!(field, Field::Weapon) && clip < 5)
+            || (matches!(field, Field::Ammo) && clip < 5)
         {
             Color::srgb(1.0, 0.25, 0.18)
         } else {
             Color::srgb(0.95, 0.95, 0.95)
         };
+    }
+}
+
+fn refresh_art(
+    presented: Res<PresentedSnapshot>,
+    local: Res<LocalPresentClient>,
+    actions: Option<Res<ClientActionInput>>,
+    mut art: ResMut<crate::t6_art::T6Art>,
+    mut images: ResMut<Assets<Image>>,
+    mut sprites: Query<(&HudArt, &mut ImageNode, &mut Node), Without<Field>>,
+    mut fields: Query<(&Field, &mut Node), Without<HudArt>>,
+    mut damage_edges: Query<&mut BorderColor, With<DamageEdge>>,
+) {
+    let Some(snapshot) = presented.snapshot() else {
+        return;
+    };
+    let Some(ps) = presented.player(local.0) else {
+        return;
+    };
+    let Some(meta) = snapshot.meta.for_client(local.0) else {
+        return;
+    };
+    let alive = meta.lifecycle == ClientLifecycle::Alive && ps.health > 0;
+    let scores = actions
+        .as_ref()
+        .is_some_and(|actions| actions.client.kb.scores.active);
+    let zombies = snapshot.meta.kind.token() == "zclassic";
+    let labels: Vec<_> = meta
+        .hud_archival
+        .iter()
+        .chain(&meta.hud_current)
+        .filter_map(|elem| sim::hud_string_in_occupied(&snapshot.meta.hud_strings, elem.text))
+        .filter_map(|raw| raw.strip_prefix(sim::HUD_STRING_PLAIN))
+        .collect();
+    let round = labels
+        .iter()
+        .find_map(|label| label.strip_prefix("ROUND ")?.parse::<u32>().ok());
+    let perks: Vec<_> = labels
+        .iter()
+        .find_map(|label| label.strip_prefix("PERKS: "))
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    let tally = round
+        .filter(|round| (1..=5).contains(round))
+        .and_then(|round| art.image(&format!("hud_chalk_{round}"), &mut images));
+    let damage = art.image("overlay_low_health", &mut images);
+    if damage.is_some() {
+        for mut edge in &mut damage_edges {
+            *edge = BorderColor::all(Color::NONE);
+        }
+    }
+    for (kind, mut view, mut node) in &mut sprites {
+        let image = match kind {
+            HudArt::Round if zombies => tally.clone(),
+            HudArt::Score => art.image(
+                if zombies {
+                    "scorebar_zom_1"
+                } else {
+                    "hud_mp_vis_left_lower_back"
+                },
+                &mut images,
+            ),
+            HudArt::Damage if ps.health < ps.max_health => damage.clone(),
+            HudArt::Perk(index)
+                if zombies && ps.pm_flags & playerstate_iw4::pm_flags::LAST_STAND == 0 =>
+            {
+                perks
+                    .get(*index as usize)
+                    .and_then(|perk| match *perk {
+                        "juggernog" => Some("specialty_juggernaut_zombies"),
+                        "sleight" => Some("specialty_fastreload_zombies"),
+                        "revive" => Some("specialty_quickrevive_zombies"),
+                        _ => None,
+                    })
+                    .and_then(|material| art.image(material, &mut images))
+            }
+            _ => None,
+        };
+        node.display = if alive && !scores && image.is_some() {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if let Some(image) = image {
+            view.image = image;
+        }
+        view.color = if matches!(kind, HudArt::Damage) {
+            Color::srgba(
+                1.0,
+                1.0,
+                1.0,
+                (1.0 - ps.health as f32 / ps.max_health.max(1) as f32).clamp(0.0, 0.85),
+            )
+        } else {
+            Color::WHITE
+        };
+    }
+    for (field, mut node) in &mut fields {
+        if (matches!(field, Field::Round) && zombies && tally.is_some() && alive && !scores)
+            || (matches!(field, Field::Health) && damage.is_some())
+        {
+            node.display = Display::None;
+        }
     }
 }
 

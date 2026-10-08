@@ -161,7 +161,13 @@ impl Inventory {
 }
 
 #[derive(Resource)]
-struct Backdrop(Handle<Image>);
+struct Backdrop {
+    fallback: Handle<Image>,
+    native: Option<Handle<Image>>,
+    key: Option<(PathBuf, bool)>,
+    task: Option<Task<Result<assets::T6UiArt, String>>>,
+    revision: u64,
+}
 
 #[derive(Component)]
 struct Root;
@@ -217,9 +223,17 @@ pub(crate) fn register(app: &mut App) {
         .add_systems(Startup, load_backdrop)
         .add_systems(
             Update,
-            (discover, input, rebuild, scroll)
+            (
+                discover,
+                input,
+                load_native_art,
+                rebuild,
+                skin_buttons,
+                scroll,
+            )
                 .chain()
-                .in_set(frame::ClientSet::Ui),
+                .in_set(frame::ClientSet::Ui)
+                .in_set(super::t6_text::NativeUiPaint),
         );
 }
 
@@ -234,7 +248,123 @@ fn load_backdrop(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         bevy::asset::RenderAssetUsages::all(),
     )
     .expect("bundled launcher background must decode");
-    commands.insert_resource(Backdrop(images.add(image)));
+    commands.insert_resource(Backdrop {
+        fallback: images.add(image),
+        native: None,
+        key: None,
+        task: None,
+        revision: 0,
+    });
+}
+
+fn load_native_art(
+    screen: Res<AppScreen>,
+    menu: Res<Menu>,
+    inventory: Res<Inventory>,
+    dvars: Res<frame::UiMenuDvars>,
+    backdrop: Option<ResMut<Backdrop>>,
+    mut art: ResMut<crate::t6_art::T6Art>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if *screen != AppScreen::MainMenu {
+        return;
+    }
+    let Some(mut backdrop) = backdrop else {
+        return;
+    };
+    let key = menu
+        .selected
+        .filter(|game| *game == Game::BlackOps2)
+        .and_then(|game| inventory.installation(game)?.root.clone())
+        .map(|root| {
+            (
+                root,
+                menu.page == Page::Zombies
+                    || (menu.page == Page::Lobby && dvars.get("ui_gametype") == Some("zclassic")),
+            )
+        });
+    if backdrop.key != key {
+        backdrop.native = None;
+        backdrop.revision = backdrop.revision.wrapping_add(1);
+        backdrop.task = key.as_ref().map(|(root, zombies)| {
+            let root = root.clone();
+            let zombies = *zombies;
+            assets::load_pool().spawn(async move { assets::load_t6_ui_art(&root, zombies) })
+        });
+        backdrop.key = key;
+    }
+    let Some(task) = backdrop.task.as_mut() else {
+        return;
+    };
+    let Some(result) = future::block_on(future::poll_once(task)) else {
+        return;
+    };
+    backdrop.task = None;
+    match result {
+        Ok(prepared) => {
+            prepared.publish();
+            art.invalidate();
+            let zombies = backdrop.key.as_ref().is_some_and(|(_, zombies)| *zombies);
+            backdrop.native = art.image(
+                if zombies {
+                    "menu_zm_background_main"
+                } else {
+                    "menu_mp_background_main"
+                },
+                &mut images,
+            );
+            backdrop.revision = backdrop.revision.wrapping_add(1);
+        }
+        Err(error) => diag::warn!(Zone, "T6 frontend artwork unavailable: {error}"),
+    }
+}
+
+fn skin_buttons(
+    mut commands: Commands,
+    menu: Res<Menu>,
+    backdrop: Option<Res<Backdrop>>,
+    mut art: ResMut<crate::t6_art::T6Art>,
+    mut images: ResMut<Assets<Image>>,
+    mut buttons: Query<(Entity, &MenuButton, &Interaction, Option<&mut ImageNode>)>,
+) {
+    if menu.selected != Some(Game::BlackOps2)
+        || !backdrop.is_some_and(|backdrop| backdrop.native.is_some())
+    {
+        return;
+    }
+    let normal = art.image("menu_button_backing", &mut images);
+    let selected = art.image("menu_button_backing_highlight", &mut images);
+    for (entity, button, interaction, previous) in &mut buttons {
+        let focused =
+            button.enabled && (button.order == menu.focus || *interaction != Interaction::None);
+        let Some(image) = (if focused {
+            selected.as_ref().or(normal.as_ref())
+        } else {
+            normal.as_ref()
+        }) else {
+            continue;
+        };
+        let tint = if focused {
+            Color::srgba(0.8, 0.3, 0.04, 0.8)
+        } else {
+            Color::srgba(0.08, 0.08, 0.08, 0.7)
+        };
+        if let Some(mut previous) = previous {
+            if previous.image != *image {
+                previous.image = image.clone();
+            }
+            if previous.color != tint {
+                previous.color = tint;
+            }
+        } else {
+            commands.entity(entity).insert(ImageNode {
+                image: image.clone(),
+                color: tint,
+                image_mode: bevy::ui::widget::NodeImageMode::Stretch,
+                ..default()
+            });
+        }
+    }
 }
 
 fn discover(
@@ -1048,7 +1178,7 @@ fn rebuild(
     let snapshot = browser.as_ref().map(|browser| browser.snapshot());
     let signature = format!(
         "{} {:?} {} {} {} {} {:?} {:?} {:?}",
-        inventory.generation,
+        inventory.generation.wrapping_add(backdrop.revision),
         menu.page,
         snapshot.as_ref().map_or(0, |s| s.generation),
         dvars.get("ui_frontend_status").unwrap_or(""),
@@ -1118,8 +1248,8 @@ fn rebuild(
         .get("ui_mapname")
         .unwrap_or_else(|| maps.first().map_or("No map selected", String::as_str));
     let mut order = 0;
-    commands.spawn((Root, UiLayer::Shell, UiLayerVisibility, GlobalZIndex(80), Node { width: Val::Percent(100.0), height: Val::Percent(100.0), position_type: PositionType::Absolute, ..default() }, BackgroundColor(Color::srgb(0.025,0.03,0.035)))).with_children(|root| {
-        root.spawn((ImageNode::new(backdrop.0.clone()).with_mode(bevy::ui::widget::NodeImageMode::Stretch), Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }));
+    commands.spawn((Root, super::t6_text::NativeUiRoot(game == Some(Game::BlackOps2) && backdrop.native.is_some()), UiLayer::Shell, UiLayerVisibility, GlobalZIndex(80), Node { width: Val::Percent(100.0), height: Val::Percent(100.0), position_type: PositionType::Absolute, ..default() }, BackgroundColor(Color::srgb(0.025,0.03,0.035)))).with_children(|root| {
+        root.spawn((ImageNode::new(backdrop.native.clone().unwrap_or_else(|| backdrop.fallback.clone())).with_mode(bevy::ui::widget::NodeImageMode::Stretch), Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }));
         root.spawn((Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgba(0.01,0.02,0.025,0.25))));
         root.spawn(Node { position_type: PositionType::Absolute, left: Val::Percent(4.5), right: Val::Percent(4.5), top: Val::Px(26.0), flex_direction: FlexDirection::Row, justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|bar| {
             label(bar, &font.0, "IW4L   /   GAME LIBRARY", 16.0, accent);
@@ -1318,9 +1448,9 @@ fn rebuild(
                             if menu.editing_name { label(detail, &font.0, "TYPE YOUR NAME\nENTER TO SAVE", 18.0, accent); }
                         }
                         _ => {
-                            label(detail, &font.0, "WELCOME BACK", 22.0, accent);
+                            label(detail, &font.0, if menu.page == Page::Zombies { "ZOMBIES SURVIVAL" } else { "WELCOME BACK" }, 22.0, accent);
                             label(detail, &font.0, game.map_or("Choose a game from your library.", Game::title), 20.0, Color::WHITE);
-                            label(detail, &font.0, if game.is_none() { "Select an installation, tune your settings, and enter Multiplayer." } else if installed { "Owned installation detected.\n\nCampaign is Work in Progress." } else { "Add your owned installation in Game Installations to enable Multiplayer." }, 16.0, Color::srgb(0.7,0.74,0.76));
+                            label(detail, &font.0, if menu.page == Page::Zombies { "Survive the rounds. Earn points for hits and kills, buy weapons and perks, and revive your teammates.\n\nSelect a map to set up your match." } else if game.is_none() { "Select an installation, tune your settings, and enter Multiplayer." } else if installed { "Owned installation detected.\n\nCampaign is Work in Progress." } else { "Add your owned installation in Game Installations to enable Multiplayer." }, 16.0, Color::srgb(0.7,0.74,0.76));
                             if menu.page == Page::Library { label(detail, &font.0, "MODERN WARFARE  /  BLACK OPS", 13.0, accent); }
                         }
                     }

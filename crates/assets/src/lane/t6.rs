@@ -435,6 +435,7 @@ fn schema() -> Result<&'static fastfile_t6::schema::Schema, String> {
 }
 
 const COLOR_MAP_HASH: u32 = 0xa0ab_1041;
+const FONT_MAP_HASH: u32 = 0xd2ee_eeb8;
 const NORMAL_MAP_HASH: u32 = 0x59d3_0d0f;
 const COLOR_SAMPLERS: [u32; 2] = [COLOR_MAP_HASH, 0xf039_ec2d];
 const NORMAL_SAMPLERS: [u32; 2] = [NORMAL_MAP_HASH, 0x942c_bff0];
@@ -1054,12 +1055,46 @@ fn decode_world_image(
     decode_map_image(load, image, ipaks)
 }
 
+pub struct T6UiArt {
+    images: Vec<(String, Arc<[u8]>)>,
+    fonts: Vec<asset_material::ui_font::UiBitmapFont>,
+}
+
+impl T6UiArt {
+    pub fn publish(self) {
+        asset_material::ui_font::store_ui_fonts(asset_core::AssetNamespace::T6, self.fonts);
+        asset_material::store_zone_ui_images(asset_core::AssetNamespace::T6, self.images);
+    }
+}
+
+pub fn load_t6_ui_art(installation: &Path, zombies: bool) -> Result<T6UiArt, String> {
+    let mode = if zombies {
+        asset_transport::t6_content::T6ContentMode::Zombies
+    } else {
+        asset_transport::t6_content::T6ContentMode::Multiplayer
+    };
+    let common = installation
+        .join("zone")
+        .join("all")
+        .join(format!("{}.ff", mode.common()));
+    if !common.is_file() {
+        return Err("T6 common zone missing".into());
+    }
+    let mut report = Vec::new();
+    let ipaks = open_ipaks(&common, &mut report);
+    let art = capture_weapon_icons(&common, &[], &ipaks, &mut report);
+    for line in report {
+        diag::info!(Zone, "{line}");
+    }
+    Ok(art)
+}
+
 fn capture_weapon_icons(
     common: &Path,
     loads: &[&fastfile_t6::ZoneLoad],
     ipaks: &[asset_transport::IPak],
     report: &mut Vec<String>,
-) -> Vec<(String, Arc<[u8]>)> {
+) -> T6UiArt {
     let mut wanted = std::collections::BTreeSet::new();
     for load in loads {
         for asset in &load.assets {
@@ -1120,22 +1155,68 @@ fn capture_weapon_icons(
     let mut icons = Vec::new();
     let mut failed = Vec::new();
     let all: Vec<&fastfile_t6::ZoneLoad> = loads.iter().copied().chain(&extra).collect();
+    let fonts: Vec<_> = all
+        .iter()
+        .flat_map(|load| {
+            load.assets
+                .iter()
+                .filter_map(|asset| capture_ui_font(load, asset))
+        })
+        .collect();
+    wanted.extend(fonts.iter().map(|font| font.material.clone()));
+    report.push(format!(
+        "t6 UI fonts: {} native bitmap fonts captured",
+        fonts.len()
+    ));
     for load in loads.iter().copied().chain(&extra) {
         for asset in &load.assets {
             if asset.ty != fastfile_t6::AssetType::Material {
                 continue;
             }
-            let Some(name) = header_str(load, &asset.header, 0).map(str::to_ascii_lowercase) else {
+            let Some(name) = header_str(load, &asset.header, 0)
+                .map(|name| name.trim_start_matches(',').to_ascii_lowercase())
+            else {
                 continue;
             };
             let presentation = name.starts_with("loadscreen_mp_")
                 || name.starts_with("faction_")
-                || (name.starts_with("menu_mp_") && name.ends_with("_map_select_final"));
-            if !wanted.remove(&name) && !presentation {
+                || name.starts_with("hud_chalk_")
+                || (name.starts_with("specialty_") && name.contains("_zombies"))
+                || matches!(
+                    name.as_str(),
+                    "scorebar_zom_1"
+                        | "scorebar_fadein"
+                        | "overlay_low_health"
+                        | "waypoint_revive_zm"
+                        | "progress_bar_bg"
+                        | "progress_bar_fg"
+                        | "progress_bar_fill"
+                        | "hud_mp_vis_left_lower_back"
+                        | "hud_faction_backing"
+                        | "hud_faction_back_light"
+                        | "menu_button_backing"
+                        | "menu_button_backing_highlight"
+                        | "menu_select_highlight"
+                        | "menu_popup_back"
+                        | "menu_mp_background_main"
+                        | "menu_zm_background_main"
+                        | "menu_mp_background_logo"
+                        | "lui_bkg"
+                        | "lui_bkg_zm"
+                        | "menu_white_line_faded"
+                )
+                || ((name.starts_with("menu_mp_") || name.starts_with("menu_zm_"))
+                    && name.ends_with("_map_select_final"));
+            if (!wanted.contains(&name) && !presentation)
+                || icons.iter().any(|(seen, _)| seen == &name)
+            {
                 continue;
             }
             match capture_icon(load, asset, &all, ipaks) {
-                Ok(iwi) => icons.push((name, iwi)),
+                Ok(iwi) => {
+                    wanted.remove(&name);
+                    icons.push((name, iwi));
+                }
                 Err(error) => failed.push(format!("{name}: {error}")),
             }
         }
@@ -1168,7 +1249,52 @@ fn capture_weapon_icons(
         failed.len(),
         wanted.len()
     ));
-    icons
+    T6UiArt {
+        images: icons,
+        fonts,
+    }
+}
+
+fn capture_ui_font(
+    load: &fastfile_t6::ZoneLoad,
+    asset: &fastfile_t6::LoadedAsset,
+) -> Option<asset_material::ui_font::UiBitmapFont> {
+    if asset.ty != fastfile_t6::AssetType::Font {
+        return None;
+    }
+    let name = header_str(load, &asset.header, 0)?.to_owned();
+    let pixel_height = header_u32(&asset.header, 4)?.clamp(1, 256);
+    let count = header_u32(&asset.header, 12)? as usize;
+    if count == 0 || count > 65536 {
+        return None;
+    }
+    let material = load.assets.get(asset.field(20)?)?;
+    let material = header_str(load, &material.header, 0)?
+        .trim_start_matches(',')
+        .to_ascii_lowercase();
+    let bytes = load
+        .blocks
+        .bytes(
+            decode_ptr(header_u32(&asset.header, 28)?)?,
+            count.checked_mul(24)?,
+        )
+        .ok()?;
+    let glyphs = bytes
+        .chunks_exact(24)
+        .filter_map(|row| {
+            let glyph = fastfile_iw4::GlyphCapture::from_row(row.try_into().ok()?);
+            [glyph.s0, glyph.t0, glyph.s1, glyph.t1]
+                .iter()
+                .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+                .then_some((glyph.letter, glyph))
+        })
+        .collect();
+    Some(asset_material::ui_font::UiBitmapFont {
+        name,
+        material,
+        pixel_height,
+        glyphs,
+    })
 }
 
 fn capture_icon(
@@ -1190,7 +1316,10 @@ fn capture_icon(
     };
     for index in 0..count {
         let def = table.at(index * MATERIAL_TEXTURE_DEF);
-        if load.blocks.u32_at(def).ok() != Some(COLOR_MAP_HASH) {
+        if !matches!(
+            load.blocks.u32_at(def).ok(),
+            Some(COLOR_MAP_HASH | FONT_MAP_HASH)
+        ) {
             continue;
         }
         let image = load
@@ -2726,7 +2855,7 @@ impl ZoneLane for T6Lane {
         let icons_stage = progress.begin_scoped(StageId::CommonAssets, "t6_icons", None);
         let icon_loads: Vec<_> = others.iter().chain(std::iter::once(&load)).collect();
         let icons = capture_weapon_icons(path, &icon_loads, &ipaks, &mut report);
-        asset_material::store_zone_ui_images(asset_core::AssetNamespace::T6, icons);
+        icons.publish();
         icons_stage.done();
         let sounds_stage = progress.begin_scoped(StageId::CommonAssets, "t6_sounds", None);
         capture_sounds(path, &load, &others, sound_claim, &mut content);

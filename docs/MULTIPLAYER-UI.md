@@ -26,8 +26,11 @@ input; ESC cancels capture. Settings apply live and use the existing profile sto
 The runtime HUD shows replicated match time/scores, native weapon name/artwork,
 ammo, deaths, a held-Tab scoreboard and respawn/match results. Crosshair arms follow
 the presented spread and hide while aiming; injured players get health feedback.
-Native images come from the owned game's prepared image cache. The layout is
-IW4L-owned; the original BO2 HUD scripts and minimap are not implemented here.
+Native images and the distance-field bitmap font come from the owned installation.
+The HUD uses native score backing; pause/class/settings pages use native button art.
+Unsupported font characters retain the bundled font. Native glyphs wrap and cache
+until text, tint, atlas or available width changes.
+Layouts are IW4L-owned; BO2 LUI scripts and the multiplayer minimap remain absent.
 
 Hosts can return everyone to the existing lobby with **End Match**.
 **Leave Match** disconnects only the local player.

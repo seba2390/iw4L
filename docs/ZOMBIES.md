@@ -39,5 +39,8 @@ points, round-two progression, wall buys, insufficient-funds refusal, mystery-bo
 spin/pickup, downing and held-use teammate revival.
 Navigation, spawn distribution and round scaling are initial implementations.
 Window entry, barrier repair, map power, doors, quests, special enemies, buildables,
-transport, perk arrival and original HUD fidelity remain unfinished.
+transport, perk arrival and complete HUD fidelity remain unfinished.
+The HUD loads native round tallies, score backing, perk icons, low-health overlay
+and bitmap text from the installation. Perk icons follow replicated ownership;
+rounds above five use numbers. HUD layouts remain authored by IW4L.
 Town, Farm, Bus Depot, Grief and Turned need submode/location handling.
