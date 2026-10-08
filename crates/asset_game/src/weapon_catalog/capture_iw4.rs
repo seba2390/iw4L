@@ -310,6 +310,7 @@ impl WeaponCatalog {
                 ..WeaponCombatFx::empty(crate::AssetNamespace::Iw4)
             },
             facts: WeaponBodyFacts {
+                burst_delay_ms: None,
                 body_resolved: geometry.weap_def.is_some(),
                 fire_time_ms: geometry.fire_time_ms,
                 impact_type: geometry.impact_type,

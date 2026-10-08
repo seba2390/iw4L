@@ -276,6 +276,7 @@ pub(super) fn capture_t6_body_facts(w: fastfile_t6::weapon::WeaponView<'_>) -> W
     let mut facts = WeaponBodyFacts {
         body_resolved: w.has_def(),
         fire_time_ms: w.def_i32(d::FIRE_TIME),
+        burst_delay_ms: w.has_def().then(|| w.def_i32(d::BURST_DELAY_TIME)),
         clip_size: w.variant_i32(v::CLIP_SIZE),
         weap_type: remap_t6_weap_type(w.def_i32(d::WEAP_TYPE)),
         weap_class: remap_t6_weap_class(w.def_i32(d::WEAP_CLASS)),

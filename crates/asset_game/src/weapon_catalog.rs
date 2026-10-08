@@ -75,6 +75,7 @@ pub(crate) struct WeaponBodyFacts {
     pub body_resolved: bool,
 
     pub fire_time_ms: i32,
+    pub burst_delay_ms: Option<i32>,
 
     pub impact_type: i32,
 
