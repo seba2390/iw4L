@@ -2020,6 +2020,42 @@ impl WeaponBuild {
         census
     }
 
+    /// Absorbs `other`; a row whose namespace and name this build already holds
+    /// replaces that row in place, so a later zone overrides an earlier one.
+    pub fn absorb_overriding(&mut self, mut other: Self) {
+        if self.registry.rows.is_empty() {
+            self.absorb(other);
+            return;
+        }
+        let rows = std::mem::take(&mut other.registry.rows);
+        let mut slots = std::mem::take(&mut other.combat_slots).into_iter();
+        for (index, row) in rows.into_iter().enumerate() {
+            let slot = slots.next().unwrap_or_default();
+            let held = (index != 0)
+                .then(|| {
+                    self.registry
+                        .by_namespaced
+                        .get(&(row.namespace, row.name.clone()))
+                        .copied()
+                })
+                .flatten();
+            match held {
+                Some(id) => {
+                    self.registry.rows[id as usize] = row;
+                    if let Some(held_slot) = self.combat_slots.get_mut(id as usize) {
+                        *held_slot = slot;
+                    }
+                }
+                None => {
+                    other.registry.rows.push(row);
+                    other.combat_slots.push(slot);
+                }
+            }
+        }
+        other.registry.rebuild_name_maps();
+        self.absorb(other);
+    }
+
     pub fn absorb(&mut self, mut other: Self) {
         self.registry
             .vehicle_compass
@@ -2492,7 +2528,12 @@ pub fn gsc_weapon_script_name(catalog_bare: &str) -> String {
     if catalog_bare.is_empty() {
         return String::new();
     }
-    if catalog_bare.ends_with("_mp") {
+    // Zombie and singleplayer scripts name their weapons without the MP suffix.
+    if catalog_bare.ends_with("_mp")
+        || catalog_bare.ends_with("_zm")
+        || catalog_bare.ends_with("_sp")
+        || catalog_bare.starts_with("zombie_")
+    {
         catalog_bare.to_owned()
     } else {
         format!("{catalog_bare}_mp")

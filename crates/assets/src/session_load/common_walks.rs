@@ -1158,6 +1158,10 @@ pub(super) fn finish_zone_open<E>(
 #[derive(Default)]
 pub(super) struct ZombieCommons {
     pub(super) xanims: XAnimBuild,
+    pub(super) weapons: WeaponBuild,
+    pub(super) fpv: FpvMeshBuild,
+    pub(super) world_weapons: WorldWeaponBuild,
+    pub(super) projectiles: asset_model::ProjectileMeshBuild,
     /// Singleplayer and zombie scripts, lowest priority first; the map and its
     /// patch go on top.
     pub(super) scripts: Option<crate::ScriptSources>,
@@ -1188,6 +1192,7 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         "common",
         "common_zombie",
         "common_zombie_patch",
+        stem.as_str(),
         map_patch.as_str(),
     ] {
         let found = match asset_transport::find_zone_for_tree(zone_ff, zone) {
@@ -1220,6 +1225,10 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         );
         let xanims = census.xanims.len();
         commons.xanims.absorb(census.xanims);
+        commons.weapons.absorb_overriding(census.weapons.clone());
+        commons.fpv.absorb(census.fpv.clone());
+        commons.world_weapons.absorb(census.world_weapons.clone());
+        commons.projectiles.absorb(census.projectile_meshes.clone());
         commons.report.push(format!(
             "zombie common {zone}: xanims={xanims} weapons={} scene_models={} scripts={}",
             census.weapons.len(),
@@ -1228,7 +1237,7 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         ));
         if zone == map_patch {
             commons.map_patch_scripts = census.scripts;
-        } else {
+        } else if zone != stem {
             scripts.overlay(census.scripts);
         }
     }

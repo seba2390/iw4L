@@ -9,6 +9,18 @@ This is an outline, not a specification. Each step names an outcome and how we
 know it is reached; the details are expected to change as we learn. Every step
 ends in a commit and a push.
 
+## Status (2026-10-08)
+
+Kino loads and is walkable. `IW4L_GAMETYPE=zombies` runs Kino's real zombie
+scripts (`_zombiemode` and everything it pulls in) on the host; builtins the
+runtime lacks are reported per call site instead of stopping the match. The
+zombie work goes script-first: the running scripts show which engine feature
+is needed next. Try it headless:
+
+```bash
+IW4L_SOUND=off IW4L_GAMETYPE=zombies ./target/play/iw4l serve t5:zombie_theater --cmds 'wait world; bot add 1; wait 20s; quit'
+```
+
 ## What we start from
 
 - The T5 reader already opens every asset in the zombie zones (`common_zombie`,
@@ -37,7 +49,10 @@ Done: Kino loads, players and bots spawn and move on correct collision.
 Left for later steps: path data, the zombie common zones, a zombies game mode.
 
 ### 2. One actor on the floor
-- [ ] Load the zombie common zones (`common_zombie`, its patch) next to the map.
+- [x] Load the zombie common zones (`common_zombie`, its patch, the singleplayer
+      `common` and `code_post_gfx`) next to the map: animations, weapons, scripts.
+- [x] T5 animations carry root motion; scripts can query any clip
+      (`getmovedelta`, `getangledelta`, notetracks).
 - [ ] Load animation trees from their `.atr` source and resolve `%anim` references.
 - [ ] Introduce an actor entity: spawn from a map spawner, run its aitype and
       character scripts, attach its models.
@@ -76,7 +91,11 @@ Done when zombies come through windows and use every traversal in Kino.
 Done when a single zombie can be fought and killed with correct feedback.
 
 ### 7. Zombies game mode
-- [ ] Run `_zombiemode` and the Kino map scripts on the host.
+- [x] Run `_zombiemode` and the Kino map scripts on the host (zombies game
+      mode, T5 zombie builtin catalog, singleplayer code callbacks).
+- [x] Zombie weapons (`*_zm`) are registered under their script names.
+- [ ] Players spawn through the zombie scripts and receive their loadout.
+- [ ] Close the remaining builtin gaps the scripts report while a round runs.
 - [ ] Rounds, spawning, points, doors and debris, wall weapons, mystery box,
       perks, power, Pack-a-Punch, power-ups, last stand.
 - [ ] Zombie HUD and menus.

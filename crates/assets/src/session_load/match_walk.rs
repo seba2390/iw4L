@@ -192,6 +192,17 @@ pub(super) async fn walk_prepared_match(
         scripts
     });
     report.extend(zombie.report);
+    if !zombie.weapons.is_empty() {
+        let before = weapons.len();
+        weapons.absorb_overriding(zombie.weapons);
+        fpv_meshes.absorb(zombie.fpv);
+        world_weapons.absorb(zombie.world_weapons);
+        projectile_meshes.absorb(zombie.projectiles);
+        report.push(format!(
+            "zombie weapons: registry {before}→{}",
+            weapons.len()
+        ));
+    }
     report.append(&mut common_report);
     report.extend(image_trees.report_lines());
 
