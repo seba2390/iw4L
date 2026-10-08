@@ -380,6 +380,14 @@ pub fn apply_prepared_match(
                 },
             ))
         }));
+        let clips = Arc::clone(&xanims.0);
+        content.set_anim_clips(sim::AnimClipLookup::new(move |name| {
+            clips.clip(anim_namespace, name).or_else(|| {
+                asset_core::AssetNamespace::ALL
+                    .into_iter()
+                    .find_map(|namespace| clips.clip(namespace, name))
+            })
+        }));
         content.set_mantle_xanims(sim::MantleXAnimBind::from_clips(|fast, i| {
             let name = sim::MantleXAnimBind::clip_name(fast, i)?;
             xanims

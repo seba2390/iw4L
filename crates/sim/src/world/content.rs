@@ -111,6 +111,35 @@ impl SimContent {
     }
 }
 
+/// Resolves any animation of the match by name; installed by the session from
+/// its animation catalog.
+#[derive(Clone)]
+pub struct AnimClipLookup(Arc<dyn Fn(&str) -> Option<Arc<xmodel_runtime::AnimClip>> + Send + Sync>);
+
+impl AnimClipLookup {
+    pub fn new(
+        lookup: impl Fn(&str) -> Option<Arc<xmodel_runtime::AnimClip>> + Send + Sync + 'static,
+    ) -> Self {
+        Self(Arc::new(lookup))
+    }
+
+    pub fn get(&self, name: &str) -> Option<Arc<xmodel_runtime::AnimClip>> {
+        (self.0)(name)
+    }
+}
+
+impl Default for AnimClipLookup {
+    fn default() -> Self {
+        Self::new(|_| None)
+    }
+}
+
+impl std::fmt::Debug for AnimClipLookup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AnimClipLookup")
+    }
+}
+
 #[derive(Debug)]
 struct ContentData {
     weapons: Arc<crate::SimWeaponContent>,
@@ -126,6 +155,7 @@ struct ContentData {
     player_anim_properties: Vec<xmodel_runtime::PlayerAnimProperties>,
     player_body_branches: Option<xmodel_runtime::PlayerBodyBranches>,
     script_model_anims: std::collections::BTreeMap<String, crate::ScriptModelPlayAnim>,
+    anim_clips: AnimClipLookup,
     xanims: Arc<crate::MantleXAnimBind>,
     vehicle_turrets: std::collections::BTreeMap<String, String>,
     vehicle_compass: std::collections::BTreeMap<String, ([String; 2], [i32; 2])>,
@@ -163,6 +193,7 @@ impl SimContentBuilder {
                 player_anim_properties: Default::default(),
                 player_body_branches: Default::default(),
                 script_model_anims: Default::default(),
+                anim_clips: Default::default(),
                 xanims: Default::default(),
                 vehicle_turrets: Default::default(),
                 vehicle_compass: Default::default(),
@@ -248,6 +279,10 @@ impl SimContentBuilder {
         properties: Vec<xmodel_runtime::PlayerAnimProperties>,
     ) {
         self.data.player_anim_properties = properties;
+    }
+
+    pub fn set_anim_clips(&mut self, lookup: AnimClipLookup) {
+        self.data.anim_clips = lookup;
     }
 
     pub fn set_mantle_xanims(&mut self, bind: crate::MantleXAnimBind) {
@@ -336,6 +371,9 @@ impl SimContent {
         &self,
     ) -> &std::collections::BTreeMap<String, crate::ScriptModelPlayAnim> {
         &self.data.script_model_anims
+    }
+    pub(super) fn anim_clips(&self) -> &AnimClipLookup {
+        &self.data.anim_clips
     }
     pub(super) fn xanims(&self) -> &Arc<crate::MantleXAnimBind> {
         &self.data.xanims

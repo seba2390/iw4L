@@ -37,7 +37,8 @@ pub(super) fn load_xanim_parts(
         sz::XANIM_NOTIFY_INFO * notify_count,
     )?;
 
-    if let Some(delta) = always_array(s, p.at(sz::XANIM_DELTA_PART_OFF), 4, sz::XANIM_DELTA_PART)? {
+    let delta = always_array(s, p.at(sz::XANIM_DELTA_PART_OFF), 4, sz::XANIM_DELTA_PART)?;
+    if let Some(delta) = delta {
         load_delta_part(s, delta, numframes as usize)?;
     }
 
@@ -97,6 +98,7 @@ pub(super) fn load_xanim_parts(
             indices,
             index_count,
             indices_are_bytes: numframes < 256,
+            delta,
         },
     )?;
     s.pop()

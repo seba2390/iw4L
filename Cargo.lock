@@ -7774,6 +7774,7 @@ version = "0.1.0"
 dependencies = [
  "anim_iw4",
  "glam",
+ "libm",
 ]
 
 [[package]]

@@ -595,6 +595,31 @@ fn item_number(world: &World, receiver: &Value) -> Result<i32, String> {
     }
 }
 
+/// An animation argument's clip, or `None` for an animation this match never
+/// loaded: like an empty animation it has no length, motion or notetracks.
+fn loaded_clip(
+    world: &mut World,
+    args: &[Value],
+    index: usize,
+) -> Result<Option<Arc<xmodel_runtime::AnimClip>>, String> {
+    let name = match arg(args, index)? {
+        Value::Animation { name, .. } => name.clone(),
+        other => return Err(format!("{} is not an animation", kind(other))),
+    };
+    Ok(FrameWorld::from_world(world).anim_clip_named(&name))
+}
+
+/// The normalized start and end times of a delta query, `0` and `1` by default.
+fn delta_span(args: &[Value]) -> Result<(f32, f32), String> {
+    let time = |index: usize, default: f32| match args.get(index) {
+        None | Some(Value::Undefined) => Ok(default),
+        Some(Value::Int(n)) => Ok(*n as f32),
+        Some(Value::Float(f)) => Ok(*f),
+        Some(other) => Err(format!("{} is not a time", kind(other))),
+    };
+    Ok((time(1, 0.0)?, time(2, 1.0)?))
+}
+
 fn anim_clip(
     world: &mut World,
     args: &[Value],
@@ -605,7 +630,7 @@ fn anim_clip(
         other => return Err(format!("{} is not an animation", kind(other))),
     };
     FrameWorld::from_world(world)
-        .player_anim_clip_named(&name)
+        .anim_clip_named(&name)
         .ok_or_else(|| format!("animation '{name}' is not loaded in the simulation"))
 }
 
@@ -782,6 +807,64 @@ fn register_death(registry: &mut NativeRegistry) {
                     .any(|n| n.name.eq_ignore_ascii_case(&note))
                     .into(),
             ))
+        },
+    );
+    registry.register(
+        crate::script::Namespace::Function,
+        "getmovedelta",
+        |world, _, args| {
+            let Some(clip) = loaded_clip(world, args, 0)? else {
+                return Ok(Value::Vector([0.0; 3]));
+            };
+            let (start, end) = delta_span(args)?;
+            let from = clip.abs_delta_trans(start);
+            let to = clip.abs_delta_trans(end);
+            let delta = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+            let (sin, cos) = (-clip.abs_delta_yaw(start).to_radians()).sin_cos();
+            Ok(Value::Vector([
+                delta[0] * cos - delta[1] * sin,
+                delta[0] * sin + delta[1] * cos,
+                delta[2],
+            ]))
+        },
+    );
+    registry.register(
+        crate::script::Namespace::Function,
+        "getangledelta",
+        |world, _, args| {
+            let Some(clip) = loaded_clip(world, args, 0)? else {
+                return Ok(Value::Float(0.0));
+            };
+            let (start, end) = delta_span(args)?;
+            Ok(Value::Float(math_iw4::angle_subtract(
+                clip.abs_delta_yaw(end),
+                clip.abs_delta_yaw(start),
+            )))
+        },
+    );
+    registry.register(
+        crate::script::Namespace::Function,
+        "getnotetracksindelta",
+        |world, _, args| {
+            let animation = arg(args, 0)?.clone();
+            let Some(clip) = loaded_clip(world, args, 0)? else {
+                return new_array(world, Vec::new());
+            };
+            let (start, end) = delta_span(args)?;
+            let mut rows = Vec::new();
+            for note in clip
+                .notifies
+                .iter()
+                .filter(|n| n.time >= start && n.time <= end)
+            {
+                let row = vec![
+                    animation.clone(),
+                    Value::string(note.name.as_str()),
+                    Value::Float(note.time),
+                ];
+                rows.push(new_array(world, row)?);
+            }
+            new_array(world, rows)
         },
     );
     registry.register(

@@ -462,6 +462,8 @@ pub struct XAnimPartsGeometry {
     pub indices: Option<Ptr>,
     pub index_count: usize,
     pub indices_are_bytes: bool,
+    /// Root motion: a translation slot then a yaw-quaternion slot.
+    pub delta: Option<Ptr>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

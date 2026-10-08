@@ -5,8 +5,8 @@ mod events;
 use bodies::{PlayerAnimInputs, PlayerBodyRuntime};
 use collision::{CollisionRuntime, LagcompPlan};
 pub use content::{
-    PlayerKitCollision, SimBrush, SimClipBsp, SimClipCmodels, SimClipMesh, SimContent,
-    SimContentBuilder, SimStaticModel, SimTriggerHull,
+    AnimClipLookup, PlayerKitCollision, SimBrush, SimClipBsp, SimClipCmodels, SimClipMesh,
+    SimContent, SimContentBuilder, SimStaticModel, SimTriggerHull,
 };
 use events::{EventJournal, PresentationQueue};
 pub use events::{PendingLocalSound, PendingPlayerCardEvent, PendingPlayerCardKind, PendingPrint};
@@ -2218,6 +2218,13 @@ impl SimState {
             xmodel_runtime::XAnimNodeKind::Leaf { clip, .. } => Some(Arc::clone(clip)),
             _ => None,
         }
+    }
+
+    pub(crate) fn anim_clip_named(&self, name: &str) -> Option<Arc<xmodel_runtime::AnimClip>> {
+        self.content
+            .anim_clips()
+            .get(name)
+            .or_else(|| self.player_anim_clip_named(name))
     }
 
     pub(crate) fn player_anim_clip_named(

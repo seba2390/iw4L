@@ -9,7 +9,7 @@ use fastfile_iw4::{
 
 use crate::asset_graph::ZoneOwner;
 use crate::asset_key::AssetNamespace;
-use crate::xanim_clip::{AnimClip, ClipNotify, RawDeltaTrans, RawXAnimParts};
+use crate::xanim_clip::{AnimClip, ClipNotify, RawDeltaQuat, RawDeltaTrans, RawXAnimParts};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct XAnimKey {
@@ -377,6 +377,7 @@ impl XAnimBuild {
                     notifies,
                     indices,
                     delta_trans: None,
+                    delta_quat: None,
                 }),
             },
         );
@@ -450,6 +451,7 @@ impl XAnimBuild {
             copy_u16_t5(s, geometry.indices, geometry.index_count)
         };
 
+        let (delta_trans, delta_quat) = copy_delta_t5(s, geometry.delta, geometry.numframes);
         self.insert_in(
             AssetNamespace::T5,
             CapturedXAnim {
@@ -469,7 +471,8 @@ impl XAnimBuild {
                     names,
                     notifies,
                     indices,
-                    delta_trans: None,
+                    delta_trans,
+                    delta_quat,
                 }),
             },
         );
@@ -568,6 +571,7 @@ impl XAnimBuild {
             notifies,
             indices,
             delta_trans: None,
+            delta_quat: None,
         };
         self.insert_in(
             ns,
@@ -691,6 +695,7 @@ impl AssetLinkSink for XAnimBuild {
                 notifies,
                 indices,
                 delta_trans,
+                delta_quat: None,
             }),
         });
         let _ = geometry.frequency;
@@ -830,6 +835,84 @@ fn copy_u32_iw5(
         .chunks_exact(4)
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
+}
+
+fn copy_delta_t5(
+    s: &fastfile_t5::ZoneStream<'_>,
+    delta: Option<fastfile_t5::Ptr>,
+    numframes: u16,
+) -> (Option<RawDeltaTrans>, Option<RawDeltaQuat>) {
+    let Some(delta) = delta else {
+        return (None, None);
+    };
+    let body = |slot: usize| match s.ptr_at(delta, slot) {
+        Ok(fastfile_t5::ZonePtr::Offset(p)) => Some(s.resolve_alias(p)),
+        _ => None,
+    };
+    let indices = |p: fastfile_t5::Ptr, n: usize| -> Vec<u16> {
+        if numframes < 256 {
+            copy_u8_t5(s, Some(p), n)
+                .into_iter()
+                .map(u16::from)
+                .collect()
+        } else {
+            copy_u16_t5(s, Some(p), n)
+        }
+    };
+    let frames_at = |p: fastfile_t5::Ptr, off: usize| match s.ptr_at(p, off) {
+        Ok(fastfile_t5::ZonePtr::Offset(q)) => Some(s.resolve_alias(q)),
+        _ => None,
+    };
+    let vec3 = |p: fastfile_t5::Ptr, off: usize| -> Option<[f32; 3]> {
+        Some([
+            s.f32_at(p, off).ok()?,
+            s.f32_at(p, off + 4).ok()?,
+            s.f32_at(p, off + 8).ok()?,
+        ])
+    };
+
+    let trans = body(0).and_then(|p| {
+        let size = s.u16_at(p, 0).ok()?;
+        let small = s.u8_at(p, 2).ok()? != 0;
+        if size == 0 {
+            return Some(RawDeltaTrans {
+                size,
+                small,
+                mins: vec3(p, 4)?,
+                ..RawDeltaTrans::default()
+            });
+        }
+        let n = usize::from(size) + 1;
+        let packed = copy_u8_t5(s, frames_at(p, 28), if small { 3 * n } else { 6 * n });
+        Some(RawDeltaTrans {
+            size,
+            small,
+            mins: vec3(p, 4)?,
+            step: vec3(p, 16)?,
+            indices: indices(p.at(32), n),
+            packed,
+        })
+    });
+
+    let quat = body(4).and_then(|p| {
+        let size = s.u16_at(p, 0).ok()?;
+        let pair = |q: fastfile_t5::Ptr, i: usize| -> Option<[i16; 2]> {
+            Some([s.i16_at(q, i * 4).ok()?, s.i16_at(q, i * 4 + 2).ok()?])
+        };
+        if size == 0 {
+            return Some(RawDeltaQuat {
+                indices: Vec::new(),
+                frames: vec![pair(p.at(4), 0)?],
+            });
+        }
+        let n = usize::from(size) + 1;
+        let frames = frames_at(p, 4)?;
+        Some(RawDeltaQuat {
+            indices: indices(p.at(8), n),
+            frames: (0..n).map(|i| pair(frames, i)).collect::<Option<_>>()?,
+        })
+    });
+    (trans, quat)
 }
 
 fn copy_u8_t5(
