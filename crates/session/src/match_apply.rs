@@ -1061,7 +1061,7 @@ fn preflight_match_install(
             .collect(),
     };
     let (startup_roots, startup_entries, catalog_rules) = if is_zombies {
-        let startup = sim::script::T5ZombieStartup::new(zone);
+        let startup = sim::script::T5ZombieStartup::new(zone, sources.0.entities().unwrap_or(""));
         (
             startup.roots,
             startup.entries,

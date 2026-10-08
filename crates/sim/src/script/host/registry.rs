@@ -59,6 +59,7 @@ impl Default for NativeRegistry {
         super::client_effects::register(&mut registry);
         super::guidance::register(&mut registry);
         super::turrets::register(&mut registry);
+        super::actors::register(&mut registry);
         super::triggers::register(&mut registry);
         super::spectators::register(&mut registry);
         registry

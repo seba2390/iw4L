@@ -5,20 +5,42 @@ pub struct T5ZombieStartup {
     pub entries: Vec<String>,
 }
 impl T5ZombieStartup {
-    pub fn new(map: &str) -> Self {
+    /// `entities` is the map's entity string; each actor spawner names the
+    /// aitype script that dresses the AI it spawns.
+    pub fn new(map: &str, entities: &str) -> Self {
         let map = format!("maps/{map}");
         let callbacks = "maps/_callbacksetup";
-        Self {
-            roots: vec![
-                "codescripts/delete".to_owned(),
-                "codescripts/struct".to_owned(),
-                callbacks.to_owned(),
-                map.clone(),
-            ],
-            entries: vec![
-                format!("{map}::main"),
-                format!("{callbacks}::codecallback_startgametype"),
-            ],
-        }
+        let aitypes = aitype_modules(entities);
+        let mut roots = vec![
+            "codescripts/delete".to_owned(),
+            "codescripts/struct".to_owned(),
+            callbacks.to_owned(),
+            map.clone(),
+        ];
+        roots.extend(aitypes.iter().cloned());
+        let mut entries: Vec<String> = aitypes
+            .iter()
+            .map(|module| format!("{module}::precache"))
+            .collect();
+        entries.push(format!("{map}::main"));
+        entries.push(format!("{callbacks}::codecallback_startgametype"));
+        Self { roots, entries }
     }
+}
+
+fn aitype_modules(entities: &str) -> Vec<String> {
+    let mut modules: Vec<String> = entities
+        .lines()
+        .filter_map(|line| {
+            let mut quoted = line.split('"').skip(1).step_by(2);
+            match (quoted.next(), quoted.next()) {
+                (Some("classname"), Some(class)) => class.strip_prefix("actor_"),
+                _ => None,
+            }
+        })
+        .map(|aitype| format!("aitype/{}", aitype.to_ascii_lowercase()))
+        .collect();
+    modules.sort_unstable();
+    modules.dedup();
+    modules
 }

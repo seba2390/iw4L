@@ -157,9 +157,14 @@ pub(crate) struct PersistentFx {
 pub(crate) enum EntityKind {
     Map,
     Spawned,
+    /// An AI spawned from a map spawner.
+    Actor,
     HudElem,
     Player,
-    Corpse { slot: u8, anim: Option<Arc<str>> },
+    Corpse {
+        slot: u8,
+        anim: Option<Arc<str>>,
+    },
     Item(i32),
     Missile(crate::ProjectileId),
     Vehicle,
@@ -394,7 +399,10 @@ impl Runtime {
                 presence,
                 matches!(
                     entity.kind,
-                    EntityKind::Spawned | EntityKind::Vehicle | EntityKind::Missile(_)
+                    EntityKind::Spawned
+                        | EntityKind::Actor
+                        | EntityKind::Vehicle
+                        | EntityKind::Missile(_)
                 ),
             ));
         }
