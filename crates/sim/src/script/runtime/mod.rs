@@ -1357,8 +1357,27 @@ pub(crate) fn advance_scheduler(world: &mut World) {
     }
 }
 
+/// Thread resumptions one tick may run. Scripts that keep waking each other
+/// within a frame (`waittillframeend`, same-frame notifies) past this are
+/// carried to the next tick so the authority keeps stepping.
+const RESUMPTIONS_PER_TICK: usize = 200_000;
+
 fn run_ready(world: &mut World, program: &Program, now: i64) {
+    let mut resumed = 0usize;
     loop {
+        if resumed == RESUMPTIONS_PER_TICK {
+            let mut runtime = world.resource_mut::<Runtime>();
+            let rest = runtime.buckets.remove(&now).unwrap_or_default();
+            let next = now + i64::from(crate::MATCH_TICK_MS);
+            let carried = rest.len();
+            runtime.buckets.entry(next).or_default().extend(rest);
+            diag::warn!(
+                Sim,
+                "gsc: {carried} threads still runnable after {RESUMPTIONS_PER_TICK} resumptions this tick; carried to the next"
+            );
+            break;
+        }
+        resumed += 1;
         let next = world
             .resource_mut::<Runtime>()
             .buckets
@@ -1378,6 +1397,16 @@ fn run_ready(world: &mut World, program: &Program, now: i64) {
         let mut thread = world.entity_mut(entity).take::<Thread>().unwrap();
         thread.state = ThreadState::Runnable;
         world.resource_mut::<Runtime>().budget = INSTRUCTION_BUDGET;
+        if resumed == RESUMPTIONS_PER_TICK - 1
+            && let Some(frame) = thread.frames.last()
+        {
+            diag::warn!(
+                Sim,
+                "gsc: still resuming {}::{} at the per-tick limit",
+                program.functions[frame.function].location.module,
+                program.functions[frame.function].location.function
+            );
+        }
         execute(world, program, &mut thread, now);
         if thread.state == ThreadState::Complete {
             kill(world, entity, serial);

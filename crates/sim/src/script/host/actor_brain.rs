@@ -28,6 +28,9 @@ pub(crate) struct ActorBrain {
     script: Option<AnimScript>,
 }
 
+/// An enemy this close is fought rather than approached.
+const MELEE_RANGE: f32 = 64.0;
+
 /// Animscript modules the zombie actors may run.
 pub const ANIMSCRIPT_MODULES: &[&str] = &[
     "animscripts/zombie_init",
@@ -54,13 +57,15 @@ pub(crate) fn begin(world: &mut World, actor: u64) -> Result<(), String> {
     let init = format!("animscripts/{prefix}init::main");
     run_now(world, &init, Value::Object(actor), Vec::new(), now)
         .map_err(|fault| format!("{init}: {fault:?}"))?;
-    world.resource_mut::<Runtime>().actor_brains.insert(
+    let mut runtime = world.resource_mut::<Runtime>();
+    runtime.actor_brains.insert(
         actor,
         ActorBrain {
             prefix,
             script: None,
         },
     );
+    runtime.actor_moves.entry(actor).or_default();
     Ok(())
 }
 
@@ -74,7 +79,18 @@ pub(crate) fn think(world: &mut World) {
         .map(|(actor, brain)| (*actor, brain.clone()))
         .collect();
     for (actor, brain) in actors {
-        let wanted = AnimScript::Stop;
+        let wanted = if super::actor_nav::melee_range_enemy(world, actor, MELEE_RANGE) {
+            AnimScript::Combat
+        } else if world
+            .resource::<Runtime>()
+            .actor_moves
+            .get(&actor)
+            .is_some_and(super::actor_nav::ActorMove::has_path)
+        {
+            AnimScript::Move
+        } else {
+            AnimScript::Stop
+        };
         if brain.script == Some(wanted) {
             continue;
         }

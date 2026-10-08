@@ -76,7 +76,7 @@ pub(super) fn load_xanim_parts(
             name,
             numframes,
 
-            flags: if b_loop != 0 { 1 } else { 0 },
+            flags: u8::from(b_loop != 0) | (u8::from(delta.is_some()) << 1),
             bone_count,
             notify_count,
             framerate,

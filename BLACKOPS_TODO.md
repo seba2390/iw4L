@@ -68,16 +68,19 @@ Done when a zombie stands in Kino playing an animation.
 - [x] Deliver notetracks to scripts. Synced loops are not phase-locked yet.
 - [x] Run the zombie animscript init and dispatch `stop`; a spawned zombie idles
       on `ai_zombie_idle_v1_delta`.
-- [ ] Dispatch `move`, `combat`, `death` and scripted/custom animation.
+- [x] Dispatch `move` and `combat` as well as `stop`.
+- [ ] Scripted and custom animation (`AnimScripted`, `AnimCustom`), `death`.
 
 Done when the real zombie animscripts run and the zombie animates in place.
 
 ### 4. Movement and navigation
-- [ ] Animation modes and orientation modes drive actor movement and turning,
-      with collision and gravity.
-- [ ] Extract path nodes and links; plan paths over them.
-- [ ] Goal API and its notifies (`goal`, `bad_path`), path queries, dynamic
-      path blocking.
+- [x] Animation modes and orientation modes drive actor movement and turning
+      from the animations' root motion, kept on the ground by traces.
+- [x] Extract path nodes and links (Kino: 1568 nodes); plan paths over them.
+- [x] Goal API and its notifies (`goal`, `bad_path`), path node queries.
+      A Kino zombie now walks from its spawn to its window.
+- [ ] Actor-vs-world collision while walking, and dynamic path blocking
+      (`ConnectPaths`/`DisconnectPaths`).
 
 Done when a zombie chases the player around Kino.
 

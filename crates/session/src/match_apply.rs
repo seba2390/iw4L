@@ -413,6 +413,34 @@ pub fn apply_prepared_match(
             )))
         });
         content.set_actor_anim_trees(trees.collect::<Vec<_>>());
+        content.set_actor_paths(sim::script::ActorPaths::new(
+            facts
+                .path_nodes
+                .iter()
+                .map(|node| sim::script::NavNode {
+                    kind: match node.kind {
+                        asset_world::PathNodeKind::Path => sim::script::NavNodeKind::Path,
+                        asset_world::PathNodeKind::NegotiationBegin => {
+                            sim::script::NavNodeKind::NegotiationBegin
+                        }
+                        asset_world::PathNodeKind::NegotiationEnd => {
+                            sim::script::NavNodeKind::NegotiationEnd
+                        }
+                        asset_world::PathNodeKind::Other(_) => sim::script::NavNodeKind::Other,
+                    },
+                    origin: node.origin,
+                    yaw: node.yaw,
+                    targetname: node.targetname.clone(),
+                    target: node.target.clone(),
+                    animscript: node.animscript.clone(),
+                    links: node
+                        .links
+                        .iter()
+                        .map(|link| (link.node, link.distance, link.negotiation))
+                        .collect(),
+                })
+                .collect(),
+        ));
         let clips = Arc::clone(&xanims.0);
         content.set_anim_clips(sim::AnimClipLookup::new(move |name| {
             clips.clip(anim_namespace, name).or_else(|| {
@@ -853,6 +881,20 @@ fn script_refusal(
     InstallRefusal::new(format!("GSC {stage}: {text}"))
 }
 
+/// Engine dvars the zombie scripts read without setting: the mode itself and
+/// the AI locomotion tuning (run-weight updates each server frame, no lean or
+/// turn slowdown).
+const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
+    ("zombiemode", "1"),
+    ("ai_runAnimUpdateFrequency", "0.05"),
+    ("ai_useLeanRunAnimations", "0"),
+    ("ai_slowdownRateBlendFactor", "1"),
+    ("ai_slowdownMinRate", "1"),
+    ("ai_slowdownMinYawDiff", "180"),
+    ("ai_slowdownMaxYawDiff", "180"),
+    ("ai_meleeRange", "64"),
+];
+
 fn preflight_match_install(
     mut prepared: assets::PreparedMatch,
     load_key: frame::LocalLoadKey,
@@ -1139,6 +1181,13 @@ fn preflight_match_install(
     script_dvars.push(("mapname".into(), zone.to_owned()));
     script_dvars.push(("g_gametype".into(), gametype.to_owned()));
     script_dvars.push(("sv_maxclients".into(), "18".into()));
+    if is_zombies {
+        script_dvars.extend(
+            ZOMBIE_ENGINE_DVARS
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+        );
+    }
     for (name, value) in rules.map_or(&[][..], |rules| &rules.0) {
         match script_dvars
             .iter_mut()

@@ -390,6 +390,7 @@ impl Runtime {
     pub(crate) fn delete_entity(&mut self, id: u64) {
         self.actor_anims.remove(&id);
         self.actor_brains.remove(&id);
+        self.actor_moves.remove(&id);
         if let Some(client) = self.player_client(id) {
             self.release_trigger_claims(client);
         }

@@ -192,7 +192,7 @@ pub(crate) struct ZoneWalkSink {
 
     pub light_def_table: usize,
     pub light_def_bodies: usize,
-    strings_t5: fastfile_t5::ScriptStrings,
+    pub(crate) strings_t5: fastfile_t5::ScriptStrings,
     strings_iw5: fastfile_iw5::ScriptStrings,
     iw5_surfaces:
         HashMap<fastfile_iw5::Ptr, (Option<fastfile_iw5::Ptr>, Option<fastfile_iw5::Ptr>)>,

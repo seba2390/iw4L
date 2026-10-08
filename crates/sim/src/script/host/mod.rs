@@ -1,5 +1,6 @@
 pub mod actor_anims;
 pub mod actor_brain;
+pub mod actor_nav;
 pub(crate) mod actors;
 pub mod args;
 pub mod arrays;

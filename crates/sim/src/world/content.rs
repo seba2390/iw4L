@@ -157,6 +157,7 @@ struct ContentData {
     script_model_anims: std::collections::BTreeMap<String, crate::ScriptModelPlayAnim>,
     anim_clips: AnimClipLookup,
     actor_anim_trees: std::collections::BTreeMap<String, Arc<crate::script::ActorAnimTree>>,
+    actor_paths: Option<Arc<crate::script::ActorPaths>>,
     xanims: Arc<crate::MantleXAnimBind>,
     vehicle_turrets: std::collections::BTreeMap<String, String>,
     vehicle_compass: std::collections::BTreeMap<String, ([String; 2], [i32; 2])>,
@@ -196,6 +197,7 @@ impl SimContentBuilder {
                 script_model_anims: Default::default(),
                 anim_clips: Default::default(),
                 actor_anim_trees: Default::default(),
+                actor_paths: Default::default(),
                 xanims: Default::default(),
                 vehicle_turrets: Default::default(),
                 vehicle_compass: Default::default(),
@@ -291,6 +293,10 @@ impl SimContentBuilder {
             .into_iter()
             .map(|tree| (tree.name().to_owned(), tree))
             .collect();
+    }
+
+    pub fn set_actor_paths(&mut self, paths: crate::script::ActorPaths) {
+        self.data.actor_paths = (!paths.is_empty()).then(|| Arc::new(paths));
     }
 
     pub fn set_anim_clips(&mut self, lookup: AnimClipLookup) {
@@ -389,6 +395,9 @@ impl SimContent {
             .actor_anim_trees
             .get(&name.to_ascii_lowercase())
             .cloned()
+    }
+    pub(super) fn actor_paths(&self) -> Option<Arc<crate::script::ActorPaths>> {
+        self.data.actor_paths.clone()
     }
     pub(super) fn anim_clips(&self) -> &AnimClipLookup {
         &self.data.anim_clips

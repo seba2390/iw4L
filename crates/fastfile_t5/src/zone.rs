@@ -310,6 +310,7 @@ pub struct ZoneStream<'a> {
     weapon: Option<WeaponGeometry>,
     gfx_world: Option<GfxWorldGeometry>,
     clip_map: Option<ClipMapGeometry>,
+    path_data: Option<PathDataGeometry>,
     map_ents: Option<MapEntsGeometry>,
     com_world: Option<ComWorldGeometry>,
     light_defs: [GfxLightDefGeometry; 128],
@@ -619,6 +620,14 @@ pub struct ClipMapGeometry {
     pub cmodels: Option<Ptr>,
 }
 
+/// The path network of a game world: `node_count` nodes of
+/// `size::PATH_NODE` bytes, each with `size::PATH_LINK`-byte links.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PathDataGeometry {
+    pub node_count: usize,
+    pub nodes: Option<Ptr>,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MapEntsGeometry {
     pub entity_string: Option<Ptr>,
@@ -874,6 +883,7 @@ impl<'a> ZoneStream<'a> {
             weapon: None,
             gfx_world: None,
             clip_map: None,
+            path_data: None,
             map_ents: None,
             com_world: None,
             light_defs: [GfxLightDefGeometry {
@@ -921,6 +931,14 @@ impl<'a> ZoneStream<'a> {
 
     pub fn gfx_world(&self) -> Option<GfxWorldGeometry> {
         self.gfx_world
+    }
+
+    pub fn record_path_data(&mut self, geometry: PathDataGeometry) {
+        self.path_data = Some(geometry);
+    }
+
+    pub fn path_data(&self) -> Option<PathDataGeometry> {
+        self.path_data
     }
 
     pub fn record_clip_map(&mut self, geometry: ClipMapGeometry) {

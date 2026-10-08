@@ -2220,6 +2220,10 @@ impl SimState {
         }
     }
 
+    pub(crate) fn actor_paths(&self) -> Option<Arc<crate::script::ActorPaths>> {
+        self.content.actor_paths()
+    }
+
     pub(crate) fn actor_anim_tree(&self, name: &str) -> Option<Arc<crate::script::ActorAnimTree>> {
         self.content.actor_anim_tree(name)
     }

@@ -838,3 +838,12 @@ pub fn occupancy_test(words: &[u64; TECHNIQUE_OCCUPANCY_WORDS], slot: usize) -> 
 pub fn occupancy_any(words: &[u64; TECHNIQUE_OCCUPANCY_WORDS]) -> bool {
     words.iter().copied().any(|word| word != 0)
 }
+pub const PATH_NODE_TYPE_OFF: usize = 0x00;
+pub const PATH_NODE_TARGETNAME_OFF: usize = 0x06;
+pub const PATH_NODE_TARGET_OFF: usize = 0x0c;
+pub const PATH_NODE_ANIMSCRIPT_OFF: usize = 0x0e;
+pub const PATH_NODE_ORIGIN_OFF: usize = 0x14;
+pub const PATH_NODE_ANGLE_OFF: usize = 0x20;
+pub const PATH_LINK_DISTANCE_OFF: usize = 0;
+pub const PATH_LINK_NODE_OFF: usize = 4;
+pub const PATH_LINK_NEGOTIATION_OFF: usize = 7;

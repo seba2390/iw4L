@@ -46,6 +46,8 @@ pub struct MapFacts {
     pub t5_teamset: Option<String>,
 
     pub objective_visuals: asset_game::ObjectiveVisuals,
+
+    pub path_nodes: Vec<asset_world::PathNode>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
