@@ -11,12 +11,18 @@ use crate::layers::{GameUiFont, UiLayer, game_text_font};
 #[derive(Component)]
 struct T6HudRoot;
 
+#[derive(Component)]
+struct CrosshairArm(u8);
+#[derive(Component)]
+struct WeaponArt;
+#[derive(Component)]
+struct DamageEdge;
+
 #[derive(Component, Clone, Copy)]
 enum Field {
     Match,
     Weapon,
     Health,
-    Crosshair,
     Status,
     Killfeed,
     Scoreboard,
@@ -31,7 +37,12 @@ struct Killfeed {
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<Killfeed>()
         .add_observer(obituary)
-        .add_systems(Update, (spawn, refresh).chain().in_set(ClientSet::Ui));
+        .add_systems(
+            Update,
+            (spawn, refresh, refresh_graphics)
+                .chain()
+                .in_set(ClientSet::Ui),
+        );
 }
 
 fn obituary(
@@ -90,34 +101,26 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                 (
                     Field::Match,
                     Val::Px(28.0),
+                    Val::Auto,
+                    Val::Auto,
                     Val::Px(24.0),
-                    Val::Auto,
-                    Val::Auto,
-                    22.0,
+                    18.0,
                 ),
                 (
                     Field::Weapon,
                     Val::Auto,
                     Val::Auto,
                     Val::Px(28.0),
-                    Val::Px(32.0),
-                    24.0,
+                    Val::Px(28.0),
+                    26.0,
                 ),
                 (
                     Field::Health,
                     Val::Px(28.0),
                     Val::Auto,
                     Val::Auto,
-                    Val::Px(32.0),
-                    22.0,
-                ),
-                (
-                    Field::Crosshair,
-                    Val::Percent(50.0),
-                    Val::Percent(50.0),
-                    Val::Auto,
-                    Val::Auto,
-                    22.0,
+                    Val::Px(112.0),
+                    16.0,
                 ),
                 (
                     Field::Status,
@@ -137,8 +140,8 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                 ),
                 (
                     Field::Scoreboard,
-                    Val::Percent(28.0),
-                    Val::Percent(8.0),
+                    Val::Percent(20.0),
+                    Val::Percent(15.0),
                     Val::Auto,
                     Val::Auto,
                     16.0,
@@ -150,27 +153,68 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                     game_text_font(&font.0, size),
                     TextColor(Color::srgb(0.95, 0.95, 0.95)),
                     TextShadow::default(),
-                    BackgroundColor(if matches!(field, Field::Scoreboard) {
-                        Color::srgba(0.025, 0.03, 0.04, 0.88)
-                    } else {
-                        Color::NONE
-                    }),
-                    if matches!(field, Field::Crosshair) {
-                        UiTransform::from_translation(Val2::percent(-50.0, -50.0))
-                    } else {
-                        UiTransform::default()
-                    },
+                    BorderColor::all(Color::srgba(1.0, 0.48, 0.12, 0.8)),
+                    BackgroundColor(
+                        if matches!(field, Field::Scoreboard | Field::Match | Field::Weapon) {
+                            Color::srgba(0.025, 0.03, 0.04, 0.88)
+                        } else {
+                            Color::NONE
+                        },
+                    ),
                     Node {
                         position_type: PositionType::Absolute,
                         left,
                         top,
                         right,
                         bottom,
-                        padding: UiRect::all(Val::Px(4.0)),
+                        padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                        border: if matches!(field, Field::Match | Field::Weapon | Field::Scoreboard)
+                        {
+                            UiRect::bottom(Val::Px(2.0))
+                        } else {
+                            UiRect::ZERO
+                        },
                         ..default()
                     },
                 ));
             }
+            root.spawn((
+                WeaponArt,
+                ImageNode::default(),
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(40.0),
+                    bottom: Val::Px(114.0),
+                    width: Val::Px(128.0),
+                    height: Val::Px(48.0),
+                    display: Display::None,
+                    ..default()
+                },
+            ));
+            for arm in 0..4 {
+                root.spawn((
+                    CrosshairArm(arm),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Percent(50.0),
+                        top: Val::Percent(50.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
+                    UiTransform::default(),
+                ));
+            }
+            root.spawn((
+                DamageEdge,
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    border: UiRect::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::NONE),
+            ));
         });
 }
 
@@ -250,7 +294,10 @@ fn refresh(
     let alive = meta.lifecycle == ClientLifecycle::Alive && ps.health > 0;
     let scores = ended || actions.as_ref().is_some_and(|a| a.client.kb.scores.active);
     let weapon = weapon_iw4::get_viewmodel_weapon_index(ps);
-    let registry = weapons.as_ref().map(|w| w.registry());
+    let registry = weapons
+        .as_ref()
+        .and_then(|w| w.for_snapshot(presented.weapon_epoch()).ok())
+        .map(|w| w.registry());
     let name = registry.as_ref().map_or_else(String::new, |registry| {
         registry
             .display_name_key_of(weapon)
@@ -327,9 +374,9 @@ fn refresh(
                         .filter(|team| (1..=2).contains(team));
                     let own = team.map_or(0, |team| snapshot.meta.objectives.scores[team]);
                     let enemy = team.map_or(0, |team| snapshot.meta.objectives.scores[3 - team]);
-                    format!("Team {own} - {enemy} / {}", snapshot.meta.score_limit)
+                    format!("{own}  :  {enemy}     LIMIT {}", snapshot.meta.score_limit)
                 } else {
-                    format!("Score {} / {}", meta.score, snapshot.meta.score_limit)
+                    format!("{}     LIMIT {}", meta.score, snapshot.meta.score_limit)
                 };
                 format!(
                     "{}   {:02}:{:02}\n{score}",
@@ -338,9 +385,10 @@ fn refresh(
                     time % 60
                 )
             }
-            Field::Weapon if alive && !scores => format!("{name}\n{clip} / {stock}"),
-            Field::Health if alive && !scores => format!("Health {}", ps.health),
-            Field::Crosshair if alive && !scores && ps.f_weapon_pos_frac < 0.5 => "+".into(),
+            Field::Weapon if alive && !scores => format!("{name}\n{clip:02}  /  {stock:03}"),
+            Field::Health if alive && !scores && ps.health < ps.max_health => {
+                format!("HEALTH {}", ps.health)
+            }
             Field::Status if ended && snapshot.meta.kind.is_team() => {
                 let team = usize::try_from(meta.client_state_team)
                     .ok()
@@ -373,10 +421,106 @@ fn refresh(
         if text.0 != value {
             text.0 = value;
         }
-        color.0 = if matches!(field, Field::Health) && ps.health < ps.max_health / 2 {
+        color.0 = if (matches!(field, Field::Health) && ps.health < ps.max_health / 2)
+            || (matches!(field, Field::Weapon) && clip < 5)
+        {
             Color::srgb(1.0, 0.25, 0.18)
         } else {
             Color::srgb(0.95, 0.95, 0.95)
         };
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn refresh_graphics(
+    presented: Res<PresentedSnapshot>,
+    local: Res<LocalPresentClient>,
+    actions: Option<Res<ClientActionInput>>,
+    weapons: Option<Res<PreparedWeapons>>,
+    catalog: Res<crate::ClassLoadoutCatalog>,
+    mut art: ResMut<crate::t6_art::T6Art>,
+    mut images: ResMut<Assets<Image>>,
+    generation: Res<frame::WorldGeneration>,
+    mut arms: Query<
+        (&CrosshairArm, &mut Node, &mut UiTransform),
+        (Without<WeaponArt>, Without<DamageEdge>),
+    >,
+    mut weapon_art: Query<
+        (&mut ImageNode, &mut Node),
+        (With<WeaponArt>, Without<CrosshairArm>, Without<DamageEdge>),
+    >,
+    mut damage: Query<&mut BorderColor, With<DamageEdge>>,
+) {
+    art.reset(*generation);
+    let Some(ps) = presented.player(local.0) else {
+        return;
+    };
+    let Some(snapshot) = presented.snapshot() else {
+        return;
+    };
+    let Some(meta) = snapshot.meta.for_client(local.0) else {
+        return;
+    };
+    let alive = meta.lifecycle == ClientLifecycle::Alive && ps.health > 0;
+    let scores = actions.as_ref().is_some_and(|a| a.client.kb.scores.active);
+    let crosshair = alive && !scores && ps.f_weapon_pos_frac < 0.5;
+    let spread = 5.0 + ps.aim_spread_scale.clamp(0.0, 255.0) / 255.0 * 18.0;
+    for (arm, mut node, mut transform) in &mut arms {
+        node.display = if crosshair {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        let (x, y, w, h) = match arm.0 {
+            0 => (-spread - 7.0, -1.0, 7.0, 2.0),
+            1 => (spread, -1.0, 7.0, 2.0),
+            2 => (-1.0, -spread - 7.0, 2.0, 7.0),
+            _ => (-1.0, spread, 2.0, 7.0),
+        };
+        node.width = Val::Px(w);
+        node.height = Val::Px(h);
+        *transform = UiTransform::from_translation(Val2::px(x, y));
+    }
+    for mut border in &mut damage {
+        *border = BorderColor::all(if alive && ps.health < ps.max_health / 2 {
+            Color::srgba(0.8, 0.05, 0.02, 0.65)
+        } else {
+            Color::NONE
+        });
+    }
+    let image = weapons.as_ref().and_then(|w| {
+        let w = w.for_snapshot(presented.weapon_epoch()).ok()?;
+        let index = weapon_iw4::get_viewmodel_weapon_index(ps);
+        if w.registry().identity_namespace_of(index) != Some(AssetNamespace::T6) {
+            return None;
+        }
+        let key = w
+            .registry()
+            .weapon_families()
+            .describe(index)?
+            .family
+            .as_ref()?
+            .asset_key();
+        let preview = catalog.previews.get(&key);
+        let material = preview.filter(|p| !p.image.is_empty())?.image.as_str();
+        art.image(material, &mut images)
+    });
+    for (mut view, mut node) in &mut weapon_art {
+        node.display = if alive && !scores && image.is_some() {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if let Some(image) = &image {
+            if view.image != *image {
+                view.image = image.clone();
+            }
+            if let Some(asset) = images.get(image) {
+                node.height = Val::Px(
+                    128.0 * asset.texture_descriptor.size.height as f32
+                        / asset.texture_descriptor.size.width.max(1) as f32,
+                );
+            }
+        }
     }
 }

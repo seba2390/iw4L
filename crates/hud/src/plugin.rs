@@ -349,11 +349,13 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
 fn sync_hud_visibility(
     screen: Res<AppScreen>,
     ui_draw: Option<Res<UiDraw>>,
+    map: Option<Res<assets::SessionMapIdentity>>,
     mut roots: Query<&mut Visibility, With<HudRoot>>,
     mut visible: ResMut<HudRootVisible>,
 ) {
     let ui_on = ui_draw.is_some_and(|d| d.0);
-    let show = hud_root_should_show(*screen, ui_on);
+    let native_t6 = map.is_some_and(|map| map.namespace == Some(asset_core::AssetNamespace::T6));
+    let show = hud_root_should_show(*screen, ui_on) && !native_t6;
     visible.0 = Some(i32::from(show));
     for mut vis in &mut roots {
         let want = if show {

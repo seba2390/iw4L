@@ -13,6 +13,7 @@ mod menu_load;
 mod options;
 mod plugin;
 mod screen;
+mod t6_art;
 mod t6_hud;
 mod t6_menu;
 
