@@ -22,8 +22,8 @@ ends in a commit and a push.
 ## Steps
 
 ### 0. Baseline on this Mac
-- [ ] Build IW4L on Apple silicon.
-- [ ] Run an MW2 map and a Black Ops multiplayer map with bots.
+- [x] Build IW4L on Apple silicon (M3 Pro, Metal; first `play` build 3m11s).
+- [x] Run an MW2 map and a Black Ops multiplayer map with bots (`mp_rust`, `t5:mp_nuked`).
 
 Done when both maps are playable locally.
 
