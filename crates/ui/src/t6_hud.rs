@@ -674,6 +674,11 @@ fn refresh_art(
                         "juggernog" => Some("specialty_juggernaut_zombies"),
                         "sleight" => Some("specialty_fastreload_zombies"),
                         "revive" => Some("specialty_quickrevive_zombies"),
+                        "doubletap" => Some("specialty_doubletap_zombies"),
+                        "staminup" => Some("specialty_marathon_zombies"),
+                        "deadshot" => Some("specialty_ads_zombies"),
+                        "mulekick" => Some("specialty_additionalprimaryweapon_zombies"),
+                        "phd" => Some("specialty_divetonuke_zombies"),
                         _ => None,
                     })
                     .and_then(|material| art.image(material, &mut images))

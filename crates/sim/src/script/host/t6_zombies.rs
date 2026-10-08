@@ -15,7 +15,8 @@ const fn ticks(ms: u32) -> u32 {
 }
 const HULL_MIN: [f32; 3] = [-14.0, -14.0, 0.0];
 const HULL_MAX: [f32; 3] = [14.0, 14.0, 64.0];
-const MASK: u32 = crate::bullet_collision::MASK_PLAYER_SOLID;
+const MASK: u32 =
+    crate::bullet_collision::MASK_PLAYER_SOLID & !crate::bullet_collision::CONTENTS_BODY;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Survival {
@@ -37,6 +38,21 @@ pub(crate) struct Survival {
     walk: Option<String>,
     head: Option<(String, String)>,
     revives: BTreeMap<u32, (ClientId, u32)>,
+    spawn_sites: Vec<SpawnSite>,
+    starts: Vec<([f32; 3], [f32; 3])>,
+    barriers: Vec<Barrier>,
+    opened: BTreeSet<String>,
+    powered: bool,
+    attack: Option<String>,
+    run: Option<String>,
+    entry: Option<String>,
+    pending_links: Vec<(u32, [f32; 3])>,
+    upgrades: BTreeMap<usize, BoxClaim>,
+    rise: Option<String>,
+    tear: Option<String>,
+    rise_ticks: u32,
+    attack_ticks: u32,
+    entry_ticks: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +62,12 @@ struct Actor {
     repath: u32,
     attack_due: u32,
     velocity: [f32; 3],
+    barrier: Option<usize>,
+    entering: Option<(u32, [f32; 3])>,
+    swing: Option<(ClientId, u32, u32)>,
+    animation: u8,
+    stalled: u32,
+    emerge_until: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -62,6 +84,9 @@ struct Survivor {
     solo_revives_bought: u8,
     perk_label: Option<u64>,
     last_perks: String,
+    repair_due: u32,
+    repair_round: u32,
+    repair_points: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -69,6 +94,9 @@ struct Purchase {
     origin: [f32; 3],
     kind: PurchaseKind,
     price: i32,
+    needs_power: bool,
+    model: Option<(String, [f32; 3])>,
+    object: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +105,29 @@ enum PurchaseKind {
     Box,
     Upgrade,
     Perk(String),
+    Door(String),
+    Power,
+}
+
+#[derive(Clone, Debug)]
+struct SpawnSite {
+    origin: [f32; 3],
+    barrier: Option<usize>,
+    riser: bool,
+}
+
+#[derive(Clone, Debug)]
+struct Barrier {
+    origin: [f32; 3],
+    outside: [f32; 3],
+    inside: [f32; 3],
+    angles: [f32; 3],
+    models: Vec<String>,
+    objects: Vec<Option<u64>>,
+    boards: u8,
+    tear_due: u32,
+    board_origins: Vec<[f32; 3]>,
+    hiding: Vec<Option<u32>>,
 }
 
 #[derive(Clone, Debug)]
@@ -211,18 +262,6 @@ fn reachable_node(frame: &FrameWorld, nodes: &[[f32; 3]], at: [f32; 3]) -> Optio
         .map(|(i, _)| i)
 }
 
-fn nearest(nodes: &[[f32; 3]], at: [f32; 3]) -> Option<usize> {
-    nodes
-        .iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| {
-            Vec3::from_array(**a)
-                .distance_squared(Vec3::from_array(at))
-                .total_cmp(&Vec3::from_array(**b).distance_squared(Vec3::from_array(at)))
-        })
-        .map(|(i, _)| i)
-}
-
 fn route(state: &Survival, start: usize, goal: usize) -> VecDeque<usize> {
     let mut parents = vec![usize::MAX; state.nodes.len()];
     let mut queue = VecDeque::from([start]);
@@ -264,6 +303,171 @@ fn initialize(world: &mut World, state: &mut Survival) {
         .model
         .as_deref()
         .and_then(|model| frame.zombie_head_attachment(model));
+    state.attack = ["ai_zombie_attack_v1", "ai_zombie_attack_v2"]
+        .into_iter()
+        .find(|name| frame.script_model_anim(name).is_some())
+        .map(str::to_owned);
+    state.run = ["ai_zombie_run_v2", "ai_zombie_run_v4"]
+        .into_iter()
+        .find(|name| frame.script_model_anim(name).is_some())
+        .map(str::to_owned);
+    state.entry = ["ai_zombie_traverse_v1", "ai_zombie_traverse_v2"]
+        .into_iter()
+        .find(|name| frame.script_model_anim(name).is_some())
+        .map(str::to_owned);
+    state.powered = !state.authored.iter().any(|pairs| {
+        matches!(
+            field(pairs, "targetname"),
+            "use_elec_switch"
+                | "powerswitch_buildable_trigger_power"
+                | "afterlife_interact"
+                | "s_generator"
+        )
+    });
+    state.rise = [
+        "ai_zombie_traverse_ground_v1_walk",
+        "ai_zombie_traverse_ground_climbout_fast",
+    ]
+    .into_iter()
+    .find(|name| frame.script_model_anim(name).is_some())
+    .map(str::to_owned);
+    state.tear = [
+        "ai_zombie_boardtear_aligned_m_1_pull",
+        "ai_zombie_boardtear_aligned_m_1_grab",
+    ]
+    .into_iter()
+    .find(|name| frame.script_model_anim(name).is_some())
+    .map(str::to_owned);
+    let duration = |clip: &Option<String>, fallback| {
+        clip.as_deref()
+            .and_then(|clip| frame.script_model_anim(clip))
+            .filter(|anim| anim.frequency.is_finite() && anim.frequency > 0.0)
+            .map_or(ticks(fallback), |anim| {
+                ticks((1000.0 / anim.frequency).clamp(600.0, 3000.0) as u32)
+            })
+    };
+    state.rise_ticks = duration(&state.rise, 1800);
+    state.attack_ticks = duration(&state.attack, 1000);
+    state.entry_ticks = duration(&state.entry, 1100);
+    let mut barrier_names = BTreeMap::new();
+    for pairs in state
+        .authored
+        .iter()
+        .filter(|pairs| field(pairs, "classname").starts_with("zbarrier_zmcore_BasicWoodBarrier"))
+    {
+        let Some(origin) = point(field(pairs, "origin")) else {
+            continue;
+        };
+        let name = field(pairs, "script_string");
+        let linked = state
+            .authored
+            .iter()
+            .filter(|row| {
+                field(row, "classname") == "node_negotiation_begin"
+                    && field(row, "animscript").contains("mantle_over")
+            })
+            .filter_map(|row| Some((row, point(field(row, "origin"))?)))
+            .filter(|(_, at)| {
+                Vec3::from_array(*at).distance_squared(Vec3::from_array(origin)) < 128.0 * 128.0
+            })
+            .min_by(|(_, a), (_, b)| {
+                Vec3::from_array(*a)
+                    .distance_squared(Vec3::from_array(origin))
+                    .total_cmp(&Vec3::from_array(*b).distance_squared(Vec3::from_array(origin)))
+            })
+            .and_then(|(begin, at)| {
+                state
+                    .authored
+                    .iter()
+                    .find(|row| {
+                        field(row, "classname") == "node_negotiation_end"
+                            && field(row, "targetname") == field(begin, "target")
+                    })
+                    .and_then(|end| point(field(end, "origin")))
+                    .map(|end| (at, end))
+            });
+        let outside = state
+            .authored
+            .iter()
+            .filter(|row| {
+                !name.is_empty()
+                    && field(row, "targetname") == "exterior_goal"
+                    && field(row, "script_string") == name
+            })
+            .filter_map(|row| point(field(row, "origin")))
+            .min_by(|a, b| {
+                Vec3::from_array(*a)
+                    .distance_squared(Vec3::from_array(origin))
+                    .total_cmp(&Vec3::from_array(*b).distance_squared(Vec3::from_array(origin)))
+            })
+            .or(linked.map(|pair| pair.0))
+            .unwrap_or(origin);
+        let inside = state
+            .authored
+            .iter()
+            .filter(|row| {
+                !name.is_empty()
+                    && field(row, "classname") == "node_negotiation_end"
+                    && field(row, "script_string") == name
+            })
+            .filter_map(|row| point(field(row, "origin")))
+            .min_by(|a, b| {
+                Vec3::from_array(*a)
+                    .distance_squared(Vec3::from_array(origin))
+                    .total_cmp(&Vec3::from_array(*b).distance_squared(Vec3::from_array(origin)))
+            })
+            .or(linked.map(|pair| pair.1));
+        let Some((outside, inside)) =
+            ground(&frame, outside).zip(inside.and_then(|at| ground(&frame, at)))
+        else {
+            continue;
+        };
+        if Vec3::from_array(outside).distance(Vec3::from_array(inside)) > 192.0 {
+            continue;
+        }
+        let models: Vec<_> = (1..=6)
+            .map(|i| field(pairs, &format!("zbarrierboardmodel{i}")).to_owned())
+            .filter(|name| !name.is_empty())
+            .collect();
+        if models.is_empty() {
+            continue;
+        }
+        if !name.is_empty() {
+            barrier_names.insert(name.to_owned(), state.barriers.len());
+        }
+        let angles = point(field(pairs, "angles")).unwrap_or([0.0; 3]);
+        let anchors = frame
+            .model_capability("p6_anim_zm_barricade_board_collision")
+            .flatten()
+            .map(|capability| {
+                crate::AuthorityDObjState::at_pose(
+                    "p6_anim_zm_barricade_board_collision",
+                    Some(capability),
+                    origin,
+                    angles,
+                )
+            });
+        let board_origins = (1..=models.len())
+            .map(|i| {
+                anchors
+                    .as_ref()
+                    .and_then(|dobj| dobj.tag_world_pose(&format!("tag_board_{i}")))
+                    .map_or(origin, |(at, _)| at)
+            })
+            .collect();
+        state.barriers.push(Barrier {
+            origin,
+            outside,
+            inside,
+            angles: point(field(pairs, "angles")).unwrap_or([0.0; 3]),
+            boards: models.len() as u8,
+            objects: vec![None; models.len()],
+            hiding: vec![None; models.len()],
+            board_origins,
+            models,
+            tear_due: 0,
+        });
+    }
     let mut nodes = Vec::new();
     for pairs in state.authored.iter() {
         let target = field(pairs, "targetname");
@@ -281,6 +485,27 @@ fn initialize(world: &mut World, state: &mut Survival) {
             }
         }
         let note = field(pairs, "script_noteworthy");
+        if target == "initial_spawn_points"
+            && (field(pairs, "script_string").is_empty()
+                || field(pairs, "script_string")
+                    .split_whitespace()
+                    .any(|mode| mode.starts_with("zclassic") || mode == "zstandard_nuked"))
+        {
+            if let Some(at) = ground(&frame, origin) {
+                state
+                    .starts
+                    .push((at, point(field(pairs, "angles")).unwrap_or([0.0; 3])));
+            }
+        }
+        if matches!(note, "spawn_location" | "riser_location") && target.contains("spawner") {
+            if let Some(origin) = ground(&frame, origin) {
+                state.spawn_sites.push(SpawnSite {
+                    origin,
+                    barrier: barrier_names.get(field(pairs, "script_string")).copied(),
+                    riser: note == "riser_location",
+                });
+            }
+        }
         let filters = field(pairs, "script_string");
         if target == "zm_perk_machine"
             && !filters.is_empty()
@@ -296,8 +521,27 @@ fn initialize(world: &mut World, state: &mut Survival) {
                 "specialty_armorvest" => Some(PurchaseKind::Perk("juggernog".into())),
                 "specialty_fastreload" => Some(PurchaseKind::Perk("sleight".into())),
                 "specialty_quickrevive" => Some(PurchaseKind::Perk("revive".into())),
+                "specialty_rof" => Some(PurchaseKind::Perk("doubletap".into())),
+                "specialty_longersprint" => Some(PurchaseKind::Perk("staminup".into())),
+                "specialty_additionalprimaryweapon" => Some(PurchaseKind::Perk("mulekick".into())),
+                "specialty_ads_zombies" | "specialty_deadshot" => {
+                    Some(PurchaseKind::Perk("deadshot".into()))
+                }
+                "specialty_flakjacket" => Some(PurchaseKind::Perk("phd".into())),
+                "specialty_grenadepulldeath" => Some(PurchaseKind::Perk("electriccherry".into())),
+                "specialty_nomotionsensor" => Some(PurchaseKind::Perk("vultureaid".into())),
+                "specialty_scavenger" => Some(PurchaseKind::Perk("whoswho".into())),
                 _ => None,
             }
+        } else if matches!(target, "zombie_door" | "zombie_debris")
+            && field(pairs, "zombie_cost")
+                .parse::<i32>()
+                .is_ok_and(|cost| cost > 0)
+            && !field(pairs, "target").is_empty()
+        {
+            Some(PurchaseKind::Door(field(pairs, "target").to_owned()))
+        } else if target == "use_elec_switch" {
+            Some(PurchaseKind::Power)
         } else if target == "perksacola" && field(pairs, "script_sound") == "mx_packa_jingle" {
             Some(PurchaseKind::Upgrade)
         } else if !weapon.is_empty() {
@@ -321,12 +565,15 @@ fn initialize(world: &mut World, state: &mut Survival) {
                     "m16_zm" => 1200,
                     _ => 1000,
                 },
+                PurchaseKind::Door(_) => 750,
+                PurchaseKind::Power => 0,
                 PurchaseKind::Box => 950,
                 PurchaseKind::Upgrade => 5000,
                 PurchaseKind::Perk(name) => match name.as_str() {
                     "juggernog" => 2500,
                     "sleight" => 3000,
-                    "doubletap" | "staminup" => 2000,
+                    "doubletap" | "staminup" | "phd" => 2000,
+                    "mulekick" => 4000,
                     _ => 1500,
                 },
             };
@@ -337,6 +584,17 @@ fn initialize(world: &mut World, state: &mut Survival) {
                 .unwrap_or(fallback);
             state.purchases.push(Purchase {
                 origin,
+                model: (!field(pairs, "model").is_empty()
+                    && matches!(kind, PurchaseKind::Perk(_) | PurchaseKind::Upgrade))
+                .then(|| {
+                    (
+                        field(pairs, "model").to_owned(),
+                        point(field(pairs, "angles")).unwrap_or([0.0; 3]),
+                    )
+                }),
+                object: None,
+                needs_power: matches!(&kind, PurchaseKind::Perk(name) if name != "revive")
+                    || matches!(kind, PurchaseKind::Upgrade),
                 kind,
                 price,
             });
@@ -360,17 +618,28 @@ fn initialize(world: &mut World, state: &mut Survival) {
             }
         }
     }
+    for (index, barrier) in state.barriers.iter().enumerate() {
+        state.spawn_sites.push(SpawnSite {
+            origin: barrier.outside,
+            barrier: Some(index),
+            riser: false,
+        });
+    }
     state.nodes = Arc::new(nodes);
     state.edges = Arc::new(edges);
     state.initialized = true;
     state.next_round = Some(0);
     diag::info!(
         Sim,
-        "zombies initialized nodes={} purchases={} body={:?} walk={:?}",
+        "zombies initialized nodes={} purchases={} body={:?} walk={:?} sites={} barriers={} starts={} powered={}",
         state.nodes.len(),
         state.purchases.len(),
         state.model,
-        state.walk
+        state.walk,
+        state.spawn_sites.len(),
+        state.barriers.len(),
+        state.starts.len(),
+        state.powered
     );
 }
 
@@ -417,22 +686,28 @@ fn spawn_player(world: &mut World, state: &mut Survival, client: ClientId, tick:
         &avoid,
         entity_iw4::TEAM_FREE,
     );
-    let Some(spawn) = report.accepted else {
+    let authored = (0..state.starts.len())
+        .map(|i| state.starts[(i + client.0 as usize) % state.starts.len()])
+        .find(|(at, _)| {
+            avoid
+                .iter()
+                .all(|other| Vec3::from_array(*at).distance(Vec3::from_array(*other)) > 48.0)
+        });
+    let spawn = authored.or_else(|| {
+        report
+            .accepted
+            .map(|spawn| (spawn.traced_origin, spawn.raw_angles))
+    });
+    let Some((origin, angles)) = spawn else {
         return;
     };
-    let Some(pistol) = weapon_id(&frame, "m1911_zm") else {
+    let Some(pistol) = weapon_id(&frame, "m1911_zm").or_else(|| weapon_id(&frame, "c96_zm")) else {
         return;
     };
+    let pistol_name = frame.weapon_script_name(pistol).to_owned();
     frame.client_meta_mut(client).client_state_team = entity_iw4::TEAM_FREE;
     frame.client_meta_mut(client).max_health = 100;
-    crate::script_player::spawn(
-        &mut frame,
-        tick,
-        client,
-        spawn.traced_origin,
-        spawn.raw_angles,
-        "playing",
-    );
+    crate::script_player::spawn(&mut frame, tick, client, origin, angles, "playing");
     if crate::script_player::give_weapon(&mut frame, client, pistol, false).is_ok() {
         let _ = crate::script_player::set_spawn_weapon(&mut frame, client, pistol);
     }
@@ -458,7 +733,7 @@ fn spawn_player(world: &mut World, state: &mut Survival, client: ClientId, tick:
     }
     diag::info!(
         Sim,
-        "zombies survivor spawned client={} pistol=m1911_zm",
+        "zombies survivor spawned client={} pistol={pistol_name}",
         client.0
     );
 }
@@ -472,24 +747,55 @@ fn spawn_actor(
     let Some(model) = &state.model else {
         return false;
     };
-    let offset = tick.0 as usize % state.nodes.len().max(1);
-    let origin = (0..state.nodes.len())
-        .map(|i| state.nodes[(i + offset) % state.nodes.len()])
-        .find(|at| {
-            players.iter().all(|(_, player)| {
-                let distance = Vec3::from_array(*at).distance(Vec3::from_array(*player));
-                (320.0..1400.0).contains(&distance)
-            }) && players.iter().any(|(_, player)| {
-                nearest(&state.nodes, *player)
-                    .zip(nearest(&state.nodes, *at))
-                    .is_some_and(|(goal, start)| !route(state, start, goal).is_empty())
-            }) && state.actors.values().all(|actor| {
-                Vec3::from_array(actor.origin).distance_squared(Vec3::from_array(*at)) > 1600.0
-            })
-        });
-    let Some(origin) = origin else {
-        return false;
+    let frame = FrameWorld::from_world(world);
+    let fallback: Vec<_> = state
+        .nodes
+        .iter()
+        .map(|&origin| SpawnSite {
+            origin,
+            barrier: None,
+            riser: false,
+        })
+        .collect();
+    let sites = if state.spawn_sites.is_empty() {
+        &fallback
+    } else {
+        &state.spawn_sites
     };
+    let offset = tick.0 as usize % sites.len().max(1);
+    let site = (0..sites.len())
+        .map(|i| &sites[(i + offset) % sites.len()])
+        .find(|site| {
+            let at = site.origin;
+            players.iter().all(|(_, player)| {
+                Vec3::from_array(at).distance(Vec3::from_array(*player)) >= 192.0
+            }) && players.iter().any(|(_, player)| {
+                let distance = Vec3::from_array(at).distance(Vec3::from_array(*player));
+                if distance > 1800.0 {
+                    return false;
+                }
+                let start = site
+                    .barrier
+                    .map_or(at, |index| state.barriers[index].inside);
+                if (at[2] - start[2]).abs() > 128.0 || (at[2] - player[2]).abs() > 160.0 {
+                    return false;
+                }
+                if site.barrier.is_some() && reachable_node(&frame, &state.nodes, at).is_none() {
+                    return false;
+                }
+                reachable_node(&frame, &state.nodes, *player)
+                    .zip(reachable_node(&frame, &state.nodes, start))
+                    .is_some_and(|(goal, start)| {
+                        start == goal || !route(state, start, goal).is_empty()
+                    })
+            }) && state.actors.values().all(|actor| {
+                Vec3::from_array(actor.origin).distance_squared(Vec3::from_array(at)) > 48.0 * 48.0
+            })
+        })
+        .cloned();
+    let Some(site) = site else { return false };
+    let origin = site.origin;
+    drop(frame);
     let Ok(presence) = super::presence::spawn_presence(world, origin) else {
         return false;
     };
@@ -519,7 +825,12 @@ fn spawn_actor(
     if let Some(number) = number {
         entity.number = number;
     }
-    entity.anim_op = state.walk.as_ref().map(|clip| Some(clip.as_str().into()));
+    entity.anim_op = if site.riser {
+        state.rise.as_ref().or(state.walk.as_ref())
+    } else {
+        state.walk.as_ref()
+    }
+    .map(|clip| Some(clip.as_str().into()));
     state.actors.insert(
         object,
         Actor {
@@ -528,6 +839,16 @@ fn spawn_actor(
             repath: 0,
             attack_due: tick.0 + ticks(1000),
             velocity: [0.0; 3],
+            barrier: site.barrier,
+            entering: None,
+            swing: None,
+            animation: if site.riser { 6 } else { 1 },
+            stalled: 0,
+            emerge_until: if site.riser {
+                tick.0 + state.rise_ticks
+            } else {
+                0
+            },
         },
     );
     diag::info!(
@@ -538,6 +859,194 @@ fn spawn_actor(
     true
 }
 
+fn animate(world: &mut World, object: u64, actor: &mut Actor, mode: u8, clip: Option<&str>) {
+    if actor.animation == mode {
+        return;
+    }
+    actor.animation = mode;
+    if let Some(clip) = clip {
+        if let Some(entity) = world.resource_mut::<Runtime>().entities.get_mut(&object) {
+            entity.anim_op = Some(Some(clip.into()));
+        }
+    }
+}
+
+fn board_visibility(world: &mut World, barrier: &mut Barrier, board: usize, visible: bool) {
+    let clip = format!(
+        "o_zombie_board_{}_{}",
+        board + 1,
+        if visible { "repair" } else { "pull" }
+    );
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let frame = FrameWorld::from_world(world);
+    let duration = frame
+        .script_model_anim(&clip)
+        .filter(|anim| anim.frequency > 0.0)
+        .map_or(0, |anim| {
+            ticks((1000.0 / anim.frequency).clamp(0.0, 2500.0) as u32)
+        });
+    drop(frame);
+    barrier.hiding[board] = (!visible).then_some(tick.0 + duration);
+    if let Some(object) = barrier.objects.get(board).copied().flatten() {
+        if let Some(entity) = world.resource_mut::<Runtime>().entities.get_mut(&object) {
+            entity.hidden = !visible && duration == 0;
+            entity.anim_op = Some(Some(clip.into()));
+        }
+    }
+}
+
+fn prepare_barriers(world: &mut World, state: &mut Survival, players: &[(ClientId, [f32; 3])]) {
+    for barrier in &mut state.barriers {
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        for (board, due) in barrier.hiding.iter_mut().enumerate() {
+            if due.is_some_and(|due| tick.0 >= due) {
+                if let Some(object) = barrier.objects[board]
+                    && let Some(entity) = world.resource_mut::<Runtime>().entities.get_mut(&object)
+                {
+                    entity.hidden = true;
+                }
+                *due = None;
+            }
+        }
+        if !players.iter().any(|(_, at)| {
+            Vec3::from_array(*at).distance_squared(Vec3::from_array(barrier.origin))
+                < 1200.0 * 1200.0
+        }) {
+            continue;
+        }
+        for board in 0..barrier.models.len() {
+            if world.resource::<Runtime>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
+                return;
+            }
+            if barrier.objects[board].is_some() {
+                continue;
+            }
+            let Ok(presence) = super::presence::spawn_presence(world, barrier.board_origins[board])
+            else {
+                continue;
+            };
+            let mut runtime = world.resource_mut::<Runtime>();
+            let Ok(object) = runtime.create_entity(EntityKind::Spawned, "zombie_barrier_board")
+            else {
+                continue;
+            };
+            runtime.set_object_field(
+                object,
+                "origin",
+                Value::Vector(barrier.board_origins[board]),
+            );
+            runtime.set_object_field(object, "angles", Value::Vector(barrier.angles));
+            runtime.set_object_field(object, "model", Value::string(&barrier.models[board]));
+            let entity = runtime.entities.get_mut(&object).unwrap();
+            entity.presence = Some(presence);
+            entity.solid = false;
+            entity.contents = 0;
+            entity.hidden = board >= barrier.boards as usize && barrier.hiding[board].is_none();
+            entity.anim_op = Some(Some(
+                format!(
+                    "o_zombie_board_{}_{}",
+                    board + 1,
+                    if barrier.hiding[board].is_some() {
+                        "pull"
+                    } else {
+                        "repair"
+                    }
+                )
+                .into(),
+            ));
+            barrier.objects[board] = Some(object);
+        }
+    }
+}
+
+fn prepare_machines(world: &mut World, state: &mut Survival, players: &[(ClientId, [f32; 3])]) {
+    for row in &mut state.purchases {
+        let Some((base, angles)) = &row.model else {
+            continue;
+        };
+        if !players.iter().any(|(_, at)| {
+            Vec3::from_array(*at).distance_squared(Vec3::from_array(row.origin)) < 1200.0 * 1200.0
+        }) {
+            continue;
+        }
+        let frame = FrameWorld::from_world(world);
+        let powered =
+            state.powered || matches!(&row.kind, PurchaseKind::Perk(name) if name == "revive");
+        let on = format!("{base}_on");
+        let model = if powered && frame.model_capability(&on).flatten().is_some() {
+            on.as_str()
+        } else {
+            base.as_str()
+        };
+        if frame.model_capability(model).flatten().is_none() {
+            continue;
+        }
+        drop(frame);
+        if row.object.is_none() {
+            if world.resource::<Runtime>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
+                continue;
+            }
+            let Ok(presence) = super::presence::spawn_presence(world, row.origin) else {
+                continue;
+            };
+            let mut runtime = world.resource_mut::<Runtime>();
+            let Ok(object) = runtime.create_entity(EntityKind::Spawned, "zombie_perk_machine")
+            else {
+                continue;
+            };
+            runtime.set_object_field(object, "origin", Value::Vector(row.origin));
+            runtime.set_object_field(object, "angles", Value::Vector(*angles));
+            let entity = runtime.entities.get_mut(&object).unwrap();
+            entity.presence = Some(presence);
+            entity.solid = false;
+            entity.contents = 0;
+            row.object = Some(object);
+            diag::info!(
+                Sim,
+                "zombies machine presented object={object} model={model} origin={:?}",
+                row.origin
+            );
+        }
+        world.resource_mut::<Runtime>().set_object_field(
+            row.object.unwrap(),
+            "model",
+            Value::string(model),
+        );
+    }
+}
+
+fn relink_doors(world: &mut World, state: &mut Survival, tick: Tick) {
+    let pending = std::mem::take(&mut state.pending_links);
+    for (due, origin) in pending {
+        if tick.0 < due {
+            state.pending_links.push((due, origin));
+            continue;
+        }
+        let frame = FrameWorld::from_world(world);
+        let edges = Arc::make_mut(&mut state.edges);
+        for (i, &at) in state
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, at)| Vec3::from_array(**at).distance(Vec3::from_array(origin)) < 384.0)
+        {
+            for (j, &other) in state.nodes.iter().enumerate() {
+                if i != j
+                    && Vec3::from_array(at).distance(Vec3::from_array(other)) < 256.0
+                    && (at[2] - other[2]).abs() < 48.0
+                    && clear(&frame, at, other)
+                    && !edges[i].contains(&j)
+                {
+                    edges[i].push(j);
+                }
+            }
+        }
+        for actor in state.actors.values_mut() {
+            actor.repath = 0;
+        }
+    }
+}
+
 fn move_actors(
     world: &mut World,
     state: &mut Survival,
@@ -546,6 +1055,10 @@ fn move_actors(
 ) -> Vec<crate::script_player::Hit> {
     let mut hits = Vec::new();
     let actors = std::mem::take(&mut state.actors);
+    let crowd: Vec<_> = actors
+        .iter()
+        .map(|(&id, actor)| (id, actor.origin))
+        .collect();
     for (object, mut actor) in actors {
         let Some(&(victim, target)) = players.iter().min_by(|(_, a), (_, b)| {
             Vec3::from_array(*a)
@@ -555,55 +1068,185 @@ fn move_actors(
             state.actors.insert(object, actor);
             continue;
         };
-        let mut frame = FrameWorld::from_world(world);
-        if tick.0 >= actor.repath {
-            actor.path = reachable_node(&frame, &state.nodes, actor.origin)
-                .zip(reachable_node(&frame, &state.nodes, target))
-                .map(|(start, goal)| route(state, start, goal))
-                .unwrap_or_default();
-            actor.repath = tick.0 + ticks(1000);
-        }
-        let direct = clear(&frame, actor.origin, target);
-        while actor.path.front().is_some_and(|&node| {
-            Vec3::from_array(state.nodes[node]).distance(Vec3::from_array(actor.origin)) < 24.0
-        }) {
-            actor.path.pop_front();
-        }
-        let goal = if direct {
-            Some(target)
-        } else {
-            actor.path.front().map(|&node| state.nodes[node])
-        };
-        let delta = Vec3::from_array(target) - Vec3::from_array(actor.origin);
-        if delta.length() < 60.0 && direct {
-            if tick.0 < actor.attack_due {
-                state.actors.insert(object, actor);
-                continue;
+        let mut goal_target = target;
+        let mut waiting = tick.0 < actor.emerge_until;
+        if let Some(index) = actor.barrier {
+            let barrier = &mut state.barriers[index];
+            goal_target = barrier.outside;
+            if let Some((start, from)) = actor.entering {
+                let progress =
+                    tick.0.saturating_sub(start) as f32 / state.entry_ticks.max(1) as f32;
+                actor.origin = Vec3::from_array(from)
+                    .lerp(Vec3::from_array(barrier.inside), progress.min(1.0))
+                    .to_array();
+                waiting = true;
+                if progress >= 1.0 {
+                    actor.barrier = None;
+                    actor.entering = None;
+                    actor.repath = 0;
+                    actor.velocity = [0.0; 3];
+                    diag::info!(Sim, "zombie window entered object={object} barrier={index}");
+                }
+            } else if Vec3::from_array(actor.origin).distance(Vec3::from_array(barrier.outside))
+                < 48.0
+            {
+                waiting = true;
+                if barrier.boards > 0 {
+                    animate(
+                        world,
+                        object,
+                        &mut actor,
+                        3,
+                        state.tear.as_deref().or(state.attack.as_deref()),
+                    );
+                    if tick.0 >= barrier.tear_due {
+                        barrier.boards -= 1;
+                        barrier.tear_due = tick.0 + ticks(1200);
+                        board_visibility(world, barrier, barrier.boards as usize, false);
+                        actor.animation = 0;
+                        diag::info!(
+                            Sim,
+                            "zombie barrier torn object={object} barrier={index} boards={}",
+                            barrier.boards
+                        );
+                    }
+                } else if tick.0 >= barrier.tear_due {
+                    barrier.tear_due = tick.0 + state.entry_ticks + ticks(250);
+                    animate(world, object, &mut actor, 4, state.entry.as_deref());
+                    actor.entering = Some((tick.0, actor.origin));
+                }
             }
-            actor.attack_due = tick.0 + ticks(1000);
-            hits.push(crate::script_player::Hit {
-                victim,
-                attacker: None,
-                amount: 50,
-                flags: 0,
-                means: "MOD_MELEE",
-                weapon: 0,
-                point: target,
-                dir: delta.normalize_or_zero().to_array(),
-                hitloc: 0,
-                inflictor: None,
-                commit: None,
-            });
-        } else if let Some(goal) = goal {
-            let direction = Vec3::new(goal[0] - actor.origin[0], goal[1] - actor.origin[1], 0.0)
-                .normalize_or_zero();
-            let speed = (35.0 + state.round as f32 * 7.0).min(170.0);
-            traverse(&frame, &mut actor, direction, speed);
-            let yaw = direction.y.atan2(direction.x).to_degrees();
-            let runtime = frame.ecs().resource_mut::<Runtime>().into_inner();
-            runtime.set_object_field(object, "origin", Value::Vector(actor.origin));
-            runtime.set_object_field(object, "angles", Value::Vector([0.0, yaw, 0.0]));
         }
+        let mut frame = FrameWorld::from_world(world);
+        let delta = Vec3::from_array(target) - Vec3::from_array(actor.origin);
+        let direct = clear(&frame, actor.origin, goal_target);
+        if !waiting && actor.barrier.is_none() && actor.swing.is_some() {
+            let (locked, hit_at, finish) = actor.swing.unwrap();
+            if tick.0 >= hit_at && hit_at != u32::MAX {
+                if let Some((_, at)) = players.iter().find(|(id, _)| *id == locked) {
+                    let delta = Vec3::from_array(*at) - Vec3::from_array(actor.origin);
+                    if delta.length() <= 72.0 && clear(&frame, actor.origin, *at) {
+                        hits.push(crate::script_player::Hit {
+                            victim: locked,
+                            attacker: None,
+                            amount: 50,
+                            flags: 0,
+                            means: "MOD_MELEE",
+                            weapon: 0,
+                            point: *at,
+                            dir: delta.normalize_or_zero().to_array(),
+                            hitloc: 0,
+                            inflictor: None,
+                            commit: None,
+                        });
+                        diag::info!(
+                            Sim,
+                            "zombie melee impact object={object} client={}",
+                            locked.0
+                        );
+                    }
+                }
+                actor.swing = Some((locked, u32::MAX, finish));
+            }
+            waiting = tick.0 < finish;
+            if !waiting {
+                actor.swing = None;
+            }
+        }
+        if !waiting
+            && actor.barrier.is_none()
+            && delta.length() < 60.0
+            && direct
+            && tick.0 >= actor.attack_due
+        {
+            drop(frame);
+            animate(world, object, &mut actor, 2, state.attack.as_deref());
+            actor.swing = Some((
+                victim,
+                tick.0 + state.attack_ticks * 35 / 100,
+                tick.0 + state.attack_ticks,
+            ));
+            actor.attack_due = tick.0 + state.attack_ticks + ticks(100);
+            waiting = true;
+            frame = FrameWorld::from_world(world);
+        }
+        if !waiting {
+            if tick.0 >= actor.repath {
+                actor.path = reachable_node(&frame, &state.nodes, actor.origin)
+                    .zip(reachable_node(&frame, &state.nodes, goal_target))
+                    .map(|(start, goal)| route(state, start, goal))
+                    .unwrap_or_default();
+                actor.repath = tick.0 + ticks(800) + object as u32 % ticks(300);
+            }
+            while actor.path.front().is_some_and(|&node| {
+                Vec3::from_array(state.nodes[node]).distance(Vec3::from_array(actor.origin)) < 24.0
+            }) {
+                actor.path.pop_front();
+            }
+            let goal = if direct {
+                Some(goal_target)
+            } else {
+                actor.path.front().map(|&node| state.nodes[node])
+            };
+            if let Some(goal) = goal {
+                let mut direction =
+                    Vec3::new(goal[0] - actor.origin[0], goal[1] - actor.origin[1], 0.0)
+                        .normalize_or_zero();
+                let mut separation = Vec3::ZERO;
+                for &(other, at) in &crowd {
+                    if other == object || (at[2] - actor.origin[2]).abs() > 48.0 {
+                        continue;
+                    }
+                    let mut away = Vec3::new(actor.origin[0] - at[0], actor.origin[1] - at[1], 0.0);
+                    let distance = away.length();
+                    if distance < 38.0 {
+                        if distance < 0.01 {
+                            away = if object < other { Vec3::X } else { -Vec3::X };
+                        }
+                        separation += away.normalize_or_zero() * (1.0 - distance / 38.0);
+                    }
+                }
+                direction = (direction + separation * 1.4).normalize_or_zero();
+                let before = actor.origin;
+                let speed = (35.0 + state.round as f32 * 7.0).min(170.0);
+                traverse(&frame, &mut actor, direction, speed);
+                if Vec3::from_array(before).distance_squared(Vec3::from_array(actor.origin)) < 0.01
+                {
+                    actor.stalled += 1;
+                } else {
+                    actor.stalled = 0;
+                }
+                if actor.stalled >= ticks(500) {
+                    actor.repath = 0;
+                    actor.path.clear();
+                    actor.stalled = 0;
+                }
+                drop(frame);
+                animate(
+                    world,
+                    object,
+                    &mut actor,
+                    if speed >= 100.0 { 5 } else { 1 },
+                    if speed >= 100.0 {
+                        state.run.as_deref().or(state.walk.as_deref())
+                    } else {
+                        state.walk.as_deref()
+                    },
+                );
+                frame = FrameWorld::from_world(world);
+            }
+        }
+        let yaw = if actor.barrier.is_some() && waiting {
+            let end = state.barriers[actor.barrier.unwrap()].inside;
+            (end[1] - actor.origin[1])
+                .atan2(end[0] - actor.origin[0])
+                .to_degrees()
+        } else {
+            delta.y.atan2(delta.x).to_degrees()
+        };
+        let runtime = frame.ecs().resource_mut::<Runtime>().into_inner();
+        runtime.set_object_field(object, "origin", Value::Vector(actor.origin));
+        runtime.set_object_field(object, "angles", Value::Vector([0.0, yaw, 0.0]));
         state.actors.insert(object, actor);
     }
     hits
@@ -627,8 +1270,15 @@ fn give_gun(
     if crate::script_player::give_weapon(&mut frame, client, weapon, false).is_err() {
         return false;
     }
-    let remove = replace
-        .or_else(|| (survivor.guns.len() >= 2).then(|| frame.player(client).unwrap().weapon));
+    let remove = replace.or_else(|| {
+        (survivor.guns.len()
+            >= if survivor.perks.contains("mulekick") {
+                3
+            } else {
+                2
+            })
+        .then(|| frame.player(client).unwrap().weapon)
+    });
     if let Some(remove) = remove {
         crate::script_player::take_weapon(&mut frame, client, remove);
         survivor.guns.retain(|&gun| gun != remove);
@@ -647,6 +1297,55 @@ fn purchase(
     tick: Tick,
 ) {
     let row = state.purchases[index].clone();
+    if row.needs_power && !state.powered && !state.upgrades.contains_key(&index) {
+        return;
+    }
+    if let PurchaseKind::Door(target) = &row.kind {
+        if state.opened.contains(target) {
+            return;
+        }
+        let cash = FrameWorld::from_world(world)
+            .client_meta(client)
+            .map_or(0, |meta| meta.score);
+        if cash < row.price {
+            return;
+        }
+        let mut runtime = world.resource_mut::<Runtime>();
+        let ids: Vec<_> = runtime.entities.keys().copied().collect();
+        let ids: Vec<_> = ids.into_iter().filter(|id| {
+            runtime.entities.get(id).is_some_and(|entity| entity.presence.is_some())
+                && matches!(runtime.object_field(*id, "targetname"), Value::String(name) if &*name == target.as_str())
+        }).collect();
+        if ids.is_empty() {
+            return;
+        }
+        for id in ids {
+            if let Some(entity) = runtime.entities.get_mut(&id) {
+                entity.hidden = true;
+                entity.solid = false;
+                entity.contents = 0;
+            }
+        }
+        drop(runtime);
+        state.opened.insert(target.clone());
+        score(world, client, -row.price);
+        // Presence publishes the changed brush collision after this host step.
+        state.pending_links.push((tick.0 + 2, row.origin));
+        diag::info!(
+            Sim,
+            "zombies door opened target={target} client={} cost={}",
+            client.0,
+            row.price
+        );
+        return;
+    }
+    if matches!(row.kind, PurchaseKind::Power) {
+        if !state.powered {
+            state.powered = true;
+            diag::info!(Sim, "zombies power enabled client={}", client.0);
+        }
+        return;
+    }
     let frame = FrameWorld::from_world(world);
     let cash = frame.client_meta(client).map_or(0, |meta| meta.score);
     let held = frame.player(client).map_or(0, |ps| ps.weapon);
@@ -658,6 +1357,7 @@ fn purchase(
         row.price
     };
     let gun = match &row.kind {
+        PurchaseKind::Door(_) | PurchaseKind::Power => return,
         PurchaseKind::Weapon(name) => {
             let gun = resolve(name);
             if gun.is_some_and(|gun| survivor.guns.contains(&gun)) {
@@ -666,12 +1366,61 @@ fn purchase(
             gun
         }
         PurchaseKind::Upgrade => {
-            let name = frame.weapon_script_name(held);
-            if name.contains("_upgraded") {
+            if let Some(claim) = state.upgrades.get(&index) {
+                if claim.client != client || tick.0 < claim.ready {
+                    return;
+                }
+                let gun = claim.weapon;
+                drop(frame);
+                if give_gun(world, survivor, client, gun, None) {
+                    state.upgrades.remove(&index);
+                    diag::info!(
+                        Sim,
+                        "zombies upgrade collected client={} weapon={gun}",
+                        client.0
+                    );
+                }
                 return;
             }
-            name.strip_suffix("_zm")
+            let name = frame.weapon_script_name(held);
+            if name.contains("_upgraded") || cash < row.price {
+                return;
+            }
+            let Some(gun) = name
+                .strip_suffix("_zm")
                 .and_then(|base| resolve(&format!("{base}_upgraded_zm")))
+            else {
+                return;
+            };
+            drop(frame);
+            let mut frame = FrameWorld::from_world(world);
+            crate::script_player::take_weapon(&mut frame, client, held);
+            drop(frame);
+            survivor.guns.retain(|&gun| gun != held);
+            if let Some(&remaining) = survivor.guns.first() {
+                let _ = crate::script_player::set_spawn_weapon(
+                    &mut FrameWorld::from_world(world),
+                    client,
+                    remaining,
+                );
+            }
+            score(world, client, -row.price);
+            state.upgrades.insert(
+                index,
+                BoxClaim {
+                    client,
+                    weapon: gun,
+                    ready: tick.0 + ticks(5000),
+                    expires: tick.0 + ticks(65000),
+                },
+            );
+            diag::info!(
+                Sim,
+                "zombies upgrade started client={} original={held} upgraded={gun} cost={}",
+                client.0,
+                row.price
+            );
+            return;
         }
         PurchaseKind::Box => {
             if let Some(claim) = state.box_claims.get(&index) {
@@ -721,8 +1470,17 @@ fn purchase(
             return;
         }
         PurchaseKind::Perk(name) => {
-            if !matches!(name.as_str(), "juggernog" | "sleight" | "revive")
-                || survivor.perks.contains(name)
+            if !matches!(
+                name.as_str(),
+                "juggernog"
+                    | "sleight"
+                    | "revive"
+                    | "doubletap"
+                    | "staminup"
+                    | "deadshot"
+                    | "mulekick"
+                    | "phd"
+            ) || survivor.perks.contains(name)
                 || survivor.perks.len() >= 4
                 || (name == "revive" && solo && survivor.solo_revives_bought >= 3)
                 || cash < price
@@ -740,12 +1498,28 @@ fn purchase(
             } else if name == "sleight" {
                 crate::script_player::set_perk(&mut frame, client, "specialty_fastreload", true);
             }
+            if name == "staminup" {
+                crate::script_player::set_perk(&mut frame, client, "specialty_marathon", true);
+            }
+            if name == "deadshot" {
+                crate::script_player::set_perk(
+                    &mut frame,
+                    client,
+                    "specialty_bulletaccuracy",
+                    true,
+                );
+            }
             survivor.perks.insert(name.clone());
             if name == "revive" && solo {
                 survivor.solo_revives_bought += 1;
             }
             drop(frame);
             score(world, client, -price);
+            diag::info!(
+                Sim,
+                "zombies perk purchased client={} perk={name} cost={price}",
+                client.0
+            );
             return;
         }
     };
@@ -937,6 +1711,7 @@ fn interactions(
     players: &[(ClientId, [f32; 3])],
 ) {
     state.box_claims.retain(|_, claim| tick.0 < claim.expires);
+    state.upgrades.retain(|_, claim| tick.0 < claim.expires);
     for &(client, origin) in players {
         let mut survivor = state.survivors.remove(&client.0).unwrap_or_default();
         let mut frame = FrameWorld::from_world(world);
@@ -948,12 +1723,28 @@ fn interactions(
             .iter()
             .enumerate()
             .filter(|(_, row)| {
+                !matches!(&row.kind, PurchaseKind::Door(target) if state.opened.contains(target))
+                    && !(matches!(row.kind, PurchaseKind::Power) && state.powered)
+            })
+            .filter(|(_, row)| {
                 Vec3::from_array(row.origin).distance_squared(Vec3::from_array(origin))
                     <= 96.0 * 96.0
                     && frame
                         .trace_world(
                             [origin[0], origin[1], origin[2] + 50.0],
-                            row.origin,
+                            [
+                                row.origin[0],
+                                row.origin[1],
+                                row.origin[2]
+                                    + if matches!(
+                                        row.kind,
+                                        PurchaseKind::Door(_) | PurchaseKind::Power
+                                    ) {
+                                        0.0
+                                    } else {
+                                        40.0
+                                    },
+                            ],
                             [0.0; 3],
                             [0.0; 3],
                             0x11,
@@ -988,9 +1779,56 @@ fn interactions(
                         >= 1.0)
                     .then_some(id)
             });
+        let repair = state
+            .barriers
+            .iter()
+            .enumerate()
+            .filter(|(_, barrier)| {
+                barrier.boards < barrier.models.len() as u8
+                    && Vec3::from_array(barrier.inside).distance_squared(Vec3::from_array(origin))
+                        <= 96.0 * 96.0
+                    && clear(&frame, origin, barrier.inside)
+            })
+            .min_by(|(_, a), (_, b)| {
+                Vec3::from_array(a.inside)
+                    .distance_squared(Vec3::from_array(origin))
+                    .total_cmp(
+                        &Vec3::from_array(b.inside).distance_squared(Vec3::from_array(origin)),
+                    )
+            })
+            .map(|(index, _)| index);
         let solo = frame.client_ids_sorted().len() == 1;
         let cash = frame.client_meta(client).map_or(0, |meta| meta.score);
         drop(frame);
+        if survivor.repair_round != state.round {
+            survivor.repair_round = state.round;
+            survivor.repair_points = 0;
+        }
+        if held && revival.is_none() && selected.is_none() {
+            if let Some(index) = repair {
+                if !survivor.use_held {
+                    survivor.repair_due = tick.0 + ticks(1000);
+                }
+                if tick.0 >= survivor.repair_due {
+                    let barrier = &mut state.barriers[index];
+                    let board = barrier.boards as usize;
+                    barrier.boards += 1;
+                    board_visibility(world, barrier, board, true);
+                    survivor.repair_due = tick.0 + ticks(1000);
+                    let cap = (state.round.min(10) as i32 * 40).max(40);
+                    if survivor.repair_points < cap {
+                        score(world, client, 10);
+                        survivor.repair_points += 10;
+                    }
+                    diag::info!(
+                        Sim,
+                        "zombie barrier repaired client={} barrier={index} boards={}",
+                        client.0,
+                        barrier.boards
+                    );
+                }
+            }
+        }
         if held
             && revival.is_none()
             && !survivor.use_held
@@ -1038,7 +1876,14 @@ fn interactions(
             .filter(|_| revival.is_none())
             .map(|index| {
                 let row = &state.purchases[index];
+                if row.needs_power && !state.powered && !state.upgrades.contains_key(&index) {
+                    return "USE: Requires power".to_owned();
+                }
                 match &row.kind {
+                    PurchaseKind::Door(_) => {
+                        format!("USE: Open door / clear debris [{} points]", row.price)
+                    }
+                    PurchaseKind::Power => "USE: Turn on power".to_owned(),
                     PurchaseKind::Weapon(name) => {
                         let frame = FrameWorld::from_world(world);
                         let owned =
@@ -1057,14 +1902,38 @@ fn interactions(
                         Some(_) => "Mystery Box in use".to_owned(),
                         None => format!("USE: Mystery Box  [{} points]", row.price),
                     },
-                    PurchaseKind::Upgrade => "USE: Pack-a-Punch  [5000 points]".to_owned(),
+                    PurchaseKind::Upgrade => match state.upgrades.get(&index) {
+                        Some(claim) if tick.0 < claim.ready => {
+                            "Pack-a-Punch upgrading...".to_owned()
+                        }
+                        Some(claim) if claim.client == client => {
+                            "USE: Take upgraded weapon".to_owned()
+                        }
+                        Some(_) => "Pack-a-Punch in use".to_owned(),
+                        None => "USE: Pack-a-Punch  [5000 points]".to_owned(),
+                    },
                     PurchaseKind::Perk(name)
-                        if matches!(name.as_str(), "juggernog" | "sleight" | "revive") =>
+                        if matches!(
+                            name.as_str(),
+                            "juggernog"
+                                | "sleight"
+                                | "revive"
+                                | "doubletap"
+                                | "staminup"
+                                | "deadshot"
+                                | "mulekick"
+                                | "phd"
+                        ) =>
                     {
                         let label = match name.as_str() {
                             "juggernog" => "Jugger-Nog",
                             "sleight" => "Speed Cola",
-                            _ => "Quick Revive",
+                            "revive" => "Quick Revive",
+                            "doubletap" => "Double Tap",
+                            "staminup" => "Stamin-Up",
+                            "deadshot" => "Deadshot",
+                            "mulekick" => "Mule Kick",
+                            _ => "PhD Flopper",
                         };
                         let price = if name == "revive" && solo {
                             500
@@ -1078,7 +1947,11 @@ fn interactions(
             })
             .unwrap_or_else(|| {
                 let Some(victim) = revival else {
-                    return String::new();
+                    return if repair.is_some() {
+                        "USE: Rebuild barrier (hold)".into()
+                    } else {
+                        String::new()
+                    };
                 };
                 let duration = if survivor.perks.contains("revive") {
                     ticks(1500)
@@ -1152,6 +2025,7 @@ pub(crate) fn advance(world: &mut World) {
         state.revives.remove(&id);
         state.revives.retain(|_, (helper, _)| helper.0 != id);
         state.box_claims.retain(|_, claim| claim.client.0 != id);
+        state.upgrades.retain(|_, claim| claim.client.0 != id);
     }
     if let Some(ended) = state.ended {
         world.resource_mut::<Runtime>().zombies = state;
@@ -1189,6 +2063,7 @@ pub(crate) fn advance(world: &mut World) {
     for client in spawn {
         spawn_player(world, &mut state, client, tick);
     }
+    relink_doors(world, &mut state, tick);
     advance_revives(world, &mut state, tick);
     if state.next_round.is_some_and(|due| tick.0 >= due) && state.round > 0 {
         let frame = FrameWorld::from_world(world);
@@ -1261,6 +2136,8 @@ pub(crate) fn advance(world: &mut World) {
                 tick.0 + ticks((2000u32.saturating_sub(state.round.saturating_mul(100))).max(750));
         }
         hits = move_actors(world, &mut state, tick, &players);
+        prepare_barriers(world, &mut state, &players);
+        prepare_machines(world, &mut state, &players);
         interactions(world, &mut state, tick, &players);
         if state.remaining == 0 && state.actors.is_empty() && state.next_round.is_none() {
             state.next_round = Some(tick.0 + ticks(8000));
@@ -1277,6 +2154,20 @@ pub(crate) fn entity_damage_amount(
     object: u64,
     hit: &super::entity_damage::EntityHit,
 ) -> i32 {
+    let boosted = world
+        .resource::<Runtime>()
+        .zombies
+        .actors
+        .contains_key(&object)
+        && hit.attacker.is_some_and(|client| {
+            world
+                .resource::<Runtime>()
+                .zombies
+                .survivors
+                .get(&client.0)
+                .is_some_and(|survivor| survivor.perks.contains("doubletap"))
+        })
+        && matches!(hit.means, "MOD_RIFLE_BULLET" | "MOD_PISTOL_BULLET");
     if hit.amount > 0
         && hit.means == "MOD_MELEE"
         && world
@@ -1286,6 +2177,8 @@ pub(crate) fn entity_damage_amount(
             .contains_key(&object)
     {
         hit.amount.max(150)
+    } else if boosted {
+        hit.amount.saturating_mul(2)
     } else {
         hit.amount
     }
@@ -1341,6 +2234,24 @@ pub(crate) fn entity_damage(
 }
 
 pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_player::Hit) {
+    if world
+        .resource::<Runtime>()
+        .zombies
+        .survivors
+        .get(&hit.victim.0)
+        .is_some_and(|survivor| survivor.perks.contains("phd"))
+        && matches!(
+            hit.means,
+            "MOD_GRENADE"
+                | "MOD_GRENADE_SPLASH"
+                | "MOD_EXPLOSIVE"
+                | "MOD_PROJECTILE"
+                | "MOD_PROJECTILE_SPLASH"
+                | "MOD_FALLING"
+        )
+    {
+        return;
+    }
     if hit.attacker.is_some_and(|client| client != hit.victim) {
         return;
     }
@@ -1388,6 +2299,28 @@ pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_p
                 ps.pm_flags |= playerstate_iw4::pm_flags::LAST_STAND;
                 ps.view_height_target = movement_iw4::view_height::LAST_STAND;
             }
+            let third = frame
+                .ecs()
+                .resource::<Runtime>()
+                .zombies
+                .survivors
+                .get(&hit.victim.0)
+                .and_then(|survivor| (survivor.guns.len() > 2).then(|| survivor.guns[2]));
+            if let Some(gun) = third {
+                let replacement = frame
+                    .ecs()
+                    .resource::<Runtime>()
+                    .zombies
+                    .survivors
+                    .get(&hit.victim.0)
+                    .and_then(|survivor| survivor.guns.first().copied());
+                crate::script_player::take_weapon(&mut frame, hit.victim, gun);
+                if frame.player(hit.victim).is_some_and(|ps| ps.weapon == 0)
+                    && let Some(weapon) = replacement
+                {
+                    let _ = crate::script_player::set_spawn_weapon(&mut frame, hit.victim, weapon);
+                }
+            }
             if let Some(survivor) = frame
                 .ecs()
                 .resource_mut::<Runtime>()
@@ -1395,6 +2328,7 @@ pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_p
                 .survivors
                 .get_mut(&hit.victim.0)
             {
+                survivor.guns.truncate(2);
                 survivor.downed_since = Some(tick.0);
                 survivor.perks.retain(|name| name == "revive");
             }

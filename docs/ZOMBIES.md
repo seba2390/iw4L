@@ -1,27 +1,34 @@
 # BO2 Zombies survival
 
-Select Black Ops II > Zombies > a map > Start Match. This is an early survival
-build, not retail-complete Zombies. Only your installed map assets are used.
-For direct launch, set `IW4L_GAMETYPE=zclassic` and run
-`scripts/play.ps1 map t6:zm_nuked`. Zombies maps require `zclassic`.
+Select Black Ops II > Zombies > a map > Start Match. This remains an early
+survival runtime using your installed assets, not complete BO2 Zombies.
+Direct launch: `IW4L_GAMETYPE=zclassic`, then `scripts/play.ps1 map t6:zm_nuked`.
 
-Host rules live in `sim/script/host/t6_zombies.rs`: NPC entities, collision-aware
-path-node pursuit, rounds, points, survivor inventory and nearby use purchases.
-NPCs do not consume player slots. Their models and native animation clips load
-through the T6 asset lane; world entities and HUD use existing replication.
+Host rules live in `sim/script/host/t6_zombies.rs`. NPCs use authored zombie
+spawn sites and initial player starts, collision-tested path nodes, staggered
+replanning, crowd separation, native rise/walk/run/attack clips and timed melee.
+Unsupported vertical spawn transitions are rejected. Wooden windows use authored
+outside/inside endpoints, board tearing, queued entry and nearby native boards.
+Hold Use on the inside to rebuild; repairs earn bounded points each round.
+Authored priced doors remove their linked models/collision and reconnect routes.
 
-Survivors start with the native M1911 and 500 points. Hits and kills earn points.
-Use at authored wall-buy locations to buy a weapon or refill owned ammunition.
-The mystery box charges for a roll; wait for it, then use again to take the gun.
-Two weapons are retained; another purchase replaces the held weapon.
-Pack-a-Punch resolves an available native upgraded variant of the held weapon.
-Missing or unsupported weapons are refused without charging points.
+Survivors start with M1911 (Origins: Mauser) and 500 points. Use nearby
+wall buys for weapons/ammo. Hits/kills earn points. The box has owner-only pickup.
+Two guns are retained; Mule Kick permits three and removes the extra gun on downing.
+Pack-a-Punch takes an available native upgraded variant through a five-second
+hand-in and owner-only pickup. Unsupported variants are refused without charging.
+Attachment rerolls and full machine/access behavior remain incomplete.
 
-Jugger-Nog and Speed Cola use health/reload effects. Quick Revive supports solo
-recovery for 500 points, at most three purchases, and faster teammate revival.
-Other perks remain Work in Progress.
-Co-op teammates can hold use near a downed player to revive them.
-The current co-op path uses separate clients; split-screen is not implemented.
+Jugger-Nog, Speed Cola and Quick Revive have health/reload/revival effects.
+Solo Quick Revive costs 500, supports recovery, and allows three purchases.
+Basic additions: Double Tap doubles bullet damage to zombies; Stamin-Up grants
+unlimited sprint; Deadshot improves hip accuracy; PhD blocks explosion/fall damage.
+Their full fire-rate, speed, aim-assist and dive effects remain incomplete.
+Electric Cherry, Vulture Aid and Who's Who effects remain Work in Progress.
+Native perk-machine models and owned HUD icons load from the installation.
+Power gates purchases; generic authored switches work on Die Rise and Buried.
+TranZit assembly, Mob afterlife and Origins generators need separate power rules.
+Co-op supports held-use teammate revival through separate clients; no split-screen.
 
 | Map | Zone |
 |---|---|
@@ -32,15 +39,11 @@ The current co-op path uses separate clients; split-screen is not implemented.
 | Buried | `t6:zm_buried` |
 | Origins | `t6:zm_tomb` |
 
-Map geometry, collision and player starts were prepared for all six maps.
-This does not establish complete survival compatibility on all six.
-Native Nuketown runs verified walking body/head models, bullet and knife damage,
-points, round-two progression, wall buys, insufficient-funds refusal, mystery-box
-spin/pickup, downing and held-use teammate revival.
-Navigation, spawn distribution and round scaling are initial implementations.
-Window entry, barrier repair, map power, doors, quests, special enemies, buildables,
-transport, perk arrival and complete HUD fidelity remain unfinished.
-The HUD loads native round tallies, score backing, perk icons, low-health overlay
-and bitmap text from the installation. Perk icons follow replicated ownership;
-rounds above five use numbers. HUD layouts remain authored by IW4L.
-Town, Farm, Bus Depot, Grief and Turned need submode/location handling.
+All six have prepared geometry/collision/assets; complete gameplay is not established.
+Native Nuketown verified combat, points, rounds, wall buys, box pickup and a priced
+house door. TranZit verified Depot rendering, tearing/entry, repairs and solo revival.
+Die Rise/Buried verified power switches; Mob/Origins verified opening window waves.
+Pack-a-Punch purchases and additional perk effects need broader native verification.
+Transport, buildables, special enemies, quests, scripted events, Nuketown perk arrival,
+map-specific progression, traversal and full round scaling remain unfinished.
+Town/Farm/Bus Depot variants, Grief and Turned need submode/location handling.

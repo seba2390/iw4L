@@ -181,8 +181,11 @@ fn capture_xanims(
 ) {
     use fastfile_t6::weapon::WeaponView;
     let mut wanted = std::collections::BTreeSet::new();
-    for asset in &load.assets {
-        let Some(weapon) = WeaponView::new(load, asset) else {
+    for (source, asset) in std::iter::once(load)
+        .chain(others)
+        .flat_map(|source| source.assets.iter().map(move |asset| (source, asset)))
+    {
+        let Some(weapon) = WeaponView::new(source, asset) else {
             continue;
         };
         if weapon.name().is_some_and(|name| {
@@ -260,6 +263,7 @@ fn capture_xanims(
                         || name.starts_with("ai_zombie")
                         || name.starts_with("zm_walk")
                         || name.starts_with("zombie_")
+                        || name.starts_with("o_zombie_board_")
                 })
                 && content.xanims.capture_xanim_t6(
                     asset_core::AssetNamespace::T6,
@@ -2208,10 +2212,14 @@ impl ZoneLane for T6Lane {
                         _ => &[],
                     };
                     let actor = actor_models.contains(&name);
+                    let board = name.starts_with("p6_anim_zm_barricade_board_");
+                    let machine = name.starts_with("zombie_vending_")
+                        || name.contains("_vending_")
+                        || matches!(name, "p6_anim_zm_buildable_pap" | "p6_zm_tm_packapunch");
                     if (script_placements.iter().any(|p| p.model == name)
                         || (asset_transport::t6_content::T6ContentMode::for_path(path)
                             == asset_transport::t6_content::T6ContentMode::Zombies
-                            && actor))
+                            && (actor || board || machine)))
                         && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
                     {
                         script_xmodels.push(model);
@@ -2732,9 +2740,25 @@ impl ZoneLane for T6Lane {
                 t6_film_grade,
                 ..Default::default()
             };
+            let mut xanims = asset_anim::XAnimBuild::default();
+            if mode == asset_transport::t6_content::T6ContentMode::Zombies {
+                for asset in &load.assets {
+                    if asset.ty == fastfile_t6::AssetType::XAnimParts
+                        && header_str(&load, &asset.header, 0).is_some_and(|name| {
+                            name.starts_with("o_zombie_board_")
+                                || name.starts_with("ai_zombie")
+                                || name.starts_with("a_zombie")
+                        })
+                    {
+                        xanims.capture_xanim_t6(asset_core::AssetNamespace::T6, "", &load, asset);
+                    }
+                }
+                report.push(format!("T6 map zombie animations: {}", xanims.len()));
+            }
             Ok(LoadedWorld {
                 scripts,
                 world,
+                xanims,
                 materials,
                 sound,
                 collision: Some(collision),
