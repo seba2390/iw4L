@@ -1154,3 +1154,61 @@ pub(super) fn finish_zone_open<E>(
     }
     stage.finish_from(opened);
 }
+
+#[derive(Default)]
+pub(super) struct ZombieCommons {
+    pub(super) xanims: XAnimBuild,
+    pub(super) report: Vec<String>,
+}
+
+/// T5 zombie maps keep their actor animations, weapons and shared models in
+/// `common_zombie` and its patch, beside the map rather than in `common_mp`.
+pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> ZombieCommons {
+    let mut commons = ZombieCommons::default();
+    let is_zombie_map = zone_ff
+        .file_stem()
+        .is_some_and(|stem| stem.to_string_lossy().starts_with("zombie"));
+    if !is_zombie_map
+        || asset_transport::zone_game_for_path(zone_ff) != Some(asset_core::ZoneGame::T5)
+    {
+        return commons;
+    }
+    for zone in ["common_zombie", "common_zombie_patch"] {
+        let found = match asset_transport::find_zone_for_tree(zone_ff, zone) {
+            Ok(found) => found,
+            Err(error) => {
+                commons
+                    .report
+                    .push(format!("zombie common {zone}: {error}"));
+                continue;
+            }
+        };
+        let stage = progress.begin_scoped(StageId::MapAssets, "zombie common", None);
+        let opened = open_zone_shared(&found.path);
+        stage.finish_from(&opened);
+        let image = match opened {
+            Ok(image) => image,
+            Err(error) => {
+                commons
+                    .report
+                    .push(format!("zombie common {zone}: open: {error}"));
+                continue;
+            }
+        };
+        let census = lane(image.game).load_common_mp(
+            &found.path,
+            &image,
+            progress,
+            false,
+            MaterialCatalog::default(),
+        );
+        let xanims = census.xanims.len();
+        commons.xanims.absorb(census.xanims);
+        commons.report.push(format!(
+            "zombie common {zone}: xanims={xanims} weapons={} scene_models={}",
+            census.weapons.len(),
+            census.scene_models.len(),
+        ));
+    }
+    commons
+}

@@ -275,6 +275,14 @@ pub(super) async fn walk_prepared_match(
     let common_xanim_count = xanims.len();
     let map_xanim_count = map_xanims.len();
     let t5_xanim_added = xanims.absorb(t5_xanims);
+    if let Ok(path) = &zone_ff {
+        let zombie = walk_zombie_commons(path, &progress);
+        report.extend(zombie.report);
+        let added = xanims.absorb(zombie.xanims);
+        if added > 0 {
+            report.push(format!("zombie common xanims: +{added}"));
+        }
+    }
     xanims.absorb_local(map_xanims);
     weapons.resolve_sz_xanim_edges(&xanims);
     let weapon_clip_indices = weapons.bound_weapon_xanim_indices();
