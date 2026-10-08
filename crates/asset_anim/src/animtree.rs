@@ -13,6 +13,11 @@ pub const PLAYERANIM_SCRIPT_PATH: &str = "mp/playeranim.script";
 
 pub const PLAYERANIM_TYPES_PATH: &str = "mp/playeranimtypes.txt";
 
+/// Compiles an animation tree's `.atr` source keeping every node.
+pub fn compile_animtree(atr: &[u8]) -> Result<Arc<CompiledAnimTreeDefinition>, AtrCompileError> {
+    crate::atr_compile::compile_complete(atr)
+}
+
 #[derive(Clone, Debug, Default, Resource)]
 pub struct PlayerAnimSources {
     family: Option<asset_core::FamilyId>,

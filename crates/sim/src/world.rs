@@ -2220,6 +2220,10 @@ impl SimState {
         }
     }
 
+    pub(crate) fn actor_anim_tree(&self, name: &str) -> Option<Arc<crate::script::ActorAnimTree>> {
+        self.content.actor_anim_tree(name)
+    }
+
     pub(crate) fn anim_clip_named(&self, name: &str) -> Option<Arc<xmodel_runtime::AnimClip>> {
         self.content
             .anim_clips()

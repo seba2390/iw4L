@@ -156,6 +156,7 @@ struct ContentData {
     player_body_branches: Option<xmodel_runtime::PlayerBodyBranches>,
     script_model_anims: std::collections::BTreeMap<String, crate::ScriptModelPlayAnim>,
     anim_clips: AnimClipLookup,
+    actor_anim_trees: std::collections::BTreeMap<String, Arc<crate::script::ActorAnimTree>>,
     xanims: Arc<crate::MantleXAnimBind>,
     vehicle_turrets: std::collections::BTreeMap<String, String>,
     vehicle_compass: std::collections::BTreeMap<String, ([String; 2], [i32; 2])>,
@@ -194,6 +195,7 @@ impl SimContentBuilder {
                 player_body_branches: Default::default(),
                 script_model_anims: Default::default(),
                 anim_clips: Default::default(),
+                actor_anim_trees: Default::default(),
                 xanims: Default::default(),
                 vehicle_turrets: Default::default(),
                 vehicle_compass: Default::default(),
@@ -279,6 +281,16 @@ impl SimContentBuilder {
         properties: Vec<xmodel_runtime::PlayerAnimProperties>,
     ) {
         self.data.player_anim_properties = properties;
+    }
+
+    pub fn set_actor_anim_trees(
+        &mut self,
+        trees: impl IntoIterator<Item = Arc<crate::script::ActorAnimTree>>,
+    ) {
+        self.data.actor_anim_trees = trees
+            .into_iter()
+            .map(|tree| (tree.name().to_owned(), tree))
+            .collect();
     }
 
     pub fn set_anim_clips(&mut self, lookup: AnimClipLookup) {
@@ -371,6 +383,12 @@ impl SimContent {
         &self,
     ) -> &std::collections::BTreeMap<String, crate::ScriptModelPlayAnim> {
         &self.data.script_model_anims
+    }
+    pub(super) fn actor_anim_tree(&self, name: &str) -> Option<Arc<crate::script::ActorAnimTree>> {
+        self.data
+            .actor_anim_trees
+            .get(&name.to_ascii_lowercase())
+            .cloned()
     }
     pub(super) fn anim_clips(&self) -> &AnimClipLookup {
         &self.data.anim_clips

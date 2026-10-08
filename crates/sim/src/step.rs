@@ -43,6 +43,7 @@ pub(crate) fn schedule() -> Schedule {
             expire_transient_events_system,
             crate::script::apply_disconnects,
             crate::script::advance_mechanics,
+            crate::script::advance_actors,
             crate::script::advance_scheduler,
             (
                 apply_script_signals_system,

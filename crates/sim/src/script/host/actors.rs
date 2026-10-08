@@ -83,6 +83,11 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
     let main = format!("aitype/{aitype}::main");
     run_now(world, &main, Value::Object(id), Vec::new(), now)
         .map_err(|fault| format!("{main}: {fault:?}"))?;
+    let tree = match world.resource_mut::<Runtime>().object_field(id, "type") {
+        Value::String(kind) if kind.as_bytes() == b"zombie_dog" => "zombie_dog",
+        _ => "generic_human",
+    };
+    let _ = super::actor_anims::attach(world, id, tree);
     raise(world, spawner.clone(), "spawned", vec![Value::Object(id)]);
     Ok(Value::Object(id))
 }

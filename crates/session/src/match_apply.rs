@@ -239,6 +239,7 @@ pub fn apply_prepared_match(
         let mut install = bevy::ecs::world::CommandQueue::default();
         let MatchInstallPlan {
             scripts,
+            actor_anim_sources,
             script_level,
             script_entries,
             script_dvars,
@@ -380,6 +381,38 @@ pub fn apply_prepared_match(
                 },
             ))
         }));
+        let trees = actor_anim_sources.iter().filter_map(|(name, atr)| {
+            let compiled = asset_anim::compile_animtree(atr.as_bytes())
+                .map_err(|error| diag::warn!(Sim, "animation tree {name}: {error:?}"))
+                .ok()?;
+            let definition = compiled
+                .to_runtime_definition(|_, leaf| {
+                    xanims.0.clip(anim_namespace, leaf).or_else(|| {
+                        asset_core::AssetNamespace::ALL
+                            .into_iter()
+                            .find_map(|namespace| xanims.0.clip(namespace, leaf))
+                    })
+                })
+                .map_err(|error| diag::warn!(Sim, "animation tree {name}: {error:?}"))
+                .ok()?;
+            let names = compiled
+                .nodes()
+                .iter()
+                .map(|node| node.name.clone())
+                .collect();
+            diag::info!(
+                Sim,
+                "animation tree {name}: {} nodes, {} leaves",
+                compiled.node_count(),
+                compiled.leaf_count()
+            );
+            Some(Arc::new(sim::script::ActorAnimTree::new(
+                name.clone(),
+                names,
+                definition,
+            )))
+        });
+        content.set_actor_anim_trees(trees.collect::<Vec<_>>());
         let clips = Arc::clone(&xanims.0);
         content.set_anim_clips(sim::AnimClipLookup::new(move |name| {
             clips.clip(anim_namespace, name).or_else(|| {
@@ -703,6 +736,8 @@ pub fn apply_prepared_match(
 /// hands one over.
 struct MatchInstallPlan {
     scripts: sim::script::Program,
+    /// `.atr` sources of the animation trees actors may use, by tree name.
+    actor_anim_sources: Vec<(String, String)>,
     script_level: sim::script::LevelData,
     script_entries: Vec<String>,
     script_dvars: Vec<(String, String)>,
@@ -1121,6 +1156,18 @@ fn preflight_match_install(
     }
     script_dvars.extend(script_dvar_overrides());
     let script_entries = startup_entries;
+    let actor_anim_sources: Vec<(String, String)> = if is_zombies {
+        sources
+            .0
+            .configs()
+            .filter_map(|(name, text)| {
+                let tree = name.strip_prefix("animtrees/")?.strip_suffix(".atr")?;
+                Some((tree.to_owned(), text.to_owned()))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let authority_models = authority_entity_model_install(&prepared.world);
     let model_spawns = script_model_spawns(&prepared.world.script_model_instances);
     let fx_catalog = PreparedFxCatalog(std::mem::take(&mut prepared.fx));
@@ -1159,6 +1206,7 @@ fn preflight_match_install(
     Ok(MatchInstallPlan {
         script_sound_aliases: prepared.script_sound_aliases,
         scripts,
+        actor_anim_sources,
         script_level,
         script_entries,
         script_dvars,

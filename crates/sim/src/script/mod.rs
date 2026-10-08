@@ -16,6 +16,7 @@ pub(crate) use std::sync::Arc;
 pub(crate) use runtime::Runtime;
 
 pub use error::{Fault, Location};
+pub use host::actor_anims::ActorAnimTree;
 pub(crate) use host::controls::{
     action_slot_command, command_buttons, player_commands, select_location,
 };
@@ -43,6 +44,18 @@ pub(crate) use ir::{Binary, Callee, Function, Global, Op, Unary};
 pub use profile::catalog::{Builtin, Catalog, Namespace, Owner};
 pub use profile::iw4_startup::Iw4Startup;
 pub use profile::t5_zombie_startup::T5ZombieStartup;
+
+/// Advances actor animation one authority tick, before scripts run.
+pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
+    if !world
+        .resource::<crate::step::StepRequest>()
+        .reason
+        .advances_authority_world()
+    {
+        return;
+    }
+    host::actor_anims::advance(world, crate::MATCH_TICK_MS as f32 / 1000.0);
+}
 pub use program::{ModuleIdentity, Program, Realm, Site};
 pub(crate) use runtime::{
     advance_scheduler, copy_state, healthy, install, preflight, reset, start, take_signals,
