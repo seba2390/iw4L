@@ -247,6 +247,7 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
         super::vehicles::damage(world, object, hit, attacker, &weapon, &tag);
         return true;
     }
+    let amount = super::t6_zombies::entity_damage_amount(world, object, hit);
     let mut runtime = world.resource_mut::<Runtime>();
     let model = match runtime.object_field(object, "model") {
         Value::String(model) => model,
@@ -257,16 +258,17 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
         Value::Float(health) => health as i32,
         _ => 0,
     };
-    let after = before.saturating_sub(hit.amount);
+    let after = before.saturating_sub(amount);
     runtime.set_object_field(object, "health", Value::Int(after));
     drop(runtime);
+    super::t6_zombies::entity_damage(world, object, hit, before, after, tag.contains("head"));
     let receiver = Value::Object(object);
     raise(
         world,
         receiver.clone(),
         "damage",
         vec![
-            Value::Int(hit.amount),
+            Value::Int(amount),
             attacker.clone(),
             Value::Vector(hit.dir),
             Value::Vector(hit.point),

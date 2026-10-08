@@ -117,6 +117,10 @@ impl<'z> T6Model<'z> {
         })
     }
 
+    pub fn source(&self) -> &'z ZoneLoad {
+        self.load
+    }
+
     pub fn name(&self) -> Option<&'z str> {
         let p = self.h_ptr(off::NAME)?;
         core::str::from_utf8(self.load.blocks.cstr(p).ok()?).ok()

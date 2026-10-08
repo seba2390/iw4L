@@ -70,6 +70,7 @@ enum Page {
     Library,
     Game,
     Multiplayer,
+    Zombies,
     Host,
     Lobby,
     Browser,
@@ -111,7 +112,7 @@ impl Menu {
         }
         self.navigate(match self.page {
             Page::Game => Page::Library,
-            Page::Multiplayer | Page::WorkInProgress => Page::Game,
+            Page::Multiplayer | Page::Zombies | Page::WorkInProgress => Page::Game,
             Page::Host | Page::Browser | Page::Communities => Page::Multiplayer,
             Page::Lobby => Page::Multiplayer,
             Page::Password => {
@@ -172,6 +173,7 @@ struct ScrollContent;
 enum Action {
     Page(Page),
     Select(Game),
+    ZombieMap(String),
     Back,
     Home,
     Wip(&'static str),
@@ -270,7 +272,7 @@ fn discover(
     );
     inventory.folders = Some(folders);
     inventory.task = Some(assets::load_pool().spawn(async move {
-        let packs = asset_transport::list_mp_map_packs(&root);
+        let mut packs = asset_transport::list_mp_map_packs(&root);
         let maps: Vec<_> = packs.iter().flat_map(|pack| &pack.maps).cloned().collect();
         let games = Game::ALL
             .into_iter()
@@ -300,6 +302,34 @@ fn discover(
                             .collect()
                     })
                     .unwrap_or_default();
+                if game == Game::BlackOps2 {
+                    if let Some(installation) = &installed {
+                        let zombies = [
+                            "zm_nuked",
+                            "zm_transit",
+                            "zm_highrise",
+                            "zm_prison",
+                            "zm_buried",
+                            "zm_tomb",
+                        ]
+                        .into_iter()
+                        .filter(|zone| {
+                            installation
+                                .join("zone")
+                                .join("all")
+                                .join(format!("{zone}.ff"))
+                                .exists()
+                        })
+                        .map(|zone| format!("t6:{zone}"))
+                        .collect::<Vec<_>>();
+                        if !zombies.is_empty() {
+                            packs.push(asset_transport::MapPack {
+                                label: "T6 Zombies".into(),
+                                maps: zombies,
+                            });
+                        }
+                    }
+                }
                 Installation {
                     game: Some(game),
                     root: installed,
@@ -399,13 +429,35 @@ fn activate(
 ) {
     match action {
         Action::Page(page) => {
-            menu.editing_lobby = page == Page::Host && menu.page == Page::Lobby;
+            menu.editing_lobby =
+                matches!(page, Page::Host | Page::Zombies) && menu.page == Page::Lobby;
             menu.navigate(page);
+            if page == Page::Multiplayer {
+                dvars.set("ui_gametype", "dm");
+                if let Some(map) = inventory.maps(menu.selected).first() {
+                    dvars.set("ui_mapname", map.clone());
+                }
+            }
             if page == Page::Browser {
                 if let Some(browser) = browser {
                     browser.refresh();
                 }
             }
+        }
+        Action::ZombieMap(map) => {
+            let changing_lobby = menu.editing_lobby;
+            if changing_lobby {
+                command(exec, format!("ui_select_map {map}"));
+            }
+            dvars.set("ui_mapname", map);
+            dvars.set("ui_gametype", "zclassic");
+            dvars.set("ui_game_namespace", "t6");
+            dvars.set("ui_scorelimit", "0");
+            dvars.set("ui_timelimit", "0");
+            if !changing_lobby {
+                command(exec, "ui_create_lobby");
+            }
+            menu.navigate(Page::Lobby);
         }
         Action::Select(game) => {
             menu.selected = Some(game);
@@ -683,7 +735,11 @@ fn input(
                 Some("host") => Some(Action::Page(Page::Host)),
                 Some("browser") => Some(Action::Page(Page::Browser)),
                 Some("campaign") => Some(Action::Wip("Campaign")),
-                Some("zombies") => Some(Action::Wip("Zombies")),
+                Some("zombies") => Some(if menu.selected == Some(Game::BlackOps2) {
+                    Action::Page(Page::Zombies)
+                } else {
+                    Action::Wip("Zombies")
+                }),
                 Some("setting") => match parts.next() {
                     Some("vsync") => Some(Action::Setting("vsync")),
                     Some("fullscreen") => Some(Action::Setting("fullscreen")),
@@ -1074,6 +1130,7 @@ fn rebuild(
                 Page::Library => "CHOOSE YOUR GAME".into(),
                 Page::Game => game.map_or("SELECT A GAME".into(), |game| game.title().to_uppercase()),
                 Page::Multiplayer => "MULTIPLAYER".into(),
+                Page::Zombies => "ZOMBIES".into(),
                 Page::Host => "MATCH SETUP".into(),
                 Page::Lobby => "GAME LOBBY".into(),
                 Page::Password => "LOBBY PASSWORD".into(),
@@ -1105,7 +1162,7 @@ fn rebuild(
                         Page::Game => {
                             button(content, &font.0, &mut order, "MULTIPLAYER", Action::Page(Page::Multiplayer), true, accent);
                             button(content, &font.0, &mut order, "CAMPAIGN", Action::Wip("Campaign"), true, accent);
-                            if matches!(game, Some(Game::BlackOps | Game::BlackOps2)) { button(content, &font.0, &mut order, "ZOMBIES", Action::Wip("Zombies"), true, accent); }
+                            if matches!(game, Some(Game::BlackOps | Game::BlackOps2)) { button(content, &font.0, &mut order, "ZOMBIES", if game == Some(Game::BlackOps2) { Action::Page(Page::Zombies) } else { Action::Wip("Zombies") }, true, accent); }
                             button(content, &font.0, &mut order, "SETTINGS", Action::Page(Page::Settings), true, accent);
                             button(content, &font.0, &mut order, "GAME INSTALLATIONS", Action::Page(Page::Installations), true, accent);
                             button(content, &font.0, &mut order, "CHANGE GAME", Action::Home, true, accent);
@@ -1116,6 +1173,17 @@ fn rebuild(
                             button(content, &font.0, &mut order, "SETTINGS", Action::Page(Page::Settings), true, accent);
                             if !installed { label(content, &font.0, "Choose a valid installation in Game Installations.", 17.0, accent); }
                             else if !runnable { label(content, &font.0, "CoD4 gameplay is not available in this build.\nIts installation and game menus are supported.", 17.0, accent); }
+                            button(content, &font.0, &mut order, "BACK", Action::Back, true, accent);
+                        }
+                        Page::Zombies => {
+                            label(content, &font.0, "SURVIVAL / EARLY BUILD", 22.0, accent);
+                            if let Some(root) = game.and_then(|game| inventory.installation(game)).and_then(|entry| entry.root.as_ref()) {
+                                for (name, zone) in [("NUKETOWN ZOMBIES", "zm_nuked"), ("TRANZIT", "zm_transit"), ("DIE RISE", "zm_highrise"), ("MOB OF THE DEAD", "zm_prison"), ("BURIED", "zm_buried"), ("ORIGINS", "zm_tomb")] {
+                                    let owned = root.join("zone").join("all").join(format!("{zone}.ff")).exists();
+                                    button(content, &font.0, &mut order, name, Action::ZombieMap(format!("t6:{zone}")), owned, accent);
+                                }
+                            }
+                            label(content, &font.0, "Map quests, special enemies and scripted events are Work in Progress.", 16.0, Color::WHITE);
                             button(content, &font.0, &mut order, "BACK", Action::Back, true, accent);
                         }
                         Page::WorkInProgress => {
@@ -1181,7 +1249,7 @@ fn rebuild(
                             }
                             if party.is_host {
                                 button(content, &font.0, &mut order, "START MATCH", Action::Start, runnable, accent);
-                                button(content, &font.0, &mut order, "CHANGE MAP / RULES", Action::Page(Page::Host), runnable, accent);
+                                button(content, &font.0, &mut order, "CHANGE MAP / RULES", if dvars.get("ui_gametype") == Some("zclassic") { Action::Page(Page::Zombies) } else { Action::Page(Page::Host) }, runnable, accent);
                                 button(content, &font.0, &mut order, "SET LOBBY PASSWORD", Action::Password, true, accent);
                                 button(content, &font.0, &mut order, "TOGGLE PUBLIC / PRIVATE", Action::Privacy, dvars.get("ui_master_configured") == Some("1"), accent);
                             }
@@ -1252,7 +1320,7 @@ fn rebuild(
                         _ => {
                             label(detail, &font.0, "WELCOME BACK", 22.0, accent);
                             label(detail, &font.0, game.map_or("Choose a game from your library.", Game::title), 20.0, Color::WHITE);
-                            label(detail, &font.0, if game.is_none() { "Select an installation, tune your settings, and enter Multiplayer." } else if installed { "Owned installation detected.\n\nCampaign and Zombies are Work in Progress." } else { "Add your owned installation in Game Installations to enable Multiplayer." }, 16.0, Color::srgb(0.7,0.74,0.76));
+                            label(detail, &font.0, if game.is_none() { "Select an installation, tune your settings, and enter Multiplayer." } else if installed { "Owned installation detected.\n\nCampaign is Work in Progress." } else { "Add your owned installation in Game Installations to enable Multiplayer." }, 16.0, Color::srgb(0.7,0.74,0.76));
                             if menu.page == Page::Library { label(detail, &font.0, "MODERN WARFARE  /  BLACK OPS", 13.0, accent); }
                         }
                     }

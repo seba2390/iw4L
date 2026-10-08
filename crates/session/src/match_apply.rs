@@ -369,6 +369,12 @@ pub fn apply_prepared_match(
         let anim_namespace = prepared_map
             .namespace
             .unwrap_or(asset_core::AssetNamespace::Iw4);
+        content.set_script_model_clips(
+            xanims
+                .0
+                .names()
+                .filter_map(|name| Some((name.to_owned(), xanims.0.clip(anim_namespace, name)?))),
+        );
         content.set_script_model_anims(xanims.0.names().filter_map(|name| {
             let parts = &xanims.0.get(anim_namespace, name)?.parts;
             let frequency = if parts.numframes > 0 && parts.framerate > 0.0 {
@@ -1121,13 +1127,23 @@ fn preflight_match_install(
         prepared_map.namespace
     );
     let roots: Vec<&str> = startup_roots.iter().map(String::as_str).collect();
+    let zombies_map = zone.starts_with("zm_");
+    if (kind == gamemode_iw4::GameModeKind::Zombies) != zombies_map
+        || (zombies_map && prepared_map.namespace != Some(asset_core::AssetNamespace::T6))
+    {
+        return Err(InstallRefusal::new(
+            "zclassic requires a T6 Zombies map; Zombies maps require zclassic".to_owned(),
+        ));
+    }
     let native_catalog = if prepared_map.namespace == Some(asset_core::AssetNamespace::T6) {
         if !matches!(
             kind,
-            gamemode_iw4::GameModeKind::FreeForAll | gamemode_iw4::GameModeKind::TeamDeathmatch
+            gamemode_iw4::GameModeKind::FreeForAll
+                | gamemode_iw4::GameModeKind::TeamDeathmatch
+                | gamemode_iw4::GameModeKind::Zombies
         ) {
             return Err(InstallRefusal::new(
-                "T6 runtime profile currently supports dm and war".to_owned(),
+                "T6 runtime profile currently supports dm, war and zclassic".to_owned(),
             ));
         }
         sim::script::Catalog::t6()
@@ -1735,27 +1751,36 @@ fn install_clip_and_player(
         bot_classes,
         seed: 0,
         kind,
-        score_limit: std::env::var("IW4L_SCORE_LIMIT")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .or(native_score)
-            .unwrap_or(match (namespace, kind) {
-                (Some(asset_core::AssetNamespace::T6), gamemode_iw4::GameModeKind::FreeForAll) => {
-                    30
-                }
-                (
-                    Some(asset_core::AssetNamespace::T6),
-                    gamemode_iw4::GameModeKind::TeamDeathmatch,
-                ) => 75,
-                (_, gamemode_iw4::GameModeKind::Domination) => gamemode_iw4::dom::SCORE_LIMIT,
-                (_, gamemode_iw4::GameModeKind::Demolition) => 0,
-                _ => sim::FFA.score_limit,
-            }),
-        time_limit_ms: native_time.unwrap_or(match kind {
-            gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::TIME_LIMIT_MS,
-            gamemode_iw4::GameModeKind::Demolition => gamemode_iw4::dd::TIME_LIMIT_MS,
-            _ => sim::FFA.time_limit_ms,
-        }),
+        score_limit: if kind == gamemode_iw4::GameModeKind::Zombies {
+            0
+        } else {
+            std::env::var("IW4L_SCORE_LIMIT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .or(native_score)
+                .unwrap_or(match (namespace, kind) {
+                    (
+                        Some(asset_core::AssetNamespace::T6),
+                        gamemode_iw4::GameModeKind::FreeForAll,
+                    ) => 30,
+                    (
+                        Some(asset_core::AssetNamespace::T6),
+                        gamemode_iw4::GameModeKind::TeamDeathmatch,
+                    ) => 75,
+                    (_, gamemode_iw4::GameModeKind::Domination) => gamemode_iw4::dom::SCORE_LIMIT,
+                    (_, gamemode_iw4::GameModeKind::Demolition) => 0,
+                    _ => sim::FFA.score_limit,
+                })
+        },
+        time_limit_ms: if kind == gamemode_iw4::GameModeKind::Zombies {
+            0
+        } else {
+            native_time.unwrap_or(match kind {
+                gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::TIME_LIMIT_MS,
+                gamemode_iw4::GameModeKind::Demolition => gamemode_iw4::dd::TIME_LIMIT_MS,
+                _ => sim::FFA.time_limit_ms,
+            })
+        },
         allow_debug_actions,
         intermission_view,
         airstrike_height,

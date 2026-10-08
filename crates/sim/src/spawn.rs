@@ -129,6 +129,11 @@ pub fn spawn_candidate_indices_for(
     client_state_team: i32,
     use_start_spawns: bool,
 ) -> Vec<usize> {
+    if kind == GameModeKind::Zombies {
+        return filter_classname(spawns, |c| {
+            matches!(c, "initial_spawn_points" | "info_player_start")
+        });
+    }
     if kind.is_team() && (client_state_team == TEAM_AXIS || client_state_team == TEAM_ALLIES) {
         let axis = client_state_team == TEAM_AXIS;
         if use_start_spawns {

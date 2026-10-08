@@ -21,6 +21,8 @@ struct DamageEdge;
 #[derive(Component, Clone, Copy)]
 enum Field {
     Match,
+    Round,
+    Use,
     Weapon,
     Health,
     Status,
@@ -105,6 +107,22 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                     Val::Auto,
                     Val::Px(24.0),
                     18.0,
+                ),
+                (
+                    Field::Round,
+                    Val::Px(28.0),
+                    Val::Auto,
+                    Val::Auto,
+                    Val::Px(88.0),
+                    24.0,
+                ),
+                (
+                    Field::Use,
+                    Val::Percent(30.0),
+                    Val::Percent(58.0),
+                    Val::Auto,
+                    Val::Auto,
+                    20.0,
                 ),
                 (
                     Field::Weapon,
@@ -368,7 +386,9 @@ fn refresh(
     for (field, mut text, mut color, mut node) in &mut fields {
         let value = match field {
             Field::Match => {
-                let score = if snapshot.meta.kind.is_team() {
+                let score = if snapshot.meta.kind.token() == "zclassic" {
+                    format!("{} POINTS", meta.score)
+                } else if snapshot.meta.kind.is_team() {
                     let team = usize::try_from(meta.client_state_team)
                         .ok()
                         .filter(|team| (1..=2).contains(team));
@@ -384,6 +404,48 @@ fn refresh(
                     time / 60,
                     time % 60
                 )
+            }
+            Field::Round | Field::Use
+                if snapshot.meta.kind.token() == "zclassic" && alive && !scores =>
+            {
+                let message = meta
+                    .hud_archival
+                    .iter()
+                    .chain(&meta.hud_current)
+                    .filter_map(|elem| {
+                        sim::hud_string_in_occupied(&snapshot.meta.hud_strings, elem.text)
+                    })
+                    .filter_map(|raw| raw.strip_prefix(sim::HUD_STRING_PLAIN))
+                    .find(|text| match field {
+                        Field::Round => text.starts_with("ROUND "),
+                        _ => {
+                            text.starts_with("USE:")
+                                || text.starts_with("Mystery Box")
+                                || text.starts_with("Perk:")
+                        }
+                    })
+                    .unwrap_or("")
+                    .to_owned();
+                if matches!(field, Field::Use) {
+                    let raw_name = message
+                        .strip_prefix("USE: ")
+                        .and_then(|rest| rest.split_whitespace().next());
+                    if let Some(raw_name) = raw_name
+                        && let Some(registry) = registry.as_ref()
+                        && let Ok(Some(index)) =
+                            registry.resolve_index(&format!("t6:weapon/{raw_name}"))
+                        && let Some(key) = registry.display_name_key_of(index)
+                        && let Some(label) = strings
+                            .as_ref()
+                            .and_then(|strings| strings.0.text_in(AssetNamespace::T6, key))
+                    {
+                        message.replacen(raw_name, label, 1)
+                    } else {
+                        message
+                    }
+                } else {
+                    message
+                }
             }
             Field::Weapon if alive && !scores => format!("{name}\n{clip:02}  /  {stock:03}"),
             Field::Health if alive && !scores && ps.health < ps.max_health => {
@@ -407,7 +469,18 @@ fn refresh(
                     },
                 )
             }
+            Field::Status if ended && snapshot.meta.kind.token() == "zclassic" => {
+                "GAME OVER".into()
+            }
+            Field::Status if alive && ps.pm_flags & playerstate_iw4::pm_flags::LAST_STAND != 0 => {
+                "DOWNED - waiting for revive".into()
+            }
             Field::Status if ended => "Match complete".into(),
+            Field::Status
+                if ps.other_flags & playerstate_iw4::other_flags::DEAD_KILLCAM_TPV != 0 =>
+            {
+                "KILLCAM\nHold use to respawn".into()
+            }
             Field::Status if !alive => "Respawning...".into(),
             Field::Killfeed if !scores => feed.clone(),
             Field::Scoreboard => scoreboard.clone(),

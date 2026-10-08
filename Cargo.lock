@@ -6801,6 +6801,7 @@ dependencies = [
  "entity_iw4",
  "frame",
  "net",
+ "playerstate_iw4",
  "session",
  "sim",
  "updater",

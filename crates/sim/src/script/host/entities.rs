@@ -423,6 +423,7 @@ impl Runtime {
         entities: &[Vec<(String, String)>],
         keys: &BTreeMap<String, KeyType>,
     ) -> Result<(), String> {
+        self.zombies.authored = Arc::new(entities.to_vec());
         let structs = match self.object_field(0, "struct") {
             Value::Array(id) => Some(id),
             _ => None,

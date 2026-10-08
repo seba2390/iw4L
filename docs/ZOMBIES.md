@@ -1,17 +1,27 @@
-# BO2 Zombies content
+# BO2 Zombies survival
 
-Zombies gameplay is work in progress. The launcher keeps its Zombies entry marked
-Work in Progress. The runtime does not yet implement waves, zombie AI, points,
-doors, barrier repair, wall purchases, the mystery box, perks, power,
-Pack-a-Punch, revival or map-specific quests and transport.
+Select Black Ops II > Zombies > a map > Start Match. This is an early survival
+build, not retail-complete Zombies. Only your installed map assets are used.
+For direct launch, set `IW4L_GAMETYPE=zclassic` and run
+`scripts/play.ps1 map t6:zm_nuked`. Zombies maps require `zclassic`.
 
-The T6 asset loader selects Zombies common, patch, UI and language zones for
-`zm_*` maps. Weapons are prepared from the selected map rather than `common_mp`;
-the cache includes the map identity. Native `_zm` weapon names and upgraded
-variants retain their identities. Missing dependencies remain explicit refusals.
-Capturing an upgraded weapon does not implement its Pack-a-Punch interaction.
+Host rules live in `sim/script/host/t6_zombies.rs`: NPC entities, collision-aware
+path-node pursuit, rounds, points, survivor inventory and nearby use purchases.
+NPCs do not consume player slots. Their models and native animation clips load
+through the T6 asset lane; world entities and HUD use existing replication.
 
-Main map content:
+Survivors start with the native M1911 and 500 points. Hits and kills earn points.
+Use at authored wall-buy locations to buy a weapon or refill owned ammunition.
+The mystery box charges for a roll; wait for it, then use again to take the gun.
+Two weapons are retained; another purchase replaces the held weapon.
+Pack-a-Punch resolves an available native upgraded variant of the held weapon.
+Missing or unsupported weapons are refused without charging points.
+
+Jugger-Nog and Speed Cola use health/reload effects. Quick Revive supports solo
+recovery for 500 points, at most three purchases, and faster teammate revival.
+Other perks remain Work in Progress.
+Co-op teammates can hold use near a downed player to revive them.
+The current co-op path uses separate clients; split-screen is not implemented.
 
 | Map | Zone |
 |---|---|
@@ -22,11 +32,12 @@ Main map content:
 | Buried | `t6:zm_buried` |
 | Origins | `t6:zm_tomb` |
 
-Map preparation has been checked for world geometry, collision and authored
-player starts. This does not verify every visual, weapon, submode or interaction.
-Town, Farm, Bus Depot, Grief and Turned need explicit submode/location handling;
-TranZit streaming and scripted transport are also unfinished.
-
-For a developer content preview, use `scripts/play.ps1 map t6:zm_nuked` with
-`IW4L_GAMES` pointing at the installed games. This runs the existing T6 FFA
-runtime over the Zombies content; it is not a Zombies match.
+Map geometry, collision and player starts were prepared for all six maps.
+This does not establish complete survival compatibility on all six.
+Native Nuketown runs verified walking body/head models, bullet and knife damage,
+points, round-two progression, wall buys, insufficient-funds refusal, mystery-box
+spin/pickup, downing and held-use teammate revival.
+Navigation, spawn distribution and round scaling are initial implementations.
+Window entry, barrier repair, map power, doors, quests, special enemies, buildables,
+transport, perk arrival and original HUD fidelity remain unfinished.
+Town, Farm, Bus Depot, Grief and Turned need submode/location handling.

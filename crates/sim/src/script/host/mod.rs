@@ -18,6 +18,7 @@ pub mod restart;
 mod sentry_placement;
 pub mod spectators;
 pub(crate) mod t6_gametype;
+pub(crate) mod t6_zombies;
 pub mod tables;
 pub mod triggers;
 pub mod turrets;

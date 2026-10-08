@@ -25,6 +25,10 @@ fn respawn_due(lifecycle: ClientLifecycle, dead_since: Option<u32>, tick: Tick) 
 }
 
 pub(crate) fn advance(world: &mut World) {
+    if super::t6_zombies::active(world) {
+        super::t6_zombies::advance(world);
+        return;
+    }
     let tick = world.resource::<crate::step::StepRequest>().tick;
     if world
         .resource::<Runtime>()
@@ -132,16 +136,38 @@ pub(crate) fn advance(world: &mut World) {
         let Some(meta) = frame.client_meta(id) else {
             continue;
         };
-        if !respawn_due(meta.lifecycle, meta.dead_since_tick, tick) {
+        let selected_team = meta.client_state_team;
+        let lifecycle = meta.lifecycle;
+        let dead_since = meta.dead_since_tick;
+        let seat = frame
+            .ecs()
+            .resource::<Runtime>()
+            .players
+            .get(&id.0)
+            .map(|slot| slot.seat);
+        let killcam = seat.filter(|seat| seat.archive_ms > 0);
+        let skip = killcam.is_some()
+            && crate::script_player::buttons(&mut frame, id)
+                & (playerstate_iw4::buttons::USE | playerstate_iw4::buttons::USE_RELOAD)
+                != 0;
+        let due = if let Some(seat) = killcam {
+            skip || dead_since.is_some_and(|since| {
+                tick.0.saturating_sub(since)
+                    >= (seat.length_ms.max(0) as u32).div_ceil(crate::MATCH_TICK_MS)
+            })
+        } else {
+            respawn_due(lifecycle, dead_since, tick)
+        };
+        if !due {
             continue;
         }
         let team = if !kind.is_team() {
             entity_iw4::TEAM_FREE
         } else if matches!(
-            meta.client_state_team,
+            selected_team,
             entity_iw4::TEAM_AXIS | entity_iw4::TEAM_ALLIES
         ) {
-            meta.client_state_team
+            selected_team
         } else {
             let counts = frame
                 .clients_scoreboard()
@@ -161,7 +187,7 @@ pub(crate) fn advance(world: &mut World) {
                 entity_iw4::TEAM_AXIS
             }
         };
-        let life = meta.life_sequence;
+        let life = frame.client_meta(id).unwrap().life_sequence;
         let seed = frame
             .root_seed()
             .wrapping_add(u64::from(id.0))
@@ -319,6 +345,8 @@ pub(crate) fn advance(world: &mut World) {
         let runtime = frame.ecs().resource_mut::<Runtime>().into_inner();
         if let Some(slot) = runtime.players.get_mut(&id.0) {
             slot.sessionstate = "playing".into();
+            slot.seat = crate::ScriptSeat::default();
+            slot.spectator.target = None;
             slot.begun = true;
         }
         diag::info!(
@@ -334,6 +362,10 @@ pub(crate) fn advance(world: &mut World) {
 }
 
 pub(crate) fn damage(world: &mut World, tick: Tick, hit: &crate::script_player::Hit) {
+    if super::t6_zombies::active(world) {
+        super::t6_zombies::player_damage(world, tick, hit);
+        return;
+    }
     let mut frame = FrameWorld::from_world(world);
     if hit.amount <= 0 || frame.phase() != MatchPhase::Playing {
         return;
@@ -405,6 +437,38 @@ pub(crate) fn damage(world: &mut World, tick: Tick, hit: &crate::script_player::
             .get_mut(&hit.victim.0)
         {
             slot.sessionstate = "dead".into();
+        }
+        if let Some(attacker) = hit
+            .attacker
+            .filter(|id| *id != hit.victim && frame.client_meta(*id).is_some())
+        {
+            let archive_ms = crate::level_time_ms(tick).clamp(0, 5000);
+            if archive_ms > 0 {
+                if let Some(ps) = frame.player_mut(hit.victim) {
+                    ps.pm_type = playerstate_iw4::PM_TYPE_SPECTATOR;
+                }
+                if let Some(slot) = frame
+                    .ecs()
+                    .resource_mut::<Runtime>()
+                    .players
+                    .get_mut(&hit.victim.0)
+                {
+                    slot.sessionstate = "spectator".into();
+                    slot.spectator.target = Some(attacker.0);
+                    slot.seat = crate::ScriptSeat {
+                        spectator_client: attacker.0 as i32,
+                        archive_ms,
+                        length_ms: archive_ms + 1000,
+                        ..Default::default()
+                    };
+                    diag::info!(
+                        Sim,
+                        "t6 killcam victim={} focus={} archive_ms={archive_ms}",
+                        hit.victim.0,
+                        attacker.0
+                    );
+                }
+            }
         }
         diag::info!(
             Sim,

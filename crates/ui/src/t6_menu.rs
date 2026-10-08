@@ -37,6 +37,7 @@ struct Menu {
     save_retry: Option<std::time::Instant>,
     pending: Option<u32>,
     host: bool,
+    zombies: bool,
     notice: String,
     picker: Vec<String>,
     pick_row: Option<ClassEditRow>,
@@ -216,7 +217,7 @@ const BINDS: [(&str, &str); 10] = [
 
 fn rows(menu: &Menu) -> usize {
     match menu.page {
-        Page::Pause => 4 + usize::from(menu.host),
+        Page::Pause => 4 + usize::from(menu.host) - usize::from(menu.zombies),
         Page::Classes => menu.profiles.len() + 1,
         Page::Edit => 11,
         Page::Rename => 2,
@@ -302,7 +303,9 @@ fn drive(
     );
     let messages: Vec<_> = requests.read().cloned().collect();
     let active = *screen == AppScreen::InGame
-        && map.is_some_and(|map| map.namespace == Some(AssetNamespace::T6));
+        && map
+            .as_ref()
+            .is_some_and(|map| map.namespace == Some(AssetNamespace::T6));
     if !active {
         open.0 = false;
         if menu.pending.is_some() {
@@ -311,8 +314,11 @@ fn drive(
         reliable.clear();
         return;
     }
-    if let (Some(identity), Some(weapons)) = (identity.as_deref(), weapons.as_deref()) {
-        load(&mut menu, identity, &catalog, weapons.registry());
+    menu.zombies = map.as_ref().is_some_and(|map| map.zone.starts_with("zm_"));
+    if !menu.zombies {
+        if let (Some(identity), Some(weapons)) = (identity.as_deref(), weapons.as_deref()) {
+            load(&mut menu, identity, &catalog, weapons.registry());
+        }
     }
     for event in reliable.read() {
         match &event.0 {
@@ -859,11 +865,11 @@ fn paint(
     let mut buttons = Vec::new();
     let title = match menu.page {
         Page::Pause => {
-            buttons.extend([
-                ("RESUME GAME".into(), Action::Resume),
-                ("CREATE A CLASS".into(), Action::Classes),
-                ("SETTINGS".into(), Action::Settings),
-            ]);
+            buttons.push(("RESUME GAME".into(), Action::Resume));
+            if !menu.zombies {
+                buttons.push(("CREATE A CLASS".into(), Action::Classes));
+            }
+            buttons.push(("SETTINGS".into(), Action::Settings));
             if menu.host {
                 buttons.push(("END MATCH / RETURN TO LOBBY".into(), Action::EndMatch));
             }
@@ -1098,11 +1104,18 @@ fn paint(
         menu.page,
         Page::Pause | Page::Settings | Page::Video | Page::Audio | Page::Controls | Page::Bindings
     ) {
-        "MULTIPLAYER".into()
+        if menu.zombies {
+            "ZOMBIES".into()
+        } else {
+            "MULTIPLAYER".into()
+        }
     } else {
         slot.map_or_else(|| "CUSTOM CLASS".into(), |s| s.name.to_uppercase())
     };
     let detail = match menu.page {
+        Page::Pause if menu.zombies => {
+            "Survive together, buy weapons with points and hold USE near a downed teammate to revive. The match continues while this menu is open."
+        }
         Page::Pause => {
             "Select a class for your next respawn, adjust your settings, or return to the lobby. The online match continues while this menu is open."
         }

@@ -246,6 +246,35 @@ fn capture_xanims(
     content.report.push(format!(
         "t6 player clips: {captured}/{total} native clips captured"
     ));
+    if asset_transport::t6_content::T6ContentMode::for_path(&content.source_path)
+        == asset_transport::t6_content::T6ContentMode::Zombies
+    {
+        let mut captured = 0;
+        for (source, asset) in std::iter::once(load)
+            .chain(others)
+            .flat_map(|source| source.assets.iter().map(move |asset| (source, asset)))
+        {
+            if asset.ty == fastfile_t6::AssetType::XAnimParts
+                && header_str(source, &asset.header, 0).is_some_and(|name| {
+                    name.starts_with("a_zombie")
+                        || name.starts_with("ai_zombie")
+                        || name.starts_with("zm_walk")
+                        || name.starts_with("zombie_")
+                })
+                && content.xanims.capture_xanim_t6(
+                    asset_core::AssetNamespace::T6,
+                    "",
+                    source,
+                    asset,
+                )
+            {
+                captured += 1;
+            }
+        }
+        content
+            .report
+            .push(format!("t6 zombie clips: {captured} native clips captured"));
+    }
 }
 
 fn capture_sounds(
@@ -2022,17 +2051,42 @@ impl ZoneLane for T6Lane {
             let script_placements =
                 asset_world::parse_script_model_placements(entity_string(&load)?);
             let mut script_xmodels: Vec<asset_model::T6Model> = Vec::new();
-            for asset in &load.assets {
-                let Some(model) = asset_model::T6Model::new(&load, asset) else {
-                    continue;
-                };
-                let Some(name) = model.name() else {
-                    continue;
-                };
-                if script_placements.iter().any(|p| p.model == name)
-                    && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
-                {
-                    script_xmodels.push(model);
+            for source in &image_loads {
+                for asset in &source.assets {
+                    let Some(model) = asset_model::T6Model::new(source, asset) else {
+                        continue;
+                    };
+                    let Some(name) = model.name() else {
+                        continue;
+                    };
+                    let actor_models: &[&str] = match path
+                        .file_stem()
+                        .and_then(|stem| stem.to_str())
+                    {
+                        Some("zm_nuked") => &["c_zom_dlc0_zom_sol_body1", "c_zom_dlc0_zom_head1"],
+                        Some("zm_transit") => &["c_zom_zombie1_body01", "c_zom_zombie_head_a"],
+                        Some("zm_highrise") => {
+                            &["c_zom_zombie_civ_shorts_body", "c_zom_zombie_chinese_head1"]
+                        }
+                        Some("zm_prison") => &["c_zom_inmate_body1", "c_zom_zombie_slackjaw_head"],
+                        Some("zm_buried") => &[
+                            "c_zom_zombie_buried_civilian_body1",
+                            "c_zom_zombie_buried_male_head1",
+                        ],
+                        Some("zm_tomb") => {
+                            &["c_zom_tomb_german_body_1a", "c_zom_tomb_german_head1"]
+                        }
+                        _ => &[],
+                    };
+                    let actor = actor_models.contains(&name);
+                    if (script_placements.iter().any(|p| p.model == name)
+                        || (asset_transport::t6_content::T6ContentMode::for_path(path)
+                            == asset_transport::t6_content::T6ContentMode::Zombies
+                            && actor))
+                        && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
+                    {
+                        script_xmodels.push(model);
+                    }
                 }
             }
             let smodel_materials: Vec<_> = smodels
@@ -2040,21 +2094,25 @@ impl ZoneLane for T6Lane {
                 .map(|(_, model)| model)
                 .chain(&script_xmodels)
                 .flat_map(|model| {
-                    (0..model.surface_count())
-                        .filter_map(|surface| load.asset_at(model.material_slot(surface)?))
+                    (0..model.surface_count()).filter_map(|surface| {
+                        Some((
+                            model.source(),
+                            model.source().asset_at(model.material_slot(surface)?)?,
+                        ))
+                    })
                 })
                 .collect();
             let mut surface_materials = Vec::with_capacity(world_materials.len());
             let mut surface_layer_formats = Vec::with_capacity(world_materials.len());
             let materials_stage = progress.begin_scoped(StageId::MapAssets, "t6_materials", None);
             let mut linked_techsets = std::collections::BTreeSet::new();
-            for material in world_materials
+            for (source, material) in world_materials
                 .iter()
                 .chain(&sky_materials)
-                .chain(&smodel_materials)
+                .map(|material| (&load, *material))
+                .chain(smodel_materials.iter().copied())
             {
-                let material = *material;
-                let name = header_str(&load, &material.header, 0)
+                let name = header_str(source, &material.header, 0)
                     .ok_or("T6 material name missing")?
                     .to_owned();
                 let row = if let Some(row) = material_rows.get(&name) {
@@ -2081,7 +2139,7 @@ impl ZoneLane for T6Lane {
                                 )
                             })?
                     } else {
-                        (&load, material)
+                        (source, material)
                     };
                     let native = capture_native(
                         material_load,
@@ -2161,8 +2219,8 @@ impl ZoneLane for T6Lane {
                 draw.sky_model.is_some()
             ));
             let model_material = |model: asset_model::T6Model, surface| {
-                let material = load.asset_at(model.material_slot(surface)?)?;
-                let name = header_str(&load, &material.header, 0)?;
+                let material = model.source().asset_at(model.material_slot(surface)?)?;
+                let name = header_str(model.source(), &material.header, 0)?;
                 material_rows
                     .get(name)
                     .copied()

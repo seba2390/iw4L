@@ -21,6 +21,7 @@ pub(crate) struct Runtime {
     pub(crate) started: bool,
     pub(crate) t6_match_started: Option<crate::Tick>,
     pub(crate) t6_match_ended: Option<crate::Tick>,
+    pub(crate) zombies: host::t6_zombies::Survival,
     pub(crate) objects: BTreeMap<u64, BTreeMap<u32, Value>>,
     pub(crate) next_object: u64,
     pub(crate) arrays: BTreeMap<u64, BTreeMap<ArrayKey, Value>>,

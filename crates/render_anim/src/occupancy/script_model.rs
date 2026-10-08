@@ -652,12 +652,16 @@ fn pose_script_models(
                 continue;
             }
             live_ids.insert(id);
-            let request = owner.dobj_state.resolve_request(|name| {
-                xanims
-                    .as_ref()?
-                    .0
-                    .clip(asset_core::AssetNamespace::Iw4, name)
-            });
+            let namespace = match assets.get(&owner.current_model) {
+                Some(asset_world::MapXModelSceneAsset::Iw4(_)) => asset_core::AssetNamespace::Iw4,
+                Some(asset_world::MapXModelSceneAsset::Iw5(_)) => asset_core::AssetNamespace::Iw5,
+                Some(asset_world::MapXModelSceneAsset::T5(_)) => asset_core::AssetNamespace::T5,
+                Some(asset_world::MapXModelSceneAsset::T6(_)) => asset_core::AssetNamespace::T6,
+                _ => continue,
+            };
+            let request = owner
+                .dobj_state
+                .resolve_request(|name| xanims.as_ref()?.0.clip(namespace, name));
             let index = if let Some(index) =
                 product.asset_index(&owner.current_model, &owner.dobj_state, &camera_lods)
             {

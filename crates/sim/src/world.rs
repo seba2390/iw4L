@@ -308,6 +308,7 @@ pub struct SimContentBuilder {
     player_anim_properties: Vec<xmodel_runtime::PlayerAnimProperties>,
     player_body_branches: Option<xmodel_runtime::PlayerBodyBranches>,
     script_model_anims: std::collections::BTreeMap<String, crate::ScriptModelPlayAnim>,
+    script_model_clips: Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>>,
     xanims: Arc<crate::MantleXAnimBind>,
     weapon_script_names: Arc<[String]>,
     weapon_script_aliases: std::collections::BTreeMap<String, u32>,
@@ -357,6 +358,13 @@ impl SimContentBuilder {
             .into_iter()
             .map(|(name, facts)| (name.to_ascii_lowercase(), facts))
             .collect();
+    }
+
+    pub fn set_script_model_clips(
+        &mut self,
+        clips: impl IntoIterator<Item = (String, Arc<xmodel_runtime::AnimClip>)>,
+    ) {
+        self.script_model_clips = Arc::new(clips.into_iter().collect());
     }
 
     pub fn set_player_anim_script(&mut self, script: Option<Arc<PlayerAnimScript>>) {
@@ -1745,6 +1753,47 @@ impl SimState {
         self.model_library = Arc::new(models);
     }
 
+    pub(crate) fn zombie_body_model(&self) -> Option<String> {
+        [
+            "c_zom_dlc0_zom_sol_body1",
+            "c_zom_zombie1_body01",
+            "c_zom_zombie_civ_shorts_body",
+            "c_zom_inmate_body1",
+            "c_zom_zombie_buried_civilian_body1",
+            "c_zom_tomb_german_body_1a",
+        ]
+        .into_iter()
+        .find(|name| self.model_library.get(*name).is_some_and(Option::is_some))
+        .map(str::to_owned)
+    }
+
+    pub(crate) fn zombie_head_attachment(&self, body: &str) -> Option<(String, String)> {
+        let capability = self.model_capability(body)??;
+        let tag = xmodel_runtime::tp_head_attach_tag(&capability.pose.bone_names)?;
+        let head = match body {
+            "c_zom_dlc0_zom_sol_body1" => "c_zom_dlc0_zom_head1",
+            "c_zom_zombie1_body01" => "c_zom_zombie_head_a",
+            "c_zom_zombie_civ_shorts_body" => "c_zom_zombie_chinese_head1",
+            "c_zom_inmate_body1" => "c_zom_zombie_slackjaw_head",
+            "c_zom_zombie_buried_civilian_body1" => "c_zom_zombie_buried_male_head1",
+            "c_zom_tomb_german_body_1a" => "c_zom_tomb_german_head1",
+            _ => return None,
+        };
+        self.model_library
+            .get(head)
+            .is_some_and(Option::is_some)
+            .then(|| (head.to_owned(), tag.to_owned()))
+    }
+
+    pub(crate) fn zombie_walk_anim(&self) -> Option<String> {
+        self.content
+            .data
+            .script_model_anims
+            .keys()
+            .find(|name| name == &"ai_zombie_walk_v1")
+            .cloned()
+    }
+
     pub(crate) fn model_capability(
         &self,
         name: &str,
@@ -2983,6 +3032,12 @@ impl SimState {
 
     pub(crate) fn corpses_mut(&mut self) -> &mut crate::PlayerCorpsePool {
         &mut self.corpses
+    }
+
+    pub(crate) fn script_model_clips(
+        &self,
+    ) -> Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>> {
+        self.content.data.script_model_clips.clone()
     }
 
     pub(crate) fn script_model_anim(&self, name: &str) -> Option<crate::ScriptModelPlayAnim> {

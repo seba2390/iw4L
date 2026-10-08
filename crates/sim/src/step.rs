@@ -141,6 +141,7 @@ fn phase_animated_map_models(world: &mut FrameWorld, tick: Tick, msec: i32) {
     let dt = msec as f32 / 1000.0;
 
     let at_time = i32::try_from(tick.0.saturating_mul(crate::MATCH_TICK_MS)).unwrap_or(i32::MAX);
+    let clips = world.script_model_clips();
     let mut mover_apos = Vec::new();
     world.visit_script_movers(|mover| {
         mover_apos.push((
@@ -154,6 +155,12 @@ fn phase_animated_map_models(world: &mut FrameWorld, tick: Tick, msec: i32) {
         };
         if dobj.play_anim.is_some() {
             dobj.advance_script_model_play_anim(dt);
+            if let Ok(request) = dobj
+                .semantic_state
+                .resolve_request(|name| clips.get(name).cloned())
+            {
+                dobj.pose_request = request;
+            }
         }
         if let Some(id) = capabilities.owner.script_model() {
             if let Some((_, apos)) = mover_apos.iter().find(|(mover_id, _)| *mover_id == id) {
