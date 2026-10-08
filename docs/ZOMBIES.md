@@ -43,7 +43,7 @@ Co-op supports held-use teammate revival through separate clients; no split-scre
 All six have prepared geometry/collision/assets; complete gameplay is not established.
 Native Nuketown verified combat, points, rounds, wall buys, box pickup and a priced
 house door. TranZit verified Depot rendering, tearing/entry, repairs and solo revival.
-Die Rise/Buried verified power switches; Origins verified Mauser spawn and six generator charges/refunds.
+Die Rise/Buried verified power switches; Origins verified Mauser spawn, six generators and shared shovel pickups.
 Pack-a-Punch purchases and additional perk effects need broader native verification.
 Transport, buildables, special enemies, quests, scripted events, Nuketown perk arrival,
 map-specific progression, traversal and full round scaling remain unfinished.

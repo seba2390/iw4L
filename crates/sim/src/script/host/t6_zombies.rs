@@ -1,4 +1,5 @@
 mod origins;
+mod origins_tools;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
@@ -56,6 +57,7 @@ pub(crate) struct Survival {
     attack_ticks: u32,
     entry_ticks: u32,
     origins: origins::PowerGrid,
+    tools: origins_tools::Tools,
 }
 
 #[derive(Clone, Debug)]
@@ -296,6 +298,7 @@ fn route(state: &Survival, start: usize, goal: usize) -> VecDeque<usize> {
 }
 
 fn initialize(world: &mut World, state: &mut Survival) {
+    state.tools.initialize(world, &state.authored);
     let mut frame = FrameWorld::from_world(world);
     for client in frame.client_ids_sorted() {
         let meta = frame.client_meta_mut(client);
@@ -1836,6 +1839,12 @@ fn interactions(
         let solo = frame.client_ids_sorted().len() == 1;
         let cash = frame.client_meta(client).map_or(0, |meta| meta.score);
         drop(frame);
+        let shovel = state.tools.selected(world, client, origin);
+        if held && !survivor.use_held && revival.is_none() && selected.is_none() {
+            if let Some(index) = shovel {
+                state.tools.take(world, client, index);
+            }
+        }
         if survivor.repair_round != state.round {
             survivor.repair_round = state.round;
             survivor.repair_points = 0;
@@ -2002,7 +2011,7 @@ fn interactions(
                     return if repair.is_some() {
                         "USE: Rebuild barrier (hold)".into()
                     } else {
-                        String::new()
+                        shovel.map_or_else(String::new, |_| "USE: Pick up shovel".into())
                     };
                 };
                 let duration = if survivor.perks.contains("revive") {
@@ -2196,6 +2205,7 @@ pub(crate) fn advance(world: &mut World) {
             state.powered = state.origins.all_active();
         }
         prepare_machines(world, &mut state, &players);
+        state.tools.advance(world, &players);
         interactions(world, &mut state, tick, &players);
         if state.remaining == 0 && state.actors.is_empty() && state.next_round.is_none() {
             state.next_round = Some(tick.0 + ticks(8000));

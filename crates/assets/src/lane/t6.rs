@@ -2290,10 +2290,12 @@ impl ZoneLane for T6Lane {
                     let machine = name.starts_with("zombie_vending_")
                         || name.contains("_vending_")
                         || matches!(name, "p6_anim_zm_buildable_pap" | "p6_zm_tm_packapunch");
+                    let shovel = path.file_stem().and_then(|stem| stem.to_str()) == Some("zm_tomb")
+                        && name == "p6_zm_tm_shovel";
                     if (script_placements.iter().any(|p| p.model == name)
                         || (asset_transport::t6_content::T6ContentMode::for_path(path)
                             == asset_transport::t6_content::T6ContentMode::Zombies
-                            && (actor || board || machine)))
+                            && (actor || board || machine || shovel)))
                         && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
                     {
                         script_xmodels.push(model);
