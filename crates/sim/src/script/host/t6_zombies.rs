@@ -1,3 +1,5 @@
+mod origins;
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
@@ -53,6 +55,7 @@ pub(crate) struct Survival {
     rise_ticks: u32,
     attack_ticks: u32,
     entry_ticks: u32,
+    origins: origins::PowerGrid,
 }
 
 #[derive(Clone, Debug)]
@@ -87,6 +90,8 @@ struct Survivor {
     repair_due: u32,
     repair_round: u32,
     repair_points: i32,
+    generator_label: Option<u64>,
+    last_generators: String,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +112,7 @@ enum PurchaseKind {
     Perk(String),
     Door(String),
     Power,
+    Generator(u8),
 }
 
 #[derive(Clone, Debug)]
@@ -540,6 +546,12 @@ fn initialize(world: &mut World, state: &mut Survival) {
             && !field(pairs, "target").is_empty()
         {
             Some(PurchaseKind::Door(field(pairs, "target").to_owned()))
+        } else if target == "s_generator" {
+            field(pairs, "script_int")
+                .parse::<u8>()
+                .ok()
+                .filter(|number| (1..=6).contains(number))
+                .map(PurchaseKind::Generator)
         } else if target == "use_elec_switch" {
             Some(PurchaseKind::Power)
         } else if target == "perksacola" && field(pairs, "script_sound") == "mx_packa_jingle" {
@@ -567,6 +579,7 @@ fn initialize(world: &mut World, state: &mut Survival) {
                 },
                 PurchaseKind::Door(_) => 750,
                 PurchaseKind::Power => 0,
+                PurchaseKind::Generator(_) => 200,
                 PurchaseKind::Box => 950,
                 PurchaseKind::Upgrade => 5000,
                 PurchaseKind::Perk(name) => match name.as_str() {
@@ -600,6 +613,7 @@ fn initialize(world: &mut World, state: &mut Survival) {
             });
         }
     }
+    state.origins.initialize(&state.authored);
     let mut edges = vec![Vec::new(); nodes.len()];
     for (i, &a) in nodes.iter().enumerate() {
         let mut neighbors: Vec<_> = nodes
@@ -701,7 +715,12 @@ fn spawn_player(world: &mut World, state: &mut Survival, client: ClientId, tick:
     let Some((origin, angles)) = spawn else {
         return;
     };
-    let Some(pistol) = weapon_id(&frame, "m1911_zm").or_else(|| weapon_id(&frame, "c96_zm")) else {
+    let starter = if state.origins.present() {
+        "c96_zm"
+    } else {
+        "m1911_zm"
+    };
+    let Some(pistol) = weapon_id(&frame, starter) else {
         return;
     };
     let pistol_name = frame.weapon_script_name(pistol).to_owned();
@@ -960,7 +979,12 @@ fn prepare_barriers(world: &mut World, state: &mut Survival, players: &[(ClientI
 }
 
 fn prepare_machines(world: &mut World, state: &mut Survival, players: &[(ClientId, [f32; 3])]) {
-    for row in &mut state.purchases {
+    let power: Vec<_> = state
+        .purchases
+        .iter()
+        .map(|row| purchase_powered(state, row))
+        .collect();
+    for (index, row) in state.purchases.iter_mut().enumerate() {
         let Some((base, angles)) = &row.model else {
             continue;
         };
@@ -970,8 +994,7 @@ fn prepare_machines(world: &mut World, state: &mut Survival, players: &[(ClientI
             continue;
         }
         let frame = FrameWorld::from_world(world);
-        let powered =
-            state.powered || matches!(&row.kind, PurchaseKind::Perk(name) if name == "revive");
+        let powered = power[index];
         let on = format!("{base}_on");
         let model = if powered && frame.model_capability(&on).flatten().is_some() {
             on.as_str()
@@ -1288,6 +1311,14 @@ fn give_gun(
     true
 }
 
+fn purchase_powered(state: &Survival, row: &Purchase) -> bool {
+    if state.origins.present() {
+        state.origins.powered(row)
+    } else {
+        !row.needs_power || state.powered
+    }
+}
+
 fn purchase(
     world: &mut World,
     state: &mut Survival,
@@ -1297,7 +1328,11 @@ fn purchase(
     tick: Tick,
 ) {
     let row = state.purchases[index].clone();
-    if row.needs_power && !state.powered && !state.upgrades.contains_key(&index) {
+    if !purchase_powered(state, &row) && !state.upgrades.contains_key(&index) {
+        return;
+    }
+    if let PurchaseKind::Generator(number) = row.kind {
+        state.origins.start(world, number, client);
         return;
     }
     if let PurchaseKind::Door(target) = &row.kind {
@@ -1357,7 +1392,7 @@ fn purchase(
         row.price
     };
     let gun = match &row.kind {
-        PurchaseKind::Door(_) | PurchaseKind::Power => return,
+        PurchaseKind::Door(_) | PurchaseKind::Power | PurchaseKind::Generator(_) => return,
         PurchaseKind::Weapon(name) => {
             let gun = resolve(name);
             if gun.is_some_and(|gun| survivor.guns.contains(&gun)) {
@@ -1725,6 +1760,7 @@ fn interactions(
             .filter(|(_, row)| {
                 !matches!(&row.kind, PurchaseKind::Door(target) if state.opened.contains(target))
                     && !(matches!(row.kind, PurchaseKind::Power) && state.powered)
+                    && !matches!(row.kind, PurchaseKind::Generator(number) if !state.origins.available(number))
             })
             .filter(|(_, row)| {
                 Vec3::from_array(row.origin).distance_squared(Vec3::from_array(origin))
@@ -1738,7 +1774,7 @@ fn interactions(
                                 row.origin[2]
                                     + if matches!(
                                         row.kind,
-                                        PurchaseKind::Door(_) | PurchaseKind::Power
+                                        PurchaseKind::Door(_) | PurchaseKind::Power | PurchaseKind::Generator(_)
                                     ) {
                                         0.0
                                     } else {
@@ -1837,6 +1873,18 @@ fn interactions(
             purchase(world, state, &mut survivor, client, index, tick);
         }
         survivor.use_held = held;
+        if state.origins.present() {
+            if survivor.generator_label.is_none() {
+                survivor.generator_label = make_hud(world, client, 290.0, 1.0);
+            }
+            let status = state.origins.status();
+            if survivor.last_generators != status {
+                if let Some(object) = survivor.generator_label {
+                    hud_text(world, object, &status);
+                }
+                survivor.last_generators = status;
+            }
+        }
         if survivor.perk_label.is_none() {
             survivor.perk_label = make_hud(world, client, 320.0, 1.0);
         }
@@ -1876,7 +1924,7 @@ fn interactions(
             .filter(|_| revival.is_none())
             .map(|index| {
                 let row = &state.purchases[index];
-                if row.needs_power && !state.powered && !state.upgrades.contains_key(&index) {
+                if !purchase_powered(state, &row) && !state.upgrades.contains_key(&index) {
                     return "USE: Requires power".to_owned();
                 }
                 match &row.kind {
@@ -1884,6 +1932,10 @@ fn interactions(
                         format!("USE: Open door / clear debris [{} points]", row.price)
                     }
                     PurchaseKind::Power => "USE: Turn on power".to_owned(),
+                    PurchaseKind::Generator(number) => state.origins.prompt(
+                        *number,
+                        FrameWorld::from_world(world).client_ids_sorted().len(),
+                    ),
                     PurchaseKind::Weapon(name) => {
                         let frame = FrameWorld::from_world(world);
                         let owned =
@@ -2015,6 +2067,7 @@ pub(crate) fn advance(world: &mut World) {
                 survivor.prompt,
                 survivor.round_label,
                 survivor.perk_label,
+                survivor.generator_label,
             ]
             .into_iter()
             .flatten()
@@ -2055,7 +2108,8 @@ pub(crate) fn advance(world: &mut World) {
                 matches!(
                     meta.lifecycle,
                     ClientLifecycle::Connecting | ClientLifecycle::ChoosingClass
-                )
+                ) || (meta.lifecycle == ClientLifecycle::Spectating
+                    && !state.survivors.contains_key(&id.0))
             })
         })
         .collect();
@@ -2137,6 +2191,10 @@ pub(crate) fn advance(world: &mut World) {
         }
         hits = move_actors(world, &mut state, tick, &players);
         prepare_barriers(world, &mut state, &players);
+        state.origins.advance(world, &players);
+        if state.origins.present() {
+            state.powered = state.origins.all_active();
+        }
         prepare_machines(world, &mut state, &players);
         interactions(world, &mut state, tick, &players);
         if state.remaining == 0 && state.actors.is_empty() && state.next_round.is_none() {

@@ -518,6 +518,8 @@ fn refresh(
                             text.starts_with("USE:")
                                 || text.starts_with("Mystery Box")
                                 || text.starts_with("Perk:")
+                                || text.starts_with("Generator ")
+                                || *text == "Another generator is being captured"
                         }
                     })
                     .unwrap_or("")

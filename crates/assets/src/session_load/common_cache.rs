@@ -493,7 +493,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         mut xanims,
         mut player_anim_sources,
         mut common_fx,
-        common_fx_models,
+        mut common_fx_models,
         common_impact,
         material_seed,
         mut common_walk_report,
@@ -677,6 +677,16 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
             products.xanims,
             products.fx,
         );
+    }
+    let mut fx_model_hints: Vec<_> = common_fx.model_hints().into_iter().collect();
+    fx_model_hints.sort();
+    for (namespace, name) in fx_model_hints {
+        if common_fx_models.index_in(namespace, &name).is_none()
+            && let Some(model) = world_weapons.get(namespace, &name)
+        {
+            common_fx_models.set_capture_ns(namespace);
+            common_fx_models.capture_shared(model.skel.clone(), &material_seed);
+        }
     }
     common_report.push(format!(
         "FPV generation: common={fpv_common_n} iw5_keys={iw5_fpv_added} t5={t5_fpv_n} t5_keys={t5_fpv_added} collide={} merged={}",

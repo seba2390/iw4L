@@ -27,7 +27,8 @@ Their full fire-rate, speed, aim-assist and dive effects remain incomplete.
 Electric Cherry, Vulture Aid and Who's Who effects remain Work in Progress.
 Native perk-machine models and owned HUD icons load from the installation.
 Power gates purchases; generic authored switches work on Die Rise and Buried.
-TranZit assembly, Mob afterlife and Origins generators need separate power rules.
+Origins' six generators use paid proximity capture/refunds and local machine power;
+all six gate Pack-a-Punch. Capture attackers/recapture, TranZit assembly and Mob afterlife are unfinished.
 Co-op supports held-use teammate revival through separate clients; no split-screen.
 
 | Map | Zone |
@@ -42,7 +43,7 @@ Co-op supports held-use teammate revival through separate clients; no split-scre
 All six have prepared geometry/collision/assets; complete gameplay is not established.
 Native Nuketown verified combat, points, rounds, wall buys, box pickup and a priced
 house door. TranZit verified Depot rendering, tearing/entry, repairs and solo revival.
-Die Rise/Buried verified power switches; Mob/Origins verified opening window waves.
+Die Rise/Buried verified power switches; Origins verified Mauser spawn and six generator charges/refunds.
 Pack-a-Punch purchases and additional perk effects need broader native verification.
 Transport, buildables, special enemies, quests, scripted events, Nuketown perk arrival,
 map-specific progression, traversal and full round scaling remain unfinished.

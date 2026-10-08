@@ -1318,6 +1318,7 @@ fn capture_content(
             }
         }
     }
+    capture_effects(&zones, ipaks, &mut content);
     let mut wanted: BTreeMap<String, (bool, bool)> = BTreeMap::new();
     let mut placements: BTreeMap<String, ([f32; 3], [f32; 3])> = BTreeMap::new();
     let mut copies: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
@@ -1366,8 +1367,31 @@ fn capture_content(
             }
         }
     }
+    for effect in &content.fx {
+        for elem in &effect.elems {
+            if elem.raw.get(FX_ELEM_TYPE) == Some(&FX_ELEM_MODEL) {
+                for name in &elem.visuals {
+                    if !name.is_empty() {
+                        wanted.entry(name.clone()).or_insert((false, false));
+                    }
+                }
+            }
+        }
+    }
     if !wanted.is_empty() {
-        wanted.insert(HANDS_MODEL.to_owned(), (true, true));
+        let hands = if asset_transport::t6_content::T6ContentMode::for_path(path)
+            == asset_transport::t6_content::T6ContentMode::Zombies
+        {
+            models
+                .keys()
+                .copied()
+                .find(|name| name.starts_with("c_zom_") && name.contains("viewhands"))
+        } else {
+            Some(HANDS_MODEL)
+        };
+        if let Some(hands) = hands {
+            wanted.insert(hands.to_owned(), (true, true));
+        }
         if let Some(knife) = melee_weapon(load).map(|melee| melee.knife) {
             wanted.entry(knife).or_insert((true, false));
         }
@@ -1464,7 +1488,6 @@ fn capture_content(
         content.materials.len(),
         ipaks.len()
     ));
-    capture_effects(&zones, ipaks, &mut content);
     content
 }
 
@@ -1484,7 +1507,10 @@ const FX_ELEM_RUNNER: u8 = 12;
 
 fn effect_name_at(load: &fastfile_t6::ZoneLoad, slot: fastfile_t6::Ptr) -> Option<&str> {
     let ptr = load.blocks.ptr_at(slot).ok()??;
-    header_str(load, load.blocks.bytes(ptr, 4).ok()?, 0).filter(|name| !name.is_empty())
+    std::str::from_utf8(load.blocks.cstr(ptr).ok()?)
+        .ok()
+        .map(|name| name.strip_prefix(',').unwrap_or(name))
+        .filter(|name| !name.is_empty())
 }
 
 fn capture_impact_table(
@@ -1501,14 +1527,20 @@ fn capture_impact_table(
                 let at = table.at(row * 144);
                 let mut entry = asset_game::OwnedFxImpactEntry::default();
                 for (i, name) in entry.nonflesh.iter_mut().enumerate() {
-                    *name = effect_name_at(load, at.at(i as u32 * 4))
-                        .unwrap_or("")
-                        .to_owned();
+                    *name = load
+                        .asset_in(asset, at.at(i as u32 * 4))
+                        .filter(|fx| fx.ty == fastfile_t6::AssetType::Fx)
+                        .and_then(|fx| header_str(load, &fx.header, 0))
+                        .map(asset_game::t6_model_name)
+                        .unwrap_or_default();
                 }
                 for (i, name) in entry.flesh.iter_mut().enumerate() {
-                    *name = effect_name_at(load, at.at(128 + i as u32 * 4))
-                        .unwrap_or("")
-                        .to_owned();
+                    *name = load
+                        .asset_in(asset, at.at(128 + i as u32 * 4))
+                        .filter(|fx| fx.ty == fastfile_t6::AssetType::Fx)
+                        .and_then(|fx| header_str(load, &fx.header, 0))
+                        .map(asset_game::t6_model_name)
+                        .unwrap_or_default();
                 }
                 entries.push(entry);
             }
@@ -1545,7 +1577,11 @@ fn capture_effects(
                     def::WORLD_LAST_SHOT_EJECT_EFFECT,
                     def::PROJ_EXPLOSION_EFFECT,
                 ] {
-                    wanted.extend(weapon.def_asset_name(field).map(str::to_owned));
+                    wanted.extend(
+                        weapon
+                            .def_loaded_asset_name(field)
+                            .map(asset_game::t6_model_name),
+                    );
                 }
             }
         }
@@ -1572,7 +1608,10 @@ fn capture_effects(
                 let Some(name) = header_str(load, &asset.header, 0) else {
                     continue;
                 };
-                if !wanted.contains(name) || content.fx.iter().any(|fx| fx.name == name) {
+                if name.starts_with(',')
+                    || !wanted.contains(name)
+                    || content.fx.iter().any(|fx| fx.name == name)
+                {
                     continue;
                 }
                 match capture_effect(load, zones, asset, name, ipaks, &mut textures, content) {
@@ -1800,6 +1839,7 @@ fn camera_region(t6: u8) -> u8 {
 
 fn capture_soldiers(
     path: &Path,
+    map: &fastfile_t6::ZoneLoad,
     factions: &[fastfile_t6::ZoneLoad],
     shared: &[fastfile_t6::ZoneLoad],
     ipaks: &[asset_transport::IPak],
@@ -1811,7 +1851,7 @@ fn capture_soldiers(
     use asset_material::t6_techset::T6Draw;
     let mut bodies = asset_model::BodyMeshBuild::default();
     let mut fpv = asset_model::FpvMeshBuild::default();
-    let zones: Vec<_> = factions.iter().chain(shared).collect();
+    let zones: Vec<_> = std::iter::once(map).chain(factions).chain(shared).collect();
     let mut decoded = DecodedTextures::new();
     let mut techsets = BTreeMap::new();
     let mut bound = BTreeMap::new();
@@ -1830,8 +1870,9 @@ fn capture_soldiers(
             if captured {
                 continue;
             }
-            let (load, asset, model) = factions
+            let (load, asset, model) = zones
                 .iter()
+                .copied()
                 .find_map(|load| {
                     load.assets.iter().find_map(|asset| {
                         let model = asset_model::T6Model::new(load, asset)?;
@@ -1936,10 +1977,20 @@ fn map_teams(
     if asset_transport::t6_content::T6ContentMode::for_path(path)
         == asset_transport::t6_content::T6ContentMode::Zombies
     {
+        let kit = (path.file_stem().and_then(|name| name.to_str()) == Some("zm_tomb")).then(|| {
+            asset_model::SoldierKit {
+                body: "c_zom_tomb_dempsey_fb".to_owned(),
+                head: None,
+                arms: Some("c_zom_dempsey_viewhands".to_owned()),
+            }
+        });
         return Ok((
             asset_game::MapTeamSettings::default(),
             Vec::new(),
-            asset_model::SoldierKits::default(),
+            asset_model::SoldierKits {
+                allies: kit.clone(),
+                axis: kit,
+            },
         ));
     }
     let patch = patch_zone(path, report).ok_or("T6 map table zone missing")?;
@@ -2553,6 +2604,7 @@ impl ZoneLane for T6Lane {
             let (team_settings, faction_loads, kits) = map_teams(path, &mut report)?;
             let (bodies, fpv_meshes) = capture_soldiers(
                 path,
+                &load,
                 &faction_loads,
                 &shared_loads,
                 &ipaks,

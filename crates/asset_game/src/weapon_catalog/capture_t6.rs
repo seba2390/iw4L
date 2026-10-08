@@ -98,26 +98,26 @@ impl WeaponCatalog {
             sounds: capture_t6_sounds(weapon),
             combat_fx: WeaponCombatFx {
                 view_flash_hint: weapon
-                    .def_asset_name(fastfile_t6::weapon::def::VIEW_FLASH_EFFECT)
-                    .map(str::to_owned),
+                    .def_loaded_asset_name(fastfile_t6::weapon::def::VIEW_FLASH_EFFECT)
+                    .map(t6_model_name),
                 world_flash_hint: weapon
-                    .def_asset_name(fastfile_t6::weapon::def::WORLD_FLASH_EFFECT)
-                    .map(str::to_owned),
+                    .def_loaded_asset_name(fastfile_t6::weapon::def::WORLD_FLASH_EFFECT)
+                    .map(t6_model_name),
                 view_shell_eject_hint: weapon
-                    .def_asset_name(fastfile_t6::weapon::def::VIEW_SHELL_EJECT_EFFECT)
-                    .map(str::to_owned),
+                    .def_loaded_asset_name(fastfile_t6::weapon::def::VIEW_SHELL_EJECT_EFFECT)
+                    .map(t6_model_name),
                 world_shell_eject_hint: weapon
-                    .def_asset_name(fastfile_t6::weapon::def::WORLD_SHELL_EJECT_EFFECT)
-                    .map(str::to_owned),
+                    .def_loaded_asset_name(fastfile_t6::weapon::def::WORLD_SHELL_EJECT_EFFECT)
+                    .map(t6_model_name),
                 view_last_shot_eject_hint: weapon
-                    .def_asset_name(fastfile_t6::weapon::def::VIEW_LAST_SHOT_EJECT_EFFECT)
-                    .map(str::to_owned),
+                    .def_loaded_asset_name(fastfile_t6::weapon::def::VIEW_LAST_SHOT_EJECT_EFFECT)
+                    .map(t6_model_name),
                 world_last_shot_eject_hint: weapon
-                    .def_asset_name(fastfile_t6::weapon::def::WORLD_LAST_SHOT_EJECT_EFFECT)
-                    .map(str::to_owned),
+                    .def_loaded_asset_name(fastfile_t6::weapon::def::WORLD_LAST_SHOT_EJECT_EFFECT)
+                    .map(t6_model_name),
                 explosion_hint: weapon
-                    .def_asset_name(fastfile_t6::weapon::def::PROJ_EXPLOSION_EFFECT)
-                    .map(str::to_owned),
+                    .def_loaded_asset_name(fastfile_t6::weapon::def::PROJ_EXPLOSION_EFFECT)
+                    .map(t6_model_name),
                 ..WeaponCombatFx::empty(crate::AssetNamespace::T6)
             },
             combat_slots: CombatFxSlots::default(),

@@ -94,9 +94,8 @@ fn vertex_input(attribute: &VertexAttribute, register: u32, vertex_type: u8) -> 
         {
             ("vec4<f32>", format!("vec4<f32>({a}.zw, 0.0, 1.0)"))
         }
-        vd::D3dDeclType::Float4 | vd::D3dDeclType::UByte4N | vd::D3dDeclType::D3dColor => {
-            ("vec4<f32>", a)
-        }
+        vd::D3dDeclType::D3dColor => ("vec4<f32>", format!("{a}.zyxw")),
+        vd::D3dDeclType::Float4 | vd::D3dDeclType::UByte4N => ("vec4<f32>", a),
         vd::D3dDeclType::Float3 => ("vec3<f32>", format!("vec4<f32>({a}, 1.0)")),
         vd::D3dDeclType::Float2 | vd::D3dDeclType::Float16x2 => {
             ("vec2<f32>", format!("vec4<f32>({a}, 0.0, 1.0)"))
