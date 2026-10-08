@@ -643,6 +643,10 @@ pub struct MasterBridge {
 }
 
 impl MasterBridge {
+    pub fn is_closing(&self) -> bool {
+        self.close.is_cancelled()
+    }
+
     pub fn state(&self) -> MasterBridgeState {
         self.state.lock().expect("master state poisoned").clone()
     }

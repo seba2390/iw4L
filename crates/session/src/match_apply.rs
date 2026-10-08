@@ -1110,9 +1110,12 @@ fn preflight_match_install(
     );
     let roots: Vec<&str> = startup_roots.iter().map(String::as_str).collect();
     let native_catalog = if prepared_map.namespace == Some(asset_core::AssetNamespace::T6) {
-        if kind != gamemode_iw4::GameModeKind::FreeForAll {
+        if !matches!(
+            kind,
+            gamemode_iw4::GameModeKind::FreeForAll | gamemode_iw4::GameModeKind::TeamDeathmatch
+        ) {
             return Err(InstallRefusal::new(
-                "T6 runtime profile currently supports dm only".to_owned(),
+                "T6 runtime profile currently supports dm and war".to_owned(),
             ));
         }
         sim::script::Catalog::t6()
@@ -1728,6 +1731,10 @@ fn install_clip_and_player(
                 (Some(asset_core::AssetNamespace::T6), gamemode_iw4::GameModeKind::FreeForAll) => {
                     30
                 }
+                (
+                    Some(asset_core::AssetNamespace::T6),
+                    gamemode_iw4::GameModeKind::TeamDeathmatch,
+                ) => 75,
                 (_, gamemode_iw4::GameModeKind::Domination) => gamemode_iw4::dom::SCORE_LIMIT,
                 (_, gamemode_iw4::GameModeKind::Demolition) => 0,
                 _ => sim::FFA.score_limit,

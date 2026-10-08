@@ -14,6 +14,7 @@ mod options;
 mod plugin;
 mod screen;
 mod t6_hud;
+mod t6_menu;
 
 pub use classes::equip_txn::{
     EquipTxnWatch, apply_pending_class_equip, resolve_class_equip_transaction,

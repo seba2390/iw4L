@@ -116,6 +116,8 @@ pub(crate) struct MenuInputs<'w, 's> {
     party: Res<'w, frame::UiPartyState>,
     frontend_strings: Option<Res<'w, asset_game::LocalizeCatalog>>,
     unified: Option<Res<'w, frame::UnifiedFrontend>>,
+    native_menu: Res<'w, frame::NativeGameMenu>,
+    map_identity: Option<Res<'w, assets::SessionMapIdentity>>,
 }
 
 #[derive(Default)]
@@ -178,10 +180,15 @@ pub(crate) fn update_script_menus(
     let meta = snapshot.and_then(|s| s.meta.for_client(local.0));
     let in_game = matches!(*input.screen, AppScreen::InGame | AppScreen::ClassSelect);
     let frontend = *input.screen == AppScreen::MainMenu;
-    if frontend && input.unified.as_ref().is_some_and(|frontend| frontend.0) {
+    let native = in_game
+        && input
+            .map_identity
+            .as_ref()
+            .is_some_and(|map| map.namespace == Some(asset_core::AssetNamespace::T6));
+    if native || frontend && input.unified.as_ref().is_some_and(|frontend| frontend.0) {
         *menus = ScriptMenus::default();
         if let Some(view) = input.hud_input.as_mut() {
-            view.script_menu_open = false;
+            view.script_menu_open = native && input.native_menu.0;
         }
         return;
     }

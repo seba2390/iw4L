@@ -77,6 +77,7 @@ enum Page {
     Installations,
     Settings,
     WorkInProgress,
+    Password,
 }
 
 #[derive(Resource, Default)]
@@ -90,6 +91,8 @@ struct Menu {
     editing_name: bool,
     notice: String,
     wip_mode: String,
+    editing_lobby: bool,
+    password_setup: bool,
 }
 
 impl Menu {
@@ -101,11 +104,23 @@ impl Menu {
     }
 
     fn back(&mut self) {
+        if self.page == Page::Host && self.editing_lobby {
+            self.editing_lobby = false;
+            self.navigate(Page::Lobby);
+            return;
+        }
         self.navigate(match self.page {
             Page::Game => Page::Library,
             Page::Multiplayer | Page::WorkInProgress => Page::Game,
             Page::Host | Page::Browser | Page::Communities => Page::Multiplayer,
             Page::Lobby => Page::Multiplayer,
+            Page::Password => {
+                if self.password_setup {
+                    Page::Lobby
+                } else {
+                    Page::Browser
+                }
+            }
             Page::Installations | Page::Settings => {
                 if self.selected.is_some() {
                     Page::Game
@@ -173,6 +188,9 @@ enum Action {
     Create,
     Start,
     Privacy,
+    Password,
+    PasswordSubmit,
+    PasswordCancel,
     Leave,
     Refresh,
     BrowserPage(bool),
@@ -381,6 +399,7 @@ fn activate(
 ) {
     match action {
         Action::Page(page) => {
+            menu.editing_lobby = page == Page::Host && menu.page == Page::Lobby;
             menu.navigate(page);
             if page == Page::Browser {
                 if let Some(browser) = browser {
@@ -437,7 +456,11 @@ fn activate(
             });
         }
         Action::Map(map) => {
-            dvars.set("ui_mapname", map);
+            if menu.editing_lobby {
+                command(exec, format!("ui_lobby_map {map}"));
+            } else {
+                dvars.set("ui_mapname", map);
+            }
         }
         Action::MapPage(next) => {
             let pages = inventory.maps(menu.selected).len().div_ceil(6).max(1);
@@ -449,15 +472,23 @@ fn activate(
         }
         Action::Mode => {
             let modes: &[&str] = if menu.selected == Some(Game::BlackOps2) {
-                &["dm"]
+                &["dm", "war"]
             } else {
                 &["dm", "war", "dom", "sd", "koth", "sab"]
             };
             let current = dvars.get("ui_gametype").unwrap_or("dm");
             let index = modes.iter().position(|&mode| mode == current).unwrap_or(0);
-            dvars.set("ui_gametype", modes[(index + 1) % modes.len()]);
+            let next = modes[(index + 1) % modes.len()];
+            if menu.editing_lobby {
+                command(exec, format!("ui_select_mode {next}"));
+            } else {
+                dvars.set("ui_gametype", next);
+            }
             for key in ["scorelimit", "timelimit"] {
-                let value = dvars.get(&format!("ui_{key}")).unwrap_or("0").to_owned();
+                let value = dvars
+                    .get(&format!("ui_{key}"))
+                    .unwrap_or(if key == "timelimit" { "10" } else { "30" })
+                    .to_owned();
                 dvars.set(
                     &format!("scr_{}_{key}", modes[(index + 1) % modes.len()]),
                     value,
@@ -504,6 +535,25 @@ fn activate(
             menu.notice = "Starting match…".into();
         }
         Action::Privacy => command(exec, "ui_lobby_privacy"),
+        Action::Password => {
+            menu.password_setup = true;
+            menu.navigate(Page::Password);
+            command(exec, "ui_password_open");
+        }
+        Action::PasswordSubmit => {
+            command(
+                exec,
+                if menu.password_setup {
+                    "ui_password_save"
+                } else {
+                    "ui_password_join"
+                },
+            );
+        }
+        Action::PasswordCancel => {
+            command(exec, "ui_password_cancel");
+            menu.back();
+        }
         Action::Leave => {
             command(exec, "ui_leave_lobby");
             menu.navigate(Page::Multiplayer);
@@ -579,12 +629,44 @@ fn input(
         })
         .collect();
     if *screen != AppScreen::MainMenu {
+        if !menu.notice.is_empty() {
+            menu.notice.clear();
+        }
         return;
     }
     let mut actions = Vec::new();
     for request in requests {
+        if let UiMenuRequest::Close(name) = &request
+            && name == "game_lobby"
+            && matches!(menu.page, Page::Lobby | Page::Host)
+        {
+            menu.editing_lobby = false;
+            menu.navigate(Page::Multiplayer);
+        }
+        if let UiMenuRequest::Open(name) = &request
+            && name == "lobby_password_join"
+        {
+            menu.password_setup = false;
+            menu.navigate(Page::Password);
+        }
+        if let UiMenuRequest::Close(name) = &request
+            && name == "lobby_password_setup"
+            && menu.page == Page::Password
+        {
+            menu.navigate(Page::Lobby);
+        }
         if let UiMenuRequest::Open(name) = request {
             if name == "game_lobby" {
+                let game = dvars
+                    .get("ui_mapname")
+                    .and_then(|map| map.split_once(':'))
+                    .and_then(|(namespace, _)| {
+                        Some((Game::from_key(namespace)?, namespace.to_owned()))
+                    });
+                if let Some((game, namespace)) = game {
+                    menu.selected = Some(game);
+                    dvars.set("ui_game_namespace", namespace);
+                }
                 actions.push(Action::Page(Page::Lobby));
                 continue;
             }
@@ -625,6 +707,24 @@ fn input(
     available.sort_by_key(|(order, _)| *order);
     let console_open = hud_input.as_ref().is_some_and(|input| input.console_open);
     if !console_open && capture.command.is_none() && !capture.consumed_input {
+        if menu.page == Page::Password && dvars.get("ui_password_pending") != Some("1") {
+            let mut password = dvars.get("ui_password_input").unwrap_or("").to_owned();
+            for event in typing.iter().filter(|event| event.state.is_pressed()) {
+                if let bevy::input::keyboard::Key::Character(text) = &event.logical_key {
+                    for ch in text.chars().filter(|ch| !ch.is_control()) {
+                        if password.len() + ch.len_utf8() <= 64 {
+                            password.push(ch);
+                        }
+                    }
+                }
+            }
+            if keys.just_pressed(KeyCode::Backspace)
+                || menu_keys.contains(&frame::UiMenuKey::Backspace)
+            {
+                password.pop();
+            }
+            dvars.set("ui_password_input", password);
+        }
         if menu.editing_name {
             for event in typing.iter().filter(|event| event.state.is_pressed()) {
                 if let bevy::input::keyboard::Key::Character(text) = &event.logical_key {
@@ -656,7 +756,9 @@ fn input(
             }
         } else {
             if keys.just_pressed(KeyCode::Escape) || menu_keys.contains(&frame::UiMenuKey::Escape) {
-                actions.push(if menu.page == Page::Lobby {
+                actions.push(if menu.page == Page::Password {
+                    Action::PasswordCancel
+                } else if menu.page == Page::Lobby {
                     Action::Leave
                 } else {
                     Action::Back
@@ -909,7 +1011,10 @@ fn rebuild(
             "partyend_reason",
             "ui_community_server",
             "ui_community_apply_disabled",
-            "ui_community_hint"
+            "ui_community_hint",
+            "ui_password_status",
+            "ui_password_pending",
+            "ui_master_configured"
         ]
         .map(|key| dvars.get(key)),
         (
@@ -919,7 +1024,13 @@ fn rebuild(
             menu.settings_tab,
             menu.editing_name,
             &menu.notice,
-            &menu.wip_mode
+            &menu.wip_mode,
+            dvars.get("ui_password_input").unwrap_or("").chars().count(),
+            menu.password_setup,
+            menu.editing_lobby,
+            (0..18)
+                .map(|index| dvars.get(&format!("ui_lobby_member_{index}")).unwrap_or(""))
+                .collect::<Vec<_>>()
         )
     );
     if !roots.is_empty()
@@ -965,6 +1076,7 @@ fn rebuild(
                 Page::Multiplayer => "MULTIPLAYER".into(),
                 Page::Host => "MATCH SETUP".into(),
                 Page::Lobby => "GAME LOBBY".into(),
+                Page::Password => "LOBBY PASSWORD".into(),
                 Page::Browser => "FIND LOBBIES".into(),
                 Page::Communities => "COMMUNITY SERVERS".into(),
                 Page::Installations => "GAME INSTALLATIONS".into(),
@@ -1069,9 +1181,19 @@ fn rebuild(
                             }
                             if party.is_host {
                                 button(content, &font.0, &mut order, "START MATCH", Action::Start, runnable, accent);
-                                button(content, &font.0, &mut order, "TOGGLE PUBLIC / PRIVATE", Action::Privacy, browser.is_some(), accent);
+                                button(content, &font.0, &mut order, "CHANGE MAP / RULES", Action::Page(Page::Host), runnable, accent);
+                                button(content, &font.0, &mut order, "SET LOBBY PASSWORD", Action::Password, true, accent);
+                                button(content, &font.0, &mut order, "TOGGLE PUBLIC / PRIVATE", Action::Privacy, dvars.get("ui_master_configured") == Some("1"), accent);
                             }
                             button(content, &font.0, &mut order, "LEAVE LOBBY", Action::Leave, true, accent);
+                        }
+                        Page::Password => {
+                            let count = dvars.get("ui_password_input").unwrap_or("").chars().count();
+                            label(content, &font.0, format!("PASSWORD     {}_", "•".repeat(count)), 20.0, Color::WHITE);
+                            let pending = dvars.get("ui_password_pending") == Some("1");
+                            button(content, &font.0, &mut order, if pending { "JOINING…" } else if menu.password_setup { "SAVE PASSWORD" } else { "JOIN LOBBY" }, Action::PasswordSubmit, !pending, accent);
+                            button(content, &font.0, &mut order, "CANCEL", Action::PasswordCancel, true, accent);
+                            if let Some(status) = dvars.get("ui_password_status").filter(|value| !value.is_empty()) { label(content, &font.0, status, 16.0, accent); }
                         }
                         Page::Communities => {
                             label(content, &font.0, dvars.get("ui_community_current").unwrap_or("Choose a server"), 18.0, accent);
@@ -1103,11 +1225,22 @@ fn rebuild(
                     match menu.page {
                         Page::Host => {
                             label(detail, &font.0, "MATCH RULES", 22.0, accent);
-                            button(detail, &font.0, &mut order, format!("MODE     {}", dvars.get("ui_gametype").unwrap_or("dm").to_uppercase()), Action::Mode, game != Some(Game::BlackOps2), accent);
+                            button(detail, &font.0, &mut order, format!("MODE     {}", dvars.get("ui_gametype").unwrap_or("dm").to_uppercase()), Action::Mode, true, accent);
                             button(detail, &font.0, &mut order, format!("SCORE LIMIT     {}", dvars.get("ui_scorelimit").unwrap_or("30")), Action::ScoreLimit, true, accent);
                             button(detail, &font.0, &mut order, format!("TIME LIMIT     {} MIN", dvars.get("ui_timelimit").unwrap_or("10")), Action::TimeLimit, true, accent);
                             label(detail, &font.0, crate::frontend::maps::map_label(map), 24.0, Color::WHITE);
-                            button(detail, &font.0, &mut order, "CREATE LOBBY", Action::Create, runnable && !maps.is_empty(), accent);
+                            button(detail, &font.0, &mut order, if menu.editing_lobby { "RETURN TO LOBBY" } else { "CREATE LOBBY" }, if menu.editing_lobby { Action::Page(Page::Lobby) } else { Action::Create }, runnable && !maps.is_empty(), accent);
+                        }
+                        Page::Password => {
+                            label(detail, &font.0, if menu.password_setup { "PROTECT YOUR LOBBY" } else { "ENTER PASSWORD" }, 22.0, accent);
+                            label(detail, &font.0, if menu.password_setup { "Type a password, then save. An empty password removes protection." } else { "Type the password provided by the host, then join the lobby." }, 16.0, Color::WHITE);
+                        }
+                        Page::Lobby => {
+                            label(detail, &font.0, "MATCH SETUP", 22.0, accent);
+                            label(detail, &font.0, crate::frontend::maps::map_label(map), 24.0, Color::WHITE);
+                            let mode = sim::HostGameModeSelection::from_token(dvars.get("ui_gametype").unwrap_or("dm"));
+                            label(detail, &font.0, mode.map_or("Multiplayer", |mode| mode.display_name()), 20.0, Color::WHITE);
+                            label(detail, &font.0, if party.is_host { "Choose the map and rules, then start the match when your group is ready." } else { "Waiting for the host to start the match. Your group stays together between matches." }, 16.0, Color::srgb(0.7,0.74,0.76));
                         }
                         Page::WorkInProgress => { label(detail, &font.0, "MORE TO COME", 21.0, accent); label(detail, &font.0, "Return to Multiplayer to explore the modes currently available.", 16.0, Color::srgb(0.7,0.74,0.76)); }
                         Page::Settings => {

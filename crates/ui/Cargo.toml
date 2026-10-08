@@ -19,6 +19,7 @@ updater = { path = "../updater" }
 session.workspace = true
 sim.workspace = true
 weapon_iw4.workspace = true
+entity_iw4.workspace = true
 
 [lints]
 workspace = true

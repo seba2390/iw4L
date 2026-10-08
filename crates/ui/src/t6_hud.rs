@@ -6,7 +6,7 @@ use net::{ClientActionInput, FrameClock, LocalPresentClient, PresentedSnapshot};
 use sim::{ClientId, ClientLifecycle, MatchPhase, Snapshot};
 use std::collections::VecDeque;
 
-use crate::layers::{GameUiFont, UiLayer, UiLayerVisibility, game_text_font};
+use crate::layers::{GameUiFont, UiLayer, game_text_font};
 
 #[derive(Component)]
 struct T6HudRoot;
@@ -77,7 +77,7 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
         .spawn((
             T6HudRoot,
             UiLayer::Hud,
-            UiLayerVisibility,
+            Visibility::Hidden,
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
@@ -138,10 +138,10 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                 (
                     Field::Scoreboard,
                     Val::Percent(28.0),
-                    Val::Percent(20.0),
+                    Val::Percent(8.0),
                     Val::Auto,
                     Val::Auto,
-                    24.0,
+                    16.0,
                 ),
             ] {
                 root.spawn((
@@ -197,6 +197,7 @@ fn player_name(snapshot: &Snapshot, id: ClientId) -> String {
 fn refresh(
     map: Option<Res<SessionMapIdentity>>,
     screen: Res<AppScreen>,
+    menu: Res<frame::NativeGameMenu>,
     presented: Res<PresentedSnapshot>,
     local: Res<LocalPresentClient>,
     weapons: Option<Res<PreparedWeapons>>,
@@ -205,7 +206,7 @@ fn refresh(
     generation: Res<frame::WorldGeneration>,
     clock: Res<FrameClock>,
     mut feed: ResMut<Killfeed>,
-    mut roots: Query<&mut Node, (With<T6HudRoot>, Without<Field>)>,
+    mut roots: Query<(&mut Node, &mut Visibility), (With<T6HudRoot>, Without<Field>)>,
     mut fields: Query<(&Field, &mut Text, &mut TextColor, &mut Node)>,
 ) {
     if feed.generation != *generation {
@@ -218,8 +219,14 @@ fn refresh(
         .as_ref()
         .is_some_and(|map| map.namespace == Some(AssetNamespace::T6))
         && *screen == AppScreen::InGame
+        && !menu.0
         && presented.snapshot().is_some();
-    for mut node in &mut roots {
+    for (mut node, mut visibility) in &mut roots {
+        *visibility = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
         node.display = if visible {
             Display::Flex
         } else {
@@ -274,9 +281,31 @@ fn refresh(
         .join("\n");
     let scoreboard = if scores {
         let mut rows = snapshot.meta.clients.iter().collect::<Vec<_>>();
-        rows.sort_by_key(|(id, m)| (std::cmp::Reverse(m.score), id.0));
-        let mut text = String::from("FREE FOR ALL\nPlayer       Score / Kills / Deaths\n");
+        rows.sort_by_key(|(id, m)| {
+            (
+                if snapshot.meta.kind.is_team() {
+                    m.client_state_team
+                } else {
+                    0
+                },
+                std::cmp::Reverse(m.score),
+                id.0,
+            )
+        });
+        let mut text = format!(
+            "{}\nPlayer       Score / Kills / Deaths\n",
+            snapshot.meta.kind.display_name()
+        );
+        let mut team = 0;
         for (id, m) in rows {
+            if snapshot.meta.kind.is_team() && m.client_state_team != team {
+                team = m.client_state_team;
+                text.push_str(match team {
+                    entity_iw4::TEAM_AXIS => "\nTEAM ORANGE\n",
+                    entity_iw4::TEAM_ALLIES => "\nTEAM BLUE\n",
+                    _ => "\nSPECTATORS\n",
+                });
+            }
             text.push_str(&format!(
                 "{}   {} / {} / {}\n",
                 player_name(snapshot, *id),
@@ -291,16 +320,45 @@ fn refresh(
     };
     for (field, mut text, mut color, mut node) in &mut fields {
         let value = match field {
-            Field::Match => format!(
-                "FREE FOR ALL   {:02}:{:02}\nScore {} / {}",
-                time / 60,
-                time % 60,
-                meta.score,
-                snapshot.meta.score_limit
-            ),
+            Field::Match => {
+                let score = if snapshot.meta.kind.is_team() {
+                    let team = usize::try_from(meta.client_state_team)
+                        .ok()
+                        .filter(|team| (1..=2).contains(team));
+                    let own = team.map_or(0, |team| snapshot.meta.objectives.scores[team]);
+                    let enemy = team.map_or(0, |team| snapshot.meta.objectives.scores[3 - team]);
+                    format!("Team {own} - {enemy} / {}", snapshot.meta.score_limit)
+                } else {
+                    format!("Score {} / {}", meta.score, snapshot.meta.score_limit)
+                };
+                format!(
+                    "{}   {:02}:{:02}\n{score}",
+                    snapshot.meta.kind.display_name(),
+                    time / 60,
+                    time % 60
+                )
+            }
             Field::Weapon if alive && !scores => format!("{name}\n{clip} / {stock}"),
             Field::Health if alive && !scores => format!("Health {}", ps.health),
             Field::Crosshair if alive && !scores && ps.f_weapon_pos_frac < 0.5 => "+".into(),
+            Field::Status if ended && snapshot.meta.kind.is_team() => {
+                let team = usize::try_from(meta.client_state_team)
+                    .ok()
+                    .filter(|team| (1..=2).contains(team));
+                team.map_or_else(
+                    || "Match complete".into(),
+                    |team| {
+                        match snapshot.meta.objectives.scores[team]
+                            .cmp(&snapshot.meta.objectives.scores[3 - team])
+                        {
+                            std::cmp::Ordering::Greater => "VICTORY",
+                            std::cmp::Ordering::Less => "DEFEAT",
+                            std::cmp::Ordering::Equal => "DRAW",
+                        }
+                        .into()
+                    },
+                )
+            }
             Field::Status if ended => "Match complete".into(),
             Field::Status if !alive => "Respawning...".into(),
             Field::Killfeed if !scores => feed.clone(),

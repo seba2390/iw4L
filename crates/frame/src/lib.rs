@@ -33,7 +33,7 @@ pub use session::{
 };
 pub use settings::{DisplayResolution, GameSettings, OtherGame};
 pub use ui::{
-    HostMatchRules, UiBindRequest, UiBindingCapture, UiExecCommand, UiMenuDvars, UiMenuKey,
-    UiMenuRequest, UiPartyState, UiPlayMusic, UiPlaySound, UiStopMusic, UnifiedFrontend,
+    HostMatchRules, NativeGameMenu, UiBindRequest, UiBindingCapture, UiExecCommand, UiMenuDvars,
+    UiMenuKey, UiMenuRequest, UiPartyState, UiPlayMusic, UiPlaySound, UiStopMusic, UnifiedFrontend,
     register_ui_contracts,
 };

@@ -13,8 +13,11 @@ Use the mouse, arrow keys, Enter and Escape; the mouse wheel scrolls long lists.
 
 Multiplayer provides map selection, mode and limits, lobby creation, privacy,
 start and leave controls, and the community server browser.
-BO2 currently exposes native Free for All. Its complete multiplayer feature
+BO2 exposes native Free for All and Team Deathmatch. Its complete multiplayer feature
 set remains experimental; see [T6.md](T6.md).
+In a BO2 match, Escape opens Resume, Create-a-Class, settings and leave controls.
+The host can end a match and return the group to its lobby to change map/rules.
+The lobby supports passwords; protected browser entries prompt before joining.
 Modern Warfare (2007) has installation recognition and menus; multiplayer
 requires an asset reader that is not implemented yet. Black Ops needs an
 owned installation and has not been validated on this machine.

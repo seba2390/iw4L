@@ -336,12 +336,9 @@ fn run_map(
         )
     };
 
+    let joining = master_intent.is_join();
     let config = LaunchConfig {
-        role: if master_intent.is_join() {
-            Role::Client
-        } else {
-            role
-        },
+        role: if joining { Role::Client } else { role },
         zone: zone.clone(),
         games_root: games.0.clone(),
         artifacts,
@@ -436,6 +433,12 @@ fn run_map(
             layers.show_only([UiLayer::Loading, UiLayer::Overlay]);
             layers
         });
+    if joining {
+        app.world_mut().remove_resource::<MatchLoadRequest>();
+        app.world_mut().remove_resource::<LoadingPreviewSource>();
+        app.world_mut().remove_resource::<LoadingScreen>();
+        app.insert_resource(AppScreen::MainMenu);
+    }
     if let Some(run) = acceptance_run {
         diag::info!(
             Launch,

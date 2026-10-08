@@ -305,10 +305,12 @@ fn load_key_for_swap(request_id: u64, bridge: Option<&net::MasterBridge>) -> Loc
         return LocalLoadKey::from_request(request_id, MatchKey::NONE, 0);
     };
     match bridge.state() {
-        net::MasterBridgeState::Hosting { .. } => {
-            LocalLoadKey::from_request(request_id, MatchKey::NONE, bridge.incarnation())
+        net::MasterBridgeState::Hosting {
+            identity,
+            in_match: true,
+            ..
         }
-        net::MasterBridgeState::Joined {
+        | net::MasterBridgeState::Joined {
             identity,
             in_match: true,
             ..
@@ -317,6 +319,9 @@ fn load_key_for_swap(request_id: u64, bridge: Option<&net::MasterBridge>) -> Loc
             MatchKey::new(identity.room_id.0, identity.epoch),
             bridge.incarnation(),
         ),
+        net::MasterBridgeState::Hosting { .. } => {
+            LocalLoadKey::from_request(request_id, MatchKey::NONE, bridge.incarnation())
+        }
         _ => LocalLoadKey::from_request(request_id, MatchKey::NONE, 0),
     }
 }
@@ -710,6 +715,7 @@ fn follow_master_match(
     bridge: Option<Res<net::MasterBridge>>,
     identity: Res<LaunchIdentity>,
     live: Res<LiveWorldIdentity>,
+    map_identity: Option<Res<assets::SessionMapIdentity>>,
     has_world: Res<HasWorld>,
     busy: Option<Res<assets::MatchLoadBusy>>,
     request: Option<Res<assets::MatchLoadRequest>>,
@@ -734,9 +740,18 @@ fn follow_master_match(
         return;
     }
     let host = matches!(state, net::MasterBridgeState::Hosting { .. });
+    let same_map = match offer.map.split_once(':') {
+        Some((namespace, zone)) => map_identity.as_ref().is_some_and(|map| {
+            map.zone == zone
+                && map
+                    .namespace
+                    .is_some_and(|loaded| loaded.as_str() == namespace)
+        }),
+        None => identity.zone == offer.map,
+    };
     if has_world.0
         && (live.load_key.match_key == offer.match_key
-            || (host && live.load_key.match_key.is_none() && identity.zone == offer.map))
+            || (host && live.load_key.match_key.is_none() && same_map))
     {
         *pending = None;
         return;

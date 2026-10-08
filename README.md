@@ -15,7 +15,7 @@ those systems work.
 
 Explore maps, fight bots, and record and replay demos. Gameplay remains incomplete;
 expect missing behavior, bugs and desyncs. The asset readers also cover MW3 and Black
-Ops. Experimental [native Black Ops II gameplay](docs/T6.md) supports FFA using
+Ops. Experimental [native Black Ops II gameplay](docs/T6.md) supports FFA and TDM using
 an owned BO2 installation, including native weapons, respawns and a basic HUD.
 
 Launching without a map opens the [game library](docs/FRONTEND.md), with

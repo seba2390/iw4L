@@ -6798,6 +6798,7 @@ dependencies = [
  "assets",
  "bevy",
  "diag",
+ "entity_iw4",
  "frame",
  "net",
  "session",

@@ -104,6 +104,7 @@ impl core::fmt::Display for FpvAssemblyError {
 pub struct FpvAssemblyKey {
     pub hands: FpvMeshIndex,
     pub gun: FpvMeshIndex,
+    pub gun_tag: &'static str,
     pub secondary_gun: Option<FpvMeshIndex>,
     pub attachments: Vec<FpvMeshIndex>,
     pub rocket: Option<FpvMeshIndex>,
@@ -193,10 +194,14 @@ impl FpvAssembly {
             (hands, FpvPartRole::Hands, None),
             (
                 mounts.gun,
-                FpvPartRole::Gun,
+                if mounts.gun_tag == "tag_knife_attach" {
+                    FpvPartRole::Knife
+                } else {
+                    FpvPartRole::Gun
+                },
                 Some(Attach {
                     parent_model: 0,
-                    tag: "tag_weapon".into(),
+                    tag: mounts.gun_tag.into(),
                 }),
             ),
         ];
@@ -334,6 +339,9 @@ impl FpvAssembly {
             (0..track_n)
                 .map(|track| {
                     self.parts.iter().zip(&tables).find_map(|(part, table)| {
+                        if part.role == FpvPartRole::Knife {
+                            return None;
+                        }
                         let local = *table.as_ref()?.get(track)?;
                         (local != FpvClipTracks::NONE).then(|| part.bone_base + usize::from(local))
                     })

@@ -36,7 +36,11 @@ pub(crate) fn advance(world: &mut World) {
         return;
     }
     let mut frame = FrameWorld::from_world(world);
-    if frame.bootstrap_ref().kind != gamemode_iw4::GameModeKind::FreeForAll {
+    let kind = frame.bootstrap_ref().kind;
+    if !matches!(
+        kind,
+        gamemode_iw4::GameModeKind::FreeForAll | gamemode_iw4::GameModeKind::TeamDeathmatch
+    ) {
         return;
     }
     if frame.phase() == MatchPhase::Warmup {
@@ -48,6 +52,7 @@ pub(crate) fn advance(world: &mut World) {
         }
         let limit = frame.bootstrap_ref().time_limit_ms;
         let runtime = frame.ecs().resource_mut::<Runtime>().into_inner();
+        runtime.engine.team_scores.clear();
         runtime.t6_match_started = Some(tick);
         runtime.engine.game_end_time = if limit == 0 {
             0
@@ -55,7 +60,11 @@ pub(crate) fn advance(world: &mut World) {
             crate::level_time_ms(tick).saturating_add(limit.min(i32::MAX as u32) as i32)
         };
         frame.set_phase(MatchPhase::Playing);
-        diag::info!(Sim, "runtime profile=t6 gametype=dm match started");
+        diag::info!(
+            Sim,
+            "runtime profile=t6 gametype={} match started",
+            kind.token()
+        );
     }
     if frame.phase() != MatchPhase::Playing {
         return;
@@ -75,7 +84,20 @@ pub(crate) fn advance(world: &mut World) {
         .clients_scoreboard()
         .into_iter()
         .max_by_key(|(id, meta)| (meta.score, std::cmp::Reverse(id.0)));
-    let reason = if limit > 0 && winner.as_ref().is_some_and(|(_, m)| m.score >= limit) {
+    let leading_score = if kind.is_team() {
+        frame
+            .ecs()
+            .resource::<Runtime>()
+            .engine
+            .team_scores
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(0)
+    } else {
+        winner.as_ref().map_or(0, |(_, meta)| meta.score)
+    };
+    let reason = if limit > 0 && leading_score >= limit {
         Some(crate::MatchEndReason::ScoreLimit)
     } else if frame.bootstrap_ref().time_limit_ms > 0
         && frame.match_elapsed_ms() >= frame.bootstrap_ref().time_limit_ms
@@ -85,7 +107,11 @@ pub(crate) fn advance(world: &mut World) {
         None
     };
     if let Some(reason) = reason {
-        frame.set_game_win_winner(winner.map(|(id, _)| id));
+        frame.set_game_win_winner(if kind.is_team() {
+            None
+        } else {
+            winner.map(|(id, _)| id)
+        });
         frame.set_phase(MatchPhase::Intermission);
         frame.push_event(
             tick,
@@ -109,6 +135,32 @@ pub(crate) fn advance(world: &mut World) {
         if !respawn_due(meta.lifecycle, meta.dead_since_tick, tick) {
             continue;
         }
+        let team = if !kind.is_team() {
+            entity_iw4::TEAM_FREE
+        } else if matches!(
+            meta.client_state_team,
+            entity_iw4::TEAM_AXIS | entity_iw4::TEAM_ALLIES
+        ) {
+            meta.client_state_team
+        } else {
+            let counts = frame
+                .clients_scoreboard()
+                .into_iter()
+                .filter(|(other, _)| *other != id)
+                .fold([0usize; 2], |mut counts, (_, meta)| {
+                    match meta.client_state_team {
+                        entity_iw4::TEAM_ALLIES => counts[0] += 1,
+                        entity_iw4::TEAM_AXIS => counts[1] += 1,
+                        _ => {}
+                    }
+                    counts
+                });
+            if counts[0] <= counts[1] {
+                entity_iw4::TEAM_ALLIES
+            } else {
+                entity_iw4::TEAM_AXIS
+            }
+        };
         let life = meta.life_sequence;
         let seed = frame
             .root_seed()
@@ -183,7 +235,7 @@ pub(crate) fn advance(world: &mut World) {
             });
             (primary, secondary)
         };
-        frame.client_meta_mut(id).client_state_team = entity_iw4::TEAM_FREE;
+        frame.client_meta_mut(id).client_state_team = team;
         frame.client_meta_mut(id).loadout = selected.as_ref().map(|class| crate::LoadoutSpec {
             class_id: class.id,
             revision: class.revision,
@@ -286,6 +338,22 @@ pub(crate) fn damage(world: &mut World, tick: Tick, hit: &crate::script_player::
     if hit.amount <= 0 || frame.phase() != MatchPhase::Playing {
         return;
     }
+    let team_mode = frame.bootstrap_ref().kind.is_team();
+    let victim_team = frame
+        .client_meta(hit.victim)
+        .map(|meta| meta.client_state_team);
+    let attacker_team = hit
+        .attacker
+        .and_then(|id| frame.client_meta(id))
+        .map(|meta| meta.client_state_team);
+    if team_mode
+        && hit.attacker.is_some_and(|id| id != hit.victim)
+        && victim_team == attacker_team
+        && victim_team
+            .is_some_and(|team| matches!(team, entity_iw4::TEAM_ALLIES | entity_iw4::TEAM_AXIS))
+    {
+        return;
+    }
     if crate::script_player::finish_damage(&mut frame, hit.victim, hit.amount, Some(hit.dir))
         == crate::script_player::Finish::Killed
     {
@@ -297,6 +365,15 @@ pub(crate) fn damage(world: &mut World, tick: Tick, hit: &crate::script_player::
             let meta = frame.client_meta_mut(attacker);
             meta.kills += 1;
             meta.score += 1;
+            if team_mode {
+                let team = meta.client_state_team;
+                let key = super::players::team_name(team).to_owned();
+                if matches!(team, entity_iw4::TEAM_ALLIES | entity_iw4::TEAM_AXIS) {
+                    let mut runtime = frame.ecs().resource_mut::<Runtime>();
+                    let score = runtime.engine.team_scores.entry(key).or_default();
+                    *score = score.saturating_add(1);
+                }
+            }
         }
         crate::script_player::obituary(
             &mut frame,
