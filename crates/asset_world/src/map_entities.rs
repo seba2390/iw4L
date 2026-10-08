@@ -427,7 +427,34 @@ pub fn dm_spawn_points_treyarch(text: &str) -> Vec<SpawnPoint> {
             spawn.classname = format!("mp_dd_{suffix}");
         }
     }
+    if spawns.is_empty() {
+        spawns = zombie_player_spawns(text)
+            .into_iter()
+            .map(|(origin, angles)| SpawnPoint {
+                classname: "mp_dm_spawn".to_owned(),
+                origin,
+                angles,
+                script_linkto: String::new(),
+                script_destructable_area: String::new(),
+            })
+            .collect();
+    }
     spawns
+}
+
+/// Player positions a zombies map authors for its own mode: the initial
+/// spawns and each zone's respawn points.
+fn zombie_player_spawns(text: &str) -> Vec<([f32; 3], [f32; 3])> {
+    parse_entities(text)
+        .into_iter()
+        .filter(|entity| entity.classname == Some("script_struct"))
+        .filter(|entity| {
+            entity.targetname.is_some_and(|name| {
+                name == "initial_spawn_points" || name.starts_with("player_respawn_point_")
+            })
+        })
+        .filter_map(|entity| Some((entity.origin?, entity.angles.unwrap_or([0.0; 3]))))
+        .collect()
 }
 
 pub fn t5_entities_for_iw4_rules(text: &str) -> String {
@@ -524,6 +551,18 @@ pub fn t5_entities_for_iw4_rules(text: &str) -> String {
         }
     }
     blocks.extend(spawned);
+    if !blocks.iter().any(|block| {
+        get(block, "classname").is_some_and(|class| MP_SPAWN_CLASSNAMES.contains(&class))
+    }) {
+        for (origin, angles) in zombie_player_spawns(text) {
+            let vector = |v: [f32; 3]| format!("{} {} {}", v[0], v[1], v[2]);
+            blocks.push(vec![
+                ("classname".into(), "mp_dm_spawn".into()),
+                ("origin".into(), vector(origin)),
+                ("angles".into(), vector(angles)),
+            ]);
+        }
+    }
     if !blocks
         .iter()
         .any(|block| get(block, "targetname") == Some("care_package"))

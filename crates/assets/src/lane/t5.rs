@@ -154,8 +154,16 @@ impl ZoneLane for T5Lane {
                 geometry.tri_count
             ));
             match build_t5_clip_collision(&stream, geometry).and_then(|mut clip| {
-                sink.map_xmodels
+                let foreign = sink
+                    .map_xmodels
                     .attach_t5_clip_models(&stream, geometry, &mut clip)?;
+                if !foreign.is_empty() {
+                    report.push(format!(
+                        "t5 clip: {} static models reference another zone; collision not attached: {}",
+                        foreign.len(),
+                        foreign.join(", ")
+                    ));
+                }
                 Ok(clip)
             }) {
                 Ok(clip) => {
