@@ -370,6 +370,14 @@ impl Runtime {
         );
         self.set_object_field(id, "classname", Value::string("player"));
         self.set_object_field(id, "code_classname", Value::string("player"));
+        if self
+            .program
+            .as_ref()
+            .is_some_and(|program| program.rules() == crate::script::Realm::T5)
+        {
+            // T5 sentients carry these as engine fields that start cleared.
+            self.set_object_field(id, "ignoreme", Value::Int(0));
+        }
         Ok(id)
     }
 

@@ -1112,6 +1112,10 @@ fn register(
 #[derive(Resource, Default)]
 struct ThreadIndex(std::collections::HashMap<u64, Entity>);
 
+pub(crate) fn thread_alive(world: &mut World, serial: u64) -> bool {
+    find_thread(world, serial).is_some()
+}
+
 fn find_thread(world: &mut World, serial: u64) -> Option<Entity> {
     if let Some(entity) = world
         .get_resource::<ThreadIndex>()

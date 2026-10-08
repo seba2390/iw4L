@@ -21,6 +21,11 @@ impl T5ZombieStartup {
         ];
         roots.extend(aitypes.iter().cloned());
         roots.extend(
+            traverse_modules(entities)
+                .into_iter()
+                .filter(|module| resolver.read_bytes(module).is_ok()),
+        );
+        roots.extend(
             crate::script::host::actor_brain::ANIMSCRIPT_MODULES
                 .iter()
                 .filter(|module| resolver.read_bytes(module).is_ok())
@@ -34,6 +39,26 @@ impl T5ZombieStartup {
         entries.push(format!("{callbacks}::codecallback_startgametype"));
         Self { roots, entries }
     }
+}
+
+/// The traversal animscripts the map's negotiation nodes name.
+fn traverse_modules(entities: &str) -> Vec<String> {
+    let mut modules: Vec<String> = entities
+        .lines()
+        .filter_map(|line| {
+            let mut quoted = line.split('"').skip(1).step_by(2);
+            match (quoted.next(), quoted.next()) {
+                (Some("animscript"), Some(script)) if !script.is_empty() => Some(format!(
+                    "animscripts/traverse/{}",
+                    script.to_ascii_lowercase()
+                )),
+                _ => None,
+            }
+        })
+        .collect();
+    modules.sort_unstable();
+    modules.dedup();
+    modules
 }
 
 fn aitype_modules(entities: &str) -> Vec<String> {

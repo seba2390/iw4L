@@ -447,6 +447,65 @@ fn flag_for(tree: &ActorAnimTree, flags: &BTreeMap<u16, Arc<str>>, leaf: u16) ->
     None
 }
 
+/// Plays `anim` as a scripted animation: knobbed in from `root` (the
+/// actor's `body` branch by default), restarted, notetracks reported under
+/// `notify`. Returns the animation's node.
+pub(crate) fn play_scripted(
+    world: &mut World,
+    actor: u64,
+    notify: &str,
+    anim: &Value,
+    root: Option<&Value>,
+    rate: f32,
+    goal_time: f32,
+) -> Result<u16, String> {
+    let tree = world
+        .resource::<Runtime>()
+        .actor_anims
+        .get(&actor)
+        .map(|anim| anim.tree.name.clone())
+        .ok_or("actor has no animation tree")?;
+    let root = root.cloned().unwrap_or_else(|| Value::Animation {
+        tree: tree.as_str().into(),
+        name: "body".into(),
+    });
+    let args = [
+        Value::string(notify),
+        anim.clone(),
+        root,
+        Value::Float(1.0),
+        Value::Float(goal_time),
+        Value::Float(rate),
+    ];
+    set_anim(
+        world,
+        &Value::Object(actor),
+        &args,
+        SetAnim::plain().flagged().knob().all().restart(),
+    )?;
+    let name = anim_name(&args, 1)?;
+    let runtime = world.resource::<Runtime>();
+    let state = runtime
+        .actor_anims
+        .get(&actor)
+        .ok_or("actor has no animation tree")?;
+    state
+        .tree
+        .node(&name)
+        .ok_or_else(|| format!("animation '{name}' is not in tree '{tree}'"))
+}
+
+/// The clip a node plays and its normalized time.
+pub(crate) fn node_clip(
+    world: &World,
+    actor: u64,
+    node: u16,
+) -> Option<(Arc<xmodel_runtime::AnimClip>, f32)> {
+    let anim = world.resource::<Runtime>().actor_anims.get(&actor)?;
+    let clip = anim.runtime.leaf_clip(XAnimNodeId(node))?;
+    Some((clip, anim.state(node).time))
+}
+
 /// Root motion and yaw of an actor over the last tick, blended by the
 /// effective weight of every playing leaf.
 pub(crate) fn root_delta(world: &World, actor: u64) -> Option<([f32; 3], f32)> {

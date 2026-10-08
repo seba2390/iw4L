@@ -68,6 +68,9 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         runtime.set_object_field(id, "origin", Value::Vector(origin));
         runtime.set_object_field(id, "angles", Value::Vector(angles));
         runtime.set_object_field(id, "code_classname", Value::string("actor"));
+        runtime.set_object_field(id, "movemode", Value::string("run"));
+        runtime.set_object_field(id, "ignoreme", Value::Int(0));
+        runtime.set_object_field(id, "ignoreall", Value::Int(0));
         if let Value::Int(n) = count {
             runtime.set_object_field(spawner_id, "count", Value::Int(n - 1));
         }
@@ -83,10 +86,16 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
     let main = format!("aitype/{aitype}::main");
     run_now(world, &main, Value::Object(id), Vec::new(), now)
         .map_err(|fault| format!("{main}: {fault:?}"))?;
-    let tree = match world.resource_mut::<Runtime>().object_field(id, "type") {
-        Value::String(kind) if kind.as_bytes() == b"zombie_dog" => "zombie_dog",
-        _ => "generic_human",
-    };
+    let dog = matches!(
+        world.resource_mut::<Runtime>().object_field(id, "type"),
+        Value::String(kind) if kind.as_bytes() == b"zombie_dog"
+    );
+    {
+        let mut runtime = world.resource_mut::<Runtime>();
+        runtime.set_object_field(id, "isdog", Value::Int(dog.into()));
+        runtime.set_object_field(id, "delayeddeath", Value::Int(0));
+    }
+    let tree = if dog { "zombie_dog" } else { "generic_human" };
     let _ = super::actor_anims::attach(world, id, tree);
     super::actor_brain::begin(world, id)?;
     raise(world, spawner.clone(), "spawned", vec![Value::Object(id)]);

@@ -289,6 +289,7 @@ pub(super) const T5_ZOMBIE: &[Builtin] = &[
     Builtin::new(Method, "startcameratween", Entity, false),
     Builtin::new(Method, "startfadingblur", Entity, false),
     Builtin::new(Method, "startrevive", Entity, false),
+    Builtin::new(Method, "startscriptedanim", Entity, false),
     Builtin::new(Method, "stopanimscripted", Entity, false),
     Builtin::new(Method, "stoprevive", Entity, false),
     Builtin::new(Method, "stopshoot", Entity, false),

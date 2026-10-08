@@ -14,10 +14,32 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .collect();
         new_array(world, players)
     });
-    // No actors are simulated yet, so every query for living AI is empty.
     registry.register(Function, "getaiarray", |world, _, args| {
-        optional_team(args)?;
-        new_array(world, Vec::new())
+        let team = optional_team(args)?;
+        let actors = living_actors(world, team.as_deref())
+            .into_iter()
+            .map(Value::Object)
+            .collect();
+        new_array(world, actors)
+    });
+    // `GetAISpeciesArray(team, species)`: every actor here is of one species.
+    registry.register(Function, "getaispeciesarray", |world, _, args| {
+        let team = optional_team(&args[..args.len().min(1)])?;
+        let actors = living_actors(world, team.as_deref())
+            .into_iter()
+            .map(Value::Object)
+            .collect();
+        new_array(world, actors)
+    });
+    registry.register(Function, "issentient", |world, _, args| {
+        let sentient = match world
+            .resource::<Runtime>()
+            .entity(super::super::args::arg(args, 0)?)
+        {
+            Some((_, entity)) => matches!(entity.kind, EntityKind::Player | EntityKind::Actor),
+            None => false,
+        };
+        Ok(Value::Int(sentient.into()))
     });
     registry.register(Function, "getaispeciesarray", |world, _, _| {
         new_array(world, Vec::new())
@@ -39,6 +61,19 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setailimit", |_, _, _| Ok(Value::Undefined));
     registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
     registry.register(Method, "setexploderid", |_, _, _| Ok(Value::Undefined));
+    // Script-state tracing is a developer aid; eye glow is drawn from the head.
+    registry.register(Method, "trackscriptstate", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "haseyes", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "isnotarget", |world, receiver, _| {
+        let id = match receiver {
+            Value::Object(id) => *id,
+            _ => return Err("receiver is not an entity".into()),
+        };
+        let notarget = world.resource_mut::<Runtime>().object_field(id, "notarget");
+        Ok(Value::Int(i32::from(
+            matches!(notarget, Value::Int(n) if n != 0),
+        )))
+    });
     registry.register(Function, "getnumconnectedplayers", |world, _, args| {
         no_args(args)?;
         Ok(Value::Int(players(world).len() as i32))
@@ -80,6 +115,32 @@ fn spawners(world: &mut World) -> Vec<u64> {
     candidates
         .into_iter()
         .filter(|&id| matches!(runtime.object_field(id, "spawnflags"), Value::Int(flags) if flags & 1 != 0))
+        .collect()
+}
+
+/// Actors alive on `team` (or any team), in entity order.
+fn living_actors(world: &mut World, team: Option<&str>) -> Vec<u64> {
+    let actors: Vec<u64> = world
+        .resource::<Runtime>()
+        .entities
+        .iter()
+        .filter(|(_, entity)| entity.kind == EntityKind::Actor)
+        .map(|(id, _)| *id)
+        .collect();
+    let mut runtime = world.resource_mut::<Runtime>();
+    actors
+        .into_iter()
+        .filter(|&id| {
+            let alive = match runtime.object_field(id, "health") {
+                Value::Int(n) => n > 0,
+                Value::Float(f) => f > 0.0,
+                _ => false,
+            };
+            let on_team = team.is_none_or(|team| {
+                matches!(runtime.object_field(id, "team"), Value::String(own) if own.as_bytes() == team.as_bytes())
+            });
+            alive && on_team
+        })
         .collect()
 }
 

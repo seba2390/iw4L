@@ -68,8 +68,8 @@ Done when a zombie stands in Kino playing an animation.
 - [x] Deliver notetracks to scripts. Synced loops are not phase-locked yet.
 - [x] Run the zombie animscript init and dispatch `stop`; a spawned zombie idles
       on `ai_zombie_idle_v1_delta`.
-- [x] Dispatch `move` and `combat` as well as `stop`.
-- [ ] Scripted and custom animation (`AnimScripted`, `AnimCustom`), `death`.
+- [x] Dispatch `move`, `combat`, `scripted` and traversals as well as `stop`.
+- [ ] Custom animation (`AnimCustom`) and `death`.
 
 Done when the real zombie animscripts run and the zombie animates in place.
 
@@ -85,13 +85,15 @@ Done when the real zombie animscripts run and the zombie animates in place.
 Done when a zombie chases the player around Kino.
 
 ### 5. Traversals and barriers
-- [ ] Traversal links run their animscripts (mantles, jump-downs, wall drops).
-- [ ] Scripted animation overrides (rise from the ground, tearing boards).
+- [x] Traversal links run their animscripts (mantles, jump-downs, wall drops).
+- [x] Scripted animation (`AnimScripted`): a zombie tears all six boards off
+      its window, mantles in, walks down the stairs and reaches the player.
+- [ ] Verify every Kino traversal and the rise-from-ground spawn.
 
 Done when zombies come through windows and use every traversal in Kino.
 
 ### 6. Combat
-- [ ] Zombie melee damages players.
+- [x] Zombie melee damages players (and kills a lone player).
 - [ ] Player weapons hit actors with hit locations (headshots).
 - [ ] Death, corpses, ragdoll and gibbing.
 

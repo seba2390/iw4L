@@ -48,6 +48,16 @@ pub struct ActorPaths {
     nodes: Vec<NavNode>,
 }
 
+/// Sight lines run between eyes this high above the feet.
+const EYE_HEIGHT: f32 = 60.0;
+/// How far an actor's melee reaches, and how far off its facing.
+const MELEE_REACH: f32 = 96.0;
+const MELEE_ARC: f32 = 60.0;
+const DEFAULT_MELEE_DAMAGE: i32 = 60;
+
+/// How many of the closest nodes are traced for a straight walk.
+const REACH_CANDIDATES: usize = 12;
+
 /// Nodes farther above or below a position than this do not serve it.
 const NODE_STEP_HEIGHT: f32 = 72.0;
 
@@ -64,21 +74,38 @@ impl ActorPaths {
         self.nodes.is_empty()
     }
 
-    fn nearest(&self, at: [f32; 3]) -> Option<u16> {
-        self.nodes
+    /// The closest node with nothing solid between it and `at`, or the
+    /// closest node at all when none of the nearest few is in reach.
+    fn nearest(
+        &self,
+        at: [f32; 3],
+        reach: &mut dyn FnMut([f32; 3], [f32; 3]) -> bool,
+    ) -> Option<u16> {
+        let mut candidates: Vec<(f32, u16)> = self
+            .nodes
             .iter()
             .enumerate()
             .filter(|(_, node)| (node.origin[2] - at[2]).abs() <= NODE_STEP_HEIGHT)
-            .min_by(|(_, a), (_, b)| {
-                distance_sq(a.origin, at).total_cmp(&distance_sq(b.origin, at))
-            })
-            .map(|(index, _)| index as u16)
+            .map(|(index, node)| (distance_sq(node.origin, at), index as u16))
+            .collect();
+        candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
+        candidates
+            .iter()
+            .take(REACH_CANDIDATES)
+            .find(|(_, node)| reach(at, self.nodes[*node as usize].origin))
+            .or(candidates.first())
+            .map(|(_, node)| *node)
     }
 
     /// The node sequence from the node serving `from` to the one serving `to`.
-    fn plan(&self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<u16>> {
-        let start = self.nearest(from)?;
-        let goal = self.nearest(to)?;
+    fn plan(
+        &self,
+        from: [f32; 3],
+        to: [f32; 3],
+        reach: &mut dyn FnMut([f32; 3], [f32; 3]) -> bool,
+    ) -> Option<Vec<u16>> {
+        let start = self.nearest(from, reach)?;
+        let goal = self.nearest(to, reach)?;
         let goal_origin = self.nodes[goal as usize].origin;
         let mut best: BTreeMap<u16, (f32, Option<u16>)> = BTreeMap::new();
         best.insert(start, (0.0, None));
@@ -96,6 +123,16 @@ impl ActorPaths {
                     cursor = previous;
                 }
                 path.reverse();
+                // Already past the first node: head for the second.
+                if let [first, second, ..] = path[..] {
+                    let (a, b) = (
+                        self.nodes[first as usize].origin,
+                        self.nodes[second as usize].origin,
+                    );
+                    if distance_sq(from, b) < distance_sq(a, b) && reach(from, b) {
+                        path.remove(0);
+                    }
+                }
                 return Some(path);
             }
             let cost = best[&node].0;
@@ -180,20 +217,79 @@ pub(crate) struct ActorMove {
     /// Where the path was planned to; an entity goal replans when it moves.
     planned_to: Option<[f32; 3]>,
     waypoints: Vec<[f32; 3]>,
+    /// The path node each waypoint stands on; the goal point has none.
+    waypoint_nodes: Vec<Option<u16>>,
+    /// The traversal the actor is playing between two negotiation nodes.
+    pub(crate) traversal: Option<Traversal>,
     pub(crate) anim_mode: AnimMode,
     pub(crate) orient: Orient,
     /// Stances a script allows; none recorded means all.
     stances: Option<Vec<String>>,
     /// Direction of travel over the last tick, in degrees.
     heading: Option<f32>,
+    /// A scripted animation placing the actor, once started.
+    scripted: Option<Scripted>,
+    /// `AnimScripted` was called; the scripted animscript starts it.
+    scripted_pending: bool,
+}
+
+/// A negotiation link being crossed by its begin node's animscript.
+#[derive(Clone, Debug)]
+pub(crate) struct Traversal {
+    pub(crate) begin: u16,
+    pub(crate) end: u16,
+    pub(crate) script: String,
+    pub(crate) thread: Option<u64>,
+}
+
+/// A scripted animation aligned to a point: the actor stands where the
+/// animation's root motion puts it relative to `origin` and `yaw`.
+#[derive(Clone, Debug)]
+struct Scripted {
+    origin: [f32; 3],
+    yaw: f32,
+    node: u16,
 }
 
 impl ActorMove {
     pub(crate) fn has_path(&self) -> bool {
         !self.waypoints.is_empty()
     }
+
+    fn clear_path(&mut self) {
+        self.waypoints.clear();
+        self.waypoint_nodes.clear();
+    }
+
+    fn drop_waypoint(&mut self) {
+        self.waypoints.remove(0);
+        if !self.waypoint_nodes.is_empty() {
+            self.waypoint_nodes.remove(0);
+        }
+    }
+
+    /// Ends a finished traversal; the path resumes past its end node.
+    pub(crate) fn finish_traversal(&mut self) {
+        let Some(traversal) = self.traversal.take() else {
+            return;
+        };
+        if self.waypoint_nodes.first() == Some(&Some(traversal.end)) {
+            self.drop_waypoint();
+        }
+    }
+
+    /// A scripted animation was asked for and has not started yet.
+    pub(crate) fn scripted_waiting(&self) -> bool {
+        self.scripted_pending && self.scripted.is_none()
+    }
+
+    pub(crate) fn is_scripted(&self) -> bool {
+        self.scripted.is_some() || self.scripted_pending
+    }
 }
 
+/// A goal set this close to the current one keeps the current path.
+const SAME_GOAL_DISTANCE: f32 = 16.0;
 /// A goal entity that moves farther than this is chased with a new path.
 const REPLAN_DISTANCE: f32 = 64.0;
 /// A waypoint closer than this is passed.
@@ -205,7 +301,7 @@ const TURN_RATE: f32 = 360.0;
 /// The actor's collision box for ground traces.
 const ACTOR_MINS: [f32; 3] = [-15.0, -15.0, 0.0];
 const ACTOR_MAXS: [f32; 3] = [15.0, 15.0, 18.0];
-const GROUND_PROBE_UP: f32 = 48.0;
+const GROUND_PROBE_STARTS: [f32; 3] = [48.0, 18.0, 1.0];
 const GROUND_PROBE_DOWN: f32 = 64.0;
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
@@ -236,6 +332,190 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "setgoalentity", |world, receiver, args| {
         let target = super::natives::engine::entity_id(world, arg(args, 0)?)?;
         set_goal(world, receiver, Goal::Entity(target))
+    });
+    registry.register(Method, "animscripted", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let init = format!(
+            "animscripts/{}scripted::init",
+            super::actor_brain::prefix(world, id)
+        );
+        let now = super::players::now_ms(world);
+        crate::script::runtime::run_now(world, &init, receiver.clone(), args.to_vec(), now)
+            .map_err(|fault| format!("{init}: {fault:?}"))?;
+        with_move(world, receiver, |movement| {
+            movement.scripted = None;
+            movement.scripted_pending = true;
+        })
+    });
+    registry.register(Method, "startscriptedanim", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let notify = string(args, 0)?;
+        let origin = vector(args, 1)?;
+        let angles = vector(args, 2)?;
+        let anim = arg(args, 3)?.clone();
+        let root = args.get(5).filter(|root| **root != Value::Undefined);
+        let rate = match args.get(6) {
+            Some(Value::Float(rate)) => *rate,
+            Some(Value::Int(rate)) => *rate as f32,
+            _ => 1.0,
+        };
+        let goal_time = match args.get(7) {
+            Some(Value::Float(time)) => *time,
+            Some(Value::Int(time)) => *time as f32,
+            _ => 0.2,
+        };
+        let node =
+            super::actor_anims::play_scripted(world, id, &notify, &anim, root, rate, goal_time)?;
+        with_move(world, receiver, |movement| {
+            movement.scripted = Some(Scripted {
+                origin,
+                yaw: angles[1],
+                node,
+            });
+            movement.scripted_pending = false;
+            movement.clear_path();
+        })
+    });
+    registry.register(Method, "stopanimscripted", |world, receiver, _| {
+        with_move(world, receiver, |movement| {
+            movement.scripted = None;
+            movement.scripted_pending = false;
+        })
+    });
+    registry.register(Method, "forceteleport", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let origin = vector(args, 0)?;
+        let angles = match args.get(1) {
+            Some(Value::Vector(angles)) => Some(*angles),
+            _ => None,
+        };
+        let mut runtime = world.resource_mut::<Runtime>();
+        runtime.set_object_field(id, "origin", Value::Vector(origin));
+        if let Some(angles) = angles {
+            runtime.set_object_field(id, "angles", Value::Vector(angles));
+        }
+        let movement = runtime.actor_moves.entry(id).or_default();
+        movement.clear_path();
+        movement.planned_to = None;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "calcpathlength", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let to = vector(args, 0)?;
+        let (from, _) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+            return Ok(Value::Float(distance_sq(from, to).sqrt()));
+        };
+        let mut reach = |a: [f32; 3], b: [f32; 3]| walkable(world, a, b);
+        let Some(nodes) = paths.plan(from, to, &mut reach) else {
+            return Ok(Value::Undefined);
+        };
+        let mut length = 0.0;
+        let mut at = from;
+        for point in nodes
+            .iter()
+            .map(|&node| paths.nodes[node as usize].origin)
+            .chain(std::iter::once(to))
+        {
+            length += distance_sq(at, point).sqrt();
+            at = point;
+        }
+        Ok(Value::Float(length))
+    });
+    for (name, end) in [
+        ("getnegotiationstartnode", false),
+        ("getnegotiationendnode", true),
+    ] {
+        let native: crate::script::Native = if end {
+            |world, receiver, _| negotiation_node(world, receiver, true)
+        } else {
+            |world, receiver, _| negotiation_node(world, receiver, false)
+        };
+        registry.register(Method, name, native);
+    }
+    // Traversals move by their animation alone until the animscript ends.
+    registry.register(Method, "traversemode", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "maymovetopoint", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let to = vector(args, 0)?;
+        let (from, _) = pose(&mut world.resource_mut::<Runtime>(), id);
+        Ok(Value::Int(walkable(world, from, to).into()))
+    });
+    registry.register(Method, "maymovefrompointtopoint", |world, _, args| {
+        let (from, to) = (vector(args, 0)?, vector(args, 1)?);
+        Ok(Value::Int(walkable(world, from, to).into()))
+    });
+    registry.register(Method, "isingoal", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let point = vector(args, 0)?;
+        let radius = goal_radius(world, id);
+        let inside =
+            goal_position(world, id).is_none_or(|goal| horizontal_distance(goal, point) <= radius);
+        Ok(Value::Int(inside.into()))
+    });
+    registry.register(Method, "cansee", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let target = super::natives::engine::entity_id(world, arg(args, 0)?)?;
+        let (origin, _) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let Some(at) = as_vector(super::players::entity_field(world, target, "origin")) else {
+            return Ok(Value::Int(0));
+        };
+        let trace = FrameWorld::from_world(world).trace_clip(
+            [origin[0], origin[1], origin[2] + EYE_HEIGHT],
+            [at[0], at[1], at[2] + EYE_HEIGHT],
+            [0.0; 3],
+            [0.0; 3],
+            MASK_PLAYER_SOLID,
+        );
+        Ok(Value::Int(i32::from(
+            trace.startsolid == 0 && trace.fraction >= 1.0,
+        )))
+    });
+    registry.register(Method, "melee", |world, receiver, _| {
+        let id = actor_id(world, receiver)?;
+        let (origin, angles) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let enemy = match world.resource_mut::<Runtime>().object_field(id, "enemy") {
+            Value::Object(enemy) => enemy,
+            _ => return Ok(Value::Undefined),
+        };
+        let Some(client) = world.resource::<Runtime>().player_client(enemy) else {
+            return Ok(Value::Undefined);
+        };
+        let Some(at) = as_vector(super::players::entity_field(world, enemy, "origin")) else {
+            return Ok(Value::Undefined);
+        };
+        let facing = math_iw4::angle_subtract(yaw_to(origin, at), angles[1]).abs();
+        if horizontal_distance(origin, at) > MELEE_REACH
+            || (origin[2] - at[2]).abs() > NODE_STEP_HEIGHT
+            || facing > MELEE_ARC
+        {
+            return Ok(Value::Undefined);
+        }
+        let amount = match world
+            .resource_mut::<Runtime>()
+            .object_field(id, "meleedamage")
+        {
+            Value::Int(n) => n,
+            Value::Float(f) => f as i32,
+            _ => DEFAULT_MELEE_DAMAGE,
+        };
+        let inflictor = world.resource::<Runtime>().presence_of(receiver);
+        world
+            .resource_mut::<Runtime>()
+            .hits
+            .push(crate::script::ScriptHit {
+                piece: None,
+                target: crate::script::HitTarget::Player(crate::ClientId(client)),
+                amount,
+                origin,
+                attacker: None,
+                inflictor,
+                means: "MOD_MELEE",
+                weapon: 0,
+                flags: 0,
+                hitloc: 0,
+            });
+        Ok(Value::Object(enemy))
     });
     registry.register(Method, "allowedstances", |world, receiver, args| {
         let stances = (0..args.len())
@@ -298,6 +578,26 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
 }
 
+fn negotiation_node(world: &mut World, receiver: &Value, end: bool) -> Result<Value, String> {
+    let id = actor_id(world, receiver)?;
+    let Some(traversal) = world
+        .resource::<Runtime>()
+        .actor_moves
+        .get(&id)
+        .and_then(|movement| movement.traversal.clone())
+    else {
+        return Ok(Value::Undefined);
+    };
+    let paths = FrameWorld::from_world(world)
+        .actor_paths()
+        .ok_or("the map has no path network")?;
+    node_object(
+        world,
+        &paths,
+        if end { traversal.end } else { traversal.begin },
+    )
+}
+
 fn actor_id(world: &World, receiver: &Value) -> Result<u64, String> {
     match world.resource::<Runtime>().entity(receiver) {
         Some((id, entity)) if entity.kind == EntityKind::Actor => Ok(id),
@@ -325,9 +625,20 @@ fn set_goal(world: &mut World, receiver: &Value, goal: Goal) -> Result<Value, St
     let id = actor_id(world, receiver)?;
     let mut runtime = world.resource_mut::<Runtime>();
     let movement = runtime.actor_moves.entry(id).or_default();
+    // Scripts re-issue the same goal every frame; only a goal that moved
+    // replans, as an entity goal does once it strays from the plan.
+    let same = match (&movement.goal, &goal) {
+        (Some(Goal::Position(old)), Goal::Position(new)) => {
+            distance_sq(*old, *new) < SAME_GOAL_DISTANCE * SAME_GOAL_DISTANCE
+        }
+        (Some(Goal::Entity(old)), Goal::Entity(new)) => old == new,
+        _ => false,
+    };
     movement.goal = Some(goal);
-    movement.planned_to = None;
-    movement.waypoints.clear();
+    if !same {
+        movement.planned_to = None;
+        movement.clear_path();
+    }
     Ok(Value::Undefined)
 }
 
@@ -424,19 +735,23 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             });
             if stale {
                 movement.planned_to = Some(goal_at);
-                movement.waypoints.clear();
+                movement.clear_path();
                 if horizontal_distance(origin, goal_at) > goal_radius {
-                    match paths
+                    let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
+                    let planned = paths
                         .as_deref()
-                        .and_then(|paths| paths.plan(origin, goal_at))
-                    {
+                        .and_then(|paths| paths.plan(origin, goal_at, &mut reach));
+                    match planned {
                         Some(nodes) => {
                             let paths = paths.as_deref().unwrap();
                             movement.waypoints = nodes
                                 .iter()
                                 .map(|&node| paths.nodes[node as usize].origin)
                                 .collect();
+                            movement.waypoint_nodes =
+                                nodes.iter().map(|&node| Some(node)).collect();
                             movement.waypoints.push(goal_at);
+                            movement.waypoint_nodes.push(None);
                         }
                         None => events.push("bad_path"),
                     }
@@ -444,6 +759,29 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             }
         }
 
+        if let Some(scripted) = movement.scripted.clone() {
+            match super::actor_anims::node_clip(world, actor, scripted.node) {
+                Some((clip, time)) => {
+                    let local = clip.abs_delta_trans(time);
+                    let (sin, cos) = scripted.yaw.to_radians().sin_cos();
+                    origin = [
+                        scripted.origin[0] + local[0] * cos - local[1] * sin,
+                        scripted.origin[1] + local[0] * sin + local[1] * cos,
+                        scripted.origin[2] + local[2],
+                    ];
+                    angles[1] = scripted.yaw + clip.abs_delta_yaw(time);
+                    if !clip.looping && time >= 1.0 {
+                        movement.scripted = None;
+                    }
+                }
+                None => movement.scripted = None,
+            }
+            let mut runtime = world.resource_mut::<Runtime>();
+            runtime.set_object_field(actor, "origin", Value::Vector(origin));
+            runtime.set_object_field(actor, "angles", Value::Vector(angles));
+            runtime.actor_moves.insert(actor, movement);
+            continue;
+        }
         let delta = super::actor_anims::root_delta(world, actor);
         let (local, turned) = delta.unwrap_or(([0.0; 3], 0.0));
         let (sin, cos) = angles[1].to_radians().sin_cos();
@@ -454,6 +792,12 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         ];
         let mut heading = None;
         match movement.anim_mode {
+            _ if movement.traversal.is_some() => {
+                for axis in 0..3 {
+                    origin[axis] += world_delta[axis];
+                }
+                angles[1] += turned;
+            }
             AnimMode::Normal => {
                 while movement
                     .waypoints
@@ -461,7 +805,15 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     .is_some_and(|&next| horizontal_distance(origin, next) < WAYPOINT_REACHED)
                     && movement.waypoints.len() > 1
                 {
-                    movement.waypoints.remove(0);
+                    if let Some(traversal) = paths
+                        .as_deref()
+                        .and_then(|paths| traversal_at(paths, &movement.waypoint_nodes))
+                    {
+                        movement.drop_waypoint();
+                        movement.traversal = Some(traversal);
+                        break;
+                    }
+                    movement.drop_waypoint();
                 }
                 if let Some(&next) = movement.waypoints.first() {
                     let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
@@ -516,7 +868,7 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             if movement.has_path() || !matches!(movement.goal, Some(Goal::Entity(_))) {
                 events.push("goal");
             }
-            movement.waypoints.clear();
+            movement.clear_path();
             if matches!(movement.goal, Some(Goal::Position(_))) {
                 movement.goal = None;
             }
@@ -531,6 +883,38 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         for event in events {
             raise(world, Value::Object(actor), event, Vec::new());
         }
+    }
+}
+
+/// The traversal starting at the path's first node, when the link to the
+/// second is a negotiation link.
+fn traversal_at(paths: &ActorPaths, nodes: &[Option<u16>]) -> Option<Traversal> {
+    let (Some(Some(begin)), Some(Some(end))) = (nodes.first(), nodes.get(1)) else {
+        return None;
+    };
+    let node = &paths.nodes[*begin as usize];
+    let negotiation = node
+        .links
+        .iter()
+        .any(|&(to, _, negotiation)| to == *end && negotiation);
+    (node.kind == NavNodeKind::NegotiationBegin && negotiation && !node.animscript.is_empty()).then(
+        || Traversal {
+            begin: *begin,
+            end: *end,
+            script: node.animscript.clone(),
+            thread: None,
+        },
+    )
+}
+
+fn goal_radius(world: &mut World, actor: u64) -> f32 {
+    match world
+        .resource_mut::<Runtime>()
+        .object_field(actor, "goalradius")
+    {
+        Value::Int(n) => n as f32,
+        Value::Float(f) => f,
+        _ => DEFAULT_GOAL_RADIUS,
     }
 }
 
@@ -559,19 +943,40 @@ fn enemy_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
 }
 
 /// The floor under an actor at `at`, or `at` when there is none in reach.
+/// The probe starts high to climb steps and lower when it starts in solid,
+/// as when the actor straddles a wall it just climbed.
 fn ground(world: &mut World, at: [f32; 3]) -> [f32; 3] {
     let frame = FrameWorld::from_world(world);
-    let start = [at[0], at[1], at[2] + GROUND_PROBE_UP];
     let end = [at[0], at[1], at[2] - GROUND_PROBE_DOWN];
-    let trace = frame.trace_clip(start, end, ACTOR_MINS, ACTOR_MAXS, MASK_PLAYER_SOLID);
-    if trace.startsolid != 0 || trace.fraction >= 1.0 {
-        return at;
+    for up in GROUND_PROBE_STARTS {
+        let start = [at[0], at[1], at[2] + up];
+        let trace = frame.trace_clip(start, end, ACTOR_MINS, ACTOR_MAXS, MASK_PLAYER_SOLID);
+        if trace.startsolid != 0 {
+            continue;
+        }
+        if trace.fraction >= 1.0 {
+            return at;
+        }
+        return [
+            at[0],
+            at[1],
+            start[2] + (end[2] - start[2]) * trace.fraction,
+        ];
     }
-    [
-        at[0],
-        at[1],
-        start[2] + (end[2] - start[2]) * trace.fraction,
-    ]
+    at
+}
+
+/// Nothing solid lies between two points at knee height.
+fn walkable(world: &mut World, from: [f32; 3], to: [f32; 3]) -> bool {
+    let lift = |p: [f32; 3]| [p[0], p[1], p[2] + 18.0];
+    let trace = FrameWorld::from_world(world).trace_clip(
+        lift(from),
+        lift(to),
+        [-8.0, -8.0, 0.0],
+        [8.0, 8.0, 18.0],
+        MASK_PLAYER_SOLID,
+    );
+    trace.startsolid == 0 && trace.fraction >= 1.0
 }
 
 fn yaw_to(from: [f32; 3], to: [f32; 3]) -> f32 {
@@ -584,6 +989,26 @@ fn horizontal_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
 
 fn distance_sq(a: [f32; 3], b: [f32; 3]) -> f32 {
     (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
+}
+
+/// Keeps the engine's `enemy` field on the favorite enemy while it lives and
+/// the actor does not ignore everyone.
+pub(crate) fn choose_enemy(world: &mut World, actor: u64) {
+    let mut runtime = world.resource_mut::<Runtime>();
+    let ignoring = matches!(runtime.object_field(actor, "ignoreall"), Value::Int(n) if n != 0);
+    let favorite = match runtime.object_field(actor, "favoriteenemy") {
+        Value::Object(id) if !ignoring && runtime.live(&id) => Some(id),
+        _ => None,
+    };
+    drop(runtime);
+    let enemy = favorite.filter(
+        |&id| matches!(super::players::entity_field(world, id, "health"), Value::Int(n) if n > 0),
+    );
+    world.resource_mut::<Runtime>().set_object_field(
+        actor,
+        "enemy",
+        enemy.map_or(Value::Undefined, Value::Object),
+    );
 }
 
 pub(crate) fn melee_range_enemy(world: &mut World, actor: u64, range: f32) -> bool {
