@@ -4,12 +4,23 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Resource, Default)]
 pub(crate) struct T6Art {
+    publication: Option<asset_material::UiImagePublication>,
     generation: frame::WorldGeneration,
     images: HashMap<String, Handle<Image>>,
     missing: HashSet<String>,
 }
 
 impl T6Art {
+    pub(crate) fn adopt(&mut self, publication: asset_material::UiImagePublication) {
+        if self
+            .publication
+            .as_ref()
+            .is_none_or(|previous| previous.id() != publication.id())
+        {
+            self.publication = Some(publication);
+            self.invalidate();
+        }
+    }
     pub(crate) fn invalidate(&mut self) {
         self.images.clear();
         self.missing.clear();
@@ -42,8 +53,10 @@ impl T6Art {
         if let Some(image) = self.images.get(&name) {
             return Some(image.clone());
         }
-        let Some((width, height, pixels)) =
-            asset_material::zone_ui_image(AssetNamespace::T6, &name)
+        let Some((width, height, pixels)) = self
+            .publication
+            .as_ref()?
+            .zone_image(AssetNamespace::T6, &name)
         else {
             self.missing.insert(name);
             return None;
@@ -58,6 +71,15 @@ impl T6Art {
         let image = images.add(crate::classes::icons::rgba_ui_image(width, height, pixels));
         self.images.insert(name, image.clone());
         Some(image)
+    }
+}
+
+pub(crate) fn sync_publication(
+    publication: Option<Res<asset_material::UiImagePublication>>,
+    mut art: ResMut<T6Art>,
+) {
+    if let Some(publication) = publication {
+        art.adopt(publication.clone());
     }
 }
 

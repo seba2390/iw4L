@@ -102,6 +102,10 @@ pub(crate) fn register(app: &mut App) {
         .init_resource::<crate::t6_art::T6Art>()
         .add_systems(
             Update,
+            crate::t6_art::sync_publication.before(super::t6_text::NativeUiPaint),
+        )
+        .add_systems(
+            Update,
             (drive, paint)
                 .chain()
                 .in_set(frame::ClientSet::Ui)
@@ -119,19 +123,19 @@ fn native(slot: &ClassSlotState) -> bool {
             .all(|key| key.is_empty() || key == "specialty_null")
 }
 
-fn available(slot: &ClassSlotState, registry: &asset_game::WeaponRegistry) -> bool {
+fn available(slot: &ClassSlotState, registry: &std::sync::Arc<asset_game::WeaponRegistry>) -> bool {
     if !native(slot) {
         return false;
     }
     let row = session::ClassRow::from(&frame::HostClassSlot::from(slot));
-    session::ClassWeaponAdmission::prepare(registry).allows(&row)
+    session::ClassWeaponAdmission::prepare(&registry.editor_catalog()).allows(&row)
 }
 
 fn load(
     menu: &mut Menu,
     identity: &frame::LaunchIdentity,
     catalog: &ClassLoadoutCatalog,
-    registry: &asset_game::WeaponRegistry,
+    registry: &std::sync::Arc<asset_game::WeaponRegistry>,
 ) {
     if menu.path.is_some()
         || !catalog
@@ -521,7 +525,8 @@ fn drive(
                         )
                         .collect()
                 };
-                let admission = session::ClassWeaponAdmission::prepare(registry);
+                let editor = registry.editor_catalog();
+                let admission = session::ClassWeaponAdmission::prepare(&editor);
                 menu.picker = candidates
                     .into_iter()
                     .filter(|key| {

@@ -5925,6 +5925,7 @@ dependencies = [
  "asset_audio",
  "asset_core",
  "asset_game",
+ "asset_material",
  "asset_model",
  "asset_transport",
  "asset_world",

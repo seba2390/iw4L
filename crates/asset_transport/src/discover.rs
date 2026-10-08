@@ -398,13 +398,13 @@ pub fn find_zone_file_under(search_root: &Path, zone: &str) -> Result<ZoneFile, 
         if version == 0 {
             return Err(format!(
                 "zone `{file_name}` at {} is not a readable IWff envelope \
-                 (need IW4 0x114, T5 0x1d9, or IW5 0x1)",
+                 (need IW4 0x114, T5 0x1d9, IW5 0x1 or T6 0x93)",
                 path.display()
             ));
         }
         return Err(format!(
             "zone `{file_name}` found at {} but version is {version:#x} \
-             (want IW4 0x114, T5 0x1d9, or IW5 0x1)",
+             (want IW4 0x114, T5 0x1d9, IW5 0x1 or T6 0x93)",
             path.display()
         ));
     }

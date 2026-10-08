@@ -261,7 +261,11 @@ pub fn generate_verts_with_trails(
     let mut cursor = start;
     while cursor != end {
         let handle = host.handle_at_ring(cursor);
-        if let Some(slot) = host.slot_index_for_handle(handle) {
+        if let Some(slot) = host.slot_index_for_handle(handle)
+            && host
+                .effect_at(slot)
+                .is_some_and(|effect| effect.products != crate::FxSpawnProducts::Marks)
+        {
             draw_effect_sprites(
                 host,
                 slot,

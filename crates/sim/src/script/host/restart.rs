@@ -8,6 +8,7 @@ use bevy_ecs::prelude::World;
 
 #[derive(Clone)]
 pub(crate) struct RestartPlan {
+    pub absent_effects: std::collections::BTreeSet<String>,
     pub natives: NativeRegistry,
     pub entities: Arc<Vec<Vec<(String, String)>>>,
     pub tables: Arc<BTreeMap<String, StringTable>>,

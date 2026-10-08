@@ -94,6 +94,7 @@ impl LoadedWorld {
 
 #[derive(Default)]
 pub struct CommonCensus {
+    pub ui_images: Vec<(String, asset_material::material_images::ZoneUiImage)>,
     pub scripts: crate::ScriptSources,
     pub scene_models: asset_world::MapXModelSceneCatalog,
     pub shared_surfaces: asset_model::SharedXModelSurfaces,

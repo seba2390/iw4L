@@ -351,7 +351,16 @@ fn spawn_elem(
     sequence: u8,
     spawn_msec: i32,
 ) {
-    let (effect_origin, effect_axis, random_seed, parent_name, catalog_index, bolt, mark_entity) = {
+    let (
+        effect_origin,
+        effect_axis,
+        random_seed,
+        parent_name,
+        catalog_index,
+        bolt,
+        mark_entity,
+        products,
+    ) = {
         let e = match host.effect_at(effect_slot) {
             Some(e) if e.ring_resident => e,
             _ => return,
@@ -364,6 +373,7 @@ fn spawn_elem(
             e.catalog_index,
             e.bolt,
             e.mark_entity,
+            e.products,
         )
     };
 
@@ -380,6 +390,9 @@ fn spawn_elem(
 
     match FxElemType::from_u8(elem_def.elem_type) {
         Some(FxElemType::Sound) => {
+            if products == crate::FxSpawnProducts::Marks {
+                return;
+            }
             let parent_name = parent_name.to_owned();
             host.pending_sounds.push(crate::PendingSoundSpawn {
                 parent_name,
@@ -392,6 +405,9 @@ fn spawn_elem(
             return;
         }
         Some(FxElemType::Decal) => {
+            if products == crate::FxSpawnProducts::Transient {
+                return;
+            }
             let parent_name = parent_name.to_owned();
 
             host.pending_decals.push(crate::PendingDecalSpawn {
@@ -420,6 +436,7 @@ fn spawn_elem(
                 (effect_axis, None)
             };
             host.pending_runners.push(crate::PendingRunnerSpawn {
+                products,
                 mark_entity,
                 parent_name,
                 catalog_index,

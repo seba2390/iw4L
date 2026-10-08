@@ -190,6 +190,20 @@ impl SimWorld {
             .program_fingerprint()
     }
 
+    pub fn set_script_archive_time(
+        &mut self,
+        client: ClientId,
+        requested_ms: i32,
+        attained_ms: i32,
+    ) {
+        let mut runtime = self.ecs.resource_mut::<crate::script::Runtime>();
+        if let Some(slot) = runtime.players.get_mut(&client.0)
+            && slot.seat.archive_ms == requested_ms
+        {
+            slot.seat.archive_ms = attained_ms;
+        }
+    }
+
     pub fn script_seats(&self) -> Vec<(ClientId, crate::ScriptSeat)> {
         crate::script::script_seats(&self.ecs)
     }

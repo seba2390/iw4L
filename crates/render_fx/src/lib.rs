@@ -14,7 +14,10 @@ pub mod tracer;
 
 pub use drawsurf::*;
 pub use entity_marks::{EntityMarkAttachment, EntityMarkRequest, EntityMarkStore, EntityMarks};
-pub use fire_occurrence::{FireFxOccurrence, PresentedFireFx};
+pub use fire_occurrence::{
+    FireFxBudgetStats, FireFxOccurrence, FireFxOutcome, FireFxRequest, FireFxResult, FireFxStats,
+    PresentedFireFx,
+};
 pub use fire_weapon_fx::fire_weapon_fx_should_client_trace;
 pub use host::{
     CombatFxDump, FxCameraOrigin, FxDumpRequest, FxJournalCursor, FxMarkDvars, FxWorldColorImages,

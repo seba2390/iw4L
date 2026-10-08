@@ -73,6 +73,7 @@ fn adopt(
     entity.presence = presence;
     entity.missile_owner = owner;
     entity.number = projectile.entnum;
+    runtime.set_object_field(object, "birthtime", Value::Int(projectile.spawn_time_ms));
     runtime.set_object_field(object, "model", model);
     runtime.set_object_field(object, "origin", Value::Vector(projectile.origin_at(now)));
     runtime.set_object_field(
@@ -282,6 +283,17 @@ fn notify_weapon_changes(world: &mut World) {
             slot.weapon = ps.weapon;
             slot.switching = switching;
         }
+    }
+}
+
+pub(crate) fn publish_projectile_launches(world: &mut World) {
+    if world
+        .resource::<crate::step::StepRequest>()
+        .reason
+        .advances_authority_world()
+        && world.resource::<Runtime>().started
+    {
+        adopt_fired(world);
     }
 }
 

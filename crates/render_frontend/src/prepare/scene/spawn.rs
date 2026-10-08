@@ -522,9 +522,9 @@ pub(crate) fn spawn_world(
                 f32::from_bits(scene.outdoor_lookup[0]),
                 f32::from_bits(scene.outdoor_lookup[12])
             ),
-            None => diag::warn!(
+            None => diag::info!(
                 World,
-                "drawsurf outdoor: RED no $outdoor / GfxWorld outdoorImage — code texture 14 stays unproduced (lookup_m00={:.6e} lookup_m30={:.4})",
+                "drawsurf outdoor: no authored image; code texture 14 is unavailable (lookup_m00={:.6e} lookup_m30={:.4})",
                 f32::from_bits(scene.outdoor_lookup[0]),
                 f32::from_bits(scene.outdoor_lookup[12])
             ),
@@ -909,6 +909,7 @@ pub(crate) fn reset_world_spawn_on_teardown(
     commands.queue(|world: &mut World| {
         frame::retire::retire_resources(world, |batch| {
             batch
+                .reset::<super::cull::DpvsFrameStats>()
                 .resource::<crate::assemble::drawsurf::WorldDrawGpuPlan>()
                 .resource::<crate::assemble::drawsurf::SmodelGpuPlan>()
                 .resource::<crate::assemble::drawsurf::tess::sky::SkyModelDrawPlan>()

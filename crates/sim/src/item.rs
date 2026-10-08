@@ -105,6 +105,7 @@ fn take_player_weapon(ps: &mut PlayerState, weapon: u32) {
     }
     if ps.weapon == weapon || ps.weapon_primary == weapon {
         ps.weapon = 0;
+        ps.scope_zoom_level = 0;
         ps.weapon_primary = 0;
     }
 }

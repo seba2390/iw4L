@@ -258,6 +258,7 @@ fn load_backdrop(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 }
 
 fn load_native_art(
+    mut commands: Commands,
     screen: Res<AppScreen>,
     menu: Res<Menu>,
     inventory: Res<Inventory>,
@@ -302,8 +303,9 @@ fn load_native_art(
     backdrop.task = None;
     match result {
         Ok(prepared) => {
-            prepared.publish();
-            art.invalidate();
+            let publication = prepared.publish();
+            commands.insert_resource(publication.clone());
+            art.adopt(publication);
             let zombies = backdrop.key.as_ref().is_some_and(|(_, zombies)| *zombies);
             backdrop.native = art.image(
                 if zombies {

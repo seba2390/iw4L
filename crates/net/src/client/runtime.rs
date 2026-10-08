@@ -36,6 +36,7 @@ pub struct PendingPresentedEntityEvents {
     pub live: Vec<sim::EntityEventRecord>,
 
     pub archived: Vec<sim::EntityEventRecord>,
+    pub archive_tick: Option<sim::Tick>,
 
     pub in_killcam: bool,
 }
@@ -80,6 +81,7 @@ fn collect_received_entity_events(
         .meta
         .for_client(local)
         .is_some_and(|m| m.killcam_hud.is_some());
+    pending.archive_tick = pending.in_killcam.then(|| snapshot.view_tick(local));
     if pending.in_killcam {
         pending.archived.append(&mut snapshot.meta.entity_events);
     } else {
@@ -558,9 +560,12 @@ pub fn reconcile_prediction(
         }
         perf::net_leg("snap_adopt", tick.snapshot.tick.0, 0);
         let match_key = crate::signon::live_match_key(reliable.bridge.as_deref());
-        if !match_key.is_none()
-            && tick.snapshot.meta.world_objects.map_round_epoch == match_key.match_epoch
-        {
+        let same_match = if match_key.is_none() {
+            matches!(*role, RuntimeRole::Listen | RuntimeRole::Replay)
+        } else {
+            tick.snapshot.meta.world_objects.map_round_epoch == match_key.match_epoch
+        };
+        if same_match {
             pellet_fx
                 .0
                 .extend(tick.snapshot.meta.pellet_fx.drain(..).map(|record| {

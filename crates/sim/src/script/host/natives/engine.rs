@@ -1502,6 +1502,13 @@ fn register_sound_and_fx(registry: &mut NativeRegistry) {
 
     registry.register(Function, "playfx", |world, _, args| {
         let name = name(world, int(args, 0)?)?;
+        if runtime(world)
+            .restart
+            .as_ref()
+            .is_some_and(|plan| plan.absent_effects.contains(&name))
+        {
+            return Ok(Value::Undefined);
+        }
         let origin = vector(args, 1)?;
         let forward = optional(args, 2, vector)?.unwrap_or([0.0, 0.0, 1.0]);
         let index = crate::frame::FrameWorld::from_world(world).effect_name_index(&name);
