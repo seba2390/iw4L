@@ -53,6 +53,9 @@ impl Catalog {
     pub fn t5() -> Self {
         Self::from_list(crate::script::Realm::T5, super::t5_catalog::T5)
     }
+    pub fn t5_zombie() -> Self {
+        Self::t5().extended(super::t5_zombie_catalog::T5_ZOMBIE.iter().cloned())
+    }
     fn from_list(realm: crate::script::Realm, list: &[Builtin]) -> Self {
         let mut catalog = Self {
             realm,
@@ -62,6 +65,12 @@ impl Catalog {
             catalog.insert(builtin.clone());
         }
         catalog
+    }
+    pub fn extended(mut self, extra: impl IntoIterator<Item = Builtin>) -> Self {
+        for builtin in extra {
+            self.insert(builtin);
+        }
+        self
     }
     pub fn realm(&self) -> crate::script::Realm {
         self.realm

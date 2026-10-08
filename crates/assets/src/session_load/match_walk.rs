@@ -182,6 +182,16 @@ pub(super) async fn walk_prepared_match(
         gaps,
     } = loaded;
     world.source_namespace = map_namespace;
+    let zombie = match &zone_ff {
+        Ok(path) => walk_zombie_commons(path, &progress),
+        Err(_) => ZombieCommons::default(),
+    };
+    let zombie_scripts = zombie.scripts.map(|mut scripts| {
+        scripts.overlay(map_scripts.clone());
+        scripts.overlay(zombie.map_patch_scripts);
+        scripts
+    });
+    report.extend(zombie.report);
     report.append(&mut common_report);
     report.extend(image_trees.report_lines());
 
@@ -275,13 +285,9 @@ pub(super) async fn walk_prepared_match(
     let common_xanim_count = xanims.len();
     let map_xanim_count = map_xanims.len();
     let t5_xanim_added = xanims.absorb(t5_xanims);
-    if let Ok(path) = &zone_ff {
-        let zombie = walk_zombie_commons(path, &progress);
-        report.extend(zombie.report);
-        let added = xanims.absorb(zombie.xanims);
-        if added > 0 {
-            report.push(format!("zombie common xanims: +{added}"));
-        }
+    let added = xanims.absorb(zombie.xanims);
+    if added > 0 {
+        report.push(format!("zombie common xanims: +{added}"));
     }
     xanims.absorb_local(map_xanims);
     weapons.resolve_sz_xanim_edges(&xanims);
@@ -766,6 +772,7 @@ pub(super) async fn walk_prepared_match(
     }
     let prepared = PreparedMatch {
         scripts,
+        zombie_scripts,
         fx,
         world,
         materials: crate::MatchMaterials {

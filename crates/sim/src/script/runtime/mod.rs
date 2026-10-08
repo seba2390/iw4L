@@ -125,6 +125,10 @@ fn frame(
     }
 }
 
+const MP_CALLBACKS: &str = "maps/mp/gametypes/_callbacksetup::";
+/// Singleplayer and zombie scripts keep the same code callbacks one level up.
+const SP_CALLBACKS: &str = "maps/_callbacksetup::";
+
 fn entry(world: &World, name: &str) -> Result<(Arc<Program>, usize, Location), Fault> {
     let location = Location {
         module: "<runtime>".into(),
@@ -141,9 +145,14 @@ fn entry(world: &World, name: &str) -> Result<(Arc<Program>, usize, Location), F
         .as_ref()
         .ok_or_else(|| Fault::at(&location, "no loaded GSC program"))?
         .clone();
+    let key = name.replace('\\', "/").to_ascii_lowercase();
     let function = *program
         .names
-        .get(&name.replace('\\', "/").to_ascii_lowercase())
+        .get(&key)
+        .or_else(|| {
+            let callback = key.strip_prefix(MP_CALLBACKS)?;
+            program.names.get(&format!("{SP_CALLBACKS}{callback}"))
+        })
         .ok_or_else(|| Fault::at(&location, "unknown script entry point"))?;
     Ok((program, function, location))
 }

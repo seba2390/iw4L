@@ -1158,11 +1158,15 @@ pub(super) fn finish_zone_open<E>(
 #[derive(Default)]
 pub(super) struct ZombieCommons {
     pub(super) xanims: XAnimBuild,
+    /// Singleplayer and zombie scripts, lowest priority first; the map and its
+    /// patch go on top.
+    pub(super) scripts: Option<crate::ScriptSources>,
+    pub(super) map_patch_scripts: crate::ScriptSources,
     pub(super) report: Vec<String>,
 }
 
-/// T5 zombie maps keep their actor animations, weapons and shared models in
-/// `common_zombie` and its patch, beside the map rather than in `common_mp`.
+/// T5 zombie maps run on the singleplayer script base and keep their actor
+/// animations, weapons and shared models in `common_zombie` and its patch.
 pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> ZombieCommons {
     let mut commons = ZombieCommons::default();
     let is_zombie_map = zone_ff
@@ -1173,7 +1177,19 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
     {
         return commons;
     }
-    for zone in ["common_zombie", "common_zombie_patch"] {
+    let stem = zone_ff
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let map_patch = format!("{stem}_patch");
+    let mut scripts = crate::ScriptSources::default();
+    for zone in [
+        "code_post_gfx",
+        "common",
+        "common_zombie",
+        "common_zombie_patch",
+        map_patch.as_str(),
+    ] {
         let found = match asset_transport::find_zone_for_tree(zone_ff, zone) {
             Ok(found) => found,
             Err(error) => {
@@ -1205,10 +1221,17 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         let xanims = census.xanims.len();
         commons.xanims.absorb(census.xanims);
         commons.report.push(format!(
-            "zombie common {zone}: xanims={xanims} weapons={} scene_models={}",
+            "zombie common {zone}: xanims={xanims} weapons={} scene_models={} scripts={}",
             census.weapons.len(),
             census.scene_models.len(),
+            census.scripts.len(),
         ));
+        if zone == map_patch {
+            commons.map_patch_scripts = census.scripts;
+        } else {
+            scripts.overlay(census.scripts);
+        }
     }
+    commons.scripts = Some(scripts);
     commons
 }

@@ -476,13 +476,20 @@ pub fn apply_prepared_match(
         if *role == frame::RuntimeRole::Listen {
             sim.register_local_presentation_dvars(local.as_ref().map(|local| local.0));
         }
-        sim.install_gsc_program(
-            scripts,
-            sim::script::NativeRegistry::default(),
-            script_level,
-        )
-        .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
+        let mut natives = sim::script::NativeRegistry::default();
+        if kind == gamemode_iw4::GameModeKind::Zombies {
+            let gaps = natives.bind_gaps(&scripts);
+            diag::info!(
+                Sim,
+                "gsc: zombies: {} builtins not implemented yet: {}",
+                gaps.len(),
+                gaps.join(" ")
+            );
+        }
+        sim.install_gsc_program(scripts, natives, script_level)
+            .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
         if *role == frame::RuntimeRole::Listen
+            && kind != gamemode_iw4::GameModeKind::Zombies
             && let (Some(account), Some(local)) = (account.as_ref(), local.as_ref())
         {
             account
@@ -886,7 +893,9 @@ fn preflight_match_install(
         prepared_map.namespace
         && !matches!(
             kind,
-            gamemode_iw4::GameModeKind::FreeForAll | gamemode_iw4::GameModeKind::TeamDeathmatch
+            gamemode_iw4::GameModeKind::FreeForAll
+                | gamemode_iw4::GameModeKind::TeamDeathmatch
+                | gamemode_iw4::GameModeKind::Zombies
         )
     {
         let catalog = catalog.ok_or_else(|| {
@@ -975,7 +984,17 @@ fn preflight_match_install(
             }
         }
     }
-    let sources = Sources(std::mem::take(&mut prepared.scripts));
+    let zombies = match (kind, prepared.zombie_scripts.take()) {
+        (gamemode_iw4::GameModeKind::Zombies, Some(scripts)) => Some(scripts),
+        (gamemode_iw4::GameModeKind::Zombies, None) => {
+            return Err(InstallRefusal::new(format!(
+                "the zombies mode needs a T5 zombie map; `{zone}` is not one"
+            )));
+        }
+        _ => None,
+    };
+    let is_zombies = zombies.is_some();
+    let sources = Sources(zombies.unwrap_or_else(|| std::mem::take(&mut prepared.scripts)));
     let gametype = kind
         .script_tokens()
         .iter()
@@ -1033,9 +1052,19 @@ fn preflight_match_install(
             })
             .collect(),
     };
-    let startup = sim::script::Iw4Startup::new(&sources, gametype, zone);
-    let roots: Vec<&str> = startup.roots.iter().map(String::as_str).collect();
-    let scripts = sim::script::Program::load(&sources, &roots, &sim::script::Catalog::iw4())
+    let (startup_roots, startup_entries, catalog_rules) = if is_zombies {
+        let startup = sim::script::T5ZombieStartup::new(zone);
+        (
+            startup.roots,
+            startup.entries,
+            sim::script::Catalog::t5_zombie(),
+        )
+    } else {
+        let startup = sim::script::Iw4Startup::new(&sources, gametype, zone);
+        (startup.roots, startup.entries, sim::script::Catalog::iw4())
+    };
+    let roots: Vec<&str> = startup_roots.iter().map(String::as_str).collect();
+    let scripts = sim::script::Program::load(&sources, &roots, &catalog_rules)
         .map_err(|e| script_refusal(zone, gametype, "compile", &e))?;
     let config = sources
         .0
@@ -1083,7 +1112,7 @@ fn preflight_match_install(
         );
     }
     script_dvars.extend(script_dvar_overrides());
-    let script_entries = startup.entries;
+    let script_entries = startup_entries;
     let authority_models = authority_entity_model_install(&prepared.world);
     let model_spawns = script_model_spawns(&prepared.world.script_model_instances);
     let fx_catalog = PreparedFxCatalog(std::mem::take(&mut prepared.fx));

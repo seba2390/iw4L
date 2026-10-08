@@ -68,6 +68,23 @@ impl NativeRegistry {
         self.0
             .insert((namespace, name.to_ascii_lowercase()), native);
     }
+    /// Binds every builtin the program names that the host does not implement
+    /// to a native that fails, so a partial host still runs the scripts and each
+    /// missing call site is reported once. Returns the names it bound.
+    pub fn bind_gaps(&mut self, program: &crate::script::Program) -> Vec<&'static str> {
+        let mut gaps = Vec::new();
+        for builtin in &program.natives {
+            if self.get(builtin.namespace, builtin.name).is_none() {
+                self.register(builtin.namespace, builtin.name, |_, _, _| {
+                    Err("not implemented yet".into())
+                });
+                gaps.push(builtin.name);
+            }
+        }
+        gaps.sort_unstable();
+        gaps.dedup();
+        gaps
+    }
     pub(crate) fn get(&self, namespace: Namespace, name: &str) -> Option<Native> {
         self.0.get(&(namespace, name.to_owned())).copied()
     }

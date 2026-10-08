@@ -42,6 +42,7 @@ pub use ir::IR_VERSION;
 pub(crate) use ir::{Binary, Callee, Function, Global, Op, Unary};
 pub use profile::catalog::{Builtin, Catalog, Namespace, Owner};
 pub use profile::iw4_startup::Iw4Startup;
+pub use profile::t5_zombie_startup::T5ZombieStartup;
 pub use program::{ModuleIdentity, Program, Realm, Site};
 pub(crate) use runtime::{
     advance_scheduler, copy_state, healthy, install, preflight, reset, start, take_signals,
