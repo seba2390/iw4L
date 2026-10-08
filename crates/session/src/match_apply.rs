@@ -410,6 +410,18 @@ pub fn apply_prepared_match(
         content.set_weapon_setups(
             (0..script_names.len() as u32)
                 .map(|id| {
+                    if weapons.registry().identity_namespace_of(id)
+                        == Some(asset_core::AssetNamespace::T6)
+                        && script_names[id as usize].ends_with("_zm")
+                        && weapons.registry().configuration_admission(id).is_ok()
+                    {
+                        return Some(sim::WeaponSetup {
+                            realm: sim::script::Realm::T6,
+                            base: script_names[id as usize].clone(),
+                            attachments: Vec::new(),
+                            stand_in: None,
+                        });
+                    }
                     let selection = weapons.registry().describe_configuration(id)?;
                     let family = selection.family.as_ref()?;
                     Some(sim::WeaponSetup {

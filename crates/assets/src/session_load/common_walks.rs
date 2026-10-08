@@ -556,6 +556,12 @@ pub(super) fn resolve_iw5_weapon_donor(
     runtime_common: Option<&Path>,
     report: &mut Vec<String>,
 ) -> Option<PathBuf> {
+    if runtime_common.is_some_and(|path| {
+        asset_transport::t6_content::T6ContentMode::for_path(path)
+            == asset_transport::t6_content::T6ContentMode::Zombies
+    }) {
+        return None;
+    }
     let Ok(root) = games_root_from_env() else {
         report.push("iw5 weapons: IW4L_GAMES unset".into());
         return None;
@@ -701,6 +707,12 @@ pub(super) fn t5_weapon_common_prep(
     progress: &LoadProgress,
 ) -> T5CommonPrep {
     let mut report = Vec::new();
+    if runtime_common.is_some_and(|path| {
+        asset_transport::t6_content::T6ContentMode::for_path(path)
+            == asset_transport::t6_content::T6ContentMode::Zombies
+    }) {
+        return T5CommonPrep::Skip(report);
+    }
     let root = match games_root_from_env() {
         Ok(root) => root,
         Err(error) => {
@@ -899,6 +911,12 @@ pub(super) fn walk_t6_weapon_bundle(
     Vec<String>,
 ) {
     let mut report = Vec::new();
+    if runtime_common.is_some_and(|path| {
+        asset_transport::t6_content::T6ContentMode::for_path(path)
+            == asset_transport::t6_content::T6ContentMode::Zombies
+    }) {
+        return (WeaponBuild::default(), None, Vec::new(), report);
+    }
     let root = match games_root_from_env() {
         Ok(root) => root,
         Err(error) => {
@@ -957,7 +975,6 @@ pub(super) async fn walk_startup_material_zones(
     Vec<asset_world::CapturedLightDef>,
     crate::ScriptSources,
 ) {
-    const STARTUP_ZONES: [&str; 3] = ["code_post_gfx_mp", "localized_code_post_gfx_mp", "patch_mp"];
     let Some(map_path) = map_path else {
         return (
             MaterialCatalog::default(),
@@ -967,9 +984,15 @@ pub(super) async fn walk_startup_material_zones(
             crate::ScriptSources::default(),
         );
     };
+    let startup_zones =
+        if asset_transport::zone_game_for_path(map_path) == Some(asset_core::ZoneGame::T6) {
+            asset_transport::t6_content::T6ContentMode::for_path(map_path).startup()
+        } else {
+            asset_transport::t6_content::T6ContentMode::Multiplayer.startup()
+        };
     let games = games_root_from_env().ok();
 
-    let opened = STARTUP_ZONES
+    let opened = startup_zones
         .map(|zone| {
             let games = games.clone();
             let map_path = map_path.clone();
@@ -1001,7 +1024,7 @@ pub(super) async fn walk_startup_material_zones(
     let mut stats = Vec::new();
     let mut light_defs = Vec::new();
     let mut scripts = crate::ScriptSources::default();
-    for (zone, task) in STARTUP_ZONES.into_iter().zip(opened) {
+    for (zone, task) in startup_zones.into_iter().zip(opened) {
         match task.await {
             Ok((path, image)) => {
                 let envelope = peek_zone_version(&path)
@@ -1088,10 +1111,22 @@ pub(super) fn load_localized_strings_beside(
             namespace,
             asset_core::AssetNamespace::T5 | asset_core::AssetNamespace::T6
         ) {
-            match find_zone_file_version(&root, "common_mp", version).and_then(|zone| {
+            let common = if namespace == asset_core::AssetNamespace::T6 {
+                asset_transport::t6_content::T6ContentMode::for_path(zone_ff).common()
+            } else {
+                "common_mp"
+            };
+            match find_zone_file_version(&root, common, version).and_then(|zone| {
                 let language = runtime_language.as_deref();
                 if namespace == asset_core::AssetNamespace::T6 {
-                    asset_transport::discover::find_t6_localized_zones(&zone.path, language)
+                    let anchor = if asset_transport::zone_game_for_path(zone_ff)
+                        == Some(asset_core::ZoneGame::T6)
+                    {
+                        zone_ff
+                    } else {
+                        zone.path.as_path()
+                    };
+                    asset_transport::discover::find_t6_localized_zones(anchor, language)
                 } else {
                     asset_transport::discover::find_t5_localized_zones(&zone.path, language)
                 }

@@ -21,6 +21,7 @@ game. Keep them this short: nobody opens a long file twice.
 | [`WEAPONS.md`](WEAPONS.md) | weapon configuration resolution, published consumer projections, host rules and registry lifetimes | changing attachments, combat or FPV preparation |
 | [`ANIM.md`](ANIM.md) | three floors: `anim_iw4` (facts and curves), `xmodel_runtime` (tree and pose), who picks the clip (`sim` / `render_frontend/adapters/anim/`) | viewmodel, skeleton, bone hits |
 | [`T6.md`](T6.md) | native BO2 map bring-up, synthetic startup and remaining gaps | loading a T6 map on Windows |
+| [`ZOMBIES.md`](ZOMBIES.md) | BO2 Zombies content loading and remaining gameplay work | working on Zombies |
 | [`FRONTEND.md`](FRONTEND.md) | game library, installation selection, settings and multiplayer menus | launching without a map |
 | [`MULTIPLAYER-UI.md`](MULTIPLAYER-UI.md) | native BO2 pause menu, saved classes, settings and HUD | editing a loadout during a match |
 | [`MAP-LOAD.md`](MAP-LOAD.md) | map load: the `session` → `assets` → install transaction, the `load_prepared_match` walk, the lane by `ZoneGame`, the artifact cache | a zone won't load, an asset went missing, "why didn't the match come up" |

@@ -6,6 +6,7 @@ static NEXT_COMMON_PROFILE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic:
 pub struct CommonKey {
     pub(super) runtime: Option<PathBuf>,
     pub(super) foreign: Option<PathBuf>,
+    pub(super) weapon_zone: Option<PathBuf>,
 }
 
 impl CommonKey {
@@ -17,6 +18,13 @@ impl CommonKey {
         Self {
             runtime: runtime.map(Path::to_path_buf),
             foreign: resolve_foreign_material_donor(zone_ff, runtime, report),
+            weapon_zone: zone_ff
+                .filter(|path| {
+                    asset_transport::zone_game_for_path(path) == Some(asset_core::ZoneGame::T6)
+                        && asset_transport::t6_content::T6ContentMode::for_path(path)
+                            == asset_transport::t6_content::T6ContentMode::Zombies
+                })
+                .map(Path::to_path_buf),
         }
     }
 
@@ -31,6 +39,7 @@ impl CommonKey {
         Self {
             runtime,
             foreign: None,
+            weapon_zone: None,
         }
     }
 }
@@ -43,6 +52,9 @@ impl std::fmt::Display for CommonKey {
         }
         if let Some(foreign) = &self.foreign {
             write!(f, " + {}", foreign.display())?;
+        }
+        if let Some(weapons) = &self.weapon_zone {
+            write!(f, " + weapons {}", weapons.display())?;
         }
         Ok(())
     }
@@ -334,7 +346,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     };
 
     let common_open = {
-        let anchor = anchor.clone();
+        let anchor = key.weapon_zone.clone().or_else(|| anchor.clone());
         let progress = progress.clone();
         pool.spawn(async move {
             let Some(path) = anchor else {
@@ -359,7 +371,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         pool.spawn(async move { walk_t6_weapon_bundle(anchor.as_deref(), &progress) })
     };
     let localize_walk = {
-        let anchor = anchor.clone();
+        let anchor = key.weapon_zone.clone().or_else(|| anchor.clone());
         let progress = progress.clone();
         pool.spawn(async move {
             let mut report = Vec::new();

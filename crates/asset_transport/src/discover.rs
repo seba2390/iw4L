@@ -562,14 +562,24 @@ fn find_zone_stem(
 }
 
 pub fn resolve_mp_zone_alias(zone: &str) -> Option<String> {
-    if zone.is_empty() || zone.starts_with("mp_") || zone.ends_with("_mp") {
+    if zone.is_empty()
+        || zone.starts_with("mp_")
+        || zone.starts_with("zm_")
+        || zone.ends_with("_mp")
+        || zone.ends_with("_zm")
+    {
         return None;
     }
     Some(format!("mp_{zone}"))
 }
 
 pub fn find_common_mp_for_zone(zone_ff: &Path) -> Result<ZoneFile, String> {
-    find_named_zone_for_tree(zone_ff, "common_mp")
+    let common = if zone_game_for_path(zone_ff) == Some(crate::ZoneGame::T6) {
+        crate::t6_content::T6ContentMode::for_path(zone_ff).common()
+    } else {
+        "common_mp"
+    };
+    find_named_zone_for_tree(zone_ff, common)
 }
 
 pub fn find_runtime_zone(root: &GamesRoot, zone_ff: &Path, zone: &str) -> Result<ZoneFile, String> {
@@ -597,7 +607,12 @@ pub fn find_runtime_zone(root: &GamesRoot, zone_ff: &Path, zone: &str) -> Result
 }
 
 pub fn find_runtime_common_mp(root: &GamesRoot, zone_ff: &Path) -> Result<ZoneFile, String> {
-    find_runtime_zone(root, zone_ff, "common_mp")
+    let common = if zone_game_for_path(zone_ff) == Some(crate::ZoneGame::T6) {
+        crate::t6_content::T6ContentMode::for_path(zone_ff).common()
+    } else {
+        "common_mp"
+    };
+    find_runtime_zone(root, zone_ff, common)
 }
 
 pub fn find_common_mp_for_envelope(root: &GamesRoot, version: u32) -> Result<ZoneFile, String> {
@@ -850,9 +865,22 @@ pub fn find_t6_localized_zones(
     language: Option<&str>,
 ) -> Result<Vec<ZoneFile>, String> {
     let (dir, prefix) = language_archive(anchor, language, crate::ZoneGame::T6)?;
-    Ok(["patch_mp", "ui_mp", "code_post_gfx_mp"]
+    let mode = crate::t6_content::T6ContentMode::for_path(anchor);
+    let mut zones: Vec<String> = mode.localized().into_iter().map(str::to_owned).collect();
+    if mode == crate::t6_content::T6ContentMode::Zombies {
+        zones.push(mode.common().to_owned());
+        if let Some(map) = anchor
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .filter(|s| s.starts_with("zm_"))
+        {
+            zones.push(map.to_owned());
+            zones.extend(mode.supplements(anchor).into_iter().skip(1));
+        }
+    }
+    Ok(zones
         .into_iter()
-        .filter_map(|stem| t5_localized_zone(&dir, &prefix, stem))
+        .filter_map(|stem| t5_localized_zone(&dir, &prefix, &stem))
         .collect())
 }
 
@@ -872,12 +900,19 @@ fn language_archive(
     game: crate::ZoneGame,
 ) -> Result<(PathBuf, String), String> {
     let root = game_root_for_zone(anchor)?.join("zone");
+    let code_zone = if game == crate::ZoneGame::T6 {
+        crate::t6_content::T6ContentMode::for_path(anchor).localized()[2]
+    } else {
+        "code_post_gfx_mp"
+    };
+    let suffix = format!("{code_zone}.ff");
+    let localized_suffix = format!("_{suffix}");
     let mut choices: Vec<_> = files_under(vec![root])
         .filter_map(Result::ok)
         .filter(|path| {
             path.file_name()
                 .and_then(|s| s.to_str())
-                .is_some_and(|name| name.ends_with("_code_post_gfx_mp.ff"))
+                .is_some_and(|name| name.ends_with(&localized_suffix))
                 && zone_game_for_path(path) == Some(game)
         })
         .collect();
@@ -905,7 +940,7 @@ fn language_archive(
         .and_then(|s| s.to_str())
         .ok_or("language archive name")?;
     let prefix = name
-        .strip_suffix("code_post_gfx_mp.ff")
+        .strip_suffix(suffix.as_str())
         .ok_or("language prefix")?;
     let dir = chosen.parent().ok_or("language directory")?;
     Ok((dir.to_path_buf(), prefix.to_owned()))

@@ -150,7 +150,7 @@ pub(crate) struct CommonPreparationProducts {
 pub(crate) enum CommonDependencyRefusal {
     ModelDonor {
         model: String,
-        stand_in: &'static str,
+        stand_in: Option<&'static str>,
         fields: &'static [asset_material::t6_techset::T6MaterialFields],
     },
     WeaponPreparation(asset_game::WeaponPreparationRefusal),

@@ -6,7 +6,9 @@ impl WeaponCatalog {
         let Some(name) = weapon.name().filter(|name| !name.is_empty()) else {
             return;
         };
-        if crate::weapon_t6::stand_in_for(name).is_none() && name != crate::weapon_t6::MELEE_WEAPON
+        if crate::weapon_t6::stand_in_for(name).is_none()
+            && name != crate::weapon_t6::MELEE_WEAPON
+            && !name.ends_with("_zm")
         {
             return;
         }

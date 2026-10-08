@@ -18,7 +18,7 @@ struct T6ModelCapture {
     pub surface_materials: Vec<Option<String>>,
     pub view: bool,
     pub hands: bool,
-    pub stand_in: &'static str,
+    pub stand_in: Option<&'static str>,
 }
 
 struct T6MaterialCapture {
@@ -111,7 +111,12 @@ fn melee_weapon(load: &fastfile_t6::ZoneLoad) -> Option<asset_game::T6Melee> {
         .assets
         .iter()
         .filter_map(|asset| WeaponView::new(load, asset))
-        .find(|weapon| weapon.name() == Some(asset_game::T6_MELEE_WEAPON))?;
+        .find(|weapon| {
+            matches!(
+                weapon.name(),
+                Some(asset_game::T6_MELEE_WEAPON | "knife_zm")
+            )
+        })?;
     let clip = |slot: usize| {
         weapon
             .xanim(slot as u32)
@@ -181,7 +186,9 @@ fn capture_xanims(
             continue;
         };
         if weapon.name().is_some_and(|name| {
-            asset_game::t6_stand_in_for(name).is_some() || name == asset_game::T6_MELEE_WEAPON
+            asset_game::t6_stand_in_for(name).is_some()
+                || name == asset_game::T6_MELEE_WEAPON
+                || name.ends_with("_zm")
         }) {
             wanted.extend(asset_game::t6_weapon_xanim_names(weapon));
             wanted.extend(asset_game::t6_attachment_xanim_names(weapon));
@@ -244,6 +251,7 @@ fn capture_xanims(
 fn capture_sounds(
     path: &Path,
     load: &fastfile_t6::ZoneLoad,
+    others: &[fastfile_t6::ZoneLoad],
     claim: Option<asset_audio::ZoneSoundCapture>,
     content: &mut T6Content,
 ) {
@@ -253,7 +261,9 @@ fn capture_sounds(
             continue;
         };
         if weapon.name().is_some_and(|name| {
-            asset_game::t6_stand_in_for(name).is_some() || name == asset_game::T6_MELEE_WEAPON
+            asset_game::t6_stand_in_for(name).is_some()
+                || name == asset_game::T6_MELEE_WEAPON
+                || name.ends_with("_zm")
         }) {
             names.extend(asset_game::t6_weapon_sound_names(weapon));
             names.extend(asset_game::t6_attachment_sound_names(weapon));
@@ -267,7 +277,8 @@ fn capture_sounds(
     );
     let (banks, mut report) = asset_audio::t6_sound_banks(path);
     let foley = foley_zone(path, &mut report);
-    let loads: Vec<&fastfile_t6::ZoneLoad> = std::iter::once(load).chain(&foley).collect();
+    let loads: Vec<&fastfile_t6::ZoneLoad> =
+        std::iter::once(load).chain(others).chain(&foley).collect();
     let (catalog, filled, gaps) = asset_audio::capture_t6_sounds_for_iw4_compatibility(
         path,
         &loads,
@@ -295,7 +306,12 @@ fn capture_sounds(
 }
 
 fn patch_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
-    let path = common.with_file_name("patch_mp.ff");
+    let mode = asset_transport::t6_content::T6ContentMode::for_path(common);
+    let path = common.with_file_name(format!("{}.ff", mode.patch()));
+    content_zone(&path, report)
+}
+
+fn content_zone(path: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
     let image = match asset_transport::open_t6_zone(&path) {
         Ok(image) => image,
         Err(error) => {
@@ -311,6 +327,11 @@ fn patch_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::Zo
 }
 
 fn foley_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
+    if asset_transport::t6_content::T6ContentMode::for_path(common)
+        == asset_transport::t6_content::T6ContentMode::Zombies
+    {
+        return None;
+    }
     let dir = common.parent()?;
     let smallest = std::fs::read_dir(dir)
         .ok()?
@@ -914,13 +935,13 @@ fn decode_map_image(
         }
         return asset_material::decode_iwi_texture_native(&bytes, 2, false);
     }
+    let name = header_str(load, &asset.header, IMAGE_NAME).unwrap_or("");
     let source = asset
         .image_data
         .as_ref()
-        .ok_or("T6 image has no pixel definition")?;
+        .ok_or_else(|| format!("T6 image {name} has no pixel definition"))?;
     let half = |at| u16::from_le_bytes(asset.header[at..at + 2].try_into().unwrap());
     let (width, height, depth) = (half(20), half(22), half(24));
-    let name = header_str(load, &asset.header, IMAGE_NAME).unwrap_or("");
     if asset.header[4] == 5 {
         let format = match source.format {
             71 => u32::from_le_bytes(*b"DXT1"),
@@ -980,7 +1001,29 @@ fn decode_map_image(
     Ok(image)
 }
 
-const ICON_ZONES: [&str; 3] = ["code_post_gfx_mp.ff", "patch_ui_mp.ff", "ui_mp.ff"];
+fn decode_world_image(
+    load: &fastfile_t6::ZoneLoad,
+    image: &fastfile_t6::LoadedAsset,
+    sources: &[&fastfile_t6::ZoneLoad],
+    ipaks: &[asset_transport::IPak],
+) -> Result<Image, String> {
+    let name = header_str(load, &image.header, IMAGE_NAME).ok_or("T6 world image has no name")?;
+    if name.starts_with(',') {
+        let name = name.trim_start_matches(',');
+        for source in sources {
+            if let Some(image) = source.assets.iter().find(|asset| {
+                asset.ty == fastfile_t6::AssetType::Image
+                    && header_str(source, &asset.header, IMAGE_NAME) == Some(name)
+            }) {
+                return decode_map_image(source, image, ipaks);
+            }
+        }
+        return Err(format!(
+            "T6 world image {name}: definition missing from map dependencies"
+        ));
+    }
+    decode_map_image(load, image, ipaks)
+}
 
 fn capture_weapon_icons(
     common: &Path,
@@ -1026,7 +1069,8 @@ fn capture_weapon_icons(
             }
         }
     }
-    let extra: Vec<_> = ICON_ZONES
+    let icon_zones = asset_transport::t6_content::T6ContentMode::for_path(common).icons();
+    let extra: Vec<_> = icon_zones
         .iter()
         .filter_map(|name| {
             let path = common.with_file_name(name);
@@ -1181,16 +1225,20 @@ fn capture_content(
             }
         }
     }
-    let mut wanted: BTreeMap<String, (bool, bool, &'static str)> = BTreeMap::new();
+    let mut wanted: BTreeMap<String, (bool, bool, Option<&'static str>)> = BTreeMap::new();
     let mut placements: BTreeMap<String, ([f32; 3], [f32; 3])> = BTreeMap::new();
     let mut copies: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
     for asset in &load.assets {
         let Some(weapon) = WeaponView::new(load, asset) else {
             continue;
         };
-        let Some(stand_in) = weapon.name().and_then(asset_game::t6_stand_in_for) else {
+        let Some(name) = weapon.name() else {
             continue;
         };
+        let stand_in = asset_game::t6_stand_in_for(name);
+        if stand_in.is_none() && !name.ends_with("_zm") {
+            continue;
+        }
 
         for (name, view) in [
             (weapon.def_asset_array_name(def::GUN_XMODEL, 0), true),
@@ -1232,7 +1280,19 @@ fn capture_content(
         }
     }
     if let Some(&(_, _, stand_in)) = wanted.values().next() {
-        wanted.insert(HANDS_MODEL.to_owned(), (true, true, stand_in));
+        let hands = if asset_transport::t6_content::T6ContentMode::for_path(path)
+            == asset_transport::t6_content::T6ContentMode::Zombies
+        {
+            models
+                .keys()
+                .copied()
+                .find(|name| name.starts_with("c_zom_") && name.contains("viewhands"))
+        } else {
+            Some(HANDS_MODEL)
+        };
+        if let Some(hands) = hands {
+            wanted.insert(hands.to_owned(), (true, true, stand_in));
+        }
         if let Some(knife) = melee_weapon(load).map(|melee| melee.knife) {
             wanted.entry(knife).or_insert((true, false, stand_in));
         }
@@ -1711,6 +1771,15 @@ fn map_teams(
     String,
 > {
     use asset_core::{AssetKey, AssetKind, AssetNamespace};
+    if asset_transport::t6_content::T6ContentMode::for_path(path)
+        == asset_transport::t6_content::T6ContentMode::Zombies
+    {
+        return Ok((
+            asset_game::MapTeamSettings::default(),
+            Vec::new(),
+            asset_model::SoldierKits::default(),
+        ));
+    }
     let patch = patch_zone(path, report).ok_or("T6 map table zone missing")?;
     let table = patch
         .assets
@@ -1880,11 +1949,21 @@ impl ZoneLane for T6Lane {
             let ipaks = open_ipaks(path, &mut report);
             let sources_stage =
                 progress.begin_scoped(StageId::MapAssets, "t6_shared_sources", None);
-            let shared_loads = ["code_post_gfx_mp.ff", "common_mp.ff"]
+            let mode = asset_transport::t6_content::T6ContentMode::for_path(path);
+            let mut shared_zones = vec![mode.startup()[0].to_owned(), mode.common().to_owned()];
+            if mode == asset_transport::t6_content::T6ContentMode::Zombies {
+                shared_zones.extend(
+                    mode.supplements(path)
+                        .into_iter()
+                        .filter(|name| path.with_file_name(format!("{name}.ff")).is_file()),
+                );
+            }
+            let shared_loads = shared_zones
                 .into_iter()
                 .map(|name| {
-                    let image = asset_transport::open_t6_zone(path.with_file_name(name))
-                        .map_err(|error| format!("T6 shared image zone {name}: {error:?}"))?;
+                    let image =
+                        asset_transport::open_t6_zone(path.with_file_name(format!("{name}.ff")))
+                            .map_err(|error| format!("T6 shared image zone {name}: {error:?}"))?;
                     let (load, result) =
                         fastfile_t6::load_zone(schema()?, &image.bytes, |_, _| true);
                     result.map_err(|error| format!("T6 shared image zone {name}: {error:?}"))?;
@@ -1981,14 +2060,37 @@ impl ZoneLane for T6Lane {
                 let row = if let Some(row) = material_rows.get(&name) {
                     *row
                 } else {
+                    let (material_load, defined) = if let Some(bare) = name.strip_prefix(',') {
+                        image_loads
+                            .iter()
+                            .rev()
+                            .find_map(|source| {
+                                source
+                                    .assets
+                                    .iter()
+                                    .find(|candidate| {
+                                        candidate.ty == fastfile_t6::AssetType::Material
+                                            && header_str(source, &candidate.header, 0)
+                                                == Some(bare)
+                                    })
+                                    .map(|material| (*source, material))
+                            })
+                            .ok_or_else(|| {
+                                format!(
+                                    "T6 material {name}: definition missing from map dependencies"
+                                )
+                            })?
+                    } else {
+                        (&load, material)
+                    };
                     let native = capture_native(
-                        &load,
+                        material_load,
                         &image_loads,
                         fastfile_t6::Ptr {
                             block: 0,
                             offset: 0,
                         },
-                        material,
+                        defined,
                         ColourMapAlpha::Gloss,
                         &ipaks,
                         &mut decoded,
@@ -2004,7 +2106,7 @@ impl ZoneLane for T6Lane {
                     let seed = native_material_seed(
                         path,
                         &name,
-                        material,
+                        defined,
                         &set.name,
                         is_sky,
                         &mut materials,
@@ -2139,7 +2241,20 @@ impl ZoneLane for T6Lane {
                     };
                     let image_name = header_str(zone, &image.header, IMAGE_NAME)
                         .ok_or("T6 attenuation image name missing")?;
-                    let decoded = Arc::new(decode_map_image(zone, image, &ipaks)?);
+                    let decoded = match decode_world_image(zone, image, &image_loads, &ipaks) {
+                        Ok(image) => Arc::new(image),
+                        Err(error)
+                            if !draw.primary_lights.iter().any(|light| {
+                                light.def_name.as_deref().is_some_and(|wanted| {
+                                    wanted.trim_start_matches(',') == name.trim_start_matches(',')
+                                })
+                            }) =>
+                        {
+                            report.push(format!("T6 unused light definition {name}: {error}"));
+                            continue;
+                        }
+                        Err(error) => return Err(format!("T6 light definition {name}: {error}")),
+                    };
                     let width = decoded.width() as u16;
                     materials.link_image(asset_material::AuthoredImage {
                         namespace: AssetNamespace::T6,
@@ -2181,7 +2296,7 @@ impl ZoneLane for T6Lane {
                     let image = load
                         .asset_in(world_asset, row.at(60))
                         .ok_or("T6 reflection image missing")?;
-                    let decoded = Arc::new(decode_map_image(&load, image, &ipaks)?);
+                    let decoded = Arc::new(decode_world_image(&load, image, &image_loads, &ipaks)?);
                     let name = header_str(&load, &image.header, IMAGE_NAME)
                         .ok_or("T6 probe name missing")?;
                     let index = materials.link_image(asset_material::AuthoredImage {
@@ -2226,9 +2341,10 @@ impl ZoneLane for T6Lane {
                         .asset_in(world_asset, row.at(4))
                         .ok_or("T6 secondary lightmap missing")?;
                     let primary_image = primary
-                        .map(|asset| decode_map_image(&load, asset, &ipaks))
+                        .map(|asset| decode_world_image(&load, asset, &image_loads, &ipaks))
                         .transpose()?;
-                    let secondary_image = decode_map_image(&load, secondary, &ipaks)?;
+                    let secondary_image =
+                        decode_world_image(&load, secondary, &image_loads, &ipaks)?;
                     let secondary_size =
                         bevy::math::UVec2::new(secondary_image.width(), secondary_image.height());
                     let primary_size = primary_image
@@ -2275,7 +2391,10 @@ impl ZoneLane for T6Lane {
                 &mut materials,
                 &mut report,
             )?;
-            let mut sound_loads: Vec<_> = std::iter::once(&load).chain(&faction_loads).collect();
+            let mut sound_loads: Vec<_> = std::iter::once(&load)
+                .chain(&faction_loads)
+                .chain(&shared_loads)
+                .collect();
             let mut sound_names = asset_audio::t6_sound_names(&sound_loads);
             sound_names.extend(
                 [&team_settings.allies_music, &team_settings.axis_music]
@@ -2320,7 +2439,14 @@ impl ZoneLane for T6Lane {
                 collision.mesh.tri_indices.len() / 3
             ));
             let entities = entity_string(&load)?;
-            let spawns = asset_world::dm_spawn_points_treyarch(entities);
+            let spawns = match mode {
+                asset_transport::t6_content::T6ContentMode::Multiplayer => {
+                    asset_world::dm_spawn_points_treyarch(entities)
+                }
+                asset_transport::t6_content::T6ContentMode::Zombies => {
+                    asset_world::zombies_spawn_points(entities)
+                }
+            };
             let mut scripts = crate::ScriptSources::default();
             scripts.set_entities(asset_world::t5_entities_for_iw4_rules(entities));
             let light_grid = asset_world::world_t6::light_grid(&load, world_asset)
@@ -2509,12 +2635,29 @@ impl ZoneLane for T6Lane {
         let captured = catalog.len();
         let content_stage = progress.begin_scoped(StageId::CommonAssets, "t6_content", None);
         let sources_stage = progress.begin_scoped(StageId::CommonAssets, "t6_sources", None);
+        let mode = asset_transport::t6_content::T6ContentMode::for_path(path);
         let patch = patch_zone(path, &mut report);
         let ipaks = open_ipaks(path, &mut report);
-        let others: Vec<_> = patch
-            .into_iter()
-            .chain(hands_zone(path, &mut report))
-            .collect();
+        let mut others: Vec<_> = patch.into_iter().collect();
+        match mode {
+            asset_transport::t6_content::T6ContentMode::Multiplayer => {
+                others.extend(hands_zone(path, &mut report))
+            }
+            asset_transport::t6_content::T6ContentMode::Zombies => {
+                if path.file_stem().and_then(|s| s.to_str()) != Some(mode.common()) {
+                    others.extend(content_zone(
+                        &path.with_file_name("common_zm.ff"),
+                        &mut report,
+                    ));
+                    for name in mode.supplements(path).into_iter().skip(1) {
+                        let source = path.with_file_name(format!("{name}.ff"));
+                        if source.is_file() {
+                            others.extend(content_zone(&source, &mut report));
+                        }
+                    }
+                }
+            }
+        }
         sources_stage.done();
         let models_stage = progress.begin_scoped(StageId::CommonAssets, "t6_models", None);
         let mut content = capture_content(path, &load, &others, &ipaks);
@@ -2528,7 +2671,7 @@ impl ZoneLane for T6Lane {
         asset_material::store_zone_ui_images(asset_core::AssetNamespace::T6, icons);
         icons_stage.done();
         let sounds_stage = progress.begin_scoped(StageId::CommonAssets, "t6_sounds", None);
-        capture_sounds(path, &load, sound_claim, &mut content);
+        capture_sounds(path, &load, &others, sound_claim, &mut content);
         sounds_stage.done();
         let (hits, misses, bytes) = ipaks
             .iter()
@@ -2544,7 +2687,7 @@ impl ZoneLane for T6Lane {
         let mut weapons = catalog.into_build();
         weapons.stamp_namespace(asset_core::AssetNamespace::T6);
         report.push(format!(
-            "common_mp T6: walked {} assets; weapons {seen} seen, {captured} with an IW4 stand-in",
+            "T6 content: walked {} assets; weapons {seen} seen, {captured} captured",
             load.assets.len()
         ));
         CommonCensus {

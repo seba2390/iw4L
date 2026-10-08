@@ -27,10 +27,9 @@ pub(super) fn bind_t6_content(
     let mut native_n = 0usize;
     let mut donor_lines = Vec::new();
     for mut model in content.models {
-        let donor = weapons
-            .resolve_index(model.stand_in)
-            .ok()
-            .flatten()
+        let donor = model
+            .stand_in
+            .and_then(|name| weapons.resolve_index(name).ok().flatten())
             .and_then(|id| {
                 let keys = if model.hands {
                     &fpv.get(Iw4, weapons.hand_xmodel_of(id)?)?.material_keys
@@ -75,7 +74,7 @@ pub(super) fn bind_t6_content(
             let m = &materials.materials[donor];
             donor_lines.push(format!(
                 "{}→{} textures={:?}",
-                model.stand_in,
+                model.stand_in.unwrap_or("native"),
                 m.name.as_str(),
                 m.textures.iter().map(|t| t.semantic).collect::<Vec<_>>()
             ));

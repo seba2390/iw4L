@@ -533,7 +533,7 @@ pub struct WeaponView<'z> {
 
 impl<'z> WeaponView<'z> {
     pub fn new(load: &'z ZoneLoad, asset: &'z LoadedAsset) -> Option<Self> {
-        if asset.header.len() < variant::SIZE {
+        if asset.ty != crate::AssetType::Weapon || asset.header.len() < variant::SIZE {
             return None;
         }
         let mut view = Self {

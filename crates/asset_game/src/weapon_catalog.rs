@@ -2376,7 +2376,7 @@ pub fn gsc_weapon_script_name(catalog_bare: &str) -> String {
     if catalog_bare.is_empty() {
         return String::new();
     }
-    if catalog_bare.ends_with("_mp") {
+    if catalog_bare.ends_with("_mp") || catalog_bare.ends_with("_zm") {
         catalog_bare.to_owned()
     } else {
         format!("{catalog_bare}_mp")

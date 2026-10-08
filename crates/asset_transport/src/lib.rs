@@ -7,6 +7,7 @@ pub mod namespace_trees;
 pub mod progress;
 pub mod sab;
 pub mod steam;
+pub mod t6_content;
 pub mod zone;
 
 pub use artifact_cache::{
