@@ -53,18 +53,22 @@ Left for later steps: path data, the zombie common zones, a zombies game mode.
       `common` and `code_post_gfx`) next to the map: animations, weapons, scripts.
 - [x] T5 animations carry root motion; scripts can query any clip
       (`getmovedelta`, `getangledelta`, notetracks).
-- [ ] Load animation trees from their `.atr` source and resolve `%anim` references.
-- [ ] Introduce an actor entity: spawn from a map spawner, run its aitype and
+- [x] Load animation trees from their `.atr` source and resolve `%anim` references
+      (`generic_human`: 7379 nodes).
+- [x] Introduce an actor entity: spawn from a map spawner, run its aitype and
       character scripts, attach its models.
-- [ ] Render actors on host and client.
+- [ ] Render actors on clients with their full animation state (today clients
+      get the model and head, not the blend tree).
 
 Done when a zombie stands in Kino playing an animation.
 
 ### 3. Script-driven animation
-- [ ] Implement the animation-tree builtins (set/knob/flagged/restart/limited,
+- [x] Implement the animation-tree builtins (set/knob/flagged/restart/limited,
       clear, timing queries).
-- [ ] Deliver notetracks to scripts and keep synced loops in phase.
-- [ ] Run the actor state machine and dispatch the zombie animscripts.
+- [x] Deliver notetracks to scripts. Synced loops are not phase-locked yet.
+- [x] Run the zombie animscript init and dispatch `stop`; a spawned zombie idles
+      on `ai_zombie_idle_v1_delta`.
+- [ ] Dispatch `move`, `combat`, `death` and scripted/custom animation.
 
 Done when the real zombie animscripts run and the zombie animates in place.
 

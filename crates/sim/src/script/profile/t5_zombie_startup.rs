@@ -1,3 +1,5 @@
+use crate::script::source::SourceResolver;
+
 /// The zombie mode starts from the map's own main, which sets up `_zombiemode`;
 /// the code callbacks live in the singleplayer `_callbacksetup`.
 pub struct T5ZombieStartup {
@@ -7,7 +9,7 @@ pub struct T5ZombieStartup {
 impl T5ZombieStartup {
     /// `entities` is the map's entity string; each actor spawner names the
     /// aitype script that dresses the AI it spawns.
-    pub fn new(map: &str, entities: &str) -> Self {
+    pub fn new(resolver: &impl SourceResolver, map: &str, entities: &str) -> Self {
         let map = format!("maps/{map}");
         let callbacks = "maps/_callbacksetup";
         let aitypes = aitype_modules(entities);
@@ -18,6 +20,12 @@ impl T5ZombieStartup {
             map.clone(),
         ];
         roots.extend(aitypes.iter().cloned());
+        roots.extend(
+            crate::script::host::actor_brain::ANIMSCRIPT_MODULES
+                .iter()
+                .filter(|module| resolver.read_bytes(module).is_ok())
+                .map(|module| (*module).to_owned()),
+        );
         let mut entries: Vec<String> = aitypes
             .iter()
             .map(|module| format!("{module}::precache"))

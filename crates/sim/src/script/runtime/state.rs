@@ -41,6 +41,7 @@ pub(crate) struct Runtime {
     pub(crate) pending_unwinds: Vec<(u64, usize)>,
     pub(crate) entities: BTreeMap<u64, host::entities::ScriptEntity>,
     pub(crate) actor_anims: BTreeMap<u64, host::actor_anims::ActorAnim>,
+    pub(crate) actor_brains: BTreeMap<u64, host::actor_brain::ActorBrain>,
     pub(crate) hud_slots: BTreeMap<u64, usize>,
     pub(crate) next_entity_number: i32,
     pub(crate) tables: Arc<BTreeMap<String, StringTable>>,

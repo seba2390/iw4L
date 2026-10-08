@@ -55,6 +55,7 @@ pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
         return;
     }
     host::actor_anims::advance(world, crate::MATCH_TICK_MS as f32 / 1000.0);
+    host::actor_brain::think(world);
 }
 pub use program::{ModuleIdentity, Program, Realm, Site};
 pub(crate) use runtime::{

@@ -88,6 +88,7 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         _ => "generic_human",
     };
     let _ = super::actor_anims::attach(world, id, tree);
+    super::actor_brain::begin(world, id)?;
     raise(world, spawner.clone(), "spawned", vec![Value::Object(id)]);
     Ok(Value::Object(id))
 }
