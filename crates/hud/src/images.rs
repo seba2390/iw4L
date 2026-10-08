@@ -96,7 +96,7 @@ fn blood_material_binding(catalog: &MenuCatalog) -> Result<BloodMaterialBinding,
         ));
     }
     let state =
-        render_material::compile_material_state(HUD_CHROME_NAMESPACE, plan.unlit_pass_states[0]);
+        asset_material::compile_material_state(HUD_CHROME_NAMESPACE, plan.unlit_pass_states[0]);
     if let Some(fields) = state.unsupported_host_fields() {
         return Err(format!("{pass}: unsupported material state: {fields:?}"));
     }
@@ -138,7 +138,7 @@ pub struct HudImages {
     trees: NamespaceTrees,
     adopted_zone: Option<PathBuf>,
 
-    map_namespace: AssetNamespace,
+    map_namespace: Option<AssetNamespace>,
     by_name: HashMap<IwdKey, Option<Handle<Image>>>,
     rgba_by_name: HashMap<(AssetNamespace, String), CachedRgba>,
     zone_rgba: HashMap<String, (u32, u32, Arc<Vec<u8>>)>,
@@ -174,22 +174,23 @@ impl HudImages {
             return;
         }
         self.adopted_zone = Some(zone_ff.to_path_buf());
-        let namespace = asset_transport::zone_game_for_path(zone_ff)
-            .map_or(AssetNamespace::Iw4, AssetNamespace::from_zone_game);
+        let Some(namespace) = asset_transport::zone_game_for_path(zone_ff) else {
+            return;
+        };
         let mut trees = self.trees.clone();
         trees.adopt_zone(zone_ff);
-        if trees == self.trees && namespace == self.map_namespace {
+        if trees == self.trees && Some(namespace) == self.map_namespace {
             return;
         }
         self.trees = trees;
-        self.map_namespace = namespace;
+        self.map_namespace = Some(namespace);
         self.by_name.clear();
         self.rgba_by_name.clear();
         self.iwd_warmed = false;
         self.log_trees();
     }
 
-    pub fn map_namespace(&self) -> AssetNamespace {
+    pub fn map_namespace(&self) -> Option<AssetNamespace> {
         self.map_namespace
     }
 
@@ -249,7 +250,7 @@ impl HudImages {
         }
         for (name, state) in &catalog.material_state_bits {
             let compiled = state.agreed().and_then(|words| {
-                let compiled = render_material::compile_material_state(HUD_CHROME_NAMESPACE, words);
+                let compiled = asset_material::compile_material_state(HUD_CHROME_NAMESPACE, words);
                 if let Some(fields) = compiled.unsupported_host_fields() {
                     diag::warn!(Ui, "hud material state refused: {name}: {fields:?}");
                     None
@@ -278,9 +279,11 @@ impl HudImages {
         ns: AssetNamespace,
         name: &str,
     ) -> Option<render_material::CompiledPassState> {
-        (ns == HUD_CHROME_NAMESPACE)
-            .then(|| self.zone_states.get(&cache_key(name)).copied().flatten())
-            .flatten()
+        if ns == HUD_CHROME_NAMESPACE {
+            self.zone_states.get(&cache_key(name)).copied().flatten()
+        } else {
+            asset_material::zone_ui_material_state(ns, name)
+        }
     }
 
     pub(crate) fn blood_material_binding(&self) -> Result<BloodMaterialBinding, &str> {
@@ -442,8 +445,9 @@ impl HudImages {
             );
         }
         if let Some(compass) = compass {
-            if let Some(name) = compass.declaration.image.as_deref() {
-                let ns = self.map_namespace;
+            if let Some(name) = compass.declaration.image.as_deref()
+                && let Some(ns) = self.map_namespace
+            {
                 let _ = self.get(ns, name, images);
                 self.ensure_rgba(ns, name);
             }
@@ -513,17 +517,22 @@ impl HudImages {
             return Some((width, height, rgba.as_ref().clone()));
         }
         let main = self.trees.main_for(ns)?;
-        let mapped = (ns == HUD_CHROME_NAMESPACE)
-            .then(|| {
-                self.material_images
-                    .get(&cache_key(name))
-                    .map(String::as_str)
-            })
-            .flatten();
+        let authored = asset_material::ui_material_image(ns, name);
+        let fallback = asset_material::ui_preview_fallback(ns, name);
+        let mapped = authored.as_deref().or_else(|| {
+            (ns == HUD_CHROME_NAMESPACE)
+                .then(|| {
+                    self.material_images
+                        .get(&cache_key(name))
+                        .map(String::as_str)
+                })
+                .flatten()
+        });
         for image_name in mapped
             .filter(|image| *image != name)
             .into_iter()
             .chain(std::iter::once(name))
+            .chain(fallback.as_deref())
         {
             match asset_material::decode_ui_image_from_main(main, image_name) {
                 Ok(Some(image)) => return Some(image),

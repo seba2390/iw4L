@@ -238,8 +238,10 @@ impl ZoneLane for T5Lane {
         let map_xmodels = std::mem::take(&mut sink.map_xmodels);
         let bodies = std::mem::take(&mut sink.bodies);
         let fpv_meshes = std::mem::take(&mut sink.fpv_meshes);
+        let mut trees = asset_transport::NamespaceTrees::default();
+        trees.adopt_zone(path);
         match decode_material_color_maps(
-            path,
+            &trees,
             &mut materials,
             &stage,
             crate::session_load::load_pool(),
@@ -275,7 +277,7 @@ impl ZoneLane for T5Lane {
                     policy: WorldDrawPolicy::t5(),
                     exp_fog,
                     createart_name,
-                    ..Default::default()
+                    ..PreparedWorld::empty(WorldDrawPolicy::t5())
                 },
                 collision: clip,
                 spawns: dm_spawns,
@@ -287,7 +289,7 @@ impl ZoneLane for T5Lane {
                     ..Default::default()
                 },
                 report,
-                ..Default::default()
+                ..LoadedWorld::empty(WorldDrawPolicy::t5())
             };
             loaded.push_gap(
                 PreparedCapability::PreparedWorld,
@@ -476,7 +478,7 @@ impl ZoneLane for T5Lane {
                         ..Default::default()
                     },
                     report,
-                    ..Default::default()
+                    ..LoadedWorld::empty(WorldDrawPolicy::t5())
                 }
             }
             Err(e) => {
@@ -489,7 +491,7 @@ impl ZoneLane for T5Lane {
                         policy: WorldDrawPolicy::t5(),
                         exp_fog,
                         createart_name,
-                        ..Default::default()
+                        ..PreparedWorld::empty(WorldDrawPolicy::t5())
                     },
                     collision: clip,
                     spawns: dm_spawns,
@@ -501,7 +503,7 @@ impl ZoneLane for T5Lane {
                         ..Default::default()
                     },
                     report,
-                    ..Default::default()
+                    ..LoadedWorld::empty(WorldDrawPolicy::t5())
                 };
                 loaded.push_gap(
                     PreparedCapability::PreparedWorld,
@@ -584,7 +586,6 @@ impl ZoneLane for T5Lane {
         let leftover_fx_gaps = sink.fx.capture_gaps;
         let projectile_keys = sink.weapons.projectile_model_hints();
         let mut weapons = sink.weapons.into_build();
-        weapons.stamp_namespace(asset_core::AssetNamespace::T5);
         let namespace = asset_core::AssetNamespace::T5;
         for id in 1..=weapons.len() as u32 {
             for name in [

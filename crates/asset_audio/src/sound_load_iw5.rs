@@ -181,7 +181,8 @@ impl AssetLinkSink for Iw5SoundCapture {
             block_size,
             pcm: pcm_bytes.into(),
             zone: self.catalog.capture_zone_for_ingest(),
-            ..Default::default()
+            seek_table: Vec::new(),
+            sab_media: None,
         });
         Ok(())
     }
@@ -456,6 +457,7 @@ impl Iw5SoundCapture {
                 .unwrap_or(0.0),
             speaker_map: speaker_map_name(s, row),
             stereo_speaker_gains: stereo_speaker_gains(s, row),
+            t6_speaker_pan: None,
             limit_count: None,
             entity_limit_count: None,
         }

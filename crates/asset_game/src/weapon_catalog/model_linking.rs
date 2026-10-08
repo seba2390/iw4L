@@ -2,6 +2,9 @@ use super::*;
 
 impl WeaponBuild {
     pub fn resolve_fpv_mesh_edges(&mut self, fpv: &crate::FpvMeshCatalog) {
+        self.registry.fpv_catalog_identity = fpv.identity();
+        self.registry.alternate_fpv.clear();
+        self.registry.fpv_clip_tracks = Arc::default();
         for row in &mut self.registry.rows {
             row.gun_xmodel_edge = row.preparation.bind_fpv(
                 WeaponComponent::ViewModel,
@@ -36,10 +39,8 @@ impl WeaponBuild {
                         .bind_fpv(WeaponComponent::ViewModel, Some(name), fpv)
                 })
                 .collect();
-            if !row.gun_xmodel_edge.is_bound() {
-                row.fpv_hands = [None, None];
-                row.fpv_assemblies = [None, None];
-            }
+            row.fpv_soldiers = [None, None];
+            row.fpv_assemblies = [None, None];
             row.fpv_mount_plan = row.gun_xmodel_edge.bound_index().and_then(|gun| {
                 let attachments: Option<Vec<_>> = row
                     .attachment_view_model_edges
@@ -101,74 +102,40 @@ impl WeaponBuild {
         }
     }
 
-    pub fn resolve_fpv_hands(
+    pub fn resolve_fpv_soldiers(
         &mut self,
         fpv: &crate::FpvMeshCatalog,
-        bodies: &asset_model::BodyMeshCatalog,
+        soldiers: &crate::SoldierPresentations,
     ) {
+        self.registry.alternate_fpv.clear();
         for row in &mut self.registry.rows {
-            let Some(hand_ns) = row.component_namespace(WeaponComponent::Hands) else {
-                row.fpv_hands = [None, None];
-                continue;
-            };
-            let map_ns = fpv
-                .map_namespace
-                .map(|namespace| {
-                    if namespace == crate::AssetNamespace::T6 {
-                        crate::AssetNamespace::Iw4
-                    } else {
-                        namespace
-                    }
-                })
-                .unwrap_or(hand_ns);
-            let hand_name = row
-                .hand_xmodel_edge
-                .bound_index()
-                .and_then(|index| fpv.get_at(index))
-                .map(|entry| entry.skel.name.as_str());
-            let own_hands = (row.namespace == crate::AssetNamespace::T6)
-                .then_some(hand_name)
-                .flatten()
-                .and_then(|name| {
-                    let index = fpv.index_by_name(hand_ns, name)?;
-                    let skel = &fpv.get_at(index)?.skel;
-                    (skel.pose.is_some() && skel.bone_names.iter().any(|bone| bone == "tag_weapon"))
-                        .then(|| {
-                            (
-                                asset_model::FpvHands::FromWeaponDef {
-                                    namespace: hand_ns,
-                                    name: name.to_owned(),
-                                },
-                                crate::FpvMeshIndex::from_order(index),
-                            )
-                        })
+            row.fpv_assemblies = [None, None];
+        }
+        let mesh_owner_matches = fpv.identity() != 0
+            && self.registry.fpv_catalog_identity == fpv.identity()
+            && soldiers.mesh_identity() == fpv.identity();
+        for row in &mut self.registry.rows {
+            if !mesh_owner_matches {
+                row.fpv_soldiers = std::array::from_fn(|_| {
+                    Some(Err("soldier mesh owner differs from FPV catalog".into()))
                 });
-            if own_hands.is_some() {
-                row.fpv_hands = [own_hands.clone(), own_hands];
                 continue;
             }
-            row.fpv_hands = std::array::from_fn(|side| {
-                let kit = bodies.kits().kit(side == 1);
-                let mut choice =
-                    asset_model::FpvHands::resolve(fpv, map_ns, kit, hand_name, hand_ns);
-                if row.secondary_gun_xmodel.is_some()
-                    && fpv.get_hands(&choice).is_some_and(|entry| {
-                        !entry
-                            .skel
-                            .bone_names
-                            .iter()
-                            .any(|bone| bone == "tag_weapon1")
-                    })
-                {
-                    choice = asset_model::FpvHands::game_default(hand_ns);
-                }
-                let (ns, name) = choice.key()?;
-                let index = fpv.index_by_name(ns, name)?;
-                let skel = &fpv.get_at(index)?.skel;
-                if skel.pose.is_none() || !skel.bone_names.iter().any(|bone| bone == "tag_weapon") {
-                    return None;
-                }
-                Some((choice, crate::FpvMeshIndex::from_order(index)))
+            let hands = row.component_namespace(WeaponComponent::Hands).zip(
+                row.hand_xmodel_edge
+                    .bound_index()
+                    .and_then(|index| fpv.get_at(index))
+                    .map(|entry| entry.skel.name.as_str()),
+            );
+            row.fpv_soldiers = std::array::from_fn(|side| {
+                Some(
+                    soldiers
+                        .side(side == 1)
+                        .map_err(str::to_owned)
+                        .and_then(|soldier| {
+                            soldier.connect_weapon(hands, row.secondary_gun_xmodel.is_some())
+                        }),
+                )
             });
         }
     }
@@ -178,6 +145,17 @@ impl WeaponBuild {
         fpv: &crate::FpvMeshCatalog,
         xanims: &crate::XAnimCatalog,
     ) -> FpvAssemblyCensus {
+        if self.registry.fpv_catalog_identity != fpv.identity() {
+            for row in &mut self.registry.rows {
+                row.fpv_assemblies = std::array::from_fn(|_| {
+                    Some(Err(
+                        "FPV mount plan belongs to another mesh publication".into()
+                    ))
+                });
+            }
+            self.registry.alternate_fpv.clear();
+            return FpvAssemblyCensus::default();
+        }
         let mut shared: HashMap<crate::FpvAssemblyKey, Result<Arc<crate::FpvAssembly>, String>> =
             HashMap::new();
         let mut skeletons = crate::FpvSkeletons::default();
@@ -273,18 +251,38 @@ impl WeaponBuild {
                         .map_err(|error| error.to_string())
                     })
                     .clone()
+                    .and_then(|assembly| {
+                        for &clip_index in &clips {
+                            let Some(clip) = xanims.clip_at(clip_index) else {
+                                continue;
+                            };
+                            for part in assembly.parts() {
+                                tracks
+                                    .bind(fpv, clip_index, Arc::clone(&clip), part.model)
+                                    .map_err(|error| error.to_string())?;
+                            }
+                        }
+                        Ok(assembly)
+                    })
             };
             let sides: [Option<Result<crate::FpvSideAssemblies, String>>; 2] =
                 std::array::from_fn(|side| {
-                    let (_, hands) = row.fpv_hands[side].as_ref()?;
-                    let bare = match assemble(*hands, mounts, false, None, false, false) {
+                    let soldier = match row.fpv_soldiers[side].as_ref()? {
+                        Ok(soldier) if soldier.mesh_identity() == fpv.identity() => soldier,
+                        Ok(_) => {
+                            return Some(Err("soldier mesh owner differs from FPV catalog".into()));
+                        }
+                        Err(error) => return Some(Err(error.clone())),
+                    };
+                    let hands = soldier.hands().model();
+                    let bare = match assemble(hands, mounts, false, None, false, false) {
                         Ok(bare) => bare,
                         Err(error) => return Some(Err(error)),
                     };
                     let rocket = match mounts
                         .rocket
                         .is_some()
-                        .then(|| assemble(*hands, mounts, true, None, false, false))
+                        .then(|| assemble(hands, mounts, true, None, false, false))
                     {
                         None => None,
                         Some(Ok(rocket)) => Some(rocket),
@@ -294,27 +292,27 @@ impl WeaponBuild {
                         None => None,
                         Some(Err(error)) => return Some(Err(error.clone())),
                         Some(Ok(knife)) => {
-                            match assemble(*hands, mounts, false, Some(*knife), false, false) {
+                            match assemble(hands, mounts, false, Some(*knife), false, false) {
                                 Ok(melee) => Some(melee),
                                 Err(error) => return Some(Err(error)),
                             }
                         }
                     };
                     let ads = match (!mounts.ads_swaps.is_empty())
-                        .then(|| assemble(*hands, mounts, false, None, true, false))
+                        .then(|| assemble(hands, mounts, false, None, true, false))
                     {
                         None => None,
                         Some(Ok(ads)) => Some(ads),
                         Some(Err(error)) => return Some(Err(error)),
                     };
-                    let jammed = match assemble(*hands, mounts, false, None, false, true) {
+                    let jammed = match assemble(hands, mounts, false, None, false, true) {
                         Ok(jammed) => jammed,
                         Err(error) => return Some(Err(error)),
                     };
                     let jammed = jammed
-                        .parts
+                        .parts()
                         .iter()
-                        .zip(&bare.parts)
+                        .zip(bare.parts())
                         .any(|(jammed, bare)| jammed.hide != bare.hide)
                         .then_some(jammed);
                     Some(Ok(crate::FpvSideAssemblies {
@@ -325,23 +323,6 @@ impl WeaponBuild {
                         jammed,
                     }))
                 });
-            for side in sides.iter().flatten().flatten() {
-                for assembly in std::iter::once(&side.bare)
-                    .chain(&side.rocket)
-                    .chain(&side.melee)
-                    .chain(&side.ads)
-                    .chain(&side.jammed)
-                {
-                    for &clip_index in &clips {
-                        let Some(clip) = xanims.clip_at(clip_index) else {
-                            continue;
-                        };
-                        for part in &assembly.parts {
-                            tracks.bind(fpv, clip_index, Arc::clone(&clip), part.model);
-                        }
-                    }
-                }
-            }
             for side in sides.iter().flatten() {
                 match side {
                     Ok(_) => census.linked += 1,

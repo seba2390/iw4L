@@ -139,34 +139,6 @@ impl WeaponRegistry {
         self.rows.get(index as usize).map(|row| row.gun_xmodel_edge)
     }
 
-    pub fn material_camouflages_of(&self, weapon: u32) -> &[crate::WeaponCamouflage] {
-        self.rows
-            .get(weapon as usize)
-            .map_or(&[], |row| &row.material_camos)
-    }
-
-    pub fn camouflage_choices(&self, weapon: u32) -> Vec<(u8, &str)> {
-        let camos = self.material_camouflages_of(weapon);
-        if !camos.is_empty() {
-            return camos
-                .iter()
-                .map(|camo| (camo.slot, camo.name.as_str()))
-                .collect();
-        }
-        self.camo_models_of(weapon).map_or_else(Vec::new, |models| {
-            models
-                .view
-                .iter()
-                .filter_map(|(slot, _)| {
-                    weapon_iw4::IW4_CAMOS
-                        .get(usize::from(*slot))
-                        .filter(|_| *slot != 0)
-                        .map(|name| (*slot, *name))
-                })
-                .collect()
-        })
-    }
-
     pub fn camouflage_slot(&self, weapon: u32, name: &str) -> Option<u8> {
         if name.is_empty() || name.eq_ignore_ascii_case("none") {
             return Some(0);
@@ -177,46 +149,15 @@ impl WeaponRegistry {
             .map(|(slot, _)| slot)
     }
 
-    pub fn camouflage_preview(&self, weapon: u32, name: &str) -> String {
-        if name.is_empty() || name.eq_ignore_ascii_case("none") {
-            return String::new();
-        }
-        if let Some(camo) = self
-            .material_camouflages_of(weapon)
-            .iter()
-            .find(|camo| camo.name.eq_ignore_ascii_case(name))
-        {
-            return camo.preview.clone();
-        }
-        format!("iw4:material/weapon_camo_menu_{name}")
-    }
-
-    pub fn camo_view_edges_of(&self, index: u32) -> &[(u8, AssetEdge<FpvMeshSpace>)] {
-        self.rows
-            .get(index as usize)
-            .map_or(&[], |row| row.camo_view_edges.as_slice())
-    }
-
-    pub fn camo_world_edge_of(&self, index: u32, slot: u8) -> Option<AssetEdge<WorldWeaponSpace>> {
-        let row = self.rows.get(index as usize)?;
-        row.camo_world_edges
-            .iter()
-            .find(|(own, _)| *own == slot)
-            .map(|(_, edge)| *edge)
-    }
-
-    pub fn camo_models_of(&self, index: u32) -> Option<&WeaponCamoModels> {
-        self.rows.get(index as usize).map(|row| &row.camo_models)
-    }
-
     pub fn fpv_hands_of(
         &self,
         index: u32,
         axis: bool,
     ) -> Option<(&asset_model::FpvHands, crate::FpvMeshIndex)> {
-        self.rows.get(index as usize)?.fpv_hands[usize::from(axis)]
+        self.rows.get(index as usize)?.fpv_soldiers[usize::from(axis)]
             .as_ref()
-            .map(|(choice, index)| (choice, *index))
+            .and_then(|presentation| presentation.as_ref().ok())
+            .map(|presentation| (presentation.hands().choice(), presentation.hands().model()))
     }
 
     pub fn alternate_fpv_pairs(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
@@ -305,11 +246,6 @@ impl WeaponRegistry {
                 &row.gun_xmodel,
             ),
             (
-                row.hand_xmodel.is_some() && !row.hand_xmodel_edge.is_bound(),
-                "hands",
-                &row.hand_xmodel,
-            ),
-            (
                 row.rocket_model.is_some() && !row.rocket_model_edge.is_bound(),
                 "FPV rocket model",
                 &row.rocket_model,
@@ -367,13 +303,20 @@ impl WeaponRegistry {
                 });
             }
         }
-        if row.gun_xmodel_edge.is_bound() {
-            for (side, hands) in row.fpv_hands.iter().enumerate() {
-                if hands.is_none() {
+        if !self.loadout_only && row.gun_xmodel_edge.is_bound() {
+            for (side, hands) in row.fpv_soldiers.iter().enumerate() {
+                if hands.as_ref().is_none_or(|hands| hands.is_err()) {
                     gaps.push(WeaponDependencyGap {
                         id,
                         kind: "FPV hands layout",
-                        name: if side == 0 { "allies" } else { "axis" }.to_owned(),
+                        name: format!(
+                            "{}: {}",
+                            if side == 0 { "allies" } else { "axis" },
+                            hands
+                                .as_ref()
+                                .and_then(|hands| hands.as_ref().err())
+                                .map_or("soldier presentation not prepared", String::as_str)
+                        ),
                     });
                 }
             }
@@ -477,16 +420,7 @@ impl WeaponRegistry {
         camo: u8,
         catalog: &'a crate::WorldWeaponCatalog,
     ) -> Option<&'a crate::WorldWeaponEntry> {
-        if camo != 0
-            && self.world_catalog_identity == catalog.identity()
-            && let Some(entry) = self
-                .camo_world_edge_of(index, camo)
-                .and_then(|edge| edge.bound_index())
-                .and_then(|order| catalog.get_at(order))
-        {
-            return Some(entry);
-        }
-        self.world_model_entry(index, catalog)
+        self.select_appearance(index, camo)?.world_model(catalog)
     }
 
     pub fn authored_weapon_sound(&self, index: u32, slot: WeaponSoundSlot) -> Option<&str> {
@@ -725,27 +659,6 @@ impl WeaponRegistry {
         gsc_weapon_script_name(self.name_of(index))
     }
 
-    pub fn world_models_table(&self) -> Vec<(String, Vec<String>)> {
-        (0..self.rows.len() as u32)
-            .map(|i| {
-                let model = self.world_model_of(i).unwrap_or_default().to_owned();
-                (model, self.hide_tags_of(i).to_vec())
-            })
-            .collect()
-    }
-
-    pub fn projectile_models_table(&self) -> Vec<String> {
-        (0..self.rows.len() as u32)
-            .map(|i| self.projectile_model_of(i).unwrap_or_default().to_owned())
-            .collect()
-    }
-
-    pub fn script_names_table(&self) -> Vec<String> {
-        (0..self.rows.len())
-            .map(|i| self.script_name_of(i as u32))
-            .collect()
-    }
-
     pub fn configuration_supported(&self, id: u32) -> bool {
         let Some(row) = self.rows.get(id as usize) else {
             return false;
@@ -760,12 +673,6 @@ impl WeaponRegistry {
         !row.gun_xmodel.as_deref().is_some_and(|name| {
             name.ends_with("_dw_rh") || name.ends_with("_dw_lh") || name.ends_with("_lh_viewmodel")
         })
-    }
-
-    pub fn runnable_table(&self) -> Vec<bool> {
-        (0..self.rows.len() as u32)
-            .map(|id| id != 0 && self.configuration_admission(id).is_ok())
-            .collect()
     }
 
     pub fn weapon_families(&self) -> &crate::WeaponFamilies {
@@ -864,12 +771,6 @@ impl WeaponRegistry {
         self.rows
             .get(index as usize)
             .and_then(|row| row.gun_xmodel.as_deref())
-    }
-
-    pub fn hand_xmodel_of(&self, index: u32) -> Option<&str> {
-        self.rows
-            .get(index as usize)
-            .and_then(|row| row.hand_xmodel.as_deref())
     }
 
     pub fn world_model_of(&self, index: u32) -> Option<&str> {
@@ -997,19 +898,6 @@ impl WeaponRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    pub fn scales_table(&self) -> Vec<(f32, f32, f32)> {
-        self.rows
-            .iter()
-            .map(|row| {
-                (
-                    row.facts.move_speed_scale,
-                    row.facts.ads_move_speed_scale,
-                    row.facts.sprint_duration_scale,
-                )
-            })
-            .collect()
     }
 
     pub fn camo_census(&self) -> (usize, usize, usize) {

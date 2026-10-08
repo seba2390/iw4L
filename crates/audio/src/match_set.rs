@@ -284,7 +284,8 @@ fn queue_match_clips(
         .chain(MATCH_CLOCK)
     {
         aliases += 1;
-        request_named(clips, &bank.0, AssetNamespace::Iw4, alias, &mut set);
+        let (ns, alias) = crate::aliases::match_ui_alias(namespace.namespace, alias);
+        request_named(clips, &bank.0, ns, alias, &mut set);
     }
     let mut breath_policies = HashSet::new();
     for weapon in 1..=weapons.registry().len() as u32 {
@@ -515,11 +516,12 @@ fn request_fx_type10(
     alias: &str,
     set: &mut MatchRequests,
 ) {
-    let ns = bank
-        .index_in(AssetNamespace::Iw4, alias)
-        .or_else(|| bank.index_unique(alias))
-        .map(|index| bank.namespace_of_alias(index))
-        .unwrap_or(AssetNamespace::Iw4);
+    let Some(ns) = bank
+        .index_unique(alias)
+        .and_then(|index| bank.namespace_of_alias(index))
+    else {
+        return;
+    };
     request_named(clips, bank, ns, alias, set);
 }
 

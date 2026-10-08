@@ -15,21 +15,24 @@ pub fn update_admission(
     scene: Option<Res<WorldScene>>,
     audio: Option<Res<audio::AudioReady>>,
     mut live: Option<ResMut<LiveWorldIdentity>>,
-    mut weapons: Option<ResMut<assets::PreparedWeapons>>,
     mut authority: Option<ResMut<net::AuthorityWorld>>,
+    mut weapons: Option<ResMut<assets::PreparedWeapons>>,
     headless: Option<Res<frame::Headless>>,
     generation: Res<frame::WorldGeneration>,
     navigation: Option<Res<frame::BotNavigationReady>>,
     mut policy: ResMut<crate::SessionReadinessPolicy>,
 ) {
-    if let (Some(live), Some(installed)) = (live.as_mut(), admission.core.installed())
+    if let (Some(live), Some(installed), Some(weapons)) =
+        (live.as_mut(), admission.core.installed(), weapons.as_mut())
         && live.load_key.local_load_request_id == installed.local_load_request_id
+        && generation.0 == Some(installed.local_load_request_id)
         && live.load_key.match_key.is_none()
         && !installed.match_key.is_none()
     {
-        if let Some(weapons) = weapons.as_mut() {
-            **weapons = assets::PreparedWeapons::for_match(weapons.registry().clone(), installed);
-        }
+        **weapons = assets::PreparedWeapons::for_match(
+            std::sync::Arc::clone(weapons.registry()),
+            installed,
+        );
         if let Some(authority) = authority.as_mut() {
             authority
                 .0

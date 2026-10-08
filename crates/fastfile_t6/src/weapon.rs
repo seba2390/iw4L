@@ -38,6 +38,7 @@ pub mod variant {
 }
 
 pub mod def {
+    pub const CAMOUFLAGE: u32 = 2420;
     pub const GUN_XMODEL: u32 = 4;
     pub const HAND_XMODEL: u32 = 8;
     pub const PLAYER_ANIM_TYPE: u32 = 24;
@@ -45,6 +46,12 @@ pub mod def {
     pub const WEAP_CLASS: u32 = 32;
     pub const PENETRATE_TYPE: u32 = 36;
     pub const IMPACT_TYPE: u32 = 40;
+    pub const VIEW_FLASH_EFFECT: u32 = 108;
+    pub const WORLD_FLASH_EFFECT: u32 = 112;
+    pub const VIEW_SHELL_EJECT_EFFECT: u32 = 464;
+    pub const WORLD_SHELL_EJECT_EFFECT: u32 = 468;
+    pub const VIEW_LAST_SHOT_EJECT_EFFECT: u32 = 472;
+    pub const WORLD_LAST_SHOT_EJECT_EFFECT: u32 = 476;
     pub const INVENTORY_TYPE: u32 = 44;
     pub const FIRE_TYPE: u32 = 48;
     pub const OFFHAND_CLASS: u32 = 96;
@@ -247,6 +254,7 @@ pub mod weap_anim {
 }
 
 pub mod unique {
+    pub const CAMOUFLAGE: u32 = 164;
     pub const NAME: u32 = 0;
     pub const TYPE: u32 = 4;
     pub const COMBINED_MASK: u32 = 16;
@@ -439,6 +447,14 @@ impl<'z> AttachmentUniqueView<'z> {
                 self.vec3(rotations),
             ))
         })
+    }
+
+    pub fn camouflage(&self) -> Option<crate::weapon_camo::WeaponCamoView<'z>> {
+        let asset = self
+            .load
+            .assets
+            .get(self.asset.field(unique::CAMOUFLAGE)?)?;
+        crate::weapon_camo::WeaponCamoView::new(self.load, asset).ok()
     }
 
     pub fn asset_field_name(&self, off: u32) -> Option<&'z str> {
@@ -648,6 +664,13 @@ impl<'z> WeaponView<'z> {
 
     pub fn name(&self) -> Option<&'z str> {
         self.variant_str(variant::INTERNAL_NAME)
+    }
+
+    pub fn camouflage(&self) -> Option<crate::weapon_camo::WeaponCamoView<'z>> {
+        let asset = self
+            .load
+            .asset_in(self.asset, self.def?.at(def::CAMOUFLAGE))?;
+        crate::weapon_camo::WeaponCamoView::new(self.load, asset).ok()
     }
 
     pub fn def_loaded_asset_name(&self, off: u32) -> Option<&'z str> {

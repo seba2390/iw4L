@@ -1,3 +1,4 @@
+mod camouflage;
 mod common_compile;
 
 use std::collections::BTreeMap;
@@ -17,27 +18,13 @@ struct T6ModelCapture {
     pub skel: asset_model::ModelSkel,
     pub surface_materials: Vec<Option<String>>,
     pub view: bool,
-    pub hands: bool,
-    pub stand_in: Option<&'static str>,
 }
 
 struct T6MaterialCapture {
-    pub fallback: T6FallbackMaterial,
     pub native: Option<T6NativeMaterial>,
 }
 
-struct T6FallbackMaterial {
-    color: Option<T6Texels>,
-    normal: Option<T6Texels>,
-    specular: Option<T6Texels>,
-}
-
-struct T6DecodedMaterial {
-    pub color: Option<(String, Arc<Image>)>,
-    pub normal: Option<(String, Arc<Image>)>,
-    pub specular: Option<(String, Arc<Image>)>,
-}
-
+#[derive(Clone)]
 struct T6NativeMaterial {
     pub header: Vec<u8>,
     pub technique_set: String,
@@ -48,7 +35,7 @@ struct T6NativeMaterial {
 
 #[derive(Default)]
 struct T6Content {
-    pub source_path: std::path::PathBuf,
+    pub path: std::path::PathBuf,
     pub models: Vec<T6ModelCapture>,
     pub materials: BTreeMap<String, T6MaterialCapture>,
     pub sound_names: std::collections::BTreeSet<String>,
@@ -59,6 +46,7 @@ struct T6Content {
     pub melee: Option<asset_game::T6Melee>,
     pub fx: Vec<asset_game::T6FxCapture>,
     pub fx_materials: BTreeMap<String, T6MaterialCapture>,
+    pub camouflages: BTreeMap<String, Vec<asset_game::WeaponCamouflage>>,
     pub report: Vec<String>,
 }
 
@@ -188,11 +176,7 @@ fn capture_xanims(
         let Some(weapon) = WeaponView::new(source, asset) else {
             continue;
         };
-        if weapon.name().is_some_and(|name| {
-            asset_game::t6_stand_in_for(name).is_some()
-                || name == asset_game::T6_MELEE_WEAPON
-                || name.ends_with("_zm")
-        }) {
+        if weapon.name().is_some() {
             wanted.extend(asset_game::t6_weapon_xanim_names(weapon));
             wanted.extend(asset_game::t6_attachment_xanim_names(weapon));
         }
@@ -209,7 +193,7 @@ fn capture_xanims(
             continue;
         }
         if content.xanims.capture_xanim_t6(
-            asset_core::AssetNamespace::Iw4,
+            asset_core::AssetNamespace::T6,
             asset_game::T6_XANIM_PREFIX,
             load,
             asset,
@@ -249,7 +233,7 @@ fn capture_xanims(
     content.report.push(format!(
         "t6 player clips: {captured}/{total} native clips captured"
     ));
-    if asset_transport::t6_content::T6ContentMode::for_path(&content.source_path)
+    if asset_transport::t6_content::T6ContentMode::for_path(&content.path)
         == asset_transport::t6_content::T6ContentMode::Zombies
     {
         let mut captured = 0;
@@ -293,11 +277,7 @@ fn capture_sounds(
         let Some(weapon) = fastfile_t6::weapon::WeaponView::new(load, asset) else {
             continue;
         };
-        if weapon.name().is_some_and(|name| {
-            asset_game::t6_stand_in_for(name).is_some()
-                || name == asset_game::T6_MELEE_WEAPON
-                || name.ends_with("_zm")
-        }) {
+        if weapon.name().is_some() {
             names.extend(asset_game::t6_weapon_sound_names(weapon));
             names.extend(asset_game::t6_attachment_sound_names(weapon));
         }
@@ -310,14 +290,30 @@ fn capture_sounds(
     );
     let (banks, mut report) = asset_audio::t6_sound_banks(path);
     let foley = foley_zone(path, &mut report);
-    let loads: Vec<&fastfile_t6::ZoneLoad> =
-        std::iter::once(load).chain(others).chain(&foley).collect();
-    let (catalog, filled, gaps) = asset_audio::capture_t6_sounds_for_iw4_compatibility(
-        path,
-        &loads,
-        &banks,
-        names.iter().map(String::as_str),
+    let mode = asset_transport::t6_content::T6ContentMode::for_path(path);
+    let code = sound_zone(
+        &path.with_file_name(format!(
+            "{}.ff",
+            if mode == asset_transport::t6_content::T6ContentMode::Zombies {
+                "code_post_gfx_zm"
+            } else {
+                "code_post_gfx_mp"
+            }
+        )),
+        &mut report,
     );
+    let loads: Vec<&fastfile_t6::ZoneLoad> = std::iter::once(load)
+        .chain(others)
+        .chain(&foley)
+        .chain(&code)
+        .collect();
+    names.extend(
+        asset_audio::t6_sound_names(&loads)
+            .into_iter()
+            .filter(|name| name.starts_with("mus_") || name.starts_with("uin_")),
+    );
+    let (catalog, filled, gaps) =
+        asset_audio::capture_t6_sounds(path, &loads, &banks, names.iter().map(String::as_str));
     report.push(format!(
         "t6 sounds: {} of {} weapon aliases read (+{} secondary layers, {} audio assets) from {} sound banks; {} gaps",
         filled.iter().filter(|name| names.contains(*name)).count(),
@@ -359,6 +355,17 @@ fn content_zone(path: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::Zo
     Some(load)
 }
 
+fn sound_zone(path: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
+    let image = asset_transport::open_t6_zone(path)
+        .map_err(|error| report.push(format!("t6 sound source {}: {error:?}", path.display())))
+        .ok()?;
+    let (load, walked) = fastfile_t6::load_zone(schema().ok()?, &image.bytes, |_, _| true);
+    if let Err(error) = walked {
+        report.push(format!("t6 sound source {}: {error:?}", path.display()));
+    }
+    Some(load)
+}
+
 fn foley_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
     if asset_transport::t6_content::T6ContentMode::for_path(common)
         == asset_transport::t6_content::T6ContentMode::Zombies
@@ -391,9 +398,7 @@ fn foley_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::Zo
             return None;
         }
     };
-    let (load, walked) = fastfile_t6::load_zone(schema().ok()?, &image.bytes, |_, ty| {
-        ty != fastfile_t6::AssetType::SoundBank
-    });
+    let (load, walked) = fastfile_t6::load_zone(schema().ok()?, &image.bytes, |_, _| true);
     if let Err(error) = walked {
         report.push(format!("t6 sounds: {} walk: {error:?}", path.display()));
     }
@@ -438,12 +443,8 @@ fn schema() -> Result<&'static fastfile_t6::schema::Schema, String> {
         .map_err(Clone::clone)
 }
 
-const COLOR_MAP_HASH: u32 = 0xa0ab_1041;
 const FONT_MAP_HASH: u32 = 0xd2ee_eeb8;
-const NORMAL_MAP_HASH: u32 = 0x59d3_0d0f;
-const COLOR_SAMPLERS: [u32; 2] = [COLOR_MAP_HASH, 0xf039_ec2d];
-const NORMAL_SAMPLERS: [u32; 2] = [NORMAL_MAP_HASH, 0x942c_bff0];
-const SPECULAR_SAMPLERS: [u32; 2] = [0x34ec_ccb3, 0x8c29_7e80];
+const COLOR_MAP_HASH: u32 = 0xa0ab_1041;
 const MATERIAL_TEXTURE_COUNT: usize = 84;
 const MATERIAL_TEXTURE_TABLE: usize = 96;
 const MATERIAL_TEXTURE_DEF: u32 = 16;
@@ -504,124 +505,7 @@ fn t6_sampler_state(state: u8) -> u8 {
     (state & !0b111) | filter.min(FILTER_LINEAR)
 }
 
-struct T6Texels {
-    name: String,
-    iwi: Arc<[u8]>,
-    sampler_state: u8,
-}
-
-fn read_texture(
-    load: &fastfile_t6::ZoneLoad,
-    material: &fastfile_t6::LoadedAsset,
-    ipaks: &[asset_transport::IPak],
-    samplers: &[u32],
-) -> Result<Option<T6Texels>, String> {
-    let header = &material.header;
-    let count = u32::from(*header.get(MATERIAL_TEXTURE_COUNT).ok_or("short material")?);
-    let raw = header_u32(header, MATERIAL_TEXTURE_TABLE).ok_or("short material")?;
-    if raw == 0 || count == 0 {
-        return Ok(None);
-    }
-    let e = raw - 1;
-    let table = fastfile_t6::Ptr {
-        block: (e >> 29) as u8,
-        offset: e & 0x1FFF_FFFF,
-    };
-    for index in 0..count {
-        let def = table.at(index * MATERIAL_TEXTURE_DEF);
-        let bytes = load
-            .blocks
-            .bytes(def, MATERIAL_TEXTURE_DEF as usize)
-            .map_err(|e| format!("{e:?}"))?;
-        if !header_u32(bytes, 0).is_some_and(|hash| samplers.contains(&hash)) {
-            continue;
-        }
-        let sampler_state = bytes[6];
-        let Some(image) = load.asset_in(material, def.at(12)) else {
-            return Ok(None);
-        };
-        let (name, iwi) = read_streamed_image(load, image, ipaks)?;
-        return Ok(Some(T6Texels {
-            name,
-            iwi,
-            sampler_state: t6_sampler_state(sampler_state),
-        }));
-    }
-    Ok(None)
-}
-
 type DecodedTextures = BTreeMap<String, Arc<Image>>;
-
-fn capture_material(
-    load: &fastfile_t6::ZoneLoad,
-    material: &fastfile_t6::LoadedAsset,
-    ipaks: &[asset_transport::IPak],
-    report: &mut Vec<String>,
-) -> T6MaterialCapture {
-    let mut read = |samplers: &[u32]| {
-        read_texture(load, material, ipaks, samplers).unwrap_or_else(|error| {
-            report.push(format!("t6 content: {error}"));
-            None
-        })
-    };
-    let (color, normal, specular) = (
-        read(&COLOR_SAMPLERS),
-        read(&NORMAL_SAMPLERS),
-        read(&SPECULAR_SAMPLERS),
-    );
-    T6MaterialCapture {
-        native: None,
-        fallback: T6FallbackMaterial {
-            color,
-            normal,
-            specular,
-        },
-    }
-}
-
-impl T6FallbackMaterial {
-    fn decode(&self, decoded: &mut DecodedTextures, report: &mut Vec<String>) -> T6DecodedMaterial {
-        let Self {
-            color,
-            normal,
-            specular,
-        } = self;
-        let mut decode =
-            |texels: &T6Texels, key: String, decode: &dyn Fn() -> Result<Image, String>| {
-                if let Some(image) = decoded.get(&key) {
-                    return Some((texels.name.clone(), image.clone()));
-                }
-                match decode() {
-                    Ok(image) => {
-                        let image = Arc::new(image);
-                        decoded.insert(key, image.clone());
-                        Some((texels.name.clone(), image))
-                    }
-                    Err(error) => {
-                        report.push(format!("t6 content: {}: {error}", texels.name));
-                        None
-                    }
-                }
-            };
-        let plain = |t: &T6Texels, is_normal: bool| {
-            asset_material::decode_iwi_texture(&t.iwi, t.sampler_state, is_normal, !is_normal)
-        };
-        T6DecodedMaterial {
-            color: color.as_ref().and_then(|c| match &specular {
-                Some(s) => decode(c, format!("{}+{}", c.name, s.name), &|| {
-                    asset_material::decode_iwi_texture_t6_folded(&c.iwi, &s.iwi, c.sampler_state)
-                }),
-                None => decode(c, c.name.clone(), &|| plain(c, false)),
-            }),
-            normal: normal
-                .as_ref()
-                .and_then(|n| decode(n, n.name.clone(), &|| plain(n, true))),
-            specular: specular
-                .as_ref()
-                .and_then(|s| decode(s, s.name.clone(), &|| plain(s, false))),
-        }
-    }
-}
 
 fn decode_ptr(raw: u32) -> Option<fastfile_t6::Ptr> {
     (raw != 0 && raw < 0xFFFF_FFFE).then(|| fastfile_t6::Ptr {
@@ -751,11 +635,34 @@ enum ColourMapAlpha {
     Gloss,
 }
 
+fn resolve_material<'a>(
+    load: &'a fastfile_t6::ZoneLoad,
+    zones: &[&'a fastfile_t6::ZoneLoad],
+    material: &'a fastfile_t6::LoadedAsset,
+) -> Result<(&'a fastfile_t6::ZoneLoad, &'a fastfile_t6::LoadedAsset), String> {
+    let raw_name = header_str(load, &material.header, 0).ok_or("T6 material name missing")?;
+    let Some(name) = raw_name.strip_prefix(',') else {
+        return Ok((load, material));
+    };
+    zones
+        .iter()
+        .find_map(|zone| {
+            zone.assets
+                .iter()
+                .find(|asset| {
+                    asset.ty == fastfile_t6::AssetType::Material
+                        && header_str(zone, &asset.header, 0) == Some(name)
+                })
+                .map(|asset| (*zone, asset))
+        })
+        .ok_or_else(|| format!("T6 material {name}: definition missing"))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn capture_native(
     load: &fastfile_t6::ZoneLoad,
     zones: &[&fastfile_t6::ZoneLoad],
-    address: fastfile_t6::Ptr,
+    address: Option<fastfile_t6::Ptr>,
     material: &fastfile_t6::LoadedAsset,
     colour_alpha: ColourMapAlpha,
     ipaks: &[asset_transport::IPak],
@@ -766,7 +673,7 @@ fn capture_native(
     let techset = material
         .field(MATERIAL_TECHNIQUE_SET)
         .map(|index| &load.assets[index])
-        .or_else(|| load.asset_at(address.at(MATERIAL_TECHNIQUE_SET)))?;
+        .or_else(|| load.asset_at(address?.at(MATERIAL_TECHNIQUE_SET)))?;
     let technique_set = header_str(load, &techset.header, 0)?
         .trim_start_matches(',')
         .to_owned();
@@ -1060,7 +967,7 @@ fn decode_world_image(
 }
 
 pub struct T6UiArt {
-    images: Vec<(String, Arc<[u8]>)>,
+    images: Vec<(String, asset_material::ZoneUiImage)>,
     fonts: Vec<asset_material::ui_font::UiBitmapFont>,
 }
 
@@ -1217,10 +1124,13 @@ fn capture_weapon_icons(
                 continue;
             }
             match capture_icon(load, asset, &all, ipaks) {
-                Ok(iwi) => {
-                    wanted.remove(&name);
-                    icons.push((name, iwi));
-                }
+                Ok(iwi) => icons.push((
+                    name,
+                    asset_material::ZoneUiImage {
+                        iwi,
+                        state: capture_ui_state(load, asset),
+                    },
+                )),
                 Err(error) => failed.push(format!("{name}: {error}")),
             }
         }
@@ -1241,7 +1151,7 @@ fn capture_weapon_icons(
             match decoded {
                 Ok(iwi) => {
                     wanted.remove(&name);
-                    icons.push((name, iwi));
+                    icons.push((name, asset_material::ZoneUiImage { iwi, state: None }));
                 }
                 Err(error) => failed.push(format!("{name}: {error}")),
             }
@@ -1299,6 +1209,27 @@ fn capture_ui_font(
         pixel_height,
         glyphs,
     })
+}
+
+fn capture_ui_state(
+    load: &fastfile_t6::ZoneLoad,
+    material: &fastfile_t6::LoadedAsset,
+) -> Option<render_material::CompiledPassState> {
+    let header = &material.header;
+    let row = *header.get(MATERIAL_STATE_BITS_ENTRY + 2)?;
+    if row == u8::MAX || row >= *header.get(86)? {
+        return None;
+    }
+    let table = decode_ptr(header_u32(header, MATERIAL_STATE_BITS_TABLE)?)?;
+    let bytes = load
+        .blocks
+        .bytes(table.at(u32::from(row) * MATERIAL_STATE_BITS), 8)
+        .ok()?;
+    let state = asset_material::compile_material_state(
+        asset_core::FamilyId::T6,
+        [header_u32(bytes, 0)?, header_u32(bytes, 4)?],
+    );
+    state.unsupported_host_fields().is_none().then_some(state)
 }
 
 fn capture_icon(
@@ -1372,7 +1303,7 @@ fn capture_content(
 ) -> T6Content {
     use fastfile_t6::weapon::{WeaponView, def};
     let mut content = T6Content {
-        source_path: path.to_owned(),
+        path: path.to_owned(),
         ..Default::default()
     };
     let zones: Vec<&fastfile_t6::ZoneLoad> = std::iter::once(load).chain(others).collect();
@@ -1387,18 +1318,14 @@ fn capture_content(
             }
         }
     }
-    let mut wanted: BTreeMap<String, (bool, bool, Option<&'static str>)> = BTreeMap::new();
+    let mut wanted: BTreeMap<String, (bool, bool)> = BTreeMap::new();
     let mut placements: BTreeMap<String, ([f32; 3], [f32; 3])> = BTreeMap::new();
     let mut copies: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
     for asset in &load.assets {
         let Some(weapon) = WeaponView::new(load, asset) else {
             continue;
         };
-        let Some(name) = weapon.name() else {
-            continue;
-        };
-        let stand_in = asset_game::t6_stand_in_for(name);
-        if stand_in.is_none() && !name.ends_with("_zm") {
+        if weapon.name().is_none() {
             continue;
         }
 
@@ -1411,7 +1338,7 @@ fn capture_content(
             if let Some(name) = name {
                 wanted
                     .entry(asset_game::t6_model_name(name))
-                    .or_insert((view, false, stand_in));
+                    .or_insert((view, false));
             }
         }
         for unique in weapon.attachment_uniques() {
@@ -1425,9 +1352,7 @@ fn capture_content(
                 .chain(asset_game::t6_attachment_ads_model(unique).map(|placed| (placed, true)));
             for (placed, view) in placed {
                 placements.insert(placed.copy.clone(), (placed.offset, placed.angles));
-                wanted
-                    .entry(placed.copy.clone())
-                    .or_insert((view, false, stand_in));
+                wanted.entry(placed.copy.clone()).or_insert((view, false));
                 copies.insert(placed.copy, (placed.model, placed.tag));
             }
         }
@@ -1436,34 +1361,22 @@ fn capture_content(
                 if let Some((name, offset, angles)) = weapon.attached_model(slot, view) {
                     let name = asset_game::t6_model_name(name);
                     placements.entry(name.clone()).or_insert((offset, angles));
-                    wanted.entry(name).or_insert((view, false, stand_in));
+                    wanted.entry(name).or_insert((view, false));
                 }
             }
         }
     }
-    if let Some(&(_, _, stand_in)) = wanted.values().next() {
-        let hands = if asset_transport::t6_content::T6ContentMode::for_path(path)
-            == asset_transport::t6_content::T6ContentMode::Zombies
-        {
-            models
-                .keys()
-                .copied()
-                .find(|name| name.starts_with("c_zom_") && name.contains("viewhands"))
-        } else {
-            Some(HANDS_MODEL)
-        };
-        if let Some(hands) = hands {
-            wanted.insert(hands.to_owned(), (true, true, stand_in));
-        }
+    if !wanted.is_empty() {
+        wanted.insert(HANDS_MODEL.to_owned(), (true, true));
         if let Some(knife) = melee_weapon(load).map(|melee| melee.knife) {
-            wanted.entry(knife).or_insert((true, false, stand_in));
+            wanted.entry(knife).or_insert((true, false));
         }
     }
     content.melee = melee_weapon(load);
-    let (mut failed, mut deferred, mut missing) = (0usize, 0usize, 0usize);
-    let mut geometry: BTreeMap<String, Option<asset_model::ModelSkel>> = BTreeMap::new();
+    let (mut failed, mut decoded, mut missing) = (0usize, 0usize, 0usize);
     let mut native_textures = DecodedTextures::new();
-    for (name, (view, hands, stand_in)) in wanted {
+    let mut geometry = BTreeMap::new();
+    for (name, (view, hands)) in wanted {
         let copy = copies.get(&name);
         let source = copy.map_or(name.as_str(), |(model, _)| model.as_str());
         let Some(&(load, asset)) = models.get(source) else {
@@ -1507,17 +1420,20 @@ fn capture_content(
                 && !content.materials.contains_key(material_name)
             {
                 let reported = content.report.len();
-                let mut capture = capture_material(load, material, ipaks, &mut content.report);
-                capture.native = model
+                let native = model
                     .material_slot(surface)
                     .and_then(|slot| load.blocks.ptr_at(slot).ok().flatten())
                     .and_then(|address| {
                         capture_native(
                             load,
                             &zones,
-                            address,
+                            Some(address),
                             material,
-                            ColourMapAlpha::Mask,
+                            if hands {
+                                ColourMapAlpha::Mask
+                            } else {
+                                ColourMapAlpha::Gloss
+                            },
                             ipaks,
                             &mut native_textures,
                             &mut content.techsets,
@@ -1525,15 +1441,10 @@ fn capture_content(
                         )
                     });
                 missing += content.report.len() - reported;
-                deferred += [
-                    &capture.fallback.color,
-                    &capture.fallback.normal,
-                    &capture.fallback.specular,
-                ]
-                .iter()
-                .filter(|texture| texture.is_some())
-                .count();
-                content.materials.insert(material_name.clone(), capture);
+                decoded += native.as_ref().map_or(0, |capture| capture.textures.len());
+                content
+                    .materials
+                    .insert(material_name.clone(), T6MaterialCapture { native });
             }
             surface_materials.push(material_name);
         }
@@ -1544,14 +1455,12 @@ fn capture_content(
             skel,
             surface_materials,
             view,
-            hands,
-            stand_in,
         });
     }
+    camouflage::capture(load, &zones, ipaks, &mut native_textures, &mut content);
     content.report.push(format!(
-        "t6 content: {} models from {} source geometries ({failed} failed), {} materials, {deferred} donor texture conversions deferred, {missing} missing; {} image packages",
+        "t6 content: {} models ({failed} failed), {} materials, {decoded} native textures decoded, {missing} missing; {} image packages",
         content.models.len(),
-        geometry.len(),
         content.materials.len(),
         ipaks.len()
     ));
@@ -1573,6 +1482,47 @@ const FX_ELEM_MODEL: u8 = 7;
 const FX_ELEM_SOUND: u8 = 10;
 const FX_ELEM_RUNNER: u8 = 12;
 
+fn effect_name_at(load: &fastfile_t6::ZoneLoad, slot: fastfile_t6::Ptr) -> Option<&str> {
+    let ptr = load.blocks.ptr_at(slot).ok()??;
+    header_str(load, load.blocks.bytes(ptr, 4).ok()?, 0).filter(|name| !name.is_empty())
+}
+
+fn capture_impact_table(
+    zones: &[&fastfile_t6::ZoneLoad],
+) -> Option<asset_game::OwnedFxImpactTable> {
+    for load in zones {
+        for asset in &load.assets {
+            if asset.ty != fastfile_t6::AssetType::ImpactFx {
+                continue;
+            }
+            let table = decode_ptr(header_u32(&asset.header, 4)?)?;
+            let mut entries = Vec::new();
+            for row in 0..21 {
+                let at = table.at(row * 144);
+                let mut entry = asset_game::OwnedFxImpactEntry::default();
+                for (i, name) in entry.nonflesh.iter_mut().enumerate() {
+                    *name = effect_name_at(load, at.at(i as u32 * 4))
+                        .unwrap_or("")
+                        .to_owned();
+                }
+                for (i, name) in entry.flesh.iter_mut().enumerate() {
+                    *name = effect_name_at(load, at.at(128 + i as u32 * 4))
+                        .unwrap_or("")
+                        .to_owned();
+                }
+                entries.push(entry);
+            }
+            return Some(asset_game::OwnedFxImpactTable {
+                family: Some(asset_core::FamilyId::T6),
+                name: header_str(load, &asset.header, 0)?.to_owned(),
+                entries,
+                capture_gaps: 0,
+            });
+        }
+    }
+    None
+}
+
 fn capture_effects(
     zones: &[&fastfile_t6::ZoneLoad],
     ipaks: &[asset_transport::IPak],
@@ -1582,6 +1532,36 @@ fn capture_effects(
         .iter()
         .map(|&name| name.to_owned())
         .collect();
+    use fastfile_t6::weapon::def;
+    for load in zones {
+        for asset in &load.assets {
+            if let Some(weapon) = fastfile_t6::weapon::WeaponView::new(load, asset) {
+                for field in [
+                    def::VIEW_FLASH_EFFECT,
+                    def::WORLD_FLASH_EFFECT,
+                    def::VIEW_SHELL_EJECT_EFFECT,
+                    def::WORLD_SHELL_EJECT_EFFECT,
+                    def::VIEW_LAST_SHOT_EJECT_EFFECT,
+                    def::WORLD_LAST_SHOT_EJECT_EFFECT,
+                    def::PROJ_EXPLOSION_EFFECT,
+                ] {
+                    wanted.extend(weapon.def_asset_name(field).map(str::to_owned));
+                }
+            }
+        }
+    }
+    if let Some(table) = capture_impact_table(zones) {
+        for entry in table.entries {
+            wanted.extend(
+                entry
+                    .nonflesh
+                    .into_iter()
+                    .chain(entry.flesh)
+                    .filter(|name| !name.is_empty()),
+            );
+        }
+    }
+    let mut textures = DecodedTextures::new();
     loop {
         let before = content.fx.len();
         for &load in zones {
@@ -1595,7 +1575,7 @@ fn capture_effects(
                 if !wanted.contains(name) || content.fx.iter().any(|fx| fx.name == name) {
                     continue;
                 }
-                match capture_effect(load, asset, name, ipaks, content) {
+                match capture_effect(load, zones, asset, name, ipaks, &mut textures, content) {
                     Some(fx) => content.fx.push(fx),
                     None => content
                         .report
@@ -1636,9 +1616,11 @@ fn capture_effects(
 
 fn capture_effect(
     load: &fastfile_t6::ZoneLoad,
+    zones: &[&fastfile_t6::ZoneLoad],
     asset: &fastfile_t6::LoadedAsset,
     name: &str,
     ipaks: &[asset_transport::IPak],
+    textures: &mut DecodedTextures,
     content: &mut T6Content,
 ) -> Option<asset_game::T6FxCapture> {
     let header = &asset.header;
@@ -1693,8 +1675,22 @@ fn capture_effect(
                     if let (Some(material), Some(name)) = (material, name)
                         && !content.fx_materials.contains_key(name)
                     {
-                        let capture = capture_material(load, material, ipaks, &mut content.report);
-                        content.fx_materials.insert(name.to_owned(), capture);
+                        let native = load.blocks.ptr_at(slot).ok().flatten().and_then(|address| {
+                            capture_native(
+                                load,
+                                zones,
+                                Some(address),
+                                material,
+                                ColourMapAlpha::Mask,
+                                ipaks,
+                                textures,
+                                &mut content.techsets,
+                                &mut content.report,
+                            )
+                        });
+                        content
+                            .fx_materials
+                            .insert(name.to_owned(), T6MaterialCapture { native });
                     }
                     name.map(str::to_owned)
                 }
@@ -1702,17 +1698,19 @@ fn capture_effect(
                     .asset_in(asset, slot)
                     .and_then(|m| header_str(load, &m.header, 0))
                     .map(asset_game::t6_model_name),
-                FX_ELEM_SOUND | FX_ELEM_RUNNER => blocks
+                FX_ELEM_SOUND => blocks
                     .bytes(slot, 4)
                     .ok()
                     .and_then(|b| header_str(load, b, 0))
                     .map(str::to_owned),
+                FX_ELEM_RUNNER => effect_name_at(load, slot).map(str::to_owned),
                 _ => None,
             };
             visuals.push(visual.unwrap_or_else(String::new));
         }
-        let child =
-            |field: usize| header_str(load, &raw, field).map_or_else(String::new, str::to_owned);
+        let child = |field: usize| {
+            effect_name_at(load, at.at(field as u32)).map_or_else(String::new, str::to_owned)
+        };
         fx.elems.push(asset_game::T6FxElemCapture {
             vel_samples,
             vis_samples,
@@ -1734,30 +1732,28 @@ fn native_material_seed(
     is_sky: bool,
     materials: &mut asset_material::MaterialCatalog,
 ) -> Result<usize, String> {
-    native_material_seed_from_header(
+    let seed = materials.link_material(native_material_definition(
         path,
         name,
         &material.header,
         technique_set,
         is_sky,
-        materials,
-    )
+    )?);
+    Ok(seed)
 }
 
-fn native_material_seed_from_header(
+fn native_material_definition(
     path: &Path,
     name: &str,
     h: &[u8],
     technique_set: &str,
     is_sky: bool,
-    materials: &mut asset_material::MaterialCatalog,
-) -> Result<usize, String> {
+) -> Result<asset_material::AuthoredMaterial, String> {
     use asset_world::world_t6::Reader;
     if h.len() < 89 {
         return Err(format!("T6 material {name}: truncated header"));
     }
-    let seed = materials.link_material(asset_material::AuthoredMaterial {
-        t6_preparation: None,
+    Ok(asset_material::AuthoredMaterial {
         name: asset_core::AssetRef::Real(name.to_owned()),
         namespace: asset_core::AssetNamespace::T6,
         technique_set: asset_core::AssetRef::Real(
@@ -1789,8 +1785,7 @@ fn native_material_seed_from_header(
         textures: Vec::new(),
         constants: Vec::new(),
         zone: asset_core::ZoneOwner::from_zone_path(path),
-    });
-    Ok(seed)
+    })
 }
 
 fn camera_region(t6: u8) -> u8 {
@@ -1803,7 +1798,7 @@ fn camera_region(t6: u8) -> u8 {
     }
 }
 
-fn capture_bodies(
+fn capture_soldiers(
     path: &Path,
     factions: &[fastfile_t6::ZoneLoad],
     shared: &[fastfile_t6::ZoneLoad],
@@ -1811,10 +1806,11 @@ fn capture_bodies(
     kits: asset_model::SoldierKits,
     materials: &mut asset_material::MaterialCatalog,
     report: &mut Vec<String>,
-) -> Result<asset_model::BodyMeshBuild, String> {
+) -> Result<(asset_model::BodyMeshBuild, asset_model::FpvMeshBuild), String> {
     use asset_core::{AssetNamespace, WalkLocalMaterialIndex};
     use asset_material::t6_techset::T6Draw;
     let mut bodies = asset_model::BodyMeshBuild::default();
+    let mut fpv = asset_model::FpvMeshBuild::default();
     let zones: Vec<_> = factions.iter().chain(shared).collect();
     let mut decoded = DecodedTextures::new();
     let mut techsets = BTreeMap::new();
@@ -1823,102 +1819,106 @@ fn capture_bodies(
         .into_iter()
         .flatten()
     {
-        let name = &kit.body;
-        if bodies.get(name).is_some() {
-            continue;
-        }
-        let (load, asset, model) = factions
-            .iter()
-            .find_map(|load| {
-                load.assets.iter().find_map(|asset| {
-                    let model = asset_model::T6Model::new(load, asset)?;
-                    (model.name() == Some(name.as_str())).then_some((load, asset, model))
-                })
-            })
-            .ok_or_else(|| format!("T6 body {name}: model missing"))?;
-        let mut rows = Vec::with_capacity(model.surface_count());
-        for surface in 0..model.surface_count() {
-            let slot = model
-                .material_slot(surface)
-                .ok_or("T6 body material slot missing")?;
-            let material = load
-                .asset_in(asset, slot)
-                .ok_or("T6 body material missing")?;
-            let raw_name =
-                header_str(load, &material.header, 0).ok_or("T6 body material name missing")?;
-            let material_name = asset_core::AssetRef::bare_name(raw_name);
-            if let Some(&row) = bound.get(material_name) {
-                rows.push(Some(row));
+        for (name, hands) in
+            std::iter::once((&kit.body, false)).chain(kit.arms.as_ref().map(|name| (name, true)))
+        {
+            let captured = if hands {
+                fpv.contains(AssetNamespace::T6, name)
+            } else {
+                bodies.get(name).is_some()
+            };
+            if captured {
                 continue;
             }
-            let address = load
-                .blocks
-                .ptr_at(slot)
-                .map_err(|e| format!("T6 body material pointer: {e:?}"))?
-                .ok_or("T6 body material null")?;
-            let (material_load, material) = if raw_name.starts_with(',') {
-                zones
-                    .iter()
-                    .find_map(|zone| {
-                        zone.assets
-                            .iter()
-                            .find(|asset| {
-                                asset.ty == fastfile_t6::AssetType::Material
-                                    && header_str(zone, &asset.header, 0) == Some(material_name)
-                            })
-                            .map(|asset| (*zone, asset))
+            let (load, asset, model) = factions
+                .iter()
+                .find_map(|load| {
+                    load.assets.iter().find_map(|asset| {
+                        let model = asset_model::T6Model::new(load, asset)?;
+                        (model.name() == Some(name.as_str())).then_some((load, asset, model))
                     })
-                    .ok_or_else(|| {
-                        format!("T6 body material {material_name}: definition missing")
-                    })?
-            } else {
-                (load, material)
-            };
-            let native = capture_native(
-                material_load,
-                &zones,
-                address,
-                material,
-                ColourMapAlpha::Mask,
-                ipaks,
-                &mut decoded,
-                &mut techsets,
-                report,
-            )
-            .ok_or_else(|| format!("T6 body material {material_name}: native capture failed"))?;
-            let set = &techsets[&native.technique_set];
-            materials.link_t6_technique_set(set, T6Draw::Lit, report);
-            let seed =
-                native_material_seed(path, material_name, material, &set.name, false, materials)?;
-            let row = materials
-                .t6_material(
-                    asset_material::t6_techset::T6MaterialSource::NativeSeed(seed),
-                    material_name,
-                    set,
-                    &native.textures,
-                    native.constants,
-                    &native.state,
-                    T6Draw::Lit,
+                })
+                .ok_or_else(|| format!("T6 soldier {name}: model missing"))?;
+            let mut rows = Vec::with_capacity(model.surface_count());
+            for surface in 0..model.surface_count() {
+                let slot = model
+                    .material_slot(surface)
+                    .ok_or("T6 soldier material slot missing")?;
+                let material = load
+                    .asset_in(asset, slot)
+                    .ok_or("T6 soldier material missing")?;
+                let raw_name = header_str(load, &material.header, 0)
+                    .ok_or("T6 soldier material name missing")?;
+                let material_name = asset_core::AssetRef::bare_name(raw_name);
+                if let Some(&row) = bound.get(material_name) {
+                    rows.push(Some(row));
+                    continue;
+                }
+                let address = load
+                    .blocks
+                    .ptr_at(slot)
+                    .map_err(|e| format!("T6 soldier material pointer: {e:?}"))?
+                    .ok_or("T6 soldier material null")?;
+                let (material_load, material) = resolve_material(load, &zones, material)?;
+                let address = std::ptr::eq(material_load, load).then_some(address);
+                let native = capture_native(
+                    material_load,
+                    &zones,
+                    address,
+                    material,
+                    ColourMapAlpha::Mask,
+                    ipaks,
+                    &mut decoded,
+                    &mut techsets,
                     report,
                 )
-                .map_err(|e| format!("T6 body material link failed: {e:?}"))?;
-            let row = WalkLocalMaterialIndex::from_walk(row);
-            bound.insert(material_name.to_owned(), row);
-            rows.push(Some(row));
+                .ok_or_else(|| {
+                    format!("T6 soldier material {material_name}: native capture failed")
+                })?;
+                let set = &techsets[&native.technique_set];
+                materials.link_t6_technique_set(set, T6Draw::Lit, report);
+                let seed = native_material_seed(
+                    path,
+                    material_name,
+                    material,
+                    &set.name,
+                    false,
+                    materials,
+                )?;
+                let row = materials
+                    .t6_material(
+                        seed,
+                        material_name,
+                        set,
+                        &native.textures,
+                        native.constants,
+                        &native.state,
+                        T6Draw::Lit,
+                        report,
+                    )
+                    .map_err(|e| format!("T6 soldier material link failed: {e:?}"))?;
+                let row = WalkLocalMaterialIndex::from_walk(row);
+                bound.insert(material_name.to_owned(), row);
+                rows.push(Some(row));
+            }
+            let skel = asset_model::capture_model_skel_t6(model, |surface| rows[surface])
+                .ok_or_else(|| format!("T6 soldier {name}: skeleton capture failed"))?;
+            report.push(format!(
+                "T6 soldier {name}: {} bones, {} vertices, {} surfaces",
+                skel.bones.len(),
+                skel.positions.len(),
+                skel.surface_materials.len()
+            ));
+            if hands {
+                fpv.insert_in(AssetNamespace::T6, skel, Some(materials));
+            } else {
+                bodies.insert_in(AssetNamespace::T6, skel, Some(materials));
+            }
         }
-        let skel = asset_model::capture_model_skel_t6(model, |surface| rows[surface])
-            .ok_or_else(|| format!("T6 body {name}: skeleton capture failed"))?;
-        report.push(format!(
-            "T6 body {name}: {} bones, {} vertices, {} surfaces",
-            skel.bones.len(),
-            skel.positions.len(),
-            skel.surface_materials.len()
-        ));
-        bodies.insert_in(AssetNamespace::T6, skel, Some(materials));
     }
     bodies.set_kits(kits);
     materials.resolve_technique_set_edges();
-    Ok(bodies)
+    Ok((bodies, fpv))
 }
 
 fn map_teams(
@@ -2007,7 +2007,8 @@ fn map_teams(
             spawn: value("music/spawn_").map(|s| format!("mus_{}", s.to_ascii_lowercase())),
             victory: value("music/victory_").map(|s| format!("mus_{}", s.to_ascii_lowercase())),
             defeat: Some("mus_loss".into()),
-            ..Default::default()
+            winning: Some("mus_time_running_out".into()),
+            losing: Some("mus_time_running_out".into()),
         };
         if index == 0 {
             settings.allies = icon;
@@ -2242,50 +2243,26 @@ impl ZoneLane for T6Lane {
             let mut surface_materials = Vec::with_capacity(world_materials.len());
             let mut surface_layer_formats = Vec::with_capacity(world_materials.len());
             let materials_stage = progress.begin_scoped(StageId::MapAssets, "t6_materials", None);
-            let mut linked_techsets = std::collections::BTreeSet::new();
             for (source, material) in world_materials
                 .iter()
                 .chain(&sky_materials)
                 .map(|material| (&load, *material))
                 .chain(smodel_materials.iter().copied())
             {
-                let name = header_str(source, &material.header, 0)
-                    .ok_or("T6 material name missing")?
-                    .to_owned();
+                let raw_name =
+                    header_str(source, &material.header, 0).ok_or("T6 material name missing")?;
+                let name = asset_core::AssetRef::bare_name(raw_name).to_owned();
                 let row = if let Some(row) = material_rows.get(&name) {
                     *row
                 } else {
-                    let (material_load, defined) = if let Some(bare) = name.strip_prefix(',') {
-                        image_loads
-                            .iter()
-                            .rev()
-                            .find_map(|source| {
-                                source
-                                    .assets
-                                    .iter()
-                                    .find(|candidate| {
-                                        candidate.ty == fastfile_t6::AssetType::Material
-                                            && header_str(source, &candidate.header, 0)
-                                                == Some(bare)
-                                    })
-                                    .map(|material| (*source, material))
-                            })
-                            .ok_or_else(|| {
-                                format!(
-                                    "T6 material {name}: definition missing from map dependencies"
-                                )
-                            })?
-                    } else {
-                        (source, material)
-                    };
+                    let is_sky = sky_materials.iter().any(|sky| std::ptr::eq(*sky, material));
+                    let (material_load, material) =
+                        resolve_material(source, &image_loads, material)?;
                     let native = capture_native(
                         material_load,
                         &image_loads,
-                        fastfile_t6::Ptr {
-                            block: 0,
-                            offset: 0,
-                        },
-                        defined,
+                        None,
+                        material,
                         ColourMapAlpha::Gloss,
                         &ipaks,
                         &mut decoded,
@@ -2294,21 +2271,18 @@ impl ZoneLane for T6Lane {
                     )
                     .ok_or_else(|| format!("T6 material {name}: native capture failed"))?;
                     let set = &techsets[&native.technique_set];
-                    if linked_techsets.insert(set.name.clone()) {
-                        materials.link_t6_technique_set(set, T6Draw::Lit, &mut report);
-                    }
-                    let is_sky = sky_materials.iter().any(|sky| std::ptr::eq(*sky, material));
+                    materials.link_t6_technique_set(set, T6Draw::Lit, &mut report);
                     let seed = native_material_seed(
                         path,
                         &name,
-                        defined,
+                        material,
                         &set.name,
                         is_sky,
                         &mut materials,
                     )?;
                     let row = materials
                         .t6_material(
-                            asset_material::t6_techset::T6MaterialSource::NativeSeed(seed),
+                            seed,
                             &name,
                             set,
                             &native.textures,
@@ -2328,7 +2302,7 @@ impl ZoneLane for T6Lane {
             materials_stage.done();
             report.push(format!(
                 "T6 map materials: {} unique technique sets linked once",
-                linked_techsets.len()
+                techsets.len()
             ));
             surface_materials.truncate(world_materials.len());
             surface_layer_formats.truncate(world_materials.len());
@@ -2359,7 +2333,7 @@ impl ZoneLane for T6Lane {
                 let material = model.source().asset_at(model.material_slot(surface)?)?;
                 let name = header_str(model.source(), &material.header, 0)?;
                 material_rows
-                    .get(name)
+                    .get(asset_core::AssetRef::bare_name(name))
                     .copied()
                     .map(asset_core::WalkLocalMaterialIndex::from_walk)
             };
@@ -2577,7 +2551,7 @@ impl ZoneLane for T6Lane {
                 material_rows.len()
             ));
             let (team_settings, faction_loads, kits) = map_teams(path, &mut report)?;
-            let bodies = capture_bodies(
+            let (bodies, fpv_meshes) = capture_soldiers(
                 path,
                 &faction_loads,
                 &shared_loads,
@@ -2595,22 +2569,40 @@ impl ZoneLane for T6Lane {
                 [&team_settings.allies_music, &team_settings.axis_music]
                     .into_iter()
                     .flat_map(|music| {
-                        [&music.spawn, &music.victory, &music.defeat]
-                            .into_iter()
-                            .filter_map(|alias| alias.clone())
+                        [
+                            &music.spawn,
+                            &music.victory,
+                            &music.defeat,
+                            &music.winning,
+                            &music.losing,
+                        ]
+                        .into_iter()
+                        .filter_map(|alias| alias.clone())
                     }),
             );
             sound_names.sort();
             sound_names.dedup();
             sound_loads.extend(&shared_loads);
+            let mode = asset_transport::t6_content::T6ContentMode::for_path(path);
+            let code = sound_zone(
+                &path.with_file_name(format!(
+                    "{}.ff",
+                    if mode == asset_transport::t6_content::T6ContentMode::Zombies {
+                        "code_post_gfx_zm"
+                    } else {
+                        "code_post_gfx_mp"
+                    }
+                )),
+                &mut report,
+            );
+            sound_loads.extend(&code);
             let (banks, bank_report) = asset_audio::t6_sound_banks(path);
             report.extend(bank_report);
-            let (sound_catalog, filled, sound_gaps) = asset_audio::capture_t6_sounds_in_game(
+            let (sound_catalog, filled, sound_gaps) = asset_audio::capture_t6_sounds(
                 path,
                 &sound_loads,
                 &banks,
                 sound_names.iter().map(String::as_str),
-                asset_audio::ZoneGame::T6,
             );
             report.push(format!(
                 "T6 map/faction sounds: {} names, {} captured, {} gaps",
@@ -2621,7 +2613,7 @@ impl ZoneLane for T6Lane {
             report.extend(sound_gaps);
             let mut sound_capture = asset_audio::ZoneSoundCapture::for_map(
                 path,
-                asset_audio::ZoneGame::T6,
+                asset_core::FamilyId::T6,
                 "T6 map/factions",
             );
             sound_capture.set_t6(sound_catalog);
@@ -2738,7 +2730,7 @@ impl ZoneLane for T6Lane {
                 intermission_view: asset_world::parse_intermission_view(entities),
                 exp_fog,
                 t6_film_grade,
-                ..Default::default()
+                ..crate::PreparedWorld::empty(WorldDrawPolicy::t6())
             };
             let mut xanims = asset_anim::XAnimBuild::default();
             if mode == asset_transport::t6_content::T6ContentMode::Zombies {
@@ -2763,6 +2755,7 @@ impl ZoneLane for T6Lane {
                 sound,
                 collision: Some(collision),
                 bodies,
+                fpv_meshes,
                 spawns,
                 facts: crate::MapFacts {
                     script_sound: asset_audio::MapScriptSoundFacts {
@@ -2774,7 +2767,7 @@ impl ZoneLane for T6Lane {
                     ..Default::default()
                 },
                 report,
-                ..Default::default()
+                ..LoadedWorld::empty(WorldDrawPolicy::t6())
             })
         })();
         match result {
@@ -2895,14 +2888,16 @@ impl ZoneLane for T6Lane {
         ));
         content_stage.done();
         report.extend(content.report.iter().cloned());
-        let mut weapons = catalog.into_build();
-        weapons.stamp_namespace(asset_core::AssetNamespace::T6);
+        let impact_loads: Vec<_> = std::iter::once(&load).chain(others.iter()).collect();
+        let impact_fx = capture_impact_table(&impact_loads);
+        let weapons = catalog.into_build();
         report.push(format!(
             "T6 content: walked {} assets; weapons {seen} seen, {captured} captured",
             load.assets.len()
         ));
         CommonCensus {
             weapons,
+            impact_fx,
             player_anim_sources: asset_anim::PlayerAnimSources::native_t6(),
             material_population: material_seed,
             report,

@@ -37,7 +37,7 @@ pub fn resolve_class_weapon(
                     .expect("resolved in this registry")
                     .wire_id()
             })
-            .map_err(|refusal| format!("{name}:{}", refusal.code()))
+            .map_err(|refusal| format!("{name}:{} — {refusal}", refusal.code()))
     };
     if let Some(family) = asset_game::FamilyKey::parse(name)
         && weapons.weapon_families().family(&family).is_some()
@@ -61,18 +61,32 @@ pub fn resolve_class_weapon(
         _ if attachments.is_empty() => weapons
             .configuration_admission(id)
             .map(|()| id)
-            .map_err(|refusal| format!("{name}:{}", refusal.code())),
+            .map_err(|refusal| format!("{name}:{} — {refusal}", refusal.code())),
         _ => Err(format!("{name}:weapon.unknown_family")),
     }
 }
 
-pub fn authoritative_class_lock_reason(
+pub(crate) fn authoritative_class_lock_reason(
     names: [&str; 4],
     ids: [u32; 4],
-    combat: &[weapon_iw4::WeaponCombatFacts],
-    equipment: &[sim::EquipmentRuntimeFacts],
+    content: &sim::SimWeaponContent,
 ) -> Option<String> {
     let mut reason = None;
+    for (name, id) in names.iter().zip(ids) {
+        if id != 0 && !content.is_runnable(id) {
+            append_lock_reason(
+                &mut reason,
+                format!(
+                    "{name}:execution.refused: {}",
+                    content
+                        .execution_refusal(id)
+                        .unwrap_or("weapon content missing")
+                ),
+            );
+        }
+    }
+    let combat = content.combat();
+    let equipment = content.equipment();
     for (name, id) in names[..2].iter().zip(&ids[..2]) {
         if *id == 0 {
             continue;
@@ -119,10 +133,15 @@ pub fn project_class(
     class_id: u32,
     row: &ClassRow,
     weapons: &WeaponRegistry,
-    combat: &[weapon_iw4::WeaponCombatFacts],
-    equipment: &[sim::EquipmentRuntimeFacts],
+    compiled: &crate::PreparedSimWeapons,
 ) -> AuthoritativeClassProjection {
-    let resolved = resolve_personal_class(row, weapons).and_then(|loadout| {
+    let content = compiled.content();
+    let resolved = if compiled.owned_by(weapons) {
+        resolve_personal_class(row, weapons)
+    } else {
+        Err("weapon.foreign_content".to_owned())
+    }
+    .and_then(|loadout| {
         loadout
             .definition(sim::ClassId(class_id), 1)
             .ok_or_else(|| "class.invalid_definition".to_owned())
@@ -135,9 +154,7 @@ pub fn project_class(
         ),
     };
     let names = row.weapons.each_ref().map(String::as_str);
-    if let Some(reason) =
-        authoritative_class_lock_reason(names, def.weapon_slot_ids(), combat, equipment)
-    {
+    if let Some(reason) = authoritative_class_lock_reason(names, def.weapon_slot_ids(), content) {
         append_lock_reason(&mut lock_reason, reason);
     }
     def.locked = lock_reason.is_some();

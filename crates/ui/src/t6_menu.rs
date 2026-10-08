@@ -124,11 +124,7 @@ fn available(slot: &ClassSlotState, registry: &asset_game::WeaponRegistry) -> bo
         return false;
     }
     let row = session::ClassRow::from(&frame::HostClassSlot::from(slot));
-    let combat = session::combat_table::from_registry(registry, None);
-    let equipment = session::combat_table::equipment_from_registry(registry);
-    !session::project_class(0, &row, registry, &combat, &equipment)
-        .def
-        .locked
+    session::ClassWeaponAdmission::prepare(registry).allows(&row)
 }
 
 fn load(
@@ -525,17 +521,13 @@ fn drive(
                         )
                         .collect()
                 };
-                let combat = session::combat_table::from_registry(registry, None);
-                let equipment = session::combat_table::equipment_from_registry(registry);
+                let admission = session::ClassWeaponAdmission::prepare(registry);
                 menu.picker = candidates
                     .into_iter()
                     .filter(|key| {
                         let changed = changed_item(&slot, row, attachment, key.clone());
                         let class = session::ClassRow::from(&frame::HostClassSlot::from(&changed));
-                        native(&changed)
-                            && !session::project_class(0, &class, registry, &combat, &equipment)
-                                .def
-                                .locked
+                        native(&changed) && admission.allows(&class)
                     })
                     .collect();
                 menu.pick_row = Some(row);

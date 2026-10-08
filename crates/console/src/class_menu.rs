@@ -1,7 +1,7 @@
 use asset_core::AssetNamespace;
 use bevy::prelude::*;
 use frame::{UiMenuDvars, UiMenuRequest};
-use ui::classes::display::{category_label, label, localized, preview_image};
+use ui::classes::display::{category_label, class_name, label, localized, preview_image};
 use ui::{ClassEditRow, ClassLoadoutCatalog, ClassPickerFolder, SessionClassStore};
 
 use crate::{CommandSpec, ConsoleCommand, ConsoleRegistry};
@@ -42,8 +42,40 @@ fn camo_preview(catalog: &ClassLoadoutCatalog, weapon: &str, camo: &str) -> Stri
     session::resolve_class_weapon(registry, weapon, &[], asset_game::LoadoutRules::default())
         .map_or_else(
             |_| String::new(),
-            |id| registry.camouflage_preview(id, camo),
+            |id| {
+                registry
+                    .camouflage_preview(id, camo)
+                    .unwrap_or_else(String::new)
+            },
         )
+}
+
+fn localized_camo_label(
+    catalog: &ClassLoadoutCatalog,
+    loc: &asset_game::LocalizeCatalog,
+    weapon: &str,
+    camo: &str,
+) -> String {
+    let label = || {
+        if camo.is_empty() {
+            return loc.text("MPUI_NONE");
+        }
+        let registry = catalog.resolver.0.as_deref()?;
+        let id = session::resolve_class_weapon(
+            registry,
+            weapon,
+            &[],
+            asset_game::LoadoutRules::default(),
+        )
+        .ok()?;
+        loc.text_in(
+            registry.identity_namespace_of(id)?,
+            registry.camouflage_caption(id, camo)?,
+        )
+    };
+    label()
+        .map(str::to_owned)
+        .unwrap_or_else(|| camo_label(camo))
 }
 
 fn camo_label(camo: &str) -> String {
@@ -157,11 +189,18 @@ pub(crate) fn route(
     mut state: Local<ClassMenuState>,
     mut store: ResMut<SessionClassStore>,
     catalog: Res<ClassLoadoutCatalog>,
-    loc: Res<asset_game::LocalizeCatalog>,
+    loc: (
+        Res<asset_game::LocalizeCatalog>,
+        Option<Res<assets::PreparedLocalizedStrings>>,
+    ),
     mut dvars: ResMut<UiMenuDvars>,
     mut menus: MessageWriter<UiMenuRequest>,
     mut echo: crate::feature_dispatch::ConsoleEcho,
 ) {
+    let (shell_loc, prepared_loc) = loc;
+    let loc = prepared_loc
+        .as_ref()
+        .map_or(&*shell_loc, |strings| &strings.0);
     for command in events
         .read()
         .filter(|command| command.name.starts_with("ui_class_"))
@@ -346,7 +385,7 @@ pub(crate) fn route(
                             "menu: class {} {} camouflage = {}",
                             selected + 1,
                             row.label(),
-                            camo_label(camo)
+                            localized_camo_label(&catalog, loc, slot.row_value(row), camo)
                         ));
                     } else {
                         echo.write(format!(
@@ -415,7 +454,7 @@ pub(crate) fn route(
                         .collect();
                     if name.is_empty() {
                         return Err(localized(
-                            &loc,
+                            loc,
                             "MENU_IWNET_CREATE_BADNAME",
                             "Enter a class name",
                         ));
@@ -449,7 +488,7 @@ pub(crate) fn route(
             store
                 .slots
                 .get(at)
-                .map(|slot| slot.name.clone())
+                .map(|slot| class_name(&slot.name))
                 .unwrap_or_default(),
         );
     }
@@ -459,13 +498,42 @@ pub(crate) fn route(
         {
             dvars.set("ui_class_status", format!("Class unavailable: {reason}"));
         }
-        dvars.set("ui_class_title", &slot.name);
+        dvars.set("ui_class_title", class_name(&slot.name));
         dvars.set("ui_class_saved_name", &slot.name);
         dvars.set("ui_class_index", store.selected.to_string());
+        for (at, row, weapon) in [
+            (0, ClassEditRow::Primary, &slot.primary),
+            (1, ClassEditRow::Secondary, &slot.secondary),
+        ] {
+            let caption = localized(loc, row.loc_key().trim_start_matches('@'), row.label());
+            for (kind, key, fallback, available) in [
+                (
+                    "attachments",
+                    "MENU_ATTACHMENTS_CAPS",
+                    "Attachments",
+                    !catalog.attachments(row, weapon).is_empty(),
+                ),
+                (
+                    "camo",
+                    "MENU_CAMO_CAPS",
+                    "Camouflage",
+                    !camo_names(&catalog, weapon).is_empty(),
+                ),
+            ] {
+                dvars.set(
+                    &format!("ui_class_has_{kind}_{at}"),
+                    if available { "1" } else { "0" },
+                );
+                dvars.set(
+                    &format!("ui_class_{kind}_button_{at}"),
+                    format!("{caption}: {}", localized(loc, key, fallback)),
+                );
+            }
+        }
         for row in ClassEditRow::ALL {
             dvars.set(
                 &format!("ui_class_value_{}", row.as_u8()),
-                label(slot.row_value(row), &catalog, &loc),
+                label(slot.row_value(row), &catalog, loc),
             );
             dvars.set(
                 &format!("ui_class_image_{}", row.as_u8()),
@@ -517,14 +585,14 @@ pub(crate) fn route(
                     if key.is_empty() {
                         String::new()
                     } else {
-                        label(&key, &catalog, &loc)
+                        label(&key, &catalog, loc)
                     },
                 );
             }
             dvars.set(
                 &format!("ui_class_{name}_attachments"),
                 if selected.is_empty() {
-                    label("", &catalog, &loc)
+                    label("", &catalog, loc)
                 } else {
                     selected
                         .iter()
@@ -539,7 +607,7 @@ pub(crate) fn route(
                                     }
                                 ),
                                 &catalog,
-                                &loc,
+                                loc,
                             )
                         })
                         .collect::<Vec<_>>()
@@ -579,14 +647,15 @@ pub(crate) fn route(
     };
     dvars.set("ui_class_picker_depth", picker_depth.to_string());
     let mut caption = state.row.map_or_else(
-        || localized(&loc, "MENU_CLASSES", "Classes"),
-        |row| localized(&loc, row.loc_key(), row.label()),
+        || localized(loc, "MENU_CLASSES", "Classes"),
+        |row| localized(loc, row.loc_key(), row.label()),
     );
     if state.attachments {
         caption.push_str(" / ");
-        caption.push_str(&localized(&loc, "MENU_ATTACHMENTS_CAPS", "Attachments"));
+        caption.push_str(&localized(loc, "MENU_ATTACHMENTS_CAPS", "Attachments"));
     } else if state.camo {
-        caption.push_str(" / Camouflage");
+        caption.push_str(" / ");
+        caption.push_str(&localized(loc, "MENU_CAMO_CAPS", "Camouflage"));
     }
     dvars.set("ui_class_caption", caption);
     dvars.set(
@@ -600,7 +669,7 @@ pub(crate) fn route(
         "ui_class_category_label",
         state
             .folder
-            .map(|folder| category_label(folder, &loc))
+            .map(|folder| category_label(folder, loc))
             .unwrap_or_default(),
     );
     state.page = state.page.min(choices.len().saturating_sub(1) / PAGE_SIZE);
@@ -616,7 +685,7 @@ pub(crate) fn route(
             &format!("ui_class_category_{at}"),
             folders
                 .get(at)
-                .map(|folder| category_label(*folder, &loc))
+                .map(|folder| category_label(*folder, loc))
                 .unwrap_or_default(),
         );
         dvars.set(
@@ -632,7 +701,13 @@ pub(crate) fn route(
                         return format!(
                             "{}{}",
                             if selected { "* " } else { "" },
-                            camo_label(value)
+                            localized_camo_label(
+                                &catalog,
+                                loc,
+                                slot.zip(state.row)
+                                    .map_or("", |(slot, row)| slot.row_value(row)),
+                                value
+                            )
                         );
                     }
                     let key = if state.attachments && !value.is_empty() {
@@ -661,26 +736,26 @@ pub(crate) fn route(
                     format!(
                         "{}{}",
                         if selected { "* " } else { "" },
-                        label(&key, &catalog, &loc)
+                        label(&key, &catalog, loc)
                     )
                 })
                 .unwrap_or_default(),
         );
     }
     let title = if state.camo {
-        "Camouflage".to_owned()
+        localized(loc, "MENU_CAMO_CAPS", "Camouflage")
     } else if state.attachments {
-        localized(&loc, "MENU_ATTACHMENTS_CAPS", "Attachments")
+        localized(loc, "MENU_ATTACHMENTS_CAPS", "Attachments")
     } else if let Some(folder) = state.folder {
         format!(
             "{} / {}",
             folder.namespace.as_str().to_uppercase(),
-            category_label(folder, &loc)
+            category_label(folder, loc)
         )
     } else {
         state.row.map_or_else(
-            || localized(&loc, "MENU_WEAPON_CLASSES_CAPS", "Classes"),
-            |row| localized(&loc, row.loc_key(), row.label()),
+            || localized(loc, "MENU_WEAPON_CLASSES_CAPS", "Classes"),
+            |row| localized(loc, row.loc_key(), row.label()),
         )
     };
     dvars.set("ui_class_picker_title", title);
@@ -695,9 +770,7 @@ pub(crate) fn route(
                 key.clone()
             };
             let preview = catalog.previews.get(&lookup)?;
-            let ns = asset_core::AssetKey::parse(&lookup)
-                .map(|key| key.namespace)
-                .unwrap_or(asset_core::AssetNamespace::Iw4);
+            let ns = asset_core::AssetKey::parse(&lookup).ok()?.namespace;
             Some((ns, preview))
         });
     let image = preview
@@ -745,8 +818,22 @@ pub(crate) fn route(
     );
     dvars.set(
         "ui_class_preview_title",
-        preview
-            .map(|(_, p)| localized(&loc, &p.name_key, &p.reference))
+        choices
+            .get(state.page * PAGE_SIZE + state.hover)
+            .map(|key| {
+                let weapon = store
+                    .slots
+                    .get(store.selected)
+                    .zip(state.row)
+                    .map_or("", |(slot, row)| slot.row_value(row));
+                if state.camo {
+                    localized_camo_label(&catalog, loc, weapon, key)
+                } else if state.attachments && !key.is_empty() {
+                    label(&format!("{weapon}+{key}"), &catalog, loc)
+                } else {
+                    label(key, &catalog, loc)
+                }
+            })
             .unwrap_or_default(),
     );
     for (at, bar) in asset_game::CacStatBar::ALL.into_iter().enumerate() {

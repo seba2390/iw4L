@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use asset_anim::XAnimCatalog;
-use asset_core::AssetNamespace;
 use asset_game::{WEAPON_ANIM_SLOTS, WeaponAnimations, WeaponFpvFacts};
 use asset_material::TS_COLOR_MAP;
 use asset_model::FpvMeshCatalog;
@@ -144,7 +143,7 @@ impl FpvPreparationJob {
                     if !seen_assemblies.insert(assembly_key(assembly)) {
                         continue;
                     }
-                    for part in &assembly.parts {
+                    for part in assembly.parts() {
                         let order = part.model.order();
                         if fpv.get_at(order).is_none() {
                             continue;
@@ -160,9 +159,8 @@ impl FpvPreparationJob {
             }
         }
         for id in 1..=weapon_n {
-            for (_, edge) in registry.camo_view_edges_of(id) {
-                if let Some(order) = edge.bound_index()
-                    && fpv.get_at(order).is_some()
+            for appearance in registry.appearances_of(id) {
+                if let Some((order, _)) = appearance.view_model(fpv)
                     && seen_models.insert(order)
                 {
                     models.push(order);
@@ -171,7 +169,10 @@ impl FpvPreparationJob {
         }
         let mut camouflage_materials = HashSet::new();
         for id in 1..=weapon_n {
-            for camo in registry.material_camouflages_of(id) {
+            for appearance in registry.appearances_of(id) {
+                let Some(camo) = appearance.material_camouflage() else {
+                    continue;
+                };
                 for (_, key) in &camo.materials {
                     if let Some(material) = owner.materials.material_for_key(key) {
                         camouflage_materials.insert(usize::from(material.asset_id.0));
@@ -189,6 +190,8 @@ impl FpvPreparationJob {
         if let Some(stage) = &progress {
             stage.set_total(work_total);
         }
+        let admission =
+            FpvMaterialAdmission::new(Arc::clone(&owner.meshes), Arc::clone(&owner.materials));
         Self {
             owner,
             stage: FpvPreparationStage::Admit,
@@ -200,7 +203,7 @@ impl FpvPreparationJob {
             next_model: 0,
             camouflage_materials,
             next_camouflage: 0,
-            admission: FpvMaterialAdmission::default(),
+            admission,
             image_cache: HashMap::new(),
             layouts_queue,
             next_layout: 0,
@@ -449,11 +452,8 @@ impl FpvPreparationJob {
                 .and_then(|edge| edge.bound_index())
         };
         let mut out = Vec::new();
-        for (slot, edge) in self.owner.weapons.camo_view_edges_of(id) {
-            let Some(order) = edge.bound_index() else {
-                continue;
-            };
-            let Some(camo) = fpv.get_at(order) else {
+        for appearance in self.owner.weapons.appearances_of(id) {
+            let Some((order, camo)) = appearance.view_model(fpv) else {
                 continue;
             };
             if camo.skel.surfaces_for_lod(0) != base.skel.surfaces_for_lod(0) {
@@ -476,10 +476,13 @@ impl FpvPreparationJob {
                 }
             }
             if !swaps.is_empty() {
-                out.push((*slot, Arc::new(swaps)));
+                out.push((appearance.slot(), Arc::new(swaps)));
             }
         }
-        for camo in self.owner.weapons.material_camouflages_of(id) {
+        for appearance in self.owner.weapons.appearances_of(id) {
+            let Some(camo) = appearance.material_camouflage() else {
+                continue;
+            };
             let mut swaps = HashMap::new();
             for (from, to) in &camo.materials {
                 let Some(source) = self.owner.materials.material_for_key(from) else {
@@ -576,9 +579,11 @@ impl FpvPreparationJob {
             .and_then(|row| row[asset_iw4::size::weap_anim::IDLE].bound_index())
             .and_then(|order| xanims.clip_at(order))
             .map(|clip| clip.name.clone());
-        let namespace = registry
-            .component_namespace_of(id, asset_game::WeaponComponent::ViewModel)
-            .unwrap_or(AssetNamespace::Iw4);
+        let Some(namespace) =
+            registry.component_namespace_of(id, asset_game::WeaponComponent::ViewModel)
+        else {
+            return;
+        };
         let gun_name = fpv
             .get_at(gun_index.order())
             .map(|entry| entry.skel.name.clone())

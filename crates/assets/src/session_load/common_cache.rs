@@ -247,7 +247,15 @@ pub async fn load_shell_common(games: asset_transport::GamesRoot) -> ShellCommon
     let mut report = Vec::new();
     let key = CommonKey::shell(&games, &mut report);
     let (common, reach) = ensure_common(key).await;
-    let weapons = common.products.weapons.clone().publish();
+    let weapons = common.products.weapons.clone().publish_for_loadout();
+    for family in weapons.weapon_families().families() {
+        if let Some(id) = family.base
+            && let Some(image) = weapons.hud_icon_image_of(id)
+            && !family.image.is_empty()
+        {
+            asset_material::retain_ui_preview_fallback(family.key.namespace, &family.image, image);
+        }
+    }
     report.push(format!(
         "CAC: {reach} common set {}; weapons={} (iw4={} iw5={} t5={} t6={}) tables={}",
         common.key,
@@ -475,13 +483,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let runtime_namespace = common_opened
         .as_ref()
         .and_then(|(_, image)| image.as_ref().ok())
-        .map(|image| match image.game {
-            asset_core::ZoneGame::T5 => asset_core::AssetNamespace::T5,
-            asset_core::ZoneGame::Iw5 => asset_core::AssetNamespace::Iw5,
-            asset_core::ZoneGame::T6 => asset_core::AssetNamespace::T6,
-            _ => asset_core::AssetNamespace::Iw4,
-        })
-        .unwrap_or(asset_core::AssetNamespace::Iw4);
+        .map(|image| image.game);
 
     let (
         mut weapons,
@@ -636,7 +638,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let (t6_weapons, preparation, t6_tables, t6_report) = t6_weapon_walk.await;
     common_report.extend(t6_report);
     weapons.absorb(t6_weapons);
-    if runtime_namespace == asset_core::AssetNamespace::T6 {
+    if runtime_namespace == Some(asset_core::AssetNamespace::T6) {
         weapons.apply_stats_tables(&t6_tables);
     }
     if let Some(compiler) = preparation.or(runtime_t6_preparation) {
@@ -684,21 +686,35 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
 
     let cac_tables: Vec<(asset_core::AssetNamespace, asset_game::CapturedStringTable)> = [
         (runtime_namespace, iw4_stats, iw4_census_stats),
-        (asset_core::AssetNamespace::Iw5, iw5_stats, iw5_census_stats),
         (
-            asset_core::AssetNamespace::T5,
+            Some(asset_core::AssetNamespace::Iw5),
+            iw5_stats,
+            iw5_census_stats,
+        ),
+        (
+            Some(asset_core::AssetNamespace::T5),
             t5_code_stats,
             t5_census_stats,
         ),
-        (asset_core::AssetNamespace::T6, t6_tables, Vec::new()),
+        (Some(asset_core::AssetNamespace::T6), t6_tables, Vec::new()),
     ]
     .into_iter()
     .flat_map(|(namespace, code, common)| {
         code.into_iter()
             .chain(common)
-            .map(move |table| (namespace, table))
+            .filter_map(move |table| Some((namespace?, table)))
     })
     .collect();
+
+    if let Some((_, table)) = cac_tables.iter().find(|(ns, table)| {
+        *ns == asset_core::AssetNamespace::Iw5
+            && table.name.eq_ignore_ascii_case("mp/camoTable.csv")
+    }) {
+        let dressed = weapons.prepare_iw5_camouflages(table, &material_seed, &fpv_meshes);
+        common_report.push(format!(
+            "IW5 camouflage: {dressed} weapon configurations prepared"
+        ));
+    }
 
     let mut camouflage_images = None;
     if let (Some((_, options)), Some((_, choices))) = (
@@ -755,7 +771,6 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         t6_prepared.prepared, t6_prepared.refused
     ));
     weapons.resolve_fpv_mesh_edges(&fpv_meshes);
-    weapons.resolve_fpv_hands(&fpv_meshes, &asset_model::BodyMeshCatalog::default());
     weapons.resolve_world_model_edges(&world_weapons);
 
     common_report.push(format!(
@@ -787,6 +802,8 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     material_seed.mark_images_common_owned();
     let mut iw5_materials = iw5_materials;
     iw5_materials.mark_images_common_owned();
+    asset_material::retain_ui_material_images(&material_seed);
+    asset_material::retain_ui_material_images(&iw5_materials);
     let set = Arc::new(CommonSet {
         id: NEXT_COMMON_PROFILE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         key,

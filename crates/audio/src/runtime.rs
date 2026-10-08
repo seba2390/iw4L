@@ -790,6 +790,11 @@ fn control(
                 CueStep::Waiting => pending_cues.push_back(work),
                 CueStep::Finished => {}
                 CueStep::Start(start) => {
+                    let start_delay_ms = work
+                        .resolved
+                        .as_ref()
+                        .map_or(0, |cue| u64::from(cue.policy.composition.start_delay_ms));
+                    let start_delay = Duration::from_millis(start_delay_ms);
                     let instance = make_instance(
                         next_id.fetch_add(1, Ordering::Relaxed),
                         work.request.scope,
@@ -820,7 +825,7 @@ fn control(
                         StartRequest {
                             event: work.request.execution.event,
                             start_deadline: (work.source.is_none() && !start.looping)
-                                .then_some(work.request.execution.deadline),
+                                .then_some(work.request.execution.deadline + start_delay),
                             protect_attack: work.source.is_none()
                                 && !start.looping
                                 && work.request.execution.class == crate::SoundClass::Weapon,
@@ -830,10 +835,15 @@ fn control(
                             media: start.media,
                             instance: instance.clone(),
                             looping: start.looping,
-                            frame: source.map_or_else(
-                                || shared.frame.load(Ordering::Acquire),
-                                |source| source.start_frame,
-                            ),
+                            frame: source
+                                .map_or_else(
+                                    || shared.frame.load(Ordering::Acquire),
+                                    |source| source.start_frame,
+                                )
+                                .saturating_add(
+                                    start_delay_ms * u64::from(crate::render_core::SAMPLE_RATE)
+                                        / 1000,
+                                ),
                         },
                         &shared,
                         &mut instances,

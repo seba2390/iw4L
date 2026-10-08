@@ -184,7 +184,7 @@ impl AssetLinkSink for T5SoundCapture {
             pcm: pcm_bytes.into(),
             zone: self.catalog.capture_zone_for_ingest(),
             seek_table,
-            ..Default::default()
+            sab_media: None,
         });
         Ok(())
     }
@@ -404,6 +404,7 @@ impl T5SoundCapture {
             envelop_percentage,
             speaker_map: None,
             stereo_speaker_gains: None,
+            t6_speaker_pan: None,
             limit_count: s.u8_at(row, sz::SND_ALIAS_LIMIT_COUNT_OFF).ok(),
             entity_limit_count: s.u8_at(row, sz::SND_ALIAS_ENTITY_LIMIT_COUNT_OFF).ok(),
         }

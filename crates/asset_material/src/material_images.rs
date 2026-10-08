@@ -1,13 +1,25 @@
+mod decode;
+mod disk_cache;
+mod materialization;
+mod sources;
+use decode::{
+    DecodedMips, PixelFormat, compressed_mip_bytes, decode_blocks, decode_gfx_image,
+    decode_iwi_cubemap, decode_iwi_mips, decode_iwi_mips_with, take_rgba,
+};
+pub use disk_cache::mip_cache_cost;
+use materialization::{
+    PreparedPayload, WrapRecipe, image_bytes, pack_material_cubemap, resident_payload_bytes,
+    share_or_decode, texture_format, wrap_mips, wrap_payload,
+};
+pub use materialization::{shared_payload_copy_cost, shared_variant_census};
+use sources::IwdIndex;
+pub use sources::cached_iwd_main_dirs;
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
-use asset_iw4::{
-    IWI_V8_HEADER_LEN, ImgFormatKind, IwiHeader, WaveletBits, WaveletError, img_format_info,
-    wavelet_check_header, wavelet_decompress_level, wavelet_level_size, wavelet_pixel_stride,
-    wavelet_top_level,
-};
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
@@ -19,167 +31,6 @@ use bevy::tasks::TaskPool;
 use crate::progress::StageHandle;
 use crate::{AuthoredImage, ImageVariantId, MaterialDefinitions, TS_NORMAL_MAP, TS_WATER_MAP};
 
-/// The texels one archive entry decodes to.
-///
-/// The mip chain is one allocation with the levels laid out end to end, in the
-/// order an upload wants them, and `level_sizes` says where each one stops.
-struct DecodedMips {
-    width: u32,
-    height: u32,
-
-    packed: Vec<u8>,
-    level_sizes: Vec<u32>,
-    storage: MipStorage,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MipStorage {
-    Rgba8,
-    Bc1,
-    Bc2,
-    Bc3,
-    Bc5,
-}
-
-impl DecodedMips {
-    fn single(width: u32, height: u32, pixels: Vec<u8>) -> Self {
-        Self::single_compressed(width, height, MipStorage::Rgba8, pixels)
-    }
-
-    fn single_compressed(width: u32, height: u32, storage: MipStorage, bytes: Vec<u8>) -> Self {
-        Self {
-            width,
-            height,
-            level_sizes: vec![bytes.len() as u32],
-            packed: bytes,
-            storage,
-        }
-    }
-
-    fn from_levels(width: u32, height: u32, storage: MipStorage, levels: Vec<Vec<u8>>) -> Self {
-        let mut packed = Vec::with_capacity(levels.iter().map(Vec::len).sum());
-        let mut level_sizes = Vec::with_capacity(levels.len());
-        for level in levels {
-            level_sizes.push(level.len() as u32);
-            packed.extend_from_slice(&level);
-        }
-        Self {
-            width,
-            height,
-            packed,
-            level_sizes,
-            storage,
-        }
-    }
-
-    fn level_count(&self) -> u32 {
-        self.level_sizes.len() as u32
-    }
-
-    fn into_payload(self) -> Vec<u8> {
-        self.packed
-    }
-
-    fn cache_encode(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(28 + 4 * self.level_sizes.len() + self.packed.len());
-        out.extend_from_slice(MIP_MAGIC);
-        out.extend_from_slice(&MIP_CACHE_FORMAT.to_le_bytes());
-        out.extend_from_slice(&self.width.to_le_bytes());
-        out.extend_from_slice(&self.height.to_le_bytes());
-        out.push(match self.storage {
-            MipStorage::Rgba8 => 0,
-            MipStorage::Bc1 => 1,
-            MipStorage::Bc2 => 2,
-            MipStorage::Bc3 => 3,
-            MipStorage::Bc5 => 5,
-        });
-        out.extend_from_slice(&[0, 0, 0]);
-        out.extend_from_slice(&(self.level_sizes.len() as u32).to_le_bytes());
-        let mut at = 0usize;
-        for &size in &self.level_sizes {
-            out.extend_from_slice(&size.to_le_bytes());
-            out.extend_from_slice(&self.packed[at..at + size as usize]);
-            at += size as usize;
-        }
-        out
-    }
-
-    fn cache_decode(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < 28 || &bytes[..8] != MIP_MAGIC {
-            return None;
-        }
-        let format = u32::from_le_bytes(bytes[8..12].try_into().ok()?);
-        if format != MIP_CACHE_FORMAT {
-            return None;
-        }
-        let width = u32::from_le_bytes(bytes[12..16].try_into().ok()?);
-        let height = u32::from_le_bytes(bytes[16..20].try_into().ok()?);
-        let storage = match bytes[20] {
-            0 => MipStorage::Rgba8,
-            1 => MipStorage::Bc1,
-            2 => MipStorage::Bc2,
-            3 => MipStorage::Bc3,
-            5 => MipStorage::Bc5,
-            _ => return None,
-        };
-        let level_count = u32::from_le_bytes(bytes[24..28].try_into().ok()?) as usize;
-        let mut at = 28;
-        let mut packed = Vec::with_capacity(bytes.len().saturating_sub(28));
-        let mut level_sizes = Vec::with_capacity(level_count);
-        for _ in 0..level_count {
-            let len = u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?) as usize;
-            at += 4;
-            packed.extend_from_slice(bytes.get(at..at + len)?);
-            at += len;
-            level_sizes.push(len as u32);
-        }
-        Some(Self {
-            width,
-            height,
-            packed,
-            level_sizes,
-            storage,
-        })
-    }
-
-    fn into_top_level_rgba8(mut self) -> Result<(u32, u32, Vec<u8>), String> {
-        let top = *self
-            .level_sizes
-            .first()
-            .ok_or_else(|| "decoded image carries no mip level".to_owned())?
-            as usize;
-        self.packed.truncate(top);
-        let level0 = self.packed;
-        let pixels = match self.storage {
-            MipStorage::Rgba8 => level0,
-            MipStorage::Bc1 => decode_blocks(&level0, self.width, self.height, PixelFormat::Bc1)?,
-            MipStorage::Bc2 => decode_blocks(&level0, self.width, self.height, PixelFormat::Bc2)?,
-            MipStorage::Bc3 => decode_blocks(&level0, self.width, self.height, PixelFormat::Bc3)?,
-            MipStorage::Bc5 => decode_blocks(
-                &bc5_to_dxt5nm(&level0),
-                self.width,
-                self.height,
-                PixelFormat::Bc3,
-            )?,
-        };
-        Ok((self.width, self.height, pixels))
-    }
-
-    fn texture_format(self_storage: MipStorage, linear: bool) -> TextureFormat {
-        match (self_storage, linear) {
-            (MipStorage::Rgba8, true) => TextureFormat::Rgba8Unorm,
-            (MipStorage::Rgba8, false) => TextureFormat::Rgba8UnormSrgb,
-            (MipStorage::Bc1, true) => TextureFormat::Bc1RgbaUnorm,
-            (MipStorage::Bc1, false) => TextureFormat::Bc1RgbaUnormSrgb,
-            (MipStorage::Bc2, true) => TextureFormat::Bc2RgbaUnorm,
-            (MipStorage::Bc2, false) => TextureFormat::Bc2RgbaUnormSrgb,
-            (MipStorage::Bc3, true) => TextureFormat::Bc3RgbaUnorm,
-            (MipStorage::Bc3, false) => TextureFormat::Bc3RgbaUnormSrgb,
-            (MipStorage::Bc5, _) => TextureFormat::Bc5RgUnorm,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct MaterialImageStats {
     pub requested: usize,
@@ -189,84 +40,6 @@ pub struct MaterialImageStats {
     pub archives: usize,
     pub first_gap: Option<String>,
     pub first_unsupported: Option<String>,
-}
-
-#[derive(Debug)]
-struct IwdIndex(Arc<asset_transport::IwdIndex>);
-
-type CubemapFaces = [Vec<u8>; 6];
-
-pub fn cached_iwd_main_dirs() -> Vec<PathBuf> {
-    asset_transport::cached_iwd_dirs()
-}
-
-impl IwdIndex {
-    fn open(directory: &Path) -> Result<Arc<Self>, String> {
-        asset_transport::IwdIndex::open(directory).map(|index| Arc::new(Self(index)))
-    }
-
-    fn is_cached(directory: &Path) -> bool {
-        asset_transport::IwdIndex::is_cached(directory)
-    }
-
-    fn decode(&self, name: &str) -> Option<Result<DecodedMips, String>> {
-        let candidates = self.0.image_candidates(name)?;
-        let mut first_error = None;
-        for candidate in candidates {
-            match load_or_decode_mips(candidate) {
-                Ok(image) => return Some(Ok(image)),
-                Err(error) if first_error.is_none() => first_error = Some(error),
-                Err(_) => {}
-            }
-        }
-        Some(Err(
-            first_error.unwrap_or_else(|| "empty IWD candidate list".into())
-        ))
-    }
-
-    /// Is this name a cubemap, and if so, its faces.
-    ///
-    /// The material's own `map_type` answers for a declared cubemap. For
-    /// everything else the answer is in the IWI usage byte, which is inside
-    /// the first thirty-two bytes of the entry — so a 2D image costs a header
-    /// here, not a full inflate of a payload the mip cache may already hold
-    /// decoded.
-    fn decode_cubemap_if_skybox(
-        &self,
-        name: &str,
-        map_type: u8,
-    ) -> Option<Result<(u32, CubemapFaces), String>> {
-        let candidates = self.0.image_candidates(name)?;
-        let mut saw_skybox = false;
-        let mut first_error = None;
-        for candidate in candidates {
-            if map_type != 5 {
-                match candidate.read_header(IWI_V8_HEADER_LEN) {
-                    Ok(header) if IwiHeader::parse(&header).is_ok_and(|h| h.is_skybox()) => {}
-                    Ok(_) => continue,
-                    Err(error) => {
-                        if first_error.is_none() {
-                            first_error = Some(error);
-                        }
-                        continue;
-                    }
-                }
-            }
-            match candidate.read() {
-                Ok(bytes) => {
-                    saw_skybox = true;
-                    match decode_iwi_cubemap(&bytes) {
-                        Ok(image) => return Some(Ok(image)),
-                        Err(error) if first_error.is_none() => first_error = Some(error),
-                        Err(_) => {}
-                    }
-                }
-                Err(error) if first_error.is_none() => first_error = Some(error),
-                Err(_) => {}
-            }
-        }
-        saw_skybox.then(|| Err(first_error.unwrap_or_else(|| "empty IWD candidate list".into())))
-    }
 }
 
 fn color_map_force_linear(
@@ -286,24 +59,19 @@ fn texture_semantic_decodes_as_normal(semantic: u8) -> Option<bool> {
 }
 
 pub fn decode_material_color_maps(
-    zone_ff: &Path,
+    trees: &asset_transport::NamespaceTrees,
     catalog: &mut MaterialDefinitions,
     stage: &StageHandle,
     pool: &TaskPool,
 ) -> Result<MaterialImageStats, String> {
-    let main = game_main_for_zone(zone_ff)?;
-    let index = IwdIndex::open(&main)?;
+    let work = requested_color_map_slots(catalog);
+    let (decoded, archives) =
+        decode_requests_from_trees(&catalog.images, trees, &work, stage, pool)?;
     let mut stats = MaterialImageStats {
-        archives: index.0.archive_count(),
+        requested: work.len(),
+        archives,
         ..Default::default()
     };
-
-    let work = requested_color_map_slots(catalog);
-    stats.requested = work.len();
-    stage.set_total(work.len() as u64);
-
-    let images = &catalog.images;
-    let decoded = decode_requests_in_parallel(images, index.as_ref(), &work, stage, pool);
 
     for outcome in decoded {
         match outcome {
@@ -382,7 +150,7 @@ fn requested_color_map_slots(catalog: &MaterialDefinitions) -> Vec<ImageRequest>
 }
 
 pub fn decode_images_for_keys(
-    zone_ff: &Path,
+    trees: &asset_transport::NamespaceTrees,
     catalog: &mut MaterialDefinitions,
     keys: impl IntoIterator<Item = crate::MaterialKey>,
     stage: &StageHandle,
@@ -392,11 +160,7 @@ pub fn decode_images_for_keys(
     if work.is_empty() {
         return Ok(0);
     }
-    let main = game_main_for_zone(zone_ff)?;
-    let index = IwdIndex::open(&main)?;
-    stage.set_total(work.len() as u64);
-    let images = &catalog.images;
-    let decoded = decode_requests_in_parallel(images, index.as_ref(), &work, stage, pool);
+    let (decoded, _) = decode_requests_from_trees(&catalog.images, trees, &work, stage, pool)?;
     let mut n = 0usize;
     for outcome in decoded {
         if let ImageOutcome::Decoded {
@@ -480,7 +244,7 @@ fn requested_keyed_image_slots(
 }
 
 pub fn decode_catalog_images_from_iwd(
-    zone_ff: &Path,
+    trees: &asset_transport::NamespaceTrees,
     catalog: &mut MaterialDefinitions,
     images: impl IntoIterator<Item = (usize, u8)>,
     stage: &StageHandle,
@@ -504,11 +268,7 @@ pub fn decode_catalog_images_from_iwd(
     if work.is_empty() {
         return Ok(0);
     }
-    let main = game_main_for_zone(zone_ff)?;
-    let index = IwdIndex::open(&main)?;
-    stage.set_total(work.len() as u64);
-    let catalog_images = &catalog.images;
-    let decoded = decode_requests_in_parallel(catalog_images, index.as_ref(), &work, stage, pool);
+    let (decoded, _) = decode_requests_from_trees(&catalog.images, trees, &work, stage, pool)?;
     let mut n = 0usize;
     for outcome in decoded {
         if let ImageOutcome::Decoded {
@@ -550,12 +310,12 @@ pub fn decode_in_zone_builtin_images(catalog: &mut MaterialDefinitions) -> usize
             continue;
         };
         let is_normal = name.contains("normal");
-        let format = DecodedMips::texture_format(mips.storage, is_normal || !image.use_srgb_reads);
-        let levels = mips.level_count();
+        let format = texture_format(mips.layout().storage, is_normal || !image.use_srgb_reads);
+        let levels = mips.layout().levels;
         let mut gpu = Image::new_uninit(
             Extent3d {
-                width: mips.width,
-                height: mips.height,
+                width: mips.layout().width,
+                height: mips.layout().height,
                 depth_or_array_layers: 1,
             },
             TextureDimension::D2,
@@ -595,213 +355,53 @@ enum ImageOutcome {
 
 type ImageRequest = (usize, (u8, bool, bool, bool));
 
-enum PreparedPayload {
-    Mips(std::sync::Mutex<PreparedMip>),
-    Cubemap { size: u32, faces: Box<CubemapFaces> },
-}
-
-struct PreparedMip {
-    mips: DecodedMips,
-    images: Vec<(WrapRecipe, Arc<Image>)>,
-}
-
-/// Everything an asker wraps around shared texels, and nothing that decides
-/// one of them.
-///
-/// The sampler is not a property of the image at all — a sampler state is bound
-/// beside a texture, not inside it — and the colour space picks `Rgba8Unorm`
-/// over `Rgba8UnormSrgb` for the same bytes. Keeping them
-/// here, out of the payload, is what lets one decode answer several askers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct WrapRecipe {
-    sampler_state: u8,
-    is_normal: bool,
-    alpha_test_color: bool,
-    force_linear: bool,
-    use_srgb_reads: bool,
-}
-
-impl WrapRecipe {
-    fn of(
-        source: &AuthoredImage,
-        (sampler_state, is_normal, alpha_test_color, force_linear): (u8, bool, bool, bool),
-    ) -> Self {
-        Self {
-            sampler_state,
-            is_normal,
-            alpha_test_color,
-            force_linear,
-            use_srgb_reads: source.use_srgb_reads,
+fn decode_requests_from_trees(
+    images: &[AuthoredImage],
+    trees: &asset_transport::NamespaceTrees,
+    work: &[ImageRequest],
+    stage: &StageHandle,
+    pool: &TaskPool,
+) -> Result<(Vec<ImageOutcome>, usize), String> {
+    stage.set_total(work.len() as u64);
+    let mut decoded = Vec::with_capacity(work.len());
+    let mut archives = 0;
+    for &(slot, _) in work {
+        if images.get(slot).is_none() {
+            decoded.push(ImageOutcome::Missing {
+                gap: format!("catalog image index {slot} is out of bounds"),
+            });
+            stage.advance(1);
         }
     }
-
-    fn linear(self) -> bool {
-        self.is_normal || !self.use_srgb_reads || self.force_linear
-    }
-}
-
-impl PreparedPayload {
-    fn mips(mips: DecodedMips) -> Self {
-        Self::Mips(std::sync::Mutex::new(PreparedMip {
-            mips,
-            images: Vec::new(),
-        }))
-    }
-
-    /// What holding this payload costs, which is what a second asker did not
-    /// have to decode.
-    fn bytes(&self) -> u64 {
-        match self {
-            Self::Mips(state) => {
-                let state = state.lock().unwrap_or_else(|poison| poison.into_inner());
-                state
-                    .images
-                    .first()
-                    .map_or(state.mips.packed.len() as u64, |(_, image)| {
-                        image_bytes(image)
-                    })
-            }
-            Self::Cubemap { faces, .. } => faces.iter().map(|face| face.len() as u64).sum(),
+    for namespace in [
+        crate::AssetNamespace::Iw4,
+        crate::AssetNamespace::T5,
+        crate::AssetNamespace::Iw5,
+        crate::AssetNamespace::T6,
+    ] {
+        let requests: Vec<_> = work
+            .iter()
+            .copied()
+            .filter(|(slot, _)| {
+                images
+                    .get(*slot)
+                    .is_some_and(|image| image.namespace == namespace)
+            })
+            .collect();
+        if requests.is_empty() {
+            continue;
         }
+        let index = match trees.main_for(namespace) {
+            Some(main) => IwdIndex::open(main)
+                .map_err(|error| format!("{} image archives: {error}", namespace.as_str()))?,
+            None => Arc::new(IwdIndex::empty()),
+        };
+        archives += index.archive_count();
+        decoded.extend(decode_requests_in_parallel(
+            images, &index, &requests, stage, pool,
+        ));
     }
-
-    /// Take ownership of this payload's bytes against the resident total, and
-    /// hand back the only thing that can release them again.
-    ///
-    /// The charge belongs to the payload and not to the batch that asked for
-    /// it: two batches pointing at one buffer hold one allocation between
-    /// them, and charging it twice would hold plans back against memory nobody
-    /// had.
-    fn owned(self) -> Arc<Self> {
-        RESIDENT_PAYLOAD_BYTES.fetch_add(self.bytes(), Ordering::Relaxed);
-        Arc::new(self)
-    }
-}
-
-impl Drop for PreparedPayload {
-    fn drop(&mut self) {
-        let bytes = self.bytes();
-        if bytes > 0 {
-            RESIDENT_PAYLOAD_BYTES.fetch_sub(bytes, Ordering::Relaxed);
-        }
-    }
-}
-
-/// Payloads that are still alive somewhere, so a second plan asking for the
-/// same archive entry joins the first one's work instead of repeating it.
-///
-/// Weak on purpose. A strong map would keep every image the load ever touched
-/// resident for the life of the process — a gigabyte of it — to save work that
-/// only overlapping plans can save. An entry lives exactly as long as some
-/// worker or image still holds the payload, which is the window in which
-/// sharing is worth anything.
-type Prepared = (std::sync::Mutex<PreparedPayloads>, std::sync::Condvar);
-
-#[derive(Default)]
-struct PreparedPayloads {
-    live: HashMap<u64, std::sync::Weak<PreparedPayload>>,
-    decoding: HashSet<u64>,
-}
-
-fn prepared() -> &'static Prepared {
-    static PREPARED: std::sync::OnceLock<Prepared> = std::sync::OnceLock::new();
-    PREPARED.get_or_init(Default::default)
-}
-
-static SHARED_PAYLOADS: AtomicU64 = AtomicU64::new(0);
-static SHARED_BYTES: AtomicU64 = AtomicU64::new(0);
-static WRAPPED_BYTES: AtomicU64 = AtomicU64::new(0);
-static MOVED_BYTES: AtomicU64 = AtomicU64::new(0);
-
-/// Payloads handed to a second asker instead of decoded again, and the decoded
-/// bytes that saved.
-pub fn shared_variant_census() -> (u64, u64) {
-    (
-        SHARED_PAYLOADS.load(Ordering::Relaxed),
-        SHARED_BYTES.load(Ordering::Relaxed),
-    )
-}
-
-/// Bytes copied out of a payload into an image, and bytes handed over without
-/// a copy.
-///
-/// What the wrapping costs, against what `shared_variant_census` says sharing
-/// saved: an `Image` owns its data, so an asker that is *not* the last holder
-/// of the payload pays one `memcpy` of the chain. The last one does not — the
-/// decode's own buffer becomes the image's — and the split between the two is
-/// what says whether the copying in this path is duplicate work or the first
-/// materialization of bytes nobody had yet.
-pub fn shared_payload_copy_cost() -> (u64, u64) {
-    (
-        WRAPPED_BYTES.load(Ordering::Relaxed),
-        MOVED_BYTES.load(Ordering::Relaxed),
-    )
-}
-
-/// Prepare the texels behind `payload` once, however many plans ask for them.
-///
-/// The first asker decodes; the rest wait for it and take the buffer. Waiting
-/// here cannot deadlock: a worker that holds a payload is decoding, never
-/// waiting on another one, so the set of holders always drains.
-///
-/// The key is the payload half of the variant — the resolved archive entries
-/// and the map type — and not the whole of it. The colour space and the
-/// sampler decide the `Image` built over these bytes; they decide nothing
-/// about the bytes, so they must not decide whether the bytes are read again.
-fn share_or_decode(
-    payload: u64,
-    decode: impl FnOnce() -> Result<PreparedPayload, ImageOutcome>,
-) -> Result<(Arc<PreparedPayload>, bool), ImageOutcome> {
-    let (lock, signal) = prepared();
-    let mut state = lock.lock().unwrap_or_else(|poison| poison.into_inner());
-    loop {
-        if let Some(live) = state.live.get(&payload) {
-            if let Some(prepared) = live.upgrade() {
-                SHARED_PAYLOADS.fetch_add(1, Ordering::Relaxed);
-                SHARED_BYTES.fetch_add(prepared.bytes(), Ordering::Relaxed);
-                return Ok((prepared, true));
-            }
-            state.live.remove(&payload);
-        }
-        if !state.decoding.contains(&payload) {
-            break;
-        }
-        state = signal
-            .wait(state)
-            .unwrap_or_else(|poison| poison.into_inner());
-    }
-    state.decoding.insert(payload);
-    drop(state);
-
-    // Held across the decode so that a panic in it wakes the askers waiting on
-    // this payload instead of parking them for the life of the process. It is
-    // dropped *after* the result is published, so a waiter that wakes finds the
-    // payload rather than an empty slot it would decode again.
-    let flight = Flight(payload);
-    let prepared = decode().map(|prepared| {
-        let prepared = prepared.owned();
-        lock.lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .live
-            .insert(payload, Arc::downgrade(&prepared));
-        (prepared, false)
-    });
-    drop(flight);
-    prepared
-}
-
-/// The claim on a payload while it is being decoded.
-struct Flight(u64);
-
-impl Drop for Flight {
-    fn drop(&mut self) {
-        let (lock, signal) = prepared();
-        lock.lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .decoding
-            .remove(&self.0);
-        signal.notify_all();
-    }
+    Ok((decoded, archives))
 }
 
 /// Decode this work on the pool the caller names.
@@ -876,20 +476,12 @@ fn variant_of(
     name: &str,
     (sampler_state, is_normal, alpha_test_color, force_linear): (u8, bool, bool, bool),
 ) -> Option<ImageVariantId> {
-    let candidates = index.0.image_candidates(name)?;
-    let mut payload = crate::fnv1a64(name.as_bytes());
-    for candidate in candidates {
-        payload = crate::fnv1a64_more(payload, &candidate.crc32().to_le_bytes());
-        payload = crate::fnv1a64_more(payload, &candidate.size().to_le_bytes());
-        payload = crate::fnv1a64_more(payload, candidate.entry().as_bytes());
-    }
-    payload = crate::fnv1a64_more(payload, &[source.map_type]);
     let usage = u32::from(sampler_state)
         | u32::from(is_normal) << 8
         | u32::from(alpha_test_color) << 9
         | u32::from(force_linear) << 10
         | u32::from(source.use_srgb_reads) << 11;
-    Some(ImageVariantId { payload, usage })
+    index.variant(name, source.map_type, usage)
 }
 
 fn decode_one_request(
@@ -903,7 +495,7 @@ fn decode_one_request(
             gap: format!("catalog image index {image_index} is out of bounds"),
         };
     };
-    let wrap = WrapRecipe::of(source, request);
+    let wrap = WrapRecipe::new(request, source.use_srgb_reads);
     if source.payload.is_empty() {
         let name = crate::AssetRef::bare_name(source.name.as_str());
         if let Some(variant) = variant_of(index, source, name, request) {
@@ -977,10 +569,7 @@ fn prepare_payload(
     }
     if let Some(cubemap) = index.decode_cubemap_if_skybox(name, source.map_type) {
         return match cubemap {
-            Ok((size, faces)) => Ok(PreparedPayload::Cubemap {
-                size,
-                faces: Box::new(faces),
-            }),
+            Ok((size, faces)) => Ok(PreparedPayload::cubemap(size, faces)),
             Err(error) => Err(ImageOutcome::Unsupported {
                 gap: format!("{}: {error}", source.name),
             }),
@@ -995,64 +584,6 @@ fn prepare_payload(
             gap: format!("{} is absent from IWD", source.name),
         }),
     }
-}
-
-fn wrap_payload(payload: &PreparedPayload, wrap: WrapRecipe) -> Arc<Image> {
-    match payload {
-        PreparedPayload::Cubemap { size, faces } => Arc::new(pack_material_cubemap(
-            *size,
-            faces,
-            wrap.use_srgb_reads && !wrap.force_linear,
-        )),
-        PreparedPayload::Mips(state) => {
-            let mut state = state.lock().expect("prepared mip cache is not poisoned");
-            if let Some((_, image)) = state.images.iter().find(|(recipe, _)| *recipe == wrap) {
-                return Arc::clone(image);
-            }
-            if state.images.is_empty() {
-                // Keep the residency charge while the cached image owns these bytes.
-                let packed = std::mem::take(&mut state.mips.packed);
-                MOVED_BYTES.fetch_add(packed.len() as u64, Ordering::Relaxed);
-                let image = Arc::new(wrap_mips(&state.mips, packed, wrap));
-                state.images.push((wrap, Arc::clone(&image)));
-                return image;
-            }
-            let data = state.images[0]
-                .1
-                .data
-                .as_ref()
-                .expect("prepared image owns its payload")
-                .clone();
-            WRAPPED_BYTES.fetch_add(data.len() as u64, Ordering::Relaxed);
-            let image = Arc::new(wrap_mips(&state.mips, data, wrap));
-            image
-        }
-    }
-}
-
-/// The image `mips` describes, over `data` — copied or moved, whichever the
-/// caller could afford.
-fn wrap_mips(mips: &DecodedMips, data: Vec<u8>, wrap: WrapRecipe) -> Image {
-    let format = DecodedMips::texture_format(mips.storage, wrap.linear());
-    let levels = mips.level_count();
-    let mut image = Image::new_uninit(
-        Extent3d {
-            width: mips.width,
-            height: mips.height,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        format,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    image.texture_descriptor.mip_level_count = levels;
-    image.data = Some(data);
-    image.sampler = ImageSampler::Descriptor(sampler_from_iw4(
-        wrap.sampler_state,
-        levels,
-        wrap.alpha_test_color,
-    ));
-    image
 }
 
 pub fn decode_reflection_probe_cubemap(source: &AuthoredImage) -> Result<Image, String> {
@@ -1229,13 +760,18 @@ pub fn decode_zone_image_rgba(
 
 pub type ZoneUiRgba = (u32, u32, Arc<Vec<u8>>);
 
-static ZONE_UI_IMAGES: RwLock<Vec<(ZoneUiKey, Arc<[u8]>)>> = RwLock::new(Vec::new());
+pub struct ZoneUiImage {
+    pub iwi: Arc<[u8]>,
+    pub state: Option<render_material::CompiledPassState>,
+}
+
+static ZONE_UI_IMAGES: RwLock<Vec<(ZoneUiKey, ZoneUiImage)>> = RwLock::new(Vec::new());
 
 type ZoneUiKey = (asset_core::AssetNamespace, String);
 
 pub fn store_zone_ui_images(
     namespace: asset_core::AssetNamespace,
-    images: impl IntoIterator<Item = (String, Arc<[u8]>)>,
+    images: impl IntoIterator<Item = (String, ZoneUiImage)>,
 ) {
     let mut store = ZONE_UI_IMAGES
         .write()
@@ -1255,7 +791,20 @@ fn zone_ui_iwi(namespace: asset_core::AssetNamespace, material: &str) -> Option<
         .unwrap_or_else(|poison| poison.into_inner())
         .iter()
         .find(|((ns, stored), _)| *ns == namespace && *stored == name)
-        .map(|(_, iwi)| Arc::clone(iwi))
+        .map(|(_, image)| Arc::clone(&image.iwi))
+}
+
+pub fn zone_ui_material_state(
+    namespace: asset_core::AssetNamespace,
+    material: &str,
+) -> Option<render_material::CompiledPassState> {
+    let name = crate::AssetRef::bare_name(material).to_ascii_lowercase();
+    ZONE_UI_IMAGES
+        .read()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .iter()
+        .find(|((ns, stored), _)| *ns == namespace && *stored == name)
+        .and_then(|(_, image)| image.state)
 }
 
 pub fn has_zone_ui_image(namespace: asset_core::AssetNamespace, material: &str) -> bool {
@@ -1295,7 +844,18 @@ pub fn decode_ui_image(
         let Some(main) = trees.main_for(key.namespace) else {
             return Ok(None);
         };
-        return decode_ui_image_from_main(main, &key.name);
+        if let Some(image) = crate::ui_material_image(key.namespace, &key.name)
+            && let Some(decoded) = decode_ui_image_from_main(main, &image)?
+        {
+            return Ok(Some(decoded));
+        }
+        if let Some(decoded) = decode_ui_image_from_main(main, &key.name)? {
+            return Ok(Some(decoded));
+        }
+        if let Some(image) = crate::ui_preview_fallback(key.namespace, &key.name) {
+            return decode_ui_image_from_main(main, &image);
+        }
+        return Ok(None);
     }
     let name = crate::AssetRef::bare_name(image_name);
     for main in ui_decode_mains(games_root) {
@@ -1386,20 +946,6 @@ pub fn decode_map_preview(
 
 pub fn game_main_for_zone(zone_ff: &Path) -> Result<PathBuf, String> {
     asset_transport::game_main_for_zone(zone_ff)
-}
-
-const MIP_CACHE_FORMAT: u32 = 2;
-const MIP_MAGIC: &[u8; 8] = b"IWL1MIPS";
-static MIP_HIT: AtomicU64 = AtomicU64::new(0);
-static MIP_MISS: AtomicU64 = AtomicU64::new(0);
-static MIP_IO_NS: AtomicU64 = AtomicU64::new(0);
-
-pub fn mip_cache_cost() -> (u64, u64, f64) {
-    (
-        MIP_HIT.load(Ordering::Relaxed),
-        MIP_MISS.load(Ordering::Relaxed),
-        MIP_IO_NS.load(Ordering::Relaxed) as f64 / 1.0e6,
-    )
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1524,44 +1070,6 @@ pub fn census_image_working_set(
     }
 }
 
-fn read_cached_mips(key: &str, io_at: std::time::Instant) -> Option<DecodedMips> {
-    let hit = crate::cache_get("mips", key)?;
-    MIP_IO_NS.fetch_add(io_at.elapsed().as_nanos() as u64, Ordering::Relaxed);
-    let mips = DecodedMips::cache_decode(&hit)?;
-    MIP_HIT.fetch_add(1, Ordering::Relaxed);
-    Some(mips)
-}
-
-fn mip_cache_key(crc: u32, size: u64, entry: &str) -> String {
-    format!(
-        "{MIP_CACHE_FORMAT:08x}-{crc:08x}-{size:x}-{:016x}",
-        crate::fnv1a64(entry.as_bytes())
-    )
-}
-
-fn load_or_decode_mips(candidate: &asset_transport::IwdFile) -> Result<DecodedMips, String> {
-    let key = mip_cache_key(candidate.crc32(), candidate.size(), candidate.entry());
-    let io_at = std::time::Instant::now();
-    if let Some(mips) = read_cached_mips(&key, io_at) {
-        return Ok(mips);
-    }
-
-    let _flight = crate::cache_flight("mips", &key);
-    if let Some(mips) = read_cached_mips(&key, std::time::Instant::now()) {
-        return Ok(mips);
-    }
-    let bytes = candidate.read()?;
-    let mips = decode_iwi_mips(&bytes)?;
-    let blob = mips.cache_encode();
-    let store_at = std::time::Instant::now();
-    if let Err(error) = crate::cache_put("mips", &key, &blob) {
-        diag::warn!(Zone, "mip cache store {key}: {error}");
-    }
-    MIP_IO_NS.fetch_add(store_at.elapsed().as_nanos() as u64, Ordering::Relaxed);
-    MIP_MISS.fetch_add(1, Ordering::Relaxed);
-    Ok(mips)
-}
-
 pub fn iwd_read_cost() -> (f64, u64, f64) {
     asset_transport::iwd_read_cost()
 }
@@ -1570,284 +1078,6 @@ pub fn iwd_read_cost() -> (f64, u64, f64) {
 /// read the thirty-two byte IWI header.
 pub fn iwd_entry_reads() -> (u64, u64) {
     asset_transport::iwd_entry_reads()
-}
-
-fn decode_iwi_mips(bytes: &[u8]) -> Result<DecodedMips, String> {
-    decode_iwi_mips_with(bytes, false)
-}
-
-fn decode_iwi_mips_with(bytes: &[u8], keep_bc5: bool) -> Result<DecodedMips, String> {
-    if bytes.len() >= IWI_V8_HEADER_LEN
-        && bytes[..3] == *b"IWi"
-        && bytes[3] == 8
-        && let Ok(header) = IwiHeader::parse(bytes)
-        && img_format_info(header.format).is_some_and(|info| info.kind == ImgFormatKind::Wavelet)
-    {
-        return decode_wavelet_iwi(bytes, header);
-    }
-    let header = parse_iwi_header(bytes)?;
-    let end = header.mip0_end.min(bytes.len());
-    let start = if (header.header_len..end).contains(&header.mip0_start) {
-        header.mip0_start
-    } else {
-        header.header_len
-    };
-    let payload = bytes
-        .get(start..end)
-        .ok_or_else(|| "truncated IWI top mip".to_owned())?;
-    let storage = match header.format {
-        PixelFormat::Bc5 if keep_bc5 => MipStorage::Bc5,
-        format => mip_storage(format),
-    };
-
-    let single = || -> Result<DecodedMips, String> {
-        let (w, h, pixels) = load_mip_level_with(
-            payload,
-            header.width,
-            header.height,
-            header.format,
-            keep_bc5,
-        )?;
-        Ok(match storage {
-            MipStorage::Rgba8 => DecodedMips::single(w, h, pixels),
-            other => DecodedMips::single_compressed(w, h, other, pixels),
-        })
-    };
-    let count = mip_level_count(header.width, header.height);
-    if count <= 1 {
-        return single();
-    }
-
-    let mut cursor = if header.mip0_end <= bytes.len() {
-        header.mip0_end
-    } else {
-        bytes.len()
-    };
-    let mut ranges = Vec::with_capacity(count as usize);
-    for level in 0..count {
-        let (w, h) = (
-            (header.width >> level).max(1),
-            (header.height >> level).max(1),
-        );
-        let size = compressed_mip_bytes(w, h, header.format);
-        let Some(level_start) = cursor.checked_sub(size) else {
-            return single();
-        };
-        ranges.push((level_start, cursor, w, h));
-        cursor = level_start;
-    }
-    if cursor != header.header_len {
-        return single();
-    }
-
-    let mut levels = Vec::with_capacity(ranges.len());
-    for (level_start, level_end, w, h) in ranges {
-        match load_mip_level_with(
-            &bytes[level_start..level_end],
-            w,
-            h,
-            header.format,
-            keep_bc5,
-        ) {
-            Ok((_, _, pixels)) => levels.push(pixels),
-            Err(_) => return single(),
-        }
-    }
-    Ok(DecodedMips::from_levels(
-        header.width,
-        header.height,
-        storage,
-        levels,
-    ))
-}
-
-fn decode_wavelet_iwi(bytes: &[u8], header: IwiHeader) -> Result<DecodedMips, String> {
-    let format = wavelet_check_header(&header).map_err(wavelet_error)?;
-    let info = img_format_info(format).ok_or_else(|| format!("unsupported IWI format {format}"))?;
-    let channels = info.channels;
-    let stride = wavelet_pixel_stride(channels);
-    let pixel_format = wavelet_d3d_pixel_format(format)?;
-    let payload = bytes
-        .get(IWI_V8_HEADER_LEN..)
-        .ok_or_else(|| "truncated wavelet IWI payload".to_owned())?;
-    let mut bits = WaveletBits::new(payload);
-    let mut parent = Vec::new();
-    let mut d3d_levels = Vec::new();
-    let width = u32::from(header.width);
-    let height = u32::from(header.height);
-    for level in (0..=wavelet_top_level(&header)).rev() {
-        let w = wavelet_level_size(width, level);
-        let h = wavelet_level_size(height, level);
-        let mut plane = vec![0u8; w as usize * h as usize * stride];
-        wavelet_decompress_level(&mut bits, &mut parent, &mut plane, w, h, channels, stride)
-            .map_err(wavelet_error)?;
-        d3d_levels.push(plane.clone());
-        parent = plane;
-    }
-    bits.check_landing().map_err(wavelet_error)?;
-    d3d_levels.reverse();
-    let mut levels = Vec::with_capacity(d3d_levels.len());
-    for (i, d3d) in d3d_levels.iter().enumerate() {
-        let w = (width >> i).max(1);
-        let h = (height >> i).max(1);
-        let (_, _, rgba) = load_mip_level(d3d, w, h, pixel_format)?;
-        levels.push(rgba);
-    }
-    Ok(DecodedMips::from_levels(
-        width,
-        height,
-        MipStorage::Rgba8,
-        levels,
-    ))
-}
-
-fn wavelet_d3d_pixel_format(format: u8) -> Result<PixelFormat, String> {
-    match format {
-        6 => Ok(PixelFormat::Bgra8),
-        7 => Ok(PixelFormat::Bgrx8),
-        8 => Ok(PixelFormat::La8),
-        9 => Ok(PixelFormat::L8),
-        10 => Ok(PixelFormat::A8),
-        other => Err(format!("unsupported IWI format {other}")),
-    }
-}
-
-fn wavelet_error(error: WaveletError) -> String {
-    match error {
-        WaveletError::Truncated { needed, have } => {
-            format!("wavelet truncated: needed {needed} have {have}")
-        }
-        WaveletError::Dimensions => "wavelet level is not even 2D".into(),
-        WaveletError::UnsupportedFormat(format) => format!("unsupported IWI format {format}"),
-        WaveletError::CubemapOrVolume => "wavelet cubemap/volume is unlocated".into(),
-        WaveletError::BadLanding { pos, end } => {
-            format!("wavelet cursor landed at {pos}, payload ends at {end}")
-        }
-    }
-}
-
-fn mip_storage(format: PixelFormat) -> MipStorage {
-    match format {
-        PixelFormat::Bc1 => MipStorage::Bc1,
-        PixelFormat::Bc2 => MipStorage::Bc2,
-        PixelFormat::Bc3 | PixelFormat::Bc5 => MipStorage::Bc3,
-        _ => MipStorage::Rgba8,
-    }
-}
-
-fn load_mip_level(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    format: PixelFormat,
-) -> Result<(u32, u32, Vec<u8>), String> {
-    load_mip_level_with(data, width, height, format, false)
-}
-
-fn load_mip_level_with(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    format: PixelFormat,
-    keep_bc5: bool,
-) -> Result<(u32, u32, Vec<u8>), String> {
-    match format {
-        PixelFormat::Bc5 if keep_bc5 => {
-            let needed = compressed_mip_bytes(width, height, format);
-            let source = data
-                .get(..needed)
-                .ok_or_else(|| "truncated BC5 image".to_owned())?;
-            Ok((width, height, source.to_vec()))
-        }
-        PixelFormat::Bc1 | PixelFormat::Bc2 | PixelFormat::Bc3 => {
-            let needed = compressed_mip_bytes(width, height, format);
-            let source = data
-                .get(..needed)
-                .ok_or_else(|| "truncated BC image".to_owned())?;
-            Ok((width, height, source.to_vec()))
-        }
-        PixelFormat::Bc5 => {
-            let needed = compressed_mip_bytes(width, height, format);
-            let source = data
-                .get(..needed)
-                .ok_or_else(|| "truncated BC5 image".to_owned())?;
-            Ok((width, height, bc5_to_dxt5nm(source)))
-        }
-        _ => decode_pixels(data, width, height, format),
-    }
-}
-
-struct IwiHeaderInfo {
-    width: u32,
-    height: u32,
-    format: PixelFormat,
-    header_len: usize,
-
-    mip0_end: usize,
-
-    mip0_start: usize,
-}
-
-fn parse_iwi_header(bytes: &[u8]) -> Result<IwiHeaderInfo, String> {
-    if bytes.len() < 4 || &bytes[..3] != b"IWi" {
-        return Err("unsupported IWI header".into());
-    }
-    match bytes[3] {
-        8 => {
-            if bytes.len() < 32 {
-                return Err("truncated IWI v8 header".into());
-            }
-            let width = u32::from(u16::from_le_bytes([bytes[10], bytes[11]]));
-            let height = u32::from(u16::from_le_bytes([bytes[12], bytes[13]]));
-            let mip0_end = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
-            let mip0_start = u32::from_le_bytes(bytes[20..24].try_into().unwrap()) as usize;
-            Ok(IwiHeaderInfo {
-                width,
-                height,
-                format: iwi_pixel_format(bytes[8])?,
-                header_len: 32,
-                mip0_end,
-                mip0_start,
-            })
-        }
-
-        13 => {
-            if bytes.len() < 48 {
-                return Err("truncated IWI v13 header".into());
-            }
-            let width = u32::from(u16::from_le_bytes([bytes[6], bytes[7]]));
-            let height = u32::from(u16::from_le_bytes([bytes[8], bytes[9]]));
-            let mip0_end = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
-
-            let mip0_start = u32::from_le_bytes(bytes[20..24].try_into().unwrap()) as usize;
-            Ok(IwiHeaderInfo {
-                width,
-                height,
-                format: iwi_pixel_format(bytes[4])?,
-                header_len: 48,
-                mip0_end,
-                mip0_start,
-            })
-        }
-        27 => {
-            if bytes.len() < 64 {
-                return Err("truncated IWI v27 header".into());
-            }
-            let width = u32::from(u16::from_le_bytes([bytes[6], bytes[7]]));
-            let height = u32::from(u16::from_le_bytes([bytes[8], bytes[9]]));
-            let mip0_end = u32::from_le_bytes(bytes[32..36].try_into().unwrap()) as usize;
-            let mip0_start = u32::from_le_bytes(bytes[36..40].try_into().unwrap()) as usize;
-            Ok(IwiHeaderInfo {
-                width,
-                height,
-                format: iwi_pixel_format(bytes[4])?,
-                header_len: 64,
-                mip0_end,
-                mip0_start,
-            })
-        }
-        version => Err(format!("unsupported IWI version {version}")),
-    }
 }
 
 pub fn decode_iwi_texture(
@@ -1864,230 +1094,8 @@ pub fn decode_iwi_texture(
         force_linear: false,
         use_srgb_reads,
     };
-    let data = mips.packed.clone();
+    let data = mips.payload().to_vec();
     Ok(wrap_mips(&mips, data, wrap))
-}
-
-pub fn decode_iwi_texture_t6_folded(
-    color: &[u8],
-    specular: &[u8],
-    sampler_state: u8,
-) -> Result<Image, String> {
-    let mut mips = decode_iwi_mips(color)?;
-    let wrap = WrapRecipe {
-        sampler_state,
-        is_normal: false,
-        alpha_test_color: false,
-        force_linear: false,
-        use_srgb_reads: true,
-    };
-    let (block_bytes, color_offset, format) = match mips.storage {
-        MipStorage::Bc1 => (8, 0, PixelFormat::Bc1),
-        MipStorage::Bc3 => (16, 8, PixelFormat::Bc3),
-        _ => {
-            let data = mips.packed.clone();
-            return Ok(wrap_mips(&mips, data, wrap));
-        }
-    };
-    let pyramid = specular_pyramid(specular)?;
-    let mut offset = 0usize;
-    for level in 0..mips.level_sizes.len() {
-        let size = mips.level_sizes[level] as usize;
-        let (w, h) = (
-            (mips.width >> level).max(1) as usize,
-            (mips.height >> level).max(1) as usize,
-        );
-        let (sw, sh, spec) = pyramid
-            .iter()
-            .rev()
-            .find(|(sw, _, _)| *sw >= w)
-            .unwrap_or(&pyramid[0]);
-        let blocks_wide = w.div_ceil(4);
-        let data = &mut mips.packed[offset..offset + size];
-        let fold_rows = |first_row: usize, rows: &mut [u8]| {
-            for (index, block) in rows.chunks_exact_mut(block_bytes).enumerate() {
-                let mut tile = [0u8; 64];
-                if format == PixelFormat::Bc1 {
-                    if u16::from_le_bytes([block[0], block[1]])
-                        <= u16::from_le_bytes([block[2], block[3]])
-                    {
-                        continue;
-                    }
-                    bcdec_rs::bc1(block, &mut tile, 16);
-                } else {
-                    bcdec_rs::bc3(block, &mut tile, 16);
-                }
-                let (bx, by) = (
-                    index % blocks_wide * 4,
-                    (first_row + index / blocks_wide) * 4,
-                );
-                let texels: [[f32; 3]; 16] = core::array::from_fn(|i| {
-                    let (x, y) = ((bx + i % 4).min(w - 1), (by + i / 4).min(h - 1));
-                    let add = spec[(y * sh / h) * sw + x * sw / w];
-                    core::array::from_fn(|c| {
-                        linear_to_srgb_byte(srgb_byte_to_linear(tile[i * 4 + c]) + add[c])
-                    })
-                });
-                block[color_offset..color_offset + 8].copy_from_slice(&encode_bc1_colour(&texels));
-            }
-        };
-        let row_bytes = blocks_wide * block_bytes;
-        let rows = data.len() / row_bytes;
-        let threads = std::thread::available_parallelism()
-            .map_or(1, usize::from)
-            .min(rows / 16)
-            .max(1);
-        if threads == 1 {
-            fold_rows(0, data);
-        } else {
-            let rows_per = rows.div_ceil(threads);
-            std::thread::scope(|scope| {
-                for (part, chunk) in data.chunks_mut(rows_per * row_bytes).enumerate() {
-                    let fold_rows = &fold_rows;
-                    scope.spawn(move || fold_rows(part * rows_per, chunk));
-                }
-            });
-        }
-        offset += size;
-    }
-    let data = mips.packed.clone();
-    Ok(wrap_mips(&mips, data, wrap))
-}
-
-type PyramidLevel = (usize, usize, Vec<[f32; 3]>);
-
-fn specular_pyramid(specular: &[u8]) -> Result<Vec<PyramidLevel>, String> {
-    let (w, h, rgba) = decode_iwi_rgba(specular)?;
-    let (mut w, mut h) = (w as usize, h as usize);
-    let top: Vec<[f32; 3]> = rgba
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|p| {
-            let rough = 1.0 - f32::from(p[3]) / 255.0;
-            core::array::from_fn(|c| srgb_byte_to_linear(p[c]) * rough)
-        })
-        .collect();
-    let mut levels = vec![(w, h, top)];
-    while w > 1 || h > 1 {
-        let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
-        let prev = &levels.last().unwrap().2;
-        let next = (0..nw * nh)
-            .map(|i| {
-                let (x, y) = (i % nw, i / nw);
-                let at = |dx: usize, dy: usize| {
-                    prev[(2 * y + dy).min(h - 1) * w + (2 * x + dx).min(w - 1)]
-                };
-                core::array::from_fn(|c| {
-                    (at(0, 0)[c] + at(1, 0)[c] + at(0, 1)[c] + at(1, 1)[c]) / 4.0
-                })
-            })
-            .collect();
-        levels.push((nw, nh, next));
-        (w, h) = (nw, nh);
-    }
-    Ok(levels)
-}
-
-fn srgb_byte_to_linear(v: u8) -> f32 {
-    static TABLE: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
-    TABLE.get_or_init(|| {
-        core::array::from_fn(|v| {
-            let c = v as f32 / 255.0;
-            if c <= 0.04045 {
-                c / 12.92
-            } else {
-                ((c + 0.055) / 1.055).powf(2.4)
-            }
-        })
-    })[usize::from(v)]
-}
-
-fn linear_to_srgb_byte(c: f32) -> f32 {
-    const STEPS: usize = 4096;
-    static TABLE: std::sync::OnceLock<Vec<f32>> = std::sync::OnceLock::new();
-    let table = TABLE.get_or_init(|| {
-        (0..=STEPS)
-            .map(|i| {
-                let c = i as f32 / STEPS as f32;
-                let s = if c <= 0.003_130_8 {
-                    c * 12.92
-                } else {
-                    1.055 * c.powf(1.0 / 2.4) - 0.055
-                };
-                s * 255.0
-            })
-            .collect()
-    });
-    table[(c.clamp(0.0, 1.0) * STEPS as f32 + 0.5) as usize]
-}
-
-fn encode_bc1_colour(texels: &[[f32; 3]; 16]) -> [u8; 8] {
-    let mean: [f32; 3] = core::array::from_fn(|c| texels.iter().map(|t| t[c]).sum::<f32>() / 16.0);
-    let mut cov = [[0f32; 3]; 3];
-    for t in texels {
-        let d: [f32; 3] = core::array::from_fn(|c| t[c] - mean[c]);
-        for a in 0..3 {
-            for b in 0..3 {
-                cov[a][b] += d[a] * d[b];
-            }
-        }
-    }
-    let mut axis = [1f32, 1.0, 1.0];
-    for _ in 0..8 {
-        let next: [f32; 3] = core::array::from_fn(|a| (0..3).map(|b| cov[a][b] * axis[b]).sum());
-        let len = next.iter().map(|v| v * v).sum::<f32>().sqrt();
-        if len < 1e-6 {
-            break;
-        }
-        axis = next.map(|v| v / len);
-    }
-    let project = |t: &[f32; 3]| (0..3).map(|c| (t[c] - mean[c]) * axis[c]).sum::<f32>();
-    let (lo, hi) = texels
-        .iter()
-        .map(project)
-        .fold((f32::MAX, f32::MIN), |(lo, hi), t| (lo.min(t), hi.max(t)));
-    let pack = |t: f32| {
-        let c: [f32; 3] = core::array::from_fn(|i| (mean[i] + axis[i] * t).clamp(0.0, 255.0));
-        let r = (c[0] * 31.0 / 255.0).round() as u16;
-        let g = (c[1] * 63.0 / 255.0).round() as u16;
-        let b = (c[2] * 31.0 / 255.0).round() as u16;
-        (r << 11) | (g << 5) | b
-    };
-    let (mut c0, mut c1) = (pack(hi), pack(lo));
-    if c0 < c1 {
-        core::mem::swap(&mut c0, &mut c1);
-    }
-    let expand = |c: u16| {
-        let (r, g, b) = ((c >> 11) & 31, (c >> 5) & 63, c & 31);
-        [
-            f32::from((r << 3) | (r >> 2)),
-            f32::from((g << 2) | (g >> 4)),
-            f32::from((b << 3) | (b >> 2)),
-        ]
-    };
-    let (p0, p1) = (expand(c0), expand(c1));
-    let palette: [[f32; 3]; 4] = [
-        p0,
-        p1,
-        core::array::from_fn(|c| (2.0 * p0[c] + p1[c]) / 3.0),
-        core::array::from_fn(|c| (p0[c] + 2.0 * p1[c]) / 3.0),
-    ];
-    let mut indices = 0u32;
-    if c0 != c1 {
-        for (i, t) in texels.iter().enumerate() {
-            let distance = |p: &[f32; 3]| (0..3).map(|c| (p[c] - t[c]).powi(2)).sum::<f32>();
-            let best = (0..4)
-                .min_by(|&a, &b| distance(&palette[a]).total_cmp(&distance(&palette[b])))
-                .unwrap_or(0) as u32;
-            indices |= best << (2 * i);
-        }
-    }
-    let mut out = [0u8; 8];
-    out[..2].copy_from_slice(&c0.to_le_bytes());
-    out[2..4].copy_from_slice(&c1.to_le_bytes());
-    out[4..].copy_from_slice(&indices.to_le_bytes());
-    out
 }
 
 pub fn decode_iwi_texture_native(
@@ -2103,7 +1111,7 @@ pub fn decode_iwi_texture_native(
         force_linear: !use_srgb_reads,
         use_srgb_reads,
     };
-    let data = mips.packed.clone();
+    let data = mips.payload().to_vec();
     Ok(wrap_mips(&mips, data, wrap))
 }
 
@@ -2150,197 +1158,6 @@ pub fn solid_texture(rgba: [u8; 4], srgb: bool) -> Image {
     wrap_mips(&mips, rgba.to_vec(), wrap)
 }
 
-fn iwi_pixel_format(format: u8) -> Result<PixelFormat, String> {
-    match format {
-        1 => Ok(PixelFormat::Bgra8),
-        2 => Ok(PixelFormat::Rgb8),
-        3 => Ok(PixelFormat::La8),
-        4 => Ok(PixelFormat::L8),
-        5 => Ok(PixelFormat::A8),
-        11 => Ok(PixelFormat::Bc1),
-        12 => Ok(PixelFormat::Bc2),
-        13 => Ok(PixelFormat::Bc3),
-        14 => Ok(PixelFormat::Bc5),
-        format => Err(format!("unsupported IWI format {format}")),
-    }
-}
-
-fn mip_level_count(width: u32, height: u32) -> u32 {
-    32 - width.max(height).leading_zeros()
-}
-
-fn compressed_mip_bytes(width: u32, height: u32, format: PixelFormat) -> usize {
-    match format {
-        PixelFormat::Bgra8 | PixelFormat::Bgrx8 => width as usize * height as usize * 4,
-        PixelFormat::Rgb8 => width as usize * height as usize * 3,
-        PixelFormat::La8 => width as usize * height as usize * 2,
-        PixelFormat::L8 | PixelFormat::A8 => width as usize * height as usize,
-        PixelFormat::Bc1 => width.div_ceil(4) as usize * height.div_ceil(4) as usize * 8,
-        PixelFormat::Bc2 | PixelFormat::Bc3 | PixelFormat::Bc5 => {
-            width.div_ceil(4) as usize * height.div_ceil(4) as usize * 16
-        }
-    }
-}
-
-fn decode_gfx_image(
-    bytes: &[u8],
-    width: u32,
-    height: u32,
-    format: u32,
-) -> Result<DecodedMips, String> {
-    let format = match format {
-        value if value == u32::from_le_bytes(*b"DXT1") => PixelFormat::Bc1,
-        value if value == u32::from_le_bytes(*b"DXT3") => PixelFormat::Bc2,
-        value if value == u32::from_le_bytes(*b"DXT5") => PixelFormat::Bc3,
-        21 => PixelFormat::Bgra8,
-        22 => PixelFormat::Bgrx8,
-        28 => PixelFormat::A8,
-        50 => PixelFormat::L8,
-        51 => PixelFormat::La8,
-        format => return Err(format!("unsupported D3D format {format}")),
-    };
-    let (w, h, pixels) = load_mip_level(bytes, width, height, format)?;
-    Ok(match mip_storage(format) {
-        MipStorage::Rgba8 => DecodedMips::single(w, h, pixels),
-        storage => DecodedMips::single_compressed(w, h, storage, pixels),
-    })
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum PixelFormat {
-    Rgb8,
-    Bgra8,
-    Bgrx8,
-    L8,
-    La8,
-    A8,
-    Bc1,
-    Bc2,
-    Bc3,
-    Bc5,
-}
-
-fn bc5_block_to_dxt5nm(src: &[u8]) -> [u8; 16] {
-    let mut out = [0u8; 16];
-    out[..8].copy_from_slice(&src[..8]);
-    let mut y = [0u8; 16];
-    bcdec_rs::bc4(&src[8..16], &mut y, 4, false);
-    let (lo, hi) = y
-        .iter()
-        .fold((u8::MAX, 0u8), |(lo, hi), &v| (lo.min(v), hi.max(v)));
-    let (g0, g1) = (u16::from(hi >> 2), u16::from(lo >> 2));
-    let expand = |g6: u16| f32::from(((g6 << 2) | (g6 >> 4)) as u8);
-    let palette = if g0 > g1 {
-        let (p0, p1) = (expand(g0), expand(g1));
-        [p0, p1, (2.0 * p0 + p1) / 3.0, (p0 + 2.0 * p1) / 3.0]
-    } else {
-        [expand(g0); 4]
-    };
-    out[8..10].copy_from_slice(&(g0 << 5).to_le_bytes());
-    out[10..12].copy_from_slice(&(g1 << 5).to_le_bytes());
-    let mut indices = 0u32;
-    for (i, &v) in y.iter().enumerate() {
-        let best = (0..4)
-            .min_by(|&a, &b| {
-                (palette[a] - f32::from(v))
-                    .abs()
-                    .total_cmp(&(palette[b] - f32::from(v)).abs())
-            })
-            .unwrap_or(0) as u32;
-        indices |= best << (2 * i);
-    }
-    out[12..16].copy_from_slice(&indices.to_le_bytes());
-    out
-}
-
-fn bc5_to_dxt5nm(data: &[u8]) -> Vec<u8> {
-    data.as_chunks::<16>()
-        .0
-        .iter()
-        .flat_map(|block| bc5_block_to_dxt5nm(block))
-        .collect()
-}
-
-fn decode_pixels(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    format: PixelFormat,
-) -> Result<(u32, u32, Vec<u8>), String> {
-    if width == 0 || height == 0 {
-        return Err("zero-sized image".into());
-    }
-    let pixels = match format {
-        PixelFormat::Bgra8 => take_rgba(data, width, height, true, false)?,
-        PixelFormat::Bgrx8 => take_rgba(data, width, height, true, true)?,
-        PixelFormat::Rgb8 => {
-            let needed = width as usize * height as usize * 3;
-            let source = data
-                .get(..needed)
-                .ok_or_else(|| "truncated RGB8".to_owned())?;
-            let mut out = Vec::with_capacity(width as usize * height as usize * 4);
-            for pixel in source.chunks_exact(3) {
-                out.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
-            }
-            out
-        }
-        PixelFormat::L8 | PixelFormat::A8 => {
-            let needed = width as usize * height as usize;
-            let source = data
-                .get(..needed)
-                .ok_or_else(|| "truncated L8/A8".to_owned())?;
-            let mut out = Vec::with_capacity(needed * 4);
-            for &value in source {
-                if matches!(format, PixelFormat::A8) {
-                    out.extend_from_slice(&[255, 255, 255, value]);
-                } else {
-                    out.extend_from_slice(&[value, value, value, 255]);
-                }
-            }
-            out
-        }
-        PixelFormat::La8 => {
-            let needed = width as usize * height as usize * 2;
-            let source = data
-                .get(..needed)
-                .ok_or_else(|| "truncated LA8".to_owned())?;
-            let mut out = Vec::with_capacity(width as usize * height as usize * 4);
-            for pixel in source.chunks_exact(2) {
-                out.extend_from_slice(&[pixel[0], pixel[0], pixel[0], pixel[1]]);
-            }
-            out
-        }
-        PixelFormat::Bc1 | PixelFormat::Bc2 | PixelFormat::Bc3 => {
-            decode_blocks(data, width, height, format)?
-        }
-        PixelFormat::Bc5 => decode_blocks(&bc5_to_dxt5nm(data), width, height, PixelFormat::Bc3)?,
-    };
-    Ok((width, height, pixels))
-}
-
-fn take_rgba(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    bgra: bool,
-    opaque: bool,
-) -> Result<Vec<u8>, String> {
-    let needed = width as usize * height as usize * 4;
-    let mut out = data
-        .get(..needed)
-        .ok_or_else(|| "truncated RGBA8".to_owned())?
-        .to_vec();
-    for pixel in out.chunks_exact_mut(4) {
-        if bgra {
-            pixel.swap(0, 2);
-        }
-        if opaque {
-            pixel[3] = 255;
-        }
-    }
-    Ok(out)
-}
-
 pub fn decoded_image_top_level_rgba8(image: &Image) -> Result<(u32, u32, Vec<u8>), String> {
     if image.texture_descriptor.dimension != TextureDimension::D2
         || image.texture_descriptor.size.depth_or_array_layers != 1
@@ -2374,51 +1191,6 @@ pub fn decoded_image_top_level_rgba8(image: &Image) -> Result<(u32, u32, Vec<u8>
     Ok((width, height, pixels))
 }
 
-fn decode_blocks(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    format: PixelFormat,
-) -> Result<Vec<u8>, String> {
-    let block_size = if matches!(format, PixelFormat::Bc1) {
-        8
-    } else {
-        16
-    };
-    let blocks_wide = width.div_ceil(4) as usize;
-    let blocks_high = height.div_ceil(4) as usize;
-    let needed = blocks_wide * blocks_high * block_size;
-    if data.len() < needed {
-        return Err("truncated BC image".into());
-    }
-    let mut out = vec![0; width as usize * height as usize * 4];
-    let mut tile = [0u8; 64];
-    for block_y in 0..blocks_high {
-        for block_x in 0..blocks_wide {
-            let offset = (block_y * blocks_wide + block_x) * block_size;
-            match format {
-                PixelFormat::Bc1 => bcdec_rs::bc1(&data[offset..offset + 8], &mut tile, 16),
-                PixelFormat::Bc2 => bcdec_rs::bc2(&data[offset..offset + 16], &mut tile, 16),
-                PixelFormat::Bc3 => bcdec_rs::bc3(&data[offset..offset + 16], &mut tile, 16),
-                _ => unreachable!(),
-            }
-            for y in 0..4 {
-                for x in 0..4 {
-                    let destination_x = block_x * 4 + x;
-                    let destination_y = block_y * 4 + y;
-                    if destination_x < width as usize && destination_y < height as usize {
-                        let destination = (destination_y * width as usize + destination_x) * 4;
-                        let source = (y * 4 + x) * 4;
-                        out[destination..destination + 4]
-                            .copy_from_slice(&tile[source..source + 4]);
-                    }
-                }
-            }
-        }
-    }
-    Ok(out)
-}
-
 pub fn lit_color(albedo_rgb: [f32; 3], lighting: [f32; 3]) -> [f32; 3] {
     let albedo = lighting_iw4::lit_albedo(albedo_rgb, [1.0, 1.0, 1.0]);
     lighting_iw4::lit_fragment_color(albedo, lighting, [0.0, 0.0, 0.0])
@@ -2427,78 +1199,6 @@ pub fn lit_color(albedo_rgb: [f32; 3], lighting: [f32; 3]) -> [f32; 3] {
 pub fn decode_iwi_cubemap_native(bytes: &[u8], srgb: bool) -> Result<Image, String> {
     let (size, faces) = decode_iwi_cubemap(bytes)?;
     Ok(pack_material_cubemap(size, &faces, srgb))
-}
-
-fn decode_iwi_cubemap(bytes: &[u8]) -> Result<(u32, CubemapFaces), String> {
-    let header = parse_iwi_header(bytes)?;
-    if header.width == 0 || header.width != header.height {
-        return Err(format!(
-            "non-square cubemap {}x{}",
-            header.width, header.height
-        ));
-    }
-    let face_bytes = match header.format {
-        PixelFormat::Bgra8 | PixelFormat::Bgrx8 => (header.width * header.height * 4) as usize,
-        PixelFormat::Rgb8 => (header.width * header.height * 3) as usize,
-        PixelFormat::Bc1 => (header.width.div_ceil(4) * header.height.div_ceil(4) * 8) as usize,
-        PixelFormat::Bc2 | PixelFormat::Bc3 => {
-            (header.width.div_ceil(4) * header.height.div_ceil(4) * 16) as usize
-        }
-        _ => return Err("unsupported cubemap pixel layout".into()),
-    };
-
-    let start = header
-        .mip0_end
-        .checked_sub(face_bytes * 6)
-        .filter(|&start| start >= header.header_len && header.mip0_end <= bytes.len())
-        .ok_or_else(|| "truncated cubemap top mip".to_owned())?;
-    let mut faces = std::array::from_fn(|_| Vec::new());
-    for (i, face) in faces.iter_mut().enumerate() {
-        let start = start + i * face_bytes;
-        let (_, _, rgba) = decode_pixels(
-            &bytes[start..start + face_bytes],
-            header.width,
-            header.height,
-            header.format,
-        )?;
-        *face = rgba;
-    }
-    Ok((header.width, faces))
-}
-
-fn pack_material_cubemap(size: u32, faces: &CubemapFaces, srgb: bool) -> Image {
-    let mut pixels = Vec::with_capacity(6 * size as usize * size as usize * 4);
-    for face in faces {
-        pixels.extend_from_slice(face);
-    }
-    let mut image = Image::new(
-        Extent3d {
-            width: size,
-            height: size * 6,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        pixels,
-        if srgb {
-            TextureFormat::Rgba8UnormSrgb
-        } else {
-            TextureFormat::Rgba8Unorm
-        },
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    image
-        .reinterpret_stacked_2d_as_array(6)
-        .expect("six equal cubemap faces");
-    image.texture_view_descriptor = Some(TextureViewDescriptor {
-        dimension: Some(TextureViewDimension::Cube),
-        ..Default::default()
-    });
-    let mut sampler = ImageSamplerDescriptor::linear();
-    sampler.address_mode_u = ImageAddressMode::ClampToEdge;
-    sampler.address_mode_v = ImageAddressMode::ClampToEdge;
-    sampler.address_mode_w = ImageAddressMode::ClampToEdge;
-    image.sampler = ImageSampler::Descriptor(sampler);
-    image
 }
 
 pub const NORMAL_DECODE_SCALE: [f32; 2] = [4.08, 4.06452];
@@ -2743,6 +1443,8 @@ impl ImageMergeCensus {
     }
 }
 
+static RETAINED_PAYLOAD_BYTES: AtomicU64 = AtomicU64::new(0);
+
 /// Decoded payload bytes resident right now: every prepared buffer alive in
 /// the process, each counted once whoever is pointing at it.
 ///
@@ -2766,14 +1468,8 @@ impl ImageMergeCensus {
 /// independently: a payload two batches share is one allocation and two
 /// queued results, and a batch that has been applied still holds nothing
 /// while its payloads stay alive for whoever else asked.
-static RESIDENT_PAYLOAD_BYTES: AtomicU64 = AtomicU64::new(0);
-
-static RETAINED_PAYLOAD_BYTES: AtomicU64 = AtomicU64::new(0);
-
 fn gated_payload_bytes() -> u64 {
-    RESIDENT_PAYLOAD_BYTES
-        .load(Ordering::Relaxed)
-        .saturating_sub(RETAINED_PAYLOAD_BYTES.load(Ordering::Relaxed))
+    resident_payload_bytes().saturating_sub(RETAINED_PAYLOAD_BYTES.load(Ordering::Relaxed))
 }
 
 /// Plans that finished and whose results nobody has applied yet. It is the
@@ -2810,7 +1506,7 @@ pub fn decode_budget_bytes() -> u64 {
 
 /// Decoded payload bytes resident right now, each distinct buffer once.
 pub fn unapplied_decoded_bytes() -> u64 {
-    RESIDENT_PAYLOAD_BYTES.load(Ordering::Relaxed)
+    resident_payload_bytes()
 }
 
 /// Block until the unapplied bytes are under the ceiling, or until this is the
@@ -2839,11 +1535,7 @@ fn wait_for_decode_budget() -> (u64, bool) {
         waited = true;
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
-    (RESIDENT_PAYLOAD_BYTES.load(Ordering::Relaxed), waited)
-}
-
-fn image_bytes(image: &Image) -> u64 {
-    image.data.as_ref().map_or(0, Vec::len) as u64
+    (resident_payload_bytes(), waited)
 }
 
 impl ImageDemandPlan {
@@ -3015,7 +1707,7 @@ impl ImageDemandPlan {
             .enumerate()
             .collect::<Vec<ImageRequest>>();
         let mut stats = MaterialImageStats {
-            archives: index.0.archive_count(),
+            archives: index.archive_count(),
             requested: work.len(),
             ..Default::default()
         };
@@ -3408,7 +2100,7 @@ fn decode_inline(
         return stats;
     }
 
-    let index = IwdIndex(Arc::new(asset_transport::IwdIndex::default()));
+    let index = IwdIndex::empty();
     let images = &catalog.images;
     for outcome in decode_requests_in_parallel(images, &index, work, stage, pool) {
         match outcome {

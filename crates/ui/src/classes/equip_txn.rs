@@ -230,17 +230,33 @@ fn consume_class_select_handoff(
     mut catalog: ResMut<crate::ClassLoadoutCatalog>,
     mut store: ResMut<SessionClassStore>,
     weapons: Option<Res<assets::PreparedWeapons>>,
+    menus: Res<asset_game::MenuCatalog>,
 ) {
     if !handoff.pending {
         return;
     }
-    if catalog.resolver.0.is_none() {
-        let Some(weapons) = weapons else {
-            return;
-        };
-        *catalog = crate::ClassLoadoutCatalog::from_weapon_registry(weapons.registry().clone());
+    let Some(weapons) = weapons else {
+        return;
+    };
+    let revision = catalog.revision.wrapping_add(1);
+    let mut updated = crate::ClassLoadoutCatalog::from_weapon_registry(weapons.registry().clone());
+    if let Some(table) = menus.string_table("mp/perkTable.csv") {
+        updated = updated.with_perk_table(table);
     }
-    catalog.revision = catalog.revision.wrapping_add(1);
+    updated.perks = catalog.perks.clone();
+    updated.deathstreak = catalog.deathstreak.clone();
+    for (key, preview) in &catalog.previews {
+        if asset_core::AssetKey::parse(key).is_err() {
+            updated.previews.insert(key.clone(), preview.clone());
+        } else if let Some(current) = updated.previews.get_mut(key) {
+            if current.desc_key.is_empty() {
+                current.desc_key.clone_from(&preview.desc_key);
+            }
+            current.bars.clone_from(&preview.bars);
+        }
+    }
+    *catalog = updated;
+    catalog.revision = revision;
     catalog.primary = std::mem::take(&mut handoff.primary);
     catalog.secondary = std::mem::take(&mut handoff.secondary);
     catalog.lethal = std::mem::take(&mut handoff.lethal);
