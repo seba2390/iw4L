@@ -1084,6 +1084,19 @@ fn register_body(registry: &mut NativeRegistry) {
             angles,
             &state,
         );
+        let slot = slot(world, client)?;
+        slot.pending_origin = None;
+        slot.pending_angles = None;
+        let pending = std::mem::take(&mut slot.pending_weapons);
+        let spawn_weapon = slot.pending_spawn_weapon.take();
+        let mut frame = FrameWorld::from_world(world);
+        for (weapon, model) in pending {
+            script_player::give_weapon(&mut frame, ClientId(client), weapon, false)?;
+            script_player::set_weapon_model(&mut frame, ClientId(client), weapon, model);
+        }
+        if let Some(weapon) = spawn_weapon {
+            script_player::set_spawn_weapon(&mut frame, ClientId(client), weapon)?;
+        }
         Ok(Value::Undefined)
     });
     registry.register(Method, "freezecontrols", |world, receiver, args| {
@@ -1196,7 +1209,9 @@ fn register_body(registry: &mut NativeRegistry) {
     registry.register(Method, "setplayerangles", |world, receiver, args| {
         let id = client_of(world, receiver)?;
         let angles = vector(args, 0)?;
-        FrameWorld::from_world(world).set_viewangles(id, angles);
+        if !super::super::players::place_unspawned(world, id.0, None, Some(angles)) {
+            FrameWorld::from_world(world).set_viewangles(id, angles);
+        }
         Ok(Value::Undefined)
     });
     registry.register(Method, "getstance", |world, receiver, _| {
@@ -1496,6 +1511,10 @@ fn register_inventory(registry: &mut NativeRegistry) {
             model
         };
         let akimbo = !t5 && optional(args, 2, int)?.unwrap_or(0) != 0;
+        if t5 && FrameWorld::from_world(world).player(id).is_none() {
+            slot(world, id.0)?.pending_weapons.push((weapon, model));
+            return Ok(Value::Undefined);
+        }
         script_player::give_weapon(&mut FrameWorld::from_world(world), id, weapon, akimbo)?;
         script_player::set_weapon_model(&mut FrameWorld::from_world(world), id, weapon, model);
         super::super::players::give_carried_insertion(world, id.0, receiver, named)?;
@@ -1522,6 +1541,11 @@ fn register_inventory(registry: &mut NativeRegistry) {
     registry.register(Method, "setspawnweapon", |world, receiver, args| {
         let id = client_of(world, receiver)?;
         let weapon = player_weapon(world, id, args, 0)?;
+        if super::super::players::is_t5(world) && FrameWorld::from_world(world).player(id).is_none()
+        {
+            slot(world, id.0)?.pending_spawn_weapon = Some(weapon);
+            return Ok(Value::Undefined);
+        }
         script_player::set_spawn_weapon(&mut FrameWorld::from_world(world), id, weapon)?;
         Ok(Value::Undefined)
     });

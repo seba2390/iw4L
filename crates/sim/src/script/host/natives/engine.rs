@@ -951,7 +951,10 @@ fn register_placement(registry: &mut NativeRegistry) {
         let origin = vector(args, 0)?;
         let id = entity_id(world, receiver)?;
         if let Some(client) = runtime(world).player_client(id) {
-            crate::frame::FrameWorld::from_world(world).set_origin(crate::ClientId(client), origin);
+            if !super::super::players::place_unspawned(world, client, Some(origin), None) {
+                crate::frame::FrameWorld::from_world(world)
+                    .set_origin(crate::ClientId(client), origin);
+            }
             return Ok(Value::Undefined);
         }
         world.resource_mut::<Mechanics>().stop(id, "origin");
