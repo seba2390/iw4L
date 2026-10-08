@@ -59,6 +59,11 @@ make map mp_boneyard CMDS='wait world; spawn 0; force_match_start; bot add 3'
 This builds the optimized `play` profile and starts a local match with three bots.
 `force_match_start` skips the warmup that otherwise freezes movement.
 
+On native Windows, use `powershell -ExecutionPolicy Bypass -File .\scripts\play.ps1`
+from the repository root. It builds and launches `target/play/iw4l.exe`, preserving
+the repository's `iw4l-artifacts/` settings and caches. Append `map t6:mp_raid`
+to load BO2 directly. Unoptimized `target/debug/iw4l.exe` is unsuitable for frame-rate tests.
+
 ## Inside the engine
 
 | Area | Implementation |
