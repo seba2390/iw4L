@@ -45,3 +45,7 @@ Then follow `README.md` (Build and run): copy `.env.example`, set
 Match metadata uses the Git commit count as its numeric build number. Release
 builders can set `IW4L_BUILD_NUMBER`; source archives need this variable. The
 package version remains the textual build version.
+
+`make boundary` checks that each game's rules stay in that game's crates
+([`ARCHITECTURE.md`](ARCHITECTURE.md)); a new crate needs a
+`[package.metadata.iw4l] layer` or the check refuses it.

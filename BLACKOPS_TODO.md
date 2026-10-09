@@ -51,6 +51,9 @@ revived.
 ### 0. Baseline on this Mac
 - [x] Build IW4L on Apple silicon (M3 Pro, Metal; first `play` build 3m11s).
 - [x] Run an MW2 map and a Black Ops multiplayer map with bots (`mp_rust`, `t5:mp_nuked`).
+      Since the game boundary (docs/ARCHITECTURE.md) a Black Ops multiplayer map
+      is refused at load: it ran Modern Warfare 2's gametype scripts
+      (`t5.scripts.mp_gametypes` in `docs/fidelity/t5.md`).
 
 Done when both maps are playable locally.
 
