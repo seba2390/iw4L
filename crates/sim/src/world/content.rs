@@ -97,6 +97,15 @@ pub struct SimContent {
 }
 
 impl SimContent {
+    pub(super) fn script_model_states(&self) -> Option<Arc<xmodel_runtime::AnimStateTable>> {
+        self.data.script_model_states.clone()
+    }
+
+    pub(super) fn script_model_clips(
+        &self,
+    ) -> Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>> {
+        self.data.script_model_clips.clone()
+    }
     pub fn clip_brushes(&self) -> &[SimBrush] {
         &self.data.clip_brushes
     }
@@ -158,6 +167,8 @@ struct ContentData {
     anim_clips: AnimClipLookup,
     actor_anim_trees: std::collections::BTreeMap<String, Arc<crate::script::ActorAnimTree>>,
     actor_paths: Option<Arc<crate::script::ActorPaths>>,
+    script_model_clips: Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>>,
+    script_model_states: Option<Arc<xmodel_runtime::AnimStateTable>>,
     xanims: Arc<crate::MantleXAnimBind>,
     vehicle_turrets: std::collections::BTreeMap<String, String>,
     vehicle_compass: std::collections::BTreeMap<String, ([String; 2], [i32; 2])>,
@@ -198,6 +209,8 @@ impl SimContentBuilder {
                 anim_clips: Default::default(),
                 actor_anim_trees: Default::default(),
                 actor_paths: Default::default(),
+                script_model_states: None,
+                script_model_clips: Default::default(),
                 xanims: Default::default(),
                 vehicle_turrets: Default::default(),
                 vehicle_compass: Default::default(),
@@ -230,6 +243,17 @@ impl SimContentBuilder {
     pub fn finish(mut self) -> Arc<SimContent> {
         self.data.clip_mesh.rebuild_smodel_grid();
         Arc::new(SimContent { data: self.data })
+    }
+
+    pub fn set_script_model_clips(
+        &mut self,
+        clips: impl IntoIterator<Item = (String, Arc<xmodel_runtime::AnimClip>)>,
+    ) {
+        self.data.script_model_clips = Arc::new(clips.into_iter().collect());
+    }
+
+    pub fn set_script_model_states(&mut self, states: Option<Arc<xmodel_runtime::AnimStateTable>>) {
+        self.data.script_model_states = states;
     }
 
     pub fn set_script_model_anims(

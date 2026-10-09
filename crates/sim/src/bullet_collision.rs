@@ -537,6 +537,8 @@ impl AuthorityDObjState {
     pub fn begin_script_model_play_anim(&mut self, clip: &str, looping: bool, frequency: f32) {
         self.pose_revision = self.pose_revision.wrapping_add(1);
         self.play_anim = Some(ScriptModelPlayAnim { looping, frequency });
+        let composition = self.semantic_state.composition.clone();
+        let hide = self.semantic_state.hide_part_bits;
         self.semantic_state = xmodel_runtime::DObjSemanticState::one_leaf(
             self.current_model.clone(),
             clip.to_owned(),
@@ -544,7 +546,10 @@ impl AuthorityDObjState {
             self.pose_revision,
             0.0,
         );
+        self.semantic_state.composition = composition;
+        self.semantic_state.hide_part_bits = hide;
         self.pose_request = xmodel_runtime::DObjPoseRequest::bind_pose();
+        self.pose_request.hide_part_bits = hide;
         self.current_collision = None;
         self.materialized_pose_revision = None;
         self.materialize_error = None;

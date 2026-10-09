@@ -17,9 +17,16 @@ enter wire IDs/content digests. Queued effects retain their producing generation
 
 Combat, equipment, penetration, FPV, HUD, world and event projections use one
 effective row. Combat binds host rules and location damage before simulation.
-The host burst cooldown remains 200 ms across sources. Presentation facts carry
+T6 burst cooldown uses its authored delay; other sources use the host rule. Presentation facts carry
 camera, alternate, dual, shield, overlay and event policies without reinterpreting
 capture classifications. Loadout labels/archive hints are prepared by asset_game.
+
+Underbarrels retain their native alternate inventory identity, reload stages and
+switch clips. An absent empty-reload clip selects the ordinary reload with its
+authored timing through an explicit reload policy; captured timing remains intact. Independent T6 underbarrels keep their own reload clips when
+the rifle has fast magazines. Effective IW5 attachment reticles resolve their
+material images after composition; T6 reticle materials enter the native HUD
+image set with their authored sizes and minimum spread offset.
 
 `BoundWeapon::preparation` retains source keys and per-component targets/refusals.
 T6 models, clips, cues and materials retain T6 source and storage identity.

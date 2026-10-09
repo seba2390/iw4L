@@ -19,6 +19,7 @@ impl StringTable {
 
 #[derive(Clone, Debug, Default)]
 pub struct LevelData {
+    pub absent_effects: std::collections::BTreeSet<String>,
     pub entities: Vec<Vec<(String, String)>>,
     pub tables: BTreeMap<String, StringTable>,
     pub keys: BTreeMap<String, KeyType>,
@@ -445,6 +446,7 @@ impl Runtime {
         entities: &[Vec<(String, String)>],
         keys: &BTreeMap<String, KeyType>,
     ) -> Result<(), String> {
+        self.zombies.authored = Arc::new(entities.to_vec());
         let structs = match self.object_field(0, "struct") {
             Value::Array(id) => Some(id),
             _ => None,

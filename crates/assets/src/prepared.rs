@@ -63,6 +63,13 @@ pub struct PreparedMap {
     pub gaps: PreparedGaps,
 }
 
+/// Installed map identity, owned and retired by the match transaction.
+#[derive(Resource, Clone, Debug)]
+pub struct SessionMapIdentity {
+    pub namespace: Option<asset_core::AssetNamespace>,
+    pub zone: String,
+}
+
 #[derive(Clone, Debug, Default, Resource)]
 pub struct PreparedKillstreaks(pub Vec<String>);
 

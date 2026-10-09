@@ -68,6 +68,7 @@ pub fn load_pool() -> &'static TaskPool {
     POOL.get_or_init(|| {
         TaskPoolBuilder::new()
             .num_threads(load_workers())
+            .stack_size(16 * 1024 * 1024)
             .thread_name("iw4l load".to_owned())
             .on_thread_spawn(|| {
                 if let Some(cpus) = PROCESS_CPUS.get() {
@@ -131,7 +132,8 @@ pub struct PreparedWorld {
     pub intermission_view: Option<IntermissionView>,
 
     pub exp_fog: Option<asset_world::ExpFog>,
-    pub t6_film_grade: Option<asset_world::T6FilmGrade>,
+    pub t6_vision: Option<asset_world::T6Vision>,
+    pub t6_visions: asset_world::T6VisionCatalog,
 
     pub film_vision: Option<asset_world::FilmVision>,
     pub film_visions: std::collections::BTreeMap<
@@ -149,6 +151,7 @@ pub struct PreparedWorld {
 
 #[derive(Clone)]
 pub struct PreparedMatch {
+    pub ui_images: asset_material::UiImagePublication,
     pub scripts: crate::ScriptSources,
     /// The zombie mode's own script base, present on T5 zombie maps.
     pub zombie_scripts: Option<crate::ScriptSources>,
@@ -215,7 +218,8 @@ impl PreparedWorld {
             reflection_probe_images: Default::default(),
             intermission_view: Default::default(),
             exp_fog: Default::default(),
-            t6_film_grade: Default::default(),
+            t6_vision: Default::default(),
+            t6_visions: Default::default(),
             film_vision: Default::default(),
             film_visions: Default::default(),
             createart_name: Default::default(),

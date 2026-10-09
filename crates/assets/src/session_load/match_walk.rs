@@ -197,6 +197,7 @@ pub(super) async fn walk_prepared_match(
         .as_ref()
         .map(crate::ScriptSources::asset_names);
     let zombie_scene_models = zombie.scene_models;
+    let zombie_hud_images = zombie.hud_images;
     report.extend(zombie.report);
     if !zombie.weapons.is_empty() {
         let before = weapons.len();
@@ -235,6 +236,30 @@ pub(super) async fn walk_prepared_match(
             facts.team_settings.axis_charset.as_deref(),
         );
     }
+    if map_family == asset_core::FamilyId::T6 {
+        facts.objective_visuals = asset_game::ObjectiveVisuals::t6(
+            facts.team_settings.allies_charset.as_deref(),
+            facts.team_settings.axis_charset.as_deref(),
+        );
+        let mut native_objectives = asset_world::MapXModelSceneCatalog::default();
+        for name in facts.objective_visuals.model_names() {
+            if !matches!(
+                world.map_xmodel_scene_assets.get_name(name),
+                Some(asset_world::MapXModelSceneAsset::T6(_))
+            ) && let Some(index) = world_weapons.index_by_name(map_family, name)
+                && let Some(model) = world_weapons.get_at(index)
+            {
+                native_objectives.set_capture_zone(world_weapons.zone_of(index));
+                native_objectives.insert(
+                    asset_world::MapXModelAssetKey(name.to_owned()),
+                    asset_world::MapXModelSceneAsset::T6(model.skel.clone()),
+                );
+            }
+        }
+        world
+            .map_xmodel_scene_assets
+            .absorb_captured(native_objectives);
+    }
     match (
         facts.t5_teamset.as_deref(),
         facts.team_settings.allies.as_ref(),
@@ -266,9 +291,10 @@ pub(super) async fn walk_prepared_match(
     }
     let map_scripts = match map_namespace {
         Some(asset_core::AssetNamespace::T5 | asset_core::AssetNamespace::T6) => {
-            let scripts = t5_map_under_iw4_rules(&map_scripts, &zone_name, &facts);
+            let scripts =
+                treyarch_map_under_iw4_rules(&map_scripts, &zone_name, &facts, map_family);
             report.push(format!(
-                "map script: maps/mp/{zone_name} written from the T5 map's declarations; T5 map scripts left out"
+                "map script: maps/mp/{zone_name} written from the {map_family:?} map's declarations; native gametype scripts left out"
             ));
             scripts
         }
@@ -849,6 +875,13 @@ pub(super) async fn walk_prepared_match(
         ));
     }
     let prepared = PreparedMatch {
+        ui_images: if zombie_hud_images.is_empty() {
+            common.ui_images.clone()
+        } else {
+            common
+                .ui_images
+                .with_zone_images(asset_core::AssetNamespace::T5, zombie_hud_images)
+        },
         scripts,
         zombie_scripts,
         fx,
@@ -1357,10 +1390,11 @@ fn faction_cells(
     cells
 }
 
-fn t5_map_under_iw4_rules(
+fn treyarch_map_under_iw4_rules(
     map_scripts: &crate::ScriptSources,
     zone_name: &str,
     facts: &crate::MapFacts,
+    family: asset_core::FamilyId,
 ) -> crate::ScriptSources {
     let module = format!("maps/mp/{zone_name}");
     let main = map_scripts
@@ -1375,24 +1409,40 @@ fn t5_map_under_iw4_rules(
     );
     let entities = map_scripts
         .entities()
-        .map(asset_world::t5_entities_for_iw4_rules)
+        .map(|entities| match family {
+            asset_core::FamilyId::T6 => entities.to_owned(),
+            _ => asset_world::t5_entities_for_iw4_rules(entities),
+        })
         .unwrap_or_default();
     let mut scripts = crate::ScriptSources::default();
     let mut map_main = declarations.map_script(&entities);
-    let end = map_main.rfind('}').expect("generated map main");
-    map_main.insert_str(end, "\tthread iw4l_maps\\destructibles::main();\n");
-    scripts.insert_source(
-        "iw4l_maps/destructibles",
-        crate::map_scripts::DESTRUCTIBLES.to_owned(),
-    );
-    if zone_name == "mp_radiation" {
+
+    if family == asset_core::FamilyId::T6 {
+        map_main = map_main.replace("maps\\mp\\_load::main();", "");
+        assert!(
+            !map_main.contains("maps\\mp\\_load"),
+            "T6 generated map script still contains maps/mp/_load"
+        );
+    } else {
+        let end = map_main.rfind('}').expect("generated map main");
+        map_main.insert_str(end, "\tthread iw4l_maps\\destructibles::main();\n");
+
+        scripts.insert_source(
+            "iw4l_maps/destructibles",
+            crate::map_scripts::DESTRUCTIBLES.to_owned(),
+        );
+    }
+
+    if family == asset_core::FamilyId::T5 && zone_name == "mp_radiation" {
         let end = map_main.rfind('}').expect("generated map main");
         map_main.insert_str(end, "\tthread iw4l_maps\\radiation::main();\n");
+
         scripts.insert_source(
             "iw4l_maps/radiation",
             crate::map_scripts::RADIATION.to_owned(),
         );
     }
+
     scripts.insert_source(&module, map_main);
     scripts.set_entities(entities);
     scripts

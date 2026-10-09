@@ -4,6 +4,7 @@ mod iw5;
 mod sink;
 mod t5;
 mod t6;
+pub use t6::{T6UiArt, load_t6_ui_art};
 
 use std::path::Path;
 
@@ -93,6 +94,7 @@ impl LoadedWorld {
 
 #[derive(Default)]
 pub struct CommonCensus {
+    pub ui_images: Vec<(String, asset_material::material_images::ZoneUiImage)>,
     pub scripts: crate::ScriptSources,
     pub scene_models: asset_world::MapXModelSceneCatalog,
     pub shared_surfaces: asset_model::SharedXModelSurfaces,

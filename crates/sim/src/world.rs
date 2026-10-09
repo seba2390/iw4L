@@ -578,6 +578,14 @@ impl SimState {
         self.phase = phase;
     }
 
+    pub(crate) fn set_match_elapsed_ms(&mut self, elapsed: u32) {
+        self.match_elapsed_ms = elapsed;
+    }
+
+    pub(crate) fn set_game_win_winner(&mut self, winner: Option<ClientId>) {
+        self.game_win_winner = winner;
+    }
+
     pub fn root_seed(&self) -> u64 {
         self.root_seed
     }
@@ -962,6 +970,7 @@ impl SimState {
             &self.content.weapons().bullet_pen,
             &self.content.weapons().weapon_runnable,
             &self.content.weapons().weapon_transition_groups,
+            &self.content.weapons().weapon_camouflage_slots,
             &self.content.weapons().equipment_runtime,
             &self.bootstrap,
             self.content.clip_brushes(),
@@ -972,6 +981,7 @@ impl SimState {
             &self.content.weapons().bullet_pen,
             &self.content.weapons().weapon_runnable,
             &self.content.weapons().weapon_transition_groups,
+            &self.content.weapons().weapon_camouflage_slots,
             &self.content.weapons().equipment_runtime,
             &self.bootstrap,
             self.content.clip_brushes(),
@@ -1003,6 +1013,14 @@ impl SimState {
             return false;
         };
         group != 0 && groups.get(to as usize) == Some(&group)
+    }
+
+    pub(crate) fn weapon_camouflage_allowed(&self, weapon: u32, model: u8) -> bool {
+        self.content
+            .weapons()
+            .weapon_camouflage_slots
+            .get(weapon as usize)
+            .is_some_and(|slots| slots.contains(&model))
     }
 
     pub(crate) fn weapon_runnable(&self, id: u32) -> bool {
@@ -1291,6 +1309,46 @@ impl SimState {
         >,
     ) {
         self.model_library = Arc::new(models);
+    }
+
+    pub(crate) fn zombie_body_model(&self) -> Option<String> {
+        [
+            "c_zom_dlc0_zom_sol_body1",
+            "c_zom_zombie1_body01",
+            "c_zom_zombie_civ_shorts_body",
+            "c_zom_inmate_body1",
+            "c_zom_zombie_buried_civilian_body1",
+            "c_zom_tomb_german_body_1a",
+        ]
+        .into_iter()
+        .find(|name| self.model_library.get(*name).is_some_and(Option::is_some))
+        .map(str::to_owned)
+    }
+
+    pub(crate) fn zombie_head_attachment(&self, body: &str) -> Option<(String, String)> {
+        let capability = self.model_capability(body)??;
+        let tag = xmodel_runtime::tp_head_attach_tag(&capability.pose.bone_names)?;
+        let head = match body {
+            "c_zom_dlc0_zom_sol_body1" => "c_zom_dlc0_zom_head1",
+            "c_zom_zombie1_body01" => "c_zom_zombie_head_a",
+            "c_zom_zombie_civ_shorts_body" => "c_zom_zombie_chinese_head1",
+            "c_zom_inmate_body1" => "c_zom_zombie_slackjaw_head",
+            "c_zom_zombie_buried_civilian_body1" => "c_zom_zombie_buried_male_head1",
+            "c_zom_tomb_german_body_1a" => "c_zom_tomb_german_head1",
+            _ => return None,
+        };
+        self.model_library
+            .get(head)
+            .is_some_and(Option::is_some)
+            .then(|| (head.to_owned(), tag.to_owned()))
+    }
+
+    pub(crate) fn zombie_walk_anim(&self) -> Option<String> {
+        self.content
+            .script_model_anims()
+            .keys()
+            .find(|name| name == &"ai_zombie_walk_v1")
+            .cloned()
     }
 
     pub(crate) fn model_capability(
@@ -2220,11 +2278,21 @@ impl SimState {
         &mut self.corpses
     }
 
+    pub(crate) fn script_model_clips(
+        &self,
+    ) -> Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>> {
+        self.content.script_model_clips()
+    }
+
     pub(crate) fn script_model_anim(&self, name: &str) -> Option<crate::ScriptModelPlayAnim> {
         self.content
             .script_model_anims()
             .get(&name.to_ascii_lowercase())
             .copied()
+    }
+
+    pub(crate) fn script_model_states(&self) -> Option<Arc<xmodel_runtime::AnimStateTable>> {
+        self.content.script_model_states()
     }
 
     pub(crate) fn player_anim_clip(&self, legs_anim: i32) -> Option<Arc<xmodel_runtime::AnimClip>> {
@@ -3312,6 +3380,7 @@ pub(crate) fn gsc_give_weapon_is_akimbo(script_name: &str) -> bool {
 pub(crate) fn give_weapon_to_ps_akimbo(ps: &mut PlayerState, weapon: u32, akimbo: bool) {
     if weapon == 0 {
         ps.weapon = 0;
+        ps.scope_zoom_level = 0;
         ps.weapon_primary = 0;
         ps.last_weapon_hand = 0;
         return;
@@ -3324,6 +3393,7 @@ pub(crate) fn give_weapon_to_ps_akimbo(ps: &mut PlayerState, weapon: u32, akimbo
         }
     }
     ps.weapon = weapon;
+    ps.scope_zoom_level = 0;
     ps.weapon_primary = weapon;
     ps.last_weapon_hand = weapon_iw4::num_hands_for_held(&ps.weapons, &ps.weapon_data, weapon);
 }

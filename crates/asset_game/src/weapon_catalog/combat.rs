@@ -18,6 +18,7 @@ pub(super) struct WeaponCombatProjection {
     location_damage: Option<[f32; HITLOC_COUNT]>,
     aim_assist: weapon_iw4::AimAssistRanges,
     melee_only: bool,
+    burst_delay_ms: Option<i32>,
 }
 
 fn captured_input(f: WeaponBodyFacts, melee_charge_anim: bool) -> CapturedCombatInput {
@@ -42,6 +43,7 @@ fn captured_input(f: WeaponBodyFacts, melee_charge_anim: bool) -> CapturedCombat
         first_raise_time_ms: f.first_raise_time_ms,
         reload_time_ms: f.reload_time_ms,
         reload_empty_time_ms: f.reload_empty_time_ms,
+        empty_reload: weapon_iw4::EmptyReloadPolicy::Authored,
         clip_size: f.clip_size,
         start_ammo: f.start_ammo_rounds(),
         max_ammo: f.max_ammo_rounds(),
@@ -103,6 +105,7 @@ fn captured_input(f: WeaponBodyFacts, melee_charge_anim: bool) -> CapturedCombat
         ads_fire_only: f.ads_fire_only,
         melee_damage: f.melee_damage,
         can_hold_breath: f.can_hold_breath,
+        scope_zoom: f.scope_zoom,
         overlay_reticle: f.overlay_reticle,
         melee_time_ms: f.melee_time_ms,
         melee_delay_ms: f.melee_delay_ms,
@@ -142,9 +145,18 @@ impl WeaponCombatProjection {
             f.knife_model = melee_weapon;
         }
         let mut input = captured_input(f, melee_charge_anim);
+        input.empty_reload = if registry
+            .anim_of(id, asset_iw4::size::weap_anim::RELOAD_EMPTY)
+            .is_some()
+        {
+            weapon_iw4::EmptyReloadPolicy::Authored
+        } else {
+            weapon_iw4::EmptyReloadPolicy::Ordinary
+        };
         input.alternate_weapon = registry.alternate_of(id);
         Some(Self {
             input,
+            burst_delay_ms: f.burst_delay_ms,
             location_damage: f.location_damage_mult,
             aim_assist: weapon_iw4::AimAssistRanges {
                 auto_aim: f.auto_aim_range,
@@ -167,7 +179,7 @@ impl WeaponCombatProjection {
         let fire_type = weapon_iw4::FireType::from_i32(input.fire_type)
             .map_err(|_| MissingCombatFacts::UnknownFireType)?;
         input.burst_cooldown_ms = if fire_type.is_burst() {
-            rules.burst_cooldown_ms
+            self.burst_delay_ms.unwrap_or(rules.burst_cooldown_ms)
         } else {
             0
         };

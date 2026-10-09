@@ -17,10 +17,14 @@ asset_material.workspace = true
 asset_transport.workspace = true
 assets.workspace = true
 frame.workspace = true
+hud_iw4.workspace = true
 net = { path = "../net" }
 updater = { path = "../updater" }
 session.workspace = true
 sim.workspace = true
+weapon_iw4.workspace = true
+entity_iw4.workspace = true
+playerstate_iw4.workspace = true
 
 [lints]
 workspace = true

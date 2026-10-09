@@ -236,7 +236,14 @@ fn flush_flash_tess(
     }
 }
 
-fn sync_games_root(mut hud_images: ResMut<HudImages>, identity: Option<Res<LaunchIdentity>>) {
+fn sync_games_root(
+    mut hud_images: ResMut<HudImages>,
+    identity: Option<Res<LaunchIdentity>>,
+    publication: Option<Res<asset_material::UiImagePublication>>,
+) {
+    if let Some(publication) = publication {
+        hud_images.adopt_ui_images(&publication);
+    }
     let Some(identity) = identity else {
         return;
     };
@@ -260,13 +267,13 @@ fn sync_zone_atlases(
     catalog: Option<Res<asset_game::MenuCatalog>>,
     mut hud_images: ResMut<HudImages>,
 ) {
-    if hud_images.zone_installed() {
-        return;
+    match catalog {
+        Some(catalog) if !hud_images.zone_installed() || catalog.is_changed() => {
+            hud_images.install_zone_catalog(&catalog)
+        }
+        None if hud_images.zone_installed() => hud_images.clear_zone_catalog(),
+        _ => {}
     }
-    let Some(catalog) = catalog else {
-        return;
-    };
-    hud_images.install_zone_catalog(&catalog);
 }
 
 fn warm_hud_images(
@@ -350,11 +357,13 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
 fn sync_hud_visibility(
     screen: Res<AppScreen>,
     ui_draw: Option<Res<UiDraw>>,
+    map: Option<Res<assets::SessionMapIdentity>>,
     mut roots: Query<&mut Visibility, With<HudRoot>>,
     mut visible: ResMut<HudRootVisible>,
 ) {
     let ui_on = ui_draw.is_some_and(|d| d.0);
-    let show = hud_root_should_show(*screen, ui_on);
+    let native_t6 = map.is_some_and(|map| map.namespace == Some(asset_core::AssetNamespace::T6));
+    let show = hud_root_should_show(*screen, ui_on) && !native_t6;
     visible.0 = Some(i32::from(show));
     for mut vis in &mut roots {
         let want = if show {

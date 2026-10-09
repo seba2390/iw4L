@@ -1069,7 +1069,7 @@ impl MenuSink {
                 );
                 return;
             };
-            match crate::decode_ui_image(root, &image.name) {
+            match asset_material::decode_ui_archive_image(root, &image.name) {
                 Ok(Some(rgba)) => Some((rgba, "iwd")),
                 Ok(None) => {
                     diag::warn!(

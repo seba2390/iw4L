@@ -14,13 +14,21 @@ pub fn selected_game(
         .get("ui_gametype")
         .and_then(sim::HostGameModeSelection::from_token)
         .ok_or("Unsupported game mode")?;
+    let zombies_map = map.starts_with("t6:zm_");
+    if (mode.token() == "zclassic") != zombies_map {
+        return Err(
+            "Select Zombies for a Zombies map, or Multiplayer for a multiplayer map".into(),
+        );
+    }
     Ok((map.to_owned(), mode))
 }
 
 pub const MATCH_CONFIG: &str = "default_xboxlive.cfg";
 
 fn is_rule(name: &str) -> bool {
-    name.starts_with("scr_") || name == "g_hardcore"
+    name.starts_with("scr_")
+        || name.starts_with("koth_")
+        || matches!(name, "g_hardcore" | "camera_thirdperson")
 }
 
 pub fn seed_rules(dvars: &mut UiMenuDvars, config: &str) {

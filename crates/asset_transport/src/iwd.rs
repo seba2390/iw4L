@@ -10,6 +10,7 @@ pub struct IwdFile {
     entry: String,
     crc32: u32,
     size: u64,
+    reader: Arc<Mutex<OpenArchive>>,
 }
 
 impl IwdFile {
@@ -47,21 +48,23 @@ pub struct IwdIndex {
     archives: usize,
 }
 
-fn index_cache() -> &'static RwLock<HashMap<PathBuf, Arc<IwdIndex>>> {
-    static CACHE: OnceLock<RwLock<HashMap<PathBuf, Arc<IwdIndex>>>> = OnceLock::new();
+type IndexKey = (PathBuf, u64);
+
+fn index_cache() -> &'static RwLock<HashMap<IndexKey, Arc<IwdIndex>>> {
+    static CACHE: OnceLock<RwLock<HashMap<IndexKey, Arc<IwdIndex>>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
 type IndexBuild = Arc<OnceLock<Result<Arc<IwdIndex>, String>>>;
 
-fn index_builds() -> &'static Mutex<HashMap<PathBuf, IndexBuild>> {
-    static BUILDS: OnceLock<Mutex<HashMap<PathBuf, IndexBuild>>> = OnceLock::new();
+fn index_builds() -> &'static Mutex<HashMap<IndexKey, IndexBuild>> {
+    static BUILDS: OnceLock<Mutex<HashMap<IndexKey, IndexBuild>>> = OnceLock::new();
     BUILDS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 impl IwdIndex {
     pub fn open(directory: &Path) -> Result<Arc<Self>, String> {
-        let key = directory.to_path_buf();
+        let key = (directory.to_path_buf(), installation_revision(directory));
         if let Some(hit) = index_cache()
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -95,6 +98,7 @@ impl IwdIndex {
         let mut cache = index_cache()
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        cache.retain(|existing, _| existing.0 != key.0 || existing == &key);
         Ok(Arc::clone(
             cache.entry(key).or_insert_with(|| Arc::clone(&built)),
         ))
@@ -104,7 +108,7 @@ impl IwdIndex {
         index_cache()
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .contains_key(directory)
+            .contains_key(&(directory.to_path_buf(), installation_revision(directory)))
     }
 
     pub fn archive_count(&self) -> usize {
@@ -182,8 +186,12 @@ fn is_iwd_archive(path: &Path) -> bool {
 fn index_image_entries(path: &Path) -> Result<Vec<(String, IwdFile)>, String> {
     let file = std::fs::File::open(path)
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
-    let mut archive = zip::ZipArchive::new(file)
+    let archive = zip::ZipArchive::new(std::io::BufReader::new(file))
         .map_err(|error| format!("cannot index {}: {error}", path.display()))?;
+    let reader = Arc::new(Mutex::new(archive));
+    let mut archive = reader
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut entries = Vec::new();
     for entry_index in 0..archive.len() {
         let entry = archive
@@ -207,6 +215,7 @@ fn index_image_entries(path: &Path) -> Result<Vec<(String, IwdFile)>, String> {
                 entry: exact,
                 crc32: entry.crc32(),
                 size: entry.size(),
+                reader: reader.clone(),
             },
         ));
     }
@@ -296,7 +305,24 @@ static IWD_DIRECTORY_OPENS: AtomicU64 = AtomicU64::new(0);
 static IWD_INFLATE_NS: AtomicU64 = AtomicU64::new(0);
 
 fn read_indexed_entry(file: &IwdFile, limit: Option<usize>) -> Result<Vec<u8>, String> {
-    read_pooled_entry(&file.archive, &file.entry, limit)
+    let mut archive = file
+        .reader
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let inflate_at = std::time::Instant::now();
+    let mut entry = archive.by_name(&file.entry).map_err(|error| {
+        format!(
+            "cannot read {} in {}: {error}",
+            file.entry,
+            file.archive.display()
+        )
+    })?;
+    if entry.crc32() != file.crc32 || entry.size() != file.size {
+        return Err("archive changed during its publication lifetime".into());
+    }
+    let bytes = read_entry_bytes(&mut entry, limit)?;
+    IWD_INFLATE_NS.fetch_add(inflate_at.elapsed().as_nanos() as u64, Ordering::Relaxed);
+    Ok(bytes)
 }
 
 fn read_pooled_entry(
@@ -369,9 +395,10 @@ pub fn cached_iwd_dirs() -> Vec<PathBuf> {
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .keys()
-        .cloned()
+        .map(|(path, _)| path.clone())
         .collect::<Vec<_>>();
     dirs.sort();
+    dirs.dedup();
     dirs
 }
 
@@ -570,4 +597,59 @@ impl IwdSoundIndex {
         let (archive, entry) = self.sounds.get(&sound_key(relative))?;
         Some(read_pooled_entry(archive, entry, None))
     }
+}
+
+pub fn installation_revision(root: &Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    fn visit(
+        path: &Path,
+        seen: &mut std::collections::HashSet<PathBuf>,
+        rows: &mut Vec<(PathBuf, u64)>,
+    ) {
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if !seen.insert(canonical) {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return;
+        };
+        let mut paths: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
+        paths.sort();
+        for path in paths {
+            let Ok(meta) = std::fs::metadata(&path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                visit(&path, seen, rows);
+            } else if meta.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| matches!(ext.to_str(), Some("ff" | "iwd" | "ipak" | "iwi")))
+            {
+                rows.push((path.clone(), file_revision(&path)));
+            }
+        }
+    }
+    let mut rows = Vec::new();
+    visit(root, &mut std::collections::HashSet::new(), &mut rows);
+    rows.sort();
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    rows.hash(&mut hash);
+    hash.finish()
+}
+
+pub(crate) fn file_revision(path: &Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    if let Ok(meta) = std::fs::metadata(path) {
+        meta.len().hash(&mut hash);
+        meta.modified().ok().hash(&mut hash);
+        meta.created().ok().hash(&mut hash);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            (meta.dev(), meta.ino(), meta.ctime(), meta.ctime_nsec()).hash(&mut hash);
+        }
+    }
+    hash.finish()
 }

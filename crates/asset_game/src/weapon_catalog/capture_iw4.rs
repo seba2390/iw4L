@@ -29,17 +29,27 @@ impl WeaponCatalog {
             .and_then(|ptr| stream.cstr(ptr).ok())
             .filter(|s| !s.is_empty())
             .map(str::to_owned);
-        let camo = |names: &[Option<Ptr>; 16]| -> Vec<(u8, String)> {
-            (1..16u8)
-                .filter_map(|slot| {
-                    let name = stream.cstr(names[usize::from(slot)]?).ok()?;
-                    (!name.is_empty()).then(|| (slot, name.to_owned()))
-                })
-                .collect()
+        let camo = |names: &[Option<Ptr>; 16]| {
+            let mut models = Vec::new();
+            let mut invalid = Vec::new();
+            for slot in 1..16u8 {
+                if let Some(ptr) = names[usize::from(slot)] {
+                    match stream.cstr(ptr) {
+                        Ok(name) if !name.is_empty() => models.push((slot, name.to_owned())),
+                        Ok(_) => invalid.push(slot),
+                        Err(_) => invalid.push(slot),
+                    }
+                }
+            }
+            (models, invalid)
         };
+        let (view, invalid_view) = camo(&geometry.gun_xmodel_names);
+        let (world, invalid_world) = camo(&geometry.world_model_names);
         let camo_models = WeaponCamoModels {
-            view: camo(&geometry.gun_xmodel_names),
-            world: camo(&geometry.world_model_names),
+            view,
+            world,
+            invalid_view,
+            invalid_world,
             choices: Vec::new(),
         };
         let projectile_model = geometry
@@ -178,6 +188,12 @@ impl WeaponCatalog {
                 ammo_pickup_player: geometry
                     .ammo_pickup_sound_player_name
                     .and_then(|ptr| read_name(stream, ptr)),
+                detonate: geometry
+                    .detonate_sound_name
+                    .and_then(|ptr| read_name(stream, ptr)),
+                detonate_player: geometry
+                    .detonate_sound_player_name
+                    .and_then(|ptr| read_name(stream, ptr)),
                 pullback: geometry
                     .pullback_sound_name
                     .and_then(|ptr| read_name(stream, ptr)),
@@ -294,6 +310,7 @@ impl WeaponCatalog {
                 ..WeaponCombatFx::empty(crate::AssetNamespace::Iw4)
             },
             facts: WeaponBodyFacts {
+                burst_delay_ms: None,
                 body_resolved: geometry.weap_def.is_some(),
                 fire_time_ms: geometry.fire_time_ms,
                 impact_type: geometry.impact_type,
@@ -339,6 +356,7 @@ impl WeaponCatalog {
                     stream.u8_at(body, stream.layout(0x670, 2168)).unwrap_or(0) != 0
                 }),
                 ads_zoom_fov: geometry.ads_zoom_fov,
+                scope_zoom: weapon_iw4::ScopeZoom::NONE,
                 ads_dof: Some(geometry.ads_dof),
                 ads_zoom_in_frac: geometry.ads_zoom_in_frac,
                 ads_zoom_out_frac: geometry.ads_zoom_out_frac,

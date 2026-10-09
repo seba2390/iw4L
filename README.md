@@ -15,7 +15,12 @@ those systems work.
 
 Explore maps, fight bots, and record and replay demos. Gameplay remains incomplete;
 expect missing behavior, bugs and desyncs. The asset readers also cover MW3 and Black
-Ops.
+Ops. Experimental [native Black Ops II gameplay](docs/T6.md) supports FFA and TDM using
+an owned BO2 installation, including native weapons, respawns and
+[in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md).
+
+Launching without a map opens the [game library](docs/FRONTEND.md), with
+installation selection, persistent settings and game-specific multiplayer menus.
 
 APIs, configuration, caches and the wire protocol change between commits;
 multiplayer peers must run the same build.
@@ -53,6 +58,11 @@ make map mp_boneyard CMDS='wait world; spawn 0; force_match_start; bot add 3'
 
 This builds the optimized `play` profile and starts a local match with three bots.
 `force_match_start` skips the warmup that otherwise freezes movement.
+
+On native Windows, use `powershell -ExecutionPolicy Bypass -File .\scripts\play.ps1`
+from the repository root. It builds and launches `target/play/iw4l.exe`, preserving
+the repository's `iw4l-artifacts/` settings and caches. Append `map t6:mp_raid`
+to load BO2 directly. Unoptimized `target/debug/iw4l.exe` is unsuitable for frame-rate tests.
 
 ## Inside the engine
 

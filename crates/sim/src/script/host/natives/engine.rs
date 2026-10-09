@@ -205,6 +205,13 @@ pub(crate) fn collider_entity(
     found.map_or(Value::Undefined, Value::Object)
 }
 
+pub(crate) fn damage_visible(world: &mut World, entity: u64, origin: [f32; 3]) -> bool {
+    matches!(
+        cone_trace(world, &Value::Object(entity), &[Value::Vector(origin)], DAMAGE_CONE_MASK),
+        Ok(Value::Float(fraction)) if fraction > 0.0
+    )
+}
+
 fn cone_trace(
     world: &mut World,
     receiver: &Value,
@@ -1529,8 +1536,15 @@ fn register_sound_and_fx(registry: &mut NativeRegistry) {
 
     registry.register(Function, "playfx", |world, _, args| {
         let name = name(world, int(args, 0)?)?;
+        if runtime(world)
+            .restart
+            .as_ref()
+            .is_some_and(|plan| plan.absent_effects.contains(&name))
+        {
+            return Ok(Value::Undefined);
+        }
         let origin = vector(args, 1)?;
-        let forward = optional(args, 2, vector)?.unwrap_or([0.0, 0.0, 1.0]);
+        let forward = optional(args, 2, vector)?.unwrap_or([0.0; 3]);
         let index = crate::frame::FrameWorld::from_world(world).effect_name_index(&name);
         world_event(
             world,

@@ -1,7 +1,7 @@
 // @generated; do not edit.
 use gsc::{Builtin, Namespace::*, Owner::*};
 
-pub(crate) const IW4: &[Builtin] = &[
+pub const IW4: &[Builtin] = &[
     Builtin::new(Function, "abs", Script, false),
     Builtin::new(Function, "acos", Script, false),
     Builtin::new(Function, "addtestclient", Script, false),

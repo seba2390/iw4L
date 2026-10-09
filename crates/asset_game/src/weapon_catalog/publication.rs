@@ -11,14 +11,14 @@ impl WeaponCatalog {
 }
 
 impl WeaponBuild {
-    pub fn publish_for_loadout(mut self) -> WeaponRegistry {
-        self.registry.loadout_only = true;
-        self.publish()
+    pub fn publish_for_editor(self) -> EditorWeaponCatalog {
+        Arc::new(self.publish()).editor_catalog()
     }
 
     pub fn publish(self) -> WeaponRegistry {
         let mut registry = self.registry;
         registry.revision = mint_weapon_revision();
+        registry.family_tables = self.family_tables.clone().into();
         registry.families = crate::WeaponFamilies::build(&self.family_tables, &registry);
         let t5_knife = registry
             .rows
@@ -27,6 +27,12 @@ impl WeaponBuild {
                 row.namespace == crate::AssetNamespace::T5
                     && row.name.strip_suffix("_mp").unwrap_or(&row.name) == "knife"
             })
+            .map(|index| index as u32);
+        let t6_knife_name = normalize_weapon_name(crate::weapon_t6::MELEE_WEAPON);
+        let t6_knife = registry
+            .rows
+            .iter()
+            .position(|row| row.namespace == crate::AssetNamespace::T6 && row.name == t6_knife_name)
             .map(|index| index as u32);
         for row in &mut registry.rows {
             row.preparation.set_source(row.namespace, &row.name);
@@ -37,12 +43,18 @@ impl WeaponBuild {
                     .camo_models
                     .view
                     .iter()
-                    .filter_map(|(slot, _)| {
+                    .chain(row.camo_models.world.iter())
+                    .map(|(slot, _)| *slot)
+                    .chain(row.camo_models.invalid_view.iter().copied())
+                    .chain(row.camo_models.invalid_world.iter().copied())
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .filter_map(|slot| {
                         let name = weapon_iw4::IW4_CAMOS
-                            .get(usize::from(*slot))
-                            .filter(|_| *slot != 0)?;
+                            .get(usize::from(slot))
+                            .filter(|_| slot != 0)?;
                         Some(WeaponCamouflageChoice {
-                            slot: *slot,
+                            slot,
                             name: (*name).to_owned(),
                             caption_key: String::new(),
                             preview: format!("iw4:material/weapon_camo_menu_{name}"),
@@ -55,6 +67,15 @@ impl WeaponBuild {
                 if row.namespace == crate::AssetNamespace::T5 && !row.facts.use_as_melee {
                     t5_knife.map_or(crate::MeleeWeaponPolicy::Own, |weapon| {
                         crate::MeleeWeaponPolicy::T5KnifeCompatibility { weapon }
+                    })
+                } else if row.namespace == crate::AssetNamespace::T6
+                    && row.name != t6_knife_name
+                    && row.facts.offhand_class == 0
+                    && !row.facts.fire_melees
+                    && row.facts.weap_type != weapon_iw4::WEAPTYPE_SHIELD
+                {
+                    t6_knife.map_or(crate::MeleeWeaponPolicy::Own, |weapon| {
+                        crate::MeleeWeaponPolicy::NativeT6Knife { weapon }
                     })
                 } else {
                     crate::MeleeWeaponPolicy::Own
@@ -456,7 +477,7 @@ impl WeaponBuild {
             rows,
             world_catalog_identity: 0,
             fpv_catalog_identity: 0,
-            loadout_only: false,
+            family_tables: Arc::default(),
             iw5_attachments,
             configurations: HashMap::new(),
             by_name: index_of,

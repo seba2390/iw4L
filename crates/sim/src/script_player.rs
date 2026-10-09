@@ -117,6 +117,12 @@ pub(crate) fn spawn(
     world.link_player_standing_area(id);
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HitInflictor {
+    Projectile(crate::ProjectileId),
+    ScriptModel(crate::ScriptModelId),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Hit {
     pub victim: ClientId,
@@ -128,7 +134,7 @@ pub(crate) struct Hit {
     pub point: [f32; 3],
     pub dir: [f32; 3],
     pub hitloc: u8,
-    pub inflictor: Option<crate::ProjectileId>,
+    pub inflictor: Option<HitInflictor>,
     pub commit: Option<DeathCommit>,
 }
 
@@ -209,7 +215,8 @@ pub(crate) fn damage(
         dir: normalized([0, 1, 2].map(|i| victim_origin[i] - from[i])),
         hitloc: intent.hitloc,
         inflictor: match intent.source {
-            DamageSource::Projectile(id) => Some(id),
+            DamageSource::Projectile(id) => Some(HitInflictor::Projectile(id)),
+            DamageSource::Radius(id) => Some(HitInflictor::ScriptModel(id)),
             _ => None,
         },
         commit: Some(DeathCommit {
@@ -522,6 +529,7 @@ pub(crate) fn take_weapon(world: &mut FrameWorld, id: ClientId, weapon: u32) {
     }
     if ps.weapon == weapon {
         ps.weapon = 0;
+        ps.scope_zoom_level = 0;
     }
     if ps.weapon_primary == weapon {
         ps.weapon_primary = 0;
@@ -542,6 +550,7 @@ pub(crate) fn take_all_weapons(world: &mut FrameWorld, id: ClientId) {
     ps.ammo.fill(0);
     ps.ammoclip.fill(0);
     ps.weapon = 0;
+    ps.scope_zoom_level = 0;
     ps.weapon_primary = 0;
     ps.offhand_primary = 0;
     ps.offhand_secondary = 0;
@@ -563,6 +572,7 @@ pub(crate) fn set_spawn_weapon(
     let ps = world.player_mut(id).expect("checked above");
     let (ammo_before, clip_before) = (ps.ammo, ps.ammoclip);
     ps.weapon = weapon;
+    ps.scope_zoom_level = 0;
     arm_held_weapon(ps, weapon, &facts);
     ps.ammo = ammo_before;
     ps.ammoclip = clip_before;

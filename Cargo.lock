@@ -3126,6 +3126,7 @@ dependencies = [
 name = "game_t6"
 version = "0.1.0"
 dependencies = [
+ "asset_core",
  "game_api",
  "gsc",
 ]
@@ -5973,6 +5974,7 @@ dependencies = [
  "asset_audio",
  "asset_core",
  "asset_game",
+ "asset_material",
  "asset_model",
  "asset_transport",
  "asset_world",
@@ -5988,6 +5990,7 @@ dependencies = [
  "game_t5",
  "game_t6",
  "gamemode_iw4",
+ "gsc",
  "hud_iw4",
  "net",
  "perf",
@@ -6854,11 +6857,15 @@ dependencies = [
  "assets",
  "bevy",
  "diag",
+ "entity_iw4",
  "frame",
+ "hud_iw4",
  "net",
+ "playerstate_iw4",
  "session",
  "sim",
  "updater",
+ "weapon_iw4",
 ]
 
 [[package]]

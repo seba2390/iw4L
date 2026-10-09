@@ -293,6 +293,7 @@ pub(super) fn compile(
     for root in roots {
         pending.insert(normalize_module(root).map_err(|m| Fault::at(&root_location, m))?);
     }
+    let mut dependency_parents: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut functions = Vec::new();
     let mut names = BTreeMap::new();
     let mut modules = Vec::new();
@@ -306,9 +307,13 @@ pub(super) fn compile(
             module: module.clone(),
             ..root_location.clone()
         };
-        let bytes = resolver
-            .read_bytes(&module)
-            .map_err(|m| Fault::at(&location, m))?;
+        let bytes = resolver.read_bytes(&module).map_err(|m| {
+            let message = match dependency_parents.get(&module) {
+                Some(parents) => format!("{m}; required by modules {parents:?}"),
+                None => m,
+            };
+            Fault::at(&location, message)
+        })?;
         let source = decode_source(&bytes);
         let mut parser = Parser {
             tables: std::mem::take(&mut tables),
@@ -334,6 +339,12 @@ pub(super) fn compile(
         }
         tables = parser.tables;
         imports.insert(module.clone(), parser.includes);
+        for dependency in &parser.dependencies {
+            dependency_parents
+                .entry(dependency.clone())
+                .or_default()
+                .insert(module.clone());
+        }
         pending.extend(parser.dependencies);
         modules.push(ModuleIdentity {
             site: Site::Server,

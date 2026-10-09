@@ -301,7 +301,7 @@ pub(crate) fn update_hud_elems(
                     asset_core::AssetNamespace::T6,
                 ]
                 .into_iter()
-                .find(|&ns| asset_material::has_zone_ui_image(ns, material))
+                .find(|&ns| hud_images.has_zone_image(ns, material))
                 .map_or(
                     (crate::images::HUD_CHROME_NAMESPACE, material.to_owned()),
                     |ns| (ns, material.to_owned()),

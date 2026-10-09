@@ -21,6 +21,8 @@ pub enum GameModeKind {
     Sabotage = 7,
 
     Zombies = 8,
+
+    Zclassic = 9,
 }
 
 impl GameModeKind {
@@ -38,6 +40,7 @@ impl GameModeKind {
             b"koth" | b"hq" | b"headquarters" => Some(Self::Headquarters),
             b"sab" | b"sabotage" => Some(Self::Sabotage),
             b"zom" | b"zombies" => Some(Self::Zombies),
+            b"zclassic" => Some(Self::Zclassic),
             _ => None,
         }
     }
@@ -65,6 +68,7 @@ impl GameModeKind {
             Self::Headquarters => "koth",
             Self::Sabotage => "sab",
             Self::Zombies => "zom",
+            Self::Zclassic => "zclassic",
         }
     }
 
@@ -79,6 +83,7 @@ impl GameModeKind {
             Self::Headquarters => &["koth"],
             Self::Sabotage => &["sab"],
             Self::Zombies => &["zom"],
+            Self::Zclassic => &["zclassic"],
         }
     }
 
@@ -97,6 +102,7 @@ impl GameModeKind {
             6 => Some(Self::Headquarters),
             7 => Some(Self::Sabotage),
             8 => Some(Self::Zombies),
+            9 => Some(Self::Zclassic),
             _ => None,
         }
     }
@@ -111,12 +117,12 @@ impl GameModeKind {
             Self::CaptureTheFlag => "CAPTURE THE FLAG",
             Self::Headquarters => "HEADQUARTERS",
             Self::Sabotage => "SABOTAGE",
-            Self::Zombies => "ZOMBIES",
+            Self::Zombies | Self::Zclassic => "ZOMBIES",
         }
     }
 
     pub fn is_team(self) -> bool {
-        !matches!(self, Self::FreeForAll)
+        !matches!(self, Self::FreeForAll | Self::Zclassic)
     }
 
     pub fn team_start_classname(self, axis: bool) -> Option<&'static str> {
@@ -127,7 +133,8 @@ impl GameModeKind {
             | Self::CaptureTheFlag
             | Self::Headquarters
             | Self::Sabotage
-            | Self::Zombies => None,
+            | Self::Zombies
+            | Self::Zclassic => None,
             Self::Domination => Some(if axis {
                 dom::START_SPAWN_AXIS
             } else {
@@ -149,7 +156,8 @@ impl GameModeKind {
             | Self::CaptureTheFlag
             | Self::Headquarters
             | Self::Sabotage
-            | Self::Zombies => &[],
+            | Self::Zombies
+            | Self::Zclassic => &[],
             Self::Domination => &[dom::SPAWN_CLASSNAME],
             Self::Demolition => {
                 if axis {

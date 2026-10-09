@@ -978,6 +978,7 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
                     .get(usable)
                     .is_some_and(|entity| fires(&entity.classname).is_none())
                 && eligible(&runtime, &frame, *usable, *client, true)
+                && fires(&runtime.entities[usable].classname) != Some(Fires::Use)
             {
                 raised.push((*usable, *player));
             }

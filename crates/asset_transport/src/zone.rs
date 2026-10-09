@@ -189,11 +189,11 @@ pub fn zone_share_counts() -> (u64, u64) {
 static SHARED_HIT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static SHARED_MISS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-type ZoneSourceKey = (std::path::PathBuf, u64, Option<std::time::SystemTime>);
+type ZoneSourceKey = (std::path::PathBuf, u64);
 
 fn source_key(path: &Path) -> Option<ZoneSourceKey> {
-    let meta = std::fs::metadata(path).ok()?;
-    Some((path.to_owned(), meta.len(), meta.modified().ok()))
+    std::fs::metadata(path).ok()?;
+    Some((path.to_owned(), crate::iwd::file_revision(path)))
 }
 
 fn shared_map() -> &'static Mutex<HashMap<ZoneSourceKey, Weak<ZoneImage>>> {

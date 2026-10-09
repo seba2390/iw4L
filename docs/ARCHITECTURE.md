@@ -24,8 +24,8 @@ weapons, vision).
 `Rule::Unknown(unknown!("t5.area.rule", what, needs))`. The caller reports it
 (`gsc: refused … unknown=<id>`, a gap line) and applies nothing in its place.
 Every id is listed in that game's ledger, [`fidelity/<game>.md`](fidelity/).
-So Black Ops multiplayer, MW3 and Black Ops 2 maps are refused today: their
-gametype scripts used to run on Modern Warfare 2's natives.
+So Black Ops multiplayer and MW3 maps are refused today: their gametype
+scripts used to run on Modern Warfare 2's natives.
 
 **Enforcement.** `make boundary` (`cargo xtask boundary`) checks:
 

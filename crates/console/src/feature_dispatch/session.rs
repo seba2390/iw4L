@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use frame::{HasWorld, LaunchIdentity};
+use frame::HasWorld;
 
 use crate::{ConsoleCommand, ConsoleDispatch};
 
@@ -10,18 +10,41 @@ pub(crate) fn route_session_commands(
     mut echo: ConsoleEcho,
     mut transition: ResMut<::session::SessionSwapRequest>,
     has_world: Res<HasWorld>,
+    role: Res<frame::RuntimeRole>,
     playback: Option<Res<::replay::ReplayPlayback>>,
     bridge: Option<Res<net::MasterBridge>>,
-    identity: Option<Res<LaunchIdentity>>,
+    manifest: Option<Res<::session::SessionContentManifest>>,
     mut dispatch: ResMut<ConsoleDispatch>,
 ) {
     for cmd in events.read() {
         match cmd.name.as_str() {
+            "end_match" => {
+                if !cmd.args.is_empty() {
+                    echo.write("usage: end_match");
+                } else if !has_world.0
+                    || !matches!(
+                        *role,
+                        frame::RuntimeRole::Listen | frame::RuntimeRole::Dedicated
+                    )
+                {
+                    echo.write("Only the match host can end the match");
+                } else {
+                    match transition.request_menu() {
+                        Ok(id) => echo.write(format!(
+                            "end_match: returning the session to its lobby (swap #{id})"
+                        )),
+                        Err(error) => echo.write(format!("end_match: {error}")),
+                    }
+                }
+                dispatch.release();
+            }
             "map_restart" => {
-                let zone = identity
-                    .as_ref()
-                    .map(|identity| identity.zone.clone())
-                    .filter(|zone| has_world.0 && !zone.is_empty());
+                let zone = manifest.as_ref().and_then(|manifest| match &manifest.map {
+                    ::session::ManifestFact::Known(map) if has_world.0 => {
+                        Some(format!("{}:{}", map.namespace.as_str(), map.name))
+                    }
+                    _ => None,
+                });
                 match (cmd.args.is_empty(), zone) {
                     (false, _) => {
                         dispatch.release();

@@ -46,6 +46,12 @@ pub mod def {
     pub const WEAP_CLASS: u32 = 32;
     pub const PENETRATE_TYPE: u32 = 36;
     pub const IMPACT_TYPE: u32 = 40;
+    pub const VIEW_FLASH_EFFECT: u32 = 108;
+    pub const WORLD_FLASH_EFFECT: u32 = 112;
+    pub const VIEW_SHELL_EJECT_EFFECT: u32 = 464;
+    pub const WORLD_SHELL_EJECT_EFFECT: u32 = 468;
+    pub const VIEW_LAST_SHOT_EJECT_EFFECT: u32 = 472;
+    pub const WORLD_LAST_SHOT_EJECT_EFFECT: u32 = 476;
     pub const INVENTORY_TYPE: u32 = 44;
     pub const FIRE_TYPE: u32 = 48;
     pub const OFFHAND_CLASS: u32 = 96;
@@ -69,6 +75,11 @@ pub mod def {
     pub const PUTAWAY_SOUND: u32 = 408;
     pub const PUTAWAY_SOUND_PLAYER: u32 = 412;
     pub const PROJ_EXPLOSION_SOUND: u32 = 1820;
+    pub const RETICLE_CENTER: u32 = 528;
+    pub const RETICLE_SIDE: u32 = 532;
+    pub const RETICLE_CENTER_SIZE: u32 = 536;
+    pub const RETICLE_SIDE_SIZE: u32 = 540;
+    pub const RETICLE_MIN_OFS: u32 = 544;
     pub const WORLD_MODEL: u32 = 916;
     pub const ROCKET_MODEL: u32 = 924;
     pub const HUD_ICON: u32 = 940;
@@ -287,6 +298,8 @@ pub mod attachment {
     pub const SHARED_AMMO: u32 = 50;
     pub const DAMAGE_RANGE_SCALE: u32 = 52;
     pub const ADS_ZOOM_FOV: u32 = 56;
+    pub const ADS_ZOOM_FOV2: u32 = 60;
+    pub const ADS_ZOOM_FOV3: u32 = 64;
     pub const ADS_ZOOM_IN_FRAC: u32 = 68;
     pub const ADS_ZOOM_OUT_FRAC: u32 = 72;
     pub const ADS_TRANS_IN_TIME_SCALE: u32 = 76;
@@ -543,7 +556,7 @@ pub struct WeaponView<'z> {
 
 impl<'z> WeaponView<'z> {
     pub fn new(load: &'z ZoneLoad, asset: &'z LoadedAsset) -> Option<Self> {
-        if asset.header.len() < variant::SIZE {
+        if asset.ty != crate::AssetType::Weapon || asset.header.len() < variant::SIZE {
             return None;
         }
         let mut view = Self {
