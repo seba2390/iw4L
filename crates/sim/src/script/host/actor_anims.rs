@@ -249,8 +249,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Err("expects an animation tree".into());
         };
         let name = name.clone();
-        let id = actor_id(world, receiver)?;
-        attach(world, id, &name)
+        match actor_id(world, receiver) {
+            Ok(id) => attach(world, id, &name),
+            // A script model plays single clips (`AnimScripted`); it needs
+            // no tree of its own.
+            Err(_) => {
+                super::natives::engine::entity_id(world, receiver)?;
+                Ok(Value::Undefined)
+            }
+        }
     });
 }
 

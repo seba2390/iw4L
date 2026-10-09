@@ -590,21 +590,21 @@ fn team_clients(world: &mut World, team: &str, except: Option<u32>) -> Vec<crate
 /// How long a sound plays before its done-notify, for want of its length.
 const SOUND_DONE_MS: i64 = 2000;
 
-/// Raises the done-notifies of sounds that have finished.
-pub(crate) fn deliver_sound_notifies(world: &mut World) {
+/// Raises the timed notifies that are due (sounds and animations done).
+pub(crate) fn deliver_timed_notifies(world: &mut World) {
     let now = i64::from(super::super::players::now_ms(world));
-    let due: Vec<(Value, Arc<str>)> = {
+    let due: Vec<(Value, Arc<str>, Vec<Value>)> = {
         let mut runtime = world.resource_mut::<Runtime>();
-        let (due, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut runtime.sound_notifies)
+        let (due, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut runtime.timed_notifies)
             .into_iter()
-            .partition(|(at, _, _)| *at <= now);
-        runtime.sound_notifies = kept;
+            .partition(|(at, ..)| *at <= now);
+        runtime.timed_notifies = kept;
         due.into_iter()
-            .map(|(_, receiver, notify)| (receiver, notify))
+            .map(|(_, receiver, notify, args)| (receiver, notify, args))
             .collect()
     };
-    for (receiver, notify) in due {
-        crate::script::runtime::raise(world, receiver, &notify, Vec::new());
+    for (receiver, notify, args) in due {
+        crate::script::runtime::raise(world, receiver, &notify, args);
     }
 }
 
@@ -1571,10 +1571,11 @@ fn register_sound_and_fx(registry: &mut NativeRegistry) {
                 // T5 names a notify the entity raises once the sound is done.
                 Some(Value::String(notify)) if args.len() == 2 => {
                     let at = i64::from(super::super::players::now_ms(world)) + SOUND_DONE_MS;
-                    world.resource_mut::<Runtime>().sound_notifies.push((
+                    world.resource_mut::<Runtime>().timed_notifies.push((
                         at,
                         receiver.clone(),
                         notify.to_string().into(),
+                        Vec::new(),
                     ));
                 }
                 Some(_) => return Err("expected one sound alias argument".into()),

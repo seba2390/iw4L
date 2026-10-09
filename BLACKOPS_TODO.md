@@ -123,7 +123,10 @@ Done when a single zombie can be fought and killed with correct feedback.
       (the ones that killed player-spawn and wall-weapon threads are done).
 - [x] Rounds, zombie spawning, points for hits and kills, wall weapons (use
       triggers answer a player looking at them within use range), doors.
-- [ ] Debris, mystery box, perks, power, Pack-a-Punch, power-ups, last stand.
+- [x] Power switch and perks (Quick Revive bought, drunk in first person,
+      icon on the HUD; stance and melee locks during the drink are not
+      enforced yet). Script models play `AnimScripted` clips once.
+- [ ] Debris, mystery box, Pack-a-Punch, teleporter, power-ups, last stand.
 - [x] Zombie sounds: the zombie and singleplayer zones' aliases join the
       sound bank, scripts' bare `zmb_*` names play as T5 aliases, and
       `PlaySound(alias, notify)` raises its done-notify (after a fixed 2s;

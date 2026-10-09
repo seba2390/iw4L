@@ -105,11 +105,30 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "playerknockback",
         "enablehealthshield",
         "startfadingblur",
+        "setblur",
         "useweaponhidetags",
         "settransported",
+        // A perk machine shaking as the power comes on.
+        "vibrate",
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
+    // Stance and melee locks (while a perk bottle is drunk) are accepted but
+    // not enforced yet.
+    for name in [
+        "allowlean",
+        "allowcrouch",
+        "allowprone",
+        "allowstand",
+        "allowmelee",
+    ] {
+        registry.register(Method, name, |world, receiver, _| {
+            super::player::player(world, receiver)?;
+            Ok(Value::Undefined)
+        });
+    }
+    // No gas weapons (nova gas) exist in the zombie maps this host runs.
+    registry.register(Function, "weaponisgasweapon", |_, _, _| Ok(Value::Int(0)));
     for name in [
         "createthreatbiasgroup",
         "setthreatbias",

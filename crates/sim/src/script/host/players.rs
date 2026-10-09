@@ -979,6 +979,8 @@ pub(crate) struct PlayerSlot {
     pub seat: crate::ScriptSeat,
     pub weapon: u32,
     pub switching: bool,
+    /// The held weapon is still being raised.
+    pub raising: bool,
     pub last_stand_until_ms: Option<i64>,
     pub has_radar: bool,
     pub radar_mode: crate::RadarMode,
@@ -1032,6 +1034,7 @@ impl PlayerSlot {
             seat: crate::ScriptSeat::default(),
             weapon: 0,
             switching: false,
+            raising: false,
             last_stand_until_ms: None,
             has_radar: false,
             radar_mode: crate::RadarMode::Normal,

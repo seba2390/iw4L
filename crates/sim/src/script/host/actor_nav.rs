@@ -334,7 +334,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         set_goal(world, receiver, Goal::Entity(target))
     });
     registry.register(Method, "animscripted", |world, receiver, args| {
-        let id = actor_id(world, receiver)?;
+        let Ok(id) = actor_id(world, receiver) else {
+            return model_anim_scripted(world, receiver, args);
+        };
         let init = format!(
             "animscripts/{}scripted::init",
             super::actor_brain::prefix(world, id)
@@ -703,6 +705,42 @@ fn pose(runtime: &mut Runtime, id: u64) -> ([f32; 3], [f32; 3]) {
 
 /// Plans paths for new goals, walks each actor by its animation and reports
 /// `goal` and `bad_path`.
+/// `AnimScripted(notify, origin, angles, anim, ...)` on a script model: it
+/// plays the clip once from that pose and reports `end` under `notify` when
+/// the clip is done.
+fn model_anim_scripted(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let id = super::natives::engine::entity_id(world, receiver)?;
+    let notify = string(args, 0)?;
+    let (origin, angles) = (vector(args, 1)?, vector(args, 2)?);
+    let clip = match arg(args, 3)? {
+        Value::Animation { name, .. } => name.clone(),
+        other => return Err(format!("{other:?} is not an animation")),
+    };
+    let seconds = crate::frame::FrameWorld::from_world(world)
+        .anim_clip_named(&clip)
+        .map_or(0.0, |clip| {
+            f32::from(clip.numframes.max(1)) / clip.framerate.max(1.0)
+        });
+    let now = i64::from(super::players::now_ms(world));
+    let mut runtime = world.resource_mut::<Runtime>();
+    runtime.set_object_field(id, "origin", Value::Vector(origin));
+    runtime.set_object_field(id, "angles", Value::Vector(angles));
+    if let Some(entity) = runtime.entities.get_mut(&id) {
+        entity.anim_op = Some(Some(clip));
+    }
+    runtime.timed_notifies.push((
+        now + (seconds * 1000.0) as i64,
+        receiver.clone(),
+        notify.into(),
+        vec![Value::string("end")],
+    ));
+    Ok(Value::Undefined)
+}
+
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
     let actors: Vec<u64> = world
         .resource::<Runtime>()
