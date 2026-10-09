@@ -127,6 +127,12 @@ pub(crate) fn damage(
     weapon: &str,
     tag: &str,
 ) {
+    diag::debug!(
+        Sim,
+        "actor {actor}: hit {} {} by {weapon} at {tag:?}",
+        hit.amount,
+        hit.means
+    );
     let args = vec![
         attacker.clone(),
         attacker,

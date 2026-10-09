@@ -641,6 +641,7 @@ pub(crate) fn present(world: &mut World) {
             .and_then(|row| row.dobj.as_mut())
         {
             dobj.set_tree_pose(tree, resolved);
+            dobj.materialize();
         }
     }
 }

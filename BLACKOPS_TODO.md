@@ -106,8 +106,10 @@ Done when zombies come through windows and use every traversal in Kino.
 - [x] Damage on actors runs the actor damage/killed callbacks (points, gib
       checks) and finishes through `FinishActorDamage`; killed zombies play
       their death animscript and are removed, and rounds advance.
-- [ ] Verify real player bullets against actor hitboxes (the authority pose
-      now follows the animation; hits still need checking), ragdoll and gibbing.
+- [x] Player bullets hit actors on their animated bone boxes with the right
+      hit locations (the zombies match leaves warmup when every player is
+      connected, so shots trace entities).
+- [ ] Ragdoll (`startragdoll` on a dying actor) and gibbing.
 
 Done when a single zombie can be fought and killed with correct feedback.
 

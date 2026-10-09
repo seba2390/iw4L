@@ -187,6 +187,9 @@ pub struct AuthorityDObjState {
     pub materialize_error: Option<xmodel_runtime::MaterializeError>,
 
     pub play_anim: Option<ScriptModelPlayAnim>,
+    /// Shots hit its bone boxes whatever contents its model has, as an
+    /// actor's body is hit.
+    pub body_hits: bool,
 
     pub apos: Option<entity_iw4::Trajectory>,
 
@@ -329,6 +332,7 @@ impl AuthorityDObjState {
             current_collision: None,
             materialize_error: None,
             play_anim: None,
+            body_hits: false,
             apos: None,
             t5_destructible: None,
             swap_capabilities: Vec::new(),
@@ -547,13 +551,14 @@ impl AuthorityDObjState {
     }
 
     /// Poses the model by an animation tree the sim drives (an actor's):
-    /// `tree` is what clients draw, `runtime` what traces hit.
+    /// `tree` is what clients draw, `runtime` what traces hit on its bones.
     pub fn set_tree_pose(
         &mut self,
         mut tree: xmodel_runtime::XAnimTreeSnapshot,
         runtime: Option<xmodel_runtime::XAnimTreeRuntime>,
     ) {
         self.play_anim = None;
+        self.body_hits = true;
         self.pose_revision = self.pose_revision.wrapping_add(1);
         tree.state_revision = self.pose_revision;
         self.semantic_state.tree = Some(tree);
@@ -643,7 +648,9 @@ impl AuthorityDObjState {
             return;
         };
         let uncollidable = capability.contents == Some(0) && capability.coll_surfs.is_empty();
-        if uncollidable || !contents_match_mask(capability.contents, MASK_BULLET_WORLD) {
+        if !self.body_hits
+            && (uncollidable || !contents_match_mask(capability.contents, MASK_BULLET_WORLD))
+        {
             self.current_collision = None;
             self.materialized_model_revision = Some(self.model_revision);
             self.materialized_pose_revision = Some(self.pose_revision);
