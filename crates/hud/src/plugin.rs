@@ -362,10 +362,20 @@ fn sync_hud_visibility(
     mode: Option<Res<game_api::ModeRules>>,
     mut roots: Query<&mut Visibility, With<HudRoot>>,
     mut visible: ResMut<HudRootVisible>,
+    mut reported: Local<Option<&'static str>>,
 ) {
     let ui_on = ui_draw.is_some_and(|d| d.0);
-    let code_hud_unknown = mode.is_some_and(|mode| mode.hud.code_hud != game_api::Rule::Known(()));
-    let show = hud_root_should_show(*screen, ui_on) && !code_hud_unknown;
+    let unknown = match mode.map(|mode| mode.hud.code_hud) {
+        Some(game_api::Rule::Unknown(gap)) => Some(gap),
+        _ => None,
+    };
+    if unknown.map(|gap| gap.id) != *reported {
+        if let Some(gap) = unknown {
+            diag::info!(Ui, "game gap {}: {}", gap.id, gap.what);
+        }
+        *reported = unknown.map(|gap| gap.id);
+    }
+    let show = hud_root_should_show(*screen, ui_on) && unknown.is_none();
     visible.0 = Some(i32::from(show));
     for mut vis in &mut roots {
         let want = if show {
