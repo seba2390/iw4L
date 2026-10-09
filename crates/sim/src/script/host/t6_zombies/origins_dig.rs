@@ -123,6 +123,10 @@ fn model(world: &mut World, name: &str, origin: [f32; 3], angles: [f32; 3]) -> O
 }
 
 impl Digs {
+    pub(super) fn golden(&self, client: ClientId) -> bool {
+        self.players.get(&client).is_some_and(Progress::golden)
+    }
+
     pub(super) fn initialize(&mut self, authored: &[Vec<(String, String)>]) {
         self.sites = authored
             .iter()

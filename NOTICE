@@ -75,6 +75,10 @@ t6-scripts (Plutonium) — https://github.com/plutoniummod/t6-scripts
   `crates/assets/src/t6_equipment.gsc.txt` is written for IW4L, not copied
   from it.
 
+BO2-Reimagined — https://github.com/Jbleezy/BO2-Reimagined
+  Read as a reference for Black Ops II Zombies tool inventory HUD behaviour.
+  No source from that project is distributed or linked.
+
 Ghidra — https://github.com/NationalSecurityAgency/ghidra
   The software reverse engineering framework the original game binaries were
   read with. A development tool: none of it, and none of its output, is

@@ -2413,7 +2413,7 @@ pub(crate) fn advance(world: &mut World) {
             state.powered = state.origins.all_active();
         }
         prepare_machines(world, &mut state, &players);
-        state.tools.advance(world, &players);
+        state.tools.advance(world, &players, &state.digs);
         let mut digs = std::mem::take(&mut state.digs);
         digs.advance(world, &mut state, tick, &players);
         state.digs = digs;

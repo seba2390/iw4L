@@ -6803,6 +6803,7 @@ dependencies = [
  "diag",
  "entity_iw4",
  "frame",
+ "hud_iw4",
  "net",
  "playerstate_iw4",
  "session",

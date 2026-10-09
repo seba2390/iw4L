@@ -25,6 +25,7 @@ enum HudArt {
     Damage,
     Perk(u8),
     Powerup(u8),
+    Tool,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -128,6 +129,14 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                     Val::Px(104.0),
                     Val::Px(82.0),
                     Val::Px(70.0),
+                ),
+                (
+                    HudArt::Tool,
+                    Val::Px(182.0),
+                    Val::Auto,
+                    Val::Px(39.0),
+                    Val::Px(30.0),
+                    Val::Px(30.0),
                 ),
                 (
                     HudArt::Damage,
@@ -666,6 +675,23 @@ fn refresh_art(
         .filter_map(|elem| sim::hud_string_in_occupied(&snapshot.meta.hud_strings, elem.text))
         .filter_map(|raw| raw.strip_prefix(sim::HUD_STRING_PLAIN))
         .collect();
+    let tool = meta
+        .hud_archival
+        .iter()
+        .chain(&meta.hud_current)
+        .filter(|elem| elem.elem_type == hud_iw4::HE_TYPE_MATERIAL)
+        .filter_map(|elem| {
+            sim::name_in_occupied(
+                &snapshot.meta.hud_materials,
+                u8::try_from(elem.material_index).ok()?,
+            )
+        })
+        .find(|name| {
+            matches!(
+                *name,
+                "zom_hud_craftable_tank_shovel" | "zom_hud_shovel_gold"
+            )
+        });
     let round = labels
         .iter()
         .find_map(|label| label.strip_prefix("ROUND ")?.parse::<u32>().ok());
@@ -702,6 +728,7 @@ fn refresh_art(
     for (kind, mut view, mut node) in &mut sprites {
         let image = match kind {
             HudArt::Round if zombies => tally.clone(),
+            HudArt::Tool if zombies => tool.and_then(|name| art.image(name, &mut images)),
             HudArt::Score => art.image(
                 if zombies {
                     "scorebar_zom_1"

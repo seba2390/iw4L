@@ -1106,6 +1106,8 @@ fn capture_weapon_icons(
                 || matches!(
                     name.as_str(),
                     "scorebar_zom_1"
+                        | "zom_hud_craftable_tank_shovel"
+                        | "zom_hud_shovel_gold"
                         | "scorebar_fadein"
                         | "overlay_low_health"
                         | "waypoint_revive_zm"

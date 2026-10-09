@@ -11,6 +11,7 @@ struct Shovel {
     angles: [f32; 3],
     object: Option<u64>,
     owner: Option<ClientId>,
+    hud: Option<u64>,
 }
 
 impl Tools {
@@ -43,12 +44,18 @@ impl Tools {
                     angles,
                     object: None,
                     owner: None,
+                    hud: None,
                 }
             })
             .collect();
     }
 
-    pub(super) fn advance(&mut self, world: &mut World, players: &[(ClientId, [f32; 3])]) {
+    pub(super) fn advance(
+        &mut self,
+        world: &mut World,
+        players: &[(ClientId, [f32; 3])],
+        digs: &origins_dig::Digs,
+    ) {
         let connected = FrameWorld::from_world(world).client_ids_sorted();
         for shovel in &mut self.shovels {
             if shovel
@@ -56,6 +63,31 @@ impl Tools {
                 .is_some_and(|owner| !connected.contains(&owner))
             {
                 shovel.owner = None;
+                if let Some(object) = shovel.hud.take() {
+                    super::super::hud::destroy(world, object);
+                }
+            }
+            if let Some(owner) = shovel.owner {
+                if shovel.hud.is_none() {
+                    shovel.hud = make_hud(world, owner, 400.0, 1.0);
+                }
+                if let Some(object) = shovel.hud {
+                    let slot = world.resource::<Runtime>().hud_slots.get(&object).copied();
+                    let mut frame = FrameWorld::from_world(world);
+                    let material = frame.hud_material_index(if digs.golden(owner) {
+                        "zom_hud_shovel_gold"
+                    } else {
+                        "zom_hud_craftable_tank_shovel"
+                    });
+                    if let Some(slot) =
+                        slot.and_then(|slot| frame.hud_elem_slots_mut().get_mut(slot))
+                    {
+                        slot.elem.elem_type = hud_iw4::HE_TYPE_MATERIAL;
+                        slot.elem.material_index = i32::from(material);
+                        slot.elem.width = 30;
+                        slot.elem.height = 30;
+                    }
+                }
             }
             if shovel.owner.is_some()
                 || shovel.object.is_some()
