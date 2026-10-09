@@ -15,7 +15,7 @@ use playerstate_iw4::{PM_TYPE_DEAD, PlayerState};
 use crate::ammo::{WeaponbarAmmo, offhand_weapon_index};
 use crate::chrome::{
     ChromeAssets, ChromeFrame, ChromeGapKind, ChromeMenuAnim, MenuVisOnError, OwnerDrawArgs,
-    OwnerDrawPaint, execute_chrome_menu_ex, push_owner_text, ui_text_width,
+    OwnerDrawPaint, execute_chrome_menu_ex, push_owner_text,
 };
 use crate::draw2d::{Draw2dCmd, Draw2dList, Draw2dOp, Draw2dProvenance};
 
@@ -198,12 +198,17 @@ pub(crate) fn ammo_widths(
             .get("weaponinfo_zombie")
             .and_then(|menu| menu.items.iter().find(|item| item.name == item_name))
             .and_then(|item| {
-                let font = crate::chrome::ChromeAssets {
+                let assets = crate::chrome::ChromeAssets {
                     catalog: Some(catalog),
                     localize: None,
-                }
-                .font_name(item.font_enum, 1.0, item.text_scale)?;
-                Some(ui_text_width(catalog.font(font)?, &value.to_string(), item.text_scale) as i32)
+                };
+                let font = assets.font_name(item.font_enum, 1.0, item.text_scale)?;
+                Some(crate::chrome::layout_text_width(
+                    assets.layout()?,
+                    catalog.font(font)?,
+                    &value.to_string(),
+                    item.text_scale,
+                ) as i32)
             })
             .unwrap_or(0)
     };

@@ -34,6 +34,14 @@ impl game_api::GameMenus for Iw5 {
             "Modern Warfare 3's menu font table"
         ))
     }
+
+    fn layout(&self) -> Rule<&'static dyn game_api::MenuLayout> {
+        Rule::Unknown(unknown!(
+            "iw5.hud.menu_layout",
+            "how Modern Warfare 3's menu engine places an item and scales its text",
+            "Modern Warfare 3's menu engine rules: text origin, text scale, screen placement"
+        ))
+    }
 }
 
 impl game_api::GameModes for Iw5 {

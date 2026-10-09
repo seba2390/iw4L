@@ -20,4 +20,8 @@ Severity: **V** visible, **A** audible, **G** gameplay, **I** invisible.
       now Modern Warfare 2's font table answered for any non-Black Ops
       catalog.) *Needs:* Modern Warfare 3's menu font table.
 
+- [ ] **V** `iw5.hud.menu_layout` (`GameMenus::layout`): how Modern Warfare 3's menu
+      engine places items is not known; its menus are not drawn (no such
+      catalog is painted today). *Needs:* Modern Warfare 3's menu engine rules.
+
 ## Closed

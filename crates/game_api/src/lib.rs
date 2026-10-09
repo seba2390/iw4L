@@ -111,6 +111,32 @@ pub struct HudRules {
 pub trait GameMenus: Sync {
     /// The font a menu item's `textfont` enum names, at the item's scales.
     fn font(&self, font_enum: i32, placement_scale: f32, text_scale: f32) -> Rule<&'static str>;
+
+    /// How the game's menu engine places and scales an item.
+    fn layout(&self) -> Rule<&'static dyn MenuLayout>;
+}
+
+/// How a game's menu engine places and scales an item's rect and text.
+pub trait MenuLayout: Sync {
+    /// The glyph scale of a font of `pixel_height` drawn at `text_scale`.
+    fn text_scale(&self, pixel_height: i32, text_scale: f32) -> f32;
+    /// The height a line of text takes at `text_scale`.
+    fn text_height(&self, text_scale: f32) -> f32;
+    /// Where an item's text starts inside its rect `[x, y, w, h]`.
+    #[allow(clippy::too_many_arguments)]
+    fn text_origin(
+        &self,
+        rect: [f32; 4],
+        align_mode: i32,
+        align_x: f32,
+        align_y: f32,
+        measured_w: f32,
+        measured_h: f32,
+    ) -> (f32, f32);
+    /// An item's text scale while its menu is scaled by `menu_scale`.
+    fn text_paint_scale(&self, text_scale: f32, menu_scale: f32) -> f32;
+    /// A rect `[x, y, w, h]` while its menu is scaled by `menu_scale`.
+    fn window_rect(&self, rect: [f32; 4], menu_scale: f32) -> [f32; 4];
 }
 
 /// A mode the game library offers beside multiplayer, with the maps it runs on.

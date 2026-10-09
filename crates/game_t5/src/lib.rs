@@ -110,6 +110,14 @@ impl game_api::GameMenus for T5 {
             )),
         }
     }
+
+    fn layout(&self) -> Rule<&'static dyn game_api::MenuLayout> {
+        Rule::Unknown(unknown!(
+            "t5.hud.menu_layout",
+            "how Black Ops' menu engine places an item and scales its text",
+            "Black Ops' menu engine rules: text origin, text scale, screen placement"
+        ))
+    }
 }
 
 impl game_api::GameModes for T5 {

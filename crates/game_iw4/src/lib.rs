@@ -64,6 +64,42 @@ impl game_api::GameMenus for Iw4 {
             text_scale,
         ))
     }
+
+    fn layout(&self) -> Rule<&'static dyn game_api::MenuLayout> {
+        Rule::Known(&MenuLayout)
+    }
+}
+
+/// Modern Warfare 2's menu engine placement and text scaling.
+pub struct MenuLayout;
+
+impl game_api::MenuLayout for MenuLayout {
+    fn text_scale(&self, pixel_height: i32, text_scale: f32) -> f32 {
+        hud_iw4::normalized_text_scale(pixel_height, text_scale)
+    }
+    fn text_height(&self, text_scale: f32) -> f32 {
+        hud_iw4::ui_text_height(text_scale)
+    }
+    fn text_origin(
+        &self,
+        [x, y, w, h]: [f32; 4],
+        align_mode: i32,
+        align_x: f32,
+        align_y: f32,
+        measured_w: f32,
+        measured_h: f32,
+    ) -> (f32, f32) {
+        hud_iw4::item_text_origin(
+            x, y, w, h, align_mode, align_x, align_y, measured_w, measured_h,
+        )
+    }
+    fn text_paint_scale(&self, text_scale: f32, menu_scale: f32) -> f32 {
+        hud_iw4::item_text_paint_scale(text_scale, menu_scale)
+    }
+    fn window_rect(&self, [x, y, w, h]: [f32; 4], menu_scale: f32) -> [f32; 4] {
+        let (x, y, w, h) = hud_iw4::window_paint_scale_rect(x, y, w, h, menu_scale);
+        [x, y, w, h]
+    }
 }
 
 impl game_api::GameModes for Iw4 {

@@ -105,6 +105,14 @@ impl game_api::GameMenus for T6 {
             "Black Ops 2's menu font table"
         ))
     }
+
+    fn layout(&self) -> Rule<&'static dyn game_api::MenuLayout> {
+        Rule::Unknown(unknown!(
+            "t6.hud.menu_layout",
+            "how Black Ops 2's menu engine places an item and scales its text",
+            "Black Ops 2's menu engine rules: text origin, text scale, screen placement"
+        ))
+    }
 }
 
 impl game_api::GameModes for T6 {
