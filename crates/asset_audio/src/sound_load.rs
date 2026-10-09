@@ -167,7 +167,7 @@ enum Absent {
 
 struct SoundSource {
     namespace: AssetNamespace,
-    name: &'static str,
+    name: String,
     found: Result<std::path::PathBuf, String>,
     merge: Merge,
     absent: Absent,
@@ -176,14 +176,14 @@ struct SoundSource {
 fn sound_sources(games: &GamesRoot, map: &Path) -> (Vec<SoundSource>, Vec<SoundSource>) {
     let runtime = |name: &'static str, merge, absent| SoundSource {
         namespace: AssetNamespace::Iw4,
-        name,
+        name: name.to_owned(),
         found: find_runtime_zone(games, map, name).map(|zone| zone.path),
         merge,
         absent,
     };
     let donor = |namespace, name: &'static str, version| SoundSource {
         namespace,
-        name,
+        name: name.to_owned(),
         found: find_zone_file_version(games, name, version).map(|zone| zone.path),
         merge: Merge::Missing,
         absent: Absent::Skip,
@@ -195,7 +195,8 @@ fn sound_sources(games: &GamesRoot, map: &Path) -> (Vec<SoundSource>, Vec<SoundS
         runtime("common_mp", Merge::Override, Absent::Gap),
         runtime("localized_common_mp", Merge::Override, Absent::Gap),
     ];
-    let after_map = vec![
+    let mut after_map = zombie_sound_sources(map);
+    after_map.extend([
         donor(
             AssetNamespace::Iw5,
             "code_post_gfx_mp",
@@ -231,8 +232,35 @@ fn sound_sources(games: &GamesRoot, map: &Path) -> (Vec<SoundSource>, Vec<SoundS
             "common_mp",
             fastfile_t6::ZONE_VERSION_PC,
         ),
-    ];
+    ]);
     (before_map, after_map)
+}
+
+/// A T5 zombie map plays the singleplayer and zombie zones' aliases (zombie
+/// vocals, perks, the box) beside its own.
+fn zombie_sound_sources(map: &Path) -> Vec<SoundSource> {
+    let Some(stem) = map.file_stem().and_then(|stem| stem.to_str()) else {
+        return Vec::new();
+    };
+    if !stem.starts_with("zombie") || crate::zone_game_for_path(map) != Some(ZoneGame::T5) {
+        return Vec::new();
+    }
+    [
+        format!("{stem}_patch"),
+        "common_zombie_patch".to_owned(),
+        "common_zombie".to_owned(),
+        "common".to_owned(),
+        "code_post_gfx".to_owned(),
+    ]
+    .into_iter()
+    .map(|name| SoundSource {
+        namespace: AssetNamespace::T5,
+        found: asset_transport::find_zone_for_tree(map, &name).map(|zone| zone.path),
+        name,
+        merge: Merge::Missing,
+        absent: Absent::Skip,
+    })
+    .collect()
 }
 
 pub struct SoundSources {
@@ -280,7 +308,7 @@ impl SoundSources {
                         source.namespace.as_str(),
                         source.name
                     ),
-                    Absent::Gap => self.gap(source.namespace, source.name, error.clone()),
+                    Absent::Gap => self.gap(source.namespace, &source.name, error.clone()),
                 }
                 return None;
             }
@@ -300,7 +328,7 @@ impl SoundSources {
                 Some(catalog)
             }
             Err(error) => {
-                self.gap(source.namespace, source.name, error);
+                self.gap(source.namespace, &source.name, error);
                 None
             }
         }

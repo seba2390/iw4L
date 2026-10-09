@@ -587,12 +587,36 @@ fn team_clients(world: &mut World, team: &str, except: Option<u32>) -> Vec<crate
         .collect()
 }
 
+/// How long a sound plays before its done-notify, for want of its length.
+const SOUND_DONE_MS: i64 = 2000;
+
+/// Raises the done-notifies of sounds that have finished.
+pub(crate) fn deliver_sound_notifies(world: &mut World) {
+    let now = i64::from(super::super::players::now_ms(world));
+    let due: Vec<(Value, Arc<str>)> = {
+        let mut runtime = world.resource_mut::<Runtime>();
+        let (due, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut runtime.sound_notifies)
+            .into_iter()
+            .partition(|(at, _, _)| *at <= now);
+        runtime.sound_notifies = kept;
+        due.into_iter()
+            .map(|(_, receiver, notify)| (receiver, notify))
+            .collect()
+    };
+    for (receiver, notify) in due {
+        crate::script::runtime::raise(world, receiver, &notify, Vec::new());
+    }
+}
+
 pub(crate) fn play_sound_at(
     world: &mut World,
     origin: [f32; 3],
     alias: &str,
 ) -> Result<(), String> {
-    if crate::frame::FrameWorld::from_world(world).script_sound_is_looping(alias)? {
+    if crate::frame::FrameWorld::from_world(world)
+        .script_sound_is_looping(alias)
+        .map_err(|error| format!("{error}: `{alias}`"))?
+    {
         return Err("cannot play a looping alias as a one-shot sound".into());
     }
     let index = crate::frame::FrameWorld::from_world(world).sound_alias_index(alias);
@@ -1542,8 +1566,18 @@ fn register_sound_and_fx(registry: &mut NativeRegistry) {
             let alias = string(args, 0)?;
             let origin = origin_of(world, receiver)?;
             play_sound_at(world, origin, &alias)?;
-            if args.len() != 1 {
-                return Err("expected one sound alias argument".into());
+            match args.get(1) {
+                None => {}
+                // T5 names a notify the entity raises once the sound is done.
+                Some(Value::String(notify)) if args.len() == 2 => {
+                    let at = i64::from(super::super::players::now_ms(world)) + SOUND_DONE_MS;
+                    world.resource_mut::<Runtime>().sound_notifies.push((
+                        at,
+                        receiver.clone(),
+                        notify.to_string().into(),
+                    ));
+                }
+                Some(_) => return Err("expected one sound alias argument".into()),
             }
             Ok(Value::Undefined)
         });

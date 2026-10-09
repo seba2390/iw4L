@@ -46,7 +46,8 @@ pub use profile::catalog::{Builtin, Catalog, Namespace, Owner};
 pub use profile::iw4_startup::Iw4Startup;
 pub use profile::t5_zombie_startup::T5ZombieStartup;
 
-/// Advances actor animation one authority tick, before scripts run.
+/// Advances actor animation one authority tick, and raises timed sound
+/// notifies, before scripts run.
 pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
     if !world
         .resource::<crate::step::StepRequest>()
@@ -59,6 +60,7 @@ pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
     host::actor_anims::advance(world, seconds);
     host::actor_nav::locomote(world, seconds);
     host::actor_brain::think(world);
+    host::natives::engine::deliver_sound_notifies(world);
 }
 pub use program::{ModuleIdentity, Program, Realm, Site};
 pub(crate) use runtime::{

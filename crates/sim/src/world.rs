@@ -422,11 +422,30 @@ impl SimState {
         self.hud_elem_sound_ids = ids;
     }
 
+    /// The catalog key a script's alias name plays: the name itself when an
+    /// IW4 alias has it, else the one other family that does (a T5 zombie
+    /// script names `zmb_*` aliases bare; clients read them as `t5:zmb_*`).
+    fn script_sound_key(&self, name: &str) -> Option<String> {
+        let aliases = self.content.script_sound_aliases().as_ref()?;
+        let lower = name.to_ascii_lowercase();
+        if aliases.contains_key(&lower) {
+            return Some(lower);
+        }
+        [
+            asset_core::AssetNamespace::T5,
+            asset_core::AssetNamespace::Iw5,
+            asset_core::AssetNamespace::T6,
+        ]
+        .into_iter()
+        .map(|ns| format!("{}:{lower}", ns.as_str()))
+        .find(|qualified| aliases.contains_key(qualified))
+    }
+
     pub fn script_sound_exists(&self, name: &str) -> Option<bool> {
         self.content
             .script_sound_aliases()
             .as_ref()
-            .map(|names| names.contains_key(&name.to_ascii_lowercase()))
+            .map(|_| self.script_sound_key(name).is_some())
     }
 
     pub fn script_sound_is_looping(&self, name: &str) -> Result<bool, &'static str> {
@@ -435,14 +454,15 @@ impl SimState {
             .script_sound_aliases()
             .as_ref()
             .ok_or("sound alias catalog is not installed")?;
-        aliases
-            .get(&name.to_ascii_lowercase())
-            .ok_or("sound alias not found")?
-            .ok_or("sound alias looping flags are unavailable")
+        let key = self.script_sound_key(name).ok_or("sound alias not found")?;
+        aliases[&key].ok_or("sound alias looping flags are unavailable")
     }
 
     pub fn sound_alias_index(&mut self, name: &str) -> u8 {
-        self.sound_alias_cs.index(name)
+        match self.script_sound_key(name) {
+            Some(key) if key.contains(':') => self.sound_alias_cs.index(&key),
+            _ => self.sound_alias_cs.index(name),
+        }
     }
 
     pub fn effect_name_index(&mut self, name: &str) -> u8 {

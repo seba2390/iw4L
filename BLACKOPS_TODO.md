@@ -124,6 +124,10 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Rounds, zombie spawning, points for hits and kills, wall weapons (use
       triggers answer a player looking at them within use range), doors.
 - [ ] Debris, mystery box, perks, power, Pack-a-Punch, power-ups, last stand.
+- [x] Zombie sounds: the zombie and singleplayer zones' aliases join the
+      sound bank, scripts' bare `zmb_*` names play as T5 aliases, and
+      `PlaySound(alias, notify)` raises its done-notify (after a fixed 2s;
+      footstep aliases from the singleplayer sound banks are still missing).
 - [ ] Zombie HUD and menus (zombie text and use hints with their prices
       show; the round chalk, points display and menus do not yet).
 - [ ] Client scripts, or host-side substitutes for what they show.

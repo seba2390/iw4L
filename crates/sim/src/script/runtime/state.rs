@@ -78,6 +78,8 @@ pub(crate) struct Runtime {
     pub(crate) missiles_seen_ms: i32,
     pub(crate) grenade_touches: Vec<host::triggers::GrenadeTouch>,
     pub(crate) lingering: Vec<(i64, u64)>,
+    /// T5 `PlaySound(alias, notify)`: when to raise which notify on what.
+    pub(crate) sound_notifies: Vec<(i64, Value, std::sync::Arc<str>)>,
     pub(crate) pending_deletes: Vec<u64>,
     pub(crate) vehicles: BTreeMap<u64, host::vehicles::Heli>,
     pub(crate) planes: BTreeMap<u64, host::vehicles::Plane>,
