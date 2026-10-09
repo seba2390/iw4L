@@ -9,6 +9,8 @@ pub fn planted_model(name: &str) -> Option<&'static str> {
 }
 
 pub const T6_EFFECTS: &[&str] = &[
+    "maps/zombie_tomb/fx_tomb_player_weather_rain",
+    "maps/zombie_tomb/fx_tomb_player_weather_snow",
     "misc/fx_zombie_powerup_off",
     "misc/fx_zombie_powerup_grab",
     "misc/fx_zombie_powerup_wave",

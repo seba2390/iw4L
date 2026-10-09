@@ -2,6 +2,7 @@ mod mines;
 mod origins;
 mod origins_dig;
 mod origins_tools;
+mod origins_weather;
 mod powerups;
 mod rounds;
 
@@ -64,6 +65,7 @@ pub(crate) struct Survival {
     entry_ticks: u32,
     origins: origins::PowerGrid,
     tools: origins_tools::Tools,
+    weather: origins_weather::Weather,
     digs: origins_dig::Digs,
     powerups: powerups::Powerups,
 }
@@ -737,6 +739,8 @@ fn initialize(world: &mut World, state: &mut Survival) {
             riser: false,
         });
     }
+    drop(frame);
+    state.weather.initialize(world, state.origins.present());
     state.nodes = Arc::new(nodes);
     state.edges = Arc::new(edges);
     state.initialized = true;
@@ -2414,12 +2418,14 @@ pub(crate) fn advance(world: &mut World) {
         }
         prepare_machines(world, &mut state, &players);
         state.tools.advance(world, &players, &state.digs);
+        state.weather.advance(world, tick, &players);
         let mut digs = std::mem::take(&mut state.digs);
         digs.advance(world, &mut state, tick, &players);
         state.digs = digs;
         interactions(world, &mut state, tick, &players);
         powerups::advance(world, &mut state, tick);
         if state.remaining == 0 && state.actors.is_empty() && state.next_round.is_none() {
+            state.weather.end_round(world, state.round, tick);
             state.next_round = Some(tick.0 + ticks(10000));
         }
     }

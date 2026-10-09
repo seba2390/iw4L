@@ -175,7 +175,15 @@ impl Digs {
                 let at = roll(world, (end + 1) as u32) as usize;
                 indices.swap(end, at);
             }
-            let limit = 3 + roll(world, players.len().max(1) as u32);
+            let limit = match state.weather.current() {
+                origins_weather::Precipitation::Snow(_) => 0,
+                origins_weather::Precipitation::Rain(_) => {
+                    5 + roll(world, players.len().max(1) as u32)
+                }
+                origins_weather::Precipitation::Clear => {
+                    3 + roll(world, players.len().max(1) as u32)
+                }
+            };
             let mut respawned = 0;
             let mut active = self.sites.iter().filter(|site| site.active).count();
             for index in indices {
