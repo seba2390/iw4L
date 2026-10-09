@@ -1,6 +1,7 @@
 mod mines;
 mod origins;
 mod origins_dig;
+mod origins_staff;
 mod origins_tools;
 mod origins_weather;
 mod powerups;
@@ -67,6 +68,7 @@ pub(crate) struct Survival {
     tools: origins_tools::Tools,
     weather: origins_weather::Weather,
     digs: origins_dig::Digs,
+    staffs: origins_staff::Staffs,
     powerups: powerups::Powerups,
 }
 
