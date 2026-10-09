@@ -320,6 +320,34 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
         .and_then(|value| runtime.player_client_of(value))
         .map(ClientId);
     let inflictor = args.get(3).and_then(|value| runtime.presence_of(value));
+    // Singleplayer and zombie scripts pass (…, means, hitLocation) where
+    // multiplayer passes (…, onHead, means, flags, weapon).
+    if let Some(Value::String(means)) = args.get(4) {
+        let means = super::super::entity_damage::means_named(means).unwrap_or("MOD_UNKNOWN");
+        let hitloc = match args.get(5) {
+            Some(Value::String(name)) => weapon_iw4::HITLOC_NAMES
+                .iter()
+                .position(|&known| known.as_bytes() == name.as_bytes())
+                .map_or(0, |i| i as u8),
+            _ => 0,
+        };
+        world
+            .resource_mut::<Runtime>()
+            .hits
+            .push(crate::script::ScriptHit {
+                piece: None,
+                target,
+                amount,
+                origin,
+                attacker,
+                inflictor,
+                means,
+                weapon: 0,
+                flags: 0,
+                hitloc,
+            });
+        return Ok(Value::Undefined);
+    }
     let on_head = optional(args, 4, int)?.unwrap_or(0) != 0;
     let means = optional(args, 5, string)?
         .map(|name| super::super::entity_damage::means_named(&name))

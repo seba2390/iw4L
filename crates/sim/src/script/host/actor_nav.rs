@@ -384,23 +384,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             movement.scripted_pending = false;
         })
     });
-    registry.register(Method, "forceteleport", |world, receiver, args| {
-        let id = actor_id(world, receiver)?;
-        let origin = vector(args, 0)?;
-        let angles = match args.get(1) {
-            Some(Value::Vector(angles)) => Some(*angles),
-            _ => None,
-        };
-        let mut runtime = world.resource_mut::<Runtime>();
-        runtime.set_object_field(id, "origin", Value::Vector(origin));
-        if let Some(angles) = angles {
-            runtime.set_object_field(id, "angles", Value::Vector(angles));
-        }
-        let movement = runtime.actor_moves.entry(id).or_default();
-        movement.clear_path();
-        movement.planned_to = None;
-        Ok(Value::Undefined)
-    });
+    registry.register(Method, "forceteleport", force_teleport);
+    registry.register(Method, "teleport", force_teleport);
     registry.register(Method, "calcpathlength", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let to = vector(args, 0)?;
@@ -620,6 +605,24 @@ fn with_move(
             .entry(id)
             .or_default(),
     );
+    Ok(Value::Undefined)
+}
+
+fn force_teleport(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let id = actor_id(world, receiver)?;
+    let origin = vector(args, 0)?;
+    let angles = match args.get(1) {
+        Some(Value::Vector(angles)) => Some(*angles),
+        _ => None,
+    };
+    let mut runtime = world.resource_mut::<Runtime>();
+    runtime.set_object_field(id, "origin", Value::Vector(origin));
+    if let Some(angles) = angles {
+        runtime.set_object_field(id, "angles", Value::Vector(angles));
+    }
+    let movement = runtime.actor_moves.entry(id).or_default();
+    movement.clear_path();
+    movement.planned_to = None;
     Ok(Value::Undefined)
 }
 
