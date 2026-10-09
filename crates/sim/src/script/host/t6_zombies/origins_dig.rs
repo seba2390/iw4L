@@ -451,6 +451,7 @@ impl Digs {
         let rare_weapons = progress.rare_weapons();
         let bad = roll(world, 100) > good_chance;
         let staff_part_chance = if state.round >= 5 { 15 } else { 0 };
+        let staff_crystal_chance = if state.round >= 10 { 20 } else { 0 };
         let success = if bad {
             if roll(world, 2) == 0 {
                 let mut frame = FrameWorld::from_world(world);
@@ -529,6 +530,22 @@ impl Digs {
                 );
                 true
             }
+        } else if roll(world, 100) < staff_crystal_chance {
+            let kinds = [
+                origins_staff::StaffKind::Fire,
+                origins_staff::StaffKind::Ice,
+                origins_staff::StaffKind::Lightning,
+                origins_staff::StaffKind::Gas,
+            ];
+            let kind = kinds[roll(world, kinds.len() as u32) as usize];
+            state.staffs.add_crystal(client, kind);
+            diag::info!(
+                Sim,
+                "origins staff crystal dug client={} kind={}",
+                client.0,
+                kind.name()
+            );
+            true
         } else if roll(world, 2) == 0 {
             let choices: Vec<_> = [
                 (0, powerups::Kind::Nuke),

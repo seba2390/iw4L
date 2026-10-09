@@ -50,7 +50,9 @@ impl StaffKind {
 #[derive(Clone, Debug, Default)]
 pub(super) struct Staffs {
     owned: BTreeMap<ClientId, BTreeSet<StaffKind>>,
+    upgraded: BTreeMap<ClientId, BTreeSet<StaffKind>>,
     parts: BTreeMap<ClientId, BTreeMap<StaffKind, u8>>,
+    crystals: BTreeMap<ClientId, BTreeMap<StaffKind, u8>>,
     stations: Vec<StaffStation>,
 }
 
@@ -184,9 +186,25 @@ impl Staffs {
             return String::new();
         };
         let has_staff = self.has(client, station.kind);
+        let is_upgraded = self.is_upgraded(client, station.kind);
         let part_count = self.part_count(client, station.kind);
-        if has_staff {
-            format!("{} staff (owned)", station.kind.name())
+        let crystal_count = self.crystal_count(client, station.kind);
+        if is_upgraded {
+            format!("{} staff (upgraded)", station.kind.name())
+        } else if has_staff {
+            if crystal_count >= 3 {
+                format!(
+                    "USE: Upgrade {} staff ({} crystals)",
+                    station.kind.name(),
+                    crystal_count
+                )
+            } else {
+                format!(
+                    "{} staff (need {} more crystals)",
+                    station.kind.name(),
+                    3 - crystal_count
+                )
+            }
         } else if part_count > 0 {
             format!(
                 "USE: Craft {} staff ({} part{})",
@@ -209,6 +227,13 @@ impl Staffs {
             return false;
         };
         let kind = station.kind;
+        
+        // If player already has the staff, try to upgrade it
+        if self.has(client, kind) {
+            return self.upgrade(client, kind);
+        }
+        
+        // Otherwise, craft a new staff
         if !self.can_craft(client, kind) {
             return false;
         }
@@ -250,6 +275,52 @@ impl Staffs {
         );
     }
 
+    pub(super) fn add_crystal(&mut self, client: ClientId, kind: StaffKind) {
+        let count = self.crystals.entry(client).or_default().entry(kind).or_insert(0);
+        *count = count.saturating_add(1);
+        diag::info!(
+            Sim,
+            "origins staff crystal added client={} kind={} count={}",
+            client.0,
+            kind.name(),
+            *count
+        );
+    }
+
+    pub(super) fn crystal_count(&self, client: ClientId, kind: StaffKind) -> u8 {
+        self.crystals
+            .get(&client)
+            .and_then(|crystals| crystals.get(&kind))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub(super) fn can_upgrade(&self, client: ClientId, kind: StaffKind) -> bool {
+        self.has(client, kind) && !self.is_upgraded(client, kind) && self.crystal_count(client, kind) >= 3
+    }
+
+    pub(super) fn is_upgraded(&self, client: ClientId, kind: StaffKind) -> bool {
+        self.upgraded
+            .get(&client)
+            .is_some_and(|upgraded| upgraded.contains(&kind))
+    }
+
+    pub(super) fn upgrade(&mut self, client: ClientId, kind: StaffKind) -> bool {
+        if !self.can_upgrade(client, kind) {
+            return false;
+        }
+        let crystals = self.crystals.entry(client).or_default().entry(kind).or_insert(0);
+        *crystals = crystals.saturating_sub(3);
+        self.upgraded.entry(client).or_default().insert(kind);
+        diag::info!(
+            Sim,
+            "origins staff upgraded client={} kind={}",
+            client.0,
+            kind.name()
+        );
+        true
+    }
+
     pub(super) fn can_craft(&self, client: ClientId, kind: StaffKind) -> bool {
         !self.has(client, kind) && self.part_count(client, kind) >= 1
     }
@@ -278,17 +349,32 @@ impl Staffs {
 
     pub(super) fn status(&self, client: ClientId) -> String {
         let staffs = self.owned.get(&client).cloned().unwrap_or_default();
+        let upgraded = self.upgraded.get(&client).cloned().unwrap_or_default();
         let parts = self.parts.get(&client).cloned().unwrap_or_default();
+        let crystals = self.crystals.get(&client).cloned().unwrap_or_default();
         let mut text = "STAFFS:".to_owned();
         for kind in [StaffKind::Fire, StaffKind::Ice, StaffKind::Lightning, StaffKind::Gas] {
             let owned = staffs.contains(&kind);
+            let is_upgraded = upgraded.contains(&kind);
             let part_count = parts.get(&kind).copied().unwrap_or(0);
+            let crystal_count = crystals.get(&kind).copied().unwrap_or(0);
             text.push_str(&format!(
-                " {}{}{}",
+                " {}{}{}{}",
                 kind.name(),
-                if owned { "+" } else { "-" },
+                if is_upgraded {
+                    "++"
+                } else if owned {
+                    "+"
+                } else {
+                    "-"
+                },
                 if part_count > 0 {
-                    format!("({})", part_count)
+                    format!("(p{})", part_count)
+                } else {
+                    String::new()
+                },
+                if crystal_count > 0 {
+                    format!("(c{})", crystal_count)
                 } else {
                     String::new()
                 }
@@ -309,17 +395,43 @@ impl Staffs {
         if !self.has(client, kind) {
             return false;
         }
+        let is_upgraded = self.is_upgraded(client, kind);
         let effect_name = match kind {
-            StaffKind::Fire => "maps/zombie_tomb/fx_tomb_staff_fire",
-            StaffKind::Ice => "maps/zombie_tomb/fx_tomb_staff_ice",
-            StaffKind::Lightning => "maps/zombie_tomb/fx_tomb_staff_lightning",
-            StaffKind::Gas => "maps/zombie_tomb/fx_tomb_staff_gas",
+            StaffKind::Fire => {
+                if is_upgraded {
+                    "maps/zombie_tomb/fx_tomb_staff_fire_upgraded"
+                } else {
+                    "maps/zombie_tomb/fx_tomb_staff_fire"
+                }
+            }
+            StaffKind::Ice => {
+                if is_upgraded {
+                    "maps/zombie_tomb/fx_tomb_staff_ice_upgraded"
+                } else {
+                    "maps/zombie_tomb/fx_tomb_staff_ice"
+                }
+            }
+            StaffKind::Lightning => {
+                if is_upgraded {
+                    "maps/zombie_tomb/fx_tomb_staff_lightning_upgraded"
+                } else {
+                    "maps/zombie_tomb/fx_tomb_staff_lightning"
+                }
+            }
+            StaffKind::Gas => {
+                if is_upgraded {
+                    "maps/zombie_tomb/fx_tomb_staff_gas_upgraded"
+                } else {
+                    "maps/zombie_tomb/fx_tomb_staff_gas"
+                }
+            }
         };
         diag::info!(
             Sim,
-            "origins staff ability fired client={} kind={} effect={}",
+            "origins staff ability fired client={} kind={} upgraded={} effect={}",
             client.0,
             kind.name(),
+            is_upgraded,
             effect_name
         );
         powerups::effect(world, tick, effect_name, origin);
