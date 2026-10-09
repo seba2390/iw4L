@@ -3,6 +3,8 @@
 How to touch the live process. Observation is [`PERF.md`](PERF.md).
 Two players through the dev master: `make approved SCENARIO=master_duo_chaos`
 ([scenario and setup](../crates/approved_tests/README.md#two-clients-through-the-dev-master)).
+Black Ops Zombies: `IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater`
+([roadmap and co-op hosting](../BLACKOPS_TODO.md)).
 
 ```bash
 set -a; . ./.env; set +a          # IW4L_GAMES; DISPLAY=:0 if the session has none

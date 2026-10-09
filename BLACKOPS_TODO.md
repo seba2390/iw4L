@@ -129,7 +129,8 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Players spawn through the zombie scripts and receive their loadout
       (the M1911 in first person, 500 points).
 - [ ] Close the remaining builtin gaps the scripts report while a round runs
-      (the ones that killed player-spawn and wall-weapon threads are done).
+      (left at startup: the auto-turret calls, `is_in_array` on arrays, two
+      `_gameskill` reads and the missing footstep aliases).
 - [x] Rounds, zombie spawning, points for hits and kills, wall weapons (use
       triggers answer a player looking at them within use range), doors.
 - [x] Power switch and perks (Quick Revive bought, drunk in first person,
@@ -152,8 +153,9 @@ Done when a single zombie can be fought and killed with correct feedback.
       footstep aliases from the singleplayer sound banks are still missing).
 - [ ] Zombie HUD and menus: zombie text, priced use hints, the round chalk,
       the points column and other HUD icons the zombie scripts name show
-      (decoded from the zones and Black Ops' IWDs); the multiplayer compass
-      and menus remain, and the floating point popups draw too large.
+      (decoded from the zones and Black Ops' IWDs), and the compass is
+      hidden; the lobby menus do not offer the zombies mode yet, and the
+      floating point popups draw too large.
 - [ ] Client scripts, or host-side substitutes for what they show.
 
 Done when a solo game of Kino can be played from round 1 until death.

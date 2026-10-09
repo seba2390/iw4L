@@ -28,3 +28,4 @@ game. Keep them this short: nobody opens a long file twice.
 | [`GSC-RUNTIME.md`](GSC-RUNTIME.md) | GSC → executable IR → Bevy runtime; args, arrays and tables still share one `Runtime` | implementing gameplay or script execution |
 | [`GSC-POSTFX.md`](GSC-POSTFX.md) | script vision, color correction, blur, DoF and bloom | authoring or debugging GSC post effects |
 | [`BOTS.md`](BOTS.md) | host AI: the per-tick pipeline, what a probe that never ran may not claim, the shared query budget, resumable routes, fighting from a position | bot decisions, bot movement, "why is it standing there" |
+| [`BLACKOPS_TODO.md`](../BLACKOPS_TODO.md) | Black Ops Zombies roadmap: what runs on Kino, how to start solo and co-op, what is left | playing or extending zombies |
