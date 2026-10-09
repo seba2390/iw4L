@@ -1777,6 +1777,12 @@ fn register_inventory(registry: &mut NativeRegistry) {
         slot(world, client)?.perks.remove(&name);
         Ok(Value::Undefined)
     });
+    registry.register(Method, "setmaxhealth", |world, receiver, args| {
+        let client = player(world, receiver)?;
+        let health = Value::Int(int(args, 0)?);
+        crate::script::host::players::store_field(world, client, "maxhealth", &health)?;
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "hasperk", |world, receiver, args| {
         let client = player(world, receiver)?;
         let name = string(args, 0)?;

@@ -630,9 +630,12 @@ fn register_script(registry: &mut NativeRegistry) {
             forward[i] * point[0] - right[i] * point[1] + up[i] * point[2]
         })))
     });
-    registry.register(Function, "isai", |_, _, args| {
-        arg(args, 0)?;
-        Ok(Value::Int(0))
+    registry.register(Function, "isai", |world, _, args| {
+        let actor = world
+            .resource::<Runtime>()
+            .entity(arg(args, 0)?)
+            .is_some_and(|(_, e)| e.kind == EntityKind::Actor);
+        Ok(Value::Int(actor.into()))
     });
     registry.register(Function, "isvehicle", |world, _, args| {
         let vehicle = world
