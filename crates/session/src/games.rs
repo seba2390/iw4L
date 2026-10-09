@@ -37,3 +37,13 @@ pub fn menus(family: FamilyId) -> &'static dyn game_api::GameMenus {
         FamilyId::T6 => &game_t6::GAME,
     }
 }
+
+/// The natives the scripts of the game the map belongs to bind.
+pub(crate) fn natives(family: FamilyId) -> sim::script::NativeRegistry {
+    let services = sim::script::NativeRegistry::engine_services();
+    match family {
+        FamilyId::Iw4 => services.with_mw2_systems(),
+        FamilyId::T5 => services.with_black_ops(),
+        FamilyId::Iw5 | FamilyId::T6 => services,
+    }
+}

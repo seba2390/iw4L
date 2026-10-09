@@ -9,7 +9,15 @@ pub type Native = fn(&mut World, &Value, &[Value]) -> Result<Value, String>;
 #[derive(Resource, Clone)]
 pub struct NativeRegistry(BTreeMap<(Namespace, String), Native>);
 impl Default for NativeRegistry {
+    /// The engine services alone: no game's own natives.
     fn default() -> Self {
+        Self::engine_services()
+    }
+}
+impl NativeRegistry {
+    /// Builtins every game's scripts are served the same way: the language
+    /// helpers, dvars, math, entities, players, sound, physics, triggers.
+    pub fn engine_services() -> Self {
         let mut registry = Self(BTreeMap::new());
         registry.register(Namespace::Function, "isdefined", |world, _, args| {
             if args.len() != 1 {
@@ -48,25 +56,36 @@ impl Default for NativeRegistry {
         natives::shared::register(&mut registry);
         natives::engine::register(&mut registry);
         natives::player::register(&mut registry);
-        natives::skill::register(&mut registry);
-        natives::local_profile::register(&mut registry);
-        super::objectives::register(&mut registry);
         super::weapons::register(&mut registry);
-        super::vehicles::register(&mut registry);
         super::physics::register(&mut registry);
-        natives::t5::register(&mut registry);
-        natives::t5_zombie::register(&mut registry);
         super::controls::register(&mut registry);
         super::client_effects::register(&mut registry);
-        super::guidance::register(&mut registry);
-        super::turrets::register(&mut registry);
-        super::actors::register(&mut registry);
-        super::actors::register_damage(&mut registry);
-        super::actor_anims::register(&mut registry);
-        super::actor_nav::register(&mut registry);
         super::triggers::register(&mut registry);
         super::spectators::register(&mut registry);
         registry
+    }
+
+    /// Modern Warfare 2's game systems: ranks, the local profile,
+    /// objectives, vehicles, missile guidance, turrets.
+    pub fn with_mw2_systems(mut self) -> Self {
+        natives::skill::register(&mut self);
+        natives::local_profile::register(&mut self);
+        super::objectives::register(&mut self);
+        super::vehicles::register(&mut self);
+        super::guidance::register(&mut self);
+        super::turrets::register(&mut self);
+        self
+    }
+
+    /// Black Ops' natives: its builtins, zombies, and AI actors.
+    pub fn with_black_ops(mut self) -> Self {
+        natives::t5::register(&mut self);
+        natives::t5_zombie::register(&mut self);
+        super::actors::register(&mut self);
+        super::actors::register_damage(&mut self);
+        super::actor_anims::register(&mut self);
+        super::actor_nav::register(&mut self);
+        self
     }
 }
 impl NativeRegistry {

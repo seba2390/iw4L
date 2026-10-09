@@ -571,15 +571,17 @@ pub fn apply_prepared_match(
         if *role == frame::RuntimeRole::Listen {
             sim.register_local_presentation_dvars(local.as_ref().map(|local| local.0));
         }
-        let mut natives = sim::script::NativeRegistry::default();
+        let mut natives = crate::games::natives(anim_namespace);
         if mode.report_builtin_gaps {
             let gaps = natives.bind_gaps(&scripts);
-            diag::info!(
-                Sim,
-                "gsc: zombies: {} builtins not implemented yet: {}",
-                gaps.len(),
-                gaps.join(" ")
-            );
+            if !gaps.is_empty() {
+                diag::info!(
+                    Sim,
+                    "gsc: {} builtins not implemented yet: {}",
+                    gaps.len(),
+                    gaps.join(" ")
+                );
+            }
         }
         sim.install_gsc_program(scripts, natives, script_level)
             .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;

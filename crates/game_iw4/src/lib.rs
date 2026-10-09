@@ -42,7 +42,7 @@ const MODE: ModeRules = ModeRules {
     limits_from_config: false,
     default_score_limit: None,
     zombie_zone_scripts: false,
-    report_builtin_gaps: false,
+    report_builtin_gaps: true,
     waits_for_lobby: false,
     binds_account: true,
     binds_objectives: true,
