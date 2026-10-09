@@ -168,7 +168,36 @@ pub(crate) fn build_dxbc_pass_abi(
     arguments: &[RuntimeArgumentBinding],
     custom_sampler_flags: u8,
 ) -> Result<(PassProgramAbi, PassAbi), PassAbiRefusal> {
-    let attributes = routed_attributes(decl, vertex_type)?;
+    let cloud_corners = vertex_type == vd::POS_TEX_VERTEX_TYPE
+        && vertex
+            .reflection
+            .constant_buffers
+            .iter()
+            .flat_map(|buffer| &buffer.variables)
+            .any(|variable| variable.name == "particleCloudMatrix" && variable.flags & 2 != 0);
+    if usize::from(decl.stream_count) > vd::ROUTING_COUNT {
+        return Err(PassAbiRefusal::StreamCountOutOfRange {
+            stream_count: decl.stream_count,
+        });
+    }
+    let mut selected = decl.clone();
+    selected.stream_count = 0;
+    for &[source, dest] in decl.routed() {
+        let required = match decl.family.destination_usage(dest) {
+            Some((usage, usage_index)) => {
+                let semantic = Semantic { usage, usage_index };
+                vertex.input.elements.iter().any(|element| {
+                    semantic_of(&element.semantic, element.semantic_index) == Some(semantic)
+                }) || (cloud_corners && usage == vd::D3DDECLUSAGE_TEXCOORD && usage_index == 0)
+            }
+            None => true,
+        };
+        if required {
+            selected.routing[usize::from(selected.stream_count)] = [source, dest];
+            selected.stream_count += 1;
+        }
+    }
+    let attributes = routed_attributes(&selected, vertex_type)?;
     let mut vertex_inputs = Vec::new();
     let mut used_attributes = Vec::new();
     for element in &vertex.input.elements {
@@ -189,14 +218,7 @@ pub(crate) fn build_dxbc_pass_abi(
         used_attributes.push(*attribute);
     }
 
-    if vertex_type == vd::POS_TEX_VERTEX_TYPE
-        && vertex
-            .reflection
-            .constant_buffers
-            .iter()
-            .flat_map(|buffer| &buffer.variables)
-            .any(|variable| variable.name == "particleCloudMatrix")
-    {
+    if cloud_corners {
         let position = attributes
             .iter()
             .find(|a| a.semantic.usage == vd::D3DDECLUSAGE_POSITION);

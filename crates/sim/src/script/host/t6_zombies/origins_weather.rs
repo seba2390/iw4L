@@ -148,7 +148,7 @@ impl Weather {
                     number: i32::from(trace_iw4::ENTITYNUM_WORLD),
                     event_parm: i32::from(index),
                     origin,
-                    direction: [0.0, 0.0, 1.0],
+                    direction: [0.0; 3],
                     ..Default::default()
                 },
             );

@@ -2546,6 +2546,34 @@ impl ZoneLane for T6Lane {
                 }
             }
             report.push(format!("T6 light definitions: {}", draw.light_defs.len()));
+            if let Some(image) = world_asset
+                .field(740)
+                .and_then(|index| load.assets.get(index))
+            {
+                let decoded = Arc::new(decode_world_image(&load, image, &image_loads, &ipaks)?);
+                let name = header_str(&load, &image.header, IMAGE_NAME)
+                    .ok_or("T6 outdoor image name missing")?
+                    .trim_start_matches(',');
+                materials.link_image(asset_material::AuthoredImage {
+                    namespace: AssetNamespace::T6,
+                    name: asset_core::AssetRef::Real(name.to_owned()),
+                    map_type: image.header[4],
+                    semantic: image.header[5],
+                    category: image.header[6],
+                    use_srgb_reads: false,
+                    width: decoded.width() as u16,
+                    height: decoded.height() as u16,
+                    depth: 1,
+                    level_count: decoded.texture_descriptor.mip_level_count as u8,
+                    format: image.image_data.as_ref().map_or(0, |source| source.format),
+                    payload: Arc::new(Vec::new()),
+                    decoded: Some(decoded),
+                    common_owned: false,
+                    decoded_variant: None,
+                    decoded_by: None,
+                    pending_decode: None,
+                });
+            }
             let reader = Reader(&load);
             let probe_count = Reader::word(&world_asset.header, 396)?;
             if probe_count != 0 {

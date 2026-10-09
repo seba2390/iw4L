@@ -7,7 +7,7 @@ use super::material_runtime::RuntimeShaderPair;
 // Bump when emitted WGSL changes as well as when the binary format changes.
 pub const WGSL_CACHE_FORMAT: u32 = 6;
 // Bump when DXBC lowering, its ABI, or validation changes.
-const DXBC_WGSL_CACHE_FORMAT: u32 = 2;
+const DXBC_WGSL_CACHE_FORMAT: u32 = 3;
 
 const MAGIC: &[u8; 8] = b"IWLWGSL\n";
 

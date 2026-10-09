@@ -3107,10 +3107,10 @@ fn play_fx(
         }
         return;
     };
-    let normal = if payload.direction == [0.0, 0.0, 0.0] {
-        [0.0, 0.0, 1.0]
+    let axis = if payload.direction == [0.0; 3] {
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     } else {
-        payload.direction
+        axis_from_hit_normal(payload.direction)
     };
     elem_infos.0.sync(&catalog.0);
     let spawn = match play_named_oriented_in_world(
@@ -3119,7 +3119,7 @@ fn play_fx(
         &elem_infos.0,
         catalog.0.map_fx_name(&def_name),
         payload.origin,
-        axis_from_hit_normal(normal),
+        axis,
         fx_world.view().as_ref().map(|s| s as &dyn FxScene),
     ) {
         Some(PlayResult::PlayedReleased { .. } | PlayResult::Held { .. }) => "spawned",
