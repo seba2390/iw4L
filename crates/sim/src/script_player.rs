@@ -33,10 +33,13 @@ pub(crate) fn spawn(
     world.unlink_player_area(id);
     world.client_meta_mut(id).shield = None;
     let mut ps = spawn_player_state(origin, angles);
+    // Zombie spectators copy their (dead) health into maxhealth before
+    // spawning; a T5 spawn starts at the default full health regardless.
     if let Some(max) = world
         .client_meta(id)
         .map(|m| m.max_health)
         .filter(|&n| n > 0)
+        .filter(|_| world.bootstrap_ref().kind != gamemode_iw4::GameModeKind::Zombies)
     {
         ps.max_health = max;
         ps.health = max;
