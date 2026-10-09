@@ -46,5 +46,5 @@ All six have prepared geometry/collision/assets; complete gameplay is not establ
 Nuketown verified combat, points, rounds, wall buys, box and a house door; TranZit verified Depot rendering, windows, repairs and solo revival.
 Die Rise/Buried verified power; Origins verified six generators, shovels and four initial digs with cash, ground-zombie and shared weapon rewards; weapon expiry and dig power-up rise verified; basic Zombie Blood idling works.
 Pack-a-Punch purchases and additional perk effects need broader native verification.
-Dry dig replenishment/grenade rewards need live checks; golden tools, snow/staff parts, transport, buildables, special enemies, quests, events and broader progression remain unfinished.
+Golden reward rules need a native 30-dig run; golden HUD/helmet, dry refill/grenades, snow/staff parts, transport, buildables, special enemies, quests and broader progression remain unfinished.
 Town/Farm/Bus Depot variants, Grief and Turned need submode/location handling.

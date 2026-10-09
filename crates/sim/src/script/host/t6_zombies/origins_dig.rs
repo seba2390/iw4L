@@ -38,6 +38,51 @@ struct Progress {
     losing: u8,
 }
 
+impl Progress {
+    fn golden(&self) -> bool {
+        self.dug >= 30
+    }
+
+    fn good_chance(&mut self) -> u32 {
+        let forced = self.dug == 0 || self.losing == 3;
+        if forced {
+            self.losing = 0;
+        }
+        if self.golden() {
+            70
+        } else if forced {
+            100
+        } else {
+            50
+        }
+    }
+
+    fn complete(&mut self, bad: bool) -> bool {
+        let was_golden = self.golden();
+        self.dug = self.dug.saturating_add(1).min(30);
+        if bad {
+            self.losing += 1;
+        }
+        !was_golden && self.golden()
+    }
+
+    fn rare_weapons(&self) -> &'static [&'static str] {
+        if self.golden() {
+            &[
+                "dsr50_zm",
+                "srm1216_zm",
+                "claymore_zm",
+                "ak74u_zm",
+                "ksg_zm",
+                "mp40_zm",
+                "mp44_zm",
+            ]
+        } else {
+            &["dsr50_zm", "srm1216_zm"]
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Selection {
     Site(usize),
@@ -286,7 +331,31 @@ impl Digs {
             let Some(drop) = self.weapons.get(index) else {
                 return;
             };
-            if give_gun(world, survivor, client, drop.gun, None) {
+            let mut frame = FrameWorld::from_world(world);
+            let claymore = frame.weapon_script_name(drop.gun) == "claymore_zm";
+            let acquired = if claymore {
+                let had = frame
+                    .player(client)
+                    .is_some_and(|ps| ps.weapons.contains(&(drop.gun as i32)));
+                if crate::script_player::give_weapon(&mut frame, client, drop.gun, false).is_ok() {
+                    if had {
+                        crate::script_player::give_max_ammo(&mut frame, client, drop.gun);
+                    } else {
+                        crate::script_player::set_ammo_stock(&mut frame, client, drop.gun, 2);
+                    }
+                    if let Some(ps) = frame.player_mut(client) {
+                        ps.action_slot_type[3] = 1;
+                        ps.action_slot_param[3] = drop.gun as i32;
+                    }
+                    true
+                } else {
+                    false
+                }
+            } else {
+                std::mem::drop(frame);
+                give_gun(world, survivor, client, drop.gun, None)
+            };
+            if acquired {
                 let drop = self.weapons.remove(index);
                 world.resource_mut::<Runtime>().delete_entity(drop.object);
                 diag::info!(
@@ -314,11 +383,10 @@ impl Digs {
         let mut origin = site.origin;
         origin[2] += 20.0;
         let progress = self.players.entry(client).or_default();
-        let forced = progress.dug == 0 || progress.losing == 3;
-        if forced {
-            progress.losing = 0;
-        }
-        let bad = roll(world, 100) > if forced { 100 } else { 50 };
+        let golden = progress.golden();
+        let good_chance = progress.good_chance();
+        let rare_weapons = progress.rare_weapons();
+        let bad = roll(world, 100) > good_chance;
         let success = if bad {
             if roll(world, 2) == 0 {
                 let mut frame = FrameWorld::from_world(world);
@@ -351,10 +419,15 @@ impl Digs {
                 )
             }
         } else if roll(world, 2) == 0 {
-            let choices: Vec<_> = [(0, powerups::Kind::Nuke), (1, powerups::Kind::DoublePoints)]
-                .into_iter()
-                .filter(|(key, _)| !self.rare.contains(key))
-                .collect();
+            let choices: Vec<_> = [
+                (0, powerups::Kind::Nuke),
+                (1, powerups::Kind::DoublePoints),
+                (2, powerups::Kind::InstaKill),
+                (3, powerups::Kind::MaxAmmo),
+            ]
+            .into_iter()
+            .filter(|(key, _)| (*key < 2 || golden) && !self.rare.contains(key))
+            .collect();
             let rare = self.powerups.saturating_add(state.powerups.drop_count()) <= 4
                 && !self.last_rare
                 && !choices.is_empty()
@@ -386,16 +459,26 @@ impl Digs {
             let names = if roll(world, 100) < 90 {
                 &["ballista_zm", "c96_zm", "870mcs_zm"][..]
             } else {
-                &["dsr50_zm", "srm1216_zm"][..]
+                rare_weapons
             };
             let name = names[roll(world, names.len() as u32) as usize];
             let frame = FrameWorld::from_world(world);
             let gun = weapon_id(&frame, name);
-            let mesh = gun.and_then(|gun| {
-                frame
-                    .weapon_world_model(gun)
-                    .map(|(mesh, _)| mesh.to_owned())
-            });
+            let mesh = if name == "claymore_zm" {
+                Some("t6_wpn_claymore_world".to_owned())
+            } else {
+                gun.and_then(|gun| {
+                    frame
+                        .weapon_world_model(gun)
+                        .map(|(mesh, _)| mesh.to_owned())
+                })
+            };
+            let angles = [
+                0.0,
+                frame.player(client).map_or(0.0, |ps| ps.viewangles[1])
+                    + if name == "claymore_zm" { 180.0 } else { 90.0 },
+                0.0,
+            ];
             if gun.is_none()
                 || mesh
                     .as_deref()
@@ -409,7 +492,7 @@ impl Digs {
             drop(frame);
             origin[2] += 40.0;
             match gun.zip(mesh).and_then(|(gun, mesh)| {
-                model(world, &mesh, origin, [0.0; 3]).map(|object| (gun, object))
+                model(world, &mesh, origin, angles).map(|object| (gun, object))
             }) {
                 Some((gun, object)) => {
                     self.weapons.push(WeaponDrop {
@@ -437,9 +520,15 @@ impl Digs {
             .resource_mut::<Runtime>()
             .delete_entity(site.object.take().unwrap());
         let progress = self.players.entry(client).or_default();
-        progress.dug += 1;
-        if bad {
-            progress.losing += 1;
+        if progress.complete(bad) {
+            diag::info!(Sim, "origins golden shovel acquired client={}", client.0);
+            let mut frame = FrameWorld::from_world(world);
+            let alias_index = frame.sound_alias_index("zmb_squest_golden_anything");
+            frame.push_local_sound(crate::PendingLocalSound {
+                recipient: client,
+                stop: false,
+                alias_index,
+            });
         }
         powerups::effect(
             world,
