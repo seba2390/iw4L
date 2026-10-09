@@ -422,23 +422,13 @@ impl SimState {
         self.hud_elem_sound_ids = ids;
     }
 
-    /// The catalog key a script's alias name plays: the name itself when an
-    /// IW4 alias has it, else the one other family that does (a T5 zombie
-    /// script names `zmb_*` aliases bare; clients read them as `t5:zmb_*`).
+    /// The catalog key a script's alias name plays: the alias of the match's
+    /// own game (scripts name aliases bare; clients read `<game>:<alias>`).
     fn script_sound_key(&self, name: &str) -> Option<String> {
         let aliases = self.content.script_sound_aliases().as_ref()?;
-        let lower = name.to_ascii_lowercase();
-        if aliases.contains_key(&lower) {
-            return Some(lower);
-        }
-        [
-            asset_core::AssetNamespace::T5,
-            asset_core::AssetNamespace::Iw5,
-            asset_core::AssetNamespace::T6,
-        ]
-        .into_iter()
-        .map(|ns| format!("{}:{lower}", ns.as_str()))
-        .find(|qualified| aliases.contains_key(qualified))
+        let family = self.content.family()?;
+        let key = format!("{}:{}", family.as_str(), name.to_ascii_lowercase());
+        aliases.contains_key(&key).then_some(key)
     }
 
     pub fn script_sound_exists(&self, name: &str) -> Option<bool> {
@@ -460,8 +450,8 @@ impl SimState {
 
     pub fn sound_alias_index(&mut self, name: &str) -> u8 {
         match self.script_sound_key(name) {
-            Some(key) if key.contains(':') => self.sound_alias_cs.index(&key),
-            _ => self.sound_alias_cs.index(name),
+            Some(key) => self.sound_alias_cs.index(&key),
+            None => self.sound_alias_cs.index(name),
         }
     }
 

@@ -998,7 +998,6 @@ pattern crates/sim/src/step.rs weapon_iw4:: 49
 pattern crates/sim/src/t5_destructible.rs entity_iw4:: 3
 pattern crates/sim/src/t5_destructible.rs trace_iw4:: 1
 pattern crates/sim/src/weapon_content.rs weapon_iw4:: 5
-pattern crates/sim/src/world.rs AssetNamespace::<game> 3
 pattern crates/sim/src/world.rs anim_iw4:: 3
 pattern crates/sim/src/world.rs clipmap_iw4:: 22
 pattern crates/sim/src/world.rs entity_iw4:: 16

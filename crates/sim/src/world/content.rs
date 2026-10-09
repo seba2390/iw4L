@@ -153,6 +153,8 @@ impl std::fmt::Debug for AnimClipLookup {
 struct ContentData {
     weapons: Arc<crate::SimWeaponContent>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
+    /// The game the match's map belongs to: whose sound aliases its scripts name.
+    family: Option<asset_core::FamilyId>,
     clip_brushes: Vec<SimBrush>,
     clip_bsp: SimClipBsp,
     clip_mesh: SimClipMesh,
@@ -195,6 +197,7 @@ impl SimContentBuilder {
             data: ContentData {
                 weapons,
                 script_sound_aliases: Default::default(),
+                family: None,
                 clip_brushes: Default::default(),
                 clip_bsp: Default::default(),
                 clip_mesh: Default::default(),
@@ -238,6 +241,10 @@ impl SimContentBuilder {
                 .map(|(name, looping)| (name.to_ascii_lowercase(), looping))
                 .collect()
         });
+    }
+
+    pub fn set_family(&mut self, family: Option<asset_core::FamilyId>) {
+        self.data.family = family;
     }
 
     pub fn finish(mut self) -> Arc<SimContent> {
@@ -388,6 +395,9 @@ impl SimContent {
         &self,
     ) -> &Option<std::collections::BTreeMap<String, Option<bool>>> {
         &self.data.script_sound_aliases
+    }
+    pub(super) fn family(&self) -> Option<asset_core::FamilyId> {
+        self.data.family
     }
     pub(super) fn player_kits(&self) -> &[PlayerKitCollision; 2] {
         &self.data.player_kits

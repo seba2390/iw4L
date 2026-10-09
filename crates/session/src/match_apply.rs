@@ -332,6 +332,7 @@ pub fn apply_prepared_match(
         .map_err(|error| InstallRefusal::new(format!("Invalid simulation weapons: {error:?}")))?;
         let mut content = sim::SimContentBuilder::for_match(Arc::clone(sim_weapons.content()));
         content.set_script_sound_aliases(script_sound_aliases);
+        content.set_family(prepared_map.namespace);
         let mut sim = sim::SimWorld::new();
         if role.runs_authority()
             && let Some(previous) = previous.as_ref()
