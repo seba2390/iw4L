@@ -48,6 +48,8 @@ pub struct MapFacts {
     pub objective_visuals: asset_game::ObjectiveVisuals,
 
     pub path_nodes: Vec<asset_world::PathNode>,
+
+    pub hud_menus: asset_game::SessionHudMenus,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

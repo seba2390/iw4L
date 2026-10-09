@@ -192,6 +192,7 @@ pub(super) async fn walk_prepared_match(
         scripts
     });
     strings.absorb_in_namespace(asset_core::AssetNamespace::T5, zombie.strings);
+    facts.hud_menus = asset_game::SessionHudMenus(zombie.hud_menus.map(std::sync::Arc::new));
     let zombie_scene_names = zombie_scripts
         .as_ref()
         .map(crate::ScriptSources::asset_names);

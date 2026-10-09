@@ -294,6 +294,7 @@ pub fn apply_prepared_match(
             &mut install,
             asset_game::SessionTeamSettings(facts.team_settings),
         );
+        stage_resource(&mut install, facts.hud_menus);
         stage_resource(&mut install, assets::PreparedLocalizedStrings(strings));
         stage_resource(&mut install, fx_catalog);
         stage_resource(&mut install, type10);

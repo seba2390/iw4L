@@ -29,12 +29,22 @@ move on; they do not work around them.
       `scorebar.rs` and `weaponbar.rs`): points, ammo, weapon name and grenades
       with made-up positions and Modern Warfare 2 fonts. Replace with Black Ops'
       own zombie HUD menus.
+      *Check:* (a) the menus of `ui/hud.txt`, `ui/hud_sp.txt`, `ui/hud_zombie.txt`
+      and `ui/hud_coop.txt` are decoded from `code_post_gfx` + `patch` (log
+      `t5 hud menus:`); (c) screenshot at round 1 after spawn (`move 1012 -1197 0
+      90 0 &`) shows `weaponinfo_zombie`/`dpad_zombie` drawn from the menus;
+      `zombie_hud.rs` is deleted.
 - [ ] **V** Hand-drawn zombie scoreboard (`scoreboard.rs` `zombie_board`) with
       English literals; the Modern Warfare 2 scoreboard menu is skipped in
       `menus/mod.rs`. Replace with Black Ops' scoreboard menu and strings.
+      *Check:* (a) find the Black Ops zombies scoreboard menu or strings in the
+      zones; otherwise park it.
 - [ ] **V** Black Ops menus are skipped while loading (`fastfile_t5/src/load/menu.rs`);
       Black Ops fonts are not loaded. All HUD text (script hud elems, use hints,
       killfeed, overhead names) draws with Modern Warfare 2 fonts.
+      *Check:* (a) log `t5 menus code_post_gfx: 168 menus, 11 lists`, `t5 menus
+      patch: 66 menus`, `t5 menus en_code_post_gfx: ... 6 fonts`; (c) script
+      hud elems and HUD menus draw with `fonts/*` from `en_code_post_gfx`.
 - [ ] **V** `t5_font_scale` in `hud_elems.rs`: script font scales above 4.6 are
       multiplied by 0.25 — a guess. Needs Black Ops' real hud elem font rule.
 - [ ] **V** `hud_elems.rs`: in zombies, script material elems skip the
