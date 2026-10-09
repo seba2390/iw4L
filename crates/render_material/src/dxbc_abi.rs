@@ -107,7 +107,7 @@ fn vertex_input(attribute: &VertexAttribute, register: u32, vertex_type: u8) -> 
         vd::D3dDeclType::Unknown(_) => ("vec4<f32>", "vec4<f32>(0.0)".to_string()),
     };
     VertexInput {
-        register,
+        register: Some(register),
         location,
         attribute_type: attribute_type.to_string(),
         expression,
@@ -187,6 +187,38 @@ pub(crate) fn build_dxbc_pass_abi(
         };
         vertex_inputs.push(vertex_input(attribute, element.register, vertex_type));
         used_attributes.push(*attribute);
+    }
+
+    if vertex_type == vd::POS_TEX_VERTEX_TYPE
+        && vertex
+            .reflection
+            .constant_buffers
+            .iter()
+            .flat_map(|buffer| &buffer.variables)
+            .any(|variable| variable.name == "particleCloudMatrix")
+    {
+        let position = attributes
+            .iter()
+            .find(|a| a.semantic.usage == vd::D3DDECLUSAGE_POSITION);
+        let uv = attributes
+            .iter()
+            .find(|a| a.semantic.usage == vd::D3DDECLUSAGE_TEXCOORD && a.semantic.usage_index == 0);
+        if let (Some(position), Some(uv)) = (position, uv)
+            && let Some(input) = vertex_inputs
+                .iter_mut()
+                .find(|input| input.location == position.location)
+        {
+            input.expression = format!(
+                "vec4<f32>(attribute_{}, (2.0 * attribute_{}.x + attribute_{}.y) * 0.25)",
+                position.location, uv.location, uv.location
+            );
+            if !used_attributes.iter().any(|a| a.location == uv.location) {
+                let mut input = vertex_input(uv, 0, vertex_type);
+                input.register = None;
+                vertex_inputs.push(input);
+                used_attributes.push(*uv);
+            }
+        }
     }
 
     let vertex_rows = dxbc_constant_rows(vertex)?;

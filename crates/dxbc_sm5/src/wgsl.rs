@@ -88,7 +88,7 @@ pub struct TextureSlot {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VertexInput {
-    pub register: u32,
+    pub register: Option<u32>,
     pub location: u32,
     pub attribute_type: String,
     pub expression: String,
@@ -319,6 +319,30 @@ struct Lowering<'a> {
 }
 
 impl Lowering<'_> {
+    fn indexable_temp(&self, operand: &Operand) -> Result<(u32, String), WgslError> {
+        let [Index::Immediate(array), index] = operand.indices.as_slice() else {
+            return Err(WgslError::UnsupportedOperand(operand.to_string()));
+        };
+        let count = self
+            .shader
+            .instructions
+            .iter()
+            .find(|i| i.opcode.0 == 0x69 && i.extra.first() == Some(array))
+            .and_then(|i| i.extra.get(1))
+            .copied()
+            .filter(|count| *count != 0)
+            .ok_or_else(|| WgslError::UnsupportedOperand(operand.to_string()))?;
+        let index = match index {
+            Index::Immediate(index) if *index < count => format!("{index}u"),
+            Index::Relative(inner) => format!("({}).x", self.bits(inner)?),
+            Index::ImmediatePlusRelative(base, inner) => {
+                format!("{base}u + ({}).x", self.bits(inner)?)
+            }
+            _ => return Err(WgslError::UnsupportedOperand(operand.to_string())),
+        };
+        Ok((*array, index))
+    }
+
     fn line(&mut self, text: &str) {
         for _ in 0..self.indent {
             self.out.push_str("    ");
@@ -332,6 +356,10 @@ impl Lowering<'_> {
             RegisterType::Temp => format!("r{}", reg(operand)?),
             RegisterType::Input => format!("v{}", reg(operand)?),
             RegisterType::Output => format!("o{}", reg(operand)?),
+            RegisterType::IndexableTemp => {
+                let (array, index) = self.indexable_temp(operand)?;
+                format!("x{array}[{index}]")
+            }
             RegisterType::ConstantBuffer => match operand.indices.as_slice() {
                 [Index::Immediate(buffer), Index::Immediate(row)] => {
                     let row = ConstantRow {
@@ -436,9 +464,15 @@ impl Lowering<'_> {
         if destination.register == RegisterType::Null {
             return Ok(());
         }
+        let mut address = String::new();
         let name = match destination.register {
             RegisterType::Temp => format!("r{}", reg(destination)?),
             RegisterType::Output => format!("o{}", reg(destination)?),
+            RegisterType::IndexableTemp => {
+                let (array, index) = self.indexable_temp(destination)?;
+                address = format!(" let dx_index = {index};");
+                format!("x{array}[dx_index]")
+            }
             _ => return Err(WgslError::UnsupportedOperand(destination.to_string())),
         };
         let mask = match destination.components {
@@ -453,7 +487,7 @@ impl Lowering<'_> {
             Kind::Uint => value,
             _ => format!("bitcast<vec4<u32>>({value})"),
         };
-        let mut text = format!("{{ let t = {bits};");
+        let mut text = format!("{{ let t = {bits};{address}");
         for (i, c) in XYZW.iter().enumerate() {
             if mask & (1 << i) != 0 {
                 write!(text, " {name}.{c} = t.{c};").unwrap();
@@ -947,6 +981,23 @@ fn stage_body(
     for t in 0..lowering.shader.temps {
         lowering.line(&format!("var r{t}: vec4<u32> = vec4<u32>(0u);"));
     }
+    for instruction in &shader.instructions {
+        if instruction.opcode.0 == 0x69 {
+            let [array, count, components] = instruction.extra.as_slice() else {
+                return Err(WgslError::UnsupportedOperand(format!(
+                    "indexable temp declaration {:?}",
+                    instruction.extra
+                )));
+            };
+            if *count == 0 || !(1..=4).contains(components) {
+                return Err(WgslError::UnsupportedOperand(format!(
+                    "indexable temp declaration {:?}",
+                    instruction.extra
+                )));
+            }
+            lowering.line(&format!("var x{array}: array<vec4<u32>, {count}>;"));
+        }
+    }
     for o in output_registers(shader) {
         lowering.line(&format!("var o{o}: vec4<u32> = vec4<u32>(0u);"));
     }
@@ -1039,7 +1090,7 @@ pub fn lower_pass(abi: &PassAbi, vertex: &Shader, pixel: &Shader) -> Result<Stri
         let expression = abi
             .vertex_inputs
             .iter()
-            .find(|input| input.register == register)
+            .find(|input| input.register == Some(register))
             .map_or_else(
                 || "vec4<f32>(0.0)".to_string(),
                 |input| input.expression.clone(),

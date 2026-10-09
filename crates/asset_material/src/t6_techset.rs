@@ -347,6 +347,7 @@ fn engine_value(name: &str) -> EngineValue {
         "colorMatrixB" => Code("COLOR_MATRIX_B"),
         "outdoorFeatherParms" => Code("OUTDOOR_FEATHER_PARMS"),
         "particleCloudColor" => Code("PARTICLE_CLOUD_COLOR"),
+        "particleCloudMatrix" => Code("PARTICLE_CLOUD_MATRIX0"),
         "hdrControl0" => Code("T6_HDR_CONTROL_0"),
         "hdrControl1" => Code("T6_HDR_CONTROL_1"),
         "skyColorMultiplier" => Code("T6_SKY_COLOR_MULTIPLIER"),
