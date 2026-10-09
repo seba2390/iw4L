@@ -3,8 +3,9 @@
 Rule: the Black Ops port reproduces the original game, driven by the game's own
 data (zones, menus, fonts, materials, sound banks, scripts). No hand-made
 substitutes, no Modern Warfare 2 stand-ins, no guessed constants, no stubs that
-pretend to work. When the real behaviour cannot be recovered, the work stops
-and the question goes to the maintainer.
+pretend to work. When the real behaviour cannot be recovered, the item goes to
+**Waiting on the maintainer** with what is needed, and work moves on to the next
+item.
 
 This ledger lists every shortcut found in the port so far. An item is closed
 only when the original behaviour is in place; it then moves to **Closed** with
@@ -12,6 +13,15 @@ the commit that fixed it. New shortcuts are not added to the code; if one is
 found it is logged here first.
 
 Severity: **V** visible, **A** audible, **G** gameplay, **I** invisible.
+
+## Waiting on the maintainer
+
+Items that cannot be closed from the game's data or scripts alone: they need a
+reference capture from the original game, or a rule that lives only in the
+(encrypted) executable. Agents list them here with exactly what is needed and
+move on; they do not work around them.
+
+(none yet)
 
 ## HUD, menus and fonts
 
