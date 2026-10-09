@@ -21,7 +21,7 @@ impl game_api::GameScripts for Iw4 {
         })
     }
 
-    fn engine_dvars(&self) -> &'static [(&'static str, &'static str)] {
+    fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
         &[]
     }
 }

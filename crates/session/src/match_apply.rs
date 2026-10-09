@@ -1144,7 +1144,10 @@ fn preflight_match_install(
             })
             .collect(),
     };
-    let game_scripts = crate::games::scripts(is_zombies);
+    let family = prepared_map
+        .namespace
+        .ok_or_else(|| InstallRefusal::new(format!("`{zone}` belongs to no game")))?;
+    let game_scripts = crate::games::scripts(family);
     let request = game_api::ScriptRequest {
         map: zone,
         gametype,
@@ -1188,7 +1191,7 @@ fn preflight_match_install(
     script_dvars.push(("sv_maxclients".into(), "18".into()));
     script_dvars.extend(
         game_scripts
-            .engine_dvars()
+            .engine_dvars(gametype)
             .iter()
             .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
     );

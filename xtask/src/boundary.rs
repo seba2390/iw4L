@@ -431,14 +431,11 @@ fn game_shapes(text: &str, game_idents: &BTreeSet<&str>) -> BTreeMap<String, usi
 }
 
 fn unknown_ids_in(text: &str) -> Vec<String> {
-    text.lines()
-        .map(code_of)
-        .flat_map(|line| {
-            line.match_indices("unknown!(")
-                .map(move |(at, m)| &line[at + m.len()..])
-        })
-        .filter_map(|rest| {
-            let rest = rest.trim_start().strip_prefix('"')?;
+    let code: Vec<&str> = text.lines().map(code_of).collect();
+    let code = code.join("\n");
+    code.match_indices("unknown!(")
+        .filter_map(|(at, m)| {
+            let rest = code[at + m.len()..].trim_start().strip_prefix('"')?;
             Some(rest[..rest.find('"')?].to_owned())
         })
         .collect()

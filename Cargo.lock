@@ -3106,10 +3106,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "game_iw5"
+version = "0.1.0"
+dependencies = [
+ "game_api",
+ "gsc",
+]
+
+[[package]]
 name = "game_t5"
 version = "0.1.0"
 dependencies = [
  "asset_core",
+ "game_api",
+ "gsc",
+]
+
+[[package]]
+name = "game_t6"
+version = "0.1.0"
+dependencies = [
  "game_api",
  "gsc",
 ]
@@ -5968,7 +5984,9 @@ dependencies = [
  "frame",
  "game_api",
  "game_iw4",
+ "game_iw5",
  "game_t5",
+ "game_t6",
  "gamemode_iw4",
  "hud_iw4",
  "net",

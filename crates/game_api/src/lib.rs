@@ -50,6 +50,6 @@ pub trait GameScripts: Sync {
         sources: &dyn gsc::SourceResolver,
     ) -> Rule<ScriptProgram>;
 
-    /// Engine dvars this game's code sets before scripts run.
-    fn engine_dvars(&self) -> &'static [(&'static str, &'static str)];
+    /// Engine dvars this game's code sets for `gametype` before scripts run.
+    fn engine_dvars(&self, gametype: &str) -> &'static [(&'static str, &'static str)];
 }

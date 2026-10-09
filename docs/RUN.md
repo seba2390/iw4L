@@ -13,7 +13,10 @@ cargo run --profile play -p launcher -- map iw5:mp_overwatch --cmds '…'
 ```
 
 `make` passes no foreign flags through: in the `Makefile` it is `CMDS`, on the
-binary `--cmds`. The colon is a GNU make pattern, so `make map iw5:…` fails —
+binary `--cmds`. A match runs the rules of the map's own game: Modern Warfare 2
+maps and Black Ops zombie maps start; Black Ops multiplayer, MW3 and Black Ops 2
+maps are refused at load until their gametype scripts have their own natives
+([`fidelity/`](fidelity/)). The colon is a GNU make pattern, so `make map iw5:…` fails —
 write `make map ZONE=iw5:mp_overwatch` or use `cargo run`. Recipes: `make
 scenario`, `chaos`, `bench` ([`BENCH.md`](BENCH.md)), `bench-live`, `lifecycle-*`
 (`*_CMDS` in the `Makefile`). Live recipes use `[profile.play]`; LTO is `PROFILE=release`.

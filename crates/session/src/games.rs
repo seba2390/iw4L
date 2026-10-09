@@ -1,11 +1,13 @@
 //! The one place that names games: which game's rules run a match.
 
-/// The scripts a match runs. The zombies mode runs Black Ops' own; every other
-/// match runs Modern Warfare 2's gametype scripts, whatever the map's game.
-pub(crate) fn scripts(zombies: bool) -> &'static dyn game_api::GameScripts {
-    if zombies {
-        &game_t5::GAME
-    } else {
-        &game_iw4::GAME
+use asset_core::FamilyId;
+
+/// The scripts of the game the map belongs to.
+pub(crate) fn scripts(family: FamilyId) -> &'static dyn game_api::GameScripts {
+    match family {
+        FamilyId::Iw4 => &game_iw4::GAME,
+        FamilyId::T5 => &game_t5::GAME,
+        FamilyId::Iw5 => &game_iw5::GAME,
+        FamilyId::T6 => &game_t6::GAME,
     }
 }

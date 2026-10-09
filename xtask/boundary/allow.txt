@@ -815,7 +815,7 @@ pattern crates/session/src/match_apply.rs GameModeKind::Zombies 6
 pattern crates/session/src/match_apply.rs clipmap_iw4:: 3
 pattern crates/session/src/match_apply.rs gamemode_iw4:: 28
 pattern crates/session/src/match_apply.rs hud_iw4:: 1
-pattern crates/session/src/match_apply.rs is_<game> 3
+pattern crates/session/src/match_apply.rs is_<game> 2
 pattern crates/session/src/match_apply.rs render_fx:: 1
 pattern crates/session/src/match_apply.rs weapon_iw4:: 2
 pattern crates/session/src/weapon_content.rs weapon_iw4:: 4
