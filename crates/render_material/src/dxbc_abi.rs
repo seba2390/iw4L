@@ -231,7 +231,7 @@ pub(crate) fn build_dxbc_pass_abi(
                 .find(|input| input.location == position.location)
         {
             input.expression = format!(
-                "vec4<f32>(attribute_{}, (2.0 * attribute_{}.x + attribute_{}.y) * 0.25)",
+                "vec4<f32>(attribute_{}, (attribute_{}.x + 2.0 * attribute_{}.y) * 0.25)",
                 position.location, uv.location, uv.location
             );
             if !used_attributes.iter().any(|a| a.location == uv.location) {
