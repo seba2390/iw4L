@@ -180,6 +180,16 @@ impl XAnimCatalog {
         self.clip_at(self.index_by_name(ns, name)?)
     }
 
+    /// The clip named `name`, preferring namespace `ns` and falling back to the
+    /// others (actor clips a T5 match replicates live under T5).
+    pub fn clip_any(&self, ns: AssetNamespace, name: &str) -> Option<Arc<AnimClip>> {
+        self.clip(ns, name).or_else(|| {
+            AssetNamespace::ALL
+                .into_iter()
+                .find_map(|other| self.clip(other, name))
+        })
+    }
+
     pub fn decode(&self, ns: AssetNamespace, name: &str) -> Option<AnimClip> {
         let captured = self.get(ns, name)?;
         AnimClip::from_parts(&captured.parts).ok()

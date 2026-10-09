@@ -546,6 +546,23 @@ impl AuthorityDObjState {
         self.materialize_error = None;
     }
 
+    /// Poses the model by an animation tree the sim drives (an actor's):
+    /// `tree` is what clients draw, `runtime` what traces hit.
+    pub fn set_tree_pose(
+        &mut self,
+        mut tree: xmodel_runtime::XAnimTreeSnapshot,
+        runtime: Option<xmodel_runtime::XAnimTreeRuntime>,
+    ) {
+        self.play_anim = None;
+        self.pose_revision = self.pose_revision.wrapping_add(1);
+        tree.state_revision = self.pose_revision;
+        self.semantic_state.tree = Some(tree);
+        self.semantic_state.pose_revision = self.pose_revision;
+        self.pose_request.tree = runtime;
+        self.current_collision = None;
+        self.materialized_pose_revision = None;
+    }
+
     pub fn advance_script_model_play_anim(&mut self, dt_seconds: f32) -> f32 {
         let Some(play) = self.play_anim else {
             return 0.0;

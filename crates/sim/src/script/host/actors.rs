@@ -97,6 +97,17 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         runtime.set_object_field(id, "isdog", Value::Int(dog.into()));
         runtime.set_object_field(id, "delayeddeath", Value::Int(0));
     }
+    {
+        let mut runtime = world.resource_mut::<Runtime>();
+        let model = runtime.object_field(id, "model");
+        let entity = &runtime.entities[&id];
+        diag::debug!(
+            Sim,
+            "actor {id}: spawned from {classname} model={model:?} attachments={:?} hidden={}",
+            entity.attachments,
+            entity.hidden
+        );
+    }
     let tree = if dog { "zombie_dog" } else { "generic_human" };
     let _ = super::actor_anims::attach(world, id, tree);
     super::actor_brain::begin(world, id)?;

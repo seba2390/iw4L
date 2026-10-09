@@ -444,6 +444,26 @@ impl MapXModelSceneCatalog {
         self.assets.entry(key).or_insert(asset);
     }
 
+    /// The walk-local materials this catalog's model surfaces draw with.
+    pub fn walk_materials(&self) -> std::collections::BTreeSet<usize> {
+        self.assets
+            .values()
+            .filter_map(|asset| match asset {
+                MapXModelSceneAsset::Iw4(skel)
+                | MapXModelSceneAsset::T5(skel)
+                | MapXModelSceneAsset::Iw5(skel)
+                | MapXModelSceneAsset::T6(skel) => Some(skel),
+                MapXModelSceneAsset::Unavailable { .. } => None,
+            })
+            .flat_map(|skel| {
+                skel.surface_materials
+                    .iter()
+                    .flatten()
+                    .map(|local| local.get())
+            })
+            .collect()
+    }
+
     pub fn remap_walk_materials(&mut self, donor_to_host: &[usize]) {
         for asset in self.assets.values_mut() {
             let (MapXModelSceneAsset::Iw4(skel)

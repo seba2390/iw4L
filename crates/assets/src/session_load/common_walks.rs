@@ -1166,6 +1166,12 @@ pub(super) struct ZombieCommons {
     /// patch go on top.
     pub(super) scripts: Option<crate::ScriptSources>,
     pub(super) map_patch_scripts: crate::ScriptSources,
+    /// Each zone's models with the materials they index, for the actor
+    /// bodies and heads scripts put on spawned zombies.
+    pub(super) scene_models: Vec<(
+        asset_world::MapXModelSceneCatalog,
+        asset_material::MaterialCatalog,
+    )>,
     pub(super) report: Vec<String>,
 }
 
@@ -1235,6 +1241,9 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
             census.scene_models.len(),
             census.scripts.len(),
         ));
+        commons
+            .scene_models
+            .push((census.scene_models, census.material_population));
         if zone == map_patch {
             commons.map_patch_scripts = census.scripts;
         } else if zone != stem {

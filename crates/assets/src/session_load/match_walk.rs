@@ -191,6 +191,10 @@ pub(super) async fn walk_prepared_match(
         scripts.overlay(zombie.map_patch_scripts);
         scripts
     });
+    let zombie_scene_names = zombie_scripts
+        .as_ref()
+        .map(crate::ScriptSources::asset_names);
+    let zombie_scene_models = zombie.scene_models;
     report.extend(zombie.report);
     if !zombie.weapons.is_empty() {
         let before = weapons.len();
@@ -402,6 +406,25 @@ pub(super) async fn walk_prepared_match(
 
     let mut global = materials;
     let iw5_linked = global.absorb_asset_population_host_materials_win(iw5_materials);
+    if let Some(names) = &zombie_scene_names {
+        let mut absorbed = 0;
+        for (mut models, population) in zombie_scene_models {
+            models.retain_names(names);
+            if models.is_empty() {
+                continue;
+            }
+            absorbed += models.len();
+            let wanted = models.walk_materials();
+            let linked: Vec<usize> = global
+                .absorb_selected_materials_host_wins(population, &wanted)
+                .into_iter()
+                .map(|id| id.unwrap_or(usize::MAX))
+                .collect();
+            models.remap_walk_materials(&linked);
+            world.map_xmodel_scene_assets.absorb_captured(models);
+        }
+        report.push(format!("zombie scene models: +{absorbed}"));
+    }
     let provisional_map_ids: Vec<usize> = (0..global.materials.len()).collect();
     if iw5_mat_n > 0 {
         iw5_scene_models.remap_walk_materials(&iw5_linked);

@@ -551,3 +551,96 @@ pub(crate) fn root_delta(world: &World, actor: u64) -> Option<([f32; 3], f32)> {
     }
     (total > 0.0).then_some((translation, yaw))
 }
+
+/// The part of an actor's tree that shapes its pose: every node carrying
+/// weight under a weighted parent, renumbered in tree order, with the clips
+/// its leaves play.
+fn weighted_tree(
+    anim: &ActorAnim,
+) -> (
+    xmodel_runtime::XAnimTreeSnapshot,
+    HashMap<String, Arc<xmodel_runtime::AnimClip>>,
+) {
+    use xmodel_runtime::{XAnimSemanticNode, XAnimSemanticNodeKind};
+
+    let tree = &anim.tree;
+    let states = anim.runtime.states();
+    let mut nodes = Vec::new();
+    let mut clips = HashMap::new();
+    let mut shape = 0x811c_9dc5u32;
+    let mut stack: Vec<(u16, Option<u16>)> = (0..tree.children.len() as u16)
+        .rev()
+        .filter(|&node| tree.parent(node).is_none())
+        .map(|node| (node, None))
+        .collect();
+    while let Some((node, parent)) = stack.pop() {
+        let state = states[node as usize];
+        if parent.is_some() && state.weight <= 0.0 {
+            continue;
+        }
+        let (kind, clip, parts) = match &tree.definition.nodes()[node as usize].kind {
+            XAnimNodeKind::Blend => (XAnimSemanticNodeKind::Blend, None, None),
+            XAnimNodeKind::Additive => (XAnimSemanticNodeKind::Additive, None, None),
+            XAnimNodeKind::Leaf { clip, parts } => {
+                clips.insert(clip.name.clone(), Arc::clone(clip));
+                (XAnimSemanticNodeKind::Leaf, Some(clip.name.clone()), *parts)
+            }
+        };
+        let index = nodes.len() as u16;
+        for byte in node.to_le_bytes() {
+            shape = (shape ^ u32::from(byte)).wrapping_mul(0x0100_0193);
+        }
+        nodes.push(XAnimSemanticNode {
+            parent: parent.map(XAnimNodeId),
+            kind,
+            clip,
+            parts,
+            state,
+        });
+        stack.extend(
+            tree.children[node as usize]
+                .iter()
+                .rev()
+                .map(|&child| (child, Some(index))),
+        );
+    }
+    (
+        xmodel_runtime::XAnimTreeSnapshot {
+            definition_revision: shape,
+            state_revision: 0,
+            nodes,
+        },
+        clips,
+    )
+}
+
+/// Puts each actor's current animation on its presented model, so clients
+/// draw the pose and traces hit the actor where its body is.
+pub(crate) fn present(world: &mut World) {
+    let posed: Vec<(
+        crate::ScriptModelId,
+        xmodel_runtime::XAnimTreeSnapshot,
+        Option<XAnimTreeRuntime>,
+    )> = {
+        let runtime = world.resource::<Runtime>();
+        runtime
+            .actor_anims
+            .iter()
+            .filter_map(|(actor, anim)| {
+                let presence = runtime.entities.get(actor)?.presence?;
+                let (tree, clips) = weighted_tree(anim);
+                let resolved = tree.resolve(|name| clips.get(name).cloned()).ok();
+                Some((presence, tree, resolved))
+            })
+            .collect()
+    };
+    let mut frame = FrameWorld::from_world(world);
+    for (presence, tree, resolved) in posed {
+        if let Some(dobj) = frame
+            .collision_owner_mut(presence)
+            .and_then(|row| row.dobj.as_mut())
+        {
+            dobj.set_tree_pose(tree, resolved);
+        }
+    }
+}

@@ -656,7 +656,7 @@ fn pose_script_models(
                 xanims
                     .as_ref()?
                     .0
-                    .clip(asset_core::AssetNamespace::Iw4, name)
+                    .clip_any(asset_core::AssetNamespace::Iw4, name)
             });
             let index = if let Some(index) =
                 product.asset_index(&owner.current_model, &owner.dobj_state, &camera_lods)

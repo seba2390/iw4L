@@ -84,7 +84,7 @@ pub(crate) fn generate(
         };
         let Ok(request) = owner
             .dobj_state
-            .resolve_request(|name| xanims?.0.clip(asset_core::AssetNamespace::Iw4, name))
+            .resolve_request(|name| xanims?.0.clip_any(asset_core::AssetNamespace::Iw4, name))
         else {
             state.unsupported_receivers += requested;
             continue;

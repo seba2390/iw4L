@@ -194,6 +194,19 @@ pub(crate) fn think(world: &mut World) {
             movement.anim_mode = super::actor_nav::AnimMode::Normal;
             movement.orient = super::actor_nav::Orient::Motion;
         }
+        if let Value::Vector(at) = world
+            .resource_mut::<Runtime>()
+            .object_field(actor, "origin")
+        {
+            diag::debug!(
+                Sim,
+                "actor {actor}: {:?} -> {wanted:?} at ({:.0} {:.0} {:.0})",
+                brain.script,
+                at[0],
+                at[1],
+                at[2]
+            );
+        }
         let main = match (&traversal, wanted) {
             (Some(traversal), AnimScript::Traverse) => {
                 format!("animscripts/traverse/{}::main", traversal.script)

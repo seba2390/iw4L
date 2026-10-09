@@ -9,9 +9,10 @@ This is an outline, not a specification. Each step names an outcome and how we
 know it is reached; the details are expected to change as we learn. Every step
 ends in a commit and a push.
 
-## Status (2026-10-08)
+## Status (2026-10-09)
 
-Kino loads and is walkable. `IW4L_GAMETYPE=zombies` runs Kino's real zombie
+Kino loads and is walkable. Zombies spawn behind the windows, tear the boards,
+climb through and run at the player, drawn with their animations. `IW4L_GAMETYPE=zombies` runs Kino's real zombie
 scripts (`_zombiemode` and everything it pulls in) on the host; builtins the
 runtime lacks are reported per call site instead of stopping the match. The
 zombie work goes script-first: the running scripts show which engine feature
@@ -19,6 +20,12 @@ is needed next. Try it headless:
 
 ```bash
 IW4L_SOUND=off IW4L_GAMETYPE=zombies ./target/play/iw4l serve t5:zombie_theater --cmds 'wait world; bot add 1; wait 20s; quit'
+```
+
+Or play it (`IW4L_LOG_LEVEL=debug` logs each zombie's animscript switches):
+
+```bash
+IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater
 ```
 
 ## What we start from
@@ -57,8 +64,9 @@ Left for later steps: path data, the zombie common zones, a zombies game mode.
       (`generic_human`: 7379 nodes).
 - [x] Introduce an actor entity: spawn from a map spawner, run its aitype and
       character scripts, attach its models.
-- [ ] Render actors on clients with their full animation state (today clients
-      get the model and head, not the blend tree).
+- [x] Render actors on clients with their animation state: each tick the
+      weighted part of the actor's tree is published on its model, and the
+      zombie bodies and heads (with their materials) join the client's models.
 
 Done when a zombie stands in Kino playing an animation.
 
@@ -99,7 +107,7 @@ Done when zombies come through windows and use every traversal in Kino.
       checks) and finishes through `FinishActorDamage`; killed zombies play
       their death animscript and are removed, and rounds advance.
 - [ ] Verify real player bullets against actor hitboxes (the authority pose
-      of an actor does not follow its animation yet), ragdoll and gibbing.
+      now follows the animation; hits still need checking), ragdoll and gibbing.
 
 Done when a single zombie can be fought and killed with correct feedback.
 
