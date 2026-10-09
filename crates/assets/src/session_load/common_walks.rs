@@ -1166,6 +1166,8 @@ pub(super) struct ZombieCommons {
     /// patch go on top.
     pub(super) scripts: Option<crate::ScriptSources>,
     pub(super) map_patch_scripts: crate::ScriptSources,
+    /// On-screen text of the singleplayer, zombie and map zones.
+    pub(super) strings: LocalizeCatalog,
     /// Each zone's models with the materials they index, for the actor
     /// bodies and heads scripts put on spawned zombies.
     pub(super) scene_models: Vec<(
@@ -1251,5 +1253,25 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         }
     }
     commons.scripts = Some(scripts);
+    for stem in ["common", "common_zombie", stem.as_str()] {
+        let found = asset_transport::discover::find_t5_localized_zone(zone_ff, None, stem);
+        match found.map(|found| found.map(|zone| load_localize_catalog_in_lane(&zone.path))) {
+            Ok(Some(Ok(part))) => {
+                commons
+                    .report
+                    .push(format!("zombie localize {stem}: {} strings", part.len()));
+                commons.strings.absorb(part);
+            }
+            Ok(Some(Err(error))) => commons
+                .report
+                .push(format!("zombie localize {stem}: {error}")),
+            Ok(None) => commons
+                .report
+                .push(format!("zombie localize {stem}: no localized zone")),
+            Err(error) => commons
+                .report
+                .push(format!("zombie localize {stem}: {error}")),
+        }
+    }
     commons
 }

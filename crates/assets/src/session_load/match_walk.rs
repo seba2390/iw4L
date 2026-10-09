@@ -93,7 +93,7 @@ pub(super) async fn walk_prepared_match(
         iw5_materials,
         mut iw5_scene_models,
         iw5_shared_surfaces,
-        strings,
+        mut strings,
         counts:
             CommonCounts {
                 startup_count,
@@ -191,6 +191,7 @@ pub(super) async fn walk_prepared_match(
         scripts.overlay(zombie.map_patch_scripts);
         scripts
     });
+    strings.absorb_in_namespace(asset_core::AssetNamespace::T5, zombie.strings);
     let zombie_scene_names = zombie_scripts
         .as_ref()
         .map(crate::ScriptSources::asset_names);

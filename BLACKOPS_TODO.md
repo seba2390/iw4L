@@ -125,7 +125,8 @@ Done when a single zombie can be fought and killed with correct feedback.
       player looking at them within use range).
 - [ ] Doors and debris, mystery box, perks, power, Pack-a-Punch, power-ups,
       last stand.
-- [ ] Zombie HUD and menus.
+- [ ] Zombie HUD and menus (zombie text and use hints with their prices
+      show; the round chalk, points display and menus do not yet).
 - [ ] Client scripts, or host-side substitutes for what they show.
 
 Done when a solo game of Kino can be played from round 1 until death.

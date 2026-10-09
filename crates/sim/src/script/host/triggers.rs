@@ -589,6 +589,47 @@ fn fires(classname: &str) -> Option<Fires> {
     }
 }
 
+/// Whether a player reaches a trigger. A use trigger answers a player in use
+/// range who looks at it (its volume may be a sliver on a wall); a use-touch
+/// trigger must be stood in.
+fn reaches(
+    kind: Fires,
+    look_at: bool,
+    frame: &FrameWorld,
+    client: u32,
+    volume: &Volume<'_>,
+    mins: [f32; 3],
+    maxs: [f32; 3],
+) -> bool {
+    let touches = volume.touches(mins, maxs);
+    match kind {
+        Fires::Use if look_at => looks_into(frame, client, volume),
+        Fires::Use => touches || looks_into(frame, client, volume),
+        Fires::UseTouch => touches && (!look_at || looks_into(frame, client, volume)),
+        Fires::Touch | Fires::Once => touches,
+    }
+}
+
+/// Whether `client` reaches use trigger `trigger` as pressing use would;
+/// `None` when it is not a use trigger.
+pub(crate) fn use_reached(world: &mut World, trigger: u64, client: u32) -> Option<bool> {
+    let mut runtime = std::mem::take(&mut *world.resource_mut::<Runtime>());
+    let reached = (|| {
+        let kind = fires(&runtime.entities.get(&trigger)?.classname)?;
+        if !matches!(kind, Fires::Use | Fires::UseTouch) {
+            return None;
+        }
+        let player = runtime.players.get(&client)?.object;
+        let look_at = runtime.require_look_at.contains(&trigger);
+        let frame = FrameWorld::from_world(world);
+        let volume = volume(&mut runtime, &frame, trigger)?;
+        let (mins, maxs) = toucher(&mut runtime, &frame, player);
+        Some(reaches(kind, look_at, &frame, client, &volume, mins, maxs))
+    })();
+    *world.resource_mut::<Runtime>() = runtime;
+    reached
+}
+
 fn volume<'f>(runtime: &mut Runtime, frame: &'f FrameWorld, object: u64) -> Option<Volume<'f>> {
     let entity = runtime.entities.get(&object)?;
     let (cylinder, brush, trigger_model) = (entity.cylinder, entity.brush, entity.trigger_model);
@@ -965,17 +1006,7 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
                     continue;
                 }
                 let (mins, maxs) = toucher(&mut runtime, &frame, player);
-                let touches = volume.touches(mins, maxs);
-                // A use trigger answers a player in use range who looks at it
-                // (its volume may be a sliver on a wall); a use-touch trigger
-                // must be stood in.
-                let reached = match kind {
-                    Fires::Use if look_at => looks_into(&frame, client, &volume),
-                    Fires::Use => touches || looks_into(&frame, client, &volume),
-                    Fires::UseTouch => touches && (!look_at || looks_into(&frame, client, &volume)),
-                    Fires::Touch | Fires::Once => touches,
-                };
-                if !reached {
+                if !reaches(kind, look_at, &frame, client, &volume, mins, maxs) {
                     continue;
                 }
                 raised.push((trigger, player));

@@ -116,7 +116,20 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Method, "sethintstring", |world, receiver, args| {
-        let hint = super::hud::string_index(world, arg(args, 0)?)?;
+        // T5 fills the hint's `&&1`.. from further arguments (a price).
+        let hint = match (arg(args, 0)?, &args[1..]) {
+            (Value::LocalizedString(key), extra) if !extra.is_empty() => {
+                let mut text = key.to_string();
+                for value in extra {
+                    text.push(crate::HUD_PRINT_ARG_SEPARATOR);
+                    text.push_str(&crate::script::runtime::to_text(value).unwrap_or_default());
+                }
+                FrameWorld::from_world(world)
+                    .hud_string_index(&text)
+                    .ok_or("exceeded maximum number of localized strings")?
+            }
+            (hint, _) => super::hud::string_index(world, hint)?,
+        };
         usable(world, receiver)?.hint = hint;
         Ok(Value::Undefined)
     });
@@ -169,6 +182,15 @@ pub(crate) fn select_usables(world: &mut World) {
         .keys()
         .copied()
         .collect();
+    // A use trigger offers its hint only where pressing use would fire it.
+    let mut unreached = std::collections::BTreeSet::new();
+    for &client in &clients {
+        for (object, ..) in &usables {
+            if super::triggers::use_reached(world, *object, client) == Some(false) {
+                unreached.insert((client, *object));
+            }
+        }
+    }
     let mut selected = std::collections::BTreeMap::new();
     let mut frame = FrameWorld::from_world(world);
     for client in clients {
@@ -188,8 +210,10 @@ pub(crate) fn select_usables(world: &mut World) {
         ];
         let nearest = usables
             .iter()
-            .filter(|(_, _, usable, policy)| {
-                !usable.barred.contains(&client) && policy.allows(&frame, client)
+            .filter(|(object, _, usable, policy)| {
+                !usable.barred.contains(&client)
+                    && policy.allows(&frame, client)
+                    && !unreached.contains(&(client, *object))
             })
             .map(|(object, at, usable, _)| {
                 let d2: f32 = (0..3).map(|i| (at[i] - eye[i]).powi(2)).sum();
