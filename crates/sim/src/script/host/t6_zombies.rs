@@ -40,7 +40,7 @@ pub(crate) struct Survival {
     purchases: Vec<Purchase>,
     box_claims: BTreeMap<usize, BoxClaim>,
     model: Option<String>,
-    walk: Option<String>,
+    walk: Vec<String>,
     head: Option<(String, String)>,
     revives: BTreeMap<u32, (ClientId, u32)>,
     spawn_sites: Vec<SpawnSite>,
@@ -48,8 +48,9 @@ pub(crate) struct Survival {
     barriers: Vec<Barrier>,
     opened: BTreeSet<String>,
     powered: bool,
-    attack: Option<String>,
-    run: Option<String>,
+    attack: Vec<MeleeAnimation>,
+    run_attack: Vec<MeleeAnimation>,
+    run: Vec<String>,
     entry: Option<String>,
     entry_curve: Option<Arc<xmodel_runtime::AnimClip>>,
     pending_links: Vec<(u32, [f32; 3])>,
@@ -57,8 +58,6 @@ pub(crate) struct Survival {
     rise: Option<String>,
     tear: Option<String>,
     rise_ticks: u32,
-    attack_ticks: u32,
-    attack_impacts: Vec<u32>,
     entry_ticks: u32,
     origins: origins::PowerGrid,
     tools: origins_tools::Tools,
@@ -78,6 +77,15 @@ struct Actor {
     animation: u8,
     stalled: u32,
     emerge_until: u32,
+    walk: Option<String>,
+    run: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct MeleeAnimation {
+    name: String,
+    duration: u32,
+    impacts: Arc<[u32]>,
 }
 
 #[derive(Clone, Debug)]
@@ -86,6 +94,7 @@ struct Swing {
     start: u32,
     next: usize,
     finish: u32,
+    impacts: Arc<[u32]>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -322,20 +331,56 @@ fn initialize(world: &mut World, state: &mut Survival) {
         meta.deaths = 0;
     }
     state.model = frame.zombie_body_model();
-    state.walk = frame.zombie_walk_anim();
+    let states = frame.script_model_states();
+    let candidates = |state_name: &str, fallback: Vec<String>| {
+        let clips: Vec<_> = states
+            .as_ref()
+            .into_iter()
+            .flat_map(|table| table.clips(state_name, None))
+            .filter(|name| frame.script_model_anim(name).is_some())
+            .map(str::to_owned)
+            .collect();
+        if clips.is_empty() { fallback } else { clips }
+    };
+    state.walk = candidates(
+        "zm_move_walk",
+        frame.zombie_walk_anim().into_iter().collect(),
+    );
     state.head = state
         .model
         .as_deref()
         .and_then(|model| frame.zombie_head_attachment(model));
-    state.attack = ["ai_zombie_attack_v1", "ai_zombie_attack_v2"]
-        .into_iter()
-        .find(|name| frame.script_model_anim(name).is_some())
-        .map(str::to_owned);
-    state.run = ["ai_zombie_run_v2", "ai_zombie_run_v4"]
-        .into_iter()
-        .find(|name| frame.script_model_anim(name).is_some())
-        .map(str::to_owned);
-    let states = frame.script_model_states();
+    let available = |names: &[&str]| {
+        names
+            .iter()
+            .copied()
+            .filter(|name| frame.script_model_anim(name).is_some())
+            .map(str::to_owned)
+            .collect()
+    };
+    state.run = candidates(
+        "zm_move_run",
+        available(&["ai_zombie_run_v2", "ai_zombie_run_v4"]),
+    );
+    let melee = |names: Vec<String>| {
+        names
+            .into_iter()
+            .filter_map(|name| {
+                let clip = frame.script_model_clips().get(&name).cloned()?;
+                let (duration, impacts) = melee_timing(&clip);
+                (!impacts.is_empty() && duration > 0).then(|| MeleeAnimation {
+                    name,
+                    duration,
+                    impacts: impacts.into(),
+                })
+            })
+            .collect()
+    };
+    state.attack = melee(candidates(
+        "zm_walk_melee",
+        available(&["ai_zombie_attack_v1", "ai_zombie_attack_v2"]),
+    ));
+    state.run_attack = melee(candidates("zm_run_melee", Vec::new()));
     state.entry = states
         .as_ref()
         .and_then(|table| {
@@ -396,13 +441,6 @@ fn initialize(world: &mut World, state: &mut Survival) {
             })
     };
     state.rise_ticks = duration(&state.rise, 1800);
-    if let Some(clip) = state
-        .attack
-        .as_deref()
-        .and_then(|name| frame.script_model_clips().get(name).cloned())
-    {
-        (state.attack_ticks, state.attack_impacts) = melee_timing(&clip);
-    }
     state.entry_ticks = duration(&state.entry, 1100);
     let mut barrier_names = BTreeMap::new();
     for pairs in state
@@ -815,7 +853,7 @@ fn spawn_actor(
     let Some(model) = &state.model else {
         return false;
     };
-    let frame = FrameWorld::from_world(world);
+    let mut frame = FrameWorld::from_world(world);
     let fallback: Vec<_> = state
         .nodes
         .iter()
@@ -863,6 +901,8 @@ fn spawn_actor(
         .cloned();
     let Some(site) = site else { return false };
     let origin = site.origin;
+    let walk = choose_animation(&mut frame, &state.walk);
+    let run = choose_animation(&mut frame, &state.run);
     drop(frame);
     let Ok(presence) = super::presence::spawn_presence(world, origin) else {
         return false;
@@ -890,9 +930,9 @@ fn spawn_actor(
         entity.number = number;
     }
     entity.anim_op = if site.riser {
-        state.rise.as_ref().or(state.walk.as_ref())
+        state.rise.as_ref().or(walk.as_ref())
     } else {
-        state.walk.as_ref()
+        walk.as_ref()
     }
     .map(|clip| Some(clip.as_str().into()));
     state.actors.insert(
@@ -913,6 +953,8 @@ fn spawn_actor(
             } else {
                 0
             },
+            walk,
+            run,
         },
     );
     diag::info!(
@@ -921,6 +963,14 @@ fn spawn_actor(
         state.round
     );
     true
+}
+
+fn choose_animation<T: Clone>(frame: &mut FrameWorld, choices: &[T]) -> Option<T> {
+    if choices.is_empty() {
+        return None;
+    }
+    let index = frame.combat_rng_mut().next_u32() as usize % choices.len();
+    Some(choices[index].clone())
 }
 
 fn animate(world: &mut World, object: u64, actor: &mut Actor, mode: u8, clip: Option<&str>) {
@@ -1212,7 +1262,10 @@ fn move_actors(
                         object,
                         &mut actor,
                         3,
-                        state.tear.as_deref().or(state.attack.as_deref()),
+                        state
+                            .tear
+                            .as_deref()
+                            .or_else(|| state.attack.first().map(|anim| anim.name.as_str())),
                     );
                     if tick.0 >= barrier.tear_due {
                         barrier.boards -= 1;
@@ -1238,8 +1291,8 @@ fn move_actors(
         if !waiting && actor.barrier.is_none() && actor.swing.is_some() {
             let swing = actor.swing.as_mut().unwrap();
             let locked = swing.victim;
-            while state
-                .attack_impacts
+            while swing
+                .impacts
                 .get(swing.next)
                 .is_some_and(|&at| tick.0.saturating_sub(swing.start) >= at)
             {
@@ -1278,17 +1331,32 @@ fn move_actors(
             && delta.length() < 60.0
             && direct
             && tick.0 >= actor.attack_due
-            && !state.attack_impacts.is_empty()
+            && (!state.attack.is_empty() || !state.run_attack.is_empty())
         {
+            let attacks = if !state.run_attack.is_empty()
+                && ((35.0 + state.round as f32 * 7.0).min(170.0) >= 100.0
+                    || state.attack.is_empty())
+            {
+                &state.run_attack
+            } else {
+                &state.attack
+            };
+            let attack = choose_animation(&mut frame, attacks);
+            let Some(attack) = attack else {
+                state.actors.insert(object, actor);
+                continue;
+            };
             drop(frame);
-            animate(world, object, &mut actor, 2, state.attack.as_deref());
+            actor.animation = 0;
+            animate(world, object, &mut actor, 2, Some(&attack.name));
             actor.swing = Some(Swing {
                 victim,
                 start: tick.0,
                 next: 0,
-                finish: tick.0 + state.attack_ticks,
+                finish: tick.0 + attack.duration,
+                impacts: attack.impacts,
             });
-            actor.attack_due = tick.0 + state.attack_ticks + ticks(100);
+            actor.attack_due = tick.0 + attack.duration + ticks(100);
             waiting = true;
             frame = FrameWorld::from_world(world);
         }
@@ -1344,16 +1412,18 @@ fn move_actors(
                     actor.stalled = 0;
                 }
                 drop(frame);
+                let movement = if speed >= 100.0 {
+                    actor.run.as_deref().or(actor.walk.as_deref())
+                } else {
+                    actor.walk.as_deref()
+                }
+                .map(str::to_owned);
                 animate(
                     world,
                     object,
                     &mut actor,
                     if speed >= 100.0 { 5 } else { 1 },
-                    if speed >= 100.0 {
-                        state.run.as_deref().or(state.walk.as_deref())
-                    } else {
-                        state.walk.as_deref()
-                    },
+                    movement.as_deref(),
                 );
                 frame = FrameWorld::from_world(world);
             }

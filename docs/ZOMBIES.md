@@ -6,7 +6,7 @@ Direct launch: `IW4L_GAMETYPE=zclassic`, then `scripts/play.ps1 map t6:zm_nuked`
 
 Host rules live in `sim/script/host/t6_zombies.rs`. NPCs use authored zombie
 spawn sites and initial player starts, collision-tested path nodes, staggered
-replanning, crowd separation, native rise/walk/run/attack clips and melee at authored swipe markers.
+replanning, crowd separation, installed walk/run/melee variants and per-swing authored swipe markers.
 Normal waves use player-scaled totals, stepped health and diminishing spawn intervals.
 Unsupported vertical transitions are rejected; installed animation states select rise/window clips; wooden windows use root-motion entry, tearing, queued traversal and native boards.
 Hold Use on the inside to rebuild; repairs earn bounded points each round.
