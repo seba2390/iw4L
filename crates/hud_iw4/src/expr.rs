@@ -197,6 +197,8 @@ pub enum ExprError {
     StrayOperands,
     EmptyResult,
     Host(&'static str),
+    /// The game's rule for this operation is not known (a fidelity ledger id).
+    Unknown(&'static str),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

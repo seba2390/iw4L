@@ -14,7 +14,7 @@ use alloc::vec::Vec;
 use crate::expr::{
     ExprError, ExprHost, OP_ADD, OP_AND, OP_DIVIDE, OP_EQUALS, OP_GREATERTHAN,
     OP_GREATERTHANEQUALTO, OP_LESSTHAN, OP_LESSTHANEQUALTO, OP_MODULUS, OP_MULTIPLY, OP_NOTEQUAL,
-    OP_OR, OP_SUBTRACT, Operand, logic_op, source_int, source_str,
+    OP_OR, OP_SUBTRACT, Operand, logic_op, source_str,
 };
 
 const T5_NOOP: i32 = 0;
@@ -118,6 +118,21 @@ pub(crate) fn parse(tokens: &[&str]) -> Result<Vec<T5Token>, ExprError> {
         .collect()
 }
 
+/// How Black Ops converts between operand types is not known: only operations
+/// whose operands need no conversion are evaluated.
+const COERCION: &str = "t5.hud.expression_coercion";
+
+fn same_type(a: &Operand, b: &Operand) -> bool {
+    core::mem::discriminant(a) == core::mem::discriminant(b)
+}
+
+fn int(operand: Operand) -> Result<i32, ExprError> {
+    match operand {
+        Operand::Int(v) => Ok(v),
+        _ => Err(ExprError::Unknown(COERCION)),
+    }
+}
+
 fn pop(stack: &mut Vec<Value>) -> Result<Value, ExprError> {
     stack.pop().ok_or(ExprError::StackUnderflow)
 }
@@ -174,11 +189,20 @@ pub(crate) fn evaluate(tokens: &[T5Token], host: &impl ExprHost) -> Result<Opera
                 Operand::Float(v) => Operand::Float(-v),
                 Operand::Str(_) => return Err(ExprError::Host("negate a string")),
             },
-            T5_NOT => Operand::Int(i32::from(source_int(&pop_operand(&mut stack)?) == 0)),
-            T5_BITNEG => Operand::Int(!source_int(&pop_operand(&mut stack)?)),
+            T5_NOT => Operand::Int(i32::from(int(pop_operand(&mut stack)?)? == 0)),
+            T5_BITNEG => Operand::Int(!int(pop_operand(&mut stack)?)?),
             T5_MUL | T5_DIV | T5_MOD | T5_PLUS | T5_MINUS | T5_SMALLER..=T5_LOGOR => {
                 let b = pop_operand(&mut stack)?;
                 let a = pop_operand(&mut stack)?;
+                let converts = !same_type(&a, &b)
+                    || match a {
+                        Operand::Int(_) => false,
+                        Operand::Float(_) => matches!(op, T5_MOD | T5_LOGAND | T5_LOGOR),
+                        Operand::Str(_) => !matches!(op, T5_PLUS | T5_EQ | T5_NOTEQ),
+                    };
+                if converts {
+                    return Err(ExprError::Unknown(COERCION));
+                }
                 let engine_op = match op {
                     T5_MUL => OP_MULTIPLY,
                     T5_DIV => OP_DIVIDE,
@@ -197,8 +221,8 @@ pub(crate) fn evaluate(tokens: &[T5Token], host: &impl ExprHost) -> Result<Opera
                 logic_op(engine_op, a, b)?
             }
             T5_BITAND | T5_BITOR | T5_SHIFTLEFT | T5_SHIFTRIGHT => {
-                let b = source_int(&pop_operand(&mut stack)?);
-                let a = source_int(&pop_operand(&mut stack)?);
+                let b = int(pop_operand(&mut stack)?)?;
+                let a = int(pop_operand(&mut stack)?)?;
                 Operand::Int(match op {
                     T5_BITAND => a & b,
                     T5_BITOR => a | b,
