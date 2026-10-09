@@ -30,9 +30,11 @@ IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater
 
 A solo game runs from round 1 to game over: points, wall weapons, doors,
 power, perks, the mystery box, power-ups and last stand (self-revive with
-Quick Revive). Co-op: with a community master selected, host a lobby with map
-`t5:zombie_theater` and mode `zom`; friends join the lobby, the host starts,
-and downed players can be revived.
+Quick Revive). Co-op: with a community master selected, open the console in
+the menu and host with `set ui_mapname t5:zombie_theater; set ui_gametype zom;
+ui_create_lobby; ui_lobby_privacy` (the lobby menus do not offer the zombies
+mode yet); friends join the lobby, the host starts, and downed players can be
+revived.
 
 ## What we start from
 
