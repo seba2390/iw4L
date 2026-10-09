@@ -1493,6 +1493,7 @@ pub(crate) fn store_field(
             let mut frame = FrameWorld::from_world(world);
             if frame.client_meta(id).is_some() {
                 let meta = frame.client_meta_mut(id);
+                diag::debug!(Sim, "player {}: {name} {n}", id.0);
                 match name {
                     "score" => meta.score = n,
                     "kills" => meta.kills = n,

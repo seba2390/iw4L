@@ -177,6 +177,9 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         runtime.set_object_field(actor, "damageweapon", arg(5));
         runtime.set_object_field(actor, "damagedir", arg(7));
         runtime.set_object_field(actor, "damagelocation", arg(8));
+        if !matches!(arg(1), Value::Undefined) {
+            runtime.set_object_field(actor, "attacker", arg(1));
+        }
         (before, runtime.object_field(actor, "model"))
     };
     raise(

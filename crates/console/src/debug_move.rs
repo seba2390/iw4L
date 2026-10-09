@@ -800,7 +800,8 @@ fn look_at_nearest_actor(
     let flat = (delta[0] * delta[0] + delta[1] * delta[1]).sqrt();
     let mut angles = ps.viewangles;
     angles[1] = delta[1].atan2(delta[0]).to_degrees();
-    angles[0] = -delta[2].atan2(flat).to_degrees();
+    // Within the player's pitch clamp, or the move never settles.
+    angles[0] = (-delta[2].atan2(flat).to_degrees()).clamp(-85.0, 85.0);
     Ok((ps.origin, angles))
 }
 
