@@ -1670,7 +1670,8 @@ fn sound_visual(name: String) -> OwnedFxVisual {
 }
 
 fn model_visual(name: Option<String>) -> OwnedFxVisual {
-    match name.filter(|n| !n.is_empty()) {
+    let hint = name.map(|name| crate::AssetRef::bare_name(&name).to_owned());
+    match hint.filter(|n| !n.is_empty()) {
         Some(hint) => OwnedFxVisual::Model {
             edge: AssetEdge::Unresolved(AssetEdgeReason::CatalogMiss),
             hint: Some(hint),
