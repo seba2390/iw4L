@@ -262,7 +262,7 @@ fn queue_match_clips(
         );
         for alias in &voices {
             aliases += 1;
-            let (ns, alias) = announcer.route(alias);
+            let (ns, alias) = announcer.route(alias, namespace.namespace);
             request_named(clips, &bank.0, ns, alias, &mut set);
         }
     }
