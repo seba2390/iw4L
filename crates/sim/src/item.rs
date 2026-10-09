@@ -1,6 +1,8 @@
 use crate::frame::FrameWorld;
 use anim_iw4::random;
-use entity_iw4::{TR_GRAVITY, TR_STATIONARY, Trajectory, evaluate_trajectory};
+use entity_iw4::{
+    TR_GRAVITY, TR_STATIONARY, Trajectory, evaluate_trajectory, evaluate_trajectory_delta,
+};
 use math_iw4::angle_vectors;
 use playerstate_iw4::{ENTITYNUM_NONE, PERK_SCAVENGER, PM_TYPE_DEAD, PlayerState};
 use weapon_iw4::{
@@ -373,6 +375,48 @@ pub(crate) fn drop_scavenger_item(
     (number != ENTITYNUM_NONE).then_some(number)
 }
 
+enum BlockedFall {
+    Rest([f32; 3]),
+    Deflect(Trajectory),
+}
+
+fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn slide_along(vel: &mut [f32; 3], normal: [f32; 3]) {
+    let into = dot(*vel, normal);
+    if into < 0.0 {
+        for (v, n) in vel.iter_mut().zip(normal) {
+            *v -= n * into;
+        }
+    }
+}
+
+fn blocked_fall(
+    traj: &Trajectory,
+    time_ms: i32,
+    start: [f32; 3],
+    hit: &trace_iw4::Trace,
+) -> BlockedFall {
+    if hit.startsolid != 0 || hit.allsolid != 0 {
+        return BlockedFall::Rest(start);
+    }
+    let n = hit.normal;
+    if n[2] > 0.0 || dot(n, n) < 0.25 {
+        return BlockedFall::Rest(hit.endpos);
+    }
+    let mut vel = evaluate_trajectory_delta(traj, time_ms);
+    slide_along(&mut vel, n);
+    BlockedFall::Deflect(Trajectory {
+        tr_type: TR_GRAVITY,
+        tr_time: time_ms,
+        tr_duration: 0,
+        tr_delta: vel,
+        tr_base: std::array::from_fn(|i| hit.endpos[i] + n[i]),
+    })
+}
+
 pub(crate) fn think_item_move(world: &mut FrameWorld, time_ms: i32, number: i32) {
     if let Ok(entity) = world.entity_kernel().current_ref(number) {
         if world
@@ -396,33 +440,57 @@ pub(crate) fn think_item_move(world: &mut FrameWorld, time_ms: i32, number: i32)
         tr_delta: item.state.tr_delta,
         tr_base: item.state.tr_base,
     };
+    let start = item.origin;
     let desired = evaluate_trajectory(&traj, time_ms);
-    let hit = world.trace_clip(
-        item.origin,
-        desired,
-        ITEM_MINS,
-        ITEM_MAXS,
-        MASK_PLAYER_SOLID,
-    );
-    let mut fraction = hit.fraction;
-    if hit.startsolid != 0 {
-        fraction = 0.0;
+    let hit = world.trace_clip(start, desired, ITEM_MINS, ITEM_MAXS, MASK_PLAYER_SOLID);
+    let blocked = hit.startsolid != 0 || hit.fraction < 1.0;
+    let mut outcome = blocked.then(|| blocked_fall(&traj, time_ms, start, &hit));
+    if let Some(BlockedFall::Deflect(fall)) = &mut outcome {
+        let off = world.trace_clip(
+            hit.endpos,
+            fall.tr_base,
+            ITEM_MINS,
+            ITEM_MAXS,
+            MASK_PLAYER_SOLID,
+        );
+        if off.startsolid != 0 || off.fraction <= 0.0 {
+            outcome = Some(BlockedFall::Rest(hit.endpos));
+        } else {
+            fall.tr_base = off.endpos;
+            if off.fraction < 1.0 {
+                slide_along(&mut fall.tr_delta, off.normal);
+                if dot(fall.tr_delta, hit.normal) < 0.0 {
+                    fall.tr_delta[0] = 0.0;
+                    fall.tr_delta[1] = 0.0;
+                }
+            }
+        }
     }
-    let endpos = if fraction >= 1.0 { desired } else { hit.endpos };
     let Some(item) = world.dropped_item_mut_by_number(number) else {
         return;
     };
-    item.origin = endpos;
-    if fraction >= 1.0 {
+    let Some(outcome) = outcome else {
+        item.origin = desired;
         return;
-    }
-    if hit.allsolid != 0 || hit.normal[2] > 0.0 {
-        item.falling = false;
-        item.state.tr_type = TR_STATIONARY;
-        item.state.tr_base = endpos;
-        item.state.tr_delta = [0.0; 3];
-        item.state.tr_time = 0;
-        item.state.tr_duration = 0;
+    };
+    match outcome {
+        BlockedFall::Rest(at) => {
+            item.origin = at;
+            item.falling = false;
+            item.state.tr_type = TR_STATIONARY;
+            item.state.tr_base = at;
+            item.state.tr_delta = [0.0; 3];
+            item.state.tr_time = 0;
+            item.state.tr_duration = 0;
+        }
+        BlockedFall::Deflect(fall) => {
+            item.origin = fall.tr_base;
+            item.state.tr_type = fall.tr_type;
+            item.state.tr_base = fall.tr_base;
+            item.state.tr_delta = fall.tr_delta;
+            item.state.tr_time = fall.tr_time;
+            item.state.tr_duration = fall.tr_duration;
+        }
     }
 }
 
