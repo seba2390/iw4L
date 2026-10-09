@@ -28,6 +28,12 @@ Or play it (`IW4L_LOG_LEVEL=debug` logs each zombie's animscript switches):
 IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater
 ```
 
+A solo game runs from round 1 to game over: points, wall weapons, doors,
+power, perks, the mystery box, power-ups and last stand (self-revive with
+Quick Revive). Co-op: with a community master selected, host a lobby with map
+`t5:zombie_theater` and mode `zom`; friends join the lobby, the host starts,
+and downed players can be revived.
+
 ## What we start from
 
 - The T5 reader already opens every asset in the zombie zones (`common_zombie`,
@@ -151,8 +157,16 @@ Done when a single zombie can be fought and killed with correct feedback.
 Done when a solo game of Kino can be played from round 1 until death.
 
 ### 8. Co-op
-- [ ] Replicate actor state to clients efficiently.
-- [ ] Revive, spectating and respawn between rounds for multiple players.
+- [x] A lobby host can pick a Black Ops zombie map (`zom` mode); the match
+      waits for every lobby member before play starts, both get their
+      points, and players start on Kino's separate co-op spawn points.
+      Joined clients see the zombies animate and attack (two processes on
+      one Mac through a local master).
+- [ ] Replicate actor state to clients efficiently (it works through the
+      existing entity path; not measured).
+- [x] Revive: a downed co-op player is revived by a teammate holding use
+      (the "being revived" view is not drawn).
+- [ ] Spectating, bleed-out and respawn between rounds for multiple players.
 - [ ] Host and join through the master across macOS, Linux and Windows.
 
 Done when two or more machines play a full Kino game together.
