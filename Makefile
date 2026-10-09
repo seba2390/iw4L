@@ -12,7 +12,7 @@ ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 
 .PHONY: map export-gltf play bench bench-load-session bench-live bench-overhead bench-perf menu menu-shots scenario chaos lifecycle-all lifecycle-swap lifecycle-replace lifecycle-play-in lifecycle-demo-out lifecycle-demo-map launcher deploy logs loc clean help
 .PHONY: build-windows setup-windows release publish github-release
-.PHONY: mr publish-check approved
+.PHONY: mr publish-check approved boundary
 .PHONY: $(ARGS)
 
 $(ARGS):
@@ -294,6 +294,12 @@ approved: require-games
 # grep, not a proof of provenance — where the code came from is README/NOTICE.
 publish-check:
 	@$(CARGO) run -q -p xtask -- publish-check
+
+# Each game's rules stay in that game's crates; the debt that exists today is
+# xtask/boundary/allow.txt, which may only shrink. BOUNDARY_ARGS=--enforce fails.
+BOUNDARY_ARGS ?=
+boundary:
+	@$(CARGO) run -q -p xtask -- boundary $(BOUNDARY_ARGS)
 
 mr:
 	@test -n "$(ARGS)" || { echo "usage: make mr <new|ship|ls|fmt> …   e.g. make mr new fps-retail-machines"; exit 1; }

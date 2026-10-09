@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Domain `session`: installing and tearing down a match, and which phase the client is in."
 
+[package.metadata.iw4l]
+layer = "session"
+
 [dependencies]
 diag.workspace = true
 bevy.workspace = true

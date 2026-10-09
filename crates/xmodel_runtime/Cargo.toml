@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Pure retained XModel DObj pose and collision runtime shared by authority and presentation."
 
+[package.metadata.iw4l]
+layer = "mixed"
+
 [dependencies]
 anim_iw4.workspace = true
 glam.workspace = true
