@@ -758,6 +758,36 @@ pub fn list_mp_map_packs(root: &GamesRoot) -> Vec<MapPack> {
         .collect()
 }
 
+/// The lobby's map list: the multiplayer packs, then the zombie maps.
+pub fn list_menu_map_packs(root: &GamesRoot) -> Vec<MapPack> {
+    let mut packs = list_mp_map_packs(root);
+    packs.extend(list_zombie_map_pack(root));
+    packs
+}
+
+/// The installed Black Ops zombie maps, as one pack for the lobby's map list.
+fn list_zombie_map_pack(root: &GamesRoot) -> Option<MapPack> {
+    let mut maps: Vec<String> = game_files(&root.0)
+        .filter_map(Result::ok)
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("ff"))
+        })
+        .filter_map(|path| {
+            let stem = path.file_stem()?.to_str()?.to_ascii_lowercase();
+            let game = zone_game_for_path(&path)?.prefix();
+            (game == "t5" && stem.starts_with("zombie") && !stem.ends_with("_patch"))
+                .then(|| format!("{game}:{stem}"))
+        })
+        .collect();
+    maps.sort();
+    maps.dedup();
+    (!maps.is_empty()).then(|| MapPack {
+        label: "T5 ZOMBIES".to_owned(),
+        maps,
+    })
+}
+
 fn map_pack_folder(zone_ff: &Path) -> String {
     game_root_for_zone(zone_ff)
         .ok()

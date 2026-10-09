@@ -81,11 +81,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         no_args(args)?;
         Ok(Value::Int(players(world).len() as i32))
     });
-    // Every client the session admits is connected by the time it is a player,
-    // so the expected count is the connected count; scripts wait while it is zero.
+    // Scripts wait while fewer than the expected players are connected: the
+    // host's lobby members, or whoever is connected outside a lobby.
     registry.register(Function, "getnumexpectedplayers", |world, _, args| {
         no_args(args)?;
-        Ok(Value::Int(players(world).len() as i32))
+        let expected = world.resource::<Runtime>().expected_players;
+        Ok(Value::Int(players(world).len().max(expected) as i32))
     });
     // Hints to engine systems the host does not model: AI perception events,
     // threat bias between groups (zombies always hunt the closest player),

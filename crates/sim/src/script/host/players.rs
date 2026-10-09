@@ -1301,6 +1301,16 @@ fn client_name(name: &[u8]) -> String {
     String::from_utf8_lossy(&name[..end]).into_owned()
 }
 
+/// A zombies player who is connected but has not spawned yet: placement
+/// waits for the spawn, whatever the spectator view meanwhile shows.
+pub(crate) fn awaiting_spawn(world: &mut World, client: u32) -> bool {
+    let frame = FrameWorld::from_world(world);
+    frame.bootstrap_ref().kind == gamemode_iw4::GameModeKind::Zombies
+        && !frame
+            .client_meta(ClientId(client))
+            .is_some_and(|meta| meta.lifecycle == crate::ClientLifecycle::Alive)
+}
+
 /// Places a connected player that has not spawned: the pose waits on its slot
 /// for `spawn`. Returns false once the player is in the world.
 pub(crate) fn place_unspawned(
@@ -1312,6 +1322,7 @@ pub(crate) fn place_unspawned(
     if FrameWorld::from_world(world)
         .player(ClientId(client))
         .is_some()
+        && !awaiting_spawn(world, client)
     {
         return false;
     }

@@ -1090,8 +1090,15 @@ fn controls(
 fn register_body(registry: &mut NativeRegistry) {
     registry.register(Method, "spawn", |world, receiver, args| {
         let client = player(world, receiver)?;
-        let origin = vector(args, 0)?;
-        let angles = vector(args, 1)?;
+        let mut origin = vector(args, 0)?;
+        let mut angles = vector(args, 1)?;
+        // Zombie scripts place every co-op player once all are connected; a
+        // player who had not spawned yet keeps that place for the first spawn.
+        if super::super::players::awaiting_spawn(world, client) {
+            let slot = slot(world, client)?;
+            origin = slot.pending_origin.unwrap_or(origin);
+            angles = slot.pending_angles.unwrap_or(angles);
+        }
         let state = slot(world, client)?.sessionstate.clone();
         slot(world, client)?.last_stand_until_ms = None;
         let tick = world.resource::<crate::step::StepRequest>().tick;

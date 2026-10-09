@@ -557,6 +557,12 @@ pub fn apply_prepared_match(
         }
         sim.install_gsc_program(scripts, natives, script_level)
             .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
+        if kind == gamemode_iw4::GameModeKind::Zombies
+            && let Some(bridge) = bridge.as_ref()
+            && let net::MasterBridgeState::Hosting { members, .. } = bridge.state()
+        {
+            sim.set_expected_players(members.len());
+        }
         if *role == frame::RuntimeRole::Listen
             && kind != gamemode_iw4::GameModeKind::Zombies
             && let (Some(account), Some(local)) = (account.as_ref(), local.as_ref())

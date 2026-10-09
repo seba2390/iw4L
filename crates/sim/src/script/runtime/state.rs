@@ -78,6 +78,8 @@ pub(crate) struct Runtime {
     pub(crate) missiles_seen_ms: i32,
     pub(crate) grenade_touches: Vec<host::triggers::GrenadeTouch>,
     pub(crate) lingering: Vec<(i64, u64)>,
+    /// Lobby members the match waits for before play starts.
+    pub(crate) expected_players: usize,
     /// Notifies the engine raises later (a sound or animation done): when,
     /// on what, which notify with which arguments.
     pub(crate) timed_notifies: Vec<(i64, Value, std::sync::Arc<str>, Vec<Value>)>,
