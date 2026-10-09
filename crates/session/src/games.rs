@@ -21,3 +21,9 @@ pub fn modes(family: FamilyId) -> &'static dyn game_api::GameModes {
         FamilyId::T6 => &game_t6::GAME,
     }
 }
+
+/// The menu expression parser of each game whose menu catalogs tag their
+/// programs with the game (`asset_game`'s Black Ops catalog writes `t5`).
+pub fn menu_parsers() -> menu_expr::MenuParsers {
+    menu_expr::MenuParsers(vec![("t5", game_t5::parse_menu_expression)])
+}

@@ -27,6 +27,7 @@ render_frontend.workspace = true
 render_fx.workspace = true
 sim.workspace = true
 game_api.workspace = true
+menu_expr.workspace = true
 game_iw4.workspace = true
 game_iw5.workspace = true
 game_t5.workspace = true

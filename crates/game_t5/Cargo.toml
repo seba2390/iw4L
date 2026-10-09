@@ -13,6 +13,7 @@ game = "t5"
 asset_core.workspace = true
 game_api.workspace = true
 gsc.workspace = true
+menu_expr.workspace = true
 
 [lints]
 workspace = true

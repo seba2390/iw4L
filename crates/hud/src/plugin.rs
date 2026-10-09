@@ -58,6 +58,7 @@ impl Plugin for HudPlugin {
             .init_resource::<HudPresentStamp>()
             .init_resource::<HudStageStamp>()
             .init_resource::<crate::expr_cache::MenuExprCache>()
+            .init_resource::<crate::expr_cache::GameMenuParsers>()
             .init_resource::<crate::hudelem::HudElemSoundLatch>()
             .init_resource::<crate::menus::ScriptMenus>()
             .add_message::<net::SvcCardSlotCmd>()
@@ -73,6 +74,7 @@ impl Plugin for HudPlugin {
                     reset_match_hud_on_torn_down,
                     hud_stamp_open,
                     sync_games_root,
+                    crate::expr_cache::sync_parsers,
                     sync_map_zone_tree,
                     sync_zone_atlases,
                     warm_hud_images,

@@ -1,7 +1,10 @@
 extern crate alloc;
 
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+
+pub use menu_expr::{ExprError, GameQueries, MenuParsers, MenuProgram, Operand};
 
 pub const OP_NOOP: i32 = 0x00;
 pub const OP_RIGHTPAREN: i32 = 0x01;
@@ -180,26 +183,6 @@ const PRECEDENCE: [i32; 81] = [
     14, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
     5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
 ];
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Operand {
-    Int(i32),
-    Float(f32),
-    Str(String),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ExprError {
-    TruncatedDump,
-    FunctionBodyMissing,
-    UnsupportedOp(i32),
-    StackUnderflow,
-    StrayOperands,
-    EmptyResult,
-    Host(&'static str),
-    /// The game's rule for this operation is not known (a fidelity ledger id).
-    Unknown(&'static str),
-}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WeaponLockView {
@@ -465,26 +448,72 @@ fn pairs_with_right_paren(op: i32) -> bool {
 pub struct Statement {
     entries: Vec<Entry>,
 
-    t5: Option<Vec<crate::expr_t5::T5Token>>,
+    /// A program of the game whose tag starts the dump.
+    foreign: Option<Arc<dyn MenuProgram>>,
 
     empty: bool,
 }
 
+/// An `ExprHost` as the queries another game's program asks.
+struct Queries<'a, H>(&'a H);
+
+impl<H: ExprHost> GameQueries for Queries<'_, H> {
+    fn dvar_int(&self, name: &str) -> Result<i32, ExprError> {
+        self.0.dvar_int(name)
+    }
+    fn dvar_bool(&self, name: &str) -> Result<i32, ExprError> {
+        self.0.dvar_bool(name)
+    }
+    fn dvar_string(&self, name: &str) -> Result<String, ExprError> {
+        self.0.dvar_string(name)
+    }
+    fn ui_active(&self) -> Result<i32, ExprError> {
+        self.0.ui_active()
+    }
+    fn flashbanged(&self) -> Result<i32, ExprError> {
+        self.0.flashbanged()
+    }
+    fn in_killcam(&self) -> Result<i32, ExprError> {
+        self.0.in_killcam()
+    }
+    fn is_dual_wield(&self) -> Result<i32, ExprError> {
+        self.0.is_dual_wield()
+    }
+    fn is_fuel_weapon(&self) -> Result<i32, ExprError> {
+        self.0.is_fuel_weapon()
+    }
+    fn player_field(&self, field: &str) -> Result<Operand, ExprError> {
+        self.0.player_field(field)
+    }
+    fn ads_javelin(&self) -> Result<bool, ExprError> {
+        Ok(self.0.weapon_lock()?.ads_javelin)
+    }
+    fn key_binding(&self, command: &str) -> Result<Operand, ExprError> {
+        self.0.key_binding(command)
+    }
+}
+
 impl Statement {
     pub fn parse(dump: &str) -> Result<Self, ExprError> {
+        Self::parse_with(dump, &MenuParsers::default())
+    }
+
+    /// Parses a dump; one that starts with a game tag in `parsers` is that
+    /// game's program.
+    pub fn parse_with(dump: &str, parsers: &MenuParsers) -> Result<Self, ExprError> {
         let mut tokens = dump.split_whitespace();
         let empty = tokens.clone().next().is_none();
-        if tokens.next() == Some("t5") {
+        if let Some(parser) = tokens.next().and_then(|tag| parsers.get(tag)) {
             let rest: Vec<&str> = tokens.collect();
             return Ok(Self {
                 entries: Vec::new(),
-                t5: Some(crate::expr_t5::parse(&rest)?),
+                foreign: Some(Arc::from(parser(&rest)?)),
                 empty,
             });
         }
         Ok(Self {
             entries: parse_dump(dump)?,
-            t5: None,
+            foreign: None,
             empty,
         })
     }
@@ -493,29 +522,29 @@ impl Statement {
         if self.empty {
             return Ok(true);
         }
-        if self.t5.is_some() {
-            return crate::expr_t5::truth(&self.evaluate(host)?);
+        if let Some(program) = &self.foreign {
+            return program.truth(&self.evaluate(host)?);
         }
         Ok(source_int(&self.evaluate(host)?) != 0)
     }
 
     pub fn evaluate(&self, host: &impl ExprHost) -> Result<Operand, ExprError> {
-        if let Some(program) = &self.t5 {
-            return crate::expr_t5::evaluate(program, host);
+        if let Some(program) = &self.foreign {
+            return program.evaluate(&Queries(host));
         }
         eval_entries(&self.entries, host)
     }
 
     pub fn evaluate_float(&self, host: &impl ExprHost) -> Result<f32, ExprError> {
-        if self.t5.is_some() {
-            return crate::expr_t5::number(&self.evaluate(host)?);
+        if let Some(program) = &self.foreign {
+            return program.number(&self.evaluate(host)?);
         }
         Ok(source_float(&self.evaluate(host)?))
     }
 
     pub fn evaluate_string(&self, host: &impl ExprHost) -> Result<String, ExprError> {
-        if self.t5.is_some() {
-            return crate::expr_t5::text(&self.evaluate(host)?);
+        if let Some(program) = &self.foreign {
+            return program.text(&self.evaluate(host)?);
         }
         Ok(source_str(&self.evaluate(host)?))
     }

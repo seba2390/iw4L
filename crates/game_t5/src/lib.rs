@@ -1,6 +1,9 @@
 mod catalog;
+mod menu_expression;
 mod zombie_catalog;
 mod zombie_startup;
+
+pub use menu_expression::parse_menu_expression;
 
 use game_api::{HudRules, LibraryMode, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
 

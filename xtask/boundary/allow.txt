@@ -480,7 +480,6 @@ pattern crates/hud/src/use_hint.rs hud_iw4:: 7
 pattern crates/hud/src/weaponbar.rs hud_iw4:: 7
 pattern crates/hud/src/weaponbar.rs playerstate_iw4:: 1
 pattern crates/hud/src/weaponbar.rs weapon_iw4:: 1
-pattern crates/hud_iw4/src/expr.rs "<game>" 1
 pattern crates/net/src/authority/inbox.rs playerstate_iw4:: 1
 pattern crates/net/src/authority/runtime.rs playerstate_iw4:: 1
 pattern crates/net/src/client/input.rs input_iw4:: 3

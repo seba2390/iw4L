@@ -6,12 +6,7 @@
 //! (docs/fidelity/t5.md, "menu expression functions"); any other index is an
 //! error, never a guess.
 
-extern crate alloc;
-
-use alloc::string::String;
-use alloc::vec::Vec;
-
-use crate::expr::{ExprError, ExprHost, Operand};
+use menu_expr::{ExprError, GameQueries, MenuProgram, Operand};
 
 const T5_NOOP: i32 = 0;
 const T5_MUL: i32 = 2;
@@ -36,20 +31,20 @@ const T5_BITNEG: i32 = 21;
 const T5_SHIFTLEFT: i32 = 22;
 const T5_SHIFTRIGHT: i32 = 23;
 
-pub const T5_FN_DVARINT: i32 = 30;
-pub const T5_FN_DVARBOOL: i32 = 31;
-pub const T5_FN_DVARSTRING: i32 = 33;
-pub const T5_FN_UI_ACTIVE: i32 = 34;
-pub const T5_FN_FLASHBANGED: i32 = 35;
-pub const T5_FN_INKILLCAM: i32 = 38;
-pub const T5_FN_ISDUALWIELD: i32 = 39;
-pub const T5_FN_ISFUELWEAPON: i32 = 40;
-pub const T5_FN_PLAYER: i32 = 41;
-pub const T5_FN_ADSJAVELIN: i32 = 56;
-pub const T5_FN_KEYBINDING: i32 = 81;
+const T5_FN_DVARINT: i32 = 30;
+const T5_FN_DVARBOOL: i32 = 31;
+const T5_FN_DVARSTRING: i32 = 33;
+const T5_FN_UI_ACTIVE: i32 = 34;
+const T5_FN_FLASHBANGED: i32 = 35;
+const T5_FN_INKILLCAM: i32 = 38;
+const T5_FN_ISDUALWIELD: i32 = 39;
+const T5_FN_ISFUELWEAPON: i32 = 40;
+const T5_FN_PLAYER: i32 = 41;
+const T5_FN_ADSJAVELIN: i32 = 56;
+const T5_FN_KEYBINDING: i32 = 81;
 
 #[derive(Clone, Debug)]
-pub(crate) enum T5Token {
+enum T5Token {
     Const(Operand),
     Op(i32),
 }
@@ -63,7 +58,7 @@ enum Value {
 impl Value {
     fn into_args(self) -> Vec<Operand> {
         match self {
-            Self::One(v) => alloc::vec![v],
+            Self::One(v) => vec![v],
             Self::Args(v) => v,
         }
     }
@@ -76,7 +71,7 @@ impl Value {
     }
 }
 
-pub(crate) fn parse(tokens: &[&str]) -> Result<Vec<T5Token>, ExprError> {
+fn parse(tokens: &[&str]) -> Result<Vec<T5Token>, ExprError> {
     tokens
         .iter()
         .map(|token| {
@@ -116,7 +111,12 @@ pub(crate) fn parse(tokens: &[&str]) -> Result<Vec<T5Token>, ExprError> {
 
 /// How Black Ops converts between operand types is not known: only operations
 /// whose operands need no conversion are evaluated.
-const COERCION: &str = "t5.hud.expression_coercion";
+const COERCION: &str = game_api::unknown!(
+    "t5.hud.expression_coercion",
+    "how Black Ops converts between menu expression operand types",
+    "Black Ops' operand conversion rules"
+)
+.id;
 
 fn int(operand: Operand) -> Result<i32, ExprError> {
     match operand {
@@ -126,7 +126,7 @@ fn int(operand: Operand) -> Result<i32, ExprError> {
 }
 
 /// A program's value as a condition.
-pub(crate) fn truth(value: &Operand) -> Result<bool, ExprError> {
+fn truth(value: &Operand) -> Result<bool, ExprError> {
     match value {
         Operand::Int(v) => Ok(*v != 0),
         _ => Err(ExprError::Unknown(COERCION)),
@@ -134,7 +134,7 @@ pub(crate) fn truth(value: &Operand) -> Result<bool, ExprError> {
 }
 
 /// A program's value where a number is wanted.
-pub(crate) fn number(value: &Operand) -> Result<f32, ExprError> {
+fn number(value: &Operand) -> Result<f32, ExprError> {
     match value {
         Operand::Int(v) => Ok(*v as f32),
         Operand::Float(v) => Ok(*v),
@@ -143,10 +143,10 @@ pub(crate) fn number(value: &Operand) -> Result<f32, ExprError> {
 }
 
 /// A program's value where text is wanted.
-pub(crate) fn text(value: &Operand) -> Result<String, ExprError> {
+fn text(value: &Operand) -> Result<String, ExprError> {
     match value {
         Operand::Str(v) => Ok(v.clone()),
-        Operand::Int(v) => Ok(alloc::format!("{v}")),
+        Operand::Int(v) => Ok(format!("{v}")),
         Operand::Float(_) => Err(ExprError::Unknown(COERCION)),
     }
 }
@@ -206,7 +206,7 @@ fn arg_str(args: &[Operand]) -> Result<String, ExprError> {
     }
 }
 
-fn call(op: i32, stack: &mut Vec<Value>, host: &impl ExprHost) -> Result<Operand, ExprError> {
+fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Operand, ExprError> {
     let mut args = || pop(stack).map(Value::into_args);
     Ok(match op {
         T5_FN_DVARINT => Operand::Int(host.dvar_int(&arg_str(&args()?)?)?),
@@ -218,13 +218,13 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &impl ExprHost) -> Result<Operand
         T5_FN_ISDUALWIELD => Operand::Int(host.is_dual_wield()?),
         T5_FN_ISFUELWEAPON => Operand::Int(host.is_fuel_weapon()?),
         T5_FN_PLAYER => host.player_field(&arg_str(&args()?)?)?,
-        T5_FN_ADSJAVELIN => Operand::Int(i32::from(host.weapon_lock()?.ads_javelin)),
+        T5_FN_ADSJAVELIN => Operand::Int(i32::from(host.ads_javelin()?)),
         T5_FN_KEYBINDING => host.key_binding(&arg_str(&args()?)?)?,
         other => return Err(ExprError::UnsupportedOp(other)),
     })
 }
 
-pub(crate) fn evaluate(tokens: &[T5Token], host: &impl ExprHost) -> Result<Operand, ExprError> {
+fn evaluate(tokens: &[T5Token], host: &dyn GameQueries) -> Result<Operand, ExprError> {
     let mut stack: Vec<Value> = Vec::new();
     for token in tokens {
         let op = match token {
@@ -275,4 +275,27 @@ pub(crate) fn evaluate(tokens: &[T5Token], host: &impl ExprHost) -> Result<Opera
         1 => pop_operand(&mut stack),
         _ => Err(ExprError::StrayOperands),
     }
+}
+
+#[derive(Debug)]
+struct Program(Vec<T5Token>);
+
+impl MenuProgram for Program {
+    fn evaluate(&self, queries: &dyn GameQueries) -> Result<Operand, ExprError> {
+        evaluate(&self.0, queries)
+    }
+    fn truth(&self, value: &Operand) -> Result<bool, ExprError> {
+        truth(value)
+    }
+    fn number(&self, value: &Operand) -> Result<f32, ExprError> {
+        number(value)
+    }
+    fn text(&self, value: &Operand) -> Result<String, ExprError> {
+        text(value)
+    }
+}
+
+/// A Black Ops menu expression from its catalog (the tokens after `t5`).
+pub fn parse_menu_expression(tokens: &[&str]) -> Result<Box<dyn MenuProgram>, ExprError> {
+    Ok(Box::new(Program(parse(tokens)?)))
 }

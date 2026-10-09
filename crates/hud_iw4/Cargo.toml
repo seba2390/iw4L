@@ -10,6 +10,7 @@ layer = "mixed"
 
 [dependencies]
 math_iw4.workspace = true
+menu_expr.workspace = true
 libm = { version = "0.2.16", default-features = false }
 
 [lints]

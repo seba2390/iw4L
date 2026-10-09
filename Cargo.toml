@@ -45,6 +45,7 @@ members = [
     "crates/game_t6",
     "crates/gamemode_iw4",
     "crates/gsc",
+    "crates/menu_expr",
     "crates/hud",
     "crates/hud_iw4",
     "crates/killcam_iw4",
@@ -154,6 +155,7 @@ game_iw5 = { path = "crates/game_iw5" }
 game_t5 = { path = "crates/game_t5" }
 game_t6 = { path = "crates/game_t6" }
 gsc = { path = "crates/gsc" }
+menu_expr = { path = "crates/menu_expr" }
 hud = { path = "crates/hud" }
 hud_iw4 = { path = "crates/hud_iw4" }
 structured_data_iw4 = { path = "crates/structured_data_iw4" }

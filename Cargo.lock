@@ -3121,6 +3121,7 @@ dependencies = [
  "asset_core",
  "game_api",
  "gsc",
+ "menu_expr",
 ]
 
 [[package]]
@@ -3515,6 +3516,7 @@ version = "0.1.0"
 dependencies = [
  "libm",
  "math_iw4",
+ "menu_expr",
 ]
 
 [[package]]
@@ -4166,6 +4168,10 @@ checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "menu_expr"
+version = "0.1.0"
 
 [[package]]
 name = "mimalloc"
@@ -5993,6 +5999,7 @@ dependencies = [
  "game_t6",
  "gamemode_iw4",
  "hud_iw4",
+ "menu_expr",
  "net",
  "perf",
  "render_frontend",
