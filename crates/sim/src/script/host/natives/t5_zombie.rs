@@ -108,6 +108,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "settransported",
         // A perk machine shaking as the power comes on.
         "vibrate",
+        // The downed player's "being revived" view; the revive itself is scripted.
+        "startrevive",
+        "stoprevive",
         // Gibbed limbs are not thrown yet; scripts swap the damaged models.
         "gib",
     ] {
