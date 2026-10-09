@@ -76,6 +76,8 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         }
         let entity = runtime.entities.get_mut(&id).ok_or("actor is gone")?;
         entity.presence = Some(presence);
+        entity.can_damage = true;
+        entity.can_radius_damage = true;
         if let Some(number) = number {
             entity.number = number;
         }
@@ -100,4 +102,140 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
     super::actor_brain::begin(world, id)?;
     raise(world, spawner.clone(), "spawned", vec![Value::Object(id)]);
     Ok(Value::Object(id))
+}
+
+const ACTOR_DAMAGE: &str = "maps/_callbacksetup::codecallback_actordamage";
+const ACTOR_KILLED: &str = "maps/_callbacksetup::codecallback_actorkilled";
+
+/// A hit on an actor goes to the actor damage callback, which finishes it.
+pub(crate) fn damage(
+    world: &mut World,
+    actor: u64,
+    hit: &super::entity_damage::EntityHit,
+    attacker: Value,
+    weapon: &str,
+    tag: &str,
+) {
+    let args = vec![
+        attacker.clone(),
+        attacker,
+        Value::Int(hit.amount),
+        Value::Int(hit.flags),
+        Value::string(hit.means),
+        Value::string(weapon),
+        Value::Vector(hit.point),
+        Value::Vector(hit.dir),
+        Value::string(hit_location(tag)),
+        Value::Int(0),
+        Value::Int(0),
+    ];
+    let now = super::players::now_ms(world);
+    if let Err(fault) = run_now(world, ACTOR_DAMAGE, Value::Object(actor), args.clone(), now) {
+        diag::warn!(Sim, "actor damage callback: {fault:?}");
+        let _ = finish_damage(world, actor, &args);
+    }
+}
+
+/// `FinishActorDamage(inflictor, attacker, damage, flags, means, weapon,
+/// point, dir, hitLoc, modelIndex, timeOffset)`: applies the damage the
+/// callback settled on and kills the actor at zero health.
+fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value, String> {
+    let amount = match args.get(2) {
+        Some(Value::Int(n)) => *n,
+        Some(Value::Float(f)) => *f as i32,
+        _ => return Err("damage must be a number".into()),
+    };
+    let arg = |index: usize| args.get(index).cloned().unwrap_or(Value::Undefined);
+    let (before, model) = {
+        let mut runtime = world.resource_mut::<Runtime>();
+        let before = match runtime.object_field(actor, "health") {
+            Value::Int(n) => n,
+            Value::Float(f) => f as i32,
+            _ => 0,
+        };
+        runtime.set_object_field(actor, "health", Value::Int(before - amount));
+        // The last hit, as the engine records it on the actor for scripts.
+        runtime.set_object_field(actor, "damagetaken", Value::Int(amount));
+        runtime.set_object_field(actor, "damagemod", arg(4));
+        runtime.set_object_field(actor, "damageweapon", arg(5));
+        runtime.set_object_field(actor, "damagedir", arg(7));
+        runtime.set_object_field(actor, "damagelocation", arg(8));
+        (before, runtime.object_field(actor, "model"))
+    };
+    raise(
+        world,
+        Value::Object(actor),
+        "damage",
+        vec![
+            Value::Int(amount),
+            arg(1),
+            arg(7),
+            arg(6),
+            arg(4),
+            model,
+            Value::string(""),
+            Value::string(""),
+            arg(3),
+            arg(5),
+        ],
+    );
+    if before > 0 && before - amount <= 0 {
+        let killed = vec![
+            arg(0),
+            arg(1),
+            Value::Int(amount),
+            arg(4),
+            arg(5),
+            arg(7),
+            arg(8),
+            Value::Int(0),
+        ];
+        let now = super::players::now_ms(world);
+        if let Err(fault) = run_now(world, ACTOR_KILLED, Value::Object(actor), killed, now) {
+            diag::warn!(Sim, "actor killed callback: {fault:?}");
+        }
+        raise(world, Value::Object(actor), "death", vec![arg(1)]);
+        super::actor_brain::kill(world, actor);
+    }
+    Ok(Value::Undefined)
+}
+
+pub(crate) fn register_damage(registry: &mut NativeRegistry) {
+    registry.register(
+        Namespace::Method,
+        "finishactordamage",
+        |world, receiver, args| {
+            let id = entity_id(world, receiver)?;
+            finish_damage(world, id, args)
+        },
+    );
+}
+
+/// The hit location a bone falls in.
+fn hit_location(tag: &str) -> &'static str {
+    let tag = tag.to_ascii_lowercase();
+    let side = |left: &'static str, right: &'static str| {
+        if tag.ends_with("_le") { left } else { right }
+    };
+    if tag.contains("head") || tag.contains("helmet") || tag.contains("eye") {
+        "head"
+    } else if tag.contains("neck") {
+        "neck"
+    } else if tag.contains("shoulder") || tag.contains("bicep") {
+        side("left_arm_upper", "right_arm_upper")
+    } else if tag.contains("elbow") {
+        side("left_arm_lower", "right_arm_lower")
+    } else if tag.contains("wrist") || tag.contains("hand") || tag.contains("finger") {
+        side("left_hand", "right_hand")
+    } else if tag.contains("hip") {
+        side("left_leg_upper", "right_leg_upper")
+    } else if tag.contains("knee") {
+        side("left_leg_lower", "right_leg_lower")
+    } else if tag.contains("ankle") || tag.contains("ball") {
+        side("left_foot", "right_foot")
+    } else if tag.contains("mainroot") || tag.contains("pelvis") || tag.contains("spinelower") {
+        "torso_lower"
+    } else {
+        "torso_upper"
+    }
 }

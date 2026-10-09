@@ -69,7 +69,8 @@ Done when a zombie stands in Kino playing an animation.
 - [x] Run the zombie animscript init and dispatch `stop`; a spawned zombie idles
       on `ai_zombie_idle_v1_delta`.
 - [x] Dispatch `move`, `combat`, `scripted` and traversals as well as `stop`.
-- [ ] Custom animation (`AnimCustom`) and `death`.
+- [x] `death`.
+- [ ] Custom animation (`AnimCustom`).
 
 Done when the real zombie animscripts run and the zombie animates in place.
 
@@ -94,8 +95,11 @@ Done when zombies come through windows and use every traversal in Kino.
 
 ### 6. Combat
 - [x] Zombie melee damages players (and kills a lone player).
-- [ ] Player weapons hit actors with hit locations (headshots).
-- [ ] Death, corpses, ragdoll and gibbing.
+- [x] Damage on actors runs the actor damage/killed callbacks (points, gib
+      checks) and finishes through `FinishActorDamage`; killed zombies play
+      their death animscript and are removed, and rounds advance.
+- [ ] Verify real player bullets against actor hitboxes (the authority pose
+      of an actor does not follow its animation yet), ragdoll and gibbing.
 
 Done when a single zombie can be fought and killed with correct feedback.
 

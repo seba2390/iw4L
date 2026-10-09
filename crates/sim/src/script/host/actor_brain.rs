@@ -11,6 +11,7 @@ pub(crate) enum AnimScript {
     Combat,
     Scripted,
     Traverse,
+    Death,
 }
 
 impl AnimScript {
@@ -21,6 +22,7 @@ impl AnimScript {
             Self::Combat => "combat",
             Self::Scripted => "scripted",
             Self::Traverse => "traverse",
+            Self::Death => "death",
         }
     }
 }
@@ -30,6 +32,9 @@ pub(crate) struct ActorBrain {
     /// Animscript family, `zombie_` or `zombie_dog_`.
     prefix: &'static str,
     script: Option<AnimScript>,
+    /// Killed; its death animscript plays out, then the actor is removed.
+    dead: bool,
+    death_thread: Option<u64>,
 }
 
 /// An enemy this close is fought rather than approached.
@@ -52,6 +57,17 @@ pub const ANIMSCRIPT_MODULES: &[&str] = &[
     "animscripts/zombie_dog_pain",
     "animscripts/zombie_dog_scripted",
 ];
+
+/// Marks an actor killed: its death animscript replaces whatever it ran.
+pub(crate) fn kill(world: &mut World, actor: u64) {
+    let mut runtime = world.resource_mut::<Runtime>();
+    if let Some(brain) = runtime.actor_brains.get_mut(&actor) {
+        brain.dead = true;
+    }
+    if let Some(movement) = runtime.actor_moves.get_mut(&actor) {
+        *movement = super::actor_nav::ActorMove::default();
+    }
+}
 
 /// The actor's animscript family prefix.
 pub(crate) fn prefix(world: &World, actor: u64) -> &'static str {
@@ -78,6 +94,8 @@ pub(crate) fn begin(world: &mut World, actor: u64) -> Result<(), String> {
         ActorBrain {
             prefix,
             script: None,
+            dead: false,
+            death_thread: None,
         },
     );
     runtime.actor_moves.entry(actor).or_default();
@@ -94,6 +112,33 @@ pub(crate) fn think(world: &mut World) {
         .map(|(actor, brain)| (*actor, brain.clone()))
         .collect();
     for (actor, brain) in actors {
+        if brain.dead {
+            match brain.death_thread {
+                Some(thread) if !crate::script::runtime::thread_alive(world, thread) => {
+                    let mut runtime = world.resource_mut::<Runtime>();
+                    runtime.actor_brains.remove(&actor);
+                    if !runtime.pending_deletes.contains(&actor) {
+                        runtime.pending_deletes.push(actor);
+                    }
+                }
+                Some(_) => {}
+                None => {
+                    if brain.script.is_some() {
+                        raise(world, Value::Object(actor), "killanimscript", Vec::new());
+                    }
+                    let main = format!("animscripts/{}death::main", brain.prefix);
+                    let thread =
+                        crate::script::start(world, &main, Value::Object(actor), Vec::new()).ok();
+                    if let Some(brain) =
+                        world.resource_mut::<Runtime>().actor_brains.get_mut(&actor)
+                    {
+                        brain.script = Some(AnimScript::Death);
+                        brain.death_thread = Some(thread.unwrap_or(0));
+                    }
+                }
+            }
+            continue;
+        }
         super::actor_nav::choose_enemy(world, actor);
         let scripted = world
             .resource::<Runtime>()

@@ -247,6 +247,10 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
         super::vehicles::damage(world, object, hit, attacker, &weapon, &tag);
         return true;
     }
+    if world.resource::<Runtime>().entities[&object].kind == super::entities::EntityKind::Actor {
+        super::actors::damage(world, object, hit, attacker, &weapon, &tag);
+        return true;
+    }
     let mut runtime = world.resource_mut::<Runtime>();
     let model = match runtime.object_field(object, "model") {
         Value::String(model) => model,
