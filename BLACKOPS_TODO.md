@@ -109,7 +109,8 @@ Done when zombies come through windows and use every traversal in Kino.
 - [x] Player bullets hit actors on their animated bone boxes with the right
       hit locations (the zombies match leaves warmup when every player is
       connected, so shots trace entities).
-- [ ] Ragdoll (`startragdoll` on a dying actor) and gibbing.
+- [ ] Ragdoll (`startragdoll` on a dying actor; dead zombies hold their death
+      pose for now) and thrown gib pieces (heads already come off).
 
 Done when a single zombie can be fought and killed with correct feedback.
 
@@ -129,8 +130,12 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Game over: a downed solo player without Quick Revive ends the game
       with the "You Survived N Rounds" screen (T5 SetText/SetHintString
       values fill the string's `&&1`..), then the session returns to the menu.
-- [ ] Debris, mystery box, Pack-a-Punch, teleporter, power-ups, last stand
+- [ ] Debris, Pack-a-Punch, teleporter, the remaining power-ups, last stand
       with Quick Revive.
+- [x] Mystery box: bought at its random start location, the weapons spin
+      and the drawn weapon is taken (a SPAS-12 in the test run).
+- [x] Power-ups drop from killed zombies at the score thresholds and are
+      picked up by walking over them (Insta-Kill verified).
 - [x] Zombie sounds: the zombie and singleplayer zones' aliases join the
       sound bank, scripts' bare `zmb_*` names play as T5 aliases, and
       `PlaySound(alias, notify)` raises its done-notify (after a fixed 2s;
