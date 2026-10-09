@@ -102,6 +102,7 @@ pub struct SampleAdapter {
     pub rgb_scale: f32,
     pub scale_row: Option<ConstantRow>,
     pub alpha_row: Option<ConstantRow>,
+    pub depth_near_row: Option<ConstantRow>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -836,6 +837,10 @@ impl Lowering<'_> {
                     ))),
                     None => Ok(None),
                 };
+                if let Some(near) = row_lane(adapter.depth_near_row, "x")? {
+                    let decoded = format!("vec4<f32>({near} / max(abs(({sampled}).x), 1.0e-7))");
+                    return self.store(op(0)?, &decoded, Kind::Float, i.saturate());
+                }
                 let scale = match row_lane(adapter.scale_row, "x")? {
                     Some(lane) => format!("{:?} * {lane}", adapter.rgb_scale),
                     None => format!("{:?}", adapter.rgb_scale),
@@ -952,7 +957,7 @@ fn stage_body(
     declared.extend(
         abi.sample_adapters
             .iter()
-            .flat_map(|adapter| [adapter.scale_row, adapter.alpha_row])
+            .flat_map(|adapter| [adapter.scale_row, adapter.alpha_row, adapter.depth_near_row])
             .flatten()
             .filter(|row| lowering.constants.contains_key(row)),
     );

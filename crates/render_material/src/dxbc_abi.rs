@@ -294,6 +294,16 @@ pub(crate) fn build_dxbc_pass_abi(
         pixel_rows.push(SAMPLE_DECODE_ROW);
         pixel_constants = constant_bindings(&pixel_rows, RuntimeShaderStage::Pixel, arguments)?;
     }
+    let depth_near_row = pixel_constants.iter().find_map(|binding| {
+        matches!(
+            binding.source,
+            ConstantSource::Code {
+                index: 0x21,
+                row: 0
+            }
+        )
+        .then(|| pixel_rows[usize::from(binding.register)])
+    });
     let sample_adapters = samplers
         .iter()
         .enumerate()
@@ -305,6 +315,7 @@ pub(crate) fn build_dxbc_pass_abi(
                 rgb_scale: 1.0,
                 scale_row: Some(SAMPLE_DECODE_ROW),
                 alpha_row: None,
+                depth_near_row: None,
             }),
             SamplerSource::SurfaceReflectionProbe => Some(SampleAdapter {
                 slot,
@@ -313,6 +324,16 @@ pub(crate) fn build_dxbc_pass_abi(
                 rgb_scale: 1.0,
                 scale_row: None,
                 alpha_row: Some(SAMPLE_DECODE_ROW),
+                depth_near_row: None,
+            }),
+            SamplerSource::CodeTexture { index: 0x0f } => depth_near_row.map(|row| SampleAdapter {
+                slot,
+                opaque_alpha: false,
+                square_rgb: false,
+                rgb_scale: 1.0,
+                scale_row: None,
+                alpha_row: None,
+                depth_near_row: Some(row),
             }),
             _ => None,
         })
