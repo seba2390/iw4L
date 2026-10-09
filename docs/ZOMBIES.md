@@ -14,6 +14,8 @@ Authored priced doors remove their linked models/collision and reconnect routes.
 
 Survivors start with M1911 (Origins: Mauser) and 500 points. Use nearby
 wall buys for weapons/ammo. Hits/kills earn points. The box has owner-only pickup.
+Native drops support Double Points, Insta-Kill, Max Ammo, Nukes and basic Carpenter.
+Drop limits/timers, reserve refill and native buff-icon bindings work; advanced presentation and map rewards remain incomplete.
 Two guns are retained; Mule Kick permits three and removes the extra gun on downing.
 Pack-a-Punch takes an available native upgraded variant through a five-second
 hand-in and owner-only pickup. Unsupported variants are refused without charging.
@@ -41,10 +43,8 @@ Co-op supports held-use teammate revival through separate clients; no split-scre
 | Origins | `t6:zm_tomb` |
 
 All six have prepared geometry/collision/assets; complete gameplay is not established.
-Native Nuketown verified combat, points, rounds, wall buys, box pickup and a priced
-house door. TranZit verified Depot rendering, tearing/entry, repairs and solo revival.
+Nuketown verified combat, points, rounds, wall buys, box and a house door; TranZit verified Depot rendering, windows, repairs and solo revival.
 Die Rise/Buried verified power switches; Origins verified Mauser spawn, six generators and shared shovel pickups.
 Pack-a-Punch purchases and additional perk effects need broader native verification.
-Transport, buildables, special enemies, quests, scripted events, Nuketown perk arrival,
-map-specific progression, traversal and full round scaling remain unfinished.
+Transport, buildables, special enemies, quests, events, Nuketown perk arrival, map-specific progression and traversal remain unfinished.
 Town/Farm/Bus Depot variants, Grief and Turned need submode/location handling.

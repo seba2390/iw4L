@@ -24,6 +24,7 @@ enum HudArt {
     Score,
     Damage,
     Perk(u8),
+    Powerup(u8),
 }
 
 #[derive(Component, Clone, Copy)]
@@ -37,6 +38,7 @@ enum Field {
     Status,
     Killfeed,
     Scoreboard,
+    Powerups,
 }
 
 #[derive(Resource, Default)]
@@ -167,6 +169,22 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                     Val::Px(38.0),
                     Val::Px(38.0),
                 ),
+                (
+                    HudArt::Powerup(0),
+                    Val::Percent(45.0),
+                    Val::Auto,
+                    Val::Px(60.0),
+                    Val::Px(48.0),
+                    Val::Px(48.0),
+                ),
+                (
+                    HudArt::Powerup(1),
+                    Val::Percent(50.0),
+                    Val::Auto,
+                    Val::Px(60.0),
+                    Val::Px(48.0),
+                    Val::Px(48.0),
+                ),
             ] {
                 root.spawn((
                     kind,
@@ -258,6 +276,14 @@ fn spawn(mut commands: Commands, font: Res<GameUiFont>, existing: Query<Entity, 
                     Val::Auto,
                     Val::Auto,
                     16.0,
+                ),
+                (
+                    Field::Powerups,
+                    Val::Percent(40.0),
+                    Val::Auto,
+                    Val::Auto,
+                    Val::Px(60.0),
+                    18.0,
                 ),
             ] {
                 root.spawn((
@@ -501,7 +527,7 @@ fn refresh(
                     )
                 }
             }
-            Field::Round | Field::Use
+            Field::Round | Field::Use | Field::Powerups
                 if snapshot.meta.kind.token() == "zclassic" && alive && !scores =>
             {
                 let message = meta
@@ -514,6 +540,9 @@ fn refresh(
                     .filter_map(|raw| raw.strip_prefix(sim::HUD_STRING_PLAIN))
                     .find(|text| match field {
                         Field::Round => text.starts_with("ROUND "),
+                        Field::Powerups => {
+                            text.contains("DOUBLE POINTS") || text.contains("INSTA-KILL")
+                        }
                         _ => {
                             text.starts_with("USE:")
                                 || text.starts_with("Mystery Box")
@@ -646,6 +675,21 @@ fn refresh_art(
         .unwrap_or("")
         .split_whitespace()
         .collect();
+    let powerups = labels
+        .iter()
+        .find(|label| label.contains("DOUBLE POINTS") || label.contains("INSTA-KILL"))
+        .copied()
+        .unwrap_or("");
+    let double_points = powerups.contains("DOUBLE POINTS");
+    let insta_kill = powerups.contains("INSTA-KILL");
+    let double_art = double_points
+        .then(|| art.image("specialty_doublepoints_zombies", &mut images))
+        .flatten();
+    let instant_art = insta_kill
+        .then(|| art.image("specialty_instakill_zombies", &mut images))
+        .flatten();
+    let powerups_rendered =
+        (!double_points || double_art.is_some()) && (!insta_kill || instant_art.is_some());
     let tally = round
         .filter(|round| (1..=5).contains(round))
         .and_then(|round| art.image(&format!("hud_chalk_{round}"), &mut images));
@@ -667,6 +711,8 @@ fn refresh_art(
                 &mut images,
             ),
             HudArt::Damage if ps.health < ps.max_health => damage.clone(),
+            HudArt::Powerup(0) if zombies => double_art.clone(),
+            HudArt::Powerup(1) if zombies => instant_art.clone(),
             HudArt::Perk(index)
                 if zombies && ps.pm_flags & playerstate_iw4::pm_flags::LAST_STAND == 0 =>
             {
@@ -709,6 +755,7 @@ fn refresh_art(
     for (field, mut node) in &mut fields {
         if (matches!(field, Field::Round) && zombies && tally.is_some() && alive && !scores)
             || (matches!(field, Field::Health) && damage.is_some())
+            || (matches!(field, Field::Powerups) && zombies && powerups_rendered)
         {
             node.display = Display::None;
         }

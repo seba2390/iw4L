@@ -1,5 +1,6 @@
 mod origins;
 mod origins_tools;
+mod powerups;
 mod rounds;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -59,6 +60,7 @@ pub(crate) struct Survival {
     entry_ticks: u32,
     origins: origins::PowerGrid,
     tools: origins_tools::Tools,
+    powerups: powerups::Powerups,
 }
 
 #[derive(Clone, Debug)]
@@ -95,6 +97,8 @@ struct Survivor {
     repair_points: i32,
     generator_label: Option<u64>,
     last_generators: String,
+    powerup_label: Option<u64>,
+    last_powerups: String,
 }
 
 #[derive(Clone, Debug)]
@@ -1716,7 +1720,7 @@ fn advance_revives(world: &mut World, state: &mut Survival, tick: Tick) {
             if tick.0.saturating_sub(progress.1) >= duration {
                 drop(frame);
                 restore_survivor(world, state, victim);
-                score(world, helper, 50);
+                score(world, helper, state.powerups.reward(tick, 50));
                 continue;
             }
         } else {
@@ -1859,7 +1863,7 @@ fn interactions(
                     survivor.repair_due = tick.0 + ticks(1000);
                     let cap = (state.round.min(10) as i32 * 40).max(40);
                     if survivor.repair_points < cap {
-                        score(world, client, 10);
+                        score(world, client, state.powerups.reward(tick, 10));
                         survivor.repair_points += 10;
                     }
                     diag::info!(
@@ -2074,6 +2078,7 @@ pub(crate) fn advance(world: &mut World) {
                 survivor.round_label,
                 survivor.perk_label,
                 survivor.generator_label,
+                survivor.powerup_label,
             ]
             .into_iter()
             .flatten()
@@ -2177,6 +2182,7 @@ pub(crate) fn advance(world: &mut World) {
         if state.next_round.is_some_and(|due| tick.0 >= due) {
             state.started.get_or_insert(tick.0);
             state.round = (state.round + 1).min(255);
+            state.powerups.new_round();
             state.remaining = rounds::population(
                 state.round,
                 FrameWorld::from_world(world).client_ids_sorted().len(),
@@ -2205,6 +2211,7 @@ pub(crate) fn advance(world: &mut World) {
         prepare_machines(world, &mut state, &players);
         state.tools.advance(world, &players);
         interactions(world, &mut state, tick, &players);
+        powerups::advance(world, &mut state, tick);
         if state.remaining == 0 && state.actors.is_empty() && state.next_round.is_none() {
             state.next_round = Some(tick.0 + ticks(10000));
         }
@@ -2216,10 +2223,27 @@ pub(crate) fn advance(world: &mut World) {
 }
 
 pub(crate) fn entity_damage_amount(
-    world: &World,
+    world: &mut World,
     object: u64,
     hit: &super::entity_damage::EntityHit,
 ) -> i32 {
+    let runtime = world.resource::<Runtime>();
+    if hit.amount > 0
+        && hit.attacker.is_some()
+        && runtime.zombies.actors.contains_key(&object)
+        && runtime
+            .zombies
+            .powerups
+            .instant(world.resource::<crate::step::StepRequest>().tick)
+    {
+        return match world
+            .resource_mut::<Runtime>()
+            .object_field(object, "health")
+        {
+            Value::Int(health) => health.max(hit.amount),
+            _ => hit.amount,
+        };
+    }
     let boosted = world
         .resource::<Runtime>()
         .zombies
@@ -2269,11 +2293,18 @@ pub(crate) fn entity_damage(
         return;
     }
     let killed = after <= 0;
-    if killed {
+    let origin = if killed {
         let mut runtime = world.resource_mut::<Runtime>();
-        runtime.zombies.actors.remove(&object);
+        let origin = runtime
+            .zombies
+            .actors
+            .remove(&object)
+            .map(|actor| actor.origin);
         runtime.pending_deletes.push(object);
-    }
+        origin
+    } else {
+        None
+    };
     if let Some(client) = hit.attacker {
         if killed {
             let mut frame = FrameWorld::from_world(world);
@@ -2290,12 +2321,31 @@ pub(crate) fn entity_damage(
         } else {
             60
         };
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        let reward = world
+            .resource_mut::<Runtime>()
+            .zombies
+            .powerups
+            .reward(tick, reward);
         score(world, client, reward);
         diag::info!(
             Sim,
             "zombies hit object={object} before={before} after={after} points={reward} client={}",
             client.0
         );
+        if let Some(origin) = origin {
+            let mut runtime = world.resource_mut::<Runtime>();
+            let destroyed = runtime
+                .zombies
+                .barriers
+                .iter()
+                .filter(|barrier| barrier.boards == 0 && !barrier.models.is_empty())
+                .count();
+            let mut powers = std::mem::take(&mut runtime.zombies.powerups);
+            drop(runtime);
+            powers.killed(world, origin, destroyed);
+            world.resource_mut::<Runtime>().zombies.powerups = powers;
+        }
     }
 }
 

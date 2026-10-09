@@ -2292,10 +2292,18 @@ impl ZoneLane for T6Lane {
                         || matches!(name, "p6_anim_zm_buildable_pap" | "p6_zm_tm_packapunch");
                     let shovel = path.file_stem().and_then(|stem| stem.to_str()) == Some("zm_tomb")
                         && name == "p6_zm_tm_shovel";
+                    let powerup = matches!(
+                        name,
+                        "zombie_bomb"
+                            | "zombie_skull"
+                            | "zombie_ammocan"
+                            | "zombie_x2_icon"
+                            | "zombie_carpenter"
+                    );
                     if (script_placements.iter().any(|p| p.model == name)
                         || (asset_transport::t6_content::T6ContentMode::for_path(path)
                             == asset_transport::t6_content::T6ContentMode::Zombies
-                            && (actor || board || machine || shovel)))
+                            && (actor || board || machine || shovel || powerup)))
                         && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
                     {
                         script_xmodels.push(model);
