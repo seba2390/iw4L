@@ -33,6 +33,8 @@ pub const ITEM_USE_HOLD_MS: i32 = 250;
 
 pub const PLAYER_DROP_Z: f32 = (PLAYER_MAXS[2] - PLAYER_MINS[2]) * 0.5;
 
+const SHIELD_DROP_PITCH: f32 = -90.0;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DroppedItem {
     pub state: entity_iw4::EntityState,
@@ -326,11 +328,19 @@ fn launch_dropped_from_ps(
         tr_time: 0,
         tr_duration: 0,
         tr_delta: [0.0; 3],
-        tr_base: [0.0, ps.viewangles[1], 0.0],
+        tr_base: dropped_angles(world, weapon, ps.viewangles[1]),
     };
     push_dropped_item(
         world, weapon, origin, pos, apos, owner, clip_r, clip_l, stock, true, scavenger,
     )
+}
+
+fn dropped_angles(world: &FrameWorld, weapon: u32, yaw: f32) -> [f32; 3] {
+    let shield = world
+        .combat_facts_for(weapon)
+        .is_some_and(|facts| facts.weap_type == weapon_iw4::WEAPTYPE_SHIELD);
+    let pitch = if shield { SHIELD_DROP_PITCH } else { 0.0 };
+    [pitch, yaw, 0.0]
 }
 
 pub(crate) fn drop_weapon(
@@ -771,7 +781,7 @@ fn drop_current_primary_at(
         tr_time: 0,
         tr_duration: 0,
         tr_delta: [0.0; 3],
-        tr_base: angles,
+        tr_base: dropped_angles(world, weapon, angles[1]),
     };
     let entnum = push_dropped_item(
         world,
