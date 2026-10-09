@@ -1267,6 +1267,16 @@ pub(crate) fn sync_players(world: &mut World) {
                         .set_object_field(object, "pers", pers),
                     Err(_) => return,
                 }
+                // Zombie scripts never pick a team: every player fights for the allies.
+                if FrameWorld::from_world(world).bootstrap_ref().kind
+                    == gamemode_iw4::GameModeKind::Zombies
+                {
+                    let team = Value::string("allies");
+                    let _ = store_field(world, client, "sessionteam", &team);
+                    world
+                        .resource_mut::<Runtime>()
+                        .set_object_field(object, "team", team);
+                }
                 if run_now(world, CONNECT, Value::Object(object), Vec::new(), now).is_err() {
                     return;
                 }

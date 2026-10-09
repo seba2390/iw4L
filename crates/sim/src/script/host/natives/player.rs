@@ -588,6 +588,13 @@ pub(crate) fn corpse_anim(world: &World, receiver: &Value) -> Result<Option<Arc<
     }
 }
 
+fn is_actor(world: &World, receiver: &Value) -> bool {
+    matches!(
+        entity_kind(world, receiver),
+        Some((_, super::super::entities::EntityKind::Actor))
+    )
+}
+
 fn item_number(world: &World, receiver: &Value) -> Result<i32, String> {
     match entity_kind(world, receiver) {
         Some((_, super::super::entities::EntityKind::Item(number))) => Ok(number),
@@ -782,12 +789,17 @@ fn register_death(registry: &mut NativeRegistry) {
             name,
         })
     });
+    // Actors have no ragdoll physics yet: a dead actor holds its death pose.
     registry.register(Method, "isragdoll", |world, receiver, _| {
-        corpse_anim(world, receiver)?;
+        if !is_actor(world, receiver) {
+            corpse_anim(world, receiver)?;
+        }
         Ok(Value::Int(0))
     });
     registry.register(Method, "startragdoll", |world, receiver, _| {
-        corpse_anim(world, receiver)?;
+        if !is_actor(world, receiver) {
+            corpse_anim(world, receiver)?;
+        }
         Ok(Value::Undefined)
     });
     registry.register(

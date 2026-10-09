@@ -41,6 +41,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
     }
     vision_channel!("visionsetnaked", "visionsetnakedforplayer", naked_vision);
+    // Singleplayer scripts set a player's own vision set without the suffix.
+    registry.register(Method, "visionsetnaked", |world, receiver, args| {
+        let client = player(world, receiver)?;
+        let vision = vision_change(world, args)?;
+        edit_view(world, client, |view| view.naked_vision = Some(vision));
+        Ok(Value::Undefined)
+    });
     // The player's own vision set wins; before any is set it is the map's.
     registry.register(Method, "getvisionsetnaked", |world, receiver, _| {
         let client = player(world, receiver)?;

@@ -240,9 +240,10 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
         })
         .unwrap_or_default();
     let weapon = crate::script_player::weapon_name(&frame, hit.weapon);
-    let attacker = hit.attacker.map_or(Value::Undefined, |a| {
-        super::players::player_object(world, a.0)
-    });
+    let attacker = match hit.attacker {
+        Some(a) => super::players::player_object(world, a.0),
+        None => super::players::damage_entity(world, None),
+    };
     if world.resource::<Runtime>().entities[&object].kind == super::entities::EntityKind::Vehicle {
         super::vehicles::damage(world, object, hit, attacker, &weapon, &tag);
         return true;

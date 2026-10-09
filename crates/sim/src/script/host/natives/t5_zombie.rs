@@ -41,9 +41,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
         Ok(Value::Int(sentient.into()))
     });
-    registry.register(Function, "getaispeciesarray", |world, _, _| {
-        new_array(world, Vec::new())
-    });
     registry.register(Function, "getspawnerarray", |world, _, args| {
         no_args(args)?;
         let spawners = spawners(world).into_iter().map(Value::Object).collect();
@@ -110,6 +107,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "settransported",
         // A perk machine shaking as the power comes on.
         "vibrate",
+        // Gibbed limbs are not thrown yet; scripts swap the damaged models.
+        "gib",
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
@@ -133,6 +132,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "disableinvulnerability", |world, receiver, _| {
         set_invulnerable(world, receiver, false)
     });
+    // No search for a spot that sees a lost enemy: the reacquire steps fail
+    // and the animscripts fall back to running at the enemy along the paths.
+    registry.register(Method, "reacquirestep", |_, _, _| Ok(Value::Int(0)));
+    registry.register(Method, "usereacquirenode", |_, _, _| Ok(Value::Int(0)));
+    for name in [
+        "findreacquirenode",
+        "getreacquirenode",
+        "flagenemyunattackable",
+    ] {
+        registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
+    }
     // No gas weapons (nova gas) exist in the zombie maps this host runs.
     registry.register(Function, "weaponisgasweapon", |_, _, _| Ok(Value::Int(0)));
     for name in [
