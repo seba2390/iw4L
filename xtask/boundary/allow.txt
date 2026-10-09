@@ -454,7 +454,6 @@ pattern crates/hud/src/overhead_names.rs hud_iw4:: 1
 pattern crates/hud/src/overhead_names.rs playerstate_iw4:: 2
 pattern crates/hud/src/playercard.rs entity_iw4:: 1
 pattern crates/hud/src/playercard.rs hud_iw4:: 11
-pattern crates/hud/src/plugin.rs AssetNamespace::<game> 1
 pattern crates/hud/src/reticle.rs hud_iw4:: 1
 pattern crates/hud/src/reticle.rs movement_iw4:: 1
 pattern crates/hud/src/reticle.rs playerstate_iw4:: 3

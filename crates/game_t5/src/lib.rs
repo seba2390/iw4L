@@ -86,6 +86,11 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     binds_account: false,
     binds_objectives: false,
     hud: HudRules {
+        code_hud: Rule::Unknown(unknown!(
+            "t5.hud.code_hud",
+            "Black Ops zombies' code-drawn HUD: hud elem placement, blood, reticle, killfeed, names, hints, flash",
+            "Black Ops' HUD rules from its executable, or reference shots of each piece"
+        )),
         game_hud_menus: true,
         scoreboard: false,
         scorebar: false,

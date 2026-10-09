@@ -47,6 +47,7 @@ const MODE: ModeRules = ModeRules {
     binds_account: true,
     binds_objectives: true,
     hud: HudRules {
+        code_hud: Rule::Known(()),
         game_hud_menus: false,
         scoreboard: true,
         scorebar: true,

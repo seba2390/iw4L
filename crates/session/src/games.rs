@@ -16,7 +16,7 @@ pub(crate) fn scripts(family: FamilyId) -> &'static dyn game_api::GameScripts {
 pub fn modes(family: FamilyId) -> &'static dyn game_api::GameModes {
     match family {
         FamilyId::Iw4 => &game_iw4::GAME,
-        FamilyId::T5 => &game_t5::GAME,
+        FamilyId::T5 => &T5_ON_IW4_CODE_HUD,
         FamilyId::Iw5 => &game_iw5::GAME,
         FamilyId::T6 => &game_t6::GAME,
     }
@@ -35,5 +35,26 @@ pub fn menus(family: FamilyId) -> &'static dyn game_api::GameMenus {
         FamilyId::T5 => &game_t5::GAME,
         FamilyId::Iw5 => &game_iw5::GAME,
         FamilyId::T6 => &game_t6::GAME,
+    }
+}
+
+/// Black Ops' modes with Modern Warfare 2's code-drawn HUD.
+struct T5OnIw4CodeHud;
+
+static T5_ON_IW4_CODE_HUD: T5OnIw4CodeHud = T5OnIw4CodeHud;
+
+impl game_api::GameModes for T5OnIw4CodeHud {
+    fn mode(&self, gametype: &str) -> game_api::Rule<game_api::ModeRules> {
+        match game_api::GameModes::mode(&game_t5::GAME, gametype) {
+            game_api::Rule::Known(mut mode) => {
+                mode.hud.code_hud = game_api::Rule::Known(());
+                game_api::Rule::Known(mode)
+            }
+            unknown => unknown,
+        }
+    }
+
+    fn zombies(&self) -> Option<&'static game_api::LibraryMode> {
+        game_api::GameModes::zombies(&game_t5::GAME)
     }
 }

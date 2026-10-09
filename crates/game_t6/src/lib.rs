@@ -82,6 +82,11 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     binds_account: false,
     binds_objectives: true,
     hud: HudRules {
+        code_hud: Rule::Unknown(unknown!(
+            "t6.hud.code_hud",
+            "Black Ops 2's code-drawn HUD; IW4L's own Black Ops 2 HUD (ui/src/t6_hud.rs) draws instead",
+            "Black Ops 2's HUD rules"
+        )),
         game_hud_menus: false,
         scoreboard: true,
         scorebar: true,

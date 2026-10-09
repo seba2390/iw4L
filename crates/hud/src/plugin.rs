@@ -359,13 +359,13 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
 fn sync_hud_visibility(
     screen: Res<AppScreen>,
     ui_draw: Option<Res<UiDraw>>,
-    map: Option<Res<assets::SessionMapIdentity>>,
+    mode: Option<Res<game_api::ModeRules>>,
     mut roots: Query<&mut Visibility, With<HudRoot>>,
     mut visible: ResMut<HudRootVisible>,
 ) {
     let ui_on = ui_draw.is_some_and(|d| d.0);
-    let native_t6 = map.is_some_and(|map| map.namespace == Some(asset_core::AssetNamespace::T6));
-    let show = hud_root_should_show(*screen, ui_on) && !native_t6;
+    let code_hud_unknown = mode.is_some_and(|mode| mode.hud.code_hud != game_api::Rule::Known(()));
+    let show = hud_root_should_show(*screen, ui_on) && !code_hud_unknown;
     visible.0 = Some(i32::from(show));
     for mut vis in &mut roots {
         let want = if show {
