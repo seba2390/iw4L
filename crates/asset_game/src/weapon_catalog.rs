@@ -332,6 +332,7 @@ pub(crate) struct WeaponBodyFacts {
 
     pub no_dual_wield: bool,
     pub dual_wield: bool,
+    pub fuel_tank: bool,
     pub fire_melees: bool,
 }
 

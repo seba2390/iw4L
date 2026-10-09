@@ -311,28 +311,9 @@ pub(crate) fn update_scorebar(
         hide(&mut pass);
         return;
     };
+    // Black Ops' points column is the `competitivemodescores` menu.
     if snap.meta.kind == gamemode_iw4::GameModeKind::Zombies {
-        if matches!(
-            snap.meta.phase,
-            sim::MatchPhase::Intermission | sim::MatchPhase::PostGame
-        ) || local_meta.lifecycle == sim::ClientLifecycle::Intermission
-        {
-            hide(&mut pass);
-            return;
-        }
-        let mut scores: Vec<(bool, i32)> = snap
-            .meta
-            .clients
-            .iter()
-            .map(|(id, meta)| (*id == local.0, meta.score))
-            .collect();
-        scores.sort_by_key(|(own, _)| !own);
-        pass.scorebar = match catalog.as_deref() {
-            Some(catalog) => {
-                crate::zombie_hud::points(&surface, catalog, &scores, &mut hud_images, &mut images)
-            }
-            None => TessJob::Hide,
-        };
+        hide(&mut pass);
         return;
     }
 

@@ -426,6 +426,14 @@ pub trait ExprHost {
     fn map_name(&self) -> Result<Operand, ExprError> {
         Err(ExprError::UnsupportedOp(OP_GETMAPNAME))
     }
+
+    fn is_dual_wield(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("isdualwield"))
+    }
+
+    fn is_fuel_weapon(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("isfuelweapon"))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -455,14 +463,26 @@ fn pairs_with_right_paren(op: i32) -> bool {
 pub struct Statement {
     entries: Vec<Entry>,
 
+    t5: Option<Vec<crate::expr_t5::T5Token>>,
+
     empty: bool,
 }
 
 impl Statement {
     pub fn parse(dump: &str) -> Result<Self, ExprError> {
-        let empty = dump.split_whitespace().next().is_none();
+        let mut tokens = dump.split_whitespace();
+        let empty = tokens.clone().next().is_none();
+        if tokens.next() == Some("t5") {
+            let rest: Vec<&str> = tokens.collect();
+            return Ok(Self {
+                entries: Vec::new(),
+                t5: Some(crate::expr_t5::parse(&rest)?),
+                empty,
+            });
+        }
         Ok(Self {
             entries: parse_dump(dump)?,
+            t5: None,
             empty,
         })
     }
@@ -475,6 +495,9 @@ impl Statement {
     }
 
     pub fn evaluate(&self, host: &impl ExprHost) -> Result<Operand, ExprError> {
+        if let Some(program) = &self.t5 {
+            return crate::expr_t5::evaluate(program, host);
+        }
         eval_entries(&self.entries, host)
     }
 
@@ -1053,7 +1076,7 @@ fn run_op(
     }
 }
 
-fn logic_op(op: i32, a: Operand, b: Operand) -> Result<Operand, ExprError> {
+pub(crate) fn logic_op(op: i32, a: Operand, b: Operand) -> Result<Operand, ExprError> {
     if matches!(op, OP_EQUALS | OP_NOTEQUAL) {
         if let (Operand::Str(x), Operand::Str(y)) = (&a, &b) {
             let eq = x.eq_ignore_ascii_case(y);

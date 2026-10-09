@@ -52,6 +52,28 @@ pub(crate) struct ChromeAssets<'a> {
     pub localize: Option<&'a LocalizeCatalog>,
 }
 
+impl ChromeAssets<'_> {
+    /// Where the catalog's own materials (fonts, backgrounds) are looked up.
+    pub(crate) fn namespace(&self) -> asset_core::AssetNamespace {
+        self.catalog
+            .and_then(|c| c.namespace)
+            .unwrap_or(crate::images::HUD_CHROME_NAMESPACE)
+    }
+
+    /// The font an item's `textfont` names in the catalog's game.
+    pub(crate) fn font_name(
+        &self,
+        font_enum: i32,
+        placement_scale: f32,
+        text_scale: f32,
+    ) -> Option<&'static str> {
+        if self.catalog.and_then(|c| c.namespace) == Some(asset_core::AssetNamespace::T5) {
+            return hud_iw4::t5_ui_font_name(font_enum);
+        }
+        Some(ui_get_font_handle(font_enum, placement_scale, text_scale))
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ChromeCoverage {
     pub(crate) items_total: usize,
@@ -403,11 +425,14 @@ fn paint_text(
         frame.coverage.painted();
         return;
     }
-    let font_name = ui_get_font_handle(
+    let Some(font_name) = assets.font_name(
         item.font_enum,
         surface.scale_virtual_to_real()[1],
         item.text_scale,
-    );
+    ) else {
+        frame.coverage.gap(index, ChromeGapKind::AssetFont);
+        return;
+    };
     let Some(font) = assets.catalog.and_then(|c| c.font(font_name)) else {
         frame.coverage.gap(index, ChromeGapKind::AssetFont);
         return;
@@ -445,7 +470,7 @@ fn paint_text(
             rect.vert_align as i32,
         );
         frame.list.cmds.push(Draw2dCmd {
-            material_namespace: crate::images::HUD_CHROME_NAMESPACE,
+            material_namespace: assets.namespace(),
             x: (applied.x + 0.5).floor(),
             y: (applied.y + 0.5).floor(),
             w: applied.w,
@@ -535,11 +560,14 @@ pub(crate) fn push_owner_text(
     if text.is_empty() {
         return Ok(());
     }
-    let font_name = ui_get_font_handle(
-        args.item.font_enum,
-        args.surface.scale_virtual_to_real()[1],
-        args.item.text_scale,
-    );
+    let font_name = args
+        .assets
+        .font_name(
+            args.item.font_enum,
+            args.surface.scale_virtual_to_real()[1],
+            args.item.text_scale,
+        )
+        .ok_or(ChromeGapKind::AssetFont)?;
     let Some(font) = args.assets.catalog.and_then(|c| c.font(font_name)) else {
         return Err(ChromeGapKind::AssetFont);
     };
@@ -570,11 +598,14 @@ pub(crate) fn push_owner_text_right_of_rect(
     if text.is_empty() {
         return Ok(());
     }
-    let font_name = ui_get_font_handle(
-        args.item.font_enum,
-        args.surface.scale_virtual_to_real()[1],
-        args.item.text_scale,
-    );
+    let font_name = args
+        .assets
+        .font_name(
+            args.item.font_enum,
+            args.surface.scale_virtual_to_real()[1],
+            args.item.text_scale,
+        )
+        .ok_or(ChromeGapKind::AssetFont)?;
     let Some(font) = args.assets.catalog.and_then(|c| c.font(font_name)) else {
         return Err(ChromeGapKind::AssetFont);
     };
@@ -606,7 +637,7 @@ fn push_owner_text_run(
         args.rect.vert_align as i32,
     );
     frame.list.cmds.push(Draw2dCmd {
-        material_namespace: crate::images::HUD_CHROME_NAMESPACE,
+        material_namespace: args.assets.namespace(),
         x: (applied.x + 0.5).floor(),
         y: (applied.y + 0.5).floor(),
         w: applied.w,

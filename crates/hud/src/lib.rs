@@ -27,11 +27,11 @@ mod scorebar;
 mod scoreboard;
 mod splash;
 mod surface;
+mod t5_hud;
 mod targetmap;
 mod ui_write;
 mod weapon_name;
 mod weaponbar;
-mod zombie_hud;
 
 pub use draw2d::{
     Draw2dCmd, Draw2dCmdCensus, Draw2dList, Draw2dOp, Draw2dProvenance, Draw2dQuad,
