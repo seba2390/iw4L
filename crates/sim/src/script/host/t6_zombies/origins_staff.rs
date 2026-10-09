@@ -142,4 +142,33 @@ impl Staffs {
         }
         text
     }
+
+    pub(super) fn fire_ability(
+        &self,
+        world: &mut World,
+        client: ClientId,
+        kind: StaffKind,
+        origin: [f32; 3],
+        direction: [f32; 3],
+        tick: Tick,
+    ) -> bool {
+        if !self.has(client, kind) {
+            return false;
+        }
+        let effect_name = match kind {
+            StaffKind::Fire => "maps/zombie_tomb/fx_tomb_staff_fire",
+            StaffKind::Ice => "maps/zombie_tomb/fx_tomb_staff_ice",
+            StaffKind::Lightning => "maps/zombie_tomb/fx_tomb_staff_lightning",
+            StaffKind::Gas => "maps/zombie_tomb/fx_tomb_staff_gas",
+        };
+        diag::info!(
+            Sim,
+            "origins staff ability fired client={} kind={} effect={}",
+            client.0,
+            kind.name(),
+            effect_name
+        );
+        powerups::effect(world, tick, effect_name, origin);
+        true
+    }
 }
