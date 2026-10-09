@@ -1108,7 +1108,7 @@ fn admitted_mask(
     if !dynents.draws().is_empty() {
         admitted |= ADMIT_DYNENT;
     }
-    if sky.is_some() {
+    if sky.is_some_and(|(sky, _)| !sky.draws.is_empty()) {
         admitted |= ADMIT_SKY;
     }
     admitted
