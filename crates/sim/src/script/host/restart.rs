@@ -148,7 +148,7 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
             }
         }
         for projectile in crate::frame::collect_projectiles(frame.ecs()) {
-            frame.remove_projectile_by_number(projectile.entnum);
+            frame.despawn_projectile(projectile.entnum);
         }
         for number in frame.dropped_item_numbers_sorted() {
             frame.remove_dropped_item_by_number(number);
