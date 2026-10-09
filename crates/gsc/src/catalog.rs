@@ -43,20 +43,11 @@ impl Builtin {
 
 #[derive(Clone, Debug)]
 pub struct Catalog {
-    realm: crate::script::Realm,
+    realm: asset_core::FamilyId,
     names: BTreeMap<Namespace, BTreeMap<&'static str, Builtin>>,
 }
 impl Catalog {
-    pub fn iw4() -> Self {
-        Self::from_list(crate::script::Realm::Iw4, super::iw4_catalog::IW4)
-    }
-    pub fn t5() -> Self {
-        Self::from_list(crate::script::Realm::T5, super::t5_catalog::T5)
-    }
-    pub fn t5_zombie() -> Self {
-        Self::t5().extended(super::t5_zombie_catalog::T5_ZOMBIE.iter().cloned())
-    }
-    fn from_list(realm: crate::script::Realm, list: &[Builtin]) -> Self {
+    pub fn from_list(realm: asset_core::FamilyId, list: &[Builtin]) -> Self {
         let mut catalog = Self {
             realm,
             names: BTreeMap::new(),
@@ -72,7 +63,7 @@ impl Catalog {
         }
         self
     }
-    pub fn realm(&self) -> crate::script::Realm {
+    pub fn realm(&self) -> asset_core::FamilyId {
         self.realm
     }
     fn insert(&mut self, builtin: Builtin) {

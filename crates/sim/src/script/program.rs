@@ -4,8 +4,7 @@ use std::sync::Arc;
 
 use crate::script::error::Fault;
 use crate::script::ir::{Function, IR_VERSION};
-use crate::script::profile::catalog::{Builtin, Catalog};
-use crate::script::source::{SourceOrigin, SourceResolver};
+use gsc::{Builtin, Catalog, SourceOrigin, SourceResolver};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Site {

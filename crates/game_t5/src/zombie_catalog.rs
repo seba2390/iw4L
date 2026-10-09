@@ -1,7 +1,7 @@
 // Builtins the T5 zombie scripts call beyond the T5 multiplayer catalog.
-use super::catalog::{Builtin, Namespace::*, Owner::*};
+use gsc::{Builtin, Namespace::*, Owner::*};
 
-pub(super) const T5_ZOMBIE: &[Builtin] = &[
+pub(crate) const T5_ZOMBIE: &[Builtin] = &[
     Builtin::new(Function, "absangleclamp180", Script, false),
     Builtin::new(Function, "activateclientexploder", Script, false),
     Builtin::new(Function, "asin", Script, false),

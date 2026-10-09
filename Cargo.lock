@@ -3090,6 +3090,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "game_api"
+version = "0.1.0"
+dependencies = [
+ "gsc",
+]
+
+[[package]]
+name = "game_iw4"
+version = "0.1.0"
+dependencies = [
+ "asset_core",
+ "game_api",
+ "gsc",
+]
+
+[[package]]
+name = "game_t5"
+version = "0.1.0"
+dependencies = [
+ "asset_core",
+ "game_api",
+ "gsc",
+]
+
+[[package]]
 name = "gamemode_iw4"
 version = "0.1.0"
 dependencies = [
@@ -3253,6 +3278,13 @@ name = "grid"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b40ca9252762c466af32d0b1002e91e4e1bc5398f77455e55474deb466355ff5"
+
+[[package]]
+name = "gsc"
+version = "0.1.0"
+dependencies = [
+ "asset_core",
+]
 
 [[package]]
 name = "guillotiere"
@@ -5934,6 +5966,9 @@ dependencies = [
  "clipmap_iw4",
  "diag",
  "frame",
+ "game_api",
+ "game_iw4",
+ "game_t5",
  "gamemode_iw4",
  "hud_iw4",
  "net",
@@ -5995,6 +6030,7 @@ dependencies = [
  "fx_iw4",
  "gamemode_iw4",
  "glam",
+ "gsc",
  "hud_iw4",
  "math_iw4",
  "movement_iw4",

@@ -2,10 +2,8 @@ mod compiler;
 mod error;
 pub mod host;
 mod ir;
-pub mod profile;
 mod program;
 mod runtime;
-mod source;
 mod value;
 pub(crate) mod vm;
 
@@ -16,6 +14,7 @@ pub(crate) use std::sync::Arc;
 pub(crate) use runtime::Runtime;
 
 pub use error::{Fault, Location};
+pub use gsc::{Builtin, Catalog, Namespace, Owner};
 pub use host::actor_anims::ActorAnimTree;
 pub use host::actor_nav::{ActorPaths, NavNode, NavNodeKind};
 pub(crate) use host::controls::{
@@ -42,9 +41,6 @@ pub(crate) use host::restart::restart_level;
 pub(crate) use host::weapons::sync_engine_events;
 pub use ir::IR_VERSION;
 pub(crate) use ir::{Binary, Callee, Function, Global, Op, Unary};
-pub use profile::catalog::{Builtin, Catalog, Namespace, Owner};
-pub use profile::iw4_startup::Iw4Startup;
-pub use profile::t5_zombie_startup::T5ZombieStartup;
 
 /// Advances actor animation one authority tick, and raises timed notifies,
 /// before scripts run.
@@ -62,11 +58,11 @@ pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
     host::actor_brain::think(world);
     host::natives::engine::deliver_timed_notifies(world);
 }
+pub use gsc::{FileSources, SourceOrigin, SourceResolver, decode_source, normalize_module};
 pub use program::{ModuleIdentity, Program, Realm, Site};
 pub(crate) use runtime::{
     advance_scheduler, copy_state, healthy, install, preflight, reset, start, take_signals,
 };
-pub use source::{FileSources, SourceOrigin, SourceResolver, decode_source, normalize_module};
 pub(crate) use value::ArrayKey;
 pub use value::{ScriptString, Value};
 pub(crate) use vm::state::{Frame, Thread, ThreadState, Waiter, WaiterKind};

@@ -40,24 +40,6 @@ pub(crate) struct ActorBrain {
 /// An enemy this close is fought rather than approached.
 const MELEE_RANGE: f32 = 64.0;
 
-/// Animscript modules the zombie actors may run.
-pub const ANIMSCRIPT_MODULES: &[&str] = &[
-    "animscripts/zombie_init",
-    "animscripts/zombie_stop",
-    "animscripts/zombie_move",
-    "animscripts/zombie_combat",
-    "animscripts/zombie_death",
-    "animscripts/zombie_pain",
-    "animscripts/zombie_scripted",
-    "animscripts/zombie_dog_init",
-    "animscripts/zombie_dog_stop",
-    "animscripts/zombie_dog_move",
-    "animscripts/zombie_dog_combat",
-    "animscripts/zombie_dog_death",
-    "animscripts/zombie_dog_pain",
-    "animscripts/zombie_dog_scripted",
-];
-
 /// Marks an actor killed: its death animscript replaces whatever it ran.
 pub(crate) fn kill(world: &mut World, actor: u64) {
     let mut runtime = world.resource_mut::<Runtime>();

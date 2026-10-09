@@ -1,7 +1,7 @@
 // @generated; do not edit.
-use super::catalog::{Builtin, Namespace::*, Owner::*};
+use gsc::{Builtin, Namespace::*, Owner::*};
 
-pub(super) const T5: &[Builtin] = &[
+pub(crate) const T5: &[Builtin] = &[
     Builtin::new(Function, "abs", Script, false),
     Builtin::new(Function, "acos", Script, false),
     Builtin::new(Function, "addcylinderinfluencer", Script, false),

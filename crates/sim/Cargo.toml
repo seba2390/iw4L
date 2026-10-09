@@ -10,6 +10,7 @@ layer = "mixed"
 
 [dependencies]
 asset_core.workspace = true
+gsc.workspace = true
 structured_data_iw4.workspace = true
 bevy_ecs.workspace = true
 sha2.workspace = true

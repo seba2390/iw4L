@@ -1,0 +1,15 @@
+[package]
+name = "game_api"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "What a game provides to a match, and how a rule its data does not give is said."
+
+[package.metadata.iw4l]
+layer = "neutral"
+
+[dependencies]
+gsc.workspace = true
+
+[lints]
+workspace = true

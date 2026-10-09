@@ -1,4 +1,4 @@
-use crate::script::source::SourceResolver;
+use gsc::SourceResolver;
 
 /// Install runs the struct initializer itself, before the map's structs exist.
 pub struct Iw4Startup {
@@ -6,7 +6,7 @@ pub struct Iw4Startup {
     pub entries: Vec<String>,
 }
 impl Iw4Startup {
-    pub fn new(resolver: &impl SourceResolver, gametype: &str, map: &str) -> Self {
+    pub fn new(resolver: &dyn SourceResolver, gametype: &str, map: &str) -> Self {
         let gametype = format!("maps/mp/gametypes/{gametype}");
         let map = format!("maps/mp/{map}");
         let callbacks = "maps/mp/gametypes/_callbacksetup";

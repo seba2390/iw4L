@@ -888,19 +888,19 @@ fn script_refusal(
     InstallRefusal::new(format!("GSC {stage}: {text}"))
 }
 
-/// Engine dvars the zombie scripts read without setting: the mode itself and
-/// the AI locomotion tuning (run-weight updates each server frame, no lean or
-/// turn slowdown).
-const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
-    ("zombiemode", "1"),
-    ("ai_runAnimUpdateFrequency", "0.05"),
-    ("ai_useLeanRunAnimations", "0"),
-    ("ai_slowdownRateBlendFactor", "1"),
-    ("ai_slowdownMinRate", "1"),
-    ("ai_slowdownMinYawDiff", "180"),
-    ("ai_slowdownMaxYawDiff", "180"),
-    ("ai_meleeRange", "64"),
-];
+fn unknown_refusal(zone: &str, gametype: &str, gap: &game_api::Unknown) -> InstallRefusal {
+    diag::script_boundary(
+        "refused",
+        &format!(
+            " map={zone} gametype={gametype} stage=program unknown={}",
+            gap.id
+        ),
+    );
+    InstallRefusal::new(format!(
+        "GSC program: {} is unknown: {} (needs {})",
+        gap.id, gap.what, gap.needs
+    ))
+}
 
 fn preflight_match_install(
     mut prepared: assets::PreparedMatch,
@@ -1144,20 +1144,18 @@ fn preflight_match_install(
             })
             .collect(),
     };
-    let (startup_roots, startup_entries, catalog_rules) = if is_zombies {
-        let startup =
-            sim::script::T5ZombieStartup::new(&sources, zone, sources.0.entities().unwrap_or(""));
-        (
-            startup.roots,
-            startup.entries,
-            sim::script::Catalog::t5_zombie(),
-        )
-    } else {
-        let startup = sim::script::Iw4Startup::new(&sources, gametype, zone);
-        (startup.roots, startup.entries, sim::script::Catalog::iw4())
+    let game_scripts = crate::games::scripts(is_zombies);
+    let request = game_api::ScriptRequest {
+        map: zone,
+        gametype,
+        entities: sources.0.entities().unwrap_or(""),
     };
-    let roots: Vec<&str> = startup_roots.iter().map(String::as_str).collect();
-    let scripts = sim::script::Program::load(&sources, &roots, &catalog_rules)
+    let program = match game_scripts.program(&request, &sources) {
+        game_api::Rule::Known(program) => program,
+        game_api::Rule::Unknown(gap) => return Err(unknown_refusal(zone, gametype, gap)),
+    };
+    let roots: Vec<&str> = program.roots.iter().map(String::as_str).collect();
+    let scripts = sim::script::Program::load(&sources, &roots, &program.catalog)
         .map_err(|e| script_refusal(zone, gametype, "compile", &e))?;
     let config = sources
         .0
@@ -1188,13 +1186,12 @@ fn preflight_match_install(
     script_dvars.push(("mapname".into(), zone.to_owned()));
     script_dvars.push(("g_gametype".into(), gametype.to_owned()));
     script_dvars.push(("sv_maxclients".into(), "18".into()));
-    if is_zombies {
-        script_dvars.extend(
-            ZOMBIE_ENGINE_DVARS
-                .iter()
-                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
-        );
-    }
+    script_dvars.extend(
+        game_scripts
+            .engine_dvars()
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+    );
     for (name, value) in rules.map_or(&[][..], |rules| &rules.0) {
         match script_dvars
             .iter_mut()
@@ -1212,7 +1209,7 @@ fn preflight_match_install(
         );
     }
     script_dvars.extend(script_dvar_overrides());
-    let script_entries = startup_entries;
+    let script_entries = program.entries;
     let actor_anim_sources: Vec<(String, String)> = if is_zombies {
         sources
             .0
