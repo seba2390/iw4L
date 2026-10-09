@@ -3104,6 +3104,7 @@ dependencies = [
  "asset_core",
  "game_api",
  "gsc",
+ "hud_iw4",
 ]
 
 [[package]]

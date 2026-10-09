@@ -97,6 +97,16 @@ const ZCLASSIC_MODE: ModeRules = ModeRules {
     ..MULTIPLAYER_MODE
 };
 
+impl game_api::GameMenus for T6 {
+    fn font(&self, _font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
+        Rule::Unknown(unknown!(
+            "t6.hud.menu_font",
+            "the font a Black Ops 2 menu textfont names",
+            "Black Ops 2's menu font table"
+        ))
+    }
+}
+
 impl game_api::GameModes for T6 {
     fn mode(&self, gametype: &str) -> Rule<ModeRules> {
         match gametype {

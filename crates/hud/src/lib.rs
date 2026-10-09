@@ -33,6 +33,7 @@ mod ui_write;
 mod weapon_name;
 mod weaponbar;
 
+pub use chrome::register_game_menus;
 pub use draw2d::{
     Draw2dCmd, Draw2dCmdCensus, Draw2dList, Draw2dOp, Draw2dProvenance, Draw2dQuad,
     TEXT_STYLE_HUDELEM, TextRunFx, tessellate, tessellate_fonts,

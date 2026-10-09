@@ -26,6 +26,16 @@ impl game_api::GameScripts for Iw5 {
     }
 }
 
+impl game_api::GameMenus for Iw5 {
+    fn font(&self, _font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
+        Rule::Unknown(unknown!(
+            "iw5.hud.menu_font",
+            "the font a Modern Warfare 3 menu textfont names",
+            "Modern Warfare 3's menu font table"
+        ))
+    }
+}
+
 impl game_api::GameModes for Iw5 {
     fn mode(&self, _gametype: &str) -> Rule<ModeRules> {
         Rule::Unknown(unknown!(

@@ -27,3 +27,13 @@ pub fn modes(family: FamilyId) -> &'static dyn game_api::GameModes {
 pub fn menu_parsers() -> menu_expr::MenuParsers {
     menu_expr::MenuParsers(vec![("t5", game_t5::parse_menu_expression)])
 }
+
+/// How the menus of the game a catalog belongs to are drawn.
+pub fn menus(family: FamilyId) -> &'static dyn game_api::GameMenus {
+    match family {
+        FamilyId::Iw4 => &game_iw4::GAME,
+        FamilyId::T5 => &game_t5::GAME,
+        FamilyId::Iw5 => &game_iw5::GAME,
+        FamilyId::T6 => &game_t6::GAME,
+    }
+}

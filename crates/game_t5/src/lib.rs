@@ -95,6 +95,23 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     },
 };
 
+impl game_api::GameMenus for T5 {
+    /// Only the values the zones' compiled menus prove against their source
+    /// (`UI_FONT_NORMAL` 1, `UI_FONT_EXTRABIG` 6) are known; `UI_FONT_DEFAULT`
+    /// picks by scale with thresholds that live in the executable.
+    fn font(&self, font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
+        match font_enum {
+            1 => Rule::Known("fonts/normalfont"),
+            6 => Rule::Known("fonts/extrabigfont"),
+            _ => Rule::Unknown(unknown!(
+                "t5.hud.menu_font",
+                "the font a Black Ops menu textfont other than normal (1) and extrabig (6) names",
+                "the UI_FONT_DEFAULT thresholds (ui_smallFont/ui_bigFont/ui_extraBigFont) from Black Ops' console"
+            )),
+        }
+    }
+}
+
 impl game_api::GameModes for T5 {
     fn mode(&self, gametype: &str) -> Rule<ModeRules> {
         if gametype != ZOMBIES {

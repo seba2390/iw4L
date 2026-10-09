@@ -6,7 +6,8 @@ license.workspace = true
 description = "Retail IW4 HUD quantities: compass, hip crosshair gap/alpha/gate, hit feedback."
 
 [package.metadata.iw4l]
-layer = "mixed"
+layer = "game"
+game = "iw4"
 
 [dependencies]
 math_iw4.workspace = true

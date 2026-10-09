@@ -2,7 +2,6 @@
 # It may only shrink: lower it with `cargo xtask boundary --update`.
 edge clipmap_iw4 trace_iw4
 edge fastfile_iw4 asset_iw4
-edge lighting_iw4 hud_iw4
 edge marks_iw4 asset_iw4
 edge render_frame asset_iw4
 edge render_frame render_material
@@ -37,7 +36,6 @@ mixed bots
 mixed frame
 mixed gamemode_iw4
 mixed hud
-mixed hud_iw4
 mixed net
 mixed render
 mixed render_anim
@@ -419,8 +417,7 @@ pattern crates/hud/src/blood.rs hud_iw4:: 1
 pattern crates/hud/src/blood.rs playerstate_iw4:: 1
 pattern crates/hud/src/breath_hint.rs hud_iw4:: 3
 pattern crates/hud/src/breath_hint.rs playerstate_iw4:: 2
-pattern crates/hud/src/chrome.rs AssetNamespace::<game> 1
-pattern crates/hud/src/chrome.rs hud_iw4:: 3
+pattern crates/hud/src/chrome.rs hud_iw4:: 2
 pattern crates/hud/src/compass.rs gamemode_iw4:: 2
 pattern crates/hud/src/compass.rs hud_iw4:: 3
 pattern crates/hud/src/compass.rs playerstate_iw4:: 2
@@ -471,7 +468,7 @@ pattern crates/hud/src/scoreboard.rs gamemode_iw4:: 1
 pattern crates/hud/src/scoreboard.rs hud_iw4:: 1
 pattern crates/hud/src/splash.rs hud_iw4:: 7
 pattern crates/hud/src/surface.rs hud_iw4:: 1
-pattern crates/hud/src/t5_hud.rs hud_iw4:: 5
+pattern crates/hud/src/t5_hud.rs hud_iw4:: 4
 pattern crates/hud/src/t5_hud.rs playerstate_iw4:: 1
 pattern crates/hud/src/t5_hud.rs weapon_iw4:: 1
 pattern crates/hud/src/targetmap.rs gamemode_iw4:: 1

@@ -15,4 +15,9 @@ Severity: **V** visible, **A** audible, **G** gameplay, **I** invisible.
       *Needs:* Modern Warfare 3's builtin list and the natives behind it, and
       its match flow.
 
+- [ ] **V** `iw5.hud.menu_font` (`GameMenus::font`): which font a Modern Warfare 3 menu
+      item's `textfont` names is not known; such text is not drawn. (Until
+      now Modern Warfare 2's font table answered for any non-Black Ops
+      catalog.) *Needs:* Modern Warfare 3's menu font table.
+
 ## Closed

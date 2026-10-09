@@ -198,7 +198,11 @@ pub(crate) fn ammo_widths(
             .get("weaponinfo_zombie")
             .and_then(|menu| menu.items.iter().find(|item| item.name == item_name))
             .and_then(|item| {
-                let font = hud_iw4::t5_ui_font_name(item.font_enum)?;
+                let font = crate::chrome::ChromeAssets {
+                    catalog: Some(catalog),
+                    localize: None,
+                }
+                .font_name(item.font_enum, 1.0, item.text_scale)?;
                 Some(ui_text_width(catalog.font(font)?, &value.to_string(), item.text_scale) as i32)
             })
             .unwrap_or(0)

@@ -1,7 +1,7 @@
 use asset_game::{FontDef, LocalizeCatalog, MenuCatalog, MenuDef, MenuItem, MenuRect};
 use hud_iw4::{
     ExprError, ExprHost, item_text_origin, item_text_paint_scale, next_letter,
-    normalized_text_scale, ui_get_font_handle, ui_text_height, window_paint_scale_rect,
+    normalized_text_scale, ui_text_height, window_paint_scale_rect,
 };
 
 use crate::draw2d::{Draw2dCmd, Draw2dList, Draw2dOp, Draw2dProvenance};
@@ -46,6 +46,19 @@ pub(crate) enum ChromeGapKind {
     TextExp,
 }
 
+type GameMenusOf = fn(asset_core::AssetNamespace) -> &'static dyn game_api::GameMenus;
+
+static GAME_MENUS: std::sync::OnceLock<GameMenusOf> = std::sync::OnceLock::new();
+
+/// Hands the HUD the lookup of each game's menu rules; called once at startup.
+pub fn register_game_menus(menus: GameMenusOf) {
+    let _ = GAME_MENUS.set(menus);
+}
+
+fn game_menus(family: asset_core::AssetNamespace) -> Option<&'static dyn game_api::GameMenus> {
+    GAME_MENUS.get().map(|menus| menus(family))
+}
+
 #[derive(Clone, Copy, Default)]
 pub(crate) struct ChromeAssets<'a> {
     pub catalog: Option<&'a MenuCatalog>,
@@ -67,10 +80,10 @@ impl ChromeAssets<'_> {
         placement_scale: f32,
         text_scale: f32,
     ) -> Option<&'static str> {
-        if self.catalog.and_then(|c| c.namespace) == Some(asset_core::AssetNamespace::T5) {
-            return hud_iw4::t5_ui_font_name(font_enum);
+        match game_menus(self.namespace())?.font(font_enum, placement_scale, text_scale) {
+            game_api::Rule::Known(font) => Some(font),
+            game_api::Rule::Unknown(_) => None,
         }
-        Some(ui_get_font_handle(font_enum, placement_scale, text_scale))
     }
 }
 

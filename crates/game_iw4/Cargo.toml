@@ -12,6 +12,7 @@ game = "iw4"
 [dependencies]
 asset_core.workspace = true
 game_api.workspace = true
+hud_iw4.workspace = true
 gsc.workspace = true
 
 [lints]

@@ -46,19 +46,6 @@ fn hudelem_font_info(elem_font: i32) -> (i32, f32) {
 
 const UI_SMALL_FONT: f32 = 0.25;
 
-/// The font a Black Ops menu item's `textfont` names. Only the values the
-/// zones' compiled menus prove against their source (`UI_FONT_NORMAL` 1,
-/// `UI_FONT_EXTRABIG` 6) are known; `UI_FONT_DEFAULT` picks by scale with
-/// thresholds that live in the executable.
-#[must_use]
-pub fn t5_ui_font_name(font_enum: i32) -> Option<&'static str> {
-    match font_enum {
-        1 => Some("fonts/normalfont"),
-        6 => Some("fonts/extrabigfont"),
-        _ => None,
-    }
-}
-
 const UI_BIG_FONT: f32 = 0.4;
 
 const UI_EXTRA_BIG_FONT: f32 = 0.55;

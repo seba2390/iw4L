@@ -103,7 +103,7 @@ pub use font::{
     HUDELEM_FONT_THIRD_BASE_SCALE, R_TEXT_EM, color_from_caret_digit, hudelem_em_px,
     hudelem_font_base_scale, hudelem_font_ui_enum, hudelem_text_scale, item_get_text_placement_y,
     item_text_origin, next_letter, normalized_text_scale, seconds_to_countdown_display,
-    t5_ui_font_name, ui_get_font_handle, ui_text_height,
+    ui_get_font_handle, ui_text_height,
 };
 pub use fov::{
     CG_FOV_DEFAULT, CG_FOV_MIN_DEFAULT, CG_FOV_SCALE_DEFAULT, CG_TAN_HALF_FOV_65,

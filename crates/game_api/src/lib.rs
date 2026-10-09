@@ -107,6 +107,12 @@ pub struct HudRules {
     pub material_font_floor: bool,
 }
 
+/// How a game's menus are drawn.
+pub trait GameMenus: Sync {
+    /// The font a menu item's `textfont` enum names, at the item's scales.
+    fn font(&self, font_enum: i32, placement_scale: f32, text_scale: f32) -> Rule<&'static str>;
+}
+
 /// A mode the game library offers beside multiplayer, with the maps it runs on.
 pub struct LibraryMode {
     pub gametype: &'static str,
