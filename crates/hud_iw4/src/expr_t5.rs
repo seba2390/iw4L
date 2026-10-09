@@ -11,11 +11,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::expr::{
-    ExprError, ExprHost, OP_ADD, OP_AND, OP_DIVIDE, OP_EQUALS, OP_GREATERTHAN,
-    OP_GREATERTHANEQUALTO, OP_LESSTHAN, OP_LESSTHANEQUALTO, OP_MODULUS, OP_MULTIPLY, OP_NOTEQUAL,
-    OP_OR, OP_SUBTRACT, Operand, logic_op, source_str,
-};
+use crate::expr::{ExprError, ExprHost, Operand};
 
 const T5_NOOP: i32 = 0;
 const T5_MUL: i32 = 2;
@@ -122,15 +118,76 @@ pub(crate) fn parse(tokens: &[&str]) -> Result<Vec<T5Token>, ExprError> {
 /// whose operands need no conversion are evaluated.
 const COERCION: &str = "t5.hud.expression_coercion";
 
-fn same_type(a: &Operand, b: &Operand) -> bool {
-    core::mem::discriminant(a) == core::mem::discriminant(b)
-}
-
 fn int(operand: Operand) -> Result<i32, ExprError> {
     match operand {
         Operand::Int(v) => Ok(v),
         _ => Err(ExprError::Unknown(COERCION)),
     }
+}
+
+/// A program's value as a condition.
+pub(crate) fn truth(value: &Operand) -> Result<bool, ExprError> {
+    match value {
+        Operand::Int(v) => Ok(*v != 0),
+        _ => Err(ExprError::Unknown(COERCION)),
+    }
+}
+
+/// A program's value where a number is wanted.
+pub(crate) fn number(value: &Operand) -> Result<f32, ExprError> {
+    match value {
+        Operand::Int(v) => Ok(*v as f32),
+        Operand::Float(v) => Ok(*v),
+        Operand::Str(_) => Err(ExprError::Unknown(COERCION)),
+    }
+}
+
+/// A program's value where text is wanted.
+pub(crate) fn text(value: &Operand) -> Result<String, ExprError> {
+    match value {
+        Operand::Str(v) => Ok(v.clone()),
+        Operand::Int(v) => Ok(alloc::format!("{v}")),
+        Operand::Float(_) => Err(ExprError::Unknown(COERCION)),
+    }
+}
+
+fn binary(op: i32, a: Operand, b: Operand) -> Result<Operand, ExprError> {
+    let flag = |v: bool| Operand::Int(i32::from(v));
+    Ok(match (a, b) {
+        (Operand::Int(a), Operand::Int(b)) => match op {
+            T5_MUL => Operand::Int(a.wrapping_mul(b)),
+            T5_MOD if b != 0 => Operand::Int(a.wrapping_rem(b)),
+            T5_PLUS => Operand::Int(a.wrapping_add(b)),
+            T5_MINUS => Operand::Int(a.wrapping_sub(b)),
+            T5_SMALLER => flag(a < b),
+            T5_SMALLEREQ => flag(a <= b),
+            T5_GREATER => flag(a > b),
+            T5_GREATEREQ => flag(a >= b),
+            T5_EQ => flag(a == b),
+            T5_NOTEQ => flag(a != b),
+            T5_LOGAND => flag(a != 0 && b != 0),
+            T5_LOGOR => flag(a != 0 || b != 0),
+            _ => return Err(ExprError::Unknown(COERCION)),
+        },
+        (Operand::Float(a), Operand::Float(b)) => match op {
+            T5_MUL => Operand::Float(a * b),
+            T5_DIV if b != 0.0 => Operand::Float(a / b),
+            T5_PLUS => Operand::Float(a + b),
+            T5_MINUS => Operand::Float(a - b),
+            T5_SMALLER => flag(a < b),
+            T5_SMALLEREQ => flag(a <= b),
+            T5_GREATER => flag(a > b),
+            T5_GREATEREQ => flag(a >= b),
+            _ => return Err(ExprError::Unknown(COERCION)),
+        },
+        (Operand::Str(a), Operand::Str(b)) => match op {
+            T5_PLUS => Operand::Str(a + &b),
+            T5_EQ => flag(a.eq_ignore_ascii_case(&b)),
+            T5_NOTEQ => flag(!a.eq_ignore_ascii_case(&b)),
+            _ => return Err(ExprError::Unknown(COERCION)),
+        },
+        _ => return Err(ExprError::Unknown(COERCION)),
+    })
 }
 
 fn pop(stack: &mut Vec<Value>) -> Result<Value, ExprError> {
@@ -142,9 +199,11 @@ fn pop_operand(stack: &mut Vec<Value>) -> Result<Operand, ExprError> {
 }
 
 fn arg_str(args: &[Operand]) -> Result<String, ExprError> {
-    args.first()
-        .map(source_str)
-        .ok_or(ExprError::StackUnderflow)
+    match args.first() {
+        Some(Operand::Str(v)) => Ok(v.clone()),
+        Some(_) => Err(ExprError::Unknown(COERCION)),
+        None => Err(ExprError::StackUnderflow),
+    }
 }
 
 fn call(op: i32, stack: &mut Vec<Value>, host: &impl ExprHost) -> Result<Operand, ExprError> {
@@ -194,31 +253,7 @@ pub(crate) fn evaluate(tokens: &[T5Token], host: &impl ExprHost) -> Result<Opera
             T5_MUL | T5_DIV | T5_MOD | T5_PLUS | T5_MINUS | T5_SMALLER..=T5_LOGOR => {
                 let b = pop_operand(&mut stack)?;
                 let a = pop_operand(&mut stack)?;
-                let converts = !same_type(&a, &b)
-                    || match a {
-                        Operand::Int(_) => false,
-                        Operand::Float(_) => matches!(op, T5_MOD | T5_LOGAND | T5_LOGOR),
-                        Operand::Str(_) => !matches!(op, T5_PLUS | T5_EQ | T5_NOTEQ),
-                    };
-                if converts {
-                    return Err(ExprError::Unknown(COERCION));
-                }
-                let engine_op = match op {
-                    T5_MUL => OP_MULTIPLY,
-                    T5_DIV => OP_DIVIDE,
-                    T5_MOD => OP_MODULUS,
-                    T5_PLUS => OP_ADD,
-                    T5_MINUS => OP_SUBTRACT,
-                    T5_SMALLER => OP_LESSTHAN,
-                    T5_SMALLEREQ => OP_LESSTHANEQUALTO,
-                    T5_GREATER => OP_GREATERTHAN,
-                    T5_GREATEREQ => OP_GREATERTHANEQUALTO,
-                    T5_EQ => OP_EQUALS,
-                    T5_NOTEQ => OP_NOTEQUAL,
-                    T5_LOGAND => OP_AND,
-                    _ => OP_OR,
-                };
-                logic_op(engine_op, a, b)?
+                binary(op, a, b)?
             }
             T5_BITAND | T5_BITOR | T5_SHIFTLEFT | T5_SHIFTRIGHT => {
                 let b = int(pop_operand(&mut stack)?)?;

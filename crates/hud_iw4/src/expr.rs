@@ -493,6 +493,9 @@ impl Statement {
         if self.empty {
             return Ok(true);
         }
+        if self.t5.is_some() {
+            return crate::expr_t5::truth(&self.evaluate(host)?);
+        }
         Ok(source_int(&self.evaluate(host)?) != 0)
     }
 
@@ -504,10 +507,16 @@ impl Statement {
     }
 
     pub fn evaluate_float(&self, host: &impl ExprHost) -> Result<f32, ExprError> {
+        if self.t5.is_some() {
+            return crate::expr_t5::number(&self.evaluate(host)?);
+        }
         Ok(source_float(&self.evaluate(host)?))
     }
 
     pub fn evaluate_string(&self, host: &impl ExprHost) -> Result<String, ExprError> {
+        if self.t5.is_some() {
+            return crate::expr_t5::text(&self.evaluate(host)?);
+        }
         Ok(source_str(&self.evaluate(host)?))
     }
 }
