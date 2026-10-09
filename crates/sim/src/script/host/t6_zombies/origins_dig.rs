@@ -369,8 +369,7 @@ impl Digs {
                     (powerups::Kind::BonusPoints, None)
                 }
             };
-            origin[2] += 40.0;
-            let spawned = state.powerups.spawn(world, kind, origin);
+            let spawned = state.powerups.spawn_dig(world, kind, origin);
             if spawned {
                 self.last_rare = key.is_some();
                 if let Some(key) = key {

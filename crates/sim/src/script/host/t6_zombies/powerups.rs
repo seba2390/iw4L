@@ -31,6 +31,8 @@ struct Drop {
     object: u64,
     origin: [f32; 3],
     born: u32,
+    rise: f32,
+    rise_ms: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -153,6 +155,21 @@ impl Powerups {
     }
 
     pub(super) fn spawn(&mut self, world: &mut World, kind: Kind, origin: [f32; 3]) -> bool {
+        self.spawn_with_rise(world, kind, origin, 0.0, 0)
+    }
+
+    pub(super) fn spawn_dig(&mut self, world: &mut World, kind: Kind, origin: [f32; 3]) -> bool {
+        self.spawn_with_rise(world, kind, origin, 40.0, 600)
+    }
+
+    fn spawn_with_rise(
+        &mut self,
+        world: &mut World,
+        kind: Kind,
+        origin: [f32; 3],
+        rise: f32,
+        rise_ms: u32,
+    ) -> bool {
         if FrameWorld::from_world(world)
             .model_capability(kind.model())
             .flatten()
@@ -185,8 +202,10 @@ impl Powerups {
         self.drops.push(Drop {
             kind,
             object,
-            origin,
+            origin: [origin[0], origin[1], origin[2] + rise],
             born: tick.0,
+            rise,
+            rise_ms,
         });
         true
     }
@@ -222,14 +241,26 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
         .collect();
     drop(frame);
     for drop in std::mem::take(&mut powers.drops) {
-        let age = tick
+        let elapsed = tick
             .0
             .saturating_sub(drop.born)
             .saturating_mul(crate::MATCH_TICK_MS);
+        let age = elapsed.saturating_sub(drop.rise_ms);
+        if drop.rise_ms > 0 && elapsed <= drop.rise_ms {
+            let mut at = drop.origin;
+            at[2] -= drop.rise * (1.0 - elapsed as f32 / drop.rise_ms as f32);
+            world.resource_mut::<Runtime>().set_object_field(
+                drop.object,
+                "origin",
+                Value::Vector(at),
+            );
+        }
         let picker = players
             .iter()
             .find(|(_, at)| {
-                Vec3::from_array(*at).distance_squared(Vec3::from_array(drop.origin)) <= 4096.0
+                elapsed >= drop.rise_ms
+                    && Vec3::from_array(*at).distance_squared(Vec3::from_array(drop.origin))
+                        <= 4096.0
             })
             .map(|(client, _)| *client);
         let picked = picker.is_some();
