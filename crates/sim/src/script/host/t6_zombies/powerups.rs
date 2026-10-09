@@ -1,12 +1,14 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug)]
-enum Kind {
+pub(super) enum Kind {
     DoublePoints,
     InstaKill,
     MaxAmmo,
     Nuke,
     Carpenter,
+    BonusPoints,
+    ZombieBlood,
 }
 
 impl Kind {
@@ -17,6 +19,8 @@ impl Kind {
             Self::MaxAmmo => "zombie_ammocan",
             Self::Nuke => "zombie_bomb",
             Self::Carpenter => "zombie_carpenter",
+            Self::BonusPoints => "zombie_z_money_icon",
+            Self::ZombieBlood => "p6_zm_tm_blood_power_up",
         }
     }
 }
@@ -50,6 +54,7 @@ pub(super) struct Powerups {
     instant_until: u32,
     blasts: Vec<Blast>,
     repairs: Option<VecDeque<(usize, usize)>>,
+    blood: BTreeMap<ClientId, u32>,
 }
 
 impl Default for Powerups {
@@ -67,6 +72,7 @@ impl Default for Powerups {
             instant_until: 0,
             blasts: Vec::new(),
             repairs: None,
+            blood: BTreeMap::new(),
         }
     }
 }
@@ -84,6 +90,14 @@ impl Powerups {
 
     pub(super) fn instant(&self, tick: Tick) -> bool {
         tick.0 < self.instant_until
+    }
+
+    pub(super) fn blood(&self, client: ClientId, tick: Tick) -> bool {
+        self.blood.get(&client).is_some_and(|&until| tick.0 < until)
+    }
+
+    pub(super) fn drop_count(&self) -> u8 {
+        self.count
     }
 
     fn poll(&mut self, tick: Tick) {
@@ -131,6 +145,14 @@ impl Powerups {
             return;
         };
         let kind = self.bag[index];
+        if self.spawn(world, kind, origin) {
+            self.bag.remove(index);
+            self.count += 1;
+            self.pending = false;
+        }
+    }
+
+    pub(super) fn spawn(&mut self, world: &mut World, kind: Kind, origin: [f32; 3]) -> bool {
         if FrameWorld::from_world(world)
             .model_capability(kind.model())
             .flatten()
@@ -138,18 +160,18 @@ impl Powerups {
             || world.resource::<Runtime>().entities.len()
                 >= super::super::entities::MAX_SCRIPT_ENTITIES
         {
-            return;
+            return false;
         }
         let object = {
             let mut runtime = world.resource_mut::<Runtime>();
             let Ok(object) = runtime.create_entity(EntityKind::Spawned, "zombie_powerup") else {
-                return;
+                return false;
             };
             object
         };
         let Ok(presence) = super::super::presence::spawn_presence(world, origin) else {
             world.resource_mut::<Runtime>().delete_entity(object);
-            return;
+            return false;
         };
         let tick = world.resource::<crate::step::StepRequest>().tick;
         let mut runtime = world.resource_mut::<Runtime>();
@@ -160,15 +182,13 @@ impl Powerups {
         entity.presence = Some(presence);
         entity.solid = false;
         entity.contents = 0;
-        self.bag.remove(index);
         self.drops.push(Drop {
             kind,
             object,
             origin,
             born: tick.0,
         });
-        self.count += 1;
-        self.pending = false;
+        true
     }
 }
 
@@ -206,9 +226,13 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
             .0
             .saturating_sub(drop.born)
             .saturating_mul(crate::MATCH_TICK_MS);
-        let picked = players.iter().any(|(_, at)| {
-            Vec3::from_array(*at).distance_squared(Vec3::from_array(drop.origin)) <= 4096.0
-        });
+        let picker = players
+            .iter()
+            .find(|(_, at)| {
+                Vec3::from_array(*at).distance_squared(Vec3::from_array(drop.origin)) <= 4096.0
+            })
+            .map(|(client, _)| *client);
+        let picked = picker.is_some();
         if age >= 26500 || picked {
             world.resource_mut::<Runtime>().delete_entity(drop.object);
             if age >= 26500 || !picked {
@@ -259,6 +283,14 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
                             })
                             .collect(),
                     );
+                }
+                Kind::BonusPoints => {
+                    let amount = (1 + super::super::natives::math::random(world) % 5) as i32 * 50;
+                    let amount = powers.reward(tick, amount);
+                    score(world, picker.unwrap(), amount);
+                }
+                Kind::ZombieBlood => {
+                    powers.blood.insert(picker.unwrap(), tick.0 + ticks(30000));
                 }
             }
         } else {
@@ -347,12 +379,17 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
         _ => "",
     };
     for (&client, survivor) in &mut state.survivors {
+        let label = if powers.blood(ClientId(client), tick) {
+            format!("{label}   ZOMBIE BLOOD")
+        } else {
+            label.to_owned()
+        };
         if survivor.powerup_label.is_none() {
             survivor.powerup_label = make_hud(world, ClientId(client), 350.0, 1.0);
         }
         if survivor.last_powerups != label {
             if let Some(object) = survivor.powerup_label {
-                hud_text(world, object, label);
+                hud_text(world, object, &label);
             }
             survivor.last_powerups = label.to_owned();
         }
@@ -360,7 +397,7 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
     state.powerups = powers;
 }
 
-fn effect(world: &mut World, tick: Tick, name: &str, origin: [f32; 3]) {
+pub(super) fn effect(world: &mut World, tick: Tick, name: &str, origin: [f32; 3]) {
     let mut frame = FrameWorld::from_world(world);
     let index = frame.effect_name_index(name);
     frame.push_entity_event(

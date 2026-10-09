@@ -1,4 +1,5 @@
 mod origins;
+mod origins_dig;
 mod origins_tools;
 mod powerups;
 mod rounds;
@@ -41,6 +42,7 @@ pub(crate) struct Survival {
     box_claims: BTreeMap<usize, BoxClaim>,
     model: Option<String>,
     walk: Vec<String>,
+    idle: Option<String>,
     head: Option<(String, String)>,
     revives: BTreeMap<u32, (ClientId, u32)>,
     spawn_sites: Vec<SpawnSite>,
@@ -61,6 +63,7 @@ pub(crate) struct Survival {
     entry_ticks: u32,
     origins: origins::PowerGrid,
     tools: origins_tools::Tools,
+    digs: origins_dig::Digs,
     powerups: powerups::Powerups,
 }
 
@@ -323,6 +326,7 @@ fn route(state: &Survival, start: usize, goal: usize) -> VecDeque<usize> {
 
 fn initialize(world: &mut World, state: &mut Survival) {
     state.tools.initialize(world, &state.authored);
+    state.digs.initialize(&state.authored);
     let mut frame = FrameWorld::from_world(world);
     for client in frame.client_ids_sorted() {
         let meta = frame.client_meta_mut(client);
@@ -362,6 +366,12 @@ fn initialize(world: &mut World, state: &mut Survival) {
         "zm_move_run",
         available(&["ai_zombie_run_v2", "ai_zombie_run_v4"]),
     );
+    state.idle = candidates(
+        "zm_idle",
+        available(&["ai_zombie_idle_v1_delta", "ai_zombie_idle_v1"]),
+    )
+    .into_iter()
+    .next();
     let melee = |names: Vec<String>| {
         names
             .into_iter()
@@ -850,10 +860,7 @@ fn spawn_actor(
     tick: Tick,
     players: &[(ClientId, [f32; 3])],
 ) -> bool {
-    let Some(model) = &state.model else {
-        return false;
-    };
-    let mut frame = FrameWorld::from_world(world);
+    let frame = FrameWorld::from_world(world);
     let fallback: Vec<_> = state
         .nodes
         .iter()
@@ -900,6 +907,15 @@ fn spawn_actor(
         })
         .cloned();
     let Some(site) = site else { return false };
+    drop(frame);
+    spawn_actor_site(world, state, tick, site)
+}
+
+fn spawn_actor_site(world: &mut World, state: &mut Survival, tick: Tick, site: SpawnSite) -> bool {
+    let Some(model) = &state.model else {
+        return false;
+    };
+    let mut frame = FrameWorld::from_world(world);
     let origin = site.origin;
     let walk = choose_animation(&mut frame, &state.walk);
     let run = choose_animation(&mut frame, &state.run);
@@ -1226,11 +1242,21 @@ fn move_actors(
         .map(|(&id, actor)| (id, actor.origin))
         .collect();
     for (object, mut actor) in actors {
-        let Some(&(victim, target)) = players.iter().min_by(|(_, a), (_, b)| {
-            Vec3::from_array(*a)
-                .distance_squared(Vec3::from_array(actor.origin))
-                .total_cmp(&Vec3::from_array(*b).distance_squared(Vec3::from_array(actor.origin)))
-        }) else {
+        let target = players
+            .iter()
+            .filter(|(client, _)| !state.powerups.blood(*client, tick))
+            .min_by(|(_, a), (_, b)| {
+                Vec3::from_array(*a)
+                    .distance_squared(Vec3::from_array(actor.origin))
+                    .total_cmp(
+                        &Vec3::from_array(*b).distance_squared(Vec3::from_array(actor.origin)),
+                    )
+            })
+            .or_else(|| actor.barrier.is_some().then(|| players.first()).flatten());
+        let Some(&(victim, target)) = target else {
+            actor.swing = None;
+            actor.velocity = [0.0; 3];
+            animate(world, object, &mut actor, 7, state.idle.as_deref());
             state.actors.insert(object, actor);
             continue;
         };
@@ -1296,7 +1322,10 @@ fn move_actors(
                 .get(swing.next)
                 .is_some_and(|&at| tick.0.saturating_sub(swing.start) >= at)
             {
-                if let Some((_, at)) = players.iter().find(|(id, _)| *id == locked) {
+                if let Some((_, at)) = players
+                    .iter()
+                    .find(|(id, _)| *id == locked && !state.powerups.blood(*id, tick))
+                {
                     let delta = Vec3::from_array(*at) - Vec3::from_array(actor.origin);
                     if delta.length() <= 72.0 && clear(&frame, actor.origin, *at) {
                         hits.push(crate::script_player::Hit {
@@ -1412,19 +1441,16 @@ fn move_actors(
                     actor.stalled = 0;
                 }
                 drop(frame);
-                let movement = if speed >= 100.0 {
-                    actor.run.as_deref().or(actor.walk.as_deref())
-                } else {
-                    actor.walk.as_deref()
+                let mode = if speed >= 100.0 { 5 } else { 1 };
+                if actor.animation != mode {
+                    let movement = if speed >= 100.0 {
+                        actor.run.as_deref().or(actor.walk.as_deref())
+                    } else {
+                        actor.walk.as_deref()
+                    }
+                    .map(str::to_owned);
+                    animate(world, object, &mut actor, mode, movement.as_deref());
                 }
-                .map(str::to_owned);
-                animate(
-                    world,
-                    object,
-                    &mut actor,
-                    if speed >= 100.0 { 5 } else { 1 },
-                    movement.as_deref(),
-                );
                 frame = FrameWorld::from_world(world);
             }
         }
@@ -2005,9 +2031,14 @@ fn interactions(
         let cash = frame.client_meta(client).map_or(0, |meta| meta.score);
         drop(frame);
         let shovel = state.tools.selected(world, client, origin);
+        let dig = state.digs.selected(world, origin, client, tick);
         if held && !survivor.use_held && revival.is_none() && selected.is_none() {
             if let Some(index) = shovel {
                 state.tools.take(world, client, index);
+            } else if let Some(index) = dig {
+                let mut digs = std::mem::take(&mut state.digs);
+                digs.dig(world, state, &mut survivor, client, index, tick);
+                state.digs = digs;
             }
         }
         if survivor.repair_round != state.round {
@@ -2176,7 +2207,13 @@ fn interactions(
                     return if repair.is_some() {
                         "USE: Rebuild barrier (hold)".into()
                     } else {
-                        shovel.map_or_else(String::new, |_| "USE: Pick up shovel".into())
+                        if shovel.is_some() {
+                            "USE: Pick up shovel".into()
+                        } else if let Some(dig) = dig {
+                            state.digs.prompt(dig, state.tools.owned(client)).into()
+                        } else {
+                            String::new()
+                        }
                     };
                 };
                 let duration = if survivor.perks.contains("revive") {
@@ -2374,6 +2411,9 @@ pub(crate) fn advance(world: &mut World) {
         }
         prepare_machines(world, &mut state, &players);
         state.tools.advance(world, &players);
+        let mut digs = std::mem::take(&mut state.digs);
+        digs.advance(world, &mut state, tick, &players);
+        state.digs = digs;
         interactions(world, &mut state, tick, &players);
         powerups::advance(world, &mut state, tick);
         if state.remaining == 0 && state.actors.is_empty() && state.next_round.is_none() {

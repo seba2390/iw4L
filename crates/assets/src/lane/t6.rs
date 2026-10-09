@@ -2287,11 +2287,15 @@ impl ZoneLane for T6Lane {
                     };
                     let actor = actor_models.contains(&name);
                     let board = name.starts_with("p6_anim_zm_barricade_board_");
+                    let weapon = name.starts_with("t6_wpn_") && name.ends_with("_world");
                     let machine = name.starts_with("zombie_vending_")
                         || name.contains("_vending_")
                         || matches!(name, "p6_anim_zm_buildable_pap" | "p6_zm_tm_packapunch");
                     let shovel = path.file_stem().and_then(|stem| stem.to_str()) == Some("zm_tomb")
-                        && name == "p6_zm_tm_shovel";
+                        && matches!(
+                            name,
+                            "p6_zm_tm_shovel" | "p6_zm_tm_dig_mound" | "p6_zm_tm_blood_power_up"
+                        );
                     let powerup = matches!(
                         name,
                         "zombie_bomb"
@@ -2299,11 +2303,12 @@ impl ZoneLane for T6Lane {
                             | "zombie_ammocan"
                             | "zombie_x2_icon"
                             | "zombie_carpenter"
+                            | "zombie_z_money_icon"
                     );
                     if (script_placements.iter().any(|p| p.model == name)
                         || (asset_transport::t6_content::T6ContentMode::for_path(path)
                             == asset_transport::t6_content::T6ContentMode::Zombies
-                            && (actor || board || machine || shovel || powerup)))
+                            && (actor || board || weapon || machine || shovel || powerup)))
                         && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
                     {
                         script_xmodels.push(model);

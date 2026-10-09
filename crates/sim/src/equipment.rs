@@ -239,6 +239,46 @@ pub(crate) fn spawn_grenade_projectile(
     owner_vel: [f32; 3],
     kind: GrenadeLaunchKind,
 ) -> bool {
+    spawn_grenade_with_velocity(
+        world, owner, weapon, tick, origin, angles, owner_vel, kind, None,
+    )
+}
+
+pub(crate) fn spawn_script_grenade(
+    world: &mut FrameWorld,
+    owner: ClientId,
+    weapon: u32,
+    tick: Tick,
+    origin: [f32; 3],
+    velocity: [f32; 3],
+    fuse_ms: i32,
+) -> bool {
+    spawn_grenade_with_velocity(
+        world,
+        owner,
+        weapon,
+        tick,
+        origin,
+        [270.0, 0.0, 0.0],
+        [0.0; 3],
+        GrenadeLaunchKind::Thrown {
+            remaining_fuse_ms: Some(fuse_ms),
+        },
+        Some(velocity),
+    )
+}
+
+fn spawn_grenade_with_velocity(
+    world: &mut FrameWorld,
+    owner: ClientId,
+    weapon: u32,
+    tick: Tick,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    owner_vel: [f32; 3],
+    kind: GrenadeLaunchKind,
+    scripted_velocity: Option<[f32; 3]>,
+) -> bool {
     let Some(facts) = world.equipment_facts_for(weapon) else {
         return false;
     };
@@ -261,7 +301,8 @@ pub(crate) fn spawn_grenade_projectile(
     } else {
         init_grenade_apos(direction, time_ms, pitch_rate, roll_rate)
     };
-    let velocity = grenade_launch_velocity(direction, &facts, owner_vel);
+    let velocity =
+        scripted_velocity.unwrap_or_else(|| grenade_launch_velocity(direction, &facts, owner_vel));
     let pos = init_grenade_pos(origin, velocity, time_ms);
     let speed = vec3_length(velocity);
     let launch_time = time_ms + fire_grenade_no_draw_ms(speed);

@@ -14,6 +14,11 @@ struct Shovel {
 }
 
 impl Tools {
+    pub(super) fn owned(&self, client: ClientId) -> bool {
+        self.shovels
+            .iter()
+            .any(|shovel| shovel.owner == Some(client))
+    }
     pub(super) fn initialize(&mut self, world: &mut World, authored: &[Vec<(String, String)>]) {
         let mut zones = BTreeMap::<String, Vec<([f32; 3], [f32; 3])>>::new();
         for row in authored {
