@@ -279,87 +279,6 @@ fn hide(pass: &mut HudTessPass) {
     pass.scorebar = TessJob::Hide;
 }
 
-/// Row colours of the zombie score column.
-const ZOMBIE_POINT_COLORS: [[f32; 4]; 4] = [
-    [1.0, 1.0, 1.0, 1.0],
-    [0.49, 0.81, 0.93, 1.0],
-    [0.96, 0.79, 0.31, 1.0],
-    [0.51, 0.93, 0.53, 1.0],
-];
-
-/// The zombie points column above the ammo counter: the local player at the
-/// bottom, the others stacked above.
-fn zombie_points(
-    surface: &crate::surface::Hud2dSurface,
-    catalog: &MenuCatalog,
-    scores: &[(bool, i32)],
-    hud_images: &mut HudImages,
-    images: &mut Assets<Image>,
-) -> TessJob {
-    const TEXT_SCALE: f32 = 0.5;
-    let Some((font_name, font)) = ["fonts/hudbigfont", "fonts/bigfont"]
-        .into_iter()
-        .find_map(|name| Some((name, catalog.font(name)?)))
-    else {
-        return TessJob::Hide;
-    };
-    let nscale = hud_iw4::normalized_text_scale(font.pixel_height, TEXT_SCALE);
-    let material = asset_core::AssetRef::bare_name(&font.material).to_owned();
-    let cmds = scores
-        .iter()
-        .enumerate()
-        .map(|(row, (_, score))| {
-            let text = score.to_string();
-            let width = crate::chrome::ui_text_width(font, &text, TEXT_SCALE);
-            let rect = surface.apply_rect(
-                -24.0 - width,
-                -84.0 - row as f32 * 22.0,
-                nscale,
-                nscale,
-                hud_iw4::ALIGN_USER_MAX,
-                hud_iw4::ALIGN_USER_MAX,
-            );
-            crate::draw2d::Draw2dCmd {
-                material_namespace: crate::images::HUD_CHROME_NAMESPACE,
-                x: rect.x,
-                y: rect.y,
-                w: rect.w,
-                h: rect.h,
-                s0: 0.0,
-                t0: 0.0,
-                s1: 1.0,
-                t1: 1.0,
-                color: ZOMBIE_POINT_COLORS[row % ZOMBIE_POINT_COLORS.len()],
-                material: material.clone(),
-                op: Draw2dOp::TextRun {
-                    font: font_name.to_owned(),
-                    scale: nscale,
-                    text,
-                    loc_key: String::new(),
-                    style: 3,
-                    fx: None,
-                    glow: None,
-                },
-                provenance: crate::draw2d::Draw2dProvenance::CgDraw {
-                    site: "zombie_points",
-                },
-                layer: 1,
-            }
-        })
-        .collect();
-    let list = crate::draw2d::Draw2dList { cmds };
-    let fonts = HashMap::from([(font_name.to_owned(), font)]);
-    let (quads, _) = tessellate_fonts(&list, &fonts);
-    if quads.is_empty()
-        || hud_images
-            .get(crate::images::HUD_CHROME_NAMESPACE, &material, images)
-            .is_none()
-    {
-        return TessJob::Hide;
-    }
-    TessJob::Quads(quads)
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn update_scorebar(
     surface: Res<crate::surface::Hud2dSurface>,
@@ -402,7 +321,7 @@ pub(crate) fn update_scorebar(
         scores.sort_by_key(|(own, _)| !own);
         pass.scorebar = match catalog.as_deref() {
             Some(catalog) => {
-                zombie_points(&surface, catalog, &scores, &mut hud_images, &mut images)
+                crate::zombie_hud::points(&surface, catalog, &scores, &mut hud_images, &mut images)
             }
             None => TessJob::Hide,
         };

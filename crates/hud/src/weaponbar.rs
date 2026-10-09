@@ -746,6 +746,29 @@ pub(crate) fn update_weaponbar(
         .as_ref()
         .map(|w| offhand_ammo(ps, w, ps.offhand_primary))
         .unwrap_or(0);
+    if presented
+        .snapshot()
+        .is_some_and(|s| s.meta.kind == gamemode_iw4::GameModeKind::Zombies)
+    {
+        gaps.clear(HudGap::PerkDisplay);
+        gaps.clear(HudGap::CompassRing);
+        let shown = ammo.as_ref().filter(|_| !hide_ammo);
+        pass.weaponbar = crate::zombie_hud::weapon_info(
+            &surface,
+            catalog,
+            crate::zombie_hud::WeaponInfo {
+                ps,
+                weapons: weapons.as_ref(),
+                clip: shown.and_then(|a| a.clip),
+                stock: shown.and_then(|a| a.stock),
+                name: if hide_ammo { None } else { name },
+                frags: frag_ammo,
+            },
+            &mut hud_images,
+            &mut images,
+        );
+        return;
+    }
     let smoke_ammo = weapons
         .as_ref()
         .map(|w| offhand_ammo(ps, w, ps.offhand_secondary))

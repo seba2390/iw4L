@@ -209,6 +209,12 @@ fn face_color(color: [u8; 4]) -> [f32; 4] {
     color.map(|c| f32::from(c) / 255.0)
 }
 
+/// T5 scripts use multipliers up to 4.6 (`GAME OVER` 3) and, in zombies,
+/// sizes a quarter as big (popups 8, round number 32 = its 64-unit chalk).
+fn t5_font_scale(scale: f32) -> f32 {
+    if scale > 4.6 { scale * 0.25 } else { scale }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn update_hud_elems(
     surface: Res<crate::surface::Hud2dSurface>,
@@ -273,7 +279,10 @@ pub(crate) fn update_hud_elems(
         if color[3] == 0 {
             continue;
         }
-        let font_scale = hud_iw4::hud_elem_lerp_font_scale(elem, cg_time);
+        let mut font_scale = hud_iw4::hud_elem_lerp_font_scale(elem, cg_time);
+        if meta.kind == gamemode_iw4::GameModeKind::Zombies {
+            font_scale = t5_font_scale(font_scale);
+        }
         let font_height =
             hud_iw4::hudelem_em_px(elem.font, font_scale, surface.scale_virtual_to_real()[1]);
         let provenance = Draw2dProvenance::HudElem {
