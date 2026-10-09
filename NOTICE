@@ -68,7 +68,8 @@ KisakCOD — https://github.com/SwagSoftware/KisakCOD
 
 t6-scripts (Plutonium) — https://github.com/plutoniummod/t6-scripts
   Decompiled Black Ops II multiplayer and Zombies scripts. Read for equipment,
-  Origins generator capture and quest prerequisites, and how Black Ops II
+  standard round progression, Origins digging, generator capture and quest
+  prerequisites, and how Black Ops II
   equipment behaves (Bouncing Betty, Shock Charge, Trophy System, Sensor
   Grenade, EMP Grenade, C4, Tactical Insertion) and for its constants. IW4L's
   `crates/assets/src/t6_equipment.gsc.txt` is written for IW4L, not copied

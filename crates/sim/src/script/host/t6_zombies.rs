@@ -1,5 +1,6 @@
 mod origins;
 mod origins_tools;
+mod rounds;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
@@ -828,11 +829,7 @@ fn spawn_actor(
     };
     runtime.set_object_field(object, "origin", Value::Vector(origin));
     runtime.set_object_field(object, "model", Value::string(model));
-    let health = if state.round <= 9 {
-        100 + state.round as i32 * 50
-    } else {
-        (550.0_f64 * 1.1_f64.powi((state.round - 9).min(150) as i32)).min(i32::MAX as f64) as i32
-    };
+    let health = rounds::health(state.round);
     runtime.set_object_field(object, "health", Value::Int(health));
     let entity = runtime.entities.get_mut(&object).unwrap();
     entity.presence = Some(presence);
@@ -2179,9 +2176,11 @@ pub(crate) fn advance(world: &mut World) {
     } else {
         if state.next_round.is_some_and(|due| tick.0 >= due) {
             state.started.get_or_insert(tick.0);
-            state.round += 1;
-            state.remaining =
-                6 + (state.round - 1) * 2 + players.len().saturating_sub(1) as u32 * 4;
+            state.round = (state.round + 1).min(255);
+            state.remaining = rounds::population(
+                state.round,
+                FrameWorld::from_world(world).client_ids_sorted().len(),
+            );
             state.next_round = None;
             state.next_spawn = tick.0 + ticks(2000);
             diag::info!(
@@ -2195,8 +2194,7 @@ pub(crate) fn advance(world: &mut World) {
             if spawn_actor(world, &mut state, tick, &players) {
                 state.remaining -= 1;
             }
-            state.next_spawn =
-                tick.0 + ticks((2000u32.saturating_sub(state.round.saturating_mul(100))).max(750));
+            state.next_spawn = tick.0 + ticks(rounds::spawn_delay_ms(state.round));
         }
         hits = move_actors(world, &mut state, tick, &players);
         prepare_barriers(world, &mut state, &players);
@@ -2208,7 +2206,7 @@ pub(crate) fn advance(world: &mut World) {
         state.tools.advance(world, &players);
         interactions(world, &mut state, tick, &players);
         if state.remaining == 0 && state.actors.is_empty() && state.next_round.is_none() {
-            state.next_round = Some(tick.0 + ticks(8000));
+            state.next_round = Some(tick.0 + ticks(10000));
         }
     }
     world.resource_mut::<Runtime>().zombies = state;
