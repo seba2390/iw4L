@@ -21,32 +21,93 @@ reference capture from the original game, or a rule that lives only in the
 (encrypted) executable. Agents list them here with exactly what is needed and
 move on; they do not work around them.
 
-(none yet)
+The quickest way to answer most of them is a set of screenshots of the original
+game at 1280x720 in Kino solo; each entry names the shot it needs.
+
+- [ ] **V** Points column: `competitivemodescores` draws its rows with the
+      owner draw `CG_COMPETITIVE_MODE_SCORES` (288), whose layout lives only in
+      the executable. The data has the item rect (menu at -103,-102 user
+      right/bottom, item 0 0 100 0), the materials `scorebar_zom_1..4` and
+      `scorebar_zom_long_1..4`, and the script's popup anchor (`score_highlight`:
+      x -103, y -100, rows 20 apart). Not drawn now (gap). *Needs:* shots of the
+      points column with 1 and 4 players and scores of 3, 4, 5 and 6 digits (to
+      read bar size, font, scale, colours and when `_long` is used).
+- [ ] **V** Zombies scoreboard: drawn by the executable (columns from the
+      `CGAME_SB_*` strings: POINTS, KILLS, DOWNS, REVIVES, HEADSHOTS; no menu in
+      any zone). Not drawn now; the Modern Warfare 2 scoreboard menu stays off
+      in zombies (`menus/mod.rs`). *Needs:* TAB scoreboard shots solo and with
+      4 players.
+- [ ] **V** Script text hud elems (round intro, point popups, game over,
+      revive text): Black Ops' font choice and size rule for `fontScale` is in
+      the executable (zombie scripts use 1.5–3 for SP text, 8 for popups, 32 on
+      the chalk). They are not drawn in zombies now (gap `asset-font`), the
+      0.25 guess is gone. *Needs:* shots of the "Round" intro, a "+10" popup and
+      the GAME OVER text, or the rule.
+- [ ] **V** `UI_FONT_DEFAULT` (textfont 0) picks a font by scale with
+      thresholds the executable holds (`ui_smallFont`/`ui_bigFont`/
+      `ui_extraBigFont` in earlier engines). Items with it are not drawn (e.g.
+      `lowammowarning`). *Needs:* the values of those dvars from Black Ops'
+      console, or a shot of the low-ammo warning.
+- [ ] **V** HUD owner draws whose draw rule is not in the data, not drawn now:
+      `CG_PLAYER_ACTIONSLOT_ARROW_1..4` (294-297) and `_BIND_1..4` (392-395; the
+      `[3]`/`[4]` key labels), `CG_PLAYER_HEAT_VALUE` (7),
+      `CG_PLAYER_WEAPON_LOW_AMMO_WARNING` (123). *Needs:* shots of the dpad with
+      a Cymbal Monkey and Claymores in the action slots (keyboard), and of an
+      empty clip.
+- [ ] **V** Weapon info details implemented from the owner draws' names only,
+      to be compared: clip/stock as plain numbers in the item font
+      (`CG_PLAYER_WEAPON_AMMO_CLIP`/`_STOCK`), weapon name always shown (no
+      fade), one grenade icon (`CG_OFFHAND_WEAPON_ICON_FRAG`, hudIcon of the
+      weapon), the engine dvars `ui_ammo_stock_width`/`ui_right_ammo_width` as
+      the text widths of `ammoStock`/`clip` in their fonts. *Needs:* a shot of
+      the bottom-right HUD at round 1 (M1911 8/32, 2 grenades), one right after
+      switching weapons, and one with 4 grenades.
+- [ ] **V** Engine dvars the HUD menus read that nothing in the session sets
+      read as unset (0 / ""), as the menu engine reads a missing dvar (log
+      `t5 hud: dvar ... is not registered`): `hud_missionFailed`,
+      `actionSlotsHide`, `createfx`, `ui_hud_hardcore`, `cg_hideWeaponHeat`,
+      `cg_drawWeaponHeatVertical`, `dec20_Enabled`, `g_gameskill`,
+      `gpad_enabled`, `missionsuccessbar`, `arcademode`, `bonusbackground`,
+      `systemlink`, `onlinegame`. *Needs:* their default values in Black Ops
+      (console `dvardump` in a zombies game).
 
 ## HUD, menus and fonts
 
-- [ ] **V** Hand-drawn zombie HUD (`crates/hud/src/zombie_hud.rs`, wired in
-      `scorebar.rs` and `weaponbar.rs`): points, ammo, weapon name and grenades
-      with made-up positions and Modern Warfare 2 fonts. Replace with Black Ops'
-      own zombie HUD menus.
-      *Check:* (a) the menus of `ui/hud.txt`, `ui/hud_sp.txt`, `ui/hud_zombie.txt`
-      and `ui/hud_coop.txt` are decoded from `code_post_gfx` + `patch` (log
-      `t5 hud menus:`); (c) screenshot at round 1 after spawn (`move 1012 -1197 0
-      90 0 &`) shows `weaponinfo_zombie`/`dpad_zombie` drawn from the menus;
-      `zombie_hud.rs` is deleted.
+- [ ] **V** Black Ops' menu expressions (`hud_iw4/src/expr_t5.rs`) name only
+      the functions the data proves: matched against BO1 menu source with the
+      same `file:line` (`dvarint` 30, `dvarbool` 31, `dvarstring` 33,
+      `inkillcam` 38, `isdualwield` 39, `isfuelweapon` 40, `adsjavelin` 56,
+      `keybinding` 81) or placed by the predecessor engine's (T4) order between
+      two proven anchors (`ui_active` 34, `flashbanged` 35, `player` 41). Any
+      other index fails the expression (e.g. 354 in the guided-missile menus,
+      204/219/87 in `hud_spectator`). *Check:* (a) each new index needs a
+      compiled expression whose source line names it.
+- [ ] **V** Menu items are painted by the menu engine of `hud/src/chrome.rs`,
+      i.e. Modern Warfare 2's rules for text placement (`item_text_origin`),
+      text scale (`normalized_text_scale`) and screen alignment. Same engine
+      lineage, unverified for Black Ops. *Check:* (c) the weapon info shots
+      above, compared.
+- [ ] **V** Owner draws not implemented yet in Black Ops' HUD menus (gap, not
+      drawn): `cursorhints` (72, the use hint; the Modern Warfare 2 hint still
+      draws instead), `centerobituary` 90, `deadscreen` 97, `mantlehint` 80,
+      hold-breath 71/311, `invalidcmdhint` 113, `successfulcmdhint` 132,
+      `friendly_names` 200, `objective_indicators` 322, `vehiclehud` 192/193,
+      `wristwatch` 316, `friendly_arrows` 199, `talkers` 195-197,
+      `amitalking` 266.
 - [ ] **V** Hand-drawn zombie scoreboard (`scoreboard.rs` `zombie_board`) with
       English literals; the Modern Warfare 2 scoreboard menu is skipped in
       `menus/mod.rs`. Replace with Black Ops' scoreboard menu and strings.
       *Check:* (a) find the Black Ops zombies scoreboard menu or strings in the
-      zones; otherwise park it.
+      zones; otherwise park it. — Removed in 3220bcf; no menu exists (only
+      `CGAME_SB_*` strings), parked above.
 - [ ] **V** Black Ops menus are skipped while loading (`fastfile_t5/src/load/menu.rs`);
       Black Ops fonts are not loaded. All HUD text (script hud elems, use hints,
       killfeed, overhead names) draws with Modern Warfare 2 fonts.
       *Check:* (a) log `t5 menus code_post_gfx: 168 menus, 11 lists`, `t5 menus
-      patch: 66 menus`, `t5 menus en_code_post_gfx: ... 6 fonts`; (c) script
-      hud elems and HUD menus draw with `fonts/*` from `en_code_post_gfx`.
-- [ ] **V** `t5_font_scale` in `hud_elems.rs`: script font scales above 4.6 are
-      multiplied by 0.25 — a guess. Needs Black Ops' real hud elem font rule.
+      patch: 66 menus`, `t5 menus en_code_post_gfx: ... 6 fonts` (d71f643);
+      (c) script hud elems and HUD menus draw with `fonts/*` from
+      `en_code_post_gfx`. HUD menus do since 3220bcf; use hints, killfeed and
+      overhead names still use Modern Warfare 2 fonts.
 - [ ] **V** `hud_elems.rs`: in zombies, script material elems skip the
       Modern Warfare 2 font-height floor — unverified workaround.
 - [ ] **V** The Modern Warfare 2 code blood overlay (`hud/src/blood.rs`) draws in
@@ -175,4 +236,13 @@ move on; they do not work around them.
 
 ## Closed
 
-(none yet)
+- [x] **V** Hand-drawn zombie HUD (`zombie_hud.rs`, wired in `scorebar.rs` and
+      `weaponbar.rs`) — replaced by Black Ops' HUD menu lists `ui/hud.txt`,
+      `ui/hud_sp.txt`, `ui/hud_zombie.txt`, `ui/hud_coop.txt` from
+      `code_post_gfx` + `patch`, drawn through the menu engine with Black Ops'
+      fonts and materials; each menu's own visibility expression decides.
+      Proof: log `t5 hud menus: 189 menus, 8 fonts`; shot
+      `5-BLACKOPS-HUD-PART/bohud_round1.png` (round 1, `weaponinfo_zombie`).
+      d71f643, 3220bcf. Points column and details parked above.
+- [x] **V** `t5_font_scale` guess in `hud_elems.rs` (×0.25 above 4.6) — removed;
+      the rule is parked above (script text hud elems).
