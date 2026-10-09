@@ -1,8 +1,6 @@
 mod catalog;
 mod startup;
 
-pub use catalog::IW4 as BUILTINS;
-
 use game_api::{Rule, ScriptProgram, ScriptRequest};
 
 pub struct Iw4;

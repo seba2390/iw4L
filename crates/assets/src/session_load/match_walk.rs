@@ -1415,15 +1415,19 @@ fn treyarch_map_under_iw4_rules(
         })
         .unwrap_or_default();
     let mut scripts = crate::ScriptSources::default();
-    let mut map_main = declarations.map_script(&entities);
-
+    let mut map_main;
     if family == asset_core::FamilyId::T6 {
-        map_main = map_main.replace("maps\\mp\\_load::main();", "");
+        // Modern Warfare 2's animated-model table feeds its own map scripts,
+        // which a Black Ops 2 match does not run.
+        map_main = declarations
+            .map_script("")
+            .replace("maps\\mp\\_load::main();", "");
         assert!(
             !map_main.contains("maps\\mp\\_load"),
             "T6 generated map script still contains maps/mp/_load"
         );
     } else {
+        map_main = declarations.map_script(&entities);
         let end = map_main.rfind('}').expect("generated map main");
         map_main.insert_str(end, "\tthread iw4l_maps\\destructibles::main();\n");
 

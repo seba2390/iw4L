@@ -5990,7 +5990,6 @@ dependencies = [
  "game_t5",
  "game_t6",
  "gamemode_iw4",
- "gsc",
  "hud_iw4",
  "net",
  "perf",
