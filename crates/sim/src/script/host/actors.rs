@@ -214,10 +214,30 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         if let Err(fault) = run_now(world, ACTOR_KILLED, Value::Object(actor), killed, now) {
             diag::warn!(Sim, "actor killed callback: {fault:?}");
         }
+        credit_kill(world, &arg(1), &arg(4), &arg(8));
         raise(world, Value::Object(actor), "death", vec![arg(1)]);
         super::actor_brain::kill(world, actor);
     }
     Ok(Value::Undefined)
+}
+
+/// The engine counts a player's actor kills and headshots for the scoreboard.
+fn credit_kill(world: &mut World, attacker: &Value, means: &Value, location: &Value) {
+    let Value::Object(attacker) = attacker else {
+        return;
+    };
+    let Some(client) = world.resource::<Runtime>().player_client(*attacker) else {
+        return;
+    };
+    let headshot = matches!(location, Value::String(l) if matches!(&**l, "head" | "helmet"))
+        && !matches!(means, Value::String(m) if matches!(&**m, "MOD_MELEE" | "MOD_BAYONET" | "MOD_IMPACT"));
+    let mut frame = crate::frame::FrameWorld::from_world(world);
+    let id = crate::ClientId(client);
+    if frame.client_meta(id).is_some() {
+        let meta = frame.client_meta_mut(id);
+        meta.kills += 1;
+        meta.zombie_stats[2] += i32::from(headshot);
+    }
 }
 
 pub(crate) fn register_damage(registry: &mut NativeRegistry) {

@@ -262,6 +262,77 @@ fn team_presentation(
     (name, icon, color)
 }
 
+const ZOMBIE_COLUMNS: [(f32, &str); 5] = [
+    (216.0, "Points"),
+    (272.0, "Kills"),
+    (328.0, "Downs"),
+    (384.0, "Revives"),
+    (440.0, "Headshots"),
+];
+
+/// The zombies scoreboard: one row per player with points, kills, downs,
+/// revives and headshots.
+fn zombie_board(
+    draw: &mut BoardDraw<'_>,
+    snap: &Snapshot,
+    rows: &[ScoreboardRow],
+    local: sim::ClientId,
+) {
+    const ROW_H: f32 = 22.0;
+    const SCALE: f32 = 0.35;
+    for (x, label) in ZOMBIE_COLUMNS {
+        draw.text(LIST_X + x, 196.0, 56.0, 0.28, true, label, WHITE);
+    }
+    let mut y = 204.0;
+    for row in rows {
+        let Some((slot, meta)) = snap
+            .meta
+            .clients
+            .iter()
+            .enumerate()
+            .find(|(_, (id, _))| id.0 as i32 == row.score.client)
+            .map(|(slot, (_, meta))| (slot, meta))
+        else {
+            continue;
+        };
+        let color = crate::zombie_hud::POINT_COLORS[slot % crate::zombie_hud::POINT_COLORS.len()];
+        let back = if row.score.client == local.0 as i32 {
+            [0.35, 0.05, 0.05, 0.6]
+        } else {
+            [0.15, 0.15, 0.15, 0.6]
+        };
+        draw.picture(LIST_X, y, LIST_WIDTH, ROW_H, "white", back);
+        draw.text(
+            LIST_X + 8.0,
+            y + ROW_H * 0.75,
+            210.0,
+            SCALE,
+            false,
+            &row.name,
+            color,
+        );
+        let values = [
+            meta.score,
+            meta.kills,
+            meta.zombie_stats[0],
+            meta.zombie_stats[1],
+            meta.zombie_stats[2],
+        ];
+        for ((x, _), value) in ZOMBIE_COLUMNS.into_iter().zip(values) {
+            draw.text(
+                LIST_X + x,
+                y + ROW_H * 0.75,
+                54.0,
+                SCALE,
+                true,
+                &value.to_string(),
+                color,
+            );
+        }
+        y += ROW_H + 2.0;
+    }
+}
+
 // Only intermission opens the scoreboard; the ended phase alone would cover the final killcam.
 pub(crate) fn displayed(down: bool, snap: &Snapshot, local: sim::ClientId) -> bool {
     down || snap.meta.phase == MatchPhase::PostGame
@@ -308,6 +379,23 @@ pub(crate) fn update_scoreboard(
         .map_or(&fallback, |s| &s.parsed);
     let rows = rows_from_parsed(snap, parsed);
     if rows.is_empty() {
+        return;
+    }
+    if snap.meta.kind == gamemode_iw4::GameModeKind::Zombies {
+        let mut draw = BoardDraw {
+            surface: &surface,
+            font,
+            cmds: Vec::new(),
+        };
+        zombie_board(&mut draw, snap, &rows, local.0);
+        for cmd in &draw.cmds {
+            let _ = hud_images.get(cmd.material_namespace, &cmd.material, &mut images);
+        }
+        let fonts = HashMap::from([(HUD_SMALL_FONT.to_owned(), font)]);
+        let (quads, _) = tessellate_fonts(&Draw2dList { cmds: draw.cmds }, &fonts);
+        if !quads.is_empty() {
+            pass.scoreboard = TessJob::Quads(quads);
+        }
         return;
     }
     let loc = strings.as_deref();

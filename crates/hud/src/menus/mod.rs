@@ -365,6 +365,7 @@ pub(crate) fn update_script_menus(
 
     let scoreboard = snapshot
         .filter(|s| in_game && crate::scoreboard::displayed(world.scores_open, s, local.0))
+        .filter(|s| s.meta.kind != gamemode_iw4::GameModeKind::Zombies)
         .and_then(|_| catalog.get(SCOREBOARD_MENU));
     if (menus.stack.is_empty() && scoreboard.is_none()) || !surface.is_ready() {
         return;

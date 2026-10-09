@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use asset_game::{FontDef, MenuCatalog};
 use assets::BoundWeapons;
 use bevy::prelude::*;
-use playerstate_iw4::{PM_TYPE_DEAD, PlayerState};
+use playerstate_iw4::{PM_TYPE_DEAD, PM_TYPE_INTERMISSION, PM_TYPE_SPECTATOR, PlayerState};
 
 use crate::draw2d::{Draw2dCmd, Draw2dList, Draw2dOp, Draw2dProvenance, tessellate_fonts};
 use crate::gpu_list::TessJob;
@@ -15,7 +15,7 @@ use crate::images::HudImages;
 use crate::surface::Hud2dSurface;
 
 /// Row colours of the points column, one per player slot.
-const POINT_COLORS: [[f32; 4]; 4] = [
+pub(crate) const POINT_COLORS: [[f32; 4]; 4] = [
     [1.0, 1.0, 1.0, 1.0],
     [0.49, 0.81, 0.93, 1.0],
     [0.96, 0.79, 0.31, 1.0],
@@ -187,7 +187,10 @@ pub(crate) fn weapon_info(
     hud_images: &mut HudImages,
     images: &mut Assets<Image>,
 ) -> TessJob {
-    if info.ps.pm_type >= PM_TYPE_DEAD {
+    if matches!(
+        info.ps.pm_type,
+        PM_TYPE_SPECTATOR | PM_TYPE_INTERMISSION | PM_TYPE_DEAD..
+    ) {
         return TessJob::Hide;
     }
     let (Some(big), Some(small)) = (

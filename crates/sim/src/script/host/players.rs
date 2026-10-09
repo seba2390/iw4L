@@ -1394,6 +1394,9 @@ pub(crate) fn load_field(world: &mut World, client: u32, name: &str) -> Option<V
         "score" => Value::Int(meta?.score),
         "kills" => Value::Int(meta?.kills),
         "deaths" => Value::Int(meta?.deaths),
+        "downs" => Value::Int(meta?.zombie_stats[0]),
+        "revives" => Value::Int(meta?.zombie_stats[1]),
+        "headshots" => Value::Int(meta?.zombie_stats[2]),
         "sessionteam" => Value::string(team_name(meta?.client_state_team)),
         _ => return None,
     })
@@ -1513,6 +1516,18 @@ pub(crate) fn store_field(
             if let Some(ps) = frame.player_mut(id) {
                 ps.max_health = n;
                 ps.health = ps.health.min(n);
+            }
+        }
+        "downs" | "revives" | "headshots" => {
+            let n = int(value)?;
+            let mut frame = FrameWorld::from_world(world);
+            if frame.client_meta(id).is_some() {
+                let slot = match name {
+                    "downs" => 0,
+                    "revives" => 1,
+                    _ => 2,
+                };
+                frame.client_meta_mut(id).zombie_stats[slot] = n;
             }
         }
         "score" | "kills" | "deaths" => {

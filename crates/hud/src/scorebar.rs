@@ -312,6 +312,14 @@ pub(crate) fn update_scorebar(
         return;
     };
     if snap.meta.kind == gamemode_iw4::GameModeKind::Zombies {
+        if matches!(
+            snap.meta.phase,
+            sim::MatchPhase::Intermission | sim::MatchPhase::PostGame
+        ) || local_meta.lifecycle == sim::ClientLifecycle::Intermission
+        {
+            hide(&mut pass);
+            return;
+        }
         let mut scores: Vec<(bool, i32)> = snap
             .meta
             .clients
