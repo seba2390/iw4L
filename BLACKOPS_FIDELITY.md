@@ -70,6 +70,23 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
       `gpad_enabled`, `missionsuccessbar`, `arcademode`, `bonusbackground`,
       `systemlink`, `onlinegame`. *Needs:* their default values in Black Ops
       (console `dvardump` in a zombies game).
+- [ ] **V** Vision sets (Kino grading, `zombie_last_stand`, `zombie_death`): the
+      files are Black Ops data (`zombie_theater.ff` `vision/zombie_theater.vision`,
+      `common_zombie.ff` `vision/zombie_last_stand.vision`/`zombie_death.vision`;
+      copies in `5-BLACKOPS-HUD-PART/`), but Black Ops grades with its own
+      post chain (`create_lut2dv`, `apply_lut3d`, `bloom_*`, `revivefx` in
+      `code_post_gfx`) and turns `r_film*`, `r_sCurve*`, `r_bloom*`,
+      `r_reviveFX*` into those shaders' constants in the executable. Feeding
+      them to Modern Warfare 2's film model would be a stand-in, so nothing is
+      graded (`assets/src/lane/t5.rs` still drops the T5 visions;
+      `visionsetlaststand` stays a no-op). *Needs:* a D3D9 API trace
+      (apitrace/PIX) of one Kino frame each with `zombie_theater`,
+      `zombie_last_stand` and `zombie_death` active, so the dvar-to-constant
+      mapping can be read off.
+- [ ] **G** Double Tap (`specialty_rof`): no zombie script sets the fire-rate
+      factor, so it is the engine dvar `perk_weapRateMultiplier`'s default.
+      *Needs:* its value from Black Ops' console in a zombies game (and whether
+      it scales fire time only, or also burst/rechamber).
 
 ## HUD, menus and fonts
 
@@ -127,7 +144,8 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
 
 - [ ] **V** Black Ops vision sets are never loaded (`assets/src/lane/t5.rs` drops
       them): Kino's colour grading, last stand and death visions are missing.
-- [ ] **V** `visionsetlaststand` is a no-op.
+      Parked above (needs the dvar-to-shader mapping).
+- [ ] **V** `visionsetlaststand` is a no-op (parked with the vision sets).
 - [ ] **V** Zone data dropped for T5 maps: dyn ents, fx models, glass, dynamic light.
 - [ ] **V** No ragdoll: `startragdoll`/`isragdoll` accepted without effect, dead
       zombies hold their death pose; `launchragdoll` errors on actors.
@@ -162,6 +180,9 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
 ## AI and actors
 
 - [ ] **G** `isai` always returns 0 (breaks power-up, spawner, dog and animscript paths).
+      2beeac3: true for actors (AI spawned from spawners). *Check:* (b) a dog
+      round in Kino where `_zombiemode_ai_dogs` (line 704) notifies `killed` on
+      an AI attacker without faults.
 - [ ] **G** `getaispeciesarray` ignores the species.
 - [ ] **G/V** Animscript selection is a heuristic in `actor_brain.rs`; pain is
       never chosen.
@@ -175,8 +196,6 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
 - [ ] **G** Actor damage: attacker passed as inflictor; `modelIndex`/`timeOffset`
       zero; the `damage` notify has empty tag and part names.
 - [ ] **G** Hit locations guessed from bone names (`actors.rs` `hit_location`).
-- [ ] **G** `credit_kill` (`actors.rs`): the engine counts kills/headshots itself;
-      `_gameskill` may count them too (double count). Verify against the scripts.
 - [ ] **G** `dospawn` never fails.
 - [ ] **G** `getallnodes` returns an empty array: `setup_traversals` never runs.
 - [ ] **G** No-ops / soft failures: `reacquire*`, `flagenemyunattackable`, AI event
@@ -190,7 +209,10 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
 - [ ] **G** Player movement and the weapon state machine are Modern Warfare 2's
       (`movement_iw4`, `weapon_iw4`), not Black Ops' (sprint, dive to prone, etc.).
 - [ ] **G** Perks: only Modern Warfare 2 perk bits map (`script_player.rs`
-      `perk_bits`); Double Tap does nothing; Juggernog needs `setmaxhealth`.
+      `perk_bits`); Double Tap does nothing (parked above); Juggernog: 2beeac3
+      implements `setmaxhealth` through the player's `maxhealth`. *Check:* (b)
+      buy Juggernog, then `maxhealth` 250 in the log and five zombie hits to go
+      down.
 - [ ] **G/V** Last stand uses Modern Warfare 2's last-stand movement and view
       heights; every zombies player is forced into it by the engine
       (`script_player.rs`) rather than by Black Ops' callback; fixed 500 ms
@@ -205,7 +227,7 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
       `isitempurchased` 1, `getweaponstowedmodel` 0; `disablegrenadesuicide` no-op.
 - [ ] **G** `groundtrace` is `bullettrace`.
 - [ ] **G** Bullet hits: no surface table; crouch/prone hit locations not separated.
-- [ ] **G** Not implemented: `setmaxhealth`, `getplayerviewheight`, `magicgrenade`,
+- [ ] **G** Not implemented: `getplayerviewheight`, `magicgrenade`,
       `magicgrenademanual`, `dropweapon`.
 - [ ] **G** Pack-a-Punch, teleporter, debris, traps, box move, nuke / max ammo /
       double points / carpenter unverified.
@@ -223,7 +245,7 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
       `ropesetflag`, `reportmtu`, `stopallrumbles`, `sethintlowpriority`,
       `setperkfortrigger`, `setignoreentfortrigger`, `enablelinkto`,
       `setforcenocull`, `sendfaceevent`.
-- [ ] **G** 171 builtins answer "not implemented yet" (`NativeRegistry::bind_gaps`,
+- [ ] **G** 170 builtins answer "not implemented yet" (`NativeRegistry::bind_gaps`,
       listed at match start); the remaining ones are in the log line.
 - [ ] **G** Startup script faults: auto turret, `is_in_array` on arrays, `_gameskill`.
 
@@ -245,4 +267,9 @@ game at 1280x720 in Kino solo; each entry names the shot it needs.
       `5-BLACKOPS-HUD-PART/bohud_round1.png` (round 1, `weaponinfo_zombie`).
       d71f643, 3220bcf. Points column and details parked above.
 - [x] **V** `t5_font_scale` guess in `hud_elems.rs` (×0.25 above 4.6) — removed;
-      the rule is parked above (script text hud elems).
+      the rule is parked above (script text hud elems). 0e4a632.
+- [x] **G** `credit_kill` (`actors.rs`) counted every actor kill and headshot
+      in the engine while `_gameskill::auto_adjust_enemy_died` (threaded on
+      axis AI by `_spawner`) counts them too: two kills logged `kills 2`,
+      `kills 4`. Removed; the same run now logs `kills 1`, `kills 2`
+      (`5-BLACKOPS-HUD-PART/kills_after.log`). 00fd754.

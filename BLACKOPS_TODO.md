@@ -151,11 +151,14 @@ Done when a single zombie can be fought and killed with correct feedback.
       sound bank, scripts' bare `zmb_*` names play as T5 aliases, and
       `PlaySound(alias, notify)` raises its done-notify (after a fixed 2s;
       footstep aliases from the singleplayer sound banks are still missing).
-- [ ] Zombie HUD and menus: zombie text, priced use hints, the round chalk,
-      the points column and other HUD icons the zombie scripts name show
-      (decoded from the zones and Black Ops' IWDs), and the compass is
-      hidden; the lobby menus do not offer the zombies mode yet, and the
-      floating point popups draw too large.
+- [ ] Zombie HUD and menus: Black Ops' own HUD menu lists (`ui/hud.txt`,
+      `ui/hud_sp.txt`, `ui/hud_zombie.txt`, `ui/hud_coop.txt` from
+      `code_post_gfx` + `patch`) now draw with Black Ops' fonts and
+      materials (weapon info, dpad). Waiting on the maintainer (see
+      `BLACKOPS_FIDELITY.md`): the points column and the scoreboard (drawn by
+      the executable), script text hud elems (font/size rule), several owner
+      draws. The use hint is still the Modern Warfare 2 one; the lobby menus do
+      not offer the zombies mode yet.
 - [ ] Client scripts, or host-side substitutes for what they show.
 
 Done when a solo game of Kino can be played from round 1 until death.
@@ -179,6 +182,15 @@ Done when two or more machines play a full Kino game together.
 - [ ] Hellhounds and crawlers.
 - [ ] Five and Dead Ops Arcade.
 - [ ] Audio, effects and visual fidelity passes; performance with many zombies.
+
+## Waiting on the maintainer
+
+Items that need a reference capture from the original game or a rule only the
+executable holds are listed, with exactly what is needed, under "Waiting on the
+maintainer" in `BLACKOPS_FIDELITY.md`: the zombies points column and
+scoreboard, script text hud elems, `UI_FONT_DEFAULT`, several HUD owner draws,
+weapon info details, engine dvar defaults, vision-set grading and Double Tap's
+fire-rate factor.
 
 ## Open questions
 
