@@ -119,6 +119,8 @@ struct Survivor {
     solo_revives_bought: u8,
     perk_label: Option<u64>,
     last_perks: String,
+    staff_label: Option<u64>,
+    last_staffs: String,
     repair_due: u32,
     repair_round: u32,
     repair_points: i32,
@@ -332,6 +334,7 @@ fn route(state: &Survival, start: usize, goal: usize) -> VecDeque<usize> {
 fn initialize(world: &mut World, state: &mut Survival) {
     state.tools.initialize(world, &state.authored);
     state.digs.initialize(&state.authored);
+    state.staffs.initialize(world, &state.authored);
     let mut frame = FrameWorld::from_world(world);
     for client in frame.client_ids_sorted() {
         let meta = frame.client_meta_mut(client);
@@ -2039,13 +2042,51 @@ fn interactions(
         drop(frame);
         let shovel = state.tools.selected(world, client, origin);
         let dig = state.digs.selected(world, origin, client, tick);
+        let staff = state.staffs.selected(world, client, origin);
         if held && !survivor.use_held && revival.is_none() && selected.is_none() {
             if let Some(index) = shovel {
                 state.tools.take(world, client, index);
+            } else if let Some(index) = staff {
+                state.staffs.craft(world, client, index);
             } else if let Some(index) = dig {
                 let mut digs = std::mem::take(&mut state.digs);
                 digs.dig(world, state, &mut survivor, client, index, tick);
                 state.digs = digs;
+            } else {
+                // Check if player has a staff equipped and try to fire ability
+                let frame = FrameWorld::from_world(world);
+                let current_weapon = frame.player(client).map_or(0, |ps| ps.weapon);
+                let weapon_name = frame.weapon_script_name(current_weapon).to_owned();
+                drop(frame);
+                
+                // Check if current weapon is a staff
+                for kind in [
+                    origins_staff::StaffKind::Fire,
+                    origins_staff::StaffKind::Ice,
+                    origins_staff::StaffKind::Lightning,
+                    origins_staff::StaffKind::Gas,
+                ] {
+                    if weapon_name.contains(kind.name()) && state.staffs.has(client, kind) {
+                        // Get player's forward direction for ability direction
+                        let frame = FrameWorld::from_world(world);
+                        let forward = if let Some(ps) = frame.player(client) {
+                            let angles = ps.viewangles;
+                            let pitch = angles[0].to_radians();
+                            let yaw = angles[1].to_radians();
+                            [
+                                pitch.cos() * yaw.cos(),
+                                pitch.cos() * yaw.sin(),
+                                -pitch.sin(),
+                            ]
+                        } else {
+                            [1.0, 0.0, 0.0]
+                        };
+                        drop(frame);
+                        
+                        state.staffs.fire_ability(world, client, kind, origin, forward, tick);
+                        break;
+                    }
+                }
             }
         }
         if survivor.repair_round != state.round {
@@ -2114,6 +2155,16 @@ fn interactions(
                 hud_text(world, object, &perks);
             }
             survivor.last_perks = perks;
+        }
+        if survivor.staff_label.is_none() {
+            survivor.staff_label = make_hud(world, client, 340.0, 1.0);
+        }
+        let staffs = state.staffs.status(client);
+        if survivor.last_staffs != staffs {
+            if let Some(object) = survivor.staff_label {
+                hud_text(world, object, &staffs);
+            }
+            survivor.last_staffs = staffs;
         }
         if survivor.hud.is_none() {
             survivor.hud = make_hud(world, client, 400.0, 1.8);
@@ -2216,6 +2267,8 @@ fn interactions(
                     } else {
                         if shovel.is_some() {
                             "USE: Pick up shovel".into()
+                        } else if let Some(staff) = staff {
+                            state.staffs.prompt(staff, client)
                         } else if let Some(dig) = dig {
                             state.digs.prompt(dig, state.tools.owned(client)).into()
                         } else {
@@ -2420,6 +2473,7 @@ pub(crate) fn advance(world: &mut World) {
         }
         prepare_machines(world, &mut state, &players);
         state.tools.advance(world, &players, &state.digs);
+        state.staffs.advance(world, &players);
         state.weather.advance(world, tick, &players);
         let mut digs = std::mem::take(&mut state.digs);
         digs.advance(world, &mut state, tick, &players);

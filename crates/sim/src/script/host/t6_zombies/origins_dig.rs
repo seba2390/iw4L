@@ -4,6 +4,7 @@ use super::*;
 pub(super) struct Digs {
     sites: Vec<Site>,
     weapons: Vec<WeaponDrop>,
+    staff_parts: Vec<StaffPartDrop>,
     players: BTreeMap<ClientId, Progress>,
     round: u32,
     ended_round: u32,
@@ -28,6 +29,14 @@ struct Site {
 struct WeaponDrop {
     origin: [f32; 3],
     gun: u32,
+    object: u64,
+    born: u32,
+}
+
+#[derive(Clone, Debug)]
+struct StaffPartDrop {
+    origin: [f32; 3],
+    kind: origins_staff::StaffKind,
     object: u64,
     born: u32,
 }
@@ -87,6 +96,7 @@ impl Progress {
 pub(super) enum Selection {
     Site(usize),
     Weapon(usize),
+    StaffPart(usize),
 }
 
 fn roll(world: &mut World, count: u32) -> u32 {
@@ -262,6 +272,27 @@ impl Digs {
             );
             true
         });
+        self.staff_parts.retain(|drop| {
+            let elapsed =
+                tick.0.saturating_sub(drop.born) as f32 * crate::MATCH_TICK_MS as f32 / 1000.0;
+            if elapsed >= 12.0 {
+                world.resource_mut::<Runtime>().delete_entity(drop.object);
+                return false;
+            }
+            let sink = if elapsed < 6.0 {
+                40.0 * elapsed * elapsed / 108.0
+            } else {
+                40.0 * (elapsed - 3.0) / 9.0
+            };
+            let mut at = drop.origin;
+            at[2] -= sink;
+            world.resource_mut::<Runtime>().set_object_field(
+                drop.object,
+                "origin",
+                Value::Vector(at),
+            );
+            true
+        });
         for (due, client, at) in std::mem::take(&mut self.grenades) {
             if tick.0 < due {
                 self.grenades.push((due, client, at));
@@ -307,6 +338,9 @@ impl Digs {
                     .fraction
                     >= 0.95
         };
+        if let Some(index) = self.staff_parts.iter().position(|drop| visible(drop.origin)) {
+            return Some(Selection::StaffPart(index));
+        }
         if let Some(index) = self.weapons.iter().position(|drop| visible(drop.origin)) {
             return Some(Selection::Weapon(index));
         }
@@ -325,6 +359,7 @@ impl Digs {
     pub(super) fn prompt(&self, selection: Selection, shovel: bool) -> &'static str {
         match selection {
             Selection::Weapon(_) => "USE: Take dug-up weapon",
+            Selection::StaffPart(_) => "USE: Take staff part",
             Selection::Site(_) if shovel => "USE: Dig",
             Selection::Site(_) => "Shovel required",
         }
@@ -339,6 +374,22 @@ impl Digs {
         selection: Selection,
         tick: Tick,
     ) {
+        if let Selection::StaffPart(index) = selection {
+            let Some(drop) = self.staff_parts.get(index) else {
+                return;
+            };
+            let kind = drop.kind;
+            let drop = self.staff_parts.remove(index);
+            world.resource_mut::<Runtime>().delete_entity(drop.object);
+            state.staffs.add_part(client, kind);
+            diag::info!(
+                Sim,
+                "origins staff part acquired client={} kind={}",
+                client.0,
+                kind.name()
+            );
+            return;
+        }
         if let Selection::Weapon(index) = selection {
             let Some(drop) = self.weapons.get(index) else {
                 return;
@@ -439,14 +490,45 @@ impl Digs {
                 origins_staff::StaffKind::Gas,
             ];
             let kind = kinds[roll(world, kinds.len() as u32) as usize];
-            state.staffs.add_part(client, kind);
-            diag::info!(
-                Sim,
-                "origins staff part dug client={} kind={}",
-                client.0,
-                kind.name()
-            );
-            true
+            let part_model = match kind {
+                origins_staff::StaffKind::Fire => "p6_zm_staff_part_fire",
+                origins_staff::StaffKind::Ice => "p6_zm_staff_part_ice",
+                origins_staff::StaffKind::Lightning => "p6_zm_staff_part_lightning",
+                origins_staff::StaffKind::Gas => "p6_zm_staff_part_gas",
+            };
+            origin[2] += 40.0;
+            let frame = FrameWorld::from_world(world);
+            let can_spawn = frame.model_capability(part_model).flatten().is_some();
+            drop(frame);
+            if can_spawn {
+                if let Some(object) = model(world, part_model, origin, [0.0, 0.0, 0.0]) {
+                    self.staff_parts.push(StaffPartDrop {
+                        origin,
+                        kind,
+                        object,
+                        born: tick.0,
+                    });
+                    diag::info!(
+                        Sim,
+                        "origins staff part spawned client={} kind={} object={}",
+                        client.0,
+                        kind.name(),
+                        object
+                    );
+                    true
+                } else {
+                    false
+                }
+            } else {
+                state.staffs.add_part(client, kind);
+                diag::info!(
+                    Sim,
+                    "origins staff part dug (no model) client={} kind={}",
+                    client.0,
+                    kind.name()
+                );
+                true
+            }
         } else if roll(world, 2) == 0 {
             let choices: Vec<_> = [
                 (0, powerups::Kind::Nuke),

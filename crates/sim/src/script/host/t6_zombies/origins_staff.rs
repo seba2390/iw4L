@@ -51,9 +51,179 @@ impl StaffKind {
 pub(super) struct Staffs {
     owned: BTreeMap<ClientId, BTreeSet<StaffKind>>,
     parts: BTreeMap<ClientId, BTreeMap<StaffKind, u8>>,
+    stations: Vec<StaffStation>,
+}
+
+#[derive(Clone, Debug)]
+struct StaffStation {
+    kind: StaffKind,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    object: Option<u64>,
 }
 
 impl Staffs {
+    pub(super) fn initialize(&mut self, world: &mut World, authored: &[Vec<(String, String)>]) {
+        self.stations = authored
+            .iter()
+            .filter_map(|row| {
+                let targetname = field(row, "targetname");
+                if !targetname.starts_with("staff_craft_") {
+                    return None;
+                }
+                let kind = match targetname.strip_prefix("staff_craft_") {
+                    Some("fire") => StaffKind::Fire,
+                    Some("ice") => StaffKind::Ice,
+                    Some("lightning") => StaffKind::Lightning,
+                    Some("gas") => StaffKind::Gas,
+                    _ => return None,
+                };
+                let origin = point(field(row, "origin"))?;
+                let angles = point(field(row, "angles")).unwrap_or([0.0; 3]);
+                Some(StaffStation {
+                    kind,
+                    origin,
+                    angles,
+                    object: None,
+                })
+            })
+            .collect();
+    }
+
+    pub(super) fn advance(&mut self, world: &mut World, players: &[(ClientId, [f32; 3])]) {
+        for station in &mut self.stations {
+            if station.object.is_some()
+                || !players.iter().any(|(_, at)| {
+                    Vec3::from_array(*at).distance_squared(Vec3::from_array(station.origin))
+                        < 1200.0 * 1200.0
+                })
+            {
+                continue;
+            }
+            if FrameWorld::from_world(world)
+                .model_capability(station.kind.model())
+                .flatten()
+                .is_none()
+                || world.resource::<Runtime>().entities.len()
+                    >= super::super::entities::MAX_SCRIPT_ENTITIES
+            {
+                continue;
+            }
+            let Ok(presence) = super::super::presence::spawn_presence(world, station.origin) else {
+                continue;
+            };
+            let mut runtime = world.resource_mut::<Runtime>();
+            let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_staff_station")
+            else {
+                continue;
+            };
+            runtime.set_object_field(object, "origin", Value::Vector(station.origin));
+            runtime.set_object_field(object, "angles", Value::Vector(station.angles));
+            runtime.set_object_field(object, "model", Value::string(station.kind.model()));
+            let entity = runtime.entities.get_mut(&object).unwrap();
+            entity.presence = Some(presence);
+            entity.solid = false;
+            entity.contents = 0;
+            station.object = Some(object);
+            diag::info!(
+                Sim,
+                "origins staff station presented object={object} kind={} origin={:?}",
+                station.kind.name(),
+                station.origin
+            );
+        }
+    }
+
+    pub(super) fn selected(
+        &self,
+        world: &mut World,
+        client: ClientId,
+        origin: [f32; 3],
+    ) -> Option<usize> {
+        let frame = FrameWorld::from_world(world);
+        let forward = Vec3::from_array(math_iw4::angle_vectors(frame.player(client)?.viewangles).0);
+        let eye = Vec3::new(origin[0], origin[1], origin[2] + 50.0);
+        self.stations
+            .iter()
+            .enumerate()
+            .filter(|(_, station)| {
+                station.object.is_some()
+                    && Vec3::from_array(origin).distance_squared(Vec3::from_array(station.origin))
+                        <= 96.0 * 96.0
+                    && (Vec3::from_array(station.origin) + Vec3::Z * 8.0 - eye)
+                        .normalize_or_zero()
+                        .dot(forward)
+                        >= 0.5
+                    && frame
+                        .trace_world(
+                            [origin[0], origin[1], origin[2] + 50.0],
+                            [
+                                station.origin[0],
+                                station.origin[1],
+                                station.origin[2] + 8.0,
+                            ],
+                            [0.0; 3],
+                            [0.0; 3],
+                            0x11,
+                        )
+                        .fraction
+                        >= 0.95
+            })
+            .min_by(|(_, a), (_, b)| {
+                Vec3::from_array(a.origin)
+                    .distance_squared(Vec3::from_array(origin))
+                    .total_cmp(
+                        &Vec3::from_array(b.origin).distance_squared(Vec3::from_array(origin)),
+                    )
+            })
+            .map(|(index, _)| index)
+    }
+
+    pub(super) fn prompt(&self, index: usize, client: ClientId) -> String {
+        let Some(station) = self.stations.get(index) else {
+            return String::new();
+        };
+        let has_staff = self.has(client, station.kind);
+        let part_count = self.part_count(client, station.kind);
+        if has_staff {
+            format!("{} staff (owned)", station.kind.name())
+        } else if part_count > 0 {
+            format!(
+                "USE: Craft {} staff ({} part{})",
+                station.kind.name(),
+                part_count,
+                if part_count > 1 { "s" } else { "" }
+            )
+        } else {
+            format!("{} crafting station (need parts)", station.kind.name())
+        }
+    }
+
+    pub(super) fn craft(
+        &mut self,
+        world: &mut World,
+        client: ClientId,
+        index: usize,
+    ) -> bool {
+        let Some(station) = self.stations.get(index) else {
+            return false;
+        };
+        let kind = station.kind;
+        if !self.can_craft(client, kind) {
+            return false;
+        }
+        let parts = self.parts.entry(client).or_default().entry(kind).or_insert(0);
+        *parts = parts.saturating_sub(1);
+        self.owned.entry(client).or_default().insert(kind);
+        diag::info!(
+            Sim,
+            "origins staff crafted client={} kind={}",
+            client.0,
+            kind.name()
+        );
+        true
+    }
+
     pub(super) fn has(&self, client: ClientId, kind: StaffKind) -> bool {
         self.owned
             .get(&client)
@@ -82,22 +252,6 @@ impl Staffs {
 
     pub(super) fn can_craft(&self, client: ClientId, kind: StaffKind) -> bool {
         !self.has(client, kind) && self.part_count(client, kind) >= 1
-    }
-
-    pub(super) fn craft(&mut self, world: &mut World, client: ClientId, kind: StaffKind) -> bool {
-        if !self.can_craft(client, kind) {
-            return false;
-        }
-        let parts = self.parts.entry(client).or_default().entry(kind).or_insert(0);
-        *parts = parts.saturating_sub(1);
-        self.owned.entry(client).or_default().insert(kind);
-        diag::info!(
-            Sim,
-            "origins staff crafted client={} kind={}",
-            client.0,
-            kind.name()
-        );
-        true
     }
 
     pub(super) fn give(&mut self, client: ClientId, kind: StaffKind) {
