@@ -52,7 +52,7 @@ impl game_api::GameScripts for T6 {
 
 const MULTIPLAYER_MODE: ModeRules = ModeRules {
     play_starts_on: "prematch_over",
-    every_player_downs: false,
+    every_player_downs: Rule::Known(false),
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,

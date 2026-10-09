@@ -57,7 +57,11 @@ impl game_api::GameScripts for T5 {
 
 const ZOMBIE_MODE: ModeRules = ModeRules {
     play_starts_on: "all_players_connected",
-    every_player_downs: true,
+    every_player_downs: Rule::Unknown(unknown!(
+        "t5.match.last_stand",
+        "when a dying Black Ops zombies player goes into last stand, and how a downed player moves and sees",
+        "Black Ops' down rule from its executable or a reference capture (laststand dvars, callback order)"
+    )),
     spawn_at_default_health: true,
     connect_team: Some("allies"),
     scripts_spawn_players: true,

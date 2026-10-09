@@ -308,13 +308,20 @@ pub(crate) fn finish_damage(
         return Finish::Hurt;
     }
     use playerstate_iw4::pm_flags::LAST_STAND;
-    // Every zombies player goes down into last stand; the scripts decide
-    // when that ends the game.
-    let downs = ps.perks[0] & playerstate_iw4::PERK_PISTOLDEATH != 0
-        || world
-            .bootstrap_ref()
-            .mode
-            .is_some_and(|mode| mode.every_player_downs);
+    let pistol_death = ps.perks[0] & playerstate_iw4::PERK_PISTOLDEATH != 0;
+    let forced = match world
+        .bootstrap_ref()
+        .mode
+        .map(|mode| mode.every_player_downs)
+    {
+        Some(game_api::Rule::Known(forced)) => forced,
+        Some(game_api::Rule::Unknown(gap)) => {
+            diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
+            false
+        }
+        None => false,
+    };
+    let downs = pistol_death || forced;
     let Some(ps) = world.player_mut(id) else {
         return Finish::Hurt;
     };

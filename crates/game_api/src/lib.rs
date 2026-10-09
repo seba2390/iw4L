@@ -4,14 +4,14 @@
 
 /// A rule this game does not have yet. `id` is listed in
 /// `docs/fidelity/<game>.md` (`cargo xtask boundary` checks it).
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Unknown {
     pub id: &'static str,
     pub what: &'static str,
     pub needs: &'static str,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rule<T> {
     Known(T),
     Unknown(&'static Unknown),
@@ -61,7 +61,7 @@ pub struct ModeRules {
     /// The level notify that ends the warmup.
     pub play_starts_on: &'static str,
     /// Every player goes down into last stand instead of dying.
-    pub every_player_downs: bool,
+    pub every_player_downs: Rule<bool>,
     /// A spawn starts at the default full health, not the stored max health.
     pub spawn_at_default_health: bool,
     /// The team every player joins on connect, when the scripts pick none.
