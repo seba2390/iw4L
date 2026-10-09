@@ -2385,6 +2385,7 @@ pub(crate) fn advance(world: &mut World) {
             state.started.get_or_insert(tick.0);
             state.round = (state.round + 1).min(255);
             state.powerups.new_round();
+            mines::new_round(world);
             state.remaining = rounds::population(
                 state.round,
                 FrameWorld::from_world(world).client_ids_sorted().len(),

@@ -38,6 +38,7 @@ pub struct ProjectileState {
     pub cleanup_at_ms: i32,
     pub travel_distance: f32,
     pub live: bool,
+    pub detonation_armed: bool,
     pub stuck_pane: Option<u32>,
     pub grounded: bool,
     pub guide: crate::MissileGuide,
@@ -331,6 +332,7 @@ fn spawn_grenade_with_velocity(
         cleanup_at_ms,
         travel_distance: 0.0,
         live: true,
+        detonation_armed: false,
         stuck_pane: None,
         grounded: false,
         guide: crate::MissileGuide::default(),
@@ -1490,6 +1492,7 @@ fn arm_impact_payload(
     projectile.guide = crate::MissileGuide::default();
     projectile.grounded = normal[2] > 0.7;
     projectile.detonate_at_ms = Some(contact_time.saturating_add(facts.fuse_time_ms.max(1)));
+    projectile.detonation_armed = false;
     projectile.cleanup_at_ms = contact_time.saturating_add(GRENADE_FUSE_CAP_MS);
     if let Some(ColliderId::Player { client, .. }) = collider {
         projectile.attached_to = player_attachment(world, client, origin);
@@ -1595,7 +1598,7 @@ fn settle_equipment(
         angles[2] = side.atan2(vertical).to_degrees();
         projectile.apos.tr_base = angles;
     }
-    if !facts.timed_detonation {
+    if !facts.timed_detonation && !projectile.detonation_armed {
         projectile.detonate_at_ms = None;
         projectile.cleanup_at_ms = i32::MAX;
     }
