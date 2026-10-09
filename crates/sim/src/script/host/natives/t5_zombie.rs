@@ -49,6 +49,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let spawners = spawners(world).into_iter().map(Value::Object).collect();
         new_array(world, spawners)
     });
+    // Script pacing on snapshot acknowledgement is left to the network layer:
+    // scripts see no remote clients and wait a tenth of a second instead.
+    registry.register(Function, "numremoteclients", |_, _, args| {
+        no_args(args)?;
+        Ok(Value::Int(0))
+    });
     registry.register(Function, "getdifficulty", |_, _, args| {
         no_args(args)?;
         Ok(Value::string("medium"))
