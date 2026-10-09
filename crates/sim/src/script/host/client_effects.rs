@@ -41,6 +41,24 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
     }
     vision_channel!("visionsetnaked", "visionsetnakedforplayer", naked_vision);
+    // The player's own vision set wins; before any is set it is the map's.
+    registry.register(Method, "getvisionsetnaked", |world, receiver, _| {
+        let client = player(world, receiver)?;
+        let own = FrameWorld::from_world(world)
+            .client_meta(ClientId(client))
+            .and_then(|meta| {
+                meta.view_effects
+                    .naked_vision
+                    .as_ref()
+                    .map(|v| v.name.clone())
+            });
+        let mut runtime = world.resource_mut::<Runtime>();
+        let name = own
+            .or_else(|| runtime.engine.naked_vision.as_ref().map(|v| v.name.clone()))
+            .map(|name| Value::string(&name))
+            .unwrap_or_else(|| runtime.object_field(0, "script"));
+        Ok(name)
+    });
     vision_channel!(
         "visionsetthermal",
         "visionsetthermalforplayer",

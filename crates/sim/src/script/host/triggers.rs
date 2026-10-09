@@ -576,13 +576,15 @@ enum Fires {
     Touch,
     Once,
     Use,
+    UseTouch,
 }
 
 fn fires(classname: &str) -> Option<Fires> {
     match classname {
         "trigger_multiple" | "trigger_radius" | "trigger_disk" => Some(Fires::Touch),
         "trigger_once" => Some(Fires::Once),
-        "trigger_use" | "trigger_use_touch" => Some(Fires::Use),
+        "trigger_use" => Some(Fires::Use),
+        "trigger_use_touch" => Some(Fires::UseTouch),
         _ => None,
     }
 }
@@ -928,7 +930,12 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
             .map(|(client, _, _)| *client)
             .collect();
         for (client, player) in &pressed {
+            // Triggers fire below, from their volume.
             if let Some(usable) = runtime.use_selected.get(client)
+                && runtime
+                    .entities
+                    .get(usable)
+                    .is_some_and(|entity| fires(&entity.classname).is_none())
                 && eligible(&runtime, &frame, *usable, *client, true)
             {
                 raised.push((*usable, *player));
@@ -944,20 +951,31 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
             let Some(volume) = volume(&mut runtime, &frame, trigger) else {
                 continue;
             };
+            let using = matches!(kind, Fires::Use | Fires::UseTouch);
             let candidates: Vec<(u32, u64)> = match kind {
-                Fires::Use => pressed.clone(),
+                Fires::Use | Fires::UseTouch => pressed.clone(),
                 Fires::Touch | Fires::Once => players
                     .iter()
                     .map(|(client, object, _)| (*client, *object))
                     .collect(),
             };
-            let look_at = kind == Fires::Use && runtime.require_look_at.contains(&trigger);
+            let look_at = using && runtime.require_look_at.contains(&trigger);
             for (client, player) in candidates {
-                if !eligible(&runtime, &frame, trigger, client, kind == Fires::Use) {
+                if !eligible(&runtime, &frame, trigger, client, using) {
                     continue;
                 }
                 let (mins, maxs) = toucher(&mut runtime, &frame, player);
-                if !volume.touches(mins, maxs) || look_at && !looks_into(&frame, client, &volume) {
+                let touches = volume.touches(mins, maxs);
+                // A use trigger answers a player in use range who looks at it
+                // (its volume may be a sliver on a wall); a use-touch trigger
+                // must be stood in.
+                let reached = match kind {
+                    Fires::Use if look_at => looks_into(&frame, client, &volume),
+                    Fires::Use => touches || looks_into(&frame, client, &volume),
+                    Fires::UseTouch => touches && (!look_at || looks_into(&frame, client, &volume)),
+                    Fires::Touch | Fires::Once => touches,
+                };
+                if !reached {
                     continue;
                 }
                 raised.push((trigger, player));

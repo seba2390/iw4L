@@ -117,10 +117,14 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Run `_zombiemode` and the Kino map scripts on the host (zombies game
       mode, T5 zombie builtin catalog, singleplayer code callbacks).
 - [x] Zombie weapons (`*_zm`) are registered under their script names.
-- [ ] Players spawn through the zombie scripts and receive their loadout.
-- [ ] Close the remaining builtin gaps the scripts report while a round runs.
-- [ ] Rounds, spawning, points, doors and debris, wall weapons, mystery box,
-      perks, power, Pack-a-Punch, power-ups, last stand.
+- [x] Players spawn through the zombie scripts and receive their loadout
+      (the M1911 in first person, 500 points).
+- [ ] Close the remaining builtin gaps the scripts report while a round runs
+      (the ones that killed player-spawn and wall-weapon threads are done).
+- [x] Rounds, zombie spawning, points, wall weapons (use triggers answer a
+      player looking at them within use range).
+- [ ] Doors and debris, mystery box, perks, power, Pack-a-Punch, power-ups,
+      last stand.
 - [ ] Zombie HUD and menus.
 - [ ] Client scripts, or host-side substitutes for what they show.
 

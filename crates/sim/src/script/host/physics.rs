@@ -24,15 +24,16 @@ fn usable<'a>(
 ) -> Result<&'a mut super::entities::Usable, String> {
     let object = object_of(world, receiver)?;
     let runtime = world.resource_mut::<Runtime>().into_inner();
-    Ok(runtime
-        .entities
-        .get_mut(&object)
-        .unwrap()
+    let entity = runtime.entities.get_mut(&object).unwrap();
+    // A use trigger works until it is turned off; other entities wait for
+    // `makeusable`.
+    let trigger = entity.classname.starts_with("trigger_");
+    Ok(entity
         .usable
         .get_or_insert_with(|| super::entities::Usable {
             cursor: 1,
             hint: -1,
-            enabled: false,
+            enabled: trigger,
             barred: Default::default(),
         }))
 }

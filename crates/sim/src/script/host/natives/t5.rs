@@ -1119,6 +1119,15 @@ fn register_player(registry: &mut NativeRegistry) {
         let start = (facts.start_ammo + facts.clip_size).max(1);
         Ok(Value::Float(held as f32 / start as f32))
     });
+    registry.register(Method, "getfractionmaxammo", |world, receiver, args| {
+        let id = ClientId(player_id(world, receiver)?);
+        let name = string(args, 0)?;
+        let facts = weapon_facts(world, &name)?;
+        let frame = FrameWorld::from_world(world);
+        let weapon = script_player::weapon_named(&frame, &name)?;
+        let stock = script_player::ammo_stock(&frame, id, weapon);
+        Ok(Value::Float(stock as f32 / facts.max_ammo.max(1) as f32))
+    });
     registry.register(Method, "getmovespeedscale", |world, receiver, _| {
         let id = ClientId(player_id(world, receiver)?);
         Ok(Value::Float(

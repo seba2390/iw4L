@@ -90,6 +90,36 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         no_args(args)?;
         Ok(Value::Int(players(world).len() as i32))
     });
+    // Hints to engine systems the host does not model: AI perception events,
+    // threat bias between groups (zombies always hunt the closest player),
+    // engagement ranges, player shove and knockback, the health shield, view
+    // blur, rope physics, weapon hide-tags on display models, the transporter
+    // screen effect, save games and network stat reports.
+    for name in [
+        "addaieventlistener",
+        "setthreatbiasgroup",
+        "setteamforentity",
+        "setengagementmindist",
+        "setengagementmaxdist",
+        "pushplayer",
+        "playerknockback",
+        "enablehealthshield",
+        "startfadingblur",
+        "useweaponhidetags",
+        "settransported",
+    ] {
+        registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
+    }
+    for name in [
+        "createthreatbiasgroup",
+        "setthreatbias",
+        "ropesetflag",
+        "savegame",
+        "reportmtu",
+        "disablegrenadesuicide",
+    ] {
+        registry.register(Function, name, |_, _, _| Ok(Value::Undefined));
+    }
 }
 
 fn optional_team(args: &[Value]) -> Result<Option<String>, String> {
