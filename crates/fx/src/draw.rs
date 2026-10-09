@@ -17,6 +17,7 @@ pub struct FxDrawElemContext<'a> {
     pub def_index: u8,
     pub elem_type: u8,
     pub origin: [f32; 3],
+    pub cull_reach: f32,
     pub axis: [[f32; 3]; 3],
     pub norm_time: f32,
     pub age_msec: i32,
@@ -393,6 +394,7 @@ fn draw_one_elem(
                 def_index: elem.def_index,
                 elem_type: elem.elem_type,
                 origin,
+                cull_reach: 0.0,
                 axis: effect.axis,
                 norm_time: norm,
                 age_msec: age,
@@ -472,19 +474,19 @@ fn draw_one_elem(
                 let age = host.msec_now.wrapping_sub(elem.msec_begin);
                 let norm = elem_norm_time(age, elem.life_span_msec);
                 let elem_random_seed = elem.random_seed;
-                let origin = crate::spark::spark_elem_world_origin(
-                    elem.origin,
-                    elem.flags,
-                    &effect.frame_now(),
-                    &effect.frame_when_played(),
-                    Some(elem.orient_spawn_params(elem_random_seed)),
-                );
+                let Some((origin, cull_reach)) =
+                    crate::spark_fountain::spark_fountain_reach(host, elem.spark_cloud_handle, age)
+                else {
+                    out.skipped_spark_fountain = out.skipped_spark_fountain.saturating_add(1);
+                    return;
+                };
                 let ctx = FxDrawElemContext {
                     def_name: effect.def_name.as_str(),
                     catalog_index: effect.catalog_index,
                     def_index: elem.def_index,
                     elem_type: elem.elem_type,
                     origin,
+                    cull_reach,
                     axis: effect.axis,
                     norm_time: norm,
                     age_msec: age,
@@ -550,6 +552,7 @@ fn draw_one_elem(
                     def_index: elem.def_index,
                     elem_type: elem.elem_type,
                     origin,
+                    cull_reach: 0.0,
                     axis: effect.axis,
                     norm_time: norm,
                     age_msec: age,
@@ -589,6 +592,7 @@ fn draw_one_elem(
                     def_index: elem.def_index,
                     elem_type: elem.elem_type,
                     origin,
+                    cull_reach: 0.0,
                     axis: effect.axis,
                     norm_time: norm,
                     age_msec: age,
@@ -640,6 +644,7 @@ fn draw_one_elem(
         def_index: elem.def_index,
         elem_type: elem.elem_type,
         origin,
+        cull_reach: 0.0,
         axis: effect.axis,
         norm_time: norm,
         age_msec: age,

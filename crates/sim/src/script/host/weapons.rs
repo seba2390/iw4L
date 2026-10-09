@@ -369,7 +369,6 @@ fn settle_items(world: &mut World) {
             .collect()
     };
     let pickups = FrameWorld::from_world(world).item_pickups_mut().clone();
-    let mut retired = Vec::new();
     for pickup in pickups {
         let Some((object, _, classname)) = items
             .iter()
@@ -394,14 +393,13 @@ fn settle_items(world: &mut World) {
             });
             raise(world, receiver.clone(), "trigger", vec![player, swapped]);
         }
-        retire(world, object);
-        retired.push(object);
     }
+    // Retire only after every pickup is raised: a death between two triggers on one
+    // item ends the script thread still waiting on it.
     for (object, number, _) in items {
-        if !retired.contains(&object)
-            && FrameWorld::from_world(world)
-                .dropped_item_by_number(number)
-                .is_none()
+        if FrameWorld::from_world(world)
+            .dropped_item_by_number(number)
+            .is_none()
         {
             retire(world, object);
         }
@@ -434,7 +432,7 @@ fn settle_projectiles(world: &mut World, notes: &[WeaponNote]) {
                 .find(|p| p.id == id)
                 .map(|p| p.entnum)
             {
-                FrameWorld::from_world(world).remove_projectile_by_number(number);
+                FrameWorld::from_world(world).despawn_projectile(number);
             }
             continue;
         };

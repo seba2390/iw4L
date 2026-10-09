@@ -1214,6 +1214,11 @@ fn fill_fx_model_plan(
             continue;
         };
         let asset_surfaces = asset.surfaces.clone();
+        // A draw without exact packed rows drops the whole merged xmodel lane.
+        if !plan.packed_exact() {
+            plan.skipped_no_material = plan.skipped_no_material.saturating_add(1);
+            continue;
+        }
 
         let box_half = entry.skel.radius.and_then(|radius| {
             crate::prepare::scene::model_lighting_cache::lighting_box_half(
