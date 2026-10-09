@@ -121,10 +121,9 @@ Done when a single zombie can be fought and killed with correct feedback.
       (the M1911 in first person, 500 points).
 - [ ] Close the remaining builtin gaps the scripts report while a round runs
       (the ones that killed player-spawn and wall-weapon threads are done).
-- [x] Rounds, zombie spawning, points, wall weapons (use triggers answer a
-      player looking at them within use range).
-- [ ] Doors and debris, mystery box, perks, power, Pack-a-Punch, power-ups,
-      last stand.
+- [x] Rounds, zombie spawning, points for hits and kills, wall weapons (use
+      triggers answer a player looking at them within use range), doors.
+- [ ] Debris, mystery box, perks, power, Pack-a-Punch, power-ups, last stand.
 - [ ] Zombie HUD and menus (zombie text and use hints with their prices
       show; the round chalk, points display and menus do not yet).
 - [ ] Client scripts, or host-side substitutes for what they show.
