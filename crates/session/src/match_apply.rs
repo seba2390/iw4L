@@ -248,6 +248,7 @@ pub fn apply_prepared_match(
             script_sound_aliases,
             objective_weapons,
             kind,
+            mode,
             gametype,
             scene: loaded_scene,
             weapons,
@@ -288,6 +289,7 @@ pub fn apply_prepared_match(
         let facts = std::mem::take(&mut prepared_map.facts);
         let airstrike_height = facts.airstrike_height;
         stage_resource(&mut install, ui_images);
+        stage_resource(&mut install, mode);
         stage_resource(
             &mut install,
             assets::SessionCompass {
@@ -560,6 +562,7 @@ pub fn apply_prepared_match(
             &mut input_gate,
             host_classes.as_deref(),
             kind,
+            mode,
             prepared_map.namespace,
             allow_debug_actions,
             &script_dvars,
@@ -570,7 +573,7 @@ pub fn apply_prepared_match(
             sim.register_local_presentation_dvars(local.as_ref().map(|local| local.0));
         }
         let mut natives = sim::script::NativeRegistry::default();
-        if kind == gamemode_iw4::GameModeKind::Zombies {
+        if mode.report_builtin_gaps {
             let gaps = natives.bind_gaps(&scripts);
             diag::info!(
                 Sim,
@@ -581,15 +584,14 @@ pub fn apply_prepared_match(
         }
         sim.install_gsc_program(scripts, natives, script_level)
             .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
-        if kind == gamemode_iw4::GameModeKind::Zombies
+        if mode.waits_for_lobby
             && let Some(bridge) = bridge.as_ref()
             && let net::MasterBridgeState::Hosting { members, .. } = bridge.state()
         {
             sim.set_expected_players(members.len());
         }
         if *role == frame::RuntimeRole::Listen
-            && kind != gamemode_iw4::GameModeKind::Zombies
-            && prepared_map.namespace != Some(asset_core::AssetNamespace::T6)
+            && mode.binds_account
             && let (Some(account), Some(local)) = (account.as_ref(), local.as_ref())
         {
             account
@@ -795,6 +797,7 @@ pub fn apply_prepared_match(
 /// hands one over.
 struct MatchInstallPlan {
     ui_images: asset_material::UiImagePublication,
+    mode: game_api::ModeRules,
     scripts: sim::script::Program,
     /// `.atr` sources of the animation trees actors may use, by tree name.
     actor_anim_sources: Vec<(String, String)>,
@@ -1005,6 +1008,13 @@ fn preflight_match_install(
             return Err(InstallRefusal::with_gap(gap, gap));
         }
     };
+    let family = prepared_map
+        .namespace
+        .ok_or_else(|| InstallRefusal::new(format!("`{zone}` belongs to no game")))?;
+    let mode = match crate::games::modes(family).mode(kind.token()) {
+        game_api::Rule::Known(mode) => mode,
+        game_api::Rule::Unknown(gap) => return Err(unknown_refusal(zone, kind.token(), gap)),
+    };
     let mut objective_weapons = Vec::new();
     let mut absent_effects = std::collections::BTreeSet::new();
     if let Some(
@@ -1012,11 +1022,10 @@ fn preflight_match_install(
         | asset_core::AssetNamespace::Iw5
         | asset_core::AssetNamespace::T6),
     ) = prepared_map.namespace
+        && mode.binds_objectives
         && !matches!(
             kind,
-            gamemode_iw4::GameModeKind::FreeForAll
-                | gamemode_iw4::GameModeKind::TeamDeathmatch
-                | gamemode_iw4::GameModeKind::Zombies
+            gamemode_iw4::GameModeKind::FreeForAll | gamemode_iw4::GameModeKind::TeamDeathmatch
         )
     {
         let catalog = catalog.ok_or_else(|| {
@@ -1110,9 +1119,9 @@ fn preflight_match_install(
             }
         }
     }
-    let zombies = match (kind, prepared.zombie_scripts.take()) {
-        (gamemode_iw4::GameModeKind::Zombies, Some(scripts)) => Some(scripts),
-        (gamemode_iw4::GameModeKind::Zombies, None) => {
+    let zombies = match (mode.zombie_zone_scripts, prepared.zombie_scripts.take()) {
+        (true, Some(scripts)) => Some(scripts),
+        (true, None) => {
             return Err(InstallRefusal::new(format!(
                 "the zombies mode needs a T5 zombie map; `{zone}` is not one"
             )));
@@ -1179,9 +1188,6 @@ fn preflight_match_install(
             })
             .collect(),
     };
-    let family = prepared_map
-        .namespace
-        .ok_or_else(|| InstallRefusal::new(format!("`{zone}` belongs to no game")))?;
     let game_scripts = crate::games::scripts(family);
     let request = game_api::ScriptRequest {
         map: zone,
@@ -1304,6 +1310,7 @@ fn preflight_match_install(
     }
     Ok(MatchInstallPlan {
         ui_images: prepared.ui_images,
+        mode,
         script_sound_aliases: prepared.script_sound_aliases,
         scripts,
         actor_anim_sources,
@@ -1725,6 +1732,7 @@ fn install_clip_and_player(
     input_gate: &mut AuthorityInputGate,
     host_classes: Option<&HostClassLoadouts>,
     kind: gamemode_iw4::GameModeKind,
+    mode: game_api::ModeRules,
     namespace: Option<asset_core::AssetNamespace>,
     allow_debug_actions: bool,
     rules: &[(String, String)],
@@ -1913,7 +1921,8 @@ fn install_clip_and_player(
         bot_classes,
         seed: 0,
         kind,
-        score_limit: if kind == gamemode_iw4::GameModeKind::Zclassic {
+        mode: Some(mode),
+        score_limit: if mode.unlimited {
             0
         } else {
             std::env::var("IW4L_SCORE_LIMIT")
@@ -1934,7 +1943,7 @@ fn install_clip_and_player(
                     _ => sim::FFA.score_limit,
                 })
         },
-        time_limit_ms: if kind == gamemode_iw4::GameModeKind::Zclassic {
+        time_limit_ms: if mode.unlimited {
             0
         } else {
             native_time.unwrap_or(match kind {

@@ -21,6 +21,7 @@ math_iw4.workspace = true
 trace_iw4.workspace = true
 clipmap_iw4.workspace = true
 gamemode_iw4.workspace = true
+game_api.workspace = true
 hud_iw4.workspace = true
 weapon_iw4.workspace = true
 entity_iw4.workspace = true

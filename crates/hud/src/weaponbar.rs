@@ -682,6 +682,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     hud_menus: Option<Res<'w, asset_game::SessionHudMenus>>,
     ui_dvars: Option<Res<'w, frame::UiMenuDvars>>,
     vis: HudPlayerVisInput<'w>,
+    mode: Option<Res<'w, game_api::ModeRules>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -749,10 +750,12 @@ pub(crate) fn update_weaponbar(
         .as_ref()
         .map(|w| offhand_ammo(ps, w, ps.offhand_primary))
         .unwrap_or(0);
-    if let Some(snap) = presented
-        .snapshot()
-        .filter(|s| s.meta.kind == gamemode_iw4::GameModeKind::Zombies)
-    {
+    if let Some(snap) = presented.snapshot().filter(|_| {
+        client_input
+            .mode
+            .as_ref()
+            .is_some_and(|mode| mode.hud.game_hud_menus)
+    }) {
         gaps.clear(HudGap::PerkDisplay);
         gaps.clear(HudGap::CompassRing);
         let Some(t5) = client_input.hud_menus.as_ref().and_then(|m| m.0.as_deref()) else {

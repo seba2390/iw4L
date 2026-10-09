@@ -9,6 +9,7 @@ description = "What a game provides to a match, and how a rule its data does not
 layer = "neutral"
 
 [dependencies]
+bevy_ecs.workspace = true
 gsc.workspace = true
 
 [lints]

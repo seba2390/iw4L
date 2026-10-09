@@ -295,6 +295,7 @@ pub(crate) fn update_scorebar(
     mut exprs: ResMut<crate::expr_cache::MenuExprCache>,
     view: Option<Res<frame::ViewSubject>>,
     vis_input: crate::weaponbar::HudPlayerVisInput,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     if !surface.is_ready() {
         return;
@@ -311,8 +312,7 @@ pub(crate) fn update_scorebar(
         hide(&mut pass);
         return;
     };
-    // Black Ops' points column is the `competitivemodescores` menu.
-    if snap.meta.kind == gamemode_iw4::GameModeKind::Zombies {
+    if mode.is_some_and(|mode| !mode.hud.scorebar) {
         hide(&mut pass);
         return;
     }

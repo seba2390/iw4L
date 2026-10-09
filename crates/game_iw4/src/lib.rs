@@ -1,7 +1,7 @@
 mod catalog;
 mod startup;
 
-use game_api::{Rule, ScriptProgram, ScriptRequest};
+use game_api::{HudRules, ModeRules, Rule, ScriptProgram, ScriptRequest};
 
 pub struct Iw4;
 
@@ -23,5 +23,35 @@ impl game_api::GameScripts for Iw4 {
 
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
         &[]
+    }
+}
+
+/// Modern Warfare 2's modes: a prematch countdown, deaths, code-drawn HUD.
+const MODE: ModeRules = ModeRules {
+    play_starts_on: "prematch_over",
+    every_player_downs: false,
+    spawn_at_default_health: false,
+    connect_team: None,
+    scripts_spawn_players: false,
+    spawn_classnames: None,
+    unlimited: false,
+    zombie_zone_scripts: false,
+    report_builtin_gaps: false,
+    waits_for_lobby: false,
+    binds_account: true,
+    binds_objectives: true,
+    hud: HudRules {
+        game_hud_menus: false,
+        scoreboard: true,
+        scorebar: true,
+        compass: true,
+        script_text: true,
+        material_font_floor: true,
+    },
+};
+
+impl game_api::GameModes for Iw4 {
+    fn mode(&self, _gametype: &str) -> Rule<ModeRules> {
+        Rule::Known(MODE)
     }
 }

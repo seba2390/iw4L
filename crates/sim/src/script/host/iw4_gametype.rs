@@ -8,13 +8,10 @@ use crate::script::{Runtime, Value};
 use bevy_ecs::prelude::World;
 
 pub(crate) fn apply_level_notify(frame: &mut FrameWorld, name: &str) {
-    // T5 zombies has no prematch: play starts once `_load_common` sees every
-    // player connected.
-    let start = match frame.bootstrap_ref().kind {
-        gamemode_iw4::GameModeKind::Zombies => "all_players_connected",
-        _ => "prematch_over",
+    let Some(mode) = frame.bootstrap_ref().mode else {
+        return;
     };
-    if name == start && frame.phase() == MatchPhase::Warmup {
+    if name == mode.play_starts_on && frame.phase() == MatchPhase::Warmup {
         crate::score::finish_prematch(frame);
     }
 }

@@ -1287,11 +1287,12 @@ pub(crate) fn sync_players(world: &mut World) {
                         .set_object_field(object, "pers", pers),
                     Err(_) => return,
                 }
-                // Zombie scripts never pick a team: every player fights for the allies.
-                if FrameWorld::from_world(world).bootstrap_ref().kind
-                    == gamemode_iw4::GameModeKind::Zombies
+                if let Some(team) = FrameWorld::from_world(world)
+                    .bootstrap_ref()
+                    .mode
+                    .and_then(|mode| mode.connect_team)
                 {
-                    let team = Value::string("allies");
+                    let team = Value::string(team);
                     let _ = store_field(world, client, "sessionteam", &team);
                     world
                         .resource_mut::<Runtime>()
@@ -1332,7 +1333,10 @@ fn client_name(name: &[u8]) -> String {
 /// waits for the spawn, whatever the spectator view meanwhile shows.
 pub(crate) fn awaiting_spawn(world: &mut World, client: u32) -> bool {
     let frame = FrameWorld::from_world(world);
-    frame.bootstrap_ref().kind == gamemode_iw4::GameModeKind::Zombies
+    frame
+        .bootstrap_ref()
+        .mode
+        .is_some_and(|mode| mode.scripts_spawn_players)
         && !frame
             .client_meta(ClientId(client))
             .is_some_and(|meta| meta.lifecycle == crate::ClientLifecycle::Alive)

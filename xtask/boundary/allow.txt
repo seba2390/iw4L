@@ -421,8 +421,7 @@ pattern crates/hud/src/breath_hint.rs hud_iw4:: 3
 pattern crates/hud/src/breath_hint.rs playerstate_iw4:: 2
 pattern crates/hud/src/chrome.rs AssetNamespace::<game> 1
 pattern crates/hud/src/chrome.rs hud_iw4:: 3
-pattern crates/hud/src/compass.rs GameModeKind::Zombies 1
-pattern crates/hud/src/compass.rs gamemode_iw4:: 3
+pattern crates/hud/src/compass.rs gamemode_iw4:: 2
 pattern crates/hud/src/compass.rs hud_iw4:: 3
 pattern crates/hud/src/compass.rs playerstate_iw4:: 2
 pattern crates/hud/src/draw2d.rs hud_iw4:: 44
@@ -431,9 +430,7 @@ pattern crates/hud/src/expr_cache.rs hud_iw4:: 2
 pattern crates/hud/src/flash.rs hud_iw4:: 1
 pattern crates/hud/src/gpu_list.rs hud_iw4:: 5
 pattern crates/hud/src/hud_elems.rs AssetNamespace::<game> 3
-pattern crates/hud/src/hud_elems.rs GameModeKind::Zombies 2
 pattern crates/hud/src/hud_elems.rs entity_iw4:: 1
-pattern crates/hud/src/hud_elems.rs gamemode_iw4:: 2
 pattern crates/hud/src/hud_elems.rs hud_iw4:: 7
 pattern crates/hud/src/hud_elems.rs playerstate_iw4:: 1
 pattern crates/hud/src/hudelem.rs hud_iw4:: 3
@@ -453,8 +450,6 @@ pattern crates/hud/src/menus/host.rs entity_iw4:: 1
 pattern crates/hud/src/menus/host.rs gamemode_iw4:: 1
 pattern crates/hud/src/menus/host.rs hud_iw4:: 5
 pattern crates/hud/src/menus/mod.rs AssetNamespace::<game> 1
-pattern crates/hud/src/menus/mod.rs GameModeKind::Zombies 1
-pattern crates/hud/src/menus/mod.rs gamemode_iw4:: 1
 pattern crates/hud/src/menus/mod.rs playerstate_iw4:: 1
 pattern crates/hud/src/menus/runtime.rs hud_iw4:: 5
 pattern crates/hud/src/overhead_names.rs entity_iw4:: 5
@@ -468,13 +463,11 @@ pattern crates/hud/src/reticle.rs movement_iw4:: 1
 pattern crates/hud/src/reticle.rs playerstate_iw4:: 3
 pattern crates/hud/src/reticle.rs weapon_iw4:: 1
 pattern crates/hud/src/scorebar.rs AssetNamespace::<game> 2
-pattern crates/hud/src/scorebar.rs GameModeKind::Zombies 1
 pattern crates/hud/src/scorebar.rs entity_iw4:: 1
-pattern crates/hud/src/scorebar.rs gamemode_iw4:: 3
+pattern crates/hud/src/scorebar.rs gamemode_iw4:: 2
 pattern crates/hud/src/scorebar.rs hud_iw4:: 38
-pattern crates/hud/src/scoreboard.rs GameModeKind::Zombies 1
 pattern crates/hud/src/scoreboard.rs entity_iw4:: 1
-pattern crates/hud/src/scoreboard.rs gamemode_iw4:: 2
+pattern crates/hud/src/scoreboard.rs gamemode_iw4:: 1
 pattern crates/hud/src/scoreboard.rs hud_iw4:: 1
 pattern crates/hud/src/splash.rs hud_iw4:: 7
 pattern crates/hud/src/surface.rs hud_iw4:: 1
@@ -484,8 +477,6 @@ pattern crates/hud/src/t5_hud.rs weapon_iw4:: 1
 pattern crates/hud/src/targetmap.rs gamemode_iw4:: 1
 pattern crates/hud/src/targetmap.rs hud_iw4:: 2
 pattern crates/hud/src/use_hint.rs hud_iw4:: 7
-pattern crates/hud/src/weaponbar.rs GameModeKind::Zombies 1
-pattern crates/hud/src/weaponbar.rs gamemode_iw4:: 1
 pattern crates/hud/src/weaponbar.rs hud_iw4:: 7
 pattern crates/hud/src/weaponbar.rs playerstate_iw4:: 1
 pattern crates/hud/src/weaponbar.rs weapon_iw4:: 1
@@ -828,11 +819,10 @@ pattern crates/replay/src/clip.rs playerstate_iw4:: 1
 pattern crates/session/src/content_manifest.rs AssetNamespace::<game> 4
 pattern crates/session/src/content_manifest.rs weapon_iw4:: 1
 pattern crates/session/src/loadout.rs weapon_iw4:: 1
-pattern crates/session/src/match_apply.rs AssetNamespace::<game> 13
+pattern crates/session/src/match_apply.rs AssetNamespace::<game> 12
 pattern crates/session/src/match_apply.rs FamilyId::<game> 1
-pattern crates/session/src/match_apply.rs GameModeKind::Zombies 6
 pattern crates/session/src/match_apply.rs clipmap_iw4:: 3
-pattern crates/session/src/match_apply.rs gamemode_iw4:: 34
+pattern crates/session/src/match_apply.rs gamemode_iw4:: 26
 pattern crates/session/src/match_apply.rs hud_iw4:: 1
 pattern crates/session/src/match_apply.rs is_<game> 2
 pattern crates/session/src/match_apply.rs render_fx:: 1
@@ -919,8 +909,6 @@ pattern crates/sim/src/script/host/guidance.rs entity_iw4:: 4
 pattern crates/sim/src/script/host/hud.rs entity_iw4:: 3
 pattern crates/sim/src/script/host/hud.rs hud_iw4:: 5
 pattern crates/sim/src/script/host/hud.rs playerstate_iw4:: 1
-pattern crates/sim/src/script/host/iw4_gametype.rs GameModeKind::Zombies 1
-pattern crates/sim/src/script/host/iw4_gametype.rs gamemode_iw4:: 1
 pattern crates/sim/src/script/host/match_data.rs structured_data_iw4:: 5
 pattern crates/sim/src/script/host/mechanics.rs movement_iw4:: 4
 pattern crates/sim/src/script/host/mechanics.rs playerstate_iw4:: 1
@@ -939,10 +927,8 @@ pattern crates/sim/src/script/host/natives/t5.rs weapon_iw4:: 4
 pattern crates/sim/src/script/host/objectives.rs gamemode_iw4:: 1
 pattern crates/sim/src/script/host/physics.rs entity_iw4:: 1
 pattern crates/sim/src/script/host/physics.rs trace_iw4:: 1
-pattern crates/sim/src/script/host/players.rs GameModeKind::Zombies 2
 pattern crates/sim/src/script/host/players.rs Realm::<game> 10
 pattern crates/sim/src/script/host/players.rs entity_iw4:: 9
-pattern crates/sim/src/script/host/players.rs gamemode_iw4:: 2
 pattern crates/sim/src/script/host/players.rs is_<game> 1
 pattern crates/sim/src/script/host/players.rs playerstate_iw4:: 5
 pattern crates/sim/src/script/host/players.rs weapon_iw4:: 2
@@ -993,9 +979,7 @@ pattern crates/sim/src/script/host/weapons.rs weapon_iw4:: 2
 pattern crates/sim/src/script/mod.rs is_<game> 1
 pattern crates/sim/src/script/runtime/lifecycle.rs playerstate_iw4:: 1
 pattern crates/sim/src/script_gaps.rs gamemode_iw4:: 1
-pattern crates/sim/src/script_player.rs GameModeKind::Zombies 2
 pattern crates/sim/src/script_player.rs entity_iw4:: 4
-pattern crates/sim/src/script_player.rs gamemode_iw4:: 2
 pattern crates/sim/src/script_player.rs hud_iw4:: 5
 pattern crates/sim/src/script_player.rs movement_iw4:: 5
 pattern crates/sim/src/script_player.rs playerstate_iw4:: 27

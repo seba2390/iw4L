@@ -3093,6 +3093,7 @@ dependencies = [
 name = "game_api"
 version = "0.1.0"
 dependencies = [
+ "bevy_ecs",
  "gsc",
 ]
 
@@ -3496,6 +3497,7 @@ dependencies = [
  "diag",
  "entity_iw4",
  "frame",
+ "game_api",
  "gamemode_iw4",
  "hud_iw4",
  "math_iw4",
@@ -6048,6 +6050,7 @@ dependencies = [
  "diag",
  "entity_iw4",
  "fx_iw4",
+ "game_api",
  "gamemode_iw4",
  "glam",
  "gsc",

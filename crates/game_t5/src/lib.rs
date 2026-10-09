@@ -2,7 +2,7 @@ mod catalog;
 mod zombie_catalog;
 mod zombie_startup;
 
-use game_api::{Rule, ScriptProgram, ScriptRequest, unknown};
+use game_api::{HudRules, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
 
 pub struct T5;
 
@@ -52,5 +52,41 @@ impl game_api::GameScripts for T5 {
         } else {
             &[]
         }
+    }
+}
+
+const ZOMBIE_MODE: ModeRules = ModeRules {
+    play_starts_on: "all_players_connected",
+    every_player_downs: true,
+    spawn_at_default_health: true,
+    connect_team: Some("allies"),
+    scripts_spawn_players: true,
+    spawn_classnames: None,
+    unlimited: false,
+    zombie_zone_scripts: true,
+    report_builtin_gaps: true,
+    waits_for_lobby: true,
+    binds_account: false,
+    binds_objectives: false,
+    hud: HudRules {
+        game_hud_menus: true,
+        scoreboard: false,
+        scorebar: false,
+        compass: false,
+        script_text: false,
+        material_font_floor: false,
+    },
+};
+
+impl game_api::GameModes for T5 {
+    fn mode(&self, gametype: &str) -> Rule<ModeRules> {
+        if gametype != ZOMBIES {
+            return Rule::Unknown(unknown!(
+                "t5.scripts.mp_gametypes",
+                "Black Ops multiplayer gametypes: their scripts need Black Ops' multiplayer natives and match flow",
+                "Black Ops' multiplayer builtins bound to Black Ops natives, and Black Ops' match phases"
+            ));
+        }
+        Rule::Known(ZOMBIE_MODE)
     }
 }

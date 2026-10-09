@@ -39,7 +39,12 @@ pub(crate) fn spawn(
         .client_meta(id)
         .map(|m| m.max_health)
         .filter(|&n| n > 0)
-        .filter(|_| world.bootstrap_ref().kind != gamemode_iw4::GameModeKind::Zombies)
+        .filter(|_| {
+            !world
+                .bootstrap_ref()
+                .mode
+                .is_some_and(|mode| mode.spawn_at_default_health)
+        })
     {
         ps.max_health = max;
         ps.health = max;
@@ -306,7 +311,10 @@ pub(crate) fn finish_damage(
     // Every zombies player goes down into last stand; the scripts decide
     // when that ends the game.
     let downs = ps.perks[0] & playerstate_iw4::PERK_PISTOLDEATH != 0
-        || world.bootstrap_ref().kind == gamemode_iw4::GameModeKind::Zombies;
+        || world
+            .bootstrap_ref()
+            .mode
+            .is_some_and(|mode| mode.every_player_downs);
     let Some(ps) = world.player_mut(id) else {
         return Finish::Hurt;
     };

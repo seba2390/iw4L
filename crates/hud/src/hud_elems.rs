@@ -226,6 +226,7 @@ pub(crate) fn update_hud_elems(
     mut ui_sound: MessageWriter<UiPlaySound>,
     cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     entities: Query<(&CEntity, &CEntityRuntime)>,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     if !surface.is_ready() {
         hide(&mut pass);
@@ -334,7 +335,10 @@ pub(crate) fn update_hud_elems(
                 // IW4 grows a material to the elem's font height; T5 zombie
                 // scripts give their chalk a large font scale for the round
                 // number it may later show, and draw the material at its size.
-                let floor = if meta.kind == gamemode_iw4::GameModeKind::Zombies {
+                let floor = if mode
+                    .as_ref()
+                    .is_some_and(|mode| !mode.hud.material_font_floor)
+                {
                     0.0
                 } else {
                     font_height
@@ -362,7 +366,7 @@ pub(crate) fn update_hud_elems(
 
         // Black Ops picks a script text elem's font and size by rules only its
         // executable holds (docs/fidelity/t5.md, waiting on the maintainer).
-        if meta.kind == gamemode_iw4::GameModeKind::Zombies {
+        if mode.as_ref().is_some_and(|mode| !mode.hud.script_text) {
             gaps.raise(GapCause::HudElemT5TextRule);
             continue;
         }

@@ -286,13 +286,13 @@ pub(crate) fn update_scoreboard(
     mut hud_images: ResMut<HudImages>,
     mut images: ResMut<Assets<Image>>,
     mut pass: ResMut<HudTessPass>,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     pass.scoreboard = TessJob::Hide;
     let Some(snap) = presented.snapshot() else {
         return;
     };
-    // Black Ops draws its zombies scoreboard in code (docs/fidelity/t5.md).
-    if snap.meta.kind == gamemode_iw4::GameModeKind::Zombies {
+    if mode.is_some_and(|mode| !mode.hud.scoreboard) {
         return;
     }
     let down = actions.as_ref().is_some_and(|a| a.client.kb.scores.active);
