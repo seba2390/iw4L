@@ -48,6 +48,10 @@ impl game_api::GameScripts for T6 {
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
         &[]
     }
+
+    fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
+    }
 }
 
 const MULTIPLAYER_MODE: ModeRules = ModeRules {

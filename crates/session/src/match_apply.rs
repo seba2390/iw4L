@@ -1211,32 +1211,32 @@ fn preflight_match_install(
     let config = sources
         .0
         .config(MATCH_CONFIG)
-        .or_else(|| catalog.and_then(|c| c.rawfile_text(MATCH_CONFIG)))
-        .map(str::to_owned)
         .or_else(|| {
-            identity
-                .and_then(|id| asset_game::read_iwd_named(&id.games_root, MATCH_CONFIG))
-                .and_then(|bytes| String::from_utf8(bytes).ok())
-        });
+            catalog
+                .filter(|catalog| catalog.namespace == Some(family))
+                .and_then(|catalog| catalog.rawfile_text(MATCH_CONFIG))
+        })
+        .map(str::to_owned);
     let mut script_dvars = match config {
         Some(text) => config_sets(&text),
         None => {
             diag::warn!(
                 Sim,
-                "gsc: {MATCH_CONFIG} is in neither the zones nor the iwds"
+                "gsc: {MATCH_CONFIG} is in neither the map's zones nor its game's menu catalog"
             );
             Vec::new()
         }
     };
-    if !script_dvars
-        .iter()
-        .any(|(name, _)| name.eq_ignore_ascii_case("onlinegame"))
-    {
-        script_dvars.push(("onlinegame".into(), "1".into()));
+    for (name, value) in game_scripts.config_defaults() {
+        if !script_dvars
+            .iter()
+            .any(|(set, _)| set.eq_ignore_ascii_case(name))
+        {
+            script_dvars.push(((*name).to_owned(), (*value).to_owned()));
+        }
     }
     script_dvars.push(("mapname".into(), zone.to_owned()));
     script_dvars.push(("g_gametype".into(), gametype.to_owned()));
-    script_dvars.push(("sv_maxclients".into(), "18".into()));
     script_dvars.extend(
         game_scripts
             .engine_dvars(gametype)

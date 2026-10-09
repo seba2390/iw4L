@@ -22,7 +22,11 @@ impl game_api::GameScripts for Iw4 {
     }
 
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
-        &[]
+        &[("sv_maxclients", "18")]
+    }
+
+    fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {
+        &[("onlinegame", "1")]
     }
 }
 

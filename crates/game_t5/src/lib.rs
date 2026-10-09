@@ -53,6 +53,10 @@ impl game_api::GameScripts for T5 {
             &[]
         }
     }
+
+    fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
+    }
 }
 
 const ZOMBIE_MODE: ModeRules = ModeRules {

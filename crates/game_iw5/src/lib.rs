@@ -20,6 +20,10 @@ impl game_api::GameScripts for Iw5 {
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
         &[]
     }
+
+    fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
+    }
 }
 
 impl game_api::GameModes for Iw5 {

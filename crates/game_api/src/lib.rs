@@ -52,6 +52,9 @@ pub trait GameScripts: Sync {
 
     /// Engine dvars this game's code sets for `gametype` before scripts run.
     fn engine_dvars(&self, gametype: &str) -> &'static [(&'static str, &'static str)];
+
+    /// Engine dvars this game's code sets when the match config does not.
+    fn config_defaults(&self) -> &'static [(&'static str, &'static str)];
 }
 
 /// What a game's mode asks of the code around its scripts. Staged for the
