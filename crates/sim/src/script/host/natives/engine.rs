@@ -205,6 +205,13 @@ pub(crate) fn collider_entity(
     found.map_or(Value::Undefined, Value::Object)
 }
 
+pub(crate) fn damage_visible(world: &mut World, entity: u64, origin: [f32; 3]) -> bool {
+    matches!(
+        cone_trace(world, &Value::Object(entity), &[Value::Vector(origin)], DAMAGE_CONE_MASK),
+        Ok(Value::Float(fraction)) if fraction > 0.0
+    )
+}
+
 fn cone_trace(
     world: &mut World,
     receiver: &Value,

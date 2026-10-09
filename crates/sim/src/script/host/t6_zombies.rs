@@ -1,3 +1,4 @@
+mod mines;
 mod origins;
 mod origins_dig;
 mod origins_tools;
@@ -2404,6 +2405,7 @@ pub(crate) fn advance(world: &mut World) {
             state.next_spawn = tick.0 + ticks(rounds::spawn_delay_ms(state.round));
         }
         hits = move_actors(world, &mut state, tick, &players);
+        mines::advance(world, &state, tick);
         prepare_barriers(world, &mut state, &players);
         state.origins.advance(world, &players);
         if state.origins.present() {
