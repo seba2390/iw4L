@@ -1255,6 +1255,21 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
     commons.scripts = Some(scripts);
     for stem in ["common", "common_zombie", stem.as_str()] {
         let found = asset_transport::discover::find_t5_localized_zone(zone_ff, None, stem);
+        // Localized zones also hold materials the zombie bodies draw with.
+        if let Ok(Some(zone)) = &found
+            && let Ok(image) = open_zone_shared(&zone.path)
+        {
+            let census = lane(image.game).load_common_mp(
+                &zone.path,
+                &image,
+                progress,
+                false,
+                MaterialCatalog::default(),
+            );
+            commons
+                .scene_models
+                .push((census.scene_models, census.material_population));
+        }
         match found.map(|found| found.map(|zone| load_localize_catalog_in_lane(&zone.path))) {
             Ok(Some(Ok(part))) => {
                 commons

@@ -408,23 +408,65 @@ pub(super) async fn walk_prepared_match(
     let mut global = materials;
     let iw5_linked = global.absorb_asset_population_host_materials_win(iw5_materials);
     if let Some(names) = &zombie_scene_names {
+        let zones: Vec<_> = zombie_scene_models
+            .into_iter()
+            .map(|(mut models, population)| {
+                models.retain_names(names);
+                (models, population)
+            })
+            .collect();
+        // Surfaces may draw a material another zone holds (`,name`); take
+        // it from whichever zone defines it.
+        let foreign: std::collections::BTreeSet<String> = zones
+            .iter()
+            .flat_map(|(models, _)| models.foreign_material_names())
+            .collect();
+        let mut foreign_hosts = std::collections::HashMap::<String, usize>::new();
         let mut absorbed = 0;
-        for (mut models, population) in zombie_scene_models {
-            models.retain_names(names);
-            if models.is_empty() {
+        for (mut models, population) in zones {
+            let held: Vec<(usize, String)> = population
+                .materials
+                .iter()
+                .enumerate()
+                .filter(|(_, material)| {
+                    material.name.is_real()
+                        && foreign.contains(material.name.as_str())
+                        && !foreign_hosts.contains_key(material.name.as_str())
+                })
+                .map(|(index, material)| (index, material.name.as_str().to_owned()))
+                .collect();
+            if models.is_empty() && held.is_empty() {
                 continue;
             }
             absorbed += models.len();
-            let wanted = models.walk_materials();
-            let linked: Vec<usize> = global
-                .absorb_selected_materials_host_wins(population, &wanted)
+            let mut wanted = models.walk_materials();
+            wanted.extend(held.iter().map(|(index, _)| *index));
+            let linked = global.absorb_selected_materials_host_wins(population, &wanted);
+            for (index, name) in held {
+                if let Some(host) = linked[index] {
+                    foreign_hosts.insert(name, host);
+                }
+            }
+            let linked: Vec<usize> = linked
                 .into_iter()
                 .map(|id| id.unwrap_or(usize::MAX))
                 .collect();
             models.remap_walk_materials(&linked);
             world.map_xmodel_scene_assets.absorb_captured(models);
         }
-        report.push(format!("zombie scene models: +{absorbed}"));
+        let bound = world
+            .map_xmodel_scene_assets
+            .bind_foreign_materials(|name| {
+                foreign_hosts.get(name).copied().or_else(|| {
+                    global.materials.iter().position(|material| {
+                        material.name.is_real() && material.name.as_str() == name
+                    })
+                })
+            });
+        report.push(format!(
+            "zombie scene models: +{absorbed}; foreign surface materials: {} names, {bound} surfaces bound",
+            foreign.len()
+        ));
     }
     let provisional_map_ids: Vec<usize> = (0..global.materials.len()).collect();
     if iw5_mat_n > 0 {
