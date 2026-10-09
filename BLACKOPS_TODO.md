@@ -126,7 +126,11 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Power switch and perks (Quick Revive bought, drunk in first person,
       icon on the HUD; stance and melee locks during the drink are not
       enforced yet). Script models play `AnimScripted` clips once.
-- [ ] Debris, mystery box, Pack-a-Punch, teleporter, power-ups, last stand.
+- [x] Game over: a downed solo player without Quick Revive ends the game
+      with the "You Survived N Rounds" screen (T5 SetText/SetHintString
+      values fill the string's `&&1`..), then the session returns to the menu.
+- [ ] Debris, mystery box, Pack-a-Punch, teleporter, power-ups, last stand
+      with Quick Revive.
 - [x] Zombie sounds: the zombie and singleplayer zones' aliases join the
       sound bank, scripts' bare `zmb_*` names play as T5 aliases, and
       `PlaySound(alias, notify)` raises its done-notify (after a fixed 2s;

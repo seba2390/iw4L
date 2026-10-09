@@ -117,19 +117,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "sethintstring", |world, receiver, args| {
         // T5 fills the hint's `&&1`.. from further arguments (a price).
-        let hint = match (arg(args, 0)?, &args[1..]) {
-            (Value::LocalizedString(key), extra) if !extra.is_empty() => {
-                let mut text = key.to_string();
-                for value in extra {
-                    text.push(crate::HUD_PRINT_ARG_SEPARATOR);
-                    text.push_str(&crate::script::runtime::to_text(value).unwrap_or_default());
-                }
-                FrameWorld::from_world(world)
-                    .hud_string_index(&text)
-                    .ok_or("exceeded maximum number of localized strings")?
-            }
-            (hint, _) => super::hud::string_index(world, hint)?,
-        };
+        let hint = super::hud::string_index_with_args(world, args)?;
         usable(world, receiver)?.hint = hint;
         Ok(Value::Undefined)
     });

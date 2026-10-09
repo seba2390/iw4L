@@ -78,13 +78,8 @@ pub(crate) fn update(
                     .ok_or_else(|| {
                         format!("hint string {} not published", ps.cursor_hint_string)
                     })?;
-            let mut parts = raw.split(sim::HUD_PRINT_ARG_SEPARATOR);
-            let key = parts.next().unwrap_or_default();
-            let mut localized = crate::hudelem::resolve_hud_text(strings, key)
-                .ok_or_else(|| format!("missing {key}"))?;
-            for (index, value) in parts.enumerate() {
-                localized = localized.replace(&format!("&&{}", index + 1), value);
-            }
+            let localized = crate::hudelem::resolve_hud_text(strings, raw)
+                .ok_or_else(|| format!("missing {raw}"))?;
             let unbound = strings
                 .0
                 .text(hud_iw4::KEY_UNBOUND)
