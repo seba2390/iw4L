@@ -155,7 +155,7 @@ Done when a single zombie can be fought and killed with correct feedback.
       `ui/hud_sp.txt`, `ui/hud_zombie.txt`, `ui/hud_coop.txt` from
       `code_post_gfx` + `patch`) now draw with Black Ops' fonts and
       materials (weapon info, dpad). Waiting on the maintainer (see
-      `BLACKOPS_FIDELITY.md`): the points column and the scoreboard (drawn by
+      `docs/fidelity/t5.md`): the points column and the scoreboard (drawn by
       the executable), script text hud elems (font/size rule), several owner
       draws. The use hint is still the Modern Warfare 2 one; the lobby menus do
       not offer the zombies mode yet.
@@ -187,7 +187,7 @@ Done when two or more machines play a full Kino game together.
 
 Items that need a reference capture from the original game or a rule only the
 executable holds are listed, with exactly what is needed, under "Waiting on the
-maintainer" in `BLACKOPS_FIDELITY.md`: the zombies points column and
+maintainer" in `docs/fidelity/t5.md`: the zombies points column and
 scoreboard, script text hud elems, `UI_FONT_DEFAULT`, several HUD owner draws,
 weapon info details, engine dvar defaults, vision-set grading and Double Tap's
 fire-rate factor.

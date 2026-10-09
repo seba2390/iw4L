@@ -5,7 +5,7 @@
 //! Owner draws paint only what their Black Ops name states (the clip count of
 //! `CG_PLAYER_WEAPON_AMMO_CLIP` in the item's font, ...); the ones whose draw
 //! rule lives only in the executable report a gap and draw nothing
-//! (BLACKOPS_FIDELITY.md, "Waiting on the maintainer").
+//! (docs/fidelity/t5.md, "Waiting on the maintainer").
 
 use asset_game::{LocalizeCatalog, MenuCatalog, T5_HUD_MENU_LISTS};
 use assets::BoundWeapons;

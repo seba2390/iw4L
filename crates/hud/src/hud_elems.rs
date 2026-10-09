@@ -361,7 +361,7 @@ pub(crate) fn update_hud_elems(
         }
 
         // Black Ops picks a script text elem's font and size by rules only its
-        // executable holds (BLACKOPS_FIDELITY.md, waiting on the maintainer).
+        // executable holds (docs/fidelity/t5.md, waiting on the maintainer).
         if meta.kind == gamemode_iw4::GameModeKind::Zombies {
             gaps.raise(GapCause::HudElemT5TextRule);
             continue;

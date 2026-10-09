@@ -3,7 +3,7 @@
 //! `expressionOperatorType_e`; a comma folds call arguments into one list.
 //!
 //! Function indices are named only where Black Ops' own data proves them
-//! (BLACKOPS_FIDELITY.md, "menu expression functions"); any other index is an
+//! (docs/fidelity/t5.md, "menu expression functions"); any other index is an
 //! error, never a guess.
 
 extern crate alloc;

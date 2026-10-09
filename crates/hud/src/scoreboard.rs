@@ -291,7 +291,7 @@ pub(crate) fn update_scoreboard(
     let Some(snap) = presented.snapshot() else {
         return;
     };
-    // Black Ops draws its zombies scoreboard in code (BLACKOPS_FIDELITY.md).
+    // Black Ops draws its zombies scoreboard in code (docs/fidelity/t5.md).
     if snap.meta.kind == gamemode_iw4::GameModeKind::Zombies {
         return;
     }

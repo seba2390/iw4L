@@ -29,3 +29,4 @@ game. Keep them this short: nobody opens a long file twice.
 | [`GSC-POSTFX.md`](GSC-POSTFX.md) | script vision, color correction, blur, DoF and bloom | authoring or debugging GSC post effects |
 | [`BOTS.md`](BOTS.md) | host AI: the per-tick pipeline, what a probe that never ran may not claim, the shared query budget, resumable routes, fighting from a position | bot decisions, bot movement, "why is it standing there" |
 | [`BLACKOPS_TODO.md`](../BLACKOPS_TODO.md) | Black Ops Zombies roadmap: what runs on Kino, how to start solo and co-op, what is left | playing or extending zombies |
+| [`fidelity/`](fidelity/) | per-game fidelity ledgers (`iw4.md`, `t5.md`): every rule a game does not have yet, by `unknown!` id | before adding or closing a gap |
