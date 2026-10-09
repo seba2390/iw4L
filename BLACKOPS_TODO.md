@@ -128,8 +128,9 @@ Done when a single zombie can be fought and killed with correct feedback.
       sound bank, scripts' bare `zmb_*` names play as T5 aliases, and
       `PlaySound(alias, notify)` raises its done-notify (after a fixed 2s;
       footstep aliases from the singleplayer sound banks are still missing).
-- [ ] Zombie HUD and menus (zombie text and use hints with their prices
-      show; the round chalk, points display and menus do not yet).
+- [ ] Zombie HUD and menus: zombie text, priced use hints, the round chalk
+      and other HUD icons the zombie scripts name show (decoded from the zones
+      and Black Ops' IWDs); the zombie points display and menus do not yet.
 - [ ] Client scripts, or host-side substitutes for what they show.
 
 Done when a solo game of Kino can be played from round 1 until death.

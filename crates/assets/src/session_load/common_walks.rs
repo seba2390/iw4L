@@ -1195,6 +1195,7 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         .unwrap_or_default();
     let map_patch = format!("{stem}_patch");
     let mut scripts = crate::ScriptSources::default();
+    let mut script_names = std::collections::BTreeSet::new();
     for zone in [
         "code_post_gfx",
         "common",
@@ -1243,6 +1244,7 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
             census.scene_models.len(),
             census.scripts.len(),
         ));
+        script_names.extend(census.scripts.asset_names());
         commons
             .scene_models
             .push((census.scene_models, census.material_population));
@@ -1288,5 +1290,77 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
                 .push(format!("zombie localize {stem}: {error}")),
         }
     }
+    let main = asset_transport::game_root_for_zone(zone_ff)
+        .ok()
+        .map(|root| root.join("main"));
+    let hud = zombie_hud_images(&commons.scene_models, &script_names, main.as_deref());
     commons
+        .report
+        .push(format!("zombie hud images: {}", hud.len()));
+    asset_material::store_zone_ui_images(asset_core::AssetNamespace::T5, hud);
+    commons
+}
+
+/// The 2D materials zombie scripts name (round chalk, perk and power-up
+/// icons), decoded for the HUD from the zone images they sample.
+fn zombie_hud_images(
+    zones: &[(asset_world::MapXModelSceneCatalog, MaterialCatalog)],
+    names: &std::collections::BTreeSet<String>,
+    main: Option<&Path>,
+) -> Vec<(String, asset_material::ZoneUiImage)> {
+    let mut images = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (_, population) in zones {
+        for material in &population.materials {
+            let name = material.name.as_str().to_ascii_lowercase();
+            // Scripts build some names (`"hud_chalk_" + round`), so HUD-named
+            // materials count even when no literal names them.
+            let hud_named = ["hud_", "specialty_", "zom_"]
+                .iter()
+                .any(|prefix| name.starts_with(prefix));
+            if !material.name.is_real()
+                || !(hud_named || names.contains(&name))
+                || seen.contains(&name)
+            {
+                continue;
+            }
+            let Some(image) = material
+                .textures
+                .iter()
+                .find_map(|texture| population.images.get(texture.image?))
+            else {
+                continue;
+            };
+            // Images without an in-zone payload stream from the IWDs.
+            let decoded = if image.payload.is_empty() {
+                let Some(main) = main else {
+                    continue;
+                };
+                asset_material::decode_ui_image_from_main(main, image.name.as_str())
+                    .and_then(|found| found.ok_or_else(|| "not in the IWDs".to_owned()))
+            } else {
+                asset_material::decode_zone_image_rgba(
+                    u32::from(image.width),
+                    u32::from(image.height),
+                    image.format,
+                    &image.payload,
+                )
+            };
+            match decoded {
+                Ok((width, height, rgba)) => {
+                    seen.insert(name.clone());
+                    images.push((
+                        name,
+                        asset_material::ZoneUiImage {
+                            iwi: std::sync::Arc::new([]),
+                            state: None,
+                            rgba: Some((width, height, std::sync::Arc::new(rgba))),
+                        },
+                    ));
+                }
+                Err(error) => diag::info!(Zone, "zombie hud image {name}: {error}"),
+            }
+        }
+    }
+    images
 }

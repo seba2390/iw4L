@@ -293,7 +293,19 @@ pub(crate) fn update_hud_elems(
             };
             let (material_namespace, material) = match asset_core::AssetKey::parse(material) {
                 Ok(key) if key.kind == asset_core::AssetKind::Material => (key.namespace, key.name),
-                _ => (crate::images::HUD_CHROME_NAMESPACE, material.to_owned()),
+                // A bare name another game's zone supplies (a T5 zombie
+                // script's chalk or perk icon) draws from that zone.
+                _ => [
+                    asset_core::AssetNamespace::T5,
+                    asset_core::AssetNamespace::Iw5,
+                    asset_core::AssetNamespace::T6,
+                ]
+                .into_iter()
+                .find(|&ns| asset_material::has_zone_ui_image(ns, material))
+                .map_or(
+                    (crate::images::HUD_CHROME_NAMESPACE, material.to_owned()),
+                    |ns| (ns, material.to_owned()),
+                ),
             };
             if hud_images
                 .get(material_namespace, &material, &mut images)
@@ -319,7 +331,15 @@ pub(crate) fn update_hud_elems(
                     h: size,
                 }
             } else {
-                hud_elem_placement(surface.placement(), elem, cg_time, 0.0, font_height)
+                // IW4 grows a material to the elem's font height; T5 zombie
+                // scripts give their chalk a large font scale for the round
+                // number it may later show, and draw the material at its size.
+                let floor = if meta.kind == gamemode_iw4::GameModeKind::Zombies {
+                    0.0
+                } else {
+                    font_height
+                };
+                hud_elem_placement(surface.placement(), elem, cg_time, 0.0, floor)
             };
             cmds.push(Draw2dCmd {
                 material_namespace,

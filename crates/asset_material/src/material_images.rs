@@ -763,6 +763,9 @@ pub type ZoneUiRgba = (u32, u32, Arc<Vec<u8>>);
 pub struct ZoneUiImage {
     pub iwi: Arc<[u8]>,
     pub state: Option<render_material::CompiledPassState>,
+    /// Already decoded pixels, for images a zone holds as raw texture data
+    /// rather than an IWI file.
+    pub rgba: Option<ZoneUiRgba>,
 }
 
 static ZONE_UI_IMAGES: RwLock<Vec<(ZoneUiKey, ZoneUiImage)>> = RwLock::new(Vec::new());
@@ -784,14 +787,17 @@ pub fn store_zone_ui_images(
     );
 }
 
-fn zone_ui_iwi(namespace: asset_core::AssetNamespace, material: &str) -> Option<Arc<[u8]>> {
+fn zone_ui_entry(
+    namespace: asset_core::AssetNamespace,
+    material: &str,
+) -> Option<(Arc<[u8]>, Option<ZoneUiRgba>)> {
     let name = crate::AssetRef::bare_name(material).to_ascii_lowercase();
     ZONE_UI_IMAGES
         .read()
         .unwrap_or_else(|poison| poison.into_inner())
         .iter()
         .find(|((ns, stored), _)| *ns == namespace && *stored == name)
-        .map(|(_, image)| Arc::clone(&image.iwi))
+        .map(|(_, image)| (Arc::clone(&image.iwi), image.rgba.clone()))
 }
 
 pub fn zone_ui_material_state(
@@ -808,11 +814,14 @@ pub fn zone_ui_material_state(
 }
 
 pub fn has_zone_ui_image(namespace: asset_core::AssetNamespace, material: &str) -> bool {
-    zone_ui_iwi(namespace, material).is_some()
+    zone_ui_entry(namespace, material).is_some()
 }
 
 pub fn zone_ui_image(namespace: asset_core::AssetNamespace, material: &str) -> Option<ZoneUiRgba> {
-    let iwi = zone_ui_iwi(namespace, material)?;
+    let (iwi, rgba) = zone_ui_entry(namespace, material)?;
+    if rgba.is_some() {
+        return rgba;
+    }
     match decode_iwi_rgba(&iwi) {
         Ok((width, height, rgba)) => Some((width, height, Arc::new(rgba))),
         Err(error) => {
