@@ -335,10 +335,21 @@ fn initialize(world: &mut World, state: &mut Survival) {
         .into_iter()
         .find(|name| frame.script_model_anim(name).is_some())
         .map(str::to_owned);
-    state.entry = ["ai_zombie_traverse_v1", "ai_zombie_traverse_v2"]
-        .into_iter()
-        .find(|name| frame.script_model_anim(name).is_some())
-        .map(str::to_owned);
+    let states = frame.script_model_states();
+    state.entry = states
+        .as_ref()
+        .and_then(|table| {
+            table
+                .clips("zm_barricade_enter", Some("barrier_walk_m"))
+                .find(|name| frame.script_model_anim(name).is_some())
+                .map(str::to_owned)
+        })
+        .or_else(|| {
+            ["ai_zombie_traverse_v1", "ai_zombie_traverse_v2"]
+                .into_iter()
+                .find(|name| frame.script_model_anim(name).is_some())
+                .map(str::to_owned)
+        });
     state.entry_curve = state
         .entry
         .as_deref()
@@ -352,13 +363,23 @@ fn initialize(world: &mut World, state: &mut Survival) {
                 | "s_generator"
         )
     });
-    state.rise = [
-        "ai_zombie_traverse_ground_v1_walk",
-        "ai_zombie_traverse_ground_climbout_fast",
-    ]
-    .into_iter()
-    .find(|name| frame.script_model_anim(name).is_some())
-    .map(str::to_owned);
+    state.rise = states
+        .as_ref()
+        .and_then(|table| {
+            table
+                .clips("zm_rise", None)
+                .find(|name| frame.script_model_anim(name).is_some())
+                .map(str::to_owned)
+        })
+        .or_else(|| {
+            [
+                "ai_zombie_traverse_ground_v1_walk",
+                "ai_zombie_traverse_ground_climbout_fast",
+            ]
+            .into_iter()
+            .find(|name| frame.script_model_anim(name).is_some())
+            .map(str::to_owned)
+        });
     state.tear = [
         "ai_zombie_boardtear_aligned_m_1_pull",
         "ai_zombie_boardtear_aligned_m_1_grab",
@@ -371,7 +392,7 @@ fn initialize(world: &mut World, state: &mut Survival) {
             .and_then(|clip| frame.script_model_anim(clip))
             .filter(|anim| anim.frequency.is_finite() && anim.frequency > 0.0)
             .map_or(ticks(fallback), |anim| {
-                ticks((1000.0 / anim.frequency).clamp(600.0, 3000.0) as u32)
+                ticks((1000.0 / anim.frequency).ceil() as u32)
             })
     };
     state.rise_ticks = duration(&state.rise, 1800);

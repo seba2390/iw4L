@@ -375,6 +375,7 @@ pub fn apply_prepared_match(
         }
 
         let anim_namespace = prepared_map.namespace.expect("installed map family");
+        content.set_script_model_states(xanims.0.zombie_states(anim_namespace));
         content.set_script_model_clips(
             xanims
                 .0

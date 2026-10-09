@@ -2849,6 +2849,15 @@ impl ZoneLane for T6Lane {
             };
             let mut xanims = asset_anim::XAnimBuild::default();
             if mode == asset_transport::t6_content::T6ContentMode::Zombies {
+                for source in &image_loads {
+                    for asset in &source.assets {
+                        xanims.capture_anim_states_t6(
+                            asset_core::AssetNamespace::T6,
+                            source,
+                            asset,
+                        );
+                    }
+                }
                 for asset in &load.assets {
                     if asset.ty == fastfile_t6::AssetType::XAnimParts
                         && header_str(&load, &asset.header, 0).is_some_and(|name| {

@@ -97,6 +97,10 @@ pub struct SimContent {
 }
 
 impl SimContent {
+    pub(super) fn script_model_states(&self) -> Option<Arc<xmodel_runtime::AnimStateTable>> {
+        self.data.script_model_states.clone()
+    }
+
     pub(super) fn script_model_clips(
         &self,
     ) -> Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>> {
@@ -132,6 +136,7 @@ struct ContentData {
     player_body_branches: Option<xmodel_runtime::PlayerBodyBranches>,
     script_model_anims: std::collections::BTreeMap<String, crate::ScriptModelPlayAnim>,
     script_model_clips: Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>>,
+    script_model_states: Option<Arc<xmodel_runtime::AnimStateTable>>,
     xanims: Arc<crate::MantleXAnimBind>,
     vehicle_turrets: std::collections::BTreeMap<String, String>,
     vehicle_compass: std::collections::BTreeMap<String, ([String; 2], [i32; 2])>,
@@ -169,6 +174,7 @@ impl SimContentBuilder {
                 player_anim_properties: Default::default(),
                 player_body_branches: Default::default(),
                 script_model_anims: Default::default(),
+                script_model_states: None,
                 script_model_clips: Default::default(),
                 xanims: Default::default(),
                 vehicle_turrets: Default::default(),
@@ -209,6 +215,10 @@ impl SimContentBuilder {
         clips: impl IntoIterator<Item = (String, Arc<xmodel_runtime::AnimClip>)>,
     ) {
         self.data.script_model_clips = Arc::new(clips.into_iter().collect());
+    }
+
+    pub fn set_script_model_states(&mut self, states: Option<Arc<xmodel_runtime::AnimStateTable>>) {
+        self.data.script_model_states = states;
     }
 
     pub fn set_script_model_anims(

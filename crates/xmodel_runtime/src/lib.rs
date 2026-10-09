@@ -1,3 +1,4 @@
+mod anim_state;
 mod destructible;
 mod dobj;
 mod dobj_runtime;
@@ -36,6 +37,7 @@ pub use xanim_tree::{
     XAnimTreeError, XAnimTreeRuntime,
 };
 
+pub use anim_state::{AnimStateClip, AnimStateTable};
 pub use destructible::{T5DestructibleDef, T5DestructiblePiece, T5DestructibleStage};
 
 pub use player_body::{

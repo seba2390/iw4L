@@ -2271,6 +2271,10 @@ impl SimState {
             .copied()
     }
 
+    pub(crate) fn script_model_states(&self) -> Option<Arc<xmodel_runtime::AnimStateTable>> {
+        self.content.script_model_states()
+    }
+
     pub(crate) fn player_anim_clip(&self, legs_anim: i32) -> Option<Arc<xmodel_runtime::AnimClip>> {
         let definition = self.content.player_anim_tree().as_ref()?;
         let value = PlayerAnimValue::from_raw((legs_anim as u16) & PLAYER_ANIM_RAW_MASK)?;

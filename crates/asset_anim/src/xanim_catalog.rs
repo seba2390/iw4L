@@ -53,6 +53,7 @@ pub struct XAnimCatalog {
     zones: Vec<ZoneOwner>,
 
     decoded: Mutex<Vec<Option<Arc<AnimClip>>>>,
+    state_tables: HashMap<(AssetNamespace, String), Arc<xmodel_runtime::AnimStateTable>>,
 }
 
 #[derive(Clone, Debug)]
@@ -72,6 +73,7 @@ impl Default for XAnimCatalog {
             order: Vec::new(),
             zones: Vec::new(),
             decoded: Mutex::new(Vec::new()),
+            state_tables: HashMap::new(),
         }
     }
 }
@@ -101,6 +103,7 @@ impl Clone for XAnimCatalog {
             order: self.order.clone(),
             zones: self.zones.clone(),
             decoded: Mutex::new(decoded),
+            state_tables: self.state_tables.clone(),
         }
     }
 }
@@ -114,6 +117,19 @@ impl Deref for XAnimBuild {
 }
 
 impl XAnimCatalog {
+    pub fn zombie_states(
+        &self,
+        namespace: AssetNamespace,
+    ) -> Option<Arc<xmodel_runtime::AnimStateTable>> {
+        let mut tables = self.state_tables.iter().filter(|((family, _), table)| {
+            *family == namespace
+                && ["zm_move_walk", "zm_walk_melee", "zm_rise"]
+                    .iter()
+                    .all(|state| table.states.contains_key(*state))
+        });
+        let (_, table) = tables.next()?;
+        tables.next().is_none().then(|| Arc::clone(table))
+    }
     pub fn len(&self) -> usize {
         self.order.len()
     }
@@ -260,6 +276,9 @@ impl XAnimBuild {
     }
 
     pub fn absorb(&mut self, mut local: Self) -> usize {
+        self.catalog
+            .state_tables
+            .extend(std::mem::take(&mut local.catalog.state_tables));
         self.capture_gaps = self.capture_gaps.saturating_add(local.capture_gaps);
         let saved_zone = self.capture_zone;
         let saved_ns = self.capture_ns;
@@ -477,6 +496,47 @@ impl XAnimBuild {
 }
 
 impl XAnimBuild {
+    pub fn capture_anim_states_t6(
+        &mut self,
+        namespace: AssetNamespace,
+        load: &fastfile_t6::ZoneLoad,
+        asset: &fastfile_t6::LoadedAsset,
+    ) -> bool {
+        if asset.ty != fastfile_t6::AssetType::RawFile || asset.header.len() < 12 {
+            return false;
+        }
+        let h = &asset.header;
+        let ptr = |at: usize| {
+            let raw = u32::from_le_bytes(h[at..at + 4].try_into().unwrap());
+            (raw != 0 && raw < 0xffff_fffe).then(|| fastfile_t6::Ptr {
+                block: ((raw - 1) >> 29) as u8,
+                offset: (raw - 1) & 0x1fff_ffff,
+            })
+        };
+        let Some(name) = ptr(0)
+            .and_then(|p| load.blocks.cstr(p).ok())
+            .and_then(|s| std::str::from_utf8(s).ok())
+        else {
+            return false;
+        };
+        if !name.starts_with("animstatedefs/") || !name.ends_with(".asd") {
+            return false;
+        }
+        let Ok(len) = usize::try_from(i32::from_le_bytes(h[4..8].try_into().unwrap())) else {
+            return false;
+        };
+        let Some(bytes) = ptr(8).and_then(|p| load.blocks.bytes(p, len).ok()) else {
+            return false;
+        };
+        let Ok(table) = crate::parse_anim_states(bytes) else {
+            return false;
+        };
+        self.catalog
+            .state_tables
+            .entry((namespace, name.to_owned()))
+            .or_insert_with(|| Arc::new(table));
+        true
+    }
     pub fn capture_xanim_t6(
         &mut self,
         ns: AssetNamespace,
@@ -590,6 +650,9 @@ impl XAnimBuild {
     }
 
     pub fn absorb_vacant(&mut self, mut local: Self) -> (Vec<String>, usize) {
+        for (key, table) in std::mem::take(&mut local.catalog.state_tables) {
+            self.catalog.state_tables.entry(key).or_insert(table);
+        }
         let order = std::mem::take(&mut local.catalog.order);
         let entries = std::mem::take(&mut local.catalog.entries);
         let (mut added, mut kept) = (Vec::new(), 0);
