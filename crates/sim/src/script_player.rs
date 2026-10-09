@@ -262,8 +262,9 @@ pub(crate) enum Finish {
 }
 
 pub(crate) fn god_mode(world: &FrameWorld, id: ClientId) -> bool {
-    world.bootstrap_ref().allow_debug_actions
-        && world.client_meta(id).is_some_and(|meta| meta.god_mode)
+    world.script_invulnerable(id)
+        || world.bootstrap_ref().allow_debug_actions
+            && world.client_meta(id).is_some_and(|meta| meta.god_mode)
 }
 
 pub(crate) fn finish_damage(

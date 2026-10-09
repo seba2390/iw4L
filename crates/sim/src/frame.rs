@@ -93,6 +93,13 @@ impl FrameWorld<'_> {
         self.ecs
     }
 
+    pub(crate) fn script_invulnerable(&self, id: crate::ClientId) -> bool {
+        self.ecs
+            .get_resource::<crate::script::Runtime>()
+            .and_then(|runtime| runtime.players.get(&id.0))
+            .is_some_and(|slot| slot.invulnerable)
+    }
+
     pub(crate) fn projectile_by_number(&self, entnum: i32) -> Option<ProjectileState> {
         let entity = entity_by_number(self.ecs, entnum)?;
         Some(self.ecs.get::<ProjectileRow>(entity)?.0)

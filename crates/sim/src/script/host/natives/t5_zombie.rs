@@ -127,6 +127,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             Ok(Value::Undefined)
         });
     }
+    registry.register(Method, "enableinvulnerability", |world, receiver, _| {
+        set_invulnerable(world, receiver, true)
+    });
+    registry.register(Method, "disableinvulnerability", |world, receiver, _| {
+        set_invulnerable(world, receiver, false)
+    });
     // No gas weapons (nova gas) exist in the zombie maps this host runs.
     registry.register(Function, "weaponisgasweapon", |_, _, _| Ok(Value::Int(0)));
     for name in [
@@ -140,6 +146,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     ] {
         registry.register(Function, name, |_, _, _| Ok(Value::Undefined));
     }
+}
+
+fn set_invulnerable(world: &mut World, receiver: &Value, on: bool) -> Result<Value, String> {
+    let client = super::player::player(world, receiver)?;
+    if let Some(slot) = world.resource_mut::<Runtime>().players.get_mut(&client) {
+        slot.invulnerable = on;
+    }
+    Ok(Value::Undefined)
 }
 
 fn optional_team(args: &[Value]) -> Result<Option<String>, String> {
