@@ -54,6 +54,18 @@ impl game_api::GameScripts for T6 {
     }
 }
 
+/// IW4L's Free for All rules for Black Ops 2 (docs/fidelity/t6.md).
+const FREE_FOR_ALL_MODE: ModeRules = ModeRules {
+    default_score_limit: Some(30),
+    ..MULTIPLAYER_MODE
+};
+
+/// IW4L's Team Deathmatch rules for Black Ops 2 (docs/fidelity/t6.md).
+const TEAM_DEATHMATCH_MODE: ModeRules = ModeRules {
+    default_score_limit: Some(75),
+    ..MULTIPLAYER_MODE
+};
+
 const MULTIPLAYER_MODE: ModeRules = ModeRules {
     play_starts_on: "prematch_over",
     every_player_downs: Rule::Known(false),
@@ -61,7 +73,9 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     connect_team: None,
     scripts_spawn_players: false,
     spawn_classnames: None,
-    unlimited: false,
+    unlimited: Rule::Known(false),
+    limits_from_config: true,
+    default_score_limit: None,
     zombie_zone_scripts: false,
     report_builtin_gaps: false,
     waits_for_lobby: false,
@@ -79,14 +93,15 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {
     spawn_classnames: Some(&["initial_spawn_points", "info_player_start"]),
-    unlimited: true,
+    unlimited: Rule::Known(true),
     ..MULTIPLAYER_MODE
 };
 
 impl game_api::GameModes for T6 {
     fn mode(&self, gametype: &str) -> Rule<ModeRules> {
         match gametype {
-            "dm" | "war" => Rule::Known(MULTIPLAYER_MODE),
+            "dm" => Rule::Known(FREE_FOR_ALL_MODE),
+            "war" => Rule::Known(TEAM_DEATHMATCH_MODE),
             "zclassic" => Rule::Known(ZCLASSIC_MODE),
             _ => Rule::Unknown(unknown!(
                 "t6.scripts.gametypes",

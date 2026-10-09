@@ -819,10 +819,10 @@ pattern crates/replay/src/clip.rs playerstate_iw4:: 1
 pattern crates/session/src/content_manifest.rs AssetNamespace::<game> 4
 pattern crates/session/src/content_manifest.rs weapon_iw4:: 1
 pattern crates/session/src/loadout.rs weapon_iw4:: 1
-pattern crates/session/src/match_apply.rs AssetNamespace::<game> 12
+pattern crates/session/src/match_apply.rs AssetNamespace::<game> 9
 pattern crates/session/src/match_apply.rs FamilyId::<game> 1
 pattern crates/session/src/match_apply.rs clipmap_iw4:: 3
-pattern crates/session/src/match_apply.rs gamemode_iw4:: 26
+pattern crates/session/src/match_apply.rs gamemode_iw4:: 24
 pattern crates/session/src/match_apply.rs hud_iw4:: 1
 pattern crates/session/src/match_apply.rs is_<game> 2
 pattern crates/session/src/match_apply.rs render_fx:: 1

@@ -74,7 +74,12 @@ pub struct ModeRules {
     /// The only spawn classnames players use, when the mode names them.
     pub spawn_classnames: Option<&'static [&'static str]>,
     /// The match has no score or time limit.
-    pub unlimited: bool,
+    pub unlimited: Rule<bool>,
+    /// Score and time limits come from the match config's
+    /// `scr_<gametype>_scorelimit` / `_timelimit` dvars.
+    pub limits_from_config: bool,
+    /// The score limit when neither the host nor the config sets one.
+    pub default_score_limit: Option<i32>,
     /// The match's scripts come from the zombie zones beside the map.
     pub zombie_zone_scripts: bool,
     /// Builtins the scripts bind but the runtime lacks are listed at start.

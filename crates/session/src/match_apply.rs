@@ -563,7 +563,6 @@ pub fn apply_prepared_match(
             host_classes.as_deref(),
             kind,
             mode,
-            prepared_map.namespace,
             allow_debug_actions,
             &script_dvars,
             gametype,
@@ -1733,7 +1732,6 @@ fn install_clip_and_player(
     host_classes: Option<&HostClassLoadouts>,
     kind: gamemode_iw4::GameModeKind,
     mode: game_api::ModeRules,
-    namespace: Option<asset_core::AssetNamespace>,
     allow_debug_actions: bool,
     rules: &[(String, String)],
     gametype: &str,
@@ -1897,8 +1895,15 @@ fn install_clip_and_player(
         .collect();
     let locked_n = lock_reasons.iter().filter(|r| r.is_some()).count();
     let has_intermission_view = intermission_view.is_some();
-    let native_rule = |suffix: &str| {
-        (namespace == Some(asset_core::AssetNamespace::T6))
+    let unlimited = match mode.unlimited {
+        game_api::Rule::Known(unlimited) => unlimited,
+        game_api::Rule::Unknown(gap) => {
+            diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
+            true
+        }
+    };
+    let config_rule = |suffix: &str| {
+        mode.limits_from_config
             .then(|| {
                 rules
                     .iter()
@@ -1908,10 +1913,10 @@ fn install_clip_and_player(
             .flatten()
             .map(|(_, value)| value.as_str())
     };
-    let native_score = native_rule("scorelimit")
+    let config_score = config_rule("scorelimit")
         .and_then(|value| value.parse::<i32>().ok())
         .filter(|value| *value >= 0);
-    let native_time = native_rule("timelimit")
+    let config_time = config_rule("timelimit")
         .and_then(|value| value.parse::<f64>().ok())
         .filter(|value| value.is_finite() && (0.0..=10000.0).contains(value))
         .map(|minutes| (minutes * 60000.0).round() as u32);
@@ -1922,31 +1927,24 @@ fn install_clip_and_player(
         seed: 0,
         kind,
         mode: Some(mode),
-        score_limit: if mode.unlimited {
+        score_limit: if unlimited {
             0
         } else {
             std::env::var("IW4L_SCORE_LIMIT")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .or(native_score)
-                .unwrap_or(match (namespace, kind) {
-                    (
-                        Some(asset_core::AssetNamespace::T6),
-                        gamemode_iw4::GameModeKind::FreeForAll,
-                    ) => 30,
-                    (
-                        Some(asset_core::AssetNamespace::T6),
-                        gamemode_iw4::GameModeKind::TeamDeathmatch,
-                    ) => 75,
-                    (_, gamemode_iw4::GameModeKind::Domination) => gamemode_iw4::dom::SCORE_LIMIT,
-                    (_, gamemode_iw4::GameModeKind::Demolition) => 0,
+                .or(config_score)
+                .or(mode.default_score_limit)
+                .unwrap_or(match kind {
+                    gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::SCORE_LIMIT,
+                    gamemode_iw4::GameModeKind::Demolition => 0,
                     _ => sim::FFA.score_limit,
                 })
         },
-        time_limit_ms: if mode.unlimited {
+        time_limit_ms: if unlimited {
             0
         } else {
-            native_time.unwrap_or(match kind {
+            config_time.unwrap_or(match kind {
                 gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::TIME_LIMIT_MS,
                 gamemode_iw4::GameModeKind::Demolition => gamemode_iw4::dd::TIME_LIMIT_MS,
                 _ => sim::FFA.time_limit_ms,
