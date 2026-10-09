@@ -408,7 +408,6 @@ fn decode_surface_skin(
         return None;
     };
 
-    const WEIGHT_SCALE: f32 = 1.0 / 65535.0;
     let mut cursor = 0u32;
     let mut vertex = 0usize;
     for (bucket, &count) in counts.iter().enumerate() {
@@ -423,8 +422,10 @@ fn decode_surface_skin(
             for extra in 1..influences {
                 let o = start + 1 + (extra as u32 - 1) * 2;
                 skin.bones[extra] = bone_at(r.u16(blend.at(o * 2))?)?;
-                let w = f32::from(r.u16(blend.at(o * 2 + 2))?) * WEIGHT_SCALE;
+                let raw = r.u16(blend.at(o * 2 + 2))?;
+                let w = dpvs_iw4::skin_blend_weight(raw);
                 skin.weights[extra] = w;
+                skin.weight_u16[extra] = raw;
                 remaining -= w;
             }
             skin.weights[0] = remaining;
