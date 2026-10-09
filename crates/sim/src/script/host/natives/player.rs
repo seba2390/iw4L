@@ -657,6 +657,17 @@ pub(crate) fn new_item_entity(
     Ok(Value::Object(id))
 }
 
+fn revive_from_last_stand(
+    world: &mut World,
+    receiver: &Value,
+    _: &[Value],
+) -> Result<Value, String> {
+    let id = client_of(world, receiver)?;
+    slot(world, id.0)?.last_stand_until_ms = None;
+    script_player::revive(&mut FrameWorld::from_world(world), id);
+    Ok(Value::Undefined)
+}
+
 fn register_death(registry: &mut NativeRegistry) {
     registry.register(Method, "finishplayerdamage", |world, receiver, args| {
         let client = player(world, receiver)?;
@@ -729,12 +740,8 @@ fn register_death(registry: &mut NativeRegistry) {
         super::super::players::suicide(world, tick, client);
         Ok(Value::Undefined)
     });
-    registry.register(Method, "laststandrevive", |world, receiver, _| {
-        let id = client_of(world, receiver)?;
-        slot(world, id.0)?.last_stand_until_ms = None;
-        script_player::revive(&mut FrameWorld::from_world(world), id);
-        Ok(Value::Undefined)
-    });
+    registry.register(Method, "laststandrevive", revive_from_last_stand);
+    registry.register(Method, "reviveplayer", revive_from_last_stand);
     registry.register(
         crate::script::Namespace::Function,
         "obituary",

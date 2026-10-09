@@ -145,6 +145,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     }
     // No gas weapons (nova gas) exist in the zombie maps this host runs.
     registry.register(Function, "weaponisgasweapon", |_, _, _| Ok(Value::Int(0)));
+    // A dual-wield weapon's left hand shares its clip here: there is no
+    // separate left-hand weapon.
+    registry.register(Function, "weapondualwieldweaponname", |_, _, _| {
+        Ok(Value::string("none"))
+    });
+    // No water volumes are simulated.
+    registry.register(Method, "depthinwater", |_, _, _| Ok(Value::Float(0.0)));
+    // The last-stand vision set is not drawn yet.
+    registry.register(Method, "visionsetlaststand", |world, receiver, _| {
+        super::player::player(world, receiver)?;
+        Ok(Value::Undefined)
+    });
     for name in [
         "createthreatbiasgroup",
         "setthreatbias",

@@ -293,7 +293,14 @@ pub(crate) fn finish_damage(
         return Finish::Hurt;
     }
     use playerstate_iw4::pm_flags::LAST_STAND;
-    if ps.perks[0] & playerstate_iw4::PERK_PISTOLDEATH != 0 && ps.pm_flags & LAST_STAND == 0 {
+    // Every zombies player goes down into last stand; the scripts decide
+    // when that ends the game.
+    let downs = ps.perks[0] & playerstate_iw4::PERK_PISTOLDEATH != 0
+        || world.bootstrap_ref().kind == gamemode_iw4::GameModeKind::Zombies;
+    let Some(ps) = world.player_mut(id) else {
+        return Finish::Hurt;
+    };
+    if downs && ps.pm_flags & LAST_STAND == 0 {
         ps.health = 1;
         ps.pm_type = playerstate_iw4::PM_TYPE_LAST_STAND;
         ps.view_height_target = movement_iw4::view_height::LAST_STAND;
