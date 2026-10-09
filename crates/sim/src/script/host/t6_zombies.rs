@@ -51,6 +51,7 @@ pub(crate) struct Survival {
     attack: Option<String>,
     run: Option<String>,
     entry: Option<String>,
+    entry_curve: Option<Arc<xmodel_runtime::AnimClip>>,
     pending_links: Vec<(u32, [f32; 3])>,
     upgrades: BTreeMap<usize, BoxClaim>,
     rise: Option<String>,
@@ -338,6 +339,10 @@ fn initialize(world: &mut World, state: &mut Survival) {
         .into_iter()
         .find(|name| frame.script_model_anim(name).is_some())
         .map(str::to_owned);
+    state.entry_curve = state
+        .entry
+        .as_deref()
+        .and_then(|name| frame.script_model_clips().get(name).cloned());
     state.powered = !state.authored.iter().any(|pairs| {
         matches!(
             field(pairs, "targetname"),
@@ -935,6 +940,28 @@ fn melee_timing(clip: &xmodel_runtime::AnimClip) -> (u32, Vec<u32>) {
     (to_ticks(end), impacts)
 }
 
+fn window_origin(
+    from: [f32; 3],
+    to: [f32; 3],
+    progress: f32,
+    clip: Option<&xmodel_runtime::AnimClip>,
+) -> [f32; 3] {
+    let progress = progress.clamp(0.0, 1.0);
+    let start = Vec3::from_array(from);
+    let end = Vec3::from_array(to);
+    let linear = start.lerp(end, progress);
+    let Some(clip) = clip else {
+        return linear.to_array();
+    };
+    let base = Vec3::from_array(clip.abs_delta_trans(0.0));
+    let total = Vec3::from_array(clip.abs_delta_trans(1.0)) - base;
+    let current = Vec3::from_array(clip.abs_delta_trans(progress)) - base;
+    let residual = current - total * progress;
+    let forward = Vec3::new(end.x - start.x, end.y - start.y, 0.0).normalize_or_zero();
+    let right = Vec3::new(-forward.y, forward.x, 0.0);
+    (linear + forward * residual.x + right * residual.y + Vec3::Z * residual.z).to_array()
+}
+
 fn board_visibility(world: &mut World, barrier: &mut Barrier, board: usize, visible: bool) {
     let clip = format!(
         "o_zombie_board_{}_{}",
@@ -1144,9 +1171,8 @@ fn move_actors(
             if let Some((start, from)) = actor.entering {
                 let progress =
                     tick.0.saturating_sub(start) as f32 / state.entry_ticks.max(1) as f32;
-                actor.origin = Vec3::from_array(from)
-                    .lerp(Vec3::from_array(barrier.inside), progress.min(1.0))
-                    .to_array();
+                actor.origin =
+                    window_origin(from, barrier.inside, progress, state.entry_curve.as_deref());
                 waiting = true;
                 if progress >= 1.0 {
                     actor.barrier = None;
@@ -1313,9 +1339,8 @@ fn move_actors(
         }
         let yaw = if actor.barrier.is_some() && waiting {
             let end = state.barriers[actor.barrier.unwrap()].inside;
-            (end[1] - actor.origin[1])
-                .atan2(end[0] - actor.origin[0])
-                .to_degrees()
+            let from = actor.entering.map_or(actor.origin, |(_, from)| from);
+            (end[1] - from[1]).atan2(end[0] - from[0]).to_degrees()
         } else {
             delta.y.atan2(delta.x).to_degrees()
         };

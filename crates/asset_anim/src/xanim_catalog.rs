@@ -552,6 +552,16 @@ impl XAnimBuild {
         } else {
             words(92, index_count)
         };
+        let delta_trans = match ptr(100) {
+            Some(delta) => match copy_delta_trans_t6(load, delta, numframes) {
+                Some(trans) => trans,
+                None => {
+                    self.capture_gaps += 1;
+                    return false;
+                }
+            },
+            None => None,
+        };
         let parts = RawXAnimParts {
             name: format!("{prefix}{}", name.to_ascii_lowercase()),
             data_byte: bytes(68, usize::from(u16_at(4))),
@@ -567,7 +577,7 @@ impl XAnimBuild {
             names,
             notifies,
             indices,
-            delta_trans: None,
+            delta_trans,
         };
         self.insert_in(
             ns,
@@ -744,6 +754,66 @@ fn copy_f32_3(s: &ZoneStream<'_>, ptr: Ptr, off: usize) -> Option<[f32; 3]> {
         f32::from_le_bytes(bytes[4..8].try_into().ok()?),
         f32::from_le_bytes(bytes[8..12].try_into().ok()?),
     ])
+}
+
+fn copy_delta_trans_t6(
+    load: &fastfile_t6::ZoneLoad,
+    delta: fastfile_t6::Ptr,
+    numframes: u16,
+) -> Option<Option<RawDeltaTrans>> {
+    let Some(trans) = load.blocks.ptr_at(delta).ok()? else {
+        return Some(None);
+    };
+    let header = load.blocks.bytes(trans, 4).ok()?;
+    let size = u16::from_le_bytes(header[..2].try_into().ok()?);
+    let small = header[2] != 0;
+    let floats = |at| -> Option<[f32; 3]> {
+        let data = load.blocks.bytes(trans.at(at), 12).ok()?;
+        Some(std::array::from_fn(|i| {
+            f32::from_le_bytes(data[i * 4..i * 4 + 4].try_into().unwrap())
+        }))
+    };
+    let mins = floats(4)?;
+    if size == 0 {
+        return Some(Some(RawDeltaTrans {
+            size,
+            small,
+            mins,
+            ..Default::default()
+        }));
+    }
+    let step = floats(16)?;
+    let count = usize::from(size) + 1;
+    let indices = if numframes < 256 {
+        load.blocks
+            .bytes(trans.at(32), count)
+            .ok()?
+            .iter()
+            .copied()
+            .map(u16::from)
+            .collect()
+    } else {
+        load.blocks
+            .bytes(trans.at(32), count * 2)
+            .ok()?
+            .chunks_exact(2)
+            .map(|v| u16::from_le_bytes(v.try_into().unwrap()))
+            .collect()
+    };
+    let frames = load.blocks.ptr_at(trans.at(28)).ok()??;
+    let packed = load
+        .blocks
+        .bytes(frames, count * if small { 3 } else { 6 })
+        .ok()?
+        .to_vec();
+    Some(Some(RawDeltaTrans {
+        size,
+        small,
+        mins,
+        step,
+        indices,
+        packed,
+    }))
 }
 
 fn copy_delta_trans(

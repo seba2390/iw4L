@@ -8,7 +8,7 @@ Host rules live in `sim/script/host/t6_zombies.rs`. NPCs use authored zombie
 spawn sites and initial player starts, collision-tested path nodes, staggered
 replanning, crowd separation, native rise/walk/run/attack clips and melee at authored swipe markers.
 Normal waves use player-scaled totals, stepped health and diminishing spawn intervals.
-Unsupported vertical transitions are rejected; wooden windows use authored outside/inside endpoints, tearing, queued entry and native boards.
+Unsupported vertical transitions are rejected; wooden windows use authored endpoints, root-motion entry, tearing, queued traversal and native boards.
 Hold Use on the inside to rebuild; repairs earn bounded points each round.
 Authored priced doors remove their linked models/collision and reconnect routes.
 
