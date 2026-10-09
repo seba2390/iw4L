@@ -45,6 +45,7 @@ impl Default for NativeRegistry {
         natives::iw4::register(&mut registry);
         super::audio::register(&mut registry);
         natives::math::register(&mut registry);
+        natives::shared::register(&mut registry);
         natives::engine::register(&mut registry);
         natives::player::register(&mut registry);
         natives::skill::register(&mut registry);
