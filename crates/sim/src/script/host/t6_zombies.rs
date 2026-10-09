@@ -57,6 +57,7 @@ pub(crate) struct Survival {
     tear: Option<String>,
     rise_ticks: u32,
     attack_ticks: u32,
+    attack_impacts: Vec<u32>,
     entry_ticks: u32,
     origins: origins::PowerGrid,
     tools: origins_tools::Tools,
@@ -72,10 +73,18 @@ struct Actor {
     velocity: [f32; 3],
     barrier: Option<usize>,
     entering: Option<(u32, [f32; 3])>,
-    swing: Option<(ClientId, u32, u32)>,
+    swing: Option<Swing>,
     animation: u8,
     stalled: u32,
     emerge_until: u32,
+}
+
+#[derive(Clone, Debug)]
+struct Swing {
+    victim: ClientId,
+    start: u32,
+    next: usize,
+    finish: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -361,7 +370,13 @@ fn initialize(world: &mut World, state: &mut Survival) {
             })
     };
     state.rise_ticks = duration(&state.rise, 1800);
-    state.attack_ticks = duration(&state.attack, 1000);
+    if let Some(clip) = state
+        .attack
+        .as_deref()
+        .and_then(|name| frame.script_model_clips().get(name).cloned())
+    {
+        (state.attack_ticks, state.attack_impacts) = melee_timing(&clip);
+    }
     state.entry_ticks = duration(&state.entry, 1100);
     let mut barrier_names = BTreeMap::new();
     for pairs in state
@@ -894,6 +909,32 @@ fn animate(world: &mut World, object: u64, actor: &mut Actor, mode: u8, clip: Op
     }
 }
 
+fn melee_timing(clip: &xmodel_runtime::AnimClip) -> (u32, Vec<u32>) {
+    let duration = clip.duration();
+    if !duration.is_finite() || duration <= 0.0 {
+        return (0, Vec::new());
+    }
+    let end = clip
+        .notifies
+        .iter()
+        .filter(|note| note.name == "end" && note.time.is_finite())
+        .map(|note| note.time.clamp(0.0, 1.0))
+        .min_by(f32::total_cmp)
+        .unwrap_or(1.0);
+    let to_ticks =
+        |time: f32| (time * duration * 1000.0 / crate::MATCH_TICK_MS as f32).ceil() as u32;
+    let mut impacts: Vec<_> = clip
+        .notifies
+        .iter()
+        .filter(|note| {
+            note.name == "fire" && note.time.is_finite() && note.time >= 0.0 && note.time <= end
+        })
+        .map(|note| to_ticks(note.time))
+        .collect();
+    impacts.sort_unstable();
+    (to_ticks(end), impacts)
+}
+
 fn board_visibility(world: &mut World, barrier: &mut Barrier, board: usize, visible: bool) {
     let clip = format!(
         "o_zombie_board_{}_{}",
@@ -1148,8 +1189,13 @@ fn move_actors(
         let delta = Vec3::from_array(target) - Vec3::from_array(actor.origin);
         let direct = clear(&frame, actor.origin, goal_target);
         if !waiting && actor.barrier.is_none() && actor.swing.is_some() {
-            let (locked, hit_at, finish) = actor.swing.unwrap();
-            if tick.0 >= hit_at && hit_at != u32::MAX {
+            let swing = actor.swing.as_mut().unwrap();
+            let locked = swing.victim;
+            while state
+                .attack_impacts
+                .get(swing.next)
+                .is_some_and(|&at| tick.0.saturating_sub(swing.start) >= at)
+            {
                 if let Some((_, at)) = players.iter().find(|(id, _)| *id == locked) {
                     let delta = Vec3::from_array(*at) - Vec3::from_array(actor.origin);
                     if delta.length() <= 72.0 && clear(&frame, actor.origin, *at) {
@@ -1173,9 +1219,9 @@ fn move_actors(
                         );
                     }
                 }
-                actor.swing = Some((locked, u32::MAX, finish));
+                swing.next += 1;
             }
-            waiting = tick.0 < finish;
+            waiting = tick.0 < swing.finish;
             if !waiting {
                 actor.swing = None;
             }
@@ -1185,14 +1231,16 @@ fn move_actors(
             && delta.length() < 60.0
             && direct
             && tick.0 >= actor.attack_due
+            && !state.attack_impacts.is_empty()
         {
             drop(frame);
             animate(world, object, &mut actor, 2, state.attack.as_deref());
-            actor.swing = Some((
+            actor.swing = Some(Swing {
                 victim,
-                tick.0 + state.attack_ticks * 35 / 100,
-                tick.0 + state.attack_ticks,
-            ));
+                start: tick.0,
+                next: 0,
+                finish: tick.0 + state.attack_ticks,
+            });
             actor.attack_due = tick.0 + state.attack_ticks + ticks(100);
             waiting = true;
             frame = FrameWorld::from_world(world);
