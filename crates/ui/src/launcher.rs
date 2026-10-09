@@ -45,6 +45,10 @@ impl Game {
         self.folder().title()
     }
 
+    fn zombies(self) -> Option<&'static game_api::LibraryMode> {
+        session::games::modes(self.namespace()?).zombies()
+    }
+
     fn accent(self) -> Color {
         match self {
             Self::ModernWarfare | Self::ModernWarfare2 => Color::srgb(0.68, 0.82, 0.43),
@@ -139,6 +143,8 @@ struct Installation {
     game: Option<Game>,
     root: Option<PathBuf>,
     maps: Vec<String>,
+    /// The game's zombie maps whose zones are installed, `ns:zone`.
+    zombie_maps: Vec<String>,
 }
 
 #[derive(Resource, Default)]
@@ -184,6 +190,7 @@ enum Action {
     Home,
     Wip(&'static str),
     Pick(Game),
+    Scan,
     Rescan,
     Setting(&'static str),
     SettingsTab(usize),
@@ -434,38 +441,26 @@ fn discover(
                             .collect()
                     })
                     .unwrap_or_default();
-                if game == Game::BlackOps2 {
-                    if let Some(installation) = &installed {
-                        let zombies = [
-                            "zm_nuked",
-                            "zm_transit",
-                            "zm_highrise",
-                            "zm_prison",
-                            "zm_buried",
-                            "zm_tomb",
-                        ]
-                        .into_iter()
-                        .filter(|zone| {
-                            installation
-                                .join("zone")
-                                .join("all")
-                                .join(format!("{zone}.ff"))
-                                .exists()
-                        })
-                        .map(|zone| format!("t6:{zone}"))
-                        .collect::<Vec<_>>();
-                        if !zombies.is_empty() {
-                            packs.push(asset_transport::MapPack {
-                                label: "T6 Zombies".into(),
-                                maps: zombies,
-                            });
-                        }
-                    }
+                let zombie_maps: Vec<String> = match (game.namespace(), game.zombies()) {
+                    (Some(namespace), Some(mode)) if installed.is_some() => mode
+                        .maps
+                        .iter()
+                        .map(|(zone, _)| format!("{}:{zone}", namespace.as_str()))
+                        .filter(|map| asset_transport::find_zone_file(&root, map).is_ok())
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                if let (Some(namespace), false) = (game.namespace(), zombie_maps.is_empty()) {
+                    packs.push(asset_transport::MapPack {
+                        label: format!("{} Zombies", namespace.as_str().to_uppercase()),
+                        maps: zombie_maps.clone(),
+                    });
                 }
                 Installation {
                     game: Some(game),
                     root: installed,
                     maps: game_maps,
+                    zombie_maps,
                 }
             })
             .collect();
@@ -581,9 +576,18 @@ fn activate(
             if changing_lobby {
                 command(exec, format!("ui_select_map {map}"));
             }
+            let Some((namespace, mode)) = map
+                .split_once(':')
+                .and_then(|(prefix, _)| asset_core::AssetNamespace::from_prefix(prefix))
+                .and_then(|namespace| {
+                    Some((namespace, session::games::modes(namespace).zombies()?))
+                })
+            else {
+                return;
+            };
             dvars.set("ui_mapname", map);
-            dvars.set("ui_gametype", "zclassic");
-            dvars.set("ui_game_namespace", "t6");
+            dvars.set("ui_gametype", mode.gametype);
+            dvars.set("ui_game_namespace", namespace.as_str());
             dvars.set("ui_scorelimit", "0");
             dvars.set("ui_timelimit", "0");
             if !changing_lobby {
@@ -624,6 +628,7 @@ fn activate(
             exec,
             format!("set ui_pick_game_folder {}", game.folder().key()),
         ),
+        Action::Scan => command(exec, "set ui_scan_game_folders 1"),
         Action::Rescan => {
             inventory.folders = None;
             menu.notice = "Scanning installed games…".into();
@@ -1195,6 +1200,7 @@ fn rebuild(
             "ui_map_error",
             "ui_map_error_reason",
             "ui_folder_error",
+            "ui_folder_scan",
             "ui_connection_error",
             "partyend_reason",
             "ui_community_server",
@@ -1283,10 +1289,20 @@ fn rebuild(
                 columns.spawn((ScrollContent, scroll_position, Node { width: Val::Percent(if matches!(menu.page, Page::Installations | Page::Settings | Page::Browser) { 68.0 } else { 47.0 }), max_width: Val::Px(780.0), flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), ..default() })).with_children(|content| {
                     match menu.page {
                         Page::Library => {
+                            let mut listed = 0;
                             for game in Game::ALL {
-                                let entry = inventory.installation(game);
-                                let status = if inventory.task.is_some() { "SCANNING".into() } else if entry.is_some_and(|entry| entry.root.is_some()) { format!("INSTALLED  /  {} MP MAPS", entry.map_or(0, |entry| entry.maps.len())) } else { "SELECT INSTALLATION".into() };
-                                button(content, &font.0, &mut order, format!("{}\n{}", game.title().to_uppercase(), status), Action::Select(game), true, game.accent());
+                                let Some(entry) = inventory.installation(game).filter(|entry| entry.root.is_some()) else {
+                                    continue;
+                                };
+                                listed += 1;
+                                let zombies = if entry.zombie_maps.is_empty() { String::new() } else { format!("  /  {} ZOMBIES MAPS", entry.zombie_maps.len()) };
+                                button(content, &font.0, &mut order, format!("{}\nINSTALLED  /  {} MP MAPS{zombies}", game.title().to_uppercase(), entry.maps.len()), Action::Select(game), true, game.accent());
+                            }
+                            if inventory.task.is_some() {
+                                label(content, &font.0, "Scanning for installed games…", 17.0, accent);
+                            } else if listed == 0 {
+                                label(content, &font.0, "No games found yet. Choose a folder that holds your Call of Duty installations.", 17.0, accent);
+                                button(content, &font.0, &mut order, "SCAN A FOLDER FOR GAMES", Action::Scan, true, accent);
                             }
                             button(content, &font.0, &mut order, "GAME INSTALLATIONS", Action::Page(Page::Installations), true, accent);
                             button(content, &font.0, &mut order, "SETTINGS", Action::Page(Page::Settings), true, accent);
@@ -1294,7 +1310,7 @@ fn rebuild(
                         Page::Game => {
                             button(content, &font.0, &mut order, "MULTIPLAYER", Action::Page(Page::Multiplayer), true, accent);
                             button(content, &font.0, &mut order, "CAMPAIGN", Action::Wip("Campaign"), true, accent);
-                            if matches!(game, Some(Game::BlackOps | Game::BlackOps2)) { button(content, &font.0, &mut order, "ZOMBIES", if game == Some(Game::BlackOps2) { Action::Page(Page::Zombies) } else { Action::Wip("Zombies") }, true, accent); }
+                            if game.and_then(Game::zombies).is_some() { button(content, &font.0, &mut order, "ZOMBIES", Action::Page(Page::Zombies), true, accent); }
                             button(content, &font.0, &mut order, "SETTINGS", Action::Page(Page::Settings), true, accent);
                             button(content, &font.0, &mut order, "GAME INSTALLATIONS", Action::Page(Page::Installations), true, accent);
                             button(content, &font.0, &mut order, "CHANGE GAME", Action::Home, true, accent);
@@ -1308,14 +1324,18 @@ fn rebuild(
                             button(content, &font.0, &mut order, "BACK", Action::Back, true, accent);
                         }
                         Page::Zombies => {
-                            label(content, &font.0, "SURVIVAL / EARLY BUILD", 22.0, accent);
-                            if let Some(root) = game.and_then(|game| inventory.installation(game)).and_then(|entry| entry.root.as_ref()) {
-                                for (name, zone) in [("NUKETOWN ZOMBIES", "zm_nuked"), ("TRANZIT", "zm_transit"), ("DIE RISE", "zm_highrise"), ("MOB OF THE DEAD", "zm_prison"), ("BURIED", "zm_buried"), ("ORIGINS", "zm_tomb")] {
-                                    let owned = root.join("zone").join("all").join(format!("{zone}.ff")).exists();
-                                    button(content, &font.0, &mut order, name, Action::ZombieMap(format!("t6:{zone}")), owned, accent);
+                            if let (Some(namespace), Some(mode)) = (game.and_then(Game::namespace), game.and_then(Game::zombies)) {
+                                let owned = game.and_then(|game| inventory.installation(game)).map_or(&[][..], |entry| &entry.zombie_maps[..]);
+                                for (zone, name) in mode.maps {
+                                    let map = format!("{}:{zone}", namespace.as_str());
+                                    let installed = owned.contains(&map);
+                                    if installed {
+                                        button(content, &font.0, &mut order, *name, Action::ZombieMap(map), true, accent);
+                                    }
                                 }
+                                if owned.is_empty() { label(content, &font.0, "No zombies map of this game is installed.", 17.0, accent); }
+                                label(content, &font.0, mode.note, 16.0, Color::WHITE);
                             }
-                            label(content, &font.0, "Map quests, special enemies and scripted events are Work in Progress.", 16.0, Color::WHITE);
                             button(content, &font.0, &mut order, "BACK", Action::Back, true, accent);
                         }
                         Page::WorkInProgress => {
@@ -1324,6 +1344,8 @@ fn rebuild(
                             button(content, &font.0, &mut order, "BACK TO GAME", Action::Back, true, accent);
                         }
                         Page::Installations => {
+                            button(content, &font.0, &mut order, "SCAN A FOLDER FOR GAMES", Action::Scan, true, accent);
+                            if let Some(scan) = dvars.get("ui_folder_scan").filter(|scan| !scan.is_empty()) { label(content, &font.0, scan, 16.0, accent); }
                             for game in Game::ALL {
                                 let folder = inventory.installation(game).and_then(|entry| entry.root.as_ref()).map(|root| root.display().to_string()).unwrap_or_else(|| "Not found — choose a folder".into());
                                 button(content, &font.0, &mut order, format!("{}\n{}", game.title().to_uppercase(), folder), Action::Pick(game), true, game.accent());

@@ -30,4 +30,8 @@ impl game_api::GameModes for Iw5 {
             "Modern Warfare 3's builtin list and the natives behind it"
         ))
     }
+
+    fn zombies(&self) -> Option<&'static game_api::LibraryMode> {
+        None
+    }
 }

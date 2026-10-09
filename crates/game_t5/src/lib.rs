@@ -2,7 +2,7 @@ mod catalog;
 mod zombie_catalog;
 mod zombie_startup;
 
-use game_api::{HudRules, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
+use game_api::{HudRules, LibraryMode, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
 
 pub struct T5;
 
@@ -89,4 +89,25 @@ impl game_api::GameModes for T5 {
         }
         Rule::Known(ZOMBIE_MODE)
     }
+
+    fn zombies(&self) -> Option<&'static LibraryMode> {
+        Some(&ZOMBIES_LIBRARY)
+    }
 }
+
+static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
+    gametype: ZOMBIES,
+    note: "Runs the map's own zombie scripts. Kino der Toten is the map played so far; gaps are listed in docs/fidelity/t5.md.",
+    maps: &[
+        ("zombie_theater", "KINO DER TOTEN"),
+        ("zombie_pentagon", "\"FIVE\""),
+        ("zombie_cod5_prototype", "NACHT DER UNTOTEN"),
+        ("zombie_cod5_asylum", "VERRÜCKT"),
+        ("zombie_cod5_sumpf", "SHI NO NUMA"),
+        ("zombie_cod5_factory", "DER RIESE"),
+        ("zombie_cosmodrome", "ASCENSION"),
+        ("zombie_coast", "CALL OF THE DEAD"),
+        ("zombie_temple", "SHANGRI-LA"),
+        ("zombie_moon", "MOON"),
+    ],
+};

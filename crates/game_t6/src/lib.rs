@@ -1,6 +1,6 @@
 mod startup;
 
-use game_api::{HudRules, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
+use game_api::{HudRules, LibraryMode, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
 
 pub struct T6;
 
@@ -91,4 +91,21 @@ impl game_api::GameModes for T6 {
             )),
         }
     }
+
+    fn zombies(&self) -> Option<&'static LibraryMode> {
+        Some(&ZOMBIES_LIBRARY)
+    }
 }
+
+static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
+    gametype: "zclassic",
+    note: "Survival rules written for IW4L; map quests, special enemies and scripted events are not in yet (docs/fidelity/t6.md).",
+    maps: &[
+        ("zm_nuked", "NUKETOWN ZOMBIES"),
+        ("zm_transit", "TRANZIT"),
+        ("zm_highrise", "DIE RISE"),
+        ("zm_prison", "MOB OF THE DEAD"),
+        ("zm_buried", "BURIED"),
+        ("zm_tomb", "ORIGINS"),
+    ],
+};

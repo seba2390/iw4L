@@ -6861,6 +6861,7 @@ dependencies = [
  "diag",
  "entity_iw4",
  "frame",
+ "game_api",
  "hud_iw4",
  "net",
  "playerstate_iw4",

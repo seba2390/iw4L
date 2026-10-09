@@ -99,6 +99,18 @@ pub struct HudRules {
     pub material_font_floor: bool,
 }
 
+/// A mode the game library offers beside multiplayer, with the maps it runs on.
+pub struct LibraryMode {
+    pub gametype: &'static str,
+    /// What the mode does and does not do yet, shown above its maps.
+    pub note: &'static str,
+    /// `(zone, title)`; a map is offered when its zone is installed.
+    pub maps: &'static [(&'static str, &'static str)],
+}
+
 pub trait GameModes: Sync {
     fn mode(&self, gametype: &str) -> Rule<ModeRules>;
+
+    /// The game's zombies mode, when it has one the runtime can start.
+    fn zombies(&self) -> Option<&'static LibraryMode>;
 }

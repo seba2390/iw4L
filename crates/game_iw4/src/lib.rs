@@ -54,4 +54,8 @@ impl game_api::GameModes for Iw4 {
     fn mode(&self, _gametype: &str) -> Rule<ModeRules> {
         Rule::Known(MODE)
     }
+
+    fn zombies(&self) -> Option<&'static game_api::LibraryMode> {
+        None
+    }
 }

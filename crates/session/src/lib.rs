@@ -1,5 +1,5 @@
 mod admission;
-mod games;
+pub mod games;
 pub mod readiness;
 pub use net::LocalAccount;
 pub use readiness::SessionReadinessPolicy;
