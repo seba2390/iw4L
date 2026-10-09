@@ -130,8 +130,10 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Game over: a downed solo player without Quick Revive ends the game
       with the "You Survived N Rounds" screen (T5 SetText/SetHintString
       values fill the string's `&&1`..), then the session returns to the menu.
-- [ ] Debris, Pack-a-Punch, teleporter, the remaining power-ups, last stand
-      with Quick Revive.
+- [ ] Debris, Pack-a-Punch, teleporter, the remaining power-ups.
+- [x] Last stand: every zombies player goes down; solo with Quick Revive
+      revives on their own (Mustang & Sally in hand), the next down ends
+      the game.
 - [x] Mystery box: bought at its random start location, the weapons spin
       and the drawn weapon is taken (a SPAS-12 in the test run).
 - [x] Power-ups drop from killed zombies at the score thresholds and are
@@ -140,9 +142,10 @@ Done when a single zombie can be fought and killed with correct feedback.
       sound bank, scripts' bare `zmb_*` names play as T5 aliases, and
       `PlaySound(alias, notify)` raises its done-notify (after a fixed 2s;
       footstep aliases from the singleplayer sound banks are still missing).
-- [ ] Zombie HUD and menus: zombie text, priced use hints, the round chalk
-      and other HUD icons the zombie scripts name show (decoded from the zones
-      and Black Ops' IWDs); the zombie points display and menus do not yet.
+- [ ] Zombie HUD and menus: zombie text, priced use hints, the round chalk,
+      the points column and other HUD icons the zombie scripts name show
+      (decoded from the zones and Black Ops' IWDs); the multiplayer compass
+      and menus remain, and the floating point popups draw too large.
 - [ ] Client scripts, or host-side substitutes for what they show.
 
 Done when a solo game of Kino can be played from round 1 until death.
