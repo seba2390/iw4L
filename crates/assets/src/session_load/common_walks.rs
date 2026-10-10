@@ -1215,6 +1215,8 @@ pub(super) struct ZombieCommons {
     pub(super) fpv: FpvMeshBuild,
     pub(super) world_weapons: WorldWeaponBuild,
     pub(super) projectiles: asset_model::ProjectileMeshBuild,
+    /// Effects of the zombie zones, later zones over earlier ones.
+    pub(super) fx: asset_game::FxCatalog,
     /// Singleplayer and zombie scripts, lowest priority first; the map and its
     /// patch go on top.
     pub(super) scripts: Option<crate::ScriptSources>,
@@ -1295,6 +1297,7 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         commons.fpv.absorb(census.fpv.clone());
         commons.world_weapons.absorb(census.world_weapons.clone());
         commons.projectiles.absorb(census.projectile_meshes.clone());
+        commons.fx.absorb(census.fx);
         commons.report.push(format!(
             "zombie common {zone}: xanims={xanims} weapons={} scene_models={} scripts={}",
             census.weapons.len(),

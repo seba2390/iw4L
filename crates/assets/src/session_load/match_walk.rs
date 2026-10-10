@@ -198,6 +198,14 @@ pub(super) async fn walk_prepared_match(
         .map(crate::ScriptSources::asset_names);
     let mut zombie_weapon_materials = zombie.fpv.material_names();
     zombie_weapon_materials.extend(zombie.world_weapons.material_names());
+    zombie_weapon_materials.extend(
+        zombie
+            .fx
+            .unique_material_keys()
+            .into_iter()
+            .map(|key| key.name),
+    );
+    let zombie_fx = zombie.fx;
     let zombie_scene_models = zombie.scene_models;
     let zombie_hud_images = zombie.hud_images;
     report.extend(zombie.report);
@@ -718,6 +726,15 @@ pub(super) async fn walk_prepared_match(
     let leftover_t5_fx_n = t5_fx.len();
     let leftover_t5_fx_gaps = t5_fx.capture_gaps;
     world.fx.absorb_missing(t5_fx);
+    let zombie_fx_n = zombie_fx.len();
+    if zombie_fx_n > 0 {
+        let before = world.fx.len();
+        world.fx.absorb_missing(zombie_fx);
+        report.push(format!(
+            "zombie zone fx absorb_missing: donor={zombie_fx_n} added={}",
+            world.fx.len() - before
+        ));
+    }
     report.push(format!(
         "leftover t5 fx absorb_missing: donor={leftover_t5_fx_n} gaps={leftover_t5_fx_gaps} host now {}",
         world.fx.len()
