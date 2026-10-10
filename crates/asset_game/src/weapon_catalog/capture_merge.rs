@@ -510,6 +510,9 @@ pub(super) fn merge_body_facts(dst: &mut WeaponBodyFacts, src: WeaponBodyFacts) 
     if dst.sprint_duration_scale == 0.0 {
         dst.sprint_duration_scale = src.sprint_duration_scale;
     }
+    if dst.game_move.is_none() {
+        dst.game_move = src.game_move;
+    }
 
     if dst.clip_size == 0 {
         dst.clip_size = src.clip_size;
