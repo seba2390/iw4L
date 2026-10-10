@@ -1,7 +1,7 @@
 use crate::error::Location;
 use crate::value::Value;
 
-pub const IR_VERSION: u32 = 6;
+pub const IR_VERSION: u32 = 7;
 
 #[derive(Clone, Debug)]
 pub struct Function {
@@ -24,6 +24,10 @@ pub enum Global {
     Level,
     Game,
     Anim,
+    /// Black Ops 3's `world` object.
+    World,
+    /// Black Ops 3's `classes` object: each class's description, by class name.
+    Classes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
