@@ -401,6 +401,21 @@ impl<'a> Translator<'a> {
                     emit!(Op::Await(outputs));
                     state.depth -= 2;
                 }
+                Opcode::WaitTillMatch => {
+                    let count = usize::from(u8_at(ins));
+                    emit!(Op::Reverse(count + 2));
+                    emit!(Op::AwaitMatch(count));
+                    state.depth = state
+                        .depth
+                        .checked_sub(count + 2)
+                        .ok_or("waittillmatch argument underflow")?;
+                    if let Some(follow) = code.get(index + 1)
+                        && Opcode::from_byte(follow.opcode) == Some(Opcode::ClearParams)
+                    {
+                        pcs.insert(follow.at, out.len());
+                        skip_until = index + 2;
+                    }
+                }
                 Opcode::EndOn => {
                     emit!(Op::Swap);
                     emit!(Op::Endon);
