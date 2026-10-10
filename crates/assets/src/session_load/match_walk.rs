@@ -832,12 +832,7 @@ pub(super) async fn walk_prepared_match(
                     .collect();
                 let found = names
                     .iter()
-                    .filter(|name| {
-                        world
-                            .fx
-                            .index_in(asset_core::AssetNamespace::T5, name)
-                            .is_some()
-                    })
+                    .filter(|name| world.fx.index_in(table.namespace(), name).is_some())
                     .count();
                 report.push(format!(
                     "impactfx: the zombie zones' table; {found}/{} effects in the fx catalog",
