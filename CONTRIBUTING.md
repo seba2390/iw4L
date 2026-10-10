@@ -27,9 +27,9 @@ of the game — none of those will be read, and the last one cannot be accepted.
 
 ## Changes
 
-Every change goes through a pull request into `master`: create a branch for
+Every change goes through a pull request into `main`: create a branch for
 the task, commit there, push the branch, open the pull request. Nobody pushes
-to `master` directly; it is protected and accepts merged pull requests whose
+to `main` directly; it is protected and accepts merged pull requests whose
 checks (build, `publish-check`, `boundary`) pass.
 
 * **Small and self-contained** — a fix, a crash, a wrong constant, a doc
