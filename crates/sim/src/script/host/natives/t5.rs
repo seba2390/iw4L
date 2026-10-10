@@ -772,8 +772,6 @@ fn register_script(registry: &mut NativeRegistry) {
         Ok(Value::Int(0))
     });
     for name in [
-        "getallnodes",
-        "getnodearray",
         "getwatcherweapons",
         "getretrievableweapons",
         "getvehicletreadfxarray",
