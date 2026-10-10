@@ -1,4 +1,4 @@
-use game_api::{ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
+use game_api::{LibraryMode, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
 
 pub struct T7;
 
@@ -12,8 +12,8 @@ impl game_api::GameScripts for T7 {
     ) -> Rule<ScriptProgram> {
         Rule::Unknown(unknown!(
             "t7.scripts.compiled",
-            "Black Ops 3 ships its scripts compiled; IW4L has no loader or VM for them",
-            "Black Ops 3's compiled script format, a VM for it, and its builtins"
+            "Black Ops 3 ships its scripts compiled; IW4L reads the modules but has no VM for them",
+            "the meaning of Black Ops 3's opcodes, a VM for them, and its builtins"
         ))
     }
 
@@ -59,11 +59,17 @@ impl game_api::GameModes for T7 {
         Rule::Unknown(unknown!(
             "t7.scripts.gametypes",
             "Black Ops 3's match flow lives in its compiled gametype scripts, which IW4L does not run yet",
-            "Black Ops 3's compiled script loader, VM and builtins"
+            "a VM for Black Ops 3's compiled scripts and its builtins"
         ))
     }
 
     fn zombies(&self) -> Option<&'static game_api::LibraryMode> {
-        None
+        Some(&ZOMBIES_LIBRARY)
     }
 }
+
+static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
+    gametype: "zclassic",
+    note: "Black Ops 3's zombies run on its compiled scripts, which IW4L cannot run yet: the match is refused (docs/fidelity/t7.md).",
+    maps: &[("zm_zod", "SHADOWS OF EVIL")],
+};

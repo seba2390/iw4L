@@ -10,6 +10,18 @@ pub struct ZoneFormat {
     /// The little-endian word at offset 8.
     pub version: u32,
     pub decode: fn(&[u8]) -> Result<Vec<u8>, String>,
+    /// The compiled script modules a decoded zone carries.
+    pub scripts: fn(&[u8]) -> ZoneScripts,
+    /// The zones, beside a map's own, whose script modules the map runs, in
+    /// load order: a later zone's module replaces an earlier one's.
+    pub script_zones: fn(&str) -> Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ZoneScripts {
+    /// Module name (`scripts/…/x.gsc`) and its compiled bytes.
+    pub modules: Vec<(String, Vec<u8>)>,
+    pub report: Vec<String>,
 }
 
 impl ZoneFormat {

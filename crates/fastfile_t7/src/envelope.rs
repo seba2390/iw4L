@@ -13,6 +13,11 @@ const BLOCK_SIZES_AT: usize = 0x98;
 const NAME_AT: usize = 0xF8;
 const BLOCK_HEADER_LEN: usize = 16;
 
+/// Blocks never cross a multiple of this offset; a block header that would is
+/// written with an inflated length of 0, and the next block starts at the
+/// boundary.
+const SECTION_LEN: usize = 0x80_0000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FileHeader {
     pub version: u32,
@@ -123,6 +128,10 @@ impl<'a> Iterator for Blocks<'a> {
         if names != at {
             self.done = true;
             return Some(Err(BlockError::Misplaced { at, names }));
+        }
+        if inflated_len == 0 {
+            self.at = (at / SECTION_LEN + 1) * SECTION_LEN;
+            return self.next();
         }
         let start = at + BLOCK_HEADER_LEN;
         let Some(zlib) = self.file.get(start..start + compressed) else {

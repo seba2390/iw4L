@@ -269,7 +269,7 @@ impl ZoneLane for UnreadLane {
         _material_seed: asset_material::MaterialCatalog,
         _common_film_visions: &FilmVisionCatalog,
     ) -> LoadedWorld {
-        LoadedWorld::with_gap(
+        let mut world = LoadedWorld::with_gap(
             WorldDrawPolicy::unread(image.game),
             PreparedCapability::PreparedWorld,
             format!(
@@ -278,7 +278,38 @@ impl ZoneLane for UnreadLane {
                 image.game.prefix()
             ),
             Some("assets::lane::unread::load_world/no_decoder"),
-        )
+        );
+        let Some(format) = asset_transport::registered_zone_format(image.game) else {
+            return world;
+        };
+        let map = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default();
+        for zone in (format.script_zones)(map) {
+            let scripts = if zone == map {
+                (format.scripts)(&image.bytes)
+            } else {
+                match asset_transport::open_zone(path.with_file_name(format!("{zone}.ff"))) {
+                    Ok(companion) => (format.scripts)(&companion.bytes),
+                    Err(error) => {
+                        world.report.push(format!("{zone}: {error}"));
+                        continue;
+                    }
+                }
+            };
+            let count = scripts.modules.len();
+            for (name, bytes) in scripts.modules {
+                world.scripts.capture_compiled(&name, bytes);
+            }
+            world.report.push(format!("{zone}: {count} script modules"));
+            world.report.extend(scripts.report);
+        }
+        world.report.push(format!(
+            "{map}: {} script modules after its zones",
+            world.scripts.len()
+        ));
+        world
     }
 
     fn load_common_mp(

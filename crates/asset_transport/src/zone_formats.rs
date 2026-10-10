@@ -12,6 +12,10 @@ pub fn register_zone_formats(formats: Vec<ZoneFormat>) {
         .unwrap_or_else(std::sync::PoisonError::into_inner) = formats;
 }
 
+pub fn registered_zone_format(game: asset_core::FamilyId) -> Option<ZoneFormat> {
+    registered().into_iter().find(|format| format.game == game)
+}
+
 pub(crate) fn registered() -> Vec<ZoneFormat> {
     FORMATS
         .read()
