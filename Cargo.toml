@@ -47,6 +47,7 @@ members = [
     "crates/game_t7",
     "crates/gamemode_iw4",
     "crates/gsc",
+    "crates/gsc_t6",
     "crates/gsc_t7",
     "crates/menu_expr",
     "crates/hud",
@@ -163,6 +164,7 @@ game_t5 = { path = "crates/game_t5" }
 game_t6 = { path = "crates/game_t6" }
 game_t7 = { path = "crates/game_t7" }
 gsc = { path = "crates/gsc" }
+gsc_t6 = { path = "crates/gsc_t6" }
 gsc_t7 = { path = "crates/gsc_t7" }
 menu_expr = { path = "crates/menu_expr" }
 hud = { path = "crates/hud" }
