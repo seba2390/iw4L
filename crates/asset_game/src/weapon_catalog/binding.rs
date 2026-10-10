@@ -29,6 +29,10 @@ impl<'a> BoundWeapon<'a> {
         )
     }
 
+    pub fn game_move(self) -> Option<game_api::movement::MoveWeapon> {
+        self.registry.rows[self.handle.row as usize].facts.game_move
+    }
+
     pub fn preparation(self) -> &'a super::WeaponPreparationRecipe {
         &self.registry.rows[self.handle.row as usize].preparation
     }

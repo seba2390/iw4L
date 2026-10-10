@@ -63,6 +63,7 @@ pub(crate) fn compile(
         sim::SimWeaponRow {
             wire_id: id,
             scales: weapon.movement_scales(),
+            game_move: weapon.game_move(),
             execution,
             transition_group: groups[id as usize],
             camouflage_slots: std::iter::once(0)
