@@ -5,6 +5,60 @@ pub const MAGIC: &[u8; 7] = b"\x80GSC\r\n\0";
 
 pub const VERSION: u8 = 0x06;
 
+/// Opcodes are one byte; the interpreter dispatches values below this and
+/// skips any other byte.
+pub const OPCODE_LIMIT: u8 = 0x7c;
+
+/// The opcodes whose values the modules' own tables pin down.
+pub mod opcode {
+    /// First opcode of a function that declares locals or takes parameters.
+    pub const ENTRY_WITH_LOCALS: u8 = 0x17;
+    /// First opcode of a function without locals or parameters.
+    pub const ENTRY: u8 = 0x26;
+    pub const FUNCTION_REFERENCE: u8 = 0x15;
+    pub const CALL: u8 = 0x2e;
+    pub const METHOD_CALL: u8 = 0x30;
+    pub const THREAD_CALL: u8 = 0x32;
+    pub const METHOD_THREAD_CALL: u8 = 0x34;
+}
+
+/// How an import is used at its call sites (low nibble of its flags).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallKind {
+    /// `::name`, a function pointer.
+    Reference,
+    Call,
+    ThreadCall,
+    MethodCall,
+    MethodThreadCall,
+}
+
+impl CallKind {
+    fn from_flags(flags: u8) -> Option<Self> {
+        Some(match flags & 0x0f {
+            1 => Self::Reference,
+            2 => Self::Call,
+            3 => Self::ThreadCall,
+            4 => Self::MethodCall,
+            5 => Self::MethodThreadCall,
+            _ => return None,
+        })
+    }
+
+    /// The opcode at each of the import's call sites.
+    pub fn opcode(self) -> u8 {
+        match self {
+            Self::Reference => opcode::FUNCTION_REFERENCE,
+            Self::Call => opcode::CALL,
+            Self::ThreadCall => opcode::THREAD_CALL,
+            Self::MethodCall => opcode::METHOD_CALL,
+            Self::MethodThreadCall => opcode::METHOD_THREAD_CALL,
+        }
+    }
+}
+
+const DEVELOPER: u8 = 0x10;
+
 const HEADER_LEN: usize = 0x40;
 const EXPORT_LEN: usize = 12;
 const IMPORT_LEN: usize = 8;
@@ -33,6 +87,20 @@ pub enum ModuleError {
         table: Table,
         end: usize,
         next: usize,
+    },
+    UnknownCallKind {
+        flags: u8,
+    },
+    /// An import's call site does not hold its kind's opcode, followed by a
+    /// zero byte.
+    CallSite {
+        at: u32,
+        found: u8,
+    },
+    /// A function does not begin with an entry opcode.
+    Entry {
+        at: u32,
+        found: u8,
     },
 }
 
@@ -67,7 +135,9 @@ pub struct Import {
     /// or a function of this module.
     pub namespace: String,
     pub params: u8,
-    pub flags: u8,
+    pub kind: CallKind,
+    /// Called only from developer blocks (`/# … #/`).
+    pub developer: bool,
     pub refs: Vec<u32>,
 }
 
@@ -143,11 +213,22 @@ impl Module {
         let exports = (0..export_count)
             .map(|index| {
                 let at = exports_at + index * EXPORT_LEN;
+                let code = u32_at(bytes, at + 4)?;
+                let params = byte_at(bytes, at + 10)?;
+                let found = byte_at(bytes, code as usize)?;
+                let entry = match found {
+                    opcode::ENTRY => params == 0,
+                    opcode::ENTRY_WITH_LOCALS => true,
+                    _ => false,
+                };
+                if !entry {
+                    return Err(ModuleError::Entry { at: code, found });
+                }
                 Ok(Export {
                     checksum: u32_at(bytes, at)?,
-                    code: u32_at(bytes, at + 4)?,
+                    code,
                     name: c_string(bytes, half_at(bytes, at + 8)?, "export")?,
-                    params: byte_at(bytes, at + 10)?,
+                    params,
                     flags: byte_at(bytes, at + 11)?,
                 })
             })
@@ -156,12 +237,25 @@ impl Module {
         let mut at = imports_at;
         for _ in 0..import_count {
             let count = half_at(bytes, at + 4)?;
+            let flags = byte_at(bytes, at + 7)?;
+            let kind = CallKind::from_flags(flags).ok_or(ModuleError::UnknownCallKind { flags })?;
+            let refs = u32_list(bytes, at + IMPORT_LEN, count)?;
+            for &site in &refs {
+                let found = byte_at(bytes, site as usize)?;
+                let operand = (kind != CallKind::Reference)
+                    .then(|| byte_at(bytes, site as usize + 1))
+                    .transpose()?;
+                if found != kind.opcode() || operand.is_some_and(|byte| byte != 0) {
+                    return Err(ModuleError::CallSite { at: site, found });
+                }
+            }
             imports.push(Import {
                 name: c_string(bytes, half_at(bytes, at)?, "import")?,
                 namespace: c_string(bytes, half_at(bytes, at + 2)?, "import namespace")?,
                 params: byte_at(bytes, at + 6)?,
-                flags: byte_at(bytes, at + 7)?,
-                refs: u32_list(bytes, at + IMPORT_LEN, count)?,
+                kind,
+                developer: flags & DEVELOPER != 0,
+                refs,
             });
             at += IMPORT_LEN + 4 * count;
         }
