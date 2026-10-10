@@ -192,6 +192,13 @@ scoreboard, script text hud elems, `UI_FONT_DEFAULT`, several HUD owner draws,
 weapon info details, engine dvar defaults, vision-set grading and Double Tap's
 fire-rate factor.
 
+The first of them unblocks most of the rest: the Black Ops executables in a
+macOS Steam install are CEG depot copies whose gameplay constants and dvar
+names are zero, so player movement, the weapon state machine, the last-stand
+entry and the HUD's font and layout rules cannot be read from them. A
+`BlackOps.exe` (and `BlackOpsMP.exe`) from a Windows Steam install that has
+been launched once can be.
+
 ## Open questions
 
 - How much engine behaviour beyond the scripts (state transitions, path
