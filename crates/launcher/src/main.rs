@@ -32,6 +32,11 @@ fn main() {
         }
         return;
     }
+    prepare_process_root().unwrap_or_else(|e| {
+        diag::exit_launch_error(&e);
+    });
+    let artifacts = ensure_artifacts_dir().unwrap_or_else(|e| diag::exit_launch_error(&e));
+    announce_log(diag::init_log(&artifacts));
     let mut args = match updater::startup().unwrap_or_else(|e| diag::exit_launch_error(&e)) {
         Some(args) => args,
         None => return,
@@ -40,11 +45,6 @@ fn main() {
         args.push("menu".into());
     }
     bootstrap::bench::arm();
-    prepare_process_root().unwrap_or_else(|e| {
-        diag::exit_launch_error(&e);
-    });
-    let artifacts = ensure_artifacts_dir().unwrap_or_else(|e| diag::exit_launch_error(&e));
-    announce_log(diag::init_log(&artifacts));
     let (mode, acceptance, cheats) = bootstrap::parse_cli(
         args.into_iter()
             .map(|arg| arg.to_string_lossy().into_owned()),

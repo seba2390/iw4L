@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Resource, Default)]
 pub(crate) struct T6Art {
     publication: Option<asset_material::UiImagePublication>,
-    generation: frame::WorldGeneration,
+    generation: Option<frame::WorldGeneration>,
     images: HashMap<String, Handle<Image>>,
     missing: HashSet<String>,
 }
@@ -25,7 +25,7 @@ impl T6Art {
         self.images.clear();
         self.missing.clear();
     }
-    pub(crate) fn reset(&mut self, generation: frame::WorldGeneration) {
+    pub(crate) fn reset(&mut self, generation: Option<frame::WorldGeneration>) {
         if self.generation != generation {
             self.generation = generation;
             self.images.clear();

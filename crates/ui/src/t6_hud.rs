@@ -44,7 +44,7 @@ enum Field {
 
 #[derive(Resource, Default)]
 struct Killfeed {
-    generation: frame::WorldGeneration,
+    generation: frame::WorldStamp,
     lines: VecDeque<(i32, String)>,
 }
 
@@ -392,18 +392,23 @@ fn refresh(
     weapons: Option<Res<PreparedWeapons>>,
     strings: Option<Res<PreparedLocalizedStrings>>,
     actions: Option<Res<ClientActionInput>>,
-    generation: Res<frame::WorldGeneration>,
-    clock: Res<FrameClock>,
+    generation: Option<Res<frame::WorldGeneration>>,
+    clock: Option<Res<FrameClock>>,
     mut feed: ResMut<Killfeed>,
     mut roots: Query<(&mut Node, &mut Visibility), (With<T6HudRoot>, Without<Field>)>,
     mut fields: Query<(&Field, &mut Text, &mut TextColor, &mut Node)>,
 ) {
-    if feed.generation != *generation {
-        feed.generation = *generation;
+    let stamp = generation.map_or(frame::WorldStamp::default(), |generation| {
+        generation.stamp()
+    });
+    if feed.generation != stamp {
+        feed.generation = stamp;
         feed.lines.clear();
     }
-    feed.lines
-        .retain(|(at, _)| (clock.time().wrapping_sub(*at) as u32) < 6_000);
+    if let Some(clock) = clock {
+        feed.lines
+            .retain(|(at, _)| (clock.time().wrapping_sub(*at) as u32) < 6_000);
+    }
     let visible = map
         .as_ref()
         .is_some_and(|map| map.namespace == Some(AssetNamespace::T6))
@@ -798,7 +803,7 @@ fn refresh_graphics(
     catalog: Res<crate::ClassLoadoutCatalog>,
     mut art: ResMut<crate::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
-    generation: Res<frame::WorldGeneration>,
+    generation: Option<Res<frame::WorldGeneration>>,
     mut arms: Query<
         (&CrosshairArm, &mut Node, &mut UiTransform),
         (Without<WeaponArt>, Without<DamageEdge>),
@@ -809,7 +814,7 @@ fn refresh_graphics(
     >,
     mut damage: Query<&mut BorderColor, With<DamageEdge>>,
 ) {
-    art.reset(*generation);
+    art.reset(generation.map(|generation| *generation));
     let Some(ps) = presented.player(local.0) else {
         return;
     };

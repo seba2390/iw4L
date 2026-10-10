@@ -1,9 +1,10 @@
+use frame::ScopeApp;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use bevy::prelude::*;
 use entity_iw4::EntityEventKind;
-use frame::{HasWorld, MatchTornDown, RuntimeRole};
+use frame::RuntimeRole;
 use playerstate_iw4::UserCmd;
 
 use crate::ServerTime;
@@ -17,7 +18,6 @@ use crate::client::input::{
     remote_control_axes,
 };
 use crate::client::predict::{ClientPrediction, CmdSeq};
-use crate::client::presentation::entities::CEntityBirthCensus;
 use crate::client::presentation::presented::{
     LocalPresentClient, PresentLocalCensus, PresentedSnapshot, interpolate_player_state,
 };
@@ -44,7 +44,7 @@ pub struct PendingPresentedEntityEvents {
 #[derive(Resource, Default)]
 pub struct PendingPelletFx(
     pub(crate)  Vec<(
-        frame::WorldGeneration,
+        frame::WorldStamp,
         crate::EntityEventDomain,
         sim::PelletFxRecord,
     )>,
@@ -57,14 +57,11 @@ impl PendingPelletFx {
     pub fn take(
         &mut self,
     ) -> Vec<(
-        frame::WorldGeneration,
+        frame::WorldStamp,
         crate::EntityEventDomain,
         sim::PelletFxRecord,
     )> {
         core::mem::take(&mut self.0)
-    }
-    fn clear(&mut self) {
-        self.0.clear();
     }
 }
 
@@ -570,7 +567,7 @@ pub fn reconcile_prediction(
                 .0
                 .extend(tick.snapshot.meta.pellet_fx.drain(..).map(|record| {
                     (
-                        *reliable.generation,
+                        reliable.generation.stamp(),
                         crate::EntityEventDomain::Snapshot,
                         record,
                     )
@@ -644,7 +641,7 @@ pub struct SvcFrameWriters<'w> {
 
 #[derive(Message, Clone, Debug)]
 pub struct FireCommandVerdicts {
-    pub world: frame::WorldGeneration,
+    pub world: frame::WorldStamp,
     pub results: Vec<sim::FireCommandResult>,
 }
 
@@ -705,12 +702,13 @@ impl ReliableInbound<'_> {
                         self.fail("FireResultRecipientMismatch: connection retired");
                         return;
                     }
-                    if let Err(reason) = self.fire_verdicts.apply(*self.generation, results) {
+                    if let Err(reason) = self.fire_verdicts.apply(self.generation.stamp(), results)
+                    {
                         self.fail(reason);
                         return;
                     }
                     self.fire.write(FireCommandVerdicts {
-                        world: *self.generation,
+                        world: self.generation.stamp(),
                         results: results.clone(),
                     });
                 }
@@ -950,11 +948,17 @@ pub fn sample_client_input(
         .and_then(|snapshot| snapshot.meta.for_client(local.0))
         .and_then(|meta| meta.location_selection.as_ref())
         .map(|selection| selection.choose_direction);
-    let location_mouse = choose_direction.is_some().then(|| {
+    let location_input = choose_direction.is_some().then(|| {
         let mouse = (actions.mouse_x, actions.mouse_y);
+        let pad = LocationPad::capture(&actions);
         actions.mouse_x = 0.0;
         actions.mouse_y = 0.0;
-        mouse
+        actions.pad_look_delta = [0.0; 2];
+        actions.pad_move = [0.0; 2];
+        actions.pad_turn_rate = [0.0; 2];
+        actions.pad_lockon = None;
+        actions.pad_autoaim = None;
+        (mouse, pad)
     });
     let remote_mouse = presented
         .snapshot()
@@ -965,6 +969,7 @@ pub fn sample_client_input(
             let mouse = (actions.mouse_x, actions.mouse_y);
             actions.mouse_x = 0.0;
             actions.mouse_y = 0.0;
+            actions.pad_look_delta = [0.0; 2];
             mouse
         });
     let look_state = ps
@@ -1158,8 +1163,8 @@ pub fn sample_client_input(
             cmd.off_hand_index = loadout.tactical as u16;
         }
     }
-    match location_mouse {
-        Some((mouse_x, mouse_y)) => {
+    match location_input {
+        Some(((mouse_x, mouse_y), pad)) => {
             let held = cmd.buttons;
             let directing =
                 choose_direction == Some(true) && held & playerstate_iw4::buttons::ADS != 0;
@@ -1168,7 +1173,15 @@ pub fn sample_client_input(
             } else {
                 playerstate_iw4::buttons::ADS | playerstate_iw4::buttons::MELEE_CHARGE
             };
-            cmd.selected_location = cursor.step(&actions, mouse_x, mouse_y, directing);
+            cmd.selected_location = cursor.step(
+                &actions,
+                mouse_x,
+                mouse_y,
+                pad,
+                cls.frametime_secs(),
+                choose_direction == Some(true),
+                directing,
+            );
             if choose_direction != Some(true) {
                 cmd.selected_location[2] = 0;
             }
@@ -1205,6 +1218,11 @@ fn melee_charge_target(
         return None;
     }
     let local_team = snapshot.meta.for_client(local)?.client_state_team;
+    let range = if ps.perks[1] & playerstate_iw4::PERK1_EXTENDEDMELEE != 0 {
+        playerstate_iw4::EXTENDED_MELEE_TARGET_RANGE
+    } else {
+        AIM_AUTOMELEE_RANGE
+    };
     let eye = [
         ps.origin[0],
         ps.origin[1],
@@ -1231,7 +1249,7 @@ fn melee_charge_target(
             other.origin[1] - ps.origin[1],
             other.origin[2] - ps.origin[2],
         ];
-        if dot(delta, delta) > AIM_AUTOMELEE_RANGE * AIM_AUTOMELEE_RANGE {
+        if dot(delta, delta) > range * range {
             continue;
         }
         let center = [other.origin[0], other.origin[1], other.origin[2] + 36.0];
@@ -1287,16 +1305,59 @@ impl Default for LocationCursor {
 
 const LOCATION_CURSOR_SPEED: f32 = 0.6;
 
+const LOCATION_PAD_SPEED: f32 = 0.6;
+
+const LOCATION_PAD_AIM_DEFLECTION: f32 = 0.5;
+
+#[derive(Clone, Copy, Debug)]
+struct LocationPad {
+    movement: [f32; 2],
+    look: [f32; 2],
+    look_deflection: f32,
+}
+
+impl LocationPad {
+    fn capture(input: &ClientActionInput) -> Self {
+        let up = if input.pad_invert {
+            -input.pad_look[1]
+        } else {
+            input.pad_look[1]
+        };
+        Self {
+            movement: input.pad_move,
+            look: [input.pad_look[0], up],
+            look_deflection: input.pad_deflection,
+        }
+    }
+}
+
 impl LocationCursor {
+    #[allow(clippy::too_many_arguments)]
     fn step(
         &mut self,
         input: &ClientActionInput,
         mouse_x: f32,
         mouse_y: f32,
+        pad: LocationPad,
+        dt: f32,
+        choose_direction: bool,
         directing: bool,
     ) -> [u8; 3] {
         let scale = LOCATION_CURSOR_SPEED * input.sensitivity * 0.002;
-        let moved = [mouse_x * scale, mouse_y * scale];
+        let further = |a: f32, b: f32| if a.abs() >= b.abs() { a } else { b };
+        let (right, up) = if choose_direction {
+            (pad.movement[1], pad.movement[0])
+        } else {
+            (
+                further(pad.look[0], pad.movement[1]),
+                further(pad.look[1], pad.movement[0]),
+            )
+        };
+        let pad_step = LOCATION_PAD_SPEED * dt.clamp(0.0, 0.1);
+        let moved = [
+            mouse_x * scale + right * pad_step,
+            mouse_y * scale - up * pad_step,
+        ];
         self.directing = directing;
         if directing {
             self.aim = [
@@ -1313,6 +1374,15 @@ impl LocationCursor {
                 (self.at[1] + moved[1]).clamp(0.0, 1.0),
             ];
             self.aim = self.at;
+            if choose_direction
+                && pad.look_deflection >= LOCATION_PAD_AIM_DEFLECTION
+                && (pad.look[0] != 0.0 || pad.look[1] != 0.0)
+            {
+                self.yaw = (-pad.look[0])
+                    .atan2(pad.look[1])
+                    .to_degrees()
+                    .rem_euclid(360.0);
+            }
         }
         let byte = |v: f32| ((v * 255.0 - 128.0).round() as i32).clamp(-128, 127) as i8 as u8;
         let yaw = (self.yaw * (256.0 / 360.0)).round() as i32 as u8;
@@ -1408,9 +1478,8 @@ pub fn enforce_client_work_limits(
             diag::warn!(
                 Net,
                 "input backlog: no authority ack in {BACKLOG_STALL_MS} ms \
-                 (stall {counted}/{BACKLOG_STALLS_BEFORE_FAIL}) — re-adopting"
+                 (stall {counted}/{BACKLOG_STALLS_BEFORE_FAIL})"
             );
-            prediction.0.force_resync();
         }
         return;
     };
@@ -1652,7 +1721,7 @@ pub fn publish_presented(
     last_adopted: Res<LastAdoptedSnapshot>,
     proxy: Res<RemoteProxyState>,
     local: Res<LocalPresentClient>,
-    has_world: Option<Res<HasWorld>>,
+    has_world: Option<Res<State<frame::MatchScope>>>,
     mut presented: ResMut<PresentedSnapshot>,
     mut present_census: ResMut<PresentLocalCensus>,
     phase: Option<ResMut<crate::UpdatePhaseCensus>>,
@@ -1677,7 +1746,7 @@ pub fn publish_presented(
     };
     push_phase(trace, "Present");
 
-    if has_world.is_some_and(|world| !world.0) {
+    if has_world.is_some_and(|world| *world.get() != frame::MatchScope::Live) {
         presented.clear();
         *present_census = PresentLocalCensus {
             choice: Some("no_next"),
@@ -1869,118 +1938,70 @@ pub fn publish_presented(
     );
 }
 
-pub fn reset_cgame_on_match_torn_down(
-    mut torn: MessageReader<MatchTornDown>,
-    mut clock: ResMut<FrameClock>,
-    mut active: ResMut<GameActive>,
-    mut join: ResMut<GameJoinCensus>,
-    mut adopted: ResMut<LastAdoptedSnapshot>,
-    mut received: ResMut<ReceivedTicks>,
-    (mut prediction, mut sends, mut signon, mut admission): (
-        ResMut<ClientPredictionState>,
-        ResMut<PendingClientSends>,
-        ResMut<crate::SignonState>,
-        ResMut<crate::ClientAdmission>,
-    ),
-    mut client_clock: ResMut<ClientClock>,
-    mut proxy: ResMut<RemoteProxyState>,
+fn release_client(
+    mut actions: ResMut<ClientActionInbox>,
     mut presented: ResMut<PresentedSnapshot>,
-    mut present_census: ResMut<PresentLocalCensus>,
-    mut select: ResMut<WeaponSelect>,
-    (mut entity_events, mut pellet_fx, mut entity_event_cursor, mut fire_verdicts, fire_state): (
-        ResMut<PendingPresentedEntityEvents>,
-        ResMut<PendingPelletFx>,
-        ResMut<crate::EntityEventCursor>,
-        ResMut<Messages<FireCommandVerdicts>>,
-        Res<crate::FireVerdictState>,
-    ),
-    (mut reliable_ack, mut actions, mut events, mut scores): (
-        ResMut<ClientReliableAck>,
-        Option<ResMut<ClientActionInbox>>,
-        ResMut<Messages<ReliableControlEvent>>,
-        ResMut<crate::Scoreboard>,
-    ),
-    mut birth: Option<ResMut<CEntityBirthCensus>>,
-    mut pacer: ResMut<GameplaySendPacer>,
+    mut signon: ResMut<crate::SignonState>,
+    mut admission: ResMut<crate::ClientAdmission>,
+    mut events: ResMut<Messages<ReliableControlEvent>>,
+    mut fire_verdicts: ResMut<Messages<FireCommandVerdicts>>,
+    fire_state: Res<crate::FireVerdictState>,
 ) {
-    if torn.read().count() == 0 {
-        return;
-    }
+    actions.clear();
+    presented.clear();
     *signon = crate::SignonState::default();
     *admission = crate::ClientAdmission::default();
-    clock.reset();
-    active.0 = false;
-    join.clear();
-    *adopted = LastAdoptedSnapshot::default();
-    received.0.clear();
-    prediction.0.disarm();
-
-    *sends = PendingClientSends::default();
-    *client_clock = ClientClock::default();
-    *pacer = GameplaySendPacer::default();
-    *proxy = RemoteProxyState::default();
-    presented.clear();
-    *present_census = PresentLocalCensus::default();
-    *select = WeaponSelect::default();
-
-    *entity_events = PendingPresentedEntityEvents::default();
-    pellet_fx.clear();
-    *entity_event_cursor = crate::EntityEventCursor::default();
+    events.clear();
     fire_verdicts.clear();
     fire_state.clear();
-
-    *reliable_ack = ClientReliableAck::default();
-    events.clear();
-    *scores = crate::Scoreboard::default();
-    if let Some(actions) = actions.as_mut() {
-        actions.clear();
-    }
-    if let Some(birth) = birth.as_mut() {
-        **birth = CEntityBirthCensus::default();
-    }
     perf::cgame_hold("no_next", 0);
 }
 
 pub fn register_client_runtime(app: &mut App) {
     app.add_systems(
+        OnExit(frame::MatchScope::Live),
+        release_client
+            .in_set(frame::ScopeSet::Release)
+            .after(crate::signon::release_match_protocol),
+    );
+    app.add_systems(
         Update,
         enforce_client_work_limits
+            .in_set(frame::InMatch)
             .before(predict_local_move)
             .after(reconcile_prediction),
     );
     app.init_resource::<crate::SignonState>()
         .init_resource::<crate::ClientAdmission>()
-        .init_resource::<ClientPredictionState>()
-        .init_resource::<ClientClock>()
-        .init_resource::<FrameClock>()
-        .init_resource::<GameActive>()
-        .init_resource::<GameJoinCensus>()
+        .scoped::<ClientPredictionState>(frame::MatchScope::Live)
+        .scoped::<ClientClock>(frame::MatchScope::Live)
+        .scoped::<FrameClock>(frame::MatchScope::Live)
+        .scoped::<GameActive>(frame::MatchScope::Live)
+        .scoped::<GameJoinCensus>(frame::MatchScope::Live)
         .init_resource::<ClientRealtime>()
-        .init_resource::<ReceivedTicks>()
-        .init_resource::<LastAdoptedSnapshot>()
-        .init_resource::<PresentLocalCensus>()
-        .init_resource::<PendingPresentedEntityEvents>()
-        .init_resource::<PendingPelletFx>()
-        .init_resource::<PendingClientSends>()
+        .scoped::<ReceivedTicks>(frame::MatchScope::Live)
+        .scoped::<LastAdoptedSnapshot>(frame::MatchScope::Live)
+        .scoped::<PresentLocalCensus>(frame::MatchScope::Live)
+        .scoped::<PendingPresentedEntityEvents>(frame::MatchScope::Live)
+        .scoped::<PendingPelletFx>(frame::MatchScope::Live)
+        .scoped::<PendingClientSends>(frame::MatchScope::Live)
         .init_resource::<ClientCmdTemplate>()
-        .init_resource::<WeaponSelect>()
+        .scoped::<WeaponSelect>(frame::MatchScope::Live)
         .init_resource::<LocationCursor>()
-        .init_resource::<ClientReliableAck>()
-        .init_resource::<GameplaySendPacer>()
+        .scoped::<ClientReliableAck>(frame::MatchScope::Live)
+        .scoped::<GameplaySendPacer>(frame::MatchScope::Live)
         .add_message::<ReliableControlEvent>()
-        .add_message::<FireCommandVerdicts>()
+        .scoped_message::<FireCommandVerdicts>(frame::MatchScope::Live)
         .init_resource::<crate::FireVerdictState>()
-        .add_message::<frame::MatchInstalled>()
-        .add_message::<frame::MatchTornDown>()
-        .init_resource::<RemoteProxyState>()
-        .init_resource::<ClientShotSamples>()
-        .init_resource::<crate::Scoreboard>()
-        .add_message::<crate::SvcLocalSound>()
-        .add_message::<crate::SvcScriptAudio>()
-        .add_message::<crate::SvcCardSlotCmd>()
-        .add_message::<crate::SvcOpenMenuCmd>()
-        .add_message::<crate::SvcHudSplash>()
-        .add_message::<crate::SvcGameNotify>();
+        .scoped::<RemoteProxyState>(frame::MatchScope::Live)
+        .scoped::<ClientShotSamples>(frame::MatchScope::Live)
+        .scoped::<crate::Scoreboard>(frame::MatchScope::Live)
+        .scoped_message::<crate::SvcLocalSound>(frame::MatchScope::Live)
+        .scoped_message::<crate::SvcScriptAudio>(frame::MatchScope::Live)
+        .scoped_message::<crate::SvcCardSlotCmd>(frame::MatchScope::Live)
+        .scoped_message::<crate::SvcOpenMenuCmd>(frame::MatchScope::Live)
+        .scoped_message::<crate::SvcHudSplash>(frame::MatchScope::Live)
+        .scoped_message::<crate::SvcGameNotify>(frame::MatchScope::Live);
     crate::client::frame_census::register_update_phase_census(app);
     app.configure_sets(
         Update,
@@ -1997,13 +2018,13 @@ pub fn register_client_runtime(app: &mut App) {
         Update,
         (
             advance_cls_realtime.in_set(ClientSet::Load),
-            reset_cgame_on_match_torn_down
-                .in_set(ClientSet::Load)
-                .after(frame::SessionSwapApplied),
             advance_cg_frame_clock
+                .in_set(frame::InMatch)
                 .in_set(ClientSet::Reconcile)
                 .after(reconcile_prediction),
-            receive_ticks.in_set(ClientSet::Receive),
+            receive_ticks
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Receive),
             crate::signon::drive_client_admission_facts
                 .in_set(ClientSet::Receive)
                 .after(receive_ticks),
@@ -2011,23 +2032,41 @@ pub fn register_client_runtime(app: &mut App) {
                 .in_set(ClientSet::Receive)
                 .after(crate::signon::drive_client_admission_facts),
             crate::signon::drive_map_loaded
+                .in_set(frame::InMatch)
                 .in_set(ClientSet::Receive)
                 .after(crate::signon::drive_client_admission_facts),
-            reconcile_prediction.in_set(ClientSet::Reconcile),
+            reconcile_prediction
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Reconcile),
             flush_bootstrap_applied
+                .in_set(frame::InMatch)
                 .in_set(ClientSet::Reconcile)
                 .after(reconcile_prediction),
             apply_weapon_switch_requests
+                .in_set(frame::InMatch)
                 .in_set(ClientSet::Input)
                 .before(sample_client_input),
-            sample_client_input.in_set(ClientSet::Input),
-            predict_local_move.in_set(ClientSet::Predict),
-            send_pending_commands.in_set(ClientSet::Send),
-            publish_presented.in_set(ClientSet::Present),
+            sample_client_input
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Input),
+            predict_local_move
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Predict),
+            send_pending_commands
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Send),
+            publish_presented
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Present),
         ),
     );
 }
 
 pub fn register_listen_prediction_arm(app: &mut App) {
-    app.add_systems(Update, arm_listen_prediction.in_set(ClientSet::Load));
+    app.add_systems(
+        Update,
+        arm_listen_prediction
+            .in_set(frame::InMatch)
+            .in_set(ClientSet::Load),
+    );
 }

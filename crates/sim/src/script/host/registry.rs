@@ -2,7 +2,7 @@ use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
 
 use crate::script::host::natives;
-use crate::script::{Namespace, Runtime, Value};
+use crate::script::{Namespace, RoundScript, Value};
 
 pub type Native = fn(&mut World, &Value, &[Value]) -> Result<Value, String>;
 
@@ -25,7 +25,10 @@ impl NativeRegistry {
             }
             let defined = match &args[0] {
                 Value::Undefined => false,
-                Value::Object(id) => world.resource::<Runtime>().live(id),
+                Value::Object(id) => {
+                    let runtime = world.resource::<RoundScript>();
+                    runtime.script_is_defined(id)
+                }
                 _ => true,
             };
             Ok(Value::Int(i32::from(defined)))
@@ -44,7 +47,7 @@ impl NativeRegistry {
             if !args.is_empty() {
                 return Err("spawnstruct expects no arguments".into());
             }
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let id = runtime.next_object;
             runtime.next_object = id.checked_add(1).ok_or("object identifier exhausted")?;
             runtime.objects.insert(id, BTreeMap::new());
@@ -120,7 +123,7 @@ pub(crate) fn unavailable(
     name: &'static str,
     reason: &str,
 ) -> Result<Value, String> {
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     let calls = runtime.unsupported.entry(name).or_default();
     *calls = calls.saturating_add(1);
     Err(format!("unavailable: {reason}"))

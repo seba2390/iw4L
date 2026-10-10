@@ -118,6 +118,7 @@ pattern crates/asset_game/src/localize.rs fastfile_t6:: 4
 pattern crates/asset_game/src/lochit.rs weapon_iw4:: 1
 pattern crates/asset_game/src/menu_catalog.rs asset_iw4:: 14
 pattern crates/asset_game/src/menu_catalog.rs fastfile_iw4:: 32
+pattern crates/asset_game/src/menu_catalog.rs gamemode_iw4:: 1
 pattern crates/asset_game/src/menu_catalog_t5.rs "<game>" 1
 pattern crates/asset_game/src/menu_catalog_t5.rs AssetNamespace::<game> 1
 pattern crates/asset_game/src/menu_catalog_t5.rs fastfile_iw4:: 1
@@ -155,6 +156,7 @@ pattern crates/asset_game/src/weapon_catalog/catalog_linking.rs weapon_iw4:: 1
 pattern crates/asset_game/src/weapon_catalog/combat.rs asset_iw4:: 2
 pattern crates/asset_game/src/weapon_catalog/combat.rs weapon_iw4:: 7
 pattern crates/asset_game/src/weapon_catalog/configuration.rs AssetNamespace::<game> 9
+pattern crates/asset_game/src/weapon_catalog/editor.rs gamemode_iw4:: 2
 pattern crates/asset_game/src/weapon_catalog/editor.rs weapon_iw4:: 2
 pattern crates/asset_game/src/weapon_catalog/equipment.rs AssetNamespace::<game> 2
 pattern crates/asset_game/src/weapon_catalog/equipment.rs weapon_iw4:: 6
@@ -166,10 +168,11 @@ pattern crates/asset_game/src/weapon_catalog/iw5_parameters.rs weapon_iw4:: 2
 pattern crates/asset_game/src/weapon_catalog/model_linking.rs AssetNamespace::<game> 1
 pattern crates/asset_game/src/weapon_catalog/native_t6.rs AssetNamespace::<game> 2
 pattern crates/asset_game/src/weapon_catalog/preparation/mod.rs AssetNamespace::<game> 1
-pattern crates/asset_game/src/weapon_catalog/presentation.rs weapon_iw4:: 3
+pattern crates/asset_game/src/weapon_catalog/presentation.rs weapon_iw4:: 4
 pattern crates/asset_game/src/weapon_catalog/publication.rs AssetNamespace::<game> 7
 pattern crates/asset_game/src/weapon_catalog/publication.rs weapon_iw4:: 2
-pattern crates/asset_game/src/weapon_catalog/registry.rs AssetNamespace::<game> 1
+pattern crates/asset_game/src/weapon_catalog/registry.rs AssetNamespace::<game> 6
+pattern crates/asset_game/src/weapon_catalog/registry.rs gamemode_iw4:: 7
 pattern crates/asset_game/src/weapon_families.rs AssetNamespace::<game> 7
 pattern crates/asset_game/src/weapon_semantics.rs AssetNamespace::<game> 3
 pattern crates/asset_game/src/weapon_t6.rs fastfile_t6:: 5
@@ -349,6 +352,7 @@ pattern crates/assets/src/session_load/common_cache.rs AssetNamespace::<game> 15
 pattern crates/assets/src/session_load/common_cache.rs ZoneGame::<game> 2
 pattern crates/assets/src/session_load/common_cache.rs fastfile_iw4:: 1
 pattern crates/assets/src/session_load/common_cache.rs fastfile_t5:: 1
+pattern crates/assets/src/session_load/common_cache.rs structured_data_iw4:: 1
 pattern crates/assets/src/session_load/common_cache.rs weapon_iw4:: 3
 pattern crates/assets/src/session_load/common_walks.rs AssetNamespace::<game> 9
 pattern crates/assets/src/session_load/common_walks.rs ZoneGame::<game> 3
@@ -370,7 +374,7 @@ pattern crates/audio/src/emit.rs AssetNamespace::<game> 1
 pattern crates/audio/src/emit.rs movement_iw4:: 1
 pattern crates/audio/src/entity_events.rs AssetNamespace::<game> 4
 pattern crates/audio/src/entity_events.rs entity_iw4:: 1
-pattern crates/audio/src/entity_events.rs playerstate_iw4:: 1
+pattern crates/audio/src/entity_events.rs playerstate_iw4:: 2
 pattern crates/audio/src/event.rs entity_iw4:: 2
 pattern crates/audio/src/frontend.rs "<game>" 1
 pattern crates/audio/src/frontend.rs AssetNamespace::<game> 2
@@ -395,6 +399,7 @@ pattern crates/bots/src/plugin.rs entity_iw4:: 3
 pattern crates/bots/src/plugin.rs gamemode_iw4:: 2
 pattern crates/bots/src/plugin.rs playerstate_iw4:: 3
 pattern crates/bots/src/query.rs trace_iw4:: 1
+pattern crates/bots/src/roster.rs playerstate_iw4:: 1
 pattern crates/bots/src/sensor.rs gamemode_iw4:: 1
 pattern crates/bots/src/sensor.rs playerstate_iw4:: 1
 pattern crates/console/src/binds.rs input_iw4:: 1
@@ -441,8 +446,9 @@ pattern crates/hud/src/killfeed.rs hud_iw4:: 8
 pattern crates/hud/src/mantle_hint.rs hud_iw4:: 1
 pattern crates/hud/src/menus/host.rs AssetNamespace::<game> 1
 pattern crates/hud/src/menus/host.rs entity_iw4:: 1
-pattern crates/hud/src/menus/host.rs gamemode_iw4:: 1
-pattern crates/hud/src/menus/host.rs hud_iw4:: 5
+pattern crates/hud/src/menus/host.rs gamemode_iw4:: 2
+pattern crates/hud/src/menus/host.rs hud_iw4:: 6
+pattern crates/hud/src/menus/host.rs structured_data_iw4:: 7
 pattern crates/hud/src/menus/mod.rs AssetNamespace::<game> 1
 pattern crates/hud/src/menus/mod.rs playerstate_iw4:: 1
 pattern crates/hud/src/menus/runtime.rs hud_iw4:: 5
@@ -500,7 +506,7 @@ pattern crates/net/src/client/runtime.rs gamemode_iw4:: 1
 pattern crates/net/src/client/runtime.rs hud_iw4:: 3
 pattern crates/net/src/client/runtime.rs input_iw4:: 8
 pattern crates/net/src/client/runtime.rs movement_iw4:: 1
-pattern crates/net/src/client/runtime.rs playerstate_iw4:: 23
+pattern crates/net/src/client/runtime.rs playerstate_iw4:: 25
 pattern crates/net/src/client/runtime.rs weapon_iw4:: 5
 pattern crates/net/src/policy/killcam.rs playerstate_iw4:: 1
 pattern crates/net/src/policy/seat.rs entity_iw4:: 6
@@ -544,6 +550,7 @@ pattern crates/render_anim/src/anim/remote_kit.rs fx_iw4:: 1
 pattern crates/render_anim/src/anim/view_kick_state.rs weapon_iw4:: 1
 pattern crates/render_anim/src/anim/view_sway.rs weapon_iw4:: 1
 pattern crates/render_anim/src/anim/viewmodel_controller.rs asset_iw4:: 1
+pattern crates/render_anim/src/anim/viewmodel_controller.rs playerstate_iw4:: 2
 pattern crates/render_anim/src/anim/viewmodel_controller.rs weapon_iw4:: 3
 pattern crates/render_anim/src/anim/xmodel_pose.rs anim_iw4:: 1
 pattern crates/render_anim/src/anim/xmodel_pose.rs asset_iw4:: 5
@@ -608,7 +615,7 @@ pattern crates/render_backend/src/spot.rs lighting_iw4:: 1
 pattern crates/render_backend/src/spot.rs render_frame:: 1
 pattern crates/render_backend/src/tess_list.rs render_frame:: 1
 pattern crates/render_backend/src/work.rs render_frame:: 1
-pattern crates/render_frontend/src/adapters/anim/dyn_ent_brush.rs dpvs_iw4:: 20
+pattern crates/render_frontend/src/adapters/anim/dyn_ent_brush.rs dpvs_iw4:: 21
 pattern crates/render_frontend/src/adapters/anim/dyn_ent_wake.rs entity_iw4:: 1
 pattern crates/render_frontend/src/adapters/anim/dyn_ent_wake.rs fx:: 2
 pattern crates/render_frontend/src/adapters/anim/dyn_ent_wake.rs render_fx:: 2
@@ -718,7 +725,7 @@ pattern crates/render_frontend/src/assemble/pack.rs render_frame:: 1
 pattern crates/render_frontend/src/prepare/scene/cull.rs dpvs_iw4:: 5
 pattern crates/render_frontend/src/prepare/scene/gfx_scene.rs entity_iw4:: 6
 pattern crates/render_frontend/src/prepare/scene/model_lighting_cache.rs anim_iw4:: 1
-pattern crates/render_frontend/src/prepare/scene/model_lighting_cache.rs lighting_iw4:: 9
+pattern crates/render_frontend/src/prepare/scene/model_lighting_cache.rs lighting_iw4:: 10
 pattern crates/render_frontend/src/prepare/scene/smodel_geom_cache.rs lighting_iw4:: 5
 pattern crates/render_frontend/src/prepare/scene/smodel_lighting.rs lighting_iw4:: 2
 pattern crates/render_frontend/src/prepare/scene/spawn.rs fx:: 2
@@ -732,7 +739,7 @@ pattern crates/render_frontend/src/prepare/scene/world_occupancy.rs hud_iw4:: 1
 pattern crates/render_frontend/src/prepare/scene/world_occupancy.rs lighting_iw4:: 3
 pattern crates/render_frontend/src/prepare/scene/world_plan.rs dpvs_iw4:: 1
 pattern crates/render_frontend/src/prepare/scene/world_plan.rs fx:: 1
-pattern crates/render_frontend/src/prepare/scene/world_plan.rs render_fx:: 9
+pattern crates/render_frontend/src/prepare/scene/world_plan.rs render_fx:: 13
 pattern crates/render_frontend/src/prepare/sun.rs dpvs_iw4:: 1
 pattern crates/render_frontend/src/prepare/sun.rs render_frame:: 1
 pattern crates/render_gpu/src/drawsurf/admitted.rs render_frame:: 1
@@ -835,6 +842,7 @@ pattern crates/sim/src/combat.rs movement_iw4:: 16
 pattern crates/sim/src/combat.rs playerstate_iw4:: 8
 pattern crates/sim/src/combat.rs trace_iw4:: 1
 pattern crates/sim/src/combat.rs weapon_iw4:: 24
+pattern crates/sim/src/content.rs gamemode_iw4:: 6
 pattern crates/sim/src/content.rs weapon_iw4:: 6
 pattern crates/sim/src/corpse.rs entity_iw4:: 3
 pattern crates/sim/src/corpse.rs playerstate_iw4:: 1
@@ -862,7 +870,8 @@ pattern crates/sim/src/input.rs playerstate_iw4:: 1
 pattern crates/sim/src/item.rs anim_iw4:: 1
 pattern crates/sim/src/item.rs entity_iw4:: 4
 pattern crates/sim/src/item.rs playerstate_iw4:: 3
-pattern crates/sim/src/item.rs weapon_iw4:: 4
+pattern crates/sim/src/item.rs trace_iw4:: 1
+pattern crates/sim/src/item.rs weapon_iw4:: 5
 pattern crates/sim/src/mantle_xanim.rs movement_iw4:: 1
 pattern crates/sim/src/match_state.rs hud_iw4:: 1
 pattern crates/sim/src/match_state/events.rs entity_iw4:: 1
@@ -883,6 +892,8 @@ pattern crates/sim/src/player_anim_script.rs movement_iw4:: 1
 pattern crates/sim/src/player_anim_script.rs playerstate_iw4:: 4
 pattern crates/sim/src/player_anim_script.rs weapon_iw4:: 1
 pattern crates/sim/src/presence.rs entity_iw4:: 1
+pattern crates/sim/src/progression.rs gamemode_iw4:: 3
+pattern crates/sim/src/progression.rs structured_data_iw4:: 3
 pattern crates/sim/src/remote_missile.rs entity_iw4:: 4
 pattern crates/sim/src/remote_missile.rs playerstate_iw4:: 3
 pattern crates/sim/src/rules.rs gamemode_iw4:: 1
@@ -906,6 +917,7 @@ pattern crates/sim/src/script/host/natives/engine.rs playerstate_iw4:: 1
 pattern crates/sim/src/script/host/natives/engine.rs trace_iw4:: 5
 pattern crates/sim/src/script/host/natives/engine.rs weapon_iw4:: 2
 pattern crates/sim/src/script/host/natives/player.rs Realm::<game> 1
+pattern crates/sim/src/script/host/natives/player.rs gamemode_iw4:: 1
 pattern crates/sim/src/script/host/natives/player.rs hud_iw4:: 2
 pattern crates/sim/src/script/host/natives/player.rs is_<game> 1
 pattern crates/sim/src/script/host/natives/player.rs movement_iw4:: 1
@@ -972,7 +984,7 @@ pattern crates/sim/src/script_gaps.rs gamemode_iw4:: 1
 pattern crates/sim/src/script_player.rs entity_iw4:: 4
 pattern crates/sim/src/script_player.rs hud_iw4:: 5
 pattern crates/sim/src/script_player.rs movement_iw4:: 5
-pattern crates/sim/src/script_player.rs playerstate_iw4:: 27
+pattern crates/sim/src/script_player.rs playerstate_iw4:: 30
 pattern crates/sim/src/script_player.rs weapon_iw4:: 21
 pattern crates/sim/src/snapshot.rs clipmap_iw4:: 12
 pattern crates/sim/src/snapshot.rs playerstate_iw4:: 1
@@ -991,11 +1003,12 @@ pattern crates/sim/src/step.rs trace_iw4:: 1
 pattern crates/sim/src/step.rs weapon_iw4:: 49
 pattern crates/sim/src/t5_destructible.rs entity_iw4:: 3
 pattern crates/sim/src/t5_destructible.rs trace_iw4:: 1
+pattern crates/sim/src/weapon_content.rs gamemode_iw4:: 4
 pattern crates/sim/src/weapon_content.rs weapon_iw4:: 5
 pattern crates/sim/src/world.rs anim_iw4:: 3
-pattern crates/sim/src/world.rs clipmap_iw4:: 22
-pattern crates/sim/src/world.rs entity_iw4:: 16
-pattern crates/sim/src/world.rs gamemode_iw4:: 8
+pattern crates/sim/src/world.rs clipmap_iw4:: 23
+pattern crates/sim/src/world.rs entity_iw4:: 17
+pattern crates/sim/src/world.rs gamemode_iw4:: 9
 pattern crates/sim/src/world.rs hud_iw4:: 1
 pattern crates/sim/src/world.rs movement_iw4:: 12
 pattern crates/sim/src/world.rs playerstate_iw4:: 6
@@ -1008,7 +1021,7 @@ pattern crates/sim/src/world/content.rs entity_iw4:: 1
 pattern crates/sim/src/world/content.rs hud_iw4:: 3
 pattern crates/sim/src/world/events.rs entity_iw4:: 1
 pattern crates/sim/src/world_objects.rs entity_iw4:: 6
-pattern crates/ui/src/classes/setup.rs AssetNamespace::<game> 1
+pattern crates/ui/src/classes/setup.rs AssetNamespace::<game> 2
 pattern crates/ui/src/frontend/maps.rs "<game>" 3
 pattern crates/ui/src/frontend/maps.rs AssetNamespace::<game> 1
 pattern crates/ui/src/launcher.rs "<game>" 3

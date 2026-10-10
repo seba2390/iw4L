@@ -1,5 +1,6 @@
 use bevy::prelude::*;
-use frame::WorldGeneration;
+use frame::ScopeApp;
+use frame::{WorldGeneration, WorldStamp};
 
 use super::spawn::{WorldSpawnJob, WorldSpawnPhase};
 use std::collections::HashSet;
@@ -65,7 +66,7 @@ impl WorldGpuWait {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OverlayWarmup {
-    pub generation: WorldGeneration,
+    pub generation: WorldStamp,
     pub initialized: bool,
     pub total: u32,
     pub ready: u32,
@@ -73,7 +74,7 @@ pub struct OverlayWarmup {
 
 #[derive(Resource, Debug, Default, Clone, Copy)]
 pub struct WorldGpuReady {
-    pub spawn: WorldGeneration,
+    pub spawn: WorldStamp,
     pub images: bool,
     pub pipelines: bool,
     pub waiting_n: u32,
@@ -87,14 +88,14 @@ pub struct WorldGpuReady {
 }
 
 impl WorldGpuReady {
-    fn live_for(&self, spawn: WorldGeneration) -> bool {
+    fn live_for(&self, spawn: WorldStamp) -> bool {
         self.spawn.0.is_some() && self.spawn == spawn && self.images && self.pipelines
     }
 }
 
 #[derive(Resource, Clone, Debug, Default)]
 pub struct GpuSubmitDemand {
-    pub world_generation: WorldGeneration,
+    pub world_generation: WorldStamp,
 
     pub warm_pipelines: bool,
 
@@ -136,7 +137,7 @@ impl PipelineDemandTracker {
 
 #[derive(Resource, Clone, Debug, Default)]
 pub struct GpuLoadProgress {
-    pub generation: WorldGeneration,
+    pub generation: WorldStamp,
     pub waiting_n: u32,
     pub pipeline_n: u32,
     pub warmup: OverlayWarmup,
@@ -156,10 +157,10 @@ pub struct GpuImageResidency {
 }
 
 pub fn spawn_gpu_extract_live(
-    gpu_spawn: WorldGeneration,
-    job_spawn: Option<WorldGeneration>,
+    gpu_spawn: WorldStamp,
+    job_spawn: Option<WorldStamp>,
     overlay_gpu_wait: bool,
-    world_gen: WorldGeneration,
+    world_gen: WorldStamp,
 ) -> bool {
     world_gen.0.is_some()
         && gpu_spawn == world_gen
@@ -183,7 +184,7 @@ pub(crate) fn publish_gpu_submit_demand(
                 | WorldSpawnPhase::Gpu
         )
     });
-    let world_generation = generation.map(|g| *g).unwrap_or_default();
+    let world_generation = generation.map(|g| g.stamp()).unwrap_or_default();
     let overlay_gpu_wait = spawn
         .as_ref()
         .is_some_and(|job| job.phase == WorldSpawnPhase::Gpu);
@@ -216,7 +217,7 @@ pub(crate) fn publish_gpu_submit_demand(
 
 pub(crate) fn poll(
     wait: &mut WorldGpuWait,
-    spawn: WorldGeneration,
+    spawn: WorldStamp,
     gpu: Option<&WorldGpuReady>,
     gap_ms: f32,
 ) -> bool {
@@ -286,16 +287,21 @@ pub(crate) fn poll(
 }
 
 pub(crate) fn register_resources(app: &mut App) {
-    app.init_resource::<WorldGpuReady>()
-        .init_resource::<GpuSubmitDemand>()
-        .init_resource::<PipelineDemandTracker>()
-        .init_resource::<GpuLoadProgress>()
+    app.scoped::<WorldGpuReady>(frame::MatchScope::Live)
+        .scoped::<GpuSubmitDemand>(frame::MatchScope::Live)
+        .scoped::<PipelineDemandTracker>(frame::MatchScope::Live)
+        .scoped::<GpuLoadProgress>(frame::MatchScope::Live)
         .add_systems(
             Update,
             (
-                consume_gpu_load_progress.before(super::spawn::spawn_world),
-                publish_gpu_submit_demand.after(super::spawn::spawn_world),
-            ),
+                consume_gpu_load_progress
+                    .in_set(frame::InMatch)
+                    .before(super::spawn::spawn_world),
+                publish_gpu_submit_demand
+                    .in_set(frame::InMatch)
+                    .after(super::spawn::spawn_world),
+            )
+                .in_set(frame::ClientSet::Present),
         );
 }
 
@@ -342,7 +348,7 @@ pub(crate) fn consume_gpu_load_progress(
     if let Some(job) = job.as_mut() {
         job.request_pending_shaders(&progress.pending_shaders);
     }
-    let world_gen = generation.map(|g| *g).unwrap_or(WorldGeneration(None));
+    let world_gen = generation.map(|g| g.stamp()).unwrap_or(WorldStamp(None));
     ready.waiting_n = progress.waiting_n;
     ready.pipeline_n = progress.pipeline_n;
     ready.warmup = if progress.generation == world_gen {

@@ -72,7 +72,11 @@ impl Tools {
                     shovel.hud = make_hud(world, owner, 400.0, 1.0);
                 }
                 if let Some(object) = shovel.hud {
-                    let slot = world.resource::<Runtime>().hud_slots.get(&object).copied();
+                    let slot = world
+                        .resource::<RoundScript>()
+                        .hud_slots
+                        .get(&object)
+                        .copied();
                     let mut frame = FrameWorld::from_world(world);
                     let material = frame.hud_material_index(if digs.golden(owner) {
                         "zom_hud_shovel_gold"
@@ -102,7 +106,7 @@ impl Tools {
                 .model_capability("p6_zm_tm_shovel")
                 .flatten()
                 .is_none()
-                || world.resource::<Runtime>().entities.len()
+                || world.resource::<RoundScript>().entities.len()
                     >= super::super::entities::MAX_SCRIPT_ENTITIES
             {
                 continue;
@@ -110,7 +114,7 @@ impl Tools {
             let Ok(presence) = super::super::presence::spawn_presence(world, shovel.origin) else {
                 continue;
             };
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_shovel") else {
                 continue;
             };
@@ -198,7 +202,7 @@ impl Tools {
             return;
         };
         shovel.owner = Some(client);
-        world.resource_mut::<Runtime>().delete_entity(object);
+        world.resource_mut::<RoundScript>().delete_entity(object);
         diag::info!(
             Sim,
             "origins shovel acquired client={} location={index}",

@@ -15,7 +15,7 @@ use glam::Vec3;
 
 use super::entities::{EntityKind, HudAudience};
 use crate::frame::FrameWorld;
-use crate::script::{Runtime, Value};
+use crate::script::{RoundScript, Value};
 use crate::{ClientId, ClientLifecycle, MatchPhase, Tick};
 
 const MAX_ALIVE: usize = 24;
@@ -839,7 +839,7 @@ fn spawn_player(world: &mut World, state: &mut Survival, client: ClientId, tick:
     }
     if let Some(slot) = frame
         .ecs()
-        .resource_mut::<Runtime>()
+        .resource_mut::<RoundScript>()
         .players
         .get_mut(&client.0)
     {
@@ -934,7 +934,7 @@ fn spawn_actor_site(world: &mut World, state: &mut Survival, tick: Tick, site: S
         return false;
     };
     let number = FrameWorld::from_world(world).gentity_number(presence);
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     let Ok(object) = runtime.create_entity(EntityKind::Spawned, "actor_zombie") else {
         return false;
     };
@@ -1005,7 +1005,7 @@ fn animate(world: &mut World, object: u64, actor: &mut Actor, mode: u8, clip: Op
     }
     actor.animation = mode;
     if let Some(clip) = clip {
-        if let Some(entity) = world.resource_mut::<Runtime>().entities.get_mut(&object) {
+        if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&object) {
             entity.anim_op = Some(Some(clip.into()));
         }
     }
@@ -1076,7 +1076,7 @@ fn board_visibility(world: &mut World, barrier: &mut Barrier, board: usize, visi
     drop(frame);
     barrier.hiding[board] = (!visible).then_some(tick.0 + duration);
     if let Some(object) = barrier.objects.get(board).copied().flatten() {
-        if let Some(entity) = world.resource_mut::<Runtime>().entities.get_mut(&object) {
+        if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&object) {
             entity.hidden = !visible && duration == 0;
             entity.anim_op = Some(Some(clip.into()));
         }
@@ -1089,7 +1089,7 @@ fn prepare_barriers(world: &mut World, state: &mut Survival, players: &[(ClientI
         for (board, due) in barrier.hiding.iter_mut().enumerate() {
             if due.is_some_and(|due| tick.0 >= due) {
                 if let Some(object) = barrier.objects[board]
-                    && let Some(entity) = world.resource_mut::<Runtime>().entities.get_mut(&object)
+                    && let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&object)
                 {
                     entity.hidden = true;
                 }
@@ -1103,7 +1103,7 @@ fn prepare_barriers(world: &mut World, state: &mut Survival, players: &[(ClientI
             continue;
         }
         for board in 0..barrier.models.len() {
-            if world.resource::<Runtime>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
+            if world.resource::<RoundScript>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
                 return;
             }
             if barrier.objects[board].is_some() {
@@ -1113,7 +1113,7 @@ fn prepare_barriers(world: &mut World, state: &mut Survival, players: &[(ClientI
             else {
                 continue;
             };
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let Ok(object) = runtime.create_entity(EntityKind::Spawned, "zombie_barrier_board")
             else {
                 continue;
@@ -1175,13 +1175,13 @@ fn prepare_machines(world: &mut World, state: &mut Survival, players: &[(ClientI
         }
         drop(frame);
         if row.object.is_none() {
-            if world.resource::<Runtime>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
+            if world.resource::<RoundScript>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
                 continue;
             }
             let Ok(presence) = super::presence::spawn_presence(world, row.origin) else {
                 continue;
             };
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let Ok(object) = runtime.create_entity(EntityKind::Spawned, "zombie_perk_machine")
             else {
                 continue;
@@ -1199,7 +1199,7 @@ fn prepare_machines(world: &mut World, state: &mut Survival, players: &[(ClientI
                 row.origin
             );
         }
-        world.resource_mut::<Runtime>().set_object_field(
+        world.resource_mut::<RoundScript>().set_object_field(
             row.object.unwrap(),
             "model",
             Value::string(model),
@@ -1472,7 +1472,7 @@ fn move_actors(
         } else {
             delta.y.atan2(delta.x).to_degrees()
         };
-        let runtime = frame.ecs().resource_mut::<Runtime>().into_inner();
+        let runtime = frame.ecs().resource_mut::<RoundScript>().into_inner();
         runtime.set_object_field(object, "origin", Value::Vector(actor.origin));
         runtime.set_object_field(object, "angles", Value::Vector([0.0, yaw, 0.0]));
         state.actors.insert(object, actor);
@@ -1550,7 +1550,7 @@ fn purchase(
         if cash < row.price {
             return;
         }
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let ids: Vec<_> = runtime.entities.keys().copied().collect();
         let ids: Vec<_> = ids.into_iter().filter(|id| {
             runtime.entities.get(id).is_some_and(|entity| entity.presence.is_some())
@@ -1802,7 +1802,7 @@ fn hud_text(world: &mut World, object: u64, text: &str) {
     let Ok(index) = super::hud::string_index(world, &Value::string(text)) else {
         return;
     };
-    let Some(&slot) = world.resource::<Runtime>().hud_slots.get(&object) else {
+    let Some(&slot) = world.resource::<RoundScript>().hud_slots.get(&object) else {
         return;
     };
     if let Some(slot) = FrameWorld::from_world(world)
@@ -1933,7 +1933,7 @@ fn advance_revives(world: &mut World, state: &mut Survival, tick: Tick) {
             state.survivors.get_mut(&victim.0).unwrap().downed_since = None;
             if let Some(slot) = frame
                 .ecs()
-                .resource_mut::<Runtime>()
+                .resource_mut::<RoundScript>()
                 .players
                 .get_mut(&victim.0)
             {
@@ -2177,7 +2177,7 @@ fn interactions(
             survivor.round_label = make_hud(world, client, 360.0, 1.4);
         }
         if let Some(object) = survivor.hud {
-            let slot = world.resource::<Runtime>().hud_slots.get(&object).copied();
+            let slot = world.resource::<RoundScript>().hud_slots.get(&object).copied();
             let mut frame = FrameWorld::from_world(world);
             if let Some(slot) = slot.and_then(|slot| frame.hud_elem_slots_mut().get_mut(slot)) {
                 slot.elem.elem_type = hud_iw4::HE_TYPE_VALUE;
@@ -2321,7 +2321,7 @@ fn interactions(
 
 pub(crate) fn advance(world: &mut World) {
     let tick = world.resource::<crate::step::StepRequest>().tick;
-    let mut state = std::mem::take(&mut world.resource_mut::<Runtime>().zombies);
+    let mut state = std::mem::take(&mut world.resource_mut::<RoundScript>().zombies);
     if !state.initialized {
         initialize(world, &mut state);
     }
@@ -2358,9 +2358,9 @@ pub(crate) fn advance(world: &mut World) {
         state.upgrades.retain(|_, claim| claim.client.0 != id);
     }
     if let Some(ended) = state.ended {
-        world.resource_mut::<Runtime>().zombies = state;
+        world.resource_mut::<RoundScript>().zombies = state;
         if tick.0.saturating_sub(ended) >= ticks(5000) {
-            world.resource_mut::<Runtime>().pending_restart = Some(false);
+            world.resource_mut::<RoundScript>().pending_restart = Some(false);
             super::restart::restart_level(world, tick);
         }
         return;
@@ -2491,7 +2491,7 @@ pub(crate) fn advance(world: &mut World) {
             state.next_round = Some(tick.0 + ticks(10000));
         }
     }
-    world.resource_mut::<Runtime>().zombies = state;
+    world.resource_mut::<RoundScript>().zombies = state;
     for hit in hits {
         player_damage(world, tick, &hit);
     }
@@ -2502,7 +2502,7 @@ pub(crate) fn entity_damage_amount(
     object: u64,
     hit: &super::entity_damage::EntityHit,
 ) -> i32 {
-    let runtime = world.resource::<Runtime>();
+    let runtime = world.resource::<RoundScript>();
     if hit.amount > 0
         && hit.attacker.is_some()
         && runtime.zombies.actors.contains_key(&object)
@@ -2512,7 +2512,7 @@ pub(crate) fn entity_damage_amount(
             .instant(world.resource::<crate::step::StepRequest>().tick)
     {
         return match world
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .object_field(object, "health")
         {
             Value::Int(health) => health.max(hit.amount),
@@ -2520,13 +2520,13 @@ pub(crate) fn entity_damage_amount(
         };
     }
     let boosted = world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .zombies
         .actors
         .contains_key(&object)
         && hit.attacker.is_some_and(|client| {
             world
-                .resource::<Runtime>()
+                .resource::<RoundScript>()
                 .zombies
                 .survivors
                 .get(&client.0)
@@ -2536,7 +2536,7 @@ pub(crate) fn entity_damage_amount(
     if hit.amount > 0
         && hit.means == "MOD_MELEE"
         && world
-            .resource::<Runtime>()
+            .resource::<RoundScript>()
             .zombies
             .actors
             .contains_key(&object)
@@ -2560,19 +2560,19 @@ pub(crate) fn entity_damage(
     // Check if this is the giant robot
     let tick = world.resource::<crate::step::StepRequest>().tick;
     let is_robot = world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .zombies
         .staffs
         .is_robot(object);
 
     if is_robot && hit.amount > 0 {
-        let mut zombies = std::mem::take(&mut world.resource_mut::<Runtime>().zombies);
+        let mut zombies = std::mem::take(&mut world.resource_mut::<RoundScript>().zombies);
         zombies.staffs.damage_robot(world, hit.amount, tick);
-        world.resource_mut::<Runtime>().zombies = zombies;
+        world.resource_mut::<RoundScript>().zombies = zombies;
 
         if let Some(client) = hit.attacker {
             let reward = world
-                .resource_mut::<Runtime>()
+                .resource_mut::<RoundScript>()
                 .zombies
                 .powerups
                 .reward(tick, 50);
@@ -2589,7 +2589,7 @@ pub(crate) fn entity_damage(
     }
 
     if !world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .zombies
         .actors
         .contains_key(&object)
@@ -2600,13 +2600,13 @@ pub(crate) fn entity_damage(
     }
     let killed = after <= 0;
     let origin = if killed {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let origin = runtime
             .zombies
             .actors
             .remove(&object)
             .map(|actor| actor.origin);
-        runtime.pending_deletes.push(object);
+        runtime.request_delete(object);
         origin
     } else {
         None
@@ -2629,7 +2629,7 @@ pub(crate) fn entity_damage(
         };
         let tick = world.resource::<crate::step::StepRequest>().tick;
         let reward = world
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .zombies
             .powerups
             .reward(tick, reward);
@@ -2640,7 +2640,7 @@ pub(crate) fn entity_damage(
             client.0
         );
         if let Some(origin) = origin {
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let destroyed = runtime
                 .zombies
                 .barriers
@@ -2650,14 +2650,14 @@ pub(crate) fn entity_damage(
             let mut powers = std::mem::take(&mut runtime.zombies.powerups);
             drop(runtime);
             powers.killed(world, origin, destroyed);
-            world.resource_mut::<Runtime>().zombies.powerups = powers;
+            world.resource_mut::<RoundScript>().zombies.powerups = powers;
         }
     }
 }
 
 pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_player::Hit) {
     if world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .zombies
         .survivors
         .get(&hit.victim.0)
@@ -2706,7 +2706,7 @@ pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_p
         let quick = frame.client_ids_sorted().len() == 1
             && frame
                 .ecs()
-                .resource::<Runtime>()
+                .resource::<RoundScript>()
                 .zombies
                 .survivors
                 .get(&hit.victim.0)
@@ -2723,7 +2723,7 @@ pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_p
             }
             let third = frame
                 .ecs()
-                .resource::<Runtime>()
+                .resource::<RoundScript>()
                 .zombies
                 .survivors
                 .get(&hit.victim.0)
@@ -2731,7 +2731,7 @@ pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_p
             if let Some(gun) = third {
                 let replacement = frame
                     .ecs()
-                    .resource::<Runtime>()
+                    .resource::<RoundScript>()
                     .zombies
                     .survivors
                     .get(&hit.victim.0)
@@ -2745,7 +2745,7 @@ pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_p
             }
             if let Some(survivor) = frame
                 .ecs()
-                .resource_mut::<Runtime>()
+                .resource_mut::<RoundScript>()
                 .zombies
                 .survivors
                 .get_mut(&hit.victim.0)
@@ -2761,7 +2761,7 @@ pub(crate) fn player_damage(world: &mut World, tick: Tick, hit: &crate::script_p
         frame.client_meta_mut(hit.victim).deaths += 1;
         if let Some(slot) = frame
             .ecs()
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .players
             .get_mut(&hit.victim.0)
         {

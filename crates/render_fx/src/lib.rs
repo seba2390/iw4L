@@ -25,7 +25,7 @@ pub use host::{
     PreparedFxElemInfos, PreparedFxModels, PreparedImpactFx, PresentedVehicleFx,
     PresentedVehicleFxRow,
 };
-pub use model_append::append_fx_model_asset;
+pub use model_append::{append_fx_model_asset, fx_model_packed_mismatch};
 pub use model_draw::{FxModelAssetDraw, FxModelDrawPlan, XMODEL_OBJECT_ID_FX_BASE};
 pub use plugin::RenderFxPlugin;
 pub use product::{

@@ -21,6 +21,7 @@ pub struct WeaponScriptSounds {
 }
 
 pub struct SimWeaponRow {
+    pub unlock_requirement: Result<gamemode_iw4::progression::UnlockRequirement, String>,
     pub wire_id: u32,
     pub scales: (f32, f32, f32),
     pub game_move: Option<game_api::movement::MoveWeapon>,
@@ -40,6 +41,9 @@ pub struct SimWeaponRow {
 
 #[derive(Debug)]
 pub struct SimWeaponContent {
+    pub(crate) rank_progression: Option<gamemode_iw4::progression::RankProgression>,
+    pub(crate) unlock_requirements:
+        Vec<Result<gamemode_iw4::progression::UnlockRequirement, String>>,
     pub(crate) weapon_def_scales: Vec<(f32, f32, f32)>,
     pub(crate) weapon_game_move: Vec<Option<game_api::movement::MoveWeapon>>,
     pub(crate) weapon_combat: Vec<WeaponCombatFacts>,
@@ -66,11 +70,14 @@ pub enum SimWeaponContentRefusal {
     MissingSentinel,
     NonDenseRows,
     UnknownAlias,
+    InvalidProgression,
 }
 
 impl SimWeaponContent {
     pub(crate) fn bootstrap() -> Self {
         Self {
+            rank_progression: Default::default(),
+            unlock_requirements: Default::default(),
             weapon_def_scales: Default::default(),
             weapon_game_move: Default::default(),
             weapon_combat: Default::default(),
@@ -98,8 +105,16 @@ impl SimWeaponContent {
         aliases: impl IntoIterator<Item = (String, u32)>,
         pen_table: weapon_iw4::PenetrationDepthTable,
         pen_table_loaded: bool,
+        rank_progression: Option<gamemode_iw4::progression::RankProgression>,
     ) -> Result<Arc<Self>, SimWeaponContentRefusal> {
+        if rank_progression
+            .as_ref()
+            .is_some_and(|ranks| ranks.rank(0).is_none())
+        {
+            return Err(SimWeaponContentRefusal::InvalidProgression);
+        }
         let mut result = Self {
+            rank_progression,
             pen_table,
             pen_table_loaded,
             ..Self::bootstrap()
@@ -110,6 +125,7 @@ impl SimWeaponContent {
             if row.wire_id as usize != names.len() {
                 return Err(SimWeaponContentRefusal::NonDenseRows);
             }
+            result.unlock_requirements.push(row.unlock_requirement);
             result.weapon_def_scales.push(row.scales);
             result.weapon_game_move.push(row.game_move);
             let (combat, refusal) = match row.execution {

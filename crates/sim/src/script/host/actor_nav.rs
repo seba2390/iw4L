@@ -8,7 +8,7 @@ use super::entities::EntityKind;
 use crate::bullet_collision::MASK_PLAYER_SOLID;
 use crate::frame::FrameWorld;
 use crate::script::runtime::raise;
-use crate::script::{Namespace, NativeRegistry, Runtime, Value};
+use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 
 /// A path node as actors use it.
 #[derive(Clone, Debug)]
@@ -332,7 +332,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let Value::Object(id) = node else {
             return Err("expects a path node".into());
         };
-        let origin = match world.resource_mut::<Runtime>().object_field(id, "origin") {
+        let origin = match world
+            .resource_mut::<RoundScript>()
+            .object_field(id, "origin")
+        {
             Value::Vector(origin) => origin,
             _ => return Err("path node has no origin".into()),
         };
@@ -398,7 +401,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "calcpathlength", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let to = vector(args, 0)?;
-        let (from, _) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let (from, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
         let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
             return Ok(Value::Float(distance_sq(from, to).sqrt()));
         };
@@ -434,7 +437,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "maymovetopoint", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let to = vector(args, 0)?;
-        let (from, _) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let (from, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
         Ok(Value::Int(walkable(world, from, to).into()))
     });
     registry.register(Method, "maymovefrompointtopoint", |world, _, args| {
@@ -452,7 +455,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "cansee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let target = super::natives::engine::entity_id(world, arg(args, 0)?)?;
-        let (origin, _) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
         let Some(at) = as_vector(super::players::entity_field(world, target, "origin")) else {
             return Ok(Value::Int(0));
         };
@@ -469,12 +472,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "melee", |world, receiver, _| {
         let id = actor_id(world, receiver)?;
-        let (origin, angles) = pose(&mut world.resource_mut::<Runtime>(), id);
-        let enemy = match world.resource_mut::<Runtime>().object_field(id, "enemy") {
+        let (origin, angles) = pose(&mut world.resource_mut::<RoundScript>(), id);
+        let enemy = match world
+            .resource_mut::<RoundScript>()
+            .object_field(id, "enemy")
+        {
             Value::Object(enemy) => enemy,
             _ => return Ok(Value::Undefined),
         };
-        let Some(client) = world.resource::<Runtime>().player_client(enemy) else {
+        let Some(client) = world.resource::<RoundScript>().player_client(enemy) else {
             return Ok(Value::Undefined);
         };
         let Some(at) = as_vector(super::players::entity_field(world, enemy, "origin")) else {
@@ -488,16 +494,16 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Ok(Value::Undefined);
         }
         let amount = match world
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .object_field(id, "meleedamage")
         {
             Value::Int(n) => n,
             Value::Float(f) => f as i32,
             _ => DEFAULT_MELEE_DAMAGE,
         };
-        let inflictor = world.resource::<Runtime>().presence_of(receiver);
+        let inflictor = world.resource::<RoundScript>().presence_of(receiver);
         world
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .hits
             .push(crate::script::ScriptHit {
                 piece: None,
@@ -524,7 +530,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let stance = string(args, 0)?;
         let id = actor_id(world, receiver)?;
         let allowed = world
-            .resource::<Runtime>()
+            .resource::<RoundScript>()
             .actor_moves
             .get(&id)
             .and_then(|movement| movement.stances.as_ref())
@@ -533,9 +539,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "getmotionangle", |world, receiver, _| {
         let id = actor_id(world, receiver)?;
-        let (_, angles) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let (_, angles) = pose(&mut world.resource_mut::<RoundScript>(), id);
         let heading = world
-            .resource::<Runtime>()
+            .resource::<RoundScript>()
             .actor_moves
             .get(&id)
             .and_then(|movement| movement.heading);
@@ -545,7 +551,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "getclosestenemysqdist", |world, receiver, _| {
         let id = actor_id(world, receiver)?;
-        let (origin, _) = pose(&mut world.resource_mut::<Runtime>(), id);
+        let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
         Ok(Value::Float(
             enemy_position(world, id).map_or(f32::MAX, |enemy| distance_sq(origin, enemy)),
         ))
@@ -578,7 +584,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 fn negotiation_node(world: &mut World, receiver: &Value, end: bool) -> Result<Value, String> {
     let id = actor_id(world, receiver)?;
     let Some(traversal) = world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .actor_moves
         .get(&id)
         .and_then(|movement| movement.traversal.clone())
@@ -596,7 +602,7 @@ fn negotiation_node(world: &mut World, receiver: &Value, end: bool) -> Result<Va
 }
 
 fn actor_id(world: &World, receiver: &Value) -> Result<u64, String> {
-    match world.resource::<Runtime>().entity(receiver) {
+    match world.resource::<RoundScript>().entity(receiver) {
         Some((id, entity)) if entity.kind == EntityKind::Actor => Ok(id),
         _ => Err("receiver is not an actor".into()),
     }
@@ -610,7 +616,7 @@ fn with_move(
     let id = actor_id(world, receiver)?;
     apply(
         world
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .actor_moves
             .entry(id)
             .or_default(),
@@ -625,7 +631,7 @@ fn force_teleport(world: &mut World, receiver: &Value, args: &[Value]) -> Result
         Some(Value::Vector(angles)) => Some(*angles),
         _ => None,
     };
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     runtime.set_object_field(id, "origin", Value::Vector(origin));
     if let Some(angles) = angles {
         runtime.set_object_field(id, "angles", Value::Vector(angles));
@@ -638,7 +644,7 @@ fn force_teleport(world: &mut World, receiver: &Value, args: &[Value]) -> Result
 
 fn set_goal(world: &mut World, receiver: &Value, goal: Goal) -> Result<Value, String> {
     let id = actor_id(world, receiver)?;
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     let movement = runtime.actor_moves.entry(id).or_default();
     // Scripts re-issue the same goal every frame; only a goal that moved
     // replans, as an entity goal does once it strays from the plan.
@@ -684,7 +690,7 @@ fn find_nodes(world: &mut World, args: &[Value]) -> Result<Vec<Value>, String> {
 
 /// The script object standing for a path node, made on first use.
 fn node_object(world: &mut World, paths: &ActorPaths, index: u16) -> Result<Value, String> {
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     if let Some(&id) = runtime.path_node_objects.get(&index)
         && runtime.live(&id)
     {
@@ -708,8 +714,8 @@ fn node_object(world: &mut World, paths: &ActorPaths, index: u16) -> Result<Valu
     Ok(Value::Object(id))
 }
 
-fn pose(runtime: &mut Runtime, id: u64) -> ([f32; 3], [f32; 3]) {
-    let vector = |runtime: &mut Runtime, name| match runtime.object_field(id, name) {
+fn pose(runtime: &mut RoundScript, id: u64) -> ([f32; 3], [f32; 3]) {
+    let vector = |runtime: &mut RoundScript, name| match runtime.object_field(id, name) {
         Value::Vector(v) => v,
         _ => [0.0; 3],
     };
@@ -739,7 +745,7 @@ fn model_anim_scripted(
             f32::from(clip.numframes.max(1)) / clip.framerate.max(1.0)
         });
     let now = i64::from(super::players::now_ms(world));
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     runtime.set_object_field(id, "origin", Value::Vector(origin));
     runtime.set_object_field(id, "angles", Value::Vector(angles));
     if let Some(entity) = runtime.entities.get_mut(&id) {
@@ -756,20 +762,27 @@ fn model_anim_scripted(
 
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
     let actors: Vec<u64> = world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .actor_moves
         .keys()
         .copied()
         .collect();
     let paths = FrameWorld::from_world(world).actor_paths();
     for actor in actors {
-        if !world.resource::<Runtime>().entities.contains_key(&actor) {
-            world.resource_mut::<Runtime>().actor_moves.remove(&actor);
+        if !world
+            .resource::<RoundScript>()
+            .entities
+            .contains_key(&actor)
+        {
+            world
+                .resource_mut::<RoundScript>()
+                .actor_moves
+                .remove(&actor);
             continue;
         }
-        let (mut origin, mut angles) = pose(&mut world.resource_mut::<Runtime>(), actor);
+        let (mut origin, mut angles) = pose(&mut world.resource_mut::<RoundScript>(), actor);
         let goal_radius = match world
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .object_field(actor, "goalradius")
         {
             Value::Int(n) => n as f32,
@@ -777,7 +790,7 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             _ => DEFAULT_GOAL_RADIUS,
         };
         let goal_at = goal_position(world, actor);
-        let mut movement = world.resource::<Runtime>().actor_moves[&actor].clone();
+        let mut movement = world.resource::<RoundScript>().actor_moves[&actor].clone();
         let mut events: Vec<&'static str> = Vec::new();
 
         if let Some(goal_at) = goal_at {
@@ -827,7 +840,7 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                 }
                 None => movement.scripted = None,
             }
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
             runtime.set_object_field(actor, "angles", Value::Vector(angles));
             runtime.actor_moves.insert(actor, movement);
@@ -926,7 +939,7 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         }
 
         {
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
             runtime.set_object_field(actor, "angles", Value::Vector(angles));
             runtime.actor_moves.insert(actor, movement);
@@ -960,7 +973,7 @@ fn traversal_at(paths: &ActorPaths, nodes: &[Option<u16>]) -> Option<Traversal> 
 
 fn goal_radius(world: &mut World, actor: u64) -> f32 {
     match world
-        .resource_mut::<Runtime>()
+        .resource_mut::<RoundScript>()
         .object_field(actor, "goalradius")
     {
         Value::Int(n) => n as f32,
@@ -971,7 +984,7 @@ fn goal_radius(world: &mut World, actor: u64) -> f32 {
 
 fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
     let goal = world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .actor_moves
         .get(&actor)?
         .goal
@@ -984,7 +997,7 @@ fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
 
 fn enemy_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
     let enemy = match world
-        .resource_mut::<Runtime>()
+        .resource_mut::<RoundScript>()
         .object_field(actor, "favoriteenemy")
     {
         Value::Object(id) => id,
@@ -1045,7 +1058,7 @@ fn distance_sq(a: [f32; 3], b: [f32; 3]) -> f32 {
 /// Keeps the engine's `enemy` field on the favorite enemy while it lives and
 /// the actor does not ignore everyone.
 pub(crate) fn choose_enemy(world: &mut World, actor: u64) {
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     let ignoring = matches!(runtime.object_field(actor, "ignoreall"), Value::Int(n) if n != 0);
     let favorite = match runtime.object_field(actor, "favoriteenemy") {
         Value::Object(id) if !ignoring && runtime.live(&id) => Some(id),
@@ -1055,7 +1068,7 @@ pub(crate) fn choose_enemy(world: &mut World, actor: u64) {
     let enemy = favorite.filter(
         |&id| matches!(super::players::entity_field(world, id, "health"), Value::Int(n) if n > 0),
     );
-    world.resource_mut::<Runtime>().set_object_field(
+    world.resource_mut::<RoundScript>().set_object_field(
         actor,
         "enemy",
         enemy.map_or(Value::Undefined, Value::Object),
@@ -1066,7 +1079,7 @@ pub(crate) fn melee_range_enemy(world: &mut World, actor: u64, range: f32) -> bo
     let Some(enemy) = enemy_position(world, actor) else {
         return false;
     };
-    let (origin, _) = pose(&mut world.resource_mut::<Runtime>(), actor);
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
     horizontal_distance(origin, enemy) <= range && (origin[2] - enemy[2]).abs() <= NODE_STEP_HEIGHT
 }
 

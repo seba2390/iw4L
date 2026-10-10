@@ -1053,7 +1053,8 @@ fn button(
     *order += 1;
     parent
         .spawn((
-            Button,
+            Interaction::default(),
+            bevy::ui::FocusPolicy::Block,
             MenuButton {
                 action,
                 order: index,

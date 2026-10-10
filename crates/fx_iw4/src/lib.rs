@@ -187,8 +187,8 @@ pub use impact::{
 };
 pub use integrate::{
     FX_SPARKCLOUD_HISTORY_FAR_MS, FX_SPARKCLOUD_HISTORY_NEAR_MS, FxElemVec3Range,
-    integrate_velocity_graph, particle_cloud_cell_count, sample_vel_graph_at_age,
-    sparkcloud_history_lookback_ms,
+    integrate_velocity_graph, integrate_velocity_graph_sampled, particle_cloud_cell_count,
+    sample_vel_graph_at_age, sample_vel_graph_at_age_sampled, sparkcloud_history_lookback_ms,
 };
 pub use laser::{
     FX_LASER_POST_LIGHT_COLOR, FX_LASER_POST_LIGHT_HALF, FX_LASER_POST_LIGHT_MATERIAL,
@@ -262,8 +262,8 @@ pub use post_light::{
 };
 pub use quat::{axis_to_quat, quat_nlerp, quat_normalize};
 pub use random::{
-    FX_RANDOM_VERSION, FxRandomChannel, effect_random_key, elem_random_seed, elem_visual_index,
-    sample_at, sample_f32, sample_u16, trail_random_seed,
+    FX_RANDOM_VERSION, FxMotionRandom, FxRandomChannel, effect_random_key, elem_random_seed,
+    elem_visual_index, sample_at, sample_f32, sample_u16, trail_random_seed,
 };
 pub use rotate_axis::{
     FX_DEG_TO_RAD, FX_RAD_TO_DEG, FX_RAND_ROT_DEGREES, impact_mark_axis, randomly_rotate_axis,
@@ -297,7 +297,7 @@ pub use spark_fountain::{
     spark_fountain_accel_from_gravity, spark_fountain_atlas_uv, spark_fountain_ballistic,
     spark_fountain_boost, spark_fountain_bounce_vel, spark_fountain_cell_indices,
     spark_fountain_cell_verts, spark_fountain_cluster_draw_allows, spark_fountain_cone_dir,
-    spark_fountain_cone_is_isotropic, spark_fountain_def_allows_draw,
+    spark_fountain_cone_is_isotropic, spark_fountain_def_allows_draw, spark_fountain_draw_cloud,
     spark_fountain_draw_clouds_allows, spark_fountain_generate_ribbon,
     spark_fountain_handle_for_slot, spark_fountain_hit_time, spark_fountain_hit_time_abs,
     spark_fountain_index_count, spark_fountain_integrate_cell, spark_fountain_integrate_cell_begin,
@@ -341,7 +341,7 @@ pub use vec::{
     FX_PERP_VECTOR_UNIT, effect_orient_arc, perpendicular_vector, vec3_distance, vec3_length_sq,
     vec3_normalize, vector_vectors,
 };
-pub use velocity::{FX_VEL_AT_TIME_SCALE, get_velocity_at_time};
+pub use velocity::{FX_VEL_AT_TIME_SCALE, get_velocity_at_time, get_velocity_at_time_sampled};
 pub use view::{
     FX_EFFECT_DEF_SIZE, FX_ELEM_DEF_STRIDE, FxEffectDefView, FxElemDefView, effect_def_view,
     elem_def_gravity_accel_z, elem_def_view, elem_def_view_x64,
