@@ -83,11 +83,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     connect_team: Some("allies"),
     scripts_spawn_players: true,
     spawn_classnames: None,
-    unlimited: Rule::Unknown(unknown!(
-        "t5.match.limits",
-        "whether a Black Ops zombies match has a score or time limit",
-        "Black Ops' zombies match end rule"
-    )),
+    unlimited: Rule::Known(true),
     limits_from_config: false,
     default_score_limit: None,
     zombie_zone_scripts: true,
