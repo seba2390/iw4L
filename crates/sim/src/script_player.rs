@@ -132,6 +132,8 @@ pub(crate) enum HitInflictor {
 pub(crate) struct Hit {
     pub victim: ClientId,
     pub attacker: Option<ClientId>,
+    /// The attacking script entity when it is not a player (an actor).
+    pub attacker_object: Option<u64>,
     pub amount: i32,
     pub flags: i32,
     pub means: &'static str,
@@ -212,6 +214,7 @@ pub(crate) fn damage(
     let hit = Hit {
         victim: intent.target,
         attacker: Some(intent.attacker),
+        attacker_object: None,
         amount,
         flags: if splash { IDFLAGS_RADIUS } else { 0 },
         means: means_of_death(world, intent),
@@ -256,6 +259,7 @@ pub(crate) fn debug_damage(world: &mut FrameWorld, tick: Tick, id: ClientId, amo
     let hit = Hit {
         victim: id,
         attacker: None,
+        attacker_object: None,
         amount,
         flags: 0,
         means: "MOD_UNKNOWN",

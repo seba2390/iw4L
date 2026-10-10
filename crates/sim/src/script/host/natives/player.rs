@@ -683,6 +683,10 @@ fn register_death(registry: &mut NativeRegistry) {
         let inflictor_entity = super::super::players::damage_entity(world, args.first());
         let attacker_entity = super::super::players::damage_entity(world, args.get(1));
         let amount = int(args, 2)?;
+        diag::debug!(
+            Sim,
+            "player {client}: finish damage {amount} by {attacker_entity:?}"
+        );
         if args
             .get(8)
             .is_some_and(|value| matches!(value, Value::String(s) if s.as_ref() == "shield"))

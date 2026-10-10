@@ -891,6 +891,7 @@ fn register_entities(registry: &mut NativeRegistry) {
                 amount,
                 origin,
                 attacker,
+                attacker_object: None,
                 inflictor: Some(target),
                 means: "MOD_EXPLOSIVE",
                 weapon: 0,

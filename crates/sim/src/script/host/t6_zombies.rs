@@ -1341,6 +1341,7 @@ fn move_actors(
                         hits.push(crate::script_player::Hit {
                             victim: locked,
                             attacker: None,
+                            attacker_object: None,
                             amount: 50,
                             flags: 0,
                             means: "MOD_MELEE",
