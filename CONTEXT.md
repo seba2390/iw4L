@@ -261,6 +261,13 @@ omission.
 
 ## git
 
+**`master` only changes through pull requests.** Each task gets its own
+branch from an up-to-date `master`; the branch is pushed and a pull request
+opened into `master`. Nothing is committed or pushed to `master` directly — it
+is protected on GitHub. Where this file says a slice or `make mr ship` "lands
+on master", read: lands on the task's branch, which reaches `master` through
+its pull request.
+
 ```gitignore
 /context/
 ```
