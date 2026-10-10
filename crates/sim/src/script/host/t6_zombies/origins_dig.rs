@@ -492,14 +492,14 @@ impl Digs {
                 origins_staff::StaffKind::Fire,
                 origins_staff::StaffKind::Ice,
                 origins_staff::StaffKind::Lightning,
-                origins_staff::StaffKind::Gas,
+                origins_staff::StaffKind::Wind,
             ];
             let kind = kinds[roll(world, kinds.len() as u32) as usize];
             let part_model = match kind {
                 origins_staff::StaffKind::Fire => "p6_zm_staff_part_fire",
                 origins_staff::StaffKind::Ice => "p6_zm_staff_part_ice",
                 origins_staff::StaffKind::Lightning => "p6_zm_staff_part_lightning",
-                origins_staff::StaffKind::Gas => "p6_zm_staff_part_gas",
+                origins_staff::StaffKind::Wind => "p6_zm_staff_part_air",
             };
             origin[2] += 40.0;
             let frame = FrameWorld::from_world(world);
@@ -539,7 +539,7 @@ impl Digs {
                 origins_staff::StaffKind::Fire,
                 origins_staff::StaffKind::Ice,
                 origins_staff::StaffKind::Lightning,
-                origins_staff::StaffKind::Gas,
+                origins_staff::StaffKind::Wind,
             ];
             let kind = kinds[roll(world, kinds.len() as u32) as usize];
             state.staffs.add_crystal(client, kind);
