@@ -837,6 +837,23 @@ pub(super) fn capture_t5_body_facts(
     facts.hip_reticle_side_pos = f32_at_t5(stream, body, sz::WEAPON_DEF_HIP_RETICLE_SIDE_POS_OFF);
     facts.no_ads_when_mag_empty =
         u8_at_t5(stream, body, sz::WEAPON_DEF_NO_ADS_WHEN_MAG_EMPTY_OFF) != 0;
+    facts.game_move = Some(game_api::movement::MoveWeapon {
+        move_speed_scale: facts.move_speed_scale,
+        ads_move_speed_scale: facts.ads_move_speed_scale,
+        sprint_duration_scale: f32_at_t5(stream, body, sz::WEAPON_SPRINT_DURATION_SCALE_OFF),
+        sprint_scale: f32_at_t5(stream, body, sz::WEAPON_SPRINT_SCALE_OFF),
+        ducked_sprint_scale: f32_at_t5(stream, body, sz::WEAPON_DUCKED_SPRINT_SCALE_OFF),
+        dtp_scale: f32_at_t5(stream, body, sz::WEAPON_DTP_SCALE_OFF),
+        blocks_prone: u8_at_t5(stream, body, sz::WEAPON_BLOCKS_PRONE_OFF) != 0,
+        freeze_movement_when_firing: u8_at_t5(
+            stream,
+            body,
+            sz::WEAPON_FREEZE_MOVEMENT_WHEN_FIRING_OFF,
+        ) != 0,
+        dual_wield: facts.dual_wield,
+        ads_overlay_reticle: facts.overlay_reticle != 0,
+        offhand_slot: i32_at_t5(stream, body, sz::WEAPON_OFFHAND_SLOT_OFF),
+    });
     facts.aim_down_sight = u8_at_t5(stream, body, sz::WEAPON_DEF_AIM_DOWN_SIGHT_OFF) != 0;
     facts.rechamber_while_ads = u8_at_t5(stream, body, sz::WEAPON_DEF_RECHAMBER_WHILE_ADS_OFF) != 0;
     facts.ads_fire_only = u8_at_t5(stream, body, sz::WEAPON_DEF_ADS_FIRE_ONLY_OFF) != 0;

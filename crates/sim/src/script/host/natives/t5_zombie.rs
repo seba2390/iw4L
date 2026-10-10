@@ -118,20 +118,34 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
-    // Stance and melee locks (while a perk bottle is drunk) are accepted but
-    // not enforced yet.
-    for name in [
-        "allowlean",
-        "allowcrouch",
-        "allowprone",
-        "allowstand",
-        "allowmelee",
-    ] {
-        registry.register(Method, name, |world, receiver, _| {
-            super::player::player(world, receiver)?;
-            Ok(Value::Undefined)
-        });
+    // Stance and lean locks (while a perk bottle is drunk), kept by Black
+    // Ops' movement.
+    macro_rules! restriction {
+        ($($name:literal => $what:ident),* $(,)?) => {$(
+            registry.register(Method, $name, |world, receiver, args| {
+                let allowed = super::player::flag(args, 0)?;
+                let id = crate::ClientId(super::player::player(world, receiver)?);
+                crate::game_move::restrict(
+                    &mut crate::frame::FrameWorld::from_world(world),
+                    id,
+                    game_api::movement::MoveRestriction::$what,
+                    allowed,
+                );
+                Ok(Value::Undefined)
+            });
+        )*};
     }
+    restriction!(
+        "allowlean" => Lean,
+        "allowcrouch" => Crouch,
+        "allowprone" => Prone,
+        "allowstand" => Stand,
+    );
+    // The melee lock is accepted but not enforced yet.
+    registry.register(Method, "allowmelee", |world, receiver, _| {
+        super::player::player(world, receiver)?;
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "enableinvulnerability", |world, receiver, _| {
         set_invulnerable(world, receiver, true)
     });

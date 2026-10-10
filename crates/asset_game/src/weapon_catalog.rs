@@ -74,6 +74,10 @@ use weapon_iw4::{WeaponIdleInputs, WeaponMovementOfsInputs};
 pub(crate) struct WeaponBodyFacts {
     pub body_resolved: bool,
 
+    /// What the weapon's own game's player movement reads from it, when
+    /// that game runs its own movement.
+    pub game_move: Option<game_api::movement::MoveWeapon>,
+
     pub fire_time_ms: i32,
     pub burst_delay_ms: Option<i32>,
 

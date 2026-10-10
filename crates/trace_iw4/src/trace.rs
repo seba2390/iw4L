@@ -35,6 +35,33 @@ pub const fn trace_get_entity_hit_id(hit_type: i32, hit_id: u16) -> u16 {
     ENTITYNUM_NONE
 }
 
+impl Trace {
+    /// The trace as another game's own movement sees it.
+    #[must_use]
+    pub fn move_trace(&self) -> game_api::movement::MoveTrace {
+        use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveTrace};
+        let entity = if self.fraction < 1.0 || self.startsolid != 0 {
+            match trace_get_entity_hit_id(self.hit_type, self.hit_id) {
+                ENTITYNUM_NONE => ENTITY_NONE,
+                ENTITYNUM_WORLD => ENTITY_WORLD,
+                n => i32::from(n),
+            }
+        } else {
+            ENTITY_NONE
+        };
+        MoveTrace {
+            normal: self.normal,
+            fraction: self.fraction,
+            surface_flags: self.surface_flags,
+            contents: self.contents,
+            entity,
+            allsolid: self.allsolid != 0,
+            startsolid: self.startsolid != 0,
+            walkable: self.walkable != 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Trace {
     pub fraction: f32,

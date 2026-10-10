@@ -1061,7 +1061,7 @@ pub(crate) fn link_to(
     Ok(Value::Undefined)
 }
 
-fn flag(args: &[Value], index: usize) -> Result<bool, String> {
+pub(super) fn flag(args: &[Value], index: usize) -> Result<bool, String> {
     Ok(optional(args, index, int)?.unwrap_or(1) != 0)
 }
 
@@ -1159,6 +1159,15 @@ fn register_body(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "allowjump", |world, receiver, args| {
         let on = flag(args, 0)?;
+        let id = client_of(world, receiver)?;
+        if crate::game_move::restrict(
+            &mut FrameWorld::from_world(world),
+            id,
+            game_api::movement::MoveRestriction::Jump,
+            on,
+        ) {
+            return Ok(Value::Undefined);
+        }
         controls(world, receiver, |c| c.jump_disabled = !on)
     });
     registry.register(Method, "canmantle", |world, receiver, args| {
@@ -1184,6 +1193,14 @@ fn register_body(registry: &mut NativeRegistry) {
         let allow = flag(args, 0)?;
         let id = client_of(world, receiver)?;
         let mut frame = FrameWorld::from_world(world);
+        if crate::game_move::restrict(
+            &mut frame,
+            id,
+            game_api::movement::MoveRestriction::Ads,
+            allow,
+        ) {
+            return Ok(Value::Undefined);
+        }
         let ps = frame.player_mut(id).ok_or("player has not spawned")?;
         if allow {
             ps.weap_flags &= !playerstate_iw4::weap_flags::NO_ADS;
@@ -1196,6 +1213,14 @@ fn register_body(registry: &mut NativeRegistry) {
         let allow = flag(args, 0)?;
         let id = client_of(world, receiver)?;
         let mut frame = FrameWorld::from_world(world);
+        if crate::game_move::restrict(
+            &mut frame,
+            id,
+            game_api::movement::MoveRestriction::Sprint,
+            allow,
+        ) {
+            return Ok(Value::Undefined);
+        }
         let ps = frame.player_mut(id).ok_or("player has not spawned")?;
         if allow {
             ps.pm_flags &= !playerstate_iw4::pm_flags::SPRINT_BLOCKED;
@@ -1279,6 +1304,9 @@ fn register_body(registry: &mut NativeRegistry) {
         let id = client_of(world, receiver)?;
         let stance = string(args, 0)?;
         let mut frame = FrameWorld::from_world(world);
+        if crate::game_move::set_stance(&mut frame, id, &stance) {
+            return Ok(Value::Undefined);
+        }
         if let Some(ps) = frame.player_mut(id) {
             use playerstate_iw4::eflags::{DUCK, PRONE};
             ps.e_flags &= !(DUCK | PRONE);
@@ -1773,6 +1801,12 @@ fn register_inventory(registry: &mut NativeRegistry) {
     registry.register(Method, "setperk", |world, receiver, args| {
         let client = player(world, receiver)?;
         let name: Arc<str> = string(args, 0)?.into();
+        crate::game_move::set_perk(
+            &mut FrameWorld::from_world(world),
+            ClientId(client),
+            &name,
+            true,
+        );
         script_player::set_perk(
             &mut FrameWorld::from_world(world),
             ClientId(client),
@@ -1790,6 +1824,12 @@ fn register_inventory(registry: &mut NativeRegistry) {
     registry.register(Method, "unsetperk", |world, receiver, args| {
         let client = player(world, receiver)?;
         let name: Arc<str> = string(args, 0)?.into();
+        crate::game_move::set_perk(
+            &mut FrameWorld::from_world(world),
+            ClientId(client),
+            &name,
+            false,
+        );
         script_player::set_perk(
             &mut FrameWorld::from_world(world),
             ClientId(client),
@@ -1820,6 +1860,7 @@ fn register_inventory(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "clearperks", |world, receiver, _| {
         let client = player(world, receiver)?;
+        crate::game_move::clear_perks(&mut FrameWorld::from_world(world), ClientId(client));
         script_player::clear_perks(&mut FrameWorld::from_world(world), ClientId(client));
         slot(world, client)?.perks.clear();
         Ok(Value::Undefined)

@@ -90,7 +90,7 @@ impl game_api::GameModes for T6OnIw4Movement {
     fn mode(&self, gametype: &str) -> game_api::Rule<game_api::ModeRules> {
         match game_api::GameModes::mode(&game_t6::GAME, gametype) {
             game_api::Rule::Known(mut mode) => {
-                mode.movement = game_api::Rule::Known(());
+                mode.movement = game_api::Rule::Known(game_api::MovementRules::Simulation);
                 mode.weapons = game_api::Rule::Known(());
                 game_api::Rule::Known(mode)
             }

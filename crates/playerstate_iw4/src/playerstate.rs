@@ -122,7 +122,12 @@ pub struct PlayerState {
     pub kill_cam_look_at_entity: i32,
     pub kill_cam_client_num: i32,
     pub recoil_scale: i32,
+    /// Not MW2's: what another game's own movement keeps for the player
+    /// beyond these fields, replicated and rolled back with them.
+    pub game_move: [u8; GAME_MOVE_BYTES],
 }
+
+pub const GAME_MOVE_BYTES: usize = game_api::movement::GAME_MOVE_BYTES;
 
 pub mod eflags {
     pub const TELEPORT: u32 = 0x2;
@@ -341,6 +346,7 @@ impl PlayerState {
         kill_cam_look_at_entity: 0,
         kill_cam_client_num: 0,
         recoil_scale: 0,
+        game_move: [0; GAME_MOVE_BYTES],
     };
 
     pub fn anim(&self) -> AnimPair {

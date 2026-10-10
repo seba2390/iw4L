@@ -65,6 +65,7 @@ pub(crate) fn compile(
             unlock_requirement: weapons.weapon_unlock_requirement(id).map_err(str::to_owned),
             wire_id: id,
             scales: weapon.movement_scales(),
+            game_move: weapon.game_move(),
             execution,
             transition_group: groups[id as usize],
             camouflage_slots: std::iter::once(0)
