@@ -763,7 +763,8 @@ pub(crate) fn enqueue_glass_model_lighting(
         let owner = ModelLightingOwner::Glass(draw.piece);
         draw.lighting_prev = u32::from(cache.handle_for(owner));
         draw.pending_lighting = None;
-        if sphere_behind_frustum(draw.origin, GLASS_FRUSTUM_LIGHT_RADIUS, &planes) {
+        let radius = draw.radius.max(GLASS_FRUSTUM_LIGHT_RADIUS);
+        if sphere_behind_frustum(draw.origin, radius, &planes) {
             draw.lighting_handle = 0;
             draw.reflection_probe_index = 0;
             continue;

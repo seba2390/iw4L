@@ -73,7 +73,7 @@ pub(crate) fn run(
     };
     let mut player = ps.move_player(id.0 as i32, frozen(world, id));
     if world.publishes_snapshot() {
-        let runtime = world.ecs().get_resource::<crate::script::Runtime>();
+        let runtime = world.ecs().get_resource::<crate::script::MatchScript>();
         movement.think(&mut player, &|name| {
             runtime.and_then(|runtime| runtime.dvars.get(name).cloned())
         });

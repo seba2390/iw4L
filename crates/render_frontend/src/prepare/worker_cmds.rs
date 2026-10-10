@@ -169,16 +169,21 @@ pub struct SkinCachedStaticModelCmd {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CellFrustumWorkerCmd {
+    pub visit: u32,
     pub cell: u32,
     pub plane_count: u8,
     pub plane_begin: u8,
     pub view: u16,
 }
 
+pub const CELL_VISIT_FIRST: u32 = 0;
+pub const CELL_VISIT_FRUSTUM: u32 = u32::MAX;
+
 impl CellFrustumWorkerCmd {
     #[must_use]
     pub fn to_bytes(self) -> [u8; 12] {
         let mut out = [0u8; 12];
+        out[0..4].copy_from_slice(&self.visit.to_le_bytes());
         out[4..8].copy_from_slice(&self.cell.to_le_bytes());
         out[8] = self.plane_count;
         out[9] = self.plane_begin;
@@ -190,6 +195,7 @@ impl CellFrustumWorkerCmd {
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
         let bytes: [u8; 12] = data.try_into().ok()?;
         Some(Self {
+            visit: u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
             cell: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
             plane_count: bytes[8],
             plane_begin: bytes[9],

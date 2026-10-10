@@ -1,3 +1,4 @@
+use frame::ScopeApp;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -60,9 +61,9 @@ struct DynEntPhysBody {
 }
 
 pub(crate) fn register_dyn_ent_phys(app: &mut App) {
-    app.init_resource::<DynEntPhysClip>()
-        .init_resource::<DynEntPhysWorld>()
-        .add_message::<DynEntPhysImpulse>();
+    app.staged::<DynEntPhysClip>(frame::MatchScope::Live)
+        .staged::<DynEntPhysWorld>(frame::MatchScope::Live)
+        .scoped_message::<DynEntPhysImpulse>(frame::MatchScope::Live);
 }
 
 pub fn step_phys_world0(
@@ -204,12 +205,6 @@ fn integrate_body(body: &mut DynEntPhysBody, clip: &ClipCollision, dt: f32) {
     if hit.allsolid || hit.startsolid {
         body.vel = Vec3::ZERO;
         body.on_ground = true;
-        let lift = if body.mins[2] < 0.0 {
-            -body.mins[2]
-        } else {
-            1.0
-        };
-        body.origin.z += lift;
         return;
     }
     if hit.fraction < 1.0 {

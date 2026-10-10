@@ -106,6 +106,10 @@ impl SimContent {
     ) -> Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>> {
         self.data.script_model_clips.clone()
     }
+    pub fn map(&self) -> &Arc<asset_core::MapContentDefinition> {
+        &self.data.map
+    }
+
     pub fn clip_brushes(&self) -> &[SimBrush] {
         &self.data.clip_brushes
     }
@@ -151,6 +155,7 @@ impl std::fmt::Debug for AnimClipLookup {
 
 #[derive(Debug)]
 struct ContentData {
+    map: Arc<asset_core::MapContentDefinition>,
     weapons: Arc<crate::SimWeaponContent>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
     /// The game the match's map belongs to: whose sound aliases its scripts name.
@@ -188,6 +193,14 @@ pub struct SimContentBuilder {
 }
 
 impl SimContentBuilder {
+    pub fn set_map(&mut self, map: Arc<asset_core::MapContentDefinition>) -> Result<(), String> {
+        if let asset_core::GlassContent::Invalid(error) = &map.glass {
+            return Err(error.clone());
+        }
+        self.data.map = map;
+        Ok(())
+    }
+
     pub fn bootstrap() -> Self {
         Self::for_match(Arc::new(crate::SimWeaponContent::bootstrap()))
     }
@@ -195,6 +208,7 @@ impl SimContentBuilder {
     pub fn for_match(weapons: Arc<crate::SimWeaponContent>) -> Self {
         Self {
             data: ContentData {
+                map: Default::default(),
                 weapons,
                 script_sound_aliases: Default::default(),
                 family: None,

@@ -162,6 +162,7 @@ pub struct MenuItem {
     pub action: Vec<String>,
     pub mouse_enter: Vec<String>,
     pub on_focus: Vec<String>,
+    pub cover: bool,
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
@@ -1745,5 +1746,14 @@ impl AssetLinkSink for MenuSink {
             },
         );
         Ok(())
+    }
+}
+
+impl gamemode_iw4::progression::ProgressionTable for CapturedStringTable {
+    fn rows(&self) -> usize {
+        self.rows
+    }
+    fn cell(&self, row: usize, column: usize) -> &str {
+        self.cell(row as i32, column as i32)
     }
 }

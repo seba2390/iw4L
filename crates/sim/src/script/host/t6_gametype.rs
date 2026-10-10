@@ -1,6 +1,6 @@
 use crate::frame::FrameWorld;
 use crate::identities::MatchPhase;
-use crate::script::{Realm, Runtime};
+use crate::script::{Realm, RoundScript};
 use crate::{ClientLifecycle, Tick};
 use bevy_ecs::prelude::World;
 
@@ -8,7 +8,7 @@ const RESPAWN_DELAY_MS: u32 = 2_000;
 
 pub(crate) fn active(world: &World) -> bool {
     world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .program
         .as_ref()
         .is_some_and(|p| p.rules() == Realm::T6)
@@ -31,11 +31,11 @@ pub(crate) fn advance(world: &mut World) {
     }
     let tick = world.resource::<crate::step::StepRequest>().tick;
     if world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .t6_match_ended
         .is_some_and(|ended| tick.0.saturating_sub(ended.0) >= 100)
     {
-        world.resource_mut::<Runtime>().pending_restart = Some(false);
+        world.resource_mut::<RoundScript>().pending_restart = Some(false);
         super::restart::restart_level(world, tick);
         return;
     }
@@ -55,7 +55,7 @@ pub(crate) fn advance(world: &mut World) {
             meta.deaths = 0;
         }
         let limit = frame.bootstrap_ref().time_limit_ms;
-        let runtime = frame.ecs().resource_mut::<Runtime>().into_inner();
+        let runtime = frame.ecs().resource_mut::<RoundScript>().into_inner();
         runtime.engine.team_scores.clear();
         runtime.t6_match_started = Some(tick);
         runtime.engine.game_end_time = if limit == 0 {
@@ -75,7 +75,7 @@ pub(crate) fn advance(world: &mut World) {
     }
     let started = frame
         .ecs()
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .t6_match_started
         .unwrap_or(tick);
     frame.set_match_elapsed_ms(
@@ -91,7 +91,7 @@ pub(crate) fn advance(world: &mut World) {
     let leading_score = if kind.is_team() {
         frame
             .ecs()
-            .resource::<Runtime>()
+            .resource::<RoundScript>()
             .engine
             .team_scores
             .values()
@@ -128,7 +128,7 @@ pub(crate) fn advance(world: &mut World) {
                 ps.pm_type = playerstate_iw4::PM_TYPE_INTERMISSION;
             }
         }
-        frame.ecs().resource_mut::<Runtime>().t6_match_ended = Some(tick);
+        frame.ecs().resource_mut::<RoundScript>().t6_match_ended = Some(tick);
         diag::info!(Sim, "t6 match ended reason={reason:?}");
         return;
     }
@@ -141,7 +141,7 @@ pub(crate) fn advance(world: &mut World) {
         let dead_since = meta.dead_since_tick;
         let seat = frame
             .ecs()
-            .resource::<Runtime>()
+            .resource::<RoundScript>()
             .players
             .get(&id.0)
             .map(|slot| slot.seat);
@@ -240,11 +240,20 @@ pub(crate) fn advance(world: &mut World) {
             })
             .collect();
         let selected = {
-            let runtime = frame.ecs().resource::<Runtime>();
-            runtime
+            let class = frame
+                .ecs()
+                .resource::<RoundScript>()
                 .selected_classes
                 .get(&id.0)
-                .and_then(|class| runtime.personal_classes.get(&(id.0, *class)).cloned())
+                .copied();
+            class.and_then(|class| {
+                frame
+                    .ecs()
+                    .resource::<crate::script::MatchScript>()
+                    .personal_classes
+                    .get(&(id.0, class))
+                    .cloned()
+            })
         };
         let (weapon, secondary) = if let Some(class) = &selected {
             (
@@ -342,7 +351,7 @@ pub(crate) fn advance(world: &mut World) {
                 id.0
             );
         }
-        let runtime = frame.ecs().resource_mut::<Runtime>().into_inner();
+        let runtime = frame.ecs().resource_mut::<RoundScript>().into_inner();
         if let Some(slot) = runtime.players.get_mut(&id.0) {
             slot.sessionstate = "playing".into();
             slot.seat = crate::ScriptSeat::default();
@@ -401,7 +410,7 @@ pub(crate) fn damage(world: &mut World, tick: Tick, hit: &crate::script_player::
                 let team = meta.client_state_team;
                 let key = super::players::team_name(team).to_owned();
                 if matches!(team, entity_iw4::TEAM_ALLIES | entity_iw4::TEAM_AXIS) {
-                    let mut runtime = frame.ecs().resource_mut::<Runtime>();
+                    let mut runtime = frame.ecs().resource_mut::<RoundScript>();
                     let score = runtime.engine.team_scores.entry(key).or_default();
                     *score = score.saturating_add(1);
                 }
@@ -432,7 +441,7 @@ pub(crate) fn damage(world: &mut World, tick: Tick, hit: &crate::script_player::
         }
         if let Some(slot) = frame
             .ecs()
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .players
             .get_mut(&hit.victim.0)
         {
@@ -449,7 +458,7 @@ pub(crate) fn damage(world: &mut World, tick: Tick, hit: &crate::script_player::
                 }
                 if let Some(slot) = frame
                     .ecs()
-                    .resource_mut::<Runtime>()
+                    .resource_mut::<RoundScript>()
                     .players
                     .get_mut(&hit.victim.0)
                 {

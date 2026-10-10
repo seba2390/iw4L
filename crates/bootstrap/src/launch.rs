@@ -9,7 +9,6 @@ use render::diag::acceptance::{
     ACCEPTANCE_HEIGHT, ACCEPTANCE_PRESENT_MODE, ACCEPTANCE_WIDTH, AcceptanceRun,
 };
 use render::diag::capture::{CaptureQueue, CaptureRequest};
-use render_frontend::prepare::scene::world::WorldScene;
 use replay::{Playback, ReplayPlayback};
 use session::StartupCommands;
 use ui::{
@@ -190,7 +189,6 @@ fn run_menu(
         .insert_resource(StartupCommands {
             lines: console::startup_commands(),
         })
-        .insert_resource(WorldScene::default())
         .insert_resource(ClearColor(Color::srgb(0.02, 0.025, 0.03)))
         .insert_resource({
             let mut layers = UiLayers::default();
@@ -209,8 +207,22 @@ fn run_menu(
             },
         );
     }
+    bench::announce_runtime(&mut app);
+    if bench::enabled() {
+        bench::insert(
+            &mut app,
+            "menu-session",
+            None,
+            "menu",
+            &config.artifacts,
+            asset_transport::LoadProgress::default(),
+        );
+    }
     app.run();
-    let _ = flush_perf();
+    let trace = flush_perf();
+    if bench::enabled() {
+        bench::finish(&config.artifacts, trace);
+    }
 }
 
 #[derive(Resource, Default)]
@@ -429,7 +441,6 @@ fn run_map(
         .insert_resource(StartupCommands {
             lines: console::startup_commands(),
         })
-        .insert_resource(WorldScene::default())
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(AppScreen::Loading)
         .insert_resource({
@@ -462,6 +473,9 @@ fn run_map(
         Role::Listen | Role::Dedicated => add_runtime_plugins(&mut app),
         Role::Client => add_runtime_plugins_with_role(&mut app, frame::RuntimeRole::Client),
     }
+    app.world_mut()
+        .resource_mut::<session::ScopeControl>()
+        .begin_load();
     // The demo, before the playback moves into the world: it names the workload
     // in the bench manifest, and "same demo" is what makes two runs comparable
     // at all. The whole path, not a stem — a clip is `clips/<id>/clip.iw4ldemo`,

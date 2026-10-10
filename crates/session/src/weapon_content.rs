@@ -25,6 +25,7 @@ pub(crate) fn compile(
     aliases: Vec<(String, u32)>,
     pen_table: weapon_iw4::PenetrationDepthTable,
     pen_table_loaded: bool,
+    rank_progression: bool,
 ) -> Result<PreparedSimWeapons, sim::SimWeaponContentRefusal> {
     let rules = WeaponHostRules::default();
     let mut refused = Vec::new();
@@ -61,6 +62,7 @@ pub(crate) fn compile(
             })
             .unwrap_or(sim::WeaponScriptSounds::default());
         sim::SimWeaponRow {
+            unlock_requirement: weapons.weapon_unlock_requirement(id).map_err(str::to_owned),
             wire_id: id,
             scales: weapon.movement_scales(),
             game_move: weapon.game_move(),
@@ -92,7 +94,12 @@ pub(crate) fn compile(
                 .unwrap_or(sim::EquipmentRuntimeFacts::default()),
         }
     });
-    let content = sim::SimWeaponContent::compile(rows, aliases, pen_table, pen_table_loaded)?;
+    let ranks = rank_progression
+        .then(|| weapons.rank_progression())
+        .transpose()
+        .map_err(|_| sim::SimWeaponContentRefusal::InvalidProgression)?;
+    let content =
+        sim::SimWeaponContent::compile(rows, aliases, pen_table, pen_table_loaded, ranks)?;
     if !refused.is_empty() {
         diag::info!(
             Sim,

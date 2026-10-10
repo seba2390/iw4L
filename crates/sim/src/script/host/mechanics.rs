@@ -1,6 +1,6 @@
 use super::entities::Link;
 use crate::script::runtime::raise;
-use crate::script::{BTreeMap, Resource, Runtime, Value};
+use crate::script::{BTreeMap, Resource, RoundScript, Value};
 use bevy_ecs::prelude::World;
 
 /// Script-driven entity mechanics: timed moves, launched physics bodies and
@@ -121,7 +121,7 @@ impl Mechanics {
 
     pub(crate) fn explode(
         &mut self,
-        runtime: &mut Runtime,
+        runtime: &mut RoundScript,
         center: [f32; 3],
         outer: f32,
         inner: f32,
@@ -167,7 +167,7 @@ pub(crate) fn advance_mechanics(world: &mut World) {
         return;
     }
     let now = i64::from(request.tick.0) * i64::from(crate::MATCH_TICK_MS);
-    let runtime = world.resource::<Runtime>();
+    let runtime = world.resource::<RoundScript>();
     if runtime.fault.is_some() || runtime.program.is_none() {
         return;
     }
@@ -188,7 +188,7 @@ pub(crate) fn deliver_finished(world: &mut World) {
 
 fn advance_motions(world: &mut World, now: i64) {
     world.resource_scope::<Mechanics, _>(|world, mut mechanics| {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let Mechanics {
             motions, finished, ..
         } = &mut *mechanics;
@@ -215,14 +215,18 @@ fn advance_bodies(world: &mut World) {
             bodies, finished, ..
         } = &mut *mechanics;
         bodies.retain(|object, body| {
-            if !world.resource::<Runtime>().entities.contains_key(object) {
+            if !world
+                .resource::<RoundScript>()
+                .entities
+                .contains_key(object)
+            {
                 return false;
             }
             if !body.active {
                 return true;
             }
             let (origin, angles) = {
-                let mut runtime = world.resource_mut::<Runtime>();
+                let mut runtime = world.resource_mut::<RoundScript>();
                 if !runtime.entities.contains_key(object) {
                     return false;
                 }
@@ -261,7 +265,7 @@ fn advance_bodies(world: &mut World) {
             }
             body.ticks += 1;
             let rested = fraction < 1.0 || body.ticks >= SETTLE_TICKS;
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(*object, "origin", Value::Vector(at));
             if rested {
                 runtime.set_object_field(*object, "angles", Value::Vector([0.0, angles[1], 0.0]));
@@ -284,7 +288,7 @@ fn crush_victims(
     at: [f32; 3],
     body: &Body,
 ) -> Vec<(crate::ClientId, [f32; 3])> {
-    let presence = world.resource::<Runtime>().entities[&object].presence;
+    let presence = world.resource::<RoundScript>().entities[&object].presence;
     let frame = crate::frame::FrameWorld::from_world(world);
     let (mins, maxs) = presence
         .and_then(|id| {
@@ -343,17 +347,20 @@ pub(crate) struct Slide {
 }
 
 pub(crate) fn load_slide_field(world: &World, object: u64, name: &str) -> Option<Value> {
-    (name == "slidevelocity" && world.resource::<Runtime>().entities.contains_key(&object)).then(
-        || {
-            world
-                .resource::<Mechanics>()
-                .slides
-                .get(&object)
-                .map_or(Value::Vector([0.0; 3]), |slide| {
-                    Value::Vector(slide.velocity)
-                })
-        },
-    )
+    (name == "slidevelocity"
+        && world
+            .resource::<RoundScript>()
+            .entities
+            .contains_key(&object))
+    .then(|| {
+        world
+            .resource::<Mechanics>()
+            .slides
+            .get(&object)
+            .map_or(Value::Vector([0.0; 3]), |slide| {
+                Value::Vector(slide.velocity)
+            })
+    })
 }
 
 pub(crate) fn store_slide_field(
@@ -362,7 +369,12 @@ pub(crate) fn store_slide_field(
     name: &str,
     value: &Value,
 ) -> Result<bool, String> {
-    if name != "slidevelocity" || !world.resource::<Runtime>().entities.contains_key(&object) {
+    if name != "slidevelocity"
+        || !world
+            .resource::<RoundScript>()
+            .entities
+            .contains_key(&object)
+    {
         return Ok(false);
     }
     let Value::Vector(velocity) = value else {
@@ -384,7 +396,7 @@ fn advance_slides(world: &mut World) {
     world.resource_scope::<Mechanics, _>(|world, mut mechanics| {
         mechanics.slides.retain(|object, slide| {
             let origin = {
-                let mut runtime = world.resource_mut::<Runtime>();
+                let mut runtime = world.resource_mut::<RoundScript>();
                 if !runtime.entities.contains_key(object) {
                     return false;
                 }
@@ -398,9 +410,11 @@ fn advance_slides(world: &mut World) {
             }
             super::presence::settle_collision(world);
             let at = crate::step::script_slide(world, *object, origin, slide);
-            world
-                .resource_mut::<Runtime>()
-                .set_object_field(*object, "origin", Value::Vector(at));
+            world.resource_mut::<RoundScript>().set_object_field(
+                *object,
+                "origin",
+                Value::Vector(at),
+            );
             true
         });
     });
@@ -561,15 +575,15 @@ fn clip_slide(velocity: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
 
 fn apply_entity_links(world: &mut World) {
     let linked: Vec<(u64, Link)> = world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .entities
         .iter()
         .filter_map(|(id, e)| Some((*id, e.linked_to.clone()?)))
         .collect();
     for (id, link) in linked {
-        if !world.resource::<Runtime>().live(&link.parent) {
+        if !world.resource::<RoundScript>().live(&link.parent) {
             world
-                .resource_mut::<Runtime>()
+                .resource_mut::<RoundScript>()
                 .entities
                 .get_mut(&id)
                 .unwrap()
@@ -586,7 +600,7 @@ fn apply_entity_links(world: &mut World) {
             _ => [0.0; 3],
         };
         let (base, base_angles) = (field(world, "origin"), field(world, "angles"));
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let axis = math_iw4::angles_to_axis(base_angles);
         let offset = link.tag_offset.unwrap_or([0.0; 3]);
         let local = std::array::from_fn(|i| offset[i] + link.origin[i]);
