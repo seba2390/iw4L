@@ -8,15 +8,8 @@ use gsc::{
 use sha2::{Digest, Sha256};
 
 use crate::translate::{Linker, Site, Translator};
-use crate::{Module, names::NAMES};
-
-/// The name a hash stands for, when it is known.
-pub fn name_of(hash: u32) -> Option<&'static str> {
-    NAMES
-        .binary_search_by_key(&hash, |&(known, _)| known)
-        .ok()
-        .map(|index| NAMES[index].1)
-}
+use crate::Module;
+pub use crate::names::name_of;
 
 fn display(hash: u32) -> String {
     name_of(hash).map_or_else(|| format!("#{hash:08x}"), str::to_owned)
