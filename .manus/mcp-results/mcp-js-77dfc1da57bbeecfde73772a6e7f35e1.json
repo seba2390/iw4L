@@ -1,4 +1,0 @@
-In-app Browser JS state was reset; rebuild state before continuing.
-Browser cell stopped: TAB_CLOSED_BY_USER
-ERROR TAB_CLOSED_BY_USER
-{"control":{"error":{"code":"TAB_CLOSED_BY_USER","retryable":false},"requiresSnapshot":true,"status":"error","tabId":"tab_46a4b9f7-9f36-417e-8208-274cfc9081d5"},"kind":"error","schema":"manus.browser/v1"}

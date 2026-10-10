@@ -13,9 +13,8 @@ pub(crate) fn localized_weapon_name(
         return None;
     };
     let Some(key) = weapons.registry().display_name_key_of(viewmodel_index) else {
-        // Provide a fallback weapon name if no display name key is available
-        gaps.clear(HudGap::WeaponDisplayName);
-        return Some(format!("Weapon {}", viewmodel_index));
+        gaps.raise(GapCause::NameNoDisplayNameKey { viewmodel_index });
+        return None;
     };
     gaps.clear(HudGap::WeaponDisplayName);
     let Some(strings) = strings else {
