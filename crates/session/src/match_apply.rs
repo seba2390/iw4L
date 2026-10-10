@@ -1203,8 +1203,11 @@ fn preflight_match_install(
         program.entries
     );
     let roots: Vec<&str> = program.roots.iter().map(String::as_str).collect();
-    let scripts = sim::script::Program::load(&sources, &roots, &program.catalog)
-        .map_err(|e| script_refusal(zone, gametype, "compile", &e))?;
+    let scripts = match program.built {
+        Some(built) => built,
+        None => sim::script::Program::load(&sources, &roots, &program.catalog)
+            .map_err(|e| script_refusal(zone, gametype, "compile", &e))?,
+    };
     let config = sources
         .0
         .config(MATCH_CONFIG)

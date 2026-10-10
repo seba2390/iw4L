@@ -10,6 +10,9 @@ layer = "game"
 game = "t7"
 
 [dependencies]
+asset_core.workspace = true
+diag.workspace = true
+gsc_t7.workspace = true
 game_api.workspace = true
 gsc.workspace = true
 

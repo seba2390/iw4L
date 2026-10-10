@@ -47,6 +47,9 @@ const EXEMPT: &[&str] = &[
     "Cargo.lock",
     // This gate has to spell the shapes it hunts for.
     "xtask/src/publish_check.rs",
+    // Generated table of Black Ops 3 script name hashes: 32-bit hashes, and
+    // random ones fall in the address range this gate reads as an offset.
+    "crates/gsc_t7/src/names.rs",
 ];
 
 fn stray_test(rel: &str, text: &str) -> Option<(usize, &'static str)> {

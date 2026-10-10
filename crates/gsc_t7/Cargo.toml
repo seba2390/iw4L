@@ -10,6 +10,8 @@ layer = "format"
 game = "t7"
 
 [dependencies]
+gsc.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

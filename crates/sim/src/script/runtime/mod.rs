@@ -565,6 +565,51 @@ fn instruction(
         Op::Pop => {
             pop(thread)?;
         }
+        Op::Swap => {
+            let len = thread.stack.len();
+            if len < 2 {
+                return Err("invalid IR: stack underflow".into());
+            }
+            thread.stack.swap(len - 1, len - 2);
+        }
+        Op::Reverse(count) => {
+            let base = thread
+                .stack
+                .len()
+                .checked_sub(count)
+                .ok_or("invalid IR: stack underflow")?;
+            thread.stack[base..].reverse();
+        }
+        Op::FirstArrayKey => {
+            let key = match pop(thread)? {
+                Value::Array(id) => world
+                    .resource::<Runtime>()
+                    .arrays
+                    .get(&id)
+                    .ok_or("invalid array reference")?
+                    .keys()
+                    .next()
+                    .map(key_value),
+                _ => None,
+            };
+            thread.stack.push(key.unwrap_or(Value::Undefined));
+        }
+        Op::NextArrayKey => {
+            let array = pop(thread)?;
+            let key = array_key(pop(thread)?)?;
+            let next = match array {
+                Value::Array(id) => world
+                    .resource::<Runtime>()
+                    .arrays
+                    .get(&id)
+                    .ok_or("invalid array reference")?
+                    .range((std::ops::Bound::Excluded(key), std::ops::Bound::Unbounded))
+                    .next()
+                    .map(|(key, _)| key_value(key)),
+                _ => None,
+            };
+            thread.stack.push(next.unwrap_or(Value::Undefined));
+        }
         Op::Unary(op) => {
             let value = pop(thread)?;
             thread.stack.push(unary(op, value)?);
@@ -1305,6 +1350,10 @@ fn stack_effect(op: &Op) -> (usize, usize) {
         Op::Indirect(argc, method, _) => (argc + 1 + usize::from(method), 1),
         Op::Notify(argc) | Op::AwaitMatch(argc) => (argc + 2, 0),
         Op::Jump(_) | Op::EnsureLocalArray(_) | Op::FrameEnd | Op::Return => (0, 0),
+        Op::Swap => (2, 2),
+        Op::Reverse(count) => (count, count),
+        Op::FirstArrayKey => (1, 1),
+        Op::NextArrayKey => (2, 1),
     }
 }
 
@@ -1375,6 +1424,13 @@ pub(crate) fn preflight(
         ));
     }
     Ok(())
+}
+
+fn key_value(key: &ArrayKey) -> Value {
+    match key {
+        ArrayKey::Integer(i) => Value::Int(*i),
+        ArrayKey::String(s) => Value::String(s.clone()),
+    }
 }
 
 fn array_key(value: Value) -> Result<ArrayKey, String> {

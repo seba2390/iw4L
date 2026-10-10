@@ -46,6 +46,7 @@ impl game_api::GameScripts for T5 {
                 .extended(zombie_catalog::T5_ZOMBIE.iter().cloned()),
             roots: startup.roots,
             entries: startup.entries,
+            built: None,
         })
     }
 
