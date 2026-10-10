@@ -6,7 +6,7 @@ game. Keep them this short: nobody opens a long file twice.
 | file | about | when to read |
 |---|---|---|
 | [`BUILD.md`](BUILD.md) | system packages per distro (Fedora / Debian / Arch), macOS, what the Windows cross build needs | before your first build |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | game boundary: neutral / format / game / session layers, one game per match, `unknown!` instead of another game's rule, `make boundary` | adding a game, moving a rule, a `boundary` failure |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | game boundary: neutral / format / game / session layers, one game per match through the `game_api` traits, `unknown!` instead of another game's rule, `make boundary`, the hook and CI | adding a game, moving a rule, a `boundary` failure |
 | [`RUN.md`](RUN.md) | running (`make map`, `--cmds`), controls frozen until `Playing`, `force_match_start`, sync-by-default, the verb list and the traps | before your first live run |
 | [`WINDOWS.md`](WINDOWS.md) | portable `iw4l.exe`: community updates, shortcuts into CoD, writable `iw4l-artifacts/` | building and running on Windows |
 | [`DEPLOY.md`](DEPLOY.md) | `make release` / `publish` / `deploy`: every root `.iw4l-server` is a server, hashed `.zst`, master by SHA, GitHub pre-release | shipping a release, "why is the player on an old version" |
@@ -26,7 +26,7 @@ game. Keep them this short: nobody opens a long file twice.
 | [`ANIM.md`](ANIM.md) | three floors: `anim_iw4` (facts and curves), `xmodel_runtime` (tree and pose), who picks the clip (`sim` / `render_frontend/adapters/anim/`) | viewmodel, skeleton, bone hits |
 | [`T6.md`](T6.md) | native BO2 map bring-up, synthetic startup and remaining gaps | loading a T6 map on Windows |
 | [`ZOMBIES.md`](ZOMBIES.md) | BO2 Zombies survival rules, installed maps and remaining gameplay work | working on Zombies |
-| [`FRONTEND.md`](FRONTEND.md) | game library, installation selection, settings and multiplayer menus | launching without a map |
+| [`FRONTEND.md`](FRONTEND.md) | game library: installed games, scan a folder for games, per-game folders, zombies maps, settings and multiplayer menus | launching without a map |
 | [`MULTIPLAYER-UI.md`](MULTIPLAYER-UI.md) | native BO2 pause menu, saved classes, settings and HUD | editing a loadout during a match |
 | [`MAP-LOAD.md`](MAP-LOAD.md) | map load: the `session` → `assets` → install transaction, the `load_prepared_match` walk, the lane by `ZoneGame`, the artifact cache | a zone won't load, an asset went missing, "why didn't the match come up" |
 | [`ENTITIES.md`](ENTITIES.md) | the `TickInput → sim::step → Snapshot` funnel, the `entity_iw4` taxonomy (`EntityState` / `Centity` / `ET_*` / trajectories), what sits where in `sim` | gameplay, networking, replay |

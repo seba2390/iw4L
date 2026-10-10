@@ -15,10 +15,15 @@ another game's behaviour; a rule a game does not have yet is said out loud.
 | `mixed` | anything | crates still holding several games' rules; the list may only shrink |
 
 **One game per match.** The match's game is the map's family. `games.rs` maps
-it to that game's implementation of the `game_api` traits (today
-`GameScripts`: builtin catalog, script startup, engine dvars). More areas move
-behind traits one at a time (modes, HUD/menus, natives, audio, movement,
-weapons, vision).
+it to that game's answers to the `game_api` traits: `GameScripts` (builtin
+catalog, startup, engine dvars), `GameModes` (`ModeRules`: match flow, last
+stand, limits, movement, weapons, `HudRules`; the library's zombies maps),
+`GameMenus` (menu fonts, `MenuLayout`), `GameVision` (shellshock), the native
+registry (engine services + the game's own set) and menu expression parsers
+(`menu_expr`). Assets are looked up in the match's or the asset's own game,
+never another game's same-named asset. Where `games.rs` lends one game another
+game's rule, it is one visible, ledgered line (today: Black Ops 2 moves and
+fires by MW2's rules, by owner decision).
 
 **Unknown, not borrowed.** A game crate answers a rule it does not have with
 `Rule::Unknown(unknown!("t5.area.rule", what, needs))`. The caller reports it

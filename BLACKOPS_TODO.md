@@ -9,32 +9,29 @@ This is an outline, not a specification. Each step names an outcome and how we
 know it is reached; the details are expected to change as we learn. Every step
 ends in a commit and a push.
 
-## Status (2026-10-09)
+## Status (2026-10-10)
 
-Kino loads and is walkable. Zombies spawn behind the windows, tear the boards,
-climb through and run at the player, drawn with their animations. `IW4L_GAMETYPE=zombies` runs Kino's real zombie
-scripts (`_zombiemode` and everything it pulls in) on the host; builtins the
-runtime lacks are reported per call site instead of stopping the match. The
-zombie work goes script-first: the running scripts show which engine feature
-is needed next. Try it headless:
+Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
+everything it pulls in): zombies spawn behind the windows, tear the boards,
+climb through and run at the player, drawn with their animations. Builtins the
+runtime lacks are reported per call site instead of stopping the match.
+
+Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
+Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are
+off until Black Ops' own are recovered (each is an `unknown!` id in
+[`docs/fidelity/t5.md`](docs/fidelity/t5.md)): the player cannot move, look or
+fire (`t5.movement.player`, `t5.weapons.state_machine`), there is no HUD
+(`t5.hud.code_hud`, `t5.hud.menu_layout`), no last stand
+(`t5.match.last_stand`) and no Modern Warfare 2 sounds. The work now is
+recovering those rules from Black Ops. Start it from the game library
+(Black Ops → Zombies → Kino der Toten), or headless:
 
 ```bash
 IW4L_SOUND=off IW4L_GAMETYPE=zombies ./target/play/iw4l serve t5:zombie_theater --cmds 'wait world; bot add 1; wait 20s; quit'
 ```
 
-Or play it (`IW4L_LOG_LEVEL=debug` logs each zombie's animscript switches):
-
-```bash
-IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater
-```
-
-A solo game runs from round 1 to game over: points, wall weapons, doors,
-power, perks, the mystery box, power-ups and last stand (self-revive with
-Quick Revive). Co-op: with a community master selected, open the console in
-the menu and host with `set ui_mapname t5:zombie_theater; set ui_gametype zom;
-ui_create_lobby; ui_lobby_privacy` (the lobby menus do not offer the zombies
-mode yet); friends join the lobby, the host starts, and downed players can be
-revived.
+Co-op hosting goes through the same lobby (`set ui_mapname t5:zombie_theater;
+set ui_gametype zom; ui_create_lobby; ui_lobby_privacy`).
 
 ## What we start from
 
