@@ -12,6 +12,7 @@ mod damage;
 mod entity_run;
 mod equipment;
 mod frame;
+mod game_move;
 mod gentity;
 pub mod hudelem;
 pub mod identities;

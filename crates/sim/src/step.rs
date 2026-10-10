@@ -460,115 +460,158 @@ fn run_players_system(ecs: &mut World) {
                 linked_brushes: &linked_brushes,
                 model_brushes: &model_brushes,
             };
-            let script = world.player_anim_script();
-            let mantle = world.xanims();
-            let (
-                walking,
-                linked_bounds,
-                anim_movetype,
-                view_w,
-                primary,
-                moved_from,
-                moved_to,
-                stance_event,
-                reset_torso,
-                jump_animations,
-                force_movement_anim,
-                landing_animation,
-                fall_damage,
-            ) = {
-                let ps = world
-                    .player_mut(*id)
-                    .expect("Alive client has a player row");
-
-                if ps.shellshock_time.wrapping_add(ps.shellshock_duration) < level_time {
-                    ps.pm_flags &= !playerstate_iw4::pm_flags::SHELLSHOCKED;
-                }
+            if let Some(movement) = crate::game_move::rules(&world) {
                 let moved_from = ps.origin;
-                let result = pmove(
-                    ps,
-                    &mut cmd,
-                    context,
-                    &backend,
-                    mantle.as_ref(),
-                    mantle.as_ref(),
-                );
-                let pml = result.pml;
-                let anim_movetype = pml.mantle_movetype.or_else(|| {
-                    footsteps_anim_move_type(
-                        ps,
-                        cmd.forwardmove,
-                        cmd.rightmove,
-                        pml.almost_ground_plane != 0,
+                let trace = |start, end, mins, maxs, tracemask| {
+                    CollisionBackend::trace(
+                        &backend,
+                        GroundTraceInput {
+                            start,
+                            end,
+                            mins,
+                            maxs,
+                            tracemask,
+                        },
                     )
-                });
-                let (view_w, primary) = crate::pmove_anim_weapon_ids(ps);
-                let moved_to = ps.origin;
-                (
-                    pml.walking as i32,
-                    result.bounds,
+                    .move_trace()
+                };
+                let outcome =
+                    crate::game_move::run(&mut world, movement, *id, cmd.move_command(), &trace);
+                for gap in outcome.gaps {
+                    world.report_game_gap(gap);
+                }
+                let moved_to = world.player(*id).map_or(moved_from, |ps| ps.origin);
+                world.client_meta_mut(*id).input_receipt.record(
+                    commanded_move,
+                    moved_from,
+                    moved_to,
+                );
+                world.set_pmove_walking(*id, i32::from(outcome.walking));
+                if let Some((mins, maxs)) = outcome.bounds {
+                    world.link_player_area(
+                        *id,
+                        MoveBounds {
+                            mins,
+                            maxs,
+                            tracemask: 0,
+                        },
+                    );
+                }
+            } else {
+                let script = world.player_anim_script();
+                let mantle = world.xanims();
+                let (
+                    walking,
+                    linked_bounds,
                     anim_movetype,
                     view_w,
                     primary,
                     moved_from,
                     moved_to,
-                    result.stance_event,
-                    result.reset_torso,
-                    pml.jump_animations,
-                    pml.mantle_movetype.is_some(),
-                    pml.landing_animation,
-                    pml.fall_damage,
-                )
-            };
-            world
-                .client_meta_mut(*id)
-                .input_receipt
-                .record(commanded_move, moved_from, moved_to);
-            if reset_torso && let Some(ps) = world.player_mut(*id) {
-                crate::player_anim_script::reset_stance_torso(ps);
-            }
-            if let Some(event) = stance_event {
-                crate::combat::apply_player_anim_event(&mut world, *id, event);
-            }
-            for (animation, force) in jump_animations.into_iter().flatten() {
-                let event = match animation {
-                    movement_iw4::JumpAnimation::Forward => 3,
-                    movement_iw4::JumpAnimation::Backward => 4,
+                    stance_event,
+                    reset_torso,
+                    jump_animations,
+                    force_movement_anim,
+                    landing_animation,
+                    fall_damage,
+                ) = {
+                    let ps = world
+                        .player_mut(*id)
+                        .expect("Alive client has a player row");
+
+                    if ps.shellshock_time.wrapping_add(ps.shellshock_duration) < level_time {
+                        ps.pm_flags &= !playerstate_iw4::pm_flags::SHELLSHOCKED;
+                    }
+                    let moved_from = ps.origin;
+                    let result = pmove(
+                        ps,
+                        &mut cmd,
+                        context,
+                        &backend,
+                        mantle.as_ref(),
+                        mantle.as_ref(),
+                    );
+                    let pml = result.pml;
+                    let anim_movetype = pml.mantle_movetype.or_else(|| {
+                        footsteps_anim_move_type(
+                            ps,
+                            cmd.forwardmove,
+                            cmd.rightmove,
+                            pml.almost_ground_plane != 0,
+                        )
+                    });
+                    let (view_w, primary) = crate::pmove_anim_weapon_ids(ps);
+                    let moved_to = ps.origin;
+                    (
+                        pml.walking as i32,
+                        result.bounds,
+                        anim_movetype,
+                        view_w,
+                        primary,
+                        moved_from,
+                        moved_to,
+                        result.stance_event,
+                        result.reset_torso,
+                        pml.jump_animations,
+                        pml.mantle_movetype.is_some(),
+                        pml.landing_animation,
+                        pml.fall_damage,
+                    )
                 };
-                crate::combat::apply_player_anim_event_forced(&mut world, *id, event, force);
-            }
-            if landing_animation {
-                crate::combat::apply_player_anim_event(&mut world, *id, 5);
-            }
-            if fall_damage > 0 && world.publishes_snapshot() {
-                apply_fall_damage(&mut world, tick, *id, fall_damage, moved_to);
-            }
-            if let Some(movetype) = anim_movetype {
-                let view_facts = world.combat_facts_for(view_w);
-                let primary_facts = world.combat_facts_for(primary);
-                let previous_movetype = world.last_anim_movetype(*id);
-                let ps = world
-                    .player_mut(*id)
-                    .expect("Alive client has a player row");
-                let strafing =
-                    crate::player_anim_script::anim_strafing(ps, cmd.forwardmove, cmd.rightmove);
-                let conds = crate::anim_conditions_from_pmove(
-                    ps,
-                    view_facts,
-                    primary_facts,
-                    previous_movetype,
-                    strafing,
-                    cmd.buttons,
+                world.client_meta_mut(*id).input_receipt.record(
+                    commanded_move,
+                    moved_from,
+                    moved_to,
                 );
-                if let Some(script) = script.as_ref()
-                    && let Some(selected) =
-                        script.apply(ps, movetype, id.0, &conds, force_movement_anim)
-                {
-                    world.set_anim_movement(*id, selected, strafing);
+                if reset_torso && let Some(ps) = world.player_mut(*id) {
+                    crate::player_anim_script::reset_stance_torso(ps);
                 }
+                if let Some(event) = stance_event {
+                    crate::combat::apply_player_anim_event(&mut world, *id, event);
+                }
+                for (animation, force) in jump_animations.into_iter().flatten() {
+                    let event = match animation {
+                        movement_iw4::JumpAnimation::Forward => 3,
+                        movement_iw4::JumpAnimation::Backward => 4,
+                    };
+                    crate::combat::apply_player_anim_event_forced(&mut world, *id, event, force);
+                }
+                if landing_animation {
+                    crate::combat::apply_player_anim_event(&mut world, *id, 5);
+                }
+                if fall_damage > 0 && world.publishes_snapshot() {
+                    apply_fall_damage(&mut world, tick, *id, fall_damage, moved_to);
+                }
+                if let Some(movetype) = anim_movetype {
+                    let view_facts = world.combat_facts_for(view_w);
+                    let primary_facts = world.combat_facts_for(primary);
+                    let previous_movetype = world.last_anim_movetype(*id);
+                    let ps = world
+                        .player_mut(*id)
+                        .expect("Alive client has a player row");
+                    let strafing = crate::player_anim_script::anim_strafing(
+                        ps,
+                        cmd.forwardmove,
+                        cmd.rightmove,
+                    );
+                    let conds = crate::anim_conditions_from_pmove(
+                        ps,
+                        view_facts,
+                        primary_facts,
+                        previous_movetype,
+                        strafing,
+                        cmd.buttons,
+                    );
+                    if let Some(script) = script.as_ref()
+                        && let Some(selected) =
+                            script.apply(ps, movetype, id.0, &conds, force_movement_anim)
+                    {
+                        world.set_anim_movement(*id, selected, strafing);
+                    }
+                }
+                world.set_pmove_walking(*id, walking);
+                world.link_player_area(*id, linked_bounds);
             }
-            world.set_pmove_walking(*id, walking);
-            world.link_player_area(*id, linked_bounds);
 
             let weapons = world.bootstrap_ref().mode.map(|mode| mode.weapons);
             let shots = match weapons {
