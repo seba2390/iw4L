@@ -3,7 +3,7 @@
 
 mod decode;
 
-pub use decode::{DecodeError, Instruction, Operand, decode_function, operand};
+pub use decode::{DecodeError, Instruction, Opcode, Operand, decode_function, operand};
 
 pub const MAGIC: &[u8; 7] = b"\x80GSC\r\n\0";
 
