@@ -308,6 +308,12 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
         .get(2)
         .and_then(|value| runtime.player_client_of(value))
         .map(ClientId);
+    let attacker_object = match args.get(2) {
+        Some(Value::Object(id)) if attacker.is_none() && runtime.entities.contains_key(id) => {
+            Some(*id)
+        }
+        _ => None,
+    };
     let inflictor = args.get(3).and_then(|value| runtime.presence_of(value));
     // Singleplayer and zombie scripts pass (…, means, hitLocation) where
     // multiplayer passes (…, onHead, means, flags, weapon).
@@ -329,6 +335,7 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
                 amount,
                 origin,
                 attacker,
+                attacker_object,
                 inflictor,
                 means,
                 weapon: 0,
@@ -366,6 +373,7 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
             amount,
             origin,
             attacker,
+            attacker_object,
             inflictor,
             means,
             weapon,
