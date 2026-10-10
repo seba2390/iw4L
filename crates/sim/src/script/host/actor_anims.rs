@@ -574,6 +574,7 @@ fn weighted_tree(
     let states = anim.runtime.states();
     let mut nodes = Vec::new();
     let mut clips = HashMap::new();
+    const FNV_PRIME: u32 = 0x0100_0193;
     let mut shape = 0x811c_9dc5u32;
     let mut stack: Vec<(u16, Option<u16>)> = (0..tree.children.len() as u16)
         .rev()
@@ -595,7 +596,7 @@ fn weighted_tree(
         };
         let index = nodes.len() as u16;
         for byte in node.to_le_bytes() {
-            shape = (shape ^ u32::from(byte)).wrapping_mul(0x0100_0193);
+            shape = (shape ^ u32::from(byte)).wrapping_mul(FNV_PRIME);
         }
         nodes.push(XAnimSemanticNode {
             parent: parent.map(XAnimNodeId),
