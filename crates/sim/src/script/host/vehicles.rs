@@ -367,9 +367,14 @@ fn vehicle_array(world: &mut World, prefix: Option<&str>) -> Result<Value, Strin
     super::arrays::new_array(world, ids)
 }
 
+/// `GetAllVehicleNodes()`: the map's vehicle path nodes.
+pub(crate) fn all_nodes(world: &mut World) -> Result<Value, String> {
+    vehicle_array(world, Some("info_vehicle_node"))
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "getallvehiclenodes", |world, _, _| {
-        vehicle_array(world, Some("info_vehicle_node"))
+        all_nodes(world)
     });
     registry.register(Function, "vehicle_getarray", |world, _, _| {
         vehicle_array(world, None)
