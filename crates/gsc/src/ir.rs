@@ -1,25 +1,25 @@
-use crate::script::error::Location;
-use crate::script::value::Value;
+use crate::error::Location;
+use crate::value::Value;
 
 pub const IR_VERSION: u32 = 5;
 
 #[derive(Clone, Debug)]
-pub(crate) struct Function {
-    pub(crate) location: Location,
-    pub(crate) parameters: usize,
-    pub(crate) slots: usize,
-    pub(crate) code: Vec<(Location, Op)>,
+pub struct Function {
+    pub location: Location,
+    pub parameters: usize,
+    pub slots: usize,
+    pub code: Vec<(Location, Op)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Callee {
+pub enum Callee {
     Script(u32),
     Native(u32),
     Unlinked(u32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Global {
+pub enum Global {
     SelfRef,
     Level,
     Game,
@@ -27,13 +27,13 @@ pub(crate) enum Global {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Unary {
+pub enum Unary {
     Not,
     Complement,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Binary {
+pub enum Binary {
     Or,
     Xor,
     And,
@@ -54,7 +54,7 @@ pub(crate) enum Binary {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Op {
+pub enum Op {
     Constant(Value),
     FunctionRef(u32),
     Global(Global),

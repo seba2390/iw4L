@@ -1,8 +1,8 @@
 use super::Parser;
-use crate::script::{Binary, Fault, Op, Value};
+use crate::{Binary, Fault, Op, Value};
 
 impl Parser {
-    pub(super) fn assignment_ahead(&self) -> bool {
+    pub fn assignment_ahead(&self) -> bool {
         let mut pos = self.pos + 1;
         loop {
             if self.tokens.get(pos).is_some_and(|t| t.is(".")) {
@@ -33,7 +33,7 @@ impl Parser {
             .get(pos)
             .is_some_and(|t| t.assignment_operator().is_some())
     }
-    pub(super) fn assignment(&mut self) -> Result<(), Fault> {
+    pub fn assignment(&mut self) -> Result<(), Fault> {
         let name = self.ident()?.to_ascii_lowercase();
         if self.constants.contains_key(&name) {
             return Err(self.error("cannot assign a constant"));

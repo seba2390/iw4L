@@ -35,7 +35,7 @@ impl ScriptString {
         self.raw.as_deref().unwrap_or_else(|| self.text.as_bytes())
     }
 
-    pub(crate) fn symbol_key(&self) -> Arc<str> {
+    pub fn symbol_key(&self) -> Arc<str> {
         if self.raw.is_none() && !self.text.starts_with('\u{e000}') {
             return self.text.clone();
         }
@@ -156,7 +156,7 @@ impl Value {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum ArrayKey {
+pub enum ArrayKey {
     Integer(i32),
     String(ScriptString),
 }

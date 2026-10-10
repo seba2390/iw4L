@@ -37,7 +37,7 @@ impl std::fmt::Display for Fault {
 impl std::error::Error for Fault {}
 
 impl Fault {
-    pub(crate) fn at(location: &Location, message: impl Into<String>) -> Self {
+    pub fn at(location: &Location, message: impl Into<String>) -> Self {
         Self {
             location: location.clone(),
             message: message.into(),

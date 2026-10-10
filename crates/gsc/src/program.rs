@@ -2,9 +2,9 @@ use bevy_ecs::prelude::Resource;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::script::error::Fault;
-use crate::script::ir::{Function, IR_VERSION};
-use gsc::{Builtin, Catalog, SourceOrigin, SourceResolver};
+use crate::error::Fault;
+use crate::ir::{Function, IR_VERSION};
+use crate::{Builtin, Catalog, SourceOrigin, SourceResolver};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Site {
@@ -24,14 +24,14 @@ pub struct ModuleIdentity {
 
 #[derive(Resource, Clone, Debug)]
 pub struct Program {
-    pub(crate) functions: Vec<Function>,
-    pub(crate) names: BTreeMap<String, usize>,
-    pub(crate) modules: Vec<ModuleIdentity>,
-    pub(crate) symbols: Vec<Arc<str>>,
-    pub(crate) symbol_ids: BTreeMap<Arc<str>, u32>,
-    pub(crate) natives: Vec<Builtin>,
-    pub(crate) rules: Realm,
-    pub(crate) impure_scripts: bool,
+    pub functions: Vec<Function>,
+    pub names: BTreeMap<String, usize>,
+    pub modules: Vec<ModuleIdentity>,
+    pub symbols: Vec<Arc<str>>,
+    pub symbol_ids: BTreeMap<Arc<str>, u32>,
+    pub natives: Vec<Builtin>,
+    pub rules: Realm,
+    pub impure_scripts: bool,
 }
 impl Program {
     pub fn load(

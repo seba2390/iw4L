@@ -1,8 +1,8 @@
 use super::{CallSite, Parser};
-use crate::script::{Binary, Callee, Fault, Namespace, Op, Unary, Value};
+use crate::{Binary, Callee, Fault, Namespace, Op, Unary, Value};
 
 impl Parser {
-    pub(super) fn number(&self, text: &str) -> Option<Result<Value, Fault>> {
+    pub fn number(&self, text: &str) -> Option<Result<Value, Fault>> {
         let digits = text.strip_prefix('-').unwrap_or(text);
         if !digits.starts_with(|c: char| c.is_ascii_digit() || c == '.')
             || !digits.bytes().any(|b| b.is_ascii_digit())
@@ -29,7 +29,7 @@ impl Parser {
         })
     }
 
-    pub(super) fn expression(&mut self, min: u8) -> Result<(), Fault> {
+    pub fn expression(&mut self, min: u8) -> Result<(), Fault> {
         let location = self.location();
         if self.eat("call") {
             self.invocation(false, false)?;

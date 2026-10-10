@@ -1,9 +1,11 @@
-use super::{
-    Arc, BTreeMap, Builtin, Callee, Catalog, Fault, Function, Global, Location, ModuleIdentity,
-    Namespace, Op, Program, Site, SourceResolver, Value, decode_source, normalize_module,
+use crate::{
+    Builtin, Callee, Catalog, Fault, Function, Global, Location, ModuleIdentity, Namespace, Op,
+    Program, Site, SourceResolver, Value, decode_source, normalize_module,
 };
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 mod assignments;
 mod calls;
@@ -163,16 +165,12 @@ impl Parser {
                 Op::Constant(value) => values.push(value),
                 Op::Unary(op) => {
                     let value = pop(&mut values)?;
-                    values.push(
-                        super::runtime::unary(op, value).map_err(|e| Fault::at(&location, e))?,
-                    );
+                    values.push(crate::ops::unary(op, value).map_err(|e| Fault::at(&location, e))?);
                 }
                 Op::Binary(op) => {
                     let b = pop(&mut values)?;
                     let a = pop(&mut values)?;
-                    values.push(
-                        super::runtime::binary(op, a, b).map_err(|e| Fault::at(&location, e))?,
-                    );
+                    values.push(crate::ops::binary(op, a, b).map_err(|e| Fault::at(&location, e))?);
                 }
                 _ => {
                     return Err(Fault::at(
@@ -275,7 +273,7 @@ impl Parser {
     }
 }
 
-pub(super) fn compile(
+pub fn compile(
     resolver: &impl SourceResolver,
     roots: &[&str],
     catalog: &Catalog,

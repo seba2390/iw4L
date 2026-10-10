@@ -1,8 +1,8 @@
 use super::{CallSite, Parser};
-use crate::script::{Callee, Fault, Namespace, Op, Value, normalize_module};
+use crate::{Callee, Fault, Namespace, Op, Value, normalize_module};
 
 impl Parser {
-    pub(super) fn arguments(&mut self) -> Result<usize, Fault> {
+    pub fn arguments(&mut self) -> Result<usize, Fault> {
         self.expect("(")?;
         let mut count = 0;
         if !self.is(")") {
@@ -17,7 +17,7 @@ impl Parser {
         self.expect(")")?;
         Ok(count)
     }
-    pub(super) fn call_name(&mut self, first: String) -> Result<String, Fault> {
+    pub fn call_name(&mut self, first: String) -> Result<String, Fault> {
         if self.eat("::") {
             let module = normalize_module(&first).map_err(|m| self.error(m))?;
             self.dependencies.insert(module.clone());
@@ -26,7 +26,7 @@ impl Parser {
             Ok(first.to_ascii_lowercase())
         }
     }
-    pub(super) fn invocation(&mut self, method: bool, spawn: bool) -> Result<(), Fault> {
+    pub fn invocation(&mut self, method: bool, spawn: bool) -> Result<(), Fault> {
         let location = self.location();
         if self.eat("[") {
             self.expect("[")?;

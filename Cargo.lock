@@ -3304,6 +3304,8 @@ name = "gsc"
 version = "0.1.0"
 dependencies = [
  "asset_core",
+ "bevy_ecs",
+ "sha2",
 ]
 
 [[package]]

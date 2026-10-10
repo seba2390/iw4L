@@ -1,19 +1,19 @@
-use crate::script::{Fault, Location};
+use crate::{Fault, Location};
 
 #[derive(Clone, Debug)]
-pub(super) struct Token {
-    pub(super) text: String,
-    pub(super) string: bool,
-    pub(super) line: usize,
-    pub(super) column: usize,
+pub struct Token {
+    pub text: String,
+    pub string: bool,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl Token {
-    pub(super) fn is(&self, text: &str) -> bool {
+    pub fn is(&self, text: &str) -> bool {
         !self.string && self.text == text
     }
 
-    pub(super) fn assignment_operator(&self) -> Option<&str> {
+    pub fn assignment_operator(&self) -> Option<&str> {
         if !self.string
             && [
                 "=", "+=", "-=", "*=", "/=", "|=", "&=", "^=", "%=", "++", "--",
@@ -27,7 +27,7 @@ impl Token {
     }
 }
 
-pub(super) fn lex(module: &str, source: &str) -> Result<Vec<Token>, Fault> {
+pub fn lex(module: &str, source: &str) -> Result<Vec<Token>, Fault> {
     let chars: Vec<char> = source.chars().collect();
     let (mut i, mut line, mut column) = (0, 1, 1);
     let mut tokens = Vec::new();

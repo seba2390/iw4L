@@ -1,8 +1,8 @@
 use super::Parser;
-use crate::script::{Binary, Callee, Fault, Op, Value};
+use crate::{Binary, Callee, Fault, Op, Value};
 
 impl Parser {
-    pub(super) fn statement(&mut self) -> Result<(), Fault> {
+    pub fn statement(&mut self) -> Result<(), Fault> {
         if self.eat("{") {
             while !self.eat("}") {
                 if self.is("") {
