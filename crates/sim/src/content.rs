@@ -362,7 +362,7 @@ pub fn content_digest(
     penetration: &[weapon_iw4::BulletPenFacts],
     runnable: &[bool],
     unlocks: &[Result<gamemode_iw4::progression::UnlockRequirement, String>],
-    ranks: &gamemode_iw4::progression::RankProgression,
+    ranks: Option<&gamemode_iw4::progression::RankProgression>,
     transition_groups: &[u32],
     camouflage_slots: &[Vec<u8>],
     equipment: &[crate::EquipmentRuntimeFacts],
@@ -404,7 +404,7 @@ pub fn content_components(
     penetration: &[weapon_iw4::BulletPenFacts],
     runnable: &[bool],
     unlocks: &[Result<gamemode_iw4::progression::UnlockRequirement, String>],
-    ranks: &gamemode_iw4::progression::RankProgression,
+    ranks: Option<&gamemode_iw4::progression::RankProgression>,
     transition_groups: &[u32],
     camouflage_slots: &[Vec<u8>],
     equipment: &[crate::EquipmentRuntimeFacts],
@@ -472,9 +472,10 @@ fn hash_unlocks(
     }
 }
 
-fn hash_ranks(h: &mut Digest, ranks: &gamemode_iw4::progression::RankProgression) {
-    h.u64(ranks.thresholds().len() as u64);
-    for &(rank, xp) in ranks.thresholds() {
+fn hash_ranks(h: &mut Digest, ranks: Option<&gamemode_iw4::progression::RankProgression>) {
+    let thresholds = ranks.map_or(&[][..], |ranks| ranks.thresholds());
+    h.u64(thresholds.len() as u64);
+    for &(rank, xp) in thresholds {
         h.u32(rank);
         h.i32(xp);
     }

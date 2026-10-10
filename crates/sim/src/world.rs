@@ -737,7 +737,12 @@ impl SimState {
     }
 
     pub(crate) fn rank_for_xp(&self, xp: i32) -> Option<u32> {
-        self.content.weapons().rank_progression.rank(xp)
+        self.content.weapons().rank_progression.as_ref()?.rank(xp)
+    }
+
+    /// Whether this match's game ranks players and locks content by rank.
+    pub(crate) fn has_rank_progression(&self) -> bool {
+        self.content.weapons().rank_progression.is_some()
     }
 
     pub(crate) fn weapon_unlock_requirement(
@@ -981,7 +986,7 @@ impl SimState {
             &self.content.weapons().bullet_pen,
             &self.content.weapons().weapon_runnable,
             &self.content.weapons().unlock_requirements,
-            &self.content.weapons().rank_progression,
+            self.content.weapons().rank_progression.as_ref(),
             &self.content.weapons().weapon_transition_groups,
             &self.content.weapons().weapon_camouflage_slots,
             &self.content.weapons().equipment_runtime,
@@ -995,7 +1000,7 @@ impl SimState {
             &self.content.weapons().bullet_pen,
             &self.content.weapons().weapon_runnable,
             &self.content.weapons().unlock_requirements,
-            &self.content.weapons().rank_progression,
+            self.content.weapons().rank_progression.as_ref(),
             &self.content.weapons().weapon_transition_groups,
             &self.content.weapons().weapon_camouflage_slots,
             &self.content.weapons().equipment_runtime,

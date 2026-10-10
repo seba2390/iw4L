@@ -342,6 +342,9 @@ pub(crate) fn validate_class(
     client: crate::ClientId,
     def: &crate::ClassDef,
 ) -> Result<(), crate::ClassRejectReason> {
+    if !world.has_rank_progression() {
+        return Ok(());
+    }
     let reject = crate::ClassRejectReason::LockedContent;
     let store = world.ecs_ref().resource::<crate::PersistentDataStore>();
     let prestige = match store.read(client, &[Key::Name("prestige")]) {

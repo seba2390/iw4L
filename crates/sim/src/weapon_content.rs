@@ -40,7 +40,7 @@ pub struct SimWeaponRow {
 
 #[derive(Debug)]
 pub struct SimWeaponContent {
-    pub(crate) rank_progression: gamemode_iw4::progression::RankProgression,
+    pub(crate) rank_progression: Option<gamemode_iw4::progression::RankProgression>,
     pub(crate) unlock_requirements:
         Vec<Result<gamemode_iw4::progression::UnlockRequirement, String>>,
     pub(crate) weapon_def_scales: Vec<(f32, f32, f32)>,
@@ -102,9 +102,12 @@ impl SimWeaponContent {
         aliases: impl IntoIterator<Item = (String, u32)>,
         pen_table: weapon_iw4::PenetrationDepthTable,
         pen_table_loaded: bool,
-        rank_progression: gamemode_iw4::progression::RankProgression,
+        rank_progression: Option<gamemode_iw4::progression::RankProgression>,
     ) -> Result<Arc<Self>, SimWeaponContentRefusal> {
-        if rank_progression.rank(0).is_none() {
+        if rank_progression
+            .as_ref()
+            .is_some_and(|ranks| ranks.rank(0).is_none())
+        {
             return Err(SimWeaponContentRefusal::InvalidProgression);
         }
         let mut result = Self {

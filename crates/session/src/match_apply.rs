@@ -388,6 +388,7 @@ pub fn apply_prepared_match(
             objective_weapons,
             pen_table,
             pen_table_loaded,
+            mode.binds_account,
         )
         .map_err(|error| InstallRefusal::new(format!("Invalid simulation weapons: {error:?}")))?;
         let mut content = sim::SimContentBuilder::for_match(Arc::clone(sim_weapons.content()));
