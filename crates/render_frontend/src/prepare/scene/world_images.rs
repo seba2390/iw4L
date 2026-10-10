@@ -7,9 +7,9 @@ use crate::assemble::drawsurf::RuntimeLightmapHandles;
 
 use super::world::WorldScene;
 
-pub(crate) const IMAGE_BYTES_PER_OVERLAY_FRAME: u64 = 32 * 1024 * 1024;
-pub(crate) const MAX_IMAGE_BYTES_PER_SLICE: u64 = 128 * 1024 * 1024;
-pub(crate) const IMAGES_PER_OVERLAY_FRAME: u32 = 16;
+pub(crate) const IMAGE_BYTES_PER_OVERLAY_FRAME: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_IMAGE_BYTES_PER_SLICE: u64 = 256 * 1024 * 1024;
+pub(crate) const IMAGES_PER_OVERLAY_FRAME: u32 = 32;
 
 pub(crate) fn overlay_count_byte_capped(
     count: u32,
