@@ -438,15 +438,48 @@ fn jumps_land(
     start: usize,
     end: usize,
 ) -> Result<Vec<Instruction>, DecodeError> {
-    for instruction in &code {
-        let Some(target) = instruction.jump_target(bytes) else {
-            continue;
-        };
-        let lands = usize::try_from(target).is_ok_and(|target| {
+    let starts = |target: isize| {
+        usize::try_from(target).is_ok_and(|target| {
             (start..=end).contains(&target)
                 && (target == end || code.binary_search_by_key(&target, |i| i.at).is_ok())
+        })
+    };
+    let word = |at: usize| {
+        bytes
+            .get(at..at + 4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+    };
+    let tables: Vec<usize> = code
+        .iter()
+        .filter(|i| i.opcode == Opcode::EndSwitch as u8)
+        .map(|i| (i.at + 4) & !3)
+        .collect();
+    for instruction in &code {
+        let jump = instruction
+            .jump_target(bytes)
+            .map(|target| (target, starts(target)));
+        let switch = (instruction.opcode == Opcode::Switch as u8).then(|| {
+            let offset = word(instruction.operand.end - 4).unwrap_or(0) as usize;
+            let table = (instruction.operand.end + offset + 3) & !3;
+            (table as isize, tables.contains(&table))
         });
-        if !lands {
+        let cases = (instruction.opcode == Opcode::EndSwitch as u8).then(|| {
+            let count_at = (instruction.at + 4) & !3;
+            let count = word(count_at).unwrap_or(0) as usize;
+            (0..count).find_map(|case| {
+                let entry_end = count_at + 4 + 8 * (case + 1);
+                let offset = word(entry_end - 4)? as i32;
+                let target = entry_end as isize + offset as isize;
+                (!starts(target)).then_some(target)
+            })
+        });
+        if let Some((target, false)) = jump.or(switch) {
+            return Err(DecodeError::JumpTarget {
+                at: instruction.at,
+                target,
+            });
+        }
+        if let Some(Some(target)) = cases {
             return Err(DecodeError::JumpTarget {
                 at: instruction.at,
                 target,
