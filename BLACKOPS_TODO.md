@@ -188,6 +188,13 @@ Done when two or more machines play a full Kino game together.
 - [ ] Hellhounds and crawlers.
 - [ ] Five and Dead Ops Arcade.
 - [ ] Audio, effects and visual fidelity passes; performance with many zombies.
+- [ ] Make `crates/asset_audio/src/wma_t5/format.bin` (the Black Ops audio
+      decoder's entropy codebooks and exponent band widths, read by
+      `wma_t5/entropy.rs`) a readable generated Rust table instead of a binary
+      blob, so a change to it reads in a diff; keep its generator and where the
+      values come from in the commit. If its numbers trip `publish-check`'s
+      offset scan, exempt exactly that file with the reason, as for
+      `crates/gsc_t7/src/names.rs`.
 
 ## Waiting on the maintainer
 
