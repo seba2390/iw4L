@@ -86,7 +86,7 @@ to load BO2 directly. Unoptimized `target/debug/iw4l.exe` is unsuitable for fram
 - [Map loading](docs/MAP-LOAD.md), [GSC runtime](docs/GSC-RUNTIME.md) and [bot AI](docs/BOTS.md): starting points for experiments and modifications.
 - [Documentation index](docs/INDEX.md), [contributing](CONTRIBUTING.md) and [security reports](SECURITY.md).
 
-This whole project is written by an LLM.
+This whole project is written by LLMs.
 
 ## Acknowledgements and license
 
