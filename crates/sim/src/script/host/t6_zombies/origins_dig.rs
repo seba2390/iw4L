@@ -338,7 +338,11 @@ impl Digs {
                     .fraction
                     >= 0.95
         };
-        if let Some(index) = self.staff_parts.iter().position(|drop| visible(drop.origin)) {
+        if let Some(index) = self
+            .staff_parts
+            .iter()
+            .position(|drop| visible(drop.origin))
+        {
             return Some(Selection::StaffPart(index));
         }
         if let Some(index) = self.weapons.iter().position(|drop| visible(drop.origin)) {

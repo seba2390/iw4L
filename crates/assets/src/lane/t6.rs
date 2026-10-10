@@ -1141,6 +1141,7 @@ fn capture_weapon_icons(
                     asset_material::ZoneUiImage {
                         iwi,
                         state: capture_ui_state(load, asset),
+                        rgba: None,
                     },
                 )),
                 Err(error) => failed.push(format!("{name}: {error}")),
@@ -1163,7 +1164,14 @@ fn capture_weapon_icons(
             match decoded {
                 Ok(iwi) => {
                     wanted.remove(&name);
-                    icons.push((name, asset_material::ZoneUiImage { iwi, state: None }));
+                    icons.push((
+                        name,
+                        asset_material::ZoneUiImage {
+                            iwi,
+                            state: None,
+                            rgba: None,
+                        },
+                    ));
                 }
                 Err(error) => failed.push(format!("{name}: {error}")),
             }

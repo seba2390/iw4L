@@ -1,13 +1,16 @@
 # Game library
 
-Start `iw4l` without a map argument to open the game library.
-Choose Modern Warfare (2007), Modern Warfare 2, Black Ops or Black Ops 2.
-Each profile opens its own menu with Multiplayer, Campaign and settings;
-Black Ops profiles also include Zombies. BO2 offers experimental survival;
-Campaign and Black Ops Zombies display Work in Progress.
+Start `iw4l` without a map argument to open the game library. It needs no
+game data: it lists the installed games (Modern Warfare (2007), Modern
+Warfare 2, Black Ops, Black Ops 2), and offers a folder scan when none is found.
+Each game opens its own menu with Multiplayer, Campaign and settings; a game
+whose crate offers a zombies mode (`game_api::GameModes::zombies`) also gets
+Zombies, listing its installed zombie maps. Campaign displays Work in Progress.
 
-Game Installations opens the folder picker for each profile. Choices are
-validated, saved and rescanned. Empty choices use normal game discovery.
+Game Installations: Scan a Folder for Games picks one folder and finds every
+game under it (a few levels deep, five seconds at most); each game's own row
+picks its folder by hand. Choices are validated, saved and rescanned. Empty
+choices use normal game discovery.
 Settings apply through the runtime settings service and save automatically.
 Use the mouse, arrow keys, Enter and Escape; the mouse wheel scrolls long lists.
 

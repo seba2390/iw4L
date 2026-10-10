@@ -167,6 +167,7 @@ pub(crate) fn sync_presence(world: &mut World) {
     super::controls::sync_script_locks(world);
     super::triggers::dispatch_triggers(world);
     present(world, now);
+    super::actor_anims::present(world);
     publish_killcam_cameras(world);
     settle_collision(world);
     resolve_link_tags(world);

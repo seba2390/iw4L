@@ -5,8 +5,8 @@ mod events;
 use bodies::{PlayerAnimInputs, PlayerBodyRuntime};
 use collision::{CollisionRuntime, LagcompPlan};
 pub use content::{
-    PlayerKitCollision, SimBrush, SimClipBsp, SimClipCmodels, SimClipMesh, SimContent,
-    SimContentBuilder, SimStaticModel, SimTriggerHull,
+    AnimClipLookup, PlayerKitCollision, SimBrush, SimClipBsp, SimClipCmodels, SimClipMesh,
+    SimContent, SimContentBuilder, SimStaticModel, SimTriggerHull,
 };
 use events::{EventJournal, PresentationQueue};
 pub use events::{PendingLocalSound, PendingPlayerCardEvent, PendingPlayerCardKind, PendingPrint};
@@ -422,11 +422,20 @@ impl SimState {
         self.hud_elem_sound_ids = ids;
     }
 
+    /// The catalog key a script's alias name plays: the alias of the match's
+    /// own game (scripts name aliases bare; clients read `<game>:<alias>`).
+    fn script_sound_key(&self, name: &str) -> Option<String> {
+        let aliases = self.content.script_sound_aliases().as_ref()?;
+        let family = self.content.family()?;
+        let key = format!("{}:{}", family.as_str(), name.to_ascii_lowercase());
+        aliases.contains_key(&key).then_some(key)
+    }
+
     pub fn script_sound_exists(&self, name: &str) -> Option<bool> {
         self.content
             .script_sound_aliases()
             .as_ref()
-            .map(|names| names.contains_key(&name.to_ascii_lowercase()))
+            .map(|_| self.script_sound_key(name).is_some())
     }
 
     pub fn script_sound_is_looping(&self, name: &str) -> Result<bool, &'static str> {
@@ -435,14 +444,15 @@ impl SimState {
             .script_sound_aliases()
             .as_ref()
             .ok_or("sound alias catalog is not installed")?;
-        aliases
-            .get(&name.to_ascii_lowercase())
-            .ok_or("sound alias not found")?
-            .ok_or("sound alias looping flags are unavailable")
+        let key = self.script_sound_key(name).ok_or("sound alias not found")?;
+        aliases[&key].ok_or("sound alias looping flags are unavailable")
     }
 
     pub fn sound_alias_index(&mut self, name: &str) -> u8 {
-        self.sound_alias_cs.index(name)
+        match self.script_sound_key(name) {
+            Some(key) => self.sound_alias_cs.index(&key),
+            None => self.sound_alias_cs.index(name),
+        }
     }
 
     pub fn effect_name_index(&mut self, name: &str) -> u8 {
@@ -2286,6 +2296,21 @@ impl SimState {
             xmodel_runtime::XAnimNodeKind::Leaf { clip, .. } => Some(Arc::clone(clip)),
             _ => None,
         }
+    }
+
+    pub(crate) fn actor_paths(&self) -> Option<Arc<crate::script::ActorPaths>> {
+        self.content.actor_paths()
+    }
+
+    pub(crate) fn actor_anim_tree(&self, name: &str) -> Option<Arc<crate::script::ActorAnimTree>> {
+        self.content.actor_anim_tree(name)
+    }
+
+    pub(crate) fn anim_clip_named(&self, name: &str) -> Option<Arc<xmodel_runtime::AnimClip>> {
+        self.content
+            .anim_clips()
+            .get(name)
+            .or_else(|| self.player_anim_clip_named(name))
     }
 
     pub(crate) fn player_anim_clip_named(

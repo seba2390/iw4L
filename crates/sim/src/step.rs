@@ -43,6 +43,7 @@ pub(crate) fn schedule() -> Schedule {
             expire_transient_events_system,
             crate::script::apply_disconnects,
             crate::script::advance_mechanics,
+            crate::script::advance_actors,
             crate::script::advance_scheduler,
             (
                 apply_script_signals_system,
@@ -416,6 +417,29 @@ fn run_players_system(ecs: &mut World) {
             {
                 cmd.buttons &= !playerstate_iw4::buttons::MELEE_CHARGE;
             }
+            if let Some(gap) = world
+                .bootstrap_ref()
+                .mode
+                .and_then(|mode| match mode.movement {
+                    game_api::Rule::Unknown(gap) => Some(gap),
+                    game_api::Rule::Known(()) => None,
+                })
+            {
+                world.report_game_gap(gap);
+                if let Some(index) = result_index {
+                    fire_results[index].outcome =
+                        crate::FireCommandOutcome::NotRun(crate::FireCommandRefusal::RuleUnknown);
+                }
+                if let Some(ps) = world.player_mut(*id) {
+                    ps.command_time = cmd.server_time;
+                }
+                world.set_old_cmd(*id, cmd.buttons, cmd.angles);
+                consumed.push(crate::PlayerCommand {
+                    command: cmd,
+                    ..*command
+                });
+                continue;
+            }
             let commanded_move = cmd.forwardmove != 0 || cmd.rightmove != 0;
             world.set_anim_command_buttons(*id, cmd.buttons);
             let linked_brushes: Vec<LinkedBrushCollisionBrush> = world
@@ -546,14 +570,21 @@ fn run_players_system(ecs: &mut World) {
             world.set_pmove_walking(*id, walking);
             world.link_player_area(*id, linked_bounds);
 
-            let shots = advance_weapon_command(
-                &mut world,
-                tick,
-                *id,
-                cmd,
-                delta.min(200),
-                command.sequence,
-            );
+            let weapons = world.bootstrap_ref().mode.map(|mode| mode.weapons);
+            let shots = match weapons {
+                Some(game_api::Rule::Unknown(gap)) => {
+                    world.report_game_gap(gap);
+                    Vec::new()
+                }
+                _ => advance_weapon_command(
+                    &mut world,
+                    tick,
+                    *id,
+                    cmd,
+                    delta.min(200),
+                    command.sequence,
+                ),
+            };
             if let Some(index) = result_index {
                 assert!(
                     shots.len() <= 2,

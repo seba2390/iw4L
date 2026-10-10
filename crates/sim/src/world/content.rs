@@ -120,10 +120,41 @@ impl SimContent {
     }
 }
 
+/// Resolves any animation of the match by name; installed by the session from
+/// its animation catalog.
+#[derive(Clone)]
+pub struct AnimClipLookup(Arc<dyn Fn(&str) -> Option<Arc<xmodel_runtime::AnimClip>> + Send + Sync>);
+
+impl AnimClipLookup {
+    pub fn new(
+        lookup: impl Fn(&str) -> Option<Arc<xmodel_runtime::AnimClip>> + Send + Sync + 'static,
+    ) -> Self {
+        Self(Arc::new(lookup))
+    }
+
+    pub fn get(&self, name: &str) -> Option<Arc<xmodel_runtime::AnimClip>> {
+        (self.0)(name)
+    }
+}
+
+impl Default for AnimClipLookup {
+    fn default() -> Self {
+        Self::new(|_| None)
+    }
+}
+
+impl std::fmt::Debug for AnimClipLookup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AnimClipLookup")
+    }
+}
+
 #[derive(Debug)]
 struct ContentData {
     weapons: Arc<crate::SimWeaponContent>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
+    /// The game the match's map belongs to: whose sound aliases its scripts name.
+    family: Option<asset_core::FamilyId>,
     clip_brushes: Vec<SimBrush>,
     clip_bsp: SimClipBsp,
     clip_mesh: SimClipMesh,
@@ -135,6 +166,9 @@ struct ContentData {
     player_anim_properties: Vec<xmodel_runtime::PlayerAnimProperties>,
     player_body_branches: Option<xmodel_runtime::PlayerBodyBranches>,
     script_model_anims: std::collections::BTreeMap<String, crate::ScriptModelPlayAnim>,
+    anim_clips: AnimClipLookup,
+    actor_anim_trees: std::collections::BTreeMap<String, Arc<crate::script::ActorAnimTree>>,
+    actor_paths: Option<Arc<crate::script::ActorPaths>>,
     script_model_clips: Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>>,
     script_model_states: Option<Arc<xmodel_runtime::AnimStateTable>>,
     xanims: Arc<crate::MantleXAnimBind>,
@@ -163,6 +197,7 @@ impl SimContentBuilder {
             data: ContentData {
                 weapons,
                 script_sound_aliases: Default::default(),
+                family: None,
                 clip_brushes: Default::default(),
                 clip_bsp: Default::default(),
                 clip_mesh: Default::default(),
@@ -174,6 +209,9 @@ impl SimContentBuilder {
                 player_anim_properties: Default::default(),
                 player_body_branches: Default::default(),
                 script_model_anims: Default::default(),
+                anim_clips: Default::default(),
+                actor_anim_trees: Default::default(),
+                actor_paths: Default::default(),
                 script_model_states: None,
                 script_model_clips: Default::default(),
                 xanims: Default::default(),
@@ -203,6 +241,10 @@ impl SimContentBuilder {
                 .map(|(name, looping)| (name.to_ascii_lowercase(), looping))
                 .collect()
         });
+    }
+
+    pub fn set_family(&mut self, family: Option<asset_core::FamilyId>) {
+        self.data.family = family;
     }
 
     pub fn finish(mut self) -> Arc<SimContent> {
@@ -274,6 +316,24 @@ impl SimContentBuilder {
         self.data.player_anim_properties = properties;
     }
 
+    pub fn set_actor_anim_trees(
+        &mut self,
+        trees: impl IntoIterator<Item = Arc<crate::script::ActorAnimTree>>,
+    ) {
+        self.data.actor_anim_trees = trees
+            .into_iter()
+            .map(|tree| (tree.name().to_owned(), tree))
+            .collect();
+    }
+
+    pub fn set_actor_paths(&mut self, paths: crate::script::ActorPaths) {
+        self.data.actor_paths = (!paths.is_empty()).then(|| Arc::new(paths));
+    }
+
+    pub fn set_anim_clips(&mut self, lookup: AnimClipLookup) {
+        self.data.anim_clips = lookup;
+    }
+
     pub fn set_mantle_xanims(&mut self, bind: crate::MantleXAnimBind) {
         self.data.xanims = Arc::new(bind);
     }
@@ -336,6 +396,9 @@ impl SimContent {
     ) -> &Option<std::collections::BTreeMap<String, Option<bool>>> {
         &self.data.script_sound_aliases
     }
+    pub(super) fn family(&self) -> Option<asset_core::FamilyId> {
+        self.data.family
+    }
     pub(super) fn player_kits(&self) -> &[PlayerKitCollision; 2] {
         &self.data.player_kits
     }
@@ -360,6 +423,18 @@ impl SimContent {
         &self,
     ) -> &std::collections::BTreeMap<String, crate::ScriptModelPlayAnim> {
         &self.data.script_model_anims
+    }
+    pub(super) fn actor_anim_tree(&self, name: &str) -> Option<Arc<crate::script::ActorAnimTree>> {
+        self.data
+            .actor_anim_trees
+            .get(&name.to_ascii_lowercase())
+            .cloned()
+    }
+    pub(super) fn actor_paths(&self) -> Option<Arc<crate::script::ActorPaths>> {
+        self.data.actor_paths.clone()
+    }
+    pub(super) fn anim_clips(&self) -> &AnimClipLookup {
+        &self.data.anim_clips
     }
     pub(super) fn xanims(&self) -> &Arc<crate::MantleXAnimBind> {
         &self.data.xanims

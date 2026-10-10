@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use asset_game::load_ui_menu_catalog;
-use asset_transport::{LoadProgress, find_runtime_common_mp, find_zone_file, list_mp_map_packs};
+use asset_transport::{LoadProgress, find_runtime_common_mp, find_zone_file, list_menu_map_packs};
 use assets::{LoadingPreviewSource, LoadingScreen, MatchLoadRequest, NamespaceTrees};
 use bevy::prelude::*;
 use bevy::window::PresentMode;
@@ -155,7 +155,7 @@ fn run_menu(
     _steam: &asset_transport::SteamProbe,
 ) {
     start_perf(None, "menu");
-    let maps = list_mp_map_packs(&games);
+    let maps = list_menu_map_packs(&games);
     let config = LaunchConfig {
         role: Role::Listen,
         zone: String::new(),

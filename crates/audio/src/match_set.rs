@@ -262,7 +262,7 @@ fn queue_match_clips(
         );
         for alias in &voices {
             aliases += 1;
-            let (ns, alias) = announcer.route(alias);
+            let (ns, alias) = announcer.route(alias, namespace.namespace);
             request_named(clips, &bank.0, ns, alias, &mut set);
         }
     }
@@ -307,7 +307,7 @@ fn queue_match_clips(
     }
     for alias in &type10.0 {
         aliases += 1;
-        request_fx_type10(clips, &bank.0, alias, &mut set);
+        request_named(clips, &bank.0, namespace.namespace, alias, &mut set);
     }
     if !set.missing.is_empty() {
         let names: Vec<&str> = set.missing.iter().map(String::as_str).collect();
@@ -508,21 +508,6 @@ fn request_named(
             }
         }
     }
-}
-
-fn request_fx_type10(
-    clips: &mut ClipStore,
-    bank: &SoundCatalog,
-    alias: &str,
-    set: &mut MatchRequests,
-) {
-    let Some(ns) = bank
-        .index_unique(alias)
-        .and_then(|index| bank.namespace_of_alias(index))
-    else {
-        return;
-    };
-    request_named(clips, bank, ns, alias, set);
 }
 
 fn request_weapon_aliases(

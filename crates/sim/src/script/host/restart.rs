@@ -131,7 +131,12 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
     let spawned: Vec<crate::ScriptModelId> = runtime
         .entities
         .values()
-        .filter(|e| matches!(e.kind, EntityKind::Spawned | EntityKind::Vehicle))
+        .filter(|e| {
+            matches!(
+                e.kind,
+                EntityKind::Spawned | EntityKind::Actor | EntityKind::Vehicle
+            )
+        })
         .filter_map(|e| e.presence)
         .collect();
 

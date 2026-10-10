@@ -469,6 +469,7 @@ impl WeaponCatalog {
                 sway: WeaponSwayFacts::from_capture(geometry.sway),
                 dual_wield_view_model_offset: geometry.dual_wield_view_model_offset,
                 dual_wield: false,
+                fuel_tank: false,
                 fire_melees: false,
                 no_dual_wield: geometry.no_dual_wield,
             },

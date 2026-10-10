@@ -102,6 +102,7 @@ pub(crate) fn spawn_script_menus(root: &mut ChildSpawnerCommands) {
 
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct MenuInputs<'w, 's> {
+    mode: Option<Res<'w, game_api::ModeRules>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
     keyboard: MessageReader<'w, 's, bevy::input::keyboard::KeyboardInput>,
     mouse: Res<'w, ButtonInput<MouseButton>>,
@@ -380,6 +381,7 @@ pub(crate) fn update_script_menus(
 
     let scoreboard = snapshot
         .filter(|s| in_game && crate::scoreboard::displayed(world.scores_open, s, local.0))
+        .filter(|_| !input.mode.as_ref().is_some_and(|mode| !mode.hud.scoreboard))
         .and_then(|_| catalog.get(SCOREBOARD_MENU));
     if (menus.stack.is_empty() && scoreboard.is_none()) || !surface.is_ready() {
         return;

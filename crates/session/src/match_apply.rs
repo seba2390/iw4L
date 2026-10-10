@@ -240,6 +240,7 @@ pub fn apply_prepared_match(
         let MatchInstallPlan {
             ui_images,
             scripts,
+            actor_anim_sources,
             script_level,
             script_entries,
             script_dvars,
@@ -247,6 +248,7 @@ pub fn apply_prepared_match(
             script_sound_aliases,
             objective_weapons,
             kind,
+            mode,
             gametype,
             scene: loaded_scene,
             weapons,
@@ -287,6 +289,7 @@ pub fn apply_prepared_match(
         let facts = std::mem::take(&mut prepared_map.facts);
         let airstrike_height = facts.airstrike_height;
         stage_resource(&mut install, ui_images);
+        stage_resource(&mut install, mode);
         stage_resource(
             &mut install,
             assets::SessionCompass {
@@ -303,6 +306,7 @@ pub fn apply_prepared_match(
             &mut install,
             asset_game::SessionTeamSettings(facts.team_settings),
         );
+        stage_resource(&mut install, facts.hud_menus);
         stage_resource(&mut install, assets::PreparedLocalizedStrings(strings));
         stage_resource(&mut install, fx_catalog);
         stage_resource(&mut install, type10);
@@ -328,6 +332,7 @@ pub fn apply_prepared_match(
         .map_err(|error| InstallRefusal::new(format!("Invalid simulation weapons: {error:?}")))?;
         let mut content = sim::SimContentBuilder::for_match(Arc::clone(sim_weapons.content()));
         content.set_script_sound_aliases(script_sound_aliases);
+        content.set_family(prepared_map.namespace);
         let mut sim = sim::SimWorld::new();
         if role.runs_authority()
             && let Some(previous) = previous.as_ref()
@@ -397,6 +402,64 @@ pub fn apply_prepared_match(
                 },
             ))
         }));
+        let trees = actor_anim_sources.iter().filter_map(|(name, atr)| {
+            let compiled = asset_anim::compile_animtree(atr.as_bytes())
+                .map_err(|error| diag::warn!(Sim, "animation tree {name}: {error:?}"))
+                .ok()?;
+            let definition = compiled
+                .to_runtime_definition(|_, leaf| xanims.0.clip(anim_namespace, leaf))
+                .map_err(|error| diag::warn!(Sim, "animation tree {name}: {error:?}"))
+                .ok()?;
+            let names = compiled
+                .nodes()
+                .iter()
+                .map(|node| node.name.clone())
+                .collect();
+            diag::info!(
+                Sim,
+                "animation tree {name}: {} nodes, {} leaves",
+                compiled.node_count(),
+                compiled.leaf_count()
+            );
+            Some(Arc::new(sim::script::ActorAnimTree::new(
+                name.clone(),
+                names,
+                definition,
+            )))
+        });
+        content.set_actor_anim_trees(trees.collect::<Vec<_>>());
+        content.set_actor_paths(sim::script::ActorPaths::new(
+            facts
+                .path_nodes
+                .iter()
+                .map(|node| sim::script::NavNode {
+                    kind: match node.kind {
+                        asset_world::PathNodeKind::Path => sim::script::NavNodeKind::Path,
+                        asset_world::PathNodeKind::NegotiationBegin => {
+                            sim::script::NavNodeKind::NegotiationBegin
+                        }
+                        asset_world::PathNodeKind::NegotiationEnd => {
+                            sim::script::NavNodeKind::NegotiationEnd
+                        }
+                        asset_world::PathNodeKind::Other(_) => sim::script::NavNodeKind::Other,
+                    },
+                    origin: node.origin,
+                    yaw: node.yaw,
+                    targetname: node.targetname.clone(),
+                    target: node.target.clone(),
+                    animscript: node.animscript.clone(),
+                    links: node
+                        .links
+                        .iter()
+                        .map(|link| (link.node, link.distance, link.negotiation))
+                        .collect(),
+                })
+                .collect(),
+        ));
+        let clips = Arc::clone(&xanims.0);
+        content.set_anim_clips(sim::AnimClipLookup::new(move |name| {
+            clips.clip(anim_namespace, name)
+        }));
         content.set_mantle_xanims(sim::MantleXAnimBind::from_clips(|fast, i| {
             let name = sim::MantleXAnimBind::clip_name(fast, i)?;
             xanims
@@ -418,7 +481,12 @@ pub fn apply_prepared_match(
                 .map(|(name, icons, size)| (name.to_owned(), (icons.clone(), size))),
         );
         install_team_voice_prefixes(&mut content, catalog.as_deref(), identity.as_deref(), &zone);
-        install_shocks(&mut content, catalog.as_deref(), &map_shocks);
+        install_shocks(
+            &mut content,
+            anim_namespace,
+            catalog.as_deref(),
+            &map_shocks,
+        );
         let mut primary = Vec::new();
         let mut secondary = Vec::new();
         let mut lethal = Vec::new();
@@ -490,7 +558,7 @@ pub fn apply_prepared_match(
             &mut input_gate,
             host_classes.as_deref(),
             kind,
-            prepared_map.namespace,
+            mode,
             allow_debug_actions,
             &script_dvars,
             gametype,
@@ -499,14 +567,28 @@ pub fn apply_prepared_match(
         if *role == frame::RuntimeRole::Listen {
             sim.register_local_presentation_dvars(local.as_ref().map(|local| local.0));
         }
-        sim.install_gsc_program(
-            scripts,
-            sim::script::NativeRegistry::default(),
-            script_level,
-        )
-        .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
+        let mut natives = crate::games::natives(anim_namespace);
+        if mode.report_builtin_gaps {
+            let gaps = natives.bind_gaps(&scripts);
+            if !gaps.is_empty() {
+                diag::info!(
+                    Sim,
+                    "gsc: {} builtins not implemented yet: {}",
+                    gaps.len(),
+                    gaps.join(" ")
+                );
+            }
+        }
+        sim.install_gsc_program(scripts, natives, script_level)
+            .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
+        if mode.waits_for_lobby
+            && let Some(bridge) = bridge.as_ref()
+            && let net::MasterBridgeState::Hosting { members, .. } = bridge.state()
+        {
+            sim.set_expected_players(members.len());
+        }
         if *role == frame::RuntimeRole::Listen
-            && prepared_map.namespace != Some(asset_core::AssetNamespace::T6)
+            && mode.binds_account
             && let (Some(account), Some(local)) = (account.as_ref(), local.as_ref())
         {
             account
@@ -712,7 +794,10 @@ pub fn apply_prepared_match(
 /// hands one over.
 struct MatchInstallPlan {
     ui_images: asset_material::UiImagePublication,
+    mode: game_api::ModeRules,
     scripts: sim::script::Program,
+    /// `.atr` sources of the animation trees actors may use, by tree name.
+    actor_anim_sources: Vec<(String, String)>,
     script_level: sim::script::LevelData,
     script_entries: Vec<String>,
     script_dvars: Vec<(String, String)>,
@@ -828,6 +913,20 @@ fn script_refusal(
     InstallRefusal::new(format!("GSC {stage}: {text}"))
 }
 
+fn unknown_refusal(zone: &str, gametype: &str, gap: &game_api::Unknown) -> InstallRefusal {
+    diag::script_boundary(
+        "refused",
+        &format!(
+            " map={zone} gametype={gametype} stage=program unknown={}",
+            gap.id
+        ),
+    );
+    InstallRefusal::new(format!(
+        "GSC program: {} is unknown: {} (needs {})",
+        gap.id, gap.what, gap.needs
+    ))
+}
+
 fn preflight_match_install(
     mut prepared: assets::PreparedMatch,
     load_key: frame::LocalLoadKey,
@@ -906,6 +1005,13 @@ fn preflight_match_install(
             return Err(InstallRefusal::with_gap(gap, gap));
         }
     };
+    let family = prepared_map
+        .namespace
+        .ok_or_else(|| InstallRefusal::new(format!("`{zone}` belongs to no game")))?;
+    let mode = match crate::games::modes(family).mode(kind.token()) {
+        game_api::Rule::Known(mode) => mode,
+        game_api::Rule::Unknown(gap) => return Err(unknown_refusal(zone, kind.token(), gap)),
+    };
     let mut objective_weapons = Vec::new();
     let mut absent_effects = std::collections::BTreeSet::new();
     if let Some(
@@ -913,6 +1019,7 @@ fn preflight_match_install(
         | asset_core::AssetNamespace::Iw5
         | asset_core::AssetNamespace::T6),
     ) = prepared_map.namespace
+        && mode.binds_objectives
         && !matches!(
             kind,
             gamemode_iw4::GameModeKind::FreeForAll | gamemode_iw4::GameModeKind::TeamDeathmatch
@@ -1009,7 +1116,17 @@ fn preflight_match_install(
             }
         }
     }
-    let sources = Sources(std::mem::take(&mut prepared.scripts));
+    let zombies = match (mode.zombie_zone_scripts, prepared.zombie_scripts.take()) {
+        (true, Some(scripts)) => Some(scripts),
+        (true, None) => {
+            return Err(InstallRefusal::new(format!(
+                "the zombies mode needs a T5 zombie map; `{zone}` is not one"
+            )));
+        }
+        _ => None,
+    };
+    let is_zombies = zombies.is_some();
+    let sources = Sources(zombies.unwrap_or_else(|| std::mem::take(&mut prepared.scripts)));
     let gametype = kind
         .script_tokens()
         .iter()
@@ -1068,74 +1185,61 @@ fn preflight_match_install(
             })
             .collect(),
     };
-    let (startup_roots, startup_entries) =
-        if prepared_map.namespace == Some(asset_core::AssetNamespace::T6) {
-            let startup = sim::script::T6Startup::new(zone);
-            (startup.roots, startup.entries)
-        } else {
-            let startup = sim::script::Iw4Startup::new(&sources, gametype, zone);
-            (startup.roots, startup.entries)
-        };
+    let game_scripts = crate::games::scripts(family);
+    let request = game_api::ScriptRequest {
+        map: zone,
+        gametype,
+        entities: sources.0.entities().unwrap_or(""),
+    };
+    let program = match game_scripts.program(&request, &sources) {
+        game_api::Rule::Known(program) => program,
+        game_api::Rule::Unknown(gap) => return Err(unknown_refusal(zone, gametype, gap)),
+    };
     diag::info!(
         Sim,
-        "gsc: startup namespace={:?} roots={startup_roots:?} entries={startup_entries:?}",
-        prepared_map.namespace
+        "gsc: startup namespace={:?} roots={:?} entries={:?}",
+        prepared_map.namespace,
+        program.roots,
+        program.entries
     );
-    let roots: Vec<&str> = startup_roots.iter().map(String::as_str).collect();
-    let zombies_map = zone.starts_with("zm_");
-    if (kind == gamemode_iw4::GameModeKind::Zombies) != zombies_map
-        || (zombies_map && prepared_map.namespace != Some(asset_core::AssetNamespace::T6))
-    {
-        return Err(InstallRefusal::new(
-            "zclassic requires a T6 Zombies map; Zombies maps require zclassic".to_owned(),
-        ));
-    }
-    let native_catalog = if prepared_map.namespace == Some(asset_core::AssetNamespace::T6) {
-        if !matches!(
-            kind,
-            gamemode_iw4::GameModeKind::FreeForAll
-                | gamemode_iw4::GameModeKind::TeamDeathmatch
-                | gamemode_iw4::GameModeKind::Zombies
-        ) {
-            return Err(InstallRefusal::new(
-                "T6 runtime profile currently supports dm, war and zclassic".to_owned(),
-            ));
-        }
-        sim::script::Catalog::t6()
-    } else {
-        sim::script::Catalog::iw4()
-    };
-    let scripts = sim::script::Program::load(&sources, &roots, &native_catalog)
+    let roots: Vec<&str> = program.roots.iter().map(String::as_str).collect();
+    let scripts = sim::script::Program::load(&sources, &roots, &program.catalog)
         .map_err(|e| script_refusal(zone, gametype, "compile", &e))?;
     let config = sources
         .0
         .config(MATCH_CONFIG)
-        .or_else(|| catalog.and_then(|c| c.rawfile_text(MATCH_CONFIG)))
-        .map(str::to_owned)
         .or_else(|| {
-            identity
-                .and_then(|id| asset_game::read_iwd_named(&id.games_root, MATCH_CONFIG))
-                .and_then(|bytes| String::from_utf8(bytes).ok())
-        });
+            catalog
+                .filter(|catalog| catalog.namespace == Some(family))
+                .and_then(|catalog| catalog.rawfile_text(MATCH_CONFIG))
+        })
+        .map(str::to_owned);
     let mut script_dvars = match config {
         Some(text) => config_sets(&text),
         None => {
             diag::warn!(
                 Sim,
-                "gsc: {MATCH_CONFIG} is in neither the zones nor the iwds"
+                "gsc: {MATCH_CONFIG} is in neither the map's zones nor its game's menu catalog"
             );
             Vec::new()
         }
     };
-    if !script_dvars
-        .iter()
-        .any(|(name, _)| name.eq_ignore_ascii_case("onlinegame"))
-    {
-        script_dvars.push(("onlinegame".into(), "1".into()));
+    for (name, value) in game_scripts.config_defaults() {
+        if !script_dvars
+            .iter()
+            .any(|(set, _)| set.eq_ignore_ascii_case(name))
+        {
+            script_dvars.push(((*name).to_owned(), (*value).to_owned()));
+        }
     }
     script_dvars.push(("mapname".into(), zone.to_owned()));
     script_dvars.push(("g_gametype".into(), gametype.to_owned()));
-    script_dvars.push(("sv_maxclients".into(), "18".into()));
+    script_dvars.extend(
+        game_scripts
+            .engine_dvars(gametype)
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+    );
     for (name, value) in rules.map_or(&[][..], |rules| &rules.0) {
         match script_dvars
             .iter_mut()
@@ -1153,7 +1257,19 @@ fn preflight_match_install(
         );
     }
     script_dvars.extend(script_dvar_overrides());
-    let script_entries = startup_entries;
+    let script_entries = program.entries;
+    let actor_anim_sources: Vec<(String, String)> = if is_zombies {
+        sources
+            .0
+            .configs()
+            .filter_map(|(name, text)| {
+                let tree = name.strip_prefix("animtrees/")?.strip_suffix(".atr")?;
+                Some((tree.to_owned(), text.to_owned()))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let authority_models = authority_entity_model_install(&prepared.world);
     let model_spawns = script_model_spawns(&prepared.world.script_model_instances);
     let fx_catalog = PreparedFxCatalog(std::mem::take(&mut prepared.fx));
@@ -1191,8 +1307,10 @@ fn preflight_match_install(
     }
     Ok(MatchInstallPlan {
         ui_images: prepared.ui_images,
+        mode,
         script_sound_aliases: prepared.script_sound_aliases,
         scripts,
+        actor_anim_sources,
         script_level,
         script_entries,
         script_dvars,
@@ -1611,7 +1729,7 @@ fn install_clip_and_player(
     input_gate: &mut AuthorityInputGate,
     host_classes: Option<&HostClassLoadouts>,
     kind: gamemode_iw4::GameModeKind,
-    namespace: Option<asset_core::AssetNamespace>,
+    mode: game_api::ModeRules,
     allow_debug_actions: bool,
     rules: &[(String, String)],
     gametype: &str,
@@ -1775,8 +1893,15 @@ fn install_clip_and_player(
         .collect();
     let locked_n = lock_reasons.iter().filter(|r| r.is_some()).count();
     let has_intermission_view = intermission_view.is_some();
-    let native_rule = |suffix: &str| {
-        (namespace == Some(asset_core::AssetNamespace::T6))
+    let unlimited = match mode.unlimited {
+        game_api::Rule::Known(unlimited) => unlimited,
+        game_api::Rule::Unknown(gap) => {
+            diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
+            true
+        }
+    };
+    let config_rule = |suffix: &str| {
+        mode.limits_from_config
             .then(|| {
                 rules
                     .iter()
@@ -1786,10 +1911,10 @@ fn install_clip_and_player(
             .flatten()
             .map(|(_, value)| value.as_str())
     };
-    let native_score = native_rule("scorelimit")
+    let config_score = config_rule("scorelimit")
         .and_then(|value| value.parse::<i32>().ok())
         .filter(|value| *value >= 0);
-    let native_time = native_rule("timelimit")
+    let config_time = config_rule("timelimit")
         .and_then(|value| value.parse::<f64>().ok())
         .filter(|value| value.is_finite() && (0.0..=10000.0).contains(value))
         .map(|minutes| (minutes * 60000.0).round() as u32);
@@ -1799,31 +1924,25 @@ fn install_clip_and_player(
         bot_classes,
         seed: 0,
         kind,
-        score_limit: if kind == gamemode_iw4::GameModeKind::Zombies {
+        mode: Some(mode),
+        score_limit: if unlimited {
             0
         } else {
             std::env::var("IW4L_SCORE_LIMIT")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .or(native_score)
-                .unwrap_or(match (namespace, kind) {
-                    (
-                        Some(asset_core::AssetNamespace::T6),
-                        gamemode_iw4::GameModeKind::FreeForAll,
-                    ) => 30,
-                    (
-                        Some(asset_core::AssetNamespace::T6),
-                        gamemode_iw4::GameModeKind::TeamDeathmatch,
-                    ) => 75,
-                    (_, gamemode_iw4::GameModeKind::Domination) => gamemode_iw4::dom::SCORE_LIMIT,
-                    (_, gamemode_iw4::GameModeKind::Demolition) => 0,
+                .or(config_score)
+                .or(mode.default_score_limit)
+                .unwrap_or(match kind {
+                    gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::SCORE_LIMIT,
+                    gamemode_iw4::GameModeKind::Demolition => 0,
                     _ => sim::FFA.score_limit,
                 })
         },
-        time_limit_ms: if kind == gamemode_iw4::GameModeKind::Zombies {
+        time_limit_ms: if unlimited {
             0
         } else {
-            native_time.unwrap_or(match kind {
+            config_time.unwrap_or(match kind {
                 gamemode_iw4::GameModeKind::Domination => gamemode_iw4::dom::TIME_LIMIT_MS,
                 gamemode_iw4::GameModeKind::Demolition => gamemode_iw4::dd::TIME_LIMIT_MS,
                 _ => sim::FFA.time_limit_ms,
@@ -1867,19 +1986,28 @@ pub(crate) fn bootstrap_class_rows(host: Option<&HostClassLoadouts>) -> Vec<Clas
 
 fn install_shocks(
     world: &mut sim::SimContentBuilder,
+    family: asset_core::FamilyId,
     catalog: Option<&asset_game::MenuCatalog>,
     map_shocks: &[(String, String)],
 ) {
-    let common = catalog.into_iter().flat_map(|catalog| {
-        catalog.rawfiles.iter().filter_map(|(path, text)| {
-            let lower = path.to_ascii_lowercase();
-            let name = lower
-                .strip_prefix("shock/")?
-                .strip_suffix(".shock")?
-                .to_owned();
-            Some((name, text.as_str()))
-        })
-    });
+    if let game_api::Rule::Unknown(gap) = crate::games::vision(family).shellshock() {
+        diag::info!(Zone, "game gap {}: {}", gap.id, gap.what);
+        world.set_shocks(std::collections::BTreeMap::new());
+        return;
+    }
+    let common = catalog
+        .filter(|catalog| catalog.namespace == Some(family))
+        .into_iter()
+        .flat_map(|catalog| {
+            catalog.rawfiles.iter().filter_map(|(path, text)| {
+                let lower = path.to_ascii_lowercase();
+                let name = lower
+                    .strip_prefix("shock/")?
+                    .strip_suffix(".shock")?
+                    .to_owned();
+                Some((name, text.as_str()))
+            })
+        });
     let map = map_shocks
         .iter()
         .map(|(name, text)| (name.clone(), text.as_str()));

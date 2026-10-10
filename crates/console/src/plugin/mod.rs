@@ -601,7 +601,7 @@ fn sync_cursor_grab(
     screen: Option<Res<AppScreen>>,
     mut focused: MessageReader<WindowFocused>,
     mut entered: MessageReader<CursorEntered>,
-    mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut windows: Query<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
     let mut returned = false;
     for ev in focused.read() {
@@ -613,10 +613,10 @@ fn sync_cursor_grab(
     let in_game = screen
         .as_ref()
         .is_some_and(|s| matches!(**s, AppScreen::InGame));
-    let grab = in_game && !console.open && !menu_open;
-    let Ok(mut cursor) = windows.single_mut() else {
+    let Ok((window, mut cursor)) = windows.single_mut() else {
         return;
     };
+    let grab = in_game && !console.open && !menu_open && window.focused;
     let want = if grab {
         CursorGrabMode::Locked
     } else {

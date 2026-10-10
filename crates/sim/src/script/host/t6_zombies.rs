@@ -181,7 +181,7 @@ struct BoxClaim {
 }
 
 pub(crate) fn active(world: &mut World) -> bool {
-    FrameWorld::from_world(world).bootstrap_ref().kind == gamemode_iw4::GameModeKind::Zombies
+    FrameWorld::from_world(world).bootstrap_ref().kind == gamemode_iw4::GameModeKind::Zclassic
 }
 
 fn field<'a>(pairs: &'a [(String, String)], name: &str) -> &'a str {
@@ -2064,7 +2064,7 @@ fn interactions(
                 let current_weapon = frame.player(client).map_or(0, |ps| ps.weapon);
                 let weapon_name = frame.weapon_script_name(current_weapon).to_owned();
                 drop(frame);
-                
+
                 // Check if current weapon is a staff
                 for kind in [
                     origins_staff::StaffKind::Fire,
@@ -2088,8 +2088,10 @@ fn interactions(
                             [1.0, 0.0, 0.0]
                         };
                         drop(frame);
-                        
-                        state.staffs.fire_ability(world, client, kind, origin, forward, tick);
+
+                        state
+                            .staffs
+                            .fire_ability(world, client, kind, origin, forward, tick);
                         break;
                     }
                 }

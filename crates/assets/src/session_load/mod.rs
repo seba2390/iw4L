@@ -153,6 +153,8 @@ pub struct PreparedWorld {
 pub struct PreparedMatch {
     pub ui_images: asset_material::UiImagePublication,
     pub scripts: crate::ScriptSources,
+    /// The zombie mode's own script base, present on T5 zombie maps.
+    pub zombie_scripts: Option<crate::ScriptSources>,
     pub world: PreparedWorld,
 
     pub fx: asset_game::FxDefinitions,

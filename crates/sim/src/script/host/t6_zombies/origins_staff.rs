@@ -271,12 +271,7 @@ impl Staffs {
         }
     }
 
-    pub(super) fn craft(
-        &mut self,
-        world: &mut World,
-        client: ClientId,
-        index: usize,
-    ) -> bool {
+    pub(super) fn craft(&mut self, world: &mut World, client: ClientId, index: usize) -> bool {
         let Some(station) = self.stations.get(index) else {
             return false;
         };
@@ -291,7 +286,12 @@ impl Staffs {
         if !self.can_craft(client, kind) {
             return false;
         }
-        let parts = self.parts.entry(client).or_default().entry(kind).or_insert(0);
+        let parts = self
+            .parts
+            .entry(client)
+            .or_default()
+            .entry(kind)
+            .or_insert(0);
         *parts = parts.saturating_sub(1);
         self.owned.entry(client).or_default().insert(kind);
         diag::info!(
@@ -318,7 +318,12 @@ impl Staffs {
     }
 
     pub(super) fn add_part(&mut self, client: ClientId, kind: StaffKind) {
-        let count = self.parts.entry(client).or_default().entry(kind).or_insert(0);
+        let count = self
+            .parts
+            .entry(client)
+            .or_default()
+            .entry(kind)
+            .or_insert(0);
         *count = count.saturating_add(1);
         diag::info!(
             Sim,
@@ -407,7 +412,12 @@ impl Staffs {
         let parts = self.parts.get(&client).cloned().unwrap_or_default();
         let crystals = self.crystals.get(&client).cloned().unwrap_or_default();
         let mut text = "STAFFS:".to_owned();
-        for kind in [StaffKind::Fire, StaffKind::Ice, StaffKind::Lightning, StaffKind::Gas] {
+        for kind in [
+            StaffKind::Fire,
+            StaffKind::Ice,
+            StaffKind::Lightning,
+            StaffKind::Gas,
+        ] {
             let owned = staffs.contains(&kind);
             let is_upgraded = upgraded.contains(&kind);
             let part_count = parts.get(&kind).copied().unwrap_or(0);
