@@ -2060,21 +2060,13 @@ fn interactions(
                 digs.dig(world, state, &mut survivor, client, index, tick);
                 state.digs = digs;
             } else {
-                // Check if player has a staff equipped and try to fire ability
                 let frame = FrameWorld::from_world(world);
                 let current_weapon = frame.player(client).map_or(0, |ps| ps.weapon);
                 let weapon_name = frame.weapon_script_name(current_weapon).to_owned();
                 drop(frame);
 
-                // Check if current weapon is a staff
-                for kind in [
-                    origins_staff::StaffKind::Fire,
-                    origins_staff::StaffKind::Ice,
-                    origins_staff::StaffKind::Lightning,
-                    origins_staff::StaffKind::Gas,
-                ] {
-                    if weapon_name.contains(kind.name()) && state.staffs.has(client, kind) {
-                        // Get player's forward direction for ability direction
+                for kind in origins_staff::StaffKind::ALL {
+                    if weapon_name.contains(kind.weapon_tag()) && state.staffs.has(client, kind) {
                         let frame = FrameWorld::from_world(world);
                         let forward = if let Some(ps) = frame.player(client) {
                             let angles = ps.viewangles;
@@ -2565,15 +2557,20 @@ pub(crate) fn entity_damage(
     after: i32,
     headshot: bool,
 ) {
+    // Check if this is the giant robot
     let tick = world.resource::<crate::step::StepRequest>().tick;
-    let is_robot = world.resource::<Runtime>().zombies.staffs.is_robot(object);
+    let is_robot = world
+        .resource::<Runtime>()
+        .zombies
+        .staffs
+        .is_robot(object);
 
     if is_robot && hit.amount > 0 {
         let mut zombies = std::mem::take(&mut world.resource_mut::<Runtime>().zombies);
-        let hurt = zombies.staffs.damage_robot(world, hit.amount, tick);
+        zombies.staffs.damage_robot(world, hit.amount, tick);
         world.resource_mut::<Runtime>().zombies = zombies;
 
-        if hurt && let Some(client) = hit.attacker {
+        if let Some(client) = hit.attacker {
             let reward = world
                 .resource_mut::<Runtime>()
                 .zombies
