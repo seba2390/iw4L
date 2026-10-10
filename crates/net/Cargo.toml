@@ -13,6 +13,7 @@ updater = { path = "../updater" }
 structured_data_iw4.workspace = true
 ring = "0.17.14"
 diag.workspace = true
+asset_core.workspace = true
 math_iw4.workspace = true
 frame.workspace = true
 playerstate_iw4.workspace = true

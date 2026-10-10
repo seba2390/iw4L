@@ -14,5 +14,5 @@ pub use ident::{
     TechniqueSetIndex, TechniqueSetSpace, TracerIndex, TracerSpace, WalkLocalMaterialIndex,
     WorldWeaponIndex, WorldWeaponSpace, XAnimIndex, XAnimSpace, ZoneOwner, bound_zone_names,
 };
-pub use zone_format::ZoneFormat;
+pub use zone_format::{ZoneFormat, ZoneScripts};
 pub use zone_game::ZoneGame;

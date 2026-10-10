@@ -514,7 +514,7 @@ pattern crates/net/src/transport/archive.rs hud_iw4:: 1
 pattern crates/net/src/transport/archive.rs playerstate_iw4:: 1
 pattern crates/net/src/transport/delta.rs entity_iw4:: 3
 pattern crates/net/src/transport/delta.rs playerstate_iw4:: 1
-pattern crates/net/src/transport/master.rs "<game>" 9
+pattern crates/net/src/transport/master.rs "<game>" 1
 pattern crates/net/src/transport/meta_wire.rs anim_iw4:: 5
 pattern crates/net/src/transport/meta_wire.rs entity_iw4:: 8
 pattern crates/net/src/transport/meta_wire.rs gamemode_iw4:: 8

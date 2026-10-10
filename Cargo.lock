@@ -2852,6 +2852,7 @@ name = "fastfile_t7"
 version = "0.1.0"
 dependencies = [
  "asset_core",
+ "gsc_t7",
  "miniz_oxide",
 ]
 
@@ -3323,6 +3324,10 @@ dependencies = [
  "bevy_ecs",
  "sha2",
 ]
+
+[[package]]
+name = "gsc_t7"
+version = "0.1.0"
 
 [[package]]
 name = "guillotiere"
@@ -4337,6 +4342,7 @@ name = "net"
 version = "0.1.0"
 dependencies = [
  "anim_iw4",
+ "asset_core",
  "bevy",
  "diag",
  "entity_iw4",

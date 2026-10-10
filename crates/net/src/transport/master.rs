@@ -48,34 +48,32 @@ pub const fn content_inventory(iw4: bool, iw5: bool, t5: bool, t6: bool) -> Cont
     )
 }
 
+/// The content bit of a game: its family's number.
+const fn content_bit(family: asset_core::FamilyId) -> u8 {
+    1 << family as u8
+}
+
 pub fn content_required_by_map(map: &str) -> Result<ContentFlags> {
     let namespace = map
         .split_once(':')
         .map_or("iw4", |(namespace, _)| namespace);
-    Ok(ContentFlags(match namespace {
-        "iw4" => CONTENT_IW4,
-        "iw5" => CONTENT_IW5,
-        "t5" => CONTENT_T5,
-        "t6" => CONTENT_T6,
-        other => return Err(format!("unknown content namespace `{other}` in map `{map}`").into()),
-    }))
+    let family = asset_core::FamilyId::parse(namespace)
+        .ok_or_else(|| format!("unknown content namespace `{namespace}` in map `{map}`"))?;
+    Ok(ContentFlags(content_bit(family)))
 }
 
 pub fn content_names(flags: ContentFlags) -> String {
-    let mut names = Vec::new();
-    if flags.0 & CONTENT_IW4 != 0 {
-        names.push("iw4");
-    }
-    if flags.0 & CONTENT_IW5 != 0 {
-        names.push("iw5");
-    }
-    if flags.0 & CONTENT_T5 != 0 {
-        names.push("t5");
-    }
-    if flags.0 & CONTENT_T6 != 0 {
-        names.push("t6");
-    }
-    if flags.0 & !(CONTENT_IW4 | CONTENT_IW5 | CONTENT_T5 | CONTENT_T6) != 0 {
+    let mut families = asset_core::FamilyId::ALL;
+    families.sort_by_key(|family| *family as u8);
+    let known = families
+        .iter()
+        .fold(0, |bits, family| bits | content_bit(*family));
+    let mut names: Vec<&str> = families
+        .into_iter()
+        .filter(|family| flags.0 & content_bit(*family) != 0)
+        .map(asset_core::FamilyId::as_str)
+        .collect();
+    if flags.0 & !known != 0 {
         names.push("unknown");
     }
     names.join(",")
