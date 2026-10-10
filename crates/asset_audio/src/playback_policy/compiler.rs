@@ -46,6 +46,7 @@ pub(super) fn compile(
         AssetNamespace::Iw5 => &iw5::Iw5CueCompiler,
         AssetNamespace::T5 => &t5::T5CueCompiler,
         AssetNamespace::T6 => &t6::T6CueCompiler,
+        _ => return None,
     };
     let semantics = compiler.prepare(row, channel_info);
     let group_gain = match semantics.group {

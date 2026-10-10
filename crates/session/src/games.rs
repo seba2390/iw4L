@@ -9,6 +9,7 @@ pub(crate) fn scripts(family: FamilyId) -> &'static dyn game_api::GameScripts {
         FamilyId::T5 => &game_t5::GAME,
         FamilyId::Iw5 => &game_iw5::GAME,
         FamilyId::T6 => &game_t6::GAME,
+        FamilyId::T7 => &game_t7::GAME,
     }
 }
 
@@ -19,6 +20,7 @@ pub fn modes(family: FamilyId) -> &'static dyn game_api::GameModes {
         FamilyId::T5 => &game_t5::GAME,
         FamilyId::Iw5 => &game_iw5::GAME,
         FamilyId::T6 => &T6_ON_IW4_MOVEMENT,
+        FamilyId::T7 => &game_t7::GAME,
     }
 }
 
@@ -35,6 +37,7 @@ pub fn menus(family: FamilyId) -> &'static dyn game_api::GameMenus {
         FamilyId::T5 => &game_t5::GAME,
         FamilyId::Iw5 => &game_iw5::GAME,
         FamilyId::T6 => &game_t6::GAME,
+        FamilyId::T7 => &game_t7::GAME,
     }
 }
 
@@ -44,7 +47,7 @@ pub(crate) fn natives(family: FamilyId) -> sim::script::NativeRegistry {
     match family {
         FamilyId::Iw4 => services.with_mw2_systems(),
         FamilyId::T5 => services.with_black_ops(),
-        FamilyId::Iw5 | FamilyId::T6 => services,
+        FamilyId::Iw5 | FamilyId::T6 | FamilyId::T7 => services,
     }
 }
 
@@ -55,6 +58,7 @@ pub(crate) fn vision(family: FamilyId) -> &'static dyn game_api::GameVision {
         FamilyId::T5 => &game_t5::GAME,
         FamilyId::Iw5 => &game_iw5::GAME,
         FamilyId::T6 => &game_t6::GAME,
+        FamilyId::T7 => &game_t7::GAME,
     }
 }
 

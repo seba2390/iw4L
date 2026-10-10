@@ -323,11 +323,11 @@ impl CapturedSound {
     }
     pub fn ent_channel(&self, variant: usize) -> Option<u32> {
         match self.game {
-            ZoneGame::T5 | ZoneGame::T6 => None,
             ZoneGame::Iw4 | ZoneGame::Iw5 => self
                 .aliases
                 .get(variant)
                 .and_then(|a| a.decoded_flags().map(|f| f.channel())),
+            _ => None,
         }
     }
 }

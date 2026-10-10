@@ -14,6 +14,9 @@ pub enum AdsOverlayConvention {
     WeightIsFrac,
 
     PlayAdsAnim,
+
+    /// A game whose ADS overlay rule is not read: the overlay stays out.
+    Unread,
 }
 
 impl AdsOverlayConvention {
@@ -21,6 +24,7 @@ impl AdsOverlayConvention {
         match self {
             Self::WeightIsFrac => "weight_is_frac",
             Self::PlayAdsAnim => "play_ads_anim",
+            Self::Unread => "unread",
         }
     }
 
@@ -30,6 +34,7 @@ impl AdsOverlayConvention {
             crate::AssetNamespace::Iw4 | crate::AssetNamespace::Iw5 | crate::AssetNamespace::T6 => {
                 Self::WeightIsFrac
             }
+            _ => Self::Unread,
         }
     }
 }

@@ -418,15 +418,7 @@ fn discover(
             .map(|game| {
                 let installed = game
                     .namespace()
-                    .and_then(|namespace| {
-                        let kind = match namespace {
-                            AssetNamespace::Iw4 => asset_transport::ZoneGame::Iw4,
-                            AssetNamespace::Iw5 => asset_transport::ZoneGame::Iw5,
-                            AssetNamespace::T5 => asset_transport::ZoneGame::T5,
-                            AssetNamespace::T6 => asset_transport::ZoneGame::T6,
-                        };
-                        asset_transport::find_game_install(&root.0, kind)
-                    })
+                    .and_then(|namespace| asset_transport::find_game_install(&root.0, namespace))
                     .or_else(|| {
                         (game == Game::ModernWarfare)
                             .then(|| asset_transport::find_modern_warfare_install(&root.0))

@@ -27,7 +27,10 @@ pub fn compile_material_catalog(source: &crate::MaterialDefinitions) -> RuntimeM
     for facts in source.technique_set_facts() {
         let compiler = technique::compiler_for(facts.namespace);
         let mut slots = vec![None; TECHNIQUE_SLOT_COUNT];
-        if let Some(graph) = facts.table.as_ref().and_then(|table| table.graph.as_ref()) {
+        if let (Some(compiler), Some(graph)) = (
+            compiler,
+            facts.table.as_ref().and_then(|table| table.graph.as_ref()),
+        ) {
             for (slot_index, technique) in graph.slots.iter().enumerate().take(TECHNIQUE_SLOT_COUNT)
             {
                 let Some(technique) = technique else {
@@ -118,6 +121,7 @@ pub fn compile_material_catalog(source: &crate::MaterialDefinitions) -> RuntimeM
                     });
             let [uv_anim, falloff_parms, falloff_begin, falloff_end] =
                 crate::MaterialDefinitions::material_animation(material);
+            let compiler = technique::compiler_for(material.namespace);
             RuntimeMaterial {
                 asset_id,
                 name: material.name.to_string(),
@@ -127,14 +131,20 @@ pub fn compile_material_catalog(source: &crate::MaterialDefinitions) -> RuntimeM
                 local_technique_set,
                 remap: RemapResolution::SelfSet,
                 state_bits_entry: material.state_bits_entry,
-                pass_states: material
-                    .state_bits
-                    .iter()
-                    .map(|words| technique::compiler_for(material.namespace).compile_state(*words))
-                    .collect(),
+                pass_states: compiler.map_or_else(Vec::new, |compiler| {
+                    material
+                        .state_bits
+                        .iter()
+                        .map(|words| compiler.compile_state(*words))
+                        .collect()
+                }),
                 camera_region: material.camera_region,
-                draw_rules: technique::compiler_for(material.namespace)
-                    .draw_rules(material, source.is_unlit(material).unwrap_or(false)),
+                draw_rules: compiler.map_or_else(
+                    || render_material::MaterialDrawRules::unread(material.camera_region),
+                    |compiler| {
+                        compiler.draw_rules(material, source.is_unlit(material).unwrap_or(false))
+                    },
+                ),
                 sort_key: material.sort_key,
                 info_game_flags: material.info_game_flags,
                 state_flags: material.state_flags,

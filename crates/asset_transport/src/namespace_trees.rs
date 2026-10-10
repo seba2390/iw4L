@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use asset_core::AssetNamespace;
 
-use crate::ZoneGame;
 use crate::discover::{GamesRoot, find_zone_file_version, zone_game_for_path, zone_version};
 use crate::iwd::game_main_for_zone;
 
@@ -22,22 +21,16 @@ impl NamespaceTree {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NamespaceTrees {
-    iw4: Option<NamespaceTree>,
-    t5: Option<NamespaceTree>,
-    iw5: Option<NamespaceTree>,
-    t6: Option<NamespaceTree>,
+    trees: [Option<NamespaceTree>; AssetNamespace::ALL.len()],
 }
 
 impl NamespaceTrees {
     pub fn discover(root: &GamesRoot) -> Self {
         let mut trees = Self::default();
-        for ns in [
-            AssetNamespace::Iw4,
-            AssetNamespace::T5,
-            AssetNamespace::Iw5,
-            AssetNamespace::T6,
-        ] {
-            let version = zone_version(zone_game_of(ns));
+        for ns in AssetNamespace::ALL {
+            let Some(version) = zone_version(ns) else {
+                continue;
+            };
             if let Ok(found) = find_zone_file_version(root, "common_mp", version) {
                 *trees.slot_mut(ns) = Some(NamespaceTree::from_anchor(found.path));
             }
@@ -54,12 +47,7 @@ impl NamespaceTrees {
     }
 
     pub fn get(&self, ns: AssetNamespace) -> Option<&NamespaceTree> {
-        match ns {
-            AssetNamespace::Iw4 => self.iw4.as_ref(),
-            AssetNamespace::T5 => self.t5.as_ref(),
-            AssetNamespace::Iw5 => self.iw5.as_ref(),
-            AssetNamespace::T6 => self.t6.as_ref(),
-        }
+        self.trees[ns as usize].as_ref()
     }
 
     pub fn main_for(&self, ns: AssetNamespace) -> Option<&Path> {
@@ -67,58 +55,34 @@ impl NamespaceTrees {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.iw4.is_none() && self.t5.is_none() && self.iw5.is_none() && self.t6.is_none()
+        self.trees.iter().all(Option::is_none)
     }
 
     pub fn present(&self) -> impl Iterator<Item = (AssetNamespace, &NamespaceTree)> {
-        [
-            (AssetNamespace::Iw4, self.iw4.as_ref()),
-            (AssetNamespace::T5, self.t5.as_ref()),
-            (AssetNamespace::Iw5, self.iw5.as_ref()),
-            (AssetNamespace::T6, self.t6.as_ref()),
-        ]
-        .into_iter()
-        .filter_map(|(ns, tree)| tree.map(|tree| (ns, tree)))
+        AssetNamespace::ALL
+            .into_iter()
+            .filter_map(|ns| self.get(ns).map(|tree| (ns, tree)))
     }
 
     pub fn report_lines(&self) -> Vec<String> {
-        [
-            AssetNamespace::Iw4,
-            AssetNamespace::T5,
-            AssetNamespace::Iw5,
-            AssetNamespace::T6,
-        ]
-        .into_iter()
-        .map(|ns| match self.get(ns) {
-            Some(tree) => format!(
-                "namespace tree {}: main={} anchor={}",
-                ns.as_str(),
-                tree.main
-                    .as_deref()
-                    .map_or_else(|| "-".to_owned(), |m| m.display().to_string()),
-                tree.anchor.display(),
-            ),
-            None => format!("namespace tree {}: not installed", ns.as_str()),
-        })
-        .collect()
+        AssetNamespace::ALL
+            .into_iter()
+            .map(|ns| match self.get(ns) {
+                Some(tree) => format!(
+                    "namespace tree {}: main={} anchor={}",
+                    ns.as_str(),
+                    tree.main
+                        .as_deref()
+                        .map_or_else(|| "-".to_owned(), |m| m.display().to_string()),
+                    tree.anchor.display(),
+                ),
+                None => format!("namespace tree {}: not installed", ns.as_str()),
+            })
+            .collect()
     }
 
     fn slot_mut(&mut self, ns: AssetNamespace) -> &mut Option<NamespaceTree> {
-        match ns {
-            AssetNamespace::Iw4 => &mut self.iw4,
-            AssetNamespace::T5 => &mut self.t5,
-            AssetNamespace::Iw5 => &mut self.iw5,
-            AssetNamespace::T6 => &mut self.t6,
-        }
-    }
-}
-
-const fn zone_game_of(ns: AssetNamespace) -> ZoneGame {
-    match ns {
-        AssetNamespace::Iw4 => ZoneGame::Iw4,
-        AssetNamespace::T5 => ZoneGame::T5,
-        AssetNamespace::Iw5 => ZoneGame::Iw5,
-        AssetNamespace::T6 => ZoneGame::T6,
+        &mut self.trees[ns as usize]
     }
 }
 
@@ -168,7 +132,7 @@ impl NamespaceSoundIwd {
             AssetNamespace::Iw4 => self.iw4.as_ref(),
             AssetNamespace::T5 => self.t5.as_ref(),
             AssetNamespace::Iw5 => self.iw5.as_ref(),
-            AssetNamespace::T6 => None,
+            AssetNamespace::T6 | AssetNamespace::T7 => None,
         }
     }
 
@@ -189,7 +153,7 @@ impl NamespaceSoundIwd {
             AssetNamespace::Iw4 => Some(&mut self.iw4),
             AssetNamespace::T5 => Some(&mut self.t5),
             AssetNamespace::Iw5 => Some(&mut self.iw5),
-            AssetNamespace::T6 => None,
+            AssetNamespace::T6 | AssetNamespace::T7 => None,
         }
     }
 }

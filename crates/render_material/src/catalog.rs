@@ -373,6 +373,19 @@ pub struct MaterialDrawRules {
     pub postfx_host_supported: bool,
 }
 
+impl MaterialDrawRules {
+    /// A material of a game whose material rules are not read: it compiles no
+    /// pass, so nothing it names is drawn.
+    pub const fn unread(camera_region: u8) -> Self {
+        Self {
+            colour_camera_region: camera_region,
+            smodel_colour_emits: false,
+            unlit_sky: false,
+            postfx_host_supported: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeMaterial {
     pub asset_id: MaterialAssetId,

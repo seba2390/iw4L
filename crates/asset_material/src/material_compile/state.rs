@@ -19,6 +19,10 @@ pub(super) fn packed_state(
     render_material::compile_packed_state(words, alpha, cull)
 }
 
-pub fn compile_material_state(family: asset_core::FamilyId, words: [u32; 2]) -> CompiledPassState {
-    super::technique::compiler_for(family).compile_state(words)
+/// `None` for a game whose material state IW4L does not read.
+pub fn compile_material_state(
+    family: asset_core::FamilyId,
+    words: [u32; 2],
+) -> Option<CompiledPassState> {
+    super::technique::compiler_for(family).map(|compiler| compiler.compile_state(words))
 }
