@@ -594,6 +594,9 @@ pub fn load_ui_menu_catalog(games: &GamesRoot) -> (MenuCatalog, Vec<String>) {
                         found.path.display()
                     ));
                     catalog.absorb(part);
+                    if catalog.namespace.is_none() {
+                        catalog.namespace = asset_transport::zone_game_for_path(&found.path);
+                    }
                 }
                 Err(error) => report.push(format!(
                     "menu catalog gap: {zone} at {}: {error}",

@@ -26,6 +26,16 @@ impl game_api::GameScripts for Iw5 {
     }
 }
 
+impl game_api::GameVision for Iw5 {
+    fn shellshock(&self) -> Rule<()> {
+        Rule::Unknown(unknown!(
+            "iw5.vision.shellshock",
+            "Modern Warfare 3's shellshock files and how its screen draws a shellshock",
+            "Modern Warfare 3's .shock format and shellshock screen rules"
+        ))
+    }
+}
+
 impl game_api::GameMenus for Iw5 {
     fn font(&self, _font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
         Rule::Unknown(unknown!(

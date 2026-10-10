@@ -111,6 +111,13 @@ pub struct HudRules {
     pub material_font_floor: bool,
 }
 
+/// How a game's screen reacts to its match: shellshocks.
+pub trait GameVision: Sync {
+    /// The game's shellshock files are read with Modern Warfare 2's `.shock`
+    /// format and drawn by its shellshock screen.
+    fn shellshock(&self) -> Rule<()>;
+}
+
 /// How a game's menus are drawn.
 pub trait GameMenus: Sync {
     /// The font a menu item's `textfont` enum names, at the item's scales.

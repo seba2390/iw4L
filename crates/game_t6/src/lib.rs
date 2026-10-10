@@ -102,6 +102,16 @@ const ZCLASSIC_MODE: ModeRules = ModeRules {
     ..MULTIPLAYER_MODE
 };
 
+impl game_api::GameVision for T6 {
+    fn shellshock(&self) -> Rule<()> {
+        Rule::Unknown(unknown!(
+            "t6.vision.shellshock",
+            "Black Ops 2's shellshock files and how its screen draws a shellshock",
+            "Black Ops 2's .shock format and shellshock screen rules"
+        ))
+    }
+}
+
 impl game_api::GameMenus for T6 {
     fn font(&self, _font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
         Rule::Unknown(unknown!(

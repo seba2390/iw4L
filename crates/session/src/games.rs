@@ -47,3 +47,13 @@ pub(crate) fn natives(family: FamilyId) -> sim::script::NativeRegistry {
         FamilyId::Iw5 | FamilyId::T6 => services,
     }
 }
+
+/// How the screen of the game the map belongs to reacts to its match.
+pub(crate) fn vision(family: FamilyId) -> &'static dyn game_api::GameVision {
+    match family {
+        FamilyId::Iw4 => &game_iw4::GAME,
+        FamilyId::T5 => &game_t5::GAME,
+        FamilyId::Iw5 => &game_iw5::GAME,
+        FamilyId::T6 => &game_t6::GAME,
+    }
+}

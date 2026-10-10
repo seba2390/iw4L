@@ -57,6 +57,12 @@ const MODE: ModeRules = ModeRules {
     },
 };
 
+impl game_api::GameVision for Iw4 {
+    fn shellshock(&self) -> Rule<()> {
+        Rule::Known(())
+    }
+}
+
 impl game_api::GameMenus for Iw4 {
     fn font(&self, font_enum: i32, placement_scale: f32, text_scale: f32) -> Rule<&'static str> {
         Rule::Known(hud_iw4::ui_get_font_handle(

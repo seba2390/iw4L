@@ -24,4 +24,10 @@ Severity: **V** visible, **A** audible, **G** gameplay, **I** invisible.
       engine places items is not known; its menus are not drawn (no such
       catalog is painted today). *Needs:* Modern Warfare 3's menu engine rules.
 
+- [ ] **V** `iw5.vision.shellshock` (`GameVision::shellshock`): Modern Warfare 3's
+      shellshock files and screen rules are not known, so its matches install
+      no shellshock (a script `shellshock` call fails as unknown). Until now
+      they got Modern Warfare 2's `.shock` files, read with Modern Warfare 2's
+      format. *Needs:* Modern Warfare 3's shellshock format and screen rules.
+
 ## Closed

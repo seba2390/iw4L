@@ -100,6 +100,16 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     },
 };
 
+impl game_api::GameVision for T5 {
+    fn shellshock(&self) -> Rule<()> {
+        Rule::Unknown(unknown!(
+            "t5.vision.shellshock",
+            "Black Ops' shellshock files and how its screen draws a shellshock",
+            "Black Ops' .shock format and shellshock screen rules"
+        ))
+    }
+}
+
 impl game_api::GameMenus for T5 {
     /// Only the values the zones' compiled menus prove against their source
     /// (`UI_FONT_NORMAL` 1, `UI_FONT_EXTRABIG` 6) are known; `UI_FONT_DEFAULT`

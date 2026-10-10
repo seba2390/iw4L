@@ -491,7 +491,12 @@ pub fn apply_prepared_match(
                 .map(|(name, icons, size)| (name.to_owned(), (icons.clone(), size))),
         );
         install_team_voice_prefixes(&mut content, catalog.as_deref(), identity.as_deref(), &zone);
-        install_shocks(&mut content, catalog.as_deref(), &map_shocks);
+        install_shocks(
+            &mut content,
+            anim_namespace,
+            catalog.as_deref(),
+            &map_shocks,
+        );
         let mut primary = Vec::new();
         let mut secondary = Vec::new();
         let mut lethal = Vec::new();
@@ -1991,19 +1996,28 @@ pub(crate) fn bootstrap_class_rows(host: Option<&HostClassLoadouts>) -> Vec<Clas
 
 fn install_shocks(
     world: &mut sim::SimContentBuilder,
+    family: asset_core::FamilyId,
     catalog: Option<&asset_game::MenuCatalog>,
     map_shocks: &[(String, String)],
 ) {
-    let common = catalog.into_iter().flat_map(|catalog| {
-        catalog.rawfiles.iter().filter_map(|(path, text)| {
-            let lower = path.to_ascii_lowercase();
-            let name = lower
-                .strip_prefix("shock/")?
-                .strip_suffix(".shock")?
-                .to_owned();
-            Some((name, text.as_str()))
-        })
-    });
+    if let game_api::Rule::Unknown(gap) = crate::games::vision(family).shellshock() {
+        diag::info!(Zone, "game gap {}: {}", gap.id, gap.what);
+        world.set_shocks(std::collections::BTreeMap::new());
+        return;
+    }
+    let common = catalog
+        .filter(|catalog| catalog.namespace == Some(family))
+        .into_iter()
+        .flat_map(|catalog| {
+            catalog.rawfiles.iter().filter_map(|(path, text)| {
+                let lower = path.to_ascii_lowercase();
+                let name = lower
+                    .strip_prefix("shock/")?
+                    .strip_suffix(".shock")?
+                    .to_owned();
+                Some((name, text.as_str()))
+            })
+        });
     let map = map_shocks
         .iter()
         .map(|(name, text)| (name.clone(), text.as_str()));
