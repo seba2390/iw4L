@@ -98,7 +98,7 @@ pattern crates/asset_game/src/cac_presentation.rs AssetNamespace::<game> 2
 pattern crates/asset_game/src/fpv_assembly.rs anim_iw4:: 1
 pattern crates/asset_game/src/fpv_assembly.rs fx_iw4:: 1
 pattern crates/asset_game/src/fpv_family.rs FamilyId::<game> 12
-pattern crates/asset_game/src/fx_catalog.rs AssetNamespace::<game> 3
+pattern crates/asset_game/src/fx_catalog.rs AssetNamespace::<game> 1
 pattern crates/asset_game/src/fx_catalog.rs asset_iw4:: 2
 pattern crates/asset_game/src/fx_catalog.rs fastfile_iw4:: 10
 pattern crates/asset_game/src/fx_catalog.rs fastfile_t5:: 32
@@ -274,6 +274,7 @@ pattern crates/asset_world/src/map_entities.rs asset_iw4:: 1
 pattern crates/asset_world/src/map_entities.rs fastfile_iw4:: 2
 pattern crates/asset_world/src/map_entities.rs fastfile_iw5:: 17
 pattern crates/asset_world/src/map_entities.rs fastfile_t5:: 11
+pattern crates/asset_world/src/model_mesh.rs AssetNamespace::<game> 4
 pattern crates/asset_world/src/model_mesh.rs asset_iw4:: 24
 pattern crates/asset_world/src/model_mesh.rs fastfile_iw4:: 3
 pattern crates/asset_world/src/model_mesh.rs fastfile_iw5:: 10
@@ -585,7 +586,6 @@ pattern crates/render_anim/src/occupancy/remote_body.rs fx:: 6
 pattern crates/render_anim/src/occupancy/remote_body.rs fx_iw4:: 1
 pattern crates/render_anim/src/occupancy/screen_effects.rs hud_iw4:: 5
 pattern crates/render_anim/src/occupancy/screen_effects.rs playerstate_iw4:: 1
-pattern crates/render_anim/src/occupancy/script_model.rs AssetNamespace::<game> 4
 pattern crates/render_anim/src/occupancy/script_model.rs dpvs_iw4:: 3
 pattern crates/render_anim/src/occupancy/script_model.rs entity_iw4:: 3
 pattern crates/render_anim/src/occupancy/script_model.rs render_frame:: 1
@@ -614,7 +614,6 @@ pattern crates/render_frontend/src/adapters/anim/dyn_ent_brush.rs dpvs_iw4:: 20
 pattern crates/render_frontend/src/adapters/anim/dyn_ent_wake.rs entity_iw4:: 1
 pattern crates/render_frontend/src/adapters/anim/dyn_ent_wake.rs fx:: 2
 pattern crates/render_frontend/src/adapters/anim/dyn_ent_wake.rs render_fx:: 2
-pattern crates/render_frontend/src/adapters/fx/entity_mark.rs AssetNamespace::<game> 1
 pattern crates/render_frontend/src/adapters/fx/entity_mark.rs fx:: 3
 pattern crates/render_frontend/src/adapters/fx/entity_mark.rs fx_iw4:: 1
 pattern crates/render_frontend/src/adapters/fx/entity_mark.rs marks_iw4:: 13

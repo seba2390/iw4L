@@ -342,6 +342,19 @@ pub enum MapXModelSceneAsset {
     Unavailable { reason: &'static str },
 }
 
+impl MapXModelSceneAsset {
+    /// The game the model was read from.
+    pub fn namespace(&self) -> Option<asset_core::AssetNamespace> {
+        Some(match self {
+            Self::Iw4(_) => asset_core::AssetNamespace::Iw4,
+            Self::T5(_) => asset_core::AssetNamespace::T5,
+            Self::Iw5(_) => asset_core::AssetNamespace::Iw5,
+            Self::T6(_) => asset_core::AssetNamespace::T6,
+            Self::Unavailable { .. } => return None,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Default, Resource)]
 pub struct MapXModelSceneCatalog {
     assets: BTreeMap<MapXModelAssetKey, MapXModelSceneAsset>,
