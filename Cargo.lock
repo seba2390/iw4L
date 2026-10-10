@@ -3149,8 +3149,11 @@ dependencies = [
 name = "game_t7"
 version = "0.1.0"
 dependencies = [
+ "asset_core",
+ "diag",
  "game_api",
  "gsc",
+ "gsc_t7",
 ]
 
 [[package]]
@@ -3330,6 +3333,10 @@ dependencies = [
 [[package]]
 name = "gsc_t7"
 version = "0.1.0"
+dependencies = [
+ "gsc",
+ "sha2",
+]
 
 [[package]]
 name = "guillotiere"

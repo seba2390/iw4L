@@ -18,6 +18,7 @@ impl game_api::GameScripts for Iw4 {
             catalog: gsc::Catalog::from_list(asset_core::FamilyId::Iw4, catalog::IW4),
             roots: startup.roots,
             entries: startup.entries,
+            built: None,
         })
     }
 
