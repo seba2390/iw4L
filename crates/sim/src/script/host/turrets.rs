@@ -576,6 +576,7 @@ pub(crate) fn fire_bullet(
             amount,
             origin: from,
             attacker,
+            attacker_object: None,
             inflictor,
             means: "MOD_RIFLE_BULLET",
             weapon,

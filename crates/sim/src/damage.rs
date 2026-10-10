@@ -261,6 +261,7 @@ pub(crate) fn apply_script_blast(
         let hit = crate::script_player::Hit {
             victim: target,
             attacker: blast.attacker,
+            attacker_object: None,
             amount,
             flags: IDFLAGS_RADIUS,
             means: blast.means,
@@ -342,6 +343,7 @@ pub(crate) fn apply_script_hit(world: &mut FrameWorld, tick: Tick, hit: &crate::
     let player_hit = crate::script_player::Hit {
         victim: target,
         attacker: hit.attacker,
+        attacker_object: hit.attacker_object,
         amount: hit.amount,
         flags: hit.flags,
         means: hit.means,
