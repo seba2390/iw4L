@@ -42,6 +42,7 @@ impl game_api::GameScripts for T6 {
             catalog: gsc::Catalog::from_list(asset_core::FamilyId::T6, &[]),
             roots: startup.roots,
             entries: startup.entries,
+            built: None,
         })
     }
 

@@ -1,8 +1,13 @@
 mod decode;
+mod names;
 mod opcodes;
+mod program;
+mod translate;
 
 pub use decode::{DecodeError, Instruction, Operand, decode_function};
 pub use opcodes::{KNOWN_VALUES, Layout, Opcode, opcode};
+pub use program::{Built, Source, build, name_of};
+pub use translate::{Linker, Site, Translator};
 
 pub const MAGIC: &[u8; 7] = b"\x80GSC\r\n\0";
 

@@ -150,6 +150,11 @@ pub fn binary(op: Binary, a: Value, b: Value) -> Result<Value, String> {
             Value::Int(x.checked_rem(y).unwrap_or(0))
         }
         Binary::Equal => Value::Int(i32::from(equality(a, b)?)),
+        Binary::Identical | Binary::NotIdentical => {
+            let same =
+                core::mem::discriminant(&a) == core::mem::discriminant(&b) && equality(a, b)?;
+            Value::Int(i32::from(same == (op == Binary::Identical)))
+        }
         Binary::NotEqual => Value::Int(i32::from(!equality(a, b)?)),
         Binary::Case => match (&a, &b) {
             (Value::Int(_) | Value::String(_), _) => Value::Int(i32::from(a == b)),

@@ -41,6 +41,9 @@ pub struct ScriptProgram {
     pub catalog: gsc::Catalog,
     pub roots: Vec<String>,
     pub entries: Vec<String>,
+    /// A program the game built itself (from compiled scripts); the roots are
+    /// then only reported, not compiled.
+    pub built: Option<gsc::Program>,
 }
 
 pub trait GameScripts: Sync {
