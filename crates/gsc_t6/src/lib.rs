@@ -1,6 +1,10 @@
 //! A compiled module is a header, then its tables laid end to end; each
 //! table ends exactly where the next one (by offset) begins.
 
+mod decode;
+
+pub use decode::{DecodeError, Instruction, Operand, decode_function, operand};
+
 pub const MAGIC: &[u8; 7] = b"\x80GSC\r\n\0";
 
 pub const VERSION: u8 = 0x06;
