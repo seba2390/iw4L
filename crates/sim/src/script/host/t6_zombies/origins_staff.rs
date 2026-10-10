@@ -5,16 +5,27 @@ pub(super) enum StaffKind {
     Fire,
     Ice,
     Lightning,
-    Gas,
+    Wind,
 }
 
 impl StaffKind {
+    pub(super) const ALL: [Self; 4] = [Self::Fire, Self::Ice, Self::Lightning, Self::Wind];
+
     pub(super) fn name(self) -> &'static str {
         match self {
             Self::Fire => "fire",
             Self::Ice => "ice",
             Self::Lightning => "lightning",
-            Self::Gas => "gas",
+            Self::Wind => "wind",
+        }
+    }
+
+    pub(super) fn weapon_tag(self) -> &'static str {
+        match self {
+            Self::Fire => "fire",
+            Self::Ice => "water",
+            Self::Lightning => "lightning",
+            Self::Wind => "air",
         }
     }
 
@@ -23,25 +34,16 @@ impl StaffKind {
             Self::Fire => "p6_zm_staff_fire",
             Self::Ice => "p6_zm_staff_ice",
             Self::Lightning => "p6_zm_staff_lightning",
-            Self::Gas => "p6_zm_staff_gas",
+            Self::Wind => "p6_zm_staff_air",
         }
     }
 
-    pub(super) fn part_name(self) -> &'static str {
-        match self {
-            Self::Fire => "fire_staff_part",
-            Self::Ice => "ice_staff_part",
-            Self::Lightning => "lightning_staff_part",
-            Self::Gas => "gas_staff_part",
-        }
-    }
-
-    pub(super) fn from_part_name(name: &str) -> Option<Self> {
+    fn from_element(name: &str) -> Option<Self> {
         match name {
-            "fire_staff_part" => Some(Self::Fire),
-            "ice_staff_part" => Some(Self::Ice),
-            "lightning_staff_part" => Some(Self::Lightning),
-            "gas_staff_part" => Some(Self::Gas),
+            "fire" => Some(Self::Fire),
+            "water" | "ice" => Some(Self::Ice),
+            "lightning" => Some(Self::Lightning),
+            "air" | "wind" => Some(Self::Wind),
             _ => None,
         }
     }
@@ -56,11 +58,7 @@ pub(super) struct Staffs {
     stations: Vec<StaffStation>,
     pedestals: Vec<StaffPedestal>,
     placed_staffs: BTreeMap<StaffKind, Option<ClientId>>,
-    quest_complete: bool,
-    robot_spawned: bool,
-    robot_health: i32,
-    robot_object: Option<u64>,
-    tank_keys_dropped: Vec<TankKey>,
+    placements_complete: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -73,12 +71,6 @@ struct StaffPedestal {
 }
 
 #[derive(Clone, Debug)]
-struct TankKey {
-    origin: [f32; 3],
-    object: u64,
-}
-
-#[derive(Clone, Debug)]
 struct StaffStation {
     kind: StaffKind,
     origin: [f32; 3],
@@ -87,21 +79,19 @@ struct StaffStation {
 }
 
 impl Staffs {
-    pub(super) fn initialize(&mut self, world: &mut World, authored: &[Vec<(String, String)>]) {
+    pub(super) fn initialize(
+        &mut self,
+        _world: &mut World,
+        authored: &[Vec<(String, String)>],
+    ) {
         self.stations = authored
             .iter()
             .filter_map(|row| {
                 let targetname = field(row, "targetname");
-                if !targetname.starts_with("staff_craft_") {
-                    return None;
-                }
-                let kind = match targetname.strip_prefix("staff_craft_") {
-                    Some("fire") => StaffKind::Fire,
-                    Some("ice") => StaffKind::Ice,
-                    Some("lightning") => StaffKind::Lightning,
-                    Some("gas") => StaffKind::Gas,
-                    _ => return None,
-                };
+                let kind = targetname
+                    .strip_prefix("prop_staff_")
+                    .or_else(|| targetname.strip_prefix("staff_craft_"))
+                    .and_then(StaffKind::from_element)?;
                 let origin = point(field(row, "origin"))?;
                 let angles = point(field(row, "angles")).unwrap_or([0.0; 3]);
                 Some(StaffStation {
@@ -112,21 +102,16 @@ impl Staffs {
                 })
             })
             .collect();
-
         self.pedestals = authored
             .iter()
             .filter_map(|row| {
                 let targetname = field(row, "targetname");
-                if !targetname.starts_with("staff_pedestal_") {
-                    return None;
-                }
-                let kind = match targetname.strip_prefix("staff_pedestal_") {
-                    Some("fire") => StaffKind::Fire,
-                    Some("ice") => StaffKind::Ice,
-                    Some("lightning") => StaffKind::Lightning,
-                    Some("gas") => StaffKind::Gas,
-                    _ => return None,
+                let element = if targetname == "robot_head_staff" {
+                    field(row, "script_noteworthy")
+                } else {
+                    targetname.strip_prefix("staff_pedestal_")?
                 };
+                let kind = StaffKind::from_element(element)?;
                 let origin = point(field(row, "origin"))?;
                 let angles = point(field(row, "angles")).unwrap_or([0.0; 3]);
                 Some(StaffPedestal {
@@ -138,13 +123,8 @@ impl Staffs {
                 })
             })
             .collect();
-
-        for kind in [
-            StaffKind::Fire,
-            StaffKind::Ice,
-            StaffKind::Lightning,
-            StaffKind::Gas,
-        ] {
+        self.placed_staffs.clear();
+        for kind in StaffKind::ALL {
             self.placed_staffs.insert(kind, None);
         }
     }
@@ -429,7 +409,7 @@ impl Staffs {
             StaffKind::Fire,
             StaffKind::Ice,
             StaffKind::Lightning,
-            StaffKind::Gas,
+            StaffKind::Wind,
         ] {
             let owned = staffs.contains(&kind);
             let is_upgraded = upgraded.contains(&kind);
@@ -457,6 +437,14 @@ impl Staffs {
                 }
             ));
         }
+        let quest = if self.placements_complete {
+            "staff placement complete"
+        } else if !self.all_upgraded() {
+            "upgrade every staff"
+        } else {
+            "place upgraded staffs"
+        };
+        text.push_str(&format!(" QUEST: {quest}"));
         text
     }
 
@@ -495,11 +483,11 @@ impl Staffs {
                     "maps/zombie_tomb/fx_tomb_staff_lightning"
                 }
             }
-            StaffKind::Gas => {
+            StaffKind::Wind => {
                 if is_upgraded {
-                    "maps/zombie_tomb/fx_tomb_staff_gas_upgraded"
+                    "maps/zombie_tomb/fx_tomb_staff_air_upgraded"
                 } else {
-                    "maps/zombie_tomb/fx_tomb_staff_gas"
+                    "maps/zombie_tomb/fx_tomb_staff_air"
                 }
             }
         };
@@ -520,6 +508,9 @@ impl Staffs {
         world: &mut World,
         players: &[(ClientId, [f32; 3])],
     ) {
+        if !self.placement_ready() {
+            return;
+        }
         for pedestal in &mut self.pedestals {
             if pedestal.object.is_some()
                 || !players.iter().any(|(_, at)| {
@@ -530,7 +521,7 @@ impl Staffs {
                 continue;
             }
             if FrameWorld::from_world(world)
-                .model_capability("p6_zm_staff_pedestal")
+                .model_capability("p6_zm_tm_staff_holder")
                 .flatten()
                 .is_none()
                 || world.resource::<Runtime>().entities.len()
@@ -549,7 +540,7 @@ impl Staffs {
             };
             runtime.set_object_field(object, "origin", Value::Vector(pedestal.origin));
             runtime.set_object_field(object, "angles", Value::Vector(pedestal.angles));
-            runtime.set_object_field(object, "model", Value::string("p6_zm_staff_pedestal"));
+            runtime.set_object_field(object, "model", Value::string("p6_zm_tm_staff_holder"));
             let entity = runtime.entities.get_mut(&object).unwrap();
             entity.presence = Some(presence);
             entity.solid = false;
@@ -570,6 +561,9 @@ impl Staffs {
         client: ClientId,
         origin: [f32; 3],
     ) -> Option<usize> {
+        if !self.placement_ready() {
+            return None;
+        }
         let frame = FrameWorld::from_world(world);
         let forward = Vec3::from_array(math_iw4::angle_vectors(frame.player(client)?.viewangles).0);
         let eye = Vec3::new(origin[0], origin[1], origin[2] + 50.0);
@@ -634,14 +628,15 @@ impl Staffs {
         world: &mut World,
         client: ClientId,
         pedestal_index: usize,
-        tick: Tick,
     ) -> bool {
+        if !self.placement_ready() {
+            return false;
+        }
         let Some(pedestal) = self.pedestals.get(pedestal_index) else {
             return false;
         };
         let kind = pedestal.kind;
         let staff_placed = pedestal.staff_placed;
-        let origin = pedestal.origin;
 
         if !self.is_upgraded(client, kind) || staff_placed {
             return false;
@@ -656,17 +651,7 @@ impl Staffs {
         if let Some(staffs) = self.owned.get_mut(&client) {
             staffs.remove(&kind);
         }
-        if let Some(upgraded) = self.upgraded.get_mut(&client) {
-            upgraded.remove(&kind);
-        }
 
-        let effect_name = match kind {
-            StaffKind::Fire => "maps/zombie_tomb/fx_tomb_pedestal_fire",
-            StaffKind::Ice => "maps/zombie_tomb/fx_tomb_pedestal_ice",
-            StaffKind::Lightning => "maps/zombie_tomb/fx_tomb_pedestal_lightning",
-            StaffKind::Gas => "maps/zombie_tomb/fx_tomb_pedestal_gas",
-        };
-        powerups::effect(world, tick, effect_name, origin);
 
         diag::info!(
             Sim,
@@ -676,259 +661,40 @@ impl Staffs {
             pedestal_index
         );
 
-        self.check_quest_completion(world, tick);
+        self.complete_placement(world);
 
         true
     }
 
-    fn check_quest_completion(&mut self, world: &mut World, tick: Tick) {
-        let all_placed = self.pedestals.iter().all(|p| p.staff_placed);
-        if all_placed && !self.quest_complete {
-            self.quest_complete = true;
-            diag::info!(Sim, "origins quest: all staffs placed, spawning robot");
-            self.spawn_robot(world, tick);
-        }
+    fn all_upgraded(&self) -> bool {
+        StaffKind::ALL.into_iter().all(|kind| {
+            self.upgraded
+                .values()
+                .any(|upgraded| upgraded.contains(&kind))
+        })
     }
 
-    fn spawn_robot(&mut self, world: &mut World, tick: Tick) {
-        if self.robot_spawned {
-            return;
-        }
+    fn placement_ready(&self) -> bool {
+        self.all_upgraded() && !self.placements_complete
+    }
 
-        let center = if !self.pedestals.is_empty() {
-            let sum: [f32; 3] = self.pedestals.iter().fold([0.0; 3], |acc, p| {
-                [
-                    acc[0] + p.origin[0],
-                    acc[1] + p.origin[1],
-                    acc[2] + p.origin[2],
-                ]
-            });
-            let count = self.pedestals.len() as f32;
-            [sum[0] / count, sum[1] / count, sum[2] / count]
-        } else {
-            [0.0, 0.0, 0.0]
-        };
-
-        if FrameWorld::from_world(world)
-            .model_capability("p6_zm_giant_robot")
-            .flatten()
-            .is_none()
-            || world.resource::<Runtime>().entities.len()
-                >= super::super::entities::MAX_SCRIPT_ENTITIES
+    fn complete_placement(&mut self, world: &mut World) {
+        if self.pedestals.len() != StaffKind::ALL.len()
+            || !self.pedestals.iter().all(|pedestal| pedestal.staff_placed)
         {
-            diag::warn!(Sim, "origins robot: model not available");
             return;
         }
-
-        let Ok(presence) = super::super::presence::spawn_presence(world, center) else {
-            return;
-        };
-
-        let mut runtime = world.resource_mut::<Runtime>();
-        let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_giant_robot") else {
-            return;
-        };
-
-        runtime.set_object_field(object, "origin", Value::Vector(center));
-        runtime.set_object_field(object, "angles", Value::Vector([0.0, 0.0, 0.0]));
-        runtime.set_object_field(object, "model", Value::string("p6_zm_giant_robot"));
-        runtime.set_object_field(object, "health", Value::Int(5000));
-
-        let entity = runtime.entities.get_mut(&object).unwrap();
-        entity.presence = Some(presence);
-        entity.solid = true;
-        entity.contents = crate::bullet_collision::CONTENTS_BODY as i32;
-        entity.can_damage = true;
-        entity.can_radius_damage = true;
-
-        self.robot_object = Some(object);
-        self.robot_health = 5000;
-        self.robot_spawned = true;
-
-        powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_robot_spawn", center);
-
-        diag::info!(
-            Sim,
-            "origins giant robot spawned object={object} health=5000"
-        );
-    }
-
-    pub(super) fn damage_robot(&mut self, world: &mut World, damage: i32, tick: Tick) -> bool {
-        if !self.robot_spawned || self.robot_health <= 0 {
-            return false;
-        }
-
-        self.robot_health -= damage;
-
-        if let Some(object) = self.robot_object {
-            let mut runtime = world.resource_mut::<Runtime>();
-            runtime.set_object_field(object, "health", Value::Int(self.robot_health.max(0)));
-        }
-
-        if self.robot_health <= 0 {
-            diag::info!(Sim, "origins giant robot defeated, dropping tank keys");
-            self.drop_tank_keys(world, tick);
-            if let Some(object) = self.robot_object.take() {
-                world.resource_mut::<Runtime>().pending_deletes.push(object);
+        self.placements_complete = true;
+        for (kind, owner) in &self.placed_staffs {
+            if let Some(client) = owner {
+                self.owned.entry(*client).or_default().insert(*kind);
             }
         }
-
-        true
-    }
-
-    fn drop_tank_keys(&mut self, world: &mut World, tick: Tick) {
-        if let Some(robot_object) = self.robot_object {
-            let mut runtime = world.resource_mut::<Runtime>();
-            let origin = match runtime.object_field(robot_object, "origin") {
-                Value::Vector(v) => v,
-                _ => return,
-            };
-            drop(runtime);
-
-            for i in 0..4 {
-                let angle = (i as f32) * std::f32::consts::PI * 0.5;
-                let key_origin = [
-                    origin[0] + 100.0 * angle.cos(),
-                    origin[1] + 100.0 * angle.sin(),
-                    origin[2] + 20.0,
-                ];
-
-                if FrameWorld::from_world(world)
-                    .model_capability("p6_zm_tank_key")
-                    .flatten()
-                    .is_none()
-                    || world.resource::<Runtime>().entities.len()
-                        >= super::super::entities::MAX_SCRIPT_ENTITIES
-                {
-                    continue;
-                }
-
-                let Ok(presence) = super::super::presence::spawn_presence(world, key_origin) else {
-                    continue;
-                };
-
-                let mut runtime = world.resource_mut::<Runtime>();
-                let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_tank_key")
-                else {
-                    continue;
-                };
-
-                runtime.set_object_field(object, "origin", Value::Vector(key_origin));
-                runtime.set_object_field(object, "angles", Value::Vector([0.0, 0.0, 0.0]));
-                runtime.set_object_field(object, "model", Value::string("p6_zm_tank_key"));
-
-                let entity = runtime.entities.get_mut(&object).unwrap();
-                entity.presence = Some(presence);
-                entity.solid = false;
-                entity.contents = 0;
-
-                self.tank_keys_dropped.push(TankKey {
-                    origin: key_origin,
-                    object,
-                });
-
-                powerups::effect(
-                    world,
-                    tick,
-                    "maps/zombie_tomb/fx_tomb_tank_key_drop",
-                    key_origin,
-                );
-            }
-
-            diag::info!(
-                Sim,
-                "origins tank keys dropped: {}",
-                self.tank_keys_dropped.len()
-            );
-        }
-    }
-
-    pub(super) fn selected_tank_key(
-        &self,
-        world: &mut World,
-        client: ClientId,
-        origin: [f32; 3],
-    ) -> Option<usize> {
-        let frame = FrameWorld::from_world(world);
-        let forward = Vec3::from_array(math_iw4::angle_vectors(frame.player(client)?.viewangles).0);
-        let eye = Vec3::new(origin[0], origin[1], origin[2] + 50.0);
-
-        self.tank_keys_dropped
-            .iter()
-            .enumerate()
-            .filter(|(_, key)| {
-                Vec3::from_array(origin).distance_squared(Vec3::from_array(key.origin))
-                    <= 64.0 * 64.0
-                    && (Vec3::from_array(key.origin) + Vec3::Z * 8.0 - eye)
-                        .normalize_or_zero()
-                        .dot(forward)
-                        >= 0.5
-                    && frame
-                        .trace_world(
-                            [origin[0], origin[1], origin[2] + 50.0],
-                            [key.origin[0], key.origin[1], key.origin[2] + 8.0],
-                            [0.0; 3],
-                            [0.0; 3],
-                            0x11,
-                        )
-                        .fraction
-                        >= 0.95
-            })
-            .min_by(|(_, a), (_, b)| {
-                Vec3::from_array(a.origin)
-                    .distance_squared(Vec3::from_array(origin))
-                    .total_cmp(
-                        &Vec3::from_array(b.origin).distance_squared(Vec3::from_array(origin)),
-                    )
-            })
-            .map(|(index, _)| index)
-    }
-
-    pub(super) fn take_tank_key(
-        &mut self,
-        world: &mut World,
-        client: ClientId,
-        index: usize,
-        tick: Tick,
-    ) -> bool {
-        if index >= self.tank_keys_dropped.len() {
-            return false;
-        }
-
-        let mut frame = FrameWorld::from_world(world);
-        let tank_key_weapon = frame
-            .weapon_script_names()
-            .iter()
-            .position(|n| n == "tank_key_zm");
-
-        if let Some(weapon_id) = tank_key_weapon {
-            let weapon_id = weapon_id as u32;
-            if crate::script_player::give_weapon(&mut frame, client, weapon_id, false).is_ok() {
-                diag::info!(Sim, "origins tank key given to client={}", client.0);
-
-                let key = self.tank_keys_dropped.remove(index);
-                world.resource_mut::<Runtime>().delete_entity(key.object);
-
-                powerups::effect(
-                    world,
-                    tick,
-                    "maps/zombie_tomb/fx_tomb_tank_key_pickup",
-                    key.origin,
-                );
-
-                return true;
+        for pedestal in &mut self.pedestals {
+            if let Some(object) = pedestal.object.take() {
+                world.resource_mut::<Runtime>().delete_entity(object);
             }
         }
-
-        false
-    }
-
-    pub(super) fn tank_key_prompt(&self) -> &'static str {
-        "USE: Take tank key"
-    }
-
-    pub(super) fn is_robot(&self, object: u64) -> bool {
-        self.robot_object
-            .is_some_and(|robot_obj| robot_obj == object)
+        diag::info!(Sim, "origins staff placement completed");
     }
 }
