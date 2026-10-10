@@ -402,7 +402,6 @@ pattern crates/console/src/debug_fx.rs render_fx:: 1
 pattern crates/console/src/debug_fx_marks.rs render_fx:: 1
 pattern crates/console/src/debug_move.rs entity_iw4:: 2
 pattern crates/console/src/frontend.rs "<game>" 1
-pattern crates/console/src/game_folders.rs ZoneGame::<game> 4
 pattern crates/console/src/plugin/mod.rs input_iw4:: 5
 pattern crates/console/src/synthetic_input.rs input_iw4:: 2
 pattern crates/console/src/user_settings.rs entity_iw4:: 1
@@ -1013,7 +1012,6 @@ pattern crates/ui/src/classes/setup.rs AssetNamespace::<game> 1
 pattern crates/ui/src/frontend/maps.rs "<game>" 3
 pattern crates/ui/src/frontend/maps.rs AssetNamespace::<game> 1
 pattern crates/ui/src/launcher.rs "<game>" 3
-pattern crates/ui/src/launcher.rs AssetNamespace::<game> 3
 pattern crates/ui/src/t6_art.rs AssetNamespace::<game> 5
 pattern crates/ui/src/t6_hud.rs AssetNamespace::<game> 5
 pattern crates/ui/src/t6_hud.rs entity_iw4:: 2

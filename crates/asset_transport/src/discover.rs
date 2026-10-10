@@ -269,7 +269,12 @@ fn read_zone_version(path: &Path) -> Result<u32, String> {
     use std::io::Read;
     file.read_exact(&mut header)
         .map_err(|error| error.to_string())?;
-    if &header[0..4] != b"IWff" && &header[0..8] != fastfile_t6::MAGIC_SIGNED {
+    if &header[0..4] != b"IWff"
+        && &header[0..8] != fastfile_t6::MAGIC_SIGNED
+        && !crate::zone_formats::registered()
+            .iter()
+            .any(|format| header.starts_with(format.magic))
+    {
         return Err(format!("not an IWff envelope: {:02x?}", &header[..8]));
     }
     Ok(u32::from_le_bytes(header[8..12].try_into().unwrap()))
@@ -338,6 +343,12 @@ pub fn zone_game_for_path(path: &Path) -> Option<crate::ZoneGame> {
         .into_iter()
         .find(|(_, known)| *known == version)
         .map(|(game, _)| game)
+        .or_else(|| {
+            crate::zone_formats::registered()
+                .into_iter()
+                .find(|format| format.version == version)
+                .map(|format| format.game)
+        })
 }
 
 pub fn find_zone_file_under(search_root: &Path, zone: &str) -> Result<ZoneFile, String> {
@@ -509,6 +520,12 @@ pub fn zone_version(game: crate::ZoneGame) -> Option<u32> {
         .into_iter()
         .find(|(known, _)| *known == game)
         .map(|(_, version)| version)
+        .or_else(|| {
+            crate::zone_formats::registered()
+                .into_iter()
+                .find(|format| format.game == game)
+                .map(|format| format.version)
+        })
 }
 
 fn find_stem_file(

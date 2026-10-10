@@ -24,6 +24,24 @@ pub fn modes(family: FamilyId) -> &'static dyn game_api::GameModes {
     }
 }
 
+/// The game whose zones an installation of `game` holds; `None` for Modern
+/// Warfare, which IW4L recognises by its own files.
+pub fn installation_family(game: frame::OtherGame) -> Option<FamilyId> {
+    match game {
+        frame::OtherGame::ModernWarfare2 => Some(FamilyId::Iw4),
+        frame::OtherGame::ModernWarfare3 => Some(FamilyId::Iw5),
+        frame::OtherGame::BlackOps => Some(FamilyId::T5),
+        frame::OtherGame::BlackOps2 => Some(FamilyId::T6),
+        frame::OtherGame::BlackOps3 => Some(FamilyId::T7),
+        frame::OtherGame::ModernWarfare => None,
+    }
+}
+
+/// The zone formats of games whose zones `asset_transport` does not open itself.
+pub fn zone_formats() -> Vec<asset_core::ZoneFormat> {
+    vec![fastfile_t7::ZONE_FORMAT]
+}
+
 /// The menu expression parser of each game whose menu catalogs tag their
 /// programs with the game (`asset_game`'s Black Ops catalog writes `t5`).
 pub fn menu_parsers() -> menu_expr::MenuParsers {

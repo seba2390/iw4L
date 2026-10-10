@@ -2850,6 +2850,10 @@ dependencies = [
 [[package]]
 name = "fastfile_t7"
 version = "0.1.0"
+dependencies = [
+ "asset_core",
+ "miniz_oxide",
+]
 
 [[package]]
 name = "fastrand"
@@ -6006,6 +6010,7 @@ dependencies = [
  "bevy",
  "clipmap_iw4",
  "diag",
+ "fastfile_t7",
  "frame",
  "game_api",
  "game_iw4",

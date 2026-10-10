@@ -3,13 +3,15 @@ name = "fastfile_t7"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Black Ops 3's zone container."
+description = "Black Ops 3's zone container: header and zlib blocks."
 
 [package.metadata.iw4l]
 layer = "format"
 game = "t7"
 
 [dependencies]
+asset_core.workspace = true
+miniz_oxide.workspace = true
 
 [lints]
 workspace = true

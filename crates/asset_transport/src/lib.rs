@@ -9,6 +9,8 @@ pub mod sab;
 pub mod steam;
 pub mod t6_content;
 pub mod zone;
+mod zone_formats;
+pub use zone_formats::register_zone_formats;
 
 pub use artifact_cache::{
     CacheFlight, cache_flight, cache_get, cache_open, cache_put, cache_put_with, fnv1a64,
