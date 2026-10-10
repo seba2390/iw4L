@@ -314,6 +314,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let found = find_nodes(world, args)?;
         super::arrays::new_array(world, found)
     });
+    registry.register(Function, "getallnodes", |world, _, _| {
+        let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+            return super::arrays::new_array(world, Vec::new());
+        };
+        let nodes = (0..paths.nodes.len())
+            .map(|index| node_object(world, &paths, index as u16))
+            .collect::<Result<Vec<_>, _>>()?;
+        super::arrays::new_array(world, nodes)
+    });
     registry.register(Method, "setgoalpos", |world, receiver, args| {
         let goal = vector(args, 0)?;
         set_goal(world, receiver, Goal::Position(goal))
