@@ -129,20 +129,26 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Players spawn through the zombie scripts and receive their loadout
       (the M1911 in first person, 500 points).
 - [ ] Close the remaining builtin gaps the scripts report while a round runs
-      (left at startup: the auto-turret calls, `is_in_array` on arrays, two
-      `_gameskill` reads and the missing footstep aliases).
+      (left at startup: the auto-turret calls, `is_in_array` on arrays (the
+      VM's array equality, ledgered), the footstep aliases and
+      `uin_transition_zombie_theater`, which only the scripts' no-client-script
+      fallbacks ask for).
 - [x] Rounds, zombie spawning, points for hits and kills, wall weapons (use
       triggers answer a player looking at them within use range), doors.
 - [x] Power switch and perks (Quick Revive bought, drunk in first person,
       icon on the HUD; stance and melee locks during the drink are not
       enforced yet). Script models play `AnimScripted` clips once.
-- [x] Game over: a downed solo player without Quick Revive ends the game
+- [ ] Game over: a downed solo player without Quick Revive ends the game
       with the "You Survived N Rounds" screen (T5 SetText/SetHintString
       values fill the string's `&&1`..), then the session returns to the menu.
+      Off since the game boundary: the text is a script text hud elem (not
+      drawn) and a solo `end_game` faults at `MissionFailed()`, so the session
+      stays on the intermission (ledgered).
 - [ ] Debris, Pack-a-Punch, teleporter, the remaining power-ups.
-- [x] Last stand: every zombies player goes down; solo with Quick Revive
+- [ ] Last stand: every zombies player goes down; solo with Quick Revive
       revives on their own (Mustang & Sally in hand), the next down ends
-      the game.
+      the game. Off since the game boundary (`t5.match.last_stand`): a dying
+      player dies.
 - [x] Mystery box: bought at its random start location, the weapons spin
       and the drawn weapon is taken (a SPAS-12 in the test run).
 - [x] Power-ups drop from killed zombies at the score thresholds and are
@@ -171,8 +177,8 @@ Done when a solo game of Kino can be played from round 1 until death.
       one Mac through a local master).
 - [ ] Replicate actor state to clients efficiently (it works through the
       existing entity path; not measured).
-- [x] Revive: a downed co-op player is revived by a teammate holding use
-      (the "being revived" view is not drawn).
+- [ ] Revive: a downed co-op player is revived by a teammate holding use
+      (the "being revived" view is not drawn). Off with last stand.
 - [ ] Spectating, bleed-out and respawn between rounds for multiple players.
 - [ ] Host and join through the master across macOS, Linux and Windows.
 
