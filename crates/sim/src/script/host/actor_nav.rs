@@ -496,6 +496,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 amount,
                 origin,
                 attacker: None,
+                attacker_object: Some(id),
                 inflictor,
                 means: "MOD_MELEE",
                 weapon: 0,

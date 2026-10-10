@@ -647,6 +647,7 @@ fn apply_fall_damage(world: &mut FrameWorld, tick: Tick, id: ClientId, amount: i
         amount,
         origin: at,
         attacker: None,
+        attacker_object: None,
         inflictor: None,
         means: "MOD_FALLING",
         weapon: 0,

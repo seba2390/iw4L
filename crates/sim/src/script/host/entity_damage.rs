@@ -71,6 +71,8 @@ pub(crate) struct ScriptHit {
     pub amount: i32,
     pub origin: [f32; 3],
     pub attacker: Option<ClientId>,
+    /// The attacking script entity when it is not a player (an actor).
+    pub attacker_object: Option<u64>,
     pub inflictor: Option<ScriptModelId>,
     pub means: &'static str,
     pub weapon: u32,
