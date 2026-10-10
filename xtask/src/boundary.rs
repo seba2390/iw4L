@@ -11,9 +11,14 @@
 //!   variants, `GameModeKind::Zombies`, a game crate's path, a game literal,
 //!   `is_<game>` helpers. The session's registration point is the exception;
 //! * ledger — every `unknown!("<id>", ..)` in a game crate is listed in
-//!   `docs/fidelity/<game>.md`.
+//!   `docs/fidelity/<game>.md`;
+//! * ownership — every game has its own game crate (`game_<game>`, answering
+//!   every `game_api` trait) and its own format crate, and the registration
+//!   answers a game only with that game's crates. A rule lent from another
+//!   game must be a named item there whose type that game's ledger names.
 //!
-//! What exists today is recorded in `xtask/boundary/allow.txt`. The file is a
+//! Ownership and ledger failures are errors; graph and pattern findings are
+//! recorded in `xtask/boundary/allow.txt`. That file is a
 //! ratchet: a violation it does not list is new, an entry that no longer
 //! occurs as often is stale, and `--update` only ever lowers it.
 
@@ -32,6 +37,8 @@ const SELF: &str = "xtask/src/boundary.rs";
 const GAMES: [&str; 5] = ["iw4", "t5", "iw5", "t6", "t7"];
 const GAME_VARIANTS: [&str; 5] = ["Iw4", "T5", "Iw5", "T6", "T7"];
 const GAME_ENUMS: [&str; 4] = ["ZoneGame", "AssetNamespace", "FamilyId", "Realm"];
+/// The traits through which the session asks a game for its rules.
+const GAME_TRAITS: [&str; 4] = ["GameScripts", "GameModes", "GameMenus", "GameVision"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Layer {
@@ -174,6 +181,7 @@ pub fn run_cli(root: &Path, args: &[String]) -> Res<()> {
     }
 
     let allow_path = root.join(ALLOW);
+    errors.extend(ownership(root, &packages));
     let allowed = match std::fs::read_to_string(&allow_path) {
         Ok(text) => parse_allow(&text)?,
         Err(_) if update => {
@@ -444,6 +452,89 @@ fn unknown_ids_in(text: &str) -> Vec<String> {
 fn ledger_lists(root: &Path, game: &str, id: &str) -> bool {
     std::fs::read_to_string(root.join("docs/fidelity").join(format!("{game}.md")))
         .is_ok_and(|ledger| ledger.contains(&format!("`{id}`")))
+}
+
+fn ownership(root: &Path, packages: &[Package]) -> Vec<String> {
+    let mut errors = Vec::new();
+    for game in GAMES {
+        let own = |layer: Layer| {
+            packages
+                .iter()
+                .filter(move |p| p.layer == Some(layer) && p.game.as_deref() == Some(game))
+        };
+        if own(Layer::Format).next().is_none() {
+            errors.push(format!(
+                "{game}: no format crate reads this game's own data"
+            ));
+        }
+        let ident = format!("game_{game}");
+        let Some(rules) = own(Layer::Game).find(|p| p.ident == ident) else {
+            errors.push(format!(
+                "{game}: no `{ident}` crate holds this game's rules"
+            ));
+            continue;
+        };
+        let text: String = rust_files(&rules.dir)
+            .iter()
+            .filter_map(|file| std::fs::read_to_string(file).ok())
+            .collect();
+        for name in GAME_TRAITS {
+            if !text.contains(&format!("impl game_api::{name} for ")) {
+                errors.push(format!("{ident}: does not answer `game_api::{name}`"));
+            }
+        }
+    }
+
+    let Ok(registration) = std::fs::read_to_string(root.join(REGISTRATION)) else {
+        errors.push(format!("{REGISTRATION}: missing"));
+        return errors;
+    };
+    for (n, line) in registration.lines().enumerate() {
+        let line = code_of(line);
+        let Some((arm, answer)) = line.split_once("=>") else {
+            continue;
+        };
+        let answered: Vec<&str> = GAME_VARIANTS
+            .iter()
+            .zip(GAMES)
+            .filter(|(variant, _)| token_hits(arm, &format!("FamilyId::{variant}"), false) > 0)
+            .map(|(_, game)| game)
+            .collect();
+        for game in answered {
+            for other in packages.iter().filter(|p| {
+                matches!(p.layer, Some(Layer::Game | Layer::Format))
+                    && p.game.as_deref().is_some_and(|g| g != game)
+            }) {
+                if token_hits(answer, &other.ident, false) > 0 {
+                    errors.push(format!(
+                        "{REGISTRATION}:{}: {game} is answered by `{}`, another game's crate",
+                        n + 1,
+                        other.ident
+                    ));
+                }
+            }
+            for item in answer.split(|c: char| !is_ident(c)).filter(|word| {
+                word.len() > 1
+                    && word
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit())
+                    && !answer.contains(&format!("::{word}"))
+            }) {
+                let lent = registration
+                    .lines()
+                    .find_map(|l| l.trim().strip_prefix(&format!("static {item}: ")))
+                    .and_then(|rest| rest.split(|c: char| !is_ident(c)).next());
+                let ledgered = lent.is_some_and(|ty| ledger_lists(root, game, ty));
+                if !ledgered {
+                    errors.push(format!(
+                        "{REGISTRATION}:{}: {game} is answered by `{item}`, whose type docs/fidelity/{game}.md does not name",
+                        n + 1
+                    ));
+                }
+            }
+        }
+    }
+    errors
 }
 
 fn parse_allow(text: &str) -> Res<Findings> {

@@ -43,7 +43,7 @@ Before opening anything:
 
 ```bash
 make publish-check   # the tracked tree is the product and nothing else
-make boundary        # each game's rules stay in that game's crates (docs/ARCHITECTURE.md)
+make boundary        # each game runs on its own crates, nothing borrowed (docs/ARCHITECTURE.md)
 cargo fmt --all
 cargo clippy --workspace --all-targets
 ```
