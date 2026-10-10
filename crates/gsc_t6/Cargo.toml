@@ -10,6 +10,7 @@ layer = "format"
 game = "t6"
 
 [dependencies]
+gsc.workspace = true
 
 [lints]
 workspace = true

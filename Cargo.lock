@@ -3447,6 +3447,9 @@ dependencies = [
 [[package]]
 name = "gsc_t6"
 version = "0.1.0"
+dependencies = [
+ "gsc",
+]
 
 [[package]]
 name = "gsc_t7"
