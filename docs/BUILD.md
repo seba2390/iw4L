@@ -46,10 +46,8 @@ Match metadata uses the Git commit count as its numeric build number. Release
 builders can set `IW4L_BUILD_NUMBER`; source archives need this variable. The
 package version remains the textual build version.
 
-CI (`.github/workflows/`) runs `cargo check --workspace --all-targets` on
-Linux and macOS, `make publish-check` and `make boundary` on every push and
-pull request; it has no game data, so it does not play maps.
-
-`make boundary` checks that each game's rules stay in that game's crates
+CI (`.github/workflows/`) checks the build (Linux, macOS), `make publish-check`
+and `make boundary`; it has no game data. `make boundary` checks that each
+game's rules stay in that game's crates
 ([`ARCHITECTURE.md`](ARCHITECTURE.md)); a new crate needs a
 `[package.metadata.iw4l] layer` or the check refuses it.
