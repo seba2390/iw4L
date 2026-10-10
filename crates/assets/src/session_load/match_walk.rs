@@ -196,6 +196,8 @@ pub(super) async fn walk_prepared_match(
     let zombie_scene_names = zombie_scripts
         .as_ref()
         .map(crate::ScriptSources::asset_names);
+    let mut zombie_weapon_materials = zombie.fpv.material_names();
+    zombie_weapon_materials.extend(zombie.world_weapons.material_names());
     let zombie_scene_models = zombie.scene_models;
     let zombie_hud_images = zombie.hud_images;
     report.extend(zombie.report);
@@ -462,12 +464,23 @@ pub(super) async fn walk_prepared_match(
                 })
                 .map(|(index, material)| (index, material.name.as_str().to_owned()))
                 .collect();
-            if models.is_empty() && held.is_empty() {
+            let weapon_models: Vec<usize> = population
+                .materials
+                .iter()
+                .enumerate()
+                .filter(|(_, material)| {
+                    material.name.is_real()
+                        && zombie_weapon_materials.contains(material.name.as_str())
+                })
+                .map(|(index, _)| index)
+                .collect();
+            if models.is_empty() && held.is_empty() && weapon_models.is_empty() {
                 continue;
             }
             absorbed += models.len();
             let mut wanted = models.walk_materials();
             wanted.extend(held.iter().map(|(index, _)| *index));
+            wanted.extend(weapon_models);
             let linked = global.absorb_selected_materials_host_wins(population, &wanted);
             for (index, name) in held {
                 if let Some(host) = linked[index] {

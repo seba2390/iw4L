@@ -404,6 +404,16 @@ impl FpvMeshBuild {
             entry.resolve_materials(materials);
         }
     }
+
+    /// The materials the captured meshes' surfaces name.
+    pub fn material_names(&self) -> std::collections::BTreeSet<String> {
+        self.catalog
+            .entries
+            .iter()
+            .flat_map(|entry| entry.material_keys.iter().flatten())
+            .map(|key| key.name.clone())
+            .collect()
+    }
 }
 
 impl FpvMeshCatalog {
