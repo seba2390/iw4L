@@ -69,6 +69,16 @@ const TEAM_DEATHMATCH_MODE: ModeRules = ModeRules {
 const MULTIPLAYER_MODE: ModeRules = ModeRules {
     play_starts_on: "prematch_over",
     every_player_downs: Rule::Known(false),
+    movement: Rule::Unknown(unknown!(
+        "t6.movement.player",
+        "Black Ops 2's player movement",
+        "Black Ops 2's player movement rules"
+    )),
+    weapons: Rule::Unknown(unknown!(
+        "t6.weapons.state_machine",
+        "Black Ops 2's weapon state machine",
+        "Black Ops 2's weapon rules"
+    )),
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,

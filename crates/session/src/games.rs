@@ -18,7 +18,7 @@ pub fn modes(family: FamilyId) -> &'static dyn game_api::GameModes {
         FamilyId::Iw4 => &game_iw4::GAME,
         FamilyId::T5 => &game_t5::GAME,
         FamilyId::Iw5 => &game_iw5::GAME,
-        FamilyId::T6 => &game_t6::GAME,
+        FamilyId::T6 => &T6_ON_IW4_MOVEMENT,
     }
 }
 
@@ -55,5 +55,28 @@ pub(crate) fn vision(family: FamilyId) -> &'static dyn game_api::GameVision {
         FamilyId::T5 => &game_t5::GAME,
         FamilyId::Iw5 => &game_iw5::GAME,
         FamilyId::T6 => &game_t6::GAME,
+    }
+}
+
+/// Black Ops 2 moves and fires by Modern Warfare 2's rules: the owner kept
+/// Black Ops 2 playable on them until its own exist (docs/fidelity/t6.md).
+struct T6OnIw4Movement;
+
+static T6_ON_IW4_MOVEMENT: T6OnIw4Movement = T6OnIw4Movement;
+
+impl game_api::GameModes for T6OnIw4Movement {
+    fn mode(&self, gametype: &str) -> game_api::Rule<game_api::ModeRules> {
+        match game_api::GameModes::mode(&game_t6::GAME, gametype) {
+            game_api::Rule::Known(mut mode) => {
+                mode.movement = game_api::Rule::Known(());
+                mode.weapons = game_api::Rule::Known(());
+                game_api::Rule::Known(mode)
+            }
+            unknown => unknown,
+        }
+    }
+
+    fn zombies(&self) -> Option<&'static game_api::LibraryMode> {
+        game_api::GameModes::zombies(&game_t6::GAME)
     }
 }

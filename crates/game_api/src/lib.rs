@@ -65,6 +65,11 @@ pub struct ModeRules {
     pub play_starts_on: &'static str,
     /// Every player goes down into last stand instead of dying.
     pub every_player_downs: Rule<bool>,
+    /// Players move by Modern Warfare 2's player movement (look, walk, jump,
+    /// stances, gravity, collision).
+    pub movement: Rule<()>,
+    /// Players' weapons run Modern Warfare 2's weapon state machine.
+    pub weapons: Rule<()>,
     /// A spawn starts at the default full health, not the stored max health.
     pub spawn_at_default_health: bool,
     /// The team every player joins on connect, when the scripts pick none.

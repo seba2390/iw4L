@@ -64,6 +64,16 @@ impl game_api::GameScripts for T5 {
 
 const ZOMBIE_MODE: ModeRules = ModeRules {
     play_starts_on: "all_players_connected",
+    movement: Rule::Unknown(unknown!(
+        "t5.movement.player",
+        "Black Ops' player movement: look, walk, sprint, jump, stances, dive to prone, gravity, collision",
+        "Black Ops' player movement rules from its executable"
+    )),
+    weapons: Rule::Unknown(unknown!(
+        "t5.weapons.state_machine",
+        "Black Ops' weapon state machine: fire, reload, switch, ADS, melee, offhands",
+        "Black Ops' weapon rules from its executable"
+    )),
     every_player_downs: Rule::Unknown(unknown!(
         "t5.match.last_stand",
         "when a dying Black Ops zombies player goes into last stand, and how a downed player moves and sees",
