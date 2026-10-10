@@ -8,6 +8,11 @@ use crate::Unknown;
 /// simulation stores, replicates and rolls them back with the player.
 pub const GAME_MOVE_BYTES: usize = 256;
 
+/// The entity number for no entity: a player standing on nothing.
+pub const ENTITY_NONE: i32 = -1;
+/// The entity number for the world itself.
+pub const ENTITY_WORLD: i32 = -2;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum MoveType {
     #[default]
@@ -74,12 +79,16 @@ pub struct MovePlayer {
     pub delta_angles: [f32; 3],
     pub gravity: i32,
     pub speed: i32,
+    /// [`ENTITY_NONE`], [`ENTITY_WORLD`] or the entity's number.
     pub ground_entity: i32,
     pub weapon: u32,
     pub move_speed_scale: f32,
+    /// A script froze the player's controls.
     pub frozen: bool,
     /// Set by movement: the eye height above the origin.
     pub view_height: f32,
+    /// Set by movement: the eye height the stance settles at.
+    pub view_height_target: i32,
     pub bob_cycle: i32,
     pub leanf: f32,
     pub movement_dir: i32,
@@ -100,11 +109,12 @@ impl Default for MovePlayer {
             delta_angles: [0.0; 3],
             gravity: 0,
             speed: 0,
-            ground_entity: 0,
+            ground_entity: ENTITY_NONE,
             weapon: 0,
             move_speed_scale: 1.0,
             frozen: false,
             view_height: 0.0,
+            view_height_target: 0,
             bob_cycle: 0,
             leanf: 0.0,
             movement_dir: 0,
@@ -121,7 +131,8 @@ pub struct MoveTrace {
     pub fraction: f32,
     pub surface_flags: u32,
     pub contents: u32,
-    /// The entity hit; the world when nothing else.
+    /// The entity hit: [`ENTITY_WORLD`] when nothing else, [`ENTITY_NONE`]
+    /// when nothing was hit.
     pub entity: i32,
     pub allsolid: bool,
     pub startsolid: bool,
@@ -144,6 +155,15 @@ pub struct MoveWeapon {
     pub offhand_slot: i32,
 }
 
+/// The water over a point, as far as the match knows it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WaterSurface {
+    Dry,
+    At(f32),
+    /// The match cannot tell.
+    Unknown,
+}
+
 /// The match around a moving player.
 pub trait MoveWorld {
     /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask`
@@ -158,16 +178,16 @@ pub trait MoveWorld {
         mask: u32,
     ) -> MoveTrace;
     fn is_player(&self, entity: i32) -> bool;
-    fn weapon(&self, weapon: u32) -> MoveWeapon;
+    /// The weapon's movement fields; `None` when its game's fields were not
+    /// loaded for it.
+    fn weapon(&self, weapon: u32) -> Option<MoveWeapon>;
     /// The water surface over `origin`, searched from `up` above to `down`
     /// below it.
-    fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32>;
+    fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> WaterSurface;
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MoveContext {
-    /// The match is the game's zombies mode.
-    pub zombies: bool,
     /// A client predicts its own player.
     pub predicting: bool,
 }
@@ -183,8 +203,8 @@ pub enum MoveSignal {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MoveOutcome {
     pub walking: bool,
-    pub mins: [f32; 3],
-    pub maxs: [f32; 3],
+    /// The player's bounds after the move; `None` when the move did not run.
+    pub bounds: Option<([f32; 3], [f32; 3])>,
     pub touched: Vec<i32>,
     pub signals: Vec<MoveSignal>,
     /// Parts of the game's movement the player reached that are not run.
@@ -215,12 +235,16 @@ pub trait PlayerMovement: Sync {
         context: MoveContext,
     ) -> MoveOutcome;
 
+    /// What the server sets on the player before each command, from the
+    /// match's dvars.
+    fn think(&self, player: &mut MovePlayer, dvar: &dyn Fn(&str) -> Option<String>);
+
     /// A fresh player at spawn.
     fn spawn(&self, player: &mut MovePlayer);
 
     fn restrict(&self, player: &mut MovePlayer, what: MoveRestriction, allowed: bool);
 
-    fn set_stance(&self, player: &mut MovePlayer, stance: Stance);
+    fn set_stance(&self, player: &mut MovePlayer, stance: Stance) -> MoveOutcome;
 
     /// Sets or clears a perk; false when the game has no perk of that name.
     fn set_perk(&self, player: &mut MovePlayer, perk: &str, on: bool) -> bool;
