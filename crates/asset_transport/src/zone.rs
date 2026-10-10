@@ -264,7 +264,18 @@ pub fn parse_zone_image(bytes: &[u8]) -> Result<ZoneImage, ZoneOpenError> {
                 iw4_wire_format: None,
             })
         }
-        other => Err(ZoneOpenError::UnsupportedVersion { got: other }),
+        other => match crate::zone_formats::registered()
+            .into_iter()
+            .find(|format| format.recognises(bytes))
+        {
+            Some(format) => Ok(ZoneImage {
+                game: format.game,
+                version: format.version,
+                bytes: (format.decode)(bytes).map_err(ZoneOpenError::Inflate)?,
+                iw4_wire_format: None,
+            }),
+            None => Err(ZoneOpenError::UnsupportedVersion { got: other }),
+        },
     }
 }
 

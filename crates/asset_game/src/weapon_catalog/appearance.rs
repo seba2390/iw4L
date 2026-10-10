@@ -163,6 +163,7 @@ impl PreparedWeaponAppearance {
                         }),
                 );
             }
+            _ => {}
         }
         appearances.into()
     }

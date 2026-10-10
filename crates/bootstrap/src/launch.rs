@@ -72,6 +72,7 @@ pub fn launch(
     acceptance: Option<AcceptanceLaunch>,
     cheats: sim::HostCheats,
 ) {
+    asset_transport::register_zone_formats(session::games::zone_formats());
     asset_transport::set_game_folders(console::stored_game_folders(&artifacts));
     let steam = asset_transport::link_steam_games(&games);
     diag::info!(Launch, "{}", asset_transport::games_root_report(&games));

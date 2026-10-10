@@ -149,7 +149,11 @@ pub(crate) fn walk_zone_sound(path: &Path) -> Result<SoundCatalog, String> {
         ZoneGame::Iw4 => load_sound_catalog(path),
         ZoneGame::Iw5 => crate::sound_load_iw5::load_sound_catalog_iw5(path),
         ZoneGame::T5 => crate::sound_load_t5::load_sound_catalog_t5(path),
-        ZoneGame::T6 => Err(format!("{}: T6 sound banks are not read", path.display())),
+        _ => Err(format!(
+            "{}: {} sound banks are not read",
+            path.display(),
+            game.prefix()
+        )),
     }
 }
 

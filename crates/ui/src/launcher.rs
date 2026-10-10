@@ -13,14 +13,16 @@ enum Game {
     ModernWarfare2,
     BlackOps,
     BlackOps2,
+    BlackOps3,
 }
 
 impl Game {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 5] = [
         Self::ModernWarfare,
         Self::ModernWarfare2,
         Self::BlackOps,
         Self::BlackOps2,
+        Self::BlackOps3,
     ];
 
     fn folder(self) -> OtherGame {
@@ -29,16 +31,12 @@ impl Game {
             Self::ModernWarfare2 => OtherGame::ModernWarfare2,
             Self::BlackOps => OtherGame::BlackOps,
             Self::BlackOps2 => OtherGame::BlackOps2,
+            Self::BlackOps3 => OtherGame::BlackOps3,
         }
     }
 
     fn namespace(self) -> Option<AssetNamespace> {
-        match self {
-            Self::ModernWarfare => None,
-            Self::ModernWarfare2 => Some(AssetNamespace::Iw4),
-            Self::BlackOps => Some(AssetNamespace::T5),
-            Self::BlackOps2 => Some(AssetNamespace::T6),
-        }
+        session::games::installation_family(self.folder())
     }
 
     fn title(self) -> &'static str {
@@ -54,6 +52,7 @@ impl Game {
             Self::ModernWarfare | Self::ModernWarfare2 => Color::srgb(0.68, 0.82, 0.43),
             Self::BlackOps => Color::srgb(0.83, 0.78, 0.64),
             Self::BlackOps2 => Color::srgb(1.0, 0.65, 0.30),
+            Self::BlackOps3 => Color::srgb(0.95, 0.42, 0.18),
         }
     }
 
@@ -63,6 +62,7 @@ impl Game {
             "mw2" | "iw4" | "modern_warfare_2" => Some(Self::ModernWarfare2),
             "bo" | "t5" | "black_ops" => Some(Self::BlackOps),
             "bo2" | "t6" | "black_ops_2" => Some(Self::BlackOps2),
+            "bo3" | "black_ops_3" => Some(Self::BlackOps3),
             _ => None,
         }
     }
@@ -150,7 +150,7 @@ struct Installation {
 #[derive(Resource, Default)]
 struct Inventory {
     games: Vec<Installation>,
-    folders: Option<[String; 5]>,
+    folders: Option<[String; 6]>,
     task: Option<Task<(Vec<Installation>, Vec<asset_transport::MapPack>)>>,
     generation: u64,
 }
@@ -418,15 +418,7 @@ fn discover(
             .map(|game| {
                 let installed = game
                     .namespace()
-                    .and_then(|namespace| {
-                        let kind = match namespace {
-                            AssetNamespace::Iw4 => asset_transport::ZoneGame::Iw4,
-                            AssetNamespace::Iw5 => asset_transport::ZoneGame::Iw5,
-                            AssetNamespace::T5 => asset_transport::ZoneGame::T5,
-                            AssetNamespace::T6 => asset_transport::ZoneGame::T6,
-                        };
-                        asset_transport::find_game_install(&root.0, kind)
-                    })
+                    .and_then(|namespace| asset_transport::find_game_install(&root.0, namespace))
                     .or_else(|| {
                         (game == Game::ModernWarfare)
                             .then(|| asset_transport::find_modern_warfare_install(&root.0))
@@ -872,11 +864,13 @@ fn input(
                 Some("host") => Some(Action::Page(Page::Host)),
                 Some("browser") => Some(Action::Page(Page::Browser)),
                 Some("campaign") => Some(Action::Wip("Campaign")),
-                Some("zombies") => Some(if menu.selected == Some(Game::BlackOps2) {
-                    Action::Page(Page::Zombies)
-                } else {
-                    Action::Wip("Zombies")
-                }),
+                Some("zombies") => Some(
+                    if matches!(menu.selected, Some(Game::BlackOps2 | Game::BlackOps3)) {
+                        Action::Page(Page::Zombies)
+                    } else {
+                        Action::Wip("Zombies")
+                    },
+                ),
                 Some("setting") => match parts.next() {
                     Some("vsync") => Some(Action::Setting("vsync")),
                     Some("fullscreen") => Some(Action::Setting("fullscreen")),

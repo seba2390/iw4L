@@ -138,6 +138,22 @@ impl ScriptSources {
         );
     }
 
+    /// A compiled module, kept as it is: `scripts/zm/x.gsc` is read as
+    /// `scripts/zm/x`.
+    pub(crate) fn capture_compiled(&mut self, name: &str, bytes: Vec<u8>) {
+        let name = normalize(name);
+        let Some(module) = name.strip_suffix(".gsc") else {
+            return;
+        };
+        self.sources.insert(
+            module.to_owned(),
+            ScriptSource {
+                bytes: Ok(bytes),
+                origin: ScriptSourceOrigin::Packaged,
+            },
+        );
+    }
+
     pub(crate) fn capture_table(&mut self, table: &asset_game::CapturedStringTable) {
         self.tables.insert(
             normalize(&table.name),

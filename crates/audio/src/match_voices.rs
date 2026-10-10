@@ -268,7 +268,7 @@ impl AnnouncerRoutes {
             AssetNamespace::Iw4 => return Self::default(),
             AssetNamespace::T5 => T5_LINES,
             AssetNamespace::T6 => T6_LINES,
-            AssetNamespace::Iw5 => &[],
+            _ => &[],
         };
         let Some(native) = native else {
             return Self::default();

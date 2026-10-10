@@ -8,14 +8,6 @@ pub struct WorldDrawPolicy {
 }
 
 impl WorldDrawPolicy {
-    pub const fn for_family(family: asset_core::FamilyId) -> Self {
-        match family {
-            asset_core::FamilyId::Iw4 => Self::iw4(),
-            asset_core::FamilyId::Iw5 => Self::iw5(),
-            asset_core::FamilyId::T5 => Self::t5(),
-            asset_core::FamilyId::T6 => Self::t6(),
-        }
-    }
     pub const fn iw4() -> Self {
         Self {
             family: asset_core::FamilyId::Iw4,
@@ -43,6 +35,18 @@ impl WorldDrawPolicy {
             lightmap_requires_image: false,
             decode_color_at_convert: false,
             sun_sample_size_near: 0.25,
+        }
+    }
+
+    /// A game whose world draw rules IW4L does not read; nothing of its world
+    /// is drawn.
+    pub const fn unread(family: asset_core::FamilyId) -> Self {
+        Self {
+            family,
+            sun_sample_size_near: 0.0,
+            resolve_specular_env: false,
+            lightmap_requires_image: false,
+            decode_color_at_convert: false,
         }
     }
 
