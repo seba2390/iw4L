@@ -2045,11 +2045,14 @@ fn interactions(
         let dig = state.digs.selected(world, origin, client, tick);
         let staff = state.staffs.selected(world, client, origin);
         let pedestal = state.staffs.selected_pedestal(world, client, origin);
+        let tank_key = state.staffs.selected_tank_key(world, client, origin);
         if held && !survivor.use_held && revival.is_none() && selected.is_none() {
             if let Some(index) = shovel {
                 state.tools.take(world, client, index);
             } else if let Some(index) = pedestal {
-                state.staffs.place_staff(world, client, index);
+                state.staffs.place_staff(world, client, index, tick);
+            } else if let Some(index) = tank_key {
+                state.staffs.take_tank_key(world, client, index, tick);
             } else if let Some(index) = staff {
                 state.staffs.craft(world, client, index);
             } else if let Some(index) = dig {
@@ -2267,6 +2270,8 @@ fn interactions(
                             "USE: Pick up shovel".into()
                         } else if let Some(pedestal) = pedestal {
                             state.staffs.pedestal_prompt(pedestal, client)
+                        } else if tank_key.is_some() {
+                            state.staffs.tank_key_prompt().into()
                         } else if let Some(staff) = staff {
                             state.staffs.prompt(staff, client)
                         } else if let Some(dig) = dig {
@@ -2552,6 +2557,37 @@ pub(crate) fn entity_damage(
     after: i32,
     headshot: bool,
 ) {
+    // Check if this is the giant robot
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let is_robot = world
+        .resource::<Runtime>()
+        .zombies
+        .staffs
+        .is_robot(object);
+
+    if is_robot && hit.amount > 0 {
+        let mut zombies = std::mem::take(&mut world.resource_mut::<Runtime>().zombies);
+        zombies.staffs.damage_robot(world, hit.amount, tick);
+        world.resource_mut::<Runtime>().zombies = zombies;
+
+        if let Some(client) = hit.attacker {
+            let reward = world
+                .resource_mut::<Runtime>()
+                .zombies
+                .powerups
+                .reward(tick, 50);
+            score(world, client, reward);
+        }
+        diag::info!(
+            Sim,
+            "origins robot hit object={object} damage={} before={} after={}",
+            hit.amount,
+            before,
+            after
+        );
+        return;
+    }
+
     if !world
         .resource::<Runtime>()
         .zombies

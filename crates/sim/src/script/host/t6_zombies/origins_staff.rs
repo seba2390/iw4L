@@ -59,6 +59,16 @@ pub(super) struct Staffs {
     pedestals: Vec<StaffPedestal>,
     placed_staffs: BTreeMap<StaffKind, Option<ClientId>>,
     placements_complete: bool,
+    robot_spawned: bool,
+    robot_health: i32,
+    robot_object: Option<u64>,
+    tank_keys_dropped: Vec<TankKey>,
+}
+
+#[derive(Clone, Debug)]
+struct TankKey {
+    origin: [f32; 3],
+    object: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -628,6 +638,7 @@ impl Staffs {
         world: &mut World,
         client: ClientId,
         pedestal_index: usize,
+        tick: Tick,
     ) -> bool {
         if !self.placement_ready() {
             return false;
@@ -652,7 +663,6 @@ impl Staffs {
             staffs.remove(&kind);
         }
 
-
         diag::info!(
             Sim,
             "origins staff placed client={} kind={} pedestal={}",
@@ -661,7 +671,7 @@ impl Staffs {
             pedestal_index
         );
 
-        self.complete_placement(world);
+        self.complete_placement(world, tick);
 
         true
     }
@@ -678,7 +688,7 @@ impl Staffs {
         self.all_upgraded() && !self.placements_complete
     }
 
-    fn complete_placement(&mut self, world: &mut World) {
+    fn complete_placement(&mut self, world: &mut World, tick: Tick) {
         if self.pedestals.len() != StaffKind::ALL.len()
             || !self.pedestals.iter().all(|pedestal| pedestal.staff_placed)
         {
@@ -695,6 +705,235 @@ impl Staffs {
                 world.resource_mut::<Runtime>().delete_entity(object);
             }
         }
-        diag::info!(Sim, "origins staff placement completed");
+        diag::info!(Sim, "origins staff placement completed, spawning robot");
+        self.spawn_robot(world, tick);
+    }
+
+    fn spawn_robot(&mut self, world: &mut World, tick: Tick) {
+        if self.robot_spawned {
+            return;
+        }
+
+        // Robot spawn location (center of pedestal area)
+        let center = if !self.pedestals.is_empty() {
+            let sum: [f32; 3] = self.pedestals.iter().fold([0.0; 3], |acc, p| {
+                [acc[0] + p.origin[0], acc[1] + p.origin[1], acc[2] + p.origin[2]]
+            });
+            let count = self.pedestals.len() as f32;
+            [sum[0] / count, sum[1] / count, sum[2] / count]
+        } else {
+            [0.0, 0.0, 0.0]
+        };
+
+        // Spawn robot entity
+        if FrameWorld::from_world(world)
+            .model_capability("p6_zm_giant_robot")
+            .flatten()
+            .is_none()
+            || world.resource::<Runtime>().entities.len()
+                >= super::super::entities::MAX_SCRIPT_ENTITIES
+        {
+            diag::warn!(Sim, "origins robot: model not available");
+            return;
+        }
+
+        let Ok(presence) = super::super::presence::spawn_presence(world, center) else {
+            return;
+        };
+
+        let mut runtime = world.resource_mut::<Runtime>();
+        let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_giant_robot") else {
+            return;
+        };
+
+        runtime.set_object_field(object, "origin", Value::Vector(center));
+        runtime.set_object_field(object, "angles", Value::Vector([0.0, 0.0, 0.0]));
+        runtime.set_object_field(object, "model", Value::string("p6_zm_giant_robot"));
+        runtime.set_object_field(object, "health", Value::Int(5000));
+
+        let entity = runtime.entities.get_mut(&object).unwrap();
+        entity.presence = Some(presence);
+        entity.solid = true;
+        entity.contents = crate::bullet_collision::CONTENTS_BODY as i32;
+        entity.can_damage = true;
+        entity.can_radius_damage = true;
+
+        self.robot_object = Some(object);
+        self.robot_health = 5000;
+        self.robot_spawned = true;
+
+        // Play spawn effect
+        powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_robot_spawn", center);
+
+        diag::info!(Sim, "origins giant robot spawned object={object} health=5000");
+    }
+
+    pub(super) fn damage_robot(&mut self, world: &mut World, damage: i32, tick: Tick) -> bool {
+        if !self.robot_spawned || self.robot_health <= 0 {
+            return false;
+        }
+
+        self.robot_health -= damage;
+
+        if let Some(object) = self.robot_object {
+            let mut runtime = world.resource_mut::<Runtime>();
+            runtime.set_object_field(object, "health", Value::Int(self.robot_health.max(0)));
+        }
+
+        if self.robot_health <= 0 {
+            diag::info!(Sim, "origins giant robot defeated, dropping tank keys");
+            self.drop_tank_keys(world, tick);
+        }
+
+        true
+    }
+
+    fn drop_tank_keys(&mut self, world: &mut World, tick: Tick) {
+        // Drop 4 tank keys around the robot
+        if let Some(robot_object) = self.robot_object {
+            let origin = match world.resource_mut::<Runtime>().object_field(robot_object, "origin") {
+                Value::Vector(v) => v,
+                _ => return,
+            };
+
+            // Spawn 4 tank keys in cardinal directions
+            for i in 0..4 {
+                let angle = (i as f32) * std::f32::consts::PI * 0.5;
+                let key_origin = [
+                    origin[0] + 100.0 * angle.cos(),
+                    origin[1] + 100.0 * angle.sin(),
+                    origin[2] + 20.0,
+                ];
+
+                if FrameWorld::from_world(world)
+                    .model_capability("p6_zm_tank_key")
+                    .flatten()
+                    .is_none()
+                    || world.resource::<Runtime>().entities.len()
+                        >= super::super::entities::MAX_SCRIPT_ENTITIES
+                {
+                    continue;
+                }
+
+                let Ok(presence) = super::super::presence::spawn_presence(world, key_origin) else {
+                    continue;
+                };
+
+                let mut runtime = world.resource_mut::<Runtime>();
+                let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_tank_key")
+                else {
+                    continue;
+                };
+
+                runtime.set_object_field(object, "origin", Value::Vector(key_origin));
+                runtime.set_object_field(object, "angles", Value::Vector([0.0, 0.0, 0.0]));
+                runtime.set_object_field(object, "model", Value::string("p6_zm_tank_key"));
+
+                let entity = runtime.entities.get_mut(&object).unwrap();
+                entity.presence = Some(presence);
+                entity.solid = false;
+                entity.contents = 0;
+
+                self.tank_keys_dropped.push(TankKey {
+                    origin: key_origin,
+                    object,
+                });
+
+                // Play drop effect
+                powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_tank_key_drop", key_origin);
+            }
+
+            diag::info!(
+                Sim,
+                "origins tank keys dropped: {}",
+                self.tank_keys_dropped.len()
+            );
+        }
+    }
+
+    pub(super) fn selected_tank_key(
+        &self,
+        world: &mut World,
+        client: ClientId,
+        origin: [f32; 3],
+    ) -> Option<usize> {
+        let frame = FrameWorld::from_world(world);
+        let forward = Vec3::from_array(math_iw4::angle_vectors(frame.player(client)?.viewangles).0);
+        let eye = Vec3::new(origin[0], origin[1], origin[2] + 50.0);
+
+        self.tank_keys_dropped
+            .iter()
+            .enumerate()
+            .filter(|(_, key)| {
+                Vec3::from_array(origin).distance_squared(Vec3::from_array(key.origin))
+                    <= 64.0 * 64.0
+                    && (Vec3::from_array(key.origin) + Vec3::Z * 8.0 - eye)
+                        .normalize_or_zero()
+                        .dot(forward)
+                        >= 0.5
+                    && frame
+                        .trace_world(
+                            [origin[0], origin[1], origin[2] + 50.0],
+                            [key.origin[0], key.origin[1], key.origin[2] + 8.0],
+                            [0.0; 3],
+                            [0.0; 3],
+                            0x11,
+                        )
+                        .fraction
+                        >= 0.95
+            })
+            .min_by(|(_, a), (_, b)| {
+                Vec3::from_array(a.origin)
+                    .distance_squared(Vec3::from_array(origin))
+                    .total_cmp(
+                        &Vec3::from_array(b.origin).distance_squared(Vec3::from_array(origin)),
+                    )
+            })
+            .map(|(index, _)| index)
+    }
+
+    pub(super) fn take_tank_key(
+        &mut self,
+        world: &mut World,
+        client: ClientId,
+        index: usize,
+        tick: Tick,
+    ) -> bool {
+        let Some(key) = self.tank_keys_dropped.get(index) else {
+            return false;
+        };
+
+        // Give player the tank key weapon
+        let mut frame = FrameWorld::from_world(world);
+        let tank_key_weapon = frame
+            .weapon_script_names()
+            .iter()
+            .position(|n| n == "tank_key_zm");
+
+        if let Some(weapon_id) = tank_key_weapon {
+            let weapon_id = weapon_id as u32;
+            if crate::script_player::give_weapon(&mut frame, client, weapon_id, false).is_ok() {
+                diag::info!(Sim, "origins tank key given to client={}", client.0);
+
+                // Remove the key entity
+                let key = self.tank_keys_dropped.remove(index);
+                world.resource_mut::<Runtime>().delete_entity(key.object);
+
+                // Play pickup effect
+                powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_tank_key_pickup", key.origin);
+
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub(super) fn tank_key_prompt(&self) -> &'static str {
+        "USE: Take tank key"
+    }
+
+    pub(super) fn is_robot(&self, object: u64) -> bool {
+        self.robot_object.is_some_and(|robot_obj| robot_obj == object)
     }
 }
