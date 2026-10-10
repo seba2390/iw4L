@@ -6,7 +6,8 @@ game. Keep them this short: nobody opens a long file twice.
 | file | about | when to read |
 |---|---|---|
 | [`BUILD.md`](BUILD.md) | system packages per distro (Fedora / Debian / Arch), macOS, what the Windows cross build needs | before your first build |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | game boundary: neutral / format / game / session layers, one game per match through the `game_api` traits, `unknown!` instead of another game's rule, `make boundary`, the hook and CI | adding a game, moving a rule, a `boundary` failure |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | game boundary: neutral / format / game / session layers, one game per match through the `game_api` traits, `unknown!` instead of another game's rule, `make boundary` (incl. each game owning its crates), the hook and CI | adding a game, moving a rule, a `boundary` failure |
+| [`DECODING.md`](DECODING.md) | how a game's data, compiled scripts and engine rules are read from the owner's install (format crates, `gsc_t6`/`gsc_t7`, a local VM, Capstone/Ghidra) without anything entering the repo | before reverse-engineering a rule |
 | [`RUN.md`](RUN.md) | running (`make map`, `--cmds`), controls frozen until `Playing`, `force_match_start`, sync-by-default, the verb list and the traps | before your first live run |
 | [`WINDOWS.md`](WINDOWS.md) | portable `iw4l.exe`: community updates, shortcuts into CoD, writable `iw4l-artifacts/` | building and running on Windows |
 | [`DEPLOY.md`](DEPLOY.md) | `make release` / `publish` / `deploy`: every root `.iw4l-server` is a server, hashed `.zst`, master by SHA, GitHub pre-release | shipping a release, "why is the player on an old version" |
