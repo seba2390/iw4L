@@ -6,6 +6,7 @@ license.workspace = true
 description = "Draws what hud_iw4 computes / Snapshot presents."
 
 [dependencies]
+structured_data_iw4.workspace = true
 diag.workspace = true
 bevy.workspace = true
 asset_core.workspace = true
