@@ -206,6 +206,7 @@ pub(super) async fn walk_prepared_match(
             .map(|key| key.name),
     );
     let zombie_fx = zombie.fx;
+    let zombie_impact_fx = zombie.impact_fx;
     let zombie_scene_models = zombie.scene_models;
     let zombie_hud_images = zombie.hud_images;
     report.extend(zombie.report);
@@ -821,7 +822,24 @@ pub(super) async fn walk_prepared_match(
     decode_fx_colour_maps(&world.fx, &mut global, &image_trees, &progress, &mut report);
     if world.impact_fx.is_none() {
         world.impact_fx = if map_namespace == Some(asset_core::AssetNamespace::T5) {
-            t5_impact_fx.or(common_impact)
+            if let Some(table) = &zombie_impact_fx {
+                let names: std::collections::BTreeSet<&str> = table
+                    .entries
+                    .iter()
+                    .flat_map(|entry| entry.nonflesh.iter().chain(entry.flesh.iter()))
+                    .map(String::as_str)
+                    .filter(|name| !name.is_empty())
+                    .collect();
+                let found = names
+                    .iter()
+                    .filter(|name| world.fx.index_in(table.namespace(), name).is_some())
+                    .count();
+                report.push(format!(
+                    "impactfx: the zombie zones' table; {found}/{} effects in the fx catalog",
+                    names.len()
+                ));
+            }
+            zombie_impact_fx.or(t5_impact_fx).or(common_impact)
         } else {
             common_impact
         };
