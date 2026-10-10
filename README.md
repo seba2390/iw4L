@@ -1,10 +1,17 @@
 # IW4L
 
-IW4L is an open-source runtime for Call of Duty: Modern Warfare 2 (2009), written in
-Rust with [Bevy](https://bevy.org/). Point it at a copy of MW2 you already own and it
-loads that installation's maps, models, textures and weapons into its own engine. You
-can try implemented movement and combat on multiplayer maps, then inspect or change how
-those systems work.
+IW4L is an open-source runtime for several Call of Duty games, written in Rust with
+[Bevy](https://bevy.org/): Modern Warfare 2 (2009), Black Ops (2010), Black Ops II
+(2012) and Black Ops III (2015), with Modern Warfare 3 (2011) maps recognised. Point it
+at copies you already own and it loads each installation's maps, models, textures,
+weapons, sounds and scripts into its own engine, where you can play what is implemented,
+then inspect or change how it works.
+
+Every game runs on **its own** rules and data. Black Ops plays by Black Ops' rules,
+Black Ops II by Black Ops II's, and so on; no game borrows another's movement, weapons,
+HUD or scripts. A rule a game does not have yet is listed in that game's
+[fidelity ledger](docs/fidelity/) instead of being filled in from another game. CI
+enforces the separation on every pull request ([game boundary](docs/ARCHITECTURE.md)).
 
 <p align="center">
   <img src="docs/screenshots/bomb-plant.jpg" width="49%" alt="Bomb planting in IW4L">
@@ -13,22 +20,21 @@ those systems work.
 
 ## What you can try
 
-Explore maps, fight bots, and record and replay demos. Gameplay remains incomplete;
-expect missing behavior, bugs and desyncs. Each game runs on its own rules and
-data only ([game boundary](docs/ARCHITECTURE.md)): Modern Warfare 2 plays;
-Black Ops zombies maps load and run their own scripts, but rules not yet
-recovered from Black Ops (movement, weapons, HUD) are off; Black Ops
-multiplayer and MW3 maps are refused. Experimental
-[Black Ops II gameplay](docs/T6.md) supports FFA, TDM and zombies survival
-using an owned BO2 installation, including native weapons, respawns and
-[in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md).
+Launching without a map opens the [game library](docs/FRONTEND.md): it needs no game
+data, finds or scans for installed games, and gives each its own menus, settings and,
+where the game has them, zombies maps.
 
-Launching without a map opens the [game library](docs/FRONTEND.md): it needs no
-game data, scans a folder you choose for installed games and lists them, with
-persistent settings and game-specific menus.
+| Game | State |
+|---|---|
+| Modern Warfare 2 | Multiplayer maps play: movement, combat, killstreaks, classes, bots, demos, online through a master ([run guide](docs/RUN.md)). |
+| Black Ops | Zombies (Kino der Toten first) runs Black Ops' own zombie scripts with Black Ops movement; co-op hosting. Roadmap: [`BLACKOPS_TODO.md`](BLACKOPS_TODO.md). Multiplayer maps are refused until their gametypes have their own rules. |
+| Black Ops II | Experimental [FFA, TDM and Classic zombies](docs/T6.md), with native weapons, [in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md). Its own compiled scripts are read and decoded (`gsc_t6`); running them in place of IW4L's interim rules is the work in progress ([ledger](docs/fidelity/t6.md)). |
+| Black Ops III | Shadows of Evil's compiled scripts are read and translated (`gsc_t7`); its world is in progress, not playable yet ([ledger](docs/fidelity/t7.md)). |
+| Modern Warfare 3 | Maps are recognised and refused until MW3's own rules exist. |
 
-APIs, configuration, caches and the wire protocol change between commits;
-multiplayer peers must run the same build.
+Gameplay remains incomplete everywhere; expect missing behaviour, bugs and desyncs.
+APIs, configuration, caches and the wire protocol change between commits; multiplayer
+peers must run the same build.
 
 ## Windows: prebuilt release
 
@@ -48,9 +54,9 @@ Install Rust through rustup and GNU Make. [Build dependencies](docs/BUILD.md) co
 Linux's C/C++ toolchain and system libraries, and macOS's Xcode command line tools.
 [Windows instructions](docs/WINDOWS.md) cover building and arranging a portable folder.
 
-You need your own installed MW2 Multiplayer data. IW4L
-distributes no game assets and reads installations without patching or replacing their
-files. Caches, demos and logs go under `iw4l-artifacts/`; Linux settings use a separate
+You need your own installation of each game you want to load. IW4L distributes no game
+assets and reads installations without patching or replacing their files; how a game's
+data and scripts are read is in [`DECODING.md`](docs/DECODING.md). Caches, demos and logs go under `iw4l-artifacts/`; Linux settings use a separate
 configuration directory described in the [run guide](docs/RUN.md).
 
 From the repository root:
@@ -61,8 +67,16 @@ cp .env.example .env
 make map mp_boneyard CMDS='wait world; spawn 0; force_match_start; bot add 3'
 ```
 
-This builds the optimized `play` profile and starts a local match with three bots.
-`force_match_start` skips the warmup that otherwise freezes movement.
+This builds the optimized `play` profile and starts a local Modern Warfare 2 match with
+three bots. `force_match_start` skips the warmup that otherwise freezes movement. Other
+games' maps take their game's prefix:
+
+```bash
+cargo run --profile play -p launcher                         # the game library
+IW4L_GAMETYPE=zombies  cargo run --profile play -p launcher -- map t5:zombie_theater
+IW4L_GAMETYPE=zclassic cargo run --profile play -p launcher -- map t6:zm_nuked
+cargo run --profile play -p launcher -- map t6:mp_raid
+```
 
 On native Windows, use `powershell -ExecutionPolicy Bypass -File .\scripts\play.ps1`
 from the repository root. It builds and launches `target/play/iw4l.exe`, preserving
@@ -74,7 +88,8 @@ to load BO2 directly. Unoptimized `target/debug/iw4l.exe` is unsuitable for fram
 | Area | Implementation |
 |---|---|
 | Assets | Native FastFile readers convert game data into a shared intermediate representation. |
-| Shaders | Retail Direct3D 9 Shader Model 3 bytecode is translated to WGSL. |
+| Shaders | Each game's own shader bytecode is translated to WGSL: Direct3D 9 Shader Model 3 (MW2, Black Ops) and Direct3D 11 Shader Model 5 (Black Ops II). |
+| Scripts | GSC source from the game's zones is compiled; Black Ops II and III's compiled script modules are decoded. |
 | Rendering | World geometry, models and effects feed one sorted draw-surface list. |
 | Simulation | Server authority, client prediction and replay share one simulation step over explicit Bevy ECS state. |
 | Networking | Custom UDP traffic; a QUIC master provides browsing and relaying. The host simulates the match. |
@@ -84,6 +99,7 @@ to load BO2 directly. Unoptimized `target/debug/iw4l.exe` is unsuitable for fram
 - [Run guide](docs/RUN.md): console commands, classes and demo playback; [master setup](docs/MASTER.md) for playtests.
 - [Rendering](docs/RENDER.md) and [simulation](docs/SIM-STEP.md): inspect the engine's implementation.
 - [Map loading](docs/MAP-LOAD.md), [GSC runtime](docs/GSC-RUNTIME.md) and [bot AI](docs/BOTS.md): starting points for experiments and modifications.
+- [Game boundary](docs/ARCHITECTURE.md), [how games are read](docs/DECODING.md) and the per-game [fidelity ledgers](docs/fidelity/): what each game has of its own and what it still lacks.
 - [Documentation index](docs/INDEX.md), [contributing](CONTRIBUTING.md) and [security reports](SECURITY.md).
 
 This whole project is written by LLMs.
