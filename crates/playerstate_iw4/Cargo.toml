@@ -10,6 +10,7 @@ layer = "game"
 game = "iw4"
 
 [dependencies]
+game_api.workspace = true
 math_iw4.workspace = true
 libm = { version = "0.2.16", default-features = false }
 

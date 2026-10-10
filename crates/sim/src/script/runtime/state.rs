@@ -24,6 +24,10 @@ pub(crate) struct Runtime {
     pub(crate) zombies: host::t6_zombies::Survival,
     pub(crate) objects: BTreeMap<u64, BTreeMap<u32, Value>>,
     pub(crate) next_object: u64,
+    /// Black Ops 3's `world` and `classes` objects, made the first time a
+    /// script names them so other games' object numbers stay as they are.
+    pub(crate) world_object: Option<u64>,
+    pub(crate) classes_object: Option<u64>,
     pub(crate) arrays: BTreeMap<u64, BTreeMap<ArrayKey, Value>>,
     pub(crate) dynamic_symbols: BTreeMap<Arc<str>, u32>,
     pub(crate) buckets: BTreeMap<i64, VecDeque<u64>>,

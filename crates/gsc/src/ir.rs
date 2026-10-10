@@ -1,7 +1,7 @@
 use crate::error::Location;
 use crate::value::Value;
 
-pub const IR_VERSION: u32 = 5;
+pub const IR_VERSION: u32 = 7;
 
 #[derive(Clone, Debug)]
 pub struct Function {
@@ -24,6 +24,10 @@ pub enum Global {
     Level,
     Game,
     Anim,
+    /// Black Ops 3's `world` object.
+    World,
+    /// Black Ops 3's `classes` object: each class's description, by class name.
+    Classes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,6 +55,9 @@ pub enum Binary {
     Div,
     Mod,
     Case,
+    /// Equal in type and value: an int never equals a float.
+    Identical,
+    NotIdentical,
 }
 
 #[derive(Clone, Debug)]
@@ -88,4 +95,11 @@ pub enum Op {
     Await(Vec<u32>),
     AwaitMatch(usize),
     Endon,
+    Swap,
+    /// Reverses the order of the top `n` values.
+    Reverse(usize),
+    /// The first key of an array; undefined for an empty array or a non-array.
+    FirstArrayKey,
+    /// Pops an array, then a key; pushes the array's key after it, or undefined.
+    NextArrayKey,
 }

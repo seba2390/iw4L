@@ -43,11 +43,23 @@ fn zone_scripts(content: &[u8]) -> asset_core::ZoneScripts {
         }
     };
     let (mut exports, mut imports, mut refused) = (0, 0, Vec::new());
+    let (mut decoded, mut functions) = (0, 0);
+    let mut unknown = std::collections::BTreeSet::new();
     for script in &found {
         match gsc_t7::Module::parse(script.bytes) {
             Ok(module) if module.name == script.name => {
                 exports += module.exports.len();
                 imports += module.imports.len();
+                for (_, code) in module.functions(script.bytes) {
+                    functions += 1;
+                    match code {
+                        Ok(_) => decoded += 1,
+                        Err(gsc_t7::DecodeError::UnknownOpcode { value, .. }) => {
+                            unknown.insert(value);
+                        }
+                        Err(_) => {}
+                    }
+                }
             }
             Ok(module) => refused.push(format!("{}: names itself {}", script.name, module.name)),
             Err(error) => refused.push(format!("{}: {error:?}", script.name)),
@@ -60,6 +72,10 @@ fn zone_scripts(content: &[u8]) -> asset_core::ZoneScripts {
         list.asset_types.len(),
         found.len(),
         refused.len()
+    ));
+    out.report.push(format!(
+        "t7 scripts: {decoded} of {functions} functions decoded; {} opcode values not known",
+        unknown.len()
     ));
     out.report.extend(refused.into_iter().take(8));
     out

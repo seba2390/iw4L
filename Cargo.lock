@@ -345,6 +345,7 @@ dependencies = [
  "fastfile_t5",
  "fastfile_t6",
  "fx_iw4",
+ "game_api",
  "serde",
  "serde_json",
  "structured_data_iw4",
@@ -3132,6 +3133,7 @@ dependencies = [
  "game_api",
  "gsc",
  "menu_expr",
+ "movement_t5",
 ]
 
 [[package]]
@@ -3147,8 +3149,11 @@ dependencies = [
 name = "game_t7"
 version = "0.1.0"
 dependencies = [
+ "asset_core",
+ "diag",
  "game_api",
  "gsc",
+ "gsc_t7",
 ]
 
 [[package]]
@@ -3328,6 +3333,10 @@ dependencies = [
 [[package]]
 name = "gsc_t7"
 version = "0.1.0"
+dependencies = [
+ "gsc",
+ "sha2",
+]
 
 [[package]]
 name = "guillotiere"
@@ -4254,6 +4263,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "movement_t5"
+version = "0.1.0"
+dependencies = [
+ "libm",
+]
+
+[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5023,6 +5039,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 name = "playerstate_iw4"
 version = "0.1.0"
 dependencies = [
+ "game_api",
  "libm",
  "math_iw4",
 ]
@@ -6746,6 +6763,9 @@ checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 [[package]]
 name = "trace_iw4"
 version = "0.1.0"
+dependencies = [
+ "game_api",
+]
 
 [[package]]
 name = "tracing"

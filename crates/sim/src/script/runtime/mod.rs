@@ -346,6 +346,8 @@ fn instruction(
             Global::Level => Value::Object(0),
             Global::Game => Value::Object(1),
             Global::Anim => Value::Object(2),
+            Global::World => made_global(world, |runtime| &mut runtime.world_object)?,
+            Global::Classes => made_global(world, |runtime| &mut runtime.classes_object)?,
         }),
         Op::Load(slot) => {
             let value = thread.frames.last().unwrap().locals[slot as usize].clone();
@@ -564,6 +566,51 @@ fn instruction(
         }
         Op::Pop => {
             pop(thread)?;
+        }
+        Op::Swap => {
+            let len = thread.stack.len();
+            if len < 2 {
+                return Err("invalid IR: stack underflow".into());
+            }
+            thread.stack.swap(len - 1, len - 2);
+        }
+        Op::Reverse(count) => {
+            let base = thread
+                .stack
+                .len()
+                .checked_sub(count)
+                .ok_or("invalid IR: stack underflow")?;
+            thread.stack[base..].reverse();
+        }
+        Op::FirstArrayKey => {
+            let key = match pop(thread)? {
+                Value::Array(id) => world
+                    .resource::<Runtime>()
+                    .arrays
+                    .get(&id)
+                    .ok_or("invalid array reference")?
+                    .keys()
+                    .next()
+                    .map(key_value),
+                _ => None,
+            };
+            thread.stack.push(key.unwrap_or(Value::Undefined));
+        }
+        Op::NextArrayKey => {
+            let array = pop(thread)?;
+            let key = array_key(pop(thread)?)?;
+            let next = match array {
+                Value::Array(id) => world
+                    .resource::<Runtime>()
+                    .arrays
+                    .get(&id)
+                    .ok_or("invalid array reference")?
+                    .range((std::ops::Bound::Excluded(key), std::ops::Bound::Unbounded))
+                    .next()
+                    .map(|(key, _)| key_value(key)),
+                _ => None,
+            };
+            thread.stack.push(next.unwrap_or(Value::Undefined));
         }
         Op::Unary(op) => {
             let value = pop(thread)?;
@@ -1305,6 +1352,10 @@ fn stack_effect(op: &Op) -> (usize, usize) {
         Op::Indirect(argc, method, _) => (argc + 1 + usize::from(method), 1),
         Op::Notify(argc) | Op::AwaitMatch(argc) => (argc + 2, 0),
         Op::Jump(_) | Op::EnsureLocalArray(_) | Op::FrameEnd | Op::Return => (0, 0),
+        Op::Swap => (2, 2),
+        Op::Reverse(count) => (count, count),
+        Op::FirstArrayKey => (1, 1),
+        Op::NextArrayKey => (2, 1),
     }
 }
 
@@ -1377,6 +1428,13 @@ pub(crate) fn preflight(
     Ok(())
 }
 
+fn key_value(key: &ArrayKey) -> Value {
+    match key {
+        ArrayKey::Integer(i) => Value::Int(*i),
+        ArrayKey::String(s) => Value::String(s.clone()),
+    }
+}
+
 fn array_key(value: Value) -> Result<ArrayKey, String> {
     match value {
         Value::Int(n) => Ok(ArrayKey::Integer(n)),
@@ -1386,6 +1444,22 @@ fn array_key(value: Value) -> Result<ArrayKey, String> {
             type_name(&other)
         )),
     }
+}
+
+/// A global object made on first use (see `Runtime::world_object`).
+fn made_global(
+    world: &mut World,
+    slot: fn(&mut Runtime) -> &mut Option<u64>,
+) -> Result<Value, String> {
+    let mut runtime = world.resource_mut::<Runtime>();
+    if let Some(id) = *slot(&mut runtime) {
+        return Ok(Value::Object(id));
+    }
+    let id = runtime.next_object;
+    runtime.next_object = id.checked_add(1).ok_or("object identifier exhausted")?;
+    runtime.objects.insert(id, BTreeMap::new());
+    *slot(&mut runtime) = Some(id);
+    Ok(Value::Object(id))
 }
 
 fn allocate_array(world: &mut World) -> Result<Value, String> {
@@ -1523,6 +1597,13 @@ fn collect_heap(world: &mut World) {
     }
     let mut marks = Marks::default();
     for id in [0, 1, 2] {
+        marks.reach(&Value::Object(id));
+    }
+    let runtime = world.resource::<Runtime>();
+    for id in [runtime.world_object, runtime.classes_object]
+        .into_iter()
+        .flatten()
+    {
         marks.reach(&Value::Object(id));
     }
     for id in world.resource::<Runtime>().entities.keys() {

@@ -311,6 +311,7 @@ impl WeaponCatalog {
             },
             facts: WeaponBodyFacts {
                 burst_delay_ms: None,
+                game_move: None,
                 body_resolved: geometry.weap_def.is_some(),
                 fire_time_ms: geometry.fire_time_ms,
                 impact_type: geometry.impact_type,

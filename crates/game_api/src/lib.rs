@@ -2,6 +2,10 @@
 //! is [`Rule::Unknown`]: the caller reports it as a gap and applies nothing in
 //! its place — never another game's rule.
 
+pub mod movement;
+
+pub use movement::MovementRules;
+
 /// A rule this game does not have yet. `id` is listed in
 /// `docs/fidelity/<game>.md` (`cargo xtask boundary` checks it).
 #[derive(Debug, PartialEq, Eq)]
@@ -41,6 +45,9 @@ pub struct ScriptProgram {
     pub catalog: gsc::Catalog,
     pub roots: Vec<String>,
     pub entries: Vec<String>,
+    /// A program the game built itself (from compiled scripts); the roots are
+    /// then only reported, not compiled.
+    pub built: Option<gsc::Program>,
 }
 
 pub trait GameScripts: Sync {
@@ -65,9 +72,9 @@ pub struct ModeRules {
     pub play_starts_on: &'static str,
     /// Every player goes down into last stand instead of dying.
     pub every_player_downs: Rule<bool>,
-    /// Players move by Modern Warfare 2's player movement (look, walk, jump,
-    /// stances, gravity, collision).
-    pub movement: Rule<()>,
+    /// Whose player movement (look, walk, jump, stances, gravity, collision)
+    /// moves the players.
+    pub movement: Rule<MovementRules>,
     /// Players' weapons run Modern Warfare 2's weapon state machine.
     pub weapons: Rule<()>,
     /// A spawn starts at the default full health, not the stored max health.

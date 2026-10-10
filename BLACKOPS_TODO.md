@@ -19,8 +19,9 @@ runtime lacks are reported per call site instead of stopping the match.
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are
 off until Black Ops' own are recovered (each is an `unknown!` id in
-[`docs/fidelity/t5.md`](docs/fidelity/t5.md)): the player cannot move, look or
-fire (`t5.movement.player`, `t5.weapons.state_machine`), there is no HUD
+[`docs/fidelity/t5.md`](docs/fidelity/t5.md)). The player moves on Black Ops'
+own movement (`movement_t5`; ladders, mantling, swimming and its movement
+events are still open) but cannot fire (`t5.weapons.state_machine`), there is no HUD
 (`t5.hud.code_hud`, `t5.hud.menu_layout`), no last stand
 (`t5.match.last_stand`) and no Modern Warfare 2 sounds. The work now is
 recovering those rules from Black Ops. Start it from the game library
@@ -188,6 +189,13 @@ Done when two or more machines play a full Kino game together.
 - [ ] Hellhounds and crawlers.
 - [ ] Five and Dead Ops Arcade.
 - [ ] Audio, effects and visual fidelity passes; performance with many zombies.
+- [ ] Make `crates/asset_audio/src/wma_t5/format.bin` (the Black Ops audio
+      decoder's entropy codebooks and exponent band widths, read by
+      `wma_t5/entropy.rs`) a readable generated Rust table instead of a binary
+      blob, so a change to it reads in a diff; keep its generator and where the
+      values come from in the commit. If its numbers trip `publish-check`'s
+      offset scan, exempt exactly that file with the reason, as for
+      `crates/gsc_t7/src/names.rs`.
 
 ## Waiting on the maintainer
 
@@ -198,12 +206,11 @@ scoreboard, script text hud elems, `UI_FONT_DEFAULT`, several HUD owner draws,
 weapon info details, engine dvar defaults, vision-set grading and Double Tap's
 fire-rate factor.
 
-The first of them unblocks most of the rest: the Black Ops executables in a
-macOS Steam install are CEG depot copies whose gameplay constants and dvar
-names are zero, so player movement, the weapon state machine, the last-stand
-entry and the HUD's font and layout rules cannot be read from them. A
-`BlackOps.exe` (and `BlackOpsMP.exe`) from a Windows Steam install that has
-been launched once can be.
+The first of them, the blanked executables, is answered: the CEG-filled
+`BlackOps.exe` and `BlackOpsMP.exe` from a Windows install are available
+locally, so player movement, the weapon state machine, the last-stand entry,
+the HUD's font and layout rules and the engine dvar defaults are now recovered
+from Black Ops' own executable, one rule at a time.
 
 ## Open questions
 

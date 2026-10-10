@@ -77,6 +77,11 @@ pub(crate) fn spawn(
             )
         }
     };
+    if let Some(movement) = crate::game_move::rules(world) {
+        let mut player = ps.move_player(id.0 as i32, false);
+        movement.spawn(&mut player);
+        ps.store_move_player(&player);
+    }
     *world.ensure_player(id) = ps;
     diag::info!(
         Sim,
