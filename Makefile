@@ -274,7 +274,7 @@ logs:
 #                         only commits code; none of those steps are done by
 #                         hand. Refuses uncommitted WIP, rebase conflict, dirty
 #                         root — and then the clone stays on disk.
-#                         Read `git diff origin/master...HEAD` before running
+#                         Read `git diff origin/main...HEAD` before running
 #                         it: probes, throwaway tests and debug prints come back
 #                         out of the tree first. CONTEXT.md, "Before shipping".
 #   make mr ls            the clones on disk and whose move each one is
@@ -366,7 +366,7 @@ help:
 	@echo "cargo xtask master install user@host --name NAME --port PORT   a new master"
 	@echo "                  then: master update|status|logs|uninstall NAME (docs/MASTER.md)"
 	@echo "make mr new <name>   clone the repo for one agent under context/mrs/<name>"
-	@echo "make mr ship <name>  rebase → rustfmt touched .rs → FF onto master → rm clone"
+	@echo "make mr ship <name>  rebase → rustfmt touched .rs → FF onto main → rm clone"
 	@echo "make mr ls           the clones on disk and whose move each one is"
 	@echo "make mr fmt FILES='a.rs b.rs'  rustfmt exactly those files, nothing else"
 	@echo "make loc          Rust LOC / file counts / sizes per crate"
