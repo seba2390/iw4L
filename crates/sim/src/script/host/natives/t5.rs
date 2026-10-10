@@ -755,6 +755,9 @@ fn register_script(registry: &mut NativeRegistry) {
                 .map_or(0, |e| e.fuse_time_ms),
         ))
     });
+    registry.register(Function, "getallvehiclenodes", |world, _, _| {
+        super::super::vehicles::all_nodes(world)
+    });
     registry.register(Function, "getweaponstowedmodel", |world, _, args| {
         weapon_facts(world, &string(args, 0)?)?;
         Ok(Value::Int(0))
