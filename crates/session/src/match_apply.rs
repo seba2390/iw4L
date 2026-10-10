@@ -407,13 +407,7 @@ pub fn apply_prepared_match(
                 .map_err(|error| diag::warn!(Sim, "animation tree {name}: {error:?}"))
                 .ok()?;
             let definition = compiled
-                .to_runtime_definition(|_, leaf| {
-                    xanims.0.clip(anim_namespace, leaf).or_else(|| {
-                        asset_core::AssetNamespace::ALL
-                            .into_iter()
-                            .find_map(|namespace| xanims.0.clip(namespace, leaf))
-                    })
-                })
+                .to_runtime_definition(|_, leaf| xanims.0.clip(anim_namespace, leaf))
                 .map_err(|error| diag::warn!(Sim, "animation tree {name}: {error:?}"))
                 .ok()?;
             let names = compiled
@@ -464,11 +458,7 @@ pub fn apply_prepared_match(
         ));
         let clips = Arc::clone(&xanims.0);
         content.set_anim_clips(sim::AnimClipLookup::new(move |name| {
-            clips.clip(anim_namespace, name).or_else(|| {
-                asset_core::AssetNamespace::ALL
-                    .into_iter()
-                    .find_map(|namespace| clips.clip(namespace, name))
-            })
+            clips.clip(anim_namespace, name)
         }));
         content.set_mantle_xanims(sim::MantleXAnimBind::from_clips(|fast, i| {
             let name = sim::MantleXAnimBind::clip_name(fast, i)?;
