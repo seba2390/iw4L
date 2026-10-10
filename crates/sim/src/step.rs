@@ -422,7 +422,7 @@ fn run_players_system(ecs: &mut World) {
                 .mode
                 .and_then(|mode| match mode.movement {
                     game_api::Rule::Unknown(gap) => Some(gap),
-                    game_api::Rule::Known(()) => None,
+                    game_api::Rule::Known(_) => None,
                 })
             {
                 world.report_game_gap(gap);
