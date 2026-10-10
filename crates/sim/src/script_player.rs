@@ -779,7 +779,14 @@ fn perk_bits(name: &str) -> ([u32; 2], u32) {
     ([perk, perk1], e_flags)
 }
 
+/// Sets Modern Warfare 2's perk bits, which only its movement and weapon
+/// rules read; a game without those rules gets none.
 pub(crate) fn set_perk(world: &mut FrameWorld, id: ClientId, name: &str, on: bool) {
+    if let Some(game_api::Rule::Unknown(gap)) = world.bootstrap_ref().mode.map(|mode| mode.weapons)
+    {
+        world.report_game_gap(gap);
+        return;
+    }
     let (perks, e_flags) = perk_bits(name);
     if let Some(ps) = world.player_mut(id) {
         for (word, perk) in ps.perks.iter_mut().zip(perks) {
