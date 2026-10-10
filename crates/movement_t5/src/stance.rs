@@ -98,36 +98,35 @@ fn force_stand<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     eye::update(pm, pml);
 }
 
-/// Toggle stance: a stance button pressed once holds the stance.
-fn toggle_stance<W: MoveWorld>(pm: &mut Pm<'_, W>) {
-    let toggles = pm.ps.pm_flags
-        & (pm_flags::TOGGLE_PRONE | pm_flags::TOGGLE_CROUCH | pm_flags::TOGGLE_STANCE_HELD);
-    if toggles == 0 {
+/// Stances the scripts disallow: a stance key or a disallowed stance moves
+/// the player to one that is allowed.
+fn restricted_stance<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+    let restrictions =
+        pm.ps.pm_flags & (pm_flags::NO_STAND | pm_flags::NO_CROUCH | pm_flags::NO_PRONE);
+    if restrictions == 0 {
         return;
     }
     let f = pm.ps.pm_flags;
     let stance_event = if pm.cmd.buttons.held(buttons::PRONE) {
-        if f & pm_flags::TOGGLE_STANCE_HELD == 0 {
+        if f & pm_flags::NO_PRONE == 0 {
             return;
         }
-        if (f & 3 == 0 && f & pm_flags::TOGGLE_PRONE == 0) || f & pm_flags::TOGGLE_CROUCH != 0 {
+        if (f & 3 == 0 && f & pm_flags::NO_STAND == 0) || f & pm_flags::NO_CROUCH != 0 {
             event::STANCE_FORCE_STAND
         } else {
             event::STANCE_FORCE_CROUCH
         }
     } else if pm.cmd.buttons.held(buttons::CROUCH) {
-        if f & pm_flags::TOGGLE_CROUCH == 0 {
+        if f & pm_flags::NO_CROUCH == 0 {
             return;
         }
-        if (f & 3 == 0 && f & pm_flags::TOGGLE_STANCE_HELD == 0) || f & pm_flags::TOGGLE_PRONE != 0
-        {
+        if (f & 3 == 0 && f & pm_flags::NO_PRONE == 0) || f & pm_flags::NO_STAND != 0 {
             event::STANCE_FORCE_PRONE
         } else {
             event::STANCE_FORCE_STAND
         }
-    } else if f & pm_flags::TOGGLE_PRONE != 0 {
-        if (f & pm_flags::PRONE != 0 && f & pm_flags::TOGGLE_STANCE_HELD == 0)
-            || f & pm_flags::TOGGLE_CROUCH != 0
+    } else if f & pm_flags::NO_STAND != 0 {
+        if (f & pm_flags::PRONE != 0 && f & pm_flags::NO_PRONE == 0) || f & pm_flags::NO_CROUCH != 0
         {
             event::STANCE_FORCE_PRONE
         } else {
@@ -148,19 +147,19 @@ fn toggle_stance<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 }
 
 fn linked_stance<W: MoveWorld>(pm: &mut Pm<'_, W>) {
-    let toggles = pm.ps.pm_flags & (pm_flags::TOGGLE_PRONE | pm_flags::TOGGLE_CROUCH);
-    if toggles != 0 || pm.cmd.buttons.held(buttons::PRONE) {
+    let restrictions = pm.ps.pm_flags & (pm_flags::NO_STAND | pm_flags::NO_CROUCH);
+    if restrictions != 0 || pm.cmd.buttons.held(buttons::PRONE) {
         let f = pm.ps.pm_flags;
         let stance_event = if pm.cmd.buttons.held(buttons::PRONE) {
-            if (f & 3 == 0 && f & pm_flags::TOGGLE_PRONE == 0) || f & pm_flags::TOGGLE_CROUCH != 0 {
+            if (f & 3 == 0 && f & pm_flags::NO_STAND == 0) || f & pm_flags::NO_CROUCH != 0 {
                 Some(event::STANCE_FORCE_STAND)
             } else {
                 Some(event::STANCE_FORCE_CROUCH)
             }
         } else if pm.cmd.buttons.held(buttons::CROUCH) {
-            (f & pm_flags::TOGGLE_CROUCH != 0).then_some(event::STANCE_FORCE_STAND)
+            (f & pm_flags::NO_CROUCH != 0).then_some(event::STANCE_FORCE_STAND)
         } else {
-            (f & pm_flags::TOGGLE_PRONE != 0).then_some(event::STANCE_FORCE_CROUCH)
+            (f & pm_flags::NO_STAND != 0).then_some(event::STANCE_FORCE_CROUCH)
         };
         if let Some(stance_event) = stance_event {
             pm.cmd
@@ -189,7 +188,7 @@ fn normal_stance<W: MoveWorld>(pm: &mut Pm<'_, W>) {
             .release_all(&[buttons::PRONE, buttons::CROUCH]);
         pm.event(event::STANCE_FORCE_STAND, 0);
     }
-    toggle_stance(pm);
+    restricted_stance(pm);
     let not_last_stand = !in_last_stand(pm.ps.pm_type);
     if pm.cmd.buttons.held(buttons::PRONE) && pm.ps.pm_flags & pm_flags::RESPAWNED == 0 {
         if prone_allowed(pm) {

@@ -37,9 +37,9 @@ pub mod pm_flags {
     pub const SPRINT_DISABLED: u32 = 0x4_0000;
     pub const NO_JUMP: u32 = 0x8_0000;
     pub const ANIM_LOCK: u32 = 0x10_0000;
-    pub const TOGGLE_PRONE: u32 = 0x40_0000;
-    pub const TOGGLE_CROUCH: u32 = 0x80_0000;
-    pub const TOGGLE_STANCE_HELD: u32 = 0x100_0000;
+    pub const NO_STAND: u32 = 0x40_0000;
+    pub const NO_CROUCH: u32 = 0x80_0000;
+    pub const NO_PRONE: u32 = 0x100_0000;
     pub const NO_LEAN: u32 = 0x200_0000;
     pub const VIEW_LINKED: u32 = 0x400_0000;
     pub const PRONE_YAW_LOCKED: u32 = 0x1000_0000;
@@ -55,6 +55,11 @@ pub mod e_flags {
     pub const TURRET: u32 = TURRET_PRONE | TURRET_CROUCH;
     pub const VEHICLE_VIEW: u32 = 0x4000;
     pub const TALKING: u32 = 0x2_0000;
+}
+
+/// The player state's other flags.
+pub mod other_flags {
+    pub const NO_ADS: u32 = 0x20;
 }
 
 /// The second word of entity flags.
