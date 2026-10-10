@@ -1,3 +1,9 @@
+mod decode;
+mod opcodes;
+
+pub use decode::{DecodeError, Instruction, Operand, decode_function};
+pub use opcodes::{KNOWN_VALUES, Layout, Opcode, opcode};
+
 pub const MAGIC: &[u8; 7] = b"\x80GSC\r\n\0";
 
 pub const VERSION: u8 = 0x1c;
@@ -155,6 +161,26 @@ impl Module {
             imports,
             strings,
         })
+    }
+}
+
+impl Module {
+    /// Each export with its decoded code, in code order. A function's code
+    /// runs to the next function or the end of the code segment.
+    pub fn functions(&self, bytes: &[u8]) -> Vec<(Export, Result<Vec<Instruction>, DecodeError>)> {
+        let mut exports = self.exports.clone();
+        exports.sort_by_key(|export| export.code);
+        let ends: Vec<usize> = exports
+            .iter()
+            .skip(1)
+            .map(|export| export.code as usize)
+            .chain(core::iter::once(self.code.end))
+            .collect();
+        exports
+            .into_iter()
+            .zip(ends)
+            .map(|(export, end)| (export, decode_function(bytes, export.code as usize, end)))
+            .collect()
     }
 }
 
