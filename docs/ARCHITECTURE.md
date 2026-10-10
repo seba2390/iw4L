@@ -39,4 +39,6 @@ scripts used to run on Modern Warfare 2's natives.
 Today's debt is `xtask/boundary/allow.txt`, a ratchet: anything not in it is
 new, an entry that occurs less often is stale, and `--update` only lowers it.
 `BOUNDARY_ARGS=--enforce` exits non-zero on new or stale entries, and the
-pre-commit hook (installed by `cargo xtask mr`) refuses such a commit.
+pre-commit hook (installed by `cargo xtask mr`) refuses such a commit; CI
+(`.github/workflows/boundary.yml`) runs the same check on every push and pull
+request.
