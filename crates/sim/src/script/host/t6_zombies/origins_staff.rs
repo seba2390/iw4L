@@ -76,7 +76,6 @@ struct StaffPedestal {
 struct TankKey {
     origin: [f32; 3],
     object: u64,
-    born: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -140,8 +139,12 @@ impl Staffs {
             })
             .collect();
 
-        // Initialize placed_staffs tracking
-        for kind in [StaffKind::Fire, StaffKind::Ice, StaffKind::Lightning, StaffKind::Gas] {
+        for kind in [
+            StaffKind::Fire,
+            StaffKind::Ice,
+            StaffKind::Lightning,
+            StaffKind::Gas,
+        ] {
             self.placed_staffs.insert(kind, None);
         }
     }
@@ -276,13 +279,11 @@ impl Staffs {
             return false;
         };
         let kind = station.kind;
-        
-        // If player already has the staff, try to upgrade it
+
         if self.has(client, kind) {
             return self.upgrade(client, kind);
         }
-        
-        // Otherwise, craft a new staff
+
         if !self.can_craft(client, kind) {
             return false;
         }
@@ -335,7 +336,12 @@ impl Staffs {
     }
 
     pub(super) fn add_crystal(&mut self, client: ClientId, kind: StaffKind) {
-        let count = self.crystals.entry(client).or_default().entry(kind).or_insert(0);
+        let count = self
+            .crystals
+            .entry(client)
+            .or_default()
+            .entry(kind)
+            .or_insert(0);
         *count = count.saturating_add(1);
         diag::info!(
             Sim,
@@ -355,7 +361,9 @@ impl Staffs {
     }
 
     pub(super) fn can_upgrade(&self, client: ClientId, kind: StaffKind) -> bool {
-        self.has(client, kind) && !self.is_upgraded(client, kind) && self.crystal_count(client, kind) >= 3
+        self.has(client, kind)
+            && !self.is_upgraded(client, kind)
+            && self.crystal_count(client, kind) >= 3
     }
 
     pub(super) fn is_upgraded(&self, client: ClientId, kind: StaffKind) -> bool {
@@ -368,7 +376,12 @@ impl Staffs {
         if !self.can_upgrade(client, kind) {
             return false;
         }
-        let crystals = self.crystals.entry(client).or_default().entry(kind).or_insert(0);
+        let crystals = self
+            .crystals
+            .entry(client)
+            .or_default()
+            .entry(kind)
+            .or_insert(0);
         *crystals = crystals.saturating_sub(3);
         self.upgraded.entry(client).or_default().insert(kind);
         diag::info!(
@@ -502,8 +515,11 @@ impl Staffs {
         true
     }
 
-    pub(super) fn advance_pedestals(&mut self, world: &mut World, players: &[(ClientId, [f32; 3])]) {
-        // Present pedestals
+    pub(super) fn advance_pedestals(
+        &mut self,
+        world: &mut World,
+        players: &[(ClientId, [f32; 3])],
+    ) {
         for pedestal in &mut self.pedestals {
             if pedestal.object.is_some()
                 || !players.iter().any(|(_, at)| {
@@ -522,7 +538,8 @@ impl Staffs {
             {
                 continue;
             }
-            let Ok(presence) = super::super::presence::spawn_presence(world, pedestal.origin) else {
+            let Ok(presence) = super::super::presence::spawn_presence(world, pedestal.origin)
+            else {
                 continue;
             };
             let mut runtime = world.resource_mut::<Runtime>();
@@ -604,7 +621,11 @@ impl Staffs {
         if has_upgraded_staff {
             format!("USE: Place {} staff", pedestal.kind.name())
         } else {
-            format!("{} pedestal (need upgraded {} staff)", pedestal.kind.name(), pedestal.kind.name())
+            format!(
+                "{} pedestal (need upgraded {} staff)",
+                pedestal.kind.name(),
+                pedestal.kind.name()
+            )
         }
     }
 
@@ -621,28 +642,24 @@ impl Staffs {
         let kind = pedestal.kind;
         let staff_placed = pedestal.staff_placed;
         let origin = pedestal.origin;
-        
-        // Check if player has upgraded staff and pedestal is empty
+
         if !self.is_upgraded(client, kind) || staff_placed {
             return false;
         }
-        
-        // Place the staff
+
         let Some(pedestal) = self.pedestals.get_mut(pedestal_index) else {
             return false;
         };
         pedestal.staff_placed = true;
         self.placed_staffs.insert(kind, Some(client));
-        
-        // Remove staff from player inventory
+
         if let Some(staffs) = self.owned.get_mut(&client) {
             staffs.remove(&kind);
         }
         if let Some(upgraded) = self.upgraded.get_mut(&client) {
             upgraded.remove(&kind);
         }
-        
-        // Play placement effect
+
         let effect_name = match kind {
             StaffKind::Fire => "maps/zombie_tomb/fx_tomb_pedestal_fire",
             StaffKind::Ice => "maps/zombie_tomb/fx_tomb_pedestal_ice",
@@ -650,7 +667,7 @@ impl Staffs {
             StaffKind::Gas => "maps/zombie_tomb/fx_tomb_pedestal_gas",
         };
         powerups::effect(world, tick, effect_name, origin);
-        
+
         diag::info!(
             Sim,
             "origins staff placed client={} kind={} pedestal={}",
@@ -658,10 +675,9 @@ impl Staffs {
             kind.name(),
             pedestal_index
         );
-        
-        // Check if all staffs are placed
+
         self.check_quest_completion(world, tick);
-        
+
         true
     }
 
@@ -678,19 +694,21 @@ impl Staffs {
         if self.robot_spawned {
             return;
         }
-        
-        // Robot spawn location (center of pedestal area)
+
         let center = if !self.pedestals.is_empty() {
             let sum: [f32; 3] = self.pedestals.iter().fold([0.0; 3], |acc, p| {
-                [acc[0] + p.origin[0], acc[1] + p.origin[1], acc[2] + p.origin[2]]
+                [
+                    acc[0] + p.origin[0],
+                    acc[1] + p.origin[1],
+                    acc[2] + p.origin[2],
+                ]
             });
             let count = self.pedestals.len() as f32;
             [sum[0] / count, sum[1] / count, sum[2] / count]
         } else {
             [0.0, 0.0, 0.0]
         };
-        
-        // Spawn robot entity
+
         if FrameWorld::from_world(world)
             .model_capability("p6_zm_giant_robot")
             .flatten()
@@ -701,60 +719,64 @@ impl Staffs {
             diag::warn!(Sim, "origins robot: model not available");
             return;
         }
-        
+
         let Ok(presence) = super::super::presence::spawn_presence(world, center) else {
             return;
         };
-        
+
         let mut runtime = world.resource_mut::<Runtime>();
         let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_giant_robot") else {
             return;
         };
-        
+
         runtime.set_object_field(object, "origin", Value::Vector(center));
         runtime.set_object_field(object, "angles", Value::Vector([0.0, 0.0, 0.0]));
         runtime.set_object_field(object, "model", Value::string("p6_zm_giant_robot"));
         runtime.set_object_field(object, "health", Value::Int(5000));
-        
+
         let entity = runtime.entities.get_mut(&object).unwrap();
         entity.presence = Some(presence);
         entity.solid = true;
         entity.contents = crate::bullet_collision::CONTENTS_BODY as i32;
         entity.can_damage = true;
         entity.can_radius_damage = true;
-        
+
         self.robot_object = Some(object);
         self.robot_health = 5000;
         self.robot_spawned = true;
-        
-        // Play spawn effect
+
         powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_robot_spawn", center);
-        
-        diag::info!(Sim, "origins giant robot spawned object={object} health=5000");
+
+        diag::info!(
+            Sim,
+            "origins giant robot spawned object={object} health=5000"
+        );
     }
 
     pub(super) fn damage_robot(&mut self, world: &mut World, damage: i32, tick: Tick) -> bool {
         if !self.robot_spawned || self.robot_health <= 0 {
             return false;
         }
-        
+
         self.robot_health -= damage;
-        
+
         if let Some(object) = self.robot_object {
             let mut runtime = world.resource_mut::<Runtime>();
             runtime.set_object_field(object, "health", Value::Int(self.robot_health.max(0)));
         }
-        
+
         if self.robot_health <= 0 {
             diag::info!(Sim, "origins giant robot defeated, dropping tank keys");
             self.drop_tank_keys(world, tick);
+            if let Some(object) = self.robot_object.take() {
+                world.resource_mut::<Runtime>().pending_deletes.push(object);
+            }
         }
-        
+
         true
     }
 
     fn drop_tank_keys(&mut self, world: &mut World, tick: Tick) {
-        // Drop 4 tank keys around the robot
         if let Some(robot_object) = self.robot_object {
             let mut runtime = world.resource_mut::<Runtime>();
             let origin = match runtime.object_field(robot_object, "origin") {
@@ -762,8 +784,7 @@ impl Staffs {
                 _ => return,
             };
             drop(runtime);
-            
-            // Spawn 4 tank keys in cardinal directions
+
             for i in 0..4 {
                 let angle = (i as f32) * std::f32::consts::PI * 0.5;
                 let key_origin = [
@@ -771,7 +792,7 @@ impl Staffs {
                     origin[1] + 100.0 * angle.sin(),
                     origin[2] + 20.0,
                 ];
-                
+
                 if FrameWorld::from_world(world)
                     .model_capability("p6_zm_tank_key")
                     .flatten()
@@ -781,36 +802,44 @@ impl Staffs {
                 {
                     continue;
                 }
-                
+
                 let Ok(presence) = super::super::presence::spawn_presence(world, key_origin) else {
                     continue;
                 };
-                
+
                 let mut runtime = world.resource_mut::<Runtime>();
-                let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_tank_key") else {
+                let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_tank_key")
+                else {
                     continue;
                 };
-                
+
                 runtime.set_object_field(object, "origin", Value::Vector(key_origin));
                 runtime.set_object_field(object, "angles", Value::Vector([0.0, 0.0, 0.0]));
                 runtime.set_object_field(object, "model", Value::string("p6_zm_tank_key"));
-                
+
                 let entity = runtime.entities.get_mut(&object).unwrap();
                 entity.presence = Some(presence);
                 entity.solid = false;
                 entity.contents = 0;
-                
+
                 self.tank_keys_dropped.push(TankKey {
                     origin: key_origin,
                     object,
-                    born: tick.0,
                 });
-                
-                // Play drop effect
-                powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_tank_key_drop", key_origin);
+
+                powerups::effect(
+                    world,
+                    tick,
+                    "maps/zombie_tomb/fx_tomb_tank_key_drop",
+                    key_origin,
+                );
             }
-            
-            diag::info!(Sim, "origins tank keys dropped: {}", self.tank_keys_dropped.len());
+
+            diag::info!(
+                Sim,
+                "origins tank keys dropped: {}",
+                self.tank_keys_dropped.len()
+            );
         }
     }
 
@@ -823,7 +852,7 @@ impl Staffs {
         let frame = FrameWorld::from_world(world);
         let forward = Vec3::from_array(math_iw4::angle_vectors(frame.player(client)?.viewangles).0);
         let eye = Vec3::new(origin[0], origin[1], origin[2] + 50.0);
-        
+
         self.tank_keys_dropped
             .iter()
             .enumerate()
@@ -855,31 +884,42 @@ impl Staffs {
             .map(|(index, _)| index)
     }
 
-    pub(super) fn take_tank_key(&mut self, world: &mut World, client: ClientId, index: usize, tick: Tick) -> bool {
-        let Some(key) = self.tank_keys_dropped.get(index) else {
+    pub(super) fn take_tank_key(
+        &mut self,
+        world: &mut World,
+        client: ClientId,
+        index: usize,
+        tick: Tick,
+    ) -> bool {
+        if index >= self.tank_keys_dropped.len() {
             return false;
-        };
-        
-        // Give player the tank key weapon
+        }
+
         let mut frame = FrameWorld::from_world(world);
-        let tank_key_weapon = frame.weapon_script_names().iter().position(|n| n == "tank_key_zm");
-        
+        let tank_key_weapon = frame
+            .weapon_script_names()
+            .iter()
+            .position(|n| n == "tank_key_zm");
+
         if let Some(weapon_id) = tank_key_weapon {
             let weapon_id = weapon_id as u32;
             if crate::script_player::give_weapon(&mut frame, client, weapon_id, false).is_ok() {
                 diag::info!(Sim, "origins tank key given to client={}", client.0);
-                
-                // Remove the key entity
+
                 let key = self.tank_keys_dropped.remove(index);
                 world.resource_mut::<Runtime>().delete_entity(key.object);
-                
-                // Play pickup effect
-                powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_tank_key_pickup", key.origin);
-                
+
+                powerups::effect(
+                    world,
+                    tick,
+                    "maps/zombie_tomb/fx_tomb_tank_key_pickup",
+                    key.origin,
+                );
+
                 return true;
             }
         }
-        
+
         false
     }
 
@@ -888,6 +928,7 @@ impl Staffs {
     }
 
     pub(super) fn is_robot(&self, object: u64) -> bool {
-        self.robot_object.is_some_and(|robot_obj| robot_obj == object)
+        self.robot_object
+            .is_some_and(|robot_obj| robot_obj == object)
     }
 }

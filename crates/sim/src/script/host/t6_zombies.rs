@@ -2564,20 +2564,15 @@ pub(crate) fn entity_damage(
     after: i32,
     headshot: bool,
 ) {
-    // Check if this is the giant robot
     let tick = world.resource::<crate::step::StepRequest>().tick;
-    let is_robot = world
-        .resource::<Runtime>()
-        .zombies
-        .staffs
-        .is_robot(object);
-    
+    let is_robot = world.resource::<Runtime>().zombies.staffs.is_robot(object);
+
     if is_robot && hit.amount > 0 {
         let mut zombies = std::mem::take(&mut world.resource_mut::<Runtime>().zombies);
-        zombies.staffs.damage_robot(world, hit.amount, tick);
+        let hurt = zombies.staffs.damage_robot(world, hit.amount, tick);
         world.resource_mut::<Runtime>().zombies = zombies;
-        
-        if let Some(client) = hit.attacker {
+
+        if hurt && let Some(client) = hit.attacker {
             let reward = world
                 .resource_mut::<Runtime>()
                 .zombies
@@ -2594,7 +2589,7 @@ pub(crate) fn entity_damage(
         );
         return;
     }
-    
+
     if !world
         .resource::<Runtime>()
         .zombies
