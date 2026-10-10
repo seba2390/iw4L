@@ -13,6 +13,11 @@ pub enum Operand {
         params: u8,
         target: u64,
     },
+    /// Argument count and method name hash of a class method call.
+    Method {
+        params: u8,
+        name: u32,
+    },
     /// Name hash and flags of each local, in slot order.
     Locals(Vec<(u32, u8)>),
     /// Case value and absolute target of each `switch` entry, in table order.
@@ -67,9 +72,11 @@ pub fn decode_function(
             operand,
         });
         at = next;
+        // The last function of a module ends with the code segment, which need
+        // not be 8-aligned: its tail is then empty.
         if matches!(op, Opcode::End | Opcode::Return)
             && module
-                .get(align(at, 8)..end)
+                .get(align(at, 8).min(end)..end)
                 .is_some_and(|tail| tail.iter().all(|&byte| byte == 0))
         {
             return Ok(out);
@@ -120,6 +127,17 @@ fn operand(module: &[u8], at: usize, op: Opcode) -> Result<(Operand, usize), Dec
                     target: u64_at(module, word)?,
                 },
                 word + 8,
+            )
+        }
+        Layout::Method => {
+            let params = byte_at(module, after)?;
+            let word = align(after + 1, 4);
+            (
+                Operand::Method {
+                    params,
+                    name: u32_at(module, word)?,
+                },
+                word + 4,
             )
         }
         Layout::Locals => {

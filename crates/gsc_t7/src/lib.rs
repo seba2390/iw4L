@@ -69,6 +69,15 @@ pub struct StringRef {
     pub refs: Vec<u32>,
 }
 
+/// An animation tree the module's code names, with the code offsets that use
+/// it: as a tree (`#animtree`) and as each named animation (`%name`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AnimTreeRef {
+    pub tree: String,
+    pub tree_refs: Vec<u32>,
+    pub animations: Vec<(String, u32)>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Module {
     pub checksum: u32,
@@ -79,6 +88,7 @@ pub struct Module {
     pub exports: Vec<Export>,
     pub imports: Vec<Import>,
     pub strings: Vec<StringRef>,
+    pub animtrees: Vec<AnimTreeRef>,
 }
 
 impl Module {
@@ -106,6 +116,8 @@ impl Module {
         let export_count = half(0x3A);
         let import_count = half(0x3C);
         let include_count = usize::from(bytes[0x44]);
+        let animtrees_at = word(0x10)?;
+        let animtree_count = usize::from(bytes[0x45]);
 
         if code_at + code_len != exports_at {
             return Err(ModuleError::CodeSegment {
@@ -157,6 +169,38 @@ impl Module {
             });
             at += STRING_LEN + 4 * count;
         }
+        // Each tree: its name, a count of tree references and of animation
+        // references, the tree references' code offsets, then per animation
+        // its name and its code offset (both 64-bit).
+        let mut animtrees = Vec::with_capacity(animtree_count);
+        let mut at = animtrees_at;
+        for _ in 0..animtree_count {
+            let half = |at: usize| -> Result<usize, ModuleError> {
+                Ok(usize::from(u16::from_le_bytes([
+                    byte_at(bytes, at)?,
+                    byte_at(bytes, at + 1)?,
+                ])))
+            };
+            let (tree_count, animation_count) = (half(at + 4)?, half(at + 6)?);
+            let tree = c_string(bytes, word(at)?, "animtree")?;
+            let tree_refs = u32_list(bytes, at + 8, tree_count)?;
+            at += 8 + 4 * tree_count;
+            let animations = (0..animation_count)
+                .map(|index| {
+                    let entry = at + index * 16;
+                    Ok((
+                        c_string(bytes, word(entry)?, "animation")?,
+                        word(entry + 8)? as u32,
+                    ))
+                })
+                .collect::<Result<_, ModuleError>>()?;
+            at += 16 * animation_count;
+            animtrees.push(AnimTreeRef {
+                tree,
+                tree_refs,
+                animations,
+            });
+        }
         Ok(Self {
             checksum,
             name,
@@ -165,6 +209,7 @@ impl Module {
             exports,
             imports,
             strings,
+            animtrees,
         })
     }
 }

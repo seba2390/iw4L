@@ -346,6 +346,8 @@ fn instruction(
             Global::Level => Value::Object(0),
             Global::Game => Value::Object(1),
             Global::Anim => Value::Object(2),
+            Global::World => made_global(world, |runtime| &mut runtime.world_object)?,
+            Global::Classes => made_global(world, |runtime| &mut runtime.classes_object)?,
         }),
         Op::Load(slot) => {
             let value = thread.frames.last().unwrap().locals[slot as usize].clone();
@@ -1444,6 +1446,22 @@ fn array_key(value: Value) -> Result<ArrayKey, String> {
     }
 }
 
+/// A global object made on first use (see `Runtime::world_object`).
+fn made_global(
+    world: &mut World,
+    slot: fn(&mut Runtime) -> &mut Option<u64>,
+) -> Result<Value, String> {
+    let mut runtime = world.resource_mut::<Runtime>();
+    if let Some(id) = *slot(&mut runtime) {
+        return Ok(Value::Object(id));
+    }
+    let id = runtime.next_object;
+    runtime.next_object = id.checked_add(1).ok_or("object identifier exhausted")?;
+    runtime.objects.insert(id, BTreeMap::new());
+    *slot(&mut runtime) = Some(id);
+    Ok(Value::Object(id))
+}
+
 fn allocate_array(world: &mut World) -> Result<Value, String> {
     let mut runtime = world.resource_mut::<Runtime>();
     let id = runtime.next_object;
@@ -1579,6 +1597,13 @@ fn collect_heap(world: &mut World) {
     }
     let mut marks = Marks::default();
     for id in [0, 1, 2] {
+        marks.reach(&Value::Object(id));
+    }
+    let runtime = world.resource::<Runtime>();
+    for id in [runtime.world_object, runtime.classes_object]
+        .into_iter()
+        .flatten()
+    {
         marks.reach(&Value::Object(id));
     }
     for id in world.resource::<Runtime>().entities.keys() {

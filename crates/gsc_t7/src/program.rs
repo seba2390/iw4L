@@ -7,9 +7,9 @@ use gsc::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::translate::{Linker, Site, Translator};
 use crate::Module;
 pub use crate::names::name_of;
+use crate::translate::{Linker, Site, Translator};
 
 fn display(hash: u32) -> String {
     name_of(hash).map_or_else(|| format!("#{hash:08x}"), str::to_owned)
@@ -59,10 +59,14 @@ impl Linker for ProgramLinker {
     }
 
     fn symbol(&mut self, hash: u32) -> u32 {
-        let name: Arc<str> = display(hash).into();
-        if let Some(&id) = self.symbol_ids.get(&name) {
+        self.named(&display(hash))
+    }
+
+    fn named(&mut self, name: &str) -> u32 {
+        if let Some(&id) = self.symbol_ids.get(name) {
             return id;
         }
+        let name: Arc<str> = name.into();
         let id = self.symbols.len() as u32;
         self.symbols.push(name.clone());
         self.symbol_ids.insert(name, id);

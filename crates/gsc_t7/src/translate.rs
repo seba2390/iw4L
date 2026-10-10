@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use gsc::{Binary, Callee, Function, Global, Location, Op, ScriptString, Unary, Value};
 
@@ -20,9 +21,15 @@ pub trait Linker {
     fn native(&mut self, name: &'static str) -> Callee;
     /// The symbol id of a field or event name hash.
     fn symbol(&mut self, hash: u32) -> u32;
+    /// The symbol of a name the scripts' source spells out.
+    fn named(&mut self, name: &str) -> u32;
     /// The text a name hash stands for when the hash is used as a value.
     fn text(&self, hash: u32) -> String;
 }
+
+/// The field of a class description, and of each instance, that holds its
+/// methods by name hash.
+const METHODS: &str = "__vtable";
 
 /// A place a value is stored, built from the reference instructions before
 /// the instruction that stores, increments or clears it.
@@ -30,6 +37,8 @@ pub trait Linker {
 enum Base {
     Local(u32),
     Field(Option<Global>, u32),
+    /// A global object the instruction before pushed (`game[…] = …`).
+    Object,
 }
 
 struct Chain {
@@ -47,6 +56,8 @@ pub struct Translator<'a> {
     bytes: &'a [u8],
     strings: BTreeMap<u32, &'a str>,
     imports: BTreeMap<u32, usize>,
+    /// Animation trees and animations by the code offset the game patches.
+    animations: BTreeMap<u32, Value>,
 }
 
 impl<'a> Translator<'a> {
@@ -63,11 +74,28 @@ impl<'a> Translator<'a> {
                 imports.insert(at, index);
             }
         }
+        let mut animations = BTreeMap::new();
+        for animtree in &module.animtrees {
+            let tree: Arc<str> = animtree.tree.as_str().into();
+            for &at in &animtree.tree_refs {
+                animations.insert(at, Value::AnimationTree(tree.clone()));
+            }
+            for (name, at) in &animtree.animations {
+                animations.insert(
+                    *at,
+                    Value::Animation {
+                        tree: tree.clone(),
+                        name: name.as_str().into(),
+                    },
+                );
+            }
+        }
         Self {
             module,
             bytes,
             strings,
             imports,
+            animations,
         }
     }
 
@@ -156,7 +184,17 @@ impl<'a> Translator<'a> {
                     push!(Value::Int(-i32::from(*n)))
                 }
                 (Opcode::GetInteger, Operand::U32(n)) => {
-                    push!(Value::Int(*n as i32))
+                    push!(match self.animations.get(&operand_at(4)) {
+                        Some(tree) => tree.clone(),
+                        None => Value::Int(*n as i32),
+                    })
+                }
+                (Opcode::GetAnimation, Operand::U64(_)) => {
+                    let animation = self
+                        .animations
+                        .get(&operand_at(8))
+                        .ok_or("animation without an animation tree entry")?;
+                    push!(animation.clone())
                 }
                 (Opcode::GetFloat, Operand::U32(bits)) => {
                     push!(Value::Float(f32::from_bits(*bits)))
@@ -179,8 +217,30 @@ impl<'a> Translator<'a> {
                 (Opcode::GetSelf, _) => global!(Global::SelfRef),
                 (Opcode::GetLevel, _) => global!(Global::Level),
                 (Opcode::GetGame, _) => global!(Global::Game),
+                (Opcode::GetAnim, _) => global!(Global::Anim),
+                (Opcode::GetWorld, _) => global!(Global::World),
+                (Opcode::GetClasses, _) => global!(Global::Classes),
                 (Opcode::GetSelfObject, _) => emit!(Op::Global(Global::SelfRef)),
                 (Opcode::GetLevelObject, _) => emit!(Op::Global(Global::Level)),
+                (
+                    Opcode::GetGameObject
+                    | Opcode::GetAnimObject
+                    | Opcode::GetWorldObject
+                    | Opcode::GetClassesObject,
+                    _,
+                ) => {
+                    emit!(Op::Global(match ins.op {
+                        Opcode::GetGameObject => Global::Game,
+                        Opcode::GetAnimObject => Global::Anim,
+                        Opcode::GetWorldObject => Global::World,
+                        _ => Global::Classes,
+                    }));
+                    chain = Some(Chain {
+                        base: Base::Object,
+                        levels: 0,
+                    });
+                }
+                (Opcode::ProfileStart | Opcode::ProfileStop, _) => push!(Value::Undefined),
                 (Opcode::GetEmptyArray, _) => {
                     emit!(Op::Array);
                     state.depth += 1;
@@ -288,6 +348,45 @@ impl<'a> Translator<'a> {
                     emit!(Op::Indirect(argc, method, thread));
                     state.depth = marker + 1;
                 }
+                (Opcode::New, Operand::U32(class)) => {
+                    // An instance carries its class's method table (`classes.<class>[0]`).
+                    let methods = linker.named(METHODS);
+                    emit!(Op::Call(linker.native("spawnstruct"), 0, false));
+                    emit!(Op::Dup);
+                    emit!(Op::Global(Global::Classes));
+                    emit!(Op::LoadField(linker.symbol(*class)));
+                    emit!(Op::Constant(Value::Int(0)));
+                    emit!(Op::LoadIndex);
+                    emit!(Op::LoadField(methods));
+                    emit!(Op::StoreField(methods));
+                    // The instance, then a call marker and the instance again for the constructor.
+                    state.depth += 1;
+                    state.markers.push(state.depth);
+                    emit!(Op::Dup);
+                    state.depth += 1;
+                }
+                (
+                    Opcode::ClassFunctionCall | Opcode::ClassFunctionThreadCall,
+                    Operand::Method { name, .. },
+                ) => {
+                    let marker = state.markers.pop().ok_or("call without a marker")?;
+                    let argc = state
+                        .depth
+                        .checked_sub(marker + 1)
+                        .ok_or("call argument underflow")?;
+                    emit!(Op::Dup);
+                    emit!(Op::LoadField(linker.named(METHODS)));
+                    emit!(Op::Constant(Value::Int(*name as i32)));
+                    emit!(Op::LoadIndex);
+                    emit!(Op::Swap);
+                    emit!(Op::Reverse(argc + 2));
+                    emit!(Op::Indirect(
+                        argc,
+                        true,
+                        ins.op == Opcode::ClassFunctionThreadCall
+                    ));
+                    state.depth = marker + 1;
+                }
                 (Opcode::DecTop, _) => {
                     emit!(Op::Pop);
                     state.depth -= 1;
@@ -324,12 +423,24 @@ impl<'a> Translator<'a> {
                     emit!(Op::Await(outputs));
                     state.depth -= 2;
                 }
+                (Opcode::WaitTillMatch, Operand::U8(count)) => {
+                    let count = usize::from(*count);
+                    emit!(Op::Reverse(count + 2));
+                    emit!(Op::AwaitMatch(count));
+                    state.depth -= count + 2;
+                    if let Some(follow) = code.get(index + 1)
+                        && follow.op == Opcode::ClearParams
+                    {
+                        pcs.insert(follow.at, out.len());
+                        skip_until = index + 2;
+                    }
+                }
                 (Opcode::Endon, _) => {
                     emit!(Op::Swap);
                     emit!(Op::Endon);
                     state.depth -= 2;
                 }
-                (Opcode::Wait, _) => {
+                (Opcode::Wait | Opcode::WaitRealTime, _) => {
                     emit!(Op::Wait);
                     state.depth -= 1;
                 }
@@ -446,10 +557,16 @@ impl<'a> Translator<'a> {
                     state.depth -= 1;
                 }
                 (Opcode::Set | Opcode::Inc | Opcode::Dec | Opcode::ClearArray, _) => {
-                    let taken = chain.take().ok_or("store without a reference")?;
+                    let mut taken = chain.take().ok_or("store without a reference")?;
+                    if ins.op == Opcode::ClearArray {
+                        // Its key sits on the stack: one more level than the chain.
+                        taken.levels += 1;
+                    } else if matches!(taken.base, Base::Object) && taken.levels == 0 {
+                        return Err(format!("store to a global object at {:#x}", ins.at));
+                    }
                     store(&mut |op| out.push((at.clone(), op)), taken, ins.op);
                     state.depth -= match ins.op {
-                        Opcode::Set => 1,
+                        Opcode::Set | Opcode::ClearArray => 1,
                         _ => 0,
                     };
                 }
@@ -504,6 +621,7 @@ fn store(emit: &mut impl FnMut(Op), chain: Chain, op: Opcode) {
     };
     if chain.levels == 0 {
         match (chain.base, op) {
+            (Base::Object, _) => {}
             (Base::Local(slot), Opcode::Set) => emit(Op::Store(slot)),
             (Base::Local(slot), _) => {
                 emit(Op::Load(slot));
@@ -542,6 +660,7 @@ fn store(emit: &mut impl FnMut(Op), chain: Chain, op: Opcode) {
             }
             emit(Op::EnsureFieldArray(field));
         }
+        Base::Object => {}
     }
     for _ in 1..chain.levels {
         emit(Op::Swap);
@@ -586,6 +705,8 @@ fn binary(op: Opcode) -> Option<Binary> {
         Opcode::BitAnd => Binary::And,
         Opcode::BitOr => Binary::Or,
         Opcode::ShiftLeft => Binary::Shl,
+        Opcode::ShiftRight => Binary::Shr,
+        Opcode::BitXor => Binary::Xor,
         _ => return None,
     })
 }
