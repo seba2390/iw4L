@@ -2,6 +2,7 @@ name: game boundary
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
