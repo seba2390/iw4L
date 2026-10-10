@@ -34,10 +34,11 @@ impl FpvMeshKey {
     }
 }
 
-const fn game_default_hands_name(ns: AssetNamespace) -> &'static str {
+const fn game_default_hands_name(ns: AssetNamespace) -> Option<&'static str> {
     match ns {
-        AssetNamespace::Iw4 | AssetNamespace::Iw5 | AssetNamespace::T6 => VIEWHANDS_NAME,
-        AssetNamespace::T5 => VIEWHANDS_NAME_T5,
+        AssetNamespace::Iw4 | AssetNamespace::Iw5 | AssetNamespace::T6 => Some(VIEWHANDS_NAME),
+        AssetNamespace::T5 => Some(VIEWHANDS_NAME_T5),
+        _ => None,
     }
 }
 
@@ -71,9 +72,12 @@ impl FpvHands {
     }
 
     pub fn game_default(ns: AssetNamespace) -> Self {
-        Self::GameDefault {
-            namespace: ns,
-            name: game_default_hands_name(ns).to_owned(),
+        match game_default_hands_name(ns) {
+            Some(name) => Self::GameDefault {
+                namespace: ns,
+                name: name.to_owned(),
+            },
+            None => Self::Unresolved,
         }
     }
 
@@ -512,12 +516,7 @@ impl FpvMeshCatalog {
     pub fn collide_name_count(&self) -> usize {
         let mut seen: HashMap<&str, u8> = HashMap::new();
         for k in &self.order {
-            *seen.entry(k.name.as_str()).or_insert(0) |= match k.namespace {
-                AssetNamespace::Iw4 => 1,
-                AssetNamespace::T5 => 2,
-                AssetNamespace::Iw5 => 4,
-                AssetNamespace::T6 => 8,
-            };
+            *seen.entry(k.name.as_str()).or_insert(0) |= 1 << (k.namespace as u8);
         }
         seen.values().filter(|bits| bits.count_ones() >= 2).count()
     }

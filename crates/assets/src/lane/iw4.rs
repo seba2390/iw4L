@@ -14,7 +14,6 @@ use crate::{
     lane_capability::{LaneStatus, PreparedCapability},
     session_load::PreparedWorld,
 };
-use asset_core::ZoneGame;
 use asset_material::decode_material_color_maps;
 use asset_transport::{LoadProgress, StageId, ZoneImage, ZoneMemory};
 use asset_world::{
@@ -26,7 +25,6 @@ use asset_world::{
 pub struct Iw4Lane;
 
 impl Iw4Lane {
-    pub const GAME: ZoneGame = ZoneGame::Iw4;
     pub const CAPABILITIES: &'static [(PreparedCapability, LaneStatus)] = &[
         (PreparedCapability::Envelope, LaneStatus::SupportedPopulated),
         (
@@ -53,10 +51,6 @@ impl Iw4Lane {
 }
 
 impl ZoneLane for Iw4Lane {
-    fn game(&self) -> ZoneGame {
-        Self::GAME
-    }
-
     fn capabilities(&self) -> &'static [(PreparedCapability, LaneStatus)] {
         Self::CAPABILITIES
     }

@@ -100,7 +100,7 @@ pub fn game_install_root(picked: &Path) -> PathBuf {
 }
 
 pub fn folder_holds_game(folder: &Path, game: crate::ZoneGame) -> bool {
-    folder_holds_zone_version(folder, zone_version(game))
+    zone_version(game).is_some_and(|version| folder_holds_zone_version(folder, version))
 }
 
 pub fn folder_holds_modern_warfare(folder: &Path) -> bool {
@@ -269,7 +269,12 @@ fn read_zone_version(path: &Path) -> Result<u32, String> {
     use std::io::Read;
     file.read_exact(&mut header)
         .map_err(|error| error.to_string())?;
-    if &header[0..4] != b"IWff" && &header[0..8] != fastfile_t6::MAGIC_SIGNED {
+    if &header[0..4] != b"IWff"
+        && &header[0..8] != fastfile_t6::MAGIC_SIGNED
+        && !crate::zone_formats::registered()
+            .iter()
+            .any(|format| header.starts_with(format.magic))
+    {
         return Err(format!("not an IWff envelope: {:02x?}", &header[..8]));
     }
     Ok(u32::from_le_bytes(header[8..12].try_into().unwrap()))
@@ -324,14 +329,26 @@ fn files_under(roots: Vec<PathBuf>) -> impl Iterator<Item = Result<PathBuf, Stri
     })
 }
 
+/// The zone envelope version of each game whose zones IW4L reads.
+const ZONE_VERSIONS: [(crate::ZoneGame, u32); 4] = [
+    (crate::ZoneGame::Iw4, IW4_ZONE_VERSION),
+    (crate::ZoneGame::T5, T5_ZONE_VERSION),
+    (crate::ZoneGame::Iw5, IW5_ZONE_VERSION),
+    (crate::ZoneGame::T6, T6_ZONE_VERSION),
+];
+
 pub fn zone_game_for_path(path: &Path) -> Option<crate::ZoneGame> {
-    match peek_zone_version(path)? {
-        IW4_ZONE_VERSION => Some(crate::ZoneGame::Iw4),
-        T5_ZONE_VERSION => Some(crate::ZoneGame::T5),
-        IW5_ZONE_VERSION => Some(crate::ZoneGame::Iw5),
-        T6_ZONE_VERSION => Some(crate::ZoneGame::T6),
-        _ => None,
-    }
+    let version = peek_zone_version(path)?;
+    ZONE_VERSIONS
+        .into_iter()
+        .find(|(_, known)| *known == version)
+        .map(|(game, _)| game)
+        .or_else(|| {
+            crate::zone_formats::registered()
+                .into_iter()
+                .find(|format| format.version == version)
+                .map(|format| format.game)
+        })
 }
 
 pub fn find_zone_file_under(search_root: &Path, zone: &str) -> Result<ZoneFile, String> {
@@ -488,20 +505,6 @@ pub fn map_load_title(key: &str, game: Option<crate::ZoneGame>) -> String {
     }
 }
 
-pub fn group_mp_maps(maps: &[String]) -> [Vec<&str>; 4] {
-    let mut cols = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
-    for map in maps {
-        let col = match split_zone_key(map).0 {
-            Some(crate::ZoneGame::Iw4) | None => 0,
-            Some(crate::ZoneGame::Iw5) => 1,
-            Some(crate::ZoneGame::T5) => 2,
-            Some(crate::ZoneGame::T6) => 3,
-        };
-        cols[col].push(map.as_str());
-    }
-    cols
-}
-
 pub fn find_zone_file(root: &GamesRoot, zone: &str) -> Result<ZoneFile, String> {
     let zone = zone.trim().to_ascii_lowercase();
     if zone.is_empty() {
@@ -511,13 +514,18 @@ pub fn find_zone_file(root: &GamesRoot, zone: &str) -> Result<ZoneFile, String> 
     find_zone_stem(root, game, stem)
 }
 
-pub fn zone_version(game: crate::ZoneGame) -> u32 {
-    match game {
-        crate::ZoneGame::Iw4 => IW4_ZONE_VERSION,
-        crate::ZoneGame::T5 => T5_ZONE_VERSION,
-        crate::ZoneGame::Iw5 => IW5_ZONE_VERSION,
-        crate::ZoneGame::T6 => T6_ZONE_VERSION,
-    }
+/// `None` for a game whose zone envelope IW4L does not read yet.
+pub fn zone_version(game: crate::ZoneGame) -> Option<u32> {
+    ZONE_VERSIONS
+        .into_iter()
+        .find(|(known, _)| *known == game)
+        .map(|(_, version)| version)
+        .or_else(|| {
+            crate::zone_formats::registered()
+                .into_iter()
+                .find(|format| format.game == game)
+                .map(|format| format.version)
+        })
 }
 
 fn find_stem_file(
@@ -526,7 +534,13 @@ fn find_stem_file(
     stem: &str,
 ) -> Result<ZoneFile, String> {
     match game {
-        Some(game) => find_zone_file_version(root, stem, zone_version(game)),
+        Some(game) => match zone_version(game) {
+            Some(version) => find_zone_file_version(root, stem, version),
+            None => Err(format!(
+                "zone `{}:{stem}`: IW4L does not read that game's zones yet",
+                game.prefix()
+            )),
+        },
         None => find_zone_file_under(&root.0, stem),
     }
 }

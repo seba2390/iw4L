@@ -1810,7 +1810,9 @@ impl WeaponBuild {
                 continue;
             };
             let attachments = families.normalize(crate::AssetNamespace::T6, &selection.attachments);
-            let name = configuration::authored_name(&family.key, &attachments);
+            let Some(name) = configuration::authored_name(&family.key, &attachments) else {
+                continue;
+            };
             if self
                 .registry
                 .by_namespaced

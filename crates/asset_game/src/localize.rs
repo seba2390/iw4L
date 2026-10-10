@@ -412,6 +412,11 @@ pub fn load_localize_catalog_in_lane(path: &Path) -> Result<LocalizeCatalog, Str
         Some(ZoneGame::Iw5) => load_localize_catalog_iw5(path),
         Some(ZoneGame::T5) => load_localize_catalog_t5(path),
         Some(ZoneGame::T6) => load_localize_catalog_t6(path),
+        Some(game) => Err(format!(
+            "{}: {} localized strings are not read",
+            path.display(),
+            game.prefix()
+        )),
     }?;
     if let Some(key) = &key
         && let Err(error) = asset_transport::cache_put("localize", key, &catalog.cache_encode())

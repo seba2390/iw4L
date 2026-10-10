@@ -13,6 +13,7 @@ enum Capture {
     Iw5(Iw5SoundCapture),
     T5(T5SoundCapture),
     T6(Option<SoundCatalog>),
+    Unread(ZoneGame),
 }
 
 pub struct ZoneSoundCapture {
@@ -35,6 +36,7 @@ impl ZoneSoundCapture {
             ZoneGame::Iw5 => Capture::Iw5(Iw5SoundCapture::for_zone(path)),
             ZoneGame::T5 => Capture::T5(T5SoundCapture::for_zone(path)),
             ZoneGame::T6 => Capture::T6(None),
+            _ => Capture::Unread(game),
         };
         Self {
             path: path.to_path_buf(),
@@ -83,6 +85,7 @@ impl ZoneSoundCapture {
                 Ok(catalog)
             }
             Capture::T6(None) => Err("no T6 aliases were read".to_owned()),
+            Capture::Unread(game) => Err(format!("{} sound banks are not read", game.prefix())),
         }
     }
 
@@ -177,6 +180,7 @@ fn is_sound_source(path: &Path, game: ZoneGame) -> bool {
         ZoneGame::Iw5 => &["code_post_gfx_mp", "common_mp", "localized_common_mp"],
         ZoneGame::T5 => &["code_post_gfx_mp", "common_mp", "localized_common_mp"],
         ZoneGame::T6 => &["common_mp"],
+        _ => &[],
     };
     names.iter().any(|name| stem.eq_ignore_ascii_case(name))
 }
@@ -626,7 +630,7 @@ impl ZoneSoundCapture {
             Capture::Iw4(catalog) => catalog,
             Capture::Iw5(capture) => capture.catalog_mut(),
             Capture::T5(capture) => capture.catalog_mut(),
-            Capture::T6(_) => return,
+            Capture::T6(_) | Capture::Unread(_) => return,
         };
         catalog.ingest_rawfile(name, data, zlib_compressed);
     }

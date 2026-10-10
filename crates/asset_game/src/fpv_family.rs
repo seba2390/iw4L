@@ -40,6 +40,7 @@ impl<G: Family> SoldierHandsConnection<G> {
             FamilyId::T6 => {
                 SoldierFpvConnection::connect(gun, catalog.family_mesh(hands)?).map(Self::T6)
             }
+            _ => None,
         }
     }
 
@@ -81,6 +82,7 @@ impl FpvFamilyConnection {
             FamilyId::Iw5 => SoldierHandsConnection::bind(catalog, gun, hands).map(Self::Iw5),
             FamilyId::T5 => SoldierHandsConnection::bind(catalog, gun, hands).map(Self::T5),
             FamilyId::T6 => SoldierHandsConnection::bind(catalog, gun, hands).map(Self::T6),
+            _ => None,
         }
     }
 

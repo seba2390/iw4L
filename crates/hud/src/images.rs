@@ -96,7 +96,8 @@ fn blood_material_binding(catalog: &MenuCatalog) -> Result<BloodMaterialBinding,
         ));
     }
     let state =
-        asset_material::compile_material_state(HUD_CHROME_NAMESPACE, plan.unlit_pass_states[0]);
+        asset_material::compile_material_state(HUD_CHROME_NAMESPACE, plan.unlit_pass_states[0])
+            .ok_or_else(|| format!("{pass}: material state of a game IW4L does not read"))?;
     if let Some(fields) = state.unsupported_host_fields() {
         return Err(format!("{pass}: unsupported material state: {fields:?}"));
     }
@@ -272,7 +273,7 @@ impl HudImages {
         }
         for (name, state) in &catalog.material_state_bits {
             let compiled = state.agreed().and_then(|words| {
-                let compiled = asset_material::compile_material_state(HUD_CHROME_NAMESPACE, words);
+                let compiled = asset_material::compile_material_state(HUD_CHROME_NAMESPACE, words)?;
                 if let Some(fields) = compiled.unsupported_host_fields() {
                     diag::warn!(Ui, "hud material state refused: {name}: {fields:?}");
                     None

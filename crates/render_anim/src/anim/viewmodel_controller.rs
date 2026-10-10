@@ -444,6 +444,7 @@ impl ViewmodelController {
                         ACTIVE_GOAL_WEIGHT
                     }
                 }
+                AdsOverlayConvention::Unread => INACTIVE_GOAL_WEIGHT,
             };
             self.tree
                 .set_rate(WeaponAnimSlot::AdsUp.index(), OVERLAY_SCRUB_RATE)

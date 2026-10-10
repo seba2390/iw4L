@@ -15,13 +15,15 @@ mod iw5;
 mod t5;
 mod t6;
 
-pub(super) fn authored_name(key: &FamilyKey, attachments: &[String]) -> String {
-    match key.namespace {
+/// `None` for a game whose weapon names IW4L does not compose.
+pub(super) fn authored_name(key: &FamilyKey, attachments: &[String]) -> Option<String> {
+    Some(match key.namespace {
         AssetNamespace::Iw4 => iw4::authored_name(&key.base, attachments),
         AssetNamespace::Iw5 => common::joined_name(&key.base, attachments),
         AssetNamespace::T5 => t5::authored_name(&key.base, attachments),
         AssetNamespace::T6 => t6::authored_name(&key.base, attachments),
-    }
+        _ => return None,
+    })
 }
 
 pub(crate) fn authored_attachments(key: &FamilyKey, name: &str) -> Option<Vec<String>> {
@@ -47,6 +49,12 @@ impl WeaponRegistry {
             AssetNamespace::Iw5 => &iw5::Iw5Configuration(self),
             AssetNamespace::T5 => &t5::T5Configuration(self),
             AssetNamespace::T6 => &t6::T6Configuration(self),
+            other => {
+                return Err(ConfigurationRefusal::Unsupported(format!(
+                    "{} weapon configurations are not composed",
+                    other.as_str()
+                )));
+            }
         };
         compiler.compile(family, selection)
     }

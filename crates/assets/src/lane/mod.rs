@@ -189,7 +189,6 @@ impl Default for MaterialPopulation {
 }
 
 pub trait ZoneLane: Send + Sync {
-    fn game(&self) -> ZoneGame;
     fn capabilities(&self) -> &'static [(PreparedCapability, LaneStatus)];
 
     fn load_world(
@@ -228,6 +227,95 @@ pub fn lane(game: ZoneGame) -> &'static dyn ZoneLane {
         ZoneGame::T5 => &t5::T5Lane,
         ZoneGame::Iw5 => &iw5::Iw5Lane,
         ZoneGame::T6 => &t6::T6Lane,
+        _ => &UnreadLane,
+    }
+}
+
+/// The lane of a game whose zones IW4L does not decode: every capability is
+/// missing, and a map of it loads as an empty world with that gap.
+struct UnreadLane;
+
+impl UnreadLane {
+    const CAPABILITIES: &'static [(PreparedCapability, LaneStatus)] = &[
+        (PreparedCapability::Envelope, LaneStatus::MissingDecoder),
+        (
+            PreparedCapability::PreparedWorld,
+            LaneStatus::MissingDecoder,
+        ),
+        (
+            PreparedCapability::CollisionSpawns,
+            LaneStatus::MissingDecoder,
+        ),
+        (
+            PreparedCapability::WeaponCatalog,
+            LaneStatus::MissingDecoder,
+        ),
+        (PreparedCapability::BodySkeleton, LaneStatus::MissingDecoder),
+        (PreparedCapability::PlayableFfa, LaneStatus::MissingDecoder),
+    ];
+}
+
+impl ZoneLane for UnreadLane {
+    fn capabilities(&self) -> &'static [(PreparedCapability, LaneStatus)] {
+        Self::CAPABILITIES
+    }
+
+    fn load_world(
+        &self,
+        path: &Path,
+        image: &ZoneImage,
+        _progress: &LoadProgress,
+        _shared_surfaces: asset_model::SharedXModelSurfaces,
+        _material_seed: asset_material::MaterialCatalog,
+        _common_film_visions: &FilmVisionCatalog,
+    ) -> LoadedWorld {
+        LoadedWorld::with_gap(
+            WorldDrawPolicy::unread(image.game),
+            PreparedCapability::PreparedWorld,
+            format!(
+                "{}: IW4L does not decode {} zones",
+                path.display(),
+                image.game.prefix()
+            ),
+            Some("assets::lane::unread::load_world/no_decoder"),
+        )
+    }
+
+    fn load_common_mp(
+        &self,
+        path: &Path,
+        image: &ZoneImage,
+        _progress: &LoadProgress,
+        _decode_color_maps: bool,
+        material_seed: asset_material::MaterialCatalog,
+    ) -> CommonCensus {
+        CommonCensus {
+            material_population: material_seed,
+            report: vec![format!(
+                "{}: IW4L does not decode {} zones",
+                path.display(),
+                image.game.prefix()
+            )],
+            ..CommonCensus::default()
+        }
+    }
+
+    fn load_material_population(
+        &self,
+        path: &Path,
+        image: &ZoneImage,
+        _progress: &LoadProgress,
+        material_seed: asset_material::MaterialCatalog,
+    ) -> MaterialPopulation {
+        MaterialPopulation {
+            materials: material_seed,
+            report: vec![format!(
+                "{}: IW4L does not decode {} zones",
+                path.display(),
+                image.game.prefix()
+            )],
+            ..MaterialPopulation::default()
+        }
     }
 }
 
@@ -245,6 +333,7 @@ pub const LANE_GAPS: &[&str] = &[
     "assets::lane::iw5::load_world/no_gfx_world",
     "assets::lane::iw5::load_world/world_mesh",
     "assets::lane::t6::load_world/no_decoder",
+    "assets::lane::unread::load_world/no_decoder",
     "assets::session_load::load_prepared_match/zone_open",
 ];
 

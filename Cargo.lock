@@ -2848,6 +2848,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastfile_t7"
+version = "0.1.0"
+dependencies = [
+ "asset_core",
+ "miniz_oxide",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3130,6 +3138,14 @@ name = "game_t6"
 version = "0.1.0"
 dependencies = [
  "asset_core",
+ "game_api",
+ "gsc",
+]
+
+[[package]]
+name = "game_t7"
+version = "0.1.0"
+dependencies = [
  "game_api",
  "gsc",
 ]
@@ -5994,12 +6010,14 @@ dependencies = [
  "bevy",
  "clipmap_iw4",
  "diag",
+ "fastfile_t7",
  "frame",
  "game_api",
  "game_iw4",
  "game_iw5",
  "game_t5",
  "game_t6",
+ "game_t7",
  "gamemode_iw4",
  "hud_iw4",
  "menu_expr",

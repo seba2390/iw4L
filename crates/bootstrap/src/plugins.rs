@@ -46,6 +46,7 @@ pub fn add_runtime_plugins_with_role(app: &mut App, role: RuntimeRole) {
         .add_plugins(ReplayPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(SessionPlugin);
+    asset_transport::register_zone_formats(session::games::zone_formats());
     app.insert_resource(hud::GameMenuParsers(session::games::menu_parsers()));
     hud::register_game_menus(session::games::menus);
 

@@ -10,7 +10,7 @@ another game's behaviour; a rule a game does not have yet is said out loud.
 |---|---|---|
 | `neutral` | neutral, format | no game rule or constant: transport, render backend, net transport, GSC pieces (`gsc`), `game_api`, math, diagnostics |
 | `format` | neutral, its game's format | how one game's data is laid out (`fastfile_t5`, …) |
-| `game` | neutral, its game's format/game | one game's rules (`game_iw4` + the `*_iw4` rule crates, `game_t5`, `game_iw5`, `game_t6`) |
+| `game` | neutral, its game's format/game | one game's rules (`game_iw4` + the `*_iw4` rule crates, `game_t5`, `game_iw5`, `game_t6`, `game_t7`) |
 | `session` | anything | picks one game per match; names games only in `crates/session/src/games.rs` |
 | `mixed` | anything | crates still holding several games' rules; the list may only shrink |
 

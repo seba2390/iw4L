@@ -11,7 +11,6 @@ use super::{
 use crate::lane_capability::{LaneStatus, PreparedCapability};
 use crate::session_load::PreparedWorld;
 use asset_anim::XAnimBuild;
-use asset_core::ZoneGame;
 use asset_model::{BodyMeshBuild, OwnedLightGrid};
 use asset_transport::progress::{LoadProgress, StageId};
 use asset_transport::{Iw5ZoneMemory, ZoneImage};
@@ -23,7 +22,6 @@ use asset_world::{
 pub struct Iw5Lane;
 
 impl Iw5Lane {
-    pub const GAME: ZoneGame = ZoneGame::Iw5;
     pub const CAPABILITIES: &'static [(PreparedCapability, LaneStatus)] = &[
         (PreparedCapability::Envelope, LaneStatus::SupportedPopulated),
         (
@@ -120,10 +118,6 @@ impl Iw5Lane {
 }
 
 impl ZoneLane for Iw5Lane {
-    fn game(&self) -> ZoneGame {
-        Self::GAME
-    }
-
     fn capabilities(&self) -> &'static [(PreparedCapability, LaneStatus)] {
         Self::CAPABILITIES
     }

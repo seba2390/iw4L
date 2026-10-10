@@ -55,18 +55,8 @@ pub fn stored_game_folders(artifacts: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-fn zone_game(game: OtherGame) -> Option<asset_transport::ZoneGame> {
-    Some(match game {
-        OtherGame::BlackOps => asset_transport::ZoneGame::T5,
-        OtherGame::BlackOps2 => asset_transport::ZoneGame::T6,
-        OtherGame::ModernWarfare3 => asset_transport::ZoneGame::Iw5,
-        OtherGame::ModernWarfare2 => asset_transport::ZoneGame::Iw4,
-        OtherGame::ModernWarfare => return None,
-    })
-}
-
 fn holds(folder: &Path, game: OtherGame) -> bool {
-    zone_game(game).map_or_else(
+    session::games::installation_family(game).map_or_else(
         || asset_transport::folder_holds_modern_warfare(folder),
         |kind| asset_transport::folder_holds_game(folder, kind),
     )
@@ -194,7 +184,7 @@ fn folder_line(games_root: Option<&Path>, game: OtherGame, folder: &str) -> Stri
     const WIDTH: usize = 40;
     if !folder.is_empty() {
         let path = Path::new(folder);
-        return if zone_game(game).map_or_else(
+        return if session::games::installation_family(game).map_or_else(
             || asset_transport::folder_holds_modern_warfare(path),
             |kind| asset_transport::folder_holds_game(path, kind),
         ) {
@@ -204,7 +194,7 @@ fn folder_line(games_root: Option<&Path>, game: OtherGame, folder: &str) -> Stri
         };
     }
     match games_root.and_then(|root| {
-        zone_game(game)
+        session::games::installation_family(game)
             .and_then(|kind| asset_transport::find_game_install(root, kind))
             .or_else(|| {
                 (game == OtherGame::ModernWarfare)
@@ -222,8 +212,8 @@ pub(crate) fn game_folder_menu(
     picks: Res<FolderPicks>,
     mut settings: ResMut<frame::GameSettings>,
     mut dvars: ResMut<frame::UiMenuDvars>,
-    mut at_launch: Local<Option<[String; 5]>>,
-    mut shown: Local<Option<[String; 5]>>,
+    mut at_launch: Local<Option<[String; 6]>>,
+    mut shown: Local<Option<[String; 6]>>,
 ) {
     let launched = at_launch.get_or_insert_with(|| settings.game_folders.clone());
     for command in events.read() {

@@ -178,11 +178,14 @@ mod iw5;
 mod t5;
 mod t6;
 
-pub(super) fn compiler_for(namespace: AssetNamespace) -> &'static dyn MaterialCompiler {
-    match namespace {
+/// `None` for a game whose material state and techniques IW4L does not read.
+pub(super) fn compiler_for(namespace: AssetNamespace) -> Option<&'static dyn MaterialCompiler> {
+    let compiler: &'static dyn MaterialCompiler = match namespace {
         AssetNamespace::Iw4 => &iw4::Iw4Compiler,
         AssetNamespace::Iw5 => &iw5::Iw5Compiler,
         AssetNamespace::T5 => &t5::T5Compiler,
         AssetNamespace::T6 => &t6::T6Compiler,
-    }
+        _ => return None,
+    };
+    Some(compiler)
 }

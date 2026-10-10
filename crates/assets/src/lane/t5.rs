@@ -10,7 +10,6 @@ use super::{
 };
 use crate::lane_capability::{LaneStatus, PreparedCapability};
 use crate::session_load::PreparedWorld;
-use asset_core::ZoneGame;
 use asset_material::decode_material_color_maps;
 use asset_transport::progress::{LoadProgress, StageId};
 use asset_transport::{T5ZoneMemory, ZoneImage};
@@ -22,7 +21,6 @@ use asset_world::{
 pub struct T5Lane;
 
 impl T5Lane {
-    pub const GAME: ZoneGame = ZoneGame::T5;
     pub const CAPABILITIES: &'static [(PreparedCapability, LaneStatus)] = &[
         (PreparedCapability::Envelope, LaneStatus::SupportedPopulated),
         (
@@ -49,10 +47,6 @@ impl T5Lane {
 }
 
 impl ZoneLane for T5Lane {
-    fn game(&self) -> ZoneGame {
-        Self::GAME
-    }
-
     fn capabilities(&self) -> &'static [(PreparedCapability, LaneStatus)] {
         Self::CAPABILITIES
     }

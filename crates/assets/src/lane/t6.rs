@@ -9,7 +9,6 @@ use bevy::prelude::Image;
 
 use super::{CommonCensus, LoadedWorld, MaterialPopulation, ZoneLane};
 use crate::lane_capability::{LaneStatus, PreparedCapability};
-use asset_core::ZoneGame;
 use asset_transport::ZoneImage;
 use asset_transport::progress::{LoadProgress, StageId};
 use asset_world::WorldDrawPolicy;
@@ -409,7 +408,6 @@ fn foley_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::Zo
 pub struct T6Lane;
 
 impl T6Lane {
-    pub const GAME: ZoneGame = ZoneGame::T6;
     pub const CAPABILITIES: &'static [(PreparedCapability, LaneStatus)] = &[
         (PreparedCapability::Envelope, LaneStatus::SupportedPopulated),
         (
@@ -1248,7 +1246,7 @@ fn capture_ui_state(
     let state = asset_material::compile_material_state(
         asset_core::FamilyId::T6,
         [header_u32(bytes, 0)?, header_u32(bytes, 4)?],
-    );
+    )?;
     state.unsupported_host_fields().is_none().then_some(state)
 }
 
@@ -2158,10 +2156,6 @@ fn map_teams(
 }
 
 impl ZoneLane for T6Lane {
-    fn game(&self) -> ZoneGame {
-        Self::GAME
-    }
-
     fn capabilities(&self) -> &'static [(PreparedCapability, LaneStatus)] {
         Self::CAPABILITIES
     }

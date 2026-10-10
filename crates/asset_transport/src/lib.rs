@@ -9,6 +9,8 @@ pub mod sab;
 pub mod steam;
 pub mod t6_content;
 pub mod zone;
+mod zone_formats;
+pub use zone_formats::register_zone_formats;
 
 pub use artifact_cache::{
     CacheFlight, cache_flight, cache_get, cache_open, cache_put, cache_put_with, fnv1a64,
@@ -21,8 +23,8 @@ pub use discover::{
     find_modern_warfare_install, find_runtime_common_mp, find_runtime_zone, find_zone_file,
     find_zone_file_version, find_zone_for_tree, folder_holds_game, folder_holds_modern_warfare,
     game_install_root, game_root_for_zone, games_content_report, games_root_from_env,
-    games_root_report, group_mp_maps, list_menu_map_packs, list_mp_map_packs, list_mp_maps,
-    load_dotenv, map_load_title, peek_zone_version, search_roots, set_game_folders, split_zone_key,
+    games_root_report, list_menu_map_packs, list_mp_map_packs, list_mp_maps, load_dotenv,
+    map_load_title, peek_zone_version, search_roots, set_game_folders, split_zone_key,
     zone_game_for_path, zone_version,
 };
 pub use ipak::{IPak, ipak_name_hash};

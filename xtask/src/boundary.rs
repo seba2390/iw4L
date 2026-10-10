@@ -29,8 +29,8 @@ const REGISTRATION: &str = "crates/session/src/games.rs";
 const IDENTITY: &str = "crates/asset_core/src/family.rs";
 /// This check has to spell the shapes it hunts for.
 const SELF: &str = "xtask/src/boundary.rs";
-const GAMES: [&str; 4] = ["iw4", "t5", "iw5", "t6"];
-const GAME_VARIANTS: [&str; 4] = ["Iw4", "T5", "Iw5", "T6"];
+const GAMES: [&str; 5] = ["iw4", "t5", "iw5", "t6", "t7"];
+const GAME_VARIANTS: [&str; 5] = ["Iw4", "T5", "Iw5", "T6", "T7"];
 const GAME_ENUMS: [&str; 4] = ["ZoneGame", "AssetNamespace", "FamilyId", "Realm"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
