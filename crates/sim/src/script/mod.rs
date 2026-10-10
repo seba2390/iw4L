@@ -6,7 +6,7 @@ pub(crate) use bevy_ecs::prelude::Resource;
 pub(crate) use std::collections::{BTreeMap, VecDeque};
 pub(crate) use std::sync::Arc;
 
-pub(crate) use runtime::Runtime;
+pub(crate) use runtime::{MatchScript, RoundScript};
 
 pub use gsc::IR_VERSION;
 pub use gsc::{Builtin, Catalog, Namespace, Owner};

@@ -557,7 +557,7 @@ pub fn lower_pass_to_wgsl(
         return Err(Sm3WgslError::MissingColourOutput);
     }
 
-    let mut source = String::new();
+    let mut source = String::from("enable wgpu_binding_array;\n");
     source.push_str("struct Sm3ConstantArena { c: array<vec4<f32>> }\n");
     source.push_str("@group(0) @binding(0) var<storage, read> sm3_constants: Sm3ConstantArena;\n");
     if vertex_plan.uses_relative_float {
@@ -771,6 +771,11 @@ pub fn lower_pass_to_wgsl(
         .unwrap();
         if let Some(alpha_test) = alpha_test {
             emit_alpha_test(&mut source, alpha_test, colour_output)?;
+        }
+        if abi.depth_to_colour {
+            source.push_str("    return vec4<f32>(varyings.position.z);\n");
+            source.push_str("}\n");
+            continue;
         }
         writeln!(source, "    return {};", register_name(colour_output)).unwrap();
         source.push_str("}\n");

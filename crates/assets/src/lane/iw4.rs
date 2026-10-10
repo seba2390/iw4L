@@ -355,6 +355,11 @@ impl ZoneLane for Iw4Lane {
         });
         report.extend(image_report.into_iter().flatten());
         report.extend(clip_report);
+        let map_content = std::sync::Arc::new(asset_world::build_map_content(
+            &stream,
+            fx_glass.as_ref(),
+            clip.as_ref(),
+        ));
         let fx_glass = fx_glass.map(|mut g| {
             g.resolve_material_edges(&materials);
             g
@@ -408,6 +413,7 @@ impl ZoneLane for Iw4Lane {
                     fx: std::mem::take(&mut fx),
                     fx_models,
                     fx_glass,
+                    map_content,
                     impact_fx: impact_fx.take(),
                     dyn_ents,
                     exp_fog,
@@ -646,6 +652,7 @@ impl ZoneLane for Iw4Lane {
                         fx,
                         fx_models,
                         fx_glass,
+                        map_content,
                         impact_fx,
                         reflection_probe_images,
                         intermission_view,
@@ -693,6 +700,7 @@ impl ZoneLane for Iw4Lane {
                         fx,
                         fx_models,
                         fx_glass,
+                        map_content,
                         impact_fx,
                         dyn_ents,
                         exp_fog,

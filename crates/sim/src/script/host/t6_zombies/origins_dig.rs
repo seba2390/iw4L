@@ -108,20 +108,21 @@ fn model(world: &mut World, name: &str, origin: [f32; 3], angles: [f32; 3]) -> O
         .model_capability(name)
         .flatten()
         .is_none()
-        || world.resource::<Runtime>().entities.len() >= super::super::entities::MAX_SCRIPT_ENTITIES
+        || world.resource::<RoundScript>().entities.len()
+            >= super::super::entities::MAX_SCRIPT_ENTITIES
     {
         return None;
     }
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     let object = runtime
         .create_entity(EntityKind::Spawned, "origins_dig")
         .ok()?;
     drop(runtime);
     let Ok(presence) = super::super::presence::spawn_presence(world, origin) else {
-        world.resource_mut::<Runtime>().delete_entity(object);
+        world.resource_mut::<RoundScript>().delete_entity(object);
         return None;
     };
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     runtime.set_object_field(object, "origin", Value::Vector(origin));
     runtime.set_object_field(object, "angles", Value::Vector(angles));
     runtime.set_object_field(object, "model", Value::string(name));
@@ -243,7 +244,7 @@ impl Digs {
                     };
                     let mut at = site.origin;
                     at[2] += rise - 40.0;
-                    world.resource_mut::<Runtime>().set_object_field(
+                    world.resource_mut::<RoundScript>().set_object_field(
                         object,
                         "origin",
                         Value::Vector(at),
@@ -255,7 +256,9 @@ impl Digs {
             let elapsed =
                 tick.0.saturating_sub(drop.born) as f32 * crate::MATCH_TICK_MS as f32 / 1000.0;
             if elapsed >= 12.0 {
-                world.resource_mut::<Runtime>().delete_entity(drop.object);
+                world
+                    .resource_mut::<RoundScript>()
+                    .delete_entity(drop.object);
                 return false;
             }
             let sink = if elapsed < 6.0 {
@@ -265,7 +268,7 @@ impl Digs {
             };
             let mut at = drop.origin;
             at[2] -= sink;
-            world.resource_mut::<Runtime>().set_object_field(
+            world.resource_mut::<RoundScript>().set_object_field(
                 drop.object,
                 "origin",
                 Value::Vector(at),
@@ -276,7 +279,9 @@ impl Digs {
             let elapsed =
                 tick.0.saturating_sub(drop.born) as f32 * crate::MATCH_TICK_MS as f32 / 1000.0;
             if elapsed >= 12.0 {
-                world.resource_mut::<Runtime>().delete_entity(drop.object);
+                world
+                    .resource_mut::<RoundScript>()
+                    .delete_entity(drop.object);
                 return false;
             }
             let sink = if elapsed < 6.0 {
@@ -286,7 +291,7 @@ impl Digs {
             };
             let mut at = drop.origin;
             at[2] -= sink;
-            world.resource_mut::<Runtime>().set_object_field(
+            world.resource_mut::<RoundScript>().set_object_field(
                 drop.object,
                 "origin",
                 Value::Vector(at),
@@ -384,7 +389,9 @@ impl Digs {
             };
             let kind = drop.kind;
             let drop = self.staff_parts.remove(index);
-            world.resource_mut::<Runtime>().delete_entity(drop.object);
+            world
+                .resource_mut::<RoundScript>()
+                .delete_entity(drop.object);
             state.staffs.add_part(client, kind);
             diag::info!(
                 Sim,
@@ -424,7 +431,9 @@ impl Digs {
             };
             if acquired {
                 let drop = self.weapons.remove(index);
-                world.resource_mut::<Runtime>().delete_entity(drop.object);
+                world
+                    .resource_mut::<RoundScript>()
+                    .delete_entity(drop.object);
                 diag::info!(
                     Sim,
                     "origins dug weapon acquired client={} gun={}",
@@ -649,7 +658,7 @@ impl Digs {
         let site = &mut self.sites[index];
         site.active = false;
         world
-            .resource_mut::<Runtime>()
+            .resource_mut::<RoundScript>()
             .delete_entity(site.object.take().unwrap());
         let progress = self.players.entry(client).or_default();
         if progress.complete(bad) {

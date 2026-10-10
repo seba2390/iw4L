@@ -1,7 +1,7 @@
 use super::entities::EntityKind;
 use super::natives::engine::entity_id;
 use crate::script::runtime::{raise, run_now};
-use crate::script::{Namespace, NativeRegistry, Runtime, Value};
+use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
 
 /// The spawner keys an actor keeps as its own; the rest describe the spawner.
@@ -22,7 +22,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
     let spawner_id = entity_id(world, spawner)?;
     let (classname, count) = {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let classname = runtime
             .entities
             .get(&spawner_id)
@@ -37,8 +37,8 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         return Ok(Value::Undefined);
     }
     let (origin, angles) = {
-        let mut runtime = world.resource_mut::<Runtime>();
-        let pose = |runtime: &mut Runtime, name| match runtime.object_field(spawner_id, name) {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let pose = |runtime: &mut RoundScript, name| match runtime.object_field(spawner_id, name) {
             Value::Vector(v) => v,
             _ => [0.0; 3],
         };
@@ -48,7 +48,7 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
     let presence = super::presence::spawn_presence(world, origin)?;
     let number = crate::frame::FrameWorld::from_world(world).gentity_number(presence);
     let id = {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let id = runtime.create_entity(EntityKind::Actor, &classname)?;
         let skipped: Vec<u32> = SPAWNER_ONLY_FIELDS
             .iter()
@@ -89,16 +89,16 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
     run_now(world, &main, Value::Object(id), Vec::new(), now)
         .map_err(|fault| format!("{main}: {fault:?}"))?;
     let dog = matches!(
-        world.resource_mut::<Runtime>().object_field(id, "type"),
+        world.resource_mut::<RoundScript>().object_field(id, "type"),
         Value::String(kind) if kind.as_bytes() == b"zombie_dog"
     );
     {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         runtime.set_object_field(id, "isdog", Value::Int(dog.into()));
         runtime.set_object_field(id, "delayeddeath", Value::Int(0));
     }
     {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let model = runtime.object_field(id, "model");
         let entity = &runtime.entities[&id];
         diag::debug!(
@@ -164,7 +164,7 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
     };
     let arg = |index: usize| args.get(index).cloned().unwrap_or(Value::Undefined);
     let (before, model) = {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let before = match runtime.object_field(actor, "health") {
             Value::Int(n) => n,
             Value::Float(f) => f as i32,

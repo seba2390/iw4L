@@ -49,24 +49,9 @@ pub fn add_runtime_plugins_with_role(app: &mut App, role: RuntimeRole) {
     app.insert_resource(hud::GameMenuParsers(session::games::menu_parsers()));
     hud::register_game_menus(session::games::menus);
 
-    app.edit_schedule(Update, |schedule| {
-        schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
-    });
-
-    app.edit_schedule(First, |schedule| {
-        schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
-    });
-    app.edit_schedule(PreUpdate, |schedule| {
-        schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
-    });
-    app.edit_schedule(PostUpdate, |schedule| {
-        schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
-    });
-    app.edit_schedule(Last, |schedule| {
-        schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
-    });
-
     if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+        // Measured: multithreaded render schedules compete with camera prepare's own
+        // ComputeTaskPool lanes for the same workers and lose ~5% fps.
         render_app.edit_schedule(bevy::render::renderer::RenderGraph, |schedule| {
             schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
         });
@@ -82,6 +67,16 @@ pub fn add_runtime_plugins_with_role(app: &mut App, role: RuntimeRole) {
         render_app.edit_schedule(bevy::render::ExtractSchedule, |schedule| {
             schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
         });
+        if cfg!(target_os = "macos") && pipelined_rendering() {
+            // The Metal surface must be created on the main thread; pipelined, only
+            // extraction runs there.
+            render_app.add_systems(
+                bevy::render::ExtractSchedule,
+                bevy::render::view::create_surfaces
+                    .run_if(bevy::render::view::need_surface_configuration)
+                    .after(bevy::render::camera::extract_cameras),
+            );
+        }
     }
 }
 
@@ -130,11 +125,6 @@ const PIPELINED_RENDERING_ENV: &str = "IW4L_PIPELINED_RENDERING";
 /// boundary; the bounded render channel permits one outstanding frame.
 /// Set IW4L_PIPELINED_RENDERING=0 for synchronous presentation.
 ///
-/// Off by default on macOS: AppKit only lets the main thread touch the NSView
-/// behind the Metal surface. Bevy hands `create_surfaces` back to the main
-/// thread through the multi-threaded executor, which the single-threaded
-/// `Render` schedule above bypasses, so the render thread would create it and
-/// panic in `raw-window-metal`.
 fn pipelined_rendering() -> bool {
     match std::env::var_os(PIPELINED_RENDERING_ENV) {
         None => !cfg!(target_os = "macos"),

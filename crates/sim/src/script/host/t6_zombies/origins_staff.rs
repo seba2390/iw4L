@@ -153,7 +153,7 @@ impl Staffs {
                 .model_capability(station.kind.model())
                 .flatten()
                 .is_none()
-                || world.resource::<Runtime>().entities.len()
+                || world.resource::<RoundScript>().entities.len()
                     >= super::super::entities::MAX_SCRIPT_ENTITIES
             {
                 continue;
@@ -161,7 +161,7 @@ impl Staffs {
             let Ok(presence) = super::super::presence::spawn_presence(world, station.origin) else {
                 continue;
             };
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_staff_station")
             else {
                 continue;
@@ -534,7 +534,7 @@ impl Staffs {
                 .model_capability("p6_zm_tm_staff_holder")
                 .flatten()
                 .is_none()
-                || world.resource::<Runtime>().entities.len()
+                || world.resource::<RoundScript>().entities.len()
                     >= super::super::entities::MAX_SCRIPT_ENTITIES
             {
                 continue;
@@ -543,7 +543,7 @@ impl Staffs {
             else {
                 continue;
             };
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_staff_pedestal")
             else {
                 continue;
@@ -702,7 +702,7 @@ impl Staffs {
         }
         for pedestal in &mut self.pedestals {
             if let Some(object) = pedestal.object.take() {
-                world.resource_mut::<Runtime>().delete_entity(object);
+                world.resource_mut::<RoundScript>().delete_entity(object);
             }
         }
         diag::info!(Sim, "origins staff placement completed, spawning robot");
@@ -730,7 +730,7 @@ impl Staffs {
             .model_capability("p6_zm_giant_robot")
             .flatten()
             .is_none()
-            || world.resource::<Runtime>().entities.len()
+            || world.resource::<RoundScript>().entities.len()
                 >= super::super::entities::MAX_SCRIPT_ENTITIES
         {
             diag::warn!(Sim, "origins robot: model not available");
@@ -741,7 +741,7 @@ impl Staffs {
             return;
         };
 
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_giant_robot") else {
             return;
         };
@@ -776,7 +776,7 @@ impl Staffs {
         self.robot_health -= damage;
 
         if let Some(object) = self.robot_object {
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(object, "health", Value::Int(self.robot_health.max(0)));
         }
 
@@ -791,7 +791,7 @@ impl Staffs {
     fn drop_tank_keys(&mut self, world: &mut World, tick: Tick) {
         // Drop 4 tank keys around the robot
         if let Some(robot_object) = self.robot_object {
-            let origin = match world.resource_mut::<Runtime>().object_field(robot_object, "origin") {
+            let origin = match world.resource_mut::<RoundScript>().object_field(robot_object, "origin") {
                 Value::Vector(v) => v,
                 _ => return,
             };
@@ -809,7 +809,7 @@ impl Staffs {
                     .model_capability("p6_zm_tank_key")
                     .flatten()
                     .is_none()
-                    || world.resource::<Runtime>().entities.len()
+                    || world.resource::<RoundScript>().entities.len()
                         >= super::super::entities::MAX_SCRIPT_ENTITIES
                 {
                     continue;
@@ -819,7 +819,7 @@ impl Staffs {
                     continue;
                 };
 
-                let mut runtime = world.resource_mut::<Runtime>();
+                let mut runtime = world.resource_mut::<RoundScript>();
                 let Ok(object) = runtime.create_entity(EntityKind::Spawned, "origins_tank_key")
                 else {
                     continue;
@@ -917,7 +917,7 @@ impl Staffs {
 
                 // Remove the key entity
                 let key = self.tank_keys_dropped.remove(index);
-                world.resource_mut::<Runtime>().delete_entity(key.object);
+                world.resource_mut::<RoundScript>().delete_entity(key.object);
 
                 // Play pickup effect
                 powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_tank_key_pickup", key.origin);

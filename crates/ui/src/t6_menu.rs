@@ -806,10 +806,11 @@ fn paint(
     mut images: ResMut<Assets<Image>>,
     map: Option<Res<SessionMapIdentity>>,
     capture: Res<frame::UiBindingCapture>,
-    generation: Res<frame::WorldGeneration>,
+    generation: Option<Res<frame::WorldGeneration>>,
     dvars: Res<frame::UiMenuDvars>,
 ) {
-    art.reset(*generation);
+    let generation = generation.map(|generation| *generation);
+    art.reset(generation);
     let signature = format!(
         "{} {:?} {} {} {:?} {} {:?} {} {} {:?}",
         open.0,
@@ -824,7 +825,7 @@ fn paint(
         (
             &capture.command,
             &menu.rename,
-            *generation,
+            generation,
             catalog.revision,
             BINDS.map(|(_, command)| dvars
                 .get(&format!("ui_bind_{command}"))
@@ -1181,7 +1182,8 @@ fn paint(
                         let backing = if order == menu.focus { row_selected.as_ref().or(row_back.as_ref()) } else { row_back.as_ref() };
                         panel
                             .spawn((
-                                Button,
+                                Interaction::default(),
+                                bevy::ui::FocusPolicy::Block,
                                 Choice { order, action },
                                 ImageNode { image: backing.cloned().unwrap_or_default(), color: if backing.is_none() { Color::NONE } else if order == menu.focus { Color::srgba(0.8, 0.3, 0.04, 0.8) } else { Color::srgba(0.08, 0.08, 0.08, 0.7) }, image_mode: bevy::ui::widget::NodeImageMode::Stretch, ..default() },
                                 Node {

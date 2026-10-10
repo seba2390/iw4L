@@ -1,8 +1,8 @@
 use super::entities::{EntityKind, KeyType};
 use crate::frame::FrameWorld;
-use crate::script::runtime::{install_level, reset, run_now};
+use crate::script::runtime::{install_level, run_now};
 use crate::script::{
-    Arc, ArrayKey, BTreeMap, Fault, Location, NativeRegistry, Runtime, StringTable, Value,
+    Arc, ArrayKey, BTreeMap, Fault, Location, NativeRegistry, RoundScript, StringTable, Value,
 };
 use bevy_ecs::prelude::World;
 
@@ -34,7 +34,7 @@ pub(crate) enum Detached {
 
 const MAX_DEPTH: usize = 64;
 
-fn detach(runtime: &Runtime, value: &Value, depth: usize) -> Option<Detached> {
+fn detach(runtime: &RoundScript, value: &Value, depth: usize) -> Option<Detached> {
     match value {
         Value::Undefined
         | Value::Int(_)
@@ -54,7 +54,7 @@ fn detach(runtime: &Runtime, value: &Value, depth: usize) -> Option<Detached> {
     }
 }
 
-pub(crate) fn attach(runtime: &mut Runtime, value: Detached) -> Result<Value, String> {
+pub(crate) fn attach(runtime: &mut RoundScript, value: Detached) -> Result<Value, String> {
     match value {
         Detached::Value(value) => Ok(value),
         Detached::Array(rows) => {
@@ -70,7 +70,7 @@ pub(crate) fn attach(runtime: &mut Runtime, value: Detached) -> Result<Value, St
     }
 }
 
-fn symbol_name(runtime: &Runtime, id: u32) -> Option<Arc<str>> {
+fn symbol_name(runtime: &RoundScript, id: u32) -> Option<Arc<str>> {
     let program = runtime.program.as_ref()?;
     program.symbols.get(id as usize).cloned().or_else(|| {
         runtime
@@ -81,7 +81,7 @@ fn symbol_name(runtime: &Runtime, id: u32) -> Option<Arc<str>> {
     })
 }
 
-fn field(runtime: &Runtime, object: u64, name: &str) -> Option<Value> {
+fn field(runtime: &RoundScript, object: u64, name: &str) -> Option<Value> {
     let program = runtime.program.as_ref()?;
     let id = program
         .symbol_ids
@@ -91,7 +91,7 @@ fn field(runtime: &Runtime, object: u64, name: &str) -> Option<Value> {
 }
 
 pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
-    let runtime = world.resource::<Runtime>();
+    let runtime = world.resource::<RoundScript>();
     let Some(persist) = runtime.pending_restart else {
         return;
     };
@@ -117,15 +117,9 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
             Some((*client, detach(runtime, &pers, 0)?))
         })
         .collect();
-    let dvars = runtime.dvars.clone();
-    let local_presentation_dvars = runtime.local_presentation_dvars;
-    let local_presentation_client = runtime.local_presentation_client;
-    let pending_local_dvars = runtime.pending_local_dvars.clone();
-    let weapon_bridge = runtime.weapon_bridge.clone();
-    let personal_classes = runtime.personal_classes.clone();
+    let server_info_defaults = runtime.server_info_defaults.clone();
     let t6_selected_classes =
         (program.rules() == crate::script::Realm::T6).then(|| runtime.selected_classes.clone());
-    let next_presence = runtime.next_spawned_presence;
     let huds: Vec<u64> = runtime.hud_slots.keys().copied().collect();
     let clients: Vec<u32> = runtime.players.keys().copied().collect();
     let spawned: Vec<crate::ScriptModelId> = runtime
@@ -151,14 +145,13 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
         for mover in crate::frame::collect_script_movers(frame.ecs()) {
             if spawned.contains(&mover.id) {
                 frame.remove_script_mover_by_number(mover.state.number);
-                frame.remove_collision_owner(mover.id);
             }
         }
         for projectile in crate::frame::collect_projectiles(frame.ecs()) {
-            frame.remove_projectile_by_number(projectile.entnum);
+            frame.despawn_projectile(projectile.entnum);
         }
         for number in frame.dropped_item_numbers_sorted() {
-            frame.remove_dropped_item_by_number(number);
+            frame.despawn_dropped_item(number);
         }
         crate::t5_destructible::restart(&mut frame);
         frame.restart_level_phase();
@@ -170,28 +163,21 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
         }
     }
 
-    let match_data = std::mem::take(&mut world.resource_mut::<Runtime>().engine.match_data);
-    reset(world);
-    {
-        let mut runtime = world.resource_mut::<Runtime>();
-        runtime.dvars = dvars;
-        runtime.local_presentation_dvars = local_presentation_dvars;
-        runtime.local_presentation_client = local_presentation_client;
-        runtime.pending_local_dvars = pending_local_dvars;
-        runtime.engine.match_data = match_data;
-    }
+    world
+        .resource_mut::<crate::script::MatchScript>()
+        .dvars
+        .extend(server_info_defaults.clone());
+    super::super::runtime::reset_round(world);
+    world.resource_mut::<RoundScript>().server_info_defaults = server_info_defaults;
     if let Err(fault) = install_level(world, program, (*plan).clone()) {
-        world.resource_mut::<Runtime>().fault = Some(fault);
+        world.resource_mut::<RoundScript>().fault = Some(fault);
         return;
     }
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     runtime.last_tick = Some(tick);
-    runtime.weapon_bridge = weapon_bridge;
-    runtime.personal_classes = personal_classes;
     if let Some(selected) = t6_selected_classes {
         runtime.selected_classes = selected;
     }
-    runtime.next_spawned_presence = next_presence;
     runtime.restored_pers = pers;
     for (name, value) in game {
         match attach(&mut runtime, value) {
@@ -219,7 +205,7 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
             Vec::new(),
             i64::from(crate::level_time_ms(tick)),
         ) {
-            world.resource_mut::<Runtime>().fault = Some(fault);
+            world.resource_mut::<RoundScript>().fault = Some(fault);
             return;
         }
     }

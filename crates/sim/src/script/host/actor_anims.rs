@@ -8,7 +8,7 @@ use super::args::{arg, float, optional, string};
 use super::entities::EntityKind;
 use crate::frame::FrameWorld;
 use crate::script::runtime::raise;
-use crate::script::{Namespace, NativeRegistry, Runtime, Value};
+use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 
 /// An animation tree actors play: the runtime definition and its node names.
 #[derive(Debug)]
@@ -266,7 +266,7 @@ pub(crate) fn attach(world: &mut World, actor: u64, tree: &str) -> Result<Value,
     let tree = FrameWorld::from_world(world)
         .actor_anim_tree(tree)
         .ok_or_else(|| format!("animation tree '{tree}' is not loaded"))?;
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     if runtime
         .actor_anims
         .get(&actor)
@@ -278,7 +278,7 @@ pub(crate) fn attach(world: &mut World, actor: u64, tree: &str) -> Result<Value,
 }
 
 fn actor_id(world: &World, receiver: &Value) -> Result<u64, String> {
-    match world.resource::<Runtime>().entity(receiver) {
+    match world.resource::<RoundScript>().entity(receiver) {
         Some((id, entity)) if entity.kind == EntityKind::Actor => Ok(id),
         _ => Err("receiver is not an actor".into()),
     }
@@ -300,7 +300,7 @@ fn with_anim(
 ) -> Result<Value, String> {
     let id = actor_id(world, receiver)?;
     let name = anim_name(args, index)?;
-    let mut runtime = world.resource_mut::<Runtime>();
+    let mut runtime = world.resource_mut::<RoundScript>();
     let anim = runtime
         .actor_anims
         .get_mut(&id)
@@ -400,7 +400,7 @@ fn set_anim(
 pub(crate) fn advance(world: &mut World, seconds: f32) {
     let mut notifies = Vec::new();
     {
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         for (actor, anim) in &mut runtime.actor_anims {
             if anim.runtime.update(seconds).is_err() {
                 continue;
@@ -467,7 +467,7 @@ pub(crate) fn play_scripted(
     goal_time: f32,
 ) -> Result<u16, String> {
     let tree = world
-        .resource::<Runtime>()
+        .resource::<RoundScript>()
         .actor_anims
         .get(&actor)
         .map(|anim| anim.tree.name.clone())
@@ -491,7 +491,7 @@ pub(crate) fn play_scripted(
         SetAnim::plain().flagged().knob().all().restart(),
     )?;
     let name = anim_name(&args, 1)?;
-    let runtime = world.resource::<Runtime>();
+    let runtime = world.resource::<RoundScript>();
     let state = runtime
         .actor_anims
         .get(&actor)
@@ -508,7 +508,7 @@ pub(crate) fn node_clip(
     actor: u64,
     node: u16,
 ) -> Option<(Arc<xmodel_runtime::AnimClip>, f32)> {
-    let anim = world.resource::<Runtime>().actor_anims.get(&actor)?;
+    let anim = world.resource::<RoundScript>().actor_anims.get(&actor)?;
     let clip = anim.runtime.leaf_clip(XAnimNodeId(node))?;
     Some((clip, anim.state(node).time))
 }
@@ -516,7 +516,7 @@ pub(crate) fn node_clip(
 /// Root motion and yaw of an actor over the last tick, blended by the
 /// effective weight of every playing leaf.
 pub(crate) fn root_delta(world: &World, actor: u64) -> Option<([f32; 3], f32)> {
-    let anim = world.resource::<Runtime>().actor_anims.get(&actor)?;
+    let anim = world.resource::<RoundScript>().actor_anims.get(&actor)?;
     let tree = &anim.tree;
     let states = anim.runtime.states();
     let mut translation = [0.0f32; 3];
@@ -630,7 +630,7 @@ pub(crate) fn present(world: &mut World) {
         xmodel_runtime::XAnimTreeSnapshot,
         Option<XAnimTreeRuntime>,
     )> = {
-        let runtime = world.resource::<Runtime>();
+        let runtime = world.resource::<RoundScript>();
         runtime
             .actor_anims
             .iter()

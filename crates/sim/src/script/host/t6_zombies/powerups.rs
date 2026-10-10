@@ -174,24 +174,24 @@ impl Powerups {
             .model_capability(kind.model())
             .flatten()
             .is_none()
-            || world.resource::<Runtime>().entities.len()
+            || world.resource::<RoundScript>().entities.len()
                 >= super::super::entities::MAX_SCRIPT_ENTITIES
         {
             return false;
         }
         let object = {
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             let Ok(object) = runtime.create_entity(EntityKind::Spawned, "zombie_powerup") else {
                 return false;
             };
             object
         };
         let Ok(presence) = super::super::presence::spawn_presence(world, origin) else {
-            world.resource_mut::<Runtime>().delete_entity(object);
+            world.resource_mut::<RoundScript>().delete_entity(object);
             return false;
         };
         let tick = world.resource::<crate::step::StepRequest>().tick;
-        let mut runtime = world.resource_mut::<Runtime>();
+        let mut runtime = world.resource_mut::<RoundScript>();
         runtime.set_object_field(object, "origin", Value::Vector(origin));
         runtime.set_object_field(object, "angles", Value::Vector([0.0; 3]));
         runtime.set_object_field(object, "model", Value::string(kind.model()));
@@ -249,7 +249,7 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
         if drop.rise_ms > 0 && elapsed <= drop.rise_ms {
             let mut at = drop.origin;
             at[2] -= drop.rise * (1.0 - elapsed as f32 / drop.rise_ms as f32);
-            world.resource_mut::<Runtime>().set_object_field(
+            world.resource_mut::<RoundScript>().set_object_field(
                 drop.object,
                 "origin",
                 Value::Vector(at),
@@ -265,7 +265,9 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
             .map(|(client, _)| *client);
         let picked = picker.is_some();
         if age >= 26500 || picked {
-            world.resource_mut::<Runtime>().delete_entity(drop.object);
+            world
+                .resource_mut::<RoundScript>()
+                .delete_entity(drop.object);
             if age >= 26500 || !picked {
                 effect(world, tick, "misc/fx_zombie_powerup_off", drop.origin);
                 continue;
@@ -334,7 +336,7 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
             } else {
                 (25 + (age - 25000) / 100) % 2 != 0
             };
-            let mut runtime = world.resource_mut::<Runtime>();
+            let mut runtime = world.resource_mut::<RoundScript>();
             if let Some(entity) = runtime.entities.get_mut(&drop.object) {
                 entity.hidden = hidden;
             }
@@ -378,7 +380,7 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
         }
         if let Some(id) = targets.pop_front() {
             state.actors.remove(&id);
-            world.resource_mut::<Runtime>().delete_entity(id);
+            world.resource_mut::<RoundScript>().delete_entity(id);
             if targets.is_empty() {
                 reward_all(world, state, &mut powers, tick, 400);
             } else {

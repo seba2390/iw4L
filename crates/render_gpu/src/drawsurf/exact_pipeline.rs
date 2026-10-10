@@ -64,7 +64,7 @@ struct PortBuild {
 
 #[derive(Resource, Default)]
 pub(super) struct ExactPipelineRegistry {
-    world: frame::WorldGeneration,
+    world: frame::WorldStamp,
     slots: Vec<SlotState>,
     by_key: HashMap<super::colour_submit::ExactColourPipelineKey, ExactPipelineSlot>,
     modules: HashMap<ModuleKey, Arc<ShaderModule>>,
@@ -84,7 +84,7 @@ pub(super) struct ExactPipelineRegistry {
 }
 
 impl ExactPipelineRegistry {
-    pub(super) fn set_world(&mut self, world: frame::WorldGeneration) -> bool {
+    pub(super) fn set_world(&mut self, world: frame::WorldStamp) -> bool {
         if self.world == world {
             return false;
         }
@@ -264,13 +264,15 @@ fn build_pipeline(
         bind_group_layouts: &[Some(&plan.constants_layout), Some(&plan.textures_layout)],
         immediate_size: 0,
     });
-    let buffers: Vec<RawVertexBufferLayout> = plan
+    let buffers: Vec<Option<RawVertexBufferLayout>> = plan
         .vertex_buffers
         .iter()
-        .map(|buffer| RawVertexBufferLayout {
-            array_stride: buffer.array_stride,
-            attributes: &buffer.attributes,
-            step_mode: buffer.step_mode,
+        .map(|buffer| {
+            Some(RawVertexBufferLayout {
+                array_stride: buffer.array_stride,
+                attributes: &buffer.attributes,
+                step_mode: buffer.step_mode,
+            })
         })
         .collect();
     let compilation_options = PipelineCompilationOptions {

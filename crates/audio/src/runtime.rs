@@ -338,6 +338,7 @@ impl AudioRuntime {
             class,
             epoch,
             pitch_scale,
+            volume_scale,
             fallbacks,
         } = request;
         if fallbacks.len() > 16 {
@@ -374,6 +375,7 @@ impl AudioRuntime {
             scope: class.scope(),
             epoch,
             pitch_scale,
+            volume_scale,
             execution: CueIntent {
                 event,
                 origin_inches,
@@ -1006,6 +1008,7 @@ fn control(
                     scope: source.key.scope,
                     epoch: source.key.epoch,
                     pitch_scale: 1.0,
+                    volume_scale: 1.0,
                     execution: CueIntent {
                         event: None,
                         origin_inches: source.origin_inches,

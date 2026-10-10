@@ -141,7 +141,7 @@ Natives are grouped by what they touch; the core three:
   level settings, and weapon facts from the captured weapon table.
 
 Argument reads live in `script/host/args.rs`, array helpers in `script/host/arrays.rs`,
-and table lookup in `script/host/tables.rs`. All three use the one `Runtime`
+and table lookup in `script/host/tables.rs`. All three use `RoundScript` with explicit access to `MatchScript`
 (`arrays`, `next_object`, `tables`, `rng`). The compiler is `sim::script::compiler`:
 `Token`/`lex` and the call, expression, assignment, and statement methods sit in child
 modules, and `Parser` stays in the parent.
@@ -185,7 +185,7 @@ emitting an event. Use
 
 Sounds the scripts play (`playLocalSound`, `playSoundToPlayer`, `playSoundToTeam`)
 reach the client. Effects, rumble and earthquakes validate their receiver and are
-kept in `Runtime.presented` or dropped. In-game menus (team, class, escape, leave-game,
+kept in `RoundScript.presented` or dropped. In-game menus (team, class, escape, leave-game,
 scoreboard header) and the IW4L frontend run from menuDefs through the same ordered
 GPU menu pass. `crates/ui/menus/frontend.json` defines IW4L navigation and native
 menu styling; frontend service commands connect it to session and master APIs.
@@ -375,7 +375,10 @@ record is imported or initialized.
 ## Remaining
 
 A live bomb plant/defuse check. Native IW4L menus can create a private lobby,
-select a map/mode, start a match and return to the frontend. Browser/public-lobby
+select a map/mode and start a match. When the match scripts end it, or the host
+picks End Game from the pause menu, the host returns to the same private lobby with
+map, mode and rules kept, as it does when the map fails to load. A disconnect
+returns to the main menu. Browser/public-lobby
 actions are connected but still need multiplayer validation. Display mode/resolution, brightness, volume, VSync, shadows, depth of field and
 bloom are bound to runtime settings and persisted locally. Surround output, voice/chat
 settings, third-person camera and spectator restrictions remain incomplete. A true

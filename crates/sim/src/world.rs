@@ -153,6 +153,7 @@ pub struct SimState {
 
     running: bool,
     phase: MatchPhase,
+    round_serial: u32,
 
     match_elapsed_ms: u32,
 
@@ -258,6 +259,7 @@ impl Default for SimState {
             bootstrap: MatchBootstrap::default(),
             running: false,
             phase: MatchPhase::Warmup,
+            round_serial: 1,
             match_elapsed_ms: 0,
             prematch: gamemode_iw4::PrematchStep::default(),
             max_alive_seen: 0,
@@ -553,6 +555,7 @@ impl SimState {
     }
 
     pub(crate) fn restart_level_phase(&mut self) {
+        self.round_serial = self.round_serial.wrapping_add(1);
         self.phase = MatchPhase::Warmup;
         self.match_elapsed_ms = 0;
         self.prematch = gamemode_iw4::PrematchStep::default();
@@ -733,6 +736,20 @@ impl SimState {
         Arc::clone(&self.content.weapons().weapon_script_names)
     }
 
+    pub(crate) fn rank_for_xp(&self, xp: i32) -> Option<u32> {
+        self.content.weapons().rank_progression.rank(xp)
+    }
+
+    pub(crate) fn weapon_unlock_requirement(
+        &self,
+        weapon: u32,
+    ) -> Option<&Result<gamemode_iw4::progression::UnlockRequirement, String>> {
+        self.content
+            .weapons()
+            .unlock_requirements
+            .get(weapon as usize)
+    }
+
     pub(crate) fn weapon_setup(&self, weapon: u32) -> Option<&WeaponSetup> {
         self.content
             .weapons()
@@ -900,6 +917,10 @@ impl SimState {
             .expect("dynamic entity generation changed while its typed store was alive");
     }
 
+    pub(crate) fn retained_missile_events(&self) -> &[entity_iw4::EntityState] {
+        &self.dying_missiles
+    }
+
     pub(crate) fn expire_dying_missiles(&mut self, tick: Tick) {
         debug_assert_eq!(
             self.entity_kernel.level_time_ms(),
@@ -959,23 +980,29 @@ impl SimState {
             &self.content.weapons().weapon_combat,
             &self.content.weapons().bullet_pen,
             &self.content.weapons().weapon_runnable,
+            &self.content.weapons().unlock_requirements,
+            &self.content.weapons().rank_progression,
             &self.content.weapons().weapon_transition_groups,
             &self.content.weapons().weapon_camouflage_slots,
             &self.content.weapons().equipment_runtime,
             &self.bootstrap,
             self.content.clip_brushes(),
             &self.entity_collision_capabilities,
+            self.content.map(),
         );
         self.content_components = crate::content::content_components(
             &self.content.weapons().weapon_combat,
             &self.content.weapons().bullet_pen,
             &self.content.weapons().weapon_runnable,
+            &self.content.weapons().unlock_requirements,
+            &self.content.weapons().rank_progression,
             &self.content.weapons().weapon_transition_groups,
             &self.content.weapons().weapon_camouflage_slots,
             &self.content.weapons().equipment_runtime,
             &self.bootstrap,
             self.content.clip_brushes(),
             &self.entity_collision_capabilities,
+            self.content.map(),
         );
     }
 
@@ -2450,6 +2477,7 @@ impl SimState {
             meta: SnapshotMeta {
                 objectives: self.objectives.clone(),
                 phase: self.phase,
+                round_serial: self.round_serial,
                 match_elapsed_ms: self.match_elapsed_ms,
                 prematch: self.prematch,
                 score_limit: self.bootstrap.score_limit,
@@ -2638,6 +2666,7 @@ impl SimState {
                     clip_l: ammo.clip_l,
                     stock: ammo.stock,
                     scavenger: ammo.scavenger != 0,
+                    drop_seq: 0,
                 }
             })
             .collect();
@@ -2793,6 +2822,17 @@ impl SimState {
     }
 
     pub fn install_content(&mut self, content: Arc<SimContent>) {
+        let panes = match &content.map().glass {
+            asset_core::GlassContent::Prepared(glass) => glass
+                .panes()
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(id, pane)| (id as u32, pane))
+                .collect(),
+            _ => Vec::new(),
+        };
+        self.world_objects.install_glass_panes(panes);
         self.replace_content(content);
         self.player_bodies.materialize_error = None;
         self.reset_area_entity_world();
@@ -3319,6 +3359,7 @@ pub(crate) fn clip_trace(
     let mut best = open();
     let mut mesh_census = clipmap_iw4::MeshWalkCensus::default();
 
+    let has_leaf_aabbs = !no_mesh && clipmap_iw4::leaves_have_coll_aabb(map.leaves);
     let frac = Cell::new(1.0_f32);
     LEAF_AABB_SCRATCH.with(|scratch| {
         let mut scratch = scratch.borrow_mut();
@@ -3340,7 +3381,7 @@ pub(crate) fn clip_trace(
                     &mesh_ref,
                     leaf,
                     &ext,
-                    map.leaves,
+                    has_leaf_aabbs,
                     &mut best,
                     &mut mesh_census,
                     &mut scratch,
@@ -3353,7 +3394,7 @@ pub(crate) fn clip_trace(
         let mut ignored_winner = clipmap_iw4::ClipWorldWinner::Open;
         clipmap_iw4::finish_mesh_forest_fallback(
             &mesh_ref,
-            map.leaves,
+            has_leaf_aabbs,
             &ext,
             &mut best,
             &mut ignored_winner,

@@ -1,3 +1,4 @@
+use frame::ScopeApp;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -108,17 +109,17 @@ impl FxSceneAccess<'_> {
 pub(crate) fn register_combat_fx_systems(app: &mut App) {
     app.add_message::<BulletHitFx>()
         .add_message::<WeaponFireFx>()
-        .init_resource::<PresentedFireFx>()
-        .init_resource::<render_fx::FxModelStaging>()
-        .init_resource::<crate::assemble::drawsurf::GfxGlassMeshPlan>()
-        .init_resource::<crate::assemble::drawsurf::GlassTable>()
+        .scoped::<PresentedFireFx>(frame::MatchScope::Live)
+        .scoped::<render_fx::FxModelStaging>(frame::MatchScope::Live)
+        .scoped::<crate::assemble::drawsurf::GfxGlassMeshPlan>(frame::MatchScope::Live)
+        .scoped::<crate::assemble::drawsurf::GlassTable>(frame::MatchScope::Live)
         .add_systems(
             Update,
             (
-                boot_createfx_oneshots,
-                sync_script_fx,
-                crate::assemble::drawsurf::tess::glass::apply_glass_host,
-                tick_fx_non_dependent_update,
+                boot_createfx_oneshots.in_set(frame::InMatch),
+                sync_script_fx.in_set(frame::InMatch),
+                crate::assemble::drawsurf::tess::glass::apply_glass_host.in_set(frame::InMatch),
+                tick_fx_non_dependent_update.in_set(frame::InMatch),
             )
                 .chain()
                 .after(stamp_fx_camera_origin)
@@ -127,6 +128,7 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
         .add_systems(
             Update,
             tick_fx_remaining_update
+                .in_set(frame::InMatch)
                 .after(frame::WorkerCmdSet::SkinModel)
                 .in_set(frame::WorkerCmdSet::FxRemaining),
         )
@@ -141,12 +143,12 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
         .add_systems(
             Update,
             (
-                maintain_fire_fx,
-                drain_weapon_fire_fx,
-                drain_bullet_hit_fx,
-                drain_pellet_fx,
-                present_tracker_light,
-                drain_tag_fx,
+                maintain_fire_fx.in_set(frame::InMatch),
+                drain_weapon_fire_fx.in_set(frame::InMatch),
+                drain_bullet_hit_fx.in_set(frame::InMatch),
+                drain_pellet_fx.in_set(frame::InMatch),
+                present_tracker_light.in_set(frame::InMatch),
+                drain_tag_fx.in_set(frame::InMatch),
             )
                 .chain()
                 .after(render_anim::occupancy::fpv_present::publish_fpv_dobj_pose)
@@ -156,14 +158,16 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
         )
         .add_systems(
             Update,
-            tick_missile_present_state.in_set(ClientSet::Effects),
+            tick_missile_present_state
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Effects),
         )
         .add_observer(publish_weapon_fire)
         .add_observer(eject_brass)
         .add_observer(explosion)
-        .init_resource::<ScriptFxRows>()
+        .scoped::<ScriptFxRows>(frame::MatchScope::Live)
         .add_observer(reset_killcam_fx)
-        .init_resource::<PendingTagFx>()
+        .scoped::<PendingTagFx>(frame::MatchScope::Live)
         .add_observer(play_fx)
         .add_observer(play_fx_bullet_hit)
         .add_observer(melee_blood);
@@ -171,12 +175,7 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
 
 #[derive(Default)]
 struct TrackerLight {
-    owner: Option<(
-        frame::WorldGeneration,
-        sim::ClientId,
-        sim::LifeSequence,
-        u32,
-    )>,
+    owner: Option<(frame::WorldStamp, sim::ClientId, sim::LifeSequence, u32)>,
     bolt: Option<(u32, u16)>,
 }
 
@@ -201,10 +200,10 @@ fn present_tracker_light(
         (meta.lifecycle == sim::ClientLifecycle::Alive
             && ps.other_flags & 0x400 == 0
             && prepared.table()?.motion_tracker(weapon, ps.weapon_primary))
-        .then_some((*generation, local.0, meta.life_sequence, weapon))
+        .then_some((generation.stamp(), local.0, meta.life_sequence, weapon))
     });
     if owner != light.owner {
-        if light.owner.is_some_and(|old| old.0 == *generation) {
+        if light.owner.is_some_and(|old| old.0 == generation.stamp()) {
             if let Some((dobj, bone)) = light.bolt {
                 host.0.stop_bolted(EFFECT, dobj, bone);
             }
@@ -1222,6 +1221,10 @@ fn fill_fx_model_plan(
             continue;
         };
         let asset_surfaces = asset.surfaces.clone();
+        if !plan.packed_exact() {
+            plan.skipped_no_material = plan.skipped_no_material.saturating_add(1);
+            continue;
+        }
 
         let box_half = entry.skel.radius.and_then(|radius| {
             crate::prepare::scene::model_lighting_cache::lighting_box_half(
@@ -2148,7 +2151,7 @@ fn publish_weapon_fire(
             audio::emit_audio_diagnostic(format!(
                 "audio diag: fire producer weapon={} alias={alias} player_view={player_view} event={:?}",
                 fire.event.payload.weapon,
-                audio::AudioEvent::from_entity(*generation, fire.entity, &fire.event, 0).id
+                audio::AudioEvent::from_entity(generation.stamp(), fire.entity, &fire.event, 0).id
             ));
         }
         combat.last_fire_alias = Some(alias.to_owned());
@@ -2164,7 +2167,7 @@ fn publish_weapon_fire(
         };
         sounds.write(audio::WeaponSound {
             event: Some(audio::AudioEvent::from_entity(
-                *generation,
+                generation.stamp(),
                 fire.entity,
                 &fire.event,
                 0,
@@ -2181,7 +2184,7 @@ fn publish_weapon_fire(
             audio::emit_audio_diagnostic(format!(
                 "audio diag: fire producer gap weapon={} player_view={player_view} event={:?}",
                 fire.event.payload.weapon,
-                audio::AudioEvent::from_entity(*generation, fire.entity, &fire.event, 0).id
+                audio::AudioEvent::from_entity(generation.stamp(), fire.entity, &fire.event, 0).id
             ));
         }
     }
@@ -2277,7 +2280,7 @@ fn drain_weapon_fire_fx(
             let mut muzzle_gap = cursor.muzzle_gap;
 
             occurrences.execute(
-                *generation,
+                generation.stamp(),
                 timeline.timeline(),
                 FireFxRequest::event(&fire.event, FireFxOccurrence::Muzzle, msec),
                 &verdicts,
@@ -2314,7 +2317,7 @@ fn drain_weapon_fire_fx(
                 .is_some_and(|facts| facts.bolt_action);
             if !delayed_brass {
                 occurrences.execute(
-                    *generation,
+                    generation.stamp(),
                     timeline.timeline(),
                     FireFxRequest::event(&fire.event, FireFxOccurrence::Brass, msec),
                     &verdicts,
@@ -2337,7 +2340,7 @@ fn drain_weapon_fire_fx(
         } else {
             for product in [FireFxOccurrence::Muzzle, FireFxOccurrence::Brass] {
                 occurrences.execute(
-                    *generation,
+                    generation.stamp(),
                     timeline.timeline(),
                     FireFxRequest::event(&fire.event, product, msec),
                     &verdicts,
@@ -2432,7 +2435,7 @@ fn eject_brass(
             .and_then(|(_, bolts)| bolts.brass)
     };
     occurrences.execute(
-        *generation,
+        generation.stamp(),
         timeline.timeline(),
         FireFxRequest::event(&brass.event, FireFxOccurrence::Brass, msec),
         &verdicts,
@@ -2748,7 +2751,7 @@ fn explosion(
             sound_submitted = true;
             sounds.write(audio::WeaponSound {
                 event: Some(audio::AudioEvent::from_entity(
-                    *generation,
+                    generation.stamp(),
                     explosion.entity,
                     &explosion.event,
                     1,
@@ -2779,7 +2782,7 @@ fn explosion(
         };
         sounds.write(audio::WeaponSound {
             event: Some(audio::AudioEvent::from_entity(
-                *generation,
+                generation.stamp(),
                 explosion.entity,
                 &explosion.event,
                 0,
@@ -3155,7 +3158,7 @@ fn maintain_fire_fx(
     mut occurrences: ResMut<PresentedFireFx>,
     mut gate: ResMut<TracerDrawGate>,
 ) {
-    if occurrences.maintain(*generation, timeline.timeline(), host.0.msec_now) {
+    if occurrences.maintain(generation.stamp(), timeline.timeline(), host.0.msec_now) {
         *gate = TracerDrawGate::default();
     }
     gate.maintain(host.0.msec_now);
@@ -3207,7 +3210,7 @@ fn drain_bullet_hit_fx(
             .and_then(|weapons| weapons.for_event(hit.0.world).ok());
 
         present_pellet_segment(
-            *generation,
+            generation.stamp(),
             timeline.timeline(),
             FireFxRequest::event(
                 &hit.0,
@@ -3282,7 +3285,7 @@ fn drain_pellet_fx(
         return;
     }
     for (world, domain, record) in pending.take() {
-        if world != *generation {
+        if world != generation.stamp() {
             continue;
         }
         let now = host.0.msec_now;
@@ -3302,7 +3305,7 @@ fn drain_pellet_fx(
             .as_deref()
             .and_then(|weapons| weapons.for_event(world).ok());
         present_pellet_segment(
-            *generation,
+            generation.stamp(),
             timeline.timeline(),
             request,
             record.segment,
