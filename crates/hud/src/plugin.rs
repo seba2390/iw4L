@@ -340,7 +340,10 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
             Visibility::Hidden,
         ))
         .with_children(|root| {
-            crate::font_overlay::spawn_overlay(root, crate::overhead_names::OverheadNamesRaster);
+            crate::font_overlay::spawn_overlay(
+                root,
+                (crate::overhead_names::OverheadNamesRaster, CodeHudPiece),
+            );
             spawn_reticle(root);
             spawn_iris(root);
             spawn_hud_elems_back(root);
@@ -352,26 +355,41 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
             spawn_killcam_skip(root);
             spawn_playercard(root);
             spawn_scoreboard(root);
-            crate::font_overlay::spawn_overlay(root, crate::emp_static::EmpStaticRaster);
+            crate::font_overlay::spawn_overlay(
+                root,
+                (crate::emp_static::EmpStaticRaster, CodeHudPiece),
+            );
             spawn_mantle_hint(root);
-            crate::font_overlay::spawn_overlay(root, crate::breath_hint::BreathHintRaster);
-            crate::font_overlay::spawn_overlay(root, crate::use_hint::UseHintRaster);
+            crate::font_overlay::spawn_overlay(
+                root,
+                (crate::breath_hint::BreathHintRaster, CodeHudPiece),
+            );
+            crate::font_overlay::spawn_overlay(
+                root,
+                (crate::use_hint::UseHintRaster, CodeHudPiece),
+            );
             spawn_hud_elems(root);
             spawn_targetmap(root);
             crate::menus::spawn_script_menus(root);
         });
 }
 
+/// A piece of the code-drawn HUD: hidden while the mode's code HUD is
+/// unknown, though the game's own HUD menus and script elems may draw.
+#[derive(Component)]
+pub(crate) struct CodeHudPiece;
+
 fn sync_hud_visibility(
     screen: Res<AppScreen>,
     ui_draw: Option<Res<UiDraw>>,
     mode: Option<Res<game_api::ModeRules>>,
     mut roots: Query<&mut Visibility, With<HudRoot>>,
+    mut pieces: Query<&mut Visibility, (With<CodeHudPiece>, Without<HudRoot>)>,
     mut visible: ResMut<HudRootVisible>,
     mut reported: Local<Option<&'static str>>,
 ) {
     let ui_on = ui_draw.is_some_and(|d| d.0);
-    let unknown = match mode.map(|mode| mode.hud.code_hud) {
+    let unknown = match mode.as_ref().map(|mode| mode.hud.code_hud) {
         Some(game_api::Rule::Unknown(gap)) => Some(gap),
         _ => None,
     };
@@ -381,7 +399,18 @@ fn sync_hud_visibility(
         }
         *reported = unknown.map(|gap| gap.id);
     }
-    let show = hud_root_should_show(*screen, ui_on) && unknown.is_none();
+    let script_hud = mode.as_ref().is_some_and(|mode| mode.hud.script_hud);
+    let show = hud_root_should_show(*screen, ui_on) && (unknown.is_none() || script_hud);
+    let piece = if unknown.is_none() {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    for mut vis in &mut pieces {
+        if *vis != piece {
+            *vis = piece;
+        }
+    }
     visible.0 = Some(i32::from(show));
     for mut vis in &mut roots {
         let want = if show {

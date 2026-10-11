@@ -19,6 +19,7 @@ pub(crate) struct ScorebarRaster;
 pub(crate) fn spawn_scorebar(root: &mut ChildSpawnerCommands) {
     root.spawn((
         ScorebarRaster,
+        crate::plugin::CodeHudPiece,
         GpuListLatch::default(),
         Node {
             position_type: PositionType::Absolute,

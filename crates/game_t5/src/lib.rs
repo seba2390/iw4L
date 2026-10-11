@@ -125,13 +125,47 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
             "Black Ops' HUD rules from its executable, or reference shots of each piece"
         )),
         game_hud_menus: true,
+        script_hud: true,
         scoreboard: false,
         scorebar: false,
         compass: false,
-        script_text: false,
+        script_text: game_api::ScriptText::MenuFonts(hud_elem_font),
         material_font_floor: false,
+        zombies: true,
+        font_scales_sent: Some(sent_font_scales),
     },
 };
+
+/// Black Ops' hud elem fonts, read from its executable: the menu font each
+/// draws with and its base scale. `bigfixed` draws bold at half scale,
+/// `smallfixed` the console font at a third; every other font a quarter.
+/// Black Ops has no `hudbig` or `hudsmall`; unknown fonts draw as `default`.
+fn hud_elem_font(font: i32) -> (i32, f32) {
+    match font {
+        1 => (4, 0.5),
+        2 => (5, 0.333_333_34),
+        3 => (1, 0.25),
+        4 => (2, 0.25),
+        5 => (3, 0.25),
+        8 => (6, 0.25),
+        _ => (0, 0.25),
+    }
+}
+
+/// Black Ops sends an elem's font scale in 6 bits as tenths above 1
+/// (`(scale - 1) x 10`, rounded to nearest), keeping only the low bits, so a
+/// script's 8 reaches the client as 1.6 and its 32 as 6.4. The from-font
+/// scale is not sent, so clients keep it at 0.
+fn sent_font_scales(font_scale: f32, _from_font_scale: f32) -> (f32, f32) {
+    let tenths = (font_scale - 1.0) * 10.0;
+    let rounded = (f64::from(tenths) + f64::from(2.0f32.powi(-30))).round_ties_even();
+    let sent = if rounded.is_finite() && rounded.abs() < 2_147_483_648.0 {
+        rounded as i32 & 0x3f
+    } else {
+        0
+    };
+    (sent as f32 * 0.1 + 1.0, 0.0)
+}
 
 impl game_api::GameVision for T5 {
     fn shellshock(&self) -> Rule<()> {

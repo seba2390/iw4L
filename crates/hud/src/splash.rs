@@ -238,6 +238,7 @@ impl ExprHost for SplashExprHost<'_> {
 pub(crate) fn spawn_splash(root: &mut ChildSpawnerCommands) {
     root.spawn((
         SplashRaster,
+        crate::plugin::CodeHudPiece,
         crate::gpu_list::GpuListLatch::default(),
         Node {
             position_type: PositionType::Absolute,

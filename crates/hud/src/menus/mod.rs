@@ -4,6 +4,7 @@ mod script;
 mod state;
 
 use runtime::Runner;
+pub(crate) use script::tokens as script_tokens;
 use state::OpenMenu;
 pub use state::ScriptMenus;
 

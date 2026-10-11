@@ -18,7 +18,7 @@ use crate::scorebar::milliseconds;
 #[derive(Component)]
 pub(crate) struct KillcamSkipRaster;
 pub(crate) fn spawn_killcam_skip(root: &mut ChildSpawnerCommands) {
-    font_overlay::spawn_overlay(root, KillcamSkipRaster);
+    font_overlay::spawn_overlay(root, (KillcamSkipRaster, crate::plugin::CodeHudPiece));
 }
 
 fn hide(pass: &mut HudTessPass) {

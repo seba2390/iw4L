@@ -49,6 +49,7 @@ struct PingActor {
 pub(crate) fn spawn_compass(root: &mut ChildSpawnerCommands) {
     root.spawn((
         CompassRaster,
+        crate::plugin::CodeHudPiece,
         GpuListLatch::default(),
         Node {
             position_type: PositionType::Absolute,

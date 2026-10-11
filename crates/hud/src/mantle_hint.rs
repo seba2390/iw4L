@@ -22,7 +22,7 @@ const HUD_FULLSCREEN: &str = "hud_fullscreen";
 #[derive(Component)]
 pub(crate) struct MantleHintRaster;
 pub(crate) fn spawn_mantle_hint(root: &mut ChildSpawnerCommands) {
-    font_overlay::spawn_overlay(root, MantleHintRaster);
+    font_overlay::spawn_overlay(root, (MantleHintRaster, crate::plugin::CodeHudPiece));
 }
 
 fn hide(pass: &mut HudTessPass) {

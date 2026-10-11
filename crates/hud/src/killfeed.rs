@@ -103,7 +103,7 @@ const BOLD_Y: f32 = 100.0;
 pub(crate) struct KillfeedRaster;
 
 pub(crate) fn spawn_killfeed(root: &mut ChildSpawnerCommands) {
-    crate::font_overlay::spawn_overlay(root, KillfeedRaster);
+    crate::font_overlay::spawn_overlay(root, (KillfeedRaster, crate::plugin::CodeHudPiece));
 }
 
 fn hide(pass: &mut HudTessPass) {

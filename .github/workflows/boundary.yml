@@ -4,11 +4,20 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `edited`: a `Ledger: none` line added to the body re-runs the guard.
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   boundary:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: cargo xtask boundary --enforce
         run: cargo run -q -p xtask -- boundary --enforce
+      - name: cargo xtask ledger-guard
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: cargo run -q -p xtask -- ledger-guard --base "$BASE"

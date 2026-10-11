@@ -45,7 +45,7 @@ struct ScoreboardRow {
 pub(crate) struct ScoreboardRaster;
 
 pub(crate) fn spawn_scoreboard(root: &mut ChildSpawnerCommands) {
-    crate::font_overlay::spawn_overlay(root, ScoreboardRaster);
+    crate::font_overlay::spawn_overlay(root, (ScoreboardRaster, crate::plugin::CodeHudPiece));
 }
 
 fn rows_from_parsed(snap: &Snapshot, parsed: &ParsedScores) -> Vec<ScoreboardRow> {

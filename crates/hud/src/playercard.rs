@@ -272,6 +272,7 @@ impl ExprHost for OpenMenuHost {
 pub(crate) fn spawn_playercard(root: &mut ChildSpawnerCommands) {
     root.spawn((
         PlayerCardRaster,
+        crate::plugin::CodeHudPiece,
         crate::gpu_list::GpuListLatch::default(),
         Node {
             position_type: PositionType::Absolute,

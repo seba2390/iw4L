@@ -19,14 +19,11 @@ use fastfile_t5::{
 use crate::localize::decode_localized_text;
 use crate::menu_catalog::{FontDef, MenuCatalog, MenuDef, MenuItem, MenuRect};
 
-/// The HUD menu lists the Black Ops client draws; each menu's own visibility
-/// expression decides when it shows.
-pub const T5_HUD_MENU_LISTS: &[&str] = &[
-    "ui/hud.txt",
-    "ui/hud_sp.txt",
-    "ui/hud_zombie.txt",
-    "ui/hud_coop.txt",
-];
+/// The HUD menu lists a Black Ops zombies client draws, in its load order:
+/// the common HUD, then the zombies HUD (the singleplayer HUD is loaded only
+/// outside zombies, the co-op HUD only in online and system-link games). Each
+/// menu's own visibility decides when it shows.
+pub const T5_HUD_MENU_LISTS: &[&str] = &["ui/hud.txt", "ui/hud_zombie.txt"];
 
 /// The `float_exp` slot of an item's forecolor alpha in the menu engine.
 const FLOAT_FORECOLOR_A: u32 = 8;

@@ -44,6 +44,7 @@ pub(crate) fn spawn_iris(root: &mut ChildSpawnerCommands) {
         let (node, image, focus) = hidden_image_node();
         root.spawn((
             AdsIrisLetterbox(strip),
+            crate::plugin::CodeHudPiece,
             node,
             image,
             focus,
@@ -53,7 +54,14 @@ pub(crate) fn spawn_iris(root: &mut ChildSpawnerCommands) {
     }
     for quad in 0..4_u8 {
         let (node, image, focus) = hidden_image_node();
-        root.spawn((AdsIrisOverlay(quad), node, image, focus, ZIndex(1)));
+        root.spawn((
+            AdsIrisOverlay(quad),
+            crate::plugin::CodeHudPiece,
+            node,
+            image,
+            focus,
+            ZIndex(1),
+        ));
     }
 }
 

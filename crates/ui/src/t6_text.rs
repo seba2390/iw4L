@@ -74,8 +74,12 @@ fn refresh(
             })
         {
             if let Some(previous) = previous {
-                text_font.font_size = bevy::text::FontSize::Px(previous.size);
-                color.0 = previous.color;
+                if text_font.font_size == bevy::text::FontSize::Px(0.1) {
+                    text_font.font_size = bevy::text::FontSize::Px(previous.size);
+                }
+                if color.0.alpha() == 0.0 {
+                    color.0 = previous.color;
+                }
                 for child in &previous.children {
                     commands.entity(*child).despawn();
                 }
@@ -90,7 +94,10 @@ fn refresh(
                 bevy::text::FontSize::Px(size) => size,
                 _ => 18.0,
             },
-            |previous| previous.size,
+            |previous| match text_font.font_size {
+                bevy::text::FontSize::Px(size) if size != 0.1 => size,
+                _ => previous.size,
+            },
         );
         let source_color = previous
             .as_ref()
@@ -115,6 +122,7 @@ fn refresh(
                 && previous.color == source_color
                 && previous.atlas == atlas
                 && previous.wrap == wrap
+                && previous.size == size
         }) {
             continue;
         }
@@ -123,7 +131,7 @@ fn refresh(
                 commands.entity(*child).despawn();
             }
         }
-        let render_size = size.max(22.0);
+        let render_size = size.max(0.1);
         let scale = render_size / font.pixel_height.max(1) as f32;
         let mut position = Vec2::ZERO;
         let mut width = 0.0_f32;

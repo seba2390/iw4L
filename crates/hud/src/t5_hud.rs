@@ -20,6 +20,7 @@ use crate::chrome::{
 use crate::draw2d::{Draw2dCmd, Draw2dList, Draw2dOp, Draw2dProvenance};
 
 const CG_PLAYER_HEAT_VALUE: i32 = 7;
+const CG_CURSORHINT: i32 = 72;
 const CG_PLAYER_WEAPON_NAME: i32 = 81;
 const CG_OFFHAND_WEAPON_ICON_FRAG: i32 = 103;
 const CG_OFFHAND_WEAPON_ICON_SMOKEFLASH: i32 = 104;
@@ -45,6 +46,58 @@ pub(crate) struct T5HudState<'a> {
     pub weapon_name: Option<String>,
     pub hide_ammo: bool,
     pub ammo_widths: [i32; 2],
+    pub hint: Option<T5Hint>,
+}
+
+/// The cursor hint the owner draw shows, latched as Black Ops' client game
+/// latches it: the last hint the player state carried, faded out over
+/// `cg_hintFadeTime` (100 ms) once it is gone.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct T5Hint {
+    /// The hint's text, or `None` for a hint drawn with an icon.
+    pub text: Option<String>,
+    pub alpha: f32,
+}
+
+/// Black Ops' `cg_hintFadeTime`.
+const HINT_FADE_MS: i32 = 100;
+
+/// The hint latched from the player state: its type, string and the client
+/// time it was last seen.
+#[derive(Default)]
+pub(crate) struct T5HintLatch {
+    kind: i32,
+    string: i32,
+    seen_ms: i32,
+}
+
+impl T5HintLatch {
+    /// Latches the player state's hint and gives the fade alpha: whole until
+    /// the hint is gone, then down to nothing over the fade time's last 100 ms.
+    pub(crate) fn update(&mut self, ps: &PlayerState, now_ms: i32) -> Option<(i32, i32, f32)> {
+        if ps.cursor_hint != 0 {
+            *self = Self {
+                kind: ps.cursor_hint,
+                string: ps.cursor_hint_string,
+                seen_ms: now_ms,
+            };
+        }
+        if self.seen_ms == 0 {
+            return None;
+        }
+        let elapsed = now_ms.wrapping_sub(self.seen_ms);
+        if elapsed >= HINT_FADE_MS {
+            self.kind = 0;
+            return None;
+        }
+        let left = HINT_FADE_MS - elapsed;
+        let alpha = if left >= 100 {
+            1.0
+        } else {
+            left as f32 / 100.0
+        };
+        Some((self.kind, self.string, alpha))
+    }
 }
 
 impl T5HudState<'_> {
@@ -266,6 +319,29 @@ fn text(args: &OwnerDrawArgs<'_>, value: &str, frame: &mut ChromeFrame) -> Owner
     }
 }
 
+/// A text-only cursor hint, as Black Ops draws it: centred on the item's
+/// horizontal anchor, half a line below its top, in white at the fade alpha.
+fn cursor_hint_text(
+    args: &OwnerDrawArgs<'_>,
+    text: &str,
+    alpha: f32,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    if text.is_empty() {
+        return OwnerDrawPaint::Painted;
+    }
+    match crate::chrome::push_owner_text_at(
+        args,
+        text,
+        [1.0, 1.0, 1.0, alpha],
+        |width, height| (width * -0.5, height * 0.5 + args.rect.y),
+        frame,
+    ) {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
+    }
+}
+
 fn paint_owner(
     state: &T5HudState<'_>,
     args: OwnerDrawArgs<'_>,
@@ -343,6 +419,14 @@ fn paint_owner(
             push_pic(&args, namespace, material.to_owned(), frame);
             OwnerDrawPaint::Painted
         }
+        CG_CURSORHINT => match state.hint.as_ref() {
+            None => OwnerDrawPaint::Painted,
+            Some(T5Hint { text: None, .. }) => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+            Some(T5Hint {
+                text: Some(text),
+                alpha,
+            }) => cursor_hint_text(&args, text, *alpha, frame),
+        },
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         _ => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
     }

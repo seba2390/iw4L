@@ -683,6 +683,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     ui_dvars: Option<Res<'w, frame::UiMenuDvars>>,
     vis: HudPlayerVisInput<'w>,
     mode: Option<Res<'w, game_api::ModeRules>>,
+    hint_latch: Local<'s, crate::t5_hud::T5HintLatch>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -702,7 +703,7 @@ pub(crate) fn update_weaponbar(
     local: Res<LocalPresentClient>,
     view: Option<Res<frame::ViewSubject>>,
     cg_clock: Res<FrameClock>,
-    client_input: WeaponbarInput,
+    mut client_input: WeaponbarInput,
 ) {
     let weapons = weapons
         .as_deref()
@@ -767,8 +768,37 @@ pub(crate) fn update_weaponbar(
             ammo.as_ref().and_then(|a| a.stock),
             ammo.as_ref().and_then(|a| a.clip),
         );
+        let ms = milliseconds() as i32;
+        let hint = client_input
+            .hint_latch
+            .update(ps, ms)
+            .and_then(|(kind, string, alpha)| {
+                // No-icon hints draw their text alone; the others draw an icon.
+                if kind != 1 {
+                    return Some(crate::t5_hud::T5Hint { text: None, alpha });
+                }
+                if string < 0 {
+                    return None;
+                }
+                let strings = strings.as_ref()?;
+                let bind = client_input
+                    .input
+                    .as_deref()
+                    .and_then(|input| input.use_key.as_deref())
+                    .or_else(|| strings.0.text("KEY_USE"))?;
+                match crate::use_hint::hint_string_text(&snap.meta, strings, bind, string) {
+                    Ok((text, _)) => Some(crate::t5_hud::T5Hint {
+                        text: Some(text),
+                        alpha,
+                    }),
+                    Err(reason) => {
+                        gaps.raise(GapCause::CursorHintMissing { reason });
+                        None
+                    }
+                }
+            });
         let state = crate::t5_hud::T5HudState {
-            ms: milliseconds() as i32,
+            ms,
             dvars: snap.meta.script_dvars(local.0),
             ui_dvars: client_input.ui_dvars.as_deref(),
             zombies: true,
@@ -781,6 +811,7 @@ pub(crate) fn update_weaponbar(
             weapon_name: name,
             hide_ammo,
             ammo_widths,
+            hint,
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,

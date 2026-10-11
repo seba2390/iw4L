@@ -59,11 +59,14 @@ const MODE: ModeRules = ModeRules {
     hud: HudRules {
         code_hud: Rule::Known(()),
         game_hud_menus: false,
+        script_hud: false,
         scoreboard: true,
         scorebar: true,
         compass: true,
-        script_text: true,
+        script_text: game_api::ScriptText::Engine,
         material_font_floor: true,
+        zombies: false,
+        font_scales_sent: None,
     },
 };
 

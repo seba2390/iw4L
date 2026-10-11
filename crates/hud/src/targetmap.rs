@@ -34,7 +34,7 @@ const ARROW_SIZE: f32 = 24.0;
 #[derive(Component)]
 pub(crate) struct TargetmapRaster;
 pub(crate) fn spawn_targetmap(root: &mut ChildSpawnerCommands) {
-    font_overlay::spawn_overlay(root, TargetmapRaster);
+    font_overlay::spawn_overlay(root, (TargetmapRaster, crate::plugin::CodeHudPiece));
 }
 
 fn hide(pass: &mut HudTessPass) {

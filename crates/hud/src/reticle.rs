@@ -44,6 +44,7 @@ pub(crate) fn spawn_reticle(root: &mut ChildSpawnerCommands) {
     ] {
         root.spawn((
             quad,
+            crate::plugin::CodeHudPiece,
             Node {
                 position_type: PositionType::Absolute,
                 display: Display::None,

@@ -36,9 +36,12 @@ pub(crate) fn update(
     time: Res<Time>,
     mut memory: Local<HintMemory>,
     view: Option<Res<frame::ViewSubject>>,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     pass.use_hint = TessJob::Hide;
+    // A game whose own HUD menus draw draws its hint there.
     if !surface.is_ready()
+        || mode.as_ref().is_some_and(|mode| mode.hud.game_hud_menus)
         || input.script_menu_open
         || view.as_ref().is_some_and(|v| v.in_killcam())
     {
@@ -73,26 +76,9 @@ pub(crate) fn update(
             let strings = strings
                 .as_ref()
                 .ok_or_else(|| "localized strings missing".to_owned())?;
-            let raw =
-                sim::hud_string_in_occupied(&snapshot.meta.hud_strings, ps.cursor_hint_string)
-                    .ok_or_else(|| {
-                        format!("hint string {} not published", ps.cursor_hint_string)
-                    })?;
-            let localized = crate::hudelem::resolve_hud_text(strings, raw)
-                .ok_or_else(|| format!("missing {raw}"))?;
-            let unbound = strings
-                .0
-                .text(hud_iw4::KEY_UNBOUND)
-                .ok_or_else(|| "KEY_UNBOUND localization missing".to_owned())?;
-            let hint = hud_iw4::replace_directive(&localized, |cmd| {
-                if matches!(cmd, "+activate" | "+usereload") {
-                    bind.to_owned()
-                } else {
-                    hud_iw4::unbound_directive(unbound, cmd)
-                }
-            })
-            .replace("&&1", bind);
-            return Ok(Some((hint, raw.to_owned(), None)));
+            let (hint, raw) =
+                hint_string_text(&snapshot.meta, strings, bind, ps.cursor_hint_string)?;
+            return Ok(Some((hint, raw, None)));
         }
         let weapon = (ps.cursor_hint - 4) as u32;
         let weapons = weapons
@@ -306,4 +292,32 @@ pub(crate) fn update(
     } else {
         pass.use_hint = TessJob::Quads(quads);
     }
+}
+
+/// A cursor hint's string with the use key filled in: `[{+activate}]` and
+/// `[{+usereload}]` directives and `&&1` become `bind`. Returns the text and
+/// the string's localization key.
+pub(crate) fn hint_string_text(
+    meta: &sim::SnapshotMeta,
+    strings: &assets::PreparedLocalizedStrings,
+    bind: &str,
+    index: i32,
+) -> Result<(String, String), String> {
+    let raw = sim::hud_string_in_occupied(&meta.hud_strings, index)
+        .ok_or_else(|| format!("hint string {index} not published"))?;
+    let localized =
+        crate::hudelem::resolve_hud_text(strings, raw).ok_or_else(|| format!("missing {raw}"))?;
+    let unbound = strings
+        .0
+        .text(hud_iw4::KEY_UNBOUND)
+        .ok_or_else(|| "KEY_UNBOUND localization missing".to_owned())?;
+    let hint = hud_iw4::replace_directive(&localized, |cmd| {
+        if matches!(cmd, "+activate" | "+usereload") {
+            bind.to_owned()
+        } else {
+            hud_iw4::unbound_directive(unbound, cmd)
+        }
+    })
+    .replace("&&1", bind);
+    Ok((hint, raw.to_owned()))
 }

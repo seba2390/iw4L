@@ -276,7 +276,7 @@ pub(crate) fn item_screen_rects(
     };
     let mut out = Vec::new();
     for (index, item) in menu.items.iter().enumerate() {
-        if !matches!(exprs.is_true(&item.vis_exp, host), Ok(true)) {
+        if !item_dvar_shows(item, host) || !matches!(exprs.is_true(&item.vis_exp, host), Ok(true)) {
             continue;
         }
         let Ok(style) = evaluate_item_style(
@@ -306,6 +306,25 @@ pub(crate) fn item_screen_rects(
     out
 }
 
+/// An item whose dvar test shows or hides it: a value in its enable list
+/// shows it under the show flag and hides it under the hide flag; an unlisted
+/// value does the opposite.
+fn item_dvar_shows(item: &MenuItem, host: &impl ExprHost) -> bool {
+    const ITEM_DVAR_SHOW: i32 = 0x4;
+    const ITEM_DVAR_HIDE: i32 = 0x8;
+    if item.dvar_flags & (ITEM_DVAR_SHOW | ITEM_DVAR_HIDE) == 0
+        || item.enable_dvar.is_empty()
+        || item.dvar_test.is_empty()
+    {
+        return true;
+    }
+    let value = host.dvar_string(&item.dvar_test).unwrap_or_default();
+    let listed = crate::menus::script_tokens(&item.enable_dvar)
+        .iter()
+        .any(|token| token.eq_ignore_ascii_case(&value));
+    listed == (item.dvar_flags & ITEM_DVAR_SHOW != 0)
+}
+
 fn paint_item(
     menu: &MenuDef,
     index: usize,
@@ -319,6 +338,10 @@ fn paint_item(
     owner_draw: Option<&mut dyn FnMut(OwnerDrawArgs<'_>, &mut ChromeFrame) -> OwnerDrawPaint>,
     frame: &mut ChromeFrame,
 ) {
+    if !item_dvar_shows(item, host) {
+        frame.coverage.vis_false();
+        return;
+    }
     match exprs.is_true(&item.vis_exp, host) {
         Ok(false) => {
             frame.coverage.vis_false();
@@ -609,6 +632,34 @@ pub(crate) fn push_owner_text(
         measured_w,
         measured_h,
     );
+    push_owner_text_run(args, font_name, font, text, color, x, y, frame);
+    Ok(())
+}
+
+/// An owner draw's text at the place `place` gives from the text's measured
+/// width and line height, in the item's font, scale and alignment.
+pub(crate) fn push_owner_text_at(
+    args: &OwnerDrawArgs<'_>,
+    text: &str,
+    color: [f32; 4],
+    place: impl FnOnce(f32, f32) -> (f32, f32),
+    frame: &mut ChromeFrame,
+) -> Result<(), ChromeGapKind> {
+    let font_name = args
+        .assets
+        .font_name(
+            args.item.font_enum,
+            args.surface.scale_virtual_to_real()[1],
+            args.item.text_scale,
+        )
+        .ok_or(ChromeGapKind::AssetFont)?;
+    let Some(font) = args.assets.catalog.and_then(|c| c.font(font_name)) else {
+        return Err(ChromeGapKind::AssetFont);
+    };
+    let layout = args.assets.layout().ok_or(ChromeGapKind::Layout)?;
+    let width = layout_text_width(layout, font, text, args.item.text_scale);
+    let height = layout.text_height(font.pixel_height, args.item.text_scale);
+    let (x, y) = place(width, height);
     push_owner_text_run(args, font_name, font, text, color, x, y, frame);
     Ok(())
 }

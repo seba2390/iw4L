@@ -205,6 +205,92 @@ fn place_waypoint(
     Some((center + dir * reach, size))
 }
 
+/// A script text elem drawn with the game's menu fonts and menu text
+/// measures: the elem's scale is taken to screen pixels, its font picked
+/// from that, and its line height and width rounded as the menu engine does.
+#[allow(clippy::too_many_arguments)]
+fn menu_font_text<'c>(
+    menu_font: fn(i32) -> (i32, f32),
+    catalog: Option<&'c MenuCatalog>,
+    surface: &crate::surface::Hud2dSurface,
+    elem: &HudElem,
+    font_scale: f32,
+    cg_time: i32,
+    text: String,
+    color: [u8; 4],
+    provenance: Draw2dProvenance,
+    hud_images: &mut HudImages,
+    images: &mut Assets<Image>,
+    fonts: &mut HashMap<String, &'c asset_game::FontDef>,
+    gaps: &mut HudPresentationGaps,
+) -> Option<Draw2dCmd> {
+    let Some(catalog) = catalog else {
+        gaps.raise(GapCause::NoFontCatalog);
+        return None;
+    };
+    let assets = crate::chrome::ChromeAssets {
+        catalog: Some(catalog),
+        localize: None,
+    };
+    let (font_enum, base_scale) = menu_font(elem.font);
+    let [scale_x, scale_y] = surface.scale_virtual_to_real();
+    let text_scale = scale_y * (font_scale * base_scale);
+    let Some(font_name) = assets.font_name(font_enum, scale_y, text_scale) else {
+        gaps.raise(GapCause::HudElemT5TextRule);
+        return None;
+    };
+    let Some(font) = catalog.font(font_name) else {
+        gaps.raise(GapCause::FontMissing {
+            name: font_name.to_owned(),
+        });
+        return None;
+    };
+    let Some(layout) = assets.layout() else {
+        gaps.raise(GapCause::HudElemT5TextRule);
+        return None;
+    };
+    let namespace = assets.namespace();
+    let material = asset_core::AssetRef::bare_name(&font.material).to_owned();
+    if hud_images.get(namespace, &material, images).is_none() {
+        gaps.raise(GapCause::FontAtlasMissing {
+            image: hud_images.zone_image_name(&material).map(str::to_owned),
+            material,
+        });
+        return None;
+    }
+    fonts.insert(font_name.to_owned(), font);
+    let height = layout.text_height(font.pixel_height, text_scale);
+    let width = layout.text_width(text_width(font, &text), font.pixel_height, text_scale);
+    let glyph_h = layout.text_scale(font.pixel_height, text_scale);
+    let glyph_w = glyph_h * scale_x / scale_y;
+    let placed = hud_elem_placement(surface.placement(), elem, cg_time, width, height);
+    Some(Draw2dCmd {
+        material_namespace: namespace,
+        x: (placed.x + 0.5).floor(),
+        y: (placed.text_baseline_y() + 0.5).floor(),
+        w: glyph_w,
+        h: glyph_h,
+        s0: 0.0,
+        t0: 0.0,
+        s1: 1.0,
+        t1: 1.0,
+        color: face_color(color),
+        material,
+        op: Draw2dOp::TextRun {
+            font: font_name.to_owned(),
+            scale: glyph_h / scale_y,
+            text,
+            loc_key: String::new(),
+            style: crate::draw2d::TEXT_STYLE_HUDELEM,
+            fx: crate::hudelem::hudelem_text_fx(elem, cg_time),
+            glow: hud_elem_glow_color(elem, color)
+                .and_then(|glow| crate::chrome::text_run_glow(font, glow)),
+        },
+        provenance,
+        layer: 1,
+    })
+}
+
 fn face_color(color: [u8; 4]) -> [f32; 4] {
     color.map(|c| f32::from(c) / 255.0)
 }
@@ -226,7 +312,10 @@ pub(crate) fn update_hud_elems(
     mut ui_sound: MessageWriter<UiPlaySound>,
     cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     entities: Query<(&CEntity, &CEntityRuntime)>,
-    mode: Option<Res<game_api::ModeRules>>,
+    (mode, hud_menus): (
+        Option<Res<game_api::ModeRules>>,
+        Option<Res<asset_game::SessionHudMenus>>,
+    ),
 ) {
     if !surface.is_ready() {
         hide(&mut pass);
@@ -269,7 +358,19 @@ pub(crate) fn update_hud_elems(
     let cg_time = cg_clock.time();
     let mut layers: [Vec<Draw2dCmd>; 2] = Default::default();
     let mut fonts = HashMap::new();
+    let font_scales_sent = mode.as_ref().and_then(|mode| mode.hud.font_scales_sent);
     for (index, elem) in elems.iter().enumerate() {
+        let sent_elem;
+        let elem: &HudElem = match font_scales_sent {
+            Some(sent) => {
+                let mut copy = **elem;
+                (copy.font_scale, copy.from_font_scale) =
+                    sent(copy.font_scale, copy.from_font_scale);
+                sent_elem = copy;
+                &sent_elem
+            }
+            None => elem,
+        };
         let color = lerp_hud_colors(elem, cg_time);
         if color[3] == 0 {
             continue;
@@ -364,9 +465,10 @@ pub(crate) fn update_hud_elems(
             continue;
         }
 
-        // Black Ops picks a script text elem's font and size by rules only its
-        // executable holds (docs/fidelity/t5.md, waiting on the maintainer).
-        if mode.as_ref().is_some_and(|mode| !mode.hud.script_text) {
+        let script_text = mode
+            .as_ref()
+            .map_or(game_api::ScriptText::Engine, |mode| mode.hud.script_text);
+        if script_text == game_api::ScriptText::Off {
             gaps.raise(GapCause::HudElemT5TextRule);
             continue;
         }
@@ -374,6 +476,33 @@ pub(crate) fn update_hud_elems(
             continue;
         };
         if text.is_empty() {
+            continue;
+        }
+        if let game_api::ScriptText::MenuFonts(menu_font) = script_text {
+            let pulse = crate::hudelem::hudelem_pulse_sound(elem, &text, cg_time, &mut sound_latch);
+            let Some(cmd) = menu_font_text(
+                menu_font,
+                hud_menus.as_ref().and_then(|menus| menus.0.as_deref()),
+                &surface,
+                elem,
+                font_scale,
+                cg_time,
+                text,
+                color,
+                provenance,
+                &mut hud_images,
+                &mut images,
+                &mut fonts,
+                &mut gaps,
+            ) else {
+                continue;
+            };
+            if let Some(alias) = pulse {
+                ui_sound.write(UiPlaySound {
+                    alias: alias.to_owned(),
+                });
+            }
+            cmds.push(cmd);
             continue;
         }
         let text_scale = hudelem_text_scale(elem.font, font_scale);
