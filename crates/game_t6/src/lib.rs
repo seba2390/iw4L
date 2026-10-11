@@ -238,8 +238,9 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         scoreboard: true,
         scorebar: true,
         compass: true,
-        script_text: true,
+        script_text: game_api::ScriptText::Engine,
         material_font_floor: true,
+        font_scales_sent: None,
     },
 };
 

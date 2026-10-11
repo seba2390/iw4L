@@ -32,7 +32,8 @@ game over (`t5.match.last_stand` keeps the down animations open); a solo
 game over fails the level as Black Ops does and Kino loads again
 (`t5.match.level_failed`: no save games, no client fade-out). There is
 no code-drawn HUD yet (`t5.hud.code_hud`); Black Ops' HUD menus (weapon
-info, dpad) are laid out by its own menu engine rules, and there are no
+info, dpad) and the zombie scripts' hud elems (round chalk and intro,
+point popups, game over) are drawn by its own rules, and there are no
 Modern Warfare 2 sounds. The work now is
 recovering those rules from Black Ops. Start it from the game library
 (Black Ops → Zombies → Kino der Toten), or headless:

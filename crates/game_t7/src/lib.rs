@@ -197,8 +197,9 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
         scoreboard: false,
         scorebar: false,
         compass: false,
-        script_text: false,
+        script_text: game_api::ScriptText::Off,
         material_font_floor: false,
+        font_scales_sent: None,
     },
 };
 

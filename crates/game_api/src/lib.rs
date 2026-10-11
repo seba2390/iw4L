@@ -197,10 +197,29 @@ pub struct HudRules {
     pub scoreboard: bool,
     pub scorebar: bool,
     pub compass: bool,
-    /// Script text elems are drawn (their font and size rule is known).
-    pub script_text: bool,
+    /// How script text elems are drawn.
+    pub script_text: ScriptText,
     /// A script material elem grows to the elem's font height.
     pub material_font_floor: bool,
+    /// The font scale and from-font scale a client receives for an elem's
+    /// scripted ones, when the game's network encodes them.
+    pub font_scales_sent: Option<fn(f32, f32) -> (f32, f32)>,
+}
+
+/// How a mode's script text hud elems are drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScriptText {
+    /// Not drawn: the game's rule is not known.
+    Off,
+    /// Modern Warfare 2's hud elem text.
+    Engine,
+    /// With the game's menu fonts and menu text measures. The function takes
+    /// an elem's font number in the shared list (`default`, `bigfixed`,
+    /// `smallfixed`, `objective`, `big`, `small`, `hudbig`, `hudsmall`,
+    /// `extrabig`) and gives the menu font number it draws with and its base
+    /// scale. The elem's scale is taken to screen pixels before the font is
+    /// picked and the text measured.
+    MenuFonts(fn(i32) -> (i32, f32)),
 }
 
 /// How a game's screen reacts to its match: shellshocks.
