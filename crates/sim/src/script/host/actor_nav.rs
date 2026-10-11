@@ -725,6 +725,17 @@ pub(crate) fn nodes_where(
         .collect()
 }
 
+/// The script object of the node at `index`.
+pub(crate) fn node_value(world: &mut World, index: u16) -> Result<Value, String> {
+    let paths = FrameWorld::from_world(world)
+        .actor_paths()
+        .ok_or("no path nodes")?;
+    if usize::from(index) >= paths.nodes.len() {
+        return Err("no such node".into());
+    }
+    node_object(world, &paths, index)
+}
+
 /// The script object standing for a path node, made on first use.
 fn node_object(world: &mut World, paths: &ActorPaths, index: u16) -> Result<Value, String> {
     let mut runtime = world.resource_mut::<RoundScript>();

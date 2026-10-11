@@ -1319,10 +1319,21 @@ fn preflight_match_install(
             .get(&name.to_ascii_lowercase())
             .map(|table| (table.columns, table.cells.as_slice()))
     };
+    let mut traversals: Vec<String> = prepared_map
+        .facts
+        .path_nodes
+        .iter()
+        .filter(|node| matches!(node.kind, asset_world::PathNodeKind::NegotiationBegin))
+        .filter(|node| !node.animscript.is_empty())
+        .map(|node| node.animscript.to_ascii_lowercase())
+        .collect();
+    traversals.sort_unstable();
+    traversals.dedup();
     let request = game_api::ScriptRequest {
         map: zone,
         gametype,
         entities: sources.0.entities().unwrap_or(""),
+        traversals: &traversals,
         config: &config,
         table: &table,
     };

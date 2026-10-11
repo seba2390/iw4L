@@ -102,7 +102,7 @@ fn own_zombies(
         map,
     ]
     .into_iter()
-    .chain(startup::actor_scripts(request.entities))
+    .chain(startup::actor_scripts(request.entities, request.traversals))
     .collect::<Vec<_>>();
     let read = |name: &str| {
         sources.read_module(name).ok().map(|bytes| gsc_t6::Source {
