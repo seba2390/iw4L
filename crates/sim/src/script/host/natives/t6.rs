@@ -13,6 +13,7 @@ mod actor;
 mod anim;
 mod attach;
 mod barrier;
+mod movement;
 mod effect;
 mod mover;
 mod sound;
@@ -1695,6 +1696,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     }
     actor::register(registry);
     anim::register(registry);
+    movement::register(registry);
     attach::register(registry);
     barrier::register(registry);
     weapon::register_natives(registry);

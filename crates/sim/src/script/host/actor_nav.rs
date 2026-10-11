@@ -109,21 +109,19 @@ impl ActorPaths {
             .map(|(_, node)| *node)
     }
 
-    /// The node sequence from the node serving `from` to the one serving `to`.
-    fn plan(
-        &self,
-        from: [f32; 3],
-        to: [f32; 3],
-        reach: &mut dyn FnMut([f32; 3], [f32; 3]) -> bool,
-    ) -> Option<Vec<u16>> {
-        let start = self.nearest(from, reach)?;
-        let goal = self.nearest(to, reach)?;
-        let goal_origin = self.nodes[goal as usize].origin;
+    pub(crate) fn nodes(&self) -> &[NavNode] {
+        &self.nodes
+    }
+
+    /// The cheapest node sequence from `start` to `goal` over the links,
+    /// by link length.
+    pub(crate) fn route(&self, start: u16, goal: u16) -> Option<Vec<u16>> {
+        let goal_origin = self.nodes.get(goal as usize)?.origin;
         let mut best: BTreeMap<u16, (f32, Option<u16>)> = BTreeMap::new();
         best.insert(start, (0.0, None));
         let mut open = BinaryHeap::new();
         open.push(Frontier {
-            estimate: distance_sq(self.nodes[start as usize].origin, goal_origin).sqrt(),
+            estimate: distance_sq(self.nodes.get(start as usize)?.origin, goal_origin).sqrt(),
             node: start,
         });
         while let Some(Frontier { node, .. }) = open.pop() {
@@ -135,16 +133,6 @@ impl ActorPaths {
                     cursor = previous;
                 }
                 path.reverse();
-                // Already past the first node: head for the second.
-                if let [first, second, ..] = path[..] {
-                    let (a, b) = (
-                        self.nodes[first as usize].origin,
-                        self.nodes[second as usize].origin,
-                    );
-                    if distance_sq(from, b) < distance_sq(a, b) && reach(from, b) {
-                        path.remove(0);
-                    }
-                }
                 return Some(path);
             }
             let cost = best[&node].0;
@@ -162,6 +150,29 @@ impl ActorPaths {
             }
         }
         None
+    }
+
+    /// The node sequence from the node serving `from` to the one serving `to`.
+    fn plan(
+        &self,
+        from: [f32; 3],
+        to: [f32; 3],
+        reach: &mut dyn FnMut([f32; 3], [f32; 3]) -> bool,
+    ) -> Option<Vec<u16>> {
+        let start = self.nearest(from, reach)?;
+        let goal = self.nearest(to, reach)?;
+        let mut path = self.route(start, goal)?;
+        // Already past the first node: head for the second.
+        if let [first, second, ..] = path[..] {
+            let (a, b) = (
+                self.nodes[first as usize].origin,
+                self.nodes[second as usize].origin,
+            );
+            if distance_sq(from, b) < distance_sq(a, b) && reach(from, b) {
+                path.remove(0);
+            }
+        }
+        Some(path)
     }
 }
 

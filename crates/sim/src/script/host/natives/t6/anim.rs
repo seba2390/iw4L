@@ -67,6 +67,9 @@ pub(super) struct ActorAnim {
     pub(super) orient: &'static str,
     /// The yaw `face angle`, `face direction` or `face point` turns to.
     pub(super) orient_yaw: Option<f32>,
+    /// How far the clip's root moved this frame, in the actor's frame, when
+    /// it is not a scripted clip.
+    pub(super) step: [f32; 3],
 }
 
 impl Default for ActorAnim {
@@ -77,6 +80,7 @@ impl Default for ActorAnim {
             mode: "normal",
             orient: "face default",
             orient_yaw: None,
+            step: [0.0; 3],
         }
     }
 }
@@ -320,12 +324,15 @@ fn advance(world: &mut World) {
             world.resource_mut::<ActorAnims>().0.remove(&id);
             continue;
         }
+        anim_mut(world, id).step = [0.0; 3];
         let Some(mut playing) = anim_mut(world, id).playing.clone() else {
             continue;
         };
         if playing.done {
             continue;
         }
+        let from = playing.time;
+        let mut cycles = 0.0;
         let length = playing.clip.duration();
         let mut time = if length > 0.0 {
             playing.time + step / length
@@ -353,10 +360,19 @@ fn advance(world: &mut World) {
                 break;
             }
             time -= 1.0;
+            cycles += 1.0;
             playing.sent = -1.0;
         }
         playing.time = time;
         let notify = playing.notify.clone();
+        if playing.anchor.is_none() {
+            let (start, end, full) = (
+                playing.clip.abs_delta_trans(from),
+                playing.clip.abs_delta_trans(time),
+                playing.clip.abs_delta_trans(1.0),
+            );
+            anim_mut(world, id).step = std::array::from_fn(|i| end[i] - start[i] + cycles * full[i]);
+        }
         anim_mut(world, id).playing = Some(playing);
         place(world, id);
         if let Some(notify) = notify {
@@ -510,6 +526,31 @@ fn anim_clip(world: &mut World, args: &[Value], index: usize) -> Result<Arc<Anim
     FrameWorld::from_world(world)
         .anim_clip_named(&name)
         .ok_or_else(|| format!("animation '{name}' is not loaded in the simulation"))
+}
+
+/// The scripted clip's anchor, while one plays.
+pub(super) fn scripted(world: &mut World, id: u64) -> bool {
+    anim_mut(world, id)
+        .playing
+        .as_ref()
+        .is_some_and(|playing| playing.anchor.is_some() && !playing.done)
+}
+
+pub(super) fn state_of(world: &mut World, id: u64) -> Option<(String, bool)> {
+    anim_mut(world, id)
+        .playing
+        .as_ref()
+        .map(|playing| (playing.state.clone(), playing.done))
+}
+
+pub(super) fn get(world: &mut World, id: u64) -> ActorAnim {
+    anim_mut(world, id).clone()
+}
+
+pub(super) fn reset_orient(world: &mut World, id: u64) {
+    let anim = anim_mut(world, id);
+    anim.orient = "face default";
+    anim.orient_yaw = None;
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {
