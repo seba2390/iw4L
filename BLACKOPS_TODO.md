@@ -21,7 +21,8 @@ Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are
 off until Black Ops' own are recovered (each is an `unknown!` id in
 [`docs/fidelity/t5.md`](docs/fidelity/t5.md)). The player moves on Black Ops'
 own movement (`movement_t5`; ladders, mantling, swimming and its movement
-events are still open) but cannot fire (`t5.weapons.state_machine`), there is no HUD
+events are still open) and Black Ops' weapon rules (shots do nothing yet:
+`t5.weapons.fire`), there is no HUD
 (`t5.hud.code_hud`, `t5.hud.menu_layout`), no last stand
 (`t5.match.last_stand`) and no Modern Warfare 2 sounds. The work now is
 recovering those rules from Black Ops. Start it from the game library
