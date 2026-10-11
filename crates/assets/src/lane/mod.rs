@@ -36,6 +36,8 @@ pub struct LaneGap {
 }
 
 pub struct LoadedWorld {
+    pub ui_images: Vec<(String, asset_material::ZoneUiImage)>,
+    pub ui_modules: Vec<(String, std::sync::Arc<[u8]>)>,
     pub scripts: crate::ScriptSources,
     pub world: PreparedWorld,
     /// What the map zone itself captured. The local material indices in
@@ -99,6 +101,8 @@ pub type LochitTable = [f32; weapon_iw4::HITLOC_COUNT];
 
 #[derive(Default)]
 pub struct CommonCensus {
+    pub ui_tables: Vec<asset_core::ZoneTable>,
+    pub ui_modules: Vec<(String, std::sync::Arc<[u8]>)>,
     pub ui_images: Vec<(String, asset_material::material_images::ZoneUiImage)>,
     pub scripts: crate::ScriptSources,
     pub scene_models: asset_world::MapXModelSceneCatalog,
@@ -395,6 +399,8 @@ pub const LANE_GAPS: &[&str] = &[
 impl LoadedWorld {
     pub fn empty(policy: WorldDrawPolicy) -> Self {
         Self {
+            ui_images: Vec::new(),
+            ui_modules: Vec::new(),
             scripts: Default::default(),
             world: PreparedWorld::empty(policy),
             materials: Default::default(),

@@ -281,6 +281,13 @@ impl game_api::GameVision for T6 {
 }
 
 impl game_api::GameMenus for T6 {
+    fn script_ui(
+        &self,
+        modules: &[game_api::ui::Module],
+    ) -> Result<Option<Box<dyn game_api::ui::ScriptUi>>, String> {
+        Ok(Some(Box::new(ui::scene::Scene::new(modules)?)))
+    }
+
     fn font(&self, _font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
         Rule::Unknown(unknown!(
             "t6.hud.menu_font",

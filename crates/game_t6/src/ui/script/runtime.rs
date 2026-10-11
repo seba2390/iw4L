@@ -77,9 +77,13 @@ pub struct Runtime {
     cells: Vec<Cell>,
     open: BTreeMap<(usize, usize), usize>,
     frames: Vec<Activation>,
+    last_fault: Option<(usize, usize)>,
 }
 
 impl Runtime {
+    pub fn failure_source(&self) -> Option<(usize, usize)> {
+        self.last_fault
+    }
     fn closure_index(&self, value: &Value) -> Result<usize, FaultKind> {
         let Value::Reference { kind: 9, identity } = value else {
             return Err(FaultKind::BindingRequired);
@@ -142,6 +146,7 @@ impl Runtime {
         Ok(Activation {
             closure,
             frame: Frame {
+                iterator: None,
                 registers,
                 cached,
                 pc: 0,
@@ -201,6 +206,10 @@ impl Runtime {
     }
 
     fn unwind(&mut self) {
+        self.last_fault = self.frames.last().map(|active| {
+            let closure = &self.closures[active.closure];
+            (closure.program, closure.function)
+        });
         while let Some(activation) = self.frames.pop() {
             let _ = self.close_frame(self.frames.len(), 0, &activation.frame.registers);
         }
@@ -463,6 +472,9 @@ impl Scope<'_> {
 }
 
 impl Environment for Scope<'_> {
+    fn length(&self, value: &Value) -> Result<usize, FaultKind> {
+        self.runtime.tables.length(value)
+    }
     fn global(&mut self, key: &Value) -> Result<Value, FaultKind> {
         let environment = self.runtime.closures[self.closure].environment.clone();
         self.runtime.tables.field(&environment, key)

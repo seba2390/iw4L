@@ -40,6 +40,14 @@ pub struct Elements {
 }
 
 impl Elements {
+    pub fn element_mut(&mut self, value: &Value) -> Result<&mut Element, FaultKind> {
+        let Value::Reference { kind: 7, identity } = value else {
+            return Err(FaultKind::BindingRequired);
+        };
+        self.elements
+            .get_mut(identity)
+            .ok_or(FaultKind::Userdata(*identity))
+    }
     pub fn install(tables: &mut Tables) -> Result<Self, FaultKind> {
         let library = Library::install(tables)?;
         let animation_state_metatable = tables.allocate()?;

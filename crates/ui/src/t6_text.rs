@@ -8,6 +8,9 @@ pub(crate) struct NativeUiPaint;
 pub(crate) struct NativeUiRoot(pub bool);
 
 #[derive(Component)]
+pub(crate) struct NativeFont(pub String);
+
+#[derive(Component)]
 struct Glyph;
 
 #[derive(Component)]
@@ -23,7 +26,10 @@ struct BitmapText {
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        refresh.in_set(frame::ClientSet::Ui).after(NativeUiPaint),
+        refresh
+            .in_set(frame::ClientSet::Ui)
+            .after(NativeUiPaint)
+            .after(super::script_ui::ScriptUiPaint),
     );
 }
 
@@ -37,6 +43,7 @@ fn refresh(
             &mut TextColor,
             &mut Node,
             Option<&mut BitmapText>,
+            Option<&NativeFont>,
         ),
         Without<Glyph>,
     >,
@@ -46,7 +53,8 @@ fn refresh(
     mut art: ResMut<super::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let Some(font) = asset_material::ui_font::ui_font(AssetNamespace::T6, "fonts/distFont") else {
+    let namespace = AssetNamespace::T6;
+    let Some(font) = asset_material::ui_font::ui_font(namespace, "fonts/distFont") else {
         return;
     };
     let Some(atlas) = art.image(&font.material, &mut images) else {
@@ -55,8 +63,18 @@ fn refresh(
     let Some(image) = images.get(&atlas) else {
         return;
     };
-    let dimensions = image.size().as_vec2();
-    for (entity, text, mut text_font, mut color, mut node, previous) in &mut texts {
+    let _ = image;
+    for (entity, text, mut text_font, mut color, mut node, previous, native_font) in &mut texts {
+        let requested =
+            native_font.and_then(|font| asset_material::ui_font::ui_font(namespace, &font.0));
+        let font = requested.as_ref().unwrap_or(&font);
+        let Some(atlas) = art.image(&font.material, &mut images) else {
+            continue;
+        };
+        let Some(image) = images.get(&atlas) else {
+            continue;
+        };
+        let dimensions = image.size().as_vec2();
         let mut ancestor = entity;
         let mut native = false;
         while let Ok(parent) = parents.get(ancestor) {
