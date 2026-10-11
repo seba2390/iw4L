@@ -93,7 +93,7 @@ fn start_blocked<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
         || throw_blocks(pm)
         || ps.leanf != 0.0
         || ps.pm_flags
-            & (pm_flags::MOUNTED_SPEED | pm_flags::ADS_INTENT | pm_flags::LADDER | pm_flags::MANTLE)
+            & (pm_flags::SHELLSHOCKED | pm_flags::ADS_INTENT | pm_flags::LADDER | pm_flags::MANTLE)
             != 0
     {
         return true;
@@ -119,7 +119,7 @@ fn start_blocked<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
 fn must_stop<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     let ps = &*pm.ps;
     if ps.water_level >= 2
-        || ps.pm_flags & (pm_flags::MOUNTED_SPEED | pm_flags::ADS_INTENT | pm_flags::LADDER) != 0
+        || ps.pm_flags & (pm_flags::SHELLSHOCKED | pm_flags::ADS_INTENT | pm_flags::LADDER) != 0
         || i32::from(pm.cmd.forwardmove) <= tuning::SPRINT_FORWARD_MINIMUM
         || other_actions_held(pm)
         || pm.cmd.buttons.held(buttons::PRONE)

@@ -689,14 +689,24 @@ fn capture_t5_game_bytes(
     let (body, variant) = (geometry.weap_def?, geometry.variant?);
     let def = stream.slice_at(body, 0, sz::WEAPON_DEF).ok()?;
     let var = stream.slice_at(variant, 0, sz::WEAPON_VARIANT_DEF).ok()?;
-    Some(std::sync::Arc::new(crate::weapon_catalog::GameWeaponBytes {
-        def: def.into(),
-        variant: var.into(),
-        ammo_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_AMMO_NAME_OFF)
-            .unwrap_or_default(),
-        clip_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_CLIP_NAME_OFF)
-            .unwrap_or_default(),
-    }))
+    Some(std::sync::Arc::new(
+        crate::weapon_catalog::GameWeaponBytes {
+            def: def.into(),
+            variant: var.into(),
+            ammo_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_AMMO_NAME_OFF)
+                .unwrap_or_default(),
+            clip_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_CLIP_NAME_OFF)
+                .unwrap_or_default(),
+            named_anims: geometry.sz_xanims.map_or(0, |arr| {
+                (0..sz::WEAPON_XANIM_COUNT)
+                    .filter(|&slot| {
+                        matches!(stream.ptr_at(arr, slot * 4), Ok(fastfile_t5::ZonePtr::Offset(q))
+                        if stream.cstr(stream.resolve_alias(q)).is_ok_and(|s| !s.is_empty()))
+                    })
+                    .fold(0u128, |bits, slot| bits | 1 << slot)
+            }),
+        },
+    ))
 }
 
 pub(super) fn capture_t5_body_facts(

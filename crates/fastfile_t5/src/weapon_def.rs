@@ -18,6 +18,11 @@ impl<'a> WeaponDefView<'a> {
             .then_some(Self { def, variant })
     }
 
+    /// Both views read one weapon definition (variants share theirs).
+    pub fn same_def(&self, other: &WeaponDefView<'_>) -> bool {
+        self.def[..WEAPON_DEF] == other.def[..WEAPON_DEF]
+    }
+
     fn word(bytes: &[u8], off: usize) -> [u8; 4] {
         [bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]]
     }
@@ -595,5 +600,14 @@ impl<'a> WeaponDefView<'a> {
     /// `adsTransOutTime`
     pub fn ads_trans_out_time(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.variant, 0x38))
+    }
+    /// `reloadQuickAddTime`
+    pub fn reload_quick_add_time(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x3e4))
+    }
+
+    /// `reloadQuickEmptyAddTime`
+    pub fn reload_quick_empty_add_time(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x3e8))
     }
 }

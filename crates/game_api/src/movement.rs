@@ -6,7 +6,7 @@ use crate::Unknown;
 
 /// Bytes a game's movement keeps per player beyond the shared fields. The
 /// simulation stores, replicates and rolls them back with the player.
-pub const GAME_MOVE_BYTES: usize = 256;
+pub const GAME_MOVE_BYTES: usize = 512;
 
 /// The entity number for no entity: a player standing on nothing.
 pub const ENTITY_NONE: i32 = -1;
@@ -57,13 +57,33 @@ pub mod buttons {
     pub const TALKING: u32 = 1 << 17;
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MoveCommand {
     pub server_time: i32,
     pub buttons: u32,
     pub angles: [i32; 3],
     pub forwardmove: i8,
     pub rightmove: i8,
+    /// The weapon the player asks to hold.
+    pub weapon: u32,
+    /// The offhand the player asks to throw.
+    pub offhand: u32,
+    /// The alternate weapon the player switched from.
+    pub alt_weapon: u32,
+    /// Where a melee lunge aims, found by the client: yaw and distance.
+    pub melee_charge_yaw: f32,
+    pub melee_charge_dist: u8,
+}
+
+/// The weapon slots a player has.
+pub const HELD_WEAPONS: usize = 15;
+
+/// A held weapon and its rounds: in its clip and beside it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HeldWeapon {
+    pub weapon: u32,
+    pub clip: i32,
+    pub stock: i32,
 }
 
 /// One player as movement sees it: the fields the rest of the match shares,
@@ -94,6 +114,19 @@ pub struct MovePlayer {
     pub movement_dir: i32,
     pub stance: Stance,
     pub sprinting: bool,
+    /// The weapons held, by slot; the game's weapon rules spend, load and
+    /// drop them.
+    pub held: [HeldWeapon; HELD_WEAPONS],
+    /// Set by the weapon rules: how far the sights are up (0 hip, 1 aimed).
+    pub weapon_pos_frac: f32,
+    /// Set by the weapon rules: hip fire spread, 0 to 255.
+    pub aim_spread_scale: f32,
+    /// Set by the weapon rules, in the game's numbering.
+    pub weapon_state: i32,
+    /// Set by the weapon rules, in the game's numbering.
+    pub weap_anim: u32,
+    pub offhand: u32,
+    pub grenade_time_left: i32,
     pub game: [u8; GAME_MOVE_BYTES],
 }
 
@@ -120,6 +153,13 @@ impl Default for MovePlayer {
             movement_dir: 0,
             stance: Stance::Stand,
             sprinting: false,
+            held: [HeldWeapon::default(); HELD_WEAPONS],
+            weapon_pos_frac: 0.0,
+            aim_spread_scale: 0.0,
+            weapon_state: 0,
+            weap_anim: 0,
+            offhand: 0,
+            grenade_time_left: 0,
             game: [0; GAME_MOVE_BYTES],
         }
     }
@@ -154,6 +194,10 @@ pub struct GameWeapon {
     pub alt_weapon: u32,
     /// The weapon in the left hand when dual wielding; 0 when none.
     pub dual_wield_weapon: u32,
+    /// The variant's animation slots that name an animation, by slot.
+    pub named_anims: u128,
+    /// The weapon's name in its game.
+    pub name: String,
 }
 
 /// The water over a point, as far as the match knows it.
@@ -253,6 +297,16 @@ pub trait PlayerMovement: Sync {
     fn has_perk(&self, player: &MovePlayer, perk: &str) -> bool;
 
     fn clear_perks(&self, player: &mut MovePlayer);
+}
+
+/// Whose weapon rules run a match.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeaponRules {
+    /// The simulation's own, Modern Warfare 2's.
+    Simulation,
+    /// The game's own, run by its player movement: the match fires what its
+    /// fire events ask for.
+    Game,
 }
 
 /// Whose player movement runs a match.

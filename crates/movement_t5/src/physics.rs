@@ -277,8 +277,8 @@ pub(crate) fn cmd_scale_walk<W: MoveWorld>(pm: &mut Pm<'_, W>, cmd: &UserCmd) ->
         }
     }
     let multiplier = ps.move_speed_scale_multiplier;
-    if ps.pm_flags & pm_flags::MOUNTED_SPEED != 0 {
-        pm.gap(crate::Gap::MountedSpeed);
+    if ps.pm_flags & pm_flags::SHELLSHOCKED != 0 {
+        pm.gap(crate::Gap::Shellshock);
     }
     multiplier * scale
 }

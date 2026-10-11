@@ -7,7 +7,8 @@ use crate::third_person::{
 };
 use crate::{ENTITYNUM_NONE, PlayerState, UserCmd, buttons, eflags, pm_flags};
 use game_api::movement::{
-    ENTITY_NONE, ENTITY_WORLD, MoveCommand, MovePlayer, MoveType, Stance, buttons as intent,
+    ENTITY_NONE, ENTITY_WORLD, HELD_WEAPONS, HeldWeapon, MoveCommand, MovePlayer, MoveType, Stance,
+    buttons as intent,
 };
 
 const ENTITYNUM_WORLD: i32 = 0x7fe;
@@ -72,6 +73,13 @@ impl PlayerState {
                 Stance::Stand
             },
             sprinting: self.pm_flags & pm_flags::SPRINTING != 0,
+            held: [HeldWeapon::default(); HELD_WEAPONS],
+            weapon_pos_frac: self.f_weapon_pos_frac,
+            aim_spread_scale: self.aim_spread_scale,
+            weapon_state: 0,
+            weap_anim: 0,
+            offhand: u32::try_from(self.off_hand_index).unwrap_or(0),
+            grenade_time_left: self.grenade_time_left,
             game: self.game_move,
         }
     }
@@ -107,6 +115,11 @@ impl PlayerState {
             | flags
             | sprint;
         self.e_flags = (self.e_flags & !(eflags::DUCK | eflags::PRONE)) | e_flags;
+        self.weapon = player.weapon;
+        self.f_weapon_pos_frac = player.weapon_pos_frac;
+        self.aim_spread_scale = player.aim_spread_scale;
+        self.off_hand_index = player.offhand as i32;
+        self.grenade_time_left = player.grenade_time_left;
         self.game_move = player.game;
     }
 }
@@ -141,6 +154,11 @@ impl UserCmd {
             angles: self.angles,
             forwardmove: self.forwardmove,
             rightmove: self.rightmove,
+            weapon: u32::from(self.weapon),
+            offhand: u32::from(self.off_hand_index),
+            alt_weapon: u32::from(self.weapon_mapped),
+            melee_charge_yaw: self.melee_charge_yaw,
+            melee_charge_dist: self.melee_charge_dist,
         }
     }
 }

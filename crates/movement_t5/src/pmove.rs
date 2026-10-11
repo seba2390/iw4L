@@ -267,6 +267,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         ..Pml::default()
     };
     let start_origin = pm.ps.origin;
+    crate::weapon::aim_spread(pm, &pml);
     view_angles::update(pm, msec as f32);
     set_water_level(pm);
     let (forward, right, up) = angle_vectors(pm.ps.viewangles);
@@ -314,7 +315,9 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     if pm.ps.pm_flags & pm_flags::MANTLE == 0 {
         pm.mins = [-15.0, -15.0, 0.0];
         pm.maxs = [15.0, 15.0, 70.0];
+        crate::weapon::update_ads_intent(pm, &pml);
         sprint::update(pm);
+        crate::weapon::update_sight_aiming(pm);
         stance::check_duck(pm, &pml);
         ground::ground_trace(pm, &mut pml);
     }
@@ -346,6 +349,10 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     }
     ground::ground_trace(pm, &mut pml);
     footsteps::footsteps(pm, &pml);
+    crate::weapon::pm_weapon(pm, &pml);
+    pm.ps.left_hand = true;
+    crate::weapon::pm_weapon(pm, &pml);
+    pm.ps.left_hand = false;
     foliage_sound(pm);
 
     let o = pm.ps.origin;

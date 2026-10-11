@@ -5,8 +5,8 @@
 use crate::frame::FrameWorld;
 use crate::world::ClientId;
 use game_api::movement::{
-    GameWeapon, MoveCommand, MoveContext, MoveOutcome, MovePlayer, MoveRestriction, MoveTrace,
-    MoveWorld, PlayerMovement, Stance, WaterSurface,
+    GameWeapon, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
+    MoveRestriction, MoveTrace, MoveWorld, PlayerMovement, Stance, WaterSurface,
 };
 
 /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask` names,
@@ -73,6 +73,8 @@ pub(crate) fn run(
         return MoveOutcome::default();
     };
     let mut player = ps.move_player(id.0 as i32, frozen(world, id));
+    let held = held_rounds(world, id, ps.weapons);
+    player.held = held;
     if world.publishes_snapshot() {
         let runtime = world.ecs().get_resource::<crate::script::MatchScript>();
         movement.think(&mut player, &|name| {
@@ -95,7 +97,52 @@ pub(crate) fn run(
     if let Some(ps) = world.player_mut(id) {
         ps.store_move_player(&player);
     }
+    apply_held(world, id, &held, &player.held);
     outcome
+}
+
+/// The weapons in the player's slots and their rounds.
+fn held_rounds(
+    world: &FrameWorld,
+    id: ClientId,
+    slots: [i32; HELD_WEAPONS],
+) -> [HeldWeapon; HELD_WEAPONS] {
+    core::array::from_fn(|slot| {
+        let weapon = u32::try_from(slots[slot]).unwrap_or(0);
+        if weapon == 0 {
+            return HeldWeapon::default();
+        }
+        HeldWeapon {
+            weapon,
+            clip: crate::script_player::ammo_clip(world, id, weapon),
+            stock: crate::script_player::ammo_stock(world, id, weapon),
+        }
+    })
+}
+
+/// What the game's weapon rules did to the slots: rounds spent or loaded,
+/// weapons dropped.
+fn apply_held(
+    world: &mut FrameWorld,
+    id: ClientId,
+    before: &[HeldWeapon; HELD_WEAPONS],
+    after: &[HeldWeapon; HELD_WEAPONS],
+) {
+    for (was, now) in before.iter().zip(after) {
+        if was == now || was.weapon == 0 {
+            continue;
+        }
+        if now.weapon != was.weapon {
+            crate::script_player::take_weapon(world, id, was.weapon);
+            continue;
+        }
+        if now.clip != was.clip {
+            crate::script_player::set_ammo_clip(world, id, now.weapon, now.clip);
+        }
+        if now.stock != was.stock {
+            crate::script_player::set_ammo_stock(world, id, now.weapon, now.stock);
+        }
+    }
 }
 
 /// Changes a spawned player through the game's own movement.

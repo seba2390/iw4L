@@ -73,8 +73,28 @@ pub const DTP_POST_MOVE_PAUSE: f32 = 100.0;
 pub const DTP_STARTUP_DELAY: f32 = 250.0;
 pub const DTP_SLIDE_CONTENTS: u32 = 0x0100_0000;
 
-pub const BAYONET_LAUNCH_PROOF: bool = true;
-pub const BAYONET_LAUNCH_Z_CAP: f32 = 300.0;
-
 pub const MAX_CLIENTS: i32 = 4;
 pub const ZOMBIETRON: bool = false;
+
+// Weapons.
+pub const DISABLE_WEAPONS_IN_WATER: bool = true;
+pub const CLIP_SIZE_MULTIPLIER: f32 = 1.0;
+pub const PERK_WEAP_RELOAD_MULTIPLIER: f32 = 0.5;
+pub const PERK_WEAP_RATE_MULTIPLIER: f32 = 0.75;
+pub const BURST_FIRE_COOLDOWN: f32 = 0.2;
+pub const MELEE_RANGE: f32 = 64.0;
+pub const BAYONET_RANGE: f32 = 85.0;
+pub const BREATH_HOLD_TIME: f32 = 4.5;
+pub const BREATH_FIRE_DELAY: f32 = 0.0;
+pub const BREATH_GASP_TIME: f32 = 1.0;
+pub const BREATH_GASP_SCALE: f32 = 4.5;
+pub const BREATH_GASP_LERP: f32 = 6.0;
+pub const BREATH_HOLD_LERP: f32 = 4.0;
+pub const DOOR_BREACH_WEAPON_DROP: bool = true;
+pub const MANTLE_ENABLE: bool = true;
+pub const SCOPE_EXIT_ON_DAMAGE: bool = false;
+pub const ADS_EXIT_DELAY: i32 = 0;
+pub const AIM_SPREAD_MOVE_SPEED_THRESHOLD: f32 = 11.0;
+pub const BAYONET_LAUNCH_DEBUGGING: bool = false;
+pub const BAYONET_LAUNCH_PROOF: bool = true;
+pub const BAYONET_LAUNCH_Z_CAP: f32 = 300.0;

@@ -136,6 +136,8 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
             clip_index,
             alt_weapon: weapon.alternate_wire_id(),
             dual_wield_weapon: weapon.dual_wield_wire_id(),
+            named_anims: bytes.named_anims,
+            name: weapons.name_of(id as u32).to_owned(),
         }));
     }
     // The game's weapon 0 is its weapon named none.

@@ -74,7 +74,6 @@ use weapon_iw4::{WeaponIdleInputs, WeaponMovementOfsInputs};
 pub(crate) struct WeaponBodyFacts {
     pub body_resolved: bool,
 
-
     pub fire_time_ms: i32,
     pub burst_delay_ms: Option<i32>,
 
@@ -545,6 +544,8 @@ pub struct GameWeaponBytes {
     pub variant: Box<[u8]>,
     pub ammo_name: String,
     pub clip_name: String,
+    /// The variant's animation slots that name an animation, by slot.
+    pub named_anims: u128,
 }
 
 #[derive(Clone, Debug)]
