@@ -22,7 +22,7 @@ pub(crate) fn in_flight(ps: &PlayerState) -> bool {
 
 fn can_start<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     let ps = &*pm.ps;
-    if !tuning::DTP || pm.world.weapon(ps.weapon).blocks_prone {
+    if !tuning::DTP || pm.world.weapon(ps.weapon).def.blocks_prone() {
         return false;
     }
     if ps.last_sprint_end != pm.cmd.server_time || !pm.cmd.buttons.held(buttons::DIVE) {

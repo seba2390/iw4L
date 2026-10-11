@@ -7,7 +7,8 @@ mod zombie_startup;
 pub use menu_expression::parse_menu_expression;
 
 use game_api::{
-    HudRules, LibraryMode, ModeRules, MovementRules, Rule, ScriptProgram, ScriptRequest, unknown,
+    HudRules, LibraryMode, ModeRules, MovementRules, Rule, ScriptProgram, ScriptRequest,
+    WeaponRules, unknown,
 };
 
 pub struct T5;
@@ -69,11 +70,7 @@ impl game_api::GameScripts for T5 {
 const ZOMBIE_MODE: ModeRules = ModeRules {
     play_starts_on: "all_players_connected",
     movement: Rule::Known(MovementRules::Game(&movement::ZOMBIES)),
-    weapons: Rule::Unknown(unknown!(
-        "t5.weapons.state_machine",
-        "Black Ops' weapon state machine: fire, reload, switch, ADS, melee, offhands",
-        "Black Ops' weapon rules from its executable"
-    )),
+    weapons: Rule::Known(WeaponRules::Game),
     every_player_downs: Rule::Unknown(unknown!(
         "t5.match.last_stand",
         "when a dying Black Ops zombies player goes into last stand, and how a downed player moves and sees",

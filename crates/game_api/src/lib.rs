@@ -4,7 +4,7 @@
 
 pub mod movement;
 
-pub use movement::MovementRules;
+pub use movement::{MovementRules, WeaponRules};
 
 /// A rule this game does not have yet. `id` is listed in
 /// `docs/fidelity/<game>.md` (`cargo xtask boundary` checks it).
@@ -76,7 +76,7 @@ pub struct ModeRules {
     /// moves the players.
     pub movement: Rule<MovementRules>,
     /// Players' weapons run Modern Warfare 2's weapon state machine.
-    pub weapons: Rule<()>,
+    pub weapons: Rule<WeaponRules>,
     /// A spawn starts at the default full health, not the stored max health.
     pub spawn_at_default_health: bool,
     /// The team every player joins on connect, when the scripts pick none.

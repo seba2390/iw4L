@@ -75,3 +75,9 @@ pub fn vectoyaw(v: [f32; 3]) -> f32 {
 pub fn trunc(x: f32) -> i32 {
     x as i32
 }
+
+/// Rounds the way the game's float-to-int helper does: to nearest, after
+/// adding 2^-30 in double precision, so halves round up.
+pub fn round_nudged(x: f32) -> i32 {
+    libm::rint(f64::from(x) + 9.313_225_746_154_785e-10) as i32
+}

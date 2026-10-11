@@ -11,6 +11,7 @@ game = "t5"
 
 [dependencies]
 asset_core.workspace = true
+fastfile_t5.workspace = true
 game_api.workspace = true
 gsc.workspace = true
 menu_expr.workspace = true
