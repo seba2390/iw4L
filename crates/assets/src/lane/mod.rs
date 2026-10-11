@@ -309,6 +309,11 @@ impl ZoneLane for UnreadLane {
             "{map}: {} script modules after its zones",
             world.scripts.len()
         ));
+        let entities = (format.entities)(&image.bytes);
+        world.report.extend(entities.report);
+        if let Some(text) = entities.text {
+            world.scripts.set_entities(text);
+        }
         world
     }
 
