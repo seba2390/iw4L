@@ -285,7 +285,7 @@ pattern crates/asset_world/src/model_mesh.rs lighting_iw4:: 1
 pattern crates/asset_world/src/path_network.rs fastfile_t5:: 1
 pattern crates/asset_world/src/world_draw.rs "<game>" 4
 pattern crates/asset_world/src/world_draw.rs AssetNamespace::<game> 1
-pattern crates/asset_world/src/world_draw.rs asset_iw4:: 8
+pattern crates/asset_world/src/world_draw.rs asset_iw4:: 6
 pattern crates/asset_world/src/world_draw.rs dpvs_iw4:: 3
 pattern crates/asset_world/src/world_draw.rs fastfile_iw4:: 7
 pattern crates/asset_world/src/world_draw.rs fastfile_iw5:: 2
