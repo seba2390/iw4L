@@ -1,7 +1,10 @@
 mod content;
 mod envelope;
 
-pub use content::{AssetList, ContentError, SCRIPT_ASSET_TYPE, ScriptAsset, asset_list, scripts};
+pub use content::{
+    AssetList, ContentError, MAP_ENTS_ASSET_TYPE, MapEnts, SCRIPT_ASSET_TYPE, ScriptAsset,
+    asset_list, map_entities, scripts,
+};
 
 pub use envelope::{
     BLOCK_SIZES, BLOCKS_OFFSET, Block, BlockError, Blocks, FileHeader, FileHeaderError, MAGIC,
@@ -15,6 +18,7 @@ pub const ZONE_FORMAT: asset_core::ZoneFormat = asset_core::ZoneFormat {
     decode: content,
     scripts: zone_scripts,
     script_zones,
+    entities: zone_entities,
 };
 
 fn script_zones(map: &str) -> Vec<String> {
@@ -24,6 +28,32 @@ fn script_zones(map: &str) -> Vec<String> {
     }
     zones.extend([map.to_owned(), format!("{map}_patch")]);
     zones
+}
+
+fn zone_entities(content: &[u8]) -> asset_core::ZoneEntities {
+    let mut out = asset_core::ZoneEntities::default();
+    let list = match asset_list(content) {
+        Ok(list) => list,
+        Err(error) => {
+            out.report.push(format!("t7 asset list: {error:?}"));
+            return out;
+        }
+    };
+    match map_entities(content, &list) {
+        Ok(Some(map)) => {
+            let count = map.text.matches('{').count();
+            out.report.push(format!(
+                "t7 map entities: {} ({} entities, {} characters)",
+                map.name,
+                count,
+                map.text.len()
+            ));
+            out.text = Some(map.text.to_owned());
+        }
+        Ok(None) => {}
+        Err(error) => out.report.push(format!("t7 map entities: {error:?}")),
+    }
+    out
 }
 
 fn zone_scripts(content: &[u8]) -> asset_core::ZoneScripts {

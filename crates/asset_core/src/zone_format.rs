@@ -15,6 +15,15 @@ pub struct ZoneFormat {
     /// The zones, beside a map's own, whose script modules the map runs, in
     /// load order: a later zone's module replaces an earlier one's.
     pub script_zones: fn(&str) -> Vec<String>,
+    /// The map entities a decoded zone carries (a map's own zone).
+    pub entities: fn(&[u8]) -> ZoneEntities,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ZoneEntities {
+    /// The entity text (`{ "classname" "worldspawn" … }`).
+    pub text: Option<String>,
+    pub report: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default)]

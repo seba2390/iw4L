@@ -5,6 +5,13 @@ const INLINE: i64 = -1;
 /// The asset type of a compiled script module.
 pub const SCRIPT_ASSET_TYPE: u32 = 54;
 
+/// The asset type of a map's entities (`map_ents`).
+pub const MAP_ENTS_ASSET_TYPE: u32 = 15;
+
+/// A `map_ents` header: name and text pointers, the text length, then three
+/// counted arrays (their data follows the text).
+const MAP_ENTS_LEN: usize = 0x48;
+
 const SCRIPT_MAGIC: &[u8] = b"\x80GSC\r\n\0";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,6 +29,11 @@ pub enum ContentError {
     },
     /// Script assets found in the stream do not match the asset list's count.
     ScriptCount {
+        listed: usize,
+        found: usize,
+    },
+    /// `map_ents` assets found in the stream do not match the asset list's count.
+    MapEntsCount {
         listed: usize,
         found: usize,
     },
@@ -122,6 +134,74 @@ pub fn scripts<'a>(
         });
     }
     Ok(found)
+}
+
+/// A map's entities: the name it is loaded by (`maps/zm/zm_zod.d3dbsp`) and
+/// the entity text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MapEnts<'a> {
+    pub name: &'a str,
+    pub text: &'a str,
+}
+
+/// The zone's map entities, if it lists them. The asset sits in the stream as
+/// its header (inline name, inline text, text length, three counted arrays),
+/// its name, then its text; it is found by that shape and counted against the
+/// asset list.
+pub fn map_entities<'a>(
+    content: &'a [u8],
+    list: &AssetList,
+) -> Result<Option<MapEnts<'a>>, ContentError> {
+    let listed = list
+        .asset_types
+        .iter()
+        .filter(|&&ty| ty == MAP_ENTS_ASSET_TYPE)
+        .count();
+    let mut found = Vec::new();
+    let mut from = list.data_at;
+    while let Some(offset) = find(&content[from..], b".d3dbsp\0") {
+        let name_end = from + offset + b".d3dbsp".len();
+        from = name_end + 1;
+        if let Some(asset) = map_ents_at(content, name_end) {
+            from = name_end + 1 + asset.text.len();
+            found.push(asset);
+        }
+    }
+    if found.len() != listed {
+        return Err(ContentError::MapEntsCount {
+            listed,
+            found: found.len(),
+        });
+    }
+    Ok(found.into_iter().next())
+}
+
+fn map_ents_at(content: &[u8], name_end: usize) -> Option<MapEnts<'_>> {
+    let name_start = content[..name_end]
+        .iter()
+        .rposition(|&byte| byte == 0 || byte == 0xff)?
+        + 1;
+    let header = name_start.checked_sub(MAP_ENTS_LEN)?;
+    if i64_at(content, header, "").ok()? != INLINE
+        || i64_at(content, header + 8, "").ok()? != INLINE
+    {
+        return None;
+    }
+    // The length counts the terminating zero.
+    let len = usize::try_from(i64_at(content, header + 16, "").ok()?).ok()?;
+    let text_start = name_end + 1;
+    let text = content.get(text_start..text_start + len.checked_sub(1)?)?;
+    if content.get(text_start + len - 1) != Some(&0) || text.contains(&0) {
+        return None;
+    }
+    let name = core::str::from_utf8(&content[name_start..name_end]).ok()?;
+    if !name.starts_with("maps/") {
+        return None;
+    }
+    Some(MapEnts {
+        name,
+        text: core::str::from_utf8(text).ok()?,
+    })
 }
 
 fn script_at(content: &[u8], buffer: usize) -> Option<ScriptAsset<'_>> {
