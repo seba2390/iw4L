@@ -32,6 +32,7 @@ impl WeaponCatalog {
             .sz_xanims
             .map(|arr| read_sz_xanims_t5(stream, arr, false))
             .unwrap_or([const { None }; WEAPON_ANIM_SLOTS]);
+        let (facts, game_bytes) = capture_t5_body_facts(stream, &geometry);
         self.entries.push(CatalogWeapon {
             namespace: self
                 .capture_ns
@@ -185,8 +186,8 @@ impl WeaponCatalog {
             sounds: leftover_t5_sounds(stream, strings, &geometry),
             combat_fx: WeaponCombatFx::empty(crate::AssetNamespace::T5),
             combat_slots: CombatFxSlots::default(),
-            facts: capture_t5_body_facts(stream, &geometry),
-            game_bytes: capture_t5_game_bytes(stream, &geometry),
+            facts,
+            game_bytes,
         });
         let last = self.entries.last_mut().expect("just pushed");
         let (fx, slots) = leftover_t5_combat_fx(stream, &geometry);
@@ -679,40 +680,12 @@ pub(super) fn leftover_t5_script_string_map(
     out
 }
 
-/// The definition and variant as the zone holds them, for Black Ops' own
-/// weapon rules.
-fn capture_t5_game_bytes(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    geometry: &fastfile_t5::WeaponGeometry,
-) -> Option<std::sync::Arc<crate::weapon_catalog::GameWeaponBytes>> {
-    use fastfile_t5::size as sz;
-    let (body, variant) = (geometry.weap_def?, geometry.variant?);
-    let def = stream.slice_at(body, 0, sz::WEAPON_DEF).ok()?;
-    let var = stream.slice_at(variant, 0, sz::WEAPON_VARIANT_DEF).ok()?;
-    Some(std::sync::Arc::new(
-        crate::weapon_catalog::GameWeaponBytes {
-            def: def.into(),
-            variant: var.into(),
-            ammo_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_AMMO_NAME_OFF)
-                .unwrap_or_default(),
-            clip_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_CLIP_NAME_OFF)
-                .unwrap_or_default(),
-            named_anims: geometry.sz_xanims.map_or(0, |arr| {
-                (0..sz::WEAPON_XANIM_COUNT)
-                    .filter(|&slot| {
-                        matches!(stream.ptr_at(arr, slot * 4), Ok(fastfile_t5::ZonePtr::Offset(q))
-                        if stream.cstr(stream.resolve_alias(q)).is_ok_and(|s| !s.is_empty()))
-                    })
-                    .fold(0u128, |bits, slot| bits | 1 << slot)
-            }),
-        },
-    ))
-}
-
+/// The body facts, and the definition and variant as the zone holds them for
+/// Black Ops' own weapon rules.
 pub(super) fn capture_t5_body_facts(
     stream: &fastfile_t5::ZoneStream<'_>,
     geometry: &fastfile_t5::WeaponGeometry,
-) -> WeaponBodyFacts {
+) -> (WeaponBodyFacts, Option<Arc<GameWeaponBytes>>) {
     use fastfile_t5::size as sz;
     let mut facts = WeaponBodyFacts {
         body_resolved: geometry.weap_def.is_some(),
@@ -768,7 +741,7 @@ pub(super) fn capture_t5_body_facts(
             f32_at_t5(stream, variant, sz::WEAPON_VARIANT_ADS_ZOOM_OUT_FRAC_OFF);
     }
     let Some(body) = geometry.weap_def else {
-        return facts;
+        return (facts, None);
     };
     facts.inventory_type = i32_at_t5(stream, body, sz::WEAPON_INVENTORY_TYPE_OFF);
     facts.dual_wield = u8_at_t5(stream, body, sz::WEAPON_DEF_DUAL_WIELD_OFF) != 0;
@@ -883,7 +856,24 @@ pub(super) fn capture_t5_body_facts(
     };
     facts.inherits_perks = leftover_t5_inherits_host_perks();
     facts.kick = leftover_t5_kick(stream, geometry);
-    facts
+    let game_bytes = geometry.variant.and_then(|variant| {
+        let def = stream.slice_at(body, 0, sz::WEAPON_DEF).ok()?;
+        let var = stream.slice_at(variant, 0, sz::WEAPON_VARIANT_DEF).ok()?;
+        Some(Arc::new(GameWeaponBytes {
+            def: def.into(),
+            variant: var.into(),
+            ammo_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_AMMO_NAME_OFF)
+                .unwrap_or_default(),
+            clip_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_CLIP_NAME_OFF)
+                .unwrap_or_default(),
+            named_anims: geometry.sz_xanims.map_or(0, |arr| {
+                (0..sz::WEAPON_XANIM_COUNT)
+                    .filter(|&slot| leftover_t5_cstr(stream, arr, slot * 4).is_some())
+                    .fold(0u128, |bits, slot| bits | 1 << slot)
+            }),
+        }))
+    });
+    (facts, game_bytes)
 }
 
 pub(super) fn leftover_t5_inherits_host_perks() -> bool {
