@@ -24,7 +24,7 @@ pub fn run_cli(root: &Path, args: &[String]) -> Res<()> {
     let readme = read(root, README)?;
     let table = render(&games(&milestones)?);
     let (before, current, after) = split(&readme)?;
-    if current == table {
+    if current.replace("\r\n", "\n") == table {
         println!("progress: README.md matches {MILESTONES}");
         return Ok(());
     }

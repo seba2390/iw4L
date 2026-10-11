@@ -169,6 +169,8 @@ pub(super) async fn walk_prepared_match(
         );
     };
     let LoadedWorld {
+        ui_images: map_ui_images,
+        ui_modules: map_ui_modules,
         scripts: map_scripts,
         mut world,
         mut materials,
@@ -934,12 +936,19 @@ pub(super) async fn walk_prepared_match(
         ));
     }
     let prepared = PreparedMatch {
-        ui_images: if zombie_hud_images.is_empty() {
-            common.ui_images.clone()
-        } else {
-            common
-                .ui_images
-                .with_zone_images(asset_core::AssetNamespace::T5, zombie_hud_images)
+        ui_images: {
+            let publication = if zombie_hud_images.is_empty() {
+                common.ui_images.clone()
+            } else {
+                common
+                    .ui_images
+                    .with_zone_images(asset_core::AssetNamespace::T5, zombie_hud_images)
+            };
+            if let Some(namespace) = map_namespace {
+                publication.with_assets(namespace, map_ui_images, map_ui_modules)
+            } else {
+                publication
+            }
         },
         scripts,
         zombie_scripts,

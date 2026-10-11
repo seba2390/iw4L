@@ -527,6 +527,7 @@ fn refresh(
     clock: Option<Res<FrameClock>>,
     mode: Option<Res<game_api::ModeRules>>,
     mut feed: ResMut<Killfeed>,
+    native: Res<super::script_ui::ScriptHud>,
     mut roots: Query<(&mut Node, &mut Visibility), (With<T6HudRoot>, Without<Field>)>,
     mut fields: Query<(&Field, &mut Text, &mut TextColor, &mut Node)>,
 ) {
@@ -612,7 +613,7 @@ fn refresh(
         .map(|(_, line)| line.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    let scoreboard = if scores {
+    let scoreboard = if scores && !native.scoreboard {
         let mut rows = snapshot.meta.clients.iter().collect::<Vec<_>>();
         rows.sort_by_key(|(id, m)| {
             (

@@ -4,6 +4,7 @@
 
 pub mod fire;
 pub mod movement;
+pub mod ui;
 
 pub use movement::{MovementRules, WeaponRules};
 
@@ -236,6 +237,10 @@ pub trait GameVision: Sync {
 
 /// How a game's menus are drawn.
 pub trait GameMenus: Sync {
+    fn script_ui(&self, _modules: &[ui::Module]) -> Result<Option<Box<dyn ui::ScriptUi>>, String> {
+        Ok(None)
+    }
+
     /// The font a menu item's `textfont` enum names, at the item's scales.
     fn font(&self, font_enum: i32, placement_scale: f32, text_scale: f32) -> Rule<&'static str>;
 

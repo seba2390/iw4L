@@ -333,12 +333,12 @@ pattern crates/assets/src/lane/sink.rs weapon_iw4:: 2
 pattern crates/assets/src/lane/t5.rs AssetNamespace::<game> 6
 pattern crates/assets/src/lane/t5.rs ZoneGame::<game> 4
 pattern crates/assets/src/lane/t5.rs fastfile_t5:: 7
-pattern crates/assets/src/lane/t6.rs AssetNamespace::<game> 19
+pattern crates/assets/src/lane/t6.rs AssetNamespace::<game> 18
 pattern crates/assets/src/lane/t6.rs FamilyId::<game> 3
 pattern crates/assets/src/lane/t6.rs ZoneGame::<game> 1
 pattern crates/assets/src/lane/t6.rs asset_iw4:: 7
 pattern crates/assets/src/lane/t6.rs fastfile_iw4:: 1
-pattern crates/assets/src/lane/t6.rs fastfile_t6:: 113
+pattern crates/assets/src/lane/t6.rs fastfile_t6:: 95
 pattern crates/assets/src/lane/t6/camouflage.rs AssetNamespace::<game> 1
 pattern crates/assets/src/lane/t6/camouflage.rs fastfile_t6:: 8
 pattern crates/assets/src/lane/t6/common_compile.rs AssetNamespace::<game> 4
@@ -348,7 +348,7 @@ pattern crates/assets/src/lib.rs fastfile_iw4:: 1
 pattern crates/assets/src/lib.rs lighting_iw4:: 1
 pattern crates/assets/src/script_sources.rs structured_data_iw4:: 3
 pattern crates/assets/src/session_load/common_cache.rs "<game>" 9
-pattern crates/assets/src/session_load/common_cache.rs AssetNamespace::<game> 15
+pattern crates/assets/src/session_load/common_cache.rs AssetNamespace::<game> 14
 pattern crates/assets/src/session_load/common_cache.rs ZoneGame::<game> 2
 pattern crates/assets/src/session_load/common_cache.rs fastfile_iw4:: 1
 pattern crates/assets/src/session_load/common_cache.rs fastfile_t5:: 1

@@ -1,0 +1,92 @@
+use std::sync::Arc;
+
+pub type Module = (String, Arc<[u8]>);
+
+#[derive(Clone, Debug, Default)]
+pub struct Font {
+    pub name: String,
+    pub height: f32,
+    pub advances: Vec<(u16, f32)>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Table {
+    pub name: String,
+    pub columns: usize,
+    pub cells: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Player {
+    pub id: u32,
+    pub name: String,
+    pub team: i32,
+    pub score: i32,
+    pub kills: i32,
+    pub deaths: i32,
+    pub rank: i32,
+    pub prestige: i32,
+    pub zombie_stats: [i32; 3],
+    pub ping: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reward {
+    pub cost: i32,
+    pub material: String,
+    pub label: String,
+    pub quantity: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Input {
+    pub viewport: [f32; 2],
+    pub safe_area: [f32; 2],
+    pub time: i32,
+    pub remaining: Option<i32>,
+    pub zombies: bool,
+    pub team_game: bool,
+    pub scoreboard: bool,
+    pub menu: bool,
+    pub local_client: u32,
+    pub map: String,
+    pub gametype: String,
+    pub localized: Arc<[(String, String)]>,
+    pub tables: Arc<[Table]>,
+    pub fonts: Arc<[Font]>,
+    pub players: Vec<Player>,
+    pub rewards: Vec<Reward>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Content {
+    Image(String),
+    GameTimer,
+    PlayerEmblem(u32),
+    Voice(u32),
+    Text {
+        value: String,
+        font: String,
+    },
+    Compass {
+        layer: u8,
+        full: bool,
+        material: String,
+        range: f32,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Draw {
+    pub id: u32,
+    pub rectangle: [f32; 4],
+    pub color: [f32; 4],
+    pub rotation: f32,
+    pub alignment: u8,
+    pub clip: Option<[f32; 4]>,
+    pub content: Content,
+}
+
+pub trait ScriptUi: Send + Sync {
+    fn update(&mut self, input: &Input) -> Result<Vec<Draw>, String>;
+}
