@@ -1,5 +1,6 @@
 pub mod animation;
 pub mod elements;
+pub mod layout;
 pub mod script;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

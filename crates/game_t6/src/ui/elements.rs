@@ -25,6 +25,7 @@ const SET_LAYOUT_CACHED: u32 = 9;
 const REGISTER_ANIMATION_STATE: u32 = 10;
 const COLLECT_ANIMATION_STATE: u32 = 11;
 const ANIMATE_TO_STATE: u32 = 12;
+const GET_LOCAL_RECTANGLE: u32 = 13;
 
 fn key(name: &[u8]) -> Value {
     Value::Bytes(Arc::from(name))
@@ -82,6 +83,7 @@ impl Elements {
             (b"setLayoutCached".as_slice(), SET_LAYOUT_CACHED),
             (b"registerAnimationState", REGISTER_ANIMATION_STATE),
             (b"animateToState", ANIMATE_TO_STATE),
+            (b"getLocalRect", GET_LOCAL_RECTANGLE),
         ] {
             tables.raw_set(class, &key(name), Value::Reference { kind: 10, identity })?;
         }
@@ -245,6 +247,15 @@ impl Bindings for Elements {
     ) -> Result<Vec<Value>, FaultKind> {
         match function {
             CONSTRUCT => Ok(vec![self.construct(tables)?]),
+            GET_LOCAL_RECTANGLE => {
+                let receiver = arguments.first().ok_or(FaultKind::Argument(1))?;
+                Ok(self
+                    .element(receiver)?
+                    .local_rectangle()
+                    .into_iter()
+                    .map(Value::Number)
+                    .collect())
+            }
             COLLECT | COLLECT_ANIMATION_STATE => Err(FaultKind::Unknown(GC)),
             SET_LAYOUT_CACHED => {
                 self.set_layout_cached(arguments)?;
