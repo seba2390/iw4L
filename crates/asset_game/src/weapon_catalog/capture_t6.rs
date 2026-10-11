@@ -143,6 +143,7 @@ impl WeaponCatalog {
             },
             combat_slots: CombatFxSlots::default(),
             facts: capture_t6_body_facts(weapon),
+            game_bytes: None,
         });
     }
 }

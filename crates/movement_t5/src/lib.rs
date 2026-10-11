@@ -28,7 +28,7 @@ pub use pml::Pml;
 pub use pmove::{MoveOutput, pmove};
 pub use state::{Buttons, PlayerState, UserCmd};
 pub use world::{
-    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Trace, WeaponMove,
+    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Trace, Weapon,
 };
 
 /// A part of Black Ops' movement the player reached that IW4L does not run.
@@ -198,7 +198,8 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             && self
                 .world
                 .weapon(self.ps.weapon)
-                .freeze_movement_when_firing
+                .def
+                .freeze_movement_when_firing()
     }
 
     /// Leaves aim down the sights.

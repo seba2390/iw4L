@@ -20,7 +20,7 @@ fn max_sprint_time<W: MoveWorld>(pm: &Pm<'_, W>) -> i32 {
     let base = if ps.e_flags & e_flags::VEHICLE_VIEW != 0 {
         tuning::VEHICLE_PERK_BOOST_DURATION * 1000.0
     } else {
-        pm.world.weapon(ps.weapon).sprint_duration_scale * (tuning::SPRINT_TIME * 1000.0)
+        pm.world.weapon(ps.weapon).def.sprint_duration_scale() * (tuning::SPRINT_TIME * 1000.0)
     };
     let level = ps.perks & crate::perks::SPRINT_LEVEL;
     let time = if level != 0 {
@@ -69,7 +69,7 @@ fn end_sprint<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 
 fn throw_blocks<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     pm.cmd.buttons.held(buttons::THROW)
-        && pm.world.weapon(pm.ps.weapon).offhand_slot != OFFHAND_SLOT_EQUIPMENT
+        && pm.world.weapon(pm.ps.weapon).def.offhand_slot() != OFFHAND_SLOT_EQUIPMENT
 }
 
 fn other_actions_held<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
@@ -104,7 +104,7 @@ fn start_blocked<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     if weapon_state_blocks_sprint(ps.weaponstate) {
         return true;
     }
-    if pm.world.weapon(ps.weapon).offhand_slot == OFFHAND_SLOT_EQUIPMENT
+    if pm.world.weapon(ps.weapon).def.offhand_slot() == OFFHAND_SLOT_EQUIPMENT
         && weapon_state_using(ps.weaponstate)
     {
         return true;

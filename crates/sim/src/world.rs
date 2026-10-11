@@ -2805,15 +2805,6 @@ impl SimState {
         self.events.push_pellet_fx(record);
     }
 
-    pub(crate) fn game_move_weapon(&self, weapon: u32) -> Option<game_api::movement::MoveWeapon> {
-        self.content
-            .weapons()
-            .weapon_game_move
-            .get(weapon as usize)
-            .copied()
-            .flatten()
-    }
-
     pub(crate) fn scales_for(&self, weapon: u32) -> (f32, f32, f32) {
         self.content
             .weapons()

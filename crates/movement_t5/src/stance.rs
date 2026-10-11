@@ -36,7 +36,7 @@ fn stance_fits_crouched<W: MoveWorld>(pm: &mut Pm<'_, W>) -> bool {
 
 /// Whether the player may lie down where they stand.
 fn prone_allowed<W: MoveWorld>(pm: &mut Pm<'_, W>) -> bool {
-    if pm.world.weapon(pm.ps.weapon).blocks_prone {
+    if pm.world.weapon(pm.ps.weapon).def.blocks_prone() {
         return false;
     }
     if pm.ps.pm_flags & pm_flags::PRONE != 0 {

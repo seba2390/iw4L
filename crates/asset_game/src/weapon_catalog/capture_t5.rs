@@ -186,6 +186,7 @@ impl WeaponCatalog {
             combat_fx: WeaponCombatFx::empty(crate::AssetNamespace::T5),
             combat_slots: CombatFxSlots::default(),
             facts: capture_t5_body_facts(stream, &geometry),
+            game_bytes: capture_t5_game_bytes(stream, &geometry),
         });
         let last = self.entries.last_mut().expect("just pushed");
         let (fx, slots) = leftover_t5_combat_fx(stream, &geometry);
@@ -678,6 +679,26 @@ pub(super) fn leftover_t5_script_string_map(
     out
 }
 
+/// The definition and variant as the zone holds them, for Black Ops' own
+/// weapon rules.
+fn capture_t5_game_bytes(
+    stream: &fastfile_t5::ZoneStream<'_>,
+    geometry: &fastfile_t5::WeaponGeometry,
+) -> Option<std::sync::Arc<crate::weapon_catalog::GameWeaponBytes>> {
+    use fastfile_t5::size as sz;
+    let (body, variant) = (geometry.weap_def?, geometry.variant?);
+    let def = stream.slice_at(body, 0, sz::WEAPON_DEF).ok()?;
+    let var = stream.slice_at(variant, 0, sz::WEAPON_VARIANT_DEF).ok()?;
+    Some(std::sync::Arc::new(crate::weapon_catalog::GameWeaponBytes {
+        def: def.into(),
+        variant: var.into(),
+        ammo_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_AMMO_NAME_OFF)
+            .unwrap_or_default(),
+        clip_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_CLIP_NAME_OFF)
+            .unwrap_or_default(),
+    }))
+}
+
 pub(super) fn capture_t5_body_facts(
     stream: &fastfile_t5::ZoneStream<'_>,
     geometry: &fastfile_t5::WeaponGeometry,
@@ -837,23 +858,6 @@ pub(super) fn capture_t5_body_facts(
     facts.hip_reticle_side_pos = f32_at_t5(stream, body, sz::WEAPON_DEF_HIP_RETICLE_SIDE_POS_OFF);
     facts.no_ads_when_mag_empty =
         u8_at_t5(stream, body, sz::WEAPON_DEF_NO_ADS_WHEN_MAG_EMPTY_OFF) != 0;
-    facts.game_move = Some(game_api::movement::MoveWeapon {
-        move_speed_scale: facts.move_speed_scale,
-        ads_move_speed_scale: facts.ads_move_speed_scale,
-        sprint_duration_scale: f32_at_t5(stream, body, sz::WEAPON_SPRINT_DURATION_SCALE_OFF),
-        sprint_scale: f32_at_t5(stream, body, sz::WEAPON_SPRINT_SCALE_OFF),
-        ducked_sprint_scale: f32_at_t5(stream, body, sz::WEAPON_DUCKED_SPRINT_SCALE_OFF),
-        dtp_scale: f32_at_t5(stream, body, sz::WEAPON_DTP_SCALE_OFF),
-        blocks_prone: u8_at_t5(stream, body, sz::WEAPON_BLOCKS_PRONE_OFF) != 0,
-        freeze_movement_when_firing: u8_at_t5(
-            stream,
-            body,
-            sz::WEAPON_FREEZE_MOVEMENT_WHEN_FIRING_OFF,
-        ) != 0,
-        dual_wield: facts.dual_wield,
-        ads_overlay_reticle: facts.overlay_reticle != 0,
-        offhand_slot: i32_at_t5(stream, body, sz::WEAPON_OFFHAND_SLOT_OFF),
-    });
     facts.aim_down_sight = u8_at_t5(stream, body, sz::WEAPON_DEF_AIM_DOWN_SIGHT_OFF) != 0;
     facts.rechamber_while_ads = u8_at_t5(stream, body, sz::WEAPON_DEF_RECHAMBER_WHILE_ADS_OFF) != 0;
     facts.ads_fire_only = u8_at_t5(stream, body, sz::WEAPON_DEF_ADS_FIRE_ONLY_OFF) != 0;

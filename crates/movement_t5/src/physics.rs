@@ -266,11 +266,14 @@ pub(crate) fn cmd_scale_walk<W: MoveWorld>(pm: &mut Pm<'_, W>, cmd: &UserCmd) ->
     }
     if ps.weapon != 0 {
         let weapon = pm.world.weapon(ps.weapon);
-        if weapon.move_speed_scale > 0.0 && ps.pm_flags & pm_flags::SIGHT_AIMING == 0 && !prone_ads
-        {
-            scale *= weapon_move_speed_scale(ps, pm.zombiemode, weapon.move_speed_scale);
-        } else if weapon.ads_move_speed_scale > 0.0 {
-            scale *= weapon.ads_move_speed_scale;
+        let (move_scale, ads_scale) = (
+            weapon.def.move_speed_scale(),
+            weapon.def.ads_move_speed_scale(),
+        );
+        if move_scale > 0.0 && ps.pm_flags & pm_flags::SIGHT_AIMING == 0 && !prone_ads {
+            scale *= weapon_move_speed_scale(ps, pm.zombiemode, move_scale);
+        } else if ads_scale > 0.0 {
+            scale *= ads_scale;
         }
     }
     let multiplier = ps.move_speed_scale_multiplier;

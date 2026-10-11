@@ -1,3 +1,5 @@
+use fastfile_t5::weapon_def::WeaponDefView;
+
 /// A swept-bounds collision result.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Trace {
@@ -22,21 +24,19 @@ impl Trace {
     }
 }
 
-/// What a weapon tells movement (its weapon file fields).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct WeaponMove {
-    pub move_speed_scale: f32,
-    pub ads_move_speed_scale: f32,
-    pub sprint_duration_scale: f32,
-    pub sprint_scale: f32,
-    pub ducked_sprint_scale: f32,
-    pub dtp_scale: f32,
-    pub blocks_prone: bool,
-    pub freeze_movement_when_firing: bool,
-    pub dual_wield: bool,
-    /// `adsOverlayReticle` is set: aiming looks through a scope overlay.
-    pub ads_overlay: bool,
-    pub offhand_slot: i32,
+/// A weapon as Black Ops reads it: its definition and variant, and what the
+/// game resolves when it loads them.
+#[derive(Clone, Copy, Debug)]
+pub struct Weapon<'a> {
+    pub def: WeaponDefView<'a>,
+    /// Weapons with one ammo name share this number.
+    pub ammo_index: i32,
+    /// Weapons with one clip name share this number.
+    pub clip_index: i32,
+    /// The alternate weapon; 0 when none.
+    pub alt_weapon: u32,
+    /// The left-hand weapon when dual wielding; 0 when none.
+    pub dual_wield_weapon: u32,
 }
 
 /// The match around one player's movement.
@@ -55,7 +55,8 @@ pub trait MoveWorld {
     /// Whether the player may stand on `entity`.
     fn can_stand_on(&self, entity: i32) -> bool;
 
-    fn weapon(&self, weapon: u32) -> WeaponMove;
+    /// The weapon's definition; weapon 0 is the game's weapon named none.
+    fn weapon(&self, weapon: u32) -> Weapon<'_>;
 
     /// The height of the water surface over `origin`, looking from `up`
     /// above to `down` below it.

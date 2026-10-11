@@ -402,6 +402,12 @@ impl SimContentBuilder {
 }
 
 impl SimContent {
+    /// The weapon as its own game defines it, for a game running its own
+    /// weapon rules.
+    pub(crate) fn game_weapon(&self, weapon: u32) -> Option<&game_api::movement::GameWeapon> {
+        self.weapons().weapon_game.get(weapon as usize)?.as_deref()
+    }
+
     pub(super) fn weapons(&self) -> &Arc<crate::SimWeaponContent> {
         &self.data.weapons
     }

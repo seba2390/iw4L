@@ -9,6 +9,7 @@ mod load;
 pub mod size;
 pub mod state_bits;
 pub mod vertex_decl;
+pub mod weapon_def;
 pub mod xmodel_lod;
 mod zone;
 

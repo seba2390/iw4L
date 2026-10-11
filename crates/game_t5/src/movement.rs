@@ -2,10 +2,12 @@
 //! `PlayerMovement`: the shared player fields come from the match, the rest
 //! of Black Ops' player state lives in the player's game bytes.
 
+use fastfile_t5::size::{WEAPON_DEF, WEAPON_VARIANT_DEF};
+use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
-    MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWeapon, MoveWorld, PlayerMovement,
-    Stance, WaterSurface, buttons as intent,
+    MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWorld, PlayerMovement, Stance,
+    WaterSurface, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::events::event;
@@ -84,7 +86,7 @@ fn water_unknown() -> &'static Unknown {
 fn weapon_unknown() -> &'static Unknown {
     unknown!(
         "t5.movement.weapon",
-        "a held weapon without Black Ops' movement fields: the player does not move",
+        "a weapon without Black Ops' definition is read with every field zero",
         "the weapon's Black Ops weapon definition"
     )
 }
@@ -294,7 +296,7 @@ fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut UserCmd) {
 
 struct World<'a> {
     world: &'a dyn MoveWorld,
-    weapon: movement_t5::WeaponMove,
+    weapon_unknown: core::cell::Cell<bool>,
     water_unknown: core::cell::Cell<bool>,
 }
 
@@ -332,9 +334,28 @@ impl movement_t5::MoveWorld for World<'_> {
         !self.world.is_player(shared_entity(entity))
     }
 
-    /// Black Ops' movement only reads the held weapon, fetched before the move.
-    fn weapon(&self, _weapon: u32) -> movement_t5::WeaponMove {
-        self.weapon
+    fn weapon(&self, weapon: u32) -> movement_t5::Weapon<'_> {
+        static ZERO_DEF: [u8; WEAPON_DEF] = [0; WEAPON_DEF];
+        static ZERO_VARIANT: [u8; WEAPON_VARIANT_DEF] = [0; WEAPON_VARIANT_DEF];
+        let found = self.world.weapon(weapon).and_then(|w| {
+            Some(movement_t5::Weapon {
+                def: WeaponDefView::new(&w.def, &w.variant)?,
+                ammo_index: w.ammo_index,
+                clip_index: w.clip_index,
+                alt_weapon: w.alt_weapon,
+                dual_wield_weapon: w.dual_wield_weapon,
+            })
+        });
+        found.unwrap_or_else(|| {
+            self.weapon_unknown.set(true);
+            movement_t5::Weapon {
+                def: WeaponDefView::new(&ZERO_DEF, &ZERO_VARIANT).expect("full-size blocks"),
+                ammo_index: 0,
+                clip_index: 0,
+                alt_weapon: 0,
+                dual_wield_weapon: 0,
+            }
+        })
     }
 
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
@@ -349,22 +370,6 @@ impl movement_t5::MoveWorld for World<'_> {
     }
 }
 
-fn weapon_move(w: MoveWeapon) -> movement_t5::WeaponMove {
-    movement_t5::WeaponMove {
-        move_speed_scale: w.move_speed_scale,
-        ads_move_speed_scale: w.ads_move_speed_scale,
-        sprint_duration_scale: w.sprint_duration_scale,
-        sprint_scale: w.sprint_scale,
-        ducked_sprint_scale: w.ducked_sprint_scale,
-        dtp_scale: w.dtp_scale,
-        blocks_prone: w.blocks_prone,
-        freeze_movement_when_firing: w.freeze_movement_when_firing,
-        dual_wield: w.dual_wield,
-        ads_overlay: w.ads_overlay_reticle,
-        offhand_slot: w.offhand_slot,
-    }
-}
-
 impl PlayerMovement for T5Movement {
     fn pmove(
         &self,
@@ -374,12 +379,6 @@ impl PlayerMovement for T5Movement {
         world: &dyn MoveWorld,
         context: MoveContext,
     ) -> MoveOutcome {
-        let Some(weapon) = world.weapon(player.weapon) else {
-            return MoveOutcome {
-                gaps: vec![weapon_unknown()],
-                ..MoveOutcome::default()
-            };
-        };
         let (mut ps, mut last) = unpack(player);
         if player.frozen {
             ps.pm_flags |= pm_flags::FROZEN;
@@ -404,7 +403,7 @@ impl PlayerMovement for T5Movement {
         };
         let adapter = World {
             world,
-            weapon: weapon_move(weapon),
+            weapon_unknown: core::cell::Cell::new(false),
             water_unknown: core::cell::Cell::new(false),
         };
         let mut outcome = MoveOutcome::default();
@@ -432,6 +431,9 @@ impl PlayerMovement for T5Movement {
         }
         if adapter.water_unknown.get() {
             outcome.gaps.push(water_unknown());
+        }
+        if adapter.weapon_unknown.get() {
+            outcome.gaps.push(weapon_unknown());
         }
         pack(player, &mut ps, &mut last);
         outcome

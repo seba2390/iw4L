@@ -74,9 +74,6 @@ use weapon_iw4::{WeaponIdleInputs, WeaponMovementOfsInputs};
 pub(crate) struct WeaponBodyFacts {
     pub body_resolved: bool,
 
-    /// What the weapon's own game's player movement reads from it, when
-    /// that game runs its own movement.
-    pub game_move: Option<game_api::movement::MoveWeapon>,
 
     pub fire_time_ms: i32,
     pub burst_delay_ms: Option<i32>,
@@ -540,6 +537,16 @@ impl WeaponCamoModels {
     }
 }
 
+/// A weapon's own definition and variant bytes, for a game that runs its own
+/// weapon rules over them, with the names its loader resolves into indices.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GameWeaponBytes {
+    pub def: Box<[u8]>,
+    pub variant: Box<[u8]>,
+    pub ammo_name: String,
+    pub clip_name: String,
+}
+
 #[derive(Clone, Debug)]
 struct CatalogWeapon {
     pub namespace: crate::AssetNamespace,
@@ -633,6 +640,7 @@ struct CatalogWeapon {
 
     pub(crate) combat_slots: CombatFxSlots,
     pub facts: WeaponBodyFacts,
+    pub game_bytes: Option<Arc<GameWeaponBytes>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1342,6 +1350,7 @@ struct WeaponRow {
     namespace: crate::AssetNamespace,
 
     facts: WeaponBodyFacts,
+    game_bytes: Option<Arc<GameWeaponBytes>>,
     semantics: Option<crate::WeaponSemanticPolicy>,
     combat: Option<combat::WeaponCombatProjection>,
     fpv: Option<WeaponFpvFacts>,
@@ -1480,6 +1489,7 @@ impl Default for WeaponRow {
             alternate_index: 0,
             namespace: crate::AssetNamespace::Iw4,
             facts: WeaponBodyFacts::default(),
+            game_bytes: None,
             semantics: None,
             combat: None,
             fpv: None,

@@ -29,8 +29,31 @@ impl<'a> BoundWeapon<'a> {
         )
     }
 
-    pub fn game_move(self) -> Option<game_api::movement::MoveWeapon> {
-        self.registry.rows[self.handle.row as usize].facts.game_move
+    /// The weapon's own definition bytes, when its game runs its own weapon
+    /// rules over them.
+    pub fn game_bytes(self) -> Option<&'a std::sync::Arc<super::GameWeaponBytes>> {
+        self.registry.rows[self.handle.row as usize]
+            .game_bytes
+            .as_ref()
+    }
+
+    /// The alternate weapon's wire id; 0 when none.
+    pub fn alternate_wire_id(self) -> u32 {
+        self.registry.rows[self.handle.row as usize].alternate_index
+    }
+
+    /// The left-hand weapon's wire id when dual wielding; 0 when none.
+    pub fn dual_wield_wire_id(self) -> u32 {
+        let row = &self.registry.rows[self.handle.row as usize];
+        row.dual_wield_weapon
+            .as_deref()
+            .and_then(|name| {
+                self.registry
+                    .by_namespaced
+                    .get(&(row.namespace, super::normalize_weapon_name(name)))
+            })
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn preparation(self) -> &'a super::WeaponPreparationRecipe {

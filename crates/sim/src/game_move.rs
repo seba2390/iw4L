@@ -5,7 +5,7 @@
 use crate::frame::FrameWorld;
 use crate::world::ClientId;
 use game_api::movement::{
-    MoveCommand, MoveContext, MoveOutcome, MovePlayer, MoveRestriction, MoveTrace, MoveWeapon,
+    GameWeapon, MoveCommand, MoveContext, MoveOutcome, MovePlayer, MoveRestriction, MoveTrace,
     MoveWorld, PlayerMovement, Stance, WaterSurface,
 };
 
@@ -30,6 +30,7 @@ fn frozen(world: &FrameWorld, id: ClientId) -> bool {
 /// and the game's weapon fields.
 struct MatchMoveWorld<'a> {
     world: &'a FrameWorld<'a>,
+    content: std::sync::Arc<crate::SimContent>,
     trace: &'a MoveTraceFn<'a>,
 }
 
@@ -50,8 +51,8 @@ impl MoveWorld for MatchMoveWorld<'_> {
         u32::try_from(entity).is_ok_and(|n| self.world.player(ClientId(n)).is_some())
     }
 
-    fn weapon(&self, weapon: u32) -> Option<MoveWeapon> {
-        self.world.game_move_weapon(weapon)
+    fn weapon(&self, weapon: u32) -> Option<&GameWeapon> {
+        self.content.game_weapon(weapon)
     }
 
     /// The runtime has no water query yet.
@@ -84,6 +85,7 @@ pub(crate) fn run(
     let outcome = {
         let around = MatchMoveWorld {
             world: &*world,
+            content: world.content(),
             trace,
         };
         movement.pmove(&mut player, &cmd, &MoveCommand::default(), &around, context)

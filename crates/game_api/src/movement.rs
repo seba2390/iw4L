@@ -139,20 +139,21 @@ pub struct MoveTrace {
     pub walkable: bool,
 }
 
-/// A weapon's fields movement reads, by their weapon file names.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct MoveWeapon {
-    pub move_speed_scale: f32,
-    pub ads_move_speed_scale: f32,
-    pub sprint_duration_scale: f32,
-    pub sprint_scale: f32,
-    pub ducked_sprint_scale: f32,
-    pub dtp_scale: f32,
-    pub blocks_prone: bool,
-    pub freeze_movement_when_firing: bool,
-    pub dual_wield: bool,
-    pub ads_overlay_reticle: bool,
-    pub offhand_slot: i32,
+/// A weapon as its own game's player movement reads it: the definition and
+/// its variant in the game's own layout, and what the game resolves when it
+/// loads them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GameWeapon {
+    pub def: Box<[u8]>,
+    pub variant: Box<[u8]>,
+    /// Weapons with one ammo name share this number.
+    pub ammo_index: i32,
+    /// Weapons with one clip name share this number.
+    pub clip_index: i32,
+    /// The alternate weapon; 0 when none.
+    pub alt_weapon: u32,
+    /// The weapon in the left hand when dual wielding; 0 when none.
+    pub dual_wield_weapon: u32,
 }
 
 /// The water over a point, as far as the match knows it.
@@ -178,9 +179,9 @@ pub trait MoveWorld {
         mask: u32,
     ) -> MoveTrace;
     fn is_player(&self, entity: i32) -> bool;
-    /// The weapon's movement fields; `None` when its game's fields were not
-    /// loaded for it.
-    fn weapon(&self, weapon: u32) -> Option<MoveWeapon>;
+    /// The weapon as its game defines it; `None` when the game's definition
+    /// was not loaded for it.
+    fn weapon(&self, weapon: u32) -> Option<&GameWeapon>;
     /// The water surface over `origin`, searched from `up` above to `down`
     /// below it.
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> WaterSurface;

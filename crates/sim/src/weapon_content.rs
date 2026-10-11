@@ -24,7 +24,7 @@ pub struct SimWeaponRow {
     pub unlock_requirement: Result<gamemode_iw4::progression::UnlockRequirement, String>,
     pub wire_id: u32,
     pub scales: (f32, f32, f32),
-    pub game_move: Option<game_api::movement::MoveWeapon>,
+    pub game_weapon: Option<Arc<game_api::movement::GameWeapon>>,
     pub execution: Result<WeaponCombatFacts, String>,
     pub transition_group: u32,
     pub camouflage_slots: Vec<u8>,
@@ -45,7 +45,7 @@ pub struct SimWeaponContent {
     pub(crate) unlock_requirements:
         Vec<Result<gamemode_iw4::progression::UnlockRequirement, String>>,
     pub(crate) weapon_def_scales: Vec<(f32, f32, f32)>,
-    pub(crate) weapon_game_move: Vec<Option<game_api::movement::MoveWeapon>>,
+    pub(crate) weapon_game: Vec<Option<Arc<game_api::movement::GameWeapon>>>,
     pub(crate) weapon_combat: Vec<WeaponCombatFacts>,
     pub(crate) weapon_runnable: Vec<bool>,
     execution_refusals: Vec<Option<String>>,
@@ -79,7 +79,7 @@ impl SimWeaponContent {
             rank_progression: Default::default(),
             unlock_requirements: Default::default(),
             weapon_def_scales: Default::default(),
-            weapon_game_move: Default::default(),
+            weapon_game: Default::default(),
             weapon_combat: Default::default(),
             weapon_runnable: Default::default(),
             execution_refusals: Default::default(),
@@ -127,7 +127,7 @@ impl SimWeaponContent {
             }
             result.unlock_requirements.push(row.unlock_requirement);
             result.weapon_def_scales.push(row.scales);
-            result.weapon_game_move.push(row.game_move);
+            result.weapon_game.push(row.game_weapon);
             let (combat, refusal) = match row.execution {
                 Ok(combat) if row.wire_id != 0 => (combat, None),
                 Ok(_) => (WeaponCombatFacts::none(), Some("unarmed".to_owned())),

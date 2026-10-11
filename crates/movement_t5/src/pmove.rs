@@ -187,7 +187,7 @@ fn weapon_lets_prone_move(state: i32) -> bool {
 }
 
 fn scoped_ads<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
-    pm.world.weapon(pm.ps.weapon).ads_overlay && pm.ps.weapon_pos_frac > 0.0
+    pm.world.weapon(pm.ps.weapon).def.ads_overlay_reticle() != 0 && pm.ps.weapon_pos_frac > 0.0
 }
 
 /// A prone player aiming may not move until they move harder than before.
@@ -210,7 +210,7 @@ fn prone_move_override<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         return;
     }
     let idle = matches!(ps.weaponstate, 0..=5 | 0xb);
-    let dual = pm.world.weapon(ps.weapon).dual_wield;
+    let dual = pm.world.weapon(ps.weapon).def.dual_wield();
     let keep = ps.pm_flags & pm_flags::ADS_INTENT != 0
         || !idle
         || (dual && !matches!(ps.weaponstate_left, 0 | 0xb) && !matches!(ps.weaponstate, 1..=5));
