@@ -257,15 +257,22 @@ fn reject_negative_half(
     Ok(cleared)
 }
 
+/// A world vertex in the renderer's layout.
+pub type HostVertex = [u8; asset_iw4::size::GFX_WORLD_VERTEX];
+
 #[derive(Clone, Debug)]
 pub enum WorldVertexPayload {
-    Iw4(Vec<[u8; asset_iw4::size::GFX_WORLD_VERTEX]>),
+    Iw4(Vec<HostVertex>),
 
     Iw5(Vec<[u8; fastfile_iw5::size::GFX_WORLD_VERTEX]>),
 
     T5(Vec<[u8; fastfile_t5::size::GFX_WORLD_VERTEX]>),
-    T6(Vec<[u8; asset_iw4::size::GFX_WORLD_VERTEX]>),
-    Unavailable { source_layout: &'static str },
+    T6(Vec<HostVertex>),
+    /// Rows built in the renderer's layout from a game's decoded vertices.
+    Host(Vec<HostVertex>),
+    Unavailable {
+        source_layout: &'static str,
+    },
 }
 
 impl Default for WorldVertexPayload {
@@ -279,13 +286,17 @@ impl Default for WorldVertexPayload {
 impl WorldVertexPayload {
     pub fn type2_stream0(
         &self,
-    ) -> Result<&[[u8; asset_iw4::size::GFX_WORLD_VERTEX]], &'static str> {
+    ) -> Result<&[HostVertex], &'static str> {
         const _: () =
             assert!(asset_iw4::size::GFX_WORLD_VERTEX == fastfile_iw5::size::GFX_WORLD_VERTEX);
         const _: () =
             assert!(asset_iw4::size::GFX_WORLD_VERTEX == fastfile_t5::size::GFX_WORLD_VERTEX);
         match self {
-            Self::Iw4(rows) | Self::Iw5(rows) | Self::T5(rows) | Self::T6(rows) => Ok(rows),
+            Self::Iw4(rows)
+            | Self::Iw5(rows)
+            | Self::T5(rows)
+            | Self::T6(rows)
+            | Self::Host(rows) => Ok(rows),
             Self::Unavailable { source_layout } => Err(*source_layout),
         }
     }
@@ -296,6 +307,7 @@ impl WorldVertexPayload {
             Self::Iw5(_) => "iw5",
             Self::T5(_) => "t5",
             Self::T6(_) => "t6",
+            Self::Host(_) => "host",
             Self::Unavailable { source_layout } => *source_layout,
         }
     }

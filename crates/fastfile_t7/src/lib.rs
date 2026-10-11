@@ -1,10 +1,13 @@
 mod content;
 mod envelope;
+mod world;
 
 pub use content::{
     AssetList, ContentError, MAP_ENTS_ASSET_TYPE, MapEnts, SCRIPT_ASSET_TYPE, ScriptAsset,
     asset_list, map_entities, scripts,
 };
+
+pub use world::{GFX_MAP_ASSET_TYPE, WorldError, world_geometry};
 
 pub use envelope::{
     BLOCK_SIZES, BLOCKS_OFFSET, Block, BlockError, Blocks, FileHeader, FileHeaderError, MAGIC,
@@ -19,6 +22,7 @@ pub const ZONE_FORMAT: asset_core::ZoneFormat = asset_core::ZoneFormat {
     scripts: zone_scripts,
     script_zones,
     entities: zone_entities,
+    world: zone_world,
 };
 
 fn script_zones(map: &str) -> Vec<String> {
@@ -28,6 +32,31 @@ fn script_zones(map: &str) -> Vec<String> {
     }
     zones.extend([map.to_owned(), format!("{map}_patch")]);
     zones
+}
+
+fn zone_world(content: &[u8]) -> asset_core::ZoneWorld {
+    let mut out = asset_core::ZoneWorld::default();
+    let list = match asset_list(content) {
+        Ok(list) => list,
+        Err(error) => {
+            out.report.push(format!("t7 asset list: {error:?}"));
+            return out;
+        }
+    };
+    match world_geometry(content, &list) {
+        Ok(Some(geometry)) => {
+            out.report.push(format!(
+                "t7 world: {} vertices, {} triangles, {} surfaces (every triangle inside its surface's bounds)",
+                geometry.positions.len(),
+                geometry.indices.len() / 3,
+                geometry.surfaces.len()
+            ));
+            out.geometry = Some(geometry);
+        }
+        Ok(None) => {}
+        Err(error) => out.report.push(format!("t7 world: {error:?}")),
+    }
+    out
 }
 
 fn zone_entities(content: &[u8]) -> asset_core::ZoneEntities {

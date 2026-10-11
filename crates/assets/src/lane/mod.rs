@@ -314,6 +314,11 @@ impl ZoneLane for UnreadLane {
         if let Some(text) = entities.text {
             world.scripts.set_entities(text);
         }
+        let drawn = (format.world)(&image.bytes);
+        world.report.extend(drawn.report);
+        if let Some(geometry) = drawn.geometry {
+            world.world.draw = Some(asset_world::world_t7::build_world_draw(&geometry));
+        }
         world
     }
 

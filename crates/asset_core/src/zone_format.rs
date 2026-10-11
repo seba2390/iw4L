@@ -17,6 +17,42 @@ pub struct ZoneFormat {
     pub script_zones: fn(&str) -> Vec<String>,
     /// The map entities a decoded zone carries (a map's own zone).
     pub entities: fn(&[u8]) -> ZoneEntities,
+    /// The drawn world a decoded zone carries (a map's own zone).
+    pub world: fn(&[u8]) -> ZoneWorld,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ZoneWorld {
+    pub geometry: Option<WorldGeometry>,
+    pub report: Vec<String>,
+}
+
+/// One draw of the world: a run of triangles in the index buffer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorldSurface {
+    /// The surface's first vertex, as a byte offset into the position array.
+    pub position_offset: u32,
+    /// The same vertex as a byte offset into the attribute array.
+    pub attribute_offset: u32,
+    pub triangle_count: u16,
+    pub first_index: u32,
+    pub mins: [f32; 3],
+    pub maxs: [f32; 3],
+    /// The surface's material, as the zone refers to it.
+    pub material: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorldGeometry {
+    pub positions: Vec<[f32; 3]>,
+    pub normals: Vec<[f32; 3]>,
+    /// Tangent and the bitangent sign.
+    pub tangents: Vec<[f32; 4]>,
+    pub colors: Vec<[u8; 4]>,
+    pub texture_uvs: Vec<[f32; 2]>,
+    /// Absolute vertex numbers, three per triangle, in surface order.
+    pub indices: Vec<u32>,
+    pub surfaces: Vec<WorldSurface>,
 }
 
 #[derive(Clone, Debug, Default)]
