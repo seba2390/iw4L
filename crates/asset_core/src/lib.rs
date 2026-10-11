@@ -17,6 +17,8 @@ pub use ident::{
     WorldWeaponIndex, WorldWeaponSpace, XAnimIndex, XAnimSpace, ZoneOwner, bound_zone_names,
 };
 pub use zone_format::{
-    WorldGeometry, WorldSurface, ZoneEntities, ZoneFormat, ZoneScripts, ZoneWorld,
+    CollisionBox, CollisionBrush, CollisionLeaf, CollisionMaterial, CollisionModel, CollisionNode,
+    CollisionPartition, WorldCollision, WorldGeometry, WorldSurface, ZoneEntities, ZoneFormat,
+    ZoneScripts, ZoneWorld,
 };
 pub use zone_game::ZoneGame;

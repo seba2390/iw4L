@@ -14,7 +14,10 @@ pub struct ClipBrush {
     pub glass_encoded: u16,
 }
 
-pub use clipmap_iw4::{ClipLeaf as ClipBspLeaf, ClipNode as ClipBspNode};
+pub use clipmap_iw4::{
+    ClipAabbNode as ClipMeshBox, ClipLeaf as ClipBspLeaf, ClipMeshTables as ClipMesh,
+    ClipNode as ClipBspNode, ClipPartition as ClipMeshPartition,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ClipCmodel {
@@ -408,7 +411,7 @@ fn extract_mesh_tables(
             let id = s
                 .u16_at(idx_ptr, i * 2)
                 .map_err(|_| ClipCollisionError::Truncated)?;
-            mesh.tri_indices.push(id);
+            mesh.tri_indices.push(u32::from(id));
         }
     }
     if let Some(walk_ptr) = g.tri_edge_is_walkable {
@@ -1326,7 +1329,7 @@ fn extract_iw5_mesh_tables(
             let id = s
                 .u16_at(idx_ptr, i * 2)
                 .map_err(|_| ClipCollisionError::Truncated)?;
-            mesh.tri_indices.push(id);
+            mesh.tri_indices.push(u32::from(id));
         }
     }
     if let Some(walk_ptr) = g.tri_edge_is_walkable {
@@ -1853,7 +1856,7 @@ fn extract_t5_mesh_tables(
             let id = s
                 .u16_at(idx_ptr, i * 2)
                 .map_err(|_| ClipCollisionError::Truncated)?;
-            mesh.tri_indices.push(id);
+            mesh.tri_indices.push(u32::from(id));
         }
     }
     if let Some(walk_ptr) = g.tri_edge_is_walkable {

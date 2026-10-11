@@ -10,7 +10,7 @@ use crate::world_draw::{
     SurfaceDrawFields, WorldDraw, WorldLightmapGap, WorldVertexPayload,
 };
 use crate::world_mesh::WorldMeshStats;
-use asset_core::WorldGeometry;
+use asset_core::{WorldCollision, WorldGeometry};
 use asset_model::{pack_unit_vec, unpack_color};
 
 pub fn build_world_draw(geometry: &WorldGeometry) -> WorldDraw {
@@ -145,4 +145,146 @@ pub fn build_world_draw(geometry: &WorldGeometry) -> WorldDraw {
         t5_tree_scatter_amount: None,
         t5_exposure_volume_count: 0,
     }
+}
+
+/// Black Ops 3's collision in the shape the simulation traces: brushes as
+/// planes (the six axial sides first, then the others), leaves with their
+/// brush lists, and the triangle trees. Static models and the brush models
+/// of triggers are not read yet.
+pub fn build_clip_collision(collision: &WorldCollision) -> Result<crate::ClipCollision, String> {
+    use crate::clip_collision::{ClipMesh, ClipMeshBox, ClipMeshPartition};
+    use crate::{ClipBrush, ClipBspLeaf, ClipBspNode, ClipCmodel, ClipMapMaterial};
+    let mut out = crate::ClipCollision {
+        materials: collision
+            .materials
+            .iter()
+            .map(|m| ClipMapMaterial {
+                // A name the zone refers to elsewhere is not resolved yet.
+                name: m.name.clone().unwrap_or(String::new()),
+                surface_flags: m.surface_flags,
+                content_flags: m.contents,
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let plane = |index: u32| collision.planes[index as usize];
+    for brush in &collision.brushes {
+        let mut planes = Vec::with_capacity(6 + brush.sides.len());
+        for side in 0..2 {
+            for axis in 0..3 {
+                let mut plane = [0.0; 4];
+                plane[axis] = if side == 0 { -1.0 } else { 1.0 };
+                plane[3] = if side == 0 {
+                    -brush.mins[axis]
+                } else {
+                    brush.maxs[axis]
+                };
+                planes.push(plane);
+            }
+        }
+        let mut flags = brush.axial_surface_flags.to_vec();
+        for &(index, surface_flags) in &brush.sides {
+            planes.push(plane(index));
+            flags.push(surface_flags);
+        }
+        out.brushes.push(ClipBrush {
+            planes,
+            contents: brush.contents,
+            plane_surface_flags: flags,
+            glass_encoded: 0,
+        });
+    }
+    out.nodes = collision
+        .nodes
+        .iter()
+        .map(|node| ClipBspNode {
+            plane: plane(node.plane),
+            children: node.children,
+        })
+        .collect();
+    out.leafbrushes = collision
+        .leaf_brushes
+        .iter()
+        .map(|&brush| u16::try_from(brush).map_err(|_| "t7 brush index beyond 16 bits"))
+        .collect::<Result<_, _>>()?;
+    let leaf = |leaf: &asset_core::CollisionLeaf| -> Result<ClipBspLeaf, String> {
+        Ok(ClipBspLeaf {
+            first_brush: leaf.first_brush,
+            num_brushes: u16::try_from(leaf.brush_count)
+                .map_err(|_| "t7 leaf has too many brushes")?,
+            first_coll_aabb_index: leaf.first_box,
+            coll_aabb_count: leaf.box_count,
+        })
+    };
+    out.leaves = collision
+        .leaves
+        .iter()
+        .map(leaf)
+        .collect::<Result<_, _>>()?;
+    for model in &collision.models {
+        let leaf = leaf(&model.leaf)?;
+        out.cmodels.push(ClipCmodel {
+            mins: model.mins,
+            maxs: model.maxs,
+            radius: model.radius,
+            first_brush: leaf.first_brush,
+            num_brushes: leaf.num_brushes,
+        });
+    }
+    let triangle_count = collision.triangles.len();
+    let mut mesh = ClipMesh {
+        verts: collision.vertices.clone(),
+        tri_indices: collision.triangles.iter().flatten().copied().collect(),
+        ..Default::default()
+    };
+    let bits = &collision.walkable_edges;
+    mesh.tri_edge_is_walkable = (0..triangle_count)
+        .map(|i| {
+            (0..3).fold(0u8, |value, e| {
+                let bit = 3 * i + e;
+                value | ((bits[bit / 8] >> (bit % 8)) & 1) << e
+            })
+        })
+        .collect();
+    for partition in &collision.partitions {
+        mesh.partitions.push(ClipMeshPartition {
+            tri_count: u8::try_from(partition.triangle_count)
+                .map_err(|_| "t7 partition has too many triangles")?,
+            first_tri: i32::try_from(partition.first_triangle)
+                .map_err(|_| "t7 triangle index beyond 31 bits")?,
+            ..Default::default()
+        });
+    }
+    for node in &collision.boxes {
+        mesh.aabb_trees.push(ClipMeshBox {
+            origin: node.origin,
+            half_size: node.half_size,
+            material_index: node.material,
+            child_count: node.child_count,
+            u: i32::try_from(node.index).map_err(|_| "t7 box index beyond 31 bits")?,
+        });
+    }
+    mesh.aabb_roots = collision
+        .leaves
+        .iter()
+        .flat_map(|l| l.first_box..l.first_box.saturating_add(l.box_count))
+        .collect();
+    mesh.aabb_roots.sort_unstable();
+    mesh.aabb_roots.dedup();
+    mesh.tri_surface_flags.resize(triangle_count, 0);
+    mesh.tri_content_flags.resize(triangle_count, 0);
+    out.tri_material_index.resize(triangle_count, 0);
+    // `fastfile_t7` checked every leaf box's partition and triangles.
+    for node in collision.boxes.iter().filter(|b| b.child_count == 0) {
+        let partition = collision.partitions[node.index as usize];
+        let material = &collision.materials[usize::from(node.material)];
+        let first = partition.first_triangle as usize;
+        for i in first..first + partition.triangle_count as usize {
+            mesh.tri_surface_flags[i] = material.surface_flags;
+            mesh.tri_content_flags[i] = material.contents;
+            out.tri_material_index[i] = node.material;
+        }
+    }
+    out.mesh = std::sync::Arc::new(mesh);
+    Ok(out)
 }

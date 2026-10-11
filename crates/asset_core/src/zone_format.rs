@@ -24,7 +24,93 @@ pub struct ZoneFormat {
 #[derive(Clone, Debug, Default)]
 pub struct ZoneWorld {
     pub geometry: Option<WorldGeometry>,
+    pub collision: Option<WorldCollision>,
     pub report: Vec<String>,
+}
+
+/// A map's collision: brushes found through a BSP tree, and triangles found
+/// through bounding-box trees.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WorldCollision {
+    /// Normal and distance.
+    pub planes: Vec<[f32; 4]>,
+    pub materials: Vec<CollisionMaterial>,
+    pub brushes: Vec<CollisionBrush>,
+    pub nodes: Vec<CollisionNode>,
+    pub leaves: Vec<CollisionLeaf>,
+    /// The brushes of every leaf and model, by `CollisionLeaf::first_brush`.
+    pub leaf_brushes: Vec<u32>,
+    pub models: Vec<CollisionModel>,
+    pub vertices: Vec<[f32; 3]>,
+    pub triangles: Vec<[u32; 3]>,
+    /// Three bits per triangle, one per edge.
+    pub walkable_edges: Vec<u8>,
+    pub partitions: Vec<CollisionPartition>,
+    pub boxes: Vec<CollisionBox>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CollisionMaterial {
+    /// `None` when the zone refers to a name loaded elsewhere.
+    pub name: Option<String>,
+    pub surface_flags: u32,
+    pub contents: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CollisionBrush {
+    pub mins: [f32; 3],
+    pub maxs: [f32; 3],
+    pub contents: u32,
+    /// The six axial sides' surface flags: the minimum side of x, y and z,
+    /// then the maximum side.
+    pub axial_surface_flags: [u32; 6],
+    /// The other sides: a plane index and its surface flags.
+    pub sides: Vec<(u32, u32)>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CollisionNode {
+    pub plane: u32,
+    /// A child below zero is leaf `-1 - child`.
+    pub children: [i32; 2],
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CollisionLeaf {
+    pub first_box: u16,
+    pub box_count: u16,
+    pub brush_contents: u32,
+    pub terrain_contents: u32,
+    pub mins: [f32; 3],
+    pub maxs: [f32; 3],
+    pub first_brush: u32,
+    pub brush_count: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CollisionModel {
+    pub mins: [f32; 3],
+    pub maxs: [f32; 3],
+    pub radius: f32,
+    pub leaf: CollisionLeaf,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CollisionPartition {
+    pub first_triangle: u32,
+    pub triangle_count: u32,
+}
+
+/// A node of a triangle tree: a leaf (`child_count` 0) holds partition
+/// `index`, an inner node its children from box `index`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CollisionBox {
+    pub origin: [f32; 3],
+    pub half_size: [f32; 3],
+    pub material: u16,
+    pub child_count: u16,
+    pub index: u32,
 }
 
 /// One draw of the world: a run of triangles in the index buffer.

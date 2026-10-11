@@ -250,7 +250,7 @@ fn mesh_contacts(
         for (i, &id) in ids.iter().enumerate() {
             verts[i] = mesh
                 .verts
-                .get(base + usize::from(id))
+                .get(base + id as usize)
                 .ok_or(Coverage::Unsupported)?
                 .map(f64::from);
             if !verts[i].iter().all(|x| x.is_finite()) {

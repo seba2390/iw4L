@@ -62,7 +62,7 @@ pub struct MeshWalkCensus {
 pub struct ClipMeshTables {
     pub verts: Vec<[f32; 3]>,
 
-    pub tri_indices: Vec<u16>,
+    pub tri_indices: Vec<u32>,
 
     pub tri_edge_is_walkable: Vec<u8>,
 
@@ -101,7 +101,7 @@ impl ClipMeshTables {
 pub struct ClipMeshRef<'a> {
     pub verts: &'a [[f32; 3]],
 
-    pub tri_indices: &'a [u16],
+    pub tri_indices: &'a [u32],
 
     /// One bit per triangle edge, `3 * tri + k`, where k = 0 is v1-v2, 1 is
     /// v0-v2 and 2 is v0-v1.
@@ -121,7 +121,7 @@ pub struct ClipMeshRef<'a> {
 impl<'a> ClipMeshRef<'a> {
     pub fn from_linear(
         verts: &'a [[f32; 3]],
-        tri_indices: &'a [u16],
+        tri_indices: &'a [u32],
         tri_surface_flags: &'a [u32],
     ) -> Self {
         Self {

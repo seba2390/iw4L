@@ -668,7 +668,8 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
     if tri_count > 0 {
         let table = ptr(120)?;
         for i in 0..tri_count * 3 {
-            mesh.tri_indices.push(r.u16(table.at(i as u32 * 2))?);
+            mesh.tri_indices
+                .push(u32::from(r.u16(table.at(i as u32 * 2))?));
         }
         let edge = ptr(124)?;
         let bits = r.bytes(edge, (tri_count * 3).div_ceil(32) * 4)?;
