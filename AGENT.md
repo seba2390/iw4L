@@ -23,3 +23,9 @@ not an argument for anything beyond the absence of those shapes.
 
 A push of unpushed work is a pass of its own — history, tests, comments, names —
 in `CONTEXT.md` under Making a public push.
+
+**Keep the progress table true.** [`docs/PROGRESS.md`](docs/PROGRESS.md) lists
+each game's milestones; the table at the top of `README.md` is generated from
+it. A pull request that reaches a milestone ticks it (one that breaks it
+unticks it) in the same pull request and runs `cargo xtask progress --write`.
+CI fails when the table and the milestones disagree.
