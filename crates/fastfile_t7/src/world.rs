@@ -17,7 +17,7 @@ use crate::content::AssetList;
 /// The asset type of a map's drawn world (`gfx_map`).
 pub const GFX_MAP_ASSET_TYPE: u32 = 16;
 
-const HEADER_LEN: usize = 0x2040;
+pub(crate) const HEADER_LEN: usize = 0x2040;
 /// The draw block's inline-and-registered marker, from the header's start.
 const DRAW_AT: usize = 0x260;
 const SURFACE_COUNT_AT: usize = 0x18;
@@ -45,6 +45,32 @@ pub fn world_geometry(
     content: &[u8],
     list: &AssetList,
 ) -> Result<Option<WorldGeometry>, WorldError> {
+    let Some(header) = gfx_header(content, list)? else {
+        return Ok(None);
+    };
+    let draw = draw_block(content, header + DRAW_AT).unwrap();
+    let surface_count = u32_at(content, header + SURFACE_COUNT_AT).unwrap_or(0) as usize;
+    let data_at = header + HEADER_LEN;
+    let (surfaces_at, surfaces) = surface_array(content, data_at, surface_count, draw.index_count)
+        .ok_or(WorldError::NoSurfaces)?;
+    let arrays_len = draw.vertex_count * (POSITION_LEN + ATTRIBUTE_LEN) + 2 * draw.index_count;
+    let last = surfaces_at
+        .checked_sub(arrays_len)
+        .ok_or(WorldError::NoSurfaces)?;
+    let candidates: Vec<usize> = (data_at..=last)
+        .filter(|&at| fits(content, at, &draw, &surfaces[..surfaces.len().min(4)]))
+        .filter(|&at| fits(content, at, &draw, &surfaces))
+        .collect();
+    let [positions_at] = candidates[..] else {
+        return Err(WorldError::VertexArrays {
+            candidates: candidates.len(),
+        });
+    };
+    Ok(Some(decode(content, positions_at, &draw, surfaces)))
+}
+
+/// Where the zone's drawn world header starts, if it lists one.
+pub(crate) fn gfx_header(content: &[u8], list: &AssetList) -> Result<Option<usize>, WorldError> {
     let listed = list
         .asset_types
         .iter()
@@ -67,28 +93,7 @@ pub fn world_geometry(
             found: headers.len(),
         });
     }
-    let Some(&header) = headers.first() else {
-        return Ok(None);
-    };
-    let draw = draw_block(content, header + DRAW_AT).unwrap();
-    let surface_count = u32_at(content, header + SURFACE_COUNT_AT).unwrap_or(0) as usize;
-    let data_at = header + HEADER_LEN;
-    let (surfaces_at, surfaces) = surface_array(content, data_at, surface_count, draw.index_count)
-        .ok_or(WorldError::NoSurfaces)?;
-    let arrays_len = draw.vertex_count * (POSITION_LEN + ATTRIBUTE_LEN) + 2 * draw.index_count;
-    let last = surfaces_at
-        .checked_sub(arrays_len)
-        .ok_or(WorldError::NoSurfaces)?;
-    let candidates: Vec<usize> = (data_at..=last)
-        .filter(|&at| fits(content, at, &draw, &surfaces[..surfaces.len().min(4)]))
-        .filter(|&at| fits(content, at, &draw, &surfaces))
-        .collect();
-    let [positions_at] = candidates[..] else {
-        return Err(WorldError::VertexArrays {
-            candidates: candidates.len(),
-        });
-    };
-    Ok(Some(decode(content, positions_at, &draw, surfaces)))
+    Ok(headers.first().copied())
 }
 
 struct Draw {
@@ -149,8 +154,8 @@ fn surface_array(
 fn surface(content: &[u8], at: usize) -> Option<WorldSurface> {
     let position_offset = u32_at(content, at + 0x0c)?;
     let attribute_offset = u32_at(content, at + 0x1c)?;
-    let ok = position_offset as usize % POSITION_LEN == 0
-        && attribute_offset as usize % ATTRIBUTE_LEN == 0
+    let ok = (position_offset as usize).is_multiple_of(POSITION_LEN)
+        && (attribute_offset as usize).is_multiple_of(ATTRIBUTE_LEN)
         && position_offset as usize / POSITION_LEN == attribute_offset as usize / ATTRIBUTE_LEN;
     ok.then_some(())?;
     Some(WorldSurface {
@@ -259,33 +264,33 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
+pub(crate) fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_le_bytes(
         bytes.get(at..at + 2)?.try_into().unwrap(),
     ))
 }
 
-fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
+pub(crate) fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes(
         bytes.get(at..at + 4)?.try_into().unwrap(),
     ))
 }
 
-fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
+pub(crate) fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
     Some(u64::from_le_bytes(
         bytes.get(at..at + 8)?.try_into().unwrap(),
     ))
 }
 
-fn i64_at(bytes: &[u8], at: usize) -> Option<i64> {
+pub(crate) fn i64_at(bytes: &[u8], at: usize) -> Option<i64> {
     u64_at(bytes, at).map(|value| value as i64)
 }
 
-fn f32_at(bytes: &[u8], at: usize) -> Option<f32> {
+pub(crate) fn f32_at(bytes: &[u8], at: usize) -> Option<f32> {
     u32_at(bytes, at).map(f32::from_bits)
 }
 
-fn vec3_at(bytes: &[u8], at: usize) -> Option<[f32; 3]> {
+pub(crate) fn vec3_at(bytes: &[u8], at: usize) -> Option<[f32; 3]> {
     Some([
         f32_at(bytes, at)?,
         f32_at(bytes, at + 4)?,

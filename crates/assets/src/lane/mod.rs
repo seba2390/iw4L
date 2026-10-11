@@ -319,6 +319,12 @@ impl ZoneLane for UnreadLane {
         if let Some(geometry) = drawn.geometry {
             world.world.draw = Some(asset_world::world_t7::build_world_draw(&geometry));
         }
+        if let Some(collision) = drawn.collision {
+            match asset_world::world_t7::build_clip_collision(&collision) {
+                Ok(clip) => world.collision = Some(clip),
+                Err(error) => world.report.push(format!("t7 collision: {error}")),
+            }
+        }
         world
     }
 

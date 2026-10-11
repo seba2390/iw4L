@@ -1,3 +1,4 @@
+mod collision;
 mod content;
 mod envelope;
 mod world;
@@ -7,6 +8,7 @@ pub use content::{
     asset_list, map_entities, scripts,
 };
 
+pub use collision::{COL_MAP_ASSET_TYPE, CollisionError, world_collision};
 pub use world::{GFX_MAP_ASSET_TYPE, WorldError, world_geometry};
 
 pub use envelope::{
@@ -55,6 +57,20 @@ fn zone_world(content: &[u8]) -> asset_core::ZoneWorld {
         }
         Ok(None) => {}
         Err(error) => out.report.push(format!("t7 world: {error:?}")),
+    }
+    match world_collision(content, &list) {
+        Ok(Some(collision)) => {
+            out.report.push(format!(
+                "t7 collision: {} brushes, {} BSP leaves, {} triangles, {} models (every brush corner behind its planes, every leaf brush touching its leaf, every triangle inside its box)",
+                collision.brushes.len(),
+                collision.leaves.len(),
+                collision.triangles.len(),
+                collision.models.len()
+            ));
+            out.collision = Some(collision);
+        }
+        Ok(None) => {}
+        Err(error) => out.report.push(format!("t7 collision: {error:?}")),
     }
     out
 }
