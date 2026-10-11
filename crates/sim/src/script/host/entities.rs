@@ -30,6 +30,8 @@ pub struct LevelData {
     pub layouts: BTreeMap<String, Arc<asset_core::BitLayout>>,
     /// Zombies barrier types, by lowercase name.
     pub barriers: BTreeMap<String, Arc<asset_core::BarrierType>>,
+    /// Weapons the zones define, by lowercase name.
+    pub weapons: BTreeMap<String, Arc<asset_core::ZoneWeapon>>,
     pub schemas: BTreeMap<String, Arc<structured_data_iw4::DefinitionSet>>,
     pub player_data_defaults: Option<crate::PlayerDataDefaults>,
 }

@@ -1263,6 +1263,7 @@ fn preflight_match_install(
         entity_fields: None,
         layouts: sources.0.layouts().clone(),
         barriers: sources.0.barriers().clone(),
+        weapons: sources.0.weapons().clone(),
         tables: sources
             .0
             .tables()

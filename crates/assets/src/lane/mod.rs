@@ -471,5 +471,8 @@ pub(crate) fn capture_script_zones(
         for barrier in found.barriers {
             scripts.capture_barrier(barrier);
         }
+        for weapon in found.weapons {
+            scripts.capture_weapon(weapon);
+        }
     }
 }

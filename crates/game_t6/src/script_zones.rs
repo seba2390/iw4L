@@ -102,6 +102,11 @@ fn scripts(content: &[u8]) -> asset_core::ZoneScripts {
             timing: anim.timing,
         })
     };
+    for weapon in load.weapons().flatten() {
+        if let Some(weapon) = zone_weapon(&weapon) {
+            out.weapons.push(weapon);
+        }
+    }
     for barrier in load.barriers() {
         out.barriers.push(asset_core::BarrierType {
             name: barrier.name,
@@ -128,4 +133,48 @@ fn scripts(content: &[u8]) -> asset_core::ZoneScripts {
         });
     }
     out
+}
+
+/// A weapon and the weapons the engine registers with it: its attachments'
+/// alternates (unless it is itself an alternate mode), its alternate, its
+/// attachments' dual-wield weapons, its dual-wield weapon, then its stand,
+/// crouch and prone mounted weapons.
+fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_core::ZoneWeapon> {
+    use fastfile_t6::weapon::{def, inventory_type, variant};
+    let name = weapon.name()?;
+    if !weapon.has_def() {
+        return None;
+    }
+    let mut companions = Vec::new();
+    let mut add = |name: Option<&str>| {
+        if let Some(name) = name.filter(|name| !name.is_empty()) {
+            companions.push(name.to_owned());
+        }
+    };
+    if weapon.def_i32(def::INVENTORY_TYPE) != inventory_type::ALTMODE {
+        for unique in weapon.attachment_uniques() {
+            add(unique.alt_weapon());
+        }
+    }
+    add(weapon.variant_str(variant::ALT_WEAPON_NAME));
+    for unique in weapon.attachment_uniques() {
+        add(unique.dual_wield_weapon());
+    }
+    if weapon.def_bool(def::DUAL_WIELD) {
+        add(weapon.def_str(def::DUAL_WIELD_WEAPON));
+    }
+    for mounted in def::MOUNTED_WEAPONS {
+        add(weapon.def_str(mounted));
+    }
+    let text = |off| weapon.def_str(off).unwrap_or("").to_owned();
+    Some(asset_core::ZoneWeapon {
+        name: name.to_owned(),
+        companions,
+        fire_sound: text(def::FIRE_SOUND),
+        fire_sound_player: text(def::FIRE_SOUND_PLAYER),
+        pickup_sound: text(def::PICKUP_SOUND),
+        pickup_sound_player: text(def::PICKUP_SOUND_PLAYER),
+        retrievable: weapon.def_bool(def::RETRIEVABLE),
+        watcher: weapon.def_bool(def::WATCHER),
+    })
 }

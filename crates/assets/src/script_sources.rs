@@ -9,6 +9,7 @@ pub struct ScriptSources {
     schemas: BTreeMap<String, std::sync::Arc<structured_data_iw4::DefinitionSet>>,
     layouts: BTreeMap<String, std::sync::Arc<asset_core::BitLayout>>,
     barriers: BTreeMap<String, std::sync::Arc<asset_core::BarrierType>>,
+    weapons: BTreeMap<String, std::sync::Arc<asset_core::ZoneWeapon>>,
     entities: Option<String>,
     configs: BTreeMap<String, String>,
 }
@@ -70,6 +71,7 @@ impl ScriptSources {
         self.configs.extend(other.configs.clone());
         self.layouts.extend(other.layouts.clone());
         self.barriers.extend(other.barriers.clone());
+        self.weapons.extend(other.weapons.clone());
     }
 
     pub(crate) fn capture_layout(&mut self, layout: asset_core::BitLayout) {
@@ -89,6 +91,16 @@ impl ScriptSources {
 
     pub fn barriers(&self) -> &BTreeMap<String, std::sync::Arc<asset_core::BarrierType>> {
         &self.barriers
+    }
+
+    /// A later zone's weapon replaces an earlier one of the same name.
+    pub(crate) fn capture_weapon(&mut self, weapon: asset_core::ZoneWeapon) {
+        self.weapons
+            .insert(normalize(&weapon.name), std::sync::Arc::new(weapon));
+    }
+
+    pub fn weapons(&self) -> &BTreeMap<String, std::sync::Arc<asset_core::ZoneWeapon>> {
+        &self.weapons
     }
 
     pub(crate) fn capture_zone_table(&mut self, table: asset_core::ZoneTable) {
@@ -274,6 +286,7 @@ impl ScriptSources {
         self.schemas.extend(other.schemas);
         self.layouts.extend(other.layouts);
         self.barriers.extend(other.barriers);
+        self.weapons.extend(other.weapons);
         self.configs.extend(other.configs);
         if other.entities.is_some() {
             self.entities = other.entities;

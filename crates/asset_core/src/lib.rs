@@ -20,6 +20,6 @@ pub use zone_format::{
     BarrierAnim, BarrierPiece, BarrierType, BitLayout, BitMember, BitStruct, CollisionBox,
     CollisionBrush, CollisionLeaf, CollisionMaterial, CollisionModel, CollisionNode,
     CollisionPartition, ScriptZoneFormat, WorldCollision, WorldGeometry, WorldSurface,
-    ZoneEntities, ZoneFormat, ZoneScripts, ZoneTable, ZoneWorld,
+    ZoneEntities, ZoneFormat, ZoneScripts, ZoneTable, ZoneWeapon, ZoneWorld,
 };
 pub use zone_game::ZoneGame;

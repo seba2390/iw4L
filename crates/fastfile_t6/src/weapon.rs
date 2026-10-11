@@ -56,6 +56,8 @@ pub mod def {
     pub const FIRE_TYPE: u32 = 48;
     pub const OFFHAND_CLASS: u32 = 96;
     pub const OFFHAND_SLOT: u32 = 100;
+    pub const PICKUP_SOUND: u32 = 148;
+    pub const PICKUP_SOUND_PLAYER: u32 = 152;
     pub const PULLBACK_SOUND: u32 = 168;
     pub const PULLBACK_SOUND_PLAYER: u32 = 172;
     pub const FIRE_SOUND: u32 = 176;
@@ -74,6 +76,8 @@ pub mod def {
     pub const FIRST_RAISE_SOUND_PLAYER: u32 = 396;
     pub const PUTAWAY_SOUND: u32 = 408;
     pub const PUTAWAY_SOUND_PLAYER: u32 = 412;
+    /// The stand, crouch and prone mounted weapons' names.
+    pub const MOUNTED_WEAPONS: [u32; 3] = [440, 444, 448];
     pub const PROJ_EXPLOSION_SOUND: u32 = 1820;
     pub const RETICLE_CENTER: u32 = 528;
     pub const RETICLE_SIDE: u32 = 532;
@@ -146,6 +150,8 @@ pub mod def {
     pub const ADS_FIRE_ONLY: u32 = 1608;
     pub const DUAL_WIELD: u32 = 1615;
     pub const RETRIEVABLE: u32 = 1618;
+    /// Listed by `getwatcherweapons`.
+    pub const WATCHER: u32 = 1619;
     pub const KILL_ICON: u32 = 1632;
     pub const KILL_ICON_RATIO: u32 = 1636;
     pub const FLIP_KILL_ICON: u32 = 1640;
@@ -153,6 +159,7 @@ pub mod def {
     pub const SEGMENTED_RELOAD: u32 = 1642;
     pub const RELOAD_AMMO_ADD: u32 = 1644;
     pub const RELOAD_START_ADD: u32 = 1648;
+    pub const DUAL_WIELD_WEAPON: u32 = 1656;
     pub const IS_TACTICAL_INSERTION: u32 = 1700;
     pub const EXPLOSION_RADIUS: u32 = 1708;
     pub const EXPLOSION_RADIUS_MIN: u32 = 1712;
@@ -264,6 +271,7 @@ pub mod unique {
     pub const TYPE: u32 = 4;
     pub const COMBINED_MASK: u32 = 16;
     pub const ALT_WEAPON_NAME: u32 = 20;
+    pub const DUAL_WIELD_WEAPON_NAME: u32 = 28;
     pub const HIDE_TAGS: u32 = 36;
     pub const HIDE_TAG_COUNT: u32 = 32;
     pub const VIEW_MODEL: u32 = 40;
@@ -397,6 +405,10 @@ impl<'z> AttachmentUniqueView<'z> {
 
     pub fn alt_weapon(&self) -> Option<&'z str> {
         self.str_at(unique::ALT_WEAPON_NAME)
+    }
+
+    pub fn dual_wield_weapon(&self) -> Option<&'z str> {
+        self.str_at(unique::DUAL_WIELD_WEAPON_NAME)
     }
 
     pub fn flag(&self, off: u32) -> bool {

@@ -159,7 +159,23 @@ pub struct ZoneScripts {
     pub layouts: Vec<BitLayout>,
     /// Zombies barrier types.
     pub barriers: Vec<BarrierType>,
+    pub weapons: Vec<ZoneWeapon>,
     pub report: Vec<String>,
+}
+
+/// A weapon as a zone defines it, for the game's script weapon table.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ZoneWeapon {
+    pub name: String,
+    /// The weapons the game registers along with this one, in its order.
+    pub companions: Vec<String>,
+    pub fire_sound: String,
+    pub fire_sound_player: String,
+    pub pickup_sound: String,
+    pub pickup_sound_player: String,
+    pub retrievable: bool,
+    /// Listed among the game's watcher weapons.
+    pub watcher: bool,
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the
