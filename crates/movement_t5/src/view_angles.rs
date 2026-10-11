@@ -9,7 +9,7 @@ const INV_360: f32 = 0.00277777785;
 const LEAN_CONTENTS: u32 = 0x0381_c813;
 
 /// `a` wrapped into [-180, 180) in single precision.
-fn wrap_180(a: f32) -> f32 {
+pub(crate) fn wrap_180(a: f32) -> f32 {
     let turns = a * INV_360;
     (turns - libm::floorf(turns + 0.5)) * 360.0
 }

@@ -1,7 +1,7 @@
 mod catalog;
 mod startup;
 
-use game_api::{HudRules, ModeRules, Rule, ScriptProgram, ScriptRequest};
+use game_api::{HudRules, ModeRules, Rule, ScriptProgram, ScriptRequest, WeaponRules};
 
 pub struct Iw4;
 
@@ -36,7 +36,7 @@ const MODE: ModeRules = ModeRules {
     play_starts_on: "prematch_over",
     every_player_downs: Rule::Known(false),
     movement: Rule::Known(game_api::MovementRules::Simulation),
-    weapons: Rule::Known(()),
+    weapons: Rule::Known(WeaponRules::Simulation),
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,

@@ -2,10 +2,12 @@
 //! `PlayerMovement`: the shared player fields come from the match, the rest
 //! of Black Ops' player state lives in the player's game bytes.
 
+use fastfile_t5::size::{WEAPON_DEF, WEAPON_VARIANT_DEF};
+use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::movement::{
-    ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
-    MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWeapon, MoveWorld, PlayerMovement,
-    Stance, WaterSurface, buttons as intent,
+    ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
+    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWorld,
+    PlayerMovement, Stance, WaterSurface, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::events::event;
@@ -42,10 +44,20 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops' swimming: a player in deep water does not move",
             "Black Ops' water move from its executable"
         ),
-        Gap::MountedView | Gap::MountedSpeed => unknown!(
+        Gap::MountedView => unknown!(
             "t5.movement.mounted",
             "Black Ops' movement on turrets and vehicles",
             "Black Ops' turret and vehicle player moves from its executable"
+        ),
+        Gap::Shellshock => unknown!(
+            "t5.movement.shellshock",
+            "a shellshocked Black Ops player moves at full speed",
+            "the movement scale in Black Ops' shellshock files"
+        ),
+        Gap::Overheat => unknown!(
+            "t5.weapons.overheat",
+            "Black Ops' weapon heat: a weapon that overheats never does",
+            "Black Ops' weapon heat rules from its executable"
         ),
         Gap::Launched => unknown!(
             "t5.movement.launch",
@@ -73,6 +85,30 @@ fn events_unknown() -> &'static Unknown {
     )
 }
 
+fn fire_unknown() -> &'static Unknown {
+    unknown!(
+        "t5.weapons.fire",
+        "what a Black Ops shot does is not run: bullets, projectiles, thrown grenades, melee hits",
+        "Black Ops' server fire rules (bullets and spread, projectiles, grenades, melee) from its executable"
+    )
+}
+
+/// The weapon events whose effect the server makes.
+fn fires(event: i32) -> bool {
+    use movement_t5::events::event as ev;
+    matches!(
+        event,
+        ev::FIRE_WEAPON
+            | ev::FIRE_WEAPON_LASTSHOT
+            | ev::FIRE_WEAPON_LEFT
+            | ev::FIRE_WEAPON_LASTSHOT_LEFT
+            | ev::FIRE_MELEE
+            | ev::USE_OFFHAND
+            | ev::DETONATE
+            | ev::GRENADE_SUICIDE
+    )
+}
+
 fn water_unknown() -> &'static Unknown {
     unknown!(
         "t5.movement.water",
@@ -84,7 +120,7 @@ fn water_unknown() -> &'static Unknown {
 fn weapon_unknown() -> &'static Unknown {
     unknown!(
         "t5.movement.weapon",
-        "a held weapon without Black Ops' movement fields: the player does not move",
+        "a weapon without Black Ops' definition is read with every field zero",
         "the weapon's Black Ops weapon definition"
     )
 }
@@ -188,6 +224,15 @@ impl Bytes<'_> {
         self.word(&mut w, write);
         *value = f32::from_bits(w);
     }
+
+    fn flag(&mut self, value: &mut bool, write: bool) {
+        if write {
+            self.buf[self.at] = u8::from(*value);
+        } else {
+            *value = self.buf[self.at] != 0;
+        }
+        self.at += 1;
+    }
 }
 
 /// Black Ops' own player fields and the previous command's moves.
@@ -199,7 +244,7 @@ fn game_state(
 ) {
     let mut b = Bytes { buf, at: 0 };
     b.word(&mut ps.pm_flags, write);
-    b.word(&mut ps.other_flags, write);
+    b.word(&mut ps.weap_flags, write);
     b.i(&mut ps.pm_time, write);
     b.i(&mut ps.foliage_sound_time, write);
     b.i(&mut ps.ground_surface_type, write);
@@ -244,6 +289,48 @@ fn game_state(
     last.rightmove = (moves >> 8) as u8 as i8;
     b.word(&mut last.buttons.0[0], write);
     b.word(&mut last.buttons.0[1], write);
+
+    b.i(&mut ps.weapon_time, write);
+    b.i(&mut ps.weapon_delay, write);
+    b.i(&mut ps.weapon_time_left, write);
+    b.i(&mut ps.weapon_delay_left, write);
+    b.i(&mut ps.grenade_time_left, write);
+    b.i(&mut ps.throw_back_grenade_owner, write);
+    b.i(&mut ps.throw_back_grenade_time_left, write);
+    b.i(&mut ps.weapon_restrict_kick_time, write);
+    b.word(&mut ps.offhand_index, write);
+    b.word(&mut ps.last_weapon_alt_mode_switch, write);
+    b.word(&mut ps.melee_weapon, write);
+    b.i(&mut ps.weapon_shot_count, write);
+    b.i(&mut ps.weapon_shot_count_left, write);
+    b.i(&mut ps.ads_delay_time, write);
+    b.i(&mut ps.spread_override, write);
+    b.i(&mut ps.spread_override_state, write);
+    b.f(&mut ps.weapon_spin_lerp, write);
+    b.i(&mut ps.stack_fire_count, write);
+    b.f(&mut ps.hold_breath_scale, write);
+    b.i(&mut ps.hold_breath_timer, write);
+    b.f(&mut ps.melee_charge_yaw, write);
+    b.i(&mut ps.melee_charge_dist, write);
+    b.i(&mut ps.melee_charge_time, write);
+    b.word(&mut ps.weap_lock_flags, write);
+    b.word(&mut ps.forced_anim_weapon, write);
+    b.i(&mut ps.forced_anim_state, write);
+    b.word(&mut ps.forced_anim_prev_weapon, write);
+    b.word(&mut ps.weap_anim, write);
+    b.word(&mut ps.weap_anim_left, write);
+    b.i(&mut ps.offhand_throw, write);
+    b.i(&mut ps.ads_zoom_select, write);
+    b.i(&mut ps.ads_zoom_time, write);
+    b.flag(&mut ps.ads_zoom_latched, write);
+    b.word(&mut ps.other_flags, write);
+    for held in &mut ps.held_weapons {
+        b.word(&mut held.weapon, write);
+        b.i(&mut held.fuel, write);
+        b.flag(&mut held.needs_rechamber, write);
+        b.flag(&mut held.used_before, write);
+        b.flag(&mut held.dual_mag, write);
+    }
 }
 
 fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
@@ -289,12 +376,19 @@ fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut UserCmd) {
         _ => Stance::Stand,
     };
     player.sprinting = ps.pm_flags & pm_flags::SPRINTING != 0;
+    player.weapon = ps.weapon;
+    player.weapon_pos_frac = ps.weapon_pos_frac;
+    player.aim_spread_scale = ps.aim_spread_scale;
+    player.weapon_state = ps.weaponstate;
+    player.weap_anim = ps.weap_anim;
+    player.offhand = ps.offhand_index;
+    player.grenade_time_left = ps.grenade_time_left;
     game_state(ps, last, &mut player.game, true);
 }
 
 struct World<'a> {
     world: &'a dyn MoveWorld,
-    weapon: movement_t5::WeaponMove,
+    weapon_unknown: core::cell::Cell<bool>,
     water_unknown: core::cell::Cell<bool>,
 }
 
@@ -332,9 +426,36 @@ impl movement_t5::MoveWorld for World<'_> {
         !self.world.is_player(shared_entity(entity))
     }
 
-    /// Black Ops' movement only reads the held weapon, fetched before the move.
-    fn weapon(&self, _weapon: u32) -> movement_t5::WeaponMove {
-        self.weapon
+    fn weapon(&self, weapon: u32) -> movement_t5::Weapon<'_> {
+        static ZERO_DEF: [u8; WEAPON_DEF] = [0; WEAPON_DEF];
+        static ZERO_VARIANT: [u8; WEAPON_VARIANT_DEF] = [0; WEAPON_VARIANT_DEF];
+        let found = self.world.weapon(weapon).and_then(|w| {
+            Some(movement_t5::Weapon {
+                def: WeaponDefView::new(&w.def, &w.variant)?,
+                ammo_index: w.ammo_index,
+                clip_index: w.clip_index,
+                alt_weapon: w.alt_weapon,
+                dual_wield_weapon: w.dual_wield_weapon,
+                named_anims: w.named_anims,
+                name: &w.name,
+            })
+        });
+        found.unwrap_or_else(|| {
+            self.weapon_unknown.set(true);
+            movement_t5::Weapon {
+                def: WeaponDefView::new(&ZERO_DEF, &ZERO_VARIANT).expect("full-size blocks"),
+                ammo_index: 0,
+                clip_index: 0,
+                alt_weapon: 0,
+                dual_wield_weapon: 0,
+                named_anims: 0,
+                name: "",
+            }
+        })
+    }
+
+    fn weapon_exists(&self, weapon: u32) -> bool {
+        self.world.weapon(weapon).is_some()
     }
 
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
@@ -349,22 +470,6 @@ impl movement_t5::MoveWorld for World<'_> {
     }
 }
 
-fn weapon_move(w: MoveWeapon) -> movement_t5::WeaponMove {
-    movement_t5::WeaponMove {
-        move_speed_scale: w.move_speed_scale,
-        ads_move_speed_scale: w.ads_move_speed_scale,
-        sprint_duration_scale: w.sprint_duration_scale,
-        sprint_scale: w.sprint_scale,
-        ducked_sprint_scale: w.ducked_sprint_scale,
-        dtp_scale: w.dtp_scale,
-        blocks_prone: w.blocks_prone,
-        freeze_movement_when_firing: w.freeze_movement_when_firing,
-        dual_wield: w.dual_wield,
-        ads_overlay: w.ads_overlay_reticle,
-        offhand_slot: w.offhand_slot,
-    }
-}
-
 impl PlayerMovement for T5Movement {
     fn pmove(
         &self,
@@ -374,12 +479,6 @@ impl PlayerMovement for T5Movement {
         world: &dyn MoveWorld,
         context: MoveContext,
     ) -> MoveOutcome {
-        let Some(weapon) = world.weapon(player.weapon) else {
-            return MoveOutcome {
-                gaps: vec![weapon_unknown()],
-                ..MoveOutcome::default()
-            };
-        };
         let (mut ps, mut last) = unpack(player);
         if player.frozen {
             ps.pm_flags |= pm_flags::FROZEN;
@@ -394,8 +493,13 @@ impl PlayerMovement for T5Movement {
             server_time: cmd.server_time,
             buttons,
             angles: cmd.angles,
+            weapon: cmd.weapon,
+            offhand_index: cmd.offhand,
+            alt_mode_weapon: cmd.alt_weapon,
             forwardmove: cmd.forwardmove,
             rightmove: cmd.rightmove,
+            melee_charge_yaw: cmd.melee_charge_yaw,
+            melee_charge_dist: cmd.melee_charge_dist,
         };
         let mask = if ps.pm_type >= pm_type::DEAD {
             DEAD_CLIP_MASK
@@ -404,9 +508,17 @@ impl PlayerMovement for T5Movement {
         };
         let adapter = World {
             world,
-            weapon: weapon_move(weapon),
+            weapon_unknown: core::cell::Cell::new(false),
             water_unknown: core::cell::Cell::new(false),
         };
+        let held: [movement_t5::HeldRounds; HELD_WEAPONS] = core::array::from_fn(|i| {
+            (
+                player.held[i].weapon,
+                player.held[i].clip,
+                player.held[i].stock,
+            )
+        });
+        movement_t5::load_held(&mut ps, &adapter, &held);
         let mut outcome = MoveOutcome::default();
         {
             let mut pm = Pm::new(&mut ps, t5cmd, last, mask, &adapter);
@@ -428,10 +540,30 @@ impl PlayerMovement for T5Movement {
             if !outcome.signals.is_empty() {
                 outcome.gaps.push(events_unknown());
             }
+            if outcome
+                .signals
+                .iter()
+                .any(|s| matches!(s, MoveSignal::Event { event, .. } if fires(*event)))
+            {
+                outcome.gaps.push(fire_unknown());
+            }
             last = pm.cmd;
         }
         if adapter.water_unknown.get() {
             outcome.gaps.push(water_unknown());
+        }
+        if adapter.weapon_unknown.get() {
+            outcome.gaps.push(weapon_unknown());
+        }
+        for (slot, (weapon, clip, stock)) in movement_t5::held_rounds(&ps, &adapter)
+            .into_iter()
+            .enumerate()
+        {
+            player.held[slot] = HeldWeapon {
+                weapon,
+                clip,
+                stock,
+            };
         }
         pack(player, &mut ps, &mut last);
         outcome
@@ -472,10 +604,10 @@ impl PlayerMovement for T5Movement {
             MoveRestriction::Crouch => (pm_flags::NO_CROUCH, false),
             MoveRestriction::Prone => (pm_flags::NO_PRONE, false),
             MoveRestriction::Lean => (pm_flags::NO_LEAN, false),
-            MoveRestriction::Ads => (movement_t5::state::other_flags::NO_ADS, true),
+            MoveRestriction::Ads => (movement_t5::state::weap_flags::NO_ADS, true),
         };
         let word = if in_other {
-            &mut ps.other_flags
+            &mut ps.weap_flags
         } else {
             &mut ps.pm_flags
         };

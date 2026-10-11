@@ -489,14 +489,6 @@ pub const WEAPON_DEF: usize = 2056;
 
 pub const WEAPON_MOVE_SPEED_SCALE_OFF: usize = 0x4a8;
 pub const WEAPON_ADS_MOVE_SPEED_SCALE_OFF: usize = 0x4ac;
-pub const WEAPON_SPRINT_DURATION_SCALE_OFF: usize = 0x4b0;
-
-pub const WEAPON_OFFHAND_SLOT_OFF: usize = 0x6c;
-pub const WEAPON_DUCKED_SPRINT_SCALE_OFF: usize = 0x208;
-pub const WEAPON_SPRINT_SCALE_OFF: usize = 0x22c;
-pub const WEAPON_DTP_SCALE_OFF: usize = 0x268;
-pub const WEAPON_BLOCKS_PRONE_OFF: usize = 0x5a8;
-pub const WEAPON_FREEZE_MOVEMENT_WHEN_FIRING_OFF: usize = 0x640;
 
 pub const WEAPON_TYPE_OFF: usize = 0x1c;
 
@@ -526,6 +518,9 @@ const _: () = assert!(WEAPON_RAISE_TIME_OFF == WEAPON_DROP_TIME_OFF + 4);
 pub const WEAPON_BOLT_ACTION_OFF: usize = 0x54f;
 
 pub const WEAPON_VARIANT_CLIP_SIZE_OFF: usize = 0x20;
+
+pub const WEAPON_VARIANT_AMMO_NAME_OFF: usize = 0x40;
+pub const WEAPON_VARIANT_CLIP_NAME_OFF: usize = 0x48;
 
 pub const WEAPON_VARIANT_RELOAD_TIME_OFF: usize = 0x24;
 pub const WEAPON_VARIANT_RELOAD_EMPTY_TIME_OFF: usize = 0x28;

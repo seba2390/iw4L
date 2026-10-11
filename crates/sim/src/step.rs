@@ -614,11 +614,14 @@ fn run_players_system(ecs: &mut World) {
             }
 
             let weapons = world.bootstrap_ref().mode.map(|mode| mode.weapons);
+            let game_weapons = weapons == Some(game_api::Rule::Known(game_api::WeaponRules::Game));
             let shots = match weapons {
                 Some(game_api::Rule::Unknown(gap)) => {
                     world.report_game_gap(gap);
                     Vec::new()
                 }
+                // The game's movement ran its weapon rules.
+                _ if game_weapons => Vec::new(),
                 _ => advance_weapon_command(
                     &mut world,
                     tick,
@@ -655,7 +658,9 @@ fn run_players_system(ecs: &mut World) {
                 let emissions = phase_emit(&world, core::slice::from_ref(&shot));
                 phase_trace(&mut world, tick, &emissions);
             }
-            crate::equipment::phase_offhand(&mut world, tick, &[(*id, cmd)]);
+            if !game_weapons {
+                crate::equipment::phase_offhand(&mut world, tick, &[(*id, cmd)]);
+            }
             world.set_old_cmd(*id, cmd.buttons, cmd.angles);
             consumed.push(crate::PlayerCommand {
                 command: cmd,

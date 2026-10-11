@@ -5,6 +5,7 @@ mod dive;
 pub mod events;
 mod footsteps;
 mod ground;
+mod inventory;
 mod ladder;
 pub mod math;
 mod moves;
@@ -20,15 +21,17 @@ pub mod state;
 pub mod tuning;
 mod view_angles;
 mod view_height;
+pub mod weapon;
 mod world;
 
 pub use events::MoveEvent;
+pub use inventory::{HeldRounds, held_rounds, load_held};
 pub use physics::effective_stance;
 pub use pml::Pml;
 pub use pmove::{MoveOutput, pmove};
 pub use state::{Buttons, PlayerState, UserCmd};
 pub use world::{
-    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Trace, WeaponMove,
+    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Trace, Weapon,
 };
 
 /// A part of Black Ops' movement the player reached that IW4L does not run.
@@ -39,10 +42,12 @@ pub enum Gap {
     Mantle = 2,
     Swim = 4,
     MountedView = 8,
-    MountedSpeed = 16,
+    Shellshock = 16,
     Launched = 32,
     AnimLock = 64,
     SpecialMove = 128,
+    /// A weapon that overheats: its heat is not kept.
+    Overheat = 256,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -198,7 +203,8 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             && self
                 .world
                 .weapon(self.ps.weapon)
-                .freeze_movement_when_firing
+                .def
+                .freeze_movement_when_firing()
     }
 
     /// Leaves aim down the sights.
@@ -221,10 +227,11 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::Mantle,
             Gap::Swim,
             Gap::MountedView,
-            Gap::MountedSpeed,
+            Gap::Shellshock,
             Gap::Launched,
             Gap::AnimLock,
             Gap::SpecialMove,
+            Gap::Overheat,
         ]
         .into_iter()
         .filter(|g| self.gaps & *g as u32 != 0)

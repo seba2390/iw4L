@@ -412,7 +412,6 @@ dependencies = [
  "fastfile_t5",
  "fastfile_t6",
  "fx_iw4",
- "game_api",
  "gamemode_iw4",
  "serde",
  "serde_json",
@@ -3263,6 +3262,7 @@ name = "game_t5"
 version = "0.1.0"
 dependencies = [
  "asset_core",
+ "fastfile_t5",
  "game_api",
  "gsc",
  "menu_expr",
@@ -4504,6 +4504,7 @@ dependencies = [
 name = "movement_t5"
 version = "0.1.0"
 dependencies = [
+ "fastfile_t5",
  "libm",
 ]
 

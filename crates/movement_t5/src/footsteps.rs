@@ -42,15 +42,15 @@ fn advance_bob<W: MoveWorld>(pm: &Pm<'_, W>, pml: &Pml, old: i32, scale: f32) ->
     let ps = &*pm.ps;
     let msec = pml.msec as f32;
     let f = if ps.pm_flags & pm_flags::DIVING != 0 {
-        msec * pm.world.weapon(ps.weapon).dtp_scale
+        msec * pm.world.weapon(ps.weapon).def.dtp_scale()
     } else if ps.pm_flags & pm_flags::SPRINTING != 0
         && ps.view_height_target == crate::state::view_height::CROUCH
     {
-        msec * pm.world.weapon(ps.weapon).ducked_sprint_scale
+        msec * pm.world.weapon(ps.weapon).def.ducked_sprint_scale()
     } else if ps.pm_flags & pm_flags::SPRINTING == 0 && ps.water_level < 3 {
         msec
     } else {
-        msec * pm.world.weapon(ps.weapon).sprint_scale
+        msec * pm.world.weapon(ps.weapon).def.sprint_scale()
     };
     ((f * scale + old as f32) as i32) & 0xff
 }
@@ -126,11 +126,14 @@ fn bob_max_speed<W: MoveWorld>(pm: &Pm<'_, W>, ads: bool, sprint: bool) -> f32 {
     }
     if ps.weapon != 0 {
         let weapon = pm.world.weapon(ps.weapon);
-        if weapon.move_speed_scale > 0.0 && ps.pm_flags & pm_flags::SIGHT_AIMING == 0 {
-            speed *=
-                crate::physics::weapon_move_speed_scale(ps, pm.zombiemode, weapon.move_speed_scale);
-        } else if weapon.ads_move_speed_scale > 0.0 {
-            speed *= weapon.ads_move_speed_scale;
+        let (move_scale, ads_scale) = (
+            weapon.def.move_speed_scale(),
+            weapon.def.ads_move_speed_scale(),
+        );
+        if move_scale > 0.0 && ps.pm_flags & pm_flags::SIGHT_AIMING == 0 {
+            speed *= crate::physics::weapon_move_speed_scale(ps, pm.zombiemode, move_scale);
+        } else if ads_scale > 0.0 {
+            speed *= ads_scale;
         }
     }
     stance_speed_scale(ps, pm.cmd.server_time) * speed * ps.move_speed_scale_multiplier

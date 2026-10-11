@@ -31,3 +31,6 @@ pub const SPRINT_SPEED: u32 = SPRINT_LEVEL;
 pub const SPRINT_UNLIMITED: u32 = 0xc;
 pub const FALL_DAMAGE: u32 = 0x3000;
 pub const ENDURANCE: u32 = 0x300_0000;
+pub const DEADSHOT: u32 = 0xc00_0000;
+pub const FAST_RELOAD: u32 = 0xc0;
+pub const RATE_OF_FIRE: u32 = 0x30_0000;
