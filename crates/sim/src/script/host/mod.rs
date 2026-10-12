@@ -20,6 +20,7 @@ pub mod presence;
 pub mod registry;
 pub mod restart;
 mod sentry_placement;
+pub mod sightings;
 pub mod spectators;
 pub(crate) mod t6_gametype;
 pub(crate) mod t6_zombies;
