@@ -54,6 +54,9 @@ pub mod pm_flags {
 pub mod e_flags {
     pub const CROUCHING: u32 = 0x4;
     pub const PRONE: u32 = 0x8;
+    /// The player is firing: other clients sound an automatic weapon's
+    /// shots while it is set.
+    pub const FIRING: u32 = 0x40;
     pub const TURRET_PRONE: u32 = 0x100;
     pub const TURRET_CROUCH: u32 = 0x200;
     pub const TURRET: u32 = TURRET_PRONE | TURRET_CROUCH;
