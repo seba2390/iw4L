@@ -6,7 +6,7 @@
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
     BulletHitType, BulletImpact, BulletTrace, FireDamage, FireEntity, FireEntityKind, FireWorld,
-    NotifyArg,
+    NotifyArg, WeaponEvent,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
@@ -232,6 +232,9 @@ pub(crate) fn server_events(
         let &MoveSignal::Event { event, parm } = signal else {
             continue;
         };
+        if let Some(sent) = weapon_event(event) {
+            world.weapon_event(ps.client_num, ps.weapon, sent);
+        }
         match event {
             ev::FIRE_WEAPON
             | ev::FIRE_WEAPON_LASTSHOT
@@ -284,6 +287,40 @@ pub(crate) fn server_events(
     gaps.sort_by_key(|gap| gap.id);
     gaps.dedup_by_key(|gap| gap.id);
     gaps
+}
+
+/// The weapon events of a player's movement every client hears: the ones
+/// Black Ops' client event handler plays a weapon sound for.
+fn weapon_event(event: i32) -> Option<WeaponEvent> {
+    Some(match event {
+        ev::FIRE_WEAPON => WeaponEvent::Fire {
+            left: false,
+            last_shot: false,
+        },
+        ev::FIRE_WEAPON_LASTSHOT => WeaponEvent::Fire {
+            left: false,
+            last_shot: true,
+        },
+        ev::FIRE_WEAPON_LEFT => WeaponEvent::Fire {
+            left: true,
+            last_shot: false,
+        },
+        ev::FIRE_WEAPON_LASTSHOT_LEFT => WeaponEvent::Fire {
+            left: true,
+            last_shot: true,
+        },
+        ev::RELOAD => WeaponEvent::Reload,
+        ev::RELOAD_FROM_EMPTY => WeaponEvent::ReloadFromEmpty,
+        ev::RELOAD_START => WeaponEvent::ReloadStart,
+        ev::RELOAD_END => WeaponEvent::ReloadEnd,
+        ev::RAISE_WEAPON => WeaponEvent::Raise,
+        ev::FIRST_RAISE_WEAPON => WeaponEvent::FirstRaise,
+        ev::PUTAWAY_WEAPON => WeaponEvent::Putaway,
+        ev::WEAPON_ALT => WeaponEvent::Alt,
+        ev::PULLBACK_WEAPON => WeaponEvent::Pullback,
+        ev::RECHAMBER_WEAPON => WeaponEvent::Rechamber,
+        _ => return None,
+    })
 }
 
 /// The time a shot is fired at: the command's, no more than a second behind

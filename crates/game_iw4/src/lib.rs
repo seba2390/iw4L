@@ -69,6 +69,7 @@ const MODE: ModeRules = ModeRules {
         zombies: false,
         font_scales_sent: None,
     },
+    client_fire: None,
 };
 
 impl game_api::GameVision for Iw4 {
