@@ -149,6 +149,7 @@ pub mod def {
     pub const AIM_DOWN_SIGHT: u32 = 1592;
     pub const RECHAMBER_WHILE_ADS: u32 = 1593;
     pub const COOK_OFF_HOLD: u32 = 1604;
+    pub const CLIP_ONLY: u32 = 1605;
     pub const ADS_FIRE_ONLY: u32 = 1608;
     pub const DUAL_WIELD: u32 = 1615;
     pub const RETRIEVABLE: u32 = 1618;

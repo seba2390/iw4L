@@ -335,4 +335,18 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(can_see(world, id, target)?.into()))
     });
     registry.register(Method, "melee", melee);
+    registry.register(Method, "geteye", |world, receiver, _| {
+        let id = entity_id(world, receiver)?;
+        if !sentient(world, receiver) {
+            let classname = world
+                .resource::<RoundScript>()
+                .entities
+                .get(&id)
+                .map_or_else(String::new, |entity| entity.classname.to_string());
+            return Err(format!(
+                "getEye must be called on an AI or player, not on a '{classname}'"
+            ));
+        }
+        Ok(Value::Vector(eye(world, receiver)?))
+    });
 }

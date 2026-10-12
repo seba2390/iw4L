@@ -99,6 +99,26 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     ] {
         registry.register(Method, name, if on { invulnerable } else { vulnerable });
     }
+    registry.register(Method, "issprinting", |world, receiver, _| {
+        let id = ClientId(
+            player(world, receiver)
+                .map_err(|_| "IsSprinting can only be called on a player.".to_owned())?,
+        );
+        Ok(Value::Int(
+            FrameWorld::from_world(world)
+                .player(id)
+                .is_some_and(|ps| {
+                    ps.last_sprint_start != 0 && ps.last_sprint_end < ps.last_sprint_start
+                })
+                .into(),
+        ))
+    });
+    registry.register(Method, "isonladder", |world, receiver, _| {
+        pm_flag(world, receiver, LADDER)
+    });
+    registry.register(Method, "ismantling", |world, receiver, _| {
+        pm_flag(world, receiver, MANTLING)
+    });
     registry.register(Method, "startfadingblur", |world, receiver, args| {
         let blur = float(args, 0)?;
         let seconds = float(args, 1)?;
@@ -114,6 +134,22 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             "t6.player.blur: the client's blur to {blur} over {seconds}s is not drawn"
         ))
     });
+}
+
+/// The player-state flag bits the engine reads for these queries.
+const MANTLING: u32 = 2;
+const LADDER: u32 = 3;
+
+fn pm_flag(world: &mut World, receiver: &Value, bit: u32) -> Result<Value, String> {
+    let id = ClientId(
+        player(world, receiver)
+            .map_err(|_| "setstat: entity must be a player entity".to_owned())?,
+    );
+    Ok(Value::Int(
+        FrameWorld::from_world(world)
+            .player(id)
+            .map_or(0, |ps| (ps.pm_flags >> bit & 1) as i32),
+    ))
 }
 
 fn invulnerable(world: &mut World, receiver: &Value, _: &[Value]) -> Result<Value, String> {
