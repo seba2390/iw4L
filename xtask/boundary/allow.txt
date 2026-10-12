@@ -57,7 +57,7 @@ pattern crates/asset_anim/src/xanim_catalog.rs asset_iw4:: 1
 pattern crates/asset_anim/src/xanim_catalog.rs fastfile_iw4:: 2
 pattern crates/asset_anim/src/xanim_catalog.rs fastfile_iw5:: 10
 pattern crates/asset_anim/src/xanim_catalog.rs fastfile_t5:: 18
-pattern crates/asset_anim/src/xanim_catalog.rs fastfile_t6:: 10
+pattern crates/asset_anim/src/xanim_catalog.rs fastfile_t6:: 9
 pattern crates/asset_audio/src/ent_channel.rs asset_iw4:: 1
 pattern crates/asset_audio/src/playback_policy/compiler.rs AssetNamespace::<game> 4
 pattern crates/asset_audio/src/playback_policy/compiler/common.rs asset_iw4:: 1

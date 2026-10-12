@@ -533,6 +533,23 @@ fn anim_clip(world: &mut World, args: &[Value], index: usize) -> Result<Arc<Anim
         .ok_or_else(|| format!("animation '{name}' is not loaded in the simulation"))
 }
 
+/// Where a clip aligned to an origin and angles starts: its root delta at
+/// its first frame, in that frame.
+fn start_pose(world: &mut World, args: &[Value]) -> Result<([f32; 3], [f32; 3]), String> {
+    let origin = vector(args, 0)?;
+    let angles = vector(args, 1)?;
+    let clip = anim_clip(world, args, 2)?;
+    let axis = math_iw4::angles_to_axis(angles);
+    let trans = clip.abs_delta_trans(0.0);
+    let start = std::array::from_fn(|i| {
+        origin[i] + trans[0] * axis[0][i] + trans[1] * axis[1][i] + trans[2] * axis[2][i]
+    });
+    let (sin, cos) = clip.abs_delta_yaw(0.0).to_radians().sin_cos();
+    let rotation = [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]];
+    let angles = math_iw4::axis_to_angles(math_iw4::matrix_multiply(rotation, axis));
+    Ok((start, angles))
+}
+
 /// The scripted clip's anchor, while one plays.
 pub(super) fn scripted(world: &mut World, id: u64) -> bool {
     anim_mut(world, id)
@@ -555,6 +572,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.on_tick(advance);
+    registry.register(Function, "getstartorigin", |world, _, args| {
+        Ok(Value::Vector(start_pose(world, args)?.0))
+    });
+    registry.register(Function, "getstartangles", |world, _, args| {
+        Ok(Value::Vector(start_pose(world, args)?.1))
+    });
     registry.register(Method, "setanimstatefromasd", |world, receiver, args| {
         const BUILTIN: &str = "ActorCmd_SetAnimStateFromASD";
         let id = actor(world, receiver)?;
