@@ -1798,7 +1798,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "cameraactivate"),
         (Method, "setblur"),
         (Method, "isinvehicle"),
-        (Method, "isthrowinggrenade"),
         (Method, "setvisibletoplayer"),
         (Method, "setinvisibletoall"),
         (Method, "setvisibletoall"),
@@ -1807,6 +1806,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             registry.register(namespace, name, native);
         }
     }
+    // gscm_isthrowinggrenade and gscm_isswitchingweapons read the player's
+    // weapon state: an offhand throw, or raising or dropping a weapon. The
+    // weapon state is the lent one (`t6.movement.player`).
+    registry.register(Method, "isthrowinggrenade", |world, receiver, _| {
+        let id = crate::ClientId(super::t5::player_id(world, receiver)?);
+        let activity =
+            crate::script_player::weapon_activity(&crate::frame::FrameWorld::from_world(world), id);
+        Ok(Value::Int(activity.throwing_grenade.into()))
+    });
+    registry.register(Method, "isswitchingweapons", |world, receiver, _| {
+        let id = crate::ClientId(super::t5::player_id(world, receiver)?);
+        let activity =
+            crate::script_player::weapon_activity(&crate::frame::FrameWorld::from_world(world), id);
+        Ok(Value::Int(activity.switching.into()))
+    });
     // gscm_setinvisibletoplayer: hides the entity from the player, or shows
     // it when a second argument is 0.
     registry.register(Method, "setinvisibletoplayer", |world, receiver, args| {
@@ -1932,9 +1946,9 @@ fn spawn_trigger(world: &mut World, classname: &str, args: &[Value]) -> Result<V
     Ok(Value::Object(id))
 }
 
-/// A script mover's bounds once it carries `model` (FUN_006269b0 after
-/// G_SetModel): its DObj's bounds, which start as (-4,-4,0)..(4,4,10) and
-/// take in the model's own (FUN_00783660). None for anything else, a brush
+/// A script mover's bounds once it carries `model` (the engine's `setmodel`
+/// after the model change): its DObj's bounds, which start as
+/// (-4,-4,0)..(4,4,10) and take in the model's own. None for anything else, a brush
 /// model, or a model the map does not carry.
 fn script_mover_bounds(world: &mut World, id: u64, model: &str) -> Option<([f32; 3], [f32; 3])> {
     let runtime = world.resource::<RoundScript>();
