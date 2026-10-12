@@ -157,6 +157,8 @@ pub struct ScriptControls {
     pub offhands_disabled: bool,
     pub switch_disabled: bool,
     pub jump_disabled: bool,
+    /// A script took melee (Black Ops 2's `allowmelee`).
+    pub melee_disabled: bool,
     pub usability_disabled: bool,
     pub linked: bool,
     pub switch_to: u32,
