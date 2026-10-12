@@ -56,6 +56,8 @@ pub mod def {
     pub const FIRE_TYPE: u32 = 48;
     pub const OFFHAND_CLASS: u32 = 96;
     pub const OFFHAND_SLOT: u32 = 100;
+    pub const TANK_LIFE_TIME: u32 = 92;
+    pub const WORLD_MODEL_COUNT: u32 = 16;
     pub const PICKUP_SOUND: u32 = 148;
     pub const PICKUP_SOUND_PLAYER: u32 = 152;
     pub const PULLBACK_SOUND: u32 = 168;
