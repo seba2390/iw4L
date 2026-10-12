@@ -1,23 +1,42 @@
 //! The test player (`IW4L_TEST_PLAYER=1`): drives the first player who is
 //! not a bot, for headless runs. It aims at the nearest living actor it can
 //! see, fires (pressing and letting go each tick, so a semi-automatic gun
-//! fires again), reloads an empty clip and backs away from an actor that is
-//! close. Every five seconds it logs the round, its score, kills, health,
-//! the actors alive, its weapon and ammo, and what its aim lines ended on.
-//! It only presses buttons; the game decides the rest.
+//! fires again), knifes an actor within melee reach, reloads an empty clip
+//! and backs away when actors crowd it. Every five seconds it logs
+//! the round, its score, kills, health, whether it is down, the actors
+//! alive, its weapon and ammo, and what its aim lines ended on. It only
+//! presses buttons; the game decides the rest.
 //!
 //! `IW4L_TEST_PLAYER=rounds` is the rounds test: the player also asks for
 //! god mode once (cheats must be on) and for an ammo resupply whenever his
 //! gun is empty, as the `god` and `give ammo` console commands do, so he
 //! lives and fights through the rounds.
+//!
+//! `IW4L_TEST_PLAYER=use` fights as the rounds test does and, once the
+//! scripts have set the map up, uses one of each thing they offer, in this
+//! order — a wall weapon, a door, the box, debris, the power switch — each
+//! once he can pay for it and stand by it inside a zone the scripts have
+//! enabled (one behind a closed door waits its turn): he is moved in front of it (as `setviewpos` does), looks at
+//! its middle, holds use, and two and a half seconds later logs what the
+//! game did (score, weapon, whether the trigger is gone, which use triggers
+//! the scripts made there). Once the box has taken its price he waits for
+//! its weapon to rise and holds use again to take it. Then he goes back and
+//! fights on.
+//!
+//! `IW4L_TEST_PLAYER=down` is the go-down test: no god mode, no fighting;
+//! he stands where he spawned until the zombies reach him and down him.
+//! Each change of his life state and last stand is logged, so a run shows
+//! going down and what the game does next.
 
 use bevy::prelude::*;
 use net::{
     ActionRequestIds, AuthorityClock, AuthorityWorld, ClientActionInbox, ClientCommandInbox,
     look_angles_from_degrees,
 };
-use sim::script::ScriptOwner;
-use sim::{BulletTraceQuery, ClientAction, ClientLifecycle, ColliderId, Tick, TraceOutcome};
+use sim::script::{ScriptOwner, UseKind, UseSite};
+use sim::{
+    BulletTraceQuery, ClientAction, ClientId, ClientLifecycle, ColliderId, Tick, TraceOutcome,
+};
 
 use crate::motor::{UserCmd, buttons};
 use crate::roster::BotRoster;
@@ -29,31 +48,135 @@ const AIM_HEIGHT: f32 = 48.0;
 const HIT_SLACK: f32 = 32.0;
 /// How many of the nearest actors it tries to see each tick.
 const SIGHT_CANDIDATES: usize = 4;
-/// It backs away from an actor nearer than this.
+/// It backs away when this many actors are nearer than `BACK_OFF`; one
+/// alone it knifes.
 const BACK_OFF: f32 = 90.0;
+const SWARM: usize = 2;
+/// It knifes an actor whose aim point is this near its eye: Black Ops 2's
+/// `player_zombieMeleeRange` default.
+const KNIFE_REACH: f32 = 85.0;
 const LOG_PERIOD_MS: i32 = 5000;
 /// The rounds test asks for ammo at most this often.
 const RESUPPLY_PERIOD_MS: i32 = 2000;
+/// The use test starts this long after the player first lives, once the
+/// scripts have made their unitrigger stubs.
+const USE_START_MS: i32 = 10_000;
+/// A kind no site of which is found by this long after the start is dropped.
+const USE_GIVE_UP_MS: i32 = 60_000;
+/// How often it looks for a site it can pay for.
+const TRY_PERIOD_MS: i32 = 1000;
+/// How long it waits after being moved, holds use, and watches after.
+const ARRIVE_MS: i32 = 500;
+const HOLD_MS: i32 = 600;
+const WATCH_MS: i32 = 2500;
+/// After paying for the box he waits this long for its weapon to rise, then
+/// holds use again to take it.
+const BOX_SPIN_MS: i32 = 6000;
+/// How far from a site's middle it would stand, and the room it keeps from
+/// a wall behind it.
+const STAND_OFF: f32 = 40.0;
+const STAND_ROOM: f32 = 20.0;
+/// How far from a site's middle a use trigger the scripts made counts as
+/// that site's.
+const OFFER_REACH: f32 = 96.0;
+/// Path nodes this near a site (flat) are tried as places to come from, the
+/// nearest this many.
+const NODE_REACH: f32 = 256.0;
+const NODE_CANDIDATES: usize = 16;
+/// It walks toward a site this high above the floor (over steps).
+const WAIST_HEIGHT: f32 = 32.0;
+/// The eye height it plans with before it stands there.
+const EYE_HEIGHT: f32 = 60.0;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Mode {
+    #[default]
+    Off,
+    Fight,
+    Rounds,
+    Use,
+    Down,
+}
+
+impl Mode {
+    fn from_env() -> Self {
+        match std::env::var("IW4L_TEST_PLAYER").as_deref() {
+            Ok("1") => Self::Fight,
+            Ok("rounds") => Self::Rounds,
+            Ok("use") => Self::Use,
+            Ok("down") => Self::Down,
+            _ => Self::Off,
+        }
+    }
+
+    /// God mode and ammo resupplies.
+    fn cheats(self) -> bool {
+        matches!(self, Self::Rounds | Self::Use)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Phase {
+    Arriving,
+    Holding,
+    Watching,
+    Returning,
+}
+
+#[derive(Clone, Debug)]
+struct Scenario {
+    site: UseSite,
+    center: [f32; 3],
+    stand: [f32; 3],
+    home: [f32; 3],
+    home_angles: [f32; 3],
+    phase: Phase,
+    until_ms: i32,
+    score: i32,
+    weapon: String,
+    offered: Vec<String>,
+    /// How many times he has held use there.
+    presses: u8,
+}
 
 #[derive(Resource, Default)]
 pub(crate) struct TestPlayer {
-    enabled: bool,
-    rounds: bool,
+    mode: Mode,
     god_asked: bool,
     next_resupply_ms: i32,
     pressed: bool,
     next_log_ms: i32,
     shots: u32,
+    knifes: u32,
     /// What the sight lines to targets ended on: nothing, a model, the world.
     lines: [u32; 3],
+    /// When the player first lived.
+    alive_since_ms: Option<i32>,
+    /// The use test's kinds still to try.
+    pending: Vec<UseKind>,
+    scenario: Option<Scenario>,
+    sites_logged: bool,
+    /// Kinds already logged as waiting for their zone.
+    deferred: Vec<UseKind>,
+    /// The nearest an actor came to the eye since the last log line.
+    nearest: Option<f32>,
+    /// When the use test next looks for a site it can pay for.
+    next_try_ms: i32,
+    /// The down test's last life state and last stand seen.
+    seen: Option<(ClientLifecycle, i32, Option<i32>)>,
 }
 
 impl TestPlayer {
     pub(crate) fn from_env() -> Self {
         Self {
-            enabled: std::env::var("IW4L_TEST_PLAYER")
-                .is_ok_and(|value| value == "1" || value == "rounds"),
-            rounds: std::env::var("IW4L_TEST_PLAYER").is_ok_and(|value| value == "rounds"),
+            mode: Mode::from_env(),
+            pending: vec![
+                UseKind::WallBuy,
+                UseKind::Door,
+                UseKind::Box,
+                UseKind::Debris,
+                UseKind::Power,
+            ],
             ..Self::default()
         }
     }
@@ -78,6 +201,176 @@ fn look(from: [f32; 3], to: [f32; 3]) -> [f32; 3] {
     ]
 }
 
+fn fmt_point(p: [f32; 3]) -> String {
+    format!("({:.0} {:.0} {:.0})", p[0], p[1], p[2])
+}
+
+/// How far a line from `start` toward `end` runs before it meets the world.
+fn clear_run(world: &sim::SimWorld, id: ClientId, start: [f32; 3], end: [f32; 3]) -> f32 {
+    let full = distance(start, end);
+    match world.sensor_trace(BulletTraceQuery {
+        start,
+        end,
+        mask: world.bullet_mask(),
+        ignore: Some(id),
+        ignore_hit: None,
+        ignore_model: None,
+    }) {
+        TraceOutcome::Miss { .. } => full,
+        TraceOutcome::Hit { end: hit, .. } => distance(start, hit),
+        TraceOutcome::StartSolid { .. } | TraceOutcome::Invalid { .. } => 0.0,
+    }
+}
+
+/// Where to stand to use a site: the nearest path node (a place a player
+/// may stand) that sees the site's middle, moved toward it until it is
+/// `STAND_OFF` away, on the floor below, inside a zone the scripts have
+/// enabled (anywhere else Black Ops 2 kills him as out of the playable
+/// area). None when there is no such place.
+fn stand_point(
+    world: &sim::SimWorld,
+    id: ClientId,
+    site: &UseSite,
+    center: [f32; 3],
+) -> Option<[f32; 3]> {
+    // A trigger brush reaches out from its middle; a line to its middle
+    // may end on its edge (a door's own brush) and still see it.
+    let slack = site
+        .brush
+        .and_then(|n| world.clip_cmodels().models.get(n as usize))
+        .map_or(0.0, |model| {
+            (0..3)
+                .map(|i| (model.maxs[i] - model.mins[i]) * 0.5)
+                .fold(0.0, f32::max)
+        })
+        + STAND_ROOM;
+    let mut nodes: Vec<[f32; 3]> = world
+        .path_node_origins()
+        .into_iter()
+        .filter(|node| flat_distance(*node, center) <= NODE_REACH)
+        .collect();
+    nodes.sort_by(|a, b| distance(*a, center).total_cmp(&distance(*b, center)));
+    for node in nodes.into_iter().take(NODE_CANDIDATES) {
+        let eye = [node[0], node[1], node[2] + EYE_HEIGHT];
+        let to_center = distance(eye, center);
+        if clear_run(world, id, eye, center) + slack < to_center {
+            continue;
+        }
+        let flat = flat_distance(node, center);
+        let step = (flat - STAND_OFF).max(0.0);
+        let towards = [
+            (center[0] - node[0]) / flat.max(1.0),
+            (center[1] - node[1]) / flat.max(1.0),
+        ];
+        let waist = node[2] + WAIST_HEIGHT;
+        let reach = clear_run(
+            world,
+            id,
+            [node[0], node[1], waist],
+            [
+                node[0] + towards[0] * (step + STAND_ROOM),
+                node[1] + towards[1] * (step + STAND_ROOM),
+                waist,
+            ],
+        );
+        let step = step.min((reach - STAND_ROOM).max(0.0));
+        let above = [
+            node[0] + towards[0] * step,
+            node[1] + towards[1] * step,
+            waist,
+        ];
+        let drop = clear_run(
+            world,
+            id,
+            above,
+            [above[0], above[1], above[2] - 2.0 * WAIST_HEIGHT],
+        );
+        let stand = [above[0], above[1], above[2] - drop + 1.0];
+        if world.in_enabled_player_volume(stand) {
+            return Some(stand);
+        }
+    }
+    None
+}
+
+/// Starts the cheapest site of the first pending kind it can pay for.
+fn next_scenario(
+    test: &mut TestPlayer,
+    world: &sim::SimWorld,
+    id: ClientId,
+    (origin, viewangles, weapon): ([f32; 3], [f32; 3], u32),
+    score: i32,
+    now_ms: i32,
+    since_ms: i32,
+) -> Option<Scenario> {
+    let sites = world.use_sites();
+    if !test.sites_logged {
+        test.sites_logged = true;
+        let count = |kind| sites.iter().filter(|site| site.kind == kind).count();
+        diag::info!(
+            Sim,
+            "test player: use sites — wall weapons {} box {} doors {} debris {} power {}; enabled zone volumes {}",
+            count(UseKind::WallBuy),
+            count(UseKind::Box),
+            count(UseKind::Door),
+            count(UseKind::Debris),
+            count(UseKind::Power),
+            world.enabled_player_volume_count()
+        );
+    }
+    // In order: one it cannot pay for yet waits, and so do the rest.
+    if let Some(&kind) = test.pending.first() {
+        // A wall stub with no `cost` sells something else by its own rule
+        // (claymores).
+        let mut of_kind: Vec<&UseSite> = sites
+            .iter()
+            .filter(|site| site.kind == kind && (kind != UseKind::WallBuy || site.cost.is_some()))
+            .collect();
+        if of_kind.is_empty() {
+            if now_ms - since_ms >= USE_GIVE_UP_MS {
+                test.pending.remove(0);
+                diag::info!(Sim, "test player: use {kind:?}: none on this map");
+            }
+            return None;
+        }
+        of_kind.sort_by_key(|site| site.cost.unwrap_or(0));
+        let Some((site, center, stand)) = of_kind.iter().find_map(|site| {
+            let center = world.use_site_center(site);
+            Some((*site, center, stand_point(world, id, site, center)?))
+        }) else {
+            // None he may stand at yet: the rest go first, this waits for a
+            // door to open its zone.
+            if !test.deferred.contains(&kind) {
+                test.deferred.push(kind);
+                diag::info!(
+                    Sim,
+                    "test player: use {kind:?}: no place to stand by it in an enabled zone yet"
+                );
+            }
+            test.pending.rotate_left(1);
+            return None;
+        };
+        if site.cost.unwrap_or(0) > score {
+            return None;
+        }
+        test.pending.remove(0);
+        return Some(Scenario {
+            site: site.clone(),
+            center,
+            stand,
+            home: origin,
+            home_angles: viewangles,
+            phase: Phase::Arriving,
+            until_ms: now_ms + ARRIVE_MS,
+            score,
+            weapon: world.weapon_script_name(weapon).to_owned(),
+            offered: Vec::new(),
+            presses: 0,
+        });
+    }
+    None
+}
+
 pub(crate) fn drive_test_player(
     mut test: ResMut<TestPlayer>,
     clock: Res<AuthorityClock>,
@@ -87,7 +380,7 @@ pub(crate) fn drive_test_player(
     mut actions: ResMut<ClientActionInbox>,
     mut request_ids: ResMut<ActionRequestIds>,
 ) {
-    if !test.enabled {
+    if test.mode == Mode::Off {
         return;
     }
     let snapshot = world.0.snapshot(Tick(clock.tick.saturating_sub(1)));
@@ -103,12 +396,34 @@ pub(crate) fn drive_test_player(
         return;
     };
     let actors = world.0.living_actors();
+    let laststand = world.0.script_int(ScriptOwner::Player(id), "laststand");
+    let eye = [
+        ps.origin[0],
+        ps.origin[1],
+        ps.origin[2] + ps.view_height_current,
+    ];
+    if let Some(closest) = actors
+        .iter()
+        .map(|actor| {
+            distance(
+                eye,
+                [
+                    actor.origin[0],
+                    actor.origin[1],
+                    actor.origin[2] + AIM_HEIGHT,
+                ],
+            )
+        })
+        .min_by(f32::total_cmp)
+    {
+        test.nearest = Some(test.nearest.map_or(closest, |seen| seen.min(closest)));
+    }
     if clock.time_ms >= test.next_log_ms {
         test.next_log_ms = clock.time_ms + LOG_PERIOD_MS;
         let weapon = world.0.weapon_script_name(ps.weapon).to_owned();
         diag::info!(
             Sim,
-            "test player: t={}s round={} score={} kills={} health={} actors={} shots={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
+            "test player: t={}s round={} score={} kills={} health={} life={:?} laststand={} actors={} nearest={} shots={} knifes={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
             clock.time_ms / 1000,
             world
                 .0
@@ -117,39 +432,192 @@ pub(crate) fn drive_test_player(
             meta.score,
             meta.kills,
             ps.health,
+            meta.lifecycle,
+            laststand.map_or_else(|| "-".to_owned(), |n| n.to_string()),
             actors.len(),
+            test.nearest
+                .map_or_else(|| "-".to_owned(), |d| format!("{d:.0}")),
             test.shots,
+            test.knifes,
             meta.ammo_clip,
             meta.ammo_stock,
             ps.weaponstate_primary,
             test.lines
         );
+        test.nearest = None;
+    }
+    if test.mode == Mode::Down {
+        let now = (meta.lifecycle, ps.health, laststand);
+        if test
+            .seen
+            .is_none_or(|seen| (seen.0, seen.2) != (now.0, now.2))
+        {
+            diag::info!(
+                Sim,
+                "test player: down test t={}s life={:?} health={} laststand={}",
+                clock.time_ms / 1000,
+                now.0,
+                now.1,
+                now.2.map_or_else(|| "-".to_owned(), |n| n.to_string())
+            );
+        }
+        test.seen = Some(now);
+        return;
     }
     if meta.lifecycle != ClientLifecycle::Alive {
         return;
     }
-    if test.rounds {
-        let mut ask = |action: fn(u32) -> ClientAction| {
-            let request = request_ids.allocate();
-            if let Err(error) = actions.push(id, action(request)) {
-                diag::warn!(Sim, "test player: request not queued — {error}");
-            }
-        };
+    let since_ms = *test.alive_since_ms.get_or_insert(clock.time_ms);
+    let mut ask = |action: ClientAction| {
+        if let Err(error) = actions.push(id, action) {
+            diag::warn!(Sim, "test player: request not queued — {error}");
+        }
+    };
+    if test.mode.cheats() {
         if !test.god_asked {
             test.god_asked = true;
-            ask(|request_id| ClientAction::ToggleGod { request_id });
+            ask(ClientAction::ToggleGod {
+                request_id: request_ids.allocate(),
+            });
         }
         if meta.ammo_clip == 0 && meta.ammo_stock == 0 && clock.time_ms >= test.next_resupply_ms {
             test.next_resupply_ms = clock.time_ms + RESUPPLY_PERIOD_MS;
-            ask(|request_id| ClientAction::ResupplyAmmo { request_id });
+            ask(ClientAction::ResupplyAmmo {
+                request_id: request_ids.allocate(),
+            });
         }
     }
 
-    let eye = [
-        ps.origin[0],
-        ps.origin[1],
-        ps.origin[2] + ps.view_height_current,
-    ];
+    let mut cmd = UserCmd {
+        server_time: clock.time_ms,
+        weapon: ps.weapon as u16,
+        weapon_mapped: ps.weapon as u16,
+        ..UserCmd::default()
+    };
+    let aim_cmd = |cmd: &mut UserCmd, view: [f32; 3]| {
+        cmd.angles = look_angles_from_degrees(std::array::from_fn(|axis| {
+            view[axis] - ps.delta_angles[axis]
+        }));
+    };
+
+    if test.mode == Mode::Use
+        && test.scenario.is_none()
+        && clock.time_ms - since_ms >= USE_START_MS
+        && clock.time_ms >= test.next_try_ms
+        && {
+            test.next_try_ms = clock.time_ms + TRY_PERIOD_MS;
+            true
+        }
+        && let Some(scenario) = next_scenario(
+            &mut test,
+            &world.0,
+            id,
+            (ps.origin, ps.viewangles, ps.weapon),
+            meta.score,
+            clock.time_ms,
+            since_ms,
+        )
+    {
+        diag::info!(
+            Sim,
+            "test player: use {:?}{} cost={} at {} — standing at {}",
+            scenario.site.kind,
+            scenario
+                .site
+                .weapon
+                .as_deref()
+                .map_or_else(String::new, |weapon| format!(" {weapon}")),
+            scenario
+                .site
+                .cost
+                .map_or_else(|| "-".to_owned(), |cost| cost.to_string()),
+            fmt_point(scenario.center),
+            fmt_point(scenario.stand)
+        );
+        let at_eye = [
+            scenario.stand[0],
+            scenario.stand[1],
+            scenario.stand[2] + EYE_HEIGHT,
+        ];
+        ask(ClientAction::Move {
+            request_id: request_ids.allocate(),
+            origin: scenario.stand,
+            angles: look(at_eye, scenario.center),
+        });
+        test.scenario = Some(scenario);
+    }
+    if let Some(mut scenario) = test.scenario.take() {
+        aim_cmd(&mut cmd, look(eye, scenario.center));
+        if clock.time_ms >= scenario.until_ms {
+            match scenario.phase {
+                Phase::Arriving => {
+                    scenario.phase = Phase::Holding;
+                    scenario.until_ms = clock.time_ms + HOLD_MS;
+                }
+                Phase::Holding => {
+                    scenario.presses += 1;
+                    if scenario.presses == 1 {
+                        scenario.offered = world.0.use_triggers_near(scenario.center, OFFER_REACH);
+                    }
+                    let opening = scenario.site.kind == UseKind::Box && scenario.presses == 1;
+                    scenario.phase = Phase::Watching;
+                    scenario.until_ms =
+                        clock.time_ms + if opening { BOX_SPIN_MS } else { WATCH_MS };
+                }
+                // The box took its price: its weapon has risen, take it.
+                Phase::Watching
+                    if scenario.site.kind == UseKind::Box
+                        && scenario.presses == 1
+                        && meta.score < scenario.score =>
+                {
+                    diag::info!(
+                        Sim,
+                        "test player: box opened — score {}→{}; taking its weapon",
+                        scenario.score,
+                        meta.score
+                    );
+                    scenario.phase = Phase::Holding;
+                    scenario.until_ms = clock.time_ms + HOLD_MS;
+                }
+                Phase::Watching => {
+                    diag::info!(
+                        Sim,
+                        "test player: used {:?} — stood {:.0} from it, score {}→{}, weapon {}→{}, trigger {}, use triggers there while holding {:?}",
+                        scenario.site.kind,
+                        distance(eye, scenario.center),
+                        scenario.score,
+                        meta.score,
+                        scenario.weapon,
+                        world.0.weapon_script_name(ps.weapon),
+                        if world.0.script_object_lives(scenario.site.object) {
+                            "still there"
+                        } else {
+                            "gone"
+                        },
+                        scenario.offered
+                    );
+                    ask(ClientAction::Move {
+                        request_id: request_ids.allocate(),
+                        origin: scenario.home,
+                        angles: scenario.home_angles,
+                    });
+                    scenario.phase = Phase::Returning;
+                    scenario.until_ms = clock.time_ms + ARRIVE_MS;
+                }
+                Phase::Returning => {
+                    cmds.push(id, None, cmd, None);
+                    return;
+                }
+            }
+        }
+        if scenario.phase == Phase::Holding {
+            cmd.buttons |= buttons::USE;
+        }
+        test.scenario = Some(scenario);
+        cmds.push(id, None, cmd, None);
+        return;
+    }
+
     let mut near: Vec<_> = actors
         .iter()
         .map(|actor| (distance(eye, actor.origin), *actor))
@@ -193,19 +661,13 @@ pub(crate) fn drive_test_player(
         test.lines[line] += 1;
     }
     let target = target.map(|(aim, _)| aim);
-    let view = target.map_or(ps.viewangles, |aim| look(eye, aim));
-    let mut cmd = UserCmd {
-        server_time: clock.time_ms,
-        angles: look_angles_from_degrees(std::array::from_fn(|axis| {
-            view[axis] - ps.delta_angles[axis]
-        })),
-        weapon: ps.weapon as u16,
-        weapon_mapped: ps.weapon as u16,
-        ..UserCmd::default()
-    };
+    aim_cmd(&mut cmd, target.map_or(ps.viewangles, |aim| look(eye, aim)));
     test.pressed = !test.pressed;
     if test.pressed {
-        if meta.ammo_clip == 0 {
+        if target.is_some_and(|aim| distance(eye, aim) <= KNIFE_REACH) {
+            cmd.buttons |= buttons::MELEE_CHARGE;
+            test.knifes += 1;
+        } else if meta.ammo_clip == 0 {
             cmd.buttons |= buttons::RELOAD;
         } else if target.is_some() {
             cmd.buttons |= buttons::ATTACK;
@@ -213,8 +675,10 @@ pub(crate) fn drive_test_player(
         }
     }
     if near
-        .first()
-        .is_some_and(|&(_, actor)| flat_distance(ps.origin, actor.origin) < BACK_OFF)
+        .iter()
+        .filter(|&&(_, actor)| flat_distance(ps.origin, actor.origin) < BACK_OFF)
+        .count()
+        >= SWARM
     {
         cmd.forwardmove = -127;
     }

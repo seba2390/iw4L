@@ -88,6 +88,65 @@ impl SimWorld {
             .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
     }
 
+    /// The doors, debris, wall weapons, box and power switch the scripts
+    /// offer, for a test player's use scenarios.
+    pub fn use_sites(&self) -> Vec<crate::script::UseSite> {
+        crate::script::host::sightings::use_sites(&self.ecs)
+    }
+
+    /// The middle of a use site: its brush model's middle for a trigger
+    /// entity, else its origin (a unitrigger stub's box is centred there).
+    pub fn use_site_center(&self, site: &crate::script::UseSite) -> [f32; 3] {
+        site.brush
+            .and_then(|n| self.clip_cmodels().models.get(n as usize))
+            .map_or(site.origin, |model| {
+                std::array::from_fn(|i| site.origin[i] + (model.mins[i] + model.maxs[i]) * 0.5)
+            })
+    }
+
+    /// The use triggers near a point (what a unitrigger stub made), for a
+    /// test player.
+    pub fn use_triggers_near(&self, point: [f32; 3], reach: f32) -> Vec<String> {
+        crate::script::host::sightings::use_triggers_near(&self.ecs, point, reach)
+    }
+
+    /// Where the map's path nodes stand: places a player may stand, for a
+    /// test player.
+    pub fn path_node_origins(&self) -> Vec<[f32; 3]> {
+        self.actor_paths()
+            .map_or_else(Vec::new, |paths| paths.origins().collect())
+    }
+
+    /// Whether a player standing at `origin` touches a volume of a zone the
+    /// scripts have enabled (Black Ops 2's `in_enabled_playable_area`), for
+    /// a test player.
+    pub fn in_enabled_player_volume(&self, origin: [f32; 3]) -> bool {
+        let mins = std::array::from_fn(|i| origin[i] + crate::PLAYER_MINS[i]);
+        let maxs = std::array::from_fn(|i| origin[i] + crate::PLAYER_MAXS[i]);
+        crate::script::host::sightings::enabled_player_volumes(&self.ecs)
+            .into_iter()
+            .any(|(at, brush, trigger_model)| {
+                crate::script::host::triggers::map_volume_touches(
+                    self,
+                    at,
+                    brush,
+                    trigger_model,
+                    mins,
+                    maxs,
+                )
+            })
+    }
+
+    /// How many volumes the enabled zones have, for a test player's log.
+    pub fn enabled_player_volume_count(&self) -> usize {
+        crate::script::host::sightings::enabled_player_volumes(&self.ecs).len()
+    }
+
+    /// Whether a script object still lives, for a test player.
+    pub fn script_object_lives(&self, id: u64) -> bool {
+        crate::script::host::sightings::object_lives(&self.ecs, id)
+    }
+
     /// An integer script field of the level or a player, for a test player.
     pub fn script_int(&self, owner: crate::script::ScriptOwner, name: &str) -> Option<i32> {
         crate::script::host::sightings::script_int(&self.ecs, owner, name)
