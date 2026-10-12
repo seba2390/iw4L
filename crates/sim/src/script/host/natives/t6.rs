@@ -21,6 +21,7 @@ mod movement;
 mod mover;
 mod player;
 mod radius;
+mod rumble;
 mod sound;
 mod stats;
 mod weapon;
@@ -264,15 +265,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "precacheshellshock", |world, _, args| {
         let name = string(args, 0)?;
         super::iw4::precache(world, "shellshock", name).map_err(|_| String::from("precacheShellShock must be called before any wait statements in the gametype or level script"))?;
-        Ok(Value::Undefined)
-    });
-    registry.register(Function, "precacherumble", |world, _, args| {
-        let name = string(args, 0)?;
-        super::iw4::precache(world, "rumble", name).map_err(|_| {
-            String::from(
-                "precacheRumble must be called before any wait statements in the level script",
-            )
-        })?;
         Ok(Value::Undefined)
     });
     registry.register(Function, "loadfx", |world, _, args| {
@@ -1691,7 +1683,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Function, "newclienthudelem"),
         (Method, "setdepthoffield"),
         (Method, "stopshellshock"),
-        (Method, "stoprumble"),
+        (Method, "stopsounds"),
         (Method, "closemenu"),
         (Method, "closeingamemenu"),
         (Function, "iprintln"),
@@ -1766,6 +1758,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     effect::register(registry);
     entity::register(registry);
     mover::register(registry);
+    rumble::register(registry);
     player::register(registry);
     radius::register(registry);
     sound::register(registry);

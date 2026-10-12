@@ -30,6 +30,8 @@ pub(super) struct Actor {
     /// Hull radius, then its floor and top above the origin.
     pub(super) hull: (f32, f32, f32),
     pub(super) stances: u32,
+    /// Whether the free camera may lock on to the actor.
+    pub(super) free_camera_lock_on: bool,
 }
 
 impl Default for Actor {
@@ -37,6 +39,7 @@ impl Default for Actor {
         Self {
             hull: (DROP_MAXS[0], DROP_MINS[2], 48.0),
             stances: 0b111,
+            free_camera_lock_on: false,
         }
     }
 }
@@ -222,6 +225,15 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.register(Method, "spawnactor", spawn_actor);
+    registry.register(
+        Method,
+        "setfreecameralockonallowed",
+        |world, receiver, args| {
+            let allowed = int(args, 0)? != 0;
+            with_actor(world, receiver, |actor| actor.free_camera_lock_on = allowed)?;
+            Ok(Value::Undefined)
+        },
+    );
     registry.register(Function, "getfreeactorcount", |world, _, _| {
         Ok(Value::Int(
             ACTOR_SLOTS.saturating_sub(live_actors(world)) as i32
