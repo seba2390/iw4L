@@ -456,9 +456,56 @@ fn finish_actor_damage(
     Ok(Value::Undefined)
 }
 
+/// A shot or blast IW4L's weapon rules landed on one of the game's actors:
+/// the game's own `G_Damage`, with the rules' damage, means and weapon, at
+/// the struck bone's hit location (its model's `partClassification`).
+fn entity_hit(
+    world: &mut World,
+    object: u64,
+    hit: &super::super::super::entity_damage::EntityHit,
+) -> bool {
+    let target = Value::Object(object);
+    if !is_actor(world, &target) {
+        return false;
+    }
+    let attacker = match hit.attacker {
+        Some(client) => super::super::super::players::player_object(world, client.0),
+        None => Value::Undefined,
+    };
+    let weapon = crate::script_player::weapon_name(&FrameWorld::from_world(world), hit.weapon);
+    let hit_location = match (hit.part, hit.hit_location) {
+        (Some(part), _) if usize::from(part) < HIT_LOCATIONS.len() => usize::from(part),
+        (_, Some(name)) => HIT_LOCATIONS.iter().position(|n| *n == name).unwrap_or(0),
+        _ => 0,
+    };
+    let result = damage(
+        world,
+        &target,
+        Hit {
+            inflictor: attacker.clone(),
+            attacker,
+            dir: Some(hit.dir),
+            point: Some(hit.point),
+            damage: hit.amount,
+            dflags: hit.flags,
+            means: MEANS_OF_DEATH
+                .iter()
+                .position(|name| *name == hit.means)
+                .unwrap_or(0),
+            weapon: Some(weapon),
+            hit_location,
+        },
+    );
+    if let Err(fault) = result {
+        diag::warn!(Sim, "actor {object}: {fault}");
+    }
+    true
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::Method;
 
+    registry.on_entity_hit(entity_hit);
     registry.register(Method, "dodamage", do_damage);
     registry.register(Method, "finishactordamage", finish_actor_damage);
     registry.register(Method, "startragdoll", |world, receiver, _| {

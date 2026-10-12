@@ -18,6 +18,8 @@ pub(crate) struct EntityHit {
     pub flags: i32,
     /// The hit location the game named; else the bone's.
     pub hit_location: Option<&'static str>,
+    /// The struck bone's hit location, in its model's own numbering.
+    pub part: Option<u8>,
 }
 
 const MEANS: &[&str] = &[
@@ -135,6 +137,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                         bone: None,
                         flags: hit.flags,
                         hit_location: None,
+                        part: None,
                     },
                 );
             }
@@ -168,6 +171,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     bone: None,
                     flags: 1,
                     hit_location: None,
+                    part: None,
                 },
             );
         }
@@ -237,6 +241,17 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
     else {
         return false;
     };
+    let hooks: Vec<_> = world
+        .get_resource::<crate::script::NativeRegistry>()
+        .map(crate::script::NativeRegistry::entity_hit_hooks)
+        .into_iter()
+        .flatten()
+        .collect();
+    for hook in hooks {
+        if hook(world, object, hit) {
+            return true;
+        }
+    }
     let frame = FrameWorld::from_world(world);
     let tag = hit
         .bone
