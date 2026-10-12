@@ -2134,18 +2134,53 @@ fn map_teams(
     if asset_transport::t6_content::T6ContentMode::for_path(path)
         == asset_transport::t6_content::T6ContentMode::Zombies
     {
-        // The map's script dresses its players; its first two characters
-        // stand where a multiplayer map's factions would (`t6.zombies.player_kits`).
+        // The map's script dresses its players; its first two characters the
+        // zones carry stand where a multiplayer map's factions would
+        // (`t6.zombies.player_kits`).
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let script = format!("maps/mp/{stem}.gsc");
-        let characters: Vec<(String, String)> = script_bytes(map, &script)
-            .or_else(|| {
-                let patch = content_zone(&path.with_file_name(format!("{stem}_patch.ff")), report)?;
-                script_bytes(&patch, &script)
+        // Classic's own zone, which the engine loads with the map, carries
+        // the survivors of maps that have more than one mode.
+        let classic: Vec<ZoneLoad> = content_zone(
+            &path.with_file_name(format!("so_zclassic_{stem}.ff")),
+            report,
+        )
+        .into_iter()
+        .collect();
+        let carried = |name: &str| {
+            std::iter::once(map).chain(&classic).any(|load| {
+                load.assets.iter().any(|asset| {
+                    asset_model::T6Model::new(load, asset)
+                        .is_some_and(|model| model.name() == Some(name))
+                })
             })
+        };
+        let script = |name: &str| {
+            std::iter::once(map)
+                .chain(&classic)
+                .find_map(|load| script_bytes(load, name))
+                .or_else(|| {
+                    let patch = content_zone(
+                        &path.with_file_name(format!("{stem}_patch.ff")),
+                        &mut Vec::new(),
+                    )?;
+                    script_bytes(&patch, name)
+                })
+        };
+        let characters: Vec<(String, String)> = script(&format!("maps/mp/{stem}.gsc"))
             .and_then(|bytes| asset_game::t6_player_characters(&bytes))
             .into_iter()
             .flatten()
+            .filter_map(|(body, hands)| {
+                let body = match body {
+                    asset_game::T6Body::Model(model) => model,
+                    asset_game::T6Body::Character(module) => {
+                        asset_game::t6_character_model(&script(&format!("{module}.gsc"))?)?
+                    }
+                };
+                Some((body, hands))
+            })
+            // A character the zones have no models for is another mode's.
+            .filter(|(body, hands)| carried(body) && carried(hands))
             .collect();
         report.push(format!("T6 zombies characters: {characters:?}"));
         let kit = |index: usize| {
@@ -2159,7 +2194,7 @@ fn map_teams(
         };
         return Ok((
             asset_game::MapTeamSettings::default(),
-            Vec::new(),
+            classic,
             asset_model::SoldierKits {
                 allies: kit(0),
                 axis: kit(1).or_else(|| kit(0)),

@@ -64,10 +64,16 @@ pub fn t6_team_properties(bytes: &[u8]) -> Option<BTreeMap<String, String>> {
 
 /// Addresses in a compiled script, each with the text found there.
 type Sites<'a> = Vec<(usize, &'a str)>;
+/// Call sites in a compiled script: address, function and its namespace.
+type Calls<'a> = Vec<(usize, &'a str, &'a str)>;
 
-/// A compiled script's string literals by the address that uses each, and its
-/// calls of `names` by the address that makes each, both in address order.
-fn literals_and_calls<'a>(bytes: &'a [u8], names: &[&'a str]) -> Option<(Sites<'a>, Sites<'a>)> {
+/// A compiled script's string literals by the address that uses each, and
+/// the calls `wanted` picks by the address that makes each, both in address
+/// order.
+fn literals_and_calls<'a>(
+    bytes: &'a [u8],
+    wanted: impl Fn(&str, &str) -> bool,
+) -> Option<(Sites<'a>, Calls<'a>)> {
     if bytes.get(..8)? != b"\x80GSC\r\n\0\x06" {
         return None;
     }
@@ -92,11 +98,12 @@ fn literals_and_calls<'a>(bytes: &'a [u8], names: &[&'a str]) -> Option<(Sites<'
     let mut at = word(0x20)? as usize;
     for _ in 0..half(0x36)? {
         let name = text(half(at)? as usize)?;
+        let namespace = text(half(at + 2)? as usize)?;
         let count = half(at + 4)? as usize;
         at += 8;
         for _ in 0..count {
-            if let Some(&name) = names.iter().find(|wanted| **wanted == name) {
-                calls.push((word(at)? as usize, name));
+            if wanted(name, namespace) {
+                calls.push((word(at)? as usize, name, namespace));
             }
             at += 4;
         }
@@ -106,10 +113,24 @@ fn literals_and_calls<'a>(bytes: &'a [u8], names: &[&'a str]) -> Option<(Sites<'
     Some((literals, calls))
 }
 
+/// Where a character's body comes from: a model a script sets, or the
+/// character script (`character/<name>`) whose `main` sets it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum T6Body {
+    Model(String),
+    Character(String),
+}
+
+const CHARACTERS: &str = "character/";
+
 /// The bodies and view hands a zombies map's script dresses its players in:
-/// each `setmodel` literal with the `setviewmodel` literal that follows it.
-pub fn t6_player_characters(bytes: &[u8]) -> Option<Vec<(String, String)>> {
-    let (literals, calls) = literals_and_calls(bytes, &["setmodel", "setviewmodel"])?;
+/// each `setmodel` literal, or call of a character script's `main`, with
+/// the `setviewmodel` literal that follows it.
+pub fn t6_player_characters(bytes: &[u8]) -> Option<Vec<(T6Body, String)>> {
+    let (literals, calls) = literals_and_calls(bytes, |name, namespace| {
+        matches!(name, "setmodel" | "setviewmodel")
+            || name == "main" && namespace.replace('\\', "/").starts_with(CHARACTERS)
+    })?;
     let before = |site: usize| {
         literals
             .iter()
@@ -117,11 +138,12 @@ pub fn t6_player_characters(bytes: &[u8]) -> Option<Vec<(String, String)>> {
             .find(|(at, _)| *at < site)
             .map(|(_, value)| (*value).to_owned())
     };
-    let mut characters: Vec<(String, String)> = Vec::new();
+    let mut characters: Vec<(T6Body, String)> = Vec::new();
     let mut body = None;
-    for (site, name) in calls {
+    for (site, name, namespace) in calls {
         match name {
-            "setmodel" => body = before(site),
+            "setmodel" => body = before(site).map(T6Body::Model),
+            "main" => body = Some(T6Body::Character(namespace.replace('\\', "/"))),
             _ => {
                 if let (Some(body), Some(hands)) = (body.take(), before(site))
                     && !characters.contains(&(body.clone(), hands.clone()))
@@ -132,4 +154,15 @@ pub fn t6_player_characters(bytes: &[u8]) -> Option<Vec<(String, String)>> {
         }
     }
     Some(characters)
+}
+
+/// The model a character script's `main` sets.
+pub fn t6_character_model(bytes: &[u8]) -> Option<String> {
+    let (literals, calls) = literals_and_calls(bytes, |name, _| name == "setmodel")?;
+    let (site, _, _) = calls.first()?;
+    literals
+        .iter()
+        .rev()
+        .find(|(at, _)| at < site)
+        .map(|(_, value)| (*value).to_owned())
 }
