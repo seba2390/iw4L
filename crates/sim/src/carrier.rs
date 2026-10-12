@@ -151,6 +151,50 @@ impl SimWorld {
     pub fn script_int(&self, owner: crate::script::ScriptOwner, name: &str) -> Option<i32> {
         crate::script::host::sightings::script_int(&self.ecs, owner, name)
     }
+
+    /// Starts a script thread on the host, for a test player: `receiver` is
+    /// `level` or `playerN`; each argument reads as a number, an `(x,y,z)`
+    /// vector, or else a string.
+    pub fn start_script(
+        &mut self,
+        name: &str,
+        receiver: &str,
+        args: &[String],
+    ) -> Result<(), String> {
+        use crate::script::Value;
+        let receiver = match receiver.strip_prefix("player") {
+            Some(n) => {
+                let client = n.parse().map_err(|_| format!("bad receiver {receiver}"))?;
+                crate::script::host::players::player_object(&self.ecs, client)
+            }
+            None if receiver == "level" => Value::level(),
+            None => return Err(format!("bad receiver {receiver}")),
+        };
+        let args = args
+            .iter()
+            .map(|arg| {
+                if let Ok(n) = arg.parse::<i32>() {
+                    return Value::Int(n);
+                }
+                if let Ok(f) = arg.parse::<f32>() {
+                    return Value::Float(f);
+                }
+                let parts: Vec<f32> = arg
+                    .trim_start_matches('(')
+                    .trim_end_matches(')')
+                    .split(',')
+                    .filter_map(|part| part.trim().parse().ok())
+                    .collect();
+                match parts.as_slice() {
+                    [x, y, z] => Value::Vector([*x, *y, *z]),
+                    _ => Value::String(arg.as_str().into()),
+                }
+            })
+            .collect();
+        crate::script::start(&mut self.ecs, name, receiver, args)
+            .map(|_| ())
+            .map_err(|fault| fault.to_string())
+    }
 }
 
 impl fmt::Debug for SimWorld {
