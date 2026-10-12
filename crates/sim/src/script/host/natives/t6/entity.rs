@@ -1,8 +1,9 @@
 //! Black Ops 2's entity geometry builtins: tags on an entity's model, its
 //! local frame, and path-node lookups.
 
-use super::super::engine::entity_id;
+use super::super::engine::{collider_entity, entity_id, entity_trace, keyed_array, trace_ignore};
 use super::{node_string_field, string, vector};
+use crate::bullet_collision::{ColliderId, TraceOutcome};
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
 
@@ -69,9 +70,118 @@ fn node_index(world: &World, value: &Value) -> Option<u16> {
         .map(|(index, _)| *index)
 }
 
+/// The game's surface names, by the surface type a trace reports.
+const SURFACES: [&str; 32] = [
+    "default",
+    "bark",
+    "brick",
+    "carpet",
+    "cloth",
+    "concrete",
+    "dirt",
+    "flesh",
+    "foliage",
+    "glass",
+    "grass",
+    "gravel",
+    "ice",
+    "metal",
+    "mud",
+    "paper",
+    "plaster",
+    "rock",
+    "sand",
+    "snow",
+    "water",
+    "wood",
+    "asphalt",
+    "ceramic",
+    "plastic",
+    "rubber",
+    "cushion",
+    "fruit",
+    "paintedmetal",
+    "player",
+    "tallgrass",
+    "riotshield",
+];
+/// A ground trace's contents, with characters or without.
+const GROUND_MASK: u32 = 0x0280_ecb3;
+const GROUND_MASK_NO_CHARACTERS: u32 = 0x0080_6cb3;
+/// The contents the fifth and sixth arguments leave out.
+const GROUND_WATER: u32 = 0x20;
+const GROUND_SIXTH: u32 = 0x10;
+
+fn surface(collider: ColliderId) -> &'static str {
+    let flags = match collider {
+        ColliderId::World { surface_flags, .. }
+        | ColliderId::EntityDObjBone { surface_flags, .. }
+        | ColliderId::EntityLinkedBrush { surface_flags, .. } => surface_flags,
+        ColliderId::Player { .. } => return "flesh",
+    };
+    SURFACES
+        .get(((flags >> 20) & 0x3f) as usize)
+        .copied()
+        .unwrap_or("default")
+}
+
+/// `groundtrace(start, end, characters, [ignore], [no water], [sixth])`:
+/// fraction, position, entity, normal and surface type.
+fn ground_trace(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    let (start, end) = (vector(args, 0)?, vector(args, 1)?);
+    let mut mask = if super::int(args, 2)? != 0 {
+        GROUND_MASK
+    } else {
+        GROUND_MASK_NO_CHARACTERS
+    };
+    if args.len() == 5 && super::int(args, 4)? != 0 {
+        mask &= !GROUND_WATER;
+    }
+    if args.len() == 6 && super::int(args, 5)? != 0 {
+        mask &= !GROUND_SIXTH;
+    }
+    let ignore = trace_ignore(world, args.get(3));
+    let (fraction, normal, collider) = match entity_trace(world, start, end, mask, ignore) {
+        TraceOutcome::Hit {
+            fraction,
+            normal,
+            collider,
+            ..
+        } => (fraction, normal, Some(collider)),
+        TraceOutcome::StartSolid { collider, .. } => (0.0, [0.0; 3], collider),
+        _ => (1.0, [0.0; 3], None),
+    };
+    let position: [f32; 3] = std::array::from_fn(|i| start[i] + (end[i] - start[i]) * fraction);
+    let entity = collider.map_or(Value::Undefined, |c| collider_entity(world, c));
+    let (normal, surface) = match collider {
+        Some(collider) if fraction < 1.0 => (normal, surface(collider)),
+        _ => {
+            let d: [f32; 3] = std::array::from_fn(|i| end[i] - start[i]);
+            let length = dot(d, d).sqrt();
+            let d = if length > 0.0 {
+                d.map(|c| c / length)
+            } else {
+                d
+            };
+            (d, "none")
+        }
+    };
+    keyed_array(
+        world,
+        vec![
+            ("fraction", Value::Float(fraction)),
+            ("position", Value::Vector(position)),
+            ("entity", entity),
+            ("normal", Value::Vector(normal)),
+            ("surfacetype", Value::string(surface)),
+        ],
+    )
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
+    registry.register(Function, "groundtrace", ground_trace);
     registry.register(Method, "gettagorigin", |world, receiver, args| {
         Ok(Value::Vector(tag(world, receiver, args)?.0))
     });
