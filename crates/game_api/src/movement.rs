@@ -165,6 +165,38 @@ impl Default for MovePlayer {
     }
 }
 
+/// What a player's weapon is doing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WeaponActivity {
+    pub firing: bool,
+    pub meleeing: bool,
+    pub throwing_grenade: bool,
+    /// Raising or dropping a weapon.
+    pub switching: bool,
+}
+
+/// What a player's weapon notifies compare against, kept between frames.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WeaponNotifyMemory {
+    pub weapon: u32,
+    pub raise_pending: bool,
+    pub firing: bool,
+    pub night_vision: bool,
+}
+
+/// A notify a server frame raises on a player for their weapon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeaponNotify {
+    /// The held weapon changed: the new one, then the old.
+    Change(u32, u32),
+    /// The weapon being raised is up.
+    ChangeComplete(u32),
+    BeginFiring,
+    EndFiring,
+    NightVisionOn,
+    NightVisionOff,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MoveTrace {
     pub normal: [f32; 3],
@@ -302,6 +334,17 @@ pub trait PlayerMovement: Sync {
     fn set_perk(&self, player: &mut MovePlayer, perk: &str, on: bool) -> bool;
 
     fn has_perk(&self, player: &MovePlayer, perk: &str) -> bool;
+
+    /// What the player's weapon is doing, as the game's script builtins
+    /// test it.
+    fn weapon_activity(&self, player: &MovePlayer) -> WeaponActivity;
+
+    /// The weapon notifies a server frame raises on the player.
+    fn weapon_notifies(
+        &self,
+        player: &MovePlayer,
+        memory: &mut WeaponNotifyMemory,
+    ) -> Vec<WeaponNotify>;
 
     fn clear_perks(&self, player: &mut MovePlayer);
 

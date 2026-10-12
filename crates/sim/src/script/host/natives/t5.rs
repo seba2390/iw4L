@@ -8,7 +8,6 @@ use crate::script::Namespace::{Function, Method};
 use crate::script::{Arc, BTreeMap, NativeRegistry, RoundScript, StringTable, Value};
 use crate::world::ClientId;
 use bevy_ecs::prelude::World;
-use weapon_iw4::WeaponState;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct T5State {
@@ -387,11 +386,14 @@ fn player_id(world: &World, receiver: &Value) -> Result<u32, String> {
     super::player::player(world, receiver)
 }
 
-fn weapon_state(world: &mut World, receiver: &Value) -> Result<Option<WeaponState>, String> {
+/// The player's weapon activity by the game's own weapon rules.
+fn weapon_activity(
+    world: &mut World,
+    receiver: &Value,
+) -> Result<game_api::movement::WeaponActivity, String> {
     let id = ClientId(player_id(world, receiver)?);
-    Ok(FrameWorld::from_world(world)
-        .player(id)
-        .and_then(|ps| WeaponState::from_i32(ps.weaponstate_primary).ok()))
+    crate::game_move::weapon_activity(&FrameWorld::from_world(world), id)
+        .ok_or_else(|| "the match runs no game weapon rules".to_owned())
 }
 
 fn stats_row(
@@ -1017,45 +1019,21 @@ fn register_player(registry: &mut NativeRegistry) {
         Ok(Value::Int((a == b).into()))
     });
     registry.register(Method, "isfiring", |world, receiver, _| {
-        let state = weapon_state(world, receiver)?;
-        Ok(Value::Int(
-            matches!(state, Some(WeaponState::Firing)).into(),
-        ))
+        Ok(Value::Int(weapon_activity(world, receiver)?.firing.into()))
     });
     registry.register(Method, "ismeleeing", |world, receiver, _| {
-        let state = weapon_state(world, receiver)?;
         Ok(Value::Int(
-            matches!(
-                state,
-                Some(WeaponState::MeleeInit | WeaponState::MeleeFire | WeaponState::MeleeEnd)
-            )
-            .into(),
+            weapon_activity(world, receiver)?.meleeing.into(),
         ))
     });
     registry.register(Method, "isthrowinggrenade", |world, receiver, _| {
-        let state = weapon_state(world, receiver)?;
         Ok(Value::Int(
-            matches!(
-                state,
-                Some(
-                    WeaponState::OffhandInit
-                        | WeaponState::OffhandPrepare
-                        | WeaponState::OffhandHold
-                        | WeaponState::OffhandStart
-                        | WeaponState::Offhand
-                        | WeaponState::OffhandEnd
-                )
-            )
-            .into(),
+            weapon_activity(world, receiver)?.throwing_grenade.into(),
         ))
     });
     registry.register(Method, "isswitchingweapons", |world, receiver, _| {
-        let id = ClientId(player_id(world, receiver)?);
-        let state = FrameWorld::from_world(world)
-            .player(id)
-            .map_or(0, |ps| ps.weaponstate_primary);
         Ok(Value::Int(
-            super::super::weapons::is_changing_weapon(state).into(),
+            weapon_activity(world, receiver)?.switching.into(),
         ))
     });
     registry.register(Method, "getmovespeedscale", |world, receiver, _| {
