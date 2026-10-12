@@ -651,21 +651,20 @@ pub fn apply_prepared_match(
             sim.register_local_presentation_dvars(local.as_ref().map(|local| local.0));
         }
         let mut natives = crate::games::natives(anim_namespace, &mode);
+        let (missing, named) = natives.coverage(&scripts);
+        diag::info!(
+            Sim,
+            "gsc: builtin coverage map={zone} gametype={gametype}: {missing} of {named} builtins not implemented yet"
+        );
         if mode.report_builtin_gaps {
             let gaps = natives.bind_gaps(&scripts);
-            let called = scripts
-                .natives
-                .iter()
-                .map(|builtin| builtin.name)
-                .collect::<std::collections::BTreeSet<_>>()
-                .len();
-            diag::info!(
-                Sim,
-                "gsc: {} of {called} builtins not implemented yet ({} implemented): {}",
-                gaps.len(),
-                called - gaps.len(),
-                gaps.join(" ")
-            );
+            if !gaps.is_empty() {
+                diag::info!(
+                    Sim,
+                    "gsc: {missing} of {named} builtins not implemented yet: {}",
+                    gaps.join(" ")
+                );
+            }
         }
         sim.install_gsc_program(scripts, natives, script_level)
             .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;

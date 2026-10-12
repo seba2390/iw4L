@@ -1,14 +1,14 @@
 # IW4L
 
 <!-- progress:start (generated from docs/PROGRESS.md by `cargo xtask progress --write`) -->
-**Progress** toward each game's goal ([milestones](docs/PROGRESS.md); the percentage counts milestones, steps are the detail under them, builtins are those each map's scripts call):
+**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)), the steps shown under its milestones, and the builtins its scripts call that are implemented, per map:
 
-| Game | Progress | Milestones | Steps | Builtins implemented |
+| Game | Progress | Milestones | Steps | Builtins |
 |---|---|---|---|---|
-| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | — | — |
-| Black Ops — Zombies | `██████████░░░░░░░░░░` 52% | 11 / 21 | 11 / 29 | Kino der Toten 67% (412 / 609) |
-| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 23% | 5 / 21 | 12 / 37 | Nuketown 57% (392 / 685)<br>TranZit 53% (395 / 734)<br>Buried 55% (396 / 720) |
-| Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil 6% (77 / 1228) |
+| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | — | Rust: 460 / 460 (100%) |
+| Black Ops — Zombies | `██████████░░░░░░░░░░` 52% | 11 / 21 | 11 / 29 | Kino der Toten: 418 / 610 (68%)<br>Five: 415 / 609 (68%) |
+| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 23% | 5 / 21 | 12 / 37 | Nuketown: 398 / 692 (57%)<br>TranZit: 401 / 741 (54%)<br>Buried: 402 / 727 (55%) |
+| Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |
 <!-- progress:end -->
 
 IW4L is an open-source runtime for several Call of Duty games, written in Rust with

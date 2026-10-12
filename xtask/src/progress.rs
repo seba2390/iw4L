@@ -43,40 +43,19 @@ fn read(root: &Path, file: &str) -> Res<String> {
     std::fs::read_to_string(root.join(file)).map_err(|e| format!("{file}: {e}"))
 }
 
-/// A game's section: its title, its ticked and total milestones, and its
-/// ticked and total steps (the indented detail items under them).
+/// A game's section: its title, ticked and total milestones, and each map's
+/// builtins not implemented yet and named, from its `| map | N of M |` rows.
 struct Game {
     title: String,
     done: usize,
     total: usize,
+    /// Ticked and total steps: the indented detail items under milestones.
     steps_done: usize,
     steps: usize,
-    /// Each map's implemented and called builtins.
     builtins: Vec<(String, usize, usize)>,
 }
 
-/// `Builtins implemented: Map a / b, Other c / d.`
-fn builtins(line: &str) -> Res<Vec<(String, usize, usize)>> {
-    line.trim_end_matches('.')
-        .split(',')
-        .map(|item| {
-            let words: Vec<&str> = item.split_whitespace().collect();
-            match words.as_slice() {
-                [name @ .., done, "/", total] if !name.is_empty() => Ok((
-                    name.join(" "),
-                    done.parse()
-                        .map_err(|_| format!("bad builtin count in `{item}`"))?,
-                    total
-                        .parse()
-                        .map_err(|_| format!("bad builtin count in `{item}`"))?,
-                )),
-                _ => Err(format!("`{item}` is not `<map> <implemented> / <called>`")),
-            }
-        })
-        .collect()
-}
-
-/// Each `## ` section's milestones and steps.
+/// Each `## ` section's milestones and builtin coverage.
 fn games(text: &str) -> Res<Vec<Game>> {
     let mut games: Vec<Game> = Vec::new();
     for line in text.lines() {
@@ -100,8 +79,8 @@ fn games(text: &str) -> Res<Vec<Game>> {
                 game.steps += 1;
             } else if line.starts_with("  - [ ] ") {
                 game.steps += 1;
-            } else if let Some(list) = line.strip_prefix("Builtins implemented: ") {
-                game.builtins = builtins(list)?;
+            } else if let Some(row) = coverage_row(line) {
+                game.builtins.push(row);
             }
         }
     }
@@ -112,39 +91,61 @@ fn games(text: &str) -> Res<Vec<Game>> {
     Ok(games)
 }
 
+/// `| Kino der Toten (`t5:zombie_theater`) | 192 of 610 |` → the map's
+/// name, missing and named builtins.
+fn coverage_row(line: &str) -> Option<(String, usize, usize)> {
+    let cells: Vec<&str> = line
+        .strip_prefix('|')?
+        .strip_suffix('|')?
+        .split('|')
+        .map(str::trim)
+        .collect();
+    let [map, count] = cells.as_slice() else {
+        return None;
+    };
+    let (missing, named) = count.split_once(" of ")?;
+    let name = map.split(" (").next().unwrap_or(map).to_owned();
+    Some((name, missing.parse().ok()?, named.parse().ok()?))
+}
+
 fn render(games: &[Game]) -> String {
     let mut out = format!(
-        "{START}\n**Progress** toward each game's goal ([milestones](docs/PROGRESS.md); \
-         the percentage counts milestones, steps are the detail under them, builtins are those \
-         each map's scripts call):\n\n\
-         | Game | Progress | Milestones | Steps | Builtins implemented |\n|---|---|---|---|---|\n"
+        "{START}\n**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)), the \
+         steps shown under its milestones, and the builtins its scripts call that are \
+         implemented, per map:\n\n\
+         | Game | Progress | Milestones | Steps | Builtins |\n|---|---|---|---|---|\n"
     );
     for game in games {
-        let percent = game.done * 100 / game.total;
-        let filled = game.done * BAR / game.total;
-        let steps = if game.steps == 0 {
-            "—".to_owned()
-        } else {
-            format!("{} / {}", game.steps_done, game.steps)
-        };
+        let (done, total) = (game.done, game.total);
+        let percent = done * 100 / total;
+        let filled = done * BAR / total;
         let builtins = if game.builtins.is_empty() {
             "—".to_owned()
         } else {
             game.builtins
                 .iter()
-                .map(|(map, done, total)| {
-                    format!("{map} {}% ({done} / {total})", done * 100 / total.max(&1))
+                .map(|(map, missing, named)| {
+                    let implemented = named - missing;
+                    let percent = if *named == 0 {
+                        100
+                    } else {
+                        implemented * 100 / named
+                    };
+                    format!("{map}: {implemented} / {named} ({percent}%)")
                 })
                 .collect::<Vec<_>>()
                 .join("<br>")
         };
+        let steps = if game.steps == 0 {
+            "—".to_owned()
+        } else {
+            format!("{} / {}", game.steps_done, game.steps)
+        };
         out.push_str(&format!(
-            "| {} | `{}{}` {percent}% | {} / {} | {steps} | {builtins} |\n",
+            "| {} | `{}{}` {percent}% | {done} / {total} | {steps} | {builtins} |\n",
             game.title,
             "█".repeat(filled),
-            "░".repeat(BAR - filled),
-            game.done,
-            game.total
+            "░".repeat(BAR - filled)
         ));
     }
     out.push_str(END);

@@ -17,17 +17,23 @@ Rules:
 * A milestone may carry indented detail items (`  - [ ]`): what its runs
   have shown and what is still open. They do not count toward the
   percentage; the README shows them as steps, so smaller progress shows too.
-* A game's `Builtins implemented:` line counts, per map, the builtins its
-  scripts call that IW4L implements, from a run's `gsc: N of M builtins not
-  implemented yet` log line (M − N of M). A pull request that changes them
-  updates the line; the README shows it.
 * Milestones are not reworded to fit the work done. A new milestone may be
   added when a goal turns out to need it; that lowers the percentage, which
   is the point.
 
 The zombies games share one list, so their numbers compare.
 
+Each game also lists, per map, how many of the builtins its scripts name the
+runtime does not implement yet: the `gsc: builtin coverage … N of M builtins
+not implemented yet` line a match logs when its scripts install. The README's
+Builtins column shows the implemented share (M − N of M). A pull request that
+changes a count updates its row.
+
 ## Modern Warfare 2 — multiplayer
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Rust (`mp_rust`, free-for-all) | 0 of 460 |
 
 - [x] Multiplayer maps load, render and collide.
 - [x] Players move by Modern Warfare 2's own movement rules.
@@ -48,7 +54,10 @@ Indented items are detail: they say what a milestone's runs have shown and
 what is still open (the open rules are in [`fidelity/t5.md`](fidelity/t5.md)).
 Only the top-level items count.
 
-Builtins implemented: Kino der Toten 412 / 609.
+| Map | Builtins not implemented yet |
+|---|---|
+| Kino der Toten (`t5:zombie_theater`) | 192 of 610 |
+| Five (`t5:zombie_pentagon`) | 194 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -108,7 +117,11 @@ what is still open (the open rules are in [`fidelity/t6.md`](fidelity/t6.md)).
 Only the top-level items count. Runs are headless, with the test player
 (`IW4L_TEST_PLAYER=1|rounds|use|down`) and `IW4L_T6_OWN_SCRIPTS=1`.
 
-Builtins implemented: Nuketown 392 / 685, TranZit 395 / 734, Buried 396 / 720.
+| Map | Builtins not implemented yet |
+|---|---|
+| Nuketown (`zm_nuked`, Classic) | 294 of 692 |
+| TranZit (`zm_transit`, Classic) | 340 of 741 |
+| Buried (`zm_buried`, Classic) | 325 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -116,7 +129,7 @@ Builtins implemented: Nuketown 392 / 685, TranZit 395 / 734, Buried 396 / 720.
   - [x] TranZit and Buried load and collide too, with their Classic zombie spawners (`AddonMapEnts`).
   - [ ] The client scripts (CSC) do not run: no client fields, exploders, fx animations or the wall-buy chalk.
 - [x] The game's own zombies scripts start the match and run round 1 (with `IW4L_T6_OWN_SCRIPTS=1`).
-  - [ ] Builtins still answering "not implemented yet": 293 on Nuketown, 339 on TranZit, 324 on Buried (see the line above).
+  - [ ] Builtins still answering "not implemented yet" on every map (see the table above).
 - [ ] The player moves by the game's own movement rules.
   - [ ] Movement is Modern Warfare 2's, lent by the owner (`t6.movement.player`); Black Ops 2's own (`movement_t6`) is not started.
   - [ ] Script allowances (stances) are kept but not applied.
@@ -171,7 +184,13 @@ Builtins implemented: Nuketown 392 / 685, TranZit 395 / 734, Buried 396 / 720.
 
 ## Black Ops III — Zombies
 
-Builtins implemented: Shadows of Evil 77 / 1228.
+| Map | Builtins not implemented yet |
+|---|---|
+| Shadows of Evil | — (the map does not load yet) |
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Shadows of Evil (`zm_zod`, Classic) | 1166 of 1244 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [ ] The map loads, renders and collides (Shadows of Evil).
