@@ -4,7 +4,9 @@
 
 use super::super::super::arrays::new_array;
 use super::{int, string};
+use crate::frame::FrameWorld;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
+use crate::script_player;
 use asset_core::ZoneWeapon;
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -389,8 +391,56 @@ fn flagged(world: &mut World, flag: fn(&ZoneWeapon) -> bool) -> Result<Value, St
     new_array(world, names)
 }
 
+/// The client of a player entity, with the engine's object errors.
+fn player_entity(world: &World, receiver: &Value) -> Result<crate::ClientId, String> {
+    let runtime = world.resource::<RoundScript>();
+    let (id, entity) = runtime.entity(receiver).ok_or("not an entity")?;
+    runtime
+        .player_client(id)
+        .map(crate::ClientId)
+        .ok_or_else(|| format!("entity {} is not a player", entity.number))
+}
+
+/// `getfractionmaxammo`: a clip-only weapon's clip against its size, else
+/// its stock against its max; 1 for a weapon the player lacks or that holds
+/// none.
+fn fraction_max_ammo(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let client = player_entity(world, receiver)?;
+    let name = string(args, 0)?;
+    let weapon = named_or_none(world, args)?;
+    let Some(weapon) = weapon else {
+        return Ok(Value::Float(1.0));
+    };
+    let count = {
+        let frame = FrameWorld::from_world(world);
+        let held = script_player::weapon_named(&frame, &name)
+            .ok()
+            .filter(|&held| script_player::has_weapon(&frame, client, held));
+        let Some(held) = held else {
+            return Ok(Value::Float(1.0));
+        };
+        if weapon.clip_only {
+            script_player::ammo_clip(&frame, client, held)
+        } else {
+            script_player::ammo_stock(&frame, client, held)
+        }
+    };
+    let max = if weapon.clip_only {
+        clip_size(world, &weapon)
+    } else {
+        ammo(world, &weapon, weapon.max_ammo)
+    };
+    Ok(Value::Float(match (count, max) {
+        (_, ..1) => 1.0,
+        (1.., _) => count as f32 / max as f32,
+        _ => 0.0,
+    }))
+}
+
 pub(super) fn register_natives(registry: &mut NativeRegistry) {
-    use Namespace::Function;
+    use Namespace::{Function, Method};
+
+    registry.register(Method, "getfractionmaxammo", fraction_max_ammo);
 
     registry.register(Function, "precacheitem", |world, _, args| {
         if !world.resource::<RoundScript>().loading {

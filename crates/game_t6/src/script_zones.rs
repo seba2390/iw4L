@@ -182,6 +182,7 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
         start_ammo: weapon.def_i32(def::START_AMMO),
         max_ammo: weapon.def_i32(def::MAX_AMMO),
         ammo_count_clip_relative: weapon.def_bool(def::AMMO_COUNT_CLIP_RELATIVE),
+        clip_only: weapon.def_bool(def::CLIP_ONLY),
         tank_life_time: weapon.def_i32(def::TANK_LIFE_TIME),
         melee_damage: weapon.def_i32(def::MELEE_DAMAGE),
         weap_type: weapon.def_i32(def::WEAP_TYPE),
