@@ -167,7 +167,6 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Quick Revive sells on TranZit (solo: 500 points, the bottle is drunk) through Black Ops 2's use rule.
   - [x] Buried's power switch turns the power on (`power_on`, the perk machines' power notifies) and Double Tap sells after it (2000 points; the perk is given).
   - [ ] TranZit's power (built at the power station) is not reached; Nuketown's perks arrive by vehicle drop (below).
-  - [ ] Nuketown's perks arrive by vehicle drop (`getvehiclenode` missing); TranZit's and Buried's power not reached.
 - [ ] Pack-a-Punch and every power-up.
   - [ ] Not reached.
 - [ ] Going down, solo revive, bleeding out and game over return to the lobby.
