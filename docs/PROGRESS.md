@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 267 of 692 |
-| TranZit (`zm_transit`, Classic) | 311 of 741 |
-| Buried (`zm_buried`, Classic) | 296 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 264 of 692 |
+| TranZit (`zm_transit`, Classic) | 305 of 741 |
+| Buried (`zm_buried`, Classic) | 290 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
