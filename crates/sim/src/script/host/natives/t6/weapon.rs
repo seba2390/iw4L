@@ -67,7 +67,7 @@ fn atoi(text: &str) -> i32 {
     }
 }
 
-fn zone_weapon(world: &World, name: &str) -> Option<Arc<ZoneWeapon>> {
+pub(super) fn zone_weapon(world: &World, name: &str) -> Option<Arc<ZoneWeapon>> {
     world
         .resource::<RoundScript>()
         .restart

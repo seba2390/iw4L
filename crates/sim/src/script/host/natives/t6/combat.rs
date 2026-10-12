@@ -7,6 +7,7 @@ use super::movement::{actor, field, origin_of};
 use super::vector;
 use crate::bullet_collision::{ColliderId, TraceOutcome};
 use crate::frame::FrameWorld;
+use crate::script::runtime::run_now;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -24,6 +25,35 @@ const MELEE_RANGE: f32 = 64.0;
 const MELEE_WIDTH: f32 = 5.0;
 const MELEE_HEIGHT: f32 = 30.0;
 const MELEE_MASK: u32 = 0x0280_e893;
+/// A swing's damage adds `rand() % 5` to its weapon's.
+const MELEE_ROLL: u32 = 5;
+const DEFAULT_WEAPON: &str = "defaultweapon_mp";
+const MOD_MELEE: &str = "MOD_MELEE";
+const PLAYER_DAMAGE: &str = "maps/mp/gametypes_zm/_callbacksetup::codecallback_playerdamage";
+/// The hit locations of IW4L's player collision, by its numbers, which are
+/// Modern Warfare 2's (`t6.player.hit_locations`).
+const HIT_LOCATIONS: [&str; 20] = [
+    "none",
+    "helmet",
+    "head",
+    "neck",
+    "torso_upper",
+    "torso_lower",
+    "right_arm_upper",
+    "left_arm_upper",
+    "right_arm_lower",
+    "left_arm_lower",
+    "right_hand",
+    "left_hand",
+    "right_leg_upper",
+    "left_leg_upper",
+    "right_leg_lower",
+    "left_leg_lower",
+    "right_foot",
+    "left_foot",
+    "gun",
+    "shield",
+];
 /// The rays' offsets across the swing, in widths and heights.
 const MELEE_RAYS: [[f32; 2]; 9] = [
     [0.0, 0.0],
@@ -185,7 +215,7 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
         (None, Some(given)) => normalize(given),
         (None, None) => forward,
     };
-    let mut struck: Option<(f32, Value)> = None;
+    let mut struck: Option<Strike> = None;
     for [across, high] in MELEE_RAYS {
         let end: [f32; 3] = std::array::from_fn(|i| {
             start[i]
@@ -203,37 +233,111 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
         let Some(collider) = collider.filter(|_| fraction < 1.0) else {
             continue;
         };
-        let entity = collider_entity(world, collider);
+        let strike = Strike {
+            fraction,
+            entity: collider_entity(world, collider),
+            point: std::array::from_fn(|i| start[i] + (end[i] - start[i]) * fraction),
+            hitloc: match collider {
+                ColliderId::Player { hitloc, .. } => hitloc,
+                _ => 0,
+            },
+        };
         if world
             .resource::<RoundScript>()
-            .player_client_of(&entity)
+            .player_client_of(&strike.entity)
             .is_some()
         {
-            struck = Some((fraction, entity));
+            struck = Some(strike);
             break;
         }
         if struck
             .as_ref()
-            .is_none_or(|(nearest, _)| fraction <= *nearest)
+            .is_none_or(|nearest| fraction <= nearest.fraction)
         {
-            struck = Some((fraction, entity));
+            struck = Some(strike);
         }
     }
-    match struck {
-        Some((_, entity)) if !matches!(entity, Value::Undefined) => Err(format!(
-            "t6.weapons.state_machine: an actor's melee damage is its weapon's meleeDamage (plus up to 4), which IW4L does not read yet; it struck {}",
-            if world
-                .resource::<RoundScript>()
-                .player_client_of(&entity)
-                .is_some()
-            {
-                "a player"
-            } else {
-                "an entity"
-            }
-        )),
-        _ => Ok(Value::Undefined),
+    let Some(strike) = struck.filter(|strike| !matches!(strike.entity, Value::Undefined)) else {
+        return Ok(Value::Undefined);
+    };
+    let damage = melee_damage(world, id)?;
+    if world
+        .resource::<RoundScript>()
+        .player_client_of(&strike.entity)
+        .is_none()
+    {
+        return Err(format!(
+            "t6.actors.melee_entities: a swing struck an entity that is not a player, for {damage}"
+        ));
     }
+    damage_player(world, receiver, &strike, damage, direction)?;
+    Ok(strike.entity)
+}
+
+/// What a swing struck: how far along its ray, where, and the hit location
+/// a player's collision reports.
+struct Strike {
+    fraction: f32,
+    entity: Value,
+    point: [f32; 3],
+    hitloc: u8,
+}
+
+/// The actor's weapon's melee damage plus the engine's `rand() % 5`. An
+/// actor without a weapon swings the zone's `none` weapon, which the engine
+/// keeps at index 0 (the default weapon where a zone has no `none`).
+fn melee_damage(world: &mut World, id: u64) -> Result<i32, String> {
+    let name = match field(world, id, "weapon") {
+        Value::String(name) if !name.is_empty() => name.to_string(),
+        _ => "none".to_owned(),
+    };
+    let weapon = super::weapon::zone_weapon(world, &name)
+        .or_else(|| super::weapon::zone_weapon(world, DEFAULT_WEAPON))
+        .ok_or_else(|| format!("no weapon '{name}' in the zones, nor the default weapon"))?;
+    let roll = (super::next_rand(world) >> 17) % MELEE_ROLL;
+    Ok(weapon.melee_damage + roll as i32)
+}
+
+/// `G_Damage` on a player: refused while it takes no damage, is not
+/// playing or is dead; melee skips the hit location's scale; then the
+/// player damage code callback with the engine's eleven arguments.
+fn damage_player(
+    world: &mut World,
+    attacker: &Value,
+    strike: &Strike,
+    damage: i32,
+    direction: [f32; 3],
+) -> Result<(), String> {
+    let player = entity_id(world, &strike.entity)?;
+    let takes_damage = !matches!(field(world, player, "takedamage"), Value::Int(0));
+    let playing = matches!(
+        field(world, player, "sessionstate"),
+        Value::String(state) if state.as_ref() == "playing"
+    );
+    let alive = number(world, player, "health", 0.0) > 0.0;
+    if damage < 1 || !takes_damage || !playing || !alive {
+        return Ok(());
+    }
+    let hitloc = HIT_LOCATIONS
+        .get(usize::from(strike.hitloc))
+        .copied()
+        .unwrap_or(HIT_LOCATIONS[0]);
+    let now = super::super::super::players::now_ms(world);
+    let args = vec![
+        attacker.clone(),
+        attacker.clone(),
+        Value::Int(damage.max(1)),
+        Value::Int(0),
+        Value::string(MOD_MELEE),
+        Value::string("none"),
+        Value::Vector(strike.point),
+        Value::Vector(direction),
+        Value::string(hitloc),
+        Value::Int(0),
+        Value::Int(0),
+    ];
+    run_now(world, PLAYER_DAMAGE, strike.entity.clone(), args, now)
+        .map_err(|fault| format!("{PLAYER_DAMAGE}: {fault:?}"))
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {

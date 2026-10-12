@@ -1663,6 +1663,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "getweaponammoclip"),
         (Method, "getweaponammostock"),
         (Method, "getammocount"),
+        (Method, "finishplayerdamage"),
         (Method, "setactionslot"),
         (Method, "hasperk"),
         (Method, "setperk"),
@@ -2376,7 +2377,7 @@ fn frand(world: &mut World, min: f32, max: f32) -> f32 {
         + f64::from(min)) as f32
 }
 
-fn next_rand(world: &mut World) -> u32 {
+pub(super) fn next_rand(world: &mut World) -> u32 {
     if !world.contains_resource::<HoldRand>() {
         let seed = super::math::random(world);
         world.insert_resource(HoldRand(seed));
