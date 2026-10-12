@@ -119,9 +119,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 294 of 692 |
-| TranZit (`zm_transit`, Classic) | 340 of 741 |
-| Buried (`zm_buried`, Classic) | 325 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 271 of 692 |
+| TranZit (`zm_transit`, Classic) | 315 of 741 |
+| Buried (`zm_buried`, Classic) | 300 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -165,6 +165,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [ ] Pack-a-Punch and every power-up.
   - [ ] Not reached.
 - [ ] Going down, solo revive, bleeding out and game over return to the lobby.
+  - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
   - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby.
   - [ ] Last stand and the solo revive with Quick Revive (the perk cannot be bought yet); bleeding out is co-op only.
 - [ ] The game's own HUD.
