@@ -248,6 +248,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         zombies: false,
         font_scales_sent: None,
     },
+    client_fire: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

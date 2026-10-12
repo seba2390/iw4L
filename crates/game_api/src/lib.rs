@@ -186,6 +186,9 @@ pub struct ModeRules {
     /// scripts (the game's ledger lists them).
     pub host_rules: bool,
     pub hud: HudRules,
+    /// What a client does when a player fires; `None` runs Modern Warfare
+    /// 2's.
+    pub client_fire: Option<fire::ClientFireRules>,
 }
 
 /// Which of the code-drawn HUD pieces a mode shows, and how.

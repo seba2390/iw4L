@@ -2,6 +2,7 @@
 //! its own shot (spread, bullets, penetration, damage) and the match traces
 //! and applies it through [`FireWorld`].
 
+use crate::Rule;
 use crate::movement::{GameWeapon, MovePlayer};
 
 /// What a bullet trace ran into, in the game's trace terms.
@@ -212,6 +213,67 @@ pub trait FireWorld {
 
     /// The contents at a point, of the world and the entities there.
     fn point_contents(&mut self, point: [f32; 3], mask: u32) -> u32;
+
+    /// A player's weapon event, sent to every client: the player's entity,
+    /// the weapon in its hand when the event is sent.
+    fn weapon_event(&mut self, entity: i32, weapon: u32, event: WeaponEvent);
+}
+
+/// A player's weapon event the clients present with the weapon's sounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeaponEvent {
+    /// A shot, from the left hand or the right; the clip's last round.
+    Fire {
+        left: bool,
+        last_shot: bool,
+    },
+    Reload,
+    ReloadFromEmpty,
+    ReloadStart,
+    ReloadEnd,
+    Raise,
+    FirstRaise,
+    Putaway,
+    /// The switch to the weapon's alternate mode.
+    Alt,
+    /// A grenade's pin is pulled.
+    Pullback,
+    Rechamber,
+}
+
+/// What a client does when a player fires, by the game's own rules.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClientFireRules {
+    /// The fire sound a shot plays, from the weapon's definition and
+    /// variant in the game's layout; `None` when the shot plays none.
+    pub sound: fn(def: &[u8], variant: &[u8], shot: &FireSoundShot) -> Rule<Option<FireSound>>,
+    /// The muzzle flash, shell and tracer a shot shows.
+    pub effects: Rule<()>,
+    /// A left-hand shot sounds the left-hand weapon of the weapon the
+    /// client's own player holds, not the shooter's.
+    pub left_from_own_weapon: bool,
+}
+
+/// A shot as the client that plays its sound sees it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FireSoundShot {
+    /// The client views the shooter in first person.
+    pub player_view: bool,
+    pub left: bool,
+    pub last_shot: bool,
+    /// The client is watching a killcam.
+    pub killcam: bool,
+    /// The weapon names a last shot sound for this view.
+    pub last_shot_sound: bool,
+}
+
+/// Which of a weapon's fire sounds a shot plays.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FireSound {
+    Fire,
+    FirePlayer,
+    LastShot,
+    LastShotPlayer,
 }
 
 /// A blast: damage falling off with distance from its origin.

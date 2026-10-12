@@ -12,7 +12,7 @@ use anim_iw4::{
     ANIM_COND_RIOTSHIELDNEXT, ANIM_ET_DROPWEAPON, ANIM_ET_FIREWEAPON, ANIM_ET_KNIFE_MELEE,
     ANIM_ET_KNIFE_MELEE_CHARGE, ANIM_ET_MELEEATTACK, ANIM_ET_RAISEWEAPON, ANIM_ET_RELOAD,
 };
-use entity_iw4::glass_add_damage;
+use entity_iw4::{EntityEventKind, glass_add_damage, predicted_weapon_fire_event};
 use movement_iw4::{Pml, is_in_air, mantle::is_weapon_inactive};
 use playerstate_iw4::{ENTITYNUM_NONE, PlayerState, mantle_flags};
 use std::cell::RefCell;
@@ -2000,4 +2000,55 @@ pub(crate) fn raise_given_weapon(
             0,
         );
     }
+}
+
+/// A game's player weapon event, sent to every client: a shot from the
+/// player's eye along its view, any other event at its feet.
+pub(crate) fn push_game_weapon_event(
+    world: &mut FrameWorld,
+    tick: Tick,
+    client: ClientId,
+    weapon: u32,
+    event: game_api::fire::WeaponEvent,
+    shot: ShotId,
+) {
+    use game_api::fire::WeaponEvent as E;
+    let Some(ps) = world.player(client).copied() else {
+        return;
+    };
+    let (kind, hand, origin) = match event {
+        E::Fire { left, last_shot } => (
+            predicted_weapon_fire_event(i32::from(left), last_shot),
+            u8::from(left),
+            [
+                ps.origin[0],
+                ps.origin[1],
+                ps.origin[2] + ps.view_height_current,
+            ],
+        ),
+        E::Reload => (EntityEventKind::RELOAD, 0, ps.origin),
+        E::ReloadFromEmpty => (EntityEventKind::RELOAD_FROM_EMPTY, 0, ps.origin),
+        E::ReloadStart => (EntityEventKind::RELOAD_START, 0, ps.origin),
+        E::ReloadEnd => (EntityEventKind::RELOAD_END, 0, ps.origin),
+        E::Raise => (EntityEventKind::RAISE_WEAPON, 0, ps.origin),
+        E::FirstRaise => (EntityEventKind::FIRST_RAISE_WEAPON, 0, ps.origin),
+        E::Putaway => (EntityEventKind::PUTAWAY_WEAPON, 0, ps.origin),
+        E::Alt => (EntityEventKind::WEAPON_ALT, 0, ps.origin),
+        E::Pullback => (EntityEventKind::PULLBACK_WEAPON, 0, ps.origin),
+        E::Rechamber => (EntityEventKind::RECHAMBER_WEAPON, 0, ps.origin),
+    };
+    world.push_entity_event(
+        tick,
+        EventAudience::All,
+        kind,
+        crate::EntityEventPayload {
+            number: client.0 as i32,
+            weapon,
+            correlation: shot.0,
+            hand,
+            origin,
+            direction: ps.viewangles,
+            ..Default::default()
+        },
+    );
 }
