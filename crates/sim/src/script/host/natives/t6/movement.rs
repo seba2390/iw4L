@@ -19,7 +19,7 @@ const GOAL_HEIGHT: f32 = 80.0;
 /// How far the engine looks for the node nearest a position, then further.
 const NODE_NEAR: f32 = 192.0;
 const NODE_FAR: f32 = 512.0;
-const ACTOR_MASK: u32 = 0x0282_0011;
+pub(super) const ACTOR_MASK: u32 = 0x0282_0011;
 /// IW4L's walking rules (`t6.actors.path_following`).
 const POINT_REACHED: f32 = 16.0;
 const TURN_RATE: f32 = 360.0;
@@ -27,6 +27,11 @@ const STEP_HEIGHT: f32 = 18.0;
 const GRAVITY: f32 = 800.0;
 const NODE_DROP: f32 = 128.0;
 const SLIDES: usize = 3;
+/// `maymovetopoint`'s probe: up and down from the point, the extra
+/// contents it stops at, and the deepest drop it allows.
+const PROBE_HEIGHT: f32 = 48.0;
+const PROBE_MASK: u32 = 0xa000;
+const MAX_DROP: f32 = 32.0;
 const ANIMSCRIPTS: &str = "maps/mp/animscripts";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,8 +53,9 @@ struct Waypoint {
 /// `traversemode`: whether the body falls and whether it collides.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum TraverseMode {
-    #[default]
     Gravity,
+    /// An actor's mode until a script sets one, as the engine makes it.
+    #[default]
     NoGravity,
     NoClip,
 }
@@ -89,7 +95,7 @@ fn movement(world: &mut World, id: u64) -> &mut Movement {
         .or_default()
 }
 
-fn actor(world: &World, receiver: &Value) -> Result<u64, String> {
+pub(super) fn actor(world: &World, receiver: &Value) -> Result<u64, String> {
     match world.resource::<RoundScript>().entity(receiver) {
         Some((id, entity)) if entity.kind == EntityKind::Actor => Ok(id),
         _ => Err("not an actor".into()),
@@ -97,7 +103,7 @@ fn actor(world: &World, receiver: &Value) -> Result<u64, String> {
 }
 
 /// A field as script reads it: a player's from its player state.
-fn field(world: &mut World, id: u64, name: &str) -> Value {
+pub(super) fn field(world: &mut World, id: u64, name: &str) -> Value {
     if let Some(client) = world.resource::<RoundScript>().player_client(id)
         && let Some(value) = super::super::super::players::load_field(world, client, name)
     {
@@ -114,7 +120,7 @@ fn number(world: &mut World, id: u64, name: &str, default: f32) -> f32 {
     }
 }
 
-fn origin_of(world: &mut World, id: u64) -> [f32; 3] {
+pub(super) fn origin_of(world: &mut World, id: u64) -> [f32; 3] {
     match field(world, id, "origin") {
         Value::Vector(v) => v,
         _ => [0.0; 3],
@@ -136,7 +142,7 @@ fn in_goal(world: &mut World, id: u64, at: [f32; 3], goal: [f32; 3]) -> bool {
     (at[2] - goal[2]).abs() <= height && flat_distance(at, goal) <= radius
 }
 
-fn hull(world: &World, id: u64) -> ([f32; 3], [f32; 3]) {
+pub(super) fn hull(world: &World, id: u64) -> ([f32; 3], [f32; 3]) {
     let (radius, _, top) = world
         .get_resource::<super::actor::Actors>()
         .and_then(|actors| actors.0.get(&id))
@@ -327,7 +333,7 @@ fn step(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3]) -> [f32; 3] {
     lerp(moved, below, down.fraction)
 }
 
-fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+pub(super) fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t)
 }
 
@@ -384,6 +390,30 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
     {
         set_yaw(world, id, yaw);
     }
+}
+
+/// `maymovetopoint`: the point grounded within 48 units, not starting in
+/// the world, no more than 32 below the actor when drops count, and the body
+/// able to walk there (`t6.actors.path_following` for the walk test).
+fn may_move(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3], drops: bool) -> bool {
+    let top = [to[0], to[1], to[2] + PROBE_HEIGHT];
+    let bottom = [to[0], to[1], to[2] - PROBE_HEIGHT];
+    let floor = trace(
+        world,
+        top,
+        bottom,
+        [0.0; 3],
+        [0.0; 3],
+        ACTOR_MASK | PROBE_MASK,
+    );
+    if floor.startsolid != 0 {
+        return false;
+    }
+    let ground = lerp(top, bottom, floor.fraction);
+    if drops && from[2] - ground[2] > MAX_DROP {
+        return false;
+    }
+    clear(world, id, from, ground)
 }
 
 /// Stands the actor on the begin node, facing along it, as the traversal
@@ -660,6 +690,13 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             None => negotiation(world, &state.path, 0).map(|(begin, _)| begin),
         };
         begin.map_or(Ok(Value::Undefined), |begin| node_value(world, begin))
+    });
+    registry.register(Method, "maymovetopoint", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        let point = vector(args, 0)?;
+        let drops = args.len() < 2 || super::int(args, 1)? != 0;
+        let from = origin_of(world, id);
+        Ok(Value::Int(may_move(world, id, from, point, drops).into()))
     });
     registry.register(Method, "isingoal", |world, receiver, args| {
         let id = actor(world, receiver)?;
