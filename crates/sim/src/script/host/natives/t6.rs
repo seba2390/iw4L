@@ -563,6 +563,54 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             clamped
         }))
     });
+    // gsc_absangleclamp180: the angle brought into 0..360, then its
+    // distance from 0 the short way round.
+    registry.register(Function, "absangleclamp180", |_, _, args| {
+        let turns = float(args, 0)? * (1.0 / 360.0);
+        let clamped = (turns - turns.floor()) * 360.0;
+        Ok(Value::Float(if clamped > 180.0 {
+            360.0 - clamped
+        } else {
+            clamped
+        }))
+    });
+    registry.register(Function, "isfloat", |_, _, args| {
+        Ok(Value::Int(matches!(arg(args, 0)?, Value::Float(_)).into()))
+    });
+    registry.register(Function, "isvec", |_, _, args| {
+        Ok(Value::Int(matches!(arg(args, 0)?, Value::Vector(_)).into()))
+    });
+    registry.register(Function, "pow", |_, _, args| {
+        Ok(Value::Float(float(args, 0)?.powf(float(args, 1)?)))
+    });
+    // gsc_lerpfloat: the fraction is held to 0..1.
+    registry.register(Function, "lerpfloat", |_, _, args| {
+        let (from, to) = (float(args, 0)?, float(args, 1)?);
+        let fraction = float(args, 2)?.clamp(0.0, 1.0);
+        Ok(Value::Float((to - from) * fraction + from))
+    });
+    // gsc_pointonsegmentnearesttopoint: the point of the segment nearest
+    // the third, an end when it lies beyond one.
+    registry.register(Function, "pointonsegmentnearesttopoint", |_, _, args| {
+        let (start, end, point) = (vector(args, 0)?, vector(args, 1)?, vector(args, 2)?);
+        let along: [f32; 3] = std::array::from_fn(|i| end[i] - start[i]);
+        let length_squared: f32 = along.iter().map(|d| d * d).sum();
+        if length_squared == 0.0 {
+            return Err("Line segment must not have zero length".into());
+        }
+        let fraction = (0..3)
+            .map(|i| (point[i] - start[i]) * along[i])
+            .sum::<f32>()
+            / length_squared;
+        Ok(Value::Vector(if fraction < 0.0 {
+            start
+        } else if fraction > 1.0 {
+            end
+        } else {
+            std::array::from_fn(|i| along[i] * fraction + start[i])
+        }))
+    });
+
     registry.register(Function, "abs", |_, _, args| match arg(args, 0)? {
         Value::Float(f) => Ok(Value::Float(if *f < 0.0 { -f } else { *f })),
         Value::Int(n) => Ok(Value::Int(n.wrapping_abs())),
@@ -661,6 +709,56 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             })
             .collect();
         new_array(world, keys)
+    });
+    // gsc_arraycopy: a new array of the same keys and values.
+    registry.register(Function, "arraycopy", |world, _, args| {
+        let entries = array(world, args, 0)?;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let id = runtime.next_object;
+        runtime.next_object = id.checked_add(1).ok_or("object identifier exhausted")?;
+        runtime.arrays.insert(id, entries);
+        Ok(Value::Array(id))
+    });
+    // gsc_arraysort(entities, origin, [nearest_first = 1], [count], [reach]):
+    // the entities within `reach` of `origin`, nearest first (or farthest),
+    // at most `count` of them.
+    registry.register(Function, "arraysort", |world, _, args| {
+        let entries = array(world, args, 0)?;
+        let origin = vector(args, 1)?;
+        let nearest_first = args.len() <= 2 || int(args, 2)? != 0;
+        let reach_squared = if args.len() < 5 {
+            f32::MAX
+        } else {
+            float(args, 4)?.powi(2)
+        };
+        let mut found: Vec<(Value, f32)> = Vec::new();
+        for value in entries.into_values() {
+            if found.len() >= ARRAY_SORT_MAX {
+                return Err(format!(
+                    "ArraySort: array contains more than {ARRAY_SORT_MAX} entities"
+                ));
+            }
+            let Ok(id) = super::engine::entity_id(world, &value) else {
+                return Err("ArraySort: array can only contain entities".into());
+            };
+            let at = movement::origin_of(world, id);
+            let distance_squared: f32 = (0..3).map(|i| (origin[i] - at[i]).powi(2)).sum();
+            if distance_squared <= reach_squared {
+                found.push((value, distance_squared));
+            }
+        }
+        if nearest_first {
+            found.sort_by(|a, b| a.1.total_cmp(&b.1));
+        } else {
+            found.sort_by(|a, b| b.1.total_cmp(&a.1));
+        }
+        if args.len() >= 4 {
+            let count = int(args, 3)?;
+            if count <= found.len() as i32 {
+                found.truncate(usize::try_from(count).unwrap_or(0));
+            }
+        }
+        new_array(world, found.into_iter().map(|(value, _)| value).collect())
     });
     // Keeping keys needs both arrays keyed by strings, judged by their first
     // entry, and no key in both; without duplicates the second array's values
@@ -2536,6 +2634,9 @@ fn angles_to(args: &[Value], name: &str, axis: usize) -> Result<Value, String> {
     let (forward, right, up) = math_iw4::angle_vectors(angles);
     Ok(Value::Vector([forward, right, up][axis]))
 }
+
+/// The most entities `arraysort` takes.
+const ARRAY_SORT_MAX: usize = 1024;
 
 /// An array parameter's id.
 fn array_id(args: &[Value], index: usize) -> Result<u64, String> {
