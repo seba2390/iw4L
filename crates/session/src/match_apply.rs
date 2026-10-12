@@ -653,14 +653,19 @@ pub fn apply_prepared_match(
         let mut natives = crate::games::natives(anim_namespace, &mode);
         if mode.report_builtin_gaps {
             let gaps = natives.bind_gaps(&scripts);
-            if !gaps.is_empty() {
-                diag::info!(
-                    Sim,
-                    "gsc: {} builtins not implemented yet: {}",
-                    gaps.len(),
-                    gaps.join(" ")
-                );
-            }
+            let called = scripts
+                .natives
+                .iter()
+                .map(|builtin| builtin.name)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            diag::info!(
+                Sim,
+                "gsc: {} of {called} builtins not implemented yet ({} implemented): {}",
+                gaps.len(),
+                called - gaps.len(),
+                gaps.join(" ")
+            );
         }
         sim.install_gsc_program(scripts, natives, script_level)
             .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
