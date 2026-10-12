@@ -221,6 +221,7 @@ pub mod def {
     pub const HIP_VIEW_SCATTER_MIN: u32 = 2080;
     pub const HIP_VIEW_SCATTER_MAX: u32 = 2084;
     pub const LOCATION_DAMAGE_MULTIPLIERS: u32 = 2300;
+    pub const HIT_LOCATIONS: usize = 21;
     pub const TRACER_TYPE: u32 = 2320;
     pub const SIZE: usize = 2448;
 }

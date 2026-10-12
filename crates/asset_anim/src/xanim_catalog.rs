@@ -507,6 +507,23 @@ impl XAnimBuild {
 }
 
 impl XAnimBuild {
+    /// Every clip the captured animation state tables of a family name.
+    pub fn state_clip_names(
+        &self,
+        namespace: AssetNamespace,
+    ) -> std::collections::BTreeSet<String> {
+        self.catalog
+            .state_tables(namespace)
+            .flat_map(|(_, table)| {
+                table
+                    .states
+                    .values()
+                    .flatten()
+                    .map(|clip| clip.clip.clone())
+            })
+            .collect()
+    }
+
     pub fn capture_anim_states_t6(
         &mut self,
         namespace: AssetNamespace,

@@ -14,6 +14,7 @@ mod anim;
 mod attach;
 mod barrier;
 mod combat;
+mod damage;
 mod effect;
 mod movement;
 mod mover;
@@ -1702,6 +1703,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     anim::register(registry);
     movement::register(registry);
     combat::register(registry);
+    damage::register(registry);
     attach::register(registry);
     barrier::register(registry);
     weapon::register_natives(registry);

@@ -32,6 +32,8 @@ pub struct LevelData {
     pub barriers: BTreeMap<String, Arc<asset_core::BarrierType>>,
     /// Weapons the zones define, by lowercase name.
     pub weapons: BTreeMap<String, Arc<asset_core::ZoneWeapon>>,
+    /// Raw text files the zones carry, by lowercase name.
+    pub raw_files: BTreeMap<String, Arc<str>>,
     pub schemas: BTreeMap<String, Arc<structured_data_iw4::DefinitionSet>>,
     pub player_data_defaults: Option<crate::PlayerDataDefaults>,
 }

@@ -17,6 +17,7 @@ pub(crate) struct RestartPlan {
     pub layouts: BTreeMap<String, Arc<asset_core::BitLayout>>,
     pub barriers: BTreeMap<String, Arc<asset_core::BarrierType>>,
     pub weapons: BTreeMap<String, Arc<asset_core::ZoneWeapon>>,
+    pub raw_files: BTreeMap<String, Arc<str>>,
     pub entries: Vec<String>,
     pub schemas: BTreeMap<String, Arc<structured_data_iw4::DefinitionSet>>,
     pub player_data_defaults: Option<Arc<crate::PlayerDataDefaults>>,

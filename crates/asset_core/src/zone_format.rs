@@ -195,6 +195,9 @@ pub struct ZoneWeapon {
     pub dual_wield_weapon: String,
     /// World models by index; empty where none is set.
     pub world_models: Vec<String>,
+    /// Damage scales by hit location, in the game's order; empty when the
+    /// weapon has none.
+    pub location_damage: Vec<f32>,
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the
