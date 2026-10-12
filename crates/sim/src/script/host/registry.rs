@@ -152,6 +152,20 @@ impl NativeRegistry {
         gaps.dedup();
         gaps
     }
+    /// How many of the builtins the program names the host does not
+    /// implement, and how many it names.
+    pub fn coverage(&self, program: &crate::script::Program) -> (usize, usize) {
+        let named: std::collections::BTreeSet<_> = program
+            .natives
+            .iter()
+            .map(|builtin| (builtin.namespace, builtin.name))
+            .collect();
+        let missing = named
+            .iter()
+            .filter(|(namespace, name)| self.get(*namespace, name).is_none())
+            .count();
+        (missing, named.len())
+    }
     pub(crate) fn get(&self, namespace: Namespace, name: &str) -> Option<Native> {
         self.0.get(&(namespace, name.to_owned())).copied()
     }
