@@ -1271,6 +1271,11 @@ fn preflight_match_install(
         layouts: sources.0.layouts().clone(),
         barriers: sources.0.barriers().clone(),
         weapons: sources.0.weapons().clone(),
+        raw_files: sources
+            .0
+            .configs()
+            .map(|(name, text)| (name.to_ascii_lowercase(), Arc::from(text)))
+            .collect(),
         tables: sources
             .0
             .tables()

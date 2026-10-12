@@ -35,12 +35,14 @@ const MAX_DROP: f32 = 32.0;
 const ANIMSCRIPTS: &str = "maps/mp/animscripts";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Script {
+pub(super) enum Script {
     Stop,
     Move,
     Combat,
     /// The traversal its negotiation begin node names.
     Traverse(u16),
+    Pain,
+    Death,
 }
 
 /// A point of the path, and the node it is when it is one.
@@ -81,6 +83,8 @@ struct Movement {
     stalled: bool,
     traverse_mode: TraverseMode,
     traversal: Option<Traversal>,
+    /// The pain script while it runs; the engine's choice waits for it.
+    pain: Option<u64>,
 }
 
 #[derive(Resource, Default)]
@@ -133,6 +137,14 @@ fn alive(world: &mut World, id: u64) -> bool {
 
 fn flat_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
+}
+
+/// The engine's pain state: the pain script runs, and its choice of
+/// script waits until that one ends.
+pub(super) fn pain(world: &mut World, id: u64) -> Result<(), String> {
+    let thread = set_script(world, id, Script::Pain)?;
+    movement(world, id).pain = thread;
+    Ok(())
 }
 
 /// The goal's test: within its radius across and its height up or down.
@@ -228,7 +240,11 @@ fn negotiation(world: &mut World, path: &[Waypoint], index: usize) -> Option<(u1
 /// Starts an animscript's main as the engine switches scripts; the one it
 /// leaves is told `killanimscript` (`t6.actors.state_machine`). The thread
 /// while it lives on.
-fn set_script(world: &mut World, id: u64, script: Script) -> Result<Option<u64>, String> {
+pub(super) fn set_script(
+    world: &mut World,
+    id: u64,
+    script: Script,
+) -> Result<Option<u64>, String> {
     if movement(world, id).script == Some(script) {
         return Ok(None);
     }
@@ -247,6 +263,8 @@ fn set_script(world: &mut World, id: u64, script: Script) -> Result<Option<u64>,
         Script::Stop => format!("{ANIMSCRIPTS}/{prefix}stop::main"),
         Script::Move => format!("{ANIMSCRIPTS}/{prefix}move::main"),
         Script::Combat => format!("{ANIMSCRIPTS}/{prefix}combat::main"),
+        Script::Pain => format!("{ANIMSCRIPTS}/{prefix}pain::main"),
+        Script::Death => format!("{ANIMSCRIPTS}/{prefix}death::main"),
         Script::Traverse(begin) => {
             let paths = FrameWorld::from_world(world)
                 .actor_paths()
@@ -522,6 +540,12 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     if !alive(world, id) || anim::scripted(world, id) {
         return Ok(());
     }
+    if let Some(pain) = movement(world, id).pain {
+        if thread_alive(world, pain) {
+            return Ok(());
+        }
+        movement(world, id).pain = None;
+    }
     let at = origin_of(world, id);
     let enemy = enemy(world, id);
     world.resource_mut::<RoundScript>().set_object_field(
@@ -602,6 +626,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         }
         Script::Move => walk(world, id, at),
         Script::Stop | Script::Combat => face(world, id, at, enemy.as_ref()),
+        Script::Pain | Script::Death => {}
     }
     let now = origin_of(world, id);
     if in_goal(world, id, now, goal) && !movement(world, id).goal_sent {

@@ -3,11 +3,11 @@
 
 use super::super::super::entities::EntityKind;
 use super::super::engine::{TraceIgnore, collider_entity, entity_id, entity_trace};
+use super::damage;
 use super::movement::{actor, field, origin_of};
 use super::vector;
 use crate::bullet_collision::{ColliderId, TraceOutcome};
 use crate::frame::FrameWorld;
-use crate::script::runtime::run_now;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -28,10 +28,9 @@ const MELEE_MASK: u32 = 0x0280_e893;
 /// A swing's damage adds `rand() % 5` to its weapon's.
 const MELEE_ROLL: u32 = 5;
 const DEFAULT_WEAPON: &str = "defaultweapon_mp";
-const MOD_MELEE: &str = "MOD_MELEE";
-const PLAYER_DAMAGE: &str = "maps/mp/gametypes_zm/_callbacksetup::codecallback_playerdamage";
 /// The hit locations of IW4L's player collision, by its numbers, which are
-/// Modern Warfare 2's (`t6.player.hit_locations`).
+/// Modern Warfare 2's; each is taken as Black Ops 2's of the same name, its
+/// shield as the riot shield (`t6.player.hit_locations`).
 const HIT_LOCATIONS: [&str; 20] = [
     "none",
     "helmet",
@@ -52,7 +51,7 @@ const HIT_LOCATIONS: [&str; 20] = [
     "right_foot",
     "left_foot",
     "gun",
-    "shield",
+    "riotshield",
 ];
 /// The rays' offsets across the swing, in widths and heights.
 const MELEE_RAYS: [[f32; 2]; 9] = [
@@ -270,7 +269,25 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
             "t6.actors.melee_entities: a swing struck an entity that is not a player, for {damage}"
         ));
     }
-    damage_player(world, receiver, &strike, damage, direction)?;
+    let hit_location = HIT_LOCATIONS
+        .get(usize::from(strike.hitloc))
+        .and_then(|name| damage::HIT_LOCATIONS.iter().position(|ours| ours == name))
+        .unwrap_or(0);
+    damage::damage(
+        world,
+        &strike.entity,
+        damage::Hit {
+            inflictor: receiver.clone(),
+            attacker: receiver.clone(),
+            dir: Some(direction),
+            point: Some(strike.point),
+            damage,
+            dflags: 0,
+            means: damage::MOD_MELEE,
+            weapon: Some("none".to_owned()),
+            hit_location,
+        },
+    )?;
     Ok(strike.entity)
 }
 
@@ -296,48 +313,6 @@ fn melee_damage(world: &mut World, id: u64) -> Result<i32, String> {
         .ok_or_else(|| format!("no weapon '{name}' in the zones, nor the default weapon"))?;
     let roll = (super::next_rand(world) >> 17) % MELEE_ROLL;
     Ok(weapon.melee_damage + roll as i32)
-}
-
-/// `G_Damage` on a player: refused while it takes no damage, is not
-/// playing or is dead; melee skips the hit location's scale; then the
-/// player damage code callback with the engine's eleven arguments.
-fn damage_player(
-    world: &mut World,
-    attacker: &Value,
-    strike: &Strike,
-    damage: i32,
-    direction: [f32; 3],
-) -> Result<(), String> {
-    let player = entity_id(world, &strike.entity)?;
-    let takes_damage = !matches!(field(world, player, "takedamage"), Value::Int(0));
-    let playing = matches!(
-        field(world, player, "sessionstate"),
-        Value::String(state) if state.as_ref() == "playing"
-    );
-    let alive = number(world, player, "health", 0.0) > 0.0;
-    if damage < 1 || !takes_damage || !playing || !alive {
-        return Ok(());
-    }
-    let hitloc = HIT_LOCATIONS
-        .get(usize::from(strike.hitloc))
-        .copied()
-        .unwrap_or(HIT_LOCATIONS[0]);
-    let now = super::super::super::players::now_ms(world);
-    let args = vec![
-        attacker.clone(),
-        attacker.clone(),
-        Value::Int(damage.max(1)),
-        Value::Int(0),
-        Value::string(MOD_MELEE),
-        Value::string("none"),
-        Value::Vector(strike.point),
-        Value::Vector(direction),
-        Value::string(hitloc),
-        Value::Int(0),
-        Value::Int(0),
-    ];
-    run_now(world, PLAYER_DAMAGE, strike.entity.clone(), args, now)
-        .map_err(|fault| format!("{PLAYER_DAMAGE}: {fault:?}"))
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {

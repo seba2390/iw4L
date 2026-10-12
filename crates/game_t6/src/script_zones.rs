@@ -51,7 +51,9 @@ fn scripts(content: &[u8]) -> asset_core::ZoneScripts {
     }
     for asset in &load.assets {
         if let Some(file) = fastfile_t6::raw_file(&load, asset)
-            && (file.name.ends_with(".cfg") || file.name == "radiant/keys.txt")
+            && (file.name.ends_with(".cfg")
+                || file.name == "radiant/keys.txt"
+                || file.name.starts_with("info/"))
             && let Ok(text) = std::str::from_utf8(file.bytes)
         {
             out.configs.push((file.name.to_owned(), text.to_owned()));
@@ -193,6 +195,9 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
             .to_owned(),
         dual_wield: weapon.def_bool(def::DUAL_WIELD),
         dual_wield_weapon: text(def::DUAL_WIELD_WEAPON),
+        location_damage: weapon
+            .def_f32_array::<{ def::HIT_LOCATIONS }>(def::LOCATION_DAMAGE_MULTIPLIERS)
+            .map_or_else(Vec::new, |scales| scales.to_vec()),
         world_models: (0..def::WORLD_MODEL_COUNT)
             .map(|index| {
                 weapon

@@ -3064,24 +3064,26 @@ impl ZoneLane for T6Lane {
             };
             let mut xanims = asset_anim::XAnimBuild::default();
             if mode == asset_transport::t6_content::T6ContentMode::Zombies {
+                let namespace = asset_core::AssetNamespace::T6;
                 for source in &image_loads {
                     for asset in &source.assets {
-                        xanims.capture_anim_states_t6(
-                            asset_core::AssetNamespace::T6,
-                            source,
-                            asset,
-                        );
+                        xanims.capture_anim_states_t6(namespace, source, asset);
                     }
                 }
-                for asset in &load.assets {
-                    if asset.ty == AssetType::XAnimParts
-                        && header_str(&load, &asset.header, 0).is_some_and(|name| {
-                            name.starts_with("o_zombie_board_")
-                                || name.starts_with("ai_zombie")
-                                || name.starts_with("a_zombie")
-                        })
-                    {
-                        xanims.capture_xanim_t6(asset_core::AssetNamespace::T6, "", &load, asset);
+                // The clips the actors' state tables name, wherever they are.
+                let named = xanims.state_clip_names(namespace);
+                for source in image_loads.iter().copied() {
+                    for asset in &source.assets {
+                        if asset.ty == AssetType::XAnimParts
+                            && header_str(source, &asset.header, 0).is_some_and(|name| {
+                                named.contains(name)
+                                    || name.starts_with("o_zombie_board_")
+                                    || name.starts_with("ai_zombie")
+                                    || name.starts_with("a_zombie")
+                            })
+                        {
+                            xanims.capture_xanim_t6(namespace, "", source, asset);
+                        }
                     }
                 }
                 report.push(format!("T6 map zombie animations: {}", xanims.len()));

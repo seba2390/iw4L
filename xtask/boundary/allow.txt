@@ -333,7 +333,7 @@ pattern crates/assets/src/lane/sink.rs weapon_iw4:: 2
 pattern crates/assets/src/lane/t5.rs AssetNamespace::<game> 6
 pattern crates/assets/src/lane/t5.rs ZoneGame::<game> 4
 pattern crates/assets/src/lane/t5.rs fastfile_t5:: 7
-pattern crates/assets/src/lane/t6.rs AssetNamespace::<game> 18
+pattern crates/assets/src/lane/t6.rs AssetNamespace::<game> 17
 pattern crates/assets/src/lane/t6.rs FamilyId::<game> 3
 pattern crates/assets/src/lane/t6.rs ZoneGame::<game> 1
 pattern crates/assets/src/lane/t6.rs asset_iw4:: 7
