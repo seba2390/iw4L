@@ -68,7 +68,13 @@ pub(crate) fn update(
             .is_ok()
     });
     sources.desired.clear();
-    for (row, alias) in speaking {
+    for (row, key) in speaking {
+        // The sound alias table names a game's alias `<game>:<alias>`; a
+        // bare name is the bank's own game's.
+        let (ns, alias) = key
+            .split_once(':')
+            .and_then(|(game, name)| AssetNamespace::parse(game).map(|game| (game, name)))
+            .unwrap_or((ns, key));
         let owner = row.owner.to_wire();
         let changed = sources.live.get(&owner).is_none_or(|current| {
             current.alias != alias || current.namespace != ns || current.emitter != row.snd_ent
