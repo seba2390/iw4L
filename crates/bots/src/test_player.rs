@@ -5,11 +5,19 @@
 //! close. Every five seconds it logs the round, its score, kills, health,
 //! the actors alive, its weapon and ammo, and what its aim lines ended on.
 //! It only presses buttons; the game decides the rest.
+//!
+//! `IW4L_TEST_PLAYER=rounds` is the rounds test: the player also asks for
+//! god mode once (cheats must be on) and for an ammo resupply whenever his
+//! gun is empty, as the `god` and `give ammo` console commands do, so he
+//! lives and fights through the rounds.
 
 use bevy::prelude::*;
-use net::{AuthorityClock, AuthorityWorld, ClientCommandInbox, look_angles_from_degrees};
+use net::{
+    ActionRequestIds, AuthorityClock, AuthorityWorld, ClientActionInbox, ClientCommandInbox,
+    look_angles_from_degrees,
+};
 use sim::script::ScriptOwner;
-use sim::{BulletTraceQuery, ClientLifecycle, ColliderId, Tick, TraceOutcome};
+use sim::{BulletTraceQuery, ClientAction, ClientLifecycle, ColliderId, Tick, TraceOutcome};
 
 use crate::motor::{UserCmd, buttons};
 use crate::roster::BotRoster;
@@ -24,10 +32,15 @@ const SIGHT_CANDIDATES: usize = 4;
 /// It backs away from an actor nearer than this.
 const BACK_OFF: f32 = 90.0;
 const LOG_PERIOD_MS: i32 = 5000;
+/// The rounds test asks for ammo at most this often.
+const RESUPPLY_PERIOD_MS: i32 = 2000;
 
 #[derive(Resource, Default)]
 pub(crate) struct TestPlayer {
     enabled: bool,
+    rounds: bool,
+    god_asked: bool,
+    next_resupply_ms: i32,
     pressed: bool,
     next_log_ms: i32,
     shots: u32,
@@ -38,7 +51,9 @@ pub(crate) struct TestPlayer {
 impl TestPlayer {
     pub(crate) fn from_env() -> Self {
         Self {
-            enabled: std::env::var("IW4L_TEST_PLAYER").is_ok_and(|value| value == "1"),
+            enabled: std::env::var("IW4L_TEST_PLAYER")
+                .is_ok_and(|value| value == "1" || value == "rounds"),
+            rounds: std::env::var("IW4L_TEST_PLAYER").is_ok_and(|value| value == "rounds"),
             ..Self::default()
         }
     }
@@ -69,6 +84,8 @@ pub(crate) fn drive_test_player(
     world: Res<AuthorityWorld>,
     roster: Res<BotRoster>,
     mut cmds: ResMut<ClientCommandInbox>,
+    mut actions: ResMut<ClientActionInbox>,
+    mut request_ids: ResMut<ActionRequestIds>,
 ) {
     if !test.enabled {
         return;
@@ -110,6 +127,22 @@ pub(crate) fn drive_test_player(
     }
     if meta.lifecycle != ClientLifecycle::Alive {
         return;
+    }
+    if test.rounds {
+        let mut ask = |action: fn(u32) -> ClientAction| {
+            let request = request_ids.allocate();
+            if let Err(error) = actions.push(id, action(request)) {
+                diag::warn!(Sim, "test player: request not queued — {error}");
+            }
+        };
+        if !test.god_asked {
+            test.god_asked = true;
+            ask(|request_id| ClientAction::ToggleGod { request_id });
+        }
+        if meta.ammo_clip == 0 && meta.ammo_stock == 0 && clock.time_ms >= test.next_resupply_ms {
+            test.next_resupply_ms = clock.time_ms + RESUPPLY_PERIOD_MS;
+            ask(|request_id| ClientAction::ResupplyAmmo { request_id });
+        }
     }
 
     let eye = [

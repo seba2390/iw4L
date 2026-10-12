@@ -67,7 +67,7 @@ The zombies games share one list, so their numbers compare.
 - [x] Zombies spawn and animate (rising, or at a window).
 - [ ] Zombies path to the player and get through barriers.
 - [ ] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
-- [ ] Rounds advance past round 1.
+- [x] Rounds advance past round 1.
 - [ ] Wall weapons and the Mystery Box.
 - [ ] Doors and debris.
 - [ ] Power and perks.
