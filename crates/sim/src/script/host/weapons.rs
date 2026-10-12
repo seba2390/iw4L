@@ -258,6 +258,10 @@ fn raising(state: i32) -> bool {
 }
 
 fn notify_weapon_changes(world: &mut World) {
+    if crate::game_move::rules(&FrameWorld::from_world(world)).is_some() {
+        notify_game_weapon_changes(world);
+        return;
+    }
     let slots: Vec<(u32, u64, u32, bool, bool)> = world
         .resource::<RoundScript>()
         .players
@@ -309,6 +313,51 @@ fn notify_weapon_changes(world: &mut World) {
             slot.weapon = ps.weapon;
             slot.switching = switching;
             slot.raising = raised;
+        }
+    }
+}
+
+/// The weapon notifies the game's own rules raise on each player this frame.
+fn notify_game_weapon_changes(world: &mut World) {
+    use game_api::movement::WeaponNotify;
+    let slots: Vec<(u32, u64, game_api::movement::WeaponNotifyMemory)> = world
+        .resource::<RoundScript>()
+        .players
+        .iter()
+        .map(|(client, slot)| (*client, slot.object, slot.weapon_notes))
+        .collect();
+    for (client, object, mut memory) in slots {
+        let notifies = {
+            let frame = FrameWorld::from_world(world);
+            let Some(movement) = crate::game_move::rules(&frame) else {
+                return;
+            };
+            let Some(ps) = frame.player(ClientId(client)) else {
+                continue;
+            };
+            movement.weapon_notifies(&ps.move_player(client as i32, false), &mut memory)
+        };
+        if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
+            slot.weapon_notes = memory;
+        }
+        let name = |world: &mut World, weapon: u32| {
+            let weapon = super::players::script_weapon(world, client, weapon);
+            weapon_name(world, weapon)
+        };
+        for notify in notifies {
+            let (event, args) = match notify {
+                WeaponNotify::Change(new, old) => {
+                    ("weapon_change", vec![name(world, new), name(world, old)])
+                }
+                WeaponNotify::ChangeComplete(weapon) => {
+                    ("weapon_change_complete", vec![name(world, weapon)])
+                }
+                WeaponNotify::BeginFiring => ("begin_firing", Vec::new()),
+                WeaponNotify::EndFiring => ("end_firing", Vec::new()),
+                WeaponNotify::NightVisionOn => ("night_vision_on", Vec::new()),
+                WeaponNotify::NightVisionOff => ("night_vision_off", Vec::new()),
+            };
+            raise(world, Value::Object(object), event, args);
         }
     }
 }

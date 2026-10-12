@@ -7,7 +7,8 @@ use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
     MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWorld,
-    PlayerMovement, Stance, WaterSurface, buttons as intent,
+    PlayerMovement, Stance, WaterSurface, WeaponActivity, WeaponNotify, WeaponNotifyMemory,
+    buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::events::event;
@@ -641,6 +642,72 @@ impl PlayerMovement for T5Movement {
         let mut player = *player;
         let (ps, _) = unpack(&mut player);
         ps.perks & bits != 0
+    }
+
+    /// `isFiring`, `isMeleeing`, `isThrowingGrenade` and `isSwitchingWeapons`
+    /// test the weapon state alone.
+    fn weapon_activity(&self, player: &MovePlayer) -> WeaponActivity {
+        use movement_t5::weapon::state as ws;
+        let mut player = *player;
+        let (ps, _) = unpack(&mut player);
+        let state = ps.weaponstate;
+        let meleeing = ws::is_melee(state);
+        WeaponActivity {
+            firing: meleeing
+                || matches!(
+                    state,
+                    ws::FIRING | ws::RECHAMBERING | ws::RECHAMBER_END | ws::CONT_FIRE_LOOP
+                ),
+            meleeing,
+            throwing_grenade: ws::is_offhand(state),
+            switching: ws::is_raising_or_dropping(state),
+        }
+    }
+
+    /// Black Ops' end of a client's server frame: a changed weapon; the end
+    /// of a raise (pending from a frame raising); the firing states while
+    /// alive; night vision.
+    fn weapon_notifies(
+        &self,
+        player: &MovePlayer,
+        memory: &mut WeaponNotifyMemory,
+    ) -> Vec<WeaponNotify> {
+        use movement_t5::weapon::state as ws;
+        let weapon = player.weapon;
+        let mut copy = *player;
+        let (ps, _) = unpack(&mut copy);
+        let mut out = Vec::new();
+        if weapon != memory.weapon {
+            out.push(WeaponNotify::Change(weapon, memory.weapon));
+            memory.weapon = weapon;
+        }
+        let raising = matches!(ps.weaponstate, ws::RAISING | ws::RAISING_ALT);
+        if memory.raise_pending && !raising {
+            out.push(WeaponNotify::ChangeComplete(weapon));
+            memory.raise_pending = false;
+        } else if raising {
+            memory.raise_pending = true;
+        }
+        let firing =
+            matches!(ps.weaponstate, ws::FIRING | ws::CONT_FIRE_LOOP) && ps.pm_type < pm_type::DEAD;
+        if firing != memory.firing {
+            out.push(if firing {
+                WeaponNotify::BeginFiring
+            } else {
+                WeaponNotify::EndFiring
+            });
+            memory.firing = firing;
+        }
+        let night_vision = ps.weap_flags & movement_t5::state::weap_flags::NIGHTVISION != 0;
+        if night_vision != memory.night_vision {
+            out.push(if night_vision {
+                WeaponNotify::NightVisionOn
+            } else {
+                WeaponNotify::NightVisionOff
+            });
+            memory.night_vision = night_vision;
+        }
+        out
     }
 
     fn server_events(

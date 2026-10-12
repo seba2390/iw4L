@@ -88,9 +88,10 @@ Only the top-level items count.
 - [x] Power and perks.
   - [x] The power switch, buying and drinking a perk (Quick Revive), the perk icon.
   - [ ] Each perk's effect verified (Juggernog's health, Speed Cola, Double Tap, Stamin-Up); the drink's stance and melee locks.
-- [ ] Pack-a-Punch and every power-up.
-  - [x] Power-ups drop at the score thresholds; Insta-Kill picked up and working.
-  - [ ] Pack-a-Punch, Max Ammo, Nuke, Double Points, Carpenter, Fire Sale unverified.
+- [x] Pack-a-Punch and every power-up.
+  - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
+  - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
+  - [ ] Carpenter's boards skip `dontinterpolate`; the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
 - [ ] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [ ] Solo Quick Revive self-revive unverified; down and revive animations; the client's fade-out, blur and dead quote.
