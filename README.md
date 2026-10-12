@@ -6,9 +6,9 @@
 | Game | Progress | Milestones |
 |---|---|---|
 | Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 |
-| Black Ops — Zombies | `████████████░░░░░░░░` 63% | 12 / 19 |
-| Black Ops II — Zombies | `█████░░░░░░░░░░░░░░░` 26% | 5 / 19 |
-| Black Ops III — Zombies | `█░░░░░░░░░░░░░░░░░░░` 5% | 1 / 19 |
+| Black Ops — Zombies | `██████████░░░░░░░░░░` 52% | 11 / 21 |
+| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 23% | 5 / 21 |
+| Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 |
 <!-- progress:end -->
 
 IW4L is an open-source runtime for several Call of Duty games, written in Rust with
