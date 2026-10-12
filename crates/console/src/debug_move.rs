@@ -97,6 +97,11 @@ pub(crate) fn register_debug_move_commands(registry: &mut ConsoleRegistry) {
             "force_match_start — skip waitForPlayers and matchStartTimer (needs cheats; invented)",
         ));
     }
+    if registry.resolve("script").is_none() {
+        registry.register(crate::CommandSpec::new("script").usage(
+            "script <module::function> <level|playerN> [args…] — start a script thread on the host; args are numbers, (x,y,z) vectors or strings (needs cheats; invented)",
+        ));
+    }
 }
 
 pub(crate) fn route_debug_move_commands(
@@ -600,6 +605,33 @@ pub(crate) fn route_debug_move_commands(
                         &mut line,
                     );
                 }
+            }
+            "script" => {
+                let Some(authority) = authority.as_deref_mut() else {
+                    echo("script: not the host".into(), &mut console, &mut line);
+                    continue;
+                };
+                if !authority.0.cheats_enabled() {
+                    echo("script: cheats are off".into(), &mut console, &mut line);
+                    continue;
+                }
+                let [name, receiver, args @ ..] = cmd.args.as_slice() else {
+                    echo(
+                        "usage: script <module::function> <level|playerN> [args…]".into(),
+                        &mut console,
+                        &mut line,
+                    );
+                    continue;
+                };
+                let result = authority.0.start_script(name, receiver, args);
+                echo(
+                    match result {
+                        Ok(()) => format!("script: started {name}"),
+                        Err(error) => format!("script: {name}: {error}"),
+                    },
+                    &mut console,
+                    &mut line,
+                );
             }
             _ => {}
         }
