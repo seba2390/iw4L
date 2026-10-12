@@ -14,7 +14,8 @@
 //!
 //! `IW4L_TEST_PLAYER=use` fights as the rounds test does and, once the
 //! scripts have set the map up, uses one of each thing they offer, in this
-//! order — a wall weapon, a door, the box, debris, the power switch — each
+//! order — a wall weapon, Quick Revive, a door, the box, debris, the power
+//! switch — each
 //! once he can pay for it and stand by it inside a zone the scripts have
 //! enabled (one behind a closed door waits its turn): he is moved in front of it (as `setviewpos` does), looks at
 //! its middle, holds use, and two and a half seconds later logs what the
@@ -22,6 +23,10 @@
 //! the scripts made there). Once the box has taken its price he waits for
 //! its weapon to rise and holds use again to take it. Then he goes back and
 //! fights on.
+//!
+//! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
+//! he can pay for it he buys Quick Revive as the use test does (fighting
+//! nothing), then stands where he spawned as the go-down test does.
 //!
 //! `IW4L_TEST_PLAYER=down` is the go-down test: no god mode, no fighting;
 //! he stands where he spawned until the zombies reach him and down him.
@@ -91,6 +96,11 @@ const NODE_REACH: f32 = 256.0;
 const NODE_CANDIDATES: usize = 16;
 /// It walks toward a site this high above the floor (over steps).
 const WAIST_HEIGHT: f32 = 32.0;
+/// How far into a perk machine its trigger's middle lies: the trigger's
+/// radius (`perk_machine_spawn_init` spawns it 40 wide).
+const MACHINE_ROOM: f32 = 40.0;
+/// The perk the use test buys.
+const QUICK_REVIVE: &str = "specialty_quickrevive";
 /// The eye height it plans with before it stands there.
 const EYE_HEIGHT: f32 = 60.0;
 
@@ -102,6 +112,7 @@ enum Mode {
     Rounds,
     Use,
     Down,
+    Revive,
 }
 
 impl Mode {
@@ -111,6 +122,7 @@ impl Mode {
             Ok("rounds") => Self::Rounds,
             Ok("use") => Self::Use,
             Ok("down") => Self::Down,
+            Ok("revive") => Self::Revive,
             _ => Self::Off,
         }
     }
@@ -178,13 +190,18 @@ impl TestPlayer {
     pub(crate) fn from_env() -> Self {
         Self {
             mode: Mode::from_env(),
-            pending: vec![
-                UseKind::WallBuy,
-                UseKind::Door,
-                UseKind::Box,
-                UseKind::Debris,
-                UseKind::Power,
-            ],
+            pending: if Mode::from_env() == Mode::Revive {
+                vec![UseKind::Perk]
+            } else {
+                vec![
+                    UseKind::WallBuy,
+                    UseKind::Perk,
+                    UseKind::Door,
+                    UseKind::Box,
+                    UseKind::Debris,
+                    UseKind::Power,
+                ]
+            },
             ..Self::default()
         }
     }
@@ -252,7 +269,14 @@ fn stand_point(
                 .map(|i| (model.maxs[i] - model.mins[i]) * 0.5)
                 .fold(0.0, f32::max)
         })
-        + STAND_ROOM;
+        + STAND_ROOM
+        // A perk machine's trigger is in the machine: the line to its
+        // middle ends on the machine.
+        + if site.kind == UseKind::Perk {
+            MACHINE_ROOM
+        } else {
+            0.0
+        };
     let mut nodes: Vec<[f32; 3]> = world
         .path_node_origins()
         .into_iter()
@@ -323,8 +347,9 @@ fn next_scenario(
         let count = |kind| sites.iter().filter(|site| site.kind == kind).count();
         diag::info!(
             Sim,
-            "test player: use sites — wall weapons {} box {} doors {} debris {} power {}; enabled zone volumes {}",
+            "test player: use sites — wall weapons {} perks {} box {} doors {} debris {} power {}; enabled zone volumes {}",
             count(UseKind::WallBuy),
+            count(UseKind::Perk),
             count(UseKind::Box),
             count(UseKind::Door),
             count(UseKind::Debris),
@@ -339,7 +364,27 @@ fn next_scenario(
         let mut of_kind: Vec<&UseSite> = sites
             .iter()
             .filter(|site| site.kind == kind && (kind != UseKind::WallBuy || site.cost.is_some()))
+            // Of the perks, Quick Revive: the one a solo player's down asks for.
+            .filter(|site| {
+                kind != UseKind::Perk || site.weapon.as_deref() == Some(QUICK_REVIVE)
+            })
             .collect();
+        // `_zm_unitrigger::main` offers only the stubs of active zones (and
+        // those filed under none); the others wait for a door to open.
+        let offered = of_kind.len();
+        of_kind.retain(|site| {
+            site.zone
+                .as_deref()
+                .is_none_or(|zone| world.zone_is_active(zone))
+        });
+        if of_kind.is_empty() && offered > 0 {
+            if !test.deferred.contains(&kind) {
+                test.deferred.push(kind);
+                diag::info!(Sim, "test player: use {kind:?}: none in an active zone yet");
+            }
+            test.pending.rotate_left(1);
+            return None;
+        }
         if of_kind.is_empty() {
             if now_ms - since_ms >= USE_GIVE_UP_MS {
                 test.pending.remove(0);
@@ -466,7 +511,7 @@ pub(crate) fn drive_test_player(
         test.nearest = None;
         test.lowest_health = None;
     }
-    if test.mode == Mode::Down {
+    if matches!(test.mode, Mode::Down | Mode::Revive) {
         let now = (meta.lifecycle, ps.health, laststand);
         if test
             .seen
@@ -482,7 +527,9 @@ pub(crate) fn drive_test_player(
             );
         }
         test.seen = Some(now);
-        return;
+        if test.mode == Mode::Down || test.pending.is_empty() && test.scenario.is_none() {
+            return;
+        }
     }
     if meta.lifecycle != ClientLifecycle::Alive {
         return;
@@ -520,7 +567,7 @@ pub(crate) fn drive_test_player(
         }));
     };
 
-    if test.mode == Mode::Use
+    if matches!(test.mode, Mode::Use | Mode::Revive)
         && test.scenario.is_none()
         && clock.time_ms - since_ms >= USE_START_MS
         && clock.time_ms >= test.next_try_ms
@@ -601,11 +648,14 @@ pub(crate) fn drive_test_player(
                 }
                 Phase::Watching => {
                     let all = world.0.use_triggers_near(scenario.center, f32::MAX);
-                    let boxes = all.iter().filter(|c| *c == "trigger_box").count();
-                    let radii = all.iter().filter(|c| *c == "trigger_radius").count();
+                    let boxes = all.iter().filter(|c| c.starts_with("trigger_box")).count();
+                    let radii = all
+                        .iter()
+                        .filter(|c| c.starts_with("trigger_radius"))
+                        .count();
                     diag::info!(
                         Sim,
-                        "test player: use triggers on the map now: {} ({boxes} trigger_box, {radii} trigger_radius)",
+                        "test player: use triggers on the map now: {} ({boxes} trigger_box[_use], {radii} trigger_radius[_use])",
                         all.len()
                     );
                     diag::info!(
@@ -624,6 +674,23 @@ pub(crate) fn drive_test_player(
                         },
                         scenario.offered
                     );
+                    if scenario.site.kind == UseKind::Perk {
+                        diag::info!(
+                            Sim,
+                            "test player: perks drunk (num_perks) {}",
+                            world
+                                .0
+                                .script_int(ScriptOwner::Player(id), "num_perks")
+                                .map_or_else(|| "-".to_owned(), |n| n.to_string())
+                        );
+                    }
+                    if matches!(scenario.site.kind, UseKind::WallBuy | UseKind::Box) {
+                        diag::info!(
+                            Sim,
+                            "test player: its unitrigger stub — {}",
+                            world.0.unitrigger_state(scenario.site.object)
+                        );
+                    }
                     ask(ClientAction::Move {
                         request_id: request_ids.allocate(),
                         origin: scenario.home,
@@ -643,6 +710,10 @@ pub(crate) fn drive_test_player(
         }
         test.scenario = Some(scenario);
         cmds.push(id, None, cmd, None);
+        return;
+    }
+    // The revive test fights nothing.
+    if test.mode == Mode::Revive {
         return;
     }
 

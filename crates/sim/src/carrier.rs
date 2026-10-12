@@ -95,8 +95,16 @@ impl SimWorld {
     }
 
     /// The middle of a use site: its brush model's middle for a trigger
-    /// entity, else its origin (a unitrigger stub's box is centred there).
+    /// entity, half a radius trigger's height above its origin, else its
+    /// origin (a unitrigger stub's box is centred there).
     pub fn use_site_center(&self, site: &crate::script::UseSite) -> [f32; 3] {
+        if let Some(height) = site.height {
+            return [
+                site.origin[0],
+                site.origin[1],
+                site.origin[2] + height * 0.5,
+            ];
+        }
         site.brush
             .and_then(|n| self.clip_cmodels().models.get(n as usize))
             .map_or(site.origin, |model| {
@@ -140,6 +148,17 @@ impl SimWorld {
     /// How many volumes the enabled zones have, for a test player's log.
     pub fn enabled_player_volume_count(&self) -> usize {
         crate::script::host::sightings::enabled_player_volumes(&self.ecs).len()
+    }
+
+    /// Whether the scripts mark a zone active, for a test player.
+    pub fn zone_is_active(&self, name: &str) -> bool {
+        crate::script::host::sightings::zone_is_active(&self.ecs, name)
+    }
+
+    /// What `_zm_unitrigger` holds for a unitrigger stub, for a test
+    /// player's log.
+    pub fn unitrigger_state(&self, stub: u64) -> String {
+        crate::script::host::sightings::unitrigger_state(&self.ecs, stub)
     }
 
     /// Whether a script object still lives, for a test player.
