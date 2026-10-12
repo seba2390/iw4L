@@ -1,5 +1,6 @@
 mod catalog;
 mod fire;
+mod fire_sound;
 mod grenade;
 mod menu_expression;
 mod missile;
@@ -135,6 +136,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         zombies: true,
         font_scales_sent: Some(sent_font_scales),
     },
+    client_fire: Some(fire_sound::CLIENT_FIRE),
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each

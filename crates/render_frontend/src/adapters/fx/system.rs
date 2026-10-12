@@ -2082,11 +2082,24 @@ fn publish_weapon_fire(
     mut sounds: Option<ResMut<Messages<audio::WeaponSound>>>,
     mut cursor: ResMut<FxJournalCursor>,
     mut combat: ResMut<CombatFxDump>,
+    (mode, mut reported): (Option<Res<game_api::ModeRules>>, Local<Vec<&'static str>>),
 ) {
     let weapons = weapons
         .as_deref()
         .and_then(|weapons| weapons.for_event(fire.event.world).ok());
-    pending.write(WeaponFireFx(*fire));
+    let client_fire = mode.as_deref().and_then(|mode| mode.client_fire);
+    let mut report = |gap: &'static game_api::Unknown| {
+        if !reported.contains(&gap.id) {
+            diag::info!(Audio, "game gap {}: {}", gap.id, gap.what);
+            reported.push(gap.id);
+        }
+    };
+    match client_fire.map(|rules| rules.effects) {
+        Some(game_api::Rule::Unknown(gap)) => report(gap),
+        _ => {
+            pending.write(WeaponFireFx(*fire));
+        }
+    }
     let eyes = match *view {
         ViewSubject::Seat {
             focus: Some(focus), ..
@@ -2120,6 +2133,20 @@ fn publish_weapon_fire(
         let weapons = weapons.as_ref()?;
         let bank = sound_bank.as_deref()?;
         let weapon = fire.event.payload.weapon;
+        if let Some(rules) = client_fire {
+            let own_weapon = player.map_or(0, |ps| ps.weapon);
+            return game_fire_alias(
+                &rules,
+                &weapons.registry(),
+                &bank.0,
+                &fire.event,
+                player_view,
+                view.in_killcam(),
+                own_weapon,
+                &mut report,
+            )
+            .map(|alias| (alias, player_view));
+        }
         audio::select_cg_fire_alias(
             last_shot,
             player_view,
@@ -2188,6 +2215,59 @@ fn publish_weapon_fire(
             ));
         }
     }
+}
+
+/// The fire sound a shot plays by the game's own client rules; `None`
+/// when it plays none, or its rule is not known (reported).
+#[allow(clippy::too_many_arguments)]
+fn game_fire_alias<'a>(
+    rules: &game_api::fire::ClientFireRules,
+    registry: &asset_game::WeaponRegistry,
+    bank: &'a asset_audio::SoundCatalog,
+    event: &net::DispatchedEntityEvent,
+    player_view: bool,
+    killcam: bool,
+    own_weapon: u32,
+    report: &mut impl FnMut(&'static game_api::Unknown),
+) -> Option<&'a str> {
+    use asset_game::WeaponSoundSlot as Slot;
+    use game_api::fire::FireSound;
+    let left = is_left_hand_fire_event(event.event);
+    let weapon = if left && rules.left_from_own_weapon {
+        registry
+            .bind_published_row(own_weapon)
+            .ok()?
+            .dual_wield_wire_id()
+    } else {
+        event.payload.weapon
+    };
+    let bytes = registry.bind_published_row(weapon).ok()?.game_bytes()?;
+    let last_slot = if player_view {
+        Slot::FireLastPlayer
+    } else {
+        Slot::FireLast
+    };
+    let shot = game_api::fire::FireSoundShot {
+        player_view,
+        left,
+        last_shot: is_weapon_fire_last_shot_event(event.event),
+        killcam,
+        last_shot_sound: registry.authored_weapon_sound(weapon, last_slot).is_some(),
+    };
+    let sound = match (rules.sound)(&bytes.def, &bytes.variant, &shot) {
+        game_api::Rule::Known(sound) => sound?,
+        game_api::Rule::Unknown(gap) => {
+            report(gap);
+            return None;
+        }
+    };
+    let slot = match sound {
+        FireSound::Fire => Slot::Fire,
+        FireSound::FirePlayer => Slot::FirePlayer,
+        FireSound::LastShot => Slot::FireLast,
+        FireSound::LastShotPlayer => Slot::FireLastPlayer,
+    };
+    registry.weapon_sound_alias(weapon, slot, bank)
 }
 
 fn drain_weapon_fire_fx(

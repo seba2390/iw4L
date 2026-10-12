@@ -203,6 +203,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
         zombies: true,
         font_scales_sent: None,
     },
+    client_fire: None,
 };
 
 impl game_api::GameModes for T7 {

@@ -9,7 +9,7 @@ use crate::world::{ClientId, Tick};
 use crate::{ScriptModelId, SimContent};
 use game_api::fire::{
     BulletHitType, BulletImpact, BulletTrace, FireDamage, FireEntity, FireEntityKind, FireTeam,
-    FireWorld, GameMissile, MissileExplosion, MissileRun, NotifyArg,
+    FireWorld, GameMissile, MissileExplosion, MissileRun, NotifyArg, WeaponEvent,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, GameWeapon};
 use std::collections::HashMap;
@@ -650,6 +650,15 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             explosion.normal,
             explosion.surface_type,
             false,
+        );
+    }
+
+    fn weapon_event(&mut self, entity: i32, weapon: u32, event: WeaponEvent) {
+        let Some(client) = self.client(entity) else {
+            return;
+        };
+        crate::combat::push_game_weapon_event(
+            self.world, self.tick, client, weapon, event, self.shot,
         );
     }
 }
