@@ -259,6 +259,14 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
     let Some(strike) = struck.filter(|strike| !matches!(strike.entity, Value::Undefined)) else {
         return Ok(Value::Undefined);
     };
+    // The engine's melee hit: a swing that lands on an actor of the
+    // swinging actor's own team does nothing.
+    if damage::is_actor(world, &strike.entity)
+        && let Value::Object(other) = strike.entity
+        && team(world, other) == team(world, id)
+    {
+        return Ok(Value::Undefined);
+    }
     let damage = melee_damage(world, id)?;
     if world
         .resource::<RoundScript>()
@@ -266,7 +274,7 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
         .is_none()
     {
         return Err(format!(
-            "t6.actors.melee_entities: a swing struck an entity that is not a player, for {damage}"
+            "t6.actors.melee_entities: a swing struck an entity that is not a player nor an actor of its team, for {damage}"
         ));
     }
     let hit_location = HIT_LOCATIONS
@@ -289,6 +297,14 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
         },
     )?;
     Ok(strike.entity)
+}
+
+/// An entity's `team` field.
+fn team(world: &mut World, id: u64) -> Option<String> {
+    match field(world, id, "team") {
+        Value::String(team) => Some(team.to_string()),
+        _ => None,
+    }
 }
 
 /// What a swing struck: how far along its ray, where, and the hit location
