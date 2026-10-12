@@ -2,10 +2,11 @@
 //! lends Black Ops 2 with its movement (`t6.movement.player`).
 
 use super::super::player::player;
-use super::{float, int};
+use super::{float, int, vector};
 use crate::ClientId;
 use crate::frame::FrameWorld;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
+use crate::script_player::{CmdButton, holds_now_or_last};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
 
@@ -119,6 +120,107 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "ismantling", |world, receiver, _| {
         pm_flag(world, receiver, MANTLING)
     });
+    // Sprinting and aiming down the sights: the shared allowances, through
+    // the game's own movement when it has one. Melee: the handler sets its
+    // no-melee pm flag; IW4L takes the melee button from the lent
+    // movement's commands instead (`t6.player.allowances`). Each answers the
+    // previous allowance.
+    registry.register(Method, "allowsprint", |world, receiver, args| {
+        allowance(
+            world,
+            receiver,
+            args,
+            |a| &mut a.sprint,
+            super::super::player::allow_sprint,
+        )
+    });
+    registry.register(Method, "allowads", |world, receiver, args| {
+        allowance(
+            world,
+            receiver,
+            args,
+            |a| &mut a.ads,
+            super::super::player::allow_ads,
+        )
+    });
+    registry.register(Method, "allowmelee", |world, receiver, args| {
+        allowance(
+            world,
+            receiver,
+            args,
+            |a| &mut a.melee,
+            |world, receiver, args| {
+                let id = ClientId(player(world, receiver)?);
+                let allowed = int(args, 0)? != 0;
+                FrameWorld::from_world(world)
+                    .client_meta_mut(id)
+                    .controls
+                    .melee_disabled = !allowed;
+                Ok(Value::Undefined)
+            },
+        )
+    });
+    // Buttons held this frame or the last.
+    macro_rules! button {
+        ($($name:literal => $button:ident),* $(,)?) => {$(
+            registry.register(Method, $name, |world, receiver, _| {
+                let id = ClientId(player(world, receiver)?);
+                Ok(Value::Int(
+                    holds_now_or_last(&mut FrameWorld::from_world(world), id, CmdButton::$button)
+                        .into(),
+                ))
+            });
+        )*};
+    }
+    button!(
+        "attackbuttonpressed" => Attack,
+        "adsbuttonpressed" => Ads,
+        "meleebuttonpressed" => Melee,
+        "fragbuttonpressed" => Frag,
+        "secondaryoffhandbuttonpressed" => SecondaryOffhand,
+        "jumpbuttonpressed" => Jump,
+        "sprintbuttonpressed" => Sprint,
+        "stancebuttonpressed" => Stance,
+        "throwbuttonpressed" => Throw,
+    );
+    registry.register(Method, "getvelocity", |world, receiver, _| {
+        let id = ClientId(player(world, receiver).map_err(|_| {
+            "t6.entities.velocity: the velocity of an entity that is not a player is not kept"
+                .to_owned()
+        })?);
+        Ok(Value::Vector(
+            FrameWorld::from_world(world)
+                .player(id)
+                .map_or([0.0; 3], |ps| ps.velocity),
+        ))
+    });
+    registry.register(Method, "setvelocity", |world, receiver, args| {
+        let id = ClientId(player(world, receiver)?);
+        let velocity = vector(args, 0)?;
+        if let Some(ps) = FrameWorld::from_world(world).player_mut(id) {
+            ps.velocity = velocity;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getplayerviewheight", |world, receiver, _| {
+        let id = ClientId(player(world, receiver)?);
+        Ok(Value::Float(
+            FrameWorld::from_world(world)
+                .player(id)
+                .map_or(0.0, |ps| ps.view_height_current),
+        ))
+    });
+    // The current offhand weapon's name, "none" without one.
+    registry.register(Method, "getcurrentoffhand", |world, receiver, _| {
+        let id = ClientId(player(world, receiver)?);
+        let frame = FrameWorld::from_world(world);
+        let offhand = frame.player(id).map_or(0, |ps| ps.off_hand_index & 0xff);
+        Ok(Value::string(if offhand == 0 || offhand == 0xff {
+            "none"
+        } else {
+            frame.weapon_script_name(offhand as u32)
+        }))
+    });
     registry.register(Method, "startfadingblur", |world, receiver, args| {
         let blur = float(args, 0)?;
         let seconds = float(args, 1)?;
@@ -134,6 +236,43 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             "t6.player.blur: the client's blur to {blur} over {seconds}s is not drawn"
         ))
     });
+}
+
+/// What a script has taken from a player's body, kept so each allowance
+/// can answer the one before it.
+#[derive(Clone, Copy, Debug, Default)]
+struct Taken {
+    sprint: bool,
+    ads: bool,
+    melee: bool,
+}
+
+#[derive(Resource, Default)]
+struct Allowances(BTreeMap<u32, Taken>);
+
+/// `allowsprint`/`allowads`/`allowmelee`: applies the allowance and answers
+/// the previous one.
+fn allowance(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    slot: fn(&mut Taken) -> &mut bool,
+    apply: crate::script::Native,
+) -> Result<Value, String> {
+    let client = player(world, receiver)?;
+    let allowed = int(args, 0)? != 0;
+    apply(world, receiver, args)?;
+    let taken = slot(
+        world
+            .get_resource_or_insert_with(Allowances::default)
+            .into_inner()
+            .0
+            .entry(client)
+            .or_default(),
+    );
+    let was = !*taken;
+    *taken = !allowed;
+    Ok(Value::Int(was.into()))
 }
 
 /// The player-state flag bits the engine reads for these queries.

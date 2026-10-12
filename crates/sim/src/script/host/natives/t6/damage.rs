@@ -1,5 +1,6 @@
 //! Black Ops 2's damage: `G_Damage` for players and actors, `dodamage`,
-//! `finishactordamage`, and what an actor does when it is hurt or killed.
+//! `finishactordamage`, `finishplayerdamage`, and what an actor does when
+//! it is hurt or killed.
 
 use super::super::super::entities::EntityKind;
 use super::super::engine::entity_id;
@@ -70,6 +71,9 @@ const LOCATION_TABLE_HEADER: &str = "LOCDMGTABLE";
 /// A dead actor's health goes no lower.
 const HEALTH_FLOOR: i32 = -999;
 const CALLBACKS: &str = "maps/mp/gametypes_zm/_callbacksetup";
+/// `player_dmgtimer_timePerPoint` and `player_dmgtimer_maxTime`'s defaults.
+const DMGTIMER_TIME_PER_POINT: f32 = 100.0;
+const DMGTIMER_MAX_TIME: f32 = 750.0;
 
 /// One `G_Damage`: who, from where, how much and how.
 pub(super) struct Hit {
@@ -205,10 +209,17 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
             Value::String(state) if state.as_ref() == "playing"
         );
         let alive = number(world, id, "health", 0.0) > 0.0;
+        // The script's invulnerability, or the `god` cheat.
         let god = world
             .resource::<RoundScript>()
             .player_client(id)
-            .is_some_and(|client| super::player::is_invulnerable(world, client));
+            .is_some_and(|client| {
+                super::player::is_invulnerable(world, client)
+                    || crate::script_player::god_mode(
+                        &FrameWorld::from_world(world),
+                        crate::ClientId(client),
+                    )
+            });
         if !takes_damage
             || god
             || hit.damage < 1
@@ -456,6 +467,119 @@ fn finish_actor_damage(
     Ok(Value::Undefined)
 }
 
+/// `finishplayerdamage(inflictor, attacker, damage, dflags, mod, weapon,
+/// point, dir, hitloc, timeoffset, boneindex)`, as the engine's handler: the
+/// damage timer, the health, the `damage` notify; a player whose health runs
+/// out goes down and the last stand callback runs, and one it leaves at no
+/// health dies. What the handler also does for the client is listed under
+/// `t6.match.last_stand`.
+fn finish_player_damage(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let client = super::super::player::player(world, receiver)?;
+    let id = crate::ClientId(client);
+    let damage = int(args, 2)?;
+    if damage < 1 || FrameWorld::from_world(world).client_meta(id).is_none() {
+        return Ok(Value::Undefined);
+    }
+    // Without an inflictor or attacker the engine takes the world entity.
+    let inflictor = super::super::super::players::damage_entity(world, args.first());
+    let attacker = super::super::super::players::damage_entity(world, args.get(1));
+    let dflags = int(args, 3)?;
+    let means = means_arg(args, 4)?;
+    let weapon = string(args, 5)?;
+    let point = vector(args, 6).ok();
+    let dir = vector(args, 7).ok().map(|d| {
+        let length = d.iter().map(|c| c * c).sum::<f32>().sqrt();
+        if length > 0.0 {
+            d.map(|c| c / length)
+        } else {
+            d
+        }
+    });
+    let location = hit_location_arg(args, 8)?;
+    if location == RIOTSHIELD {
+        return Ok(Value::Undefined);
+    }
+    let offset = int(args, 9)?;
+    int(args, 10)?;
+    let health = {
+        let mut frame = FrameWorld::from_world(world);
+        if frame
+            .client_meta(id)
+            .is_some_and(|meta| meta.lifecycle == crate::ClientLifecycle::Dead)
+        {
+            diag::warn!(Sim, "Trying to do damage to a client that is already dead");
+            return Ok(Value::Undefined);
+        }
+        let Some(ps) = frame.player_mut(id) else {
+            return Ok(Value::Undefined);
+        };
+        // The damage timer: time per point of damage, up to the cap; its
+        // duration is where it ends.
+        ps.damage_timer = (ps.damage_timer as f32 + damage as f32 * DMGTIMER_TIME_PER_POINT)
+            .min(DMGTIMER_MAX_TIME) as i32;
+        ps.damage_duration = ps.damage_timer;
+        ps.health -= damage;
+        ps.health
+    };
+    let zero = [0.0; 3];
+    raise(
+        world,
+        receiver.clone(),
+        "damage",
+        vec![
+            Value::Int(damage),
+            attacker.clone(),
+            Value::Vector(dir.unwrap_or(zero)),
+            Value::Vector(point.unwrap_or(zero)),
+            Value::string(MEANS_OF_DEATH[means]),
+            Value::string(""),
+            Value::string(""),
+            Value::string(""),
+            Value::string(&weapon),
+            Value::Int(dflags),
+            attacker.clone(),
+        ],
+    );
+    if health >= 1 {
+        return Ok(Value::Undefined);
+    }
+    // The handler lets a player go down while any playing client is not
+    // down, so the victim, who is not, always may.
+    if !super::laststand::is_down(world, client) {
+        super::laststand::state(world, client).down = true;
+        super::laststand::lend_last_stand_move(world, id);
+        callback(
+            world,
+            "codecallback_playerlaststand",
+            receiver.clone(),
+            vec![
+                inflictor,
+                attacker,
+                Value::Int(damage),
+                Value::string(MEANS_OF_DEATH[means]),
+                Value::string(&weapon),
+                Value::Vector(dir.unwrap_or(zero)),
+                Value::string(HIT_LOCATIONS[location]),
+                Value::Int(offset),
+                Value::Int(0),
+            ],
+        )?;
+    }
+    let left = FrameWorld::from_world(world)
+        .player(id)
+        .map_or(0, |ps| ps.health);
+    if left < 1 {
+        return Err(format!(
+            "t6.damage.player_die: player {client} is left at {left} health and the player's die handler is not run"
+        ));
+    }
+    Ok(Value::Undefined)
+}
+
 /// A shot or blast IW4L's weapon rules landed on one of the game's actors:
 /// the game's own `G_Damage`, with the rules' damage, means and weapon, at
 /// the struck bone's hit location (its model's `partClassification`).
@@ -508,6 +632,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.on_entity_hit(entity_hit);
     registry.register(Method, "dodamage", do_damage);
     registry.register(Method, "finishactordamage", finish_actor_damage);
+    registry.register(Method, "finishplayerdamage", finish_player_damage);
     registry.register(Method, "startragdoll", |world, receiver, _| {
         entity_id(world, receiver)?;
         Err("t6.actors.ragdoll: ragdoll physics are not simulated; the body stays where its death clip leaves it".into())
