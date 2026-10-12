@@ -26,6 +26,7 @@ entity_iw4.workspace = true
 frame.workspace = true
 fx.workspace = true
 fx_iw4.workspace = true
+game_api.workspace = true
 hud_iw4.workspace = true
 lighting_iw4.workspace = true
 math_iw4.workspace = true

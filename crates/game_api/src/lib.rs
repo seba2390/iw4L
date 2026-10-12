@@ -189,6 +189,40 @@ pub struct ModeRules {
     /// What a client does when a player fires; `None` runs Modern Warfare
     /// 2's.
     pub client_fire: Option<fire::ClientFireRules>,
+    /// How a client's viewmodel plays the game's own weapon animation
+    /// numbers; `None` reads them as Modern Warfare 2's.
+    pub viewmodel: Option<ViewmodelRules>,
+}
+
+/// How a client's viewmodel plays a player's weapon animation number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ViewmodelRules {
+    /// What a change of the weapon animation number plays; `named(i)` tells
+    /// whether the weapon names its animation `i` (in the game's own order).
+    /// The second value is what the change does that is not run.
+    pub anim: ViewmodelAnimFn,
+    /// How the game starts an animation (its blend and rate), which the
+    /// runtime's viewmodel does not run.
+    pub playback: &'static Unknown,
+    /// What an animation the runtime's viewmodel holds no slot for does not
+    /// do.
+    pub unslotted: &'static Unknown,
+}
+
+pub type ViewmodelAnimFn =
+    fn(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> (ViewmodelAnim, Option<&'static Unknown>);
+
+/// What a viewmodel does on a weapon animation change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewmodelAnim {
+    /// Idle once the animations playing have finished.
+    Idle,
+    /// Idle now.
+    IdleNow,
+    /// The weapon's animation by its index in the game's own order.
+    Play(usize),
+    /// What plays goes on.
+    Keep,
 }
 
 /// Which of the code-drawn HUD pieces a mode shows, and how.

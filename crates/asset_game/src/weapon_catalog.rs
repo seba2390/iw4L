@@ -546,6 +546,9 @@ pub struct GameWeaponBytes {
     pub clip_name: String,
     /// The variant's animation slots that name an animation, by slot.
     pub named_anims: u128,
+    /// The runtime viewmodel slot each of the game's animation slots is
+    /// captured into, by the game's slot.
+    pub anim_slots: &'static [Option<usize>],
     /// The definition's damage multipliers by hit location.
     pub location_damage: Option<[f32; 19]>,
     /// The definition's bounce coefficients along and across a surface, by
