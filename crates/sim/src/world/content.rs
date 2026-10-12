@@ -101,6 +101,16 @@ impl SimContent {
         self.data.script_model_states.clone()
     }
 
+    pub(super) fn anim_state_table(
+        &self,
+        name: &str,
+    ) -> Option<Arc<xmodel_runtime::AnimStateTable>> {
+        self.data
+            .anim_state_tables
+            .get(&name.to_ascii_lowercase())
+            .cloned()
+    }
+
     pub(super) fn script_model_clips(
         &self,
     ) -> Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>> {
@@ -176,6 +186,7 @@ struct ContentData {
     actor_paths: Option<Arc<crate::script::ActorPaths>>,
     script_model_clips: Arc<std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimClip>>>,
     script_model_states: Option<Arc<xmodel_runtime::AnimStateTable>>,
+    anim_state_tables: std::collections::BTreeMap<String, Arc<xmodel_runtime::AnimStateTable>>,
     xanims: Arc<crate::MantleXAnimBind>,
     vehicle_turrets: std::collections::BTreeMap<String, String>,
     vehicle_compass: std::collections::BTreeMap<String, ([String; 2], [i32; 2])>,
@@ -227,6 +238,7 @@ impl SimContentBuilder {
                 actor_anim_trees: Default::default(),
                 actor_paths: Default::default(),
                 script_model_states: None,
+                anim_state_tables: Default::default(),
                 script_model_clips: Default::default(),
                 xanims: Default::default(),
                 vehicle_turrets: Default::default(),
@@ -275,6 +287,17 @@ impl SimContentBuilder {
 
     pub fn set_script_model_states(&mut self, states: Option<Arc<xmodel_runtime::AnimStateTable>>) {
         self.data.script_model_states = states;
+    }
+
+    /// The map's animation state tables, by name without folder or extension.
+    pub fn set_anim_state_tables(
+        &mut self,
+        tables: impl IntoIterator<Item = (String, Arc<xmodel_runtime::AnimStateTable>)>,
+    ) {
+        self.data.anim_state_tables = tables
+            .into_iter()
+            .map(|(name, table)| (name.to_ascii_lowercase(), table))
+            .collect();
     }
 
     pub fn set_script_model_anims(

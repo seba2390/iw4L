@@ -1,4 +1,4 @@
-use super::{ENGINE_API, Environment, FaultKind, METAMETHODS, Value};
+use super::{Environment, FaultKind, METAMETHODS, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -63,6 +63,25 @@ impl Default for Tables {
 }
 
 impl Tables {
+    pub fn entries(&self, container: &Value) -> Result<Vec<(Value, Value)>, FaultKind> {
+        let table = &self.tables[self.index(container)?];
+        Ok(table
+            .entries
+            .iter()
+            .map(|(key, value)| {
+                let key = match key {
+                    Key::Boolean(value) => Value::Boolean(*value),
+                    Key::Number(value) => Value::Number(f32::from_bits(*value)),
+                    Key::Bytes(value) => Value::Bytes(value.clone()),
+                    Key::Reference(kind, identity) => Value::Reference {
+                        kind: *kind,
+                        identity: *identity,
+                    },
+                };
+                (key, value.clone())
+            })
+            .collect())
+    }
     fn index(&self, value: &Value) -> Result<usize, FaultKind> {
         let Value::Reference { kind: 5, identity } = value else {
             return Err(FaultKind::BindingRequired);
@@ -168,6 +187,18 @@ impl Tables {
 }
 
 impl Environment for Tables {
+    fn length(&self, value: &Value) -> Result<usize, FaultKind> {
+        if let Value::Bytes(value) = value {
+            return Ok(value.len());
+        }
+        let count = self.tables[self.index(value)?].entries.len();
+        for index in 1..=count + 1 {
+            if self.raw_get(value, &Value::Number(index as f32))? == Value::Nil {
+                return Ok(index - 1);
+            }
+        }
+        Err(FaultKind::Capacity)
+    }
     fn global(&mut self, key: &Value) -> Result<Value, FaultKind> {
         self.field(&self.globals.clone(), key)
     }
@@ -182,7 +213,11 @@ impl Environment for Tables {
                 }
             }
             if matches!(current, Value::Bytes(_)) {
-                return Err(FaultKind::Unknown(ENGINE_API));
+                let library = self.raw_get(
+                    &self.globals,
+                    &Value::Bytes(std::sync::Arc::from(b"string".as_slice())),
+                )?;
+                return self.raw_get(&library, key);
             }
             let index = self.metafield(&current, b"__index")?;
             if matches!(index, Value::Reference { kind: 9 | 10, .. }) {

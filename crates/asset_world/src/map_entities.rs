@@ -888,7 +888,7 @@ fn parse_spawn_points(text: &str, classnames: &[&str]) -> Vec<SpawnPoint> {
     out
 }
 
-fn parse_minimap_corners(text: &str) -> Option<MinimapCorners> {
+pub fn parse_minimap_corners(text: &str) -> Option<MinimapCorners> {
     let mut corners: Vec<[f32; 2]> = Vec::new();
     for entity in parse_entities(text) {
         if entity.targetname.as_deref() != Some("minimap_corner") {
@@ -915,7 +915,7 @@ fn parse_airstrike_height(text: &str) -> Option<f32> {
         .map(|origin| origin[2])
 }
 
-fn parse_worldspawn_north_yaw(text: &str) -> Option<f32> {
+pub fn parse_worldspawn_north_yaw(text: &str) -> Option<f32> {
     parse_entities(text)
         .find(|e| e.classname == Some("worldspawn"))
         .and_then(|e| e.north_yaw)

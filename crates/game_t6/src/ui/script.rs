@@ -51,6 +51,12 @@ impl From<Constant> for Value {
 }
 
 pub trait Environment {
+    fn length(&self, value: &Value) -> Result<usize, FaultKind> {
+        match value {
+            Value::Bytes(value) => Ok(value.len()),
+            _ => Err(FaultKind::Unknown(OPCODES)),
+        }
+    }
     fn global(&mut self, key: &Value) -> Result<Value, FaultKind>;
     fn field(&mut self, container: &Value, key: &Value) -> Result<Value, FaultKind>;
     fn new_table(&mut self) -> Result<Value, FaultKind> {
@@ -140,6 +146,7 @@ pub struct Frame {
     pub cached: Value,
     pub pc: usize,
     pub top: usize,
+    pub iterator: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -296,6 +303,14 @@ impl Frame {
         function: &Function,
         environment: &mut dyn Environment,
     ) -> Result<Step, Fault> {
+        if let Some(register) = self.iterator.take() {
+            let value = self.register(register + 3)?;
+            if value == Value::Nil {
+                self.pc += 1;
+            } else {
+                self.store(register + 2, value)?;
+            }
+        }
         let instruction = function
             .instructions
             .get(self.pc)
@@ -308,7 +323,7 @@ impl Frame {
         let mut next = self.pc + 1;
         let mut result = Step::Continue;
         match opcode {
-            2 | 3 | 29 | 30 | 69 => {
+            2 | 3 | 22 | 23 | 29 | 30 | 69 => {
                 let callee = if opcode == 69 {
                     self.cached.clone()
                 } else {
@@ -335,7 +350,20 @@ impl Frame {
                     callee,
                     arguments,
                     register: a,
-                    results: (c & 255).checked_sub(1),
+                    results: if matches!(opcode, 22 | 23) {
+                        None
+                    } else {
+                        (c & 255).checked_sub(1)
+                    },
+                };
+            }
+            14 => {
+                self.iterator = Some(a);
+                result = Step::Call {
+                    callee: self.register(a)?,
+                    arguments: vec![self.register(a + 1)?, self.register(a + 2)?],
+                    register: a + 3,
+                    results: Some(c & 255),
                 };
             }
             38 => {
@@ -509,7 +537,7 @@ impl Frame {
                     ((instruction >> 8) & 0x1ffff) as isize - 65535 + 1,
                 )?;
             }
-            40..=47 => {
+            40..=49 => {
                 let left =
                     self.number(self.operand(function, ((instruction >> 17) & 511) as usize)?)?;
                 let right = self.number(self.operand(function, c)?)?;
@@ -518,6 +546,7 @@ impl Frame {
                     42 | 43 => left - right,
                     44 | 45 => right * left,
                     46 | 47 => left / right,
+                    48 | 49 => left - (left / right).floor() * right,
                     _ => unreachable!(),
                 };
                 self.store(a, Value::Number(value))?;
@@ -535,6 +564,12 @@ impl Frame {
                 self.store(a, Value::Boolean(u32::from(!value.truthy())))?;
                 self.cached = value;
             }
+            55 => {
+                let length = environment
+                    .length(&self.register(b)?)
+                    .map_err(|kind| self.fault(kind))?;
+                self.store(a, Value::Number(length as f32))?;
+            }
             1 | 71 => {
                 let value = if opcode == 1 {
                     self.register(a)?
@@ -550,6 +585,98 @@ impl Frame {
                 next = self.conditional(function, taken)?;
                 if taken {
                     self.store(a, value)?;
+                }
+            }
+            60 => {
+                let mut bytes = Vec::new();
+                for index in b..=(c & 255) {
+                    match self.register(index)? {
+                        Value::Bytes(value) => bytes.extend_from_slice(&value),
+                        Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
+                            bytes.extend_from_slice(value.to_string().as_bytes());
+                        }
+                        _ => return Err(self.fault(FaultKind::Unknown(OPCODES))),
+                    }
+                }
+                self.store(a, Value::Bytes(Arc::from(bytes)))?;
+            }
+            62 => {
+                let numeric = |value: Value| match value {
+                    Value::Number(value) => Ok(value),
+                    Value::Bytes(value) => core::str::from_utf8(&value)
+                        .ok()
+                        .and_then(|value| value.trim().parse::<f32>().ok())
+                        .ok_or_else(|| self.fault(FaultKind::NumberRequired)),
+                    _ => Err(self.fault(FaultKind::NumberRequired)),
+                };
+                let start = numeric(self.register(a)?)?;
+                let limit = numeric(self.register(a + 1)?)?;
+                let step = numeric(self.register(a + 2)?)?;
+                let count = (limit - start) / step;
+                let count = if count < 0.0 || count > 1_073_741_824.0 {
+                    -1.0
+                } else {
+                    count
+                };
+                let remaining = if count.is_nan() {
+                    i32::MIN
+                } else {
+                    count as i32
+                };
+                self.store(a, Value::Number(start - step))?;
+                self.store(
+                    a + 1,
+                    Value::Number(f32::from_bits(remaining.wrapping_add(1) as u32)),
+                )?;
+                self.store(a + 2, Value::Number(step))?;
+                self.store(a + 3, Value::Number(start))?;
+                next = self.branch(
+                    function,
+                    ((instruction >> 8) & 0x1ffff) as isize - 65535 + 1,
+                )?;
+            }
+            63 => {
+                let index = self.number(self.register(a)?)? + self.number(self.register(a + 2)?)?;
+                let remaining = self.number(self.register(a + 1)?)?.to_bits() as i32;
+                if remaining > 0 {
+                    self.store(a + 1, Value::Number(f32::from_bits((remaining - 1) as u32)))?;
+                    self.store(a, Value::Number(index))?;
+                    self.store(a + 3, Value::Number(index))?;
+                    next = self.branch(
+                        function,
+                        ((instruction >> 8) & 0x1ffff) as isize - 65535 + 1,
+                    )?;
+                }
+            }
+            64 => {
+                let count = if b == 0 {
+                    self.top.saturating_sub(a + 1)
+                } else {
+                    b
+                };
+                let block = if c == 0 {
+                    let data = function
+                        .instructions
+                        .get(next)
+                        .ok_or_else(|| self.fault(FaultKind::ProgramCounter))?;
+                    next += 1;
+                    ((data.0 >> 8) & 0x1ffff) as usize
+                } else {
+                    c
+                };
+                let first = block
+                    .checked_sub(1)
+                    .and_then(|block| block.checked_mul(50))
+                    .ok_or_else(|| self.fault(FaultKind::Capacity))?;
+                let container = self.register(a)?;
+                for index in 1..=count {
+                    environment
+                        .set_field(
+                            &container,
+                            &Value::Number((first + index) as f32),
+                            self.register(a + index)?,
+                        )
+                        .map_err(|kind| self.fault(kind))?;
                 }
             }
             _ => return Err(self.fault(FaultKind::Unknown(OPCODES))),

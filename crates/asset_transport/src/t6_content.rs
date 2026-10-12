@@ -45,16 +45,18 @@ impl T6ContentMode {
         }
     }
 
-    pub fn icons(self) -> [&'static str; 5] {
+    pub fn icons(self) -> &'static [&'static str] {
         match self {
-            Self::Multiplayer => [
+            Self::Multiplayer => &[
                 "patch_ui_mp.ff",
                 "patch_mp.ff",
                 "ui_mp.ff",
                 "common_mp.ff",
                 "code_post_gfx_mp.ff",
             ],
-            Self::Zombies => [
+            Self::Zombies => &[
+                "patch_ui_mp.ff",
+                "patch_mp.ff",
                 "patch_ui_zm.ff",
                 "patch_zm.ff",
                 "ui_zm.ff",

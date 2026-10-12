@@ -1,5 +1,16 @@
 # IW4L
 
+<!-- progress:start (generated from docs/PROGRESS.md by `cargo xtask progress --write`) -->
+**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)):
+
+| Game | Progress | Milestones |
+|---|---|---|
+| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 |
+| Black Ops — Zombies | `████████████░░░░░░░░` 63% | 12 / 19 |
+| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 21% | 4 / 19 |
+| Black Ops III — Zombies | `█░░░░░░░░░░░░░░░░░░░` 5% | 1 / 19 |
+<!-- progress:end -->
+
 IW4L is an open-source runtime for several Call of Duty games, written in Rust with
 [Bevy](https://bevy.org/): Modern Warfare 2 (2009), Black Ops (2010), Black Ops II
 (2012) and Black Ops III (2015), with Modern Warfare 3 (2011) maps recognised. Point it

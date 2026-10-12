@@ -590,6 +590,23 @@ pub(crate) fn sound_to(
     );
 }
 
+/// A sound at a point that only one client hears.
+pub(crate) fn sound_to_client(
+    world: &mut World,
+    client: crate::ClientId,
+    alias: &str,
+    origin: [f32; 3],
+) {
+    let number = i32::from(trace_iw4::ENTITYNUM_WORLD);
+    sound_to(
+        world,
+        crate::EventAudience::Client(client),
+        alias,
+        number,
+        origin,
+    );
+}
+
 fn team_clients(world: &mut World, team: &str, except: Option<u32>) -> Vec<crate::ClientId> {
     let team = match team {
         "axis" => entity_iw4::TEAM_AXIS,
@@ -1627,14 +1644,7 @@ fn register_sound_and_fx(registry: &mut NativeRegistry) {
         let alias = string(args, 0)?;
         let client = super::player::player(world, arg(args, 1)?)?;
         let origin = origin_of(world, receiver)?;
-        let number = i32::from(trace_iw4::ENTITYNUM_WORLD);
-        sound_to(
-            world,
-            crate::EventAudience::Client(crate::ClientId(client)),
-            &alias,
-            number,
-            origin,
-        );
+        sound_to_client(world, crate::ClientId(client), &alias, origin);
         Ok(Value::Undefined)
     });
     registry.register(Method, "playsoundtoteam", |world, receiver, args| {

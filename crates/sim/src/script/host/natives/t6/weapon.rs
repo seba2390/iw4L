@@ -4,7 +4,9 @@
 
 use super::super::super::arrays::new_array;
 use super::{int, string};
+use crate::frame::FrameWorld;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
+use crate::script_player;
 use asset_core::ZoneWeapon;
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -67,7 +69,7 @@ fn atoi(text: &str) -> i32 {
     }
 }
 
-fn zone_weapon(world: &World, name: &str) -> Option<Arc<ZoneWeapon>> {
+pub(super) fn zone_weapon(world: &World, name: &str) -> Option<Arc<ZoneWeapon>> {
     world
         .resource::<RoundScript>()
         .restart
@@ -251,6 +253,129 @@ fn sound(
     Ok(Value::String(text.into()))
 }
 
+/// The game's names for a weapon's type, class and inventory type, by number.
+const WEAP_TYPES: [&str; 9] = [
+    "bullet",
+    "grenade",
+    "projectile",
+    "binoculars",
+    "gas",
+    "bomb",
+    "mine",
+    "melee",
+    "riotshield",
+];
+const WEAP_CLASSES: [&str; 14] = [
+    "rifle",
+    "mg",
+    "smg",
+    "spread",
+    "pistol",
+    "grenade",
+    "rocketlauncher",
+    "turret",
+    "non-player",
+    "gas",
+    "item",
+    "melee",
+    "Killstreak Alt Stored Weapon",
+    "pistol spread",
+];
+const INVENTORY_TYPES: [&str; 6] = [
+    "primary",
+    "offhand",
+    "item",
+    "altmode",
+    "melee",
+    "dwlefthand",
+];
+const WEAP_TYPE_GAS: i32 = 4;
+const INVENTORY_PRIMARY: i32 = 0;
+const FIRE_SINGLE_SHOT: i32 = 1;
+const OFFHAND_EQUIPMENT: i32 = 3;
+const OFFHAND_SPECIFIC_USE: i32 = 4;
+/// `player_clipSizeMultiplier` as the engine registers it.
+const CLIP_SIZE_MULTIPLIER: f32 = 1.0;
+
+/// The weapon a builtin's first argument names; an unknown one is the
+/// engine's script error.
+fn named(world: &mut World, args: &[Value]) -> Result<Arc<ZoneWeapon>, String> {
+    let name = string(args, 0)?;
+    let index = weapon_index(world, &name)? & 0xff;
+    let weapon = world
+        .resource::<WeaponTable>()
+        .weapons
+        .get(index)
+        .cloned()
+        .flatten();
+    match weapon {
+        Some(weapon) if index != 0 => Ok(weapon),
+        _ if name.eq_ignore_ascii_case("none") => {
+            Err(format!("Weapon name \"{name}\" is not valid.\n"))
+        }
+        _ => Err(format!(
+            "Unknown weapon name \"{name}\": script may need to call PreCacheItem(\"{name}\") during level init.\n"
+        )),
+    }
+}
+
+/// The weapon a builtin names, or none for an unknown name, which those
+/// builtins answer quietly.
+fn named_or_none(world: &mut World, args: &[Value]) -> Result<Option<Arc<ZoneWeapon>>, String> {
+    let name = string(args, 0)?;
+    let index = weapon_index(world, &name)? & 0xff;
+    Ok(world
+        .resource::<WeaponTable>()
+        .weapons
+        .get(index)
+        .cloned()
+        .flatten()
+        .filter(|_| index != 0))
+}
+
+/// A clip as the engine sizes it: scaled by `player_clipSizeMultiplier`,
+/// rounded, never below one; a one-round clip stays one.
+fn clip_size(world: &World, weapon: &ZoneWeapon) -> i32 {
+    let scale = world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get("player_clipsizemultiplier")
+        .and_then(|value| value.trim().parse::<f32>().ok())
+        .unwrap_or(CLIP_SIZE_MULTIPLIER);
+    if weapon.clip_size > 1 {
+        ((weapon.clip_size as f32 * scale + 9.313_226e-10).round_ties_even() as i32).max(1)
+    } else {
+        weapon.clip_size
+    }
+}
+
+/// Start or max ammo: rounds, or clips when the weapon counts in clips.
+fn ammo(world: &World, weapon: &ZoneWeapon, count: i32) -> i32 {
+    if weapon.ammo_count_clip_relative {
+        clip_size(world, weapon) * count
+    } else {
+        count
+    }
+}
+
+fn enum_name(names: &[&str], value: i32) -> Value {
+    Value::string(
+        usize::try_from(value)
+            .ok()
+            .and_then(|i| names.get(i))
+            .unwrap_or(&""),
+    )
+}
+
+fn other_weapon(world: &mut World, name: &str) -> Result<Value, String> {
+    let index = if name.is_empty() {
+        0
+    } else {
+        weapon_index(world, name)?
+    };
+    Ok(Value::string(if index == 0 { "none" } else { name }))
+}
+
 /// The names of the weapons with a flag, by index; the engine stops one short
 /// of the last weapon registered.
 fn flagged(world: &mut World, flag: fn(&ZoneWeapon) -> bool) -> Result<Value, String> {
@@ -266,8 +391,56 @@ fn flagged(world: &mut World, flag: fn(&ZoneWeapon) -> bool) -> Result<Value, St
     new_array(world, names)
 }
 
+/// The client of a player entity, with the engine's object errors.
+fn player_entity(world: &World, receiver: &Value) -> Result<crate::ClientId, String> {
+    let runtime = world.resource::<RoundScript>();
+    let (id, entity) = runtime.entity(receiver).ok_or("not an entity")?;
+    runtime
+        .player_client(id)
+        .map(crate::ClientId)
+        .ok_or_else(|| format!("entity {} is not a player", entity.number))
+}
+
+/// `getfractionmaxammo`: a clip-only weapon's clip against its size, else
+/// its stock against its max; 1 for a weapon the player lacks or that holds
+/// none.
+fn fraction_max_ammo(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let client = player_entity(world, receiver)?;
+    let name = string(args, 0)?;
+    let weapon = named_or_none(world, args)?;
+    let Some(weapon) = weapon else {
+        return Ok(Value::Float(1.0));
+    };
+    let count = {
+        let frame = FrameWorld::from_world(world);
+        let held = script_player::weapon_named(&frame, &name)
+            .ok()
+            .filter(|&held| script_player::has_weapon(&frame, client, held));
+        let Some(held) = held else {
+            return Ok(Value::Float(1.0));
+        };
+        if weapon.clip_only {
+            script_player::ammo_clip(&frame, client, held)
+        } else {
+            script_player::ammo_stock(&frame, client, held)
+        }
+    };
+    let max = if weapon.clip_only {
+        clip_size(world, &weapon)
+    } else {
+        ammo(world, &weapon, weapon.max_ammo)
+    };
+    Ok(Value::Float(match (count, max) {
+        (_, ..1) => 1.0,
+        (1.., _) => count as f32 / max as f32,
+        _ => 0.0,
+    }))
+}
+
 pub(super) fn register_natives(registry: &mut NativeRegistry) {
-    use Namespace::Function;
+    use Namespace::{Function, Method};
+
+    registry.register(Method, "getfractionmaxammo", fraction_max_ammo);
 
     registry.register(Function, "precacheitem", |world, _, args| {
         if !world.resource::<RoundScript>().loading {
@@ -294,6 +467,104 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "getweaponpickupsoundplayer", |world, _, args| {
         sound(world, args, |w| &w.pickup_sound_player)
+    });
+    registry.register(Function, "weaponclipsize", |world, _, args| {
+        let weapon = named(world, args)?;
+        Ok(Value::Int(clip_size(world, &weapon)))
+    });
+    registry.register(Function, "weaponfuellife", |world, _, args| {
+        Ok(Value::Int(named(world, args)?.tank_life_time))
+    });
+    registry.register(Function, "weaponmaxammo", |world, _, args| {
+        let weapon = named(world, args)?;
+        Ok(Value::Int(ammo(world, &weapon, weapon.max_ammo)))
+    });
+    registry.register(Function, "weaponstartammo", |world, _, args| {
+        let weapon = named(world, args)?;
+        Ok(Value::Int(ammo(world, &weapon, weapon.start_ammo)))
+    });
+    registry.register(Function, "weapontype", |world, _, args| {
+        Ok(enum_name(&WEAP_TYPES, named(world, args)?.weap_type))
+    });
+    registry.register(Function, "weaponinventorytype", |world, _, args| {
+        Ok(enum_name(
+            &INVENTORY_TYPES,
+            named(world, args)?.inventory_type,
+        ))
+    });
+    registry.register(Function, "weaponissemiauto", |world, _, args| {
+        Ok(Value::Int(
+            (named(world, args)?.fire_type == FIRE_SINGLE_SHOT).into(),
+        ))
+    });
+    registry.register(Function, "weaponclass", |world, _, args| {
+        Ok(match named_or_none(world, args)? {
+            Some(weapon) => enum_name(&WEAP_CLASSES, weapon.weap_class),
+            None => Value::string("none"),
+        })
+    });
+    registry.register(Function, "isweaponprimary", |world, _, args| {
+        let weapon = named_or_none(world, args)?;
+        Ok(Value::Int(
+            weapon
+                .is_some_and(|w| w.inventory_type == INVENTORY_PRIMARY)
+                .into(),
+        ))
+    });
+    registry.register(Function, "weaponisgasweapon", |world, _, args| {
+        let weapon = named_or_none(world, args)?;
+        Ok(Value::Int(
+            weapon.is_some_and(|w| w.weap_type == WEAP_TYPE_GAS).into(),
+        ))
+    });
+    registry.register(Function, "isweaponequipment", |world, _, args| {
+        let weapon = named_or_none(world, args)?;
+        Ok(Value::Int(
+            weapon
+                .is_some_and(|w| w.offhand_slot == OFFHAND_EQUIPMENT)
+                .into(),
+        ))
+    });
+    registry.register(Function, "isweaponspecificuse", |world, _, args| {
+        let weapon = named_or_none(world, args)?;
+        Ok(Value::Int(
+            weapon
+                .is_some_and(|w| w.offhand_slot == OFFHAND_SPECIFIC_USE)
+                .into(),
+        ))
+    });
+    registry.register(Function, "weaponaltweaponname", |world, _, args| {
+        let alt = named(world, args)?.alt_weapon.clone();
+        other_weapon(world, &alt)
+    });
+    registry.register(Function, "weapondualwieldweaponname", |world, _, args| {
+        let weapon = named(world, args)?;
+        if !weapon.dual_wield {
+            return Ok(Value::string("none"));
+        }
+        other_weapon(world, &weapon.dual_wield_weapon.clone())
+    });
+    registry.register(Function, "getweaponmodel", |world, _, args| {
+        let Some(weapon) = named_or_none(world, args)? else {
+            return Ok(Value::string(""));
+        };
+        let wanted = if args.len() == 2 {
+            int(args, 1)? as u32
+        } else {
+            0
+        };
+        let model = |index: u32| {
+            weapon
+                .world_models
+                .get(index as usize)
+                .filter(|name| !name.is_empty())
+        };
+        let index = if wanted < 0x100 && model(wanted).is_some() {
+            wanted
+        } else {
+            0
+        };
+        Ok(Value::string(model(index).map_or("", String::as_str)))
     });
     registry.register(Function, "getwatcherweapons", |world, _, _| {
         flagged(world, |w| w.watcher)

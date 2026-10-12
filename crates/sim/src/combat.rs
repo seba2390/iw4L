@@ -1540,11 +1540,13 @@ pub(crate) fn phase_trace(
                         continue;
                     }
                     if let Some(target) = owner.script_model() {
-                        let bone = match segment.collider {
-                            Some(ColliderId::EntityDObjBone { bone, .. }) => {
-                                Some(usize::from(bone))
-                            }
-                            _ => None,
+                        let (bone, part) = match segment.collider {
+                            Some(ColliderId::EntityDObjBone {
+                                bone,
+                                part_classification,
+                                ..
+                            }) => (Some(usize::from(bone)), Some(part_classification)),
+                            _ => (None, None),
                         };
                         let means = crate::script_player::means(
                             world,
@@ -1566,6 +1568,7 @@ pub(crate) fn phase_trace(
                                 bone,
                                 flags: 0,
                                 hit_location: None,
+                                part,
                             },
                         );
                     }
@@ -1794,6 +1797,7 @@ fn fire_weapon_melee(
                         bone,
                         flags: 0,
                         hit_location: None,
+                        part: None,
                     },
                 );
                 if damaged && usize::from(segment.surf_type) == fx_iw4::FX_SURF_TYPE_FLESH {

@@ -9,7 +9,10 @@
 //!   format crates; a neutral crate on neutral and format crates;
 //! * patterns — outside game/format crates, no code names a game: game enum
 //!   variants, `GameModeKind::Zombies`, a game crate's path, a game literal,
-//!   `is_<game>` helpers. The session's registration point is the exception;
+//!   `is_<game>` helpers, a gametype token literal (`"zclassic"`, …) or a
+//!   `.token() == "…"` test. The session's registration point is the
+//!   exception, and for gametypes the mode enum's token table and a game's
+//!   natives;
 //! * ledger — every `unknown!("<id>", ..)` in a game crate, and every id that
 //!   starts an error string (`"t6.weapons.table_full: …"`) in any crate, is
 //!   listed in `docs/fidelity/<game>.md` of the game the id names;
@@ -42,6 +45,11 @@ const GAME_VARIANTS: [&str; 5] = ["Iw4", "T5", "Iw5", "T6", "T7"];
 const GAME_ENUMS: [&str; 4] = ["ZoneGame", "AssetNamespace", "FamilyId", "Realm"];
 /// The traits through which the session asks a game for its rules.
 const GAME_TRAITS: [&str; 4] = ["GameScripts", "GameModes", "GameMenus", "GameVision"];
+/// Gametype tokens: outside a game's code the mode is asked, not named.
+const MODE_TOKENS: [&str; 4] = ["zclassic", "zstandard", "zgrief", "zcleansed"];
+/// The mode enum's own token table.
+const MODE_TABLE: &str = "crates/gamemode_iw4/src/kind.rs";
+const NATIVES: &str = "crates/sim/src/script/host/natives/";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Layer {
@@ -185,7 +193,8 @@ pub fn run_cli(root: &Path, args: &[String]) -> Res<()> {
                 Some(_) if [REGISTRATION, IDENTITY, SELF, LEDGER_GUARD].contains(&rel.as_str()) => {
                 }
                 Some(_) => {
-                    for (shape, count) in game_shapes(&text, &game_idents) {
+                    let shapes = game_shapes(&text, &game_idents);
+                    for (shape, count) in shapes.into_iter().chain(mode_shapes(&rel, &text)) {
                         findings.insert(format!("pattern {rel} {shape}"), count);
                     }
                 }
@@ -449,6 +458,42 @@ fn game_shapes(text: &str, game_idents: &BTreeSet<&str>) -> BTreeMap<String, usi
             .map(|g| token_hits(line, &format!("is_{g}"), false))
             .sum();
         add("is_<game>".into(), helpers);
+    }
+    shapes
+}
+
+/// Gametype tokens named, and modes tested by their token against a literal.
+fn mode_shapes(rel: &str, text: &str) -> BTreeMap<String, usize> {
+    let game_natives = rel.strip_prefix(NATIVES).is_some_and(|rest| {
+        GAMES.iter().any(|g| {
+            rest.starts_with(&format!("{g}/"))
+                || rest.starts_with(&format!("{g}_"))
+                || rest == format!("{g}.rs")
+        })
+    });
+    let mut shapes = BTreeMap::new();
+    if rel == MODE_TABLE || game_natives {
+        return shapes;
+    }
+    for line in text.lines().map(code_of) {
+        let tokens: usize = MODE_TOKENS
+            .iter()
+            .map(|token| line.matches(&format!("\"{token}\"")).count())
+            .sum();
+        let tests = line
+            .match_indices(".token()")
+            .filter(|(at, m)| {
+                let rest = line[at + m.len()..].trim_start();
+                rest.strip_prefix("==")
+                    .or_else(|| rest.strip_prefix("!="))
+                    .is_some_and(|rest| rest.trim_start().starts_with('"'))
+            })
+            .count();
+        for (shape, n) in [("\"<gametype>\"", tokens), (".token()==\"…\"", tests)] {
+            if n > 0 {
+                *shapes.entry(shape.to_owned()).or_default() += n;
+            }
+        }
     }
     shapes
 }

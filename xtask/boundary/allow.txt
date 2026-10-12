@@ -57,7 +57,7 @@ pattern crates/asset_anim/src/xanim_catalog.rs asset_iw4:: 1
 pattern crates/asset_anim/src/xanim_catalog.rs fastfile_iw4:: 2
 pattern crates/asset_anim/src/xanim_catalog.rs fastfile_iw5:: 10
 pattern crates/asset_anim/src/xanim_catalog.rs fastfile_t5:: 18
-pattern crates/asset_anim/src/xanim_catalog.rs fastfile_t6:: 10
+pattern crates/asset_anim/src/xanim_catalog.rs fastfile_t6:: 9
 pattern crates/asset_audio/src/ent_channel.rs asset_iw4:: 1
 pattern crates/asset_audio/src/playback_policy/compiler.rs AssetNamespace::<game> 4
 pattern crates/asset_audio/src/playback_policy/compiler/common.rs asset_iw4:: 1
@@ -307,7 +307,7 @@ pattern crates/asset_world/src/world_t5.rs fastfile_t5:: 10
 pattern crates/asset_world/src/world_t6.rs asset_iw4:: 1
 pattern crates/asset_world/src/world_t6.rs clipmap_iw4:: 3
 pattern crates/asset_world/src/world_t6.rs dpvs_iw4:: 2
-pattern crates/asset_world/src/world_t6.rs fastfile_t6:: 7
+pattern crates/asset_world/src/world_t6.rs fastfile_t6:: 3
 pattern crates/asset_world/src/world_t6.rs lighting_iw4:: 3
 pattern crates/assets/src/asset_graph.rs AssetNamespace::<game> 1
 pattern crates/assets/src/lane/helpers.rs clipmap_iw4:: 4
@@ -333,12 +333,12 @@ pattern crates/assets/src/lane/sink.rs weapon_iw4:: 2
 pattern crates/assets/src/lane/t5.rs AssetNamespace::<game> 6
 pattern crates/assets/src/lane/t5.rs ZoneGame::<game> 4
 pattern crates/assets/src/lane/t5.rs fastfile_t5:: 7
-pattern crates/assets/src/lane/t6.rs AssetNamespace::<game> 19
+pattern crates/assets/src/lane/t6.rs AssetNamespace::<game> 17
 pattern crates/assets/src/lane/t6.rs FamilyId::<game> 3
 pattern crates/assets/src/lane/t6.rs ZoneGame::<game> 1
 pattern crates/assets/src/lane/t6.rs asset_iw4:: 7
 pattern crates/assets/src/lane/t6.rs fastfile_iw4:: 1
-pattern crates/assets/src/lane/t6.rs fastfile_t6:: 113
+pattern crates/assets/src/lane/t6.rs fastfile_t6:: 95
 pattern crates/assets/src/lane/t6/camouflage.rs AssetNamespace::<game> 1
 pattern crates/assets/src/lane/t6/camouflage.rs fastfile_t6:: 8
 pattern crates/assets/src/lane/t6/common_compile.rs AssetNamespace::<game> 4
@@ -348,7 +348,7 @@ pattern crates/assets/src/lib.rs fastfile_iw4:: 1
 pattern crates/assets/src/lib.rs lighting_iw4:: 1
 pattern crates/assets/src/script_sources.rs structured_data_iw4:: 3
 pattern crates/assets/src/session_load/common_cache.rs "<game>" 9
-pattern crates/assets/src/session_load/common_cache.rs AssetNamespace::<game> 15
+pattern crates/assets/src/session_load/common_cache.rs AssetNamespace::<game> 14
 pattern crates/assets/src/session_load/common_cache.rs ZoneGame::<game> 2
 pattern crates/assets/src/session_load/common_cache.rs fastfile_iw4:: 1
 pattern crates/assets/src/session_load/common_cache.rs fastfile_t5:: 1
@@ -950,6 +950,7 @@ pattern crates/sim/src/script/host/t6_gametype.rs entity_iw4:: 12
 pattern crates/sim/src/script/host/t6_gametype.rs gamemode_iw4:: 2
 pattern crates/sim/src/script/host/t6_gametype.rs playerstate_iw4:: 4
 pattern crates/sim/src/script/host/t6_gametype.rs weapon_iw4:: 2
+pattern crates/sim/src/script/host/t6_zombies.rs "<gametype>" 2
 pattern crates/sim/src/script/host/t6_zombies.rs entity_iw4:: 2
 pattern crates/sim/src/script/host/t6_zombies.rs gamemode_iw4:: 1
 pattern crates/sim/src/script/host/t6_zombies.rs hud_iw4:: 2
@@ -1024,9 +1025,12 @@ pattern crates/sim/src/world_objects.rs entity_iw4:: 6
 pattern crates/ui/src/classes/setup.rs AssetNamespace::<game> 2
 pattern crates/ui/src/frontend/maps.rs "<game>" 3
 pattern crates/ui/src/frontend/maps.rs AssetNamespace::<game> 1
+pattern crates/ui/src/frontend/rules.rs "<gametype>" 1
+pattern crates/ui/src/frontend/rules.rs .token()=="…" 1
 pattern crates/ui/src/launcher.rs "<game>" 3
+pattern crates/ui/src/launcher.rs "<gametype>" 2
 pattern crates/ui/src/t6_art.rs AssetNamespace::<game> 5
-pattern crates/ui/src/t6_hud.rs AssetNamespace::<game> 5
+pattern crates/ui/src/t6_hud.rs AssetNamespace::<game> 4
 pattern crates/ui/src/t6_hud.rs entity_iw4:: 2
 pattern crates/ui/src/t6_hud.rs hud_iw4:: 1
 pattern crates/ui/src/t6_hud.rs playerstate_iw4:: 3

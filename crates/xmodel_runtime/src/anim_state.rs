@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Default)]
 pub struct AnimStateTable {
     pub states: BTreeMap<String, Vec<AnimStateClip>>,
+    /// Each state's header words after its name, in order.
+    pub properties: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Debug)]

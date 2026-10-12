@@ -54,6 +54,13 @@ pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
     host::actor_anims::advance(world, seconds);
     host::actor_nav::locomote(world, seconds);
     host::actor_brain::think(world);
+    let ticks = match world.get_resource::<NativeRegistry>() {
+        Some(registry) => registry.ticks(),
+        None => Vec::new(),
+    };
+    for tick in ticks {
+        tick(world);
+    }
     host::natives::engine::deliver_timed_notifies(world);
 }
 pub(crate) use gsc::ArrayKey;

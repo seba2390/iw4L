@@ -4,6 +4,7 @@
 
 pub mod fire;
 pub mod movement;
+pub mod ui;
 
 pub use movement::{MovementRules, WeaponRules};
 
@@ -39,6 +40,8 @@ pub struct ScriptRequest<'a> {
     pub gametype: &'a str,
     /// The map's entity string.
     pub entities: &'a str,
+    /// The traversal animscripts the map's negotiation begin nodes name.
+    pub traversals: &'a [String],
     /// A config file the map's zones carry (`gamedata/…/x.cfg`), by name.
     pub config: &'a dyn Fn(&str) -> Option<&'a str>,
     /// A string table the map's zones carry, by name: its column count and cells.
@@ -201,6 +204,9 @@ pub struct HudRules {
     pub script_text: ScriptText,
     /// A script material elem grows to the elem's font height.
     pub material_font_floor: bool,
+    /// The mode is zombies: a player's own points, the round, perks and
+    /// power-ups stand where match scores and limits would.
+    pub zombies: bool,
     /// The font scale and from-font scale a client receives for an elem's
     /// scripted ones, when the game's network encodes them.
     pub font_scales_sent: Option<fn(f32, f32) -> (f32, f32)>,
@@ -231,6 +237,10 @@ pub trait GameVision: Sync {
 
 /// How a game's menus are drawn.
 pub trait GameMenus: Sync {
+    fn script_ui(&self, _modules: &[ui::Module]) -> Result<Option<Box<dyn ui::ScriptUi>>, String> {
+        Ok(None)
+    }
+
     /// The font a menu item's `textfont` enum names, at the item's scales.
     fn font(&self, font_enum: i32, placement_scale: f32, text_scale: f32) -> Rule<&'static str>;
 

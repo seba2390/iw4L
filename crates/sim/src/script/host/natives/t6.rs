@@ -9,10 +9,21 @@ use crate::script::{ArrayKey, Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
 
+mod actor;
+mod anim;
+mod attach;
 mod barrier;
+mod combat;
+mod damage;
 mod effect;
+mod entity;
+mod movement;
 mod mover;
+mod player;
+mod radius;
+mod rumble;
 mod sound;
+mod stats;
 mod weapon;
 
 /// How Black Ops 2 finds a dvar: djb2 over the lowercased name.
@@ -151,6 +162,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "getdvarfloat", |world, _, args| {
         Ok(Value::Float(atof(&dvar(world, args)?)))
     });
+    // An integer dvar; one that is missing is made.
+    registry.register(Function, "setdvarint", |world, _, args| {
+        let name = string(args, 0)?;
+        let value = int(args, 1)?;
+        crate::script::set_dvar(world, &name, &value.to_string());
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "setdvar", |world, _, args| {
         let name = string(args, 0)?;
         if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
@@ -247,15 +265,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "precacheshellshock", |world, _, args| {
         let name = string(args, 0)?;
         super::iw4::precache(world, "shellshock", name).map_err(|_| String::from("precacheShellShock must be called before any wait statements in the gametype or level script"))?;
-        Ok(Value::Undefined)
-    });
-    registry.register(Function, "precacherumble", |world, _, args| {
-        let name = string(args, 0)?;
-        super::iw4::precache(world, "rumble", name).map_err(|_| {
-            String::from(
-                "precacheRumble must be called before any wait statements in the level script",
-            )
-        })?;
         Ok(Value::Undefined)
     });
     registry.register(Function, "loadfx", |world, _, args| {
@@ -798,6 +807,24 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         fade(world, receiver, args)
     });
 
+    // The engine refuses a second end, then ends the match to the front end.
+    registry.register(Function, "exitlevel", |world, _, args| {
+        let runtime = world.resource::<RoundScript>();
+        if runtime.pending_restart.is_some() {
+            return Err("map_restart already called".into());
+        }
+        if runtime.exit_level {
+            return Err("exitlevel already called".into());
+        }
+        if !args.is_empty() {
+            int(args, 0)?;
+        }
+        let exit = NativeRegistry::engine_services()
+            .get(Function, "exitlevel")
+            .ok_or("exitlevel: no engine level end")?;
+        exit(world, &Value::Undefined, &[])
+    });
+
     // Path nodes, in map order; a lookup names one of the node's string
     // fields and an empty field never matches.
     registry.register(Function, "getallnodes", |world, _, _| {
@@ -820,6 +847,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Float(
             (f64::from(degrees) * f64::from(std::f32::consts::PI / 180.0)).cos() as f32,
         ))
+    });
+    // In degrees, as the scripts compare it with the field of view.
+    registry.register(Function, "acos", |_, _, args| {
+        let value = float(args, 0)?;
+        if !(-1.0..=1.0).contains(&value) {
+            return Err(format!("{} out of range", g(value)));
+        }
+        Ok(Value::Float(value.acos().to_degrees()))
     });
     registry.register(Function, "issubstr", |_, _, args| {
         let (text, part) = (string(args, 0)?, string(args, 1)?);
@@ -1562,22 +1597,39 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .insert(index as usize, state);
         Ok(Value::Undefined)
     });
-    // A client field on an entity, in the pool of its kind.
+    // A client field on an entity, in the pool of its kind; a plain entity
+    // has none and the engine ignores it.
     registry.register(Function, "codesetclientfield", |world, _, args| {
         let id = super::engine::entity_id(world, arg(args, 0)?)
             .map_err(|_| String::from("Entity does not exist."))?;
-        let pool = {
-            let runtime = world.resource::<RoundScript>();
-            let entity = &runtime.entities[&id];
-            match entity.kind {
-                EntityKind::Actor => "actor",
-                EntityKind::Player => "allplayers",
-                _ if SCRIPT_MOVERS.contains(&&*entity.classname) => "scriptmover",
-                _ if entity.classname.starts_with("zbarrier") => "zbarrier",
-                _ => return Err("Unknown client field set.".into()),
-            }
+        match client_field_pool(world, id) {
+            Some(pool) => set_client_field(world, pool, id, args),
+            None => Ok(Value::Undefined),
+        }
+    });
+    registry.register(Function, "codegetclientfield", |world, _, args| {
+        let id = super::engine::entity_id(world, arg(args, 0)?)
+            .map_err(|_| String::from("Entity does not exist."))?;
+        let Some(pool) = client_field_pool(world, id) else {
+            return Ok(Value::Int(0));
         };
-        set_client_field(world, pool, id, args)
+        let name = string(args, 1)?;
+        let fields = world.get_resource_or_insert_with(ClientFields::default);
+        let field = fields
+            .0
+            .iter()
+            .position(|field| field.pool == pool && field.name == name)
+            .ok_or("Client field does not exist.")?;
+        let zero = if fields.0[field].float {
+            Value::Float(0.0)
+        } else {
+            Value::Int(0)
+        };
+        Ok(fields
+            .1
+            .get(&(pool.to_owned(), id, field))
+            .cloned()
+            .unwrap_or(zero))
     });
     registry.register(
         Function,
@@ -1608,6 +1660,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "hide"),
         (Method, "show"),
         (Method, "delete"),
+        (Method, "getorigin"),
         (Method, "istouching"),
         (Method, "rotateroll"),
         (Method, "rotatepitch"),
@@ -1630,7 +1683,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Function, "newclienthudelem"),
         (Method, "setdepthoffield"),
         (Method, "stopshellshock"),
-        (Method, "stoprumble"),
+        (Method, "stopsounds"),
         (Method, "closemenu"),
         (Method, "closeingamemenu"),
         (Function, "iprintln"),
@@ -1643,7 +1696,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "spawn"),
         (Method, "enableweapons"),
         (Method, "disableweapons"),
-        (Method, "detachall"),
         (Method, "setviewmodel"),
         (Method, "setmovespeedscale"),
         (Method, "giveweapon"),
@@ -1656,6 +1708,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "setweaponammostock"),
         (Method, "getweaponammoclip"),
         (Method, "getweaponammostock"),
+        (Method, "getammocount"),
+        (Method, "disableoffhandweapons"),
+        (Function, "setplayerignoreradiusdamage"),
+        (Method, "enableoffhandweapons"),
+        (Method, "finishplayerdamage"),
         (Method, "setactionslot"),
         (Method, "hasperk"),
         (Method, "setperk"),
@@ -1690,11 +1747,22 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             registry.register(namespace, name, native);
         }
     }
+    actor::register(registry);
+    anim::register(registry);
+    movement::register(registry);
+    combat::register(registry);
+    damage::register(registry);
+    attach::register(registry);
     barrier::register(registry);
     weapon::register_natives(registry);
     effect::register(registry);
+    entity::register(registry);
     mover::register(registry);
+    rumble::register(registry);
+    player::register(registry);
+    radius::register(registry);
     sound::register(registry);
+    stats::register(registry);
 }
 
 /// The node field a node lookup key names; it has to hold a string.
@@ -1821,6 +1889,21 @@ struct GrenadeSuicideDisabled;
 struct ClientSystemStates(BTreeMap<usize, String>);
 
 /// A registered client field's value (`args` 1 names it, 2 is the value).
+/// The client field set an entity's type has, as the engine maps them; none
+/// for a plain entity.
+fn client_field_pool(world: &World, id: u64) -> Option<&'static str> {
+    let runtime = world.resource::<RoundScript>();
+    let entity = &runtime.entities[&id];
+    match entity.kind {
+        EntityKind::Actor => Some("actor"),
+        EntityKind::Player => Some("allplayers"),
+        EntityKind::Vehicle => Some("vehicle"),
+        _ if SCRIPT_MOVERS.contains(&&*entity.classname) => Some("scriptmover"),
+        _ if entity.classname.starts_with("zbarrier") => Some("zbarrier"),
+        _ => None,
+    }
+}
+
 fn set_client_field(
     world: &mut World,
     pool: &str,
@@ -1833,7 +1916,7 @@ fn set_client_field(
         .0
         .iter()
         .position(|field| field.pool == pool && field.name == name)
-        .ok_or_else(|| format!("clientfield {name} is not registered for {pool}"))?;
+        .ok_or("Client field does not exist.")?;
     let value = if fields.0[field].float {
         Value::Float(float(args, 2)?)
     } else {
@@ -1854,6 +1937,8 @@ struct StatAt {
     offset: u32,
     bits: u32,
     kind: u32,
+    /// Not a whole array.
+    leaf: bool,
 }
 
 /// Each player's stats buffer, by layout.
@@ -1942,6 +2027,7 @@ fn stat_path(
             offset,
             bits,
             kind: member.kind,
+            leaf: member.array_size <= 1 || indexed,
         },
     )))
 }
@@ -2360,7 +2446,7 @@ fn frand(world: &mut World, min: f32, max: f32) -> f32 {
         + f64::from(min)) as f32
 }
 
-fn next_rand(world: &mut World) -> u32 {
+pub(super) fn next_rand(world: &mut World) -> u32 {
     if !world.contains_resource::<HoldRand>() {
         let seed = super::math::random(world);
         world.insert_resource(HoldRand(seed));

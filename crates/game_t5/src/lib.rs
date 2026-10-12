@@ -131,6 +131,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         compass: false,
         script_text: game_api::ScriptText::MenuFonts(hud_elem_font),
         material_font_floor: false,
+        zombies: true,
         font_scales_sent: Some(sent_font_scales),
     },
 };

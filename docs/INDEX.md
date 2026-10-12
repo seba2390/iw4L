@@ -39,3 +39,4 @@ game. Keep them this short: nobody opens a long file twice.
 | [`BOTS.md`](BOTS.md) | host AI: the per-tick pipeline, what a probe that never ran may not claim, the shared query budget, resumable routes, fighting from a position | bot decisions, bot movement, "why is it standing there" |
 | [`BLACKOPS_TODO.md`](../BLACKOPS_TODO.md) | Black Ops Zombies roadmap: what runs on Kino, how to start solo and co-op, what is left | playing or extending zombies |
 | [`fidelity/`](fidelity/) | per-game fidelity ledgers (`iw4.md`, `t5.md`, `iw5.md`, `t6.md`): every rule a game does not have yet, by `unknown!` id | before adding or closing a gap |
+| [`PROGRESS.md`](PROGRESS.md) | each game's milestones; the README progress table is generated from it (`cargo xtask progress --write`) | when a pull request reaches or breaks a milestone |

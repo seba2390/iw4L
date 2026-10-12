@@ -12,6 +12,10 @@ const RENDER: &Unknown = unknown!(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AnimationState {
+    pub shader_vectors: [Option<f32>; 6],
+    pub material: Option<u32>,
+    pub font: Option<u32>,
+    pub alignment: Option<u8>,
     pub horizontal: Option<Axis>,
     pub vertical: Option<Axis>,
     pub zoom: Option<f32>,
@@ -231,6 +235,20 @@ fn axis(
 
 impl AnimationState {
     pub fn apply(&self, destination: &mut State) {
+        for (index, value) in self.shader_vectors.iter().enumerate() {
+            if let Some(value) = value {
+                destination.shader_vectors[index] = Some([*value, 0.0, 0.0, 0.0]);
+            }
+        }
+        if let Some(material) = self.material {
+            destination.material = Some(material);
+        }
+        if let Some(font) = self.font {
+            destination.font = Some(font);
+        }
+        if let Some(alignment) = self.alignment {
+            destination.alignment = Some(alignment);
+        }
         if let Some(axis) = self.horizontal {
             destination.horizontal = axis;
             destination.changes.horizontal = true;
@@ -320,23 +338,26 @@ impl AnimationState {
             opacity = Some(multiplier);
         }
         let spacing = optional_number(tables, table, b"spacing")?;
-        for name in [
-            b"shaderVector0".as_slice(),
-            b"shaderVector1",
-            b"shaderVector2",
-            b"shaderVector3",
-            b"shaderVector4",
-            b"shaderVector5",
-            b"material",
-            b"font",
-            b"alignment",
-            b"ui3DWindow",
-        ] {
-            if field(tables, table, name)? != Value::Nil {
-                return Err(FaultKind::Unknown(RENDER));
-            }
+        let mut shader_vectors = [None; 6];
+        for (index, value) in shader_vectors.iter_mut().enumerate() {
+            *value = optional_number(tables, table, format!("shaderVector{index}").as_bytes())?;
+        }
+        if field(tables, table, b"ui3DWindow")? != Value::Nil {
+            return Err(FaultKind::Unknown(RENDER));
         }
         Ok(Self {
+            shader_vectors,
+            material: match field(tables, table, b"material")? {
+                Value::Nil => None,
+                Value::Reference { kind: 2, identity } => Some(identity),
+                _ => return Err(FaultKind::Unknown(RENDER)),
+            },
+            font: match field(tables, table, b"font")? {
+                Value::Nil => None,
+                Value::Reference { kind: 2, identity } => Some(identity),
+                _ => return Err(FaultKind::Unknown(RENDER)),
+            },
+            alignment: optional_number(tables, table, b"alignment")?.map(|value| value as u8),
             horizontal,
             vertical,
             zoom,

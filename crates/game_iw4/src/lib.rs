@@ -65,6 +65,7 @@ const MODE: ModeRules = ModeRules {
         compass: true,
         script_text: game_api::ScriptText::Engine,
         material_font_floor: true,
+        zombies: false,
         font_scales_sent: None,
     },
 };

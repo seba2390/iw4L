@@ -540,6 +540,8 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let mut iw4_census_stats = Vec::new();
     let mut runtime_t6_preparation = None;
     let mut runtime_t6_ui_images = Vec::new();
+    let mut runtime_ui_modules = Vec::new();
+    let mut runtime_ui_tables = Vec::new();
 
     let common_opened = common_open.await;
     let runtime_namespace = common_opened
@@ -566,6 +568,8 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
             if image.game == asset_core::ZoneGame::T6 {
                 runtime_t6_preparation = census.preparation.take();
                 runtime_t6_ui_images = std::mem::take(&mut census.ui_images);
+                runtime_ui_modules = std::mem::take(&mut census.ui_modules);
+                runtime_ui_tables = std::mem::take(&mut census.ui_tables);
             }
             fpv_plan = census.pending_images.take().filter(|plan| !plan.is_empty());
             shared_surfaces = census.shared_surfaces;
@@ -884,8 +888,11 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     }
     ui_images.retain_materials(&material_seed);
     ui_images.retain_materials(&iw5_materials);
-    ui_images.zone_images(asset_core::AssetNamespace::T6, t6_ui_images);
-    ui_images.zone_images(asset_core::AssetNamespace::T6, runtime_t6_ui_images);
+    let ui_namespace = asset_core::AssetNamespace::T6;
+    ui_images.zone_images(ui_namespace, t6_ui_images);
+    ui_images.zone_images(ui_namespace, runtime_t6_ui_images);
+    ui_images.script_modules(ui_namespace, runtime_ui_modules);
+    ui_images.script_tables(ui_namespace, runtime_ui_tables);
     let preview_weapons = weapons.clone().publish_for_editor();
     for family in preview_weapons.weapon_families().families() {
         if let Some(id) = family.base

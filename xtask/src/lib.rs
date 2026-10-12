@@ -15,6 +15,7 @@ pub mod mrs;
 pub mod net_feel;
 pub mod perf_overhead;
 pub mod perfetto_query;
+pub mod progress;
 pub mod publish;
 pub mod publish_check;
 pub mod release;

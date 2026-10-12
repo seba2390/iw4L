@@ -446,6 +446,13 @@ pub fn apply_prepared_match(
 
         let anim_namespace = prepared_map.namespace.expect("installed map family");
         content.set_script_model_states(xanims.0.zombie_states(anim_namespace));
+        content.set_anim_state_tables(xanims.0.state_tables(anim_namespace).map(
+            |(name, table)| {
+                let name = name.rsplit('/').next().unwrap_or(name);
+                let name = name.strip_suffix(".asd").unwrap_or(name);
+                (name.to_owned(), Arc::clone(table))
+            },
+        ));
         content.set_script_model_clips(
             xanims
                 .0
@@ -1264,6 +1271,11 @@ fn preflight_match_install(
         layouts: sources.0.layouts().clone(),
         barriers: sources.0.barriers().clone(),
         weapons: sources.0.weapons().clone(),
+        raw_files: sources
+            .0
+            .configs()
+            .map(|(name, text)| (name.to_ascii_lowercase(), Arc::from(text)))
+            .collect(),
         tables: sources
             .0
             .tables()
@@ -1312,10 +1324,21 @@ fn preflight_match_install(
             .get(&name.to_ascii_lowercase())
             .map(|table| (table.columns, table.cells.as_slice()))
     };
+    let mut traversals: Vec<String> = prepared_map
+        .facts
+        .path_nodes
+        .iter()
+        .filter(|node| matches!(node.kind, asset_world::PathNodeKind::NegotiationBegin))
+        .filter(|node| !node.animscript.is_empty())
+        .map(|node| node.animscript.to_ascii_lowercase())
+        .collect();
+    traversals.sort_unstable();
+    traversals.dedup();
     let request = game_api::ScriptRequest {
         map: zone,
         gametype,
         entities: sources.0.entities().unwrap_or(""),
+        traversals: &traversals,
         config: &config,
         table: &table,
     };

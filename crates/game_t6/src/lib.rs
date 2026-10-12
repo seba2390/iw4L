@@ -89,7 +89,7 @@ fn own_zombies(
     };
     let map = format!("maps/mp/{}", request.map);
     // The scripts the engine loads itself, then the gametype's and the map's.
-    let roots = vec![
+    let roots = [
         "codescripts/delete".to_owned(),
         "codescripts/struct".to_owned(),
         "maps/mp/gametypes_zm/_callbacksetup".to_owned(),
@@ -100,7 +100,10 @@ fn own_zombies(
         "maps/mp/zombies/_zm".to_owned(),
         format!("maps/mp/gametypes_zm/{}", start.gametype),
         map,
-    ];
+    ]
+    .into_iter()
+    .chain(startup::actor_scripts(request.entities, request.traversals))
+    .collect::<Vec<_>>();
     let read = |name: &str| {
         sources.read_module(name).ok().map(|bytes| gsc_t6::Source {
             name: name.to_owned(),
@@ -240,6 +243,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         compass: true,
         script_text: game_api::ScriptText::Engine,
         material_font_floor: true,
+        zombies: false,
         font_scales_sent: None,
     },
 };
@@ -247,6 +251,10 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
 const ZCLASSIC_MODE: ModeRules = ModeRules {
     spawn_classnames: Some(&["initial_spawn_points", "info_player_start"]),
     unlimited: Rule::Known(true),
+    hud: HudRules {
+        zombies: true,
+        ..MULTIPLAYER_MODE.hud
+    },
     ..MULTIPLAYER_MODE
 };
 
@@ -273,6 +281,13 @@ impl game_api::GameVision for T6 {
 }
 
 impl game_api::GameMenus for T6 {
+    fn script_ui(
+        &self,
+        modules: &[game_api::ui::Module],
+    ) -> Result<Option<Box<dyn game_api::ui::ScriptUi>>, String> {
+        Ok(Some(Box::new(ui::scene::Scene::new(modules)?)))
+    }
+
     fn font(&self, _font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
         Rule::Unknown(unknown!(
             "t6.hud.menu_font",

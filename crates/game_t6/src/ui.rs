@@ -1,5 +1,7 @@
 pub mod animation;
 pub mod elements;
+pub mod layout;
+pub mod scene;
 pub mod script;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -24,6 +26,10 @@ pub struct Changes {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct State {
+    pub shader_vectors: [Option<[f32; 4]>; 6],
+    pub material: Option<u32>,
+    pub font: Option<u32>,
+    pub alignment: Option<u8>,
     pub horizontal: Axis,
     pub vertical: Axis,
     pub resolved_rectangle: [f32; 4],
@@ -48,6 +54,10 @@ impl Default for Element {
     fn default() -> Self {
         Self {
             current: State {
+                shader_vectors: [None; 6],
+                material: None,
+                font: None,
+                alignment: None,
                 horizontal: Axis::default(),
                 vertical: Axis::default(),
                 resolved_rectangle: [0.0; 4],

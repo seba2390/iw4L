@@ -31,6 +31,7 @@ const REPO_TOOLS: &[&str] = &[
     "publish-check",
     "boundary [--enforce] [--update]",
     "ledger-guard [--base <ref>]",
+    "progress [--write]",
     "licenses",
 ];
 
@@ -118,6 +119,7 @@ fn repo(cmd: &str, rest: &[String]) -> Option<Res<()>> {
         "publish-check" => Some(xtask::publish_check::run_cli(&root)),
         "boundary" => Some(xtask::boundary::run_cli(&root, rest)),
         "ledger-guard" => Some(xtask::ledger_guard::run_cli(&root, rest)),
+        "progress" => Some(xtask::progress::run_cli(&root, rest)),
         _ => None,
     }
 }

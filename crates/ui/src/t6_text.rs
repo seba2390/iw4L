@@ -8,6 +8,9 @@ pub(crate) struct NativeUiPaint;
 pub(crate) struct NativeUiRoot(pub bool);
 
 #[derive(Component)]
+pub(crate) struct NativeFont(pub String);
+
+#[derive(Component)]
 struct Glyph;
 
 #[derive(Component)]
@@ -23,7 +26,10 @@ struct BitmapText {
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        refresh.in_set(frame::ClientSet::Ui).after(NativeUiPaint),
+        refresh
+            .in_set(frame::ClientSet::Ui)
+            .after(NativeUiPaint)
+            .after(super::script_ui::ScriptUiPaint),
     );
 }
 
@@ -37,6 +43,7 @@ fn refresh(
             &mut TextColor,
             &mut Node,
             Option<&mut BitmapText>,
+            Option<&NativeFont>,
         ),
         Without<Glyph>,
     >,
@@ -46,7 +53,8 @@ fn refresh(
     mut art: ResMut<super::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let Some(font) = asset_material::ui_font::ui_font(AssetNamespace::T6, "fonts/distFont") else {
+    let namespace = AssetNamespace::T6;
+    let Some(font) = asset_material::ui_font::ui_font(namespace, "fonts/distFont") else {
         return;
     };
     let Some(atlas) = art.image(&font.material, &mut images) else {
@@ -55,8 +63,18 @@ fn refresh(
     let Some(image) = images.get(&atlas) else {
         return;
     };
-    let dimensions = image.size().as_vec2();
-    for (entity, text, mut text_font, mut color, mut node, previous) in &mut texts {
+    let _ = image;
+    for (entity, text, mut text_font, mut color, mut node, previous, native_font) in &mut texts {
+        let requested =
+            native_font.and_then(|font| asset_material::ui_font::ui_font(namespace, &font.0));
+        let font = requested.as_ref().unwrap_or(&font);
+        let Some(atlas) = art.image(&font.material, &mut images) else {
+            continue;
+        };
+        let Some(image) = images.get(&atlas) else {
+            continue;
+        };
+        let dimensions = image.size().as_vec2();
         let mut ancestor = entity;
         let mut native = false;
         while let Ok(parent) = parents.get(ancestor) {
@@ -74,8 +92,12 @@ fn refresh(
             })
         {
             if let Some(previous) = previous {
-                text_font.font_size = bevy::text::FontSize::Px(previous.size);
-                color.0 = previous.color;
+                if text_font.font_size == bevy::text::FontSize::Px(0.1) {
+                    text_font.font_size = bevy::text::FontSize::Px(previous.size);
+                }
+                if color.0.alpha() == 0.0 {
+                    color.0 = previous.color;
+                }
                 for child in &previous.children {
                     commands.entity(*child).despawn();
                 }
@@ -90,7 +112,10 @@ fn refresh(
                 bevy::text::FontSize::Px(size) => size,
                 _ => 18.0,
             },
-            |previous| previous.size,
+            |previous| match text_font.font_size {
+                bevy::text::FontSize::Px(size) if size != 0.1 => size,
+                _ => previous.size,
+            },
         );
         let source_color = previous
             .as_ref()
@@ -115,6 +140,7 @@ fn refresh(
                 && previous.color == source_color
                 && previous.atlas == atlas
                 && previous.wrap == wrap
+                && previous.size == size
         }) {
             continue;
         }
@@ -123,7 +149,7 @@ fn refresh(
                 commands.entity(*child).despawn();
             }
         }
-        let render_size = size.max(22.0);
+        let render_size = size.max(0.1);
         let scale = render_size / font.pixel_height.max(1) as f32;
         let mut position = Vec2::ZERO;
         let mut width = 0.0_f32;

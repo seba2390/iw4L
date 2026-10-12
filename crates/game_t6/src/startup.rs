@@ -64,3 +64,54 @@ impl ZombiesStart {
         .collect()
     }
 }
+
+/// The animscripts the engine loads for its zombie and zombie dog actors.
+const ANIMSCRIPTS: [&str; 17] = [
+    "zm_combat",
+    "zm_death",
+    "zm_init",
+    "zm_pain",
+    "zm_move",
+    "zm_scripted",
+    "zm_stop",
+    "zm_flashed",
+    "zm_jump",
+    "zm_turn",
+    "zm_dog_combat",
+    "zm_dog_death",
+    "zm_dog_init",
+    "zm_dog_pain",
+    "zm_dog_move",
+    "zm_dog_stop",
+    "zm_dog_flashed",
+];
+
+/// The actor scripts the engine loads with a level: the animscripts, the
+/// traversal each negotiation begin node names, then the aitype of each
+/// actor spawner the map places (`actor_<aitype>`).
+pub(crate) fn actor_scripts(entities: &str, traversals: &[String]) -> Vec<String> {
+    let mut scripts: Vec<String> = ANIMSCRIPTS
+        .iter()
+        .map(|name| format!("maps/mp/animscripts/{name}"))
+        .chain(
+            traversals
+                .iter()
+                .map(|name| format!("maps/mp/animscripts/traverse/{name}")),
+        )
+        .collect();
+    let mut tokens = entities.split('"').skip(1).step_by(2);
+    while let Some(key) = tokens.next() {
+        let Some(value) = tokens.next() else {
+            break;
+        };
+        if key == "classname"
+            && let Some(aitype) = value.strip_prefix("actor_")
+        {
+            let script = format!("aitype/{aitype}");
+            if !scripts.contains(&script) {
+                scripts.push(script);
+            }
+        }
+    }
+    scripts
+}

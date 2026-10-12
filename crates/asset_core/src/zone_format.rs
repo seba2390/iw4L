@@ -176,6 +176,30 @@ pub struct ZoneWeapon {
     pub retrievable: bool,
     /// Listed among the game's watcher weapons.
     pub watcher: bool,
+    pub clip_size: i32,
+    pub start_ammo: i32,
+    pub max_ammo: i32,
+    /// Start and max ammo count clips, not rounds.
+    pub ammo_count_clip_relative: bool,
+    /// Holds no stock: all its ammo is in the clip.
+    pub clip_only: bool,
+    pub tank_life_time: i32,
+    pub melee_damage: i32,
+    /// The game's weapon type, class, inventory type, fire type and offhand
+    /// slot, by their numbers.
+    pub weap_type: i32,
+    pub weap_class: i32,
+    pub inventory_type: i32,
+    pub fire_type: i32,
+    pub offhand_slot: i32,
+    pub alt_weapon: String,
+    pub dual_wield: bool,
+    pub dual_wield_weapon: String,
+    /// World models by index; empty where none is set.
+    pub world_models: Vec<String>,
+    /// Damage scales by hit location, in the game's order; empty when the
+    /// weapon has none.
+    pub location_damage: Vec<f32>,
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the

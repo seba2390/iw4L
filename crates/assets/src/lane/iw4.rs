@@ -406,6 +406,8 @@ impl ZoneLane for Iw4Lane {
                 arena_bytes as f64 / (1024.0 * 1024.0),
             ));
             return LoadedWorld {
+                ui_images: Vec::new(),
+                ui_modules: Vec::new(),
                 scripts,
                 sound: map_sound,
                 materials,
@@ -632,6 +634,8 @@ impl ZoneLane for Iw4Lane {
                 let world_bounds = draw.stats.bounds;
                 handoff.done();
                 LoadedWorld {
+                    ui_images: Vec::new(),
+                    ui_modules: Vec::new(),
                     scripts,
                     sound: map_sound,
                     materials: map_materials,
@@ -693,6 +697,8 @@ impl ZoneLane for Iw4Lane {
                 let arena_bytes = memory.total_bytes();
                 drop(memory);
                 LoadedWorld {
+                    ui_images: Vec::new(),
+                    ui_modules: Vec::new(),
                     scripts,
                     sound: map_sound,
                     materials: asset_material::MaterialCatalog::default(),
@@ -1081,6 +1087,8 @@ impl ZoneLane for Iw4Lane {
         ));
             CommonCensus {
                 ui_images: Vec::new(),
+                ui_modules: Vec::new(),
+                ui_tables: Vec::new(),
                 pending_images,
                 scene_models: sink.scene_models,
                 shared_surfaces: sink.shared_surfaces,
@@ -1119,6 +1127,8 @@ impl ZoneLane for Iw4Lane {
             ));
             CommonCensus {
                 ui_images: Vec::new(),
+                ui_modules: Vec::new(),
+                ui_tables: Vec::new(),
                 pending_images: None,
                 scene_models: sink.scene_models,
                 shared_surfaces: sink.shared_surfaces,

@@ -5,9 +5,18 @@ use crate::script::host::natives;
 use crate::script::{Namespace, RoundScript, Value};
 
 pub type Native = fn(&mut World, &Value, &[Value]) -> Result<Value, String>;
+/// Engine work a game's natives do every authority tick, before scripts run.
+pub type Tick = fn(&mut World);
+/// A game's own damage for a script entity a shot or blast struck; true
+/// when the game took it.
+pub(crate) type EntityHitHook = fn(&mut World, u64, &super::entity_damage::EntityHit) -> bool;
 
 #[derive(Resource, Clone)]
-pub struct NativeRegistry(BTreeMap<(Namespace, String), Native>);
+pub struct NativeRegistry(
+    BTreeMap<(Namespace, String), Native>,
+    Vec<Tick>,
+    Vec<EntityHitHook>,
+);
 impl Default for NativeRegistry {
     /// The engine services alone: no game's own natives.
     fn default() -> Self {
@@ -18,7 +27,7 @@ impl NativeRegistry {
     /// Builtins every game's scripts are served the same way: the language
     /// helpers, dvars, math, entities, players, sound, physics, triggers.
     pub fn engine_services() -> Self {
-        let mut registry = Self(BTreeMap::new());
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new());
         registry.register(Namespace::Function, "isdefined", |world, _, args| {
             if args.len() != 1 {
                 return Err("isdefined expects one argument".into());
@@ -95,15 +104,31 @@ impl NativeRegistry {
     /// Black Ops 3's builtins alone: none of the engine services above, which
     /// serve the other games' rules.
     pub fn black_ops_2() -> Self {
-        let mut registry = Self(BTreeMap::new());
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new());
         natives::t6::register(&mut registry);
         registry
     }
 
     pub fn black_ops_3() -> Self {
-        let mut registry = Self(BTreeMap::new());
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new());
         natives::t7::register(&mut registry);
         registry
+    }
+
+    pub fn on_tick(&mut self, tick: Tick) {
+        self.1.push(tick);
+    }
+
+    pub(crate) fn ticks(&self) -> Vec<Tick> {
+        self.1.clone()
+    }
+
+    pub(crate) fn on_entity_hit(&mut self, hook: EntityHitHook) {
+        self.2.push(hook);
+    }
+
+    pub(crate) fn entity_hit_hooks(&self) -> Vec<EntityHitHook> {
+        self.2.clone()
     }
 
     pub fn register(&mut self, namespace: Namespace, name: &str, native: Native) {

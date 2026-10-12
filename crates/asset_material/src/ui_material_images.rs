@@ -12,6 +12,8 @@ type UiKey = (AssetNamespace, String);
 
 #[derive(Clone, Default)]
 pub struct UiImageBuild {
+    modules: HashMap<UiKey, Arc<[u8]>>,
+    tables: HashMap<UiKey, asset_core::ZoneTable>,
     images: HashMap<UiKey, String>,
     fallbacks: HashMap<UiKey, String>,
     zone: HashMap<UiKey, ZoneUiImage>,
@@ -49,6 +51,27 @@ fn key(namespace: AssetNamespace, material: &str) -> UiKey {
 }
 
 impl UiImageBuild {
+    pub fn script_tables(
+        &mut self,
+        namespace: AssetNamespace,
+        tables: impl IntoIterator<Item = asset_core::ZoneTable>,
+    ) {
+        for table in tables {
+            self.tables.insert(key(namespace, &table.name), table);
+        }
+    }
+
+    pub fn script_modules(
+        &mut self,
+        namespace: AssetNamespace,
+        modules: impl IntoIterator<Item = (String, Arc<[u8]>)>,
+    ) {
+        self.modules.extend(
+            modules
+                .into_iter()
+                .map(|(name, bytes)| ((namespace, name.to_ascii_lowercase()), bytes)),
+        );
+    }
     pub fn retain_materials(&mut self, materials: &crate::MaterialCatalog) {
         for material in &materials.materials {
             if let Some(image) = materials.hud_image_name(material) {
@@ -116,6 +139,39 @@ impl UiImageBuild {
 }
 
 impl UiImagePublication {
+    pub fn script_tables(&self, namespace: AssetNamespace) -> Vec<asset_core::ZoneTable> {
+        self.0
+            .build
+            .tables
+            .iter()
+            .filter(|((family, _), _)| *family == namespace)
+            .map(|(_, table)| table.clone())
+            .collect()
+    }
+
+    pub fn script_modules(&self, namespace: AssetNamespace) -> Vec<(String, Arc<[u8]>)> {
+        let mut modules: Vec<_> = self
+            .0
+            .build
+            .modules
+            .iter()
+            .filter(|((family, _), _)| *family == namespace)
+            .map(|((_, name), bytes)| (name.clone(), bytes.clone()))
+            .collect();
+        modules.sort_by(|a, b| a.0.cmp(&b.0));
+        modules
+    }
+    pub fn with_assets(
+        &self,
+        namespace: AssetNamespace,
+        images: impl IntoIterator<Item = (String, ZoneUiImage)>,
+        modules: impl IntoIterator<Item = (String, Arc<[u8]>)>,
+    ) -> Self {
+        let mut build = self.0.build.clone();
+        build.zone_images(namespace, images);
+        build.script_modules(namespace, modules);
+        build.publish()
+    }
     pub fn id(&self) -> u64 {
         self.0.id
     }

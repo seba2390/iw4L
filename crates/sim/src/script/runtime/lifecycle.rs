@@ -62,6 +62,7 @@ pub(crate) fn install(
         layouts: level.layouts,
         barriers: level.barriers,
         weapons: level.weapons,
+        raw_files: level.raw_files,
         entries: Vec::new(),
         schemas: level.schemas,
         player_data_defaults: level.player_data_defaults.map(Arc::new),

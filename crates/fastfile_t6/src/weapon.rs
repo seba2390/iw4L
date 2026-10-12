@@ -56,6 +56,8 @@ pub mod def {
     pub const FIRE_TYPE: u32 = 48;
     pub const OFFHAND_CLASS: u32 = 96;
     pub const OFFHAND_SLOT: u32 = 100;
+    pub const TANK_LIFE_TIME: u32 = 92;
+    pub const WORLD_MODEL_COUNT: u32 = 16;
     pub const PICKUP_SOUND: u32 = 148;
     pub const PICKUP_SOUND_PLAYER: u32 = 152;
     pub const PULLBACK_SOUND: u32 = 168;
@@ -147,6 +149,7 @@ pub mod def {
     pub const AIM_DOWN_SIGHT: u32 = 1592;
     pub const RECHAMBER_WHILE_ADS: u32 = 1593;
     pub const COOK_OFF_HOLD: u32 = 1604;
+    pub const CLIP_ONLY: u32 = 1605;
     pub const ADS_FIRE_ONLY: u32 = 1608;
     pub const DUAL_WIELD: u32 = 1615;
     pub const RETRIEVABLE: u32 = 1618;
@@ -219,6 +222,7 @@ pub mod def {
     pub const HIP_VIEW_SCATTER_MIN: u32 = 2080;
     pub const HIP_VIEW_SCATTER_MAX: u32 = 2084;
     pub const LOCATION_DAMAGE_MULTIPLIERS: u32 = 2300;
+    pub const HIT_LOCATIONS: usize = 21;
     pub const TRACER_TYPE: u32 = 2320;
     pub const SIZE: usize = 2448;
 }

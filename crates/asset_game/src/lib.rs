@@ -71,7 +71,7 @@ pub mod asset_graph {
 }
 
 mod team_t6;
-pub use team_t6::t6_team_properties;
+pub use team_t6::{T6Body, t6_character_model, t6_player_characters, t6_team_properties};
 
 mod fpv_family;
 pub use fpv_family::{
