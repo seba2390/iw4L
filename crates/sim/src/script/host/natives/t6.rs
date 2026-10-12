@@ -1662,6 +1662,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "setweaponammostock"),
         (Method, "getweaponammoclip"),
         (Method, "getweaponammostock"),
+        (Method, "getammocount"),
         (Method, "setactionslot"),
         (Method, "hasperk"),
         (Method, "setperk"),

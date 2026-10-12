@@ -176,5 +176,30 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
         pickup_sound_player: text(def::PICKUP_SOUND_PLAYER),
         retrievable: weapon.def_bool(def::RETRIEVABLE),
         watcher: weapon.def_bool(def::WATCHER),
+        clip_size: weapon.variant_i32(variant::CLIP_SIZE),
+        start_ammo: weapon.def_i32(def::START_AMMO),
+        max_ammo: weapon.def_i32(def::MAX_AMMO),
+        ammo_count_clip_relative: weapon.def_bool(def::AMMO_COUNT_CLIP_RELATIVE),
+        tank_life_time: weapon.def_i32(def::TANK_LIFE_TIME),
+        melee_damage: weapon.def_i32(def::MELEE_DAMAGE),
+        weap_type: weapon.def_i32(def::WEAP_TYPE),
+        weap_class: weapon.def_i32(def::WEAP_CLASS),
+        inventory_type: weapon.def_i32(def::INVENTORY_TYPE),
+        fire_type: weapon.def_i32(def::FIRE_TYPE),
+        offhand_slot: weapon.def_i32(def::OFFHAND_SLOT),
+        alt_weapon: weapon
+            .variant_str(variant::ALT_WEAPON_NAME)
+            .unwrap_or("")
+            .to_owned(),
+        dual_wield: weapon.def_bool(def::DUAL_WIELD),
+        dual_wield_weapon: text(def::DUAL_WIELD_WEAPON),
+        world_models: (0..def::WORLD_MODEL_COUNT)
+            .map(|index| {
+                weapon
+                    .def_asset_array_name(def::WORLD_MODEL, index)
+                    .unwrap_or("")
+                    .to_owned()
+            })
+            .collect(),
     })
 }
