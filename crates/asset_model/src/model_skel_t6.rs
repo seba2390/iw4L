@@ -29,6 +29,9 @@ mod off {
     pub const CONTENTS: u32 = 160;
     pub const BONE_INFO: u32 = 164;
     pub const RADIUS: u32 = 168;
+    /// The model's box, `mins` then `maxs` (what XModelGetBounds reads).
+    pub const MINS: u32 = 172;
+    pub const MAXS: u32 = 184;
     pub const NUM_LODS: u32 = 196;
     pub const COLL_LOD: u32 = 198;
     pub const SIZE: usize = 248;
@@ -280,7 +283,14 @@ pub fn capture_model_skel_t6(
         blend_verts,
         packed_vertices,
         radius: Some(model.h_f32(off::RADIUS)),
-        bounds: None,
+        bounds: {
+            let mins: [f32; 3] = std::array::from_fn(|k| model.h_f32(off::MINS + 4 * k as u32));
+            let maxs: [f32; 3] = std::array::from_fn(|k| model.h_f32(off::MAXS + 4 * k as u32));
+            Some((
+                std::array::from_fn(|k| (mins[k] + maxs[k]) * 0.5),
+                std::array::from_fn(|k| (maxs[k] - mins[k]) * 0.5),
+            ))
+        },
         contents: Some(model.h_u32(off::CONTENTS)),
         coll_lod: model.h_u16(off::COLL_LOD) as i16,
         coll_surfs,
