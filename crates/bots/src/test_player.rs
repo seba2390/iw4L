@@ -75,6 +75,12 @@ const BOX_SPIN_MS: i32 = 6000;
 /// How far from a site's middle it would stand, and the room it keeps from
 /// a wall behind it.
 const STAND_OFF: f32 = 40.0;
+/// A wall weapon's or the box's trigger is a turned box the body must
+/// touch: he walks up to it.
+const STAND_OFF_TOUCH: f32 = 8.0;
+/// The room he keeps from a wall walking up to one: just over half his
+/// width.
+const TOUCH_ROOM: f32 = 16.0;
 const STAND_ROOM: f32 = 20.0;
 /// How far from a site's middle a use trigger the scripts made counts as
 /// that site's.
@@ -226,7 +232,8 @@ fn clear_run(world: &sim::SimWorld, id: ClientId, start: [f32; 3], end: [f32; 3]
 
 /// Where to stand to use a site: the nearest path node (a place a player
 /// may stand) that sees the site's middle, moved toward it until it is
-/// `STAND_OFF` away, on the floor below, inside a zone the scripts have
+/// `STAND_OFF` away (a turned box he must touch: right up to it), on the
+/// floor below, inside a zone the scripts have
 /// enabled (anywhere else Black Ops 2 kills him as out of the playable
 /// area). None when there is no such place.
 fn stand_point(
@@ -259,7 +266,12 @@ fn stand_point(
             continue;
         }
         let flat = flat_distance(node, center);
-        let step = (flat - STAND_OFF).max(0.0);
+        let (off, room) = if matches!(site.kind, UseKind::WallBuy | UseKind::Box) {
+            (STAND_OFF_TOUCH, TOUCH_ROOM)
+        } else {
+            (STAND_OFF, STAND_ROOM)
+        };
+        let step = (flat - off).max(0.0);
         let towards = [
             (center[0] - node[0]) / flat.max(1.0),
             (center[1] - node[1]) / flat.max(1.0),
@@ -270,12 +282,12 @@ fn stand_point(
             id,
             [node[0], node[1], waist],
             [
-                node[0] + towards[0] * (step + STAND_ROOM),
-                node[1] + towards[1] * (step + STAND_ROOM),
+                node[0] + towards[0] * (step + room),
+                node[1] + towards[1] * (step + room),
                 waist,
             ],
         );
-        let step = step.min((reach - STAND_ROOM).max(0.0));
+        let step = step.min((reach - room).max(0.0));
         let above = [
             node[0] + towards[0] * step,
             node[1] + towards[1] * step,
@@ -588,6 +600,14 @@ pub(crate) fn drive_test_player(
                     scenario.until_ms = clock.time_ms + HOLD_MS;
                 }
                 Phase::Watching => {
+                    let all = world.0.use_triggers_near(scenario.center, f32::MAX);
+                    let boxes = all.iter().filter(|c| *c == "trigger_box").count();
+                    let radii = all.iter().filter(|c| *c == "trigger_radius").count();
+                    diag::info!(
+                        Sim,
+                        "test player: use triggers on the map now: {} ({boxes} trigger_box, {radii} trigger_radius)",
+                        all.len()
+                    );
                     diag::info!(
                         Sim,
                         "test player: used {:?} — stood {:.0} from it, score {}→{}, weapon {}→{}, trigger {}, use triggers there while holding {:?}",

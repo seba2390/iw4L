@@ -998,9 +998,14 @@ pub(crate) fn is_touching(world: &mut World, a: u64, b: u64) -> bool {
 
 pub(crate) fn dispatch_triggers(world: &mut World) {
     refresh_claims(world);
+    // A game with its own use rule decides what each use press reaches.
+    let game_use = world
+        .get_resource::<crate::script::NativeRegistry>()
+        .and_then(crate::script::NativeRegistry::use_rule);
     let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
     let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
     let mut raised = Vec::new();
+    let mut presses = Vec::new();
     {
         let mut frame = FrameWorld::from_world(world);
         let mut players: Vec<(u32, u64, bool)> = Vec::new();
@@ -1027,7 +1032,10 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
             .filter(|(_, _, held)| *held)
             .map(|(client, _, _)| *client)
             .collect();
-        for (client, player) in &pressed {
+        if game_use.is_some() {
+            presses.clone_from(&pressed);
+        }
+        for (client, player) in pressed.iter().filter(|_| game_use.is_none()) {
             // Triggers fire below, from their volume.
             if let Some(usable) = runtime.use_selected.get(client)
                 && runtime
@@ -1045,6 +1053,7 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
             .iter()
             .filter(|(object, _)| !runtime.fired_once.contains(object))
             .filter_map(|(object, e)| Some((*object, fires(&e.classname)?)))
+            .filter(|(_, kind)| game_use.is_none() || !matches!(kind, Fires::Use | Fires::UseTouch))
             .collect();
         for (trigger, kind) in triggers {
             let Some(volume) = volume(&mut runtime, &frame, trigger) else {
@@ -1076,6 +1085,9 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
         }
     }
     *world.resource_mut::<RoundScript>() = runtime;
+    if let Some(rule) = game_use {
+        raised.extend(rule(world, &presses));
+    }
     raised.sort_unstable();
     raised.dedup();
     for (trigger, player) in raised {

@@ -10,12 +10,16 @@ pub type Tick = fn(&mut World);
 /// A game's own damage for a script entity a shot or blast struck; true
 /// when the game took it.
 pub(crate) type EntityHitHook = fn(&mut World, u64, &super::entity_damage::EntityHit) -> bool;
+/// A game's own use rule: for each player who pressed use (client, player
+/// object), the entity their use reaches, as (entity, player object).
+pub(crate) type UseRule = fn(&mut World, &[(u32, u64)]) -> Vec<(u64, u64)>;
 
 #[derive(Resource, Clone)]
 pub struct NativeRegistry(
     BTreeMap<(Namespace, String), Native>,
     Vec<Tick>,
     Vec<EntityHitHook>,
+    Option<UseRule>,
 );
 impl Default for NativeRegistry {
     /// The engine services alone: no game's own natives.
@@ -27,7 +31,7 @@ impl NativeRegistry {
     /// Builtins every game's scripts are served the same way: the language
     /// helpers, dvars, math, entities, players, sound, physics, triggers.
     pub fn engine_services() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new());
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None);
         registry.register(Namespace::Function, "isdefined", |world, _, args| {
             if args.len() != 1 {
                 return Err("isdefined expects one argument".into());
@@ -104,13 +108,13 @@ impl NativeRegistry {
     /// Black Ops 3's builtins alone: none of the engine services above, which
     /// serve the other games' rules.
     pub fn black_ops_2() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new());
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None);
         natives::t6::register(&mut registry);
         registry
     }
 
     pub fn black_ops_3() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new());
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None);
         natives::t7::register(&mut registry);
         registry
     }
@@ -129,6 +133,16 @@ impl NativeRegistry {
 
     pub(crate) fn entity_hit_hooks(&self) -> Vec<EntityHitHook> {
         self.2.clone()
+    }
+
+    /// The game's use rule replaces IW4L's for use triggers and usable
+    /// entities.
+    pub(crate) fn on_use(&mut self, rule: UseRule) {
+        self.3 = Some(rule);
+    }
+
+    pub(crate) fn use_rule(&self) -> Option<UseRule> {
+        self.3
     }
 
     pub fn register(&mut self, namespace: Namespace, name: &str, native: Native) {
