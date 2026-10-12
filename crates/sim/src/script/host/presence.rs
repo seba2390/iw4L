@@ -346,13 +346,12 @@ pub(crate) fn tag_world(
     ))
 }
 
-/// A tag's world position and axis on an entity's posed model: none when the
-/// entity has no posed model, `Some(None)` when the model lacks the tag.
-pub(crate) fn tag_pose(
-    world: &mut World,
-    object: u64,
-    tag: &str,
-) -> Option<Option<([f32; 3], [[f32; 3]; 3])>> {
+/// A tag's world position and axis.
+pub(crate) type TagPose = ([f32; 3], [[f32; 3]; 3]);
+
+/// A tag's pose on an entity's posed model: none when the entity has no
+/// posed model, `Some(None)` when the model lacks the tag.
+pub(crate) fn tag_pose(world: &mut World, object: u64, tag: &str) -> Option<Option<TagPose>> {
     let presence = world
         .resource::<RoundScript>()
         .entities

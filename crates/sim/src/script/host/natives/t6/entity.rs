@@ -26,7 +26,7 @@ fn tag(
     world: &mut World,
     receiver: &Value,
     args: &[Value],
-) -> Result<([f32; 3], [[f32; 3]; 3]), String> {
+) -> Result<super::super::super::presence::TagPose, String> {
     let id = entity_id(world, receiver)?;
     let name = string(args, 0)?;
     let model = text_field(world, id, "model");
