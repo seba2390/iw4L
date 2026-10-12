@@ -49,6 +49,9 @@ struct Game {
     title: String,
     done: usize,
     total: usize,
+    /// Ticked and total steps: the indented detail items under milestones.
+    steps_done: usize,
+    steps: usize,
     builtins: Vec<(String, usize, usize)>,
 }
 
@@ -61,6 +64,8 @@ fn games(text: &str) -> Res<Vec<Game>> {
                 title: title.trim().to_owned(),
                 done: 0,
                 total: 0,
+                steps_done: 0,
+                steps: 0,
                 builtins: Vec::new(),
             });
         } else if let Some(game) = games.last_mut() {
@@ -69,6 +74,11 @@ fn games(text: &str) -> Res<Vec<Game>> {
                 game.total += 1;
             } else if line.starts_with("- [ ] ") {
                 game.total += 1;
+            } else if line.starts_with("  - [x] ") {
+                game.steps_done += 1;
+                game.steps += 1;
+            } else if line.starts_with("  - [ ] ") {
+                game.steps += 1;
             } else if let Some(row) = coverage_row(line) {
                 game.builtins.push(row);
             }
@@ -100,9 +110,10 @@ fn coverage_row(line: &str) -> Option<(String, usize, usize)> {
 
 fn render(games: &[Game]) -> String {
     let mut out = format!(
-        "{START}\n**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)), and the \
-         builtins its scripts call that are implemented, per map:\n\n\
-         | Game | Progress | Milestones | Builtins |\n|---|---|---|---|\n"
+        "{START}\n**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)), the \
+         steps shown under its milestones, and the builtins its scripts call that are \
+         implemented, per map:\n\n\
+         | Game | Progress | Milestones | Steps | Builtins |\n|---|---|---|---|---|\n"
     );
     for game in games {
         let (done, total) = (game.done, game.total);
@@ -125,8 +136,13 @@ fn render(games: &[Game]) -> String {
                 .collect::<Vec<_>>()
                 .join("<br>")
         };
+        let steps = if game.steps == 0 {
+            "—".to_owned()
+        } else {
+            format!("{} / {}", game.steps_done, game.steps)
+        };
         out.push_str(&format!(
-            "| {} | `{}{}` {percent}% | {done} / {total} | {builtins} |\n",
+            "| {} | `{}{}` {percent}% | {done} / {total} | {steps} | {builtins} |\n",
             game.title,
             "█".repeat(filled),
             "░".repeat(BAR - filled)
