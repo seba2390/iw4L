@@ -272,6 +272,9 @@ pub(super) fn remap_t6_weap_type(raw: i32) -> i32 {
         t6::GRENADE | t6::GAS | t6::BOMB | t6::MINE => weapon_iw4::WEAPTYPE_GRENADE,
         t6::PROJECTILE => weapon_iw4::WEAPTYPE_PROJECTILE,
         t6::RIOTSHIELD => 3,
+        // Kept as Black Ops 2 numbers it: a melee weapon (`knife_zm`) fires
+        // nothing, and the combat facts read it as melee only.
+        t6::MELEE => t6::MELEE,
         _ => weapon_iw4::WEAPTYPE_BULLET,
     }
 }

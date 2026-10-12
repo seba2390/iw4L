@@ -787,21 +787,34 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             _ => Err(format!("unable to spawn \"{classname}\" entity")),
         }
     });
-    // gscm_setmodel: the engine's model change; then a script mover that
-    // now carries an xmodel takes its mins and maxs from it, and its linked
-    // bounds follow.
+    // gscm_setmodel.
     registry.register(Method, "setmodel", |world, receiver, args| {
-        let set_model = NativeRegistry::engine_services()
-            .get(Method, "setmodel")
-            .ok_or("setmodel: no engine setmodel")?;
-        set_model(world, receiver, args)?;
-        let id = super::engine::entity_id(world, receiver)?;
-        if let Some(model_bounds) = script_mover_bounds(world, id, &string(args, 0)?) {
-            world
-                .get_resource_or_insert_with(EntityBounds::default)
-                .0
-                .insert(id, model_bounds);
+        set_model(world, receiver, &string(args, 0)?)?;
+        Ok(Value::Undefined)
+    });
+    // gscm_useweaponmodel(weapon, [model], [options]): the entity shows the
+    // weapon, by the model given or the weapon's first world model, with the
+    // weapon's hide tags hidden and the options kept.
+    registry.register(Method, "useweaponmodel", |world, receiver, args| {
+        let name = string(args, 0)?;
+        if weapon::weapon_index(world, &name)? == 0 {
+            return Err(format!(
+                "useweaponhidetags called with unknown weapon name {name}\n"
+            ));
         }
+        let model = if args.len() < 2 {
+            weapon::zone_weapon(world, &name)
+                .and_then(|facts| facts.world_models.first().cloned())
+                .unwrap_or_default()
+        } else {
+            string(args, 1)?
+        };
+        let options = if args.len() > 2 { int(args, 2)? } else { 0 };
+        set_model(world, receiver, &model)?;
+        let id = super::engine::entity_id(world, receiver)?;
+        let flags = &mut *world.get_resource_or_insert_with(EntityFlags::default);
+        flags.weapon_hide_tags.insert(id, name);
+        flags.weapon_options.insert(id, options);
         Ok(Value::Undefined)
     });
     registry.register(Method, "getmins", |world, receiver, _| {
@@ -1946,6 +1959,23 @@ fn spawn_trigger(world: &mut World, classname: &str, args: &[Value]) -> Result<V
     Ok(Value::Object(id))
 }
 
+/// The engine's model change; then a script mover that now carries an
+/// xmodel takes its mins and maxs from it, and its linked bounds follow.
+fn set_model(world: &mut World, receiver: &Value, model: &str) -> Result<(), String> {
+    let engine_set_model = NativeRegistry::engine_services()
+        .get(Namespace::Method, "setmodel")
+        .ok_or("setmodel: no engine setmodel")?;
+    engine_set_model(world, receiver, &[Value::string(model)])?;
+    let id = super::engine::entity_id(world, receiver)?;
+    if let Some(model_bounds) = script_mover_bounds(world, id, model) {
+        world
+            .get_resource_or_insert_with(EntityBounds::default)
+            .0
+            .insert(id, model_bounds);
+    }
+    Ok(())
+}
+
 /// A script mover's bounds once it carries `model` (the engine's `setmodel`
 /// after the model change): its DObj's bounds, which start as
 /// (-4,-4,0)..(4,4,10) and take in the model's own. None for anything else, a brush
@@ -2411,6 +2441,8 @@ struct EntityFlags {
     trigger_team: BTreeMap<u64, usize>,
     disconnects_paths: std::collections::BTreeSet<u64>,
     weapon_hide_tags: BTreeMap<u64, String>,
+    /// The weapon options `useweaponmodel` gave an entity.
+    weapon_options: BTreeMap<u64, i32>,
     require_look_at: std::collections::BTreeSet<u64>,
 }
 

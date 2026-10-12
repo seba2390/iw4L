@@ -806,6 +806,11 @@ impl SimState {
             .get(weapon as usize)
     }
 
+    /// Why a weapon has no combat data, when the load recorded a reason.
+    pub(crate) fn weapon_execution_refusal(&self, weapon: u32) -> Option<&str> {
+        self.content.weapons().execution_refusal(weapon)
+    }
+
     pub(crate) fn weapon_is_melee_only(&self, weapon: u32) -> bool {
         self.content
             .weapons()
