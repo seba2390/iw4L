@@ -346,6 +346,37 @@ pub(crate) fn tag_world(
     ))
 }
 
+/// A tag's world position and axis.
+pub(crate) type TagPose = ([f32; 3], [[f32; 3]; 3]);
+
+/// A tag's pose on an entity's posed model: none when the entity has no
+/// posed model, `Some(None)` when the model lacks the tag.
+pub(crate) fn tag_pose(world: &mut World, object: u64, tag: &str) -> Option<Option<TagPose>> {
+    let presence = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&object)?
+        .presence?;
+    let frame = settled(world);
+    let dobj = frame
+        .entity_collision_capabilities()
+        .iter()
+        .find(|row| row.owner.script_model() == Some(presence))?
+        .dobj
+        .as_ref()?;
+    let axis = |v: glam::Vec4| v.truncate().normalize_or_zero().to_array();
+    Some(dobj.tag_world_matrix(tag).map(|matrix| {
+        (
+            matrix.w_axis.truncate().to_array(),
+            [
+                axis(matrix.x_axis),
+                axis(matrix.y_axis),
+                axis(matrix.z_axis),
+            ],
+        )
+    }))
+}
+
 pub(crate) fn tag_offset(world: &mut World, object: u64, tag: &str) -> Option<[f32; 3]> {
     tag_lookup(world, object, tag).flatten()
 }
