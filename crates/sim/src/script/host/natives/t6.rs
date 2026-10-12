@@ -17,6 +17,7 @@ mod combat;
 mod damage;
 mod effect;
 mod entity;
+mod laststand;
 mod movement;
 mod mover;
 mod player;
@@ -978,6 +979,35 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         super::super::physics::usable(world, receiver)?.hint = hint;
         Ok(Value::Undefined)
     });
+    // A revive trigger's hint: as `sethintstring` on its four trigger
+    // kinds; "" shows none, and a radius or box trigger takes the team that
+    // follows (none without one).
+    registry.register(Method, "setrevivehintstring", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let classname = world.resource::<RoundScript>().entities[&id].classname.clone();
+        if !REVIVE_HINT_CLASSES.contains(&&*classname) {
+            return Err("The setHintString command only works on trigger_use, trigger_radius, trigger_box or trigger_use_touch entities.\n".into());
+        }
+        if matches!(args.first(), Some(Value::String(text)) if text.is_empty()) {
+            super::super::physics::usable(world, receiver)?.hint = 0;
+            return Ok(Value::Undefined);
+        }
+        if matches!(&*classname, "trigger_radius" | "trigger_box") {
+            let team = args.get(1).map(|_| team(args, 1)).transpose()?;
+            let mut flags = world.get_resource_or_insert_with(EntityFlags::default);
+            match team {
+                Some(team) => {
+                    flags.trigger_team.insert(id, team);
+                }
+                None => {
+                    flags.trigger_team.remove(&id);
+                }
+            }
+        }
+        let hint = super::super::hud::string_index_with_args(world, &args[..args.len().min(1)])?;
+        super::super::physics::usable(world, receiver)?.hint = hint;
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "setcursorhint", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
         let name = string(args, 0)?;
@@ -1696,6 +1726,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "closemenu"),
         (Method, "closeingamemenu"),
         (Function, "iprintln"),
+        (Function, "iprintlnbold"),
         (Method, "getguid"),
         (Method, "settext"),
         (Method, "destroy"),
@@ -1711,6 +1742,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "givestartammo"),
         (Method, "givemaxammo"),
         (Method, "switchtoweapon"),
+        (Method, "switchtoweaponimmediate"),
         (Method, "setmaxhealth"),
         (Method, "hasweapon"),
         (Method, "setweaponammoclip"),
@@ -1721,7 +1753,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "disableoffhandweapons"),
         (Function, "setplayerignoreradiusdamage"),
         (Method, "enableoffhandweapons"),
-        (Method, "finishplayerdamage"),
         (Method, "setactionslot"),
         (Method, "hasperk"),
         (Method, "setperk"),
@@ -1768,6 +1799,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     weapon::register_natives(registry);
     effect::register(registry);
     entity::register(registry);
+    laststand::register(registry);
     mover::register(registry);
     rumble::register(registry);
     player::register(registry);
@@ -2267,6 +2299,13 @@ const HINT_CLASSES: [&str; 5] = [
     "trigger_radius",
     "trigger_box",
     "trigger_radius_use",
+];
+/// The triggers `setrevivehintstring` takes.
+const REVIVE_HINT_CLASSES: [&str; 4] = [
+    "trigger_use",
+    "trigger_use_touch",
+    "trigger_radius",
+    "trigger_box",
 ];
 const SCRIPT_MOVERS: [&str; 3] = ["script_model", "script_brushmodel", "script_origin"];
 

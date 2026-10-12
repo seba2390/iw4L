@@ -42,6 +42,10 @@ and shots show no flash, shell or tracer yet (`t5.weapons.fire_effects`).
 The first-person viewmodel plays the animation Black Ops' client picks for
 each weapon animation number, so reload and other notetrack sounds play;
 its blends and rates are still the runtime's (`t5.viewmodel.playback`).
+Pack-a-Punch and all six of Kino's power-ups work through Black Ops' own
+scripts, now that its weapon state builtins and weapon notifies follow its
+own rules. Footsteps, music states and most client effects wait on client
+scripts (CSC), which the runtime does not run yet.
 The work now is
 recovering those rules from Black Ops. Start it from the game library
 (Black Ops → Zombies → Kino der Toten), or headless:

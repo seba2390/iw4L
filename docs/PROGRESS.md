@@ -14,13 +14,26 @@ Rules:
   unticks it, in the same pull request. Then `cargo xtask progress --write`
   regenerates the README table; CI (`cargo xtask progress`) fails when the
   table and this file disagree.
+* A milestone may carry indented detail items (`  - [ ]`): what its runs
+  have shown and what is still open. They do not count toward the
+  percentage; the README shows them as steps, so smaller progress shows too.
 * Milestones are not reworded to fit the work done. A new milestone may be
   added when a goal turns out to need it; that lowers the percentage, which
   is the point.
 
 The zombies games share one list, so their numbers compare.
 
+Each game also lists, per map, how many of the builtins its scripts name the
+runtime does not implement yet: the `gsc: builtin coverage … N of M builtins
+not implemented yet` line a match logs when its scripts install. The README's
+Builtins column shows the implemented share (M − N of M). A pull request that
+changes a count updates its row.
+
 ## Modern Warfare 2 — multiplayer
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Rust (`mp_rust`, free-for-all) | 0 of 460 |
 
 - [x] Multiplayer maps load, render and collide.
 - [x] Players move by Modern Warfare 2's own movement rules.
@@ -40,6 +53,11 @@ The zombies games share one list, so their numbers compare.
 Indented items are detail: they say what a milestone's runs have shown and
 what is still open (the open rules are in [`fidelity/t5.md`](fidelity/t5.md)).
 Only the top-level items count.
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Kino der Toten (`t5:zombie_theater`) | 192 of 610 |
+| Five (`t5:zombie_pentagon`) | 194 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -70,9 +88,10 @@ Only the top-level items count.
 - [x] Power and perks.
   - [x] The power switch, buying and drinking a perk (Quick Revive), the perk icon.
   - [ ] Each perk's effect verified (Juggernog's health, Speed Cola, Double Tap, Stamin-Up); the drink's stance and melee locks.
-- [ ] Pack-a-Punch and every power-up.
-  - [x] Power-ups drop at the score thresholds; Insta-Kill picked up and working.
-  - [ ] Pack-a-Punch, Max Ammo, Nuke, Double Points, Carpenter, Fire Sale unverified.
+- [x] Pack-a-Punch and every power-up.
+  - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
+  - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
+  - [ ] Carpenter's boards skip `dontinterpolate`; the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
 - [ ] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [ ] Solo Quick Revive self-revive unverified; down and revive animations; the client's fade-out, blur and dead quote.
@@ -94,29 +113,86 @@ Only the top-level items count.
 
 ## Black Ops II — Zombies
 
+Indented items are detail: they say what a milestone's runs have shown and
+what is still open (the open rules are in [`fidelity/t6.md`](fidelity/t6.md)).
+Only the top-level items count. Runs are headless, with the test player
+(`IW4L_TEST_PLAYER=1|rounds|use|down`) and `IW4L_T6_OWN_SCRIPTS=1`.
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Nuketown (`zm_nuked`, Classic) | 271 of 692 |
+| TranZit (`zm_transit`, Classic) | 315 of 741 |
+| Buried (`zm_buried`, Classic) | 300 of 727 |
+
 - [x] The install is recognised; the map's zones and scripts are read.
+  - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
 - [x] The map loads, renders and collides (Nuketown).
+  - [x] TranZit and Buried load and collide too, with their Classic zombie spawners (`AddonMapEnts`).
+  - [ ] The client scripts (CSC) do not run: no client fields, exploders, fx animations or the wall-buy chalk.
 - [x] The game's own zombies scripts start the match and run round 1 (with `IW4L_T6_OWN_SCRIPTS=1`).
+  - [ ] Builtins still answering "not implemented yet" on every map (see the table above).
 - [ ] The player moves by the game's own movement rules.
+  - [ ] Movement is Modern Warfare 2's, lent by the owner (`t6.movement.player`); Black Ops 2's own (`movement_t6`) is not started.
+  - [ ] Script allowances (stances) are kept but not applied.
 - [ ] Weapons fire, reload, throw and melee by the game's own rules.
+  - [x] Black Ops 2's weapon facts (damage, ranges, clip and stock, hit-location scales) are read from its zones.
+  - [ ] The weapon state machine (fire, reload, switch, melee, grenades) is Modern Warfare 2's (`t6.weapons.state_machine`).
+  - [ ] `knife_zm` and other weapons without combat data cannot be given.
 - [x] Zombies spawn and animate (rising, or at a window).
+  - [x] Zombies rise on Nuketown and spawn on TranZit and Buried, animated by Black Ops 2's animation state machine (ASD).
+  - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`), gibs and ragdoll are missing.
 - [ ] Zombies path to the player and get through barriers.
+  - [x] On Nuketown zombies path to the player and reach melee range.
+  - [ ] On TranZit round 1 stalls: the last zombies never reach the player.
+  - [ ] Boards torn off and rebuilt not verified; doors and debris do not cut zombie paths.
 - [ ] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
+  - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
+  - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
+  - [ ] The weapons that fire are Modern Warfare 2's (see above).
+  - [ ] A zombie's swing also strikes other zombies (`t6.actors.melee_entities`).
 - [x] Rounds advance past round 1.
+  - [x] Nuketown reaches round 3 in the test player's 300 s runs.
+  - [ ] Round 2+ script faults remain (`getdstat` in `set_global_stat`, `clearpitchorient`, `playsoundontag`).
 - [ ] Wall weapons and the Mystery Box.
+  - [x] The box takes its 950 and opens (Buried).
+  - [ ] Wall weapons do not sell: their unitrigger `trigger_box_use` is not fired by IW4L's use rule (`setinvisibletoall` missing too).
+  - [ ] The box's weapon cannot be taken (`useweaponmodel` missing); the box moving and Fire Sale not reached.
 - [ ] Doors and debris.
+  - [x] Doors open for points on Nuketown and TranZit, debris on Nuketown, by the game's scripts.
+  - [ ] The press reaches them through IW4L's shared use rule, not Black Ops 2's (look-at, `player_useRadius_zm`); Buried's door ignores it.
 - [ ] Power and perks.
+  - [ ] Perk machines are script-spawned `trigger_radius_use` triggers IW4L's use rule does not fire.
+  - [ ] Nuketown's perks arrive by vehicle drop (`getvehiclenode` missing); TranZit's and Buried's power not reached.
 - [ ] Pack-a-Punch and every power-up.
+  - [ ] Not reached.
 - [ ] Going down, solo revive, bleeding out and game over return to the lobby.
+  - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
+  - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby.
+  - [ ] Last stand and the solo revive with Quick Revive (the perk cannot be bought yet); bleeding out is co-op only.
 - [ ] The game's own HUD.
+  - [ ] Black Ops 2's LUI menus and HUD are DenisToxic's `game_t6::ui` work.
 - [ ] The game's own front end: menus, lobby and map selection.
+  - [ ] Nuketown, TranZit and Buried start from the game library; the menus are not Black Ops 2's.
 - [ ] The game's own sound.
+  - [ ] Not verified (headless runs have sound off); `playsoundontag` and `soundexists` are missing.
 - [ ] The first map's own systems (Nuketown's perk drops and its end-game rocket).
+  - [ ] The perk drops need vehicle paths; the rocket's camera (`camerasetposition`, `camerasetlookat`) is missing.
 - [ ] Every zombies map in the install (TranZit, Buried).
+  - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
+  - [ ] TranZit's bus (vehicle paths, moving platforms, server-side tag poses) and Buried's own systems.
 - [ ] Co-op: friends join, revive one another and play to game over.
+  - [ ] Not started.
 - [ ] The game's fidelity ledger ([`fidelity/t6.md`](fidelity/t6.md)) has no open item.
 
 ## Black Ops III — Zombies
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Shadows of Evil | — (the map does not load yet) |
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Shadows of Evil (`zm_zod`, Classic) | 1166 of 1244 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [ ] The map loads, renders and collides (Shadows of Evil).
