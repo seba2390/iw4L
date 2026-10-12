@@ -1005,11 +1005,7 @@ fn animate(world: &mut World, object: u64, actor: &mut Actor, mode: u8, clip: Op
     }
     actor.animation = mode;
     if let Some(clip) = clip {
-        if let Some(entity) = world
-            .resource_mut::<RoundScript>()
-            .entities
-            .get_mut(&object)
-        {
+        if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&object) {
             entity.anim_op = Some(Some(clip.into()));
         }
     }
@@ -1080,11 +1076,7 @@ fn board_visibility(world: &mut World, barrier: &mut Barrier, board: usize, visi
     drop(frame);
     barrier.hiding[board] = (!visible).then_some(tick.0 + duration);
     if let Some(object) = barrier.objects.get(board).copied().flatten() {
-        if let Some(entity) = world
-            .resource_mut::<RoundScript>()
-            .entities
-            .get_mut(&object)
-        {
+        if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&object) {
             entity.hidden = !visible && duration == 0;
             entity.anim_op = Some(Some(clip.into()));
         }
@@ -1097,10 +1089,7 @@ fn prepare_barriers(world: &mut World, state: &mut Survival, players: &[(ClientI
         for (board, due) in barrier.hiding.iter_mut().enumerate() {
             if due.is_some_and(|due| tick.0 >= due) {
                 if let Some(object) = barrier.objects[board]
-                    && let Some(entity) = world
-                        .resource_mut::<RoundScript>()
-                        .entities
-                        .get_mut(&object)
+                    && let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&object)
                 {
                     entity.hidden = true;
                 }
@@ -1114,9 +1103,7 @@ fn prepare_barriers(world: &mut World, state: &mut Survival, players: &[(ClientI
             continue;
         }
         for board in 0..barrier.models.len() {
-            if world.resource::<RoundScript>().entities.len()
-                >= super::entities::MAX_SCRIPT_ENTITIES
-            {
+            if world.resource::<RoundScript>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
                 return;
             }
             if barrier.objects[board].is_some() {
@@ -1188,9 +1175,7 @@ fn prepare_machines(world: &mut World, state: &mut Survival, players: &[(ClientI
         }
         drop(frame);
         if row.object.is_none() {
-            if world.resource::<RoundScript>().entities.len()
-                >= super::entities::MAX_SCRIPT_ENTITIES
-            {
+            if world.resource::<RoundScript>().entities.len() >= super::entities::MAX_SCRIPT_ENTITIES {
                 continue;
             }
             let Ok(presence) = super::presence::spawn_presence(world, row.origin) else {
@@ -2192,11 +2177,7 @@ fn interactions(
             survivor.round_label = make_hud(world, client, 360.0, 1.4);
         }
         if let Some(object) = survivor.hud {
-            let slot = world
-                .resource::<RoundScript>()
-                .hud_slots
-                .get(&object)
-                .copied();
+            let slot = world.resource::<RoundScript>().hud_slots.get(&object).copied();
             let mut frame = FrameWorld::from_world(world);
             if let Some(slot) = slot.and_then(|slot| frame.hud_elem_slots_mut().get_mut(slot)) {
                 slot.elem.elem_type = hud_iw4::HE_TYPE_VALUE;

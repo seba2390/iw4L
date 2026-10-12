@@ -89,7 +89,11 @@ struct StaffStation {
 }
 
 impl Staffs {
-    pub(super) fn initialize(&mut self, _world: &mut World, authored: &[Vec<(String, String)>]) {
+    pub(super) fn initialize(
+        &mut self,
+        _world: &mut World,
+        authored: &[Vec<(String, String)>],
+    ) {
         self.stations = authored
             .iter()
             .filter_map(|row| {
@@ -713,11 +717,7 @@ impl Staffs {
         // Robot spawn location (center of pedestal area)
         let center = if !self.pedestals.is_empty() {
             let sum: [f32; 3] = self.pedestals.iter().fold([0.0; 3], |acc, p| {
-                [
-                    acc[0] + p.origin[0],
-                    acc[1] + p.origin[1],
-                    acc[2] + p.origin[2],
-                ]
+                [acc[0] + p.origin[0], acc[1] + p.origin[1], acc[2] + p.origin[2]]
             });
             let count = self.pedestals.len() as f32;
             [sum[0] / count, sum[1] / count, sum[2] / count]
@@ -765,10 +765,7 @@ impl Staffs {
         // Play spawn effect
         powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_robot_spawn", center);
 
-        diag::info!(
-            Sim,
-            "origins giant robot spawned object={object} health=5000"
-        );
+        diag::info!(Sim, "origins giant robot spawned object={object} health=5000");
     }
 
     pub(super) fn damage_robot(&mut self, world: &mut World, damage: i32, tick: Tick) -> bool {
@@ -794,10 +791,7 @@ impl Staffs {
     fn drop_tank_keys(&mut self, world: &mut World, tick: Tick) {
         // Drop 4 tank keys around the robot
         if let Some(robot_object) = self.robot_object {
-            let origin = match world
-                .resource_mut::<RoundScript>()
-                .object_field(robot_object, "origin")
-            {
+            let origin = match world.resource_mut::<RoundScript>().object_field(robot_object, "origin") {
                 Value::Vector(v) => v,
                 _ => return,
             };
@@ -846,12 +840,7 @@ impl Staffs {
                 });
 
                 // Play drop effect
-                powerups::effect(
-                    world,
-                    tick,
-                    "maps/zombie_tomb/fx_tomb_tank_key_drop",
-                    key_origin,
-                );
+                powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_tank_key_drop", key_origin);
             }
 
             diag::info!(
@@ -928,17 +917,10 @@ impl Staffs {
 
                 // Remove the key entity
                 let key = self.tank_keys_dropped.remove(index);
-                world
-                    .resource_mut::<RoundScript>()
-                    .delete_entity(key.object);
+                world.resource_mut::<RoundScript>().delete_entity(key.object);
 
                 // Play pickup effect
-                powerups::effect(
-                    world,
-                    tick,
-                    "maps/zombie_tomb/fx_tomb_tank_key_pickup",
-                    key.origin,
-                );
+                powerups::effect(world, tick, "maps/zombie_tomb/fx_tomb_tank_key_pickup", key.origin);
 
                 return true;
             }
@@ -952,7 +934,6 @@ impl Staffs {
     }
 
     pub(super) fn is_robot(&self, object: u64) -> bool {
-        self.robot_object
-            .is_some_and(|robot_obj| robot_obj == object)
+        self.robot_object.is_some_and(|robot_obj| robot_obj == object)
     }
 }
