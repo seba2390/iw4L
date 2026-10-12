@@ -20,7 +20,17 @@ Rules:
 
 The zombies games share one list, so their numbers compare.
 
+Each game also lists, per map, how many of the builtins its scripts name the
+runtime does not implement yet: the `gsc: builtin coverage … N of M builtins
+not implemented yet` line a match logs when its scripts install. The README's
+Builtins column shows the implemented share (M − N of M). A pull request that
+changes a count updates its row.
+
 ## Modern Warfare 2 — multiplayer
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Rust (`mp_rust`, free-for-all) | 0 of 460 |
 
 - [x] Multiplayer maps load, render and collide.
 - [x] Players move by Modern Warfare 2's own movement rules.
@@ -40,6 +50,11 @@ The zombies games share one list, so their numbers compare.
 Indented items are detail: they say what a milestone's runs have shown and
 what is still open (the open rules are in [`fidelity/t5.md`](fidelity/t5.md)).
 Only the top-level items count.
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Kino der Toten (`t5:zombie_theater`) | 192 of 610 |
+| Five (`t5:zombie_pentagon`) | 194 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -94,6 +109,10 @@ Only the top-level items count.
 
 ## Black Ops II — Zombies
 
+| Map | Builtins not implemented yet |
+|---|---|
+| Nuketown (`t6:zm_nuked`) | — (its scripts are refused at install: `t6.scripts.ffotd`) |
+
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Nuketown).
 - [x] The game's own zombies scripts start the match and run round 1 (with `IW4L_T6_OWN_SCRIPTS=1`).
@@ -117,6 +136,10 @@ Only the top-level items count.
 - [ ] The game's fidelity ledger ([`fidelity/t6.md`](fidelity/t6.md)) has no open item.
 
 ## Black Ops III — Zombies
+
+| Map | Builtins not implemented yet |
+|---|---|
+| Shadows of Evil | — (the map does not load yet) |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [ ] The map loads, renders and collides (Shadows of Evil).
