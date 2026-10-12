@@ -1597,22 +1597,39 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .insert(index as usize, state);
         Ok(Value::Undefined)
     });
-    // A client field on an entity, in the pool of its kind.
+    // A client field on an entity, in the pool of its kind; a plain entity
+    // has none and the engine ignores it.
     registry.register(Function, "codesetclientfield", |world, _, args| {
         let id = super::engine::entity_id(world, arg(args, 0)?)
             .map_err(|_| String::from("Entity does not exist."))?;
-        let pool = {
-            let runtime = world.resource::<RoundScript>();
-            let entity = &runtime.entities[&id];
-            match entity.kind {
-                EntityKind::Actor => "actor",
-                EntityKind::Player => "allplayers",
-                _ if SCRIPT_MOVERS.contains(&&*entity.classname) => "scriptmover",
-                _ if entity.classname.starts_with("zbarrier") => "zbarrier",
-                _ => return Err("Unknown client field set.".into()),
-            }
+        match client_field_pool(world, id) {
+            Some(pool) => set_client_field(world, pool, id, args),
+            None => Ok(Value::Undefined),
+        }
+    });
+    registry.register(Function, "codegetclientfield", |world, _, args| {
+        let id = super::engine::entity_id(world, arg(args, 0)?)
+            .map_err(|_| String::from("Entity does not exist."))?;
+        let Some(pool) = client_field_pool(world, id) else {
+            return Ok(Value::Int(0));
         };
-        set_client_field(world, pool, id, args)
+        let name = string(args, 1)?;
+        let fields = world.get_resource_or_insert_with(ClientFields::default);
+        let field = fields
+            .0
+            .iter()
+            .position(|field| field.pool == pool && field.name == name)
+            .ok_or("Client field does not exist.")?;
+        let zero = if fields.0[field].float {
+            Value::Float(0.0)
+        } else {
+            Value::Int(0)
+        };
+        Ok(fields
+            .1
+            .get(&(pool.to_owned(), id, field))
+            .cloned()
+            .unwrap_or(zero))
     });
     registry.register(
         Function,
@@ -1871,6 +1888,21 @@ struct GrenadeSuicideDisabled;
 struct ClientSystemStates(BTreeMap<usize, String>);
 
 /// A registered client field's value (`args` 1 names it, 2 is the value).
+/// The client field set an entity's type has, as the engine maps them; none
+/// for a plain entity.
+fn client_field_pool(world: &World, id: u64) -> Option<&'static str> {
+    let runtime = world.resource::<RoundScript>();
+    let entity = &runtime.entities[&id];
+    match entity.kind {
+        EntityKind::Actor => Some("actor"),
+        EntityKind::Player => Some("allplayers"),
+        EntityKind::Vehicle => Some("vehicle"),
+        _ if SCRIPT_MOVERS.contains(&&*entity.classname) => Some("scriptmover"),
+        _ if entity.classname.starts_with("zbarrier") => Some("zbarrier"),
+        _ => None,
+    }
+}
+
 fn set_client_field(
     world: &mut World,
     pool: &str,
@@ -1883,7 +1915,7 @@ fn set_client_field(
         .0
         .iter()
         .position(|field| field.pool == pool && field.name == name)
-        .ok_or_else(|| format!("clientfield {name} is not registered for {pool}"))?;
+        .ok_or("Client field does not exist.")?;
     let value = if fields.0[field].float {
         Value::Float(float(args, 2)?)
     } else {
