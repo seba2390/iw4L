@@ -149,7 +149,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
   - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
   - [ ] The weapons that fire are Modern Warfare 2's (see above).
-  - [ ] A zombie's swing also strikes other zombies (`t6.actors.melee_entities`).
+  - [x] A zombie's swing that lands on another zombie does nothing, as Black Ops 2's melee hit does.
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs.
   - [ ] Round 2+ script faults remain (`getdstat` in `set_global_stat`, `clearpitchorient`, `playsoundontag`).
