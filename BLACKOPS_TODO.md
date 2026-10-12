@@ -9,7 +9,7 @@ This is an outline, not a specification. Each step names an outcome and how we
 know it is reached; the details are expected to change as we learn. Every step
 ends in a commit and a push.
 
-## Status (2026-10-11)
+## Status (2026-10-12)
 
 Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
 everything it pulls in): zombies spawn behind the windows, tear the boards,
@@ -34,7 +34,12 @@ game over fails the level as Black Ops does and Kino loads again
 no code-drawn HUD yet (`t5.hud.code_hud`); Black Ops' HUD menus (weapon
 info, dpad) and the zombie scripts' hud elems (round chalk and intro,
 point popups, game over) are drawn by its own rules, and there are no
-Modern Warfare 2 sounds. The work now is
+Modern Warfare 2 sounds. Weapons sound by Black Ops' client rules: a
+player's fire, reload, raise and putaway events reach every client, which
+plays the weapon's own player or world sound; another player's automatic
+fire waits on Black Ops' fire sound simulation (`t5.audio.fire_autosim`),
+and shots show no flash, shell or tracer yet (`t5.weapons.fire_effects`).
+The work now is
 recovering those rules from Black Ops. Start it from the game library
 (Black Ops → Zombies → Kino der Toten), or headless:
 

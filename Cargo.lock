@@ -5760,6 +5760,7 @@ dependencies = [
  "frame",
  "fx",
  "fx_iw4",
+ "game_api",
  "hud_iw4",
  "lighting_iw4",
  "marks_iw4",

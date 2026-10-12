@@ -250,6 +250,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     } else {
         pm.ps.e_flags &= !e_flags::TALKING;
     }
+    crate::weapon::update_firing_flag(pm);
     if pm.ps.pm_type < pm_type::DEAD
         && !pm.cmd.buttons.held(buttons::ATTACK)
         && !pm.cmd.buttons.held(buttons::PRONE)
