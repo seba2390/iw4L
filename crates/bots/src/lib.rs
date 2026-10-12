@@ -9,6 +9,7 @@ mod query;
 mod roster;
 mod sensor;
 mod task;
+mod test_player;
 pub mod unique_loadout;
 mod weapon;
 

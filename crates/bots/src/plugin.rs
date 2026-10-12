@@ -101,6 +101,7 @@ pub struct BotsPlugin;
 
 impl Plugin for BotsPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(crate::test_player::TestPlayer::from_env());
         app.scoped::<BotRoster>(frame::MatchScope::Live)
             .init_resource::<BotAddQueue>()
             .init_resource::<BotHold>()
@@ -133,6 +134,7 @@ impl Plugin for BotsPlugin {
                 (
                     evict_bots_claiming_local_client.in_set(frame::InMatch),
                     think_bots.in_set(frame::InMatch),
+                    crate::test_player::drive_test_player.in_set(frame::InMatch),
                 )
                     .chain()
                     .in_set(AuthoritySet::Ingress)

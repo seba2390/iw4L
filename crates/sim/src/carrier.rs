@@ -66,6 +66,18 @@ impl Clone for SimWorld {
     }
 }
 
+impl SimWorld {
+    /// The script world's living actors, for a test player.
+    pub fn living_actors(&self) -> Vec<crate::script::ActorSighting> {
+        crate::script::host::sightings::living_actors(&self.ecs)
+    }
+
+    /// An integer script field of the level or a player, for a test player.
+    pub fn script_int(&self, owner: crate::script::ScriptOwner, name: &str) -> Option<i32> {
+        crate::script::host::sightings::script_int(&self.ecs, owner, name)
+    }
+}
+
 impl fmt::Debug for SimWorld {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SimWorld").field("state", &**self).finish()
