@@ -1024,6 +1024,8 @@ pub(crate) struct PlayerSlot {
     pub switching: bool,
     /// The held weapon is still being raised.
     pub raising: bool,
+    /// What the game's own weapon notifies compare against.
+    pub weapon_notes: game_api::movement::WeaponNotifyMemory,
     /// `EnableInvulnerability`: nothing damages the player.
     pub invulnerable: bool,
     pub last_stand_until_ms: Option<i64>,
@@ -1080,6 +1082,7 @@ impl PlayerSlot {
             weapon: 0,
             switching: false,
             raising: false,
+            weapon_notes: Default::default(),
             invulnerable: false,
             last_stand_until_ms: None,
             has_radar: false,

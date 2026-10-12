@@ -230,3 +230,16 @@ pub(crate) fn clear_perks(world: &mut FrameWorld, id: ClientId) -> bool {
     update(world, id, |player| movement.clear_perks(player));
     true
 }
+
+/// What the player's weapon is doing by the game's own weapon rules; `None`
+/// when the match runs the simulation's.
+pub(crate) fn weapon_activity(
+    world: &FrameWorld,
+    id: ClientId,
+) -> Option<game_api::movement::WeaponActivity> {
+    let movement = rules(world)?;
+    let Some(ps) = world.player(id) else {
+        return Some(game_api::movement::WeaponActivity::default());
+    };
+    Some(movement.weapon_activity(&ps.move_player(id.0 as i32, false)))
+}
