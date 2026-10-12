@@ -1,4 +1,4 @@
-use fastfile_t6::AssetType;
+use fastfile_t6::{AssetType, ZoneLoad};
 mod camouflage;
 mod common_compile;
 
@@ -1984,7 +1984,7 @@ fn camera_region(t6: u8) -> u8 {
 
 fn capture_soldiers(
     path: &Path,
-    map: &fastfile_t6::ZoneLoad,
+    map: &ZoneLoad,
     factions: &[fastfile_t6::ZoneLoad],
     shared: &[fastfile_t6::ZoneLoad],
     ipaks: &[asset_transport::IPak],
@@ -2107,8 +2107,20 @@ fn capture_soldiers(
     Ok((bodies, fpv))
 }
 
+/// A compiled script the zone carries, by name.
+fn script_bytes(load: &ZoneLoad, name: &str) -> Option<Vec<u8>> {
+    let script = load
+        .assets
+        .iter()
+        .find(|a| a.ty == AssetType::Script && header_str(load, &a.header, 0) == Some(name))?;
+    let at = decode_ptr(header_u32(&script.header, 8)?)?;
+    let length = header_u32(&script.header, 4)? as usize;
+    load.blocks.bytes(at, length).ok().map(<[u8]>::to_vec)
+}
+
 fn map_teams(
     path: &Path,
+    map: &fastfile_t6::ZoneLoad,
     report: &mut Vec<String>,
 ) -> Result<
     (
@@ -2122,19 +2134,35 @@ fn map_teams(
     if asset_transport::t6_content::T6ContentMode::for_path(path)
         == asset_transport::t6_content::T6ContentMode::Zombies
     {
-        let kit = (path.file_stem().and_then(|name| name.to_str()) == Some("zm_tomb")).then(|| {
-            asset_model::SoldierKit {
-                body: "c_zom_tomb_dempsey_fb".to_owned(),
-                head: None,
-                arms: Some("c_zom_dempsey_viewhands".to_owned()),
-            }
-        });
+        // The map's script dresses its players; its first two characters
+        // stand where a multiplayer map's factions would (`t6.zombies.player_kits`).
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let script = format!("maps/mp/{stem}.gsc");
+        let characters: Vec<(String, String)> = script_bytes(map, &script)
+            .or_else(|| {
+                let patch = content_zone(&path.with_file_name(format!("{stem}_patch.ff")), report)?;
+                script_bytes(&patch, &script)
+            })
+            .and_then(|bytes| asset_game::t6_player_characters(&bytes))
+            .into_iter()
+            .flatten()
+            .collect();
+        report.push(format!("T6 zombies characters: {characters:?}"));
+        let kit = |index: usize| {
+            characters
+                .get(index)
+                .map(|(body, hands)| asset_model::SoldierKit {
+                    body: body.clone(),
+                    head: None,
+                    arms: Some(hands.clone()),
+                })
+        };
         return Ok((
             asset_game::MapTeamSettings::default(),
             Vec::new(),
             asset_model::SoldierKits {
-                allies: kit.clone(),
-                axis: kit,
+                allies: kit(0),
+                axis: kit(1).or_else(|| kit(0)),
             },
         ));
     }
@@ -2787,7 +2815,7 @@ impl ZoneLane for T6Lane {
                 draw.stats.surfaces,
                 material_rows.len()
             ));
-            let (team_settings, faction_loads, kits) = map_teams(path, &mut report)?;
+            let (team_settings, faction_loads, kits) = map_teams(path, &load, &mut report)?;
             let (bodies, fpv_meshes) = capture_soldiers(
                 path,
                 &load,
