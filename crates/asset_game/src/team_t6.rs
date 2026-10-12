@@ -61,3 +61,75 @@ pub fn t6_team_properties(bytes: &[u8]) -> Option<BTreeMap<String, String>> {
     }
     Some(values)
 }
+
+/// Addresses in a compiled script, each with the text found there.
+type Sites<'a> = Vec<(usize, &'a str)>;
+
+/// A compiled script's string literals by the address that uses each, and its
+/// calls of `names` by the address that makes each, both in address order.
+fn literals_and_calls<'a>(bytes: &'a [u8], names: &[&'a str]) -> Option<(Sites<'a>, Sites<'a>)> {
+    if bytes.get(..8)? != b"\x80GSC\r\n\0\x06" {
+        return None;
+    }
+    let word = |at| Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?));
+    let half = |at| Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?));
+    let text = |at: usize| {
+        let tail = bytes.get(at..)?;
+        std::str::from_utf8(tail.get(..tail.iter().position(|&b| b == 0)?)?).ok()
+    };
+    let mut literals = Vec::new();
+    let mut at = word(0x18)? as usize;
+    for _ in 0..half(0x32)? {
+        let value = text(half(at)? as usize)?;
+        let count = *bytes.get(at + 2)?;
+        at += 4;
+        for _ in 0..count {
+            literals.push((word(at)? as usize, value));
+            at += 4;
+        }
+    }
+    let mut calls = Vec::new();
+    let mut at = word(0x20)? as usize;
+    for _ in 0..half(0x36)? {
+        let name = text(half(at)? as usize)?;
+        let count = half(at + 4)? as usize;
+        at += 8;
+        for _ in 0..count {
+            if let Some(&name) = names.iter().find(|wanted| **wanted == name) {
+                calls.push((word(at)? as usize, name));
+            }
+            at += 4;
+        }
+    }
+    literals.sort_unstable_by_key(|literal| literal.0);
+    calls.sort_unstable_by_key(|call| call.0);
+    Some((literals, calls))
+}
+
+/// The bodies and view hands a zombies map's script dresses its players in:
+/// each `setmodel` literal with the `setviewmodel` literal that follows it.
+pub fn t6_player_characters(bytes: &[u8]) -> Option<Vec<(String, String)>> {
+    let (literals, calls) = literals_and_calls(bytes, &["setmodel", "setviewmodel"])?;
+    let before = |site: usize| {
+        literals
+            .iter()
+            .rev()
+            .find(|(at, _)| *at < site)
+            .map(|(_, value)| (*value).to_owned())
+    };
+    let mut characters: Vec<(String, String)> = Vec::new();
+    let mut body = None;
+    for (site, name) in calls {
+        match name {
+            "setmodel" => body = before(site),
+            _ => {
+                if let (Some(body), Some(hands)) = (body.take(), before(site))
+                    && !characters.contains(&(body.clone(), hands.clone()))
+                {
+                    characters.push((body, hands));
+                }
+            }
+        }
+    }
+    Some(characters)
+}
