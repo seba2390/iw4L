@@ -348,6 +348,60 @@ fn scoped<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
 }
 
 /// The player means to aim down the sights this frame.
+/// The firing flag, set again each move: in a vehicle while either of its
+/// fire buttons (34, 35) is held; off a turret, for a hand ready, firing or
+/// in its fire loop with rounds in its clip (or unlimited ammo) and no
+/// grenade throw cancelled, while its fire button is held out of deep water
+/// (water level under 3) or its weapon time runs. The right hand fires with
+/// the attack button, a dual wield's left with the throw button.
+pub(crate) fn update_firing_flag<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+    pm.ps.e_flags &= !e_flags::FIRING;
+    if pm.ps.pm_flags & pm_flags::RESPAWNED != 0 {
+        return;
+    }
+    if pm.ps.e_flags & e_flags::VEHICLE_VIEW != 0 {
+        if pm.cmd.buttons.held(34) || pm.cmd.buttons.held(35) {
+            pm.ps.e_flags |= e_flags::FIRING;
+        }
+        return;
+    }
+    if pm.ps.e_flags & e_flags::TURRET != 0 {
+        return;
+    }
+    let right = pm.world.weapon(pm.ps.weapon);
+    let left = right.dual_wield_weapon;
+    let dual_wield = right.def.dual_wield();
+    let ready = |s: i32| matches!(s, ws::READY | ws::FIRING | ws::CONT_FIRE_LOOP);
+    if ready(pm.ps.weaponstate)
+        && (hand_clip(pm.ps, pm.world) != 0 || right.def.unlimited_ammo())
+        && hand_firing(pm, pm.ps.weapon, buttons::ATTACK, pm.ps.weapon_time)
+    {
+        pm.ps.e_flags |= e_flags::FIRING;
+    }
+    if !dual_wield || !ready(pm.ps.weaponstate_left) {
+        return;
+    }
+    let left_def = pm.world.weapon(left);
+    if (inv::clip(pm.ps, &left_def) != 0 || left_def.def.unlimited_ammo())
+        && hand_firing(pm, left, buttons::THROW, pm.ps.weapon_time_left)
+    {
+        pm.ps.e_flags |= e_flags::FIRING;
+    }
+}
+
+/// A ready hand with rounds fires while its button is held out of deep
+/// water or its weapon time runs, unless it overheated or a grenade throw
+/// was cancelled.
+fn hand_firing<W: MoveWorld>(pm: &mut Pm<'_, W>, weapon: u32, button: u32, time: i32) -> bool {
+    if pm.world.weapon(weapon).def.overheat_weapon() != 0 {
+        pm.gap(crate::Gap::Overheat);
+    }
+    if pm.ps.weap_flags & weap_flags::CANCEL_GRENADE != 0 {
+        return false;
+    }
+    (pm.cmd.buttons.held(button) && pm.ps.water_level < 3) || time > 0
+}
+
 pub(crate) fn update_ads_intent<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     pm.ps.pm_flags &= !pm_flags::ADS_INTENT;
     let mut can = can_ads(pm, pml);

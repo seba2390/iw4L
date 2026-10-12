@@ -25,7 +25,7 @@ fn autosim_unknown() -> &'static Unknown {
     unknown!(
         "t5.audio.fire_autosim",
         "the fire sound of an automatic weapon fired by a player this client does not view in first person (and of a turret, and in a killcam) is not played",
-        "the client's automatic fire sound simulation (snd_autoSim), which replays such a shot's sound every fire time while the shooter's entity is firing; the firing entity flag is not set by the port's movement"
+        "the client's automatic fire sound simulation (snd_autoSim), which replays such a shot's sound every fire time while the shooter's entity is firing, and the firing flag the movement sets carried to clients on the shooter's entity"
     )
 }
 
