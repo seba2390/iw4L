@@ -217,6 +217,8 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         "Black Ops 2's weapon state machine",
         "Black Ops 2's weapon rules"
     )),
+    // The mask the engine's bullet trace takes; actors are in it.
+    bullet_mask: Some(0x0280_e833),
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,

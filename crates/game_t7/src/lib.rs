@@ -173,6 +173,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
         "Black Ops 3's weapon state machine: fire, reload, switch, ADS, melee, offhands",
         "Black Ops 3's weapon rules"
     )),
+    bullet_mask: None,
     spawn_at_default_health: true,
     connect_team: Some("allies"),
     scripts_spawn_players: true,

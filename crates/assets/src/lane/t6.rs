@@ -2469,49 +2469,10 @@ impl ZoneLane for T6Lane {
                     let Some(name) = model.name() else {
                         continue;
                     };
-                    let actor_models: &[&str] = match path
-                        .file_stem()
-                        .and_then(|stem| stem.to_str())
-                    {
-                        Some("zm_nuked") => &["c_zom_dlc0_zom_sol_body1", "c_zom_dlc0_zom_head1"],
-                        Some("zm_transit") => &["c_zom_zombie1_body01", "c_zom_zombie_head_a"],
-                        Some("zm_highrise") => {
-                            &["c_zom_zombie_civ_shorts_body", "c_zom_zombie_chinese_head1"]
-                        }
-                        Some("zm_prison") => &["c_zom_inmate_body1", "c_zom_zombie_slackjaw_head"],
-                        Some("zm_buried") => &[
-                            "c_zom_zombie_buried_civilian_body1",
-                            "c_zom_zombie_buried_male_head1",
-                        ],
-                        Some("zm_tomb") => {
-                            &["c_zom_tomb_german_body_1a", "c_zom_tomb_german_head1"]
-                        }
-                        _ => &[],
-                    };
-                    let actor = actor_models.contains(&name);
-                    let board = name.starts_with("p6_anim_zm_barricade_board_");
-                    let weapon = name.starts_with("t6_wpn_") && name.ends_with("_world");
-                    let machine = name.starts_with("zombie_vending_")
-                        || name.contains("_vending_")
-                        || matches!(name, "p6_anim_zm_buildable_pap" | "p6_zm_tm_packapunch");
-                    let shovel = path.file_stem().and_then(|stem| stem.to_str()) == Some("zm_tomb")
-                        && matches!(
-                            name,
-                            "p6_zm_tm_shovel" | "p6_zm_tm_dig_mound" | "p6_zm_tm_blood_power_up"
-                        );
-                    let powerup = matches!(
-                        name,
-                        "zombie_bomb"
-                            | "zombie_skull"
-                            | "zombie_ammocan"
-                            | "zombie_x2_icon"
-                            | "zombie_carpenter"
-                            | "zombie_z_money_icon"
-                    );
-                    if (script_placements.iter().any(|p| p.model == name)
-                        || (asset_transport::t6_content::T6ContentMode::for_path(path)
-                            == asset_transport::t6_content::T6ContentMode::Zombies
-                            && (actor || board || weapon || machine || shovel || powerup)))
+                    // A zombies map's scripts may set any model its zones carry.
+                    let zombies = asset_transport::t6_content::T6ContentMode::for_path(path)
+                        == asset_transport::t6_content::T6ContentMode::Zombies;
+                    if (zombies || script_placements.iter().any(|p| p.model == name))
                         && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
                     {
                         script_xmodels.push(model);

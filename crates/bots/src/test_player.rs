@@ -9,12 +9,13 @@
 use bevy::prelude::*;
 use net::{AuthorityClock, AuthorityWorld, ClientCommandInbox, look_angles_from_degrees};
 use sim::script::ScriptOwner;
-use sim::{BulletTraceQuery, ClientLifecycle, ColliderId, MASK_SHOT, Tick, TraceOutcome};
+use sim::{BulletTraceQuery, ClientLifecycle, ColliderId, Tick, TraceOutcome};
 
 use crate::motor::{UserCmd, buttons};
 use crate::roster::BotRoster;
 
-/// The height above an actor's origin it aims at: its chest.
+/// The height above an actor's origin it aims near: its chest. It aims at
+/// the body box nearest there.
 const AIM_HEIGHT: f32 = 48.0;
 /// A shot line that ends this near the aim point reached the actor.
 const HIT_SLACK: f32 = 32.0;
@@ -118,15 +119,23 @@ pub(crate) fn drive_test_player(
     ];
     let mut near: Vec<_> = actors
         .iter()
-        .map(|actor| (distance(eye, actor.origin), actor.origin))
+        .map(|actor| (distance(eye, actor.origin), *actor))
         .collect();
     near.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let target = near.iter().take(SIGHT_CANDIDATES).find_map(|&(_, origin)| {
-        let aim = [origin[0], origin[1], origin[2] + AIM_HEIGHT];
+    let target = near.iter().take(SIGHT_CANDIDATES).find_map(|&(_, actor)| {
+        let chest = [
+            actor.origin[0],
+            actor.origin[1],
+            actor.origin[2] + AIM_HEIGHT,
+        ];
+        let aim = actor
+            .body
+            .and_then(|body| world.0.body_point(body, chest))
+            .unwrap_or(chest);
         let outcome = world.0.sensor_trace(BulletTraceQuery {
             start: eye,
             end: aim,
-            mask: MASK_SHOT,
+            mask: world.0.bullet_mask(),
             ignore: Some(id),
             ignore_hit: None,
             ignore_model: None,
@@ -172,7 +181,7 @@ pub(crate) fn drive_test_player(
     }
     if near
         .first()
-        .is_some_and(|&(_, origin)| flat_distance(ps.origin, origin) < BACK_OFF)
+        .is_some_and(|&(_, actor)| flat_distance(ps.origin, actor.origin) < BACK_OFF)
     {
         cmd.forwardmove = -127;
     }

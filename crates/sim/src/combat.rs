@@ -1211,6 +1211,7 @@ pub(crate) fn phase_trace(
 ) -> TracePhaseOutput {
     let mut output = TracePhaseOutput::default();
     let mut segment_ordinals = HashMap::<(ShotId, PelletId), u16>::new();
+    let bullet_mask = world.bullet_mask();
     let mut pending: std::collections::VecDeque<_> =
         emissions.iter().copied().map(|em| (em, 0u8)).collect();
     while let Some((em, bounces)) = pending.pop_front() {
@@ -1259,7 +1260,7 @@ pub(crate) fn phase_trace(
             &BulletTraceQuery {
                 start: em.origin,
                 end,
-                mask: MASK_BULLET_WORLD,
+                mask: bullet_mask,
                 ignore: Some(em.attacker),
                 ignore_hit: None,
                 ignore_model: None,

@@ -105,6 +105,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
             "save games in the runtime (Black Ops saves the level at its start), and Black Ops' client game commands for blur, fades and the dead quote"
         )),
     }),
+    bullet_mask: None,
     spawn_at_default_health: true,
     connect_team: Some("allies"),
     scripts_spawn_players: true,

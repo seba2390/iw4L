@@ -154,6 +154,9 @@ pub struct ModeRules {
     pub movement: Rule<MovementRules>,
     /// Players' weapons run Modern Warfare 2's weapon state machine.
     pub weapons: Rule<WeaponRules>,
+    /// The contents a player's bullet stops on, where the game's differ from
+    /// the simulation's own.
+    pub bullet_mask: Option<u32>,
     /// A spawn starts at the default full health, not the stored max health.
     pub spawn_at_default_health: bool,
     /// The team every player joins on connect, when the scripts pick none.
