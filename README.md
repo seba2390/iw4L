@@ -7,7 +7,7 @@
 |---|---|---|
 | Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 |
 | Black Ops — Zombies | `████████████░░░░░░░░` 63% | 12 / 19 |
-| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 21% | 4 / 19 |
+| Black Ops II — Zombies | `█████░░░░░░░░░░░░░░░` 26% | 5 / 19 |
 | Black Ops III — Zombies | `█░░░░░░░░░░░░░░░░░░░` 5% | 1 / 19 |
 <!-- progress:end -->
 

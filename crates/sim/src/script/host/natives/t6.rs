@@ -152,6 +152,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .map_err(|_| "gettime overflow".into())
     });
 
+    // The host's clock in seconds (`t6.time.utc`: no online offset).
+    registry.register(Function, "getutc", |_, _, _| {
+        let seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "system time precedes the Unix epoch")?
+            .as_secs();
+        Ok(Value::Int(seconds as i32))
+    });
+
     // The GetDvar opcodes: a missing dvar reads as "" (0, 0.0).
     registry.register(Function, "getdvar", |world, _, args| {
         Ok(Value::String(dvar(world, args)?.into()))
@@ -1723,6 +1732,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "takeallweapons"),
         (Method, "getcurrentweapon"),
         (Method, "isonground"),
+        // The player's aim-down-sights fraction, as the engine's handler reads it.
+        (Method, "playerads"),
         (Function, "bullettrace"),
     ] {
         if let Some(native) = shared.get(namespace, name) {
