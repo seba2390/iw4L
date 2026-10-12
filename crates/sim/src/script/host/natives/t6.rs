@@ -856,6 +856,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             (f64::from(degrees) * f64::from(std::f32::consts::PI / 180.0)).cos() as f32,
         ))
     });
+    // In degrees, as the scripts compare it with the field of view.
+    registry.register(Function, "acos", |_, _, args| {
+        let value = float(args, 0)?;
+        if !(-1.0..=1.0).contains(&value) {
+            return Err(format!("{} out of range", g(value)));
+        }
+        Ok(Value::Float(value.acos().to_degrees()))
+    });
     registry.register(Function, "issubstr", |_, _, args| {
         let (text, part) = (string(args, 0)?, string(args, 1)?);
         Ok(Value::Int(text.contains(&part).into()))

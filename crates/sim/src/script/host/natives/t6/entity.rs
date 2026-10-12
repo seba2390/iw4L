@@ -182,6 +182,15 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.register(Function, "groundtrace", ground_trace);
+    registry.register(Method, "getlinkedent", |world, receiver, _| {
+        let id = entity_id(world, receiver)?;
+        Ok(world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .and_then(|entity| entity.linked_to.as_ref())
+            .map_or(Value::Undefined, |link| Value::Object(link.parent)))
+    });
     registry.register(Method, "gettagorigin", |world, receiver, args| {
         Ok(Value::Vector(tag(world, receiver, args)?.0))
     });

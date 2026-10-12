@@ -181,6 +181,8 @@ pub struct ZoneWeapon {
     pub max_ammo: i32,
     /// Start and max ammo count clips, not rounds.
     pub ammo_count_clip_relative: bool,
+    /// Holds no stock: all its ammo is in the clip.
+    pub clip_only: bool,
     pub tank_life_time: i32,
     pub melee_damage: i32,
     /// The game's weapon type, class, inventory type, fire type and offhand
