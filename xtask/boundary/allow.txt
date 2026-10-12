@@ -307,7 +307,7 @@ pattern crates/asset_world/src/world_t5.rs fastfile_t5:: 10
 pattern crates/asset_world/src/world_t6.rs asset_iw4:: 1
 pattern crates/asset_world/src/world_t6.rs clipmap_iw4:: 3
 pattern crates/asset_world/src/world_t6.rs dpvs_iw4:: 2
-pattern crates/asset_world/src/world_t6.rs fastfile_t6:: 7
+pattern crates/asset_world/src/world_t6.rs fastfile_t6:: 3
 pattern crates/asset_world/src/world_t6.rs lighting_iw4:: 3
 pattern crates/assets/src/asset_graph.rs AssetNamespace::<game> 1
 pattern crates/assets/src/lane/helpers.rs clipmap_iw4:: 4

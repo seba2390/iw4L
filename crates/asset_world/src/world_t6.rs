@@ -1,6 +1,6 @@
 use crate::world_draw::*;
 use crate::{SurfaceCastsSunShadow, WorldMeshStats, world_capture_from_casters};
-use fastfile_t6::{LoadedAsset, Ptr, ZoneLoad};
+use fastfile_t6::{AssetType, LoadedAsset, Ptr, ZoneLoad};
 use std::collections::HashMap;
 
 pub struct Reader<'a>(pub &'a ZoneLoad);
@@ -467,11 +467,28 @@ fn read_dpvs(load: &ZoneLoad, asset: &LoadedAsset) -> Result<DpvsWorldData, Stri
     out.checked().map_err(|e| e.to_string())
 }
 
+/// The entities a zone adds to a map (`maps/mp/<zone>.mapents`), which the
+/// engine reads on from where the map's own end.
+pub fn addon_entity_string<'a>(load: &'a ZoneLoad, zone: &str) -> Option<&'a str> {
+    let name = format!("maps/mp/{zone}.mapents");
+    let reader = Reader(load);
+    load.assets
+        .iter()
+        .filter(|a| a.ty == AssetType::AddonMapEnts)
+        .find(|a| {
+            Reader::ptr(&a.header, 0)
+                .ok()
+                .and_then(|at| reader.text(at).ok())
+                .is_some_and(|found| found.eq_ignore_ascii_case(&name))
+        })
+        .and_then(|a| reader.text(Reader::ptr(&a.header, 4).ok()?).ok())
+}
+
 pub fn entity_string(load: &ZoneLoad) -> Result<&str, String> {
     let asset = load
         .assets
         .iter()
-        .find(|a| a.ty == fastfile_t6::AssetType::MapEnts)
+        .find(|a| a.ty == AssetType::MapEnts)
         .ok_or("T6 map entities missing")?;
     Reader(load).text(Reader::ptr(&asset.header, 4)?)
 }
@@ -481,12 +498,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
     let asset = load
         .assets
         .iter()
-        .find(|a| {
-            matches!(
-                a.ty,
-                fastfile_t6::AssetType::ClipMap | fastfile_t6::AssetType::ClipMapPvs
-            )
-        })
+        .find(|a| matches!(a.ty, AssetType::ClipMap | AssetType::ClipMapPvs))
         .ok_or("T6 clipmap missing")?;
     let r = Reader(load);
     let h = &asset.header;
@@ -770,7 +782,7 @@ fn primary_lights(
     let Some(world) = load
         .assets
         .iter()
-        .find(|asset| asset.ty == fastfile_t6::AssetType::ComWorld)
+        .find(|asset| asset.ty == AssetType::ComWorld)
     else {
         return Ok(Vec::new());
     };
