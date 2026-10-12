@@ -7,6 +7,7 @@ use crate::world::{
     ClientId, Tick, gsc_give_weapon_is_akimbo, inventory_add_weapon, spawn_player_state,
 };
 use movement_iw4::SHORT2ANGLE;
+use playerstate_iw4::buttons;
 
 pub(crate) fn spectator_lifecycle(team: i32) -> ClientLifecycle {
     if team == entity_iw4::TEAM_SPECTATOR {
@@ -322,7 +323,6 @@ pub(crate) fn finish_damage(
     {
         return Finish::Hurt;
     }
-    use playerstate_iw4::pm_flags::LAST_STAND;
     let downed = downed_rules(world);
     let Some(ps) = world.player_mut(id) else {
         return Finish::Hurt;
@@ -357,17 +357,34 @@ pub(crate) fn finish_damage(
     };
     if downs && ps.pm_flags & LAST_STAND == 0 {
         ps.health = 1;
-        ps.pm_type = playerstate_iw4::PM_TYPE_LAST_STAND;
-        if downed.sets_view_height {
-            ps.view_height_target = movement_iw4::view_height::LAST_STAND;
-        }
-        ps.pm_flags |= LAST_STAND;
+        enter_last_stand_move(world, id, downed.sets_view_height);
         if let Some(gap) = downed.unrun {
             diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
         }
         return Finish::LastStand;
     }
     Finish::Killed
+}
+
+use playerstate_iw4::pm_flags::LAST_STAND;
+
+/// The shared movement's last stand: its move type and flag, and its eye
+/// height when asked.
+fn enter_last_stand_move(world: &mut FrameWorld, id: ClientId, sets_view_height: bool) {
+    let Some(ps) = world.player_mut(id) else {
+        return;
+    };
+    ps.pm_type = playerstate_iw4::PM_TYPE_LAST_STAND;
+    if sets_view_height {
+        ps.view_height_target = movement_iw4::view_height::LAST_STAND;
+    }
+    ps.pm_flags |= LAST_STAND;
+}
+
+/// A downed player moving by the shared movement's last stand, eye height
+/// and all.
+pub(crate) fn lend_last_stand_move(world: &mut FrameWorld, id: ClientId) {
+    enter_last_stand_move(world, id, true);
 }
 
 /// What being down does to a player in this match's mode.
@@ -924,12 +941,57 @@ pub(crate) fn buttons(world: &mut FrameWorld, id: ClientId) -> u32 {
         .map_or(0, |(_, b)| *b)
 }
 
+/// A command button a script asks about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CmdButton {
+    Attack,
+    Ads,
+    Melee,
+    Frag,
+    SecondaryOffhand,
+    Jump,
+    Sprint,
+    Stance,
+    Throw,
+}
+
+impl CmdButton {
+    fn mask(self) -> u32 {
+        match self {
+            Self::Attack => buttons::ATTACK,
+            Self::Ads => buttons::ADS,
+            Self::Melee => buttons::MELEE_CHARGE,
+            Self::Frag => buttons::FRAG,
+            Self::SecondaryOffhand => buttons::SMOKE,
+            Self::Jump => buttons::JUMP,
+            Self::Sprint => buttons::SPRINT,
+            Self::Stance => buttons::STANCE_HELD,
+            Self::Throw => buttons::THROW,
+        }
+    }
+}
+
+/// Whether a client holds a button this frame or held it the last.
+pub(crate) fn holds_now_or_last(world: &mut FrameWorld, id: ClientId, button: CmdButton) -> bool {
+    let input = &world.ecs().resource::<crate::step::StepRequest>().input;
+    let now = input
+        .cmds
+        .iter()
+        .filter(|command| command.client == id)
+        .fold(0, |held, command| held | command.command.buttons);
+    let last = world
+        .old_buttons_mut()
+        .iter()
+        .find(|(c, _)| *c == id)
+        .map_or(0, |(_, b)| *b);
+    (now | last) & button.mask() != 0
+}
+
 pub(crate) fn constrain_cmd(
     world: &mut FrameWorld,
     id: ClientId,
     cmd: &mut playerstate_iw4::UserCmd,
 ) {
-    use playerstate_iw4::buttons;
     let held = world.player(id).map_or(0, |ps| ps.weapon);
     let Some(mut controls) = world.client_meta(id).map(|m| m.controls) else {
         return;
@@ -950,6 +1012,9 @@ pub(crate) fn constrain_cmd(
     }
     if controls.jump_disabled {
         cmd.buttons &= !buttons::JUMP;
+    }
+    if controls.melee_disabled {
+        cmd.buttons &= !buttons::MELEE_CHARGE;
     }
     if controls.weapons_disabled {
         cmd.buttons &= !(buttons::ATTACK | buttons::THROW | buttons::ADS | buttons::MELEE_CHARGE);

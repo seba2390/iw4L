@@ -1006,6 +1006,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     out.put_u8(meta.controls.offhands_disabled.into());
     out.put_u8(meta.controls.switch_disabled.into());
     out.put_u8(meta.controls.jump_disabled.into());
+    out.put_u8(meta.controls.melee_disabled.into());
     out.put_u8(meta.controls.usability_disabled.into());
     out.put_u8(meta.controls.linked.into());
     out.put_u32(meta.controls.switch_to);
@@ -1227,6 +1228,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         offhands_disabled: input.get_u8()? != 0,
         switch_disabled: input.get_u8()? != 0,
         jump_disabled: input.get_u8()? != 0,
+        melee_disabled: input.get_u8()? != 0,
         usability_disabled: input.get_u8()? != 0,
         linked: input.get_u8()? != 0,
         switch_to: input.get_u32()?,

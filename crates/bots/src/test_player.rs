@@ -2,10 +2,10 @@
 //! not a bot, for headless runs. It aims at the nearest living actor it can
 //! see, fires (pressing and letting go each tick, so a semi-automatic gun
 //! fires again), knifes an actor within melee reach, reloads an empty clip
-//! and backs away when actors crowd it. Every five seconds it logs
-//! the round, its score, kills, health, whether it is down, the actors
-//! alive, its weapon and ammo, and what its aim lines ended on. It only
-//! presses buttons; the game decides the rest.
+//! and backs away when actors crowd it. Every five seconds it logs the
+//! round, its score, kills, health (and the lowest since the last line),
+//! whether it is down, the actors alive, its weapon and ammo, and what its
+//! aim lines ended on. It only presses buttons; the game decides the rest.
 //!
 //! `IW4L_TEST_PLAYER=rounds` is the rounds test: the player also asks for
 //! god mode once (cheats must be on) and for an ammo resupply whenever his
@@ -158,6 +158,8 @@ pub(crate) struct TestPlayer {
     sites_logged: bool,
     /// Kinds already logged as waiting for their zone.
     deferred: Vec<UseKind>,
+    /// The lowest health since the last log line.
+    lowest_health: Option<i32>,
     /// The nearest an actor came to the eye since the last log line.
     nearest: Option<f32>,
     /// When the use test next looks for a site it can pay for.
@@ -418,12 +420,16 @@ pub(crate) fn drive_test_player(
     {
         test.nearest = Some(test.nearest.map_or(closest, |seen| seen.min(closest)));
     }
+    test.lowest_health = Some(
+        test.lowest_health
+            .map_or(ps.health, |low| low.min(ps.health)),
+    );
     if clock.time_ms >= test.next_log_ms {
         test.next_log_ms = clock.time_ms + LOG_PERIOD_MS;
         let weapon = world.0.weapon_script_name(ps.weapon).to_owned();
         diag::info!(
             Sim,
-            "test player: t={}s round={} score={} kills={} health={} life={:?} laststand={} actors={} nearest={} shots={} knifes={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
+            "test player: t={}s round={} score={} kills={} health={} lowest={} life={:?} laststand={} actors={} nearest={} shots={} knifes={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
             clock.time_ms / 1000,
             world
                 .0
@@ -432,6 +438,7 @@ pub(crate) fn drive_test_player(
             meta.score,
             meta.kills,
             ps.health,
+            test.lowest_health.unwrap_or(ps.health),
             meta.lifecycle,
             laststand.map_or_else(|| "-".to_owned(), |n| n.to_string()),
             actors.len(),
@@ -445,6 +452,7 @@ pub(crate) fn drive_test_player(
             test.lines
         );
         test.nearest = None;
+        test.lowest_health = None;
     }
     if test.mode == Mode::Down {
         let now = (meta.lifecycle, ps.health, laststand);

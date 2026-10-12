@@ -701,6 +701,67 @@ fn revive_from_last_stand(
     Ok(Value::Undefined)
 }
 
+/// `allowads`: the game's own movement's restriction, else the no-ADS
+/// weapon flag of the shared player state.
+pub(crate) fn allow_ads(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let allow = flag(args, 0)?;
+    let id = client_of(world, receiver)?;
+    let mut frame = FrameWorld::from_world(world);
+    if crate::game_move::restrict(
+        &mut frame,
+        id,
+        game_api::movement::MoveRestriction::Ads,
+        allow,
+    ) {
+        return Ok(Value::Undefined);
+    }
+    let ps = frame.player_mut(id).ok_or("player has not spawned")?;
+    if allow {
+        ps.weap_flags &= !playerstate_iw4::weap_flags::NO_ADS;
+    } else {
+        ps.weap_flags |= playerstate_iw4::weap_flags::NO_ADS;
+    }
+    Ok(Value::Undefined)
+}
+
+/// `allowsprint`: the game's own movement's restriction, else the shared
+/// movement's sprint block, ending a sprint in progress.
+pub(crate) fn allow_sprint(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let allow = flag(args, 0)?;
+    let id = client_of(world, receiver)?;
+    let mut frame = FrameWorld::from_world(world);
+    if crate::game_move::restrict(
+        &mut frame,
+        id,
+        game_api::movement::MoveRestriction::Sprint,
+        allow,
+    ) {
+        return Ok(Value::Undefined);
+    }
+    let ps = frame.player_mut(id).ok_or("player has not spawned")?;
+    if allow {
+        ps.pm_flags &= !playerstate_iw4::pm_flags::SPRINT_BLOCKED;
+    } else {
+        ps.pm_flags |= playerstate_iw4::pm_flags::SPRINT_BLOCKED;
+        movement_iw4::end_sprint(
+            ps,
+            &playerstate_iw4::UserCmd {
+                server_time: ps.command_time,
+                ..Default::default()
+            },
+        );
+    }
+    Ok(Value::Undefined)
+}
+
 fn register_death(registry: &mut NativeRegistry) {
     registry.register(Method, "finishplayerdamage", |world, receiver, args| {
         let client = player(world, receiver)?;
@@ -1208,53 +1269,8 @@ fn register_body(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    registry.register(Method, "allowads", |world, receiver, args| {
-        let allow = flag(args, 0)?;
-        let id = client_of(world, receiver)?;
-        let mut frame = FrameWorld::from_world(world);
-        if crate::game_move::restrict(
-            &mut frame,
-            id,
-            game_api::movement::MoveRestriction::Ads,
-            allow,
-        ) {
-            return Ok(Value::Undefined);
-        }
-        let ps = frame.player_mut(id).ok_or("player has not spawned")?;
-        if allow {
-            ps.weap_flags &= !playerstate_iw4::weap_flags::NO_ADS;
-        } else {
-            ps.weap_flags |= playerstate_iw4::weap_flags::NO_ADS;
-        }
-        Ok(Value::Undefined)
-    });
-    registry.register(Method, "allowsprint", |world, receiver, args| {
-        let allow = flag(args, 0)?;
-        let id = client_of(world, receiver)?;
-        let mut frame = FrameWorld::from_world(world);
-        if crate::game_move::restrict(
-            &mut frame,
-            id,
-            game_api::movement::MoveRestriction::Sprint,
-            allow,
-        ) {
-            return Ok(Value::Undefined);
-        }
-        let ps = frame.player_mut(id).ok_or("player has not spawned")?;
-        if allow {
-            ps.pm_flags &= !playerstate_iw4::pm_flags::SPRINT_BLOCKED;
-        } else {
-            ps.pm_flags |= playerstate_iw4::pm_flags::SPRINT_BLOCKED;
-            movement_iw4::end_sprint(
-                ps,
-                &playerstate_iw4::UserCmd {
-                    server_time: ps.command_time,
-                    ..Default::default()
-                },
-            );
-        }
-        Ok(Value::Undefined)
-    });
+    registry.register(Method, "allowads", allow_ads);
+    registry.register(Method, "allowsprint", allow_sprint);
     macro_rules! control {
         ($($name:literal => $field:ident = $value:literal),* $(,)?) => {$(
             registry.register(Method, $name, |world, receiver, _| {
