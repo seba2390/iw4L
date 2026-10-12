@@ -7,6 +7,10 @@ use gsc::{Binary, Callee, Function, Global, Location, Op, ScriptString, Unary, V
 
 use crate::{Instruction, Module, Opcode};
 
+/// An integer case is stored as its value plus this, in 24 bits, as the
+/// engine keys an integer selector before it looks the case up.
+const INT_CASE_BIAS: i32 = 0x80_0000;
+
 /// What a call site or function reference names, for the linker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Site {
@@ -488,7 +492,7 @@ impl<'a> Translator<'a> {
                                 emit!(Op::Jump(0));
                                 continue;
                             }
-                            None => Value::Int(value as i32),
+                            None => Value::Int(value as i32 - INT_CASE_BIAS),
                         };
                         emit!(Op::Load(temp));
                         emit!(Op::Constant(case));
