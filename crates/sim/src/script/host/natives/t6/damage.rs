@@ -205,7 +205,17 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
             Value::String(state) if state.as_ref() == "playing"
         );
         let alive = number(world, id, "health", 0.0) > 0.0;
-        if !takes_damage || hit.damage < 1 || hit.hit_location == RIOTSHIELD || !playing || !alive {
+        let god = world
+            .resource::<RoundScript>()
+            .player_client(id)
+            .is_some_and(|client| super::player::is_invulnerable(world, client));
+        if !takes_damage
+            || god
+            || hit.damage < 1
+            || hit.hit_location == RIOTSHIELD
+            || !playing
+            || !alive
+        {
             return Ok(());
         }
         let weapon = weapon_of(world, &hit);
