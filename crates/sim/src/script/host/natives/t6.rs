@@ -807,6 +807,24 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         fade(world, receiver, args)
     });
 
+    // The engine refuses a second end, then ends the match to the front end.
+    registry.register(Function, "exitlevel", |world, _, args| {
+        let runtime = world.resource::<RoundScript>();
+        if runtime.pending_restart.is_some() {
+            return Err("map_restart already called".into());
+        }
+        if runtime.exit_level {
+            return Err("exitlevel already called".into());
+        }
+        if !args.is_empty() {
+            int(args, 0)?;
+        }
+        let exit = NativeRegistry::engine_services()
+            .get(Function, "exitlevel")
+            .ok_or("exitlevel: no engine level end")?;
+        exit(world, &Value::Undefined, &[])
+    });
+
     // Path nodes, in map order; a lookup names one of the node's string
     // fields and an empty field never matches.
     registry.register(Function, "getallnodes", |world, _, _| {
