@@ -102,7 +102,7 @@ fn number(world: &mut World, id: u64, name: &str, default: f32) -> f32 {
     }
 }
 
-fn is_actor(world: &World, value: &Value) -> bool {
+pub(super) fn is_actor(world: &World, value: &Value) -> bool {
     world
         .resource::<RoundScript>()
         .entity(value)

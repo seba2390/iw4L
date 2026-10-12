@@ -92,7 +92,7 @@ Only the top-level items count.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
   - [ ] Carpenter's boards skip `dontinterpolate`; the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
-- [x] Going down, solo revive, bleeding out and game over return to the lobby.
+- [ ] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [ ] Solo Quick Revive self-revive unverified; down and revive animations; the client's fade-out, blur and dead quote.
 - [ ] The game's own HUD.
@@ -150,7 +150,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
   - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
   - [ ] The weapons that fire are Modern Warfare 2's (see above).
-  - [ ] A zombie's swing also strikes other zombies (`t6.actors.melee_entities`).
+  - [x] A zombie's swing that lands on another zombie does nothing, as Black Ops 2's melee hit does.
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs.
   - [ ] Round 2+ script faults remain (`getdstat` in `set_global_stat`, `clearpitchorient`, `playsoundontag`).
@@ -169,7 +169,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] TranZit's power (built at the power station) is not reached; Nuketown's perks arrive by vehicle drop (below).
 - [ ] Pack-a-Punch and every power-up.
   - [ ] Not reached.
-- [ ] Going down, solo revive, bleeding out and game over return to the lobby.
+- [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
   - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby.
   - [x] With Quick Revive (TranZit, `IW4L_TEST_PLAYER=revive`): down at 51 s, Black Ops 2's solo revive stands him up at 61 s; the next down ends the game and the match returns to the lobby.
