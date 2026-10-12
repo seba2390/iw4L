@@ -24,6 +24,9 @@
 //! its weapon to rise and holds use again to take it. Then he goes back and
 //! fights on.
 //!
+//! `IW4L_TEST_USE=box,door,…` picks the kinds the use test tries (wall,
+//! perk, door, box, debris, power), in that order.
+//!
 //! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
 //! he can pay for it he buys Quick Revive as the use test does (fighting
 //! nothing), then stands where he spawned as the go-down test does.
@@ -190,7 +193,9 @@ impl TestPlayer {
     pub(crate) fn from_env() -> Self {
         Self {
             mode: Mode::from_env(),
-            pending: if Mode::from_env() == Mode::Revive {
+            pending: if let Some(kinds) = kinds_from_env() {
+                kinds
+            } else if Mode::from_env() == Mode::Revive {
                 vec![UseKind::Perk]
             } else {
                 vec![
@@ -205,6 +210,25 @@ impl TestPlayer {
             ..Self::default()
         }
     }
+}
+
+/// `IW4L_TEST_USE=box,door,…`: the kinds the use test tries, in that order
+/// (wall, perk, door, box, debris, power).
+fn kinds_from_env() -> Option<Vec<UseKind>> {
+    let list = std::env::var("IW4L_TEST_USE").ok()?;
+    Some(
+        list.split(',')
+            .filter_map(|kind| match kind.trim() {
+                "wall" => Some(UseKind::WallBuy),
+                "perk" => Some(UseKind::Perk),
+                "door" => Some(UseKind::Door),
+                "box" => Some(UseKind::Box),
+                "debris" => Some(UseKind::Debris),
+                "power" => Some(UseKind::Power),
+                _ => None,
+            })
+            .collect(),
+    )
 }
 
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
@@ -623,9 +647,7 @@ pub(crate) fn drive_test_player(
                 }
                 Phase::Holding => {
                     scenario.presses += 1;
-                    if scenario.presses == 1 {
-                        scenario.offered = world.0.use_triggers_near(scenario.center, OFFER_REACH);
-                    }
+                    scenario.offered = world.0.use_triggers_near(scenario.center, OFFER_REACH);
                     let opening = scenario.site.kind == UseKind::Box && scenario.presses == 1;
                     scenario.phase = Phase::Watching;
                     scenario.until_ms =
@@ -639,9 +661,10 @@ pub(crate) fn drive_test_player(
                 {
                     diag::info!(
                         Sim,
-                        "test player: box opened — score {}→{}; taking its weapon",
+                        "test player: box opened — score {}→{}; taking its weapon; its unitrigger stub — {}",
                         scenario.score,
-                        meta.score
+                        meta.score,
+                        world.0.unitrigger_state(scenario.site.object)
                     );
                     scenario.phase = Phase::Holding;
                     scenario.until_ms = clock.time_ms + HOLD_MS;
@@ -660,13 +683,18 @@ pub(crate) fn drive_test_player(
                     );
                     diag::info!(
                         Sim,
-                        "test player: used {:?} — stood {:.0} from it, score {}→{}, weapon {}→{}, trigger {}, use triggers there while holding {:?}",
+                        "test player: used {:?} — stood {:.0} from it, score {}→{}, weapon {}→{} (holds {:?}), trigger {}, use triggers there while holding {:?}",
                         scenario.site.kind,
                         distance(eye, scenario.center),
                         scenario.score,
                         meta.score,
                         scenario.weapon,
                         world.0.weapon_script_name(ps.weapon),
+                        ps.weapons
+                            .iter()
+                            .filter(|&&w| w > 0)
+                            .map(|&w| world.0.weapon_script_name(w as u32).to_owned())
+                            .collect::<Vec<_>>(),
                         if world.0.script_object_lives(scenario.site.object) {
                             "still there"
                         } else {

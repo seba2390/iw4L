@@ -259,7 +259,21 @@ pub(crate) fn unitrigger_state(world: &World, stub: u64) -> String {
         Some(Value::String(text)) => text.to_string(),
         Some(Value::Int(n)) => n.to_string(),
         Some(Value::Float(f)) => format!("{f:.1}"),
-        Some(Value::Array(_)) => format!("array of {}", items(runtime, value).len()),
+        Some(Value::Array(_)) => {
+            let entries: Vec<String> = items(runtime, value)
+                .into_iter()
+                .map(|item| match item {
+                    Value::Object(id) if runtime.entities.contains_key(&id) => format!(
+                        "{}{} at {:?}",
+                        runtime.entities[&id].classname,
+                        if runtime.live(&id) { "" } else { " (gone)" },
+                        vector(field(runtime, id, "origin")).map(|v| v.map(|c| c.round()))
+                    ),
+                    other => format!("{other:?}"),
+                })
+                .collect();
+            format!("{entries:?}")
+        }
         Some(other) => format!("{other:?}"),
     };
     let units = object(field(runtime, 0, "_unitriggers"));
@@ -269,7 +283,7 @@ pub(crate) fn unitrigger_state(world: &World, stub: u64) -> String {
         .filter_map(|zone| string(Some(zone)))
         .collect();
     format!(
-        "registered={} in_zone={} test_radius_sq={} width={} length={} height={} per_player={} playertrigger={} | active zones {active:?} | stubs {} dynamic {} pool {} largest_radius={}",
+        "registered={} in_zone={} test_radius_sq={} width={} length={} height={} per_player={} playertrigger={} | active zones {active:?} | stubs {} dynamic {} pool {} largest_radius={} | origin {:?}",
         show(field(runtime, stub, "registered")),
         show(field(runtime, stub, "in_zone")),
         show(field(runtime, stub, "test_radius_sq")),
@@ -280,8 +294,9 @@ pub(crate) fn unitrigger_state(world: &World, stub: u64) -> String {
         show(field(runtime, stub, "playertrigger")),
         list("trigger_stubs"),
         list("dynamic_stubs"),
-        list("trigger_pool"),
+        show(units.and_then(|u| field(runtime, u, "trigger_pool"))),
         show(units.and_then(|u| field(runtime, u, "largest_radius"))),
+        vector(field(runtime, stub, "origin")),
     )
 }
 

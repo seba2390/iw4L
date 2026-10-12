@@ -628,8 +628,11 @@ pub(crate) fn give_weapon(
             return Ok(());
         }
         return Err(format!(
-            "weapon {} has no combat data",
-            weapon_name(world, weapon)
+            "weapon {} has no combat data ({})",
+            weapon_name(world, weapon),
+            world
+                .weapon_execution_refusal(weapon)
+                .unwrap_or("no refusal recorded")
         ));
     };
     let akimbo =

@@ -92,7 +92,7 @@ Only the top-level items count.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
   - [ ] Carpenter's boards skip `dontinterpolate`; the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
-- [x] Going down, solo revive, bleeding out and game over return to the lobby.
+- [ ] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [ ] Solo Quick Revive self-revive unverified; down and revive animations; the client's fade-out, blur and dead quote.
 - [ ] The game's own HUD.
@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 268 of 692 |
-| TranZit (`zm_transit`, Classic) | 312 of 741 |
-| Buried (`zm_buried`, Classic) | 297 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 264 of 692 |
+| TranZit (`zm_transit`, Classic) | 305 of 741 |
+| Buried (`zm_buried`, Classic) | 290 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -137,7 +137,8 @@ Only the top-level items count. Runs are headless, with the test player
 - [ ] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Black Ops 2's weapon facts (damage, ranges, clip and stock, hit-location scales) are read from its zones.
   - [ ] The weapon state machine (fire, reload, switch, melee, grenades) is Modern Warfare 2's (`t6.weapons.state_machine`).
-  - [ ] `knife_zm` and other weapons without combat data cannot be given.
+  - [x] `knife_zm` is given (Black Ops 2's melee type is kept; the lent weapons hold it as melee only).
+  - [ ] Weapons whose view model animation no zone carries are refused (`m1911_upgraded_zm`, the last stand pistol after Pack-a-Punch).
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Zombies rise on Nuketown and spawn on TranZit and Buried, animated by Black Ops 2's animation state machine (ASD).
   - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`), gibs and ragdoll are missing.
@@ -157,7 +158,8 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] The box takes its 950 and opens (Buried).
   - [x] Wall weapons sell through Black Ops 2's unitriggers on Nuketown, TranZit and Buried (the Olympia: 500 points, the gun changes).
   - [ ] Wall weapons filed under a zone not yet active wait for it, as in the game; their ammo buys are not shown.
-  - [ ] The box's weapon cannot be taken (`useweaponmodel` missing); the box moving and Fire Sale not reached.
+  - [x] The box's weapon rises and is taken (Buried: 950 points, the Time Bomb, through Black Ops 2's box scripts and `useweaponmodel`).
+  - [ ] The box moving (the teddy bear) and Fire Sale not reached.
 - [ ] Doors and debris.
   - [x] Doors open for points on Nuketown and TranZit, debris on Nuketown, by the game's scripts.
   - [ ] The press reaches them through IW4L's shared use rule, not Black Ops 2's (look-at, `player_useRadius_zm`); Buried's door ignores it.
@@ -167,7 +169,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] Nuketown's perks arrive by vehicle drop (`getvehiclenode` missing); TranZit's and Buried's power not reached.
 - [ ] Pack-a-Punch and every power-up.
   - [ ] Not reached.
-- [ ] Going down, solo revive, bleeding out and game over return to the lobby.
+- [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
   - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby.
   - [x] With Quick Revive (TranZit, `IW4L_TEST_PLAYER=revive`): down at 51 s, Black Ops 2's solo revive stands him up at 61 s; the next down ends the game and the match returns to the lobby.

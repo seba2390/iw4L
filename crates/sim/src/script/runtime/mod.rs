@@ -1090,6 +1090,24 @@ fn payload_matches(values: &[Value], arguments: &[Value]) -> bool {
             .all(|(v, a)| equality(v.clone(), a.clone()) == Ok(true))
 }
 
+/// `IW4L_GSC_NOTIFY_TRACE=name,…`: the notifies of those names are logged
+/// with their receiver, arguments and how many waits they reach.
+fn traced_notify(name: &str) -> bool {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            std::env::var("IW4L_GSC_NOTIFY_TRACE")
+                .map(|list| {
+                    list.split(',')
+                        .map(|n| n.trim().to_ascii_lowercase())
+                        .collect()
+                })
+                .unwrap_or_else(|_| Vec::new())
+        })
+        .iter()
+        .any(|traced| traced.eq_ignore_ascii_case(name))
+}
+
 fn notify(
     world: &mut World,
     current: &mut Thread,
@@ -1103,6 +1121,18 @@ fn notify(
             .resource_mut::<RoundScript>()
             .signals
             .push(name.clone());
+    }
+    if traced_notify(name) {
+        let runtime = world.resource::<RoundScript>();
+        let waiting = runtime
+            .waiters
+            .iter()
+            .filter(|w| &w.receiver == receiver && &w.name == name)
+            .count();
+        diag::info!(
+            Sim,
+            "gsc notify trace: {receiver:?} notify {name} {arguments:?}; {waiting} waiting"
+        );
     }
     loop {
         let runtime = world.resource::<RoundScript>();
