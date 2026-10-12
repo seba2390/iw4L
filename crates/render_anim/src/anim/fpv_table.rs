@@ -140,6 +140,14 @@ impl FpvWeaponTable {
         self.guns.get(weapon as usize).copied().flatten()
     }
 
+    pub fn game_bytes(&self, weapon: u32) -> Option<&Arc<asset_game::GameWeaponBytes>> {
+        self.owner
+            .weapons
+            .bind_published_row(weapon)
+            .ok()?
+            .game_bytes()
+    }
+
     pub fn motion_tracker(&self, weapon: u32, parent: u32) -> bool {
         self.facts_of(weapon).is_some_and(|facts| {
             facts.motion_tracker

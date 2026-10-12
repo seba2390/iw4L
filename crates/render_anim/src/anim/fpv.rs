@@ -223,6 +223,17 @@ pub enum WeapAnimEdge {
     Dispatch(usize),
 }
 
+/// A game's own viewmodel rules, with the held weapon's own animations.
+#[derive(Clone, Copy, Debug)]
+pub struct GameViewmodel {
+    pub rules: game_api::ViewmodelRules,
+    /// The weapon's animation slots that name an animation, in the game's
+    /// order.
+    pub named_anims: u128,
+    /// The runtime slot of each of the game's animation slots.
+    pub anim_slots: &'static [Option<usize>],
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct FpvPresentState {
     pub last_tick: Option<u32>,
@@ -234,6 +245,8 @@ pub struct FpvPresentState {
     pub last_weap_anim_secondary: Option<i32>,
 
     pub local_shot: LocalShotCursor,
+
+    reported: Vec<&'static str>,
 }
 
 impl FpvPresentState {
@@ -256,6 +269,42 @@ impl FpvPresentState {
 
     pub fn observe_weap_anim_secondary_edge(&mut self, raw: i32) -> WeapAnimEdge {
         observe_weap_anim_edge_on(&mut self.last_weap_anim_secondary, raw)
+    }
+
+    /// The edge of the weapon animation number by the game's own rules.
+    fn observe_game_weap_anim_edge(&mut self, raw: i32, game: &GameViewmodel) -> WeapAnimEdge {
+        if self.last_weap_anim.replace(raw) == Some(raw) {
+            return WeapAnimEdge::Unchanged;
+        }
+        let named = |anim: usize| anim < 128 && game.named_anims & 1 << anim != 0;
+        let (anim, gap) = (game.rules.anim)(raw as u32, &named);
+        if let Some(gap) = gap {
+            self.report(gap);
+        }
+        match anim {
+            game_api::ViewmodelAnim::Idle => WeapAnimEdge::Idle,
+            game_api::ViewmodelAnim::IdleNow => WeapAnimEdge::ForceIdle,
+            game_api::ViewmodelAnim::Keep => WeapAnimEdge::Unchanged,
+            game_api::ViewmodelAnim::Play(anim) => {
+                match game.anim_slots.get(anim).copied().flatten() {
+                    Some(slot) => {
+                        self.report(game.rules.playback);
+                        WeapAnimEdge::Dispatch(slot)
+                    }
+                    None => {
+                        self.report(game.rules.unslotted);
+                        WeapAnimEdge::Unchanged
+                    }
+                }
+            }
+        }
+    }
+
+    fn report(&mut self, gap: &'static game_api::Unknown) {
+        if !self.reported.contains(&gap.id) {
+            diag::info!(Fpv, "game gap {}: {}", gap.id, gap.what);
+            self.reported.push(gap.id);
+        }
     }
 }
 
@@ -369,6 +418,7 @@ pub fn tick_equipped_fpv_with_predicted_fire(
     present: &mut FpvPresentState,
     sample: Option<FpvAuthoritySample>,
     predicted_local_fire: bool,
+    game: Option<GameViewmodel>,
     dt_secs: f32,
 ) -> (FpvPoseSample, FpvNotetracks) {
     tick_equipped_fpv_with_extra_events(
@@ -377,16 +427,20 @@ pub fn tick_equipped_fpv_with_predicted_fire(
         sample,
         predicted_local_fire,
         &[],
+        game,
         dt_secs,
     )
 }
 
+/// With a game's own viewmodel rules, its weapon animation number alone
+/// drives the right hand.
 pub fn tick_equipped_fpv_with_extra_events(
     equipped: &mut EquippedFpv,
     present: &mut FpvPresentState,
     sample: Option<FpvAuthoritySample>,
     predicted_local_fire: bool,
     extra_events: &[PresentFpvEvent],
+    game: Option<GameViewmodel>,
     dt_secs: f32,
 ) -> (FpvPoseSample, FpvNotetracks) {
     let mut events = match sample {
@@ -406,9 +460,15 @@ pub fn tick_equipped_fpv_with_extra_events(
             .controller
             .set_predicted_perks(sample.perks0, sample.perks1);
     }
-    apply_present_events(&mut equipped.controller, &events);
+    if game.is_none() {
+        apply_present_events(&mut equipped.controller, &events);
+    }
     if let Some(sample) = sample {
-        match present.observe_weap_anim_edge(sample.weap_anim) {
+        let edge = match &game {
+            Some(game) => present.observe_game_weap_anim_edge(sample.weap_anim, game),
+            None => present.observe_weap_anim_edge(sample.weap_anim),
+        };
+        match edge {
             WeapAnimEdge::Unchanged => {}
             WeapAnimEdge::Idle => {
                 let empty_mag = sample.clip_ammo == Some(0);
@@ -446,7 +506,11 @@ pub fn tick_equipped_fpv_with_extra_events(
     if let (Some(left), Some(sample)) = (equipped.left.as_mut(), sample) {
         if sample.last_weapon_hand == 1 {
             left.set_predicted_perks(sample.perks0, sample.perks1);
-            match present.observe_weap_anim_secondary_edge(sample.weap_anim_secondary) {
+            let edge = match game {
+                Some(_) => WeapAnimEdge::Unchanged,
+                None => present.observe_weap_anim_secondary_edge(sample.weap_anim_secondary),
+            };
+            match edge {
                 WeapAnimEdge::Unchanged => {}
                 WeapAnimEdge::Idle => {
                     if !left.apply_idle_weap_anim(sample.left_clip_ammo == Some(0)) {

@@ -70,6 +70,7 @@ const MODE: ModeRules = ModeRules {
         font_scales_sent: None,
     },
     client_fire: None,
+    viewmodel: None,
 };
 
 impl game_api::GameVision for Iw4 {

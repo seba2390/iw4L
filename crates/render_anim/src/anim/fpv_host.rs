@@ -4,7 +4,8 @@ use bevy::math::{Mat4, Vec3};
 use bevy::prelude::*;
 
 use crate::anim::fpv::{
-    EquippedFpv, FpvAuthoritySample, FpvPresentState, tick_equipped_fpv_with_predicted_fire,
+    EquippedFpv, FpvAuthoritySample, FpvPresentState, GameViewmodel,
+    tick_equipped_fpv_with_predicted_fire,
 };
 use crate::anim::fpv_pose::{FpvBoltFrame, PosedClip};
 use crate::anim::fpv_prepared::FpvRigSet;
@@ -120,6 +121,7 @@ pub struct FpvGenerateArgs<'a> {
     pub jammed: bool,
     pub sample: Option<FpvAuthoritySample>,
     pub predicted_fire: bool,
+    pub game: Option<GameViewmodel>,
     pub dual: bool,
     pub dual_offset: Option<f32>,
 }
@@ -139,11 +141,12 @@ pub fn generate_fpv_pose(
         jammed,
         sample,
         predicted_fire,
+        game,
         dual,
         dual_offset,
     } = args;
     let (_pose, notifies) =
-        tick_equipped_fpv_with_predicted_fire(equipped, cursor, sample, predicted_fire, dt);
+        tick_equipped_fpv_with_predicted_fire(equipped, cursor, sample, predicted_fire, game, dt);
 
     let kind = pose_equipped_fpv(
         equipped,

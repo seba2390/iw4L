@@ -249,6 +249,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         font_scales_sent: None,
     },
     client_fire: None,
+    viewmodel: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {
