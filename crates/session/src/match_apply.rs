@@ -651,13 +651,17 @@ pub fn apply_prepared_match(
             sim.register_local_presentation_dvars(local.as_ref().map(|local| local.0));
         }
         let mut natives = crate::games::natives(anim_namespace, &mode);
+        let (missing, named) = natives.coverage(&scripts);
+        diag::info!(
+            Sim,
+            "gsc: builtin coverage map={zone} gametype={gametype}: {missing} of {named} builtins not implemented yet"
+        );
         if mode.report_builtin_gaps {
             let gaps = natives.bind_gaps(&scripts);
             if !gaps.is_empty() {
                 diag::info!(
                     Sim,
-                    "gsc: {} builtins not implemented yet: {}",
-                    gaps.len(),
+                    "gsc: {missing} of {named} builtins not implemented yet: {}",
                     gaps.join(" ")
                 );
             }

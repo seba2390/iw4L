@@ -1,14 +1,14 @@
 # IW4L
 
 <!-- progress:start (generated from docs/PROGRESS.md by `cargo xtask progress --write`) -->
-**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)):
+**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)), and the builtins its scripts call that are implemented, per map:
 
-| Game | Progress | Milestones |
-|---|---|---|
-| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 |
-| Black Ops — Zombies | `██████████░░░░░░░░░░` 52% | 11 / 21 |
-| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 23% | 5 / 21 |
-| Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 |
+| Game | Progress | Milestones | Builtins |
+|---|---|---|---|
+| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | Rust: 460 / 460 (100%) |
+| Black Ops — Zombies | `██████████░░░░░░░░░░` 52% | 11 / 21 | Kino der Toten: 418 / 610 (68%)<br>Five: 415 / 609 (68%) |
+| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 23% | 5 / 21 | — |
+| Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — |
 <!-- progress:end -->
 
 IW4L is an open-source runtime for several Call of Duty games, written in Rust with
