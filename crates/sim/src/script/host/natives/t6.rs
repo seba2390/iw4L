@@ -25,6 +25,7 @@ mod radius;
 mod rumble;
 mod sound;
 mod stats;
+mod usable;
 mod weapon;
 
 /// How Black Ops 2 finds a dvar: djb2 over the lowercased name.
@@ -1784,6 +1785,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "isthrowinggrenade"),
         (Method, "setinvisibletoplayer"),
         (Method, "setvisibletoplayer"),
+        (Method, "setinvisibletoall"),
+        (Method, "setvisibletoall"),
     ] {
         if let Some(native) = black_ops.get(namespace, name) {
             registry.register(namespace, name, native);
@@ -1800,6 +1803,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     effect::register(registry);
     entity::register(registry);
     laststand::register(registry);
+    registry.on_use(usable::use_presses);
     mover::register(registry);
     rumble::register(registry);
     player::register(registry);
@@ -1878,6 +1882,13 @@ fn spawn_trigger(world: &mut World, classname: &str, args: &[Value]) -> Result<V
     runtime.set_object_field(id, "spawnflags", Value::Int(flags));
     if let Some(entity) = runtime.entities.get_mut(&id) {
         entity.cylinder = cylinder;
+        // A spawned trigger has no cursor hint until a script gives it one.
+        entity.usable = Some(super::super::entities::Usable {
+            cursor: 0,
+            hint: -1,
+            enabled: true,
+            barred: Default::default(),
+        });
     }
     world
         .get_resource_or_insert_with(EntityBounds::default)
@@ -2432,7 +2443,16 @@ const TALK_FLAGS: [&str; 7] = [
 /// spectator 9; none, free and neutral are 0.
 fn team(args: &[Value], index: usize) -> Result<usize, String> {
     let name = string(args, index)?;
-    Ok(match name.as_str() {
+    team_index(&name).ok_or_else(|| {
+        format!(
+            "'{name}' is an illegal team string. Must be allies, axis, team3, team4, team5, team6, team7, team8, none, or spectator."
+        )
+    })
+}
+
+/// The engine's number for a team name.
+fn team_index(name: &str) -> Option<usize> {
+    Some(match name {
         "allies" => 1,
         "axis" => 2,
         "team3" => 3,
@@ -2443,11 +2463,7 @@ fn team(args: &[Value], index: usize) -> Result<usize, String> {
         "team8" => 8,
         "spectator" => 9,
         "none" | "free" | "neutral" => 0,
-        _ => {
-            return Err(format!(
-                "'{name}' is an illegal team string. Must be allies, axis, team3, team4, team5, team6, team7, team8, none, or spectator."
-            ));
-        }
+        _ => return None,
     })
 }
 

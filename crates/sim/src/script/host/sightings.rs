@@ -228,7 +228,12 @@ pub(crate) fn use_triggers_near(world: &World, point: [f32; 3], reach: f32) -> V
             runtime.live(id)
                 && matches!(
                     &*entity.classname,
-                    "trigger_use" | "trigger_use_touch" | "trigger_radius_use" | "trigger_box_use"
+                    "trigger_use"
+                        | "trigger_use_touch"
+                        | "trigger_radius_use"
+                        | "trigger_box_use"
+                        | "trigger_radius"
+                        | "trigger_box"
                 )
         })
         .filter(|(id, _)| {
