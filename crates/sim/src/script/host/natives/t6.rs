@@ -787,6 +787,23 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             _ => Err(format!("unable to spawn \"{classname}\" entity")),
         }
     });
+    // gscm_setmodel: the engine's model change; then a script mover that
+    // now carries an xmodel takes its mins and maxs from it, and its linked
+    // bounds follow.
+    registry.register(Method, "setmodel", |world, receiver, args| {
+        let set_model = NativeRegistry::engine_services()
+            .get(Method, "setmodel")
+            .ok_or("setmodel: no engine setmodel")?;
+        set_model(world, receiver, args)?;
+        let id = super::engine::entity_id(world, receiver)?;
+        if let Some(model_bounds) = script_mover_bounds(world, id, &string(args, 0)?) {
+            world
+                .get_resource_or_insert_with(EntityBounds::default)
+                .0
+                .insert(id, model_bounds);
+        }
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "getmins", |world, receiver, _| {
         let id = super::engine::entity_id(world, receiver)?;
         Ok(Value::Vector(bounds(world, id).0))
@@ -1696,7 +1713,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "setvalue"),
         (Method, "freezecontrols"),
         (Function, "visionsetnight"),
-        (Method, "setmodel"),
         (Method, "hide"),
         (Method, "show"),
         (Method, "delete"),
@@ -1783,7 +1799,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "setblur"),
         (Method, "isinvehicle"),
         (Method, "isthrowinggrenade"),
-        (Method, "setinvisibletoplayer"),
         (Method, "setvisibletoplayer"),
         (Method, "setinvisibletoall"),
         (Method, "setvisibletoall"),
@@ -1792,6 +1807,26 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             registry.register(namespace, name, native);
         }
     }
+    // gscm_setinvisibletoplayer: hides the entity from the player, or shows
+    // it when a second argument is 0.
+    registry.register(Method, "setinvisibletoplayer", |world, receiver, args| {
+        use super::t5::{client_bits, player_id, visibility};
+        let bit = client_bits(world, [player_id(world, arg(args, 0)?)?]);
+        let show = args.len() > 1 && int(args, 1)? == 0;
+        visibility(world, receiver, |e, everyone| {
+            if show {
+                if e.hidden {
+                    e.shown_to |= bit;
+                }
+                return;
+            }
+            if !e.hidden {
+                e.hidden = true;
+                e.shown_to = everyone;
+            }
+            e.shown_to &= !bit;
+        })
+    });
     actor::register(registry);
     anim::register(registry);
     movement::register(registry);
@@ -1895,6 +1930,30 @@ fn spawn_trigger(world: &mut World, classname: &str, args: &[Value]) -> Result<V
         .0
         .insert(id, (mins, maxs));
     Ok(Value::Object(id))
+}
+
+/// A script mover's bounds once it carries `model` (FUN_006269b0 after
+/// G_SetModel): its DObj's bounds, which start as (-4,-4,0)..(4,4,10) and
+/// take in the model's own (FUN_00783660). None for anything else, a brush
+/// model, or a model the map does not carry.
+fn script_mover_bounds(world: &mut World, id: u64, model: &str) -> Option<([f32; 3], [f32; 3])> {
+    let runtime = world.resource::<RoundScript>();
+    let entity = runtime.entities.get(&id)?;
+    if !matches!(entity.kind, EntityKind::Map | EntityKind::Spawned)
+        || !SCRIPT_MOVERS.contains(&&*entity.classname)
+        || model.is_empty()
+        || model.starts_with('*')
+    {
+        return None;
+    }
+    let (mid, half) = crate::frame::FrameWorld::from_world(world)
+        .model_capability(model)
+        .flatten()?
+        .bounds?;
+    Some((
+        [0, 1, 2].map(|i| (mid[i] - half[i]).min([-4.0, -4.0, 0.0][i])),
+        [0, 1, 2].map(|i| (mid[i] + half[i]).max([4.0, 4.0, 10.0][i])),
+    ))
 }
 
 fn bounds(world: &World, id: u64) -> ([f32; 3], [f32; 3]) {
