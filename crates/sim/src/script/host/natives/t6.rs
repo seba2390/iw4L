@@ -18,6 +18,7 @@ mod damage;
 mod effect;
 mod movement;
 mod mover;
+mod player;
 mod sound;
 mod stats;
 mod weapon;
@@ -1682,6 +1683,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "getweaponammoclip"),
         (Method, "getweaponammostock"),
         (Method, "getammocount"),
+        (Method, "disableoffhandweapons"),
+        (Method, "enableoffhandweapons"),
         (Method, "finishplayerdamage"),
         (Method, "setactionslot"),
         (Method, "hasperk"),
@@ -1727,6 +1730,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     weapon::register_natives(registry);
     effect::register(registry);
     mover::register(registry);
+    player::register(registry);
     sound::register(registry);
     stats::register(registry);
 }

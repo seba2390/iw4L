@@ -370,6 +370,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 bone: damage.bone.map(usize::from),
                 flags: damage.flags,
                 hit_location: Some(damage.hit_location),
+                part: None,
             },
         );
     }
