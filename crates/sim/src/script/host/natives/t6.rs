@@ -20,6 +20,7 @@ mod entity;
 mod movement;
 mod mover;
 mod player;
+mod radius;
 mod sound;
 mod stats;
 mod weapon;
@@ -1685,6 +1686,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "getweaponammostock"),
         (Method, "getammocount"),
         (Method, "disableoffhandweapons"),
+        (Function, "setplayerignoreradiusdamage"),
         (Method, "enableoffhandweapons"),
         (Method, "finishplayerdamage"),
         (Method, "setactionslot"),
@@ -1733,6 +1735,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     entity::register(registry);
     mover::register(registry);
     player::register(registry);
+    radius::register(registry);
     sound::register(registry);
     stats::register(registry);
 }
