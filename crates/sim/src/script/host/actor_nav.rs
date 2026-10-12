@@ -117,6 +117,11 @@ impl ActorPaths {
         self.nodes.is_empty()
     }
 
+    /// Where the path nodes stand.
+    pub fn origins(&self) -> impl Iterator<Item = [f32; 3]> + '_ {
+        self.nodes.iter().map(|node| node.origin)
+    }
+
     /// The closest node with nothing solid between it and `at`, or the
     /// closest node at all when none of the nearest few is in reach.
     fn nearest(

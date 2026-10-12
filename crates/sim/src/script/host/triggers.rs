@@ -681,6 +681,48 @@ fn volume<'f>(runtime: &mut RoundScript, frame: &'f FrameWorld, object: u64) -> 
     })
 }
 
+/// Whether the box `mins..maxs` touches a map entity's own volume at
+/// `origin` — its trigger hulls, else its brush model — as `istouching`
+/// would, read from the world's clip data alone.
+pub(crate) fn map_volume_touches(
+    state: &crate::world::SimState,
+    origin: [f32; 3],
+    brush: Option<u32>,
+    trigger_model: Option<u32>,
+    mins: [f32; 3],
+    maxs: [f32; 3],
+) -> bool {
+    let cmodels = state.clip_cmodels();
+    if let Some(n) = trigger_model {
+        return cmodels
+            .triggers
+            .get(n as usize)
+            .is_some_and(|hulls| Volume::Hulls { origin, hulls }.touches(mins, maxs));
+    }
+    let Some(model) = brush.and_then(|n| cmodels.models.get(n as usize)) else {
+        return false;
+    };
+    let first = model.first_brush as usize;
+    let ids = state
+        .clip_bsp()
+        .leafbrushes
+        .get(first..first + usize::from(model.num_brushes))
+        .unwrap_or(&[]);
+    if ids.is_empty() {
+        return Volume::Box {
+            mins: std::array::from_fn(|i| origin[i] + model.mins[i]),
+            maxs: std::array::from_fn(|i| origin[i] + model.maxs[i]),
+        }
+        .touches(mins, maxs);
+    }
+    Volume::Brushes {
+        origin,
+        ids,
+        brushes: state.clip_brushes(),
+    }
+    .touches(mins, maxs)
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Volume<'f> {
     Cylinder {
