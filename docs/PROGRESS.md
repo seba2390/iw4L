@@ -212,7 +212,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [ ] Doors and debris.
 - [ ] Power and perks.
 - [ ] Pack-a-Punch and every power-up.
-- [x] Going down, solo revive, bleeding out and game over return to the lobby.
+- [ ] Going down, solo revive, bleeding out and game over return to the lobby.
 - [ ] The game's own HUD.
 - [ ] The game's own front end: menus, lobby and map selection.
 - [ ] The game's own sound.
