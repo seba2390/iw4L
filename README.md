@@ -1,14 +1,14 @@
 # IW4L
 
 <!-- progress:start (generated from docs/PROGRESS.md by `cargo xtask progress --write`) -->
-**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)), and the builtins its scripts call that are implemented, per map:
+**Progress** toward each game's goal ([milestones](docs/PROGRESS.md)), the steps shown under its milestones, and the builtins its scripts call that are implemented, per map:
 
-| Game | Progress | Milestones | Builtins |
-|---|---|---|---|
-| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | Rust: 460 / 460 (100%) |
-| Black Ops — Zombies | `██████████░░░░░░░░░░` 52% | 11 / 21 | Kino der Toten: 418 / 610 (68%)<br>Five: 415 / 609 (68%) |
-| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 23% | 5 / 21 | — |
-| Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — |
+| Game | Progress | Milestones | Steps | Builtins |
+|---|---|---|---|---|
+| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | — | Rust: 460 / 460 (100%) |
+| Black Ops — Zombies | `███████████░░░░░░░░░` 57% | 12 / 21 | 12 / 30 | Kino der Toten: 418 / 610 (68%)<br>Five: 415 / 609 (68%) |
+| Black Ops II — Zombies | `████░░░░░░░░░░░░░░░░` 23% | 5 / 21 | 13 / 38 | Nuketown: 421 / 692 (60%)<br>TranZit: 426 / 741 (57%)<br>Buried: 427 / 727 (58%) |
+| Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |
 <!-- progress:end -->
 
 IW4L is an open-source runtime for several Call of Duty games, written in Rust with
@@ -39,7 +39,7 @@ where the game has them, zombies maps.
 |---|---|
 | Modern Warfare 2 | Multiplayer maps play: movement, combat, killstreaks, classes, bots, demos, online through a master ([run guide](docs/RUN.md)). |
 | Black Ops | Zombies (Kino der Toten first) runs Black Ops' own zombie scripts with Black Ops movement; co-op hosting. Roadmap: [`BLACKOPS_TODO.md`](BLACKOPS_TODO.md). Multiplayer maps are refused until their gametypes have their own rules. |
-| Black Ops II | Experimental [FFA, TDM and Classic zombies](docs/T6.md), with native weapons, [in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md). Its own compiled scripts are read and decoded (`gsc_t6`); running them in place of IW4L's interim rules is the work in progress ([ledger](docs/fidelity/t6.md)). |
+| Black Ops II | Classic zombies on Nuketown, TranZit and Buried run Black Ops II's own compiled zombies scripts (`IW4L_T6_OWN_SCRIPTS=1`): zombies rise and hunt, rounds advance, doors and debris open for points. Movement and the weapon state machine are still Modern Warfare 2's, lent until Black Ops II's own exist ([milestones](docs/PROGRESS.md), [ledger](docs/fidelity/t6.md)). Experimental [FFA, TDM](docs/T6.md) with [in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md). |
 | Black Ops III | Shadows of Evil's compiled scripts are read and translated (`gsc_t7`); its world is in progress, not playable yet ([ledger](docs/fidelity/t7.md)). |
 | Modern Warfare 3 | Maps are recognised and refused until MW3's own rules exist. |
 
