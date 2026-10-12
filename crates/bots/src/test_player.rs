@@ -25,7 +25,8 @@
 //! fights on.
 //!
 //! `IW4L_TEST_USE=box,door,…` picks the kinds the use test tries (wall,
-//! perk, door, box, debris, power), in that order.
+//! perk, door, box, debris, power), in that order; `IW4L_TEST_PERK` names
+//! the perk it buys (Quick Revive by default; `any` for any other).
 //!
 //! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
 //! he can pay for it he buys Quick Revive as the use test does (fighting
@@ -212,6 +213,12 @@ impl TestPlayer {
     }
 }
 
+/// `IW4L_TEST_PERK=specialty_…`: the perk the use test buys (Quick Revive
+/// unless named).
+fn wanted_perk() -> String {
+    std::env::var("IW4L_TEST_PERK").unwrap_or_else(|_| QUICK_REVIVE.to_owned())
+}
+
 /// `IW4L_TEST_USE=box,door,…`: the kinds the use test tries, in that order
 /// (wall, perk, door, box, debris, power).
 fn kinds_from_env() -> Option<Vec<UseKind>> {
@@ -314,7 +321,7 @@ fn stand_point(
             continue;
         }
         let flat = flat_distance(node, center);
-        let (off, room) = if matches!(site.kind, UseKind::WallBuy | UseKind::Box) {
+        let (off, room) = if site.touch || matches!(site.kind, UseKind::WallBuy | UseKind::Box) {
             (STAND_OFF_TOUCH, TOUCH_ROOM)
         } else {
             (STAND_OFF, STAND_ROOM)
@@ -390,7 +397,10 @@ fn next_scenario(
             .filter(|site| site.kind == kind && (kind != UseKind::WallBuy || site.cost.is_some()))
             // Of the perks, Quick Revive: the one a solo player's down asks for.
             .filter(|site| {
-                kind != UseKind::Perk || site.weapon.as_deref() == Some(QUICK_REVIVE)
+                let wanted = wanted_perk();
+                kind != UseKind::Perk
+                    || site.weapon.as_deref() == Some(wanted.as_str())
+                    || wanted == "any" && site.weapon.as_deref() != Some(QUICK_REVIVE)
             })
             .collect();
         // `_zm_unitrigger::main` offers only the stubs of active zones (and
@@ -510,7 +520,7 @@ pub(crate) fn drive_test_player(
         let weapon = world.0.weapon_script_name(ps.weapon).to_owned();
         diag::info!(
             Sim,
-            "test player: t={}s round={} score={} kills={} health={} lowest={} life={:?} laststand={} actors={} nearest={} shots={} knifes={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
+            "test player: t={}s round={} score={} kills={} perks={} health={} lowest={} life={:?} laststand={} actors={} nearest={} shots={} knifes={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
             clock.time_ms / 1000,
             world
                 .0
@@ -518,6 +528,10 @@ pub(crate) fn drive_test_player(
                 .map_or_else(|| "-".to_owned(), |round| round.to_string()),
             meta.score,
             meta.kills,
+            world
+                .0
+                .script_int(ScriptOwner::Player(id), "num_perks")
+                .map_or_else(|| "-".to_owned(), |n| n.to_string()),
             ps.health,
             test.lowest_health.unwrap_or(ps.health),
             meta.lifecycle,
@@ -702,6 +716,13 @@ pub(crate) fn drive_test_player(
                         },
                         scenario.offered
                     );
+                    if scenario.site.kind == UseKind::Power {
+                        diag::info!(
+                            Sim,
+                            "test player: power_on {}",
+                            world.0.level_flag("power_on")
+                        );
+                    }
                     if scenario.site.kind == UseKind::Perk {
                         diag::info!(
                             Sim,

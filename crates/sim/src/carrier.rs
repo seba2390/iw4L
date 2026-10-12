@@ -150,6 +150,11 @@ impl SimWorld {
         crate::script::host::sightings::enabled_player_volumes(&self.ecs).len()
     }
 
+    /// Whether a level flag is set, for a test player.
+    pub fn level_flag(&self, name: &str) -> bool {
+        crate::script::host::sightings::level_flag(&self.ecs, name)
+    }
+
     /// Whether the scripts mark a zone active, for a test player.
     pub fn zone_is_active(&self, name: &str) -> bool {
         crate::script::host::sightings::zone_is_active(&self.ecs, name)

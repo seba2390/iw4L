@@ -105,6 +105,9 @@ pub struct UseSite {
     pub brush: Option<u32>,
     /// A radius trigger's height: it stands on its origin.
     pub height: Option<f32>,
+    /// A trigger the player's body must touch (`trigger_use_touch`), not
+    /// one reached from the eye.
+    pub touch: bool,
     /// What the scripts charge: `zombie_cost` on a door (1000 when unset;
     /// a door the power opens is left out), debris or the box, `cost` on a
     /// wall weapon's stub.
@@ -162,6 +165,10 @@ fn site(runtime: &RoundScript, kind: UseKind, id: u64, cost: &str) -> Option<Use
             .get(&id)
             .and_then(|entity| entity.cylinder)
             .map(|(_, height)| height),
+        touch: runtime
+            .entities
+            .get(&id)
+            .is_some_and(|entity| &*entity.classname == "trigger_use_touch"),
         cost: int(field(runtime, id, cost)),
         weapon: string(field(runtime, id, "zombie_weapon_upgrade")),
         zone: string(field(runtime, id, "in_zone")),
@@ -226,6 +233,22 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         sites.push(box_site);
     }
     sites
+}
+
+/// Whether a level flag is set (`level.flag[name]`, as `flag_set` keeps it).
+pub(crate) fn level_flag(world: &World, name: &str) -> bool {
+    let Some(runtime) = world.get_resource::<RoundScript>() else {
+        return false;
+    };
+    let Some(Value::Array(flags)) = field(runtime, 0, "flag") else {
+        return false;
+    };
+    runtime
+        .arrays
+        .get(&flags)
+        .and_then(|array| array.get(&crate::script::ArrayKey::String(name.into())))
+        .and_then(|value| int(Some(value.clone())))
+        .is_some_and(|on| on != 0)
 }
 
 /// Whether `level.zones[name]` is active (`is_active`): a zone a player is
