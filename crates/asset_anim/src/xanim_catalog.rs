@@ -6,6 +6,7 @@ use asset_iw4::size as sz;
 use fastfile_iw4::{
     AssetLinkSink, AssetType, Ptr, Result, ScriptStrings, XAnimPartsGeometry, ZoneStream,
 };
+use fastfile_t6::{Ptr as T6Ptr, ZoneLoad as T6Load};
 
 use crate::asset_graph::ZoneOwner;
 use crate::asset_key::AssetNamespace;
@@ -640,15 +641,20 @@ impl XAnimBuild {
         } else {
             words(92, index_count)
         };
-        let delta_trans = match ptr(100) {
-            Some(delta) => match copy_delta_trans_t6(load, delta, numframes) {
-                Some(trans) => trans,
-                None => {
+        let (delta_trans, delta_quat) = match ptr(100) {
+            Some(delta) => match (
+                copy_delta_trans_t6(load, delta, numframes),
+                copy_delta_quat2_t6(load, delta.at(4), numframes),
+                load.blocks.ptr_at(delta.at(8)),
+            ) {
+                (Some(trans), Some(quat), Ok(None)) => (trans, quat),
+                // A root turning in three dimensions (`quat`) is not read.
+                _ => {
                     self.capture_gaps += 1;
                     return false;
                 }
             },
-            None => None,
+            None => (None, None),
         };
         let parts = RawXAnimParts {
             name: format!("{prefix}{}", name.to_ascii_lowercase()),
@@ -666,7 +672,7 @@ impl XAnimBuild {
             notifies,
             indices,
             delta_trans,
-            delta_quat: None,
+            delta_quat,
         };
         self.insert_in(
             ns,
@@ -850,8 +856,8 @@ fn copy_f32_3(s: &ZoneStream<'_>, ptr: Ptr, off: usize) -> Option<[f32; 3]> {
 }
 
 fn copy_delta_trans_t6(
-    load: &fastfile_t6::ZoneLoad,
-    delta: fastfile_t6::Ptr,
+    load: &T6Load,
+    delta: T6Ptr,
     numframes: u16,
 ) -> Option<Option<RawDeltaTrans>> {
     let Some(trans) = load.blocks.ptr_at(delta).ok()? else {
@@ -906,6 +912,61 @@ fn copy_delta_trans_t6(
         step,
         indices,
         packed,
+    }))
+}
+
+/// A delta's yaw rotation (`quat2`): one frame, or keyed frames.
+fn copy_delta_quat2_t6(load: &T6Load, slot: T6Ptr, numframes: u16) -> Option<Option<RawDeltaQuat>> {
+    let Some(quat) = load.blocks.ptr_at(slot).ok()? else {
+        return Some(None);
+    };
+    let pairs = |at: T6Ptr, count: usize| -> Option<Vec<[i16; 2]>> {
+        Some(
+            load.blocks
+                .bytes(at, count * 4)
+                .ok()?
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| {
+                    [
+                        i16::from_le_bytes([c[0], c[1]]),
+                        i16::from_le_bytes([c[2], c[3]]),
+                    ]
+                })
+                .collect(),
+        )
+    };
+    let size = u16::from_le_bytes(load.blocks.bytes(quat, 2).ok()?.try_into().ok()?);
+    if size == 0 {
+        return Some(Some(RawDeltaQuat {
+            indices: Vec::new(),
+            frames: pairs(quat.at(4), 1)?,
+        }));
+    }
+    let count = usize::from(size) + 1;
+    let indices = if numframes < 256 {
+        load.blocks
+            .bytes(quat.at(8), count)
+            .ok()?
+            .iter()
+            .copied()
+            .map(u16::from)
+            .collect()
+    } else {
+        load.blocks
+            .bytes(quat.at(8), count * 2)
+            .ok()?
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect()
+    };
+    let frames = load.blocks.ptr_at(quat.at(4)).ok()??;
+    Some(Some(RawDeltaQuat {
+        indices,
+        frames: pairs(frames, count)?,
     }))
 }
 
