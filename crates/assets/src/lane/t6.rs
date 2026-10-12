@@ -2107,6 +2107,22 @@ fn capture_soldiers(
     Ok((bodies, fpv))
 }
 
+/// The map's entities, then those Classic's zone adds to them, as the engine
+/// reads on from the map's into the addon's.
+fn map_entities(path: &Path, load: &ZoneLoad, report: &mut Vec<String>) -> Result<String, String> {
+    let mut entities = asset_world::world_t6::entity_string(load)?.to_owned();
+    if asset_transport::t6_content::T6ContentMode::for_path(path)
+        == asset_transport::t6_content::T6ContentMode::Zombies
+        && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+        && let zone = format!("so_zclassic_{stem}")
+        && let Some(classic) = content_zone(&path.with_file_name(format!("{zone}.ff")), report)
+        && let Some(addon) = asset_world::world_t6::addon_entity_string(&classic, &zone)
+    {
+        entities.push_str(addon);
+    }
+    Ok(entities)
+}
+
 /// A compiled script the zone carries, by name.
 fn script_bytes(load: &ZoneLoad, name: &str) -> Option<Vec<u8>> {
     let script = load
@@ -2439,8 +2455,11 @@ impl ZoneLane for T6Lane {
                     smodels.push((asset, model));
                 }
             }
-            let script_placements =
-                asset_world::parse_script_model_placements(entity_string(&load)?);
+            let script_placements = asset_world::parse_script_model_placements(&map_entities(
+                path,
+                &load,
+                &mut report,
+            )?);
             let mut script_xmodels: Vec<asset_model::T6Model> = Vec::new();
             for source in &image_loads {
                 for asset in &source.assets {
@@ -2926,7 +2945,7 @@ impl ZoneLane for T6Lane {
                 collision.leaves.len(),
                 collision.mesh.tri_indices.len() / 3
             ));
-            let entities = entity_string(&load)?;
+            let entities = map_entities(path, &load, &mut report)?;
             let minimap_corners = asset_world::parse_minimap_corners(&entities);
             let north_yaw = asset_world::parse_worldspawn_north_yaw(&entities);
             let ui_modules = fastfile_t6::scripts(&load)
@@ -2953,7 +2972,7 @@ impl ZoneLane for T6Lane {
                     }
                 }
             }
-            let entities = asset_world::t6_entities_for_iw4_rules(entities);
+            let entities = asset_world::t6_entities_for_iw4_rules(&entities);
             let spawns = match mode {
                 asset_transport::t6_content::T6ContentMode::Multiplayer => {
                     asset_world::dm_spawn_points_treyarch(&entities)
