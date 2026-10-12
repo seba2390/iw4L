@@ -116,7 +116,7 @@ Only the top-level items count.
 Indented items are detail: they say what a milestone's runs have shown and
 what is still open (the open rules are in [`fidelity/t6.md`](fidelity/t6.md)).
 Only the top-level items count. Runs are headless, with the test player
-(`IW4L_TEST_PLAYER=1|rounds|use|down|revive`) and `IW4L_T6_OWN_SCRIPTS=1`.
+(`IW4L_TEST_PLAYER=1|rounds|use|down|revive`; `IW4L_TEST_USE` and `IW4L_TEST_PERK` pick what the use test buys, and the console's `script` command calls Black Ops 2's `_zm_score::add_to_player_score` to give it points) and `IW4L_T6_OWN_SCRIPTS=1`.
 
 | Map | Builtins not implemented yet |
 |---|---|
@@ -160,13 +160,13 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] Wall weapons filed under a zone not yet active wait for it, as in the game; their ammo buys are not shown.
   - [x] The box's weapon rises and is taken (Buried: 950 points, the Time Bomb, through Black Ops 2's box scripts and `useweaponmodel`).
   - [ ] The box moving (the teddy bear) and Fire Sale not reached.
-- [ ] Doors and debris.
-  - [x] Doors open for points on Nuketown and TranZit, debris on Nuketown, by the game's scripts.
-  - [ ] The press reaches them through IW4L's shared use rule, not Black Ops 2's (look-at, `player_useRadius_zm`); Buried's door ignores it.
-- [ ] Power and perks.
+- [x] Doors and debris.
+  - [x] Doors open for points on Nuketown, TranZit and Buried, debris clears on Nuketown and Buried, by the game's scripts through Black Ops 2's use rule (Buried: three doors and two debris piles in one run).
+  - [ ] Doors and debris do not yet cut the zombies' paths while closed (see the pathing milestone).
+- [x] Power and perks.
   - [x] Quick Revive sells on TranZit (solo: 500 points, the bottle is drunk) through Black Ops 2's use rule.
-  - [ ] The other perks need the power, which is not reached.
-  - [ ] Nuketown's perks arrive by vehicle drop (`getvehiclenode` missing); TranZit's and Buried's power not reached.
+  - [x] Buried's power switch turns the power on (`power_on`, the perk machines' power notifies) and Double Tap sells after it (2000 points; the perk is given).
+  - [ ] TranZit's power (built at the power station) is not reached; Nuketown's perks arrive by vehicle drop (below).
 - [ ] Pack-a-Punch and every power-up.
   - [ ] Not reached.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
