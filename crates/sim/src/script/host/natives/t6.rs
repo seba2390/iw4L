@@ -16,6 +16,7 @@ mod barrier;
 mod combat;
 mod damage;
 mod effect;
+mod entity;
 mod movement;
 mod mover;
 mod player;
@@ -1731,6 +1732,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     barrier::register(registry);
     weapon::register_natives(registry);
     effect::register(registry);
+    entity::register(registry);
     mover::register(registry);
     player::register(registry);
     radius::register(registry);
