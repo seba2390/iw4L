@@ -39,6 +39,9 @@ player's fire, reload, raise and putaway events reach every client, which
 plays the weapon's own player or world sound; another player's automatic
 fire waits on Black Ops' fire sound simulation (`t5.audio.fire_autosim`),
 and shots show no flash, shell or tracer yet (`t5.weapons.fire_effects`).
+The first-person viewmodel plays the animation Black Ops' client picks for
+each weapon animation number, so reload and other notetrack sounds play;
+its blends and rates are still the runtime's (`t5.viewmodel.playback`).
 The work now is
 recovering those rules from Black Ops. Start it from the game library
 (Black Ops → Zombies → Kino der Toten), or headless:

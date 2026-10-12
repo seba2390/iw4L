@@ -549,6 +549,7 @@ pub fn tick_fpv_viewmodel(
     mut bolts: ResMut<FpvBoltTargets>,
     kick: Option<Res<SessionViewKick>>,
     view_settings: (Res<ViewSubject>, Res<frame::GameSettings>),
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     let (view, settings) = view_settings;
     let fpv_meshes = owners.meshes.as_ref();
@@ -698,6 +699,17 @@ pub fn tick_fpv_viewmodel(
     }
 
     let dt = time.delta_secs();
+    let game = mode
+        .as_deref()
+        .and_then(|mode| mode.viewmodel)
+        .map(|rules| {
+            let bytes = table.and_then(|table| table.game_bytes(session.weapon_id));
+            crate::anim::fpv::GameViewmodel {
+                rules,
+                named_anims: bytes.map_or(0, |bytes| bytes.named_anims),
+                anim_slots: bytes.map_or(&[], |bytes| bytes.anim_slots),
+            }
+        });
     let (sample, predicted_fire) = match presented.snapshot() {
         Some(snap) => {
             let ps = presented.player(local.0);
@@ -727,7 +739,7 @@ pub fn tick_fpv_viewmodel(
                 let id = local_shot_identity(life, 0, ps.weapon_shot_count, ps.weap_anim);
                 let edged = cursor.0.local_shot.observe(id);
                 let masked = ps.weap_anim as u32 & weapon_iw4::WEAP_ANIM_EVENT_MASK;
-                edged && is_predicted_fire_weap_anim(masked)
+                edged && game.is_none() && is_predicted_fire_weap_anim(masked)
             } else {
                 false
             };
@@ -824,6 +836,7 @@ pub fn tick_fpv_viewmodel(
             .is_some_and(|ps| ps.other_flags & playerstate_iw4::other_flags::EMP_JAMMED != 0),
         sample,
         predicted_fire,
+        game,
         dual,
         dual_offset,
     });

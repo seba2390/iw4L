@@ -257,7 +257,20 @@ pub(super) fn read_sz_xanims_t5(
 }
 
 pub(super) fn remap_t5_sz_xanims(t5: &[Option<String>]) -> [Option<String>; WEAPON_ANIM_SLOTS] {
-    use fastfile_t5::size::weap_anim as t5_anim;
+    let mut out = [const { None }; WEAPON_ANIM_SLOTS];
+    for (src, dst) in RUNTIME_ANIM_SLOTS.iter().enumerate() {
+        if let Some(dst) = *dst
+            && src < t5.len()
+        {
+            out[dst] = t5[src].clone();
+        }
+    }
+    out
+}
+
+/// The runtime slot of each of the weapon's own animation slots.
+static RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
+    use fastfile_t5::size::{WEAPON_XANIM_COUNT, weap_anim as t5_anim};
     const PAIRS: [(usize, usize); 34] = [
         (t5_anim::IDLE, weap_anim::IDLE),
         (t5_anim::EMPTY_IDLE, weap_anim::EMPTY_IDLE),
@@ -297,14 +310,14 @@ pub(super) fn remap_t5_sz_xanims(t5: &[Option<String>]) -> [Option<String>; WEAP
         (t5_anim::ADS_UP, weap_anim::ADS_UP),
         (t5_anim::ADS_DOWN, weap_anim::ADS_DOWN),
     ];
-    let mut out = [const { None }; WEAPON_ANIM_SLOTS];
-    for (src, dst) in PAIRS {
-        if src < t5.len() {
-            out[dst] = t5[src].clone();
-        }
+    let mut slots = [None; WEAPON_XANIM_COUNT];
+    let mut i = 0;
+    while i < PAIRS.len() {
+        slots[PAIRS[i].0] = Some(PAIRS[i].1);
+        i += 1;
     }
-    out
-}
+    slots
+};
 
 pub(super) fn t5_to_iw4_ptr(p: fastfile_t5::Ptr) -> Ptr {
     Ptr {
@@ -886,6 +899,7 @@ pub(super) fn capture_t5_body_facts(
                     .filter(|&slot| leftover_t5_cstr(stream, arr, slot * 4).is_some())
                     .fold(0u128, |bits, slot| bits | 1 << slot)
             }),
+            anim_slots: RUNTIME_ANIM_SLOTS,
             location_damage: read_f32_array_t5::<{ sz::WEAPON_LOCATION_DAMAGE_COUNT }>(
                 stream,
                 body,
