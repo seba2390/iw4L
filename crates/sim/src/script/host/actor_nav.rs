@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
-use bevy_ecs::prelude::World;
+use bevy_ecs::prelude::{Resource, World};
 
 use super::args::{arg, float, string, vector};
 use super::entities::EntityKind;
@@ -60,6 +60,37 @@ pub struct ActorPaths {
     nodes: Vec<NavNode>,
 }
 
+/// Links scripts made or broke since the map loaded, over its authored ones.
+#[derive(Resource, Debug, Default)]
+pub(crate) struct LinkEdits {
+    added: BTreeMap<u16, Vec<(u16, f32)>>,
+    removed: BTreeSet<(u16, u16)>,
+}
+
+impl LinkEdits {
+    /// Links `from` to `to`, at the distance between them, unless linked.
+    pub(crate) fn link(&mut self, paths: &ActorPaths, from: u16, to: u16) {
+        self.removed.remove(&(from, to));
+        if paths.links(from, self).any(|(next, _, _)| next == to) {
+            return;
+        }
+        let length = distance_sq(
+            paths.nodes[usize::from(from)].origin,
+            paths.nodes[usize::from(to)].origin,
+        )
+        .sqrt();
+        self.added.entry(from).or_default().push((to, length));
+    }
+
+    /// Drops the link from `from` to `to`, if there is one.
+    pub(crate) fn unlink(&mut self, from: u16, to: u16) {
+        if let Some(links) = self.added.get_mut(&from) {
+            links.retain(|&(next, _)| next != to);
+        }
+        self.removed.insert((from, to));
+    }
+}
+
 /// Sight lines run between eyes this high above the feet.
 const EYE_HEIGHT: f32 = 60.0;
 /// How far an actor's melee reaches, and how far off its facing.
@@ -113,9 +144,34 @@ impl ActorPaths {
         &self.nodes
     }
 
+    /// A node's links as scripts left them: linked node, length, and
+    /// whether crossing it is a traversal.
+    pub(crate) fn links<'a>(
+        &'a self,
+        node: u16,
+        edits: &'a LinkEdits,
+    ) -> impl Iterator<Item = (u16, f32, bool)> + 'a {
+        let authored = self
+            .nodes
+            .get(usize::from(node))
+            .map_or(&[][..], |node| &node.links[..]);
+        authored
+            .iter()
+            .copied()
+            .chain(
+                edits
+                    .added
+                    .get(&node)
+                    .into_iter()
+                    .flatten()
+                    .map(|&(to, length)| (to, length, false)),
+            )
+            .filter(move |(to, _, _)| !edits.removed.contains(&(node, *to)))
+    }
+
     /// The cheapest node sequence from `start` to `goal` over the links,
     /// by link length.
-    pub(crate) fn route(&self, start: u16, goal: u16) -> Option<Vec<u16>> {
+    pub(crate) fn route(&self, start: u16, goal: u16, edits: &LinkEdits) -> Option<Vec<u16>> {
         let goal_origin = self.nodes.get(goal as usize)?.origin;
         let mut best: BTreeMap<u16, (f32, Option<u16>)> = BTreeMap::new();
         best.insert(start, (0.0, None));
@@ -136,7 +192,7 @@ impl ActorPaths {
                 return Some(path);
             }
             let cost = best[&node].0;
-            for &(next, length, _) in &self.nodes[node as usize].links {
+            for (next, length, _) in self.links(node, edits) {
                 let reached = cost + length.max(1.0);
                 if best.get(&next).is_some_and(|(known, _)| *known <= reached) {
                     continue;
@@ -161,7 +217,7 @@ impl ActorPaths {
     ) -> Option<Vec<u16>> {
         let start = self.nearest(from, reach)?;
         let goal = self.nearest(to, reach)?;
-        let mut path = self.route(start, goal)?;
+        let mut path = self.route(start, goal, &LinkEdits::default())?;
         // Already past the first node: head for the second.
         if let [first, second, ..] = path[..] {
             let (a, b) = (

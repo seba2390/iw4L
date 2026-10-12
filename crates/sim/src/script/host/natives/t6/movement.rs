@@ -3,7 +3,7 @@
 //! for it (stop, move, combat, or a negotiation node's traversal), and the
 //! walk its clips' root motion drives along the path.
 
-use super::super::super::actor_nav::{NavNodeKind, node_value};
+use super::super::super::actor_nav::{LinkEdits, NavNodeKind, node_value};
 use super::super::super::entities::EntityKind;
 use super::super::engine::{entity_id, trace};
 use super::{anim, vector};
@@ -220,7 +220,8 @@ fn plan(world: &mut World, id: u64, from: [f32; 3], goal: [f32; 3]) -> Option<Ve
     let paths = FrameWorld::from_world(world).actor_paths()?;
     let start = nearest_node(world, id, from)?;
     let end = nearest_node(world, id, goal)?;
-    let route = paths.route(start, end)?;
+    let edits = world.get_resource_or_insert_with(LinkEdits::default);
+    let route = paths.route(start, end, &edits)?;
     let mut points: Vec<Waypoint> = route
         .iter()
         .map(|&node| Waypoint {

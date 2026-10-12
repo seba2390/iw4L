@@ -1,10 +1,11 @@
 //! Black Ops 2's entity geometry builtins: tags on an entity's model, its
 //! local frame, and path-node lookups.
 
+use super::super::super::actor_nav::LinkEdits;
 use super::super::engine::{collider_entity, entity_id, entity_trace, keyed_array, trace_ignore};
 use super::{node_string_field, string, vector};
 use crate::bullet_collision::{ColliderId, TraceOutcome};
-use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
+use crate::script::{Namespace, NativeRegistry, NavNodeKind, RoundScript, Value};
 use bevy_ecs::prelude::World;
 
 fn text_field(world: &mut World, id: u64, name: &str) -> String {
@@ -68,6 +69,35 @@ fn node_index(world: &World, value: &Value) -> Option<u16> {
         .iter()
         .find(|(_, object)| *object == id)
         .map(|(index, _)| *index)
+}
+
+/// The two path nodes a link builtin names.
+fn node_pair(world: &World, args: &[Value]) -> Result<(u16, u16), String> {
+    let node = |index: usize| {
+        node_index(world, args.get(index).unwrap_or(&Value::Undefined))
+            .ok_or_else(|| String::from("not a pathnode"))
+    };
+    Ok((node(0)?, node(1)?))
+}
+
+/// `linknodes`/`unlinknodes`: one direction only; a negotiation node is
+/// left as it is.
+fn edit_link(world: &mut World, args: &[Value], link: bool) -> Result<Value, String> {
+    let (from, to) = node_pair(world, args)?;
+    let Some(paths) = crate::frame::FrameWorld::from_world(world).actor_paths() else {
+        return Ok(Value::Undefined);
+    };
+    let begin = |node: u16| paths.nodes()[usize::from(node)].kind == NavNodeKind::NegotiationBegin;
+    if begin(from) || begin(to) {
+        return Ok(Value::Undefined);
+    }
+    let mut edits = world.get_resource_or_insert_with(LinkEdits::default);
+    if link {
+        edits.link(&paths, from, to);
+    } else {
+        edits.unlink(from, to);
+    }
+    Ok(Value::Undefined)
 }
 
 /// The game's surface names, by the surface type a trace reports.
@@ -281,19 +311,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
     });
     registry.register(Function, "nodesarelinked", |world, _, args| {
-        let from =
-            node_index(world, args.first().unwrap_or(&Value::Undefined)).ok_or("not a pathnode")?;
-        let to =
-            node_index(world, args.get(1).unwrap_or(&Value::Undefined)).ok_or("not a pathnode")?;
-        let linked = crate::frame::FrameWorld::from_world(world)
-            .actor_paths()
-            .and_then(|paths| {
-                paths
-                    .nodes()
-                    .get(usize::from(from))
-                    .map(|node| node.links.iter().any(|&(link, _, _)| link == to))
-            })
-            .unwrap_or(false);
+        let (from, to) = node_pair(world, args)?;
+        let paths = crate::frame::FrameWorld::from_world(world).actor_paths();
+        let edits = world.get_resource_or_insert_with(LinkEdits::default);
+        let linked =
+            paths.is_some_and(|paths| paths.links(from, &edits).any(|(link, _, _)| link == to));
         Ok(Value::Int(linked.into()))
+    });
+    registry.register(Function, "linknodes", |world, _, args| {
+        edit_link(world, args, true)
+    });
+    registry.register(Function, "unlinknodes", |world, _, args| {
+        edit_link(world, args, false)
     });
 }
