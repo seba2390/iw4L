@@ -335,6 +335,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(can_see(world, id, target)?.into()))
     });
     registry.register(Method, "melee", melee);
+    registry.register(Method, "getweaponmuzzlepoint", |world, receiver, _| {
+        let id = entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().player_client(id).is_none() {
+            diag::warn!(
+                Sim,
+                "t6.weapons.muzzle_point: a non-player's muzzle point is left unset by the engine; answering its origin"
+            );
+            return Ok(Value::Vector(origin_of(world, id)));
+        }
+        Ok(Value::Vector(eye(world, receiver)?))
+    });
     registry.register(Method, "geteye", |world, receiver, _| {
         let id = entity_id(world, receiver)?;
         if !sentient(world, receiver) {

@@ -50,6 +50,33 @@ fn entity_change(
     Ok(Value::Undefined)
 }
 
+/// Starts (or stops) a rumble slot on an entity, for every client.
+pub(crate) fn on_entity(world: &mut World, id: u64, index: i32, stop: bool) {
+    let kind = if stop {
+        EntityEventKind::STOP_RUMBLE
+    } else {
+        EntityEventKind::PLAY_RUMBLE_ON_ENT
+    };
+    let number = world.resource::<RoundScript>().entities[&id].number;
+    let origin = match super::players::entity_field(world, id, "origin") {
+        Value::Vector(origin) => origin,
+        _ => [0.0; 3],
+    };
+    emit(world, kind, number, origin, index);
+}
+
+/// Plays a rumble slot at a point, for every client.
+pub(crate) fn at_position(world: &mut World, origin: [f32; 3], index: i32) {
+    let number = i32::from(trace_iw4::ENTITYNUM_WORLD);
+    emit(
+        world,
+        EntityEventKind::PLAY_RUMBLE_ON_POS,
+        number,
+        origin,
+        index,
+    );
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(
         Namespace::Method,
@@ -73,13 +100,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             if origin.iter().any(|v| !v.is_finite()) {
                 return Err("rumble position must be finite".into());
             }
-            emit(
-                world,
-                EntityEventKind::PLAY_RUMBLE_ON_POS,
-                i32::from(trace_iw4::ENTITYNUM_WORLD),
-                origin,
-                index,
-            );
+            at_position(world, origin, index);
             Ok(Value::Undefined)
         },
     );
