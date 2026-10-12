@@ -8,6 +8,7 @@ use crate::world::{
 };
 use movement_iw4::SHORT2ANGLE;
 use playerstate_iw4::buttons;
+use weapon_iw4::WeaponState;
 
 pub(crate) fn spectator_lifecycle(team: i32) -> ClientLifecycle {
     if team == entity_iw4::TEAM_SPECTATOR {
@@ -546,6 +547,39 @@ pub(crate) fn move_to_forced_spawn(world: &mut FrameWorld, id: ClientId, pick: c
     world.link_player_standing_area(id);
 }
 
+/// What the player's weapon is doing: by the game's own weapon rules, or,
+/// when the match runs the simulation's, read from the simulation's weapon
+/// state (raising or dropping, firing, a melee, an offhand throw).
+pub(crate) fn weapon_activity(
+    world: &FrameWorld,
+    id: ClientId,
+) -> game_api::movement::WeaponActivity {
+    if let Some(activity) = crate::game_move::weapon_activity(world, id) {
+        return activity;
+    }
+    use WeaponState as S;
+    let Some(state) = world
+        .player(id)
+        .and_then(|ps| S::from_i32(ps.weaponstate_primary).ok())
+    else {
+        return game_api::movement::WeaponActivity::default();
+    };
+    game_api::movement::WeaponActivity {
+        firing: state == S::Firing,
+        meleeing: matches!(state, S::MeleeInit | S::MeleeFire | S::MeleeEnd),
+        throwing_grenade: matches!(
+            state,
+            S::OffhandInit
+                | S::OffhandPrepare
+                | S::OffhandHold
+                | S::OffhandStart
+                | S::Offhand
+                | S::OffhandEnd
+        ),
+        switching: state.is_raise_or_drop(),
+    }
+}
+
 pub(crate) fn weapon_named(world: &FrameWorld, name: &str) -> Result<u32, String> {
     if name == "none" {
         return Ok(0);
@@ -707,8 +741,8 @@ pub(crate) fn switch_to_weapon_immediate(
     let ps = world
         .player_mut(id)
         .expect("set_spawn_weapon checked player");
-    ps.weaponstate_primary = weapon_iw4::WeaponState::Ready as i32;
-    ps.weaponstate_secondary = weapon_iw4::WeaponState::Ready as i32;
+    ps.weaponstate_primary = WeaponState::Ready as i32;
+    ps.weaponstate_secondary = WeaponState::Ready as i32;
     ps.weapon_time = 0;
     ps.weapon_time_secondary = 0;
     ps.weapon_delay = 0;

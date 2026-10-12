@@ -40,6 +40,9 @@ const CURSOR_BONUS: f32 = 768.0;
 const MOVER_BONUS: f32 = 384.0;
 /// The sight line from the eye to a candidate's middle: solid and glass.
 const SIGHT_MASK: u32 = 0x11;
+/// What a candidate the eye cannot see adds to its score: it goes after
+/// every one it can, and is still picked when nothing else is.
+const UNSEEN_SCORE: f32 = 10_000.0;
 /// The cursor hint a map's `trigger_use` and `trigger_use_touch` start
 /// with; a spawned trigger starts with none.
 const MAP_USE_CURSOR: i32 = 3;
@@ -331,7 +334,7 @@ fn use_radius(world: &World) -> f32 {
 }
 
 /// The search: each candidate near the player that the use reaches, with
-/// its score, lowest first; those the eye cannot see are dropped.
+/// its score, lowest first; those the eye cannot see come last.
 fn search(world: &mut World, viewer: &Viewer, candidates: &[Candidate]) -> Vec<(f32, usize)> {
     let reach = THROWBACK_OUTER_RADIUS_ZM.max(SEARCH_MIN);
     let area = (
@@ -396,14 +399,14 @@ fn search(world: &mut World, viewer: &Viewer, candidates: &[Candidate]) -> Vec<(
     }
     found.sort_by(|a, b| a.0.total_cmp(&b.0));
     let frame = FrameWorld::from_world(world);
-    found.retain(|&(_, index)| {
-        let c = &candidates[index];
+    for (score, index) in &mut found {
+        let c = &candidates[*index];
         if c.class.touched() {
-            return true;
+            continue;
         }
         let center: [f32; 3] = std::array::from_fn(|i| (c.abs.0[i] + c.abs.1[i]) * 0.5);
         // A model's hit boxes stop bullets, not this sight line.
-        matches!(
+        let seen = matches!(
             frame.sensor_trace(crate::BulletTraceQuery {
                 start: viewer.eye,
                 end: center,
@@ -417,8 +420,12 @@ fn search(world: &mut World, viewer: &Viewer, candidates: &[Candidate]) -> Vec<(
                     collider: crate::ColliderId::EntityDObjBone { .. },
                     ..
                 }
-        )
-    });
+        );
+        if !seen {
+            *score += UNSEEN_SCORE;
+        }
+    }
+    found.sort_by(|a, b| a.0.total_cmp(&b.0));
     found
 }
 
