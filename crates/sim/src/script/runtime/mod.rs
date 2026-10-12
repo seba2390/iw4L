@@ -61,6 +61,19 @@ pub(super) fn raise(world: &mut World, receiver: Value, name: &str, args: Vec<Va
         .push((receiver, name.into(), args));
 }
 
+/// Notifies at once, outside any thread, as the engine does before it
+/// starts the script the notify makes way for.
+pub(super) fn notify_now(
+    world: &mut World,
+    receiver: Value,
+    name: &str,
+    args: Vec<Value>,
+    now: i64,
+) {
+    raise(world, receiver, name, args);
+    deliver_external(world, now);
+}
+
 fn deliver_pending(world: &mut World, thread: &mut Thread, now: i64) -> Result<(), String> {
     loop {
         let pending = std::mem::take(&mut world.resource_mut::<RoundScript>().pending_notifies);
@@ -205,6 +218,17 @@ pub(super) fn run_now(
     args: Vec<Value>,
     now: i64,
 ) -> Result<(), Fault> {
+    start_now(world, name, receiver, args, now).map(|_| ())
+}
+
+/// Runs `name` until it first waits; the thread's serial while it lives on.
+pub(super) fn start_now(
+    world: &mut World,
+    name: &str,
+    receiver: Value,
+    args: Vec<Value>,
+    now: i64,
+) -> Result<Option<u64>, Fault> {
     let (program, function, location) = entry(world, name)?;
     let mut thread = new_thread(world, &program, function, receiver, args)
         .map_err(|m| Fault::at(&location, m))?;
@@ -215,14 +239,17 @@ pub(super) fn run_now(
     );
     execute(world, &program, &mut thread, now);
     world.resource_mut::<RoundScript>().budget = budget;
-    if thread.state == ThreadState::Complete {
-        retire(&mut world.resource_mut::<RoundScript>(), thread.serial);
+    let serial = thread.serial;
+    let alive = if thread.state == ThreadState::Complete {
+        retire(&mut world.resource_mut::<RoundScript>(), serial);
+        None
     } else {
         world.spawn(thread);
-    }
+        Some(serial)
+    };
     match world.resource::<RoundScript>().fault.clone() {
         Some(fault) => Err(fault),
-        None => Ok(()),
+        None => Ok(alive),
     }
 }
 

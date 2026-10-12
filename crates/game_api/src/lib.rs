@@ -40,6 +40,8 @@ pub struct ScriptRequest<'a> {
     pub gametype: &'a str,
     /// The map's entity string.
     pub entities: &'a str,
+    /// The traversal animscripts the map's negotiation begin nodes name.
+    pub traversals: &'a [String],
     /// A config file the map's zones carry (`gamedata/…/x.cfg`), by name.
     pub config: &'a dyn Fn(&str) -> Option<&'a str>,
     /// A string table the map's zones carry, by name: its column count and cells.

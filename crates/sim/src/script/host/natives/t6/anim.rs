@@ -7,7 +7,7 @@ use super::super::super::arrays::new_array;
 use super::super::super::entities::EntityKind;
 use super::{int, string, vector};
 use crate::frame::FrameWorld;
-use crate::script::runtime::{raise, run_now};
+use crate::script::runtime::{notify_now, raise, run_now};
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -67,6 +67,12 @@ pub(super) struct ActorAnim {
     pub(super) orient: &'static str,
     /// The yaw `face angle`, `face direction` or `face point` turns to.
     pub(super) orient_yaw: Option<f32>,
+    /// How far the clip's root moved this frame, in the actor's frame, when
+    /// it is not a scripted clip.
+    pub(super) step: [f32; 3],
+    /// The aim weights `setaimanimweights` sets; no aim clip blends by them
+    /// yet (`t6.actors.anim_playback`).
+    aim_weights: [f32; 2],
 }
 
 impl Default for ActorAnim {
@@ -77,6 +83,8 @@ impl Default for ActorAnim {
             mode: "normal",
             orient: "face default",
             orient_yaw: None,
+            step: [0.0; 3],
+            aim_weights: [0.0; 2],
         }
     }
 }
@@ -320,12 +328,15 @@ fn advance(world: &mut World) {
             world.resource_mut::<ActorAnims>().0.remove(&id);
             continue;
         }
+        anim_mut(world, id).step = [0.0; 3];
         let Some(mut playing) = anim_mut(world, id).playing.clone() else {
             continue;
         };
         if playing.done {
             continue;
         }
+        let from = playing.time;
+        let mut cycles = 0.0;
         let length = playing.clip.duration();
         let mut time = if length > 0.0 {
             playing.time + step / length
@@ -353,10 +364,20 @@ fn advance(world: &mut World) {
                 break;
             }
             time -= 1.0;
+            cycles += 1.0;
             playing.sent = -1.0;
         }
         playing.time = time;
         let notify = playing.notify.clone();
+        if playing.anchor.is_none() {
+            let (start, end, full) = (
+                playing.clip.abs_delta_trans(from),
+                playing.clip.abs_delta_trans(time),
+                playing.clip.abs_delta_trans(1.0),
+            );
+            anim_mut(world, id).step =
+                std::array::from_fn(|i| end[i] - start[i] + cycles * full[i]);
+        }
         anim_mut(world, id).playing = Some(playing);
         place(world, id);
         if let Some(notify) = notify {
@@ -453,7 +474,7 @@ fn animscripted(world: &mut World, receiver: &Value, args: &[Value]) -> Result<V
         .mode
         .map_or(Value::Undefined, |mode| Value::string(&mode));
     let now = super::super::super::players::now_ms(world);
-    raise(world, receiver.clone(), "killanimscript", Vec::new());
+    notify_now(world, receiver.clone(), "killanimscript", Vec::new(), now);
     let init = format!("{SCRIPTED}::init");
     run_now(
         world,
@@ -510,6 +531,24 @@ fn anim_clip(world: &mut World, args: &[Value], index: usize) -> Result<Arc<Anim
     FrameWorld::from_world(world)
         .anim_clip_named(&name)
         .ok_or_else(|| format!("animation '{name}' is not loaded in the simulation"))
+}
+
+/// The scripted clip's anchor, while one plays.
+pub(super) fn scripted(world: &mut World, id: u64) -> bool {
+    anim_mut(world, id)
+        .playing
+        .as_ref()
+        .is_some_and(|playing| playing.anchor.is_some() && !playing.done)
+}
+
+pub(super) fn get(world: &mut World, id: u64) -> ActorAnim {
+    anim_mut(world, id).clone()
+}
+
+pub(super) fn reset_orient(world: &mut World, id: u64) {
+    let anim = anim_mut(world, id);
+    anim.orient = "face default";
+    anim.orient_yaw = None;
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {
@@ -688,6 +727,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let anim = anim_mut(world, id);
         anim.orient = mode;
         anim.orient_yaw = yaw;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setaimanimweights", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        let weights = [super::float(args, 0)?, super::float(args, 1)?];
+        anim_mut(world, id).aim_weights = weights;
         Ok(Value::Undefined)
     });
     registry.register(Function, "getanimlength", |world, _, args| {

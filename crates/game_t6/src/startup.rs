@@ -86,12 +86,18 @@ const ANIMSCRIPTS: [&str; 17] = [
     "zm_dog_flashed",
 ];
 
-/// The actor scripts the engine loads with a level: the animscripts, then
-/// the aitype of each actor spawner the map places (`actor_<aitype>`).
-pub(crate) fn actor_scripts(entities: &str) -> Vec<String> {
+/// The actor scripts the engine loads with a level: the animscripts, the
+/// traversal each negotiation begin node names, then the aitype of each
+/// actor spawner the map places (`actor_<aitype>`).
+pub(crate) fn actor_scripts(entities: &str, traversals: &[String]) -> Vec<String> {
     let mut scripts: Vec<String> = ANIMSCRIPTS
         .iter()
         .map(|name| format!("maps/mp/animscripts/{name}"))
+        .chain(
+            traversals
+                .iter()
+                .map(|name| format!("maps/mp/animscripts/traverse/{name}")),
+        )
         .collect();
     let mut tokens = entities.split('"').skip(1).step_by(2);
     while let Some(key) = tokens.next() {
