@@ -653,6 +653,17 @@ pub(crate) fn play_sound_at(
     origin: [f32; 3],
     alias: &str,
 ) -> Result<(), String> {
+    let frame = crate::frame::FrameWorld::from_world(world);
+    let hashed = frame
+        .bootstrap_ref()
+        .mode
+        .is_some_and(|mode| mode.script_sounds_hashed);
+    if hashed {
+        if frame.script_sound_exists(alias) != Some(true) {
+            return Ok(());
+        }
+        return sound_alias_event(world, origin, alias);
+    }
     if crate::frame::FrameWorld::from_world(world)
         .script_sound_is_looping(alias)
         .map_err(|error| format!("{error}: `{alias}`"))?

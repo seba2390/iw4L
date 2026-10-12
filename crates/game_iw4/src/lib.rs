@@ -71,6 +71,7 @@ const MODE: ModeRules = ModeRules {
     },
     client_fire: None,
     viewmodel: None,
+    script_sounds_hashed: false,
 };
 
 impl game_api::GameVision for Iw4 {

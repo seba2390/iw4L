@@ -192,6 +192,10 @@ pub struct ModeRules {
     /// How a client's viewmodel plays the game's own weapon animation
     /// numbers; `None` reads them as Modern Warfare 2's.
     pub viewmodel: Option<ViewmodelRules>,
+    /// A script's sound goes out as its name's hash alone: the server checks
+    /// nothing about the alias, so an unknown one plays nothing instead of
+    /// failing the call.
+    pub script_sounds_hashed: bool,
 }
 
 /// How a client's viewmodel plays a player's weapon animation number.

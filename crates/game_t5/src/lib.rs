@@ -139,6 +139,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     },
     client_fire: Some(fire_sound::CLIENT_FIRE),
     viewmodel: Some(viewmodel::VIEWMODEL),
+    script_sounds_hashed: true,
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each

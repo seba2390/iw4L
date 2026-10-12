@@ -250,6 +250,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     },
     client_fire: None,
     viewmodel: None,
+    script_sounds_hashed: false,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

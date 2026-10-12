@@ -205,6 +205,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
     },
     client_fire: None,
     viewmodel: None,
+    script_sounds_hashed: false,
 };
 
 impl game_api::GameModes for T7 {
