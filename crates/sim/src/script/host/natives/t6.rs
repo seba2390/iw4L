@@ -161,6 +161,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "getdvarfloat", |world, _, args| {
         Ok(Value::Float(atof(&dvar(world, args)?)))
     });
+    // An integer dvar; one that is missing is made.
+    registry.register(Function, "setdvarint", |world, _, args| {
+        let name = string(args, 0)?;
+        let value = int(args, 1)?;
+        crate::script::set_dvar(world, &name, &value.to_string());
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "setdvar", |world, _, args| {
         let name = string(args, 0)?;
         if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {

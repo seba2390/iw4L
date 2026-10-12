@@ -116,6 +116,51 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             _ => Err("getnode used with more than one node".into()),
         }
     });
+    registry.register(Method, "setcandamage", |world, receiver, args| {
+        let id = entity_id(world, receiver)?;
+        let on = super::int(args, 0)?;
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "takedamage", Value::Int(on));
+        Ok(Value::Undefined)
+    });
+    // Actors, vehicles and players do not link things to themselves.
+    registry.register(Method, "enablelinkto", |world, receiver, _| {
+        let id = entity_id(world, receiver)?;
+        let runtime = world.resource::<RoundScript>();
+        let player = runtime.player_client(id).is_some();
+        let refused = player
+            || runtime.entities.get(&id).is_some_and(|entity| {
+                matches!(
+                    entity.kind,
+                    super::super::super::entities::EntityKind::Actor
+                        | super::super::super::entities::EntityKind::Vehicle
+                )
+            });
+        if refused {
+            let classname = text_field(world, id, "classname");
+            let kind = if player { "player" } else { "actor/vehicle" };
+            return Err(format!(
+                "entity (classname: '{classname}', type: '{kind}') does not currently support enableLinkTo"
+            ));
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "dontinterpolate", |world, receiver, _| {
+        entity_id(world, receiver)?;
+        Err(
+            "t6.entities.interpolation: the client's interpolation of an entity is not switched"
+                .into(),
+        )
+    });
+    // The nearest node of any type within 192 units a body can reach.
+    registry.register(Function, "getnearestnode", |world, _, args| {
+        let at = vector(args, 0)?;
+        match super::movement::nearest_node_within(world, 0, at, &[super::movement::NODE_NEAR]) {
+            Some(index) => super::super::super::actor_nav::node_value(world, index),
+            None => Ok(Value::Undefined),
+        }
+    });
     registry.register(Function, "nodesarelinked", |world, _, args| {
         let from =
             node_index(world, args.first().unwrap_or(&Value::Undefined)).ok_or("not a pathnode")?;

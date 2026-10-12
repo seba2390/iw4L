@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 const GOAL_RADIUS: f32 = 4.0;
 const GOAL_HEIGHT: f32 = 80.0;
 /// How far the engine looks for the node nearest a position, then further.
-const NODE_NEAR: f32 = 192.0;
+pub(super) const NODE_NEAR: f32 = 192.0;
 const NODE_FAR: f32 = 512.0;
 pub(super) const ACTOR_MASK: u32 = 0x0282_0011;
 /// IW4L's walking rules (`t6.actors.path_following`).
@@ -173,8 +173,19 @@ fn clear(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3]) -> bool {
 /// The node nearest `at` within 192 units, else within 512, that a body
 /// can walk to from there.
 fn nearest_node(world: &mut World, id: u64, at: [f32; 3]) -> Option<u16> {
+    nearest_node_within(world, id, at, &[NODE_NEAR, NODE_FAR])
+}
+
+/// The node nearest `at` within each radius in turn that a body (the
+/// actor's, or a default one) can walk to from there.
+pub(super) fn nearest_node_within(
+    world: &mut World,
+    id: u64,
+    at: [f32; 3],
+    radii: &[f32],
+) -> Option<u16> {
     let paths = FrameWorld::from_world(world).actor_paths()?;
-    for radius in [NODE_NEAR, NODE_FAR] {
+    for &radius in radii {
         let mut near: Vec<(f32, u16)> = paths
             .nodes()
             .iter()
