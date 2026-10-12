@@ -378,8 +378,10 @@ fn advance(world: &mut World) {
             anim_mut(world, id).step =
                 std::array::from_fn(|i| end[i] - start[i] + cycles * full[i]);
         }
+        let clip = Arc::clone(&playing.clip);
         anim_mut(world, id).playing = Some(playing);
         place(world, id);
+        pose(world, id, &clip, time);
         if let Some(notify) = notify {
             for note in notes {
                 raise(
@@ -390,6 +392,50 @@ fn advance(world: &mut World) {
                 );
             }
         }
+    }
+}
+
+/// Poses the actor's body by its playing clip, so clients draw it and
+/// traces meet it where the clip holds it (its bind pose lies on the floor).
+fn pose(world: &mut World, id: u64, clip: &Arc<AnimClip>, time: f32) {
+    use xmodel_runtime::{
+        XAnimNodeState, XAnimSemanticNode, XAnimSemanticNodeKind, XAnimTreeSnapshot,
+    };
+    let Some(presence) = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&id)
+        .and_then(|entity| entity.presence)
+    else {
+        return;
+    };
+    let tree = XAnimTreeSnapshot {
+        definition_revision: 0,
+        state_revision: 0,
+        nodes: vec![XAnimSemanticNode {
+            parent: None,
+            kind: XAnimSemanticNodeKind::Leaf,
+            clip: Some(clip.name.clone()),
+            parts: None,
+            state: XAnimNodeState {
+                time,
+                old_time: time,
+                goal_weight: 1.0,
+                weight: 1.0,
+                rate: 1.0,
+                ..XAnimNodeState::default()
+            },
+        }],
+    };
+    let resolved = tree
+        .resolve(|name| (name == clip.name).then(|| Arc::clone(clip)))
+        .ok();
+    if let Some(dobj) = FrameWorld::from_world(world)
+        .collision_owner_mut(presence)
+        .and_then(|row| row.dobj.as_mut())
+    {
+        dobj.set_tree_pose(tree, resolved);
+        dobj.materialize();
     }
 }
 

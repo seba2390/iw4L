@@ -6,11 +6,13 @@ use crate::script::RoundScript;
 use crate::script::Value;
 use bevy_ecs::prelude::World;
 
-/// A living actor: where it stands, and its health.
+/// A living actor: where it stands, its health, and the script model that
+/// carries its body.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ActorSighting {
     pub origin: [f32; 3],
     pub health: i32,
+    pub body: Option<crate::ScriptModelId>,
 }
 
 /// Whose field a test player reads.
@@ -49,12 +51,16 @@ pub(crate) fn living_actors(world: &World) -> Vec<ActorSighting> {
         .filter(|(id, entity)| {
             entity.kind == super::entities::EntityKind::Actor && runtime.live(id)
         })
-        .filter_map(|(&id, _)| {
+        .filter_map(|(&id, entity)| {
             let health = int(field(runtime, id, "health"))?;
             let Some(Value::Vector(origin)) = field(runtime, id, "origin") else {
                 return None;
             };
-            (health > 0).then_some(ActorSighting { origin, health })
+            (health > 0).then_some(ActorSighting {
+                origin,
+                health,
+                body: entity.presence,
+            })
         })
         .collect()
 }

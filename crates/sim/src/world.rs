@@ -623,6 +623,14 @@ impl SimState {
         self.running = true;
     }
 
+    /// The contents a player's bullet stops on in this match.
+    pub fn bullet_mask(&self) -> u32 {
+        self.bootstrap_ref()
+            .mode
+            .and_then(|mode| mode.bullet_mask)
+            .unwrap_or(crate::bullet_collision::MASK_BULLET_WORLD)
+    }
+
     pub(crate) fn bootstrap_ref(&self) -> &MatchBootstrap {
         &self.bootstrap
     }

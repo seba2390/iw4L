@@ -145,6 +145,8 @@ pub(crate) fn settle_collision(world: &mut World) {
         row.followed_pose = Some((origin, angles));
         if let Some(dobj) = row.dobj.as_mut() {
             dobj.set_world_pose(origin, angles);
+            // A trace later in the tick meets the body where it now stands.
+            dobj.materialize();
         }
         for brush in &mut row.linked_brushes {
             brush.origin = origin;

@@ -43,6 +43,7 @@ const MODE: ModeRules = ModeRules {
     level_failed: None,
     movement: Rule::Known(game_api::MovementRules::Simulation),
     weapons: Rule::Known(WeaponRules::Simulation),
+    bullet_mask: None,
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,

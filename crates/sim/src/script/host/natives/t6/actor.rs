@@ -18,11 +18,111 @@ const DEFAULT_SPECIES: usize = 2;
 const DROP_MINS: [f32; 3] = [-15.0, -15.0, 0.0];
 const DROP_MAXS: [f32; 3] = [15.0, 15.0, 30.0];
 const DROP_MASK: u32 = 0x0282_0011;
+/// The contents the engine gives an actor as it spawns; its bullet trace
+/// stops on them.
+const ACTOR_CONTENTS: i32 = 0x8000;
 const DROP_DEPTH: f32 = 128.0;
 const START_HEALTH: i32 = 100;
 const ANIMSCRIPTS: &str = "maps/mp/animscripts";
 /// The stances `allowedstances` names, by bit.
 const STANCES: [&str; 3] = ["stand", "crouch", "prone"];
+
+/// An actor field's value as the engine spawns the actor.
+#[derive(Clone, Copy)]
+enum Field {
+    Int(i32),
+    Float(f32),
+    Vector,
+}
+
+/// The engine's plain actor fields that scripts read, with the values its
+/// actor spawn leaves in them (the rest of the actor is zeroed).
+const SPAWN_FIELDS: [(&str, Field); 84] = [
+    ("accuracy", Field::Float(0.2)),
+    ("lookforward", Field::Vector),
+    ("lookright", Field::Vector),
+    ("lookup", Field::Vector),
+    ("sightlatency", Field::Int(0)),
+    ("ignoreclosefoliage", Field::Int(0)),
+    ("interval", Field::Float(0.0)),
+    ("teammovewaittime", Field::Int(0)),
+    ("damagetaken", Field::Int(0)),
+    ("damagedir", Field::Vector),
+    ("damageyaw", Field::Int(0)),
+    ("proneok", Field::Int(0)),
+    ("walkdist", Field::Float(0.0)),
+    ("desiredangle", Field::Float(0.0)),
+    ("pacifist", Field::Int(0)),
+    ("newenemyreactionpos", Field::Vector),
+    ("newenemyreaction", Field::Int(0)),
+    ("newenemyreactiondistsq", Field::Float(562500.0)),
+    ("goodenemyonly", Field::Int(0)),
+    ("ignoreexplosionevents", Field::Int(0)),
+    ("ignoresuppression", Field::Int(0)),
+    ("suppressionwait", Field::Int(0)),
+    ("suppressionduration", Field::Int(0)),
+    ("suppressionstarttime", Field::Int(0)),
+    ("suppressionmeter", Field::Float(0.0)),
+    ("dontavoidplayer", Field::Int(0)),
+    ("grenadeawareness", Field::Float(0.0)),
+    ("grenadeammo", Field::Int(0)),
+    ("grenadethrowback", Field::Int(0)),
+    ("highlyawareradius", Field::Float(0.0)),
+    ("allowpain", Field::Int(0)),
+    ("blockingpain", Field::Int(0)),
+    ("allowdeath", Field::Int(0)),
+    ("diequietly", Field::Int(0)),
+    ("minpaindamage", Field::Int(0)),
+    ("forceragdollimmediate", Field::Int(0)),
+    ("delayeddeath", Field::Int(0)),
+    ("providecoveringfire", Field::Int(0)),
+    ("doingambush", Field::Int(0)),
+    ("canflank", Field::Int(0)),
+    ("iswounded", Field::Int(0)),
+    ("alertlevelint", Field::Int(1)),
+    ("dropweapon", Field::Int(1)),
+    ("drawoncompass", Field::Int(1)),
+    ("activatecrosshair", Field::Int(1)),
+    ("goalradius", Field::Float(4.0)),
+    ("goalheight", Field::Float(80.0)),
+    ("goalpos", Field::Vector),
+    ("nodeoffsetpos", Field::Vector),
+    ("ignoreforfixednodesafecheck", Field::Int(0)),
+    ("fixednode", Field::Int(0)),
+    ("fixednodesaferadius", Field::Float(64.0)),
+    ("pathrandompercent", Field::Int(0)),
+    ("usechokepoints", Field::Int(0)),
+    ("stopanimdistsq", Field::Float(0.0)),
+    ("pathenemylookahead", Field::Float(0.0)),
+    ("pathenemyfightdist", Field::Float(0.0)),
+    ("meleeattackdist", Field::Float(0.0)),
+    ("usecombatscriptatcover", Field::Int(0)),
+    ("safetochangescript", Field::Int(1)),
+    ("keepclaimednode", Field::Int(0)),
+    ("keepclaimednodeifvalid", Field::Int(0)),
+    ("coversearchinterval", Field::Int(-1)),
+    ("nododgemove", Field::Int(0)),
+    ("leanamount", Field::Float(0.0)),
+    ("badplaceawareness", Field::Float(0.0)),
+    ("nogrenadereturnthrow", Field::Int(0)),
+    ("goodshootpos", Field::Vector),
+    ("goodshootposvalid", Field::Int(0)),
+    ("flashbangimmunity", Field::Int(0)),
+    ("lookaheaddir", Field::Vector),
+    ("lookaheaddist", Field::Float(0.0)),
+    ("prevanimdelta", Field::Vector),
+    ("exposedduration", Field::Int(5000)),
+    ("requestarrivalnotify", Field::Int(0)),
+    ("finalaccuracy", Field::Float(-6969.0)),
+    ("noattackeraccuracymod", Field::Int(0)),
+    ("facemotion", Field::Int(0)),
+    ("relativedir", Field::Int(0)),
+    ("gunblockedbywall", Field::Int(0)),
+    ("fixedlinkyawonly", Field::Int(0)),
+    ("weaponaccuracy", Field::Float(-6969.0)),
+    ("goalangle", Field::Vector),
+    ("animtranslationscale", Field::Float(0.0)),
+];
 
 /// What the engine keeps for each actor beside its entity.
 #[derive(Clone, Debug)]
@@ -147,6 +247,14 @@ fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
     let id = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let id = runtime.create_entity(EntityKind::Actor, &classname)?;
+        for (name, field) in SPAWN_FIELDS {
+            let value = match field {
+                Field::Int(n) => Value::Int(n),
+                Field::Float(f) => Value::Float(f),
+                Field::Vector => Value::Vector([0.0; 3]),
+            };
+            runtime.set_object_field(id, name, value);
+        }
         let fields: Vec<(u32, Value)> = runtime
             .objects
             .get(&spawner)
@@ -164,6 +272,7 @@ fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
         entity.presence = Some(presence);
         entity.can_damage = true;
         entity.can_radius_damage = true;
+        entity.contents = ACTOR_CONTENTS;
         if let Some(number) = number {
             entity.number = number;
         }

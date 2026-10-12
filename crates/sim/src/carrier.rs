@@ -72,6 +72,22 @@ impl SimWorld {
         crate::script::host::sightings::living_actors(&self.ecs)
     }
 
+    /// The centre of the body box nearest `near` on a script model's posed
+    /// collision, for a test player's aim.
+    pub fn body_point(&self, body: ScriptModelId, near: [f32; 3]) -> Option<[f32; 3]> {
+        let owner = crate::AuthorityModelOwner::ScriptModel(body);
+        let row = self
+            .entity_collision_capabilities()
+            .iter()
+            .find(|row| row.owner == owner)?;
+        let bones = &row.dobj.as_ref()?.current_collision.as_ref()?.bones;
+        let distance = |at: [f32; 3]| (0..3).map(|i| (at[i] - near[i]).powi(2)).sum::<f32>();
+        bones
+            .iter()
+            .map(|bone| bone.center)
+            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
+    }
+
     /// An integer script field of the level or a player, for a test player.
     pub fn script_int(&self, owner: crate::script::ScriptOwner, name: &str) -> Option<i32> {
         crate::script::host::sightings::script_int(&self.ecs, owner, name)
