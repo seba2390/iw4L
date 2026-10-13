@@ -65,6 +65,10 @@ pub struct ActorPaths {
 pub(crate) struct LinkEdits {
     added: BTreeMap<u16, Vec<(u16, f32)>>,
     removed: BTreeSet<(u16, u16)>,
+    /// The links each dynamic path entity cuts while it stands.
+    cuts: BTreeMap<u64, Vec<(u16, u16)>>,
+    /// How many entities cut each link.
+    cut_by: BTreeMap<(u16, u16), u32>,
 }
 
 impl LinkEdits {
@@ -80,6 +84,34 @@ impl LinkEdits {
         )
         .sqrt();
         self.added.entry(from).or_default().push((to, length));
+    }
+
+    /// An entity cuts these links until it rejoins them.
+    pub(crate) fn cut(&mut self, entity: u64, links: Vec<(u16, u16)>) {
+        for link in &links {
+            *self.cut_by.entry(*link).or_default() += 1;
+        }
+        self.cuts.entry(entity).or_default().extend(links);
+    }
+
+    /// How many links are cut.
+    pub(crate) fn cut_count(&self) -> usize {
+        self.cut_by.len()
+    }
+
+    /// Rejoins the links an entity cut.
+    pub(crate) fn rejoin(&mut self, entity: u64) {
+        let Some(links) = self.cuts.remove(&entity) else {
+            return;
+        };
+        for link in links {
+            if let Some(count) = self.cut_by.get_mut(&link) {
+                *count -= 1;
+                if *count == 0 {
+                    self.cut_by.remove(&link);
+                }
+            }
+        }
     }
 
     /// Drops the link from `from` to `to`, if there is one.
@@ -171,7 +203,9 @@ impl ActorPaths {
                     .flatten()
                     .map(|&(to, length)| (to, length, false)),
             )
-            .filter(move |(to, _, _)| !edits.removed.contains(&(node, *to)))
+            .filter(move |(to, _, _)| {
+                !edits.removed.contains(&(node, *to)) && !edits.cut_by.contains_key(&(node, *to))
+            })
     }
 
     /// The cheapest node sequence from `start` to `goal` over the links,

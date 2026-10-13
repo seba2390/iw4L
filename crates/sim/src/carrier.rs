@@ -155,6 +155,17 @@ impl SimWorld {
         crate::script::host::sightings::level_array_entry(&self.ecs, array, key)
     }
 
+    /// A script object's field as text, for a test player.
+    pub fn object_field_text(&self, id: u64, name: &str) -> String {
+        crate::script::host::sightings::object_field_text(&self.ecs, id, name)
+    }
+
+    /// The receivers of the waits pending on a notify name, for a test
+    /// player.
+    pub fn waits_on(&self, name: &str) -> Vec<String> {
+        crate::script::host::sightings::waits_on(&self.ecs, name)
+    }
+
     /// Whether a level flag is set, for a test player.
     pub fn level_flag(&self, name: &str) -> bool {
         crate::script::host::sightings::level_flag(&self.ecs, name)

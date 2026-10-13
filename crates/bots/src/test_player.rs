@@ -28,6 +28,12 @@
 //! perk, door, box, debris, power, pap), in that order; `IW4L_TEST_PERK` names
 //! the perk it buys (Quick Revive by default; `any` for any other).
 //!
+//! `IW4L_TEST_ACTORS=field,…` logs each living actor's position, health
+//! and those script fields every five seconds.
+//!
+//! `IW4L_TEST_WAITS=name,…` logs the receivers of the waits pending on
+//! those notify names every five seconds.
+//!
 //! `IW4L_TEST_VARS=key,…` adds those `level.zombie_vars` entries to the log
 //! every five seconds.
 //!
@@ -551,6 +557,36 @@ pub(crate) fn drive_test_player(
             ps.weaponstate_primary,
             test.lines
         );
+        if let Ok(fields) = std::env::var("IW4L_TEST_ACTORS") {
+            for actor in &actors {
+                let values: Vec<String> = fields
+                    .split(',')
+                    .map(|name| {
+                        format!(
+                            "{name}={}",
+                            world.0.object_field_text(actor.id, name.trim())
+                        )
+                    })
+                    .collect();
+                diag::info!(
+                    Sim,
+                    "test player: actor {} at {} health {} {}",
+                    actor.id,
+                    fmt_point(actor.origin),
+                    actor.health,
+                    values.join(" ")
+                );
+            }
+        }
+        if let Ok(names) = std::env::var("IW4L_TEST_WAITS") {
+            for name in names.split(',') {
+                diag::info!(
+                    Sim,
+                    "test player: waits on {name}: {:?}",
+                    world.0.waits_on(name.trim())
+                );
+            }
+        }
         if let Ok(keys) = std::env::var("IW4L_TEST_VARS") {
             let vars: Vec<String> = keys
                 .split(',')

@@ -144,8 +144,9 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`), gibs and ragdoll are missing.
 - [ ] Zombies path to the player and get through barriers.
   - [x] On Nuketown zombies path to the player and reach melee range.
-  - [ ] On TranZit round 1 stalls: the last zombies never reach the player.
-  - [ ] Boards torn off and rebuilt not verified; doors and debris do not cut zombie paths.
+  - [x] Doors, debris and the map's other dynamic-path models (spawnflag 1) cut the zombies' paths while closed, as Black Ops 2 does (TranZit: 74 entities, 523 links; the depot's glass doors no longer draw zombies that cannot pass).
+  - [ ] On TranZit round 1 still ends on the first two zombies: their `zombie_think` ends before `risen`, with no fault seen.
+  - [ ] Boards torn off and rebuilt not verified.
 - [ ] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
   - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
@@ -163,7 +164,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] Fire Sale's boxes (every location, 10 points) not shown; the Fire Sale power-up itself sets `zombie_powerup_fire_sale_on`.
 - [x] Doors and debris.
   - [x] Doors open for points on Nuketown, TranZit and Buried, debris clears on Nuketown and Buried, by the game's scripts through Black Ops 2's use rule (Buried: three doors and two debris piles in one run).
-  - [ ] Doors and debris do not yet cut the zombies' paths while closed (see the pathing milestone).
+  - [x] Closed doors and debris cut the zombies' paths until they open (Black Ops 2's dynamic paths).
 - [x] Power and perks.
   - [x] Quick Revive sells on TranZit (solo: 500 points, the bottle is drunk) through Black Ops 2's use rule.
   - [x] Buried's power switch turns the power on (`power_on`, the perk machines' power notifies) and Double Tap sells after it (2000 points; the perk is given).

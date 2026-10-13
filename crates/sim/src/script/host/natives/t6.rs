@@ -20,6 +20,7 @@ mod entity;
 mod laststand;
 mod movement;
 mod mover;
+mod paths;
 mod player;
 mod radius;
 mod rumble;
@@ -1392,23 +1393,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let actors = living_actors(world, mask, |own| species == 4 || own == species);
         new_array(world, actors)
     });
-    // Path changes wait for Black Ops 2's path finding (`docs/fidelity/t6.md`).
-    registry.register(Method, "disconnectpaths", |world, receiver, _| {
-        let id = super::engine::entity_id(world, receiver)?;
-        world
-            .get_resource_or_insert_with(EntityFlags::default)
-            .disconnects_paths
-            .insert(id);
-        Ok(Value::Undefined)
-    });
-    registry.register(Method, "connectpaths", |world, receiver, _| {
-        let id = super::engine::entity_id(world, receiver)?;
-        world
-            .get_resource_or_insert_with(EntityFlags::default)
-            .disconnects_paths
-            .remove(&id);
-        Ok(Value::Undefined)
-    });
     registry.register(Method, "useweaponhidetags", |world, receiver, args| {
         let name = string(args, 0)?;
         if weapon::weapon_index(world, &name)? == 0 {
@@ -1977,6 +1961,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     laststand::register(registry);
     registry.on_use(usable::use_presses);
     mover::register(registry);
+    paths::register(registry);
     rumble::register(registry);
     player::register(registry);
     radius::register(registry);
@@ -2549,7 +2534,6 @@ struct EntityFlags {
     low_priority_hint: BTreeMap<u64, bool>,
     ignore_team: std::collections::BTreeSet<u64>,
     trigger_team: BTreeMap<u64, usize>,
-    disconnects_paths: std::collections::BTreeSet<u64>,
     weapon_hide_tags: BTreeMap<u64, String>,
     /// The weapon options `useweaponmodel` gave an entity.
     weapon_options: BTreeMap<u64, i32>,

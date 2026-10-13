@@ -10,6 +10,8 @@ use bevy_ecs::prelude::World;
 /// carries its body.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ActorSighting {
+    /// The actor's script object.
+    pub id: u64,
     pub origin: [f32; 3],
     pub health: i32,
     pub body: Option<crate::ScriptModelId>,
@@ -57,6 +59,7 @@ pub(crate) fn living_actors(world: &World) -> Vec<ActorSighting> {
                 return None;
             };
             (health > 0).then_some(ActorSighting {
+                id,
                 origin,
                 health,
                 body: entity.presence,
@@ -270,6 +273,43 @@ pub(crate) fn level_array_entry(world: &World, array: &str, key: &str) -> Option
         Value::String(text) => text.to_string(),
         other => format!("{other:?}"),
     })
+}
+
+/// A script object's field as text (`-` when undefined), for a test
+/// player's log.
+pub(crate) fn object_field_text(world: &World, id: u64, name: &str) -> String {
+    let Some(runtime) = world.get_resource::<RoundScript>() else {
+        return "-".to_owned();
+    };
+    match field(runtime, id, name) {
+        None | Some(Value::Undefined) => "-".to_owned(),
+        Some(Value::Int(n)) => n.to_string(),
+        Some(Value::Float(f)) => format!("{f:.1}"),
+        Some(Value::String(text)) => text.to_string(),
+        Some(Value::Vector(v)) => format!("({:.0} {:.0} {:.0})", v[0], v[1], v[2]),
+        Some(Value::Object(object)) => format!("object {object}"),
+        Some(other) => format!("{other:?}"),
+    }
+}
+
+/// The receivers of the waits pending on a notify name, for a test
+/// player's log.
+pub(crate) fn waits_on(world: &World, name: &str) -> Vec<String> {
+    let Some(runtime) = world.get_resource::<RoundScript>() else {
+        return Vec::new();
+    };
+    runtime
+        .waiters
+        .iter()
+        .filter(|w| &*w.name == name)
+        .map(|w| match &w.receiver {
+            Value::Object(id) => runtime.entities.get(id).map_or_else(
+                || format!("object {id}"),
+                |entity| format!("{} {id}", entity.classname),
+            ),
+            other => format!("{other:?}"),
+        })
+        .collect()
 }
 
 /// Whether a level flag is set (`level.flag[name]`, as `flag_set` keeps it).
