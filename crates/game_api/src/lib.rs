@@ -322,6 +322,11 @@ pub trait MenuLayout: Sync {
     fn text_paint_scale(&self, text_scale: f32, menu_scale: f32) -> f32;
     /// A rect `[x, y, w, h]` while its menu is scaled by `menu_scale`.
     fn window_rect(&self, rect: [f32; 4], menu_scale: f32) -> [f32; 4];
+    /// The safe area fraction `ScrPlace` uses for the viewable area (`left`,
+    /// `right`, `top`, `bottom`, `center_safearea`).
+    fn safe_area(&self) -> f32 {
+        0.85
+    }
 }
 
 /// A mode the game library offers beside multiplayer, with the maps it runs on.

@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use hud_iw4::{AppliedRect, ScreenPlacement};
+use hud_iw4::{AppliedRect, SAFE_AREA_ADJUSTED_DEFAULT, SAFE_AREA_DEFAULT, ScreenPlacement};
 
 const SQUARE_PIXELS: f32 = 1.0;
 
@@ -18,8 +18,25 @@ impl Default for Hud2dSurface {
 
 impl Hud2dSurface {
     pub fn new(width: f32, height: f32) -> Self {
-        let place =
-            ScreenPlacement::setup_fullscreen(width.max(1.0), height.max(1.0), SQUARE_PIXELS);
+        Self::with_safe_area(width, height, SAFE_AREA_DEFAULT)
+    }
+
+    pub fn with_safe_area(width: f32, height: f32, safe_area: f32) -> Self {
+        let w = width.max(1.0);
+        let h = height.max(1.0);
+        let place = ScreenPlacement::setup(
+            0.0,
+            0.0,
+            w,
+            h,
+            w,
+            h,
+            safe_area,
+            safe_area,
+            SAFE_AREA_ADJUSTED_DEFAULT,
+            SAFE_AREA_ADJUSTED_DEFAULT,
+            SQUARE_PIXELS,
+        );
         Self {
             width,
             height,
@@ -66,11 +83,18 @@ impl Hud2dSurface {
 
 pub(crate) fn update_hud_surface(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    hud_menus: Option<Res<asset_game::SessionHudMenus>>,
     mut surface: ResMut<Hud2dSurface>,
 ) {
+    let safe_area = crate::chrome::ChromeAssets {
+        catalog: hud_menus.as_ref().and_then(|m| m.0.as_deref()),
+        localize: None,
+    }
+    .layout()
+    .map_or(SAFE_AREA_DEFAULT, |layout| layout.safe_area());
     let next = match windows.single() {
-        Ok(window) => Hud2dSurface::new(window.width(), window.height()),
-        Err(_) => Hud2dSurface::new(0.0, 0.0),
+        Ok(window) => Hud2dSurface::with_safe_area(window.width(), window.height(), safe_area),
+        Err(_) => Hud2dSurface::with_safe_area(0.0, 0.0, safe_area),
     };
     *surface = next;
 }

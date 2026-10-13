@@ -636,15 +636,12 @@ pub(crate) fn push_owner_text(
     Ok(())
 }
 
-/// An owner draw's text at the place `place` gives from the text's measured
-/// width and line height, in the item's font, scale and alignment.
-pub(crate) fn push_owner_text_at(
-    args: &OwnerDrawArgs<'_>,
+/// Measures `text` in the owner draw item's font and scale, returning
+/// `(font_name, font, width, height)`.
+pub(crate) fn measure_owner_text<'a>(
+    args: &OwnerDrawArgs<'a>,
     text: &str,
-    color: [f32; 4],
-    place: impl FnOnce(f32, f32) -> (f32, f32),
-    frame: &mut ChromeFrame,
-) -> Result<(), ChromeGapKind> {
+) -> Result<(&'static str, &'a FontDef, f32, f32), ChromeGapKind> {
     let font_name = args
         .assets
         .font_name(
@@ -659,6 +656,19 @@ pub(crate) fn push_owner_text_at(
     let layout = args.assets.layout().ok_or(ChromeGapKind::Layout)?;
     let width = layout_text_width(layout, font, text, args.item.text_scale);
     let height = layout.text_height(font.pixel_height, args.item.text_scale);
+    Ok((font_name, font, width, height))
+}
+
+/// An owner draw's text at the place `place` gives from the text's measured
+/// width and line height, in the item's font, scale and alignment.
+pub(crate) fn push_owner_text_at(
+    args: &OwnerDrawArgs<'_>,
+    text: &str,
+    color: [f32; 4],
+    place: impl FnOnce(f32, f32) -> (f32, f32),
+    frame: &mut ChromeFrame,
+) -> Result<(), ChromeGapKind> {
+    let (font_name, font, width, height) = measure_owner_text(args, text)?;
     let (x, y) = place(width, height);
     push_owner_text_run(args, font_name, font, text, color, x, y, frame);
     Ok(())
@@ -674,26 +684,14 @@ pub(crate) fn push_owner_text_right_of_rect(
     if text.is_empty() {
         return Ok(());
     }
-    let font_name = args
-        .assets
-        .font_name(
-            args.item.font_enum,
-            args.surface.scale_virtual_to_real()[1],
-            args.item.text_scale,
-        )
-        .ok_or(ChromeGapKind::AssetFont)?;
-    let Some(font) = args.assets.catalog.and_then(|c| c.font(font_name)) else {
-        return Err(ChromeGapKind::AssetFont);
-    };
-    let layout = args.assets.layout().ok_or(ChromeGapKind::Layout)?;
-    let width = layout_text_width(layout, font, text, args.item.text_scale).trunc();
-    let x = args.rect.x + args.rect.w - width - right_inset;
+    let (font_name, font, width, _) = measure_owner_text(args, text)?;
+    let x = args.rect.x + args.rect.w - width.trunc() - right_inset;
     push_owner_text_run(args, font_name, font, text, color, x, args.rect.y, frame);
     Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
-fn push_owner_text_run(
+pub(crate) fn push_owner_text_run(
     args: &OwnerDrawArgs<'_>,
     font_name: &str,
     font: &FontDef,

@@ -1062,8 +1062,10 @@ pub(crate) fn phase_use_items(
                 .is_some_and(|facts| facts.dual_wield)
                 || gsc_give_weapon_is_akimbo(world.weapon_script_name(item.weapon))
         });
+        let hint_base =
+            crate::game_move::rules(world).map_or(4, |m| m.cursor_hints().len() as i32 - 1);
         if let Some(ps) = world.player_mut(id) {
-            ps.cursor_hint = selected.map_or(0, |item| item.weapon as i32 + 4);
+            ps.cursor_hint = selected.map_or(0, |item| item.weapon as i32 + hint_base);
             ps.cursor_hint_ent_index = selected.map_or(ENTITYNUM_NONE, |item| item.number);
             ps.cursor_hint_string = -1;
             ps.cursor_hint_dual_wield = i32::from(dual);

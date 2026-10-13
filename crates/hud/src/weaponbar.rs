@@ -773,29 +773,18 @@ pub(crate) fn update_weaponbar(
             .hint_latch
             .update(ps, ms)
             .and_then(|(kind, string, alpha)| {
-                // No-icon hints draw their text alone; the others draw an icon.
-                if kind != 1 {
-                    return Some(crate::t5_hud::T5Hint { text: None, alpha });
-                }
-                if string < 0 {
-                    return None;
-                }
-                let strings = strings.as_ref()?;
-                let bind = client_input
-                    .input
-                    .as_deref()
-                    .and_then(|input| input.use_key.as_deref())
-                    .or_else(|| strings.0.text("KEY_USE"))?;
-                match crate::use_hint::hint_string_text(&snap.meta, strings, bind, string) {
-                    Ok((text, _)) => Some(crate::t5_hud::T5Hint {
-                        text: Some(text),
-                        alpha,
-                    }),
-                    Err(reason) => {
-                        gaps.raise(GapCause::CursorHintMissing { reason });
-                        None
-                    }
-                }
+                crate::t5_hud::resolve_hint(
+                    kind,
+                    string,
+                    alpha,
+                    ps,
+                    &snap.meta,
+                    strings.as_deref(),
+                    client_input.input.as_deref(),
+                    weapons.as_ref(),
+                    t5.namespace.unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+                    &mut gaps,
+                )
             });
         let state = crate::t5_hud::T5HudState {
             ms,

@@ -54,8 +54,13 @@ pub(crate) struct T5HudState<'a> {
 /// `cg_hintFadeTime` (100 ms) once it is gone.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct T5Hint {
-    /// The hint's text, or `None` for a hint drawn with an icon.
+    pub kind: i32,
     pub text: Option<String>,
+    /// A weapon hint's display name (`cg_weaponHintsCoD1Style` 1), drawn
+    /// beside the prompt and above the icon.
+    pub weapon_name: Option<String>,
+    /// `(namespace, material, scale_x, scale_y, offset_x_frac, dual_wield)`.
+    pub icon: Option<(asset_core::AssetNamespace, String, f32, f32, f32, bool)>,
     pub alpha: f32,
 }
 
@@ -273,27 +278,33 @@ fn background_key(raw: &str) -> Option<(asset_core::AssetNamespace, String)> {
     (key.kind == asset_core::AssetKind::Material).then(|| (key.namespace, key.name))
 }
 
-/// A material stretched over the owner draw's rect; negative sizes mirror it.
-fn push_pic(
+/// A material stretched over `(x, y, w, h)` in the owner draw's alignment;
+/// negative sizes mirror it.
+#[allow(clippy::too_many_arguments)]
+fn push_pic_at(
     args: &OwnerDrawArgs<'_>,
     namespace: asset_core::AssetNamespace,
     material: String,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: [f32; 4],
     frame: &mut ChromeFrame,
 ) {
-    let rect = args.rect;
-    if rect.w.abs() <= f32::EPSILON || rect.h.abs() <= f32::EPSILON {
+    if w.abs() <= f32::EPSILON || h.abs() <= f32::EPSILON {
         return;
     }
     let applied = args.surface.apply_rect(
-        rect.x,
-        rect.y,
-        rect.w.abs(),
-        rect.h.abs(),
-        rect.horz_align as i32,
-        rect.vert_align as i32,
+        x,
+        y,
+        w.abs(),
+        h.abs(),
+        args.rect.horz_align as i32,
+        args.rect.vert_align as i32,
     );
-    let (s0, s1) = if rect.w < 0.0 { (1.0, 0.0) } else { (0.0, 1.0) };
-    let (t0, t1) = if rect.h < 0.0 { (1.0, 0.0) } else { (0.0, 1.0) };
+    let (s0, s1) = if w < 0.0 { (1.0, 0.0) } else { (0.0, 1.0) };
+    let (t0, t1) = if h < 0.0 { (1.0, 0.0) } else { (0.0, 1.0) };
     frame.list.cmds.push(Draw2dCmd {
         material_namespace: namespace,
         x: applied.x,
@@ -304,12 +315,24 @@ fn push_pic(
         t0,
         s1,
         t1,
-        color: args.color,
+        color,
         material,
         op: Draw2dOp::StretchPic,
         provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
         layer: 1,
     });
+}
+
+fn push_pic(
+    args: &OwnerDrawArgs<'_>,
+    namespace: asset_core::AssetNamespace,
+    material: String,
+    frame: &mut ChromeFrame,
+) {
+    let rect = args.rect;
+    push_pic_at(
+        args, namespace, material, rect.x, rect.y, rect.w, rect.h, args.color, frame,
+    );
 }
 
 fn text(args: &OwnerDrawArgs<'_>, value: &str, frame: &mut ChromeFrame) -> OwnerDrawPaint {
@@ -319,27 +342,318 @@ fn text(args: &OwnerDrawArgs<'_>, value: &str, frame: &mut ChromeFrame) -> Owner
     }
 }
 
-/// A text-only cursor hint, as Black Ops draws it: centred on the item's
-/// horizontal anchor, half a line below its top, in white at the fade alpha.
-fn cursor_hint_text(
-    args: &OwnerDrawArgs<'_>,
-    text: &str,
+/// Resolves a latched cursor hint (`kind`, `string`, `alpha`) into what
+/// `CG_DrawCursorhint` draws.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn resolve_hint(
+    kind: i32,
+    string: i32,
     alpha: f32,
+    ps: &PlayerState,
+    meta: &sim::SnapshotMeta,
+    strings: Option<&assets::PreparedLocalizedStrings>,
+    input: Option<&frame::HudInputView>,
+    weapons: Option<&BoundWeapons<'_>>,
+    namespace: asset_core::AssetNamespace,
+    gaps: &mut crate::gaps::HudPresentationGaps,
+) -> Option<T5Hint> {
+    if kind <= 0 || kind == 6 {
+        return None;
+    }
+    let bind = input
+        .and_then(|i| i.use_key.as_deref())
+        .or_else(|| strings.and_then(|s| s.0.text("KEY_USE")))
+        .unwrap_or("KEY_USE");
+    let mut hint_text = |idx: i32| -> Option<String> {
+        if idx < 0 {
+            return None;
+        }
+        let strings = strings?;
+        match crate::use_hint::hint_string_text(meta, strings, bind, idx) {
+            Ok((text, _)) => Some(text),
+            Err(reason) => {
+                gaps.raise(crate::gaps::GapCause::CursorHintMissing { reason });
+                None
+            }
+        }
+    };
+    match kind {
+        1 | 2 => Some(T5Hint {
+            kind,
+            text: Some(hint_text(string)?),
+            weapon_name: None,
+            icon: None,
+            alpha,
+        }),
+        3..=5 | 7 => {
+            let material = match kind {
+                3 => "hint_usable",
+                4 => "hint_health",
+                5 => "hint_friendly",
+                _ => "zom_icon_community_pot",
+            };
+            let text = if string >= 0 {
+                hint_text(string)
+            } else if kind == 4 {
+                strings
+                    .and_then(|s| s.0.text("PLATFORM_PICKUPHEALTH"))
+                    .map(|t| t.replace("&&1", bind))
+            } else {
+                None
+            };
+            let scale = if kind == 7 { 0.6 } else { 1.0 };
+            Some(T5Hint {
+                kind,
+                text,
+                weapon_name: None,
+                icon: Some((namespace, material.to_owned(), scale, scale, 0.0, false)),
+                alpha,
+            })
+        }
+        8..=135 => {
+            let weapon = (kind - 7) as u32;
+            let weapons = weapons?;
+            let registry = weapons.registry();
+            let (icon_ns, image, ratio) = match (
+                registry.pickup_icon_of(weapon),
+                registry.hud_icon_namespace_of(weapon),
+            ) {
+                (Some((image, ratio)), Some(ns)) => (ns, image.to_owned(), ratio),
+                _ => (namespace, String::from("hint_usable"), 0),
+            };
+            let (scale_x, scale_y, offset_x) = if ratio != 0 {
+                (2.0, if ratio != 1 { 0.5 } else { 1.0 }, -0.5)
+            } else {
+                (1.0, 1.0, 0.0)
+            };
+            let weapon_name = registry
+                .display_name_key_of(weapon)
+                .and_then(|key| {
+                    let strings = strings?;
+                    registry
+                        .identity_namespace_of(weapon)
+                        .map_or_else(|| strings.0.text(key), |ns| strings.0.text_in(ns, key))
+                })
+                .map(str::to_owned);
+            let text = if string >= 0 {
+                hint_text(string)
+            } else {
+                let primary_count = ps
+                    .weapons
+                    .iter()
+                    .filter(|&&w| {
+                        w > 0
+                            && weapons
+                                .row(w as u32)
+                                .and_then(|w| w.hud_facts())
+                                .is_some_and(|f| f.is_primary())
+                    })
+                    .count();
+                let offhand = weapons
+                    .row(weapon)
+                    .and_then(|w| w.hud_facts())
+                    .map_or(0, |f| f.offhand_class);
+                let (key, key_bind) = if offhand == 1 {
+                    (
+                        "PLATFORM_THROWBACKGRENADE",
+                        input
+                            .and_then(|i| i.binding_keys.get("+frag").map(String::as_str))
+                            .unwrap_or(bind),
+                    )
+                } else if offhand != 0 || primary_count < 2 {
+                    ("PLATFORM_PICKUPNEWWEAPON", bind)
+                } else {
+                    ("PLATFORM_SWAPWEAPONS", bind)
+                };
+                strings
+                    .and_then(|s| s.0.text(key))
+                    .map(|t| t.replace("&&1", key_bind))
+            };
+            Some(T5Hint {
+                kind,
+                text,
+                weapon_name,
+                icon: Some((
+                    icon_ns,
+                    image,
+                    scale_x,
+                    scale_y,
+                    offset_x,
+                    ps.cursor_hint_dual_wield != 0,
+                )),
+                alpha,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Paints owner draw 72 (`CG_CURSORHINT`) by Black Ops' `CG_DrawCursorhint`
+/// rules (`cg_cursorHints` 4, `cg_weaponHintsCoD1Style` 1).
+fn paint_cursor_hint(
+    args: &OwnerDrawArgs<'_>,
+    hint: &T5Hint,
     frame: &mut ChromeFrame,
 ) -> OwnerDrawPaint {
-    if text.is_empty() {
+    let color = [1.0, 1.0, 1.0, hint.alpha];
+    if matches!(hint.kind, 1 | 2) {
+        let Some(text) = hint.text.as_deref().filter(|t| !t.is_empty()) else {
+            return OwnerDrawPaint::Painted;
+        };
+        return match crate::chrome::push_owner_text_at(
+            args,
+            text,
+            color,
+            |width, height| (width * -0.5, height * 0.5 + args.rect.y),
+            frame,
+        ) {
+            Ok(()) => OwnerDrawPaint::Painted,
+            Err(kind) => OwnerDrawPaint::Gap(kind),
+        };
+    }
+    let Some((namespace, material, scale_x, scale_y, offset_x, dual_wield)) = &hint.icon else {
+        return OwnerDrawPaint::Painted;
+    };
+    if hint.kind == 7
+        && let Some(text) = hint.text.as_deref().filter(|t| !t.is_empty())
+    {
+        let split = text.find(':').map_or(0, |i| i + 1);
+        let prefix = if split > 0 { &text[..split] } else { text };
+        let suffix = text.get(split + 1..).unwrap_or("");
+        let (font_name, font, w1, h) = match crate::chrome::measure_owner_text(args, prefix) {
+            Ok(m) => m,
+            Err(kind) => return OwnerDrawPaint::Gap(kind),
+        };
+        let w2 = match crate::chrome::measure_owner_text(args, suffix) {
+            Ok((_, _, w2, _)) => w2,
+            Err(kind) => return OwnerDrawPaint::Gap(kind),
+        };
+        let icon_w = args.rect.w * 0.6;
+        let icon_h = args.rect.h * 0.6;
+        let x1 = (icon_w + w1 + w2) * -0.5;
+        let icon_y = args.rect.y - args.rect.h * 0.3;
+        let text_y = args.rect.y + h * 0.5;
+        crate::chrome::push_owner_text_run(args, font_name, font, prefix, color, x1, text_y, frame);
+        crate::chrome::push_owner_text_run(
+            args,
+            font_name,
+            font,
+            &format!(" {suffix}"),
+            color,
+            x1 + w1 + icon_w,
+            text_y,
+            frame,
+        );
+        push_pic_at(
+            args,
+            *namespace,
+            material.clone(),
+            x1 + w1,
+            icon_y,
+            icon_w,
+            icon_h,
+            color,
+            frame,
+        );
         return OwnerDrawPaint::Painted;
     }
-    match crate::chrome::push_owner_text_at(
-        args,
-        text,
-        [1.0, 1.0, 1.0, alpha],
-        |width, height| (width * -0.5, height * 0.5 + args.rect.y),
-        frame,
-    ) {
-        Ok(()) => OwnerDrawPaint::Painted,
-        Err(kind) => OwnerDrawPaint::Gap(kind),
+    let icon_w = args.rect.w * scale_x;
+    let icon_h = args.rect.h * scale_y;
+    let Some(text) = hint.text.as_deref().filter(|t| !t.is_empty()) else {
+        let x = args.rect.x - (args.rect.w + args.rect.w * offset_x) * 0.5;
+        push_pic_at(
+            args,
+            *namespace,
+            material.clone(),
+            x,
+            args.rect.y,
+            icon_w,
+            icon_h,
+            color,
+            frame,
+        );
+        return OwnerDrawPaint::Painted;
+    };
+    let (font_name, font, w, h) = match crate::chrome::measure_owner_text(args, text) {
+        Ok(m) => m,
+        Err(kind) => return OwnerDrawPaint::Gap(kind),
+    };
+    let icon_y = args.rect.y - icon_h * 0.5;
+    let text_y = args.rect.y + h * 0.5;
+    if let Some(wname) = hint.weapon_name.as_deref().filter(|s| !s.is_empty()) {
+        let w_name = match crate::chrome::measure_owner_text(args, wname) {
+            Ok((_, _, wn, _)) => wn,
+            Err(kind) => return OwnerDrawPaint::Gap(kind),
+        };
+        let text_x = (w + w_name) * -0.5;
+        crate::chrome::push_owner_text_run(
+            args, font_name, font, text, color, text_x, text_y, frame,
+        );
+        crate::chrome::push_owner_text_run(
+            args,
+            font_name,
+            font,
+            &format!(" {wname}"),
+            color,
+            text_x + w,
+            text_y,
+            frame,
+        );
+        let pic_x = icon_w * -0.5;
+        let pic_y = icon_y + h * 2.0;
+        if !dual_wield {
+            push_pic_at(
+                args,
+                *namespace,
+                material.clone(),
+                pic_x,
+                pic_y,
+                icon_w,
+                icon_h,
+                color,
+                frame,
+            );
+        } else {
+            let half = icon_w * 0.5;
+            push_pic_at(
+                args,
+                *namespace,
+                material.clone(),
+                pic_x - half,
+                pic_y,
+                icon_w,
+                icon_h,
+                color,
+                frame,
+            );
+            push_pic_at(
+                args,
+                *namespace,
+                material.clone(),
+                pic_x + half,
+                pic_y,
+                -icon_w,
+                icon_h,
+                color,
+                frame,
+            );
+        }
+        return OwnerDrawPaint::Painted;
     }
+    let text_x = (icon_w + w) * -0.5;
+    crate::chrome::push_owner_text_run(args, font_name, font, text, color, text_x, text_y, frame);
+    push_pic_at(
+        args,
+        *namespace,
+        material.clone(),
+        text_x + w,
+        icon_y,
+        icon_w,
+        icon_h,
+        color,
+        frame,
+    );
+    OwnerDrawPaint::Painted
 }
 
 fn paint_owner(
@@ -421,19 +735,34 @@ fn paint_owner(
         }
         CG_CURSORHINT => match state.hint.as_ref() {
             None => OwnerDrawPaint::Painted,
-            Some(T5Hint { text: None, .. }) => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
-            Some(T5Hint {
-                text: Some(text),
-                alpha,
-            }) => cursor_hint_text(&args, text, *alpha, frame),
+            Some(hint) => paint_cursor_hint(&args, hint, frame),
         },
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         _ => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
     }
 }
 
-/// Every menu of Black Ops' HUD lists, in list order, through the menu
-/// engine. Returns the draw list and the first failure per menu.
+/// Black Ops' `Menus_Add` hash (`h = 0x1505; h = tolower(c) + h * 33`; `0`
+/// for an empty name), which orders loaded menus in the UI context.
+fn menu_hash(name: &str) -> u32 {
+    if name.is_empty() {
+        return 0;
+    }
+    name.bytes().fold(0x1505_u32, |hash, byte| {
+        let lower = i32::from(byte.to_ascii_lowercase() as i8) as u32;
+        lower.wrapping_add(hash.wrapping_mul(33))
+    })
+}
+
+fn dvar_truthy(state: &T5HudState<'_>, name: &str) -> bool {
+    state
+        .dvar(name)
+        .is_some_and(|v| !matches!(v.trim(), "" | "0"))
+}
+
+/// Every menu of Black Ops' HUD lists (`CG_LoadHudMenus`), kept sorted by
+/// `Menus_Add`'s name hash and painted in that order (`Menus_PaintAll`).
+/// Returns the draw list and the first failure per menu.
 pub(crate) fn paint(
     catalog: &MenuCatalog,
     localize: Option<&LocalizeCatalog>,
@@ -444,18 +773,44 @@ pub(crate) fn paint(
     let host = T5HudHost { state };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
-    let mut drawn = std::collections::BTreeSet::new();
-    for menu in T5_HUD_MENU_LISTS
+    let mut lists: Vec<String> = T5_HUD_MENU_LISTS
         .iter()
-        .filter_map(|name| catalog.list_menus.get(*name))
+        .map(|&name| name.to_owned())
+        .collect();
+    if dvar_truthy(state, "onlinegame") || dvar_truthy(state, "systemlink") {
+        lists.push(String::from("ui/hud_coop.txt"));
+    }
+    if let Some(map) = state.dvars.string("mapname").filter(|m| !m.is_empty()) {
+        lists.push(format!("ui/hud_{map}.txt"));
+    }
+    if state
+        .dvar("ui_gametype")
+        .is_some_and(|g| g.trim().eq_ignore_ascii_case("vs"))
+    {
+        lists.push(String::from("ui/hud_vs.txt"));
+    }
+    let mut sorted: Vec<(u32, &asset_game::MenuDef)> = Vec::new();
+    for name in lists
+        .iter()
+        .filter_map(|name| catalog.list_menus.get(name.as_str()))
         .flatten()
     {
-        if !drawn.insert(menu.to_ascii_lowercase()) {
-            continue;
-        }
-        let Some(menu) = catalog.get(menu) else {
+        let Some(menu) = catalog.get(name) else {
             continue;
         };
+        if sorted
+            .iter()
+            .any(|(_, existing)| std::ptr::eq(*existing, menu))
+        {
+            continue;
+        }
+        let hash = menu_hash(&menu.name);
+        let Err(idx) = sorted.binary_search_by_key(&hash, |(h, _)| *h) else {
+            continue;
+        };
+        sorted.insert(idx, (hash, menu));
+    }
+    for (_, menu) in sorted {
         let mut hook =
             |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| paint_owner(state, args, frame);
         let frame = execute_chrome_menu_ex(

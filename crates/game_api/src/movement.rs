@@ -349,6 +349,19 @@ pub trait PlayerMovement: Sync {
     /// downed player.
     fn set_being_revived(&self, _player: &mut MovePlayer, _being_revived: bool) {}
 
+    /// The cursor hint names `setcursorhint` accepts, in their `ps.cursorHint`
+    /// order starting at `0` (`HINT_NONE`); weapon hints start right after the
+    /// last entry.
+    fn cursor_hints(&self) -> &'static [&'static str] {
+        &[
+            "HINT_NONE",
+            "HINT_NOICON",
+            "HINT_ACTIVATE",
+            "HINT_HEALTH",
+            "HINT_FRIENDLY",
+        ]
+    }
+
     /// Sets or clears a perk; false when the game has no perk of that name.
     fn set_perk(&self, player: &mut MovePlayer, perk: &str, on: bool) -> bool;
 

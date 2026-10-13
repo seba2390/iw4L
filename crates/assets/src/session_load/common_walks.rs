@@ -1463,7 +1463,7 @@ fn zombie_hud_images(
             let name = material.name.as_str().to_ascii_lowercase();
             // Scripts build some names (`"hud_chalk_" + round`), so HUD-named
             // materials count even when no literal names them.
-            let hud_named = ["hud_", "specialty_", "zom_"]
+            let hud_named = ["hud_", "specialty_", "zom_", "hint_", "scorebar_zom"]
                 .iter()
                 .any(|prefix| name.starts_with(prefix));
             if !material.name.is_real()
