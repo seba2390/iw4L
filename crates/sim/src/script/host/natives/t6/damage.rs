@@ -35,7 +35,7 @@ pub(super) const HIT_LOCATIONS: [&str; 21] = [
     "gun",
     "riotshield",
 ];
-const RIOTSHIELD: usize = 20;
+pub(super) const RIOTSHIELD: usize = 20;
 /// `dodamage`'s hit location when it names none.
 const DEFAULT_HIT_LOCATION: usize = 2;
 /// The game's means of death, by its numbers.

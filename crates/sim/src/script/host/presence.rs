@@ -354,6 +354,17 @@ pub(crate) type TagPose = ([f32; 3], [[f32; 3]; 3]);
 /// A tag's pose on an entity's posed model: none when the entity has no
 /// posed model, `Some(None)` when the model lacks the tag.
 pub(crate) fn tag_pose(world: &mut World, object: u64, tag: &str) -> Option<Option<TagPose>> {
+    tag_pose_controlled(world, object, tag, &[])
+}
+
+/// [`tag_pose`] with control angles (degrees) set on the named bones the
+/// model has.
+pub(crate) fn tag_pose_controlled(
+    world: &mut World,
+    object: u64,
+    tag: &str,
+    controls: &[(&str, [f32; 3])],
+) -> Option<Option<TagPose>> {
     let presence = world
         .resource::<RoundScript>()
         .entities
@@ -367,7 +378,12 @@ pub(crate) fn tag_pose(world: &mut World, object: u64, tag: &str) -> Option<Opti
         .dobj
         .as_ref()?;
     let axis = |v: glam::Vec4| v.truncate().normalize_or_zero().to_array();
-    Some(dobj.tag_world_matrix(tag).map(|matrix| {
+    let matrix = if controls.is_empty() {
+        dobj.tag_world_matrix(tag)
+    } else {
+        dobj.tag_world_matrix_controlled(tag, controls)
+    };
+    Some(matrix.map(|matrix| {
         (
             matrix.w_axis.truncate().to_array(),
             [
@@ -377,6 +393,28 @@ pub(crate) fn tag_pose(world: &mut World, object: u64, tag: &str) -> Option<Opti
             ],
         )
     }))
+}
+
+/// Which of the named tags an entity's posed model has; none when it has
+/// no posed model.
+pub(crate) fn tags_present<const N: usize>(
+    world: &mut World,
+    object: u64,
+    tags: [&str; N],
+) -> Option<[bool; N]> {
+    let presence = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&object)?
+        .presence?;
+    let frame = settled(world);
+    let dobj = frame
+        .entity_collision_capabilities()
+        .iter()
+        .find(|row| row.owner.script_model() == Some(presence))?
+        .dobj
+        .as_ref()?;
+    Some(tags.map(|tag| dobj.has_tag(tag)))
 }
 
 pub(crate) fn tag_offset(world: &mut World, object: u64, tag: &str) -> Option<[f32; 3]> {

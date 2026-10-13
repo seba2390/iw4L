@@ -31,7 +31,7 @@ const DEFAULT_WEAPON: &str = "defaultweapon_mp";
 /// The hit locations of IW4L's player collision, by its numbers, which are
 /// Modern Warfare 2's; each is taken as Black Ops 2's of the same name, its
 /// shield as the riot shield (`t6.player.hit_locations`).
-const HIT_LOCATIONS: [&str; 20] = [
+pub(super) const HIT_LOCATIONS: [&str; 20] = [
     "none",
     "helmet",
     "head",
@@ -131,7 +131,7 @@ fn traced(outcome: TraceOutcome) -> (f32, Option<ColliderId>) {
 }
 
 /// An actor's eye (`t6.actors.sight`), a player's view, else the origin.
-fn eye(world: &mut World, value: &Value) -> Result<[f32; 3], String> {
+pub(super) fn eye(world: &mut World, value: &Value) -> Result<[f32; 3], String> {
     let id = entity_id(world, value)?;
     if let Some(client) = world.resource::<RoundScript>().player_client(id) {
         let frame = FrameWorld::from_world(world);
