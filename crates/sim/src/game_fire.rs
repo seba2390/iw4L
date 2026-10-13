@@ -62,11 +62,27 @@ impl<'w, 'a> MatchFireWorld<'w, 'a> {
         self.world.player(id).is_some().then_some(id)
     }
 
-    /// The script object an entity number stands for: a player's, or a
-    /// script entity's (a missile's once scripts adopted it).
+    /// The script object an entity number stands for: a player's, a hit script
+    /// model's, or a live missile's once scripts adopted it.
     fn object_of(&mut self, entity: i32) -> Option<u64> {
         if let Some(client) = self.client(entity) {
             return crate::script::player_object_id(self.world.ecs(), client.0);
+        }
+        if let Some(id) = self.model(entity) {
+            return self
+                .world
+                .ecs_ref()
+                .get_resource::<crate::script::RoundScript>()?
+                .presented_by(id);
+        }
+        if let Some(projectile) = self.world.projectile_by_number(entity)
+            && let Some(object) = self
+                .world
+                .ecs_ref()
+                .get_resource::<crate::script::RoundScript>()
+                .and_then(|runtime| runtime.missiles.get(&projectile.id).copied())
+        {
+            return Some(object);
         }
         crate::script::object_by_number(self.world.ecs(), entity)
     }
@@ -565,8 +581,13 @@ impl FireWorld for MatchFireWorld<'_, '_> {
     }
 
     fn spawn_missile(&mut self, mut missile: GameMissile) -> Option<i32> {
-        let owner = self.client(missile.owner)?;
-        let owner_life = self.world.client_meta(owner)?.life_sequence;
+        let owner = self.client(missile.owner).unwrap_or(ClientId(0));
+        let owner_life = self
+            .world
+            .client_meta(owner)
+            .map_or(crate::identities::LifeSequence(0), |meta| {
+                meta.life_sequence
+            });
         let id = self.world.allocate_projectile_id();
         let entnum = match self
             .world
@@ -661,6 +682,20 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             self.world, self.tick, client, weapon, event, self.shot,
         );
     }
+
+    fn set_entity_pose(&mut self, entity: i32, origin: [f32; 3], angles: [f32; 3]) {
+        let Some(object) = self.object_of(entity) else {
+            return;
+        };
+        if let Some(mut runtime) = self
+            .world
+            .ecs()
+            .get_resource_mut::<crate::script::RoundScript>()
+        {
+            runtime.set_object_field(object, "origin", crate::script::Value::Vector(origin));
+            runtime.set_object_field(object, "angles", crate::script::Value::Vector(angles));
+        }
+    }
 }
 
 /// A script's RadiusDamage by the game's own blast rules; false when the
@@ -707,32 +742,15 @@ pub(crate) fn script_blast(
 #[derive(bevy_ecs::prelude::Resource, Default)]
 pub(crate) struct GameMissiles(std::collections::BTreeMap<i32, GameMissile>);
 
-/// A frame of a missile the game spawned; false when the missile is the
-/// runtime's own.
-pub(crate) fn think_game_missile(world: &mut FrameWorld, tick: Tick, entnum: i32) -> bool {
-    if !crate::game_move::game_weapons(world) {
-        return false;
-    }
-    // Under the game's weapon rules every missile is the game's; one the
-    // match does not run here (a client's copy) flies on its trajectory.
-    let Some(mut missile) = world
-        .ecs()
-        .get_resource::<GameMissiles>()
-        .and_then(|missiles| missiles.0.get(&entnum).copied())
-    else {
-        return true;
-    };
-    let Some(movement) = crate::game_move::rules(world) else {
-        return false;
-    };
-    let owner = u32::try_from(missile.owner).ok().map(ClientId);
-    let (run, gaps) = {
-        let mut around = MatchFireWorld::new(world, tick, owner);
-        movement.run_missile(&mut missile, &mut around)
-    };
-    for gap in gaps {
-        world.report_game_gap(gap);
-    }
+fn missile_rules(world: &FrameWorld) -> Option<game_api::fire::MissileRules> {
+    world.bootstrap_ref().mode?.missiles
+}
+
+pub(crate) fn has_missile_rules(world: &FrameWorld) -> bool {
+    missile_rules(world).is_some()
+}
+
+fn apply_missile_run(world: &mut FrameWorld, entnum: i32, missile: GameMissile, run: MissileRun) {
     match run {
         MissileRun::Flying => {
             if let Some(projectile) = world.projectile_mut_by_number(entnum) {
@@ -762,5 +780,229 @@ pub(crate) fn think_game_missile(world: &mut FrameWorld, tick: Tick, entnum: i32
             let _ = world.despawn_projectile(entnum);
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_game_grenade(
+    world: &mut FrameWorld,
+    owner: ClientId,
+    weapon: u32,
+    tick: Tick,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    launcher: bool,
+    remaining_fuse: Option<i32>,
+    scripted_velocity: Option<[f32; 3]>,
+) -> bool {
+    let Some(rules) = missile_rules(world) else {
+        return false;
+    };
+    let (entnum, gaps) = {
+        let mut around = MatchFireWorld::new(world, tick, Some(owner));
+        match scripted_velocity {
+            Some(vel) => rules.0.spawn_grenade(
+                owner.0 as i32,
+                weapon,
+                origin,
+                vel,
+                remaining_fuse.unwrap_or(crate::equipment::GRENADE_DEFAULT_FUSE_MS),
+                &mut around,
+            ),
+            None => rules.0.launch_grenade(
+                owner.0 as i32,
+                weapon,
+                origin,
+                angles,
+                launcher,
+                remaining_fuse,
+                &mut around,
+            ),
+        }
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    entnum.is_some()
+}
+
+pub(crate) fn spawn_game_grenade(
+    world: &mut FrameWorld,
+    owner: i32,
+    weapon: u32,
+    tick: Tick,
+    origin: [f32; 3],
+    velocity: [f32; 3],
+    fuse_ms: i32,
+) -> Option<crate::ProjectileState> {
+    let rules = missile_rules(world)?;
+    let attacker = u32::try_from(owner).ok().map(ClientId);
+    let (entnum, gaps) = {
+        let mut around = MatchFireWorld::new(world, tick, attacker);
+        rules
+            .0
+            .spawn_grenade(owner, weapon, origin, velocity, fuse_ms, &mut around)
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    world.projectile_by_number(entnum?)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_game_rocket(
+    world: &mut FrameWorld,
+    owner: ClientId,
+    weapon: u32,
+    tick: Tick,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    spread: f32,
+    velocity: [f32; 3],
+) -> Option<crate::ProjectileState> {
+    let rules = missile_rules(world)?;
+    let (entnum, gaps) = {
+        let mut around = MatchFireWorld::new(world, tick, Some(owner));
+        rules.0.launch_rocket(
+            owner.0 as i32,
+            weapon,
+            origin,
+            angles,
+            spread,
+            velocity,
+            &mut around,
+        )
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    world.projectile_by_number(entnum?)
+}
+
+pub(crate) fn detonate_game_missile(
+    world: &mut FrameWorld,
+    tick: Tick,
+    entnum: i32,
+    attacker: Option<i32>,
+) -> bool {
+    let Some(rules) = missile_rules(world) else {
+        return false;
+    };
+    let Some(mut missile) = world
+        .ecs()
+        .get_resource::<GameMissiles>()
+        .and_then(|missiles| missiles.0.get(&entnum).copied())
+    else {
+        return false;
+    };
+    let owner = attacker
+        .or(Some(missile.owner))
+        .and_then(|o| u32::try_from(o).ok())
+        .map(ClientId);
+    let (run, gaps) = {
+        let mut around = MatchFireWorld::new(world, tick, owner);
+        rules.0.detonate(&mut missile, attacker, &mut around)
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    apply_missile_run(world, entnum, missile, run);
+    true
+}
+
+pub(crate) fn make_game_missile_dud(world: &mut FrameWorld, entnum: i32) -> bool {
+    let Some(rules) = missile_rules(world) else {
+        return false;
+    };
+    let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() else {
+        return false;
+    };
+    let Some(missile) = missiles.0.get_mut(&entnum) else {
+        return false;
+    };
+    rules.0.make_dud(missile);
+    true
+}
+
+pub(crate) fn reset_game_missile_detonation_time(
+    world: &mut FrameWorld,
+    tick: Tick,
+    entnum: i32,
+    after_ms: Option<i32>,
+) -> bool {
+    let Some(rules) = missile_rules(world) else {
+        return false;
+    };
+    let Some(mut missile) = world
+        .ecs()
+        .get_resource::<GameMissiles>()
+        .and_then(|missiles| missiles.0.get(&entnum).copied())
+    else {
+        return false;
+    };
+    let owner = u32::try_from(missile.owner).ok().map(ClientId);
+    {
+        let around = MatchFireWorld::new(world, tick, owner);
+        rules
+            .0
+            .reset_detonation_time(&mut missile, after_ms, &around);
+    }
+    if let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() {
+        missiles.0.insert(entnum, missile);
+    }
+    true
+}
+
+pub(crate) fn set_game_missile_owner(world: &mut FrameWorld, entnum: i32, owner: i32) -> bool {
+    let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() else {
+        return false;
+    };
+    let Some(missile) = missiles.0.get_mut(&entnum) else {
+        return false;
+    };
+    missile.owner = owner;
+    true
+}
+
+pub(crate) fn missile_ground_entity(world: &FrameWorld, entnum: i32) -> Option<i32> {
+    let rules = missile_rules(world)?;
+    let missile = world
+        .ecs_ref()
+        .get_resource::<GameMissiles>()?
+        .0
+        .get(&entnum)?;
+    Some(rules.0.ground_entity(missile))
+}
+
+/// A frame of a missile the game spawned; false when the missile is the
+/// runtime's own.
+pub(crate) fn think_game_missile(world: &mut FrameWorld, tick: Tick, entnum: i32) -> bool {
+    let rules = missile_rules(world);
+    if rules.is_none() && !crate::game_move::game_weapons(world) {
+        return false;
+    }
+    // Under the game's weapon or missile rules every missile is the game's;
+    // one the match does not run here (a client's copy) flies on its trajectory.
+    let Some(mut missile) = world
+        .ecs()
+        .get_resource::<GameMissiles>()
+        .and_then(|missiles| missiles.0.get(&entnum).copied())
+    else {
+        return true;
+    };
+    let owner = u32::try_from(missile.owner).ok().map(ClientId);
+    let (run, gaps) = if let Some(rules) = rules {
+        let mut around = MatchFireWorld::new(world, tick, owner);
+        rules.0.run(&mut missile, &mut around)
+    } else {
+        let Some(movement) = crate::game_move::rules(world) else {
+            return false;
+        };
+        let mut around = MatchFireWorld::new(world, tick, owner);
+        movement.run_missile(&mut missile, &mut around)
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    apply_missile_run(world, entnum, missile, run);
     true
 }

@@ -2,7 +2,7 @@ use super::*;
 
 impl WeaponCatalog {
     pub fn capture_t6(&mut self, weapon: fastfile_t6::weapon::WeaponView<'_>) {
-        use fastfile_t6::weapon::variant as v;
+        use fastfile_t6::weapon::{def as d, variant as v};
         let Some(name) = weapon.name().filter(|name| !name.is_empty()) else {
             return;
         };
@@ -21,7 +21,6 @@ impl WeaponCatalog {
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned),
             reticle: {
-                use fastfile_t6::weapon::def as d;
                 let center = weapon
                     .def_loaded_asset_name(d::RETICLE_CENTER)
                     .map(t6_model_name);
@@ -72,7 +71,7 @@ impl WeaponCatalog {
             iw5_fx_overrides: Vec::new(),
             iw5_notetrack_overrides: Vec::new(),
             hud_icon: weapon
-                .def_loaded_asset_name(fastfile_t6::weapon::def::HUD_ICON)
+                .def_loaded_asset_name(d::HUD_ICON)
                 .map(t6_model_name),
             hud_icon_slot: None,
             pickup_icon: None,
@@ -86,7 +85,7 @@ impl WeaponCatalog {
             dpad_icon_atlas: None,
             dpad_icon_ratio: 0,
             kill_icon: weapon
-                .def_loaded_asset_name(fastfile_t6::weapon::def::KILL_ICON)
+                .def_loaded_asset_name(d::KILL_ICON)
                 .map(t6_model_name),
             kill_icon_slot: None,
             kill_icon_image: None,
@@ -143,7 +142,7 @@ impl WeaponCatalog {
             },
             combat_slots: CombatFxSlots::default(),
             facts: capture_t6_body_facts(weapon),
-            game_bytes: None,
+            game_bytes: capture_t6_game_bytes(weapon),
         };
         // A later zone's weapon replaces one of the same name.
         match self
@@ -155,6 +154,28 @@ impl WeaponCatalog {
             None => self.entries.push(entry),
         }
     }
+}
+
+fn capture_t6_game_bytes(w: fastfile_t6::weapon::WeaponView<'_>) -> Option<Arc<GameWeaponBytes>> {
+    use fastfile_t6::weapon::def as d;
+    let (def, variant) = w.raw_bytes()?;
+    Some(Arc::new(GameWeaponBytes {
+        def: def.into(),
+        variant: variant.into(),
+        ammo_name: String::new(),
+        clip_name: String::new(),
+        named_anims: 0,
+        anim_slots: &[],
+        location_damage: w
+            .def_f32_array::<{ d::HIT_LOCATIONS }>(d::LOCATION_DAMAGE_MULTIPLIERS)
+            .map(Box::from),
+        parallel_bounce: w
+            .def_f32_array::<{ d::SURF_TYPE_COUNT }>(d::PARALLEL_BOUNCE)
+            .map(Box::from),
+        perpendicular_bounce: w
+            .def_f32_array::<{ d::SURF_TYPE_COUNT }>(d::PERPENDICULAR_BOUNCE)
+            .map(Box::from),
+    }))
 }
 
 pub(super) fn t6_sz_xanims(
@@ -356,7 +377,11 @@ pub(super) fn capture_t6_body_facts(w: fastfile_t6::weapon::WeaponView<'_>) -> W
         refuses_pickup: !w.def_bool(d::RETRIEVABLE),
         detonate_delay_ms: w.def_i32(d::DETONATE_DELAY),
         detonate_time_ms: w.def_i32(d::DETONATE_TIME),
-        offhand_class: leftover_t5_offhand_class(w.def_i32(d::OFFHAND_CLASS)),
+        offhand_class: match w.def_i32(d::OFFHAND_SLOT) {
+            2 => 2,
+            4 => 3,
+            _ => leftover_t5_offhand_class(w.def_i32(d::OFFHAND_CLASS)),
+        },
         hold_fire_time_ms: w.def_i32(d::HOLD_FIRE_TIME),
         fuse_time_ms: w.def_i32(d::FUSE_TIME),
         cook_off_hold: w.def_bool(d::COOK_OFF_HOLD),

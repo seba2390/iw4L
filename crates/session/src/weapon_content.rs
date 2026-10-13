@@ -144,9 +144,9 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
             dual_wield_weapon: weapon.dual_wield_wire_id(),
             named_anims: bytes.named_anims,
             name: weapons.name_of(id as u32).to_owned(),
-            location_damage: bytes.location_damage.map(|table| table.into()),
-            parallel_bounce: bytes.parallel_bounce.map(|table| table.into()),
-            perpendicular_bounce: bytes.perpendicular_bounce.map(|table| table.into()),
+            location_damage: bytes.location_damage.clone(),
+            parallel_bounce: bytes.parallel_bounce.clone(),
+            perpendicular_bounce: bytes.perpendicular_bounce.clone(),
         }));
     }
     // The game's weapon 0 is its weapon named none.

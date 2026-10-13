@@ -597,7 +597,11 @@ fn entity_hit(
     hit: &super::super::super::entity_damage::EntityHit,
 ) -> bool {
     let target = Value::Object(object);
-    if !is_actor(world, &target) {
+    let is_player = world
+        .resource::<RoundScript>()
+        .player_client(object)
+        .is_some();
+    if !is_player && !is_actor(world, &target) {
         return false;
     }
     let attacker = match hit.attacker {

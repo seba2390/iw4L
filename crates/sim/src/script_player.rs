@@ -613,8 +613,36 @@ pub(crate) fn equip_offhand(world: &mut FrameWorld, id: ClientId, weapon: u32) {
     };
     match class {
         1 | 4 | 5 if ps.offhand_primary == 0 => ps.offhand_primary = class,
-        2 | 3 if ps.offhand_secondary == 0 => ps.offhand_secondary = class,
+        2 | 3 => ps.offhand_secondary = class,
         _ => {}
+    }
+}
+
+/// Forces a player holding a primed offhand grenade to start throwing it
+/// (`forcegrenadethrow`).
+pub(crate) fn force_grenade_throw(world: &mut FrameWorld, id: ClientId) {
+    let Some((weapon, state)) = world.player(id).and_then(|ps| {
+        Some((
+            u32::try_from(ps.off_hand_index).ok()?,
+            WeaponState::from_i32(ps.weaponstate_primary).ok()?,
+        ))
+    }) else {
+        return;
+    };
+    if !matches!(
+        state,
+        WeaponState::OffhandInit | WeaponState::OffhandPrepare | WeaponState::OffhandHold
+    ) {
+        return;
+    }
+    let (fire_time, fire_delay) = world.weapon_combat_row(weapon).map_or((0, 0), |row| {
+        (row.fire_time_ms.max(0), row.fire_delay_ms.max(0))
+    });
+    if let Some(ps) = world.player_mut(id) {
+        ps.weaponstate_primary = WeaponState::OffhandStart as i32;
+        ps.weapon_time = fire_time;
+        ps.weapon_delay = fire_delay;
+        ps.weap_flags |= 2;
     }
 }
 

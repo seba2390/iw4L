@@ -45,6 +45,7 @@ const MODE: ModeRules = ModeRules {
     weapons: Rule::Known(WeaponRules::Simulation),
     bullet_mask: None,
     melee_mask: None,
+    missiles: None,
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,

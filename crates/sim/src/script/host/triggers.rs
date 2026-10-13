@@ -966,6 +966,16 @@ fn toucher(runtime: &mut RoundScript, frame: &FrameWorld, object: u64) -> ([f32;
         Value::Vector(v) => v,
         _ => [0.0; 3],
     };
+    if runtime
+        .entities
+        .get(&object)
+        .is_some_and(|e| e.kind == super::entities::EntityKind::Actor)
+    {
+        return (
+            [origin[0] - 15.0, origin[1] - 15.0, origin[2]],
+            [origin[0] + 15.0, origin[1] + 15.0, origin[2] + 72.0],
+        );
+    }
     (origin, origin)
 }
 
@@ -1054,6 +1064,12 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
                 raised.push((*usable, *player));
             }
         }
+        let actors: Vec<u64> = runtime
+            .entities
+            .iter()
+            .filter(|(_, e)| e.kind == super::entities::EntityKind::Actor)
+            .map(|(id, _)| *id)
+            .collect();
         let triggers: Vec<(u64, Fires)> = runtime
             .entities
             .iter()
@@ -1066,14 +1082,17 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
                 continue;
             };
             let using = matches!(kind, Fires::Use | Fires::UseTouch);
+            let spawnflags = integer(&mut runtime, trigger, "spawnflags");
             let candidates: Vec<(u32, u64)> = match kind {
                 Fires::Use | Fires::UseTouch => pressed.clone(),
-                Fires::Touch | Fires::Once => players
+                Fires::Touch | Fires::Once if spawnflags & 8 == 0 => players
                     .iter()
                     .map(|(client, object, _)| (*client, *object))
                     .collect(),
+                Fires::Touch | Fires::Once => Vec::new(),
             };
             let look_at = using && runtime.require_look_at.contains(&trigger);
+            let mut fired = false;
             for (client, player) in candidates {
                 if !eligible(&runtime, &frame, trigger, client, using) {
                     continue;
@@ -1085,7 +1104,38 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
                 raised.push((trigger, player));
                 if kind == Fires::Once {
                     runtime.fired_once.insert(trigger);
+                    fired = true;
                     break;
+                }
+            }
+            if !fired && matches!(kind, Fires::Touch | Fires::Once) && spawnflags & 7 != 0 {
+                for &actor in &actors {
+                    let alive = matches!(
+                        runtime.object_field(actor, "health"),
+                        Value::Int(n) if n > 0
+                    );
+                    if !alive {
+                        continue;
+                    }
+                    let team = match runtime.object_field(actor, "team") {
+                        Value::String(s) => Some(s),
+                        _ => None,
+                    };
+                    if !super::natives::t6::trigger_allows_team(
+                        frame.ecs_ref(),
+                        trigger,
+                        team.as_deref(),
+                    ) {
+                        continue;
+                    }
+                    let (mins, maxs) = toucher(&mut runtime, &frame, actor);
+                    if volume.touches(mins, maxs) {
+                        raised.push((trigger, actor));
+                        if kind == Fires::Once {
+                            runtime.fired_once.insert(trigger);
+                            break;
+                        }
+                    }
                 }
             }
         }

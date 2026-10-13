@@ -180,17 +180,32 @@ pub mod def {
     pub const PROJECTILE_MODEL: u32 = 1768;
     pub const PROJ_EXPLOSION: u32 = 1772;
     pub const PROJ_EXPLOSION_EFFECT: u32 = 1776;
+    pub const PROJ_EXPLOSION_EFFECT_FORCE_NORMAL_UP: u32 = 1780;
     pub const PROJ_IMPACT_EXPLODE: u32 = 1836;
+    pub const EXPLODE_WHEN_STATIONARY: u32 = 1838;
     pub const STICKINESS: u32 = 1840;
+    pub const ROTATE_TYPE: u32 = 1844;
     pub const PLANTABLE: u32 = 1848;
     pub const HAS_DETONATOR: u32 = 1849;
     pub const TIMED_DETONATION: u32 = 1850;
+    pub const NO_CRUMPLE_MISSILE: u32 = 1851;
+    pub const ROTATE: u32 = 1852;
+    pub const KEEP_ROLLING: u32 = 1853;
     pub const HOLD_BUTTON_TO_THROW: u32 = 1854;
     pub const OFFHAND_HOLD_IS_CANCELABLE: u32 = 1855;
     pub const USE_AS_MELEE: u32 = 1872;
     pub const PARALLEL_BOUNCE: u32 = 1880;
     pub const PERPENDICULAR_BOUNCE: u32 = 1884;
     pub const SURF_TYPE_COUNT: usize = 32;
+    pub const GUIDED_MISSILE_TYPE: u32 = 1904;
+    pub const TIME_TO_ACCELERATE: u32 = 1912;
+    pub const PROJECTILE_CURVATURE: u32 = 1916;
+    pub const AI_FUSE_TIME: u32 = 1360;
+    pub const EXPLODE_ON_GROUND: u32 = 1616;
+    pub const IS_ROLLING_GRENADE: u32 = 1688;
+    pub const IS_VALUABLE: u32 = 1696;
+    pub const DESTABILIZATION_RATE_TIME: u32 = 2288;
+    pub const DESTABILIZE_DISTANCE: u32 = 2296;
     pub const ADS_GUN_KICK_REDUCED_KICK_BULLETS: u32 = 1936;
     pub const ADS_GUN_KICK_REDUCED_KICK_PERCENT: u32 = 1940;
     pub const ADS_GUN_KICK_PITCH_MIN: u32 = 1944;
@@ -795,6 +810,45 @@ impl<'z> WeaponView<'z> {
                 self.def_f32(def::DAMAGE_RANGE + 4 * i as u32),
             )
         })
+    }
+
+    pub fn raw_bytes(&self) -> Option<(&'z [u8], &'z [u8])> {
+        Some((
+            self.def_bytes(0, def::SIZE)?,
+            self.variant.get(..variant::SIZE)?,
+        ))
+    }
+}
+
+/// A Black Ops 2 weapon definition and variant read from their captured bytes.
+#[derive(Clone, Copy, Debug)]
+pub struct WeaponDefView<'a> {
+    def: &'a [u8],
+    variant: &'a [u8],
+}
+
+impl<'a> WeaponDefView<'a> {
+    pub fn new(def: &'a [u8], variant: &'a [u8]) -> Option<Self> {
+        (def.len() >= def::SIZE && variant.len() >= variant::SIZE).then_some(Self { def, variant })
+    }
+
+    pub fn def_i32(&self, off: u32) -> i32 {
+        let o = off as usize;
+        i32::from_le_bytes(self.def[o..o + 4].try_into().unwrap())
+    }
+
+    pub fn def_f32(&self, off: u32) -> f32 {
+        let o = off as usize;
+        f32::from_le_bytes(self.def[o..o + 4].try_into().unwrap())
+    }
+
+    pub fn def_bool(&self, off: u32) -> bool {
+        self.def[off as usize] != 0
+    }
+
+    pub fn variant_i32(&self, off: u32) -> i32 {
+        let o = off as usize;
+        i32::from_le_bytes(self.variant[o..o + 4].try_into().unwrap())
     }
 }
 
