@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 263 of 692 |
-| TranZit (`zm_transit`, Classic) | 304 of 741 |
-| Buried (`zm_buried`, Classic) | 289 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 257 of 692 |
+| TranZit (`zm_transit`, Classic) | 293 of 741 |
+| Buried (`zm_buried`, Classic) | 283 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -184,8 +184,9 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] Nuketown, TranZit and Buried start from the game library; the menus are not Black Ops 2's.
 - [ ] The game's own sound.
   - [ ] Not verified (headless runs have sound off); `playsoundontag` and `soundexists` are missing.
-- [ ] The first map's own systems (Nuketown's perk drops and its end-game rocket).
-  - [ ] The perk drops need vehicle paths; the rocket's camera (`camerasetposition`, `camerasetlookat`) is missing.
+- [x] The first map's own systems (Nuketown's perk drops and its end-game rocket).
+  - [x] Quick Revive drops from the sky on its path vehicle (`perk_arrival_vehicle` on `info_vehicle_node`s to `reached_end_node`), lands and sells (500, drunk); the later drops follow the same path at rounds 3–5 on.
+  - [x] At game over the rocket intermission plays to `rocket_hit_nuketown` and the match returns to the lobby (the camera calls are kept for the client to present).
 - [ ] Every zombies map in the install (TranZit, Buried).
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
   - [ ] TranZit's bus (vehicle paths, moving platforms, server-side tag poses) and Buried's own systems.

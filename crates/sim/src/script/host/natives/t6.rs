@@ -27,6 +27,7 @@ mod rumble;
 mod sound;
 mod stats;
 mod usable;
+mod vehicle;
 mod weapon;
 
 /// How Black Ops 2 finds a dvar: djb2 over the lowercased name.
@@ -1891,6 +1892,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "setsprintcooldown"),
         (Method, "playerknockback"),
         (Method, "cameraactivate"),
+        // The camera a player sees through: kept for his client to present.
+        (Method, "camerasetposition"),
+        (Method, "camerasetlookat"),
         (Method, "setblur"),
         (Method, "isinvehicle"),
         (Method, "setvisibletoplayer"),
@@ -1915,6 +1919,27 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let activity =
             crate::script_player::weapon_activity(&crate::frame::FrameWorld::from_world(world), id);
         Ok(Value::Int(activity.switching.into()))
+    });
+    // gsc_earthquake(scale, duration, origin, radius, [entity]): IW4L's
+    // shaking view, with the engine's checks; the entity it may follow is
+    // not kept.
+    registry.register(Function, "earthquake", |world, receiver, args| {
+        let (scale, duration) = (float(args, 0)?, float(args, 1)?);
+        vector(args, 2)?;
+        let radius = float(args, 3)?;
+        if scale <= 0.0 {
+            return Err("Scale must be greater than 0".into());
+        }
+        if (duration * 1000.0).round() < 1.0 {
+            return Err("duration must be greater than 0".into());
+        }
+        if radius <= 0.0 {
+            return Err("Radius must be greater than 0".into());
+        }
+        let shared = NativeRegistry::engine_services()
+            .get(Function, "earthquake")
+            .ok_or("earthquake: no engine earthquake")?;
+        shared(world, receiver, &args[..4])
     });
     // gsc_newteamhudelem: a HUD element for every client, kept to a team
     // (IW4L's element, as `newhudelem`).
@@ -1962,6 +1987,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.on_use(usable::use_presses);
     mover::register(registry);
     paths::register(registry);
+    vehicle::register(registry);
     rumble::register(registry);
     player::register(registry);
     radius::register(registry);
