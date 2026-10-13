@@ -421,13 +421,19 @@ fn register_rest(registry: &mut NativeRegistry) {
         if blur < 0.0 {
             return Err("Blur value must be greater than 0".into());
         }
-        player(world, receiver)
+        let client = player(world, receiver)
             .map_err(|_| "setblur() called on an invalid client entity.\n".to_owned())?;
-        Err(format!(
-            "t6.player.blur: the client's blur to {blur} over {seconds}s is not drawn"
-        ))
+        world
+            .get_resource_or_insert_with(Blurs::default)
+            .0
+            .insert(client, (blur, seconds));
+        Ok(Value::Undefined)
     });
 }
+
+/// Each player's fading blur and its time (`t6.player.blur`: kept, not sent).
+#[derive(Resource, Default)]
+struct Blurs(BTreeMap<u32, (f32, f32)>);
 
 /// What a script has taken from a player's body, kept so each allowance
 /// can answer the one before it.

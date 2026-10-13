@@ -1752,27 +1752,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         new_array(world, values)
     });
     registry.register(Function, "clientsyssetstate", |world, _, args| {
-        let index = int(args, 0)?;
-        if !(0..=8).contains(&index) {
-            return Err(format!("ClientSysSetState - state index ({index}) out of bounds (0 - 8)"));
-        }
-        let registered = world
-            .get_resource::<ClientSystems>()
-            .is_some_and(|systems| (index as usize) < systems.0.len());
-        if !registered {
-            return Err(format!(
-                "ClientSysSetState - state index ({index}) unregistered.  Use ClientSysRegister first."
-            ));
-        }
-        let state = match args.get(1) {
-            Some(_) => string(args, 1)?.replace(' ', "!"),
-            None => String::new(),
-        };
-        world
-            .get_resource_or_insert_with(ClientSystemStates::default)
-            .0
-            .insert(index as usize, state);
-        Ok(Value::Undefined)
+        client_sys_set_state(world, None, args)
+    });
+    registry.register(Method, "clientsyssetstate", |world, receiver, args| {
+        let client = client_of(world, receiver)?;
+        client_sys_set_state(world, Some(client), args)
     });
     // A client field on an entity, in the pool of its kind; a plain entity
     // has none and the engine ignores it.
@@ -2188,9 +2172,40 @@ fn absolute_bounds(world: &mut World, id: u64) -> ([f32; 3], [f32; 3]) {
 #[derive(Resource)]
 struct GrenadeSuicideDisabled;
 
-/// Each registered client system's state.
+/// Each registered client system's state, for every client or one
+/// (`t6.clientsys.state`: kept, not sent).
 #[derive(Resource, Default)]
-struct ClientSystemStates(BTreeMap<usize, String>);
+struct ClientSystemStates(BTreeMap<(Option<u32>, usize), String>);
+
+/// gsc_clientsyssetstate / gscm_clientsyssetstate: a registered system's
+/// state, spaces sent as `!`.
+fn client_sys_set_state(
+    world: &mut World,
+    client: Option<u32>,
+    args: &[Value],
+) -> Result<Value, String> {
+    let index = int(args, 0)?;
+    if !(0..=8).contains(&index) {
+        return Err(format!("ClientSysSetState - state index ({index}) out of bounds (0 - 8)"));
+    }
+    let registered = world
+        .get_resource::<ClientSystems>()
+        .is_some_and(|systems| (index as usize) < systems.0.len());
+    if !registered {
+        return Err(format!(
+            "ClientSysSetState - state index ({index}) unregistered.  Use ClientSysRegister first."
+        ));
+    }
+    let state = match args.get(1) {
+        Some(_) => string(args, 1)?.replace(' ', "!"),
+        None => String::new(),
+    };
+    world
+        .get_resource_or_insert_with(ClientSystemStates::default)
+        .0
+        .insert((client, index as usize), state);
+    Ok(Value::Undefined)
+}
 
 /// A registered client field's value (`args` 1 names it, 2 is the value).
 /// The client field set an entity's type has, as the engine maps them; none

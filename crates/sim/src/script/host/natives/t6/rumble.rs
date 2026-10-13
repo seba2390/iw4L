@@ -83,4 +83,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         super::super::super::rumble::at_position(world, origin, index);
         Ok(Value::Undefined)
     });
+    // gsc_stopallrumbles: a broadcast event that stops every rumble.
+    registry.register(Function, "stopallrumbles", |world, _, _| {
+        super::super::super::rumble::stop_all(world);
+        Ok(Value::Undefined)
+    });
 }

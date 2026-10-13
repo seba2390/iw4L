@@ -1637,7 +1637,7 @@ fn capture_content(
         content.models.push(T6ModelCapture {
             skel,
             surface_materials,
-            view,
+            view: view || both.contains(&name),
             world: !view || both.contains(&name),
         });
     }
@@ -3242,6 +3242,14 @@ impl ZoneLane for T6Lane {
             }
             asset_transport::t6_content::T6ContentMode::Zombies => {
                 if path.file_stem().and_then(|s| s.to_str()) != Some(mode.common()) {
+                    // The engine's default models (`defaultweapon`,
+                    // `viewmodel_default`) are in its first startup zone.
+                    if let Some(startup) = content_zone(
+                        &path.with_file_name(format!("{}.ff", mode.startup()[0])),
+                        &mut report,
+                    ) {
+                        others.insert(0, startup);
+                    }
                     others.extend(content_zone(
                         &path.with_file_name("common_zm.ff"),
                         &mut report,
