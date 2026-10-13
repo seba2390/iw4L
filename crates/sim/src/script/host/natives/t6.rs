@@ -1932,6 +1932,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             crate::script_player::weapon_activity(&crate::frame::FrameWorld::from_world(world), id);
         Ok(Value::Int(activity.switching.into()))
     });
+    // gsc_newteamhudelem: a HUD element for every client, kept to a team
+    // (IW4L's element, as `newhudelem`).
+    registry.register(Function, "newteamhudelem", |world, receiver, args| {
+        let team = string(args, 0)?;
+        if team_index(&team).is_none() {
+            return Err(format!("'{team}' is an illegal team string"));
+        }
+        let shared = NativeRegistry::engine_services()
+            .get(Function, "newteamhudelem")
+            .ok_or("newteamhudelem: no engine HUD element")?;
+        shared(world, receiver, args)
+    });
     // gscm_setinvisibletoplayer: hides the entity from the player, or shows
     // it when a second argument is 0.
     registry.register(Method, "setinvisibletoplayer", |world, receiver, args| {

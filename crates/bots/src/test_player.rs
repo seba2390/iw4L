@@ -25,8 +25,11 @@
 //! fights on.
 //!
 //! `IW4L_TEST_USE=box,door,…` picks the kinds the use test tries (wall,
-//! perk, door, box, debris, power), in that order; `IW4L_TEST_PERK` names
+//! perk, door, box, debris, power, pap), in that order; `IW4L_TEST_PERK` names
 //! the perk it buys (Quick Revive by default; `any` for any other).
+//!
+//! `IW4L_TEST_VARS=key,…` adds those `level.zombie_vars` entries to the log
+//! every five seconds.
 //!
 //! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
 //! he can pay for it he buys Quick Revive as the use test does (fighting
@@ -232,6 +235,7 @@ fn kinds_from_env() -> Option<Vec<UseKind>> {
                 "box" => Some(UseKind::Box),
                 "debris" => Some(UseKind::Debris),
                 "power" => Some(UseKind::Power),
+                "pap" => Some(UseKind::PackAPunch),
                 _ => None,
             })
             .collect(),
@@ -520,8 +524,9 @@ pub(crate) fn drive_test_player(
         let weapon = world.0.weapon_script_name(ps.weapon).to_owned();
         diag::info!(
             Sim,
-            "test player: t={}s round={} score={} kills={} perks={} health={} lowest={} life={:?} laststand={} actors={} nearest={} shots={} knifes={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
+            "test player: t={}s at={} round={} score={} kills={} perks={} health={} lowest={} life={:?} laststand={} actors={} nearest={} shots={} knifes={} weapon={weapon} clip={} stock={} state={} lines(clear/model/world)={:?}",
             clock.time_ms / 1000,
+            fmt_point(ps.origin),
             world
                 .0
                 .script_int(ScriptOwner::Level, "round_number")
@@ -546,6 +551,21 @@ pub(crate) fn drive_test_player(
             ps.weaponstate_primary,
             test.lines
         );
+        if let Ok(keys) = std::env::var("IW4L_TEST_VARS") {
+            let vars: Vec<String> = keys
+                .split(',')
+                .map(|key| {
+                    format!(
+                        "{key}={}",
+                        world
+                            .0
+                            .level_array_entry("zombie_vars", key.trim())
+                            .unwrap_or_else(|| "-".to_owned())
+                    )
+                })
+                .collect();
+            diag::info!(Sim, "test player: zombie_vars {}", vars.join(" "));
+        }
         test.nearest = None;
         test.lowest_health = None;
     }
@@ -662,20 +682,22 @@ pub(crate) fn drive_test_player(
                 Phase::Holding => {
                     scenario.presses += 1;
                     scenario.offered = world.0.use_triggers_near(scenario.center, OFFER_REACH);
-                    let opening = scenario.site.kind == UseKind::Box && scenario.presses == 1;
+                    let opening = matches!(scenario.site.kind, UseKind::Box | UseKind::PackAPunch)
+                        && scenario.presses == 1;
                     scenario.phase = Phase::Watching;
                     scenario.until_ms =
                         clock.time_ms + if opening { BOX_SPIN_MS } else { WATCH_MS };
                 }
                 // The box took its price: its weapon has risen, take it.
                 Phase::Watching
-                    if scenario.site.kind == UseKind::Box
+                    if matches!(scenario.site.kind, UseKind::Box | UseKind::PackAPunch)
                         && scenario.presses == 1
                         && meta.score < scenario.score =>
                 {
                     diag::info!(
                         Sim,
-                        "test player: box opened — score {}→{}; taking its weapon; its unitrigger stub — {}",
+                        "test player: {:?} took its price — score {}→{}; taking its weapon; its unitrigger stub — {}",
+                        scenario.site.kind,
                         scenario.score,
                         meta.score,
                         world.0.unitrigger_state(scenario.site.object)

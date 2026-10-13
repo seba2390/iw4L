@@ -150,6 +150,11 @@ impl SimWorld {
         crate::script::host::sightings::enabled_player_volumes(&self.ecs).len()
     }
 
+    /// An entry of a level array field, for a test player.
+    pub fn level_array_entry(&self, array: &str, key: &str) -> Option<String> {
+        crate::script::host::sightings::level_array_entry(&self.ecs, array, key)
+    }
+
     /// Whether a level flag is set, for a test player.
     pub fn level_flag(&self, name: &str) -> bool {
         crate::script::host::sightings::level_flag(&self.ecs, name)

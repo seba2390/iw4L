@@ -89,6 +89,9 @@ pub enum UseKind {
     Power,
     /// A perk machine's `zombie_vending` trigger.
     Perk,
+    /// Pack-a-Punch: the `zombie_vending` trigger that sells
+    /// `specialty_weapupgrade`.
+    PackAPunch,
 }
 
 /// Something a player buys or uses by pressing use near it: a trigger
@@ -196,6 +199,9 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             if kind == UseKind::Perk {
                 let mut found = site(runtime, kind, id, "cost")?;
                 found.weapon = string(field(runtime, id, "script_noteworthy"));
+                if found.weapon.as_deref() == Some("specialty_weapupgrade") {
+                    found.kind = UseKind::PackAPunch;
+                }
                 return Some(found);
             }
             // A door the power opens is not bought.
@@ -233,6 +239,37 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         sites.push(box_site);
     }
     sites
+}
+
+/// An entry of a level array field (`level.<array>[key]`) as text, for a
+/// test player's log.
+pub(crate) fn level_array_entry(world: &World, array: &str, key: &str) -> Option<String> {
+    let runtime = world.get_resource::<RoundScript>()?;
+    let Some(Value::Array(mut id)) = field(runtime, 0, array) else {
+        return None;
+    };
+    // `team.key` reads a nested array (`level.zombie_vars["allies"][key]`).
+    let mut parts = key.split('.').peekable();
+    let mut value = Value::Undefined;
+    while let Some(part) = parts.next() {
+        value = runtime
+            .arrays
+            .get(&id)?
+            .get(&crate::script::ArrayKey::String(part.into()))?
+            .clone();
+        if parts.peek().is_some() {
+            let Value::Array(inner) = value else {
+                return None;
+            };
+            id = inner;
+        }
+    }
+    Some(match value {
+        Value::Int(n) => n.to_string(),
+        Value::Float(f) => format!("{f}"),
+        Value::String(text) => text.to_string(),
+        other => format!("{other:?}"),
+    })
 }
 
 /// Whether a level flag is set (`level.flag[name]`, as `flag_set` keeps it).
