@@ -101,7 +101,8 @@ const RESUPPLY_PERIOD_MS: i32 = 2000;
 /// The use test starts this long after the player first lives, once the
 /// scripts have made their unitrigger stubs.
 const USE_START_MS: i32 = 10_000;
-/// A kind no site of which is found by this long after the start is dropped.
+/// A kind no site of which is found by this long after the start (or the
+/// last use) is dropped.
 const USE_GIVE_UP_MS: i32 = 60_000;
 /// How often it looks for a site it can pay for.
 const TRY_PERIOD_MS: i32 = 1000;
@@ -126,6 +127,8 @@ fn hold_ms(kind: UseKind) -> i32 {
     }
 }
 const WATCH_MS: i32 = 2500;
+/// TranZit's `powerevent` sets `power_on` 30 s after the lever is thrown.
+const POWER_EVENT_MS: i32 = 35_000;
 /// After paying for the box he waits this long for its weapon to rise, then
 /// holds use again to take it.
 const BOX_SPIN_MS: i32 = 6000;
@@ -219,6 +222,8 @@ struct Scenario {
     offered: Vec<String>,
     /// How many times he has held use there.
     presses: u8,
+    /// Until when he waits for `power_on` after throwing a lever.
+    power_by_ms: i32,
 }
 
 #[derive(Resource, Default)]
@@ -260,6 +265,9 @@ pub(crate) struct TestPlayer {
     nearest: Option<f32>,
     /// When the use test next looks for a site it can pay for.
     next_try_ms: i32,
+    /// When its last use ended: a kind with no site gives up counting from
+    /// here.
+    last_done_ms: i32,
     /// The down test's last life state and last stand seen.
     seen: Option<(ClientLifecycle, i32, Option<i32>)>,
 }
@@ -503,7 +511,8 @@ fn next_scenario(
         of_kind.retain(|site| {
             site.zone.as_deref().is_none_or(|zone| {
                 world.zone_is_active(zone)
-                    || matches!(kind, UseKind::Piece | UseKind::Build) && world.zone_is_enabled(zone)
+                    || matches!(kind, UseKind::Piece | UseKind::Build)
+                        && world.zone_is_enabled(zone)
             })
         });
         if of_kind.is_empty() && offered > 0 {
@@ -517,8 +526,19 @@ fn next_scenario(
             test.pending.rotate_left(1);
             return None;
         }
+        // The power lever a buildable makes waits for its build.
+        if of_kind.is_empty()
+            && kind == UseKind::Power
+            && test
+                .pending
+                .iter()
+                .any(|k| matches!(k, UseKind::Piece | UseKind::Build))
+        {
+            test.pending.rotate_left(1);
+            return None;
+        }
         if of_kind.is_empty() {
-            if now_ms - since_ms >= USE_GIVE_UP_MS {
+            if now_ms - since_ms.max(test.last_done_ms) >= USE_GIVE_UP_MS {
                 test.pending.remove(0);
                 diag::info!(Sim, "test player: use {kind:?}: none on this map");
             }
@@ -568,6 +588,7 @@ fn next_scenario(
             weapon: world.weapon_script_name(weapon).to_owned(),
             offered: Vec::new(),
             presses: 0,
+            power_by_ms: 0,
         });
     }
     None
@@ -770,7 +791,11 @@ pub(crate) fn drive_test_player(
             .0
             .path_node_origins()
             .into_iter()
-            .filter(|node| world.0.in_zone_player_volume([node[0], node[1], node[2] + 1.0], &zone))
+            .filter(|node| {
+                world
+                    .0
+                    .in_zone_player_volume([node[0], node[1], node[2] + 1.0], &zone)
+            })
             .collect();
         let middle = inside.iter().fold([0.0f32; 3], |sum, node| {
             std::array::from_fn(|i| sum[i] + node[i] / inside.len() as f32)
@@ -888,8 +913,16 @@ pub(crate) fn drive_test_player(
                     let opening = matches!(scenario.site.kind, UseKind::Box | UseKind::PackAPunch)
                         && scenario.presses == 1;
                     scenario.phase = Phase::Watching;
+                    scenario.power_by_ms = clock.time_ms + POWER_EVENT_MS;
                     scenario.until_ms =
                         clock.time_ms + if opening { BOX_SPIN_MS } else { WATCH_MS };
+                }
+                Phase::Watching
+                    if scenario.site.kind == UseKind::Power
+                        && !world.0.level_flag("power_on")
+                        && clock.time_ms < scenario.power_by_ms =>
+                {
+                    scenario.until_ms = clock.time_ms + WATCH_MS;
                 }
                 // The box took its price: its weapon has risen, take it.
                 Phase::Watching
@@ -962,7 +995,8 @@ pub(crate) fn drive_test_player(
                                 .0
                                 .use_sites()
                                 .iter()
-                                .find(|site| site.kind == UseKind::Build && site.weapon == scenario.site.weapon)
+                                .find(|site| site.kind == UseKind::Build
+                                    && site.weapon == scenario.site.weapon)
                                 .map_or("built", |_| "not built")
                         );
                     }
@@ -999,6 +1033,7 @@ pub(crate) fn drive_test_player(
                     scenario.until_ms = clock.time_ms + ARRIVE_MS;
                 }
                 Phase::Returning => {
+                    test.last_done_ms = clock.time_ms;
                     cmds.push(id, None, cmd, None);
                     return;
                 }
