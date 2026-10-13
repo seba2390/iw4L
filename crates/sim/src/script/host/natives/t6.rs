@@ -19,6 +19,7 @@ mod effect;
 mod entity;
 mod extras;
 mod laststand;
+mod missile;
 mod movement;
 mod mover;
 mod paths;
@@ -2005,6 +2006,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     effect::register(registry);
     entity::register(registry);
     laststand::register(registry);
+    missile::register(registry);
     registry.on_use(usable::use_presses);
     mover::register(registry);
     paths::register(registry);

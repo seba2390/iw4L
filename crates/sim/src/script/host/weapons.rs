@@ -1,5 +1,6 @@
 use super::args::{arg, string, vector};
 use super::entities::EntityKind;
+use super::registry::{MissileLaunch, MissileRule};
 use crate::ProjectileId;
 use crate::equipment::WeaponNote;
 use crate::frame::FrameWorld;
@@ -12,6 +13,48 @@ pub(crate) use weapon_iw4::WEAPTYPE_PROJECTILE;
 use weapon_iw4::{WEAPTYPE_GRENADE, WeaponState};
 
 const GRENADE_LINGER_MS: i64 = 30_000; // threads on the grenade keep running after it explodes
+
+/// IW4L's own missile notifies, for games without their own.
+const IW4L_MISSILES: MissileRule = MissileRule {
+    launched: iw4l_launched,
+    flying: iw4l_flying,
+    exploded: |_, _, origin| vec![Value::Vector(origin)],
+    linger_ms: Some(GRENADE_LINGER_MS),
+};
+
+fn iw4l_launched(world: &mut World, projectile: &crate::ProjectileState) -> Option<MissileLaunch> {
+    let weap_type = FrameWorld::from_world(world)
+        .combat_facts_for(projectile.weapon)
+        .map_or(-1, |facts| facts.weap_type);
+    let (classname, notify) = match weap_type {
+        WEAPTYPE_GRENADE => ("grenade", "grenade_fire"),
+        WEAPTYPE_PROJECTILE => ("rocket", "missile_fire"),
+        _ => return None,
+    };
+    Some(MissileLaunch {
+        classname,
+        notify,
+        extra: Vec::new(),
+    })
+}
+
+fn iw4l_flying(world: &mut World, object: u64, _: &crate::ProjectileState, stuck: bool) {
+    if stuck {
+        raise(
+            world,
+            Value::Object(object),
+            "missile_stuck",
+            vec![Value::Undefined],
+        );
+    }
+}
+
+fn missile_rule(world: &World) -> MissileRule {
+    world
+        .get_resource::<crate::script::NativeRegistry>()
+        .and_then(crate::script::NativeRegistry::missile_rule)
+        .unwrap_or(IW4L_MISSILES)
+}
 
 pub(crate) fn is_changing_weapon(state: i32) -> bool {
     matches!(
@@ -398,14 +441,10 @@ fn adopt_fired(world: &mut World) {
         if player == Value::Undefined {
             continue;
         }
-        let weap_type = FrameWorld::from_world(world)
-            .combat_facts_for(projectile.weapon)
-            .map_or(-1, |facts| facts.weap_type);
-        let (classname, notify) = match weap_type {
-            WEAPTYPE_GRENADE => ("grenade", "grenade_fire"),
-            WEAPTYPE_PROJECTILE => ("rocket", "missile_fire"),
-            _ => continue,
+        let Some(launch) = (missile_rule(world).launched)(world, &projectile) else {
+            continue;
         };
+        let (classname, notify) = (launch.classname, launch.notify);
         let object = match adopt(world, &projectile, classname) {
             Ok(object) => object,
             Err(message) => {
@@ -430,7 +469,12 @@ fn adopt_fired(world: &mut World) {
             runtime.set_object_field(object, "weaponname", name.clone());
             runtime.set_object_field(object, "weaponmodel", Value::string(&model));
         }
-        raise(world, player, notify, vec![Value::Object(object), name]);
+        raise(
+            world,
+            player,
+            notify,
+            [vec![Value::Object(object), name], launch.extra].concat(),
+        );
     }
 }
 
@@ -490,6 +534,7 @@ fn retire(world: &mut World, object: u64) {
 
 fn settle_projectiles(world: &mut World, notes: &[WeaponNote]) {
     let now = now_ms(world);
+    let rule = missile_rule(world);
     let tracked: Vec<(ProjectileId, u64)> = world
         .resource::<RoundScript>()
         .missiles
@@ -538,9 +583,7 @@ fn settle_projectiles(world: &mut World, notes: &[WeaponNote]) {
                     Value::Vector(entity_iw4::evaluate_trajectory(&projectile.apos, now)),
                 );
                 drop(runtime);
-                if stuck {
-                    raise(world, receiver, "missile_stuck", vec![Value::Undefined]);
-                }
+                (rule.flying)(world, object, &projectile, stuck);
             }
             _ => {
                 let mut runtime = world.resource_mut::<RoundScript>();
@@ -549,25 +592,23 @@ fn settle_projectiles(world: &mut World, notes: &[WeaponNote]) {
                     runtime.set_object_field(object, "origin", Value::Vector(origin));
                 }
                 let entity = runtime.entities.get_mut(&object).unwrap();
-                let lingers = entity.classname.as_ref() == "grenade" && entity.presence.is_none();
+                let lingers = entity.classname.as_ref() == "grenade"
+                    && entity.presence.is_none()
+                    && rule.linger_ms.is_some();
                 entity.can_damage = false;
                 if let Some(presence) = entity.presence.take() {
                     runtime.retired_presence.push((presence, true));
                 }
                 drop(runtime);
                 if let Some(origin) = detonated {
-                    raise(
-                        world,
-                        receiver.clone(),
-                        "explode",
-                        vec![Value::Vector(origin)],
-                    );
+                    let args = (rule.exploded)(world, object, origin);
+                    raise(world, receiver.clone(), "explode", args);
                 }
                 if lingers {
-                    world
-                        .resource_mut::<RoundScript>()
-                        .lingering
-                        .push((i64::from(now) + GRENADE_LINGER_MS, object));
+                    world.resource_mut::<RoundScript>().lingering.push((
+                        i64::from(now) + rule.linger_ms.unwrap_or(GRENADE_LINGER_MS),
+                        object,
+                    ));
                 } else {
                     raise(world, receiver, "death", Vec::new());
                     world.resource_mut::<RoundScript>().request_delete(object);

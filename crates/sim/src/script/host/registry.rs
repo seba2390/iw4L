@@ -17,6 +17,26 @@ pub(crate) type UseRule = fn(&mut World, &[(u32, u64)]) -> Vec<(u64, u64)>;
 /// the player object before the connect callback runs.
 pub(crate) type ConnectHook = fn(&mut World, u64);
 
+/// A game's own engine notifies for its players' missiles.
+#[derive(Clone, Copy)]
+pub(crate) struct MissileRule {
+    /// A launched projectile's entity class, the notify its owner hears and
+    /// the arguments after the entity and weapon name; `None` for none.
+    pub launched: fn(&mut World, &crate::ProjectileState) -> Option<MissileLaunch>,
+    /// A missile still flying (or resting) this tick, and whether it stuck.
+    pub flying: fn(&mut World, u64, &crate::ProjectileState, bool),
+    /// The arguments `explode` carries for a missile gone off there.
+    pub exploded: fn(&mut World, u64, [f32; 3]) -> Vec<Value>,
+    /// How long a grenade gone off stays before `death`; `None` for at once.
+    pub linger_ms: Option<i64>,
+}
+
+pub(crate) struct MissileLaunch {
+    pub classname: &'static str,
+    pub notify: &'static str,
+    pub extra: Vec<Value>,
+}
+
 #[derive(Resource, Clone)]
 pub struct NativeRegistry(
     BTreeMap<(Namespace, String), Native>,
@@ -24,6 +44,7 @@ pub struct NativeRegistry(
     Vec<EntityHitHook>,
     Option<UseRule>,
     Vec<ConnectHook>,
+    Option<MissileRule>,
 );
 impl Default for NativeRegistry {
     /// The engine services alone: no game's own natives.
@@ -35,7 +56,14 @@ impl NativeRegistry {
     /// Builtins every game's scripts are served the same way: the language
     /// helpers, dvars, math, entities, players, sound, physics, triggers.
     pub fn engine_services() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None, Vec::new());
+        let mut registry = Self(
+            BTreeMap::new(),
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            None,
+        );
         registry.register(Namespace::Function, "isdefined", |world, _, args| {
             if args.len() != 1 {
                 return Err("isdefined expects one argument".into());
@@ -112,13 +140,27 @@ impl NativeRegistry {
     /// Black Ops 3's builtins alone: none of the engine services above, which
     /// serve the other games' rules.
     pub fn black_ops_2() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None, Vec::new());
+        let mut registry = Self(
+            BTreeMap::new(),
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            None,
+        );
         natives::t6::register(&mut registry);
         registry
     }
 
     pub fn black_ops_3() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None, Vec::new());
+        let mut registry = Self(
+            BTreeMap::new(),
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            None,
+        );
         natives::t7::register(&mut registry);
         registry
     }
@@ -155,6 +197,15 @@ impl NativeRegistry {
 
     pub(crate) fn connect_hooks(&self) -> Vec<ConnectHook> {
         self.4.clone()
+    }
+
+    /// The game's missile notifies replace IW4L's.
+    pub(crate) fn on_missiles(&mut self, rule: MissileRule) {
+        self.5 = Some(rule);
+    }
+
+    pub(crate) fn missile_rule(&self) -> Option<MissileRule> {
+        self.5
     }
 
     pub fn register(&mut self, namespace: Namespace, name: &str, native: Native) {
