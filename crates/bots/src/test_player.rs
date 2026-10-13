@@ -37,6 +37,13 @@
 //! `IW4L_TEST_VARS=key,…` adds those `level.zombie_vars` entries to the log
 //! every five seconds.
 //!
+//! `IW4L_TEST_GOTO=<zone>` (with the use test): 5 s in, it goes to a path
+//! node standing in that zone, before the use test starts.
+//!
+//! `IW4L_TEST_BUILD=<equipname>` (with `IW4L_TEST_USE=piece,build,…`):
+//! the use test's `piece` picks up a part of that buildable and `build`
+//! holds use at its table.
+//!
 //! `IW4L_TEST_THROW=1` (with any fighting mode): every 15 s it holds its
 //! lethal grenade's button for half a second at an actor in sight farther
 //! than 250 units, then lets go to throw it.
@@ -100,12 +107,19 @@ const USE_GIVE_UP_MS: i32 = 60_000;
 const TRY_PERIOD_MS: i32 = 1000;
 /// How long it waits after being moved, holds use, and watches after.
 const ARRIVE_MS: i32 = 500;
+/// Long enough, at a buildable's part or table, for its zone to come alive
+/// and `_zm_unitrigger` to spawn its trigger.
+const ZONE_ARRIVE_MS: i32 = 3000;
 const HOLD_MS: i32 = 600;
 /// A window's boards go back one at a time while use is held.
 const REBUILD_HOLD_MS: i32 = 4000;
+/// A buildable's table builds over its stub's `usetime`, 3 s.
+const BUILD_HOLD_MS: i32 = 4000;
 
 fn hold_ms(kind: UseKind) -> i32 {
-    if kind == UseKind::Rebuild {
+    if kind == UseKind::Build {
+        BUILD_HOLD_MS
+    } else if kind == UseKind::Rebuild {
         REBUILD_HOLD_MS
     } else {
         HOLD_MS
@@ -215,6 +229,8 @@ pub(crate) struct TestPlayer {
     revive_until_ms: i32,
     /// The ride test stepped onto the bus.
     boarded: bool,
+    /// The goto aid went to its zone.
+    went: bool,
     next_ride_log_ms: i32,
     /// When it last saw an actor to aim at.
     last_seen_ms: Option<i32>,
@@ -292,6 +308,8 @@ fn kinds_from_env() -> Option<Vec<UseKind>> {
                 "power" => Some(UseKind::Power),
                 "pap" => Some(UseKind::PackAPunch),
                 "rebuild" => Some(UseKind::Rebuild),
+                "piece" => Some(UseKind::Piece),
+                "build" => Some(UseKind::Build),
                 _ => None,
             })
             .collect(),
@@ -384,7 +402,7 @@ fn stand_point(
         let (off, room) = if site.touch
             || matches!(
                 site.kind,
-                UseKind::WallBuy | UseKind::Box | UseKind::Rebuild
+                UseKind::WallBuy | UseKind::Box | UseKind::Rebuild | UseKind::Build
             ) {
             (STAND_OFF_TOUCH, TOUCH_ROOM)
         } else {
@@ -459,6 +477,12 @@ fn next_scenario(
         let mut of_kind: Vec<&UseSite> = sites
             .iter()
             .filter(|site| site.kind == kind && (kind != UseKind::WallBuy || site.cost.is_some()))
+            // `IW4L_TEST_BUILD=<equipname>`: that buildable's parts and table.
+            .filter(|site| {
+                !matches!(kind, UseKind::Piece | UseKind::Build)
+                    || std::env::var("IW4L_TEST_BUILD")
+                        .is_ok_and(|wanted| site.weapon.as_deref() == Some(wanted.as_str()))
+            })
             // Of the perks, Quick Revive: the one a solo player's down asks for.
             .filter(|site| {
                 let wanted = wanted_perk();
@@ -470,15 +494,25 @@ fn next_scenario(
         // `_zm_unitrigger::main` offers only the stubs of active zones (and
         // those filed under none); the others wait for a door to open.
         let offered = of_kind.len();
+        let filed: Vec<String> = of_kind
+            .iter()
+            .map(|site| site.zone.clone().unwrap_or_else(|| "-".into()))
+            .collect();
+        // A buildable's part or table in an enabled zone is gone to: standing
+        // there makes its zone active, as walking there would.
         of_kind.retain(|site| {
-            site.zone
-                .as_deref()
-                .is_none_or(|zone| world.zone_is_active(zone))
+            site.zone.as_deref().is_none_or(|zone| {
+                world.zone_is_active(zone)
+                    || matches!(kind, UseKind::Piece | UseKind::Build) && world.zone_is_enabled(zone)
+            })
         });
         if of_kind.is_empty() && offered > 0 {
             if !test.deferred.contains(&kind) {
                 test.deferred.push(kind);
-                diag::info!(Sim, "test player: use {kind:?}: none in an active zone yet");
+                diag::info!(
+                    Sim,
+                    "test player: use {kind:?}: none in an active zone yet (filed under {filed:?})"
+                );
             }
             test.pending.rotate_left(1);
             return None;
@@ -524,7 +558,12 @@ fn next_scenario(
             home: origin,
             home_angles: viewangles,
             phase: Phase::Arriving,
-            until_ms: now_ms + ARRIVE_MS,
+            until_ms: now_ms
+                + if matches!(kind, UseKind::Piece | UseKind::Build) {
+                    ZONE_ARRIVE_MS
+                } else {
+                    ARRIVE_MS
+                },
             score,
             weapon: world.weapon_script_name(weapon).to_owned(),
             offered: Vec::new(),
@@ -718,6 +757,45 @@ pub(crate) fn drive_test_player(
         return;
     }
     let since_ms = *test.alive_since_ms.get_or_insert(clock.time_ms);
+    // `IW4L_TEST_GOTO=<zone>`: once, before the use test starts, it goes to
+    // the path node nearest the zone's middle that stands in the zone, so
+    // the zone and those beside it come alive.
+    if test.mode == Mode::Use
+        && !test.went
+        && clock.time_ms - since_ms >= USE_START_MS / 2
+        && let Ok(zone) = std::env::var("IW4L_TEST_GOTO")
+    {
+        test.went = true;
+        let inside: Vec<[f32; 3]> = world
+            .0
+            .path_node_origins()
+            .into_iter()
+            .filter(|node| world.0.in_zone_player_volume([node[0], node[1], node[2] + 1.0], &zone))
+            .collect();
+        let middle = inside.iter().fold([0.0f32; 3], |sum, node| {
+            std::array::from_fn(|i| sum[i] + node[i] / inside.len() as f32)
+        });
+        match inside
+            .iter()
+            .min_by(|a, b| distance(**a, middle).total_cmp(&distance(**b, middle)))
+        {
+            Some(node) => {
+                let stand = [node[0], node[1], node[2] + 1.0];
+                diag::info!(Sim, "test player: going to {zone} at {}", fmt_point(stand));
+                if let Err(error) = actions.push(
+                    id,
+                    ClientAction::Move {
+                        request_id: request_ids.allocate(),
+                        origin: stand,
+                        angles: ps.viewangles,
+                    },
+                ) {
+                    diag::warn!(Sim, "test player: request not queued — {error}");
+                }
+            }
+            None => diag::info!(Sim, "test player: no path node stands in {zone}"),
+        }
+    }
     let mut ask = |action: ClientAction| {
         if let Err(error) = actions.push(id, action) {
             diag::warn!(Sim, "test player: request not queued — {error}");
@@ -871,6 +949,21 @@ pub(crate) fn drive_test_player(
                                 .0
                                 .script_int(ScriptOwner::Player(id), "rebuild_barrier_reward")
                                 .map_or_else(|| "-".to_owned(), |n| n.to_string())
+                        );
+                    }
+                    if matches!(scenario.site.kind, UseKind::Piece | UseKind::Build) {
+                        diag::info!(
+                            Sim,
+                            "test player: {:?} {} — its stub {}; the buildable's table {}",
+                            scenario.site.kind,
+                            scenario.site.weapon.as_deref().unwrap_or("-"),
+                            world.0.unitrigger_state(scenario.site.object),
+                            world
+                                .0
+                                .use_sites()
+                                .iter()
+                                .find(|site| site.kind == UseKind::Build && site.weapon == scenario.site.weapon)
+                                .map_or("built", |_| "not built")
                         );
                     }
                     if scenario.site.kind == UseKind::Power {

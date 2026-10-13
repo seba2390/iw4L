@@ -760,8 +760,14 @@ fn instruction(
                     let value = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         native(world, &receiver, &args)
                     }))
-                    .unwrap_or_else(|_| Err("builtin panicked".into()))
-                    .map_err(|m| format!("{name}: {m}"))?;
+                    .unwrap_or_else(|_| Err("builtin panicked".into()));
+                    if traced_native(name) {
+                        diag::info!(
+                            Sim,
+                            "gsc native trace: {receiver:?} {name}({args:?}) = {value:?}"
+                        );
+                    }
+                    let value = value.map_err(|m| format!("{name}: {m}"))?;
                     thread.stack.push(value);
                     deliver_pending(world, thread, now)?;
                     settle_owed_deaths(world, thread, now)?;
@@ -1096,6 +1102,24 @@ fn payload_matches(values: &[Value], arguments: &[Value]) -> bool {
 
 /// `IW4L_GSC_NOTIFY_TRACE=name,…`: the notifies of those names are logged
 /// with their receiver, arguments and how many waits they reach.
+/// Whether `IW4L_GSC_NATIVE_TRACE=name,…` names this builtin: each call is
+/// logged with its receiver, arguments and result.
+fn traced_native(name: &str) -> bool {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            std::env::var("IW4L_GSC_NATIVE_TRACE")
+                .map(|list| {
+                    list.split(',')
+                        .map(|n| n.trim().to_ascii_lowercase())
+                        .collect()
+                })
+                .unwrap_or_else(|_| Vec::new())
+        })
+        .iter()
+        .any(|traced| traced.eq_ignore_ascii_case(name))
+}
+
 fn traced_notify(name: &str) -> bool {
     static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
     NAMES

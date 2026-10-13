@@ -168,7 +168,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Power and perks.
   - [x] Quick Revive sells on TranZit (solo: 500 points, the bottle is drunk) through Black Ops 2's use rule.
   - [x] Buried's power switch turns the power on (`power_on`, the perk machines' power notifies) and Double Tap sells after it (2000 points; the perk is given).
-  - [ ] TranZit's power (built at the power station) is not reached; Nuketown's perks arrive by vehicle drop (below).
+  - [ ] TranZit's power switch is built at the power station from its three parts (test player: `IW4L_TEST_GOTO=zone_pow IW4L_TEST_BUILD=powerswitch IW4L_TEST_USE=door,piece,build,…`); throwing its lever after the build is not yet run. Nuketown's perks arrive by vehicle drop (below).
 - [x] Pack-a-Punch and every power-up.
   - [x] Pack-a-Punch upgrades a gun on Buried after the power (5000 points; the Olympia becomes `rottweil72_upgraded_zm` and is taken).
   - [x] Each power-up a map includes, dropped by Black Ops 2's `specific_powerup_drop` at the player, is grabbed and works: double points (`zombie_point_scalar` 2), insta-kill, max ammo (stock refilled), nuke (+400), fire sale (Nuketown); carpenter (`carpenter_finished`, +200), free perk, random weapon (Buried).

@@ -98,6 +98,13 @@ pub enum UseKind {
     /// A window whose boards are down: its rebuild unitrigger stub
     /// (`level.exterior_goals[i].unitrigger_stub`, while registered).
     Rebuild,
+    /// A buildable's part lying where it spawned: its unitrigger stub
+    /// (`level.buildable_stubs[i].buildablezone.pieces[j].unitrigger`); the
+    /// site's weapon is the buildable's `equipname`.
+    Piece,
+    /// A buildable's table not yet built (`level.buildable_stubs[i]` with
+    /// `built` 0); the site's weapon is its `equipname`.
+    Build,
 }
 
 /// Something a player buys or uses by pressing use near it: a trigger
@@ -244,6 +251,31 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             sites.extend(site(runtime, UseKind::Rebuild, stub, "cost"));
         }
     }
+    for stub in items(runtime, field(runtime, 0, "buildable_stubs")) {
+        let Some(stub) = object(Some(stub)) else {
+            continue;
+        };
+        let equipname = string(field(runtime, stub, "equipname"));
+        if int(field(runtime, stub, "built")) == Some(0)
+            && let Some(mut table) = site(runtime, UseKind::Build, stub, "cost")
+        {
+            table.weapon = equipname.clone();
+            sites.push(table);
+        }
+        let Some(zone) = object(field(runtime, stub, "buildablezone")) else {
+            continue;
+        };
+        for piece in items(runtime, field(runtime, zone, "pieces")) {
+            let Some(trigger) = object(Some(piece)).and_then(|p| object(field(runtime, p, "unitrigger")))
+            else {
+                continue;
+            };
+            if let Some(mut part) = site(runtime, UseKind::Piece, trigger, "cost") {
+                part.weapon = equipname.clone();
+                sites.push(part);
+            }
+        }
+    }
     let chests = items(runtime, field(runtime, 0, "chests"));
     if let Some(chest) = int(field(runtime, 0, "chest_index"))
         .and_then(|index| chests.get(usize::try_from(index).ok()?).cloned())
@@ -361,7 +393,15 @@ pub(crate) fn level_flag(world: &World, name: &str) -> bool {
 
 /// Whether `level.zones[name]` is active (`is_active`): a zone a player is
 /// in, or one next to it by an open way.
+pub(crate) fn zone_is_enabled(world: &World, name: &str) -> bool {
+    zone_flag(world, name, "is_enabled")
+}
+
 pub(crate) fn zone_is_active(world: &World, name: &str) -> bool {
+    zone_flag(world, name, "is_active")
+}
+
+fn zone_flag(world: &World, name: &str, flag: &str) -> bool {
     let Some(runtime) = world.get_resource::<RoundScript>() else {
         return false;
     };
@@ -373,7 +413,7 @@ pub(crate) fn zone_is_active(world: &World, name: &str) -> bool {
         .get(&zones)
         .and_then(|array| array.get(&crate::script::ArrayKey::String(name.into())))
         .and_then(|zone| object(Some(zone.clone())))
-        .and_then(|zone| int(field(runtime, zone, "is_active")))
+        .and_then(|zone| int(field(runtime, zone, flag)))
         .is_some_and(|on| on != 0)
 }
 
@@ -474,6 +514,21 @@ pub(crate) fn use_triggers_near(world: &World, point: [f32; 3], reach: f32) -> V
 /// `is_enabled`): where Black Ops 2 lets a player stand. Each is the
 /// volume's origin, brush model and trigger model.
 pub(crate) fn enabled_player_volumes(world: &World) -> Vec<([f32; 3], Option<u32>, Option<u32>)> {
+    player_volumes(world, None)
+}
+
+/// The player volumes of one zone, enabled or not, for a test player.
+pub(crate) fn zone_player_volumes(
+    world: &World,
+    zone: &str,
+) -> Vec<([f32; 3], Option<u32>, Option<u32>)> {
+    player_volumes(world, Some(zone))
+}
+
+fn player_volumes(
+    world: &World,
+    only: Option<&str>,
+) -> Vec<([f32; 3], Option<u32>, Option<u32>)> {
     let Some(runtime) = world.get_resource::<RoundScript>() else {
         return Vec::new();
     };
@@ -496,7 +551,10 @@ pub(crate) fn enabled_player_volumes(world: &World) -> Vec<([f32; 3], Option<u32
         .filter(|(id, _)| runtime.live(id))
         .filter(|(id, _)| {
             string(field(runtime, **id, "script_noteworthy")).as_deref() == Some("player_volume")
-                && string(field(runtime, **id, "targetname")).is_some_and(|zone| enabled(&zone))
+                && string(field(runtime, **id, "targetname")).is_some_and(|zone| match only {
+                    Some(only) => zone == only,
+                    None => enabled(&zone),
+                })
         })
         .filter_map(|(id, entity)| {
             Some((

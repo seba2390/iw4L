@@ -895,6 +895,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             _ => Err(format!("unable to spawn \"{classname}\" entity")),
         }
     });
+    // gscm_istouching: a trigger box a script spawned by its turned box,
+    // any other pair by the shared contact test.
+    registry.register(Method, "istouching", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let Ok(other) = super::engine::entity_id(world, args.first().ok_or("istouching expects an entity")?) else {
+            return Ok(Value::Int(0));
+        };
+        let touching = usable::spawned_box_touches(world, id, other)
+            .or_else(|| usable::spawned_box_touches(world, other, id))
+            .unwrap_or_else(|| super::super::triggers::is_touching(world, id, other));
+        Ok(Value::Int(touching.into()))
+    });
     // gscm_setmodel.
     registry.register(Method, "setmodel", |world, receiver, args| {
         set_model(world, receiver, &string(args, 0)?)?;
@@ -1821,7 +1833,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "show"),
         (Method, "delete"),
         (Method, "getorigin"),
-        (Method, "istouching"),
         (Method, "rotateroll"),
         (Method, "rotatepitch"),
         (Method, "rotateyaw"),

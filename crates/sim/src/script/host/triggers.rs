@@ -947,6 +947,15 @@ fn looks_into(frame: &FrameWorld, client: u32, volume: &Volume<'_>) -> bool {
     })
 }
 
+/// The box an entity touches triggers with (a player's by its stance).
+pub(crate) fn toucher_box(world: &mut World, object: u64) -> ([f32; 3], [f32; 3]) {
+    let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
+    let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
+    let found = toucher(&mut runtime, &FrameWorld::from_world(world), object);
+    *world.resource_mut::<RoundScript>() = runtime;
+    found
+}
+
 fn toucher(runtime: &mut RoundScript, frame: &FrameWorld, object: u64) -> ([f32; 3], [f32; 3]) {
     if let Some(client) = runtime.player_client(object)
         && let Some(ps) = frame.player(crate::ClientId(client))
