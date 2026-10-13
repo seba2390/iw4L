@@ -335,6 +335,14 @@ pub(crate) fn level_entity_pose(world: &World, name: &str) -> Option<([f32; 3], 
     Some((origin, yaw, runtime.entities.get(&id)?.number))
 }
 
+/// A player's script field as text, for a test player's log.
+pub(crate) fn player_field_text(world: &World, client: ClientId, name: &str) -> String {
+    match super::entity_damage::player_object_id(world, client.0) {
+        Some(id) => object_field_text(world, id, name),
+        None => "-".to_owned(),
+    }
+}
+
 /// Whether a level flag is set (`level.flag[name]`, as `flag_set` keeps it).
 pub(crate) fn level_flag(world: &World, name: &str) -> bool {
     let Some(runtime) = world.get_resource::<RoundScript>() else {

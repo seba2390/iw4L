@@ -177,6 +177,11 @@ impl SimWorld {
         self.player(id).map(|ps| ps.ground_entity_num)
     }
 
+    /// A player's script field as text, for a test player.
+    pub fn player_field_text(&self, client: crate::ClientId, name: &str) -> String {
+        crate::script::host::sightings::player_field_text(&self.ecs, client, name)
+    }
+
     /// Whether a level flag is set, for a test player.
     pub fn level_flag(&self, name: &str) -> bool {
         crate::script::host::sightings::level_flag(&self.ecs, name)

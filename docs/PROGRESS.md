@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 243 of 692 |
-| TranZit (`zm_transit`, Classic) | 277 of 741 |
-| Buried (`zm_buried`, Classic) | 267 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 240 of 692 |
+| TranZit (`zm_transit`, Classic) | 274 of 741 |
+| Buried (`zm_buried`, Classic) | 264 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -193,7 +193,8 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
   - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the head chopper's animation is not loaded on the server; the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
 - [ ] Co-op: friends join, revive one another and play to game over.
-  - [ ] Not started.
+  - [x] With a bot as the second player on Nuketown: he joins and spawns, goes down, bleeds out after 45 s and respawns at the next round; the test player revives him (`player_revived`, the reviver named) each time he goes down; with both down the game ends and the match returns to the lobby.
+  - [ ] A second player over the network (two machines) not tried; hot joining's `getsnapshotackindex` is missing.
 - [ ] The game's fidelity ledger ([`fidelity/t6.md`](fidelity/t6.md)) has no open item.
 
 ## Black Ops III — Zombies

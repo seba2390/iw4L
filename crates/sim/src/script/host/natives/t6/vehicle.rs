@@ -21,6 +21,16 @@ const MPH: f32 = 17.6;
 const DEFAULT_MPH: f32 = 30.0;
 /// The least travel still driven in a tick.
 const MIN_STEP: f32 = 1e-3;
+/// `sighttracepassed`'s masks, without and with bodies.
+const SIGHT_MASK: u32 = 0x0080_1803;
+const SIGHT_MASK_CHARACTERS: u32 = 0x0280_9803;
+/// `bullettracepassed`'s masks, without and with bodies.
+const BULLET_MASK: u32 = 0x0080_6033;
+const BULLET_MASK_CHARACTERS: u32 = 0x0280_e033;
+/// `depthinwater` looks for the surface this far above and below, by the
+/// water contents.
+const WATER_REACH: f32 = 200.0;
+const CONTENTS_WATER: u32 = 0x20;
 /// How far below a platform's box a rider's feet may be (his origin rests
 /// on its floor brushes).
 const RIDER_SLACK: f32 = 2.0;
@@ -482,6 +492,70 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "movez", |world, receiver, args| {
         move_axis(world, receiver, args, 2)
+    });
+    // gsc_sighttracepassed(start, end, hit_characters, [ignore]): a sight
+    // trace (solid, glass and clip, and bodies when asked) that hits
+    // nothing.
+    registry.register(Function, "sighttracepassed", |world, _, args| {
+        let (Some(Value::Vector(start)), Some(Value::Vector(end))) = (args.first(), args.get(1))
+        else {
+            return Err("sighttracepassed expects two points".into());
+        };
+        let characters = !matches!(args.get(2), Some(Value::Int(0)));
+        let mask = if characters {
+            SIGHT_MASK_CHARACTERS
+        } else {
+            SIGHT_MASK
+        };
+        let ignore = super::super::engine::trace_ignore(world, args.get(3));
+        let passed = matches!(
+            super::super::engine::entity_trace(world, *start, *end, mask, ignore),
+            crate::bullet_collision::TraceOutcome::Miss { .. }
+        );
+        Ok(Value::Int(passed.into()))
+    });
+    // gsc_bullettracepassed(start, end, hit_characters, [ignore],
+    // [ignore2], [check]): a bullet trace that hits nothing; the extra
+    // check the sixth argument asks for is not made.
+    registry.register(Function, "bullettracepassed", |world, _, args| {
+        let (Some(Value::Vector(start)), Some(Value::Vector(end))) = (args.first(), args.get(1))
+        else {
+            return Err("bullettracepassed expects two points".into());
+        };
+        let characters = !matches!(args.get(2), Some(Value::Int(0)));
+        let mask = if characters {
+            BULLET_MASK_CHARACTERS
+        } else {
+            BULLET_MASK
+        };
+        let mut ignore = super::super::engine::trace_ignore(world, args.get(3));
+        let second = super::super::engine::trace_ignore(world, args.get(4));
+        ignore.other_client = ignore.other_client.or(second.client);
+        ignore.model = ignore.model.or(second.model);
+        let passed = matches!(
+            super::super::engine::entity_trace(world, *start, *end, mask, ignore),
+            crate::bullet_collision::TraceOutcome::Miss { .. }
+        );
+        Ok(Value::Int(passed.into()))
+    });
+    // gscm_depthinwater: how deep the entity's origin is under water (the
+    // surface found from 200 above to 200 below), 0 out of it.
+    registry.register(Method, "depthinwater", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let at = match super::super::super::players::entity_field(world, id, "origin") {
+            Value::Vector(v) => v,
+            _ => [0.0; 3],
+        };
+        let start = [at[0], at[1], at[2] + WATER_REACH];
+        let end = [at[0], at[1], at[2] - WATER_REACH];
+        let hit =
+            super::super::engine::trace(world, start, end, [0.0; 3], [0.0; 3], CONTENTS_WATER);
+        let depth = if hit.fraction < 1.0 {
+            start[2] + (end[2] - start[2]) * hit.fraction - at[2]
+        } else {
+            0.0
+        };
+        Ok(Value::Float(depth.max(0.0)))
     });
     // gscm_ghostindemo: hidden in demo recordings; IW4L records none.
     registry.register(Method, "ghostindemo", |world, receiver, _| {
