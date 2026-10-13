@@ -288,6 +288,9 @@ pub fn build(sources: &[Source], builtins: &Builtins<'static>, realm: Realm) -> 
             natives: linker.natives,
             rules: realm,
             field_name: None,
+            // Black Ops 2's relational operators order two strings
+            // (strcmp), as its VM's less and greater evaluators do.
+            ordered_strings: true,
         },
         report,
         unresolved,

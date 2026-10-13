@@ -234,6 +234,7 @@ pub fn build(sources: &[Source], realm: Realm) -> Built {
             natives: linker.natives,
             rules: realm,
             field_name: Some(field_name),
+            ordered_strings: false,
         },
         autoexec,
         report,

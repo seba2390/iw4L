@@ -166,6 +166,22 @@ impl SimWorld {
         crate::script::host::sightings::waits_on(&self.ecs, name)
     }
 
+    /// The origin, yaw and entity number of the entity a level field holds,
+    /// for a test player.
+    pub fn level_entity_pose(&self, name: &str) -> Option<([f32; 3], f32, i32)> {
+        crate::script::host::sightings::level_entity_pose(&self.ecs, name)
+    }
+
+    /// The entity number a player stands on, for a test player.
+    pub fn player_ground_entity(&self, id: crate::ClientId) -> Option<i32> {
+        self.player(id).map(|ps| ps.ground_entity_num)
+    }
+
+    /// A player's script field as text, for a test player.
+    pub fn player_field_text(&self, client: crate::ClientId, name: &str) -> String {
+        crate::script::host::sightings::player_field_text(&self.ecs, client, name)
+    }
+
     /// Whether a level flag is set, for a test player.
     pub fn level_flag(&self, name: &str) -> bool {
         crate::script::host::sightings::level_flag(&self.ecs, name)

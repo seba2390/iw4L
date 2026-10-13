@@ -37,6 +37,13 @@
 //! `IW4L_TEST_VARS=key,…` adds those `level.zombie_vars` entries to the log
 //! every five seconds.
 //!
+//! `IW4L_TEST_REVIVE=1`: when a teammate is down, the player goes beside
+//! him and holds use to revive him.
+//!
+//! `IW4L_TEST_RIDE=1|<seconds>` (with any fighting mode): 15 s (or the
+//! seconds given) in, the player steps
+//! onto TranZit's bus and stays, logging where he and the bus are.
+//!
 //! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
 //! he can pay for it he buys Quick Revive as the use test does (fighting
 //! nothing), then stands where he spawned as the go-down test does.
@@ -126,6 +133,14 @@ const MACHINE_ROOM: f32 = 40.0;
 /// and stands this far from it.
 const HUNT_AFTER_MS: i32 = 20_000;
 const HUNT_STAND_OFF: f32 = 48.0;
+/// The revive test holds use this long beside a downed teammate (Black
+/// Ops 2's revive takes 3 s), standing this far from him.
+const REVIVE_HOLD_MS: i32 = 5_000;
+const REVIVE_STAND_OFF: f32 = 32.0;
+/// The ride test boards the bus this long after it lives; the bus floor
+/// stands this high above its origin.
+const RIDE_AFTER_MS: i32 = 15_000;
+const BUS_FLOOR: f32 = 36.0;
 /// The perk the use test buys.
 const QUICK_REVIVE: &str = "specialty_quickrevive";
 /// The eye height it plans with before it stands there.
@@ -187,6 +202,12 @@ struct Scenario {
 #[derive(Resource, Default)]
 pub(crate) struct TestPlayer {
     mode: Mode,
+    /// The teammate the revive test is reviving, and until when it holds use.
+    reviving: Option<u32>,
+    revive_until_ms: i32,
+    /// The ride test stepped onto the bus.
+    boarded: bool,
+    next_ride_log_ms: i32,
     /// When it last saw an actor to aim at.
     last_seen_ms: Option<i32>,
     god_asked: bool,
@@ -457,7 +478,13 @@ fn next_scenario(
             }
             return None;
         }
-        of_kind.sort_by_key(|site| site.cost.unwrap_or(0));
+        // The cheapest, and of those the nearest.
+        of_kind.sort_by(|a, b| {
+            a.cost
+                .unwrap_or(0)
+                .cmp(&b.cost.unwrap_or(0))
+                .then(distance(origin, a.origin).total_cmp(&distance(origin, b.origin)))
+        });
         let Some((site, center, stand)) = of_kind.iter().find_map(|site| {
             let center = world.use_site_center(site);
             Some((*site, center, stand_point(world, id, site, center)?))
@@ -578,6 +605,28 @@ pub(crate) fn drive_test_player(
             ps.weaponstate_primary,
             test.lines
         );
+        let others: Vec<String> = snapshot
+            .players
+            .iter()
+            .filter(|(other, _)| *other != id)
+            .map(|(other, other_ps)| {
+                format!(
+                    "client {} {:?} health {} laststand {} sessionstate {} spectator_respawn {}",
+                    other.0,
+                    snapshot.meta.for_client(*other).map(|m| m.lifecycle),
+                    other_ps.health,
+                    world
+                        .0
+                        .script_int(ScriptOwner::Player(*other), "laststand")
+                        .map_or_else(|| "-".to_owned(), |n| n.to_string()),
+                    world.0.player_field_text(*other, "sessionstate"),
+                    world.0.player_field_text(*other, "spectator_respawn")
+                )
+            })
+            .collect();
+        if !others.is_empty() {
+            diag::info!(Sim, "test player: other players {others:?}");
+        }
         if let Ok(fields) = std::env::var("IW4L_TEST_ACTORS") {
             for actor in &actors {
                 let values: Vec<String> = fields
@@ -849,6 +898,97 @@ pub(crate) fn drive_test_player(
         test.scenario = Some(scenario);
         cmds.push(id, None, cmd, None);
         return;
+    }
+    // `IW4L_TEST_REVIVE`: a teammate down, he goes beside him, faces him
+    // and holds use (Black Ops 2's revive trigger is around the downed
+    // player).
+    if std::env::var("IW4L_TEST_REVIVE").is_ok() {
+        let downed = snapshot.players.iter().find(|(other, _)| {
+            *other != id
+                && world.0.script_int(ScriptOwner::Player(*other), "laststand") == Some(1)
+                && snapshot
+                    .meta
+                    .for_client(*other)
+                    .is_some_and(|m| m.lifecycle == ClientLifecycle::Alive)
+        });
+        if let Some((other, other_ps)) = downed {
+            let target = other_ps.origin;
+            if test.reviving != Some(other.0) {
+                test.reviving = Some(other.0);
+                test.revive_until_ms = clock.time_ms + REVIVE_HOLD_MS;
+                let away = [ps.origin[0] - target[0], ps.origin[1] - target[1]];
+                let length = (away[0] * away[0] + away[1] * away[1]).sqrt().max(1.0);
+                let stand = [
+                    target[0] + away[0] / length * REVIVE_STAND_OFF,
+                    target[1] + away[1] / length * REVIVE_STAND_OFF,
+                    target[2] + 1.0,
+                ];
+                diag::info!(
+                    Sim,
+                    "test player: reviving client {} down at {}",
+                    other.0,
+                    fmt_point(target)
+                );
+                if let Err(error) = actions.push(
+                    id,
+                    ClientAction::Move {
+                        request_id: request_ids.allocate(),
+                        origin: stand,
+                        angles: look([stand[0], stand[1], stand[2] + EYE_HEIGHT], target),
+                    },
+                ) {
+                    diag::warn!(Sim, "test player: request not queued — {error}");
+                }
+            }
+            if clock.time_ms < test.revive_until_ms {
+                aim_cmd(&mut cmd, look(eye, target));
+                cmd.buttons |= buttons::USE;
+                cmds.push(id, None, cmd, None);
+                return;
+            }
+        } else if let Some(client) = test.reviving.take() {
+            diag::info!(Sim, "test player: client {client} is no longer down");
+        }
+    }
+    // `IW4L_TEST_RIDE`: once, it steps onto the bus (`level.the_bus`, its
+    // floor 36 above its origin), then logs where it and the bus are.
+    if std::env::var("IW4L_TEST_RIDE").is_ok()
+        && let Some((bus, yaw, number)) = world.0.level_entity_pose("the_bus")
+    {
+        let after = std::env::var("IW4L_TEST_RIDE")
+            .ok()
+            .and_then(|s| s.parse::<i32>().ok())
+            .filter(|&s| s > 1)
+            .map_or(RIDE_AFTER_MS, |s| s * 1000);
+        if !test.boarded && clock.time_ms - since_ms >= after {
+            test.boarded = true;
+            let stand = [bus[0], bus[1], bus[2] + BUS_FLOOR + 1.0];
+            diag::info!(Sim, "test player: boarding the bus at {}", fmt_point(stand));
+            if let Err(error) = actions.push(
+                id,
+                ClientAction::Move {
+                    request_id: request_ids.allocate(),
+                    origin: stand,
+                    angles: [0.0, yaw, 0.0],
+                },
+            ) {
+                diag::warn!(Sim, "test player: request not queued — {error}");
+            }
+        }
+        if test.boarded && clock.time_ms >= test.next_ride_log_ms {
+            test.next_ride_log_ms = clock.time_ms + LOG_PERIOD_MS;
+            diag::info!(
+                Sim,
+                "test player: ride — player {} bus {} (entity {number}) stands on {:?}",
+                fmt_point(ps.origin),
+                fmt_point(bus),
+                world.0.player_ground_entity(id)
+            );
+        }
+        if test.boarded {
+            cmds.push(id, None, cmd, None);
+            return;
+        }
     }
     // The revive test fights nothing.
     if test.mode == Mode::Revive {

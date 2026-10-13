@@ -317,6 +317,10 @@ fn place(world: &mut World, id: u64) {
 
 /// Plays every actor's clip one server frame on: its notetracks go out
 /// under its state's notify, a looping clip starts over.
+/// `setentityanimrate`: how fast an entity's animations play (0 to 1).
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct AnimRates(std::collections::BTreeMap<u64, f32>);
+
 fn advance(world: &mut World) {
     let Some(anims) = world.get_resource::<ActorAnims>() else {
         return;
@@ -332,6 +336,11 @@ fn advance(world: &mut World) {
         let Some(mut playing) = anim_mut(world, id).playing.clone() else {
             continue;
         };
+        let step = step
+            * world
+                .get_resource::<AnimRates>()
+                .and_then(|rates| rates.0.get(&id).copied())
+                .unwrap_or(1.0);
         if playing.done {
             continue;
         }
@@ -617,6 +626,31 @@ pub(super) fn reset_orient(world: &mut World, id: u64) {
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
+    // gscm_setentityanimrate(rate): the entity's animations play at `rate`
+    // (0 to 1), with the engine's errors.
+    registry.register(
+        Namespace::Method,
+        "setentityanimrate",
+        |world, receiver, args| {
+            let id = super::super::engine::entity_id(world, receiver)?;
+            let rate = match args.first() {
+                Some(Value::Int(n)) => *n as f32,
+                Some(Value::Float(f)) => *f,
+                _ => return Err("setentityanimrate expects a rate".into()),
+            };
+            if rate < 0.0 {
+                return Err("must be > 0".into());
+            }
+            if rate > 1.0 {
+                return Err("must be < 1".into());
+            }
+            world
+                .get_resource_or_insert_with(AnimRates::default)
+                .0
+                .insert(id, rate);
+            Ok(Value::Undefined)
+        },
+    );
     registry.on_tick(advance);
     registry.register(Function, "getstartorigin", |world, _, args| {
         Ok(Value::Vector(start_pose(world, args)?.0))

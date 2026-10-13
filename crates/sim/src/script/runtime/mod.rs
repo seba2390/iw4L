@@ -669,7 +669,11 @@ fn instruction(
         Op::Binary(op) => {
             let b = pop(thread)?;
             let a = pop(thread)?;
-            thread.stack.push(binary(op, a, b)?);
+            let ordered = program.ordered_strings;
+            thread.stack.push(match ordered.then(|| gsc::ops::string_order(op, &a, &b)).flatten() {
+                Some(value) => value,
+                None => binary(op, a, b)?,
+            });
         }
         Op::Vector => {
             let mut v = [0.0; 3];

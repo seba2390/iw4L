@@ -45,12 +45,15 @@ impl Builtin {
 pub struct Catalog {
     realm: asset_core::FamilyId,
     names: BTreeMap<Namespace, BTreeMap<&'static str, Builtin>>,
+    /// The game's `<`, `>`, `<=` and `>=` order two strings.
+    ordered_strings: bool,
 }
 impl Catalog {
     pub fn from_list(realm: asset_core::FamilyId, list: &[Builtin]) -> Self {
         let mut catalog = Self {
             realm,
             names: BTreeMap::new(),
+            ordered_strings: false,
         };
         for builtin in list {
             catalog.insert(builtin.clone());
@@ -62,6 +65,14 @@ impl Catalog {
             self.insert(builtin);
         }
         self
+    }
+    /// The game's relational operators order two strings, byte by byte.
+    pub fn with_ordered_strings(mut self) -> Self {
+        self.ordered_strings = true;
+        self
+    }
+    pub fn ordered_strings(&self) -> bool {
+        self.ordered_strings
     }
     pub fn realm(&self) -> asset_core::FamilyId {
         self.realm

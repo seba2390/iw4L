@@ -48,7 +48,8 @@ impl game_api::GameScripts for T6 {
         }
         let startup = startup::T6Startup::new(request.map);
         Rule::Known(ScriptProgram {
-            catalog: gsc::Catalog::from_list(asset_core::FamilyId::T6, &catalog()),
+            catalog: gsc::Catalog::from_list(asset_core::FamilyId::T6, &catalog())
+                .with_ordered_strings(),
             roots: startup.roots,
             entries: startup.entries,
             built: None,
@@ -135,7 +136,8 @@ fn own_zombies(
         ("ui_zm_gamemodegroup".to_owned(), start.group.clone()),
     ];
     Rule::Known(ScriptProgram {
-        catalog: gsc::Catalog::from_list(asset_core::FamilyId::T6, &catalog()),
+        catalog: gsc::Catalog::from_list(asset_core::FamilyId::T6, &catalog())
+            .with_ordered_strings(),
         roots,
         entries,
         built: Some(built.program),

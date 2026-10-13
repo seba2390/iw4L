@@ -238,6 +238,10 @@ fn all_in(world: &mut World, receiver: &Value, states: &[u8]) -> Result<Value, S
     Ok(Value::Int(all.into()))
 }
 
+/// The collision model each zbarrier was given.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct CollisionModels(std::collections::BTreeMap<u64, String>);
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
     registry.register(Function, "getzbarrierarray", |world, _, _| {
@@ -255,6 +259,20 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             }
         }
         new_array(world, listed)
+    });
+    // gscm_setzbarriercolmodel: the zbarrier's own model, its collision
+    // (`t6.barriers.colmodel`: kept, not collided against).
+    registry.register(Method, "setzbarriercolmodel", |world, receiver, args| {
+        barrier(world, receiver)?;
+        let Some(Value::String(model)) = args.first() else {
+            return Err("setzbarriercolmodel expects a model".into());
+        };
+        let id = super::super::engine::entity_id(world, receiver)?;
+        world
+            .get_resource_or_insert_with(CollisionModels::default)
+            .0
+            .insert(id, model.to_string());
+        Ok(Value::Undefined)
     });
     registry.register(Method, "iszbarrier", |world, receiver, _| {
         Ok(Value::Int(barrier(world, receiver).is_ok().into()))

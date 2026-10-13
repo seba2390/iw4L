@@ -20,6 +20,27 @@ pub fn type_name(value: &Value) -> &'static str {
     }
 }
 
+/// `<`, `>`, `<=` or `>=` between two strings, for a game that orders them:
+/// byte by byte, as C's `strcmp` (none for another operator or values).
+pub fn string_order(op: Binary, a: &Value, b: &Value) -> Option<Value> {
+    let (Value::String(x), Value::String(y)) = (a, b) else {
+        return None;
+    };
+    let order = x
+        .as_bytes()
+        .iter()
+        .map(|&c| c as i8)
+        .cmp(y.as_bytes().iter().map(|&c| c as i8));
+    let holds = match op {
+        Binary::Less => order.is_lt(),
+        Binary::Greater => order.is_gt(),
+        Binary::LessEqual => order.is_le(),
+        Binary::GreaterEqual => order.is_ge(),
+        _ => return None,
+    };
+    Some(Value::Int(i32::from(holds)))
+}
+
 pub fn mismatch(a: &Value, b: &Value) -> String {
     format!(
         "pair '{}' and '{}' has unmatching types",
