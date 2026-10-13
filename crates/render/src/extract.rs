@@ -155,7 +155,10 @@ pub fn seal_render_frame(
         Option<Res<render_frontend::assemble::drawsurf::FrameAssemblyInputs>>,
         Option<Res<render_frontend::assemble::drawsurf::RenderFrameProducts>>,
     ),
-    world: Option<Res<WorldDrawGpuPlan>>,
+    (world, world_scene): (
+        Option<Res<WorldDrawGpuPlan>>,
+        Option<Res<render_frontend::prepare::scene::world::WorldScene>>,
+    ),
     smodel: Option<Res<SmodelGpuPlan>>,
     smc: Option<Res<render_frontend::prepare::scene::smodel_geom_cache::WorldStaticModelCache>>,
     static_identity: (
@@ -604,6 +607,10 @@ pub fn seal_render_frame(
             .unwrap_or(0),
         smc_vb_patches,
         smc_ib_patches,
+        world_brush_rows: world_scene
+            .as_ref()
+            .and_then(|scene| scene.brush_model_live_rows())
+            .unwrap_or_else(|| Arc::new(Vec::new())),
         xmodel_vertices,
         xmodel_indices,
         xmodel_surface_ranges,

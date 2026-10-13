@@ -5,6 +5,9 @@ use render_frame::{MaterialExecFrame, SunShadowForcedFrame};
 use render_material::{MaterialGenerationId, PreparedMaterialTable, RuntimeMaterialCatalog};
 use std::sync::Arc;
 
+/// World vertex rows rewritten for moved brush models: byte offset, bytes.
+pub type WorldBrushRows = Arc<Vec<(u64, Vec<u8>)>>;
+
 #[derive(Clone, Debug, Default)]
 pub struct ExtractedStaticGeometry {
     pub world_vertices: Arc<Vec<[u8; asset_iw4::size::GFX_WORLD_VERTEX]>>,
@@ -97,6 +100,8 @@ pub struct RenderFrameData {
     pub pipeline_demand_revision: u64,
     pub smc_vb_patches: Vec<(lighting_iw4::SmcPatchLock, Vec<u8>)>,
     pub smc_ib_patches: Vec<(u32, Vec<u8>)>,
+    /// Moved brush model rows over the world vertices (byte offset, bytes).
+    pub world_brush_rows: WorldBrushRows,
     pub xmodel_vertices: Arc<Vec<[u8; asset_iw4::size::GFX_PACKED_VERTEX]>>,
     pub xmodel_indices: Arc<Vec<u32>>,
     pub xmodel_surface_ranges: Arc<Vec<(u32, u32)>>,

@@ -61,6 +61,7 @@ Only the top-level items count.
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
+  - [x] Static models (3268 of 3326 slots) and script brush models (window boards, debris) draw.
   - [ ] Zone data still dropped: dynamic entities, fx models, glass, dynamic lights; some static models whose model lives in another zone.
   - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
 - [x] The game's own zombies scripts start the match and run round 1.
@@ -87,7 +88,8 @@ Only the top-level items count.
   - [ ] Debris (Five) not reached.
 - [x] Power and perks.
   - [x] The power switch, buying and drinking a perk (Quick Revive), the perk icon.
-  - [ ] Each perk's effect verified (Juggernog's health, Speed Cola, Double Tap, Stamin-Up); the drink's stance and melee locks.
+  - [x] Juggernog fills the player's health to 250 (`SetMaxHealth`).
+  - [ ] Each perk's effect verified (Speed Cola, Double Tap, Stamin-Up); the drink's stance and melee locks.
 - [x] Pack-a-Punch and every power-up.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).

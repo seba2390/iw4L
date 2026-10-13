@@ -1068,6 +1068,14 @@ fn register_player(registry: &mut NativeRegistry) {
             .cloned()
             .unwrap_or(Value::Int(0)))
     });
+    // Black Ops sets the health along with the max health.
+    registry.register(Method, "setmaxhealth", |world, receiver, args| {
+        let client = player_id(world, receiver)?;
+        let health = Value::Int(int(args, 0)?);
+        super::super::players::store_field(world, client, "maxhealth", &health)?;
+        super::super::players::store_field(world, client, "health", &health)?;
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "setdstat", |world, receiver, args| {
         let client = player_id(world, receiver)?;
         let (value, keys) = args

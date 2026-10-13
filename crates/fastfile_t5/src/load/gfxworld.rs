@@ -169,7 +169,7 @@ pub(super) fn load_gfxworld(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSin
     ) = load_draw(s, links, p.at(sz::GFX_WORLD_DRAW_OFF))?;
     let light_grid = load_light_grid(s, p.at(sz::GFX_WORLD_LIGHT_GRID_OFF))?;
 
-    always_array(
+    let models = always_array(
         s,
         p.at(sz::GFX_WORLD_MODELS_OFF),
         4,
@@ -394,6 +394,8 @@ pub(super) fn load_gfxworld(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSin
         sky_surf_count,
         sky_start_surfs,
         sky_box_model,
+        models,
+        model_count,
         sun_light,
         reflection_probes,
         reflection_probe_count,
