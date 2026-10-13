@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 248 of 692 |
-| TranZit (`zm_transit`, Classic) | 282 of 741 |
-| Buried (`zm_buried`, Classic) | 274 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 243 of 692 |
+| TranZit (`zm_transit`, Classic) | 277 of 741 |
+| Buried (`zm_buried`, Classic) | 267 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -190,7 +190,8 @@ Only the top-level items count. Runs are headless, with the test player
 - [ ] Every zombies map in the install (TranZit, Buried).
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
   - [x] TranZit's bus drives its route on its path nodes once the depot doors open, with the player riding it (depot, diner, forest, on toward the power station in 220 s), its scripts reading tags off its posed model and who stands on it.
-  - [ ] Buried's own systems (Leroy, the buildables, the maze, the ghosts) not verified; the bus's own collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
+  - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
+  - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the head chopper's animation is not loaded on the server; the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [ ] Not started.
 - [ ] The game's fidelity ledger ([`fidelity/t6.md`](fidelity/t6.md)) has no open item.

@@ -35,6 +35,8 @@ pub struct Program {
     /// How a map entity's key is named as a script field, for a game whose
     /// scripts name fields by hash; `None` keeps the key as it is.
     pub field_name: Option<fn(&str) -> String>,
+    /// The game's relational operators order two strings.
+    pub ordered_strings: bool,
 }
 impl Program {
     pub fn load(

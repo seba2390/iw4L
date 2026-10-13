@@ -698,6 +698,14 @@ impl AuthorityDObjState {
             .bone_names
             .iter()
             .position(|name| name == tag)
+            // Tag names are script strings, which match without case.
+            .or_else(|| {
+                capability
+                    .pose
+                    .bone_names
+                    .iter()
+                    .position(|name| name.eq_ignore_ascii_case(tag))
+            })
     }
 
     pub fn tag_world_matrix(&self, tag: &str) -> Option<glam::Mat4> {

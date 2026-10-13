@@ -49,6 +49,8 @@ struct PathVehicles {
     max: BTreeMap<u64, f32>,
     /// Moving platforms (`setmovingplatformenabled`).
     platforms: std::collections::BTreeSet<u64>,
+    /// Actors that do not push players (`pushplayer(0)`).
+    no_push: std::collections::BTreeSet<u64>,
 }
 
 fn field(world: &mut World, id: u64, name: &str) -> Value {
@@ -235,6 +237,29 @@ fn object_of_number(world: &World, number: i32) -> Option<u64> {
         .iter()
         .find(|(id, entity)| entity.number == number && world.resource::<RoundScript>().live(id))
         .map(|(id, _)| *id)
+}
+
+/// A `moveto` along one world axis by `distance`.
+fn move_axis(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    axis: usize,
+) -> Result<Value, String> {
+    let id = super::super::engine::entity_id(world, receiver)?;
+    let distance = match args.first() {
+        Some(Value::Int(n)) => *n as f32,
+        Some(Value::Float(f)) => *f,
+        _ => return Err("expected a distance".into()),
+    };
+    let mut to = origin(world, id);
+    to[axis] += distance;
+    let moveto = NativeRegistry::engine_services()
+        .get(Namespace::Method, "moveto")
+        .ok_or("moveto: no engine move")?;
+    let mut forwarded = vec![Value::Vector(to)];
+    forwarded.extend(args.iter().skip(1).cloned());
+    moveto(world, receiver, &forwarded)
 }
 
 /// Hides or shows a part (tag) of the entity's model.
@@ -447,6 +472,38 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.on_tick(present_vehicles);
+    // gscm_movex / movey / movez(distance, time, [accel], [decel]): a move
+    // along one world axis, as `moveto`.
+    registry.register(Method, "movex", |world, receiver, args| {
+        move_axis(world, receiver, args, 0)
+    });
+    registry.register(Method, "movey", |world, receiver, args| {
+        move_axis(world, receiver, args, 1)
+    });
+    registry.register(Method, "movez", |world, receiver, args| {
+        move_axis(world, receiver, args, 2)
+    });
+    // gscm_ghostindemo: hidden in demo recordings; IW4L records none.
+    registry.register(Method, "ghostindemo", |world, receiver, _| {
+        super::super::engine::entity_id(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    // gscm_pushplayer(on): whether the actor pushes players aside
+    // (`t6.actors.push_player`: kept, not applied).
+    registry.register(Method, "pushplayer", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+            return Err("not an actor".into());
+        }
+        let on = !matches!(args.first(), Some(Value::Int(0)));
+        let mut vehicles = world.get_resource_or_insert_with(PathVehicles::default);
+        if on {
+            vehicles.no_push.remove(&id);
+        } else {
+            vehicles.no_push.insert(id);
+        }
+        Ok(Value::Undefined)
+    });
     // gscm_getgroundent: what a player stands on, from his player state
     // (another entity's is not kept: none).
     registry.register(Method, "getgroundent", |world, receiver, _| {

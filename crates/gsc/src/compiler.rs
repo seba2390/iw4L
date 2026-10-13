@@ -441,6 +441,7 @@ pub fn compile(
         natives,
         rules: catalog.realm(),
         field_name: None,
+        ordered_strings: catalog.ordered_strings(),
     })
 }
 

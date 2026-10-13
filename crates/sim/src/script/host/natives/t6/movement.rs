@@ -683,6 +683,32 @@ fn set_goal(world: &mut World, id: u64, goal: [f32; 3]) {
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::Method;
 
+    // gscm_calcpathlength(point): the length of the actor's path to the
+    // point (an int), 0 when no path joins them.
+    registry.register(
+        Namespace::Method,
+        "calcpathlength",
+        |world, receiver, args| {
+            let id = actor(world, receiver).map_err(|_| "not an actor".to_owned())?;
+            let Some(Value::Vector(goal)) = args.first() else {
+                return Err("calcpathlength expects a point".into());
+            };
+            let from = origin_of(world, id);
+            let Some(path) = plan(world, id, from, *goal) else {
+                return Ok(Value::Int(0));
+            };
+            let mut length = 0.0;
+            let mut at = from;
+            for point in &path {
+                length += (0..3)
+                    .map(|i| (point.at[i] - at[i]).powi(2))
+                    .sum::<f32>()
+                    .sqrt();
+                at = point.at;
+            }
+            Ok(Value::Int(length as i32))
+        },
+    );
     registry.on_tick(think);
     registry.register(Method, "setgoalpos", |world, receiver, args| {
         let id = actor(world, receiver)?;

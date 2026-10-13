@@ -43,10 +43,39 @@ fn tag(
         Some(None) => Err(format!(
             "tag '{name}' does not exist in model '{model}' (or any attached submodels)"
         )),
-        None => Err(format!(
-            "t6.entities.tag_pose: model '{model}' of this entity is not posed on the server"
-        )),
+        None => bind_pose_tag(world, id, &model, &name).ok_or_else(|| {
+            format!(
+                "t6.entities.tag_pose: model '{model}' of this entity is not posed on the server"
+            )
+        }),
     }
+}
+
+/// A tag of the model in its bind pose at the entity's origin and angles,
+/// for an entity whose model is not posed on the server yet (an actor in
+/// the frame it spawns): `t6.entities.tag_pose`.
+fn bind_pose_tag(
+    world: &mut World,
+    id: u64,
+    model: &str,
+    tag: &str,
+) -> Option<super::super::super::presence::TagPose> {
+    let origin = vector_field(world, id, "origin");
+    let angles = vector_field(world, id, "angles");
+    let capability = crate::frame::FrameWorld::from_world(world)
+        .model_capability(model)
+        .flatten()?;
+    let dobj = crate::AuthorityDObjState::at_pose(model, Some(capability), origin, angles);
+    let matrix = dobj.tag_world_matrix(tag)?;
+    let axis = |v: glam::Vec4| v.truncate().normalize_or_zero().to_array();
+    Some((
+        matrix.w_axis.truncate().to_array(),
+        [
+            axis(matrix.x_axis),
+            axis(matrix.y_axis),
+            axis(matrix.z_axis),
+        ],
+    ))
 }
 
 /// The entity's axis: forward, left, up.
