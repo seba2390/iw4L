@@ -193,7 +193,8 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] TranZit's power: the powerswitch built from its three parts, its lever thrown, `power_on` set by the map's 30 s power event, and a perk sold after it.
   - [x] TranZit's riot shield built from its two parts, taken from its table and held (its shield model attached).
   - [x] TranZit's turbine and turret carried and set down by Black Ops 2's placement test (`IW4L_TEST_WIELD=equip_turbine_zm,equip_turret_zm IW4L_TEST_PLACE=1`); the placed turret is spawned, set to `auto_nonai` and powered by the turbine beside it.
-  - [ ] The placed turret does not yet aim or fire (`t6.turret.ai`); the jet gun is not started.
+  - [x] The placed turret picks zombies, swings onto them, fires Black Ops 2's bullets (penetrating by the zone's depth table) and kills them, itself the attacker.
+  - [ ] The jet gun is not started.
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
   - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
 - [ ] Co-op: friends join, revive one another and play to game over.
