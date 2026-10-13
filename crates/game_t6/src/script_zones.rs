@@ -215,5 +215,6 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
                     .to_owned()
             })
             .collect(),
+        turret_convergence: def::TURRET_CONVERGENCE.map(|off| weapon.def_f32(off)),
     })
 }

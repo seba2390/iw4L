@@ -98,10 +98,14 @@ pub(super) fn bind_t6_content(
                     .map(asset_core::WalkLocalMaterialIndex::from_walk)
             })
             .collect();
+        let family = asset_core::FamilyId::T6;
+        if model.view && model.world {
+            world.insert_in(family, model.skel.clone(), Some(materials));
+        }
         if model.view {
-            fpv.insert_in(asset_core::FamilyId::T6, model.skel, Some(materials));
+            fpv.insert_in(family, model.skel, Some(materials));
         } else {
-            world.insert_in(asset_core::FamilyId::T6, model.skel, Some(materials));
+            world.insert_in(family, model.skel, Some(materials));
         }
     }
     materials.resolve_technique_set_edges();

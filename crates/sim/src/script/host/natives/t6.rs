@@ -28,6 +28,7 @@ mod riotshield;
 mod rumble;
 mod sound;
 mod stats;
+mod turret;
 mod usable;
 mod vehicle;
 mod weapon;
@@ -2014,6 +2015,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     riotshield::register(registry);
     sound::register(registry);
     stats::register(registry);
+    turret::register(registry);
 }
 
 /// The node field a node lookup key names; it has to hold a string.
