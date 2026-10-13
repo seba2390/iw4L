@@ -645,10 +645,9 @@ impl XAnimBuild {
             Some(delta) => match (
                 copy_delta_trans_t6(load, delta, numframes),
                 copy_delta_quat2_t6(load, delta.at(4), numframes),
-                load.blocks.ptr_at(delta.at(8)),
+                copy_delta_quat_t6(load, delta.at(8), numframes),
             ) {
-                (Some(trans), Some(quat), Ok(None)) => (trans, quat),
-                // A root turning in three dimensions (`quat`) is not read.
+                (Some(trans), Some(quat2), Some(quat)) => (trans, quat.or(quat2)),
                 _ => {
                     self.capture_gaps += 1;
                     return false;
@@ -665,7 +664,7 @@ impl XAnimBuild {
             random_data_byte: bytes(84, usize::from(u16_at(10))),
             random_data_int: dwords(88, usize::from(u16_at(12))),
             numframes,
-            flags: u8::from(h[16] != 0) | (u8::from(h[17] != 0) << 1),
+            flags: u8::from(h[16] != 0) | (u8::from(h[17] != 0 || h[18] != 0) << 1),
             bone_count,
             framerate: f32::from_le_bytes(h[48..52].try_into().unwrap()),
             names,
@@ -920,7 +919,7 @@ fn copy_delta_quat2_t6(load: &T6Load, slot: T6Ptr, numframes: u16) -> Option<Opt
     let Some(quat) = load.blocks.ptr_at(slot).ok()? else {
         return Some(None);
     };
-    let pairs = |at: T6Ptr, count: usize| -> Option<Vec<[i16; 2]>> {
+    let pairs = |at: T6Ptr, count: usize| -> Option<Vec<[i16; 4]>> {
         Some(
             load.blocks
                 .bytes(at, count * 4)
@@ -930,6 +929,8 @@ fn copy_delta_quat2_t6(load: &T6Load, slot: T6Ptr, numframes: u16) -> Option<Opt
                 .iter()
                 .map(|c| {
                     [
+                        0,
+                        0,
                         i16::from_le_bytes([c[0], c[1]]),
                         i16::from_le_bytes([c[2], c[3]]),
                     ]
@@ -967,6 +968,63 @@ fn copy_delta_quat2_t6(load: &T6Load, slot: T6Ptr, numframes: u16) -> Option<Opt
     Some(Some(RawDeltaQuat {
         indices,
         frames: pairs(frames, count)?,
+    }))
+}
+
+/// A delta's 3D rotation (`quat`): one frame, or keyed frames.
+fn copy_delta_quat_t6(load: &T6Load, slot: T6Ptr, numframes: u16) -> Option<Option<RawDeltaQuat>> {
+    let Some(quat) = load.blocks.ptr_at(slot).ok()? else {
+        return Some(None);
+    };
+    let quads = |at: T6Ptr, count: usize| -> Option<Vec<[i16; 4]>> {
+        Some(
+            load.blocks
+                .bytes(at, count * 8)
+                .ok()?
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|c| {
+                    [
+                        i16::from_le_bytes([c[0], c[1]]),
+                        i16::from_le_bytes([c[2], c[3]]),
+                        i16::from_le_bytes([c[4], c[5]]),
+                        i16::from_le_bytes([c[6], c[7]]),
+                    ]
+                })
+                .collect(),
+        )
+    };
+    let size = u16::from_le_bytes(load.blocks.bytes(quat, 2).ok()?.try_into().ok()?);
+    if size == 0 {
+        return Some(Some(RawDeltaQuat {
+            indices: Vec::new(),
+            frames: quads(quat.at(4), 1)?,
+        }));
+    }
+    let count = usize::from(size) + 1;
+    let indices = if numframes < 256 {
+        load.blocks
+            .bytes(quat.at(8), count)
+            .ok()?
+            .iter()
+            .copied()
+            .map(u16::from)
+            .collect()
+    } else {
+        load.blocks
+            .bytes(quat.at(8), count * 2)
+            .ok()?
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect()
+    };
+    let frames = load.blocks.ptr_at(quat.at(4)).ok()??;
+    Some(Some(RawDeltaQuat {
+        indices,
+        frames: quads(frames, count)?,
     }))
 }
 
@@ -1115,8 +1173,8 @@ fn copy_delta_t5(
 
     let quat = body(4).and_then(|p| {
         let size = s.u16_at(p, 0).ok()?;
-        let pair = |q: fastfile_t5::Ptr, i: usize| -> Option<[i16; 2]> {
-            Some([s.i16_at(q, i * 4).ok()?, s.i16_at(q, i * 4 + 2).ok()?])
+        let pair = |q: fastfile_t5::Ptr, i: usize| -> Option<[i16; 4]> {
+            Some([0, 0, s.i16_at(q, i * 4).ok()?, s.i16_at(q, i * 4 + 2).ok()?])
         };
         if size == 0 {
             return Some(RawDeltaQuat {

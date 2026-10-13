@@ -589,6 +589,23 @@ fn anim_clip(world: &mut World, args: &[Value], index: usize) -> Result<Arc<Anim
         .ok_or_else(|| format!("animation '{name}' is not loaded in the simulation"))
 }
 
+fn quat_to_axis([x, y, z, w]: [f32; 4]) -> [[f32; 3]; 3] {
+    let len2 = x * x + y * y + z * z + w * w;
+    if len2 == 0.0 {
+        return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    }
+    let s = 2.0 / len2;
+    let (xs, ys, zs) = (x * s, y * s, z * s);
+    let (wx, wy, wz) = (w * xs, w * ys, w * zs);
+    let (xx, xy, xz) = (x * xs, x * ys, x * zs);
+    let (yy, yz, zz) = (y * ys, y * zs, z * zs);
+    [
+        [1.0 - (yy + zz), xy + wz, xz - wy],
+        [xy - wz, 1.0 - (xx + zz), yz + wx],
+        [xz + wy, yz - wx, 1.0 - (xx + yy)],
+    ]
+}
+
 /// Where a clip aligned to an origin and angles starts: its root delta at
 /// its first frame, in that frame.
 fn start_pose(world: &mut World, args: &[Value]) -> Result<([f32; 3], [f32; 3]), String> {
@@ -600,8 +617,7 @@ fn start_pose(world: &mut World, args: &[Value]) -> Result<([f32; 3], [f32; 3]),
     let start = std::array::from_fn(|i| {
         origin[i] + trans[0] * axis[0][i] + trans[1] * axis[1][i] + trans[2] * axis[2][i]
     });
-    let (sin, cos) = clip.abs_delta_yaw(0.0).to_radians().sin_cos();
-    let rotation = [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]];
+    let rotation = quat_to_axis(clip.abs_delta_quat(0.0));
     let angles = math_iw4::axis_to_angles(math_iw4::matrix_multiply(rotation, axis));
     Ok((start, angles))
 }

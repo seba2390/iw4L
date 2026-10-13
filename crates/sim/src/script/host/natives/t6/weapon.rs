@@ -441,6 +441,32 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.register(Method, "getfractionmaxammo", fraction_max_ammo);
+    // gscm_calcweaponoptions: packs the player's entity number and weapon
+    // options (camo, lens, reticle, tag, emblem); the two-argument custom
+    // class form is refused (`t6.weapons.class_options`).
+    registry.register(Method, "calcweaponoptions", |world, receiver, args| {
+        let client = player_entity(world, receiver)?;
+        let mut bits = ((client.0 + 1) & 0x1f) << 15;
+        if args.len() == 2 {
+            int(args, 0)?;
+            int(args, 1)?;
+            return Err(
+                "t6.weapons.class_options: custom class weapon options are not read".into(),
+            );
+        }
+        if args.len() < 3 {
+            return Err("calcWeaponOptions takes 5 arguments: <camo> <lens> <reticle> <tag> <emblem>\n                     or 2 argument: <custom class slot> <primary weapon=0 | secondary weapon=1>".into());
+        }
+        bits ^= (int(args, 0)? as u32) & 0x7f;
+        bits ^= ((int(args, 2)? as u32) & 0x3f) << 7;
+        if args.len() > 3 {
+            bits ^= ((int(args, 3)? as u32) & 1) << 13;
+            if args.len() > 4 {
+                bits ^= ((int(args, 4)? as u32) & 1) << 14;
+            }
+        }
+        Ok(Value::Int(bits as i32))
+    });
 
     registry.register(Function, "precacheitem", |world, _, args| {
         if !world.resource::<RoundScript>().loading {

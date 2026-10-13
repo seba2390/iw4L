@@ -182,23 +182,30 @@ fn capture_xanims(
             wanted.extend(asset_game::t6_attachment_xanim_names(weapon));
         }
     }
+    let ns = asset_core::AssetNamespace::T6;
     let (total, mut captured) = (wanted.len(), 0usize);
+    let mut default_parts = None;
     let assets = std::iter::once(load)
         .chain(others)
         .flat_map(|load| load.assets.iter().map(move |asset| (load, asset)));
     for (load, asset) in assets {
-        if asset.ty != AssetType::XAnimParts
-            || !header_str(load, &asset.header, 0)
-                .is_some_and(|name| wanted.remove(&name.to_ascii_lowercase()))
+        if asset.ty != AssetType::XAnimParts {
+            continue;
+        }
+        if default_parts.is_none()
+            && header_str(load, &asset.header, 0).is_some_and(|name| name == "void")
+        {
+            default_parts = Some((load, asset));
+        }
+        if !header_str(load, &asset.header, 0)
+            .is_some_and(|name| wanted.remove(&name.to_ascii_lowercase()))
         {
             continue;
         }
-        if content.xanims.capture_xanim_t6(
-            asset_core::AssetNamespace::T6,
-            asset_game::T6_XANIM_PREFIX,
-            load,
-            asset,
-        ) {
+        if content
+            .xanims
+            .capture_xanim_t6(ns, asset_game::T6_XANIM_PREFIX, load, asset)
+        {
             captured += 1;
             content.note_sounds.extend(
                 xanim_notes(load, &asset.header)
@@ -208,6 +215,46 @@ fn capture_xanims(
                     })
                     .map(str::to_owned),
             );
+        }
+    }
+    // An external XAnimParts entry (`,name`) whose target is in no loaded
+    // zone receives a copy of the startup zone's `void` clip.
+    if !wanted.is_empty()
+        && let Some((default_load, default_asset)) = default_parts
+    {
+        let default_key = format!("{}void", asset_game::T6_XANIM_PREFIX);
+        if content.xanims.capture_xanim_t6(
+            ns,
+            asset_game::T6_XANIM_PREFIX,
+            default_load,
+            default_asset,
+        ) && let Some(void) = content
+            .xanims
+            .get(ns, &default_key)
+            .map(|entry| (*entry.parts).clone())
+        {
+            for (source, asset) in std::iter::once(load)
+                .chain(others)
+                .flat_map(|source| source.assets.iter().map(move |asset| (source, asset)))
+            {
+                if asset.ty == AssetType::XAnimParts
+                    && let Some(name) = header_str(source, &asset.header, 0)
+                        .and_then(|name| name.strip_prefix(','))
+                        .map(str::to_ascii_lowercase)
+                    && wanted.remove(&name)
+                {
+                    let mut parts = void.clone();
+                    parts.name = format!("{}{name}", asset_game::T6_XANIM_PREFIX);
+                    content.xanims.insert_in(
+                        ns,
+                        asset_anim::CapturedXAnim {
+                            namespace: ns,
+                            parts: Arc::new(parts),
+                        },
+                    );
+                    captured += 1;
+                }
+            }
         }
     }
     content.report.push(format!(

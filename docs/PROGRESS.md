@@ -122,9 +122,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 206 of 692 |
-| TranZit (`zm_transit`, Classic) | 216 of 741 |
-| Buried (`zm_buried`, Classic) | 229 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 200 of 692 |
+| TranZit (`zm_transit`, Classic) | 215 of 741 |
+| Buried (`zm_buried`, Classic) | 223 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -140,7 +140,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Black Ops 2's weapon facts (damage, ranges, clip and stock, hit-location scales) are read from its zones.
   - [ ] The weapon state machine (fire, reload, switch, melee, grenades) is Modern Warfare 2's (`t6.weapons.state_machine`).
   - [x] `knife_zm` is given (Black Ops 2's melee type is kept; the lent weapons hold it as melee only).
-  - [ ] Weapons whose view model animation no zone carries are refused (`m1911_upgraded_zm`, the last stand pistol after Pack-a-Punch).
+  - [x] An external view model animation no loaded zone carries takes the startup zone's default `void` animation, as Black Ops 2's linker does, so `m1911_upgraded_zm` (the last stand pistol after Pack-a-Punch) is given (`calcweaponoptions`).
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Zombies rise on Nuketown and spawn on TranZit and Buried, animated by Black Ops 2's animation state machine (ASD).
   - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`) is kept, not applied (`t6.actors.pitch`); gibs and ragdoll are missing.
@@ -177,7 +177,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] TranZit's own (`insta_kill_ug`, `minigun`) and the bank's `teller_withdrawl` not shown; Nuketown's Pack-a-Punch arrives by perk drop.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
-  - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby; on TranZit without faults (its fall linked to an anchor, `death_throe_zm` held, the rumbles stopped).
+  - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby on Nuketown, TranZit and Buried without faults (the fall linked to an anchor, `death_throe_zm` held, the rumbles stopped).
   - [x] With Quick Revive (TranZit, `IW4L_TEST_PLAYER=revive`): down at 51 s, Black Ops 2's solo revive stands him up at 61 s; the next down ends the game and the match returns to the lobby.
   - [ ] Bleeding out is co-op only (see Co-op); the last stand vision and blur are not drawn (`t6.vision.last_stand`, `t6.player.blur`).
 - [ ] The game's own HUD.
