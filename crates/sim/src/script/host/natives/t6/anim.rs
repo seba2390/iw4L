@@ -197,7 +197,8 @@ fn state_name(args: &[Value], index: usize) -> Result<String, String> {
 /// The substate argument at `index`: none, an int, or a string alias.
 fn substate_arg(args: &[Value], index: usize, builtin: &str) -> Result<Substate, String> {
     Ok(match args.get(index) {
-        None | Some(Value::Undefined) => Substate::Any,
+        // -1 picks at random too, as the engine's substate choice reads it.
+        None | Some(Value::Undefined) | Some(Value::Int(-1)) => Substate::Any,
         Some(Value::Int(n)) => Substate::Index(*n),
         Some(Value::String(alias)) => Substate::Alias(alias.to_string().to_ascii_lowercase()),
         Some(_) => {
