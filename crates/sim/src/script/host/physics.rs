@@ -108,7 +108,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "setcursorhint", |world, receiver, args| {
         let name = string(args, 0)?;
-        let cursor = HINTS
+        let hints = crate::game_move::rules(&FrameWorld::from_world(world))
+            .map_or(&HINTS[..], |m| m.cursor_hints());
+        let cursor = hints
             .iter()
             .position(|hint| hint.eq_ignore_ascii_case(&name))
             .ok_or_else(|| format!("{name} is not a valid hint type"))?;

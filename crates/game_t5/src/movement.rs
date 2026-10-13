@@ -701,6 +701,19 @@ impl PlayerMovement for T5Movement {
         pack(player, &mut ps, &mut last);
     }
 
+    fn cursor_hints(&self) -> &'static [&'static str] {
+        &[
+            "HINT_NONE",
+            "HINT_NOICON",
+            "HINT_SEAT",
+            "HINT_ACTIVATE",
+            "HINT_HEALTH",
+            "HINT_FRIENDLY",
+            "HINT_SPECTATOR",
+            "HINT_TEAMPOT",
+        ]
+    }
+
     fn set_perk(&self, player: &mut MovePlayer, perk: &str, on: bool) -> bool {
         let Some(bits) = movement_t5::perks::bits(perk) else {
             return false;

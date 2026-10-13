@@ -282,6 +282,12 @@ impl game_api::MenuLayout for MenuLayout {
     fn window_rect(&self, rect: [f32; 4], _menu_scale: f32) -> [f32; 4] {
         rect
     }
+
+    /// Black Ops' `ScrPlace_SetupFloatViewport` passes `1.0` for both the
+    /// viewable and the adjustable safe areas.
+    fn safe_area(&self) -> f32 {
+        1.0
+    }
 }
 
 impl game_api::GameModes for T5 {
