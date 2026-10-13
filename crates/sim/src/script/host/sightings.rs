@@ -88,7 +88,8 @@ pub enum UseKind {
     WallBuy,
     /// The shown box's unitrigger stub (`level.chests[level.chest_index].unitrigger_stub`).
     Box,
-    /// The `use_elec_switch` trigger.
+    /// The `use_elec_switch` trigger (TranZit's
+    /// `powerswitch_buildable_trigger_power`), while shown.
     Power,
     /// A perk machine's `zombie_vending` trigger.
     Perk,
@@ -203,10 +204,20 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             let kind = match string(field(runtime, id, "targetname"))?.as_str() {
                 "zombie_door" => UseKind::Door,
                 "zombie_debris" => UseKind::Debris,
-                "use_elec_switch" => UseKind::Power,
+                // TranZit's lever: zm_transit_power's electricswitch shows it
+                // once the powerswitch buildable is built.
+                "use_elec_switch" | "powerswitch_buildable_trigger_power" => UseKind::Power,
                 "zombie_vending" => UseKind::Perk,
                 _ => return None,
             };
+            if kind == UseKind::Power
+                && runtime
+                    .entities
+                    .get(&id)
+                    .is_some_and(|entity| entity.hidden && entity.shown_to == 0)
+            {
+                return None;
+            }
             // _zm_perks' vending_trigger_think keeps the price on the
             // trigger (`cost`); the perk is its `script_noteworthy`.
             if kind == UseKind::Perk {
@@ -266,7 +277,8 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             continue;
         };
         for piece in items(runtime, field(runtime, zone, "pieces")) {
-            let Some(trigger) = object(Some(piece)).and_then(|p| object(field(runtime, p, "unitrigger")))
+            let Some(trigger) =
+                object(Some(piece)).and_then(|p| object(field(runtime, p, "unitrigger")))
             else {
                 continue;
             };
@@ -525,10 +537,7 @@ pub(crate) fn zone_player_volumes(
     player_volumes(world, Some(zone))
 }
 
-fn player_volumes(
-    world: &World,
-    only: Option<&str>,
-) -> Vec<([f32; 3], Option<u32>, Option<u32>)> {
+fn player_volumes(world: &World, only: Option<&str>) -> Vec<([f32; 3], Option<u32>, Option<u32>)> {
     let Some(runtime) = world.get_resource::<RoundScript>() else {
         return Vec::new();
     };

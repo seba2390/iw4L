@@ -190,6 +190,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [ ] Every zombies map in the install (TranZit, Buried).
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
   - [x] TranZit's bus drives its route on its path nodes once the depot doors open, with the player riding it (depot, diner, forest, on toward the power station in 220 s), its scripts reading tags off its posed model and who stands on it.
+  - [x] TranZit's power: the powerswitch built from its three parts, its lever thrown, `power_on` set by the map's 30 s power event, and a perk sold after it.
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
   - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
 - [ ] Co-op: friends join, revive one another and play to game over.
