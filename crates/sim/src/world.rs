@@ -631,6 +631,14 @@ impl SimState {
             .unwrap_or(crate::bullet_collision::MASK_BULLET_WORLD)
     }
 
+    /// The contents a player's melee trace stops on in this match.
+    pub fn melee_mask(&self) -> u32 {
+        self.bootstrap_ref()
+            .mode
+            .and_then(|mode| mode.melee_mask)
+            .unwrap_or(crate::bullet_collision::MASK_BULLET_WORLD)
+    }
+
     pub(crate) fn bootstrap_ref(&self) -> &MatchBootstrap {
         &self.bootstrap
     }

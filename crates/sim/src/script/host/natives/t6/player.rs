@@ -72,6 +72,14 @@ fn activity(
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {
+    // gscm_giveweapon: a weapon with an offhand slot becomes the player's
+    // offhand when he has none (`t6.weapons.state_machine`: by the lent
+    // weapon's offhand class).
+    registry.register(Namespace::Method, "giveweapon", |world, receiver, args| {
+        let (id, weapon) = super::super::player::give_weapon(world, receiver, args)?;
+        crate::script_player::equip_offhand(&mut FrameWorld::from_world(world), id, weapon);
+        Ok(Value::Undefined)
+    });
     use Namespace::Method;
 
     // gscm_setorigin: players only; one unit up, the teleport flag flipped.

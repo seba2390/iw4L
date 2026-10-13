@@ -598,6 +598,22 @@ pub(crate) fn carry(world: &mut FrameWorld, id: ClientId, delta: [f32; 3], yaw: 
     }
 }
 
+/// Makes `weapon`, when it is an offhand, the player's offhand of its
+/// class when he has none of that class yet.
+pub(crate) fn equip_offhand(world: &mut FrameWorld, id: ClientId, weapon: u32) {
+    let Some(class) = world.equipment_facts_for(weapon).map(|eq| eq.offhand_class) else {
+        return;
+    };
+    let Some(ps) = world.player_mut(id) else {
+        return;
+    };
+    match class {
+        1 | 4 | 5 if ps.offhand_primary == 0 => ps.offhand_primary = class,
+        2 | 3 if ps.offhand_secondary == 0 => ps.offhand_secondary = class,
+        _ => {}
+    }
+}
+
 /// Flips the player's teleport flag so his client snaps to where he is
 /// rather than moving him there.
 pub(crate) fn snap(world: &mut FrameWorld, id: ClientId) -> bool {

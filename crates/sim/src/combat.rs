@@ -1631,6 +1631,7 @@ fn fire_weapon_melee(
     let range = PLAYER_MELEE_RANGE_DEFAULT;
     let width = PLAYER_MELEE_WIDTH_DEFAULT;
     let height = PLAYER_MELEE_HEIGHT_DEFAULT;
+    let melee_mask = world.melee_mask();
     let query = world.lagcomp_query_for(attacker, tick);
     let glass_pairs = world.world_objects().glass_damage_pairs();
     let is_solid = |piece| {
@@ -1657,7 +1658,7 @@ fn fire_weapon_melee(
             &BulletTraceQuery {
                 start: origin,
                 end,
-                mask: MASK_BULLET_WORLD,
+                mask: melee_mask,
                 ignore: Some(attacker),
                 ignore_hit: None,
                 ignore_model: None,

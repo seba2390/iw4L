@@ -10,6 +10,29 @@ use super::string;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
+use std::sync::Arc;
+
+/// The owner and team scripts gave entities other than players and actors
+/// (`t6.entities.owner_team`: kept, not applied).
+#[derive(Resource, Default)]
+struct OwnerTeams(BTreeMap<u64, (Option<u64>, Option<Arc<str>>)>);
+
+/// Each actor's gib flags, as the engine sends them in its gib event
+/// (`t6.actors.gib`: kept, not sent).
+#[derive(Resource, Default)]
+struct Gibs(BTreeMap<u64, u32>);
+
+/// The entity, refused for players and actors as SetOwner and SetTeam
+/// refuse them.
+fn owned(world: &World, receiver: &Value, builtin: &str) -> Result<u64, String> {
+    let id = super::super::engine::entity_id(world, receiver)?;
+    match world.resource::<RoundScript>().entities[&id].kind {
+        EntityKind::Player | EntityKind::Actor => {
+            Err(format!("{builtin} can not be used for players or actors"))
+        }
+        _ => Ok(id),
+    }
+}
 
 /// Each actor's pitch settings: oriented to its slope, and its pitch angle
 /// allowed (`t6.actors.pitch`: kept, not applied).
@@ -99,6 +122,97 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.on_connect(clear_sentient);
+
+    registry.register(Method, "setowner", |world, receiver, args| {
+        let id = owned(world, receiver, "SetOwner")?;
+        let owner = super::super::engine::entity_id(
+            world,
+            args.first().ok_or("SetOwner expects an entity")?,
+        )?;
+        world
+            .get_resource_or_insert_with(OwnerTeams::default)
+            .0
+            .entry(id)
+            .or_default()
+            .0 = Some(owner);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setteam", |world, receiver, args| {
+        let id = owned(world, receiver, "SetTeam")?;
+        let team = string(args, 0)?;
+        if super::team_index(&team).is_none() {
+            return Err(format!("'{team}' is an illegal team string"));
+        }
+        world
+            .get_resource_or_insert_with(OwnerTeams::default)
+            .0
+            .entry(id)
+            .or_default()
+            .1 = Some(team.into());
+        Ok(Value::Undefined)
+    });
+    // gscm_getentitytype: the entity's type, of those the engine's own
+    // builtins show (a player 1, an item 3, a missile 4, a script mover 6,
+    // an actor 16).
+    registry.register(Method, "getentitytype", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let entity = &world.resource::<RoundScript>().entities[&id];
+        let kind = match &entity.kind {
+            EntityKind::Player => 1,
+            EntityKind::Item(_) => 3,
+            EntityKind::Missile(_) => 4,
+            EntityKind::Actor => 16,
+            EntityKind::Map | EntityKind::Spawned
+                if matches!(&*entity.classname, "script_model" | "script_brushmodel") =>
+            {
+                6
+            }
+            _ => {
+                return Err(format!(
+                    "t6.entities.type: the engine type of a '{}' is not known",
+                    entity.classname
+                ));
+            }
+        };
+        Ok(Value::Int(kind))
+    });
+    // gscm_gib(type, tags): "freeze" sets bit 8 and "up" bit 9, each tag
+    // (0 to 7) its own bit, for the engine's gib event.
+    registry.register(Method, "gib", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let mut flags = match args.first() {
+            Some(Value::String(kind)) => match &**kind {
+                "freeze" => 0x100,
+                "up" => 0x200,
+                _ => 0,
+            },
+            _ => 0,
+        };
+        let tags = super::super::super::arrays::array_values(
+            world,
+            args.get(1).ok_or("Parameter must be an array")?,
+        )?;
+        for (index, tag) in tags.iter().enumerate() {
+            match tag {
+                Value::Int(bit @ 0..=7) => flags |= 1 << bit,
+                Value::Int(_) => {
+                    return Err(
+                        "Gib tag array passed to 'Gib' contains value out of range 0 -> 7".into(),
+                    );
+                }
+                _ => {
+                    return Err(format!(
+                        "Array passed to gib contained member [{index}] - valid types are int."
+                    ));
+                }
+            }
+        }
+        world
+            .get_resource_or_insert_with(Gibs::default)
+            .0
+            .insert(id, flags);
+        Ok(Value::Undefined)
+    });
 
     // gsc_activateclientexploder: the engine sends the exploder's number to
     // every client (`t6.fx.client_exploders`: not sent).

@@ -1859,7 +1859,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "disableweapons"),
         (Method, "setviewmodel"),
         (Method, "setmovespeedscale"),
-        (Method, "giveweapon"),
         (Method, "givestartammo"),
         (Method, "givemaxammo"),
         (Method, "switchtoweapon"),
