@@ -580,6 +580,23 @@ pub(crate) fn weapon_activity(
     }
 }
 
+/// The entity number a player stands on (the world's or none above 1022).
+pub(crate) fn ground_entity(world: &FrameWorld, id: ClientId) -> Option<i32> {
+    world.player(id).map(|ps| ps.ground_entity_num)
+}
+
+/// Moves a player's body by `delta` and turns his view and facing by
+/// `yaw`, as a platform he stands on carries him.
+pub(crate) fn carry(world: &mut FrameWorld, id: ClientId, delta: [f32; 3], yaw: f32) {
+    if let Some(ps) = world.player_mut(id) {
+        for (axis, step) in delta.iter().enumerate() {
+            ps.origin[axis] += step;
+        }
+        ps.delta_angles[1] += yaw;
+        ps.viewangles[1] += yaw;
+    }
+}
+
 pub(crate) fn weapon_named(world: &FrameWorld, name: &str) -> Result<u32, String> {
     if name == "none" {
         return Ok(0);

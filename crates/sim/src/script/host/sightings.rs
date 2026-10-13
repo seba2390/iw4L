@@ -325,6 +325,16 @@ pub(crate) fn waits_on(world: &World, name: &str) -> Vec<String> {
         .collect()
 }
 
+/// The origin, yaw and entity number of the entity a level field holds,
+/// for a test player.
+pub(crate) fn level_entity_pose(world: &World, name: &str) -> Option<([f32; 3], f32, i32)> {
+    let runtime = world.get_resource::<RoundScript>()?;
+    let id = object(field(runtime, 0, name))?;
+    let origin = vector(field(runtime, id, "origin"))?;
+    let yaw = vector(field(runtime, id, "angles")).map_or(0.0, |a| a[1]);
+    Some((origin, yaw, runtime.entities.get(&id)?.number))
+}
+
 /// Whether a level flag is set (`level.flag[name]`, as `flag_set` keeps it).
 pub(crate) fn level_flag(world: &World, name: &str) -> bool {
     let Some(runtime) = world.get_resource::<RoundScript>() else {

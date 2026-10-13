@@ -5,7 +5,7 @@
 //! does not do of it is listed under `t6.paths.dynamic` in
 //! `docs/fidelity/t6.md`.
 
-use super::super::super::actor_nav::{LinkEdits, NavNodeKind};
+use super::super::super::actor_nav::{LinkEdits, NavNodeKind, node_value};
 use super::super::super::entities::EntityKind;
 use crate::frame::FrameWorld;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
@@ -15,6 +15,9 @@ use bevy_ecs::prelude::{Resource, World};
 /// set.
 const DYNAMIC_PATH_CLASSES: [&str; 2] = ["script_model", "script_brushmodel"];
 const DYNAMIC_PATH_SPAWNFLAG: i32 = 1;
+/// `getnodesinradius`'s height window and most nodes.
+const NODES_HEIGHT: f32 = 512.0;
+const NODES_MAX: usize = 256;
 /// A node this far outside an entity's bounds keeps its links.
 const NODE_REACH: f32 = 266.0;
 /// The body a link is tested with: 15 each way, from 18 to 48 above the
@@ -232,8 +235,78 @@ fn refuse(world: &mut World, id: u64, verb: &str) -> Result<Value, String> {
     })
 }
 
+/// `getnodesinradius(origin, max, min, [height], [type], [count])`: the
+/// path nodes within `max` of the origin (and not within `min`), at most
+/// `height` above or below it (512), of the node type named ("Cover": any
+/// cover node), at most `count` of them (1 to 256), nearest first when
+/// `sorted`.
+fn nodes_in_radius(world: &mut World, args: &[Value], sorted: bool) -> Result<Value, String> {
+    let number = |value: Option<&Value>| match value {
+        Some(Value::Int(n)) => Some(*n as f32),
+        Some(Value::Float(f)) => Some(*f),
+        _ => None,
+    };
+    let Some(Value::Vector(origin)) = args.first() else {
+        return Err("getnodesinradius expects an origin".into());
+    };
+    let origin = *origin;
+    let max = number(args.get(1)).ok_or("getnodesinradius expects a radius")?;
+    let min = number(args.get(2)).ok_or("getnodesinradius expects a minimum radius")?;
+    let height = number(args.get(3)).unwrap_or(NODES_HEIGHT);
+    let kind = match args.get(4) {
+        Some(Value::String(kind)) => Some(kind.to_string()),
+        _ => None,
+    };
+    let count = match args.get(5) {
+        Some(Value::Int(n)) => (*n).clamp(1, NODES_MAX as i32) as usize,
+        _ => NODES_MAX,
+    };
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return super::super::super::arrays::new_array(world, Vec::new());
+    };
+    let mut found: Vec<(f32, u16)> = paths
+        .nodes()
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| {
+            kind.as_deref().is_none_or(|kind| {
+                let name = node
+                    .fields
+                    .as_ref()
+                    .map_or("", |fields| fields.type_name.as_str());
+                if kind.eq_ignore_ascii_case("cover") {
+                    name.to_ascii_lowercase().starts_with("cover")
+                } else {
+                    name.eq_ignore_ascii_case(kind)
+                }
+            })
+        })
+        .filter_map(|(index, node)| {
+            let d: f32 = (0..3).map(|i| (node.origin[i] - origin[i]).powi(2)).sum();
+            ((node.origin[2] - origin[2]).abs() <= height && d <= max * max && d >= min * min)
+                .then_some((d, index as u16))
+        })
+        .collect();
+    if sorted {
+        found.sort_by(|a, b| a.0.total_cmp(&b.0));
+    }
+    found.truncate(count);
+    let mut values = Vec::with_capacity(found.len());
+    for (_, index) in found {
+        values.push(node_value(world, index)?);
+    }
+    super::super::super::arrays::new_array(world, values)
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
-    use Namespace::Method;
+    use Namespace::{Function, Method};
+
+    registry.register(Function, "getnodesinradius", |world, _, args| {
+        nodes_in_radius(world, args, false)
+    });
+    registry.register(Function, "getnodesinradiussorted", |world, _, args| {
+        nodes_in_radius(world, args, true)
+    });
 
     registry.register(Method, "disconnectpaths", |world, receiver, _| {
         let id = super::super::engine::entity_id(world, receiver)?;

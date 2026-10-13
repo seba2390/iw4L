@@ -37,6 +37,10 @@
 //! `IW4L_TEST_VARS=key,…` adds those `level.zombie_vars` entries to the log
 //! every five seconds.
 //!
+//! `IW4L_TEST_RIDE=1|<seconds>` (with any fighting mode): 15 s (or the
+//! seconds given) in, the player steps
+//! onto TranZit's bus and stays, logging where he and the bus are.
+//!
 //! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
 //! he can pay for it he buys Quick Revive as the use test does (fighting
 //! nothing), then stands where he spawned as the go-down test does.
@@ -126,6 +130,10 @@ const MACHINE_ROOM: f32 = 40.0;
 /// and stands this far from it.
 const HUNT_AFTER_MS: i32 = 20_000;
 const HUNT_STAND_OFF: f32 = 48.0;
+/// The ride test boards the bus this long after it lives; the bus floor
+/// stands this high above its origin.
+const RIDE_AFTER_MS: i32 = 15_000;
+const BUS_FLOOR: f32 = 36.0;
 /// The perk the use test buys.
 const QUICK_REVIVE: &str = "specialty_quickrevive";
 /// The eye height it plans with before it stands there.
@@ -187,6 +195,9 @@ struct Scenario {
 #[derive(Resource, Default)]
 pub(crate) struct TestPlayer {
     mode: Mode,
+    /// The ride test stepped onto the bus.
+    boarded: bool,
+    next_ride_log_ms: i32,
     /// When it last saw an actor to aim at.
     last_seen_ms: Option<i32>,
     god_asked: bool,
@@ -457,7 +468,13 @@ fn next_scenario(
             }
             return None;
         }
-        of_kind.sort_by_key(|site| site.cost.unwrap_or(0));
+        // The cheapest, and of those the nearest.
+        of_kind.sort_by(|a, b| {
+            a.cost
+                .unwrap_or(0)
+                .cmp(&b.cost.unwrap_or(0))
+                .then(distance(origin, a.origin).total_cmp(&distance(origin, b.origin)))
+        });
         let Some((site, center, stand)) = of_kind.iter().find_map(|site| {
             let center = world.use_site_center(site);
             Some((*site, center, stand_point(world, id, site, center)?))
@@ -849,6 +866,46 @@ pub(crate) fn drive_test_player(
         test.scenario = Some(scenario);
         cmds.push(id, None, cmd, None);
         return;
+    }
+    // `IW4L_TEST_RIDE`: once, it steps onto the bus (`level.the_bus`, its
+    // floor 36 above its origin), then logs where it and the bus are.
+    if std::env::var("IW4L_TEST_RIDE").is_ok()
+        && let Some((bus, yaw, number)) = world.0.level_entity_pose("the_bus")
+    {
+        let after = std::env::var("IW4L_TEST_RIDE")
+            .ok()
+            .and_then(|s| s.parse::<i32>().ok())
+            .filter(|&s| s > 1)
+            .map_or(RIDE_AFTER_MS, |s| s * 1000);
+        if !test.boarded && clock.time_ms - since_ms >= after {
+            test.boarded = true;
+            let stand = [bus[0], bus[1], bus[2] + BUS_FLOOR + 1.0];
+            diag::info!(Sim, "test player: boarding the bus at {}", fmt_point(stand));
+            if let Err(error) = actions.push(
+                id,
+                ClientAction::Move {
+                    request_id: request_ids.allocate(),
+                    origin: stand,
+                    angles: [0.0, yaw, 0.0],
+                },
+            ) {
+                diag::warn!(Sim, "test player: request not queued — {error}");
+            }
+        }
+        if test.boarded && clock.time_ms >= test.next_ride_log_ms {
+            test.next_ride_log_ms = clock.time_ms + LOG_PERIOD_MS;
+            diag::info!(
+                Sim,
+                "test player: ride — player {} bus {} (entity {number}) stands on {:?}",
+                fmt_point(ps.origin),
+                fmt_point(bus),
+                world.0.player_ground_entity(id)
+            );
+        }
+        if test.boarded {
+            cmds.push(id, None, cmd, None);
+            return;
+        }
     }
     // The revive test fights nothing.
     if test.mode == Mode::Revive {

@@ -34,6 +34,10 @@ mod off {
     pub const MAXS: u32 = 184;
     pub const NUM_LODS: u32 = 196;
     pub const COLL_LOD: u32 = 198;
+    /// `numCollmaps` and `collmaps`: the model's brush collision (a
+    /// vehicle's), each a list of brushes.
+    pub const NUM_COLLMAPS: u32 = 220;
+    pub const COLLMAPS: u32 = 224;
     pub const SIZE: usize = 248;
 }
 
@@ -294,7 +298,10 @@ pub fn capture_model_skel_t6(
         contents: Some(model.h_u32(off::CONTENTS)),
         coll_lod: model.h_u16(off::COLL_LOD) as i16,
         coll_surfs,
-        movement_brushes: Vec::new(),
+        movement_brushes: capture_movement_brushes(&r, &model)
+            .into_iter()
+            .flatten()
+            .collect(),
         mount_tag: None,
         lod: Some(crate::ModelLodSelector::T5 {
             num_lods: model.h_u16(off::NUM_LODS) as i16,
@@ -447,6 +454,78 @@ fn decode_surface_skin(
         }
     }
     (vertex == vertex_count).then_some(skins)
+}
+
+/// A collmap's geoms (`PhysGeomInfo`, the brush first), a brush's side
+/// count and sides (`BrushWrapper`), and a side (`cbrushside_t`: plane,
+/// flags).
+const PHYS_GEOM_INFO: u32 = 68;
+const BRUSH_WRAPPER_NUMSIDES: u32 = 28;
+const BRUSH_WRAPPER_SIDES: u32 = 32;
+const CBRUSH_SIDE: u32 = 12;
+
+/// The model's collmaps as movement brushes: each geom's brush, its six
+/// axial planes from its box and its other sides' planes, in model space.
+fn capture_movement_brushes(
+    r: &Reader<'_>,
+    model: &T6Model<'_>,
+) -> Option<Vec<xmodel_runtime::ModelMovementBrush>> {
+    let count = model.h_u32(off::NUM_COLLMAPS) as usize;
+    let mut brushes = Vec::new();
+    if count == 0 {
+        return Some(brushes);
+    }
+    let maps = model.h_ptr(off::COLLMAPS)?;
+    for map in 0..count as u32 {
+        let Some(list) = r.ptr(maps.at(map * 4))? else {
+            continue;
+        };
+        let geoms_count = r.u32(list)? as usize;
+        let Some(geoms) = r.ptr(list.at(4))? else {
+            continue;
+        };
+        for i in 0..geoms_count as u32 {
+            let geom = geoms.at(i * PHYS_GEOM_INFO);
+            let Some(brush) = r.ptr(geom)? else {
+                continue;
+            };
+            let mut planes = Vec::new();
+            let mut plane_surface_flags = Vec::new();
+            for side in 0..2u32 {
+                for axis in 0..3u32 {
+                    let mut plane = [0.0; 4];
+                    plane[axis as usize] = if side == 0 { -1.0 } else { 1.0 };
+                    plane[3] = r.f32(brush.at(side * 16 + axis * 4))? * plane[axis as usize];
+                    planes.push(plane);
+                    plane_surface_flags.push(r.u32(brush.at(60 + (side * 3 + axis) * 4))?);
+                }
+            }
+            let sides_count = r.u32(brush.at(BRUSH_WRAPPER_NUMSIDES))? as usize;
+            if sides_count != 0
+                && let Some(sides) = r.ptr(brush.at(BRUSH_WRAPPER_SIDES))?
+            {
+                for j in 0..sides_count as u32 {
+                    let side = sides.at(j * CBRUSH_SIDE);
+                    let Some(plane) = r.ptr(side)? else {
+                        continue;
+                    };
+                    planes.push([
+                        r.f32(plane)?,
+                        r.f32(plane.at(4))?,
+                        r.f32(plane.at(8))?,
+                        r.f32(plane.at(12))?,
+                    ]);
+                    plane_surface_flags.push(r.u32(side.at(8))?);
+                }
+            }
+            brushes.push(xmodel_runtime::ModelMovementBrush {
+                planes,
+                contents: r.u32(brush.at(12))?,
+                plane_surface_flags,
+            });
+        }
+    }
+    Some(brushes)
 }
 
 #[allow(clippy::type_complexity)]
