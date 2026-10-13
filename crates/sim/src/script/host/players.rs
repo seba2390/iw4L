@@ -1345,6 +1345,15 @@ pub(crate) fn sync_players(world: &mut World) {
                         .resource_mut::<RoundScript>()
                         .set_object_field(object, "team", team);
                 }
+                let hooks: Vec<_> = world
+                    .get_resource::<crate::script::NativeRegistry>()
+                    .map(crate::script::NativeRegistry::connect_hooks)
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                for hook in hooks {
+                    hook(world, object);
+                }
                 if !super::t6_gametype::active(world)
                     && run_now(world, CONNECT, Value::Object(object), Vec::new(), now).is_err()
                 {

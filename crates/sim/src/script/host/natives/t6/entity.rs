@@ -324,12 +324,18 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
+    // gscm_dontinterpolate flips the entity's teleport flag, a player's in
+    // his player state (`t6.entities.interpolation`: other entities' flag
+    // is not sent, as IW4L's script entities carry none).
     registry.register(Method, "dontinterpolate", |world, receiver, _| {
-        entity_id(world, receiver)?;
-        Err(
-            "t6.entities.interpolation: the client's interpolation of an entity is not switched"
-                .into(),
-        )
+        let id = entity_id(world, receiver)?;
+        if let Some(client) = world.resource::<RoundScript>().player_client(id) {
+            crate::script_player::snap(
+                &mut crate::frame::FrameWorld::from_world(world),
+                crate::ClientId(client),
+            );
+        }
+        Ok(Value::Undefined)
     });
     // The nearest node of any type within 192 units a body can reach.
     registry.register(Function, "getnearestnode", |world, _, args| {
