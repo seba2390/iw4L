@@ -45,8 +45,14 @@
 //! holds use at its table, and `take` takes a persistent one from its
 //! table once built.
 //!
-//! `IW4L_TEST_WIELD=<weapon>`: once he holds that weapon, his commands
-//! ask for it, as a client switching to it does.
+//! `IW4L_TEST_WIELD=<weapon>,…`: once he holds one of those weapons (the
+//! first listed), his commands ask for it, as a client switching to it
+//! does.
+//!
+//! `IW4L_TEST_PLACE=1` (with `IW4L_TEST_WIELD`): two seconds after the
+//! wielded weapon comes up, he looks level, a quarter turn further each
+//! time, and holds fire for half a second, as a player setting down
+//! equipment he carries does.
 //!
 //! `IW4L_TEST_THROW=1` (with any fighting mode): every 15 s it holds its
 //! lethal grenade's button for half a second at an actor in sight farther
@@ -100,6 +106,9 @@ const LOG_PERIOD_MS: i32 = 5000;
 const THROW_PERIOD_MS: i32 = 15_000;
 const THROW_HOLD_MS: i32 = 500;
 const THROW_FROM: f32 = 250.0;
+/// The place aid waits this long with the weapon up, then holds fire.
+const PLACE_AFTER_MS: i32 = 2000;
+const PLACE_HOLD_MS: i32 = 500;
 /// The rounds test asks for ammo at most this often.
 const RESUPPLY_PERIOD_MS: i32 = 2000;
 /// The use test starts this long after the player first lives, once the
@@ -274,6 +283,11 @@ pub(crate) struct TestPlayer {
     last_done_ms: i32,
     /// The down test's last life state and last stand seen.
     seen: Option<(ClientLifecycle, i32, Option<i32>)>,
+    /// The place aid: since when the wielded weapon is up, and until when it
+    /// holds fire facing which way; how many it set down.
+    wielded_since_ms: Option<i32>,
+    placing: Option<(i32, f32)>,
+    placements: u32,
 }
 
 impl TestPlayer {
@@ -852,20 +866,70 @@ pub(crate) fn drive_test_player(
         weapon_mapped: ps.weapon as u16,
         ..UserCmd::default()
     };
-    // `IW4L_TEST_WIELD=<weapon>`: once he holds it, his command asks for it,
-    // as a client switching to it does.
-    if let Ok(name) = std::env::var("IW4L_TEST_WIELD")
-        && let Some(wanted) = world.0.weapon_index_by_script_name(&name)
-        && ps.weapons.iter().any(|&w| w as u32 == wanted)
+    // `IW4L_TEST_WIELD=<weapon>,…`: once he holds one, his command asks for
+    // it, as a client switching to it does.
+    let mut wielding = false;
+    if let Ok(names) = std::env::var("IW4L_TEST_WIELD")
+        && let Some(wanted) = names
+            .split(',')
+            .filter_map(|name| world.0.weapon_index_by_script_name(name))
+            .find(|wanted| ps.weapons.iter().any(|&w| w as u32 == *wanted))
     {
         cmd.weapon = wanted as u16;
         cmd.weapon_mapped = wanted as u16;
+        wielding = true;
+    } else if ps.weapon == 0
+        && let Some(&first) = ps.weapons.iter().find(|&&w| w > 0)
+    {
+        // With nothing up (the scripts took the weapon he held), he asks
+        // for his first, as a client's cgame changes weapon.
+        cmd.weapon = first as u16;
+        cmd.weapon_mapped = first as u16;
     }
     let aim_cmd = |cmd: &mut UserCmd, view: [f32; 3]| {
         cmd.angles = look_angles_from_degrees(std::array::from_fn(|axis| {
             view[axis] - ps.delta_angles[axis]
         }));
     };
+    // `IW4L_TEST_PLACE`: the wielded weapon up for a while, he looks level
+    // and holds fire to set it down.
+    if std::env::var("IW4L_TEST_PLACE").is_ok()
+        && test.scenario.is_none()
+        && wielding
+        && u32::from(cmd.weapon) == ps.weapon
+    {
+        let up_since = *test.wielded_since_ms.get_or_insert(clock.time_ms);
+        if clock.time_ms - up_since < PLACE_AFTER_MS {
+            cmds.push(id, None, cmd, None);
+            return;
+        }
+        {
+            if test.placing.is_none() {
+                test.placements += 1;
+                let facing = ps.viewangles[1] + 90.0 * (test.placements - 1) as f32;
+                diag::info!(
+                    Sim,
+                    "test player: place {} {} at {} facing {facing:.0}",
+                    test.placements,
+                    world.0.weapon_script_name(ps.weapon),
+                    fmt_point(ps.origin)
+                );
+                test.placing = Some((clock.time_ms + PLACE_HOLD_MS, facing));
+            }
+            let Some((until, facing)) = test.placing else {
+                return;
+            };
+            aim_cmd(&mut cmd, [0.0, facing, 0.0]);
+            if clock.time_ms < until {
+                cmd.buttons |= buttons::ATTACK;
+            }
+            cmds.push(id, None, cmd, None);
+            return;
+        }
+    } else {
+        test.wielded_since_ms = None;
+        test.placing = None;
+    }
 
     if matches!(test.mode, Mode::Use | Mode::Revive)
         && test.scenario.is_none()

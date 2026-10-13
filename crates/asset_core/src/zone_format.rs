@@ -202,6 +202,8 @@ pub struct ZoneWeapon {
     /// Damage scales by hit location, in the game's order; empty when the
     /// weapon has none.
     pub location_damage: Vec<f32>,
+    /// A turret weapon's pitch and yaw convergence times, seconds.
+    pub turret_convergence: [f32; 2],
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the

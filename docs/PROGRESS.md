@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 219 of 692 |
-| TranZit (`zm_transit`, Classic) | 241 of 741 |
-| Buried (`zm_buried`, Classic) | 243 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 206 of 692 |
+| TranZit (`zm_transit`, Classic) | 222 of 741 |
+| Buried (`zm_buried`, Classic) | 229 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -192,6 +192,8 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] TranZit's bus drives its route on its path nodes once the depot doors open, with the player riding it (depot, diner, forest, on toward the power station in 220 s), its scripts reading tags off its posed model and who stands on it.
   - [x] TranZit's power: the powerswitch built from its three parts, its lever thrown, `power_on` set by the map's 30 s power event, and a perk sold after it.
   - [x] TranZit's riot shield built from its two parts, taken from its table and held (its shield model attached).
+  - [x] TranZit's turbine and turret carried and set down by Black Ops 2's placement test (`IW4L_TEST_WIELD=equip_turbine_zm,equip_turret_zm IW4L_TEST_PLACE=1`); the placed turret is spawned, set to `auto_nonai` and powered by the turbine beside it.
+  - [ ] The placed turret does not yet aim or fire (`t6.turret.ai`); the jet gun is not started.
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
   - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
 - [ ] Co-op: friends join, revive one another and play to game over.

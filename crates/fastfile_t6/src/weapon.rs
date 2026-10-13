@@ -223,6 +223,8 @@ pub mod def {
     pub const HIP_VIEW_SCATTER_MAX: u32 = 2084;
     pub const LOCATION_DAMAGE_MULTIPLIERS: u32 = 2300;
     pub const HIT_LOCATIONS: usize = 21;
+    /// A turret's pitch and yaw convergence times (seconds).
+    pub const TURRET_CONVERGENCE: [u32; 2] = [2212, 2216];
     pub const TRACER_TYPE: u32 = 2320;
     pub const SIZE: usize = 2448;
 }

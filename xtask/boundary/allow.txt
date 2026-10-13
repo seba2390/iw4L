@@ -343,7 +343,7 @@ pattern crates/assets/src/lane/t6/camouflage.rs AssetNamespace::<game> 1
 pattern crates/assets/src/lane/t6/camouflage.rs fastfile_t6:: 8
 pattern crates/assets/src/lane/t6/common_compile.rs AssetNamespace::<game> 4
 pattern crates/assets/src/lane/t6/common_compile/effects.rs FamilyId::<game> 1
-pattern crates/assets/src/lane/t6/common_compile/models.rs FamilyId::<game> 3
+pattern crates/assets/src/lane/t6/common_compile/models.rs FamilyId::<game> 2
 pattern crates/assets/src/lib.rs fastfile_iw4:: 1
 pattern crates/assets/src/lib.rs lighting_iw4:: 1
 pattern crates/assets/src/script_sources.rs structured_data_iw4:: 3

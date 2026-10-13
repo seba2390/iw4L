@@ -18,6 +18,7 @@ struct T6ModelCapture {
     pub skel: asset_model::ModelSkel,
     pub surface_materials: Vec<Option<String>>,
     pub view: bool,
+    pub world: bool,
 }
 
 struct T6MaterialCapture {
@@ -1420,10 +1421,17 @@ fn capture_content(
     }
     capture_effects(&zones, ipaks, &mut content);
     let mut wanted: BTreeMap<String, (bool, bool)> = BTreeMap::new();
+    // One weapon's view model is another's world model (`tag_origin`).
+    let mut both: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut placements: BTreeMap<String, ([f32; 3], [f32; 3])> = BTreeMap::new();
     let mut copies: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
-    for asset in &load.assets {
-        let Some(weapon) = WeaponView::new(load, asset) else {
+    // The weapon catalog reads every zone's weapons (Classic's equipment is
+    // in its own zone), so their models are wanted from every zone too.
+    for (zone, asset) in zones
+        .iter()
+        .flat_map(|zone| zone.assets.iter().map(move |asset| (*zone, asset)))
+    {
+        let Some(weapon) = WeaponView::new(zone, asset) else {
             continue;
         };
         if weapon.name().is_none() {
@@ -1437,9 +1445,16 @@ fn capture_content(
             (weapon.name().and_then(asset_game::t6_planted_model), false),
         ] {
             if let Some(name) = name {
-                wanted
-                    .entry(asset_game::t6_model_name(name))
-                    .or_insert((view, false));
+                let name = asset_game::t6_model_name(name);
+                match wanted.get(&name) {
+                    Some(&(seen, _)) if seen != view => {
+                        both.insert(name);
+                    }
+                    Some(_) => {}
+                    None => {
+                        wanted.insert(name, (view, false));
+                    }
+                }
             }
         }
         for unique in weapon.attachment_uniques() {
@@ -1623,6 +1638,7 @@ fn capture_content(
             skel,
             surface_materials,
             view,
+            world: !view || both.contains(&name),
         });
     }
     camouflage::capture(load, &zones, ipaks, &mut native_textures, &mut content);

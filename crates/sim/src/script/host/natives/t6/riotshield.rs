@@ -72,7 +72,7 @@ const PITCH_MAX: (&str, f32) = ("riotshield_deploy_pitch_max", 20.0);
 const ROLL_MAX: (&str, f32) = ("riotshield_deploy_roll_max", 25.0);
 const ZDIFF_MAX: (&str, f32) = ("riotshield_deploy_zdiff_max", 30.0);
 
-fn dvar_f32(world: &World, (name, default): (&str, f32)) -> f32 {
+pub(super) fn dvar_f32(world: &World, (name, default): (&str, f32)) -> f32 {
     world
         .resource::<crate::script::MatchScript>()
         .dvars
@@ -80,7 +80,7 @@ fn dvar_f32(world: &World, (name, default): (&str, f32)) -> f32 {
         .map_or(default, |value| super::atof(value))
 }
 
-fn dvar_i32(world: &World, name: &str, default: i32) -> i32 {
+pub(super) fn dvar_i32(world: &World, name: &str, default: i32) -> i32 {
     world
         .resource::<crate::script::MatchScript>()
         .dvars
@@ -88,13 +88,13 @@ fn dvar_i32(world: &World, name: &str, default: i32) -> i32 {
         .map_or(default, |value| super::atoi(value))
 }
 
-fn forward(pitch: f32, yaw: f32) -> [f32; 3] {
+pub(super) fn forward(pitch: f32, yaw: f32) -> [f32; 3] {
     let (sp, cp) = pitch.to_radians().sin_cos();
     let (sy, cy) = yaw.to_radians().sin_cos();
     [cp * cy, cp * sy, -sp]
 }
 
-fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+pub(super) fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -102,7 +102,7 @@ fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     ]
 }
 
-fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+pub(super) fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     [0, 1, 2].map(|i| (b[i] - a[i]) * t + a[i])
 }
 
@@ -130,7 +130,7 @@ fn vector_angles(v: [f32; 3]) -> [f32; 2] {
 
 /// The engine's `AxisToAngles`: pitch and yaw from the forward axis, roll
 /// from the left and up axes turned back by that yaw and pitch.
-fn axis_to_angles(axis: [[f32; 3]; 3]) -> [f32; 3] {
+pub(super) fn axis_to_angles(axis: [[f32; 3]; 3]) -> [f32; 3] {
     let [pitch, yaw] = vector_angles(axis[0]);
     let (s, c) = (-yaw).to_radians().sin_cos();
     let left_y = axis[1][0] * s + axis[1][1] * c;
