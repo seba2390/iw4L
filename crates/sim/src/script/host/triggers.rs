@@ -940,11 +940,8 @@ fn looks_into(frame: &FrameWorld, client: u32, volume: &Volume<'_>) -> bool {
         ps.origin[2] + ps.view_height_current,
     ];
     let (forward, _, _) = math_iw4::angle_vectors(ps.viewangles);
-    (0..=16).any(|step| {
-        let reach = LOOK_AT_REACH * step as f32 / 16.0;
-        let at = std::array::from_fn(|i| eye[i] + forward[i] * reach);
-        volume.touches(at, at)
-    })
+    let end = std::array::from_fn(|i| eye[i] + forward[i] * LOOK_AT_REACH);
+    volume.crosses(eye, end)
 }
 
 /// The box an entity touches triggers with (a player's by its stance).

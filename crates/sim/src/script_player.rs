@@ -71,10 +71,7 @@ pub(crate) fn spawn(
     }
     let cmd = spawn_command_angles(world, id);
     ps.delta_angles = std::array::from_fn(|axis| angles[axis] - cmd[axis] as f32 * SHORT2ANGLE);
-    let prev_teleport = world
-        .player(id)
-        .map(|p| p.e_flags & TELEPORT)
-        .unwrap_or(0);
+    let prev_teleport = world.player(id).map(|p| p.e_flags & TELEPORT).unwrap_or(0);
     ps.e_flags = (ps.e_flags & !TELEPORT) | prev_teleport;
     ps.e_flags ^= TELEPORT;
     let lifecycle = match sessionstate {
@@ -938,8 +935,13 @@ pub(crate) fn set_ammo_clip(world: &mut FrameWorld, id: ClientId, weapon: u32, c
     if let Some(ps) = world.player_mut(id) {
         let _ = weapon_iw4::set_clip_for_hand(&mut ps.ammoclip, key, 0, count);
     }
+    let held = world.player(id).map(|ps| ps.weapon);
     let stock = ammo_stock(world, id, weapon);
-    world.client_meta_mut(id).set_ammo(weapon, count, stock);
+    let meta = world.client_meta_mut(id);
+    meta.set_ammo(weapon, count, stock);
+    if held == Some(weapon) {
+        meta.mirror_held_ammo(weapon);
+    }
 }
 
 pub(crate) fn set_ammo_stock(world: &mut FrameWorld, id: ClientId, weapon: u32, count: i32) {
@@ -951,8 +953,13 @@ pub(crate) fn set_ammo_stock(world: &mut FrameWorld, id: ClientId, weapon: u32, 
     if let Some(ps) = world.player_mut(id) {
         let _ = weapon_iw4::set_ammo_not_in_clip(&mut ps.ammo, key, count);
     }
+    let held = world.player(id).map(|ps| ps.weapon);
     let clip = ammo_clip(world, id, weapon);
-    world.client_meta_mut(id).set_ammo(weapon, clip, count);
+    let meta = world.client_meta_mut(id);
+    meta.set_ammo(weapon, clip, count);
+    if held == Some(weapon) {
+        meta.mirror_held_ammo(weapon);
+    }
 }
 
 pub(crate) fn give_max_ammo(world: &mut FrameWorld, id: ClientId, weapon: u32) {

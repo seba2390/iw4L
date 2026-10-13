@@ -65,7 +65,7 @@ Only the top-level items count.
   - [ ] Zone data still dropped: dynamic entities, fx models, glass, dynamic lights; some static models whose model lives in another zone.
   - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) do not run; about 170 builtins still answer "not implemented yet".
+  - [ ] Client scripts (CSC) do not run; 192 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
@@ -95,8 +95,8 @@ Only the top-level items count.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
   - [ ] Carpenter's boards skip `dontinterpolate`; the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
 - [ ] Going down, solo revive, bleeding out and game over return to the lobby.
-  - [x] A lethal hit downs the player; a solo game over fails the level and Kino loads again, as Black Ops does.
-  - [ ] Solo Quick Revive self-revive unverified; down and revive animations; the client's fade-out, blur and dead quote.
+  - [x] A lethal hit downs the player; with Quick Revive (`IW4L_TEST_PLAYER=revive`) the solo player holds `m1911_upgraded_zm` and revives after 10 s; a solo game over fails the level and Kino loads again, as Black Ops does.
+  - [ ] Down and revive animations; the client's fade-out, blur and dead quote.
 - [ ] The game's own HUD.
   - [x] Black Ops' HUD menus (weapon info, dpad) with its fonts and layout; script hud elems (round chalk, point popups, game over text); text use hints.
   - [ ] The points column, hint icons, code-drawn pieces (reticle, blood, damage feedback), the scoreboard, menu paint order.
