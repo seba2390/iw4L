@@ -107,6 +107,7 @@ pub(crate) fn run(
         ps.store_move_player(&player);
     }
     apply_held(world, id, &held, &player.held);
+    world.client_meta_mut(id).mirror_held_ammo(player.weapon);
     if world.publishes_snapshot()
         && outcome
             .signals

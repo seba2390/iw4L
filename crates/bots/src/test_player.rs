@@ -560,6 +560,8 @@ fn next_scenario(
             if now_ms - since_ms.max(test.last_done_ms) >= USE_GIVE_UP_MS {
                 test.pending.remove(0);
                 diag::info!(Sim, "test player: use {kind:?}: none on this map");
+            } else {
+                test.pending.rotate_left(1);
             }
             return None;
         }
@@ -584,10 +586,26 @@ fn next_scenario(
                 );
             }
             test.pending.rotate_left(1);
+            if test
+                .pending
+                .iter()
+                .all(|k| test.deferred.contains(k) || sites.iter().all(|s| s.kind != *k))
+                && let Some(blocker) = [UseKind::Door, UseKind::Debris].into_iter().find(|k| {
+                    sites.iter().any(|s| {
+                        s.kind == *k
+                            && stand_point(world, id, s, world.use_site_center(s)).is_some()
+                    })
+                })
+            {
+                test.pending.insert(0, blocker);
+            }
             return None;
         };
         if site.cost.unwrap_or(0) > score {
             return None;
+        }
+        if matches!(kind, UseKind::Door | UseKind::Debris) {
+            test.deferred.clear();
         }
         test.pending.remove(0);
         return Some(Scenario {

@@ -74,7 +74,21 @@ pub(crate) fn script_int(world: &World, owner: ScriptOwner, name: &str) -> Optio
         ScriptOwner::Level => 0,
         ScriptOwner::Player(client) => super::entity_damage::player_object_id(world, client.0)?,
     };
-    int(field(runtime, id, name))
+    int(field(runtime, id, name)).or_else(|| {
+        // `_laststand::player_is_in_laststand` tests `IsDefined(self.revivetrigger)`;
+        // a solo down without a revive life sets `self.intermission` before
+        // `revive_trigger_spawn`.
+        (owner != ScriptOwner::Level && name == "laststand").then(|| {
+            if int(field(runtime, id, "intermission")) == Some(1) {
+                Some(1)
+            } else {
+                match field(runtime, id, "revivetrigger")? {
+                    Value::Object(_) => Some(1),
+                    _ => Some(0),
+                }
+            }
+        })?
+    })
 }
 
 /// What a use site is, by the name Black Ops 2's scripts find it under.
@@ -195,6 +209,18 @@ fn site(runtime: &RoundScript, kind: UseKind, id: u64, cost: &str) -> Option<Use
     })
 }
 
+fn weapon_cost(runtime: &RoundScript, weapon: &str) -> Option<i32> {
+    let Value::Array(weapons) = field(runtime, 0, "zombie_weapons")? else {
+        return None;
+    };
+    let entry = runtime
+        .arrays
+        .get(&weapons)?
+        .get(&crate::script::ArrayKey::String(weapon.into()))?
+        .clone();
+    int(field(runtime, object(Some(entry))?, "cost"))
+}
+
 pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
     let Some(runtime) = world.get_resource::<RoundScript>() else {
         return Vec::new();
@@ -202,17 +228,38 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
     let mut sites: Vec<UseSite> = runtime
         .entities
         .keys()
-        .filter(|id| runtime.live(id))
+        .filter(|id| {
+            runtime.live(id)
+                && !int(field(runtime, **id, "trigger_off")).is_some_and(|off| off != 0)
+                && !int(field(runtime, **id, "_door_open")).is_some_and(|open| open != 0)
+        })
         .filter_map(|&id| {
             let kind = match string(field(runtime, id, "targetname"))?.as_str() {
                 "zombie_door" => UseKind::Door,
                 "zombie_debris" => UseKind::Debris,
+                "weapon_upgrade" => UseKind::WallBuy,
                 // TranZit's lever: zm_transit_power's electricswitch shows it
                 // once the powerswitch buildable is built.
                 "use_elec_switch" | "powerswitch_buildable_trigger_power" => UseKind::Power,
                 "zombie_vending" => UseKind::Perk,
+                "zombie_vending_upgrade" => UseKind::PackAPunch,
                 _ => return None,
             };
+            if kind == UseKind::WallBuy {
+                let mut found = site(runtime, kind, id, "cost")?;
+                if found.cost.is_none() {
+                    found.cost = found
+                        .weapon
+                        .as_deref()
+                        .and_then(|w| weapon_cost(runtime, w));
+                }
+                return Some(found);
+            }
+            if kind == UseKind::PackAPunch {
+                let found = site(runtime, kind, id, "cost")?;
+                found.cost?;
+                return Some(found);
+            }
             if kind == UseKind::Power
                 && runtime
                     .entities
@@ -265,6 +312,14 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             sites.extend(site(runtime, UseKind::Rebuild, stub, "cost"));
         }
     }
+    for waiter in &runtime.waiters {
+        if &*waiter.name == "all_boards_repaired"
+            && let Value::Object(trigger) = waiter.receiver
+            && runtime.live(&trigger)
+        {
+            sites.extend(site(runtime, UseKind::Rebuild, trigger, "cost"));
+        }
+    }
     for stub in items(runtime, field(runtime, 0, "buildable_stubs")) {
         let Some(stub) = object(Some(stub)) else {
             continue;
@@ -302,10 +357,11 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
     if let Some(chest) = int(field(runtime, 0, "chest_index"))
         .and_then(|index| chests.get(usize::try_from(index).ok()?).cloned())
         .and_then(|chest| object(Some(chest)))
-        && let Some(stub) = object(field(runtime, chest, "unitrigger_stub"))
+        && let stub = object(field(runtime, chest, "unitrigger_stub")).unwrap_or(chest)
         && let Some(mut box_site) = site(runtime, UseKind::Box, stub, "cost")
     {
-        box_site.cost = int(field(runtime, chest, "zombie_cost"));
+        box_site.cost = int(field(runtime, chest, "zombie_cost"))
+            .or_else(|| int(field(runtime, chest, "old_cost")));
         sites.push(box_site);
     }
     sites
@@ -493,12 +549,14 @@ pub(crate) fn unitrigger_state(world: &World, stub: u64) -> String {
     )
 }
 
-/// Whether a script object still lives (a door's trigger is deleted once
-/// it opens).
+/// Whether a script object still lives (a door's trigger is deleted or
+/// turned off once it opens).
 pub(crate) fn object_lives(world: &World, id: u64) -> bool {
-    world
-        .get_resource::<RoundScript>()
-        .is_some_and(|runtime| runtime.live(&id))
+    world.get_resource::<RoundScript>().is_some_and(|runtime| {
+        runtime.live(&id)
+            && !int(field(runtime, id, "trigger_off")).is_some_and(|off| off != 0)
+            && !int(field(runtime, id, "_door_open")).is_some_and(|open| open != 0)
+    })
 }
 
 /// The classnames of the live use triggers whose origin lies within `reach`
