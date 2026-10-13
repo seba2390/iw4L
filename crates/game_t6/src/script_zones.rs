@@ -234,5 +234,6 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
         bullet_impact_explode: weapon.def_bool(def::BULLET_IMPACT_EXPLODE),
         flat_spread: weapon.variant_i32(variant::SPREAD_FLAGS) & (1 << variant::SPREAD_FLAT_BIT)
             != 0,
+        projectile_activate_dist: weapon.def_i32(def::PROJECTILE_ACTIVATE_DIST),
     })
 }

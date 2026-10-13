@@ -229,6 +229,8 @@ pub struct ZoneWeapon {
     pub bullet_impact_explode: bool,
     /// Pellets laid on a level line; a single shot goes unspread.
     pub flat_spread: bool,
+    /// How far a fired grenade flies before it arms; 0 for a thrown one.
+    pub projectile_activate_dist: i32,
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the

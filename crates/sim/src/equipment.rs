@@ -57,6 +57,11 @@ impl ProjectileState {
     pub fn is_armed(&self, activate_dist: i32) -> bool {
         self.live && (activate_dist <= 0 || self.travel_distance >= activate_dist as f32)
     }
+
+    /// It has stopped: come to rest or stuck.
+    pub fn resting(&self) -> bool {
+        self.pos.tr_type == TR_STATIONARY
+    }
 }
 
 pub const GRENADE_FUSE_CAP_MS: i32 = 60_000;
