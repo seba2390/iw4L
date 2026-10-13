@@ -106,6 +106,9 @@ pub enum UseKind {
     /// A buildable's table not yet built (`level.buildable_stubs[i]` with
     /// `built` 0); the site's weapon is its `equipname`.
     Build,
+    /// A persistent buildable's table once built (`persistent` 1, `built`
+    /// 1): `bptrigger_think_persistent` gives its weapon on use.
+    Take,
 }
 
 /// Something a player buys or uses by pressing use near it: a trigger
@@ -269,6 +272,13 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         let equipname = string(field(runtime, stub, "equipname"));
         if int(field(runtime, stub, "built")) == Some(0)
             && let Some(mut table) = site(runtime, UseKind::Build, stub, "cost")
+        {
+            table.weapon = equipname.clone();
+            sites.push(table);
+        }
+        if int(field(runtime, stub, "built")) == Some(1)
+            && int(field(runtime, stub, "persistent")) == Some(1)
+            && let Some(mut table) = site(runtime, UseKind::Take, stub, "cost")
         {
             table.weapon = equipname.clone();
             sites.push(table);

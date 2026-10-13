@@ -24,6 +24,7 @@ mod mover;
 mod paths;
 mod player;
 mod radius;
+mod riotshield;
 mod rumble;
 mod sound;
 mod stats;
@@ -2010,6 +2011,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     rumble::register(registry);
     player::register(registry);
     radius::register(registry);
+    riotshield::register(registry);
     sound::register(registry);
     stats::register(registry);
 }
