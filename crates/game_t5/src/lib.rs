@@ -89,11 +89,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         hurt_calls_back: true,
         sets_view_height: false,
         revive_restores_health: true,
-        unrun: Some(unknown!(
-            "t5.match.last_stand",
-            "going down or being revived plays no third-person stance animation, does not take the player off a turret or vehicle, and does not mark the client's down time",
-            "Black Ops' last stand and revive animation events in the runtime, its turret and vehicle detach, and what the client's down time field drives"
-        )),
+        unrun: None,
     },
     // Solo game over: every client is told the level failed, and a wall-clock
     // second plus `g_deathDelay` (4000) later the level is loaded again.

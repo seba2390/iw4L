@@ -357,6 +357,7 @@ pub(crate) fn finish_damage(
     if downs && ps.pm_flags & LAST_STAND == 0 {
         ps.health = 1;
         enter_last_stand_move(world, id, downed.sets_view_height);
+        crate::game_move::enter_last_stand(world, id);
         if let Some(gap) = downed.unrun {
             diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
         }
@@ -398,15 +399,20 @@ pub(crate) fn downed_rules(world: &FrameWorld) -> game_api::DownedRules {
 /// gives it back.
 pub(crate) fn revive(world: &mut FrameWorld, id: ClientId) {
     let downed = downed_rules(world);
-    undo_last_stand(world, id);
     if let Some(ps) = world.player_mut(id) {
+        ps.pm_type = 0;
+        ps.pm_flags &= !LAST_STAND;
         if downed.sets_view_height {
             ps.view_height_target = movement_iw4::view_height::CROUCH;
         }
         if downed.revive_restores_health {
+            ps.damage_event = 0;
+            ps.damage_count = 0;
+            ps.damage_timer = 0;
             ps.health = ps.max_health;
         }
     }
+    crate::game_move::revive(world, id);
     if let Some(gap) = downed.unrun {
         diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
     }
@@ -418,6 +424,7 @@ pub(crate) fn undo_last_stand(world: &mut FrameWorld, id: ClientId) {
         ps.pm_type = 0;
         ps.pm_flags &= !playerstate_iw4::pm_flags::LAST_STAND;
     }
+    crate::game_move::undo_last_stand(world, id);
 }
 
 pub(crate) fn kill(

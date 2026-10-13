@@ -214,6 +214,50 @@ pub(crate) fn set_stance(world: &mut FrameWorld, id: ClientId, stance: &str) -> 
     true
 }
 
+/// Enters last stand in the game's own movement.
+pub(crate) fn enter_last_stand(world: &mut FrameWorld, id: ClientId) {
+    let Some(movement) = rules(world) else {
+        return;
+    };
+    if let Some(outcome) = update(world, id, |player| movement.enter_last_stand(player)) {
+        for gap in outcome.gaps {
+            world.report_game_gap(gap);
+        }
+    }
+}
+
+/// Revives a downed player in the game's own movement.
+pub(crate) fn revive(world: &mut FrameWorld, id: ClientId) {
+    let Some(movement) = rules(world) else {
+        return;
+    };
+    if let Some(outcome) = update(world, id, |player| movement.revive(player)) {
+        for gap in outcome.gaps {
+            world.report_game_gap(gap);
+        }
+    }
+}
+
+/// Clears last stand in the game's own movement without raising an animation
+/// event.
+pub(crate) fn undo_last_stand(world: &mut FrameWorld, id: ClientId) {
+    let Some(movement) = rules(world) else {
+        return;
+    };
+    update(world, id, |player| movement.undo_last_stand(player));
+}
+
+/// Sets or clears `being_revived` on a downed player in the game's own
+/// movement.
+pub(crate) fn set_being_revived(world: &mut FrameWorld, id: ClientId, being_revived: bool) {
+    let Some(movement) = rules(world) else {
+        return;
+    };
+    update(world, id, |player| {
+        movement.set_being_revived(player, being_revived);
+    });
+}
+
 /// Sets or clears a perk the game's own movement reads; false when the match
 /// runs the simulation's.
 pub(crate) fn set_perk(world: &mut FrameWorld, id: ClientId, perk: &str, on: bool) -> bool {

@@ -330,6 +330,25 @@ pub trait PlayerMovement: Sync {
 
     fn set_stance(&self, player: &mut MovePlayer, stance: Stance) -> MoveOutcome;
 
+    /// What entering last stand does to the player in the game's movement:
+    /// raises its down animation event and detaches a turret or vehicle.
+    fn enter_last_stand(&self, _player: &mut MovePlayer) -> MoveOutcome {
+        MoveOutcome::default()
+    }
+
+    /// What `reviveplayer` does to the player in the game's movement: clears
+    /// `being_revived` and raises its get-up animation event.
+    fn revive(&self, _player: &mut MovePlayer) -> MoveOutcome {
+        MoveOutcome::default()
+    }
+
+    /// What `undolaststand` does to the player in the game's movement.
+    fn undo_last_stand(&self, _player: &mut MovePlayer) {}
+
+    /// What `startrevive` (`true`) and `stoprevive` (`false`) set on a
+    /// downed player.
+    fn set_being_revived(&self, _player: &mut MovePlayer, _being_revived: bool) {}
+
     /// Sets or clears a perk; false when the game has no perk of that name.
     fn set_perk(&self, player: &mut MovePlayer, perk: &str, on: bool) -> bool;
 

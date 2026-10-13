@@ -110,14 +110,29 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "settransported",
         // A perk machine shaking as the power comes on.
         "vibrate",
-        // The downed player's "being revived" view; the revive itself is scripted.
-        "startrevive",
-        "stoprevive",
         // Gibbed limbs are not thrown yet; scripts swap the damaged models.
         "gib",
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
+    registry.register(Method, "startrevive", |world, receiver, _| {
+        let id = crate::ClientId(super::player::player(world, receiver)?);
+        crate::game_move::set_being_revived(
+            &mut crate::frame::FrameWorld::from_world(world),
+            id,
+            true,
+        );
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "stoprevive", |world, receiver, _| {
+        let id = crate::ClientId(super::player::player(world, receiver)?);
+        crate::game_move::set_being_revived(
+            &mut crate::frame::FrameWorld::from_world(world),
+            id,
+            false,
+        );
+        Ok(Value::Undefined)
+    });
     // Stance and lean locks (while a perk bottle is drunk), kept by Black
     // Ops' movement.
     macro_rules! restriction {
