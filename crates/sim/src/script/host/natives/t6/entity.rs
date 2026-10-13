@@ -130,7 +130,7 @@ fn edit_link(world: &mut World, args: &[Value], link: bool) -> Result<Value, Str
 }
 
 /// The game's surface names, by the surface type a trace reports.
-const SURFACES: [&str; 32] = [
+pub(super) const SURFACES: [&str; 32] = [
     "default",
     "bark",
     "brick",

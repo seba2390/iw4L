@@ -66,6 +66,25 @@ const SPREAD_CLASSES: [i32; 2] = [3, 13];
 const MOD_PISTOL_BULLET: usize = 1;
 const MOD_RIFLE_BULLET: usize = 2;
 const DFLAG_ARMOR_PIERCING: i32 = 2;
+const DFLAG_PENETRATION: i32 = 8;
+/// The zone's depths a bullet passes, by penetration type and surface.
+const PENETRATION_TABLE: &str = "info/bullet_penetration_mp";
+const PENETRATION_TABLE_HEADER: &str = "BULLET_PEN_TABLE";
+const PENETRATION_TYPES: [&str; 3] = ["small", "medium", "large"];
+const PENETRATION_COUNT: (&str, i32) = ("penetrationcount", 5);
+/// A charge-shot weapon's bullet always passes this many surfaces.
+const FIRE_CHARGE_SHOT: i32 = 8;
+const CHARGE_SHOT_PENETRATIONS: i32 = 5;
+/// The exit is looked for back from this far before the next hit.
+const EXIT_BACK: f32 = 0.01;
+/// Surfaces any bullet passes: flagged so, or water.
+const SURF_FULL_DEPTH: u32 = 0x4;
+const WATER: u32 = 20;
+const FULL_DEPTH: f32 = 100.0;
+const SURF_NO_PENETRATE: u32 = 0x100;
+/// The surfaces a body and a riot shield are struck as.
+const FLESH_FLAGS: u32 = 7 << 20;
+const RIOTSHIELD_FLAGS: u32 = 31 << 20;
 
 /// The engine's state for a turret's aim (`t6.turret.state`).
 #[derive(Clone, Debug, Default)]
@@ -885,6 +904,160 @@ fn bullet_end(world: &World, def: &ZoneWeapon) -> Result<(), String> {
     Ok(())
 }
 
+/// What a bullet's trace struck.
+#[derive(Clone)]
+struct Struck {
+    point: [f32; 3],
+    normal: [f32; 3],
+    collider: ColliderId,
+    entity: Value,
+    flags: u32,
+    /// The surface whose depth the bullet passes.
+    depth_type: u32,
+    start_solid: bool,
+    all_solid: bool,
+}
+
+/// A players' or an actor's body.
+fn is_body(world: &World, id: u64) -> bool {
+    let runtime = world.resource::<RoundScript>();
+    runtime.player_client(id).is_some()
+        || runtime
+            .entities
+            .get(&id)
+            .is_some_and(|entity| entity.kind == super::EntityKind::Actor)
+}
+
+/// The engine's bullet trace: a body is struck as flesh and a riot shield
+/// as its own surface; a surface of no type keeps the last one's depth,
+/// one flagged against penetration has none.
+fn bullet_trace(
+    world: &mut World,
+    start: [f32; 3],
+    end: [f32; 3],
+    dir: [f32; 3],
+    ignore: &Value,
+    last_type: u32,
+) -> Option<Struck> {
+    let mask = FrameWorld::from_world(world).bullet_mask();
+    let ignored = trace_ignore(world, Some(ignore));
+    let (point, normal, collider, start_solid, all_solid) =
+        match entity_trace(world, start, end, mask, ignored) {
+            TraceOutcome::Hit {
+                end,
+                normal,
+                collider,
+                ..
+            } => (end, normal, collider, false, false),
+            TraceOutcome::StartSolid {
+                collider: Some(collider),
+                end,
+                all_solid,
+            } => (end, dir.map(|v| -v), collider, true, all_solid),
+            _ => return None,
+        };
+    let entity = collider_entity(world, collider);
+    let mut flags = surface_flags(collider);
+    if let Value::Object(id) = entity {
+        if hit_location(collider) == damage::RIOTSHIELD {
+            flags = RIOTSHIELD_FLAGS;
+        } else if flags == 0 && is_body(world, id) {
+            flags = FLESH_FLAGS;
+        }
+    }
+    let surface = (flags >> 20) & 0x3f;
+    let depth_type = if flags & SURF_NO_PENETRATE != 0 {
+        0
+    } else if surface == 0 {
+        last_type
+    } else {
+        surface
+    };
+    Some(Struck {
+        point,
+        normal,
+        collider,
+        entity,
+        flags,
+        depth_type,
+        start_solid,
+        all_solid,
+    })
+}
+
+/// The engine's bullet hit: the thing struck takes the weapon's damage for
+/// the distance from the muzzle, scaled.
+#[allow(clippy::too_many_arguments)]
+fn strike(
+    world: &mut World,
+    id: u64,
+    def: &ZoneWeapon,
+    muzzle: [f32; 3],
+    dir: [f32; 3],
+    struck: &Struck,
+    damage_scale: f32,
+    dflags: i32,
+) -> Result<(), String> {
+    let Value::Object(target) = struck.entity else {
+        return Ok(());
+    };
+    let location = hit_location(struck.collider);
+    if location == damage::RIOTSHIELD {
+        return Err("t6.turret.riotshield_hit: a turret's bullet striking a riot shield is not implemented yet".into());
+    }
+    if !takes_damage(world, target) {
+        return Ok(());
+    }
+    let turret = Value::Object(id);
+    let amount = (damage_at(def, muzzle, struck.point) as f32 * damage_scale) as i32;
+    damage::damage(
+        world,
+        &struck.entity,
+        damage::Hit {
+            inflictor: turret.clone(),
+            attacker: turret,
+            dir: Some(dir),
+            point: Some(struck.point),
+            damage: amount,
+            dflags: dflags
+                | if def.armor_piercing {
+                    DFLAG_ARMOR_PIERCING
+                } else {
+                    0
+                },
+            means: if def.rifle_bullet {
+                MOD_RIFLE_BULLET
+            } else {
+                MOD_PISTOL_BULLET
+            },
+            weapon: Some(def.name.clone()),
+            hit_location: location,
+        },
+    )
+}
+
+/// The engine's advance past a hit: past an entity from the hit, leaving
+/// it out; past the world `distance` on over the facing (eight times, and
+/// spent, when the bullet grazes it).
+fn advance(struck: &Struck, dir: [f32; 3], distance: f32) -> (bool, [f32; 3], Value) {
+    if matches!(struck.entity, Value::Object(_)) || distance <= 0.0 {
+        return (true, struck.point, struck.entity.clone());
+    }
+    let facing = -dot(struck.normal, dir);
+    if facing < GRAZE {
+        return (
+            false,
+            add(struck.point, scale(dir, distance * 8.0)),
+            Value::Undefined,
+        );
+    }
+    (
+        true,
+        add(struck.point, scale(dir, distance / facing)),
+        Value::Undefined,
+    )
+}
+
 /// One bullet from the muzzle to the end: each thing struck takes the
 /// weapon's damage for the distance from the muzzle; it goes on through
 /// surfaces that let it pass and, at half damage, through bodies a rifle
@@ -897,86 +1070,175 @@ fn bullet(
     end: [f32; 3],
     dir: [f32; 3],
 ) -> Result<(), String> {
-    let mask = FrameWorld::from_world(world).bullet_mask();
-    let turret = Value::Object(id);
     let mut start = muzzle;
-    let mut ignore = turret.clone();
+    let mut ignore = Value::Object(id);
     let mut damage_scale = 1.0;
     for _ in 0..BULLET_HITS {
-        let ignored = trace_ignore(world, Some(&ignore));
-        let (point, normal, collider) = match entity_trace(world, start, end, mask, ignored) {
-            TraceOutcome::Hit {
-                end,
-                normal,
-                collider,
-                ..
-            } => (end, normal, collider),
-            TraceOutcome::StartSolid {
-                collider: Some(collider),
-                end,
-                ..
-            } => (end, dir.map(|v| -v), collider),
-            _ => return Ok(()),
+        let Some(struck) = bullet_trace(world, start, end, dir, &ignore, 0) else {
+            return Ok(());
         };
-        let hit = collider_entity(world, collider);
-        let location = hit_location(collider);
-        if let Value::Object(target) = hit {
-            if location == damage::RIOTSHIELD {
-                return Err("t6.turret.riotshield_hit: a turret's bullet striking a riot shield is not implemented yet".into());
+        strike(world, id, def, muzzle, dir, &struck, damage_scale, 0)?;
+        if struck.flags & SURF_PASS != 0 {
+            let (advanced, from, left_out) = advance(&struck, dir, PASS_OFFSET);
+            if !advanced {
+                return Ok(());
             }
-            if takes_damage(world, target) {
-                let amount = (damage_at(def, muzzle, point) as f32 * damage_scale) as i32;
-                damage::damage(
-                    world,
-                    &hit,
-                    damage::Hit {
-                        inflictor: turret.clone(),
-                        attacker: turret.clone(),
-                        dir: Some(dir),
-                        point: Some(point),
-                        damage: amount,
-                        dflags: if def.armor_piercing {
-                            DFLAG_ARMOR_PIERCING
-                        } else {
-                            0
-                        },
-                        means: if def.rifle_bullet {
-                            MOD_RIFLE_BULLET
-                        } else {
-                            MOD_PISTOL_BULLET
-                        },
-                        weapon: Some(def.name.clone()),
-                        hit_location: location,
-                    },
-                )?;
-            }
-        }
-        if surface_flags(collider) & SURF_PASS != 0 {
-            match hit {
-                Value::Object(_) => {
-                    start = point;
-                    ignore = hit;
-                }
-                _ => {
-                    let facing = -dot(normal, dir);
-                    if facing < GRAZE {
-                        return Ok(());
-                    }
-                    start = add(point, scale(dir, PASS_OFFSET / facing));
-                    ignore = Value::Undefined;
-                }
-            }
+            (start, ignore) = (from, left_out);
             continue;
         }
-        let Value::Object(target) = hit else {
+        let Value::Object(target) = struck.entity else {
             return bullet_end(world, def);
         };
-        if !takes_damage(world, target) || !def.rifle_bullet || !is_sentient(world, target) {
+        if !takes_damage(world, target) {
             return bullet_end(world, def);
         }
-        damage_scale *= 0.5;
-        start = point;
-        ignore = hit;
+        if !struck.start_solid {
+            if !def.rifle_bullet || !is_sentient(world, target) {
+                return bullet_end(world, def);
+            }
+            damage_scale *= 0.5;
+        }
+        (start, ignore) = (struck.point, struck.entity);
+    }
+    Ok(())
+}
+
+/// The zone's penetration depths by penetration type (none, small, medium,
+/// large) and surface type.
+fn depth_table(world: &World) -> Result<[[f32; 32]; 4], String> {
+    let text = world
+        .resource::<RoundScript>()
+        .restart
+        .as_ref()
+        .and_then(|plan| plan.raw_files.get(PENETRATION_TABLE).cloned())
+        .ok_or_else(|| format!("{PENETRATION_TABLE} is not in the zones"))?;
+    let mut words = text.trim().split('\\');
+    if words.next() != Some(PENETRATION_TABLE_HEADER) {
+        return Err(format!(
+            "{PENETRATION_TABLE} is not a bullet penetration table"
+        ));
+    }
+    let mut depths = [[0.0; 32]; 4];
+    while let (Some(key), Some(value)) = (words.next(), words.next()) {
+        let Some((size, surface)) = key.split_once('_') else {
+            continue;
+        };
+        if let Some(row) = PENETRATION_TYPES
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(size))
+            && let Some(column) = super::entity::SURFACES
+                .iter()
+                .position(|name| name.eq_ignore_ascii_case(surface))
+        {
+            depths[row + 1][column] = super::atof(value);
+        }
+    }
+    Ok(depths)
+}
+
+/// The depth of a surface for the weapon's penetration type (none for a
+/// surface of no type).
+fn depth(table: &[[f32; 32]; 4], def: &ZoneWeapon, surface: u32) -> f32 {
+    if surface == 0 {
+        return 0.0;
+    }
+    usize::try_from(def.penetrate_type)
+        .ok()
+        .and_then(|row| table.get(row))
+        .and_then(|row| row.get(surface as usize))
+        .copied()
+        .unwrap_or(0.0)
+}
+
+/// The engine's penetrating bullet: after the first hit it passes up to
+/// `penetrationCount` surfaces (five for a charge shot), each costing the
+/// damage scale its thickness over the lesser depth of its entry and exit,
+/// and the next thing struck takes the scaled damage. The attacker's perks
+/// and charge are a player's; the turret has none.
+fn penetrate(
+    world: &mut World,
+    id: u64,
+    def: &ZoneWeapon,
+    muzzle: [f32; 3],
+    end: [f32; 3],
+    dir: [f32; 3],
+) -> Result<(), String> {
+    let Some(mut struck) = bullet_trace(world, muzzle, end, dir, &Value::Object(id), 0) else {
+        return Ok(());
+    };
+    strike(world, id, def, muzzle, dir, &struck, 1.0, 0)?;
+    let table = depth_table(world)?;
+    let count = if def.fire_type == FIRE_CHARGE_SHOT {
+        CHARGE_SHOT_PENETRATIONS
+    } else {
+        dvar_i32(world, PENETRATION_COUNT.0, PENETRATION_COUNT.1)
+    };
+    let back = scale(dir, -1.0);
+    let mut damage_scale = 1.0;
+    for _ in 0..count {
+        let mut passes = depth(&table, def, struck.depth_type);
+        if struck.flags & SURF_FULL_DEPTH != 0 || (struck.flags >> 20) & 0x3f == WATER {
+            passes = FULL_DEPTH;
+        }
+        if passes <= 0.0 {
+            return Ok(());
+        }
+        let entry = struck.point;
+        let (advanced, from, ignore) = advance(&struck, dir, PASS_OFFSET);
+        if !advanced {
+            return Ok(());
+        }
+        let next = bullet_trace(world, from, end, dir, &ignore, struck.depth_type);
+        let exit_end = add(entry, scale(back, EXIT_BACK));
+        let (mut exit_start, mut exit_ignore) = (end, ignore);
+        if let Some(next) = &next {
+            let mirrored = Struck {
+                normal: scale(next.normal, -1.0),
+                ..next.clone()
+            };
+            (_, exit_start, exit_ignore) = advance(&mirrored, back, EXIT_BACK);
+        }
+        let last_type = next.as_ref().map_or(0, |next| next.depth_type);
+        let exit = bullet_trace(world, exit_start, exit_end, back, &exit_ignore, last_type);
+        let all_solid = exit.as_ref().is_some_and(|exit| exit.all_solid)
+            || (next.as_ref().is_some_and(|next| next.start_solid)
+                && exit.as_ref().is_some_and(|exit| exit.start_solid));
+        if exit.is_some() || all_solid {
+            let through = if all_solid {
+                sub(exit_end, exit_start)
+            } else {
+                sub(entry, exit.as_ref().map_or(entry, |exit| exit.point))
+            };
+            let thickness = dot(through, through).sqrt().max(1.0);
+            if let Some(exit) = &exit {
+                passes = passes.min(depth(&table, def, exit.depth_type));
+                if exit.flags & SURF_FULL_DEPTH != 0 {
+                    passes = FULL_DEPTH;
+                } else if passes <= 0.0 {
+                    return Ok(());
+                }
+            }
+            damage_scale -= thickness / passes;
+            if damage_scale <= 0.0 {
+                return Ok(());
+            }
+        }
+        let Some(next) = next else {
+            return Ok(());
+        };
+        if !all_solid {
+            strike(
+                world,
+                id,
+                def,
+                muzzle,
+                dir,
+                &next,
+                damage_scale,
+                DFLAG_PENETRATION,
+            )?;
+        }
+        struck = next;
     }
     Ok(())
 }
@@ -995,12 +1257,6 @@ fn bullet_fire(
     if SPREAD_CLASSES.contains(&def.weap_class) {
         return Err(format!(
             "t6.turret.pellets: '{}' fires pellets from a turret, which is not implemented yet",
-            def.name
-        ));
-    }
-    if def.penetrate_type != 0 && !def.bullet_impact_explode {
-        return Err(format!(
-            "t6.turret.penetration: '{}' penetrates, which is not implemented yet",
             def.name
         ));
     }
@@ -1026,6 +1282,9 @@ fn bullet_fire(
         origin[i] + forward[i] * range + left[i] * across * cone + up[i] * high * cone
     });
     let dir = normalize(sub(end, origin));
+    if def.penetrate_type != 0 {
+        return penetrate(world, id, def, origin, end, dir);
+    }
     bullet(world, id, def, origin, end, dir)
 }
 
