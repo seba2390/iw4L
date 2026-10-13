@@ -20,12 +20,14 @@ mod entity;
 mod laststand;
 mod movement;
 mod mover;
+mod paths;
 mod player;
 mod radius;
 mod rumble;
 mod sound;
 mod stats;
 mod usable;
+mod vehicle;
 mod weapon;
 
 /// How Black Ops 2 finds a dvar: djb2 over the lowercased name.
@@ -1392,23 +1394,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let actors = living_actors(world, mask, |own| species == 4 || own == species);
         new_array(world, actors)
     });
-    // Path changes wait for Black Ops 2's path finding (`docs/fidelity/t6.md`).
-    registry.register(Method, "disconnectpaths", |world, receiver, _| {
-        let id = super::engine::entity_id(world, receiver)?;
-        world
-            .get_resource_or_insert_with(EntityFlags::default)
-            .disconnects_paths
-            .insert(id);
-        Ok(Value::Undefined)
-    });
-    registry.register(Method, "connectpaths", |world, receiver, _| {
-        let id = super::engine::entity_id(world, receiver)?;
-        world
-            .get_resource_or_insert_with(EntityFlags::default)
-            .disconnects_paths
-            .remove(&id);
-        Ok(Value::Undefined)
-    });
     registry.register(Method, "useweaponhidetags", |world, receiver, args| {
         let name = string(args, 0)?;
         if weapon::weapon_index(world, &name)? == 0 {
@@ -1907,6 +1892,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "setsprintcooldown"),
         (Method, "playerknockback"),
         (Method, "cameraactivate"),
+        // The camera a player sees through: kept for his client to present.
+        (Method, "camerasetposition"),
+        (Method, "camerasetlookat"),
         (Method, "setblur"),
         (Method, "isinvehicle"),
         (Method, "setvisibletoplayer"),
@@ -1931,6 +1919,39 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let activity =
             crate::script_player::weapon_activity(&crate::frame::FrameWorld::from_world(world), id);
         Ok(Value::Int(activity.switching.into()))
+    });
+    // gsc_earthquake(scale, duration, origin, radius, [entity]): IW4L's
+    // shaking view, with the engine's checks; the entity it may follow is
+    // not kept.
+    registry.register(Function, "earthquake", |world, receiver, args| {
+        let (scale, duration) = (float(args, 0)?, float(args, 1)?);
+        vector(args, 2)?;
+        let radius = float(args, 3)?;
+        if scale <= 0.0 {
+            return Err("Scale must be greater than 0".into());
+        }
+        if (duration * 1000.0).round() < 1.0 {
+            return Err("duration must be greater than 0".into());
+        }
+        if radius <= 0.0 {
+            return Err("Radius must be greater than 0".into());
+        }
+        let shared = NativeRegistry::engine_services()
+            .get(Function, "earthquake")
+            .ok_or("earthquake: no engine earthquake")?;
+        shared(world, receiver, &args[..4])
+    });
+    // gsc_newteamhudelem: a HUD element for every client, kept to a team
+    // (IW4L's element, as `newhudelem`).
+    registry.register(Function, "newteamhudelem", |world, receiver, args| {
+        let team = string(args, 0)?;
+        if team_index(&team).is_none() {
+            return Err(format!("'{team}' is an illegal team string"));
+        }
+        let shared = NativeRegistry::engine_services()
+            .get(Function, "newteamhudelem")
+            .ok_or("newteamhudelem: no engine HUD element")?;
+        shared(world, receiver, args)
     });
     // gscm_setinvisibletoplayer: hides the entity from the player, or shows
     // it when a second argument is 0.
@@ -1965,6 +1986,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     laststand::register(registry);
     registry.on_use(usable::use_presses);
     mover::register(registry);
+    paths::register(registry);
+    vehicle::register(registry);
     rumble::register(registry);
     player::register(registry);
     radius::register(registry);
@@ -2537,7 +2560,6 @@ struct EntityFlags {
     low_priority_hint: BTreeMap<u64, bool>,
     ignore_team: std::collections::BTreeSet<u64>,
     trigger_team: BTreeMap<u64, usize>,
-    disconnects_paths: std::collections::BTreeSet<u64>,
     weapon_hide_tags: BTreeMap<u64, String>,
     /// The weapon options `useweaponmodel` gave an entity.
     weapon_options: BTreeMap<u64, i32>,

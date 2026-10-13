@@ -433,6 +433,11 @@ fn finish_actor_damage(
     );
     let dir = dir.unwrap_or(zero);
     if left < 1 {
+        // The dead actor's body is a corpse: the engine gives it the corpse
+        // contents, which bullets and blows pass through.
+        if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+            entity.contents = CORPSE_CONTENTS;
+        }
         raise(world, receiver.clone(), "death", vec![attacker.clone()]);
         let recorded = defined(&attacker)
             .and_then(|a| held_weapon(world, &a.clone()))
@@ -579,6 +584,9 @@ fn finish_player_damage(
     }
     Ok(Value::Undefined)
 }
+
+/// The contents the engine's corpse think gives a dead body.
+const CORPSE_CONTENTS: i32 = 0x0400_0000;
 
 /// A shot or blast IW4L's weapon rules landed on one of the game's actors:
 /// the game's own `G_Damage`, with the rules' damage, means and weapon, at

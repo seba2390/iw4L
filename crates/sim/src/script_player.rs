@@ -614,6 +614,14 @@ pub(crate) fn give_weapon(
     living(world, id)?;
     let game_rules = crate::game_move::game_weapons(world);
     if world.weapon_is_melee_only(weapon) && !game_rules {
+        // The lent weapons hold no melee weapon: the player stabs with it,
+        // as a game whose player keeps a melee weapon apart (Black Ops 2's
+        // knife) does, the last one given.
+        world
+            .ecs()
+            .get_resource_or_insert_with(HeldMeleeWeapons::default)
+            .0
+            .insert(id.0, weapon);
         return Ok(());
     }
     let Some(facts) = world.combat_facts_for(weapon) else {
@@ -666,7 +674,30 @@ pub(crate) fn set_weapon_model(world: &mut FrameWorld, id: ClientId, weapon: u32
     }
 }
 
+/// The melee-only weapon each player was last given, which the lent
+/// weapons do not hold: the one a player stabs with.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct HeldMeleeWeapons(std::collections::BTreeMap<u32, u32>);
+
+/// The melee weapon a player stabs with, when one was given apart from the
+/// held weapons.
+pub(crate) fn held_melee_weapon(world: &mut FrameWorld, id: ClientId) -> Option<u32> {
+    world
+        .ecs()
+        .get_resource::<HeldMeleeWeapons>()
+        .and_then(|held| held.0.get(&id.0).copied())
+}
+
+fn drop_melee_weapon(world: &mut FrameWorld, id: ClientId, weapon: Option<u32>) {
+    if let Some(mut held) = world.ecs().get_resource_mut::<HeldMeleeWeapons>()
+        && weapon.is_none_or(|weapon| held.0.get(&id.0) == Some(&weapon))
+    {
+        held.0.remove(&id.0);
+    }
+}
+
 pub(crate) fn take_weapon(world: &mut FrameWorld, id: ClientId, weapon: u32) {
+    drop_melee_weapon(world, id, Some(weapon));
     let Some(ps) = world.player_mut(id) else {
         return;
     };
@@ -689,6 +720,7 @@ pub(crate) fn take_weapon(world: &mut FrameWorld, id: ClientId, weapon: u32) {
 }
 
 pub(crate) fn take_all_weapons(world: &mut FrameWorld, id: ClientId) {
+    drop_melee_weapon(world, id, None);
     let Some(ps) = world.player_mut(id) else {
         return;
     };

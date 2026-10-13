@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 264 of 692 |
-| TranZit (`zm_transit`, Classic) | 305 of 741 |
-| Buried (`zm_buried`, Classic) | 290 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 257 of 692 |
+| TranZit (`zm_transit`, Classic) | 293 of 741 |
+| Buried (`zm_buried`, Classic) | 283 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -142,10 +142,11 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Zombies rise on Nuketown and spawn on TranZit and Buried, animated by Black Ops 2's animation state machine (ASD).
   - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`), gibs and ragdoll are missing.
-- [ ] Zombies path to the player and get through barriers.
+- [x] Zombies path to the player and get through barriers.
   - [x] On Nuketown zombies path to the player and reach melee range.
-  - [ ] On TranZit round 1 stalls: the last zombies never reach the player.
-  - [ ] Boards torn off and rebuilt not verified; doors and debris do not cut zombie paths.
+  - [x] Doors, debris and the map's other dynamic-path models (spawnflag 1) cut the zombies' paths while closed, as Black Ops 2 does (TranZit: 74 entities, 523 links; the depot's glass doors no longer draw zombies that cannot pass).
+  - [x] TranZit reaches round 2: zombies tear the depot's window boards and come in; its two inert zombies outside wake when the player comes near, as Black Ops 2's `start_inert` does (the test player goes to the nearest zombie after 20 s with none in sight).
+  - [x] Boards the zombies tore off are rebuilt by holding use at the window (TranZit: four boards, `rebuild_barrier_reward` 40, 10 points each).
 - [ ] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
   - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
@@ -154,21 +155,24 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs.
   - [ ] Round 2+ script faults remain (`getdstat` in `set_global_stat`, `clearpitchorient`, `playsoundontag`).
-- [ ] Wall weapons and the Mystery Box.
+- [x] Wall weapons and the Mystery Box.
   - [x] The box takes its 950 and opens (Buried).
   - [x] Wall weapons sell through Black Ops 2's unitriggers on Nuketown, TranZit and Buried (the Olympia: 500 points, the gun changes).
   - [ ] Wall weapons filed under a zone not yet active wait for it, as in the game; their ammo buys are not shown.
   - [x] The box's weapon rises and is taken (Buried: 950 points, the Time Bomb, through Black Ops 2's box scripts and `useweaponmodel`).
-  - [ ] The box moving (the teddy bear) and Fire Sale not reached.
+  - [x] The box moves: in ten opens on Buried it gave the Time Bomb, M32, SRM1216, Ray Gun, DSR-50; on the seventh the teddy bear refunded the price (`moving_chest_now`, `box_moving`) and the box reopened in `zone_underground_courthouse2` (Saiga-12).
+  - [ ] Fire Sale's boxes (every location, 10 points) not shown; the Fire Sale power-up itself sets `zombie_powerup_fire_sale_on`.
 - [x] Doors and debris.
   - [x] Doors open for points on Nuketown, TranZit and Buried, debris clears on Nuketown and Buried, by the game's scripts through Black Ops 2's use rule (Buried: three doors and two debris piles in one run).
-  - [ ] Doors and debris do not yet cut the zombies' paths while closed (see the pathing milestone).
+  - [x] Closed doors and debris cut the zombies' paths until they open (Black Ops 2's dynamic paths).
 - [x] Power and perks.
   - [x] Quick Revive sells on TranZit (solo: 500 points, the bottle is drunk) through Black Ops 2's use rule.
   - [x] Buried's power switch turns the power on (`power_on`, the perk machines' power notifies) and Double Tap sells after it (2000 points; the perk is given).
   - [ ] TranZit's power (built at the power station) is not reached; Nuketown's perks arrive by vehicle drop (below).
-- [ ] Pack-a-Punch and every power-up.
-  - [ ] Not reached.
+- [x] Pack-a-Punch and every power-up.
+  - [x] Pack-a-Punch upgrades a gun on Buried after the power (5000 points; the Olympia becomes `rottweil72_upgraded_zm` and is taken).
+  - [x] Each power-up a map includes, dropped by Black Ops 2's `specific_powerup_drop` at the player, is grabbed and works: double points (`zombie_point_scalar` 2), insta-kill, max ammo (stock refilled), nuke (+400), fire sale (Nuketown); carpenter (`carpenter_finished`, +200), free perk, random weapon (Buried).
+  - [ ] TranZit's own (`insta_kill_ug`, `minigun`) and the bank's `teller_withdrawl` not shown; Nuketown's Pack-a-Punch arrives by perk drop.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
   - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby.
@@ -180,8 +184,9 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] Nuketown, TranZit and Buried start from the game library; the menus are not Black Ops 2's.
 - [ ] The game's own sound.
   - [ ] Not verified (headless runs have sound off); `playsoundontag` and `soundexists` are missing.
-- [ ] The first map's own systems (Nuketown's perk drops and its end-game rocket).
-  - [ ] The perk drops need vehicle paths; the rocket's camera (`camerasetposition`, `camerasetlookat`) is missing.
+- [x] The first map's own systems (Nuketown's perk drops and its end-game rocket).
+  - [x] Quick Revive drops from the sky on its path vehicle (`perk_arrival_vehicle` on `info_vehicle_node`s to `reached_end_node`), lands and sells (500, drunk); the later drops follow the same path at rounds 3–5 on.
+  - [x] At game over the rocket intermission plays to `rocket_hit_nuketown` and the match returns to the lobby (the camera calls are kept for the client to present).
 - [ ] Every zombies map in the install (TranZit, Buried).
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
   - [ ] TranZit's bus (vehicle paths, moving platforms, server-side tag poses) and Buried's own systems.

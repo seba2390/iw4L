@@ -10,6 +10,8 @@ use bevy_ecs::prelude::World;
 /// carries its body.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ActorSighting {
+    /// The actor's script object.
+    pub id: u64,
     pub origin: [f32; 3],
     pub health: i32,
     pub body: Option<crate::ScriptModelId>,
@@ -57,6 +59,7 @@ pub(crate) fn living_actors(world: &World) -> Vec<ActorSighting> {
                 return None;
             };
             (health > 0).then_some(ActorSighting {
+                id,
                 origin,
                 health,
                 body: entity.presence,
@@ -89,6 +92,12 @@ pub enum UseKind {
     Power,
     /// A perk machine's `zombie_vending` trigger.
     Perk,
+    /// Pack-a-Punch: the `zombie_vending` trigger that sells
+    /// `specialty_weapupgrade`.
+    PackAPunch,
+    /// A window whose boards are down: its rebuild unitrigger stub
+    /// (`level.exterior_goals[i].unitrigger_stub`, while registered).
+    Rebuild,
 }
 
 /// Something a player buys or uses by pressing use near it: a trigger
@@ -196,6 +205,9 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             if kind == UseKind::Perk {
                 let mut found = site(runtime, kind, id, "cost")?;
                 found.weapon = string(field(runtime, id, "script_noteworthy"));
+                if found.weapon.as_deref() == Some("specialty_weapupgrade") {
+                    found.kind = UseKind::PackAPunch;
+                }
                 return Some(found);
             }
             // A door the power opens is not bought.
@@ -222,6 +234,16 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         };
         sites.extend(site(runtime, UseKind::WallBuy, stub, "cost"));
     }
+    for goal in items(runtime, field(runtime, 0, "exterior_goals")) {
+        let Some(stub) =
+            object(Some(goal)).and_then(|g| object(field(runtime, g, "unitrigger_stub")))
+        else {
+            continue;
+        };
+        if int(field(runtime, stub, "registered")).is_some_and(|on| on != 0) {
+            sites.extend(site(runtime, UseKind::Rebuild, stub, "cost"));
+        }
+    }
     let chests = items(runtime, field(runtime, 0, "chests"));
     if let Some(chest) = int(field(runtime, 0, "chest_index"))
         .and_then(|index| chests.get(usize::try_from(index).ok()?).cloned())
@@ -233,6 +255,74 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         sites.push(box_site);
     }
     sites
+}
+
+/// An entry of a level array field (`level.<array>[key]`) as text, for a
+/// test player's log.
+pub(crate) fn level_array_entry(world: &World, array: &str, key: &str) -> Option<String> {
+    let runtime = world.get_resource::<RoundScript>()?;
+    let Some(Value::Array(mut id)) = field(runtime, 0, array) else {
+        return None;
+    };
+    // `team.key` reads a nested array (`level.zombie_vars["allies"][key]`).
+    let mut parts = key.split('.').peekable();
+    let mut value = Value::Undefined;
+    while let Some(part) = parts.next() {
+        value = runtime
+            .arrays
+            .get(&id)?
+            .get(&crate::script::ArrayKey::String(part.into()))?
+            .clone();
+        if parts.peek().is_some() {
+            let Value::Array(inner) = value else {
+                return None;
+            };
+            id = inner;
+        }
+    }
+    Some(match value {
+        Value::Int(n) => n.to_string(),
+        Value::Float(f) => format!("{f}"),
+        Value::String(text) => text.to_string(),
+        other => format!("{other:?}"),
+    })
+}
+
+/// A script object's field as text (`-` when undefined), for a test
+/// player's log.
+pub(crate) fn object_field_text(world: &World, id: u64, name: &str) -> String {
+    let Some(runtime) = world.get_resource::<RoundScript>() else {
+        return "-".to_owned();
+    };
+    match field(runtime, id, name) {
+        None | Some(Value::Undefined) => "-".to_owned(),
+        Some(Value::Int(n)) => n.to_string(),
+        Some(Value::Float(f)) => format!("{f:.1}"),
+        Some(Value::String(text)) => text.to_string(),
+        Some(Value::Vector(v)) => format!("({:.0} {:.0} {:.0})", v[0], v[1], v[2]),
+        Some(Value::Object(object)) => format!("object {object}"),
+        Some(other) => format!("{other:?}"),
+    }
+}
+
+/// The receivers of the waits pending on a notify name, for a test
+/// player's log.
+pub(crate) fn waits_on(world: &World, name: &str) -> Vec<String> {
+    let Some(runtime) = world.get_resource::<RoundScript>() else {
+        return Vec::new();
+    };
+    runtime
+        .waiters
+        .iter()
+        .filter(|w| &*w.name == name)
+        .map(|w| match &w.receiver {
+            Value::Object(id) => runtime.entities.get(id).map_or_else(
+                || format!("object {id}"),
+                |entity| format!("{} {id}", entity.classname),
+            ),
+            other => format!("{other:?}"),
+        })
+        .collect()
 }
 
 /// Whether a level flag is set (`level.flag[name]`, as `flag_set` keeps it).

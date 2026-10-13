@@ -1611,9 +1611,19 @@ fn fire_weapon_melee(
     origin: [f32; 3],
     angles: [f32; 3],
 ) {
-    let Some(facts) = world.combat_facts_for(weapon) else {
+    // A melee weapon given apart from the held ones is the one stabbed
+    // with; it cuts with its own melee damage when it has one, else the held
+    // weapon's.
+    let held_melee = crate::script_player::held_melee_weapon(world, attacker);
+    let Some(gun) = world.combat_facts_for(weapon) else {
         return;
     };
+    let (weapon, facts) =
+        match held_melee.and_then(|knife| Some((knife, world.weapon_combat_row(knife)?))) {
+            Some((knife, own)) if own.melee_damage > 0 => (knife, own),
+            Some((knife, _)) => (knife, gun),
+            None => (weapon, gun),
+        };
     if facts.melee_damage <= 0 {
         return;
     }
