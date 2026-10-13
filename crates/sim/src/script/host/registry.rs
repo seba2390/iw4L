@@ -13,6 +13,9 @@ pub(crate) type EntityHitHook = fn(&mut World, u64, &super::entity_damage::Entit
 /// A game's own use rule: for each player who pressed use (client, player
 /// object), the entity their use reaches, as (entity, player object).
 pub(crate) type UseRule = fn(&mut World, &[(u32, u64)]) -> Vec<(u64, u64)>;
+/// A game's engine fields a player's entity has when it connects, set on
+/// the player object before the connect callback runs.
+pub(crate) type ConnectHook = fn(&mut World, u64);
 
 #[derive(Resource, Clone)]
 pub struct NativeRegistry(
@@ -20,6 +23,7 @@ pub struct NativeRegistry(
     Vec<Tick>,
     Vec<EntityHitHook>,
     Option<UseRule>,
+    Vec<ConnectHook>,
 );
 impl Default for NativeRegistry {
     /// The engine services alone: no game's own natives.
@@ -31,7 +35,7 @@ impl NativeRegistry {
     /// Builtins every game's scripts are served the same way: the language
     /// helpers, dvars, math, entities, players, sound, physics, triggers.
     pub fn engine_services() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None);
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None, Vec::new());
         registry.register(Namespace::Function, "isdefined", |world, _, args| {
             if args.len() != 1 {
                 return Err("isdefined expects one argument".into());
@@ -108,13 +112,13 @@ impl NativeRegistry {
     /// Black Ops 3's builtins alone: none of the engine services above, which
     /// serve the other games' rules.
     pub fn black_ops_2() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None);
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None, Vec::new());
         natives::t6::register(&mut registry);
         registry
     }
 
     pub fn black_ops_3() -> Self {
-        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None);
+        let mut registry = Self(BTreeMap::new(), Vec::new(), Vec::new(), None, Vec::new());
         natives::t7::register(&mut registry);
         registry
     }
@@ -143,6 +147,14 @@ impl NativeRegistry {
 
     pub(crate) fn use_rule(&self) -> Option<UseRule> {
         self.3
+    }
+
+    pub(crate) fn on_connect(&mut self, hook: ConnectHook) {
+        self.4.push(hook);
+    }
+
+    pub(crate) fn connect_hooks(&self) -> Vec<ConnectHook> {
+        self.4.clone()
     }
 
     pub fn register(&mut self, namespace: Namespace, name: &str, native: Native) {

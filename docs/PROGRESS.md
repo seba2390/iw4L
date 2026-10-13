@@ -120,9 +120,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 240 of 692 |
-| TranZit (`zm_transit`, Classic) | 274 of 741 |
-| Buried (`zm_buried`, Classic) | 264 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 219 of 692 |
+| TranZit (`zm_transit`, Classic) | 253 of 741 |
+| Buried (`zm_buried`, Classic) | 243 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -141,7 +141,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] Weapons whose view model animation no zone carries are refused (`m1911_upgraded_zm`, the last stand pistol after Pack-a-Punch).
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Zombies rise on Nuketown and spawn on TranZit and Buried, animated by Black Ops 2's animation state machine (ASD).
-  - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`), gibs and ragdoll are missing.
+  - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`) is kept, not applied (`t6.actors.pitch`); gibs and ragdoll are missing.
 - [x] Zombies path to the player and get through barriers.
   - [x] On Nuketown zombies path to the player and reach melee range.
   - [x] Doors, debris and the map's other dynamic-path models (spawnflag 1) cut the zombies' paths while closed, as Black Ops 2 does (TranZit: 74 entities, 523 links; the depot's glass doors no longer draw zombies that cannot pass).
@@ -150,11 +150,11 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
   - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
-  - [ ] The weapons that fire are Modern Warfare 2's (see the weapons milestone); the knife stabs with `knife_zm` and the held gun's melee damage.
+  - [ ] The weapons that fire are Modern Warfare 2's (see the weapons milestone); the knife stabs with `knife_zm` and the held gun's melee damage, its trace by Black Ops 2's melee mask; the lethal grenade `giveweapon` gives is the player's offhand and is thrown (`grenade_fire`, `explode`).
   - [x] A zombie's swing that lands on another zombie does nothing, as Black Ops 2's melee hit does.
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs.
-  - [ ] Round 2+ script faults remain (`getdstat` in `set_global_stat`, `clearpitchorient`, `playsoundontag`).
+  - [ ] Round 2+ script faults remain (`getdstat` in `set_global_stat`).
 - [x] Wall weapons and the Mystery Box.
   - [x] The box takes its 950 and opens (Buried).
   - [x] Wall weapons sell through Black Ops 2's unitriggers on Nuketown, TranZit and Buried (the Olympia: 500 points, the gun changes).
@@ -183,7 +183,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [ ] The game's own front end: menus, lobby and map selection.
   - [ ] Nuketown, TranZit and Buried start from the game library; the menus are not Black Ops 2's.
 - [ ] The game's own sound.
-  - [ ] Not verified (headless runs have sound off); `playsoundontag` and `soundexists` are missing.
+  - [ ] Not verified (headless runs have sound off).
 - [x] The first map's own systems (Nuketown's perk drops and its end-game rocket).
   - [x] Quick Revive drops from the sky on its path vehicle (`perk_arrival_vehicle` on `info_vehicle_node`s to `reached_end_node`), lands and sells (500, drunk); the later drops follow the same path at rounds 3–5 on.
   - [x] At game over the rocket intermission plays to `rocket_hit_nuketown` and the match returns to the lobby (the camera calls are kept for the client to present).
@@ -191,10 +191,10 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
   - [x] TranZit's bus drives its route on its path nodes once the depot doors open, with the player riding it (depot, diner, forest, on toward the power station in 220 s), its scripts reading tags off its posed model and who stands on it.
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
-  - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the head chopper's animation is not loaded on the server; the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
+  - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] With a bot as the second player on Nuketown: he joins and spawns, goes down, bleeds out after 45 s and respawns at the next round; the test player revives him (`player_revived`, the reviver named) each time he goes down; with both down the game ends and the match returns to the lobby.
-  - [ ] A second player over the network (two machines) not tried; hot joining's `getsnapshotackindex` is missing.
+  - [ ] A second player over the network (two machines) not tried.
 - [ ] The game's fidelity ledger ([`fidelity/t6.md`](fidelity/t6.md)) has no open item.
 
 ## Black Ops III — Zombies

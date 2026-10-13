@@ -1609,33 +1609,7 @@ fn register_inventory(registry: &mut NativeRegistry) {
         },
     );
     registry.register(Method, "giveweapon", |world, receiver, args| {
-        let id = client_of(world, receiver)?;
-        let named = weapon_arg(world, args, 0)?;
-        let weapon = player_weapon(world, id, args, 0)?;
-        let t5 = world
-            .resource::<RoundScript>()
-            .program
-            .as_ref()
-            .is_some_and(|program| program.rules() == crate::script::Realm::T5);
-        let model = if t5 {
-            (optional(args, 2, int)?.unwrap_or(0) & 63) as u8
-        } else {
-            optional(args, 1, int)?.unwrap_or(0).clamp(0, 15) as u8
-        };
-        let model = if named != weapon {
-            super::super::players::selected_camouflage(world, id.0, weapon).unwrap_or(model)
-        } else {
-            model
-        };
-        let akimbo = !t5 && optional(args, 2, int)?.unwrap_or(0) != 0;
-        if t5 && FrameWorld::from_world(world).player(id).is_none() {
-            slot(world, id.0)?.pending_weapons.push((weapon, model));
-            return Ok(Value::Undefined);
-        }
-        script_player::give_weapon(&mut FrameWorld::from_world(world), id, weapon, akimbo)?;
-        script_player::set_weapon_model(&mut FrameWorld::from_world(world), id, weapon, model);
-        super::super::players::give_carried_insertion(world, id.0, receiver, named)?;
-        Ok(Value::Undefined)
+        give_weapon(world, receiver, args).map(|_| Value::Undefined)
     });
     registry.register(Method, "takeweapon", |world, receiver, args| {
         let id = client_of(world, receiver)?;
@@ -1951,4 +1925,40 @@ fn register_inventory(registry: &mut NativeRegistry) {
             _ => "none",
         }))
     });
+}
+
+/// `giveweapon`: the player, given the weapon its first argument names;
+/// returns the client and the weapon given.
+pub(crate) fn give_weapon(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<(ClientId, u32), String> {
+    let id = client_of(world, receiver)?;
+    let named = weapon_arg(world, args, 0)?;
+    let weapon = player_weapon(world, id, args, 0)?;
+    let t5 = world
+        .resource::<RoundScript>()
+        .program
+        .as_ref()
+        .is_some_and(|program| program.rules() == crate::script::Realm::T5);
+    let model = if t5 {
+        (optional(args, 2, int)?.unwrap_or(0) & 63) as u8
+    } else {
+        optional(args, 1, int)?.unwrap_or(0).clamp(0, 15) as u8
+    };
+    let model = if named != weapon {
+        super::super::players::selected_camouflage(world, id.0, weapon).unwrap_or(model)
+    } else {
+        model
+    };
+    let akimbo = !t5 && optional(args, 2, int)?.unwrap_or(0) != 0;
+    if t5 && FrameWorld::from_world(world).player(id).is_none() {
+        slot(world, id.0)?.pending_weapons.push((weapon, model));
+        return Ok((id, weapon));
+    }
+    script_player::give_weapon(&mut FrameWorld::from_world(world), id, weapon, akimbo)?;
+    script_player::set_weapon_model(&mut FrameWorld::from_world(world), id, weapon, model);
+    super::super::players::give_carried_insertion(world, id.0, receiver, named)?;
+    Ok((id, weapon))
 }

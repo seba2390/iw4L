@@ -108,6 +108,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         )),
     }),
     bullet_mask: None,
+    melee_mask: None,
     spawn_at_default_health: true,
     connect_team: Some("allies"),
     scripts_spawn_players: true,

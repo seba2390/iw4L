@@ -17,6 +17,7 @@ mod combat;
 mod damage;
 mod effect;
 mod entity;
+mod extras;
 mod laststand;
 mod movement;
 mod mover;
@@ -313,19 +314,26 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
         new_array(world, ids.into_iter().map(Value::Object).collect())
     });
-    // The connected players by client number; a team other than "all" keeps
-    // that team's.
+    // The connected players by client number, those that have begun (the
+    // engine's connection state 2); a team other than "all" keeps that
+    // team's.
     registry.register(Function, "getplayers", |world, _, args| {
         let team = match args.first() {
             None => None,
             Some(Value::String(team)) if team.as_bytes() == b"all" => None,
             Some(_) => Some(string(args, 0)?),
         };
-        let mut players: Vec<(i32, u64)> = world
-            .resource::<RoundScript>()
+        let runtime = world.resource::<RoundScript>();
+        let begun: std::collections::BTreeSet<u64> = runtime
+            .players
+            .values()
+            .filter(|slot| slot.begun)
+            .map(|slot| slot.object)
+            .collect();
+        let mut players: Vec<(i32, u64)> = runtime
             .entities
             .iter()
-            .filter(|(_, entity)| entity.kind == EntityKind::Player)
+            .filter(|(id, entity)| entity.kind == EntityKind::Player && begun.contains(id))
             .map(|(id, entity)| (entity.number, *id))
             .collect();
         players.sort_unstable();
@@ -905,7 +913,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let model = if args.len() < 2 {
             weapon::zone_weapon(world, &name)
                 .and_then(|facts| facts.world_models.first().cloned())
-                .unwrap_or_default()
+                .unwrap_or_else(|| "".into())
         } else {
             string(args, 1)?
         };
@@ -1851,7 +1859,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "disableweapons"),
         (Method, "setviewmodel"),
         (Method, "setmovespeedscale"),
-        (Method, "giveweapon"),
         (Method, "givestartammo"),
         (Method, "givemaxammo"),
         (Method, "switchtoweapon"),
@@ -1988,6 +1995,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     mover::register(registry);
     paths::register(registry);
     vehicle::register(registry);
+    extras::register(registry);
     rumble::register(registry);
     player::register(registry);
     radius::register(registry);

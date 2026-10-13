@@ -221,6 +221,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     )),
     // The mask the engine's bullet trace takes; actors are in it.
     bullet_mask: Some(0x0280_e833),
+    melee_mask: Some(0x0280_e893),
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,
@@ -252,7 +253,8 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     },
     client_fire: None,
     viewmodel: None,
-    script_sounds_hashed: false,
+    // gsc_playsoundatposition sends the alias's hash; nothing checks it.
+    script_sounds_hashed: true,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

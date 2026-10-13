@@ -37,6 +37,10 @@
 //! `IW4L_TEST_VARS=key,…` adds those `level.zombie_vars` entries to the log
 //! every five seconds.
 //!
+//! `IW4L_TEST_THROW=1` (with any fighting mode): every 15 s it holds its
+//! lethal grenade's button for half a second at an actor in sight farther
+//! than 250 units, then lets go to throw it.
+//!
 //! `IW4L_TEST_REVIVE=1`: when a teammate is down, the player goes beside
 //! him and holds use to revive him.
 //!
@@ -81,6 +85,10 @@ const SWARM: usize = 2;
 /// `player_zombieMeleeRange` default.
 const KNIFE_REACH: f32 = 85.0;
 const LOG_PERIOD_MS: i32 = 5000;
+/// The throw test throws this often, at an actor at least this far.
+const THROW_PERIOD_MS: i32 = 15_000;
+const THROW_HOLD_MS: i32 = 500;
+const THROW_FROM: f32 = 250.0;
 /// The rounds test asks for ammo at most this often.
 const RESUPPLY_PERIOD_MS: i32 = 2000;
 /// The use test starts this long after the player first lives, once the
@@ -216,6 +224,10 @@ pub(crate) struct TestPlayer {
     next_log_ms: i32,
     shots: u32,
     knifes: u32,
+    /// The throw test's next throw, and until when it holds the button.
+    next_throw_ms: i32,
+    throw_until_ms: i32,
+    throws: u32,
     /// What the sight lines to targets ended on: nothing, a model, the world.
     lines: [u32; 3],
     /// When the player first lived.
@@ -546,7 +558,14 @@ pub(crate) fn drive_test_player(
     let Some(meta) = snapshot.meta.for_client(id) else {
         return;
     };
-    let actors = world.0.living_actors();
+    // The zombies alone: an actor on another team (Buried's Leroy) is no
+    // target.
+    let actors: Vec<_> = world
+        .0
+        .living_actors()
+        .into_iter()
+        .filter(|actor| world.0.object_field_text(actor.id, "team") != "allies")
+        .collect();
     let laststand = world.0.script_int(ScriptOwner::Player(id), "laststand");
     let eye = [
         ps.origin[0],
@@ -1077,6 +1096,39 @@ pub(crate) fn drive_test_player(
     }
     let target = target.map(|(aim, _)| aim);
     aim_cmd(&mut cmd, target.map_or(ps.viewangles, |aim| look(eye, aim)));
+    if std::env::var("IW4L_TEST_THROW").is_ok() {
+        if clock.time_ms < test.throw_until_ms {
+            cmd.buttons |= buttons::FRAG;
+            cmds.push(id, None, cmd, None);
+            return;
+        }
+        if clock.time_ms >= test.next_throw_ms
+            && target.is_some_and(|aim| distance(eye, aim) > THROW_FROM)
+        {
+            test.next_throw_ms = clock.time_ms + THROW_PERIOD_MS;
+            test.throw_until_ms = clock.time_ms + THROW_HOLD_MS;
+            test.throws += 1;
+            let frag = world.0.weapon_index_by_script_name("frag_grenade_zm");
+            let held = frag.is_some_and(|w| {
+                ps.weapons
+                    .get((w / 32) as usize)
+                    .is_some_and(|bits| bits & (1 << (w % 32)) != 0)
+            });
+            diag::info!(
+                Sim,
+                "test player: throw {} at {} (frag_grenade_zm {:?} held={held} offhand={}/{} state={})",
+                test.throws,
+                fmt_point(target.unwrap_or(eye)),
+                frag,
+                ps.offhand_primary,
+                ps.offhand_secondary,
+                ps.weaponstate_primary
+            );
+            cmd.buttons |= buttons::FRAG;
+            cmds.push(id, None, cmd, None);
+            return;
+        }
+    }
     test.pressed = !test.pressed;
     if test.pressed {
         if target.is_some_and(|aim| distance(eye, aim) <= KNIFE_REACH) {

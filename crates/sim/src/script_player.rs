@@ -8,6 +8,7 @@ use crate::world::{
 };
 use movement_iw4::SHORT2ANGLE;
 use playerstate_iw4::buttons;
+use playerstate_iw4::eflags::TELEPORT;
 use weapon_iw4::WeaponState;
 
 pub(crate) fn spectator_lifecycle(team: i32) -> ClientLifecycle {
@@ -72,10 +73,10 @@ pub(crate) fn spawn(
     ps.delta_angles = std::array::from_fn(|axis| angles[axis] - cmd[axis] as f32 * SHORT2ANGLE);
     let prev_teleport = world
         .player(id)
-        .map(|p| p.e_flags & playerstate_iw4::eflags::TELEPORT)
+        .map(|p| p.e_flags & TELEPORT)
         .unwrap_or(0);
-    ps.e_flags = (ps.e_flags & !playerstate_iw4::eflags::TELEPORT) | prev_teleport;
-    ps.e_flags ^= playerstate_iw4::eflags::TELEPORT;
+    ps.e_flags = (ps.e_flags & !TELEPORT) | prev_teleport;
+    ps.e_flags ^= TELEPORT;
     let lifecycle = match sessionstate {
         "playing" => ClientLifecycle::Alive,
         "intermission" => {
@@ -540,7 +541,7 @@ pub(crate) fn move_to_forced_spawn(world: &mut FrameWorld, id: ClientId, pick: c
             std::array::from_fn(|axis| angles[axis] - cmd_angles[axis] as f32 * SHORT2ANGLE);
         ps.velocity = [0.0; 3];
         ps.health = ps.max_health;
-        ps.e_flags ^= playerstate_iw4::eflags::TELEPORT;
+        ps.e_flags ^= TELEPORT;
     }
     let meta = world.client_meta_mut(id);
     meta.life_sequence = meta.life_sequence.next();
@@ -595,6 +596,57 @@ pub(crate) fn carry(world: &mut FrameWorld, id: ClientId, delta: [f32; 3], yaw: 
         ps.delta_angles[1] += yaw;
         ps.viewangles[1] += yaw;
     }
+}
+
+/// Makes `weapon`, when it is an offhand, the player's offhand of its
+/// class when he has none of that class yet.
+pub(crate) fn equip_offhand(world: &mut FrameWorld, id: ClientId, weapon: u32) {
+    let Some(class) = world.equipment_facts_for(weapon).map(|eq| eq.offhand_class) else {
+        return;
+    };
+    let Some(ps) = world.player_mut(id) else {
+        return;
+    };
+    match class {
+        1 | 4 | 5 if ps.offhand_primary == 0 => ps.offhand_primary = class,
+        2 | 3 if ps.offhand_secondary == 0 => ps.offhand_secondary = class,
+        _ => {}
+    }
+}
+
+/// Flips the player's teleport flag so his client snaps to where he is
+/// rather than moving him there.
+pub(crate) fn snap(world: &mut FrameWorld, id: ClientId) -> bool {
+    let Some(ps) = world.player_mut(id) else {
+        return false;
+    };
+    ps.e_flags ^= TELEPORT;
+    true
+}
+
+/// Places a player at `origin` as a teleport: one unit up, his velocity
+/// kept, the teleport flag flipped so his client snaps there.
+pub(crate) fn teleport(world: &mut FrameWorld, id: ClientId, origin: [f32; 3]) -> bool {
+    let Some(velocity) = world.player(id).map(|ps| ps.velocity) else {
+        return false;
+    };
+    world.set_origin(id, [origin[0], origin[1], origin[2] + 1.0]);
+    if let Some(ps) = world.player_mut(id) {
+        ps.velocity = velocity;
+        ps.e_flags ^= TELEPORT;
+    }
+    true
+}
+
+/// A player's eye: his origin and view height.
+pub(crate) fn eye(world: &FrameWorld, id: ClientId) -> Option<[f32; 3]> {
+    world.player(id).map(|ps| {
+        [
+            ps.origin[0],
+            ps.origin[1],
+            ps.origin[2] + ps.view_height_current,
+        ]
+    })
 }
 
 pub(crate) fn weapon_named(world: &FrameWorld, name: &str) -> Result<u32, String> {

@@ -3085,23 +3085,16 @@ impl ZoneLane for T6Lane {
                         xanims.capture_anim_states_t6(namespace, source, asset);
                     }
                 }
-                // The clips the actors' state tables name, wherever they are.
-                let named = xanims.state_clip_names(namespace);
+                // Every clip the loaded zones carry, as the engine has them
+                // all for its scripts' `%` animations and state tables.
                 for source in image_loads.iter().copied() {
                     for asset in &source.assets {
-                        if asset.ty == AssetType::XAnimParts
-                            && header_str(source, &asset.header, 0).is_some_and(|name| {
-                                named.contains(name)
-                                    || name.starts_with("o_zombie_board_")
-                                    || name.starts_with("ai_zombie")
-                                    || name.starts_with("a_zombie")
-                            })
-                        {
+                        if asset.ty == AssetType::XAnimParts {
                             xanims.capture_xanim_t6(namespace, "", source, asset);
                         }
                     }
                 }
-                report.push(format!("T6 map zombie animations: {}", xanims.len()));
+                report.push(format!("T6 map animations: {}", xanims.len()));
             }
             Ok(LoadedWorld {
                 ui_images,

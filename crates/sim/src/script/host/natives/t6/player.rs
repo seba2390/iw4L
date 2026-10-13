@@ -46,7 +46,94 @@ fn allow_stance(
     Ok(Value::Int(was.into()))
 }
 
+/// A player method's client, with the engine's error for another entity.
+fn client_or_error(world: &World, receiver: &Value) -> Result<ClientId, String> {
+    let id =
+        super::super::engine::entity_id(world, receiver).map_err(|_| "not an entity".to_owned())?;
+    world
+        .resource::<RoundScript>()
+        .player_client(id)
+        .map(ClientId)
+        .ok_or_else(|| {
+            let number = world.resource::<RoundScript>().entities[&id].number;
+            format!("entity {number} is not a player")
+        })
+}
+
+fn activity(
+    world: &mut World,
+    receiver: &Value,
+) -> Result<game_api::movement::WeaponActivity, String> {
+    let id = client_or_error(world, receiver)?;
+    Ok(crate::script_player::weapon_activity(
+        &FrameWorld::from_world(world),
+        id,
+    ))
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
+    // gscm_giveweapon: a weapon with an offhand slot becomes the player's
+    // offhand when he has none (`t6.weapons.state_machine`: by the lent
+    // weapon's offhand class).
+    registry.register(Namespace::Method, "giveweapon", |world, receiver, args| {
+        let (id, weapon) = super::super::player::give_weapon(world, receiver, args)?;
+        crate::script_player::equip_offhand(&mut FrameWorld::from_world(world), id, weapon);
+        Ok(Value::Undefined)
+    });
+    use Namespace::Method;
+
+    // gscm_setorigin: players only; one unit up, the teleport flag flipped.
+    registry.register(Method, "setorigin", |world, receiver, args| {
+        let id = client_or_error(world, receiver)?;
+        let origin = vector(args, 0)?;
+        if !super::super::super::players::place_unspawned(world, id.0, Some(origin), None) {
+            crate::script_player::teleport(&mut FrameWorld::from_world(world), id, origin);
+        }
+        Ok(Value::Undefined)
+    });
+    // gscm_ismeleeing / isfiring / isusingoffhand read the weapon state by
+    // its meaning (a blow; firing or a blow; an offhand).
+    registry.register(Method, "ismeleeing", |world, receiver, _| {
+        Ok(Value::Int(activity(world, receiver)?.meleeing.into()))
+    });
+    registry.register(Method, "isfiring", |world, receiver, _| {
+        let now = activity(world, receiver)?;
+        Ok(Value::Int((now.firing || now.meleeing).into()))
+    });
+    registry.register(Method, "isusingoffhand", |world, receiver, _| {
+        Ok(Value::Int(
+            activity(world, receiver)?.throwing_grenade.into(),
+        ))
+    });
+    // gscm_getplayercamerapos: the player's eye.
+    registry.register(Method, "getplayercamerapos", |world, receiver, _| {
+        let id = client_or_error(world, receiver)?;
+        let eye = crate::script_player::eye(&FrameWorld::from_world(world), id)
+            .ok_or("player has not spawned")?;
+        Ok(Value::Vector(eye))
+    });
+    // The entity's number.
+    registry.register(Method, "getentnum", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        Ok(Value::Int(
+            world.resource::<RoundScript>().entities[&id].number,
+        ))
+    });
+    // IW4L's own of the same rules (`docs/fidelity/t6.md`).
+    let shared = NativeRegistry::engine_services();
+    for name in ["setplayerangles", "setstance", "getxuid"] {
+        if let Some(native) = shared.get(Method, name) {
+            registry.register(Method, name, native);
+        }
+    }
+    let black_ops = NativeRegistry::engine_services().with_black_ops();
+    if let Some(native) = black_ops.get(Method, "islinkedto") {
+        registry.register(Method, "islinkedto", native);
+    }
+    register_rest(registry);
+}
+
+fn register_rest(registry: &mut NativeRegistry) {
     use Namespace::Method;
 
     // Health is the maximum's share, rounded; a share that leaves none is
