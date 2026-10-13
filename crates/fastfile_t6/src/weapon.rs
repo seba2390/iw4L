@@ -34,6 +34,9 @@ pub mod variant {
     pub const ADS_ZOOM_OUT_FRAC: u32 = 564;
     pub const SILENCED: u32 = 580;
     pub const DUAL_MAG: u32 = 581;
+    /// Spread flags; bit 3 lays a spread weapon's pellets on a level line.
+    pub const SPREAD_FLAGS: u32 = 584;
+    pub const SPREAD_FLAT_BIT: u32 = 3;
     pub const SIZE: usize = 716;
 }
 
@@ -225,6 +228,28 @@ pub mod def {
     pub const HIT_LOCATIONS: usize = 21;
     /// A turret's pitch and yaw convergence times (seconds).
     pub const TURRET_CONVERGENCE: [u32; 2] = [2212, 2216];
+    /// A turret's arcs (degrees): left, right, top, bottom.
+    pub const TURRET_ARCS: [u32; 4] = [2168, 2172, 2176, 2180];
+    /// A turret's spread (degrees) for an AI's and a player's shots.
+    pub const TURRET_SPREAD: [u32; 2] = [2188, 2192];
+    /// A turret's turn rates (degrees a second): least pitch, least yaw,
+    /// most pitch, most yaw.
+    pub const TURRET_TURN_RATES: [u32; 4] = [2196, 2200, 2204, 2208];
+    pub const TURRET_MAX_RANGE: u32 = 2224;
+    /// A sentry's scan: speed (degrees a second), acceleration, and the
+    /// pause at each end (ms).
+    pub const TURRET_SCAN_SPEED: u32 = 2344;
+    pub const TURRET_SCAN_ACCEL: u32 = 2348;
+    pub const TURRET_SCAN_PAUSE: u32 = 2352;
+    /// How a shot uses the barrels: shots per fire and barrel order.
+    pub const FIRE_BARRELS: u32 = 56;
+    /// Bullet shots: rifle (else pistol) means of death, which also passes
+    /// through bodies; bouncing off surfaces; exploding on impact.
+    pub const RIFLE_BULLET: u32 = 1585;
+    /// Its bullets' hits carry damage flag 2.
+    pub const ARMOR_PIERCING: u32 = 1586;
+    pub const BULLET_BOUNCE: u32 = 1623;
+    pub const BULLET_IMPACT_EXPLODE: u32 = 1839;
     pub const TRACER_TYPE: u32 = 2320;
     pub const SIZE: usize = 2448;
 }

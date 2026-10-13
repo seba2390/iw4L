@@ -12,16 +12,16 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// The turret's mode bits: aims for the AI, aims by itself.
-const MODE_AI: u32 = 1;
-const MODE_AUTO: u32 = 2;
+pub(super) const MODE_AI: u32 = 1;
+pub(super) const MODE_AUTO: u32 = 2;
 /// `startfiring`.
 const FIRING: u32 = 4;
 /// Usable by a player, until `maketurretunusable`.
 const USABLE: u32 = 0x1000;
 /// `setturrettype`'s kinds.
 const TYPE_WALLMOUNT: u32 = 0x20000;
-const TYPE_TOW: u32 = 0x40000;
-const TYPE_SENTRY: u32 = 0x40_0000;
+pub(super) const TYPE_TOW: u32 = 0x40000;
+pub(super) const TYPE_SENTRY: u32 = 0x40_0000;
 /// The entity's own turret flags: its type, carried, set down.
 const ENT_SENTRY: u32 = 1;
 const ENT_TOW: u32 = 2;
@@ -42,9 +42,9 @@ const DROP_PITCH: f32 = -90.0;
 
 /// What the engine keeps for a turret (`t6.turret.state`).
 #[derive(Clone, Debug)]
-#[expect(dead_code, reason = "the turret's think reads them (t6.turret.ai)")]
 pub(super) struct Turret {
     pub(super) weapon: Arc<str>,
+    pub(super) def: Arc<asset_core::ZoneWeapon>,
     pub(super) flags: u32,
     pub(super) ent_flags: u32,
     /// 0 idle, 2 aiming to fire, 1 firing.
@@ -55,9 +55,11 @@ pub(super) struct Turret {
     pub(super) team: usize,
     pub(super) owner: Option<u64>,
     /// `settargetentity`.
-    pub(super) target: Option<u64>,
-    /// The entity's firing flag, cleared by `stopshootturret`.
+    pub(super) manual_target: Option<u64>,
+    /// The entity's firing flag, set by `shootturret` and cleared by
+    /// `stopshootturret`.
     pub(super) shooting: bool,
+    pub(super) aim: super::sentry::Aim,
 }
 
 #[derive(Resource, Default)]
@@ -252,12 +254,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let loading = world.resource::<RoundScript>().loading;
         let index = super::weapon::weapon_index(world, &weapon)?;
         let zone = super::weapon::zone_weapon(world, &weapon);
-        if zone
-            .as_ref()
-            .is_none_or(|w| w.weap_class != WEAPCLASS_TURRET)
-        {
+        let Some(def) = zone.filter(|w| w.weap_class == WEAPCLASS_TURRET) else {
             return Err(format!("Could not load turret '{weapon}'"));
-        }
+        };
         if index == 0 && !loading {
             return Err(format!("turret '{weapon}' not precached"));
         }
@@ -276,7 +275,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             entity.number = number;
         }
         let to_ms = |seconds: f32| (seconds.max(0.0) * 1000.0 + 0.5) as i32;
-        let convergence = zone.as_ref().map_or([0.0; 2], |w| w.turret_convergence);
+        let convergence = def.turret_convergence;
         world
             .get_resource_or_insert_with(Turrets::default)
             .0
@@ -284,6 +283,8 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 id,
                 Turret {
                     weapon: weapon.into(),
+                    aim: super::sentry::Aim::new(&def),
+                    def,
                     flags: MODE_AI | MODE_AUTO | USABLE,
                     ent_flags: 0,
                     state: 0,
@@ -291,7 +292,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                     convergence_ms: convergence.map(to_ms),
                     team: 0,
                     owner: None,
-                    target: None,
+                    manual_target: None,
                     shooting: false,
                 },
             );
@@ -517,11 +518,11 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .0
             .get_mut(&id)
             .unwrap()
-            .target = Some(target);
+            .manual_target = Some(target);
         Ok(Value::Undefined)
     });
     registry.register(Method, "cleartargetentity", |world, receiver, _| {
-        edit(world, receiver, |t| t.target = None)
+        edit(world, receiver, |t| t.manual_target = None)
     });
     registry.register(Method, "startfiring", |world, receiver, _| {
         edit(world, receiver, |t| t.flags |= FIRING)
@@ -532,6 +533,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "stopshootturret", |world, receiver, _| {
         edit(world, receiver, |t| t.shooting = false)
     });
+    // gscm_shootturret: one fire of the turret's weapon, nobody using it.
+    registry.register(Method, "shootturret", |world, receiver, _| {
+        let id = turret(world, receiver)?;
+        super::sentry::shoot(world, id)?;
+        edit(world, receiver, |t| t.shooting = true)
+    });
     registry.register(Method, "isfiringturret", |world, receiver, _| {
         let id = turret(world, receiver)?;
         Ok(Value::Int(
@@ -539,6 +546,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         ))
     });
     registry.on_tick(forget_deleted);
+    registry.on_tick(super::sentry::think);
 }
 
 /// A deleted turret's state goes with it.

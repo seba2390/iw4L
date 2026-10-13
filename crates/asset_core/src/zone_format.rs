@@ -204,6 +204,31 @@ pub struct ZoneWeapon {
     pub location_damage: Vec<f32>,
     /// A turret weapon's pitch and yaw convergence times, seconds.
     pub turret_convergence: [f32; 2],
+    /// A turret weapon's arcs in degrees: left, right, top, bottom.
+    pub turret_arcs: [f32; 4],
+    /// A turret weapon's spread in degrees for an AI's and a player's shots.
+    pub turret_spread: [f32; 2],
+    /// A turret weapon's turn rates in degrees a second: least pitch, least
+    /// yaw, most pitch, most yaw.
+    pub turret_turn_rates: [f32; 4],
+    /// A turret weapon's range; 0 for none.
+    pub turret_max_range: f32,
+    /// A sentry's scan: speed in degrees a second, acceleration, and the
+    /// pause at each end in ms.
+    pub turret_scan: (f32, f32, i32),
+    /// Damage by distance: six steps of damage and the range it holds to.
+    pub damage_curve: [(i32, f32); 6],
+    /// How a fire uses the barrels (the game's number).
+    pub fire_barrels: i32,
+    pub penetrate_type: i32,
+    /// A bullet weapon's rifle (else pistol) bullets.
+    pub rifle_bullet: bool,
+    /// Its bullets' hits carry damage flag 2.
+    pub armor_piercing: bool,
+    pub bullet_bounce: bool,
+    pub bullet_impact_explode: bool,
+    /// Pellets laid on a level line; a single shot goes unspread.
+    pub flat_spread: bool,
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the

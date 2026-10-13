@@ -216,5 +216,23 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
             })
             .collect(),
         turret_convergence: def::TURRET_CONVERGENCE.map(|off| weapon.def_f32(off)),
+        turret_arcs: def::TURRET_ARCS.map(|off| weapon.def_f32(off)),
+        turret_spread: def::TURRET_SPREAD.map(|off| weapon.def_f32(off)),
+        turret_turn_rates: def::TURRET_TURN_RATES.map(|off| weapon.def_f32(off)),
+        turret_max_range: weapon.def_f32(def::TURRET_MAX_RANGE),
+        turret_scan: (
+            weapon.def_f32(def::TURRET_SCAN_SPEED),
+            weapon.def_f32(def::TURRET_SCAN_ACCEL),
+            weapon.def_i32(def::TURRET_SCAN_PAUSE),
+        ),
+        damage_curve: weapon.damage_curve(),
+        fire_barrels: weapon.def_i32(def::FIRE_BARRELS),
+        penetrate_type: weapon.def_i32(def::PENETRATE_TYPE),
+        rifle_bullet: weapon.def_bool(def::RIFLE_BULLET),
+        armor_piercing: weapon.def_bool(def::ARMOR_PIERCING),
+        bullet_bounce: weapon.def_bool(def::BULLET_BOUNCE),
+        bullet_impact_explode: weapon.def_bool(def::BULLET_IMPACT_EXPLODE),
+        flat_spread: weapon.variant_i32(variant::SPREAD_FLAGS) & (1 << variant::SPREAD_FLAT_BIT)
+            != 0,
     })
 }

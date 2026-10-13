@@ -116,7 +116,7 @@ fn angle_normalize_180(angle: f32) -> f32 {
 }
 
 /// The engine's `vectoangles` pitch and yaw (each 0..360).
-fn vector_angles(v: [f32; 3]) -> [f32; 2] {
+pub(super) fn vector_angles(v: [f32; 3]) -> [f32; 2] {
     if v[0] == 0.0 && v[1] == 0.0 {
         return [if -v[2] < 0.0 { 270.0 } else { 90.0 }, 0.0];
     }

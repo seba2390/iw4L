@@ -717,6 +717,36 @@ impl AuthorityDObjState {
         posed.get(bone).copied()
     }
 
+    /// A tag's world matrix with control angles (degrees) set on the named
+    /// bones the model has, as the server's bone control turns them.
+    pub fn tag_world_matrix_controlled(
+        &self,
+        tag: &str,
+        controls: &[(&str, [f32; 3])],
+    ) -> Option<glam::Mat4> {
+        let capability = self.capability.as_ref()?;
+        let bone = self.tag_bone(tag)?;
+        let posed = capability
+            .pose_with_controller(
+                &self.pose_request,
+                self.world_from_model,
+                |dobj, _, locals| {
+                    for (name, angles) in controls {
+                        if let Some(controlled) = dobj.find(name) {
+                            xmodel_runtime::set_control_tag_angles(locals, controlled, *angles);
+                        }
+                    }
+                },
+            )
+            .ok()?;
+        posed.get(bone).copied()
+    }
+
+    /// Whether the model has the named bone.
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.tag_bone(tag).is_some()
+    }
+
     pub fn tag_world_pose(&self, tag: &str) -> Option<([f32; 3], [f32; 3])> {
         let matrix = self.tag_world_matrix(tag)?;
         let origin = matrix.w_axis.truncate().to_array();

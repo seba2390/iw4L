@@ -26,6 +26,7 @@ mod player;
 mod radius;
 mod riotshield;
 mod rumble;
+mod sentry;
 mod sound;
 mod stats;
 mod turret;
