@@ -145,6 +145,25 @@ impl SimWorld {
             })
     }
 
+    /// Whether a player standing at `origin` touches a volume of the named
+    /// zone, for a test player.
+    pub fn in_zone_player_volume(&self, origin: [f32; 3], zone: &str) -> bool {
+        let mins = std::array::from_fn(|i| origin[i] + crate::PLAYER_MINS[i]);
+        let maxs = std::array::from_fn(|i| origin[i] + crate::PLAYER_MAXS[i]);
+        crate::script::host::sightings::zone_player_volumes(&self.ecs, zone)
+            .into_iter()
+            .any(|(at, brush, trigger_model)| {
+                crate::script::host::triggers::map_volume_touches(
+                    self,
+                    at,
+                    brush,
+                    trigger_model,
+                    mins,
+                    maxs,
+                )
+            })
+    }
+
     /// How many volumes the enabled zones have, for a test player's log.
     pub fn enabled_player_volume_count(&self) -> usize {
         crate::script::host::sightings::enabled_player_volumes(&self.ecs).len()
@@ -185,6 +204,11 @@ impl SimWorld {
     /// Whether a level flag is set, for a test player.
     pub fn level_flag(&self, name: &str) -> bool {
         crate::script::host::sightings::level_flag(&self.ecs, name)
+    }
+
+    /// Whether the scripts mark a zone enabled, for a test player.
+    pub fn zone_is_enabled(&self, name: &str) -> bool {
+        crate::script::host::sightings::zone_is_enabled(&self.ecs, name)
     }
 
     /// Whether the scripts mark a zone active, for a test player.

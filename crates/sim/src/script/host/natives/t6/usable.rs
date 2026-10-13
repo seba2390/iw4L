@@ -496,3 +496,35 @@ pub(super) fn use_presses(world: &mut World, pressed: &[(u32, u64)]) -> Vec<(u64
         .filter_map(|&(client, player)| Some((usable_entity(world, client)?, player)))
         .collect()
 }
+
+/// Whether a trigger box a script spawned (`trigger_box[_use]`, turned by
+/// its angles) touches the other entity's box, by the engine's contact
+/// test; `None` when `trigger` is no such box.
+pub(super) fn spawned_box_touches(world: &mut World, trigger: u64, other: u64) -> Option<bool> {
+    let half = {
+        let entity = world.resource::<RoundScript>().entities.get(&trigger)?;
+        if entity.cylinder.is_some() || entity.brush.is_some() || entity.trigger_model.is_some() {
+            return None;
+        }
+        world.get_resource::<EntityBounds>()?.0.get(&trigger)?.1
+    };
+    let (origin, angles) = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        (
+            object_vector(&mut runtime, trigger, "origin"),
+            object_vector(&mut runtime, trigger, "angles"),
+        )
+    };
+    let (mins, maxs) = super::super::super::triggers::toucher_box(world, other);
+    let candidate = Candidate {
+        id: trigger,
+        class: Class::Box,
+        origin,
+        angles,
+        shape: Shape::Box { half },
+        cursor: 0,
+        look_at: false,
+        abs: (origin, origin),
+    };
+    Some(touches(world, &candidate, mins, maxs))
+}
