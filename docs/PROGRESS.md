@@ -123,7 +123,7 @@ Only the top-level items count. Runs are headless, with the test player
 | Map | Builtins not implemented yet |
 |---|---|
 | Nuketown (`zm_nuked`, Classic) | 206 of 692 |
-| TranZit (`zm_transit`, Classic) | 218 of 741 |
+| TranZit (`zm_transit`, Classic) | 216 of 741 |
 | Buried (`zm_buried`, Classic) | 229 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
@@ -177,7 +177,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] TranZit's own (`insta_kill_ug`, `minigun`) and the bank's `teller_withdrawl` not shown; Nuketown's Pack-a-Punch arrives by perk drop.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
-  - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby.
+  - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby; on TranZit without faults (its fall linked to an anchor, `death_throe_zm` held, the rumbles stopped).
   - [x] With Quick Revive (TranZit, `IW4L_TEST_PLAYER=revive`): down at 51 s, Black Ops 2's solo revive stands him up at 61 s; the next down ends the game and the match returns to the lobby.
   - [ ] Bleeding out is co-op only (see Co-op); the last stand vision and blur are not drawn (`t6.vision.last_stand`, `t6.player.blur`).
 - [ ] The game's own HUD.

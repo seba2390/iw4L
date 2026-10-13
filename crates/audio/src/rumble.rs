@@ -207,6 +207,17 @@ fn script_rumble(
         return;
     };
     let record = event.event;
+    let stop = record.event == entity_iw4::EntityEventKind::STOP_RUMBLE;
+    if stop && record.payload.event_parm == 0 {
+        requests.write(ScriptRumbleRequest {
+            revision: bank.0.revision(),
+            alias: String::new(),
+            source: ScriptSource::Position(record.payload.origin),
+            stop: true,
+            rumble: None,
+        });
+        return;
+    }
     let Some((_, alias)) = snapshot
         .meta
         .objectives
@@ -225,7 +236,6 @@ fn script_rumble(
             origin: record.payload.origin,
         }
     };
-    let stop = record.event == entity_iw4::EntityEventKind::STOP_RUMBLE;
     let (namespace, name) = crate::aliases::namespace_alias(alias, family.namespace);
     let rumble = if stop {
         None
@@ -382,7 +392,10 @@ fn update(
         if owner.is_none_or(|owner| owner.3 != request.revision) {
             continue;
         }
-        if request.stop {
+        if request.stop && request.alias.is_empty() {
+            // Slot 0 names no rumble: its stop stops them all.
+            state.active.clear();
+        } else if request.stop {
             state.active.retain(|row| !row.script.as_ref().is_some_and(|(alias, source)|
                 alias == &request.alias && matches!((*source, request.source),
                     (ScriptSource::Entity { number: a, .. }, ScriptSource::Entity { number: b, .. }) if a == b)));

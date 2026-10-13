@@ -67,7 +67,7 @@ pub(crate) fn on_entity(world: &mut World, id: u64, index: i32, stop: bool) {
 
 /// Plays a rumble slot at a point, for every client.
 pub(crate) fn at_position(world: &mut World, origin: [f32; 3], index: i32) {
-    let number = i32::from(trace_iw4::ENTITYNUM_WORLD);
+    let number = WORLD;
     emit(
         world,
         EntityEventKind::PLAY_RUMBLE_ON_POS,
@@ -76,6 +76,13 @@ pub(crate) fn at_position(world: &mut World, origin: [f32; 3], index: i32) {
         index,
     );
 }
+
+/// Stops every rumble for every client: a stop of slot 0, which names none.
+pub(crate) fn stop_all(world: &mut World) {
+    emit(world, EntityEventKind::STOP_RUMBLE, WORLD, [0.0; 3], 0);
+}
+
+const WORLD: i32 = trace_iw4::ENTITYNUM_WORLD as i32;
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(
