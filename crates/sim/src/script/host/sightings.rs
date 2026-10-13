@@ -95,6 +95,9 @@ pub enum UseKind {
     /// Pack-a-Punch: the `zombie_vending` trigger that sells
     /// `specialty_weapupgrade`.
     PackAPunch,
+    /// A window whose boards are down: its rebuild unitrigger stub
+    /// (`level.exterior_goals[i].unitrigger_stub`, while registered).
+    Rebuild,
 }
 
 /// Something a player buys or uses by pressing use near it: a trigger
@@ -230,6 +233,16 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             continue;
         };
         sites.extend(site(runtime, UseKind::WallBuy, stub, "cost"));
+    }
+    for goal in items(runtime, field(runtime, 0, "exterior_goals")) {
+        let Some(stub) =
+            object(Some(goal)).and_then(|g| object(field(runtime, g, "unitrigger_stub")))
+        else {
+            continue;
+        };
+        if int(field(runtime, stub, "registered")).is_some_and(|on| on != 0) {
+            sites.extend(site(runtime, UseKind::Rebuild, stub, "cost"));
+        }
     }
     let chests = items(runtime, field(runtime, 0, "chests"));
     if let Some(chest) = int(field(runtime, 0, "chest_index"))

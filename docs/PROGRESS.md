@@ -142,11 +142,11 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Zombies rise on Nuketown and spawn on TranZit and Buried, animated by Black Ops 2's animation state machine (ASD).
   - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`), gibs and ragdoll are missing.
-- [ ] Zombies path to the player and get through barriers.
+- [x] Zombies path to the player and get through barriers.
   - [x] On Nuketown zombies path to the player and reach melee range.
   - [x] Doors, debris and the map's other dynamic-path models (spawnflag 1) cut the zombies' paths while closed, as Black Ops 2 does (TranZit: 74 entities, 523 links; the depot's glass doors no longer draw zombies that cannot pass).
-  - [ ] On TranZit round 1 still ends on the first two zombies: their `zombie_think` ends before `risen`, with no fault seen.
-  - [ ] Boards torn off and rebuilt not verified.
+  - [x] TranZit reaches round 2: zombies tear the depot's window boards and come in; its two inert zombies outside wake when the player comes near, as Black Ops 2's `start_inert` does (the test player goes to the nearest zombie after 20 s with none in sight).
+  - [x] Boards the zombies tore off are rebuilt by holding use at the window (TranZit: four boards, `rebuild_barrier_reward` 40, 10 points each).
 - [ ] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
   - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.

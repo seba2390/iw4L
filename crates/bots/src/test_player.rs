@@ -25,7 +25,7 @@
 //! fights on.
 //!
 //! `IW4L_TEST_USE=box,door,…` picks the kinds the use test tries (wall,
-//! perk, door, box, debris, power, pap), in that order; `IW4L_TEST_PERK` names
+//! perk, door, box, debris, power, pap, rebuild), in that order; `IW4L_TEST_PERK` names
 //! the perk it buys (Quick Revive by default; `any` for any other).
 //!
 //! `IW4L_TEST_ACTORS=field,…` logs each living actor's position, health
@@ -86,6 +86,16 @@ const TRY_PERIOD_MS: i32 = 1000;
 /// How long it waits after being moved, holds use, and watches after.
 const ARRIVE_MS: i32 = 500;
 const HOLD_MS: i32 = 600;
+/// A window's boards go back one at a time while use is held.
+const REBUILD_HOLD_MS: i32 = 4000;
+
+fn hold_ms(kind: UseKind) -> i32 {
+    if kind == UseKind::Rebuild {
+        REBUILD_HOLD_MS
+    } else {
+        HOLD_MS
+    }
+}
 const WATCH_MS: i32 = 2500;
 /// After paying for the box he waits this long for its weapon to rise, then
 /// holds use again to take it.
@@ -112,6 +122,10 @@ const WAIST_HEIGHT: f32 = 32.0;
 /// How far into a perk machine its trigger's middle lies: the trigger's
 /// radius (`perk_machine_spawn_init` spawns it 40 wide).
 const MACHINE_ROOM: f32 = 40.0;
+/// With actors left but none in sight this long, it goes to the nearest,
+/// and stands this far from it.
+const HUNT_AFTER_MS: i32 = 20_000;
+const HUNT_STAND_OFF: f32 = 48.0;
 /// The perk the use test buys.
 const QUICK_REVIVE: &str = "specialty_quickrevive";
 /// The eye height it plans with before it stands there.
@@ -173,6 +187,8 @@ struct Scenario {
 #[derive(Resource, Default)]
 pub(crate) struct TestPlayer {
     mode: Mode,
+    /// When it last saw an actor to aim at.
+    last_seen_ms: Option<i32>,
     god_asked: bool,
     next_resupply_ms: i32,
     pressed: bool,
@@ -242,6 +258,7 @@ fn kinds_from_env() -> Option<Vec<UseKind>> {
                 "debris" => Some(UseKind::Debris),
                 "power" => Some(UseKind::Power),
                 "pap" => Some(UseKind::PackAPunch),
+                "rebuild" => Some(UseKind::Rebuild),
                 _ => None,
             })
             .collect(),
@@ -331,7 +348,11 @@ fn stand_point(
             continue;
         }
         let flat = flat_distance(node, center);
-        let (off, room) = if site.touch || matches!(site.kind, UseKind::WallBuy | UseKind::Box) {
+        let (off, room) = if site.touch
+            || matches!(
+                site.kind,
+                UseKind::WallBuy | UseKind::Box | UseKind::Rebuild
+            ) {
             (STAND_OFF_TOUCH, TOUCH_ROOM)
         } else {
             (STAND_OFF, STAND_ROOM)
@@ -713,7 +734,7 @@ pub(crate) fn drive_test_player(
             match scenario.phase {
                 Phase::Arriving => {
                     scenario.phase = Phase::Holding;
-                    scenario.until_ms = clock.time_ms + HOLD_MS;
+                    scenario.until_ms = clock.time_ms + hold_ms(scenario.site.kind);
                 }
                 Phase::Holding => {
                     scenario.presses += 1;
@@ -739,7 +760,7 @@ pub(crate) fn drive_test_player(
                         world.0.unitrigger_state(scenario.site.object)
                     );
                     scenario.phase = Phase::Holding;
-                    scenario.until_ms = clock.time_ms + HOLD_MS;
+                    scenario.until_ms = clock.time_ms + hold_ms(scenario.site.kind);
                 }
                 Phase::Watching => {
                     let all = world.0.use_triggers_near(scenario.center, f32::MAX);
@@ -774,6 +795,16 @@ pub(crate) fn drive_test_player(
                         },
                         scenario.offered
                     );
+                    if scenario.site.kind == UseKind::Rebuild {
+                        diag::info!(
+                            Sim,
+                            "test player: rebuild reward this round (rebuild_barrier_reward) {}",
+                            world
+                                .0
+                                .script_int(ScriptOwner::Player(id), "rebuild_barrier_reward")
+                                .map_or_else(|| "-".to_owned(), |n| n.to_string())
+                        );
+                    }
                     if scenario.site.kind == UseKind::Power {
                         diag::info!(
                             Sim,
@@ -855,6 +886,44 @@ pub(crate) fn drive_test_player(
         seen.then_some((aim, outcome))
     });
 
+    // Nothing in sight for a while with actors left (an inert zombie lying
+    // outside, one that lost its way): it goes to stand by the nearest, as a
+    // player would, inside an enabled zone.
+    if target.is_some() {
+        test.last_seen_ms = Some(clock.time_ms);
+    } else if let Some((_, nearest)) = near.first()
+        && clock.time_ms - *test.last_seen_ms.get_or_insert(clock.time_ms) >= HUNT_AFTER_MS
+    {
+        test.last_seen_ms = Some(clock.time_ms);
+        let away = [
+            ps.origin[0] - nearest.origin[0],
+            ps.origin[1] - nearest.origin[1],
+        ];
+        let length = (away[0] * away[0] + away[1] * away[1]).sqrt().max(1.0);
+        let stand = [
+            nearest.origin[0] + away[0] / length * HUNT_STAND_OFF,
+            nearest.origin[1] + away[1] / length * HUNT_STAND_OFF,
+            nearest.origin[2] + 1.0,
+        ];
+        if world.0.in_enabled_player_volume(stand) {
+            diag::info!(
+                Sim,
+                "test player: nothing in sight for {} s; going to the actor at {}",
+                HUNT_AFTER_MS / 1000,
+                fmt_point(nearest.origin)
+            );
+            if let Err(error) = actions.push(
+                id,
+                ClientAction::Move {
+                    request_id: request_ids.allocate(),
+                    origin: stand,
+                    angles: look(stand, nearest.origin),
+                },
+            ) {
+                diag::warn!(Sim, "test player: request not queued — {error}");
+            }
+        }
+    }
     if let Some((_, outcome)) = target {
         let line = match outcome {
             TraceOutcome::Hit {
