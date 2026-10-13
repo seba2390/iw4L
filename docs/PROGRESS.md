@@ -96,7 +96,8 @@ Only the top-level items count.
   - [ ] Carpenter's boards skip `dontinterpolate`; the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
 - [ ] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; with Quick Revive (`IW4L_TEST_PLAYER=revive`) the solo player holds `m1911_upgraded_zm` and revives after 10 s; a solo game over fails the level and Kino loads again, as Black Ops does.
-  - [ ] Down and revive animations; the client's fade-out, blur and dead quote.
+  - [x] Going down and `reviveplayer` raise Black Ops' stance animation events, clear damage counters and switch `startrevive`/`stoprevive`'s `LAST_STAND_REVIVED` move type (`t5.match.last_stand` closed).
+  - [ ] The client's fade-out, blur and dead quote (`t5.match.level_failed`).
 - [ ] The game's own HUD.
   - [x] Black Ops' HUD menus (weapon info, dpad) with its fonts and layout; script hud elems (round chalk, point popups, game over text); text use hints.
   - [ ] The points column, hint icons, code-drawn pieces (reticle, blood, damage feedback), the scoreboard, menu paint order.

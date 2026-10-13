@@ -27,8 +27,9 @@ Ops' own server rules (spread, pellets, penetration, melee traces, missiles,
 grenade bounces and fuses, blasts, damage); grenade launchers, sticky and
 special grenades are still open (`t5.weapons.fire`, `t5.weapons.grenade`).
 A zombies player goes
-down on every lethal hit and the zombie scripts run last stand, revive and
-game over (`t5.match.last_stand` keeps the down animations open); a solo
+down on every lethal hit and the zombie scripts run last stand, solo Quick
+Revive self-revive (`m1911_upgraded_zm` in hand), `startrevive`/`stoprevive`
+and game over (`t5.match.last_stand` closed); a solo
 game over fails the level as Black Ops does and Kino loads again
 (`t5.match.level_failed`: no save games, no client fade-out). There is
 no code-drawn HUD yet (`t5.hud.code_hud`); Black Ops' HUD menus (weapon
@@ -169,10 +170,9 @@ Done when a single zombie can be fought and killed with correct feedback.
       (`t5.match.level_failed`). The text is a script text hud elem (not
       drawn yet).
 - [ ] Debris, Pack-a-Punch, teleporter, the remaining power-ups.
-- [ ] Last stand: every zombies player goes down; solo with Quick Revive
+- [x] Last stand: every zombies player goes down; solo with Quick Revive
       revives on their own (Mustang & Sally in hand), the next down ends
-      the game. Off since the game boundary (`t5.match.last_stand`): a dying
-      player dies.
+      the game (`t5.match.last_stand` closed).
 - [x] Mystery box: bought at its random start location, the weapons spin
       and the drawn weapon is taken (a SPAS-12 in the test run).
 - [x] Power-ups drop from killed zombies at the score thresholds and are

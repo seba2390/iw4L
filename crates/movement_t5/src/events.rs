@@ -89,6 +89,9 @@ pub mod anim {
     pub const STAND_TO_LAST_STAND: i32 = 25;
     pub const CROUCH_TO_LAST_STAND: i32 = 26;
     pub const PRONE_TO_LAST_STAND: i32 = 27;
+    pub const LAST_STAND_TO_STAND: i32 = 28;
+    pub const LAST_STAND_TO_CROUCH: i32 = 29;
+    pub const LAST_STAND_TO_PRONE: i32 = 30;
 }
 
 /// What one movement step tells the rest of the game.

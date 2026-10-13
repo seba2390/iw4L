@@ -308,6 +308,11 @@ fn game_state(
         b.flag(&mut held.used_before, write);
         b.flag(&mut held.dual_mag, write);
     }
+    let mut being_revived = ps.pm_type == pm_type::LAST_STAND_REVIVED;
+    b.flag(&mut being_revived, write);
+    if !write && ps.pm_type == pm_type::LAST_STAND && being_revived {
+        ps.pm_type = pm_type::LAST_STAND_REVIVED;
+    }
 }
 
 pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
@@ -619,6 +624,81 @@ impl PlayerMovement for T5Movement {
             gaps: vec![events_unknown()],
             ..MoveOutcome::default()
         }
+    }
+
+    /// Black Ops' last stand entry: raises the stance-to-last-stand animation
+    /// event (`CROUCH_TO_LAST_STAND` when ducked, `PRONE_TO_LAST_STAND` when
+    /// prone, else `STAND_TO_LAST_STAND`) and detaches a turret or vehicle.
+    fn enter_last_stand(&self, player: &mut MovePlayer) -> MoveOutcome {
+        use movement_t5::events::anim;
+        use movement_t5::state::e_flags;
+        let (mut ps, mut last) = unpack(player);
+        ps.pm_type = pm_type::LAST_STAND;
+        let event = if ps.pm_flags & pm_flags::DUCKED != 0 {
+            anim::CROUCH_TO_LAST_STAND
+        } else if ps.pm_flags & pm_flags::PRONE != 0 {
+            anim::PRONE_TO_LAST_STAND
+        } else {
+            anim::STAND_TO_LAST_STAND
+        };
+        let mut gaps = vec![events_unknown()];
+        if ps.e_flags & (e_flags::TURRET | e_flags::VEHICLE_VIEW) != 0 {
+            ps.e_flags &= !(e_flags::TURRET | e_flags::VEHICLE_VIEW);
+            gaps.push(gap_unknown(Gap::MountedView));
+        }
+        pack(player, &mut ps, &mut last);
+        MoveOutcome {
+            signals: vec![MoveSignal::Anim { event }],
+            gaps,
+            ..MoveOutcome::default()
+        }
+    }
+
+    /// Black Ops' `reviveplayer`: clears `beingRevived` and raises the
+    /// last-stand-to-stance animation event from the player's last command
+    /// buttons (`LAST_STAND_TO_CROUCH` when crouch is held,
+    /// `LAST_STAND_TO_PRONE` when prone is held, else `LAST_STAND_TO_STAND`).
+    fn revive(&self, player: &mut MovePlayer) -> MoveOutcome {
+        use movement_t5::events::anim;
+        let (mut ps, mut last) = unpack(player);
+        ps.pm_type = pm_type::NORMAL;
+        let event = if last.buttons.held(buttons::CROUCH) {
+            anim::LAST_STAND_TO_CROUCH
+        } else if last.buttons.held(buttons::PRONE) {
+            anim::LAST_STAND_TO_PRONE
+        } else {
+            anim::LAST_STAND_TO_STAND
+        };
+        pack(player, &mut ps, &mut last);
+        MoveOutcome {
+            signals: vec![MoveSignal::Anim { event }],
+            gaps: vec![events_unknown()],
+            ..MoveOutcome::default()
+        }
+    }
+
+    fn undo_last_stand(&self, player: &mut MovePlayer) {
+        let (mut ps, mut last) = unpack(player);
+        ps.pm_type = pm_type::NORMAL;
+        pack(player, &mut ps, &mut last);
+    }
+
+    /// Black Ops' `startrevive` (`true`) and `stoprevive` (`false`): switches
+    /// the downed player between `LAST_STAND_REVIVED` (which freezes crawling
+    /// in `pmove`) and `LAST_STAND`.
+    fn set_being_revived(&self, player: &mut MovePlayer, being_revived: bool) {
+        let (mut ps, mut last) = unpack(player);
+        if matches!(
+            ps.pm_type,
+            pm_type::LAST_STAND | pm_type::LAST_STAND_REVIVED
+        ) {
+            ps.pm_type = if being_revived {
+                pm_type::LAST_STAND_REVIVED
+            } else {
+                pm_type::LAST_STAND
+            };
+        }
+        pack(player, &mut ps, &mut last);
     }
 
     fn set_perk(&self, player: &mut MovePlayer, perk: &str, on: bool) -> bool {
