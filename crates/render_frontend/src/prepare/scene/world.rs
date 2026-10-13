@@ -111,6 +111,9 @@ pub struct WorldCull {
     pub brush_model_bounds: Vec<asset_world::GfxBrushModelBounds>,
 
     pub bmodel_world_from_local: Vec<Mat4>,
+    /// Brush models baked into the world vertices at their authored pose.
+    pub bmodel_baked: Vec<Option<BakedBrushModel>>,
+    pub bmodel_live: BrushModelLivePoses,
     pub dpvs: WorldDpvs,
 
     pub batch_count: u32,
@@ -371,6 +374,7 @@ pub struct WorldDrawGeometry {
     pub brush_model_bounds: Vec<asset_world::GfxBrushModelBounds>,
 
     pub bmodel_world_from_local: Vec<Mat4>,
+    pub bmodel_baked: Vec<Option<BakedBrushModel>>,
     pub static_model_meshes: Vec<WorldStaticModelMesh>,
 
     pub static_model_instances: Vec<Option<WorldStaticModelInstance>>,
@@ -527,6 +531,128 @@ pub(crate) fn authored_bmodel_world_from_local(
         .collect()
 }
 
+#[derive(Clone, Debug)]
+pub struct BakedBrushModel {
+    pub pose: Mat4,
+    /// Contiguous vertex runs: first vertex and the model-space rows.
+    pub local_runs: Vec<(u32, Vec<u8>)>,
+    pub stride: usize,
+}
+
+impl BakedBrushModel {
+    /// The model's rows at `pose`, as byte offsets into the world vertex buffer.
+    pub fn rows_at(&self, pose: Mat4, out: &mut Vec<(u64, Vec<u8>)>) {
+        for (first, local) in &self.local_runs {
+            let mut rows = local.clone();
+            for row in rows.chunks_exact_mut(self.stride) {
+                pose_world_vertex_row(row, pose);
+            }
+            out.push((u64::from(*first) * self.stride as u64, rows));
+        }
+    }
+}
+
+/// Baked brush models standing away from their baked pose. `rows` is replaced
+/// only when a pose changes; the GPU side rewrites on a new `Arc`.
+#[derive(Debug, Default)]
+pub struct BrushModelLivePoses {
+    pub poses: Vec<(usize, Mat4)>,
+    pub rows: BrushRows,
+}
+
+/// World vertex rows rewritten for moved brush models: byte offset, bytes.
+pub type BrushRows = std::sync::Arc<Vec<(u64, Vec<u8>)>>;
+
+/// Position at 0, packed normal at 36 and tangent at 40.
+fn pose_world_vertex_row(row: &mut [u8], pose: Mat4) -> [[f32; 3]; 3] {
+    let mut position = [0.0; 3];
+    for (axis, value) in position.iter_mut().enumerate() {
+        *value = f32::from_le_bytes(row[axis * 4..axis * 4 + 4].try_into().unwrap());
+    }
+    let position = pose.transform_point3(Vec3::from_array(position)).to_array();
+    for (axis, value) in position.into_iter().enumerate() {
+        row[axis * 4..axis * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    let mut turn = |offset: usize| {
+        let packed = u32::from_le_bytes(row[offset..offset + 4].try_into().unwrap());
+        let turned = pose
+            .transform_vector3(Vec3::from_array(asset_model::unpack_unit_vec(packed)))
+            .normalize_or_zero()
+            .to_array();
+        row[offset..offset + 4].copy_from_slice(&asset_model::pack_unit_vec(turned).to_le_bytes());
+        turned
+    };
+    let normal = turn(36);
+    let tangent = turn(40);
+    [position, normal, tangent]
+}
+
+/// The world pass draws with no object transform, so script brush models are
+/// baked at their authored placement.
+fn bake_t5_script_brush_poses(
+    draw: &mut asset_world::WorldDraw,
+    brushes: &[asset_world::ScriptBrushModelPlacement],
+) -> Vec<Option<BakedBrushModel>> {
+    let mut baked = vec![None; draw.brush_models.len()];
+    let asset_world::WorldVertexPayload::T5(rows) = &mut draw.packed_vertices else {
+        return baked;
+    };
+    let mut moved = vec![false; draw.positions.len()];
+    for brush in brushes {
+        let index = brush.cmodel_handle as usize;
+        let Some(model) = draw.brush_models.get(index).copied() else {
+            continue;
+        };
+        if index == 0 || model.surface_count == 0 || baked[index].is_some() {
+            continue;
+        }
+        let pose = mat4_from_origin_axis(brush.origin, bmodel_axis_from_angles(brush.angles));
+        let mut local: Vec<u32> = Vec::new();
+        let start = usize::from(model.start_surf);
+        for surf in start..start + usize::from(model.surface_count) {
+            let Some(&(first, count)) = draw.surface_index_ranges.get(surf) else {
+                continue;
+            };
+            let (first, count) = (first as usize, count as usize);
+            for &vertex in draw.packed_indices.get(first..first + count).unwrap_or(&[]) {
+                if moved.get(vertex as usize).copied() == Some(false) {
+                    moved[vertex as usize] = true;
+                    local.push(vertex);
+                }
+            }
+        }
+        local.sort_unstable();
+        let stride = rows.first().map_or(0, |row| row.len());
+        let mut local_runs: Vec<(u32, Vec<u8>)> = Vec::new();
+        for &vertex in &local {
+            let row = &mut rows[vertex as usize];
+            match local_runs.last_mut() {
+                Some((first, bytes))
+                    if *first as usize + bytes.len() / stride == vertex as usize =>
+                {
+                    bytes.extend_from_slice(row);
+                }
+                _ => local_runs.push((vertex, row.to_vec())),
+            }
+            let [position, normal, tangent] = pose_world_vertex_row(row, pose);
+            let vertex = vertex as usize;
+            draw.positions[vertex] = position;
+            if let Some(slot) = draw.normals.get_mut(vertex) {
+                *slot = normal;
+            }
+            if let Some(slot) = draw.tangents.get_mut(vertex) {
+                slot[..3].copy_from_slice(&tangent);
+            }
+        }
+        baked[index] = Some(BakedBrushModel {
+            pose,
+            local_runs,
+            stride,
+        });
+    }
+    baked
+}
+
 pub(crate) fn world_dyn_ent_instances(
     catalog: &asset_world::DynEntCatalog,
 ) -> (Vec<WorldDynEntInstance>, usize) {
@@ -672,6 +798,12 @@ fn install_sun_effects(
 }
 
 impl WorldScene {
+    pub fn brush_model_live_rows(&self) -> Option<BrushRows> {
+        self.cull
+            .as_ref()
+            .map(|cull| std::sync::Arc::clone(&cull.bmodel_live.rows))
+    }
+
     pub fn from_bounds(
         mesh: Mesh,
         min: [f32; 3],
@@ -922,6 +1054,8 @@ impl WorldScene {
             brush_models: draw.brush_models,
             brush_model_bounds: draw.brush_model_bounds,
             bmodel_world_from_local: draw.bmodel_world_from_local,
+            bmodel_baked: draw.bmodel_baked,
+            bmodel_live: BrushModelLivePoses::default(),
             dpvs,
             batch_count,
             batch_lightmapped,
@@ -1129,6 +1263,7 @@ pub fn world_scene_from_draw(
         empty.dyn_ent_brushes = world_dyn_ent_brushes(&world.dyn_ents.brushes, &[], &[]);
         return Ok(empty);
     };
+    let bmodel_baked = bake_t5_script_brush_poses(&mut draw, &world.script_brush_models);
     let dyn_ent_brushes = world_dyn_ent_brushes(
         &world.dyn_ents.brushes,
         &draw.brush_model_bounds,
@@ -1518,11 +1653,16 @@ pub fn world_scene_from_draw(
         map_xmodel_materials.absent,
     );
 
-    let bmodel_world_from_local = authored_bmodel_world_from_local(
+    let mut bmodel_world_from_local = authored_bmodel_world_from_local(
         draw.brush_models.len(),
         &world.script_brush_models,
         &world.dyn_ents.brushes,
     );
+    for (slot, baked) in bmodel_world_from_local.iter_mut().zip(&bmodel_baked) {
+        if baked.is_some() {
+            *slot = Mat4::IDENTITY;
+        }
+    }
     let mut scene = WorldScene::from_draw(
         WorldDrawGeometry {
             batches,
@@ -1552,6 +1692,7 @@ pub fn world_scene_from_draw(
             brush_models: draw.brush_models,
             brush_model_bounds: draw.brush_model_bounds,
             bmodel_world_from_local,
+            bmodel_baked,
             static_model_meshes,
             static_model_instances,
             map_xmodel_scene_assets,

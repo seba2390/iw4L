@@ -470,6 +470,8 @@ pub fn build_t5_world_draw(
         })
         .transpose()?;
 
+    let (brush_models, brush_model_bounds) = decode_brush_models(s, geometry);
+
     Ok((
         WorldDraw {
             sky_model: None,
@@ -497,8 +499,8 @@ pub fn build_t5_world_draw(
             surface_primary_lights,
             sort_key_distortion: None,
             capture: world_capture_from_casters(surface_casts_sun_shadow),
-            brush_models: Vec::new(),
-            brush_model_bounds: Vec::new(),
+            brush_models,
+            brush_model_bounds,
             surface_materials,
             primary_lights,
             light_defs: s
@@ -1406,4 +1408,42 @@ fn decode_bc1_level(data: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Str
         }
     }
     Ok(out)
+}
+
+/// Local bounds at 28, 32-bit surface count and first surface at 52 and 56; no
+/// separate no-decal count. A model past the shared 16-bit ranges draws nothing.
+fn decode_brush_models(
+    s: &ZoneStream<'_>,
+    geometry: GfxWorldGeometry,
+) -> (
+    Vec<crate::world_draw::GfxBrushModelSurfs>,
+    Vec<crate::world_draw::GfxBrushModelBounds>,
+) {
+    let mut surfs = Vec::with_capacity(geometry.model_count);
+    let mut bounds = Vec::with_capacity(geometry.model_count);
+    let Some(models) = geometry.models else {
+        return (surfs, bounds);
+    };
+    for i in 0..geometry.model_count {
+        let model = models.at(i * t5_sz::GFX_BRUSH_MODEL);
+        let read = |off| s.f32_at(model, off).unwrap_or(0.0);
+        let count = s.u32_at(model, 52).ok().and_then(|n| u16::try_from(n).ok());
+        let start = s.u32_at(model, 56).ok().and_then(|n| u16::try_from(n).ok());
+        let (count, start) = match (count, start) {
+            (Some(count), Some(start)) => (count, start),
+            _ => (0, 0),
+        };
+        surfs.push(crate::world_draw::GfxBrushModelSurfs {
+            surface_count: count,
+            start_surf: start,
+            surface_count_no_decal: count,
+        });
+        let mins = [read(28), read(32), read(36)];
+        let maxs = [read(40), read(44), read(48)];
+        bounds.push(crate::world_draw::GfxBrushModelBounds {
+            mid: std::array::from_fn(|axis| (mins[axis] + maxs[axis]) * 0.5),
+            half: std::array::from_fn(|axis| (maxs[axis] - mins[axis]) * 0.5),
+        });
+    }
+    (surfs, bounds)
 }

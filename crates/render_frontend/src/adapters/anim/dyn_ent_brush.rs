@@ -68,6 +68,10 @@ pub fn register_dyn_ent_brush_systems(app: &mut App) {
                     .in_set(frame::InMatch)
                     .after(link_dyn_ent_brush_cells)
                     .after(frame::WorkerCmdSet::CellStatic),
+                add_scene_brush_surfaces
+                    .in_set(frame::InMatch)
+                    .after(exec_cell_dyn_brush_cmds)
+                    .after(crate::prepare::scene::gfx_scene::GfxSceneAdd),
             )
                 .in_set(frame::RenderSet::Anim)
                 .in_set(frame::WorkerCmdSet::CellDynBrush),
@@ -265,6 +269,118 @@ fn exec_cell_dyn_brush_cmds(
             &batch_primary_lights,
         );
         added = added.saturating_add(span_added);
+    }
+    if added == 0 {
+        return;
+    }
+    refresh_draw_items_id(cull);
+    if let Some(stats) = stats.as_mut() {
+        stats.keys = cull.draw_items.len() as u32;
+        stats.rebinds = draw_item_rebinds(&cull.draw_items);
+    }
+}
+
+/// Adds each scene brush's surface span. Its vertices are baked at the authored
+/// pose, so a brush standing elsewhere gets its rows rewritten at the live pose.
+fn add_scene_brush_surfaces(
+    mut scene: Option<ResMut<WorldScene>>,
+    gfx: Res<HostGfxScene>,
+    mut stats: Option<ResMut<DpvsFrameStats>>,
+) {
+    let brushes: Vec<(usize, Mat4)> = gfx
+        .scene
+        .scene_brushes
+        .iter()
+        .filter(|brush| brush.model_index != 0)
+        .map(|brush| {
+            let quat = brush.quat.unwrap_or([0.0, 0.0, 0.0, 1.0]);
+            let pose =
+                crate::prepare::scene::world::transform_from_gfx_placement(brush.origin, quat);
+            (brush.model_index as usize, pose.to_matrix())
+        })
+        .collect();
+    if brushes.is_empty() {
+        return;
+    }
+    let Some(scene) = scene.as_mut() else {
+        return;
+    };
+    if scene
+        .cull
+        .as_ref()
+        .is_none_or(|cull| cull.bmodel_baked.iter().all(Option::is_none))
+    {
+        return;
+    }
+    let baked_material_keys: Vec<Option<u64>> = scene
+        .runtime_material_catalog
+        .parts()
+        .materials
+        .iter()
+        .map(|material| material.baked_draw_surf)
+        .collect();
+    let batch_primary_lights: Vec<u8> = scene
+        .batches
+        .iter()
+        .map(|batch| batch.primary_light_index)
+        .collect();
+    let Some(cull) = scene.cull.as_mut() else {
+        return;
+    };
+    let mut already = HashSet::new();
+    for item in &cull.draw_items {
+        for offset in 0..item.run {
+            already.insert(item.surf.saturating_add(offset));
+        }
+    }
+    let mut added = 0u32;
+    // Brushes out of the scene keep the pose last written for them.
+    let mut live: Vec<(usize, Mat4)> = cull
+        .bmodel_live
+        .poses
+        .iter()
+        .copied()
+        .filter(|(model_index, _)| brushes.iter().all(|(index, _)| index != model_index))
+        .collect();
+    for &(model_index, pose) in &brushes {
+        let Some(Some(baked)) = cull.bmodel_baked.get(model_index) else {
+            continue;
+        };
+        if !baked.pose.abs_diff_eq(pose, 0.01)
+            && live.iter().all(|(index, _)| *index != model_index)
+        {
+            live.push((model_index, pose));
+        }
+        let Some(model) = cull.brush_models.get(model_index).copied() else {
+            continue;
+        };
+        let (span_added, _) = append_bmodel_colour_span(
+            cull,
+            model.start_surf,
+            model.surface_count,
+            &mut already,
+            &baked_material_keys,
+            &batch_primary_lights,
+        );
+        added = added.saturating_add(span_added);
+    }
+    live.sort_unstable_by_key(|(model_index, _)| *model_index);
+    let unchanged = live.len() == cull.bmodel_live.poses.len()
+        && live
+            .iter()
+            .zip(&cull.bmodel_live.poses)
+            .all(|((index, pose), (was_index, was))| {
+                index == was_index && pose.abs_diff_eq(*was, 1e-4)
+            });
+    if !unchanged {
+        let mut rows = Vec::new();
+        for &(model_index, pose) in &live {
+            if let Some(Some(baked)) = cull.bmodel_baked.get(model_index) {
+                baked.rows_at(pose, &mut rows);
+            }
+        }
+        cull.bmodel_live.poses = live;
+        cull.bmodel_live.rows = std::sync::Arc::new(rows);
     }
     if added == 0 {
         return;

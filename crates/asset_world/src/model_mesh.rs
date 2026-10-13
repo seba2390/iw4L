@@ -948,14 +948,13 @@ pub fn build_t5_static_model_instances(
                     .map_err(|_| ModelMeshError::MissingStaticModelInstances)?;
             }
         }
+        // A model first defined inline is recorded at this field, so the field is its slot.
         let model = match stream
             .ptr_at(inst, MODEL_OFF)
             .map_err(|_| ModelMeshError::MissingStaticModelInstances)?
         {
             fastfile_t5::ZonePtr::Offset(p) => p,
-            _ => {
-                continue;
-            }
+            _ => inst.at(MODEL_OFF),
         };
         out.push(StaticModelInstance {
             model_slot: Ptr {

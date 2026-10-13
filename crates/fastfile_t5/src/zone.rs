@@ -519,6 +519,10 @@ pub struct GfxWorldGeometry {
 
     pub sky_box_model: Option<Ptr>,
 
+    /// Brush models (`sz::GFX_BRUSH_MODEL` each); model 0 is the world.
+    pub models: Option<Ptr>,
+    pub model_count: usize,
+
     pub sun_light: Option<Ptr>,
 
     pub reflection_probes: Option<Ptr>,
