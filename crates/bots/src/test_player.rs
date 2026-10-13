@@ -41,8 +41,12 @@
 //! node standing in that zone, before the use test starts.
 //!
 //! `IW4L_TEST_BUILD=<equipname>` (with `IW4L_TEST_USE=piece,build,…`):
-//! the use test's `piece` picks up a part of that buildable and `build`
-//! holds use at its table.
+//! the use test's `piece` picks up a part of that buildable, `build`
+//! holds use at its table, and `take` takes a persistent one from its
+//! table once built.
+//!
+//! `IW4L_TEST_WIELD=<weapon>`: once he holds that weapon, his commands
+//! ask for it, as a client switching to it does.
 //!
 //! `IW4L_TEST_THROW=1` (with any fighting mode): every 15 s it holds its
 //! lethal grenade's button for half a second at an actor in sight farther
@@ -318,6 +322,7 @@ fn kinds_from_env() -> Option<Vec<UseKind>> {
                 "rebuild" => Some(UseKind::Rebuild),
                 "piece" => Some(UseKind::Piece),
                 "build" => Some(UseKind::Build),
+                "take" => Some(UseKind::Take),
                 _ => None,
             })
             .collect(),
@@ -410,7 +415,7 @@ fn stand_point(
         let (off, room) = if site.touch
             || matches!(
                 site.kind,
-                UseKind::WallBuy | UseKind::Box | UseKind::Rebuild | UseKind::Build
+                UseKind::WallBuy | UseKind::Box | UseKind::Rebuild | UseKind::Build | UseKind::Take
             ) {
             (STAND_OFF_TOUCH, TOUCH_ROOM)
         } else {
@@ -487,7 +492,7 @@ fn next_scenario(
             .filter(|site| site.kind == kind && (kind != UseKind::WallBuy || site.cost.is_some()))
             // `IW4L_TEST_BUILD=<equipname>`: that buildable's parts and table.
             .filter(|site| {
-                !matches!(kind, UseKind::Piece | UseKind::Build)
+                !matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take)
                     || std::env::var("IW4L_TEST_BUILD")
                         .is_ok_and(|wanted| site.weapon.as_deref() == Some(wanted.as_str()))
             })
@@ -511,7 +516,7 @@ fn next_scenario(
         of_kind.retain(|site| {
             site.zone.as_deref().is_none_or(|zone| {
                 world.zone_is_active(zone)
-                    || matches!(kind, UseKind::Piece | UseKind::Build)
+                    || matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take)
                         && world.zone_is_enabled(zone)
             })
         });
@@ -579,7 +584,7 @@ fn next_scenario(
             home_angles: viewangles,
             phase: Phase::Arriving,
             until_ms: now_ms
-                + if matches!(kind, UseKind::Piece | UseKind::Build) {
+                + if matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take) {
                     ZONE_ARRIVE_MS
                 } else {
                     ARRIVE_MS
@@ -847,6 +852,15 @@ pub(crate) fn drive_test_player(
         weapon_mapped: ps.weapon as u16,
         ..UserCmd::default()
     };
+    // `IW4L_TEST_WIELD=<weapon>`: once he holds it, his command asks for it,
+    // as a client switching to it does.
+    if let Ok(name) = std::env::var("IW4L_TEST_WIELD")
+        && let Some(wanted) = world.0.weapon_index_by_script_name(&name)
+        && ps.weapons.iter().any(|&w| w as u32 == wanted)
+    {
+        cmd.weapon = wanted as u16;
+        cmd.weapon_mapped = wanted as u16;
+    }
     let aim_cmd = |cmd: &mut UserCmd, view: [f32; 3]| {
         cmd.angles = look_angles_from_degrees(std::array::from_fn(|axis| {
             view[axis] - ps.delta_angles[axis]
@@ -984,7 +998,10 @@ pub(crate) fn drive_test_player(
                                 .map_or_else(|| "-".to_owned(), |n| n.to_string())
                         );
                     }
-                    if matches!(scenario.site.kind, UseKind::Piece | UseKind::Build) {
+                    if matches!(
+                        scenario.site.kind,
+                        UseKind::Piece | UseKind::Build | UseKind::Take
+                    ) {
                         diag::info!(
                             Sim,
                             "test player: {:?} {} — its stub {}; the buildable's table {}",

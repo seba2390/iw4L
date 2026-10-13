@@ -43,50 +43,59 @@ fn slot(world: &World, receiver: &Value, args: &[Value]) -> Result<(Arc<str>, Ar
         .ok_or_else(|| "bad index".into())
 }
 
+/// `attach(model, [tag], [ignore collision])`: the tag it went on.
+pub(super) fn attach(world: &mut World, id: u64, args: &[Value]) -> Result<Arc<str>, String> {
+    let (model, tag) = model_and_tag(args)?;
+    if args.len() > 2 {
+        int(args, 2)?;
+    }
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let attachments = &mut runtime
+        .entities
+        .get_mut(&id)
+        .ok_or("not an entity")?
+        .attachments;
+    if attached(attachments, &model, &tag).is_some() {
+        return Err(format!("model '{model}' already attached to tag '{tag}'"));
+    }
+    if model.is_empty() || attachments.len() >= SLOTS {
+        return Err(format!("failed to attach model '{model}' to tag '{tag}'"));
+    }
+    attachments.push((model, tag.clone()));
+    Ok(tag)
+}
+
+/// A model that is not attached is reported on the console only.
+pub(super) fn detach(world: &mut World, id: u64, args: &[Value]) -> Result<Value, String> {
+    let (model, tag) = model_and_tag(args)?;
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let attachments = &mut runtime
+        .entities
+        .get_mut(&id)
+        .ok_or("not an entity")?
+        .attachments;
+    match attached(attachments, &model, &tag) {
+        Some(index) => {
+            attachments.remove(index);
+        }
+        None => diag::info!(
+            Sim,
+            "detach: model '{model}' is not attached to tag '{tag}'"
+        ),
+    }
+    Ok(Value::Undefined)
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::Method;
 
     registry.register(Method, "attach", |world, receiver, args| {
         let id = entity(world, receiver)?;
-        let (model, tag) = model_and_tag(args)?;
-        if args.len() > 2 {
-            int(args, 2)?;
-        }
-        let mut runtime = world.resource_mut::<RoundScript>();
-        let attachments = &mut runtime
-            .entities
-            .get_mut(&id)
-            .ok_or("not an entity")?
-            .attachments;
-        if attached(attachments, &model, &tag).is_some() {
-            return Err(format!("model '{model}' already attached to tag '{tag}'"));
-        }
-        if model.is_empty() || attachments.len() >= SLOTS {
-            return Err(format!("failed to attach model '{model}' to tag '{tag}'"));
-        }
-        attachments.push((model, tag));
-        Ok(Value::Undefined)
+        attach(world, id, args).map(|_| Value::Undefined)
     });
-    // A model that is not attached is reported on the console only.
     registry.register(Method, "detach", |world, receiver, args| {
         let id = entity(world, receiver)?;
-        let (model, tag) = model_and_tag(args)?;
-        let mut runtime = world.resource_mut::<RoundScript>();
-        let attachments = &mut runtime
-            .entities
-            .get_mut(&id)
-            .ok_or("not an entity")?
-            .attachments;
-        match attached(attachments, &model, &tag) {
-            Some(index) => {
-                attachments.remove(index);
-            }
-            None => diag::info!(
-                Sim,
-                "detach: model '{model}' is not attached to tag '{tag}'"
-            ),
-        }
-        Ok(Value::Undefined)
+        detach(world, id, args)
     });
     registry.register(Method, "detachall", |world, receiver, _| {
         let id = entity(world, receiver)?;

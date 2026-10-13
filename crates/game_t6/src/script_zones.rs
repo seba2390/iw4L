@@ -207,5 +207,13 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
                     .to_owned()
             })
             .collect(),
+        view_models: (0..def::WORLD_MODEL_COUNT)
+            .map(|index| {
+                weapon
+                    .def_asset_array_name(def::GUN_XMODEL, index)
+                    .unwrap_or("")
+                    .to_owned()
+            })
+            .collect(),
     })
 }
