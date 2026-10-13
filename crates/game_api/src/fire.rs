@@ -217,7 +217,108 @@ pub trait FireWorld {
     /// A player's weapon event, sent to every client: the player's entity,
     /// the weapon in its hand when the event is sent.
     fn weapon_event(&mut self, entity: i32, weapon: u32, event: WeaponEvent);
+
+    /// Updates an entity's script origin and angles before a notify wakes
+    /// threads that read them.
+    fn set_entity_pose(&mut self, _entity: i32, _origin: [f32; 3], _angles: [f32; 3]) {}
 }
+
+/// How a game launches, moves and detonates its missiles, even while a mode
+/// borrows the simulation's weapon state machine for the throw itself.
+pub trait MissilePhysics: Sync {
+    /// Launches a grenade from `origin` aimed along `angles` (`launcher` when
+    /// fired from a grenade launcher, `remaining_fuse` when cooked in hand);
+    /// returns the entity number `FireWorld::spawn_missile` gave it.
+    #[allow(clippy::too_many_arguments)]
+    fn launch_grenade(
+        &self,
+        owner: i32,
+        weapon: u32,
+        origin: [f32; 3],
+        angles: [f32; 3],
+        launcher: bool,
+        remaining_fuse: Option<i32>,
+        world: &mut dyn FireWorld,
+    ) -> (Option<i32>, Vec<&'static crate::Unknown>);
+
+    /// Spawns a grenade at `origin` with an explicit initial `velocity` and
+    /// `fuse` in milliseconds (`MagicGrenadeType`).
+    fn spawn_grenade(
+        &self,
+        owner: i32,
+        weapon: u32,
+        origin: [f32; 3],
+        velocity: [f32; 3],
+        fuse: i32,
+        world: &mut dyn FireWorld,
+    ) -> (Option<i32>, Vec<&'static crate::Unknown>);
+
+    /// Launches a projectile weapon's rocket from `origin` aimed along
+    /// `angles` with `spread` degrees and the shooter's `velocity`.
+    #[allow(clippy::too_many_arguments)]
+    fn launch_rocket(
+        &self,
+        owner: i32,
+        weapon: u32,
+        origin: [f32; 3],
+        angles: [f32; 3],
+        spread: f32,
+        velocity: [f32; 3],
+        world: &mut dyn FireWorld,
+    ) -> (Option<i32>, Vec<&'static crate::Unknown>);
+
+    /// Runs one frame of a missile.
+    fn run(
+        &self,
+        missile: &mut GameMissile,
+        world: &mut dyn FireWorld,
+    ) -> (MissileRun, Vec<&'static crate::Unknown>);
+
+    /// Detonates a missile (`detonate`), with an optional new owner.
+    fn detonate(
+        &self,
+        missile: &mut GameMissile,
+        attacker: Option<i32>,
+        world: &mut dyn FireWorld,
+    ) -> (MissileRun, Vec<&'static crate::Unknown>);
+
+    /// Marks a grenade a dud (`makegrenadedud`).
+    fn make_dud(&self, missile: &mut GameMissile);
+
+    /// Resets a missile's detonation time (`resetmissiledetonationtime`):
+    /// `after_ms` from now when given, else its weapon's fuse time when it
+    /// has timed detonation.
+    fn reset_detonation_time(
+        &self,
+        missile: &mut GameMissile,
+        after_ms: Option<i32>,
+        world: &dyn FireWorld,
+    );
+
+    /// The entity number a resting missile sits on (`getgroundent`), or
+    /// `ENTITY_NONE` while flying.
+    fn ground_entity(&self, missile: &GameMissile) -> i32 {
+        let _ = missile;
+        crate::movement::ENTITY_NONE
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MissileRules(pub &'static dyn MissilePhysics);
+
+impl core::fmt::Debug for MissileRules {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("MissileRules")
+    }
+}
+
+impl PartialEq for MissileRules {
+    fn eq(&self, other: &Self) -> bool {
+        core::ptr::addr_eq(self.0, other.0)
+    }
+}
+
+impl Eq for MissileRules {}
 
 /// A player's weapon event the clients present with the weapon's sounds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1358,6 +1358,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         flags.ignore_team.remove(&id);
         Ok(Value::Undefined)
     });
+    registry.register(Method, "setexcludeteamfortrigger", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let classname = world.resource::<RoundScript>().entities[&id].classname.clone();
+        if !HINT_CLASSES.contains(&&*classname) {
+            return Err("setteamfortrigger: trigger entity must be of type trigger_use, trigger_use_touch, trigger_radius, trigger_box or trigger_radius_use".into());
+        }
+        let team = team(args, 0)?;
+        let mut flags = world.get_resource_or_insert_with(EntityFlags::default);
+        flags.trigger_team.insert(id, team);
+        flags.ignore_team.insert(id);
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "codesetworldclientfield", |world, _, args| {
         let name = string(args, 0)?;
         let fields = world.get_resource_or_insert_with(ClientFields::default);
@@ -1979,6 +1991,16 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             e.shown_to &= !bit;
         })
     });
+    // gscm_setvisibletoteam / gscm_setvisibletoallexceptteam: shows the
+    // entity only to players on (or not on) the named team.
+    registry.register(Method, "setvisibletoteam", |world, receiver, args| {
+        set_visible_team(world, receiver, args, false)
+    });
+    registry.register(
+        Method,
+        "setvisibletoallexceptteam",
+        |world, receiver, args| set_visible_team(world, receiver, args, true),
+    );
     actor::register(registry);
     anim::register(registry);
     movement::register(registry);
@@ -2576,6 +2598,52 @@ const HINT_CLASSES: [&str; 5] = [
     "trigger_box",
     "trigger_radius_use",
 ];
+
+pub(crate) fn trigger_allows_team(world: &World, trigger: u64, actor_team: Option<&str>) -> bool {
+    let Some(flags) = world.get_resource::<EntityFlags>() else {
+        return true;
+    };
+    let Some(&team) = flags.trigger_team.get(&trigger) else {
+        return true;
+    };
+    let actor_team = actor_team.and_then(team_index);
+    if flags.ignore_team.contains(&trigger) {
+        team != 0 && actor_team != Some(team)
+    } else {
+        team == 0 || actor_team == Some(team)
+    }
+}
+
+fn set_visible_team(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    except: bool,
+) -> Result<Value, String> {
+    use super::t5::{client_bits, visibility};
+    let wanted = team(args, 0)?;
+    let clients: Vec<u32> = world
+        .resource::<RoundScript>()
+        .players
+        .iter()
+        .map(|(c, slot)| (*c, slot.object))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter_map(|(c, obj)| {
+            let t = match world.resource_mut::<RoundScript>().object_field(obj, "team") {
+                Value::String(s) => team_index(&s),
+                _ => None,
+            };
+            let matches = t == Some(wanted);
+            (if except { !matches } else { matches }).then_some(c)
+        })
+        .collect();
+    let bits = client_bits(world, clients);
+    visibility(world, receiver, |e, _| {
+        e.hidden = true;
+        e.shown_to = bits;
+    })
+}
 /// The triggers `setrevivehintstring` takes.
 const REVIVE_HINT_CLASSES: [&str; 4] = [
     "trigger_use",

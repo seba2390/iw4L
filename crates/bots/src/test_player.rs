@@ -1323,35 +1323,43 @@ pub(crate) fn drive_test_player(
     }
     let target = target.map(|(aim, _)| aim);
     aim_cmd(&mut cmd, target.map_or(ps.viewangles, |aim| look(eye, aim)));
-    if std::env::var("IW4L_TEST_THROW").is_ok() {
+    if let Ok(throw_arg) = std::env::var("IW4L_TEST_THROW") {
+        let named = (throw_arg != "1").then_some(throw_arg.as_str());
+        let button = if named.is_some() {
+            buttons::SMOKE
+        } else {
+            buttons::FRAG
+        };
         if clock.time_ms < test.throw_until_ms {
-            cmd.buttons |= buttons::FRAG;
+            cmd.buttons |= button;
             cmds.push(id, None, cmd, None);
             return;
         }
-        if clock.time_ms >= test.next_throw_ms
-            && target.is_some_and(|aim| distance(eye, aim) > THROW_FROM)
-        {
+        let weapon_name = named.unwrap_or("frag_grenade_zm");
+        let weap_idx = world.0.weapon_index_by_script_name(weapon_name);
+        let held = weap_idx.is_some_and(|w| ps.weapons.contains(&(w as i32)));
+        let ready = ps.weapon != 0
+            && ps.weaponstate_primary == 0
+            && if named.is_some() {
+                held
+            } else {
+                target.is_some_and(|aim| distance(eye, aim) > THROW_FROM)
+            };
+        if clock.time_ms >= test.next_throw_ms && ready {
             test.next_throw_ms = clock.time_ms + THROW_PERIOD_MS;
             test.throw_until_ms = clock.time_ms + THROW_HOLD_MS;
             test.throws += 1;
-            let frag = world.0.weapon_index_by_script_name("frag_grenade_zm");
-            let held = frag.is_some_and(|w| {
-                ps.weapons
-                    .get((w / 32) as usize)
-                    .is_some_and(|bits| bits & (1 << (w % 32)) != 0)
-            });
             diag::info!(
                 Sim,
-                "test player: throw {} at {} (frag_grenade_zm {:?} held={held} offhand={}/{} state={})",
+                "test player: throw {} at {} ({weapon_name} {:?} held={held} offhand={}/{} state={})",
                 test.throws,
                 fmt_point(target.unwrap_or(eye)),
-                frag,
+                weap_idx,
                 ps.offhand_primary,
                 ps.offhand_secondary,
                 ps.weaponstate_primary
             );
-            cmd.buttons |= buttons::FRAG;
+            cmd.buttons |= button;
             cmds.push(id, None, cmd, None);
             return;
         }

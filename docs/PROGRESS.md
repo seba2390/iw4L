@@ -123,9 +123,9 @@ Only the top-level items count. Runs are headless, with the test player
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Nuketown (`zm_nuked`, Classic) | 200 of 692 |
-| TranZit (`zm_transit`, Classic) | 215 of 741 |
-| Buried (`zm_buried`, Classic) | 223 of 727 |
+| Nuketown (`zm_nuked`, Classic) | 191 of 692 |
+| TranZit (`zm_transit`, Classic) | 205 of 741 |
+| Buried (`zm_buried`, Classic) | 214 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -142,6 +142,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] The weapon state machine (fire, reload, switch, melee, grenades) is Modern Warfare 2's (`t6.weapons.state_machine`).
   - [x] `knife_zm` is given (Black Ops 2's melee type is kept; the lent weapons hold it as melee only).
   - [x] An external view model animation no loaded zone carries takes the startup zone's default `void` animation, as Black Ops 2's linker does, so `m1911_upgraded_zm` (the last stand pistol after Pack-a-Punch) is given (`calcweaponoptions`).
+  - [x] Thrown and scripted grenades and missiles run Black Ops 2's missile physics, bounces, rest (`stationary`) and explosion surface (`game_t6::missile`, `game_t6::grenade`, `detonate`, `magicgrenadetype`, `makegrenadedud`, `resetmissiledetonationtime`, `forcegrenadethrow`, `setmissileowner`).
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Zombies rise on Nuketown and spawn on TranZit and Buried, animated by Black Ops 2's animation state machine (ASD).
   - [ ] Pitch orientation (`setpitchorient`, `allowpitchangle`) is kept, not applied (`t6.actors.pitch`); gibs and ragdoll are missing.

@@ -550,11 +550,11 @@ pub struct GameWeaponBytes {
     /// captured into, by the game's slot.
     pub anim_slots: &'static [Option<usize>],
     /// The definition's damage multipliers by hit location.
-    pub location_damage: Option<[f32; 19]>,
+    pub location_damage: Option<Box<[f32]>>,
     /// The definition's bounce coefficients along and across a surface, by
     /// surface type.
-    pub parallel_bounce: Option<[f32; 31]>,
-    pub perpendicular_bounce: Option<[f32; 31]>,
+    pub parallel_bounce: Option<Box<[f32]>>,
+    pub perpendicular_bounce: Option<Box<[f32]>>,
 }
 
 #[derive(Clone, Debug)]

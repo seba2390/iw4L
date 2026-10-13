@@ -1,5 +1,7 @@
 mod builtins;
+mod grenade;
 mod keys;
+mod missile;
 mod script_zones;
 mod startup;
 pub mod ui;
@@ -226,6 +228,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     // The mask the engine's bullet trace takes; actors are in it.
     bullet_mask: Some(0x0280_e833),
     melee_mask: Some(0x0280_e893),
+    missiles: Some(game_api::fire::MissileRules(&missile::MISSILES)),
     spawn_at_default_health: false,
     connect_team: None,
     scripts_spawn_players: false,

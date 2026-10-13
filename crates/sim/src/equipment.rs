@@ -285,6 +285,23 @@ fn spawn_grenade_with_velocity(
     kind: GrenadeLaunchKind,
     scripted_velocity: Option<[f32; 3]>,
 ) -> bool {
+    if crate::game_fire::has_missile_rules(world) {
+        let (launcher, remaining_fuse) = match kind {
+            GrenadeLaunchKind::Launcher => (true, None),
+            GrenadeLaunchKind::Thrown { remaining_fuse_ms } => (false, remaining_fuse_ms),
+        };
+        return crate::game_fire::launch_game_grenade(
+            world,
+            owner,
+            weapon,
+            tick,
+            origin,
+            angles,
+            launcher,
+            remaining_fuse,
+            scripted_velocity,
+        );
+    }
     let Some(facts) = world.equipment_facts_for(weapon) else {
         return false;
     };

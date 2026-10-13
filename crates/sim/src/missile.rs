@@ -121,6 +121,18 @@ fn fire_missile(
     tick: crate::Tick,
     shot: &AcceptedShot,
 ) -> Option<ProjectileState> {
+    if crate::game_fire::has_missile_rules(world) {
+        return crate::game_fire::launch_game_rocket(
+            world,
+            shot.attacker,
+            shot.weapon,
+            tick,
+            shot.origin,
+            shot.angles,
+            shot.spread_degrees,
+            shot.owner_velocity,
+        );
+    }
     let Some(facts) = world.missile_launch_facts(shot.weapon) else {
         diag::warn!(
             Sim,

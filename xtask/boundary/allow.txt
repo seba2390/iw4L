@@ -150,7 +150,7 @@ pattern crates/asset_game/src/weapon_catalog/capture_t5.rs AssetNamespace::<game
 pattern crates/asset_game/src/weapon_catalog/capture_t5.rs fastfile_t5:: 78
 pattern crates/asset_game/src/weapon_catalog/capture_t5.rs weapon_iw4:: 2
 pattern crates/asset_game/src/weapon_catalog/capture_t6.rs AssetNamespace::<game> 1
-pattern crates/asset_game/src/weapon_catalog/capture_t6.rs fastfile_t6:: 44
+pattern crates/asset_game/src/weapon_catalog/capture_t6.rs fastfile_t6:: 43
 pattern crates/asset_game/src/weapon_catalog/capture_t6.rs weapon_iw4:: 10
 pattern crates/asset_game/src/weapon_catalog/catalog_linking.rs weapon_iw4:: 1
 pattern crates/asset_game/src/weapon_catalog/combat.rs asset_iw4:: 2

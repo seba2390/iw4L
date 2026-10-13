@@ -160,6 +160,8 @@ pub struct ModeRules {
     /// The contents a player's melee trace stops on, where the game's differ
     /// from the simulation's own.
     pub melee_mask: Option<u32>,
+    /// How the game launches, moves and detonates its missiles.
+    pub missiles: Option<fire::MissileRules>,
     /// A spawn starts at the default full health, not the stored max health.
     pub spawn_at_default_health: bool,
     /// The team every player joins on connect, when the scripts pick none.

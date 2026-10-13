@@ -578,11 +578,32 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    // gscm_getgroundent: what a player stands on, from his player state
-    // (another entity's is not kept: none).
+    // gscm_getgroundent: what a player or resting missile stands on.
     registry.register(Method, "getgroundent", |world, receiver, _| {
+        if *receiver == Value::Object(0) {
+            return Ok(Value::Undefined);
+        }
         let id = super::super::engine::entity_id(world, receiver)?;
         let Some(client) = world.resource::<RoundScript>().player_client(id) else {
+            let (is_missile, number) = {
+                let entity = &world.resource::<RoundScript>().entities[&id];
+                (matches!(entity.kind, EntityKind::Missile(_)), entity.number)
+            };
+            if is_missile
+                && let Some(ground) = crate::game_fire::missile_ground_entity(
+                    &crate::frame::FrameWorld::from_world(world),
+                    number,
+                )
+            {
+                if ground == game_api::movement::ENTITY_WORLD {
+                    return Ok(Value::Object(0));
+                }
+                if ground != game_api::movement::ENTITY_NONE {
+                    return Ok(
+                        object_of_number(world, ground).map_or(Value::Undefined, Value::Object)
+                    );
+                }
+            }
             return Ok(Value::Undefined);
         };
         if let Some(platform) = platform_of(world, client) {
@@ -592,6 +613,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             &crate::frame::FrameWorld::from_world(world),
             crate::ClientId(client),
         );
+        if ground == Some(ENTITYNUM_NONE - 1) {
+            return Ok(Value::Object(0));
+        }
         Ok(ground
             .filter(|&n| (0..ENTITYNUM_NONE).contains(&n))
             .and_then(|n| object_of_number(world, n))

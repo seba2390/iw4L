@@ -904,9 +904,10 @@ pub(super) fn capture_t5_body_facts(
                 stream,
                 body,
                 sz::WEAPON_DEF_LOCATION_DAMAGE_OFF,
-            ),
-            parallel_bounce: facts.parallel_bounce,
-            perpendicular_bounce: facts.perpendicular_bounce,
+            )
+            .map(Box::from),
+            parallel_bounce: facts.parallel_bounce.map(Box::from),
+            perpendicular_bounce: facts.perpendicular_bounce.map(Box::from),
         }))
     });
     (facts, game_bytes)

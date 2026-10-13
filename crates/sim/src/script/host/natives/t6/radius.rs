@@ -61,7 +61,12 @@ fn clear(world: &mut World, from: [f32; 3], to: [f32; 3], ignore: TraceIgnore) -
 /// corners of their face toward the blast, all of it if any is in sight. A
 /// player: its middle and four points around it up to its eye, a third for
 /// each seen up to three, all of it from four.
-fn visibility(world: &mut World, target: &Target, blast: [f32; 3]) -> f32 {
+fn visibility(
+    world: &mut World,
+    target: &Target,
+    blast: [f32; 3],
+    cone: Option<(f32, [f32; 3])>,
+) -> f32 {
     let centre: [f32; 3] = std::array::from_fn(|i| (target.mins[i] + target.maxs[i]) * 0.5);
     let points: [[f32; 3]; 5] = if let Some(eye) = target.eye {
         let middle = [
@@ -108,7 +113,15 @@ fn visibility(world: &mut World, target: &Target, blast: [f32; 3]) -> f32 {
     };
     let seen = points
         .iter()
-        .filter(|&&point| clear(world, blast, point, target.ignore))
+        .filter(|&&point| {
+            if let Some((cos, dir)) = cone {
+                let v = normalize(std::array::from_fn(|i| point[i] - blast[i]));
+                if cos > dir[0] * v[0] + dir[1] * v[1] + dir[2] * v[2] {
+                    return false;
+                }
+            }
+            clear(world, blast, point, target.ignore)
+        })
         .count();
     match (target.eye, seen) {
         (_, 0) => 0.0,
@@ -234,7 +247,7 @@ fn radius_damage(
             continue;
         }
         let amount = (1.0 - dist_sq.sqrt() / range) * (max - min) + min;
-        let seen = visibility(world, &target, blast);
+        let seen = visibility(world, &target, blast, None);
         if seen <= 0.0 {
             continue;
         }
@@ -292,6 +305,75 @@ fn radius_damage(
     Ok(Value::Undefined)
 }
 
+/// `damageconetrace(origin, [ignore], [cone_dir], [cone_angle])`: how much
+/// of the receiver `CanDamage` sees from `origin` (`gscm_damageconetrace`).
+fn damage_cone_trace(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let id = super::super::engine::entity_id(world, receiver)?;
+    let origin = vector(args, 0)?;
+    let extra = super::super::engine::trace_ignore(world, args.get(1));
+    let cone = if args.len() >= 3 {
+        let dir = normalize(vector(args, 2)?);
+        let angle = if args.len() >= 4 {
+            float(args, 3)?
+        } else {
+            65.0
+        };
+        Some((angle.to_radians().cos(), dir))
+    } else {
+        None
+    };
+    let target = if let Some(client) = world.resource::<RoundScript>().player_client(id) {
+        let frame = FrameWorld::from_world(world);
+        let Some(ps) = frame.player(crate::ClientId(client)) else {
+            return Ok(Value::Float(0.0));
+        };
+        let at = ps.origin;
+        Target {
+            value: receiver.clone(),
+            origin: at,
+            mins: add(at, PLAYER_MINS),
+            maxs: add(at, PLAYER_MAXS),
+            eye: Some(add(at, [0.0, 0.0, ps.view_height_current])),
+            ignore: TraceIgnore {
+                client: Some(crate::ClientId(client)),
+                other_client: extra.client,
+                model: extra.model,
+            },
+        }
+    } else {
+        let at = super::movement::origin_of(world, id);
+        let presence = world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .and_then(|e| e.presence);
+        let (mins, maxs) = if world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .is_some_and(|e| e.kind == EntityKind::Actor)
+        {
+            let (mins, maxs) = super::movement::hull(world, id);
+            ([mins[0], mins[1], 0.0], maxs)
+        } else {
+            super::super::super::triggers::entity_bounds(world, id)
+        };
+        Target {
+            value: receiver.clone(),
+            origin: at,
+            mins: add(at, mins),
+            maxs: add(at, maxs),
+            eye: None,
+            ignore: TraceIgnore {
+                client: extra.client,
+                other_client: None,
+                model: presence.or(extra.model),
+            },
+        }
+    };
+    Ok(Value::Float(visibility(world, &target, origin, cone)))
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
@@ -301,4 +383,5 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "radiusdamage", |world, receiver, args| {
         radius_damage(world, Some(receiver.clone()), args)
     });
+    registry.register(Method, "damageconetrace", damage_cone_trace);
 }

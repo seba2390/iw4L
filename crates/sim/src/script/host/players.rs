@@ -62,6 +62,36 @@ fn player_damage_with(
         super::t6_gametype::damage(world, tick, hit);
         return;
     }
+    let hitloc = weapon_iw4::HITLOC_NAMES
+        .get(usize::from(hit.hitloc))
+        .copied()
+        .unwrap_or("none");
+    let hooks: Vec<_> = world
+        .get_resource::<crate::script::NativeRegistry>()
+        .map(crate::script::NativeRegistry::entity_hit_hooks)
+        .into_iter()
+        .flatten()
+        .collect();
+    if !hooks.is_empty() {
+        let entity_hit = super::entity_damage::EntityHit {
+            target: crate::ScriptModelId::from_wire(0),
+            amount: hit.amount,
+            attacker: hit.attacker,
+            means: hit.means,
+            weapon: hit.weapon,
+            point: hit.point,
+            dir: hit.dir,
+            bone: None,
+            flags: hit.flags,
+            hit_location: Some(hitloc),
+            part: None,
+        };
+        for hook in hooks {
+            if hook(world, object, &entity_hit) {
+                return;
+            }
+        }
+    }
     let attacker = match hit.attacker.map(|a| player_object(world, a.0)) {
         Some(attacker) if attacker != Value::Undefined => attacker,
         _ => hit
@@ -71,10 +101,6 @@ fn player_damage_with(
     };
     let weapon = event_weapon(world, hit.attacker.map_or(u32::MAX, |a| a.0), hit.weapon);
     let weapon = crate::script_player::weapon_name(&FrameWorld::from_world(world), weapon);
-    let hitloc = weapon_iw4::HITLOC_NAMES
-        .get(usize::from(hit.hitloc))
-        .copied()
-        .unwrap_or("none");
     let inflictor = damage_inflictor(world, hit).unwrap_or_else(|| attacker.clone());
     let args = vec![
         inflictor,
