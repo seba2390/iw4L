@@ -1,6 +1,7 @@
 //! Black Ops 2's player builtins over IW4L's player state, which the owner
 //! lends Black Ops 2 with its movement (`t6.movement.player`).
 
+use super::super::super::players::{LinkView, PlayerLink};
 use super::super::player::player;
 use super::{float, int, vector};
 use crate::ClientId;
@@ -71,6 +72,82 @@ fn activity(
     ))
 }
 
+/// The box and contents `playerphysicstrace` traces with.
+const PLAYER_BOX: ([f32; 3], [f32; 3]) = ([-15.0, -15.0, 0.0], [15.0, 15.0, 70.0]);
+const PLAYER_PHYSICS_MASK: u32 = 0x0082_0011;
+
+/// gscm_playerlinkto / gscm_playerlinktodelta: the player linked to the
+/// entity (at its tag), his view held within the arcs (180 each unless
+/// given) and turning with it by the view fraction (none unless given);
+/// the eighth argument takes the link's angles from the tag.
+fn player_link(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    view: LinkView,
+) -> Result<Value, String> {
+    let not_entity = |_| "not an entity".to_owned();
+    let id = super::super::engine::entity_id(world, receiver).map_err(not_entity)?;
+    let parent = super::super::engine::entity_id(world, args.first().unwrap_or(&Value::Undefined))
+        .map_err(not_entity)?;
+    let client = world
+        .resource::<RoundScript>()
+        .player_client(id)
+        .ok_or("not a player entity")?;
+    let tag = match args.get(1) {
+        None | Some(Value::Undefined) => None,
+        Some(_) => Some(super::string(args, 1)?),
+    }
+    .filter(|tag| !tag.is_empty());
+    let given = |index: usize, default: f32| -> Result<f32, String> {
+        if args.len() > index {
+            float(args, index)
+        } else {
+            Ok(default)
+        }
+    };
+    let arc = |index| -> Result<f32, String> { Ok(given(index, 180.0)?.clamp(0.0, 180.0)) };
+    let clamp = [-arc(5)?, arc(6)?, -arc(3)?, arc(4)?];
+    let view_fraction = given(2, 0.0)?;
+    let use_tag_angles = args.len() > 7 && int(args, 7)? != 0;
+    if parent == id
+        || tag.as_deref().is_some_and(|tag| {
+            super::super::super::presence::tag_world(world, parent, tag).is_none()
+        })
+    {
+        return Err("failed to link entity".into());
+    }
+    let (base, axis) =
+        super::super::super::players::link_parent_pose(world, parent, tag.as_deref());
+    let origin = FrameWorld::from_world(world)
+        .player(ClientId(client))
+        .map_or(base, |ps| ps.origin);
+    let delta: [f32; 3] = std::array::from_fn(|i| origin[i] - base[i]);
+    let local = std::array::from_fn(|i| (0..3).map(|j| delta[j] * axis[i][j]).sum());
+    super::super::super::players::link_player(
+        world,
+        client,
+        PlayerLink {
+            parent,
+            tag: tag.map(std::sync::Arc::from),
+            origin: local,
+            angles: [0.0; 3],
+            view,
+            clamp: Some(clamp),
+            parent_axis: axis,
+            view_fraction,
+            use_tag_angles,
+            link_axis: if use_tag_angles {
+                axis
+            } else {
+                [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+            },
+            restore_view: None,
+        },
+    );
+    Ok(Value::Undefined)
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     // gscm_giveweapon: a weapon with an offhand slot becomes the player's
     // offhand when he has none (`t6.weapons.state_machine`: by the lent
@@ -119,6 +196,33 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             world.resource::<RoundScript>().entities[&id].number,
         ))
     });
+    registry.register(Method, "playerlinkto", |world, receiver, args| {
+        player_link(world, receiver, args, LinkView::Free)
+    });
+    registry.register(Method, "playerlinktodelta", |world, receiver, args| {
+        player_link(world, receiver, args, LinkView::Delta)
+    });
+    // gsc_playerphysicstrace: where a standing player's box stops on the
+    // way, against the world and brush models.
+    registry.register(
+        Namespace::Function,
+        "playerphysicstrace",
+        |world, _, args| {
+            let (start, end) = (vector(args, 0)?, vector(args, 1)?);
+            let fraction = super::super::engine::trace(
+                world,
+                start,
+                end,
+                PLAYER_BOX.0,
+                PLAYER_BOX.1,
+                PLAYER_PHYSICS_MASK,
+            )
+            .fraction;
+            Ok(Value::Vector(std::array::from_fn(|i| {
+                (end[i] - start[i]) * fraction + start[i]
+            })))
+        },
+    );
     // IW4L's own of the same rules (`docs/fidelity/t6.md`).
     let shared = NativeRegistry::engine_services();
     for name in ["setplayerangles", "setstance", "getxuid"] {

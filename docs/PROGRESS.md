@@ -121,7 +121,7 @@ Only the top-level items count. Runs are headless, with the test player
 | Map | Builtins not implemented yet |
 |---|---|
 | Nuketown (`zm_nuked`, Classic) | 206 of 692 |
-| TranZit (`zm_transit`, Classic) | 221 of 741 |
+| TranZit (`zm_transit`, Classic) | 218 of 741 |
 | Buried (`zm_buried`, Classic) | 229 of 727 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
