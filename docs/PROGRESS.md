@@ -154,12 +154,13 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs.
   - [ ] Round 2+ script faults remain (`getdstat` in `set_global_stat`, `clearpitchorient`, `playsoundontag`).
-- [ ] Wall weapons and the Mystery Box.
+- [x] Wall weapons and the Mystery Box.
   - [x] The box takes its 950 and opens (Buried).
   - [x] Wall weapons sell through Black Ops 2's unitriggers on Nuketown, TranZit and Buried (the Olympia: 500 points, the gun changes).
   - [ ] Wall weapons filed under a zone not yet active wait for it, as in the game; their ammo buys are not shown.
   - [x] The box's weapon rises and is taken (Buried: 950 points, the Time Bomb, through Black Ops 2's box scripts and `useweaponmodel`).
-  - [ ] The box moving (the teddy bear) and Fire Sale not reached.
+  - [x] The box moves: in ten opens on Buried it gave the Time Bomb, M32, SRM1216, Ray Gun, DSR-50; on the seventh the teddy bear refunded the price (`moving_chest_now`, `box_moving`) and the box reopened in `zone_underground_courthouse2` (Saiga-12).
+  - [ ] Fire Sale's boxes (every location, 10 points) not shown; the Fire Sale power-up itself sets `zombie_powerup_fire_sale_on`.
 - [x] Doors and debris.
   - [x] Doors open for points on Nuketown, TranZit and Buried, debris clears on Nuketown and Buried, by the game's scripts through Black Ops 2's use rule (Buried: three doors and two debris piles in one run).
   - [ ] Doors and debris do not yet cut the zombies' paths while closed (see the pathing milestone).
