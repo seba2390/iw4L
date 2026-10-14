@@ -55,6 +55,9 @@ pub type TableLookup<'a> = dyn Fn(&str) -> Option<(usize, &'a [String])> + 'a;
 /// The functions a game's client engine calls in its client scripts.
 #[derive(Clone, Copy, Debug)]
 pub struct ClientCallbacks {
+    /// The local client connected, after the level's main started:
+    /// `(local client)`.
+    pub local_client_connect: &'static str,
     /// A client system's state changed: `(local client, system, state)`.
     pub state_change: &'static str,
     /// The server started a client exploder: `(exploder id)`.

@@ -931,7 +931,7 @@ pattern crates/sim/src/script/host/hud.rs playerstate_iw4:: 1
 pattern crates/sim/src/script/host/match_data.rs structured_data_iw4:: 5
 pattern crates/sim/src/script/host/mechanics.rs movement_iw4:: 4
 pattern crates/sim/src/script/host/mechanics.rs playerstate_iw4:: 1
-pattern crates/sim/src/script/host/natives/engine.rs entity_iw4:: 11
+pattern crates/sim/src/script/host/natives/engine.rs entity_iw4:: 9
 pattern crates/sim/src/script/host/natives/engine.rs playerstate_iw4:: 1
 pattern crates/sim/src/script/host/natives/engine.rs trace_iw4:: 5
 pattern crates/sim/src/script/host/natives/engine.rs weapon_iw4:: 2

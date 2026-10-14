@@ -246,8 +246,9 @@ pub(crate) fn publish(world: &mut World) {
         .retain(|id, _| rows.iter().any(|(row, _, _)| row == id));
     runtime.engine.earthquakes.retain(|quake| quake.active(now));
     let earthquakes = runtime.engine.earthquakes.clone();
+    let client_effects = crate::script::client::effect_rows(world, now);
     let mut frame = FrameWorld::from_world(world);
-    let effects = rows
+    let mut effects: Vec<ScriptEffect> = rows
         .into_iter()
         .filter(|(_, fx, _)| !absent_effects.contains(&fx.name))
         .map(|(id, fx, viewers)| ScriptEffect {
@@ -262,6 +263,23 @@ pub(crate) fn publish(world: &mut World) {
             viewers,
         })
         .collect();
+    // The local client's own effects play for it alone.
+    effects.extend(
+        client_effects
+            .into_iter()
+            .filter(|(_, fx)| !absent_effects.contains(&fx.name))
+            .map(|(id, fx)| ScriptEffect {
+                id,
+                effect: frame.effect_name_index(&fx.name),
+                origin: fx.origin,
+                forward: fx.forward,
+                up: fx.up,
+                start_ms: fx.begin_ms,
+                repeat_ms: 0,
+                cull_distance: 0.0,
+                viewers: Some(1),
+            }),
+    );
     frame.objectives = ObjectiveMatch {
         scores,
         compass,

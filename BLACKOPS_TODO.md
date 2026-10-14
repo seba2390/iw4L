@@ -9,7 +9,7 @@ This is an outline, not a specification. Each step names an outcome and how we
 know it is reached; the details are expected to change as we learn. Every step
 ends in a commit and a push.
 
-## Status (2026-10-14)
+## Status (2026-10-15)
 
 Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
 everything it pulls in): zombies spawn behind the windows, tear the boards,
@@ -35,9 +35,12 @@ exploders, mirrored snapshot entities (`entityspawned`, `playerspawned`,
 `entityshutdown`, `zombie_eye_callback`) and `setclientflag` changes reach
 them; its random ambient one-shots and its loop emitters (fires, steam,
 chandeliers, power boxes, the projector) play, and the player's footsteps
-play through `CodeCallback_PlayerFootstep`. Still unrun on the client:
-effects, lights, models, music (it needs playback feedback from the audio),
-line emitters and ambient rooms (`t5.csc.run`).
+play through `CodeCallback_PlayerFootstep`. `localclientconnect(0)` runs
+after `main`, and the client's effects play for the local client: Kino's
+190 createfx effects (`loopfx` replaying when `isfxplaying` says the last
+one died, `t5.csc.fx_lifetime`), tag effects and effect entities. Still
+unrun on the client: lights, models, music (it needs playback feedback from
+the audio), line emitters and ambient rooms (`t5.csc.run`).
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are

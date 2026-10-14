@@ -477,16 +477,31 @@ fn name(world: &World, id: i32) -> Result<String, String> {
         .ok_or_else(|| format!("effect id {id} was not loaded"))
 }
 
-fn fx_on_tag(
-    world: &mut World,
-    args: &[Value],
-    kind: entity_iw4::EntityEventKind,
-) -> Result<Value, String> {
+fn fx_on_tag(world: &mut World, args: &[Value], stop: bool) -> Result<Value, String> {
     let name = name(world, int(args, 0)?)?;
     let entity = arg(args, 1)?.clone();
     let tag = string(args, 2)?;
-    let presence = runtime(world).presence_of(&entity);
-    let fallback = (origin_of(world, &entity)?, [0.0, 0.0, 1.0]);
+    effect_on_tag(world, &name, &entity, &tag, stop, crate::EventAudience::All)?;
+    Ok(Value::Undefined)
+}
+
+/// Plays (or stops) an effect on an entity's tag for an audience; without
+/// the entity's tag, a played effect plays at its origin.
+pub(crate) fn effect_on_tag(
+    world: &mut World,
+    name: &str,
+    entity: &Value,
+    tag: &str,
+    stop: bool,
+    audience: crate::EventAudience,
+) -> Result<(), String> {
+    let kind = if stop {
+        entity_iw4::EntityEventKind::STOP_FX_ON_TAG
+    } else {
+        entity_iw4::EntityEventKind::PLAY_FX_ON_TAG
+    };
+    let presence = runtime(world).presence_of(entity);
+    let fallback = (origin_of(world, entity)?, [0.0, 0.0, 1.0]);
     let mut frame = super::super::presence::settled(world);
     let number = presence.and_then(|id| frame.gentity_number(id));
     let dobj = presence.and_then(|id| {
@@ -496,17 +511,17 @@ fn fx_on_tag(
             .find(|row| row.owner.script_model() == Some(id))?
             .dobj
             .as_ref()
-            .map(|dobj| (dobj.tag_bone(&tag), dobj.tag_world_pose(&tag)))
+            .map(|dobj| (dobj.tag_bone(tag), dobj.tag_world_pose(tag)))
     });
     let (bone, pose) = dobj.unwrap_or((None, None));
     let (origin, direction) = pose.unwrap_or(fallback);
-    let index = frame.effect_name_index(&name);
+    let index = frame.effect_name_index(name);
     match (number, bone.and_then(|bone| i32::try_from(bone).ok())) {
         (Some(number), Some(bone)) => {
             let tick = world.resource::<crate::step::StepRequest>().tick;
             crate::frame::FrameWorld::from_world(world).push_entity_event(
                 tick,
-                crate::EventAudience::All,
+                audience,
                 kind,
                 crate::EntityEventPayload {
                     number,
@@ -517,12 +532,10 @@ fn fx_on_tag(
                 },
             );
         }
-        _ if kind == entity_iw4::EntityEventKind::PLAY_FX_ON_TAG => {
-            play_fx_at(world, index, origin, direction, [0.0; 3]);
-        }
+        _ if !stop => play_fx_to(world, audience, index, origin, direction, [0.0; 3]),
         _ => {}
     }
-    Ok(Value::Undefined)
+    Ok(())
 }
 
 /// An effect at a point; with an up axis, played along forward and up.
@@ -533,8 +546,21 @@ pub(crate) fn play_fx_at(
     forward: [f32; 3],
     up: [f32; 3],
 ) {
+    play_fx_to(world, crate::EventAudience::All, index, origin, forward, up);
+}
+
+/// An effect at a point for an audience.
+pub(crate) fn play_fx_to(
+    world: &mut World,
+    audience: crate::EventAudience,
+    index: u8,
+    origin: [f32; 3],
+    forward: [f32; 3],
+    up: [f32; 3],
+) {
     world_event(
         world,
+        audience,
         entity_iw4::EntityEventKind::PLAY_FX,
         index,
         origin,
@@ -545,6 +571,7 @@ pub(crate) fn play_fx_at(
 
 fn world_event(
     world: &mut World,
+    audience: crate::EventAudience,
     kind: entity_iw4::EntityEventKind,
     index: u8,
     origin: [f32; 3],
@@ -554,7 +581,7 @@ fn world_event(
     let tick = world.resource::<crate::step::StepRequest>().tick;
     crate::frame::FrameWorld::from_world(world).push_entity_event(
         tick,
-        crate::EventAudience::All,
+        audience,
         kind,
         crate::EntityEventPayload {
             number: i32::from(trace_iw4::ENTITYNUM_WORLD),
@@ -685,6 +712,7 @@ pub(crate) fn sound_alias_event(
     }
     world_event(
         world,
+        crate::EventAudience::All,
         entity_iw4::EntityEventKind::SOUND_ALIAS,
         index,
         origin,
@@ -1591,10 +1619,10 @@ fn register_sound_and_fx(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "playfxontag", |world, _, args| {
-        fx_on_tag(world, args, entity_iw4::EntityEventKind::PLAY_FX_ON_TAG)
+        fx_on_tag(world, args, false)
     });
     registry.register(Function, "stopfxontag", |world, _, args| {
-        fx_on_tag(world, args, entity_iw4::EntityEventKind::STOP_FX_ON_TAG)
+        fx_on_tag(world, args, true)
     });
     registry.register(Function, "playsoundatpos", |world, _, args| {
         let origin = vector(args, 0)?;
