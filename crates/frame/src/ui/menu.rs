@@ -7,6 +7,11 @@ pub struct UnifiedFrontend(pub bool);
 #[derive(Resource, Default)]
 pub struct NativeGameMenu(pub bool);
 
+/// The local match is paused by its game's menu: the authority does not step
+/// and the local client neither predicts nor sends commands.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MatchPause(pub bool);
+
 #[derive(Resource, Default, Debug)]
 pub struct UiPartyState {
     pub active: bool,

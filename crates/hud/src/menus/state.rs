@@ -43,6 +43,8 @@ pub struct ScriptMenus {
     pub(crate) slider_drag: Option<(String, usize)>,
     pub(crate) binding_menu: Option<String>,
     pub(crate) bind_requests: Vec<String>,
+    /// The in-game menu key opened a menu its game pauses an offline match under.
+    pub(crate) pause_requested: bool,
 }
 
 impl ScriptMenus {

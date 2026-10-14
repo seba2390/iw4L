@@ -425,10 +425,12 @@ pub fn authority_should_tick(
     role: Res<RuntimeRole>,
     world: Option<Res<AuthorityWorld>>,
     hold: Option<Res<AuthorityLoadHold>>,
+    pause: Option<Res<frame::MatchPause>>,
 ) -> bool {
     role.runs_authority()
         && world.is_some_and(|world| world.0.clip_brush_count() > 0)
         && hold.is_some_and(|h| !h.0)
+        && !pause.is_some_and(|pause| pause.0)
 }
 
 fn release_authority(

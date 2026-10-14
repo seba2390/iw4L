@@ -316,10 +316,12 @@ pub trait GameMenus: Sync {
 pub enum InGameMenu {
     /// The menu the `g_scriptMainMenu` dvar names.
     ScriptMainMenu,
-    /// `menu`, once `requires` is loaded too.
+    /// `menu`, once `requires` is loaded too; an offline match pauses while
+    /// a menu is up when `pauses_offline`.
     Named {
         menu: &'static str,
         requires: Option<&'static str>,
+        pauses_offline: bool,
     },
 }
 

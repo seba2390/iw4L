@@ -423,6 +423,7 @@ pub fn advance_cg_frame_clock(
     role: Res<RuntimeRole>,
     fixed: Res<Time<Fixed>>,
     adopted: Option<Res<LastAdoptedSnapshot>>,
+    pause: Option<Res<frame::MatchPause>>,
 ) {
     let was_started = clock.started();
     let adopted_tick = adopted.as_ref().and_then(|a| a.next().map(|s| s.tick));
@@ -433,7 +434,13 @@ pub fn advance_cg_frame_clock(
         .or_else(|| adopted_tick.map(ServerTime::from_tick));
     if *role == RuntimeRole::Listen && cgame_active.0 && was_started {
         let server = authority.as_ref().expect("listen authority clock").time_ms;
-        clock.assign_server_time(server.wrapping_add(fixed.overstep().as_millis() as i32));
+        // A paused match's time stands at its last tick.
+        let overstep = if pause.is_some_and(|pause| pause.0) {
+            0
+        } else {
+            fixed.overstep().as_millis() as i32
+        };
+        clock.assign_server_time(server.wrapping_add(overstep));
     } else if *role == RuntimeRole::Replay {
         if cgame_active.0
             && let Some(server) = server_time
@@ -1556,6 +1563,7 @@ pub fn predict_local_move(
     proxy: Res<RemoteProxyState>,
     cls: Res<ClientRealtime>,
     cg_clock: Res<FrameClock>,
+    pause: Option<Res<frame::MatchPause>>,
     trace: Option<ResMut<ClientPhaseTrace>>,
 ) {
     push_phase(trace, "Predict");
@@ -1563,7 +1571,8 @@ pub fn predict_local_move(
     if *role != RuntimeRole::Replay {
         let _tick = clock.tick(time.delta_secs() * 1000.0);
     }
-    if !gate.local_cmds_enabled
+    if pause.is_some_and(|pause| pause.0)
+        || !gate.local_cmds_enabled
         || !prediction.0.is_armed()
         || !template.ready
         || !cg_clock.started()
