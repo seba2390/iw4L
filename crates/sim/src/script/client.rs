@@ -96,6 +96,25 @@ pub(crate) enum ClientMessage {
     /// A client exploder the server started (a positive id) or stopped
     /// (a negative one), for every client.
     Exploder(i32),
+    /// The local player stepped (its movement type and surface).
+    Footstep(&'static str, &'static str),
+}
+
+/// A local player's footstep, for its client scripts.
+pub(crate) fn footstep(
+    server: &mut World,
+    client: crate::ClientId,
+    kind: &'static str,
+    surface: &'static str,
+) {
+    if client.0 != 0 || !server.contains_resource::<ClientScripts>() {
+        return;
+    }
+    if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
+        runtime
+            .client_messages
+            .push(ClientMessage::Footstep(kind, surface));
+    }
 }
 
 /// A sound the client plays itself (`playsound`).
@@ -356,6 +375,21 @@ fn run_frame(
                 (callbacks.deactivate_exploder, vec![Value::Int(-id)])
             }
             ClientMessage::Exploder(id) => (callbacks.activate_exploder, vec![Value::Int(id)]),
+            // Black Ops calls it for the first person, never quiet.
+            ClientMessage::Footstep(kind, surface) => {
+                let player = world.resource::<ClientView>().locals[0].object;
+                (
+                    callbacks.footstep,
+                    vec![
+                        Value::Int(0),
+                        Value::Object(player),
+                        Value::string(kind),
+                        Value::string(surface),
+                        Value::Int(1),
+                        Value::Int(0),
+                    ],
+                )
+            }
         };
         if let Err(fault) = super::runtime::start(world, function, Value::level(), args) {
             diag::warn!(Sim, "csc: {function} not started: {fault}");

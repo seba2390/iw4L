@@ -179,6 +179,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         world.resource_mut::<ClientOutput>().loops.remove(&source);
         Ok(Value::Undefined)
     });
+    // Whether the entity is under water: the runtime takes Black Ops'
+    // players as dry (`t5.movement.water`).
+    registry.register(Method, "underwater", |world, receiver, _| {
+        super::engine::entity_id(world, receiver)?;
+        Ok(Value::Int(0))
+    });
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));

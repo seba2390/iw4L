@@ -81,7 +81,7 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
 fn events_unknown() -> &'static Unknown {
     unknown!(
         "t5.movement.events",
-        "Black Ops' movement events and player animations are not played: footsteps, landings, fall damage, stance and jump sounds, the legs and torso animations others see",
+        "Black Ops' movement events and player animations are not played: landings, fall damage, stance and jump sounds, other players' footsteps, the legs and torso animations others see",
         "Black Ops' client event handling and player animation script from its executable"
     )
 }
@@ -845,6 +845,28 @@ impl PlayerMovement for T5Movement {
         world: &dyn game_api::fire::FireWorld,
     ) {
         crate::missile::reset_detonation_time(missile, after_ms, world);
+    }
+
+    /// Black Ops' client names a footstep event's movement type and its
+    /// parm's surface for `CodeCallback_PlayerFootstep`.
+    fn footstep(&self, signal: &MoveSignal) -> Option<(&'static str, &'static str)> {
+        use movement_t5::events::event;
+        let MoveSignal::Event { event, parm } = *signal else {
+            return None;
+        };
+        let kind = match event {
+            event::FOOTSTEP_SPRINT => "sprint",
+            event::FOOTSTEP_RUN => "run",
+            event::FOOTSTEP_WALK => "walk",
+            event::FOOTSTEP_CROUCH_RUN => "crouch_run",
+            event::FOOTSTEP_CROUCH_WALK => "crouch_walk",
+            event::FOOTSTEP_PRONE => "prone",
+            _ => return None,
+        };
+        let surface = crate::grenade::SURFACE_NAMES
+            .get(usize::try_from(parm).ok()?)
+            .copied()?;
+        Some((kind, surface))
     }
 
     fn clear_perks(&self, player: &mut MovePlayer) {

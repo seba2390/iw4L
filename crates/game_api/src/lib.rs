@@ -61,6 +61,9 @@ pub struct ClientCallbacks {
     pub activate_exploder: &'static str,
     /// The server stopped a client exploder: `(exploder id)`.
     pub deactivate_exploder: &'static str,
+    /// A local player stepped: `(local client, player, movement type,
+    /// surface, first person, quiet)`.
+    pub footstep: &'static str,
 }
 
 /// What a match compiles and where it starts.

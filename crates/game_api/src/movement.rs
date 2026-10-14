@@ -379,6 +379,12 @@ pub trait PlayerMovement: Sync {
     /// test it.
     fn weapon_activity(&self, player: &MovePlayer) -> WeaponActivity;
 
+    /// A footstep a movement signal is, as the game's client scripts are
+    /// told of it: its movement type and the surface's name.
+    fn footstep(&self, _signal: &MoveSignal) -> Option<(&'static str, &'static str)> {
+        None
+    }
+
     /// The weapon notifies a server frame raises on the player.
     fn weapon_notifies(
         &self,
