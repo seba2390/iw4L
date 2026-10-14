@@ -388,8 +388,82 @@ fn overheated<W: MoveWorld>(pm: &Pm<'_, W>, weapon: u32) -> bool {
     if def(pm, weapon).def.overheat_weapon() == 0 {
         return false;
     }
-    pm.gap(Gap::Overheat);
     inv::held(pm.ps, weapon).is_some_and(|h| h.overheating || h.heat >= 100.0)
+}
+
+/// A held weapon's heat percentage and whether it is overheating.
+pub fn heat(ps: &PlayerState, weapon: u32) -> (f32, bool) {
+    inv::held(ps, weapon).map_or((0.0, false), |h| (h.heat, h.overheating || h.heat >= 100.0))
+}
+
+/// Adds `delta` to a held weapon's heat and updates its overheating latch.
+pub fn add_heat_raw(
+    ps: &mut PlayerState,
+    weapon: u32,
+    delta: f32,
+    end_val: f32,
+    overheat_weapon: bool,
+) {
+    let Some(held) = inv::held_mut(ps, weapon) else {
+        return;
+    };
+    held.heat += delta;
+    if held.heat >= 100.0 {
+        held.heat = 100.0;
+        held.overheating = true;
+    }
+    if held.heat < 0.0 {
+        held.heat = 0.0;
+    }
+    if held.heat <= end_val || !overheat_weapon {
+        held.overheating = false;
+    }
+}
+
+/// Steps each held weapon's heat and cooldown for the frame (`pml.msec`).
+pub(crate) fn update_weapon_heat<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
+    let msec = pml.msec.max(0) as f32;
+    let start = pm
+        .ps
+        .held_weapons
+        .iter()
+        .position(|h| h.weapon == pm.ps.weapon && (pm.ps.weapon & 0xff) != 0)
+        .unwrap_or(0);
+    let len = pm.ps.held_weapons.len();
+    for offset in 0..len {
+        let slot = (start + offset) % len;
+        let weapon = pm.ps.held_weapons[slot].weapon;
+        if (weapon & 0xff) == 0 {
+            continue;
+        }
+        let d = def(pm, weapon).def;
+        let end_val = d.overheat_end_val();
+        let overheat_weap = d.overheat_weapon() != 0;
+        let overheat_rate = d.overheat_rate();
+        let cooldown_rate = d.cooldown_rate();
+        let cool_firing = d.cool_while_firing();
+        let firing = matches!(pm.ps.weaponstate, ws::FIRING | ws::CONT_FIRE_LOOP)
+            && pm.ps.weapon == weapon
+            && pm.ps.water_level < 4;
+        if firing {
+            add_heat_raw(
+                pm.ps,
+                weapon,
+                msec * overheat_rate * 0.001,
+                end_val,
+                overheat_weap,
+            );
+        }
+        if !firing || cool_firing {
+            add_heat_raw(
+                pm.ps,
+                weapon,
+                -(msec * cooldown_rate * 0.001),
+                end_val,
+                overheat_weap,
+            );
+        }
+    }
 }
 
 /// The left gun runs its own state; otherwise it copies the right hand's.

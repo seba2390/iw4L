@@ -494,9 +494,16 @@ fn add_heat(world: &mut World, client: u32, def: &ZoneWeapon, delta: f32) {
     }
 }
 
-fn is_overheating(world: &World, client: u32, def: &ZoneWeapon) -> bool {
+fn is_overheating(world: &mut World, client: u32, def: &ZoneWeapon) -> bool {
     if !def.overheat_weapon {
         return false;
+    }
+    if let Some(frame) = FrameWorld::try_from_world(world)
+        && let Ok(weapon) = script_player::weapon_named(&frame, &def.name)
+        && let Some((_, over)) =
+            crate::game_move::weapon_heat(&frame, crate::ClientId(client), weapon)
+    {
+        return over;
     }
     world
         .get_resource::<WeaponHeat>()
@@ -504,9 +511,16 @@ fn is_overheating(world: &World, client: u32, def: &ZoneWeapon) -> bool {
         .is_some_and(|(heat, over)| over || heat >= 100.0)
 }
 
-fn heat_value(world: &World, client: u32, def: &ZoneWeapon) -> f32 {
+fn heat_value(world: &mut World, client: u32, def: &ZoneWeapon) -> f32 {
     if !def.overheat_weapon {
         return 0.0;
+    }
+    if let Some(frame) = FrameWorld::try_from_world(world)
+        && let Ok(weapon) = script_player::weapon_named(&frame, &def.name)
+        && let Some((heat, _)) =
+            crate::game_move::weapon_heat(&frame, crate::ClientId(client), weapon)
+    {
+        return heat;
     }
     world
         .get_resource::<WeaponHeat>()
@@ -831,6 +845,19 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
             return Ok(Value::Undefined);
         };
         if def.overheat_weapon {
+            if let Some(mut frame) = FrameWorld::try_from_world(world)
+                && let Ok(weapon) = script_player::weapon_named(&frame, &def.name)
+            {
+                let _ = crate::game_move::set_weapon_heat(
+                    &mut frame,
+                    client,
+                    weapon,
+                    overheating,
+                    heat,
+                    def.overheat_end_val,
+                    def.overheat_weapon,
+                );
+            }
             if overheating {
                 add_heat(world, client.0, &def, 100.0);
                 add_heat(world, client.0, &def, heat - 100.0);
@@ -843,11 +870,12 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "getcurrentweaponspinlerp", |world, receiver, _| {
         let client = player_entity(world, receiver)?;
-        let has_weapon = FrameWorld::from_world(world)
-            .player(client)
-            .is_some_and(|ps| ps.weapon != 0);
-        if !has_weapon {
+        let frame = FrameWorld::from_world(world);
+        if !frame.player(client).is_some_and(|ps| ps.weapon != 0) {
             return Ok(Value::Float(0.0));
+        }
+        if let Some(spin) = crate::game_move::weapon_spin(&frame, client) {
+            return Ok(Value::Float(spin));
         }
         let spin = world
             .get_resource::<WeaponSpin>()
@@ -861,6 +889,9 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         |world, receiver, args| {
             let client = player_entity(world, receiver)?;
             let spin = super::float(args, 0)?;
+            if let Some(mut frame) = FrameWorld::try_from_world(world) {
+                let _ = crate::game_move::set_weapon_spin(&mut frame, client, spin);
+            }
             world
                 .get_resource_or_insert_with(WeaponSpin::default)
                 .0

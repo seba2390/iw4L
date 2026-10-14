@@ -46,7 +46,6 @@ pub enum Gap {
     Launched = 32,
     AnimLock = 64,
     SpecialMove = 128,
-    Overheat = 256,
     /// A held weapon's attachments: IW4L's weapons carry none.
     Attachments = 512,
     /// The fast-ADS perk skips sniper player animation types, which
@@ -231,7 +230,6 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::Launched,
             Gap::AnimLock,
             Gap::SpecialMove,
-            Gap::Overheat,
             Gap::Attachments,
             Gap::AdsPerkAnimTypes,
         ]

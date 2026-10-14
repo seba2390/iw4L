@@ -54,11 +54,6 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
             "a shellshocked Black Ops 2 player moves at full speed",
             "the movement scale in Black Ops 2's shellshock files"
         ),
-        Gap::Overheat => unknown!(
-            "t6.weapons.overheat",
-            "Black Ops 2's weapon heat: a weapon that overheats never does",
-            "Black Ops 2's weapon heat rules from its executable"
-        ),
         Gap::Launched => unknown!(
             "t6.movement.launch",
             "Black Ops 2's bayonet launch",
@@ -108,14 +103,6 @@ fn variant_parent_unknown() -> &'static Unknown {
         "t6.weapons.variant_parent",
         "a Black Ops 2 charge-shot weapon keeps its own clip and rounds instead of those of the weapon its variant loads under",
         "each weapon's parent variant (the weapon whose alternate or dual-wield chain loads it) in IW4L's Black Ops 2 weapon data"
-    )
-}
-
-fn view_weapon_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.viewmodel.view_weapon",
-        "while Black Ops 2 shows the offhand being thrown or the melee weapon in first person, the runtime's viewmodel keeps the held weapon (or none)",
-        "Black Ops 2's viewmodel weapon rule in the runtime's first-person view"
     )
 }
 
@@ -365,6 +352,7 @@ fn game_state(
     b.word(&mut ps.other_flags, write);
     for held in &mut ps.held_weapons {
         b.word(&mut held.weapon, write);
+        b.f(&mut held.heat, write);
         b.i(&mut held.fuel, write);
         held_flags(held, &mut b, write);
     }
@@ -587,14 +575,13 @@ impl PlayerMovement for T6Movement {
         if cmd.melee_charge_dist != 0 {
             outcome.gaps.push(melee_lunge_unknown());
         }
+        let view_weapon;
         {
             let mut pm = Pm::new(&mut ps, t6cmd, last, mask, &adapter);
             pm.zombiemode = self.zombies;
             pm.client_side = context.predicting;
             let out = movement_t6::pmove(&mut pm);
-            if movement_t6::weapon::view_weapon(&pm) != pm.ps.weapon {
-                outcome.gaps.push(view_weapon_unknown());
-            }
+            view_weapon = movement_t6::weapon::view_weapon(&pm);
             outcome.walking = out.walking;
             outcome.bounds = Some((out.mins, out.maxs));
             outcome.touched = pm.touched().iter().map(|&e| shared_entity(e)).collect();
@@ -632,6 +619,7 @@ impl PlayerMovement for T6Movement {
             };
         }
         pack(player, &mut ps, &mut last);
+        player.view_weapon = (view_weapon != player.weapon).then_some(view_weapon);
         outcome
     }
 
@@ -913,6 +901,58 @@ impl PlayerMovement for T6Movement {
     fn clear_perks(&self, player: &mut MovePlayer) {
         let (mut ps, mut last) = unpack(player);
         ps.perks = [0; 2];
+        pack(player, &mut ps, &mut last);
+    }
+
+    fn weapon_spin(&self, player: &MovePlayer) -> f32 {
+        let mut copy = *player;
+        let (ps, _) = unpack(&mut copy);
+        ps.weapon_spin_lerp
+    }
+
+    fn set_weapon_spin(&self, player: &mut MovePlayer, spin: f32) {
+        let (mut ps, mut last) = unpack(player);
+        ps.weapon_spin_lerp = spin;
+        pack(player, &mut ps, &mut last);
+    }
+
+    fn weapon_heat(&self, player: &MovePlayer, weapon: u32) -> (f32, bool) {
+        let mut copy = *player;
+        let (ps, _) = unpack(&mut copy);
+        movement_t6::weapon::heat(&ps, weapon)
+    }
+
+    fn set_weapon_heat(
+        &self,
+        player: &mut MovePlayer,
+        weapon: u32,
+        overheating: bool,
+        heat: f32,
+        end_val: f32,
+        overheat_weapon: bool,
+    ) {
+        let (mut ps, mut last) = unpack(player);
+        for (i, h) in player.held.iter().enumerate() {
+            if h.weapon == weapon && ps.held_weapons[i].weapon != weapon {
+                ps.held_weapons[i] = movement_t6::state::HeldWeapon {
+                    weapon,
+                    ..movement_t6::state::HeldWeapon::default()
+                };
+            }
+        }
+        if overheating {
+            movement_t6::weapon::add_heat_raw(&mut ps, weapon, 100.0, end_val, overheat_weapon);
+            movement_t6::weapon::add_heat_raw(
+                &mut ps,
+                weapon,
+                heat - 100.0,
+                end_val,
+                overheat_weapon,
+            );
+        } else {
+            movement_t6::weapon::add_heat_raw(&mut ps, weapon, -100.0, end_val, overheat_weapon);
+            movement_t6::weapon::add_heat_raw(&mut ps, weapon, heat, end_val, overheat_weapon);
+        }
         pack(player, &mut ps, &mut last);
     }
 }
