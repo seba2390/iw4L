@@ -209,7 +209,7 @@ fn refresh(
     state.input.client_fields.clear();
     state.input.lui_notifies.clear();
     if let Some(meta) = snapshot.meta.for_client(local.0) {
-        let weapon = weapon_iw4::get_viewmodel_weapon_index(ps);
+        let weapon = ps.weapon;
         let bound_weapons = weapons
             .as_ref()
             .and_then(|w| w.for_snapshot(presented.weapon_epoch()).ok());
