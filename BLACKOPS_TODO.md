@@ -9,12 +9,15 @@ This is an outline, not a specification. Each step names an outcome and how we
 know it is reached; the details are expected to change as we learn. Every step
 ends in a commit and a push.
 
-## Status (2026-10-12)
+## Status (2026-10-14)
 
 Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
 everything it pulls in): zombies spawn behind the windows, tear the boards,
 climb through and run at the player, drawn with their animations. Builtins the
-runtime lacks are reported per call site instead of stopping the match.
+runtime lacks are reported per call site instead of stopping the match. A
+Kino start raises six script faults: four from the auto turret's builtins and
+the `is_in_array` pair in `movie_reels_init`, which Black Ops' own VM raises
+too (it refuses `==` on arrays).
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are
@@ -32,10 +35,15 @@ Revive self-revive (`m1911_upgraded_zm` in hand), `startrevive`/`stoprevive`
 and game over (`t5.match.last_stand` closed); a solo
 game over fails the level as Black Ops does, blurs the view to 32 over the
 death delay, draws any `ui_deadquote` (`CG_DEADQUOTE`), and reloads Kino
-(`t5.match.level_failed`: no save games, timescale ramp or sound-mixer fade). There is
+(`t5.match.level_failed`: no save games, timescale ramp or sound-mixer fade;
+#156). Every hit blurs the view through `_gameskill`'s `startfadingblur`.
+The test player (`IW4L_TEST_PLAYER`, #148) plays Kino's rounds, buys, revives
+and goes down by itself; going down and `reviveplayer` raise Black Ops'
+stance events (#149). There is
 no code-drawn HUD yet (`t5.hud.code_hud`); Black Ops' HUD menus (weapon
-info, dpad, points column) and the zombie scripts' hud elems (round chalk and intro,
-point popups, game over) are drawn by its own rules, and there are no
+info, dpad, points column; in its name-hash order and safe area, #151, #153)
+and use hints with their icons, and the zombie scripts' hud elems (round
+chalk and intro, point popups, game over), are drawn by its own rules, and there are no
 Modern Warfare 2 sounds. Weapons sound by Black Ops' client rules: a
 player's fire, reload, raise and putaway events reach every client, which
 plays the weapon's own player or world sound; another player's automatic
@@ -155,8 +163,7 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Players spawn through the zombie scripts and receive their loadout
       (the M1911 in first person, 500 points).
 - [ ] Close the remaining builtin gaps the scripts report while a round runs
-      (left at startup: the auto-turret calls, `is_in_array` on arrays (the
-      VM's array equality, ledgered), the footstep aliases and
+      (left at startup: the auto-turret calls, the footstep aliases and
       `uin_transition_zombie_theater`, which only the scripts' no-client-script
       fallbacks ask for).
 - [x] Rounds, zombie spawning, points for hits and kills, wall weapons (use
