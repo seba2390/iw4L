@@ -545,6 +545,7 @@ pub(super) struct Iw5WeaponBundle {
     pub(super) fpv: FpvMeshBuild,
     pub(super) world_guns: WorldWeaponBuild,
     pub(super) xanims: XAnimBuild,
+    pub(super) player_anim_sources: asset_anim::PlayerAnimSources,
 
     pub(super) materials: MaterialCatalog,
     pub(super) stats_tables: Vec<asset_game::CapturedStringTable>,
@@ -617,6 +618,7 @@ pub(super) fn walk_iw5_weapon_bundle(
             fpv: census.fpv,
             world_guns: census.world_weapons,
             xanims: census.xanims,
+            player_anim_sources: census.player_anim_sources,
             materials: census.material_population,
             stats_tables: census.cac_tables,
             scene_models: census.scene_models,
@@ -678,6 +680,7 @@ pub(super) fn walk_shared_iw5_common(
             fpv: census.fpv,
             world_guns: census.world_weapons,
             xanims: census.xanims,
+            player_anim_sources: census.player_anim_sources,
             materials: MaterialCatalog::default(),
             stats_tables: census.cac_tables,
             scene_models: census.scene_models,
@@ -752,6 +755,7 @@ pub(super) struct T5WeaponCommon {
     pub(super) world_guns: WorldWeaponBuild,
     pub(super) material_seed: MaterialCatalog,
     pub(super) xanims: XAnimBuild,
+    pub(super) player_anim_sources: asset_anim::PlayerAnimSources,
     pub(super) fx: FxCatalog,
     pub(super) impact_fx: Option<asset_game::OwnedFxImpactTable>,
     pub(super) projectiles: asset_model::ProjectileMeshBuild,
@@ -773,6 +777,7 @@ impl T5WeaponCommon {
             world_guns: WorldWeaponBuild::default(),
             material_seed,
             xanims: XAnimBuild::default(),
+            player_anim_sources: asset_anim::PlayerAnimSources::default(),
             fx: FxCatalog::default(),
             impact_fx: None,
             projectiles: asset_model::ProjectileMeshBuild::default(),
@@ -839,6 +844,7 @@ pub(super) fn walk_t5_weapon_common(
         world_guns: census.world_weapons,
         material_seed: census.material_population,
         xanims: census.xanims,
+        player_anim_sources: census.player_anim_sources,
         fx: census.fx,
         impact_fx: census.impact_fx,
         projectiles: census.projectile_meshes,
@@ -908,26 +914,48 @@ pub(super) fn walk_t6_weapon_bundle(
     Vec<asset_game::CapturedStringTable>,
     Vec<String>,
     Vec<(String, asset_material::material_images::ZoneUiImage)>,
+    asset_anim::PlayerAnimSources,
 ) {
     let mut report = Vec::new();
     if runtime_common.is_some_and(|path| {
         asset_transport::t6_content::T6ContentMode::for_path(path)
             == asset_transport::t6_content::T6ContentMode::Zombies
     }) {
-        return (WeaponBuild::default(), None, Vec::new(), report, Vec::new());
+        return (
+            WeaponBuild::default(),
+            None,
+            Vec::new(),
+            report,
+            Vec::new(),
+            Default::default(),
+        );
     }
     let root = match games_root_from_env() {
         Ok(root) => root,
         Err(error) => {
             report.push(format!("t6 weapons: {error}"));
-            return (WeaponBuild::default(), None, Vec::new(), report, Vec::new());
+            return (
+                WeaponBuild::default(),
+                None,
+                Vec::new(),
+                report,
+                Vec::new(),
+                Default::default(),
+            );
         }
     };
     let donor = match find_common_mp_for_envelope(&root, fastfile_t6::ZONE_VERSION_PC) {
         Ok(donor) => donor,
         Err(error) => {
             report.push(format!("t6 weapons: {error}"));
-            return (WeaponBuild::default(), None, Vec::new(), report, Vec::new());
+            return (
+                WeaponBuild::default(),
+                None,
+                Vec::new(),
+                report,
+                Vec::new(),
+                Default::default(),
+            );
         }
     };
     let tables = t6_class_tables(&root, &mut report);
@@ -936,7 +964,14 @@ pub(super) fn walk_t6_weapon_bundle(
             "t6 weapons: runtime common already owns {}; donor walk skipped",
             donor.path.display()
         ));
-        return (WeaponBuild::default(), None, tables, report, Vec::new());
+        return (
+            WeaponBuild::default(),
+            None,
+            tables,
+            report,
+            Vec::new(),
+            Default::default(),
+        );
     }
     let stage = progress.begin_scoped(StageId::CommonAssets, "t6_weapons", None);
     let opened = open_zone_shared(&donor.path).map_err(|error| error.to_string());
@@ -948,7 +983,14 @@ pub(super) fn walk_t6_weapon_bundle(
                 "t6 weapons: open {}: {error}",
                 donor.path.display()
             ));
-            return (WeaponBuild::default(), None, Vec::new(), report, Vec::new());
+            return (
+                WeaponBuild::default(),
+                None,
+                Vec::new(),
+                report,
+                Vec::new(),
+                Default::default(),
+            );
         }
     };
     let census = lane(image.game).load_common_mp(
@@ -967,6 +1009,7 @@ pub(super) fn walk_t6_weapon_bundle(
         tables,
         report,
         census.ui_images,
+        census.player_anim_sources,
     )
 }
 

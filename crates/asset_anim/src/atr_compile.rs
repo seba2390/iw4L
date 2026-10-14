@@ -28,6 +28,54 @@ pub(crate) fn compile_multiplayer(
         names.insert((*name).to_owned());
     }
     harvest_script_anim_names(script, &mut names);
+    compile_named_tree(atr, names)
+}
+
+pub(crate) fn compile_selected_multiplayer(
+    atr: &[u8],
+    tree: &CompiledAnimTreeDefinition,
+    script: &crate::ParsedPlayerAnimScript,
+) -> Result<Arc<CompiledAnimTreeDefinition>, AtrCompileError> {
+    let mut names: HashSet<String> = BG_FIND_ANIM_NAMES
+        .iter()
+        .map(|name| (*name).into())
+        .collect();
+    for (_, _, items) in &script.slots {
+        add_selected_names(&mut names, tree, items);
+    }
+    for (_, items) in &script.events {
+        add_selected_names(&mut names, tree, items);
+    }
+    let tree = compile_named_tree(atr, names)?;
+    if tree.node_count() > usize::from(anim_iw4::PLAYER_ANIM_INDEX_MASK) + 1 {
+        return Err(AtrCompileError::BadToken {
+            offset: 0,
+            message: "character animation tree exceeds packed index capacity".into(),
+        });
+    }
+    Ok(tree)
+}
+
+fn add_selected_names(
+    names: &mut HashSet<String>,
+    tree: &CompiledAnimTreeDefinition,
+    items: &[crate::ParsedAnimItem],
+) {
+    for command in items
+        .iter()
+        .filter(|item| !item.skip)
+        .flat_map(|item| &item.commands)
+    {
+        if let Some(node) = tree.node(command.anim_index) {
+            names.insert(node.name.clone());
+        }
+    }
+}
+
+fn compile_named_tree(
+    atr: &[u8],
+    names: HashSet<String>,
+) -> Result<Arc<CompiledAnimTreeDefinition>, AtrCompileError> {
     let script_names = names.len();
     let mut ignored = 0usize;
     let children = parse_atr(atr, &names, &mut ignored)?;

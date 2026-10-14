@@ -23,9 +23,16 @@ const IW4L_MISSILES: MissileRule = MissileRule {
 };
 
 fn iw4l_launched(world: &mut World, projectile: &crate::ProjectileState) -> Option<MissileLaunch> {
-    let weap_type = FrameWorld::from_world(world)
-        .combat_facts_for(projectile.weapon)
-        .map_or(-1, |facts| facts.weap_type);
+    let frame = FrameWorld::from_world(world);
+    let weap_type = frame
+        .equipment_facts_for(projectile.weapon)
+        .map(|facts| facts.weap_type)
+        .or_else(|| {
+            frame
+                .combat_facts_for(projectile.weapon)
+                .map(|facts| facts.weap_type)
+        })
+        .unwrap_or(-1);
     let (classname, notify) = match weap_type {
         WEAPTYPE_GRENADE => ("grenade", "grenade_fire"),
         WEAPTYPE_PROJECTILE => ("rocket", "missile_fire"),
@@ -213,6 +220,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 angles,
                 ..Default::default()
             });
+            crate::remote_missile::mark_remote(frame.ecs(), id);
         }
         Ok(Value::Undefined)
     });
@@ -429,11 +437,6 @@ pub(crate) fn publish_projectile_launches(world: &mut World) {
 }
 
 fn adopt_fired(world: &mut World) {
-    let now = now_ms(world);
-    let seen = std::mem::replace(
-        &mut world.resource_mut::<RoundScript>().missiles_seen_ms,
-        now,
-    );
     let touches = world
         .resource::<RoundScript>()
         .grenade_touches
@@ -444,7 +447,7 @@ fn adopt_fired(world: &mut World) {
     let fresh: Vec<crate::ProjectileState> = crate::frame::collect_projectiles(world)
         .into_iter()
         .chain(touches)
-        .filter(|p| p.live && p.spawn_time_ms > seen)
+        .filter(|p| p.live)
         .filter(|p| !world.resource::<RoundScript>().missiles.contains_key(&p.id))
         .filter(|p| adopted.insert(p.id))
         .collect();

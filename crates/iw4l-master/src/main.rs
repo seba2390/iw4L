@@ -34,8 +34,8 @@ const CONTROL_PRIORITY: i32 = 0;
 
 const BOOTSTRAP_PRIORITY: i32 = -32;
 const CLI_DEADLINE: Duration = Duration::from_secs(8);
-const BOOTSTRAP_FORWARD: Duration = Duration::from_secs(8);
-const HELLO_DEADLINE: Duration = Duration::from_secs(8);
+const BOOTSTRAP_FORWARD: Duration = SESSION_IDLE;
+const HELLO_DEADLINE: Duration = Duration::from_secs(20);
 const MAX_CONNECTIONS: usize = 256;
 /// A household or a LAN party shares one address.
 const MAX_CONNECTIONS_PER_ADDRESS: usize = 32;
@@ -44,6 +44,9 @@ const CLOSE_SERVICE_ERROR: u32 = 1;
 const CLOSE_SERVICE_DONE: u32 = 0;
 
 const MAX_CLOSE_REASON_BYTES: usize = 120;
+
+const DATAGRAM_SEND_BUFFER: usize = 128 * 1024;
+const RELAY_BACKLOG_BYTES: usize = 16 * 1024;
 
 struct AddressSlot {
     counts: Arc<std::sync::Mutex<HashMap<IpAddr, usize>>>,
@@ -116,6 +119,7 @@ struct ClientTarget {
 }
 
 struct Peer {
+    online: Option<Instant>,
     player_name: String,
     connection: quinn::Connection,
     control_tx: tokio::sync::mpsc::Sender<ControlFrame>,
@@ -185,6 +189,7 @@ impl ServiceState {
         self.peers.insert(
             connection_id,
             Peer {
+                online: None,
                 player_name,
                 connection,
                 control_tx,
@@ -543,7 +548,10 @@ async fn serve(bind: SocketAddr, cert_path: &Path, key_path: &Path) -> Result<()
     ));
     transport.keep_alive_interval(Some(SESSION_KEEP_ALIVE));
     transport.datagram_receive_buffer_size(Some(128 * 1024));
-    transport.datagram_send_buffer_size(128 * 1024);
+    transport.datagram_send_buffer_size(DATAGRAM_SEND_BUFFER);
+    transport.congestion_controller_factory(Arc::new(
+        master_protocol::congestion::StallTolerantConfig::default(),
+    ));
 
     let endpoint = quinn::Endpoint::server(config, bind)?;
     let state = Arc::new(Mutex::new(ServiceState::default()));
@@ -678,6 +686,7 @@ async fn run_connection(
         connection.clone(),
         control_tx,
     );
+    let mut relay_gate = RelayGate::default();
     let mut children = tokio::task::JoinSet::new();
     children.spawn(async move {
         let result = async {
@@ -739,7 +748,7 @@ async fn run_connection(
             }
             datagram = connection.read_datagram() => {
                 let bytes = datagram?;
-                if let Err(error) = relay_datagram(state, connection_id, &bytes).await {
+                if let Err(error) = relay_datagram(state, connection_id, &bytes, &mut relay_gate).await {
                     let _ = writeln!(std::io::stderr(), "relay datagram: {error}");
                 }
             }
@@ -796,6 +805,27 @@ async fn handle_request(
     let mut state = state.lock().await;
     let (body, publishes) = match request.body {
         RequestBody::Status => (ResponseBody::Status(StatusResponse::CURRENT), Vec::new()),
+        RequestBody::Population { online } => {
+            if let Some(peer) = state.peers.get_mut(&connection_id) {
+                peer.online = online.then(Instant::now);
+            }
+            let players = state.membership.len()
+                + state
+                    .peers
+                    .iter()
+                    .filter(|(id, peer)| {
+                        peer.online
+                            .is_some_and(|seen| seen.elapsed() < Duration::from_secs(10))
+                            && !state.membership.contains_key(id)
+                    })
+                    .count();
+            (
+                ResponseBody::Population {
+                    players: u32::try_from(players).unwrap_or(u32::MAX),
+                },
+                Vec::new(),
+            )
+        }
         RequestBody::CreateRoom {
             name,
             map,
@@ -950,6 +980,13 @@ fn create_room(
     available: master_protocol::ContentFlags,
     password: String,
 ) -> (ResponseBody, Vec<(u64, ControlFrame)>) {
+    if !master_protocol::ContentFlags::KNOWN.contains(requires)
+        || !requires.contains(master_protocol::ContentFlags::IW4)
+        || !requires.missing_from(available).is_empty()
+        || !map_content_allowed(&map, requires)
+    {
+        return (ResponseBody::Error(ServiceError::InvalidAdvert), Vec::new());
+    }
     if state.membership.contains_key(&connection_id) {
         return (
             ResponseBody::Error(ServiceError::AlreadyHosting),
@@ -1098,6 +1135,10 @@ fn leave_room(
     (ResponseBody::RoomLeft, publishes)
 }
 
+fn map_content_allowed(map: &str, families: master_protocol::ContentFlags) -> bool {
+    master_protocol::ContentFlags::for_map(map).is_some_and(|family| families.contains(family))
+}
+
 fn set_options(
     state: &mut ServiceState,
     connection_id: u64,
@@ -1108,7 +1149,9 @@ fn set_options(
     match state.host_of(connection_id) {
         Ok(room_id) => {
             let room = state.rooms.get_mut(&room_id).expect("host room");
-            if room.view.phase.in_match() && (room.view.map != map || room.view.mode != mode) {
+            if !map_content_allowed(&map, room.view.requires)
+                || (room.view.phase.in_match() && (room.view.map != map || room.view.mode != mode))
+            {
                 return (ResponseBody::Error(ServiceError::InvalidAdvert), Vec::new());
             }
             room.view.map = map;
@@ -1134,7 +1177,9 @@ fn start_match(
     match state.host_of(connection_id) {
         Ok(room_id) => {
             let room = state.rooms.get_mut(&room_id).expect("host room");
-            if room.view.phase.in_match() && (room.view.map != map || room.view.mode != mode) {
+            if !map_content_allowed(&map, room.view.requires)
+                || (room.view.phase.in_match() && (room.view.map != map || room.view.mode != mode))
+            {
                 return (ResponseBody::Error(ServiceError::InvalidAdvert), Vec::new());
             }
             room.view.map = map;
@@ -1344,17 +1389,63 @@ async fn bootstrap_forward(
     ConnTask::Bootstrap
 }
 
+// Gameplay packets arrive split into fragments, and one lost fragment loses
+// the packet. Quinn sheds the oldest datagrams of a full buffer one at a time,
+// which on a slow target leaves almost no packet whole.
+#[derive(Default)]
+struct RelayGate {
+    shedding: Option<u32>,
+}
+
+impl RelayGate {
+    fn admit(&mut self, payload: &[u8], target: &quinn::Connection, wire_bytes: usize) -> bool {
+        let Some((index, count, packet_id)) = fragment_header(payload) else {
+            return true;
+        };
+        if index != 0 {
+            return self.shedding != Some(packet_id);
+        }
+        let queued = DATAGRAM_SEND_BUFFER.saturating_sub(target.datagram_send_buffer_space());
+        let admitted =
+            queued < wire_bytes || queued + wire_bytes * usize::from(count) <= RELAY_BACKLOG_BYTES;
+        self.shedding = (!admitted).then_some(packet_id);
+        admitted
+    }
+}
+
+fn fragment_header(payload: &[u8]) -> Option<(u16, u16, u32)> {
+    let header = payload.get(..12)?;
+    if header[..3] != *b"RF\x02" {
+        return None;
+    }
+    let index = u16::from_le_bytes([header[4], header[5]]);
+    let count = u16::from_le_bytes([header[6], header[7]]);
+    let packet_id = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
+    Some((index, count, packet_id))
+}
+
 async fn relay_datagram(
     state: &Mutex<ServiceState>,
     connection_id: u64,
     bytes: &[u8],
+    gate: &mut RelayGate,
 ) -> Result<()> {
     let relay = decode_relay(bytes)?;
     let (target, outgoing) = {
         let current = state.lock().await;
         current.route_target(connection_id, &relay)?
     };
-    target.send_datagram(outgoing.into())?;
+    let payload = match relay {
+        RelayDatagram::ClientToHost(payload) | RelayDatagram::HostToMember { payload, .. } => {
+            payload
+        }
+        RelayDatagram::ServiceToHost { payload, .. } | RelayDatagram::ServiceToMember(payload) => {
+            payload
+        }
+    };
+    if gate.admit(payload, &target, outgoing.len()) {
+        target.send_datagram(outgoing.into())?;
+    }
     Ok(())
 }
 

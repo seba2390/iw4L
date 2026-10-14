@@ -8,6 +8,7 @@ pub struct CommonKey {
     pub(super) foreign: Option<PathBuf>,
     pub(super) weapon_zone: Option<PathBuf>,
     source_revision: u64,
+    families: frame::AssetFamilies,
 }
 
 impl CommonKey {
@@ -15,13 +16,17 @@ impl CommonKey {
         zone_ff: Option<&Path>,
         runtime: Option<&Path>,
         report: &mut Vec<String>,
+        families: frame::AssetFamilies,
     ) -> Self {
         let source_revision = games_root_from_env()
             .map_or(0, |games| asset_transport::installation_revision(&games.0));
         Self {
             source_revision,
             runtime: runtime.map(Path::to_path_buf),
-            foreign: resolve_foreign_material_donor(zone_ff, runtime, report),
+            foreign: families
+                .enabled("iw5")
+                .then(|| resolve_foreign_material_donor(zone_ff, runtime, report))
+                .flatten(),
             weapon_zone: zone_ff
                 .filter(|path| {
                     asset_transport::zone_game_for_path(path) == Some(asset_core::ZoneGame::T6)
@@ -29,6 +34,7 @@ impl CommonKey {
                             == asset_transport::t6_content::T6ContentMode::Zombies
                 })
                 .map(Path::to_path_buf),
+            families,
         }
     }
 
@@ -45,6 +51,7 @@ impl CommonKey {
             runtime,
             foreign: None,
             weapon_zone: None,
+            families: frame::AssetFamilies::ALL,
         }
     }
 }
@@ -107,6 +114,9 @@ pub(super) struct CommonProducts {
     pub(super) fx_models: asset_game::FxModelCatalog,
     pub(super) impact_fx: Option<asset_game::OwnedFxImpactTable>,
     pub(super) t5_xanims: XAnimBuild,
+    pub(super) iw5_player_anim_sources: asset_anim::PlayerAnimSources,
+    pub(super) t5_player_anim_sources: asset_anim::PlayerAnimSources,
+    pub(super) t6_player_anim_sources: asset_anim::PlayerAnimSources,
     pub(super) t5_fx: FxCatalog,
     pub(super) t5_impact_fx: Option<asset_game::OwnedFxImpactTable>,
     pub(super) iw5_materials: MaterialCatalog,
@@ -379,7 +389,11 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
 
     let mut donor_report = Vec::new();
     let material_donor = key.foreign.clone();
-    let weapon_donor = resolve_iw5_weapon_donor(anchor.as_deref(), &mut donor_report);
+    let weapon_donor = key
+        .families
+        .enabled("iw5")
+        .then(|| resolve_iw5_weapon_donor(anchor.as_deref(), &mut donor_report))
+        .flatten();
     let iw5_startup_walk = weapon_donor.clone().map(|donor| {
         let progress = progress.clone();
         pool.spawn(async move { walk_iw5_startup(&donor, &progress) })
@@ -432,12 +446,33 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let t5_common_prep = {
         let anchor = anchor.clone();
         let progress = progress.clone();
-        pool.spawn(async move { t5_weapon_common_prep(anchor.as_deref(), &progress) })
+        let enabled = key.families.enabled("t5");
+        pool.spawn(async move {
+            if enabled {
+                t5_weapon_common_prep(anchor.as_deref(), &progress)
+            } else {
+                T5CommonPrep::Skip(Vec::new())
+            }
+        })
     };
     let t6_weapon_walk = {
         let anchor = anchor.clone();
         let progress = progress.clone();
-        pool.spawn(async move { walk_t6_weapon_bundle(anchor.as_deref(), &progress) })
+        let enabled = key.families.enabled("t6");
+        pool.spawn(async move {
+            if enabled {
+                walk_t6_weapon_bundle(anchor.as_deref(), &progress)
+            } else {
+                (
+                    WeaponBuild::default(),
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    asset_anim::PlayerAnimSources::default(),
+                )
+            }
+        })
     };
     let localize_walk = {
         let anchor = key.weapon_zone.clone().or_else(|| anchor.clone());
@@ -465,6 +500,14 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
 
     let (material_seed, mut common_report, iw4_stats, startup_light_defs, startup_scripts) =
         startup_walk.await;
+    common_report.push(format!(
+        "asset families: {}",
+        ["iw4", "iw5", "t5", "t6"]
+            .into_iter()
+            .filter(|family| key.families.enabled(family))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
     let startup_count = material_seed.materials.len();
 
     let t5_weapon_walk = {
@@ -481,6 +524,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         world_guns: t5_world_guns,
         mut material_seed,
         xanims: t5_xanims,
+        player_anim_sources: t5_player_anim_sources,
         fx: t5_fx,
         impact_fx: t5_impact_fx,
         projectiles: t5_projectiles,
@@ -654,6 +698,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         fpv: iw5_fpv,
         world_guns: iw5_world_guns,
         xanims: iw5_xanims,
+        player_anim_sources: iw5_player_anim_sources,
         materials: iw5_materials,
         stats_tables: iw5_census_stats,
         scene_models: iw5_scene_models,
@@ -704,7 +749,8 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         weapons.len(),
         weapons.namespace_count(asset_core::AssetNamespace::T5)
     ));
-    let (t6_weapons, preparation, t6_tables, t6_report, t6_ui_images) = t6_weapon_walk.await;
+    let (t6_weapons, preparation, t6_tables, t6_report, t6_ui_images, t6_player_anim_sources) =
+        t6_weapon_walk.await;
     common_report.extend(t6_report);
     weapons.absorb(t6_weapons);
     if runtime_namespace == Some(asset_core::AssetNamespace::T6) {
@@ -932,6 +978,9 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
             fx_models: common_fx_models,
             impact_fx: common_impact,
             t5_xanims,
+            t5_player_anim_sources,
+            iw5_player_anim_sources,
+            t6_player_anim_sources,
             t5_fx,
             t5_impact_fx,
             iw5_materials,

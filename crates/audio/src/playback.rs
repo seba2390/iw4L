@@ -57,18 +57,19 @@ impl Plugin for PlayerSoundPlugin {
             .scoped::<crate::ambient::MapSources>(frame::MatchScope::Live)
             .scoped::<crate::script_ambient::ScriptAmbientPlayback>(frame::MatchScope::Live)
             .scoped::<crate::destructible_loops::DestructibleSources>(frame::MatchScope::Live)
+            .scoped::<crate::projectile_loops::ProjectileSources>(frame::Timeline::Running)
             .scoped::<crate::ambient::SoundBankLoadAttempted>(frame::MatchScope::Loading)
             .scoped::<crate::ambient::ResidentSoundBank>(frame::MatchScope::Loading)
             .scoped::<crate::BobCycleTracker>(frame::MatchScope::Live)
-            .scoped::<crate::shellshock::ShellshockSources>(frame::MatchScope::Live)
-            .scoped::<crate::breath::BreathSources>(frame::MatchScope::Live)
-            .scoped_message::<AliasCommand>(frame::MatchScope::Live)
-            .scoped_message::<Footstep>(frame::MatchScope::Live)
-            .scoped_message::<WeaponSound>(frame::MatchScope::Live)
-            .scoped_message::<BoundWeaponSound>(frame::MatchScope::Live)
-            .scoped_message::<ViewmodelNotetracks>(frame::MatchScope::Live)
+            .scoped::<crate::shellshock::ShellshockSources>(frame::Timeline::Running)
+            .scoped::<crate::breath::BreathSources>(frame::Timeline::Running)
+            .scoped_message::<AliasCommand>(frame::Timeline::Running)
+            .scoped_message::<Footstep>(frame::Timeline::Running)
+            .scoped_message::<WeaponSound>(frame::Timeline::Running)
+            .scoped_message::<BoundWeaponSound>(frame::Timeline::Running)
+            .scoped_message::<ViewmodelNotetracks>(frame::Timeline::Running)
             .scoped::<crate::entity_events::NotetrackSoundTable>(frame::MatchScope::Live)
-            .scoped_message::<LandSound>(frame::MatchScope::Live)
+            .scoped_message::<LandSound>(frame::Timeline::Running)
             .add_systems(
                 Update,
                 play_weapon_sound_messages
@@ -111,6 +112,7 @@ impl Plugin for PlayerSoundPlugin {
                         .after(collect_cue_decisions),
                     play_land_sound_messages.in_set(frame::InMatch),
                     crate::destructible_loops::update.in_set(frame::InMatch),
+                    crate::projectile_loops::update.in_set(frame::InMatch),
                 )
                     .in_set(ClientSet::Effects),
             )

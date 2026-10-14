@@ -59,22 +59,51 @@ pub fn install_frontend_menus(catalog: &mut asset_game::MenuCatalog) -> Result<(
     catalog.load_definitions(include_str!("../menus/map_error.json"))?;
     catalog.load_definitions(include_str!("../menus/connection_error.json"))?;
     catalog.load_definitions(include_str!("../menus/frontend.json"))?;
+    if let Some(mut backdrop) = catalog.get("iw4l_main").cloned() {
+        backdrop.name = "iw4l_theater_background".into();
+        backdrop.static_flags = 0x0010_0000;
+        backdrop.handlers = Default::default();
+        backdrop.items.retain(|item| {
+            matches!(
+                item.name.as_str(),
+                "background" | "clouds" | "soldier" | "glow"
+            )
+        });
+        catalog.menus.insert(backdrop.name.clone(), backdrop);
+    }
     catalog.load_definitions(include_str!("../menus/classes.json"))?;
     catalog.load_definitions(include_str!("../menus/barracks.json"))?;
     catalog.load_definitions(include_str!("../menus/settings.json"))?;
     catalog.load_definitions(include_str!("../menus/controller.json"))?;
     catalog.load_definitions(include_str!("../menus/game_folders.json"))?;
     catalog.load_definitions(include_str!("../menus/community_servers.json"))?;
-    if let Some(item) = catalog
-        .menus
-        .get_mut("options_community_servers")
-        .and_then(|menu| {
-            menu.items
-                .iter_mut()
-                .find(|item| item.name == "community_server")
+    let chat_bindings: Vec<_> = catalog
+        .get("pc_options_actions")
+        .into_iter()
+        .flat_map(|menu| &menu.items)
+        .filter(|item| {
+            matches!(
+                item.name.as_str(),
+                "public_chat_binding"
+                    | "public_chat_label"
+                    | "team_chat_binding"
+                    | "team_chat_label"
+            )
         })
-    {
-        item.choices = crate::CommunityServers::default().choices;
+        .cloned()
+        .map(|mut item| {
+            item.rect.y = if item.name.starts_with("public_") {
+                48.0
+            } else {
+                68.0
+            };
+            item.vis_exp = "1".into();
+            item.disabled_exp = "0".into();
+            item
+        })
+        .collect();
+    if let Some(menu) = catalog.menus.get_mut("options_multi") {
+        menu.items.extend(chat_bindings);
     }
     let slider = catalog
         .get("pc_options_video")
@@ -225,6 +254,7 @@ pub fn install_frontend_menus(catalog: &mut asset_game::MenuCatalog) -> Result<(
             }
         }
     }
+    catalog.inherit_shared_vis();
     Ok(())
 }
 

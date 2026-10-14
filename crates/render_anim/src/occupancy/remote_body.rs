@@ -3,14 +3,14 @@ use crate::anim::remote_body::{
     RemoteBodySkinnedItem, RemoteBodySkinnedQueue, RemoteBodyTrees, RemoteModelLods,
     RemoteSkinModels, RemoteSkinPoseHashes, SkinAfterPose, WorldGunGap, advance_remote_tree,
     bind_remote_skin_models, clone_corpse_tree_from_victim, commit_assembled_body,
-    ensure_remote_dobj, hash_skin_matrices, occupy_lod_byte, occupy_remote_kit_dobj, packed_anim,
-    pose_remote_dobj, push_cached_surfaces, radii, remote_player_controller, select_remote_lods,
-    select_remote_models, skin_after_pose, skin_slot_need, skip_frozen_corpse_dobj,
-    take_unique_geom, validate_remote_tracks, zero_anim,
+    corpse_occupation_key, ensure_remote_dobj, hash_skin_matrices, occupy_lod_byte,
+    occupy_remote_kit_dobj, packed_anim, pose_remote_dobj, push_cached_surfaces, radii,
+    remote_player_controller, select_remote_lods, select_remote_models, skin_after_pose,
+    skin_slot_need, skip_frozen_corpse_dobj, take_unique_geom, validate_remote_tracks, zero_anim,
 };
 use crate::anim::scene_submission::{AnimDObjSceneSkels, AnimDObjSceneSubmission, AnimSceneSubmit};
 use crate::anim::world_weapon::PreparedItemCompositions;
-use crate::anim::xmodel_pose::{build_skin_layout, skin_packed_into, stream_lod_surface_rigid};
+use crate::anim::xmodel_pose::{build_skin_layout, stream_lod_surface_rigid};
 use crate::gaps::{RenderGap, RenderGapCause, RenderPresentationGaps};
 use crate::lighting_box_half;
 use crate::{
@@ -52,6 +52,26 @@ pub struct RemotePlayer {
     pub shield: Option<sim::ShieldAttachment>,
 }
 
+fn drawn_shield(
+    snapshot: &sim::Snapshot,
+    number: u16,
+    client: sim::ClientId,
+) -> Option<sim::ShieldAttachment> {
+    let body = snapshot
+        .meta
+        .corpses
+        .slots
+        .iter()
+        .find(|slot| slot.occupied && slot.entnum == i32::from(number));
+    match body {
+        Some(body) => body.shield,
+        None => snapshot
+            .meta
+            .for_client(client)
+            .and_then(|meta| meta.shield),
+    }
+}
+
 #[derive(Component, Default)]
 pub struct RemoteFxBolts {
     pub flash: Option<fx::FxBoltTarget>,
@@ -68,6 +88,68 @@ struct RemoteBodyLightingBinds {
     by_client: HashMap<u32, ModelLightingRequest>,
 }
 
+#[derive(Hash, PartialEq, Eq)]
+struct BodySkinShapeKey {
+    world_weapon: bool,
+    namespace: asset_core::AssetNamespace,
+    name: String,
+    lod: u8,
+}
+
+#[derive(Resource, Default)]
+struct BodySkinShapes {
+    bodies: Option<Arc<asset_model::BodyMeshCatalog>>,
+    weapons: Option<Arc<asset_model::WorldWeaponCatalog>>,
+    shapes:
+        std::sync::Mutex<HashMap<BodySkinShapeKey, Arc<render_frame::skinning::PackedSkinShape>>>,
+}
+
+impl BodySkinShapes {
+    fn prepare(&mut self, bodies: &PreparedBodies, weapons: Option<&PreparedWorldWeapons>) {
+        let same_bodies = self
+            .bodies
+            .as_ref()
+            .is_some_and(|old| Arc::ptr_eq(old, &bodies.0));
+        let same_weapons = match (&self.weapons, weapons) {
+            (Some(old), Some(new)) => Arc::ptr_eq(old, &new.0),
+            (None, None) => true,
+            _ => false,
+        };
+        let shapes = self
+            .shapes
+            .get_mut()
+            .expect("body skin cache is never poisoned");
+        if !same_bodies || !same_weapons {
+            shapes.clear();
+            self.bodies = Some(Arc::clone(&bodies.0));
+            self.weapons = weapons.map(|owner| Arc::clone(&owner.0));
+        }
+    }
+
+    fn shape(
+        &self,
+        skel: &ModelSkel,
+        namespace: asset_core::AssetNamespace,
+        world_weapon: bool,
+        lod: u8,
+        layout: &crate::anim::xmodel_pose::SkinLayout,
+    ) -> Arc<render_frame::skinning::PackedSkinShape> {
+        let key = BodySkinShapeKey {
+            world_weapon,
+            namespace,
+            name: skel.name.clone(),
+            lod,
+        };
+        let mut shapes = self
+            .shapes
+            .lock()
+            .expect("body skin cache is never poisoned");
+        Arc::clone(shapes.entry(key).or_insert_with(|| {
+            crate::anim::xmodel_pose::packed_skin_shape(skel, lod, layout, |_| false)
+        }))
+    }
+}
+
 pub fn register_remote_body_systems(app: &mut App) {
     app.init_app::<RenderPresentationGaps>()
         .scoped::<RemoteBodyDrawPlan>(frame::MatchScope::Live)
@@ -75,6 +157,7 @@ pub fn register_remote_body_systems(app: &mut App) {
         .scoped::<RemoteSkinPoseHashes>(frame::MatchScope::Live)
         .scoped::<RemoteBodySkinnedQueue>(frame::MatchScope::Live)
         .scoped::<RemoteBodyLightingBinds>(frame::MatchScope::Live)
+        .scoped::<BodySkinShapes>(frame::MatchScope::Live)
         .scoped::<PreparedRemoteKits>(frame::MatchScope::Live)
         .add_systems(
             Update,
@@ -308,7 +391,9 @@ fn occupy_remote_scene_ents(
         if !soldier.owns_bodies(&bodies.0) {
             continue;
         }
-        let shield = meta.and_then(|meta| meta.shield);
+        let shield = presented
+            .snapshot()
+            .and_then(|snap| drawn_shield(snap, identity.number(), client));
         let held = remote_pose_sample(runtime).weapon;
         let (kit_models, radius, hide_part_bits) = match live_kits.filter(|_| shield.is_none()) {
             Some((kits, _world)) => {
@@ -480,7 +565,9 @@ fn sync_remote_bodies(
         let marker = RemotePlayer {
             ffa_team,
             client_state_team,
-            shield: meta.and_then(|meta| meta.shield),
+            shield: presented
+                .snapshot()
+                .and_then(|snap| drawn_shield(snap, identity.number(), client)),
         };
         if remote.is_some() {
             commands.entity(entity).insert((pose, marker));
@@ -576,6 +663,7 @@ fn pose_remote_bodies(
     compositions: Res<PreparedItemCompositions>,
     mut trees: ResMut<RemoteBodyTrees>,
     mut pose_hashes: ResMut<RemoteSkinPoseHashes>,
+    mut skin_shapes: ResMut<BodySkinShapes>,
     mut submit: ResMut<RemoteBodySkinnedQueue>,
     dpvs: (
         Query<&GlobalTransform, With<render_scene::FpvLens>>,
@@ -755,10 +843,11 @@ fn pose_remote_bodies(
         return;
     }
 
+    skin_shapes.prepare(bodies, world_weapons.as_deref());
     let _skin_model = perf::Span::HostSkinModelMs.enter();
     let workers = skin_blend_worker_count(pose_frame.pending.len());
     let pending = std::mem::take(&mut pose_frame.pending);
-    let assembled = assemble_meshes_parallel(pending, workers);
+    let assembled = assemble_meshes_parallel(pending, workers, &skin_shapes);
     for assembled in assembled {
         if let Ok(assembled) = assembled {
             commit_assembled_body(
@@ -796,16 +885,13 @@ impl<'a> RemotePoseFrame<'a> {
         let persist_key = u32::from(identity.number());
         let is_corpse = runtime.next_state.e_type == ET_PLAYER_CORPSE
             || runtime.pose_e_type == ET_PLAYER_CORPSE as u8;
-        let occupation_tr_time = is_corpse.then_some(runtime.next_state.tr_time);
-        if is_corpse {
+        let occupation_key = is_corpse.then(|| corpse_occupation_key(&runtime.next_state));
+        if let Some(key) = occupation_key {
             let victim = u32::try_from(runtime.next_state.client_num).unwrap_or(0);
-            clone_corpse_tree_from_victim(
-                self.trees,
-                persist_key,
-                victim,
-                runtime.next_state.tr_time,
-            );
+            clone_corpse_tree_from_victim(self.trees, persist_key, victim, key);
         }
+        let corpse_age_ms =
+            occupation_key.map(|key| runtime.pose_time_ms.wrapping_sub(key.spawn_time_ms));
 
         if runtime.previous_pose.is_none() {
             if let Some(slot) = self.trees.get_mut(persist_key) {
@@ -883,6 +969,7 @@ impl<'a> RemotePoseFrame<'a> {
                 dt,
                 sample.rate_origin,
                 sample.rate_time_ms,
+                corpse_age_ms,
                 trees,
             )?;
 
@@ -979,11 +1066,11 @@ impl<'a> RemotePoseFrame<'a> {
             }
             Ok(PoseOneOutcome::Posed)
         })();
-        if let Some(tr_time) = occupation_tr_time
+        if let Some(key) = occupation_key
             && let Some(slot) = trees.get_mut(persist_key)
-            && slot.occupation_tr_time.is_none()
+            && slot.occupation_key.is_none()
         {
-            slot.occupation_tr_time = Some(tr_time);
+            slot.occupation_key = Some(key);
         }
         result
     }
@@ -1115,6 +1202,9 @@ fn surface_material_key(
 
 fn skin_slot_into(
     skel: &ModelSkel,
+    namespace: asset_core::AssetNamespace,
+    world_weapon: bool,
+    skin_shapes: &BodySkinShapes,
     skin: &[Mat4],
     base: usize,
     lod: u8,
@@ -1136,14 +1226,46 @@ fn skin_slot_into(
         dest_first.saturating_add(layout.dest_vertex_n),
         [0u8; asset_iw4::size::GFX_PACKED_VERTEX],
     );
-    skin_packed_into(
-        skel,
-        |bone| skin[base + bone],
-        |surface| stream_lod_surface_rigid(skel, lod, entries, model, surface),
-        lod,
-        &layout,
-        &mut geom.packed[dest_first..dest_first + layout.dest_vertex_n],
-    );
+    let rigid = |surface| stream_lod_surface_rigid(skel, lod, entries, model, surface);
+    if layout.dest_vertex_n != 0 {
+        let shape = skin_shapes.shape(skel, namespace, world_weapon, lod, &layout);
+        let bone_end = base
+            .checked_add(shape.required_bones())
+            .ok_or("body bone range overflow")?;
+        let matrices = skin
+            .get(base..bone_end)
+            .ok_or("body bone range exceeds pose")?;
+        geom.skin_jobs.push(render_frame::skinning::PackedSkinJob {
+            ranges: if layout.surfaces.is_empty() {
+                vec![render_frame::skinning::SkinVertexRange {
+                    start: 0,
+                    count: layout.dest_vertex_n as u32,
+                    rigid: false,
+                }]
+                .into()
+            } else {
+                layout
+                    .surfaces
+                    .iter()
+                    .filter(|surface| surface.visible && surface.index_count != 0)
+                    .map(|surface| render_frame::skinning::SkinVertexRange {
+                        start: surface.dest_first_vertex as u32,
+                        count: surface.vertex_count as u32,
+                        rigid: rigid(surface.surface_index),
+                    })
+                    .collect()
+            },
+            shape,
+            bones: if matrices.is_empty() {
+                Arc::new([Mat4::IDENTITY.to_cols_array_2d()])
+            } else {
+                matrices.iter().map(Mat4::to_cols_array_2d).collect()
+            },
+            destination: u32::try_from(dest_first)
+                .map_err(|_| "body skin destination exceeds u32")?,
+            offset: [0.0; 3],
+        });
+    }
     let vert_rebase = dest_first as u32;
     for surf in &layout.surfaces {
         if skip_empty && (!surf.visible || surf.index_count == 0) {
@@ -1188,12 +1310,16 @@ fn skin_blend_worker_count(jobs: usize) -> usize {
 fn assemble_meshes_parallel(
     jobs: Vec<PendingBodySkin<'_>>,
     workers: usize,
+    skin_shapes: &BodySkinShapes,
 ) -> Vec<Result<AssembledMeshes, String>> {
     if jobs.is_empty() {
         return Vec::new();
     }
     if workers <= 1 || jobs.len() == 1 {
-        return jobs.into_iter().map(assemble_meshes).collect();
+        return jobs
+            .into_iter()
+            .map(|job| assemble_meshes(job, skin_shapes))
+            .collect();
     }
     let chunk_len = jobs.len().div_ceil(workers);
     let mut chunks = Vec::new();
@@ -1211,9 +1337,12 @@ fn assemble_meshes_parallel(
     ComputeTaskPool::get()
         .scope(|scope| {
             for chunk in chunks {
-                scope.spawn(
-                    async move { chunk.into_iter().map(assemble_meshes).collect::<Vec<_>>() },
-                );
+                scope.spawn(async move {
+                    chunk
+                        .into_iter()
+                        .map(|job| assemble_meshes(job, skin_shapes))
+                        .collect::<Vec<_>>()
+                });
             }
         })
         .into_iter()
@@ -1230,13 +1359,20 @@ struct AssembledMeshes {
     lods: (Option<u8>, Option<u8>, Option<u8>),
 }
 
-fn assemble_meshes(job: PendingBodySkin<'_>) -> Result<AssembledMeshes, String> {
+fn assemble_meshes(
+    job: PendingBodySkin<'_>,
+    skin_shapes: &BodySkinShapes,
+) -> Result<AssembledMeshes, String> {
     let persist_key = job.persist_key;
     let transform = job.transform;
     let lods = (Some(job.body_lod), job.head_lod, job.gun_lod);
     let mut geom = job.dest;
+    geom.skin_jobs.clear();
     skin_slot_into(
         &job.body.skel,
+        job.body.namespace,
+        false,
+        skin_shapes,
         &job.matrices,
         0,
         job.body_lod,
@@ -1252,6 +1388,9 @@ fn assemble_meshes(job: PendingBodySkin<'_>) -> Result<AssembledMeshes, String> 
         (Some((head, base)), Some(lod)) => {
             skin_slot_into(
                 &head.skel,
+                head.namespace,
+                false,
+                skin_shapes,
                 &job.matrices,
                 base,
                 lod,
@@ -1270,6 +1409,9 @@ fn assemble_meshes(job: PendingBodySkin<'_>) -> Result<AssembledMeshes, String> 
         (Some(gun), Some(lod)) => {
             skin_slot_into(
                 &gun.entry.skel,
+                gun.entry.namespace,
+                true,
+                skin_shapes,
                 &job.matrices,
                 gun.base,
                 lod,
@@ -1288,6 +1430,9 @@ fn assemble_meshes(job: PendingBodySkin<'_>) -> Result<AssembledMeshes, String> 
         };
         skin_slot_into(
             &attachment.entry.skel,
+            attachment.entry.namespace,
+            true,
+            skin_shapes,
             &job.matrices,
             attachment.base,
             lod,
@@ -1423,7 +1568,10 @@ fn submit_remote_bodies(
 
     let packed_id = seated_packed_id(&seated);
     let draw_id = seated_draw_id(&seated);
-    if plan.last_packed_id == Some(packed_id) && seated_clients_match(&plan, &seated) {
+    if plan.last_packed_id == Some(packed_id)
+        && seated_clients_match(&plan, &seated)
+        && refresh_remote_body_bones(&mut plan, &seated)
+    {
         if plan.last_draw_id != Some(draw_id) {
             refresh_remote_body_draws(&mut plan, &seated);
             plan.revisions.bump_draws();
@@ -1458,6 +1606,15 @@ fn submit_remote_bodies(
             &item.geom.indices,
             item.geom.decoded_n,
         );
+        if let Some((vertex_base, _)) = appended {
+            for job in &item.geom.skin_jobs {
+                let mut job = job.clone();
+                job.destination = vertex_base
+                    .checked_add(job.destination)
+                    .expect("body skin destination fits u32");
+                plan.skin_jobs.push(job);
+            }
+        }
         let index_base = appended.map(|(_, index_base)| index_base);
         for surface in item.geom.surfaces.iter() {
             let Some(key) = surface.material.as_ref() else {
@@ -1515,6 +1672,20 @@ fn submit_remote_bodies(
         return;
     }
     gaps.raise(last_cause.unwrap_or(RenderGapCause::RemoteBodySubmitMissing));
+}
+
+fn refresh_remote_body_bones(
+    plan: &mut RemoteBodyDrawPlan,
+    seated: &[(RemoteBodySkinnedItem, u32, u8, u8)],
+) -> bool {
+    let mut slots = plan.skin_jobs.iter_mut();
+    for job in seated.iter().flat_map(|(item, ..)| &item.geom.skin_jobs) {
+        match slots.next() {
+            Some(slot) if slot.shape.id() == job.shape.id() => slot.bones = Arc::clone(&job.bones),
+            _ => return false,
+        }
+    }
+    slots.next().is_none()
 }
 
 fn seated_packed_id(seated: &[(RemoteBodySkinnedItem, u32, u8, u8)]) -> u64 {

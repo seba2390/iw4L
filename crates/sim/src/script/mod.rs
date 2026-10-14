@@ -39,6 +39,7 @@ pub(crate) use host::presence::sync_presence;
 pub use host::registry::{Native, NativeRegistry};
 pub(crate) use host::restart::restart_level;
 pub use host::sightings::{ActorSighting, ScriptOwner, UseKind, UseSite};
+pub(crate) use host::spectators::hold_killcam_viewer;
 pub(crate) use host::weapons::{publish_projectile_launches, sync_engine_events};
 
 /// Advances actor animation one authority tick, and raises timed notifies,
@@ -75,5 +76,5 @@ pub(crate) use vm::state::{Frame, Thread, ThreadState, Waiter, WaiterKind};
 
 pub(crate) use host::entity_damage::{
     destructible_attacker, destructible_callback, destructible_debris, destructible_effect,
-    set_destructible_model,
+    set_destructible_model, stop_destructible_effect,
 };

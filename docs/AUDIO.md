@@ -17,7 +17,8 @@ retain its revision; foreign owners and media/source mismatches refuse before pl
 T5 layers activate at resolution; others wait for primary preparation. Layers share
 deadlines, cancellation and lifetime, with independent pitch/failure. Unknown looping
 uses named one-shot compatibility. [CUES.md](CUES.md) details binding and decode contracts.
-Killcam worlds retain the live sound registry for round-result commands.
+Killcam worlds retain the live sound registry for round-result commands. Replay
+timeline changes retire event cues; music and local announcements keep playing.
 
 Weapon publication compiles thermal scopes, cue namespaces, melee precedence,
 knife substitution and breath aliases. Prediction identifies fire occurrences;
@@ -41,6 +42,8 @@ cross-channel routes and multichannel output remain unsupported; WMA seek/tail
 semantics need corpus validation.
 
 Desired loops use scope/epoch/object/slot versions and retain virtual cursors.
+Projectile cues follow authoritative bolts and retire on removal or timeline
+replacement.
 Control ranks eight map voices with a 0.002 gain floor. Device recovery uses
 bounded backoff; one-shots preserve PCM during short outages until their start
 deadlines expire. Master volume is applied once. `OfflineRenderer` shares the

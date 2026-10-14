@@ -134,6 +134,7 @@ fn make_image(
 
 #[derive(Resource, Default)]
 pub struct HudImages {
+    controller_icons: HashMap<String, Handle<Image>>,
     ui_images: asset_material::UiImagePublication,
     games_root: PathBuf,
 
@@ -152,6 +153,7 @@ pub struct HudImages {
     zone_samplers: HashMap<String, u8>,
     blood_plan: Option<Result<BloodMaterialBinding, String>>,
     zone_installed: bool,
+    zone_identity: Option<u64>,
     zone_uploaded: bool,
     iwd_warmed: bool,
 }
@@ -230,6 +232,7 @@ impl HudImages {
         self.zone_samplers.clear();
         self.blood_plan = None;
         self.zone_installed = false;
+        self.zone_identity = None;
         self.zone_uploaded = false;
         self.by_name.clear();
         self.rgba_by_name.clear();
@@ -237,8 +240,13 @@ impl HudImages {
     }
 
     pub fn install_zone_catalog(&mut self, catalog: &MenuCatalog) {
+        let identity = catalog.image_identity();
+        if self.zone_identity == Some(identity) {
+            return;
+        }
         self.clear_zone_catalog();
         self.zone_installed = true;
+        self.zone_identity = Some(identity);
         self.zone_uploaded = false;
         self.blood_plan = Some(blood_material_binding(catalog));
         self.zone_srgb_reads.extend(
@@ -390,6 +398,24 @@ impl HudImages {
         sampler: Option<u8>,
         images: &mut Assets<Image>,
     ) -> Option<Handle<Image>> {
+        if let Some(icon) = frame::ControllerIcon::ALL
+            .into_iter()
+            .find(|icon| icon.material() == name)
+        {
+            let handle = self
+                .controller_icons
+                .entry(name.to_owned())
+                .or_insert_with(|| {
+                    images.add(make_image(
+                        crate::controller_icons::SIZE,
+                        crate::controller_icons::SIZE,
+                        crate::controller_icons::rasterize(icon),
+                        HudSampling::Color,
+                        None,
+                    ))
+                });
+            return Some(handle.clone());
+        }
         let key = iwd_key(ns, name, sampling, sampler);
         if ns == HUD_CHROME_NAMESPACE && self.zone_states.get(&key.1) == Some(&None) {
             return None;

@@ -33,7 +33,7 @@ pub(crate) struct MenuHost<'a> {
     pub menu: &'a MenuDef,
     pub dvars: &'a frame::UiMenuDvars,
     pub locals: &'a UiLocalVars,
-    pub open: &'a [String],
+    pub open: &'a [super::state::OpenMenu],
     pub focus_rect: Option<[f32; 4]>,
 }
 
@@ -48,6 +48,28 @@ impl MenuHost<'_> {
         let lower = name.to_ascii_lowercase();
         let flag = |on: bool| String::from(if on { "1" } else { "0" });
         match lower.as_str() {
+            "ui_profile_rank_icon" | "ui_profile_level" => self
+                .world
+                .player_data
+                .and_then(|data| {
+                    let progression = data.progression.as_ref()?;
+                    let rank = progression.rank.to_string();
+                    if lower == "ui_profile_rank_icon" {
+                        data.table_lookup(
+                            "mp/rankicontable.csv",
+                            0,
+                            &rank,
+                            progression
+                                .prestige
+                                .checked_add(1)
+                                .filter(|column| *column > 0)?,
+                        )
+                    } else {
+                        data.table_lookup("mp/ranktable.csv", 0, &rank, 14)
+                    }
+                })
+                .unwrap_or_default()
+                .to_owned(),
             "cl_ingame" => flag(self.world.in_game),
             "gamemode" => "mp".to_owned(),
             "ui_multiplayer" | "widescreen" | "hidef" => flag(true),
@@ -465,7 +487,9 @@ impl ExprHost for MenuHost<'_> {
     }
     fn menu_is_open(&self, name: &str) -> Result<i32, ExprError> {
         Ok(i32::from(
-            self.open.iter().any(|open| open.eq_ignore_ascii_case(name)),
+            self.open
+                .iter()
+                .any(|open| open.name.eq_ignore_ascii_case(name)),
         ))
     }
     fn weapon_lock(&self) -> Result<WeaponLockView, ExprError> {

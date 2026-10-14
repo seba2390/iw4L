@@ -10,6 +10,7 @@ layer = "mixed"
 
 [dependencies]
 bevy.workspace = true
+master_protocol.workspace = true
 
 [lints]
 workspace = true

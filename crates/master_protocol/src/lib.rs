@@ -2,6 +2,8 @@
 
 use core::{fmt, str::FromStr};
 
+pub mod congestion;
+
 pub const PROTOCOL_VERSION: u16 = 10;
 pub const ALPN: &[u8] = b"iw4l-master/10";
 pub const MAX_CONTROL_BYTES: usize = 16 * 1024;
@@ -22,7 +24,7 @@ pub const MAX_BUILD_BYTES: usize = 64;
 pub const MAX_PLAYER_NAME_BYTES: usize = 64;
 pub const MAX_LIST_ADVERTS: usize = 128;
 
-pub const SESSION_IDLE: core::time::Duration = core::time::Duration::from_secs(60);
+pub const SESSION_IDLE: core::time::Duration = core::time::Duration::from_secs(90);
 pub const SESSION_KEEP_ALIVE: core::time::Duration = core::time::Duration::from_secs(1);
 
 const MAGIC: [u8; 4] = *b"IW4M";
@@ -51,6 +53,7 @@ const TAG_BOOTSTRAP_APPLIED: u8 = 12;
 const TAG_ENTER_MATCH: u8 = 13;
 const TAG_VOTE_TO_SKIP: u8 = 14;
 const TAG_SET_PASSWORD: u8 = 16;
+const TAG_POPULATION: u8 = 17;
 pub const MAX_PASSWORD_BYTES: usize = 64;
 const TAG_ADMISSION_FAILED: u8 = 15;
 const TAG_ERROR: u8 = 0x7f;
@@ -103,6 +106,36 @@ pub type RoomId = AdvertId;
 pub struct ContentFlags(pub u8);
 
 impl ContentFlags {
+    pub const IW4: Self = Self(1 << 0);
+    pub const IW5: Self = Self(1 << 1);
+    pub const T5: Self = Self(1 << 2);
+    pub const T6: Self = Self(1 << 3);
+    pub const KNOWN: Self = Self(Self::IW4.0 | Self::IW5.0 | Self::T5.0 | Self::T6.0);
+    pub const FAMILIES: [(&'static str, Self); 4] = [
+        ("iw4", Self::IW4),
+        ("iw5", Self::IW5),
+        ("t5", Self::T5),
+        ("t6", Self::T6),
+    ];
+
+    pub fn family(name: &str) -> Option<Self> {
+        Self::FAMILIES
+            .into_iter()
+            .find_map(|(family, flag)| (family == name).then_some(flag))
+    }
+
+    pub fn map_family(map: &str) -> &str {
+        map.split_once(':').map_or("iw4", |(family, _)| family)
+    }
+
+    pub fn for_map(map: &str) -> Option<Self> {
+        Self::family(Self::map_family(map))
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
     pub const fn missing_from(self, have: Self) -> Self {
         Self(self.0 & !have.0)
     }
@@ -325,6 +358,9 @@ pub const fn request_join_allowed(locked: bool) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RequestBody {
     Status,
+    Population {
+        online: bool,
+    },
     CreateRoom {
         name: String,
         map: String,
@@ -487,6 +523,9 @@ impl std::error::Error for ServiceError {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResponseBody {
     Status(StatusResponse),
+    Population {
+        players: u32,
+    },
     RoomCreated {
         member_id: MemberId,
         view: RoomView,
@@ -774,6 +813,10 @@ fn encode_request_body(body: &RequestBody) -> Result<Vec<u8>, ProtocolError> {
     let mut out = Writer::default();
     match body {
         RequestBody::Status => out.u8(TAG_STATUS),
+        RequestBody::Population { online } => {
+            out.u8(TAG_POPULATION);
+            out.u8(u8::from(*online));
+        }
         RequestBody::CreateRoom {
             name,
             map,
@@ -902,6 +945,9 @@ fn encode_request_body(body: &RequestBody) -> Result<Vec<u8>, ProtocolError> {
 fn decode_request_body(body: &mut Reader<'_>) -> Result<RequestBody, ProtocolError> {
     Ok(match body.u8()? {
         TAG_STATUS => RequestBody::Status,
+        TAG_POPULATION => RequestBody::Population {
+            online: bool_byte(body.u8()?)?,
+        },
         TAG_CREATE_ROOM => {
             let name = body.string(MAX_ADVERT_NAME_BYTES)?;
             let map = body.string(MAX_MAP_BYTES)?;
@@ -992,6 +1038,10 @@ fn decode_request_body(body: &mut Reader<'_>) -> Result<RequestBody, ProtocolErr
 fn encode_response_body(body: &ResponseBody) -> Result<Vec<u8>, ProtocolError> {
     let mut out = Writer::default();
     match body {
+        ResponseBody::Population { players } => {
+            out.u8(TAG_POPULATION);
+            out.u32(*players);
+        }
         ResponseBody::Status(status) => {
             out.u8(TAG_STATUS);
             out.u16(status.protocol_version);
@@ -1049,6 +1099,9 @@ fn encode_response_body(body: &ResponseBody) -> Result<Vec<u8>, ProtocolError> {
 
 fn decode_response_body(body: &mut Reader<'_>) -> Result<ResponseBody, ProtocolError> {
     Ok(match body.u8()? {
+        TAG_POPULATION => ResponseBody::Population {
+            players: body.u32()?,
+        },
         TAG_STATUS => ResponseBody::Status(StatusResponse {
             protocol_version: body.u16()?,
             max_opaque_payload: body.u16()?,

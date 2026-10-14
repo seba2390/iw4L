@@ -117,7 +117,7 @@ pub use signon::{
     phase_from_udp_link,
 };
 pub use svc_gamenotify::{
-    PendingGameNotify, SVC_DISCONNECT_NOTIFY, SVC_PRINT, SVC_PRINT_BOLD, SvcGameNotify,
+    PendingGameNotify, SVC_CHAT, SVC_DISCONNECT_NOTIFY, SVC_PRINT, SVC_PRINT_BOLD, SvcGameNotify,
     client_name_string,
 };
 pub use svc_playercard::{
@@ -145,7 +145,7 @@ pub use transport::frame::{
 };
 pub use transport::loopback_live::{ListenLoopback, ReceivedTick};
 pub use transport::master::{
-    CONTENT_IW4, CONTENT_IW5, CONTENT_T5, MasterAdvert, MasterBridge, MasterBridgeState,
+    CONTENT_IW4, CommunityPlayerCounts, MasterAdvert, MasterBridge, MasterBridgeState,
     MasterBrowser, MasterBrowserSnapshot, MasterLaunchIntent, MasterLifecycleFact,
     MasterMatchOffer, MasterMatchStart, MasterMenuAction, PendingMasterMenuAction, SessionIdentity,
     TransportFault, content_inventory, content_names, content_required_by_map,
@@ -174,6 +174,6 @@ pub use transport::wire::{WireError, WireReader, WireWriter};
 
 pub use svc_script_audio::SvcScriptAudio;
 
-pub const PROTOCOL_VERSION: u32 = 116;
+pub const PROTOCOL_VERSION: u32 = 119;
 
 pub use client::fire_verdict::{FireVerdictState, PredictedFireStatus};

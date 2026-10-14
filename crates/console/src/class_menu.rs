@@ -221,11 +221,26 @@ fn index(command: &ConsoleCommand) -> Result<usize, String> {
         .ok_or_else(|| "Invalid class selection".into())
 }
 
+fn open_class_setup(
+    state: &mut ClassMenuState,
+    store: &mut SessionClassStore,
+    player_data: &sim::LocalPlayerData,
+    menus: &mut MessageWriter<UiMenuRequest>,
+) {
+    if !player_data.custom_class_available(store.selected) {
+        store.selected = 0;
+    }
+    *state = ClassMenuState::default();
+    menus.write(UiMenuRequest::Open("class_setup".into()));
+}
+
 pub(crate) fn route(
     mut events: MessageReader<ConsoleCommand>,
     mut state: Local<ClassMenuState>,
     mut store: ResMut<SessionClassStore>,
     catalog: Res<ClassLoadoutCatalog>,
+    loading: Option<Res<frame::FrontendContentLoading>>,
+    menu_state: hud::MenuState,
     player_data: Res<sim::LocalPlayerData>,
     loc: (
         Res<asset_game::LocalizeCatalog>,
@@ -239,10 +254,23 @@ pub(crate) fn route(
     let loc = prepared_loc
         .as_ref()
         .map_or(&*shell_loc, |strings| &strings.0);
+    if loading.is_none() && menu_state.is_some_and(|menus| menus.is_open("class_loading")) {
+        menus.write(UiMenuRequest::Close("class_loading".into()));
+        if let Some(reason) = catalog.progression_lock("cac", &player_data) {
+            dvars.set("ui_class_status", &reason);
+            echo.write(format!("menu: {reason}"));
+        } else {
+            open_class_setup(&mut state, &mut store, &player_data, &mut menus);
+        }
+    }
     for command in events
         .read()
         .filter(|command| command.name.starts_with("ui_class_"))
     {
+        if command.name == "ui_class_setup" && loading.is_some() {
+            menus.write(UiMenuRequest::Open("class_loading".into()));
+            continue;
+        }
         let result = (|| -> Result<(), String> {
             if !matches!(
                 command.name.as_str(),
@@ -259,11 +287,7 @@ pub(crate) fn route(
             }
             match command.name.as_str() {
                 "ui_class_setup" => {
-                    if !player_data.custom_class_available(store.selected) {
-                        store.selected = 0;
-                    }
-                    *state = ClassMenuState::default();
-                    menus.write(UiMenuRequest::Open("class_setup".into()));
+                    open_class_setup(&mut state, &mut store, &player_data, &mut menus);
                 }
                 "ui_class_samples" => {
                     *state = ClassMenuState {
@@ -584,7 +608,10 @@ pub(crate) fn route(
             echo.write(format!("menu: {error}"));
         }
     }
-    let feature_lock = catalog.progression_lock("cac", &player_data);
+    let feature_lock = loading
+        .is_none()
+        .then(|| catalog.progression_lock("cac", &player_data))
+        .flatten();
     dvars.set(
         "ui_class_available",
         if feature_lock.is_none() { "1" } else { "0" },
@@ -613,7 +640,7 @@ pub(crate) fn route(
     }
     if let Some(slot) = store.slots.get(store.selected) {
         if dvars.get("ui_class_status").is_none_or(str::is_empty)
-            && let Some(reason) = &slot.lock_reason
+            && let Some(reason) = store.lock_reason(store.selected)
         {
             dvars.set("ui_class_status", format!("Class unavailable: {reason}"));
         }
