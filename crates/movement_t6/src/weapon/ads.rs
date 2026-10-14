@@ -151,7 +151,7 @@ pub(super) fn spin<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
                 ps.e_flags2 &= !e_flags2::SPINNING;
                 -0.5
             };
-            let next = msec * -1.0 * rate + ps.weapon_spin_lerp;
+            let next = -msec * rate + ps.weapon_spin_lerp;
             ps.weapon_spin_lerp = if -1.0 - next < 0.0 {
                 next.min(0.0)
             } else {

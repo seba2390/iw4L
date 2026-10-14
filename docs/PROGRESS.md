@@ -176,10 +176,10 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Walking, sprinting, jumping and stances (`movement_t6`), shown by the walk test on Nuketown and TranZit (walk up to 190, sprint 285, jump 37.5, crouch view 40, prone 11).
   - [x] Script allowances (`allowstand`, `allowcrouch`, `allowprone`, `allowjump`, `allowlean`, `setstance`) set Black Ops 2's own player flags.
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
-- [ ] Weapons fire, reload, throw and melee by the game's own rules.
+- [x] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Black Ops 2's weapon facts (damage, ranges, clip and stock, hit-location scales) are read from its zones.
-  - [ ] The weapon state machine (fire, reload, switch, melee, grenades) is Modern Warfare 2's (`t6.weapons.state_machine`).
-  - [x] `knife_zm` is given (Black Ops 2's melee type is kept; the lent weapons hold it as melee only).
+  - [x] Black Ops 2's own weapon state machine (`movement_t6`: fire, burst, rechamber, reload, switch, melee, offhands, riot shield) and server fire (`game_t6/src/fire.rs`: seeded spread, pellets, penetration, damage falloff and hit locations, melee, grenades, rockets) run the weapons: the rounds test reaches round 2 on Nuketown (7 kills, 7 frags thrown) and Buried (12 kills) in 110 s, with reloads and knifing; TranZit sells the Olympia from the wall and it fires; Monkey Bombs are thrown on Buried and a claymore planted on TranZit. Remaining gaps (gun angles, antilag, overheat, gas, mounted fire, …) are in the ledger.
+  - [x] `knife_zm` is given and knifes by Black Ops 2's melee rules (its range, width and zombies values).
   - [x] An external view model animation no loaded zone carries takes the startup zone's default `void` animation, as Black Ops 2's linker does, so `m1911_upgraded_zm` (the last stand pistol after Pack-a-Punch) is given (`calcweaponoptions`).
   - [x] Thrown and scripted grenades and missiles run Black Ops 2's missile physics, bounces, rest (`stationary`) and explosion surface (`game_t6::missile`, `game_t6::grenade`, `detonate`, `magicgrenadetype`, `makegrenadedud`, `resetmissiledetonationtime`, `forcegrenadethrow`, `setmissileowner`): claymores planted on TranZit (`claymore_zm`) arm on `stationary`, wake on an approaching zombie (`setexcludeteamfortrigger`), pass `shouldaffectweaponobject` and `damageconetrace` and detonate to kill it; Monkey Bombs thrown on Buried (`cymbal_monkey_zm`) generate their attractor ring (`attractor_positions_generated`), draw zombies in and kill them on explosion.
 - [x] Zombies spawn and animate (rising, or at a window).
@@ -193,7 +193,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
   - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
-  - [ ] The weapons that fire are Modern Warfare 2's (see the weapons milestone); the knife stabs with `knife_zm` and the held gun's melee damage, its trace by Black Ops 2's melee mask; the lethal grenade `giveweapon` gives is the player's offhand and is thrown (`grenade_fire`, `explode`).
+  - [x] The weapons that fire are Black Ops 2's own (see the weapons milestone); the lethal grenade `giveweapon` gives is the player's offhand and is thrown (`grenade_fire`, `explode`).
   - [x] A zombie's swing that lands on another zombie does nothing, as Black Ops 2's melee hit does.
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs, with round-end stats (`set_global_stat`, `update_playing_utc_time`) reading and writing `statstable_zm.ddl` without faults.
@@ -236,7 +236,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] TranZit's riot shield built from its two parts, taken from its table and held (its shield model attached).
   - [x] TranZit's turbine and turret carried and set down by Black Ops 2's placement test (`IW4L_TEST_WIELD=equip_turbine_zm,equip_turret_zm IW4L_TEST_PLACE=1`); the placed turret is spawned, set to `auto_nonai` and powered by the turbine beside it.
   - [x] The placed turret picks zombies, swings onto them, fires Black Ops 2's bullets (penetrating by the zone's depth table) and kills them, itself the attacker.
-  - [x] TranZit's Jet Gun (`jetgun_zm`, `WEAPTYPE_GAS`) is built from its four parts, wielded, spun up and overheated (`getcurrentweaponspinlerp`, `setcurrentweaponspinlerp`, `isweaponoverheating`, `setweaponoverheating`), drawing zombies in along the player's `tag_origin` and `tag_flash`.
+  - [x] TranZit's Jet Gun (`jetgun_zm`) is built from its four parts, wielded, spun up and overheated (`getcurrentweaponspinlerp`, `setcurrentweaponspinlerp`, `isweaponoverheating`, `setweaponoverheating`), drawing zombies in along the player's `tag_origin` and `tag_flash` (shown on Modern Warfare 2's lent weapons; on Black Ops 2's own it fires, and its heat is `t6.weapons.overheat`).
   - [x] TranZit's screechers spawn in the fog, jump onto the player (`linkto`) and are knifed off (`screecher_StepBack_death`); the Avogadro spawns after the power event (`avogadro_arrival`) and fights with ranged bolts (`weapon_fired`).
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
   - [x] Buried's Sloth (Leroy) is freed from his cell with the key (`open_cell`) and fed booze to smash through barriers (`jail_open_anim` -> `run_bezerk` -> `Wait_smash`, root-motion yaw and `isinscriptedstate`); the open-table buildables (`equip_turbine_zm`, `equip_springpad_zm`, `equip_subsurface_zm`, `equip_headchopper_zm`) are built and placed (including wallmount/microwave turret placement via `canplayerplaceturret`); the haunted mansion ghost waves (`_zm_ai_ghost.gsc`) spawn and attack.

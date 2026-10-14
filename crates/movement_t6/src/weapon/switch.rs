@@ -31,14 +31,9 @@ pub(super) fn alt_switch<W: MoveWorld>(pm: &Pm<'_, W>, from: u32, to: u32) -> bo
 
 /// An alternate pair aimed only: switching between them raises nothing.
 fn alt_ads_only_pair<W: MoveWorld>(pm: &Pm<'_, W>, a: u32, b: u32) -> bool {
-    let first = if def(pm, a).alt_weapon == b {
-        def(pm, a).def.alt_weapon_ads_only()
-    } else if def(pm, b).alt_weapon == a {
-        def(pm, a).def.alt_weapon_ads_only()
-    } else {
-        return false;
-    };
-    first && def(pm, b).def.alt_weapon_ads_only()
+    (def(pm, a).alt_weapon == b || def(pm, b).alt_weapon == a)
+        && def(pm, a).def.alt_weapon_ads_only()
+        && def(pm, b).def.alt_weapon_ads_only()
 }
 
 /// The switch drops and raises quickly.
@@ -153,10 +148,9 @@ fn begin_weapon_change<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, to: u32, qui
     if tuning::ENFORCE_RECHAMBER_ON_SWITCH
         && a.bolt_action()
         && pm.ps.weaponstate == ws::RELOAD_START_RECHAMBER
+        && let Some(h) = inv::held_mut(pm.ps, from)
     {
-        if let Some(h) = inv::held_mut(pm.ps, from) {
-            h.needs_rechamber = true;
-        }
+        h.needs_rechamber = true;
     }
     let ps = &mut *pm.ps;
     ps.weaponstate = if alt {

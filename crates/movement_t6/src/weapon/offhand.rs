@@ -14,6 +14,9 @@ use crate::state::{
 };
 use crate::{MoveWorld, Pm, Pml, tuning};
 
+/// What a riot shield is set down on and must have room in.
+const RIOTSHIELD_SPOT_MASK: u32 = 0x0281_8091;
+
 /// The first held weapon for an offhand slot.
 fn offhand_in_slot<W: MoveWorld>(pm: &Pm<'_, W>, slot: i32) -> u32 {
     pm.ps
@@ -34,10 +37,11 @@ fn find_offhand<W: MoveWorld>(pm: &Pm<'_, W>, slot: i32) -> u32 {
     if !some(w) {
         return 0;
     }
-    if inv::total(pm.ps, pm.world, w) < 1 && !def(pm, w).def.has_detonator() {
-        if slot != offhand_slot::LETHAL || pm.ps.throw_back_grenade_time_left < 1 {
-            return 0;
-        }
+    if inv::total(pm.ps, pm.world, w) < 1
+        && !def(pm, w).def.has_detonator()
+        && (slot != offhand_slot::LETHAL || pm.ps.throw_back_grenade_time_left < 1)
+    {
+        return 0;
     }
     w
 }
@@ -467,11 +471,11 @@ fn riotshield_spot<W: MoveWorld>(pm: &mut Pm<'_, W>) -> bool {
         forward[2] * 20.0 + eye[2],
     ];
     let end = [start[0], start[1], start[2] - (eye[2] - ps.origin[2])];
-    let t = pm.trace_plain(start, end, [0.0; 3], [0.0; 3], 0x0281_8091);
+    let t = pm.trace_plain(start, end, [0.0; 3], [0.0; 3], RIOTSHIELD_SPOT_MASK);
     if 1.0 <= t.fraction {
         return false;
     }
-    let t = pm.trace_plain(start, end, [-50.0; 3], [50.0; 3], 0x0281_8091);
+    let t = pm.trace_plain(start, end, [-50.0; 3], [50.0; 3], RIOTSHIELD_SPOT_MASK);
     let z = (end[2] - start[2]) * t.fraction + start[2] - 50.0;
     if t.allsolid || t.startsolid || t.fraction < 0.0001 || t.normal[2] < 0.7 {
         return false;
@@ -551,10 +555,10 @@ pub(super) fn riotshield_place<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         return;
     }
     let good = riotshield_spot(pm);
-    if let Some(h) = inv::held_mut(pm.ps, weapon) {
-        if !good {
-            h.riotshield = true;
-        }
+    if let Some(h) = inv::held_mut(pm.ps, weapon)
+        && !good
+    {
+        h.riotshield = true;
     }
     if good {
         pm.ps.weap_flags &= !weap_flags::PLACEMENT_BLOCKED;

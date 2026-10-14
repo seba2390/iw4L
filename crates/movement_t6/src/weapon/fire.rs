@@ -13,6 +13,9 @@ use crate::state::{
 };
 use crate::{Gap, MoveWorld, Pm, Pml, perks, tuning};
 
+/// What a tactical insertion needs clear above the ground it stands on.
+const TAC_INSERT_ROOM_MASK: u32 = 0x81_0011;
+
 fn rounded(x: f32) -> i32 {
     crate::math::round_nudged(x)
 }
@@ -412,16 +415,23 @@ fn tac_insert_room<W: MoveWorld>(pm: &mut Pm<'_, W>) -> bool {
     {
         return false;
     }
+    let blocked = pm_flags::MANTLE | pm_flags::LADDER | pm_flags::DIVING | pm_flags::NO_STAND;
     let mask = if tuning::PLAYER_JUMP_BLOCKS_TAC_INSERT {
-        0xa0_400c
+        blocked | pm_flags::JUMPING
     } else {
-        0xa0_000c
+        blocked
     };
     if ps.pm_flags & mask != 0 {
         return false;
     }
     let o = ps.origin;
-    let t = pm.trace_plain(o, o, [-15.0, -15.0, 0.0], [15.0, 15.0, 70.0], 0x81_0011);
+    let t = pm.trace_plain(
+        o,
+        o,
+        [-15.0, -15.0, 0.0],
+        [15.0, 15.0, 70.0],
+        TAC_INSERT_ROOM_MASK,
+    );
     !t.startsolid && !t.allsolid && 1.0 <= t.fraction
 }
 
@@ -517,10 +527,11 @@ fn fire_timing<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, delay_done: bool) {
         };
         let ps = &mut *pm.ps;
         hand.set_time(ps, time);
-        if d.bolt_action() && d.shots_before_rechamber() == 0 {
-            if let Some(h) = inv::held_mut(ps, weapon) {
-                h.needs_rechamber = true;
-            }
+        if d.bolt_action()
+            && d.shots_before_rechamber() == 0
+            && let Some(h) = inv::held_mut(ps, weapon)
+        {
+            h.needs_rechamber = true;
         }
         let s = hand.state(ps);
         if s != ws::FIRING && s != ws::CONT_FIRE_LOOP {
@@ -562,10 +573,10 @@ fn fire_timing<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, delay_done: bool) {
         } else {
             1
         };
-        if d.shots_before_rechamber() as u32 <= ps.shots_fired_from_chamber as u32 {
-            if let Some(h) = inv::held_mut(ps, weapon) {
-                h.needs_rechamber = true;
-            }
+        if d.shots_before_rechamber() as u32 <= ps.shots_fired_from_chamber as u32
+            && let Some(h) = inv::held_mut(ps, weapon)
+        {
+            h.needs_rechamber = true;
         }
     }
     if hand.delay(ps) == 0 && d.fire_type() != fire_type::FULL_AUTO {

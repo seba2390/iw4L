@@ -311,10 +311,8 @@ fn reload_add_ammo<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let held = pm.ps.weapon;
     let dual_mag = def(pm, held).def.dual_mag();
     let quick = inv::dual_mag_in(pm.ps, pm.world, held);
-    if dual_mag {
-        if let Some(h) = inv::held_mut(pm.ps, held) {
-            h.dual_mag = !quick;
-        }
+    if dual_mag && let Some(h) = inv::held_mut(pm.ps, held) {
+        h.dual_mag = !quick;
     }
 }
 
