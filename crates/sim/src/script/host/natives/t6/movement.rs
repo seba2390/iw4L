@@ -8,7 +8,7 @@ use super::super::super::entities::EntityKind;
 use super::super::engine::{entity_id, trace};
 use super::{anim, vector};
 use crate::frame::FrameWorld;
-use crate::script::runtime::{notify_now, raise, start_now, thread_alive};
+use crate::script::runtime::{notify_now, raise, start_function_now, start_now, thread_alive};
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -85,6 +85,9 @@ struct Movement {
     traversal: Option<Traversal>,
     /// The pain script while it runs; the engine's choice waits for it.
     pain: Option<u64>,
+    /// `animcustom(func, [end_func])`: the running custom thread and its
+    /// optional end function.
+    custom: Option<(Option<u64>, Option<usize>)>,
 }
 
 #[derive(Resource, Default)]
@@ -552,6 +555,24 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     if !alive(world, id) || anim::scripted(world, id) {
         return Ok(());
     }
+    if let Some((thread, end_func)) = movement(world, id).custom {
+        if thread.is_some_and(|t| thread_alive(world, t)) {
+            let at = origin_of(world, id);
+            let enemy = enemy(world, id);
+            if anim::get(world, id).mode != "none" {
+                traverse(world, id, at);
+            }
+            face(world, id, at, enemy.as_ref());
+            return Ok(());
+        }
+        movement(world, id).custom = None;
+        movement(world, id).script = None;
+        if let Some(end_func) = end_func {
+            let now = super::super::super::players::now_ms(world);
+            start_function_now(world, end_func, Value::Object(id), Vec::new(), now)
+                .map_err(|fault| format!("animcustom end: {fault:?}"))?;
+        }
+    }
     if let Some(pain) = movement(world, id).pain {
         if thread_alive(world, pain) {
             return Ok(());
@@ -680,8 +701,70 @@ fn set_goal(world: &mut World, id: u64, goal: [f32; 3]) {
     state.planned = false;
 }
 
+pub(super) fn replan(world: &mut World, id: u64) {
+    let state = movement(world, id);
+    state.path.clear();
+    state.planned = false;
+}
+
+pub(super) fn in_custom(world: &mut World, id: u64) -> bool {
+    movement(world, id)
+        .custom
+        .and_then(|(thread, _)| thread)
+        .is_some_and(|thread| thread_alive(world, thread))
+}
+
+pub(super) fn path_yaw(world: &mut World, id: u64) -> Option<f32> {
+    let at = origin_of(world, id);
+    let next = movement(world, id).path.first()?.at;
+    let (dx, dy) = (next[0] - at[0], next[1] - at[1]);
+    (dx * dx + dy * dy > 0.01).then(|| dy.atan2(dx).to_degrees())
+}
+
+fn func_arg(args: &[Value], index: usize) -> Result<usize, String> {
+    match super::arg(args, index)? {
+        Value::Function(f) => Ok(*f as usize),
+        other => Err(format!(
+            "type {} is not a function",
+            super::type_name(other)
+        )),
+    }
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
-    use Namespace::Method;
+    use Namespace::{Function, Method};
+
+    // gsc_findpath(start, end, [entity], [allow_negotiation], [allow_partial]).
+    registry.register(Function, "findpath", |world, _, args| {
+        let start = vector(args, 0)?;
+        let end = vector(args, 1)?;
+        let id = match args.get(2) {
+            Some(value @ Value::Object(_)) => entity_id(world, value).unwrap_or(0),
+            _ => 0,
+        };
+        if args.len() >= 4 {
+            super::int(args, 3)?;
+        }
+        if args.len() >= 5 {
+            super::int(args, 4)?;
+        }
+        Ok(Value::Int(plan(world, id, start, end).is_some().into()))
+    });
+
+    // gscm_getpathlength: the remaining length of the actor's current path.
+    registry.register(Method, "getpathlength", |world, receiver, _| {
+        let id = actor(world, receiver)?;
+        let mut at = origin_of(world, id);
+        let mut length = 0.0f32;
+        for point in &movement(world, id).path.clone() {
+            length += (0..3)
+                .map(|i| (point.at[i] - at[i]).powi(2))
+                .sum::<f32>()
+                .sqrt();
+            at = point.at;
+        }
+        Ok(Value::Int(length as i32))
+    });
 
     // gscm_calcpathlength(point): the length of the actor's path to the
     // point (an int), 0 when no path joins them.
@@ -761,11 +844,96 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let from = origin_of(world, id);
         Ok(Value::Int(may_move(world, id, from, point, drops).into()))
     });
+    registry.register(
+        Method,
+        "maymovefrompointtopoint",
+        |world, receiver, args| {
+            let id = actor(world, receiver)?;
+            let from = vector(args, 0)?;
+            let to = vector(args, 1)?;
+            let drops = args.len() < 3 || super::int(args, 2)? != 0;
+            let linked = world
+                .resource::<RoundScript>()
+                .entities
+                .get(&id)
+                .is_some_and(|e| e.linked_to.is_some());
+            let ok = !linked && may_move(world, id, from, to, drops);
+            Ok(Value::Int(ok.into()))
+        },
+    );
     registry.register(Method, "isingoal", |world, receiver, args| {
         let id = actor(world, receiver)?;
         let point = vector(args, 0)?;
         let at = origin_of(world, id);
         let goal = *movement(world, id).goal.get_or_insert(at);
         Ok(Value::Int(in_goal(world, id, point, goal).into()))
+    });
+    // gscm_nearnode(node): within 80 vertically and 15 horizontally.
+    registry.register(Method, "nearnode", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        let Some(Value::Object(node_obj)) = args.first() else {
+            return Err("not a pathnode".into());
+        };
+        let is_node = world
+            .resource::<RoundScript>()
+            .path_node_objects
+            .values()
+            .any(|obj| obj == node_obj);
+        if !is_node {
+            return Err("not a pathnode".into());
+        }
+        let node_origin = origin_of(world, *node_obj);
+        let at = origin_of(world, id);
+        let dz = at[2] - node_origin[2];
+        let dx = node_origin[0] - at[0];
+        let dy = node_origin[1] - at[1];
+        let near = dz * dz <= 6400.0 && dx * dx + dy * dy <= 225.0;
+        Ok(Value::Int(near.into()))
+    });
+    // gscm_teleport(origin, [angles]).
+    registry.register(Method, "teleport", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        let origin = vector(args, 0)?;
+        let angles = if args.len() > 1 {
+            Some(vector(args, 1)?)
+        } else {
+            None
+        };
+        let old = origin_of(world, id);
+        let dist_sq: f32 = (0..3).map(|i| (old[i] - origin[i]).powi(2)).sum();
+        {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(id, "origin", Value::Vector(origin));
+            if let Some(angles) = angles {
+                runtime.set_object_field(id, "angles", Value::Vector(angles));
+            }
+        }
+        if dist_sq > 100.0 {
+            replan(world, id);
+        }
+        Ok(Value::Int(1))
+    });
+    // gscm_animcustom(func, [end_func]).
+    registry.register(Method, "animcustom", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        let func = func_arg(args, 0)?;
+        let end_func = if args.len() >= 2 {
+            Some(func_arg(args, 1)?)
+        } else {
+            None
+        };
+        let prev_end = movement(world, id).custom.take().and_then(|(_, end)| end);
+        movement(world, id).script = None;
+        anim::reset_orient(world, id);
+        let now = super::super::super::players::now_ms(world);
+        notify_now(world, receiver.clone(), "killanimscript", Vec::new(), now);
+        if let Some(prev_end) = prev_end {
+            start_function_now(world, prev_end, receiver.clone(), Vec::new(), now)
+                .map_err(|fault| format!("animcustom end: {fault:?}"))?;
+        }
+        let thread = start_function_now(world, func, receiver.clone(), Vec::new(), now)
+            .map_err(|fault| format!("animcustom: {fault:?}"))?;
+        movement(world, id).custom = Some((thread, end_func));
+        Ok(Value::Undefined)
     });
 }

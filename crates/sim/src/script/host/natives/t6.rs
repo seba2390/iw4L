@@ -318,6 +318,29 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
         new_array(world, ids.into_iter().map(Value::Object).collect())
     });
+    registry.register(Function, "getspawnerarray", |world, _, args| {
+        let is_spawner = |entity: &crate::script::host::entities::ScriptEntity| {
+            matches!(entity.kind, EntityKind::Map | EntityKind::Spawned)
+                && entity.classname.starts_with("actor_")
+        };
+        let ids: Vec<u64> = if args.is_empty() {
+            world
+                .resource::<RoundScript>()
+                .entities
+                .iter()
+                .filter(|(_, entity)| is_spawner(entity))
+                .map(|(id, _)| *id)
+                .collect()
+        } else {
+            let candidates = entities_by_key(world, args)?;
+            let runtime = world.resource::<RoundScript>();
+            candidates
+                .into_iter()
+                .filter(|id| runtime.entities.get(id).is_some_and(is_spawner))
+                .collect()
+        };
+        new_array(world, ids.into_iter().map(Value::Object).collect())
+    });
     // The connected players by client number, those that have begun (the
     // engine's connection state 2); a team other than "all" keeps that
     // team's.
@@ -813,6 +836,24 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "tablelookup", |world, _, args| {
         Ok(Value::String(table_lookup(world, args)?.into()))
     });
+    registry.register(Function, "tablelookupcolumnforrow", |world, _, args| {
+        let name = match arg(args, 0)? {
+            Value::Int(_) | Value::String(_) => table_name(args)?,
+            _ => return Ok(Value::string("")),
+        };
+        let row = int(args, 1)?;
+        let column = int(args, 2)?;
+        let tables = world.resource::<RoundScript>().tables.clone();
+        let Some(table) = crate::script::host::tables::table(&tables, &name) else {
+            return Ok(Value::string(""));
+        };
+        let cell = usize::try_from(row)
+            .ok()
+            .zip(usize::try_from(column).ok())
+            .and_then(|(r, c)| table.cell(r, c))
+            .unwrap_or("");
+        Ok(Value::String(cell.into()))
+    });
 
     registry.register(Function, "isarray", |_, _, args| {
         Ok(Value::Int(matches!(arg(args, 0)?, Value::Array(_)).into()))
@@ -903,7 +944,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     // any other pair by the shared contact test.
     registry.register(Method, "istouching", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
-        let Ok(other) = super::engine::entity_id(world, args.first().ok_or("istouching expects an entity")?) else {
+        let Ok(other) =
+            super::engine::entity_id(world, args.first().ok_or("istouching expects an entity")?)
+        else {
             return Ok(Value::Int(0));
         };
         let touching = usable::spawned_box_touches(world, id, other)
@@ -1897,6 +1940,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         // The player's aim-down-sights fraction, as the engine's handler reads it.
         (Method, "playerads"),
         (Function, "bullettrace"),
+        (Method, "clientclaimtrigger"),
+        (Method, "clientreleasetrigger"),
+        (Method, "releaseclaimedtrigger"),
     ] {
         if let Some(native) = shared.get(namespace, name) {
             registry.register(namespace, name, native);
@@ -1906,6 +1952,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     let black_ops = NativeRegistry::engine_services().with_black_ops();
     for (namespace, name) in [
         (Method, "stopburning"),
+        (Method, "startpoisoning"),
+        (Method, "stoppoisoning"),
         (Method, "setsprintduration"),
         (Method, "setsprintcooldown"),
         (Method, "playerknockback"),
@@ -2208,7 +2256,9 @@ fn client_sys_set_state(
 ) -> Result<Value, String> {
     let index = int(args, 0)?;
     if !(0..=8).contains(&index) {
-        return Err(format!("ClientSysSetState - state index ({index}) out of bounds (0 - 8)"));
+        return Err(format!(
+            "ClientSysSetState - state index ({index}) out of bounds (0 - 8)"
+        ));
     }
     let registered = world
         .get_resource::<ClientSystems>()
@@ -2630,7 +2680,10 @@ fn set_visible_team(
         .collect::<Vec<_>>()
         .into_iter()
         .filter_map(|(c, obj)| {
-            let t = match world.resource_mut::<RoundScript>().object_field(obj, "team") {
+            let t = match world
+                .resource_mut::<RoundScript>()
+                .object_field(obj, "team")
+            {
                 Value::String(s) => team_index(&s),
                 _ => None,
             };

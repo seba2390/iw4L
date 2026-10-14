@@ -668,6 +668,77 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             Ok(Value::Undefined)
         },
     );
+    registry.register(Method, "getentityanimrate", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let rate = world
+            .get_resource::<AnimRates>()
+            .and_then(|rates| rates.0.get(&id).copied())
+            .unwrap_or(1.0);
+        Ok(Value::Float(rate))
+    });
+    registry.register(Method, "isinscriptedstate", |world, receiver, _| {
+        let id = actor(world, receiver)?;
+        let in_state = scripted(world, id) || super::movement::in_custom(world, id);
+        Ok(Value::Int(in_state.into()))
+    });
+    registry.register(Method, "getmotionangle", |world, receiver, _| {
+        let id = actor(world, receiver)?;
+        let yaw = match world
+            .resource_mut::<RoundScript>()
+            .object_field(id, "angles")
+        {
+            Value::Vector(v) => v[1],
+            _ => 0.0,
+        };
+        let Some(motion_yaw) = super::movement::path_yaw(world, id) else {
+            return Ok(Value::Float(0.0));
+        };
+        let turns = (motion_yaw - yaw) * 0.002_777_777_8;
+        let angle = (turns - (turns + 0.5).floor()) * 360.0;
+        Ok(Value::Float(angle))
+    });
+    registry.register(Function, "precacheanimstatedef", |_, _, args| {
+        int(args, 0)?;
+        match super::arg(args, 1)? {
+            Value::AnimationTree(_) => {}
+            other => {
+                return Err(format!(
+                    "type {} is not an animtree",
+                    super::type_name(other)
+                ));
+            }
+        }
+        string(args, 2)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setanimstate", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        let state = state_name(args, 0)?;
+        let substate = if args.len() > 1 {
+            Substate::Index(int(args, 1)?)
+        } else {
+            Substate::Index(0)
+        };
+        if let Ok(table) = table(world, id)
+            && let Ok(index) = pick(&table, &state, substate, &mut 0, "ActorCmd_SetAnimState")
+        {
+            let _ = play(world, id, &state, index, None);
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getcorpseanim", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if !matches!(
+            world.resource::<RoundScript>().entities[&id].kind,
+            EntityKind::Corpse { .. }
+        ) {
+            return Err("Only valid on player corpses".into());
+        }
+        Ok(Value::Animation {
+            tree: "multiplayer".into(),
+            name: "pb_death_run_stumble".into(),
+        })
+    });
     registry.on_tick(advance);
     registry.register(Function, "getstartorigin", |world, _, args| {
         Ok(Value::Vector(start_pose(world, args)?.0))
@@ -857,6 +928,39 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "getanimlength", |world, _, args| {
         Ok(Value::Float(anim_clip(world, args, 0)?.duration()))
+    });
+    registry.register(Function, "getmovedelta", |world, _, args| {
+        let mut start = 0.0f32;
+        let mut end = 1.0f32;
+        if args.len() != 1 {
+            if args.len() != 2 {
+                end = super::float(args, 2)?;
+                if !(0.0..=1.0).contains(&end) {
+                    return Err("end time must be between 0 and 1".into());
+                }
+            }
+            start = super::float(args, 1)?;
+            if !(0.0..=1.0).contains(&start) {
+                return Err("start time must be between 0 and 1".into());
+            }
+        }
+        let clip = anim_clip(world, args, 0)?;
+        let from = clip.abs_delta_trans(start);
+        let mut to = clip.abs_delta_trans(end);
+        if clip.looping && end < start {
+            let base = clip.abs_delta_trans(0.0);
+            let full = clip.abs_delta_trans(1.0);
+            for i in 0..3 {
+                to[i] += full[i] - base[i];
+            }
+        }
+        let delta = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+        let (sin, cos) = (-clip.abs_delta_yaw(start).to_radians()).sin_cos();
+        Ok(Value::Vector([
+            delta[0] * cos - delta[1] * sin,
+            delta[0] * sin + delta[1] * cos,
+            delta[2],
+        ]))
     });
     registry.register(Function, "animhasnotetrack", |world, _, args| {
         let clip = anim_clip(world, args, 0)?;

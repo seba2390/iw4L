@@ -167,6 +167,7 @@ pub struct ZoneScripts {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ZoneWeapon {
     pub name: String,
+    pub display_name: String,
     /// The weapons the game registers along with this one, in its order.
     pub companions: Vec<String>,
     pub fire_sound: String,

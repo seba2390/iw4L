@@ -171,6 +171,10 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
     let text = |off| weapon.def_str(off).unwrap_or("").to_owned();
     Some(asset_core::ZoneWeapon {
         name: name.to_owned(),
+        display_name: weapon
+            .variant_str(variant::DISPLAY_NAME)
+            .unwrap_or("")
+            .to_owned(),
         companions,
         fire_sound: text(def::FIRE_SOUND),
         fire_sound_player: text(def::FIRE_SOUND_PLAYER),

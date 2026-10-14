@@ -438,11 +438,61 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         } else {
             None
         };
-        let mut runtime = world.resource_mut::<RoundScript>();
-        runtime.set_object_field(id, "origin", Value::Vector(origin));
-        if let Some(angles) = angles {
-            runtime.set_object_field(id, "angles", Value::Vector(angles));
+        {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(id, "origin", Value::Vector(origin));
+            if let Some(angles) = angles {
+                runtime.set_object_field(id, "angles", Value::Vector(angles));
+            }
         }
+        super::movement::replan(world, id);
         Ok(Value::Int(1))
+    });
+    registry.register(Method, "clearenemy", |world, receiver, _| {
+        let id = actor(world, receiver)?;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        runtime.set_object_field(id, "enemy", Value::Undefined);
+        runtime.set_object_field(id, "favoriteenemy", Value::Undefined);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "cleargoalvolume", |world, receiver, _| {
+        actor(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setflashbanged", |world, receiver, args| {
+        actor(world, receiver)?;
+        if args.len() != 1 {
+            if args.len() != 2 {
+                return Ok(Value::Undefined);
+            }
+            float(args, 1)?;
+        }
+        int(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setspawnerteam", |world, receiver, args| {
+        let id = entity_id(world, receiver).map_err(|_| String::from("not an entity"))?;
+        let is_spawner = world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .is_some_and(|e| {
+                matches!(e.kind, EntityKind::Map | EntityKind::Spawned)
+                    && e.classname.starts_with("actor_")
+            });
+        if !is_spawner {
+            return Err("setspawnerteam can only be applied to AI spawners".into());
+        }
+        let team = super::team(args, 0)?;
+        let name = match team {
+            1 => "axis",
+            2 => "allies",
+            4 => "neutral",
+            _ => "none",
+        };
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "team", Value::string(name));
+        Ok(Value::Undefined)
     });
 }

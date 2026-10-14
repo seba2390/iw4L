@@ -437,10 +437,168 @@ fn fraction_max_ammo(world: &mut World, receiver: &Value, args: &[Value]) -> Res
     }))
 }
 
+/// `getfractionstartammo`: total ammo against start ammo; 1 when the player
+/// does not hold the weapon or its start ammo is under 1.
+fn fraction_start_ammo(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let client = player_entity(world, receiver)?;
+    let name = string(args, 0)?;
+    let Some(weapon) = named_or_none(world, args)? else {
+        return Ok(Value::Float(1.0));
+    };
+    let count = {
+        let frame = FrameWorld::from_world(world);
+        let held = script_player::weapon_named(&frame, &name)
+            .ok()
+            .filter(|&held| script_player::has_weapon(&frame, client, held));
+        let Some(held) = held else {
+            return Ok(Value::Float(1.0));
+        };
+        script_player::ammo_clip(&frame, client, held)
+            + script_player::ammo_stock(&frame, client, held)
+    };
+    let start = ammo(world, &weapon, weapon.start_ammo);
+    Ok(Value::Float(match (count, start) {
+        (_, ..1) => 1.0,
+        (1.., _) => count as f32 / start as f32,
+        _ => 0.0,
+    }))
+}
+
+#[derive(Resource, Default)]
+struct FuelAmmo(BTreeMap<(u32, String), i32>);
+
 pub(super) fn register_natives(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.register(Method, "getfractionmaxammo", fraction_max_ammo);
+    registry.register(Method, "getfractionstartammo", fraction_start_ammo);
+    registry.register(Method, "getweaponammofuel", |world, receiver, args| {
+        let client = player_entity(world, receiver)?;
+        let name = string(args, 0)?;
+        let Some(weapon) = named_or_none(world, args)? else {
+            return Ok(Value::Int(0));
+        };
+        if weapon.weap_type != WEAP_TYPE_GAS {
+            return Ok(Value::Int(0));
+        }
+        let held = {
+            let frame = FrameWorld::from_world(world);
+            script_player::weapon_named(&frame, &name)
+                .ok()
+                .is_some_and(|w| script_player::has_weapon(&frame, client, w))
+        };
+        if !held {
+            return Ok(Value::Int(0));
+        }
+        let key = (client.0, weapon.name.to_ascii_lowercase());
+        let fuel = world
+            .get_resource::<FuelAmmo>()
+            .and_then(|f| f.0.get(&key).copied())
+            .unwrap_or(weapon.tank_life_time);
+        Ok(Value::Int(fuel))
+    });
+    registry.register(Method, "setweaponammofuel", |world, receiver, args| {
+        let client = player_entity(world, receiver)?;
+        let name = string(args, 0)?;
+        let amount = int(args, 1)?;
+        let Some(weapon) = named_or_none(world, args)? else {
+            return Ok(Value::Int(0));
+        };
+        if weapon.weap_type != WEAP_TYPE_GAS {
+            return Ok(Value::Int(0));
+        }
+        let held = {
+            let frame = FrameWorld::from_world(world);
+            script_player::weapon_named(&frame, &name)
+                .ok()
+                .is_some_and(|w| script_player::has_weapon(&frame, client, w))
+        };
+        if !held {
+            return Err(format!(
+                "Trying to give player ammo for weapon {} that they are not holding",
+                weapon.name
+            ));
+        }
+        let clamped = amount.clamp(0, weapon.tank_life_time.max(0));
+        world
+            .get_resource_or_insert_with(FuelAmmo::default)
+            .0
+            .insert((client.0, weapon.name.to_ascii_lowercase()), clamped);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "anyammoforweaponmodes", |world, receiver, args| {
+        let client = player_entity(world, receiver)?;
+        let weapon = named(world, args)?;
+        let frame = FrameWorld::from_world(world);
+        let count_for = |w_name: &str| -> i32 {
+            let Ok(w) = script_player::weapon_named(&frame, w_name) else {
+                return 0;
+            };
+            script_player::ammo_clip(&frame, client, w)
+                + script_player::ammo_stock(&frame, client, w)
+        };
+        let mut total = count_for(&weapon.name);
+        if !weapon.alt_weapon.is_empty() && !weapon.alt_weapon.eq_ignore_ascii_case("none") {
+            total += count_for(&weapon.alt_weapon);
+        }
+        Ok(Value::Int((total != 0).into()))
+    });
+    registry.register(Function, "getweapondisplayname", |world, _, args| {
+        let Some(weapon) = named_or_none(world, args)? else {
+            return Ok(Value::string(""));
+        };
+        Ok(Value::String(weapon.display_name.as_str().into()))
+    });
+    registry.register(Function, "getweaponstowedmodel", |world, _, args| {
+        let Some(weapon) = named_or_none(world, args)? else {
+            return Ok(Value::Int(0));
+        };
+        let has = weapon.world_models.get(1).is_some_and(|m| !m.is_empty())
+            && weapon.weap_class != 5
+            && weapon.weap_class != 12;
+        Ok(Value::Int(has.into()))
+    });
+    registry.register(Function, "weaponhasattachment", |world, _, args| {
+        let _weapon = named(world, args)?;
+        for i in 1..args.len() {
+            string(args, i)?;
+        }
+        Ok(Value::Int(0))
+    });
+    registry.register(
+        Function,
+        "getweaponsupportedattachments",
+        |world, _, args| {
+            let _weapon = named(world, args)?;
+            new_array(world, Vec::new())
+        },
+    );
+    registry.register(Method, "itemweaponsetammo", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if !matches!(
+            world.resource::<RoundScript>().entities[&id].kind,
+            crate::script::host::entities::EntityKind::Item(_)
+        ) {
+            return Err("Entity is not an item.".into());
+        }
+        if int(args, 0)? < 0 {
+            return Err("Ammo count must not be negative".into());
+        }
+        if int(args, 1)? < 0 {
+            return Err("Ammo count must not be negative".into());
+        }
+        if args.len() > 2 {
+            let mode = int(args, 2)?;
+            if !(0..=1).contains(&mode) {
+                return Err("Value out of range.  Allowed values: 0 to 2".into());
+            }
+        }
+        Ok(Value::Undefined)
+    });
     // gscm_calcweaponoptions: packs the player's entity number and weapon
     // options (camo, lens, reticle, tag, emblem); the two-argument custom
     // class form is refused (`t6.weapons.class_options`).
