@@ -75,6 +75,10 @@ pub mod def {
     pub const PULLBACK_SOUND_PLAYER: u32 = 172;
     pub const FIRE_SOUND: u32 = 176;
     pub const FIRE_SOUND_PLAYER: u32 = 180;
+    pub const FIRE_START_SOUND: u32 = 200;
+    pub const FIRE_KILLCAM_SOUND: u32 = 208;
+    pub const FIRE_START_SOUND_PLAYER: u32 = 212;
+    pub const FIRE_KILLCAM_SOUND_PLAYER: u32 = 220;
     pub const FIRE_LAST_SOUND: u32 = 224;
     pub const FIRE_LAST_SOUND_PLAYER: u32 = 228;
     pub const EMPTY_FIRE_SOUND: u32 = 232;
@@ -280,17 +284,28 @@ pub mod def {
     pub const SIZE: usize = 2448;
 }
 
+/// Black Ops 2's weapon animation files: each one's index in the variant's
+/// animation names, from the weapon file's field table and the client's
+/// animation start.
 pub mod weap_anim {
+    pub const ROOT: usize = 0;
     pub const IDLE: usize = 1;
     pub const EMPTY_IDLE: usize = 2;
     pub const FIRE_INTRO: usize = 3;
     pub const FIRE: usize = 4;
     pub const HOLD_FIRE: usize = 5;
     pub const LASTSHOT: usize = 6;
+    pub const FLOURISH: usize = 7;
     pub const RECHAMBER: usize = 8;
     pub const MELEE: usize = 9;
+    pub const MELEE1: usize = 10;
+    pub const MELEE2: usize = 11;
+    pub const MELEE3: usize = 12;
+    pub const MELEE_EMPTY: usize = 13;
     pub const MELEE_CHARGE: usize = 14;
+    pub const MELEE_CHARGE_EMPTY: usize = 15;
     pub const RELOAD: usize = 16;
+    pub const RELOAD_RIGHT: usize = 17;
     pub const RELOAD_EMPTY: usize = 18;
     pub const RELOAD_START: usize = 19;
     pub const RELOAD_END: usize = 20;
@@ -308,18 +323,60 @@ pub mod weap_anim {
     pub const SPRINT_IN: usize = 32;
     pub const SPRINT_LOOP: usize = 33;
     pub const SPRINT_OUT: usize = 34;
+    pub const SPRINT_EMPTY_IN: usize = 35;
+    pub const SPRINT_EMPTY_LOOP: usize = 36;
+    pub const SPRINT_EMPTY_OUT: usize = 37;
+    pub const LOWREADY_IN: usize = 38;
+    pub const LOWREADY_LOOP: usize = 39;
+    pub const LOWREADY_OUT: usize = 40;
+    pub const CONT_FIRE_IN: usize = 41;
+    pub const CONT_FIRE_LOOP: usize = 42;
+    pub const CONT_FIRE_OUT: usize = 43;
+    pub const CRAWL_IN: usize = 44;
+    pub const CRAWL_FORWARD: usize = 45;
+    pub const CRAWL_BACK: usize = 46;
+    pub const CRAWL_RIGHT: usize = 47;
+    pub const CRAWL_LEFT: usize = 48;
+    pub const CRAWL_OUT: usize = 49;
+    pub const CRAWL_EMPTY_IN: usize = 50;
+    pub const CRAWL_EMPTY_FORWARD: usize = 51;
+    pub const CRAWL_EMPTY_BACK: usize = 52;
+    pub const CRAWL_EMPTY_RIGHT: usize = 53;
+    pub const CRAWL_EMPTY_LEFT: usize = 54;
+    pub const CRAWL_EMPTY_OUT: usize = 55;
+    pub const DEPLOY: usize = 56;
+    pub const BREAKDOWN: usize = 57;
     pub const DETONATE: usize = 58;
+    pub const NIGHTVISION_WEAR: usize = 59;
+    pub const NIGHTVISION_REMOVE: usize = 60;
     pub const ADS_FIRE: usize = 61;
     pub const ADS_LASTSHOT: usize = 62;
+    pub const ADS_FIRE_INTRO: usize = 63;
     pub const ADS_RECHAMBER: usize = 64;
+    // The weapon file names none of 65..=71; the client's animation start reads them.
+    pub const DTP_IN: usize = 65;
+    pub const DTP_LOOP: usize = 66;
+    pub const DTP_OUT: usize = 67;
+    pub const DTP_EMPTY_IN: usize = 68;
+    pub const DTP_EMPTY_LOOP: usize = 69;
+    pub const DTP_EMPTY_OUT: usize = 70;
+    pub const SLIDE_IN: usize = 71;
+    pub const MANTLE: usize = 72;
+    pub const SPRINT_CAMERA: usize = 73;
+    pub const DTP_IN_CAMERA: usize = 74;
+    pub const DTP_LOOP_CAMERA: usize = 75;
+    pub const DTP_OUT_CAMERA: usize = 76;
+    pub const MANTLE_CAMERA: usize = 77;
     pub const DW_LEFT_FIRE: usize = 78;
     pub const DW_LEFT_LASTSHOT: usize = 79;
+    pub const DW_LEFT_FLOURISH: usize = 80;
     pub const DW_LEFT_IDLE: usize = 81;
     pub const DW_LEFT_EMPTY_IDLE: usize = 82;
     pub const DW_LEFT_RELOAD_EMPTY: usize = 83;
     pub const DW_LEFT_RELOAD: usize = 84;
     pub const ADS_UP: usize = 85;
     pub const ADS_DOWN: usize = 86;
+    pub const ADS_UP_OTHER_SCOPE: usize = 87;
 }
 
 pub mod unique {

@@ -175,7 +175,7 @@ fn capture_t6_game_bytes(w: fastfile_t6::weapon::WeaponView<'_>) -> Option<Arc<G
             .filter(|s| !s.is_empty())
             .map_or_else(String::new, str::to_owned),
         named_anims,
-        anim_slots: &[],
+        anim_slots: T6_RUNTIME_ANIM_SLOTS,
         location_damage: w
             .def_f32_array::<{ d::HIT_LOCATIONS }>(d::LOCATION_DAMAGE_MULTIPLIERS)
             .map(Box::from),
@@ -197,8 +197,21 @@ pub(super) fn t6_sz_xanims(
 pub(super) fn t6_sz_xanims_by<'a>(
     xanim: impl Fn(u32) -> Option<&'a str>,
 ) -> [Option<String>; WEAPON_ANIM_SLOTS] {
-    use fastfile_t6::weapon::weap_anim as t6_anim;
-    const PAIRS: [(usize, usize); 33] = [
+    let mut out = [const { None }; WEAPON_ANIM_SLOTS];
+    for (src, dst) in T6_RUNTIME_ANIM_SLOTS.iter().enumerate() {
+        if let Some(dst) = *dst {
+            out[dst] = xanim(src as u32)
+                .filter(|name| !name.is_empty())
+                .map(|name| format!("{T6_XANIM_PREFIX}{}", name.to_ascii_lowercase()));
+        }
+    }
+    out
+}
+
+/// The runtime slot of each of the weapon's own animation slots.
+static T6_RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
+    use fastfile_t6::weapon::{variant::XANIM_COUNT, weap_anim as t6_anim};
+    const PAIRS: [(usize, usize); 34] = [
         (t6_anim::IDLE, weap_anim::IDLE),
         (t6_anim::EMPTY_IDLE, weap_anim::EMPTY_IDLE),
         (t6_anim::FIRE, weap_anim::FIRE),
@@ -229,23 +242,22 @@ pub(super) fn t6_sz_xanims_by<'a>(
         (t6_anim::SPRINT_LOOP, weap_anim::SPRINT_LOOP),
         (t6_anim::SPRINT_OUT, weap_anim::SPRINT_OUT),
         (t6_anim::DETONATE, weap_anim::DETONATE),
+        (t6_anim::NIGHTVISION_WEAR, weap_anim::NIGHTVISION_WEAR),
+        (t6_anim::NIGHTVISION_REMOVE, weap_anim::NIGHTVISION_REMOVE),
         (t6_anim::ADS_FIRE, weap_anim::ADS_FIRE),
         (t6_anim::ADS_LASTSHOT, weap_anim::ADS_LASTSHOT),
         (t6_anim::ADS_RECHAMBER, weap_anim::ADS_RECHAMBER),
         (t6_anim::ADS_UP, weap_anim::ADS_UP),
         (t6_anim::ADS_DOWN, weap_anim::ADS_DOWN),
-        (t6_anim::FIRE_INTRO, weap_anim::FIRE),
     ];
-    let mut out = [const { None }; WEAPON_ANIM_SLOTS];
-    for (src, dst) in PAIRS {
-        if out[dst].is_none() {
-            out[dst] = xanim(src as u32)
-                .filter(|name| !name.is_empty())
-                .map(|name| format!("{T6_XANIM_PREFIX}{}", name.to_ascii_lowercase()));
-        }
+    let mut slots = [None; XANIM_COUNT as usize];
+    let mut i = 0;
+    while i < PAIRS.len() {
+        slots[PAIRS[i].0] = Some(PAIRS[i].1);
+        i += 1;
     }
-    out
-}
+    slots
+};
 
 pub(super) fn t6_sz_xanims_left(
     w: fastfile_t6::weapon::WeaponView<'_>,

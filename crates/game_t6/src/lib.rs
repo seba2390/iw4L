@@ -1,5 +1,6 @@
 mod builtins;
 mod fire;
+mod fire_sound;
 mod grenade;
 mod keys;
 mod missile;
@@ -7,6 +8,7 @@ mod movement;
 mod script_zones;
 mod startup;
 pub mod ui;
+mod viewmodel;
 
 use game_api::{
     HudRules, LibraryMode, ModeRules, MovementRules, Rule, ScriptProgram, ScriptRequest, unknown,
@@ -258,8 +260,8 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         zombies: false,
         font_scales_sent: None,
     },
-    client_fire: None,
-    viewmodel: None,
+    client_fire: Some(fire_sound::CLIENT_FIRE),
+    viewmodel: Some(viewmodel::VIEWMODEL),
     // gsc_playsoundatposition sends the alias's hash; nothing checks it.
     script_sounds_hashed: true,
     turrets: None,
