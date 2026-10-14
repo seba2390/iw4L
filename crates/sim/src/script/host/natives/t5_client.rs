@@ -4,7 +4,7 @@
 use super::super::args::{int, optional, string, vector};
 use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
-use crate::script::client::ClientView;
+use crate::script::client::{ClientOutput, ClientSound, ClientView};
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -18,7 +18,30 @@ struct FakeEnts {
 }
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
-    use Namespace::Function;
+    use Namespace::{Function, Method};
+    // `playSound(local, alias, origin, volume)`: a sound the client plays at
+    // a point (at none without one), answering its id.
+    registry.register(Function, "playsound", |world, _, args| {
+        local_index(args)?;
+        let alias = string(args, 1)?;
+        let origin = optional(args, 2, vector)?.unwrap_or([0.0; 3]);
+        Ok(play(world, alias, origin))
+    });
+    // `ent playSound(local, alias, origin, volume)`: at the entity's origin
+    // without one.
+    registry.register(Method, "playsound", |world, receiver, args| {
+        local_index(args)?;
+        let id = super::engine::entity_id(world, receiver)?;
+        let alias = string(args, 1)?;
+        let origin = match args.get(2) {
+            Some(_) if args.len() == 3 => vector(args, 2)?,
+            _ => match super::super::players::entity_field(world, id, "origin") {
+                Value::Vector(origin) => origin,
+                _ => [0.0; 3],
+            },
+        };
+        Ok(play(world, alias, origin))
+    });
     // Every local client is active; there is only client 0.
     registry.register(Function, "getlocalplayers", |world, _, _| {
         let players = locals(world).into_iter().map(Value::Object).collect();
@@ -109,6 +132,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));
+}
+
+fn play(world: &mut World, alias: String, origin: [f32; 3]) -> Value {
+    let mut output = world.resource_mut::<ClientOutput>();
+    let id = output.next_sound;
+    output.next_sound += 1;
+    output.sounds.push(ClientSound { alias, origin });
+    Value::Int(id)
 }
 
 /// The local client a native names: Black Ops refuses any but 0.

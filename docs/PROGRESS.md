@@ -86,7 +86,7 @@ Only the top-level items count.
   - [ ] Zone data still dropped: dynamic entities, fx models, glass, dynamic lights; some static models whose model lives in another zone.
   - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main`, 122 client threads; 129 of 173 client builtins not implemented yet, so their sounds, effects, lights and snapshots do nothing yet); 155 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
+  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main`, 122 client threads, its one-shot sounds; 127 of 173 client builtins not implemented yet, so their sounds, effects, lights and snapshots do nothing yet); 155 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
@@ -127,7 +127,8 @@ Only the top-level items count.
   - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as IW4L's bar.
 - [ ] The game's own sound.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
-  - [ ] Footsteps and gear, music states, `stopsound` and `setsoundblend`, another player's automatic fire; a `PlaySound` notify waits a fixed 2 s.
+  - [x] The client scripts' one-shot sounds (`playsound` on the client VM): Kino's random ambient emitters (`_audio::soundrandom_thread`: wind, metal, rope, whispers, wood) play their aliases to the local client.
+  - [ ] Footsteps and gear, music states, client loop and line emitters and ambient rooms, `stopsound` and `setsoundblend`, another player's automatic fire; a `PlaySound` notify waits a fixed 2 s.
 - [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.
