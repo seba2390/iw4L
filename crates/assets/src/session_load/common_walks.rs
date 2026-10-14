@@ -1353,7 +1353,7 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
             }
             Err(error) => commons.report.push(format!("t5 menus {zone}: {error}")),
         }
-        if zone == "patch"
+        if matches!(zone.as_str(), "code_post_gfx" | "patch")
             && let Ok(image) = open_zone_shared(path)
         {
             let population = lane(image.game).load_material_population(

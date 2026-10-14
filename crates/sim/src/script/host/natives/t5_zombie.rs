@@ -92,9 +92,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     // Hints to engine systems the host does not model: AI perception events,
     // threat bias between groups (zombies always hunt the closest player),
-    // engagement ranges, player shove and knockback, the health shield, view
-    // blur, rope physics, weapon hide-tags on display models, the transporter
-    // screen effect, save games and network stat reports.
+    // engagement ranges, player shove and knockback, the health shield, rope
+    // physics, weapon hide-tags on display models, the transporter screen
+    // effect, save games and network stat reports.
     for name in [
         "addaieventlistener",
         "setthreatbiasgroup",
@@ -104,8 +104,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "pushplayer",
         "playerknockback",
         "enablehealthshield",
-        "startfadingblur",
-        "setblur",
         "useweaponhidetags",
         "settransported",
         // A perk machine shaking as the power comes on.
@@ -115,6 +113,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
+    registry.register(Method, "setblur", |world, receiver, args| {
+        player_blur(world, receiver, args, false)
+    });
+    registry.register(Method, "startfadingblur", |world, receiver, args| {
+        player_blur(world, receiver, args, true)
+    });
     registry.register(Method, "startrevive", |world, receiver, _| {
         let id = crate::ClientId(super::player::player(world, receiver)?);
         crate::game_move::set_being_revived(
@@ -210,7 +214,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 }
 
 /// Every client is sent the failure's client dvar; with a player in the level
-/// and no reload under way, the level loads again once the delay has passed.
+/// and no reload under way, the client blur ramps to `blur_target` over the
+/// death delay, any `ui_deadquote` is sent with its `death` sound, and the
+/// level loads again once the delay has passed.
 fn mission_failed(world: &mut World) -> Result<(), String> {
     let rules = crate::frame::FrameWorld::from_world(world)
         .bootstrap_ref()
@@ -224,24 +230,110 @@ fn mission_failed(world: &mut World) -> Result<(), String> {
         .copied()
         .collect();
     let (name, value) = rules.client_dvar;
-    for client in clients {
+    for &client in &clients {
         super::player::send_client_dvar(world, client, name, value);
     }
     if players(world).is_empty() {
         return Ok(());
     }
-    let now = i64::from(crate::level_time_ms(
-        world.resource::<crate::step::StepRequest>().tick,
-    ));
-    let mut runtime = world.resource_mut::<RoundScript>();
-    if !runtime.reloading {
-        runtime.reloading = true;
-        runtime.reload_after_ms = Some(now + rules.reload_delay_ms + rules.death_delay_ms);
-        if let Some(gap) = rules.unrun {
-            diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
+    let now_ms = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+    let now = i64::from(now_ms);
+    let deadquote = world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get(&rules.deadquote_dvar.to_ascii_lowercase())
+        .cloned()
+        .filter(|s| !s.is_empty());
+    let already_reloading = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let was = runtime.reloading;
+        if !was {
+            runtime.reloading = true;
+            runtime.reload_after_ms = Some(now + rules.reload_delay_ms + rules.death_delay_ms);
+            if let Some(gap) = rules.unrun {
+                diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
+            }
+        }
+        was
+    };
+    if !already_reloading {
+        let mut frame = crate::frame::FrameWorld::from_world(world);
+        for &client in &clients {
+            if frame.client_meta(crate::ClientId(client)).is_some() {
+                frame
+                    .client_meta_mut(crate::ClientId(client))
+                    .view_effects
+                    .blur = Some(crate::ScriptBlur {
+                    from: 0.0,
+                    to: rules.blur_target,
+                    set_ms: now_ms,
+                    duration_ms: rules.death_delay_ms as i32,
+                });
+            }
+        }
+        if let Some(quote) = deadquote {
+            for &client in &clients {
+                super::player::send_client_dvar(world, client, rules.deadquote_dvar, &quote);
+            }
+            let mut frame = crate::frame::FrameWorld::from_world(world);
+            let alias_index = frame.sound_alias_index(rules.death_sound);
+            for &client in &clients {
+                frame.push_local_sound(crate::PendingLocalSound {
+                    recipient: crate::ClientId(client),
+                    stop: false,
+                    alias_index,
+                });
+            }
         }
     }
     Ok(())
+}
+
+/// Black Ops' `setblur` and `startfadingblur` player methods: validate `time`
+/// and `blur`, then ramp the player's screen blur (`setblur` from current to
+/// `blur` over `time * 1000` ms; `startfadingblur` from `blur` to `0` over
+/// `time * 1000 + 50` ms) unless a priority-2 `MissionFailed` blur is active.
+fn player_blur(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    fading: bool,
+) -> Result<Value, String> {
+    let blur = super::super::args::float(args, 0)?;
+    let seconds = super::super::args::float(args, 1)?;
+    if seconds < 0.0 {
+        return Err("Time must be positive".into());
+    }
+    let duration_ms = (seconds * 1000.0) as i32;
+    if blur < 0.0 {
+        return Err("Blur value must be greater than 0".into());
+    }
+    let client = super::player::player(world, receiver)
+        .map_err(|_| "setblur() called on an invalid client entity.\n".to_owned())?;
+    if world.resource::<RoundScript>().reloading {
+        return Ok(Value::Undefined);
+    }
+    let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+    let mut frame = crate::frame::FrameWorld::from_world(world);
+    if frame.client_meta(crate::ClientId(client)).is_some() {
+        let view = &mut frame.client_meta_mut(crate::ClientId(client)).view_effects;
+        view.blur = Some(if fading {
+            crate::ScriptBlur {
+                from: blur,
+                to: 0.0,
+                set_ms: now,
+                duration_ms: duration_ms + 50,
+            }
+        } else {
+            crate::ScriptBlur {
+                from: view.blur.map_or(0.0, |b| b.sample(now)),
+                to: blur,
+                set_ms: now,
+                duration_ms,
+            }
+        });
+    }
+    Ok(Value::Undefined)
 }
 
 fn set_invulnerable(world: &mut World, receiver: &Value, on: bool) -> Result<Value, String> {
