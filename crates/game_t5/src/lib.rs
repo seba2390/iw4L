@@ -1,4 +1,5 @@
 mod catalog;
+mod client_catalog;
 mod fire;
 mod fire_sound;
 mod grenade;
@@ -60,6 +61,24 @@ impl game_api::GameScripts for T5 {
                 .extended(zombie_catalog::T5_ZOMBIE.iter().cloned()),
             roots: startup.roots,
             entries: startup.entries,
+            built: None,
+            settings: Vec::new(),
+            key_types: Vec::new(),
+            entity_fields: Vec::new(),
+            dvars: Vec::new(),
+        })
+    }
+
+    /// Black Ops' client loads `clientscripts/<map>.csc` and runs its `main`.
+    fn client_program(
+        &self,
+        request: &ScriptRequest<'_>,
+        _sources: &dyn gsc::SourceResolver,
+    ) -> Option<ScriptProgram> {
+        (request.gametype == ZOMBIES).then(|| ScriptProgram {
+            catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, client_catalog::T5_CLIENT),
+            roots: vec![format!("clientscripts/{}", request.map)],
+            entries: vec![format!("clientscripts/{}::main", request.map)],
             built: None,
             settings: Vec::new(),
             key_types: Vec::new(),
