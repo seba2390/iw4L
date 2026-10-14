@@ -103,6 +103,7 @@ pub(crate) fn install_client(
     runtime.objects.insert(1, BTreeMap::new());
     runtime.objects.insert(2, BTreeMap::new());
     runtime.next_object = 3;
+    runtime.next_entity_number = 0x400;
     runtime.rng = u32::from_le_bytes(program.fingerprint()[..4].try_into().unwrap()) | 1;
     world.insert_resource(natives);
     if let Some(&function) = program.names.get(STRUCT_INIT) {

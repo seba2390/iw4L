@@ -77,8 +77,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 155 of 610 |
-| Five (`t5:zombie_pentagon`) | 157 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 152 of 610 |
+| Five (`t5:zombie_pentagon`) | 154 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -86,7 +86,7 @@ Only the top-level items count.
   - [ ] Zone data still dropped: dynamic entities, fx models, glass, dynamic lights; some static models whose model lives in another zone.
   - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main`, 122 client threads, its one-shot and loop sounds, the server's client system states, `clientNotify`s and client exploders; 121 of 173 client builtins not implemented yet, so their sounds, effects, lights and snapshots do nothing yet); 155 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
+  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main`, 122 client threads, its one-shot and loop sounds, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks; 111 of 173 client builtins not implemented yet, so their effects, lights and snapshots do nothing yet); 152 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.

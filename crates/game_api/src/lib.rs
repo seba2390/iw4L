@@ -64,6 +64,23 @@ pub struct ClientCallbacks {
     /// A local player stepped: `(local client, player, movement type,
     /// surface, first person, quiet)`.
     pub footstep: &'static str,
+    /// A snapshot entity (actor, missile, vehicle) spawned on the client:
+    /// `self = entity, (local client)`.
+    pub entity_spawned: &'static str,
+    /// A player entity spawned on the client: `self = player, (local client)`.
+    pub player_spawned: &'static str,
+    /// A snapshot entity that had spawned left the snapshot:
+    /// `(local client, entity)`.
+    pub entity_shutdown: &'static str,
+    /// A client flag changed on a snapshot entity:
+    /// `self = entity, (local client, flag, set, new_ent)`.
+    pub client_flag: &'static str,
+    /// The 16-bit client flags changed on a snapshot entity:
+    /// `self = entity, (local client, flags)`.
+    pub client_flag_as_val: &'static str,
+    /// A non-dog zombie actor's eye-glow flag (`haseyes`) changed:
+    /// `self = actor, (local client, has_eyes)`.
+    pub zombie_eye: &'static str,
 }
 
 /// What a match compiles and where it starts.

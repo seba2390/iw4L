@@ -62,16 +62,127 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let _ = int(args, 0)?;
         Ok(Value::Int(world.resource::<ClientView>().host.into()))
     });
+    registry.register(Method, "issplitscreenhost", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let is_local = locals(world).contains(&id);
+        Ok(Value::Int(
+            (is_local && world.resource::<ClientView>().host).into(),
+        ))
+    });
     // The client's entities a key names (`getent(local, value, key)`).
     registry.register(Function, "getent", |world, _, args| {
+        if args.len() != 3 {
+            return Err("illegal call to getent()\n".into());
+        }
         local_index(args)?;
         let ids = super::engine::matching_entities(world, &args[1..])?;
         super::engine::single(ids, "getent")
     });
     registry.register(Function, "getentarray", |world, _, args| {
         local_index(args)?;
-        let ids = super::engine::matching_entities(world, &args[1..])?;
+        let ids = if args.len() == 1 {
+            let runtime = world.resource::<RoundScript>();
+            let world_ent = runtime.engine.world;
+            runtime
+                .entities
+                .iter()
+                .filter(|(id, e)| e.kind != EntityKind::HudElem && Some(**id) != world_ent)
+                .map(|(id, _)| *id)
+                .collect()
+        } else {
+            super::engine::matching_entities(world, &args[1..])?
+        };
         super::engine::objects(world, ids)
+    });
+    registry.register(Method, "getentitynumber", |world, receiver, _| {
+        let (_, ent) = entity(world, receiver)?;
+        Ok(Value::Int(ent.number))
+    });
+    registry.register(Method, "getentnum", |world, receiver, _| {
+        let (_, ent) = entity(world, receiver)?;
+        Ok(Value::Int(ent.number))
+    });
+    registry.register(Function, "getentnum", |world, _, args| {
+        local_index(args)?;
+        let (_, ent) = entity(world, super::super::args::arg(args, 1)?)?;
+        Ok(Value::Int(ent.number))
+    });
+    registry.register(Method, "getorigin", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let origin = match super::super::players::entity_field(world, id, "origin") {
+            Value::Vector(origin) => origin,
+            _ => [0.0; 3],
+        };
+        Ok(Value::Vector(origin))
+    });
+    registry.register(Method, "isplayer", |world, receiver, _| {
+        let (_, ent) = entity(world, receiver)?;
+        Ok(Value::Int((ent.kind == EntityKind::Player).into()))
+    });
+    registry.register(Method, "islocalplayer", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        Ok(Value::Int(locals(world).contains(&id).into()))
+    });
+    registry.register(Method, "getlocalclientnumber", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let index = locals(world)
+            .into_iter()
+            .position(|local| local == id)
+            .ok_or_else(|| "You can only call GetLocalClientNumber on players.".to_owned())?;
+        Ok(Value::Int(index as i32))
+    });
+    registry.register(Method, "isspectating", |world, receiver, _| {
+        super::engine::entity_id(world, receiver)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "isai", |world, receiver, _| {
+        let (_, ent) = entity(world, receiver)?;
+        Ok(Value::Int((ent.kind == EntityKind::Actor).into()))
+    });
+    registry.register(Method, "isalive", |world, receiver, _| {
+        is_alive(world, receiver)
+    });
+    registry.register(Function, "isalive", |world, _, args| {
+        let ent = super::super::args::arg(args, 0)?;
+        if !matches!(ent, Value::Object(_)) {
+            return Err("IsAlive param isn't an entity.".into());
+        }
+        is_alive(world, ent)
+    });
+    registry.register(Method, "hasdobj", |world, receiver, args| {
+        if args.len() != 1 {
+            return Err("HasDObj: Must be passed the local client number".into());
+        }
+        local_index(args)?;
+        let (id, is_player) = {
+            let (id, ent) = entity(world, receiver)?;
+            (id, ent.kind == EntityKind::Player)
+        };
+        let has_model = matches!(
+            super::super::players::entity_field(world, id, "model"),
+            Value::String(s) if !s.is_empty()
+        );
+        Ok(Value::Int((is_player || has_model).into()))
+    });
+    registry.register(Method, "clientflag", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let bit = int(args, 0)?;
+        if !(0..16).contains(&bit) {
+            return Err(format!("ClientFlag: Index {bit} out of range (0 - 15)\n"));
+        }
+        let flags = match super::super::players::entity_field(world, id, "serverflags") {
+            Value::Int(flags) => flags,
+            _ => 0,
+        };
+        Ok(Value::Int((flags >> bit) & 1))
+    });
+    registry.register(Method, "haseyes", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let eyes = match super::super::players::entity_field(world, id, "haseyes") {
+            Value::Int(eyes) => eyes != 0,
+            _ => false,
+        };
+        Ok(Value::Int(eyes.into()))
     });
     // The client's real time: its frames' time.
     registry.register(Function, "getrealtime", |world, _, _| {
@@ -118,6 +229,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let mut runtime = world.resource_mut::<RoundScript>();
         let id = runtime.create_entity(EntityKind::Spawned, &classname)?;
         runtime.set_object_field(id, "origin", Value::Vector(origin));
+        let ent_type = if matches!(classname.as_str(), "script_model" | "script_origin") {
+            "scriptmover"
+        } else {
+            "general"
+        };
+        runtime.set_object_field(id, "type", Value::string(ent_type));
+        runtime.set_object_field(id, "model", Value::string(""));
+        runtime.set_object_field(id, "serverflags", Value::Int(0));
+        runtime.set_object_field(id, "haseyes", Value::Int(0));
         Ok(Value::Object(id))
     });
     // `playLoopSound(local, fakeent, alias, fade)`: a loop at a fake
@@ -241,4 +361,26 @@ fn locals(world: &World) -> Vec<u64> {
         .iter()
         .map(|client| client.object)
         .collect()
+}
+
+fn entity<'a>(
+    world: &'a World,
+    receiver: &Value,
+) -> Result<(u64, &'a super::super::entities::ScriptEntity), String> {
+    world
+        .resource::<RoundScript>()
+        .entity(receiver)
+        .ok_or_else(|| "not an entity".into())
+}
+
+fn is_alive(world: &mut World, receiver: &Value) -> Result<Value, String> {
+    let id = super::engine::entity_id(world, receiver)?;
+    let alive = matches!(
+        super::super::players::entity_field(world, id, "type"),
+        Value::String(kind) if matches!(&*kind, "player" | "actor" | "vehicle" | "plane")
+    );
+    if !alive {
+        return Err("IsAlive called on the wrong kind of entity".into());
+    }
+    Ok(Value::Int(1))
 }
