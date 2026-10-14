@@ -684,6 +684,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     vis: HudPlayerVisInput<'w>,
     mode: Option<Res<'w, game_api::ModeRules>>,
     hint_latch: Local<'s, crate::t5_hud::T5HintLatch>,
+    score_latch: Local<'s, crate::t5_hud::T5ScoreLatch>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -786,6 +787,16 @@ pub(crate) fn update_weaponbar(
                     &mut gaps,
                 )
             });
+        let mut scores: Vec<(usize, i32)> = snap
+            .meta
+            .clients
+            .iter()
+            .filter_map(|(id, c)| {
+                let idx = id.0 as usize;
+                (idx < 4).then(|| (idx, client_input.score_latch.step(idx, c.score)))
+            })
+            .collect();
+        scores.sort_by_key(|&(idx, _)| idx);
         let state = crate::t5_hud::T5HudState {
             ms,
             dvars: snap.meta.script_dvars(local.0),
@@ -801,6 +812,8 @@ pub(crate) fn update_weaponbar(
             hide_ammo,
             ammo_widths,
             hint,
+            local_client: local.0.0 as usize,
+            scores,
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,
