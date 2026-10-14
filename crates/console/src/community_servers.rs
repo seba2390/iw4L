@@ -3,16 +3,43 @@ use bevy::prelude::*;
 pub(crate) fn community_server_menu(
     mut events: MessageReader<crate::ConsoleCommand>,
     servers: Res<ui::CommunityServers>,
+    counts: Option<Res<net::CommunityPlayerCounts>>,
     (screen, party): (Res<frame::AppScreen>, Res<frame::UiPartyState>),
     mut dvars: ResMut<frame::UiMenuDvars>,
     mut exit: MessageWriter<AppExit>,
-    (mut choice, mut error, mut restarting): (
+    (mut choice, mut error, mut restarting, mut population): (
         Local<Option<String>>,
         Local<Option<String>>,
         Local<bool>,
+        Local<Vec<Option<u32>>>,
     ),
     mut echo: crate::feature_dispatch::ConsoleEcho,
 ) {
+    let mut refresh = dvars.choices("ui_community_server").is_none();
+    if let Some(counts) = counts.as_ref().and_then(|counts| counts.snapshot())
+        && counts != *population
+    {
+        *population = counts;
+        refresh = true;
+    }
+    let counts = &*population;
+    let online = servers
+        .selected
+        .parse::<usize>()
+        .ok()
+        .and_then(|index| counts.get(index))
+        .copied()
+        .flatten();
+    dvars.set(
+        "ui_players_online",
+        online.map_or_else(
+            || "Players online: unavailable".to_owned(),
+            |count| format!("{count} players online"),
+        ),
+    );
+    if refresh {
+        dvars.set_choices("ui_community_server", servers.display_choices(counts));
+    }
     let choice = choice.get_or_insert_with(|| servers.selected.clone());
     let in_menu = *screen == frame::AppScreen::MainMenu;
     let locked =

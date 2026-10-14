@@ -28,6 +28,7 @@ pub(crate) fn compile(
     rank_progression: bool,
 ) -> Result<PreparedSimWeapons, sim::SimWeaponContentRefusal> {
     let rules = WeaponHostRules::default();
+    let aliases: Vec<_> = weapons.native_script_aliases().chain(aliases).collect();
     let mut refused = Vec::new();
     let groups = weapons.configuration_transition_groups();
     let game_weapons = game_weapons(weapons);

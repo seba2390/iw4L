@@ -116,6 +116,7 @@ mod record;
 pub(super) use diagnostics::ExactColourSubmitCensus;
 use encode::RecordCensus;
 mod residency;
+mod skinning;
 mod smodel_skinned;
 
 pub use pipeline::cached_lighting_port_variant;
@@ -125,6 +126,8 @@ fn upload_exact_geometry(
     mut geometry: ResMut<ExactColourGeometry>,
     mut smodel_cache_gpu: ResMut<SmodelCacheGpu>,
     mut census: ResMut<ExactColourSubmitCensus>,
+    mut skin: ResMut<skinning::SkinGpu>,
+    mut pending: ResMut<bevy::render::renderer::PendingCommandBuffers>,
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
 ) {
@@ -135,6 +138,17 @@ fn upload_exact_geometry(
         &device,
         &queue,
     );
+    let skinned = skin.dispatch(
+        &frame.skin_jobs,
+        geometry.xmodel.vertex.buffer(),
+        geometry.xmodel.vertex.len(),
+        &device,
+        &queue,
+        &mut pending,
+    );
+    perf::Counter::CounterSkinJobs.emit(skinned.jobs as f64);
+    perf::Counter::CounterSkinVertices.emit(skinned.vertices as f64);
+    perf::Counter::CounterSkinResidentBytes.emit(skin.resident_bytes() as f64);
     if let Some(kind) = result.code_mesh_gpu_kind {
         census.preparation.code_mesh_gpu_kind = Some(kind);
     }
@@ -2902,6 +2916,7 @@ pub(super) fn register(app: &mut App) {
         .init_resource::<InstalledRenderWorld>()
         .init_resource::<PublishedRenderFrame>()
         .init_resource::<ExactColourGeometry>()
+        .init_resource::<skinning::SkinGpu>()
         .init_resource::<super::resolved_scene::ResolvedScene>()
         .init_resource::<SmodelCacheGpu>()
         .init_resource::<ExactColourPipeline>()

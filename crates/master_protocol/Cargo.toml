@@ -10,3 +10,6 @@ layer = "neutral"
 
 [lints]
 workspace = true
+
+[dependencies]
+quinn-proto = { version = "0.11.17", default-features = false }

@@ -253,7 +253,7 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
         }
     }
     let frame = FrameWorld::from_world(world);
-    let tag = hit
+    let part = hit
         .bone
         .and_then(|bone| {
             frame
@@ -273,12 +273,12 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
     if world.resource::<RoundScript>().entities[&object].kind
         == super::entities::EntityKind::Vehicle
     {
-        super::vehicles::damage(world, object, hit, attacker, &weapon, &tag);
+        super::vehicles::damage(world, object, hit, attacker, &weapon, &part);
         return true;
     }
     if world.resource::<RoundScript>().entities[&object].kind == super::entities::EntityKind::Actor
     {
-        super::actors::damage(world, object, hit, attacker, &weapon, &tag);
+        super::actors::damage(world, object, hit, attacker, &weapon, &part);
         return true;
     }
     let amount = super::t6_zombies::entity_damage_amount(world, object, hit);
@@ -295,7 +295,7 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
     let after = before.saturating_sub(amount);
     runtime.set_object_field(object, "health", Value::Int(after));
     drop(runtime);
-    super::t6_zombies::entity_damage(world, object, hit, before, after, tag.contains("head"));
+    super::t6_zombies::entity_damage(world, object, hit, before, after, part.contains("head"));
     let receiver = Value::Object(object);
     raise(
         world,
@@ -308,8 +308,8 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
             Value::Vector(hit.point),
             Value::string(hit.means),
             Value::String(model),
-            Value::String(tag.as_str().into()),
             Value::string(""),
+            Value::String(part.as_str().into()),
             Value::Int(hit.flags),
             Value::String(weapon.into()),
         ],
@@ -352,13 +352,14 @@ pub(crate) fn destructible_effect(
     name: String,
     origin: [f32; 3],
     direction: [f32; 3],
-) {
+    up: [f32; 3],
+) -> Option<u64> {
     let now = super::players::now_ms(world);
     let Some(mut runtime) = world.get_resource_mut::<RoundScript>() else {
-        return;
+        return None;
     };
     let Ok(id) = runtime.create_entity(super::entities::EntityKind::Spawned, "script_model") else {
-        return;
+        return None;
     };
     let forward = glam::Vec3::from_array(direction)
         .try_normalize()
@@ -369,12 +370,19 @@ pub(crate) fn destructible_effect(
             name,
             origin,
             forward: forward.to_array(),
-            up: forward.any_orthonormal_vector().to_array(),
+            up,
             start_ms: Some(now as i32),
             repeat_ms: 0,
             cull_distance: 0.0,
         },
     );
+    Some(id)
+}
+
+pub(crate) fn stop_destructible_effect(world: &mut World, id: u64) {
+    if let Some(mut runtime) = world.get_resource_mut::<RoundScript>() {
+        runtime.delete_entity(id);
+    }
 }
 
 pub(crate) fn set_destructible_model(

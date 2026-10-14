@@ -248,12 +248,14 @@ pub struct RemoteSkinPoseHashes {
     geometry_revision: u64,
     last: HashMap<u32, u64>,
     skinned: HashMap<u32, CachedSkinnedBody>,
+    reskinning: HashMap<u32, (u64, u64)>,
 
     last_cache_hits: HashSet<u32>,
 }
 
 #[derive(Clone, Default)]
 pub struct CpuBodyGeom {
+    pub skin_jobs: Vec<render_frame::skinning::PackedSkinJob>,
     pub packed: Vec<[u8; asset_iw4::size::GFX_PACKED_VERTEX]>,
     pub indices: Vec<u32>,
     pub decoded_n: usize,
@@ -277,6 +279,7 @@ pub struct CpuNamedSurface {
 #[derive(Clone)]
 pub struct CachedSkinnedBody {
     pub geometry_revision: u64,
+    pub layout: u64,
     pub geom: Arc<CpuBodyGeom>,
     pub radii: Vec<f32>,
     pub radius_parents: Vec<u8>,
@@ -325,6 +328,7 @@ impl RemoteSkinPoseHashes {
     pub fn retain_live(&mut self, live: &HashSet<u32>) {
         self.last.retain(|ent, _| live.contains(ent));
         self.skinned.retain(|ent, _| live.contains(ent));
+        self.reskinning.retain(|ent, _| live.contains(ent));
         self.last_cache_hits.retain(|ent| live.contains(ent));
     }
 
@@ -345,19 +349,40 @@ impl RemoteSkinPoseHashes {
 }
 
 pub fn take_unique_geom(pose_hashes: &mut RemoteSkinPoseHashes, persist_key: u32) -> CpuBodyGeom {
-    match pose_hashes.skinned.remove(&persist_key) {
-        Some(cached) => match Arc::try_unwrap(cached.geom) {
-            Ok(mut geom) => {
-                geom.packed.clear();
-                geom.indices.clear();
-                geom.surfaces.clear();
-                geom.decoded_n = 0;
-                geom
-            }
-            Err(_) => CpuBodyGeom::default(),
-        },
-        None => CpuBodyGeom::default(),
+    let Some(cached) = pose_hashes.skinned.remove(&persist_key) else {
+        return CpuBodyGeom::default();
+    };
+    pose_hashes
+        .reskinning
+        .insert(persist_key, (cached.geometry_revision, cached.layout));
+    match Arc::try_unwrap(cached.geom) {
+        Ok(mut geom) => {
+            geom.packed.clear();
+            geom.indices.clear();
+            geom.surfaces.clear();
+            geom.decoded_n = 0;
+            geom
+        }
+        Err(_) => CpuBodyGeom::default(),
     }
+}
+
+pub fn geom_layout(geom: &CpuBodyGeom) -> u64 {
+    use std::hash::BuildHasher;
+    let mut hasher = bevy::platform::hash::FixedHasher.build_hasher();
+    hasher.write_usize(geom.decoded_n);
+    hasher.write(bytemuck::cast_slice(&geom.indices));
+    for surface in &geom.surfaces {
+        (surface.index_start, surface.index_count, &surface.material).hash(&mut hasher);
+    }
+    for job in &geom.skin_jobs {
+        (job.shape.id(), job.destination, job.bones.len()).hash(&mut hasher);
+        job.offset.map(f32::to_bits).hash(&mut hasher);
+        for range in job.ranges.iter() {
+            (range.start, range.count, range.rigid).hash(&mut hasher);
+        }
+    }
+    hasher.finish()
 }
 
 pub fn hash_skin_matrices(skin: &[Mat4]) -> u64 {
@@ -403,16 +428,23 @@ pub fn commit_assembled_body(
     submit: &mut RemoteBodySkinnedQueue,
     pose_hashes: &mut RemoteSkinPoseHashes,
 ) {
-    pose_hashes.geometry_revision = pose_hashes
-        .geometry_revision
-        .checked_add(1)
-        .expect("remote geometry revision exhausted");
-    let geometry_revision = pose_hashes.geometry_revision;
+    let layout = geom_layout(&geom);
+    let geometry_revision = match pose_hashes.reskinning.remove(&persist_key) {
+        Some((revision, prior)) if prior == layout => revision,
+        _ => {
+            pose_hashes.geometry_revision = pose_hashes
+                .geometry_revision
+                .checked_add(1)
+                .expect("remote geometry revision exhausted");
+            pose_hashes.geometry_revision
+        }
+    };
     let geom = Arc::new(geom);
     pose_hashes.skinned.insert(
         persist_key,
         CachedSkinnedBody {
             geometry_revision,
+            layout,
             geom: Arc::clone(&geom),
             radii: radii.clone(),
             radius_parents: radius_parents.clone(),
@@ -491,6 +523,7 @@ pub fn flatten_cpu_geom(surfaces: Vec<CpuNamedSurface>) -> CpuBodyGeom {
         packed.clear();
     }
     CpuBodyGeom {
+        skin_jobs: Vec::new(),
         packed,
         indices,
         decoded_n,

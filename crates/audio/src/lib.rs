@@ -45,6 +45,7 @@ pub use start::{
 mod destructible_loops;
 mod match_set;
 mod match_voices;
+mod projectile_loops;
 
 mod weapon_lock;
 
@@ -67,6 +68,7 @@ pub use render_core::InstanceStatus;
 pub use runtime::{AudioDiagnostics, AudioRuntime};
 
 mod media;
+mod mix_bus;
 
 mod offline;
 pub use decode_budget::{DecodeMemory, decode_memory};

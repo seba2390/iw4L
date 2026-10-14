@@ -3,9 +3,7 @@ use fastfile_t6::{Ptr, ZoneLoad};
 
 use crate::dobj::ModelPoseSrc;
 use crate::model_skel::{BoneBind, ModelSkel, VertSkin};
-use crate::packed_vertex::{
-    normalize_or_up, repack_vertex_t6, unpack_color, unpack_packed_tex_coords, unpack_unit_vec,
-};
+use crate::packed_vertex::repack_vertex_t6;
 use asset_core::WalkLocalMaterialIndex;
 pub use xmodel_runtime::BoneCollision;
 
@@ -133,8 +131,29 @@ impl<'z> T6Model<'z> {
         core::str::from_utf8(self.load.blocks.cstr(p).ok()?).ok()
     }
 
+    pub fn collision(&self) -> Option<(i16, u32, Vec<xmodel_runtime::CollSurfCollision>)> {
+        let (_, surfaces) = capture_collision(
+            &Reader { load: self.load },
+            self,
+            usize::from(self.h_u8(off::NUM_BONES)),
+        )?;
+        Some((
+            self.h_u16(off::COLL_LOD) as i16,
+            self.h_u32(off::CONTENTS),
+            surfaces,
+        ))
+    }
+
     pub fn surface_count(&self) -> usize {
         usize::from(self.h_u8(off::NUM_SURFS))
+    }
+
+    pub fn surface_ptr(&self, index: usize) -> Option<Ptr> {
+        if index >= self.surface_count() {
+            return None;
+        }
+        self.h_ptr(off::SURFS)
+            .map(|p| p.at(index as u32 * XSURFACE))
     }
 
     pub fn material_slot(&self, index: usize) -> Option<Ptr> {
@@ -185,9 +204,6 @@ pub fn capture_model_skel_t6(
     let pose = capture_pose_src(&r, &model, &name, &bone_name_strs, &bones, num_child);
 
     let mut positions = Vec::new();
-    let mut normals = Vec::new();
-    let mut colors = Vec::new();
-    let mut uvs = Vec::new();
     let mut indices = Vec::new();
     let mut surface_materials = Vec::with_capacity(surface_count);
     let mut surface_vertex_ranges = Vec::with_capacity(surface_count);
@@ -228,13 +244,10 @@ pub fn capture_model_skel_t6(
                     .try_into()
                     .ok()?,
             );
-            let word = |o: usize| u32::from_le_bytes(packed[o..o + 4].try_into().unwrap());
             packed_vertices.push(packed);
             positions.push([r.f32(vertex)?, r.f32(vertex.at(4))?, r.f32(vertex.at(8))?]);
-            normals.push(normalize_or_up(unpack_unit_vec(word(24))));
-            colors.push(unpack_color(word(16)));
-            uvs.push(unpack_packed_tex_coords(word(20)));
-            if skin.weights[1] == 0.0 && skin.weights[0] == 1.0 {
+
+            if skin.is_rigid() {
                 rigid_verts += 1;
             } else {
                 blend_verts += 1;
@@ -271,21 +284,18 @@ pub fn capture_model_skel_t6(
         tag_view,
         tag_weapon,
         pose,
-        positions,
-        normals,
-        colors,
-        uvs,
-        indices,
+        positions: positions.into(),
+        indices: indices.into(),
         surface_materials,
         surface_vertex_ranges,
         surface_index_ranges,
         surface_part_bits,
         surface_deformed,
         surface_vert_list_count,
-        vert_skin,
+        vert_skin: vert_skin.into(),
         rigid_verts,
         blend_verts,
-        packed_vertices,
+        packed_vertices: packed_vertices.into(),
         radius: Some(model.h_f32(off::RADIUS)),
         bounds: {
             let mins: [f32; 3] = std::array::from_fn(|k| model.h_f32(off::MINS + 4 * k as u32));
@@ -376,18 +386,16 @@ fn decode_surface_skin(
     num_bones: usize,
 ) -> Option<Vec<VertSkin>> {
     let mut skins = vec![VertSkin::default(); vertex_count];
-    let bone_at = |raw: u16| -> Option<u16> {
+    let bone_at = |raw: u16| -> Option<u8> {
         if !raw.is_multiple_of(BONE_STRIDE) {
             return None;
         }
         let bone = raw / BONE_STRIDE;
-        (usize::from(bone) < num_bones).then_some(bone)
+        (usize::from(bone) < num_bones)
+            .then(|| u8::try_from(bone).ok())
+            .flatten()
     };
-    let rigid = |bone| VertSkin {
-        bones: [bone, 0, 0, 0],
-        weights: [1.0, 0.0, 0.0, 0.0],
-        ..Default::default()
-    };
+    let rigid = |bone| VertSkin::rigid(bone);
 
     if vert_list_count > 0
         && let Some(Some(list)) = r.ptr(surface.at(40))
@@ -441,11 +449,11 @@ fn decode_surface_skin(
                 skin.bones[extra] = bone_at(r.u16(blend.at(o * 2))?)?;
                 let raw = r.u16(blend.at(o * 2 + 2))?;
                 let w = dpvs_iw4::skin_blend_weight(raw);
-                skin.weights[extra] = w;
-                skin.weight_u16[extra] = raw;
+                skin.set_weight(extra, w);
+                skin.set_extra_weight(extra, raw);
                 remaining -= w;
             }
-            skin.weights[0] = remaining;
+            skin.set_weight(0, remaining);
             if vertex >= vertex_count {
                 return None;
             }

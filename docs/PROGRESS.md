@@ -29,6 +29,13 @@ not implemented yet` line a match logs when its scripts install. The README's
 Builtins column shows the implemented share (M − N of M). A pull request that
 changes a count updates its row.
 
+Each game section ends with its technical debt: work that is not a milestone
+but has to be paid off at some point. Those lists are plain bullets and do
+not count toward the percentage. Figures are from 2026-10-14
+(`xtask/boundary/allow.txt` occurrences, `cargo check` and
+`cargo clippy --workspace --all-targets` warnings); refresh them when a pull
+request pays some of it off.
+
 ## Modern Warfare 2 — multiplayer
 
 | Map | Builtins not implemented yet |
@@ -47,6 +54,20 @@ changes a count updates its row.
 - [x] Demos, clips and the killcam.
 - [x] Modern Warfare 2's HUD, menus and sound.
 - [ ] Modern Warfare 2's fidelity ledger ([`fidelity/iw4.md`](fidelity/iw4.md)) has no open item.
+
+### Technical debt
+
+- Boundary (`xtask/boundary/allow.txt`): about 2,800 Modern Warfare 2 crate
+  paths (`*_iw4::`) in shared crates — `sim` (792), `render_frontend` (470),
+  `hud` (248), `asset_game` (192), `net` (166), `asset_world` (144),
+  `render_anim`, `render_gpu`. The runtime grew out of Modern Warfare 2, and
+  most shared systems still call its crates directly.
+- Modern Warfare 3 (IW5) maps are recognised but have no section here; their
+  `fastfile_iw5::` and `AssetNamespace::Iw5` references (about 640, mostly
+  `asset_game`, `assets`, `asset_world`) are debt of the same kind.
+- Clippy: about 47 warnings in Modern Warfare 2 crates and files
+  (`weapon_iw4`, `clipmap_iw4`, `movement_iw4`, `input_iw4`,
+  `assets/src/lane/iw4.rs`), and 29 in `fx_iw4`.
 
 ## Black Ops — Zombies
 
@@ -113,6 +134,20 @@ Only the top-level items count.
   - [x] A lobby host picks Kino; a joined player spawns at its co-op spawns, gets points and sees the zombies.
   - [ ] Revive, bleeding out, spectating; no two-machine test.
 - [ ] The game's fidelity ledger ([`fidelity/t5.md`](fidelity/t5.md)) has no open item.
+
+### Technical debt
+
+- Boundary (`xtask/boundary/allow.txt`): about 680 Black Ops references
+  outside the game crates (`fastfile_t5::` paths and `AssetNamespace::T5`,
+  `ZoneGame::T5`, `"t5"` checks), mostly in `assets` (lane/t5.rs),
+  `asset_game` (menu_catalog_t5.rs, weapon_catalog/capture_t5.rs),
+  `asset_world`, `asset_material`, `asset_model` and `asset_audio`. Each one
+  should move behind a `game_api` rule or into `game_t5`/`fastfile_t5`.
+- Clippy: 18 warnings in Black Ops code (menu_catalog_t5.rs,
+  capture_t5.rs, world_t5.rs, game_t5): disallowed `unwrap_or_default`,
+  collapsible `if`s, `chunks_exact` with a constant size.
+- Shared crates Black Ops runs on (`sim`, `hud`, `render_*`) carry most of
+  the shared debt listed under Shared technical debt below.
 
 ## Black Ops II — Zombies
 
@@ -207,6 +242,26 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] A second player over the network (two machines) not tried.
 - [ ] The game's fidelity ledger ([`fidelity/t6.md`](fidelity/t6.md)) has no open item.
 
+### Technical debt
+
+- Boundary (`xtask/boundary/allow.txt`): about 280 Black Ops II references
+  outside the game crates (`fastfile_t6::` paths and `AssetNamespace::T6`,
+  `FamilyId::T6`, `ZoneGame::T6` checks), mostly in `assets` (lane/t6.rs),
+  `asset_game` and `asset_transport`. The zombies and multiplayer hosts
+  (`sim/src/script/host/t6_zombies*`, `t6_gametype.rs`) and `ui/src/t6_menu.rs`
+  are Black Ops II code living in shared crates.
+- Compiler warnings: unused `world`, `direction` and `key` and the unused
+  `give`/`take` methods in `sim/src/script/host/t6_zombies/origins_staff.rs`;
+  the unused `entity_string` import in `assets/src/lane/t6.rs`.
+- Clippy: 88 warnings in Black Ops II code, most in
+  `sim/src/script/host/t6_zombies.rs` (36), `ui/src/t6_menu.rs` (11),
+  `t6_zombies/origins_staff.rs` (8) and `assets/src/lane/t6.rs` (8).
+- Not formatted by `rustfmt --edition 2024`: `t6_zombies.rs` and
+  `t6_zombies/origins_staff.rs`.
+- Zombies maps need the patch zone Black Ops II downloads at launch
+  (`t6.scripts.ffotd`); a machine without a capture in
+  `<artifacts>/captured/` cannot start Nuketown, TranZit or Buried.
+
 ## Black Ops III — Zombies
 
 | Map | Builtins not implemented yet |
@@ -238,3 +293,38 @@ Only the top-level items count. Runs are headless, with the test player
 - [ ] Every zombies map in the install.
 - [ ] Co-op: friends join, revive one another and play to game over.
 - [ ] The game's fidelity ledger ([`fidelity/t7.md`](fidelity/t7.md)) has no open item.
+
+### Technical debt
+
+- Boundary (`xtask/boundary/allow.txt`): 3 Black Ops III references outside
+  the game crates (`asset_transport`, `audio`, `sim`).
+- The master protocol's content flags carry four games; Black Ops III maps
+  are not gated by asset families or advertised to the master.
+- The audio mix bus for Black Ops III is untuned (no trim or compressor).
+
+## Shared technical debt
+
+Debt in the shared runtime that no single game owns.
+
+- Boundary graph (`xtask/boundary/allow.txt`): 22 dependency edges outside
+  the layer rules (`render_fx` on `sim`, `net`, `assets` and nine more;
+  `replay` on `sim`, `net`, `frame`, `playerstate_iw4`; `weapon_iw4`,
+  `fastfile_iw4`, `marks_iw4` and `render_frame` on `asset_iw4`) and 25
+  crates still in the `mixed` layer, which have to be split into a game and a
+  neutral part.
+- Boundary patterns not tied to one game: about 230 (`render_frame::` and
+  `render_fx::` paths in `render_frontend`, `render_anim`, `render_gpu`).
+- Compiler warnings: 9 uses of Bevy's deprecated `Interaction` in `ui`
+  (move to `Hovered`/`Pressed`); 4 function pointer comparisons in
+  `game_api`'s derived `PartialEq` (`ViewmodelRules::anim`,
+  `font_scales_sent`, `MenuFonts`, `ClientFireRules::sound`); the deprecated
+  `fetch_update` in `render_frame/src/skinning.rs`; an unused `name` in
+  `audio/src/diagnostics.rs`.
+- Clippy: about 1,140 warnings across the workspace, nearly 1,000 of them in
+  shared code — `sim` (207), `render_frontend` (161), `asset_game` (98),
+  `render_anim` (90), `hud` (72), `render_gpu` (68), `console` (67), `net`
+  (66), `fx` (63). The workspace is not clippy clean, so CI only checks
+  changed lines.
+- Python (`ruff check` and `ruff format`): `scripts/bench-marks.py` has 3
+  findings (a shebang on a non-executable file, two `zip` pairs for
+  `itertools.pairwise`) and is not formatted.

@@ -81,7 +81,6 @@ pub(crate) struct RoundScript {
     pub(crate) server_info: std::collections::BTreeSet<String>,
     pub(crate) server_info_defaults: BTreeMap<String, String>,
     pub(crate) missiles: BTreeMap<crate::ProjectileId, u64>,
-    pub(crate) missiles_seen_ms: i32,
     pub(crate) grenade_touches: Vec<host::triggers::GrenadeTouch>,
     pub(crate) lingering: Vec<(i64, u64)>,
     /// Lobby members the match waits for before play starts.
@@ -171,7 +170,6 @@ impl RoundScript {
             server_info: Default::default(),
             server_info_defaults: Default::default(),
             missiles: Default::default(),
-            missiles_seen_ms: Default::default(),
             grenade_touches: Default::default(),
             lingering: Default::default(),
             expected_players: Default::default(),

@@ -131,6 +131,11 @@ fn run_export_gltf(games: asset_transport::GamesRoot, artifacts: PathBuf, zone_a
         Ok(found.path),
         common_mp,
         asset_transport::LoadProgress::default(),
+        frame::AssetFamilies::from_inventory(
+            content_flags(&NamespaceTrees::discover(&games)).0,
+            &frame::UiMenuDvars::default(),
+        )
+        .unwrap_or_else(|error| fatal(&error)),
     )) {
         assets::MatchLoadOutcome::Ready(prepared) => prepared,
         assets::MatchLoadOutcome::Canceled => fatal("export-gltf: map walk canceled"),
@@ -341,6 +346,18 @@ fn run_map(
     let map_key = game.map_or_else(|| zone.clone(), |game| format!("{}:{zone}", game.prefix()));
     let requires = net::content_required_by_map(&map_key)
         .unwrap_or_else(|error| fatal(&format!("master content: {error}")));
+    let families = if role == Role::Replay || std::env::var_os("IW4L_MASTER_JOIN").is_some() {
+        frame::AssetFamilies(have.0)
+    } else {
+        frame::AssetFamilies::from_inventory(have.0, &frame::UiMenuDvars::default())
+            .unwrap_or_else(|error| fatal(&error))
+    };
+    // Families the master protocol does not carry (Black Ops III) are not gated.
+    if master_protocol::ContentFlags::for_map(&map_key).is_some() {
+        families
+            .require_map(&map_key)
+            .unwrap_or_else(|error| fatal(&error));
+    }
 
     let master_intent = if role == Role::Replay {
         net::MasterLaunchIntent::disabled()
@@ -432,6 +449,7 @@ fn run_map(
             zone_ff,
             common_mp,
             progress: progress.clone(),
+            families,
         })
         .insert_resource(LoadingScreen::new(
             progress.clone(),

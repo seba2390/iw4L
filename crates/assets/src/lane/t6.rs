@@ -1,6 +1,7 @@
 use fastfile_t6::{AssetType, ZoneLoad};
 mod camouflage;
 mod common_compile;
+mod destructible;
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -54,6 +55,7 @@ struct T6Content {
 fn t6_script_model_instance(
     placement: &asset_world::ScriptModelPlacement,
     scene_assets: &mut asset_world::MapXModelSceneCatalog,
+    definitions: &BTreeMap<String, Arc<xmodel_runtime::T5DestructibleDef>>,
 ) -> asset_world::ScriptModelSceneInstance {
     use bevy::math::{EulerRot, Quat, Vec3};
     let current_model = asset_world::MapXModelAssetKey(placement.model.clone());
@@ -65,10 +67,20 @@ fn t6_script_model_instance(
             },
         );
     }
+    let definition = definitions.get(&placement.destructible_def).cloned();
+    let mut dobj_state =
+        xmodel_runtime::DObjSemanticState::bind_pose(placement.model.clone(), 1, 1);
+    if let Some(def) = &definition
+        && placement.model == def.model
+        && let Some(asset_world::MapXModelSceneAsset::T6(skel)) = scene_assets.get(&current_model)
+    {
+        let health: Vec<_> = def.pieces.iter().map(|piece| piece.health as i16).collect();
+        dobj_state.hide_part_bits = def.hide_parts(&health, &skel.bone_names);
+    }
     let [pitch, yaw, roll] = placement.angles.map(f32::to_radians);
     asset_world::ScriptModelSceneInstance {
         id: placement.id,
-        dobj_state: xmodel_runtime::DObjSemanticState::bind_pose(placement.model.clone(), 1, 1),
+        dobj_state,
         current_model,
         transform: bevy::prelude::Transform {
             translation: Vec3::from_array(placement.origin),
@@ -82,7 +94,7 @@ fn t6_script_model_instance(
             script_noteworthy: placement.script_noteworthy.clone(),
             destructible_type: placement.destructible_type.clone(),
             destructible_def: placement.destructible_def.clone(),
-            t5_destructible: None,
+            t5_destructible: definition,
             target: placement.target.clone(),
             script_exploder: placement.script_exploder.clone(),
             brush_link: placement.brush_link.clone(),
@@ -1710,6 +1722,7 @@ const FX_EFFECT_DEF_ELEMS: usize = 28;
 const FX_ELEM_LAST_SPRITE: u8 = 6;
 const FX_ELEM_MODEL: u8 = 7;
 const FX_ELEM_SOUND: u8 = 10;
+const FX_ELEM_DECAL: u8 = 11;
 const FX_ELEM_RUNNER: u8 = 12;
 
 fn effect_name_at(load: &fastfile_t6::ZoneLoad, slot: fastfile_t6::Ptr) -> Option<&str> {
@@ -1806,6 +1819,12 @@ fn capture_effects(
     }
     let mut textures = DecodedTextures::new();
     wanted.insert("maps/mp_maps/fx_mp_exp_bomb".to_owned());
+    for load in zones {
+        match destructible::effect_names(load) {
+            Ok(names) => wanted.extend(names),
+            Err(error) => content.report.push(error),
+        }
+    }
     loop {
         let before = content.fx.len();
         for &load in zones {
@@ -1903,7 +1922,16 @@ fn capture_effect(
             usize::from(raw[FX_ELEM_TYPE + 3]) + 1,
             FX_ELEM_VIS_SAMPLE,
         );
-        let slots: Vec<fastfile_t6::Ptr> = if visual_count > 1 {
+        let slots: Vec<fastfile_t6::Ptr> = if elem_type == FX_ELEM_DECAL {
+            decode_ptr(header_u32(&raw, FX_ELEM_VISUALS as usize).unwrap_or(0)).map_or_else(
+                Vec::new,
+                |arr| {
+                    (0..visual_count as u32 * 2)
+                        .map(|v| arr.at(v * 4))
+                        .collect()
+                },
+            )
+        } else if visual_count > 1 {
             decode_ptr(header_u32(&raw, FX_ELEM_VISUALS as usize).unwrap_or(0))
                 .map_or_else(Vec::new, |arr| {
                     (0..visual_count as u32).map(|v| arr.at(v * 4)).collect()
@@ -1916,7 +1944,7 @@ fn capture_effect(
         let mut visuals = Vec::new();
         for slot in slots {
             let visual = match elem_type {
-                0..=FX_ELEM_LAST_SPRITE => {
+                0..=FX_ELEM_LAST_SPRITE | FX_ELEM_DECAL => {
                     let material = load.asset_in(asset, slot);
                     let name = material.and_then(|m| header_str(load, &m.header, 0));
                     if let (Some(material), Some(name)) = (material, name)
@@ -2523,6 +2551,8 @@ impl ZoneLane for T6Lane {
                 &load,
                 &mut report,
             )?);
+            let destructibles = destructible::capture(&load)?;
+            let destructible_models = destructible::model_names(&destructibles);
             let mut script_xmodels: Vec<asset_model::T6Model> = Vec::new();
             for source in &image_loads {
                 for asset in &source.assets {
@@ -2535,7 +2565,9 @@ impl ZoneLane for T6Lane {
                     // A zombies map's scripts may set any model its zones carry.
                     let zombies = asset_transport::t6_content::T6ContentMode::for_path(path)
                         == asset_transport::t6_content::T6ContentMode::Zombies;
-                    if (zombies || script_placements.iter().any(|p| p.model == name))
+                    if (zombies
+                        || script_placements.iter().any(|p| p.model == name)
+                        || destructible_models.contains(name))
                         && !script_xmodels.iter().any(|seen| seen.name() == Some(name))
                     {
                         script_xmodels.push(model);
@@ -2638,7 +2670,7 @@ impl ZoneLane for T6Lane {
                         .map(asset_core::WalkLocalMaterialIndex::from_walk)
                 })
                 .ok_or("T6 sky model geometry missing")?;
-                draw.sky_model = Some(asset_world::world_t6::model_mesh(skel)?);
+                draw.sky_model = Some(asset_world::world_t6::model_mesh(&load, model, skel)?);
             }
             report.push(format!(
                 "T6 skybox: name={sky_name:?} captured={}",
@@ -2658,7 +2690,7 @@ impl ZoneLane for T6Lane {
                 let mesh = asset_model::capture_model_skel_t6(*model, |surface| {
                     model_material(*model, surface)
                 })
-                .map(asset_world::world_t6::model_mesh);
+                .map(|skel| asset_world::world_t6::model_mesh(&load, *model, skel));
                 match mesh {
                     Some(Ok(mesh)) => {
                         smodel_mesh.push((*asset, static_model_meshes.len()));
@@ -2698,7 +2730,13 @@ impl ZoneLane for T6Lane {
             }
             let script_model_instances = script_placements
                 .iter()
-                .map(|placement| t6_script_model_instance(placement, &mut map_xmodel_scene_assets))
+                .map(|placement| {
+                    t6_script_model_instance(
+                        placement,
+                        &mut map_xmodel_scene_assets,
+                        &destructibles,
+                    )
+                })
                 .collect::<Vec<_>>();
             report.push(format!(
                 "T6 script models: placements={} models={}",
@@ -2964,10 +3002,11 @@ impl ZoneLane for T6Lane {
             let sound = Some(sound_capture.finish(Ok(())));
             let collision = build_clip_collision(&load)?;
             report.push(format!(
-                "T6 collision: {} brushes, {} BSP leaves, {} triangles",
+                "T6 collision: {} brushes, {} BSP leaves, {} triangles, {} static models",
                 collision.brushes.len(),
                 collision.leaves.len(),
-                collision.mesh.tri_indices.len() / 3
+                collision.mesh.tri_indices.len() / 3,
+                collision.static_models.len(),
             ));
             let entities = map_entities(path, &load, &mut report)?;
             let minimap_corners = asset_world::parse_minimap_corners(&entities);
@@ -3018,13 +3057,42 @@ impl ZoneLane for T6Lane {
                 .map_err(|e| report.push(format!("T6 light grid: {e}")))
                 .ok();
             let mut smodel_lighting_samples = match &light_grid {
-                Some(grid) => super::helpers::smodel_lighting_samples(
-                    &mut report,
-                    grid,
-                    asset_world::world_t6::static_model_lighting_origins(&load, world_asset)?,
-                    &static_model_instances,
-                    Some(&collision),
-                ),
+                Some(grid) => {
+                    let palette =
+                        asset_world::world_t6::static_model_lighting_palette(&load, world_asset)?;
+                    let origins =
+                        asset_world::world_t6::static_model_lighting_origins(&load, world_asset)?;
+                    let mut authored = Vec::new();
+                    let mut unresolved = Vec::new();
+                    for (slot, origin) in origins {
+                        if static_model_instances.get(slot).is_none_or(Option::is_none) {
+                            continue;
+                        }
+                        match asset_model::model_lighting::t6_smodel_palette_lighting(
+                            &grid.view(),
+                            palette[slot],
+                            slot,
+                            origin,
+                        ) {
+                            Some(sample) => authored.push(sample),
+                            None => unresolved.push((slot, origin)),
+                        }
+                    }
+                    report.push(format!(
+                        "T6 authored static model lighting: {} placements, {} spatial samples",
+                        authored.len(),
+                        unresolved.len()
+                    ));
+                    authored.extend(super::helpers::smodel_lighting_samples(
+                        &mut report,
+                        grid,
+                        unresolved,
+                        &static_model_instances,
+                        Some(&collision),
+                    ));
+                    authored.sort_unstable_by_key(|sample| sample.authored_slot);
+                    authored
+                }
                 None => Vec::new(),
             };
             let mut vertex_lighting =
@@ -3120,6 +3188,25 @@ impl ZoneLane for T6Lane {
                     None
                 }
             };
+            let mut effect_content = T6Content {
+                path: path.to_owned(),
+                ..Default::default()
+            };
+            capture_effects(&image_loads, &ipaks, &mut effect_content);
+            let mut fx = asset_game::FxCatalog::default();
+            let mut effect_refusals = Vec::new();
+            report.push(common_compile::bind_t6_fx(
+                &mut effect_content,
+                &mut materials,
+                &mut fx,
+                &mut effect_refusals,
+            ));
+            report.extend(effect_content.report);
+            report.extend(
+                effect_refusals
+                    .into_iter()
+                    .map(|refusal| format!("T6 map effects: {refusal:?}")),
+            );
             let world = crate::session_load::PreparedWorld {
                 min: draw.stats.min,
                 max: draw.stats.max,
@@ -3131,6 +3218,7 @@ impl ZoneLane for T6Lane {
                 static_model_instances,
                 map_xmodel_scene_assets,
                 script_model_instances,
+                fx,
                 smodel_lighting_samples,
                 policy: WorldDrawPolicy::t6(),
                 intermission_view: asset_world::parse_intermission_view(&entities),

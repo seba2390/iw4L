@@ -7,8 +7,8 @@ pub mod menu;
 pub use audio::{UiPlayMusic, UiPlaySound, UiStopMusic};
 pub use input::{UiBindRequest, UiBindingCapture};
 pub use menu::{
-    HostMatchRules, NativeGameMenu, UiExecCommand, UiMenuDvars, UiMenuKey, UiMenuRequest,
-    UiPartyState, UnifiedFrontend,
+    AssetFamilies, FrontendContentLoading, HostMatchRules, NativeGameMenu, UiExecCommand,
+    UiMenuDvars, UiMenuKey, UiMenuRequest, UiPartyState, UnifiedFrontend,
 };
 
 pub fn register_ui_contracts(app: &mut App) {

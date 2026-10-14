@@ -274,6 +274,8 @@ pub struct OwnedFxElemDef {
     pub trail_def: Option<OwnedFxTrailDef>,
 
     pub spark_fountain_def: Option<OwnedFxSparkFountainDef>,
+
+    pub phys_pieces: Vec<Option<fx_iw4::FxPhysPiece>>,
 }
 
 impl OwnedFxElemDef {
@@ -336,6 +338,11 @@ impl OwnedFxElemDef {
             OwnedFxVisual::None => Some(AssetEdge::Absent),
             _ => None,
         }
+    }
+
+    pub fn phys_piece(&self, random_seed: u64) -> Option<fx_iw4::FxPhysPiece> {
+        let idx = fx_iw4::elem_visual_index(self.view.visual_count, random_seed);
+        self.phys_pieces.get(idx).copied().flatten()
     }
 
     pub fn decal_mark_pair(&self, random_seed: u64) -> Option<&OwnedFxVisual> {
@@ -578,6 +585,7 @@ impl FxCatalog {
         s: &fastfile_t5::ZoneStream<'_>,
         geometry: fastfile_t5::FxEffectDefGeometry,
         materials: &MaterialCatalog,
+        material_name: &impl Fn(fastfile_t5::Ptr) -> Option<String>,
     ) {
         use fastfile_t5::size as sz_t5;
         let Some(name_ptr) = geometry.name else {
@@ -616,7 +624,7 @@ impl FxCatalog {
         if let Some(arr) = geometry.elem_defs {
             for i in 0..geometry.elem_def_count {
                 let elem_ptr = arr.at(i * sz_t5::FX_ELEM_DEF);
-                match leftover_capture_elem_t5(s, elem_ptr, materials) {
+                match leftover_capture_elem_t5(s, elem_ptr, materials, material_name) {
                     Some(elem) => elems.push(elem),
                     None => {
                         self.capture_gaps += 1;
@@ -820,9 +828,9 @@ impl FxDefinitions {
         })
     }
 
-    pub fn map_fx_name<'a>(&self, name: &'a str) -> FxName<'a> {
+    pub fn map_fx_name<'a>(&'a self, name: &'a str) -> FxName<'a> {
         match self.resolve_def_for_map(name) {
-            Some(def) => FxName::new(def.namespace, name),
+            Some(def) => FxName::new(def.namespace, &def.name),
             None => FxName::new(
                 self.map_namespace
                     .expect("effects require an explicit map family"),
@@ -861,6 +869,9 @@ impl FxDefinitions {
     }
 
     pub fn resolve_def_for_map(&self, name: &str) -> Option<&OwnedFxEffectDef> {
+        if let Some((family, name)) = name.split_once(':') {
+            return self.resolve_def_in(crate::AssetNamespace::parse(family)?, name);
+        }
         let map_ns = self
             .map_namespace
             .expect("effects require an explicit map family");
@@ -952,6 +963,15 @@ impl FxDefinitions {
                         *edge = model_hint_edge(ns, hint.as_deref(), models);
                     }
                 }
+                elem.phys_pieces =
+                    if fx_iw4::elem_skips_position_update(elem.view.elem_type, elem.view.flags) {
+                        elem.visuals
+                            .iter()
+                            .map(|vis| model_phys_piece(vis, models))
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
             }
         }
     }
@@ -1445,6 +1465,7 @@ fn capture_elem(
         has_extended,
         trail_def,
         spark_fountain_def,
+        phys_pieces: Vec::new(),
     })
 }
 
@@ -1692,6 +1713,17 @@ fn model_hint_edge(
             None => AssetEdge::Unresolved(AssetEdgeReason::CatalogMiss),
         },
     }
+}
+
+fn model_phys_piece(
+    vis: &OwnedFxVisual,
+    models: &crate::FxModelCatalog,
+) -> Option<fx_iw4::FxPhysPiece> {
+    let OwnedFxVisual::Model { edge, .. } = vis else {
+        return None;
+    };
+    let (mid, half) = models.get_at(edge.bound_index()?)?.skel.bounds?;
+    fx_iw4::FxPhysPiece::from_bounds(mid, half)
 }
 
 fn resolve_material_visual(
@@ -1988,6 +2020,7 @@ fn leftover_capture_elem_t5(
     s: &fastfile_t5::ZoneStream<'_>,
     p: fastfile_t5::Ptr,
     materials: &MaterialCatalog,
+    material_name: &impl Fn(fastfile_t5::Ptr) -> Option<String>,
 ) -> Option<OwnedFxElemDef> {
     use fastfile_t5::size as sz_t5;
     let raw = s.slice_at(p, 0, sz_t5::FX_ELEM_DEF).ok()?.to_vec();
@@ -2013,7 +2046,7 @@ fn leftover_capture_elem_t5(
         vis_count,
         sz_t5::FX_ELEM_VIS_STATE_SAMPLE,
     );
-    let visuals = leftover_capture_visuals_t5(s, p, &view, materials);
+    let visuals = leftover_capture_visuals_t5(s, p, &view, materials, material_name);
     let (effect_on_impact, effect_on_impact_hint) = capture_named_child(leftover_read_name_t5(
         s,
         p,
@@ -2050,6 +2083,7 @@ fn leftover_capture_elem_t5(
         has_extended,
         trail_def: None,
         spark_fountain_def: None,
+        phys_pieces: Vec::new(),
     })
 }
 
@@ -2224,6 +2258,7 @@ fn leftover_capture_visuals_t5(
     p: fastfile_t5::Ptr,
     view: &FxElemDefView,
     materials: &MaterialCatalog,
+    material_name: &impl Fn(fastfile_t5::Ptr) -> Option<String>,
 ) -> Vec<OwnedFxVisual> {
     use fastfile_t5::size as sz_t5;
     let t = view.elem_type;
@@ -2245,8 +2280,8 @@ fn leftover_capture_visuals_t5(
             .map(|i| {
                 let m = arr.at(i * sz_t5::FX_ELEM_MARK_VISUALS);
                 mark_pair(
-                    leftover_resolve_material_t5(s, materials, m.at(0)),
-                    leftover_resolve_material_t5(s, materials, m.at(4)),
+                    leftover_resolve_material_t5(s, materials, material_name, m.at(0)),
+                    leftover_resolve_material_t5(s, materials, material_name, m.at(4)),
                 )
             })
             .collect();
@@ -2274,11 +2309,21 @@ fn leftover_capture_visuals_t5(
             let arr = s.resolve_alias(arr);
             return (0..visual_count)
                 .map(|i| {
-                    leftover_resolve_material_t5(s, materials, arr.at(i * sz_t5::FX_ELEM_VISUALS))
+                    leftover_resolve_material_t5(
+                        s,
+                        materials,
+                        material_name,
+                        arr.at(i * sz_t5::FX_ELEM_VISUALS),
+                    )
                 })
                 .collect();
         }
-        return vec![leftover_resolve_material_t5(s, materials, vis)];
+        return vec![leftover_resolve_material_t5(
+            s,
+            materials,
+            material_name,
+            vis,
+        )];
     }
     if t == elem_type::MODEL {
         if visual_count > 1 {
@@ -2343,6 +2388,7 @@ fn leftover_capture_visuals_t5(
 fn leftover_resolve_material_t5(
     s: &fastfile_t5::ZoneStream<'_>,
     materials: &MaterialCatalog,
+    material_name: &impl Fn(fastfile_t5::Ptr) -> Option<String>,
     slot: fastfile_t5::Ptr,
 ) -> OwnedFxVisual {
     let slot_iw4 = t5_ptr_to_iw4(slot);
@@ -2353,9 +2399,11 @@ fn leftover_resolve_material_t5(
     let index = materials
         .material_index(slot_iw4)
         .or_else(|| alias.and_then(|target| materials.material_index(target)));
-    let name = index
-        .and_then(|i| materials.materials.get(i.get()).map(|m| m.name.to_string()))
-        .filter(|n| !n.is_empty());
+    let name = material_name(slot).or_else(|| {
+        index
+            .and_then(|i| materials.materials.get(i.get()).map(|m| m.name.to_string()))
+            .filter(|n| !n.is_empty())
+    });
     OwnedFxVisual::Material {
         material: FxElemMaterial::unresolved_for(Some(slot_iw4), alias),
         hint: name,
@@ -2470,6 +2518,19 @@ fn capture_elem_t6(
                     authored,
                 })
                 .collect()
+        } else if t == elem_type::DECAL {
+            elem.visuals
+                .chunks_exact(2)
+                .map(|pair| {
+                    let material = |name: &String| OwnedFxVisual::Material {
+                        material: authored.unresolved(),
+                        hint: Some(name.clone()).filter(|name| !name.is_empty()),
+                        material_namespace: namespace,
+                        authored,
+                    };
+                    mark_pair(material(&pair[0]), material(&pair[1]))
+                })
+                .collect()
         } else if t == elem_type::MODEL {
             elem.visuals
                 .iter()
@@ -2524,5 +2585,6 @@ fn capture_elem_t6(
         has_extended: false,
         trail_def: None,
         spark_fountain_def: None,
+        phys_pieces: Vec::new(),
     })
 }
