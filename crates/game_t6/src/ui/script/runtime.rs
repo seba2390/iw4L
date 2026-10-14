@@ -293,6 +293,7 @@ impl Runtime {
         let values = bindings
             .call(identity, arguments, &mut self.tables)
             .map_err(|kind| Fault { pc, kind })?;
+        let mut lua_callbacks = Vec::new();
         while let Some(callback) = bindings.take_callback() {
             match callback.callee {
                 Value::Reference { kind: 10, identity } => {
@@ -304,15 +305,30 @@ impl Runtime {
                         .call(identity, &callback.arguments, &mut self.tables)
                         .map_err(|kind| Fault { pc, kind })?;
                 }
-                callee => {
-                    let mut active = self
-                        .activation(&callee, &callback.arguments, cached, return_to)
-                        .map_err(|kind| Fault { pc, kind })?;
-                    active.returned_override = Some(values);
-                    self.frames.push(active);
-                    return Ok(None);
-                }
+                callee => lua_callbacks.push((callee, callback.arguments)),
             }
+        }
+        if !lua_callbacks.is_empty() {
+            let last_index = lua_callbacks.len() - 1;
+            for (index, (callee, arguments)) in lua_callbacks.into_iter().enumerate().rev() {
+                let is_last = index == last_index;
+                let frame_return = if is_last {
+                    return_to
+                } else {
+                    Some(ReturnTo {
+                        register: 0,
+                        results: Some(0),
+                    })
+                };
+                let mut active = self
+                    .activation(&callee, &arguments, cached.clone(), frame_return)
+                    .map_err(|kind| Fault { pc, kind })?;
+                if is_last {
+                    active.returned_override = Some(values.clone());
+                }
+                self.frames.push(active);
+            }
+            return Ok(None);
         }
         Ok(Some(values))
     }
