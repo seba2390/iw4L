@@ -150,6 +150,14 @@ impl game_api::GameMenus for T7 {
             "Black Ops 3's menu rules"
         ))
     }
+
+    fn ingame_menu(&self) -> Rule<game_api::InGameMenu> {
+        Rule::Unknown(unknown!(
+            "t7.hud.ingame_menu",
+            "which menu Black Ops 3's in-game menu key opens",
+            "Black Ops 3's in-game menu rule"
+        ))
+    }
 }
 
 /// Classic zombies: the match is run by the gametype and map scripts; the

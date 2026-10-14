@@ -95,6 +95,10 @@ impl game_api::GameMenus for Iw4 {
     fn layout(&self) -> Rule<&'static dyn game_api::MenuLayout> {
         Rule::Known(&MenuLayout)
     }
+
+    fn ingame_menu(&self) -> Rule<game_api::InGameMenu> {
+        Rule::Known(game_api::InGameMenu::ScriptMainMenu)
+    }
 }
 
 /// Modern Warfare 2's menu engine placement and text scaling.

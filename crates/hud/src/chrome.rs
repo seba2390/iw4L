@@ -54,7 +54,9 @@ pub fn register_game_menus(menus: GameMenusOf) {
     let _ = GAME_MENUS.set(menus);
 }
 
-fn game_menus(family: asset_core::AssetNamespace) -> Option<&'static dyn game_api::GameMenus> {
+pub(crate) fn game_menus(
+    family: asset_core::AssetNamespace,
+) -> Option<&'static dyn game_api::GameMenus> {
     GAME_MENUS.get().map(|menus| menus(family))
 }
 

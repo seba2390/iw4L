@@ -29,6 +29,9 @@ pub(crate) struct EditState {
 #[derive(Resource, Default)]
 pub struct ScriptMenus {
     pub(crate) stack: Vec<OpenMenu>,
+    /// Menus `showMenu` made visible without opening them; they paint
+    /// beneath the open stack.
+    pub(crate) shown: Vec<String>,
     pub(crate) applied_serial: u32,
     pub(crate) responses: Vec<(String, String)>,
     pub(crate) exec: Vec<String>,

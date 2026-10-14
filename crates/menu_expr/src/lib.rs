@@ -44,6 +44,16 @@ pub trait GameQueries {
     fn player_field(&self, field: &str) -> Result<Operand, ExprError>;
     fn ads_javelin(&self) -> Result<bool, ExprError>;
     fn key_binding(&self, command: &str) -> Result<Operand, ExprError>;
+    fn local_var_int(&self, name: &str) -> Result<i32, ExprError>;
+    fn local_var_string(&self, name: &str) -> Result<String, ExprError>;
+    fn menu_is_open(&self, name: &str) -> Result<i32, ExprError>;
+    /// Whether the menu the expression's item belongs to has the focus.
+    fn menu_has_focus(&self) -> Result<i32, ExprError>;
+    /// The localized text of a `locstring` argument list.
+    fn localize(&self, args: &[Operand]) -> Result<String, ExprError>;
+    /// `text`'s width in virtual pixels in font `font` at `scale`.
+    fn text_width(&self, text: &str, font: i32, scale: f32) -> Result<i32, ExprError>;
+    fn in_game(&self) -> Result<i32, ExprError>;
 }
 
 /// One game's compiled menu expression.

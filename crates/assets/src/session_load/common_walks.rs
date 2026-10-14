@@ -1411,7 +1411,10 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         }
     }
     let mut hud_material_names = std::collections::BTreeSet::new();
-    for list in asset_game::T5_HUD_MENU_LISTS {
+    for list in asset_game::T5_HUD_MENU_LISTS
+        .iter()
+        .chain(asset_game::T5_INGAME_MENU_LISTS)
+    {
         for menu in hud_menus.list_menus.get(*list).into_iter().flatten() {
             let Some(menu) = hud_menus.get(menu) else {
                 continue;
@@ -1439,7 +1442,14 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         hud_material_names.len()
     ));
     commons.hud_menus = Some(hud_menus);
-    for stem in ["code_post_gfx", "common", "common_zombie", stem.as_str()] {
+    // `en_patch` holds the strings the patched menus name (`@PATCH_*`).
+    for stem in [
+        "code_post_gfx",
+        "common",
+        "common_zombie",
+        "patch",
+        stem.as_str(),
+    ] {
         let found = asset_transport::discover::find_t5_localized_zone(zone_ff, None, stem);
         // Localized zones also hold materials the zombie bodies draw with.
         if let Ok(Some(zone)) = &found

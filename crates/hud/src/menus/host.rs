@@ -23,6 +23,8 @@ pub(crate) struct MenuWorld<'a> {
     pub weapons: Option<&'a asset_game::WeaponRegistry>,
     pub emp_jammed: bool,
     pub radar_blocked: bool,
+    /// Real pixels per virtual pixel, for picking a font by its real size.
+    pub virtual_to_real: f32,
 }
 
 const GAMETYPES_TABLE: &str = "mp/gametypestable.csv";
@@ -35,6 +37,8 @@ pub(crate) struct MenuHost<'a> {
     pub locals: &'a UiLocalVars,
     pub open: &'a [super::state::OpenMenu],
     pub focus_rect: Option<[f32; 4]>,
+    /// The open menu that takes input, when one does.
+    pub focused: Option<&'a str>,
 }
 
 impl MenuHost<'_> {
@@ -491,6 +495,32 @@ impl ExprHost for MenuHost<'_> {
                 .iter()
                 .any(|open| open.name.eq_ignore_ascii_case(name)),
         ))
+    }
+    fn menu_has_focus(&self) -> Result<i32, ExprError> {
+        Ok(i32::from(self.focused.is_some_and(|name| {
+            name.eq_ignore_ascii_case(&self.menu.name)
+        })))
+    }
+    fn text_width(&self, text: &str, font: i32, scale: f32) -> Result<i32, ExprError> {
+        let assets = crate::chrome::ChromeAssets {
+            catalog: self.world.catalog,
+            localize: self.world.localize,
+        };
+        let name = assets
+            .font_name(font, self.world.virtual_to_real, scale)
+            .ok_or(ExprError::Host("text width font"))?;
+        let font = self
+            .world
+            .catalog
+            .and_then(|catalog| catalog.font(name))
+            .ok_or(ExprError::Host("text width font"))?;
+        let layout = assets
+            .layout()
+            .ok_or(ExprError::Host("text width layout"))?;
+        Ok(crate::chrome::layout_text_width(layout, font, text, scale) as i32)
+    }
+    fn in_game(&self) -> Result<i32, ExprError> {
+        Ok(i32::from(self.world.in_game))
     }
     fn weapon_lock(&self) -> Result<WeaponLockView, ExprError> {
         Err(ExprError::Host("weapon lock"))

@@ -254,6 +254,7 @@ pub fn apply_prepared_match(
             script_entries,
             gametype_settings,
             script_dvars,
+            engine_dvars,
             account_defaults,
             script_sound_aliases,
             objective_weapons,
@@ -704,6 +705,9 @@ pub fn apply_prepared_match(
             sim.set_gsc_dvar(name, value);
         }
         sim.set_gametype_settings(gametype_settings);
+        for name in &engine_dvars {
+            sim.publish_gsc_dvar(name);
+        }
         for entry in script_entries {
             sim.start_gsc(&entry, sim::script::Value::level(), Vec::new())
                 .map_err(|e| script_refusal(&zone, gametype, "entry", &e))?;
@@ -907,6 +911,8 @@ struct MatchInstallPlan {
     /// The gametype's settings (`GetGametypeSetting`).
     gametype_settings: Vec<(String, String)>,
     script_dvars: Vec<(String, String)>,
+    /// The game's own engine dvars, which its clients read too.
+    engine_dvars: Vec<String>,
     account_defaults: Option<sim::PlayerDataDefaults>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
     objective_weapons: Vec<(String, u32)>,
@@ -1419,6 +1425,11 @@ fn preflight_match_install(
             None => script_dvars.push((name.clone(), value.clone())),
         }
     }
+    let engine_dvars = game_scripts
+        .engine_dvars(gametype)
+        .iter()
+        .map(|(name, _)| (*name).to_owned())
+        .collect();
     for (name, value) in rules.map_or(&[][..], |rules| &rules.0) {
         match script_dvars
             .iter_mut()
@@ -1517,6 +1528,7 @@ fn preflight_match_install(
         script_entries,
         gametype_settings,
         script_dvars,
+        engine_dvars,
         account_defaults,
         objective_weapons,
         kind,

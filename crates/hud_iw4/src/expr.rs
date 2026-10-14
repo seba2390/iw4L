@@ -323,6 +323,15 @@ pub trait ExprHost {
     fn key_binding(&self, _command: &str) -> Result<Operand, ExprError> {
         Err(ExprError::Host("keybinding"))
     }
+    fn menu_has_focus(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("menuhasfocus"))
+    }
+    fn text_width(&self, _text: &str, _font: i32, _scale: f32) -> Result<i32, ExprError> {
+        Err(ExprError::Host("gettextwidth"))
+    }
+    fn in_game(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("isingame"))
+    }
     fn action_slot_usable(&self, _slot: i32) -> Result<i32, ExprError> {
         Err(ExprError::Host("actionslotusable"))
     }
@@ -490,6 +499,27 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn key_binding(&self, command: &str) -> Result<Operand, ExprError> {
         self.0.key_binding(command)
+    }
+    fn local_var_int(&self, name: &str) -> Result<i32, ExprError> {
+        self.0.local_var_int(name)
+    }
+    fn local_var_string(&self, name: &str) -> Result<String, ExprError> {
+        Ok(source_str(&self.0.local_var_string(name)?))
+    }
+    fn menu_is_open(&self, name: &str) -> Result<i32, ExprError> {
+        self.0.menu_is_open(name)
+    }
+    fn menu_has_focus(&self) -> Result<i32, ExprError> {
+        self.0.menu_has_focus()
+    }
+    fn localize(&self, args: &[Operand]) -> Result<String, ExprError> {
+        self.0.localize_string(args)
+    }
+    fn text_width(&self, text: &str, font: i32, scale: f32) -> Result<i32, ExprError> {
+        self.0.text_width(text, font, scale)
+    }
+    fn in_game(&self) -> Result<i32, ExprError> {
+        self.0.in_game()
     }
 }
 

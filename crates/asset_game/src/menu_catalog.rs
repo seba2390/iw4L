@@ -58,6 +58,31 @@ pub enum MenuEvent {
         name: String,
         expr: String,
     },
+    /// One link of a Black Ops event script (`GenericEventScript`).
+    T5Script(T5EventScript),
+}
+
+/// A Black Ops event script link: its action runs when every prerequisite
+/// matches an outcome an earlier link of the same run reached and, unless it
+/// is an else, its condition holds (`Item_RunSingleEventScript`).
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct T5EventScript {
+    pub prerequisites: Vec<T5ScriptCondition>,
+    /// A `t5` postfix program; empty for none.
+    pub condition: String,
+    pub kind: i32,
+    pub fire_on_true: bool,
+    pub action: String,
+    pub block: i32,
+    pub construct: i32,
+}
+
+/// The outcome of an earlier if, else-if or else a link waits for.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct T5ScriptCondition {
+    pub fire_on_true: bool,
+    pub construct: i32,
+    pub block: i32,
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
@@ -67,6 +92,8 @@ pub struct MenuHandlers {
     pub close: Vec<MenuEvent>,
     pub close_request: Vec<MenuEvent>,
     pub esc: Vec<MenuEvent>,
+    /// Black Ops handlers for the keys their `onKey` names.
+    pub keys: Vec<(i32, Vec<MenuEvent>)>,
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
@@ -78,6 +105,8 @@ pub struct ItemHandlers {
     pub mouse_exit: Vec<MenuEvent>,
     pub focus: Vec<MenuEvent>,
     pub leave_focus: Vec<MenuEvent>,
+    /// Black Ops handlers for the keys their `onKey` names.
+    pub keys: Vec<(i32, Vec<MenuEvent>)>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -85,6 +114,8 @@ pub struct ItemHandlers {
 pub struct MenuEditField {
     pub max_chars: usize,
     pub masked: bool,
+    /// Editing starts from an empty field instead of the dvar's value.
+    pub starts_empty: bool,
 }
 
 impl Default for MenuEditField {
@@ -92,6 +123,7 @@ impl Default for MenuEditField {
         Self {
             max_chars: 32,
             masked: false,
+            starts_empty: false,
         }
     }
 }

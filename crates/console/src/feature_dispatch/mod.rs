@@ -282,7 +282,7 @@ pub fn register_feature_commands(registry: &mut crate::ConsoleRegistry, maps: &[
         ),
         (
             "togglemenu",
-            "togglemenu — open the script main menu (g_scriptMainMenu), or escape the top menu",
+            "togglemenu — open the game's in-game menu (MW2: g_scriptMainMenu; Black Ops: pausedmenu), or escape the top menu",
         ),
         ("openmenu", "openmenu <menu> — open an in-game menuDef"),
         (

@@ -17,13 +17,20 @@ use fastfile_t5::{
 };
 
 use crate::localize::decode_localized_text;
-use crate::menu_catalog::{FontDef, MenuCatalog, MenuDef, MenuItem, MenuRect};
+use crate::menu_catalog::{
+    FontDef, MenuCatalog, MenuDef, MenuEditField, MenuEvent, MenuItem, MenuRect, MenuSlider,
+    T5EventScript, T5ScriptCondition,
+};
 
 /// The HUD menu lists a Black Ops zombies client draws, in its load order:
 /// the common HUD, then the zombies HUD (the singleplayer HUD is loaded only
 /// outside zombies, the co-op HUD only in online and system-link games). Each
 /// menu's own visibility decides when it shows.
 pub const T5_HUD_MENU_LISTS: &[&str] = &["ui/hud.txt", "ui/hud_zombie.txt"];
+
+/// The menu lists a Black Ops zombies client loads in a match
+/// (`UI_LoadIngameMenus`): the pause menu and its options.
+pub const T5_INGAME_MENU_LISTS: &[&str] = &["ui/ingame.txt", "ui/ingame_options.txt"];
 
 /// The `float_exp` slot of an item's forecolor alpha in the menu engine.
 const FLOAT_FORECOLOR_A: u32 = 8;
@@ -44,6 +51,10 @@ const MENU_FOCUS_COLOR: usize = 328;
 const MENU_RECT_X_EXP: usize = 360;
 const MENU_RECT_Y_EXP: usize = 376;
 const MENU_ITEMS: usize = 0x188;
+const MENU_ON_EVENT: usize = 0x10c;
+const MENU_ON_KEY: usize = 0x110;
+
+const ITEM_ON_EVENT: usize = 0x104;
 
 const ITEM_TYPE: usize = 164;
 const ITEM_DVAR: usize = 176;
@@ -63,9 +74,69 @@ const TEXT_DEF_SCALE: usize = 48;
 const TEXT_DEF_STYLE: usize = 52;
 const TEXT_DEF_TEXT: usize = 56;
 const TEXT_DEF_TEXT_EXP: usize = 60;
+const TEXT_DEF_TYPE_DATA: usize = 64;
+
+const FOCUS_MOUSE_ENTER: usize = 8;
+const FOCUS_MOUSE_EXIT: usize = 12;
+const FOCUS_ON_KEY: usize = 16;
+const FOCUS_TYPE_DATA: usize = 20;
+
+const MULTI_DVAR_STR: usize = 0x80;
+const MULTI_DVAR_VALUE: usize = 0x100;
+const MULTI_COUNT: usize = 0x180;
+const MULTI_STR_DEF: usize = 0x188;
+const MULTI_MAX: usize = 32;
+
+const EDIT_MIN: usize = 4;
+const EDIT_MAX: usize = 8;
+const EDIT_MAX_CHARS: usize = 20;
+
+const HANDLER_NAME: usize = 0;
+const HANDLER_SCRIPT: usize = 4;
+const HANDLER_NEXT: usize = 8;
+const KEY_HANDLER_KEY: usize = 0;
+
+const SCRIPT_PREREQUISITES: usize = 0;
+const SCRIPT_CONDITION: usize = 4;
+const SCRIPT_TYPE: usize = 0x14;
+const SCRIPT_FIRE_ON_TRUE: usize = 0x18;
+const SCRIPT_ACTION: usize = 0x1c;
+const SCRIPT_BLOCK: usize = 0x20;
+const SCRIPT_CONSTRUCT: usize = 0x24;
+const SCRIPT_NEXT: usize = 0x28;
+
+const CONDITION_FIRE_ON_TRUE: usize = 0;
+const CONDITION_CONSTRUCT: usize = 4;
+const CONDITION_BLOCK: usize = 8;
+const CONDITION_NEXT: usize = 0xc;
+
+/// A chain longer than any menu writes is a broken link, not a script.
+const MAX_CHAIN: usize = 4096;
 
 const T5_ITEM_TYPE_IMAGE: i32 = 2;
 const T5_ITEM_TYPE_OWNERDRAW: i32 = 6;
+const T5_ITEM_TYPE_SLIDER: i32 = 8;
+const T5_ITEM_TYPE_MULTI: i32 = 0xa;
+
+/// Black Ops `ItemDefType` values whose text def carries a `focusItemDef_s`.
+fn t5_text_has_focus_def(ty: i32) -> bool {
+    matches!(
+        ty,
+        3 | 4 | 5 | 7 | 8 | 9 | 0xa | 0xb | 0xc | 0xd | 0xe | 0x10 | 0x14 | 0x16 | 0x1e
+    )
+}
+
+/// Black Ops `ItemDefType` values whose item data is a `focusItemDef_s`
+/// itself (a blank button).
+fn t5_item_is_focus_def(ty: i32) -> bool {
+    matches!(ty, 0x13 | 0x15)
+}
+
+/// Black Ops `ItemDefType` values whose focus def carries an
+/// `editFieldDef_s` (`Item_IsEditFieldDef`).
+fn t5_focus_has_edit_field(ty: i32) -> bool {
+    matches!(ty, 5 | 7 | 8 | 9 | 0xc | 0xd | 0xe | 0x10 | 0x16 | 0x1e)
+}
 
 /// Black Ops `ItemDefType` values whose item carries a `textDef_s`.
 fn t5_item_has_text_def(ty: i32) -> bool {
@@ -216,6 +287,105 @@ fn rpn_dump(s: &ZoneStream<'_>, statement: Ptr) -> String {
     out
 }
 
+/// A `GenericEventScript` chain, link by link.
+fn event_script(s: &ZoneStream<'_>, first: Option<Ptr>) -> Vec<MenuEvent> {
+    let mut events = Vec::new();
+    let mut link = first;
+    while let Some(p) = link {
+        if events.len() >= MAX_CHAIN {
+            break;
+        }
+        let mut prerequisites = Vec::new();
+        let mut condition = ptr_at(s, p, SCRIPT_PREREQUISITES);
+        while let Some(c) = condition {
+            if prerequisites.len() >= MAX_CHAIN {
+                break;
+            }
+            prerequisites.push(T5ScriptCondition {
+                fire_on_true: s.u8_at(c, CONDITION_FIRE_ON_TRUE).unwrap_or(0) != 0,
+                construct: i32_at(s, c, CONDITION_CONSTRUCT),
+                block: i32_at(s, c, CONDITION_BLOCK),
+            });
+            condition = ptr_at(s, c, CONDITION_NEXT);
+        }
+        events.push(MenuEvent::T5Script(T5EventScript {
+            prerequisites,
+            condition: rpn_dump(s, p.at(SCRIPT_CONDITION)),
+            kind: i32_at(s, p, SCRIPT_TYPE),
+            fire_on_true: s.u8_at(p, SCRIPT_FIRE_ON_TRUE).unwrap_or(0) != 0,
+            action: str_at(s, p, SCRIPT_ACTION).unwrap_or("").to_owned(),
+            block: i32_at(s, p, SCRIPT_BLOCK),
+            construct: i32_at(s, p, SCRIPT_CONSTRUCT),
+        }));
+        link = ptr_at(s, p, SCRIPT_NEXT);
+    }
+    events
+}
+
+/// A `GenericEventHandler` chain: each handler's name with its script.
+fn event_handlers(s: &ZoneStream<'_>, first: Option<Ptr>) -> Vec<(String, Vec<MenuEvent>)> {
+    let mut handlers = Vec::new();
+    let mut link = first;
+    while let Some(p) = link {
+        if handlers.len() >= MAX_CHAIN {
+            break;
+        }
+        handlers.push((
+            str_at(s, p, HANDLER_NAME)
+                .unwrap_or("")
+                .to_ascii_lowercase(),
+            event_script(s, ptr_at(s, p, HANDLER_SCRIPT)),
+        ));
+        link = ptr_at(s, p, HANDLER_NEXT);
+    }
+    handlers
+}
+
+/// An `ItemKeyHandler` chain: each key with its script.
+fn key_handlers(s: &ZoneStream<'_>, first: Option<Ptr>) -> Vec<(i32, Vec<MenuEvent>)> {
+    let mut handlers = Vec::new();
+    let mut link = first;
+    while let Some(p) = link {
+        if handlers.len() >= MAX_CHAIN {
+            break;
+        }
+        handlers.push((
+            i32_at(s, p, KEY_HANDLER_KEY),
+            event_script(s, ptr_at(s, p, HANDLER_SCRIPT)),
+        ));
+        link = ptr_at(s, p, HANDLER_NEXT);
+    }
+    handlers
+}
+
+/// A `multiDef_s`'s choices: (shown text, dvar value), the value a string
+/// when `strDef` is set and a number otherwise.
+fn multi_choices(s: &ZoneStream<'_>, multi: Ptr) -> Vec<(String, String)> {
+    let count = (i32_at(s, multi, MULTI_COUNT).max(0) as usize).min(MULTI_MAX);
+    let strings = i32_at(s, multi, MULTI_STR_DEF) != 0;
+    (0..count)
+        .map(|i| {
+            let text = bytes_at(s, multi, i * 4).map_or_else(String::new, decode_localized_text);
+            let value = if strings {
+                str_at(s, multi, MULTI_DVAR_STR + i * 4)
+                    .unwrap_or("")
+                    .to_owned()
+            } else {
+                format!("{}", f32_at(s, multi, MULTI_DVAR_VALUE + i * 4))
+            };
+            (text, value)
+        })
+        .collect()
+}
+
+/// Plain script text as a one-link event script.
+fn script_text(s: &ZoneStream<'_>, p: Ptr, off: usize) -> Vec<MenuEvent> {
+    match str_at(s, p, off) {
+        Some(text) if !text.is_empty() => vec![MenuEvent::Script(text.to_owned())],
+        _ => Vec::new(),
+    }
+}
+
 impl T5MenuSink {
     fn material_key(&self, s: &ZoneStream<'_>, p: Ptr, off: usize) -> String {
         let slot = match s.ptr_at(p, off) {
@@ -277,6 +447,51 @@ impl T5MenuSink {
         let alpha = rpn_dump(s, p.at(ITEM_FORECOLOR_A_EXP));
         if !alpha.is_empty() {
             item.float_exp.push((FLOAT_FORECOLOR_A, alpha));
+        }
+        for (name, events) in event_handlers(s, ptr_at(s, p, ITEM_ON_EVENT)) {
+            let handlers = &mut item.handlers;
+            match name.as_str() {
+                "action" => handlers.action = events,
+                "onaccept" => handlers.accept = events,
+                "onfocus" => handlers.focus = events,
+                "leavefocus" => handlers.leave_focus = events,
+                _ => {}
+            }
+        }
+        let focus = match ptr_at(s, p, ITEM_TYPE_DATA) {
+            Some(data) if t5_item_is_focus_def(ty) => Some(data),
+            Some(data) if t5_item_has_text_def(ty) && t5_text_has_focus_def(ty) => {
+                ptr_at(s, data, TEXT_DEF_TYPE_DATA)
+            }
+            _ => None,
+        };
+        if let Some(focus) = focus {
+            item.handlers.mouse_enter = script_text(s, focus, FOCUS_MOUSE_ENTER);
+            item.handlers.mouse_exit = script_text(s, focus, FOCUS_MOUSE_EXIT);
+            item.handlers.keys = key_handlers(s, ptr_at(s, focus, FOCUS_ON_KEY));
+            let data = ptr_at(s, focus, FOCUS_TYPE_DATA);
+            if let Some(multi) = data.filter(|_| ty == T5_ITEM_TYPE_MULTI) {
+                item.choices = multi_choices(s, multi);
+            } else if let Some(edit) = data.filter(|_| t5_focus_has_edit_field(ty)) {
+                let (min, max) = (f32_at(s, edit, EDIT_MIN), f32_at(s, edit, EDIT_MAX));
+                if ty == T5_ITEM_TYPE_SLIDER {
+                    // `Item_Slider_HandleKey`: a key moves a twentieth of the range.
+                    item.slider = Some(MenuSlider {
+                        min,
+                        max,
+                        step: (max - min) * 0.05,
+                        display_range: None,
+                        decimals: 0,
+                        suffix: String::new(),
+                    });
+                } else {
+                    item.edit_field = Some(MenuEditField {
+                        max_chars: i32_at(s, edit, EDIT_MAX_CHARS).max(1) as usize,
+                        masked: false,
+                        starts_empty: false,
+                    });
+                }
+            }
         }
         item
     }
@@ -402,6 +617,15 @@ impl AssetLinkSink for T5MenuSink {
                 def.float_exp.push((key, dump));
             }
         }
+        for (name, events) in event_handlers(s, ptr_at(s, p, MENU_ON_EVENT)) {
+            match name.as_str() {
+                "onopen" => def.handlers.open = events,
+                "onclose" => def.handlers.close = events,
+                "onesc" => def.handlers.esc = events,
+                _ => {}
+            }
+        }
+        def.handlers.keys = key_handlers(s, ptr_at(s, p, MENU_ON_KEY));
         let count = i32_at(s, p, MENU_ITEM_COUNT).max(0) as usize;
         if let Some(items) = ptr_at(s, p, MENU_ITEMS) {
             for i in 0..count {

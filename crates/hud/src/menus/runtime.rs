@@ -1,4 +1,4 @@
-use asset_game::{MenuCatalog, MenuDef, MenuEvent};
+use asset_game::{MenuCatalog, MenuDef, MenuEvent, T5EventScript};
 use bevy::prelude::*;
 
 use super::host::{MenuHost, MenuWorld};
@@ -24,6 +24,19 @@ impl Runner<'_, '_> {
     }
 
     pub(crate) fn eval(&mut self, menu: &str, dump: &str) -> Option<hud_iw4::Operand> {
+        self.with_host(menu, |exprs, host| exprs.evaluate(dump, host))
+    }
+
+    /// The truth of an expression by its game's rule.
+    fn truth(&mut self, menu: &str, dump: &str) -> Option<bool> {
+        self.with_host(menu, |exprs, host| exprs.is_true(dump, host))
+    }
+
+    fn with_host<T, E: std::fmt::Debug>(
+        &mut self,
+        menu: &str,
+        run: impl FnOnce(&mut MenuExprCache, &MenuHost) -> Result<T, E>,
+    ) -> Option<T> {
         let def = self.catalog.get(menu)?;
         let focus_rect = self
             .menus
@@ -40,8 +53,9 @@ impl Runner<'_, '_> {
             locals: self.locals,
             open: &self.menus.stack,
             focus_rect,
+            focused: self.menus.input_menu().map(|m| m.name.as_str()),
         };
-        match self.exprs.evaluate(dump, &host) {
+        match run(self.exprs, &host) {
             Ok(value) => Some(value),
             Err(err) => {
                 diag::debug!(Ui, "menu {menu}: expression failed {err:?}");
@@ -57,13 +71,16 @@ impl Runner<'_, '_> {
         }
         self.depth += 1;
         let mut last_if: Option<bool> = None;
+        let mut outcomes = Vec::new();
         for event in events {
             match event {
                 MenuEvent::Script(text) => {
                     last_if = None;
-                    for command in script::parse(text) {
-                        self.command(menu, item, command);
-                    }
+                    self.run_script(menu, item, text);
+                }
+                MenuEvent::T5Script(link) => {
+                    last_if = None;
+                    self.t5_link(menu, item, link, &mut outcomes);
                 }
                 MenuEvent::If { condition, then } => {
                     let pass = self
@@ -98,6 +115,67 @@ impl Runner<'_, '_> {
             }
         }
         self.depth -= 1;
+    }
+
+    fn run_script(&mut self, menu: &str, item: Option<usize>, text: &str) {
+        for command in script::parse(text) {
+            self.command(menu, item, command);
+        }
+    }
+
+    /// `Item_RunSingleEventScript`, one link: a link outside any if runs; an
+    /// if, else-if or else runs when the outcomes it waits on were reached,
+    /// and an if or else-if also when its block already passed or its
+    /// condition holds. Each tested link records its outcome for the links
+    /// after it.
+    fn t5_link(
+        &mut self,
+        menu: &str,
+        item: Option<usize>,
+        link: &T5EventScript,
+        outcomes: &mut Vec<T5Outcome>,
+    ) {
+        const CONDITION_ELSE: i32 = 3;
+        const MAX_OUTCOMES: usize = 64;
+        if link.block == 0 && link.construct == 0 {
+            self.run_script(menu, item, &link.action);
+            return;
+        }
+        let ready = link.prerequisites.iter().all(|wait| {
+            outcomes.iter().any(|reached| {
+                reached.construct == wait.construct
+                    && reached.block == wait.block
+                    && reached.passed == wait.fire_on_true
+            })
+        });
+        let mut passed = false;
+        if ready {
+            let earlier = outcomes
+                .iter()
+                .find(|reached| reached.block == link.block && reached.construct == link.construct)
+                .map(|reached| reached.passed);
+            passed = if link.kind == CONDITION_ELSE {
+                true
+            } else if let Some(earlier) = earlier {
+                earlier
+            } else if link.condition.is_empty() {
+                false
+            } else {
+                self.truth(menu, &link.condition).unwrap_or(false) == link.fire_on_true
+            };
+            if passed {
+                self.run_script(menu, item, &link.action);
+            }
+        }
+        if outcomes.len() < MAX_OUTCOMES {
+            outcomes.push(T5Outcome {
+                block: link.block,
+                construct: link.construct,
+                passed,
+            });
+        } else {
+            diag::warn!(Ui, "menu {menu}: if/else outcome stack overflow");
+        }
     }
 
     pub(crate) fn command(&mut self, menu: &str, item: Option<usize>, command: Command) {
@@ -138,6 +216,47 @@ impl Runner<'_, '_> {
             }
             Command::Show(name) => self.each_item(menu, item, &name, |state| state.hidden = false),
             Command::Hide(name) => self.each_item(menu, item, &name, |state| state.hidden = true),
+            Command::ShowMenu(name) => match self.catalog.get(&name) {
+                Some(def) => {
+                    let name = def.name.clone();
+                    if !self
+                        .menus
+                        .shown
+                        .iter()
+                        .any(|s| s.eq_ignore_ascii_case(&name))
+                    {
+                        self.menus.shown.push(name);
+                    }
+                }
+                None => self.each_item(menu, item, &name, |state| state.hidden = false),
+            },
+            Command::HideMenu(name) => {
+                if self.catalog.get(&name).is_some() {
+                    self.menus.shown.retain(|s| !s.eq_ignore_ascii_case(&name));
+                } else {
+                    self.each_item(menu, item, &name, |state| state.hidden = true);
+                }
+            }
+            Command::SetLocalVar { kind, name, value } => match kind {
+                script::LocalVarKind::Bool | script::LocalVarKind::Int => {
+                    self.locals
+                        .set_int(&name, value.trim().parse().unwrap_or(0));
+                }
+                script::LocalVarKind::Float => {
+                    self.locals
+                        .set_float(&name, value.trim().parse().unwrap_or(0.0));
+                }
+                script::LocalVarKind::String => self.locals.set_string(&name, value),
+            },
+            Command::SaveVisibility {
+                item: name,
+                hide_when_available,
+            } => {
+                // IW4L keeps no saved games, so none is ever available.
+                let available = false;
+                let shown = available != hide_when_available;
+                self.each_item(menu, None, &name, |state| state.hidden = !shown);
+            }
             Command::Play(alias) => self.menus.sounds.push(alias),
             Command::ScriptMenuResponse(response) => {
                 self.menus.responses.push((menu.to_owned(), response));
@@ -578,6 +697,7 @@ impl Runner<'_, '_> {
             locals: self.locals,
             open: &self.menus.stack,
             focus_rect: None,
+            focused: self.menus.input_menu().map(|m| m.name.as_str()),
         };
         let mut out = Vec::new();
         for (index, item) in def.items.iter().enumerate() {
@@ -672,19 +792,23 @@ impl Runner<'_, '_> {
             self.run_events(menu, Some(index), &item.handlers.action);
             return;
         }
-        if item.item_type == 4 && !item.dvar.is_empty() {
+        if super::is_text_field(item.item_type) && !item.dvar.is_empty() {
             let max_chars = item
                 .edit_field
                 .as_ref()
                 .map_or(32, |field| field.max_chars)
                 .min(4096);
-            let buffer: Vec<char> = self
-                .dvars
-                .get(&item.dvar)
-                .unwrap_or_default()
-                .chars()
-                .take(max_chars)
-                .collect();
+            let starts_empty = item.edit_field.as_ref().is_some_and(|f| f.starts_empty);
+            let buffer: Vec<char> = if starts_empty {
+                Vec::new()
+            } else {
+                self.dvars
+                    .get(&item.dvar)
+                    .unwrap_or_default()
+                    .chars()
+                    .take(max_chars)
+                    .collect()
+            };
             self.menus.editing = Some(EditState {
                 menu: menu.to_owned(),
                 item: index,
@@ -718,4 +842,11 @@ fn nav_rect(item: &asset_game::MenuItem) -> [f32; 4] {
     let (x0, x1) = (r.x + ox, r.x + ox + r.w);
     let (y0, y1) = (r.y + oy, r.y + oy + r.h);
     [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)]
+}
+
+/// An if, else-if or else a Black Ops event script already tested.
+struct T5Outcome {
+    block: i32,
+    construct: i32,
+    passed: bool,
 }

@@ -5,7 +5,8 @@
 //! A function's number is its token's index in the game's own
 //! `expressions/functions.txt` (`code_post_gfx`, comments and blank lines
 //! skipped) plus 24: the expression evaluator maps that index through the
-//! file's names to its own handler. Only functions the host answers are
+//! file's names to its own handler (a function the file does not list keeps
+//! the evaluator's own number plus 24). Only functions the host answers are
 //! evaluated; any other is an error, never a guess. Operand conversions
 //! follow Black Ops' own operators and result readers.
 
@@ -43,8 +44,34 @@ const T5_FN_INKILLCAM: i32 = 38;
 const T5_FN_ISDUALWIELD: i32 = 39;
 const T5_FN_ISFUELWEAPON: i32 = 40;
 const T5_FN_PLAYER: i32 = 41;
+const T5_FN_MENUISOPEN: i32 = 47;
+const T5_FN_INPRIVATEPARTY: i32 = 50;
+const T5_FN_PRIVATEPARTYHOST: i32 = 51;
+const T5_FN_PRIVATEPARTYHOSTINLOBBY: i32 = 52;
 const T5_FN_ADSJAVELIN: i32 = 56;
+const T5_FN_LOCSTRING: i32 = 64;
+const T5_FN_LOCALVARINT: i32 = 65;
+const T5_FN_LOCALVARBOOL: i32 = 66;
+const T5_FN_LOCALVARSTRING: i32 = 68;
+const T5_FN_INT: i32 = 72;
 const T5_FN_KEYBINDING: i32 = 81;
+const T5_FN_GAMEHOST: i32 = 86;
+const T5_FN_ISSPLITSCREEN: i32 = 88;
+const T5_FN_ISSPLITSCREENHOST: i32 = 89;
+const T5_FN_GETTEXTWIDTH: i32 = 204;
+const T5_FN_ISPROFILESIGNEDIN: i32 = 209;
+// Not in `functions.txt`: the evaluator keeps its own number for these.
+const T5_FN_MENUHASFOCUS: i32 = 309;
+const T5_FN_ISINGAME: i32 = 355;
+
+/// The party functions read the live party's state, which IW4L does not
+/// keep in Black Ops' terms.
+const PARTY: &str = game_api::unknown!(
+    "t5.hud.party_state",
+    "Black Ops' menu party tests (`inprivateparty`, `privatepartyhost`, `privatepartyhostinlobby`, `gamehost`) fail, so an item they gate does not draw",
+    "Black Ops' party state for a solo and a hosted zombies match, read from its executable"
+)
+.id;
 
 #[derive(Clone, Debug)]
 enum T5Token {
@@ -336,6 +363,40 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_PLAYER => host.player_field(&arg_str(&args()?)?)?,
         T5_FN_ADSJAVELIN => Operand::Int(i32::from(host.ads_javelin()?)),
         T5_FN_KEYBINDING => host.key_binding(&arg_str(&args()?)?)?,
+        T5_FN_MENUISOPEN => Operand::Int(host.menu_is_open(&arg_str(&args()?)?)?),
+        T5_FN_INPRIVATEPARTY
+        | T5_FN_PRIVATEPARTYHOST
+        | T5_FN_PRIVATEPARTYHOSTINLOBBY
+        | T5_FN_GAMEHOST => return Err(ExprError::Unknown(PARTY)),
+        // One local client, never split; the client sets local client 0
+        // primary at startup, and its profile is always signed in.
+        T5_FN_ISSPLITSCREEN => Operand::Int(0),
+        T5_FN_ISSPLITSCREENHOST => Operand::Int(1),
+        T5_FN_ISPROFILESIGNEDIN => Operand::Int(1),
+        T5_FN_LOCSTRING => Operand::Str(host.localize(&args()?)?),
+        T5_FN_LOCALVARINT => Operand::Int(host.local_var_int(&arg_str(&args()?)?)?),
+        T5_FN_LOCALVARBOOL => {
+            Operand::Int(i32::from(host.local_var_int(&arg_str(&args()?)?)? != 0))
+        }
+        T5_FN_LOCALVARSTRING => Operand::Str(host.local_var_string(&arg_str(&args()?)?)?),
+        // A float truncates, a string is `atoi`.
+        T5_FN_INT => Operand::Int(source_int(
+            args()?.first().ok_or(ExprError::StackUnderflow)?,
+        )),
+        T5_FN_GETTEXTWIDTH => {
+            let args = args()?;
+            let [text, font, scale] = args.as_slice() else {
+                return Err(ExprError::Host("getTextWidth takes three arguments"));
+            };
+            Operand::Int(host.text_width(
+                &source_string(text),
+                source_int(font),
+                source_float(scale),
+            )?)
+        }
+        // The item's menu has the focus and is visible.
+        T5_FN_MENUHASFOCUS => Operand::Int(host.menu_has_focus()?),
+        T5_FN_ISINGAME => Operand::Int(host.in_game()?),
         other => return Err(ExprError::UnsupportedOp(other)),
     })
 }
