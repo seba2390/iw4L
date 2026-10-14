@@ -38,6 +38,28 @@ pub struct Reward {
     pub quantity: u32,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ClientFieldEvent {
+    pub name: String,
+    pub old: f32,
+    pub new: f32,
+    pub initial: bool,
+    pub new_entity: bool,
+    pub entity: Option<i32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LuiNotify {
+    pub name: String,
+    pub data: Vec<i32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct OffhandSlot {
+    pub ammo: i32,
+    pub material: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Input {
     pub viewport: [f32; 2],
@@ -56,6 +78,16 @@ pub struct Input {
     pub fonts: Arc<[Font]>,
     pub players: Vec<Player>,
     pub rewards: Vec<Reward>,
+    pub rounds_played: i32,
+    pub weapon_name: String,
+    pub weapon_display_name: String,
+    pub weapon_inventory_type: i32,
+    pub ammo_clip: i32,
+    pub ammo_stock: i32,
+    pub low_clip: bool,
+    pub offhand: [OffhandSlot; 2],
+    pub client_fields: Vec<ClientFieldEvent>,
+    pub lui_notifies: Vec<LuiNotify>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

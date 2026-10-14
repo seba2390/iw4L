@@ -84,6 +84,10 @@ pub struct ClientSnapshotMeta {
 
     pub menu_commands: Vec<MenuCommand>,
 
+    pub lui_client_fields: Vec<(u32, game_api::ui::ClientFieldEvent)>,
+
+    pub lui_notifies: Vec<(u32, game_api::ui::LuiNotify)>,
+
     pub location_selection: Option<LocationSelection>,
 }
 
@@ -92,6 +96,7 @@ pub struct SnapshotMeta {
     pub objectives: crate::ObjectiveMatch,
     pub phase: MatchPhase,
     pub round_serial: u32,
+    pub rounds_played: i32,
 
     pub match_elapsed_ms: u32,
     pub prematch: gamemode_iw4::PrematchStep,

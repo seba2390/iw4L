@@ -187,14 +187,14 @@ impl Element {
             self.current.changes = source.changes;
         }
         self.current.apply_target(&target);
-        let lateness = self
-            .animation_timer
-            .take()
-            .map_or(0.0, |mut timer| match timer.interrupt() {
-                animation::AnimationStep::Complete { lateness, .. } => lateness,
-                animation::AnimationStep::Interpolate(_) => 0.0,
-            });
-        let name = self.animation_name.take().unwrap_or_default();
+        let lateness =
+            self.animation_timer
+                .take()
+                .map_or(0.0, |mut timer| match timer.interrupt() {
+                    animation::AnimationStep::Complete { lateness, .. } => lateness,
+                    animation::AnimationStep::Interpolate(_) => 0.0,
+                });
+        let name = self.animation_name.take().unwrap_or_else(Vec::new);
         Some((name, lateness, interrupted))
     }
 

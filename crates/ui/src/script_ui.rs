@@ -1,7 +1,7 @@
 use crate::layers::{GameUiFont, UiLayer, game_text_font};
-use assets::{PreparedLocalizedStrings, SessionCompass, SessionMapIdentity};
+use assets::{PreparedLocalizedStrings, PreparedWeapons, SessionCompass, SessionMapIdentity};
 use bevy::prelude::*;
-use game_api::ui::{Content, Draw, Font, Input, Player, ScriptUi, Table};
+use game_api::ui::{Content, Draw, Font, Input, OffhandSlot, Player, ScriptUi, Table};
 use net::{ClientActionInput, FrameClock, LocalPresentClient, PresentedSnapshot};
 use std::collections::{HashMap, HashSet};
 
@@ -19,6 +19,9 @@ pub(crate) struct ScriptHud {
     slots: HashMap<u32, (Entity, Entity, Draw)>,
     map_images: HashMap<u32, Entity>,
     input: Input,
+    client_field_serial: u32,
+    lui_notify_serial: u32,
+    pub(crate) active: bool,
     pub(crate) scoreboard: bool,
 }
 
@@ -49,6 +52,7 @@ type View<'w> = (
     Res<'w, LocalPresentClient>,
     Option<Res<'w, FrameClock>>,
     Res<'w, GameUiFont>,
+    Option<Res<'w, PreparedWeapons>>,
 );
 
 #[allow(clippy::too_many_arguments)]
@@ -67,16 +71,19 @@ fn refresh(
     mut art: ResMut<super::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let (screen, menu, local, clock, font) = view;
+    let (screen, menu, local, clock, font, weapons) = view;
     state.scoreboard = false;
     if *screen != frame::AppScreen::InGame {
         if let Some(root) = state.root.take() {
             commands.entity(root).despawn();
         }
         state.scene = None;
+        state.active = false;
         state.slots.clear();
         state.map_images.clear();
         state.publication = None;
+        state.client_field_serial = 0;
+        state.lui_notify_serial = 0;
         state.input = Input::default();
         return;
     }
@@ -112,6 +119,8 @@ fn refresh(
         }
         state.slots.clear();
         state.map_images.clear();
+        state.client_field_serial = 0;
+        state.lui_notify_serial = 0;
         state.publication = Some(publication.id());
         let modules = publication.script_modules(namespace);
         state.scene = match session::games::menus(namespace).script_ui(&modules) {
@@ -121,6 +130,7 @@ fn refresh(
                 None
             }
         };
+        state.active = state.scene.is_some();
         state.input.map = map.zone.clone();
         state.input.tables = publication
             .script_tables(namespace)
@@ -173,6 +183,7 @@ fn refresh(
         .into();
     }
     if state.scene.is_none() {
+        state.active = false;
         return;
     }
     let Some(ps) = presented.player(local.0) else {
@@ -188,12 +199,107 @@ fn refresh(
         .is_some_and(|actions| actions.client.kb.scores.active)
         || snapshot.meta.phase == sim::MatchPhase::PostGame;
     state.input.menu = menu.0;
+    state.input.rounds_played = snapshot.meta.rounds_played;
     state.input.remaining = (snapshot.meta.time_limit_ms != 0).then(|| {
         snapshot
             .meta
             .time_limit_ms
             .saturating_sub(snapshot.meta.match_elapsed_ms) as i32
     });
+    state.input.client_fields.clear();
+    state.input.lui_notifies.clear();
+    if let Some(meta) = snapshot.meta.for_client(local.0) {
+        let weapon = weapon_iw4::get_viewmodel_weapon_index(ps);
+        let bound_weapons = weapons
+            .as_ref()
+            .and_then(|w| w.for_snapshot(presented.weapon_epoch()).ok());
+        let registry = bound_weapons.as_ref().map(|w| w.registry());
+        let raw_weapon_name = registry
+            .as_ref()
+            .map_or_else(String::new, |r| r.name_of(weapon).to_owned());
+        state.input.weapon_name = raw_weapon_name
+            .strip_prefix("t6:weapon/")
+            .unwrap_or(&raw_weapon_name)
+            .to_owned();
+        state.input.weapon_display_name = registry.as_ref().map_or_else(String::new, |r| {
+            r.display_name_key_of(weapon)
+                .and_then(|key| strings.as_ref()?.0.text_in(namespace, key))
+                .unwrap_or_else(|| r.name_of(weapon))
+                .to_owned()
+        });
+        let hud_facts = bound_weapons
+            .as_ref()
+            .and_then(|w| w.row(weapon).and_then(|row| row.hud_facts()));
+        state.input.weapon_inventory_type = if hud_facts.is_some_and(|f| f.is_alternate()) {
+            3
+        } else {
+            0
+        };
+        let (clip, stock) = meta
+            .ammo_by_weapon
+            .iter()
+            .find(|(index, _, _)| *index == weapon)
+            .map_or((meta.ammo_clip, meta.ammo_stock), |(_, clip, stock)| {
+                (*clip, *stock)
+            });
+        state.input.ammo_clip = clip;
+        state.input.ammo_stock = stock;
+        state.input.low_clip = hud_facts.is_some_and(|f| {
+            f.clip_size > 0
+                && (clip as f32) <= (f.clip_size as f32 * f.low_ammo_warning_threshold).ceil()
+        });
+        let mut offhand = [OffhandSlot::default(), OffhandSlot::default()];
+        if let (Some(bound), Some(registry)) = (bound_weapons.as_ref(), registry.as_ref()) {
+            for &slot in &ps.weapons {
+                if slot <= 0 {
+                    continue;
+                }
+                let index = slot as u32;
+                let Some(facts) = bound.row(index).and_then(|w| w.hud_facts()) else {
+                    continue;
+                };
+                let bucket = match facts.offhand_class {
+                    1 | 4 | 5 => Some((0, "hud_us_grenade")),
+                    2 | 3 => Some((1, "hud_cymbal_monkey_bo2")),
+                    _ => None,
+                };
+                let Some((bucket, fallback)) = bucket else {
+                    continue;
+                };
+                let ammo = meta
+                    .ammo_by_weapon
+                    .iter()
+                    .find(|(w, _, _)| *w == index)
+                    .map_or(0, |(_, c, s)| c + s);
+                let material = registry
+                    .hud_icon_image_of(index)
+                    .unwrap_or(fallback)
+                    .to_owned();
+                offhand[bucket] = OffhandSlot { ammo, material };
+            }
+        }
+        state.input.offhand = offhand;
+        let prev_cf = state.client_field_serial;
+        state.input.client_fields = meta
+            .lui_client_fields
+            .iter()
+            .filter(|(serial, _)| *serial > prev_cf)
+            .map(|(_, ev)| ev.clone())
+            .collect();
+        if let Some((last, _)) = meta.lui_client_fields.last() {
+            state.client_field_serial = *last;
+        }
+        let prev_notify = state.lui_notify_serial;
+        state.input.lui_notifies = meta
+            .lui_notifies
+            .iter()
+            .filter(|(serial, _)| *serial > prev_notify)
+            .map(|(_, ev)| ev.clone())
+            .collect();
+        if let Some((last, _)) = meta.lui_notifies.last() {
+            state.lui_notify_serial = *last;
+        }
+    }
     state.input.players = snapshot
         .meta
         .clients
@@ -232,6 +338,7 @@ fn refresh(
         Err(error) => {
             diag::warn!(Ui, "authored HUD unavailable: {error}");
             state.scene = None;
+            state.active = false;
             if let Some(root) = state.root.take() {
                 commands.entity(root).despawn();
             }
@@ -240,6 +347,7 @@ fn refresh(
             return;
         }
     };
+    state.active = true;
     state.scoreboard = input.scoreboard;
     let scale = window.height() / 720.0;
     let width = window.width() / scale;

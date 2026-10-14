@@ -284,9 +284,7 @@ impl Default for WorldVertexPayload {
 }
 
 impl WorldVertexPayload {
-    pub fn type2_stream0(
-        &self,
-    ) -> Result<&[HostVertex], &'static str> {
+    pub fn type2_stream0(&self) -> Result<&[HostVertex], &'static str> {
         const _: () =
             assert!(asset_iw4::size::GFX_WORLD_VERTEX == fastfile_iw5::size::GFX_WORLD_VERTEX);
         const _: () =

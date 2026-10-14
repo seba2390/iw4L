@@ -91,6 +91,11 @@ pub struct Scene {
     rewards: Option<Value>,
     refreshed: Option<(bool, bool, i32)>,
     last_time: Option<i32>,
+    rounds_played: Option<i32>,
+    competitive_scores: Vec<(u32, i32)>,
+    weapon_state: Option<(String, String, i32)>,
+    ammo_state: Option<(i32, i32, bool)>,
+    offhand_state: Option<[game_api::ui::OffhandSlot; 2]>,
     events: BTreeMap<String, Value>,
     reward_data: Vec<game_api::ui::Reward>,
 }
@@ -311,6 +316,11 @@ impl Scene {
             rewards: None,
             refreshed: None,
             last_time: None,
+            rounds_played: None,
+            competitive_scores: Vec::new(),
+            weapon_state: None,
+            ammo_state: None,
+            offhand_state: None,
             events: BTreeMap::new(),
             reward_data: Vec::new(),
         };
@@ -367,6 +377,37 @@ impl Scene {
 }
 
 impl Scene {
+    fn dispatch_event(
+        &mut self,
+        receiver: &Value,
+        method: &str,
+        name: &str,
+        event: Value,
+    ) -> Result<(), String> {
+        let callee = self
+            .runtime
+            .tables
+            .field(receiver, &key(method))
+            .map_err(|e| format!("{e:?}"))?;
+        self.runtime
+            .call_with(
+                &callee,
+                &[receiver.clone(), event],
+                1_000_000,
+                &mut self.bindings,
+            )
+            .map_err(|e| {
+                format!(
+                    "t6.ui.render: {method} {name}: {e:?}; source {:?}; binding {}",
+                    self.runtime
+                        .failure_source()
+                        .map(|(program, function)| (self.module_names.get(program), function)),
+                    self.bindings.last_call
+                )
+            })?;
+        Ok(())
+    }
+
     fn event(&mut self, receiver: &Value, method: &str, name: &str) -> Result<(), String> {
         let event = if let Some(value) = self.events.get(name) {
             value.clone()
@@ -391,27 +432,282 @@ impl Scene {
                 Value::Number(self.bindings.input.local_client as f32),
             )
             .map_err(|e| format!("{e:?}"))?;
-        let callee = self
-            .runtime
-            .tables
-            .field(receiver, &key(method))
-            .map_err(|e| format!("{e:?}"))?;
-        self.runtime
-            .call_with(
-                &callee,
-                &[receiver.clone(), event],
-                1_000_000,
-                &mut self.bindings,
-            )
-            .map_err(|e| {
-                format!(
-                    "t6.ui.render: {method} {name}: {e:?}; source {:?}; binding {}",
+        self.dispatch_event(receiver, method, name, event)
+    }
+
+    fn update_zombies_hud(
+        &mut self,
+        root: &Value,
+        input: &Input,
+        refresh: bool,
+    ) -> Result<(), String> {
+        let controller = Value::Number(input.local_client as f32);
+        for cf in &input.client_fields {
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key(&cf.name)),
+                ("controller", controller.clone()),
+                ("wasDemoJump", Value::Boolean(0)),
+                ("initialSnap", Value::Boolean(cf.initial.into())),
+                ("newEnt", Value::Boolean(cf.new_entity.into())),
+                ("entNum", Value::Number(cf.entity.unwrap_or(0) as f32)),
+                ("oldValue", Value::Number(cf.old)),
+                ("newValue", Value::Number(cf.new)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", &cf.name, event)?;
+        }
+        for notify in &input.lui_notifies {
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            self.runtime
+                .tables
+                .raw_set(&event, &key("name"), key(&notify.name))
+                .map_err(|e| format!("{e:?}"))?;
+            self.runtime
+                .tables
+                .raw_set(&event, &key("controller"), controller.clone())
+                .map_err(|e| format!("{e:?}"))?;
+            if !notify.data.is_empty() {
+                let data = self
+                    .runtime
+                    .tables
+                    .allocate()
+                    .map_err(|e| format!("{e:?}"))?;
+                for (index, item) in notify.data.iter().enumerate() {
                     self.runtime
-                        .failure_source()
-                        .map(|(program, function)| (self.module_names.get(program), function)),
-                    self.bindings.last_call
-                )
-            })?;
+                        .tables
+                        .raw_set(
+                            &data,
+                            &Value::Number(index as f32 + 1.0),
+                            Value::Number(*item as f32),
+                        )
+                        .map_err(|e| format!("{e:?}"))?;
+                }
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key("data"), data)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", &notify.name, event)?;
+        }
+        if input.rounds_played > 0 && (refresh || self.rounds_played != Some(input.rounds_played)) {
+            self.rounds_played = Some(input.rounds_played);
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_rounds_played")),
+                ("controller", controller.clone()),
+                ("roundsPlayed", Value::Number(input.rounds_played as f32)),
+                ("wasDemoJump", Value::Boolean(0)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_rounds_played", event)?;
+        }
+        let scores: Vec<(u32, i32)> = input.players.iter().map(|p| (p.id, p.score)).collect();
+        if !scores.is_empty() && (refresh || self.competitive_scores != scores) {
+            self.competitive_scores = scores;
+            let list = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (index, player) in input.players.iter().enumerate() {
+                let entry = self
+                    .runtime
+                    .tables
+                    .allocate()
+                    .map_err(|e| format!("{e:?}"))?;
+                self.runtime
+                    .tables
+                    .raw_set(&entry, &key("score"), Value::Number(player.score as f32))
+                    .map_err(|e| format!("{e:?}"))?;
+                self.runtime
+                    .tables
+                    .raw_set(&entry, &key("clientNum"), Value::Number(player.id as f32))
+                    .map_err(|e| format!("{e:?}"))?;
+                self.runtime
+                    .tables
+                    .raw_set(&list, &Value::Number(index as f32 + 1.0), entry)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            let self_index = input
+                .players
+                .iter()
+                .position(|p| p.id == input.local_client)
+                .unwrap_or(0)
+                + 1;
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_competitive_scoreboard")),
+                ("controller", controller.clone()),
+                ("bWasDemoJump", Value::Boolean(0)),
+                ("competitivescores", list),
+                ("selfindex", Value::Number(self_index as f32)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(
+                root,
+                "processEvent",
+                "hud_update_competitive_scoreboard",
+                event,
+            )?;
+        }
+        let weapon_state = (
+            input.weapon_name.clone(),
+            input.weapon_display_name.clone(),
+            input.weapon_inventory_type,
+        );
+        if !input.weapon_name.is_empty()
+            && (refresh || self.weapon_state.as_ref() != Some(&weapon_state))
+        {
+            self.weapon_state = Some(weapon_state);
+            let select = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_weapon_select")),
+                ("controller", controller.clone()),
+                ("weaponDisplayName", key(&input.weapon_display_name)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&select, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_weapon_select", select)?;
+            let weap = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_weapon")),
+                ("controller", controller.clone()),
+                ("weapon", key(&input.weapon_name)),
+                (
+                    "inventorytype",
+                    Value::Number(input.weapon_inventory_type as f32),
+                ),
+                ("immediate", Value::Boolean(1)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&weap, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_weapon", weap)?;
+        }
+        let ammo_state = (input.ammo_clip, input.ammo_stock, input.low_clip);
+        if !input.weapon_name.is_empty() && (refresh || self.ammo_state != Some(ammo_state)) {
+            self.ammo_state = Some(ammo_state);
+            let ammo = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_ammo")),
+                ("controller", controller.clone()),
+                ("ammoInClip", Value::Number(input.ammo_clip as f32)),
+                ("ammoStock", Value::Number(input.ammo_stock as f32)),
+                ("lowClip", Value::Boolean(input.low_clip.into())),
+                ("immediate", Value::Boolean(1)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&ammo, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_ammo", ammo)?;
+        }
+        if refresh || self.offhand_state.as_ref() != Some(&input.offhand) {
+            self.offhand_state = Some(input.offhand.clone());
+            let lethal = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            let lethal_mat = if input.offhand[0].material.is_empty() {
+                Value::Nil
+            } else {
+                self.bindings.asset(&input.offhand[0].material)
+            };
+            for (field, value) in [
+                ("ammo", Value::Number(input.offhand[0].ammo as f32)),
+                ("material", lethal_mat),
+                ("aspectRatio", Value::Number(1.0)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&lethal, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            let tactical = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            let tactical_mat = if input.offhand[1].material.is_empty() {
+                Value::Nil
+            } else {
+                self.bindings.asset(&input.offhand[1].material)
+            };
+            for (field, value) in [
+                ("ammo", Value::Number(input.offhand[1].ammo as f32)),
+                ("material", tactical_mat),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&tactical, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_offhand")),
+                ("controller", controller),
+                ("lethal", lethal),
+                ("tactical", tactical),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_offhand", event)?;
+        }
         Ok(())
     }
 }
@@ -478,6 +774,9 @@ impl ScriptUi for Scene {
         });
         if refresh {
             self.event(&root, "dispatchEventToChildren", "hud_update_refresh")?;
+        }
+        if input.zombies {
+            self.update_zombies_hud(&root, input, refresh)?;
         }
         if let Some(scoreboard) = self.scoreboard.clone() {
             self.bindings
@@ -954,6 +1253,7 @@ impl Host {
                 "GetKeyBindingLocalizedString",
                 "IsWeaponType",
                 "IsOverheatWeapon",
+                "ToUpper",
             ] {
                 self.bind(tables, &table, name)?;
             }
@@ -991,7 +1291,9 @@ impl Host {
         }
         tables.raw_set(&globals, &key("table"), table)?;
         let math = tables.allocate()?;
-        for name in ["min", "max", "floor", "ceil", "abs"] {
+        for name in [
+            "min", "max", "floor", "ceil", "abs", "pow", "sqrt", "sin", "cos", "random",
+        ] {
             self.bind(tables, &math, name)?;
         }
         tables.raw_set(&globals, &key("math"), math)?;
@@ -1059,6 +1361,21 @@ impl Bindings for Host {
             "floor" => Ok(vec![Value::Number(number(args.first())?.floor())]),
             "ceil" => Ok(vec![Value::Number(number(args.first())?.ceil())]),
             "abs" => Ok(vec![Value::Number(number(args.first())?.abs())]),
+            "pow" => Ok(vec![Value::Number(
+                number(args.first())?.powf(number(args.get(1))?),
+            )]),
+            "sqrt" => Ok(vec![Value::Number(number(args.first())?.sqrt())]),
+            "sin" => Ok(vec![Value::Number(number(args.first())?.sin())]),
+            "cos" => Ok(vec![Value::Number(number(args.first())?.cos())]),
+            "random" => Ok(vec![Value::Number(match (args.first(), args.get(1)) {
+                (None, _) => 0.5,
+                (Some(a), None) => 1.0_f32.min(number(Some(a))?.floor()),
+                (Some(a), Some(_)) => number(Some(a))?.floor(),
+            })]),
+            "ToUpper" => Ok(vec![key(&text(
+                args.last().ok_or(FaultKind::Argument(1))?,
+            )?
+            .to_uppercase())]),
             "char" => Ok(vec![Value::Bytes(Arc::from(
                 args.iter()
                     .map(|value| {
@@ -1133,12 +1450,12 @@ impl Bindings for Host {
             "PlayMenuMusic" if args.last() == Some(&key("")) => Ok(Vec::new()),
             "StopEditingPresetClass" => Ok(Vec::new()),
             "TableLookup" => {
-                if args.len() < 5 || args.len() % 2 == 0 {
+                if args.len() < 5 || args.len().is_multiple_of(2) {
                     return Err(FaultKind::Argument(args.len()));
                 }
                 let name = text(args.get(1).ok_or(FaultKind::Argument(2))?)?;
                 let mut pairs = Vec::new();
-                for pair in args[2..args.len() - 1].chunks_exact(2) {
+                for pair in args[2..args.len() - 1].as_chunks::<2>().0 {
                     pairs.push((number(Some(&pair[0]))? as usize, text(&pair[1])?));
                 }
                 let result = number(args.last())? as usize;
@@ -1148,8 +1465,7 @@ impl Bindings for Host {
                     .iter()
                     .find(|table| table.name.eq_ignore_ascii_case(&name))
                     .filter(|table| {
-                        table.columns > result
-                            && pairs.iter().all(|(col, _)| table.columns > *col)
+                        table.columns > result && pairs.iter().all(|(col, _)| table.columns > *col)
                     })
                     .and_then(|table| {
                         table
@@ -1421,7 +1737,7 @@ impl Bindings for Host {
                 )])
             }
             "GetClientNum" => Ok(vec![Value::Number(self.input.local_client as f32)]),
-            "GetRoundsPlayed" => Ok(vec![Value::Number(0.0)]),
+            "GetRoundsPlayed" => Ok(vec![Value::Number(self.input.rounds_played as f32)]),
             "GetGametypeSetting" => {
                 let setting = text(args.last().ok_or(FaultKind::Argument(1))?)?;
                 match setting.as_str() {
@@ -1729,13 +2045,11 @@ impl Bindings for Host {
                 self.elements
                     .finish_element_animation(receiver, true, tables)?;
                 let name_bytes = match args.get(1) {
-                    Some(Value::Bytes(bytes)) => {
-                        bytes[..bytes
-                            .iter()
-                            .position(|byte| *byte == 0)
-                            .unwrap_or(bytes.len())]
-                            .to_vec()
-                    }
+                    Some(Value::Bytes(bytes)) => bytes[..bytes
+                        .iter()
+                        .position(|byte| *byte == 0)
+                        .unwrap_or(bytes.len())]
+                        .to_vec(),
                     _ => Vec::new(),
                 };
                 let duration = args

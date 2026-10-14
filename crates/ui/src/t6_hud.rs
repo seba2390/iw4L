@@ -652,9 +652,10 @@ fn refresh(
     } else {
         String::new()
     };
+    let lui_zombies = zombies && native.active;
     for (field, mut text, mut color, mut node) in &mut fields {
         let value = match field {
-            Field::Match => {
+            Field::Match if !lui_zombies => {
                 let score = if zombies {
                     meta.score.to_string()
                 } else if snapshot.meta.kind.is_team() {
@@ -678,7 +679,9 @@ fn refresh(
                     )
                 }
             }
-            Field::Round | Field::Use | Field::Powerups if zombies && alive && !scores => {
+            Field::Round | Field::Use | Field::Powerups
+                if zombies && alive && !scores && (!lui_zombies || matches!(field, Field::Use)) =>
+            {
                 let message = meta
                     .hud_archival
                     .iter()
@@ -809,8 +812,8 @@ fn refresh(
                     String::new()
                 }
             }
-            Field::Weapon if alive && !scores => name.clone(),
-            Field::Ammo if alive && !scores => {
+            Field::Weapon if alive && !scores && !lui_zombies => name.clone(),
+            Field::Ammo if alive && !scores && !lui_zombies => {
                 if zombies {
                     format!("{clip}/{stock}")
                 } else {
@@ -877,6 +880,7 @@ fn refresh_art(
     local: Res<LocalPresentClient>,
     actions: Option<Res<ClientActionInput>>,
     mode: Option<Res<game_api::ModeRules>>,
+    native: Res<super::script_ui::ScriptHud>,
     mut art: ResMut<crate::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
     mut sprites: Query<(&HudArt, &mut ImageNode, &mut Node), Without<Field>>,
@@ -897,6 +901,7 @@ fn refresh_art(
         .as_ref()
         .is_some_and(|actions| actions.client.kb.scores.active);
     let zombies = mode.is_some_and(|mode| mode.hud.zombies);
+    let lui_zombies = zombies && native.active;
     let labels: Vec<_> = meta
         .hud_archival
         .iter()
@@ -939,8 +944,8 @@ fn refresh_art(
     }
     for (kind, mut view, mut node) in &mut sprites {
         let image = match kind {
-            HudArt::Round if zombies => tally.clone(),
-            HudArt::Score => art.image(
+            HudArt::Round if zombies && !lui_zombies => tally.clone(),
+            HudArt::Score if !lui_zombies => art.image(
                 if zombies {
                     "scorebar_zom_1"
                 } else {
@@ -949,10 +954,12 @@ fn refresh_art(
                 &mut images,
             ),
             HudArt::Damage if ps.health < ps.max_health => damage.clone(),
-            HudArt::Powerup(0) if zombies => double_art.clone(),
-            HudArt::Powerup(1) if zombies => instant_art.clone(),
+            HudArt::Powerup(0) if zombies && !lui_zombies => double_art.clone(),
+            HudArt::Powerup(1) if zombies && !lui_zombies => instant_art.clone(),
             HudArt::Perk(index)
-                if zombies && ps.pm_flags & playerstate_iw4::pm_flags::LAST_STAND == 0 =>
+                if zombies
+                    && !lui_zombies
+                    && ps.pm_flags & playerstate_iw4::pm_flags::LAST_STAND == 0 =>
             {
                 perks
                     .get(*index as usize)
@@ -1010,6 +1017,8 @@ fn refresh_graphics(
     local: Res<LocalPresentClient>,
     actions: Option<Res<ClientActionInput>>,
     weapons: Option<Res<PreparedWeapons>>,
+    mode: Option<Res<game_api::ModeRules>>,
+    native: Res<super::script_ui::ScriptHud>,
     catalog: Res<crate::ClassLoadoutCatalog>,
     mut art: ResMut<crate::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
@@ -1036,6 +1045,7 @@ fn refresh_graphics(
     };
     let alive = meta.lifecycle == ClientLifecycle::Alive && ps.health > 0;
     let scores = actions.as_ref().is_some_and(|a| a.client.kb.scores.active);
+    let lui_zombies = mode.is_some_and(|mode| mode.hud.zombies) && native.active;
     let crosshair = alive && !scores && ps.f_weapon_pos_frac < 0.5;
     let spread = 5.0 + ps.aim_spread_scale.clamp(0.0, 255.0) / 255.0 * 18.0;
     for (arm, mut node, mut transform) in &mut arms {
@@ -1061,23 +1071,26 @@ fn refresh_graphics(
             Color::NONE
         });
     }
-    let image = weapons.as_ref().and_then(|w| {
-        let w = w.for_snapshot(presented.weapon_epoch()).ok()?;
-        let index = weapon_iw4::get_viewmodel_weapon_index(ps);
-        if w.registry().identity_namespace_of(index) != Some(AssetNamespace::T6) {
-            return None;
-        }
-        let key = w
-            .registry()
-            .weapon_families()
-            .describe(index)?
-            .family
-            .as_ref()?
-            .asset_key();
-        let preview = catalog.previews.get(&key);
-        let material = preview.filter(|p| !p.image.is_empty())?.image.as_str();
-        art.image(material, &mut images)
-    });
+    let image = (!lui_zombies)
+        .then(|| {
+            let w = weapons.as_ref()?;
+            let w = w.for_snapshot(presented.weapon_epoch()).ok()?;
+            let index = weapon_iw4::get_viewmodel_weapon_index(ps);
+            if w.registry().identity_namespace_of(index) != Some(AssetNamespace::T6) {
+                return None;
+            }
+            let key = w
+                .registry()
+                .weapon_families()
+                .describe(index)?
+                .family
+                .as_ref()?
+                .asset_key();
+            let preview = catalog.previews.get(&key);
+            let material = preview.filter(|p| !p.image.is_empty())?.image.as_str();
+            art.image(material, &mut images)
+        })
+        .flatten();
     for (mut view, mut node) in &mut weapon_art {
         node.display = if alive && !scores && image.is_some() {
             Display::Flex

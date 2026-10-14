@@ -143,6 +143,8 @@ pub struct ClientMatchState {
     pub(crate) shellshock: Option<hud_iw4::ShockParams>,
     pub(crate) view_effects: ViewEffects,
     pub(crate) menu_commands: Vec<MenuCommand>,
+    pub(crate) lui_client_fields: Vec<(u32, game_api::ui::ClientFieldEvent)>,
+    pub(crate) lui_notifies: Vec<(u32, game_api::ui::LuiNotify)>,
     pub(crate) location_selection: Option<LocationSelection>,
 
     pub(crate) controls: ScriptControls,
@@ -262,6 +264,8 @@ impl ClientMatchState {
             shellshock: self.shellshock.clone(),
             view_effects: self.view_effects.clone(),
             menu_commands: self.menu_commands.clone(),
+            lui_client_fields: self.lui_client_fields.clone(),
+            lui_notifies: self.lui_notifies.clone(),
             location_selection: self.location_selection.clone(),
         }
     }
@@ -274,6 +278,26 @@ impl ClientMatchState {
         self.menu_commands.push(MenuCommand { serial, kind });
         let excess = self.menu_commands.len().saturating_sub(MENU_COMMAND_TAIL);
         self.menu_commands.drain(..excess);
+    }
+
+    pub(crate) fn push_lui_client_field(&mut self, event: game_api::ui::ClientFieldEvent) {
+        let serial = self
+            .lui_client_fields
+            .last()
+            .map_or(1, |(s, _)| s.wrapping_add(1));
+        self.lui_client_fields.push((serial, event));
+        let excess = self.lui_client_fields.len().saturating_sub(64);
+        self.lui_client_fields.drain(..excess);
+    }
+
+    pub(crate) fn push_lui_notify(&mut self, notify: game_api::ui::LuiNotify) {
+        let serial = self
+            .lui_notifies
+            .last()
+            .map_or(1, |(s, _)| s.wrapping_add(1));
+        self.lui_notifies.push((serial, notify));
+        let excess = self.lui_notifies.len().saturating_sub(64);
+        self.lui_notifies.drain(..excess);
     }
 
     pub(crate) fn adopt_snapshot_meta(&mut self, meta: &ClientSnapshotMeta) {
@@ -320,6 +344,8 @@ impl ClientMatchState {
         self.shellshock = meta.shellshock.clone();
         self.view_effects = meta.view_effects.clone();
         self.menu_commands = meta.menu_commands.clone();
+        self.lui_client_fields = meta.lui_client_fields.clone();
+        self.lui_notifies = meta.lui_notifies.clone();
         self.location_selection = meta.location_selection.clone();
     }
 }
