@@ -69,6 +69,10 @@
 //! he can pay for it he buys Quick Revive as the use test does (fighting
 //! nothing), then stands where he spawned as the go-down test does.
 //!
+//! `IW4L_TEST_PLAYER=watch` presses nothing: it only writes the five-second
+//! log (with `IW4L_TEST_ACTORS`, `IW4L_TEST_WAITS`, `IW4L_TEST_VARS`), from a
+//! bot when no one else plays, so a headless `serve` run shows the actors.
+//!
 //! `IW4L_TEST_PLAYER=down` is the go-down test: no god mode, no fighting;
 //! he stands where he spawned until the zombies reach him and down him.
 //! Each change of his life state and last stand is logged, so a run shows
@@ -205,6 +209,7 @@ enum Mode {
     Use,
     Down,
     Revive,
+    Watch,
 }
 
 impl Mode {
@@ -215,6 +220,7 @@ impl Mode {
             Ok("use") => Self::Use,
             Ok("down") => Self::Down,
             Ok("revive") => Self::Revive,
+            Ok("watch") => Self::Watch,
             _ => Self::Off,
         }
     }
@@ -752,10 +758,16 @@ pub(crate) fn drive_test_player(
         return;
     }
     let snapshot = world.0.snapshot(Tick(clock.tick.saturating_sub(1)));
+    // The watch test logs from a bot when no one else plays (`serve`).
     let Some((id, ps)) = snapshot
         .players
         .iter()
         .find(|(id, _)| roster.bots.iter().all(|bot| bot.id != *id))
+        .or_else(|| {
+            (test.mode == Mode::Watch)
+                .then(|| snapshot.players.first())
+                .flatten()
+        })
         .map(|(id, ps)| (*id, *ps))
     else {
         return;
@@ -902,6 +914,9 @@ pub(crate) fn drive_test_player(
         }
         test.nearest = None;
         test.lowest_health = None;
+    }
+    if test.mode == Mode::Watch {
+        return;
     }
     if matches!(test.mode, Mode::Down | Mode::Revive) {
         let now = (meta.lifecycle, ps.health, laststand);

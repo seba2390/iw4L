@@ -454,7 +454,21 @@ struct ActorFields {
     death_contents: Option<i32>,
     /// `setflashbanged`'s state and strength.
     flashbanged: (bool, f32),
+    /// `allowpitchangle`'s flag.
+    allow_pitch: bool,
+    /// `setphysparams`' bounds; the actor's own (72 tall) until set.
+    bounds: Option<([f32; 3], [f32; 3])>,
 }
+
+/// An actor's height before `setphysparams` changes its bounds.
+const ACTOR_HEIGHT: f32 = 72.0;
+
+/// Black Ops' objective states, by number.
+const OBJECTIVE_STATES: [&str; 6] = ["empty", "active", "invisible", "done", "current", "failed"];
+
+/// Each objective's state (`objective_state`).
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct Objectives([u8; 32]);
 
 /// The species `settalktospecies` names, by bit.
 const SPECIES: [&str; 4] = ["human", "dog", "zombie", "zombie_dog"];
@@ -543,7 +557,12 @@ fn register_actor(registry: &mut NativeRegistry) {
                         .map(|ps| ps.view_height_current)
                 })
                 .unwrap_or(0.0),
-            EntityKind::Actor => 72.0 * 0.9_f32,
+            EntityKind::Actor => {
+                let height = actor_fields(world, id)
+                    .bounds
+                    .map_or(ACTOR_HEIGHT, |(_, maxs)| maxs[2]);
+                height * 0.9_f32
+            }
             _ => {
                 return Err(format!(
                     "getEye must be called on an AI or player, not on a '{classname}'"
@@ -767,6 +786,55 @@ fn register_actor(registry: &mut NativeRegistry) {
         };
         let contents = super::super::args::int(args, 0)?;
         actor_fields(world, id).death_contents = Some(contents);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "allowpitchangle", |world, receiver, args| {
+        let id = actor(world, receiver)
+            .map_err(|_| "AllowPitchAngle() called on non-actor\n".to_owned())?;
+        if args.is_empty() {
+            return Err("AllowPitchAngle() called without an argument (0 or 1)\n".into());
+        }
+        let allow = super::super::args::int(args, 0)? != 0;
+        actor_fields(world, id).allow_pitch = allow;
+        Ok(Value::Undefined)
+    });
+    // `setPhysParams(radius, bottom, top)`: the actor's box becomes
+    // (-radius, -radius, bottom)..(radius, radius, top).
+    registry.register(Method, "setphysparams", |world, receiver, args| {
+        if args.len() != 3 {
+            return Err("setphysparams takes three parameters\n".into());
+        }
+        super::engine::entity_id(world, receiver)?;
+        let Ok(id) = actor(world, receiver) else {
+            return Err("setphysparams must be called on an AI only.".into());
+        };
+        let radius = super::super::args::float(args, 0)?;
+        let bottom = super::super::args::float(args, 1)?;
+        let top = super::super::args::float(args, 2)?;
+        actor_fields(world, id).bounds = Some(([-radius, -radius, bottom], [radius, radius, top]));
+        Ok(Value::Undefined)
+    });
+    // Black Ops answers "none" until the actor's movement runs into an
+    // entity ("obstacle" for one flagged so, else "world"); the runtime's
+    // actor movement collides with nothing, so it is always "none".
+    registry.register(Method, "gethitenttype", |world, receiver, _| {
+        actor(world, receiver)?;
+        Ok(Value::string("none"))
+    });
+    registry.register(Namespace::Function, "objective_state", |world, _, args| {
+        let index = super::super::args::int(args, 0)?;
+        if !(0..32).contains(&index) {
+            return Err(format!(
+                "index {index} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        let name = super::super::args::string(args, 1)?;
+        let Some(state) = OBJECTIVE_STATES.iter().position(|s| *s == name) else {
+            return Err(format!(
+                "Illegal objective state \"{name}\". Valid states are \"empty\", \"active\", \"invisible\", \"done\", \"current\", \"failed\"\n"
+            ));
+        };
+        world.get_resource_or_insert_with(Objectives::default).0[index as usize] = state as u8;
         Ok(Value::Undefined)
     });
     registry.register(Namespace::Function, "modelhasphyspreset", |_, _, args| {
