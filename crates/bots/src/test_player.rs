@@ -818,8 +818,7 @@ pub(crate) fn drive_test_player(
     // `IW4L_TEST_GOTO=<zone>`: once, before the use test starts, it goes to
     // the path node nearest the zone's middle that stands in the zone, so
     // the zone and those beside it come alive.
-    if test.mode == Mode::Use
-        && !test.went
+    if !test.went
         && clock.time_ms - since_ms >= USE_START_MS / 2
         && let Ok(zone) = std::env::var("IW4L_TEST_GOTO")
     {
@@ -1341,7 +1340,7 @@ pub(crate) fn drive_test_player(
         let ready = ps.weapon != 0
             && ps.weaponstate_primary == 0
             && if named.is_some() {
-                held
+                held && target.is_some_and(|aim| distance(eye, aim) > KNIFE_REACH)
             } else {
                 target.is_some_and(|aim| distance(eye, aim) > THROW_FROM)
             };
@@ -1360,6 +1359,10 @@ pub(crate) fn drive_test_player(
                 ps.weaponstate_primary
             );
             cmd.buttons |= button;
+            cmds.push(id, None, cmd, None);
+            return;
+        }
+        if named.is_some() {
             cmds.push(id, None, cmd, None);
             return;
         }

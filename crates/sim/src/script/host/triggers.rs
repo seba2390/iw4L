@@ -570,8 +570,12 @@ fn eligible(
     client: u32,
     using: bool,
 ) -> bool {
+    let team = frame
+        .client_meta(crate::ClientId(client))
+        .and_then(|meta| crate::spawn::team_name(meta.client_state_team));
     runtime.entities.get(&trigger).is_some_and(|entity| {
         entity.trigger_policy.allows(frame, client)
+            && super::natives::t6::trigger_allows_team(frame.ecs_ref(), trigger, team)
             && (!using
                 || frame
                     .client_meta(crate::ClientId(client))
