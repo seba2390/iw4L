@@ -1,7 +1,9 @@
 use crate::math::{angle_delta, angle_vectors};
 use crate::physics::effective_stance;
 use crate::prone::{ProneCheck, check_prone};
-use crate::state::{ENTITYNUM_NONE, buttons, e_flags, e_flags2, pm_flags, pm_type, weapon_state};
+use crate::state::{
+    ENTITYNUM_NONE, buttons, e_flags, e_flags2, other_flags, pm_flags, pm_type, weapon_state,
+};
 use crate::{MoveWorld, Pm, tuning};
 
 const SHORT2ANGLE: f32 = 0.00549316406;
@@ -47,7 +49,7 @@ fn update_lean<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
     let mut dir = 0;
     if ps.weaponstate != weapon_state::DEPLOYING
         && (pm.cmd.buttons.held(buttons::LEAN_LEFT) || pm.cmd.buttons.held(buttons::LEAN_RIGHT))
-        && ps.e_flags2 & e_flags2::CONTROLS_LOCKED == 0
+        && ps.other_flags & other_flags::CONTROLS_LOCKED == 0
         && ps.pm_flags & pm_flags::FROZEN == 0
         && ps.pm_type < pm_type::DEAD
         && (ps.ground_entity_num != ENTITYNUM_NONE || ps.pm_type == pm_type::NORMAL_LINKED)

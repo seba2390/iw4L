@@ -1,15 +1,14 @@
-use crate::state::{buttons, e_flags, pm_flags, pm_type};
+use crate::state::{buttons, e_flags, pm_flags, pm_type, weapon_state as ws};
+use crate::weapon::offhand_slot;
 use crate::{MoveWorld, Pm, tuning};
 
 fn weapon_state_blocks_sprint(state: i32) -> bool {
-    matches!(state, 0x13..=0x22)
+    (ws::MELEE_INIT..=ws::RIOTSHIELD_END).contains(&state)
 }
 
 fn weapon_state_using(state: i32) -> bool {
-    matches!(state, 6 | 7 | 8 | 0x28 | 0x13 | 0x14 | 0x15)
+    ws::is_firing(state) || ws::is_melee(state)
 }
-
-const OFFHAND_SLOT_EQUIPMENT: i32 = 3;
 
 fn max_sprint_time<W: MoveWorld>(pm: &Pm<'_, W>) -> i32 {
     let ps = &*pm.ps;
@@ -60,7 +59,7 @@ fn end_sprint<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 
 fn throw_blocks<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     pm.cmd.buttons.held(buttons::THROW)
-        && pm.world.weapon(pm.ps.weapon).def.offhand_slot() != OFFHAND_SLOT_EQUIPMENT
+        && pm.world.weapon(pm.ps.weapon).def.offhand_slot() != offhand_slot::EQUIPMENT
 }
 
 fn other_actions_held<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
@@ -94,7 +93,7 @@ fn start_blocked<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     if weapon_state_blocks_sprint(ps.weaponstate) {
         return true;
     }
-    if pm.world.weapon(ps.weapon).def.offhand_slot() == OFFHAND_SLOT_EQUIPMENT
+    if pm.world.weapon(ps.weapon).def.offhand_slot() == offhand_slot::EQUIPMENT
         && weapon_state_using(ps.weaponstate)
     {
         return true;
@@ -116,7 +115,7 @@ fn must_stop<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
         || ps.leanf != 0.0
         || throw_blocks(pm)
         || weapon_state_blocks_sprint(ps.weaponstate)
-        || matches!(ps.weaponstate, 0x2a | 0x2b)
+        || ws::is_nightvision(ps.weaponstate)
         || ps.pm_flags & pm_flags::SLIDING != 0
     {
         return true;
@@ -153,7 +152,7 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         end_sprint(pm);
         return;
     }
-    if matches!(pm.ps.weaponstate, 0x38..=0x3a) {
+    if ws::is_lowready(pm.ps.weaponstate) {
         end_sprint(pm);
         return;
     }

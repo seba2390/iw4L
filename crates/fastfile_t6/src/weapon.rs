@@ -36,8 +36,9 @@ pub mod variant {
     pub const ADS_ZOOM_OUT_FRAC: u32 = 564;
     pub const SILENCED: u32 = 580;
     pub const DUAL_MAG: u32 = 581;
-    /// Spread flags; bit 3 lays a spread weapon's pellets on a level line.
-    pub const SPREAD_FLAGS: u32 = 584;
+    /// The variant's two perk words, added to its holder's perks; bit 3 lays
+    /// a spread weapon's pellets on a level line.
+    pub const PERKS: u32 = 584;
     pub const SPREAD_FLAT_BIT: u32 = 3;
     pub const SIZE: usize = 716;
 }
@@ -74,6 +75,10 @@ pub mod def {
     pub const PULLBACK_SOUND_PLAYER: u32 = 172;
     pub const FIRE_SOUND: u32 = 176;
     pub const FIRE_SOUND_PLAYER: u32 = 180;
+    pub const FIRE_START_SOUND: u32 = 200;
+    pub const FIRE_KILLCAM_SOUND: u32 = 208;
+    pub const FIRE_START_SOUND_PLAYER: u32 = 212;
+    pub const FIRE_KILLCAM_SOUND_PLAYER: u32 = 220;
     pub const FIRE_LAST_SOUND: u32 = 224;
     pub const FIRE_LAST_SOUND_PLAYER: u32 = 228;
     pub const EMPTY_FIRE_SOUND: u32 = 232;
@@ -279,17 +284,28 @@ pub mod def {
     pub const SIZE: usize = 2448;
 }
 
+/// Black Ops 2's weapon animation files: each one's index in the variant's
+/// animation names, from the weapon file's field table and the client's
+/// animation start.
 pub mod weap_anim {
+    pub const ROOT: usize = 0;
     pub const IDLE: usize = 1;
     pub const EMPTY_IDLE: usize = 2;
     pub const FIRE_INTRO: usize = 3;
     pub const FIRE: usize = 4;
     pub const HOLD_FIRE: usize = 5;
     pub const LASTSHOT: usize = 6;
+    pub const FLOURISH: usize = 7;
     pub const RECHAMBER: usize = 8;
     pub const MELEE: usize = 9;
+    pub const MELEE1: usize = 10;
+    pub const MELEE2: usize = 11;
+    pub const MELEE3: usize = 12;
+    pub const MELEE_EMPTY: usize = 13;
     pub const MELEE_CHARGE: usize = 14;
+    pub const MELEE_CHARGE_EMPTY: usize = 15;
     pub const RELOAD: usize = 16;
+    pub const RELOAD_RIGHT: usize = 17;
     pub const RELOAD_EMPTY: usize = 18;
     pub const RELOAD_START: usize = 19;
     pub const RELOAD_END: usize = 20;
@@ -307,18 +323,60 @@ pub mod weap_anim {
     pub const SPRINT_IN: usize = 32;
     pub const SPRINT_LOOP: usize = 33;
     pub const SPRINT_OUT: usize = 34;
+    pub const SPRINT_EMPTY_IN: usize = 35;
+    pub const SPRINT_EMPTY_LOOP: usize = 36;
+    pub const SPRINT_EMPTY_OUT: usize = 37;
+    pub const LOWREADY_IN: usize = 38;
+    pub const LOWREADY_LOOP: usize = 39;
+    pub const LOWREADY_OUT: usize = 40;
+    pub const CONT_FIRE_IN: usize = 41;
+    pub const CONT_FIRE_LOOP: usize = 42;
+    pub const CONT_FIRE_OUT: usize = 43;
+    pub const CRAWL_IN: usize = 44;
+    pub const CRAWL_FORWARD: usize = 45;
+    pub const CRAWL_BACK: usize = 46;
+    pub const CRAWL_RIGHT: usize = 47;
+    pub const CRAWL_LEFT: usize = 48;
+    pub const CRAWL_OUT: usize = 49;
+    pub const CRAWL_EMPTY_IN: usize = 50;
+    pub const CRAWL_EMPTY_FORWARD: usize = 51;
+    pub const CRAWL_EMPTY_BACK: usize = 52;
+    pub const CRAWL_EMPTY_RIGHT: usize = 53;
+    pub const CRAWL_EMPTY_LEFT: usize = 54;
+    pub const CRAWL_EMPTY_OUT: usize = 55;
+    pub const DEPLOY: usize = 56;
+    pub const BREAKDOWN: usize = 57;
     pub const DETONATE: usize = 58;
+    pub const NIGHTVISION_WEAR: usize = 59;
+    pub const NIGHTVISION_REMOVE: usize = 60;
     pub const ADS_FIRE: usize = 61;
     pub const ADS_LASTSHOT: usize = 62;
+    pub const ADS_FIRE_INTRO: usize = 63;
     pub const ADS_RECHAMBER: usize = 64;
+    // The weapon file names none of 65..=71; the client's animation start reads them.
+    pub const DTP_IN: usize = 65;
+    pub const DTP_LOOP: usize = 66;
+    pub const DTP_OUT: usize = 67;
+    pub const DTP_EMPTY_IN: usize = 68;
+    pub const DTP_EMPTY_LOOP: usize = 69;
+    pub const DTP_EMPTY_OUT: usize = 70;
+    pub const SLIDE_IN: usize = 71;
+    pub const MANTLE: usize = 72;
+    pub const SPRINT_CAMERA: usize = 73;
+    pub const DTP_IN_CAMERA: usize = 74;
+    pub const DTP_LOOP_CAMERA: usize = 75;
+    pub const DTP_OUT_CAMERA: usize = 76;
+    pub const MANTLE_CAMERA: usize = 77;
     pub const DW_LEFT_FIRE: usize = 78;
     pub const DW_LEFT_LASTSHOT: usize = 79;
+    pub const DW_LEFT_FLOURISH: usize = 80;
     pub const DW_LEFT_IDLE: usize = 81;
     pub const DW_LEFT_EMPTY_IDLE: usize = 82;
     pub const DW_LEFT_RELOAD_EMPTY: usize = 83;
     pub const DW_LEFT_RELOAD: usize = 84;
     pub const ADS_UP: usize = 85;
     pub const ADS_DOWN: usize = 86;
+    pub const ADS_UP_OTHER_SCOPE: usize = 87;
 }
 
 pub mod unique {
@@ -878,6 +936,10 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x1c)
     }
 
+    pub fn player_anim_type(&self) -> i32 {
+        self.def_i32(0x18)
+    }
+
     pub fn weapon_class(&self) -> i32 {
         self.def_i32(0x20)
     }
@@ -1130,6 +1192,18 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x504)
     }
 
+    pub fn crawl_in_time(&self) -> i32 {
+        self.def_i32(0x508)
+    }
+
+    pub fn crawl_out_fire_time(&self) -> i32 {
+        self.def_i32(0x51c)
+    }
+
+    pub fn crawl_out_time(&self) -> i32 {
+        self.def_i32(0x520)
+    }
+
     pub fn slide_in_time(&self) -> i32 {
         self.def_i32(0x524)
     }
@@ -1174,6 +1248,11 @@ impl<'a> WeaponDefView<'a> {
         self.def_f32(0x564)
     }
 
+    /// A stacked weapon's hip spread scale per barrel beyond the first.
+    pub fn stack_fire_accuracy_decay(&self) -> f32 {
+        self.def_f32(0x568)
+    }
+
     pub fn mountable_weapon(&self) -> bool {
         self.def_bool(0x578)
     }
@@ -1196,6 +1275,10 @@ impl<'a> WeaponDefView<'a> {
 
     pub fn hip_spread_stand_min(&self) -> f32 {
         self.def_f32(0x5b0)
+    }
+
+    pub fn hold_breath_to_steady(&self) -> bool {
+        self.def_bool(0x5ac)
     }
 
     pub fn hip_spread_ducked_min(&self) -> f32 {
@@ -1242,12 +1325,24 @@ impl<'a> WeaponDefView<'a> {
         self.def_f32(0x5dc)
     }
 
+    pub fn ads_idle_speed(&self) -> f32 {
+        self.def_f32(0x5ec)
+    }
+
+    pub fn hip_idle_speed(&self) -> f32 {
+        self.def_f32(0x5f0)
+    }
+
     pub fn rifle_bullet(&self) -> bool {
         self.def_bool(0x631)
     }
 
     pub fn armor_piercing(&self) -> bool {
         self.def_bool(0x632)
+    }
+
+    pub fn airburst_weapon(&self) -> bool {
+        self.def_bool(0x633)
     }
 
     pub fn bolt_action(&self) -> bool {
@@ -1310,6 +1405,14 @@ impl<'a> WeaponDefView<'a> {
         self.def_bool(0x659)
     }
 
+    pub fn alt_weapon_ads_only(&self) -> bool {
+        self.def_bool(0x65c)
+    }
+
+    pub fn alt_weapon_disable_switching(&self) -> bool {
+        self.def_bool(0x65d)
+    }
+
     pub fn no_partial_reload(&self) -> bool {
         self.def_bool(0x669)
     }
@@ -1330,12 +1433,20 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x670)
     }
 
+    pub fn shots_before_rechamber(&self) -> i32 {
+        self.def_i32(0x690)
+    }
+
     pub fn blocks_prone(&self) -> bool {
         self.def_bool(0x694)
     }
 
     pub fn is_rolling_grenade(&self) -> i32 {
         self.def_i32(0x698)
+    }
+
+    pub fn is_tactical_insertion(&self) -> bool {
+        self.def_i32(0x6a4) != 0
     }
 
     pub fn explosion_radius(&self) -> i32 {
@@ -1442,6 +1553,10 @@ impl<'a> WeaponDefView<'a> {
         self.def_bool(0x750)
     }
 
+    pub fn is_hold_use_grenade(&self) -> bool {
+        self.def_bool(0x754)
+    }
+
     pub fn guided_missile_type(&self) -> i32 {
         self.def_i32(0x770)
     }
@@ -1466,6 +1581,33 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x7e4)
     }
 
+    /// Seconds.
+    pub fn anti_quick_scope_time(&self) -> f32 {
+        self.def_f32(0x830)
+    }
+
+    pub fn anti_quick_scope_scale(&self) -> f32 {
+        self.def_f32(0x834)
+    }
+
+    pub fn anti_quick_scope_spread_multiplier(&self) -> f32 {
+        self.def_f32(0x838)
+    }
+
+    pub fn anti_quick_scope_spread_max(&self) -> f32 {
+        self.def_f32(0x83c)
+    }
+
+    /// The definition names gun models (its model array is present).
+    pub fn has_gun_models(&self) -> bool {
+        self.def_i32(0x4) != 0
+    }
+
+    /// The variant's three ADS zoom fields of view.
+    pub fn ads_zoom_fovs(&self) -> [f32; 3] {
+        [0x224, 0x228, 0x22c].map(|off| self.variant_f32(off))
+    }
+
     pub fn ads_reload_trans_time(&self) -> i32 {
         self.def_i32(0x874)
     }
@@ -1476,6 +1618,24 @@ impl<'a> WeaponDefView<'a> {
 
     pub fn destabilize_distance(&self) -> i32 {
         self.def_i32(0x8f8)
+    }
+
+    pub fn intro_fire_time(&self) -> i32 {
+        self.def_i32(0x95c)
+    }
+
+    /// Shots fired at the intro fire time.
+    pub fn intro_fire_length(&self) -> i32 {
+        self.def_i32(0x960)
+    }
+
+    /// Negative: the variant loaded under another one's.
+    pub fn variant_count(&self) -> i32 {
+        self.variant_i32(0x4)
+    }
+
+    pub fn ignore_attachments(&self) -> bool {
+        self.variant_bool(0x1d8)
     }
 
     pub fn clip_size(&self) -> i32 {
@@ -1512,6 +1672,24 @@ impl<'a> WeaponDefView<'a> {
 
     pub fn dual_mag(&self) -> bool {
         self.variant_bool(0x245)
+    }
+
+    /// Weapon position change per ms when aiming in (1 / ADS in time).
+    pub fn ads_in_rate(&self) -> f32 {
+        self.variant_f32(0x23c)
+    }
+
+    /// Weapon position change per ms when aiming out (1 / ADS out time).
+    pub fn ads_out_rate(&self) -> f32 {
+        self.variant_f32(0x240)
+    }
+
+    pub fn variant_perks(&self) -> [u32; 2] {
+        [0x248, 0x24c].map(|off| self.variant_i32(off) as u32)
+    }
+
+    pub fn anti_quick_scope(&self) -> bool {
+        self.variant_bool(0x250)
     }
 }
 

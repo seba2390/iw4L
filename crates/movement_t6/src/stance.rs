@@ -372,7 +372,7 @@ pub(crate) fn check_duck<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
             _ => flags & !(pm_flags::PRONE | pm_flags::DUCKED),
         };
     } else if flags & (pm_flags::RESPAWNED | pm_flags::FROZEN) != 0
-        || pm.ps.e_flags2 & crate::state::e_flags2::CONTROLS_LOCKED != 0
+        || pm.ps.other_flags & crate::state::other_flags::CONTROLS_LOCKED != 0
         || pm.weapon_blocks_stance()
         || pm.ps.weaponstate == crate::state::weapon_state::DEPLOYING
     {

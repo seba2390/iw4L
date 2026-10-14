@@ -1,6 +1,8 @@
 use crate::math::angle_vectors;
 use crate::physics::{effective_stance, sqrt};
-use crate::state::{ENTITYNUM_NONE, buttons, e_flags, e_flags2, pm_flags, pm_type, weapon_state};
+use crate::state::{
+    ENTITYNUM_NONE, buttons, e_flags, e_flags2, other_flags, pm_flags, pm_type, weapon_state as ws,
+};
 use crate::{
     Gap, MoveWorld, Pm, Pml, footsteps, ground, moves, sprint, stance, tuning, view_angles,
 };
@@ -140,8 +142,8 @@ fn freeze_moves<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 fn mask_command<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let ps = &*pm.ps;
     let locked = ps.pm_flags & pm_flags::FROZEN != 0
-        || ps.weaponstate == weapon_state::DEPLOYING
-        || ps.e_flags2 & e_flags2::CONTROLS_LOCKED != 0;
+        || ps.weaponstate == ws::DEPLOYING
+        || ps.other_flags & other_flags::CONTROLS_LOCKED != 0;
     if locked || ps.pm_flags & pm_flags::RESPAWNED != 0 {
         let keep: &[u32] = if locked {
             &[buttons::STANCE, buttons::PRONE, buttons::CROUCH]
@@ -178,10 +180,12 @@ fn mask_command<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 }
 
 fn weapon_lets_prone_move(state: i32) -> bool {
-    !matches!(
-        state,
-        6 | 7 | 8 | 0x13..=0x1d | 0x1e..=0x22 | 0x23 | 0x28 | 0x2a | 0x2b
-    )
+    !(ws::is_firing(state)
+        || ws::is_melee(state)
+        || ws::is_offhand(state)
+        || ws::is_riotshield(state)
+        || state == ws::DETONATING
+        || ws::is_nightvision(state))
 }
 
 fn scoped_ads<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
@@ -206,13 +210,16 @@ fn prone_move_override<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         }
         return;
     }
-    let idle = matches!(ps.weaponstate, 0..=5 | 0xb);
+    let idle = ps.weaponstate == ws::READY
+        || ws::is_raising_or_dropping(ps.weaponstate)
+        || ps.weaponstate == ws::RELOADING;
     let dual = pm.world.weapon(ps.weapon).def.dual_wield();
     let keep = ps.pm_flags & pm_flags::ADS_INTENT != 0
         || !idle
         || (dual
-            && !matches!(ps.weaponstate_left, 0 | 0xb)
-            && !matches!(ps.weaponstate, 1..=5 | 0x3c..=0x3f));
+            && !matches!(ps.weaponstate_left, ws::READY | ws::RELOADING)
+            && !ws::is_raising_or_dropping(ps.weaponstate)
+            && !ws::is_crawl_loop(ps.weaponstate));
     if !keep {
         pm.ps.pm_flags &= !pm_flags::PRONEMOVE_OVERRIDDEN;
     }
@@ -390,8 +397,8 @@ fn output<W: MoveWorld>(pm: &Pm<'_, W>, pml: &Pml) -> MoveOutput {
 pub fn pmove<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     let ps = &*pm.ps;
     if ps.pm_flags & (pm_flags::FROZEN | pm_flags::RESPAWNED) != 0
-        || ps.weaponstate == weapon_state::DEPLOYING
-        || ps.e_flags2 & e_flags2::CONTROLS_LOCKED != 0
+        || ps.weaponstate == ws::DEPLOYING
+        || ps.other_flags & other_flags::CONTROLS_LOCKED != 0
     {
         freeze_moves(pm);
     }

@@ -4,14 +4,16 @@
 
 use fastfile_t6::weapon::{WeaponDefView, def, variant};
 use game_api::movement::{
-    ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
-    MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWorld, PlayerMovement, Stance,
-    WaterSurface, WeaponActivity, WeaponNotify, WeaponNotifyMemory, buttons as intent,
+    ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
+    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWorld,
+    PlayerMovement, Stance, WaterSurface, WeaponActivity, WeaponNotify, WeaponNotifyMemory,
+    buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t6::events::event;
 use movement_t6::state::{
-    ENTITYNUM_NONE, ENTITYNUM_WORLD, buttons, pm_flags, pm_type, view_height,
+    ENTITYNUM_NONE, ENTITYNUM_WORLD, buttons, other_flags, pm_flags, pm_type, view_height,
+    weapon_state as ws,
 };
 use movement_t6::{Buttons, Gap, MoveEvent, PlayerState, Pm, UserCmd};
 
@@ -25,7 +27,7 @@ pub static MULTIPLAYER: T6Movement = T6Movement { zombies: false };
 const PLAYER_CLIP_MASK: u32 = 0x0281_c011;
 const DEAD_CLIP_MASK: u32 = 0x0081_0011;
 
-fn gap_unknown(gap: Gap) -> &'static Unknown {
+pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
     match gap {
         Gap::Ladder => unknown!(
             "t6.movement.ladder",
@@ -72,6 +74,16 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops 2's linked, noclip, ufo, spectator and intermission moves",
             "those player moves from its executable"
         ),
+        Gap::AdsPerkAnimTypes => unknown!(
+            "t6.weapons.ads_perk_anim_types",
+            "Black Ops 2's fast-ADS perk speeds every weapon's sights, sniper player animation types too",
+            "the indices of the sniper and rear-clip sniper types in mp/playeranimtypes.txt reaching movement"
+        ),
+        Gap::Attachments => unknown!(
+            "t6.weapons.attachments",
+            "Black Ops 2's weapon attachments: a held weapon runs on its variant alone, without its attachments' scales and overrides",
+            "attachment indices in IW4L's Black Ops 2 weapon numbers and the attachments' definitions reaching movement"
+        ),
     }
 }
 
@@ -88,6 +100,30 @@ fn water_unknown() -> &'static Unknown {
         "t6.movement.water",
         "the water level under a Black Ops 2 player: the match cannot tell, so players are taken as dry",
         "a water surface query over the map's water for the runtime"
+    )
+}
+
+fn variant_parent_unknown() -> &'static Unknown {
+    unknown!(
+        "t6.weapons.variant_parent",
+        "a Black Ops 2 charge-shot weapon keeps its own clip and rounds instead of those of the weapon its variant loads under",
+        "each weapon's parent variant (the weapon whose alternate or dual-wield chain loads it) in IW4L's Black Ops 2 weapon data"
+    )
+}
+
+fn view_weapon_unknown() -> &'static Unknown {
+    unknown!(
+        "t6.viewmodel.view_weapon",
+        "while Black Ops 2 shows the offhand being thrown or the melee weapon in first person, the runtime's viewmodel keeps the held weapon (or none)",
+        "Black Ops 2's viewmodel weapon rule in the runtime's first-person view"
+    )
+}
+
+fn melee_lunge_unknown() -> &'static Unknown {
+    unknown!(
+        "t6.weapons.melee_lunge",
+        "a Black Ops 2 melee lunge: the client found a target, but IW4L's command carries no target entity, so the knife swings in place",
+        "Black Ops 2's client melee target selection and the entity it sends in the command"
     )
 }
 
@@ -203,6 +239,32 @@ impl Bytes<'_> {
         }
         self.at += 1;
     }
+
+    fn byte(&mut self, value: &mut u8, write: bool) {
+        if write {
+            self.buf[self.at] = *value;
+        } else {
+            *value = self.buf[self.at];
+        }
+        self.at += 1;
+    }
+}
+
+/// A held weapon's flags in one byte.
+fn held_flags(held: &mut movement_t6::state::HeldWeapon, b: &mut Bytes<'_>, write: bool) {
+    let mut bits = u8::from(held.needs_rechamber)
+        | u8::from(held.used_before) << 1
+        | u8::from(held.dual_mag) << 2
+        | u8::from(held.riotshield) << 3
+        | u8::from(held.zoom != 0) << 4
+        | u8::from(held.overheating) << 5;
+    b.byte(&mut bits, write);
+    held.needs_rechamber = bits & 1 != 0;
+    held.used_before = bits & 2 != 0;
+    held.dual_mag = bits & 4 != 0;
+    held.riotshield = bits & 8 != 0;
+    held.zoom = i32::from(bits >> 4 & 1);
+    held.overheating = bits & 0x20 != 0;
 }
 
 fn game_state(
@@ -260,11 +322,58 @@ fn game_state(
     b.word(&mut last.buttons.0[0], write);
     b.word(&mut last.buttons.0[1], write);
 
+    b.i(&mut ps.weapon_time, write);
+    b.i(&mut ps.weapon_delay, write);
+    b.i(&mut ps.weapon_time_left, write);
+    b.i(&mut ps.weapon_delay_left, write);
+    b.i(&mut ps.weapon_idle_time, write);
+    b.i(&mut ps.grenade_time_left, write);
+    b.i(&mut ps.throw_back_grenade_owner, write);
+    b.i(&mut ps.throw_back_grenade_time_left, write);
+    b.i(&mut ps.weapon_restrict_kick_time, write);
+    b.word(&mut ps.offhand_index, write);
+    b.word(&mut ps.last_weapon_alt_mode_switch, write);
+    b.word(&mut ps.melee_weapon, write);
+    b.i(&mut ps.weapon_shot_count, write);
+    b.i(&mut ps.weapon_shot_count_left, write);
+    b.i(&mut ps.ads_delay_time, write);
+    b.i(&mut ps.spread_override, write);
+    b.i(&mut ps.spread_override_state, write);
+    b.f(&mut ps.weapon_spin_lerp, write);
+    b.f(&mut ps.hold_breath_scale, write);
+    b.i(&mut ps.hold_breath_timer, write);
+    b.i(&mut ps.charge_shot_timer, write);
+    b.i(&mut ps.charge_shot_level, write);
+    b.i(&mut ps.shots_fired_from_chamber, write);
+    b.f(&mut ps.quick_scope_scale, write);
+    b.i(&mut ps.quick_scope_timer, write);
+    b.i(&mut ps.melee_charge_ent, write);
+    b.i(&mut ps.melee_charge_dist, write);
+    b.i(&mut ps.melee_charge_time, write);
+    b.word(&mut ps.weap_lock_flags, write);
+    b.i(&mut ps.airburst_distance, write);
+    b.word(&mut ps.inventory_weapon, write);
+    b.word(&mut ps.weap_anim, write);
+    b.word(&mut ps.weap_anim_left, write);
+    b.i(&mut ps.offhand_throw, write);
+    b.i(&mut ps.ads_zoom_select, write);
+    b.i(&mut ps.ads_zoom_time, write);
+    b.flag(&mut ps.ads_zoom_latched, write);
+    b.i(&mut ps.ads_prev_zoom_select, write);
+    b.i(&mut ps.ads_prev_zoom_select_time, write);
+    b.i(&mut ps.intro_shots_fired, write);
+    b.word(&mut ps.other_flags, write);
+    for held in &mut ps.held_weapons {
+        b.word(&mut held.weapon, write);
+        b.i(&mut held.fuel, write);
+        held_flags(held, &mut b, write);
+    }
     let mut being_revived = ps.pm_type == pm_type::LAST_STAND_REVIVED;
     b.flag(&mut being_revived, write);
     if !write && ps.pm_type == pm_type::LAST_STAND && being_revived {
         ps.pm_type = pm_type::LAST_STAND_REVIVED;
     }
+    b.i(&mut ps.water_level, write);
 }
 
 pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
@@ -285,6 +394,8 @@ pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
         bob_cycle: player.bob_cycle,
         leanf: player.leanf,
         movement_dir: player.movement_dir,
+        // IW4L seats no Black Ops 2 player in a vehicle.
+        vehicle_entity: ENTITYNUM_NONE,
         ..PlayerState::default()
     };
     let mut last = UserCmd::default();
@@ -312,6 +423,13 @@ pub(crate) fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut Use
         _ => Stance::Stand,
     };
     player.sprinting = ps.pm_flags & pm_flags::SPRINTING != 0;
+    player.weapon = ps.weapon;
+    player.weapon_pos_frac = ps.weapon_pos_frac;
+    player.aim_spread_scale = ps.aim_spread_scale;
+    player.weapon_state = ps.weaponstate;
+    player.weap_anim = ps.weap_anim;
+    player.offhand = ps.offhand_index;
+    player.grenade_time_left = ps.grenade_time_left;
     game_state(ps, last, &mut player.game, true);
 }
 
@@ -319,6 +437,7 @@ struct World<'a> {
     world: &'a dyn MoveWorld,
     weapon_unknown: core::cell::Cell<bool>,
     water_unknown: core::cell::Cell<bool>,
+    variant_parent_unknown: core::cell::Cell<bool>,
 }
 
 impl movement_t6::MoveWorld for World<'_> {
@@ -387,6 +506,11 @@ impl movement_t6::MoveWorld for World<'_> {
         self.world.weapon(weapon).is_some()
     }
 
+    fn variant_parent(&self, _weapon: u32) -> Option<u32> {
+        self.variant_parent_unknown.set(true);
+        None
+    }
+
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
         match self.world.water_surface(origin, up, down) {
             WaterSurface::At(z) => Some(z),
@@ -414,6 +538,14 @@ impl PlayerMovement for T6Movement {
         } else {
             ps.pm_flags &= !pm_flags::FROZEN;
         }
+        // The server's end of frame marks a playing client's state.
+        if !matches!(
+            player.move_type,
+            MoveType::Spectator | MoveType::Intermission
+        ) {
+            ps.other_flags = (ps.other_flags & !(other_flags::PLAYER | other_flags::SPECTATOR))
+                | other_flags::PLAYER;
+        }
         let mut buttons = buttons_of(cmd);
         if dive_asked(&ps, cmd) {
             buttons.press(buttons::DIVE);
@@ -427,8 +559,10 @@ impl PlayerMovement for T6Movement {
             alt_mode_weapon: cmd.alt_weapon,
             forwardmove: cmd.forwardmove,
             rightmove: cmd.rightmove,
-            melee_charge_yaw: cmd.melee_charge_yaw,
-            melee_charge_dist: cmd.melee_charge_dist,
+            melee_charge_ent: ENTITYNUM_NONE as u16,
+            melee_charge_dist: 0,
+            fire_buttons_swapped: false,
+            airburst_distance: 0,
         };
         let mask = if ps.pm_type >= pm_type::DEAD {
             DEAD_CLIP_MASK
@@ -439,13 +573,28 @@ impl PlayerMovement for T6Movement {
             world,
             weapon_unknown: core::cell::Cell::new(false),
             water_unknown: core::cell::Cell::new(false),
+            variant_parent_unknown: core::cell::Cell::new(false),
         };
+        let held: [movement_t6::HeldRounds; HELD_WEAPONS] = core::array::from_fn(|i| {
+            (
+                player.held[i].weapon,
+                player.held[i].clip,
+                player.held[i].stock,
+            )
+        });
+        movement_t6::load_held(&mut ps, &adapter, &held);
         let mut outcome = MoveOutcome::default();
+        if cmd.melee_charge_dist != 0 {
+            outcome.gaps.push(melee_lunge_unknown());
+        }
         {
             let mut pm = Pm::new(&mut ps, t6cmd, last, mask, &adapter);
             pm.zombiemode = self.zombies;
             pm.client_side = context.predicting;
             let out = movement_t6::pmove(&mut pm);
+            if movement_t6::weapon::view_weapon(&pm) != pm.ps.weapon {
+                outcome.gaps.push(view_weapon_unknown());
+            }
             outcome.walking = out.walking;
             outcome.bounds = Some((out.mins, out.maxs));
             outcome.touched = pm.touched().iter().map(|&e| shared_entity(e)).collect();
@@ -457,7 +606,7 @@ impl PlayerMovement for T6Movement {
                     MoveEvent::LegsMove(movetype, _) => MoveSignal::LegsMove { movetype },
                 });
             }
-            outcome.gaps = pm.gaps().map(gap_unknown).collect();
+            outcome.gaps.extend(pm.gaps().map(gap_unknown));
             if !outcome.signals.is_empty() {
                 outcome.gaps.push(events_unknown());
             }
@@ -468,6 +617,19 @@ impl PlayerMovement for T6Movement {
         }
         if adapter.weapon_unknown.get() {
             outcome.gaps.push(weapon_unknown());
+        }
+        if adapter.variant_parent_unknown.get() {
+            outcome.gaps.push(variant_parent_unknown());
+        }
+        for (slot, (weapon, clip, stock)) in movement_t6::held_rounds(&ps, &adapter)
+            .into_iter()
+            .enumerate()
+        {
+            player.held[slot] = HeldWeapon {
+                weapon,
+                clip,
+                stock,
+            };
         }
         pack(player, &mut ps, &mut last);
         outcome
@@ -655,16 +817,97 @@ impl PlayerMovement for T6Movement {
         movement_t6::perks::has(ps.perks, idx)
     }
 
-    fn weapon_activity(&self, _player: &MovePlayer) -> WeaponActivity {
-        WeaponActivity::default()
+    /// `isfiring`, `ismeleeing`, `isthrowinggrenade` and
+    /// `isswitchingweapons` test the weapon state alone.
+    fn weapon_activity(&self, player: &MovePlayer) -> WeaponActivity {
+        let mut player = *player;
+        let (ps, _) = unpack(&mut player);
+        let state = ps.weaponstate;
+        let meleeing = ws::is_melee(state);
+        WeaponActivity {
+            firing: meleeing || ws::is_firing(state),
+            meleeing,
+            throwing_grenade: ws::is_offhand(state),
+            switching: ws::is_raising_or_dropping(state),
+        }
     }
 
+    /// Black Ops 2's end of a client's server frame: a changed weapon, a
+    /// raise starting and ending, the firing states while alive, night
+    /// vision, dive to prone and sprint.
     fn weapon_notifies(
         &self,
-        _player: &MovePlayer,
-        _memory: &mut WeaponNotifyMemory,
+        player: &MovePlayer,
+        memory: &mut WeaponNotifyMemory,
     ) -> Vec<WeaponNotify> {
-        Vec::new()
+        let weapon = player.weapon;
+        let mut copy = *player;
+        let (ps, _) = unpack(&mut copy);
+        let alive = ps.pm_type < pm_type::DEAD;
+        let mut out = Vec::new();
+        if weapon != memory.weapon {
+            out.push(WeaponNotify::Change(weapon, memory.weapon));
+            memory.weapon = weapon;
+        }
+        let raising = matches!(ps.weaponstate, ws::RAISING | ws::RAISING_ALT);
+        if memory.raise_pending && !raising {
+            out.push(WeaponNotify::ChangeComplete(weapon));
+            memory.raise_pending = false;
+        } else if raising {
+            if !memory.raise_pending {
+                out.push(WeaponNotify::Raising(weapon));
+            }
+            memory.raise_pending = true;
+        }
+        let firing = matches!(ps.weaponstate, ws::FIRING | ws::CONT_FIRE_LOOP) && alive;
+        if firing != memory.firing {
+            out.push(if firing {
+                WeaponNotify::BeginFiring
+            } else {
+                WeaponNotify::EndFiring
+            });
+            memory.firing = firing;
+        }
+        let night_vision = ps.weap_flags & movement_t6::state::weap_flags::NIGHTVISION != 0;
+        if night_vision != memory.night_vision {
+            out.push(if night_vision {
+                WeaponNotify::NightVisionOn
+            } else {
+                WeaponNotify::NightVisionOff
+            });
+            memory.night_vision = night_vision;
+        }
+        let dive = ws::is_dtp(ps.weaponstate) && alive;
+        if dive != memory.dive {
+            out.push(if dive {
+                WeaponNotify::DiveStart
+            } else {
+                WeaponNotify::DiveEnd
+            });
+            memory.dive = dive;
+        }
+        let sprint = ps.last_sprint_start != 0 && ps.last_sprint_end < ps.last_sprint_start;
+        if sprint != memory.sprint {
+            out.push(if sprint {
+                WeaponNotify::SprintBegin
+            } else {
+                WeaponNotify::SprintEnd
+            });
+            memory.sprint = sprint;
+        }
+        out
+    }
+
+    fn server_events(
+        &self,
+        before: &MovePlayer,
+        player: &MovePlayer,
+        signals: &[MoveSignal],
+        world: &mut dyn game_api::fire::FireWorld,
+    ) -> Vec<&'static Unknown> {
+        let (ps, _) = unpack(&mut player.clone());
+        let (was, _) = unpack(&mut before.clone());
+        crate::fire::server_events(&ps, &was, signals, self.zombies, world)
     }
 
     fn clear_perks(&self, player: &mut MovePlayer) {

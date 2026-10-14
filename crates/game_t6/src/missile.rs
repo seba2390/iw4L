@@ -322,7 +322,7 @@ fn random_in_circle(world: &mut dyn FireWorld) -> (f32, f32) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn launch_rocket(
+pub(crate) fn launch_rocket(
     owner: i32,
     weapon: u32,
     def: &WeaponDefView<'_>,
@@ -330,6 +330,7 @@ fn launch_rocket(
     angles: [f32; 3],
     spread: f32,
     gun_velocity: [f32; 3],
+    knockback: bool,
     world: &mut dyn FireWorld,
 ) -> Option<i32> {
     let (forward, right, up) = angle_vectors(angles);
@@ -386,7 +387,7 @@ fn launch_rocket(
         visible_at: level + hidden,
         game,
     });
-    if def.def_i32(def::FIRE_TYPE) != 0 {
+    if knockback {
         let z = (-forward[2]).min(0.0);
         world.push_player(owner, [-forward[0] * 64.0, -forward[1] * 64.0, z * 64.0]);
     }
@@ -762,7 +763,7 @@ impl MissilePhysics for T6Missiles {
             return (None, Vec::new());
         };
         let ent = grenade::spawn_grenade(
-            owner, weapon, &def, origin, velocity, [0.0; 3], true, fuse, world,
+            owner, weapon, &def, origin, velocity, [0.0; 3], true, fuse, None, world,
         );
         (ent, Vec::new())
     }
@@ -786,7 +787,10 @@ impl MissilePhysics for T6Missiles {
         let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
             return (None, Vec::new());
         };
-        let ent = launch_rocket(owner, weapon, &def, origin, angles, spread, velocity, world);
+        let knockback = def.def_i32(def::FIRE_TYPE) != 0;
+        let ent = launch_rocket(
+            owner, weapon, &def, origin, angles, spread, velocity, knockback, world,
+        );
         (ent, Vec::new())
     }
 

@@ -274,6 +274,8 @@ pub(crate) struct TestPlayer {
     next_throw_ms: i32,
     throw_until_ms: i32,
     throws: u32,
+    /// The weapon its command last asked for, kept while nothing is up.
+    selected: u16,
     /// What the sight lines to targets ended on: nothing, a model, the world.
     lines: [u32; 3],
     /// When the player first lived.
@@ -1005,6 +1007,11 @@ pub(crate) fn drive_test_player(
         cmd.weapon = wanted as u16;
         cmd.weapon_mapped = wanted as u16;
         wielding = true;
+    } else if ps.weapon == 0 && ps.weapons.contains(&i32::from(test.selected)) {
+        // With nothing up (an offhand throw puts it away), he keeps asking
+        // for what he held, as a client's weapon select does.
+        cmd.weapon = test.selected;
+        cmd.weapon_mapped = test.selected;
     } else if ps.weapon == 0
         && let Some(&first) = ps.weapons.iter().find(|&&w| w > 0)
     {
@@ -1012,6 +1019,9 @@ pub(crate) fn drive_test_player(
         // for his first, as a client's cgame changes weapon.
         cmd.weapon = first as u16;
         cmd.weapon_mapped = first as u16;
+    }
+    if cmd.weapon != 0 {
+        test.selected = cmd.weapon;
     }
     let aim_cmd = |cmd: &mut UserCmd, view: [f32; 3]| {
         cmd.angles = look_angles_from_degrees(std::array::from_fn(|axis| {

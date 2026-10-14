@@ -1,4 +1,6 @@
 mod builtins;
+mod fire;
+mod fire_sound;
 mod grenade;
 mod keys;
 mod missile;
@@ -6,9 +8,11 @@ mod movement;
 mod script_zones;
 mod startup;
 pub mod ui;
+mod viewmodel;
 
 use game_api::{
-    HudRules, LibraryMode, ModeRules, MovementRules, Rule, ScriptProgram, ScriptRequest, unknown,
+    HudRules, LibraryMode, ModeRules, MovementRules, Rule, ScriptProgram, ScriptRequest,
+    WeaponRules, unknown,
 };
 
 pub struct T6;
@@ -219,11 +223,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     downed: game_api::DownedRules::BRIEFLY_IMMUNE,
     level_failed: None,
     movement: Rule::Known(MovementRules::Game(&movement::MULTIPLAYER)),
-    weapons: Rule::Unknown(unknown!(
-        "t6.weapons.state_machine",
-        "Black Ops 2's weapon state machine",
-        "Black Ops 2's weapon rules"
-    )),
+    weapons: Rule::Known(WeaponRules::Game),
     // The mask the engine's bullet trace takes; actors are in it.
     bullet_mask: Some(0x0280_e833),
     melee_mask: Some(0x0280_e893),
@@ -257,8 +257,8 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         zombies: false,
         font_scales_sent: None,
     },
-    client_fire: None,
-    viewmodel: None,
+    client_fire: Some(fire_sound::CLIENT_FIRE),
+    viewmodel: Some(viewmodel::VIEWMODEL),
     // gsc_playsoundatposition sends the alias's hash; nothing checks it.
     script_sounds_hashed: true,
     turrets: None,
