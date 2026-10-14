@@ -32,6 +32,7 @@ pub(crate) struct ActorBrain {
     /// Animscript family, `zombie_` or `zombie_dog_`.
     prefix: &'static str,
     script: Option<AnimScript>,
+    thread: Option<u64>,
     /// Killed; its death animscript plays out, then the actor is removed.
     dead: bool,
     death_thread: Option<u64>,
@@ -49,6 +50,7 @@ pub(crate) fn kill(world: &mut World, actor: u64) {
     if let Some(movement) = runtime.actor_moves.get_mut(&actor) {
         *movement = super::actor_nav::ActorMove::default();
     }
+    super::actor_dog::release(&mut runtime, actor);
 }
 
 /// The actor's animscript family prefix.
@@ -79,6 +81,7 @@ pub(crate) fn begin(world: &mut World, actor: u64) -> Result<(), String> {
         ActorBrain {
             prefix,
             script: None,
+            thread: None,
             dead: false,
             death_thread: None,
         },
@@ -125,6 +128,32 @@ pub(crate) fn think(world: &mut World) {
             continue;
         }
         super::actor_nav::choose_enemy(world, actor);
+        let dog = brain.prefix == "zombie_dog_";
+        let combat_locked = dog
+            && brain.script == Some(AnimScript::Combat)
+            && brain
+                .thread
+                .is_some_and(|thread| crate::script::runtime::thread_alive(world, thread))
+            && matches!(
+                world
+                    .resource_mut::<RoundScript>()
+                    .object_field(actor, "safetochangescript"),
+                Value::Int(0)
+            );
+        let dog_bite = if dog {
+            if combat_locked {
+                matches!(
+                    world
+                        .resource_mut::<RoundScript>()
+                        .object_field(actor, "enemy"),
+                    Value::Object(_)
+                )
+            } else {
+                super::actor_dog::think(world, actor)
+            }
+        } else {
+            false
+        };
         let scripted = world
             .resource::<RoundScript>()
             .actor_moves
@@ -154,7 +183,9 @@ pub(crate) fn think(world: &mut World) {
             AnimScript::Traverse
         } else if scripted {
             AnimScript::Scripted
-        } else if super::actor_nav::melee_range_enemy(world, actor, MELEE_RANGE) {
+        } else if (dog && dog_bite)
+            || (!dog && super::actor_nav::melee_range_enemy(world, actor, MELEE_RANGE))
+        {
             AnimScript::Combat
         } else if world
             .resource::<RoundScript>()
@@ -166,12 +197,17 @@ pub(crate) fn think(world: &mut World) {
         } else {
             AnimScript::Stop
         };
-        let restart = wanted == AnimScript::Scripted
+        let restart = (wanted == AnimScript::Scripted
             && world
                 .resource::<RoundScript>()
                 .actor_moves
                 .get(&actor)
-                .is_some_and(super::actor_nav::ActorMove::scripted_waiting);
+                .is_some_and(super::actor_nav::ActorMove::scripted_waiting))
+            || (dog
+                && wanted == AnimScript::Combat
+                && brain
+                    .thread
+                    .is_some_and(|thread| !crate::script::runtime::thread_alive(world, thread)));
         if brain.script == Some(wanted) && !restart {
             continue;
         }
@@ -179,13 +215,13 @@ pub(crate) fn think(world: &mut World) {
             raise(world, Value::Object(actor), "killanimscript", Vec::new());
         }
         // A new animscript starts from the engine's default movement modes.
-        if let Some(movement) = world
-            .resource_mut::<RoundScript>()
-            .actor_moves
-            .get_mut(&actor)
         {
-            movement.anim_mode = super::actor_nav::AnimMode::Normal;
-            movement.orient = super::actor_nav::Orient::Motion;
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(actor, "safetochangescript", Value::Int(1));
+            if let Some(movement) = runtime.actor_moves.get_mut(&actor) {
+                movement.anim_mode = super::actor_nav::AnimMode::Normal;
+                movement.orient = super::actor_nav::Orient::Motion;
+            }
         }
         if let Value::Vector(at) = world
             .resource_mut::<RoundScript>()
@@ -206,18 +242,19 @@ pub(crate) fn think(world: &mut World) {
             }
             _ => format!("animscripts/{}{}::main", brain.prefix, wanted.module()),
         };
-        match crate::script::start(world, &main, Value::Object(actor), Vec::new()) {
-            Ok(thread) if wanted == AnimScript::Traverse => {
-                if let Some(traversal) = world
-                    .resource_mut::<RoundScript>()
-                    .actor_moves
-                    .get_mut(&actor)
-                    .and_then(|movement| movement.traversal.as_mut())
+        let started = match crate::script::start(world, &main, Value::Object(actor), Vec::new()) {
+            Ok(thread) => {
+                if wanted == AnimScript::Traverse
+                    && let Some(traversal) = world
+                        .resource_mut::<RoundScript>()
+                        .actor_moves
+                        .get_mut(&actor)
+                        .and_then(|movement| movement.traversal.as_mut())
                 {
                     traversal.thread = Some(thread);
                 }
+                Some(thread)
             }
-            Ok(_) => {}
             Err(fault) => {
                 diag::warn!(Sim, "actor animscript {main}: {fault:?}");
                 if wanted == AnimScript::Traverse
@@ -228,14 +265,16 @@ pub(crate) fn think(world: &mut World) {
                 {
                     movement.finish_traversal();
                 }
+                None
             }
-        }
+        };
         if let Some(brain) = world
             .resource_mut::<RoundScript>()
             .actor_brains
             .get_mut(&actor)
         {
             brain.script = Some(wanted);
+            brain.thread = started;
         }
     }
 }

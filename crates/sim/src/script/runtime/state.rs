@@ -45,6 +45,8 @@ pub(crate) struct RoundScript {
     pub(crate) actor_anims: BTreeMap<u64, host::actor_anims::ActorAnim>,
     pub(crate) actor_brains: BTreeMap<u64, host::actor_brain::ActorBrain>,
     pub(crate) actor_moves: BTreeMap<u64, host::actor_nav::ActorMove>,
+    /// Each enemy's hellhound attack spots, by the dogs holding them.
+    pub(crate) dog_spots: BTreeMap<u64, host::actor_dog::AttackSpots>,
     /// Script objects standing for path nodes, by node index.
     pub(crate) path_node_objects: BTreeMap<u16, u64>,
     pub(crate) hud_slots: BTreeMap<u64, usize>,
@@ -137,6 +139,7 @@ impl RoundScript {
             actor_anims: Default::default(),
             actor_brains: Default::default(),
             actor_moves: Default::default(),
+            dog_spots: Default::default(),
             path_node_objects: Default::default(),
             hud_slots: Default::default(),
             next_entity_number: Default::default(),

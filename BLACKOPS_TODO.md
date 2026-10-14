@@ -15,10 +15,12 @@ Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
 everything it pulls in): zombies spawn behind the windows, tear the boards,
 climb through and run at the player, drawn with their animations. Builtins the
 runtime lacks are reported per call site instead of stopping the match. A
-Kino start raises two script faults, the `is_in_array` pair in
+Kino starts raises two script faults, the `is_in_array` pair in
 `movie_reels_init`, which Black Ops' own VM raises too (it refuses `==` on
 arrays). Its map turrets spawn and answer Black Ops' turret methods; their
-think (aiming, firing) is not ported (`t5.turret.think`).
+think (aiming, firing) is not ported (`t5.turret.think`). Hellhound rounds
+spawn, chase the player to claimed attack spots, bite for 40 damage and drop
+Max Ammo on the last dog.
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are

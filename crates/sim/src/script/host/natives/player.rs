@@ -1473,10 +1473,7 @@ fn register_body(registry: &mut NativeRegistry) {
             .get(&("shellshock", name.clone()))
             .ok_or_else(|| format!("shellshock '{name}' was not precached"))?;
         let mut frame = FrameWorld::from_world(world);
-        let shock = frame
-            .shock(&name)
-            .cloned()
-            .ok_or_else(|| format!("no shock file for shellshock '{name}'"))?;
+        let shock = frame.shock(&name).cloned();
         let now = crate::level_time_ms(frame.ecs().resource::<crate::step::StepRequest>().tick);
         let Some(ps) = frame.player_mut(id) else {
             return Ok(Value::Undefined);
@@ -1488,7 +1485,7 @@ fn register_body(registry: &mut NativeRegistry) {
         if alive {
             ps.pm_flags |= playerstate_iw4::pm_flags::SHELLSHOCKED;
         }
-        frame.client_meta_mut(id).shellshock = Some(shock);
+        frame.client_meta_mut(id).shellshock = shock;
         if alive {
             crate::combat::apply_player_anim_event(&mut frame, id, 20);
         }
