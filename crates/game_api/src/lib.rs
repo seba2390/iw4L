@@ -89,6 +89,16 @@ pub trait GameScripts: Sync {
         sources: &dyn gsc::SourceResolver,
     ) -> Rule<ScriptProgram>;
 
+    /// The game's client scripts for the map, when its client runs scripts
+    /// of its own (Black Ops' CSC): their roots and its client builtins.
+    fn client_program(
+        &self,
+        _request: &ScriptRequest<'_>,
+        _sources: &dyn gsc::SourceResolver,
+    ) -> Option<ScriptProgram> {
+        None
+    }
+
     /// Engine dvars this game's code sets for `gametype` before scripts run.
     fn engine_dvars(&self, gametype: &str) -> &'static [(&'static str, &'static str)];
 

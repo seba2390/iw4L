@@ -190,7 +190,12 @@ impl ScriptSources {
             }
             return;
         }
-        let Some(module) = name.strip_suffix(".gsc") else {
+        // Client scripts (`clientscripts/x.csc`) sit beside the server's
+        // under their own folder, read as `clientscripts/x`.
+        let Some(module) = name
+            .strip_suffix(".gsc")
+            .or_else(|| name.strip_suffix(".csc"))
+        else {
             return;
         };
         let source = if compressed {

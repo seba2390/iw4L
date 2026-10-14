@@ -1381,6 +1381,19 @@ fn preflight_match_install(
         None => sim::script::Program::load(&sources, &roots, &program.catalog)
             .map_err(|e| script_refusal(zone, gametype, "compile", &e))?,
     };
+    if let Some(client) = game_scripts.client_program(&request, &sources) {
+        let roots: Vec<&str> = client.roots.iter().map(String::as_str).collect();
+        match sim::script::Program::load(&sources, &roots, &client.catalog) {
+            Ok(compiled) => diag::info!(
+                Sim,
+                "csc: compiled map={zone}: {} modules, {} functions, {} client builtins named; client scripts do not run yet",
+                compiled.modules.len(),
+                compiled.function_count(),
+                compiled.natives.len()
+            ),
+            Err(error) => diag::warn!(Sim, "csc: client scripts do not compile: {error}"),
+        }
+    }
     let config = sources
         .0
         .config(MATCH_CONFIG)
