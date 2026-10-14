@@ -546,7 +546,252 @@ fn register_rest(registry: &mut NativeRegistry) {
             .map_err(|_| "setburn() called on an invalid client entity.\n".to_owned())?;
         Ok(Value::Undefined)
     });
+    registry.register(Method, "setelectrified", |world, receiver, args| {
+        let seconds = float(args, 0)?;
+        if seconds < 0.0 {
+            return Err("Time must be positive".into());
+        }
+        player(world, receiver)
+            .map_err(|_| "setelectrified() called on an invalid client entity.\n".to_owned())?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "sprintuprequired", |world, receiver, _| {
+        client_or_error(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "isempjammed", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)
+            .map_err(|_| "not an entity".to_owned())?;
+        let Some(client) = world.resource::<RoundScript>().player_client(id) else {
+            return Err("IsEMPJammed: Entity must be a player entity".into());
+        };
+        let jammed = world
+            .get_resource::<EmpJammed>()
+            .is_some_and(|j| j.0.contains(&client));
+        Ok(Value::Int(jammed.into()))
+    });
+    registry.register(Method, "setempjammed", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)
+            .map_err(|_| "not an entity".to_owned())?;
+        let Some(client) = world.resource::<RoundScript>().player_client(id) else {
+            return Err("SetEMPJammed: Entity must be a player entity".into());
+        };
+        let on = int(args, 0)? != 0;
+        let has_immune = world
+            .resource::<RoundScript>()
+            .players
+            .get(&client)
+            .is_some_and(|s| s.perks.iter().any(|p| p.as_ref() == "specialty_immuneemp"));
+        let mut jammed = world.get_resource_or_insert_with(EmpJammed::default);
+        if on && !has_immune {
+            jammed.0.insert(client);
+        } else {
+            jammed.0.remove(&client);
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "turnedhuman", |world, receiver, _| {
+        client_or_error(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "giveachievement", |world, receiver, args| {
+        let name = super::string(args, 0)?;
+        if name.is_empty() {
+            return Err("giveachievement: achievement must be named".into());
+        }
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().player_client(id).is_none() {
+            return Err("giveachievement: entity must be a player entity".into());
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setclientflag", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let index = int(args, 0)?;
+        if !(0..=15).contains(&index) {
+            return Err(format!(
+                "SetClientFlag: Index {index} out of range (0 - 15)\n"
+            ));
+        }
+        *world
+            .get_resource_or_insert_with(ClientFlags::default)
+            .0
+            .entry(id)
+            .or_default() |= 1 << index;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "clearclientflag", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let index = int(args, 0)?;
+        if !(0..=15).contains(&index) {
+            return Err(format!(
+                "ClearClientFlag: Index {index} out of range (0 - 15)\n"
+            ));
+        }
+        *world
+            .get_resource_or_insert_with(ClientFlags::default)
+            .0
+            .entry(id)
+            .or_default() &= !(1 << index);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "isinmovemode", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        for i in 0..args.len() {
+            super::string(args, i)?;
+        }
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "isremotecontrolling", |world, receiver, _| {
+        client_or_error(world, receiver)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "islookingat", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        super::super::engine::entity_id(world, super::arg(args, 0)?)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "needsrevive", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        int(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "relinktoturret", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        super::super::engine::entity_id(world, super::arg(args, 0)?)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "ishostforbots", |world, receiver, _| {
+        let id = client_or_error(world, receiver)?;
+        Ok(Value::Int((id.0 == 0).into()))
+    });
+    registry.register(Method, "isplayeronsamemachine", |world, receiver, args| {
+        let id = client_or_error(world, receiver)?;
+        let other = super::arg(args, 0)?;
+        let other_id = super::super::engine::entity_id(world, other)
+            .ok()
+            .and_then(|eid| world.resource::<RoundScript>().player_client(eid))
+            .ok_or("IsPlayerOnSameMachine: Player must be passed in.")?;
+        Ok(Value::Int((id.0 == other_id).into()))
+    });
+    registry.register(Method, "hasdlcavailable", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        super::string(args, 0)?;
+        Ok(Value::Int(1))
+    });
+    registry.register(Namespace::Function, "hasdlcavailable", |_, _, _| {
+        Ok(Value::Int(1))
+    });
+    registry.register(Method, "isgodmode", |world, receiver, _| {
+        let id = client_or_error(world, receiver)?;
+        Ok(Value::Int(is_invulnerable(world, id.0).into()))
+    });
+    registry.register(Namespace::Function, "isgodmode", |world, _, args| {
+        let id = client_or_error(world, super::arg(args, 0)?)?;
+        Ok(Value::Int(is_invulnerable(world, id.0).into()))
+    });
+    registry.register(Method, "setentertime", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        int(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setclientdrawtalk", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        int(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "enabledeathstreak", |world, receiver, _| {
+        client_or_error(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "buttonpressed", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        super::string(args, 0)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(
+        Method,
+        "directionalhitindicator",
+        |world, receiver, args| {
+            super::super::engine::entity_id(world, receiver)?;
+            int(args, 0)?;
+            if args.len() == 2 {
+                int(args, 1)?;
+            }
+            Ok(Value::Undefined)
+        },
+    );
+    registry.register(Method, "getloadoutitem", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        int(args, 0)?;
+        super::string(args, 1)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "isbonuscardactive", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        let card = int(args, 0)?;
+        let class = int(args, 1)?;
+        if !(0..=7).contains(&card) {
+            return Err("AddBonusCardStat: Invalid bonuscard.".into());
+        }
+        if !(0..=14).contains(&class) {
+            return Err("AddBonusCardStat: Invalid loadoutClass.".into());
+        }
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "addbonuscardstat", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().player_client(id).is_none() {
+            return Err("AddBonusCardStat: entity must be a player entity".into());
+        }
+        let card = int(args, 0)?;
+        if !(0..=7).contains(&card) {
+            return Err(format!("AddBonusCardStat: Invalid bonuscard {card}."));
+        }
+        super::string(args, 1)?;
+        int(args, 2)?;
+        let class = int(args, 3)?;
+        if !(0..=14).contains(&class) {
+            return Err(format!("AddBonusCardStat: Invalid loadoutClass {class}."));
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "openmenu", |world, receiver, args| {
+        client_or_error(world, receiver)?;
+        super::string(args, 0)?;
+        Ok(Value::Int(1))
+    });
+    registry.register(Method, "suicide", |world, receiver, _| {
+        let id = client_or_error(world, receiver)?;
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        crate::script::force_death(world, tick, id.0);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "cloneplayer", |world, receiver, args| {
+        let id = client_or_error(world, receiver)?;
+        int(args, 0)?;
+        let (origin, angles) = FrameWorld::from_world(world)
+            .player(id)
+            .map_or(([0.0; 3], [0.0; 3]), |ps| (ps.origin, ps.viewangles));
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let corpse = runtime.create_entity(
+            crate::script::host::entities::EntityKind::Corpse {
+                slot: 0,
+                anim: None,
+            },
+            "bodyque",
+        )?;
+        runtime.set_object_field(corpse, "origin", Value::Vector(origin));
+        runtime.set_object_field(corpse, "angles", Value::Vector(angles));
+        Ok(Value::Object(corpse))
+    });
 }
+
+#[derive(Resource, Default)]
+struct EmpJammed(std::collections::BTreeSet<u32>);
+
+#[derive(Resource, Default)]
+struct ClientFlags(BTreeMap<u64, u32>);
 
 /// Each player's fading blur and its time (`t6.player.blur`: kept, not sent).
 #[derive(Resource, Default)]

@@ -429,6 +429,26 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         with_actor(world, receiver, |actor| actor.stances = stances)?;
         Ok(Value::Undefined)
     });
+    registry.register(Method, "isstanceallowed", |world, receiver, args| {
+        actor(world, receiver)?;
+        let name = string(args, 0)?;
+        let Some(bit) = STANCES
+            .iter()
+            .position(|stance| *stance == name)
+            .map(|b| 1u32 << b)
+        else {
+            return Err(format!("invalid stance '{name}' in isStanceAllowed()\n"));
+        };
+        let stances = with_actor(world, receiver, |actor| actor.stances)?;
+        Ok(Value::Int((stances & bit != 0).into()))
+    });
+    registry.register(Method, "settalktospecies", |world, receiver, args| {
+        actor(world, receiver)?;
+        for i in 0..args.len() {
+            string(args, i)?;
+        }
+        Ok(Value::Undefined)
+    });
     // Moves the actor; its path is planned again from there.
     registry.register(Method, "forceteleport", |world, receiver, args| {
         let id = actor(world, receiver)?;

@@ -800,5 +800,107 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let id = vehicle(world, receiver)?;
         Ok(Value::Float(current_speed(world, id) / MPH))
     });
+    registry.register(Method, "cancelaimove", |world, receiver, _| {
+        vehicle(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "pathvariableoffset", |world, receiver, args| {
+        vehicle(world, receiver)?;
+        super::vector(args, 0)?;
+        super::float(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setneargoalnotifydist", |world, receiver, args| {
+        vehicle(world, receiver)?;
+        super::float(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setvehgoalpos", |world, receiver, args| {
+        let id = vehicle(world, receiver)?;
+        let goal = super::vector(args, 0)?;
+        if args.len() >= 2 {
+            super::int(args, 1)?;
+        }
+        if args.len() >= 3 {
+            super::int(args, 2)?;
+        }
+        if args.len() >= 4 {
+            super::int(args, 3)?;
+        }
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "origin", Value::Vector(goal));
+        raise(world, Value::Object(id), "goal", Vec::new());
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "clearvehgoalpos", |world, receiver, _| {
+        vehicle(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setvehvelocity", |world, receiver, args| {
+        vehicle(world, receiver)?;
+        super::vector(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "makevehicleunusable", |world, receiver, _| {
+        vehicle(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setphysacceleration", |world, receiver, args| {
+        vehicle(world, receiver)?;
+        super::vector(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getangularvelocity", |world, receiver, _| {
+        vehicle(world, receiver)?;
+        Ok(Value::Vector([0.0; 3]))
+    });
+    registry.register(Method, "setangularvelocity", |world, receiver, args| {
+        vehicle(world, receiver)?;
+        super::vector(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getoccupantseat", |world, receiver, args| {
+        vehicle(world, receiver)?;
+        super::super::engine::entity_id(world, super::arg(args, 0)?)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "isvehicle", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let runtime = world.resource::<RoundScript>();
+        let is = runtime.entities[&id].kind == EntityKind::Vehicle
+            || runtime.entities[&id]
+                .classname
+                .starts_with("script_vehicle");
+        Ok(Value::Int(is.into()))
+    });
+    registry.register(Function, "isvehicle", |world, _, args| {
+        let Some(Value::Object(id)) = args.first() else {
+            return Ok(Value::Int(0));
+        };
+        let runtime = world.resource::<RoundScript>();
+        let is = runtime.entities.get(id).is_some_and(|e| {
+            e.kind == EntityKind::Vehicle || e.classname.starts_with("script_vehicle")
+        });
+        Ok(Value::Int(is.into()))
+    });
+    registry.register(Method, "getvehicleoccupied", |world, receiver, _| {
+        super::super::engine::entity_id(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "spawnvehicle", |world, _, args| {
+        let model = super::string(args, 0)?;
+        let targetname = super::string(args, 1)?;
+        let _veh_type = super::string(args, 2)?;
+        let at = super::vector(args, 3)?;
+        let angles = super::vector(args, 4)?;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let id = runtime.create_entity(EntityKind::Vehicle, "script_vehicle")?;
+        runtime.set_object_field(id, "model", Value::String(model.into()));
+        runtime.set_object_field(id, "targetname", Value::String(targetname.into()));
+        runtime.set_object_field(id, "origin", Value::Vector(at));
+        runtime.set_object_field(id, "angles", Value::Vector(angles));
+        Ok(Value::Object(id))
+    });
     registry.on_tick(drive);
 }
