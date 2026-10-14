@@ -252,6 +252,7 @@ pub fn apply_prepared_match(
             actor_anim_sources,
             script_level,
             script_entries,
+            client_scripts,
             gametype_settings,
             script_dvars,
             engine_dvars,
@@ -679,8 +680,30 @@ pub fn apply_prepared_match(
                 );
             }
         }
+        let client_natives = crate::games::client_natives(anim_namespace, &natives);
+        let client_level = client_scripts.as_ref().map(|_| sim::script::LevelData {
+            entities: script_level.entities.clone(),
+            keys: script_level.keys.clone(),
+            ..Default::default()
+        });
         sim.install_gsc_program(scripts, natives, script_level)
             .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
+        if let (Some((program, entries)), Some(mut client_natives), Some(client_level)) =
+            (client_scripts, client_natives, client_level)
+        {
+            let (missing, named) = client_natives.coverage(&program);
+            let gaps = client_natives.bind_gaps(&program);
+            diag::info!(
+                Sim,
+                "csc: client builtin coverage map={zone}: {missing} of {named} client builtins not implemented yet: {}",
+                gaps.join(" ")
+            );
+            if let Err(fault) =
+                sim.install_client_scripts(program, client_natives, entries, &client_level)
+            {
+                diag::warn!(Sim, "csc: client scripts not installed: {fault}");
+            }
+        }
         if mode.waits_for_lobby
             && let Some(bridge) = bridge.as_ref()
             && let net::MasterBridgeState::Hosting { members, .. } = bridge.state()
@@ -908,6 +931,9 @@ struct MatchInstallPlan {
     actor_anim_sources: Vec<(String, String)>,
     script_level: sim::script::LevelData,
     script_entries: Vec<String>,
+    /// The game's client scripts and their entries, when its client runs
+    /// scripts of its own.
+    client_scripts: Option<(sim::script::Program, Vec<String>)>,
     /// The gametype's settings (`GetGametypeSetting`).
     gametype_settings: Vec<(String, String)>,
     script_dvars: Vec<(String, String)>,
@@ -1381,19 +1407,27 @@ fn preflight_match_install(
         None => sim::script::Program::load(&sources, &roots, &program.catalog)
             .map_err(|e| script_refusal(zone, gametype, "compile", &e))?,
     };
-    if let Some(client) = game_scripts.client_program(&request, &sources) {
-        let roots: Vec<&str> = client.roots.iter().map(String::as_str).collect();
-        match sim::script::Program::load(&sources, &roots, &client.catalog) {
-            Ok(compiled) => diag::info!(
-                Sim,
-                "csc: compiled map={zone}: {} modules, {} functions, {} client builtins named; client scripts do not run yet",
-                compiled.modules.len(),
-                compiled.function_count(),
-                compiled.natives.len()
-            ),
-            Err(error) => diag::warn!(Sim, "csc: client scripts do not compile: {error}"),
-        }
-    }
+    let client_scripts = game_scripts
+        .client_program(&request, &sources)
+        .and_then(|client| {
+            let roots: Vec<&str> = client.roots.iter().map(String::as_str).collect();
+            match sim::script::Program::load(&sources, &roots, &client.catalog) {
+                Ok(compiled) => {
+                    diag::info!(
+                        Sim,
+                        "csc: compiled map={zone}: {} modules, {} functions, {} client builtins named",
+                        compiled.modules.len(),
+                        compiled.function_count(),
+                        compiled.natives.len()
+                    );
+                    Some((compiled, client.entries))
+                }
+                Err(error) => {
+                    diag::warn!(Sim, "csc: client scripts do not compile: {error}");
+                    None
+                }
+            }
+        });
     let config = sources
         .0
         .config(MATCH_CONFIG)
@@ -1539,6 +1573,7 @@ fn preflight_match_install(
         actor_anim_sources,
         script_level,
         script_entries,
+        client_scripts,
         gametype_settings,
         script_dvars,
         engine_dvars,

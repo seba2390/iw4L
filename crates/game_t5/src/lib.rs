@@ -69,7 +69,8 @@ impl game_api::GameScripts for T5 {
         })
     }
 
-    /// Black Ops' client loads `clientscripts/<map>.csc` and runs its `main`.
+    /// Black Ops' client loads `clientscripts/<map>.csc` and runs its `main`,
+    /// with the map's structs in `level.struct` (`codescripts/struct`).
     fn client_program(
         &self,
         request: &ScriptRequest<'_>,
@@ -77,7 +78,10 @@ impl game_api::GameScripts for T5 {
     ) -> Option<ScriptProgram> {
         (request.gametype == ZOMBIES).then(|| ScriptProgram {
             catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, client_catalog::T5_CLIENT),
-            roots: vec![format!("clientscripts/{}", request.map)],
+            roots: vec![
+                "codescripts/struct".to_owned(),
+                format!("clientscripts/{}", request.map),
+            ],
             entries: vec![format!("clientscripts/{}::main", request.map)],
             built: None,
             settings: Vec::new(),

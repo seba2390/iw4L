@@ -7,6 +7,7 @@ mod scene_effects;
 pub(crate) mod shared;
 pub(crate) mod skill;
 pub mod t5;
+pub(crate) mod t5_client;
 pub(crate) mod t5_turret;
 pub(crate) mod t5_zombie;
 pub(crate) mod t6;

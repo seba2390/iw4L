@@ -53,6 +53,23 @@ impl Default for NativeRegistry {
     }
 }
 impl NativeRegistry {
+    /// No builtins at all.
+    pub(crate) fn empty() -> Self {
+        Self(
+            BTreeMap::new(),
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            None,
+        )
+    }
+
+    /// Black Ops' client VM natives (its client scripts, CSC).
+    pub fn black_ops_client(server: &NativeRegistry) -> Self {
+        Self::client(server, natives::t5_client::register)
+    }
+
     /// Builtins every game's scripts are served the same way: the language
     /// helpers, dvars, math, entities, players, sound, physics, triggers.
     pub fn engine_services() -> Self {

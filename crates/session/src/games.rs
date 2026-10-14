@@ -77,6 +77,18 @@ pub(crate) fn natives(family: FamilyId, mode: &game_api::ModeRules) -> sim::scri
     }
 }
 
+/// The natives of the game's client VM, when its client runs scripts of its
+/// own.
+pub(crate) fn client_natives(
+    family: FamilyId,
+    server: &sim::script::NativeRegistry,
+) -> Option<sim::script::NativeRegistry> {
+    match family {
+        FamilyId::T5 => Some(sim::script::NativeRegistry::black_ops_client(server)),
+        FamilyId::Iw4 | FamilyId::Iw5 | FamilyId::T6 | FamilyId::T7 => None,
+    }
+}
+
 /// How the screen of the game the map belongs to reacts to its match.
 pub(crate) fn vision(family: FamilyId) -> &'static dyn game_api::GameVision {
     match family {

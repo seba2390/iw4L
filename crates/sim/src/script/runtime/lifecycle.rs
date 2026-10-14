@@ -70,6 +70,59 @@ pub(crate) fn install(
     install_level(world, Arc::new(program), plan)
 }
 
+/// Installs a client VM's program in its own world: its program, natives
+/// and the map's structs and entities as the client knows them; no
+/// persistent data.
+pub(crate) fn install_client(
+    world: &mut World,
+    program: Arc<Program>,
+    natives: NativeRegistry,
+    entities: &[Vec<(String, String)>],
+    keys: &BTreeMap<String, host::entities::KeyType>,
+) -> Result<(), Fault> {
+    let location = Location {
+        module: "<runtime>".into(),
+        function: "install_client".into(),
+        line: 0,
+        column: 0,
+    };
+    let bound = program
+        .natives
+        .iter()
+        .map(|b| {
+            natives
+                .get(b.namespace, b.name)
+                .ok_or_else(|| Fault::at(&location, format!("unbound native {}", b.name)))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut runtime = world.resource_mut::<RoundScript>();
+    runtime.client = true;
+    runtime.program = Some(program.clone());
+    runtime.natives = bound;
+    runtime.objects.insert(0, BTreeMap::new());
+    runtime.objects.insert(1, BTreeMap::new());
+    runtime.objects.insert(2, BTreeMap::new());
+    runtime.next_object = 3;
+    runtime.rng = u32::from_le_bytes(program.fingerprint()[..4].try_into().unwrap()) | 1;
+    world.insert_resource(natives);
+    if let Some(&function) = program.names.get(STRUCT_INIT) {
+        let mut thread = new_thread(world, &program, function, Value::Object(0), Vec::new())
+            .map_err(|m| Fault::at(&location, m))?;
+        world.resource_mut::<RoundScript>().budget = INSTRUCTION_BUDGET;
+        thread.state = ThreadState::Runnable;
+        execute(world, &program, &mut thread, 0);
+        if let Some(fault) = world.resource::<RoundScript>().fault.clone() {
+            return Err(fault);
+        }
+        world.resource_mut::<RoundScript>().started = false;
+    }
+    world
+        .resource_mut::<RoundScript>()
+        .spawn_map_entities(entities, keys, None)
+        .map_err(|m| Fault::at(&location, m))?;
+    Ok(())
+}
+
 pub(crate) fn install_level(
     world: &mut World,
     program: Arc<Program>,
