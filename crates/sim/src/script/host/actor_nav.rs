@@ -520,16 +520,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "forceteleport", force_teleport);
     registry.register(Method, "teleport", force_teleport);
+    // Black Ops answers the found path's length as a whole number (it keeps
+    // it as a short), and 0 when no path is found.
     registry.register(Method, "calcpathlength", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let to = vector(args, 0)?;
         let (from, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
         let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
-            return Ok(Value::Float(distance_sq(from, to).sqrt()));
+            return Ok(Value::Int(0));
         };
         let mut reach = |a: [f32; 3], b: [f32; 3]| walkable(world, a, b);
         let Some(nodes) = paths.plan(from, to, &mut reach) else {
-            return Ok(Value::Undefined);
+            return Ok(Value::Int(0));
         };
         let mut length = 0.0;
         let mut at = from;
@@ -541,7 +543,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             length += distance_sq(at, point).sqrt();
             at = point;
         }
-        Ok(Value::Float(length))
+        Ok(Value::Int(i32::from(length as i16)))
     });
     for (name, end) in [
         ("getnegotiationstartnode", false),
