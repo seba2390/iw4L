@@ -35,7 +35,11 @@ pub(crate) fn update_script_music(
     for event in events.read() {
         match &event.0 {
             sim::ScriptAudioCommand::ChannelVolumes { .. }
-            | sim::ScriptAudioCommand::DeactivateChannelVolumes { .. } => {}
+            | sim::ScriptAudioCommand::DeactivateChannelVolumes { .. }
+            | sim::ScriptAudioCommand::ClientSound { .. }
+            | sim::ScriptAudioCommand::ClientSoundStop { .. }
+            | sim::ScriptAudioCommand::ClientSoundVolume { .. }
+            | sim::ScriptAudioCommand::ClientSoundVolumeRate { .. } => {}
             sim::ScriptAudioCommand::MusicPlay(alias) => {
                 if playback.pending.is_some() || playback.active.is_some() {
                     diag::warn!(

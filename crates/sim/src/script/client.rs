@@ -117,11 +117,31 @@ pub(crate) fn footstep(
     }
 }
 
-/// A sound the client plays itself (`playsound`).
-#[derive(Clone, Debug)]
-pub(crate) struct ClientSound {
-    pub(crate) alias: String,
-    pub(crate) origin: [f32; 3],
+/// What the local client's sound system last said of the sounds the client
+/// played, by playback id; nothing until a sound system runs.
+#[derive(Resource, Default)]
+pub(crate) struct ClientSoundReports {
+    /// Whether a sound system has reported at all.
+    pub(crate) heard: bool,
+    pub(crate) statuses: std::collections::BTreeMap<i32, crate::ClientSoundStatus>,
+}
+
+/// The local client's sound system reports on the client's sounds: the
+/// sounds it names are no longer waiting to start.
+pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSoundStatus>) {
+    let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
+        return;
+    };
+    let world = &mut client.world;
+    {
+        let mut output = world.resource_mut::<ClientOutput>();
+        for status in &statuses {
+            output.issued.remove(&status.id);
+        }
+    }
+    let mut reports = world.resource_mut::<ClientSoundReports>();
+    reports.heard = true;
+    reports.statuses = statuses.into_iter().map(|s| (s.id, s)).collect();
 }
 
 /// What a client loop sound plays from.
@@ -142,6 +162,8 @@ pub(crate) struct ClientLoop {
     pub(crate) alias: String,
     /// The loop's own number, which names it to the audio while it plays.
     pub(crate) serial: u32,
+    /// The playback id its script was answered.
+    pub(crate) id: i32,
 }
 
 /// An effect the client plays at a point (`playFx`, or a triggered
@@ -178,8 +200,11 @@ pub(crate) struct ClientTagEvent {
 /// loops it plays, and its effects.
 #[derive(Resource, Default)]
 pub(crate) struct ClientOutput {
-    pub(crate) sounds: Vec<ClientSound>,
-    /// The next sound's id, as `playsound` answers it.
+    /// The sound commands for the local client's sound system.
+    pub(crate) sound_commands: Vec<crate::ScriptAudioCommand>,
+    /// Sounds played that the sound system has not reported on yet.
+    pub(crate) issued: std::collections::BTreeSet<i32>,
+    /// The next sound's playback id, as `playsound` answers it.
     pub(crate) next_sound: i32,
     pub(crate) loops: std::collections::BTreeMap<LoopSource, ClientLoop>,
     next_loop: u32,
@@ -227,13 +252,24 @@ impl ClientOutput {
         }
     }
 
-    pub(crate) fn start_loop(&mut self, source: LoopSource, alias: String) {
-        if self.loops.get(&source).is_some_and(|l| l.alias == alias) {
-            return;
+    /// A new playback id.
+    pub(crate) fn sound_id(&mut self) -> i32 {
+        let id = self.next_sound;
+        self.next_sound = self.next_sound.wrapping_add(1);
+        id
+    }
+
+    /// Starts a loop (keeping the one already playing the same alias there),
+    /// answering its playback id.
+    pub(crate) fn start_loop(&mut self, source: LoopSource, alias: String) -> i32 {
+        if let Some(playing) = self.loops.get(&source).filter(|l| l.alias == alias) {
+            return playing.id;
         }
         let serial = self.next_loop & 0x0fff_ffff;
         self.next_loop = self.next_loop.wrapping_add(1);
-        self.loops.insert(source, ClientLoop { alias, serial });
+        let id = self.sound_id();
+        self.loops.insert(source, ClientLoop { alias, serial, id });
+        id
     }
 }
 
@@ -448,6 +484,7 @@ pub(crate) fn install(
         host: true,
     });
     world.insert_resource(ClientOutput::default());
+    world.insert_resource(ClientSoundReports::default());
     world.insert_resource(ClientEffectTable {
         lives: level.effect_lives.clone(),
         ..Default::default()
@@ -505,14 +542,11 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             sync_effect_table(server, &mut client.world);
             let snapshots = collect_server_entities(server);
             run_frame(&mut client, tick, reason, messages, snapshots);
-            let sounds = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().sounds);
-            for sound in sounds {
-                super::host::natives::engine::sound_to_client(
-                    server,
-                    crate::ClientId(0),
-                    &sound.alias,
-                    sound.origin,
-                );
+            let commands =
+                std::mem::take(&mut client.world.resource_mut::<ClientOutput>().sound_commands);
+            let mut frame = crate::frame::FrameWorld::from_world(server);
+            for command in commands {
+                frame.push_script_audio(command);
             }
             let made = sync_client_models(server, &mut client);
             deliver_tag_effects(server, &mut client, &made);

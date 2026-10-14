@@ -42,9 +42,11 @@ one died, `t5.csc.fx_lifetime`), tag effects and effect entities. Its
 lights (`makelight` from the map's compiled primary lights, typed by
 `radiant/clientkeys.txt`) and models (`setmodel`, `hide`, `show`, `moveto`,
 `rotate*`, drawn through server twins) run; light changes are not drawn yet
-(`t5.csc.light_render`). Still unrun on the client: music (it needs playback
-feedback from the audio), line emitters, ambient rooms and the client's view
-of its player (`t5.csc.run`).
+(`t5.csc.light_render`). Its sounds carry playback ids: the local sound
+system plays, stops and fades them by id and reports back whether they play,
+how far and how long, which `_music.csc` waits on. Still unrun on the
+client: line emitters, ambient rooms, sound contexts and snapshots and the
+client's view of its player (`t5.csc.run`).
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are

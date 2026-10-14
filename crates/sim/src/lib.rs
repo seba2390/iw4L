@@ -188,7 +188,7 @@ pub use weapon_content::{
 };
 
 mod script_audio;
-pub use script_audio::{ScriptAmbient, ScriptAudioCommand};
+pub use script_audio::{ClientSoundStatus, ScriptAmbient, ScriptAudioCommand};
 
 pub use input::PlayerProfile;
 

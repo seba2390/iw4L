@@ -46,6 +46,9 @@ pub(crate) struct InstanceState {
     pub priority: AtomicU32,
     pub rejection: AtomicU8,
     pub cursor: AtomicU64,
+    /// Its media's length in frames and their rate, once admitted.
+    pub media_frames: AtomicU64,
+    pub media_rate: AtomicU32,
     pub rendered_at: AtomicU64,
     pub requested_at: std::time::Instant,
     pub first_device_us: AtomicU64,
@@ -74,6 +77,18 @@ impl InstanceState {
         self.transitions
             .fetch_or(1 << status as u8, Ordering::Release);
         self.status.store(status as u8, Ordering::Release);
+    }
+
+    /// How far it has played and its whole length, in msec.
+    pub fn playback_ms(&self) -> (i32, i32) {
+        let rate = f64::from(self.media_rate.load(Ordering::Acquire));
+        if rate <= 0.0 {
+            return (0, 0);
+        }
+        let cursor = f64::from_bits(self.cursor.load(Ordering::Acquire));
+        let frames = self.media_frames.load(Ordering::Acquire) as f64;
+        let ms = |frames: f64| (frames * 1000.0 / rate).min(f64::from(i32::MAX)) as i32;
+        (ms(cursor), ms(frames))
     }
 
     pub fn has_reached(&self, status: InstanceStatus) -> bool {

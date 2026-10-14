@@ -5,7 +5,7 @@ use super::super::args::{arg, float, int, optional, string, vector};
 use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
 use crate::script::client::{
-    ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientOutput, ClientSound,
+    ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientOutput, ClientSoundReports,
     ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LoopSource,
 };
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
@@ -13,16 +13,17 @@ use bevy_ecs::prelude::World;
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
-    // `playSound(local, alias, origin, volume)`: a sound the client plays at
-    // a point (at none without one), answering its id.
+    // `playSound(local, alias, [origin], [volume])`: a sound the client
+    // plays at a point (a local one without), answering its playback id.
     registry.register(Function, "playsound", |world, _, args| {
         local_index(args)?;
         let alias = string(args, 1)?;
-        let origin = optional(args, 2, vector)?.unwrap_or([0.0; 3]);
-        Ok(play(world, alias, origin))
+        let origin = optional(args, 2, vector)?;
+        let volume = sound_volume(args, 3)?;
+        Ok(play(world, alias, origin, volume))
     });
-    // `ent playSound(local, alias, origin, volume)`: at the entity's origin
-    // without one.
+    // `ent playSound(local, alias, [origin], [volume])`: at the entity's
+    // origin unless exactly an origin follows the alias.
     registry.register(Method, "playsound", |world, receiver, args| {
         local_index(args)?;
         let id = super::engine::entity_id(world, receiver)?;
@@ -34,8 +35,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 _ => [0.0; 3],
             },
         };
-        Ok(play(world, alias, origin))
+        let volume = if args.len() == 4 {
+            sound_volume(args, 3)?
+        } else {
+            1.0
+        };
+        Ok(play(world, alias, Some(origin), volume))
     });
+    register_sound_ids(registry);
     // Every local client is active; there is only client 0.
     registry.register(Function, "getlocalplayers", |world, _, _| {
         let players = locals(world).into_iter().map(Value::Object).collect();
@@ -250,10 +257,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let handle = int(args, 1)?;
         let alias = string(args, 2)?;
         loop_fade(args, 3, "playloopsound")?;
-        world
+        let id = world
             .resource_mut::<ClientOutput>()
             .start_loop(LoopSource::Fake(handle), alias);
-        Ok(Value::Undefined)
+        Ok(Value::Int(id))
     });
     registry.register(Function, "stoploopsound", |world, _, args| {
         local_index(args)?;
@@ -270,10 +277,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let id = super::engine::entity_id(world, receiver)?;
         let alias = string(args, 0)?;
         loop_fade(args, 1, "playloopsound")?;
-        world
+        let id = world
             .resource_mut::<ClientOutput>()
             .start_loop(LoopSource::Entity(id), alias);
-        Ok(Value::Undefined)
+        Ok(Value::Int(id))
     });
     registry.register(Method, "stoploopsound", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
@@ -1075,12 +1082,141 @@ fn play_effect(
     handle
 }
 
-fn play(world: &mut World, alias: String, origin: [f32; 3]) -> Value {
+/// Plays a client sound, answering its playback id.
+fn play(world: &mut World, alias: String, origin: Option<[f32; 3]>, volume: f32) -> Value {
     let mut output = world.resource_mut::<ClientOutput>();
-    let id = output.next_sound;
-    output.next_sound += 1;
-    output.sounds.push(ClientSound { alias, origin });
+    let id = output.sound_id();
+    output.issued.insert(id);
+    output
+        .sound_commands
+        .push(crate::ScriptAudioCommand::ClientSound {
+            client: crate::ClientId(0),
+            id,
+            alias,
+            origin,
+            volume,
+        });
     Value::Int(id)
+}
+
+/// A sound's volume argument as the client clamps it: 1 or more is 1, and
+/// 0 or less is 0.
+fn sound_volume(args: &[Value], at: usize) -> Result<f32, String> {
+    let Some(volume) = optional(args, at, float)? else {
+        return Ok(1.0);
+    };
+    let mut clamped = volume;
+    if 0.0 <= volume - 1.0 {
+        clamped = 1.0;
+    }
+    if 0.0 <= -volume {
+        clamped = 0.0;
+    }
+    Ok(clamped)
+}
+
+fn register_sound_ids(registry: &mut NativeRegistry) {
+    use Namespace::Function;
+    // `soundPlaying(id)`: whether the sound system still plays it; a sound
+    // played this frame plays until the sound system says otherwise, and
+    // with no sound system nothing plays.
+    registry.register(Function, "soundplaying", |world, _, args| {
+        if args.len() != 1 {
+            return Err("soundplaying takes one parameter.".into());
+        }
+        let id = int(args, 0)?;
+        Ok(Value::Int(sound_playing(world, id).into()))
+    });
+    registry.register(Function, "getplaybacktime", |world, _, args| {
+        if args.len() != 1 {
+            return Err("getplaybacktime takes a playback id.".into());
+        }
+        let id = int(args, 0)?;
+        Ok(Value::Int(
+            sound_status(world, id).map_or(0, |status| status.playback_ms),
+        ))
+    });
+    registry.register(Function, "getknownlength", |world, _, args| {
+        if args.len() != 1 {
+            return Err("GetKnownLength takes a playback id.".into());
+        }
+        let id = int(args, 0)?;
+        Ok(Value::Int(
+            sound_status(world, id).map_or(0, |status| status.length_ms),
+        ))
+    });
+    registry.register(Function, "stopsound", |world, _, args| {
+        if args.len() != 1 {
+            return Err("stopsound takes one parameter.".into());
+        }
+        let id = int(args, 0)?;
+        world.resource_mut::<ClientOutput>().sound_commands.push(
+            crate::ScriptAudioCommand::ClientSoundStop {
+                client: crate::ClientId(0),
+                id,
+            },
+        );
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setsoundvolume", |world, _, args| {
+        if args.len() != 2 {
+            return Err("setsoundvolume takes two parameters.".into());
+        }
+        let volume = float(args, 1)?;
+        if !volume.is_finite() {
+            return Err("setsoundvolume cannot be NAN.".into());
+        }
+        let id = int(args, 0)?;
+        world.resource_mut::<ClientOutput>().sound_commands.push(
+            crate::ScriptAudioCommand::ClientSoundVolume {
+                client: crate::ClientId(0),
+                id,
+                volume,
+            },
+        );
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setsoundvolumerate", |world, _, args| {
+        if args.len() != 2 {
+            return Err("setsoundvolumerate takes two parameters.".into());
+        }
+        let rate = float(args, 1)?;
+        if !rate.is_finite() {
+            return Err("setsoundvolumerate cannot be NAN.".into());
+        }
+        let id = int(args, 0)?;
+        world.resource_mut::<ClientOutput>().sound_commands.push(
+            crate::ScriptAudioCommand::ClientSoundVolumeRate {
+                client: crate::ClientId(0),
+                id,
+                rate,
+            },
+        );
+        Ok(Value::Undefined)
+    });
+}
+
+fn sound_status(world: &World, id: i32) -> Option<crate::ClientSoundStatus> {
+    world
+        .resource::<ClientSoundReports>()
+        .statuses
+        .get(&id)
+        .copied()
+}
+
+fn sound_playing(world: &World, id: i32) -> bool {
+    let output = world.resource::<ClientOutput>();
+    if output.loops.values().any(|playing| playing.id == id) {
+        return true;
+    }
+    let reports = world.resource::<ClientSoundReports>();
+    if !reports.heard {
+        return false;
+    }
+    match reports.statuses.get(&id) {
+        Some(status) => status.playing,
+        None => output.issued.contains(&id),
+    }
 }
 
 /// A loop's fade: 0 to 32 seconds (the fade itself is not applied yet).

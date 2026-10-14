@@ -37,14 +37,57 @@ pub enum ScriptAudioCommand {
         priority: u8,
         fade_ms: i32,
     },
+    /// A sound a client's own scripts play (`playSound` on its client VM),
+    /// named by the playback id they answered, for that client alone: at a
+    /// point, or without one as a local sound.
+    ClientSound {
+        client: crate::ClientId,
+        id: i32,
+        alias: String,
+        origin: Option<[f32; 3]>,
+        volume: f32,
+    },
+    /// The client's scripts stop a sound they played (`stopSound`).
+    ClientSoundStop {
+        client: crate::ClientId,
+        id: i32,
+    },
+    /// The volume a client's sound moves to (`setSoundVolume`), at its rate.
+    ClientSoundVolume {
+        client: crate::ClientId,
+        id: i32,
+        volume: f32,
+    },
+    /// How fast a client's sound's volume moves, per second
+    /// (`setSoundVolumeRate`); zero moves it at once.
+    ClientSoundVolumeRate {
+        client: crate::ClientId,
+        id: i32,
+        rate: f32,
+    },
+}
+
+/// What a client's sound system says of a sound its scripts played, for
+/// their `soundPlaying`, `getPlaybackTime` and `getKnownLength`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClientSoundStatus {
+    pub id: i32,
+    pub playing: bool,
+    /// How far it has played, in msec.
+    pub playback_ms: i32,
+    /// Its length in msec, or 0 while not known.
+    pub length_ms: i32,
 }
 
 impl ScriptAudioCommand {
     pub fn target(&self) -> Option<crate::ClientId> {
         match self {
-            Self::ChannelVolumes { client, .. } | Self::DeactivateChannelVolumes { client, .. } => {
-                Some(*client)
-            }
+            Self::ChannelVolumes { client, .. }
+            | Self::DeactivateChannelVolumes { client, .. }
+            | Self::ClientSound { client, .. }
+            | Self::ClientSoundStop { client, .. }
+            | Self::ClientSoundVolume { client, .. }
+            | Self::ClientSoundVolumeRate { client, .. } => Some(*client),
             _ => None,
         }
     }
@@ -79,6 +122,20 @@ impl ScriptAudioCommand {
             Self::SoundFade { volume, fade_ms } => {
                 volume.is_finite() && *volume >= 0.0 && *fade_ms >= 0
             }
+            Self::ClientSound {
+                alias,
+                origin,
+                volume,
+                ..
+            } => {
+                !alias.is_empty()
+                    && alias.len() <= 1023
+                    && (0.0..=1.0).contains(volume)
+                    && origin.is_none_or(|origin| origin.iter().all(|c| c.is_finite()))
+            }
+            Self::ClientSoundStop { .. } => true,
+            Self::ClientSoundVolume { volume, .. } => volume.is_finite(),
+            Self::ClientSoundVolumeRate { rate, .. } => rate.is_finite(),
         }
     }
 }
