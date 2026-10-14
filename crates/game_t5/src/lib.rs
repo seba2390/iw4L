@@ -100,6 +100,7 @@ impl game_api::GameScripts for T5 {
             state_change: "clientscripts/_callbacks::statechange",
             activate_exploder: "clientscripts/_callbacks::callback_activate_exploder",
             deactivate_exploder: "clientscripts/_callbacks::callback_deactivate_exploder",
+            footstep: "clientscripts/_callbacks::codecallback_playerfootstep",
         })
     }
 

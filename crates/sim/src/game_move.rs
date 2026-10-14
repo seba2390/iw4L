@@ -118,6 +118,13 @@ pub(crate) fn run(
         let gaps = movement.server_events(&before, &player, &outcome.signals, &mut around);
         outcome.gaps.extend(gaps);
     }
+    if world.publishes_snapshot() {
+        for signal in &outcome.signals {
+            if let Some((kind, surface)) = movement.footstep(signal) {
+                crate::script::client::footstep(world.ecs(), id, kind, surface);
+            }
+        }
+    }
     outcome
 }
 

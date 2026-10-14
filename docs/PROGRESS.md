@@ -129,7 +129,8 @@ Only the top-level items count.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
   - [x] The client scripts' one-shot sounds (`playsound` on the client VM): Kino's random ambient emitters (`_audio::soundrandom_thread`: wind, metal, rope, whispers, wood) play their aliases to the local client.
   - [x] The client scripts' loop sounds (`playloopsound` on fake entities and client entities, `soundloopemitter`): Kino's fires, steam, chandeliers, power boxes, circuits and projector loop where its client scripts place them.
-  - [ ] Footsteps and gear, music states, line emitters and ambient rooms, `stopsound` and `setsoundblend`, another player's automatic fire; a `PlaySound` notify waits a fixed 2 s.
+  - [x] The player's own footsteps: Black Ops' movement footstep events reach the client scripts' `CodeCallback_PlayerFootstep` (`_footsteps.csc`), which plays `fly_step_<sprint|run|walk|…>_plr_<surface>`.
+  - [ ] Landings, jumps and gear, other players' footsteps, music states, line emitters and ambient rooms, `stopsound` and `setsoundblend`, another player's automatic fire; a `PlaySound` notify waits a fixed 2 s.
 - [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.

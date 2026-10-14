@@ -43,7 +43,7 @@ const SURF_FLESH: u8 = 7;
 /// How far below a grenade its explosion looks for the surface it lies on.
 const EXPLOSION_FLOOR: f32 = 16.0;
 /// Surface names, by surface type, as scripts get them.
-const SURFACE_NAMES: [&str; 31] = [
+pub(crate) const SURFACE_NAMES: [&str; 31] = [
     "default",
     "bark",
     "brick",
