@@ -73,6 +73,12 @@
 //! he stands where he spawned until the zombies reach him and down him.
 //! Each change of his life state and last stand is logged, so a run shows
 //! going down and what the game does next.
+//!
+//! `IW4L_TEST_WALK=1` (with any fighting mode): every 20 s, 10 s in, he
+//! walks toward a path node in a clear line 600 to 1200 units away: a jump, a walk, a
+//! sprint, then standing still crouched and prone. He only presses buttons
+//! and logs what the movement made of them: the distance and speed walked
+//! and sprinted, the jump's height, and the view height in each stance.
 
 use bevy::prelude::*;
 use net::{
@@ -109,6 +115,12 @@ const THROW_FROM: f32 = 250.0;
 /// The place aid waits this long with the weapon up, then holds fire.
 const PLACE_AFTER_MS: i32 = 2000;
 const PLACE_HOLD_MS: i32 = 500;
+/// The walk test: when and how often it walks, and the end of each of its
+/// phases (jump, walk, sprint, crouch, prone), from the walk's start.
+const WALK_START_MS: i32 = 10_000;
+const WALK_PERIOD_MS: i32 = 20_000;
+const WALK_PHASES_MS: [i32; 5] = [300, 1500, 3000, 4000, 5500];
+const WALK_NODE_RANGE: core::ops::Range<f32> = 600.0..1200.0;
 /// The rounds test asks for ammo at most this often.
 const RESUPPLY_PERIOD_MS: i32 = 2000;
 /// The use test starts this long after the player first lives, once the
@@ -288,6 +300,21 @@ pub(crate) struct TestPlayer {
     wielded_since_ms: Option<i32>,
     placing: Option<(i32, f32)>,
     placements: u32,
+    /// The walk test's walk under way, and when it next walks.
+    walk: Option<Walk>,
+    next_walk_ms: i32,
+}
+
+/// What the walk test has seen of one walk: where each phase started, the
+/// jump's top and the lowest view height in each stance phase.
+#[derive(Clone, Debug)]
+struct Walk {
+    target: [f32; 3],
+    start_ms: i32,
+    phase_from: [[f32; 3]; 5],
+    phase: usize,
+    top_z: f32,
+    low_view: [f32; 2],
 }
 
 impl TestPlayer {
@@ -1029,6 +1056,111 @@ pub(crate) fn drive_test_player(
     } else {
         test.wielded_since_ms = None;
         test.placing = None;
+    }
+
+    if std::env::var("IW4L_TEST_WALK").is_ok()
+        && test.scenario.is_none()
+        && clock.time_ms - since_ms >= WALK_START_MS
+    {
+        if test.walk.is_none() && clock.time_ms >= test.next_walk_ms {
+            test.next_walk_ms = clock.time_ms + WALK_PERIOD_MS;
+            let target = world
+                .0
+                .path_node_origins()
+                .into_iter()
+                .filter(|node| WALK_NODE_RANGE.contains(&flat_distance(ps.origin, *node)))
+                .filter(|node| {
+                    [20.0, WAIST_HEIGHT].iter().all(|&up| {
+                        let from = [ps.origin[0], ps.origin[1], ps.origin[2] + up];
+                        let to = [node[0], node[1], node[2] + up];
+                        clear_run(&world.0, id, from, to) >= distance(from, to) - 1.0
+                    })
+                })
+                .min_by(|a, b| {
+                    (a[2] - ps.origin[2])
+                        .abs()
+                        .total_cmp(&(b[2] - ps.origin[2]).abs())
+                });
+            match target {
+                Some(target) => {
+                    diag::info!(
+                        Sim,
+                        "test player: walk from {} toward {}",
+                        fmt_point(ps.origin),
+                        fmt_point(target)
+                    );
+                    test.walk = Some(Walk {
+                        target,
+                        start_ms: clock.time_ms,
+                        phase_from: [ps.origin; 5],
+                        phase: 0,
+                        top_z: ps.origin[2],
+                        low_view: [ps.view_height_current; 2],
+                    });
+                }
+                None => diag::info!(
+                    Sim,
+                    "test player: walk — no path node in reach of {} ({} nodes)",
+                    fmt_point(ps.origin),
+                    world.0.path_node_origins().len()
+                ),
+            }
+        }
+        if let Some(walk) = test.walk.as_mut() {
+            let t = clock.time_ms - walk.start_ms;
+            let phase = WALK_PHASES_MS
+                .iter()
+                .position(|&end| t < end)
+                .unwrap_or(WALK_PHASES_MS.len());
+            while walk.phase < phase {
+                walk.phase += 1;
+                if walk.phase < walk.phase_from.len() {
+                    walk.phase_from[walk.phase] = ps.origin;
+                }
+            }
+            match phase {
+                0 => walk.top_z = walk.top_z.max(ps.origin[2]),
+                3 | 4 => {
+                    let low = &mut walk.low_view[phase - 3];
+                    *low = low.min(ps.view_height_current);
+                }
+                _ => {}
+            }
+            if phase < WALK_PHASES_MS.len() {
+                if phase < 3 {
+                    let eye = [ps.origin[0], ps.origin[1], ps.origin[2] + EYE_HEIGHT];
+                    let ahead = [walk.target[0], walk.target[1], eye[2]];
+                    aim_cmd(&mut cmd, look(eye, ahead));
+                    cmd.forwardmove = 127;
+                }
+                cmd.buttons |= match phase {
+                    0 => buttons::JUMP,
+                    2 => buttons::SPRINT,
+                    3 => buttons::CROUCH,
+                    4 => buttons::PRONE,
+                    _ => 0,
+                };
+                cmds.push(id, None, cmd, None);
+                return;
+            }
+            let walked = |phase: usize, ms: i32| {
+                let from = walk.phase_from[phase];
+                let to = walk.phase_from.get(phase + 1).copied().unwrap_or(ps.origin);
+                let d = flat_distance(from, to);
+                format!("{d:.0} ({:.0}/s)", d * 1000.0 / ms as f32)
+            };
+            diag::info!(
+                Sim,
+                "test player: walked — jump {:.1} high, walk {}, sprint {}, crouch view {:.1}, prone view {:.1}, now at {}",
+                walk.top_z - walk.phase_from[0][2],
+                walked(1, WALK_PHASES_MS[1] - WALK_PHASES_MS[0]),
+                walked(2, WALK_PHASES_MS[2] - WALK_PHASES_MS[1]),
+                walk.low_view[0],
+                walk.low_view[1],
+                fmt_point(ps.origin)
+            );
+            test.walk = None;
+        }
     }
 
     if matches!(test.mode, Mode::Use | Mode::Revive)

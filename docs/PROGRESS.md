@@ -171,9 +171,10 @@ Only the top-level items count. Runs are headless, with the test player
   - [ ] The client scripts (CSC) do not run: no client fields, exploders, fx animations or the wall-buy chalk.
 - [x] The game's own zombies scripts start the match and run round 1 (with `IW4L_T6_OWN_SCRIPTS=1`).
   - [x] Every builtin the three maps' compiled scripts reference is registered (`0 of 692` on Nuketown, `0 of 741` on TranZit, `0 of 727` on Buried).
-- [ ] The player moves by the game's own movement rules.
-  - [ ] Black Ops 2's own movement (`movement_t6`) runs; walking is not yet proven by a headless run (the test player teleports between sites).
-  - [ ] Script allowances (stances) are kept but not applied.
+- [x] The player moves by the game's own movement rules.
+  - [x] Walking, sprinting, jumping and stances (`movement_t6`), shown by the walk test on Nuketown and TranZit (walk up to 190, sprint 285, jump 37.5, crouch view 40, prone 11).
+  - [x] Script allowances (`allowstand`, `allowcrouch`, `allowprone`, `allowjump`, `allowlean`, `setstance`) set Black Ops 2's own player flags.
+  - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
 - [ ] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Black Ops 2's weapon facts (damage, ranges, clip and stock, hit-location scales) are read from its zones.
   - [ ] The weapon state machine (fire, reload, switch, melee, grenades) is Modern Warfare 2's (`t6.weapons.state_machine`).

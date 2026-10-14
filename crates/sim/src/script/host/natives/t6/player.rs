@@ -11,8 +11,8 @@ use crate::script_player::{CmdButton, holds_now_or_last};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
 
-/// The stances a script has refused a player, kept for the movement that
-/// will honour them.
+/// The stances a script has refused a player, for the previous allowance
+/// each call answers.
 #[derive(Clone, Copy, Debug, Default)]
 struct Refused {
     stand: bool,
@@ -38,9 +38,16 @@ fn allow_stance(
     receiver: &Value,
     args: &[Value],
     stance: fn(&mut Refused) -> &mut bool,
+    what: game_api::movement::MoveRestriction,
 ) -> Result<Value, String> {
     let client = player(world, receiver)?;
     let allowed = int(args, 0)? != 0;
+    crate::game_move::restrict(
+        &mut FrameWorld::from_world(world),
+        ClientId(client),
+        what,
+        allowed,
+    );
     let slot = stance(refused(world, client));
     let was = !*slot;
     *slot = !allowed;
@@ -271,19 +278,44 @@ fn register_rest(registry: &mut NativeRegistry) {
         let id = ClientId(player(world, receiver)?);
         let allowed = int(args, 0)? != 0;
         let mut frame = FrameWorld::from_world(world);
+        crate::game_move::restrict(
+            &mut frame,
+            id,
+            game_api::movement::MoveRestriction::Jump,
+            allowed,
+        );
         let controls = &mut frame.client_meta_mut(id).controls;
         let was = !controls.jump_disabled;
         controls.jump_disabled = !allowed;
         Ok(Value::Int(was.into()))
     });
+    use game_api::movement::MoveRestriction;
     registry.register(Method, "allowstand", |world, receiver, args| {
-        allow_stance(world, receiver, args, |r| &mut r.stand)
+        allow_stance(
+            world,
+            receiver,
+            args,
+            |r| &mut r.stand,
+            MoveRestriction::Stand,
+        )
     });
     registry.register(Method, "allowcrouch", |world, receiver, args| {
-        allow_stance(world, receiver, args, |r| &mut r.crouch)
+        allow_stance(
+            world,
+            receiver,
+            args,
+            |r| &mut r.crouch,
+            MoveRestriction::Crouch,
+        )
     });
     registry.register(Method, "allowprone", |world, receiver, args| {
-        allow_stance(world, receiver, args, |r| &mut r.prone)
+        allow_stance(
+            world,
+            receiver,
+            args,
+            |r| &mut r.prone,
+            MoveRestriction::Prone,
+        )
     });
     for (name, on) in [
         ("enableinvulnerability", true),
