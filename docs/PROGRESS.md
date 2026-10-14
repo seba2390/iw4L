@@ -227,7 +227,8 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] With Quick Revive (TranZit, `IW4L_TEST_PLAYER=revive`): down at 51 s, Black Ops 2's solo revive stands him up at 61 s; the next down ends the game and the match returns to the lobby.
   - [ ] Bleeding out is co-op only (see Co-op); the last stand vision and blur are not drawn (`t6.vision.last_stand`, `t6.player.blur`).
 - [ ] The game's own HUD.
-  - [ ] Black Ops 2's LUI menus and HUD are DenisToxic's `game_t6::ui` work.
+  - [x] Black Ops 2's Zombies LUI HUD widgets (`PerksArea`, `PowerUpsArea`, `BuildablesArea`, `CompetitiveScoreboard`, `DPadArea`, Buried's `AmmoAreaZombie` and `TimeBombArea`, `RoundStatus`, `Scoreboard`) run on `game_t6::ui` with timed transitions, LUI client field callbacks (`setupclientfieldcodecallbacks`), `luinotifyevent` (`score_event`), and round, score, weapon, ammo and offhand HUD updates.
+  - [ ] Code-drawn pieces (reticle, low-health overlay, cursor hints, server `HudElem` materials) still use IW4L's HUD bridge (`t6.hud.code_hud`, `t6.hud.script_materials`).
 - [ ] The game's own front end: menus, lobby and map selection.
   - [ ] Nuketown, TranZit and Buried start from the game library; the menus are not Black Ops 2's.
 - [ ] The game's own sound.

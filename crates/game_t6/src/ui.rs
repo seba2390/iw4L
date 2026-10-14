@@ -46,7 +46,10 @@ pub struct State {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Element {
     pub current: State,
+    pub animation_source: Option<State>,
     pub animation_target: Option<State>,
+    pub animation_timer: Option<animation::AnimationTimer>,
+    pub animation_name: Option<Vec<u8>>,
     pub animation_options: [bool; 2],
 }
 
@@ -76,8 +79,65 @@ impl Default for Element {
                     ..Changes::default()
                 },
             },
+            animation_source: None,
             animation_target: None,
+            animation_timer: None,
+            animation_name: None,
             animation_options: [false; 2],
+        }
+    }
+}
+
+impl State {
+    pub fn apply_target(&mut self, target: &Self) {
+        self.cached = false;
+        if target.changes.horizontal {
+            self.horizontal = target.horizontal;
+            self.changes.horizontal = true;
+        }
+        if target.changes.vertical {
+            self.vertical = target.vertical;
+            self.changes.vertical = true;
+        }
+        for i in 0..3 {
+            if target.changes.color[i] {
+                self.color[i] = target.color[i];
+                self.changes.color[i] = true;
+            }
+            if target.changes.rotation[i] {
+                self.rotation[i] = target.rotation[i];
+                self.changes.rotation[i] = true;
+            }
+        }
+        if target.changes.opacity {
+            self.opacity = target.opacity;
+            self.changes.opacity = true;
+        }
+        if target.changes.zoom {
+            self.zoom = target.zoom;
+            self.changes.zoom = true;
+        }
+        if target.changes.scale_delta {
+            self.scale_delta = target.scale_delta;
+            self.changes.scale_delta = true;
+        }
+        if target.changes.spacing {
+            self.spacing = target.spacing;
+            self.changes.spacing = true;
+        }
+        for (dst, src) in self.shader_vectors.iter_mut().zip(target.shader_vectors) {
+            if src.is_some() {
+                *dst = src;
+            }
+        }
+        if target.material.is_some() {
+            self.material = target.material;
+        }
+        if target.font.is_some() {
+            self.font = target.font;
+        }
+        if target.alignment.is_some() {
+            self.alignment = target.alignment;
         }
     }
 }
@@ -85,6 +145,57 @@ impl Default for Element {
 impl Element {
     fn destination(&mut self) -> &mut State {
         self.animation_target.as_mut().unwrap_or(&mut self.current)
+    }
+
+    pub fn begin_animation(
+        &mut self,
+        name: Vec<u8>,
+        duration: i32,
+        options: [bool; 2],
+        target: State,
+    ) {
+        self.animation_options = options;
+        self.animation_source = Some(self.current);
+        for (dst, src) in self
+            .current
+            .shader_vectors
+            .iter_mut()
+            .zip(target.shader_vectors)
+        {
+            if src.is_some() {
+                *dst = src;
+            }
+        }
+        if target.material.is_some() {
+            self.current.material = target.material;
+        }
+        if target.font.is_some() {
+            self.current.font = target.font;
+        }
+        if target.alignment.is_some() {
+            self.current.alignment = target.alignment;
+        }
+        self.animation_target = Some(target);
+        self.animation_timer = Some(animation::AnimationTimer::new(duration, options));
+        self.animation_name = Some(name);
+        self.current.cached = false;
+    }
+
+    pub fn finish_animation(&mut self, interrupted: bool) -> Option<(Vec<u8>, f32, bool)> {
+        let target = self.animation_target.take()?;
+        if let Some(source) = self.animation_source.take() {
+            self.current.changes = source.changes;
+        }
+        self.current.apply_target(&target);
+        let lateness =
+            self.animation_timer
+                .take()
+                .map_or(0.0, |mut timer| match timer.interrupt() {
+                    animation::AnimationStep::Complete { lateness, .. } => lateness,
+                    animation::AnimationStep::Interpolate(_) => 0.0,
+                });
+        let name = self.animation_name.take().unwrap_or_else(Vec::new);
+        Some((name, lateness, interrupted))
     }
 
     pub fn local_rectangle(&self) -> [f32; 4] {
@@ -132,5 +243,19 @@ impl Element {
         state.opacity = opacity;
         state.cached = false;
         state.changes.opacity = true;
+    }
+
+    pub fn set_scale(&mut self, scale: f32) {
+        let state = self.destination();
+        state.scale_delta = scale - 1.0;
+        state.cached = false;
+        state.changes.scale_delta = true;
+    }
+
+    pub fn set_z_rot(&mut self, rotation: f32) {
+        let state = self.destination();
+        state.rotation[2] = rotation;
+        state.cached = false;
+        state.changes.rotation[2] = true;
     }
 }

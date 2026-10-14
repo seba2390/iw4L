@@ -1,22 +1,17 @@
-use super::Element;
 use super::animation::AnimationState;
 use super::script::library::Library;
 use super::script::runtime::{Bindings, Callback};
 use super::script::tables::Tables;
 use super::script::{Environment, FaultKind, Value};
+use super::{Changes, Element, State};
 use game_api::{Unknown, unknown};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
 const GC: &Unknown = unknown!(
     "t6.ui.gc",
     "LUI elements and animation states are never collected",
     "Black Ops 2's LUI element and animation-state collectors"
-);
-const TIMED_TRANSITIONS: &Unknown = unknown!(
-    "t6.ui.timed_transitions",
-    "animateToState with a duration, or while a transition runs",
-    "Black Ops 2's LUI transition timing and interpolation"
 );
 
 const CONSTRUCT: u32 = 7;
@@ -36,7 +31,7 @@ pub struct Elements {
     elements: BTreeMap<u32, Element>,
     animation_states: BTreeMap<u32, AnimationState>,
     animation_state_metatable: Value,
-    callback: Option<Callback>,
+    callbacks: VecDeque<Callback>,
 }
 
 impl Elements {
@@ -72,7 +67,7 @@ impl Elements {
             elements: BTreeMap::new(),
             animation_states: BTreeMap::new(),
             animation_state_metatable,
-            callback: None,
+            callbacks: VecDeque::new(),
         })
     }
 
@@ -103,6 +98,46 @@ impl Elements {
         self.animation_states
             .get(identity)
             .ok_or(FaultKind::Userdata(*identity))
+    }
+
+    pub fn fire_transition_complete(
+        &mut self,
+        receiver: &Value,
+        name: &[u8],
+        lateness: f32,
+        interrupted: bool,
+        tables: &mut Tables,
+    ) -> Result<(), FaultKind> {
+        let event_name = key(&[b"transition_complete_".as_slice(), name].concat());
+        let handlers = tables.field(receiver, &key(b"m_eventHandlers"))?;
+        let callee = tables.field(&handlers, &event_name)?;
+        if callee != Value::Nil {
+            let event = tables.allocate()?;
+            tables.raw_set(&event, &key(b"name"), event_name)?;
+            tables.raw_set(&event, &key(b"lateness"), Value::Number(lateness))?;
+            if interrupted {
+                tables.raw_set(&event, &key(b"interrupted"), Value::Boolean(1))?;
+            }
+            self.callbacks.push_back(Callback {
+                callee,
+                arguments: vec![receiver.clone(), event],
+            });
+        }
+        Ok(())
+    }
+
+    pub fn finish_element_animation(
+        &mut self,
+        receiver: &Value,
+        interrupted: bool,
+        tables: &mut Tables,
+    ) -> Result<(), FaultKind> {
+        while let Some((name, lateness, interrupted)) =
+            self.element_mut(receiver)?.finish_animation(interrupted)
+        {
+            self.fire_transition_complete(receiver, &name, lateness, interrupted, tables)?;
+        }
+        Ok(())
     }
 
     fn register_animation_state(
@@ -150,19 +185,12 @@ impl Elements {
         let Value::Reference { kind: 7, identity } = receiver else {
             return Err(FaultKind::Argument(1));
         };
-        let element = self
-            .elements
-            .get(identity)
-            .ok_or(FaultKind::Userdata(*identity))?;
-        if element.animation_target.is_some() {
-            return Err(FaultKind::Unknown(TIMED_TRANSITIONS));
-        }
-        match arguments.get(2) {
-            None | Some(Value::Nil | Value::Boolean(_) | Value::Reference { .. }) => {}
-            Some(Value::Number(value)) if value.is_finite() && value.trunc() == 0.0 => {}
-            Some(Value::Number(_)) => return Err(FaultKind::Unknown(TIMED_TRANSITIONS)),
+        self.finish_element_animation(receiver, true, tables)?;
+        let duration = match arguments.get(2) {
+            None | Some(Value::Nil | Value::Boolean(_) | Value::Reference { .. }) => 0,
+            Some(Value::Number(value)) if value.is_finite() => (*value as i32).max(0),
             _ => return Err(FaultKind::BindingRequired),
-        }
+        };
         let name = match arguments.get(1) {
             Some(Value::Bytes(bytes)) => key(&bytes[..bytes
                 .iter()
@@ -185,26 +213,28 @@ impl Elements {
             return Ok(());
         }
         let state = self.animation_state(&value)?.clone();
-        let element = self
-            .elements
-            .get_mut(identity)
-            .ok_or(FaultKind::Userdata(*identity))?;
-        element.current.cached = false;
-        state.apply(&mut element.current);
-        let Value::Bytes(name) = name else {
+        let Value::Bytes(name_bytes) = name else {
             return Err(FaultKind::BindingRequired);
         };
-        let event_name = key(&[b"transition_complete_".as_slice(), &name].concat());
-        let handlers = tables.field(receiver, &key(b"m_eventHandlers"))?;
-        let callee = tables.field(&handlers, &event_name)?;
-        if callee != Value::Nil {
-            let event = tables.allocate()?;
-            tables.raw_set(&event, &key(b"name"), event_name)?;
-            tables.raw_set(&event, &key(b"lateness"), Value::Number(0.0))?;
-            self.callback = Some(Callback {
-                callee,
-                arguments: vec![receiver.clone(), event],
-            });
+        if duration == 0 {
+            let element = self
+                .elements
+                .get_mut(identity)
+                .ok_or(FaultKind::Userdata(*identity))?;
+            element.current.cached = false;
+            state.apply(&mut element.current);
+            self.fire_transition_complete(receiver, &name_bytes, 0.0, false, tables)?;
+        } else {
+            let element = self
+                .elements
+                .get_mut(identity)
+                .ok_or(FaultKind::Userdata(*identity))?;
+            let mut target = State {
+                changes: Changes::default(),
+                ..element.current
+            };
+            state.apply(&mut target);
+            element.begin_animation(name_bytes.to_vec(), duration, options, target);
         }
         Ok(())
     }
@@ -242,7 +272,7 @@ impl Elements {
 
 impl Bindings for Elements {
     fn take_callback(&mut self) -> Option<Callback> {
-        self.callback.take()
+        self.callbacks.pop_front()
     }
 
     fn call(

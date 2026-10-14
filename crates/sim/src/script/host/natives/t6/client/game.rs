@@ -45,10 +45,6 @@ pub(crate) struct FieldDef {
 /// callback: the field, the entity number, old and new values, new entity
 /// and initial snapshot.
 #[derive(Clone, Debug)]
-#[expect(
-    dead_code,
-    reason = "the client's menus read them once they are Black Ops 2's (t6.csc.clientfield.lui)"
-)]
 pub(crate) struct MenuFieldEvent {
     pub(crate) field: usize,
     pub(crate) entity: Option<i32>,
@@ -737,6 +733,31 @@ fn present_with(server: &mut World, client: &mut World) {
             // Shown to the local client alone.
             entity.hidden = true;
             entity.shown_to = if hidden { 0 } else { 1 << LOCAL_CLIENT };
+        }
+    }
+    let menu_events = std::mem::take(&mut game.menu_events);
+    if !menu_events.is_empty() {
+        let fields = &game.fields;
+        if let Some(mut frame) = crate::frame::FrameWorld::try_from_world(server) {
+            let meta = frame.client_meta_mut(crate::world::ClientId(LOCAL_CLIENT as u32));
+            for event in menu_events {
+                let Some(def) = fields.get(event.field) else {
+                    continue;
+                };
+                let as_f32 = |v: &Value| match v {
+                    Value::Int(n) => *n as f32,
+                    Value::Float(f) => *f,
+                    _ => 0.0,
+                };
+                meta.push_lui_client_field(game_api::ui::ClientFieldEvent {
+                    name: def.name.clone(),
+                    old: as_f32(&event.old),
+                    new: as_f32(&event.new),
+                    initial: event.initial,
+                    new_entity: event.new_entity,
+                    entity: event.entity,
+                });
+            }
         }
     }
     client.insert_resource(game);

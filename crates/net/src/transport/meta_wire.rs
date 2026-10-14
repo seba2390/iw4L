@@ -444,6 +444,7 @@ pub fn encode_snapshot_meta_body(
     let mut mark = out.len();
     out.put_u8(phase_tag(meta.phase));
     out.put_u32(meta.round_serial);
+    out.put_i32(meta.rounds_played);
     out.put_u32(meta.match_elapsed_ms);
     let (prematch_tag, elapsed_ms) = match meta.prematch {
         gamemode_iw4::PrematchStep::Waiting { elapsed_ms } => (0, elapsed_ms),
@@ -529,6 +530,7 @@ pub(super) fn decode_snapshot_meta_body(
 ) -> Result<DecodedSnapshotMeta, WireError> {
     let phase = phase_from_tag(input.get_u8()?)?;
     let round_serial = input.get_u32()?;
+    let rounds_played = input.get_i32()?;
     let match_elapsed_ms = input.get_u32()?;
     let prematch_tag = input.get_u8()?;
     let elapsed_ms = input.get_u32()?;
@@ -597,6 +599,7 @@ pub(super) fn decode_snapshot_meta_body(
         body: SnapshotMeta {
             phase,
             round_serial,
+            rounds_played,
             match_elapsed_ms,
             prematch,
             score_limit,
@@ -1526,6 +1529,8 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         shellshock,
         view_effects,
         menu_commands,
+        lui_client_fields: Vec::new(),
+        lui_notifies: Vec::new(),
         location_selection,
     })
 }

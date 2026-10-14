@@ -49,6 +49,12 @@ impl<'w> FrameWorld<'w> {
         Self { ecs, state_entity }
     }
 
+    pub(crate) fn try_from_world(ecs: &'w mut World) -> Option<Self> {
+        let state_entity = ecs.get_resource::<SimStateEntity>()?.0;
+        ecs.get::<SimState>(state_entity)?;
+        Some(Self { ecs, state_entity })
+    }
+
     pub(crate) fn new(ecs: &'w mut World, state_entity: Entity) -> Self {
         Self { ecs, state_entity }
     }
