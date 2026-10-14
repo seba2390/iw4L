@@ -85,7 +85,8 @@ pub(crate) fn client_natives(
 ) -> Option<sim::script::NativeRegistry> {
     match family {
         FamilyId::T5 => Some(sim::script::NativeRegistry::black_ops_client(server)),
-        FamilyId::Iw4 | FamilyId::Iw5 | FamilyId::T6 | FamilyId::T7 => None,
+        FamilyId::T6 => Some(sim::script::NativeRegistry::black_ops_2_client()),
+        FamilyId::Iw4 | FamilyId::Iw5 | FamilyId::T7 => None,
     }
 }
 

@@ -648,7 +648,7 @@ impl RoundScript {
 pub(crate) const MAX_SCRIPT_ENTITIES: usize = 2048 - 64;
 pub(crate) const MAX_HUD_ELEMS: usize = 1024;
 
-fn typed_key(ty: KeyType, value: &str) -> Value {
+pub(crate) fn typed_key(ty: KeyType, value: &str) -> Value {
     match ty {
         KeyType::Int => Value::Int(super::natives::iw4::atoi(value)),
         KeyType::Float => Value::Float(super::natives::iw4::atof(value) as f32),

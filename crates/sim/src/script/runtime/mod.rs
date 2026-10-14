@@ -11,7 +11,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub(crate) use lifecycle::{
-    CREATE_STRUCT, copy_state, install, install_client, install_level, reset, reset_round,
+    CREATE_STRUCT, STRUCT_INIT, copy_state, install, install_client, install_level, reset,
+    reset_round,
 };
 pub(crate) use state::{MatchScript, RoundScript};
 
@@ -259,6 +260,38 @@ pub(super) fn start_function_now(
         .ok_or_else(|| Fault::at(&location, "no loaded GSC program"))?
         .clone();
     run_thread_now(world, &program, function, &location, receiver, args, now)
+}
+
+/// Runs `name` as the engine runs a function whose return it reads: to its
+/// end, or to its first wait (undefined then, the thread living on).
+pub(crate) fn call_now(
+    world: &mut World,
+    name: &str,
+    receiver: Value,
+    args: Vec<Value>,
+    now: i64,
+) -> Result<Value, Fault> {
+    let (program, function, location) = entry(world, name)?;
+    let mut thread = new_thread(world, &program, function, receiver, args)
+        .map_err(|m| Fault::at(&location, m))?;
+    thread.state = ThreadState::Runnable;
+    let budget = std::mem::replace(
+        &mut world.resource_mut::<RoundScript>().budget,
+        INSTRUCTION_BUDGET,
+    );
+    execute(world, &program, &mut thread, now);
+    world.resource_mut::<RoundScript>().budget = budget;
+    let value = if thread.state == ThreadState::Complete {
+        retire(&mut world.resource_mut::<RoundScript>(), thread.serial);
+        thread.stack.pop().unwrap_or(Value::Undefined)
+    } else {
+        world.spawn(thread);
+        Value::Undefined
+    };
+    match world.resource::<RoundScript>().fault.clone() {
+        Some(fault) => Err(fault),
+        None => Ok(value),
+    }
 }
 
 fn run_thread_now(
@@ -1002,9 +1035,9 @@ fn instruction(
             thread.stack.truncate(frame.stack_base);
             if thread.frames.is_empty() {
                 thread.state = ThreadState::Complete;
-            } else {
-                thread.stack.push(value);
             }
+            // A finished thread keeps its return value for the engine.
+            thread.stack.push(value);
         }
     }
     Ok(())
@@ -1559,21 +1592,28 @@ fn report(world: &mut World, fault: &Fault) {
         "{}:{}:{}",
         fault.location.module, fault.location.line, fault.location.column
     );
+    let is_client = super::host::client_scripts::is_client(world);
     let mut runtime = world.resource_mut::<RoundScript>();
-    let client = runtime.client;
+    let t5_client = runtime.client;
+    let client = t5_client || is_client;
     let hits = runtime
         .errors
         .entry((site.clone(), fault.message.clone()))
         .or_default();
     *hits += 1;
-    if *hits == 1 && client {
+    if *hits == 1 && t5_client {
         diag::warn!(Sim, "csc: client script fault: {fault}");
         return;
     }
     if *hits == 1 {
-        diag::warn!(Sim, "gsc: script runtime error: {fault}");
+        let (vm, kind) = if client {
+            ("csc", "csc_runtime_error")
+        } else {
+            ("gsc", "runtime_error")
+        };
+        diag::warn!(Sim, "{vm}: script runtime error: {fault}");
         diag::script_boundary(
-            "runtime_error",
+            kind,
             &format!(
                 " at={site} function={} fault=\"{}\"",
                 fault.location.function,

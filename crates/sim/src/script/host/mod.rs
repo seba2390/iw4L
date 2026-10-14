@@ -6,6 +6,7 @@ pub(crate) mod actors;
 pub mod args;
 pub mod arrays;
 pub mod client_effects;
+pub(crate) mod client_scripts;
 pub mod controls;
 pub mod entities;
 pub mod entity_damage;

@@ -87,6 +87,41 @@ pub struct ScriptProgram {
     pub dvars: Vec<(String, String)>,
 }
 
+/// The scripts a map's local clients run (Black Ops 2's `.csc`), and how the
+/// client game starts them.
+pub struct ClientScriptProgram {
+    pub program: gsc::Program,
+    /// The map entities the client makes into structs (`createstruct`), each
+    /// with the keys it sets and their types, in map order.
+    pub structs: Vec<Vec<(String, KeyType, String)>>,
+    /// The actor types' precache functions, each with the index the engine
+    /// passes it, run as the client game starts.
+    pub precaches: Vec<(String, i32)>,
+    /// The functions the client game runs on level as it starts, in order.
+    pub starts: Vec<String>,
+    /// The callbacks the client game calls itself.
+    pub callbacks: ClientScriptCallbacks,
+}
+
+/// The script functions a client game calls on its own events.
+#[derive(Default)]
+pub struct ClientScriptCallbacks {
+    /// `(clientnum)` on level when a local client connects.
+    pub local_client_connect: Option<String>,
+    /// `(localclientnum)` on a player entity the client first sees.
+    pub player_spawned: Option<String>,
+    /// `(localclientnum)` on another entity the client first sees.
+    pub entity_spawned: Option<String>,
+    /// `(localclientnum, entity)` on level when an entity leaves the client's view.
+    pub entity_shutdown: Option<String>,
+    /// `(clientnum, system, state)` on level when a client system's state changes.
+    pub state_change: Option<String>,
+    /// `(number)` on level when the server starts an exploder on the clients.
+    pub activate_exploder: Option<String>,
+    /// `(number)` on level when the server stops one.
+    pub deactivate_exploder: Option<String>,
+}
+
 /// The type of a map entity key's value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyType {
@@ -115,6 +150,16 @@ pub trait GameScripts: Sync {
 
     /// The functions the game's client engine calls in its client scripts.
     fn client_callbacks(&self) -> Option<ClientCallbacks> {
+        None
+    }
+
+    /// The compiled client scripts a map's local clients run, when the game
+    /// has them (Black Ops 2's `.csc`).
+    fn compiled_client_program(
+        &self,
+        _request: &ScriptRequest<'_>,
+        _sources: &dyn gsc::SourceResolver,
+    ) -> Option<Rule<ClientScriptProgram>> {
         None
     }
 

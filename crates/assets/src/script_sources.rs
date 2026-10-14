@@ -53,10 +53,15 @@ impl ScriptSources {
         self.modules.get(name).map(Vec::as_slice)
     }
 
-    /// A compiled server module (`maps/mp/x.gsc` is read as `maps/mp/x`).
+    /// A compiled server module (`maps/mp/x.gsc` is read as `maps/mp/x`); a
+    /// client module keeps its extension (`clientscripts/mp/x.csc`), as a
+    /// client module may share its name with a server one.
     pub(crate) fn capture_module(&mut self, name: &str, bytes: Vec<u8>) {
-        if let Some(module) = normalize(name).strip_suffix(".gsc") {
+        let name = normalize(name);
+        if let Some(module) = name.strip_suffix(".gsc") {
             self.modules.insert(module.to_owned(), bytes);
+        } else if name.ends_with(".csc") {
+            self.modules.insert(name, bytes);
         }
     }
 

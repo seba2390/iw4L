@@ -16,6 +16,9 @@ pub(crate) type UseRule = fn(&mut World, &[(u32, u64)]) -> Vec<(u64, u64)>;
 /// A game's engine fields a player's entity has when it connects, set on
 /// the player object before the connect callback runs.
 pub(crate) type ConnectHook = fn(&mut World, u64);
+/// A game's client game: what its client scripts see of the server's world
+/// each tick, before they run (the client's world).
+pub(crate) type ClientSync = fn(&mut World);
 
 /// A game's own engine notifies for its players' missiles.
 #[derive(Clone, Copy)]
@@ -45,6 +48,8 @@ pub struct NativeRegistry(
     Option<UseRule>,
     Vec<ConnectHook>,
     Option<MissileRule>,
+    Option<ClientSync>,
+    Option<ClientSync>,
 );
 impl Default for NativeRegistry {
     /// The engine services alone: no game's own natives.
@@ -61,6 +66,8 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
+            None,
             None,
         )
     }
@@ -79,6 +86,8 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
+            None,
             None,
         );
         registry.register(Namespace::Function, "isdefined", |world, _, args| {
@@ -165,8 +174,26 @@ impl NativeRegistry {
             None,
             Vec::new(),
             None,
+            None,
+            None,
         );
         natives::t6::register(&mut registry);
+        registry
+    }
+
+    /// Black Ops 2's client builtins, for its client scripts.
+    pub fn black_ops_2_client() -> Self {
+        let mut registry = Self(
+            BTreeMap::new(),
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            None,
+            None,
+            None,
+        );
+        natives::t6::client::register(&mut registry);
         registry
     }
 
@@ -177,6 +204,8 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
+            None,
             None,
         );
         natives::t7::register(&mut registry);
@@ -224,6 +253,24 @@ impl NativeRegistry {
 
     pub(crate) fn missile_rule(&self) -> Option<MissileRule> {
         self.5
+    }
+
+    /// The client game a client registry's scripts run in.
+    pub(crate) fn on_client_sync(&mut self, sync: ClientSync) {
+        self.6 = Some(sync);
+    }
+
+    pub(crate) fn client_sync(&self) -> Option<ClientSync> {
+        self.6
+    }
+
+    /// What a client registry's game shows of its own after its scripts ran.
+    pub(crate) fn on_client_present(&mut self, present: ClientSync) {
+        self.7 = Some(present);
+    }
+
+    pub(crate) fn client_present(&self) -> Option<ClientSync> {
+        self.7
     }
 
     pub fn register(&mut self, namespace: Namespace, name: &str, native: Native) {

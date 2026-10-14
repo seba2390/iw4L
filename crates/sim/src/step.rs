@@ -48,6 +48,20 @@ impl StepRequest {
             output: None,
         }
     }
+
+    /// This frame as a client's script runtime steps it: its tick and reason
+    /// alone.
+    pub(crate) fn mirror(&self) -> Self {
+        Self {
+            tick: self.tick,
+            input: TickInput::default(),
+            msec: self.msec,
+            reason: self.reason,
+            action_results: Vec::new(),
+            fire_results: Vec::new(),
+            output: None,
+        }
+    }
 }
 
 pub(crate) fn schedule() -> Schedule {
@@ -72,6 +86,7 @@ pub(crate) fn schedule() -> Schedule {
                 run_entity_types_system,
                 dispatch_touches_system,
                 crate::script::sync_engine_events,
+                crate::script::host::client_scripts::advance,
                 finalize_system,
                 crate::script::host::natives::iw4::deliver_local_presentation_dvars,
                 publish_snapshot_system,

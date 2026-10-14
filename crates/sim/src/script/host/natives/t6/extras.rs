@@ -247,13 +247,23 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
 
     // gsc_activateclientexploder / deactivateclientexploder: the engine sends
-    // the exploder's number to every client (`t6.fx.client_exploders`: not sent).
-    for name in ["activateclientexploder", "deactivateclientexploder"] {
-        registry.register(Function, name, |_, _, args| {
-            super::int(args, 0)?;
-            Ok(Value::Undefined)
-        });
-    }
+    // the exploder's number to every client, negated to stop it.
+    registry.register(Function, "activateclientexploder", |world, _, args| {
+        let number = super::int(args, 0)?;
+        world
+            .get_resource_or_insert_with(super::ClientExploders::default)
+            .0
+            .push(number);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "deactivateclientexploder", |world, _, args| {
+        let number = super::int(args, 0)?;
+        world
+            .get_resource_or_insert_with(super::ClientExploders::default)
+            .0
+            .push(-number);
+        Ok(Value::Undefined)
+    });
     // gsc_setculldist: the clients' draw distance (`t6.vision.fog`: not sent).
     registry.register(Function, "setculldist", |_, _, args| {
         number(args.first()).ok_or("setculldist expects a distance")?;

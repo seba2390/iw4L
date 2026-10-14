@@ -434,6 +434,16 @@ impl SimWorld {
         crate::script::client::install(&mut self.ecs, program, natives, entries, callbacks, level)
     }
 
+    /// Installs the compiled client scripts a local client runs beside the
+    /// server's.
+    pub fn install_compiled_client_scripts(
+        &mut self,
+        client: game_api::ClientScriptProgram,
+        natives: crate::script::NativeRegistry,
+    ) -> Result<(), crate::script::Fault> {
+        crate::script::host::client_scripts::install(&mut self.ecs, client, natives)
+    }
+
     pub fn set_expected_players(&mut self, count: usize) {
         if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
             runtime.expected_players = count;
