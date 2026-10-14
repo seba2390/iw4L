@@ -125,7 +125,7 @@ impl DownedRules {
 
 /// What a failed level does: `missionfailed()` tells every client and, once
 /// a delay has passed, loads the level again.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FailedLevelRules {
     /// The client dvar every client is sent, with its value.
     pub client_dvar: (&'static str, &'static str),
@@ -133,13 +133,20 @@ pub struct FailedLevelRules {
     pub reload_delay_ms: i64,
     /// The death delay added to it.
     pub death_delay_ms: i64,
+    /// The screen blur target ramped over `death_delay_ms`.
+    pub blur_target: f32,
+    /// The server dvar whose value is sent to every client as the dead
+    /// quote, when set.
+    pub deadquote_dvar: &'static str,
+    /// The local sound played on every client when a dead quote is sent.
+    pub death_sound: &'static str,
     /// What failing does that is not run.
     pub unrun: Option<&'static Unknown>,
 }
 
 /// What a game's mode asks of the code around its scripts. Staged for the
 /// match: the simulation reads it from its bootstrap, the HUD as a resource.
-#[derive(bevy_ecs::resource::Resource, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(bevy_ecs::resource::Resource, Clone, Copy, Debug, PartialEq)]
 pub struct ModeRules {
     /// The level notify that ends the warmup.
     pub play_starts_on: &'static str,

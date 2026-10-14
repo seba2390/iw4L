@@ -30,8 +30,9 @@ A zombies player goes
 down on every lethal hit and the zombie scripts run last stand, solo Quick
 Revive self-revive (`m1911_upgraded_zm` in hand), `startrevive`/`stoprevive`
 and game over (`t5.match.last_stand` closed); a solo
-game over fails the level as Black Ops does and Kino loads again
-(`t5.match.level_failed`: no save games, no client fade-out). There is
+game over fails the level as Black Ops does, blurs the view to 32 over the
+death delay, draws any `ui_deadquote` (`CG_DEADQUOTE`), and reloads Kino
+(`t5.match.level_failed`: no save games, timescale ramp or sound-mixer fade). There is
 no code-drawn HUD yet (`t5.hud.code_hud`); Black Ops' HUD menus (weapon
 info, dpad, points column) and the zombie scripts' hud elems (round chalk and intro,
 point popups, game over) are drawn by its own rules, and there are no

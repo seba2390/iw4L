@@ -97,10 +97,13 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         client_dvar: ("hud_missionFailed", "1"),
         reload_delay_ms: 1000,
         death_delay_ms: 4000,
+        blur_target: 32.0,
+        deadquote_dvar: "ui_deadquote",
+        death_sound: "death",
         unrun: Some(unknown!(
             "t5.match.level_failed",
-            "a failed level loads afresh instead of restoring its level-start save, counts its delay on the match clock, and runs none of the client's fade-out: the menu event, the blur to 32 over the death delay, the timed fade from 1 to 0.1, the cleared timers, and the dead quote with its death sound",
-            "save games in the runtime (Black Ops saves the level at its start), and Black Ops' client game commands for blur, fades and the dead quote"
+            "a failed level loads afresh instead of restoring its level-start save, counts its delay on the match clock without ramping com_codeTimeScale from 1 to 0.1, and does not fade out the sound mixer over 2 s",
+            "save games in the runtime (Black Ops saves the level at its start), and Black Ops' client timescale ramp and sound-queue fade"
         )),
     }),
     bullet_mask: None,

@@ -692,6 +692,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     mode: Option<Res<'w, game_api::ModeRules>>,
     hint_latch: Local<'s, crate::t5_hud::T5HintLatch>,
     score_latch: Local<'s, crate::t5_hud::T5ScoreLatch>,
+    deadscreen_latch: Local<'s, crate::t5_hud::T5DeadscreenLatch>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -804,9 +805,14 @@ pub(crate) fn update_weaponbar(
             })
             .collect();
         scores.sort_by_key(|&(idx, _)| idx);
+        let dvars = snap.meta.script_dvars(local.0);
+        let deadquote_start_ms =
+            client_input
+                .deadscreen_latch
+                .update(dvars, client_input.ui_dvars.as_deref(), ms);
         let state = crate::t5_hud::T5HudState {
             ms,
-            dvars: snap.meta.script_dvars(local.0),
+            dvars,
             ui_dvars: client_input.ui_dvars.as_deref(),
             zombies: true,
             input: client_input.input.as_deref(),
@@ -821,6 +827,7 @@ pub(crate) fn update_weaponbar(
             hint,
             local_client: local.0.0 as usize,
             scores,
+            deadquote_start_ms,
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,
