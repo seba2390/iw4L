@@ -629,9 +629,15 @@ fn publish_loop_sounds(world: &mut World) {
             )
         })
         .collect();
+    let client_loops = crate::script::client::loop_rows(world);
     let mut frame = FrameWorld::from_world(world);
     let rows = placed
         .into_iter()
+        .chain(
+            client_loops
+                .into_iter()
+                .map(|(owner, alias, origin)| (owner, Arc::from(alias), origin, None)),
+        )
         .map(
             |(owner, alias, origin, snd_ent)| crate::world_objects::DestructibleLoopSound {
                 snd_ent,

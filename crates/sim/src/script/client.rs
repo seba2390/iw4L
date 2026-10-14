@@ -105,12 +105,95 @@ pub(crate) struct ClientSound {
     pub(crate) origin: [f32; 3],
 }
 
-/// What the client VM's frame asks of the client: sounds to play.
+/// What a client loop sound plays from.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum LoopSource {
+    /// A fake entity (`playloopsound(local, fakeent, alias)`).
+    Fake(i32),
+    /// A client entity (`ent playloopsound(alias)`).
+    Entity(u64),
+    /// A point emitter (`soundloopemitter(alias, origin)`), by its alias
+    /// and origin's bits.
+    Emitter(String, [u32; 3]),
+}
+
+/// A loop sound the client plays until it stops it.
+#[derive(Clone, Debug)]
+pub(crate) struct ClientLoop {
+    pub(crate) alias: String,
+    /// The loop's own number, which names it to the audio while it plays.
+    pub(crate) serial: u32,
+}
+
+/// What the client VM's frame asks of the client: sounds to play, and the
+/// loops it plays.
 #[derive(Resource, Default)]
 pub(crate) struct ClientOutput {
     pub(crate) sounds: Vec<ClientSound>,
     /// The next sound's id, as `playsound` answers it.
     pub(crate) next_sound: i32,
+    pub(crate) loops: std::collections::BTreeMap<LoopSource, ClientLoop>,
+    next_loop: u32,
+}
+
+impl ClientOutput {
+    pub(crate) fn start_loop(&mut self, source: LoopSource, alias: String) {
+        if self.loops.get(&source).is_some_and(|l| l.alias == alias) {
+            return;
+        }
+        let serial = self.next_loop & 0x0fff_ffff;
+        self.next_loop = self.next_loop.wrapping_add(1);
+        self.loops.insert(source, ClientLoop { alias, serial });
+    }
+}
+
+/// The client's fake entities (`spawnfakeent`): sound emitters of its own,
+/// by handle.
+#[derive(Resource, Default)]
+pub(crate) struct FakeEnts {
+    pub(crate) next: i32,
+    pub(crate) origins: std::collections::BTreeMap<i32, [f32; 3]>,
+}
+
+/// Script loop sound owners of the client's loops; the server's script
+/// entities' loops use lower numbers.
+const CLIENT_LOOP_OWNER: u32 = 0x4000_0000;
+
+/// The loops the local client plays, where they play from now.
+pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String, [f32; 3])> {
+    let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
+        return Vec::new();
+    };
+    let world = &mut client.world;
+    let loops: Vec<(LoopSource, ClientLoop)> = world
+        .resource::<ClientOutput>()
+        .loops
+        .iter()
+        .map(|(source, sound)| (source.clone(), sound.clone()))
+        .collect();
+    let fakes = world
+        .get_resource::<FakeEnts>()
+        .map(|fakes| fakes.origins.clone())
+        .unwrap_or_else(Default::default);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    loops
+        .iter()
+        .filter_map(|(source, sound)| {
+            let origin = match source {
+                LoopSource::Fake(handle) => *fakes.get(handle)?,
+                LoopSource::Entity(id) => match runtime.object_field(*id, "origin") {
+                    Value::Vector(origin) => origin,
+                    _ => return None,
+                },
+                LoopSource::Emitter(_, bits) => bits.map(f32::from_bits),
+            };
+            Some((
+                crate::ScriptModelId::from_wire(CLIENT_LOOP_OWNER | sound.serial),
+                sound.alias.clone(),
+                origin,
+            ))
+        })
+        .collect()
 }
 
 /// The client VM: its world, and the entries it starts with once the
