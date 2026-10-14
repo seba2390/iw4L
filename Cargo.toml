@@ -61,6 +61,7 @@ members = [
     "crates/math_iw4",
     "crates/movement_iw4",
     "crates/movement_t5",
+    "crates/movement_t6",
     "crates/net",
     "crates/iw4l-master",
     "crates/perf",
@@ -180,6 +181,7 @@ math_iw4 = { path = "crates/math_iw4" }
 master_protocol = { path = "crates/master_protocol" }
 movement_iw4 = { path = "crates/movement_iw4" }
 movement_t5 = { path = "crates/movement_t5" }
+movement_t6 = { path = "crates/movement_t6" }
 net = { path = "crates/net" }
 perf = { path = "crates/perf" }
 playerstate_iw4 = { path = "crates/playerstate_iw4" }

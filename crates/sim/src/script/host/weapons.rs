@@ -321,7 +321,7 @@ fn raising(state: i32) -> bool {
 }
 
 fn notify_weapon_changes(world: &mut World) {
-    if crate::game_move::rules(&FrameWorld::from_world(world)).is_some() {
+    if crate::game_move::game_weapons(&FrameWorld::from_world(world)) {
         notify_game_weapon_changes(world);
         return;
     }
