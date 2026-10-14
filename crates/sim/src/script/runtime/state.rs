@@ -99,6 +99,8 @@ pub(crate) struct RoundScript {
     pub(crate) planes: BTreeMap<u64, host::vehicles::Plane>,
     pub(crate) use_selected: BTreeMap<u32, u64>,
     pub(crate) t5: host::natives::t5::T5State,
+    /// What the server's scripts send its clients' scripts this frame.
+    pub(crate) client_messages: Vec<crate::script::client::ClientMessage>,
     pub(crate) restart: Option<Arc<host::restart::RestartPlan>>,
     pub(crate) finished: bool,
     pub(crate) pending_restart: Option<bool>,
@@ -187,6 +189,7 @@ impl RoundScript {
             planes: Default::default(),
             use_selected: Default::default(),
             t5: Default::default(),
+            client_messages: Default::default(),
             restart: Default::default(),
             finished: Default::default(),
             pending_restart: Default::default(),

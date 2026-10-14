@@ -857,6 +857,33 @@ fn register_script(registry: &mut NativeRegistry) {
         });
         Ok(Value::Int(id as i32))
     });
+    // `ActivateClientExploder(id)` / `DeactivateClientExploder(id)`: sent to
+    // every client, a stop as the negated id.
+    registry.register(Function, "activateclientexploder", |world, _, args| {
+        let id = int(args, 0)?;
+        world
+            .resource_mut::<RoundScript>()
+            .client_messages
+            .push(crate::script::client::ClientMessage::Exploder(id));
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "deactivateclientexploder", |world, _, args| {
+        let id = int(args, 0)?;
+        world
+            .resource_mut::<RoundScript>()
+            .client_messages
+            .push(crate::script::client::ClientMessage::Exploder(-id));
+        Ok(Value::Undefined)
+    });
+    // `ClientSysSetState(index, state)`: a registered client system's new
+    // state, sent to every client (the method: to that player).
+    registry.register(Function, "clientsyssetstate", |world, _, args| {
+        client_sys_set_state(world, None, args)
+    });
+    registry.register(Method, "clientsyssetstate", |world, receiver, args| {
+        let client = player_id(world, receiver)?;
+        client_sys_set_state(world, Some(client), args)
+    });
     registry.register(Function, "playsoundatposition", |world, _, args| {
         let alias = string(args, 0)?;
         let origin = vector(args, 1)?;
@@ -1296,7 +1323,6 @@ fn register_entity(registry: &mut NativeRegistry) {
         "setrevivehintstring",
         "connectpaths",
         "disconnectpaths",
-        "clientsyssetstate",
         "sendfaceevent",
     );
 }
@@ -1349,7 +1375,6 @@ fn register_platform(registry: &mut NativeRegistry) {
         "setscoreboardcolumns",
         "setbombtimer",
         "setvolfog",
-        "clientsyssetstate",
         "reviveobituary",
         "artilleryiconlocation",
         "setteamsatellite",
@@ -1444,4 +1469,34 @@ fn register_refused(registry: &mut NativeRegistry) {
         "throwbuttonpressed", "actionslotonebuttonpressed", "depthinwater",
         "devaddpitch", "devaddroll", "devaddyaw"
         => "not simulated");
+}
+
+fn client_sys_set_state(
+    world: &mut World,
+    client: Option<u32>,
+    args: &[Value],
+) -> Result<Value, String> {
+    let index = int(args, 0)?;
+    if !(0..=8).contains(&index) {
+        return Err(format!(
+            "ClientSysSetState - state index ({index}) out of bounds (0 - 8)"
+        ));
+    }
+    let Some(system) = t5(world).client_systems.get(index as usize).cloned() else {
+        return Err(format!(
+            "ClientSysSetState - state index ({index}) unregistered.  Use ClientSysRegister first."
+        ));
+    };
+    let state: Arc<str> = match args.get(1) {
+        None | Some(Value::Undefined) => "".into(),
+        Some(_) => string(args, 1)?.into(),
+    };
+    world.resource_mut::<RoundScript>().client_messages.push(
+        crate::script::client::ClientMessage::SystemState {
+            client,
+            system,
+            state,
+        },
+    );
+    Ok(Value::Undefined)
 }
