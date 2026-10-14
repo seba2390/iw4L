@@ -204,6 +204,8 @@ pub(crate) struct ScriptEntity {
     pub kind: EntityKind,
     pub classname: Arc<str>,
     pub cylinder: Option<(f32, f32)>,
+    pub box_half: Option<[f32; 3]>,
+    pub box_use: bool,
     pub brush: Option<u32>,
     pub trigger_model: Option<u32>,
     pub hidden: bool,
@@ -314,6 +316,8 @@ impl RoundScript {
                 kind: kind.clone(),
                 classname: classname.into(),
                 cylinder: None,
+                box_half: None,
+                box_use: false,
                 brush: None,
                 trigger_model: None,
                 hidden: false,
@@ -358,6 +362,8 @@ impl RoundScript {
                 kind: EntityKind::Player,
                 classname: "player".into(),
                 cylinder: None,
+                box_half: None,
+                box_use: false,
                 brush: None,
                 trigger_model: None,
                 hidden: false,
@@ -521,6 +527,8 @@ impl RoundScript {
             };
             let mut radius = None;
             let mut height = None;
+            let mut width = None;
+            let mut length = None;
             let mut cmodel = None;
             let mut trigger_model = None;
             let field = |key: &str| field_name.map_or_else(|| key.to_owned(), |name| name(key));
@@ -529,6 +537,18 @@ impl RoundScript {
                 if key == "model" {
                     cmodel = value.strip_prefix('*').and_then(|n| n.parse::<u32>().ok());
                     trigger_model = value.strip_prefix('?').and_then(|n| n.parse::<u32>().ok());
+                }
+                if key == "width" {
+                    width = Some(super::natives::iw4::atof(value) as f32);
+                } else if key == "length" {
+                    length = Some(super::natives::iw4::atof(value) as f32);
+                } else if key == "angle" {
+                    self.set_object_field(
+                        id,
+                        &field("angles"),
+                        Value::Vector([0.0, super::natives::iw4::atof(value) as f32, 0.0]),
+                    );
+                    continue;
                 }
                 // A game that names fields by hash lists its keys' types
                 // itself (Black Ops 3's executable); they come first.
@@ -576,7 +596,7 @@ impl RoundScript {
                     | "accumulate" => Value::Int(super::natives::iw4::atoi(value)),
                     // T5 compares exploder numbers as ints.
                     "script_exploder" if t5 => Value::Int(super::natives::iw4::atoi(value)),
-                    "speed" | "radius" | "height" | "wait" => {
+                    "speed" | "radius" | "height" | "wait" | "width" | "length" => {
                         let number = super::natives::iw4::atof(value) as f32;
                         match key.as_str() {
                             "radius" => radius = Some(number),
@@ -593,9 +613,22 @@ impl RoundScript {
                 };
                 self.set_object_field(id, &field(&key), value);
             }
+            if classname == "trigger_box_use" {
+                self.set_object_field(id, &field("classname"), Value::string("trigger_box"));
+            }
             if let Some(entity) = self.entities.get_mut(&id) {
-                if classname == "trigger_radius" {
+                if matches!(classname, "trigger_radius" | "trigger_radius_use") {
                     entity.cylinder = Some((radius.unwrap_or(0.0), height.unwrap_or(0.0)));
+                } else if matches!(classname, "trigger_box" | "trigger_box_use") {
+                    entity.box_half = Some([
+                        width.unwrap_or(0.0) * 0.5,
+                        length.unwrap_or(0.0) * 0.5,
+                        height.unwrap_or(0.0) * 0.5,
+                    ]);
+                    entity.box_use = classname == "trigger_box_use";
+                    if entity.box_use {
+                        entity.classname = "trigger_box".into();
+                    }
                 } else {
                     entity.brush = cmodel;
                     entity.trigger_model = trigger_model;

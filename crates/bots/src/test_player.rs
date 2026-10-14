@@ -247,8 +247,8 @@ pub(crate) struct TestPlayer {
     revive_until_ms: i32,
     /// The ride test stepped onto the bus.
     boarded: bool,
-    /// The goto aid went to its zone.
-    went: bool,
+    /// How many `IW4L_TEST_GOTO` zones it has gone to.
+    went: usize,
     next_ride_log_ms: i32,
     /// When it last saw an actor to aim at.
     last_seen_ms: Option<i32>,
@@ -429,34 +429,53 @@ fn stand_point(
         let (off, room) = if site.touch
             || matches!(
                 site.kind,
-                UseKind::WallBuy | UseKind::Box | UseKind::Rebuild | UseKind::Build | UseKind::Take
+                UseKind::WallBuy | UseKind::Box | UseKind::Rebuild
             ) {
             (STAND_OFF_TOUCH, TOUCH_ROOM)
+        } else if matches!(site.kind, UseKind::Build | UseKind::Take) {
+            (24.0, TOUCH_ROOM)
         } else {
             (STAND_OFF, STAND_ROOM)
         };
-        let step = (flat - off).max(0.0);
-        let towards = [
-            (center[0] - node[0]) / flat.max(1.0),
-            (center[1] - node[1]) / flat.max(1.0),
-        ];
+        let towards = if flat >= 1.0 {
+            [(center[0] - node[0]) / flat, (center[1] - node[1]) / flat]
+        } else {
+            [0.0, 1.0]
+        };
+        let (step, dir) = if site.weapon.as_deref() == Some("sloth") {
+            let yaw = site.angles[1].to_radians();
+            let goal = [
+                center[0] + yaw.cos() * 44.0,
+                center[1] + yaw.sin() * 44.0,
+                center[2],
+            ];
+            let to_goal = flat_distance(node, goal);
+            if to_goal >= 1.0 {
+                (
+                    to_goal,
+                    [(goal[0] - node[0]) / to_goal, (goal[1] - node[1]) / to_goal],
+                )
+            } else {
+                (0.0, [0.0, 1.0])
+            }
+        } else if flat >= off {
+            (flat - off, towards)
+        } else {
+            (off - flat, [-towards[0], -towards[1]])
+        };
         let waist = node[2] + WAIST_HEIGHT;
         let reach = clear_run(
             world,
             id,
             [node[0], node[1], waist],
             [
-                node[0] + towards[0] * (step + room),
-                node[1] + towards[1] * (step + room),
+                node[0] + dir[0] * (step + room),
+                node[1] + dir[1] * (step + room),
                 waist,
             ],
         );
         let step = step.min((reach - room).max(0.0));
-        let above = [
-            node[0] + towards[0] * step,
-            node[1] + towards[1] * step,
-            waist,
-        ];
+        let above = [node[0] + dir[0] * step, node[1] + dir[1] * step, waist];
         let drop = clear_run(
             world,
             id,
@@ -496,6 +515,21 @@ fn next_scenario(
             count(UseKind::Power),
             world.enabled_player_volume_count()
         );
+        let buildables: Vec<String> = sites
+            .iter()
+            .filter(|site| matches!(site.kind, UseKind::Piece | UseKind::Build))
+            .map(|site| {
+                format!(
+                    "{:?}:{}@{}",
+                    site.kind,
+                    site.weapon.as_deref().unwrap_or("-"),
+                    fmt_point(site.origin)
+                )
+            })
+            .collect();
+        if !buildables.is_empty() {
+            diag::info!(Sim, "test player: buildable sites {buildables:?}");
+        }
     }
     // In order: one it cannot pay for yet waits, and so do the rest.
     if let Some(&kind) = test.pending.first() {
@@ -507,8 +541,13 @@ fn next_scenario(
             // `IW4L_TEST_BUILD=<equipname>`: that buildable's parts and table.
             .filter(|site| {
                 !matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take)
-                    || std::env::var("IW4L_TEST_BUILD")
-                        .is_ok_and(|wanted| site.weapon.as_deref() == Some(wanted.as_str()))
+                    || std::env::var("IW4L_TEST_BUILD").is_ok_and(|wanted| {
+                        wanted.split(',').any(|w| {
+                            site.weapon.as_deref() == Some(w.trim())
+                                || matches!(kind, UseKind::Build | UseKind::Take)
+                                    && site.weapon.as_deref() == Some("open_table")
+                        })
+                    })
             })
             // Of the perks, Quick Revive: the one a solo player's down asks for.
             .filter(|site| {
@@ -523,7 +562,13 @@ fn next_scenario(
         let offered = of_kind.len();
         let filed: Vec<String> = of_kind
             .iter()
-            .map(|site| site.zone.clone().unwrap_or_else(|| "-".into()))
+            .map(|site| {
+                format!(
+                    "{}@{}",
+                    site.zone.as_deref().unwrap_or("-"),
+                    fmt_point(site.origin)
+                )
+            })
             .collect();
         // A buildable's part or table in an enabled zone is gone to: standing
         // there makes its zone active, as walking there would.
@@ -542,7 +587,23 @@ fn next_scenario(
                     "test player: use {kind:?}: none in an active zone yet (filed under {filed:?})"
                 );
             }
-            test.pending.rotate_left(1);
+            if kind != UseKind::Piece {
+                test.pending.rotate_left(1);
+            }
+            if (kind == UseKind::Piece
+                || test
+                    .pending
+                    .iter()
+                    .all(|k| test.deferred.contains(k) || sites.iter().all(|s| s.kind != *k)))
+                && let Some(blocker) = [UseKind::Door, UseKind::Debris].into_iter().find(|k| {
+                    sites.iter().any(|s| {
+                        s.kind == *k
+                            && stand_point(world, id, s, world.use_site_center(s)).is_some()
+                    })
+                })
+            {
+                test.pending.insert(0, blocker);
+            }
             return None;
         }
         // The power lever a buildable makes waits for its build.
@@ -565,12 +626,30 @@ fn next_scenario(
             }
             return None;
         }
-        // The cheapest, and of those the nearest.
+        // The cheapest, and of those the nearest (nearest first when
+        // building with points to spare; ordered by IW4L_TEST_BUILD list).
+        let build_order: Vec<String> = std::env::var("IW4L_TEST_BUILD")
+            .ok()
+            .map(|s| s.split(',').map(|w| w.trim().to_owned()).collect())
+            .unwrap_or_else(Vec::new);
+        let build_rank = |site: &UseSite| {
+            site.weapon
+                .as_deref()
+                .and_then(|w| build_order.iter().position(|b| b == w))
+                .unwrap_or(build_order.len())
+        };
+        let build_mode = !build_order.is_empty() && score >= 2000;
         of_kind.sort_by(|a, b| {
-            a.cost
-                .unwrap_or(0)
-                .cmp(&b.cost.unwrap_or(0))
-                .then(distance(origin, a.origin).total_cmp(&distance(origin, b.origin)))
+            build_rank(a).cmp(&build_rank(b)).then_with(|| {
+                if build_mode {
+                    distance(origin, a.origin).total_cmp(&distance(origin, b.origin))
+                } else {
+                    a.cost
+                        .unwrap_or(0)
+                        .cmp(&b.cost.unwrap_or(0))
+                        .then(distance(origin, a.origin).total_cmp(&distance(origin, b.origin)))
+                }
+            })
         });
         let Some((site, center, stand)) = of_kind.iter().find_map(|site| {
             let center = world.use_site_center(site);
@@ -661,7 +740,11 @@ pub(crate) fn drive_test_player(
         .0
         .living_actors()
         .into_iter()
-        .filter(|actor| world.0.object_field_text(actor.id, "team") != "allies")
+        .filter(|actor| {
+            world.0.object_field_text(actor.id, "team") != "allies"
+                && world.0.object_field_text(actor.id, "script_noteworthy")
+                    != "sloth_zombie_spawner"
+        })
         .collect();
     let laststand = world.0.script_int(ScriptOwner::Player(id), "laststand");
     let eye = [
@@ -815,14 +898,14 @@ pub(crate) fn drive_test_player(
         return;
     }
     let since_ms = *test.alive_since_ms.get_or_insert(clock.time_ms);
-    // `IW4L_TEST_GOTO=<zone>`: once, before the use test starts, it goes to
-    // the path node nearest the zone's middle that stands in the zone, so
-    // the zone and those beside it come alive.
-    if !test.went
-        && clock.time_ms - since_ms >= USE_START_MS / 2
-        && let Ok(zone) = std::env::var("IW4L_TEST_GOTO")
+    // `IW4L_TEST_GOTO=<zone>[,<zone>…]`: goes to the path node nearest each
+    // zone's middle that stands in the zone, so the zone and those beside it
+    // come alive.
+    if clock.time_ms - since_ms >= USE_START_MS / 2 + (test.went as i32) * 15_000
+        && let Ok(zones) = std::env::var("IW4L_TEST_GOTO")
+        && let Some(zone) = zones.split(',').nth(test.went).map(str::trim)
     {
-        test.went = true;
+        test.went += 1;
         let inside: Vec<[f32; 3]> = world
             .0
             .path_node_origins()
@@ -830,7 +913,7 @@ pub(crate) fn drive_test_player(
             .filter(|node| {
                 world
                     .0
-                    .in_zone_player_volume([node[0], node[1], node[2] + 1.0], &zone)
+                    .in_zone_player_volume([node[0], node[1], node[2] + 1.0], zone)
             })
             .collect();
         let middle = inside.iter().fold([0.0f32; 3], |sum, node| {
@@ -1268,7 +1351,7 @@ pub(crate) fn drive_test_player(
             TraceOutcome::Hit { end, .. } => distance(end, aim) <= HIT_SLACK,
             _ => false,
         };
-        seen.then_some((aim, outcome))
+        seen.then_some((aim, outcome, actor.id))
     });
 
     // Nothing in sight for a while with actors left (an inert zombie lying
@@ -1309,7 +1392,7 @@ pub(crate) fn drive_test_player(
             }
         }
     }
-    if let Some((_, outcome)) = target {
+    if let Some((_, outcome, _)) = target {
         let line = match outcome {
             TraceOutcome::Hit {
                 collider: ColliderId::EntityDObjBone { .. },
@@ -1320,7 +1403,9 @@ pub(crate) fn drive_test_player(
         };
         test.lines[line] += 1;
     }
-    let target = target.map(|(aim, _)| aim);
+    let can_melee = target
+        .is_some_and(|(_, _, actor_id)| world.0.object_field_text(actor_id, "cant_melee") != "1");
+    let target = target.map(|(aim, _, _)| aim);
     aim_cmd(&mut cmd, target.map_or(ps.viewangles, |aim| look(eye, aim)));
     if let Ok(throw_arg) = std::env::var("IW4L_TEST_THROW") {
         let named = (throw_arg != "1").then_some(throw_arg.as_str());
@@ -1368,8 +1453,9 @@ pub(crate) fn drive_test_player(
         }
     }
     test.pressed = !test.pressed;
-    if test.pressed {
-        if target.is_some_and(|aim| distance(eye, aim) <= KNIFE_REACH) {
+    let hold_fire = wielding && std::env::var("IW4L_TEST_PLACE").is_err();
+    if test.pressed || hold_fire {
+        if !hold_fire && can_melee && target.is_some_and(|aim| distance(eye, aim) <= KNIFE_REACH) {
             cmd.buttons |= buttons::MELEE_CHARGE;
             test.knifes += 1;
         } else if meta.ammo_clip == 0 {

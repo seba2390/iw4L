@@ -471,9 +471,182 @@ fn fraction_start_ammo(
 #[derive(Resource, Default)]
 struct FuelAmmo(BTreeMap<(u32, String), i32>);
 
+#[derive(Resource, Default)]
+struct WeaponSpin(BTreeMap<u32, f32>);
+
+#[derive(Resource, Default)]
+struct WeaponHeat(BTreeMap<(u32, String), (f32, bool)>);
+
+fn add_heat(world: &mut World, client: u32, def: &ZoneWeapon, delta: f32) {
+    let key = (client, def.name.to_ascii_lowercase());
+    let mut table = world.get_resource_or_insert_with(WeaponHeat::default);
+    let (heat, overheating) = table.0.entry(key).or_insert((0.0, false));
+    *heat += delta;
+    if *heat >= 100.0 {
+        *heat = 100.0;
+        *overheating = true;
+    }
+    if *heat <= 0.0 && *heat != 0.0 {
+        *heat = 0.0;
+    }
+    if *heat <= def.overheat_end_val || !def.overheat_weapon {
+        *overheating = false;
+    }
+}
+
+fn is_overheating(world: &World, client: u32, def: &ZoneWeapon) -> bool {
+    if !def.overheat_weapon {
+        return false;
+    }
+    world
+        .get_resource::<WeaponHeat>()
+        .and_then(|h| h.0.get(&(client, def.name.to_ascii_lowercase())).copied())
+        .is_some_and(|(heat, over)| over || heat >= 100.0)
+}
+
+fn heat_value(world: &World, client: u32, def: &ZoneWeapon) -> f32 {
+    if !def.overheat_weapon {
+        return 0.0;
+    }
+    world
+        .get_resource::<WeaponHeat>()
+        .and_then(|h| h.0.get(&(client, def.name.to_ascii_lowercase())).copied())
+        .map_or(0.0, |(heat, _)| heat)
+}
+
+fn current_or_named_weapon(
+    world: &mut World,
+    client: crate::ClientId,
+    args: &[Value],
+    name_idx: usize,
+) -> Result<Option<Arc<ZoneWeapon>>, String> {
+    if args.len() > name_idx {
+        let name = string(args, name_idx)?;
+        let index = weapon_index(world, &name)? & 0xff;
+        return Ok(world
+            .resource::<WeaponTable>()
+            .weapons
+            .get(index)
+            .cloned()
+            .flatten()
+            .filter(|_| index != 0));
+    }
+    let name = {
+        let frame = FrameWorld::from_world(world);
+        let Some(ps) = frame.player(client) else {
+            return Ok(None);
+        };
+        if ps.weapon == 0 {
+            return Ok(None);
+        }
+        script_player::weapon_name(&frame, ps.weapon).to_owned()
+    };
+    Ok(zone_weapon(world, &name))
+}
+
+/// Advances weapon spin and weapon heat one server tick.
+fn tick(world: &mut World) {
+    let dt_ms = crate::MATCH_TICK_MS as f32;
+    let clients: Vec<u32> = world
+        .resource::<RoundScript>()
+        .players
+        .keys()
+        .copied()
+        .collect();
+    for client in clients {
+        let cid = crate::ClientId(client);
+        let (weapon_id, state, held_ids, attack) = {
+            let mut frame = FrameWorld::from_world(world);
+            let Some(ps) = frame.player(cid).copied() else {
+                continue;
+            };
+            let attack =
+                script_player::holds_now_or_last(&mut frame, cid, script_player::CmdButton::Attack);
+            let held: Vec<u32> = ps
+                .weapons
+                .iter()
+                .copied()
+                .filter(|&w| w > 0)
+                .map(|w| w as u32)
+                .collect();
+            (ps.weapon, ps.weaponstate_primary, held, attack)
+        };
+        let current_name = (weapon_id != 0).then(|| {
+            let frame = FrameWorld::from_world(world);
+            script_player::weapon_name(&frame, weapon_id).to_owned()
+        });
+        let current_def = current_name.as_deref().and_then(|n| zone_weapon(world, n));
+        let spin_before = world
+            .get_resource::<WeaponSpin>()
+            .and_then(|s| s.0.get(&client).copied())
+            .unwrap_or(0.0);
+        let spin_after = match current_def.as_deref() {
+            Some(def) if def.fire_type == 7 => {
+                let (dir, time) = if attack {
+                    (1.0, def.spin_up_time)
+                } else {
+                    (-1.0, def.spin_down_time)
+                };
+                let step = if time > 0 {
+                    dt_ms * (dir / time as f32)
+                } else {
+                    0.0
+                };
+                (spin_before + step).clamp(0.0, 1.0)
+            }
+            Some(def) if def.fire_type == 9 => {
+                let rate = if matches!(state, 1..=5) {
+                    0.0
+                } else if def.spin_up_time > 0 {
+                    if attack && !is_overheating(world, client, def) {
+                        1.0 / def.spin_up_time as f32
+                    } else if def.spin_down_time > 0 {
+                        -1.0 / def.spin_down_time as f32
+                    } else {
+                        -0.5
+                    }
+                } else if attack && !is_overheating(world, client, def) {
+                    0.5
+                } else {
+                    -0.5
+                };
+                (spin_before + dt_ms * -1.0 * rate).clamp(-1.0, 0.0)
+            }
+            _ => 0.0,
+        };
+        world
+            .get_resource_or_insert_with(WeaponSpin::default)
+            .0
+            .insert(client, spin_after);
+
+        for held_id in held_ids {
+            let name = {
+                let frame = FrameWorld::from_world(world);
+                script_player::weapon_name(&frame, held_id).to_owned()
+            };
+            let Some(def) = zone_weapon(world, &name) else {
+                continue;
+            };
+            if !def.overheat_weapon {
+                continue;
+            }
+            let firing = held_id == weapon_id
+                && (matches!(state, 6 | 0x28)
+                    || (def.fire_type == 9 && attack && !is_overheating(world, client, &def)));
+            if firing {
+                add_heat(world, client, &def, dt_ms * def.overheat_rate * 0.001);
+            }
+            if !firing || def.cool_while_firing {
+                add_heat(world, client, &def, -(dt_ms * def.cooldown_rate * 0.001));
+            }
+        }
+    }
+}
+
 pub(super) fn register_natives(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
+    registry.on_tick(tick);
     registry.register(Method, "getfractionmaxammo", fraction_max_ammo);
     registry.register(Method, "getfractionstartammo", fraction_start_ammo);
     registry.register(Method, "getweaponammofuel", |world, receiver, args| {
@@ -631,38 +804,67 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         new_array(world, Vec::new())
     });
     registry.register(Method, "isweaponoverheating", |world, receiver, args| {
-        player_entity(world, receiver)?;
-        let heat = args
-            .first()
-            .is_some_and(|v| matches!(v, Value::Int(n) if *n != 0));
-        if args.len() > 1 {
-            string(args, 1)?;
-        }
-        Ok(if heat {
-            Value::Float(0.0)
+        let client = player_entity(world, receiver)?;
+        let want_heat = if !args.is_empty() {
+            int(args, 0)? != 0
         } else {
-            Value::Int(0)
+            false
+        };
+        let Some(def) = current_or_named_weapon(world, client, args, 1)? else {
+            return Ok(if want_heat {
+                Value::Float(0.0)
+            } else {
+                Value::Int(0)
+            });
+        };
+        Ok(if want_heat {
+            Value::Float(heat_value(world, client.0, &def))
+        } else {
+            Value::Int(is_overheating(world, client.0, &def).into())
         })
     });
     registry.register(Method, "setweaponoverheating", |world, receiver, args| {
-        player_entity(world, receiver)?;
-        int(args, 0)?;
-        super::float(args, 1)?;
-        if args.len() > 2 {
-            string(args, 2)?;
+        let client = player_entity(world, receiver)?;
+        let overheating = int(args, 0)? != 0;
+        let heat = super::float(args, 1)?;
+        let Some(def) = current_or_named_weapon(world, client, args, 2)? else {
+            return Ok(Value::Undefined);
+        };
+        if def.overheat_weapon {
+            if overheating {
+                add_heat(world, client.0, &def, 100.0);
+                add_heat(world, client.0, &def, heat - 100.0);
+            } else {
+                add_heat(world, client.0, &def, -100.0);
+                add_heat(world, client.0, &def, heat);
+            }
         }
         Ok(Value::Undefined)
     });
     registry.register(Method, "getcurrentweaponspinlerp", |world, receiver, _| {
-        player_entity(world, receiver)?;
-        Ok(Value::Float(0.0))
+        let client = player_entity(world, receiver)?;
+        let has_weapon = FrameWorld::from_world(world)
+            .player(client)
+            .is_some_and(|ps| ps.weapon != 0);
+        if !has_weapon {
+            return Ok(Value::Float(0.0));
+        }
+        let spin = world
+            .get_resource::<WeaponSpin>()
+            .and_then(|s| s.0.get(&client.0).copied())
+            .unwrap_or(0.0);
+        Ok(Value::Float(spin))
     });
     registry.register(
         Method,
         "setcurrentweaponspinlerp",
         |world, receiver, args| {
-            player_entity(world, receiver)?;
-            super::float(args, 0)?;
+            let client = player_entity(world, receiver)?;
+            let spin = super::float(args, 0)?;
+            world
+                .get_resource_or_insert_with(WeaponSpin::default)
+                .0
+                .insert(client.0, spin);
             Ok(Value::Undefined)
         },
     );

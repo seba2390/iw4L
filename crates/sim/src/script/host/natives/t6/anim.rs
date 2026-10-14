@@ -70,6 +70,7 @@ pub(super) struct ActorAnim {
     /// How far the clip's root moved this frame, in the actor's frame, when
     /// it is not a scripted clip.
     pub(super) step: [f32; 3],
+    pub(super) step_yaw: f32,
     /// The aim weights `setaimanimweights` sets; no aim clip blends by them
     /// yet (`t6.actors.anim_playback`).
     aim_weights: [f32; 2],
@@ -84,6 +85,7 @@ impl Default for ActorAnim {
             orient: "face default",
             orient_yaw: None,
             step: [0.0; 3],
+            step_yaw: 0.0,
             aim_weights: [0.0; 2],
         }
     }
@@ -334,6 +336,7 @@ fn advance(world: &mut World) {
             continue;
         }
         anim_mut(world, id).step = [0.0; 3];
+        anim_mut(world, id).step_yaw = 0.0;
         let Some(mut playing) = anim_mut(world, id).playing.clone() else {
             continue;
         };
@@ -343,6 +346,10 @@ fn advance(world: &mut World) {
                 .and_then(|rates| rates.0.get(&id).copied())
                 .unwrap_or(1.0);
         if playing.done {
+            if playing.anchor.is_some() {
+                playing.anchor = None;
+                anim_mut(world, id).playing = Some(playing);
+            }
             continue;
         }
         let from = playing.time;
@@ -387,6 +394,18 @@ fn advance(world: &mut World) {
             );
             anim_mut(world, id).step =
                 std::array::from_fn(|i| end[i] - start[i] + cycles * full[i]);
+            let (start_yaw, end_yaw, full_yaw) = (
+                playing.clip.abs_delta_yaw(from),
+                playing.clip.abs_delta_yaw(time),
+                playing.clip.abs_delta_yaw(1.0),
+            );
+            let mut dyaw = end_yaw - start_yaw;
+            if dyaw > 180.0 {
+                dyaw -= 360.0;
+            } else if dyaw < -180.0 {
+                dyaw += 360.0;
+            }
+            anim_mut(world, id).step_yaw = dyaw + cycles * full_yaw;
         }
         let clip = Arc::clone(&playing.clip);
         anim_mut(world, id).playing = Some(playing);
@@ -627,7 +646,7 @@ pub(super) fn scripted(world: &mut World, id: u64) -> bool {
     anim_mut(world, id)
         .playing
         .as_ref()
-        .is_some_and(|playing| playing.anchor.is_some() && !playing.done)
+        .is_some_and(|playing| playing.anchor.is_some())
 }
 
 pub(super) fn get(world: &mut World, id: u64) -> ActorAnim {

@@ -272,7 +272,19 @@ pub(crate) fn sync_engine_events(world: &mut World) {
                 let weapon = super::players::script_weapon(world, owner.0, weapon);
                 (owner, "detonate", vec![weapon_name(world, weapon)])
             }
-            WeaponNote::Fired { owner } => (owner, "begin_firing", Vec::new()),
+            WeaponNote::Fired { owner } => {
+                let current = FrameWorld::from_world(world)
+                    .player(owner)
+                    .map_or(0, |ps| ps.weapon);
+                let weapon = super::players::script_weapon(world, owner.0, current);
+                let name = weapon_name(world, weapon);
+                let player = super::players::player_object(world, owner.0);
+                if player != Value::Undefined {
+                    raise(world, player.clone(), "begin_firing", Vec::new());
+                    raise(world, player, "weapon_fired", vec![name]);
+                }
+                continue;
+            }
             WeaponNote::ReloadStarted { owner } => (owner, "reload_start", Vec::new()),
             WeaponNote::Detonated { .. } | WeaponNote::Stuck { .. } => continue,
         };

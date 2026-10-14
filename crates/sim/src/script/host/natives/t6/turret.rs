@@ -241,6 +241,56 @@ const PLACE_MIN_NORMAL_Z: f32 = 0.7;
 const PLACE_MIN_FRACTION: f32 = 0.0001;
 const PLACE_MASK: u32 = 0x0281_8011;
 const PLACE_MASK_IGNORING_BODIES: u32 = 0x0081_0011;
+const WALLMOUNT_AHEAD: f32 = 105.0;
+const WALLMOUNT_MASK: u32 = 0x0080_6833;
+
+/// `canplayerplaceturret`'s spot for a wallmount or microwave turret:
+/// a point trace 105 ahead of the standing eye (raised by
+/// `turretplacement_traceOffset`) along the player's view angles; when it hits
+/// the world or a brush entity, the surface normal is the turret's up axis
+/// (turned against world up when `|normal.z| <= 0.7`, else the view forward).
+fn wallmount_placement(world: &mut World, client: u32) -> (bool, [f32; 3], [f32; 3]) {
+    let Some((origin, viewangles)) = FrameWorld::from_world(world)
+        .player(crate::ClientId(client))
+        .map(|ps| (ps.origin, ps.viewangles))
+    else {
+        return (false, [0.0; 3], [0.0; 3]);
+    };
+    let standing = dvar_i32(world, "player_standingviewheight", 60) as f32;
+    let mut eye = [origin[0], origin[1], origin[2] + standing];
+    if dvar_i32(world, "turretplacement_usetraceoffset", 1) != 0 {
+        eye[2] += dvar_f32(world, ("turretplacement_traceoffset", 12.0));
+    }
+    let ahead = forward(viewangles[0], viewangles[1]);
+    let start = eye;
+    let end = [0, 1, 2].map(|i| start[i] + ahead[i] * WALLMOUNT_AHEAD);
+    let block = super::super::engine::trace(world, start, end, [0.0; 3], [0.0; 3], WALLMOUNT_MASK);
+    let spot = lerp(start, end, block.fraction);
+    if block.allsolid == 0
+        && block.startsolid == 0
+        && block.fraction >= PLACE_MIN_FRACTION
+        && block.fraction < 1.0
+    {
+        let up = block.normal;
+        let ref_dir = if up[2].abs() <= PLACE_MIN_NORMAL_Z {
+            [0.0, 0.0, 1.0]
+        } else {
+            ahead
+        };
+        let left = cross(up, ref_dir);
+        let axis = [cross(left, up), left, up];
+        return (true, spot, axis_to_angles(axis));
+    }
+    let spot = [
+        origin[0] + ahead[0] * WALLMOUNT_AHEAD,
+        origin[1] + ahead[1] * WALLMOUNT_AHEAD,
+        eye[2] + ahead[2] * WALLMOUNT_AHEAD,
+    ];
+    let up = ahead.map(|v| -v);
+    let left = cross(up, [0.0, 0.0, 1.0]);
+    let axis = [cross(left, up), left, up];
+    (false, spot, axis_to_angles(axis))
+}
 
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
@@ -418,10 +468,11 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                     .is_some_and(|t| t.ent_flags & ENT_WALLMOUNT != 0)
             }
         };
-        if wallmount {
-            return Err("canplayerplaceturret: t6.turret.wallmount: a wall-mounted turret's placement test is not implemented yet".into());
-        }
-        let (fits, origin, angles) = placement(world, client);
+        let (fits, origin, angles) = if wallmount {
+            wallmount_placement(world, client)
+        } else {
+            placement(world, client)
+        };
         carrier(world, client).cannot_place = !fits;
         super::super::engine::keyed_array(
             world,

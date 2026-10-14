@@ -31,6 +31,28 @@ fn tag(
 ) -> Result<super::super::super::presence::TagPose, String> {
     let id = entity_id(world, receiver)?;
     let name = string(args, 0)?;
+    if let Some(client) = world.resource::<RoundScript>().player_client(id) {
+        let frame = crate::frame::FrameWorld::from_world(world);
+        if let Some(ps) = frame.player(crate::ClientId(client)) {
+            if name.eq_ignore_ascii_case("tag_origin") {
+                return Ok((
+                    ps.origin,
+                    math_iw4::angles_to_axis([0.0, ps.viewangles[1], 0.0]),
+                ));
+            }
+            if name.eq_ignore_ascii_case("tag_flash")
+                || name.eq_ignore_ascii_case("tag_weapon")
+                || name.eq_ignore_ascii_case("tag_weapon_right")
+            {
+                let eye = [
+                    ps.origin[0],
+                    ps.origin[1],
+                    ps.origin[2] + ps.view_height_current,
+                ];
+                return Ok((eye, math_iw4::angles_to_axis(ps.viewangles)));
+            }
+        }
+    }
     let model = text_field(world, id, "model");
     if model.is_empty() {
         let classname = text_field(world, id, "classname");

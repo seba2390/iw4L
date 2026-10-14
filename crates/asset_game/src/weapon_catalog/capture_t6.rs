@@ -70,9 +70,7 @@ impl WeaponCatalog {
             iw5_anim_overrides: Vec::new(),
             iw5_fx_overrides: Vec::new(),
             iw5_notetrack_overrides: Vec::new(),
-            hud_icon: weapon
-                .def_loaded_asset_name(d::HUD_ICON)
-                .map(t6_model_name),
+            hud_icon: weapon.def_loaded_asset_name(d::HUD_ICON).map(t6_model_name),
             hud_icon_slot: None,
             pickup_icon: None,
             pickup_icon_slot: None,
@@ -290,7 +288,7 @@ pub(super) fn remap_t6_weap_class(raw: i32) -> i32 {
 pub(super) fn remap_t6_weap_type(raw: i32) -> i32 {
     use fastfile_t6::weapon::weap_type as t6;
     match raw {
-        t6::GRENADE | t6::GAS | t6::BOMB | t6::MINE => weapon_iw4::WEAPTYPE_GRENADE,
+        t6::GRENADE | t6::BOMB | t6::MINE => weapon_iw4::WEAPTYPE_GRENADE,
         t6::PROJECTILE => weapon_iw4::WEAPTYPE_PROJECTILE,
         t6::RIOTSHIELD => 3,
         // Kept as Black Ops 2 numbers it: a melee weapon (`knife_zm`) fires
@@ -301,21 +299,36 @@ pub(super) fn remap_t6_weap_type(raw: i32) -> i32 {
 }
 
 pub(super) fn capture_t6_body_facts(w: fastfile_t6::weapon::WeaponView<'_>) -> WeaponBodyFacts {
-    use fastfile_t6::weapon::{def as d, variant as v};
+    use fastfile_t6::weapon::{def as d, variant as v, weap_type as wt};
     let ads_in_ms = w.variant_i32(v::ADS_TRANS_IN_TIME);
     let ads_out_ms = w.variant_i32(v::ADS_TRANS_OUT_TIME);
     let curve = w.damage_curve();
-    let (near, near_range) = curve[0];
-    let (far, far_range) = curve[fastfile_t6::weapon::def::DAMAGE_STEPS - 1];
+    let is_gas = w.def_i32(d::WEAP_TYPE) == wt::GAS;
+    let (near, near_range) = if is_gas { (0, 0.0) } else { curve[0] };
+    let (far, far_range) = if is_gas {
+        (0, 0.0)
+    } else {
+        curve[fastfile_t6::weapon::def::DAMAGE_STEPS - 1]
+    };
+    let unlimited = w.def_bool(d::UNLIMITED_AMMO) || w.def_i32(d::OVERHEAT_WEAPON) != 0;
+    let raw_clip = w.variant_i32(v::CLIP_SIZE);
+    let clip_size = if unlimited && raw_clip <= 0 {
+        10_000
+    } else {
+        raw_clip
+    };
     let mut facts = WeaponBodyFacts {
         body_resolved: w.has_def(),
         fire_time_ms: w.def_i32(d::FIRE_TIME),
         burst_delay_ms: w.has_def().then(|| w.def_i32(d::BURST_DELAY_TIME)),
-        clip_size: w.variant_i32(v::CLIP_SIZE),
+        clip_size,
         weap_type: remap_t6_weap_type(w.def_i32(d::WEAP_TYPE)),
         weap_class: remap_t6_weap_class(w.def_i32(d::WEAP_CLASS)),
         player_anim_type: w.def_i32(d::PLAYER_ANIM_TYPE),
-        fire_type: w.def_i32(d::FIRE_TYPE),
+        fire_type: match w.def_i32(d::FIRE_TYPE) {
+            6 | 7 | 9 => 0,
+            other => other,
+        },
         inventory_type: w.def_i32(d::INVENTORY_TYPE),
         penetrate_type: w.def_i32(d::PENETRATE_TYPE),
         impact_type: w.def_i32(d::IMPACT_TYPE),
@@ -350,9 +363,18 @@ pub(super) fn capture_t6_body_facts(w: fastfile_t6::weapon::WeaponView<'_>) -> W
         ads_zoom_in_frac: w.variant_f32(v::ADS_ZOOM_IN_FRAC),
         ads_zoom_out_frac: w.variant_f32(v::ADS_ZOOM_OUT_FRAC),
         ammo_counter_clip: w.def_i32(d::AMMO_COUNTER_CLIP),
-        start_ammo: w.def_i32(d::START_AMMO),
-        max_ammo: w.def_i32(d::MAX_AMMO),
-        ammo_count_clip_relative: w.def_bool(d::AMMO_COUNT_CLIP_RELATIVE),
+        start_ammo: if unlimited && raw_clip <= 0 {
+            10_000
+        } else {
+            w.def_i32(d::START_AMMO)
+        },
+        max_ammo: if unlimited && raw_clip <= 0 {
+            10_000
+        } else {
+            w.def_i32(d::MAX_AMMO)
+        },
+        ammo_count_clip_relative: !(unlimited && raw_clip <= 0)
+            && w.def_bool(d::AMMO_COUNT_CLIP_RELATIVE),
         shots_per_fire: w.def_i32(d::SHOT_COUNT).max(1),
         damage: near,
         max_damage_range: near_range,
