@@ -95,6 +95,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     // engagement ranges, player shove and knockback, the health shield, rope
     // physics, weapon hide-tags on display models, the transporter screen
     // effect, save games and network stat reports.
+    register_actor(registry);
     for name in [
         "addaieventlistener",
         "setthreatbiasgroup",
@@ -421,4 +422,86 @@ fn players(world: &mut World) -> Vec<u64> {
         .collect();
     players.sort_unstable();
     players.into_iter().map(|(_, id)| id).collect()
+}
+
+/// What Black Ops keeps on an actor for the methods below: the species it
+/// talks to and its goal volume.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct ActorState(std::collections::BTreeMap<u64, ActorFields>);
+
+#[derive(Default)]
+struct ActorFields {
+    /// One bit per species `settalktospecies` names; -1 for all.
+    talk_species: i32,
+    /// `setgoalvolume`'s volume.
+    goal_volume: Option<u64>,
+}
+
+/// The species `settalktospecies` names, by bit.
+const SPECIES: [&str; 4] = ["human", "dog", "zombie", "zombie_dog"];
+
+fn actor(world: &World, receiver: &Value) -> Result<u64, String> {
+    match world.resource::<RoundScript>().entity(receiver) {
+        Some((id, entity)) if entity.kind == EntityKind::Actor => Ok(id),
+        _ => Err("not an actor".into()),
+    }
+}
+
+fn actor_fields(world: &mut World, id: u64) -> &mut ActorFields {
+    world
+        .get_resource_or_insert_with(ActorState::default)
+        .into_inner()
+        .0
+        .entry(id)
+        .or_default()
+}
+
+/// Black Ops' actor methods that only set what the actor keeps.
+fn register_actor(registry: &mut NativeRegistry) {
+    use Namespace::Method;
+    // Each argument naming a species sets its bit (other names set none);
+    // `all` sets every bit.
+    registry.register(Method, "settalktospecies", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        let mut mask = 0;
+        for index in 0..args.len() {
+            let name = super::super::args::string(args, index)?;
+            if name == "all" {
+                mask = -1;
+                break;
+            }
+            if let Some(bit) = SPECIES.iter().position(|species| *species == name) {
+                mask |= 1 << bit;
+            }
+        }
+        actor_fields(world, id).talk_species = mask;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "cleargoalvolume", |world, receiver, _| {
+        let id = actor(world, receiver)?;
+        actor_fields(world, id).goal_volume = None;
+        Ok(Value::Undefined)
+    });
+    // The actor drops its enemy; its next think picks one again.
+    registry.register(Method, "clearenemy", |world, receiver, _| {
+        let id = actor(world, receiver)?;
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "enemy", Value::Undefined);
+        Ok(Value::Undefined)
+    });
+    // `BloodImpact("none" | "normal" | "hero")` picks the blood an entity's
+    // hits show; the client event that carries it is not sent (ledgered).
+    registry.register(Method, "bloodimpact", |world, receiver, args| {
+        super::engine::entity_id(world, receiver)?;
+        if args.is_empty() {
+            return Err("BloodImpact() called without an argument\n".into());
+        }
+        match super::super::args::string(args, 0)?.as_str() {
+            "none" | "normal" | "hero" => Ok(Value::Undefined),
+            _ => Err(
+                "BloodImpact() only takes \"normal\", \"hero\" or \"none\" as parameters.\n".into(),
+            ),
+        }
+    });
 }
