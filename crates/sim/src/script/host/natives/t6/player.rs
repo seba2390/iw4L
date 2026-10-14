@@ -429,6 +429,123 @@ fn register_rest(registry: &mut NativeRegistry) {
             .insert(client, (blur, seconds));
         Ok(Value::Undefined)
     });
+    for name in [
+        "actionslotonebuttonpressed",
+        "actionslottwobuttonpressed",
+        "actionslotthreebuttonpressed",
+        "actionslotfourbuttonpressed",
+    ] {
+        registry.register(Method, name, |world, receiver, _| {
+            client_or_error(world, receiver)?;
+            Ok(Value::Int(0))
+        });
+    }
+    registry.register(Method, "getperks", |world, receiver, _| {
+        let id = client_or_error(world, receiver)?;
+        let perks: Vec<Value> = world
+            .resource::<RoundScript>()
+            .players
+            .get(&id.0)
+            .map_or_else(Vec::new, |slot| {
+                slot.perks
+                    .iter()
+                    .map(|p| Value::String(p.clone().into()))
+                    .collect()
+            });
+        super::super::super::arrays::new_array(world, perks)
+    });
+    registry.register(Method, "geteyeapprox", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let origin = match super::super::super::players::entity_field(world, id, "origin") {
+            Value::Vector(v) => v,
+            _ => [0.0; 3],
+        };
+        Ok(Value::Vector([origin[0], origin[1], origin[2] + 40.0]))
+    });
+    registry.register(Method, "getweaponforwarddir", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let angles = match world.resource::<RoundScript>().player_client(id) {
+            Some(client) => FrameWorld::from_world(world)
+                .player(ClientId(client))
+                .map_or([0.0; 3], |ps| ps.viewangles),
+            None => match super::super::super::players::entity_field(world, id, "angles") {
+                Value::Vector(v) => v,
+                _ => [0.0; 3],
+            },
+        };
+        let (forward, _, _) = math_iw4::angle_vectors(angles);
+        Ok(Value::Vector(forward))
+    });
+    registry.register(Method, "setstowedweapon", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        super::string(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "clearstowedweapon", |world, receiver, _| {
+        super::super::engine::entity_id(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "applyknockback", |world, receiver, args| {
+        let id = client_or_error(world, receiver)?;
+        let damage = int(args, 0)?;
+        if damage <= 0 {
+            return Ok(Value::Undefined);
+        }
+        let dir = vector(args, 1)?;
+        let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
+        let inv = 1.0 / if -len >= 0.0 { 1.0 } else { len };
+        let stance = crate::script_player::stance(&FrameWorld::from_world(world), id);
+        let scale = match stance {
+            "prone" => 0.02,
+            "crouch" => 0.15,
+            _ => 0.9,
+        };
+        let knockback = ((damage as f32 * scale) as i32).clamp(0, 60);
+        if knockback > 0
+            && let Some(ps) = FrameWorld::from_world(world).player_mut(id)
+        {
+            let push = 1000.0 * knockback as f32 * 0.004 * inv;
+            for i in 0..3 {
+                ps.velocity[i] += dir[i] * push;
+            }
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "disableusability", |world, receiver, _| {
+        let id = client_or_error(world, receiver)?;
+        let mut frame = FrameWorld::from_world(world);
+        if frame.client_meta(id).is_some() {
+            frame.client_meta_mut(id).controls.usability_disabled = true;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "playerlinkedoffsetenable", |world, receiver, _| {
+        let id = client_or_error(world, receiver)?;
+        let linked = world
+            .resource::<RoundScript>()
+            .players
+            .get(&id.0)
+            .is_some_and(|slot| slot.link.is_some());
+        if !linked {
+            return Err("Player is not linked.".into());
+        }
+        Ok(Value::Undefined)
+    });
+    for name in ["getnormalizedmovement", "getnormalizedcameramovement"] {
+        registry.register(Method, name, |world, receiver, _| {
+            client_or_error(world, receiver)?;
+            Ok(Value::Vector([0.0; 3]))
+        });
+    }
+    registry.register(Method, "setburn", |world, receiver, args| {
+        let seconds = float(args, 0)?;
+        if seconds < 0.0 {
+            return Err("Time must be positive".into());
+        }
+        player(world, receiver)
+            .map_err(|_| "setburn() called on an invalid client entity.\n".to_owned())?;
+        Ok(Value::Undefined)
+    });
 }
 
 /// Each player's fading blur and its time (`t6.player.blur`: kept, not sent).

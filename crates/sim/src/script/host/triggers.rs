@@ -1016,6 +1016,48 @@ pub(crate) fn is_touching(world: &mut World, a: u64, b: u64) -> bool {
     touching.unwrap_or(false)
 }
 
+pub(crate) fn is_touching_swept(
+    world: &mut World,
+    a: u64,
+    b: u64,
+    min_z: Option<f32>,
+    max_z: Option<f32>,
+) -> Result<bool, String> {
+    let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
+    let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
+    let result = (|| {
+        let frame = FrameWorld::from_world(world);
+        if volume(&mut runtime, &frame, a).is_some() && volume(&mut runtime, &frame, b).is_some() {
+            return Err("istouchingswept cannot be called on 2 brush/cylinder entities".into());
+        }
+        let Some((volume, (mut mins, mut maxs))) =
+            [(a, b), (b, a)].into_iter().find_map(|(trigger, other)| {
+                let volume = volume(&mut runtime, &frame, trigger)?;
+                Some((volume, toucher(&mut runtime, &frame, other)))
+            })
+        else {
+            return Ok(false);
+        };
+        if let Some(z) = min_z
+            && mins[2] >= z
+        {
+            mins[2] = z;
+        }
+        if let Some(z) = max_z
+            && z >= maxs[2]
+        {
+            maxs[2] = z;
+        }
+        for i in 0..3 {
+            mins[i] -= 1.0;
+            maxs[i] += 1.0;
+        }
+        Ok(volume.touches(mins, maxs))
+    })();
+    *world.resource_mut::<RoundScript>() = runtime;
+    result
+}
+
 pub(crate) fn dispatch_triggers(world: &mut World) {
     refresh_claims(world);
     // A game with its own use rule decides what each use press reaches.

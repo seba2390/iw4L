@@ -181,6 +181,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let entity = &world.resource::<RoundScript>().entities[&id];
         let kind = match &entity.kind {
             EntityKind::Player => 1,
+            EntityKind::Corpse { .. } => 2,
             EntityKind::Item(_) => 3,
             EntityKind::Missile(_) => 4,
             EntityKind::Actor => 16,
@@ -189,6 +190,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             {
                 6
             }
+            EntityKind::Spawned if &*entity.classname == "fx" => 8,
+            EntityKind::Spawned if &*entity.classname == "loopfx" => 9,
+            EntityKind::Map | EntityKind::Spawned if entity.classname.starts_with("actor_") => 17,
             _ => {
                 return Err(format!(
                     "t6.entities.type: the engine type of a '{}' is not known",
@@ -236,16 +240,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // gsc_activateclientexploder: the engine sends the exploder's number to
-    // every client (`t6.fx.client_exploders`: not sent).
-    registry.register(
-        Function,
-        "activateclientexploder",
-        |_, _, args| match args.first() {
-            Some(Value::Int(_)) => Ok(Value::Undefined),
-            _ => Err("activateclientexploder expects an exploder number".into()),
-        },
-    );
+    // gsc_activateclientexploder / deactivateclientexploder: the engine sends
+    // the exploder's number to every client (`t6.fx.client_exploders`: not sent).
+    for name in ["activateclientexploder", "deactivateclientexploder"] {
+        registry.register(Function, name, |_, _, args| {
+            super::int(args, 0)?;
+            Ok(Value::Undefined)
+        });
+    }
     // gsc_setculldist: the clients' draw distance (`t6.vision.fog`: not sent).
     registry.register(Function, "setculldist", |_, _, args| {
         number(args.first()).ok_or("setculldist expects a distance")?;

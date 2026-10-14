@@ -230,14 +230,52 @@ pub(super) fn start_now(
     now: i64,
 ) -> Result<Option<u64>, Fault> {
     let (program, function, location) = entry(world, name)?;
-    let mut thread = new_thread(world, &program, function, receiver, args)
-        .map_err(|m| Fault::at(&location, m))?;
+    run_thread_now(world, &program, function, &location, receiver, args, now)
+}
+
+/// Runs `function` until it first waits; the thread's serial while it lives on.
+pub(super) fn start_function_now(
+    world: &mut World,
+    function: usize,
+    receiver: Value,
+    args: Vec<Value>,
+    now: i64,
+) -> Result<Option<u64>, Fault> {
+    let location = Location {
+        module: "<runtime>".into(),
+        function: "<function>".into(),
+        line: 0,
+        column: 0,
+    };
+    let runtime = world.resource::<RoundScript>();
+    if let Some(fault) = &runtime.fault {
+        return Err(fault.clone());
+    }
+    let program = runtime
+        .program
+        .as_ref()
+        .ok_or_else(|| Fault::at(&location, "no loaded GSC program"))?
+        .clone();
+    run_thread_now(world, &program, function, &location, receiver, args, now)
+}
+
+fn run_thread_now(
+    world: &mut World,
+    program: &Program,
+    function: usize,
+    location: &Location,
+    receiver: Value,
+    args: Vec<Value>,
+    now: i64,
+) -> Result<Option<u64>, Fault> {
+    let mut thread =
+        new_thread(world, program, function, receiver, args).map_err(|m| Fault::at(location, m))?;
     thread.state = ThreadState::Runnable;
     let budget = std::mem::replace(
         &mut world.resource_mut::<RoundScript>().budget,
         INSTRUCTION_BUDGET,
     );
-    execute(world, &program, &mut thread, now);
+    execute(world, program, &mut thread, now);
     world.resource_mut::<RoundScript>().budget = budget;
     let serial = thread.serial;
     let alive = if thread.state == ThreadState::Complete {
@@ -670,10 +708,15 @@ fn instruction(
             let b = pop(thread)?;
             let a = pop(thread)?;
             let ordered = program.ordered_strings;
-            thread.stack.push(match ordered.then(|| gsc::ops::string_order(op, &a, &b)).flatten() {
-                Some(value) => value,
-                None => binary(op, a, b)?,
-            });
+            thread.stack.push(
+                match ordered
+                    .then(|| gsc::ops::string_order(op, &a, &b))
+                    .flatten()
+                {
+                    Some(value) => value,
+                    None => binary(op, a, b)?,
+                },
+            );
         }
         Op::Vector => {
             let mut v = [0.0; 3];

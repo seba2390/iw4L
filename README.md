@@ -7,7 +7,7 @@
 |---|---|---|---|---|
 | Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | — | Rust: 460 / 460 (100%) |
 | Black Ops — Zombies | `███████████░░░░░░░░░` 57% | 12 / 21 | 15 / 33 | Kino der Toten: 418 / 610 (68%)<br>Five: 415 / 609 (68%) |
-| Black Ops II — Zombies | `████████████░░░░░░░░` 61% | 13 / 21 | 38 / 56 | Nuketown: 501 / 692 (72%)<br>TranZit: 536 / 741 (72%)<br>Buried: 513 / 727 (70%) |
+| Black Ops II — Zombies | `████████████░░░░░░░░` 61% | 13 / 21 | 38 / 56 | Nuketown: 546 / 692 (78%)<br>TranZit: 585 / 741 (78%)<br>Buried: 568 / 727 (78%) |
 | Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |
 <!-- progress:end -->
 
