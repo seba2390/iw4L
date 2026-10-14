@@ -179,6 +179,15 @@ pub(crate) fn advance_mechanics(world: &mut World) {
     super::presence::settle_collision(world);
 }
 
+pub(crate) fn advance_client_mechanics(world: &mut World, now: i64) {
+    let runtime = world.resource::<RoundScript>();
+    if runtime.fault.is_some() || runtime.program.is_none() {
+        return;
+    }
+    advance_motions(world, now);
+    apply_entity_links(world);
+}
+
 pub(crate) fn deliver_finished(world: &mut World) {
     let finished = std::mem::take(&mut world.resource_mut::<Mechanics>().finished);
     for (object, name) in finished {

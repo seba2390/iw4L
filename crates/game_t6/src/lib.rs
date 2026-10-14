@@ -1,4 +1,6 @@
 mod builtins;
+mod client;
+mod client_builtins;
 mod fire;
 mod fire_sound;
 mod grenade;
@@ -67,6 +69,15 @@ impl game_api::GameScripts for T6 {
             entity_fields: Vec::new(),
             dvars: Vec::new(),
         })
+    }
+
+    fn compiled_client_program(
+        &self,
+        request: &ScriptRequest<'_>,
+        sources: &dyn gsc::SourceResolver,
+    ) -> Option<Rule<game_api::ClientScriptProgram>> {
+        (request.map.starts_with("zm_") && request.gametype == "zclassic" && own_scripts())
+            .then(|| client::program(request, sources))
     }
 
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {

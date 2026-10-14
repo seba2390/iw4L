@@ -253,6 +253,7 @@ pub fn apply_prepared_match(
             script_level,
             script_entries,
             client_scripts,
+            compiled_client_scripts,
             gametype_settings,
             script_dvars,
             engine_dvars,
@@ -739,6 +740,24 @@ pub fn apply_prepared_match(
             sim.start_gsc(&entry, sim::script::Value::level(), Vec::new())
                 .map_err(|e| script_refusal(&zone, gametype, "entry", &e))?;
         }
+        if let Some(client) = compiled_client_scripts {
+            let mut natives = sim::script::NativeRegistry::black_ops_2_client();
+            let (missing, named) = natives.coverage(&client.program);
+            diag::info!(
+                Sim,
+                "csc: client builtin coverage map={zone} gametype={gametype}: {missing} of {named} client builtins not implemented yet"
+            );
+            let gaps = natives.bind_gaps(&client.program);
+            if !gaps.is_empty() {
+                diag::info!(
+                    Sim,
+                    "csc: {missing} of {named} client builtins not implemented yet: {}",
+                    gaps.join(" ")
+                );
+            }
+            sim.install_compiled_client_scripts(client, natives)
+                .map_err(|e| script_refusal(&zone, gametype, "client install", &e))?;
+        }
         let load_hold = AuthorityLoadHold(true);
         sim.world_objects_mut()
             .set_map_round_epoch(load_key.match_key.match_epoch);
@@ -942,6 +961,9 @@ struct MatchInstallPlan {
         Vec<String>,
         Option<game_api::ClientCallbacks>,
     )>,
+    /// The compiled client scripts the map's local clients run, when its game
+    /// has them.
+    compiled_client_scripts: Option<game_api::ClientScriptProgram>,
     /// The gametype's settings (`GetGametypeSetting`).
     gametype_settings: Vec<(String, String)>,
     script_dvars: Vec<(String, String)>,
@@ -1402,6 +1424,19 @@ fn preflight_match_install(
         game_api::Rule::Known(program) => program,
         game_api::Rule::Unknown(gap) => return Err(unknown_refusal(zone, gametype, gap)),
     };
+    let compiled_client_scripts = match game_scripts.compiled_client_program(&request, &sources) {
+        Some(game_api::Rule::Known(client)) => Some(client),
+        Some(game_api::Rule::Unknown(gap)) => {
+            diag::warn!(
+                Sim,
+                "csc: the map's client scripts do not run: {} ({})",
+                gap.what,
+                gap.id
+            );
+            None
+        }
+        None => None,
+    };
     diag::info!(
         Sim,
         "gsc: startup namespace={:?} roots={:?} entries={:?}",
@@ -1582,6 +1617,7 @@ fn preflight_match_install(
         script_level,
         script_entries,
         client_scripts,
+        compiled_client_scripts,
         gametype_settings,
         script_dvars,
         engine_dvars,

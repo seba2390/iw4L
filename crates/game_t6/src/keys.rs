@@ -23,10 +23,22 @@ pub(crate) const ENTITY_FIELDS: [(&str, KeyType); 15] = [
 /// dropped; a `client` entry is the client's alone. The first entry of a key
 /// is the one the engine finds.
 pub(crate) fn parse(text: &str) -> Vec<(String, KeyType)> {
+    parse_for(text, false)
+}
+
+/// The client's key table: the same file, with its `client` entries.
+pub(crate) fn parse_client(text: &str) -> Vec<(String, KeyType)> {
+    parse_for(text, true)
+}
+
+fn parse_for(text: &str, client: bool) -> Vec<(String, KeyType)> {
     let mut keys: Vec<(String, KeyType)> = Vec::new();
     for line in text.lines() {
         let line = line.split("//").next().unwrap_or("");
-        let mut words = line.split_whitespace();
+        let mut words = line.split_whitespace().peekable();
+        if client && words.peek() == Some(&"client") {
+            words.next();
+        }
         let ty = match words.next() {
             Some("int") => KeyType::Int,
             Some("float") => KeyType::Float,

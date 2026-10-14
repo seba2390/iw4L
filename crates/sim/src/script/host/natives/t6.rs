@@ -13,6 +13,7 @@ mod actor;
 mod anim;
 mod attach;
 mod barrier;
+pub(crate) mod client;
 mod combat;
 mod damage;
 mod effect;
@@ -2843,6 +2844,20 @@ struct ClientField {
     version: i32,
     bits: i32,
     float: bool,
+}
+
+/// The exploders the server started (positive) and stopped (negative) for
+/// the clients, oldest first, until the client game takes them.
+#[derive(Resource, Default)]
+pub(crate) struct ClientExploders(pub(crate) Vec<i32>);
+
+/// The highest version among the server's client fields, which its game
+/// state carries to clients.
+pub(crate) fn highest_client_field_version(world: &World) -> i32 {
+    world
+        .get_resource::<ClientFields>()
+        .and_then(|fields| fields.0.iter().map(|field| field.version).max())
+        .unwrap_or(0)
 }
 
 /// Registered client fields, and the values set on them by pool, owner and
