@@ -636,6 +636,59 @@ pub(crate) fn push_owner_text(
     Ok(())
 }
 
+/// An owner draw's text wrapped to its rect width (`UI_DrawWrappedText`).
+pub(crate) fn push_owner_wrapped_text(
+    args: &OwnerDrawArgs<'_>,
+    text: &str,
+    color: [f32; 4],
+    frame: &mut ChromeFrame,
+) -> Result<(), ChromeGapKind> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    let font_name = args
+        .assets
+        .font_name(
+            args.item.font_enum,
+            args.surface.scale_virtual_to_real()[1],
+            args.item.text_scale,
+        )
+        .ok_or(ChromeGapKind::AssetFont)?;
+    let Some(font) = args.assets.catalog.and_then(|c| c.font(font_name)) else {
+        return Err(ChromeGapKind::AssetFont);
+    };
+    let layout = args.assets.layout().ok_or(ChromeGapKind::Layout)?;
+    let wrap_width = (args.rect.w.abs() - args.item.text_align_x.max(0.0)).max(1.0);
+    let lines = menu_text_lines(
+        text,
+        (args.rect.w.abs() > 0.0).then_some(wrap_width),
+        |line| layout_text_width(layout, font, line, args.item.text_scale),
+    );
+    let measured_h = layout.text_height(font.pixel_height, args.item.text_scale);
+    for (line_idx, line) in lines.into_iter().enumerate() {
+        let measured_w = layout_text_width(layout, font, &line, args.item.text_scale);
+        let (x, y) = layout.text_origin(
+            [args.rect.x, args.rect.y, args.rect.w, args.rect.h],
+            args.item.text_align_mode,
+            args.item.text_align_x,
+            args.item.text_align_y,
+            measured_w,
+            measured_h,
+        );
+        push_owner_text_run(
+            args,
+            font_name,
+            font,
+            &line,
+            color,
+            x,
+            y + line_idx as f32 * measured_h,
+            frame,
+        );
+    }
+    Ok(())
+}
+
 /// Measures `text` in the owner draw item's font and scale, returning
 /// `(font_name, font, width, height)`.
 pub(crate) fn measure_owner_text<'a>(

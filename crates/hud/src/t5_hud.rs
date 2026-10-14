@@ -22,6 +22,7 @@ use crate::draw2d::{Draw2dCmd, Draw2dList, Draw2dOp, Draw2dProvenance};
 const CG_PLAYER_HEAT_VALUE: i32 = 7;
 const CG_CURSORHINT: i32 = 72;
 const CG_PLAYER_WEAPON_NAME: i32 = 81;
+const CG_DEADQUOTE: i32 = 97;
 const CG_OFFHAND_WEAPON_ICON_FRAG: i32 = 103;
 const CG_OFFHAND_WEAPON_ICON_SMOKEFLASH: i32 = 104;
 const CG_PLAYER_WEAPON_BACKGROUND: i32 = 116;
@@ -50,6 +51,35 @@ pub(crate) struct T5HudState<'a> {
     pub hint: Option<T5Hint>,
     pub local_client: usize,
     pub scores: Vec<(usize, i32)>,
+    pub deadquote_start_ms: Option<i32>,
+}
+
+/// Latches the client time when `ui_deadquote` is set by `MissionFailed` (`'Y'`),
+/// driving `deadscreen` owner draw 97 (`CG_DEADQUOTE`) and the post-`g_deathDelay`
+/// black screen fade (`cg_deathScreenFadeOutTime`).
+#[derive(Default)]
+pub(crate) struct T5DeadscreenLatch {
+    start_ms: Option<i32>,
+}
+
+impl T5DeadscreenLatch {
+    pub(crate) fn update(
+        &mut self,
+        dvars: sim::ScriptDvars<'_>,
+        ui_dvars: Option<&frame::UiMenuDvars>,
+        now_ms: i32,
+    ) -> Option<i32> {
+        let quote = dvars
+            .string("ui_deadquote")
+            .or_else(|| ui_dvars.and_then(|d| d.get("ui_deadquote")))
+            .unwrap_or("");
+        if quote.trim().is_empty() {
+            self.start_ms = None;
+        } else if self.start_ms.is_none() {
+            self.start_ms = Some(now_ms);
+        }
+        self.start_ms
+    }
 }
 
 /// Per-client displayed score stepped toward the snapshot score each frame by
@@ -871,9 +901,63 @@ fn paint_owner(
             None => OwnerDrawPaint::Painted,
             Some(hint) => paint_cursor_hint(&args, hint, frame),
         },
+        CG_DEADQUOTE => paint_deadquote(state, &args, frame),
         CG_COMPETITIVE_MODE_SCORES => paint_competitive_scores(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         _ => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+    }
+}
+
+/// Paints owner draw 97 (`CG_DEADQUOTE` on `deadscreen`): when `ui_deadquote`
+/// is set and `deadquoteStartTime < cg.time`, fades in the localized quote
+/// (stripping a leading `'@'`) over `hud_deathQuoteFadeTime` (1000 ms) using
+/// wrapped text (`UI_DrawWrappedText`).
+fn paint_deadquote(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    diag::info!(
+        Ui,
+        "PROBE paint_deadquote: start_ms={:?} ms={} raw={:?}",
+        state.deadquote_start_ms,
+        state.ms,
+        state.dvar("ui_deadquote")
+    );
+    let Some(start_ms) = state.deadquote_start_ms.filter(|&start| start < state.ms) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(raw) = state.dvar("ui_deadquote").filter(|s| !s.trim().is_empty()) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let fade_ms = state
+        .dvar("hud_deathQuoteFadeTime")
+        .and_then(|v| v.trim().parse::<i32>().ok())
+        .unwrap_or(1000);
+    let elapsed = state.ms - start_ms;
+    let alpha = if elapsed <= fade_ms {
+        elapsed as f32 / fade_ms.max(1) as f32
+    } else {
+        1.0
+    };
+    let key = raw.strip_prefix('@').unwrap_or(&raw);
+    let quote = args
+        .assets
+        .localize
+        .and_then(|l| l.text(key))
+        .unwrap_or(key);
+    let color = [args.color[0], args.color[1], args.color[2], alpha];
+    let res = crate::chrome::push_owner_wrapped_text(args, quote, color, frame);
+    diag::info!(
+        Ui,
+        "PROBE paint_deadquote_cmd: quote={quote:?} scale={} rect={:?} res={res:?} cmd={:?}",
+        args.item.text_scale,
+        args.rect,
+        frame.list.cmds.last()
+    );
+    match res {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
     }
 }
 
@@ -967,6 +1051,35 @@ pub(crate) fn paint(
             errors.push(format!("{} item {item}: {kind:?}", menu.name));
         }
         list.cmds.extend(frame.list.cmds);
+    }
+    if let Some(start_ms) = state.deadquote_start_ms
+        && state.ms - start_ms >= 4000
+    {
+        let fade_out_sec = state
+            .dvar("cg_deathScreenFadeOutTime")
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .unwrap_or(0.5);
+        let fade_ms = (fade_out_sec * 1000.0) as i32;
+        let alpha = ((state.ms - start_ms - 4000) as f32 / fade_ms.max(1) as f32).clamp(0.0, 1.0);
+        let applied = surface.apply_rect(0.0, 0.0, 640.0, 480.0, 4, 4);
+        list.cmds.push(Draw2dCmd {
+            material_namespace: catalog
+                .namespace
+                .unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: [0.0, 0.0, 0.0, alpha],
+            material: String::from("black"),
+            op: Draw2dOp::StretchPic,
+            provenance: Draw2dProvenance::OwnerDraw(CG_DEADQUOTE),
+            layer: 1,
+        });
     }
     (list, errors)
 }
