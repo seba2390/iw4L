@@ -428,9 +428,10 @@ impl SimWorld {
         program: crate::script::Program,
         natives: crate::script::NativeRegistry,
         entries: Vec<String>,
+        callbacks: Option<game_api::ClientCallbacks>,
         level: &crate::script::LevelData,
     ) -> Result<(), crate::script::Fault> {
-        crate::script::client::install(&mut self.ecs, program, natives, entries, level)
+        crate::script::client::install(&mut self.ecs, program, natives, entries, callbacks, level)
     }
 
     pub fn set_expected_players(&mut self, count: usize) {

@@ -52,6 +52,17 @@ pub struct ScriptRequest<'a> {
 /// A string table by name: its column count and cells, row by row.
 pub type TableLookup<'a> = dyn Fn(&str) -> Option<(usize, &'a [String])> + 'a;
 
+/// The functions a game's client engine calls in its client scripts.
+#[derive(Clone, Copy, Debug)]
+pub struct ClientCallbacks {
+    /// A client system's state changed: `(local client, system, state)`.
+    pub state_change: &'static str,
+    /// The server started a client exploder: `(exploder id)`.
+    pub activate_exploder: &'static str,
+    /// The server stopped a client exploder: `(exploder id)`.
+    pub deactivate_exploder: &'static str,
+}
+
 /// What a match compiles and where it starts.
 pub struct ScriptProgram {
     pub catalog: gsc::Catalog,
@@ -96,6 +107,11 @@ pub trait GameScripts: Sync {
         _request: &ScriptRequest<'_>,
         _sources: &dyn gsc::SourceResolver,
     ) -> Option<ScriptProgram> {
+        None
+    }
+
+    /// The functions the game's client engine calls in its client scripts.
+    fn client_callbacks(&self) -> Option<ClientCallbacks> {
         None
     }
 

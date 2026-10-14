@@ -40,6 +40,9 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     ("ai_slowdownMinYawDiff", "180"),
     ("ai_slowdownMaxYawDiff", "180"),
     ("ai_meleeRange", "64"),
+    // Black Ops registers it true; `_zombiemode_load` sets
+    // `level.clientscripts` from it, which `clientNotify` reads.
+    ("cg_usingClientScripts", "1"),
 ];
 
 impl game_api::GameScripts for T5 {
@@ -88,6 +91,15 @@ impl game_api::GameScripts for T5 {
             key_types: Vec::new(),
             entity_fields: Vec::new(),
             dvars: Vec::new(),
+        })
+    }
+
+    /// Black Ops' client engine calls `clientscripts/_callbacks`.
+    fn client_callbacks(&self) -> Option<game_api::ClientCallbacks> {
+        Some(game_api::ClientCallbacks {
+            state_change: "clientscripts/_callbacks::statechange",
+            activate_exploder: "clientscripts/_callbacks::callback_activate_exploder",
+            deactivate_exploder: "clientscripts/_callbacks::callback_deactivate_exploder",
         })
     }
 

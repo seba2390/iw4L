@@ -83,6 +83,21 @@ pub(crate) struct ClientView {
     pub(crate) host: bool,
 }
 
+/// What the server's scripts send the clients' scripts.
+#[derive(Clone, Debug)]
+pub(crate) enum ClientMessage {
+    /// A client system's new state (`clientSysSetState`), for one client or
+    /// all of them.
+    SystemState {
+        client: Option<u32>,
+        system: Arc<str>,
+        state: Arc<str>,
+    },
+    /// A client exploder the server started (a positive id) or stopped
+    /// (a negative one), for every client.
+    Exploder(i32),
+}
+
 /// A sound the client plays itself (`playsound`).
 #[derive(Clone, Debug)]
 pub(crate) struct ClientSound {
@@ -104,6 +119,7 @@ pub(crate) struct ClientOutput {
 pub(crate) struct ClientScripts {
     world: World,
     entries: Vec<String>,
+    callbacks: Option<game_api::ClientCallbacks>,
     started: bool,
     stopped: bool,
 }
@@ -132,6 +148,7 @@ pub(crate) fn install(
     program: Program,
     natives: NativeRegistry,
     entries: Vec<String>,
+    callbacks: Option<game_api::ClientCallbacks>,
     level: &super::LevelData,
 ) -> Result<(), Fault> {
     let mut world = World::new();
@@ -170,6 +187,7 @@ pub(crate) fn install(
     server.insert_resource(ClientScripts {
         world,
         entries,
+        callbacks,
         started: false,
         stopped: false,
     });
@@ -195,13 +213,14 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
     let Some(mut client) = server.remove_resource::<ClientScripts>() else {
         return;
     };
+    let messages = std::mem::take(&mut server.resource_mut::<RoundScript>().client_messages);
     if !client.stopped {
         let (tick, reason) = {
             let request = server.resource::<crate::step::StepRequest>();
             (request.tick, request.reason)
         };
         if reason.advances_authority_world() {
-            run_frame(&mut client, tick, reason);
+            run_frame(&mut client, tick, reason, messages);
             let sounds = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().sounds);
             for sound in sounds {
                 super::host::natives::engine::sound_to_client(
@@ -216,7 +235,12 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
     server.insert_resource(client);
 }
 
-fn run_frame(client: &mut ClientScripts, tick: crate::Tick, reason: crate::StepReason) {
+fn run_frame(
+    client: &mut ClientScripts,
+    tick: crate::Tick,
+    reason: crate::StepReason,
+    messages: Vec<ClientMessage>,
+) {
     let world = &mut client.world;
     for local in &mut world.resource_mut::<ClientView>().locals {
         local.has_snapshot = true;
@@ -228,6 +252,30 @@ fn run_frame(client: &mut ClientScripts, tick: crate::Tick, reason: crate::StepR
             if let Err(fault) = super::runtime::start(world, entry, Value::level(), Vec::new()) {
                 diag::warn!(Sim, "csc: client script {entry} not started: {fault}");
             }
+        }
+    }
+    // The server's commands reach the client with its snapshot, before its
+    // scripts run.
+    for message in messages {
+        let Some(callbacks) = client.callbacks else {
+            continue;
+        };
+        let (function, args) = match message {
+            ClientMessage::SystemState {
+                client: Some(other),
+                ..
+            } if other != 0 => continue,
+            ClientMessage::SystemState { system, state, .. } => (
+                callbacks.state_change,
+                vec![Value::Int(0), Value::string(&system), Value::string(&state)],
+            ),
+            ClientMessage::Exploder(id) if id < 0 => {
+                (callbacks.deactivate_exploder, vec![Value::Int(-id)])
+            }
+            ClientMessage::Exploder(id) => (callbacks.activate_exploder, vec![Value::Int(id)]),
+        };
+        if let Err(fault) = super::runtime::start(world, function, Value::level(), args) {
+            diag::warn!(Sim, "csc: {function} not started: {fault}");
         }
     }
     super::runtime::advance_scheduler(world);

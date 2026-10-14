@@ -688,7 +688,7 @@ pub fn apply_prepared_match(
         });
         sim.install_gsc_program(scripts, natives, script_level)
             .map_err(|e| script_refusal(&zone, gametype, "install", &e))?;
-        if let (Some((program, entries)), Some(mut client_natives), Some(client_level)) =
+        if let (Some((program, entries, callbacks)), Some(mut client_natives), Some(client_level)) =
             (client_scripts, client_natives, client_level)
         {
             let (missing, named) = client_natives.coverage(&program);
@@ -698,9 +698,13 @@ pub fn apply_prepared_match(
                 "csc: client builtin coverage map={zone}: {missing} of {named} client builtins not implemented yet: {}",
                 gaps.join(" ")
             );
-            if let Err(fault) =
-                sim.install_client_scripts(program, client_natives, entries, &client_level)
-            {
+            if let Err(fault) = sim.install_client_scripts(
+                program,
+                client_natives,
+                entries,
+                callbacks,
+                &client_level,
+            ) {
                 diag::warn!(Sim, "csc: client scripts not installed: {fault}");
             }
         }
@@ -933,7 +937,11 @@ struct MatchInstallPlan {
     script_entries: Vec<String>,
     /// The game's client scripts and their entries, when its client runs
     /// scripts of its own.
-    client_scripts: Option<(sim::script::Program, Vec<String>)>,
+    client_scripts: Option<(
+        sim::script::Program,
+        Vec<String>,
+        Option<game_api::ClientCallbacks>,
+    )>,
     /// The gametype's settings (`GetGametypeSetting`).
     gametype_settings: Vec<(String, String)>,
     script_dvars: Vec<(String, String)>,
@@ -1420,7 +1428,7 @@ fn preflight_match_install(
                         compiled.function_count(),
                         compiled.natives.len()
                     );
-                    Some((compiled, client.entries))
+                    Some((compiled, client.entries, game_scripts.client_callbacks()))
                 }
                 Err(error) => {
                     diag::warn!(Sim, "csc: client scripts do not compile: {error}");
