@@ -557,6 +557,61 @@ impl<'a> WeaponDefView<'a> {
         f32::from_le_bytes(Self::word(self.def, 0x648))
     }
 
+    /// `leftArc`
+    pub fn left_arc(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x740))
+    }
+
+    /// `rightArc`
+    pub fn right_arc(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x744))
+    }
+
+    /// `topArc`
+    pub fn top_arc(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x748))
+    }
+
+    /// `bottomArc`
+    pub fn bottom_arc(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x74c))
+    }
+
+    /// `accuracy`
+    pub fn accuracy(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x750))
+    }
+
+    /// `aiSpread`
+    pub fn ai_spread(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x754))
+    }
+
+    /// `playerSpread`
+    pub fn player_spread(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x758))
+    }
+
+    /// `pitchConvergenceTime`
+    pub fn pitch_convergence_time(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x76c))
+    }
+
+    /// `yawConvergenceTime`
+    pub fn yaw_convergence_time(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x770))
+    }
+
+    /// `suppressionTime`
+    pub fn suppression_time(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x774))
+    }
+
+    /// `maxRange`
+    pub fn max_range(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x778))
+    }
+
     /// `clipSize`
     pub fn clip_size(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.variant, 0x20))
