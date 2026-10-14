@@ -106,6 +106,7 @@ pub(crate) fn program(
         deactivate_exploder: has(&format!("{CALLBACKS}::callback_deactivate_exploder")),
     };
     Rule::Known(ClientScriptProgram {
+        entities: client_entities(&entities, &key_types),
         structs: structs(&entities, &key_types),
         precaches,
         starts,
@@ -166,6 +167,73 @@ fn aitypes(entities: &[Vec<(String, String)>]) -> Vec<String> {
         }
     }
     found
+}
+
+/// The client entity field table (`CG_ParseEntityFields`), before the
+/// client's key table (`radiant/keys.txt`).
+const CLIENT_ENTITY_FIELDS: [(&str, KeyType); 5] = [
+    ("classname", KeyType::String),
+    ("origin", KeyType::Vector),
+    ("angles", KeyType::Vector),
+    ("model", KeyType::String),
+    ("targetname", KeyType::String),
+];
+
+/// The map entities the client spawns itself (`CG_SpawnEntities` ->
+/// `CG_CallSpawn` -> `CG_ParseEntityFields`): client-side `script_model`,
+/// `script_origin` and `script_brushmodel` entities without a
+/// `destructibledef` (`eType` 6), and client triggers with spawnflags
+/// `0x880` (`eType` 0).
+fn client_entities(
+    entities: &[Vec<(String, String)>],
+    key_types: &[(String, KeyType)],
+) -> Vec<(i32, Vec<(String, KeyType, String)>)> {
+    let mut out = Vec::new();
+    for pairs in entities.iter().skip(1) {
+        let classname = value(pairs, "classname").unwrap_or("");
+        let flags = value(pairs, "spawnflags").map_or(0, atoi);
+        let clientside =
+            flags & 2 != 0 || value(pairs, "clientside").is_some_and(|v| atof(v) == 1.0);
+        let mover = ["script_model", "script_origin", "script_brushmodel"]
+            .iter()
+            .any(|class| classname.eq_ignore_ascii_case(class))
+            && value(pairs, "destructibledef").is_none()
+            && clientside;
+        let trigger = [
+            "trigger_multiple",
+            "trigger_radius",
+            "trigger_box",
+            "trigger_once",
+        ]
+        .iter()
+        .any(|class| classname.eq_ignore_ascii_case(class))
+            && flags & 0x880 != 0;
+        let etype = if mover {
+            6
+        } else if trigger {
+            0
+        } else {
+            continue;
+        };
+        let fields = pairs
+            .iter()
+            .filter_map(|(key, val)| {
+                let (name, ty) = CLIENT_ENTITY_FIELDS
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case(key))
+                    .map(|(name, ty)| ((*name).to_owned(), *ty))
+                    .or_else(|| {
+                        key_types
+                            .iter()
+                            .find(|(name, _)| name.eq_ignore_ascii_case(key))
+                            .cloned()
+                    })?;
+                Some((name, ty, val.clone()))
+            })
+            .collect();
+        out.push((etype, fields));
+    }
+    out
 }
 
 /// The entities the client makes into structs: script structs, models and
@@ -229,4 +297,12 @@ fn atoi(text: &str) -> i32 {
             n.wrapping_mul(10).wrapping_add(i32::from(d - b'0'))
         });
     sign * value
+}
+
+fn atof(text: &str) -> f64 {
+    let text = text.trim_start();
+    text.find(|c: char| !c.is_ascii_digit() && !matches!(c, '+' | '-' | '.' | 'e' | 'E'))
+        .map_or(text, |end| &text[..end])
+        .parse::<f64>()
+        .unwrap_or(0.0)
 }

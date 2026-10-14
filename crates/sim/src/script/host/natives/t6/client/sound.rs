@@ -512,6 +512,15 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         float(args, 3)?;
         Err(RANDOMS.into())
     });
+    // usefootsteptable(ai_index, name): binds a footstep sound table to an
+    // actor type on the client.
+    registry.register(Function, "usefootsteptable", |_, _, args| {
+        int(args, 0)?;
+        string(args, 1)?;
+        // t6.csc.sound.footsteps: IW4L's client game plays no actor footstep
+        // notetracks.
+        Ok(Value::Undefined)
+    });
     // footstepdoeverything(): footsteps play their sounds and effects for
     // every entity.
     registry.register(Function, "footstepdoeverything", |_, _, _| {

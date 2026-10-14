@@ -1543,9 +1543,8 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             _ => None,
         }
         .filter(|tag| !tag.is_empty() && !tag.eq_ignore_ascii_case("tag_origin"));
-        // Map script movers in IW4L arrive via the snapshot with server
-        // entity numbers below 1024 (`t6.csc.client_entities.map_movers`).
-        if number < CLIENT_ENTITY_BASE && etype != ETYPE_SCRIPTMOVER {
+        // Only client-spawned entities (>= 1024) may be linked on the client.
+        if number < CLIENT_ENTITY_BASE {
             return Err("LinkTo: Only works on fake entities\n".into());
         }
         let (pose_origin, pose_angles, local_origin, local_angles) = if let Some(ref tag_name) = tag
@@ -2153,6 +2152,55 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         // t6.csc.render.lod_scale_rigid: IW4L does not adjust rigid model
         // LOD scale from client scripts.
+        Ok(Value::Undefined)
+    });
+
+    // ent issplitscreenhost(): whether the entity is the split-screen host's
+    // local player.
+    registry.register(Method, "issplitscreenhost", |world, receiver, _| {
+        Ok(Value::Int(is_local_player(world, receiver).into()))
+    });
+
+    // ent getcharacterindex(): the character variant index set on an actor or
+    // script mover (`setcharacterindex`), 0 otherwise.
+    registry.register(Method, "getcharacterindex", |world, receiver, _| {
+        let (_, number, etype) = receiver_entity(world, receiver)?;
+        let index = if matches!(etype, ETYPE_ACTOR | ETYPE_ACTOR_CORPSE) {
+            with_server(world, |server| {
+                let server_id = server_object(server, number)?;
+                Some(super::super::actor::character_index(server, server_id))
+            })
+            .flatten()
+            .unwrap_or(0)
+        } else {
+            0
+        };
+        Ok(Value::Int(i32::from(index)))
+    });
+
+    // precacheanimstatedef(ai_index, #animtree, name): registers an actor
+    // type's animation state definition on the client.
+    registry.register(Function, "precacheanimstatedef", |_, _, args| {
+        int(args, 0)?;
+        animtree_arg(args, 1)?;
+        string(args, 2)?;
+        Ok(Value::Undefined)
+    });
+
+    // setdemolockonvalues(ai_index, highlight_dist, height1, pitch_min1,
+    // pitch_max1, height2, pitch_min2, pitch_max2): sets theater free-camera
+    // lock-on parameters for an actor type.
+    registry.register(Function, "setdemolockonvalues", |_, _, args| {
+        let index = int(args, 0)? as u8;
+        if index != 0 {
+            float(args, 1)?;
+            int(args, 2)?;
+            float(args, 3)?;
+            float(args, 4)?;
+            int(args, 5)?;
+            float(args, 6)?;
+            float(args, 7)?;
+        }
         Ok(Value::Undefined)
     });
 }

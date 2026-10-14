@@ -442,7 +442,18 @@ fn sync_with(server: &mut World, client: &mut World) {
         }
         if !game.entities[&entity.number].spawned {
             game.entities.get_mut(&entity.number).unwrap().spawned = true;
-            spawned.push((object, entity.etype));
+            let aitype = (entity.etype == 16)
+                .then(|| {
+                    server
+                        .resource::<RoundScript>()
+                        .entities
+                        .get(&entity.owner)?
+                        .classname
+                        .strip_prefix("actor_")
+                        .map(str::to_owned)
+                })
+                .flatten();
+            spawned.push((object, entity.etype, aitype));
         }
     }
     // The client systems' states the server set for every client or for
@@ -571,7 +582,18 @@ fn sync_with(server: &mut World, client: &mut World) {
         }
         client.resource_mut::<RoundScript>().request_delete(object);
     }
-    for (object, etype) in spawned {
+    for (object, etype, aitype) in spawned {
+        if let Some(aitype) = aitype {
+            let main = format!("aitype/clientscripts/{aitype}::main");
+            if client
+                .resource::<RoundScript>()
+                .program
+                .as_ref()
+                .is_some_and(|program| program.names.contains_key(&main))
+            {
+                run(client, &main, Value::Object(object), Vec::new(), now);
+            }
+        }
         let callback = if etype == 1 {
             &callbacks.player_spawned
         } else {

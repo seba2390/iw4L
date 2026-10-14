@@ -132,6 +132,8 @@ pub(super) struct Actor {
     pub(super) stances: u32,
     /// Whether the free camera may lock on to the actor.
     pub(super) free_camera_lock_on: bool,
+    /// Which of the aitype's characters the actor wears (`setcharacterindex`).
+    pub(super) character_index: u8,
 }
 
 impl Default for Actor {
@@ -140,8 +142,16 @@ impl Default for Actor {
             hull: (DROP_MAXS[0], DROP_MINS[2], 48.0),
             stances: 0b111,
             free_camera_lock_on: false,
+            character_index: 0,
         }
     }
+}
+
+pub(super) fn character_index(world: &World, id: u64) -> u8 {
+    world
+        .get_resource::<Actors>()
+        .and_then(|actors| actors.0.get(&id))
+        .map_or(0, |actor| actor.character_index)
 }
 
 #[derive(Resource, Default)]
@@ -378,10 +388,11 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // the models the character script set.
     registry.register(Method, "setcharacterindex", |world, receiver, args| {
         let id = entity_id(world, receiver).map_err(|_| String::from("not an entity"))?;
-        int(args, 0)?;
+        let index = int(args, 0)? as u8;
         if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
             return Err("SetCharacterIndex called on incompatible entity type\n".into());
         }
+        with_actor(world, receiver, |actor| actor.character_index = index)?;
         Ok(Value::Undefined)
     });
     // Aim assist does not exist on IW4L's client (`t6.actors.aim_assist`).
