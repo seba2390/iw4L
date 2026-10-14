@@ -43,6 +43,9 @@ pub mod event {
     pub const PREP_RIOTSHIELD: i32 = 50;
     pub const DEPLOY_RIOTSHIELD: i32 = 51;
     pub const LOWER_RIOTSHIELD: i32 = 52;
+    pub const FIRE_WEAPON_MOUNTED_TURRET: i32 = 56;
+    pub const FIRE_BARREL_1: i32 = 58;
+    pub const FIRE_BARREL_2: i32 = 59;
     pub const GRENADE_DROP: i32 = 106;
     pub const GRENADE_SUICIDE: i32 = 107;
     pub const DETONATE: i32 = 108;

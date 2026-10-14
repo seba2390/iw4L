@@ -1191,6 +1191,11 @@ impl<'a> WeaponDefView<'a> {
         self.def_f32(0x564)
     }
 
+    /// A stacked weapon's hip spread scale per barrel beyond the first.
+    pub fn stack_fire_accuracy_decay(&self) -> f32 {
+        self.def_f32(0x568)
+    }
+
     pub fn mountable_weapon(&self) -> bool {
         self.def_bool(0x578)
     }

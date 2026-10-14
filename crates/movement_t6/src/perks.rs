@@ -67,6 +67,8 @@ pub const NAMES: [&str; 63] = [
     "specialty_unlimitedsprint",
 ];
 
+pub const BULLET_ACCURACY: usize = 0x03;
+pub const BULLET_PENETRATION: usize = 0x06;
 pub const DEADSHOT: usize = 0x07;
 pub const FALL_HEIGHT: usize = 0x0e;
 pub const FAST_ADS: usize = 0x0f;
@@ -82,6 +84,7 @@ pub const HOLD_BREATH: usize = 0x1e;
 pub const LONGER_SPRINT: usize = 0x25;
 pub const MOVE_FASTER: usize = 0x28;
 pub const NONAME: usize = 0x2a;
+pub const QUIETER: usize = 0x32;
 pub const RATE_OF_FIRE: usize = 0x34;
 pub const SPRINT_RECOVERY: usize = 0x39;
 pub const STALKER: usize = 0x3b;

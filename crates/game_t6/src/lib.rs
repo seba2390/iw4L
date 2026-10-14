@@ -1,4 +1,5 @@
 mod builtins;
+mod fire;
 mod grenade;
 mod keys;
 mod missile;

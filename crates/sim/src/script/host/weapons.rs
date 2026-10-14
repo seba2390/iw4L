@@ -419,6 +419,11 @@ fn notify_game_weapon_changes(world: &mut World) {
                 WeaponNotify::EndFiring => ("end_firing", Vec::new()),
                 WeaponNotify::NightVisionOn => ("night_vision_on", Vec::new()),
                 WeaponNotify::NightVisionOff => ("night_vision_off", Vec::new()),
+                WeaponNotify::Raising(weapon) => ("weapon_raising", vec![name(world, weapon)]),
+                WeaponNotify::DiveStart => ("dtp_start", Vec::new()),
+                WeaponNotify::DiveEnd => ("dtp_end", Vec::new()),
+                WeaponNotify::SprintBegin => ("sprint_begin", Vec::new()),
+                WeaponNotify::SprintEnd => ("sprint_end", Vec::new()),
             };
             raise(world, Value::Object(object), event, args);
         }

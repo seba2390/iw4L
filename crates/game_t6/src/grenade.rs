@@ -59,9 +59,7 @@ fn irand(world: &mut dyn FireWorld, min: i32, max: i32) -> i32 {
 }
 
 fn flrand(world: &mut dyn FireWorld, min: f32, max: f32) -> f32 {
-    (f64::from(world.rand())
-        * (f64::from(max) - f64::from(min))
-        * f64::from(3.051_757_8e-5_f32)
+    (f64::from(world.rand()) * (f64::from(max) - f64::from(min)) * f64::from(3.051_757_8e-5_f32)
         + f64::from(min)) as f32
 }
 
@@ -106,7 +104,8 @@ pub(crate) fn splash_means(def: &WeaponDefView<'_>, grenade: bool) -> usize {
     }
 }
 
-/// `Weapon_ThrowGrenade` and `Weapon_GrenadeLauncher_Fire`.
+/// `Weapon_ThrowGrenade` and `Weapon_GrenadeLauncher_Fire`; `time_left` is
+/// the throwing player's cooked fuse (`grenadeTimeLeft`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_grenade(
     owner: i32,
@@ -115,7 +114,7 @@ pub(crate) fn launch_grenade(
     origin: [f32; 3],
     angles: [f32; 3],
     launcher: bool,
-    remaining_fuse: Option<i32>,
+    time_left: Option<i32>,
     world: &mut dyn FireWorld,
 ) -> Option<i32> {
     let (forward, _, up) = angle_vectors(angles);
@@ -146,16 +145,12 @@ pub(crate) fn launch_grenade(
         v
     };
     let player = world.player(owner);
-    let authored = if player.is_some() {
+    let fuse = if player.is_some() {
         def.def_i32(def::FUSE_TIME)
     } else {
         def.def_i32(def::AI_FUSE_TIME)
     };
-    let fuse = if !launcher && def.def_bool(def::TIMED_DETONATION) {
-        remaining_fuse.filter(|&ms| ms > 0).unwrap_or(authored)
-    } else {
-        authored
-    };
+    let time_left = player.map(|_| time_left.unwrap_or(0));
     let len = length(vel);
     let len = if -len >= 0.0 { 1.0 } else { len };
     let inv = 1.0 / len;
@@ -174,19 +169,18 @@ pub(crate) fn launch_grenade(
         *c = *c as i32 as f32;
     }
     spawn_grenade(
-        owner,
-        weapon,
-        def,
-        origin,
-        vel,
-        carried,
-        !launcher,
-        fuse,
-        world,
+        owner, weapon, def, origin, vel, carried, !launcher, fuse, time_left, world,
     )
 }
 
-/// `G_FireGrenade`.
+/// `G_FireGrenade` takes a player's cooked fuse, and clears it, unless the
+/// grenade arms by distance and has no fuse.
+pub(crate) fn takes_time_left(def: &WeaponDefView<'_>, fuse: i32) -> bool {
+    def.def_i32(def::PROJECTILE_ACTIVATE_DIST) == 0 || fuse >= 1
+}
+
+/// `G_FireGrenade`; `time_left` is the throwing player's cooked fuse, `None`
+/// when no player throws it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_grenade(
     owner: i32,
@@ -197,6 +191,7 @@ pub(crate) fn spawn_grenade(
     carried: [f32; 3],
     rotate: bool,
     fuse: i32,
+    time_left: Option<i32>,
     world: &mut dyn FireWorld,
 ) -> Option<i32> {
     let level = world.level_time();
@@ -239,8 +234,12 @@ pub(crate) fn spawn_grenade(
         0
     };
     let mut explode_at = 0;
-    if def.def_i32(def::PROJECTILE_ACTIVATE_DIST) <= 0 || fuse > 0 {
-        explode_at = level + fuse;
+    if takes_time_left(def, fuse) {
+        match time_left {
+            Some(_) if !def.def_bool(def::TIMED_DETONATION) => {}
+            Some(left) if left != 0 => explode_at = level + left,
+            _ => explode_at = level + fuse,
+        }
     }
     if explode_at == 0 {
         explode_at = level + DEFAULT_FUSE_MS;
@@ -323,7 +322,11 @@ pub(crate) fn bounce(
         return;
     }
     let level = world.level_time();
-    world.set_entity_pose(missile.entity, missile.origin, evaluate(&missile.angles, level));
+    world.set_entity_pose(
+        missile.entity,
+        missile.origin,
+        evaluate(&missile.angles, level),
+    );
     let target = hit_id(trace);
     if state.surface == 0 && hit.is_some_and(sentient) {
         state.surface = SURF_FLESH;
@@ -336,7 +339,11 @@ pub(crate) fn bounce(
     let stuck_to_ent = matches!(stickiness, 1 | 5)
         || (stickiness == 2 && target != ENTITY_WORLD && target != ENTITY_NONE);
     if stuck_to_ent && target != ENTITY_WORLD && target != ENTITY_NONE {
-        world.notify(target, "grenade_stuck", &[NotifyArg::Entity(missile.entity)]);
+        world.notify(
+            target,
+            "grenade_stuck",
+            &[NotifyArg::Entity(missile.entity)],
+        );
         world.notify(
             missile.entity,
             "stationary",
@@ -387,7 +394,10 @@ fn bounce_off(
     let stickiness = def.def_i32(def::STICKINESS);
     let is_player = hit.is_some_and(|e| e.kind == FireEntityKind::Player);
     let mut can_rest = matches!(stickiness, 0 | 1) || !is_player;
-    if stickiness != 4 && struck != ENTITY_WORLD && struck != ENTITY_NONE && state.surface == SURF_FLESH
+    if stickiness != 4
+        && struck != ENTITY_WORLD
+        && struck != ENTITY_NONE
+        && state.surface == SURF_FLESH
     {
         can_rest = false;
     }
@@ -755,13 +765,13 @@ pub(crate) fn explode(
         &[NotifyArg::Vector(at), NotifyArg::String(surf_name)],
     );
     let mask = clipmask(def);
-    let (from, to) =
-        if matches!(def.def_i32(def::STICKINESS), 1 | 2) && state.ground != ENTITY_NONE {
-            let r = state.rest_normal;
-            (mad(at, r, 4.0), mad(at, r, -EXPLOSION_FLOOR))
-        } else {
-            (at, [at[0], at[1], at[2] - EXPLOSION_FLOOR])
-        };
+    let (from, to) = if matches!(def.def_i32(def::STICKINESS), 1 | 2) && state.ground != ENTITY_NONE
+    {
+        let r = state.rest_normal;
+        (mad(at, r, 4.0), mad(at, r, -EXPLOSION_FLOOR))
+    } else {
+        (at, [at[0], at[1], at[2] - EXPLOSION_FLOOR])
+    };
     let floor = world.bullet_trace(from, to, missile.entity, mask);
     let normal = if def.def_bool(def::PROJ_EXPLOSION_EFFECT_FORCE_NORMAL_UP) {
         [0.0, 0.0, 1.0]
@@ -780,8 +790,7 @@ pub(crate) fn explode(
     });
     if def.def_i32(def::EXPLOSION_INNER_DAMAGE) != 0 {
         let cone_angle = def.def_f32(def::DAMAGE_CONE_ANGLE);
-        let cone =
-            (cone_angle - 180.0 < 0.0).then(|| f64::from(cone_angle * DEG2RAD).cos() as f32);
+        let cone = (cone_angle - 180.0 < 0.0).then(|| f64::from(cone_angle * DEG2RAD).cos() as f32);
         let (forward, _, _) = angle_vectors(evaluate(&missile.angles, level));
         let means = splash_means(def, state.grenade);
         radius_damage(
@@ -863,8 +872,7 @@ fn sight_points(entity: &FireEntity, origin: [f32; 3], eye: [f32; 3]) -> [[f32; 
             (at[1] + eye[1]) * 0.5,
             (at[2] + eye[2]) * 0.5,
         ];
-        let point =
-            |side: f32, up: f32| [px * side + base[0], nx * side + base[1], base[2] + up];
+        let point = |side: f32, up: f32| [px * side + base[0], nx * side + base[1], base[2] + up];
         return [
             base,
             point(PLAYER_SIDE, half),
@@ -935,13 +943,13 @@ pub(crate) fn radius_damage(blast: &RadiusDamage, world: &mut dyn FireWorld) {
             continue;
         }
         let eye = match entity.kind {
-            FireEntityKind::Player => world
-                .player(target)
-                .map_or(entity.origin, |p| {
-                    [p.origin[0], p.origin[1], p.origin[2] + p.view_height]
-                }),
+            FireEntityKind::Player => world.player(target).map_or(entity.origin, |p| {
+                [p.origin[0], p.origin[1], p.origin[2] + p.view_height]
+            }),
             FireEntityKind::Actor => {
-                entity.eye.unwrap_or([entity.origin[0], entity.origin[1], entity.origin[2] + 64.0])
+                entity
+                    .eye
+                    .unwrap_or([entity.origin[0], entity.origin[1], entity.origin[2] + 64.0])
             }
             FireEntityKind::Other => entity.origin,
         };

@@ -182,6 +182,8 @@ pub struct WeaponNotifyMemory {
     pub raise_pending: bool,
     pub firing: bool,
     pub night_vision: bool,
+    pub dive: bool,
+    pub sprint: bool,
 }
 
 /// A notify a server frame raises on a player for their weapon.
@@ -195,6 +197,12 @@ pub enum WeaponNotify {
     EndFiring,
     NightVisionOn,
     NightVisionOff,
+    /// A weapon starts coming up.
+    Raising(u32),
+    DiveStart,
+    DiveEnd,
+    SprintBegin,
+    SprintEnd,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
