@@ -36,8 +36,9 @@ pub mod variant {
     pub const ADS_ZOOM_OUT_FRAC: u32 = 564;
     pub const SILENCED: u32 = 580;
     pub const DUAL_MAG: u32 = 581;
-    /// Spread flags; bit 3 lays a spread weapon's pellets on a level line.
-    pub const SPREAD_FLAGS: u32 = 584;
+    /// The variant's two perk words, added to its holder's perks; bit 3 lays
+    /// a spread weapon's pellets on a level line.
+    pub const PERKS: u32 = 584;
     pub const SPREAD_FLAT_BIT: u32 = 3;
     pub const SIZE: usize = 716;
 }
@@ -878,6 +879,10 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x1c)
     }
 
+    pub fn player_anim_type(&self) -> i32 {
+        self.def_i32(0x18)
+    }
+
     pub fn weapon_class(&self) -> i32 {
         self.def_i32(0x20)
     }
@@ -1130,6 +1135,18 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x504)
     }
 
+    pub fn crawl_in_time(&self) -> i32 {
+        self.def_i32(0x508)
+    }
+
+    pub fn crawl_out_fire_time(&self) -> i32 {
+        self.def_i32(0x51c)
+    }
+
+    pub fn crawl_out_time(&self) -> i32 {
+        self.def_i32(0x520)
+    }
+
     pub fn slide_in_time(&self) -> i32 {
         self.def_i32(0x524)
     }
@@ -1198,6 +1215,10 @@ impl<'a> WeaponDefView<'a> {
         self.def_f32(0x5b0)
     }
 
+    pub fn hold_breath_to_steady(&self) -> bool {
+        self.def_bool(0x5ac)
+    }
+
     pub fn hip_spread_ducked_min(&self) -> f32 {
         self.def_f32(0x5b4)
     }
@@ -1242,12 +1263,24 @@ impl<'a> WeaponDefView<'a> {
         self.def_f32(0x5dc)
     }
 
+    pub fn ads_idle_speed(&self) -> f32 {
+        self.def_f32(0x5ec)
+    }
+
+    pub fn hip_idle_speed(&self) -> f32 {
+        self.def_f32(0x5f0)
+    }
+
     pub fn rifle_bullet(&self) -> bool {
         self.def_bool(0x631)
     }
 
     pub fn armor_piercing(&self) -> bool {
         self.def_bool(0x632)
+    }
+
+    pub fn airburst_weapon(&self) -> bool {
+        self.def_bool(0x633)
     }
 
     pub fn bolt_action(&self) -> bool {
@@ -1310,6 +1343,14 @@ impl<'a> WeaponDefView<'a> {
         self.def_bool(0x659)
     }
 
+    pub fn alt_weapon_ads_only(&self) -> bool {
+        self.def_bool(0x65c)
+    }
+
+    pub fn alt_weapon_disable_switching(&self) -> bool {
+        self.def_bool(0x65d)
+    }
+
     pub fn no_partial_reload(&self) -> bool {
         self.def_bool(0x669)
     }
@@ -1330,12 +1371,20 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x670)
     }
 
+    pub fn shots_before_rechamber(&self) -> i32 {
+        self.def_i32(0x690)
+    }
+
     pub fn blocks_prone(&self) -> bool {
         self.def_bool(0x694)
     }
 
     pub fn is_rolling_grenade(&self) -> i32 {
         self.def_i32(0x698)
+    }
+
+    pub fn is_tactical_insertion(&self) -> bool {
+        self.def_i32(0x6a4) != 0
     }
 
     pub fn explosion_radius(&self) -> i32 {
@@ -1442,6 +1491,10 @@ impl<'a> WeaponDefView<'a> {
         self.def_bool(0x750)
     }
 
+    pub fn is_hold_use_grenade(&self) -> bool {
+        self.def_bool(0x754)
+    }
+
     pub fn guided_missile_type(&self) -> i32 {
         self.def_i32(0x770)
     }
@@ -1466,6 +1519,15 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x7e4)
     }
 
+    /// Seconds.
+    pub fn anti_quick_scope_time(&self) -> f32 {
+        self.def_f32(0x830)
+    }
+
+    pub fn anti_quick_scope_scale(&self) -> f32 {
+        self.def_f32(0x834)
+    }
+
     pub fn ads_reload_trans_time(&self) -> i32 {
         self.def_i32(0x874)
     }
@@ -1476,6 +1538,24 @@ impl<'a> WeaponDefView<'a> {
 
     pub fn destabilize_distance(&self) -> i32 {
         self.def_i32(0x8f8)
+    }
+
+    pub fn intro_fire_time(&self) -> i32 {
+        self.def_i32(0x95c)
+    }
+
+    /// Shots fired at the intro fire time.
+    pub fn intro_fire_length(&self) -> i32 {
+        self.def_i32(0x960)
+    }
+
+    /// Negative: the variant loaded under another one's.
+    pub fn variant_count(&self) -> i32 {
+        self.variant_i32(0x4)
+    }
+
+    pub fn ignore_attachments(&self) -> bool {
+        self.variant_bool(0x1d8)
     }
 
     pub fn clip_size(&self) -> i32 {
@@ -1512,6 +1592,24 @@ impl<'a> WeaponDefView<'a> {
 
     pub fn dual_mag(&self) -> bool {
         self.variant_bool(0x245)
+    }
+
+    /// Weapon position change per ms when aiming in (1 / ADS in time).
+    pub fn ads_in_rate(&self) -> f32 {
+        self.variant_f32(0x23c)
+    }
+
+    /// Weapon position change per ms when aiming out (1 / ADS out time).
+    pub fn ads_out_rate(&self) -> f32 {
+        self.variant_f32(0x240)
+    }
+
+    pub fn variant_perks(&self) -> [u32; 2] {
+        [0x248, 0x24c].map(|off| self.variant_i32(off) as u32)
+    }
+
+    pub fn anti_quick_scope(&self) -> bool {
+        self.variant_bool(0x250)
     }
 }
 

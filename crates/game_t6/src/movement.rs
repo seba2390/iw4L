@@ -72,6 +72,11 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops 2's linked, noclip, ufo, spectator and intermission moves",
             "those player moves from its executable"
         ),
+        Gap::Attachments => unknown!(
+            "t6.weapons.attachments",
+            "Black Ops 2's weapon attachments: a held weapon runs on its variant alone, without its attachments' scales and overrides",
+            "attachment indices in IW4L's Black Ops 2 weapon numbers and the attachments' definitions reaching movement"
+        ),
     }
 }
 
@@ -88,6 +93,14 @@ fn water_unknown() -> &'static Unknown {
         "t6.movement.water",
         "the water level under a Black Ops 2 player: the match cannot tell, so players are taken as dry",
         "a water surface query over the map's water for the runtime"
+    )
+}
+
+fn variant_parent_unknown() -> &'static Unknown {
+    unknown!(
+        "t6.weapons.variant_parent",
+        "a Black Ops 2 charge-shot weapon keeps its own clip and rounds instead of those of the weapon its variant loads under",
+        "each weapon's parent variant (the weapon whose alternate or dual-wield chain loads it) in IW4L's Black Ops 2 weapon data"
     )
 }
 
@@ -203,6 +216,30 @@ impl Bytes<'_> {
         }
         self.at += 1;
     }
+
+    fn byte(&mut self, value: &mut u8, write: bool) {
+        if write {
+            self.buf[self.at] = *value;
+        } else {
+            *value = self.buf[self.at];
+        }
+        self.at += 1;
+    }
+}
+
+/// A held weapon's flags in one byte.
+fn held_flags(held: &mut movement_t6::state::HeldWeapon, b: &mut Bytes<'_>, write: bool) {
+    let mut bits = u8::from(held.needs_rechamber)
+        | u8::from(held.used_before) << 1
+        | u8::from(held.dual_mag) << 2
+        | u8::from(held.riotshield) << 3
+        | u8::from(held.zoom != 0) << 4;
+    b.byte(&mut bits, write);
+    held.needs_rechamber = bits & 1 != 0;
+    held.used_before = bits & 2 != 0;
+    held.dual_mag = bits & 4 != 0;
+    held.riotshield = bits & 8 != 0;
+    held.zoom = i32::from(bits >> 4 & 1);
 }
 
 fn game_state(
@@ -260,6 +297,52 @@ fn game_state(
     b.word(&mut last.buttons.0[0], write);
     b.word(&mut last.buttons.0[1], write);
 
+    b.i(&mut ps.weapon_time, write);
+    b.i(&mut ps.weapon_delay, write);
+    b.i(&mut ps.weapon_time_left, write);
+    b.i(&mut ps.weapon_delay_left, write);
+    b.i(&mut ps.weapon_idle_time, write);
+    b.i(&mut ps.grenade_time_left, write);
+    b.i(&mut ps.throw_back_grenade_owner, write);
+    b.i(&mut ps.throw_back_grenade_time_left, write);
+    b.i(&mut ps.weapon_restrict_kick_time, write);
+    b.word(&mut ps.offhand_index, write);
+    b.word(&mut ps.last_weapon_alt_mode_switch, write);
+    b.word(&mut ps.melee_weapon, write);
+    b.i(&mut ps.weapon_shot_count, write);
+    b.i(&mut ps.weapon_shot_count_left, write);
+    b.i(&mut ps.ads_delay_time, write);
+    b.i(&mut ps.spread_override, write);
+    b.i(&mut ps.spread_override_state, write);
+    b.f(&mut ps.weapon_spin_lerp, write);
+    b.f(&mut ps.hold_breath_scale, write);
+    b.i(&mut ps.hold_breath_timer, write);
+    b.i(&mut ps.charge_shot_timer, write);
+    b.i(&mut ps.charge_shot_level, write);
+    b.i(&mut ps.shots_fired_from_chamber, write);
+    b.f(&mut ps.quick_scope_scale, write);
+    b.i(&mut ps.quick_scope_timer, write);
+    b.i(&mut ps.melee_charge_ent, write);
+    b.i(&mut ps.melee_charge_dist, write);
+    b.i(&mut ps.melee_charge_time, write);
+    b.word(&mut ps.weap_lock_flags, write);
+    b.i(&mut ps.airburst_distance, write);
+    b.word(&mut ps.inventory_weapon, write);
+    b.word(&mut ps.weap_anim, write);
+    b.word(&mut ps.weap_anim_left, write);
+    b.i(&mut ps.offhand_throw, write);
+    b.i(&mut ps.ads_zoom_select, write);
+    b.i(&mut ps.ads_zoom_time, write);
+    b.flag(&mut ps.ads_zoom_latched, write);
+    b.i(&mut ps.ads_prev_zoom_select, write);
+    b.i(&mut ps.ads_prev_zoom_select_time, write);
+    b.i(&mut ps.intro_shots_fired, write);
+    b.word(&mut ps.other_flags, write);
+    for held in &mut ps.held_weapons {
+        b.word(&mut held.weapon, write);
+        b.i(&mut held.fuel, write);
+        held_flags(held, &mut b, write);
+    }
     let mut being_revived = ps.pm_type == pm_type::LAST_STAND_REVIVED;
     b.flag(&mut being_revived, write);
     if !write && ps.pm_type == pm_type::LAST_STAND && being_revived {
@@ -285,6 +368,8 @@ pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
         bob_cycle: player.bob_cycle,
         leanf: player.leanf,
         movement_dir: player.movement_dir,
+        // IW4L seats no Black Ops 2 player in a vehicle.
+        vehicle_entity: ENTITYNUM_NONE,
         ..PlayerState::default()
     };
     let mut last = UserCmd::default();
@@ -319,6 +404,7 @@ struct World<'a> {
     world: &'a dyn MoveWorld,
     weapon_unknown: core::cell::Cell<bool>,
     water_unknown: core::cell::Cell<bool>,
+    variant_parent_unknown: core::cell::Cell<bool>,
 }
 
 impl movement_t6::MoveWorld for World<'_> {
@@ -387,6 +473,11 @@ impl movement_t6::MoveWorld for World<'_> {
         self.world.weapon(weapon).is_some()
     }
 
+    fn variant_parent(&self, _weapon: u32) -> Option<u32> {
+        self.variant_parent_unknown.set(true);
+        None
+    }
+
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
         match self.world.water_surface(origin, up, down) {
             WaterSurface::At(z) => Some(z),
@@ -439,6 +530,7 @@ impl PlayerMovement for T6Movement {
             world,
             weapon_unknown: core::cell::Cell::new(false),
             water_unknown: core::cell::Cell::new(false),
+            variant_parent_unknown: core::cell::Cell::new(false),
         };
         let mut outcome = MoveOutcome::default();
         {
@@ -468,6 +560,9 @@ impl PlayerMovement for T6Movement {
         }
         if adapter.weapon_unknown.get() {
             outcome.gaps.push(weapon_unknown());
+        }
+        if adapter.variant_parent_unknown.get() {
+            outcome.gaps.push(variant_parent_unknown());
         }
         pack(player, &mut ps, &mut last);
         outcome

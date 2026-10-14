@@ -62,42 +62,199 @@ pub mod e_flags {
     pub const TALKING: u32 = 0x2_0000;
 }
 
+/// The player state's weapon flags (the low word of Black Ops 2's 64-bit
+/// field; the weapon code uses no bit of the high word).
 pub mod weap_flags {
+    /// A reload asked for by script.
     pub const RELOAD_REQUESTED: u32 = 0x1;
+    /// The offhand is in hand.
     pub const OFFHAND_ACTIVE: u32 = 0x2;
     pub const HOLD_BREATH: u32 = 0x4;
+    /// A grenade throw is cancelled.
     pub const CANCEL_GRENADE: u32 = 0x8;
+    /// `allowads(false)`.
     pub const NO_ADS: u32 = 0x20;
     pub const NIGHTVISION: u32 = 0x40;
+    /// `disableweapons`.
     pub const WEAPONS_DISABLED: u32 = 0x80;
+    /// `disableoffhandweapons`.
     pub const OFFHANDS_DISABLED: u32 = 0x100;
+    /// `disableweaponcycling`.
     pub const CYCLING_DISABLED: u32 = 0x200;
+    /// The right hand's fire button must be let go before the next shot.
     pub const FIRE_LATCH: u32 = 0x400;
+    pub const FIRE_LATCH_LEFT: u32 = 0x800;
     pub const DEPLOY: u32 = 0x1000;
     pub const BREAKDOWN: u32 = 0x2000;
+    /// The weapon went away for swimming.
     pub const SWIM_PUTAWAY: u32 = 0x4000;
-    pub const GUIDED_MISSILE: u32 = 0x8000;
-    pub const RELOAD_LEFT: u32 = 0x1_0000;
-    pub const OFFHAND_SWITCH: u32 = 0x2_0000;
-    pub const OFFHAND_EMPTY_HANDED: u32 = 0x8_0000;
-    pub const FIRING_GUIDED: u32 = 0x10_0000;
-    pub const FORCED_ANIM: u32 = 0x40_0000;
-    pub const CANCEL_SMOKE: u32 = 0x100_0000;
-    pub const NO_FIRE: u32 = 0x200_0000;
+    pub const GUIDED_MISSILE: u32 = 0x1_0000;
+    pub const RELOAD_LEFT: u32 = 0x2_0000;
+    /// The offhand is thrown with the weapon away.
+    pub const OFFHAND_SWITCH: u32 = 0x4_0000;
+    /// The offhand was thrown with no weapon raised.
+    pub const OFFHAND_EMPTY_HANDED: u32 = 0x10_0000;
+    pub const FIRING_GUIDED: u32 = 0x20_0000;
+    /// The weapon being switched to is a riot shield; dropped outside the
+    /// raise and drop states.
+    pub const SWITCHING_TO_RIOTSHIELD: u32 = 0x40_0000;
+    /// A riot shield or tactical insertion cannot be placed here.
+    pub const PLACEMENT_BLOCKED: u32 = 0x200_0000;
+    pub const CHARGE_SHOT_CHARGING: u32 = 0x400_0000;
+    /// Set by the server while a revive weapon is used on a downed player:
+    /// a held grenade cannot be cancelled.
+    pub const REVIVING: u32 = 0x4000_0000;
 }
 
+/// The second word of entity flags.
 pub mod e_flags2 {
+    /// A grenade throw cannot be cancelled now.
+    pub const GRENADE_HELD: u32 = 0x200;
+    /// The weapon's clip ran dry: set when the last round is fired or an
+    /// empty weapon is raised, cleared by a reload.
+    pub const CLIP_EMPTY: u32 = 0x400;
+    /// An airburst weapon is aimed.
+    pub const AIRBURST_ADS: u32 = 0x2000;
+    /// Aiming is dropped at once.
     pub const ADS_RESET: u32 = 0x4_0000;
+    /// A minigun's barrels spin up.
     pub const SPINNING: u32 = 0x40_0000;
     pub const MOUNTED: u32 = 0x1000_0000;
-    pub const GRENADE_HELD: u32 = 0x2000_0000;
-    pub const CONTROLS_LOCKED: u32 = 0x4000_0000;
 }
 
+/// The player state's other flags.
+pub mod other_flags {
+    /// The player is EMP'd: a charge shot's queue is capped.
+    pub const EMP: u32 = 0x40;
+    /// Movement, stance, lean, reload and fire are locked.
+    pub const CONTROLS_LOCKED: u32 = 0x400;
+}
+
+/// Black Ops 2's weapon states, the same for both hands.
 pub mod weapon_state {
+    pub const READY: i32 = 0;
+    pub const RAISING: i32 = 1;
+    pub const RAISING_ALT: i32 = 2;
+    pub const DROPPING: i32 = 3;
+    pub const DROPPING_QUICK: i32 = 4;
+    pub const DROPPING_ALT: i32 = 5;
+    pub const FIRING: i32 = 6;
+    pub const RECHAMBERING: i32 = 7;
+    pub const RECHAMBER_END: i32 = 8;
+    pub const RELOADING: i32 = 0xb;
+    pub const RELOADING_INTERRUPT: i32 = 0xc;
+    pub const RELOAD_START: i32 = 0xd;
+    /// A reload start that rechambers a bolt-action weapon first.
+    pub const RELOAD_START_RECHAMBER: i32 = 0xe;
+    pub const RELOAD_START_INTERRUPT: i32 = 0xf;
+    pub const RELOAD_END: i32 = 0x10;
+    pub const RELOADING_LEFT: i32 = 0x11;
+    pub const RELOADING_LEFT_INTERRUPT: i32 = 0x12;
+    pub const MELEE_INIT: i32 = 0x13;
+    pub const MELEE_FIRE: i32 = 0x14;
+    pub const MELEE_END: i32 = 0x15;
+    pub const OFFHAND_INIT: i32 = 0x16;
+    pub const OFFHAND_PREPARE: i32 = 0x17;
+    pub const OFFHAND_START: i32 = 0x18;
+    /// An offhand with a detonator and no ammo detonates.
+    pub const OFFHAND_DETONATE: i32 = 0x19;
+    pub const OFFHAND_HOLD: i32 = 0x1a;
+    pub const OFFHAND: i32 = 0x1b;
+    /// `forceoffhandend`: the offhand is put away at once.
+    pub const OFFHAND_FORCE_END: i32 = 0x1c;
+    pub const OFFHAND_END: i32 = 0x1d;
+    pub const RIOTSHIELD_PREPARE: i32 = 0x1e;
+    pub const RIOTSHIELD_DEPLOY: i32 = 0x1f;
+    pub const RIOTSHIELD_PLACING: i32 = 0x20;
+    pub const RIOTSHIELD_END: i32 = 0x22;
+    pub const DETONATING: i32 = 0x23;
+    pub const SPRINT_RAISE: i32 = 0x24;
+    pub const SPRINT_LOOP: i32 = 0x25;
+    pub const SPRINT_DROP: i32 = 0x26;
+    pub const CONT_FIRE_IN: i32 = 0x27;
+    pub const CONT_FIRE_LOOP: i32 = 0x28;
+    pub const CONT_FIRE_OUT: i32 = 0x29;
+    pub const NIGHTVISION_WEAR: i32 = 0x2a;
+    pub const NIGHTVISION_REMOVE: i32 = 0x2b;
     pub const DEPLOYING: i32 = 0x2c;
     pub const DEPLOYED: i32 = 0x2d;
     pub const BREAKING_DOWN: i32 = 0x2e;
+    pub const SWIM_IN: i32 = 0x2f;
+    pub const SWIM_OUT: i32 = 0x30;
+    pub const DTP_IN: i32 = 0x31;
+    pub const DTP_LOOP: i32 = 0x32;
+    pub const DTP_OUT: i32 = 0x33;
+    pub const SLIDE_IN: i32 = 0x34;
+    /// Special fire: the weapon jams.
+    pub const FIRING_SPECIAL: i32 = 0x37;
+    pub const LOWREADY_RAISE: i32 = 0x38;
+    pub const LOWREADY_LOOP: i32 = 0x39;
+    pub const LOWREADY_DROP: i32 = 0x3a;
+    pub const CRAWL_IN: i32 = 0x3b;
+    pub const CRAWL_FORWARD: i32 = 0x3c;
+    pub const CRAWL_BACK: i32 = 0x3d;
+    pub const CRAWL_RIGHT: i32 = 0x3e;
+    pub const CRAWL_LEFT: i32 = 0x3f;
+    pub const CRAWL_OUT: i32 = 0x40;
+
+    pub fn is_raising_or_dropping(s: i32) -> bool {
+        (RAISING..=DROPPING_ALT).contains(&s)
+    }
+
+    pub fn is_firing(s: i32) -> bool {
+        matches!(s, FIRING | RECHAMBERING | RECHAMBER_END | CONT_FIRE_LOOP)
+    }
+
+    pub fn is_reloading(s: i32) -> bool {
+        (RELOADING..=RELOADING_LEFT_INTERRUPT).contains(&s)
+    }
+
+    pub fn is_reload_start(s: i32) -> bool {
+        matches!(
+            s,
+            RELOAD_START | RELOAD_START_RECHAMBER | RELOAD_START_INTERRUPT
+        )
+    }
+
+    pub fn is_melee(s: i32) -> bool {
+        (MELEE_INIT..=MELEE_END).contains(&s)
+    }
+
+    pub fn is_offhand(s: i32) -> bool {
+        (OFFHAND_INIT..=OFFHAND_END).contains(&s)
+    }
+
+    pub fn is_riotshield(s: i32) -> bool {
+        (RIOTSHIELD_PREPARE..=RIOTSHIELD_END).contains(&s)
+    }
+
+    pub fn is_sprint(s: i32) -> bool {
+        (SPRINT_RAISE..=SPRINT_DROP).contains(&s)
+    }
+
+    pub fn is_cont_fire(s: i32) -> bool {
+        (CONT_FIRE_IN..=CONT_FIRE_OUT).contains(&s)
+    }
+
+    pub fn is_nightvision(s: i32) -> bool {
+        matches!(s, NIGHTVISION_WEAR | NIGHTVISION_REMOVE)
+    }
+
+    pub fn is_dtp(s: i32) -> bool {
+        (DTP_IN..=DTP_OUT).contains(&s)
+    }
+
+    pub fn is_lowready(s: i32) -> bool {
+        (LOWREADY_RAISE..=LOWREADY_DROP).contains(&s)
+    }
+
+    pub fn is_crawl(s: i32) -> bool {
+        (CRAWL_IN..=CRAWL_OUT).contains(&s)
+    }
+
+    pub fn is_crawl_loop(s: i32) -> bool {
+        (CRAWL_FORWARD..=CRAWL_LEFT).contains(&s)
+    }
 }
 
 pub mod buttons {
@@ -181,19 +338,20 @@ pub struct UserCmd {
 
 pub const MAX_HELD_WEAPONS: usize = 15;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct HeldWeapon {
     pub weapon: u32,
+    /// Percent; overheated at 100.
+    pub heat: f32,
     pub fuel: i32,
+    /// The weapon's own zoom, 0 or 1.
+    pub zoom: i32,
+    pub overheating: bool,
     pub needs_rechamber: bool,
     pub used_before: bool,
+    /// The second magazine is in.
     pub dual_mag: bool,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct AmmoSlot {
-    pub index: i32,
-    pub count: i32,
+    pub riotshield: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -259,6 +417,7 @@ pub struct PlayerState {
     pub weapon_delay: i32,
     pub weapon_time_left: i32,
     pub weapon_delay_left: i32,
+    pub weapon_idle_time: i32,
     pub grenade_time_left: i32,
     pub throw_back_grenade_owner: i32,
     pub throw_back_grenade_time_left: i32,
@@ -273,27 +432,41 @@ pub struct PlayerState {
     pub spread_override: i32,
     pub spread_override_state: i32,
     pub weapon_spin_lerp: f32,
-    pub stack_fire_count: i32,
     pub damage_count: i32,
+    /// The vehicle the player rides, `ENTITYNUM_NONE` when none.
+    pub vehicle_entity: i32,
     pub held_weapons: [HeldWeapon; MAX_HELD_WEAPONS],
-    pub ammo_not_in_clip: [AmmoSlot; MAX_HELD_WEAPONS],
-    pub ammo_in_clip: [AmmoSlot; MAX_HELD_WEAPONS],
+    /// Rounds beside the clip, by the held slot of the weapon that owns them.
+    pub ammo_not_in_clip: [i32; MAX_HELD_WEAPONS],
+    /// Rounds in the clip, by the held slot of the weapon that owns them.
+    pub ammo_in_clip: [i32; MAX_HELD_WEAPONS],
     pub cursor_hint_ent_index: i32,
     pub hold_breath_scale: f32,
     pub hold_breath_timer: i32,
-    pub melee_charge_yaw: f32,
+    pub charge_shot_timer: i32,
+    pub charge_shot_level: i32,
+    pub shots_fired_from_chamber: i32,
+    pub quick_scope_scale: f32,
+    pub quick_scope_timer: i32,
+    pub melee_charge_ent: i32,
     pub melee_charge_dist: i32,
     pub melee_charge_time: i32,
     pub weap_lock_flags: u32,
-    pub forced_anim_weapon: u32,
-    pub forced_anim_state: i32,
-    pub forced_anim_prev_weapon: u32,
+    pub airburst_distance: i32,
+    pub inventory_weapon: u32,
     pub weap_anim: u32,
     pub weap_anim_left: u32,
+    pub shellshock_index: i32,
     pub offhand_throw: i32,
     pub ads_zoom_select: i32,
     pub ads_zoom_time: i32,
     pub ads_zoom_latched: bool,
+    pub ads_prev_zoom_select: i32,
+    pub ads_prev_zoom_select_time: i32,
+    pub intro_shots_fired: i32,
     pub vehicle_pos: i32,
+    pub link_flags: u32,
+    pub mantle_timer: i32,
+    pub mantle_trans_index: i32,
     pub mantle_flags: u32,
 }

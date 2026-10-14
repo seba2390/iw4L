@@ -47,6 +47,8 @@ pub enum Gap {
     AnimLock = 64,
     SpecialMove = 128,
     Overheat = 256,
+    /// A held weapon's attachments: IW4L's weapons carry none.
+    Attachments = 512,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -193,7 +195,8 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
     }
 
     pub(crate) fn weapon_blocks_stance(&self) -> bool {
-        matches!(self.ps.weaponstate, 6 | 7 | 8 | 0x28 | 0x13 | 0x14 | 0x15)
+        let state = self.ps.weaponstate;
+        (state::weapon_state::is_firing(state) || state::weapon_state::is_melee(state))
             && self.ps.weapon != 0
             && self
                 .world
@@ -226,6 +229,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::AnimLock,
             Gap::SpecialMove,
             Gap::Overheat,
+            Gap::Attachments,
         ]
         .into_iter()
         .filter(|g| self.gaps & *g as u32 != 0)

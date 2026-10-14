@@ -61,5 +61,10 @@ pub trait MoveWorld {
 
     fn weapon_exists(&self, weapon: u32) -> bool;
 
+    /// The weapon whose alternate or dual-wield chain loaded `weapon`'s
+    /// variant (Black Ops 2's negative variant count); none for a weapon
+    /// loaded on its own.
+    fn variant_parent(&self, weapon: u32) -> Option<u32>;
+
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32>;
 }
