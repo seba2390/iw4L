@@ -1849,9 +1849,12 @@ pub(crate) fn apply_player_links(world: &mut World) {
         let still_linked = FrameWorld::from_world(world)
             .client_meta(id)
             .is_some_and(|meta| meta.controls.linked);
+        // A deleted parent ends the link at once (its fields stay readable
+        // until the frame ends, but it no longer poses the player), as the
+        // games free an entity's links when they free it.
         let parent_alive = world
             .resource::<RoundScript>()
-            .objects
+            .entities
             .contains_key(&link.parent);
         if !still_linked || !parent_alive {
             unlink_player(world, client);

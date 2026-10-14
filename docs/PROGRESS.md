@@ -133,7 +133,8 @@ Only the top-level items count.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.
   - [x] The Thundergun (`_zombiemode_weap_thundergun`), Cymbal Monkey bombs (`_zombiemode_weap_cymbal_monkey`) and electric traps (`_zombiemode_traps`): `thundergun_zm` equips its viewmodel, fires and blasts zombies and hellhounds in its cone; thrown Cymbal Monkeys animate (`%o_monkey_bomb`), reset their fuse (`resetmissiledetonationtime`), generate attractor positions, play their song and detonate; electric traps activate, shock players and electrocute zombies (`setelectrified`).
   - [x] Nova crawlers (`_zombiemode_ai_quad`, `zombie_theater_quad`): crawlers spawn on the roof, drop through Kino's broken ceilings and hunt the player (`allowpitchangle`, `setphysparams`, `gethitenttype`, Black Ops' `calcpathlength`).
-  - [ ] Teleporter and projector; the auto turret's think (aiming and firing).
+  - [x] The teleporter's server side (`zombie_theater_teleporter`): linking the core and pad, teleporting players to the projection room and back to the theater after its timer.
+  - [ ] The projector and the teleporter's visuals (client scripts); the auto turret's think (aiming and firing).
 - [ ] Every zombies map in the install (Five, Dead Ops Arcade).
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] A lobby host picks Kino; a joined player spawns at its co-op spawns, gets points and sees the zombies.
