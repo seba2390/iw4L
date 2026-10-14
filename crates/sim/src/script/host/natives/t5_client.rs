@@ -4,18 +4,9 @@
 use super::super::args::{int, optional, string, vector};
 use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
-use crate::script::client::{ClientOutput, ClientSound, ClientView};
+use crate::script::client::{ClientOutput, ClientSound, ClientView, FakeEnts, LoopSource};
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
-use bevy_ecs::prelude::{Resource, World};
-use std::collections::BTreeMap;
-
-/// The client's fake entities (`spawnfakeent`): sound emitters of its own,
-/// by handle.
-#[derive(Resource, Default)]
-struct FakeEnts {
-    next: i32,
-    origins: BTreeMap<i32, [f32; 3]>,
-}
+use bevy_ecs::prelude::World;
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
@@ -129,6 +120,65 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         runtime.set_object_field(id, "origin", Value::Vector(origin));
         Ok(Value::Object(id))
     });
+    // `playLoopSound(local, fakeent, alias, fade)`: a loop at a fake
+    // entity; `stopLoopSound(local, fakeent, fade)` ends it.
+    registry.register(Function, "playloopsound", |world, _, args| {
+        local_index(args)?;
+        let handle = int(args, 1)?;
+        let alias = string(args, 2)?;
+        loop_fade(args, 3, "playloopsound")?;
+        world
+            .resource_mut::<ClientOutput>()
+            .start_loop(LoopSource::Fake(handle), alias);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "stoploopsound", |world, _, args| {
+        local_index(args)?;
+        let handle = int(args, 1)?;
+        loop_fade(args, 2, "stoploopsound")?;
+        world
+            .resource_mut::<ClientOutput>()
+            .loops
+            .remove(&LoopSource::Fake(handle));
+        Ok(Value::Undefined)
+    });
+    // `ent playLoopSound(alias, fade)`, `ent stopLoopSound(fade)`.
+    registry.register(Method, "playloopsound", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let alias = string(args, 0)?;
+        loop_fade(args, 1, "playloopsound")?;
+        world
+            .resource_mut::<ClientOutput>()
+            .start_loop(LoopSource::Entity(id), alias);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "stoploopsound", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        loop_fade(args, 0, "stoploopsound")?;
+        world
+            .resource_mut::<ClientOutput>()
+            .loops
+            .remove(&LoopSource::Entity(id));
+        Ok(Value::Undefined)
+    });
+    // `soundLoopEmitter(alias, origin)`: a loop at a point, until
+    // `soundStopLoopEmitter(alias, origin)`.
+    registry.register(Function, "soundloopemitter", |world, _, args| {
+        let source = emitter(args, "soundloopemitter")?;
+        let LoopSource::Emitter(alias, _) = &source else {
+            unreachable!()
+        };
+        let alias = alias.clone();
+        world
+            .resource_mut::<ClientOutput>()
+            .start_loop(source, alias);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "soundstoploopemitter", |world, _, args| {
+        let source = emitter(args, "soundstoploopemitter")?;
+        world.resource_mut::<ClientOutput>().loops.remove(&source);
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));
@@ -140,6 +190,31 @@ fn play(world: &mut World, alias: String, origin: [f32; 3]) -> Value {
     output.next_sound += 1;
     output.sounds.push(ClientSound { alias, origin });
     Value::Int(id)
+}
+
+/// A loop's fade: 0 to 32 seconds (the fade itself is not applied yet).
+fn loop_fade(args: &[Value], at: usize, native: &str) -> Result<(), String> {
+    if let Some(fade) = optional(args, at, super::super::args::float)?
+        && !(0.0..=32.0).contains(&fade)
+    {
+        return Err(format!(
+            "{native}: invalid fade value {fade:.6}. it must be between 0 and 32 seconds."
+        ));
+    }
+    Ok(())
+}
+
+/// A point emitter's alias and origin, which must be its two arguments.
+fn emitter(args: &[Value], native: &str) -> Result<LoopSource, String> {
+    if args.len() != 2 {
+        return Err(format!(
+            "{native} has {} parameters.  There should be two.",
+            args.len()
+        ));
+    }
+    let alias = string(args, 0)?;
+    let origin = vector(args, 1)?;
+    Ok(LoopSource::Emitter(alias, origin.map(f32::to_bits)))
 }
 
 /// The local client a native names: Black Ops refuses any but 0.
