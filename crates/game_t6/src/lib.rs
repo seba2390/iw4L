@@ -2,11 +2,14 @@ mod builtins;
 mod grenade;
 mod keys;
 mod missile;
+mod movement;
 mod script_zones;
 mod startup;
 pub mod ui;
 
-use game_api::{HudRules, LibraryMode, ModeRules, Rule, ScriptProgram, ScriptRequest, unknown};
+use game_api::{
+    HudRules, LibraryMode, ModeRules, MovementRules, Rule, ScriptProgram, ScriptRequest, unknown,
+};
 
 pub struct T6;
 
@@ -215,11 +218,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     every_player_downs: Rule::Known(false),
     downed: game_api::DownedRules::BRIEFLY_IMMUNE,
     level_failed: None,
-    movement: Rule::Unknown(unknown!(
-        "t6.movement.player",
-        "Black Ops 2's player movement",
-        "Black Ops 2's player movement rules"
-    )),
+    movement: Rule::Known(MovementRules::Game(&movement::MULTIPLAYER)),
     weapons: Rule::Unknown(unknown!(
         "t6.weapons.state_machine",
         "Black Ops 2's weapon state machine",
@@ -272,6 +271,7 @@ const ZCLASSIC_MODE: ModeRules = ModeRules {
         zombies: true,
         ..MULTIPLAYER_MODE.hud
     },
+    movement: Rule::Known(MovementRules::Game(&movement::ZOMBIES)),
     ..MULTIPLAYER_MODE
 };
 

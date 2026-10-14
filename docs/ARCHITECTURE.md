@@ -43,7 +43,7 @@ Black Ops multiplayer and MW3 maps are refused today for that reason.
 * ownership — every game has its own format crate and its own `game_<game>`
   answering all four `game_api` traits, and `games.rs` answers a game only with
   that game's crates; a lent rule is a named item whose type the borrowing
-  game's ledger names (`T6OnIw4Movement`).
+  game's ledger names (`T6OnIw4Weapons`).
 
 Ownership and ledger failures are errors. Graph and pattern debt is
 `xtask/boundary/allow.txt`, a ratchet: anything not in it is new, an entry that

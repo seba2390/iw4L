@@ -16,6 +16,7 @@ game_api.workspace = true
 gsc.workspace = true
 gsc_t6.workspace = true
 fastfile_t6.workspace = true
+movement_t6.workspace = true
 
 [lints]
 workspace = true
