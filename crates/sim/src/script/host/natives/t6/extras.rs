@@ -136,6 +136,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             return Err(format!("entity {number} is not a player"));
         };
         let allowed = !matches!(args.first(), Some(Value::Int(0)));
+        crate::game_move::restrict(
+            &mut crate::frame::FrameWorld::from_world(world),
+            crate::ClientId(client),
+            game_api::movement::MoveRestriction::Lean,
+            allowed,
+        );
         let mut forbidden = world.get_resource_or_insert_with(NoLean::default);
         if allowed {
             forbidden.0.remove(&client);
