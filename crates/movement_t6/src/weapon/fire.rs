@@ -2,9 +2,8 @@
 //! charge shots and rechambering.
 
 use super::{
-    Hand, def, dual_wield, fire_button, fire_type, hold_prone, perks_with, some,
-    start_anim, start_anim_both, start_anim_hand, start_anim_unless_playing, weap_anim,
-    weapon_type,
+    Hand, def, dual_wield, fire_button, fire_type, hold_prone, perks_with, some, start_anim,
+    start_anim_both, start_anim_hand, start_anim_unless_playing, weap_anim, weapon_type,
 };
 use crate::events::{anim, event};
 use crate::inventory as inv;
@@ -122,7 +121,14 @@ fn timer_ran_out<W: MoveWorld>(pm: &mut Pm<'_, W>, hand: Hand, weapon: u32) -> b
         return false;
     }
     let ps = &mut *pm.ps;
-    hand.set_time(ps, if matches!(s, ws::RAISING_ALT | ws::DROPPING_ALT) { 0 } else { 1 });
+    hand.set_time(
+        ps,
+        if matches!(s, ws::RAISING_ALT | ws::DROPPING_ALT) {
+            0
+        } else {
+            1
+        },
+    );
     match s {
         s if ws::is_reloading(s) => {
             hand.set_time(ps, 0);
@@ -174,10 +180,15 @@ pub(super) fn keep_firing<W: MoveWorld>(pm: &Pm<'_, W>, state: i32, weapon: u32)
     }
     let d = def(pm, weapon).def;
     let burst_done = !hand_latched(pm.ps) && burst_complete(pm, weapon);
-    let throw_held =
-        matches!(d.weapon_type(), weapon_type::GRENADE | weapon_type::MINE) && d.hold_button_to_throw();
+    let throw_held = matches!(d.weapon_type(), weapon_type::GRENADE | weapon_type::MINE)
+        && d.hold_button_to_throw();
     let ps = &*pm.ps;
-    if !(burst_done || throw_held) || !pm.cmd.buttons.held(fire_button(pm, ps.weapon, ps.left_hand)) {
+    if !(burst_done || throw_held)
+        || !pm
+            .cmd
+            .buttons
+            .held(fire_button(pm, ps.weapon, ps.left_hand))
+    {
         return false;
     }
     if ps.weapon != pm.cmd.weapon
@@ -225,7 +236,10 @@ pub(super) fn mid_burst<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
         return false;
     }
     let fire = def(pm, weapon).def.fire_type();
-    if matches!(fire, fire_type::FULL_AUTO | fire_type::MINIGUN | fire_type::JETGUN) {
+    if matches!(
+        fire,
+        fire_type::FULL_AUTO | fire_type::MINIGUN | fire_type::JETGUN
+    ) {
         return false;
     }
     if inv::stock(ps, pm.world, weapon) == 0 && inv::clip(ps, pm.world, weapon) == 0 {
@@ -307,10 +321,7 @@ pub(super) fn fire_held<W: MoveWorld>(
         fire_type::CHARGE_SHOT => fire = charge_shot_held(pm),
         _ => {}
     }
-    if d.bolt_action()
-        && d.shots_before_rechamber() != 0
-        && inv::needs_rechamber(ps, weapon)
-    {
+    if d.bolt_action() && d.shots_before_rechamber() != 0 && inv::needs_rechamber(ps, weapon) {
         fire = false;
         busy = false;
     }
@@ -361,7 +372,8 @@ pub(super) fn grenade_fire_held<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
         return false;
     }
     let d = def(pm, weapon).def;
-    if !matches!(d.weapon_type(), weapon_type::GRENADE | weapon_type::MINE) || d.hold_button_to_throw()
+    if !matches!(d.weapon_type(), weapon_type::GRENADE | weapon_type::MINE)
+        || d.hold_button_to_throw()
     {
         return false;
     }
@@ -396,7 +408,8 @@ pub(super) fn plant_check<W: MoveWorld>(pm: &mut Pm<'_, W>, weapon: u32, quiet: 
 /// A tactical insertion is set on the world's ground with room to stand.
 fn tac_insert_room<W: MoveWorld>(pm: &mut Pm<'_, W>) -> bool {
     let ps = &*pm.ps;
-    if ps.weap_flags & weap_flags::PLACEMENT_BLOCKED != 0 || ps.ground_entity_num != ENTITYNUM_WORLD {
+    if ps.weap_flags & weap_flags::PLACEMENT_BLOCKED != 0 || ps.ground_entity_num != ENTITYNUM_WORLD
+    {
         return false;
     }
     let mask = if tuning::PLAYER_JUMP_BLOCKS_TAC_INSERT {
@@ -805,7 +818,8 @@ pub(super) fn charge_shot<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
             most = left;
         }
     }
-    if ps.other_flags & other_flags::EMP != 0 && tuning::CHARGE_SHOT_MAX_BULLET_QUEUE_ON_EMP < most {
+    if ps.other_flags & other_flags::EMP != 0 && tuning::CHARGE_SHOT_MAX_BULLET_QUEUE_ON_EMP < most
+    {
         most = tuning::CHARGE_SHOT_MAX_BULLET_QUEUE_ON_EMP;
     }
     if most <= level {
@@ -829,8 +843,7 @@ pub(super) fn charge_shot<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
 /// A charge shot fires when attack is let go, or at its most when set to.
 fn charge_shot_held<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     let ps = &*pm.ps;
-    let released =
-        !pm.cmd.buttons.held(buttons::ATTACK) && pm.oldcmd.buttons.held(buttons::ATTACK);
+    let released = !pm.cmd.buttons.held(buttons::ATTACK) && pm.oldcmd.buttons.held(buttons::ATTACK);
     let level = ps.charge_shot_level as u32;
     let since_most = (ps.charge_shot_timer as u32)
         .wrapping_sub(level.wrapping_sub(1) * tuning::CHARGE_SHOT_QUEUE_TIME as u32);

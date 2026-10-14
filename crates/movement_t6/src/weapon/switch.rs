@@ -474,7 +474,8 @@ pub(super) fn check_change_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         return;
     }
     let asked = pm.cmd.weapon;
-    let frozen_with_weapon = ps.pm_flags & (pm_flags::RESPAWNED | pm_flags::FROZEN) != 0 && some(held);
+    let frozen_with_weapon =
+        ps.pm_flags & (pm_flags::RESPAWNED | pm_flags::FROZEN) != 0 && some(held);
     if in_vehicle(ps) {
         if !some(held) && held == asked {
             return;
@@ -499,7 +500,8 @@ pub(super) fn check_change_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         return;
     }
     let offhand_waits = (ws::OFFHAND_INIT..=ws::OFFHAND_END).contains(&s)
-        && (offhand != Some(offhand_slot::EQUIPMENT) || !pm.cmd.buttons.held(crate::state::buttons::CANCEL));
+        && (offhand != Some(offhand_slot::EQUIPMENT)
+            || !pm.cmd.buttons.held(crate::state::buttons::CANCEL));
     if held == asked
         || s == ws::DEPLOYING
         || frozen_with_weapon

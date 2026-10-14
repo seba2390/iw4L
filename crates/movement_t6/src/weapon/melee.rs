@@ -142,8 +142,7 @@ fn melee_start<W: MoveWorld>(pm: &mut Pm<'_, W>, right: bool, left: bool) {
     } else {
         tuning::MELEE_RANGE
     };
-    let charge =
-        pm.ps.pm_flags & pm_flags::LAUNCHED != 0 && range < pm.ps.melee_charge_dist as f32;
+    let charge = pm.ps.pm_flags & pm_flags::LAUNCHED != 0 && range < pm.ps.melee_charge_dist as f32;
     let empty = inv::hand_clip_empty(pm.ps, pm.world);
     let ps = &mut *pm.ps;
     if charge {

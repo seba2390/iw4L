@@ -342,7 +342,7 @@ fn melee_weapon<W: MoveWorld>(pm: &Pm<'_, W>) -> u32 {
 
 /// The weapon the viewmodel shows: the offhand while one is in hand, the
 /// melee weapon while knifing with another, else the held weapon.
-pub(crate) fn view_weapon<W: MoveWorld>(pm: &Pm<'_, W>) -> u32 {
+pub fn view_weapon<W: MoveWorld>(pm: &Pm<'_, W>) -> u32 {
     let ps = &*pm.ps;
     let s = ps.weaponstate;
     if ps.weap_flags & weap_flags::OFFHAND_ACTIVE != 0
@@ -375,7 +375,8 @@ fn in_vehicle(ps: &PlayerState) -> bool {
 
 /// Reloads happen off screen in a vehicle seat that keeps its weapons.
 fn offscreen_reload<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
-    let offscreen = pm.ps.e_flags & e_flags::VEHICLE_VIEW != 0 && !tuning::DISABLE_WEAPONS_ON_VEHICLE;
+    let offscreen =
+        pm.ps.e_flags & e_flags::VEHICLE_VIEW != 0 && !tuning::DISABLE_WEAPONS_ON_VEHICLE;
     if offscreen {
         pm.gap(Gap::MountedView);
     }
@@ -410,8 +411,7 @@ fn left_independent<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
         | ws::DTP_IN..=ws::DTP_OUT
         | ws::CRAWL_IN..=ws::CRAWL_OUT => false,
         ws::MELEE_INIT..=ws::MELEE_END => {
-            def(pm, ps.weapon).def.weapon_type() == weapon_type::MELEE
-                && dual_wield(pm, ps.weapon)
+            def(pm, ps.weapon).def.weapon_type() == weapon_type::MELEE && dual_wield(pm, ps.weapon)
         }
         _ => true,
     }
@@ -598,8 +598,8 @@ pub(crate) fn aim_spread<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     } else {
         let so = ps.spread_override as f32;
         frac = (so - d.hip_spread_stand_min()) / (d.hip_spread_max() - d.hip_spread_stand_min());
-        let in_air =
-            ps.ground_entity_num == crate::state::ENTITYNUM_NONE && ps.pm_type != pm_type::NORMAL_LINKED;
+        let in_air = ps.ground_entity_num == crate::state::ENTITYNUM_NONE
+            && ps.pm_type != pm_type::NORMAL_LINKED;
         if in_air {
             decay *= 0.5;
         } else if ps.e_flags & e_flags::PRONE != 0 {
@@ -672,9 +672,7 @@ pub(crate) fn pm_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         return;
     }
     let ps = &mut *pm.ps;
-    if ps.pm_type >= pm_type::DEAD
-        && ps.link_flags & 4 == 0
-        && ps.e_flags2 & e_flags2::MOUNTED == 0
+    if ps.pm_type >= pm_type::DEAD && ps.link_flags & 4 == 0 && ps.e_flags2 & e_flags2::MOUNTED == 0
     {
         ps.weapon = 0;
         return;

@@ -1378,7 +1378,7 @@ impl Shot<'_> {
     ) {
         let me = self.attacker();
         let time_left = self.ps.grenade_time_left;
-        let grenade = crate::grenade::launch_grenade(
+        crate::grenade::launch_grenade(
             me,
             weapon,
             def,
@@ -1392,7 +1392,7 @@ impl Shot<'_> {
             self.gaps.push(launcher_flag_unknown());
         }
         self.mover_velocity(world);
-        self.fired_grenade(weapon, def, grenade, def.fuse_time(), world);
+        self.fired_grenade(def, def.fuse_time(), world);
     }
 
     /// The offhand grenade dropped from a player's hands, its cooked fuse
@@ -1413,7 +1413,7 @@ impl Shot<'_> {
             core::array::from_fn(|_| (crandom(world) * f64::from(DROP_SPEED)) as f32);
         let mut origin = self.ps.origin;
         origin[2] += DROP_HEIGHT;
-        let grenade = crate::grenade::spawn_grenade(
+        crate::grenade::spawn_grenade(
             self.attacker(),
             weapon,
             &def,
@@ -1425,19 +1425,12 @@ impl Shot<'_> {
             Some(time_left),
             world,
         );
-        self.fired_grenade(weapon, &def, grenade, time_left, world);
+        self.fired_grenade(&def, time_left, world);
     }
 
     /// What follows a player's grenade into the world: the cooked fuse it
     /// took is cleared and scripts are told.
-    fn fired_grenade(
-        &mut self,
-        weapon: u32,
-        def: &WeaponDefView<'_>,
-        grenade: Option<i32>,
-        fuse: i32,
-        world: &mut dyn FireWorld,
-    ) {
+    fn fired_grenade(&mut self, def: &WeaponDefView<'_>, fuse: i32, world: &mut dyn FireWorld) {
         let me = self.attacker();
         self.gaps.push(missile_antilag_unknown());
         if self.ps.throw_back_grenade_owner != ENTITYNUM_NONE {
@@ -1446,19 +1439,8 @@ impl Shot<'_> {
         if crate::grenade::takes_time_left(def, fuse) && self.ps.grenade_time_left != 0 {
             clear_grenade_time(me, world);
         }
-        let Some(grenade) = grenade else {
-            return;
-        };
-        let notify = if def.projectile_activate_dist() == 0 {
-            "grenade_fire"
-        } else {
-            "grenade_launcher_fire"
-        };
-        world.notify(
-            me,
-            notify,
-            &[NotifyArg::Entity(grenade), NotifyArg::Weapon(weapon)],
-        );
+        // `grenade_fire` / `grenade_launcher_fire` are raised as the runtime
+        // adopts the grenade's script entity.
     }
 
     /// A player standing on an entity hands its velocity to the missile.
@@ -1486,7 +1468,7 @@ impl Shot<'_> {
             && (!dvar_bool(world, "tu11_useMissileKnockbackHeldWeaponsOnly", true)
                 || weapon == self.ps.weapon);
         let me = self.attacker();
-        let rocket = crate::missile::launch_rocket(
+        crate::missile::launch_rocket(
             me,
             weapon,
             def,
@@ -1498,13 +1480,7 @@ impl Shot<'_> {
             world,
         );
         self.gaps.push(missile_antilag_unknown());
-        if let Some(rocket) = rocket {
-            world.notify(
-                me,
-                "missile_fire",
-                &[NotifyArg::Entity(rocket), NotifyArg::Weapon(weapon)],
-            );
-        }
+        // `missile_fire` is raised as the runtime adopts the rocket's script entity.
     }
 
     /// A melee blow: the weapon that strikes (the held one when it is a

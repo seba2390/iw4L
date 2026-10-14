@@ -503,11 +503,10 @@ fn axis_pitch_roll(forward: [f32; 3], right: [f32; 3]) -> (f32, f32) {
     let (pitch, yaw) = if forward[1] == 0.0 && forward[0] == 0.0 {
         (if -forward[2] < 0.0 { 270.0 } else { 90.0 }, 0.0)
     } else {
-        let yaw = libm::atan2(f64::from(forward[1]), f64::from(forward[0])) as f32 * 180.0
-            * 0.31830987;
+        let yaw =
+            libm::atan2(f64::from(forward[1]), f64::from(forward[0])) as f32 * 180.0 * 0.31830987;
         let xy = libm::sqrtf(forward[0] * forward[0] + forward[1] * forward[1]);
-        let pitch =
-            libm::atan2(f64::from(forward[2]), f64::from(xy)) as f32 * -180.0 * 0.31830987;
+        let pitch = libm::atan2(f64::from(forward[2]), f64::from(xy)) as f32 * -180.0 * 0.31830987;
         (
             pitch + if pitch < 0.0 { 360.0 } else { 0.0 },
             yaw + if yaw < 0.0 { 360.0 } else { 0.0 },
@@ -531,7 +530,10 @@ fn axis_pitch_roll(forward: [f32; 3], right: [f32; 3]) -> (f32, f32) {
     } else {
         tilt - 180.0
     };
-    (math::angle_normalize_180(pitch), math::angle_normalize_180(roll))
+    (
+        math::angle_normalize_180(pitch),
+        math::angle_normalize_180(roll),
+    )
 }
 
 fn sincos(degrees: f32) -> (f32, f32) {

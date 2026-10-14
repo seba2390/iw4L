@@ -2,8 +2,8 @@
 //! fire, the mantle and swim put-aways, night vision and detonators.
 
 use super::{
-    def, finish, fire, start_anim, start_anim_both, start_anim_unless_playing,
-    view_weapon, weap_anim, weapon_grants, weapon_type,
+    def, finish, fire, start_anim, start_anim_both, start_anim_unless_playing, view_weapon,
+    weap_anim, weapon_grants, weapon_type,
 };
 use crate::events::event;
 use crate::inventory as inv;
@@ -126,7 +126,13 @@ pub(super) fn check_dtp<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         && !diving(ps)
     {
         let t = def(pm, pm.ps.weapon).def.dtp_in_time();
-        dtp_pose(pm, ws::DTP_IN, t, weap_anim::DTP_IN, weap_anim::DTP_EMPTY_IN);
+        dtp_pose(
+            pm,
+            ws::DTP_IN,
+            t,
+            weap_anim::DTP_IN,
+            weap_anim::DTP_EMPTY_IN,
+        );
     }
 }
 
@@ -142,7 +148,13 @@ pub(super) fn dtp_loop<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 
 pub(super) fn dtp_out<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let t = def(pm, pm.ps.weapon).def.dtp_out_time();
-    dtp_pose(pm, ws::DTP_OUT, t, weap_anim::DTP_OUT, weap_anim::DTP_EMPTY_OUT);
+    dtp_pose(
+        pm,
+        ws::DTP_OUT,
+        t,
+        weap_anim::DTP_OUT,
+        weap_anim::DTP_EMPTY_OUT,
+    );
 }
 
 /// A slide that starts this frame plays the slide pose.
@@ -400,8 +412,7 @@ pub(super) fn check_prone_crawl<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 
 /// The night vision key toggles the goggles; the weapon stays up.
 pub(super) fn check_nightvision<W: MoveWorld>(pm: &mut Pm<'_, W>) {
-    if pm.oldcmd.buttons.held(buttons::NIGHTVISION) || !pm.cmd.buttons.held(buttons::NIGHTVISION)
-    {
+    if pm.oldcmd.buttons.held(buttons::NIGHTVISION) || !pm.cmd.buttons.held(buttons::NIGHTVISION) {
         return;
     }
     let ps = &mut *pm.ps;

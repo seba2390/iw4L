@@ -58,8 +58,7 @@ pub(super) fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     }
     if d.ads_fire()
         && (ps.weapon_delay != 0
-            || (d.fire_type() == fire_type::STACKED
-                && ps.weap_flags & weap_flags::FIRE_LATCH != 0))
+            || (d.fire_type() == fire_type::STACKED && ps.weap_flags & weap_flags::FIRE_LATCH != 0))
         && matches!(s, ws::FIRING | ws::CONT_FIRE_LOOP)
     {
         up = true;
@@ -91,7 +90,11 @@ pub(super) fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
             }
         }
     }
-    let mut rate = if up { d.ads_in_rate() } else { -d.ads_out_rate() };
+    let mut rate = if up {
+        d.ads_in_rate()
+    } else {
+        -d.ads_out_rate()
+    };
     if perks::has(ps.perks, perks::FAST_ADS) {
         pm.gap(Gap::AdsPerkAnimTypes);
         rate /= tuning::PERK_WEAP_ADS_MULTIPLIER;
@@ -149,7 +152,11 @@ pub(super) fn spin<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
                 -0.5
             };
             let next = msec * -1.0 * rate + ps.weapon_spin_lerp;
-            ps.weapon_spin_lerp = if -1.0 - next < 0.0 { next.min(0.0) } else { -1.0 };
+            ps.weapon_spin_lerp = if -1.0 - next < 0.0 {
+                next.min(0.0)
+            } else {
+                -1.0
+            };
         }
         _ => pm.ps.weapon_spin_lerp = 0.0,
     }
@@ -311,8 +318,7 @@ pub(super) fn anti_quick_scope<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, old_
     if ps.quick_scope_timer < 0 {
         ps.quick_scope_timer = 0;
     }
-    let target = ((ps.quick_scope_timer as f32 / time as f32)
-        * (d.anti_quick_scope_scale() - 1.0)
+    let target = ((ps.quick_scope_timer as f32 / time as f32) * (d.anti_quick_scope_scale() - 1.0)
         + 1.0
         - 1.0)
         * frac

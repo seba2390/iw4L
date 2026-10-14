@@ -1,12 +1,14 @@
 //! Reloading: starting, segments, adding the rounds, the end, and fuel.
 
 use super::{
-    Hand, def, dual_wield, fire::charge_reset, fire_type, melee_rule, offscreen_reload,
-    start_anim, start_anim_hand, start_anim_left, weap_anim, weapon_type,
+    Hand, def, dual_wield, fire::charge_reset, fire_type, melee_rule, offscreen_reload, start_anim,
+    start_anim_hand, start_anim_left, weap_anim, weapon_type,
 };
 use crate::events::{anim, event};
 use crate::inventory as inv;
-use crate::state::{buttons, e_flags, e_flags2, other_flags, pm_flags, weap_flags, weapon_state as ws};
+use crate::state::{
+    buttons, e_flags, e_flags2, other_flags, pm_flags, weap_flags, weapon_state as ws,
+};
 use crate::{MoveWorld, Pm, Pml, tuning};
 
 /// The clip is empty and the weapon fires bullets: the empty reload plays.
@@ -23,7 +25,11 @@ fn reload_add_delay<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let d = def(pm, weapon).def;
     let mut add = if ws::is_reload_start(hand.state(pm.ps)) {
         let t = d.reload_start_add_time();
-        if t == 0 { 0 } else { t.min(d.reload_start_time()) }
+        if t == 0 {
+            0
+        } else {
+            t.min(d.reload_start_time())
+        }
     } else {
         let quick = inv::dual_mag_in(pm.ps, pm.world, weapon);
         let base = if quick {
@@ -43,7 +49,11 @@ fn reload_add_delay<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         } else {
             (d.reload_time(), base)
         };
-        if add_at != 0 && add_at < reload { add_at } else { reload }
+        if add_at != 0 && add_at < reload {
+            add_at
+        } else {
+            reload
+        }
     };
     let ps = &mut *pm.ps;
     if d.bolt_action() && inv::needs_rechamber(ps, weapon) {
@@ -91,7 +101,11 @@ fn start_reload_anim<W: MoveWorld>(pm: &mut Pm<'_, W>) {
                 d.reload_empty_time(),
                 event::RELOAD_FROM_EMPTY,
             ),
-            (false, true) => (weap_anim::RELOAD_QUICK, d.reload_quick_time(), event::RELOAD),
+            (false, true) => (
+                weap_anim::RELOAD_QUICK,
+                d.reload_quick_time(),
+                event::RELOAD,
+            ),
             (false, false) => (weap_anim::RELOAD, d.reload_time(), event::RELOAD),
         };
         let ps = &mut *pm.ps;
@@ -276,7 +290,11 @@ fn reload_add_ammo<W: MoveWorld>(pm: &mut Pm<'_, W>) {
                     } else {
                         d.reload_time()
                     };
-                    if add != 0 && add < reload { add } else { reload }
+                    if add != 0 && add < reload {
+                        add
+                    } else {
+                        reload
+                    }
                 };
                 let bolt = d.rechamber_bolt_time();
                 let after = t - if t <= bolt { 1 } else { bolt };
@@ -513,8 +531,10 @@ pub(super) fn check_reload<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         }
     }
     let s = hand.state(pm.ps);
-    if matches!(s, ws::RELOAD_START | ws::RELOAD_START_RECHAMBER | ws::RELOADING)
-        && d.segmented_reload()
+    if matches!(
+        s,
+        ws::RELOAD_START | ws::RELOAD_START_RECHAMBER | ws::RELOADING
+    ) && d.segmented_reload()
         && pm.cmd.buttons.held(buttons::ATTACK)
         && !pm.oldcmd.buttons.held(buttons::ATTACK)
     {

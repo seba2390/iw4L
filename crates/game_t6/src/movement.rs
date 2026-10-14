@@ -111,6 +111,14 @@ fn variant_parent_unknown() -> &'static Unknown {
     )
 }
 
+fn view_weapon_unknown() -> &'static Unknown {
+    unknown!(
+        "t6.viewmodel.view_weapon",
+        "while Black Ops 2 shows the offhand being thrown or the melee weapon in first person, the runtime's viewmodel keeps the held weapon (or none)",
+        "Black Ops 2's viewmodel weapon rule in the runtime's first-person view"
+    )
+}
+
 fn melee_lunge_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.melee_lunge",
@@ -584,6 +592,9 @@ impl PlayerMovement for T6Movement {
             pm.zombiemode = self.zombies;
             pm.client_side = context.predicting;
             let out = movement_t6::pmove(&mut pm);
+            if movement_t6::weapon::view_weapon(&pm) != pm.ps.weapon {
+                outcome.gaps.push(view_weapon_unknown());
+            }
             outcome.walking = out.walking;
             outcome.bounds = Some((out.mins, out.maxs));
             outcome.touched = pm.touched().iter().map(|&e| shared_entity(e)).collect();
