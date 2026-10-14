@@ -15,9 +15,10 @@ Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
 everything it pulls in): zombies spawn behind the windows, tear the boards,
 climb through and run at the player, drawn with their animations. Builtins the
 runtime lacks are reported per call site instead of stopping the match. A
-Kino start raises six script faults: four from the auto turret's builtins and
-the `is_in_array` pair in `movie_reels_init`, which Black Ops' own VM raises
-too (it refuses `==` on arrays).
+Kino start raises two script faults, the `is_in_array` pair in
+`movie_reels_init`, which Black Ops' own VM raises too (it refuses `==` on
+arrays). Its map turrets spawn and answer Black Ops' turret methods; their
+think (aiming, firing) is not ported (`t5.turret.think`).
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are
@@ -163,7 +164,7 @@ Done when a single zombie can be fought and killed with correct feedback.
 - [x] Players spawn through the zombie scripts and receive their loadout
       (the M1911 in first person, 500 points).
 - [ ] Close the remaining builtin gaps the scripts report while a round runs
-      (left at startup: the auto-turret calls, the footstep aliases and
+      (left at startup: the footstep aliases and
       `uin_transition_zombie_theater`, which only the scripts' no-client-script
       fallbacks ask for).
 - [x] Rounds, zombie spawning, points for hits and kills, wall weapons (use

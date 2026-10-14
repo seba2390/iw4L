@@ -6,6 +6,7 @@ mod menu_expression;
 mod missile;
 mod movement;
 mod radius;
+mod turret;
 mod viewmodel;
 mod zombie_catalog;
 mod zombie_startup;
@@ -141,6 +142,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     client_fire: Some(fire_sound::CLIENT_FIRE),
     viewmodel: Some(viewmodel::VIEWMODEL),
     script_sounds_hashed: true,
+    turrets: Some(turret::TURRETS),
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each

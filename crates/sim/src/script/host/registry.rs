@@ -129,6 +129,7 @@ impl NativeRegistry {
     pub fn with_black_ops(mut self) -> Self {
         natives::t5::register(&mut self);
         natives::t5_zombie::register(&mut self);
+        natives::t5_turret::register(&mut self);
         super::actors::register(&mut self);
         super::actors::register_damage(&mut self);
         super::actor_anims::register(&mut self);

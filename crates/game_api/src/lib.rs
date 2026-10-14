@@ -4,6 +4,7 @@
 
 pub mod fire;
 pub mod movement;
+pub mod turret;
 pub mod ui;
 
 pub use movement::{MovementRules, WeaponRules};
@@ -208,6 +209,9 @@ pub struct ModeRules {
     /// nothing about the alias, so an unknown one plays nothing instead of
     /// failing the call.
     pub script_sounds_hashed: bool,
+    /// How the game spawns and runs its map turrets; `None` leaves them
+    /// plain entities.
+    pub turrets: Option<turret::TurretRules>,
 }
 
 /// How a client's viewmodel plays a player's weapon animation number.

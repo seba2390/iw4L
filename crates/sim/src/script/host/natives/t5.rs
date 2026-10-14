@@ -1425,9 +1425,8 @@ fn register_refused(registry: &mut NativeRegistry) {
         "pressattackbutton", "pressusebutton"
         => "bots are driven by the session, not by script goals");
     refused!(Method: "canplayerplaceturret", "carryturret", "stopcarryturret", "relinktoturret",
-        "setturretcarried", "setturrethint", "setturretowner", "setturrettype",
-        "setscanningpitch", "maketurretunusable", "startfiring", "stopfiring",
-        "stopshootturret", "actionslotfourbuttonpressed"
+        "setturretcarried", "setturrethint", "setturrettype", "setscanningpitch",
+        "actionslotfourbuttonpressed"
         => "receiver is not a turret");
     refused!(Function: "target_getarray", "target_isincircle", "target_istarget",
         "target_remove", "target_set", "target_setturretaquire"

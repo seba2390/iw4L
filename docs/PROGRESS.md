@@ -77,8 +77,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 192 of 610 |
-| Five (`t5:zombie_pentagon`) | 194 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 180 of 610 |
+| Five (`t5:zombie_pentagon`) | 182 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -86,7 +86,7 @@ Only the top-level items count.
   - [ ] Zone data still dropped: dynamic entities, fx models, glass, dynamic lights; some static models whose model lives in another zone.
   - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) do not run; 192 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
+  - [ ] Client scripts (CSC) do not run; 180 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
@@ -128,7 +128,8 @@ Only the top-level items count.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
   - [ ] Footsteps and gear, music states, `stopsound` and `setsoundblend`, another player's automatic fire; a `PlaySound` notify waits a fixed 2 s.
 - [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
-  - [ ] Teleporter and projector, the Thundergun, monkey bombs, hellhound rounds, traps, the auto turret.
+  - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
+  - [ ] Teleporter and projector, the Thundergun, monkey bombs, hellhound rounds, traps; the auto turret's think (aiming and firing).
 - [ ] Every zombies map in the install (Five, Dead Ops Arcade).
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] A lobby host picks Kino; a joined player spawns at its co-op spawns, gets points and sees the zombies.

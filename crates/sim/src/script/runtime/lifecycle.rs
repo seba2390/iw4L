@@ -174,6 +174,7 @@ pub(crate) fn install_level(
         }
         world.resource_mut::<RoundScript>().started = false;
     }
+    host::natives::t5_turret::spawn_map_turrets(world);
     host::presence::initialize_map_models(world);
     Ok(())
 }
