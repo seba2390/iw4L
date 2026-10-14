@@ -83,6 +83,21 @@ pub(crate) struct ClientView {
     pub(crate) host: bool,
 }
 
+/// A sound the client plays itself (`playsound`).
+#[derive(Clone, Debug)]
+pub(crate) struct ClientSound {
+    pub(crate) alias: String,
+    pub(crate) origin: [f32; 3],
+}
+
+/// What the client VM's frame asks of the client: sounds to play.
+#[derive(Resource, Default)]
+pub(crate) struct ClientOutput {
+    pub(crate) sounds: Vec<ClientSound>,
+    /// The next sound's id, as `playsound` answers it.
+    pub(crate) next_sound: i32,
+}
+
 /// The client VM: its world, and the entries it starts with once the
 /// client has a snapshot.
 #[derive(Resource)]
@@ -151,6 +166,7 @@ pub(crate) fn install(
         locals: vec![local],
         host: true,
     });
+    world.insert_resource(ClientOutput::default());
     server.insert_resource(ClientScripts {
         world,
         entries,
@@ -186,6 +202,15 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
         };
         if reason.advances_authority_world() {
             run_frame(&mut client, tick, reason);
+            let sounds = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().sounds);
+            for sound in sounds {
+                super::host::natives::engine::sound_to_client(
+                    server,
+                    crate::ClientId(0),
+                    &sound.alias,
+                    sound.origin,
+                );
+            }
         }
     }
     server.insert_resource(client);
