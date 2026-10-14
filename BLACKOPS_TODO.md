@@ -20,7 +20,10 @@ Kino starts raises two script faults, the `is_in_array` pair in
 arrays). Its map turrets spawn and answer Black Ops' turret methods; their
 think (aiming, firing) is not ported (`t5.turret.think`). Hellhound rounds
 spawn, chase the player to claimed attack spots, bite for 40 damage and drop
-Max Ammo on the last dog.
+Max Ammo on the last dog. The Thundergun equips its viewmodel, fires and
+blasts zombies and hellhounds in its cone; thrown Cymbal Monkeys animate,
+reset their fuse, generate attractor positions, play their song and detonate;
+and electric traps activate, shock players and electrocute zombies.
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are

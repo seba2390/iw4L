@@ -157,6 +157,7 @@ pub enum BotPress {
     Attack,
     Melee,
     Frag,
+    Smoke,
 }
 
 #[derive(Resource, Debug, Default)]
@@ -173,6 +174,10 @@ impl BotFireQueue {
 
     pub fn push_frag(&mut self, target: BotTpTarget) {
         self.0.push((target, BotPress::Frag));
+    }
+
+    pub fn push_smoke(&mut self, target: BotTpTarget) {
+        self.0.push((target, BotPress::Smoke));
     }
 
     pub fn drain(&mut self) -> Vec<(BotTpTarget, BotPress)> {

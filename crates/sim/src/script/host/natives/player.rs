@@ -1621,7 +1621,10 @@ fn register_inventory(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "hasweapon", |world, receiver, args| {
         let id = client_of(world, receiver)?;
-        let weapon = player_weapon(world, id, args, 0)?;
+        let _ = string(args, 0)?;
+        let Ok(weapon) = player_weapon(world, id, args, 0) else {
+            return Ok(Value::Int(0));
+        };
         Ok(Value::Int(
             script_player::has_weapon(&FrameWorld::from_world(world), id, weapon).into(),
         ))

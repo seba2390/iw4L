@@ -1020,6 +1020,14 @@ fn register_placement(registry: &mut NativeRegistry) {
         let id = entity_id(world, receiver)?;
         let tag = string(args, 0)?;
         let origin = vector_field(world, id, "origin");
+        if let Some(client) = runtime(world).player_client(id)
+            && (tag.eq_ignore_ascii_case("tag_flash") || tag.eq_ignore_ascii_case("tag_eye"))
+        {
+            let height = crate::frame::FrameWorld::from_world(world)
+                .player(crate::ClientId(client))
+                .map_or(0.0, |ps| ps.view_height_current);
+            return Ok(Value::Vector(add(origin, [0.0, 0.0, height])));
+        }
         let offset = super::super::presence::tag_offset(world, id, &tag).unwrap_or(ZERO);
         let axis = math_iw4::angles_to_axis(vector_field(world, id, "angles"));
         Ok(Value::Vector(std::array::from_fn(|i| {
@@ -1056,9 +1064,18 @@ fn register_placement(registry: &mut NativeRegistry) {
     registry.register(Method, "gettagangles", |world, receiver, args| {
         let id = entity_id(world, receiver)?;
         let tag = string(args, 0)?;
+        if let Some(client) = runtime(world).player_client(id) {
+            let angles = crate::frame::FrameWorld::from_world(world)
+                .player(crate::ClientId(client))
+                .map(|ps| ps.viewangles)
+                .unwrap_or_else(|| vector_field(world, id, "angles"));
+            return Ok(Value::Vector(angles));
+        }
         match super::super::presence::tag_world(world, id, &tag) {
             Some((_, axis)) => Ok(Value::Vector(math_iw4::axis_to_angles(axis))),
-            None if tag.eq_ignore_ascii_case("tag_origin") => {
+            None if tag.eq_ignore_ascii_case("tag_origin")
+                || super::super::presence::tag_pose(world, id, &tag).is_none() =>
+            {
                 Ok(Value::Vector(vector_field(world, id, "angles")))
             }
             None => Err(format!("tag '{tag}' does not exist on entity")),

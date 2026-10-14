@@ -331,14 +331,14 @@ fn with_tag_dobj<T>(
         .resource::<RoundScript>()
         .entities
         .get(&object)?
-        .presence?;
+        .presence;
     let frame = settled(world);
-    if let Some(dobj) = frame
-        .entity_collision_capabilities()
-        .iter()
-        .find(|row| row.owner.script_model() == Some(presence))?
-        .dobj
-        .as_ref()
+    if let Some(presence) = presence
+        && let Some(dobj) = frame
+            .entity_collision_capabilities()
+            .iter()
+            .find(|row| row.owner.script_model() == Some(presence))
+            .and_then(|row| row.dobj.as_ref())
     {
         return read(dobj);
     }

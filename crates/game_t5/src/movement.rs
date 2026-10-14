@@ -838,6 +838,15 @@ impl PlayerMovement for T5Movement {
         crate::missile::run_missile(missile, world)
     }
 
+    fn reset_missile_detonation_time(
+        &self,
+        missile: &mut game_api::fire::GameMissile,
+        after_ms: Option<i32>,
+        world: &dyn game_api::fire::FireWorld,
+    ) {
+        crate::missile::reset_detonation_time(missile, after_ms, world);
+    }
+
     fn clear_perks(&self, player: &mut MovePlayer) {
         let (mut ps, mut last) = unpack(player);
         ps.perks = 0;

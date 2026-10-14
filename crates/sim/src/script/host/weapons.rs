@@ -465,30 +465,13 @@ fn adopt_fired(world: &mut World) {
             continue;
         };
         let (classname, notify) = (launch.classname, launch.notify);
-        let object = match adopt(world, &projectile, classname) {
-            Ok(object) => object,
+        let (object, name) = match adopt_thrown(world, &projectile, classname) {
+            Ok(adopted) => adopted,
             Err(message) => {
                 diag::warn!(Sim, "gsc: {message}; {notify} not raised");
                 continue;
             }
         };
-        let weapon = super::players::event_weapon(world, projectile.owner.0, projectile.weapon);
-        super::players::note_insertion_throw(
-            world,
-            projectile.owner.0,
-            weapon,
-            projectile.weapon,
-            object,
-        );
-        let name = weapon_name(world, weapon);
-        let model = format!("{}{}", crate::WEAPON_MODEL_PREFIX, projectile.weapon);
-        let native = weapon_name(world, projectile.weapon);
-        {
-            let mut runtime = world.resource_mut::<RoundScript>();
-            runtime.set_object_field(object, "nativename", native);
-            runtime.set_object_field(object, "weaponname", name.clone());
-            runtime.set_object_field(object, "weaponmodel", Value::string(&model));
-        }
         raise(
             world,
             player,
@@ -496,6 +479,52 @@ fn adopt_fired(world: &mut World) {
             [vec![Value::Object(object), name], launch.extra].concat(),
         );
     }
+}
+
+/// A thrown or fired missile's script entity, with the weapon name its
+/// launch notify carries.
+fn adopt_thrown(
+    world: &mut World,
+    projectile: &crate::ProjectileState,
+    classname: &str,
+) -> Result<(u64, Value), String> {
+    let object = adopt(world, projectile, classname)?;
+    let weapon = super::players::event_weapon(world, projectile.owner.0, projectile.weapon);
+    super::players::note_insertion_throw(
+        world,
+        projectile.owner.0,
+        weapon,
+        projectile.weapon,
+        object,
+    );
+    let name = weapon_name(world, weapon);
+    let model = format!("{}{}", crate::WEAPON_MODEL_PREFIX, projectile.weapon);
+    let native = weapon_name(world, projectile.weapon);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    runtime.set_object_field(object, "nativename", native);
+    runtime.set_object_field(object, "weaponname", name.clone());
+    runtime.set_object_field(object, "weaponmodel", Value::string(&model));
+    Ok((object, name))
+}
+
+/// The script entity of a missile a game rule names in its own notify
+/// (Black Ops' `grenade_fire` as it spawns the grenade), adopted then so
+/// the notify carries it and `adopt_fired` does not raise a second one.
+pub(crate) fn adopt_game_missile(
+    world: &mut World,
+    projectile: &crate::ProjectileState,
+) -> Option<u64> {
+    if !world
+        .get_resource::<RoundScript>()
+        .is_some_and(|runtime| runtime.started)
+    {
+        return None;
+    }
+    let launch = (missile_rule(world).launched)(world, projectile)?;
+    adopt_thrown(world, projectile, launch.classname)
+        .map(|(object, _)| object)
+        .inspect_err(|message| diag::warn!(Sim, "gsc: {message}"))
+        .ok()
 }
 
 fn settle_items(world: &mut World) {

@@ -450,6 +450,10 @@ struct ActorFields {
     talk_species: i32,
     /// `setgoalvolume`'s volume.
     goal_volume: Option<u64>,
+    /// `setdeathcontents`'s contents.
+    death_contents: Option<i32>,
+    /// `setflashbanged`'s state and strength.
+    flashbanged: (bool, f32),
 }
 
 /// The species `settalktospecies` names, by bit.
@@ -619,5 +623,154 @@ fn register_actor(registry: &mut NativeRegistry) {
                 "BloodImpact() only takes \"normal\", \"hero\" or \"none\" as parameters.\n".into(),
             ),
         }
+    });
+    registry.register(Method, "getplayerviewheight", |world, receiver, _| {
+        let client = super::player::player(world, receiver)?;
+        let height = crate::frame::FrameWorld::from_world(world)
+            .player(crate::ClientId(client))
+            .map_or(0.0, |ps| ps.view_height_current);
+        Ok(Value::Float(height))
+    });
+    registry.register(Method, "getcentroid", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let kind = world.resource::<RoundScript>().entities[&id].kind.clone();
+        let origin = vector_field(world, id, "origin");
+        let angles = vector_field(world, id, "angles");
+        // A client sits 35 up its axis, an actor 36; any other entity at the
+        // middle of its bounds turned by its axis.
+        let center = match kind {
+            EntityKind::Actor => [0.0, 0.0, 36.0],
+            EntityKind::Player => [0.0, 0.0, 35.0],
+            _ => {
+                let (mins, maxs) = super::super::triggers::entity_bounds(world, id);
+                std::array::from_fn(|i| (mins[i] + maxs[i]) * 0.5)
+            }
+        };
+        let (sp, cp) = angles[0].to_radians().sin_cos();
+        let (sy, cy) = angles[1].to_radians().sin_cos();
+        let (sr, cr) = angles[2].to_radians().sin_cos();
+        let axis = [
+            [cp * cy, cp * sy, -sp],
+            [sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, sr * cp],
+            [cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp],
+        ];
+        Ok(Value::Vector(std::array::from_fn(|i| {
+            origin[i] + center[0] * axis[0][i] + center[1] * axis[1][i] + center[2] * axis[2][i]
+        })))
+    });
+    registry.register(Method, "getweaponmuzzlepoint", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let origin = vector_field(world, id, "origin");
+        let lift = match world.resource::<RoundScript>().player_client(id) {
+            Some(client) => crate::frame::FrameWorld::from_world(world)
+                .player(crate::ClientId(client))
+                .map_or(0.0, |ps| ps.view_height_current),
+            None => 0.0,
+        };
+        Ok(Value::Vector([origin[0], origin[1], origin[2] + lift]))
+    });
+    registry.register(Method, "getweaponforwarddir", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let angles = match world.resource::<RoundScript>().player_client(id) {
+            Some(client) => crate::frame::FrameWorld::from_world(world)
+                .player(crate::ClientId(client))
+                .map_or([0.0; 3], |ps| ps.viewangles),
+            None => vector_field(world, id, "angles"),
+        };
+        let (sp, cp) = angles[0].to_radians().sin_cos();
+        let (sy, cy) = angles[1].to_radians().sin_cos();
+        Ok(Value::Vector([cp * cy, cp * sy, -sp]))
+    });
+    registry.register(
+        Namespace::Function,
+        "physicsexplosioncylinder",
+        |_, _, args| {
+            if args.len() != 4 {
+                return Err("Incorrect number of parameters".into());
+            }
+            let _origin = super::super::args::vector(args, 0)?;
+            let outer = super::super::args::int(args, 1)? as u16;
+            let inner = super::super::args::float(args, 2)?;
+            if inner < 0.0 {
+                return Err("Radius is negative".into());
+            }
+            if f32::from(outer) < inner {
+                return Err("Inner radius is outside the outer radius".into());
+            }
+            let _magnitude = super::super::args::float(args, 3)?;
+            Ok(Value::Undefined)
+        },
+    );
+    registry.register(Method, "setelectrified", |world, receiver, args| {
+        let time = super::super::args::float(args, 0)?;
+        if time < 0.0 {
+            return Err("Time must be positive".into());
+        }
+        super::player::player(world, receiver)
+            .map_err(|_| "setelectrified() called on an invalid client entity.\n".to_owned())?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setburn", |world, receiver, args| {
+        let time = super::super::args::float(args, 0)?;
+        if time < 0.0 {
+            return Err("Time must be positive".into());
+        }
+        super::player::player(world, receiver)
+            .map_err(|_| "setburn() called on an invalid client entity.\n".to_owned())?;
+        Ok(Value::Undefined)
+    });
+    registry.register(
+        Method,
+        "resetmissiledetonationtime",
+        |world, receiver, args| {
+            let id = super::engine::entity_id(world, receiver)?;
+            let number = match world.resource::<RoundScript>().entities.get(&id) {
+                Some(entity) if matches!(entity.kind, EntityKind::Missile(_)) => entity.number,
+                _ => return Ok(Value::Undefined),
+            };
+            let after_ms = if !args.is_empty() {
+                Some((super::super::args::float(args, 0)? * 1000.0) as i32)
+            } else {
+                None
+            };
+            let tick = world.resource::<crate::step::StepRequest>().tick;
+            crate::game_fire::reset_game_missile_detonation_time(
+                &mut crate::frame::FrameWorld::from_world(world),
+                tick,
+                number,
+                after_ms,
+            );
+            Ok(Value::Undefined)
+        },
+    );
+    registry.register(Method, "setflashbanged", |world, receiver, args| {
+        let id = actor(world, receiver)?;
+        if args.len() != 1 && args.len() != 2 {
+            return Err("Invalid call to setFlashBanged()".into());
+        }
+        let strength = if args.len() == 2 {
+            super::super::args::float(args, 1)?
+        } else {
+            1.0
+        };
+        let on = super::super::args::int(args, 0)? != 0;
+        actor_fields(world, id).flashbanged = (on, strength);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setdeathcontents", |world, receiver, args| {
+        if args.len() != 1 {
+            return Err("setdeathcontents takes one parameter\n".into());
+        }
+        super::engine::entity_id(world, receiver)?;
+        let Ok(id) = actor(world, receiver) else {
+            return Err("setdeathcontents must be called on an AI only.".into());
+        };
+        let contents = super::super::args::int(args, 0)?;
+        actor_fields(world, id).death_contents = Some(contents);
+        Ok(Value::Undefined)
+    });
+    registry.register(Namespace::Function, "modelhasphyspreset", |_, _, args| {
+        super::super::args::string(args, 0)?;
+        Ok(Value::Int(0))
     });
 }
