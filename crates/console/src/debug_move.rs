@@ -99,7 +99,7 @@ pub(crate) fn register_debug_move_commands(registry: &mut ConsoleRegistry) {
     }
     if registry.resolve("script").is_none() {
         registry.register(crate::CommandSpec::new("script").usage(
-            "script <module::function> <level|playerN> [args…] — start a script thread on the host; args are numbers, (x,y,z) vectors or strings (needs cheats; invented)",
+            "script <module::function> <level|playerN|targetname=NAME> [args…] — start a script thread on the host; args are numbers, (x,y,z) vectors or strings (needs cheats; invented)",
         ));
     }
 }
@@ -617,7 +617,7 @@ pub(crate) fn route_debug_move_commands(
                 }
                 let [name, receiver, args @ ..] = cmd.args.as_slice() else {
                     echo(
-                        "usage: script <module::function> <level|playerN> [args…]".into(),
+                        "usage: script <module::function> <level|playerN|targetname=NAME> [args…]".into(),
                         &mut console,
                         &mut line,
                     );

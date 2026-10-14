@@ -233,7 +233,8 @@ impl SimWorld {
     }
 
     /// Starts a script thread on the host, for a test player: `receiver` is
-    /// `level` or `playerN`; each argument reads as a number, an `(x,y,z)`
+    /// `level`, `playerN` or `targetname=<name>` (the first entity of that
+    /// targetname); each argument reads as a number, an `(x,y,z)`
     /// vector, or else a string.
     pub fn start_script(
         &mut self,
@@ -248,7 +249,19 @@ impl SimWorld {
                 crate::script::host::players::player_object(&self.ecs, client)
             }
             None if receiver == "level" => Value::level(),
-            None => return Err(format!("bad receiver {receiver}")),
+            None => match receiver.strip_prefix("targetname=") {
+                Some(name) => {
+                    let mut runtime = self.ecs.resource_mut::<crate::script::RoundScript>();
+                    let ids: Vec<u64> = runtime.entities.keys().copied().collect();
+                    let wanted = Value::String(name.into());
+                    let id = ids
+                        .into_iter()
+                        .find(|&id| runtime.object_field(id, "targetname") == wanted)
+                        .ok_or_else(|| format!("no entity named {name}"))?;
+                    Value::Object(id)
+                }
+                None => return Err(format!("bad receiver {receiver}")),
+            },
         };
         let args = args
             .iter()
