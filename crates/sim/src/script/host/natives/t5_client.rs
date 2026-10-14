@@ -1,10 +1,13 @@
 //! Black Ops' client VM natives (its client scripts, CSC), read from its
 //! client function and method tables. A PC client has one local client, 0.
 
-use super::super::args::{int, optional, string, vector};
+use super::super::args::{arg, float, int, optional, string, vector};
 use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
-use crate::script::client::{ClientOutput, ClientSound, ClientView, FakeEnts, LoopSource};
+use crate::script::client::{
+    ClientEffect, ClientEffectTable, ClientOutput, ClientSound, ClientTagEffect, ClientTagEvent,
+    ClientView, FakeEnts, LoopSource,
+};
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
 
@@ -305,9 +308,338 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         super::engine::entity_id(world, receiver)?;
         Ok(Value::Int(0))
     });
+    register_effects(registry);
+    // `ent delete()`: a client-only entity notifies `death` and
+    // `entityshutdown`, then is freed.
+    registry.register(Method, "delete", |world, receiver, _| {
+        let (id, number) = {
+            let (id, ent) = entity(world, receiver)?;
+            (id, ent.number)
+        };
+        if number < CLIENT_ENTITY_BASE {
+            return Err("delete: the client can only delete its own entities".into());
+        }
+        crate::script::runtime::raise(world, Value::Object(id), "death", Vec::new());
+        crate::script::runtime::raise(world, Value::Object(id), "entityshutdown", Vec::new());
+        let mut output = world.resource_mut::<ClientOutput>();
+        output.fx_entities.remove(&id);
+        output.loops.remove(&LoopSource::Entity(id));
+        world.resource_mut::<RoundScript>().request_delete(id);
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));
+}
+
+/// The first client-only entity number; lower ones are the server's
+/// entities in the client's snapshot.
+const CLIENT_ENTITY_BASE: i32 = 0x400;
+
+/// The client's effect slots: its effect configstrings 1 to 195.
+const EFFECT_IDS: std::ops::RangeInclusive<i32> = 1..=0xc3;
+
+fn register_effects(registry: &mut NativeRegistry) {
+    use Namespace::Function;
+    // `loadFx(name)`: the index the server registered the effect at, looked
+    // up without case.
+    registry.register(Function, "loadfx", |world, _, args| {
+        let name = string(args, 0)?;
+        if name
+            .get(..3)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("fx/"))
+        {
+            return Err("effect name should start after the 'fx' folder.".into());
+        }
+        let table = world.resource::<ClientEffectTable>();
+        match table.indices.get(&name.to_ascii_lowercase()) {
+            Some(&index) => Ok(Value::Int(index)),
+            None => Err(format!(
+                "loadedfx could not find effect {name} - ensure that effect is precached in the server script, and included in appropriate CSVs.\n"
+            )),
+        }
+    });
+    // `playFx(local, id, origin, [forward], [up], [begin])`: an effect at a
+    // point, answering its handle. Its optional last argument, in seconds,
+    // is the time it begins at, not a delay from now.
+    registry.register(Function, "playfx", |world, _, args| {
+        if !(3..=6).contains(&args.len()) {
+            return Err("Incorrect number of parameters".into());
+        }
+        local_index(args)?;
+        let now = now_ms(world);
+        let id = effect_id(args, 1)?;
+        let origin = vector(args, 2)?;
+        let (axis, begin) = match args.len() {
+            3 => (math_iw4::angles_to_axis(DEFAULT_EFFECT_ANGLES), now),
+            4 => {
+                let forward = direction(world, args, 3, id, "forward")?;
+                let angles = math_iw4::vect_to_angles(forward).map(math_iw4::angle_normalize_360);
+                (math_iw4::angles_to_axis(angles), now)
+            }
+            _ => {
+                let forward = direction(world, args, 3, id, "forward")?;
+                let up = direction(world, args, 4, id, "up")?;
+                let begin = if args.len() > 5 {
+                    seconds_to_msec(float(args, 5)?)
+                } else {
+                    now
+                };
+                (forward_up_axis(forward, up)?, begin)
+            }
+        };
+        Ok(Value::Int(play_effect(world, id, origin, axis, begin)))
+    });
+    // `playFxOnTag(local, id, entity, tag)`: an effect bolted to the
+    // entity's tag, answering its handle.
+    registry.register(Function, "playfxontag", |world, _, args| {
+        if args.len() != 4 {
+            return Err("Incorrect number of parameters for playfxontag".into());
+        }
+        local_index(args)?;
+        let raw_id = int(args, 1)?;
+        let (entity, _) = entity(world, arg(args, 2)?)?;
+        let id = effect_id(args, 1).map(|_| raw_id)?;
+        let tag = string(args, 3)?;
+        let now = now_ms(world);
+        let (name, life) = effect_name_life(world, id);
+        let mut output = world.resource_mut::<ClientOutput>();
+        let handle = output.effect_handle();
+        if let Some(name) = name {
+            let effect = ClientTagEffect {
+                name,
+                entity,
+                tag,
+                end_ms: now.saturating_add(life),
+            };
+            output.tag_events.push(ClientTagEvent {
+                effect: effect.clone(),
+                stop: false,
+            });
+            output.tag_effects.insert(handle, effect);
+        }
+        Ok(Value::Int(handle))
+    });
+    // `spawnFx(local, id, origin, delay, [forward], [up])`: an effect
+    // entity, which plays once `triggerFx` starts it; the delay is read
+    // and unused.
+    registry.register(Function, "spawnfx", |world, _, args| {
+        if !(4..=6).contains(&args.len()) {
+            return Err("Incorrect number of parameters".into());
+        }
+        local_index(args)?;
+        let id = effect_id(args, 1)?;
+        let origin = vector(args, 2)?;
+        float(args, 3)?;
+        let axis = match args.len() {
+            4 => math_iw4::angles_to_axis(DEFAULT_EFFECT_ANGLES),
+            5 => {
+                let forward = direction(world, args, 4, id, "forward")?;
+                let angles = math_iw4::vect_to_angles(forward).map(math_iw4::angle_normalize_360);
+                math_iw4::angles_to_axis(angles)
+            }
+            _ => {
+                let forward = direction(world, args, 4, id, "forward")?;
+                let up = direction(world, args, 5, id, "up")?;
+                forward_up_axis(forward, up)?
+            }
+        };
+        let angles = math_iw4::axis_to_angles(axis);
+        let (name, _) = effect_name_life(world, id);
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let Ok(entity) = runtime.create_entity(EntityKind::Spawned, "") else {
+            return Ok(Value::Undefined);
+        };
+        runtime.set_object_field(entity, "origin", Value::Vector(origin));
+        runtime.set_object_field(entity, "angles", Value::Vector(angles));
+        runtime.set_object_field(entity, "type", Value::string("NA"));
+        runtime.set_object_field(entity, "model", Value::string(""));
+        runtime.set_object_field(entity, "serverflags", Value::Int(0));
+        runtime.set_object_field(entity, "haseyes", Value::Int(0));
+        world.resource_mut::<ClientOutput>().fx_entities.insert(
+            entity,
+            ClientEffect {
+                name: name.unwrap_or_else(String::new),
+                origin,
+                forward: axis[0],
+                up: axis[2],
+                begin_ms: None,
+                end_ms: 0,
+            },
+        );
+        Ok(Value::Object(entity))
+    });
+    // `triggerFx(entity, [begin])`: starts an effect entity now, or at the
+    // time it names in seconds.
+    registry.register(Function, "triggerfx", |world, _, args| {
+        if args.is_empty() || args.len() >= 3 {
+            return Err("Incorrect number of parameters".into());
+        }
+        let (entity, _) = entity(world, arg(args, 0)?)?;
+        let now = now_ms(world);
+        let begin = if args.len() == 2 {
+            seconds_to_msec(float(args, 1)?)
+        } else {
+            now
+        };
+        let life = match world.resource::<ClientOutput>().fx_entities.get(&entity) {
+            Some(effect) => world.resource::<ClientEffectTable>().life(&effect.name),
+            None => return Err("entity wasn't created with 'newFx'".into()),
+        };
+        if let Some(effect) = world
+            .resource_mut::<ClientOutput>()
+            .fx_entities
+            .get_mut(&entity)
+        {
+            effect.begin_ms = Some(begin);
+            effect.end_ms = begin.saturating_add(life).max(now);
+        }
+        Ok(Value::Undefined)
+    });
+    // `stopFx(local, handle)` and `deleteFx(local, handle, [immediate])`
+    // kill the effect a handle names.
+    registry.register(Function, "stopfx", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters for IsFXPlaying".into());
+        }
+        local_index(args)?;
+        let handle = int(args, 1)?;
+        world.resource_mut::<ClientOutput>().kill_effect(handle);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "deletefx", |world, _, args| {
+        if !(2..=3).contains(&args.len()) {
+            return Err("Incorrect number of parameters for DeleteFX".into());
+        }
+        local_index(args)?;
+        let handle = int(args, 1)?;
+        if args.len() > 2 {
+            int(args, 2)?;
+        }
+        world.resource_mut::<ClientOutput>().kill_effect(handle);
+        Ok(Value::Undefined)
+    });
+    // `isFxPlaying(local, handle)`: whether the effect is still alive.
+    registry.register(Function, "isfxplaying", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters for IsFXPlaying".into());
+        }
+        local_index(args)?;
+        let handle = int(args, 1)?;
+        let now = now_ms(world);
+        let alive = world
+            .resource_mut::<ClientOutput>()
+            .effect_alive(handle, now);
+        Ok(Value::Int(alive.into()))
+    });
+}
+
+/// An effect's orientation when the script gives none: straight up.
+const DEFAULT_EFFECT_ANGLES: [f32; 3] = [270.0, 0.0, 0.0];
+
+/// The client's time now: the level time of its snapshot.
+fn now_ms(world: &World) -> i32 {
+    crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick)
+}
+
+/// Seconds as the client rounds them to msec.
+fn seconds_to_msec(seconds: f32) -> i32 {
+    (f64::from(seconds * 1000.0) + 9.313_225_746_154_785e-10).round_ties_even() as i32
+}
+
+fn effect_id(args: &[Value], at: usize) -> Result<i32, String> {
+    let id = int(args, at)?;
+    if !EFFECT_IDS.contains(&id) {
+        return Err(format!("CScr_PlayFX: invalid effect id {id}"));
+    }
+    Ok(id)
+}
+
+/// The effect registered at an index, and how long it lives.
+fn effect_name_life(world: &World, id: i32) -> (Option<String>, i32) {
+    let table = world.resource::<ClientEffectTable>();
+    let name = table.names.get(&id).cloned();
+    let life = name.as_deref().map_or(0, |name| table.life(name));
+    (name, life)
+}
+
+/// A direction argument, normalized; a zero one is the script's error.
+fn direction(
+    world: &World,
+    args: &[Value],
+    at: usize,
+    id: i32,
+    which: &str,
+) -> Result<[f32; 3], String> {
+    let v = vector(args, at)?;
+    let length = (v[1] * v[1] + v[2] * v[2] + v[0] * v[0]).sqrt();
+    let scale = 1.0 / if 0.0 <= -length { 1.0 } else { length };
+    if length == 0.0 {
+        let effect = world
+            .resource::<ClientEffectTable>()
+            .names
+            .get(&id)
+            .filter(|name| !name.is_empty())
+            .cloned()
+            .unwrap_or_else(|| "not successfully loaded".into());
+        return Err(format!(
+            "playFx called with (0 0 0) {which} direction (effect = {effect})\n"
+        ));
+    }
+    Ok(v.map(|c| c * scale))
+}
+
+/// The axis of a forward and an up direction: up made square to forward.
+fn forward_up_axis(forward: [f32; 3], up: [f32; 3]) -> Result<[[f32; 3]; 3], String> {
+    let along = -(up[2] * forward[2] + up[1] * forward[1] + up[0] * forward[0]);
+    let up = [
+        forward[0] * along + up[0],
+        along * forward[1] + up[1],
+        forward[2] * along + up[2],
+    ];
+    let length = (up[2] * up[2] + up[0] * up[0] + up[1] * up[1]).sqrt();
+    let scale = 1.0 / if 0.0 <= -length { 1.0 } else { length };
+    if length == 0.0 {
+        return Err(
+            "forward and up vectors are the same direction or exact opposite directions".into(),
+        );
+    }
+    let up = up.map(|c| c * scale);
+    let left = [
+        up[1] * forward[2] - up[2] * forward[1],
+        up[2] * forward[0] - forward[2] * up[0],
+        forward[1] * up[0] - up[1] * forward[0],
+    ];
+    Ok([forward, left, up])
+}
+
+/// Plays an effect at a point from `begin`, answering its handle: it is
+/// alive until its longest life has passed, and at least this frame.
+fn play_effect(
+    world: &mut World,
+    id: i32,
+    origin: [f32; 3],
+    axis: [[f32; 3]; 3],
+    begin: i32,
+) -> i32 {
+    let now = now_ms(world);
+    let (name, life) = effect_name_life(world, id);
+    let mut output = world.resource_mut::<ClientOutput>();
+    let handle = output.effect_handle();
+    if let Some(name) = name {
+        output.effects.insert(
+            handle,
+            ClientEffect {
+                name,
+                origin,
+                forward: axis[0],
+                up: axis[2],
+                begin_ms: Some(begin),
+                end_ms: begin.saturating_add(life).max(now),
+            },
+        );
+    }
+    handle
 }
 
 fn play(world: &mut World, alias: String, origin: [f32; 3]) -> Value {

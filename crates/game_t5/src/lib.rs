@@ -97,6 +97,7 @@ impl game_api::GameScripts for T5 {
     /// Black Ops' client engine calls `clientscripts/_callbacks`.
     fn client_callbacks(&self) -> Option<game_api::ClientCallbacks> {
         Some(game_api::ClientCallbacks {
+            local_client_connect: "clientscripts/_callbacks::localclientconnect",
             state_change: "clientscripts/_callbacks::statechange",
             activate_exploder: "clientscripts/_callbacks::callback_activate_exploder",
             deactivate_exploder: "clientscripts/_callbacks::callback_deactivate_exploder",

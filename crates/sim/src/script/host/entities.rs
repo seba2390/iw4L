@@ -20,6 +20,9 @@ impl StringTable {
 #[derive(Clone, Debug, Default)]
 pub struct LevelData {
     pub absent_effects: std::collections::BTreeSet<String>,
+    /// The longest each effect lives once it begins (msec), by lowercase
+    /// name, for what a client asks of the effects it plays.
+    pub effect_lives: BTreeMap<String, i32>,
     pub entities: Vec<Vec<(String, String)>>,
     pub tables: BTreeMap<String, StringTable>,
     pub keys: BTreeMap<String, KeyType>,

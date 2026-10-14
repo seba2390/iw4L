@@ -371,6 +371,52 @@ pub struct OwnedFxEffectDef {
     pub elems: Vec<OwnedFxElemDef>,
 }
 
+impl OwnedFxEffectDef {
+    /// The longest an effect of this definition stays alive after it begins,
+    /// in msec: its looping elements spawn until its looping life ends, its
+    /// one-shot elements after their spawn delay, each lives out its longest
+    /// life span, and an emitted element can outlive its emitter by its own.
+    pub fn life_bound_msec(&self) -> i32 {
+        let looping = usize::try_from(self.view.looping_count).unwrap_or(0);
+        let one_shot = usize::try_from(self.view.one_shot_count).unwrap_or(0);
+        let longest = |elem: &OwnedFxElemDef| {
+            let v = &elem.view;
+            let delay = v
+                .spawn_delay_msec_base
+                .max(0)
+                .saturating_add(v.spawn_delay_msec_amplitude.max(0));
+            let life = v
+                .life_span_msec_base
+                .max(0)
+                .saturating_add(v.life_span_msec_amplitude.max(0));
+            delay.saturating_add(life)
+        };
+        let spawned = self
+            .elems
+            .iter()
+            .take(looping + one_shot)
+            .enumerate()
+            .map(|(index, elem)| {
+                let own = longest(elem);
+                if index < looping {
+                    self.view.msec_looping_life.max(0).saturating_add(own)
+                } else {
+                    own
+                }
+            })
+            .max()
+            .unwrap_or(0);
+        let emitted = self
+            .elems
+            .iter()
+            .skip(looping + one_shot)
+            .map(longest)
+            .max()
+            .unwrap_or(0);
+        spawned.saturating_add(emitted)
+    }
+}
+
 /// The effects a build finished with. There is no zone link map here and no
 /// half-captured name waiting for the slot it belongs to: the names are the
 /// answers, and a consumer holding this cannot resolve one more pointer.

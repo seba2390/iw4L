@@ -144,8 +144,38 @@ pub(crate) struct ClientLoop {
     pub(crate) serial: u32,
 }
 
-/// What the client VM's frame asks of the client: sounds to play, and the
-/// loops it plays.
+/// An effect the client plays at a point (`playFx`, or a triggered
+/// `spawnFx` entity): it begins at `begin_ms` (level time) and is alive
+/// through `end_ms`.
+#[derive(Clone, Debug)]
+pub(crate) struct ClientEffect {
+    pub(crate) name: String,
+    pub(crate) origin: [f32; 3],
+    pub(crate) forward: [f32; 3],
+    pub(crate) up: [f32; 3],
+    /// When it begins; an untriggered `spawnFx` entity has none yet.
+    pub(crate) begin_ms: Option<i32>,
+    pub(crate) end_ms: i32,
+}
+
+/// An effect the client plays on an entity's tag (`playFxOnTag`).
+#[derive(Clone, Debug)]
+pub(crate) struct ClientTagEffect {
+    pub(crate) name: String,
+    pub(crate) entity: u64,
+    pub(crate) tag: String,
+    pub(crate) end_ms: i32,
+}
+
+/// A tag effect to start or stop on the client's view of an entity.
+#[derive(Clone, Debug)]
+pub(crate) struct ClientTagEvent {
+    pub(crate) effect: ClientTagEffect,
+    pub(crate) stop: bool,
+}
+
+/// What the client VM's frame asks of the client: sounds to play, the
+/// loops it plays, and its effects.
 #[derive(Resource, Default)]
 pub(crate) struct ClientOutput {
     pub(crate) sounds: Vec<ClientSound>,
@@ -153,9 +183,50 @@ pub(crate) struct ClientOutput {
     pub(crate) next_sound: i32,
     pub(crate) loops: std::collections::BTreeMap<LoopSource, ClientLoop>,
     next_loop: u32,
+    /// Effects played at a point, by handle.
+    pub(crate) effects: std::collections::BTreeMap<i32, ClientEffect>,
+    /// Effects played on a tag, by handle.
+    pub(crate) tag_effects: std::collections::BTreeMap<i32, ClientTagEffect>,
+    /// `spawnFx` entities' effects, by entity.
+    pub(crate) fx_entities: std::collections::BTreeMap<u64, ClientEffect>,
+    /// Tag effects to start or stop this frame.
+    pub(crate) tag_events: Vec<ClientTagEvent>,
+    next_effect: i32,
 }
 
 impl ClientOutput {
+    /// A new effect handle.
+    pub(crate) fn effect_handle(&mut self) -> i32 {
+        self.next_effect = self.next_effect.wrapping_add(1).max(1);
+        self.next_effect
+    }
+
+    /// Whether the effect a handle names is still alive at `now`; a dead
+    /// one's handle is forgotten.
+    pub(crate) fn effect_alive(&mut self, handle: i32, now: i32) -> bool {
+        if let Some(effect) = self.effects.get(&handle) {
+            if now <= effect.end_ms {
+                return true;
+            }
+            self.effects.remove(&handle);
+        }
+        if let Some(effect) = self.tag_effects.get(&handle) {
+            if now <= effect.end_ms {
+                return true;
+            }
+            self.tag_effects.remove(&handle);
+        }
+        false
+    }
+
+    /// Kills the effect a handle names.
+    pub(crate) fn kill_effect(&mut self, handle: i32) {
+        self.effects.remove(&handle);
+        if let Some(effect) = self.tag_effects.remove(&handle) {
+            self.tag_events.push(ClientTagEvent { effect, stop: true });
+        }
+    }
+
     pub(crate) fn start_loop(&mut self, source: LoopSource, alias: String) {
         if self.loops.get(&source).is_some_and(|l| l.alias == alias) {
             return;
@@ -163,6 +234,29 @@ impl ClientOutput {
         let serial = self.next_loop & 0x0fff_ffff;
         self.next_loop = self.next_loop.wrapping_add(1);
         self.loops.insert(source, ClientLoop { alias, serial });
+    }
+}
+
+/// The effects the server registered (`loadFx`), which the client's
+/// `loadFx` looks up, and how long each lives once it begins.
+#[derive(Resource, Default)]
+pub(crate) struct ClientEffectTable {
+    /// Effect names by index.
+    pub(crate) names: std::collections::BTreeMap<i32, String>,
+    /// Indices by lowercase effect name.
+    pub(crate) indices: std::collections::BTreeMap<String, i32>,
+    /// The longest each effect lives (msec), by lowercase name.
+    pub(crate) lives: std::collections::BTreeMap<String, i32>,
+}
+
+impl ClientEffectTable {
+    /// How long an effect lives once it begins: zero when its definition
+    /// is not loaded.
+    pub(crate) fn life(&self, name: &str) -> i32 {
+        self.lives
+            .get(&name.to_ascii_lowercase())
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -319,6 +413,10 @@ pub(crate) fn install(
         host: true,
     });
     world.insert_resource(ClientOutput::default());
+    world.insert_resource(ClientEffectTable {
+        lives: level.effect_lives.clone(),
+        ..Default::default()
+    });
     server.insert_resource(ClientScripts {
         world,
         entries,
@@ -363,6 +461,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     .dvars
                     .insert(name.clone(), value.clone());
             }
+            sync_effect_table(server, &mut client.world);
             let snapshots = collect_server_entities(server);
             run_frame(&mut client, tick, reason, messages, snapshots);
             let sounds = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().sounds);
@@ -374,9 +473,112 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     sound.origin,
                 );
             }
+            deliver_tag_effects(server, &mut client);
         }
     }
     server.insert_resource(client);
+}
+
+/// The client sees the effects the server registered.
+fn sync_effect_table(server: &World, client: &mut World) {
+    let precached = &server.resource::<MatchScript>().precached;
+    let count = precached.keys().filter(|(kind, _)| *kind == "fx").count();
+    let mut table = client.resource_mut::<ClientEffectTable>();
+    if table.names.len() == count {
+        return;
+    }
+    table.names.clear();
+    table.indices.clear();
+    for ((kind, name), &index) in precached {
+        if *kind == "fx" {
+            table.names.insert(index, name.clone());
+            table
+                .indices
+                .entry(name.to_ascii_lowercase())
+                .or_insert(index);
+        }
+    }
+}
+
+/// Plays and stops the client's tag effects on the server's entities the
+/// client sees, for the local client only; an effect on a client-only
+/// entity plays at its origin.
+fn deliver_tag_effects(server: &mut World, client: &mut ClientScripts) {
+    let events = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().tag_events);
+    for event in events {
+        let effect = &event.effect;
+        let mirrored = client
+            .mirrored
+            .iter()
+            .find(|(_, entry)| entry.client_object == effect.entity)
+            .map(|(server_id, _)| *server_id);
+        let audience = crate::EventAudience::Client(crate::ClientId(0));
+        let result = match mirrored {
+            Some(server_id) => super::host::natives::engine::effect_on_tag(
+                server,
+                &effect.name,
+                &Value::Object(server_id),
+                &effect.tag,
+                event.stop,
+                audience,
+            ),
+            None if event.stop => Ok(()),
+            None => {
+                let origin = match client
+                    .world
+                    .resource_mut::<RoundScript>()
+                    .object_field(effect.entity, "origin")
+                {
+                    Value::Vector(origin) => origin,
+                    _ => continue,
+                };
+                let index =
+                    crate::frame::FrameWorld::from_world(server).effect_name_index(&effect.name);
+                super::host::natives::engine::play_fx_to(
+                    server,
+                    audience,
+                    index,
+                    origin,
+                    [0.0, 0.0, 1.0],
+                    [0.0; 3],
+                );
+                Ok(())
+            }
+        };
+        if let Err(fault) = result {
+            diag::warn!(Sim, "csc: tag effect {} not played: {fault}", effect.name);
+        }
+    }
+}
+
+/// Row ids of the client's point effects and effect entities, apart from
+/// the server's effect entities.
+const CLIENT_EFFECT_ROW: u32 = 0x8000_0000;
+const CLIENT_EFFECT_ENTITY_ROW: u32 = 0xc000_0000;
+
+/// The effects the local client plays at points now, begun and alive, by
+/// their row ids.
+pub(crate) fn effect_rows(server: &World, now: i32) -> Vec<(u32, ClientEffect)> {
+    let Some(client) = server.get_resource::<ClientScripts>() else {
+        return Vec::new();
+    };
+    let output = client.world.resource::<ClientOutput>();
+    let playing = |effect: &&ClientEffect| effect.begin_ms.is_some() && now <= effect.end_ms;
+    let points = output
+        .effects
+        .iter()
+        .map(|(handle, effect)| (CLIENT_EFFECT_ROW | (*handle as u32 & 0x3fff_ffff), effect));
+    let entities = output.fx_entities.iter().map(|(id, effect)| {
+        (
+            CLIENT_EFFECT_ENTITY_ROW | (*id as u32 & 0x3fff_ffff),
+            effect,
+        )
+    });
+    points
+        .chain(entities)
+        .filter(|(_, effect)| playing(effect))
+        .map(|(id, effect)| (id, effect.clone()))
+        .collect()
 }
 
 fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
@@ -534,6 +736,16 @@ fn run_frame(
                 diag::warn!(Sim, "csc: client script {entry} not started: {fault}");
             }
         }
+        // The client game connects its local client right after the level's
+        // main has run to its first wait.
+        if let Some(callbacks) = client.callbacks {
+            start_callback(
+                &mut client.world,
+                callbacks.local_client_connect,
+                Value::level(),
+                vec![Value::Int(0)],
+            );
+        }
     }
     sync_snapshot_entities(client, snapshots, tick);
     let world = &mut client.world;
@@ -577,6 +789,10 @@ fn run_frame(
         }
     }
     super::runtime::advance_scheduler(world);
+    let now = crate::level_time_ms(tick);
+    let mut output = world.resource_mut::<ClientOutput>();
+    output.effects.retain(|_, effect| now <= effect.end_ms);
+    output.tag_effects.retain(|_, effect| now <= effect.end_ms);
     world.remove_resource::<crate::step::StepRequest>();
     if let Some(fault) = world.resource::<RoundScript>().fault.clone() {
         diag::warn!(Sim, "csc: client scripts stopped: {fault}");

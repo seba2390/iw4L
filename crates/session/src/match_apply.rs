@@ -685,6 +685,7 @@ pub fn apply_prepared_match(
         let client_level = client_scripts.as_ref().map(|_| sim::script::LevelData {
             entities: script_level.entities.clone(),
             keys: script_level.keys.clone(),
+            effect_lives: script_level.effect_lives.clone(),
             ..Default::default()
         });
         sim.install_gsc_program(scripts, natives, script_level)
@@ -1339,8 +1340,14 @@ fn preflight_match_install(
             Default::default()
         }
     };
+    let effect_lives = prepared
+        .fx
+        .effects()
+        .map(|effect| (effect.name.to_ascii_lowercase(), effect.life_bound_msec()))
+        .collect();
     let mut script_level = sim::script::LevelData {
         absent_effects,
+        effect_lives,
         player_data_defaults: account_defaults.clone(),
         schemas: sources.0.schemas().clone(),
         entities: sim::script::parse_entity_string(sources.0.entities().unwrap_or("")),
