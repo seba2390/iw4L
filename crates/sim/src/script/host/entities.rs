@@ -419,6 +419,7 @@ impl RoundScript {
         self.actor_anims.remove(&id);
         self.actor_brains.remove(&id);
         self.actor_moves.remove(&id);
+        super::actor_dog::release(self, id);
         if let Some(client) = self.player_client(id) {
             self.release_trigger_claims(client);
         }

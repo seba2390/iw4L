@@ -46,6 +46,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let spawners = spawners(world).into_iter().map(Value::Object).collect();
         new_array(world, spawners)
     });
+    registry.register(Function, "codespawn", |world, _, args| {
+        super::engine::spawn_entity(world, args)
+    });
+    registry.register(Method, "iswaitingonsound", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let waiting =
+            world
+                .resource::<RoundScript>()
+                .timed_notifies
+                .iter()
+                .any(|(_, target, _, args)| {
+                    matches!(target, Value::Object(o) if *o == id) && args.is_empty()
+                });
+        Ok(Value::Int(waiting.into()))
+    });
     // Script pacing on snapshot acknowledgement is left to the network layer:
     // scripts see no remote clients and wait a tenth of a second instead.
     registry.register(Function, "numremoteclients", |_, _, args| {
@@ -447,6 +462,13 @@ fn actor(world: &World, receiver: &Value) -> Result<u64, String> {
     }
 }
 
+fn vector_field(world: &mut World, id: u64, name: &str) -> [f32; 3] {
+    match super::super::players::entity_field(world, id, name) {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    }
+}
+
 fn actor_fields(world: &mut World, id: u64) -> &mut ActorFields {
     world
         .get_resource_or_insert_with(ActorState::default)
@@ -489,6 +511,100 @@ fn register_actor(registry: &mut NativeRegistry) {
             .resource_mut::<RoundScript>()
             .set_object_field(id, "enemy", Value::Undefined);
         Ok(Value::Undefined)
+    });
+    registry.register(
+        Method,
+        "getanglestolikelyenemypath",
+        |world, receiver, _| {
+            let id = actor(world, receiver)?;
+            Ok(super::super::actor_nav::likely_enemy_path_angles(world, id)
+                .map_or(Value::Undefined, Value::Vector))
+        },
+    );
+    registry.register(Method, "geteyeapprox", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let (kind, classname) = {
+            let runtime = world.resource::<RoundScript>();
+            let entity = &runtime.entities[&id];
+            (entity.kind.clone(), entity.classname.clone())
+        };
+        let origin = vector_field(world, id, "origin");
+        let lift = match kind {
+            EntityKind::Player => world
+                .resource::<RoundScript>()
+                .player_client(id)
+                .and_then(|c| {
+                    crate::frame::FrameWorld::from_world(world)
+                        .player(crate::ClientId(c))
+                        .map(|ps| ps.view_height_current)
+                })
+                .unwrap_or(0.0),
+            EntityKind::Actor => 72.0 * 0.9_f32,
+            _ => {
+                return Err(format!(
+                    "getEye must be called on an AI or player, not on a '{classname}'"
+                ));
+            }
+        };
+        Ok(Value::Vector([origin[0], origin[1], origin[2] + lift]))
+    });
+    registry.register(Method, "getshootatpos", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let kind = world.resource::<RoundScript>().entities[&id].kind.clone();
+        let origin = vector_field(world, id, "origin");
+        match kind {
+            EntityKind::Player => {
+                let lift = world
+                    .resource::<RoundScript>()
+                    .player_client(id)
+                    .and_then(|c| {
+                        crate::frame::FrameWorld::from_world(world)
+                            .player(crate::ClientId(c))
+                            .map(|ps| ps.view_height_current)
+                    })
+                    .unwrap_or(0.0);
+                Ok(Value::Vector([origin[0], origin[1], origin[2] + lift]))
+            }
+            EntityKind::Actor => {
+                if let Some(offset) = super::super::presence::tag_offset(world, id, "tag_eye") {
+                    let angles = vector_field(world, id, "angles");
+                    let (sy, cy) = angles[1].to_radians().sin_cos();
+                    return Ok(Value::Vector([
+                        origin[0] + cy * offset[0] - sy * offset[1],
+                        origin[1] + sy * offset[0] + cy * offset[1],
+                        origin[2] + offset[2],
+                    ]));
+                }
+                Ok(Value::Vector([origin[0], origin[1], origin[2] + 64.0]))
+            }
+            _ => Ok(Value::Vector(origin)),
+        }
+    });
+    registry.register(Method, "getaivelocity", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let (kind, classname) = {
+            let runtime = world.resource::<RoundScript>();
+            let entity = &runtime.entities[&id];
+            (entity.kind.clone(), entity.classname.clone())
+        };
+        let velocity = match kind {
+            EntityKind::Player => world
+                .resource::<RoundScript>()
+                .player_client(id)
+                .and_then(|c| {
+                    crate::frame::FrameWorld::from_world(world)
+                        .player(crate::ClientId(c))
+                        .map(|ps| ps.velocity)
+                })
+                .unwrap_or([0.0; 3]),
+            EntityKind::Actor => world
+                .resource::<RoundScript>()
+                .actor_moves
+                .get(&id)
+                .map_or([0.0; 3], |movement| movement.velocity),
+            _ => return Err(format!("entity type '{classname}' is not a sentient")),
+        };
+        Ok(Value::Vector(velocity))
     });
     // `BloodImpact("none" | "normal" | "hero")` picks the blood an entity's
     // hits show; the client event that carries it is not sent (ledgered).

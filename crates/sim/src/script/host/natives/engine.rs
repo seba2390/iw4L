@@ -956,43 +956,7 @@ fn register_entities(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "spawn", |world, _, args| {
-        let classname = string(args, 0)?;
-        let origin = vector(args, 1)?;
-        let flags = optional(args, 2, int)?.unwrap_or(0);
-        if !matches!(
-            classname.as_str(),
-            "script_origin"
-                | "script_model"
-                | "trigger_radius"
-                | "info_notnull"
-                | "info_notnull_big"
-        ) {
-            return Err(format!("unable to spawn \"{classname}\" entity"));
-        }
-        let cylinder = if classname == "trigger_radius" {
-            Some((float(args, 3)?, float(args, 4)?))
-        } else {
-            None
-        };
-        let presence = if matches!(classname.as_str(), "script_model" | "script_origin") {
-            Some(super::super::presence::spawn_presence(world, origin)?)
-        } else {
-            None
-        };
-        let number =
-            presence.and_then(|id| crate::frame::FrameWorld::from_world(world).gentity_number(id));
-        let mut runtime = runtime(world);
-        let id = runtime.create_entity(EntityKind::Spawned, &classname)?;
-        runtime.set_object_field(id, "origin", Value::Vector(origin));
-        runtime.set_object_field(id, "angles", Value::Vector(ZERO));
-        runtime.set_object_field(id, "spawnflags", Value::Int(flags));
-        let entity = runtime.entities.get_mut(&id).unwrap();
-        entity.cylinder = cylinder;
-        entity.presence = presence;
-        if let Some(number) = number {
-            entity.number = number;
-        }
-        Ok(Value::Object(id))
+        spawn_entity(world, args)
     });
     registry.register(Function, "sortbydistance", |world, _, args| {
         let values = array_values(world, arg(args, 0)?)?;
@@ -2307,3 +2271,39 @@ fn register_refused(registry: &mut NativeRegistry) {
 
 pub const EXIT_LEVEL: &str = "engine:exitlevel";
 pub const MAP_RESTART: &str = "engine:map_restart";
+
+pub(super) fn spawn_entity(world: &mut World, args: &[Value]) -> Result<Value, String> {
+    let classname = string(args, 0)?;
+    let origin = vector(args, 1)?;
+    let flags = optional(args, 2, int)?.unwrap_or(0);
+    if !matches!(
+        classname.as_str(),
+        "script_origin" | "script_model" | "trigger_radius" | "info_notnull" | "info_notnull_big"
+    ) {
+        return Err(format!("unable to spawn \"{classname}\" entity"));
+    }
+    let cylinder = if classname == "trigger_radius" {
+        Some((float(args, 3)?, float(args, 4)?))
+    } else {
+        None
+    };
+    let presence = if matches!(classname.as_str(), "script_model" | "script_origin") {
+        Some(super::super::presence::spawn_presence(world, origin)?)
+    } else {
+        None
+    };
+    let number =
+        presence.and_then(|id| crate::frame::FrameWorld::from_world(world).gentity_number(id));
+    let mut runtime = runtime(world);
+    let id = runtime.create_entity(EntityKind::Spawned, &classname)?;
+    runtime.set_object_field(id, "origin", Value::Vector(origin));
+    runtime.set_object_field(id, "angles", Value::Vector(ZERO));
+    runtime.set_object_field(id, "spawnflags", Value::Int(flags));
+    let entity = runtime.entities.get_mut(&id).unwrap();
+    entity.cylinder = cylinder;
+    entity.presence = presence;
+    if let Some(number) = number {
+        entity.number = number;
+    }
+    Ok(Value::Object(id))
+}

@@ -71,6 +71,11 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         runtime.set_object_field(id, "movemode", Value::string("run"));
         runtime.set_object_field(id, "ignoreme", Value::Int(0));
         runtime.set_object_field(id, "ignoreall", Value::Int(0));
+        runtime.set_object_field(id, "safetochangescript", Value::Int(1));
+        runtime.set_object_field(id, "leanamount", Value::Float(0.0));
+        runtime.set_object_field(id, "damageyaw", Value::Int(0));
+        runtime.set_object_field(id, "lookaheaddir", Value::Vector([0.0; 3]));
+        runtime.set_object_field(id, "lookaheaddist", Value::Float(0.0));
         if let Value::Int(n) = count {
             runtime.set_object_field(spawner_id, "count", Value::Int(n - 1));
         }
@@ -172,7 +177,24 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         };
         runtime.set_object_field(actor, "health", Value::Int(before - amount));
         // The last hit, as the engine records it on the actor for scripts.
+        let yaw = match runtime.object_field(actor, "angles") {
+            Value::Vector(v) => v[1],
+            _ => 0.0,
+        };
+        let dir = match arg(7) {
+            Value::Vector(v) => v,
+            _ => [0.0; 3],
+        };
+        let from = if dir[0] == 0.0 && dir[1] == 0.0 {
+            0.0
+        } else {
+            let deg = dir[1].atan2(dir[0]).to_degrees();
+            if deg < 0.0 { deg + 360.0 } else { deg }
+        };
+        let turns = (from - yaw) * (1.0 / 360.0);
+        let damage_yaw = ((turns - (turns + 0.5).floor()) * 360.0) as i32;
         runtime.set_object_field(actor, "damagetaken", Value::Int(amount));
+        runtime.set_object_field(actor, "damageyaw", Value::Int(damage_yaw));
         runtime.set_object_field(actor, "damagemod", arg(4));
         runtime.set_object_field(actor, "damageweapon", arg(5));
         runtime.set_object_field(actor, "damagedir", arg(7));

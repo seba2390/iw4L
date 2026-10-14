@@ -308,7 +308,6 @@ pub(crate) enum AnimMode {
     NoGravity,
     /// Only the animation's turn applies.
     AngleDeltas,
-    None,
 }
 
 /// What an actor faces.
@@ -332,6 +331,9 @@ pub(crate) enum Goal {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ActorMove {
     goal: Option<Goal>,
+    /// Where the engine's own think sends the actor ahead of its goal: a
+    /// hellhound runs to the path node nearest its enemy.
+    pursuit: Option<[f32; 3]>,
     /// Where the path was planned to; an entity goal replans when it moves.
     planned_to: Option<[f32; 3]>,
     waypoints: Vec<[f32; 3]>,
@@ -345,6 +347,8 @@ pub(crate) struct ActorMove {
     stances: Option<Vec<String>>,
     /// Direction of travel over the last tick, in degrees.
     heading: Option<f32>,
+    /// Velocity over the last tick, in units per second.
+    pub(crate) velocity: [f32; 3],
     /// A scripted animation placing the actor, once started.
     scripted: Option<Scripted>,
     /// `AnimScripted` was called; the scripted animscript starts it.
@@ -588,7 +592,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             trace.startsolid == 0 && trace.fraction >= 1.0,
         )))
     });
-    registry.register(Method, "melee", |world, receiver, _| {
+    registry.register(Method, "melee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let (origin, angles) = pose(&mut world.resource_mut::<RoundScript>(), id);
         let enemy = match world
@@ -604,11 +608,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let Some(at) = as_vector(super::players::entity_field(world, enemy, "origin")) else {
             return Ok(Value::Undefined);
         };
-        let facing = math_iw4::angle_subtract(yaw_to(origin, at), angles[1]).abs();
-        if horizontal_distance(origin, at) > MELEE_REACH
-            || (origin[2] - at[2]).abs() > NODE_STEP_HEIGHT
-            || facing > MELEE_ARC
-        {
+        let dist = horizontal_distance(origin, at);
+        let aim_yaw = match args.first() {
+            Some(Value::Vector(dir)) if dir[0] != 0.0 || dir[1] != 0.0 => {
+                Some(dir[1].atan2(dir[0]).to_degrees())
+            }
+            _ if args.is_empty() => None,
+            _ => Some(angles[1]),
+        };
+        let facing_ok = aim_yaw.is_none_or(|yaw| {
+            dist <= 24.0 || math_iw4::angle_subtract(yaw_to(origin, at), yaw).abs() <= MELEE_ARC
+        });
+        if dist > MELEE_REACH || (origin[2] - at[2]).abs() > NODE_STEP_HEIGHT || !facing_ok {
             return Ok(Value::Undefined);
         }
         let amount = match world
@@ -676,12 +687,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "animmode", |world, receiver, args| {
         let mode = match string(args, 0)?.as_str() {
-            "normal" => AnimMode::Normal,
-            "gravity" => AnimMode::Gravity,
+            "normal" | "none" => AnimMode::Normal,
+            "gravity" | "pos deltas" => AnimMode::Gravity,
             "zonly_physics" => AnimMode::ZOnlyPhysics,
-            "nogravity" | "noclip" => AnimMode::NoGravity,
+            "nogravity" | "noclip" | "nophysics" | "point relative" => AnimMode::NoGravity,
             "angle deltas" => AnimMode::AngleDeltas,
-            "none" => AnimMode::None,
             other => return Err(format!("unknown animmode '{other}'")),
         };
         with_move(world, receiver, |movement| movement.anim_mode = mode)
@@ -946,6 +956,7 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             continue;
         }
         let (mut origin, mut angles) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+        let before = origin;
         let goal_radius = match world
             .resource_mut::<RoundScript>()
             .object_field(actor, "goalradius")
@@ -957,6 +968,13 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         let goal_at = goal_position(world, actor);
         let mut movement = world.resource::<RoundScript>().actor_moves[&actor].clone();
         let mut events: Vec<&'static str> = Vec::new();
+        // A pursuit ends where its path does; it is no script goal.
+        let pursuing = movement.pursuit.is_some();
+        let goal_radius = if pursuing {
+            WAYPOINT_REACHED
+        } else {
+            goal_radius
+        };
 
         if let Some(goal_at) = goal_at {
             let stale = movement.planned_to.is_none_or(|planned| {
@@ -1004,6 +1022,9 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     }
                 }
                 None => movement.scripted = None,
+            }
+            if seconds > 0.0 {
+                movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
             }
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
@@ -1070,7 +1091,6 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                 angles[1] += turned;
             }
             AnimMode::AngleDeltas => angles[1] += turned,
-            AnimMode::None => {}
         }
 
         movement.heading = heading;
@@ -1094,15 +1114,19 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             && movement.planned_to.is_some()
             && (movement.waypoints.len() <= 1)
         {
-            if movement.has_path() || !matches!(movement.goal, Some(Goal::Entity(_))) {
+            if !pursuing && (movement.has_path() || !matches!(movement.goal, Some(Goal::Entity(_))))
+            {
                 events.push("goal");
             }
             movement.clear_path();
-            if matches!(movement.goal, Some(Goal::Position(_))) {
+            if !pursuing && matches!(movement.goal, Some(Goal::Position(_))) {
                 movement.goal = None;
             }
         }
 
+        if seconds > 0.0 {
+            movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
+        }
         {
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
@@ -1148,15 +1172,108 @@ fn goal_radius(world: &mut World, actor: u64) -> f32 {
 }
 
 fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
-    let goal = world
-        .resource::<RoundScript>()
-        .actor_moves
-        .get(&actor)?
-        .goal
-        .clone()?;
+    let movement = world.resource::<RoundScript>().actor_moves.get(&actor)?;
+    if let Some(pursuit) = movement.pursuit {
+        return Some(pursuit);
+    }
+    let goal = movement.goal.clone()?;
     match goal {
         Goal::Position(at) => Some(at),
         Goal::Entity(id) => as_vector(super::players::entity_field(world, id, "origin")),
+    }
+}
+
+/// Sends the actor toward `pursuit` ahead of its goal, or back to its goal.
+pub(crate) fn set_pursuit(world: &mut World, actor: u64, pursuit: Option<[f32; 3]>) {
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let paths = FrameWorld::from_world(world).actor_paths();
+    let Some(mut movement) = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .cloned()
+    else {
+        return;
+    };
+    match pursuit {
+        Some(goal_at) => {
+            let stale = !movement.has_path()
+                || movement.pursuit.is_none()
+                || movement.planned_to.is_none_or(|planned| {
+                    distance_sq(planned, goal_at) > REPLAN_DISTANCE * REPLAN_DISTANCE
+                });
+            movement.pursuit = Some(goal_at);
+            if stale {
+                movement.planned_to = Some(goal_at);
+                movement.clear_path();
+                if horizontal_distance(origin, goal_at) > WAYPOINT_REACHED {
+                    let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
+                    if let Some(paths) = paths.as_deref()
+                        && let Some(nodes) = paths.plan(origin, goal_at, &mut reach)
+                    {
+                        movement.waypoints = nodes
+                            .iter()
+                            .map(|&node| paths.nodes[node as usize].origin)
+                            .collect();
+                        movement.waypoint_nodes = nodes.iter().map(|&node| Some(node)).collect();
+                        movement.waypoints.push(goal_at);
+                        movement.waypoint_nodes.push(None);
+                    }
+                }
+            }
+        }
+        None => {
+            if movement.pursuit.is_some() {
+                movement.pursuit = None;
+                movement.planned_to = None;
+                movement.clear_path();
+            }
+        }
+    }
+    world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .insert(actor, movement);
+}
+
+/// Where the path node serving `at` stands.
+pub(crate) fn nearest_node_origin(world: &mut World, at: [f32; 3]) -> Option<[f32; 3]> {
+    let paths = FrameWorld::from_world(world).actor_paths()?;
+    let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
+    let node = paths.nearest(at, &mut reach)?;
+    Some(paths.nodes[node as usize].origin)
+}
+
+/// Angles from `actor` toward the next path node toward its closest enemy,
+/// when it is not ignoring everyone and a route exists.
+pub(crate) fn likely_enemy_path_angles(world: &mut World, actor: u64) -> Option<[f32; 3]> {
+    let (origin, angles) = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        if matches!(runtime.object_field(actor, "ignoreall"), Value::Int(n) if n != 0) {
+            return None;
+        }
+        pose(&mut runtime, actor)
+    };
+    let enemy_at = enemy_position(world, actor)?;
+    let paths = FrameWorld::from_world(world).actor_paths()?;
+    let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
+    let start = paths.nearest(origin, &mut reach)?;
+    let goal = paths.nearest(enemy_at, &mut reach)?;
+    let route = paths.route(start, goal, &LinkEdits::default())?;
+    let &node = route.get(1).or_else(|| route.first())?;
+    let to = paths.nodes[node as usize].origin;
+    let delta = [to[0] - origin[0], to[1] - origin[1], to[2] - origin[2]];
+    let horiz_sq = delta[0] * delta[0] + delta[1] * delta[1];
+    if horiz_sq >= 1.0 {
+        let pitch = (-delta[2]).atan2(horiz_sq.sqrt()).to_degrees();
+        let yaw = delta[1].atan2(delta[0]).to_degrees();
+        Some([
+            if pitch < 0.0 { pitch + 360.0 } else { pitch },
+            if yaw < 0.0 { yaw + 360.0 } else { yaw },
+            0.0,
+        ])
+    } else {
+        Some(angles)
     }
 }
 
