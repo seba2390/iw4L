@@ -2,9 +2,12 @@
 //! them (`ExpressionStatement::rpn`). Operators `0..=23` are Black Ops'
 //! `expressionOperatorType_e`; a comma folds call arguments into one list.
 //!
-//! Function indices are named only where Black Ops' own data proves them
-//! (docs/fidelity/t5.md, "menu expression functions"); any other index is an
-//! error, never a guess.
+//! A function's number is its token's index in the game's own
+//! `expressions/functions.txt` (`code_post_gfx`, comments and blank lines
+//! skipped) plus 24: the expression evaluator maps that index through the
+//! file's names to its own handler. Only functions the host answers are
+//! evaluated; any other is an error, never a guess. Operand conversions
+//! follow Black Ops' own operators and result readers.
 
 use menu_expr::{ExprError, GameQueries, MenuProgram, Operand};
 
@@ -109,84 +112,194 @@ fn parse(tokens: &[&str]) -> Result<Vec<T5Token>, ExprError> {
         .collect()
 }
 
-/// How Black Ops converts between operand types is not known: only operations
-/// whose operands need no conversion are evaluated.
-const COERCION: &str = game_api::unknown!(
-    "t5.hud.expression_coercion",
-    "how Black Ops converts between menu expression operand types",
-    "Black Ops' operand conversion rules"
-)
-.id;
-
-fn int(operand: Operand) -> Result<i32, ExprError> {
-    match operand {
-        Operand::Int(v) => Ok(v),
-        _ => Err(ExprError::Unknown(COERCION)),
+/// C's `atoi`: leading blanks, a sign, then digits; 0 when none.
+fn atoi(text: &str) -> i32 {
+    let text = text.trim_start();
+    let (negative, digits) = match text.as_bytes().first() {
+        Some(b'-') => (true, &text[1..]),
+        Some(b'+') => (false, &text[1..]),
+        _ => (false, text),
+    };
+    let value = digits
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .fold(0i32, |n, d| {
+            n.wrapping_mul(10).wrapping_add(i32::from(d - b'0'))
+        });
+    if negative {
+        value.wrapping_neg()
+    } else {
+        value
     }
 }
 
-/// A program's value as a condition.
-fn truth(value: &Operand) -> Result<bool, ExprError> {
-    match value {
-        Operand::Int(v) => Ok(*v != 0),
-        _ => Err(ExprError::Unknown(COERCION)),
+/// C's `atof`: the longest leading number; 0 when none.
+fn atof(text: &str) -> f32 {
+    let text = text.trim_start();
+    let bytes = text.as_bytes();
+    let digits = |from: usize| {
+        bytes[from..]
+            .iter()
+            .take_while(|b| b.is_ascii_digit())
+            .count()
+    };
+    let mut end = usize::from(matches!(bytes.first(), Some(b'-' | b'+')));
+    end += digits(end);
+    if bytes.get(end) == Some(&b'.') {
+        end += 1 + digits(end + 1);
     }
+    if matches!(bytes.get(end), Some(b'e' | b'E')) {
+        let mut exp = end + 1;
+        if matches!(bytes.get(exp), Some(b'-' | b'+')) {
+            exp += 1;
+        }
+        if digits(exp) > 0 {
+            end = exp + digits(exp);
+        }
+    }
+    text[..end].parse::<f64>().map_or(0.0, |v| v as f32)
+}
+
+/// An operand as an int: a float truncates, a string is `atoi`.
+fn source_int(value: &Operand) -> i32 {
+    match value {
+        Operand::Int(v) => *v,
+        Operand::Float(v) => *v as i32,
+        Operand::Str(v) => atoi(v),
+    }
+}
+
+/// An operand as a float: a string is `atof`.
+fn source_float(value: &Operand) -> f32 {
+    match value {
+        Operand::Int(v) => *v as f32,
+        Operand::Float(v) => *v,
+        Operand::Str(v) => atof(v),
+    }
+}
+
+/// An operand as text: an int as `%i`, a float as `%f`.
+fn source_string(value: &Operand) -> String {
+    match value {
+        Operand::Str(v) => v.clone(),
+        Operand::Int(v) => format!("{v}"),
+        Operand::Float(v) => format!("{v:.6}"),
+    }
+}
+
+/// A string operand made a number: an int when its `atof` and `atoi` agree,
+/// else a float.
+fn make_number(value: Operand) -> Operand {
+    match value {
+        Operand::Str(text) => {
+            let (f, i) = (atof(&text), atoi(&text));
+            if f == i as f32 {
+                Operand::Int(i)
+            } else {
+                Operand::Float(f)
+            }
+        }
+        other => other,
+    }
+}
+
+/// `&&` and `||`: a string tests its first character.
+fn logic_value(value: &Operand) -> bool {
+    match value {
+        Operand::Int(v) => *v != 0,
+        Operand::Float(v) => *v != 0.0,
+        Operand::Str(v) => v.bytes().next().is_some_and(|b| b != 0),
+    }
+}
+
+/// A program's value as a condition: a float truncates to an int first, a
+/// string is `atoi`.
+fn truth(value: &Operand) -> Result<bool, ExprError> {
+    Ok(source_int(value) != 0)
 }
 
 /// A program's value where a number is wanted.
 fn number(value: &Operand) -> Result<f32, ExprError> {
-    match value {
-        Operand::Int(v) => Ok(*v as f32),
-        Operand::Float(v) => Ok(*v),
-        Operand::Str(_) => Err(ExprError::Unknown(COERCION)),
-    }
+    Ok(source_float(value))
 }
 
 /// A program's value where text is wanted.
 fn text(value: &Operand) -> Result<String, ExprError> {
+    Ok(source_string(value))
+}
+
+/// `*` and `-`: strings made numbers; two ints stay an int, else a float.
+fn arithmetic(
+    a: Operand,
+    b: Operand,
+    int: fn(i32, i32) -> i32,
+    float: fn(f32, f32) -> f32,
+) -> Operand {
+    match (make_number(a), make_number(b)) {
+        (Operand::Int(a), Operand::Int(b)) => Operand::Int(int(a, b)),
+        (a, b) => Operand::Float(float(source_float(&a), source_float(&b))),
+    }
+}
+
+/// The orderings: strings made numbers; two ints compare as ints, else as
+/// floats.
+fn compare(a: Operand, b: Operand, int: fn(i32, i32) -> bool, float: fn(f32, f32) -> bool) -> bool {
+    match (make_number(a), make_number(b)) {
+        (Operand::Int(a), Operand::Int(b)) => int(a, b),
+        (a, b) => float(source_float(&a), source_float(&b)),
+    }
+}
+
+/// `==`: two strings compare without case; operands of different types
+/// compare as numbers.
+fn equals(a: Operand, b: Operand) -> bool {
+    match (a, b) {
+        (Operand::Str(a), Operand::Str(b)) => a.eq_ignore_ascii_case(&b),
+        (a, b) => compare(a, b, |a, b| a == b, |a, b| a == b),
+    }
+}
+
+/// `%`'s operand: a float rounds to nearest after adding 2^-30 (the x87
+/// store), a string is `atoi`.
+fn modulus_int(value: &Operand) -> i32 {
     match value {
-        Operand::Str(v) => Ok(v.clone()),
-        Operand::Int(v) => Ok(format!("{v}")),
-        Operand::Float(_) => Err(ExprError::Unknown(COERCION)),
+        Operand::Float(v) => (f64::from(*v) + f64::from(2.0f32.powi(-30))).round_ties_even() as i32,
+        other => source_int(other),
     }
 }
 
 fn binary(op: i32, a: Operand, b: Operand) -> Result<Operand, ExprError> {
     let flag = |v: bool| Operand::Int(i32::from(v));
-    Ok(match (a, b) {
-        (Operand::Int(a), Operand::Int(b)) => match op {
-            T5_MUL => Operand::Int(a.wrapping_mul(b)),
-            T5_MOD if b != 0 => Operand::Int(a.wrapping_rem(b)),
-            T5_PLUS => Operand::Int(a.wrapping_add(b)),
-            T5_MINUS => Operand::Int(a.wrapping_sub(b)),
-            T5_SMALLER => flag(a < b),
-            T5_SMALLEREQ => flag(a <= b),
-            T5_GREATER => flag(a > b),
-            T5_GREATEREQ => flag(a >= b),
-            T5_EQ => flag(a == b),
-            T5_NOTEQ => flag(a != b),
-            T5_LOGAND => flag(a != 0 && b != 0),
-            T5_LOGOR => flag(a != 0 || b != 0),
-            _ => return Err(ExprError::Unknown(COERCION)),
+    Ok(match op {
+        T5_MUL => arithmetic(a, b, i32::wrapping_mul, |a, b| a * b),
+        T5_MINUS => arithmetic(a, b, i32::wrapping_sub, |a, b| a - b),
+        // `+` joins text with `%i`/`%f` numbers and converts nothing.
+        T5_PLUS => match (a, b) {
+            (Operand::Int(a), Operand::Int(b)) => Operand::Int(a.wrapping_add(b)),
+            (a @ Operand::Str(_), b) | (a, b @ Operand::Str(_)) => {
+                Operand::Str(source_string(&a) + &source_string(&b))
+            }
+            (a, b) => Operand::Float(source_float(&a) + source_float(&b)),
         },
-        (Operand::Float(a), Operand::Float(b)) => match op {
-            T5_MUL => Operand::Float(a * b),
-            T5_DIV if b != 0.0 => Operand::Float(a / b),
-            T5_PLUS => Operand::Float(a + b),
-            T5_MINUS => Operand::Float(a - b),
-            T5_SMALLER => flag(a < b),
-            T5_SMALLEREQ => flag(a <= b),
-            T5_GREATER => flag(a > b),
-            T5_GREATEREQ => flag(a >= b),
-            _ => return Err(ExprError::Unknown(COERCION)),
-        },
-        (Operand::Str(a), Operand::Str(b)) => match op {
-            T5_PLUS => Operand::Str(a + &b),
-            T5_EQ => flag(a.eq_ignore_ascii_case(&b)),
-            T5_NOTEQ => flag(!a.eq_ignore_ascii_case(&b)),
-            _ => return Err(ExprError::Unknown(COERCION)),
-        },
-        _ => return Err(ExprError::Unknown(COERCION)),
+        // `/` is always a float, over 1 for a zero divisor.
+        T5_DIV => {
+            let divisor = source_float(&b);
+            Operand::Float(source_float(&a) / if divisor == 0.0 { 1.0 } else { divisor })
+        }
+        // `%` is an int, over 1 for a zero divisor.
+        T5_MOD => {
+            let divisor = modulus_int(&b);
+            Operand::Int(modulus_int(&a).wrapping_rem(if divisor == 0 { 1 } else { divisor }))
+        }
+        T5_SMALLER => flag(compare(a, b, |a, b| a < b, |a, b| a < b)),
+        T5_SMALLEREQ => flag(compare(a, b, |a, b| a <= b, |a, b| a <= b)),
+        T5_GREATER => flag(compare(a, b, |a, b| a > b, |a, b| a > b)),
+        T5_GREATEREQ => flag(compare(a, b, |a, b| a >= b, |a, b| a >= b)),
+        T5_EQ => flag(equals(a, b)),
+        T5_NOTEQ => flag(!equals(a, b)),
+        T5_LOGAND => flag(logic_value(&a) && logic_value(&b)),
+        T5_LOGOR => flag(logic_value(&a) || logic_value(&b)),
+        other => return Err(ExprError::UnsupportedOp(other)),
     })
 }
 
@@ -198,10 +311,13 @@ fn pop_operand(stack: &mut Vec<Value>) -> Result<Operand, ExprError> {
     pop(stack)?.operand()
 }
 
+/// A name argument. Black Ops reports a float there; a dvar function looks
+/// an int up by number, which the host does not.
 fn arg_str(args: &[Operand]) -> Result<String, ExprError> {
     match args.first() {
         Some(Operand::Str(v)) => Ok(v.clone()),
-        Some(_) => Err(ExprError::Unknown(COERCION)),
+        Some(Operand::Float(_)) => Err(ExprError::Host("a float names nothing")),
+        Some(Operand::Int(_)) => Err(ExprError::Host("a name given as a number")),
         None => Err(ExprError::StackUnderflow),
     }
 }
@@ -248,16 +364,24 @@ fn evaluate(tokens: &[T5Token], host: &dyn GameQueries) -> Result<Operand, ExprE
                 Operand::Float(v) => Operand::Float(-v),
                 Operand::Str(_) => return Err(ExprError::Host("negate a string")),
             },
-            T5_NOT => Operand::Int(i32::from(int(pop_operand(&mut stack)?)? == 0)),
-            T5_BITNEG => Operand::Int(!int(pop_operand(&mut stack)?)?),
+            // `!` and `~` on a string are errors that leave 0.
+            T5_NOT => Operand::Int(match pop_operand(&mut stack)? {
+                Operand::Int(v) => i32::from(v == 0),
+                Operand::Float(v) => i32::from(v == 0.0),
+                Operand::Str(_) => 0,
+            }),
+            T5_BITNEG => Operand::Int(match pop_operand(&mut stack)? {
+                Operand::Str(_) => 0,
+                other => !source_int(&other),
+            }),
             T5_MUL | T5_DIV | T5_MOD | T5_PLUS | T5_MINUS | T5_SMALLER..=T5_LOGOR => {
                 let b = pop_operand(&mut stack)?;
                 let a = pop_operand(&mut stack)?;
                 binary(op, a, b)?
             }
             T5_BITAND | T5_BITOR | T5_SHIFTLEFT | T5_SHIFTRIGHT => {
-                let b = int(pop_operand(&mut stack)?)?;
-                let a = int(pop_operand(&mut stack)?)?;
+                let b = source_int(&pop_operand(&mut stack)?);
+                let a = source_int(&pop_operand(&mut stack)?);
                 Operand::Int(match op {
                     T5_BITAND => a & b,
                     T5_BITOR => a | b,
