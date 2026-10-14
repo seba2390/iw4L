@@ -597,12 +597,21 @@ enum Fires {
 
 fn fires(classname: &str) -> Option<Fires> {
     match classname {
-        "trigger_multiple" | "trigger_radius" | "trigger_disk" => Some(Fires::Touch),
+        "trigger_multiple" | "trigger_radius" | "trigger_disk" | "trigger_box" => {
+            Some(Fires::Touch)
+        }
         "trigger_once" => Some(Fires::Once),
         "trigger_use" => Some(Fires::Use),
         "trigger_use_touch" => Some(Fires::UseTouch),
         _ => None,
     }
+}
+
+fn entity_fires(entity: &super::entities::ScriptEntity) -> Option<Fires> {
+    if entity.box_use {
+        return None;
+    }
+    fires(&entity.classname)
 }
 
 /// Whether a player reaches a trigger. A use trigger answers a player in use
@@ -649,7 +658,12 @@ pub(crate) fn use_reached(world: &mut World, trigger: u64, client: u32) -> Optio
 
 fn volume<'f>(runtime: &mut RoundScript, frame: &'f FrameWorld, object: u64) -> Option<Volume<'f>> {
     let entity = runtime.entities.get(&object)?;
-    let (cylinder, brush, trigger_model) = (entity.cylinder, entity.brush, entity.trigger_model);
+    let (cylinder, box_half, brush, trigger_model) = (
+        entity.cylinder,
+        entity.box_half,
+        entity.brush,
+        entity.trigger_model,
+    );
     let origin = match runtime.object_field(object, "origin") {
         Value::Vector(v) => v,
         _ => [0.0; 3],
@@ -659,6 +673,17 @@ fn volume<'f>(runtime: &mut RoundScript, frame: &'f FrameWorld, object: u64) -> 
             origin,
             radius,
             height,
+        });
+    }
+    if let Some(half) = box_half {
+        let angles = match runtime.object_field(object, "angles") {
+            Value::Vector(v) => v,
+            _ => [0.0; 3],
+        };
+        return Some(Volume::OrientedBox {
+            origin,
+            angles,
+            half,
         });
     }
     if let Some(n) = trigger_model {
@@ -734,6 +759,11 @@ enum Volume<'f> {
         radius: f32,
         height: f32,
     },
+    OrientedBox {
+        origin: [f32; 3],
+        angles: [f32; 3],
+        half: [f32; 3],
+    },
     Box {
         mins: [f32; 3],
         maxs: [f32; 3],
@@ -803,6 +833,18 @@ impl Volume<'_> {
         }
         match *self {
             Volume::Box { mins, maxs } => segment_planes(start, end, box_planes(mins, maxs)),
+            Volume::OrientedBox {
+                origin,
+                angles,
+                half,
+            } => {
+                let axis = super::natives::t6::box_axes(angles);
+                let local = |p: [f32; 3]| {
+                    let d: [f32; 3] = std::array::from_fn(|i| p[i] - origin[i]);
+                    std::array::from_fn(|k| (0..3).map(|i| d[i] * axis[k][i]).sum())
+                };
+                segment_planes(local(start), local(end), box_planes(half.map(|h| -h), half))
+            }
             Volume::Brushes {
                 origin,
                 ids,
@@ -913,6 +955,11 @@ impl Volume<'_> {
                 (origin[2] + height * 0.5 - mid[2]).abs() < height * 0.5 + half[2]
                     && dx * dx + dy * dy < reach * reach
             }
+            Volume::OrientedBox {
+                origin,
+                angles,
+                half,
+            } => super::natives::t6::oriented_box_touches(origin, angles, half, mins, maxs),
             Volume::Box { mins: lo, maxs: hi } => {
                 (0..3).all(|i| mins[i] <= hi[i] && maxs[i] >= lo[i])
             }
@@ -993,6 +1040,9 @@ pub(crate) fn entity_bounds(world: &mut World, object: u64) -> ([f32; 3], [f32; 
     };
     if let Some((radius, height)) = entity.cylinder {
         return ([-radius, -radius, 0.0], [radius, radius, height]);
+    }
+    if let Some(half) = entity.box_half {
+        return (half.map(|h| -h), half);
     }
     let brush = entity.brush;
     let frame = FrameWorld::from_world(world);
@@ -1120,7 +1170,7 @@ pub(crate) fn dispatch_triggers(world: &mut World) {
             .entities
             .iter()
             .filter(|(object, _)| !runtime.fired_once.contains(object))
-            .filter_map(|(object, e)| Some((*object, fires(&e.classname)?)))
+            .filter_map(|(object, e)| Some((*object, entity_fires(e)?)))
             .filter(|(_, kind)| game_use.is_none() || !matches!(kind, Fires::Use | Fires::UseTouch))
             .collect();
         for (trigger, kind) in triggers {

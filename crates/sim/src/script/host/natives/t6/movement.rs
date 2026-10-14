@@ -506,13 +506,14 @@ fn settle(world: &mut World, id: u64, node: u16) {
 /// facing: through the world under `noclip`, else by the body's step.
 fn traverse(world: &mut World, id: u64, from: [f32; 3]) {
     let anim = anim::get(world, id);
-    let yaw = match world
+    let mut angles = match world
         .resource_mut::<RoundScript>()
         .object_field(id, "angles")
     {
-        Value::Vector(v) => v[1].to_radians(),
-        _ => 0.0,
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
     };
+    let yaw = angles[1].to_radians();
     let (sin, cos) = yaw.sin_cos();
     let delta = [
         cos * anim.step[0] - sin * anim.step[1],
@@ -529,9 +530,12 @@ fn traverse(world: &mut World, id: u64, from: [f32; 3]) {
         }
         TraverseMode::Gravity => step(world, id, from, to),
     };
-    world
-        .resource_mut::<RoundScript>()
-        .set_object_field(id, "origin", Value::Vector(landed));
+    angles[1] = (angles[1] + anim.step_yaw).rem_euclid(360.0);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    runtime.set_object_field(id, "origin", Value::Vector(landed));
+    if anim.step_yaw != 0.0 {
+        runtime.set_object_field(id, "angles", Value::Vector(angles));
+    }
 }
 
 /// Faces what the actor's orient mode names when it is not walking.
@@ -586,6 +590,18 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         "enemy",
         enemy.clone().unwrap_or(Value::Undefined),
     );
+    if world
+        .resource::<RoundScript>()
+        .entities
+        .get(&id)
+        .is_some_and(|e| e.linked_to.is_some())
+    {
+        let state = movement(world, id);
+        state.path.clear();
+        state.planned = false;
+        state.falling = 0.0;
+        return Ok(());
+    }
     if let Some(traversal) = movement(world, id).traversal {
         if traversal
             .thread

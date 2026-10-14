@@ -57,6 +57,11 @@ pub mod def {
     pub const WORLD_LAST_SHOT_EJECT_EFFECT: u32 = 476;
     pub const INVENTORY_TYPE: u32 = 44;
     pub const FIRE_TYPE: u32 = 48;
+    pub const OVERHEAT_WEAPON: u32 = 72;
+    pub const OVERHEAT_RATE: u32 = 76;
+    pub const COOLDOWN_RATE: u32 = 80;
+    pub const OVERHEAT_END_VAL: u32 = 84;
+    pub const COOL_WHILE_FIRING: u32 = 88;
     pub const OFFHAND_CLASS: u32 = 96;
     pub const OFFHAND_SLOT: u32 = 100;
     pub const TANK_LIFE_TIME: u32 = 92;
@@ -96,6 +101,7 @@ pub mod def {
     pub const START_AMMO: u32 = 968;
     pub const MAX_AMMO: u32 = 972;
     pub const SHOT_COUNT: u32 = 976;
+    pub const UNLIMITED_AMMO: u32 = 992;
     pub const AMMO_COUNT_CLIP_RELATIVE: u32 = 993;
     pub const DAMAGE: u32 = 996;
     pub const DAMAGE_RANGE: u32 = 1020;
@@ -107,6 +113,8 @@ pub mod def {
     pub const MELEE_DELAY: u32 = 1076;
     pub const MELEE_CHARGE_DELAY: u32 = 1080;
     pub const DETONATE_DELAY: u32 = 1084;
+    pub const SPIN_UP_TIME: u32 = 1088;
+    pub const SPIN_DOWN_TIME: u32 = 1092;
     pub const FIRE_TIME: u32 = 1128;
     pub const LAST_FIRE_TIME: u32 = 1132;
     pub const RECHAMBER_TIME: u32 = 1136;

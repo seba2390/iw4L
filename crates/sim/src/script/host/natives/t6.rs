@@ -35,6 +35,8 @@ mod usable;
 mod vehicle;
 mod weapon;
 
+pub(crate) use usable::{axes as box_axes, oriented_box_touches};
+
 /// How Black Ops 2 finds a dvar: djb2 over the lowercased name.
 fn dvar_hash(name: &str) -> u32 {
     name.bytes().fold(5381u32, |hash, byte| {
@@ -2379,6 +2381,10 @@ fn spawn_trigger(world: &mut World, classname: &str, args: &[Value]) -> Result<V
     runtime.set_object_field(id, "spawnflags", Value::Int(flags));
     if let Some(entity) = runtime.entities.get_mut(&id) {
         entity.cylinder = cylinder;
+        if stored == "trigger_box" {
+            entity.box_half = Some(maxs);
+            entity.box_use = classname == "trigger_box_use";
+        }
         // A spawned trigger has no cursor hint until a script gives it one.
         entity.usable = Some(super::super::entities::Usable {
             cursor: 0,
@@ -2439,6 +2445,14 @@ fn bounds(world: &World, id: u64) -> ([f32; 3], [f32; 3]) {
     world
         .get_resource::<EntityBounds>()
         .and_then(|bounds| bounds.0.get(&id).copied())
+        .or_else(|| {
+            world
+                .resource::<RoundScript>()
+                .entities
+                .get(&id)
+                .and_then(|entity| entity.box_half)
+                .map(|half| (half.map(|h| -h), half))
+        })
         .unwrap_or(([0.0; 3], [0.0; 3]))
 }
 

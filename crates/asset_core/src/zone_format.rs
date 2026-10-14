@@ -232,6 +232,13 @@ pub struct ZoneWeapon {
     pub flat_spread: bool,
     /// How far a fired grenade flies before it arms; 0 for a thrown one.
     pub projectile_activate_dist: i32,
+    pub overheat_weapon: bool,
+    pub overheat_rate: f32,
+    pub cooldown_rate: f32,
+    pub overheat_end_val: f32,
+    pub cool_while_firing: bool,
+    pub spin_up_time: i32,
+    pub spin_down_time: i32,
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the

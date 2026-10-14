@@ -188,21 +188,46 @@ fn items(runtime: &RoundScript, value: Option<Value>) -> Vec<Value> {
 }
 
 fn site(runtime: &RoundScript, kind: UseKind, id: u64, cost: &str) -> Option<UseSite> {
+    let unitrigger_type = string(field(runtime, id, "script_unitrigger_type"));
+    let parent = object(field(runtime, id, "origin_parent"));
+    let origin = parent
+        .and_then(|parent| {
+            let base = vector(field(runtime, parent, "origin"))?;
+            Some([base[0], base[1], base[2] + 35.0])
+        })
+        .or_else(|| vector(field(runtime, id, "origin")))?;
+    let angles = parent
+        .and_then(|parent| vector(field(runtime, parent, "angles")))
+        .or_else(|| vector(field(runtime, id, "angles")))
+        .unwrap_or([0.0; 3]);
     Some(UseSite {
         kind,
         object: id,
-        origin: vector(field(runtime, id, "origin"))?,
-        angles: vector(field(runtime, id, "angles")).unwrap_or([0.0; 3]),
+        origin,
+        angles,
         brush: runtime.entities.get(&id).and_then(|entity| entity.brush),
         height: runtime
             .entities
             .get(&id)
             .and_then(|entity| entity.cylinder)
-            .map(|(_, height)| height),
+            .map(|(_, height)| height)
+            .or_else(|| {
+                if parent.is_some() {
+                    Some(16.0)
+                } else {
+                    unitrigger_type
+                        .as_deref()
+                        .is_some_and(|t| t.contains("radius"))
+                        .then_some(48.0)
+                }
+            }),
         touch: runtime
             .entities
             .get(&id)
-            .is_some_and(|entity| &*entity.classname == "trigger_use_touch"),
+            .is_some_and(|entity| &*entity.classname == "trigger_use_touch")
+            || unitrigger_type
+                .as_deref()
+                .is_some_and(|t| t.contains("box")),
         cost: int(field(runtime, id, cost)),
         weapon: string(field(runtime, id, "zombie_weapon_upgrade")),
         zone: string(field(runtime, id, "in_zone")),
@@ -324,15 +349,18 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         let Some(stub) = object(Some(stub)) else {
             continue;
         };
-        let equipname = string(field(runtime, stub, "equipname"));
+        let equipname = object(field(runtime, stub, "bound_to_buildable"))
+            .and_then(|b| string(field(runtime, b, "equipname")))
+            .or_else(|| string(field(runtime, stub, "equipname")));
         if int(field(runtime, stub, "built")) == Some(0)
+            && int(field(runtime, stub, "registered")) != Some(0)
             && let Some(mut table) = site(runtime, UseKind::Build, stub, "cost")
         {
             table.weapon = equipname.clone();
             sites.push(table);
         }
         if int(field(runtime, stub, "built")) == Some(1)
-            && int(field(runtime, stub, "persistent")) == Some(1)
+            && int(field(runtime, stub, "registered")) != Some(0)
             && let Some(mut table) = site(runtime, UseKind::Take, stub, "cost")
         {
             table.weapon = equipname.clone();
@@ -342,14 +370,18 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
             continue;
         };
         for piece in items(runtime, field(runtime, zone, "pieces")) {
-            let Some(trigger) =
-                object(Some(piece)).and_then(|p| object(field(runtime, p, "unitrigger")))
-            else {
+            let Some(piece_id) = object(Some(piece)) else {
+                continue;
+            };
+            let Some(trigger) = object(field(runtime, piece_id, "unitrigger")) else {
                 continue;
             };
             if let Some(mut part) = site(runtime, UseKind::Piece, trigger, "cost") {
-                part.weapon = equipname.clone();
-                sites.push(part);
+                part.weapon =
+                    string(field(runtime, piece_id, "buildablename")).or_else(|| equipname.clone());
+                if !sites.iter().any(|s| s.object == part.object) {
+                    sites.push(part);
+                }
             }
         }
     }

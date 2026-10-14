@@ -117,7 +117,7 @@ fn length(v: [f32; 3]) -> f32 {
 }
 
 /// The axes of `angles` (pitch, yaw, roll in degrees): forward, left, up.
-fn axes(angles: [f32; 3]) -> [[f32; 3]; 3] {
+pub(crate) fn axes(angles: [f32; 3]) -> [[f32; 3]; 3] {
     let [p, y, r] = angles.map(f32::to_radians);
     let (sp, cp) = p.sin_cos();
     let (sy, cy) = y.sin_cos();
@@ -126,6 +126,39 @@ fn axes(angles: [f32; 3]) -> [[f32; 3]; 3] {
     let right = [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp];
     let up = [cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp];
     [forward, right.map(|c| -c), up]
+}
+
+/// The engine's contact test of an entity's box (`mins..maxs`) against a
+/// turned box (`half` around `origin` at `angles`).
+pub(crate) fn oriented_box_touches(
+    origin: [f32; 3],
+    angles: [f32; 3],
+    half: [f32; 3],
+    mins: [f32; 3],
+    maxs: [f32; 3],
+) -> bool {
+    let grow = (maxs[0] - mins[0]) * 0.5;
+    let low: [f32; 3] = std::array::from_fn(|i| mins[i] + grow);
+    let high: [f32; 3] = std::array::from_fn(|i| maxs[i] - grow);
+    let axis = axes(angles);
+    let local = |p: [f32; 3]| {
+        let d = sub(p, origin);
+        [dot(d, axis[0]), dot(d, axis[1]), dot(d, axis[2])]
+    };
+    let (a, b) = (local(low), local(high));
+    let box_lo = half.map(|h| -h - grow);
+    let box_hi = half.map(|h| h + grow);
+    let seg_lo: [f32; 3] = std::array::from_fn(|i| a[i].min(b[i]));
+    let seg_hi: [f32; 3] = std::array::from_fn(|i| a[i].max(b[i]));
+    if !(0..3).all(|i| seg_lo[i] <= box_hi[i] && box_lo[i] <= seg_hi[i]) {
+        return false;
+    }
+    let d = sub(b, a);
+    let extent: [f32; 3] = std::array::from_fn(|i| (box_hi[i] - box_lo[i]) * 0.5);
+    let c: [f32; 3] = std::array::from_fn(|i| a[i] - (box_lo[i] + box_hi[i]) * 0.5);
+    [(0, 1), (1, 2), (2, 0)].into_iter().all(|(i, j)| {
+        d[j].abs() * extent[i] + d[i].abs() * extent[j] - (c[i] * d[j] - c[j] * d[i]).abs() >= 0.0
+    })
 }
 
 fn overlaps(a: ([f32; 3], [f32; 3]), b: ([f32; 3], [f32; 3])) -> bool {
@@ -175,9 +208,10 @@ fn candidates(world: &mut World) -> Vec<Candidate> {
         if usable.as_ref().is_some_and(|u| !u.enabled) {
             continue;
         }
-        let (kind, cylinder, brush, trigger) = (
+        let (kind, cylinder, box_half, brush, trigger) = (
             entity.kind.clone(),
             entity.cylinder,
+            entity.box_half,
             entity.brush,
             entity.trigger_model,
         );
@@ -195,8 +229,10 @@ fn candidates(world: &mut World) -> Vec<Candidate> {
             Shape::Cylinder { radius, height }
         } else if brush.is_some() || trigger.is_some() {
             Shape::Model { brush, trigger }
-        } else if let Some((_, maxs)) = bounds.as_ref().and_then(|b| b.get(&id)) {
-            Shape::Box { half: *maxs }
+        } else if let Some(half) =
+            box_half.or_else(|| bounds.as_ref().and_then(|b| b.get(&id)).map(|(_, m)| *m))
+        {
+            Shape::Box { half }
         } else {
             Shape::Point
         };
@@ -254,29 +290,7 @@ fn touches(world: &mut World, candidate: &Candidate, mins: [f32; 3], maxs: [f32;
                 && (mid[0] - o[0]).powi(2) + (mid[1] - o[1]).powi(2) < reach * reach
         }
         Shape::Box { half } => {
-            let grow = (maxs[0] - mins[0]) * 0.5;
-            let low: [f32; 3] = std::array::from_fn(|i| mins[i] + grow);
-            let high: [f32; 3] = std::array::from_fn(|i| maxs[i] - grow);
-            let axis = axes(candidate.angles);
-            let local = |p: [f32; 3]| {
-                let d = sub(p, candidate.origin);
-                [dot(d, axis[0]), dot(d, axis[1]), dot(d, axis[2])]
-            };
-            let (a, b) = (local(low), local(high));
-            let box_lo = half.map(|h| -h - grow);
-            let box_hi = half.map(|h| h + grow);
-            let seg_lo: [f32; 3] = std::array::from_fn(|i| a[i].min(b[i]));
-            let seg_hi: [f32; 3] = std::array::from_fn(|i| a[i].max(b[i]));
-            if !(0..3).all(|i| seg_lo[i] <= box_hi[i] && box_lo[i] <= seg_hi[i]) {
-                return false;
-            }
-            let d = sub(b, a);
-            let extent: [f32; 3] = std::array::from_fn(|i| (box_hi[i] - box_lo[i]) * 0.5);
-            let c: [f32; 3] = std::array::from_fn(|i| a[i] - (box_lo[i] + box_hi[i]) * 0.5);
-            [(0, 1), (1, 2), (2, 0)].into_iter().all(|(i, j)| {
-                d[j].abs() * extent[i] + d[i].abs() * extent[j] - (c[i] * d[j] - c[j] * d[i]).abs()
-                    >= 0.0
-            })
+            oriented_box_touches(candidate.origin, candidate.angles, half, mins, maxs)
         }
         Shape::Model { brush, trigger } => super::super::super::triggers::map_volume_touches(
             &FrameWorld::from_world(world),
