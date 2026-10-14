@@ -224,11 +224,13 @@ impl game_api::GameMenus for T5 {
     }
 
     /// `UI_SetActiveMenu(UIMENU_INGAME)` in zombies: the pause menu, only
-    /// once the in-game options are loaded.
+    /// once the in-game options are loaded; offline it pauses the game
+    /// (`CL_PauseGame`) until no menu is up (`UIMENU_NONE`).
     fn ingame_menu(&self) -> Rule<game_api::InGameMenu> {
         Rule::Known(game_api::InGameMenu::Named {
             menu: "pausedmenu",
             requires: Some("ingameoptions"),
+            pauses_offline: true,
         })
     }
 

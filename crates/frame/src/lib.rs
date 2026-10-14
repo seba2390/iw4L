@@ -40,7 +40,7 @@ pub use session::{
 };
 pub use settings::{DisplayResolution, GameSettings, OtherGame};
 pub use ui::{
-    AssetFamilies, FrontendContentLoading, HostMatchRules, NativeGameMenu, UiBindRequest,
-    UiBindingCapture, UiExecCommand, UiMenuDvars, UiMenuKey, UiMenuRequest, UiPartyState,
-    UiPlayMusic, UiPlaySound, UiStopMusic, UnifiedFrontend, register_ui_contracts,
+    AssetFamilies, FrontendContentLoading, HostMatchRules, MatchPause, NativeGameMenu,
+    UiBindRequest, UiBindingCapture, UiExecCommand, UiMenuDvars, UiMenuKey, UiMenuRequest,
+    UiPartyState, UiPlayMusic, UiPlaySound, UiStopMusic, UnifiedFrontend, register_ui_contracts,
 };

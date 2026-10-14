@@ -242,6 +242,7 @@ struct Pressed {
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct MenuOutputs<'w> {
     dvars: ResMut<'w, frame::UiMenuDvars>,
+    pause: ResMut<'w, frame::MatchPause>,
     binding: ResMut<'w, frame::UiBindingCapture>,
     binds: MessageWriter<'w, frame::UiBindRequest>,
     sounds: MessageWriter<'w, UiPlaySound>,
@@ -298,6 +299,9 @@ pub(crate) fn update_script_menus(
     {
         out.binding.command = None;
         *menus = ScriptMenus::default();
+    }
+    if out.pause.0 && !matches!(*input.screen, AppScreen::InGame | AppScreen::ClassSelect) {
+        out.pause.0 = false;
     }
     let in_game = matches!(*input.screen, AppScreen::InGame | AppScreen::ClassSelect);
     // In a match whose game ships its own in-game menus, those run.
@@ -513,6 +517,27 @@ pub(crate) fn update_script_menus(
         runner.menus.binding_menu = None;
     }
     handle_input(&mut runner, &input, &surface, &pressed, pointer);
+    // The menu asks for a pause unless the match is online or system link
+    // (`onlinegame`, `systemlink`); the server then stops only while every
+    // client connected to it is this one.
+    let dvar_on = |name: &str| {
+        world
+            .dvars
+            .as_ref()
+            .and_then(|d| d.string(name))
+            .is_some_and(|v| !v.is_empty() && v != "0")
+    };
+    if std::mem::take(&mut menus.pause_requested)
+        && !dvar_on("onlinegame")
+        && !dvar_on("systemlink")
+        && menus.captures_input()
+    {
+        out.pause.0 = true;
+    }
+    let server_pauses = world.sv_running && snapshot.is_some_and(|s| s.meta.clients.len() <= 1);
+    if out.pause.0 && (!menus.captures_input() || !server_pauses) {
+        out.pause.0 = false;
+    }
 
     flush_outputs(&mut menus, &mut out, local.0);
     if let Some(view) = input.hud_input.as_mut() {
@@ -807,8 +832,9 @@ pub(crate) fn update_script_menus(
     }
 }
 
-/// The menu the in-game menu key opens, by the rule of the catalog's game.
-fn ingame_menu(runner: &Runner<'_, '_>) -> Option<String> {
+/// The menu the in-game menu key opens, by the rule of the catalog's game,
+/// and whether an offline match pauses under it.
+fn ingame_menu(runner: &Runner<'_, '_>) -> Option<(String, bool)> {
     let namespace = runner
         .catalog
         .namespace
@@ -826,18 +852,23 @@ fn ingame_menu(runner: &Runner<'_, '_>) -> Option<String> {
                 .and_then(|d| d.string(MAIN_MENU_DVAR))
                 .filter(|name| !name.is_empty() && runner.catalog.get(name).is_some())
                 .map(str::to_owned);
-            Some(main.unwrap_or_else(|| {
+            let name = main.unwrap_or_else(|| {
                 diag::warn!(
                     Ui,
                     "togglemenu: {MAIN_MENU_DVAR} names no loaded menu, opening {FALLBACK_MAIN_MENU}"
                 );
                 FALLBACK_MAIN_MENU.to_owned()
-            }))
+            });
+            Some((name, false))
         }
-        game_api::Rule::Known(game_api::InGameMenu::Named { menu, requires }) => {
+        game_api::Rule::Known(game_api::InGameMenu::Named {
+            menu,
+            requires,
+            pauses_offline,
+        }) => {
             let loaded = |name: &str| runner.catalog.get(name).is_some();
             if loaded(menu) && requires.is_none_or(loaded) {
-                Some(menu.to_owned())
+                Some((menu.to_owned(), pauses_offline))
             } else {
                 diag::warn!(Ui, "togglemenu: `{menu}` or what it needs is not loaded");
                 None
@@ -933,8 +964,9 @@ fn handle_input(
             Some(top) => runner.escape(&top),
             None if !runner.world.in_game => runner.open("iw4l_main"),
             None => {
-                if let Some(name) = ingame_menu(runner) {
+                if let Some((name, pauses)) = ingame_menu(runner) {
                     runner.open(&name);
+                    runner.menus.pause_requested = pauses;
                 }
             }
         }
