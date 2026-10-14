@@ -33,7 +33,7 @@ and game over (`t5.match.last_stand` closed); a solo
 game over fails the level as Black Ops does and Kino loads again
 (`t5.match.level_failed`: no save games, no client fade-out). There is
 no code-drawn HUD yet (`t5.hud.code_hud`); Black Ops' HUD menus (weapon
-info, dpad) and the zombie scripts' hud elems (round chalk and intro,
+info, dpad, points column) and the zombie scripts' hud elems (round chalk and intro,
 point popups, game over) are drawn by its own rules, and there are no
 Modern Warfare 2 sounds. Weapons sound by Black Ops' client rules: a
 player's fire, reload, raise and putaway events reach every client, which

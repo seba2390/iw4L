@@ -99,8 +99,8 @@ Only the top-level items count.
   - [x] Going down and `reviveplayer` raise Black Ops' stance animation events, clear damage counters and switch `startrevive`/`stoprevive`'s `LAST_STAND_REVIVED` move type (`t5.match.last_stand` closed).
   - [ ] The client's fade-out, blur and dead quote (`t5.match.level_failed`).
 - [ ] The game's own HUD.
-  - [x] Black Ops' HUD menus (weapon info, dpad) with its fonts, layout, safe area and name-hash paint order; script hud elems (round chalk, point popups, game over text); text and icon use hints (`HINT_NOICON`, `HINT_SEAT`, `HINT_ACTIVATE`, `HINT_HEALTH`, `HINT_FRIENDLY`, `HINT_SPECTATOR`, `HINT_TEAMPOT`, weapons).
-  - [ ] The points column, code-drawn pieces (reticle, blood, damage feedback), the scoreboard.
+  - [x] Black Ops' HUD menus (weapon info, dpad, points column `competitivemodescores`) with its fonts, layout, safe area and name-hash paint order; script hud elems (round chalk, point popups, game over text); text and icon use hints (`HINT_NOICON`, `HINT_SEAT`, `HINT_ACTIVATE`, `HINT_HEALTH`, `HINT_FRIENDLY`, `HINT_SPECTATOR`, `HINT_TEAMPOT`, weapons).
+  - [ ] Code-drawn pieces (reticle, blood, damage feedback), the scoreboard.
 - [ ] The game's own front end: menus, lobby and map selection.
   - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library.
 - [ ] The game's own sound.

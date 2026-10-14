@@ -30,6 +30,7 @@ const CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD: i32 = 121;
 const CG_PLAYER_WEAPON_AMMO_STOCK: i32 = 122;
 const CG_PLAYER_ACTIONSLOT_1: i32 = 166;
 const CG_PLAYER_ACTIONSLOT_4: i32 = 169;
+const CG_COMPETITIVE_MODE_SCORES: i32 = 288;
 
 /// What the local client knows that Black Ops' HUD expressions ask for.
 pub(crate) struct T5HudState<'a> {
@@ -47,6 +48,39 @@ pub(crate) struct T5HudState<'a> {
     pub hide_ammo: bool,
     pub ammo_widths: [i32; 2],
     pub hint: Option<T5Hint>,
+    pub local_client: usize,
+    pub scores: Vec<(usize, i32)>,
+}
+
+/// Per-client displayed score stepped toward the snapshot score each frame by
+/// Black Ops' competitive score helper (`±1` within 15 points, else
+/// `trunc(diff * 0.2 + 1.0)`).
+#[derive(Default)]
+pub(crate) struct T5ScoreLatch {
+    displayed: [i32; 4],
+}
+
+impl T5ScoreLatch {
+    pub(crate) fn step(&mut self, client: usize, target: i32) -> i32 {
+        let Some(current) = self.displayed.get_mut(client) else {
+            return target;
+        };
+        let diff = target - *current;
+        if diff != 0 {
+            let step = if (1..=15).contains(&diff) {
+                1
+            } else if (-15..=-1).contains(&diff) {
+                -1
+            } else {
+                ((diff as f64) * 0.2 + 1.0) as i32
+            };
+            *current += step;
+            if (*current > target && diff > 0) || (*current < target && diff < 0) {
+                *current = target;
+            }
+        }
+        *current
+    }
 }
 
 /// The cursor hint the owner draw shows, latched as Black Ops' client game
@@ -656,6 +690,106 @@ fn paint_cursor_hint(
     OwnerDrawPaint::Painted
 }
 
+/// Paints owner draw 288 (`CG_COMPETITIVE_MODE_SCORES`) by Black Ops'
+/// `CG_DrawCompetitiveModeScores` / `CG_DrawCompetitiveModeScoreRow` rules.
+fn paint_competitive_scores(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(layout) = args.assets.layout() else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::AssetFont);
+    };
+    let Some(font_name) = args
+        .assets
+        .font_name(3, args.surface.scale_virtual_to_real()[1], 0.39)
+    else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::AssetFont);
+    };
+    let Some(font) = args.assets.catalog.and_then(|c| c.font(font_name)) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::AssetFont);
+    };
+    let namespace = args.assets.namespace();
+    const GAMERTAG_COLORS: [[f32; 3]; 4] = [
+        [1.0, 1.0, 1.0],
+        [0.486, 0.812, 0.933],
+        [0.965, 0.792, 0.314],
+        [0.514, 0.925, 0.533],
+    ];
+    let mut y = args.rect.y;
+    for &(client, score) in state.scores.iter().rev() {
+        let is_local = client == state.local_client;
+        let extra = if is_local { 3.0 } else { 0.0 };
+        let row_y = y - (9.0 + extra);
+        let bar_h = 18.0 - if is_local { 0.0 } else { 3.0 } + 9.0;
+        let bar_w = args.rect.w - if is_local { 0.0 } else { 20.0 };
+        let alpha = (0.8_f32 * if is_local { 2.0 } else { 0.8 }).min(1.0);
+        let bar_color = [0.424 + if is_local { 0.05 } else { 0.0 }, 0.004, 0.0, alpha];
+        push_pic_at(
+            args,
+            namespace,
+            format!("scorebar_zom_{}", (client % 4) + 1),
+            args.rect.x,
+            row_y,
+            bar_w,
+            bar_h,
+            bar_color,
+            frame,
+        );
+        let value = score.to_string();
+        let mut text_scale = 0.35 + if is_local { 0.04 } else { -0.05 };
+        let col_w = args.rect.w;
+        while text_scale > 0.05
+            && crate::chrome::layout_text_width(layout, font, &value, text_scale) > col_w
+        {
+            text_scale -= 0.025;
+        }
+        let text_h = layout.text_height(font.pixel_height, text_scale);
+        let text_x = args.rect.x + 5.0;
+        let text_y = row_y + (bar_h + text_h) * 0.62;
+        let draw_scale = layout.text_scale(
+            font.pixel_height,
+            layout.text_paint_scale(text_scale, args.anim.scale),
+        );
+        let applied = args.surface.apply_rect(
+            text_x,
+            text_y,
+            draw_scale,
+            draw_scale,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        let [r, g, b] = GAMERTAG_COLORS[client % 4];
+        let text_color = [r, g, b, alpha];
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: (applied.x + 0.5).floor(),
+            y: (applied.y + 0.5).floor(),
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: text_color,
+            material: asset_core::AssetRef::bare_name(&font.material).to_owned(),
+            op: Draw2dOp::TextRun {
+                font: font_name.to_owned(),
+                scale: draw_scale,
+                text: value,
+                loc_key: String::new(),
+                style: if text_scale < 0.2 { 0 } else { 3 },
+                fx: None,
+                glow: None,
+            },
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+        y = (row_y - bar_h + (9.0 + extra)) - (1.0 - 4.0);
+    }
+    OwnerDrawPaint::Painted
+}
+
 fn paint_owner(
     state: &T5HudState<'_>,
     args: OwnerDrawArgs<'_>,
@@ -737,6 +871,7 @@ fn paint_owner(
             None => OwnerDrawPaint::Painted,
             Some(hint) => paint_cursor_hint(&args, hint, frame),
         },
+        CG_COMPETITIVE_MODE_SCORES => paint_competitive_scores(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         _ => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
     }
