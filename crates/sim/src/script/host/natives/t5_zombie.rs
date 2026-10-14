@@ -837,6 +837,38 @@ fn register_actor(registry: &mut NativeRegistry) {
         world.get_resource_or_insert_with(Objectives::default).0[index as usize] = state as u8;
         Ok(Value::Undefined)
     });
+    // `dontInterpolate` flips the entity's teleport flag, a client's in its
+    // player state, so the next snapshot snaps it in place
+    // (`t5.entities.interpolation`: other entities' flag is not sent, as
+    // IW4L's script entities carry none).
+    registry.register(Method, "dontinterpolate", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if let Some(client) = world.resource::<RoundScript>().player_client(id) {
+            crate::script_player::snap(
+                &mut crate::frame::FrameWorld::from_world(world),
+                crate::ClientId(client),
+            );
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Namespace::Function, "isvec", |_, _, args| {
+        Ok(Value::Int(
+            matches!(super::super::args::arg(args, 0)?, Value::Vector(_)).into(),
+        ))
+    });
+    // `LerpFloat(from, to, fraction)`, the fraction held to 0..1.
+    registry.register(Namespace::Function, "lerpfloat", |_, _, args| {
+        let from = super::super::args::float(args, 0)?;
+        let to = super::super::args::float(args, 1)?;
+        let mut fraction = super::super::args::float(args, 2)?;
+        if fraction - 1.0 >= 0.0 {
+            fraction = 1.0;
+        }
+        if -fraction >= 0.0 {
+            fraction = 0.0;
+        }
+        Ok(Value::Float((to - from) * fraction + from))
+    });
     registry.register(Namespace::Function, "modelhasphyspreset", |_, _, args| {
         super::super::args::string(args, 0)?;
         Ok(Value::Int(0))
