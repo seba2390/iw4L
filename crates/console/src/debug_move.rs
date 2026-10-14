@@ -617,7 +617,8 @@ pub(crate) fn route_debug_move_commands(
                 }
                 let [name, receiver, args @ ..] = cmd.args.as_slice() else {
                     echo(
-                        "usage: script <module::function> <level|playerN|targetname=NAME> [args…]".into(),
+                        "usage: script <module::function> <level|playerN|targetname=NAME> [args…]"
+                            .into(),
                         &mut console,
                         &mut line,
                     );

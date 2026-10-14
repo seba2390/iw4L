@@ -154,6 +154,7 @@ pub struct SimState {
     running: bool,
     phase: MatchPhase,
     round_serial: u32,
+    pub(crate) rounds_played: i32,
 
     match_elapsed_ms: u32,
 
@@ -260,6 +261,7 @@ impl Default for SimState {
             running: false,
             phase: MatchPhase::Warmup,
             round_serial: 1,
+            rounds_played: 0,
             match_elapsed_ms: 0,
             prematch: gamemode_iw4::PrematchStep::default(),
             max_alive_seen: 0,
@@ -2511,6 +2513,7 @@ impl SimState {
                 objectives: self.objectives.clone(),
                 phase: self.phase,
                 round_serial: self.round_serial,
+                rounds_played: self.rounds_played,
                 match_elapsed_ms: self.match_elapsed_ms,
                 prematch: self.prematch,
                 score_limit: self.bootstrap.score_limit,

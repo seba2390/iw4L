@@ -49,8 +49,7 @@ fn actor(world: &World, receiver: &Value) -> Option<u64> {
     (world.resource::<RoundScript>().entities[&id].kind == EntityKind::Actor).then_some(id)
 }
 
-/// Black Ops 2's LUI notify events, checked and kept: IW4L's server
-/// sends no UI commands (`t6.ui.lui_notify`).
+/// Black Ops 2's LUI notify events, checked and delivered to the client's LUI menus.
 #[derive(Resource, Default)]
 pub(crate) struct LuiNotifies(pub(crate) Vec<(Option<u32>, Vec<Value>)>);
 
@@ -78,6 +77,31 @@ fn lui_notify(world: &mut World, client: Option<u32>, args: &[Value]) -> Result<
         .any(|arg| !matches!(arg, Value::Int(_) | Value::LocalizedString(_)))
     {
         return Err("GScr_LUINotifyEvent: Expected Istrings or integers only.".into());
+    }
+    let name = match &args[0] {
+        Value::LocalizedString(s) => s.to_string(),
+        Value::String(s) => s.to_string(),
+        _ => string(args, 0)?.to_string(),
+    };
+    let data: Vec<i32> = args[2.min(args.len())..]
+        .iter()
+        .map(|arg| match arg {
+            Value::Int(n) => *n,
+            _ => 0,
+        })
+        .collect();
+    if let Some(mut frame) = crate::frame::FrameWorld::try_from_world(world) {
+        let notify = game_api::ui::LuiNotify { name, data };
+        match client {
+            Some(id) => frame
+                .client_meta_mut(crate::world::ClientId(id))
+                .push_lui_notify(notify),
+            None => {
+                for id in frame.client_ids_sorted() {
+                    frame.client_meta_mut(id).push_lui_notify(notify.clone());
+                }
+            }
+        }
     }
     world
         .get_resource_or_insert_with(LuiNotifies::default)

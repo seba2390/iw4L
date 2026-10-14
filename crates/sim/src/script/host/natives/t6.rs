@@ -506,7 +506,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "setroundsplayed", |world, _, args| {
-        world.insert_resource(RoundsPlayed(int(args, 0)?));
+        let rounds = int(args, 0)?;
+        world.insert_resource(RoundsPlayed(rounds));
+        if let Some(mut frame) = crate::frame::FrameWorld::try_from_world(world) {
+            frame.rounds_played = rounds;
+        }
         Ok(Value::Undefined)
     });
 

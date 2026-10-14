@@ -90,6 +90,12 @@ pub struct Scene {
     scoreboard: Option<Value>,
     rewards: Option<Value>,
     refreshed: Option<(bool, bool, i32)>,
+    last_time: Option<i32>,
+    rounds_played: Option<i32>,
+    competitive_scores: Vec<(u32, i32)>,
+    weapon_state: Option<(String, String, i32)>,
+    ammo_state: Option<(i32, i32, bool)>,
+    offhand_state: Option<[game_api::ui::OffhandSlot; 2]>,
     events: BTreeMap<String, Value>,
     reward_data: Vec<game_api::ui::Reward>,
 }
@@ -164,6 +170,45 @@ impl Scene {
                 .ok_or("t6.ui.render: rewards missing")?;
             self.add(&safe_area, &rewards)?;
             self.rewards = Some(rewards);
+        } else {
+            let controller = Value::Number(input.local_client as f32);
+            let buried = input.map.eq_ignore_ascii_case("zm_buried");
+            if buried {
+                self.module("ui_mp/t6/zombie/hudtimebomb.lua")?;
+                self.module("ui_mp/t6/zombie/ammoareazombie.lua")?;
+            }
+            for menu in [
+                "PerksArea",
+                "PowerUpsArea",
+                "BuildablesArea",
+                "CompetitiveScoreboard",
+                if buried { "AmmoAreaZombie" } else { "DPadArea" },
+                "RoundStatus",
+            ] {
+                if menu == "BuildablesArea" && input.gametype != "zclassic" {
+                    continue;
+                }
+                let widget = self
+                    .invoke(
+                        &["LUI", "createMenu", menu],
+                        std::slice::from_ref(&controller),
+                    )?
+                    .first()
+                    .cloned()
+                    .ok_or("t6.ui.render: zombie widget missing")?;
+                self.add(&safe_area, &widget)?;
+            }
+            if buried {
+                let widget = self
+                    .invoke(
+                        &["LUI", "createMenu", "TimeBombArea"],
+                        std::slice::from_ref(&controller),
+                    )?
+                    .first()
+                    .cloned()
+                    .ok_or("t6.ui.render: timebomb widget missing")?;
+                self.add(&safe_area, &widget)?;
+            }
         }
         let scoreboard = self
             .invoke(
@@ -270,6 +315,12 @@ impl Scene {
             scoreboard: None,
             rewards: None,
             refreshed: None,
+            last_time: None,
+            rounds_played: None,
+            competitive_scores: Vec::new(),
+            weapon_state: None,
+            ammo_state: None,
+            offhand_state: None,
             events: BTreeMap::new(),
             reward_data: Vec::new(),
         };
@@ -326,6 +377,37 @@ impl Scene {
 }
 
 impl Scene {
+    fn dispatch_event(
+        &mut self,
+        receiver: &Value,
+        method: &str,
+        name: &str,
+        event: Value,
+    ) -> Result<(), String> {
+        let callee = self
+            .runtime
+            .tables
+            .field(receiver, &key(method))
+            .map_err(|e| format!("{e:?}"))?;
+        self.runtime
+            .call_with(
+                &callee,
+                &[receiver.clone(), event],
+                1_000_000,
+                &mut self.bindings,
+            )
+            .map_err(|e| {
+                format!(
+                    "t6.ui.render: {method} {name}: {e:?}; source {:?}; binding {}",
+                    self.runtime
+                        .failure_source()
+                        .map(|(program, function)| (self.module_names.get(program), function)),
+                    self.bindings.last_call
+                )
+            })?;
+        Ok(())
+    }
+
     fn event(&mut self, receiver: &Value, method: &str, name: &str) -> Result<(), String> {
         let event = if let Some(value) = self.events.get(name) {
             value.clone()
@@ -350,27 +432,282 @@ impl Scene {
                 Value::Number(self.bindings.input.local_client as f32),
             )
             .map_err(|e| format!("{e:?}"))?;
-        let callee = self
-            .runtime
-            .tables
-            .field(receiver, &key(method))
-            .map_err(|e| format!("{e:?}"))?;
-        self.runtime
-            .call_with(
-                &callee,
-                &[receiver.clone(), event],
-                1_000_000,
-                &mut self.bindings,
-            )
-            .map_err(|e| {
-                format!(
-                    "t6.ui.render: {method} {name}: {e:?}; source {:?}; binding {}",
+        self.dispatch_event(receiver, method, name, event)
+    }
+
+    fn update_zombies_hud(
+        &mut self,
+        root: &Value,
+        input: &Input,
+        refresh: bool,
+    ) -> Result<(), String> {
+        let controller = Value::Number(input.local_client as f32);
+        for cf in &input.client_fields {
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key(&cf.name)),
+                ("controller", controller.clone()),
+                ("wasDemoJump", Value::Boolean(0)),
+                ("initialSnap", Value::Boolean(cf.initial.into())),
+                ("newEnt", Value::Boolean(cf.new_entity.into())),
+                ("entNum", Value::Number(cf.entity.unwrap_or(0) as f32)),
+                ("oldValue", Value::Number(cf.old)),
+                ("newValue", Value::Number(cf.new)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", &cf.name, event)?;
+        }
+        for notify in &input.lui_notifies {
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            self.runtime
+                .tables
+                .raw_set(&event, &key("name"), key(&notify.name))
+                .map_err(|e| format!("{e:?}"))?;
+            self.runtime
+                .tables
+                .raw_set(&event, &key("controller"), controller.clone())
+                .map_err(|e| format!("{e:?}"))?;
+            if !notify.data.is_empty() {
+                let data = self
+                    .runtime
+                    .tables
+                    .allocate()
+                    .map_err(|e| format!("{e:?}"))?;
+                for (index, item) in notify.data.iter().enumerate() {
                     self.runtime
-                        .failure_source()
-                        .map(|(program, function)| (self.module_names.get(program), function)),
-                    self.bindings.last_call
-                )
-            })?;
+                        .tables
+                        .raw_set(
+                            &data,
+                            &Value::Number(index as f32 + 1.0),
+                            Value::Number(*item as f32),
+                        )
+                        .map_err(|e| format!("{e:?}"))?;
+                }
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key("data"), data)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", &notify.name, event)?;
+        }
+        if input.rounds_played > 0 && (refresh || self.rounds_played != Some(input.rounds_played)) {
+            self.rounds_played = Some(input.rounds_played);
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_rounds_played")),
+                ("controller", controller.clone()),
+                ("roundsPlayed", Value::Number(input.rounds_played as f32)),
+                ("wasDemoJump", Value::Boolean(0)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_rounds_played", event)?;
+        }
+        let scores: Vec<(u32, i32)> = input.players.iter().map(|p| (p.id, p.score)).collect();
+        if !scores.is_empty() && (refresh || self.competitive_scores != scores) {
+            self.competitive_scores = scores;
+            let list = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (index, player) in input.players.iter().enumerate() {
+                let entry = self
+                    .runtime
+                    .tables
+                    .allocate()
+                    .map_err(|e| format!("{e:?}"))?;
+                self.runtime
+                    .tables
+                    .raw_set(&entry, &key("score"), Value::Number(player.score as f32))
+                    .map_err(|e| format!("{e:?}"))?;
+                self.runtime
+                    .tables
+                    .raw_set(&entry, &key("clientNum"), Value::Number(player.id as f32))
+                    .map_err(|e| format!("{e:?}"))?;
+                self.runtime
+                    .tables
+                    .raw_set(&list, &Value::Number(index as f32 + 1.0), entry)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            let self_index = input
+                .players
+                .iter()
+                .position(|p| p.id == input.local_client)
+                .unwrap_or(0)
+                + 1;
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_competitive_scoreboard")),
+                ("controller", controller.clone()),
+                ("bWasDemoJump", Value::Boolean(0)),
+                ("competitivescores", list),
+                ("selfindex", Value::Number(self_index as f32)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(
+                root,
+                "processEvent",
+                "hud_update_competitive_scoreboard",
+                event,
+            )?;
+        }
+        let weapon_state = (
+            input.weapon_name.clone(),
+            input.weapon_display_name.clone(),
+            input.weapon_inventory_type,
+        );
+        if !input.weapon_name.is_empty()
+            && (refresh || self.weapon_state.as_ref() != Some(&weapon_state))
+        {
+            self.weapon_state = Some(weapon_state);
+            let select = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_weapon_select")),
+                ("controller", controller.clone()),
+                ("weaponDisplayName", key(&input.weapon_display_name)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&select, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_weapon_select", select)?;
+            let weap = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_weapon")),
+                ("controller", controller.clone()),
+                ("weapon", key(&input.weapon_name)),
+                (
+                    "inventorytype",
+                    Value::Number(input.weapon_inventory_type as f32),
+                ),
+                ("immediate", Value::Boolean(1)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&weap, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_weapon", weap)?;
+        }
+        let ammo_state = (input.ammo_clip, input.ammo_stock, input.low_clip);
+        if !input.weapon_name.is_empty() && (refresh || self.ammo_state != Some(ammo_state)) {
+            self.ammo_state = Some(ammo_state);
+            let ammo = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_ammo")),
+                ("controller", controller.clone()),
+                ("ammoInClip", Value::Number(input.ammo_clip as f32)),
+                ("ammoStock", Value::Number(input.ammo_stock as f32)),
+                ("lowClip", Value::Boolean(input.low_clip.into())),
+                ("immediate", Value::Boolean(1)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&ammo, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_ammo", ammo)?;
+        }
+        if refresh || self.offhand_state.as_ref() != Some(&input.offhand) {
+            self.offhand_state = Some(input.offhand.clone());
+            let lethal = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            let lethal_mat = if input.offhand[0].material.is_empty() {
+                Value::Nil
+            } else {
+                self.bindings.asset(&input.offhand[0].material)
+            };
+            for (field, value) in [
+                ("ammo", Value::Number(input.offhand[0].ammo as f32)),
+                ("material", lethal_mat),
+                ("aspectRatio", Value::Number(1.0)),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&lethal, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            let tactical = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            let tactical_mat = if input.offhand[1].material.is_empty() {
+                Value::Nil
+            } else {
+                self.bindings.asset(&input.offhand[1].material)
+            };
+            for (field, value) in [
+                ("ammo", Value::Number(input.offhand[1].ammo as f32)),
+                ("material", tactical_mat),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&tactical, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            let event = self
+                .runtime
+                .tables
+                .allocate()
+                .map_err(|e| format!("{e:?}"))?;
+            for (field, value) in [
+                ("name", key("hud_update_offhand")),
+                ("controller", controller),
+                ("lethal", lethal),
+                ("tactical", tactical),
+            ] {
+                self.runtime
+                    .tables
+                    .raw_set(&event, &key(field), value)
+                    .map_err(|e| format!("{e:?}"))?;
+            }
+            self.dispatch_event(root, "processEvent", "hud_update_offhand", event)?;
+        }
         Ok(())
     }
 }
@@ -438,6 +775,9 @@ impl ScriptUi for Scene {
         if refresh {
             self.event(&root, "dispatchEventToChildren", "hud_update_refresh")?;
         }
+        if input.zombies {
+            self.update_zombies_hud(&root, input, refresh)?;
+        }
         if let Some(scoreboard) = self.scoreboard.clone() {
             self.bindings
                 .elements
@@ -458,18 +798,21 @@ impl ScriptUi for Scene {
         if refresh {
             self.refreshed = Some((input.scoreboard, input.menu, input.time));
         }
+        let elapsed = self
+            .last_time
+            .map_or(0, |prev| input.time.wrapping_sub(prev).max(0));
+        self.last_time = Some(input.time);
         let width = input.viewport[0] / (input.viewport[1] / 720.0).max(0.001);
         let mut draws = Vec::new();
-        self.bindings
-            .draw(
-                identity(&root).map_err(|e| format!("{e:?}"))?,
-                [0.0, 0.0, width, 720.0],
-                [1.0; 4],
-                None,
-                0,
-                &mut draws,
-            )
-            .map_err(|e| format!("t6.ui.render: {e:?}"))?;
+        self.draw(
+            identity(&root).map_err(|e| format!("{e:?}"))?,
+            [0.0, 0.0, width, 720.0],
+            [1.0; 4],
+            None,
+            elapsed,
+            0,
+            &mut draws,
+        )?;
         Ok(draws)
     }
 }
@@ -508,29 +851,110 @@ fn identity(value: &Value) -> Result<u32, FaultKind> {
     Ok(*identity)
 }
 
-impl Host {
+impl Scene {
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &mut self,
         id: u32,
         parent: [f32; 4],
         parent_color: [f32; 4],
         clip: Option<[f32; 4]>,
+        elapsed: i32,
         depth: usize,
         draws: &mut Vec<Draw>,
-    ) -> Result<(), FaultKind> {
+    ) -> Result<(), String> {
         if depth > 128 {
-            return Err(FaultKind::IndexChain);
+            return Err(format!("t6.ui.render: {:?}", FaultKind::IndexChain));
         }
-        let node = self.nodes.get(&id).ok_or(FaultKind::Userdata(id))?.clone();
-        let state = &mut self
+        let receiver = Value::Reference {
+            kind: 7,
+            identity: id,
+        };
+        let step = {
+            let element = self
+                .bindings
+                .elements
+                .element_mut(&receiver)
+                .map_err(|e| format!("t6.ui.render: {e:?}"))?;
+            if let (Some(source), Some(target), Some(timer)) = (
+                element.animation_source.as_mut(),
+                element.animation_target.as_mut(),
+                element.animation_timer.as_mut(),
+            ) {
+                source.resolve_rectangle(Some(parent));
+                target.resolve_rectangle(Some(parent));
+                let step = timer.advance(elapsed);
+                if let super::animation::AnimationStep::Interpolate(fraction) = step {
+                    let source = *source;
+                    let target = *target;
+                    element.current.interpolate(&source, &target, fraction);
+                }
+                Some(step)
+            } else {
+                element.current.resolve_rectangle(Some(parent));
+                None
+            }
+        };
+        if let Some(super::animation::AnimationStep::Complete { .. }) = step {
+            self.bindings
+                .elements
+                .finish_element_animation(&receiver, false, &mut self.runtime.tables)
+                .map_err(|e| format!("t6.ui.render: {e:?}"))?;
+            while let Some(callback) = self.bindings.take_callback() {
+                self.runtime
+                    .call_with(
+                        &callback.callee,
+                        &callback.arguments,
+                        1_000_000,
+                        &mut self.bindings,
+                    )
+                    .map_err(|e| {
+                        format!(
+                            "t6.ui.render: transition_complete: {e:?}; source {:?}; binding {}",
+                            self.runtime.failure_source().map(|(program, function)| (
+                                self.module_names.get(program),
+                                function
+                            )),
+                            self.bindings.last_call
+                        )
+                    })?;
+            }
+            let element = self
+                .bindings
+                .elements
+                .element_mut(&receiver)
+                .map_err(|e| format!("t6.ui.render: {e:?}"))?;
+            if let (Some(source), Some(target)) = (
+                element.animation_source.as_mut(),
+                element.animation_target.as_mut(),
+            ) {
+                source.resolve_rectangle(Some(parent));
+                target.resolve_rectangle(Some(parent));
+                let source = *source;
+                let target = *target;
+                element.current.interpolate(&source, &target, 0.0);
+            } else {
+                element.current.resolve_rectangle(Some(parent));
+            }
+        }
+        let Some(node) = self.bindings.nodes.get(&id).cloned() else {
+            return Ok(());
+        };
+        let state = self
+            .bindings
             .elements
-            .element_mut(&Value::Reference {
-                kind: 7,
-                identity: id,
-            })?
+            .element(&receiver)
+            .map_err(|e| format!("t6.ui.render: {e:?}"))?
             .current;
-        state.resolve_rectangle(Some(parent));
-        let rectangle = state.resolved_rectangle;
+        let mut rectangle = state.resolved_rectangle;
+        if state.scale_delta != 0.0 {
+            let scale = 1.0 + state.scale_delta;
+            let cx = (rectangle[0] + rectangle[2]) * 0.5;
+            let cy = (rectangle[1] + rectangle[3]) * 0.5;
+            let hw = (rectangle[2] - rectangle[0]) * 0.5 * scale;
+            let hh = (rectangle[3] - rectangle[1]) * 0.5 * scale;
+            rectangle = [cx - hw, cy - hh, cx + hw, cy + hh];
+        }
         let color = [
             state.color[0] * parent_color[0],
             state.color[1] * parent_color[1],
@@ -554,19 +978,19 @@ impl Host {
                 Content::Image(name) => {
                     *name = state
                         .material
-                        .and_then(|id| self.assets.get(id as usize - 1))
+                        .and_then(|id| self.bindings.assets.get(id as usize - 1))
                         .cloned()
                         .unwrap_or_else(String::new)
                 }
                 Content::Text { font, .. } => {
                     *font = state
                         .font
-                        .and_then(|id| self.assets.get(id as usize - 1))
+                        .and_then(|id| self.bindings.assets.get(id as usize - 1))
                         .cloned()
                         .unwrap_or_else(|| "fonts/distFont".into())
                 }
                 Content::GameTimer => {
-                    let remaining = self.input.remaining.unwrap_or(0);
+                    let remaining = self.bindings.input.remaining.unwrap_or(0);
                     let value = if remaining <= 0 {
                         String::new()
                     } else if remaining < 30_000 {
@@ -578,7 +1002,7 @@ impl Host {
                         value,
                         font: state
                             .font
-                            .and_then(|id| self.assets.get(id as usize - 1))
+                            .and_then(|id| self.bindings.assets.get(id as usize - 1))
                             .cloned()
                             .unwrap_or_else(|| "fonts/distFont".into()),
                     };
@@ -586,7 +1010,9 @@ impl Host {
                 Content::Compass {
                     material, range, ..
                 } => {
-                    if let Some((name, max_range)) = self.maps.get(&self.input.map) {
+                    if let Some((name, max_range)) =
+                        self.bindings.maps.get(&self.bindings.input.map)
+                    {
                         *material = name.clone();
                         *range = *max_range;
                     }
@@ -600,6 +1026,7 @@ impl Host {
                     color,
                     rotation: state.rotation[2],
                     alignment: self
+                        .bindings
                         .alignments
                         .iter()
                         .position(|value| Some(*value) == state.alignment)
@@ -610,7 +1037,7 @@ impl Host {
             }
         }
         let mut children = node.children;
-        children.sort_by_key(|id| self.nodes.get(id).map_or(0, |node| node.priority));
+        children.sort_by_key(|id| self.bindings.nodes.get(id).map_or(0, |node| node.priority));
         let mut cursor = 0.0;
         for child in children {
             let mut parent = rectangle;
@@ -619,28 +1046,57 @@ impl Host {
                 parent[axis] += cursor;
                 parent[axis + 2] += cursor;
             }
-            self.draw(child, parent, color, clip, depth + 1, draws)?;
+            self.draw(child, parent, color, clip, elapsed, depth + 1, draws)?;
             if let Some(axis) = node.list_axis {
                 let state = self
+                    .bindings
                     .elements
                     .element(&Value::Reference {
                         kind: 7,
                         identity: child,
-                    })?
+                    })
+                    .map_err(|e| format!("t6.ui.render: {e:?}"))?
                     .current;
                 let axis = axis as usize;
                 cursor += state.resolved_rectangle[axis + 2] - state.resolved_rectangle[axis]
                     + self
+                        .bindings
                         .elements
-                        .element(&Value::Reference {
-                            kind: 7,
-                            identity: id,
-                        })?
+                        .element(&receiver)
+                        .map_err(|e| format!("t6.ui.render: {e:?}"))?
                         .current
                         .spacing;
             }
         }
         Ok(())
+    }
+}
+
+impl Host {
+    fn zm_default_row(&self, column: usize) -> Option<&str> {
+        let table = self
+            .input
+            .tables
+            .iter()
+            .find(|table| table.name.eq_ignore_ascii_case("zm/gametypestable.csv"))?;
+        if table.columns <= column.max(7) {
+            return None;
+        }
+        table
+            .cells
+            .chunks_exact(table.columns)
+            .find(|row| {
+                row[0] == "6" && row[2].eq_ignore_ascii_case(&self.input.map) && row[7] == "YES"
+            })
+            .map(|row| row[column].as_str())
+    }
+
+    fn zm_gamemode_group(&self) -> &str {
+        self.zm_default_row(9).unwrap_or("zclassic")
+    }
+
+    fn zm_start_location(&self) -> &str {
+        self.zm_default_row(3).unwrap_or("")
     }
 
     fn asset(&mut self, name: &str) -> Value {
@@ -725,6 +1181,7 @@ impl Host {
             "removeElement",
             "removeAllChildren",
             "setupGameTimer",
+            "setupGameTimerZombie",
             "setupPlayerEmblemServer",
             "setupVoipImage",
             "beginAnimation",
@@ -792,6 +1249,11 @@ impl Host {
                 "GetFactionColor",
                 "GetCalloutPlayerData",
                 "SessionMode_IsOnlineGame",
+                "KeyBinding",
+                "GetKeyBindingLocalizedString",
+                "IsWeaponType",
+                "IsOverheatWeapon",
+                "ToUpper",
             ] {
                 self.bind(tables, &table, name)?;
             }
@@ -804,6 +1266,9 @@ impl Host {
             "g_TeamColor_EnemyTeam",
             "ui_mapname",
             "ui_gametype",
+            "ui_zm_gamemodegroup",
+            "ui_zm_mapstartlocation",
+            "g_gametype",
             "r_dualPlayEnable",
             "tu7_scoreboardPingAsNumbers",
         ] {
@@ -816,7 +1281,7 @@ impl Host {
         }
         tables.raw_set(&globals, &key("Dvar"), dvars)?;
         let string = tables.allocate()?;
-        for name in ["char", "sub", "len"] {
+        for name in ["char", "sub", "len", "find", "match"] {
             self.bind(tables, &string, name)?;
         }
         tables.raw_set(&globals, &key("string"), string)?;
@@ -826,7 +1291,9 @@ impl Host {
         }
         tables.raw_set(&globals, &key("table"), table)?;
         let math = tables.allocate()?;
-        for name in ["min", "max", "floor", "ceil", "abs"] {
+        for name in [
+            "min", "max", "floor", "ceil", "abs", "pow", "sqrt", "sin", "cos", "random",
+        ] {
             self.bind(tables, &math, name)?;
         }
         tables.raw_set(&globals, &key("math"), math)?;
@@ -894,6 +1361,21 @@ impl Bindings for Host {
             "floor" => Ok(vec![Value::Number(number(args.first())?.floor())]),
             "ceil" => Ok(vec![Value::Number(number(args.first())?.ceil())]),
             "abs" => Ok(vec![Value::Number(number(args.first())?.abs())]),
+            "pow" => Ok(vec![Value::Number(
+                number(args.first())?.powf(number(args.get(1))?),
+            )]),
+            "sqrt" => Ok(vec![Value::Number(number(args.first())?.sqrt())]),
+            "sin" => Ok(vec![Value::Number(number(args.first())?.sin())]),
+            "cos" => Ok(vec![Value::Number(number(args.first())?.cos())]),
+            "random" => Ok(vec![Value::Number(match (args.first(), args.get(1)) {
+                (None, _) => 0.5,
+                (Some(a), None) => 1.0_f32.min(number(Some(a))?.floor()),
+                (Some(a), Some(_)) => number(Some(a))?.floor(),
+            })]),
+            "ToUpper" => Ok(vec![key(&text(
+                args.last().ok_or(FaultKind::Argument(1))?,
+            )?
+            .to_uppercase())]),
             "char" => Ok(vec![Value::Bytes(Arc::from(
                 args.iter()
                     .map(|value| {
@@ -968,21 +1450,28 @@ impl Bindings for Host {
             "PlayMenuMusic" if args.last() == Some(&key("")) => Ok(Vec::new()),
             "StopEditingPresetClass" => Ok(Vec::new()),
             "TableLookup" => {
+                if args.len() < 5 || args.len().is_multiple_of(2) {
+                    return Err(FaultKind::Argument(args.len()));
+                }
                 let name = text(args.get(1).ok_or(FaultKind::Argument(2))?)?;
-                let column = number(args.get(2))? as usize;
-                let needle = text(args.get(3).ok_or(FaultKind::Argument(4))?)?;
-                let result = number(args.get(4))? as usize;
+                let mut pairs = Vec::new();
+                for pair in args[2..args.len() - 1].as_chunks::<2>().0 {
+                    pairs.push((number(Some(&pair[0]))? as usize, text(&pair[1])?));
+                }
+                let result = number(args.last())? as usize;
                 let value = self
                     .input
                     .tables
                     .iter()
                     .find(|table| table.name.eq_ignore_ascii_case(&name))
-                    .filter(|table| table.columns > column && table.columns > result)
+                    .filter(|table| {
+                        table.columns > result && pairs.iter().all(|(col, _)| table.columns > *col)
+                    })
                     .and_then(|table| {
                         table
                             .cells
                             .chunks_exact(table.columns)
-                            .find(|row| row[column] == needle)
+                            .find(|row| pairs.iter().all(|(col, needle)| row[*col] == *needle))
                             .map(|row| row[result].as_str())
                     })
                     .unwrap_or("");
@@ -1004,7 +1493,9 @@ impl Bindings for Host {
                 Ok(vec![key(&value)])
             }
             "GetCurrentExe" => Ok(vec![key("multiplayer")]),
-            "SessionMode_IsZombiesGame" => Ok(vec![Value::Boolean(self.input.zombies.into())]),
+            "SessionMode_IsZombiesGame" => {
+                Ok(vec![Value::Number(f32::from(u8::from(self.input.zombies)))])
+            }
             "RegisterFont" | "RegisterMaterial" => {
                 let name = text(args.first().ok_or(FaultKind::Argument(1))?)?;
                 let index = self
@@ -1027,7 +1518,9 @@ impl Bindings for Host {
                     "r_dualPlayEnable" => vec![Value::Boolean(0)],
                     "tu7_scoreboardPingAsNumbers" => vec![Value::Boolean(1)],
                     "ui_mapname" => vec![key(&self.input.map)],
-                    "ui_gametype" => vec![key(&self.input.gametype)],
+                    "ui_gametype" | "g_gametype" => vec![key(&self.input.gametype)],
+                    "ui_zm_gamemodegroup" => vec![key(self.zm_gamemode_group())],
+                    "ui_zm_mapstartlocation" => vec![key(self.zm_start_location())],
                     "g_TeamColor_MyTeam" => {
                         [0.4, 0.7, 0.4].into_iter().map(Value::Number).collect()
                     }
@@ -1036,6 +1529,16 @@ impl Bindings for Host {
                     }
                     _ => return Err(FaultKind::Unknown(super::script::ENGINE_API)),
                 })
+            }
+            "GetDvarString" | "DvarString" => {
+                let name = text(args.last().ok_or(FaultKind::Argument(1))?)?;
+                match name.as_str() {
+                    "ui_mapname" | "mapname" => Ok(vec![key(&self.input.map)]),
+                    "ui_gametype" | "g_gametype" => Ok(vec![key(&self.input.gametype)]),
+                    "ui_zm_gamemodegroup" => Ok(vec![key(self.zm_gamemode_group())]),
+                    "ui_zm_mapstartlocation" => Ok(vec![key(self.zm_start_location())]),
+                    _ => Err(FaultKind::Unknown(super::script::ENGINE_API)),
+                }
             }
             "GetDvarInt" | "DvarInt" => {
                 let name = text(args.last().ok_or(FaultKind::Argument(1))?)?;
@@ -1070,7 +1573,10 @@ impl Bindings for Host {
             | "IsGuest"
             | "IsPlayerMuteToggled"
             | "IsDemoClipPlaying"
-            | "SessionMode_IsOnlineGame" => Ok(vec![Value::Boolean(0)]),
+            | "SessionMode_IsOnlineGame"
+            | "IsWeaponType"
+            | "IsOverheatWeapon" => Ok(vec![Value::Boolean(0)]),
+            "KeyBinding" | "GetKeyBindingLocalizedString" => Ok(vec![key("")]),
             "IsVisibilityBitSet" => {
                 let bit = args.last().ok_or(FaultKind::Argument(2))?;
                 let cod = tables.global(&key("CoD"))?;
@@ -1105,8 +1611,8 @@ impl Bindings for Host {
             }
             "PartyGetPlayerCount" => Ok(vec![Value::Number(self.input.players.len() as f32)]),
             "GetMatchScoreboardIndexAndClientNumForTeam" => {
+                let index = number(args.first())? as usize;
                 let team = number(args.get(1))? as i32;
-                let index = number(args.get(2))? as usize;
                 let player = self
                     .input
                     .players
@@ -1200,13 +1706,11 @@ impl Bindings for Host {
             }
             "GetStatusIconForClient" => Ok(vec![Value::Nil]),
             "GetFactionForTeam" => Ok(vec![key("")]),
-            "GetFactionColor" => {
-                let color = tables.allocate()?;
-                for name in ["r", "g", "b"] {
-                    tables.raw_set(&color, &key(name), Value::Number(1.0))?;
-                }
-                Ok(vec![color])
-            }
+            "GetFactionColor" => Ok(vec![
+                Value::Number(1.0),
+                Value::Number(1.0),
+                Value::Number(1.0),
+            ]),
             "GetTeamPositions" => {
                 let rows = tables.allocate()?;
                 let teams: BTreeSet<i32> = self
@@ -1233,7 +1737,7 @@ impl Bindings for Host {
                 )])
             }
             "GetClientNum" => Ok(vec![Value::Number(self.input.local_client as f32)]),
-            "GetRoundsPlayed" => Ok(vec![Value::Number(0.0)]),
+            "GetRoundsPlayed" => Ok(vec![Value::Number(self.input.rounds_played as f32)]),
             "GetGametypeSetting" => {
                 let setting = text(args.last().ok_or(FaultKind::Argument(1))?)?;
                 match setting.as_str() {
@@ -1242,7 +1746,7 @@ impl Bindings for Host {
                     } else {
                         2.0
                     })]),
-                    "roundLimit" => Ok(vec![Value::Number(1.0)]),
+                    "roundLimit" | "startRound" => Ok(vec![Value::Number(1.0)]),
                     _ => Err(FaultKind::Unknown(super::script::ENGINE_API)),
                 }
             }
@@ -1346,6 +1850,25 @@ impl Bindings for Host {
             "len" => Ok(vec![Value::Number(
                 text(args.first().ok_or(FaultKind::Argument(1))?)?.len() as f32,
             )]),
+            "find" => {
+                let haystack = text(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let needle = text(args.get(1).ok_or(FaultKind::Argument(2))?)?;
+                Ok(match haystack.find(&needle) {
+                    Some(start) => vec![
+                        Value::Number((start + 1) as f32),
+                        Value::Number((start + needle.len()) as f32),
+                    ],
+                    None => vec![Value::Nil],
+                })
+            }
+            "match" => {
+                let haystack = text(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let needle = text(args.get(1).ok_or(FaultKind::Argument(2))?)?;
+                Ok(match haystack.find(&needle) {
+                    Some(start) => vec![key(&haystack[start..start + needle.len()])],
+                    None => vec![Value::Nil],
+                })
+            }
             "sub" => {
                 let value = text(args.first().ok_or(FaultKind::Argument(1))?)?;
                 let length = value.len() as i32;
@@ -1509,7 +2032,7 @@ impl Bindings for Host {
                 });
                 Ok(Vec::new())
             }
-            "setupGameTimer" => {
+            "setupGameTimer" | "setupGameTimerZombie" => {
                 let receiver = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
                 self.nodes
                     .get_mut(&receiver)
@@ -1518,42 +2041,51 @@ impl Bindings for Host {
                 Ok(Vec::new())
             }
             "beginAnimation" => {
+                let receiver = args.first().ok_or(FaultKind::Argument(1))?;
+                self.elements
+                    .finish_element_animation(receiver, true, tables)?;
+                let name_bytes = match args.get(1) {
+                    Some(Value::Bytes(bytes)) => bytes[..bytes
+                        .iter()
+                        .position(|byte| *byte == 0)
+                        .unwrap_or(bytes.len())]
+                        .to_vec(),
+                    _ => Vec::new(),
+                };
                 let duration = args
                     .get(2)
                     .filter(|value| **value != Value::Nil)
                     .map(|value| number(Some(value)))
                     .transpose()?
                     .unwrap_or(0.0);
-                if duration != 0.0 {
-                    return Err(FaultKind::Unknown(super::script::ENGINE_API));
-                }
-                let element = self
-                    .elements
-                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
-                if let Some(target) = element.animation_target.take() {
-                    element.current = target;
-                }
+                let duration = (duration as i32).max(0);
+                let options = [
+                    args.get(3).is_some_and(Value::truthy),
+                    args.get(4).is_some_and(Value::truthy),
+                ];
+                let element = self.elements.element_mut(receiver)?;
+                let target = super::State {
+                    changes: super::Changes::default(),
+                    ..element.current
+                };
+                element.begin_animation(name_bytes, duration, options, target);
                 Ok(Vec::new())
             }
             "completeAnimation" => {
-                let element = self
-                    .elements
-                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
-                if let Some(target) = element.animation_target.take() {
-                    element.current = target;
-                }
+                let receiver = args.first().ok_or(FaultKind::Argument(1))?;
+                self.elements
+                    .finish_element_animation(receiver, true, tables)?;
                 Ok(Vec::new())
             }
             "setScale" | "setZRot" => {
                 let value = number(args.get(1))?;
-                let state = &mut self
+                let element = self
                     .elements
-                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?
-                    .current;
+                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
                 if name == "setScale" {
-                    state.scale_delta = value - 1.0;
+                    element.set_scale(value);
                 } else {
-                    state.rotation[2] = value;
+                    element.set_z_rot(value);
                 }
                 Ok(Vec::new())
             }
@@ -1698,22 +2230,31 @@ impl Bindings for Host {
                     Value::Reference { kind: 2, identity } => Some(*identity),
                     _ => return Err(FaultKind::BindingRequired),
                 };
-                let state = &mut self
+                let element = self
                     .elements
-                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?
-                    .current;
+                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
                 if name == "setImage" {
-                    state.material = handle;
+                    element.current.material = handle;
+                    if let Some(target) = element.animation_target.as_mut() {
+                        target.material = handle;
+                    }
                 } else {
-                    state.font = handle;
+                    element.current.font = handle;
+                    if let Some(target) = element.animation_target.as_mut() {
+                        target.font = handle;
+                    }
                 }
                 Ok(Vec::new())
             }
             "setAlignment" => {
-                self.elements
-                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?
-                    .current
-                    .alignment = Some(number(args.get(1))? as u8);
+                let alignment = Some(number(args.get(1))? as u8);
+                let element = self
+                    .elements
+                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
+                element.current.alignment = alignment;
+                if let Some(target) = element.animation_target.as_mut() {
+                    target.alignment = alignment;
+                }
                 Ok(Vec::new())
             }
             "setShaderVector" => {
@@ -1724,14 +2265,20 @@ impl Bindings for Host {
                     number(args.get(4))?,
                     number(args.get(5))?,
                 ];
-                let state = &mut self
+                let element = self
                     .elements
-                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?
-                    .current;
-                *state
+                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
+                *element
+                    .current
                     .shader_vectors
                     .get_mut(vector)
                     .ok_or(FaultKind::Argument(2))? = Some(values);
+                if let Some(target) = element.animation_target.as_mut() {
+                    *target
+                        .shader_vectors
+                        .get_mut(vector)
+                        .ok_or(FaultKind::Argument(2))? = Some(values);
+                }
                 Ok(Vec::new())
             }
             "setTextInC" => {
