@@ -546,3 +546,35 @@ fn impact(
     missile.origin = end;
     Some(MissileRun::Gone)
 }
+
+/// Resets a missile's fuse (`resetmissiledetonationtime`): `after_ms` from
+/// `level_time` when given, else its weapon's player or AI fuse time when the
+/// weapon uses timed detonation.
+pub(crate) fn reset_detonation_time(
+    missile: &mut GameMissile,
+    after_ms: Option<i32>,
+    world: &dyn FireWorld,
+) {
+    let level = world.level_time();
+    let mut state = State::read(&missile.game);
+    if let Some(ms) = after_ms {
+        state.explode_at = level + ms;
+        state.write(&mut missile.game);
+        return;
+    }
+    let Some(w) = world.weapon(missile.weapon) else {
+        return;
+    };
+    let Some(def) = WeaponDefView::new(&w.def, &w.variant) else {
+        return;
+    };
+    if def.timed_detonation() {
+        let fuse = if world.player(missile.owner).is_some() {
+            def.fuse_time()
+        } else {
+            def.ai_fuse_time()
+        };
+        state.explode_at = level + fuse;
+        state.write(&mut missile.game);
+    }
+}

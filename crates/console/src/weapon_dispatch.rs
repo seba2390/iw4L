@@ -572,7 +572,7 @@ struct BotCompleter(CompletionSlot);
 impl ArgCompleter for BotCompleter {
     fn complete(&self, prefix: &str) -> Vec<String> {
         StaticCompleter::new([
-            "add", "dummy", "hold", "give", "fire", "melee", "frag", "tp",
+            "add", "dummy", "hold", "give", "fire", "melee", "frag", "smoke", "tp",
         ])
         .complete(prefix)
     }
@@ -585,7 +585,7 @@ impl ArgCompleter for BotCompleter {
                 StaticCompleter::new((1..=16).map(|n| n.to_string())).complete(prefix)
             }
             ("hold", 1) => StaticCompleter::new(["on", "off"]).complete(prefix),
-            ("give" | "fire" | "melee" | "frag" | "tp", 1) => {
+            ("give" | "fire" | "melee" | "frag" | "smoke" | "tp", 1) => {
                 let mut ids = self
                     .0
                     .read(|value| value.map_or_else(Vec::new, |value| value.bots.clone()));

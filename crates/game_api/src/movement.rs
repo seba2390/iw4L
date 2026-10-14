@@ -419,6 +419,17 @@ pub trait PlayerMovement: Sync {
     ) -> (crate::fire::MissileRun, Vec<&'static Unknown>) {
         (crate::fire::MissileRun::Gone, Vec::new())
     }
+
+    /// Resets a missile's detonation time (`resetmissiledetonationtime`):
+    /// `after_ms` from now when given, else its weapon's fuse time when it
+    /// has timed detonation.
+    fn reset_missile_detonation_time(
+        &self,
+        _missile: &mut crate::fire::GameMissile,
+        _after_ms: Option<i32>,
+        _world: &dyn crate::fire::FireWorld,
+    ) {
+    }
 }
 
 /// Whose weapon rules run a match.

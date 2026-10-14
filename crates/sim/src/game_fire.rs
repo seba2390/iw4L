@@ -87,6 +87,12 @@ impl<'w, 'a> MatchFireWorld<'w, 'a> {
         crate::script::object_by_number(self.world.ecs(), entity)
     }
 
+    /// A missile the game just spawned, given its script entity.
+    fn adopt_missile(&mut self, entity: i32) -> Option<u64> {
+        let projectile = self.world.projectile_by_number(entity)?;
+        crate::script::host::weapons::adopt_game_missile(self.world.ecs(), &projectile)
+    }
+
     /// The number the game knows a script entity by.
     fn number_of(&mut self, id: ScriptModelId) -> i32 {
         let number = self.world.gentity_number(id).unwrap_or(ENTITY_NONE);
@@ -534,7 +540,9 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 NotifyArg::Weapon(w) => crate::script::NotifyValue::String(
                     crate::script_player::weapon_name(self.world, w),
                 ),
-                NotifyArg::Entity(e) => crate::script::NotifyValue::Entity(self.object_of(e)),
+                NotifyArg::Entity(e) => crate::script::NotifyValue::Entity(
+                    self.object_of(e).or_else(|| self.adopt_missile(e)),
+                ),
                 NotifyArg::Vector(v) => crate::script::NotifyValue::Vector(v),
                 NotifyArg::Float(f) => crate::script::NotifyValue::Float(f),
                 NotifyArg::Int(n) => crate::script::NotifyValue::Int(n),
@@ -929,9 +937,10 @@ pub(crate) fn reset_game_missile_detonation_time(
     entnum: i32,
     after_ms: Option<i32>,
 ) -> bool {
-    let Some(rules) = missile_rules(world) else {
+    let rules = missile_rules(world);
+    if rules.is_none() && !crate::game_move::game_weapons(world) {
         return false;
-    };
+    }
     let Some(mut missile) = world
         .ecs()
         .get_resource::<GameMissiles>()
@@ -940,11 +949,16 @@ pub(crate) fn reset_game_missile_detonation_time(
         return false;
     };
     let owner = u32::try_from(missile.owner).ok().map(ClientId);
-    {
+    if let Some(rules) = rules {
         let around = MatchFireWorld::new(world, tick, owner);
         rules
             .0
             .reset_detonation_time(&mut missile, after_ms, &around);
+    } else if let Some(movement) = crate::game_move::rules(world) {
+        let around = MatchFireWorld::new(world, tick, owner);
+        movement.reset_missile_detonation_time(&mut missile, after_ms, &around);
+    } else {
+        return false;
     }
     if let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() {
         missiles.0.insert(entnum, missile);

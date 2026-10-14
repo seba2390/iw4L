@@ -21,11 +21,13 @@ impl WeaponCatalog {
         let gun_xmodel = geometry
             .gun_xmodel_name
             .and_then(|ptr| stream.cstr(ptr).ok())
+            .map(asset_core::AssetRef::bare_name)
             .filter(|s| !s.is_empty())
             .map(str::to_owned);
         let hand_xmodel = geometry
             .hand_xmodel_name
             .and_then(|ptr| stream.cstr(ptr).ok())
+            .map(asset_core::AssetRef::bare_name)
             .filter(|s| !s.is_empty())
             .map(str::to_owned);
         let sz_xanims = geometry
@@ -71,11 +73,15 @@ impl WeaponCatalog {
                 reticle.center_material = geometry
                     .reticle_center_name
                     .and_then(|p| stream.cstr(p).ok())
+                    .map(asset_core::AssetRef::bare_name)
+                    .filter(|s| !s.is_empty())
                     .map(str::to_owned)
                     .or(reticle.center_material);
                 reticle.side_material = geometry
                     .reticle_side_name
                     .and_then(|p| stream.cstr(p).ok())
+                    .map(asset_core::AssetRef::bare_name)
+                    .filter(|s| !s.is_empty())
                     .map(str::to_owned)
                     .or(reticle.side_material);
                 reticle
@@ -157,17 +163,20 @@ impl WeaponCatalog {
             world_model: geometry
                 .world_model_name
                 .and_then(|ptr| stream.cstr(ptr).ok())
+                .map(asset_core::AssetRef::bare_name)
                 .filter(|s| !s.is_empty())
                 .map(str::to_owned),
             projectile_model: geometry
                 .projectile_model_name
                 .and_then(|ptr| stream.cstr(ptr).ok())
+                .map(asset_core::AssetRef::bare_name)
                 .filter(|s| !s.is_empty())
                 .map(str::to_owned),
             knife_xmodel: None,
             rocket_model: geometry
                 .rocket_model_name
                 .and_then(|ptr| stream.cstr(ptr).ok())
+                .map(asset_core::AssetRef::bare_name)
                 .filter(|s| !s.is_empty())
                 .map(str::to_owned),
             sz_xanims,
@@ -465,6 +474,8 @@ pub(super) fn leftover_t5_material_name(
         _ => return None,
     };
     leftover_t5_cstr(stream, mat, 0)
+        .map(|s| asset_core::AssetRef::bare_name(&s).to_owned())
+        .filter(|s| !s.is_empty())
 }
 
 pub(super) fn leftover_t5_material_name_opt(
@@ -498,6 +509,8 @@ pub(super) fn leftover_t5_overlay_pick(
     let hi = geometry
         .overlay_material_name
         .and_then(|p| stream.cstr(p).ok())
+        .map(asset_core::AssetRef::bare_name)
+        .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .or_else(|| {
             leftover_t5_material_name(stream, variant, sz::WEAPON_VARIANT_OVERLAY_SHADER_OFF)
@@ -505,6 +518,8 @@ pub(super) fn leftover_t5_overlay_pick(
     let lo = geometry
         .overlay_material_lowres_name
         .and_then(|p| stream.cstr(p).ok())
+        .map(asset_core::AssetRef::bare_name)
+        .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .or_else(|| {
             leftover_t5_material_name(

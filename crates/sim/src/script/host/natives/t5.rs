@@ -1417,7 +1417,7 @@ fn register_refused(registry: &mut NativeRegistry) {
 
     refused!(Method: "spawnactor", "setgoalnode", "setgoalpos",
         "forceteleport", "orientmode", "traversemode", "setanimstate", "setaimanimweights",
-        "getnegotiationstartnode", "setflashbanged", "finishactordamage",
+        "getnegotiationstartnode", "finishactordamage",
         "clearentitytarget", "playbattlechattertoteam"
         => "actors are not simulated");
     refused!(Method: "setscriptgoal", "clearscriptgoal", "hasscriptgoal", "setscriptenemy",

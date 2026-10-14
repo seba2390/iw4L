@@ -542,6 +542,7 @@ fn think_bots(mut p: ThinkBots) {
                     BotPress::Attack => buttons::ATTACK,
                     BotPress::Melee => buttons::MELEE_CHARGE,
                     BotPress::Frag => buttons::FRAG,
+                    BotPress::Smoke => buttons::SMOKE,
                 };
             }
         }

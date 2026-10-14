@@ -77,8 +77,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 171 of 610 |
-| Five (`t5:zombie_pentagon`) | 173 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 162 of 610 |
+| Five (`t5:zombie_pentagon`) | 164 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -86,7 +86,7 @@ Only the top-level items count.
   - [ ] Zone data still dropped: dynamic entities, fx models, glass, dynamic lights; some static models whose model lives in another zone.
   - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) do not run; 171 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
+  - [ ] Client scripts (CSC) do not run; 162 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
@@ -131,7 +131,8 @@ Only the top-level items count.
 - [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.
-  - [ ] Teleporter and projector, the Thundergun, monkey bombs, traps; the auto turret's think (aiming and firing).
+  - [x] The Thundergun (`_zombiemode_weap_thundergun`), Cymbal Monkey bombs (`_zombiemode_weap_cymbal_monkey`) and electric traps (`_zombiemode_traps`): `thundergun_zm` equips its viewmodel, fires and blasts zombies and hellhounds in its cone; thrown Cymbal Monkeys animate (`%o_monkey_bomb`), reset their fuse (`resetmissiledetonationtime`), generate attractor positions, play their song and detonate; electric traps activate, shock players and electrocute zombies (`setelectrified`).
+  - [ ] Teleporter and projector, Nova crawlers (`_zombiemode_ai_quad`); the auto turret's think (aiming and firing).
 - [ ] Every zombies map in the install (Five, Dead Ops Arcade).
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] A lobby host picks Kino; a joined player spawns at its co-op spawns, gets points and sees the zombies.

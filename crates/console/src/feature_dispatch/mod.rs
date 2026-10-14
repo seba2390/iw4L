@@ -71,6 +71,7 @@ pub(crate) fn route_debug_feature_commands(
                     | BotVerb::Fire(_)
                     | BotVerb::Melee(_)
                     | BotVerb::Frag(_)
+                    | BotVerb::Smoke(_)
                     | BotVerb::Give { .. },
                 ) if authority.as_ref().is_some_and(|a| !a.0.cheats_enabled()) => {
                     echo("bot: cheats are off".into(), console, line);
@@ -106,6 +107,10 @@ pub(crate) fn route_debug_feature_commands(
                 Ok(BotVerb::Frag(target)) => {
                     bot_fire.push_frag(target);
                     echo("bot: queued frag".into(), console, line);
+                }
+                Ok(BotVerb::Smoke(target)) => {
+                    bot_fire.push_smoke(target);
+                    echo("bot: queued smoke".into(), console, line);
                 }
                 Ok(BotVerb::Give {
                     id,
@@ -348,6 +353,7 @@ pub(crate) enum BotVerb {
     Fire(BotTpTarget),
     Melee(BotTpTarget),
     Frag(BotTpTarget),
+    Smoke(BotTpTarget),
     Tp(BotTpRequest),
 }
 
@@ -396,7 +402,7 @@ pub(crate) fn parse_bot_args(args: &[String]) -> Result<BotVerb, String> {
                 attachments: args[3..].to_vec(),
             })
         }
-        "fire" | "melee" | "frag" => {
+        "fire" | "melee" | "frag" | "smoke" => {
             let target = match args.get(1).map(String::as_str) {
                 None | Some("all") => BotTpTarget::All,
                 Some(s) => BotTpTarget::Id(ClientId(
@@ -407,6 +413,7 @@ pub(crate) fn parse_bot_args(args: &[String]) -> Result<BotVerb, String> {
             Ok(match sub {
                 "fire" => BotVerb::Fire(target),
                 "melee" => BotVerb::Melee(target),
+                "smoke" => BotVerb::Smoke(target),
                 _ => BotVerb::Frag(target),
             })
         }

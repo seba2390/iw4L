@@ -222,6 +222,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     set_anims!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
     registry.register(Method, "clearanim", |world, receiver, args| {
         let time = optional(args, 1, float)?.unwrap_or(DEFAULT_GOAL_TIME);
+        if actor_id(world, receiver).is_err() {
+            let id = super::natives::engine::entity_id(world, receiver)?;
+            let _ = anim_name(args, 0)?;
+            if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+                entity.anim_op = Some(None);
+            }
+            return Ok(Value::Undefined);
+        }
         with_anim(world, receiver, args, 0, |anim, node| {
             for node in anim.tree.descendants(node) {
                 anim.set_goal(node, 0.0, time);
@@ -338,6 +346,14 @@ fn set_anim(
         .unwrap_or(DEFAULT_GOAL_TIME)
         .max(0.0);
     let rate = optional(args, at + 2, float)?.unwrap_or(1.0);
+    if actor_id(world, receiver).is_err() {
+        let id = super::natives::engine::entity_id(world, receiver)?;
+        let name = anim_name(args, anim_at)?;
+        if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+            entity.anim_op = Some(Some(name));
+        }
+        return Ok(Value::Undefined);
+    }
     with_anim(world, receiver, args, anim_at, |anim, node| {
         let tree = Arc::clone(&anim.tree);
         let root = match &root {
