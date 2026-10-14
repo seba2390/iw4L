@@ -87,6 +87,8 @@ pub(crate) struct RoundScript {
     pub(crate) lingering: Vec<(i64, u64)>,
     /// Lobby members the match waits for before play starts.
     pub(crate) expected_players: usize,
+    /// A client VM's runtime (Black Ops' client scripts), not the server's.
+    pub(crate) client: bool,
     /// Notifies the engine raises later (a sound or animation done): when,
     /// on what, which notify with which arguments.
     pub(crate) timed_notifies: Vec<(i64, Value, std::sync::Arc<str>, Vec<Value>)>,
@@ -176,6 +178,7 @@ impl RoundScript {
             grenade_touches: Default::default(),
             lingering: Default::default(),
             expected_players: Default::default(),
+            client: Default::default(),
             timed_notifies: Default::default(),
             retired_items: Default::default(),
             finishing: Default::default(),

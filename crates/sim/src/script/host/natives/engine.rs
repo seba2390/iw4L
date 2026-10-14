@@ -323,7 +323,7 @@ pub(crate) fn single(ids: Vec<u64>, what: &str) -> Result<Value, String> {
     }
 }
 
-fn objects(world: &mut World, ids: Vec<u64>) -> Result<Value, String> {
+pub(crate) fn objects(world: &mut World, ids: Vec<u64>) -> Result<Value, String> {
     new_array(world, ids.into_iter().map(Value::Object).collect())
 }
 

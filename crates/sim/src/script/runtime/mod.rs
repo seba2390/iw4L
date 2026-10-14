@@ -10,7 +10,9 @@ use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-pub(crate) use lifecycle::{CREATE_STRUCT, copy_state, install, install_level, reset, reset_round};
+pub(crate) use lifecycle::{
+    CREATE_STRUCT, copy_state, install, install_client, install_level, reset, reset_round,
+};
 pub(crate) use state::{MatchScript, RoundScript};
 
 /// Instructions one resumed thread may run before it is killed as a runaway loop.
@@ -1558,11 +1560,16 @@ fn report(world: &mut World, fault: &Fault) {
         fault.location.module, fault.location.line, fault.location.column
     );
     let mut runtime = world.resource_mut::<RoundScript>();
+    let client = runtime.client;
     let hits = runtime
         .errors
         .entry((site.clone(), fault.message.clone()))
         .or_default();
     *hits += 1;
+    if *hits == 1 && client {
+        diag::warn!(Sim, "csc: client script fault: {fault}");
+        return;
+    }
     if *hits == 1 {
         diag::warn!(Sim, "gsc: script runtime error: {fault}");
         diag::script_boundary(

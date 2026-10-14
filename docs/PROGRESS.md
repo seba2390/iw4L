@@ -86,7 +86,7 @@ Only the top-level items count.
   - [ ] Zone data still dropped: dynamic entities, fx models, glass, dynamic lights; some static models whose model lives in another zone.
   - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) compile (Kino: 42 modules, 686 functions, Black Ops' client builtin tables) but do not run; 155 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
+  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main`, 122 client threads; 129 of 173 client builtins not implemented yet, so their sounds, effects, lights and snapshots do nothing yet); 155 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.

@@ -421,6 +421,18 @@ impl SimWorld {
         crate::script::install(&mut self.ecs, program, natives, level)
     }
 
+    /// Installs the game's client scripts for the match's local client; they
+    /// start on its first frame.
+    pub fn install_client_scripts(
+        &mut self,
+        program: crate::script::Program,
+        natives: crate::script::NativeRegistry,
+        entries: Vec<String>,
+        level: &crate::script::LevelData,
+    ) -> Result<(), crate::script::Fault> {
+        crate::script::client::install(&mut self.ecs, program, natives, entries, level)
+    }
+
     pub fn set_expected_players(&mut self, count: usize) {
         if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
             runtime.expected_players = count;

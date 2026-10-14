@@ -35,6 +35,21 @@ pub(crate) struct StepRequest {
     output: Option<TickResult>,
 }
 
+impl StepRequest {
+    /// A frame of `tick` with no input, for a client VM's world.
+    pub(crate) fn frame(tick: Tick, reason: crate::StepReason) -> Self {
+        Self {
+            tick,
+            input: TickInput::default(),
+            msec: crate::MATCH_TICK_MS as i32,
+            reason,
+            action_results: Vec::new(),
+            fire_results: Vec::new(),
+            output: None,
+        }
+    }
+}
+
 pub(crate) fn schedule() -> Schedule {
     let mut schedule = Schedule::default();
     schedule.add_systems(
@@ -45,6 +60,7 @@ pub(crate) fn schedule() -> Schedule {
             crate::script::advance_mechanics,
             crate::script::advance_actors,
             crate::script::advance_scheduler,
+            crate::script::client::advance_client_scripts,
             (
                 apply_script_signals_system,
                 apply_actions_system,

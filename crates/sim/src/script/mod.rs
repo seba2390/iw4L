@@ -1,3 +1,4 @@
+pub(crate) mod client;
 pub mod host;
 mod runtime;
 pub(crate) mod vm;
