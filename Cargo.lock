@@ -6420,6 +6420,7 @@ dependencies = [
  "anim_iw4",
  "asset_core",
  "bevy_ecs",
+ "chrono",
  "clipmap_iw4",
  "diag",
  "entity_iw4",

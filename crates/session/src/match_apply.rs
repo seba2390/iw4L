@@ -682,10 +682,20 @@ pub fn apply_prepared_match(
             }
         }
         let client_natives = crate::games::client_natives(anim_namespace, &natives);
+        // A client that lists its own keys' types (`radiant/clientkeys.txt`)
+        // keeps only those keys.
         let client_level = client_scripts.as_ref().map(|_| sim::script::LevelData {
             entities: script_level.entities.clone(),
-            keys: script_level.keys.clone(),
+            keys: script_level
+                .client_keys
+                .clone()
+                .unwrap_or_else(|| script_level.keys.clone()),
+            entity_fields: script_level
+                .client_keys
+                .as_ref()
+                .map(|_| Default::default()),
             effect_lives: script_level.effect_lives.clone(),
+            primary_lights: script_level.primary_lights.clone(),
             ..Default::default()
         });
         sim.install_gsc_program(scripts, natives, script_level)
@@ -1340,14 +1350,39 @@ fn preflight_match_install(
             Default::default()
         }
     };
+    let client_keys = sources.0.config("radiant/clientkeys.txt").and_then(|text| {
+        match sim::script::parse_radiant_keys(text) {
+            Ok(keys) => Some(keys),
+            Err(error) => {
+                diag::warn!(Sim, "csc: radiant/clientkeys.txt: {error}");
+                None
+            }
+        }
+    });
     let effect_lives = prepared
         .fx
         .effects()
         .map(|effect| (effect.name.to_ascii_lowercase(), effect.life_bound_msec()))
         .collect();
+    let primary_lights = prepared.world.draw.as_ref().map_or_else(Vec::new, |draw| {
+        draw.primary_lights
+            .iter()
+            .map(|light| sim::script::MapPrimaryLight {
+                exponent: light.exponent,
+                color: light.color,
+                direction: light.direction,
+                origin: light.origin,
+                radius: light.radius,
+                cos_half_fov_outer: light.cos_outer,
+                cos_half_fov_inner: light.cos_inner,
+            })
+            .collect()
+    });
     let mut script_level = sim::script::LevelData {
         absent_effects,
         effect_lives,
+        primary_lights,
+        client_keys,
         player_data_defaults: account_defaults.clone(),
         schemas: sources.0.schemas().clone(),
         entities: sim::script::parse_entity_string(sources.0.entities().unwrap_or("")),

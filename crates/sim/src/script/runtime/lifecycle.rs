@@ -79,6 +79,7 @@ pub(crate) fn install_client(
     natives: NativeRegistry,
     entities: &[Vec<(String, String)>],
     keys: &BTreeMap<String, host::entities::KeyType>,
+    entity_fields: Option<&BTreeMap<String, host::entities::KeyType>>,
 ) -> Result<(), Fault> {
     let location = Location {
         module: "<runtime>".into(),
@@ -119,7 +120,7 @@ pub(crate) fn install_client(
     }
     world
         .resource_mut::<RoundScript>()
-        .spawn_map_entities(entities, keys, None)
+        .spawn_map_entities(entities, keys, entity_fields)
         .map_err(|m| Fault::at(&location, m))?;
     Ok(())
 }

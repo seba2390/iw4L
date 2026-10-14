@@ -5,8 +5,8 @@ use super::super::args::{arg, float, int, optional, string, vector};
 use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
 use crate::script::client::{
-    ClientEffect, ClientEffectTable, ClientOutput, ClientSound, ClientTagEffect, ClientTagEvent,
-    ClientView, FakeEnts, LoopSource,
+    ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientOutput, ClientSound,
+    ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LoopSource,
 };
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
@@ -309,6 +309,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(0))
     });
     register_effects(registry);
+    register_models(registry);
+    register_lights(registry);
     // `ent delete()`: a client-only entity notifies `death` and
     // `entityshutdown`, then is freed.
     registry.register(Method, "delete", |world, receiver, _| {
@@ -327,9 +329,26 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         world.resource_mut::<RoundScript>().request_delete(id);
         Ok(Value::Undefined)
     });
+    // `getSystemTime([gmt])`: the machine's clock as (hour, minute,
+    // second), local time unless a non-zero argument asks for GMT.
+    registry.register(Function, "getsystemtime", |_, _, args| {
+        let gmt = args.len() == 1 && int(args, 0)? != 0;
+        let (hour, minute, second) = if gmt {
+            let now = chrono::Utc::now();
+            clock(&now)
+        } else {
+            let now = chrono::Local::now();
+            clock(&now)
+        };
+        Ok(Value::Vector([hour as f32, minute as f32, second as f32]))
+    });
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));
+}
+
+fn clock(time: &impl chrono::Timelike) -> (u32, u32, u32) {
+    (time.hour(), time.minute(), time.second())
 }
 
 /// The first client-only entity number; lower ones are the server's
@@ -532,6 +551,420 @@ fn register_effects(registry: &mut NativeRegistry) {
             .effect_alive(handle, now);
         Ok(Value::Int(alive.into()))
     });
+}
+
+fn register_models(registry: &mut NativeRegistry) {
+    use Namespace::Method;
+    // `ent setModel(name)`: a script mover's model; "" clears it.
+    registry.register(Method, "setmodel", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let is_mover = matches!(
+            super::super::players::entity_field(world, id, "type"),
+            Value::String(kind) if &*kind == "scriptmover"
+        );
+        if !is_mover {
+            return Err("SetModel can only be called on a script mover\n".into());
+        }
+        let model = string(args, 0)?;
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "model", Value::string(&model));
+        Ok(Value::Undefined)
+    });
+    // `ent hide()` / `ent show()`: the entity's no-draw flag.
+    registry.register(Method, "hide", |world, receiver, _| {
+        set_hidden(world, receiver, true)
+    });
+    registry.register(Method, "show", |world, receiver, _| {
+        set_hidden(world, receiver, false)
+    });
+    // `ent moveTo(point, time, [accel], [decel])`.
+    registry.register(Method, "moveto", |world, receiver, args| {
+        let to = vector(args, 0)?;
+        let (time, accel, decel) = move_times(args)?;
+        let id = super::engine::entity_id(world, receiver)?;
+        let from = entity_vector(world, id, "origin");
+        move_entity(
+            world,
+            receiver,
+            "origin",
+            from,
+            to,
+            (time, accel, decel),
+            "movedone",
+        )
+    });
+    // `ent rotatePitch|Yaw|Roll(delta, time, [accel], [decel])`: from the
+    // entity's angles now.
+    registry.register(Method, "rotatepitch", |world, receiver, args| {
+        rotate_axis(world, receiver, args, 0)
+    });
+    registry.register(Method, "rotateyaw", |world, receiver, args| {
+        rotate_axis(world, receiver, args, 1)
+    });
+    registry.register(Method, "rotateroll", |world, receiver, args| {
+        rotate_axis(world, receiver, args, 2)
+    });
+}
+
+fn set_hidden(world: &mut World, receiver: &Value, hidden: bool) -> Result<Value, String> {
+    let id = super::engine::entity_id(world, receiver)?;
+    if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+        entity.hidden = hidden;
+    }
+    Ok(Value::Undefined)
+}
+
+fn entity_vector(world: &mut World, id: u64, field: &str) -> [f32; 3] {
+    match super::super::players::entity_field(world, id, field) {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    }
+}
+
+/// A client move's total, accel and decel times in seconds, as Black Ops'
+/// client mover reads them: a total under 1 ms is 1 ms, and accel plus decel
+/// may overrun the total by its float rounding.
+fn move_times(args: &[Value]) -> Result<(f32, f32, f32), String> {
+    let mut time = float(args, 1)?;
+    if time <= 0.0 {
+        return Err("total time must be positive".into());
+    }
+    if time < 0.001 {
+        time = 0.001;
+    }
+    let (accel, decel) = if args.len() < 3 {
+        (0.0, 0.0)
+    } else {
+        let accel = float(args, 2)?;
+        if accel < 0.0 {
+            return Err("accel time must be nonnegative".into());
+        }
+        let decel = if args.len() > 3 {
+            let decel = float(args, 3)?;
+            if decel < 0.0 {
+                return Err("decel time must be nonnegative".into());
+            }
+            decel
+        } else {
+            0.0
+        };
+        (accel, decel)
+    };
+    if time < accel + decel {
+        let stretched = time * 1.000_000_5;
+        if stretched < accel + decel {
+            return Err("accel time plus decel time is greater than total time".into());
+        }
+        time = stretched;
+    }
+    Ok((time, accel, decel))
+}
+
+fn move_entity(
+    world: &mut World,
+    receiver: &Value,
+    field: &'static str,
+    from: [f32; 3],
+    to: [f32; 3],
+    (time, accel, decel): (f32, f32, f32),
+    done: &'static str,
+) -> Result<Value, String> {
+    let duration = (time * 1000.0).round().max(1.0) as i64;
+    super::engine::start_motion(
+        world,
+        receiver,
+        field,
+        super::super::mechanics::MotionPath::Linear {
+            from,
+            to,
+            accel,
+            decel,
+        },
+        duration,
+        done,
+    )
+}
+
+fn rotate_axis(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    axis: usize,
+) -> Result<Value, String> {
+    let id = super::engine::entity_id(world, receiver)?;
+    let delta = float(args, 0)?;
+    let times = move_times(args)?;
+    let from = entity_vector(world, id, "angles");
+    let mut to = from;
+    to[axis] += delta;
+    move_entity(world, receiver, "angles", from, to, times, "rotatedone")
+}
+
+fn register_lights(registry: &mut NativeRegistry) {
+    use Namespace::Method;
+    // `ent makeLight(pl)`: the entity becomes the map's primary light `pl`,
+    // taking its color (normalized by its brightest channel, which is its
+    // intensity), exponent, radius, cone, direction and origin.
+    registry.register(Method, "makelight", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let index = int(args, 0)?;
+        let light = usize::try_from(index)
+            .ok()
+            .and_then(|index| world.resource::<ClientLights>().map.get(index).cloned())
+            .ok_or_else(|| format!("makelight: the map has no primary light {index}"))?;
+        let c = light.color;
+        let mut brightest = c[0];
+        if brightest < c[1] {
+            brightest = c[1];
+        }
+        if brightest < c[2] {
+            brightest = c[2];
+        }
+        let (intensity, color) = if brightest == 0.0 {
+            (0.0, [1.0; 3])
+        } else {
+            let scale = 1.0 / brightest;
+            (brightest, [c[0] * scale, c[1] * scale, c[2] * scale])
+        };
+        let mut bytes = pack_color(color);
+        bytes[3] = light.exponent;
+        let back = light.direction.map(|d| -d);
+        let angles = math_iw4::vect_to_angles(back);
+        let mut runtime = world.resource_mut::<RoundScript>();
+        runtime.set_object_field(id, "origin", Value::Vector(light.origin));
+        runtime.set_object_field(id, "angles", Value::Vector(angles));
+        runtime.set_object_field(id, "type", Value::string("NA"));
+        if let Some(entity) = runtime.entities.get_mut(&id) {
+            entity.hidden = true;
+        }
+        world.resource_mut::<ClientLights>().lights.insert(
+            id,
+            ClientLight {
+                index: index as usize,
+                color: bytes,
+                intensity,
+                radius: light.radius,
+                cos_half_fov_outer: light.cos_half_fov_outer,
+                cos_half_fov_inner: light.cos_half_fov_inner,
+            },
+        );
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getlightcolor", |world, receiver, _| {
+        let light = light(world, receiver, LIGHT_ONLY_PERIOD)?;
+        Ok(Value::Vector(std::array::from_fn(|i| {
+            f32::from(light.color[i]) * 0.003_921_568_9
+        })))
+    });
+    registry.register(Method, "setlightcolor", |world, receiver, args| {
+        let color = vector(args, 0)?;
+        light_mut(world, receiver, |light| {
+            let exponent = light.color[3];
+            light.color = pack_color(color);
+            light.color[3] = exponent;
+            Ok(())
+        })
+    });
+    registry.register(Method, "getlightintensity", |world, receiver, _| {
+        Ok(Value::Float(light(world, receiver, LIGHT_ONLY)?.intensity))
+    });
+    registry.register(Method, "setlightintensity", |world, receiver, args| {
+        let intensity = float(args, 0)?;
+        light_mut(world, receiver, |light| {
+            if intensity < -0.001 {
+                return Err("intensity must be >= 0".into());
+            }
+            light.intensity = intensity.max(0.0);
+            Ok(())
+        })
+    });
+    registry.register(Method, "getlightradius", |world, receiver, _| {
+        Ok(Value::Float(light(world, receiver, LIGHT_ONLY)?.radius))
+    });
+    // `setLightRadius(r)`: at most the radius the map was compiled with.
+    registry.register(Method, "setlightradius", |world, receiver, args| {
+        let radius = float(args, 0)?;
+        let compiled = compiled_light(world, receiver)?.radius;
+        light_mut(world, receiver, |light| {
+            if radius < -0.001 {
+                return Err("radius must be >= 0".into());
+            }
+            if compiled + 0.001 < radius {
+                return Err(format!(
+                    "radius must be less than the bsp radius ({})",
+                    format_g(f64::from(compiled))
+                ));
+            }
+            let clamped = if radius - compiled < 0.0 {
+                radius
+            } else {
+                compiled
+            };
+            light.radius = if -radius < 0.0 { clamped } else { 0.0 };
+            Ok(())
+        })
+    });
+    // The cone angles in degrees, from their stored half-angle cosines.
+    registry.register(Method, "getlightfovinner", |world, receiver, _| {
+        let cos = light(world, receiver, LIGHT_ONLY)?.cos_half_fov_inner;
+        Ok(Value::Float(fov_degrees(cos)))
+    });
+    registry.register(Method, "getlightfovouter", |world, receiver, _| {
+        let cos = light(world, receiver, LIGHT_ONLY)?.cos_half_fov_outer;
+        Ok(Value::Float(fov_degrees(cos)))
+    });
+    // `setLightFovRange(outer, [inner])`: no wider than the compiled cone.
+    registry.register(Method, "setlightfovrange", |world, receiver, args| {
+        let compiled = compiled_light(world, receiver)?;
+        let outer = float(args, 0)?;
+        let inner = if args.len() == 2 {
+            Some(float(args, 1)?)
+        } else {
+            None
+        };
+        light_mut(world, receiver, |light| {
+            if outer < 0.999 || 136.001 <= outer {
+                return Err("outer fov must be in the range of 1 to 136".into());
+            }
+            let cos_outer = half_cos(outer);
+            if cos_outer < compiled.cos_half_fov_outer - 0.001 {
+                return Err(
+                    "outer fov cannot be larger than the fov when the map was compiled".into(),
+                );
+            }
+            let mut outer_cos = if cos_outer - 1.0 < 0.0 {
+                cos_outer
+            } else {
+                1.0
+            };
+            if 0.0 <= compiled.cos_half_fov_outer - cos_outer {
+                outer_cos = compiled.cos_half_fov_outer;
+            }
+            let inner_cos = match inner {
+                Some(inner) => {
+                    if inner < -0.001 || outer + 0.001 <= inner {
+                        return Err("inner fov must be in the range of 0 to outer fov".into());
+                    }
+                    let cos_inner = half_cos(inner);
+                    let capped = if cos_inner - 1.0 < 0.0 {
+                        cos_inner
+                    } else {
+                        1.0
+                    };
+                    if (outer_cos + 0.001) - cos_inner < 0.0 {
+                        capped
+                    } else {
+                        outer_cos + 0.001
+                    }
+                }
+                None => {
+                    if compiled.cos_half_fov_inner - (outer_cos + 0.001) < 0.0 {
+                        compiled.cos_half_fov_inner
+                    } else {
+                        outer_cos + 0.001
+                    }
+                }
+            };
+            light.cos_half_fov_outer = outer_cos;
+            light.cos_half_fov_inner = inner_cos;
+            Ok(())
+        })
+    });
+    registry.register(Method, "getlightexponent", |world, receiver, _| {
+        Ok(Value::Int(i32::from(
+            light(world, receiver, LIGHT_ONLY)?.color[3],
+        )))
+    });
+    registry.register(Method, "setlightexponent", |world, receiver, args| {
+        let exponent = int(args, 0)?;
+        light_mut(world, receiver, |light| {
+            if !(0..=100).contains(&exponent) {
+                return Err("exponent must be in the range from 0 to 100".into());
+            }
+            light.color[3] = exponent as u8;
+            Ok(())
+        })
+    });
+}
+
+/// What a light builtin says of an entity that is not a light; the color
+/// getter's message ends in a period.
+const LIGHT_ONLY: &str = "Function can only be called on a 'light' entity";
+const LIGHT_ONLY_PERIOD: &str = "Function can only be called on a 'light' entity.";
+
+fn light(world: &World, receiver: &Value, refusal: &str) -> Result<ClientLight, String> {
+    let (id, _) = entity(world, receiver)?;
+    world
+        .resource::<ClientLights>()
+        .lights
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| refusal.to_owned())
+}
+
+fn light_mut(
+    world: &mut World,
+    receiver: &Value,
+    change: impl FnOnce(&mut ClientLight) -> Result<(), String>,
+) -> Result<Value, String> {
+    let (id, _) = entity(world, receiver)?;
+    let mut lights = world.resource_mut::<ClientLights>();
+    let light = lights.lights.get_mut(&id).ok_or(LIGHT_ONLY)?;
+    change(light)?;
+    Ok(Value::Undefined)
+}
+
+/// The primary light a light entity was made from, as the map was compiled.
+fn compiled_light(
+    world: &World,
+    receiver: &Value,
+) -> Result<crate::script::MapPrimaryLight, String> {
+    let index = light(world, receiver, LIGHT_ONLY)?.index;
+    Ok(world.resource::<ClientLights>().map[index].clone())
+}
+
+/// A color as the client packs it into bytes: each channel times 255,
+/// rounded to nearest, kept to 0..255.
+fn pack_color(color: [f32; 3]) -> [u8; 4] {
+    let byte = |c: f32| {
+        let n = (f64::from(c * 255.0) + 9.313_225_746_154_785e-10).round_ties_even() as i32;
+        if n < 0xff { n.max(0) as u8 } else { 0xff }
+    };
+    [byte(color[0]), byte(color[1]), byte(color[2]), 0]
+}
+
+/// The cosine of half a cone angle in degrees.
+fn half_cos(degrees: f32) -> f32 {
+    f64::from(degrees * 0.017_453_292 * 0.5).cos() as f32
+}
+
+/// A cone angle in degrees from the cosine of its half.
+fn fov_degrees(cos: f32) -> f32 {
+    (f64::from(cos).acos() as f32) * 2.0 * 57.295_776
+}
+
+/// A number as C's `%g` prints it.
+fn format_g(value: f64) -> String {
+    if value == 0.0 {
+        return "0".into();
+    }
+    let exponent = value.abs().log10().floor() as i32;
+    if !(-4..6).contains(&exponent) {
+        let text = format!("{:.5e}", value);
+        let (mantissa, power) = text.split_once('e').unwrap_or((&text, "0"));
+        let mantissa = mantissa.trim_end_matches('0').trim_end_matches('.');
+        let power: i32 = power.parse().unwrap_or(0);
+        let sign = if power < 0 { '-' } else { '+' };
+        return format!("{mantissa}e{sign}{:02}", power.abs());
+    }
+    let decimals = (5 - exponent).max(0) as usize;
+    let text = format!("{value:.decimals$}");
+    if text.contains('.') {
+        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    } else {
+        text
+    }
 }
 
 /// An effect's orientation when the script gives none: straight up.

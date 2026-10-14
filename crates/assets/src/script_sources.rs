@@ -189,6 +189,7 @@ impl ScriptSources {
             || name.ends_with(".shock")
             || name.ends_with(".atr")
             || name == "radiant/keys.txt"
+            || name == "radiant/clientkeys.txt"
         {
             if let Some(text) = asset_world::decode_rawfile_text(data, compressed) {
                 self.configs.insert(name, text);
