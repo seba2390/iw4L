@@ -3287,6 +3287,7 @@ dependencies = [
  "game_api",
  "gsc",
  "gsc_t6",
+ "movement_t6",
 ]
 
 [[package]]
@@ -4520,6 +4521,14 @@ name = "movement_t5"
 version = "0.1.0"
 dependencies = [
  "fastfile_t5",
+ "libm",
+]
+
+[[package]]
+name = "movement_t6"
+version = "0.1.0"
+dependencies = [
+ "fastfile_t6",
  "libm",
 ]
 

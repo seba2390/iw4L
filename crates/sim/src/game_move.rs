@@ -282,6 +282,9 @@ pub(crate) fn weapon_activity(
     world: &FrameWorld,
     id: ClientId,
 ) -> Option<game_api::movement::WeaponActivity> {
+    if !game_weapons(world) {
+        return None;
+    }
     let movement = rules(world)?;
     let Some(ps) = world.player(id) else {
         return Some(game_api::movement::WeaponActivity::default());

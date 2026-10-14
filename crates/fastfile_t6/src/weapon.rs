@@ -26,6 +26,8 @@ pub mod variant {
     pub const ADS_TRANS_IN_TIME: u32 = 496;
     pub const ADS_TRANS_OUT_TIME: u32 = 500;
     pub const ALT_RAISE_TIME: u32 = 504;
+    pub const AMMO_NAME: u32 = 512;
+    pub const CLIP_NAME: u32 = 520;
     pub const OVERLAY_MATERIAL: u32 = 596;
     pub const ADS_VIEW_KICK_CENTER_SPEED: u32 = 540;
     pub const HIP_VIEW_KICK_CENTER_SPEED: u32 = 544;
@@ -840,6 +842,10 @@ impl<'a> WeaponDefView<'a> {
         (def.len() >= def::SIZE && variant.len() >= variant::SIZE).then_some(Self { def, variant })
     }
 
+    pub fn same_def(&self, other: &WeaponDefView<'_>) -> bool {
+        self.def[..def::SIZE] == other.def[..def::SIZE]
+    }
+
     pub fn def_i32(&self, off: u32) -> i32 {
         let o = off as usize;
         i32::from_le_bytes(self.def[o..o + 4].try_into().unwrap())
@@ -857,6 +863,655 @@ impl<'a> WeaponDefView<'a> {
     pub fn variant_i32(&self, off: u32) -> i32 {
         let o = off as usize;
         i32::from_le_bytes(self.variant[o..o + 4].try_into().unwrap())
+    }
+
+    pub fn variant_f32(&self, off: u32) -> f32 {
+        let o = off as usize;
+        f32::from_le_bytes(self.variant[o..o + 4].try_into().unwrap())
+    }
+
+    pub fn variant_bool(&self, off: u32) -> bool {
+        self.variant[off as usize] != 0
+    }
+
+    pub fn weapon_type(&self) -> i32 {
+        self.def_i32(0x1c)
+    }
+
+    pub fn weapon_class(&self) -> i32 {
+        self.def_i32(0x20)
+    }
+
+    pub fn penetrate_type(&self) -> i32 {
+        self.def_i32(0x24)
+    }
+
+    pub fn inventory_type(&self) -> i32 {
+        self.def_i32(0x2c)
+    }
+
+    pub fn fire_type(&self) -> i32 {
+        self.def_i32(0x30)
+    }
+
+    pub fn overheat_weapon(&self) -> i32 {
+        self.def_i32(0x48)
+    }
+
+    pub fn overheat_rate(&self) -> f32 {
+        self.def_f32(0x4c)
+    }
+
+    pub fn cooldown_rate(&self) -> f32 {
+        self.def_f32(0x50)
+    }
+
+    pub fn overheat_end_val(&self) -> f32 {
+        self.def_f32(0x54)
+    }
+
+    pub fn cool_while_firing(&self) -> bool {
+        self.def_bool(0x58)
+    }
+
+    pub fn fuel_tank_weapon(&self) -> bool {
+        self.def_bool(0x59)
+    }
+
+    pub fn tank_life_time(&self) -> i32 {
+        self.def_i32(0x5c)
+    }
+
+    pub fn offhand_class(&self) -> i32 {
+        self.def_i32(0x60)
+    }
+
+    pub fn offhand_slot(&self) -> i32 {
+        self.def_i32(0x64)
+    }
+
+    pub fn ducked_sprint_scale(&self) -> f32 {
+        self.def_f32(0x278)
+    }
+
+    pub fn sprint_scale(&self) -> f32 {
+        self.def_f32(0x29c)
+    }
+
+    pub fn dtp_scale(&self) -> f32 {
+        self.def_f32(0x2f0)
+    }
+
+    pub fn shot_count(&self) -> i32 {
+        self.def_i32(0x3d0)
+    }
+
+    pub fn unlimited_ammo(&self) -> bool {
+        self.def_bool(0x3e0)
+    }
+
+    pub fn damage(&self) -> i32 {
+        self.def_i32(0x3e4)
+    }
+
+    pub fn min_damage(&self) -> i32 {
+        self.def_i32(0x3f8)
+    }
+
+    pub fn max_damage_range(&self) -> f32 {
+        self.def_f32(0x3fc)
+    }
+
+    pub fn min_damage_range(&self) -> f32 {
+        self.def_f32(0x410)
+    }
+
+    pub fn min_player_damage(&self) -> i32 {
+        self.def_i32(0x414)
+    }
+
+    pub fn player_damage(&self) -> i32 {
+        self.def_i32(0x420)
+    }
+
+    pub fn melee_damage(&self) -> i32 {
+        self.def_i32(0x424)
+    }
+
+    pub fn fire_delay(&self) -> i32 {
+        self.def_i32(0x430)
+    }
+
+    pub fn melee_delay(&self) -> i32 {
+        self.def_i32(0x434)
+    }
+
+    pub fn melee_charge_delay(&self) -> i32 {
+        self.def_i32(0x438)
+    }
+
+    pub fn detonate_delay(&self) -> i32 {
+        self.def_i32(0x43c)
+    }
+
+    pub fn spin_up_time(&self) -> i32 {
+        self.def_i32(0x440)
+    }
+
+    pub fn spin_down_time(&self) -> i32 {
+        self.def_i32(0x444)
+    }
+
+    pub fn fire_time(&self) -> i32 {
+        self.def_i32(0x468)
+    }
+
+    pub fn last_fire_time(&self) -> i32 {
+        self.def_i32(0x46c)
+    }
+
+    pub fn rechamber_time(&self) -> i32 {
+        self.def_i32(0x470)
+    }
+
+    pub fn rechamber_bolt_time(&self) -> i32 {
+        self.def_i32(0x474)
+    }
+
+    pub fn hold_fire_time(&self) -> i32 {
+        self.def_i32(0x478)
+    }
+
+    pub fn detonate_time(&self) -> i32 {
+        self.def_i32(0x47c)
+    }
+
+    pub fn melee_time(&self) -> i32 {
+        self.def_i32(0x480)
+    }
+
+    pub fn burst_delay_time(&self) -> i32 {
+        self.def_i32(0x484)
+    }
+
+    pub fn melee_charge_time(&self) -> i32 {
+        self.def_i32(0x488)
+    }
+
+    pub fn reload_add_time(&self) -> i32 {
+        self.def_i32(0x49c)
+    }
+
+    pub fn reload_empty_add_time(&self) -> i32 {
+        self.def_i32(0x4a0)
+    }
+
+    pub fn reload_quick_add_time(&self) -> i32 {
+        self.def_i32(0x4a4)
+    }
+
+    pub fn reload_quick_empty_add_time(&self) -> i32 {
+        self.def_i32(0x4a8)
+    }
+
+    pub fn reload_start_time(&self) -> i32 {
+        self.def_i32(0x4ac)
+    }
+
+    pub fn reload_start_add_time(&self) -> i32 {
+        self.def_i32(0x4b0)
+    }
+
+    pub fn reload_end_time(&self) -> i32 {
+        self.def_i32(0x4b4)
+    }
+
+    pub fn drop_time(&self) -> i32 {
+        self.def_i32(0x4b8)
+    }
+
+    pub fn raise_time(&self) -> i32 {
+        self.def_i32(0x4bc)
+    }
+
+    pub fn alt_drop_time(&self) -> i32 {
+        self.def_i32(0x4c0)
+    }
+
+    pub fn quick_drop_time(&self) -> i32 {
+        self.def_i32(0x4c4)
+    }
+
+    pub fn quick_raise_time(&self) -> i32 {
+        self.def_i32(0x4c8)
+    }
+
+    pub fn first_raise_time(&self) -> i32 {
+        self.def_i32(0x4cc)
+    }
+
+    pub fn empty_raise_time(&self) -> i32 {
+        self.def_i32(0x4d0)
+    }
+
+    pub fn empty_drop_time(&self) -> i32 {
+        self.def_i32(0x4d4)
+    }
+
+    pub fn sprint_in_time(&self) -> i32 {
+        self.def_i32(0x4d8)
+    }
+
+    pub fn sprint_out_time(&self) -> i32 {
+        self.def_i32(0x4e0)
+    }
+
+    pub fn low_ready_in_time(&self) -> i32 {
+        self.def_i32(0x4e4)
+    }
+
+    pub fn low_ready_out_time(&self) -> i32 {
+        self.def_i32(0x4ec)
+    }
+
+    pub fn cont_fire_in_time(&self) -> i32 {
+        self.def_i32(0x4f0)
+    }
+
+    pub fn cont_fire_out_time(&self) -> i32 {
+        self.def_i32(0x4f8)
+    }
+
+    pub fn dtp_in_time(&self) -> i32 {
+        self.def_i32(0x4fc)
+    }
+
+    pub fn dtp_out_time(&self) -> i32 {
+        self.def_i32(0x504)
+    }
+
+    pub fn slide_in_time(&self) -> i32 {
+        self.def_i32(0x524)
+    }
+
+    pub fn deploy_time(&self) -> i32 {
+        self.def_i32(0x528)
+    }
+
+    pub fn breakdown_time(&self) -> i32 {
+        self.def_i32(0x52c)
+    }
+
+    pub fn night_vision_wear_time(&self) -> i32 {
+        self.def_i32(0x534)
+    }
+
+    pub fn night_vision_remove_time(&self) -> i32 {
+        self.def_i32(0x540)
+    }
+
+    pub fn fuse_time(&self) -> i32 {
+        self.def_i32(0x54c)
+    }
+
+    pub fn ai_fuse_time(&self) -> i32 {
+        self.def_i32(0x550)
+    }
+
+    pub fn require_lockon_to_fire(&self) -> bool {
+        self.def_bool(0x55c)
+    }
+
+    pub fn no_ads_when_mag_empty(&self) -> bool {
+        self.def_bool(0x55d)
+    }
+
+    pub fn stack_fire(&self) -> i32 {
+        self.def_i32(0x560)
+    }
+
+    pub fn stack_fire_spread(&self) -> f32 {
+        self.def_f32(0x564)
+    }
+
+    pub fn mountable_weapon(&self) -> bool {
+        self.def_bool(0x578)
+    }
+
+    pub fn move_speed_scale(&self) -> f32 {
+        self.def_f32(0x588)
+    }
+
+    pub fn ads_move_speed_scale(&self) -> f32 {
+        self.def_f32(0x58c)
+    }
+
+    pub fn sprint_duration_scale(&self) -> f32 {
+        self.def_f32(0x590)
+    }
+
+    pub fn ads_overlay_reticle(&self) -> i32 {
+        self.def_i32(0x594)
+    }
+
+    pub fn hip_spread_stand_min(&self) -> f32 {
+        self.def_f32(0x5b0)
+    }
+
+    pub fn hip_spread_ducked_min(&self) -> f32 {
+        self.def_f32(0x5b4)
+    }
+
+    pub fn hip_spread_prone_min(&self) -> f32 {
+        self.def_f32(0x5b8)
+    }
+
+    pub fn hip_spread_max(&self) -> f32 {
+        self.def_f32(0x5bc)
+    }
+
+    pub fn hip_spread_ducked_max(&self) -> f32 {
+        self.def_f32(0x5c0)
+    }
+
+    pub fn hip_spread_prone_max(&self) -> f32 {
+        self.def_f32(0x5c4)
+    }
+
+    pub fn hip_spread_decay_rate(&self) -> f32 {
+        self.def_f32(0x5c8)
+    }
+
+    pub fn hip_spread_fire_add(&self) -> f32 {
+        self.def_f32(0x5cc)
+    }
+
+    pub fn hip_spread_turn_add(&self) -> f32 {
+        self.def_f32(0x5d0)
+    }
+
+    pub fn hip_spread_move_add(&self) -> f32 {
+        self.def_f32(0x5d4)
+    }
+
+    pub fn hip_spread_ducked_decay(&self) -> f32 {
+        self.def_f32(0x5d8)
+    }
+
+    pub fn hip_spread_prone_decay(&self) -> f32 {
+        self.def_f32(0x5dc)
+    }
+
+    pub fn rifle_bullet(&self) -> bool {
+        self.def_bool(0x631)
+    }
+
+    pub fn armor_piercing(&self) -> bool {
+        self.def_bool(0x632)
+    }
+
+    pub fn bolt_action(&self) -> bool {
+        self.def_bool(0x634)
+    }
+
+    pub fn aim_down_sight(&self) -> bool {
+        self.def_bool(0x638)
+    }
+
+    pub fn rechamber_while_ads(&self) -> bool {
+        self.def_bool(0x639)
+    }
+
+    pub fn reload_while_ads(&self) -> bool {
+        self.def_bool(0x63a)
+    }
+
+    pub fn cook_off_hold(&self) -> bool {
+        self.def_bool(0x644)
+    }
+
+    pub fn clip_only(&self) -> bool {
+        self.def_bool(0x645)
+    }
+
+    pub fn can_use_in_vehicle(&self) -> bool {
+        self.def_bool(0x646)
+    }
+
+    pub fn no_drops_or_raises(&self) -> bool {
+        self.def_bool(0x647)
+    }
+
+    pub fn ads_fire(&self) -> bool {
+        self.def_bool(0x648)
+    }
+
+    pub fn bayonet(&self) -> bool {
+        self.def_bool(0x64e)
+    }
+
+    pub fn dual_wield(&self) -> bool {
+        self.def_bool(0x64f)
+    }
+
+    pub fn explode_on_ground(&self) -> bool {
+        self.def_bool(0x650)
+    }
+
+    pub fn retrievable(&self) -> bool {
+        self.def_bool(0x652)
+    }
+
+    pub fn continuous_fire(&self) -> bool {
+        self.def_bool(0x655)
+    }
+
+    pub fn no_quick_drop_when_empty(&self) -> bool {
+        self.def_bool(0x659)
+    }
+
+    pub fn no_partial_reload(&self) -> bool {
+        self.def_bool(0x669)
+    }
+
+    pub fn segmented_reload(&self) -> bool {
+        self.def_bool(0x66a)
+    }
+
+    pub fn no_ads_auto_reload(&self) -> bool {
+        self.def_bool(0x66b)
+    }
+
+    pub fn reload_ammo_add(&self) -> i32 {
+        self.def_i32(0x66c)
+    }
+
+    pub fn reload_start_add(&self) -> i32 {
+        self.def_i32(0x670)
+    }
+
+    pub fn blocks_prone(&self) -> bool {
+        self.def_bool(0x694)
+    }
+
+    pub fn is_rolling_grenade(&self) -> i32 {
+        self.def_i32(0x698)
+    }
+
+    pub fn explosion_radius(&self) -> i32 {
+        self.def_i32(0x6ac)
+    }
+
+    pub fn explosion_radius_min(&self) -> i32 {
+        self.def_i32(0x6b0)
+    }
+
+    pub fn explosion_inner_damage(&self) -> i32 {
+        self.def_i32(0x6b8)
+    }
+
+    pub fn explosion_outer_damage(&self) -> i32 {
+        self.def_i32(0x6bc)
+    }
+
+    pub fn damage_cone_angle(&self) -> f32 {
+        self.def_f32(0x6c0)
+    }
+
+    pub fn projectile_speed(&self) -> i32 {
+        self.def_i32(0x6c4)
+    }
+
+    pub fn projectile_speed_up(&self) -> i32 {
+        self.def_i32(0x6c8)
+    }
+
+    pub fn projectile_speed_relative_up(&self) -> i32 {
+        self.def_i32(0x6cc)
+    }
+
+    pub fn projectile_speed_forward(&self) -> i32 {
+        self.def_i32(0x6d0)
+    }
+
+    pub fn projectile_activate_dist(&self) -> i32 {
+        self.def_i32(0x6d8)
+    }
+
+    pub fn proj_explosion_type(&self) -> i32 {
+        self.def_i32(0x6ec)
+    }
+
+    pub fn proj_explosion_effect_force_normal_up(&self) -> bool {
+        self.def_bool(0x6f4)
+    }
+
+    pub fn proj_impact_explode(&self) -> bool {
+        self.def_bool(0x72c)
+    }
+
+    pub fn bullet_impact_explode(&self) -> bool {
+        self.def_bool(0x72f)
+    }
+
+    pub fn stickiness(&self) -> i32 {
+        self.def_i32(0x730)
+    }
+
+    pub fn rotate_type(&self) -> i32 {
+        self.def_i32(0x734)
+    }
+
+    pub fn plantable(&self) -> bool {
+        self.def_bool(0x738)
+    }
+
+    pub fn has_detonator(&self) -> bool {
+        self.def_bool(0x739)
+    }
+
+    pub fn timed_detonation(&self) -> bool {
+        self.def_bool(0x73a)
+    }
+
+    pub fn rotate(&self) -> bool {
+        self.def_bool(0x73c)
+    }
+
+    pub fn keep_rolling(&self) -> bool {
+        self.def_bool(0x73d)
+    }
+
+    pub fn hold_button_to_throw(&self) -> bool {
+        self.def_bool(0x73e)
+    }
+
+    pub fn offhand_hold_is_cancelable(&self) -> bool {
+        self.def_bool(0x73f)
+    }
+
+    pub fn freeze_movement_when_firing(&self) -> bool {
+        self.def_bool(0x740)
+    }
+
+    pub fn melee_charge_range(&self) -> f32 {
+        self.def_f32(0x74c)
+    }
+
+    pub fn use_as_melee(&self) -> bool {
+        self.def_bool(0x750)
+    }
+
+    pub fn guided_missile_type(&self) -> i32 {
+        self.def_i32(0x770)
+    }
+
+    pub fn time_to_accelerate(&self) -> f32 {
+        self.def_f32(0x778)
+    }
+
+    pub fn projectile_curvature(&self) -> f32 {
+        self.def_f32(0x77c)
+    }
+
+    pub fn ads_gun_kick_reduced_kick_bullets(&self) -> i32 {
+        self.def_i32(0x790)
+    }
+
+    pub fn ads_spread(&self) -> f32 {
+        self.def_f32(0x7e0)
+    }
+
+    pub fn hip_gun_kick_reduced_kick_bullets(&self) -> i32 {
+        self.def_i32(0x7e4)
+    }
+
+    pub fn ads_reload_trans_time(&self) -> i32 {
+        self.def_i32(0x874)
+    }
+
+    pub fn destabilization_rate_time(&self) -> f32 {
+        self.def_f32(0x8f0)
+    }
+
+    pub fn destabilize_distance(&self) -> i32 {
+        self.def_i32(0x8f8)
+    }
+
+    pub fn clip_size(&self) -> i32 {
+        self.variant_i32(0x1dc)
+    }
+
+    pub fn reload_time(&self) -> i32 {
+        self.variant_i32(0x1e0)
+    }
+
+    pub fn reload_empty_time(&self) -> i32 {
+        self.variant_i32(0x1e4)
+    }
+
+    pub fn reload_quick_time(&self) -> i32 {
+        self.variant_i32(0x1e8)
+    }
+
+    pub fn reload_quick_empty_time(&self) -> i32 {
+        self.variant_i32(0x1ec)
+    }
+
+    pub fn ads_trans_in_time(&self) -> i32 {
+        self.variant_i32(0x1f0)
+    }
+
+    pub fn ads_trans_out_time(&self) -> i32 {
+        self.variant_i32(0x1f4)
+    }
+
+    pub fn alt_raise_time(&self) -> i32 {
+        self.variant_i32(0x1f8)
+    }
+
+    pub fn dual_mag(&self) -> bool {
+        self.variant_bool(0x245)
     }
 }
 

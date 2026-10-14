@@ -108,7 +108,10 @@ impl WeaponCatalog {
                 .or_else(|| crate::weapon_t6::planted_model(name).map(str::to_owned)),
             rocket_model: None,
             sz_xanims: t6_sz_xanims(weapon),
-            dual_wield_weapon: None,
+            dual_wield_weapon: weapon
+                .def_str(d::DUAL_WIELD_WEAPON)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned),
             impact_payload: None,
             sz_xanims_right: [const { None }; WEAPON_ANIM_SLOTS],
             sz_xanims_left: t6_sz_xanims_left(weapon),
@@ -155,14 +158,23 @@ impl WeaponCatalog {
 }
 
 fn capture_t6_game_bytes(w: fastfile_t6::weapon::WeaponView<'_>) -> Option<Arc<GameWeaponBytes>> {
-    use fastfile_t6::weapon::def as d;
+    use fastfile_t6::weapon::{def as d, variant as v};
     let (def, variant) = w.raw_bytes()?;
+    let named_anims = (0..v::XANIM_COUNT)
+        .filter(|&slot| w.xanim(slot).is_some_and(|name| !name.is_empty()))
+        .fold(0u128, |bits, slot| bits | 1 << slot);
     Some(Arc::new(GameWeaponBytes {
         def: def.into(),
         variant: variant.into(),
-        ammo_name: String::new(),
-        clip_name: String::new(),
-        named_anims: 0,
+        ammo_name: w
+            .variant_str(v::AMMO_NAME)
+            .filter(|s| !s.is_empty())
+            .map_or_else(String::new, str::to_owned),
+        clip_name: w
+            .variant_str(v::CLIP_NAME)
+            .filter(|s| !s.is_empty())
+            .map_or_else(String::new, str::to_owned),
+        named_anims,
         anim_slots: &[],
         location_damage: w
             .def_f32_array::<{ d::HIT_LOCATIONS }>(d::LOCATION_DAMAGE_MULTIPLIERS)

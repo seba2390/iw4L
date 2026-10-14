@@ -1,0 +1,65 @@
+use fastfile_t6::weapon::WeaponDefView;
+
+/// A swept-bounds collision result.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Trace {
+    pub normal: [f32; 3],
+    pub fraction: f32,
+    pub surface_flags: u32,
+    pub contents: u32,
+    pub entity: i32,
+    pub allsolid: bool,
+    pub startsolid: bool,
+    pub walkable: bool,
+}
+
+pub const SURF_SLICK: u32 = 0x2;
+pub const SURF_NOFALLDAMAGE: u32 = 0x1;
+pub const SURF_NOSTEPS: u32 = 0x2000;
+pub const SURF_LADDER: u32 = 0x8;
+
+impl Trace {
+    pub fn surface_type(&self) -> i32 {
+        ((self.surface_flags as i32) >> 20) & 0x3f
+    }
+}
+
+/// A weapon as Black Ops 2 reads it: its definition and variant, and what the
+/// game resolves when it loads them.
+#[derive(Clone, Copy, Debug)]
+pub struct Weapon<'a> {
+    pub def: WeaponDefView<'a>,
+    pub ammo_index: i32,
+    pub clip_index: i32,
+    pub alt_weapon: u32,
+    pub dual_wield_weapon: u32,
+    pub named_anims: u128,
+    pub name: &'a str,
+}
+
+impl Weapon<'_> {
+    pub fn has_melee_anim(&self) -> bool {
+        self.named_anims & (1 << fastfile_t6::weapon::weap_anim::MELEE) != 0
+    }
+}
+
+/// The match around one player's movement.
+pub trait MoveWorld {
+    fn trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        contentmask: u32,
+    ) -> Trace;
+
+    fn can_stand_on(&self, entity: i32) -> bool;
+
+    fn weapon(&self, weapon: u32) -> Weapon<'_>;
+
+    fn weapon_exists(&self, weapon: u32) -> bool;
+
+    fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32>;
+}
