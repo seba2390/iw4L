@@ -917,13 +917,6 @@ fn paint_deadquote(
     args: &OwnerDrawArgs<'_>,
     frame: &mut ChromeFrame,
 ) -> OwnerDrawPaint {
-    diag::info!(
-        Ui,
-        "PROBE paint_deadquote: start_ms={:?} ms={} raw={:?}",
-        state.deadquote_start_ms,
-        state.ms,
-        state.dvar("ui_deadquote")
-    );
     let Some(start_ms) = state.deadquote_start_ms.filter(|&start| start < state.ms) else {
         return OwnerDrawPaint::Painted;
     };
@@ -948,13 +941,6 @@ fn paint_deadquote(
         .unwrap_or(key);
     let color = [args.color[0], args.color[1], args.color[2], alpha];
     let res = crate::chrome::push_owner_wrapped_text(args, quote, color, frame);
-    diag::info!(
-        Ui,
-        "PROBE paint_deadquote_cmd: quote={quote:?} scale={} rect={:?} res={res:?} cmd={:?}",
-        args.item.text_scale,
-        args.rect,
-        frame.list.cmds.last()
-    );
     match res {
         Ok(()) => OwnerDrawPaint::Painted,
         Err(kind) => OwnerDrawPaint::Gap(kind),
