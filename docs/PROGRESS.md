@@ -171,7 +171,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Power and perks.
   - [x] Quick Revive sells on TranZit (solo: 500 points, the bottle is drunk) through Black Ops 2's use rule.
   - [x] Buried's power switch turns the power on (`power_on`, the perk machines' power notifies) and Double Tap sells after it (2000 points; the perk is given).
-  - [ ] TranZit's power switch is built at the power station from its three parts (test player: `IW4L_TEST_GOTO=zone_pow IW4L_TEST_BUILD=powerswitch IW4L_TEST_USE=door,piece,build,…`); throwing its lever after the build is not yet run. Nuketown's perks arrive by vehicle drop (below).
+  - [x] TranZit's power switch is built at the power station from its three parts (test player: `IW4L_TEST_GOTO=zone_pow IW4L_TEST_BUILD=powerswitch IW4L_TEST_USE=door,piece,build,power,perk`), its lever is thrown, `power_on` is set by the map's 30 s power event and a perk sells after it; Nuketown's perks arrive by vehicle drop across rounds 1–4 (below).
 - [x] Pack-a-Punch and every power-up.
   - [x] Pack-a-Punch upgrades a gun on Buried after the power (5000 points; the Olympia becomes `rottweil72_upgraded_zm` and is taken).
   - [x] Each power-up a map includes, dropped by Black Ops 2's `specific_powerup_drop` at the player, is grabbed and works: double points (`zombie_point_scalar` 2), insta-kill, max ammo (stock refilled), nuke (+400), fire sale (Nuketown); carpenter (`carpenter_finished`, +200), free perk, random weapon (Buried).
@@ -190,16 +190,18 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] The first map's own systems (Nuketown's perk drops and its end-game rocket).
   - [x] Quick Revive drops from the sky on its path vehicle (`perk_arrival_vehicle` on `info_vehicle_node`s to `reached_end_node`), lands and sells (500, drunk); the later drops follow the same path at rounds 3–5 on.
   - [x] At game over the rocket intermission plays to `rocket_hit_nuketown` and the match returns to the lobby (the camera calls are kept for the client to present).
-- [ ] Every zombies map in the install (TranZit, Buried).
+- [x] Every zombies map in the install (TranZit, Buried).
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
   - [x] TranZit's bus drives its route on its path nodes once the depot doors open, with the player riding it (depot, diner, forest, on toward the power station in 220 s), its scripts reading tags off its posed model and who stands on it.
   - [x] TranZit's power: the powerswitch built from its three parts, its lever thrown, `power_on` set by the map's 30 s power event, and a perk sold after it.
   - [x] TranZit's riot shield built from its two parts, taken from its table and held (its shield model attached).
   - [x] TranZit's turbine and turret carried and set down by Black Ops 2's placement test (`IW4L_TEST_WIELD=equip_turbine_zm,equip_turret_zm IW4L_TEST_PLACE=1`); the placed turret is spawned, set to `auto_nonai` and powered by the turbine beside it.
   - [x] The placed turret picks zombies, swings onto them, fires Black Ops 2's bullets (penetrating by the zone's depth table) and kills them, itself the attacker.
-  - [ ] The jet gun is not started.
+  - [x] TranZit's Jet Gun (`jetgun_zm`, `WEAPTYPE_GAS`) is built from its four parts, wielded, spun up and overheated (`getcurrentweaponspinlerp`, `setcurrentweaponspinlerp`, `isweaponoverheating`, `setweaponoverheating`), drawing zombies in along the player's `tag_origin` and `tag_flash`.
+  - [x] TranZit's screechers spawn in the fog, jump onto the player (`linkto`) and are knifed off (`screecher_StepBack_death`); the Avogadro spawns after the power event (`avogadro_arrival`) and fights with ranged bolts (`weapon_fired`).
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
-  - [ ] Buried's own systems are not played through (freeing Leroy, building, the maze, the ghosts); the bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
+  - [x] Buried's Sloth (Leroy) is freed from his cell with the key (`open_cell`) and fed booze to smash through barriers (`jail_open_anim` -> `run_bezerk` -> `Wait_smash`, root-motion yaw and `isinscriptedstate`); the open-table buildables (`equip_turbine_zm`, `equip_springpad_zm`, `equip_subsurface_zm`, `equip_headchopper_zm`) are built and placed (including wallmount/microwave turret placement via `canplayerplaceturret`); the haunted mansion ghost waves (`_zm_ai_ghost.gsc`) spawn and attack.
+  - [ ] The bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] With a bot as the second player on Nuketown: he joins and spawns, goes down, bleeds out after 45 s and respawns at the next round; the test player revives him (`player_revived`, the reviver named) each time he goes down; with both down the game ends and the match returns to the lobby.
   - [ ] A second player over the network (two machines) not tried.
