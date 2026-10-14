@@ -348,7 +348,7 @@ fn seconds_ms(seconds: f32) -> Result<i64, String> {
     Ok((seconds * 1000.0).round().max(1.0) as i64)
 }
 
-fn start_motion(
+pub(crate) fn start_motion(
     world: &mut World,
     receiver: &Value,
     field: &'static str,

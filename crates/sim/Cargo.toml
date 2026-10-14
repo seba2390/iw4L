@@ -14,6 +14,7 @@ gsc.workspace = true
 structured_data_iw4.workspace = true
 bevy_ecs.workspace = true
 sha2.workspace = true
+chrono.workspace = true
 diag.workspace = true
 playerstate_iw4.workspace = true
 movement_iw4.workspace = true

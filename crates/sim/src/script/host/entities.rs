@@ -23,6 +23,12 @@ pub struct LevelData {
     /// The longest each effect lives once it begins (msec), by lowercase
     /// name, for what a client asks of the effects it plays.
     pub effect_lives: BTreeMap<String, i32>,
+    /// The map's primary lights, by index, as a client's `makelight` reads
+    /// them.
+    pub primary_lights: Vec<MapPrimaryLight>,
+    /// The types of the keys a client's structs and entities keep, when its
+    /// game lists them apart from the server's.
+    pub client_keys: Option<BTreeMap<String, KeyType>>,
     pub entities: Vec<Vec<(String, String)>>,
     pub tables: BTreeMap<String, StringTable>,
     pub keys: BTreeMap<String, KeyType>,
@@ -39,6 +45,19 @@ pub struct LevelData {
     pub raw_files: BTreeMap<String, Arc<str>>,
     pub schemas: BTreeMap<String, Arc<structured_data_iw4::DefinitionSet>>,
     pub player_data_defaults: Option<crate::PlayerDataDefaults>,
+}
+
+/// A primary light the map was compiled with.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MapPrimaryLight {
+    pub exponent: u8,
+    pub color: [f32; 3],
+    pub direction: [f32; 3],
+    pub origin: [f32; 3],
+    pub radius: f32,
+    /// Cosines of half its outer and inner cone angles.
+    pub cos_half_fov_outer: f32,
+    pub cos_half_fov_inner: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -525,7 +544,7 @@ impl RoundScript {
             if classname.is_empty() || classname.starts_with("node_") {
                 continue;
             }
-            if entity_fields.is_some() && is_client_map_entity(classname, pairs) {
+            if entity_fields.is_some() && !self.client && is_client_map_entity(classname, pairs) {
                 continue;
             }
             let client_only = t5 && is_t5_client_map_entity(classname, pairs);
@@ -543,6 +562,13 @@ impl RoundScript {
                     let mut key = key.to_ascii_lowercase();
                     if classname == "light" && key == "pl#" {
                         key.truncate(2);
+                    }
+                    // A client that lists its keys' types keeps only those.
+                    if entity_fields.is_some() {
+                        if let Some(ty) = keys.get(&key) {
+                            self.set_object_field(struct_id, &field(&key), typed_key(*ty, value));
+                        }
+                        continue;
                     }
                     if key == "angle" {
                         self.set_object_field(
