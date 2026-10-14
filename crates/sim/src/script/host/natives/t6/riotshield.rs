@@ -299,6 +299,37 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             fwd[i] * middle[0] + left[i] * middle[1] + up[i] * middle[2] + origin[i]
         })))
     });
+    // gsc_deployriotshield(owner, shield_ent): spawns the deployed shield's
+    // retrieve trigger and returns it.
+    registry.register(Namespace::Function, "deployriotshield", |world, _, args| {
+        let owner = super::super::engine::entity_id(world, super::arg(args, 0)?)?;
+        let shield_ent = super::super::engine::entity_id(world, super::arg(args, 1)?)?;
+        if world
+            .resource::<RoundScript>()
+            .player_client(owner)
+            .is_none()
+        {
+            return Err("Owner entity is not a player".into());
+        }
+        let origin = match world
+            .resource_mut::<RoundScript>()
+            .object_field(shield_ent, "origin")
+        {
+            Value::Vector(v) => v,
+            _ => [0.0; 3],
+        };
+        super::spawn_trigger(
+            world,
+            "trigger_radius_use",
+            &[
+                Value::string("trigger_radius_use"),
+                Value::Vector(origin),
+                Value::Int(0),
+                Value::Float(72.0),
+                Value::Float(96.0),
+            ],
+        )
+    });
 }
 
 /// The engine's `AngleVectors`: forward, right, up.

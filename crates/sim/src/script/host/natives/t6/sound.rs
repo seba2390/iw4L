@@ -108,6 +108,41 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .ok_or("t6.sound.aliases: the sound alias catalog is not installed")?;
         Ok(Value::Int(exists.into()))
     });
+    registry.register(
+        Namespace::Function,
+        "soundgetplaybacktime",
+        |world, _, args| {
+            let alias = string(args, 0)?;
+            let exists = crate::frame::FrameWorld::from_world(world)
+                .script_sound_exists(&alias)
+                .ok_or("t6.sound.aliases: the sound alias catalog is not installed")?;
+            Ok(Value::Int(if exists {
+                UNREPORTED_LENGTH_MS as i32
+            } else {
+                -1
+            }))
+        },
+    );
+    registry.register(
+        Namespace::Method,
+        "playsoundasmaster",
+        |world, receiver, args| {
+            let id = super::super::engine::entity_id(world, receiver)?;
+            let alias = if args.is_empty() {
+                String::new()
+            } else {
+                string(args, 0)?
+            };
+            let known = crate::frame::FrameWorld::from_world(world)
+                .script_sound_exists(&alias)
+                .unwrap_or(false);
+            if !alias.is_empty() && known {
+                let at = super::movement::origin_of(world, id);
+                super::super::engine::sound_alias_event(world, at, &alias)?;
+            }
+            Ok(Value::Undefined)
+        },
+    );
     // gscm_playsoundontag(alias, [tag]): the sound at the tag (a tag the
     // model lacks is an error), else at the entity; an unknown alias plays
     // nothing.

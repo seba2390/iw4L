@@ -599,6 +599,91 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
+    registry.register(Method, "getweaponoptic", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        let _weapon = named(world, args)?;
+        Ok(Value::string(""))
+    });
+    registry.register(Function, "getbaseweaponitemindex", |world, _, args| {
+        let name = string(args, 0)?;
+        let idx = weapon_index(world, &name)?;
+        if idx == 0 {
+            return Err(format!(
+                "GetBaseWeaponItemIndex: invalid weapon {name} passed."
+            ));
+        }
+        Ok(Value::Int(idx as i32))
+    });
+    registry.register(Function, "getreffromitemindex", |world, _, args| {
+        let index = int(args, 0)?;
+        let tables = world.resource::<RoundScript>().tables.clone();
+        let Some(table) = crate::script::host::tables::table(&tables, STATS_TABLE) else {
+            return Ok(Value::string(""));
+        };
+        let key = index.to_string();
+        let found = (0..table.rows)
+            .find(|&row| table.cell(row, 0) == Some(key.as_str()))
+            .and_then(|row| table.cell(row, 4))
+            .unwrap_or("");
+        Ok(Value::String(found.into()))
+    });
+    registry.register(Function, "getdroppedweapons", |world, _, _| {
+        new_array(world, Vec::new())
+    });
+    registry.register(Method, "isweaponoverheating", |world, receiver, args| {
+        player_entity(world, receiver)?;
+        let heat = args
+            .first()
+            .is_some_and(|v| matches!(v, Value::Int(n) if *n != 0));
+        if args.len() > 1 {
+            string(args, 1)?;
+        }
+        Ok(if heat {
+            Value::Float(0.0)
+        } else {
+            Value::Int(0)
+        })
+    });
+    registry.register(Method, "setweaponoverheating", |world, receiver, args| {
+        player_entity(world, receiver)?;
+        int(args, 0)?;
+        super::float(args, 1)?;
+        if args.len() > 2 {
+            string(args, 2)?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getcurrentweaponspinlerp", |world, receiver, _| {
+        player_entity(world, receiver)?;
+        Ok(Value::Float(0.0))
+    });
+    registry.register(
+        Method,
+        "setcurrentweaponspinlerp",
+        |world, receiver, args| {
+            player_entity(world, receiver)?;
+            super::float(args, 0)?;
+            Ok(Value::Undefined)
+        },
+    );
+    registry.register(Method, "weaponplayejectbrass", |world, receiver, _| {
+        player_entity(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "isweaponviewonlylinked", |world, receiver, _| {
+        player_entity(world, receiver)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "finishmeleehit", |world, receiver, args| {
+        player_entity(world, receiver)?;
+        string(args, 1)?;
+        super::vector(args, 2)?;
+        super::vector(args, 3)?;
+        int(args, 4)?;
+        int(args, 5)?;
+        int(args, 6)?;
+        Ok(Value::Undefined)
+    });
     // gscm_calcweaponoptions: packs the player's entity number and weapon
     // options (camo, lens, reticle, tag, emblem); the two-argument custom
     // class form is refused (`t6.weapons.class_options`).

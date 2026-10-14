@@ -1432,6 +1432,74 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .insert(("world".to_owned(), 0, field), value);
         Ok(Value::Undefined)
     });
+    registry.register(Function, "codegetworldclientfield", |world, _, args| {
+        let name = string(args, 0)?;
+        let fields = world.get_resource_or_insert_with(ClientFields::default);
+        let field = fields
+            .0
+            .iter()
+            .position(|field| field.pool == "world" && field.name == name)
+            .ok_or_else(|| format!("clientfield {name} is not registered"))?;
+        let zero = if fields.0[field].float {
+            Value::Float(0.0)
+        } else {
+            Value::Int(0)
+        };
+        Ok(fields
+            .1
+            .get(&("world".to_owned(), 0, field))
+            .cloned()
+            .unwrap_or(zero))
+    });
+    registry.register(
+        Function,
+        "codegetplayerstateclientfield",
+        |world, _, args| {
+            let receiver = arg(args, 0)?.clone();
+            let client = client_of(world, &receiver).map_err(|_| {
+                String::from("GScr_CodeGetPlayerStateClientField: must be called on a player.")
+            })?;
+            let name = string(args, 1)?;
+            let fields = world.get_resource_or_insert_with(ClientFields::default);
+            let field = fields
+                .0
+                .iter()
+                .position(|field| field.pool == "toplayer" && field.name == name)
+                .ok_or("Client field does not exist.")?;
+            let zero = if fields.0[field].float {
+                Value::Float(0.0)
+            } else {
+                Value::Int(0)
+            };
+            Ok(fields
+                .1
+                .get(&("toplayer".to_owned(), u64::from(client), field))
+                .cloned()
+                .unwrap_or(zero))
+        },
+    );
+    registry.register(Method, "setperkfortrigger", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let classname = world.resource::<RoundScript>().entities[&id].classname.clone();
+        if !HINT_CLASSES.contains(&&*classname) {
+            return Err("setperkfortrigger: trigger entity must be of type trigger_use, trigger_use_touch, trigger_radius, trigger_box or trigger_radius_use".into());
+        }
+        string(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setignoreentfortrigger", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let classname = world.resource::<RoundScript>().entities[&id]
+            .classname
+            .clone();
+        if &*classname != "trigger_radius_use" {
+            return Err(
+                "setperkfortrigger: trigger entity must be of type trigger_radius_use".into(),
+            );
+        }
+        super::engine::entity_id(world, arg(args, 0)?)?;
+        Ok(Value::Undefined)
+    });
 
     // Living actors whose team is one of those named; none names every team
     // but the free one. Dogs are left out.
@@ -1943,11 +2011,174 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "clientclaimtrigger"),
         (Method, "clientreleasetrigger"),
         (Method, "releaseclaimedtrigger"),
+        (Method, "settimer"),
+        (Method, "settenthstimer"),
+        (Method, "settenthstimerup"),
+        (Method, "setclock"),
+        (Method, "setplayernamestring"),
+        (Method, "setwaypoint"),
+        (Method, "moveovertime"),
+        (Method, "scaleovertime"),
+        (Method, "changefontscaleovertime"),
+        (Method, "setcod7decodefx"),
+        (Method, "clearalltextafterhudelem"),
+        (Method, "iprintln"),
+        (Method, "iprintlnbold"),
+        (Function, "map_restart"),
     ] {
         if let Some(native) = shared.get(namespace, name) {
             registry.register(namespace, name, native);
         }
     }
+    for (dev_name, engine_name) in [
+        ("devaddpitch", "addpitch"),
+        ("devaddyaw", "addyaw"),
+        ("devaddroll", "addroll"),
+    ] {
+        if let Some(native) = shared.get(Method, engine_name) {
+            registry.register(Method, dev_name, native);
+        }
+    }
+    registry.register(Function, "missionfailed", |_, _, _| Ok(Value::Undefined));
+    super::super::objectives::register(registry);
+    registry.register(Function, "spawnpathnode", |world, _, args| {
+        let classname = string(args, 0)?;
+        let origin = vector(args, 1)?;
+        let angles = vector(args, 2)?;
+        let mut pairs = Vec::new();
+        let mut i = 3;
+        while i + 1 < args.len() {
+            pairs.push((string(args, i)?, string(args, i + 1)?));
+            i += 2;
+        }
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let id = runtime.create_entity(EntityKind::Spawned, &classname)?;
+        runtime.set_object_field(id, "origin", Value::Vector(origin));
+        runtime.set_object_field(id, "angles", Value::Vector(angles));
+        for (key, val) in pairs {
+            runtime.set_object_field(id, &key, Value::String(val.into()));
+        }
+        Ok(Value::Object(id))
+    });
+    registry.register(Function, "objective_clearentity", |_, _, args| {
+        let idx = int(args, 0)?;
+        if !(0..=31).contains(&idx) {
+            return Err(format!(
+                "index {idx} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "objective_visibleteams", |_, _, args| {
+        let idx = int(args, 0)?;
+        if !(0..=31).contains(&idx) {
+            return Err(format!(
+                "index {idx} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        int(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "objective_setprogress", |_, _, args| {
+        let idx = int(args, 0)?;
+        if !(0..=31).contains(&idx) {
+            return Err(format!(
+                "index {idx} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        float(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "objective_setplayerusing", |world, _, args| {
+        let idx = int(args, 0)?;
+        if !(0..=31).contains(&idx) {
+            return Err(format!(
+                "index {idx} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        let ent = super::engine::entity_id(world, arg(args, 1)?)?;
+        if world.resource::<RoundScript>().player_client(ent).is_none() {
+            return Err("SetVisibleToPlayer called on non player entity\n".into());
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "objective_clearplayerusing", |world, _, args| {
+        let idx = int(args, 0)?;
+        if !(0..=31).contains(&idx) {
+            return Err(format!(
+                "index {idx} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        super::engine::entity_id(world, arg(args, 1)?)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "objective_setgamemodeflags", |world, _, args| {
+        let idx = int(args, 0)?;
+        if !(0..=31).contains(&idx) {
+            return Err(format!(
+                "index {idx} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        let flags = int(args, 1)? as u8;
+        world
+            .get_resource_or_insert_with(ObjectiveFlags::default)
+            .0
+            .insert(idx as u8, flags);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "objective_getgamemodeflags", |world, _, args| {
+        let idx = int(args, 0)?;
+        if !(0..=31).contains(&idx) {
+            return Err(format!(
+                "index {idx} is an illegal objective index. Valid indexes are 0 to 31\n"
+            ));
+        }
+        let flags = world
+            .get_resource::<ObjectiveFlags>()
+            .and_then(|f| f.0.get(&(idx as u8)).copied())
+            .unwrap_or(0);
+        Ok(Value::Int(i32::from(flags)))
+    });
+    registry.register(Method, "setpulsefx", |world, receiver, args| {
+        let is_hud = world
+            .resource::<RoundScript>()
+            .entity(receiver)
+            .is_some_and(|(_, e)| e.kind == EntityKind::HudElem);
+        if !is_hud {
+            return Err("not a hud element".into());
+        }
+        for i in 0..3 {
+            let t = int(args, i)?;
+            if t < 0 {
+                return Err(format!("Time ({t}) must be greater than zero."));
+            }
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setperks", |world, receiver, args| {
+        let is_hud = world
+            .resource::<RoundScript>()
+            .entity(receiver)
+            .is_some_and(|(_, e)| e.kind == EntityKind::HudElem);
+        if !is_hud {
+            return Err("not a hud element".into());
+        }
+        super::engine::entity_id(world, arg(args, 0)?)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "clearalltextafterhudelem", |_, _, _| {
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "newdebughudelem", |_, _, _| {
+        Err("Debug hudelems are not built into this exe".into())
+    });
+    registry.register(Function, "newdamageindicatorhudelem", |world, _, args| {
+        let client = client_of(world, arg(args, 0)?)?;
+        super::super::hud::new_hud_elem(
+            world,
+            crate::script::host::entities::HudAudience::Client(client),
+        )
+    });
     // Black Ops' own player builtins of the same name.
     let black_ops = NativeRegistry::engine_services().with_black_ops();
     for (namespace, name) in [
@@ -2096,6 +2327,9 @@ const ENTITY_STRING_KEYS: [&str; 4] = ["classname", "target", "targetname", "scr
 /// Entity bounds the engine keeps that IW4L's entity does not.
 #[derive(Resource, Default)]
 struct EntityBounds(BTreeMap<u64, ([f32; 3], [f32; 3])>);
+
+#[derive(Resource, Default)]
+struct ObjectiveFlags(BTreeMap<u8, u8>);
 
 /// A trigger spawned by script: a radius trigger stands on its origin, a box
 /// is centred on it; a use radius trigger is at least 72 wide and 96 high,

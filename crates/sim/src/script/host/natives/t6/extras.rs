@@ -360,6 +360,192 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let tick = world.resource::<crate::step::StepRequest>().tick;
         Ok(Value::Int(i32::try_from(tick.0).unwrap_or(i32::MAX)))
     });
+    registry.register(Method, "snapshotacknowledged", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().player_client(id).is_none() {
+            let number = world.resource::<RoundScript>().entities[&id].number;
+            return Err(format!("entity {number} is not a player"));
+        }
+        super::int(args, 0)?;
+        Ok(Value::Int(1))
+    });
+    registry.register(Method, "launchragdoll", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        super::vector(args, 0)?;
+        if args.len() > 1 {
+            string(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "isragdoll", |world, receiver, _| {
+        super::super::engine::entity_id(world, receiver)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "bloodimpact", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        let kind = string(args, 0)?;
+        if !matches!(kind.as_str(), "normal" | "hero" | "none") {
+            return Err(
+                "BloodImpact() only takes \"normal\", \"hero\" or \"none\" as parameters.\n".into(),
+            );
+        }
+        Ok(Value::Int(1))
+    });
+    registry.register(Method, "sendfaceevent", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        string(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "recordkillmodifier", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        string(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "dropscavengeritem", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().player_client(id).is_none() {
+            let number = world.resource::<RoundScript>().entities[&id].number;
+            return Err(format!("entity {number} is not a player"));
+        }
+        let name = string(args, 0)?;
+        if super::weapon::weapon_index(world, &name)? == 0 {
+            return Err(format!(
+                "Scavenger Item \"{name}\" does not exist or has not been pre-cached."
+            ));
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "dropitem", |world, receiver, args| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().player_client(id).is_none() {
+            let number = world.resource::<RoundScript>().entities[&id].number;
+            return Err(format!("entity {number} is not a player"));
+        }
+        let name = string(args, 0)?;
+        if super::weapon::weapon_index(world, &name)? == 0 {
+            return Err(format!(
+                "Could not drop Item \"{name}\" does not exist or has not been pre-cached."
+            ));
+        }
+        if args.len() > 1 {
+            string(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setexpfog", |_, _, args| {
+        let start = number(args.first()).ok_or("setExpFog expects numbers")?;
+        if start < 0.0 {
+            return Err("setExpFog: startDist must be greater or equal to 0".into());
+        }
+        let halfway = number(args.get(1)).ok_or("setExpFog expects numbers")?;
+        if halfway <= 0.0 {
+            return Err("setExpFog: halfwayDist must be greater than 0".into());
+        }
+        for i in 2..6 {
+            number(args.get(i)).ok_or("setExpFog expects numbers")?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "getfogsettings", |world, _, _| {
+        super::super::super::arrays::new_array(world, vec![Value::Float(0.0); 17])
+    });
+    registry.register(Function, "setslowmotion", |_, _, args| {
+        if args.is_empty() {
+            return Err("SetSlowMotion requires at least 1 parameter.".into());
+        }
+        number(args.first()).ok_or("SetSlowMotion expects a start timescale")?;
+        if args.len() > 1 {
+            number(args.get(1)).ok_or("SetSlowMotion expects an end timescale")?;
+        }
+        if args.len() > 2 {
+            number(args.get(2)).ok_or("SetSlowMotion expects a duration")?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setclientnamemode", |_, _, args| {
+        let mode = string(args, 0)?;
+        if !matches!(mode.as_str(), "auto_change" | "manual_change") {
+            return Err("Unknown mode".into());
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setmapcenter", |world, _, args| {
+        let center = super::vector(args, 0)?;
+        world.resource_mut::<RoundScript>().engine.map_center = center;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "positionwouldtelefrag", |world, _, args| {
+        let pos = super::vector(args, 0)?;
+        let mins = [pos[0] - 15.0, pos[1] - 15.0, pos[2]];
+        let maxs = [pos[0] + 15.0, pos[1] + 15.0, pos[2] + 70.0];
+        Ok(Value::Int(telefrags(world, mins, maxs).into()))
+    });
+    registry.register(Function, "boundswouldtelefrag", |world, _, args| {
+        let mins = super::vector(args, 0)?;
+        let maxs = super::vector(args, 1)?;
+        Ok(Value::Int(telefrags(world, mins, maxs).into()))
+    });
+    registry.register(Function, "getreflectionlocs", |world, _, _| {
+        super::super::super::arrays::new_array(world, Vec::new())
+    });
+    registry.register(Method, "getreflectionorigin", |world, receiver, _| {
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let origin = match super::super::super::players::entity_field(world, id, "origin") {
+            Value::Vector(v) => v,
+            _ => [0.0; 3],
+        };
+        Ok(Value::Vector(origin))
+    });
+    registry.register(Function, "getlocalprofileint", |_, _, args| {
+        let name = string(args, 0)?;
+        Ok(Value::Int(
+            matches!(name.as_str(), "cg_mature" | "cg_blood").into(),
+        ))
+    });
+    registry.register(Function, "getdvarcolorred", |world, _, args| {
+        dvar_color(world, args, 0)
+    });
+    registry.register(Function, "getdvarcolorgreen", |world, _, args| {
+        dvar_color(world, args, 1)
+    });
+    registry.register(Function, "getdvarcolorblue", |world, _, args| {
+        dvar_color(world, args, 2)
+    });
+    registry.register(Function, "physicsexplosionsphere", |_, _, args| {
+        super::vector(args, 0)?;
+        let outer = super::int(args, 1)? & 0xffff;
+        let inner = super::float(args, 2)?;
+        if inner < 0.0 {
+            return Err("Radius is negative".into());
+        }
+        if (outer as f32) < inner {
+            return Err("Inner radius is outside the outer radius".into());
+        }
+        super::float(args, 3)?;
+        if args.len() > 4 {
+            super::float(args, 4)?;
+        }
+        if args.len() > 5 {
+            super::float(args, 5)?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "physicsjetthrust", |_, _, args| {
+        super::vector(args, 0)?;
+        super::vector(args, 1)?;
+        super::int(args, 2)?;
+        super::float(args, 3)?;
+        super::float(args, 4)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "physicslaunch", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        if args.len() == 2 {
+            super::vector(args, 0)?;
+            super::vector(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
     // gscm_playlocalsound: the sound for that player alone.
     registry.register(Method, "playlocalsound", |world, receiver, args| {
         let id = super::super::engine::entity_id(world, receiver)?;
@@ -441,4 +627,310 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         super::super::player::present(world, receiver, "shellshock", args)
     });
+    registry.register(Function, "addspawnpoints", |world, _, args| {
+        let team = super::team(args, 0)?;
+        let entries = super::super::super::arrays::array_values(
+            world,
+            args.get(1).ok_or("parameter 2 does not exist")?,
+        )?;
+        let mut points = Vec::with_capacity(entries.len());
+        for entry in &entries {
+            let id = super::super::engine::entity_id(world, entry)
+                .map_err(|_| String::from("contents of spawnpoints array must be entities"))?;
+            points.push(id);
+        }
+        let mut spawns = world.get_resource_or_insert_with(SpawnPoints::default);
+        let list = spawns.0.entry(team).or_default();
+        if list.len() + points.len() > 200 {
+            return Err("Adding to many spawn points to spawnpoint system.  Max: 200\n".into());
+        }
+        list.extend(points);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "clearspawnpoints", |world, _, _| {
+        world
+            .get_resource_or_insert_with(SpawnPoints::default)
+            .0
+            .clear();
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "placespawnpoint", |world, receiver, _| {
+        super::super::engine::entity_id(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "placespawnpoint", |world, _, args| {
+        if let Some(arg) = args.first() {
+            super::super::engine::entity_id(world, arg)?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setspawnpointrandomvariation", |_, _, args| {
+        super::float(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "predictspawnpoint", |world, receiver, args| {
+        super::super::engine::entity_id(world, receiver)?;
+        super::vector(args, 0)?;
+        if args.len() > 1 {
+            super::vector(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "getsortedspawnpoints", |world, _, args| {
+        let team = super::team(args, 0)?;
+        super::team(args, 1)?;
+        super::int(args, 2)?;
+        if args.len() > 3 {
+            let id = super::super::engine::entity_id(world, super::arg(args, 3)?)?;
+            if world.resource::<RoundScript>().player_client(id).is_none() {
+                return Err("getsortedspawnpoints: Entity must be a player".into());
+            }
+            if args.len() == 5 {
+                super::int(args, 4)?;
+            }
+        }
+        let list: Vec<Value> = world
+            .get_resource::<SpawnPoints>()
+            .and_then(|s| s.0.get(&team))
+            .map_or_else(Vec::new, |pts| {
+                pts.iter().copied().map(Value::Object).collect()
+            });
+        super::super::super::arrays::new_array(world, list)
+    });
+    registry.register(Function, "addsphereinfluencer", |world, _, args| {
+        let kind = super::int(args, 0)?;
+        if !(0..=7).contains(&kind) {
+            return Err("USAGE: addsphereinfluencer type must be a value from 0 to 6\n".into());
+        }
+        super::vector(args, 1)?;
+        super::float(args, 2)?;
+        super::float(args, 3)?;
+        super::int(args, 4)?;
+        string(args, 5)?;
+        if args.len() > 6 {
+            let curve = super::int(args, 6)?;
+            if !(0..=4).contains(&curve) {
+                return Err(
+                    "USAGE: addsphereinfluencer curve must be a value from 0 to 4\n".into(),
+                );
+            }
+        }
+        if args.len() > 7 {
+            super::float(args, 7)?;
+        }
+        if args.len() > 8 {
+            super::super::engine::entity_id(world, super::arg(args, 8)?)?;
+        }
+        let mut inf = world.get_resource_or_insert_with(Influencers::default);
+        let id = inf.next;
+        inf.next += 1;
+        inf.live.insert(id);
+        Ok(Value::Int(id))
+    });
+    registry.register(Function, "addcylinderinfluencer", |world, _, args| {
+        let kind = super::int(args, 0)?;
+        if !(0..=6).contains(&kind) {
+            return Err("USAGE: addcylinderinfluencer type must be a value from 0 to 6\n".into());
+        }
+        super::vector(args, 1)?;
+        super::vector(args, 2)?;
+        super::vector(args, 3)?;
+        super::float(args, 4)?;
+        super::float(args, 5)?;
+        super::float(args, 6)?;
+        super::int(args, 7)?;
+        string(args, 8)?;
+        if args.len() > 9 {
+            let curve = super::int(args, 9)?;
+            if !(0..=4).contains(&curve) {
+                return Err(
+                    "USAGE: addcylinderinfluencer curve must be a value from 0 to 4\n".into(),
+                );
+            }
+        }
+        if args.len() > 10 {
+            super::float(args, 10)?;
+        }
+        if args.len() > 11 {
+            super::super::engine::entity_id(world, super::arg(args, 11)?)?;
+        }
+        let mut inf = world.get_resource_or_insert_with(Influencers::default);
+        let id = inf.next;
+        inf.next += 1;
+        inf.live.insert(id);
+        Ok(Value::Int(id))
+    });
+    registry.register(Function, "removeinfluencer", |world, _, args| {
+        let id = super::int(args, 0)?;
+        let removed = world
+            .get_resource_or_insert_with(Influencers::default)
+            .live
+            .remove(&id);
+        if !removed {
+            return Err("Trying to remove influencer that does not exist\n".into());
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "enableinfluencer", |world, _, args| {
+        let id = super::int(args, 0)?;
+        super::int(args, 1)?;
+        let exists = world
+            .get_resource::<Influencers>()
+            .is_some_and(|inf| inf.live.contains(&id));
+        if !exists {
+            return Err("Trying to enable influencer that does not exist\n".into());
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setinfluencerteammask", |world, _, args| {
+        let id = super::int(args, 0)?;
+        super::int(args, 1)?;
+        let exists = world
+            .get_resource::<Influencers>()
+            .is_some_and(|inf| inf.live.contains(&id));
+        if !exists {
+            return Err(
+                "Trying to set influencer team mask on an influencer that does not exist\n".into(),
+            );
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "snapshotacknowledged", |world, _, args| {
+        super::array(world, args, 0)?;
+        Ok(Value::Int(1))
+    });
+    registry.register(Function, "getreflectionorigin", |_, _, args| {
+        Ok(Value::Vector(super::vector(args, 0)?))
+    });
+    registry.register(Function, "announcement", |_, _, args| {
+        if args.len() < 2 {
+            return Err("Announcement requires at least 2 parameters".into());
+        }
+        super::int(args, args.len() - 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setteamhasmeat", |_, _, args| {
+        super::team(args, 0)?;
+        super::int(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "obituary", |world, _, args| {
+        super::super::engine::entity_id(world, super::arg(args, 0)?)?;
+        if let Some(attacker @ Value::Object(_)) = args.get(1) {
+            let _ = super::super::engine::entity_id(world, attacker);
+        }
+        string(args, 2)?;
+        string(args, 3)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "addtestclient", |_, _, _| Ok(Value::Undefined));
+    registry.register(Function, "skillupdate", |_, _, args| {
+        super::int(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "getassignedteam", |world, _, args| {
+        let id = super::super::engine::entity_id(world, super::arg(args, 0)?)
+            .map_err(|_| String::from("getAssignedTeam Error: param 1 is not an entity."))?;
+        let team = match world.resource_mut::<RoundScript>().object_field(id, "team") {
+            Value::String(team) => team,
+            _ => "allies".into(),
+        };
+        Ok(Value::String(team))
+    });
+    for name in ["kick", "ban", "sethostmigrationstatus"] {
+        registry.register(Function, name, |_, _, args| {
+            super::int(args, 0)?;
+            Ok(Value::Undefined)
+        });
+    }
+    for name in [
+        "endlobby",
+        "disablezombies",
+        "enablezombies",
+        "starthostmigration",
+        "print",
+        "println",
+        "print3d",
+        "line",
+        "box",
+        "circle",
+        "debugstar",
+        "assert",
+        "assertmsg",
+        "adddebugcommand",
+        "execdevgui",
+        "fprintln",
+        "fprintfields",
+    ] {
+        registry.register(Function, name, |_, _, _| Ok(Value::Undefined));
+    }
+    registry.register(Function, "openfile", |_, _, args| {
+        string(args, 0)?;
+        string(args, 1)?;
+        Ok(Value::Int(-1))
+    });
+    registry.register(Function, "closefile", |_, _, args| {
+        super::int(args, 0)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Function, "freadln", |_, _, args| {
+        super::int(args, 0)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Function, "fgetarg", |_, _, args| {
+        super::int(args, 0)?;
+        super::int(args, 1)?;
+        Ok(Value::string(""))
+    });
+}
+
+#[derive(Resource, Default)]
+struct SpawnPoints(BTreeMap<usize, Vec<u64>>);
+
+#[derive(Resource)]
+struct Influencers {
+    next: i32,
+    live: std::collections::BTreeSet<i32>,
+}
+
+impl Default for Influencers {
+    fn default() -> Self {
+        Self {
+            next: 1,
+            live: std::collections::BTreeSet::new(),
+        }
+    }
+}
+
+fn telefrags(world: &mut World, mins: [f32; 3], maxs: [f32; 3]) -> bool {
+    let overlaps =
+        |lo: [f32; 3], hi: [f32; 3]| (0..3).all(|i| lo[i] <= maxs[i] && hi[i] >= mins[i]);
+    let frame = crate::frame::FrameWorld::from_world(world);
+    for id in frame.client_ids_sorted() {
+        let alive = frame
+            .client_meta(id)
+            .is_some_and(|m| m.lifecycle == crate::ClientLifecycle::Alive);
+        if alive && let Some(ps) = frame.player(id) {
+            let o = ps.origin;
+            if overlaps(
+                [o[0] - 15.0, o[1] - 15.0, o[2]],
+                [o[0] + 15.0, o[1] + 15.0, o[2] + 70.0],
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn dvar_color(world: &World, args: &[Value], index: usize) -> Result<Value, String> {
+    let name = string(args, 0)?.to_ascii_lowercase();
+    let value = world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get(&name)
+        .and_then(|text| text.split_whitespace().nth(index))
+        .and_then(|part| part.parse::<f32>().ok())
+        .map_or(0.0, |v| v.clamp(0.0, 1.0));
+    Ok(Value::Float(value))
 }

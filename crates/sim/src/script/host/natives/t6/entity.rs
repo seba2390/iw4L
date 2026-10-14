@@ -237,10 +237,129 @@ fn ground_trace(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, S
     )
 }
 
+fn physics_trace(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    let (start, end) = (vector(args, 0)?, vector(args, 1)?);
+    let mins = if args.len() >= 3 {
+        vector(args, 2)?
+    } else {
+        [0.0; 3]
+    };
+    let maxs = if args.len() >= 4 {
+        vector(args, 3)?
+    } else {
+        [0.0; 3]
+    };
+    let ignore = trace_ignore(world, args.get(4));
+    let flags = if args.len() >= 6 {
+        super::int(args, 5)?
+    } else {
+        1
+    };
+    let mut mask = 0u32;
+    if flags & 1 != 0 {
+        mask |= 0x0280_ec93;
+    }
+    if flags & 2 != 0 {
+        mask |= 0x211;
+    }
+    if flags & 4 != 0 {
+        mask |= 0x20;
+    }
+    if flags & 8 != 0 {
+        mask |= 0x3_76c0;
+    }
+    if flags == 0x10 {
+        mask = 0x200;
+    }
+    let (fraction, normal, collider) = if mins == [0.0; 3] && maxs == [0.0; 3] {
+        match entity_trace(world, start, end, mask, ignore) {
+            TraceOutcome::Hit {
+                fraction,
+                normal,
+                collider,
+                ..
+            } => (fraction, normal, Some(collider)),
+            TraceOutcome::StartSolid { collider, .. } => (0.0, [0.0; 3], collider),
+            _ => (1.0, [0.0; 3], None),
+        }
+    } else {
+        let hit = super::super::engine::trace(world, start, end, mins, maxs, mask);
+        let fraction = if hit.startsolid != 0 {
+            0.0
+        } else {
+            hit.fraction.clamp(0.0, 1.0)
+        };
+        (fraction, hit.normal, None)
+    };
+    let position: [f32; 3] = std::array::from_fn(|i| start[i] + (end[i] - start[i]) * fraction);
+    let entity = collider.map_or(Value::Undefined, |c| collider_entity(world, c));
+    let (normal, surface) = match collider {
+        Some(collider) if fraction < 1.0 => (normal, surface(collider)),
+        _ if fraction < 1.0 => (normal, "default"),
+        _ => {
+            let d: [f32; 3] = std::array::from_fn(|i| end[i] - start[i]);
+            let length = dot(d, d).sqrt();
+            let d = if length > 0.0 {
+                d.map(|c| c / length)
+            } else {
+                d
+            };
+            (d, "none")
+        }
+    };
+    keyed_array(
+        world,
+        vec![
+            ("fraction", Value::Float(fraction)),
+            ("position", Value::Vector(position)),
+            ("entity", entity),
+            ("normal", Value::Vector(normal)),
+            ("surfacetype", Value::string(surface)),
+        ],
+    )
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
     registry.register(Function, "groundtrace", ground_trace);
+    registry.register(Function, "physicstrace", physics_trace);
+    registry.register(Method, "getshootatpos", |world, receiver, _| {
+        let id = entity_id(world, receiver)?;
+        if let Some(client) = world.resource::<RoundScript>().player_client(id)
+            && let Some(eye) = crate::script_player::eye(
+                &crate::frame::FrameWorld::from_world(world),
+                crate::ClientId(client),
+            )
+        {
+            return Ok(Value::Vector(eye));
+        }
+        let origin = vector_field(world, id, "origin");
+        let is_actor = world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .is_some_and(|e| e.kind == super::super::super::entities::EntityKind::Actor);
+        Ok(Value::Vector([
+            origin[0],
+            origin[1],
+            origin[2] + if is_actor { 56.0 } else { 0.0 },
+        ]))
+    });
+    registry.register(Method, "setplayercollision", |world, receiver, args| {
+        entity_id(world, receiver)?;
+        super::int(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setforcenocull", |world, receiver, _| {
+        entity_id(world, receiver)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setscriptmoverflag", |world, receiver, args| {
+        entity_id(world, receiver)?;
+        super::int(args, 0)?;
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "getlinkedent", |world, receiver, _| {
         let id = entity_id(world, receiver)?;
         Ok(world
