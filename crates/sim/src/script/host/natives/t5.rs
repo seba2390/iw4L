@@ -16,7 +16,9 @@ pub(crate) struct T5State {
     spawn_points: BTreeMap<Arc<str>, Vec<Value>>,
     randomness: f32,
     base_weights: Vec<(i32, [f32; 3], f32, f32)>,
-    client_flags: BTreeMap<u64, u32>,
+    pub(crate) client_flags: BTreeMap<u64, u16>,
+    pub(crate) has_eyes: std::collections::BTreeSet<u64>,
+    pub(crate) transmit_targetname: std::collections::BTreeSet<u64>,
     dstats: BTreeMap<(u32, String), Value>,
     statuses: std::collections::BTreeSet<(u32, &'static str)>,
     client_systems: Vec<Arc<str>>,
@@ -1209,18 +1211,43 @@ fn register_player(registry: &mut NativeRegistry) {
 fn register_entity(registry: &mut NativeRegistry) {
     registry.register(Method, "setclientflag", |world, receiver, args| {
         let (id, bit) = (super::engine::entity_id(world, receiver)?, int(args, 0)?);
-        *t5(world).client_flags.entry(id).or_default() |= 1 << bit.clamp(0, 31);
+        if !(0..16).contains(&bit) {
+            return Err(format!(
+                "SetClientFlag: Index {bit} out of range (0 - 15)\n"
+            ));
+        }
+        *t5(world).client_flags.entry(id).or_default() |= 1 << bit;
         Ok(Value::Undefined)
     });
     registry.register(Method, "clearclientflag", |world, receiver, args| {
         let (id, bit) = (super::engine::entity_id(world, receiver)?, int(args, 0)?);
-        *t5(world).client_flags.entry(id).or_default() &= !(1 << bit.clamp(0, 31));
+        if !(0..16).contains(&bit) {
+            return Err(format!(
+                "ClearClientFlag: Index {bit} out of range (0 - 15)\n"
+            ));
+        }
+        *t5(world).client_flags.entry(id).or_default() &= !(1 << bit);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setclientflagasval", |world, receiver, args| {
+        let (id, val) = (super::engine::entity_id(world, receiver)?, int(args, 0)?);
+        if !(0..0x10000).contains(&val) {
+            return Err(format!(
+                "SetClientFlagAsVal: Index {val} out of range (0 - 15)\n"
+            ));
+        }
+        t5(world).client_flags.insert(id, val as u16);
         Ok(Value::Undefined)
     });
     registry.register(Method, "getclientflag", |world, receiver, args| {
         let (id, bit) = (super::engine::entity_id(world, receiver)?, int(args, 0)?);
         let flags = t5(world).client_flags.get(&id).copied().unwrap_or(0);
-        Ok(Value::Int((flags >> bit.clamp(0, 31) & 1) as i32))
+        Ok(Value::Int(i32::from((flags >> bit.clamp(0, 15)) & 1)))
+    });
+    registry.register(Method, "transmittargetname", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        t5(world).transmit_targetname.insert(id);
+        Ok(Value::Undefined)
     });
     registry.register(Method, "setinvisibletoall", |world, receiver, _| {
         visibility(world, receiver, |e, _| {

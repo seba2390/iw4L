@@ -79,9 +79,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setailimit", |_, _, _| Ok(Value::Undefined));
     registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
     registry.register(Method, "setexploderid", |_, _, _| Ok(Value::Undefined));
-    // Script-state tracing is a developer aid; eye glow is drawn from the head.
+    // Script-state tracing is a developer aid; `haseyes` sets the entity's
+    // eye-glow flag in the snapshot.
     registry.register(Method, "trackscriptstate", |_, _, _| Ok(Value::Undefined));
-    registry.register(Method, "haseyes", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "haseyes", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if args.len() != 1 {
+            return Err("HasEyes() called with wrong params.\n".into());
+        }
+        if super::super::args::int(args, 0)? != 0 {
+            world.resource_mut::<RoundScript>().t5.has_eyes.insert(id);
+        } else {
+            world.resource_mut::<RoundScript>().t5.has_eyes.remove(&id);
+        }
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "isnotarget", |world, receiver, _| {
         let id = match receiver {
             Value::Object(id) => *id,

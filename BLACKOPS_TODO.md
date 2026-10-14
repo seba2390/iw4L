@@ -30,13 +30,14 @@ teleporter carries players to the projection room and back.
 Black Ops' client scripts (CSC) now run on a client VM of their own
 (`script::client`, its own world, threads and natives, fed after the
 server's frame): Kino's client `main` starts its music, ambient, fx and
-weapon threads; the server's client system states, `clientNotify`s and
-client exploders reach them; its random ambient one-shots and its loop
-emitters (fires, steam, chandeliers, power boxes, the projector) play, and
-the player's footsteps play through `CodeCallback_PlayerFootstep`. Still
-unrun on the client: effects, lights, models and client copies of the
-server's entities (`setclientflag`), music (it needs playback feedback from
-the audio), line emitters and ambient rooms (`t5.csc.run`).
+weapon threads; the server's client system states, `clientNotify`s, client
+exploders, mirrored snapshot entities (`entityspawned`, `playerspawned`,
+`entityshutdown`, `zombie_eye_callback`) and `setclientflag` changes reach
+them; its random ambient one-shots and its loop emitters (fires, steam,
+chandeliers, power boxes, the projector) play, and the player's footsteps
+play through `CodeCallback_PlayerFootstep`. Still unrun on the client:
+effects, lights, models, music (it needs playback feedback from the audio),
+line emitters and ambient rooms (`t5.csc.run`).
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are

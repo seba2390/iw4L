@@ -1371,7 +1371,9 @@ pub(crate) fn advance_scheduler(world: &mut World) {
                 super::host::entities::EntityKind::Missile(id) => Some((id, entity.number)),
                 _ => None,
             });
-        if let Some((id, number)) = missile {
+        if !world.resource::<RoundScript>().client
+            && let Some((id, number)) = missile
+        {
             let mut frame = crate::frame::FrameWorld::from_world(world);
             if frame
                 .projectile_by_number(number)

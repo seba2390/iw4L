@@ -215,6 +215,35 @@ pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String
         .collect()
 }
 
+/// A server entity mirrored into the client's snapshot (`0..0x3ff`).
+#[derive(Clone, Debug)]
+struct MirroredEntity {
+    client_object: u64,
+    flags: u16,
+    has_eyes: bool,
+    spawned_callback: bool,
+}
+
+/// What the client sees of a server entity in its snapshot.
+#[derive(Clone, Debug)]
+struct ServerEntitySnapshot {
+    server_id: u64,
+    number: i32,
+    kind: EntityKind,
+    classname: Arc<str>,
+    ent_type: &'static str,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    model: Value,
+    species: Option<&'static str>,
+    is_dog: Option<bool>,
+    weapon: Option<String>,
+    targetname: Option<Value>,
+    client_flags: u16,
+    has_eyes: bool,
+    hidden: bool,
+}
+
 /// The client VM: its world, and the entries it starts with once the
 /// client has a snapshot.
 #[derive(Resource)]
@@ -222,6 +251,7 @@ pub(crate) struct ClientScripts {
     world: World,
     entries: Vec<String>,
     callbacks: Option<game_api::ClientCallbacks>,
+    mirrored: std::collections::BTreeMap<u64, MirroredEntity>,
     started: bool,
     stopped: bool,
 }
@@ -271,11 +301,14 @@ pub(crate) fn install(
     let local = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let object = runtime
-            .create_entity(EntityKind::Spawned, "player")
+            .create_player(0)
             .map_err(|m| client_fault("install", m))?;
-        if let Some(entity) = runtime.entities.get_mut(&object) {
-            entity.number = 0;
-        }
+        runtime.set_object_field(object, "origin", Value::Vector([0.0; 3]));
+        runtime.set_object_field(object, "angles", Value::Vector([0.0; 3]));
+        runtime.set_object_field(object, "type", Value::string("player"));
+        runtime.set_object_field(object, "species", Value::string("human"));
+        runtime.set_object_field(object, "model", Value::string(""));
+        runtime.set_object_field(object, "serverflags", Value::Int(0));
         LocalClient {
             object,
             has_snapshot: false,
@@ -290,6 +323,7 @@ pub(crate) fn install(
         world,
         entries,
         callbacks,
+        mirrored: Default::default(),
         started: false,
         stopped: false,
     });
@@ -322,7 +356,15 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             (request.tick, request.reason)
         };
         if reason.advances_authority_world() {
-            run_frame(&mut client, tick, reason, messages);
+            for (name, value) in &server.resource::<MatchScript>().dvars {
+                client
+                    .world
+                    .resource_mut::<MatchScript>()
+                    .dvars
+                    .insert(name.clone(), value.clone());
+            }
+            let snapshots = collect_server_entities(server);
+            run_frame(&mut client, tick, reason, messages, snapshots);
             let sounds = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().sounds);
             for sound in sounds {
                 super::host::natives::engine::sound_to_client(
@@ -337,25 +379,164 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
     server.insert_resource(client);
 }
 
+fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
+    let mut snapshots = Vec::new();
+    let ids: Vec<(u64, super::host::entities::ScriptEntity)> = server
+        .resource::<RoundScript>()
+        .entities
+        .iter()
+        .map(|(id, e)| (*id, e.clone()))
+        .collect();
+    for (id, entity) in ids {
+        let (is_world, turret, plane, flags, has_eyes, transmit_tn) = {
+            let runtime = server.resource::<RoundScript>();
+            (
+                runtime.engine.world == Some(id),
+                runtime.engine.turrets.contains_key(&id),
+                runtime.planes.contains_key(&id),
+                runtime.t5.client_flags.get(&id).copied().unwrap_or(0),
+                runtime.t5.has_eyes.contains(&id),
+                runtime.t5.transmit_targetname.contains(&id),
+            )
+        };
+        if is_world {
+            continue;
+        }
+        let ent_type = match entity.kind {
+            EntityKind::Player => "player",
+            EntityKind::Actor => "actor",
+            EntityKind::Corpse { .. } => "NA",
+            EntityKind::Missile(_) => "missile",
+            EntityKind::Vehicle => {
+                if plane {
+                    "plane"
+                } else {
+                    "vehicle"
+                }
+            }
+            EntityKind::Map | EntityKind::Spawned => {
+                if entity.kind == EntityKind::Map && entity.client_only {
+                    continue;
+                }
+                if turret {
+                    "mg42"
+                } else if matches!(&*entity.classname, "script_model" | "script_brushmodel")
+                    || (&*entity.classname == "script_origin"
+                        && (entity.kind == EntityKind::Spawned
+                            || transmit_tn
+                            || flags != 0
+                            || entity.linked_to.is_some()
+                            || entity.loop_sound.is_some()))
+                {
+                    "scriptmover"
+                } else {
+                    continue;
+                }
+            }
+            EntityKind::HudElem | EntityKind::Item(_) => continue,
+        };
+        let (mut origin, mut angles, model, species, is_dog, targetname) = {
+            let mut runtime = server.resource_mut::<RoundScript>();
+            let origin = match runtime.object_field(id, "origin") {
+                Value::Vector(v) => v,
+                _ => [0.0; 3],
+            };
+            let angles = match runtime.object_field(id, "angles") {
+                Value::Vector(v) => v,
+                _ => [0.0; 3],
+            };
+            let model = match runtime.object_field(id, "model") {
+                Value::String(s) if !s.starts_with('*') => Value::String(s),
+                _ => Value::string(""),
+            };
+            let (species, is_dog) = match entity.kind {
+                EntityKind::Player => (Some("human"), None),
+                EntityKind::Actor | EntityKind::Corpse { .. } => {
+                    let sp = match runtime.object_field(id, "type") {
+                        Value::String(s) => match &*s {
+                            "human" => "human",
+                            "dog" => "dog",
+                            "zombie" => "zombie",
+                            "zombie_dog" => "zombie_dog",
+                            _ => "unknown",
+                        },
+                        _ => "unknown",
+                    };
+                    (Some(sp), Some(matches!(sp, "dog" | "zombie_dog")))
+                }
+                _ => (None, None),
+            };
+            let targetname = if transmit_tn {
+                match runtime.object_field(id, "targetname") {
+                    Value::String(s) if !s.is_empty() => Some(Value::String(s)),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            (origin, angles, model, species, is_dog, targetname)
+        };
+        if entity.kind == EntityKind::Player
+            && let Some(ps) =
+                crate::frame::player_ref(server, crate::ClientId(entity.number as u32))
+        {
+            origin = ps.origin;
+            angles = ps.viewangles;
+        }
+        let weapon = if matches!(entity.kind, EntityKind::Missile(_)) {
+            let frame = crate::frame::FrameWorld::from_world(server);
+            frame
+                .projectile_by_number(entity.number)
+                .map(|p| crate::script_player::weapon_name(&frame, p.weapon).to_owned())
+        } else {
+            None
+        };
+        snapshots.push(ServerEntitySnapshot {
+            server_id: id,
+            number: entity.number,
+            kind: entity.kind,
+            classname: entity.classname,
+            ent_type,
+            origin,
+            angles,
+            model,
+            species,
+            is_dog,
+            weapon,
+            targetname,
+            client_flags: flags,
+            has_eyes,
+            hidden: entity.hidden,
+        });
+    }
+    snapshots
+}
+
 fn run_frame(
     client: &mut ClientScripts,
     tick: crate::Tick,
     reason: crate::StepReason,
     messages: Vec<ClientMessage>,
+    snapshots: Vec<ServerEntitySnapshot>,
 ) {
-    let world = &mut client.world;
-    for local in &mut world.resource_mut::<ClientView>().locals {
+    for local in &mut client.world.resource_mut::<ClientView>().locals {
         local.has_snapshot = true;
     }
-    world.insert_resource(crate::step::StepRequest::frame(tick, reason));
+    client
+        .world
+        .insert_resource(crate::step::StepRequest::frame(tick, reason));
     if !client.started {
         client.started = true;
         for entry in &client.entries {
-            if let Err(fault) = super::runtime::start(world, entry, Value::level(), Vec::new()) {
+            if let Err(fault) =
+                super::runtime::start(&mut client.world, entry, Value::level(), Vec::new())
+            {
                 diag::warn!(Sim, "csc: client script {entry} not started: {fault}");
             }
         }
     }
+    sync_snapshot_entities(client, snapshots, tick);
+    let world = &mut client.world;
     // The server's commands reach the client with its snapshot, before its
     // scripts run.
     for message in messages {
@@ -400,5 +581,242 @@ fn run_frame(
     if let Some(fault) = world.resource::<RoundScript>().fault.clone() {
         diag::warn!(Sim, "csc: client scripts stopped: {fault}");
         client.stopped = true;
+    }
+}
+
+fn sync_snapshot_entities(
+    client: &mut ClientScripts,
+    snapshots: Vec<ServerEntitySnapshot>,
+    tick: crate::Tick,
+) {
+    let now = (u64::from(tick.0) * u64::from(crate::MATCH_TICK_MS)) as i64;
+    let local_player_0 = client.world.resource::<ClientView>().locals[0].object;
+    let present: std::collections::BTreeSet<u64> = snapshots.iter().map(|s| s.server_id).collect();
+    let stale_ids: Vec<u64> = client
+        .mirrored
+        .keys()
+        .copied()
+        .filter(|id| !present.contains(id))
+        .collect();
+    let mut removed = Vec::with_capacity(stale_ids.len());
+    for id in stale_ids {
+        if let Some(entry) = client.mirrored.remove(&id) {
+            if entry.client_object == local_player_0 {
+                shutdown_mirrored(client, entry, local_player_0, now);
+            } else {
+                removed.push(entry);
+            }
+        }
+    }
+
+    for snap in &snapshots {
+        let (client_object, new_ent, prev_flags) =
+            if let Some(entry) = client.mirrored.get_mut(&snap.server_id) {
+                let prev = entry.flags;
+                entry.flags = snap.client_flags;
+                (entry.client_object, false, prev)
+            } else {
+                let object = if snap.kind == EntityKind::Player && snap.number == 0 {
+                    local_player_0
+                } else {
+                    let mut runtime = client.world.resource_mut::<RoundScript>();
+                    let saved_next = runtime.next_entity_number;
+                    let Ok(id) = runtime.create_entity(snap.kind.clone(), &snap.classname) else {
+                        continue;
+                    };
+                    runtime.next_entity_number = saved_next;
+                    if let Some(entity) = runtime.entities.get_mut(&id) {
+                        entity.number = snap.number;
+                    }
+                    id
+                };
+                client.mirrored.insert(
+                    snap.server_id,
+                    MirroredEntity {
+                        client_object: object,
+                        flags: snap.client_flags,
+                        has_eyes: false,
+                        spawned_callback: false,
+                    },
+                );
+                (object, true, 0)
+            };
+
+        {
+            let mut runtime = client.world.resource_mut::<RoundScript>();
+            runtime.set_object_field(client_object, "origin", Value::Vector(snap.origin));
+            runtime.set_object_field(client_object, "angles", Value::Vector(snap.angles));
+            runtime.set_object_field(client_object, "type", Value::string(snap.ent_type));
+            runtime.set_object_field(client_object, "model", snap.model.clone());
+            runtime.set_object_field(
+                client_object,
+                "serverflags",
+                Value::Int(i32::from(snap.client_flags)),
+            );
+            runtime.set_object_field(
+                client_object,
+                "haseyes",
+                Value::Int(i32::from(snap.has_eyes)),
+            );
+            if let Some(species) = snap.species {
+                runtime.set_object_field(client_object, "species", Value::string(species));
+            }
+            if let Some(is_dog) = snap.is_dog {
+                runtime.set_object_field(client_object, "isdog", Value::Int(i32::from(is_dog)));
+            }
+            if let Some(weapon) = &snap.weapon {
+                runtime.set_object_field(client_object, "weapon", Value::string(weapon));
+            }
+            if let Some(targetname) = &snap.targetname {
+                runtime.set_object_field(client_object, "targetname", targetname.clone());
+            }
+        }
+
+        if let Some(callbacks) = client.callbacks {
+            if new_ent {
+                for bit in 0..16 {
+                    if (snap.client_flags & (1 << bit)) != 0 {
+                        start_callback(
+                            &mut client.world,
+                            callbacks.client_flag,
+                            Value::Object(client_object),
+                            vec![Value::Int(0), Value::Int(bit), Value::Int(1), Value::Int(1)],
+                        );
+                    }
+                }
+                if snap.client_flags != 0 {
+                    start_callback(
+                        &mut client.world,
+                        callbacks.client_flag_as_val,
+                        Value::Object(client_object),
+                        vec![Value::Int(0), Value::Int(i32::from(snap.client_flags))],
+                    );
+                }
+            } else if snap.client_flags != prev_flags {
+                let diff = snap.client_flags ^ prev_flags;
+                for bit in 0..16 {
+                    if (diff & (1 << bit)) != 0 {
+                        let set = i32::from((snap.client_flags & (1 << bit)) != 0);
+                        start_callback(
+                            &mut client.world,
+                            callbacks.client_flag,
+                            Value::Object(client_object),
+                            vec![
+                                Value::Int(0),
+                                Value::Int(bit),
+                                Value::Int(set),
+                                Value::Undefined,
+                            ],
+                        );
+                    }
+                }
+                start_callback(
+                    &mut client.world,
+                    callbacks.client_flag_as_val,
+                    Value::Object(client_object),
+                    vec![Value::Int(0), Value::Int(i32::from(snap.client_flags))],
+                );
+            }
+        }
+    }
+
+    for entry in removed {
+        shutdown_mirrored(client, entry, local_player_0, now);
+    }
+
+    for snap in &snapshots {
+        if snap.hidden {
+            continue;
+        }
+        let Some(entry) = client.mirrored.get_mut(&snap.server_id) else {
+            continue;
+        };
+        let client_object = entry.client_object;
+        let spawn_cb = if !entry.spawned_callback {
+            match snap.ent_type {
+                "actor" | "missile" | "vehicle" | "plane" => {
+                    entry.spawned_callback = true;
+                    client.callbacks.map(|cb| cb.entity_spawned)
+                }
+                "player" => {
+                    entry.spawned_callback = true;
+                    client.callbacks.map(|cb| cb.player_spawned)
+                }
+                "scriptmover" => {
+                    entry.spawned_callback = true;
+                    None
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let eye_cb = if snap.ent_type == "actor"
+            && snap.is_dog == Some(false)
+            && entry.has_eyes != snap.has_eyes
+        {
+            entry.has_eyes = snap.has_eyes;
+            client.callbacks.map(|cb| (cb.zombie_eye, snap.has_eyes))
+        } else {
+            None
+        };
+        if let Some(function) = spawn_cb {
+            start_callback(
+                &mut client.world,
+                function,
+                Value::Object(client_object),
+                vec![Value::Int(0)],
+            );
+        }
+        if let Some((function, has_eyes)) = eye_cb {
+            start_callback(
+                &mut client.world,
+                function,
+                Value::Object(client_object),
+                vec![Value::Int(0), Value::Int(i32::from(has_eyes))],
+            );
+        }
+    }
+}
+
+fn shutdown_mirrored(
+    client: &mut ClientScripts,
+    entry: MirroredEntity,
+    local_player_0: u64,
+    now: i64,
+) {
+    client
+        .world
+        .resource_mut::<ClientOutput>()
+        .loops
+        .remove(&LoopSource::Entity(entry.client_object));
+    if entry.spawned_callback {
+        super::runtime::notify_now(
+            &mut client.world,
+            Value::Object(entry.client_object),
+            "entityshutdown",
+            Vec::new(),
+            now,
+        );
+        if let Some(callbacks) = client.callbacks {
+            start_callback(
+                &mut client.world,
+                callbacks.entity_shutdown,
+                Value::level(),
+                vec![Value::Int(0), Value::Object(entry.client_object)],
+            );
+        }
+    }
+    if entry.client_object != local_player_0 {
+        client
+            .world
+            .resource_mut::<RoundScript>()
+            .delete_entity(entry.client_object);
+    }
+}
+
+fn start_callback(world: &mut World, function: &str, receiver: Value, args: Vec<Value>) {
+    if let Err(fault) = super::runtime::start(world, function, receiver, args) {
+        diag::warn!(Sim, "csc: {function} not started: {fault}");
     }
 }

@@ -101,6 +101,12 @@ impl game_api::GameScripts for T5 {
             activate_exploder: "clientscripts/_callbacks::callback_activate_exploder",
             deactivate_exploder: "clientscripts/_callbacks::callback_deactivate_exploder",
             footstep: "clientscripts/_callbacks::codecallback_playerfootstep",
+            entity_spawned: "clientscripts/_callbacks::entityspawned",
+            player_spawned: "clientscripts/_callbacks::playerspawned",
+            entity_shutdown: "clientscripts/_callbacks::entityshutdown_callback",
+            client_flag: "clientscripts/_callbacks::client_flag_callback",
+            client_flag_as_val: "clientscripts/_callbacks::client_flagasval_callback",
+            zombie_eye: "clientscripts/_zombiemode::zombie_eye_callback",
         })
     }
 

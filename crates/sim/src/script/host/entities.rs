@@ -208,6 +208,7 @@ pub(crate) struct ScriptEntity {
     pub number: i32,
     pub kind: EntityKind,
     pub classname: Arc<str>,
+    pub client_only: bool,
     pub cylinder: Option<(f32, f32)>,
     pub box_half: Option<[f32; 3]>,
     pub box_use: bool,
@@ -320,6 +321,7 @@ impl RoundScript {
                 number,
                 kind: kind.clone(),
                 classname: classname.into(),
+                client_only: false,
                 cylinder: None,
                 box_half: None,
                 box_use: false,
@@ -366,6 +368,7 @@ impl RoundScript {
                 number: client as i32,
                 kind: EntityKind::Player,
                 classname: "player".into(),
+                client_only: false,
                 cylinder: None,
                 box_half: None,
                 box_use: false,
@@ -414,10 +417,14 @@ impl RoundScript {
     }
 
     pub(crate) fn player_client(&self, id: u64) -> Option<u32> {
-        self.entities
-            .get(&id)
-            .filter(|e| e.kind == EntityKind::Player)
-            .map(|e| e.number as u32)
+        (!self.client)
+            .then(|| {
+                self.entities
+                    .get(&id)
+                    .filter(|e| e.kind == EntityKind::Player)
+                    .map(|e| e.number as u32)
+            })
+            .flatten()
     }
 
     pub(crate) fn delete_entity(&mut self, id: u64) {
@@ -518,6 +525,50 @@ impl RoundScript {
             if entity_fields.is_some() && is_client_map_entity(classname, pairs) {
                 continue;
             }
+            let client_only = t5 && is_t5_client_map_entity(classname, pairs);
+            if self.client
+                && t5
+                && is_t5_client_extra_struct(classname, pairs)
+                && let Some(array) = structs
+            {
+                let struct_id = self.new_object()?;
+                let values = self.arrays.get_mut(&array).ok_or("level.struct is gone")?;
+                let index = values.len() as i32;
+                values.insert(ArrayKey::Integer(index), Value::Object(struct_id));
+                let field = |key: &str| field_name.map_or_else(|| key.to_owned(), |name| name(key));
+                for (key, value) in pairs {
+                    let mut key = key.to_ascii_lowercase();
+                    if classname == "light" && key == "pl#" {
+                        key.truncate(2);
+                    }
+                    if key == "angle" {
+                        self.set_object_field(
+                            struct_id,
+                            &field("angles"),
+                            Value::Vector([0.0, super::natives::iw4::atof(value) as f32, 0.0]),
+                        );
+                        continue;
+                    }
+                    let val = match key.as_str() {
+                        "origin" | "angles" => Value::Vector(vector(value)),
+                        "spawnflags" | "count" | "health" | "dmg" | "maxhealth" | "threshold"
+                        | "accumulate" | "script_exploder" => {
+                            Value::Int(super::natives::iw4::atoi(value))
+                        }
+                        "speed" | "radius" | "height" | "wait" | "width" | "length" => {
+                            Value::Float(super::natives::iw4::atof(value) as f32)
+                        }
+                        _ => match keys.get(&key) {
+                            Some(ty) => typed_key(*ty, value),
+                            None => Value::string(value),
+                        },
+                    };
+                    self.set_object_field(struct_id, &field(&key), val);
+                }
+            }
+            if self.client && t5 && classname != "script_struct" && !client_only {
+                continue;
+            }
             let id = if classname == "script_struct" && hands_off_structs {
                 let id = self.new_object()?;
                 handed.push(id);
@@ -614,7 +665,11 @@ impl RoundScript {
                         }
                         Value::Float(number)
                     }
-                    "classname" if classname == "script_struct" && !hands_off_structs => continue,
+                    "classname"
+                        if classname == "script_struct" && !hands_off_structs && !self.client =>
+                    {
+                        continue;
+                    }
                     _ => match keys.get(&key) {
                         Some(ty) => typed_key(*ty, value),
                         None => Value::string(value),
@@ -625,7 +680,19 @@ impl RoundScript {
             if classname == "trigger_box_use" {
                 self.set_object_field(id, &field("classname"), Value::string("trigger_box"));
             }
+            if self.client && t5 && classname != "script_struct" {
+                let ent_type = if matches!(classname, "script_model" | "script_origin" | "glass") {
+                    "scriptmover"
+                } else {
+                    "general"
+                };
+                self.set_object_field(id, "type", Value::string(ent_type));
+                if self.object_field(id, "model") == Value::Undefined {
+                    self.set_object_field(id, "model", Value::string(""));
+                }
+            }
             if let Some(entity) = self.entities.get_mut(&id) {
+                entity.client_only = client_only;
                 if matches!(classname, "trigger_radius" | "trigger_radius_use") {
                     entity.cylinder = Some((radius.unwrap_or(0.0), height.unwrap_or(0.0)));
                 } else if matches!(classname, "trigger_box" | "trigger_box_use") {
@@ -684,5 +751,49 @@ pub(crate) fn typed_key(ty: KeyType, value: &str) -> Value {
         KeyType::Float => Value::Float(super::natives::iw4::atof(value) as f32),
         KeyType::Vector => Value::Vector(vector(value)),
         KeyType::String => Value::string(value),
+    }
+}
+
+/// Whether a Black Ops map entity block is spawned on the client by its own
+/// entity spawner (`script_model`/`script_origin` with spawnflag 2,
+/// `clientside` 1 or a `destructibledef`; `glass`; or `trigger_multiple`,
+/// `trigger_radius` or `trigger_once` with spawnflag 0x80).
+fn is_t5_client_map_entity(classname: &str, pairs: &[(String, String)]) -> bool {
+    let pair = |name: &str| {
+        pairs
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    };
+    let spawnflags = pair("spawnflags").map_or(0, super::natives::iw4::atoi);
+    match classname {
+        "script_model" | "script_origin" => {
+            if pair("destructibledef").is_some_and(|v| !v.is_empty()) {
+                return true;
+            }
+            let clientside =
+                pair("clientside").is_some_and(|v| super::natives::iw4::atof(v) == 1.0);
+            (spawnflags & 2) != 0 || clientside
+        }
+        "glass" => true,
+        "trigger_multiple" | "trigger_radius" | "trigger_once" => (spawnflags & 0x80) != 0,
+        _ => false,
+    }
+}
+
+/// Whether Black Ops' client struct loader also adds a map entity block to
+/// `level.struct` (`script_brushmodel`, `script_model`, and `light` without
+/// spawnflag 0x10).
+fn is_t5_client_extra_struct(classname: &str, pairs: &[(String, String)]) -> bool {
+    match classname {
+        "script_brushmodel" | "script_model" => true,
+        "light" => {
+            let spawnflags = pairs
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("spawnflags"))
+                .map_or(0, |(_, v)| super::natives::iw4::atoi(v));
+            (spawnflags & 0x10) == 0
+        }
+        _ => false,
     }
 }
