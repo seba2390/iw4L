@@ -94,6 +94,21 @@ pub(super) fn choice_index(choices: &[(String, String)], value: &str) -> Option<
     })
 }
 
+/// The engine's edit field (4), numeric field (9) and decimal field (17).
+pub(super) fn is_text_field(item_type: i32) -> bool {
+    matches!(item_type, 4 | 9 | 17)
+}
+
+/// Whether a text field of `item_type` takes `ch`: a numeric field takes
+/// digits, a decimal field digits, a point and a sign.
+fn text_field_takes(item_type: i32, ch: char) -> bool {
+    match item_type {
+        9 => ch.is_ascii_digit(),
+        17 => ch.is_ascii_digit() || ch == '.' || ch == '-',
+        _ => true,
+    }
+}
+
 fn item_overrides(def: &MenuDef, open: &OpenMenu) -> Vec<ChromeItemOverride> {
     def.items
         .iter()
@@ -204,6 +219,8 @@ pub(crate) struct MenuInputs<'w, 's> {
     unified: Option<Res<'w, frame::UnifiedFrontend>>,
     native_menu: Res<'w, frame::NativeGameMenu>,
     map_identity: Option<Res<'w, assets::SessionMapIdentity>>,
+    /// The match's game's own menus, when its zones ship them.
+    game_menus: Option<Res<'w, asset_game::SessionHudMenus>>,
     player_data: Option<Res<'w, sim::LocalPlayerData>>,
 }
 
@@ -282,12 +299,18 @@ pub(crate) fn update_script_menus(
         out.binding.command = None;
         *menus = ScriptMenus::default();
     }
-    let Some(catalog) = catalog.as_deref() else {
+    let in_game = matches!(*input.screen, AppScreen::InGame | AppScreen::ClassSelect);
+    // In a match whose game ships its own in-game menus, those run.
+    let game_catalog = input
+        .game_menus
+        .as_ref()
+        .and_then(|menus| menus.0.clone())
+        .filter(|_| in_game);
+    let Some(catalog) = game_catalog.as_deref().or(catalog.as_deref()) else {
         return;
     };
     let snapshot = presented.snapshot();
     let meta = snapshot.and_then(|s| s.meta.for_client(local.0));
-    let in_game = matches!(*input.screen, AppScreen::InGame | AppScreen::ClassSelect);
     let frontend = *input.screen == AppScreen::MainMenu;
     let native = in_game
         && input
@@ -329,6 +352,7 @@ pub(crate) fn update_script_menus(
         input.frontend_strings.as_deref()
     };
     let world = MenuWorld {
+        virtual_to_real: surface.scale_virtual_to_real()[1],
         player_data: input.player_data.as_deref(),
         ms: crate::scorebar::milliseconds() as i32,
         in_game,
@@ -506,7 +530,9 @@ pub(crate) fn update_script_menus(
         .filter(|s| in_game && crate::scoreboard::displayed(world.scores_open, s, local.0))
         .filter(|_| !input.mode.as_ref().is_some_and(|mode| !mode.hud.scoreboard))
         .and_then(|_| catalog.get(SCOREBOARD_MENU));
-    if (menus.stack.is_empty() && scoreboard.is_none()) || !surface.is_ready() {
+    if (menus.stack.is_empty() && menus.shown.is_empty() && scoreboard.is_none())
+        || !surface.is_ready()
+    {
         return;
     }
     let mut list = Draw2dList::default();
@@ -520,6 +546,28 @@ pub(crate) fn update_script_menus(
             Vec::new(),
             None,
         ));
+    }
+    // Menus `showMenu` made visible paint beneath the open stack.
+    for name in &menus.shown {
+        if menus.position(name).is_some() {
+            continue;
+        }
+        if let Some(def) = catalog.get(name) {
+            let state = OpenMenu {
+                name: def.name.clone(),
+                captures_input: false,
+                focus: None,
+                hover: None,
+                items: vec![state::ItemState::default(); def.items.len()],
+            };
+            layers.push((
+                name.clone(),
+                def,
+                item_overrides(def, &state),
+                Vec::new(),
+                None,
+            ));
+        }
     }
     let paint_start = menus
         .stack
@@ -562,7 +610,7 @@ pub(crate) fn update_script_menus(
 
                 state.text_align = Some((10, -8.0, 0.0));
             }
-            if item.item_type == 4 && !item.dvar.is_empty() {
+            if is_text_field(item.item_type) && !item.dvar.is_empty() {
                 state.text = Some(out.dvars.get(&item.dvar).unwrap_or("").to_owned());
                 if item.edit_field.as_ref().is_some_and(|field| field.masked) {
                     state.text =
@@ -655,6 +703,7 @@ pub(crate) fn update_script_menus(
         let focus_rect = open.focus.and_then(|i| def.items.get(i)).map(item_rect);
         layers.push((open.name.clone(), def, overrides, slider_parts, focus_rect));
     }
+    let focused = menus.input_menu().map(|m| m.name.clone());
     for (name, def, overrides, extra_items, focus_rect) in &layers {
         let host = MenuHost {
             world: &world,
@@ -663,6 +712,7 @@ pub(crate) fn update_script_menus(
             locals: &locals,
             open: &menus.stack,
             focus_rect: *focus_rect,
+            focused: focused.as_deref(),
         };
         let mut owner_draw = |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| {
             if args.item.owner_draw == 181 {
@@ -757,6 +807,49 @@ pub(crate) fn update_script_menus(
     }
 }
 
+/// The menu the in-game menu key opens, by the rule of the catalog's game.
+fn ingame_menu(runner: &Runner<'_, '_>) -> Option<String> {
+    let namespace = runner
+        .catalog
+        .namespace
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    let rule = crate::chrome::game_menus(namespace).map_or(
+        game_api::Rule::Known(game_api::InGameMenu::ScriptMainMenu),
+        |menus| menus.ingame_menu(),
+    );
+    match rule {
+        game_api::Rule::Known(game_api::InGameMenu::ScriptMainMenu) => {
+            let main = runner
+                .world
+                .dvars
+                .as_ref()
+                .and_then(|d| d.string(MAIN_MENU_DVAR))
+                .filter(|name| !name.is_empty() && runner.catalog.get(name).is_some())
+                .map(str::to_owned);
+            Some(main.unwrap_or_else(|| {
+                diag::warn!(
+                    Ui,
+                    "togglemenu: {MAIN_MENU_DVAR} names no loaded menu, opening {FALLBACK_MAIN_MENU}"
+                );
+                FALLBACK_MAIN_MENU.to_owned()
+            }))
+        }
+        game_api::Rule::Known(game_api::InGameMenu::Named { menu, requires }) => {
+            let loaded = |name: &str| runner.catalog.get(name).is_some();
+            if loaded(menu) && requires.is_none_or(loaded) {
+                Some(menu.to_owned())
+            } else {
+                diag::warn!(Ui, "togglemenu: `{menu}` or what it needs is not loaded");
+                None
+            }
+        }
+        game_api::Rule::Unknown(gap) => {
+            diag::info!(Ui, "game gap {}: {}", gap.id, gap.what);
+            None
+        }
+    }
+}
+
 fn handle_input(
     runner: &mut Runner<'_, '_>,
     input: &MenuInputs,
@@ -815,8 +908,16 @@ fn handle_input(
         if pressed.delete && edit.cursor < edit.buffer.len() {
             edit.buffer.remove(edit.cursor);
         }
+        let item_type = runner
+            .catalog
+            .get(&edit.menu)
+            .and_then(|def| def.items.get(edit.item))
+            .map_or(4, |item| item.item_type);
         for text in &pressed.text {
-            for ch in text.chars().filter(|ch| !ch.is_control()) {
+            for ch in text
+                .chars()
+                .filter(|ch| !ch.is_control() && text_field_takes(item_type, *ch))
+            {
                 if edit.buffer.len() >= edit.max_chars {
                     break;
                 }
@@ -832,21 +933,9 @@ fn handle_input(
             Some(top) => runner.escape(&top),
             None if !runner.world.in_game => runner.open("iw4l_main"),
             None => {
-                let main = runner
-                    .world
-                    .dvars
-                    .as_ref()
-                    .and_then(|d| d.string(MAIN_MENU_DVAR))
-                    .filter(|name| !name.is_empty() && runner.catalog.get(name).is_some())
-                    .map(str::to_owned);
-                let name = main.unwrap_or_else(|| {
-                    diag::warn!(
-                        Ui,
-                        "togglemenu: {MAIN_MENU_DVAR} names no loaded menu, opening {FALLBACK_MAIN_MENU}"
-                    );
-                    FALLBACK_MAIN_MENU.to_owned()
-                });
-                runner.open(&name);
+                if let Some(name) = ingame_menu(runner) {
+                    runner.open(&name);
+                }
             }
         }
         return;
@@ -905,6 +994,7 @@ fn handle_input(
         locals: runner.locals,
         open: &runner.menus.stack,
         focus_rect: None,
+        focused: Some(&top),
     };
     let rects = item_screen_rects(def, &host, surface, runner.exprs);
     let visible = runner.visible_items(&top);

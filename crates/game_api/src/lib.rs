@@ -306,6 +306,21 @@ pub trait GameMenus: Sync {
 
     /// How the game's menu engine places and scales an item.
     fn layout(&self) -> Rule<&'static dyn MenuLayout>;
+
+    /// The menu the in-game menu key (Escape) opens.
+    fn ingame_menu(&self) -> Rule<InGameMenu>;
+}
+
+/// What the in-game menu key opens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InGameMenu {
+    /// The menu the `g_scriptMainMenu` dvar names.
+    ScriptMainMenu,
+    /// `menu`, once `requires` is loaded too.
+    Named {
+        menu: &'static str,
+        requires: Option<&'static str>,
+    },
 }
 
 /// How a game's menu engine places and scales an item's rect and text.

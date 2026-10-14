@@ -12,6 +12,22 @@ pub(crate) enum Command {
     },
     Show(String),
     Hide(String),
+    /// `showMenu`/`hideMenu`: a whole menu, when one of that name is loaded.
+    ShowMenu(String),
+    HideMenu(String),
+    /// `setLocalVarInt`/`Bool`/`Float`/`String name value`.
+    SetLocalVar {
+        kind: LocalVarKind,
+        name: String,
+        value: String,
+    },
+    /// Black Ops zombies' `nosavehide item` / `saveAvailableHide item`: the
+    /// item shows only while a saved game is (or, for the second, is not)
+    /// available.
+    SaveVisibility {
+        item: String,
+        hide_when_available: bool,
+    },
     Play(String),
     ScriptMenuResponse(String),
     Exec(String),
@@ -38,6 +54,14 @@ pub(crate) enum Command {
         menu: String,
     },
     Unhandled(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LocalVarKind {
+    Bool,
+    Int,
+    Float,
+    String,
 }
 
 pub(crate) fn tokens(script: &str) -> Vec<String> {
@@ -97,8 +121,33 @@ pub(crate) fn parse(script: &str) -> Vec<Command> {
                 },
                 7,
             ),
-            "show" | "showmenu" => (Command::Show(arg(i + 1)), 2),
-            "hide" | "hidemenu" => (Command::Hide(arg(i + 1)), 2),
+            "show" => (Command::Show(arg(i + 1)), 2),
+            "hide" => (Command::Hide(arg(i + 1)), 2),
+            "showmenu" => (Command::ShowMenu(arg(i + 1)), 2),
+            "hidemenu" => (Command::HideMenu(arg(i + 1)), 2),
+            "setlocalvarbool" | "setlocalvarint" | "setlocalvarfloat" | "setlocalvarstring" => {
+                let kind = match name.as_str() {
+                    "setlocalvarbool" => LocalVarKind::Bool,
+                    "setlocalvarint" => LocalVarKind::Int,
+                    "setlocalvarfloat" => LocalVarKind::Float,
+                    _ => LocalVarKind::String,
+                };
+                (
+                    Command::SetLocalVar {
+                        kind,
+                        name: arg(i + 1),
+                        value: arg(i + 2),
+                    },
+                    3,
+                )
+            }
+            "nosavehide" | "saveavailablehide" => (
+                Command::SaveVisibility {
+                    item: arg(i + 1),
+                    hide_when_available: name == "saveavailablehide",
+                },
+                2,
+            ),
             "play" => (Command::Play(arg(i + 1)), 2),
             "scriptmenuresponse" => (Command::ScriptMenuResponse(arg(i + 1)), 2),
             "exec" | "execnow" => (Command::Exec(arg(i + 1)), 2),

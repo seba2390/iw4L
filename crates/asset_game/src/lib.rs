@@ -56,7 +56,7 @@ pub use impact_fx_catalog::*;
 pub use localize::*;
 pub use lochit::*;
 pub use menu_catalog::*;
-pub use menu_catalog_t5::{T5_HUD_MENU_LISTS, load_t5_menu_catalog};
+pub use menu_catalog_t5::{T5_HUD_MENU_LISTS, T5_INGAME_MENU_LISTS, load_t5_menu_catalog};
 pub use penetration::*;
 pub use soldier_presentation::*;
 pub use tracer_catalog::*;

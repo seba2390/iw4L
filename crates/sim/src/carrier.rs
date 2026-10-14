@@ -452,6 +452,13 @@ impl SimWorld {
         crate::script::set_dvar(&mut self.ecs, name, value);
     }
 
+    /// Sends a script dvar to every client with the match's server info.
+    pub fn publish_gsc_dvar(&mut self, name: &str) {
+        if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
+            runtime.server_info.insert(name.to_ascii_lowercase());
+        }
+    }
+
     pub fn gsc_realm(&self) -> Option<crate::script::Realm> {
         self.ecs
             .resource::<crate::script::RoundScript>()
