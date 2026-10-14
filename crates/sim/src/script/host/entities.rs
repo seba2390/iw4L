@@ -64,6 +64,11 @@ pub fn parse_radiant_keys(text: &str) -> Result<BTreeMap<String, KeyType>, Strin
     }
     let mut words = plain.split_whitespace();
     while let Some(kind) = words.next() {
+        let kind = if kind == "client" {
+            words.next().ok_or("missing key type")?
+        } else {
+            kind
+        };
         let kind = match kind {
             "int" => KeyType::Int,
             "float" => KeyType::Float,
@@ -510,6 +515,9 @@ impl RoundScript {
             if classname.is_empty() || classname.starts_with("node_") {
                 continue;
             }
+            if entity_fields.is_some() && is_client_map_entity(classname, pairs) {
+                continue;
+            }
             let id = if classname == "script_struct" && hands_off_structs {
                 let id = self.new_object()?;
                 handed.push(id);
@@ -647,6 +655,28 @@ impl RoundScript {
 
 pub(crate) const MAX_SCRIPT_ENTITIES: usize = 2048 - 64;
 pub(crate) const MAX_HUD_ELEMS: usize = 1024;
+
+/// Whether the server spawn (`G_CallSpawn`) leaves a map entity to the client
+/// (`CG_SpawnEntities`): a `script_model` without a `destructibledef` or a
+/// `script_origin` with spawnflag 2 or `clientside` 1.
+fn is_client_map_entity(classname: &str, pairs: &[(String, String)]) -> bool {
+    let model = classname == "script_model"
+        && !pairs
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("destructibledef"));
+    if !model && classname != "script_origin" {
+        return false;
+    }
+    let spawnflag = pairs
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("spawnflags"))
+        .is_some_and(|(_, v)| super::natives::iw4::atoi(v) & 2 != 0);
+    let clientside = pairs
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("clientside"))
+        .is_some_and(|(_, v)| super::natives::iw4::atof(v) == 1.0);
+    spawnflag || clientside
+}
 
 pub(crate) fn typed_key(ty: KeyType, value: &str) -> Value {
     match ty {

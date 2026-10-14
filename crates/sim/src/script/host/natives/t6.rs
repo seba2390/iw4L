@@ -2491,8 +2491,7 @@ fn absolute_bounds(world: &mut World, id: u64) -> ([f32; 3], [f32; 3]) {
 #[derive(Resource)]
 struct GrenadeSuicideDisabled;
 
-/// Each registered client system's state, for every client or one
-/// (`t6.clientsys.state`: kept, not sent).
+/// Each registered client system's state, for every client or one.
 #[derive(Resource, Default)]
 struct ClientSystemStates(BTreeMap<(Option<u32>, usize), String>);
 

@@ -91,6 +91,9 @@ pub struct ScriptProgram {
 /// client game starts them.
 pub struct ClientScriptProgram {
     pub program: gsc::Program,
+    /// The map entities the client spawns itself (`CG_SpawnEntities`), each
+    /// with its entity type (`eType`) and its typed fields, in map order.
+    pub entities: Vec<(i32, Vec<(String, KeyType, String)>)>,
     /// The map entities the client makes into structs (`createstruct`), each
     /// with the keys it sets and their types, in map order.
     pub structs: Vec<Vec<(String, KeyType, String)>>,

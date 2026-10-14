@@ -120,7 +120,7 @@ pub(crate) fn install(
     round.objects.insert(1, BTreeMap::new());
     round.objects.insert(2, BTreeMap::new());
     round.next_object = 3;
-    round.next_entity_number = 18;
+    round.next_entity_number = 1024;
     round.tables = server.resource::<RoundScript>().tables.clone();
     round.rng = u32::from_le_bytes(program.fingerprint()[..4].try_into().unwrap()) | 1;
     round.loading = true;
@@ -223,10 +223,23 @@ fn step(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
     Ok(())
 }
 
-/// The client game's start: the level's structs, the actor types'
-/// precaches, then the game's start functions, each run to its first wait.
+/// The client game's start: the map's client entities, the level's structs,
+/// the actor types' precaches, then the game's start functions, each run to
+/// its first wait.
 fn start(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
     let world = &mut client.world;
+    for (etype, pairs) in &client.setup.entities {
+        let kind = super::natives::t6::client::game::type_name(*etype);
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let Ok(id) = runtime.create_entity(super::entities::EntityKind::Map, kind) else {
+            continue;
+        };
+        runtime.set_object_field(id, "type", Value::string(kind));
+        for (key, ty, value) in pairs {
+            let value = super::entities::typed_key(game_key_type(*ty), value);
+            runtime.set_object_field(id, key, value);
+        }
+    }
     run_to_end(
         world,
         crate::script::runtime::STRUCT_INIT,

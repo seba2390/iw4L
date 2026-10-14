@@ -175,7 +175,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
 - [x] The map loads, renders and collides (Nuketown).
   - [x] TranZit and Buried load and collide too, with their Classic zombie spawners (`AddonMapEnts`).
-  - [ ] The client scripts (CSC) do not run: no client fields, exploders, fx animations or the wall-buy chalk.
+  - [x] The client scripts (CSC) run on a client VM of their own (`0 of 243` client builtins not implemented yet on Nuketown, `0 of 249` on TranZit, `0 of 257` on Buried): client-side map entities (`CG_SpawnEntities`), client fields (`zombie_has_eyes`, `zombie_power_on`), client system states (`statechange`), exploders, fxanim props and wall-buy chalk models (`spawn_weapon_model`).
 - [x] The game's own zombies scripts start the match and run round 1 (with `IW4L_T6_OWN_SCRIPTS=1`).
   - [x] Every builtin the three maps' compiled scripts reference is registered (`0 of 692` on Nuketown, `0 of 741` on TranZit, `0 of 727` on Buried).
 - [x] The player moves by the game's own movement rules.
