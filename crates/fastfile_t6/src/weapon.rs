@@ -1528,6 +1528,24 @@ impl<'a> WeaponDefView<'a> {
         self.def_f32(0x834)
     }
 
+    pub fn anti_quick_scope_spread_multiplier(&self) -> f32 {
+        self.def_f32(0x838)
+    }
+
+    pub fn anti_quick_scope_spread_max(&self) -> f32 {
+        self.def_f32(0x83c)
+    }
+
+    /// The definition names gun models (its model array is present).
+    pub fn has_gun_models(&self) -> bool {
+        self.def_i32(0x4) != 0
+    }
+
+    /// The variant's three ADS zoom fields of view.
+    pub fn ads_zoom_fovs(&self) -> [f32; 3] {
+        [0x224, 0x228, 0x22c].map(|off| self.variant_f32(off))
+    }
+
     pub fn ads_reload_trans_time(&self) -> i32 {
         self.def_i32(0x874)
     }

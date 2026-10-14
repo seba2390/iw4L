@@ -139,6 +139,16 @@ pub(crate) fn add_stock<W: MoveWorld>(ps: &mut PlayerState, world: &W, weapon: u
     }
 }
 
+/// Empties the clip and the rounds beside it that `weapon` uses.
+pub(crate) fn clear_rounds<W: MoveWorld>(ps: &mut PlayerState, world: &W, weapon: u32) {
+    if let Some(i) = slot(ps, ammo_owner(world, weapon)) {
+        ps.ammo_not_in_clip[i] = 0;
+    }
+    if let Some(i) = slot(ps, clip_owner(world, weapon)) {
+        ps.ammo_in_clip[i] = 0;
+    }
+}
+
 /// A clip's size: scaled by `player_clipSizeMultiplier` when over one round.
 pub(crate) fn clip_size<W: MoveWorld>(world: &W, weapon: u32) -> i32 {
     let size = world.weapon(weapon).def.clip_size();

@@ -49,6 +49,9 @@ pub enum Gap {
     Overheat = 256,
     /// A held weapon's attachments: IW4L's weapons carry none.
     Attachments = 512,
+    /// The fast-ADS perk skips sniper player animation types, which
+    /// movement cannot name.
+    AdsPerkAnimTypes = 1024,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -75,7 +78,7 @@ pub struct Pm<'a, W: MoveWorld> {
     numtouch: usize,
     out: [Option<MoveEvent>; MAX_OUT],
     numout: usize,
-    gaps: u32,
+    gaps: core::cell::Cell<u32>,
 }
 
 impl<'a, W: MoveWorld> Pm<'a, W> {
@@ -103,7 +106,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             numtouch: 0,
             out: [None; MAX_OUT],
             numout: 0,
-            gaps: 0,
+            gaps: core::cell::Cell::new(0),
         }
     }
 
@@ -180,8 +183,8 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
         self.out(MoveEvent::ProneAnim);
     }
 
-    pub(crate) fn gap(&mut self, gap: Gap) {
-        self.gaps |= gap as u32;
+    pub(crate) fn gap(&self, gap: Gap) {
+        self.gaps.set(self.gaps.get() | gap as u32);
     }
 
     pub(crate) fn surface_sound(&self, pml: &Pml) -> i32 {
@@ -230,8 +233,9 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::SpecialMove,
             Gap::Overheat,
             Gap::Attachments,
+            Gap::AdsPerkAnimTypes,
         ]
         .into_iter()
-        .filter(|g| self.gaps & *g as u32 != 0)
+        .filter(|g| self.gaps.get() & *g as u32 != 0)
     }
 }

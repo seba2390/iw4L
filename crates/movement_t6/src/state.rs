@@ -124,6 +124,10 @@ pub mod e_flags2 {
 
 /// The player state's other flags.
 pub mod other_flags {
+    /// The state belongs to a playing client (not a spectator): set by the
+    /// server at the end of each of its frames; aiming needs it.
+    pub const PLAYER: u32 = 0x4;
+    pub const SPECTATOR: u32 = 0x8;
     /// The player is EMP'd: a charge shot's queue is capped.
     pub const EMP: u32 = 0x40;
     /// Movement, stance, lean, reload and fire are locked.
@@ -276,7 +280,20 @@ pub mod buttons {
     pub const SMOKE: u32 = 15;
     pub const NIGHTVISION: u32 = 18;
     pub const THROW: u32 = 24;
+    /// The throw keys beyond frag and smoke.
+    pub const THROW_A: u32 = 30;
+    pub const THROW_B: u32 = 31;
+    pub const THROW_C: u32 = 32;
+    pub const THROW_D: u32 = 33;
+    pub const VEHICLE_ATTACK: u32 = 34;
+    pub const VEHICLE_ATTACK_ALT: u32 = 35;
+    pub const SPECIAL_FIRE: u32 = 38;
     pub const DIVE: u32 = 44;
+    /// Cancels a cancelable offhand.
+    pub const CANCEL: u32 = 49;
+    /// Sets an airburst weapon's distance.
+    pub const AIRBURST_RANGE: u32 = 51;
+    pub const AIRBURST_ADS: u32 = 52;
 }
 
 pub mod view_height {
@@ -332,8 +349,13 @@ pub struct UserCmd {
     pub alt_mode_weapon: u32,
     pub forwardmove: i8,
     pub rightmove: i8,
-    pub melee_charge_yaw: f32,
+    /// The entity a melee lunge aims at, `ENTITYNUM_NONE` when none.
+    pub melee_charge_ent: u16,
     pub melee_charge_dist: u8,
+    /// The client swapped which trigger fires which gun of a dual wield.
+    pub fire_buttons_swapped: bool,
+    /// An airburst weapon's set distance.
+    pub airburst_distance: u16,
 }
 
 pub const MAX_HELD_WEAPONS: usize = 15;
