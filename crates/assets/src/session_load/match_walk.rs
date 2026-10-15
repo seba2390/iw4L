@@ -221,6 +221,18 @@ pub(super) async fn walk_prepared_match(
             .into_iter()
             .map(|key| key.name),
     );
+    let zombie_weapon_options = zombie.weapon_options;
+    let zombie_camo_images: std::collections::BTreeSet<String> = zombie_weapon_options
+        .as_ref()
+        .map(|options| {
+            (0..options.rows as i32)
+                .filter(|&row| matches!(options.cell(row, 1), "camo" | "gold" | "black"))
+                .flat_map(|row| (2..options.columns as i32).map(move |col| options.cell(row, col)))
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
     let zombie_fx = zombie.fx;
     let zombie_impact_fx = zombie.impact_fx;
     // Black Ops' singleplayer tables for its zombie maps.
@@ -530,7 +542,14 @@ pub(super) async fn walk_prepared_match(
                 .enumerate()
                 .filter(|(_, material)| {
                     material.name.is_real()
-                        && zombie_weapon_materials.contains(material.name.as_str())
+                        && (zombie_weapon_materials.contains(material.name.as_str())
+                            || material.textures.iter().any(|tex| {
+                                tex.image
+                                    .and_then(|id| population.images.get(id))
+                                    .is_some_and(|img| {
+                                        zombie_camo_images.contains(img.name.as_str())
+                                    })
+                            }))
                 })
                 .map(|(index, _)| index)
                 .collect();
@@ -611,6 +630,13 @@ pub(super) async fn walk_prepared_match(
             foreign_meshes,
             &mut report,
         );
+    }
+    if let Some(options) = &zombie_weapon_options {
+        let dressed =
+            weapons.prepare_t5_camouflages(options, None, &mut global, &fpv_meshes, &world_weapons);
+        report.push(format!(
+            "zombie camouflage: {dressed} weapon configurations prepared"
+        ));
     }
     let provisional_map_ids: Vec<usize> = (0..global.materials.len()).collect();
     if iw5_mat_n > 0 {
@@ -762,6 +788,25 @@ pub(super) async fn walk_prepared_match(
                 }
             }
             Err(error) => report.push(format!("merged material images gap: {error}")),
+        }
+        if zombie_weapon_options.is_some() {
+            let keys: Vec<_> = (1..=weapons.len() as u32)
+                .flat_map(|id| {
+                    weapons
+                        .material_camouflages_of(id)
+                        .iter()
+                        .flat_map(|camo| camo.materials.iter().map(|(_, to)| to.clone()))
+                })
+                .collect();
+            let stage = progress.begin_scoped(StageId::Images, "zombie camouflage", None);
+            let decoded = asset_material::material_images::decode_images_for_keys(
+                &image_trees,
+                &mut global,
+                keys,
+                &stage,
+                load_pool(),
+            );
+            stage.finish_from(&decoded);
         }
     }
     if let Some(draw) = world.draw.as_mut() {

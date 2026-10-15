@@ -142,6 +142,7 @@ const PLACE_HOLD_MS: i32 = 500;
 const WALK_START_MS: i32 = 10_000;
 const WALK_PERIOD_MS: i32 = 20_000;
 const WALK_PHASES_MS: [i32; 5] = [300, 1500, 3000, 4000, 5500];
+const WALK_SPRINT_PHASES_MS: [i32; 5] = [300, 1500, 10_500, 11_500, 13_000];
 const WALK_NODE_RANGE: core::ops::Range<f32> = 600.0..1200.0;
 /// The grab test moves onto a power-up at most this often.
 const GRAB_PERIOD_MS: i32 = 1000;
@@ -358,6 +359,8 @@ struct Walk {
     phase: usize,
     top_z: f32,
     low_view: [f32; 2],
+    sprint_ms: i32,
+    sprint_end: Option<[f32; 3]>,
 }
 
 impl TestPlayer {
@@ -1257,6 +1260,8 @@ pub(crate) fn drive_test_player(
                         phase: 0,
                         top_z: ps.origin[2],
                         low_view: [ps.view_height_current; 2],
+                        sprint_ms: 0,
+                        sprint_end: None,
                     });
                 }
                 None => diag::info!(
@@ -1268,11 +1273,16 @@ pub(crate) fn drive_test_player(
             }
         }
         if let Some(walk) = test.walk.as_mut() {
+            let phases = if std::env::var("IW4L_TEST_WALK").as_deref() == Ok("sprint") {
+                &WALK_SPRINT_PHASES_MS
+            } else {
+                &WALK_PHASES_MS
+            };
             let t = clock.time_ms - walk.start_ms;
-            let phase = WALK_PHASES_MS
+            let phase = phases
                 .iter()
                 .position(|&end| t < end)
-                .unwrap_or(WALK_PHASES_MS.len());
+                .unwrap_or(phases.len());
             while walk.phase < phase {
                 walk.phase += 1;
                 if walk.phase < walk.phase_from.len() {
@@ -1281,13 +1291,17 @@ pub(crate) fn drive_test_player(
             }
             match phase {
                 0 => walk.top_z = walk.top_z.max(ps.origin[2]),
+                2 if world.0.move_status(id).is_some_and(|s| s.sprinting) => {
+                    walk.sprint_ms += 50;
+                    walk.sprint_end = Some(ps.origin);
+                }
                 3 | 4 => {
                     let low = &mut walk.low_view[phase - 3];
                     *low = low.min(ps.view_height_current);
                 }
                 _ => {}
             }
-            if phase < WALK_PHASES_MS.len() {
+            if phase < phases.len() {
                 if phase < 3 {
                     let eye = [ps.origin[0], ps.origin[1], ps.origin[2] + EYE_HEIGHT];
                     let ahead = [walk.target[0], walk.target[1], eye[2]];
@@ -1310,12 +1324,29 @@ pub(crate) fn drive_test_player(
                 let d = flat_distance(from, to);
                 format!("{d:.0} ({:.0}/s)", d * 1000.0 / ms as f32)
             };
+            let sprint_window = phases[2] - phases[1];
+            let sprinted = if walk.sprint_ms > 0 && walk.sprint_ms < sprint_window {
+                let d = flat_distance(
+                    walk.phase_from[2],
+                    walk.sprint_end.unwrap_or(walk.phase_from[3]),
+                );
+                format!(
+                    "{d:.0} ({:.0}/s over {}ms)",
+                    d * 1000.0 / walk.sprint_ms as f32,
+                    walk.sprint_ms
+                )
+            } else {
+                format!(
+                    "{} ({}ms)",
+                    walked(2, sprint_window),
+                    walk.sprint_ms.max(sprint_window)
+                )
+            };
             diag::info!(
                 Sim,
-                "test player: walked — jump {:.1} high, walk {}, sprint {}, crouch view {:.1}, prone view {:.1}, now at {}",
+                "test player: walked — jump {:.1} high, walk {}, sprint {sprinted}, crouch view {:.1}, prone view {:.1}, now at {}",
                 walk.top_z - walk.phase_from[0][2],
-                walked(1, WALK_PHASES_MS[1] - WALK_PHASES_MS[0]),
-                walked(2, WALK_PHASES_MS[2] - WALK_PHASES_MS[1]),
+                walked(1, phases[1] - phases[0]),
                 walk.low_view[0],
                 walk.low_view[1],
                 fmt_point(ps.origin)
@@ -1408,6 +1439,13 @@ pub(crate) fn drive_test_player(
                 Phase::Watching
                     if scenario.site.kind == UseKind::Power
                         && !world.0.level_flag("power_on")
+                        && clock.time_ms < scenario.power_by_ms =>
+                {
+                    scenario.until_ms = clock.time_ms + WATCH_MS;
+                }
+                Phase::Watching
+                    if scenario.site.kind == UseKind::Box
+                        && world.0.level_flag("moving_chest_now")
                         && clock.time_ms < scenario.power_by_ms =>
                 {
                     scenario.until_ms = clock.time_ms + WATCH_MS;
@@ -1524,6 +1562,22 @@ pub(crate) fn drive_test_player(
                             Sim,
                             "test player: its unitrigger stub — {}",
                             world.0.unitrigger_state(scenario.site.object)
+                        );
+                    }
+                    if scenario.site.kind == UseKind::Box {
+                        let active_boxes: Vec<String> = world
+                            .0
+                            .use_sites()
+                            .into_iter()
+                            .filter(|s| s.kind == UseKind::Box)
+                            .map(|s| format!("{}@{}", s.cost.unwrap_or(0), fmt_point(s.origin)))
+                            .collect();
+                        diag::info!(
+                            Sim,
+                            "test player: box state — chest_index={} chest_moves={} chest_accessed={} active={active_boxes:?}",
+                            world.0.object_field_text(0, "chest_index"),
+                            world.0.object_field_text(0, "chest_moves"),
+                            world.0.object_field_text(0, "chest_accessed"),
                         );
                     }
                     ask(ClientAction::Move {

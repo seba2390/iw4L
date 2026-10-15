@@ -854,7 +854,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     ) {
         let dressed = weapons.prepare_t5_camouflages(
             options,
-            choices,
+            Some(choices),
             &mut material_seed,
             &fpv_meshes,
             &world_weapons,

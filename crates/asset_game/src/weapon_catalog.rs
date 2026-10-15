@@ -2518,7 +2518,7 @@ impl WeaponBuild {
     pub fn prepare_t5_camouflages(
         &mut self,
         table: &crate::CapturedStringTable,
-        choices: &crate::CapturedStringTable,
+        choices: Option<&crate::CapturedStringTable>,
         materials: &mut asset_material::MaterialCatalog,
         fpv: &asset_model::FpvMeshBuild,
         world: &asset_model::WorldWeaponBuild,
@@ -2565,8 +2565,10 @@ impl WeaponBuild {
                     &mut variants,
                 ))
             });
-            row.material_camos = Arc::clone(camos);
-            count += usize::from(!camos.is_empty());
+            if !camos.is_empty() {
+                row.material_camos = Arc::clone(camos);
+                count += 1;
+            }
         }
         count
     }

@@ -7,7 +7,7 @@ use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
     MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
-    MoveWorld, PlayerMovement, Stance, WaterSurface, WeaponActivity, WeaponNotify,
+    MoveWorld, PlayerMovement, ScriptFlag, Stance, WaterSurface, WeaponActivity, WeaponNotify,
     WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
@@ -710,6 +710,7 @@ impl PlayerMovement for T5Movement {
         Some(MoveStatus {
             on_ladder: ps.pm_flags & pm_flags::LADDER != 0,
             mantling: ps.pm_flags & pm_flags::MANTLE != 0,
+            sprinting: ps.pm_flags & pm_flags::SPRINTING != 0,
             damage_timer: ps.damage_timer,
             no_melee: ps.pm_flags & pm_flags::NO_MELEE != 0,
             no_weapon_cycling: ps.weap_flags & movement_t5::state::weap_flags::CYCLING_DISABLED
@@ -717,6 +718,28 @@ impl PlayerMovement for T5Movement {
             being_revived: ps.pm_type == pm_type::LAST_STAND_REVIVED,
             weapon_state: ps.weaponstate,
         })
+    }
+
+    /// `allowmelee` sets the no-melee pm flag (`0x0800_0000`);
+    /// `disableweaponcycling` and `enableweaponcycling` set and clear the
+    /// weapon flag (`0x200`) that keeps an empty weapon in hand.
+    fn set_script_flag(&self, player: &mut MovePlayer, flag: ScriptFlag, on: bool) -> Option<bool> {
+        let (mut ps, mut last) = unpack(player);
+        let (word, bit) = match flag {
+            ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
+            ScriptFlag::NoWeaponCycling => (
+                &mut ps.weap_flags,
+                movement_t5::state::weap_flags::CYCLING_DISABLED,
+            ),
+        };
+        let was = *word & bit != 0;
+        if on {
+            *word |= bit;
+        } else {
+            *word &= !bit;
+        }
+        pack(player, &mut ps, &mut last);
+        Some(was)
     }
 
     fn cursor_hints(&self) -> &'static [&'static str] {

@@ -17,6 +17,7 @@ fn is_cac_table(name: &str) -> bool {
         || name.eq_ignore_ascii_case("mp/attachmentTable.csv")
         || name.eq_ignore_ascii_case("mp/attachmentCombos.csv")
         || name.eq_ignore_ascii_case("mp/weaponoptions.csv")
+        || name.eq_ignore_ascii_case("weaponoptions.csv")
         || name.eq_ignore_ascii_case("mp/camoTable.csv")
 }
 

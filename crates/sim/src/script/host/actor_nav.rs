@@ -502,6 +502,20 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
         let node =
             super::actor_anims::play_scripted(world, id, &notify, &anim, root, rate, goal_time)?;
+        if notify == "rise" {
+            let anim_name = match &anim {
+                Value::Animation { name, .. } => name.as_ref(),
+                _ => "-",
+            };
+            diag::info!(
+                Sim,
+                "actor {id}: scripted {notify} ({anim_name}) from ({:.0} {:.0} {:.0}) yaw {:.0}",
+                origin[0],
+                origin[1],
+                origin[2],
+                angles[1]
+            );
+        }
         with_move(world, receiver, |movement| {
             movement.scripted = Some(Scripted {
                 origin,
@@ -1020,6 +1034,13 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     ];
                     angles[1] = scripted.yaw + clip.abs_delta_yaw(time);
                     if !clip.looping && time >= 1.0 {
+                        diag::info!(
+                            Sim,
+                            "actor {actor}: scripted done at ({:.0} {:.0} {:.0})",
+                            origin[0],
+                            origin[1],
+                            origin[2]
+                        );
                         movement.scripted = None;
                     }
                 }

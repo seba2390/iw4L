@@ -189,9 +189,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "allowprone" => Prone,
         "allowstand" => Stand,
     );
-    // The melee lock is accepted but not enforced yet.
-    registry.register(Method, "allowmelee", |world, receiver, _| {
-        super::player::player(world, receiver)?;
+    // `allowmelee(0)` sets the no-melee pm flag (`0x0800_0000`); `allowmelee(1)`
+    // clears it.
+    registry.register(Method, "allowmelee", |world, receiver, args| {
+        let allowed = super::player::flag(args, 0)?;
+        let id = crate::ClientId(super::player::player(world, receiver)?);
+        crate::game_move::set_script_flag(
+            &mut crate::frame::FrameWorld::from_world(world),
+            id,
+            game_api::movement::ScriptFlag::NoMelee,
+            !allowed,
+        );
         Ok(Value::Undefined)
     });
     registry.register(Method, "enableinvulnerability", |world, receiver, _| {
