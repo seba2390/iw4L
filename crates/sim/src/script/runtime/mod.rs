@@ -1,3 +1,4 @@
+mod aliases;
 mod lifecycle;
 mod state;
 
@@ -560,6 +561,10 @@ fn instruction(
             let key = array_key(pop(thread)?)?;
             let receiver = pop(thread)?;
             let mut runtime = world.resource_mut::<RoundScript>();
+            // Writing through an array writes to it too.
+            if let Value::Array(id) = &receiver {
+                runtime.array_aliases.leave(*id);
+            }
             let (value, field) = match &receiver {
                 Value::Array(id) => (
                     runtime
@@ -662,6 +667,7 @@ fn instruction(
             let mut runtime = world.resource_mut::<RoundScript>();
             match receiver {
                 Value::Array(id) => {
+                    runtime.array_aliases.leave(id);
                     let values = runtime
                         .arrays
                         .get_mut(&id)
@@ -846,6 +852,13 @@ fn instruction(
                         );
                     }
                     let value = value.map_err(|m| format!("{name}: {m}"))?;
+                    if in_place && let Some(Value::Array(id)) = args.first() {
+                        let shared = replay_in_place(world, native, &receiver, *id, &args)
+                            .map_err(|m| format!("{name}: {m}"))?;
+                        if traced_native(name) && !shared.is_empty() {
+                            diag::info!(Sim, "gsc native trace: {name} also edited {shared:?}");
+                        }
+                    }
                     thread.stack.push(value);
                     deliver_pending(world, thread, now)?;
                     settle_owed_deaths(world, thread, now)?;
@@ -1709,6 +1722,26 @@ fn allocate_array(world: &mut World) -> Result<Value, String> {
 /// engine shares an array until a script writes to it.
 const IN_PLACE_BUILTINS: [&str; 3] = ["arrayinsert", "arrayremoveindex", "arrayremovevalue"];
 
+/// Edits every array that still shares `id` the way `native` edited `id`;
+/// answers those arrays.
+fn replay_in_place(
+    world: &mut World,
+    native: super::host::registry::Native,
+    receiver: &Value,
+    id: u64,
+    args: &[Value],
+) -> Result<Vec<u64>, String> {
+    let others = world.resource::<RoundScript>().array_aliases.others(id);
+    for other in &others {
+        let mut copied = vec![Value::Array(*other)];
+        for value in &args[1..] {
+            copied.push(copy_value(world, value.clone())?);
+        }
+        native(world, receiver, &copied)?;
+    }
+    Ok(others)
+}
+
 fn copy_value(world: &mut World, value: Value) -> Result<Value, String> {
     fn copy(
         world: &mut World,
@@ -1737,6 +1770,10 @@ fn copy_value(world: &mut World, value: Value) -> Result<Value, String> {
         let Value::Array(new_id) = result else {
             unreachable!()
         };
+        world
+            .resource_mut::<RoundScript>()
+            .array_aliases
+            .join(id, new_id);
         for (key, value) in entries {
             let value = copy(world, value, depth + 1, remaining)?;
             world
@@ -1881,4 +1918,7 @@ fn collect_heap(world: &mut World) {
     runtime.objects.retain(|id, _| marks.objects.contains(id));
     runtime.dead.retain(|id| marks.objects.contains(id));
     runtime.arrays.retain(|id, _| marks.arrays.contains(id));
+    runtime
+        .array_aliases
+        .retain(|id| marks.arrays.contains(&id));
 }
