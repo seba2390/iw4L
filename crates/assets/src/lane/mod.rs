@@ -4,7 +4,7 @@ mod iw5;
 mod sink;
 mod t5;
 mod t6;
-pub use t6::{T6UiArt, load_t6_ui_art};
+pub use t6::{T6UiArt, load_t6_ui_art, store_t6_ui_fonts};
 
 use std::path::Path;
 

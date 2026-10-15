@@ -27,7 +27,7 @@ pub(crate) fn apply_window_settings(
     settings: Res<frame::GameSettings>,
     present_override: Option<Res<PresentModeOverride>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut applied: Local<Option<(frame::DisplayResolution, bool, PresentMode)>>,
+    mut applied: Local<Option<(frame::DisplayResolution, bool, PresentMode, u32)>>,
 ) {
     let present_mode = present_override.map_or_else(
         || {
@@ -39,16 +39,27 @@ pub(crate) fn apply_window_settings(
         },
         |mode| mode.0,
     );
-    let display = (settings.resolution, settings.fullscreen, present_mode);
-    if applied.as_ref() == Some(&display) {
-        return;
-    }
     let Ok(mut window) = windows.single_mut() else {
         return;
     };
-    window
-        .resolution
-        .set_physical_resolution(settings.resolution.width, settings.resolution.height);
+    // The desktop's scale is known only once the window exists; the size is
+    // applied again when it arrives or changes (a move to another display).
+    let display = (
+        settings.resolution,
+        settings.fullscreen,
+        present_mode,
+        window.resolution.scale_factor().to_bits(),
+    );
+    if applied.as_ref() == Some(&display) {
+        return;
+    }
+    // The display setting names the window's size in the desktop's own units,
+    // so a 1280x720 window on a Retina display covers 1280x720 points rather
+    // than a quarter of that; the drawn image follows the display's pixels.
+    window.resolution.set(
+        settings.resolution.width as f32,
+        settings.resolution.height as f32,
+    );
     window.mode = if settings.fullscreen {
         bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)
     } else {

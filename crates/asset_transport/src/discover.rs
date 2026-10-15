@@ -897,6 +897,19 @@ fn map_pack_folder(zone_ff: &Path) -> String {
         .unwrap_or_else(|| "BASE".to_owned())
 }
 
+/// The user's own IW4L folder, shared by every checkout and launch:
+/// `$XDG_CONFIG_HOME/iw4l` or `~/.config/iw4l` (the settings live there too).
+/// Windows builds are portable and keep everything in the artifacts folder.
+pub fn user_data_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return None;
+    }
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .map(|config| config.join("iw4l"))
+}
+
 pub fn ensure_artifacts_dir() -> Result<PathBuf, String> {
     let dir = std::env::var_os("IW4L_ARTIFACTS_DIR")
         .map(PathBuf::from)

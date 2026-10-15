@@ -166,12 +166,27 @@ impl Inventory {
     }
 }
 
+/// Black Ops 2's front-end art for one installation, multiplayer or zombies.
+type ArtKey = (PathBuf, bool);
+
+struct PreparedArt {
+    publication: asset_material::UiImagePublication,
+    fonts: Vec<asset_material::ui_font::UiBitmapFont>,
+}
+
 #[derive(Resource)]
 struct Backdrop {
     fallback: Handle<Image>,
     native: Option<Handle<Image>>,
-    key: Option<(PathBuf, bool)>,
-    task: Option<Task<Result<assets::T6UiArt, String>>>,
+    /// The art the pages show (`None`: IW4L's own library style).
+    key: Option<ArtKey>,
+    /// Black Ops 2 is selected and its art is still loading: its pages wait
+    /// on a blank screen rather than flash IW4L's style first.
+    pending: bool,
+    /// Both art sets load as soon as the library finds the installation, so
+    /// opening Black Ops 2 or its Zombies page swaps them in at once.
+    loading: Option<(ArtKey, Task<Result<assets::T6UiArt, String>>)>,
+    prepared: std::collections::HashMap<ArtKey, Option<PreparedArt>>,
     revision: u64,
 }
 
@@ -259,7 +274,9 @@ fn load_backdrop(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         fallback: images.add(image),
         native: None,
         key: None,
-        task: None,
+        pending: false,
+        loading: None,
+        prepared: Default::default(),
         revision: 0,
     });
 }
@@ -280,10 +297,12 @@ fn load_native_art(
     let Some(mut backdrop) = backdrop else {
         return;
     };
-    let key = menu
-        .selected
-        .filter(|game| *game == Game::BlackOps2)
-        .and_then(|game| inventory.installation(game)?.root.clone())
+    let root = inventory
+        .installation(Game::BlackOps2)
+        .and_then(|entry| entry.root.clone());
+    let shown = root
+        .clone()
+        .filter(|_| menu.selected == Some(Game::BlackOps2))
         .map(|root| {
             (
                 root,
@@ -291,41 +310,69 @@ fn load_native_art(
                     || (menu.page == Page::Lobby && dvars.get("ui_gametype") == Some("zclassic")),
             )
         });
-    if backdrop.key != key {
-        backdrop.native = None;
-        backdrop.revision = backdrop.revision.wrapping_add(1);
-        backdrop.task = key.as_ref().map(|(root, zombies)| {
-            let root = root.clone();
-            let zombies = *zombies;
-            assets::load_pool().spawn(async move { assets::load_t6_ui_art(&root, zombies) })
-        });
-        backdrop.key = key;
+    if let Some((key, task)) = backdrop.loading.as_mut()
+        && let Some(result) = future::block_on(future::poll_once(task))
+    {
+        let key = key.clone();
+        backdrop.loading = None;
+        let art = match result {
+            Ok(art) => {
+                let (publication, fonts) = art.into_parts();
+                Some(PreparedArt { publication, fonts })
+            }
+            Err(error) => {
+                diag::warn!(Zone, "T6 frontend artwork unavailable: {error}");
+                None
+            }
+        };
+        backdrop.prepared.insert(key, art);
     }
-    let Some(task) = backdrop.task.as_mut() else {
-        return;
-    };
-    let Some(result) = future::block_on(future::poll_once(task)) else {
-        return;
-    };
-    backdrop.task = None;
-    match result {
-        Ok(prepared) => {
-            let publication = prepared.publish();
-            commands.insert_resource(publication.clone());
-            art.adopt(publication);
-            let zombies = backdrop.key.as_ref().is_some_and(|(_, zombies)| *zombies);
-            backdrop.native = art.image(
-                if zombies {
-                    "menu_zm_background_main"
-                } else {
-                    "menu_mp_background_main"
-                },
-                &mut images,
-            );
-            backdrop.revision = backdrop.revision.wrapping_add(1);
+    if backdrop.loading.is_none() {
+        let next = shown
+            .iter()
+            .cloned()
+            .chain(
+                root.iter()
+                    .flat_map(|root| [(root.clone(), false), (root.clone(), true)]),
+            )
+            .find(|key| !backdrop.prepared.contains_key(key));
+        if let Some(key) = next {
+            let (root, zombies) = key.clone();
+            let task =
+                assets::load_pool().spawn(async move { assets::load_t6_ui_art(&root, zombies) });
+            backdrop.loading = Some((key, task));
         }
-        Err(error) => diag::warn!(Zone, "T6 frontend artwork unavailable: {error}"),
     }
+    let ready = shown
+        .as_ref()
+        .is_some_and(|key| backdrop.prepared.contains_key(key));
+    if backdrop.key == shown && !(backdrop.pending && ready) {
+        return;
+    }
+    backdrop.native = None;
+    backdrop.pending = shown.is_some() && !ready;
+    backdrop.revision = backdrop.revision.wrapping_add(1);
+    backdrop.key = shown.clone();
+    let Some(prepared) = shown
+        .as_ref()
+        .and_then(|key| backdrop.prepared.get(key))
+        .and_then(Option::as_ref)
+    else {
+        return;
+    };
+    assets::store_t6_ui_fonts(prepared.fonts.clone());
+    let publication = prepared.publication.clone();
+    commands.insert_resource(publication.clone());
+    art.adopt(publication);
+    let zombies = shown.as_ref().is_some_and(|(_, zombies)| *zombies);
+    backdrop.native = art.image(
+        if zombies {
+            "menu_zm_background_main"
+        } else {
+            "menu_mp_background_main"
+        },
+        &mut images,
+    );
 }
 
 fn skin_buttons(
@@ -1239,6 +1286,22 @@ fn rebuild(
     *last_page = Some(menu.page);
     for root in &roots {
         commands.entity(root).despawn();
+    }
+    if backdrop.pending {
+        commands.spawn((
+            Root,
+            UiLayer::Shell,
+            UiLayerVisibility,
+            GlobalZIndex(80),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            BackgroundColor(Color::BLACK),
+        ));
+        return;
     }
     let game = menu.selected;
     let accent = game.map_or(Color::srgb(0.78, 0.86, 0.69), Game::accent);
