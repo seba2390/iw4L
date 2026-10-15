@@ -34,6 +34,7 @@ pub(crate) struct ClientCallbacks {
     pub(crate) player_jump: Option<String>,
     pub(crate) player_land: Option<String>,
     pub(crate) player_foliage: Option<String>,
+    pub(crate) sound_set_ambient_state: Option<String>,
 }
 
 /// The server's world while the client's scripts run: the client game reads
@@ -152,6 +153,7 @@ pub(crate) fn install(
         player_jump: callbacks.player_jump.clone(),
         player_land: callbacks.player_land.clone(),
         player_foliage: callbacks.player_foliage.clone(),
+        sound_set_ambient_state: callbacks.sound_set_ambient_state.clone(),
     });
     server.insert_resource(ClientScripts {
         world,
@@ -197,6 +199,9 @@ pub(crate) fn advance(world: &mut World) {
             .world
             .insert_resource(ServerWorld(std::ptr::from_mut(world)));
         let result = step(&mut client, now);
+        // The sound system's random one-shots come due on the client's
+        // frame, after its scripts.
+        super::natives::t6::client::sound::play_due_randoms(&mut client.world);
         let commands = std::mem::take(
             &mut client
                 .world
@@ -251,7 +256,13 @@ fn step(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
 /// its first wait.
 fn start(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
     let world = &mut client.world;
-    for (etype, pairs) in &client.setup.entities {
+    let mut triggers = Vec::new();
+    for ((etype, pairs), flags) in client
+        .setup
+        .entities
+        .iter()
+        .zip(client.setup.entity_spawnflags.iter().copied())
+    {
         let kind = super::natives::t6::client::game::type_name(*etype);
         let mut runtime = world.resource_mut::<RoundScript>();
         let Ok(id) = runtime.create_entity(super::entities::EntityKind::Map, kind) else {
@@ -262,7 +273,13 @@ fn start(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
             let value = super::entities::typed_key(game_key_type(*ty), value);
             runtime.set_object_field(id, key, value);
         }
+        if *etype == 0 {
+            triggers.push((id, flags));
+        }
     }
+    world.insert_resource(super::natives::t6::client::ambient::ClientTriggers(
+        triggers,
+    ));
     run_to_end(
         world,
         crate::script::runtime::STRUCT_INIT,
@@ -336,7 +353,18 @@ pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSound
 /// The loops the client game plays, where they play from now: a fake
 /// entity's origin, or a client entity's.
 pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String, [f32; 3])> {
-    use crate::script::client::{CLIENT_LOOP_OWNER, ClientOutput, LoopSource};
+    use crate::script::client::{CLIENT_LOOP_OWNER, ClientOutput, LoopSource, nearest_on_segment};
+    // The listener: the local player's eye, its origin raised by its view
+    // height.
+    let listener = crate::frame::FrameWorld::from_world(server)
+        .player(crate::ClientId(0))
+        .map(|ps| {
+            [
+                ps.origin[0],
+                ps.origin[1],
+                ps.origin[2] + ps.view_height_current,
+            ]
+        });
     let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
         return Vec::new();
     };
@@ -363,7 +391,12 @@ pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String
                         _ => return None,
                     }
                 }
-                LoopSource::Emitter(..) | LoopSource::Line(..) => return None,
+                LoopSource::Emitter(_, at) => at.map(f32::from_bits),
+                LoopSource::Line(_, start, end) => nearest_on_segment(
+                    listener?,
+                    start.map(f32::from_bits),
+                    end.map(f32::from_bits),
+                ),
             };
             Some((
                 crate::ScriptModelId::from_wire(CLIENT_LOOP_OWNER | sound.serial),

@@ -108,9 +108,15 @@ pub(crate) fn program(
         player_jump: has(&format!("{CALLBACKS}::codecallback_playerjump")),
         player_land: has(&format!("{CALLBACKS}::codecallback_playerland")),
         player_foliage: has(&format!("{CALLBACKS}::codecallback_playerfoliage")),
+        sound_set_ambient_state: has(&format!("{CALLBACKS}::soundsetambientstate")),
     };
+    let (client_ents, entity_spawnflags) = client_entities(&entities, &key_types)
+        .into_iter()
+        .map(|(etype, fields, flags)| ((etype, fields), flags))
+        .unzip();
     Rule::Known(ClientScriptProgram {
-        entities: client_entities(&entities, &key_types),
+        entities: client_ents,
+        entity_spawnflags,
         structs: structs(&entities, &key_types),
         precaches,
         starts,
@@ -183,15 +189,18 @@ const CLIENT_ENTITY_FIELDS: [(&str, KeyType); 5] = [
     ("targetname", KeyType::String),
 ];
 
+/// A client entity: its `eType`, typed fields and spawnflags.
+type ClientEntity = (i32, Vec<(String, KeyType, String)>, i32);
+
 /// The map entities the client spawns itself (`CG_SpawnEntities` ->
 /// `CG_CallSpawn` -> `CG_ParseEntityFields`): client-side `script_model`,
 /// `script_origin` and `script_brushmodel` entities without a
 /// `destructibledef` (`eType` 6), and client triggers with spawnflags
-/// `0x880` (`eType` 0).
+/// `0x880` (`eType` 0), each with its spawnflags.
 fn client_entities(
     entities: &[Vec<(String, String)>],
     key_types: &[(String, KeyType)],
-) -> Vec<(i32, Vec<(String, KeyType, String)>)> {
+) -> Vec<ClientEntity> {
     let mut out = Vec::new();
     for pairs in entities.iter().skip(1) {
         let classname = value(pairs, "classname").unwrap_or("");
@@ -235,7 +244,7 @@ fn client_entities(
                 Some((name, ty, val.clone()))
             })
             .collect();
-        out.push((etype, fields));
+        out.push((etype, fields, flags));
     }
     out
 }

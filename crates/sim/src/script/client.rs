@@ -434,6 +434,21 @@ impl ClientOutput {
         id
     }
 
+    /// Starts an emitter's loop in place of the one playing there: the
+    /// sound system's emitters take no playback id (0 names none).
+    pub(crate) fn restart_emitter(&mut self, source: LoopSource, alias: String) {
+        let serial = self.next_loop & 0x0fff_ffff;
+        self.next_loop = self.next_loop.wrapping_add(1);
+        self.loops.insert(
+            source,
+            ClientLoop {
+                alias,
+                serial,
+                id: 0,
+            },
+        );
+    }
+
     /// Starts a loop (keeping the one already playing the same alias there),
     /// answering its playback id.
     pub(crate) fn start_loop(&mut self, source: LoopSource, alias: String) -> i32 {
@@ -500,8 +515,9 @@ pub(crate) struct FakeEnts {
 }
 
 /// Script loop sound owners of the client's loops; the server's script
-/// entities' loops use lower numbers.
-pub(crate) const CLIENT_LOOP_OWNER: u32 = 0x4000_0000;
+/// entities' loops use lower numbers (spawned ones from
+/// `SPAWNED_PRESENCE_BASE`).
+pub(crate) const CLIENT_LOOP_OWNER: u32 = 0x6000_0000;
 
 /// Whether the local client's sound system still plays a playback: a loop
 /// the client plays, or a sound it reported playing; a sound played since

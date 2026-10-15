@@ -442,6 +442,12 @@ impl SimState {
             .map(|_| self.script_sound_key(name).is_some())
     }
 
+    /// The names the client's sound commands look up in the sound driver
+    /// and banks, when the match's game has them.
+    pub fn sound_mix_names(&self) -> Option<&asset_core::SoundMixNames> {
+        self.content.sound_mix_names()
+    }
+
     pub fn script_sound_is_looping(&self, name: &str) -> Result<bool, &'static str> {
         let aliases = self
             .content

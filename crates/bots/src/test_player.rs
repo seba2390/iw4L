@@ -1,11 +1,12 @@
 //! The test player (`IW4L_TEST_PLAYER=1`): drives the first player who is
 //! not a bot, for headless runs. It aims at the nearest living actor it can
 //! see, fires (pressing and letting go each tick, so a semi-automatic gun
-//! fires again), knifes an actor within melee reach, reloads an empty clip
-//! and backs away when actors crowd it. Every five seconds it logs the
-//! round, its score, kills, health (and the lowest since the last line),
-//! whether it is down, the actors alive, its weapon and ammo, and what its
-//! aim lines ended on. It only presses buttons; the game decides the rest.
+//! fires again), reloads an empty clip, knifes an actor within melee reach
+//! when it has nothing to fire, and backs away when actors crowd it. Every
+//! five seconds it logs the round, its score, kills, health (and the lowest
+//! since the last line), whether it is down, the actors alive, its weapon
+//! and ammo, and what its aim lines ended on. It only presses buttons; the
+//! game decides the rest.
 //!
 //! `IW4L_TEST_PLAYER=rounds` is the rounds test: the player also asks for
 //! god mode once (cheats must be on) and for an ammo resupply whenever his
@@ -1727,7 +1728,16 @@ pub(crate) fn drive_test_player(
     test.pressed = !test.pressed;
     let hold_fire = wielding && std::env::var("IW4L_TEST_PLACE").is_err();
     if test.pressed || hold_fire {
-        if !hold_fire && can_melee && target.is_some_and(|aim| distance(eye, aim) <= KNIFE_REACH) {
+        // It knifes only when it cannot fire: a gun with rounds fires, and
+        // an empty clip with stock left reloads, even inside knife reach
+        // (knifing alone stalls a late round).
+        if !hold_fire && meta.ammo_clip == 0 && meta.ammo_stock > 0 {
+            cmd.buttons |= buttons::RELOAD;
+        } else if !hold_fire
+            && meta.ammo_clip == 0
+            && can_melee
+            && target.is_some_and(|aim| distance(eye, aim) <= KNIFE_REACH)
+        {
             cmd.buttons |= buttons::MELEE_CHARGE;
             test.knifes += 1;
         } else if !hold_fire && meta.ammo_clip == 0 {

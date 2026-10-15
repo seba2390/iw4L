@@ -168,6 +168,8 @@ struct ContentData {
     map: Arc<asset_core::MapContentDefinition>,
     weapons: Arc<crate::SimWeaponContent>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
+    /// The names the client's sound commands look up (Black Ops 2).
+    sound_mix_names: Option<asset_core::SoundMixNames>,
     /// The game the match's map belongs to: whose sound aliases its scripts name.
     family: Option<asset_core::FamilyId>,
     clip_brushes: Vec<SimBrush>,
@@ -222,6 +224,7 @@ impl SimContentBuilder {
                 map: Default::default(),
                 weapons,
                 script_sound_aliases: Default::default(),
+                sound_mix_names: None,
                 family: None,
                 clip_brushes: Default::default(),
                 clip_bsp: Default::default(),
@@ -267,6 +270,10 @@ impl SimContentBuilder {
                 .map(|(name, looping)| (name.to_ascii_lowercase(), looping))
                 .collect()
         });
+    }
+
+    pub fn set_sound_mix_names(&mut self, names: Option<asset_core::SoundMixNames>) {
+        self.data.sound_mix_names = names;
     }
 
     pub fn set_family(&mut self, family: Option<asset_core::FamilyId>) {
@@ -443,6 +450,9 @@ impl SimContent {
         &self,
     ) -> &Option<std::collections::BTreeMap<String, Option<bool>>> {
         &self.data.script_sound_aliases
+    }
+    pub(super) fn sound_mix_names(&self) -> Option<&asset_core::SoundMixNames> {
+        self.data.sound_mix_names.as_ref()
     }
     pub(super) fn family(&self) -> Option<asset_core::FamilyId> {
         self.data.family

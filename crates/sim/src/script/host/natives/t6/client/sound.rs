@@ -6,7 +6,7 @@
 //! sound by it, and the sound system's reports say which still play. Its
 //! loops play from their fake entity or entity (`ClientOutput::loops`).
 
-use super::super::{array_id, float, int, string, vector};
+use super::super::{float, int, string, vector};
 use super::game::{ClientGame, LOCAL_CLIENT, client_entity, local_client, server_object};
 use crate::script::client::{ClientOutput, LoopSource};
 use crate::script::host::client_scripts::with_server;
@@ -274,6 +274,270 @@ fn volume(world: &mut World, args: &[Value], builtin: &str) -> Result<Value, Str
     Ok(Value::Undefined)
 }
 
+/// Whether two emitter points are the same to the sound system: within
+/// about 0.004 units.
+fn same_point(bits: &[u32; 3], point: [f32; 3]) -> bool {
+    let at = bits.map(f32::from_bits);
+    let d = [at[0] - point[0], at[1] - point[1], at[2] - point[2]];
+    d[1] * d[1] + d[0] * d[0] + d[2] * d[2] < 1.528_79e-5
+}
+
+/// The point emitters the sound system holds.
+const POINT_EMITTERS: usize = 384;
+/// The line emitters the sound system holds.
+const LINE_EMITTERS: usize = 128;
+
+/// A point emitter starts unless one of its alias already plays there, and
+/// not when all are in use.
+fn start_point_emitter(world: &mut World, alias: String, origin: [f32; 3]) {
+    let mut output = world.resource_mut::<ClientOutput>();
+    let mut points = 0;
+    for source in output.loops.keys() {
+        if let LoopSource::Emitter(name, at) = source {
+            if *name == alias && same_point(at, origin) {
+                return;
+            }
+            points += 1;
+        }
+    }
+    if points >= POINT_EMITTERS {
+        return;
+    }
+    let source = LoopSource::Emitter(alias.clone(), origin.map(f32::to_bits));
+    output.restart_emitter(source, alias);
+}
+
+/// A line emitter starts for an alias the sound system has, unless all are
+/// in use ("Sound ran out of line emitters").
+// t6.csc.sound.line_emitter: the engine keeps a second line of the same
+// alias and ends as its own emitter; IW4L keeps one.
+fn start_line_emitter(world: &mut World, alias: String, start: [f32; 3], end: [f32; 3]) {
+    let known = with_server(world, |server| {
+        crate::frame::FrameWorld::from_world(server).script_sound_exists(&alias) == Some(true)
+    })
+    .unwrap_or(false);
+    if !known {
+        return;
+    }
+    let mut output = world.resource_mut::<ClientOutput>();
+    let lines = output
+        .loops
+        .keys()
+        .filter(|source| matches!(source, LoopSource::Line(..)))
+        .count();
+    if lines >= LINE_EMITTERS {
+        diag::warn!(Sim, "csc: sound ran out of line emitters");
+        return;
+    }
+    let source = LoopSource::Line(
+        alias.clone(),
+        start.map(f32::to_bits),
+        end.map(f32::to_bits),
+    );
+    output.restart_emitter(source, alias);
+}
+
+/// A one-shot the sound system replays at a point, min to max msec apart.
+struct SoundRandom {
+    alias: String,
+    origin: [f32; 3],
+    min_ms: i32,
+    max_ms: i32,
+    /// When it next plays (client time).
+    next_ms: i32,
+}
+
+/// The random one-shots, by when each next plays, and the random number
+/// state that spaces them.
+#[derive(bevy_ecs::prelude::Resource)]
+pub(crate) struct SoundRandoms {
+    scheduled: Vec<SoundRandom>,
+    seed: u32,
+}
+
+impl Default for SoundRandoms {
+    fn default() -> Self {
+        // t6.csc.sound.randoms: the engine's random state is shared with its
+        // other random draws and seeded by the process; IW4L's starts at 1.
+        Self {
+            scheduled: Vec::new(),
+            seed: 1,
+        }
+    }
+}
+
+impl SoundRandoms {
+    /// The engine's random integer from min to max (exclusive).
+    fn random_range(&mut self, min: i32, max: i32) -> i32 {
+        self.seed = self.seed.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
+        let span = i64::from(max.wrapping_sub(min));
+        ((span * i64::from(self.seed >> 17)) >> 15) as i32 + min
+    }
+
+    /// Schedules a random its spacing ahead of `now`, after those due no
+    /// later.
+    fn schedule(&mut self, mut random: SoundRandom, now: i32) {
+        random.next_ms = self.random_range(random.min_ms, random.max_ms) + now;
+        let at = self
+            .scheduled
+            .iter()
+            .position(|other| random.next_ms < other.next_ms)
+            .unwrap_or(self.scheduled.len());
+        self.scheduled.insert(at, random);
+    }
+}
+
+/// The client game's time, in msec.
+fn client_time(world: &World) -> i32 {
+    world
+        .get_resource::<ClientGame>()
+        .map_or(0, |game| game.server_time)
+}
+
+/// Plays the random one-shots that are due, at their point on the world
+/// (one more than 250 msec late is passed over), and schedules each again.
+pub(crate) fn play_due_randoms(world: &mut World) {
+    let now = client_time(world);
+    let Some(mut randoms) = world.get_resource_mut::<SoundRandoms>() else {
+        return;
+    };
+    let due = randoms
+        .scheduled
+        .iter()
+        .take_while(|random| now >= random.next_ms)
+        .count();
+    if due == 0 {
+        return;
+    }
+    let due: Vec<SoundRandom> = randoms.scheduled.drain(..due).collect();
+    let mut play = Vec::new();
+    for random in due {
+        if now - random.next_ms < 250 {
+            play.push((random.alias.clone(), random.origin));
+        }
+        randoms.schedule(random, now);
+    }
+    for (alias, origin) in play {
+        self::play(world, &alias, Some(origin), 1.0, 0);
+    }
+}
+
+/// A command the client sends its sound system's mixer.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum MixCommand {
+    /// A mixer snapshot in a slot (1 the ambience's, 2 the group's).
+    Snapshot {
+        slot: i32,
+        id: u32,
+    },
+    SideChainDuck {
+        id: u32,
+    },
+    GlobalFutz {
+        id: u32,
+    },
+    /// A reverb room at a priority (1 the level's, 2 shellshock's).
+    Reverb {
+        priority: i32,
+        room: u32,
+        dry: f32,
+        wet: f32,
+        fade_ms: i32,
+    },
+    DeactivateReverb {
+        priority: i32,
+        fade_ms: i32,
+    },
+    Context {
+        kind: u32,
+        value: u32,
+    },
+    EntityContext {
+        entity: i32,
+        kind: u32,
+        value: u32,
+    },
+}
+
+/// The mixer commands the client sent, in order.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+pub(crate) struct MixCommands(pub(crate) Vec<MixCommand>);
+
+// t6.audio.mix: IW4L's audio does not apply the mixer commands (snapshots,
+// side-chain ducks, futz, reverb rooms, contexts); they are kept, and traced.
+pub(crate) fn mix_command(world: &mut World, command: MixCommand) {
+    if crate::sound_trace::enabled() {
+        diag::info!(Sim, "sound trace: mix {command:?}");
+    }
+    world
+        .get_resource_or_insert_with(MixCommands::default)
+        .0
+        .push(command);
+}
+
+/// The sound system's name hash: case-blind, 0 for no name.
+pub(crate) fn sound_hash(name: &str) -> u32 {
+    if name.is_empty() {
+        return 0;
+    }
+    let hash = name.bytes().fold(0x1505u32, |hash, b| {
+        u32::from(b.to_ascii_lowercase()).wrapping_add(hash.wrapping_mul(0x1003f))
+    });
+    hash.max(1)
+}
+
+/// The names the sound driver and banks hold; none without a sound system,
+/// whose mixer commands go nowhere.
+pub(crate) fn mix_names(world: &World) -> Option<asset_core::SoundMixNames> {
+    with_server(world, |server| {
+        crate::frame::FrameWorld::from_world(server)
+            .sound_mix_names()
+            .cloned()
+    })
+    .flatten()
+}
+
+/// A name's hash when the list holds it, else `default`'s.
+fn known_or_default(list: &[u32], name: &str, what: &str) -> u32 {
+    let id = sound_hash(name);
+    if list.contains(&id) {
+        id
+    } else {
+        diag::info!(Sim, "csc: SOUND: Could not find {what} {name}");
+        sound_hash("default")
+    }
+}
+
+fn set_snapshot(world: &mut World, slot: i32, name: &str) {
+    let Some(names) = mix_names(world) else {
+        return;
+    };
+    let name = if name.is_empty() { "default" } else { name };
+    let id = known_or_default(&names.snapshots, name, "duck");
+    mix_command(world, MixCommand::Snapshot { slot, id });
+}
+
+/// A context type and value the driver allows, by hash; an empty value is
+/// none (0).
+pub(crate) fn context(world: &World, kind: &str, value: &str) -> Option<(u32, u32)> {
+    let names = mix_names(world)?;
+    let (kind_id, value_id) = (sound_hash(kind), sound_hash(value));
+    let Some((_, values)) = names.contexts.iter().find(|(k, _)| *k == kind_id) else {
+        diag::info!(Sim, "csc: SOUND: Unknown sound context {kind}");
+        return None;
+    };
+    if value_id != 0 && !values.contains(&value_id) {
+        diag::info!(Sim, "csc: SOUND: Unknown sound context {value}");
+        return None;
+    }
+    Some((kind_id, value_id))
+}
+
+/// A fade in seconds as whole msec, none below 1.
+fn fade_ms(seconds: f32) -> i32 {
+    ((seconds * 1000.0).round_ties_even() as i32).max(0)
+}
+
 /// The reverb priority a name gives.
 fn priority(args: &[Value], index: usize) -> Result<i32, String> {
     let name = string(args, index)?;
@@ -289,10 +553,6 @@ fn priority(args: &[Value], index: usize) -> Result<i32, String> {
     }
 }
 
-const AMBIENT: &str = "t6.csc.sound.ambient: IW4L's audio has no ambient rooms or packages";
-const REVERB: &str = "t6.csc.sound.reverb: IW4L's audio has no reverb";
-const CONTEXT: &str = "t6.csc.sound.context: IW4L's audio has no sound contexts";
-const RANDOMS: &str = "t6.csc.sound.randoms: IW4L's audio has no sound randoms";
 const STEP_TRIGGER: &str = "t6.csc.sound.step_trigger: IW4L's client game plays no footstep sounds";
 
 /// `ent playrumbleonentity(localclientnum, rumble)`: the rumble, by name
@@ -410,129 +670,207 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     // soundloopemitter(alias, origin) / soundstoploopemitter(alias, origin):
     // a loop the sound system plays at a point.
-    for name in ["soundloopemitter", "soundstoploopemitter"] {
-        registry.register(Function, name, |_, _, args| {
-            vector(args, 1)?;
-            string(args, 0)?;
-            Err("t6.csc.sound.loop_emitter: IW4L's audio has no looping sound at a point".into())
-        });
-    }
+    registry.register(Function, "soundloopemitter", |world, _, args| {
+        let origin = vector(args, 1)?;
+        let alias = string(args, 0)?;
+        start_point_emitter(world, alias.to_string(), origin);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "soundstoploopemitter", |world, _, args| {
+        let origin = vector(args, 1)?;
+        let alias = string(args, 0)?;
+        world
+            .resource_mut::<ClientOutput>()
+            .loops
+            .retain(|source, _| {
+                !matches!(source, LoopSource::Emitter(name, at)
+                if *name == *alias && same_point(at, origin))
+            });
+        Ok(Value::Undefined)
+    });
     // soundlineemitter(alias, start, end) / soundstoplineemitter(alias,
     // start, end): a loop the sound system plays along a line.
-    for name in ["soundlineemitter", "soundstoplineemitter"] {
-        registry.register(Function, name, |_, _, args| {
-            vector(args, 1)?;
-            vector(args, 2)?;
-            string(args, 0)?;
-            Err("t6.csc.sound.line_emitter: IW4L's audio has no looping sound along a line".into())
-        });
-    }
-    // setambientpackage(hasroom, haspackage, _, defaultroom, room,
-    // triggerentnums, [triggerpriorities]): the ambient room and package the
-    // local client hears; the third parameter is not read.
-    registry.register(Function, "setambientpackage", |_, _, args| {
-        int(args, 0)?;
-        int(args, 1)?;
-        int(args, 3)?;
-        string(args, 4)?;
-        array_id(args, 5)?;
-        if args.len() >= 7 {
-            array_id(args, 6)?;
-        }
-        Err(AMBIENT.into())
+    registry.register(Function, "soundlineemitter", |world, _, args| {
+        let start = vector(args, 1)?;
+        let end = vector(args, 2)?;
+        let alias = string(args, 0)?;
+        start_line_emitter(world, alias.to_string(), start, end);
+        Ok(Value::Undefined)
     });
-    // setambientroomcontextengine(room, context, value, [flag]).
-    registry.register(Function, "setambientroomcontextengine", |_, _, args| {
-        string(args, 0)?;
-        string(args, 1)?;
-        string(args, 2)?;
-        if args.len() >= 4 {
-            int(args, 3)?;
-        }
-        Err(AMBIENT.into())
+    registry.register(Function, "soundstoplineemitter", |world, _, args| {
+        let start = vector(args, 1)?;
+        let end = vector(args, 2)?;
+        let alias = string(args, 0)?;
+        world
+            .resource_mut::<ClientOutput>()
+            .loops
+            .retain(|source, _| {
+                !matches!(source, LoopSource::Line(name, from, to)
+                if *name == *alias && same_point(from, start) && same_point(to, end))
+            });
+        Ok(Value::Undefined)
     });
-    // forceambientroom(hasroom, isdefault, [room]): reads nothing and does
-    // nothing with fewer than two parameters.
-    registry.register(Function, "forceambientroom", |_, _, args| {
-        if args.len() <= 1 {
-            return Ok(Value::Undefined);
-        }
-        int(args, 0)?;
-        int(args, 1)?;
-        if args.len() > 2 {
-            string(args, 2)?;
-        }
-        Err(AMBIENT.into())
-    });
-    // ent setambienttrigger(): marks the entity as an ambient room trigger.
-    registry.register(Method, "setambienttrigger", |_, _, _| Err(AMBIENT.into()));
     // setambientsnapshot(name) / setgroupsnapshot(name): the mixer snapshot
-    // of the ambient or the group slot.
-    for name in ["setambientsnapshot", "setgroupsnapshot"] {
-        registry.register(Function, name, |_, _, args| {
-            string(args, 0)?;
-            Err("t6.csc.sound.snapshot: IW4L's audio has no mixer snapshots".into())
-        });
-    }
-    // setambientsidechainduck(name): the ambience's side-chain duck.
-    registry.register(Function, "setambientsidechainduck", |_, _, args| {
-        string(args, 0)?;
-        Err("t6.csc.sound.duck: IW4L's audio has no side-chain ducks".into())
+    // of the ambience (slot 1) or the group (slot 2); no name is `default`.
+    registry.register(Function, "setambientsnapshot", |world, _, args| {
+        let name = string(args, 0)?;
+        set_snapshot(world, 1, &name);
+        Ok(Value::Undefined)
     });
-    // setglobalfutz(name): the futz (distortion) over every sound.
-    registry.register(Function, "setglobalfutz", |_, _, args| {
-        string(args, 0)?;
-        Err("t6.csc.sound.futz: IW4L's audio has no futz".into())
+    registry.register(Function, "setgroupsnapshot", |world, _, args| {
+        let name = string(args, 0)?;
+        set_snapshot(world, 2, &name);
+        Ok(Value::Undefined)
+    });
+    // setambientsidechainduck(name): the ambience's side-chain duck; no
+    // name is `default`.
+    registry.register(Function, "setambientsidechainduck", |world, _, args| {
+        let name = string(args, 0)?;
+        let Some(names) = mix_names(world) else {
+            return Ok(Value::Undefined);
+        };
+        let name = if name.is_empty() { "default" } else { &*name };
+        let id = known_or_default(&names.ducks, name, "side chain duck");
+        mix_command(world, MixCommand::SideChainDuck { id });
+        Ok(Value::Undefined)
+    });
+    // setglobalfutz(name, ...): the futz patch over every sound; an unknown
+    // one is `no_gfutz`. Only the name is read.
+    registry.register(Function, "setglobalfutz", |world, _, args| {
+        let name = string(args, 0)?;
+        let Some(names) = mix_names(world) else {
+            return Ok(Value::Undefined);
+        };
+        let mut id = sound_hash(&name);
+        if !names.futzes.contains(&id) {
+            diag::info!(Sim, "csc: sound: nonexistant gfutz patch {name}");
+            id = sound_hash("no_gfutz");
+        }
+        mix_command(world, MixCommand::GlobalFutz { id });
+        Ok(Value::Undefined)
     });
     // setreverb(priority, room, [dry], [wet], [fade]): reads nothing and does
-    // nothing outside two to five parameters.
-    registry.register(Function, "setreverb", |_, _, args| {
+    // nothing outside two to five parameters; dry 1, wet 0.5 and no fade
+    // unless given.
+    registry.register(Function, "setreverb", |world, _, args| {
         if !(2..=5).contains(&args.len()) {
             return Ok(Value::Undefined);
         }
-        for index in (2..args.len()).rev() {
-            float(args, index)?;
+        let fade = if args.len() == 5 {
+            float(args, 4)?
+        } else {
+            0.0
+        };
+        let wet = if args.len() >= 4 {
+            float(args, 3)?
+        } else {
+            0.5
+        };
+        let dry = if args.len() >= 3 {
+            float(args, 2)?
+        } else {
+            1.0
+        };
+        let room = string(args, 1)?;
+        let priority = priority(args, 0)?;
+        if mix_names(world).is_some() {
+            mix_command(
+                world,
+                MixCommand::Reverb {
+                    priority,
+                    room: sound_hash(&room),
+                    dry,
+                    wet,
+                    fade_ms: fade_ms(fade),
+                },
+            );
         }
-        string(args, 1)?;
-        priority(args, 0)?;
-        Err(REVERB.into())
+        Ok(Value::Undefined)
     });
     // deactivatereverb(priority, [fade]): with another count of parameters
-    // it deactivates priority 0.
-    registry.register(Function, "deactivatereverb", |_, _, args| {
-        if (1..=2).contains(&args.len()) {
-            if args.len() == 2 {
-                float(args, 1)?;
-            }
-            priority(args, 0)?;
+    // it deactivates priority 0 at once.
+    registry.register(Function, "deactivatereverb", |world, _, args| {
+        let (priority, fade) = if (1..=2).contains(&args.len()) {
+            let fade = if args.len() == 2 {
+                float(args, 1)?
+            } else {
+                0.0
+            };
+            (priority(args, 0)?, fade)
+        } else {
+            (0, 0.0)
+        };
+        if mix_names(world).is_some() {
+            mix_command(
+                world,
+                MixCommand::DeactivateReverb {
+                    priority,
+                    fade_ms: fade_ms(fade),
+                },
+            );
         }
-        Err(REVERB.into())
+        Ok(Value::Undefined)
     });
     // setsoundcontext(type, value) / ent setsoundentcontext(type, value):
-    // the context the aliases' variants play by, globally or on the entity.
-    registry.register(Function, "setsoundcontext", |_, _, args| {
-        string(args, 1)?;
-        string(args, 0)?;
-        Err(CONTEXT.into())
+    // the context the aliases' variants play by, globally or on the entity;
+    // an unknown type, or a value its type does not allow, sets nothing.
+    registry.register(Function, "setsoundcontext", |world, _, args| {
+        let value = string(args, 1)?;
+        let kind = string(args, 0)?;
+        if let Some((kind, value)) = context(world, &kind, &value) {
+            mix_command(world, MixCommand::Context { kind, value });
+        }
+        Ok(Value::Undefined)
     });
-    registry.register(Method, "setsoundentcontext", |_, _, args| {
-        string(args, 1)?;
-        string(args, 0)?;
-        Err(CONTEXT.into())
+    registry.register(Method, "setsoundentcontext", |world, receiver, args| {
+        let value = string(args, 1)?;
+        let kind = string(args, 0)?;
+        let entity = world
+            .resource::<RoundScript>()
+            .entity(receiver)
+            .map(|(_, entity)| entity.number)
+            .ok_or("not an entity")?;
+        if let Some((kind, value)) = context(world, &kind, &value) {
+            mix_command(
+                world,
+                MixCommand::EntityContext {
+                    entity,
+                    kind,
+                    value,
+                },
+            );
+        }
+        Ok(Value::Undefined)
     });
-    // allocatesoundrandoms(count) / createsoundrandom(origin, alias, min,
-    // max): one-shots the sound system replays at a point, min to max
-    // seconds apart.
-    registry.register(Function, "allocatesoundrandoms", |_, _, args| {
+    // allocatesoundrandoms(count): empties the random one-shots.
+    registry.register(Function, "allocatesoundrandoms", |world, _, args| {
         int(args, 0)?;
-        Err(RANDOMS.into())
+        world
+            .get_resource_or_insert_with(SoundRandoms::default)
+            .scheduled
+            .clear();
+        Ok(Value::Undefined)
     });
-    registry.register(Function, "createsoundrandom", |_, _, args| {
-        vector(args, 0)?;
-        string(args, 1)?;
-        float(args, 2)?;
-        float(args, 3)?;
-        Err(RANDOMS.into())
+    // createsoundrandom(origin, alias, min, max): a one-shot the sound
+    // system plays at the point, min to max whole seconds apart.
+    registry.register(Function, "createsoundrandom", |world, _, args| {
+        let origin = vector(args, 0)?;
+        let alias = string(args, 1)?;
+        let min_ms = (float(args, 2)?.round_ties_even() as i32).wrapping_mul(1000);
+        let max_ms = (float(args, 3)?.round_ties_even() as i32).wrapping_mul(1000);
+        let now = client_time(world);
+        let mut randoms = world.get_resource_or_insert_with(SoundRandoms::default);
+        randoms.schedule(
+            SoundRandom {
+                alias: alias.to_string(),
+                origin,
+                min_ms,
+                max_ms,
+                next_ms: 0,
+            },
+            now,
+        );
+        Ok(Value::Undefined)
     });
     // usefootsteptable(ai_index, name): binds a footstep sound table to an
     // actor type on the client.
