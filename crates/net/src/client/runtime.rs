@@ -270,6 +270,12 @@ pub struct ClientCmdTemplate {
     pub ready: bool,
 }
 
+/// A command that stands in for the local player's input while something
+/// else drives him (a test player in a windowed run). The client sends and
+/// predicts it as its own, so the server and the view follow one stream.
+#[derive(Resource, Default)]
+pub struct LocalCmdOverride(pub Option<UserCmd>);
+
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WeaponSelect {
     pub index: u32,
@@ -874,9 +880,13 @@ pub fn sample_client_input(
     mut request_ids: Option<ResMut<crate::ActionRequestIds>>,
     view: Option<Res<frame::ViewSubject>>,
     trace: Option<ResMut<ClientPhaseTrace>>,
-    aim_cursor: (ResMut<LocationCursor>, Res<crate::ViewweaponAim>),
+    aim_cursor: (
+        ResMut<LocationCursor>,
+        Res<crate::ViewweaponAim>,
+        Res<LocalCmdOverride>,
+    ),
 ) {
-    let (mut cursor, aim) = aim_cursor;
+    let (mut cursor, aim, driven) = aim_cursor;
     push_phase(trace, "Input");
     if !gate.local_cmds_enabled {
         actions.client.weapon_cycles.clear();
@@ -1242,6 +1252,10 @@ pub fn sample_client_input(
     {
         cmd.melee_charge_yaw = yaw;
         cmd.melee_charge_dist = dist;
+    }
+    if let Some(driven) = driven.0 {
+        cmd = driven;
+        look.angles = cmd.angles;
     }
     template.cmd = cmd;
     template.ready = true;
@@ -2042,6 +2056,7 @@ pub fn register_client_runtime(app: &mut App) {
         .scoped::<PendingPelletFx>(frame::Timeline::Running)
         .scoped::<PendingClientSends>(frame::MatchScope::Live)
         .init_resource::<ClientCmdTemplate>()
+        .scoped::<LocalCmdOverride>(frame::MatchScope::Live)
         .scoped::<WeaponSelect>(frame::MatchScope::Live)
         .init_resource::<LocationCursor>()
         .scoped::<ClientReliableAck>(frame::MatchScope::Live)
