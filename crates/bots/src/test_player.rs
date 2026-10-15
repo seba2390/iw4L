@@ -35,7 +35,7 @@
 //! those notify names every five seconds.
 //!
 //! `IW4L_TEST_VARS=key,…` adds those `level.zombie_vars` entries to the log
-//! every five seconds.
+//! every five seconds; `level:<field>` names a field of `level` itself.
 //!
 //! `IW4L_TEST_GOTO=<zone>` (with the use test): 5 s in, it goes to a path
 //! node standing in that zone, before the use test starts.
@@ -77,6 +77,11 @@
 //! he stands where he spawned until the zombies reach him and down him.
 //! Each change of his life state and last stand is logged, so a run shows
 //! going down and what the game does next.
+//!
+//! `IW4L_TEST_GRAB=1` (with any fighting mode): when a power-up lies on
+//! the ground, he is moved onto it (as `setviewpos` does) to pick it up,
+//! and half a second later back where he stood; once a second at most. He
+//! logs which.
 //!
 //! `IW4L_TEST_WALK=1` (with any fighting mode): every 20 s, 10 s in, he
 //! walks toward a path node in a clear line 600 to 1200 units away: a jump, a walk, a
@@ -125,6 +130,8 @@ const WALK_START_MS: i32 = 10_000;
 const WALK_PERIOD_MS: i32 = 20_000;
 const WALK_PHASES_MS: [i32; 5] = [300, 1500, 3000, 4000, 5500];
 const WALK_NODE_RANGE: core::ops::Range<f32> = 600.0..1200.0;
+/// The grab test moves onto a power-up at most this often.
+const GRAB_PERIOD_MS: i32 = 1000;
 /// The rounds test asks for ammo at most this often.
 const RESUPPLY_PERIOD_MS: i32 = 2000;
 /// The use test starts this long after the player first lives, once the
@@ -277,6 +284,10 @@ pub(crate) struct TestPlayer {
     last_seen_ms: Option<i32>,
     god_asked: bool,
     next_resupply_ms: i32,
+    /// The grab test moves onto a power-up no sooner than this, and back
+    /// to where he stood at this time.
+    next_grab_ms: i32,
+    grab_return: Option<(i32, [f32; 3])>,
     pressed: bool,
     next_log_ms: i32,
     shots: u32,
@@ -925,13 +936,11 @@ pub(crate) fn drive_test_player(
             let vars: Vec<String> = keys
                 .split(',')
                 .map(|key| {
-                    format!(
-                        "{key}={}",
-                        world
-                            .0
-                            .level_array_entry("zombie_vars", key.trim())
-                            .unwrap_or_else(|| "-".to_owned())
-                    )
+                    let value = match key.trim().strip_prefix("level:") {
+                        Some(field) => Some(world.0.object_field_text(0, field)),
+                        None => world.0.level_array_entry("zombie_vars", key.trim()),
+                    };
+                    format!("{key}={}", value.unwrap_or_else(|| "-".to_owned()))
                 })
                 .collect();
             diag::info!(Sim, "test player: zombie_vars {}", vars.join(" "));
@@ -1016,6 +1025,42 @@ pub(crate) fn drive_test_player(
                 }
             }
             None => diag::info!(Sim, "test player: no path node stands in {zone}"),
+        }
+    }
+    // `IW4L_TEST_GRAB=1`: steps onto a power-up lying on the ground, then
+    // back to where he stood.
+    if let Some((back_ms, back)) = test.grab_return
+        && clock.time_ms >= back_ms
+    {
+        test.grab_return = None;
+        if let Err(error) = actions.push(
+            id,
+            ClientAction::Move {
+                request_id: request_ids.allocate(),
+                origin: back,
+                angles: ps.viewangles,
+            },
+        ) {
+            diag::warn!(Sim, "test player: request not queued — {error}");
+        }
+    } else if test.mode.cheats()
+        && test.grab_return.is_none()
+        && clock.time_ms >= test.next_grab_ms
+        && std::env::var_os("IW4L_TEST_GRAB").is_some()
+        && let Some((name, at)) = world.0.active_powerups().into_iter().next()
+    {
+        test.next_grab_ms = clock.time_ms + GRAB_PERIOD_MS;
+        test.grab_return = Some((clock.time_ms + GRAB_PERIOD_MS / 2, ps.origin));
+        diag::info!(Sim, "test player: grabbing {name} at {}", fmt_point(at));
+        if let Err(error) = actions.push(
+            id,
+            ClientAction::Move {
+                request_id: request_ids.allocate(),
+                origin: at,
+                angles: ps.viewangles,
+            },
+        ) {
+            diag::warn!(Sim, "test player: request not queued — {error}");
         }
     }
     let mut ask = |action: ClientAction| {

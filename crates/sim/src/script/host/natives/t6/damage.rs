@@ -449,7 +449,7 @@ fn finish_actor_damage(
             receiver.clone(),
             vec![
                 inflictor,
-                attacker,
+                attacker.clone(),
                 Value::Int(damage),
                 Value::string(MEANS_OF_DEATH[means]),
                 Value::string(&weapon),
@@ -458,6 +458,14 @@ fn finish_actor_damage(
                 Value::Int(offset),
             ],
         )?;
+        // After the callback the engine's actor killed sets the sentient's
+        // attacker (which the death animscript reads) and clears the
+        // targetname.
+        {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(id, "attacker", attacker);
+            runtime.set_object_field(id, "targetname", Value::Undefined);
+        }
         movement::set_script(world, id, Script::Death)?;
         return Ok(Value::Undefined);
     }

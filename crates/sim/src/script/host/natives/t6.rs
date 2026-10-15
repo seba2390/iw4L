@@ -15,6 +15,7 @@ mod attach;
 mod barrier;
 pub(crate) mod client;
 mod combat;
+mod corpse;
 mod damage;
 mod effect;
 mod entity;

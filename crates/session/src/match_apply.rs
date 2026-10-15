@@ -1187,7 +1187,7 @@ fn preflight_match_install(
     let family = prepared_map
         .namespace
         .ok_or_else(|| InstallRefusal::new(format!("`{zone}` belongs to no game")))?;
-    let mode = match crate::games::modes(family).mode(kind.token()) {
+    let mode = match crate::games::modes(family).mode_on_map(zone, kind.token()) {
         game_api::Rule::Known(mode) => mode,
         game_api::Rule::Unknown(gap) => return Err(unknown_refusal(zone, kind.token(), gap)),
     };

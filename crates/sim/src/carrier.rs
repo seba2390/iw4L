@@ -174,6 +174,12 @@ impl SimWorld {
         crate::script::host::sightings::level_array_entry(&self.ecs, array, key)
     }
 
+    /// The power-ups lying on the ground, by name and origin, for a test
+    /// player.
+    pub fn active_powerups(&self) -> Vec<(String, [f32; 3])> {
+        crate::script::host::sightings::active_powerups(&self.ecs)
+    }
+
     /// A script object's field as text, for a test player.
     pub fn object_field_text(&self, id: u64, name: &str) -> String {
         crate::script::host::sightings::object_field_text(&self.ecs, id, name)

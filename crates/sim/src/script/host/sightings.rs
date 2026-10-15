@@ -424,6 +424,26 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
     sites
 }
 
+/// The power-ups lying on the ground (`level.active_powerups`): each one's
+/// name and origin, for a test player.
+pub(crate) fn active_powerups(world: &World) -> Vec<(String, [f32; 3])> {
+    let Some(runtime) = world.get_resource::<RoundScript>() else {
+        return Vec::new();
+    };
+    items(runtime, field(runtime, 0, "active_powerups"))
+        .into_iter()
+        .filter_map(|p| object(Some(p)))
+        .filter(|p| runtime.live(p))
+        .filter_map(|p| {
+            let name = string(field(runtime, p, "powerup_name"))?;
+            match field(runtime, p, "origin")? {
+                Value::Vector(origin) => Some((name, origin)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 /// An entry of a level array field (`level.<array>[key]`) as text, for a
 /// test player's log.
 pub(crate) fn level_array_entry(world: &World, array: &str, key: &str) -> Option<String> {

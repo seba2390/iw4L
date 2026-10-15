@@ -166,6 +166,7 @@ fn snapshot(server: &mut World) -> Vec<SnapshotEntity> {
                 EntityKind::Missile(_) => 4,
                 EntityKind::Vehicle => 14,
                 EntityKind::Actor => 16,
+                EntityKind::ActorCorpse => 18,
                 EntityKind::Map | EntityKind::Spawned
                     if entity.classname.starts_with("zbarrier") =>
                 {
@@ -190,6 +191,10 @@ fn snapshot(server: &mut World) -> Vec<SnapshotEntity> {
                 fields.push((name, value));
             }
             fields.push(("type", Value::string(type_name(etype))));
+            fields.push((
+                "weapon",
+                Value::string(&snapshot_weapon(server, id, number, etype)),
+            ));
             SnapshotEntity {
                 number,
                 etype,
@@ -198,6 +203,22 @@ fn snapshot(server: &mut World) -> Vec<SnapshotEntity> {
             }
         })
         .collect()
+}
+
+/// The weapon an entity's state carries, by name, as the client's `weapon`
+/// field reads it (`"none"` for weapon 0): a missile's weapon, a player's
+/// current weapon.
+fn snapshot_weapon(server: &mut World, id: u64, number: i32, etype: i32) -> String {
+    let client = server.resource::<RoundScript>().player_client(id);
+    let frame = crate::frame::FrameWorld::from_world(server);
+    let weapon = match etype {
+        1 => client
+            .and_then(|client| frame.player(crate::ClientId(client)))
+            .map_or(0, |ps| ps.weapon),
+        4 => frame.projectile_by_number(number).map_or(0, |p| p.weapon),
+        _ => 0,
+    };
+    crate::script_player::weapon_name(&frame, weapon)
 }
 
 /// The values the server set on a pool's fields for one owner, by the

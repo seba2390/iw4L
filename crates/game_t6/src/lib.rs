@@ -30,7 +30,7 @@ impl game_api::GameScripts for T6 {
         sources: &dyn gsc::SourceResolver,
     ) -> Rule<ScriptProgram> {
         let zombies_map = request.map.starts_with("zm_");
-        if zombies_map && request.gametype == "zclassic" && own_scripts() {
+        if request.gametype == "zclassic" && own_scripts(request.map) {
             return own_zombies(request, sources);
         }
         match (zombies_map, request.gametype) {
@@ -76,17 +76,19 @@ impl game_api::GameScripts for T6 {
         request: &ScriptRequest<'_>,
         sources: &dyn gsc::SourceResolver,
     ) -> Option<Rule<game_api::ClientScriptProgram>> {
-        (request.map.starts_with("zm_") && request.gametype == "zclassic" && own_scripts())
+        (request.gametype == "zclassic" && own_scripts(request.map))
             .then(|| client::program(request, sources))
     }
 
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
         // The client game registers it on; server scripts then leave
         // createfx effects and sounds to client scripts. The engine
-        // registers the turret placement dvar on (`_zm_equipment` reads it).
+        // registers the turret placement dvar on (`_zm_equipment` reads it),
+        // and the actor corpse slots at their most (`ai_corpseCount`).
         &[
             ("cg_usingClientScripts", "1"),
             ("tu11_zombie_turret_placement_ignores_bodies", "1"),
+            ("ai_corpseCount", "8"),
         ]
     }
 
@@ -95,11 +97,14 @@ impl game_api::GameScripts for T6 {
     }
 }
 
-/// Black Ops 2's own zombies scripts run the match in place of IW4L's rules
-/// while they are brought up (docs/fidelity/t6.md).
-fn own_scripts() -> bool {
-    std::env::var_os("IW4L_T6_OWN_SCRIPTS").is_some()
+/// Black Ops 2's own zombies scripts run Classic on every zombies map but
+/// Origins, which keeps IW4L's rules (docs/fidelity/t6.md).
+fn own_scripts(map: &str) -> bool {
+    map.starts_with("zm_") && map != ORIGINS
 }
+
+/// The map whose Classic still runs IW4L's rules.
+const ORIGINS: &str = "zm_tomb";
 
 fn own_zombies(
     request: &ScriptRequest<'_>,
@@ -346,13 +351,19 @@ impl game_api::GameModes for T6 {
         match gametype {
             "dm" => Rule::Known(FREE_FOR_ALL_MODE),
             "war" => Rule::Known(TEAM_DEATHMATCH_MODE),
-            "zclassic" if own_scripts() => Rule::Known(OWN_ZOMBIES_MODE),
-            "zclassic" => Rule::Known(ZCLASSIC_MODE),
+            "zclassic" => Rule::Known(OWN_ZOMBIES_MODE),
             _ => Rule::Unknown(unknown!(
                 "t6.scripts.gametypes",
                 "Black Ops 2 multiplayer modes other than Free for All and Team Deathmatch have no rules",
                 "Black Ops 2's rules for that mode"
             )),
+        }
+    }
+
+    fn mode_on_map(&self, map: &str, gametype: &str) -> Rule<ModeRules> {
+        match gametype {
+            "zclassic" if map == ORIGINS => Rule::Known(ZCLASSIC_MODE),
+            _ => self.mode(gametype),
         }
     }
 
@@ -363,7 +374,7 @@ impl game_api::GameModes for T6 {
 
 static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     gametype: "zclassic",
-    note: "Survival rules written for IW4L; map quests, special enemies and scripted events are not in yet (docs/fidelity/t6.md).",
+    note: "Black Ops II's own zombies scripts; Origins runs survival rules written for IW4L (docs/fidelity/t6.md).",
     maps: &[
         ("zm_nuked", "NUKETOWN ZOMBIES"),
         ("zm_transit", "TRANZIT"),
