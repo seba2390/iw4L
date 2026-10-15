@@ -15,6 +15,7 @@ mod plugin;
 mod screen;
 mod script_ui;
 mod t6_art;
+mod t6_code_hud;
 mod t6_hud;
 mod t6_menu;
 mod t6_text;

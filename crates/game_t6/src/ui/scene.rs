@@ -1033,6 +1033,7 @@ impl Scene {
                         .unwrap_or(0) as u8,
                     clip,
                     content,
+                    text_shadow: true,
                 });
             }
         }

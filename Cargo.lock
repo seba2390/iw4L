@@ -3287,6 +3287,7 @@ dependencies = [
  "game_api",
  "gsc",
  "gsc_t6",
+ "menu_expr",
  "movement_t6",
 ]
 
@@ -7316,6 +7317,7 @@ dependencies = [
  "entity_iw4",
  "frame",
  "game_api",
+ "game_t6",
  "hud_iw4",
  "net",
  "playerstate_iw4",

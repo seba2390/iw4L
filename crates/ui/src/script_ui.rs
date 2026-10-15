@@ -70,6 +70,7 @@ fn refresh(
     mut state: ResMut<ScriptHud>,
     mut art: ResMut<super::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
+    code_hud: Res<super::t6_code_hud::CodeHudDraws>,
 ) {
     let (screen, menu, local, clock, font, weapons) = view;
     state.scoreboard = false;
@@ -334,7 +335,10 @@ fn refresh(
         .sort_by_key(|player| (player.team, std::cmp::Reverse(player.score), player.id));
     let input = state.input.clone();
     let draws = match state.scene.as_mut().unwrap().update(&input) {
-        Ok(draws) => draws,
+        Ok(mut draws) => {
+            draws.extend(code_hud.0.iter().cloned());
+            draws
+        }
         Err(error) => {
             diag::warn!(Ui, "authored HUD unavailable: {error}");
             state.scene = None;
@@ -452,6 +456,11 @@ fn refresh(
                     TextColor(tint),
                     super::t6_text::NativeFont(font_name.clone()),
                 ));
+                if draw.text_shadow {
+                    commands.entity(entity).remove::<super::t6_text::NoShadow>();
+                } else {
+                    commands.entity(entity).insert(super::t6_text::NoShadow);
+                }
             }
             Content::Image(name) => {
                 commands.entity(entity).insert(node(rectangle));

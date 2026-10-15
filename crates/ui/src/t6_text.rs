@@ -10,6 +10,10 @@ pub(crate) struct NativeUiRoot(pub bool);
 #[derive(Component)]
 pub(crate) struct NativeFont(pub String);
 
+/// Native text drawn without the renderer's drop shadow.
+#[derive(Component)]
+pub(crate) struct NoShadow;
+
 #[derive(Component)]
 struct Glyph;
 
@@ -33,6 +37,7 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
+#[allow(clippy::type_complexity)]
 fn refresh(
     mut commands: Commands,
     mut texts: Query<
@@ -44,6 +49,7 @@ fn refresh(
             &mut Node,
             Option<&mut BitmapText>,
             Option<&NativeFont>,
+            Option<&NoShadow>,
         ),
         Without<Glyph>,
     >,
@@ -64,7 +70,9 @@ fn refresh(
         return;
     };
     let _ = image;
-    for (entity, text, mut text_font, mut color, mut node, previous, native_font) in &mut texts {
+    for (entity, text, mut text_font, mut color, mut node, previous, native_font, no_shadow) in
+        &mut texts
+    {
         let requested =
             native_font.and_then(|font| asset_material::ui_font::ui_font(namespace, &font.0));
         let font = requested.as_ref().unwrap_or(&font);
@@ -191,13 +199,16 @@ fn refresh(
                 let at = position
                     + Vec2::new(glyph.x0 as f32, font.pixel_height as f32 + glyph.y0 as f32)
                         * scale;
-                for (offset, tint) in [
-                    (
-                        Vec2::splat(1.0),
-                        Color::srgba(0.0, 0.0, 0.0, source_color.alpha() * 0.8),
-                    ),
-                    (Vec2::ZERO, source_color),
-                ] {
+                let shadow = (
+                    Vec2::splat(1.0),
+                    Color::srgba(0.0, 0.0, 0.0, source_color.alpha() * 0.8),
+                );
+                for (offset, tint) in no_shadow
+                    .is_none()
+                    .then_some(shadow)
+                    .into_iter()
+                    .chain([(Vec2::ZERO, source_color)])
+                {
                     let child = commands
                         .spawn((
                             Glyph,

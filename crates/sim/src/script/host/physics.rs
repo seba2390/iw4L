@@ -137,6 +137,58 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 
 pub(crate) fn select_usables(world: &mut World) {
     super::triggers::refresh_claims(world);
+    if let Some(game_use) = world
+        .get_resource::<crate::script::NativeRegistry>()
+        .and_then(crate::script::NativeRegistry::use_rule)
+    {
+        let players: Vec<(u32, u64)> = world
+            .resource::<RoundScript>()
+            .players
+            .iter()
+            .map(|(&client, slot)| (client, slot.object))
+            .collect();
+        let clients: Vec<(u32, u64)> = {
+            let frame = FrameWorld::from_world(world);
+            players
+                .into_iter()
+                .filter(|&(client, _)| {
+                    frame.client_meta(ClientId(client)).is_some_and(|m| {
+                        m.lifecycle == crate::ClientLifecycle::Alive
+                            && !m.controls.usability_disabled
+                    })
+                })
+                .collect()
+        };
+        let picked = game_use(world, &clients);
+        let mut selected = std::collections::BTreeMap::new();
+        let hints: Vec<(u32, u64, i32, i32)> = {
+            let runtime = world.resource::<RoundScript>();
+            picked
+                .into_iter()
+                .filter_map(|(object, player)| {
+                    let &(client, _) = clients.iter().find(|&&(_, p)| p == player)?;
+                    let entity = runtime.entities.get(&object)?;
+                    let (cursor, hint) = entity
+                        .usable
+                        .as_ref()
+                        .map_or((3, -1), |u| (u.cursor, u.hint));
+                    Some((client, object, cursor, hint))
+                })
+                .collect()
+        };
+        let mut frame = FrameWorld::from_world(world);
+        for (client, object, cursor, hint) in hints {
+            selected.insert(client, object);
+            if let Some(ps) = frame.player_mut(ClientId(client))
+                && ps.cursor_hint == 0
+            {
+                ps.cursor_hint = cursor;
+                ps.cursor_hint_string = hint;
+            }
+        }
+        world.resource_mut::<RoundScript>().use_selected = selected;
+        return;
+    }
     let usables: Vec<(
         u64,
         [f32; 3],

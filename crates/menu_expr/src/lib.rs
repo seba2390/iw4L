@@ -54,6 +54,11 @@ pub trait GameQueries {
     /// `text`'s width in virtual pixels in font `font` at `scale`.
     fn text_width(&self, text: &str, font: i32, scale: f32) -> Result<i32, ExprError>;
     fn in_game(&self) -> Result<i32, ExprError>;
+    /// Whether the local player's weapon is an airburst weapon (Black Ops
+    /// 2's `isairburstweapon`).
+    fn airburst_weapon(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("the host does not answer isairburstweapon"))
+    }
 }
 
 /// One game's compiled menu expression.
