@@ -113,24 +113,53 @@ pub(crate) fn settled(world: &mut World) -> FrameWorld<'_> {
 /// Collision rows only. Networked mover state is left to `present`: posing a
 /// mover mid-tick would break its tick-to-tick velocity.
 pub(crate) fn settle_collision(world: &mut World) {
+    settle_rows(world, None);
+}
+
+/// [`settle_collision`] for one entity's row alone: what a read of that
+/// entity's own posed model needs.
+fn settle_entity(world: &mut World, object: u64) {
+    settle_rows(world, Some(object));
+}
+
+fn settle_rows(world: &mut World, only: Option<u64>) {
     let mut runtime = world.resource_mut::<RoundScript>();
-    let placed: Vec<(u64, ScriptModelId, bool, bool)> = runtime
-        .entities
-        .iter()
-        .filter_map(|(id, e)| Some((*id, e.presence?, e.hidden, e.solid)))
-        .collect();
+    let placed: Vec<(u64, ScriptModelId, bool, bool)> = match only {
+        Some(object) => runtime
+            .entities
+            .get(&object)
+            .and_then(|e| Some((object, e.presence?, e.hidden, e.solid)))
+            .into_iter()
+            .collect(),
+        None => runtime
+            .entities
+            .iter()
+            .filter_map(|(id, e)| Some((*id, e.presence?, e.hidden, e.solid)))
+            .collect(),
+    };
+    if placed.is_empty() {
+        return;
+    }
+    let (origin_field, angles_field) = (runtime.symbol("origin"), runtime.symbol("angles"));
     let wanted: BTreeMap<ScriptModelId, ([f32; 3], [f32; 3], bool, bool)> = placed
         .into_iter()
         .map(|(object, presence, hidden, solid)| {
-            let origin = vector(&mut runtime, object, "origin");
-            let angles = vector(&mut runtime, object, "angles");
-            (presence, (origin, angles, hidden, solid))
+            let fields = runtime.objects.get(&object);
+            let field = |symbol| match fields.and_then(|fields| fields.get(&symbol)) {
+                Some(Value::Vector(v)) => *v,
+                _ => [0.0; 3],
+            };
+            (
+                presence,
+                (field(origin_field), field(angles_field), hidden, solid),
+            )
         })
         .collect();
     let turrets: Vec<_> = runtime
         .engine
         .turrets
         .iter()
+        .filter(|(object, _)| only.is_none_or(|only| only == **object))
         .filter_map(|(object, turret)| {
             Some((
                 *object,
@@ -332,7 +361,8 @@ fn with_tag_dobj<T>(
         .entities
         .get(&object)?
         .presence;
-    let frame = settled(world);
+    settle_entity(world, object);
+    let frame = FrameWorld::from_world(world);
     if let Some(presence) = presence
         && let Some(dobj) = frame
             .entity_collision_capabilities()
@@ -411,7 +441,8 @@ pub(crate) fn tag_pose_controlled(
         .entities
         .get(&object)?
         .presence?;
-    let frame = settled(world);
+    settle_entity(world, object);
+    let frame = FrameWorld::from_world(world);
     let dobj = frame
         .entity_collision_capabilities()
         .iter()
@@ -448,7 +479,8 @@ pub(crate) fn tags_present<const N: usize>(
         .entities
         .get(&object)?
         .presence?;
-    let frame = settled(world);
+    settle_entity(world, object);
+    let frame = FrameWorld::from_world(world);
     let dobj = frame
         .entity_collision_capabilities()
         .iter()

@@ -233,10 +233,9 @@ fn server_values(
         return BTreeMap::new();
     };
     let mut values = BTreeMap::new();
-    for ((set_pool, set_owner, index), value) in &set.1 {
-        if set_pool != pool || *set_owner != owner {
-            continue;
-        }
+    let first = (pool.to_owned(), owner, 0);
+    let last = (pool.to_owned(), owner, usize::MAX);
+    for ((_, _, index), value) in set.1.range(first..=last) {
         let Some(name) = set.0.get(*index).map(|field| &field.name) else {
             continue;
         };

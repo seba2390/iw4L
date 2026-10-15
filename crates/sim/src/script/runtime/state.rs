@@ -31,6 +31,9 @@ pub(crate) struct RoundScript {
     pub(crate) arrays: BTreeMap<u64, BTreeMap<ArrayKey, Value>>,
     pub(crate) array_aliases: super::aliases::ArrayAliases,
     pub(crate) dynamic_symbols: BTreeMap<Arc<str>, u32>,
+    /// `symbol`'s answers by name, hashed: the program's table is ordered
+    /// by string, which costs a run of string compares per lookup.
+    symbol_cache: SymbolCache,
     pub(crate) buckets: BTreeMap<i64, VecDeque<u64>>,
     pub(crate) spawned: Vec<u64>,
     pub(crate) waiters: Vec<crate::script::Waiter>,
@@ -131,6 +134,7 @@ impl RoundScript {
             arrays: Default::default(),
             array_aliases: Default::default(),
             dynamic_symbols: Default::default(),
+            symbol_cache: Default::default(),
             buckets: Default::default(),
             spawned: Default::default(),
             waiters: Default::default(),
@@ -255,11 +259,25 @@ impl RoundScript {
 
     pub(crate) fn symbol(&mut self, name: &str) -> u32 {
         let program = self.program.as_ref().unwrap();
-        if let Some(&id) = program.symbol_ids.get(name) {
+        let cache = &mut self.symbol_cache;
+        let key = Arc::as_ptr(program) as usize;
+        if cache.program != key || cache.dynamic > self.dynamic_symbols.len() {
+            cache.ids.clear();
+            cache.program = key;
+        }
+        if let Some(&id) = cache.ids.get(name) {
             return id;
         }
-        let next = (program.symbols.len() + self.dynamic_symbols.len()) as u32;
-        *self.dynamic_symbols.entry(name.into()).or_insert(next)
+        let id = match program.symbol_ids.get(name) {
+            Some(&id) => id,
+            None => {
+                let next = (program.symbols.len() + self.dynamic_symbols.len()) as u32;
+                *self.dynamic_symbols.entry(name.into()).or_insert(next)
+            }
+        };
+        cache.dynamic = self.dynamic_symbols.len();
+        cache.ids.insert(name.into(), id);
+        id
     }
 }
 
@@ -274,4 +292,35 @@ pub(crate) struct MatchScript {
     pub(crate) weapon_bridge: BTreeMap<u32, Vec<(u32, u32)>>,
     pub(crate) next_spawned_presence: u32,
     pub(crate) match_data: host::match_data::MatchData,
+}
+
+/// FNV-1a: short field names hash in a few cycles.
+#[derive(Clone, Copy)]
+struct Fnv(u64);
+
+impl Default for Fnv {
+    fn default() -> Self {
+        Self(0xcbf2_9ce4_8422_2325)
+    }
+}
+
+impl std::hash::Hasher for Fnv {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.0 = (self.0 ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct SymbolCache {
+    /// The program the ids belong to (its address).
+    program: usize,
+    /// How many dynamic symbols there were when it last learned one.
+    dynamic: usize,
+    ids: std::collections::HashMap<Box<str>, u32, std::hash::BuildHasherDefault<Fnv>>,
 }
