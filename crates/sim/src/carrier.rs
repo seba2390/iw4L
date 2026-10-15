@@ -472,6 +472,12 @@ impl SimWorld {
         crate::script::client::report_sounds(&mut self.ecs, statuses);
     }
 
+    /// The local client's effect system's word that the script effects in
+    /// these rows have run out.
+    pub fn report_finished_effects(&mut self, rows: Vec<u32>) {
+        crate::script::client::report_effects(&mut self.ecs, rows);
+    }
+
     /// Installs the compiled client scripts a local client runs beside the
     /// server's.
     pub fn install_compiled_client_scripts(

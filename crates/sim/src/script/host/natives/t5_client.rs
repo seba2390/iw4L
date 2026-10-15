@@ -532,7 +532,7 @@ fn register_effects(registry: &mut NativeRegistry) {
                 forward: axis[0],
                 up: axis[2],
                 begin_ms: None,
-                end_ms: 0,
+                end_ms: Some(0),
             },
         );
         Ok(Value::Object(entity))
@@ -560,7 +560,7 @@ fn register_effects(registry: &mut NativeRegistry) {
             .get_mut(&entity)
         {
             effect.begin_ms = Some(begin);
-            effect.end_ms = begin.saturating_add(life).max(now);
+            effect.end_ms = Some(begin.saturating_add(life).max(now));
         }
         Ok(Value::Undefined)
     });
@@ -1204,7 +1204,7 @@ fn forward_up_axis(forward: [f32; 3], up: [f32; 3]) -> Result<[[f32; 3]; 3], Str
 }
 
 /// Plays an effect at a point from `begin`, answering its handle: it is
-/// alive until its longest life has passed, and at least this frame.
+/// alive until the local client's effect system says it has run out.
 fn play_effect(
     world: &mut World,
     id: i32,
@@ -1212,8 +1212,7 @@ fn play_effect(
     axis: [[f32; 3]; 3],
     begin: i32,
 ) -> i32 {
-    let now = now_ms(world);
-    let (name, life) = effect_name_life(world, id);
+    let (name, _) = effect_name_life(world, id);
     let mut output = world.resource_mut::<ClientOutput>();
     let handle = output.effect_handle();
     if let Some(name) = name {
@@ -1225,7 +1224,7 @@ fn play_effect(
                 forward: axis[0],
                 up: axis[2],
                 begin_ms: Some(begin),
-                end_ms: begin.saturating_add(life).max(now),
+                end_ms: None,
             },
         );
     }

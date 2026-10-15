@@ -655,6 +655,18 @@ impl FxSystemHost {
         }
     }
 
+    /// Whether an effect its owner holds has run out: the owner's reference
+    /// is the only one left and no looping element waits to spawn, or the
+    /// effect is gone.
+    pub fn owned_done(&self, handle: u16) -> bool {
+        self.slot_index_for_handle(handle)
+            .and_then(|slot| self.effects.get(slot))
+            .is_none_or(|effect| {
+                fx_iw4::status_is_unique_done(effect.status)
+                    && effect.status & fx_iw4::FX_STATUS_HAS_PENDING_LOOP_ELEMS == 0
+            })
+    }
+
     pub fn stop_owned(&mut self, handle: u16) {
         let Some(slot) = self.slot_index_for_handle(handle) else {
             return;

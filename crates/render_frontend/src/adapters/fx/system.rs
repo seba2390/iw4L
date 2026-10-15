@@ -2918,6 +2918,8 @@ struct ScriptFxRow {
     start: Option<i32>,
     held: Option<u16>,
     next_ms: i32,
+    /// A one-shot effect that has run out (or never spawned), reported.
+    finished: bool,
 }
 
 fn axis(forward: [f32; 3], up: [f32; 3]) -> [[f32; 3]; 3] {
@@ -2940,10 +2942,29 @@ fn sync_script_fx(
     fx_world: FxSceneAccess,
     local: Res<LocalPresentClient>,
     mut rows: ResMut<ScriptFxRows>,
+    mut authority: Option<ResMut<net::AuthorityWorld>>,
 ) {
     let (Some(adopted), Some(catalog)) = (adopted, catalog) else {
         return;
     };
+    // A one-shot effect whose last element has died is over for the
+    // scripts that started it, as the game's effect system frees it.
+    let mut finished = Vec::new();
+    for (id, row) in rows.0.iter_mut() {
+        if let Some(handle) = row.held
+            && host.0.owned_done(handle)
+        {
+            host.0.stop_owned(handle);
+            row.held = None;
+            row.finished = true;
+            finished.push(*id);
+        }
+    }
+    if !finished.is_empty()
+        && let Some(authority) = authority.as_mut()
+    {
+        authority.0.report_finished_effects(finished);
+    }
     let Some(snap) = presented.snapshot() else {
         return;
     };
@@ -2973,6 +2994,7 @@ fn sync_script_fx(
     elem_infos.0.sync(&catalog.0);
     let scene = fx_world.view();
     let scene = scene.as_ref().map(|s| s as &dyn FxScene);
+    let mut never = Vec::new();
     for fx in effects {
         let row = rows.entry(fx.id).or_insert_with(|| ScriptFxRow {
             effect: fx.effect,
@@ -3007,6 +3029,11 @@ fn sync_script_fx(
                     PlayResult::Held { handle } => Some(handle),
                     _ => None,
                 });
+                // One that never spawned is over at once.
+                row.finished = row.held.is_none();
+                if row.finished {
+                    never.push(fx.id);
+                }
             }
             continue;
         }
@@ -3036,6 +3063,11 @@ fn sync_script_fx(
             }
             row.next_ms = row.next_ms.saturating_add(fx.repeat_ms);
         }
+    }
+    if !never.is_empty()
+        && let Some(authority) = authority.as_mut()
+    {
+        authority.0.report_finished_effects(never);
     }
 }
 

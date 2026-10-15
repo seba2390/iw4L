@@ -250,6 +250,21 @@ pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSound
     apply_sound_reports(&mut client.world, statuses);
 }
 
+/// The local client's effect system says these effect rows have run out: a
+/// client point effect's handle dies, as Black Ops' handle does once its
+/// effect system frees the effect.
+pub(crate) fn report_effects(server: &mut World, rows: Vec<u32>) {
+    let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
+        return;
+    };
+    let mut output = client.world.resource_mut::<ClientOutput>();
+    for row in rows {
+        if row & 0xc000_0000 == CLIENT_EFFECT_ROW {
+            output.effects.remove(&((row & 0x3fff_ffff) as i32));
+        }
+    }
+}
+
 /// A client VM's world takes its sound system's reports.
 pub(crate) fn apply_sound_reports(world: &mut World, statuses: Vec<crate::ClientSoundStatus>) {
     {
@@ -323,8 +338,9 @@ pub(crate) struct ClientLoop {
 }
 
 /// An effect the client plays at a point (`playFx`, or a triggered
-/// `spawnFx` entity): it begins at `begin_ms` (level time) and is alive
-/// through `end_ms`.
+/// `spawnFx` entity): it begins at `begin_ms` (level time). A point effect
+/// is alive until the local client's effect system says it has run out; an
+/// effect entity's through `end_ms`.
 #[derive(Clone, Debug)]
 pub(crate) struct ClientEffect {
     pub(crate) name: String,
@@ -333,7 +349,13 @@ pub(crate) struct ClientEffect {
     pub(crate) up: [f32; 3],
     /// When it begins; an untriggered `spawnFx` entity has none yet.
     pub(crate) begin_ms: Option<i32>,
-    pub(crate) end_ms: i32,
+    pub(crate) end_ms: Option<i32>,
+}
+
+impl ClientEffect {
+    fn alive(&self, now: i32) -> bool {
+        self.end_ms.is_none_or(|end| now <= end)
+    }
 }
 
 /// An effect the client plays on an entity's tag (`playFxOnTag`).
@@ -398,7 +420,7 @@ impl ClientOutput {
     /// one's handle is forgotten.
     pub(crate) fn effect_alive(&mut self, handle: i32, now: i32) -> bool {
         if let Some(effect) = self.effects.get(&handle) {
-            if now <= effect.end_ms {
+            if effect.alive(now) {
                 return true;
             }
             self.effects.remove(&handle);
@@ -908,7 +930,7 @@ pub(crate) fn effect_rows(server: &World, now: i32) -> Vec<(u32, ClientEffect)> 
         return Vec::new();
     };
     let output = client.world.resource::<ClientOutput>();
-    let playing = |effect: &&ClientEffect| effect.begin_ms.is_some() && now <= effect.end_ms;
+    let playing = |effect: &&ClientEffect| effect.begin_ms.is_some() && effect.alive(now);
     let points = output
         .effects
         .iter()
@@ -1167,7 +1189,7 @@ fn run_frame(
     let now = crate::level_time_ms(tick);
     super::host::mechanics::advance_client_mechanics(world, i64::from(now));
     let mut output = world.resource_mut::<ClientOutput>();
-    output.effects.retain(|_, effect| now <= effect.end_ms);
+    output.effects.retain(|_, effect| effect.alive(now));
     output.tag_effects.retain(|_, effect| now <= effect.end_ms);
     world.remove_resource::<crate::step::StepRequest>();
     if let Some(fault) = world.resource::<RoundScript>().fault.clone() {
