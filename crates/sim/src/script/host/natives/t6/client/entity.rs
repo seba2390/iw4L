@@ -156,7 +156,7 @@ fn now_ms(world: &World) -> i64 {
 
 /// The receiving client entity: its object id, its entity number, and its
 /// `eType`.
-fn receiver_entity(world: &World, receiver: &Value) -> Result<(u64, i32, i32), String> {
+pub(super) fn receiver_entity(world: &World, receiver: &Value) -> Result<(u64, i32, i32), String> {
     let runtime = world.resource::<RoundScript>();
     let (id, entity) = match runtime.entity(receiver) {
         Some((id, entity)) if entity.kind != EntityKind::HudElem => (id, entity),
@@ -794,22 +794,25 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // allowroundanimation(allow): hands the round animation flag to LUI.
-    registry.register(Function, "allowroundanimation", |_, _, args| {
-        if !args.is_empty() {
-            int(args, 0)?;
-        }
-        // t6.csc.lui.allow_round_animation: IW4L has no Black Ops 2 LUI VM
-        // to receive the round animation state.
+    // allowroundanimation(allow): hands `{ name = "allow_round_animation", allow }` to the LUI root.
+    registry.register(Function, "allowroundanimation", |world, _, args| {
+        let allow = int(args, 0)?;
+        world
+            .get_resource_or_insert_with(ClientGame::default)
+            .allow_round_animation
+            .push(allow);
         Ok(Value::Undefined)
     });
 
-    // usealternatereviveicon(use_alternate): selects the alternate or default
-    // revive icon material on the client.
-    registry.register(Function, "usealternatereviveicon", |_, _, args| {
-        int(args, 0)?;
-        // t6.csc.hud.alternate_revive_icon: IW4L's HUD does not swap the
-        // client's revive icon material.
+    // usealternatereviveicon(use_alternate): selects `waypoint_revive_zm` (non-zero)
+    // or `waypoint_revive` (zero) on the client.
+    registry.register(Function, "usealternatereviveicon", |world, _, args| {
+        let alt = int(args, 0)? != 0;
+        world
+            .get_resource_or_insert_with(ClientGame::default)
+            .alternate_revive_icon = alt;
+        // t6.csc.hud.alternate_revive_icon: ownerdraw 199 (`revive_hints`) does
+        // not yet paint the client revive icon material.
         Ok(Value::Undefined)
     });
 

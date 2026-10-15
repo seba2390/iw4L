@@ -88,6 +88,12 @@ pub(crate) struct ClientGame {
     pub(crate) renew: Vec<i32>,
     /// Field changes for the menus, oldest first.
     pub(crate) menu_events: Vec<MenuFieldEvent>,
+    /// `allowroundanimation(allow)` events for the LUI root.
+    pub(crate) allow_round_animation: Vec<i32>,
+    /// `usealternatereviveicon(use_alternate)` (`waypoint_revive_zm` vs `waypoint_revive`).
+    pub(crate) alternate_revive_icon: bool,
+    /// `setalphafadeforname(alpha)` per player entity number (`0..18`).
+    pub(crate) name_fade_alpha: BTreeMap<i32, f32>,
     /// The client systems' states as last delivered, by system.
     states: BTreeMap<usize, String>,
     /// The client's own entities drawn through the server's presentation:
@@ -856,7 +862,8 @@ fn present_with(server: &mut World, client: &mut World) {
         }
     }
     let menu_events = std::mem::take(&mut game.menu_events);
-    if !menu_events.is_empty() {
+    let allow_round_animation = std::mem::take(&mut game.allow_round_animation);
+    if !menu_events.is_empty() || !allow_round_animation.is_empty() {
         let fields = &game.fields;
         if let Some(mut frame) = crate::frame::FrameWorld::try_from_world(server) {
             let meta = frame.client_meta_mut(crate::world::ClientId(LOCAL_CLIENT as u32));
@@ -876,6 +883,12 @@ fn present_with(server: &mut World, client: &mut World) {
                     initial: event.initial,
                     new_entity: event.new_entity,
                     entity: event.entity,
+                });
+            }
+            for allow in allow_round_animation {
+                meta.push_lui_notify(game_api::ui::LuiNotify {
+                    name: "allow_round_animation".to_owned(),
+                    data: vec![allow],
                 });
             }
         }

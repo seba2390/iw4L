@@ -1046,24 +1046,33 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
 
     // ent setalphafadeforname(alpha): sets the overhead name fade alpha for a
-    // player entity.
-    registry.register(Method, "setalphafadeforname", |_, _, args| {
-        float(args, 0)?;
-        // t6.csc.ui.name_fade: IW4L's overhead player names have no
-        // per-player script alpha fade.
+    // player entity (`0..18`).
+    registry.register(Method, "setalphafadeforname", |world, receiver, args| {
+        let (_, number, _) = super::entity::receiver_entity(world, receiver)?;
+        let alpha = float(args, 0)?;
+        if (0..18).contains(&number) {
+            world
+                .get_resource_or_insert_with(super::game::ClientGame::default)
+                .name_fade_alpha
+                .insert(number, alpha);
+        }
+        // t6.csc.ui.name_fade: overhead player names are not yet painted with
+        // the per-player fade alpha.
         Ok(Value::Undefined)
     });
 
-    // animateui(localclientnum, menu, item, state, duration): animates a UI
-    // menu item to a state.
+    // animateui(localclientnum, menu, item, state, duration): animates a legacy
+    // UI menu item to a state when `menu` is in `uiContext` or `cgDC`.
     registry.register(Function, "animateui", |_, _, args| {
         int(args, 0)?;
         string(args, 1)?;
         string(args, 2)?;
         string(args, 3)?;
         int(args, 4)?;
-        // t6.csc.ui.animate: IW4L's UI does not run client script menu item
-        // state animations.
+        // t6.csc.ui.animate: no Zombies HUD menu in `patch_zm` or the map
+        // zones carries `itemDef_s::animInfo` (or the MP overlay menus
+        // `_explode.csc`, `_sticky_grenade.csc` and `_players.csc` name);
+        // front-end legacy menu item state animations are not run.
         Ok(Value::Undefined)
     });
 
