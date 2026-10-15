@@ -2391,6 +2391,13 @@ impl SimState {
         self.content.actor_paths()
     }
 
+    /// The animation trees the match loaded, by lowercase name.
+    pub(crate) fn actor_anim_trees(
+        &self,
+    ) -> &std::collections::BTreeMap<String, Arc<crate::script::ActorAnimTree>> {
+        self.content.actor_anim_trees()
+    }
+
     pub(crate) fn actor_anim_tree(&self, name: &str) -> Option<Arc<crate::script::ActorAnimTree>> {
         self.content.actor_anim_tree(name)
     }

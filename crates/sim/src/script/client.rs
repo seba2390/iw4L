@@ -731,6 +731,10 @@ pub(crate) fn install(
     world.insert_resource(ClientOutput::default());
     world.insert_resource(ClientSoundReports::default());
     world.insert_resource(ClientModels::default());
+    world.insert_resource(super::host::actor_anims::ClientAnimTrees({
+        let frame = crate::frame::FrameWorld::from_world(server);
+        frame.actor_anim_trees().clone()
+    }));
     world.insert_resource(ClientEffectTable {
         lives: level.effect_lives.clone(),
         ..Default::default()
@@ -1188,6 +1192,7 @@ fn run_frame(
     super::runtime::advance_scheduler(world);
     let now = crate::level_time_ms(tick);
     super::host::mechanics::advance_client_mechanics(world, i64::from(now));
+    super::host::actor_anims::advance(world, crate::MATCH_TICK_MS as f32 / 1000.0);
     let mut output = world.resource_mut::<ClientOutput>();
     output.effects.retain(|_, effect| effect.alive(now));
     output.tag_effects.retain(|_, effect| now <= effect.end_ms);

@@ -16,6 +16,9 @@ use bevy_ecs::prelude::World;
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
     super::t5_vision::register_client(registry);
+    // Its entities' animation trees: `useAnimTree`, the `SetAnim` family and
+    // `clearAnim` on the client's own copy of the match's trees.
+    super::super::actor_anims::register(registry);
     // `playSound(local, alias, [origin], [volume])`: a sound the client
     // plays at a point (a local one without), answering its playback id.
     registry.register(Function, "playsound", |world, _, args| {

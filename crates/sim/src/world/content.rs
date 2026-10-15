@@ -482,6 +482,11 @@ impl SimContent {
     ) -> &std::collections::BTreeMap<String, crate::ScriptModelPlayAnim> {
         &self.data.script_model_anims
     }
+    pub(super) fn actor_anim_trees(
+        &self,
+    ) -> &std::collections::BTreeMap<String, Arc<crate::script::ActorAnimTree>> {
+        &self.data.actor_anim_trees
+    }
     pub(super) fn actor_anim_tree(&self, name: &str) -> Option<Arc<crate::script::ActorAnimTree>> {
         self.data
             .actor_anim_trees
