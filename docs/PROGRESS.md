@@ -94,7 +94,8 @@ Only the top-level items count.
   - [x] Bullets (spread, pellets, penetration), melee, frag grenades, rockets (Ray Gun), script blasts.
   - [x] The viewmodel plays the weapon's own animations, picked by the game's client rules.
   - [ ] Grenade launchers, sticky and special grenades, detonation, the Thundergun; dual wield (CZ75).
-  - [ ] No muzzle flash, shell or tracer; viewmodel blend times and rates are the runtime's.
+  - [x] Muzzle flashes (view and world) and ejected shells, by Black Ops' client fire rules.
+  - [ ] No tracer or view kick; viewmodel blend times and rates are the runtime's.
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Window spawns: boards torn off, mantle in.
   - [ ] Rising from the ground unverified; crawlers, ragdoll and thrown gibs missing.

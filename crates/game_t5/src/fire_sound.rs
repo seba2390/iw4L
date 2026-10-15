@@ -1,5 +1,5 @@
 //! What Black Ops' client does when a player fires: which of the weapon's
-//! fire sounds the shot plays.
+//! fire sounds the shot plays, and its flash and shell.
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{ClientFireRules, FireSound, FireSoundShot};
@@ -13,11 +13,15 @@ const FIRE_MINIGUN: i32 = 6;
 
 pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     sound,
-    effects: Rule::Unknown(unknown!(
-        "t5.weapons.fire_effects",
-        "a Black Ops shot shows no muzzle flash, shell or tracer, and moves no view kick or rumble",
-        "the rest of Black Ops' client fire event from its executable: the flash tag, the flash effect played with the sound, shell ejection, tracers and the view kick"
-    )),
+    // Black Ops' client fire event marks the shooter's entity fired (right
+    // or left); its next weapon draw bolts the view flash to the viewmodel's
+    // flash tag in first person, else the world flash to the entity's, and
+    // the event ejects the view or world shell (the last-shot pair for a
+    // last shot when both are authored) from the brass tag of the firing
+    // hand, unless the weapon is bolt action, whose rechamber ejects it.
+    // Tracers and the view kick are `t5.weapons.tracers` and
+    // `t5.weapons.view_kick`.
+    effects: Rule::Known(()),
     left_from_own_weapon: true,
 };
 
