@@ -8,6 +8,7 @@ mod missile;
 mod movement;
 mod radius;
 mod turret;
+mod vision;
 mod viewmodel;
 mod zombie_catalog;
 mod zombie_startup;
