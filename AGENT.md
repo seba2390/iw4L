@@ -3,6 +3,15 @@ branch for it from an up-to-date `main`, do the work there, push the branch
 and open a pull request into `main`. `main` is protected on GitHub: it only
 changes through a merged pull request whose checks pass.
 
+**Several agents work in this repository at the same time.** Work and push
+only on your own branch; never push to, reset or force-push a branch another
+agent made. Start each branch from a freshly fetched `origin/main`. When your
+pull request conflicts with `main`, merge `origin/main` into your branch and
+resolve every conflict by keeping both sides' work (never take "ours" or
+"theirs" wholesale over a file someone else changed), then rebuild and push.
+Never force-push over history someone else has fetched, and never discard
+uncommitted changes you did not make.
+
 Workflow, artifacts and the glossary: `CONTEXT.md`. Do not touch other agents'
 `context/mrs/*` without being asked.
 
