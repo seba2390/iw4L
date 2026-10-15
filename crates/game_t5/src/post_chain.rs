@@ -85,11 +85,7 @@ pub(crate) const POST_CHAIN: PostChainRules = PostChainRules {
         "the sampler states Black Ops' post chain reads its code textures with: the chain sets none, and the default its command buffer starts from was not found; the passes read linear, clamped (the one state Black Ops itself sets on the first post texture)",
         "the code-image sampler-state defaults in Black Ops' command buffer setup"
     ),
-    vision_channels: unknown!(
-        "t5.vision.channels",
-        "Black Ops' vision channels (naked, flare, infrared, last stand, death, low health, water, …) chosen by priority and lerped per field; frames draw with the map's own vision, which its scripts set naked at start",
-        "Black Ops' vision channel update and the vision script builtins"
-    ),
+    vision_channels: crate::vision_channels::new_channels,
 };
 
 const R_BLOOM_BLUR_RADIUS: usize = 0xec;

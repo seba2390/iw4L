@@ -138,8 +138,6 @@ pub struct PreparedWorld {
     pub t6_visions: asset_world::T6VisionCatalog,
     /// Black Ops vision files by `vision/<name>.vision`.
     pub t5_visions: asset_world::T5VisionCatalog,
-    /// The key of the map's own vision file in `t5_visions`.
-    pub t5_map_vision: Option<String>,
 
     pub film_vision: Option<asset_world::FilmVision>,
     pub film_visions: std::collections::BTreeMap<
@@ -228,7 +226,6 @@ impl PreparedWorld {
             t6_vision: Default::default(),
             t6_visions: Default::default(),
             t5_visions: Default::default(),
-            t5_map_vision: None,
             film_vision: Default::default(),
             film_visions: Default::default(),
             createart_name: Default::default(),

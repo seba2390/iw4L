@@ -14,6 +14,7 @@ use bevy_ecs::prelude::World;
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
+    super::t5_vision::register_client(registry);
     // `playSound(local, alias, [origin], [volume])`: a sound the client
     // plays at a point (a local one without), answering its playback id.
     registry.register(Function, "playsound", |world, _, args| {
@@ -1117,7 +1118,7 @@ fn now_ms(world: &World) -> i32 {
 }
 
 /// Seconds as the client rounds them to msec.
-fn seconds_to_msec(seconds: f32) -> i32 {
+pub(super) fn seconds_to_msec(seconds: f32) -> i32 {
     (f64::from(seconds * 1000.0) + 9.313_225_746_154_785e-10).round_ties_even() as i32
 }
 

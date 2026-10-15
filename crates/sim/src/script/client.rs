@@ -96,6 +96,8 @@ pub(crate) struct LocalPlayerView {
     pub(crate) eye: [f32; 3],
     /// Its weapons' clip ammo, by weapon name.
     pub(crate) clips: std::collections::BTreeMap<String, i32>,
+    /// The naked vision the server last set for it, `default` before any.
+    pub(crate) naked_vision: String,
 }
 
 /// The local client's player state from the server's world.
@@ -113,6 +115,16 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
             .unwrap_or(ps.max_health);
         (*ps, max_health)
     };
+    let own_vision = crate::frame::FrameWorld::from_world(server)
+        .client_meta(id)
+        .and_then(|meta| meta.view_effects.naked_vision.as_ref())
+        .map(|vision| vision.name.clone());
+    let naked_vision = own_vision
+        .or_else(|| {
+            let runtime = server.resource::<RoundScript>();
+            runtime.engine.naked_vision.as_ref().map(|v| v.name.clone())
+        })
+        .unwrap_or_else(|| "default".to_owned());
     let weapon = super::host::players::script_weapon(server, 0, ps.weapon);
     let frame = crate::frame::FrameWorld::from_world(server);
     let (meleeing, throwing_grenade) = crate::game_move::weapon_activity(&frame, id)
@@ -151,6 +163,7 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
         angles: ps.viewangles,
         eye,
         clips,
+        naked_vision,
     }
 }
 
@@ -344,9 +357,21 @@ pub(crate) struct ClientOutput {
     /// Tag effects to start or stop this frame.
     pub(crate) tag_events: Vec<ClientTagEvent>,
     next_effect: i32,
+    /// The latest vision calls, by serial.
+    pub(crate) vision_calls: std::collections::VecDeque<(u32, crate::VisionCall)>,
+    next_vision_call: u32,
 }
 
 impl ClientOutput {
+    /// Records a vision call, keeping the latest few.
+    pub(crate) fn vision_call(&mut self, call: crate::VisionCall) {
+        self.next_vision_call = self.next_vision_call.wrapping_add(1).max(1);
+        self.vision_calls.push_back((self.next_vision_call, call));
+        while self.vision_calls.len() > crate::CLIENT_VISION_TAIL {
+            self.vision_calls.pop_front();
+        }
+    }
+
     /// A new effect handle.
     pub(crate) fn effect_handle(&mut self) -> i32 {
         self.next_effect = self.next_effect.wrapping_add(1).max(1);
@@ -914,6 +939,16 @@ fn make_twin(server: &mut World, origin: [f32; 3]) -> Result<u64, String> {
 /// the server's effect entities.
 const CLIENT_EFFECT_ROW: u32 = 0x8000_0000;
 const CLIENT_EFFECT_ENTITY_ROW: u32 = 0xc000_0000;
+
+/// The local client's latest vision calls, by serial.
+pub(crate) fn vision_calls(server: &World) -> Vec<(u32, crate::VisionCall)> {
+    server
+        .get_resource::<ClientScripts>()
+        .map_or_else(Vec::new, |client| {
+            let output = client.world.resource::<ClientOutput>();
+            output.vision_calls.iter().cloned().collect()
+        })
+}
 
 /// The effects the local client plays at points now, begun and alive, by
 /// their row ids.

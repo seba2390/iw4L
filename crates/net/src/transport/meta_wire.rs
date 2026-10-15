@@ -1189,6 +1189,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     encode_vision(out, meta.view_effects.missile_vision.as_ref());
     encode_vision(out, meta.view_effects.night_vision.as_ref());
     encode_vision(out, meta.view_effects.pain_vision.as_ref());
+    encode_vision(out, meta.view_effects.last_stand_vision.as_ref());
     out.put_u8(u8::from(meta.view_effects.blur.is_some()));
     if let Some(blur) = meta.view_effects.blur {
         out.put_f32(blur.from);
@@ -1206,6 +1207,12 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
         dof.far_blur,
     ] {
         out.put_f32(v);
+    }
+    debug_assert!(meta.view_effects.client_visions.len() <= sim::CLIENT_VISION_TAIL);
+    out.put_u8(meta.view_effects.client_visions.len() as u8);
+    for (serial, call) in &meta.view_effects.client_visions {
+        out.put_u32(*serial);
+        encode_vision_call(out, call);
     }
     debug_assert!(meta.menu_commands.len() <= sim::MENU_COMMAND_TAIL);
     out.put_u8(meta.menu_commands.len() as u8);
@@ -1434,6 +1441,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         missile_vision: decode_vision(input)?,
         night_vision: decode_vision(input)?,
         pain_vision: decode_vision(input)?,
+        last_stand_vision: decode_vision(input)?,
         blur: match input.get_u8()? {
             0 => None,
             1 => Some(sim::ScriptBlur {
@@ -1451,6 +1459,13 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             far_end: input.get_f32()?,
             near_blur: input.get_f32()?,
             far_blur: input.get_f32()?,
+        },
+        client_visions: {
+            let mut calls = Vec::new();
+            for _ in 0..input.get_u8()? {
+                calls.push((input.get_u32()?, decode_vision_call(input)?));
+            }
+            calls
         },
     };
     let mut menu_commands = Vec::new();
@@ -1544,6 +1559,46 @@ fn encode_vision(out: &mut WireWriter, vision: Option<&sim::VisionChange>) {
     put_text(out, &vision.name);
     out.put_i32(vision.duration_ms);
     out.put_i32(vision.set_ms);
+}
+
+fn encode_vision_call(out: &mut WireWriter, call: &sim::VisionCall) {
+    let (tag, name, duration_ms) = match call {
+        sim::VisionCall::ServerNaked { name, duration_ms } => (0, name, duration_ms),
+        sim::VisionCall::ServerLastStand { name, duration_ms } => (1, name, duration_ms),
+        sim::VisionCall::ClientNaked { name, duration_ms } => (2, name, duration_ms),
+        sim::VisionCall::ClientDamage {
+            on: false,
+            name,
+            duration_ms,
+        } => (3, name, duration_ms),
+        sim::VisionCall::ClientDamage {
+            on: true,
+            name,
+            duration_ms,
+        } => (4, name, duration_ms),
+        sim::VisionCall::ClientUnderwater { name, duration_ms } => (5, name, duration_ms),
+    };
+    out.put_u8(tag);
+    put_text(out, name);
+    out.put_i32(*duration_ms);
+}
+
+fn decode_vision_call(input: &mut WireReader<'_>) -> Result<sim::VisionCall, WireError> {
+    let tag = input.get_u8()?;
+    let name = get_text(input)?;
+    let duration_ms = input.get_i32()?;
+    Ok(match tag {
+        0 => sim::VisionCall::ServerNaked { name, duration_ms },
+        1 => sim::VisionCall::ServerLastStand { name, duration_ms },
+        2 => sim::VisionCall::ClientNaked { name, duration_ms },
+        3 | 4 => sim::VisionCall::ClientDamage {
+            on: tag == 4,
+            name,
+            duration_ms,
+        },
+        5 => sim::VisionCall::ClientUnderwater { name, duration_ms },
+        _ => return Err(WireError::Malformed("bad vision call tag")),
+    })
 }
 
 fn decode_vision(input: &mut WireReader<'_>) -> Result<Option<sim::VisionChange>, WireError> {
