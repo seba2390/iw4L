@@ -182,7 +182,8 @@ pub(crate) fn update_post_vision(
         meta.and_then(|meta| meta.view_effects.naked_vision.as_ref())
             .or_else(|| snapshot.and_then(|s| s.meta.objectives.naked_vision.as_ref())),
     );
-    let last_stand = server_vision(meta.and_then(|meta| meta.view_effects.last_stand_vision.as_ref()));
+    let last_stand =
+        server_vision(meta.and_then(|meta| meta.view_effects.last_stand_vision.as_ref()));
     let PostVisionState {
         channels,
         server_naked,
@@ -194,23 +195,23 @@ pub(crate) fn update_post_vision(
     let Some(channels) = channels.as_mut() else {
         return;
     };
-    if naked.is_some() && naked != *server_naked {
-        let (name, duration_ms) = naked.clone().unwrap_or_default();
+    if let Some((name, duration_ms)) = naked.filter(|naked| server_naked.as_ref() != Some(naked)) {
+        *server_naked = Some((name.clone(), duration_ms));
         channels.call(
             &game_api::post::VisionCall::ServerNaked { name, duration_ms },
             now_ms,
             &files,
         );
-        *server_naked = naked;
     }
-    if last_stand.is_some() && last_stand != *server_last_stand {
-        let (name, duration_ms) = last_stand.clone().unwrap_or_default();
+    if let Some((name, duration_ms)) =
+        last_stand.filter(|last_stand| server_last_stand.as_ref() != Some(last_stand))
+    {
+        *server_last_stand = Some((name.clone(), duration_ms));
         channels.call(
             &game_api::post::VisionCall::ServerLastStand { name, duration_ms },
             now_ms,
             &files,
         );
-        *server_last_stand = last_stand;
     }
     for (serial, call) in meta.map_or(&[][..], |meta| &meta.view_effects.client_visions) {
         if serial.wrapping_sub(*client_serial) as i32 > 0 {

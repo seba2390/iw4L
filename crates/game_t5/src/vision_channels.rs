@@ -250,10 +250,7 @@ fn advance(channel: &mut Channel, now: i32) {
         return;
     }
     let raw = now.wrapping_sub(start) as f32 / duration as f32;
-    let mut t = 1.0;
-    if !(raw - 1.0 >= 0.0) {
-        t = raw;
-    }
+    let mut t = if raw - 1.0 >= 0.0 { 1.0 } else { raw };
     if -raw >= 0.0 {
         t = 0.0;
     }
@@ -276,13 +273,9 @@ fn advance(channel: &mut Channel, now: i32) {
                     _ => 4,
                 };
                 for i in at..at + count {
-                    result[i] = blend_float(
-                        style,
-                        f32::from_bits(from[i]),
-                        f32::from_bits(to[i]),
-                        t,
-                    )
-                    .to_bits();
+                    result[i] =
+                        blend_float(style, f32::from_bits(from[i]), f32::from_bits(to[i]), t)
+                            .to_bits();
                 }
             }
         }

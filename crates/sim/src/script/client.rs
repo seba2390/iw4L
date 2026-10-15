@@ -944,11 +944,10 @@ const CLIENT_EFFECT_ENTITY_ROW: u32 = 0xc000_0000;
 pub(crate) fn vision_calls(server: &World) -> Vec<(u32, crate::VisionCall)> {
     server
         .get_resource::<ClientScripts>()
-        .map(|client| {
+        .map_or_else(Vec::new, |client| {
             let output = client.world.resource::<ClientOutput>();
             output.vision_calls.iter().cloned().collect()
         })
-        .unwrap_or_default()
 }
 
 /// The effects the local client plays at points now, begun and alive, by

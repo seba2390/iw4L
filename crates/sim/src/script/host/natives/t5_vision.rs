@@ -86,11 +86,8 @@ pub(crate) fn register_client(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "visionsetunderwater", |world, _, args| {
-        let (name, duration_ms) = client_vision(
-            args,
-            2,
-            "visionsetunderwater() called with wrong params.\n",
-        )?;
+        let (name, duration_ms) =
+            client_vision(args, 2, "visionsetunderwater() called with wrong params.\n")?;
         client_call(world, VisionCall::ClientUnderwater { name, duration_ms });
         Ok(Value::Undefined)
     });
