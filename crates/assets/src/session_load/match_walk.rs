@@ -226,7 +226,7 @@ pub(super) async fn walk_prepared_match(
         .as_ref()
         .map(|options| {
             (0..options.rows as i32)
-                .filter(|&row| matches!(options.cell(row, 1), "camo" | "gold" | "black"))
+                .filter(|&row| matches!(options.cell(row, 1), "gold" | "black"))
                 .flat_map(|row| (2..options.columns as i32).map(move |col| options.cell(row, col)))
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned)

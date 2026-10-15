@@ -58,6 +58,9 @@ pub(crate) fn prepare_t5(
             continue;
         }
         let gold = table.cell(row, 2) == "gold";
+        if choices.is_none() && !gold {
+            continue;
+        }
         let mut swaps = Vec::new();
         for (key, id, source) in &source_materials {
             let mut material = source.clone();

@@ -138,6 +138,47 @@ const NODE_STEP_HEIGHT: f32 = 72.0;
 
 impl ActorPaths {
     pub fn new(nodes: Vec<NavNode>) -> Self {
+        let mut scripts: BTreeMap<String, Vec<(u16, [f32; 3], [f32; 3])>> = BTreeMap::new();
+        for (idx, node) in nodes.iter().enumerate() {
+            if node.kind == NavNodeKind::NegotiationBegin && !node.animscript.is_empty() {
+                let end_origin = node
+                    .links
+                    .iter()
+                    .find(|&&(_, _, neg)| neg)
+                    .and_then(|&(to, _, _)| nodes.get(usize::from(to)))
+                    .map_or(node.origin, |end| end.origin);
+                scripts.entry(node.animscript.clone()).or_default().push((
+                    idx as u16,
+                    node.origin,
+                    end_origin,
+                ));
+            }
+        }
+        if !scripts.is_empty() {
+            let summary: Vec<String> = scripts
+                .iter()
+                .map(|(name, list)| {
+                    let (id, b, e) = list[0];
+                    format!(
+                        "{name}={} (e.g. #{id}: {:.0} {:.0} {:.0} -> {:.0} {:.0} {:.0})",
+                        list.len(),
+                        b[0],
+                        b[1],
+                        b[2],
+                        e[0],
+                        e[1],
+                        e[2]
+                    )
+                })
+                .collect();
+            diag::info!(
+                Sim,
+                "actor paths: {} nodes, {} traversal scripts: {}",
+                nodes.len(),
+                scripts.len(),
+                summary.join(", ")
+            );
+        }
         Self { nodes }
     }
 
@@ -368,6 +409,7 @@ pub(crate) struct Traversal {
 /// animation's root motion puts it relative to `origin` and `yaw`.
 #[derive(Clone, Debug)]
 struct Scripted {
+    notify: String,
     origin: [f32; 3],
     yaw: f32,
     node: u16,
@@ -518,6 +560,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
         with_move(world, receiver, |movement| {
             movement.scripted = Some(Scripted {
+                notify,
                 origin,
                 yaw: angles[1],
                 node,
@@ -1034,13 +1077,15 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     ];
                     angles[1] = scripted.yaw + clip.abs_delta_yaw(time);
                     if !clip.looping && time >= 1.0 {
-                        diag::info!(
-                            Sim,
-                            "actor {actor}: scripted done at ({:.0} {:.0} {:.0})",
-                            origin[0],
-                            origin[1],
-                            origin[2]
-                        );
+                        if scripted.notify == "rise" {
+                            diag::info!(
+                                Sim,
+                                "actor {actor}: scripted rise done at ({:.0} {:.0} {:.0})",
+                                origin[0],
+                                origin[1],
+                                origin[2]
+                            );
+                        }
                         movement.scripted = None;
                     }
                 }

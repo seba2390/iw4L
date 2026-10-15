@@ -2527,7 +2527,9 @@ impl WeaponBuild {
         let mut variants = HashMap::new();
         let mut count = 0;
         for row in &mut self.registry.rows {
-            if row.namespace != crate::AssetNamespace::T5 {
+            if row.namespace != crate::AssetNamespace::T5
+                || (choices.is_none() && !row.material_camos.is_empty())
+            {
                 continue;
             }
             let Some(parent) = row.skin_parent.as_deref() else {
