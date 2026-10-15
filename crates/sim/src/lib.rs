@@ -53,6 +53,7 @@ mod script_player;
 mod smodel_grid;
 mod snapshot;
 mod sound_alias_cs;
+mod sound_trace;
 pub mod spawn;
 mod step;
 pub mod t5_destructible;

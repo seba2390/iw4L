@@ -480,10 +480,16 @@ impl SimState {
     }
 
     pub(crate) fn push_local_sound(&mut self, sound: PendingLocalSound) {
+        crate::sound_trace::local_sound(
+            self.sound_alias_cs.name(sound.alias_index),
+            sound.recipient,
+            sound.stop,
+        );
         self.presentation.local_sounds.push(sound);
     }
 
     pub(crate) fn push_script_audio(&mut self, command: crate::ScriptAudioCommand) {
+        crate::sound_trace::script_audio(&command);
         self.presentation.script_audio.push(command);
     }
 
@@ -2821,6 +2827,23 @@ impl SimState {
         event: entity_iw4::EntityEventKind,
         payload: EntityEventPayload,
     ) {
+        let sound = match event.taxonomy_name() {
+            Some(name @ ("EV_SOUND_ALIAS" | "EV_SOUND_ALIAS_AS_MASTER")) => Some((name, true)),
+            Some(name @ "EV_STOPSOUNDS") => Some((name, false)),
+            _ => None,
+        };
+        if let Some((kind, named)) = sound {
+            let alias = named
+                .then(|| self.sound_alias_cs.name(payload.event_parm as u8))
+                .flatten();
+            crate::sound_trace::entity_event(
+                kind,
+                alias,
+                &audience,
+                payload.number,
+                payload.origin,
+            );
+        }
         self.events.push_entity(tick, audience, event, payload);
     }
     pub fn entity_events(&self) -> &[EntityEventRecord] {

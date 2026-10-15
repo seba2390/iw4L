@@ -126,6 +126,11 @@ const PERKS: [&str; 63] = [
 #[derive(Resource, Default)]
 struct FakeEntities(BTreeMap<i32, [f32; 3]>);
 
+/// A fake entity's origin, while it is in use.
+pub(crate) fn fake_origin(world: &World, slot: i32) -> Option<[f32; 3]> {
+    world.get_resource::<FakeEntities>()?.0.get(&slot).copied()
+}
+
 /// The animation tree `scriptmodelsuseanimtree` gave client script models,
 /// and the trees `useanimtree` set on individual client entities.
 #[derive(Resource, Default)]

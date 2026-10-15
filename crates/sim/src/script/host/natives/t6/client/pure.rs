@@ -470,14 +470,6 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 .into(),
         )
     });
-    registry.register(Function, "getplaybacktime", |_, _, args| {
-        int(args, 0)?;
-        Err(
-            "t6.csc.sound.playback: how far the sound system has played the sound (0 when \
-             it plays none by that id)"
-                .into(),
-        )
-    });
 
     // Dvars. Each handler checks its arguments, then reads whether the
     // engine registered the dvar and its flags: setdvar sets only a dvar

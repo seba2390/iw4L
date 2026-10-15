@@ -1230,6 +1230,7 @@ fn play(world: &mut World, alias: String, origin: Option<[f32; 3]>, volume: f32)
             alias,
             origin,
             volume,
+            fade_in_ms: 0,
         });
     Value::Int(id)
 }
@@ -1340,18 +1341,7 @@ fn sound_status(world: &World, id: i32) -> Option<crate::ClientSoundStatus> {
 }
 
 fn sound_playing(world: &World, id: i32) -> bool {
-    let output = world.resource::<ClientOutput>();
-    if output.loops.values().any(|playing| playing.id == id) {
-        return true;
-    }
-    let reports = world.resource::<ClientSoundReports>();
-    if !reports.heard {
-        return false;
-    }
-    match reports.statuses.get(&id) {
-        Some(status) => status.playing,
-        None => output.issued.contains(&id),
-    }
+    crate::script::client::sound_playing(world, id)
 }
 
 /// A loop's fade: 0 to 32 seconds (the fade itself is not applied yet).

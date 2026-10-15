@@ -1,87 +1,61 @@
 //! Black Ops 2's client builtins: sound, ambience and rumble.
 //!
-//! The client's sounds play through IW4L's sound events on the server's
-//! world, heard by the local client alone. A sound the client game starts
-//! gets the sound system's next playback id, which `stopsound`,
-//! `soundplaying` and `setsoundvolume` name it by.
+//! The client game's sounds go to the local client's sound system as client
+//! sound commands (`ClientOutput`), each named by the playback id the
+//! builtin answers; `stopsound`, `soundplaying` and `setsoundvolume` name a
+//! sound by it, and the sound system's reports say which still play. Its
+//! loops play from their fake entity or entity (`ClientOutput::loops`).
 
 use super::super::{array_id, float, int, string, vector};
 use super::game::{ClientGame, LOCAL_CLIENT, client_entity, local_client, server_object};
+use crate::script::client::{ClientOutput, LoopSource};
 use crate::script::host::client_scripts::with_server;
 use crate::script::host::entities::EntityKind;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
-use bevy_ecs::prelude::{Resource, World};
-use std::collections::BTreeMap;
+use bevy_ecs::prelude::World;
 
-/// The world's entity number: a sound or rumble at a point.
-const WORLD: i32 = 1022;
 /// The engine's rumble slots end here; slot 0 is no rumble.
 const RUMBLE_SLOTS: i32 = 48;
 
-/// A client entity slot a looping sound plays on: an entity, or a fake
-/// entity (`spawnfakeent`).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Slot {
-    Entity(u64),
-    Fake(i32),
-}
+const LOCAL: crate::ClientId = crate::ClientId(LOCAL_CLIENT as u32);
 
-/// The client game's sounds.
-#[derive(Resource, Default)]
-struct ClientSounds {
-    /// The last playback id the sound system gave out.
-    last_id: i32,
-    /// The looping alias (its hash) each slot plays.
-    loops: BTreeMap<Slot, u32>,
-}
-
-/// The sound system's hash of an alias name; 0 is none.
-fn alias_hash(name: &str) -> u32 {
-    if name.is_empty() {
-        return 0;
-    }
-    let hash = name.bytes().fold(0x1505u32, |hash, byte| {
-        hash.wrapping_mul(0x1003f)
-            .wrapping_add(byte.to_ascii_lowercase() as i8 as i32 as u32)
-    });
-    hash.max(1)
-}
-
-/// Starts a playback: the sound system's next id, or -1 for no alias.
-fn start(world: &mut World, hash: u32) -> i32 {
-    if hash == 0 {
+/// Plays a one-shot: its playback id, or -1 for no alias.
+fn play(
+    world: &mut World,
+    alias: &str,
+    origin: Option<[f32; 3]>,
+    volume: f32,
+    fade_in_ms: i32,
+) -> i32 {
+    if alias.is_empty() {
         return -1;
     }
-    let mut sounds = world.get_resource_or_insert_with(ClientSounds::default);
-    // The engine's counter also counts the playbacks it starts itself.
-    sounds.last_id = sounds.last_id.wrapping_add(1);
-    sounds.last_id
+    let mut output = world.resource_mut::<ClientOutput>();
+    let id = output.sound_id();
+    output.issued.insert(id);
+    output
+        .sound_commands
+        .push(crate::ScriptAudioCommand::ClientSound {
+            client: LOCAL,
+            id,
+            alias: alias.to_owned(),
+            origin,
+            volume,
+            fade_in_ms,
+        });
+    id
 }
 
-/// The alias as a sound event on an entity number (the world's for a
-/// point), heard by the local client; an alias the game lacks plays
-/// nothing.
-fn play(world: &World, alias: &str, number: i32, origin: [f32; 3]) -> Result<(), String> {
-    with_server(world, |server| {
-        {
-            let mut frame = crate::frame::FrameWorld::from_world(server);
-            if frame.script_sound_exists(alias) != Some(true) {
-                return Ok(());
-            }
-            if frame.sound_alias_index(alias) == 0 {
-                return Err("sound alias configstring table is full".to_owned());
-            }
-        }
-        crate::script::host::natives::engine::sound_to(
-            server,
-            crate::EventAudience::Client(crate::ClientId(LOCAL_CLIENT as u32)),
-            alias,
-            number,
-            origin,
-        );
-        Ok(())
-    })
-    .unwrap_or(Ok(()))
+/// A volume as the sound builtins clamp it: 1 or more is 1, 0 or less is 0.
+fn clamp_volume(volume: f32) -> f32 {
+    let mut clamped = volume;
+    if 0.0 <= volume - 1.0 {
+        clamped = 1.0;
+    }
+    if 0.0 <= -volume {
+        clamped = 0.0;
+    }
+    clamped
 }
 
 /// A method's receiving client entity: its object and, for an entity of the
@@ -117,73 +91,67 @@ fn fade(args: &[Value], index: usize, builtin: &str) -> Result<f32, String> {
 }
 
 /// `playsound(localclientnum, alias, [origin], [volume], [fade])`: the
-/// alias at the point (the world's origin without one), its volume clamped
-/// to 0..1 and its fade-in 0 to 32 seconds; answers its playback id.
+/// alias on the world, at the point (without one it is not placed), its
+/// volume clamped to 0..1 and faded in over 0 to 32 seconds; answers its
+/// playback id.
 fn play_sound(world: &mut World, args: &[Value]) -> Result<Value, String> {
     local_client(args, 0)?;
     let alias = string(args, 1)?;
-    let at = if args.len() >= 3 {
-        vector(args, 2)?
+    let at = if args.len() > 2 {
+        Some(vector(args, 2)?)
     } else {
-        [0.0; 3]
+        None
     };
-    if args.len() >= 4 {
-        float(args, 3)?;
-    }
-    if args.len() >= 5 {
-        fade(args, 4, "playsound")?;
-    }
-    // t6.csc.sound.volume: IW4L's sound events carry no volume or fade-in;
-    // the sound plays at its alias's own volume.
-    let id = start(world, alias_hash(&alias));
-    if id != -1 {
-        play(world, &alias, WORLD, at)?;
-    }
-    Ok(Value::Int(id))
+    let volume = if args.len() > 3 {
+        clamp_volume(float(args, 3)?)
+    } else {
+        1.0
+    };
+    let fade_in_ms = if args.len() > 4 {
+        // The engine keeps the milliseconds in 16 bits.
+        i32::from((fade(args, 4, "playsound")? * 1000.0) as i32 as i16)
+    } else {
+        0
+    };
+    Ok(Value::Int(play(world, &alias, at, volume, fade_in_ms)))
 }
 
 /// `ent playsound(localclientnum, alias, [origin], [volume])`: the alias on
 /// the entity, from the point given with exactly three parameters (else the
-/// entity's origin); the local client parameter is not read.
+/// entity's origin), its volume clamped to 0..1 with exactly four; the
+/// local client parameter is not read.
 fn play_sound_on(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
-    let (id, snapshot) = receiver_entity(world, receiver)?;
+    let (id, _) = receiver_entity(world, receiver)?;
     let alias = string(args, 1)?;
     let at = if args.len() == 3 {
         vector(args, 2)?
     } else {
         origin(world, id)
     };
-    if args.len() == 4 {
-        float(args, 3)?;
-    }
-    let playback = start(world, alias_hash(&alias));
-    if playback != -1 {
-        // t6.csc.sound.client_entity: on an entity only the client has, the
-        // sound starts at its origin and does not follow it.
-        play(world, &alias, snapshot.unwrap_or(WORLD), at)?;
-    }
-    Ok(Value::Int(playback))
-}
-
-/// Sets the slot's looping alias and starts it; answers its playback id.
-// t6.csc.sound.loop: IW4L presents looping sounds only on the server's
-// entities, so the client game's loops are not heard; the id still names
-// the playback for the scripts that drive it.
-fn start_loop(world: &mut World, slot: Slot, alias: &str) -> i32 {
-    let hash = alias_hash(alias);
-    let mut sounds = world.get_resource_or_insert_with(ClientSounds::default);
-    if hash == 0 {
-        sounds.loops.remove(&slot);
+    let volume = if args.len() == 4 {
+        clamp_volume(float(args, 3)?)
     } else {
-        sounds.loops.insert(slot, hash);
-    }
-    start(world, hash)
+        1.0
+    };
+    // t6.csc.sound.client_entity: the sound plays on the entity in the
+    // engine; IW4L's audio places it once, at the entity's origin.
+    Ok(Value::Int(play(world, &alias, Some(at), volume, 0)))
 }
 
-fn stop_loop(world: &mut World, slot: Slot) {
-    if let Some(mut sounds) = world.get_resource_mut::<ClientSounds>() {
-        sounds.loops.remove(&slot);
+/// Sets the source's looping alias (none stops it) and starts it; answers
+/// its playback id, or -1 for no alias.
+// t6.csc.sound.loop: a loop's fade is checked, not applied.
+fn start_loop(world: &mut World, source: LoopSource, alias: &str) -> i32 {
+    let mut output = world.resource_mut::<ClientOutput>();
+    if alias.is_empty() {
+        output.loops.remove(&source);
+        return -1;
     }
+    output.restart_loop(source, alias.to_owned())
+}
+
+fn stop_loop(world: &mut World, source: LoopSource) {
+    world.resource_mut::<ClientOutput>().loops.remove(&source);
 }
 
 /// `playloopsound(localclientnum, fakeent, alias, [fade])`: the alias
@@ -195,7 +163,11 @@ fn play_loop_sound(world: &mut World, args: &[Value]) -> Result<Value, String> {
     if args.len() == 4 {
         fade(args, 3, "playloopsound")?;
     }
-    Ok(Value::Int(start_loop(world, Slot::Fake(fake), &alias)))
+    Ok(Value::Int(start_loop(
+        world,
+        LoopSource::Fake(fake),
+        &alias,
+    )))
 }
 
 /// `ent playloopsound(alias, [fade])`: the alias looping on the entity,
@@ -216,7 +188,11 @@ fn play_loop_sound_on(
     if args.len() == 2 {
         fade(args, 1, "playloopsound")?;
     }
-    Ok(Value::Int(start_loop(world, Slot::Entity(id), &alias)))
+    Ok(Value::Int(start_loop(
+        world,
+        LoopSource::Entity(id),
+        &alias,
+    )))
 }
 
 /// `stoploopsound(localclientnum, fakeent, [fade])`: stops the fake
@@ -233,7 +209,7 @@ fn stop_loop_sound(world: &mut World, args: &[Value]) -> Result<Value, String> {
             ));
         }
     }
-    stop_loop(world, Slot::Fake(fake));
+    stop_loop(world, LoopSource::Fake(fake));
     Ok(Value::Undefined)
 }
 
@@ -246,27 +222,55 @@ fn stop_loop_sound_on(
 ) -> Result<Value, String> {
     let (id, _) = receiver_entity(world, receiver)?;
     let looping = world
-        .get_resource::<ClientSounds>()
-        .is_some_and(|sounds| sounds.loops.contains_key(&Slot::Entity(id)));
+        .resource::<ClientOutput>()
+        .loops
+        .contains_key(&LoopSource::Entity(id));
     if !looping {
         return Ok(Value::Undefined);
     }
     if !args.is_empty() {
         fade(args, 0, "stoploopsound")?;
     }
-    stop_loop(world, Slot::Entity(id));
+    stop_loop(world, LoopSource::Entity(id));
     Ok(Value::Undefined)
 }
 
-/// `setsoundvolume(id, volume)` and `setsoundvolumerate(id, rate)`: the
-/// playback's volume and how fast it moves there, which must be a number.
-fn volume(args: &[Value], builtin: &str) -> Result<Value, String> {
-    if !float(args, 1)?.is_finite() {
+/// What the sound system last reported of a playback it plays.
+fn sound_status(world: &World, id: i32) -> Option<crate::ClientSoundStatus> {
+    world
+        .resource::<crate::script::client::ClientSoundReports>()
+        .statuses
+        .get(&id)
+        .copied()
+        .filter(|status| status.playing)
+}
+
+/// `setsoundvolume(id, volume)` / `setsoundvolumerate(id, rate)`: the
+/// playback's volume, or how fast (per second) it moves there; the value
+/// must be a number.
+fn volume(world: &mut World, args: &[Value], builtin: &str) -> Result<Value, String> {
+    let value = float(args, 1)?;
+    if !value.is_finite() {
         return Err(format!("{builtin} cannot be NAN."));
     }
-    int(args, 0)?;
-    // t6.csc.sound.volume: IW4L's sound events have no volume to change
-    // once played (scripts ramp it every frame).
+    let id = int(args, 0)?;
+    let command = if builtin == "setsoundvolume" {
+        crate::ScriptAudioCommand::ClientSoundVolume {
+            client: LOCAL,
+            id,
+            volume: value,
+        }
+    } else {
+        crate::ScriptAudioCommand::ClientSoundVolumeRate {
+            client: LOCAL,
+            id,
+            rate: value,
+        }
+    };
+    world
+        .resource_mut::<ClientOutput>()
+        .sound_commands
+        .push(command);
     Ok(Value::Undefined)
 }
 
@@ -368,23 +372,41 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "stoploopsound", stop_loop_sound_on);
     // stopsound(id): stops the playback.
-    registry.register(Function, "stopsound", |_, _, args| {
-        int(args, 0)?;
-        Err("t6.csc.sound.stop: IW4L's sound events cannot stop one playback".into())
+    registry.register(Function, "stopsound", |world, _, args| {
+        let id = int(args, 0)?;
+        world
+            .resource_mut::<ClientOutput>()
+            .sound_commands
+            .push(crate::ScriptAudioCommand::ClientSoundStop { client: LOCAL, id });
+        Ok(Value::Undefined)
     });
-    // soundplaying(id): whether a voice still plays the playback.
-    registry.register(Function, "soundplaying", |_, _, args| {
-        int(args, 0)?;
-        // t6.csc.sound.playing: IW4L does not report how long a sound plays
-        // and does not present the client game's loops, so every playback
-        // answers as finished (scripts poll this every frame).
-        Ok(Value::Int(0))
+    // soundplaying(id): whether the sound system still plays the playback.
+    registry.register(Function, "soundplaying", |world, _, args| {
+        let id = int(args, 0)?;
+        Ok(Value::Int(
+            crate::script::client::sound_playing(world, id).into(),
+        ))
     });
-    registry.register(Function, "setsoundvolume", |_, _, args| {
-        volume(args, "setsoundvolume")
+    // getplaybacktime(id) / getknownlength(id): how far the sound system has
+    // played the playback and how long it is, in msec; 0 for a playback it
+    // does not play.
+    registry.register(Function, "getplaybacktime", |world, _, args| {
+        let id = int(args, 0)?;
+        Ok(Value::Int(
+            sound_status(world, id).map_or(0, |status| status.playback_ms),
+        ))
     });
-    registry.register(Function, "setsoundvolumerate", |_, _, args| {
-        volume(args, "setsoundvolumerate")
+    registry.register(Function, "getknownlength", |world, _, args| {
+        let id = int(args, 0)?;
+        Ok(Value::Int(
+            sound_status(world, id).map_or(0, |status| status.length_ms),
+        ))
+    });
+    registry.register(Function, "setsoundvolume", |world, _, args| {
+        volume(world, args, "setsoundvolume")
+    });
+    registry.register(Function, "setsoundvolumerate", |world, _, args| {
+        volume(world, args, "setsoundvolumerate")
     });
     // soundloopemitter(alias, origin) / soundstoploopemitter(alias, origin):
     // a loop the sound system plays at a point.
