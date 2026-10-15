@@ -755,6 +755,29 @@ pub struct PreparedMapModels {
     pub script_structs: Vec<crate::MapScriptStruct>,
 
     pub script_gaps: usize,
+
+    /// Static model slots whose model another zone holds.
+    pub foreign_static_models: Vec<ForeignStaticModel>,
+}
+
+/// A static model slot holding a `,name` stub: the model itself lives in a
+/// zone loaded alongside the map, so its mesh is linked after that zone's
+/// walk.
+#[derive(Clone, Debug)]
+pub struct ForeignStaticModel {
+    pub slot: usize,
+    pub name: String,
+    /// The slot's placement; `mesh` is meaningless until the model is linked.
+    pub placement: StaticModelPlacement,
+}
+
+/// The draw mesh of a map's static model, built in the zone that holds the
+/// model, with the names of the materials its surfaces take from yet another
+/// zone (`,name` stubs), in `lod_surfaces` order.
+#[derive(Clone, Debug)]
+pub struct ForeignStaticMesh {
+    pub mesh: ModelMesh,
+    pub foreign_materials: Vec<Option<String>>,
 }
 
 #[derive(Debug)]

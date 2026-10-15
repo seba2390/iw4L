@@ -47,7 +47,8 @@ impl T5Lane {
 }
 
 impl T5Lane {
-    /// Walks a common zone.
+    /// Walks a common zone, also building the draw meshes of the map static
+    /// models named in `static_models` that this zone holds.
     pub(crate) fn load_common_zone(
         &self,
         path: &Path,
@@ -55,6 +56,7 @@ impl T5Lane {
         progress: &LoadProgress,
         decode_color_maps: bool,
         material_seed: asset_material::MaterialCatalog,
+        static_models: std::collections::BTreeSet<String>,
     ) -> CommonCensus {
         let header = match image.t5_header() {
             Ok(header) => header,
@@ -76,6 +78,7 @@ impl T5Lane {
             }
         };
         let mut sink = CommonWalkSink::default();
+        sink.static_model_names = static_models;
         sink.seed_materials(material_seed);
         sink.set_capture_zone(asset_core::ZoneOwner::from_zone_path(path));
         sink.set_capture_ns(asset_core::AssetNamespace::T5);
@@ -220,6 +223,7 @@ impl T5Lane {
             lochit_table: sink.lochit_table,
             teamsets: sink.teamsets,
             scene_models: sink.scene_models,
+            static_meshes: sink.static_meshes,
             scripts: sink.scripts,
             film_visions: std::collections::BTreeMap::new(),
             ..Default::default()
@@ -317,7 +321,15 @@ impl ZoneLane for T5Lane {
         let runtime_overrun = stream.block_overrun(fastfile_t5::XFILE_BLOCK_RUNTIME as u8);
         report.push(format!("block overrun: runtime +{runtime_overrun} bytes"));
 
+        let mut foreign_clip_models = Vec::new();
         let clip = if let Some(geometry) = stream.clip_map() {
+            report.push(format!(
+                "clipmap: dyn ents (client lists {} + {}, server lists {} + {})",
+                geometry.dyn_ent_counts[0],
+                geometry.dyn_ent_counts[1],
+                geometry.dyn_ent_counts[2],
+                geometry.dyn_ent_counts[3]
+            ));
             report.push(format!(
                 "clipmap: planes={} brushes={} leaves={} nodes={} cmodels={} verts={} tris={}",
                 geometry.plane_count,
@@ -334,11 +346,11 @@ impl ZoneLane for T5Lane {
                     .attach_t5_clip_models(&stream, geometry, &mut clip)?;
                 if !foreign.is_empty() {
                     report.push(format!(
-                        "t5 clip: {} static models reference another zone; collision not attached: {}",
-                        foreign.len(),
-                        foreign.join(", ")
+                        "t5 clip: {} static models reference another zone; collision waits for its walk",
+                        foreign.len()
                     ));
                 }
+                foreign_clip_models = foreign;
                 Ok(clip)
             }) {
                 Ok(clip) => {
@@ -522,8 +534,30 @@ impl ZoneLane for T5Lane {
                     script_brush_models,
                     flag_descriptors,
                     script_structs,
+                    foreign_static_models,
                     ..
                 } = map_models;
+                if !foreign_static_models.is_empty() {
+                    let mut names: Vec<&str> = foreign_static_models
+                        .iter()
+                        .map(|model| model.name.as_str())
+                        .collect();
+                    names.sort_unstable();
+                    names.dedup();
+                    report.push(format!(
+                        "static models: {} slots name a model another zone holds: {}",
+                        foreign_static_models.len(),
+                        names.join(", ")
+                    ));
+                }
+                // Lighting is sampled for every placed slot, including the
+                // ones whose model is linked from another zone.
+                let mut lit_slots = static_model_instances.clone();
+                for model in &foreign_static_models {
+                    if let Some(slot) = lit_slots.get_mut(model.slot) {
+                        *slot = Some(model.placement);
+                    }
+                }
                 let intermission_view = intermission_view_t5(&stream);
                 let minimap_corners = minimap_corners_t5(&stream);
                 let north_yaw = asset_world::worldspawn_north_yaw_t5(&stream);
@@ -600,7 +634,7 @@ impl ZoneLane for T5Lane {
                             asset_model::model_lighting::collect_t5_smodel_lighting_origins(
                                 &stream, geometry,
                             ),
-                            &static_model_instances,
+                            &lit_slots,
                             clip.as_ref(),
                         )
                     }
@@ -669,6 +703,10 @@ impl ZoneLane for T5Lane {
                         ..Default::default()
                     },
                     report,
+                    foreign_models: super::ForeignModels {
+                        static_models: foreign_static_models,
+                        clip_models: foreign_clip_models,
+                    },
                     ..LoadedWorld::empty(WorldDrawPolicy::t5())
                 }
             }
@@ -715,7 +753,14 @@ impl ZoneLane for T5Lane {
         decode_color_maps: bool,
         material_seed: asset_material::MaterialCatalog,
     ) -> CommonCensus {
-        self.load_common_zone(path, image, progress, decode_color_maps, material_seed)
+        self.load_common_zone(
+            path,
+            image,
+            progress,
+            decode_color_maps,
+            material_seed,
+            Default::default(),
+        )
     }
 
     fn load_material_population(

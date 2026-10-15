@@ -406,6 +406,7 @@ impl ZoneLane for Iw4Lane {
                 arena_bytes as f64 / (1024.0 * 1024.0),
             ));
             return LoadedWorld {
+                foreign_models: Default::default(),
                 ui_images: Vec::new(),
                 ui_modules: Vec::new(),
                 scripts,
@@ -634,6 +635,7 @@ impl ZoneLane for Iw4Lane {
                 let world_bounds = draw.stats.bounds;
                 handoff.done();
                 LoadedWorld {
+                    foreign_models: Default::default(),
                     ui_images: Vec::new(),
                     ui_modules: Vec::new(),
                     scripts,
@@ -697,6 +699,7 @@ impl ZoneLane for Iw4Lane {
                 let arena_bytes = memory.total_bytes();
                 drop(memory);
                 LoadedWorld {
+                    foreign_models: Default::default(),
                     ui_images: Vec::new(),
                     ui_modules: Vec::new(),
                     scripts,
@@ -1086,6 +1089,7 @@ impl ZoneLane for Iw4Lane {
             moved.total_bytes() as f64 / (1024.0 * 1024.0),
         ));
             CommonCensus {
+                static_meshes: Vec::new(),
                 ui_images: Vec::new(),
                 ui_modules: Vec::new(),
                 ui_tables: Vec::new(),
@@ -1126,6 +1130,7 @@ impl ZoneLane for Iw4Lane {
                 memory.payload_bytes,
             ));
             CommonCensus {
+                static_meshes: Vec::new(),
                 ui_images: Vec::new(),
                 ui_modules: Vec::new(),
                 ui_tables: Vec::new(),

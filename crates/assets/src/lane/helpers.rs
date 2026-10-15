@@ -389,14 +389,14 @@ impl MapXModelCatalog {
         None
     }
 
-    /// Attaches static-model collision and returns the names of models that
-    /// live in another zone, whose collision is not attached.
+    /// Attaches static-model collision and returns the rows whose model lives
+    /// in another zone, to attach once that zone has been walked.
     pub(crate) fn attach_t5_clip_models(
         &self,
         stream: &fastfile_t5::ZoneStream<'_>,
         geometry: fastfile_t5::ClipMapGeometry,
         clip: &mut asset_world::ClipCollision,
-    ) -> Result<Vec<String>, asset_world::ClipCollisionError> {
+    ) -> Result<Vec<(String, T5ClipModelRow)>, asset_world::ClipCollisionError> {
         use asset_world::ClipCollisionError::{MissingTables, Truncated};
         let mut foreign = Vec::new();
         let Some(rows) = geometry.static_models else {
@@ -412,14 +412,6 @@ impl MapXModelCatalog {
             let slot = Ptr {
                 block: slot.block,
                 offset: slot.offset,
-            };
-            let Some(name) = self.name_at_slot(slot) else {
-                let name = self.t5_reference_at_slot(slot).ok_or(MissingTables)?;
-                foreign.push(name.to_owned());
-                continue;
-            };
-            let Some(MapXModelSceneAsset::T5(skel)) = self.scene_assets.get_name(name) else {
-                return Err(MissingTables);
             };
             let read = |offset| stream.f32_at(row, offset).map_err(|_| Truncated);
             let origin = [read(8)?, read(12)?, read(16)?];
@@ -439,41 +431,22 @@ impl MapXModelCatalog {
                 bounds_mid[axis] = (min + max) * 0.5;
                 bounds_half[axis] = (max - min) * 0.5;
             }
-            let coll = clipmap_iw4::XModelColl {
-                coll_lod: skel.coll_lod,
-                contents: skel.contents.ok_or(MissingTables)?,
-                surfs: skel
-                    .coll_surfs
-                    .iter()
-                    .map(|surf| clipmap_iw4::XModelCollSurf {
-                        midpoint: surf.midpoint,
-                        half_size: surf.half_size,
-                        bone_idx: i32::from(surf.bone),
-                        contents: surf.contents,
-                        surf_flags: surf.surf_flags,
-                        tris: surf
-                            .tris
-                            .iter()
-                            .map(|tri| clipmap_iw4::XModelCollTri {
-                                plane: tri.plane,
-                                svec: tri.svec,
-                                tvec: tri.tvec,
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-            };
-            clip.static_models.push(asset_world::ClipPlacedStaticModel {
+            let row = T5ClipModelRow {
                 index: index as u32,
-                name: name.to_owned(),
-                model: clipmap_iw4::ClipStaticModel {
-                    origin,
-                    inv_scaled_axis,
-                    bounds_mid,
-                    bounds_half,
-                    coll,
-                },
-            });
+                origin,
+                inv_scaled_axis,
+                bounds_mid,
+                bounds_half,
+            };
+            let Some(name) = self.name_at_slot(slot) else {
+                let name = self.t5_reference_at_slot(slot).ok_or(MissingTables)?;
+                foreign.push((name.to_owned(), row));
+                continue;
+            };
+            let Some(MapXModelSceneAsset::T5(skel)) = self.scene_assets.get_name(name) else {
+                return Err(MissingTables);
+            };
+            clip.static_models.push(row.place(name, skel)?);
         }
         Ok(foreign)
     }
@@ -492,6 +465,63 @@ impl MapXModelCatalog {
 
     pub(crate) fn set_dynent_phys_preset_n(&mut self, n: usize) {
         self.scene_assets.set_dynent_phys_preset_n(n);
+    }
+}
+
+/// One clipmap static model: where it stands and the box it fills.
+#[derive(Clone, Debug)]
+pub(crate) struct T5ClipModelRow {
+    index: u32,
+    origin: [f32; 3],
+    inv_scaled_axis: [[f32; 3]; 3],
+    bounds_mid: [f32; 3],
+    bounds_half: [f32; 3],
+}
+
+impl T5ClipModelRow {
+    /// The row with the collision surfaces of its model.
+    pub(crate) fn place(
+        self,
+        name: &str,
+        skel: &asset_model::ModelSkel,
+    ) -> Result<asset_world::ClipPlacedStaticModel, asset_world::ClipCollisionError> {
+        let coll = clipmap_iw4::XModelColl {
+            coll_lod: skel.coll_lod,
+            contents: skel
+                .contents
+                .ok_or(asset_world::ClipCollisionError::MissingTables)?,
+            surfs: skel
+                .coll_surfs
+                .iter()
+                .map(|surf| clipmap_iw4::XModelCollSurf {
+                    midpoint: surf.midpoint,
+                    half_size: surf.half_size,
+                    bone_idx: i32::from(surf.bone),
+                    contents: surf.contents,
+                    surf_flags: surf.surf_flags,
+                    tris: surf
+                        .tris
+                        .iter()
+                        .map(|tri| clipmap_iw4::XModelCollTri {
+                            plane: tri.plane,
+                            svec: tri.svec,
+                            tvec: tri.tvec,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        };
+        Ok(asset_world::ClipPlacedStaticModel {
+            index: self.index,
+            name: name.to_owned(),
+            model: clipmap_iw4::ClipStaticModel {
+                origin: self.origin,
+                inv_scaled_axis: self.inv_scaled_axis,
+                bounds_mid: self.bounds_mid,
+                bounds_half: self.bounds_half,
+                coll,
+            },
+        })
     }
 }
 
@@ -653,6 +683,7 @@ pub(crate) fn link_model_placements(
     let mut gaps = catalog.failed;
     let mut instances: Vec<Option<StaticModelPlacement>> = vec![None; smodel_count];
     let mut script_instances = Vec::with_capacity(scripts.len());
+    let mut foreign_static_models = Vec::new();
 
     let mut take_mesh = |source_mesh: usize| -> usize {
         match remap[source_mesh] {
@@ -668,17 +699,24 @@ pub(crate) fn link_model_placements(
 
     if static_error.is_none() {
         for (slot, placement) in placements.into_iter().enumerate() {
-            let Some(source_mesh) = catalog.mesh_index(placement.model_slot) else {
-                gaps += 1;
-                continue;
+            let source_mesh = catalog.mesh_index(placement.model_slot);
+            let foreign = match source_mesh {
+                Some(_) => None,
+                None => match catalog.t5_reference_at_slot(placement.model_slot) {
+                    Some(name) => Some(name.to_owned()),
+                    None => {
+                        gaps += 1;
+                        continue;
+                    }
+                },
             };
-            let mesh = take_mesh(source_mesh);
+            let mesh = source_mesh.map_or(usize::MAX, &mut take_mesh);
             let basis = Mat3::from_cols(
                 Vec3::from_array(placement.axis[0]),
                 Vec3::from_array(placement.axis[1]),
                 Vec3::from_array(placement.axis[2]),
             );
-            instances[slot] = Some(StaticModelPlacement {
+            let linked = StaticModelPlacement {
                 mesh,
                 transform: Transform {
                     translation: Vec3::from_array(placement.origin),
@@ -692,7 +730,15 @@ pub(crate) fn link_model_placements(
                 reflection_probe_index: placement.reflection_probe_index,
                 primary_light_index: placement.primary_light_index,
                 flags: placement.flags,
-            });
+            };
+            match foreign {
+                Some(name) => foreign_static_models.push(asset_world::ForeignStaticModel {
+                    slot,
+                    name,
+                    placement: linked,
+                }),
+                None => instances[slot] = Some(linked),
+            }
         }
     } else {
         gaps = gaps.saturating_add(smodel_count);
@@ -786,6 +832,7 @@ pub(crate) fn link_model_placements(
         flag_descriptors,
         script_structs,
         script_gaps,
+        foreign_static_models,
     }
 }
 

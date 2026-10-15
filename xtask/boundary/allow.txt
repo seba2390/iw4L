@@ -330,7 +330,7 @@ pattern crates/assets/src/lane/sink.rs AssetNamespace::<game> 4
 pattern crates/assets/src/lane/sink.rs asset_iw4:: 1
 pattern crates/assets/src/lane/sink.rs fastfile_iw4:: 38
 pattern crates/assets/src/lane/sink.rs fastfile_iw5:: 131
-pattern crates/assets/src/lane/sink.rs fastfile_t5:: 172
+pattern crates/assets/src/lane/sink.rs fastfile_t5:: 171
 pattern crates/assets/src/lane/sink.rs weapon_iw4:: 2
 pattern crates/assets/src/lane/t5.rs AssetNamespace::<game> 6
 pattern crates/assets/src/lane/t5.rs ZoneGame::<game> 4
