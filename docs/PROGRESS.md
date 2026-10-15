@@ -145,11 +145,13 @@ Only the top-level items count.
 - [x] Power and perks.
   - [x] The power switch, buying and drinking a perk (Quick Revive), the perk icon.
   - [x] Juggernog fills the player's health to 250 (`SetMaxHealth`).
-  - [ ] Each perk's effect verified (Speed Cola, Double Tap, Stamin-Up); the drink's stance and melee locks.
+  - [x] Each perk's effect verified (`IW4L_TEST_TIMING`, `IW4L_TEST_WALK`, the go-down test): Speed Cola halves the m1911's reload (1800 → 900 ms), Double Tap shortens the Ray Gun's firing state (350 → 250 ms at 50 ms commands), Stamin-Up raises sprint from 281 to 310 units/s, and with Juggernog four zombie hits of 60 take 250 health to 10 and the fifth downs the player.
+  - [ ] The drink's stance and melee locks (`allowmelee` is not enforced).
 - [x] Pack-a-Punch and every power-up.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
-  - [ ] Carpenter's repaired boards may still lerp (`t5.entities.interpolation`); the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
+  - [x] Carpenter's far boards snap back into their windows (`dontinterpolate` on an entity flips its own teleport flag).
+  - [ ] The upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; with Quick Revive (`IW4L_TEST_PLAYER=revive`) the solo player holds `m1911_upgraded_zm` and revives after 10 s; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [x] Going down and `reviveplayer` raise Black Ops' stance animation events, clear damage counters and switch `startrevive`/`stoprevive`'s `LAST_STAND_REVIVED` move type (`t5.match.last_stand` closed).

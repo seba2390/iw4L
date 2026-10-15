@@ -669,6 +669,19 @@ pub(crate) fn snap(world: &mut FrameWorld, id: ClientId) -> bool {
     true
 }
 
+/// Flips a presented script entity's teleport flag in its entity state, so
+/// clients snap it to its next pose instead of lerping there.
+pub(crate) fn snap_presence(world: &mut FrameWorld, presence: crate::ScriptModelId) -> bool {
+    let Some(number) = world.gentity_number(presence) else {
+        return false;
+    };
+    let Some(mover) = world.script_mover_mut_by_number(number) else {
+        return false;
+    };
+    mover.state.e_flags ^= TELEPORT;
+    true
+}
+
 /// Places a player at `origin` as a teleport: one unit up, his velocity
 /// kept, the teleport flag flipped so his client snaps there.
 pub(crate) fn teleport(world: &mut FrameWorld, id: ClientId, origin: [f32; 3]) -> bool {
