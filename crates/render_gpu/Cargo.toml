@@ -20,6 +20,7 @@ d3d9_state.workspace = true
 diag.workspace = true
 dpvs_iw4.workspace = true
 frame.workspace = true
+game_api.workspace = true
 fx_iw4.workspace = true
 hud_iw4.workspace = true
 hud = { path = "../hud" }

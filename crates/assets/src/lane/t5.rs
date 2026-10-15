@@ -696,6 +696,15 @@ impl ZoneLane for T5Lane {
                         exp_fog,
                         t6_vision: None,
                         t6_visions: Default::default(),
+                        t5_map_vision: path
+                            .file_stem()
+                            .map(|stem| {
+                                format!(
+                                    "vision/{}.vision",
+                                    stem.to_string_lossy().to_ascii_lowercase()
+                                )
+                            })
+                            .filter(|key| sink.t5_visions.contains_key(key)),
                         t5_visions: std::mem::take(&mut sink.t5_visions),
                         film_vision: None,
                         // Modern Warfare 2's visions are not Black Ops'.

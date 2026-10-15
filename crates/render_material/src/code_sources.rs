@@ -4,6 +4,16 @@ use crate::RuntimeImageId;
 
 pub const CODE_PARTICLE_CLOUD_SIZE: u16 = 0x310;
 pub const CODE_PARTICLE_CLOUD_VELOCITY: u16 = 0x311;
+/// A game's post controls: sixteen rows its post materials read and its post
+/// chain sets before each pass.
+pub const CODE_POST_CONTROL0: u16 = 0x320;
+pub const CODE_POST_CONTROL_COUNT: u16 = 16;
+/// A game's two HDR control rows.
+pub const CODE_POST_HDR_CONTROL0: u16 = 0x330;
+pub const CODE_POST_HDR_CONTROL_COUNT: u16 = 2;
+/// A game's four post textures: the images its post materials sample.
+pub const CODE_POST_TEXTURE0: u32 = 0x40;
+pub const CODE_POST_TEXTURE_COUNT: u32 = 4;
 
 #[derive(Clone, Debug, Default)]
 pub struct RuntimeCodeSources {

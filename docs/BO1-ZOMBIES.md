@@ -4,7 +4,8 @@ Black Ops (2010) Zombies runs on Black Ops' own data and rules: the map's
 zones, its server and client zombie scripts, its movement, weapons, HUD menus
 and sounds. Kino der Toten plays solo from round 1 to game over, with the box,
 doors, power, perks, Pack-a-Punch, power-ups, hellhounds, Nova crawlers, the
-Thundergun, Cymbal Monkeys, traps and the teleporter. Milestones and what runs
+Thundergun, Cymbal Monkeys, traps and the teleporter, graded by Black Ops'
+own post chain (bloom, streaks and the map vision's film). Milestones and what runs
 have shown: [`PROGRESS.md`](PROGRESS.md) (Black Ops — Zombies); every rule still
 missing or lent: [`fidelity/t5.md`](fidelity/t5.md). Black Ops II: [`BO2-ZOMBIES.md`](BO2-ZOMBIES.md).
 

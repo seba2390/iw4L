@@ -243,6 +243,10 @@ pub struct WorldScene {
     pub exp_fog: Option<asset_world::ExpFog>,
     pub t6_vision: Option<asset_world::T6Vision>,
     pub t6_visions: asset_world::T6VisionCatalog,
+    /// The words of the map's own vision, for a game's post chain.
+    pub post_vision: Option<std::sync::Arc<[u32]>>,
+    /// The namespace of the map's own materials.
+    pub source_namespace: Option<asset_core::AssetNamespace>,
 
     pub film_vision: Option<asset_world::FilmVision>,
     pub film_visions: std::collections::BTreeMap<
@@ -880,6 +884,8 @@ impl WorldScene {
             retained_lightmap_uvs: Vec::new(),
             exp_fog: None,
             t6_vision: None,
+            post_vision: None,
+            source_namespace: None,
             t6_visions: Default::default(),
             film_vision: None,
             film_visions: Default::default(),
@@ -987,6 +993,8 @@ impl WorldScene {
             retained_lightmap_uvs: Vec::new(),
             exp_fog: None,
             t6_vision: None,
+            post_vision: None,
+            source_namespace: None,
             t6_visions: Default::default(),
             film_vision: None,
             film_visions: Default::default(),
@@ -1764,6 +1772,12 @@ pub fn world_scene_from_draw(
     scene.sky_model = sky_model;
     scene.exp_fog = world.exp_fog;
     scene.t6_vision = world.t6_vision;
+    scene.post_vision = world
+        .t5_map_vision
+        .as_ref()
+        .and_then(|key| world.t5_visions.get(key))
+        .map(|vision| std::sync::Arc::from(vision.words()));
+    scene.source_namespace = world.source_namespace;
     scene.t6_visions = world.t6_visions;
     scene.film_vision = world.film_vision;
     scene.film_visions = world.film_visions;

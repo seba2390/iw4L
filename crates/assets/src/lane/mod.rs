@@ -68,23 +68,10 @@ pub(crate) struct ForeignModels {
     pub clip_models: Vec<(String, helpers::T5ClipModelRow)>,
 }
 
-/// One report line with a Black Ops vision's film constants.
+/// One report line with a Black Ops vision's film switches.
 pub(crate) fn t5_vision_report(key: &str, vision: &asset_world::T5Vision) -> String {
-    let film = vision.film();
-    let rows = |rows: &[[f32; 4]]| {
-        rows.iter()
-            .map(|row| format!("({:.4} {:.4} {:.4} {:.4})", row[0], row[1], row[2], row[3]))
-            .collect::<Vec<_>>()
-            .join(" ")
-    };
-    format!(
-        "t5 vision: {key} film={} lut={} s_curve={} postFxControl0-A {} s-curve {}",
-        film.enable,
-        film.lut,
-        film.s_curve_enable,
-        rows(&film.constants()),
-        rows(&film.s_curve_constants())
-    )
+    let (film, lut, s_curve) = vision.film_switches();
+    format!("t5 vision: {key} film={film} lut={lut} s_curve={s_curve}")
 }
 
 impl ForeignModels {

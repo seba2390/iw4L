@@ -16,10 +16,8 @@ const CODE_LEFTOVER_T5_SUN_DIFFUSE: u16 =
     crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + crate::t5_code_remap::T5_CODE_SUN_DIFFUSE;
 const CODE_LEFTOVER_T5_SUN_SPECULAR: u16 =
     crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + crate::t5_code_remap::T5_CODE_SUN_SPECULAR;
-const CODE_LEFTOVER_T5_HDRCONTROL_0: u16 =
-    crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + crate::t5_code_remap::T5_CODE_HDRCONTROL_0;
-const CODE_LEFTOVER_T5_HDRCONTROL_1: u16 =
-    crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + crate::t5_code_remap::T5_CODE_HDRCONTROL_1;
+const CODE_LEFTOVER_T5_HDRCONTROL_0: u16 = render_material::CODE_POST_HDR_CONTROL0;
+const CODE_LEFTOVER_T5_HDRCONTROL_1: u16 = render_material::CODE_POST_HDR_CONTROL0 + 1;
 const CODE_LEFTOVER_T5_LIGHT_HERO_SCALE: u16 =
     crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + crate::t5_code_remap::T5_CODE_LIGHT_HERO_SCALE;
 const CODE_LEFTOVER_T5_HERO_LIGHTING_R: u16 =
@@ -272,8 +270,7 @@ pub(super) fn prepare_defaults(steps: &mut Vec<FrameStep>, requested: &[u16]) {
     );
 }
 pub(super) fn prepare_water(steps: &mut Vec<FrameStep>, requested: &[u16]) {
-    let base =
-        crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + crate::t5_code_remap::T5_CODE_POSTFX_CONTROL0;
+    let base = render_material::CODE_POST_CONTROL0;
     let wave_number = f32::from_bits(0x40c9_0fdb);
     super::push_static(
         steps,

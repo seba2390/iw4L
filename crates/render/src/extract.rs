@@ -732,6 +732,7 @@ pub fn extract_postfx(
     film: Extract<Res<render_frontend::assemble::drawsurf::FilmVisionView>>,
     glow_dvars: Extract<Res<render_frontend::assemble::drawsurf::dof::GlowDvars>>,
     draw_method: Extract<Res<render_frontend::assemble::drawsurf::ColourDrawMethod>>,
+    scene: Extract<Option<Res<render_frontend::prepare::scene::world::WorldScene>>>,
     mut extracted: ResMut<render_gpu::ExtractedPostFx>,
 ) {
     use render_frontend::assemble::drawsurf::postfx_plan::RuntimePostFxResources;
@@ -782,6 +783,45 @@ pub fn extract_postfx(
             },
             texture_slots: blood.texture_slots.clone(),
         });
+    }
+    let chain = runtime
+        .as_ref()
+        .and_then(|r| r.post_chain.as_ref())
+        .and_then(|chain| chain.as_ref().ok())
+        .zip(scene.as_ref().and_then(|scene| scene.post_vision.clone()));
+    match chain {
+        Some((chain, vision))
+            if extracted.post_chain.as_ref().is_none_or(|current| {
+                current.materials.first().map(|f| f.generation)
+                    != chain.materials.first().map(|f| f.generation)
+                    || !std::sync::Arc::ptr_eq(&current.vision, &vision)
+            }) =>
+        {
+            let catalog = &runtime.as_ref().expect("chain owner").catalog;
+            extracted.post_chain = Some(render_gpu::ExtractedPostChain {
+                rules: chain.rules,
+                materials: chain
+                    .materials
+                    .iter()
+                    .map(|film| render_gpu::ExtractedFilm {
+                        name: film.name,
+                        generation: film.generation,
+                        catalog: std::sync::Arc::clone(catalog),
+                        port: render_gpu::AdmittedExactPort {
+                            id: film.port.id(),
+                            abi: film.port.abi().clone(),
+                            module: film.port.shared_module(),
+                            layout: film.port.wgpu_layout().clone(),
+                        },
+                        shader: film.shader.clone(),
+                        shell: film.shell.clone(),
+                    })
+                    .collect(),
+                vision,
+            });
+        }
+        None => extracted.post_chain = None,
+        _ => {}
     }
     extracted.vision = film.current;
     extracted.t6_vision = film.native_vision;
