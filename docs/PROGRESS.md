@@ -174,7 +174,8 @@ Only the top-level items count.
   - [x] The Thundergun (`_zombiemode_weap_thundergun`), Cymbal Monkey bombs (`_zombiemode_weap_cymbal_monkey`) and electric traps (`_zombiemode_traps`): `thundergun_zm` equips its viewmodel, fires and blasts zombies and hellhounds in its cone; thrown Cymbal Monkeys animate (`%o_monkey_bomb`), reset their fuse (`resetmissiledetonationtime`), generate attractor positions, play their song and detonate; electric traps activate, shock players and electrocute zombies (`setelectrified`).
   - [x] Nova crawlers (`_zombiemode_ai_quad`, `zombie_theater_quad`): crawlers spawn on the roof, drop through Kino's broken ceilings and hunt the player (`allowpitchangle`, `setphysparams`, `gethitenttype`, Black Ops' `calcpathlength`).
   - [x] The teleporter's server side (`zombie_theater_teleporter`): linking the core and pad, teleporting players to the projection room and back to the theater after its timer.
-  - [ ] The projector and the teleporter's visuals (client scripts); the auto turret's think (aiming and firing).
+  - [x] The auto turret, bought, runs Black Ops' turret think: it is drawn with its model, picks zombies in its arcs and sight, swings onto them with its convergence, fires the turret weapon's bullets (`isfiringturret`, `turretstatechange`, `shootturret`) and kills them, itself the attacker. Its fire flash and sound are not shown (`t5.turret.fire_event`).
+  - [ ] The projector and the teleporter's visuals (client scripts).
 - [ ] Every zombies map in the install (Five, Dead Ops Arcade).
   - [ ] Five (`t5:zombie_pentagon`): loads and starts its scripts; its own systems (debris and the rest) are not reached.
   - [ ] Dead Ops Arcade (`zombietron`): not offered by the game library yet.

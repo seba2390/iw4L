@@ -779,10 +779,11 @@ impl Think<'_> {
         let interval = THINK_MS as f32;
         let mut pitch = angle_normalize_180(gun[0] - angles[0]).abs() * 1000.0 / interval;
         let mut yaw = angle_normalize_180(gun[1] - angles[1]).abs() * 1000.0 / interval;
-        if yaw_left > 0 && THINK_MS < yaw_left {
+        // The game tests a time left above zero, then above the interval.
+        if THINK_MS < yaw_left {
             yaw *= interval / yaw_left as f32;
         }
-        if pitch_left > 0 && THINK_MS < pitch_left {
+        if THINK_MS < pitch_left {
             pitch *= interval / pitch_left as f32;
         }
         [pitch, yaw]

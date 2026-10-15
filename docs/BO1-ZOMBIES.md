@@ -44,6 +44,16 @@ goes down, `watch` only logs. `IW4L_TEST_GRAB`, `_THROW` and `_WALK` add
 power-up pickups, grenades and walks; `IW4L_TEST_ACTORS`, `_WAITS` and `_VARS`
 add fields to the log ([`test_player.rs`](../crates/bots/src/test_player.rs)).
 
+## Reaching a system
+
+`script <module::function> <receiver> [args]` (with `set sv_cheats 1`) runs a
+Black Ops script function, the quickest way to one feature. Kino's stage auto
+turret, with the player in front of the stage so zombies walk into its arcs:
+
+```
+set sv_cheats 1; wait world; god; script common_scripts/utility::flag_set level power_on; move 0 350 120 90 0; script maps/_zombiemode_auto_turret::auto_turret_activate targetname=pf54_auto_turret_trigger; wait 30s; quit
+```
+
 ## Open question
 
 Does a friend need Modern Warfare 2 installed next to Black Ops? The main menu

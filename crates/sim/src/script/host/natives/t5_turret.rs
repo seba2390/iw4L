@@ -97,6 +97,7 @@ pub(crate) fn spawn_map_turrets(world: &mut World) {
 }
 
 fn spawn(world: &mut World, rules: &TurretRules, id: u64) -> Result<Turret, String> {
+    present(world, id)?;
     let weapon_name = match world
         .resource_mut::<RoundScript>()
         .object_field(id, "weaponinfo")
@@ -162,6 +163,23 @@ fn spawn(world: &mut World, rules: &TurretRules, id: u64) -> Result<Turret, Stri
         in_use: false,
         owner: None,
     })
+}
+
+/// The turret's entity drawn with its map model, posed and traced like
+/// any other model entity, as the game's turret spawn sets its model.
+fn present(world: &mut World, id: u64) -> Result<(), String> {
+    let origin = match world
+        .resource_mut::<RoundScript>()
+        .object_field(id, "origin")
+    {
+        Value::Vector(origin) => origin,
+        _ => [0.0; 3],
+    };
+    let presence = super::super::presence::spawn_presence(world, origin)?;
+    if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+        entity.presence = Some(presence);
+    }
+    Ok(())
 }
 
 /// The turret a method runs on, with the engine's error for any other
@@ -487,7 +505,9 @@ fn sync_sentients(world: &mut World, size: usize) {
         live.sort_unstable();
         live
     };
-    let mut pool = world.remove_resource::<Sentients>().unwrap_or_default();
+    let mut pool = world
+        .remove_resource::<Sentients>()
+        .unwrap_or(Sentients(Vec::new()));
     pool.0.resize(size, None);
     for slot in &mut pool.0 {
         if slot.is_some_and(|object| live.binary_search(&object).is_err()) {
@@ -517,10 +537,10 @@ pub(crate) fn sentient_in(world: &World, slot: usize) -> Option<u64> {
 
 /// The sentients in the pool.
 pub(crate) fn sentients(world: &World) -> Vec<u64> {
-    world
-        .get_resource::<Sentients>()
-        .map(|pool| pool.0.iter().flatten().copied().collect())
-        .unwrap_or_default()
+    let Some(pool) = world.get_resource::<Sentients>() else {
+        return Vec::new();
+    };
+    pool.0.iter().flatten().copied().collect()
 }
 
 /// What a turret's search reads off a sentient.
@@ -646,15 +666,13 @@ fn bone_controls(
 /// Every turret's gun angles, by its entity: the game's turret controller
 /// poses its model with them ([`TurretRules::bone_controls`]).
 pub(crate) fn turret_guns(world: &World, only: Option<u64>) -> Vec<(u64, [f32; 3])> {
-    world
-        .get_resource::<Turrets>()
-        .map(|turrets| {
-            turrets
-                .0
-                .iter()
-                .filter(|(id, _)| only.is_none_or(|only| only == **id))
-                .map(|(id, turret)| (*id, turret.game.state.gun_angles))
-                .collect()
-        })
-        .unwrap_or_default()
+    let Some(turrets) = world.get_resource::<Turrets>() else {
+        return Vec::new();
+    };
+    turrets
+        .0
+        .iter()
+        .filter(|(id, _)| only.is_none_or(|only| only == **id))
+        .map(|(id, turret)| (*id, turret.game.state.gun_angles))
+        .collect()
 }
