@@ -1277,6 +1277,8 @@ pub(super) struct ZombieCommons {
         asset_material::MaterialCatalog,
         Vec<asset_world::ForeignStaticMesh>,
     )>,
+    /// Vision files of the zombie zones, later zones over earlier ones.
+    pub(super) t5_visions: asset_world::T5VisionCatalog,
     /// The 2D images the zombie scripts and Black Ops' HUD name.
     pub(super) hud_images: Vec<(String, asset_material::material_images::ZoneUiImage)>,
     pub(super) report: Vec<String>,
@@ -1367,6 +1369,10 @@ pub(super) fn walk_zombie_commons(
             census.static_meshes.len(),
             census.scripts.len(),
         ));
+        for warning in &census.t5_vision_warnings {
+            commons.report.push(format!("t5 vision: {warning}"));
+        }
+        commons.t5_visions.extend(census.t5_visions);
         script_names.extend(census.scripts.asset_names());
         commons.scene_models.push((
             census.scene_models,

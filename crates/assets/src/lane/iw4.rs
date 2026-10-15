@@ -665,6 +665,7 @@ impl ZoneLane for Iw4Lane {
                         exp_fog,
                         t6_vision: None,
                         t6_visions: Default::default(),
+                        t5_visions: Default::default(),
                         film_vision,
                         film_visions,
                         createart_name,
@@ -1090,6 +1091,8 @@ impl ZoneLane for Iw4Lane {
         ));
             CommonCensus {
                 static_meshes: Vec::new(),
+                t5_visions: Default::default(),
+                t5_vision_warnings: Vec::new(),
                 ui_images: Vec::new(),
                 ui_modules: Vec::new(),
                 ui_tables: Vec::new(),
@@ -1131,6 +1134,8 @@ impl ZoneLane for Iw4Lane {
             ));
             CommonCensus {
                 static_meshes: Vec::new(),
+                t5_visions: Default::default(),
+                t5_vision_warnings: Vec::new(),
                 ui_images: Vec::new(),
                 ui_modules: Vec::new(),
                 ui_tables: Vec::new(),

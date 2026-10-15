@@ -231,6 +231,13 @@ pub(super) async fn walk_prepared_match(
     if zombie.lochit_table.is_some() {
         common_lochit_table = zombie.lochit_table;
     }
+    // The map zone loads last; its visions replace the common ones.
+    let mut t5_visions = zombie.t5_visions;
+    t5_visions.append(&mut world.t5_visions);
+    world.t5_visions = t5_visions;
+    if !world.t5_visions.is_empty() {
+        report.push(format!("t5 visions: {} loaded", world.t5_visions.len()));
+    }
     let zombie_scene_models = zombie.scene_models;
     let zombie_hud_images = zombie.hud_images;
     report.extend(zombie.report);
