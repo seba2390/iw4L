@@ -1872,7 +1872,11 @@ fn dispatch_console_command(
         Option<Res<net::ClientClock>>,
     ),
     local: Option<Res<net::LocalPresentClient>>,
-    (mut mark_sequence, headless): (Local<u64>, Option<Res<frame::Headless>>),
+    (mut mark_sequence, headless, real): (
+        Local<u64>,
+        Option<Res<frame::Headless>>,
+        Res<Time<Real>>,
+    ),
 ) {
     let capacity = settings.log_capacity;
     let world_up = if headless.is_some() {
@@ -2154,8 +2158,9 @@ fn dispatch_console_command(
                 dispatch.wait_tick_elapsed
             );
         } else {
-            dispatch.wait_tick_elapsed += time.delta_secs();
-            if dispatch.wait_tick_elapsed >= WAIT_WORLD_TIMEOUT_SECS {
+            // Real time: a headless run's frame time runs at its time scale.
+            dispatch.wait_tick_elapsed += real.delta_secs();
+            if dispatch.wait_tick_elapsed >= dispatch.wait_tick_timeout {
                 dispatch.wait_tick = None;
                 abort_script_on_wait_timeout(
                     "wait ticks",
@@ -2304,6 +2309,7 @@ fn dispatch_console_command(
                     Some(clock) => {
                         dispatch.wait_tick = Some(clock.tick.wrapping_add(n));
                         dispatch.wait_tick_elapsed = 0.0;
+                        dispatch.wait_tick_timeout = WAIT_WORLD_TIMEOUT_SECS;
                         diag::info!(Console, "wait: {n} ticks from tick {}", clock.tick);
                     }
                     None => {
@@ -2312,6 +2318,16 @@ fn dispatch_console_command(
                         console.echo(msg, capacity);
                     }
                 },
+                // Headless, the seconds are game time: the match's ticks,
+                // however fast its clock runs (`IW4L_TIMESCALE`).
+                WaitKind::Seconds(secs) if headless.is_some() && clock.is_some() => {
+                    let clock = clock.as_ref().unwrap();
+                    let ticks = (secs * 1000.0 / sim::MATCH_TICK_MS as f32).ceil() as u32;
+                    dispatch.wait_tick = Some(clock.tick.wrapping_add(ticks));
+                    dispatch.wait_tick_elapsed = 0.0;
+                    dispatch.wait_tick_timeout = WAIT_WORLD_TIMEOUT_SECS + secs;
+                    diag::info!(Console, "wait: {secs:.1}s of game time ({ticks} ticks)");
+                }
                 WaitKind::Seconds(secs) => {
                     dispatch.wait_remaining = secs;
                     diag::info!(Console, "wait: {secs:.1}s");
