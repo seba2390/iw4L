@@ -1,14 +1,7 @@
 use super::script::tables::Tables;
 use super::script::{Environment, FaultKind, Value};
 use super::{Axis, State};
-use game_api::{Unknown, unknown};
 use std::sync::Arc;
-
-const RENDER: &Unknown = unknown!(
-    "t6.ui.render",
-    "animation-state material, font, alignment, shader vectors and 3D window",
-    "Black Ops 2's LUI layout, input and rendering"
-);
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AnimationState {
@@ -16,6 +9,7 @@ pub struct AnimationState {
     pub material: Option<u32>,
     pub font: Option<u32>,
     pub alignment: Option<u8>,
+    pub ui_3d_window: Option<i32>,
     pub horizontal: Option<Axis>,
     pub vertical: Option<Axis>,
     pub zoom: Option<f32>,
@@ -249,6 +243,9 @@ impl AnimationState {
         if let Some(alignment) = self.alignment {
             destination.alignment = Some(alignment);
         }
+        if let Some(ui_3d_window) = self.ui_3d_window {
+            destination.ui_3d_window = Some(ui_3d_window);
+        }
         if let Some(axis) = self.horizontal {
             destination.horizontal = axis;
             destination.changes.horizontal = true;
@@ -342,22 +339,21 @@ impl AnimationState {
         for (index, value) in shader_vectors.iter_mut().enumerate() {
             *value = optional_number(tables, table, format!("shaderVector{index}").as_bytes())?;
         }
-        if field(tables, table, b"ui3DWindow")? != Value::Nil {
-            return Err(FaultKind::Unknown(RENDER));
-        }
+        let ui_3d_window = optional_number(tables, table, b"ui3DWindow")?.map(|value| value as i32);
         Ok(Self {
             shader_vectors,
             material: match field(tables, table, b"material")? {
                 Value::Nil => None,
                 Value::Reference { kind: 2, identity } => Some(identity),
-                _ => return Err(FaultKind::Unknown(RENDER)),
+                _ => return Err(FaultKind::BindingRequired),
             },
             font: match field(tables, table, b"font")? {
                 Value::Nil => None,
                 Value::Reference { kind: 2, identity } => Some(identity),
-                _ => return Err(FaultKind::Unknown(RENDER)),
+                _ => return Err(FaultKind::BindingRequired),
             },
             alignment: optional_number(tables, table, b"alignment")?.map(|value| value as u8),
+            ui_3d_window,
             horizontal,
             vertical,
             zoom,

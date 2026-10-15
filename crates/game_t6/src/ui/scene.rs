@@ -130,20 +130,34 @@ impl Scene {
             .first()
             .cloned()
             .ok_or("t6.ui.render: root missing")?;
-        let safe_area = self
-            .invoke(&["LUI", "UIElement", "new"], &[])?
-            .first()
-            .cloned()
-            .ok_or("t6.ui.render: safe area missing")?;
-        self.runtime
-            .tables
-            .set_field(&root, &key("safeArea"), safe_area.clone())
-            .map_err(|e| format!("{e:?}"))?;
-        for value in [&root, &safe_area] {
+        let state = &mut self
+            .bindings
+            .elements
+            .element_mut(&root)
+            .map_err(|e| format!("{e:?}"))?
+            .current;
+        state.horizontal = Axis {
+            anchor_start: true,
+            anchor_end: true,
+            start: 0.0,
+            end: 0.0,
+        };
+        state.vertical = state.horizontal;
+        let controller = Value::Number(input.local_client as f32);
+        if !input.zombies {
+            let safe_area = self
+                .invoke(&["LUI", "UIElement", "new"], &[])?
+                .first()
+                .cloned()
+                .ok_or("t6.ui.render: safe area missing")?;
+            self.runtime
+                .tables
+                .set_field(&root, &key("safeArea"), safe_area.clone())
+                .map_err(|e| format!("{e:?}"))?;
             let state = &mut self
                 .bindings
                 .elements
-                .element_mut(value)
+                .element_mut(&safe_area)
                 .map_err(|e| format!("{e:?}"))?
                 .current;
             state.horizontal = Axis {
@@ -153,9 +167,7 @@ impl Scene {
                 end: 0.0,
             };
             state.vertical = state.horizontal;
-        }
-        self.add(&root, &safe_area)?;
-        if !input.zombies {
+            self.add(&root, &safe_area)?;
             self.invoke(
                 &["CoD", "Compass", "AddMinimap"],
                 std::slice::from_ref(&root),
@@ -163,63 +175,44 @@ impl Scene {
             let rewards = self
                 .invoke(
                     &["LUI", "createMenu", "RewardSelection"],
-                    &[Value::Number(input.local_client as f32)],
+                    std::slice::from_ref(&controller),
                 )?
                 .first()
                 .cloned()
                 .ok_or("t6.ui.render: rewards missing")?;
             self.add(&safe_area, &rewards)?;
             self.rewards = Some(rewards);
+            let scoreboard = self
+                .invoke(
+                    &["LUI", "createMenu", "Scoreboard"],
+                    std::slice::from_ref(&controller),
+                )?
+                .first()
+                .cloned()
+                .ok_or("t6.ui.render: scoreboard missing")?;
+            self.add(&safe_area, &scoreboard)?;
+            self.scoreboard = Some(scoreboard);
         } else {
-            let controller = Value::Number(input.local_client as f32);
-            let buried = input.map.eq_ignore_ascii_case("zm_buried");
-            if buried {
-                self.module("ui_mp/t6/zombie/hudtimebomb.lua")?;
-                self.module("ui_mp/t6/zombie/ammoareazombie.lua")?;
-            }
-            for menu in [
-                "PerksArea",
-                "PowerUpsArea",
-                "BuildablesArea",
-                "CompetitiveScoreboard",
-                if buried { "AmmoAreaZombie" } else { "DPadArea" },
-                "RoundStatus",
-            ] {
-                if menu == "BuildablesArea" && input.gametype != "zclassic" {
-                    continue;
-                }
-                let widget = self
-                    .invoke(
-                        &["LUI", "createMenu", menu],
-                        std::slice::from_ref(&controller),
-                    )?
-                    .first()
-                    .cloned()
-                    .ok_or("t6.ui.render: zombie widget missing")?;
-                self.add(&safe_area, &widget)?;
-            }
-            if buried {
-                let widget = self
-                    .invoke(
-                        &["LUI", "createMenu", "TimeBombArea"],
-                        std::slice::from_ref(&controller),
-                    )?
-                    .first()
-                    .cloned()
-                    .ok_or("t6.ui.render: timebomb widget missing")?;
-                self.add(&safe_area, &widget)?;
+            let hud = self
+                .invoke(
+                    &["LUI", "createMenu", "HUD"],
+                    std::slice::from_ref(&controller),
+                )?
+                .first()
+                .cloned()
+                .ok_or("t6.ui.render: hud missing")?;
+            self.add(&root, &hud)?;
+            self.event(&hud, "processEvent", "first_snapshot")?;
+            let scoreboard = self
+                .runtime
+                .tables
+                .field(&hud, &key("scoreBoard"))
+                .map_err(|e| format!("{e:?}"))?;
+            if scoreboard != Value::Nil {
+                self.add(&hud, &scoreboard)?;
+                self.scoreboard = Some(scoreboard);
             }
         }
-        let scoreboard = self
-            .invoke(
-                &["LUI", "createMenu", "Scoreboard"],
-                &[Value::Number(input.local_client as f32)],
-            )?
-            .first()
-            .cloned()
-            .ok_or("t6.ui.render: scoreboard missing")?;
-        self.add(&safe_area, &scoreboard)?;
-        self.scoreboard = Some(scoreboard);
         self.root = Some(root);
         Ok(())
     }
@@ -849,6 +842,7 @@ struct Node {
     list_axis: Option<u8>,
     stencil: bool,
     focus: bool,
+    owner: Option<u32>,
 }
 
 fn identity(value: &Value) -> Result<u32, FaultKind> {
@@ -1159,15 +1153,47 @@ impl Host {
             "setTopBottom",
             "setRGB",
             "setAlpha",
+            "setXRot",
+            "setYRot",
             "setZRot",
             "setScale",
+            "setZoom",
+            "setSpacing",
+            "setUI3DWindow",
+            "setBlur",
+            "setTileHorizontally",
+            "setTileVertically",
             "getLocalRect",
+            "getRect",
+            "getHeight",
+            "RootPixelsToUnits",
             "addElementToC",
+            "addElementBeforeInC",
+            "addElementAfterInC",
             "getParent",
+            "getNumChildren",
+            "setOwner",
+            "setOwnerControllerIndex",
+            "getOwner",
+            "setUseGameTime",
+            "setHandleMouse",
+            "setupUIElement",
             "setupUIImage",
             "setupUIStreamedImage",
             "setupUIText",
             "setupUITextUncached",
+            "setupUITightText",
+            "setupBitchinFX",
+            "setupSafeAreaBoundary",
+            "setupGameMessages",
+            "setupLoadingBar",
+            "setupLoadingStatusText",
+            "setupEntityContainer",
+            "setEntityContainerClamp",
+            "setEntityContainerFadeWhenTargeted",
+            "setEntityContainerStopUpdating",
+            "setEntityContainerScale",
+            "setEntityContainerScaleClamp",
             "setImage",
             "setFont",
             "setAlignment",
@@ -1175,9 +1201,11 @@ impl Host {
             "setTextInC",
             "setRoot",
             "setPriority",
+            "getPriority",
             "setupUIHorizontalList",
             "setupUIVerticalList",
             "setUseStencil",
+            "getUseStencil",
             "setupHorizontalCompass",
             "setupCompassUnderlay",
             "setupCompassItems",
@@ -1213,6 +1241,11 @@ impl Host {
                 "Exec",
                 "PlayMenuMusic",
                 "SetForceMouseRootFull",
+                "ForceHUDRefresh",
+                "SetDvar",
+                "Stop3DCinematic",
+                "IsCinematicWebm",
+                "GetUserSafeArea",
                 "GetLanguage",
                 "GetDvarBool",
                 "DvarBool",
@@ -1262,8 +1295,20 @@ impl Host {
                 "IsWeaponType",
                 "IsOverheatWeapon",
                 "ToUpper",
+                "IsMigrating",
+                "SetActiveMenu",
+                "LockInput",
+                "SetUIActive",
             ] {
-                self.bind(tables, &table, name)?;
+                if table_name == "UIExpression"
+                    && matches!(name, "IsDemoPlaying" | "IsCinematicWebm" | "IsInOvertime")
+                {
+                    let identity = self.functions.len() as u32 + 100;
+                    self.functions.push(format!("uiexpr:{name}"));
+                    tables.raw_set(&table, &key(name), Value::Reference { kind: 10, identity })?;
+                } else {
+                    self.bind(tables, &table, name)?;
+                }
             }
             tables.raw_set(&globals, &key(table_name), table)?;
         }
@@ -1276,14 +1321,30 @@ impl Host {
             "ui_gametype",
             "ui_zm_gamemodegroup",
             "ui_zm_mapstartlocation",
+            "ui_zm_useloadingmovie",
+            "ui_errorMessage",
+            "party_maxplayers",
             "g_gametype",
             "r_dualPlayEnable",
+            "r_stereo3DOn",
+            "hiDef",
+            "wideScreen",
             "tu7_scoreboardPingAsNumbers",
         ] {
             let dvar = tables.allocate()?;
             let identity = self.functions.len() as u32 + 100;
             self.functions.push(format!("dvar:{name}"));
             tables.raw_set(&dvar, &key("get"), Value::Reference { kind: 10, identity })?;
+            let set_identity = self.functions.len() as u32 + 100;
+            self.functions.push("dvar_set".into());
+            tables.raw_set(
+                &dvar,
+                &key("set"),
+                Value::Reference {
+                    kind: 10,
+                    identity: set_identity,
+                },
+            )?;
             tables.raw_set(&dvar, &key("dvar_name"), key(name))?;
             tables.raw_set(&dvars, &key(name), dvar)?;
         }
@@ -1294,7 +1355,7 @@ impl Host {
         }
         tables.raw_set(&globals, &key("string"), string)?;
         let table = tables.allocate()?;
-        for name in ["insert", "concat"] {
+        for name in ["insert", "remove", "concat"] {
             self.bind(tables, &table, name)?;
         }
         tables.raw_set(&globals, &key("table"), table)?;
@@ -1346,6 +1407,12 @@ impl Bindings for Host {
                     identity(result.first().ok_or(FaultKind::BindingRequired)?)?,
                     Node::default(),
                 );
+            } else if function == 8
+                && let Some(Value::Reference { kind: 7, identity }) = args.first()
+                && let Some(parent) = self.nodes.remove(identity).and_then(|node| node.parent)
+                && let Some(parent_node) = self.nodes.get_mut(&parent)
+            {
+                parent_node.children.retain(|id| *id != *identity);
             }
             return Ok(result);
         }
@@ -1456,7 +1523,15 @@ impl Bindings for Host {
             }
             "Exec" if args.last() == Some(&key("ui_keyboard_cancel")) => Ok(Vec::new()),
             "PlayMenuMusic" if args.last() == Some(&key("")) => Ok(Vec::new()),
-            "StopEditingPresetClass" => Ok(Vec::new()),
+            "StopEditingPresetClass"
+            | "ForceHUDRefresh"
+            | "SetDvar"
+            | "Stop3DCinematic"
+            | "SetActiveMenu"
+            | "LockInput"
+            | "SetUIActive"
+            | "dvar_set" => Ok(Vec::new()),
+            binding if binding.starts_with("uiexpr:") => Ok(vec![Value::Number(0.0)]),
             "TableLookup" => {
                 if args.len() < 5 || args.len().is_multiple_of(2) {
                     return Err(FaultKind::Argument(args.len()));
@@ -1523,8 +1598,14 @@ impl Bindings for Host {
                 let name = binding.trim_start_matches("dvar:").to_owned();
                 Ok(match name.as_str() {
                     "loc_language" => vec![Value::Number(0.0)],
-                    "r_dualPlayEnable" => vec![Value::Boolean(0)],
-                    "tu7_scoreboardPingAsNumbers" => vec![Value::Boolean(1)],
+                    "r_dualPlayEnable" | "r_stereo3DOn" | "ui_zm_useloadingmovie" => {
+                        vec![Value::Boolean(0)]
+                    }
+                    "hiDef" | "wideScreen" | "tu7_scoreboardPingAsNumbers" => {
+                        vec![Value::Boolean(1)]
+                    }
+                    "party_maxplayers" => vec![Value::Number(4.0)],
+                    "ui_errorMessage" => vec![key("")],
                     "ui_mapname" => vec![key(&self.input.map)],
                     "ui_gametype" | "g_gametype" => vec![key(&self.input.gametype)],
                     "ui_zm_gamemodegroup" => vec![key(self.zm_gamemode_group())],
@@ -1556,6 +1637,15 @@ impl Bindings for Host {
                 }
             }
             "GetLanguage" => Ok(vec![Value::Number(0.0)]),
+            "GetUserSafeArea" => {
+                let scale = self.input.viewport[1] / 720.0;
+                let area = if self.input.safe_area[0] > 0.0 {
+                    self.input.safe_area
+                } else {
+                    [self.input.viewport[0] / scale, 720.0]
+                };
+                Ok(vec![Value::Number(area[0]), Value::Number(area[1])])
+            }
             "GetUserSafeAreaForController" => {
                 let scale = self.input.viewport[1] / 720.0;
                 let area = if self.input.safe_area[0] > 0.0 {
@@ -1572,6 +1662,8 @@ impl Bindings for Host {
             }
             "IsSplitscreen"
             | "IsDemoPlaying"
+            | "IsCinematicWebm"
+            | "IsMigrating"
             | "PartyConnectingToDedicated"
             | "IsInOvertime"
             | "IsShoutcaster"
@@ -1923,6 +2015,29 @@ impl Bindings for Host {
                 tables.raw_set(table, &Value::Number(index as f32), value)?;
                 Ok(Vec::new())
             }
+            "remove" => {
+                let table = args.first().ok_or(FaultKind::Argument(1))?;
+                let length = tables.length(table)?;
+                if length == 0 {
+                    return Ok(vec![Value::Nil]);
+                }
+                let index = args
+                    .get(1)
+                    .filter(|value| **value != Value::Nil)
+                    .map(|value| number(Some(value)))
+                    .transpose()?
+                    .map_or(length, |value| value as usize);
+                if index == 0 || index > length {
+                    return Ok(vec![Value::Nil]);
+                }
+                let removed = tables.raw_get(table, &Value::Number(index as f32))?;
+                for slot in index..length {
+                    let next = tables.raw_get(table, &Value::Number((slot + 1) as f32))?;
+                    tables.raw_set(table, &Value::Number(slot as f32), next)?;
+                }
+                tables.raw_set(table, &Value::Number(length as f32), Value::Nil)?;
+                Ok(vec![removed])
+            }
             "concat" => {
                 let table = args.first().ok_or(FaultKind::Argument(1))?;
                 let separator = args
@@ -2085,18 +2200,132 @@ impl Bindings for Host {
                     .finish_element_animation(receiver, true, tables)?;
                 Ok(Vec::new())
             }
-            "setScale" | "setZRot" => {
+            "setScale" | "setZoom" | "setSpacing" | "setXRot" | "setYRot" | "setZRot" => {
                 let value = number(args.get(1))?;
                 let element = self
                     .elements
                     .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
-                if name == "setScale" {
-                    element.set_scale(value);
-                } else {
-                    element.set_z_rot(value);
+                match name.as_str() {
+                    "setScale" => element.set_scale(value),
+                    "setZoom" => {
+                        element.current.zoom = value;
+                        element.current.changes.zoom = true;
+                    }
+                    "setSpacing" => {
+                        element.current.spacing = value;
+                        element.current.changes.spacing = true;
+                    }
+                    "setXRot" => {
+                        element.current.rotation[0] = value;
+                        element.current.changes.rotation[0] = true;
+                    }
+                    "setYRot" => {
+                        element.current.rotation[1] = value;
+                        element.current.changes.rotation[1] = true;
+                    }
+                    _ => element.set_z_rot(value),
                 }
                 Ok(Vec::new())
             }
+            "setUI3DWindow" => {
+                let value = number(args.get(1))? as i32;
+                let element = self
+                    .elements
+                    .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
+                element.current.ui_3d_window = Some(value);
+                Ok(Vec::new())
+            }
+            "setOwner" | "setOwnerControllerIndex" => {
+                let receiver = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let owner = args
+                    .get(1)
+                    .filter(|value| **value != Value::Nil)
+                    .map(|value| number(Some(value)))
+                    .transpose()?
+                    .map(|value| value as u32);
+                self.nodes
+                    .get_mut(&receiver)
+                    .ok_or(FaultKind::Userdata(receiver))?
+                    .owner = owner;
+                Ok(Vec::new())
+            }
+            "getOwner" => {
+                let receiver = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let owner = self
+                    .nodes
+                    .get(&receiver)
+                    .ok_or(FaultKind::Userdata(receiver))?
+                    .owner
+                    .unwrap_or(self.input.local_client);
+                Ok(vec![Value::Number(owner as f32)])
+            }
+            "getPriority" => {
+                let receiver = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let priority = self
+                    .nodes
+                    .get(&receiver)
+                    .ok_or(FaultKind::Userdata(receiver))?
+                    .priority;
+                Ok(vec![Value::Number(priority as f32)])
+            }
+            "getNumChildren" => {
+                let receiver = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let count = self
+                    .nodes
+                    .get(&receiver)
+                    .ok_or(FaultKind::Userdata(receiver))?
+                    .children
+                    .len();
+                Ok(vec![Value::Number(count as f32)])
+            }
+            "getUseStencil" => {
+                let receiver = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let stencil = self
+                    .nodes
+                    .get(&receiver)
+                    .ok_or(FaultKind::Userdata(receiver))?
+                    .stencil;
+                Ok(vec![Value::Boolean(stencil.into())])
+            }
+            "getRect" => Ok(self
+                .elements
+                .element(args.first().ok_or(FaultKind::Argument(1))?)?
+                .current
+                .resolved_rectangle
+                .into_iter()
+                .map(Value::Number)
+                .collect()),
+            "getHeight" => {
+                let rect = self
+                    .elements
+                    .element(args.first().ok_or(FaultKind::Argument(1))?)?
+                    .local_rectangle();
+                Ok(vec![Value::Number((rect[3] - rect[1]).abs())])
+            }
+            "RootPixelsToUnits" => Ok(self
+                .elements
+                .element(args.first().ok_or(FaultKind::Argument(1))?)?
+                .root_point_in_units([number(args.get(1))?, number(args.get(2))?])
+                .into_iter()
+                .map(Value::Number)
+                .collect()),
+            "setUseGameTime"
+            | "setHandleMouse"
+            | "setBlur"
+            | "setTileHorizontally"
+            | "setTileVertically"
+            | "setupUIElement"
+            | "setupBitchinFX"
+            | "setupSafeAreaBoundary"
+            | "setupGameMessages"
+            | "setupLoadingBar"
+            | "setupLoadingStatusText"
+            | "setupEntityContainer"
+            | "setEntityContainerClamp"
+            | "setEntityContainerFadeWhenTargeted"
+            | "setEntityContainerStopUpdating"
+            | "setEntityContainerScale"
+            | "setEntityContainerScaleClamp" => Ok(Vec::new()),
             "setRGB" => {
                 self.elements
                     .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?
@@ -2120,7 +2349,7 @@ impl Bindings for Host {
                 .into_iter()
                 .map(Value::Number)
                 .collect()),
-            "addElementToC" => {
+            "addElementToC" | "addElementBeforeInC" | "addElementAfterInC" => {
                 let parent = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
                 let child = identity(args.get(1).ok_or(FaultKind::Argument(2))?)?;
                 let old = self
@@ -2139,11 +2368,24 @@ impl Bindings for Host {
                     .get_mut(&child)
                     .ok_or(FaultKind::Userdata(child))?
                     .parent = Some(parent);
-                self.nodes
+                let children = &mut self
+                    .nodes
                     .get_mut(&parent)
                     .ok_or(FaultKind::Userdata(parent))?
-                    .children
-                    .push(child);
+                    .children;
+                if name != "addElementToC"
+                    && let Some(sibling) = args.get(2).and_then(|v| identity(v).ok())
+                    && let Some(pos) = children.iter().position(|id| *id == sibling)
+                {
+                    let insert_at = if name == "addElementBeforeInC" {
+                        pos
+                    } else {
+                        pos + 1
+                    };
+                    children.insert(insert_at, child);
+                } else {
+                    children.push(child);
+                }
                 Ok(Vec::new())
             }
             "removeElement" => {
@@ -2215,7 +2457,11 @@ impl Bindings for Host {
                         }),
                 ])
             }
-            "setupUIImage" | "setupUIStreamedImage" | "setupUIText" | "setupUITextUncached" => {
+            "setupUIImage"
+            | "setupUIStreamedImage"
+            | "setupUIText"
+            | "setupUITextUncached"
+            | "setupUITightText" => {
                 let receiver = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
                 self.nodes
                     .get_mut(&receiver)

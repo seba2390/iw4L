@@ -21,27 +21,32 @@ fn table(arguments: &[Value], index: usize) -> Result<&Value, FaultKind> {
     }
 }
 
+pub const PCALL: u32 = 13;
+pub const XPCALL: u32 = 14;
+const SELECT: u32 = 15;
+const COLLECTGARBAGE: u32 = 16;
+const RAWEQUAL: u32 = 17;
+
 impl Library {
     pub fn install(tables: &mut Tables) -> Result<Self, FaultKind> {
         let globals = tables.globals();
-        for (index, name) in [
-            b"type".as_slice(),
-            b"rawget",
-            b"rawset",
-            b"getmetatable",
-            b"setmetatable",
-            b"assert",
-        ]
-        .iter()
-        .enumerate()
-        {
+        for (identity, name) in [
+            (1, b"type".as_slice()),
+            (2, b"rawget"),
+            (3, b"rawset"),
+            (4, b"getmetatable"),
+            (5, b"setmetatable"),
+            (6, b"assert"),
+            (PCALL, b"pcall"),
+            (XPCALL, b"xpcall"),
+            (SELECT, b"select"),
+            (COLLECTGARBAGE, b"collectgarbage"),
+            (RAWEQUAL, b"rawequal"),
+        ] {
             tables.raw_set(
                 &globals,
                 &bytes(name),
-                Value::Reference {
-                    kind: 10,
-                    identity: index as u32 + 1,
-                },
+                Value::Reference { kind: 10, identity },
             )?;
         }
         Ok(Self)
@@ -134,6 +139,28 @@ impl Bindings for Library {
                     Err(FaultKind::ScriptError(message.to_vec()))
                 }
             }
+            SELECT => match argument(arguments, 0)? {
+                Value::Bytes(value) if value.as_ref() == b"#" => {
+                    Ok(vec![Value::Number((arguments.len() - 1) as f32)])
+                }
+                Value::Number(value) if value.is_finite() => {
+                    let count = arguments.len().saturating_sub(1) as isize;
+                    let mut index = *value as isize;
+                    if index < 0 {
+                        index += count + 1;
+                    }
+                    if index < 1 {
+                        return Err(FaultKind::Argument(1));
+                    }
+                    let start = (index as usize).min(arguments.len());
+                    Ok(arguments[start..].to_vec())
+                }
+                _ => Err(FaultKind::Argument(1)),
+            },
+            COLLECTGARBAGE => Ok(vec![Value::Number(0.0)]),
+            RAWEQUAL => Ok(vec![Value::Boolean(u32::from(
+                argument(arguments, 0)? == argument(arguments, 1)?,
+            ))]),
             _ => Err(FaultKind::Unknown(super::ENGINE_API)),
         }
     }

@@ -6,21 +6,27 @@ use fastfile_t6::hks::{self, Constant, Instruction};
 use game_api::{Unknown, unknown};
 use std::sync::Arc;
 
-pub const OPCODES: &Unknown = unknown!(
-    "t6.ui.opcodes",
-    "a HavokScript opcode the UI runtime does not execute",
-    "the opcode's handler in Black Ops 2's HavokScript interpreter"
-);
 pub const ENGINE_API: &Unknown = unknown!(
     "t6.ui.engine_api",
     "an engine method or library function the UI runtime does not provide",
     "the function's handler in Black Ops 2"
 );
-pub const METAMETHODS: &Unknown = unknown!(
-    "t6.ui.metamethods",
-    "function __index/__newindex, __call and __eq are not run",
-    "Black Ops 2's HavokScript metamethod dispatch"
-);
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FieldLookup {
+    Value(Value),
+    MetaCall {
+        callee: Value,
+        arguments: Vec<Value>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallContinuation {
+    Normal,
+    CacheResult,
+    Equal(bool),
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -54,11 +60,17 @@ pub trait Environment {
     fn length(&self, value: &Value) -> Result<usize, FaultKind> {
         match value {
             Value::Bytes(value) => Ok(value.len()),
-            _ => Err(FaultKind::Unknown(OPCODES)),
+            _ => Err(FaultKind::BindingRequired),
         }
     }
     fn global(&mut self, key: &Value) -> Result<Value, FaultKind>;
     fn field(&mut self, container: &Value, key: &Value) -> Result<Value, FaultKind>;
+    fn lookup_global(&mut self, key: &Value) -> Result<FieldLookup, FaultKind> {
+        self.global(key).map(FieldLookup::Value)
+    }
+    fn lookup_field(&mut self, container: &Value, key: &Value) -> Result<FieldLookup, FaultKind> {
+        self.field(container, key).map(FieldLookup::Value)
+    }
     fn new_table(&mut self) -> Result<Value, FaultKind> {
         Err(FaultKind::BindingRequired)
     }
@@ -72,6 +84,28 @@ pub trait Environment {
         _value: Value,
     ) -> Result<(), FaultKind> {
         Err(FaultKind::BindingRequired)
+    }
+    fn assign_global(
+        &mut self,
+        key: &Value,
+        value: Value,
+    ) -> Result<Option<(Value, Vec<Value>)>, FaultKind> {
+        self.set_global(key, value).map(|()| None)
+    }
+    fn assign_field(
+        &mut self,
+        container: &Value,
+        key: &Value,
+        value: Value,
+    ) -> Result<Option<(Value, Vec<Value>)>, FaultKind> {
+        self.set_field(container, key, value).map(|()| None)
+    }
+    fn equal_metamethod(
+        &mut self,
+        _left: &Value,
+        _right: &Value,
+    ) -> Result<Option<Value>, FaultKind> {
+        Ok(None)
     }
     fn child_upvalues(&self, _child: usize) -> Result<usize, FaultKind> {
         Err(FaultKind::BindingRequired)
@@ -143,6 +177,7 @@ impl From<hks::Chunk> for Program {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Frame {
     pub registers: Vec<Value>,
+    pub varargs: Vec<Value>,
     pub cached: Value,
     pub pc: usize,
     pub top: usize,
@@ -158,6 +193,7 @@ pub enum Step {
         arguments: Vec<Value>,
         register: usize,
         results: Option<usize>,
+        continuation: CallContinuation,
     },
 }
 
@@ -255,17 +291,7 @@ impl Frame {
                     kind: right_kind,
                     identity: right,
                 },
-            ) => {
-                if left_kind != right_kind {
-                    Ok(false)
-                } else if left == right {
-                    Ok(true)
-                } else if matches!(left_kind, 5 | 7) {
-                    Err(self.fault(FaultKind::Unknown(METAMETHODS)))
-                } else {
-                    Ok(false)
-                }
-            }
+            ) => Ok(left_kind == right_kind && left == right),
             (Value::Hash(_), _) | (_, Value::Hash(_)) => {
                 Err(self.fault(FaultKind::ComparisonRequired))
             }
@@ -273,7 +299,7 @@ impl Frame {
         }
     }
 
-    fn branch(&self, function: &Function, offset: isize) -> Result<usize, Fault> {
+    pub(crate) fn branch(&self, function: &Function, offset: isize) -> Result<usize, Fault> {
         let target = self.pc as isize + offset;
         if target < 0 || target as usize > function.instructions.len() {
             Err(self.fault(FaultKind::Branch(target)))
@@ -282,7 +308,7 @@ impl Frame {
         }
     }
 
-    fn conditional(&self, function: &Function, taken: bool) -> Result<usize, Fault> {
+    pub(crate) fn conditional(&self, function: &Function, taken: bool) -> Result<usize, Fault> {
         if taken {
             let jump = function
                 .instructions
@@ -323,18 +349,18 @@ impl Frame {
         let mut next = self.pc + 1;
         let mut result = Step::Continue;
         match opcode {
-            2 | 3 | 22 | 23 | 29 | 30 | 69 => {
-                let callee = if opcode == 69 {
+            2 | 3 | 22..=24 | 29 | 30 | 37 | 68 | 69 => {
+                let callee = if matches!(opcode, 68 | 69) {
                     self.cached.clone()
                 } else {
                     self.register(a)?
                 };
                 match callee {
-                    Value::Reference { kind: 9 | 10, .. } => {}
+                    Value::Reference {
+                        kind: 5 | 7 | 9 | 10,
+                        ..
+                    } => {}
                     Value::Nil => return Err(self.fault(FaultKind::Unknown(ENGINE_API))),
-                    Value::Reference { kind: 5 | 7, .. } => {
-                        return Err(self.fault(FaultKind::Unknown(METAMETHODS)));
-                    }
                     _ => return Err(self.fault(FaultKind::BindingRequired)),
                 }
                 let end = if b == 0 { self.top } else { a + b };
@@ -350,11 +376,12 @@ impl Frame {
                     callee,
                     arguments,
                     register: a,
-                    results: if matches!(opcode, 22 | 23) {
+                    results: if matches!(opcode, 22..=24 | 30 | 37 | 68) {
                         None
                     } else {
                         (c & 255).checked_sub(1)
                     },
+                    continuation: CallContinuation::Normal,
                 };
             }
             14 => {
@@ -364,6 +391,7 @@ impl Frame {
                     arguments: vec![self.register(a + 1)?, self.register(a + 2)?],
                     register: a + 3,
                     results: Some(c & 255),
+                    continuation: CallContinuation::Normal,
                 };
             }
             38 => {
@@ -419,25 +447,70 @@ impl Frame {
                 self.store(a, value)?;
                 next = end;
             }
-            0 | 73 => {
-                let container = if opcode == 0 {
+            67 => {
+                let count = if b == 0 { self.varargs.len() } else { b - 1 };
+                let end = a
+                    .checked_add(count)
+                    .filter(|end| *end <= 256)
+                    .ok_or_else(|| self.fault(FaultKind::Capacity))?;
+                if self.registers.len() < end {
+                    self.registers.resize(end, Value::Nil);
+                }
+                for index in 0..count {
+                    self.registers[a + index] =
+                        self.varargs.get(index).cloned().unwrap_or(Value::Nil);
+                }
+                if b == 0 {
+                    self.top = end;
+                }
+            }
+            0 | 73 | 88 => {
+                let container = if matches!(opcode, 0 | 88) {
                     self.register(b)?
                 } else {
                     self.cached.clone()
                 };
                 let key = self.constant(function, c & 255)?;
                 next = self.branch(function, 3)?;
-                let value = environment
-                    .field(&container, &key)
-                    .map_err(|kind| self.fault(kind))?;
-                self.store(a, value.clone())?;
-                self.cached = value;
+                match environment
+                    .lookup_field(&container, &key)
+                    .map_err(|kind| self.fault(kind))?
+                {
+                    FieldLookup::Value(value) => {
+                        self.store(a, value.clone())?;
+                        self.cached = value;
+                    }
+                    FieldLookup::MetaCall { callee, arguments } => {
+                        result = Step::Call {
+                            callee,
+                            arguments,
+                            register: a,
+                            results: Some(1),
+                            continuation: CallContinuation::CacheResult,
+                        };
+                    }
+                }
             }
             6 | 91 => {
                 let key = self.constant(function, ((instruction >> 8) & 0x1ffff) as usize)?;
-                let value = environment.global(&key).map_err(|kind| self.fault(kind))?;
-                self.store(a, value.clone())?;
-                self.cached = value;
+                match environment
+                    .lookup_global(&key)
+                    .map_err(|kind| self.fault(kind))?
+                {
+                    FieldLookup::Value(value) => {
+                        self.store(a, value.clone())?;
+                        self.cached = value;
+                    }
+                    FieldLookup::MetaCall { callee, arguments } => {
+                        result = Step::Call {
+                            callee,
+                            arguments,
+                            register: a,
+                            results: Some(1),
+                            continuation: CallContinuation::CacheResult,
+                        };
+                    }
+                }
             }
             8 | 10..=12 => {
                 let container = self.register(b)?;
@@ -446,14 +519,33 @@ impl Frame {
                     return Err(self.fault(FaultKind::BindingRequired));
                 }
                 next = self.branch(function, if opcode == 8 { 1 } else { 3 })?;
-                let value = environment
-                    .field(&container, &key)
-                    .map_err(|kind| self.fault(kind))?;
                 if opcode == 8 {
-                    self.store(a + 1, container)?;
-                    self.cached = value.clone();
+                    self.store(a + 1, container.clone())?;
                 }
-                self.store(a, value)?;
+                match environment
+                    .lookup_field(&container, &key)
+                    .map_err(|kind| self.fault(kind))?
+                {
+                    FieldLookup::Value(value) => {
+                        if opcode == 8 {
+                            self.cached = value.clone();
+                        }
+                        self.store(a, value)?;
+                    }
+                    FieldLookup::MetaCall { callee, arguments } => {
+                        result = Step::Call {
+                            callee,
+                            arguments,
+                            register: a,
+                            results: Some(1),
+                            continuation: if opcode == 8 {
+                                CallContinuation::CacheResult
+                            } else {
+                                CallContinuation::Normal
+                            },
+                        };
+                    }
+                }
             }
             15 | 74 => {
                 let container = if opcode == 15 {
@@ -463,25 +555,52 @@ impl Frame {
                 };
                 let key = self.constant(function, b)?;
                 let value = self.operand(function, c)?;
-                environment
-                    .set_field(&container, &key, value)
-                    .map_err(|kind| self.fault(kind))?;
-                self.cached = container;
+                self.cached = container.clone();
+                if let Some((callee, arguments)) = environment
+                    .assign_field(&container, &key, value)
+                    .map_err(|kind| self.fault(kind))?
+                {
+                    result = Step::Call {
+                        callee,
+                        arguments,
+                        register: 0,
+                        results: Some(0),
+                        continuation: CallContinuation::Normal,
+                    };
+                }
             }
             16..=21 => {
                 let container = self.register(a)?;
                 let key = self.operand(function, ((instruction >> 17) & 511) as usize)?;
                 let value = self.operand(function, c)?;
-                environment
-                    .set_field(&container, &key, value)
-                    .map_err(|kind| self.fault(kind))?;
+                if let Some((callee, arguments)) = environment
+                    .assign_field(&container, &key, value)
+                    .map_err(|kind| self.fault(kind))?
+                {
+                    result = Step::Call {
+                        callee,
+                        arguments,
+                        register: 0,
+                        results: Some(0),
+                        continuation: CallContinuation::Normal,
+                    };
+                }
             }
             27 => {
                 let key = self.constant(function, ((instruction >> 8) & 0x1ffff) as usize)?;
                 let value = self.register(a)?;
-                environment
-                    .set_global(&key, value)
-                    .map_err(|kind| self.fault(kind))?;
+                if let Some((callee, arguments)) = environment
+                    .assign_global(&key, value)
+                    .map_err(|kind| self.fault(kind))?
+                {
+                    result = Step::Call {
+                        callee,
+                        arguments,
+                        register: 0,
+                        results: Some(0),
+                        continuation: CallContinuation::Normal,
+                    };
+                }
             }
             52 => {
                 let value = environment.new_table().map_err(|kind| self.fault(kind))?;
@@ -491,18 +610,45 @@ impl Frame {
             4 | 5 | 56..=59 => {
                 let left = self.operand(function, ((instruction >> 17) & 511) as usize)?;
                 let right = self.operand(function, c)?;
-                let comparison = if opcode == 4 || opcode == 5 {
-                    self.equal(&left, &right)?
+                if opcode == 4 || opcode == 5 {
+                    if let (
+                        Value::Reference {
+                            kind: left_kind @ (5 | 7),
+                            identity: left_id,
+                        },
+                        Value::Reference {
+                            kind: right_kind,
+                            identity: right_id,
+                        },
+                    ) = (&left, &right)
+                        && left_kind == right_kind
+                        && left_id != right_id
+                        && let Some(callee) = environment
+                            .equal_metamethod(&left, &right)
+                            .map_err(|kind| self.fault(kind))?
+                    {
+                        next = self.pc;
+                        result = Step::Call {
+                            callee,
+                            arguments: vec![left, right],
+                            register: 0,
+                            results: Some(0),
+                            continuation: CallContinuation::Equal(a != 0),
+                        };
+                    } else {
+                        let comparison = self.equal(&left, &right)?;
+                        next = self.conditional(function, usize::from(comparison) == a)?;
+                    }
                 } else {
                     let left = self.number(left)?;
                     let right = self.number(right)?;
-                    if opcode <= 57 {
+                    let comparison = if opcode <= 57 {
                         left < right
                     } else {
                         left <= right
-                    }
-                };
-                next = self.conditional(function, usize::from(comparison) == a)?;
+                    };
+                    next = self.conditional(function, usize::from(comparison) == a)?;
+                }
             }
             7 => {
                 let value = self.register(b)?;
@@ -537,7 +683,7 @@ impl Frame {
                     ((instruction >> 8) & 0x1ffff) as isize - 65535 + 1,
                 )?;
             }
-            40..=49 => {
+            40..=51 => {
                 let left =
                     self.number(self.operand(function, ((instruction >> 17) & 511) as usize)?)?;
                 let right = self.number(self.operand(function, c)?)?;
@@ -547,6 +693,7 @@ impl Frame {
                     44 | 45 => right * left,
                     46 | 47 => left / right,
                     48 | 49 => left - (left / right).floor() * right,
+                    50 | 51 => left.powf(right),
                     _ => unreachable!(),
                 };
                 self.store(a, Value::Number(value))?;
@@ -592,10 +739,10 @@ impl Frame {
                 for index in b..=(c & 255) {
                     match self.register(index)? {
                         Value::Bytes(value) => bytes.extend_from_slice(&value),
-                        Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
+                        Value::Number(value) if value.is_finite() => {
                             bytes.extend_from_slice(value.to_string().as_bytes());
                         }
-                        _ => return Err(self.fault(FaultKind::Unknown(OPCODES))),
+                        _ => return Err(self.fault(FaultKind::BindingRequired)),
                     }
                 }
                 self.store(a, Value::Bytes(Arc::from(bytes)))?;
@@ -679,7 +826,8 @@ impl Frame {
                         .map_err(|kind| self.fault(kind))?;
                 }
             }
-            _ => return Err(self.fault(FaultKind::Unknown(OPCODES))),
+            31..=36 | 75..=87 | 89..=90 => {}
+            _ => return Err(self.fault(FaultKind::ProgramCounter)),
         }
         self.pc = next;
         Ok(result)
