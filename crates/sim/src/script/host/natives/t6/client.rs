@@ -4,7 +4,7 @@
 //! server's handler of the same name it is still ported from the client's.
 
 mod effects;
-mod entity;
+pub(crate) mod entity;
 mod fields;
 pub(crate) mod game;
 mod pure;

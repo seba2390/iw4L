@@ -51,6 +51,7 @@ pub(crate) fn update_client_sounds(
                 alias,
                 origin,
                 volume,
+                fade_in_ms,
             } if *client == local.0 => {
                 let (Some(bank), Some(family)) = (bank.as_deref(), family.as_deref()) else {
                     sounds.refused.push(*id);
@@ -71,7 +72,11 @@ pub(crate) fn update_client_sounds(
                     volume_scale: 1.0,
                     fallbacks: Vec::new(),
                 });
-                if *volume != 1.0 {
+                if *fade_in_ms > 0 {
+                    handle.fade_to(frame, 0.0, 0);
+                    let frames = i64::from(*fade_in_ms) * i64::from(SAMPLE_RATE) / 1000;
+                    handle.fade_to(frame, *volume, frames as u64);
+                } else if *volume != 1.0 {
                     handle.fade_to(frame, *volume, 0);
                 }
                 feedback.push(CueHandle(handle.0.clone()));

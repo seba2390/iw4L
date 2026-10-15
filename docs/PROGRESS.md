@@ -293,7 +293,9 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Nuketown, TranZit and Buried start from the game library, with Black Ops 2's loading screens (`loadscreen_<map>_<gametype>_<location>` from the `*_load_zm` zones) and front-end art.
   - [ ] The menus, lobby and map selection are IW4L's layout over Black Ops 2's art (`ui/src/launcher.rs`, `ui/src/t6_menu.rs`).
 - [ ] The game's own sound.
-  - [ ] Not verified (headless runs have sound off); the client scripts' sound builtins are still incomplete (`stopsound` and `getplaybacktime` fail, client volume, fades and loops are not applied: `t6.csc.sound.*`), so a sound-on run alone cannot tick it.
+  - [x] `IW4L_SOUND_TRACE=1` logs every sound the match asks for, headless included (Nuketown, 120 s: round music, the perk jingles and the perk drop's alarm and landing, thunder, zombie vocals; the meteors', perk machines' and Pack-a-Punch's loops, the underscore music).
+  - [x] The client scripts' sounds play by playback id on the local client's sound system (`playsound` with Black Ops 2's volume clamp and fade-in, `stopsound`, `setsoundvolume`, `soundplaying`, `getplaybacktime`), and their loops on fake entities and client entities play where the scripts place them; a muted windowed Nuketown run reports them playing and ending (`report id=1 playing=false at=5824ms`).
+  - [ ] Ambient rooms, emitters, mixer snapshots, reverb and sound randoms (`t6.csc.sound.*`), and the server sounds' lengths and rumbles (`t6.sound.notify_length`) are open.
 - [x] The first map's own systems (Nuketown's perk drops and its end-game rocket).
   - [x] Quick Revive drops from the sky on its path vehicle (`perk_arrival_vehicle` on `info_vehicle_node`s to `reached_end_node`), lands and sells (500, drunk); the later drops follow the same path at rounds 3–5 on.
   - [x] At game over the rocket intermission plays to `rocket_hit_nuketown` and the match returns to the lobby (the camera calls are kept for the client to present).

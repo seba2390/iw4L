@@ -134,6 +134,11 @@ pub(crate) fn install(
     world.insert_resource(Mechanics::default());
     world.insert_resource(natives);
     world.insert_resource(ClientRuntime);
+    // The client game's first playback id is 1.
+    let mut output = crate::script::client::ClientOutput::default();
+    output.next_sound = 1;
+    world.insert_resource(output);
+    world.insert_resource(crate::script::client::ClientSoundReports::default());
     let callbacks = &setup.callbacks;
     world.insert_resource(ClientCallbacks {
         local_client_connect: callbacks.local_client_connect.clone(),
@@ -192,6 +197,16 @@ pub(crate) fn advance(world: &mut World) {
             .world
             .insert_resource(ServerWorld(std::ptr::from_mut(world)));
         let result = step(&mut client, now);
+        let commands = std::mem::take(
+            &mut client
+                .world
+                .resource_mut::<crate::script::client::ClientOutput>()
+                .sound_commands,
+        );
+        let mut frame = crate::frame::FrameWorld::from_world(world);
+        for command in commands {
+            frame.push_script_audio(command);
+        }
         client.world.remove_resource::<ServerWorld>();
         client.world.remove_resource::<crate::step::StepRequest>();
         if let Err(fault) = result.and_then(|()| {
@@ -309,4 +324,52 @@ fn game_key_type(ty: game_api::KeyType) -> super::entities::KeyType {
         game_api::KeyType::String => super::entities::KeyType::String,
         game_api::KeyType::Vector => super::entities::KeyType::Vector,
     }
+}
+
+/// The local client's sound system reports on the client game's sounds.
+pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSoundStatus>) {
+    if let Some(mut client) = server.get_resource_mut::<ClientScripts>() {
+        crate::script::client::apply_sound_reports(&mut client.world, statuses);
+    }
+}
+
+/// The loops the client game plays, where they play from now: a fake
+/// entity's origin, or a client entity's.
+pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String, [f32; 3])> {
+    use crate::script::client::{CLIENT_LOOP_OWNER, ClientOutput, LoopSource};
+    let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
+        return Vec::new();
+    };
+    let world = &mut client.world;
+    let loops: Vec<_> = world
+        .resource::<ClientOutput>()
+        .loops
+        .iter()
+        .map(|(source, sound)| (source.clone(), sound.clone()))
+        .collect();
+    loops
+        .into_iter()
+        .filter_map(|(source, sound)| {
+            let origin = match source {
+                LoopSource::Fake(slot) => {
+                    super::natives::t6::client::entity::fake_origin(world, slot)?
+                }
+                LoopSource::Entity(id) => {
+                    match world
+                        .resource_mut::<RoundScript>()
+                        .object_field(id, "origin")
+                    {
+                        Value::Vector(origin) => origin,
+                        _ => return None,
+                    }
+                }
+                LoopSource::Emitter(..) | LoopSource::Line(..) => return None,
+            };
+            Some((
+                crate::ScriptModelId::from_wire(CLIENT_LOOP_OWNER | sound.serial),
+                sound.alias,
+                origin,
+            ))
+        })
+        .collect()
 }

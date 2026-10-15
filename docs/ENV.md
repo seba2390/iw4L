@@ -19,6 +19,7 @@ headless runs; their meaning is beside the code that reads them.
 | `IW4L_LOG` | Log file path | `iw4l-artifacts/logs/<unix-time>.log` |
 | `IW4L_LOG_LEVEL` | `error`, `warn`, `info` or `debug`, for both terminal and file | terminal `error`, file `info` |
 | `IW4L_SOUND` | `off` or `0` silences match audio | sound on |
+| `IW4L_SOUND_TRACE` | `1` logs every sound the match asks for (`sound trace:` lines): the client scripts' sound commands, server sound events and local sounds, each loop as it starts and stops, and the sound system's reports on the client's sounds; works headless with sound off | off |
 
 **Matches and console**
 

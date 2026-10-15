@@ -46,6 +46,9 @@ pub enum ScriptAudioCommand {
         alias: String,
         origin: Option<[f32; 3]>,
         volume: f32,
+        /// How long it fades in from silence, in msec (0 starts at its
+        /// volume).
+        fade_in_ms: i32,
     },
     /// The client's scripts stop a sound they played (`stopSound`).
     ClientSoundStop {
@@ -126,11 +129,13 @@ impl ScriptAudioCommand {
                 alias,
                 origin,
                 volume,
+                fade_in_ms,
                 ..
             } => {
                 !alias.is_empty()
                     && alias.len() <= 1023
                     && (0.0..=1.0).contains(volume)
+                    && (0..=32_000).contains(fade_in_ms)
                     && origin.is_none_or(|origin| origin.iter().all(|c| c.is_finite()))
             }
             Self::ClientSoundStop { .. } => true,

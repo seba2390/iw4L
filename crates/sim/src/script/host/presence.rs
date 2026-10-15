@@ -662,6 +662,18 @@ fn publish_loop_sounds(world: &mut World) {
         })
         .collect();
     let client_loops = crate::script::client::loop_rows(world);
+    if crate::sound_trace::enabled() {
+        let traced: Vec<_> = placed
+            .iter()
+            .map(|(owner, alias, origin, _)| (*owner, &**alias, *origin))
+            .chain(
+                client_loops
+                    .iter()
+                    .map(|(owner, alias, origin)| (*owner, alias.as_str(), *origin)),
+            )
+            .collect();
+        crate::sound_trace::loops(world, &traced);
+    }
     let mut frame = FrameWorld::from_world(world);
     let rows = placed
         .into_iter()

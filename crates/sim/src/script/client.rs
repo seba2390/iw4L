@@ -241,9 +241,14 @@ pub(crate) struct ClientSoundReports {
 /// sounds it names are no longer waiting to start.
 pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSoundStatus>) {
     let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
+        crate::script::host::client_scripts::report_sounds(server, statuses);
         return;
     };
-    let world = &mut client.world;
+    apply_sound_reports(&mut client.world, statuses);
+}
+
+/// A client VM's world takes its sound system's reports.
+pub(crate) fn apply_sound_reports(world: &mut World, statuses: Vec<crate::ClientSoundStatus>) {
     {
         let mut output = world.resource_mut::<ClientOutput>();
         for status in &statuses {
@@ -252,6 +257,14 @@ pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSound
     }
     let mut reports = world.resource_mut::<ClientSoundReports>();
     reports.heard = true;
+    if crate::sound_trace::enabled() {
+        for status in &statuses {
+            let was = reports.statuses.get(&status.id).map(|old| old.playing);
+            if was != Some(status.playing) {
+                crate::sound_trace::client_report(status);
+            }
+        }
+    }
     reports.statuses = statuses.into_iter().map(|s| (s.id, s)).collect();
 }
 
@@ -411,6 +424,16 @@ impl ClientOutput {
         id
     }
 
+    /// Starts a loop in place of the one playing there, under a new playback
+    /// id, which it answers.
+    pub(crate) fn restart_loop(&mut self, source: LoopSource, alias: String) -> i32 {
+        let serial = self.next_loop & 0x0fff_ffff;
+        self.next_loop = self.next_loop.wrapping_add(1);
+        let id = self.sound_id();
+        self.loops.insert(source, ClientLoop { alias, serial, id });
+        id
+    }
+
     /// Starts a loop (keeping the one already playing the same alias there),
     /// answering its playback id.
     pub(crate) fn start_loop(&mut self, source: LoopSource, alias: String) -> i32 {
@@ -478,12 +501,31 @@ pub(crate) struct FakeEnts {
 
 /// Script loop sound owners of the client's loops; the server's script
 /// entities' loops use lower numbers.
-const CLIENT_LOOP_OWNER: u32 = 0x4000_0000;
+pub(crate) const CLIENT_LOOP_OWNER: u32 = 0x4000_0000;
+
+/// Whether the local client's sound system still plays a playback: a loop
+/// the client plays, or a sound it reported playing; a sound played since
+/// its last report plays until it says otherwise, and with no sound system
+/// nothing plays.
+pub(crate) fn sound_playing(world: &World, id: i32) -> bool {
+    let output = world.resource::<ClientOutput>();
+    if output.loops.values().any(|playing| playing.id == id) {
+        return true;
+    }
+    let reports = world.resource::<ClientSoundReports>();
+    if !reports.heard {
+        return false;
+    }
+    match reports.statuses.get(&id) {
+        Some(status) => status.playing,
+        None => output.issued.contains(&id),
+    }
+}
 
 /// The loops the local client plays, where they play from now.
 pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String, [f32; 3])> {
     let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
-        return Vec::new();
+        return crate::script::host::client_scripts::loop_rows(server);
     };
     let world = &mut client.world;
     let loops: Vec<(LoopSource, ClientLoop)> = world
