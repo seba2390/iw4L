@@ -38,9 +38,7 @@ pub use world::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Gap {
-    Ladder = 1,
     Mantle = 2,
-    Swim = 4,
     MountedView = 8,
     Shellshock = 16,
     Launched = 32,
@@ -222,9 +220,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
 
     pub fn gaps(&self) -> impl Iterator<Item = Gap> + '_ {
         [
-            Gap::Ladder,
             Gap::Mantle,
-            Gap::Swim,
             Gap::MountedView,
             Gap::Shellshock,
             Gap::Launched,

@@ -187,7 +187,10 @@ pub(crate) fn jump_land(
     client: crate::ClientId,
     event: game_api::movement::JumpLand,
 ) {
-    if client.0 != 0 || !server.contains_resource::<ClientScripts>() {
+    if client.0 != 0
+        || (!server.contains_resource::<ClientScripts>()
+            && !server.contains_resource::<super::host::client_scripts::ClientScripts>())
+    {
         return;
     }
     if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
@@ -1146,6 +1149,7 @@ fn run_frame(
                             Value::Int(hurt.into()),
                         ],
                     ),
+                    game_api::movement::JumpLand::Foliage => continue,
                 }
             }
             ClientMessage::Footstep(kind, surface) => {

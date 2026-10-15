@@ -151,6 +151,12 @@ pub struct ClientScriptCallbacks {
     pub deactivate_exploder: Option<String>,
     /// `(localclientnum, type, locations)` on an entity when `gib` fires.
     pub gib_event: Option<String>,
+    /// `(localclientnum, player, surface, firstperson, quiet, islouder)` on level when the local player jumps.
+    pub player_jump: Option<String>,
+    /// `(localclientnum, player, surface, firstperson, quiet, damageplayer, islouder)` on level when the local player lands.
+    pub player_land: Option<String>,
+    /// `(localclientnum, player, firstperson, quiet)` on level when the local player moves through foliage.
+    pub player_foliage: Option<String>,
 }
 
 /// The type of a map entity key's value.

@@ -52,6 +52,7 @@ const MOD_RIFLE_BULLET: usize = 2;
 const MOD_PROJECTILE_SPLASH: usize = 6;
 const MOD_MELEE: usize = 7;
 const MOD_BAYONET: usize = 8;
+const MOD_FALLING: usize = 12;
 
 const HITLOC_RIOTSHIELD: i32 = 20;
 
@@ -635,6 +636,31 @@ impl Shot<'_> {
             ev::GRENADE_DROP => self.drop_grenade(world),
             ev::GRENADE_SUICIDE => self.gaps.push(grenade_suicide_unknown()),
             ev::DETONATE => world.notify(me, "detonate", &[]),
+            e if (ev::FALL_DAMAGE..ev::FALL_DAMAGE + 32).contains(&e) => {
+                if self.ps.pm_flags & pm_flags::SLIDING == 0 {
+                    let frac = if parm < 100 { parm as f32 * 0.01 } else { 1.1 };
+                    if frac != 0.0
+                        && let Some(entity) = world.entity(me)
+                        && entity.takes_damage
+                    {
+                        let amount = (entity.max_health as f32 * frac) as i32;
+                        world.damage(&FireDamage {
+                            target: me,
+                            inflictor: ENTITY_NONE,
+                            attacker: ENTITY_NONE,
+                            dir: [0.0; 3],
+                            point: [0.0; 3],
+                            amount,
+                            flags: 0,
+                            means: MEANS[MOD_FALLING],
+                            weapon: 0,
+                            location: 0,
+                            hit_location: HIT_LOCATIONS[0],
+                            bone: None,
+                        });
+                    }
+                }
+            }
             e if ai_sound_event(e)
                 && self.ps.pm_flags & pm_flags::DUCKED == 0
                 && !self.has_perk(perks::QUIETER, world) =>

@@ -489,6 +489,14 @@ fn sync_with(server: &mut World, client: &mut World) {
         .into_iter()
         .filter_map(|(number, flags)| Some((game.entities.get(&number)?.object, flags)))
         .collect();
+    let local_player_object = game
+        .local_player
+        .and_then(|number| game.entities.get(&number).map(|e| e.object));
+    let messages = server
+        .get_resource_mut::<RoundScript>()
+        .map_or_else(Vec::new, |mut runtime| {
+            std::mem::take(&mut runtime.client_messages)
+        });
     let gone: Vec<i32> = game
         .entities
         .keys()
@@ -613,6 +621,68 @@ fn sync_with(server: &mut World, client: &mut World) {
                 vec![Value::Int(LOCAL_CLIENT), Value::string(kind), locations],
                 now,
             );
+        }
+    }
+    if let Some(player) = local_player_object {
+        for message in messages {
+            let crate::script::client::ClientMessage::JumpLand(event) = message else {
+                continue;
+            };
+            match event {
+                game_api::movement::JumpLand::Jump(surface) => {
+                    if let Some(name) = &callbacks.player_jump {
+                        run(
+                            client,
+                            name,
+                            Value::level(),
+                            vec![
+                                Value::Int(LOCAL_CLIENT),
+                                Value::Object(player),
+                                Value::string(surface),
+                                Value::Int(1),
+                                Value::Int(0),
+                                Value::Int(0),
+                            ],
+                            now,
+                        );
+                    }
+                }
+                game_api::movement::JumpLand::Land(surface, hurt) => {
+                    if let Some(name) = &callbacks.player_land {
+                        run(
+                            client,
+                            name,
+                            Value::level(),
+                            vec![
+                                Value::Int(LOCAL_CLIENT),
+                                Value::Object(player),
+                                Value::string(surface),
+                                Value::Int(1),
+                                Value::Int(0),
+                                Value::Int(hurt.into()),
+                                Value::Int(0),
+                            ],
+                            now,
+                        );
+                    }
+                }
+                game_api::movement::JumpLand::Foliage => {
+                    if let Some(name) = &callbacks.player_foliage {
+                        run(
+                            client,
+                            name,
+                            Value::level(),
+                            vec![
+                                Value::Int(LOCAL_CLIENT),
+                                Value::Object(player),
+                                Value::Int(1),
+                                Value::Int(0),
+                            ],
+                            now,
+                        );
+                    }
+                }
+            }
         }
     }
     for object in shutdowns {

@@ -72,6 +72,7 @@ pub struct FireEntity {
     pub blast_handler: bool,
     pub takes_damage: bool,
     pub health: i32,
+    pub max_health: i32,
     pub team: Option<FireTeam>,
     /// An actor's `ignorelocationaldamage`.
     pub ignore_locational_damage: bool,
