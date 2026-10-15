@@ -23,7 +23,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// The resolved scene's code texture and the sampler state the chain's code
-/// textures are read with (`t5.render.post_sampler_state` and the like).
+/// textures are read with while the game's rule leaves them unknown
+/// (`PostChainRules::sampler_state`).
 const CODE_TEXTURE_RESOLVED_SCENE: u32 = 10;
 const POST_SAMPLER: u8 = 0x62;
 
@@ -83,6 +84,8 @@ impl ChainTarget {
 struct ChainMaterial {
     film: ExtractedFilm,
     srgb_write: bool,
+    /// The material's pass blends into its target instead of replacing it.
+    blends: bool,
     textures_layout: BindGroupLayoutDescriptor,
     constants: BindGroup,
     constants_arena: Buffer,
@@ -136,22 +139,18 @@ fn create_material(
             }),
         }],
     );
-    let vertex = device.create_buffer(&BufferDescriptor {
-        label: Some("post_chain_vertices"),
-        size: (4 * hud_iw4::GFX_TESS_VERTEX_STRIDE) as u64,
-        usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    let index = device.create_buffer_with_data(&BufferInitDescriptor {
-        label: Some("post_chain_indices"),
-        contents: bytemuck::cast_slice(&hud_iw4::RB_DRAW_STRETCHPIC_INDICES),
-        usage: BufferUsages::INDEX,
-    });
-    let srgb_write = super::state::GfxPassState::from_prepared(film.shell.passes()[0].state())
-        .srgb_write_enable();
+    let (vertex, index) = super::postfx::stretch_pic_buffers(device, "post_chain");
+    let state = super::state::GfxPassState::from_prepared(film.shell.passes()[0].state());
+    let srgb_write = state.srgb_write_enable();
+    let blends = state
+        .apply_change_state_0_host(AlphaMode::Opaque, false)
+        .blend
+        .blend_state()
+        .is_some();
     ChainMaterial {
         film,
         srgb_write,
+        blends,
         textures_layout,
         constants,
         constants_arena,
@@ -563,11 +562,23 @@ fn draw_post_chain(
     }
     span.end(encoder);
     report(format!(
-        "post chain: READY passes={} size={size:?} [{}]",
+        "post chain: READY passes={} size={size:?} [{}] blend=[{}] srgb_write=[{}]",
         planned.len(),
         passes
             .iter()
             .map(|pass| pass.material)
+            .collect::<Vec<_>>()
+            .join(" "),
+        gpu.materials
+            .iter()
+            .filter(|material| material.blends)
+            .map(|material| material.film.name)
+            .collect::<Vec<_>>()
+            .join(" "),
+        gpu.materials
+            .iter()
+            .filter(|material| material.srgb_write)
+            .map(|material| material.film.name)
             .collect::<Vec<_>>()
             .join(" ")
     ));

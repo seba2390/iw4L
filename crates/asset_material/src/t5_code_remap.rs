@@ -745,8 +745,20 @@ pub fn remap_t5_code_const_source(t5: u16) -> Option<u16> {
         .or_else(|| leftover_t5_code_bank(t5))
 }
 
+/// Black Ops' TEXTURE_0..3 are the images its post chain binds before each
+/// pass: the renderer's post texture bank.
+#[must_use]
+pub fn post_t5_code_texture(t5: u32) -> Option<u32> {
+    let slot = t5.checked_sub(T5_CODE_TEXTURE_0)?;
+    (slot < render_material::CODE_POST_TEXTURE_COUNT)
+        .then(|| render_material::CODE_POST_TEXTURE0 + slot)
+}
+
 #[must_use]
 pub fn remap_code_texture_index(t5: u32) -> Option<u32> {
+    if let Some(post) = post_t5_code_texture(t5) {
+        return Some(post);
+    }
     let index = u16::try_from(t5).ok()?;
     T5_TO_IW4_CODE_TEXTURE
         .get(usize::from(index))

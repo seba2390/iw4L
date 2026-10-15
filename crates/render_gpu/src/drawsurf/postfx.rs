@@ -576,17 +576,7 @@ fn create_postfx_gpu(
             }),
         }],
     );
-    let vertex = device.create_buffer(&BufferDescriptor {
-        label: Some("iw4_postfx_vertices"),
-        size: (4 * hud_iw4::GFX_TESS_VERTEX_STRIDE) as u64,
-        usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    let index = device.create_buffer_with_data(&BufferInitDescriptor {
-        label: Some("iw4_postfx_indices"),
-        contents: bytemuck::cast_slice(&hud_iw4::RB_DRAW_STRETCHPIC_INDICES),
-        usage: BufferUsages::INDEX,
-    });
+    let (vertex, index) = stretch_pic_buffers(device, "iw4_postfx");
     Ok(PreparedPostFxGpu {
         film,
         pipeline,
@@ -1074,4 +1064,21 @@ pub(super) fn register(app: &mut App) {
                 .in_set(Core3dSystems::PostProcess)
                 .after(tonemapping),
         );
+}
+
+/// A full-screen pass's quad: a vertex buffer the pass writes its four
+/// stretch-pic vertices into, and the stretch-pic indices.
+pub(super) fn stretch_pic_buffers(device: &RenderDevice, label: &str) -> (Buffer, Buffer) {
+    let vertex = device.create_buffer(&BufferDescriptor {
+        label: Some(&format!("{label}_vertices")),
+        size: (4 * hud_iw4::GFX_TESS_VERTEX_STRIDE) as u64,
+        usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let index = device.create_buffer_with_data(&BufferInitDescriptor {
+        label: Some(&format!("{label}_indices")),
+        contents: bytemuck::cast_slice(&hud_iw4::RB_DRAW_STRETCHPIC_INDICES),
+        usage: BufferUsages::INDEX,
+    });
+    (vertex, index)
 }

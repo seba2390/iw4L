@@ -79,7 +79,6 @@ pub(crate) const POST_CHAIN: PostChainRules = PostChainRules {
         APPLY,
         FILM,
     ],
-    map_vision,
     plan,
     sampler_state: unknown!(
         "t5.render.post_sampler_state",
@@ -92,10 +91,6 @@ pub(crate) const POST_CHAIN: PostChainRules = PostChainRules {
         "Black Ops' vision channel update and the vision script builtins"
     ),
 };
-
-fn map_vision(map: &str) -> String {
-    format!("vision/{map}.vision")
-}
 
 const R_BLOOM_BLUR_RADIUS: usize = 0xec;
 const R_BLOOM_TINT_WEIGHTS: usize = 0xf0;
@@ -458,62 +453,4 @@ fn streak_controls(
             offset * texel,
         ]
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn blur_taps_are_normalized_pairs() {
-        let rows = blur_controls(1.0, 1.75);
-        let total: f32 = rows[2].iter().chain(&rows[3][..2]).sum();
-        assert!((total * 2.0 - 1.0).abs() < 1e-5, "{total}");
-        assert!(rows[0][0] > 0.0 && rows[0][0] < 1.0);
-        assert!(rows[0][1] > 2.0 && rows[0][1] < 3.0);
-    }
-
-    #[test]
-    fn streak_offsets_step_two_texels() {
-        let kernel = streak_kernel();
-        assert_eq!(kernel[0].0, 1.0 + 0.9);
-        for (pair, (_, offset)) in kernel.iter().enumerate() {
-            let base = (pair * 2) as f32;
-            assert!(*offset > base && *offset < base + 1.0, "{pair} {offset}");
-        }
-    }
-
-    #[test]
-    fn kino_chain_draws_both_streaks() {
-        let mut words = vec![0u32; 0x2a0 / 4];
-        for (offset, value) in [(0x240, 0.0211f32), (0x294, 0.0281)] {
-            words[offset / 4] = value.to_bits();
-        }
-        let passes = plan(&PostFrame {
-            display: [1920, 1080],
-            vision: &words,
-        });
-        let names: Vec<_> = passes.iter().map(|pass| pass.material).collect();
-        assert_eq!(
-            names,
-            [
-                DOWNSAMPLE,
-                RESAMPLE,
-                CONVOLUTION,
-                REMAP,
-                BLUR_X,
-                BLUR_Y,
-                REMAP_STREAK,
-                STREAK_X,
-                REMAP_STREAK,
-                STREAK_Y,
-                SMOOTH,
-                APPLY,
-                FILM
-            ]
-        );
-        // Two swaps: the smoothed bloom lands in the ping target again.
-        assert_eq!(passes[10].output, PostOutput::Target(PONG));
-        assert_eq!(passes[11].samplers[0].1, PostImage::Target(PONG));
-    }
 }

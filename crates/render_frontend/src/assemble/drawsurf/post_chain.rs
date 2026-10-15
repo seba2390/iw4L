@@ -7,7 +7,7 @@ use game_api::post::PostChainRules;
 
 use super::postfx_plan::{
     PostFxAdmissionRefusal, RuntimePostFx, admit_unlit_2d_material, film_sources,
-    postfx_material_in, postfx_material_technique,
+    game_post_material_technique, postfx_material_in,
 };
 use super::{
     PreparedMaterialTable, RuntimeCodeSources, RuntimeMaterialCatalog, RuntimeProgramRegistry,
@@ -61,7 +61,7 @@ pub(crate) fn post_chain_compile_locations(
         .iter()
         .map(|&name| {
             let location = postfx_material_in(catalog, name, namespace)
-                .and_then(|material| postfx_material_technique(catalog, material))
+                .and_then(|material| game_post_material_technique(catalog, material))
                 .map(|(_, set_i, _)| (set_i, 0));
             (name, location)
         })

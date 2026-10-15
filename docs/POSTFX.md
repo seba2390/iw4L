@@ -7,7 +7,7 @@ screen grade. Explicit script visions and transitions override the map preset.
 |---|---|---|
 | IW4 | Authored film contrast, brightness, desaturation, tints and glow | Extra glow/sky-bleed file controls need PC verification |
 | IW5 | Map/common vision film and glow through the shared film profile | Hero saturation and extra glow controls need verification |
-| T5 | Script blur (`setblur`, `startfadingblur`) and DoF; visions are loaded (`asset_world/src/vision_t5.rs`) but not drawn | Three-band film, bloom curves, persistence and streaks (`t5.render.post_chain`, `t5.vision.channels` in [fidelity/t5.md](fidelity/t5.md)) |
+| T5 | Black Ops' own post chain (`game_t5/src/post_chain.rs`): bloom downsample, remap, blur and streaks, the S-curve apply and the three-band film from the map's vision, with its `code_post_gfx` materials; script blur and DoF | Vision channels (last stand, death, …), the expansion, smooth-B, streak-apply and LUT passes, the post textures' sampler state (`t5.vision.channels`, `t5.render.post_sampler_state` in [fidelity/t5.md](fidelity/t5.md)) |
 | T6 | Three-band film, bloom levels/gamma/tints, two-scale blur and highlight compression | HQ bloom, LUT volumes, SSAO and special camera filters |
 
 T6 bloom preserves authored RGB and luminance channels independently. Bloom

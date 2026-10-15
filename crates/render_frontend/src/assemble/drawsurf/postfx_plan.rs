@@ -125,6 +125,18 @@ pub(crate) fn postfx_material_technique<'a>(
     catalog: &'a RuntimeMaterialCatalog,
     material: &'a RuntimeMaterial,
 ) -> Result<(&'a RuntimeMaterial, usize, &'a RuntimeTechnique), PostFxAdmissionRefusal> {
+    if !material.draw_rules.postfx_host_supported {
+        return Err(PostFxAdmissionRefusal::TechniqueNamespaceMismatch);
+    }
+    game_post_material_technique(catalog, material)
+}
+
+/// The post technique of a material a game's own chain draws: its own game's
+/// technique set, whatever the renderer's post host supports.
+pub(crate) fn game_post_material_technique<'a>(
+    catalog: &'a RuntimeMaterialCatalog,
+    material: &'a RuntimeMaterial,
+) -> Result<(&'a RuntimeMaterial, usize, &'a RuntimeTechnique), PostFxAdmissionRefusal> {
     let set = match material.remap {
         RemapResolution::SelfSet => material.local_technique_set,
         RemapResolution::Resolved(set) => set,
@@ -142,7 +154,7 @@ pub(crate) fn postfx_material_technique<'a>(
         .technique_sets
         .get(set_i)
         .ok_or(PostFxAdmissionRefusal::TechniqueSetOutOfRange { set })?;
-    if technique_set.namespace != material.namespace || !material.draw_rules.postfx_host_supported {
+    if technique_set.namespace != material.namespace {
         return Err(PostFxAdmissionRefusal::TechniqueNamespaceMismatch);
     }
     let technique = technique_set

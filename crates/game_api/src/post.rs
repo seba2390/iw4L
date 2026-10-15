@@ -95,15 +95,13 @@ pub struct PostChainRules {
     pub targets: &'static [PostTarget],
     /// Every material a frame's passes can draw.
     pub materials: &'static [&'static str],
-    /// The vision file a map draws with.
-    pub map_vision: fn(map: &str) -> String,
     /// The frame's passes, in draw order.
     pub plan: fn(&PostFrame<'_>) -> Vec<PostPass>,
     /// The sampler state (filter and address modes) the passes read their
     /// code textures with.
     pub sampler_state: &'static Unknown,
     /// How the game picks the vision a frame draws with; frames draw with
-    /// [`PostChainRules::map_vision`] while it is unknown.
+    /// the map's own vision while it is unknown.
     pub vision_channels: &'static Unknown,
 }
 
