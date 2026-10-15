@@ -14,11 +14,28 @@ pub(crate) struct TimeScaleInputs<'w> {
     active: Option<Res<'w, GameActive>>,
 }
 
+/// `IW4L_TIMESCALE=<factor>`: a headless server runs its game clock that
+/// many times faster than real time (from 1 to 64), so long scripted runs
+/// finish sooner; ticks, script waits and console `wait Ns` all count game
+/// time.
+pub fn headless_time_scale() -> f64 {
+    static SCALE: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    *SCALE.get_or_init(|| {
+        std::env::var("IW4L_TIMESCALE")
+            .ok()
+            .and_then(|v| v.trim().parse::<f64>().ok())
+            .filter(|v| v.is_finite())
+            .map_or(1.0, |v| v.clamp(1.0, 64.0))
+    })
+}
+
 pub(crate) fn apply_time_scale(
     role: Res<RuntimeRole>,
+    headless: Option<Res<frame::Headless>>,
     inputs: TimeScaleInputs,
     fixed: Res<Time<Fixed>>,
     mut time: ResMut<Time<Virtual>>,
+    mut pace: Local<Option<(std::time::Instant, f64)>>,
 ) {
     let TimeScaleInputs {
         authority,
@@ -49,8 +66,34 @@ pub(crate) fn apply_time_scale(
             game_ms,
         )
     };
-    time.set_relative_speed(
-        plan.filter(|p| p.valid())
-            .map_or(1.0, |p| p.sample(game_ms)),
-    );
+    let mut speed = plan
+        .filter(|p| p.valid())
+        .map_or(1.0, |p| f64::from(p.sample(game_ms)));
+    if headless.is_some() && role.runs_authority() {
+        let scale = headless_time_scale();
+        if scale != 1.0 {
+            speed *= scale;
+            // One real frame may now cover many ticks.
+            let max = std::time::Duration::from_secs_f64(0.25 * scale);
+            if time.max_delta() != max {
+                time.set_max_delta(max);
+                diag::info!(
+                    Net,
+                    "time scale: headless game clock asked to run {scale}x real time"
+                );
+            }
+            // What the machine keeps up with, every minute of game time.
+            let now = std::time::Instant::now();
+            match *pace {
+                Some((wall, game)) if game_ms - game >= 60_000.0 => {
+                    let ratio = (game_ms - game) / 1000.0 / now.duration_since(wall).as_secs_f64();
+                    diag::info!(Net, "time scale: game clock ran {ratio:.1}x real time");
+                    *pace = Some((now, game_ms));
+                }
+                Some((_, game)) if game_ms >= game => {}
+                _ => *pace = Some((now, game_ms)),
+            }
+        }
+    }
+    time.set_relative_speed_f64(speed);
 }
