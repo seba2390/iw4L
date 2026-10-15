@@ -724,6 +724,7 @@ fn sync_with(server: &mut World, client: &mut World) {
         }
         client.resource_mut::<RoundScript>().request_delete(object);
     }
+    super::ambient::update(client, now);
 }
 
 fn run(client: &mut World, name: &str, receiver: Value, args: Vec<Value>, now: i64) {

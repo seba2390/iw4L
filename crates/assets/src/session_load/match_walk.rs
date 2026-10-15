@@ -1068,6 +1068,7 @@ pub(super) async fn walk_prepared_match(
         sound,
         sound_gaps: 0,
         script_sound_aliases: None,
+        sound_mix_names: None,
     };
     (MatchLoadOutcome::Ready(prepared), Some(common))
 }

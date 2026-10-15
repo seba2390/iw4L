@@ -121,6 +121,9 @@ pub struct ClientScriptProgram {
     /// The map entities the client spawns itself (`CG_SpawnEntities`), each
     /// with its entity type (`eType`) and its typed fields, in map order.
     pub entities: Vec<(i32, Vec<(String, KeyType, String)>)>,
+    /// Each of those entities' spawnflags, in the same order: a client
+    /// trigger's say what touches it (`CG_SetTriggerFlags`).
+    pub entity_spawnflags: Vec<i32>,
     /// The map entities the client makes into structs (`createstruct`), each
     /// with the keys it sets and their types, in map order.
     pub structs: Vec<Vec<(String, KeyType, String)>>,
@@ -158,6 +161,9 @@ pub struct ClientScriptCallbacks {
     pub player_land: Option<String>,
     /// `(localclientnum, player, firstperson, quiet)` on level when the local player moves through foliage.
     pub player_foliage: Option<String>,
+    /// `(room, package, roomcollider, packagecollider, defaultroom)` on level
+    /// when the local player's ambient room or package changes.
+    pub sound_set_ambient_state: Option<String>,
 }
 
 /// The type of a map entity key's value.

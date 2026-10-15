@@ -50,6 +50,21 @@ struct SoundGlobals {
     curves: Vec<crate::CapturedSndCurve>,
     pans: Vec<(String, [f32; 6])>,
     groups: Vec<crate::MixerGroup>,
+    mix: Option<crate::SoundMixNames>,
+}
+
+/// Each name hash at `at` in the rows of a count and pointer.
+fn row_hashes(load: &ZoneLoad, header: &[u8], count_at: usize, size: u32, at: usize) -> Vec<u32> {
+    let Some(base) = header
+        .get(count_at + 4..count_at + 8)
+        .and_then(|b| decode_ptr(le32(b, 0)))
+    else {
+        return Vec::new();
+    };
+    (0..le32(header, count_at))
+        .map_while(|i| load.blocks.bytes(base.at(i * size), size as usize).ok())
+        .map(|row| le32(row, at))
+        .collect()
 }
 
 fn capture_globals(loads: &[&ZoneLoad]) -> SoundGlobals {
@@ -95,6 +110,21 @@ fn capture_globals(loads: &[&ZoneLoad]) -> SoundGlobals {
                             .collect(),
                     })
                     .collect();
+            }
+            // SndDriverGlobals: contexts (36 bytes: the type, then its eight
+            // values) at 0x24, side-chain ducks (60 bytes) at 0x34 and futz
+            // patches (100 bytes) at 0x3c, each named by the hash after its
+            // 32-byte name.
+            if globals.mix.is_none() && asset.header.len() >= 0x44 {
+                globals.mix = Some(crate::SoundMixNames {
+                    contexts: rows(0x24, 0x28, 36)
+                        .iter()
+                        .map(|b| (le32(b, 0), std::array::from_fn(|i| le32(b, 4 + i * 4))))
+                        .collect(),
+                    ducks: row_hashes(load, &asset.header, 0x34, 60, 0x20),
+                    futzes: row_hashes(load, &asset.header, 0x3c, 100, 0x20),
+                    snapshots: Vec::new(),
+                });
             }
             if globals.pans.is_empty() {
                 globals.pans = rows(20, 24, 60)
@@ -195,6 +225,19 @@ pub fn capture_t6_sounds<'n>(
     ));
     if !globals.groups.is_empty() {
         catalog.ingest_mixer_groups(crate::AssetNamespace::T6, globals.groups.clone());
+    }
+    if let Some(mut mix) = globals.mix.clone() {
+        // Each bank's mixer snapshots (76 bytes, at 0x18), every bank
+        // loaded.
+        for &load in loads {
+            for bank in load.assets.iter().filter(|a| a.ty == AssetType::SoundBank) {
+                if bank.header.len() >= 0x20 {
+                    mix.snapshots
+                        .extend(row_hashes(load, &bank.header, 0x18, 76, 0x20));
+                }
+            }
+        }
+        catalog.set_sound_mix_names(mix);
     }
     let mut loaded: BTreeMap<u32, Option<String>> = BTreeMap::new();
     let mut filled = Vec::new();
