@@ -16,7 +16,7 @@ pub struct WeaponCamouflage {
 
 pub(crate) fn prepare_t5(
     table: &CapturedStringTable,
-    choices: &CapturedStringTable,
+    choices: Option<&CapturedStringTable>,
     parent: &str,
     keys: &[MaterialKey],
     materials: &mut MaterialCatalog,
@@ -42,19 +42,25 @@ pub(crate) fn prepare_t5(
         })
         .collect();
     let mut out = Vec::new();
-    for choice in 0..choices.rows as i32 {
-        if choices.cell(choice, 1) != "camo" {
+    for row in 0..table.rows as i32 {
+        if table.cell(row, 1) != "camo" {
             continue;
         }
-        let Ok(slot @ 1..=63) = choices.cell(choice, 0).parse::<u8>() else {
+        let Ok(slot @ 1..=63) = table.cell(row, 0).parse::<u8>() else {
             continue;
         };
-        let Some(row) = (0..table.rows as i32).find(|&row| {
-            table.cell(row, 1) == "camo" && table.cell(row, 0).parse::<u8>() == Ok(slot)
-        }) else {
+        let choice = choices.and_then(|choices| {
+            (0..choices.rows as i32).find(|&c| {
+                choices.cell(c, 1) == "camo" && choices.cell(c, 0).parse::<u8>() == Ok(slot)
+            })
+        });
+        if choices.is_some() && choice.is_none() {
             continue;
-        };
+        }
         let gold = table.cell(row, 2) == "gold";
+        if choices.is_none() && !gold {
+            continue;
+        }
         let mut swaps = Vec::new();
         for (key, id, source) in &source_materials {
             let mut material = source.clone();
@@ -149,15 +155,27 @@ pub(crate) fn prepare_t5(
             swaps.push((key.clone(), to));
         }
         if !swaps.is_empty() {
+            let (name, caption_key, preview) = match (choices, choice) {
+                (Some(choices), Some(choice)) => (
+                    choices
+                        .cell(choice, 3)
+                        .strip_prefix("MPUI_CAMO_")
+                        .unwrap_or(choices.cell(choice, 4))
+                        .to_ascii_lowercase(),
+                    choices.cell(choice, 3).to_owned(),
+                    format!("t5:material/{}", choices.cell(choice, 6)),
+                ),
+                _ => (
+                    table.cell(row, 2).to_ascii_lowercase(),
+                    String::new(),
+                    String::new(),
+                ),
+            };
             out.push(WeaponCamouflage {
                 slot,
-                name: choices
-                    .cell(choice, 3)
-                    .strip_prefix("MPUI_CAMO_")
-                    .unwrap_or(choices.cell(choice, 4))
-                    .to_ascii_lowercase(),
-                caption_key: choices.cell(choice, 3).to_owned(),
-                preview: format!("t5:material/{}", choices.cell(choice, 6)),
+                name,
+                caption_key,
+                preview,
                 materials: swaps,
             });
         }

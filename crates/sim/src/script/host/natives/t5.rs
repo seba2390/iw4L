@@ -1168,8 +1168,6 @@ fn register_player(registry: &mut NativeRegistry) {
         "starttanning",
         "setsprintduration",
         "setsprintcooldown",
-        "disableweaponcycling",
-        "enableweaponcycling",
         "setlaststandprevweap",
         "setblockweaponpickup",
         "cameraactivate",
@@ -1189,22 +1187,55 @@ fn register_player(registry: &mut NativeRegistry) {
         "beginlocationmortarselection",
         "beginlocationnapalmselection",
     );
+    registry.register(Method, "disableweaponcycling", |world, receiver, _| {
+        let client = player_id(world, receiver)?;
+        crate::game_move::set_script_flag(
+            &mut crate::frame::FrameWorld::from_world(world),
+            crate::ClientId(client),
+            game_api::movement::ScriptFlag::NoWeaponCycling,
+            true,
+        );
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "enableweaponcycling", |world, receiver, _| {
+        let client = player_id(world, receiver)?;
+        crate::game_move::set_script_flag(
+            &mut crate::frame::FrameWorld::from_world(world),
+            crate::ClientId(client),
+            game_api::movement::ScriptFlag::NoWeaponCycling,
+            false,
+        );
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "calcplayeroptions", |world, receiver, args| {
         player_id(world, receiver)?;
         let pattern = if args.len() == 1 { 0 } else { int(args, 0)? };
         Ok(Value::Int(pattern << 26))
     });
+    // `calcweaponoptions`: in multiplayer, `(class, slot)` reads the custom
+    // class's camo; the direct form `(camo, [lens, [reticle, [reticle_color]]])`
+    // packs `(client + 1) << 21` and the 6-bit camo, 4-bit lens, 6-bit reticle
+    // and 3-bit reticle colour.
     registry.register(Method, "calcweaponoptions", |world, receiver, args| {
         let client = player_id(world, receiver)?;
-        let camo = if args.len() == 2 {
+        if args.len() == 2 {
             let class = crate::ClassId(int(args, 0)? as u32);
             let slot = usize::from(int(args, 1)? != 0);
-            super::super::players::personal_class(world, client, class)
-                .map_or(0, |class| i32::from(class.camos[slot]))
-        } else {
-            int(args, 0)?
-        };
-        Ok(Value::Int(camo & 63))
+            let camo = super::super::players::personal_class(world, client, class)
+                .map_or(0, |class| i32::from(class.camos[slot]));
+            return Ok(Value::Int(camo & 63));
+        }
+        let mut bits = (((client + 1) & 0x1f) << 21) | ((int(args, 0)? as u32) & 0x3f);
+        if args.len() > 1 {
+            bits ^= (bits ^ (((int(args, 1)? as u32) & 0xf) << 6)) & 0x3c0;
+            if args.len() > 2 {
+                bits ^= (bits ^ (((int(args, 2)? as u32) & 0x3f) << 10)) & 0xfc00;
+                if args.len() > 3 {
+                    bits ^= (bits ^ (((int(args, 3)? as u32) & 0x7) << 16)) & 0x7_0000;
+                }
+            }
+        }
+        Ok(Value::Int(bits as i32))
     });
 }
 

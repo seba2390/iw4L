@@ -131,27 +131,28 @@ Only the top-level items count.
   - [x] Muzzle flashes (view and world) and ejected shells, by Black Ops' client fire rules.
   - [ ] No tracer or view kick; viewmodel blend times and rates are the runtime's.
 - [x] Zombies spawn and animate (rising, or at a window).
-  - [x] Window spawns: boards torn off, mantle in.
-  - [ ] Rising from the ground unverified; legless (gibbed) crawlers, ragdoll and thrown gibs missing.
+  - [x] Window spawns (boards torn off, mantle in) and rising from the ground (`do_zombie_rise`: `scripted rise` from `-45` or `-14` below the spot to the floor, then `find_flesh`).
+  - [ ] Legless (gibbed) crawlers, ragdoll and thrown gibs missing.
 - [x] Zombies path to the player and get through barriers.
-  - [ ] No actor collision with the world while walking; traversal coverage unverified.
+  - [x] All ten of Kino's traversal scripts (54 `Begin` nodes: `zombie_mantle_over_40`, `zombie_jump_down_40`, `_72`, `_120`, `_127`, `_190`, `_240`, `_286`, `zombie_wall_crawl_drop` and `zombie_wall_crawl_drop_quick`) run from their start node to their end node.
+  - [ ] No actor collision with the world while walking.
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
 - [x] Rounds advance past round 1.
 - [x] Wall weapons and the Mystery Box.
-  - [ ] The box moving (teddy bear) and Fire Sale's extra boxes appearing at every location unverified.
+  - [x] The box moves when the teddy bear is rolled (the 950 points are refunded, `moving_chest_now` lifts the box away and shows rubble, and `level.chest_index` advances to the next location), and Fire Sale opens all nine chest locations at 10 points for 30 s before hiding the eight temporary chests again (`disabled` triggers are skipped by `use_sites`).
 - [ ] Doors and debris.
   - [x] Kino's doors open for points.
   - [ ] Debris (Five) not reached.
 - [x] Power and perks.
   - [x] The power switch, buying and drinking a perk (Quick Revive), the perk icon.
   - [x] Juggernog fills the player's health to 250 (`SetMaxHealth`).
-  - [x] Each perk's effect verified (`IW4L_TEST_TIMING`, `IW4L_TEST_WALK`, the go-down test): Speed Cola halves the m1911's reload (1800 → 900 ms), Double Tap shortens the Ray Gun's firing state (350 → 250 ms at 50 ms commands), Stamin-Up raises sprint from 281 to 310 units/s, and with Juggernog four zombie hits of 60 take 250 health to 10 and the fifth downs the player.
-  - [ ] The drink's stance and melee locks (`allowmelee` is not enforced).
+  - [x] Each perk's effect verified (`IW4L_TEST_TIMING`, `IW4L_TEST_WALK`, the go-down test): Speed Cola halves the m1911's reload (1800 → 900 ms), Double Tap shortens the Ray Gun's firing state (350 → 250 ms at 50 ms commands), Stamin-Up raises sprint from 281 to 310 units/s and doubles sprint duration from 4050 to 7950 ms (`IW4L_TEST_WALK=sprint`), and with Juggernog four zombie hits of 60 take 250 health to 10 and the fifth downs the player.
+  - [x] The drink's stance, melee and weapon-cycling locks (`allowmelee` sets the no-melee pm flag and `disableweaponcycling`/`enableweaponcycling` set and clear the weapon-cycling flag; `no_melee=true no_weapon_cycling=true` while drinking `zombie_perk_bottle_revive` and `false` after).
 - [x] Pack-a-Punch and every power-up.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
   - [x] Carpenter's far boards snap back into their windows (`dontinterpolate` on an entity flips its own teleport flag).
-  - [ ] The upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
+  - [x] Pack-a-Punch weapon options and camo: `calcweaponoptions` packs Black Ops' full weapon-options word (`(client + 1) << 21`, camo, lens, reticle, reticle colour), and `weaponoptions.csv` from `common_zombie_patch` dresses the 84 upgraded zombie weapons with the Pack-a-Punch silver etched camo (`camo_packapunch_c` / `_spec` / `_env`, slot 15); optic lens tint and custom zombie reticles remain open.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; with Quick Revive (`IW4L_TEST_PLAYER=revive`) the solo player holds `m1911_upgraded_zm` and revives after 10 s; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [x] Going down and `reviveplayer` raise Black Ops' stance animation events, clear damage counters and switch `startrevive`/`stoprevive`'s `LAST_STAND_REVIVED` move type (`t5.match.last_stand` closed).

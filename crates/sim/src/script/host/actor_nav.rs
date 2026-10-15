@@ -138,6 +138,25 @@ const NODE_STEP_HEIGHT: f32 = 72.0;
 
 impl ActorPaths {
     pub fn new(nodes: Vec<NavNode>) -> Self {
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for node in &nodes {
+            if node.kind == NavNodeKind::NegotiationBegin && !node.animscript.is_empty() {
+                *counts.entry(node.animscript.clone()).or_default() += 1;
+            }
+        }
+        if !counts.is_empty() {
+            let summary: Vec<String> = counts
+                .iter()
+                .map(|(name, n)| format!("{name}={n}"))
+                .collect();
+            diag::info!(
+                Sim,
+                "actor paths: {} nodes, {} traversal scripts: {}",
+                nodes.len(),
+                counts.len(),
+                summary.join(", ")
+            );
+        }
         Self { nodes }
     }
 
@@ -368,6 +387,7 @@ pub(crate) struct Traversal {
 /// animation's root motion puts it relative to `origin` and `yaw`.
 #[derive(Clone, Debug)]
 struct Scripted {
+    notify: String,
     origin: [f32; 3],
     yaw: f32,
     node: u16,
@@ -502,8 +522,23 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
         let node =
             super::actor_anims::play_scripted(world, id, &notify, &anim, root, rate, goal_time)?;
+        if notify == "rise" {
+            let anim_name = match &anim {
+                Value::Animation { name, .. } => name.as_ref(),
+                _ => "-",
+            };
+            diag::info!(
+                Sim,
+                "actor {id}: scripted {notify} ({anim_name}) from ({:.0} {:.0} {:.0}) yaw {:.0}",
+                origin[0],
+                origin[1],
+                origin[2],
+                angles[1]
+            );
+        }
         with_move(world, receiver, |movement| {
             movement.scripted = Some(Scripted {
+                notify,
                 origin,
                 yaw: angles[1],
                 node,
@@ -1020,6 +1055,15 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     ];
                     angles[1] = scripted.yaw + clip.abs_delta_yaw(time);
                     if !clip.looping && time >= 1.0 {
+                        if scripted.notify == "rise" {
+                            diag::info!(
+                                Sim,
+                                "actor {actor}: scripted rise done at ({:.0} {:.0} {:.0})",
+                                origin[0],
+                                origin[1],
+                                origin[2]
+                            );
+                        }
                         movement.scripted = None;
                     }
                 }

@@ -390,7 +390,9 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
     }
     let chests = items(runtime, field(runtime, 0, "chests"));
     for chest in chests.into_iter().filter_map(|c| object(Some(c))) {
-        if int(field(runtime, chest, "hidden")) == Some(1) {
+        if int(field(runtime, chest, "hidden")) == Some(1)
+            || int(field(runtime, chest, "disabled")) == Some(1)
+        {
             continue;
         }
         let stub = object(field(runtime, chest, "unitrigger_stub")).unwrap_or(chest);

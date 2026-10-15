@@ -1250,6 +1250,7 @@ pub(super) fn finish_zone_open<E>(
 pub(super) struct ZombieCommons {
     pub(super) xanims: XAnimBuild,
     pub(super) weapons: WeaponBuild,
+    pub(super) weapon_options: Option<asset_game::CapturedStringTable>,
     pub(super) fpv: FpvMeshBuild,
     pub(super) world_weapons: WorldWeaponBuild,
     pub(super) projectiles: asset_model::ProjectileMeshBuild,
@@ -1347,6 +1348,11 @@ pub(super) fn walk_zombie_commons(
             static_models.clone(),
         );
         let xanims = census.xanims.len();
+        for table in census.cac_tables {
+            if table.name.eq_ignore_ascii_case("weaponoptions.csv") {
+                commons.weapon_options = Some(table);
+            }
+        }
         commons.xanims.absorb(census.xanims);
         commons.weapons.absorb_overriding(census.weapons.clone());
         commons.fpv.absorb(census.fpv.clone());

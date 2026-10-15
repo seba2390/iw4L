@@ -319,6 +319,7 @@ pub struct MoveOutcome {
 pub struct MoveStatus {
     pub on_ladder: bool,
     pub mantling: bool,
+    pub sprinting: bool,
     /// What is left of the damage timer, in milliseconds.
     pub damage_timer: i32,
     pub no_melee: bool,

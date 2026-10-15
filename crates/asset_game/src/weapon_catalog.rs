@@ -2518,7 +2518,7 @@ impl WeaponBuild {
     pub fn prepare_t5_camouflages(
         &mut self,
         table: &crate::CapturedStringTable,
-        choices: &crate::CapturedStringTable,
+        choices: Option<&crate::CapturedStringTable>,
         materials: &mut asset_material::MaterialCatalog,
         fpv: &asset_model::FpvMeshBuild,
         world: &asset_model::WorldWeaponBuild,
@@ -2527,7 +2527,9 @@ impl WeaponBuild {
         let mut variants = HashMap::new();
         let mut count = 0;
         for row in &mut self.registry.rows {
-            if row.namespace != crate::AssetNamespace::T5 {
+            if row.namespace != crate::AssetNamespace::T5
+                || (choices.is_none() && !row.material_camos.is_empty())
+            {
                 continue;
             }
             let Some(parent) = row.skin_parent.as_deref() else {
@@ -2565,8 +2567,10 @@ impl WeaponBuild {
                     &mut variants,
                 ))
             });
-            row.material_camos = Arc::clone(camos);
-            count += usize::from(!camos.is_empty());
+            if !camos.is_empty() {
+                row.material_camos = Arc::clone(camos);
+                count += 1;
+            }
         }
         count
     }

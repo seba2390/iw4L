@@ -62,7 +62,9 @@ running match, which is where bot behaviour is judged: `make map mp_boneyard`
 fights, `rounds` adds god mode and ammo, `use` buys what the map offers, `down`/`revive`
 test going down, `watch` only logs. `IW4L_TEST_USE`, `_PERK`, `_GOTO`, `_BUILD` steer
 the use test; `_WIELD`, `_PLACE`, `_THROW`, `_GRAB`, `_REVIVE`, `_RIDE`, `_WALK` add
-actions; `_ACTORS`, `_WAITS`, `_VARS` add log fields; `_TIMING` logs each weapon state
+actions; `_ACTORS`, `_WAITS`, `_VARS` add log fields (`IW4L_TEST_WALK=sprint`
+extends the walk's sprint phase to 9 s and logs how many milliseconds the sprint
+lasted); `_TIMING` logs each weapon state
 change with how long the last state lasted (reload and fire times). Each hit that
 lowers its health is logged. With a game's own movement it
 also logs each change of the ladder, mantle, no-melee, no-cycling and being-revived

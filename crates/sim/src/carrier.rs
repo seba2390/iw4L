@@ -260,6 +260,26 @@ impl SimWorld {
         args: &[String],
     ) -> Result<(), String> {
         use crate::script::Value;
+        let find_target = |ecs: &mut bevy_ecs::world::World, spec: &str| -> Result<Value, String> {
+            let (name, nth) = match spec.rsplit_once(':') {
+                Some((n, idx)) => (
+                    n,
+                    idx.parse::<usize>()
+                        .map_err(|_| format!("bad targetname index {spec}"))?,
+                ),
+                None => (spec, 0),
+            };
+            let mut runtime = ecs.resource_mut::<crate::script::RoundScript>();
+            let mut ids: Vec<u64> = runtime.entities.keys().copied().collect();
+            ids.sort_unstable();
+            let wanted = Value::String(name.into());
+            let id = ids
+                .into_iter()
+                .filter(|&id| runtime.object_field(id, "targetname") == wanted)
+                .nth(nth)
+                .ok_or_else(|| format!("no entity named {spec}"))?;
+            Ok(Value::Object(id))
+        };
         let receiver = match receiver.strip_prefix("player") {
             Some(n) => {
                 let client = n.parse().map_err(|_| format!("bad receiver {receiver}"))?;
@@ -267,41 +287,36 @@ impl SimWorld {
             }
             None if receiver == "level" => Value::level(),
             None => match receiver.strip_prefix("targetname=") {
-                Some(name) => {
-                    let mut runtime = self.ecs.resource_mut::<crate::script::RoundScript>();
-                    let ids: Vec<u64> = runtime.entities.keys().copied().collect();
-                    let wanted = Value::String(name.into());
-                    let id = ids
-                        .into_iter()
-                        .find(|&id| runtime.object_field(id, "targetname") == wanted)
-                        .ok_or_else(|| format!("no entity named {name}"))?;
-                    Value::Object(id)
-                }
+                Some(spec) => find_target(&mut self.ecs, spec)?,
                 None => return Err(format!("bad receiver {receiver}")),
             },
         };
-        let args = args
-            .iter()
-            .map(|arg| {
-                if let Ok(n) = arg.parse::<i32>() {
-                    return Value::Int(n);
-                }
-                if let Ok(f) = arg.parse::<f32>() {
-                    return Value::Float(f);
-                }
-                let parts: Vec<f32> = arg
-                    .trim_start_matches('(')
-                    .trim_end_matches(')')
-                    .split(',')
-                    .filter_map(|part| part.trim().parse().ok())
-                    .collect();
-                match parts.as_slice() {
-                    [x, y, z] => Value::Vector([*x, *y, *z]),
-                    _ => Value::String(arg.as_str().into()),
-                }
-            })
-            .collect();
-        crate::script::start(&mut self.ecs, name, receiver, args)
+        let mut parsed_args = Vec::with_capacity(args.len());
+        for arg in args {
+            if let Some(spec) = arg.strip_prefix("targetname=") {
+                parsed_args.push(find_target(&mut self.ecs, spec)?);
+                continue;
+            }
+            if let Ok(n) = arg.parse::<i32>() {
+                parsed_args.push(Value::Int(n));
+                continue;
+            }
+            if let Ok(f) = arg.parse::<f32>() {
+                parsed_args.push(Value::Float(f));
+                continue;
+            }
+            let parts: Vec<f32> = arg
+                .trim_start_matches('(')
+                .trim_end_matches(')')
+                .split(',')
+                .filter_map(|part| part.trim().parse().ok())
+                .collect();
+            parsed_args.push(match parts.as_slice() {
+                [x, y, z] => Value::Vector([*x, *y, *z]),
+                _ => Value::String(arg.as_str().into()),
+            });
+        }
+        crate::script::start(&mut self.ecs, name, receiver, parsed_args)
             .map(|_| ())
             .map_err(|fault| fault.to_string())
     }

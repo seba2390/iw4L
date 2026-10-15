@@ -170,6 +170,21 @@ pub(crate) fn think(world: &mut World) {
                 .thread
                 .is_some_and(|thread| !crate::script::runtime::thread_alive(world, thread))
         {
+            if let Value::Vector(at) = world
+                .resource_mut::<RoundScript>()
+                .object_field(actor, "origin")
+            {
+                diag::info!(
+                    Sim,
+                    "actor {actor}: traversed {} ({}->{}) to ({:.0} {:.0} {:.0})",
+                    traversal.script,
+                    traversal.begin,
+                    traversal.end,
+                    at[0],
+                    at[1],
+                    at[2]
+                );
+            }
             if let Some(movement) = world
                 .resource_mut::<RoundScript>()
                 .actor_moves
@@ -238,6 +253,21 @@ pub(crate) fn think(world: &mut World) {
         }
         let main = match (&traversal, wanted) {
             (Some(traversal), AnimScript::Traverse) => {
+                if let Value::Vector(at) = world
+                    .resource_mut::<RoundScript>()
+                    .object_field(actor, "origin")
+                {
+                    diag::info!(
+                        Sim,
+                        "actor {actor}: traverse {} ({}->{}) from ({:.0} {:.0} {:.0})",
+                        traversal.script,
+                        traversal.begin,
+                        traversal.end,
+                        at[0],
+                        at[1],
+                        at[2]
+                    );
+                }
                 format!("animscripts/traverse/{}::main", traversal.script)
             }
             _ => format!("animscripts/{}{}::main", brain.prefix, wanted.module()),
