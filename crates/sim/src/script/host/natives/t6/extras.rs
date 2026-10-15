@@ -17,10 +17,14 @@ use std::sync::Arc;
 #[derive(Resource, Default)]
 struct OwnerTeams(BTreeMap<u64, (Option<u64>, Option<Arc<str>>)>);
 
-/// Each actor's gib flags, as the engine sends them in its gib event
-/// (`t6.actors.gib`: kept, not sent).
+/// Each actor's gib flags, as the engine sends them in its gib event.
 #[derive(Resource, Default)]
 struct Gibs(BTreeMap<u64, u32>);
+
+/// Pending gib events `(entity_number, flags)` for the client script VM
+/// (`CodeCallback_GibEvent`).
+#[derive(Resource, Default)]
+pub(crate) struct GibEvents(pub(crate) Vec<(i32, u32)>);
 
 /// The entity, refused for players and actors as SetOwner and SetTeam
 /// refuse them.
@@ -40,9 +44,9 @@ fn owned(world: &World, receiver: &Value, builtin: &str) -> Result<u64, String> 
 struct NoLean(std::collections::BTreeSet<u32>);
 
 /// Each actor's pitch settings: oriented to its slope, and its pitch angle
-/// allowed (`t6.actors.pitch`: kept, not applied).
+/// allowed.
 #[derive(Resource, Default)]
-struct ActorPitch(BTreeMap<u64, (bool, bool)>);
+pub(super) struct ActorPitch(pub(super) BTreeMap<u64, (bool, bool)>);
 
 fn actor(world: &World, receiver: &Value) -> Option<u64> {
     let id = super::super::engine::entity_id(world, receiver).ok()?;
@@ -263,6 +267,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 }
             }
         }
+        let number = world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .map_or(-1, |e| e.number);
+        if number >= 0 {
+            world
+                .get_resource_or_insert_with(GibEvents::default)
+                .0
+                .push((number, flags));
+        }
         world
             .get_resource_or_insert_with(Gibs::default)
             .0
@@ -349,6 +364,10 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .entry(id)
             .or_default()
             .0 = false;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        if let Value::Vector(angles) = runtime.object_field(id, "angles") {
+            runtime.set_object_field(id, "angles", Value::Vector([0.0, angles[1], angles[2]]));
+        }
         Ok(Value::Undefined)
     });
     registry.register(Method, "allowpitchangle", |world, receiver, args| {

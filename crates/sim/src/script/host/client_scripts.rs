@@ -12,7 +12,7 @@ use crate::script::{Fault, Location, MatchScript, NativeRegistry, Program, Round
 /// The client's runtime, held by the server's world between ticks.
 #[derive(Resource)]
 pub(crate) struct ClientScripts {
-    world: World,
+    pub(crate) world: World,
     setup: game_api::ClientScriptProgram,
     started: bool,
     /// A fault that stopped the client's scripts.
@@ -30,6 +30,7 @@ pub(crate) struct ClientCallbacks {
     pub(crate) state_change: Option<String>,
     pub(crate) activate_exploder: Option<String>,
     pub(crate) deactivate_exploder: Option<String>,
+    pub(crate) gib_event: Option<String>,
 }
 
 /// The server's world while the client's scripts run: the client game reads
@@ -139,6 +140,7 @@ pub(crate) fn install(
         state_change: callbacks.state_change.clone(),
         activate_exploder: callbacks.activate_exploder.clone(),
         deactivate_exploder: callbacks.deactivate_exploder.clone(),
+        gib_event: callbacks.gib_event.clone(),
     });
     server.insert_resource(ClientScripts {
         world,

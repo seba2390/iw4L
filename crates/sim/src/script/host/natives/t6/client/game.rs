@@ -483,6 +483,12 @@ fn sync_with(server: &mut World, client: &mut World) {
     let exploders = server
         .get_resource_mut::<ClientExploders>()
         .map_or_else(Vec::new, |mut exploders| std::mem::take(&mut exploders.0));
+    let gib_events: Vec<(u64, u32)> = server
+        .get_resource_mut::<super::super::extras::GibEvents>()
+        .map_or_else(Vec::new, |mut gibs| std::mem::take(&mut gibs.0))
+        .into_iter()
+        .filter_map(|(number, flags)| Some((game.entities.get(&number)?.object, flags)))
+        .collect();
     let gone: Vec<i32> = game
         .entities
         .keys()
@@ -559,25 +565,6 @@ fn sync_with(server: &mut World, client: &mut World) {
             diag::warn!(Sim, "csc: client field callback: {fault}");
         }
     }
-    for object in shutdowns {
-        crate::script::runtime::notify_now(
-            client,
-            Value::Object(object),
-            "entityshutdown",
-            Vec::new(),
-            now,
-        );
-        if let Some(name) = &callbacks.entity_shutdown {
-            run(
-                client,
-                name,
-                Value::level(),
-                vec![Value::Int(LOCAL_CLIENT), Value::Object(object)],
-                now,
-            );
-        }
-        client.resource_mut::<RoundScript>().request_delete(object);
-    }
     for (object, etype, aitype) in spawned {
         if let Some(aitype) = aitype {
             let main = format!("aitype/clientscripts/{aitype}::main");
@@ -604,6 +591,48 @@ fn sync_with(server: &mut World, client: &mut World) {
                 now,
             );
         }
+    }
+    if let Some(name) = &callbacks.gib_event {
+        for (object, flags) in gib_events {
+            let pieces: Vec<Value> = (0..8)
+                .filter(|&bit| (flags & (1 << bit)) != 0)
+                .map(Value::Int)
+                .collect();
+            let Ok(locations) = crate::script::host::arrays::new_array(client, pieces) else {
+                continue;
+            };
+            let kind = match flags >> 8 {
+                1 => "freeze",
+                2 => "up",
+                _ => "default",
+            };
+            run(
+                client,
+                name,
+                Value::Object(object),
+                vec![Value::Int(LOCAL_CLIENT), Value::string(kind), locations],
+                now,
+            );
+        }
+    }
+    for object in shutdowns {
+        crate::script::runtime::notify_now(
+            client,
+            Value::Object(object),
+            "entityshutdown",
+            Vec::new(),
+            now,
+        );
+        if let Some(name) = &callbacks.entity_shutdown {
+            run(
+                client,
+                name,
+                Value::level(),
+                vec![Value::Int(LOCAL_CLIENT), Value::Object(object)],
+                now,
+            );
+        }
+        client.resource_mut::<RoundScript>().request_delete(object);
     }
 }
 

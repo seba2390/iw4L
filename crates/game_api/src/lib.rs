@@ -149,6 +149,8 @@ pub struct ClientScriptCallbacks {
     pub activate_exploder: Option<String>,
     /// `(number)` on level when the server stops one.
     pub deactivate_exploder: Option<String>,
+    /// `(localclientnum, type, locations)` on an entity when `gib` fires.
+    pub gib_event: Option<String>,
 }
 
 /// The type of a map entity key's value.
