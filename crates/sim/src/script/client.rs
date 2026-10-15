@@ -73,6 +73,85 @@ pub(crate) struct LocalClient {
     pub(crate) object: u64,
     /// Whether the client has had a snapshot.
     pub(crate) has_snapshot: bool,
+    /// Its own player state, as its snapshot carries it.
+    pub(crate) player: LocalPlayerView,
+}
+
+/// A local client's own player state, which its client scripts read
+/// (`getLocalClientHealth`, `getCurrentWeapon`, `isADS`, …).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct LocalPlayerView {
+    pub(crate) health: i32,
+    pub(crate) max_health: i32,
+    /// The current weapon's name, `none` without one.
+    pub(crate) weapon: String,
+    /// Whether the weapon is raised at all toward aiming down its sights.
+    pub(crate) ads: bool,
+    pub(crate) meleeing: bool,
+    pub(crate) throwing_grenade: bool,
+    pub(crate) origin: [f32; 3],
+    pub(crate) velocity: [f32; 3],
+    pub(crate) angles: [f32; 3],
+    /// Its eye: origin raised by its view height, leaned.
+    pub(crate) eye: [f32; 3],
+    /// Its weapons' clip ammo, by weapon name.
+    pub(crate) clips: std::collections::BTreeMap<String, i32>,
+}
+
+/// The local client's player state from the server's world.
+fn local_player_view(server: &mut World) -> LocalPlayerView {
+    let id = crate::ClientId(0);
+    let (ps, max_health) = {
+        let frame = crate::frame::FrameWorld::from_world(server);
+        let Some(ps) = frame.player(id) else {
+            return LocalPlayerView::default();
+        };
+        let max_health = frame
+            .client_meta(id)
+            .map(|meta| meta.max_health)
+            .filter(|&n| n > 0)
+            .unwrap_or(ps.max_health);
+        (*ps, max_health)
+    };
+    let weapon = super::host::players::script_weapon(server, 0, ps.weapon);
+    let frame = crate::frame::FrameWorld::from_world(server);
+    let (meleeing, throwing_grenade) = crate::game_move::weapon_activity(&frame, id)
+        .map_or((false, false), |a| (a.meleeing, a.throwing_grenade));
+    let eye = math_iw4::add_lean_to_position(
+        [
+            ps.origin[0],
+            ps.origin[1],
+            ps.view_height_current + ps.origin[2],
+        ],
+        ps.viewangles[1],
+        ps.leanf,
+        16.0,
+        20.0,
+    );
+    let clips = ps
+        .weapons
+        .iter()
+        .filter_map(|&held| u32::try_from(held).ok().filter(|&w| w != 0))
+        .map(|held| {
+            (
+                crate::script_player::weapon_name(&frame, held),
+                crate::script_player::ammo_clip(&frame, id, held),
+            )
+        })
+        .collect();
+    LocalPlayerView {
+        health: ps.health,
+        max_health,
+        weapon: crate::script_player::weapon_name(&frame, weapon),
+        ads: ps.move_player(0, false).weapon_pos_frac > 0.0,
+        meleeing,
+        throwing_grenade,
+        origin: ps.origin,
+        velocity: ps.velocity,
+        angles: ps.viewangles,
+        eye,
+        clips,
+    }
 }
 
 /// What the client VM's natives see each frame.
@@ -372,7 +451,14 @@ struct MirroredEntity {
     flags: u16,
     has_eyes: bool,
     spawned_callback: bool,
+    /// Its origin in the last snapshot.
+    origin: [f32; 3],
 }
+
+/// The speed of each mirrored entity between its last two snapshots, in
+/// units per second, by client entity.
+#[derive(Resource, Default)]
+pub(crate) struct SnapshotSpeeds(pub(crate) std::collections::BTreeMap<u64, f32>);
 
 /// What the client sees of a server entity in its snapshot.
 #[derive(Clone, Debug)]
@@ -477,6 +563,7 @@ pub(crate) fn install(
         LocalClient {
             object,
             has_snapshot: false,
+            player: LocalPlayerView::default(),
         }
     };
     world.insert_resource(ClientView {
@@ -540,6 +627,8 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     .insert(name.clone(), value.clone());
             }
             sync_effect_table(server, &mut client.world);
+            let player = local_player_view(server);
+            client.world.resource_mut::<ClientView>().locals[0].player = player;
             let snapshots = collect_server_entities(server);
             run_frame(&mut client, tick, reason, messages, snapshots);
             let commands =
@@ -1046,7 +1135,18 @@ fn sync_snapshot_entities(
             if let Some(entry) = client.mirrored.get_mut(&snap.server_id) {
                 let prev = entry.flags;
                 entry.flags = snap.client_flags;
-                (entry.client_object, false, prev)
+                let d = std::array::from_fn::<f32, 3, _>(|i| snap.origin[i] - entry.origin[i]);
+                let speed = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+                    / crate::MATCH_TICK_MS as f32
+                    * 1000.0;
+                entry.origin = snap.origin;
+                let object = entry.client_object;
+                client
+                    .world
+                    .get_resource_or_insert_with(SnapshotSpeeds::default)
+                    .0
+                    .insert(object, speed);
+                (object, false, prev)
             } else {
                 let object = if snap.kind == EntityKind::Player && snap.number == 0 {
                     local_player_0
@@ -1069,6 +1169,7 @@ fn sync_snapshot_entities(
                         flags: snap.client_flags,
                         has_eyes: false,
                         spawned_callback: false,
+                        origin: snap.origin,
                     },
                 );
                 (object, true, 0)
@@ -1238,6 +1339,9 @@ fn shutdown_mirrored(
                 vec![Value::Int(0), Value::Object(entry.client_object)],
             );
         }
+    }
+    if let Some(mut speeds) = client.world.get_resource_mut::<SnapshotSpeeds>() {
+        speeds.0.remove(&entry.client_object);
     }
     if entry.client_object != local_player_0 {
         client

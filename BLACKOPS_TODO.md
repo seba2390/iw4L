@@ -44,9 +44,11 @@ lights (`makelight` from the map's compiled primary lights, typed by
 `rotate*`, drawn through server twins) run; light changes are not drawn yet
 (`t5.csc.light_render`). Its sounds carry playback ids: the local sound
 system plays, stops and fades them by id and reports back whether they play,
-how far and how long, which `_music.csc` waits on. Still unrun on the
-client: line emitters, ambient rooms, sound contexts and snapshots and the
-client's view of its player (`t5.csc.run`).
+how far and how long, which `_music.csc` waits on. The client reads its own
+player state (health, weapon, ADS, melee, grenade, position, eye, clip ammo,
+speed), so the Thundergun's power cells, the pilot light and the ambient
+elements run. Still unrun on the client: line emitters, ambient rooms, sound
+contexts and snapshots, vision and fog (`t5.csc.run`).
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are

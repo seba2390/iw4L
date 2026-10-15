@@ -6,7 +6,8 @@ use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
 use crate::script::client::{
     ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientOutput, ClientSoundReports,
-    ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LoopSource,
+    ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LocalPlayerView, LoopSource,
+    SnapshotSpeeds,
 };
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
@@ -316,6 +317,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(0))
     });
     register_effects(registry);
+    register_player_view(registry);
     register_models(registry);
     register_lights(registry);
     // `ent delete()`: a client-only entity notifies `death` and
@@ -557,6 +559,96 @@ fn register_effects(registry: &mut NativeRegistry) {
             .resource_mut::<ClientOutput>()
             .effect_alive(handle, now);
         Ok(Value::Int(alive.into()))
+    });
+}
+
+/// The local client's own player state.
+fn player_view(world: &World) -> &LocalPlayerView {
+    &world.resource::<ClientView>().locals[0].player
+}
+
+/// A player-state builtin's one argument, the local client.
+fn one_local(args: &[Value], refusal: &str) -> Result<(), String> {
+    if args.len() != 1 {
+        return Err(refusal.into());
+    }
+    local_index(args)?;
+    Ok(())
+}
+
+fn register_player_view(registry: &mut NativeRegistry) {
+    use Namespace::{Function, Method};
+    registry.register(Function, "getlocalclienthealth", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Int(player_view(world).health))
+    });
+    registry.register(Function, "getlocalclientmaxhealth", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Int(player_view(world).max_health))
+    });
+    registry.register(Function, "getcurrentweapon", |world, _, args| {
+        one_local(args, "GetCurrentWeapon() called with wrong params.\n")?;
+        Ok(Value::string(&player_view(world).weapon))
+    });
+    // Aiming at all: the weapon has begun to raise to its sights.
+    registry.register(Function, "isads", |world, _, args| {
+        one_local(args, "IsADS() called with wrong params.\n")?;
+        Ok(Value::Int(player_view(world).ads.into()))
+    });
+    registry.register(Function, "ismeleeing", |world, _, args| {
+        one_local(args, "IsMeleeing() called with wrong params.\n")?;
+        Ok(Value::Int(player_view(world).meleeing.into()))
+    });
+    registry.register(Function, "isthrowinggrenade", |world, _, args| {
+        one_local(args, "IsThrowingGrenade() called with wrong params.\n")?;
+        Ok(Value::Int(player_view(world).throwing_grenade.into()))
+    });
+    // On a turret: the runtime's Black Ops players never mount one
+    // (`t5.turret.use`).
+    registry.register(Function, "isonturret", |_, _, args| {
+        one_local(args, "isonturret() called with wrong params.\n")?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Function, "getlocalclientpos", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Vector(player_view(world).origin))
+    });
+    registry.register(Function, "getlocalclientangles", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Vector(player_view(world).angles))
+    });
+    registry.register(Function, "getlocalclienteyepos", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Vector(player_view(world).eye))
+    });
+    // `getWeaponAmmoClip(local, weapon)`: the clip of a weapon the player
+    // holds, 0 for any other.
+    registry.register(Function, "getweaponammoclip", |world, _, args| {
+        if args.len() != 2 {
+            return Err("GetWeaponAmmoClip() called with wrong params.\n".into());
+        }
+        local_index(args)?;
+        let weapon = string(args, 1)?;
+        Ok(Value::Int(
+            player_view(world).clips.get(&weapon).copied().unwrap_or(0),
+        ))
+    });
+    // `ent getSpeed()`: the local player's velocity, any other entity's
+    // move between its last two snapshots, per second.
+    registry.register(Method, "getspeed", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if locals(world).contains(&id) {
+            let v = player_view(world).velocity;
+            return Ok(Value::Float(
+                (v[2] * v[2] + v[1] * v[1] + v[0] * v[0]).sqrt(),
+            ));
+        }
+        Ok(Value::Float(
+            world
+                .get_resource::<SnapshotSpeeds>()
+                .and_then(|speeds| speeds.0.get(&id).copied())
+                .unwrap_or(0.0),
+        ))
     });
 }
 
