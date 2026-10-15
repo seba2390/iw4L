@@ -5,9 +5,9 @@
 use fastfile_t6::weapon::{WeaponDefView, def, variant};
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
-    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWorld,
-    PlayerMovement, Stance, WaterSurface, WeaponActivity, WeaponNotify, WeaponNotifyMemory,
-    buttons as intent,
+    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
+    MoveWorld, PlayerMovement, ScriptFlag, Stance, WaterSurface, WeaponActivity, WeaponNotify,
+    WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t6::events::event;
@@ -760,6 +760,64 @@ impl PlayerMovement for T6Movement {
             } else {
                 pm_type::LAST_STAND
             };
+        }
+        pack(player, &mut ps, &mut last);
+    }
+
+    /// `isonladder` and `ismantling` read the ladder and mantle pm flags;
+    /// the rest is for a test player's log.
+    fn status(&self, player: &MovePlayer) -> Option<MoveStatus> {
+        let mut copy = *player;
+        let (ps, _) = unpack(&mut copy);
+        Some(MoveStatus {
+            on_ladder: ps.pm_flags & pm_flags::LADDER != 0,
+            mantling: ps.pm_flags & pm_flags::MANTLE != 0,
+            damage_timer: ps.damage_timer,
+            no_melee: ps.pm_flags & pm_flags::NO_MELEE != 0,
+            no_weapon_cycling: ps.weap_flags & movement_t6::state::weap_flags::CYCLING_DISABLED
+                != 0,
+            being_revived: ps.pm_type == pm_type::LAST_STAND_REVIVED,
+        })
+    }
+
+    /// `allowmelee` sets the no-melee pm flag; `disableweaponcycling` and
+    /// `enableweaponcycling` the weapon flag that keeps an empty weapon in
+    /// hand.
+    fn set_script_flag(&self, player: &mut MovePlayer, flag: ScriptFlag, on: bool) -> Option<bool> {
+        let (mut ps, mut last) = unpack(player);
+        let (word, bit) = match flag {
+            ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
+            ScriptFlag::NoWeaponCycling => (
+                &mut ps.weap_flags,
+                movement_t6::state::weap_flags::CYCLING_DISABLED,
+            ),
+        };
+        let was = *word & bit != 0;
+        if on {
+            *word |= bit;
+        } else {
+            *word &= !bit;
+        }
+        pack(player, &mut ps, &mut last);
+        Some(was)
+    }
+
+    /// `finishplayerdamage` adds the time per point of damage, up to the
+    /// cap, and the duration is where the timer starts;
+    /// `reviveplayer` clears both.
+    fn damage_timer(&self, player: &mut MovePlayer, damage: Option<i32>) {
+        use movement_t6::tuning::{DMGTIMER_MAX_TIME, DMGTIMER_TIME_PER_POINT};
+        let (mut ps, mut last) = unpack(player);
+        match damage {
+            Some(damage) => {
+                ps.damage_timer = (ps.damage_timer as f32 + damage as f32 * DMGTIMER_TIME_PER_POINT)
+                    .min(DMGTIMER_MAX_TIME) as i32;
+                ps.damage_duration = ps.damage_timer;
+            }
+            None => {
+                ps.damage_timer = 0;
+                ps.damage_duration = 0;
+            }
         }
         pack(player, &mut ps, &mut last);
     }

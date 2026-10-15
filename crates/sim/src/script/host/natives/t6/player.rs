@@ -1,5 +1,6 @@
-//! Black Ops 2's player builtins over IW4L's player state, which the owner
-//! lends Black Ops 2 with its movement (`t6.movement.player`).
+//! Black Ops 2's player builtins over IW4L's shared player state and the
+//! state Black Ops 2's own movement keeps (`movement_t6`, through
+//! `game_move`).
 
 use super::super::super::players::{LinkView, PlayerLink};
 use super::super::player::player;
@@ -157,8 +158,8 @@ fn player_link(
 
 pub(super) fn register(registry: &mut NativeRegistry) {
     // gscm_giveweapon: a weapon with an offhand slot becomes the player's
-    // offhand when he has none (`t6.weapons.state_machine`: by the lent
-    // weapon's offhand class).
+    // offhand when he has none (`t6.weapons.state_machine`: by the shared
+    // equipment facts' offhand class).
     registry.register(Namespace::Method, "giveweapon", |world, receiver, args| {
         let (id, weapon) = super::super::player::give_weapon(world, receiver, args)?;
         crate::script_player::equip_offhand(&mut FrameWorld::from_world(world), id, weapon);
@@ -338,16 +339,16 @@ fn register_rest(registry: &mut NativeRegistry) {
         ))
     });
     registry.register(Method, "isonladder", |world, receiver, _| {
-        pm_flag(world, receiver, LADDER)
+        move_status(world, receiver, |s| s.on_ladder)
     });
     registry.register(Method, "ismantling", |world, receiver, _| {
-        pm_flag(world, receiver, MANTLING)
+        move_status(world, receiver, |s| s.mantling)
     });
     // Sprinting and aiming down the sights: the shared allowances, through
-    // the game's own movement when it has one. Melee: the handler sets its
-    // no-melee pm flag; IW4L takes the melee button from the lent
-    // movement's commands instead (`t6.player.allowances`). Each answers the
-    // previous allowance.
+    // the game's own movement when it has one. Melee: the handler sets the
+    // no-melee pm flag in `movement_t6`, and IW4L also takes the melee
+    // button from the player's commands (`t6.player.allowances`). Each
+    // answers the previous allowance.
     registry.register(Method, "allowsprint", |world, receiver, args| {
         allowance(
             world,
@@ -375,10 +376,14 @@ fn register_rest(registry: &mut NativeRegistry) {
             |world, receiver, args| {
                 let id = ClientId(player(world, receiver)?);
                 let allowed = int(args, 0)? != 0;
-                FrameWorld::from_world(world)
-                    .client_meta_mut(id)
-                    .controls
-                    .melee_disabled = !allowed;
+                let mut frame = FrameWorld::from_world(world);
+                crate::game_move::set_script_flag(
+                    &mut frame,
+                    id,
+                    game_api::movement::ScriptFlag::NoMelee,
+                    !allowed,
+                );
+                frame.client_meta_mut(id).controls.melee_disabled = !allowed;
                 Ok(Value::Undefined)
             },
         )
@@ -873,18 +878,21 @@ fn allowance(
 }
 
 /// The player-state flag bits the engine reads for these queries.
-const MANTLING: u32 = 2;
-const LADDER: u32 = 3;
-
-fn pm_flag(world: &mut World, receiver: &Value, bit: u32) -> Result<Value, String> {
+/// gscm_isonladder and gscm_ismantling: the ladder and mantle pm flags,
+/// which `movement_t6` keeps.
+fn move_status(
+    world: &mut World,
+    receiver: &Value,
+    flag: fn(&game_api::movement::MoveStatus) -> bool,
+) -> Result<Value, String> {
     let id = ClientId(
         player(world, receiver)
             .map_err(|_| "setstat: entity must be a player entity".to_owned())?,
     );
     Ok(Value::Int(
-        FrameWorld::from_world(world)
-            .player(id)
-            .map_or(0, |ps| (ps.pm_flags >> bit & 1) as i32),
+        crate::game_move::status(&FrameWorld::from_world(world), id)
+            .is_some_and(|status| flag(&status))
+            .into(),
     ))
 }
 
