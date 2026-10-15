@@ -1,4 +1,4 @@
-use super::{Environment, FaultKind, METAMETHODS, Value};
+use super::{Environment, FaultKind, FieldLookup, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -178,7 +178,10 @@ impl Tables {
         Ok(())
     }
 
-    fn metafield(&self, container: &Value, name: &[u8]) -> Result<Value, FaultKind> {
+    pub fn metafield(&self, container: &Value, name: &[u8]) -> Result<Value, FaultKind> {
+        if !matches!(container, Value::Reference { kind: 5 | 7, .. }) {
+            return Ok(Value::Nil);
+        }
         match self.metatable(container)? {
             Some(table) => self.raw_get(&table, &Value::Bytes(Arc::from(name))),
             None => Ok(Value::Nil),
@@ -204,12 +207,23 @@ impl Environment for Tables {
     }
 
     fn field(&mut self, container: &Value, key: &Value) -> Result<Value, FaultKind> {
+        match self.lookup_field(container, key)? {
+            FieldLookup::Value(value) => Ok(value),
+            FieldLookup::MetaCall { .. } => Err(FaultKind::BindingRequired),
+        }
+    }
+
+    fn lookup_global(&mut self, key: &Value) -> Result<FieldLookup, FaultKind> {
+        self.lookup_field(&self.globals.clone(), key)
+    }
+
+    fn lookup_field(&mut self, container: &Value, key: &Value) -> Result<FieldLookup, FaultKind> {
         let mut current = container.clone();
         for _ in 0..=32 {
             if matches!(current, Value::Reference { kind: 5, .. }) {
                 let value = self.raw_get(&current, key)?;
                 if !matches!(value, Value::Nil) {
-                    return Ok(value);
+                    return Ok(FieldLookup::Value(value));
                 }
             }
             if matches!(current, Value::Bytes(_)) {
@@ -217,15 +231,21 @@ impl Environment for Tables {
                     &self.globals,
                     &Value::Bytes(std::sync::Arc::from(b"string".as_slice())),
                 )?;
-                return self.raw_get(&library, key);
+                return self.raw_get(&library, key).map(FieldLookup::Value);
             }
             let index = self.metafield(&current, b"__index")?;
-            if matches!(index, Value::Reference { kind: 9 | 10, .. }) {
-                return Err(FaultKind::Unknown(METAMETHODS));
+            if matches!(index, Value::Reference { kind: 9 | 10, .. })
+                || (matches!(index, Value::Reference { kind: 5 | 7, .. })
+                    && !matches!(self.metafield(&index, b"__call")?, Value::Nil))
+            {
+                return Ok(FieldLookup::MetaCall {
+                    callee: index,
+                    arguments: vec![current, key.clone()],
+                });
             }
             if matches!(index, Value::Nil) {
                 return if matches!(current, Value::Reference { kind: 5, .. }) {
-                    Ok(Value::Nil)
+                    Ok(FieldLookup::Value(Value::Nil))
                 } else {
                     Err(FaultKind::BindingRequired)
                 };
@@ -245,23 +265,61 @@ impl Environment for Tables {
     }
 
     fn set_field(&mut self, container: &Value, key: &Value, value: Value) -> Result<(), FaultKind> {
+        match self.assign_field(container, key, value)? {
+            None => Ok(()),
+            Some(_) => Err(FaultKind::BindingRequired),
+        }
+    }
+
+    fn assign_global(
+        &mut self,
+        key: &Value,
+        value: Value,
+    ) -> Result<Option<(Value, Vec<Value>)>, FaultKind> {
+        self.assign_field(&self.globals.clone(), key, value)
+    }
+
+    fn assign_field(
+        &mut self,
+        container: &Value,
+        key: &Value,
+        value: Value,
+    ) -> Result<Option<(Value, Vec<Value>)>, FaultKind> {
         let mut current = container.clone();
         for _ in 0..=32 {
             if matches!(current, Value::Reference { kind: 5, .. })
                 && !matches!(self.raw_get(&current, key)?, Value::Nil)
             {
-                return self.raw_set(&current, key, value);
+                self.raw_set(&current, key, value)?;
+                return Ok(None);
             }
             let newindex = self.metafield(&current, b"__newindex")?;
             if matches!(newindex, Value::Nil) {
-                return self.raw_set(&current, key, value);
+                self.raw_set(&current, key, value)?;
+                return Ok(None);
             }
-            if matches!(newindex, Value::Reference { kind: 9 | 10, .. }) {
-                return Err(FaultKind::Unknown(METAMETHODS));
+            if matches!(newindex, Value::Reference { kind: 9 | 10, .. })
+                || (matches!(newindex, Value::Reference { kind: 5 | 7, .. })
+                    && !matches!(self.metafield(&newindex, b"__call")?, Value::Nil))
+            {
+                return Ok(Some((newindex, vec![current, key.clone(), value])));
             }
             self.index(&newindex)?;
             current = newindex;
         }
         Err(FaultKind::IndexChain)
+    }
+
+    fn equal_metamethod(
+        &mut self,
+        left: &Value,
+        right: &Value,
+    ) -> Result<Option<Value>, FaultKind> {
+        let tm1 = self.metafield(left, b"__eq")?;
+        if matches!(tm1, Value::Nil) {
+            return Ok(None);
+        }
+        let tm2 = self.metafield(right, b"__eq")?;
+        Ok((tm1 == tm2).then_some(tm1))
     }
 }

@@ -30,6 +30,7 @@ pub struct State {
     pub material: Option<u32>,
     pub font: Option<u32>,
     pub alignment: Option<u8>,
+    pub ui_3d_window: Option<i32>,
     pub horizontal: Axis,
     pub vertical: Axis,
     pub resolved_rectangle: [f32; 4],
@@ -61,6 +62,7 @@ impl Default for Element {
                 material: None,
                 font: None,
                 alignment: None,
+                ui_3d_window: None,
                 horizontal: Axis::default(),
                 vertical: Axis::default(),
                 resolved_rectangle: [0.0; 4],
@@ -139,6 +141,9 @@ impl State {
         if target.alignment.is_some() {
             self.alignment = target.alignment;
         }
+        if target.ui_3d_window.is_some() {
+            self.ui_3d_window = target.ui_3d_window;
+        }
     }
 }
 
@@ -174,6 +179,9 @@ impl Element {
         }
         if target.alignment.is_some() {
             self.current.alignment = target.alignment;
+        }
+        if target.ui_3d_window.is_some() {
+            self.current.ui_3d_window = target.ui_3d_window;
         }
         self.animation_target = Some(target);
         self.animation_timer = Some(animation::AnimationTimer::new(duration, options));

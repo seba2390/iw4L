@@ -4,15 +4,8 @@ use super::script::runtime::{Bindings, Callback};
 use super::script::tables::Tables;
 use super::script::{Environment, FaultKind, Value};
 use super::{Changes, Element, State};
-use game_api::{Unknown, unknown};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
-
-const GC: &Unknown = unknown!(
-    "t6.ui.gc",
-    "LUI elements and animation states are never collected",
-    "Black Ops 2's LUI element and animation-state collectors"
-);
 
 const CONSTRUCT: u32 = 7;
 const COLLECT: u32 = 8;
@@ -283,7 +276,18 @@ impl Bindings for Elements {
     ) -> Result<Vec<Value>, FaultKind> {
         match function {
             CONSTRUCT => Ok(vec![self.construct(tables)?]),
-            COLLECT | COLLECT_ANIMATION_STATE => Err(FaultKind::Unknown(GC)),
+            COLLECT => {
+                if let Some(Value::Reference { kind: 7, identity }) = arguments.first() {
+                    self.elements.remove(identity);
+                }
+                Ok(Vec::new())
+            }
+            COLLECT_ANIMATION_STATE => {
+                if let Some(Value::Reference { kind: 7, identity }) = arguments.first() {
+                    self.animation_states.remove(identity);
+                }
+                Ok(Vec::new())
+            }
             SET_LAYOUT_CACHED => {
                 self.set_layout_cached(arguments)?;
                 Ok(Vec::new())
