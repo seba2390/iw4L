@@ -177,6 +177,7 @@ fn apply_entity_blast(world: &mut FrameWorld, blast: &ExplosionBlast) {
                 target,
                 amount,
                 attacker: Some(blast.attacker),
+                attacker_object: None,
                 means,
                 weapon: blast.weapon,
                 point: mid,

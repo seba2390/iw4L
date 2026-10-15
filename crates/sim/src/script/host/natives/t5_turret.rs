@@ -2,8 +2,10 @@
 //! its handlers keep them: the spawn reads the turret from the map's keys
 //! and its weapon (`game_api::turret::TurretRules`); the methods set its
 //! mode, team, arcs, convergence and drop pitch and read what the turret
-//! keeps. The turret's own think, and a player using it, are not run
-//! (`t5.turret.think`, `t5.turret.use`).
+//! keeps. The game's own think runs every think interval and its shot fires
+//! for `shootturret`, both through the match's fire world; the sentients
+//! they search are kept in the game's slot order here. A player using a
+//! turret is not run (`t5.turret.use`).
 
 use super::super::args::{arg, float, string};
 use super::super::entities::EntityKind;
@@ -11,7 +13,7 @@ use super::engine::entity_id;
 use crate::frame::FrameWorld;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
-use game_api::turret::{TurretRules, TurretSpawn};
+use game_api::turret::{GameTurret, TurretRules, TurretState};
 use std::collections::BTreeMap;
 
 /// `setmode`'s bits: aims for the AI, aims by itself.
@@ -31,16 +33,15 @@ const HAS_TARGET: u32 = 0x40;
 const TEAM_AXIS: i32 = 1;
 const TEAM_ALLIES: i32 = 2;
 
-/// What the engine keeps for a turret.
+/// What the engine keeps for a turret: the game's turret, with the
+/// entities it names kept as script objects between thinks.
 #[derive(Clone, Debug)]
 struct Turret {
-    spawned: TurretSpawn,
+    game: GameTurret,
     /// `settargetentity`.
     manual_target: Option<u64>,
     /// The think's target, with [`HAS_TARGET`].
     target: Option<u64>,
-    /// The think's firing state (`isfiringturret`).
-    firing: bool,
     /// A player is on the turret (`getturretowner`).
     in_use: bool,
     /// `setturretowner`.
@@ -50,7 +51,12 @@ struct Turret {
 #[derive(Resource, Default)]
 struct Turrets(BTreeMap<u64, Turret>);
 
-fn rules(world: &mut World) -> Option<TurretRules> {
+/// The game's sentient pool: the players and living actors, each in the
+/// lowest slot free when it joined.
+#[derive(Resource, Default)]
+pub(crate) struct Sentients(Vec<Option<u64>>);
+
+pub(crate) fn rules(world: &mut World) -> Option<TurretRules> {
     FrameWorld::from_world(world)
         .bootstrap_ref()
         .mode
@@ -124,12 +130,16 @@ fn spawn(world: &mut World, rules: &TurretRules, id: u64) -> Result<Turret, Stri
         keys.insert(key, value);
     }
     let frame = FrameWorld::from_world(world);
-    let weapon = crate::script_player::weapon_named(&frame, &weapon_name)
-        .ok()
-        .and_then(|index| frame.content().game_weapon(index).cloned());
-    let spawned = (rules.spawn)(weapon.as_ref(), &weapon_name, &|key| {
-        keys.get(key.to_ascii_lowercase().as_str()).copied()
-    })?;
+    let index = crate::script_player::weapon_named(&frame, &weapon_name).ok();
+    let weapon = index.and_then(|index| frame.content().game_weapon(index).cloned());
+    let [two_barrels] =
+        super::super::presence::tags_present(world, id, ["tag_flash_2"]).unwrap_or([false]);
+    let spawned = (rules.spawn)(
+        weapon.as_ref(),
+        &weapon_name,
+        &|key| keys.get(key.to_ascii_lowercase().as_str()).copied(),
+        &|tag| tag == "tag_flash_2" && two_barrels,
+    )?;
     let mut runtime = world.resource_mut::<RoundScript>();
     if matches!(
         runtime.object_field(id, "health"),
@@ -138,10 +148,17 @@ fn spawn(world: &mut World, rules: &TurretRules, id: u64) -> Result<Turret, Stri
         runtime.set_object_field(id, "health", Value::Int(spawned.default_health));
     }
     Ok(Turret {
-        spawned,
+        game: GameTurret {
+            entity: runtime.entities[&id].number,
+            weapon: index.unwrap_or(0),
+            spawn: spawned,
+            state: TurretState {
+                cursor: -1,
+                ..TurretState::default()
+            },
+        },
         manual_target: None,
         target: None,
-        firing: false,
         in_use: false,
         owner: None,
     })
@@ -182,7 +199,7 @@ fn read(world: &World, receiver: &Value) -> Result<Turret, String> {
 
 fn flags(world: &mut World, receiver: &Value, set: u32, clear: u32) -> Result<Value, String> {
     edit(world, receiver, |t| {
-        t.spawned.flags = (t.spawned.flags & !clear) | set
+        t.game.spawn.flags = (t.game.spawn.flags & !clear) | set
     })
 }
 
@@ -236,7 +253,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 "unknown team '{team}', should be 'axis' or 'allies'\n"
             ));
         };
-        edit(world, receiver, |t| t.spawned.team = team)
+        edit(world, receiver, |t| t.game.spawn.team = team)
     });
     // One argument sets the yaw time; a second names "yaw" or "pitch".
     registry.register(Method, "setconvergencetime", |world, receiver, args| {
@@ -251,7 +268,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             1
         };
         let ms = (f64::from(float(args, 0)?) * 1000.0) as i32;
-        edit(world, receiver, |t| t.spawned.convergence_ms[axis] = ms)
+        edit(world, receiver, |t| t.game.spawn.convergence_ms[axis] = ms)
     });
     fn arc(
         world: &mut World,
@@ -268,16 +285,16 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     }
     registry.register(Method, "setrightarc", |w, r, a| {
-        arc(w, r, a, |t, d| t.spawned.arcs.right = (-d).min(0.0))
+        arc(w, r, a, |t, d| t.game.spawn.arcs.right = (-d).min(0.0))
     });
     registry.register(Method, "setleftarc", |w, r, a| {
-        arc(w, r, a, |t, d| t.spawned.arcs.left = d.max(0.0))
+        arc(w, r, a, |t, d| t.game.spawn.arcs.left = d.max(0.0))
     });
     registry.register(Method, "settoparc", |w, r, a| {
-        arc(w, r, a, |t, d| t.spawned.arcs.top = (-d).min(0.0))
+        arc(w, r, a, |t, d| t.game.spawn.arcs.top = (-d).min(0.0))
     });
     registry.register(Method, "setbottomarc", |w, r, a| {
-        arc(w, r, a, |t, d| t.spawned.arcs.bottom = d.max(0.0))
+        arc(w, r, a, |t, d| t.game.spawn.arcs.bottom = d.max(0.0))
     });
     registry.register(Method, "setdefaultdroppitch", |world, receiver, args| {
         if args.len() != 1 {
@@ -290,7 +307,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .0
             .get_mut(&id)
             .unwrap()
-            .spawned
+            .game
+            .spawn
             .drop_pitch = pitch;
         Ok(Value::Undefined)
     });
@@ -306,12 +324,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 entity_id(world, receiver)?;
                 return Ok(Value::Undefined);
             }
-            Err(unrun(world, |rules| rules.think))
+            Err(unrun(world, |rules| rules.restore_drop_pitch))
         },
     );
     registry.register(Method, "shootturret", |world, receiver, _| {
-        turret(world, receiver, NOT_A_TURRET)?;
-        Err(unrun(world, |rules| rules.think))
+        let id = turret(world, receiver, NOT_A_TURRET)?;
+        if let Some(rules) = rules(world) {
+            run(world, id, rules.shoot);
+        }
+        Ok(Value::Undefined)
     });
     registry.register(Method, "stopshootturret", |world, receiver, _| {
         turret(world, receiver, NOT_A_TURRET)?;
@@ -345,14 +366,16 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "getturrettarget", |world, receiver, _| {
         let turret = read(world, receiver)?;
-        Ok(if turret.spawned.flags & HAS_TARGET != 0 {
+        Ok(if turret.game.spawn.flags & HAS_TARGET != 0 {
             object(world, turret.target)
         } else {
             Value::Undefined
         })
     });
     registry.register(Method, "isfiringturret", |world, receiver, _| {
-        Ok(Value::Int(read(world, receiver)?.firing.into()))
+        Ok(Value::Int(
+            (read(world, receiver)?.game.state.firing != 0).into(),
+        ))
     });
     // Black Ops' handler for it does nothing.
     registry.register(Method, "setturretaccuracy", |_, _, _| Ok(Value::Undefined));
@@ -367,4 +390,271 @@ fn unrun(world: &mut World, which: fn(&TurretRules) -> &'static game_api::Unknow
         }
         None => "this mode has no turrets".into(),
     }
+}
+
+/// Runs a turret rule (its think, its shot) on one turret against the
+/// match, keeping what it changed; gaps it reaches are reported.
+fn run(world: &mut World, id: u64, rule: game_api::turret::TurretThinkFn) {
+    let Some(mut turret) = world
+        .get_resource::<Turrets>()
+        .and_then(|turrets| turrets.0.get(&id).cloned())
+    else {
+        return;
+    };
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let gaps = {
+        let mut frame = FrameWorld::from_world(world);
+        let mut around = crate::game_fire::MatchFireWorld::new(&mut frame, tick, None);
+        turret.game.entity = around.number_of_object(id);
+        turret.game.state.manual_target = turret.manual_target.map(|o| around.number_of_object(o));
+        turret.game.state.owner = turret.owner.map(|o| around.number_of_object(o));
+        let gaps = rule(&mut turret.game, &mut around);
+        turret.target = turret.game.state.target.and_then(|n| around.object(n));
+        gaps
+    };
+    let mut frame = FrameWorld::from_world(world);
+    for gap in gaps {
+        frame.report_game_gap(gap);
+    }
+    if let Some(turrets) = world.get_resource_mut::<Turrets>().as_mut()
+        && let Some(kept) = turrets.0.get_mut(&id)
+    {
+        kept.game = turret.game;
+        kept.target = turret.target;
+    }
+}
+
+/// Each tick (the game's think interval): turrets whose entity is gone are
+/// dropped, the sentient pool takes in and lets go, and every turret thinks
+/// in entity number order.
+pub(crate) fn advance(world: &mut World) {
+    let Some(rules) = rules(world) else {
+        return;
+    };
+    if world
+        .get_resource::<Turrets>()
+        .is_none_or(|turrets| turrets.0.is_empty())
+    {
+        return;
+    }
+    debug_assert_eq!(rules.think_ms, crate::MATCH_TICK_MS as i32);
+    let gone: Vec<u64> = {
+        let runtime = world.resource::<RoundScript>();
+        world
+            .resource::<Turrets>()
+            .0
+            .keys()
+            .filter(|id| !runtime.live(id))
+            .copied()
+            .collect()
+    };
+    for id in gone {
+        world.resource_mut::<Turrets>().0.remove(&id);
+    }
+    sync_sentients(world, rules.sentients);
+    let mut order: Vec<(i32, u64)> = {
+        let runtime = world.resource::<RoundScript>();
+        world
+            .resource::<Turrets>()
+            .0
+            .keys()
+            .map(|id| (runtime.entities[id].number, *id))
+            .collect()
+    };
+    order.sort_unstable();
+    for (_, id) in order {
+        run(world, id, rules.think);
+    }
+}
+
+/// The pool lets go of the sentients that left (dead actors, removed
+/// entities) and gives each new one the lowest free slot, in the order they
+/// joined.
+fn sync_sentients(world: &mut World, size: usize) {
+    let live: Vec<u64> = {
+        let runtime = world.resource::<RoundScript>();
+        let mut live: Vec<u64> = runtime
+            .entities
+            .iter()
+            .filter(|(id, entity)| entity.kind == EntityKind::Player && runtime.live(id))
+            .map(|(id, _)| *id)
+            .collect();
+        live.extend(
+            super::super::sightings::living_actors(world)
+                .into_iter()
+                .map(|actor| actor.id),
+        );
+        live.sort_unstable();
+        live
+    };
+    let mut pool = world.remove_resource::<Sentients>().unwrap_or_default();
+    pool.0.resize(size, None);
+    for slot in &mut pool.0 {
+        if slot.is_some_and(|object| live.binary_search(&object).is_err()) {
+            *slot = None;
+        }
+    }
+    for object in live {
+        if pool.0.contains(&Some(object)) {
+            continue;
+        }
+        if let Some(slot) = pool.0.iter_mut().find(|slot| slot.is_none()) {
+            *slot = Some(object);
+        }
+    }
+    world.insert_resource(pool);
+}
+
+/// The sentient in a pool slot.
+pub(crate) fn sentient_in(world: &World, slot: usize) -> Option<u64> {
+    world
+        .get_resource::<Sentients>()?
+        .0
+        .get(slot)
+        .copied()
+        .flatten()
+}
+
+/// The sentients in the pool.
+pub(crate) fn sentients(world: &World) -> Vec<u64> {
+    world
+        .get_resource::<Sentients>()
+        .map(|pool| pool.0.iter().flatten().copied().collect())
+        .unwrap_or_default()
+}
+
+/// What a turret's search reads off a sentient.
+pub(crate) struct SentientView {
+    pub(crate) client: Option<u32>,
+    pub(crate) presence: Option<crate::ScriptModelId>,
+    pub(crate) number: i32,
+    pub(crate) team: Option<String>,
+    pub(crate) ignore_me: bool,
+    pub(crate) origin: [f32; 3],
+    pub(crate) eye: [f32; 3],
+    pub(crate) mins: [f32; 3],
+    pub(crate) maxs: [f32; 3],
+    pub(crate) pm_type: Option<i32>,
+}
+
+/// A player's eye at its view height; an actor's at its `tag_eye`, else
+/// 64 units over its origin, as Black Ops' actor eye falls back.
+pub(crate) fn sentient_view(world: &mut World, object: u64) -> Option<SentientView> {
+    use super::super::players::entity_field;
+    let field_vector = |world: &mut World, name: &str| match entity_field(world, object, name) {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    };
+    let (client, presence, number) = {
+        let runtime = world.resource::<RoundScript>();
+        let entity = runtime.entities.get(&object)?;
+        (
+            runtime.player_client(object),
+            entity.presence,
+            entity.number,
+        )
+    };
+    let origin = field_vector(world, "origin");
+    let team = match entity_field(world, object, "team") {
+        Value::String(team) => Some(String::from_utf8_lossy(team.as_bytes()).into_owned()),
+        _ => None,
+    };
+    let ignore_me = matches!(entity_field(world, object, "ignoreme"), Value::Int(n) if n != 0);
+    let (mins, maxs) = super::super::triggers::entity_bounds(world, object);
+    let (eye, pm_type) = match client {
+        Some(client) => {
+            let frame = FrameWorld::from_world(world);
+            let ps = frame.player(crate::ClientId(client))?;
+            (
+                [
+                    ps.origin[0],
+                    ps.origin[1],
+                    ps.origin[2] + ps.view_height_current,
+                ],
+                Some(ps.pm_type),
+            )
+        }
+        None => (
+            super::super::presence::tag_world(world, object, "tag_eye")
+                .map_or([origin[0], origin[1], origin[2] + 64.0], |(at, _)| at),
+            None,
+        ),
+    };
+    Some(SentientView {
+        client,
+        presence,
+        number,
+        team,
+        ignore_me,
+        origin,
+        eye,
+        mins,
+        maxs,
+        pm_type,
+    })
+}
+
+/// A turret's origin and base angles.
+pub(crate) fn turret_pose(world: &mut World, object: u64) -> ([f32; 3], [f32; 3]) {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let mut vector = |name: &str| match runtime.object_field(object, name) {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    };
+    (vector("origin"), vector("angles"))
+}
+
+/// A tag on a turret's model with its gun at these angles, posed by the
+/// game's turret controller.
+pub(crate) fn turret_tag(
+    world: &mut World,
+    object: u64,
+    tag: &str,
+    gun_angles: [f32; 3],
+) -> Option<super::super::presence::TagPose> {
+    let rules = rules(world)?;
+    let controls = bone_controls(world, object, &rules, gun_angles);
+    super::super::presence::tag_pose_controlled(world, object, tag, &controls).flatten()
+}
+
+/// The bone controls of a turret's gun angles, on the bones its model has.
+fn bone_controls(
+    world: &mut World,
+    object: u64,
+    rules: &TurretRules,
+    gun_angles: [f32; 3],
+) -> Vec<(&'static str, [f32; 3])> {
+    let present = super::super::presence::tags_present(
+        world,
+        object,
+        ["tag_aim_pitch", "tag_aim", "tag_aim_animated", "tag_flash"],
+    )
+    .unwrap_or([false; 4]);
+    let has = |tag: &str| match tag {
+        "tag_aim_pitch" => present[0],
+        "tag_aim" => present[1],
+        "tag_aim_animated" => present[2],
+        "tag_flash" => present[3],
+        _ => false,
+    };
+    (rules.bone_controls)(gun_angles, &has)
+        .into_iter()
+        .filter(|(tag, _)| has(tag))
+        .collect()
+}
+
+/// Every turret's gun angles, by its entity: the game's turret controller
+/// poses its model with them ([`TurretRules::bone_controls`]).
+pub(crate) fn turret_guns(world: &World, only: Option<u64>) -> Vec<(u64, [f32; 3])> {
+    world
+        .get_resource::<Turrets>()
+        .map(|turrets| {
+            turrets
+                .0
+                .iter()
+                .filter(|(id, _)| only.is_none_or(|only| only == **id))
+                .map(|(id, turret)| (*id, turret.game.state.gun_angles))
+                .collect()
+        })
+        .unwrap_or_default()
 }

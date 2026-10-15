@@ -337,14 +337,14 @@ fn antilag_time(command_time: i32, world: &dyn FireWorld) -> i32 {
     }
 }
 
-fn dvar<T: DvarDefault>(world: &dyn FireWorld, name: &str, default: T) -> T {
+pub(crate) fn dvar<T: DvarDefault>(world: &dyn FireWorld, name: &str, default: T) -> T {
     world
         .dvar(name)
         .and_then(|value| T::parse(&value))
         .unwrap_or(default)
 }
 
-trait DvarDefault: Sized {
+pub(crate) trait DvarDefault: Sized {
     fn parse(value: &str) -> Option<Self>;
 }
 
