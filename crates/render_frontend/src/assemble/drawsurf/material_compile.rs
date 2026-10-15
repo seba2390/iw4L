@@ -531,6 +531,7 @@ impl MaterialProgramCompile {
         &mut self,
         catalog: &Arc<RuntimeMaterialCatalog>,
         progress: Option<&asset_transport::LoadProgress>,
+        post_chain: Option<(game_api::post::PostChainRules, asset_core::AssetNamespace)>,
     ) {
         self.jobs.clear();
         self.catalog = Some(Arc::clone(catalog));
@@ -613,6 +614,31 @@ impl MaterialProgramCompile {
                 }
                 Err(cause) => {
                     diag::warn!(World, "post-fx film compile admission: RED cause={cause:?}");
+                }
+            }
+        }
+        let chain = post_chain
+            .map(|(rules, namespace)| {
+                super::post_chain::post_chain_compile_locations(catalog, &rules, namespace)
+            })
+            .unwrap_or_default();
+        for (name, location) in chain {
+            match location {
+                Ok((set_i, pass_i)) => {
+                    *type_hist.entry(POSTFX_VERTEX_TYPE).or_default() += 1;
+                    self.total = self.total.saturating_add(1);
+                    self.jobs.push(CompileJob {
+                        tech: POSTFX_TECH_TYPE,
+                        vertex_type: POSTFX_VERTEX_TYPE,
+                        set_i,
+                        pass_i,
+                    });
+                }
+                Err(cause) => {
+                    diag::warn!(
+                        World,
+                        "post chain compile admission: RED material={name} cause={cause:?}"
+                    );
                 }
             }
         }

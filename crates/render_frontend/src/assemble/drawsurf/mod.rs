@@ -14,6 +14,7 @@ pub mod material_compile;
 pub mod material_exec;
 pub mod material_runtime;
 pub mod pass_color_space;
+pub mod post_chain;
 pub mod postfx_plan;
 pub mod retained_list;
 pub mod setup;

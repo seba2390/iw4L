@@ -5862,6 +5862,7 @@ dependencies = [
  "dpvs_iw4",
  "frame",
  "fx_iw4",
+ "game_api",
  "hud",
  "hud_iw4",
  "lighting_iw4",

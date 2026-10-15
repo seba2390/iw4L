@@ -278,6 +278,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     // gsc_playsoundatposition sends the alias's hash; nothing checks it.
     script_sounds_hashed: true,
     turrets: None,
+    post_chain: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

@@ -183,9 +183,15 @@ pub(crate) fn spawn_world(
     prepared: (
         Res<render_anim::PreparedFpv>,
         Res<render_anim::PreparedModelMaterials>,
+        Option<Res<game_api::ModeRules>>,
     ),
 ) {
-    let (fpv, model_materials) = prepared;
+    let (fpv, model_materials, mode) = prepared;
+    // A game's own post chain draws with the map's own game's materials.
+    let post_chain = mode
+        .as_deref()
+        .and_then(|mode| mode.post_chain)
+        .zip(scene.source_namespace);
     if scene.readiness.generation != job.spawn || job.spawn.0.is_none() {
         return;
     }
@@ -325,8 +331,11 @@ pub(crate) fn spawn_world(
 
     if job.phase == WorldSpawnPhase::Programs {
         if !job.compile.armed {
-            job.compile
-                .arm(&scene.runtime_material_catalog, progress.as_ref());
+            job.compile.arm(
+                &scene.runtime_material_catalog,
+                progress.as_ref(),
+                post_chain,
+            );
             job.admit = crate::assemble::drawsurf::MaterialProgramAdmit::default();
         }
         let compile_finished = job.compile.until(&scene.runtime_material_catalog, deadline);
@@ -392,6 +401,7 @@ pub(crate) fn spawn_world(
             scene.runtime_material_catalog.clone(),
             programs,
             exact_shaders,
+            post_chain,
         );
         {
             let value = render_scene::TessMaterials::new(
@@ -421,6 +431,25 @@ pub(crate) fn spawn_world(
             crate::assemble::drawsurf::RuntimePostFxResources::Uninstalled => {
                 diag::warn!(World, "post-fx film material: RED cause=Uninstalled")
             }
+        }
+        match &generation.post_chain {
+            Some(Ok(chain)) => diag::info!(
+                World,
+                "post chain materials: READY materials={} targets={}",
+                chain.materials.len(),
+                chain.rules.targets.len(),
+            ),
+            Some(Err(cause)) => diag::warn!(World, "post chain materials: RED {cause}"),
+            None if mode
+                .as_deref()
+                .is_some_and(|mode| mode.post_chain.is_some()) =>
+            {
+                diag::warn!(
+                    World,
+                    "post chain materials: RED the map's namespace is unknown"
+                )
+            }
+            None => {}
         }
         {
             let value = generation;

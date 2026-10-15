@@ -4,6 +4,7 @@
 
 pub mod fire;
 pub mod movement;
+pub mod post;
 pub mod turret;
 pub mod ui;
 
@@ -323,6 +324,9 @@ pub struct ModeRules {
     /// How the game spawns and runs its map turrets; `None` leaves them
     /// plain entities.
     pub turrets: Option<turret::TurretRules>,
+    /// The game's own post chain, drawn over every 3D frame in place of the
+    /// renderer's; `None` keeps the renderer's.
+    pub post_chain: Option<post::PostChainRules>,
 }
 
 /// How a client's viewmodel plays a player's weapon animation number.

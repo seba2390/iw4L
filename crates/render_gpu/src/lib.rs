@@ -8,7 +8,7 @@ pub use drawsurf::{
     CODE_TEXTURE_SHADOWMAP_SPOT, CODE_TEXTURE_SHADOWMAP_SUN, CODE_TRANSPOSE_WORLD_VIEW_PROJECTION0,
     ChangeState0Host, ChangeState1Host, ColourWorkingSet, ConstantPackRefusal, DecodedSampler,
     DepthOfField, DofFrame, ExtractedBlood, ExtractedDiagnosticGeometry, ExtractedFilm,
-    ExtractedPostFx, ExtractedRenderFrameProducts, ExtractedRuntimeImageHandles,
+    ExtractedPostChain, ExtractedPostFx, ExtractedRenderFrameProducts, ExtractedRuntimeImageHandles,
     ExtractedStaticGeometry, FocusedOwnerSubmitState, GLOW_APPLY_MATERIAL, GLOW_SETUP_MATERIAL,
     GfxPassState, GlowFrame, GpuSubmitReady, InstalledRenderWorld, LENS_VIEW_SIGNATURE,
     ModelLightingTileUpload, ModelLightingTileUploads, PASS_FRAGMENT_ENTRY, PASS_VERTEX_ENTRY,

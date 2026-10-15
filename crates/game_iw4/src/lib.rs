@@ -75,6 +75,7 @@ const MODE: ModeRules = ModeRules {
     viewmodel: None,
     script_sounds_hashed: false,
     turrets: None,
+    post_chain: None,
 };
 
 impl game_api::GameVision for Iw4 {

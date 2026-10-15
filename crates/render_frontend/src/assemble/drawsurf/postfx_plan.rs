@@ -103,6 +103,28 @@ fn postfx_material_location<'a>(
         .iter()
         .find(|material| material.name == name)
         .ok_or(PostFxAdmissionRefusal::MaterialMissing)?;
+    postfx_material_technique(catalog, material)
+}
+
+/// The material named `material_name` of `namespace` (the map's own game).
+pub(crate) fn postfx_material_in<'a>(
+    catalog: &'a RuntimeMaterialCatalog,
+    material_name: &str,
+    namespace: asset_core::AssetNamespace,
+) -> Result<&'a RuntimeMaterial, PostFxAdmissionRefusal> {
+    let name = asset_core::AssetRef::bare_name(material_name);
+    catalog
+        .parts()
+        .materials
+        .iter()
+        .find(|material| material.name == name && material.namespace == namespace)
+        .ok_or(PostFxAdmissionRefusal::MaterialMissing)
+}
+
+pub(crate) fn postfx_material_technique<'a>(
+    catalog: &'a RuntimeMaterialCatalog,
+    material: &'a RuntimeMaterial,
+) -> Result<(&'a RuntimeMaterial, usize, &'a RuntimeTechnique), PostFxAdmissionRefusal> {
     let set = match material.remap {
         RemapResolution::SelfSet => material.local_technique_set,
         RemapResolution::Resolved(set) => set,
@@ -331,7 +353,33 @@ fn admit_unlit_2d(
     require_film_state: bool,
 ) -> Result<RuntimePostFx, PostFxAdmissionRefusal> {
     let (material, _, _) = postfx_material_location(catalog, material_name)?;
-    let Some(ordinal) = catalog.ordinal_for_material_name(material_name) else {
+    let sources = admission_sources().map_err(PostFxAdmissionRefusal::CodeSource)?;
+    admit_unlit_2d_material(
+        catalog,
+        prepared,
+        programs,
+        shaders,
+        (material, material_name),
+        require_film_state,
+        &sources,
+    )
+}
+
+/// Admits one material's 2D post pass, executed against `sources`.
+pub(crate) fn admit_unlit_2d_material(
+    catalog: &RuntimeMaterialCatalog,
+    prepared: &PreparedMaterialTable,
+    programs: &RuntimeProgramRegistry,
+    shaders: &[Handle<bevy::shader::Shader>],
+    (material, material_name): (&RuntimeMaterial, &'static str),
+    require_film_state: bool,
+    sources: &RuntimeCodeSources,
+) -> Result<RuntimePostFx, PostFxAdmissionRefusal> {
+    let Some(ordinal) = catalog
+        .parts()
+        .sorted_materials
+        .ordinal_for_asset_id(usize::from(material.asset_id.0))
+    else {
         return Err(PostFxAdmissionRefusal::SortedOrdinalMissing);
     };
     let packed = render_material::MaterialDrawKey::new(
@@ -343,16 +391,10 @@ fn admit_unlit_2d(
         .packed,
         ordinal.get(),
     );
-    let sources = match admission_sources() {
-        Ok(sources) => sources,
-        Err(cause) => {
-            return Err(PostFxAdmissionRefusal::CodeSource(cause));
-        }
-    };
     let execution = match super::execute_material(
         catalog,
         prepared,
-        &sources,
+        sources,
         packed,
         TechType(POSTFX_TECH_TYPE),
         POSTFX_VERTEX_TYPE,

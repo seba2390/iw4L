@@ -255,6 +255,10 @@ pub struct MaterialGeneration {
     pub postfx: super::RuntimePostFxResources,
 
     pub blood: Option<super::RuntimeBloodMaterial>,
+
+    /// The game's own post chain, when its mode has one: admitted, or the
+    /// material that refused and why.
+    pub post_chain: Option<Result<super::post_chain::RuntimePostChain, String>>,
 }
 
 #[derive(Resource, Clone, Debug, Default)]
@@ -287,6 +291,7 @@ pub(crate) fn admit_material_generation(
     catalog: Arc<RuntimeMaterialCatalog>,
     programs: RuntimeProgramRegistry,
     exact_shaders: Vec<Handle<bevy::shader::Shader>>,
+    post_chain: Option<(game_api::post::PostChainRules, asset_core::AssetNamespace)>,
 ) -> MaterialGeneration {
     let prepared = PreparedMaterialTable::from_catalog(&catalog, |pass, vertex_type| {
         programs
@@ -297,6 +302,17 @@ pub(crate) fn admit_material_generation(
     let blood = super::build_runtime_blood(&catalog, &prepared, &programs, &exact_shaders)
         .inspect_err(|cause| diag::warn!(World, "blood material admission: RED cause={cause:?}"))
         .ok();
+    let post_chain = post_chain.map(|(rules, namespace)| {
+        super::post_chain::build_runtime_post_chain(
+            &catalog,
+            &prepared,
+            &programs,
+            &exact_shaders,
+            &rules,
+            namespace,
+        )
+        .map_err(|(material, cause)| format!("material={material} cause={cause:?}"))
+    });
     MaterialGeneration {
         catalog,
         prepared: Arc::new(prepared),
@@ -304,6 +320,7 @@ pub(crate) fn admit_material_generation(
         exact_shaders,
         postfx,
         blood,
+        post_chain,
     }
 }
 

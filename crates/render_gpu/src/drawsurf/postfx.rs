@@ -44,6 +44,8 @@ pub struct ExtractedPostFx {
     pub frame: DofFrame,
     pub vision: Option<asset_world::FilmVision>,
     pub t6_vision: Option<asset_world::T6Vision>,
+    /// The game's own post chain, drawn in place of the renderer's.
+    pub post_chain: Option<super::post_chain::ExtractedPostChain>,
 }
 
 struct PreparedPostFxGpu {
@@ -297,7 +299,7 @@ struct ExactPostFxGpu {
     grade: Option<super::script_grade::GradeGpu>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum PostFxGpuRefusal {
+pub(super) enum PostFxGpuRefusal {
     VertexLayout,
     EmptyConstantBlock,
     UnsupportedState {
@@ -451,7 +453,9 @@ fn postfx_pipeline(
         .clone()
 }
 
-fn postfx_layouts(film: &ExtractedFilm) -> (BindGroupLayoutDescriptor, BindGroupLayoutDescriptor) {
+pub(super) fn postfx_layouts(
+    film: &ExtractedFilm,
+) -> (BindGroupLayoutDescriptor, BindGroupLayoutDescriptor) {
     let (constant_entries, texture_entries) = split_bind_layout(film.port.wgpu_layout());
     (
         super::colour_submit::bind_group_layout_from_entries(
@@ -470,6 +474,17 @@ fn postfx_layouts(film: &ExtractedFilm) -> (BindGroupLayoutDescriptor, BindGroup
 fn queue_postfx_pipeline(
     film: &ExtractedFilm,
     cache: &PipelineCache,
+) -> Result<CachedRenderPipelineId, PostFxGpuRefusal> {
+    queue_postfx_pipeline_into(film, cache, None)
+}
+
+/// The film's fullscreen pipeline drawing into `format`; an 8-bit target
+/// takes the sRGB view when the pass writes sRGB, as the renderer's own
+/// post passes do when `format` is `None`.
+pub(super) fn queue_postfx_pipeline_into(
+    film: &ExtractedFilm,
+    cache: &PipelineCache,
+    format: Option<TextureFormat>,
 ) -> Result<CachedRenderPipelineId, PostFxGpuRefusal> {
     let state = super::state::GfxPassState::from_prepared(film.shell.passes()[0].state());
     if let Some(fields) = state.unsupported_host_fields() {
@@ -511,10 +526,10 @@ fn queue_postfx_pipeline(
             constants: Vec::new(),
             entry_point: Some(PASS_FRAGMENT_ENTRY.into()),
             targets: vec![Some(ColorTargetState {
-                format: if state.srgb_write_enable() {
-                    TextureFormat::Rgba8UnormSrgb
-                } else {
-                    TextureFormat::Rgba8Unorm
+                format: match format {
+                    Some(format) => format,
+                    None if state.srgb_write_enable() => TextureFormat::Rgba8UnormSrgb,
+                    None => TextureFormat::Rgba8Unorm,
                 },
                 blend: host_state.blend.blend_state(),
                 write_mask: host_state.colour_writes(),
@@ -584,7 +599,7 @@ fn create_postfx_gpu(
     })
 }
 
-fn packed_fullscreen_vertices(width: u32, height: u32) -> Vec<u8> {
+pub(super) fn packed_fullscreen_vertices(width: u32, height: u32) -> Vec<u8> {
     hud_iw4::draw_stretch_pic_pack(
         0.0,
         0.0,
@@ -602,7 +617,7 @@ fn packed_fullscreen_vertices(width: u32, height: u32) -> Vec<u8> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum PostFxSubmitRefusal {
+pub(super) enum PostFxSubmitRefusal {
     TargetFormat(TextureFormat),
     PartialViewport {
         viewport: UVec4,
@@ -631,7 +646,7 @@ enum PostFxSubmitRefusal {
     },
 }
 
-fn require_postfx_pipeline(
+pub(super) fn require_postfx_pipeline(
     state: &CachedPipelineState,
     material: &'static str,
 ) -> Result<(), PostFxSubmitRefusal> {
@@ -723,6 +738,10 @@ fn draw_postfx(
     mut texture_cache: Local<PostFxTextureCache>,
     mut submitted: Local<Option<(u64, bool, UVec2)>>,
 ) {
+    if extracted.post_chain.is_some() {
+        *pipeline_wait = None;
+        return;
+    }
     let products = &colour_frame.frame_products;
     let (target, view) = view.into_inner();
     let Some(targets) = gpu.targets.as_ref() else {
