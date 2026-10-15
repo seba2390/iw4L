@@ -377,6 +377,7 @@ fn kinds_from_env() -> Option<Vec<UseKind>> {
                 "piece" => Some(UseKind::Piece),
                 "build" => Some(UseKind::Build),
                 "take" => Some(UseKind::Take),
+                "teller" => Some(UseKind::Teller),
                 _ => None,
             })
             .collect(),
@@ -448,7 +449,7 @@ fn stand_point(
         + STAND_ROOM
         // A perk machine's trigger is in the machine: the line to its
         // middle ends on the machine.
-        + if site.kind == UseKind::Perk {
+        + if matches!(site.kind, UseKind::Perk | UseKind::Teller) {
             MACHINE_ROOM
         } else {
             0.0
@@ -466,11 +467,14 @@ fn stand_point(
             continue;
         }
         let flat = flat_distance(node, center);
-        let (off, room) = if site.touch
+        let (off, room) = if site.kind == UseKind::Teller && site.cost == Some(0) {
+            (0.0, TOUCH_ROOM)
+        } else if site.touch
             || matches!(
                 site.kind,
                 UseKind::WallBuy | UseKind::Box | UseKind::Rebuild
-            ) {
+            )
+        {
             (STAND_OFF_TOUCH, TOUCH_ROOM)
         } else if matches!(site.kind, UseKind::Build | UseKind::Take) {
             (24.0, TOUCH_ROOM)
