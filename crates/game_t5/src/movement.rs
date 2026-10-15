@@ -6,9 +6,9 @@ use fastfile_t5::size::{WEAPON_DEF, WEAPON_VARIANT_DEF};
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
-    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveTrace, MoveType, MoveWorld,
-    PlayerMovement, Stance, WaterSurface, WeaponActivity, WeaponNotify, WeaponNotifyMemory,
-    buttons as intent,
+    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
+    MoveWorld, PlayerMovement, Stance, WaterSurface, WeaponActivity, WeaponNotify,
+    WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::events::event;
@@ -699,6 +699,24 @@ impl PlayerMovement for T5Movement {
             };
         }
         pack(player, &mut ps, &mut last);
+    }
+
+    /// The ladder, mantle and no-melee pm flags, the damage timer, the
+    /// weapon flag that keeps an empty weapon in hand and the weapon state,
+    /// for a test player's log.
+    fn status(&self, player: &MovePlayer) -> Option<MoveStatus> {
+        let mut copy = *player;
+        let (ps, _) = unpack(&mut copy);
+        Some(MoveStatus {
+            on_ladder: ps.pm_flags & pm_flags::LADDER != 0,
+            mantling: ps.pm_flags & pm_flags::MANTLE != 0,
+            damage_timer: ps.damage_timer,
+            no_melee: ps.pm_flags & pm_flags::NO_MELEE != 0,
+            no_weapon_cycling: ps.weap_flags & movement_t5::state::weap_flags::CYCLING_DISABLED
+                != 0,
+            being_revived: ps.pm_type == pm_type::LAST_STAND_REVIVED,
+            weapon_state: ps.weaponstate,
+        })
     }
 
     fn cursor_hints(&self) -> &'static [&'static str] {

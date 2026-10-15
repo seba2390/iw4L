@@ -777,6 +777,7 @@ impl PlayerMovement for T6Movement {
             no_weapon_cycling: ps.weap_flags & movement_t6::state::weap_flags::CYCLING_DISABLED
                 != 0,
             being_revived: ps.pm_type == pm_type::LAST_STAND_REVIVED,
+            weapon_state: ps.weaponstate,
         })
     }
 
