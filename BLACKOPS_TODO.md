@@ -12,7 +12,9 @@ ends in a commit and a push.
 ## Status (2026-10-15)
 
 Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
-everything it pulls in): zombies spawn behind the windows, tear the boards,
+everything it pulls in). All its static models draw and collide, the 58
+whose model another zone holds (teddy bears, lobby door tear-ins, perk
+bottles) included; its 540 dynamic entities do not spawn yet. Zombies spawn behind the windows, tear the boards,
 climb through and run at the player, drawn with their animations. Builtins the
 runtime lacks are reported per call site instead of stopping the match. A
 Kino starts raises two script faults, the `is_in_array` pair in
@@ -80,14 +82,14 @@ Modern Warfare 2 sounds. Weapons sound by Black Ops' client rules: a
 player's fire, reload, raise and putaway events reach every client, which
 plays the weapon's own player or world sound; another player's automatic
 fire waits on Black Ops' fire sound simulation (`t5.audio.fire_autosim`),
-and shots show no flash, shell or tracer yet (`t5.weapons.fire_effects`).
+and shots show Black Ops' muzzle flashes and ejected shells; tracers and
+view kick are still open (`t5.weapons.tracers`, `t5.weapons.view_kick`).
 The first-person viewmodel plays the animation Black Ops' client picks for
 each weapon animation number, so reload and other notetrack sounds play;
 its blends and rates are still the runtime's (`t5.viewmodel.playback`).
 Pack-a-Punch and all six of Kino's power-ups work through Black Ops' own
 scripts, now that its weapon state builtins and weapon notifies follow its
-own rules. Footsteps, music states and most client effects wait on client
-scripts (CSC), which the runtime does not run yet.
+own rules.
 The work now is
 recovering those rules from Black Ops. Start it from the game library
 (Black Ops → Zombies → Kino der Toten), or headless:

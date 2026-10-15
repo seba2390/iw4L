@@ -180,7 +180,7 @@ pub(super) async fn walk_prepared_match(
         scripts: map_scripts,
         mut world,
         mut materials,
-        collision: clip,
+        collision: mut clip,
         spawns: dm_spawns,
         mut bodies,
         fpv_meshes: map_fpv,
@@ -190,10 +190,12 @@ pub(super) async fn walk_prepared_match(
         sound,
         mut report,
         gaps,
+        foreign_models,
     } = loaded;
     world.source_namespace = map_namespace;
+    let foreign_model_names = foreign_models.names();
     let zombie = match &zone_ff {
-        Ok(path) => walk_zombie_commons(path, &progress),
+        Ok(path) => walk_zombie_commons(path, &progress, &foreign_model_names),
         Err(_) => ZombieCommons::default(),
     };
     let zombie_scripts = zombie.scripts.map(|mut scripts| {
@@ -203,9 +205,13 @@ pub(super) async fn walk_prepared_match(
     });
     strings.absorb_in_namespace(asset_core::AssetNamespace::T5, zombie.strings);
     facts.hud_menus = asset_game::SessionHudMenus(zombie.hud_menus.map(std::sync::Arc::new));
-    let zombie_scene_names = zombie_scripts
-        .as_ref()
-        .map(crate::ScriptSources::asset_names);
+    // The map's static models taken from the zombie zones keep their
+    // skeletons for collision.
+    let zombie_scene_names = zombie_scripts.as_ref().map(|scripts| {
+        let mut names = scripts.asset_names();
+        names.extend(foreign_model_names.iter().cloned());
+        names
+    });
     let mut zombie_weapon_materials = zombie.fpv.material_names();
     zombie_weapon_materials.extend(zombie.world_weapons.material_names());
     zombie_weapon_materials.extend(
@@ -478,20 +484,28 @@ pub(super) async fn walk_prepared_match(
     if let Some(names) = &zombie_scene_names {
         let zones: Vec<_> = zombie_scene_models
             .into_iter()
-            .map(|(mut models, population)| {
+            .map(|(mut models, population, meshes)| {
                 models.retain_names(names);
-                (models, population)
+                (models, population, meshes)
             })
             .collect();
         // Surfaces may draw a material another zone holds (`,name`); take
         // it from whichever zone defines it.
         let foreign: std::collections::BTreeSet<String> = zones
             .iter()
-            .flat_map(|(models, _)| models.foreign_material_names())
+            .flat_map(|(models, _, meshes)| {
+                models.foreign_material_names().into_iter().chain(
+                    meshes
+                        .iter()
+                        .flat_map(|mesh| mesh.foreign_materials.iter().flatten().cloned()),
+                )
+            })
             .collect();
         let mut foreign_hosts = std::collections::HashMap::<String, usize>::new();
+        let mut foreign_meshes =
+            std::collections::HashMap::<String, asset_world::ForeignStaticMesh>::new();
         let mut absorbed = 0;
-        for (mut models, population) in zones {
+        for (mut models, population, mut meshes) in zones {
             let held: Vec<(usize, String)> = population
                 .materials
                 .iter()
@@ -513,13 +527,20 @@ pub(super) async fn walk_prepared_match(
                 })
                 .map(|(index, _)| index)
                 .collect();
-            if models.is_empty() && held.is_empty() && weapon_models.is_empty() {
+            if models.is_empty() && held.is_empty() && weapon_models.is_empty() && meshes.is_empty()
+            {
                 continue;
             }
             absorbed += models.len();
             let mut wanted = models.walk_materials();
             wanted.extend(held.iter().map(|(index, _)| *index));
             wanted.extend(weapon_models);
+            wanted.extend(
+                meshes
+                    .iter()
+                    .flat_map(|mesh| mesh.mesh.lod_surfaces.iter().flatten())
+                    .filter_map(|surface| surface.material),
+            );
             let linked = global.absorb_selected_materials_host_wins(population, &wanted);
             for (index, name) in held {
                 if let Some(host) = linked[index] {
@@ -532,20 +553,57 @@ pub(super) async fn walk_prepared_match(
                 .collect();
             models.remap_walk_materials(&linked);
             world.map_xmodel_scene_assets.absorb_captured(models);
+            for mesh in &mut meshes {
+                for surface in mesh.mesh.lod_surfaces.iter_mut().flatten() {
+                    surface.material = surface
+                        .material
+                        .and_then(|local| linked.get(local).copied())
+                        .filter(|&host| host != usize::MAX);
+                }
+            }
+            // A later zone's model replaces an earlier one of the same name.
+            for mesh in meshes {
+                foreign_meshes.insert(mesh.mesh.name.clone(), mesh);
+            }
         }
-        let bound = world
+        let host_of = |name: &str| {
+            foreign_hosts.get(name).copied().or_else(|| {
+                global
+                    .materials
+                    .iter()
+                    .position(|material| material.name.is_real() && material.name.as_str() == name)
+            })
+        };
+        let mut bound = world
             .map_xmodel_scene_assets
-            .bind_foreign_materials(|name| {
-                foreign_hosts.get(name).copied().or_else(|| {
-                    global.materials.iter().position(|material| {
-                        material.name.is_real() && material.name.as_str() == name
-                    })
+            .bind_foreign_materials(host_of);
+        let foreign_meshes: std::collections::HashMap<String, asset_world::ModelMesh> =
+            foreign_meshes
+                .into_iter()
+                .map(|(name, mut mesh)| {
+                    let surfaces = mesh.mesh.lod_surfaces.iter_mut().flatten();
+                    for (surface, foreign) in surfaces.zip(&mesh.foreign_materials) {
+                        if surface.material.is_none()
+                            && let Some(host) = foreign.as_deref().and_then(host_of)
+                        {
+                            surface.material = Some(host);
+                            bound += 1;
+                        }
+                    }
+                    (name, mesh.mesh)
                 })
-            });
+                .collect();
         report.push(format!(
             "zombie scene models: +{absorbed}; foreign surface materials: {} names, {bound} surfaces bound",
             foreign.len()
         ));
+        link_foreign_models(
+            &mut world,
+            clip.as_mut(),
+            foreign_models,
+            foreign_meshes,
+            &mut report,
+        );
     }
     let provisional_map_ids: Vec<usize> = (0..global.materials.len()).collect();
     if iw5_mat_n > 0 {
@@ -1348,6 +1406,84 @@ fn decode_fx_colour_maps(
             ));
         }
     }
+}
+
+/// Places the map's static models whose model another zone holds: their
+/// draw meshes and their collision.
+fn link_foreign_models(
+    world: &mut PreparedWorld,
+    clip: Option<&mut asset_world::ClipCollision>,
+    foreign: crate::lane::ForeignModels,
+    mut meshes: std::collections::HashMap<String, asset_world::ModelMesh>,
+    report: &mut Vec<String>,
+) {
+    if foreign.static_models.is_empty() && foreign.clip_models.is_empty() {
+        return;
+    }
+    let mut mesh_index = std::collections::HashMap::<String, usize>::new();
+    let mut placed = 0;
+    let mut missing = std::collections::BTreeSet::new();
+    for model in foreign.static_models {
+        let mesh = match mesh_index.get(&model.name) {
+            Some(&mesh) => mesh,
+            None => {
+                let Some(mesh) = meshes.remove(&model.name) else {
+                    missing.insert(model.name);
+                    continue;
+                };
+                let index = world.static_model_meshes.len();
+                world.static_model_meshes.push(mesh);
+                mesh_index.insert(model.name, index);
+                index
+            }
+        };
+        if let Some(slot) = world.static_model_instances.get_mut(model.slot) {
+            *slot = Some(asset_world::StaticModelPlacement {
+                mesh,
+                ..model.placement
+            });
+            placed += 1;
+        }
+    }
+    let mut collided = 0;
+    let mut no_skel = std::collections::BTreeSet::new();
+    if let Some(clip) = clip {
+        for (name, row) in foreign.clip_models {
+            let Some(asset_world::MapXModelSceneAsset::T5(skel)) =
+                world.map_xmodel_scene_assets.get_name(&name)
+            else {
+                no_skel.insert(name);
+                continue;
+            };
+            match row.place(&name, skel) {
+                Ok(model) => {
+                    clip.static_models.push(model);
+                    collided += 1;
+                }
+                Err(_) => {
+                    no_skel.insert(name);
+                }
+            }
+        }
+        clip.static_models.sort_by_key(|model| model.index);
+    }
+    let unbound = mesh_index
+        .values()
+        .flat_map(|&mesh| {
+            world.static_model_meshes[mesh]
+                .lod_surfaces
+                .iter()
+                .flatten()
+        })
+        .filter(|surface| surface.material.is_none())
+        .count();
+    report.push(format!(
+        "foreign static models: {placed} placed from {} meshes ({unbound} surfaces without a \
+         material), {collided} with collision; no mesh: [{}]; no collision: [{}]",
+        mesh_index.len(),
+        missing.into_iter().collect::<Vec<_>>().join(", "),
+        no_skel.into_iter().collect::<Vec<_>>().join(", ")
+    ));
 }
 
 fn census_image_working_set(

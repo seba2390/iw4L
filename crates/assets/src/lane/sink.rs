@@ -214,6 +214,10 @@ pub(crate) struct ZoneWalkSink {
 pub(crate) struct CommonWalkSink {
     pub scripts: crate::ScriptSources,
     pub scene_models: asset_world::MapXModelSceneCatalog,
+    /// Models a map's static model slots name in this zone, and the draw
+    /// meshes built for the ones it holds.
+    pub static_model_names: std::collections::BTreeSet<String>,
+    pub static_meshes: Vec<asset_world::ForeignStaticMesh>,
     pub shared_surfaces: asset_model::SharedXModelSurfaces,
     script_strings: ScriptStrings,
     pub walked: usize,
@@ -799,6 +803,32 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
             if let Some(geometry) = stream.latest_xmodel()
                 && let Some(name) = geometry.name.and_then(|p| stream.cstr(p).ok())
             {
+                if self.static_model_names.contains(name)
+                    && let Ok(mesh) =
+                        asset_world::build_t5_xmodel_mesh(stream, geometry, Some(&self.materials))
+                {
+                    let foreign_materials = geometry
+                        .lod_surf_span
+                        .iter()
+                        .zip(&mesh.lod_surfaces)
+                        .flat_map(|(&(first, _), surfaces)| {
+                            (0..surfaces.len()).map(move |at| usize::from(first) + at)
+                        })
+                        .zip(mesh.lod_surfaces.iter().flatten())
+                        .map(|(surface, draw)| {
+                            let handles = geometry.material_handles?;
+                            draw.material.is_none().then(|| {
+                                let slot = handles.at(surface * 4);
+                                let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
+                                Some(asset_core::AssetRef::bare_name(name).to_owned())
+                            })?
+                        })
+                        .collect();
+                    self.static_meshes.push(asset_world::ForeignStaticMesh {
+                        mesh,
+                        foreign_materials,
+                    });
+                }
                 let asset = asset_model::capture_xmodel_skel_t5(
                     stream,
                     &self.strings_t5,
@@ -828,10 +858,7 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
                         .iter()
                         .enumerate()
                         .map(|(surface, bound)| {
-                            let slot = fastfile_t5::Ptr {
-                                block: handles.block,
-                                offset: handles.offset + (surface * 4) as u32,
-                            };
+                            let slot = handles.at(surface * 4);
                             bound.is_none().then(|| {
                                 let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
                                 Some(asset_core::AssetRef::bare_name(name).to_owned())

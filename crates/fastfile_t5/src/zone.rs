@@ -623,6 +623,10 @@ pub struct ClipMapGeometry {
     pub leafbrush_nodes: Option<Ptr>,
 
     pub cmodels: Option<Ptr>,
+
+    /// Dynamic entity counts of the four lists; the first two have
+    /// definitions and client state, the last two server state.
+    pub dyn_ent_counts: [usize; 4],
 }
 
 /// The path network of a game world: `node_count` nodes of

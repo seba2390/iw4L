@@ -12,6 +12,7 @@ pub(crate) use helpers::{
     build_iw5_static_model_draw, build_static_model_draw, build_t5_static_model_draw,
 };
 pub(crate) use sink::{CommonWalkSink, MaterialPopulationSink, ZoneWalkSink};
+pub(crate) use t5::T5Lane;
 
 use crate::{
     lane_capability::{LaneStatus, PreparedCapability},
@@ -55,6 +56,26 @@ pub struct LoadedWorld {
     pub sound: Option<Result<asset_audio::SoundCatalog, String>>,
     pub report: Vec<String>,
     pub gaps: Vec<LaneGap>,
+    /// Map static models whose model another zone holds.
+    pub(crate) foreign_models: ForeignModels,
+}
+
+/// Static models a map places but another zone holds (`,name` stubs),
+/// linked once the zones loaded alongside the map have been walked.
+#[derive(Default)]
+pub(crate) struct ForeignModels {
+    pub static_models: Vec<asset_world::ForeignStaticModel>,
+    pub clip_models: Vec<(String, helpers::T5ClipModelRow)>,
+}
+
+impl ForeignModels {
+    pub(crate) fn names(&self) -> std::collections::BTreeSet<String> {
+        self.static_models
+            .iter()
+            .map(|model| model.name.clone())
+            .chain(self.clip_models.iter().map(|(name, _)| name.clone()))
+            .collect()
+    }
 }
 
 impl LoadedWorld {
@@ -101,6 +122,8 @@ pub type LochitTable = [f32; weapon_iw4::HITLOC_COUNT];
 
 #[derive(Default)]
 pub struct CommonCensus {
+    /// Draw meshes of the map static models this zone holds.
+    pub static_meshes: Vec<asset_world::ForeignStaticMesh>,
     pub ui_tables: Vec<asset_core::ZoneTable>,
     pub ui_modules: Vec<(String, std::sync::Arc<[u8]>)>,
     pub ui_images: Vec<(String, asset_material::material_images::ZoneUiImage)>,
@@ -414,6 +437,7 @@ impl LoadedWorld {
             sound: Default::default(),
             report: Default::default(),
             gaps: Default::default(),
+            foreign_models: Default::default(),
         }
     }
 }

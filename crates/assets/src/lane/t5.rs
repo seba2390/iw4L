@@ -46,6 +46,191 @@ impl T5Lane {
     ];
 }
 
+impl T5Lane {
+    /// Walks a common zone, also building the draw meshes of the map static
+    /// models named in `static_models` that this zone holds.
+    pub(crate) fn load_common_zone(
+        &self,
+        path: &Path,
+        image: &ZoneImage,
+        progress: &LoadProgress,
+        decode_color_maps: bool,
+        material_seed: asset_material::MaterialCatalog,
+        static_models: std::collections::BTreeSet<String>,
+    ) -> CommonCensus {
+        let header = match image.t5_header() {
+            Ok(header) => header,
+            Err(error) => {
+                return CommonCensus {
+                    report: vec![format!("common_mp models: T5 zone header: {error}")],
+                    ..Default::default()
+                };
+            }
+        };
+        let mut memory = T5ZoneMemory::for_header(&header);
+        let mut stream = match memory.stream(&image.bytes) {
+            Ok(stream) => stream,
+            Err(error) => {
+                return CommonCensus {
+                    report: vec![format!("common_mp models: T5 zone arenas: {error}")],
+                    ..Default::default()
+                };
+            }
+        };
+        let mut sink = CommonWalkSink::default();
+        sink.static_model_names = static_models;
+        sink.seed_materials(material_seed);
+        sink.set_capture_zone(asset_core::ZoneOwner::from_zone_path(path));
+        sink.set_capture_ns(asset_core::AssetNamespace::T5);
+        sink.sound = asset_audio::ZoneSoundCapture::claim_common(
+            path,
+            asset_audio::ZoneGame::T5,
+            "common census",
+        );
+        let walk = fastfile_t5::load_zone(&mut stream, &mut sink);
+        if let Some(sound) = sink.sound.take() {
+            sound.deposit(walk.as_ref().map(|_| ()).map_err(|e| e.to_string()));
+        }
+        let mut report = vec![format!("common_mp (T5): walked {} assets", sink.walked)];
+        if let Err(error) = walk {
+            report.push(format!(
+                "common_mp T5 walk: stopped after {} assets — {error}",
+                sink.walked
+            ));
+        }
+        report.push(format!(
+            "common_mp T5 pointer drift: {} unsettled offsets",
+            stream.unsettled_offsets()
+        ));
+        report.push(format!(
+            "s2 t5 walk: reuse_mat={} reuse_img={} pool_mat={} pool_img={}",
+            sink.materials.link_reused_materials,
+            sink.materials.link_reused_images,
+            sink.materials.materials.len(),
+            sink.materials.images.len(),
+        ));
+        let captured = sink.weapons.len();
+
+        sink.weapons.resolve_reticles(&sink.materials);
+        sink.weapons.resolve_projectile_fx_edges(&sink.fx);
+        if let Some(table) = sink.impact_fx.table.as_ref() {
+            sink.weapons.resolve_projectile_impact_fx(table);
+        }
+        sink.weapons
+            .resolve_combat_fx(&sink.fx, &asset_game::TracerCatalog::default());
+        let leftover_fx = sink.fx.len();
+        let leftover_fx_gaps = sink.fx.capture_gaps;
+        let projectile_keys = sink.weapons.projectile_model_hints();
+        let mut weapons = sink.weapons.into_build();
+        let namespace = asset_core::AssetNamespace::T5;
+        for id in 1..=weapons.len() as u32 {
+            for name in [
+                weapons.gun_xmodel_of(id),
+                weapons.hand_xmodel_of(id),
+                weapons.rocket_model_of(id),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if sink.fpv_meshes.get(namespace, name).is_none()
+                    && let Some(entry) = sink.projectile_meshes.get(namespace, name)
+                {
+                    sink.fpv_meshes
+                        .insert_in(namespace, entry.skel.clone(), Some(&sink.materials));
+                }
+            }
+            if let Some(name) = weapons.world_model_of(id)
+                && sink.world_weapons.get(namespace, name).is_none()
+                && let Some(entry) = sink.projectile_meshes.get(namespace, name)
+            {
+                sink.world_weapons
+                    .insert_in(namespace, entry.skel.clone(), Some(&sink.materials));
+            }
+        }
+        sink.projectile_meshes.keep_referenced(&projectile_keys);
+        weapons.apply_stats_tables(sink.stats_tables.values());
+        weapons.resolve_sz_xanim_edges(&sink.xanims);
+        weapons.resolve_fpv_mesh_edges(&sink.fpv_meshes);
+        weapons.resolve_world_model_edges(&sink.world_weapons);
+        report.push(format!(
+            "common_mp statsTable: tables={} item_groups={}",
+            sink.stats_tables.len(),
+            weapons.item_group_count(),
+        ));
+        let gun_named = weapons.gun_xmodel_count();
+        report.push(format!(
+        "common_mp weapons: {captured} captures → {} unique catalog ids (sorted); {gun_named} with gunXModel[0]",
+        weapons.len()
+    ));
+        report.push(format!(
+            "common_mp leftover t5 fx: {leftover_fx} captured ({leftover_fx_gaps} gaps)"
+        ));
+        report.push(format!(
+        "common_mp FPV mesh catalog: {} bind-pose viewmodel_* meshes retained ({} with tag_view)",
+        sink.fpv_meshes.len(),
+        sink.fpv_meshes.tag_view_count()
+    ));
+        report.push(format!(
+            "common_mp T5 xanims: {} captured ({} gaps)",
+            sink.xanims.len(),
+            sink.xanims.capture_gaps
+        ));
+
+        let mut materials = sink.materials;
+
+        let mut pending_images = None;
+        if decode_color_maps {
+            let stage = progress.begin_scoped(StageId::Images, "common_mp", None);
+            let (inline, plan) = asset_material::material_images::plan_material_color_maps(
+                path,
+                &mut materials,
+                &stage,
+                crate::session_load::load_pool(),
+            );
+            report.push(format!(
+                "common_mp T5 IWD color maps: {} claimed for the merged pool, {} in-zone bodies decoded here ({} missing, {} unsupported)",
+                plan.len(),
+                inline.decoded,
+                inline.missing,
+                inline.unsupported
+            ));
+            // The plan itself is decoded later, under its own stage. This one
+            // planned and decoded the in-zone bodies, and it finished; letting
+            // the handle drop would record it as interrupted.
+            stage.done();
+            pending_images = Some(plan);
+        }
+        report.push(format!(
+            "common_mp T5 teamset scripts: {} (_teamset_*.gsc icons)",
+            sink.teamsets.len()
+        ));
+        CommonCensus {
+            pending_images,
+            weapons,
+            cac_tables: sink.stats_tables.into_values().collect(),
+            material_population: materials,
+            fpv: sink.fpv_meshes,
+            projectile_meshes: sink.projectile_meshes,
+            world_weapons: sink.world_weapons,
+            xanims: sink.xanims,
+            player_anim_sources: sink.player_anim_sources,
+            fx: sink.fx,
+            impact_fx: sink.impact_fx.take_table(),
+            fx_models: sink.fx_models,
+            report,
+            pen_table: sink.pen_table.unwrap_or_default(),
+            pen_table_loaded: sink.pen_table.is_some(),
+            lochit_table: sink.lochit_table,
+            teamsets: sink.teamsets,
+            scene_models: sink.scene_models,
+            static_meshes: sink.static_meshes,
+            scripts: sink.scripts,
+            film_visions: std::collections::BTreeMap::new(),
+            ..Default::default()
+        }
+    }
+}
+
 impl ZoneLane for T5Lane {
     fn capabilities(&self) -> &'static [(PreparedCapability, LaneStatus)] {
         Self::CAPABILITIES
@@ -136,7 +321,15 @@ impl ZoneLane for T5Lane {
         let runtime_overrun = stream.block_overrun(fastfile_t5::XFILE_BLOCK_RUNTIME as u8);
         report.push(format!("block overrun: runtime +{runtime_overrun} bytes"));
 
+        let mut foreign_clip_models = Vec::new();
         let clip = if let Some(geometry) = stream.clip_map() {
+            report.push(format!(
+                "clipmap: dyn ents (client lists {} + {}, server lists {} + {})",
+                geometry.dyn_ent_counts[0],
+                geometry.dyn_ent_counts[1],
+                geometry.dyn_ent_counts[2],
+                geometry.dyn_ent_counts[3]
+            ));
             report.push(format!(
                 "clipmap: planes={} brushes={} leaves={} nodes={} cmodels={} verts={} tris={}",
                 geometry.plane_count,
@@ -153,11 +346,11 @@ impl ZoneLane for T5Lane {
                     .attach_t5_clip_models(&stream, geometry, &mut clip)?;
                 if !foreign.is_empty() {
                     report.push(format!(
-                        "t5 clip: {} static models reference another zone; collision not attached: {}",
-                        foreign.len(),
-                        foreign.join(", ")
+                        "t5 clip: {} static models reference another zone; collision waits for its walk",
+                        foreign.len()
                     ));
                 }
+                foreign_clip_models = foreign;
                 Ok(clip)
             }) {
                 Ok(clip) => {
@@ -341,8 +534,30 @@ impl ZoneLane for T5Lane {
                     script_brush_models,
                     flag_descriptors,
                     script_structs,
+                    foreign_static_models,
                     ..
                 } = map_models;
+                if !foreign_static_models.is_empty() {
+                    let mut names: Vec<&str> = foreign_static_models
+                        .iter()
+                        .map(|model| model.name.as_str())
+                        .collect();
+                    names.sort_unstable();
+                    names.dedup();
+                    report.push(format!(
+                        "static models: {} slots name a model another zone holds: {}",
+                        foreign_static_models.len(),
+                        names.join(", ")
+                    ));
+                }
+                // Lighting is sampled for every placed slot, including the
+                // ones whose model is linked from another zone.
+                let mut lit_slots = static_model_instances.clone();
+                for model in &foreign_static_models {
+                    if let Some(slot) = lit_slots.get_mut(model.slot) {
+                        *slot = Some(model.placement);
+                    }
+                }
                 let intermission_view = intermission_view_t5(&stream);
                 let minimap_corners = minimap_corners_t5(&stream);
                 let north_yaw = asset_world::worldspawn_north_yaw_t5(&stream);
@@ -419,7 +634,7 @@ impl ZoneLane for T5Lane {
                             asset_model::model_lighting::collect_t5_smodel_lighting_origins(
                                 &stream, geometry,
                             ),
-                            &static_model_instances,
+                            &lit_slots,
                             clip.as_ref(),
                         )
                     }
@@ -488,6 +703,10 @@ impl ZoneLane for T5Lane {
                         ..Default::default()
                     },
                     report,
+                    foreign_models: super::ForeignModels {
+                        static_models: foreign_static_models,
+                        clip_models: foreign_clip_models,
+                    },
                     ..LoadedWorld::empty(WorldDrawPolicy::t5())
                 }
             }
@@ -534,174 +753,14 @@ impl ZoneLane for T5Lane {
         decode_color_maps: bool,
         material_seed: asset_material::MaterialCatalog,
     ) -> CommonCensus {
-        let header = match image.t5_header() {
-            Ok(header) => header,
-            Err(error) => {
-                return CommonCensus {
-                    report: vec![format!("common_mp models: T5 zone header: {error}")],
-                    ..Default::default()
-                };
-            }
-        };
-        let mut memory = T5ZoneMemory::for_header(&header);
-        let mut stream = match memory.stream(&image.bytes) {
-            Ok(stream) => stream,
-            Err(error) => {
-                return CommonCensus {
-                    report: vec![format!("common_mp models: T5 zone arenas: {error}")],
-                    ..Default::default()
-                };
-            }
-        };
-        let mut sink = CommonWalkSink::default();
-        sink.seed_materials(material_seed);
-        sink.set_capture_zone(asset_core::ZoneOwner::from_zone_path(path));
-        sink.set_capture_ns(asset_core::AssetNamespace::T5);
-        sink.sound = asset_audio::ZoneSoundCapture::claim_common(
+        self.load_common_zone(
             path,
-            asset_audio::ZoneGame::T5,
-            "common census",
-        );
-        let walk = fastfile_t5::load_zone(&mut stream, &mut sink);
-        if let Some(sound) = sink.sound.take() {
-            sound.deposit(walk.as_ref().map(|_| ()).map_err(|e| e.to_string()));
-        }
-        let mut report = vec![format!("common_mp (T5): walked {} assets", sink.walked)];
-        if let Err(error) = walk {
-            report.push(format!(
-                "common_mp T5 walk: stopped after {} assets — {error}",
-                sink.walked
-            ));
-        }
-        report.push(format!(
-            "common_mp T5 pointer drift: {} unsettled offsets",
-            stream.unsettled_offsets()
-        ));
-        report.push(format!(
-            "s2 t5 walk: reuse_mat={} reuse_img={} pool_mat={} pool_img={}",
-            sink.materials.link_reused_materials,
-            sink.materials.link_reused_images,
-            sink.materials.materials.len(),
-            sink.materials.images.len(),
-        ));
-        let captured = sink.weapons.len();
-
-        sink.weapons.resolve_reticles(&sink.materials);
-        sink.weapons.resolve_projectile_fx_edges(&sink.fx);
-        if let Some(table) = sink.impact_fx.table.as_ref() {
-            sink.weapons.resolve_projectile_impact_fx(table);
-        }
-        sink.weapons
-            .resolve_combat_fx(&sink.fx, &asset_game::TracerCatalog::default());
-        let leftover_fx = sink.fx.len();
-        let leftover_fx_gaps = sink.fx.capture_gaps;
-        let projectile_keys = sink.weapons.projectile_model_hints();
-        let mut weapons = sink.weapons.into_build();
-        let namespace = asset_core::AssetNamespace::T5;
-        for id in 1..=weapons.len() as u32 {
-            for name in [
-                weapons.gun_xmodel_of(id),
-                weapons.hand_xmodel_of(id),
-                weapons.rocket_model_of(id),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                if sink.fpv_meshes.get(namespace, name).is_none()
-                    && let Some(entry) = sink.projectile_meshes.get(namespace, name)
-                {
-                    sink.fpv_meshes
-                        .insert_in(namespace, entry.skel.clone(), Some(&sink.materials));
-                }
-            }
-            if let Some(name) = weapons.world_model_of(id)
-                && sink.world_weapons.get(namespace, name).is_none()
-                && let Some(entry) = sink.projectile_meshes.get(namespace, name)
-            {
-                sink.world_weapons
-                    .insert_in(namespace, entry.skel.clone(), Some(&sink.materials));
-            }
-        }
-        sink.projectile_meshes.keep_referenced(&projectile_keys);
-        weapons.apply_stats_tables(sink.stats_tables.values());
-        weapons.resolve_sz_xanim_edges(&sink.xanims);
-        weapons.resolve_fpv_mesh_edges(&sink.fpv_meshes);
-        weapons.resolve_world_model_edges(&sink.world_weapons);
-        report.push(format!(
-            "common_mp statsTable: tables={} item_groups={}",
-            sink.stats_tables.len(),
-            weapons.item_group_count(),
-        ));
-        let gun_named = weapons.gun_xmodel_count();
-        report.push(format!(
-        "common_mp weapons: {captured} captures → {} unique catalog ids (sorted); {gun_named} with gunXModel[0]",
-        weapons.len()
-    ));
-        report.push(format!(
-            "common_mp leftover t5 fx: {leftover_fx} captured ({leftover_fx_gaps} gaps)"
-        ));
-        report.push(format!(
-        "common_mp FPV mesh catalog: {} bind-pose viewmodel_* meshes retained ({} with tag_view)",
-        sink.fpv_meshes.len(),
-        sink.fpv_meshes.tag_view_count()
-    ));
-        report.push(format!(
-            "common_mp T5 xanims: {} captured ({} gaps)",
-            sink.xanims.len(),
-            sink.xanims.capture_gaps
-        ));
-
-        let mut materials = sink.materials;
-
-        let mut pending_images = None;
-        if decode_color_maps {
-            let stage = progress.begin_scoped(StageId::Images, "common_mp", None);
-            let (inline, plan) = asset_material::material_images::plan_material_color_maps(
-                path,
-                &mut materials,
-                &stage,
-                crate::session_load::load_pool(),
-            );
-            report.push(format!(
-                "common_mp T5 IWD color maps: {} claimed for the merged pool, {} in-zone bodies decoded here ({} missing, {} unsupported)",
-                plan.len(),
-                inline.decoded,
-                inline.missing,
-                inline.unsupported
-            ));
-            // The plan itself is decoded later, under its own stage. This one
-            // planned and decoded the in-zone bodies, and it finished; letting
-            // the handle drop would record it as interrupted.
-            stage.done();
-            pending_images = Some(plan);
-        }
-        report.push(format!(
-            "common_mp T5 teamset scripts: {} (_teamset_*.gsc icons)",
-            sink.teamsets.len()
-        ));
-        CommonCensus {
-            pending_images,
-            weapons,
-            cac_tables: sink.stats_tables.into_values().collect(),
-            material_population: materials,
-            fpv: sink.fpv_meshes,
-            projectile_meshes: sink.projectile_meshes,
-            world_weapons: sink.world_weapons,
-            xanims: sink.xanims,
-            player_anim_sources: sink.player_anim_sources,
-            fx: sink.fx,
-            impact_fx: sink.impact_fx.take_table(),
-            fx_models: sink.fx_models,
-            report,
-            pen_table: sink.pen_table.unwrap_or_default(),
-            pen_table_loaded: sink.pen_table.is_some(),
-            lochit_table: sink.lochit_table,
-            teamsets: sink.teamsets,
-            scene_models: sink.scene_models,
-            scripts: sink.scripts,
-            film_visions: std::collections::BTreeMap::new(),
-            ..Default::default()
-        }
+            image,
+            progress,
+            decode_color_maps,
+            material_seed,
+            Default::default(),
+        )
     }
 
     fn load_material_population(

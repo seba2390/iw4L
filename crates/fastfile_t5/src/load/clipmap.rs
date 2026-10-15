@@ -195,6 +195,7 @@ pub(super) fn load_clip_map(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSin
         leaves,
         leafbrush_nodes,
         cmodels,
+        dyn_ent_counts: [dyn0, dyn1, dyn2, dyn3],
     });
 
     s.pop()

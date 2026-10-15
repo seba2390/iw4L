@@ -1270,10 +1270,12 @@ pub(super) struct ZombieCommons {
     /// Black Ops' own HUD menus and fonts.
     pub(super) hud_menus: Option<asset_game::MenuCatalog>,
     /// Each zone's models with the materials they index, for the actor
-    /// bodies and heads scripts put on spawned zombies.
+    /// bodies and heads scripts put on spawned zombies, and the draw meshes
+    /// of the map's static models the zone holds.
     pub(super) scene_models: Vec<(
         asset_world::MapXModelSceneCatalog,
         asset_material::MaterialCatalog,
+        Vec<asset_world::ForeignStaticMesh>,
     )>,
     /// The 2D images the zombie scripts and Black Ops' HUD name.
     pub(super) hud_images: Vec<(String, asset_material::material_images::ZoneUiImage)>,
@@ -1282,7 +1284,13 @@ pub(super) struct ZombieCommons {
 
 /// T5 zombie maps run on the singleplayer script base and keep their actor
 /// animations, weapons and shared models in `common_zombie` and its patch.
-pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> ZombieCommons {
+/// `static_models` names the models the map's static model slots take from
+/// these zones.
+pub(super) fn walk_zombie_commons(
+    zone_ff: &Path,
+    progress: &LoadProgress,
+    static_models: &std::collections::BTreeSet<String>,
+) -> ZombieCommons {
     let mut commons = ZombieCommons::default();
     let is_zombie_map = zone_ff
         .file_stem()
@@ -1328,12 +1336,13 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
                 continue;
             }
         };
-        let census = lane(image.game).load_common_mp(
+        let census = crate::lane::T5Lane.load_common_zone(
             &found.path,
             &image,
             progress,
             false,
             MaterialCatalog::default(),
+            static_models.clone(),
         );
         let xanims = census.xanims.len();
         commons.xanims.absorb(census.xanims);
@@ -1352,15 +1361,18 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
             commons.lochit_table = census.lochit_table;
         }
         commons.report.push(format!(
-            "zombie common {zone}: xanims={xanims} weapons={} scene_models={} scripts={}",
+            "zombie common {zone}: xanims={xanims} weapons={} scene_models={} static_meshes={} scripts={}",
             census.weapons.len(),
             census.scene_models.len(),
+            census.static_meshes.len(),
             census.scripts.len(),
         ));
         script_names.extend(census.scripts.asset_names());
-        commons
-            .scene_models
-            .push((census.scene_models, census.material_population));
+        commons.scene_models.push((
+            census.scene_models,
+            census.material_population,
+            census.static_meshes,
+        ));
         if zone == map_patch {
             commons.map_patch_scripts = census.scripts;
         } else if zone != stem {
@@ -1407,7 +1419,7 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
             );
             commons
                 .scene_models
-                .push((Default::default(), population.materials));
+                .push((Default::default(), population.materials, Vec::new()));
         }
     }
     let mut hud_material_names = std::collections::BTreeSet::new();
@@ -1451,20 +1463,30 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
         stem.as_str(),
     ] {
         let found = asset_transport::discover::find_t5_localized_zone(zone_ff, None, stem);
-        // Localized zones also hold materials the zombie bodies draw with.
+        // Localized zones also hold materials the zombie bodies draw with,
+        // and the map's localized models (the lobby door tear-ins).
         if let Ok(Some(zone)) = &found
             && let Ok(image) = open_zone_shared(&zone.path)
         {
-            let census = lane(image.game).load_common_mp(
+            let census = crate::lane::T5Lane.load_common_zone(
                 &zone.path,
                 &image,
                 progress,
                 false,
                 MaterialCatalog::default(),
+                static_models.clone(),
             );
-            commons
-                .scene_models
-                .push((census.scene_models, census.material_population));
+            if !census.static_meshes.is_empty() {
+                commons.report.push(format!(
+                    "zombie localized {stem}: static_meshes={}",
+                    census.static_meshes.len()
+                ));
+            }
+            commons.scene_models.push((
+                census.scene_models,
+                census.material_population,
+                census.static_meshes,
+            ));
         }
         match found.map(|found| found.map(|zone| load_localize_catalog_in_lane(&zone.path))) {
             Ok(Some(Ok(part))) => {
@@ -1504,14 +1526,18 @@ pub(super) fn walk_zombie_commons(zone_ff: &Path, progress: &LoadProgress) -> Zo
 /// (round chalk, perk and power-up icons, the weapon info frame), decoded for
 /// the HUD from the zone images they sample.
 fn zombie_hud_images(
-    zones: &[(asset_world::MapXModelSceneCatalog, MaterialCatalog)],
+    zones: &[(
+        asset_world::MapXModelSceneCatalog,
+        MaterialCatalog,
+        Vec<asset_world::ForeignStaticMesh>,
+    )],
     names: &std::collections::BTreeSet<String>,
     hud_names: &std::collections::BTreeSet<String>,
     main: Option<&Path>,
 ) -> Vec<(String, asset_material::ZoneUiImage)> {
     let mut images = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
-    for (_, population) in zones {
+    for (_, population, _) in zones {
         for material in &population.materials {
             let name = material.name.as_str().to_ascii_lowercase();
             // Scripts build some names (`"hud_chalk_" + round`), so HUD-named
