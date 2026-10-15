@@ -221,6 +221,7 @@ pub(crate) fn publish(world: &mut World) {
     let missile_vision = runtime.engine.missile_vision.clone();
     let night_vision = runtime.engine.night_vision.clone();
     let pain_vision = runtime.engine.pain_vision.clone();
+    let last_stand_vision = runtime.engine.last_stand_vision.clone();
     let fog = runtime.engine.fog;
     let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
     let absent_effects = runtime
@@ -301,5 +302,6 @@ pub(crate) fn publish(world: &mut World) {
         missile_vision,
         night_vision,
         pain_vision,
+        last_stand_vision,
     };
 }

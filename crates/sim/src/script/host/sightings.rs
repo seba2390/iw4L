@@ -386,15 +386,16 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         }
     }
     let chests = items(runtime, field(runtime, 0, "chests"));
-    if let Some(chest) = int(field(runtime, 0, "chest_index"))
-        .and_then(|index| chests.get(usize::try_from(index).ok()?).cloned())
-        .and_then(|chest| object(Some(chest)))
-        && let stub = object(field(runtime, chest, "unitrigger_stub")).unwrap_or(chest)
-        && let Some(mut box_site) = site(runtime, UseKind::Box, stub, "cost")
-    {
-        box_site.cost = int(field(runtime, chest, "zombie_cost"))
-            .or_else(|| int(field(runtime, chest, "old_cost")));
-        sites.push(box_site);
+    for chest in chests.into_iter().filter_map(|c| object(Some(c))) {
+        if int(field(runtime, chest, "hidden")) == Some(1) {
+            continue;
+        }
+        let stub = object(field(runtime, chest, "unitrigger_stub")).unwrap_or(chest);
+        if let Some(mut box_site) = site(runtime, UseKind::Box, stub, "cost") {
+            box_site.cost = int(field(runtime, chest, "zombie_cost"))
+                .or_else(|| int(field(runtime, chest, "old_cost")));
+            sites.push(box_site);
+        }
     }
     sites
 }

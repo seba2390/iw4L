@@ -450,15 +450,25 @@ fn register_rest(registry: &mut NativeRegistry) {
         if seconds < 0.0 {
             return Err("Time must be positive".into());
         }
+        let duration_ms = (seconds * 1000.0) as i32;
         if blur < 0.0 {
             return Err("Blur value must be greater than 0".into());
         }
         let client = player(world, receiver)
             .map_err(|_| "setblur() called on an invalid client entity.\n".to_owned())?;
-        world
-            .get_resource_or_insert_with(Blurs::default)
-            .0
-            .insert(client, (blur, seconds));
+        let now = world
+            .get_resource::<crate::step::StepRequest>()
+            .map_or(0, |r| crate::level_time_ms(r.tick));
+        if let Some(mut frame) = FrameWorld::try_from_world(world)
+            && frame.client_meta(ClientId(client)).is_some()
+        {
+            frame.client_meta_mut(ClientId(client)).view_effects.blur = Some(crate::ScriptBlur {
+                from: blur,
+                to: 0.0,
+                set_ms: now,
+                duration_ms: duration_ms + 50,
+            });
+        }
         Ok(Value::Undefined)
     });
     for name in [
@@ -824,10 +834,6 @@ struct EmpJammed(std::collections::BTreeSet<u32>);
 
 #[derive(Resource, Default)]
 struct ClientFlags(BTreeMap<u64, u32>);
-
-/// Each player's fading blur and its time (`t6.player.blur`: kept, not sent).
-#[derive(Resource, Default)]
-struct Blurs(BTreeMap<u32, (f32, f32)>);
 
 /// What a script has taken from a player's body, kept so each allowance
 /// can answer the one before it.

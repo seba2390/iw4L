@@ -396,6 +396,12 @@ fn update_film_vision_view(
                     .night_vision
                     .clone()
                     .or_else(|| global.night_vision.clone())
+            } else if presented
+                .player(local.0)
+                .is_some_and(|ps| ps.in_last_stand())
+                && global.last_stand_vision.is_some()
+            {
+                global.last_stand_vision.clone()
             } else {
                 effects
                     .naked_vision

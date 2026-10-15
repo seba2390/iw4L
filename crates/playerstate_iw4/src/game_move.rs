@@ -45,6 +45,11 @@ fn own_entity(entity: i32) -> i32 {
 
 impl PlayerState {
     #[must_use]
+    pub const fn in_last_stand(&self) -> bool {
+        self.pm_type == PM_TYPE_LAST_STAND || self.pm_flags & pm_flags::LAST_STAND != 0
+    }
+
+    #[must_use]
     pub fn move_player(&self, client_num: i32, frozen: bool) -> MovePlayer {
         MovePlayer {
             client_num,

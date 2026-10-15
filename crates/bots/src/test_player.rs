@@ -250,6 +250,8 @@ struct Scenario {
     until_ms: i32,
     score: i32,
     weapon: String,
+    clip: i32,
+    stock: i32,
     offered: Vec<String>,
     /// How many times he has held use there.
     presses: u8,
@@ -260,6 +262,9 @@ struct Scenario {
 #[derive(Resource, Default)]
 pub(crate) struct TestPlayer {
     mode: Mode,
+    /// Weapon, clip, and stock after the last wall buy so a repeat wall buy
+    /// fires and reloads one round before buying ammo.
+    wall_stock: Option<(String, i32, i32)>,
     /// The teammate the revive test is reviving, and until when it holds use.
     reviving: Option<u32>,
     revive_until_ms: i32,
@@ -750,6 +755,8 @@ fn next_scenario(
                 },
             score,
             weapon: world.weapon_script_name(weapon).to_owned(),
+            clip: 0,
+            stock: 0,
             offered: Vec::new(),
             presses: 0,
             power_by_ms: 0,
@@ -939,11 +946,20 @@ pub(crate) fn drive_test_player(
         {
             diag::info!(
                 Sim,
-                "test player: down test t={}s life={:?} health={} laststand={}",
+                "test player: down test t={}s life={:?} health={} laststand={} last_stand_vision={:?} blur={:?}",
                 clock.time_ms / 1000,
                 now.0,
                 now.1,
-                now.2.map_or_else(|| "-".to_owned(), |n| n.to_string())
+                now.2.map_or_else(|| "-".to_owned(), |n| n.to_string()),
+                snapshot
+                    .meta
+                    .objectives
+                    .last_stand_vision
+                    .as_ref()
+                    .map(|v| (&v.name, v.duration_ms)),
+                meta.view_effects
+                    .blur
+                    .map(|b| (b.from, b.to, b.duration_ms))
             );
         }
         test.seen = Some(now);
@@ -1202,6 +1218,21 @@ pub(crate) fn drive_test_player(
         }
     }
 
+    if test.scenario.is_none()
+        && test.pending.first() == Some(&UseKind::WallBuy)
+        && let Some((ref wall_weapon, buy_clip, buy_stock)) = test.wall_stock
+        && world.0.weapon_script_name(ps.weapon) == wall_weapon
+        && meta.ammo_stock >= buy_stock
+    {
+        if meta.ammo_clip >= buy_clip {
+            cmd.buttons |= buttons::ATTACK;
+        } else {
+            cmd.buttons |= buttons::RELOAD;
+        }
+        cmds.push(id, None, cmd, None);
+        return;
+    }
+
     if matches!(test.mode, Mode::Use | Mode::Revive)
         && test.scenario.is_none()
         && clock.time_ms - since_ms >= USE_START_MS
@@ -1210,7 +1241,7 @@ pub(crate) fn drive_test_player(
             test.next_try_ms = clock.time_ms + TRY_PERIOD_MS;
             true
         }
-        && let Some(scenario) = next_scenario(
+        && let Some(mut scenario) = next_scenario(
             &mut test,
             &world.0,
             id,
@@ -1220,6 +1251,8 @@ pub(crate) fn drive_test_player(
             since_ms,
         )
     {
+        scenario.clip = meta.ammo_clip;
+        scenario.stock = meta.ammo_stock;
         diag::info!(
             Sim,
             "test player: use {:?}{} cost={} at {} — standing at {}",
@@ -1304,13 +1337,17 @@ pub(crate) fn drive_test_player(
                     );
                     diag::info!(
                         Sim,
-                        "test player: used {:?} — stood {:.0} from it, score {}→{}, weapon {}→{} (holds {:?}), trigger {}, use triggers there while holding {:?}",
+                        "test player: used {:?} — stood {:.0} from it, score {}→{}, weapon {}→{} (clip {}→{}, stock {}→{}, holds {:?}), trigger {}, use triggers there while holding {:?}",
                         scenario.site.kind,
                         distance(eye, scenario.center),
                         scenario.score,
                         meta.score,
                         scenario.weapon,
                         world.0.weapon_script_name(ps.weapon),
+                        scenario.clip,
+                        meta.ammo_clip,
+                        scenario.stock,
+                        meta.ammo_stock,
                         ps.weapons
                             .iter()
                             .filter(|&&w| w > 0)
@@ -1323,6 +1360,13 @@ pub(crate) fn drive_test_player(
                         },
                         scenario.offered
                     );
+                    if scenario.site.kind == UseKind::WallBuy {
+                        test.wall_stock = Some((
+                            world.0.weapon_script_name(ps.weapon).to_owned(),
+                            meta.ammo_clip,
+                            meta.ammo_stock,
+                        ));
+                    }
                     if scenario.site.kind == UseKind::Rebuild {
                         diag::info!(
                             Sim,
