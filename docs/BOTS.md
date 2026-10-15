@@ -65,3 +65,5 @@ the use test; `_WIELD`, `_PLACE`, `_THROW`, `_GRAB`, `_REVIVE`, `_RIDE`, `_WALK`
 actions; `_ACTORS`, `_WAITS`, `_VARS` add log fields. With a game's own movement it
 also logs each change of the ladder, mantle, no-melee, no-cycling and being-revived
 flags, and each hit on the damage timer.
+With `IW4L_TIMESCALE` a headless run plays faster than real time; the test player
+runs each tick, so it acts the same.
