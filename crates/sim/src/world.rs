@@ -2697,7 +2697,15 @@ impl SimState {
             &snapshot.meta.script_movers,
             crate::level_time_ms(snapshot.tick),
         );
-        let script_movers = snapshot.meta.script_movers.clone();
+        // The local client's own entities are rows it presents alone; the
+        // world adopts the server's entities.
+        let script_movers: Vec<_> = snapshot
+            .meta
+            .script_movers
+            .iter()
+            .filter(|mover| !crate::script::client::present::client_presented(mover.id))
+            .copied()
+            .collect();
 
         let dropped_items: Vec<_> = snapshot
             .meta
@@ -3206,6 +3214,15 @@ fn assert_entity_runtime_snapshot(snapshot: &Snapshot) {
 
     let mut typed_numbers = std::collections::HashSet::new();
     for mover in &snapshot.meta.script_movers {
+        // The local client's own entities are rows it presents, not the
+        // server's entities.
+        if crate::script::client::present::client_presented(mover.id) {
+            assert!(
+                typed_numbers.insert(mover.state.number),
+                "authoritative snapshot duplicated a typed dynamic entity number"
+            );
+            continue;
+        }
         assert!(
             typed_numbers.insert(mover.state.number),
             "authoritative snapshot duplicated a typed dynamic entity number"

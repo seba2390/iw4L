@@ -91,6 +91,8 @@ pub struct ClientCallbacks {
     /// A non-dog zombie actor's eye-glow flag (`haseyes`) changed:
     /// `self = actor, (local client, has_eyes)`.
     pub zombie_eye: &'static str,
+    /// A one-shot client trigger was touched: `self = trigger`.
+    pub trigger_delete: &'static str,
 }
 
 /// What a match compiles and where it starts.

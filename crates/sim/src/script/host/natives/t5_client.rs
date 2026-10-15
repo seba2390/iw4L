@@ -4,10 +4,11 @@
 use super::super::args::{arg, float, int, optional, string, vector};
 use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
+use crate::script::client::present::CLIENT_ENTITY_BASE;
 use crate::script::client::{
-    ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientOutput, ClientSoundReports,
-    ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LocalPlayerView, LoopSource,
-    SnapshotSpeeds,
+    ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientModels, ClientOutput,
+    ClientSoundReports, ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LocalPlayerView,
+    LoopSource, SnapshotSpeeds,
 };
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
@@ -403,10 +404,6 @@ fn clock(time: &impl chrono::Timelike) -> (u32, u32, u32) {
     (time.hour(), time.minute(), time.second())
 }
 
-/// The first client-only entity number; lower ones are the server's
-/// entities in the client's snapshot.
-const CLIENT_ENTITY_BASE: i32 = 0x400;
-
 /// The client's effect slots: its effect configstrings 1 to 195.
 const EFFECT_IDS: std::ops::RangeInclusive<i32> = 1..=0xc3;
 
@@ -697,7 +694,8 @@ fn register_player_view(registry: &mut NativeRegistry) {
 
 fn register_models(registry: &mut NativeRegistry) {
     use Namespace::Method;
-    // `ent setModel(name)`: a script mover's model; "" clears it.
+    // `ent setModel(name)`: a script mover's model, a precached one or a
+    // brush model (`*N`); "" clears it.
     registry.register(Method, "setmodel", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
         let is_mover = matches!(
@@ -708,10 +706,27 @@ fn register_models(registry: &mut NativeRegistry) {
             return Err("SetModel can only be called on a script mover\n".into());
         }
         let model = string(args, 0)?;
+        if !model.is_empty()
+            && !model.starts_with('*')
+            && !world
+                .resource::<ClientModels>()
+                .names
+                .contains(&model.to_ascii_lowercase())
+        {
+            return Err(format!("model '{model}' not precached\n"));
+        }
         world
             .resource_mut::<RoundScript>()
             .set_object_field(id, "model", Value::string(&model));
         Ok(Value::Undefined)
+    });
+    // `ent isTouching(other)`: a client trigger and a player's or an
+    // actor's box.
+    registry.register(Method, "istouching", |world, receiver, args| {
+        let a = super::engine::entity_id(world, receiver)?;
+        let (b, _) = entity(world, arg(args, 0)?)?;
+        let touching = crate::script::client::triggers::is_touching(world, a, b)?;
+        Ok(Value::Int(touching.into()))
     });
     // `ent hide()` / `ent show()`: the entity's no-draw flag.
     registry.register(Method, "hide", |world, receiver, _| {

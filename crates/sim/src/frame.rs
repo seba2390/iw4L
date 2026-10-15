@@ -586,13 +586,15 @@ impl FrameWorld<'_> {
     }
 
     pub fn snapshot(&self, tick: Tick) -> Snapshot {
-        self.snapshot_with_dynamic_rows(
+        let mut snapshot = self.snapshot_with_dynamic_rows(
             tick,
             collect_players(self.ecs),
             collect_projectiles(self.ecs),
             collect_script_movers(self.ecs),
             collect_dropped_items(self.ecs),
-        )
+        );
+        crate::script::client::present::present_in_snapshot(self.ecs, &mut snapshot);
+        snapshot
     }
 
     pub fn adopt_snapshot(&mut self, snapshot: &Snapshot) -> crate::AdoptReport {
