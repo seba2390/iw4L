@@ -617,7 +617,9 @@ pub const T5_CODE_HDRCONTROL_0: u16 = 0x89;
 
 pub const T5_CODE_POSTFX_CONTROL0: u16 = 0x79;
 
-pub const T5_CODE_POSTFX_CONTROL6: u16 = 0x7f;
+pub const T5_CODE_POSTFX_CONTROLF: u16 = 0x88;
+
+pub const T5_CODE_TEXTURE_0: u32 = 0x22;
 
 pub const T5_CODE_SKY_TRANSITION: u16 = 0x44;
 
@@ -699,8 +701,6 @@ pub fn leftover_t5_code_bank(t5: u16) -> Option<u16> {
         | T5_CODE_SUN_SPECULAR
         | T5_CODE_SKY_TRANSITION
         | T5_CODE_SKY_COLOR_MULTIPLIER
-        | T5_CODE_HDRCONTROL_0
-        | T5_CODE_HDRCONTROL_1
         | T5_CODE_LIGHT_HERO_SCALE
         | T5_CODE_HERO_LIGHTING_R
         | T5_CODE_HERO_LIGHTING_G
@@ -717,9 +717,22 @@ pub fn leftover_t5_code_bank(t5: u16) -> Option<u16> {
         | T5_CODE_CHARACTER_CHARRED_AMOUNT
         | T5_CODE_CUSTOMWIND_CENTER
         | T5_CODE_CUSTOMWIND_SPRING => Some(LEFTOVER_T5_CODE_BASE.checked_add(t5)?),
-        T5_CODE_POSTFX_CONTROL0..=T5_CODE_POSTFX_CONTROL6
-        | T5_CODE_VARIANT_WIND_SPRING_0..=T5_CODE_VARIANT_WIND_SPRING_15 => {
+        T5_CODE_VARIANT_WIND_SPRING_0..=T5_CODE_VARIANT_WIND_SPRING_15 => {
             Some(LEFTOVER_T5_CODE_BASE.checked_add(t5)?)
+        }
+        _ => None,
+    }
+}
+
+/// Black Ops' post and HDR controls are the renderer's post bank.
+#[must_use]
+pub fn post_t5_code_bank(t5: u16) -> Option<u16> {
+    match t5 {
+        T5_CODE_POSTFX_CONTROL0..=T5_CODE_POSTFX_CONTROLF => {
+            Some(render_material::CODE_POST_CONTROL0 + (t5 - T5_CODE_POSTFX_CONTROL0))
+        }
+        T5_CODE_HDRCONTROL_0 | T5_CODE_HDRCONTROL_1 => {
+            Some(render_material::CODE_POST_HDR_CONTROL0 + (t5 - T5_CODE_HDRCONTROL_0))
         }
         _ => None,
     }
@@ -727,7 +740,9 @@ pub fn leftover_t5_code_bank(t5: u16) -> Option<u16> {
 
 #[must_use]
 pub fn remap_t5_code_const_source(t5: u16) -> Option<u16> {
-    remap_code_const_index(t5).or_else(|| leftover_t5_code_bank(t5))
+    remap_code_const_index(t5)
+        .or_else(|| post_t5_code_bank(t5))
+        .or_else(|| leftover_t5_code_bank(t5))
 }
 
 #[must_use]
