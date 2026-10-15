@@ -43,7 +43,9 @@ pub struct ConsoleDispatch {
     pub wait_playing_elapsed: f32,
 
     pub wait_tick: Option<u32>,
+    /// Real seconds spent waiting for the tick, and how many to allow.
     pub wait_tick_elapsed: f32,
+    pub wait_tick_timeout: f32,
 
     pub wait_alive: Option<(sim::ClientId, sim::LifeSequence)>,
     pub wait_alive_elapsed: f32,
