@@ -869,6 +869,32 @@ impl PlayerMovement for T5Movement {
         Some((kind, surface))
     }
 
+    /// Black Ops' client game tells its scripts of a jump (event 108, the
+    /// surface in its parameter) and a landing (109 plus the surface, or
+    /// the fall-damage events 140 plus the surface, which hurt).
+    fn jump_land(&self, signal: &MoveSignal) -> Option<game_api::movement::JumpLand> {
+        use game_api::movement::JumpLand;
+        use movement_t5::events::event;
+        let MoveSignal::Event { event, parm } = *signal else {
+            return None;
+        };
+        let surface = |index: i32| {
+            crate::grenade::SURFACE_NAMES
+                .get(usize::try_from(index).ok()?)
+                .copied()
+        };
+        match event {
+            event::JUMP => Some(JumpLand::Jump(surface(parm)?)),
+            e if (event::LAND..event::FALL_DAMAGE).contains(&e) => {
+                Some(JumpLand::Land(surface(e - event::LAND)?, false))
+            }
+            e if (event::FALL_DAMAGE..event::FALL_DAMAGE + 31).contains(&e) => {
+                Some(JumpLand::Land(surface(e - event::FALL_DAMAGE)?, true))
+            }
+            _ => None,
+        }
+    }
+
     fn clear_perks(&self, player: &mut MovePlayer) {
         let (mut ps, mut last) = unpack(player);
         ps.perks = 0;
