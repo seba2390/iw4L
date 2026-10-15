@@ -223,16 +223,17 @@ pub(super) async fn walk_prepared_match(
     );
     let zombie_weapon_options = zombie.weapon_options;
     let zombie_camo_images: std::collections::BTreeSet<String> = zombie_weapon_options
-        .as_ref()
-        .map(|options| {
+        .iter()
+        .flat_map(|options| {
             (0..options.rows as i32)
-                .filter(|&row| matches!(options.cell(row, 1), "gold" | "black"))
-                .flat_map(|row| (2..options.columns as i32).map(move |col| options.cell(row, col)))
+                .filter(move |&row| matches!(options.cell(row, 1), "gold" | "black"))
+                .flat_map(move |row| {
+                    (2..options.columns as i32).map(move |col| options.cell(row, col))
+                })
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned)
-                .collect()
         })
-        .unwrap_or_default();
+        .collect();
     let zombie_fx = zombie.fx;
     let zombie_impact_fx = zombie.impact_fx;
     // Black Ops' singleplayer tables for its zombie maps.

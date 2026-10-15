@@ -138,44 +138,22 @@ const NODE_STEP_HEIGHT: f32 = 72.0;
 
 impl ActorPaths {
     pub fn new(nodes: Vec<NavNode>) -> Self {
-        let mut scripts: BTreeMap<String, Vec<(u16, [f32; 3], [f32; 3])>> = BTreeMap::new();
-        for (idx, node) in nodes.iter().enumerate() {
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for node in &nodes {
             if node.kind == NavNodeKind::NegotiationBegin && !node.animscript.is_empty() {
-                let end_origin = node
-                    .links
-                    .iter()
-                    .find(|&&(_, _, neg)| neg)
-                    .and_then(|&(to, _, _)| nodes.get(usize::from(to)))
-                    .map_or(node.origin, |end| end.origin);
-                scripts.entry(node.animscript.clone()).or_default().push((
-                    idx as u16,
-                    node.origin,
-                    end_origin,
-                ));
+                *counts.entry(node.animscript.clone()).or_default() += 1;
             }
         }
-        if !scripts.is_empty() {
-            let summary: Vec<String> = scripts
+        if !counts.is_empty() {
+            let summary: Vec<String> = counts
                 .iter()
-                .map(|(name, list)| {
-                    let (id, b, e) = list[0];
-                    format!(
-                        "{name}={} (e.g. #{id}: {:.0} {:.0} {:.0} -> {:.0} {:.0} {:.0})",
-                        list.len(),
-                        b[0],
-                        b[1],
-                        b[2],
-                        e[0],
-                        e[1],
-                        e[2]
-                    )
-                })
+                .map(|(name, n)| format!("{name}={n}"))
                 .collect();
             diag::info!(
                 Sim,
                 "actor paths: {} nodes, {} traversal scripts: {}",
                 nodes.len(),
-                scripts.len(),
+                counts.len(),
                 summary.join(", ")
             );
         }
