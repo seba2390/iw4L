@@ -101,8 +101,8 @@
 //! and logs what the movement made of them: the distance and speed walked
 //! and sprinted, the jump's height, and the view height in each stance.
 
-use bevy::prelude::*;
 use bevy::ecs::system::SystemParam;
+use bevy::prelude::*;
 use net::{
     ActionRequestIds, AuthorityClock, AuthorityWorld, ClientActionInbox, ClientCommandInbox,
     LocalCmdOverride, LocalPresentClient, look_angles_from_degrees,
