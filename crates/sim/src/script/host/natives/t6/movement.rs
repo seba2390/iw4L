@@ -603,9 +603,11 @@ fn update_pitch_orient(world: &mut World, id: u64) {
         _ => 0.0,
     };
     let pitch = turn(angles[0], target_pitch, 12.0);
-    world
-        .resource_mut::<RoundScript>()
-        .set_object_field(id, "angles", Value::Vector([pitch, angles[1], angles[2]]));
+    world.resource_mut::<RoundScript>().set_object_field(
+        id,
+        "angles",
+        Value::Vector([pitch, angles[1], angles[2]]),
+    );
 }
 
 fn think_one(world: &mut World, id: u64) -> Result<(), String> {

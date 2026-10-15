@@ -466,8 +466,7 @@ pub(crate) fn object_field_text(world: &World, id: u64, name: &str) -> String {
         return "-".to_owned();
     };
     if let Some(csc_field) = name.strip_prefix("csc_") {
-        let Some(client_scripts) =
-            world.get_resource::<super::client_scripts::ClientScripts>()
+        let Some(client_scripts) = world.get_resource::<super::client_scripts::ClientScripts>()
         else {
             return "-".to_owned();
         };
