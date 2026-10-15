@@ -248,7 +248,13 @@ pub(crate) fn publish(world: &mut World) {
     runtime.engine.earthquakes.retain(|quake| quake.active(now));
     let earthquakes = runtime.engine.earthquakes.clone();
     let client_effects = crate::script::client::effect_rows(world, now);
+    let client_visions = crate::script::client::vision_calls(world);
     let mut frame = FrameWorld::from_world(world);
+    // The local client's own vision calls reach its renderer alone.
+    let local = crate::ClientId(0);
+    if frame.client_meta(local).is_some() {
+        frame.client_meta_mut(local).view_effects.client_visions = client_visions;
+    }
     let mut effects: Vec<ScriptEffect> = rows
         .into_iter()
         .filter(|(_, fx, _)| !absent_effects.contains(&fx.name))

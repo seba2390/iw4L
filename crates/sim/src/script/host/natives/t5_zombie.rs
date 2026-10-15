@@ -5,6 +5,7 @@ use bevy_ecs::prelude::World;
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
+    super::t5_vision::register(registry);
     registry.register(Function, "getplayers", |world, _, args| {
         let team = optional_team(args)?;
         let players = players(world)
@@ -219,11 +220,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     // No water volumes are simulated.
     registry.register(Method, "depthinwater", |_, _, _| Ok(Value::Float(0.0)));
-    // The last-stand vision set is not drawn yet.
-    registry.register(Method, "visionsetlaststand", |world, receiver, _| {
-        super::player::player(world, receiver)?;
-        Ok(Value::Undefined)
-    });
     registry.register(Function, "missionfailed", |world, _, _| {
         mission_failed(world)?;
         Ok(Value::Undefined)

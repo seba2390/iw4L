@@ -31,6 +31,7 @@ impl Plugin for RenderPreparePlugin {
     fn build(&self, app: &mut App) {
         super::assemble::drawsurf::dof::register(app);
         super::assemble::drawsurf::film_vision_view::register(app);
+        super::assemble::drawsurf::post_chain::register(app);
         app
 
             .scoped::<WorldSpawnJob>(frame::MatchScope::Live)

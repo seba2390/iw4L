@@ -100,9 +100,9 @@ pub struct PostChainRules {
     /// The sampler state (filter and address modes) the passes read their
     /// code textures with.
     pub sampler_state: &'static Unknown,
-    /// How the game picks the vision a frame draws with; frames draw with
-    /// the map's own vision while it is unknown.
-    pub vision_channels: &'static Unknown,
+    /// A client's vision channels: how the game picks and blends the vision
+    /// each frame draws with from what its scripts ask for.
+    pub vision_channels: fn() -> Box<dyn VisionChannels>,
 }
 
 /// Rules are told apart by their targets and materials: function addresses
@@ -112,6 +112,56 @@ impl PartialEq for PostChainRules {
         self.targets == other.targets
             && self.materials == other.materials
             && self.sampler_state == other.sampler_state
-            && self.vision_channels == other.vision_channels
+    }
+}
+
+/// A script call that changes the vision a client draws with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VisionCall {
+    /// The server set the client's naked vision.
+    ServerNaked { name: String, duration_ms: i32 },
+    /// The server set the client's last-stand vision.
+    ServerLastStand { name: String, duration_ms: i32 },
+    /// A client script set the naked vision.
+    ClientNaked { name: String, duration_ms: i32 },
+    /// A client script turned the damage vision on or off.
+    ClientDamage {
+        on: bool,
+        name: String,
+        duration_ms: i32,
+    },
+    /// A client script set the underwater vision.
+    ClientUnderwater { name: String, duration_ms: i32 },
+}
+
+/// The client state a frame's vision is picked by.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct VisionView {
+    /// The client's time in milliseconds.
+    pub now_ms: i32,
+    /// The client's player is down in last stand.
+    pub last_stand: bool,
+}
+
+/// The game's vision files, by path (`vision/<name>.vision`, lower case).
+pub trait VisionFiles {
+    fn text(&self, path: &str) -> Option<&str>;
+}
+
+/// One client's vision channels.
+pub trait VisionChannels: Send + Sync {
+    /// Takes a script call at the client's time `now_ms`.
+    fn call(&mut self, call: &VisionCall, now_ms: i32, files: &dyn VisionFiles);
+    /// The vision this frame draws with, as the game's vision file reader
+    /// leaves one.
+    fn frame(&mut self, view: VisionView, files: &dyn VisionFiles) -> &[u32];
+    /// What the game would have printed since the last call: files it could
+    /// not open, fields it could not read.
+    fn take_messages(&mut self) -> Vec<String>;
+    /// The channel the last frame drew with and the name it holds.
+    fn picked(&self) -> (usize, &str);
+    /// The parts of the game's channel choice this port does not make yet.
+    fn gaps(&self) -> &'static [&'static Unknown] {
+        &[]
     }
 }

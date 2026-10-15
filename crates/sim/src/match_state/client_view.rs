@@ -62,9 +62,15 @@ pub struct ViewEffects {
     pub missile_vision: Option<VisionChange>,
     pub night_vision: Option<crate::VisionChange>,
     pub pain_vision: Option<crate::VisionChange>,
+    pub last_stand_vision: Option<crate::VisionChange>,
     pub depth_of_field: ScriptDepthOfField,
     pub blur: Option<ScriptBlur>,
+    /// The client scripts' latest vision calls, by serial.
+    pub client_visions: Vec<(u32, crate::VisionCall)>,
 }
+
+/// How many client-script vision calls a snapshot carries.
+pub const CLIENT_VISION_TAIL: usize = 8;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ScriptDepthOfField {

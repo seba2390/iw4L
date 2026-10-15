@@ -117,8 +117,9 @@ pub const ENEMY_BOTS_DVAR: &str = "scr_game_enemybots";
 pub const FRIENDLY_BOTS_DVAR: &str = "scr_game_friendlybots";
 
 pub const TEAM_MENU: &str = "team_marinesopfor";
+pub use game_api::post::VisionCall;
 pub use match_state::{
-    ClassDef, ClassRejectReason, ClientLifecycle, ClientSnapshotMeta,
+    CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle, ClientSnapshotMeta,
     ConfigurationChangeRejectReason, DroppedItemAmmo, EntityEventPayload, EntityEventRecord,
     EventAudience, EventRecord, GiveRejectReason, HealthRegenCensus, InputReceipt,
     ItemPickupRecord, KillcamHud, LinkedWeaponView, LoadoutSpec, LocationSelection,

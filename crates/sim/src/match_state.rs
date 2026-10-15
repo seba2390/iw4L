@@ -22,7 +22,7 @@ mod loadout;
 mod snapshot_meta;
 
 pub use client_view::{
-    KillcamHud, LinkedWeaponView, LocationSelection, MENU_COMMAND_TAIL, MenuCommand,
+    CLIENT_VISION_TAIL, KillcamHud, LinkedWeaponView, LocationSelection, MENU_COMMAND_TAIL, MenuCommand,
     MenuCommandKind, RadarMode, RemoteMissile, ScriptBlur, ScriptDepthOfField, ScriptSeat,
     ViewEffects, VisionChange, is_postfx_dvar,
 };

@@ -430,9 +430,10 @@ impl ZoneLane for T5Lane {
                 "vision/{}.vision",
                 stem.to_string_lossy().to_ascii_lowercase()
             );
-            report.push(match sink.t5_visions.get(&key) {
-                Some(vision) => super::t5_vision_report(&key, vision),
-                None => format!("t5 vision: {key} not in the map zone"),
+            report.push(if sink.t5_visions.contains_key(&key) {
+                format!("t5 vision: {key} in the map zone")
+            } else {
+                format!("t5 vision: {key} not in the map zone")
             });
         }
         stage.finish_from(&walked);
@@ -696,15 +697,6 @@ impl ZoneLane for T5Lane {
                         exp_fog,
                         t6_vision: None,
                         t6_visions: Default::default(),
-                        t5_map_vision: path
-                            .file_stem()
-                            .map(|stem| {
-                                format!(
-                                    "vision/{}.vision",
-                                    stem.to_string_lossy().to_ascii_lowercase()
-                                )
-                            })
-                            .filter(|key| sink.t5_visions.contains_key(key)),
                         t5_visions: std::mem::take(&mut sink.t5_visions),
                         film_vision: None,
                         // Modern Warfare 2's visions are not Black Ops'.

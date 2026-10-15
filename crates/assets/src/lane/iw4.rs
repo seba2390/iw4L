@@ -666,7 +666,6 @@ impl ZoneLane for Iw4Lane {
                         t6_vision: None,
                         t6_visions: Default::default(),
                         t5_visions: Default::default(),
-                        t5_map_vision: None,
                         film_vision,
                         film_visions,
                         createart_name,

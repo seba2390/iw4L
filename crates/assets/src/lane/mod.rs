@@ -68,12 +68,6 @@ pub(crate) struct ForeignModels {
     pub clip_models: Vec<(String, helpers::T5ClipModelRow)>,
 }
 
-/// One report line with a Black Ops vision's film switches.
-pub(crate) fn t5_vision_report(key: &str, vision: &asset_world::T5Vision) -> String {
-    let (film, lut, s_curve) = vision.film_switches();
-    format!("t5 vision: {key} film={film} lut={lut} s_curve={s_curve}")
-}
-
 impl ForeignModels {
     pub(crate) fn names(&self) -> std::collections::BTreeSet<String> {
         self.static_models
