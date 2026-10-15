@@ -362,7 +362,7 @@ fn blur_controls(texel: f32, radius: f32) -> [[f32; 4]; 4] {
     let mut sum = 0.0f32;
     for weight in &mut weights {
         *weight = f64::from(x * x * k).exp() as f32;
-        sum = *weight * 2.0 + sum;
+        sum += *weight * 2.0;
         x += 1.0;
     }
     let scale = 1.0 / sum;

@@ -50,12 +50,15 @@ pub fn post_chain_sources(width: u32, height: u32) -> Option<RuntimeCodeSources>
     Some(sources)
 }
 
+/// A chain material's technique set and pass, or why it is refused.
+type CompileLocation = Result<(usize, usize), PostFxAdmissionRefusal>;
+
 /// The technique set and pass of each chain material, to compile.
 pub(crate) fn post_chain_compile_locations(
     catalog: &RuntimeMaterialCatalog,
     rules: &PostChainRules,
     namespace: asset_core::AssetNamespace,
-) -> Vec<(&'static str, Result<(usize, usize), PostFxAdmissionRefusal>)> {
+) -> Vec<(&'static str, CompileLocation)> {
     rules
         .materials
         .iter()
