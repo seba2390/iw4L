@@ -28,6 +28,11 @@
 //! perk, door, box, debris, power, pap, rebuild), in that order; `IW4L_TEST_PERK` names
 //! the perk it buys (Quick Revive by default; `any` for any other).
 //!
+//! In every mode, when the game runs its own movement, each change of the
+//! movement flags the script builtins read or set (ladder, mantle, no
+//! melee, no weapon cycling, being revived) is logged, and so is each hit
+//! that winds the damage timer up, with the player's speed.
+//!
 //! `IW4L_TEST_ACTORS=field,…` logs each living actor's position, health
 //! and those script fields every five seconds.
 //!
@@ -310,6 +315,8 @@ pub(crate) struct TestPlayer {
     deferred: Vec<UseKind>,
     /// The lowest health since the last log line.
     lowest_health: Option<i32>,
+    /// Where the game's movement had him last tick, for the movement log.
+    last_move: Option<sim::MoveStatus>,
     /// The nearest an actor came to the eye since the last log line.
     nearest: Option<f32>,
     /// When the use test next looks for a site it can pay for.
@@ -848,6 +855,7 @@ pub(crate) fn drive_test_player(
         test.lowest_health
             .map_or(ps.health, |low| low.min(ps.health)),
     );
+    log_move_status(&mut test, &world.0, id, clock.time_ms, ps.velocity);
     if clock.time_ms >= test.next_log_ms {
         test.next_log_ms = clock.time_ms + LOG_PERIOD_MS;
         let weapon = world.0.weapon_script_name(ps.weapon).to_owned();
@@ -1738,4 +1746,44 @@ pub(crate) fn drive_test_player(
         cmd.forwardmove = -127;
     }
     cmds.push(id, None, cmd, None);
+}
+
+/// Logs each change of the movement flags the script builtins set or read
+/// (ladder, mantle, no melee, no weapon cycling, being revived), and each
+/// hit that winds the damage timer up, with the player's speed.
+fn log_move_status(
+    test: &mut TestPlayer,
+    world: &sim::SimWorld,
+    id: ClientId,
+    time_ms: i32,
+    velocity: [f32; 3],
+) {
+    let Some(now) = world.move_status(id) else {
+        return;
+    };
+    let flags = |s: &sim::MoveStatus| {
+        (
+            s.on_ladder,
+            s.mantling,
+            s.no_melee,
+            s.no_weapon_cycling,
+            s.being_revived,
+        )
+    };
+    let was = test.last_move.replace(now);
+    let hit = was.is_none_or(|was| now.damage_timer > was.damage_timer);
+    if was.is_none_or(|was| flags(&was) != flags(&now)) || (hit && now.damage_timer > 0) {
+        diag::info!(
+            Sim,
+            "test player: movement t={}ms ladder={} mantling={} damage_timer={} no_melee={} no_weapon_cycling={} being_revived={} speed={:.0}",
+            time_ms,
+            now.on_ladder,
+            now.mantling,
+            now.damage_timer,
+            now.no_melee,
+            now.no_weapon_cycling,
+            now.being_revived,
+            (velocity[0] * velocity[0] + velocity[1] * velocity[1]).sqrt(),
+        );
+    }
 }

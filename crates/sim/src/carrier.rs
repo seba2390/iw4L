@@ -233,6 +233,17 @@ impl SimWorld {
         crate::script::host::sightings::object_lives(&self.ecs, id)
     }
 
+    /// Where the game's own movement has a player, for a test player's log.
+    pub fn move_status(&self, id: ClientId) -> Option<game_api::movement::MoveStatus> {
+        let game_api::Rule::Known(game_api::MovementRules::Game(movement)) =
+            self.bootstrap_ref().mode?.movement
+        else {
+            return None;
+        };
+        let ps = self.player(id)?;
+        movement.status(&ps.move_player(id.0 as i32, false))
+    }
+
     /// An integer script field of the level or a player, for a test player.
     pub fn script_int(&self, owner: crate::script::ScriptOwner, name: &str) -> Option<i32> {
         crate::script::host::sightings::script_int(&self.ecs, owner, name)

@@ -2211,8 +2211,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
     }
     // gscm_isthrowinggrenade and gscm_isswitchingweapons read the player's
-    // weapon state: an offhand throw, or raising or dropping a weapon. The
-    // weapon state is the lent one (`t6.movement.player`).
+    // weapon state: an offhand throw, or raising or dropping a weapon, as
+    // `movement_t6` keeps it.
     registry.register(Method, "isthrowinggrenade", |world, receiver, _| {
         let id = crate::ClientId(super::t5::player_id(world, receiver)?);
         let activity =

@@ -38,11 +38,6 @@ fn owned(world: &World, receiver: &Value, builtin: &str) -> Result<u64, String> 
     }
 }
 
-/// The players a script forbade to lean (`t6.player.lean`: kept, as the
-/// lent movement has no lean).
-#[derive(Resource, Default)]
-struct NoLean(std::collections::BTreeSet<u32>);
-
 /// Each actor's pitch settings: oriented to its slope, and its pitch angle
 /// allowed.
 #[derive(Resource, Default)]
@@ -170,12 +165,6 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             game_api::movement::MoveRestriction::Lean,
             allowed,
         );
-        let mut forbidden = world.get_resource_or_insert_with(NoLean::default);
-        if allowed {
-            forbidden.0.remove(&client);
-        } else {
-            forbidden.0.insert(client);
-        }
         Ok(Value::Undefined)
     });
 

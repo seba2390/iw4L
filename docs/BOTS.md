@@ -62,4 +62,6 @@ running match, which is where bot behaviour is judged: `make map mp_boneyard`
 fights, `rounds` adds god mode and ammo, `use` buys what the map offers, `down`/`revive`
 test going down, `watch` only logs. `IW4L_TEST_USE`, `_PERK`, `_GOTO`, `_BUILD` steer
 the use test; `_WIELD`, `_PLACE`, `_THROW`, `_GRAB`, `_REVIVE`, `_RIDE`, `_WALK` add
-actions; `_ACTORS`, `_WAITS`, `_VARS` add log fields.
+actions; `_ACTORS`, `_WAITS`, `_VARS` add log fields. With a game's own movement it
+also logs each change of the ladder, mantle, no-melee, no-cycling and being-revived
+flags, and each hit on the damage timer.

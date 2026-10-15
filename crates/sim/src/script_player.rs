@@ -394,10 +394,10 @@ fn enter_last_stand_move(world: &mut FrameWorld, id: ClientId, sets_view_height:
     ps.pm_flags |= LAST_STAND;
 }
 
-/// A downed player moving by the shared movement's last stand, eye height
-/// and all.
-pub(crate) fn lend_last_stand_move(world: &mut FrameWorld, id: ClientId) {
-    enter_last_stand_move(world, id, true);
+/// A player a script's damage handler put down: the last stand move type
+/// and flag; the game's own movement keeps the eye height.
+pub(crate) fn enter_script_last_stand(world: &mut FrameWorld, id: ClientId) {
+    enter_last_stand_move(world, id, false);
 }
 
 /// What being down does to a player in this match's mode.
@@ -728,9 +728,9 @@ pub(crate) fn give_weapon(
     living(world, id)?;
     let game_rules = crate::game_move::game_weapons(world);
     if world.weapon_is_melee_only(weapon) && !game_rules {
-        // The lent weapons hold no melee weapon: the player stabs with it,
-        // as a game whose player keeps a melee weapon apart (Black Ops 2's
-        // knife) does, the last one given.
+        // The simulation's weapons hold no melee weapon: the player stabs
+        // with it, as a game whose player keeps a melee weapon apart does,
+        // the last one given.
         world
             .ecs()
             .get_resource_or_insert_with(HeldMeleeWeapons::default)
@@ -788,8 +788,8 @@ pub(crate) fn set_weapon_model(world: &mut FrameWorld, id: ClientId, weapon: u32
     }
 }
 
-/// The melee-only weapon each player was last given, which the lent
-/// weapons do not hold: the one a player stabs with.
+/// The melee-only weapon each player was last given, which the
+/// simulation's weapons do not hold: the one a player stabs with.
 #[derive(bevy_ecs::prelude::Resource, Default)]
 struct HeldMeleeWeapons(std::collections::BTreeMap<u32, u32>);
 
