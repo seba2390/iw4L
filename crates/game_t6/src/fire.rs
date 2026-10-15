@@ -638,11 +638,7 @@ impl Shot<'_> {
             ev::DETONATE => world.notify(me, "detonate", &[]),
             e if (ev::FALL_DAMAGE..ev::FALL_DAMAGE + 32).contains(&e) => {
                 if self.ps.pm_flags & pm_flags::SLIDING == 0 {
-                    let frac = if parm < 100 {
-                        parm as f32 * 0.01
-                    } else {
-                        1.1
-                    };
+                    let frac = if parm < 100 { parm as f32 * 0.01 } else { 1.1 };
                     if frac != 0.0
                         && let Some(entity) = world.entity(me)
                         && entity.takes_damage

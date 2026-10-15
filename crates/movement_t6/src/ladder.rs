@@ -184,4 +184,3 @@ pub(crate) fn ladder_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
     }
     pm.ps.movement_dir = i32::from(dir as i8);
 }
-
