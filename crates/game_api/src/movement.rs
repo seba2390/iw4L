@@ -325,6 +325,8 @@ pub struct MoveStatus {
     pub no_weapon_cycling: bool,
     /// Downed, with someone reviving him.
     pub being_revived: bool,
+    /// The game's own state of the weapon in hand, for a test player's log.
+    pub weapon_state: i32,
 }
 
 /// A player flag a script builtin sets in the game's own movement.

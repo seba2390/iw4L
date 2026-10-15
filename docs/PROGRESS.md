@@ -145,7 +145,8 @@ Only the top-level items count.
 - [x] Power and perks.
   - [x] The power switch, buying and drinking a perk (Quick Revive), the perk icon.
   - [x] Juggernog fills the player's health to 250 (`SetMaxHealth`).
-  - [ ] Each perk's effect verified (Speed Cola, Double Tap, Stamin-Up); the drink's stance and melee locks.
+  - [x] Each perk's effect verified (`IW4L_TEST_TIMING`, `IW4L_TEST_WALK`, the go-down test): Speed Cola halves the m1911's reload (1800 → 900 ms), Double Tap shortens the Ray Gun's firing state (350 → 250 ms at 50 ms commands), Stamin-Up raises sprint from 281 to 310 units/s, and with Juggernog four zombie hits of 60 take 250 health to 10 and the fifth downs the player.
+  - [ ] The drink's stance and melee locks (`allowmelee` is not enforced).
 - [x] Pack-a-Punch and every power-up.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).

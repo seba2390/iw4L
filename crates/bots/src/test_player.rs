@@ -32,7 +32,13 @@
 //! In every mode, when the game runs its own movement, each change of the
 //! movement flags the script builtins read or set (ladder, mantle, no
 //! melee, no weapon cycling, being revived) is logged, and so is each hit
-//! that winds the damage timer up, with the player's speed.
+//! that winds the damage timer up, with the player's speed. In every mode
+//! each hit that lowers his health is logged with the health before and
+//! after.
+//!
+//! `IW4L_TEST_TIMING=1` logs each change of his weapon's state (the game's
+//! own state when it runs its own movement) with how long the state before
+//! it lasted: reload and fire times, and what a perk makes of them.
 //!
 //! `IW4L_TEST_ACTORS=field,…` logs each living actor's position, health
 //! and those script fields every five seconds.
@@ -316,8 +322,12 @@ pub(crate) struct TestPlayer {
     deferred: Vec<UseKind>,
     /// The lowest health since the last log line.
     lowest_health: Option<i32>,
+    /// His health last tick, for the hit log.
+    last_health: Option<i32>,
     /// Where the game's movement had him last tick, for the movement log.
     last_move: Option<sim::MoveStatus>,
+    /// His weapon, its state and since when, for the weapon timing log.
+    last_weapon_state: Option<(u32, i32, i32)>,
     /// The nearest an actor came to the eye since the last log line.
     nearest: Option<f32>,
     /// When the use test next looks for a site it can pay for.
@@ -852,11 +862,29 @@ pub(crate) fn drive_test_player(
     {
         test.nearest = Some(test.nearest.map_or(closest, |seen| seen.min(closest)));
     }
+    if let Some(was) = test.last_health.replace(ps.health)
+        && ps.health < was
+    {
+        diag::info!(
+            Sim,
+            "test player: hit t={}ms health {}->{} (max {})",
+            clock.time_ms,
+            was,
+            ps.health,
+            ps.max_health
+        );
+    }
     test.lowest_health = Some(
         test.lowest_health
             .map_or(ps.health, |low| low.min(ps.health)),
     );
     log_move_status(&mut test, &world.0, id, clock.time_ms, ps.velocity);
+    if std::env::var("IW4L_TEST_TIMING").is_ok() {
+        let state = test
+            .last_move
+            .map_or(ps.weaponstate_primary, |status| status.weapon_state);
+        log_weapon_timing(&mut test, &world.0, (ps.weapon, state), clock.time_ms);
+    }
     if clock.time_ms >= test.next_log_ms {
         test.next_log_ms = clock.time_ms + LOG_PERIOD_MS;
         let weapon = world.0.weapon_script_name(ps.weapon).to_owned();
@@ -1756,6 +1784,29 @@ pub(crate) fn drive_test_player(
         cmd.forwardmove = -127;
     }
     cmds.push(id, None, cmd, None);
+}
+
+/// `IW4L_TEST_TIMING`: logs each change of his weapon's state with how long
+/// the state before it lasted, so a run shows reload and fire times (and
+/// what a perk makes of them).
+fn log_weapon_timing(test: &mut TestPlayer, world: &sim::SimWorld, now: (u32, i32), time_ms: i32) {
+    match test.last_weapon_state {
+        Some((weapon, state, _)) if (weapon, state) == now => {}
+        was => {
+            if let Some((_, state, since)) = was {
+                diag::info!(
+                    Sim,
+                    "test player: weapon {} state {}->{} t={}ms after {}ms",
+                    world.weapon_script_name(now.0),
+                    state,
+                    now.1,
+                    time_ms,
+                    time_ms - since,
+                );
+            }
+            test.last_weapon_state = Some((now.0, now.1, time_ms));
+        }
+    }
 }
 
 /// Logs each change of the movement flags the script builtins set or read
