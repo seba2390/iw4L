@@ -722,6 +722,19 @@ fn next_scenario(
             test.deferred.clear();
         }
         test.pending.remove(0);
+        if kind == UseKind::Build
+            && !build_order.is_empty()
+            && test.pending.first() != Some(&UseKind::Piece)
+            && sites.iter().any(|s| {
+                s.kind == UseKind::Piece
+                    && s.weapon
+                        .as_deref()
+                        .is_some_and(|w| build_order.iter().any(|b| b == w))
+            })
+        {
+            test.pending.insert(0, UseKind::Build);
+            test.pending.insert(0, UseKind::Piece);
+        }
         return Some(Scenario {
             site: site.clone(),
             center,
@@ -945,7 +958,8 @@ pub(crate) fn drive_test_player(
     // `IW4L_TEST_GOTO=<zone>[,<zone>…]`: goes to the path node nearest each
     // zone's middle that stands in the zone, so the zone and those beside it
     // come alive.
-    if clock.time_ms - since_ms >= USE_START_MS / 2 + (test.went as i32) * 15_000
+    if test.scenario.is_none()
+        && clock.time_ms - since_ms >= USE_START_MS / 2 + (test.went as i32) * 15_000
         && let Ok(zones) = std::env::var("IW4L_TEST_GOTO")
         && let Some(zone) = zones.split(',').nth(test.went).map(str::trim)
     {
@@ -1615,9 +1629,9 @@ pub(crate) fn drive_test_player(
         if !hold_fire && can_melee && target.is_some_and(|aim| distance(eye, aim) <= KNIFE_REACH) {
             cmd.buttons |= buttons::MELEE_CHARGE;
             test.knifes += 1;
-        } else if meta.ammo_clip == 0 {
+        } else if !hold_fire && meta.ammo_clip == 0 {
             cmd.buttons |= buttons::RELOAD;
-        } else if target.is_some() {
+        } else if target.is_some() || hold_fire {
             cmd.buttons |= buttons::ATTACK;
             test.shots += 1;
         }
