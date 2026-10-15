@@ -231,6 +231,7 @@ pub fn sync_camera_from_presented(
     mut missile_view: Local<RemoteMissileView>,
 ) {
     kick.killcam_focus_distance = None;
+    let base_fov = script_fov(&presented, local.0).unwrap_or(settings.fov);
     if let Some(view) = sim_cam.view_override {
         for mut transform in &mut q {
             *transform = view.transform;
@@ -330,7 +331,7 @@ pub fn sync_camera_from_presented(
         kick.refdef_view_angles = pose.angles;
         kick.horiz_fov_deg = apply_fpv_lens_fov(
             &mut lenses,
-            settings.fov,
+            base_fov,
             ps.pm_type,
             ps.link_flags,
             ps.e_flags,
@@ -345,7 +346,7 @@ pub fn sync_camera_from_presented(
             false,
             actions.as_deref_mut(),
         )
-        .unwrap_or(settings.fov);
+        .unwrap_or(base_fov);
         return;
     }
     let offset = presented.view_offset();
@@ -462,7 +463,7 @@ pub fn sync_camera_from_presented(
     kick.last_weapon_pos_frac = ps.f_weapon_pos_frac;
     if let Some(horiz) = apply_fpv_lens_fov(
         &mut lenses,
-        settings.fov,
+        base_fov,
         ps.pm_type,
         ps.link_flags,
         ps.e_flags,
@@ -480,6 +481,23 @@ pub fn sync_camera_from_presented(
         kick.horiz_fov_deg = horiz;
     }
 }
+
+/// The `cg_fov` a script set on the local client (`setClientDvar`), within
+/// the dvar's domain, which stands for the player's own field of view.
+fn script_fov(presented: &PresentedSnapshot, local: sim::ClientId) -> Option<f32> {
+    let meta = presented.snapshot()?.meta.for_client(local)?;
+    let (_, value) = meta
+        .client_dvars
+        .iter()
+        .rev()
+        .find(|(name, _)| name.eq_ignore_ascii_case("cg_fov"))?;
+    let fov = value.trim().parse::<f32>().ok()?;
+    fov.is_finite()
+        .then(|| fov.clamp(CG_FOV_DOMAIN.0, CG_FOV_DOMAIN.1))
+}
+
+/// `cg_fov`'s domain.
+const CG_FOV_DOMAIN: (f32, f32) = (1.0, 160.0);
 
 fn apply_fpv_lens_fov(
     lenses: &mut Query<&mut Projection, With<FpvLens>>,

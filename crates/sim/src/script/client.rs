@@ -397,6 +397,8 @@ pub(crate) struct ClientOutput {
     next_effect: i32,
     /// The latest vision calls, by serial.
     pub(crate) vision_calls: std::collections::VecDeque<(u32, crate::VisionCall)>,
+    /// Dvars `setClientDvar` set this frame, for the local client.
+    pub(crate) client_dvars: Vec<(String, String)>,
     next_vision_call: u32,
 }
 
@@ -801,6 +803,11 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             let mut frame = crate::frame::FrameWorld::from_world(server);
             for command in commands {
                 frame.push_script_audio(command);
+            }
+            let dvars =
+                std::mem::take(&mut client.world.resource_mut::<ClientOutput>().client_dvars);
+            for (name, value) in dvars {
+                super::host::natives::player::send_client_dvar(server, 0, &name, &value);
             }
             present::present(server, &mut client);
             deliver_tag_effects(server, &mut client);
