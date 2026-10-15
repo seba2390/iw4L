@@ -846,15 +846,21 @@ fn register_actor(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // `dontInterpolate` flips the entity's teleport flag, a client's in its
-    // player state, so the next snapshot snaps it in place
-    // (`t5.entities.interpolation`: other entities' flag is not sent, as
-    // IW4L's script entities carry none).
+    // player state, any other entity's in its own entity state, so the next
+    // snapshot snaps it in place. An entity with no presented model sends no
+    // state; its flag has nothing to reach.
     registry.register(Method, "dontinterpolate", |world, receiver, _| {
         let id = super::engine::entity_id(world, receiver)?;
-        if let Some(client) = world.resource::<RoundScript>().player_client(id) {
+        let runtime = world.resource::<RoundScript>();
+        if let Some(client) = runtime.player_client(id) {
             crate::script_player::snap(
                 &mut crate::frame::FrameWorld::from_world(world),
                 crate::ClientId(client),
+            );
+        } else if let Some(presence) = runtime.entities.get(&id).and_then(|e| e.presence) {
+            crate::script_player::snap_presence(
+                &mut crate::frame::FrameWorld::from_world(world),
+                presence,
             );
         }
         Ok(Value::Undefined)

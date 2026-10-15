@@ -149,7 +149,8 @@ Only the top-level items count.
 - [x] Pack-a-Punch and every power-up.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
-  - [ ] Carpenter's repaired boards may still lerp (`t5.entities.interpolation`); the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
+  - [x] Carpenter's far boards snap back into their windows (`dontinterpolate` on an entity flips its own teleport flag).
+  - [ ] The upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; with Quick Revive (`IW4L_TEST_PLAYER=revive`) the solo player holds `m1911_upgraded_zm` and revives after 10 s; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [x] Going down and `reviveplayer` raise Black Ops' stance animation events, clear damage counters and switch `startrevive`/`stoprevive`'s `LAST_STAND_REVIVED` move type (`t5.match.last_stand` closed).
