@@ -21,6 +21,11 @@ The test player (`IW4L_TEST_PLAYER=1|rounds|use|down|revive`) is steered by
 `IW4L_TEST_USE`, `_PERK`, `_GOTO`, `_BUILD`, `_WIELD`, `_PLACE`, `_GRAB` and logs
 `level.zombie_vars` with `_VARS`; all of them are in [BOTS.md](BOTS.md#test-player).
 
+`IW4L_TIMESCALE=<1..64>` runs a headless server's game clock faster than real
+time; ticks, script waits and console `wait Ns` count game time, and the log
+says each minute how fast the machine kept up (a Nuketown rounds run averages
+about 2x to 3x).
+
 Every map needs `maps/mp/gametypes_zm/_globallogic`, which Black Ops 2 downloads
 at launch and keeps only in memory. Without a capture of that patch zone
 (`ffotd_*_zm*.ff`) in `~/.config/iw4l/captured/` or `<artifacts>/captured/` the
