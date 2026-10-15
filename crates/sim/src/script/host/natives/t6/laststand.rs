@@ -24,8 +24,6 @@ pub(super) struct Down {
     pub being_revived: bool,
     /// The weapon `setlaststandprevweap` named; `reviveplayer` clears it.
     pub prev_weapon: u32,
-    /// `disableweaponcycling`, kept for the weapons that will honour it.
-    pub cycling_disabled: bool,
 }
 
 #[derive(Resource, Default)]
@@ -47,14 +45,31 @@ pub(super) fn is_down(world: &World, client: u32) -> bool {
         .is_some_and(|down| down.down)
 }
 
-/// The lent movement's own last stand, which a downed player moves by
-/// (`t6.movement.player`).
-pub(super) fn lend_last_stand_move(world: &mut World, id: ClientId) {
-    crate::script_player::lend_last_stand_move(&mut FrameWorld::from_world(world), id);
+/// A downed player's move type: last stand, which `movement_t6` moves him by.
+pub(super) fn enter_last_stand_move(world: &mut World, id: ClientId) {
+    crate::script_player::enter_script_last_stand(&mut FrameWorld::from_world(world), id);
 }
 
 fn client(world: &World, receiver: &Value) -> Result<u32, String> {
     player(world, receiver)
+}
+
+fn being_revived(world: &mut World, receiver: &Value, on: bool) -> Result<Value, String> {
+    let client = client(world, receiver)?;
+    state(world, client).being_revived = on;
+    crate::game_move::set_being_revived(&mut FrameWorld::from_world(world), ClientId(client), on);
+    Ok(Value::Undefined)
+}
+
+fn weapon_cycling(world: &mut World, receiver: &Value, allowed: bool) -> Result<Value, String> {
+    let id = ClientId(client(world, receiver)?);
+    crate::game_move::set_script_flag(
+        &mut FrameWorld::from_world(world),
+        id,
+        game_api::movement::ScriptFlag::NoWeaponCycling,
+        !allowed,
+    );
+    Ok(Value::Undefined)
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {
@@ -64,16 +79,13 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // back to the maximum.
     registry.register(Method, "reviveplayer", |world, receiver, _| {
         let client = client(world, receiver)?;
-        *state(world, client) = Down {
-            cycling_disabled: state(world, client).cycling_disabled,
-            ..Down::default()
-        };
+        *state(world, client) = Down::default();
         let id = ClientId(client);
         let mut frame = FrameWorld::from_world(world);
         crate::script_player::undo_last_stand(&mut frame, id);
+        crate::game_move::revive(&mut frame, id);
+        crate::game_move::damage_timer(&mut frame, id, None);
         if let Some(ps) = frame.player_mut(id) {
-            ps.damage_timer = 0;
-            ps.damage_duration = 0;
             ps.health = ps.max_health;
         }
         Ok(Value::Undefined)
@@ -87,15 +99,13 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         crate::script_player::undo_last_stand(&mut FrameWorld::from_world(world), ClientId(client));
         Ok(Value::Undefined)
     });
+    // The revive move type (8) while someone revives, back to last stand
+    // (7) when they stop.
     registry.register(Method, "startrevive", |world, receiver, _| {
-        let client = client(world, receiver)?;
-        state(world, client).being_revived = true;
-        Ok(Value::Undefined)
+        being_revived(world, receiver, true)
     });
     registry.register(Method, "stoprevive", |world, receiver, _| {
-        let client = client(world, receiver)?;
-        state(world, client).being_revived = false;
-        Ok(Value::Undefined)
+        being_revived(world, receiver, false)
     });
     registry.register(Method, "setlaststandprevweap", |world, receiver, args| {
         let client = client(world, receiver)?;
@@ -104,15 +114,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         state(world, client).prev_weapon = weapon as u32;
         Ok(Value::Undefined)
     });
+    // The weapon flag that keeps an empty weapon in hand.
     registry.register(Method, "disableweaponcycling", |world, receiver, _| {
-        let client = client(world, receiver)?;
-        state(world, client).cycling_disabled = true;
-        Ok(Value::Undefined)
+        weapon_cycling(world, receiver, false)
     });
     registry.register(Method, "enableweaponcycling", |world, receiver, _| {
-        let client = client(world, receiver)?;
-        state(world, client).cycling_disabled = false;
-        Ok(Value::Undefined)
+        weapon_cycling(world, receiver, true)
     });
     // The hit indicator from a direction: its yaw and pitch in 256ths of a
     // turn, a new damage event, a count of 50.

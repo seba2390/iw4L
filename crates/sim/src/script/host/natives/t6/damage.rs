@@ -71,9 +71,6 @@ const LOCATION_TABLE_HEADER: &str = "LOCDMGTABLE";
 /// A dead actor's health goes no lower.
 const HEALTH_FLOOR: i32 = -999;
 const CALLBACKS: &str = "maps/mp/gametypes_zm/_callbacksetup";
-/// `player_dmgtimer_timePerPoint` and `player_dmgtimer_maxTime`'s defaults.
-const DMGTIMER_TIME_PER_POINT: f32 = 100.0;
-const DMGTIMER_MAX_TIME: f32 = 750.0;
 
 /// One `G_Damage`: who, from where, how much and how.
 pub(super) struct Hit {
@@ -527,14 +524,12 @@ fn finish_player_damage(
             diag::warn!(Sim, "Trying to do damage to a client that is already dead");
             return Ok(Value::Undefined);
         }
-        let Some(ps) = frame.player_mut(id) else {
+        if frame.player(id).is_none() {
             return Ok(Value::Undefined);
-        };
-        // The damage timer: time per point of damage, up to the cap; its
-        // duration is where it ends.
-        ps.damage_timer = (ps.damage_timer as f32 + damage as f32 * DMGTIMER_TIME_PER_POINT)
-            .min(DMGTIMER_MAX_TIME) as i32;
-        ps.damage_duration = ps.damage_timer;
+        }
+        // The damage timer, which slows the player, is the movement's.
+        crate::game_move::damage_timer(&mut frame, id, Some(damage));
+        let ps = frame.player_mut(id).expect("checked above");
         ps.health -= damage;
         ps.health
     };
@@ -564,7 +559,7 @@ fn finish_player_damage(
     // down, so the victim, who is not, always may.
     if !super::laststand::is_down(world, client) {
         super::laststand::state(world, client).down = true;
-        super::laststand::lend_last_stand_move(world, id);
+        super::laststand::enter_last_stand_move(world, id);
         callback(
             world,
             "codecallback_playerlaststand",

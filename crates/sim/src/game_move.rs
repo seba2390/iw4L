@@ -6,7 +6,8 @@ use crate::frame::FrameWorld;
 use crate::world::ClientId;
 use game_api::movement::{
     GameWeapon, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
-    MoveRestriction, MoveSignal, MoveTrace, MoveWorld, PlayerMovement, Stance, WaterSurface,
+    MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveWorld, PlayerMovement, ScriptFlag,
+    Stance, WaterSurface,
 };
 
 /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask` names,
@@ -267,6 +268,39 @@ pub(crate) fn set_being_revived(world: &mut FrameWorld, id: ClientId, being_revi
     update(world, id, |player| {
         movement.set_being_revived(player, being_revived);
     });
+}
+
+/// Whether the player is on a ladder or mantling by the game's own movement;
+/// `None` when the match runs the simulation's.
+pub(crate) fn status(world: &FrameWorld, id: ClientId) -> Option<MoveStatus> {
+    let movement = rules(world)?;
+    let ps = world.player(id)?;
+    movement.status(&ps.move_player(id.0 as i32, frozen(world, id)))
+}
+
+/// Sets or clears a script's player flag in the game's own movement; whether
+/// it was set before, `None` when the movement has no such flag.
+pub(crate) fn set_script_flag(
+    world: &mut FrameWorld,
+    id: ClientId,
+    flag: ScriptFlag,
+    on: bool,
+) -> Option<bool> {
+    let movement = rules(world)?;
+    update(world, id, |player| {
+        movement.set_script_flag(player, flag, on)
+    })
+    .flatten()
+}
+
+/// A hit on the damage timer of the game's own movement (`None` clears it);
+/// false when the match runs the simulation's.
+pub(crate) fn damage_timer(world: &mut FrameWorld, id: ClientId, damage: Option<i32>) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| movement.damage_timer(player, damage));
+    true
 }
 
 /// Sets or clears a perk the game's own movement reads; false when the match

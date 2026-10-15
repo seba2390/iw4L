@@ -314,6 +314,28 @@ pub struct MoveOutcome {
     pub gaps: Vec<&'static Unknown>,
 }
 
+/// Where the game's movement has the player, as script builtins ask.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MoveStatus {
+    pub on_ladder: bool,
+    pub mantling: bool,
+    /// What is left of the damage timer, in milliseconds.
+    pub damage_timer: i32,
+    pub no_melee: bool,
+    pub no_weapon_cycling: bool,
+    /// Downed, with someone reviving him.
+    pub being_revived: bool,
+}
+
+/// A player flag a script builtin sets in the game's own movement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScriptFlag {
+    /// `allowmelee(false)`.
+    NoMelee,
+    /// `disableweaponcycling`.
+    NoWeaponCycling,
+}
+
 /// What a script may forbid a player.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MoveRestriction {
@@ -367,6 +389,27 @@ pub trait PlayerMovement: Sync {
     /// What `startrevive` (`true`) and `stoprevive` (`false`) set on a
     /// downed player.
     fn set_being_revived(&self, _player: &mut MovePlayer, _being_revived: bool) {}
+
+    /// Whether the player is on a ladder or mantling; `None` when the game's
+    /// movement keeps neither.
+    fn status(&self, _player: &MovePlayer) -> Option<MoveStatus> {
+        None
+    }
+
+    /// Sets (`on`) or clears a script's player flag; answers whether it was
+    /// set before, `None` when the game's movement has no such flag.
+    fn set_script_flag(
+        &self,
+        _player: &mut MovePlayer,
+        _flag: ScriptFlag,
+        _on: bool,
+    ) -> Option<bool> {
+        None
+    }
+
+    /// A hit of `damage` points on the player's damage timer, which slows
+    /// him while it runs down; `None` clears the timer.
+    fn damage_timer(&self, _player: &mut MovePlayer, _damage: Option<i32>) {}
 
     /// The cursor hint names `setcursorhint` accepts, in their `ps.cursorHint`
     /// order starting at `0` (`HINT_NONE`); weapon hints start right after the
