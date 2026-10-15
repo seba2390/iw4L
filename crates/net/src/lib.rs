@@ -81,7 +81,8 @@ pub use client::proxy::{
 pub use client::realtime::ClientRealtime;
 pub use client::runtime::{
     ClientClock, ClientCmdTemplate, ClientPhaseTrace, ClientPredictionState, ClientReliableAck,
-    ClockTick, FireCommandVerdicts, LastAdoptedSnapshot, LocationCursor, PendingClientSends,
+    ClockTick, FireCommandVerdicts, LastAdoptedSnapshot, LocalCmdOverride, LocationCursor,
+    PendingClientSends,
     PendingPelletFx, PendingPresentedEntityEvents, ReceivedTicks, ReliableControlEvent,
     RemoteProxyState, WeaponSelect, advance_cg_frame_clock, advance_cls_realtime,
     arm_listen_prediction, cycle_weapon_select, follow_held_weapon_select,

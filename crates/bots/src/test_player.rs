@@ -96,9 +96,10 @@
 //! and sprinted, the jump's height, and the view height in each stance.
 
 use bevy::prelude::*;
+use bevy::ecs::system::SystemParam;
 use net::{
     ActionRequestIds, AuthorityClock, AuthorityWorld, ClientActionInbox, ClientCommandInbox,
-    look_angles_from_degrees,
+    LocalCmdOverride, LocalPresentClient, look_angles_from_degrees,
 };
 use sim::script::{ScriptOwner, UseKind, UseSite};
 use sim::{
@@ -788,12 +789,31 @@ fn next_scenario(
     None
 }
 
+/// Where the test player's commands go: the server's inbox, or, when he
+/// drives the window's own player, the local client's input, so the client
+/// sends and predicts them and the view faces where he shoots.
+#[derive(SystemParam)]
+pub(crate) struct DriveCmds<'w> {
+    inbox: ResMut<'w, ClientCommandInbox>,
+    local: Res<'w, LocalPresentClient>,
+    window: Option<ResMut<'w, LocalCmdOverride>>,
+}
+
+impl DriveCmds<'_> {
+    fn push(&mut self, id: ClientId, cmd: UserCmd) {
+        match self.window.as_mut() {
+            Some(window) if id == self.local.0 => window.0 = Some(cmd),
+            _ => self.inbox.push(id, None, cmd, None),
+        }
+    }
+}
+
 pub(crate) fn drive_test_player(
     mut test: ResMut<TestPlayer>,
     clock: Res<AuthorityClock>,
     world: Res<AuthorityWorld>,
     roster: Res<BotRoster>,
-    mut cmds: ResMut<ClientCommandInbox>,
+    mut cmds: DriveCmds,
     mut actions: ResMut<ClientActionInbox>,
     mut request_ids: ResMut<ActionRequestIds>,
 ) {
@@ -1140,7 +1160,7 @@ pub(crate) fn drive_test_player(
     {
         let up_since = *test.wielded_since_ms.get_or_insert(clock.time_ms);
         if clock.time_ms - up_since < PLACE_AFTER_MS {
-            cmds.push(id, None, cmd, None);
+            cmds.push(id, cmd);
             return;
         }
         {
@@ -1163,7 +1183,7 @@ pub(crate) fn drive_test_player(
             if clock.time_ms < until {
                 cmd.buttons |= buttons::ATTACK;
             }
-            cmds.push(id, None, cmd, None);
+            cmds.push(id, cmd);
             return;
         }
     } else {
@@ -1253,7 +1273,7 @@ pub(crate) fn drive_test_player(
                     4 => buttons::PRONE,
                     _ => 0,
                 };
-                cmds.push(id, None, cmd, None);
+                cmds.push(id, cmd);
                 return;
             }
             let walked = |phase: usize, ms: i32| {
@@ -1287,7 +1307,7 @@ pub(crate) fn drive_test_player(
         } else {
             cmd.buttons |= buttons::RELOAD;
         }
-        cmds.push(id, None, cmd, None);
+        cmds.push(id, cmd);
         return;
     }
 
@@ -1488,7 +1508,7 @@ pub(crate) fn drive_test_player(
                 }
                 Phase::Returning => {
                     test.last_done_ms = clock.time_ms;
-                    cmds.push(id, None, cmd, None);
+                    cmds.push(id, cmd);
                     return;
                 }
             }
@@ -1497,7 +1517,7 @@ pub(crate) fn drive_test_player(
             cmd.buttons |= buttons::USE;
         }
         test.scenario = Some(scenario);
-        cmds.push(id, None, cmd, None);
+        cmds.push(id, cmd);
         return;
     }
     // `IW4L_TEST_REVIVE`: a teammate down, he goes beside him, faces him
@@ -1544,7 +1564,7 @@ pub(crate) fn drive_test_player(
             if clock.time_ms < test.revive_until_ms {
                 aim_cmd(&mut cmd, look(eye, target));
                 cmd.buttons |= buttons::USE;
-                cmds.push(id, None, cmd, None);
+                cmds.push(id, cmd);
                 return;
             }
         } else if let Some(client) = test.reviving.take() {
@@ -1587,7 +1607,7 @@ pub(crate) fn drive_test_player(
             );
         }
         if test.boarded {
-            cmds.push(id, None, cmd, None);
+            cmds.push(id, cmd);
             return;
         }
     }
@@ -1689,7 +1709,7 @@ pub(crate) fn drive_test_player(
         };
         if clock.time_ms < test.throw_until_ms {
             cmd.buttons |= button;
-            cmds.push(id, None, cmd, None);
+            cmds.push(id, cmd);
             return;
         }
         let weapon_name = named.unwrap_or("frag_grenade_zm");
@@ -1717,11 +1737,11 @@ pub(crate) fn drive_test_player(
                 ps.weaponstate_primary
             );
             cmd.buttons |= button;
-            cmds.push(id, None, cmd, None);
+            cmds.push(id, cmd);
             return;
         }
         if named.is_some() {
-            cmds.push(id, None, cmd, None);
+            cmds.push(id, cmd);
             return;
         }
     }
@@ -1755,7 +1775,7 @@ pub(crate) fn drive_test_player(
     {
         cmd.forwardmove = -127;
     }
-    cmds.push(id, None, cmd, None);
+    cmds.push(id, cmd);
 }
 
 /// Logs each change of the movement flags the script builtins set or read
