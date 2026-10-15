@@ -8,7 +8,7 @@ pub(crate) mod entity;
 mod fields;
 pub(crate) mod game;
 mod pure;
-mod sound;
+pub(crate) mod sound;
 
 use crate::script::{Namespace, NativeRegistry};
 

@@ -197,6 +197,9 @@ pub(crate) fn advance(world: &mut World) {
             .world
             .insert_resource(ServerWorld(std::ptr::from_mut(world)));
         let result = step(&mut client, now);
+        // The sound system's random one-shots come due on the client's
+        // frame, after its scripts.
+        super::natives::t6::client::sound::play_due_randoms(&mut client.world);
         let commands = std::mem::take(
             &mut client
                 .world
@@ -336,7 +339,18 @@ pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSound
 /// The loops the client game plays, where they play from now: a fake
 /// entity's origin, or a client entity's.
 pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String, [f32; 3])> {
-    use crate::script::client::{CLIENT_LOOP_OWNER, ClientOutput, LoopSource};
+    use crate::script::client::{CLIENT_LOOP_OWNER, ClientOutput, LoopSource, nearest_on_segment};
+    // The listener: the local player's eye, its origin raised by its view
+    // height.
+    let listener = crate::frame::FrameWorld::from_world(server)
+        .player(crate::ClientId(0))
+        .map(|ps| {
+            [
+                ps.origin[0],
+                ps.origin[1],
+                ps.origin[2] + ps.view_height_current,
+            ]
+        });
     let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
         return Vec::new();
     };
@@ -363,7 +377,12 @@ pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String
                         _ => return None,
                     }
                 }
-                LoopSource::Emitter(..) | LoopSource::Line(..) => return None,
+                LoopSource::Emitter(_, at) => at.map(f32::from_bits),
+                LoopSource::Line(_, start, end) => nearest_on_segment(
+                    listener?,
+                    start.map(f32::from_bits),
+                    end.map(f32::from_bits),
+                ),
             };
             Some((
                 crate::ScriptModelId::from_wire(CLIENT_LOOP_OWNER | sound.serial),
