@@ -934,11 +934,26 @@ impl SimState {
         &mut self,
         kind: crate::gentity::EntityRunKind,
     ) -> Result<crate::gentity::EntityRef, crate::gentity::EntityAllocError> {
-        let entity = self.entity_kernel.allocate(kind)?;
+        self.allocate_dynamic_entity_avoiding(kind, |_| false)
+    }
+
+    /// Allocates a dynamic entity, passing over the numbers `taken` says a
+    /// script entity holds.
+    pub(crate) fn allocate_dynamic_entity_avoiding(
+        &mut self,
+        kind: crate::gentity::EntityRunKind,
+        taken: impl Fn(i32) -> bool,
+    ) -> Result<crate::gentity::EntityRef, crate::gentity::EntityAllocError> {
+        let entity = self.entity_kernel.allocate_avoiding(kind, taken)?;
         self.entity_kernel
             .set_linked(entity, true)
             .expect("newly allocated dynamic entity must resolve");
         Ok(entity)
+    }
+
+    /// The numbers the entity pool holds now.
+    pub(crate) fn dynamic_entity_numbers(&self) -> Vec<i32> {
+        self.entity_kernel.occupied_numbers(|_| true)
     }
 
     pub(crate) fn free_dynamic_entity_number(&mut self, number: i32) {

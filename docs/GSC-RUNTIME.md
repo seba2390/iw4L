@@ -42,7 +42,10 @@ block, known classname or not, becomes a script entity with typed keys (`origin`
 float `speed`/`radius`/`height`, strings otherwise). Every entity except a hud element
 carries `classname`, `code_classname` (`script_vehicle` for any `script_vehicle*`) and a
 zero `origin` and `angles` until something sets them. Entity numbers start at the first
-non-client slot.
+non-client slot. The engine has one pool of entity numbers: the entities the match
+presents (movers, missiles, items) take theirs from the entity pool, which passes over
+the numbers the scripts' other entities hold, and those skip the numbers the pool holds,
+so no two live entities share a number.
 Names are normalized; traversal is rejected. The transaction announces its script
 outcome on stdout for a controller: `gsc: installed …` with the program fingerprint
 and module/function/native/entry counts once the world is published, `gsc: refused …

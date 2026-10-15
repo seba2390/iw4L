@@ -393,21 +393,38 @@ impl EntityKernel {
     }
 
     pub fn allocate(&mut self, kind: EntityRunKind) -> Result<EntityRef, EntityAllocError> {
-        let reusable = self.free_fifo.front().copied().filter(|number| {
+        self.allocate_avoiding(kind, |_| false)
+    }
+
+    /// [`Self::allocate`], passing over the numbers `taken` says another
+    /// holder has (a script entity the pool does not track): a free slot so
+    /// held is left in the free list, a high-water slot so held joins it.
+    pub fn allocate_avoiding(
+        &mut self,
+        kind: EntityRunKind,
+        taken: impl Fn(i32) -> bool,
+    ) -> Result<EntityRef, EntityAllocError> {
+        let reusable = self.free_fifo.iter().position(|number| {
             let slot = &self.slots[*number as usize];
-            self.high_water >= i32::from(ENTITYNUM_WORLD)
-                || self.level_time_ms.saturating_sub(slot.freed_at_ms)
-                    >= GENTITY_REUSE_QUARANTINE_MS
+            !taken(*number)
+                && (self.high_water >= i32::from(ENTITYNUM_WORLD)
+                    || self.level_time_ms.saturating_sub(slot.freed_at_ms)
+                        >= GENTITY_REUSE_QUARANTINE_MS)
         });
-        let number = if let Some(number) = reusable {
-            self.free_fifo.pop_front();
-            number
-        } else if self.high_water < i32::from(ENTITYNUM_WORLD) {
-            let number = self.high_water;
-            self.high_water += 1;
-            number
+        let number = if let Some(at) = reusable {
+            self.free_fifo.remove(at).unwrap()
         } else {
-            return Err(EntityAllocError::CapacityExhausted);
+            loop {
+                if self.high_water >= i32::from(ENTITYNUM_WORLD) {
+                    return Err(EntityAllocError::CapacityExhausted);
+                }
+                let number = self.high_water;
+                self.high_water += 1;
+                if !taken(number) {
+                    break number;
+                }
+                self.free_fifo.push_back(number);
+            }
         };
         let slot = &mut self.slots[number as usize];
         slot.occupied = Some(OccupiedSlot {

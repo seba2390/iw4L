@@ -55,6 +55,9 @@ pub(crate) struct RoundScript {
     pub(crate) path_node_objects: BTreeMap<u16, u64>,
     pub(crate) hud_slots: BTreeMap<u64, usize>,
     pub(crate) next_entity_number: i32,
+    /// The numbers the entity pool held when last seen (a superset of what
+    /// it holds now), which `create_entity` passes over.
+    pub(crate) pool_numbers: std::collections::BTreeSet<i32>,
     pub(crate) tables: Arc<BTreeMap<String, StringTable>>,
     pub(crate) rng: u32,
     pub(crate) pending_notifies: Vec<(Value, Arc<str>, Vec<Value>)>,
@@ -152,6 +155,7 @@ impl RoundScript {
             dog_spots: Default::default(),
             path_node_objects: Default::default(),
             hud_slots: Default::default(),
+            pool_numbers: Default::default(),
             next_entity_number: Default::default(),
             tables: Default::default(),
             rng: Default::default(),

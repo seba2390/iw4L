@@ -302,6 +302,14 @@ impl RoundScript {
         }
     }
 
+    /// The numbers the scripts' entities hold (HUD elements have none).
+    pub(crate) fn entity_numbers(&self) -> impl Iterator<Item = i32> + '_ {
+        self.entities
+            .values()
+            .map(|entity| entity.number)
+            .filter(|number| *number >= 0)
+    }
+
     pub(crate) fn new_object(&mut self) -> Result<u64, String> {
         let id = self.next_object;
         self.next_object = id.checked_add(1).ok_or("object identifier exhausted")?;
@@ -335,8 +343,11 @@ impl RoundScript {
             {
                 return Err("no free entities".into());
             }
-            let number = self.next_entity_number;
-            self.next_entity_number += 1;
+            let mut number = self.next_entity_number;
+            while self.pool_numbers.contains(&number) {
+                number += 1;
+            }
+            self.next_entity_number = number + 1;
             number
         };
         let id = self.new_object()?;
