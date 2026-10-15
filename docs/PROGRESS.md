@@ -262,6 +262,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs, with round-end stats (`set_global_stat`, `update_playing_utc_time`) reading and writing `statstable_zm.ddl` without faults.
   - [x] A plain launch runs Black Ops 2's own scripts: Nuketown's rounds test (Ray Gun given) reaches round 9 in 12 minutes (158 kills, 12 760 points) with every perk dropped in, and round 7 in 10 minutes grabbing seven power-ups (double points, max ammo, insta-kill, nuke) with `IW4L_TEST_GRAB=1`; a dead actor becomes a corpse in one of `ai_corpseCount` slots and frees its actor slot (before, round 4 stalled once 32 dead actors filled the slots), and a kill pays its points from the actor's `attacker`.
+   - [x] TranZit and Buried in a plain launch, rounds test with the Ray Gun and `IW4L_TEST_GRAB=1`, 14 minutes each: TranZit reaches round 8 at 730 s (148 kills, 16 880 points by 850 s, nine power-ups grabbed), Buried at 795 s (144 kills, 11 420 points, six power-ups grabbed); neither stalls, and the only server script fault on either map is `t6.actors.ragdoll`.
 - [x] Wall weapons and the Mystery Box.
   - [x] The box takes its 950 and opens (Buried).
   - [x] Wall weapons sell through Black Ops 2's unitriggers on Nuketown, TranZit and Buried (the Olympia: 500 points, the gun changes).
