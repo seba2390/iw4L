@@ -177,6 +177,22 @@ pub(crate) enum ClientMessage {
     Exploder(i32),
     /// The local player stepped (its movement type and surface).
     Footstep(&'static str, &'static str),
+    /// The local player jumped or landed.
+    JumpLand(game_api::movement::JumpLand),
+}
+
+/// A local player's jump or landing, for its client scripts.
+pub(crate) fn jump_land(
+    server: &mut World,
+    client: crate::ClientId,
+    event: game_api::movement::JumpLand,
+) {
+    if client.0 != 0 || !server.contains_resource::<ClientScripts>() {
+        return;
+    }
+    if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
+        runtime.client_messages.push(ClientMessage::JumpLand(event));
+    }
 }
 
 /// A local player's footstep, for its client scripts.
@@ -233,6 +249,35 @@ pub(crate) enum LoopSource {
     /// A point emitter (`soundloopemitter(alias, origin)`), by its alias
     /// and origin's bits.
     Emitter(String, [u32; 3]),
+    /// A line emitter (`soundlineemitter(alias, start, end)`), by its alias
+    /// and its ends' bits: it plays at the point of its segment nearest the
+    /// listener.
+    Line(String, [u32; 3], [u32; 3]),
+}
+
+/// The point of a segment nearest a point, as the client's sound system
+/// finds it: a segment shorter than a unit is its start.
+pub(crate) fn nearest_on_segment(point: [f32; 3], start: [f32; 3], end: [f32; 3]) -> [f32; 3] {
+    let d = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+    let length_sq = d[0] * d[0] + d[2] * d[2] + d[1] * d[1];
+    if length_sq < 1.0 {
+        return start;
+    }
+    let t = ((point[0] - start[0]) * d[0]
+        + (point[2] - start[2]) * d[2]
+        + (point[1] - start[1]) * d[1])
+        / length_sq;
+    if t < 0.0 {
+        return start;
+    }
+    if 1.0 < t {
+        return end;
+    }
+    [
+        d[0] * t + start[0],
+        d[1] * t + start[1],
+        d[2] * t + start[2],
+    ]
 }
 
 /// A loop sound the client plays until it stops it.
@@ -419,6 +464,7 @@ pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String
         .iter()
         .map(|(source, sound)| (source.clone(), sound.clone()))
         .collect();
+    let listener = world.resource::<ClientView>().locals[0].player.eye;
     let fakes = world
         .get_resource::<FakeEnts>()
         .map(|fakes| fakes.origins.clone())
@@ -434,6 +480,9 @@ pub(crate) fn loop_rows(server: &mut World) -> Vec<(crate::ScriptModelId, String
                     _ => return None,
                 },
                 LoopSource::Emitter(_, bits) => bits.map(f32::from_bits),
+                LoopSource::Line(_, start, end) => {
+                    nearest_on_segment(listener, start.map(f32::from_bits), end.map(f32::from_bits))
+                }
             };
             Some((
                 crate::ScriptModelId::from_wire(CLIENT_LOOP_OWNER | sound.serial),
@@ -1072,7 +1121,33 @@ fn run_frame(
                 (callbacks.deactivate_exploder, vec![Value::Int(-id)])
             }
             ClientMessage::Exploder(id) => (callbacks.activate_exploder, vec![Value::Int(id)]),
-            // Black Ops calls it for the first person, never quiet.
+            // Black Ops calls these for the first person, never quiet.
+            ClientMessage::JumpLand(event) => {
+                let player = Value::Object(world.resource::<ClientView>().locals[0].object);
+                match event {
+                    game_api::movement::JumpLand::Jump(surface) => (
+                        callbacks.player_jump,
+                        vec![
+                            Value::Int(0),
+                            player,
+                            Value::string(surface),
+                            Value::Int(1),
+                            Value::Int(0),
+                        ],
+                    ),
+                    game_api::movement::JumpLand::Land(surface, hurt) => (
+                        callbacks.player_land,
+                        vec![
+                            Value::Int(0),
+                            player,
+                            Value::string(surface),
+                            Value::Int(1),
+                            Value::Int(0),
+                            Value::Int(hurt.into()),
+                        ],
+                    ),
+                }
+            }
             ClientMessage::Footstep(kind, surface) => {
                 let player = world.resource::<ClientView>().locals[0].object;
                 (

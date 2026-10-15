@@ -310,6 +310,48 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         world.resource_mut::<ClientOutput>().loops.remove(&source);
         Ok(Value::Undefined)
     });
+    // `soundLineEmitter(alias, start, end)`: a loop along a segment, at its
+    // point nearest the listener, until `soundStopLineEmitter` names the
+    // same alias and ends (within a few thousandths of a unit). The sound
+    // system holds 128.
+    registry.register(Function, "soundlineemitter", |world, _, args| {
+        let (alias, start, end) = line_emitter(args, "soundlineemitter")?;
+        let mut output = world.resource_mut::<ClientOutput>();
+        let lines = output
+            .loops
+            .keys()
+            .filter(|source| matches!(source, LoopSource::Line(..)))
+            .count();
+        if lines >= LINE_EMITTERS {
+            diag::warn!(Sim, "csc: ERROR: Sound ran out of line emitters");
+            return Ok(Value::Undefined);
+        }
+        let source = LoopSource::Line(
+            alias.clone(),
+            start.map(f32::to_bits),
+            end.map(f32::to_bits),
+        );
+        output.start_loop(source, alias);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "soundstoplineemitter", |world, _, args| {
+        let (alias, start, end) = line_emitter(args, "soundstoplineemitter")?;
+        let near = |a: [u32; 3], b: [f32; 3]| {
+            let a = a.map(f32::from_bits);
+            (a[2] - b[2]) * (a[2] - b[2])
+                + (a[1] - b[1]) * (a[1] - b[1])
+                + (a[0] - b[0]) * (a[0] - b[0])
+                < LINE_EMITTER_MATCH_SQ
+        };
+        world
+            .resource_mut::<ClientOutput>()
+            .loops
+            .retain(|source, _| {
+                !matches!(source, LoopSource::Line(name, from, to)
+                if *name == alias && near(*from, start) && near(*to, end))
+            });
+        Ok(Value::Undefined)
+    });
     // Whether the entity is under water: the runtime takes Black Ops'
     // players as dry (`t5.movement.water`).
     registry.register(Method, "underwater", |world, receiver, _| {
@@ -1334,6 +1376,25 @@ fn emitter(args: &[Value], native: &str) -> Result<LoopSource, String> {
     let alias = string(args, 0)?;
     let origin = vector(args, 1)?;
     Ok(LoopSource::Emitter(alias, origin.map(f32::to_bits)))
+}
+
+/// The line emitters the client's sound system holds.
+const LINE_EMITTERS: usize = 128;
+
+/// How near a line emitter's ends must be to stop it (squared units).
+const LINE_EMITTER_MATCH_SQ: f32 = 1.528_790_02e-5;
+
+/// A line emitter's alias and ends, which must be its three arguments.
+fn line_emitter(args: &[Value], native: &str) -> Result<(String, [f32; 3], [f32; 3]), String> {
+    if args.len() != 3 {
+        return Err(format!(
+            "{native} has {} parameters.  There should be three.",
+            args.len()
+        ));
+    }
+    let start = vector(args, 1)?;
+    let end = vector(args, 2)?;
+    Ok((string(args, 0)?, start, end))
 }
 
 /// The local client a native names: Black Ops refuses any but 0.

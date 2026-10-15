@@ -47,8 +47,9 @@ system plays, stops and fades them by id and reports back whether they play,
 how far and how long, which `_music.csc` waits on. The client reads its own
 player state (health, weapon, ADS, melee, grenade, position, eye, clip ammo,
 speed), so the Thundergun's power cells, the pilot light and the ambient
-elements run. Still unrun on the client: line emitters, ambient rooms, sound
-contexts and snapshots, vision and fog (`t5.csc.run`).
+elements run. Its line emitters play, and the player's jumps and landings
+reach its scripts. Still unrun on the client: ambient rooms, sound contexts
+and snapshots, vision and fog (`t5.csc.run`).
 
 Since the game boundary (docs/ARCHITECTURE.md) Black Ops runs only on Black
 Ops' rules and data, and the rules IW4L had borrowed from Modern Warfare 2 are

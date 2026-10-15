@@ -123,6 +123,9 @@ pub(crate) fn run(
             if let Some((kind, surface)) = movement.footstep(signal) {
                 crate::script::client::footstep(world.ecs(), id, kind, surface);
             }
+            if let Some(jump_land) = movement.jump_land(signal) {
+                crate::script::client::jump_land(world.ecs(), id, jump_land);
+            }
         }
     }
     outcome

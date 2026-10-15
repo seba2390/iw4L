@@ -67,6 +67,12 @@ pub struct ClientCallbacks {
     /// A local player stepped: `(local client, player, movement type,
     /// surface, first person, quiet)`.
     pub footstep: &'static str,
+    /// The local player jumped: `(local client, player, surface, first
+    /// person, quiet)`.
+    pub player_jump: &'static str,
+    /// The local player landed: `(local client, player, surface, first
+    /// person, quiet, hurt)`.
+    pub player_land: &'static str,
     /// A snapshot entity (actor, missile, vehicle) spawned on the client:
     /// `self = entity, (local client)`.
     pub entity_spawned: &'static str,

@@ -177,6 +177,14 @@ pub struct WeaponActivity {
     pub switching: bool,
 }
 
+/// A jump or a landing, with the surface's name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JumpLand {
+    Jump(&'static str),
+    /// A landing, and whether it hurt.
+    Land(&'static str, bool),
+}
+
 /// What a player's weapon notifies compare against, kept between frames.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WeaponNotifyMemory {
@@ -384,6 +392,12 @@ pub trait PlayerMovement: Sync {
     /// A footstep a movement signal is, as the game's client scripts are
     /// told of it: its movement type and the surface's name.
     fn footstep(&self, _signal: &MoveSignal) -> Option<(&'static str, &'static str)> {
+        None
+    }
+
+    /// A jump or a landing a movement signal is, as the game's client
+    /// scripts are told of it.
+    fn jump_land(&self, _signal: &MoveSignal) -> Option<JumpLand> {
         None
     }
 
