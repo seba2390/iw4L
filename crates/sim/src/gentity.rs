@@ -1,5 +1,6 @@
 use entity_iw4::{
-    ET_ITEM, ET_MISSILE, ET_SCRIPTMOVER, EntityState, TR_LINEAR_STOP, TR_STATIONARY, Trajectory,
+    CG_SCRIPT_MOVER_NODRAW, ET_ITEM, ET_MISSILE, ET_SCRIPTMOVER, EntityState,
+    SCRIPT_MOVER_BMODEL_SOLID, TR_LINEAR, TR_LINEAR_STOP, TR_STATIONARY, Trajectory,
     evaluate_trajectory,
 };
 use playerstate_iw4::{GENTITY_SPAWN_BASE, buttons};
@@ -667,6 +668,65 @@ impl Default for ScriptMoverGentity {
         }
     }
 }
+
+impl ScriptMoverGentity {
+    /// Poses a script mover's state at `time_ms`: moving on from where it stood
+    /// one tick before at the speed between the two, else standing.
+    pub(crate) fn pose(&mut self, time_ms: i32, origin: [f32; 3], angles: [f32; 3]) {
+        let state = &mut self.state;
+        let per_sec = 1000.0 / crate::MATCH_TICK_MS as f32;
+        let consecutive = time_ms - crate::MATCH_TICK_MS as i32;
+        let delta: [f32; 3] = if state.tr_time == consecutive {
+            core::array::from_fn(|i| (origin[i] - state.tr_base[i]) * per_sec)
+        } else {
+            [0.0; 3]
+        };
+        let apos_delta: [f32; 3] = if state.apos_tr_time == consecutive {
+            core::array::from_fn(|i| {
+                math_iw4::angle_subtract(angles[i], state.apos_tr_base[i]) * per_sec
+            })
+        } else {
+            [0.0; 3]
+        };
+        state.tr_type = if delta == [0.0; 3] {
+            TR_STATIONARY
+        } else {
+            TR_LINEAR
+        };
+        state.tr_time = time_ms;
+        state.tr_duration = 0;
+        state.tr_base = origin;
+        state.tr_delta = delta;
+        state.apos_tr_type = if apos_delta == [0.0; 3] {
+            TR_STATIONARY
+        } else {
+            TR_LINEAR
+        };
+        state.apos_tr_time = time_ms;
+        state.apos_tr_duration = 0;
+        state.apos_tr_base = angles;
+        state.apos_tr_delta = apos_delta;
+    }
+
+    /// Hides the mover from every client but those `shown_to` names.
+    pub(crate) fn show_only_to(&mut self, shown_to: u64) {
+        self.state.e_flags |= CG_SCRIPT_MOVER_NODRAW;
+        self.shown_to = shown_to;
+    }
+
+    /// Draws brush model `index` (or the DObj's model when `None`).
+    pub(crate) fn set_brush_model(&mut self, index: Option<i32>) {
+        self.state.index = index.unwrap_or(0);
+        self.state.solid = if index.is_some() {
+            SCRIPT_MOVER_BMODEL_SOLID
+        } else {
+            0
+        };
+    }
+}
+
+/// The highest entity number below the world's.
+pub(crate) const LAST_ENTITY_NUMBER: i32 = ENTITYNUM_WORLD as i32 - 1;
 
 pub fn pos_from_entity_state(es: &EntityState) -> Trajectory {
     Trajectory {

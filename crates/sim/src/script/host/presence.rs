@@ -113,7 +113,7 @@ fn withhold_client_map_models(world: &mut World) {
         .collect();
     for number in numbers {
         if let Some(mover) = frame.script_mover_mut_by_number(number) {
-            mover.state.e_flags |= entity_iw4::CG_SCRIPT_MOVER_NODRAW;
+            mover.show_only_to(0);
             mover.nonsolid = true;
         }
     }

@@ -26,7 +26,7 @@ pub(crate) const CLIENT_ENTITY_BASE: i32 = 0x400;
 pub(crate) const CLIENT_PRESENTED_BASE: u32 = 0x5000_0000;
 
 /// The highest number a client entity is presented at: below the world's.
-const PRESENTED_TOP: i32 = trace_iw4::ENTITYNUM_WORLD as i32 - 1;
+const PRESENTED_TOP: i32 = crate::gentity::LAST_ENTITY_NUMBER;
 
 /// The local client the client VM runs for sees its entities alone.
 const LOCAL_VIEWER: u64 = 1;
@@ -209,27 +209,26 @@ pub(super) fn present(server: &mut World, client: &mut super::ClientScripts) {
                 moving: false,
             }
         });
-        let state = &mut row.mover.state;
+        let state = &row.mover.state;
         let posed = state.tr_base != want.origin || state.apos_tr_base != want.angles;
         if posed || row.moving {
-            crate::frame::pose_script_mover_state(state, now, want.origin, want.angles);
+            row.mover.pose(now, want.origin, want.angles);
         }
         row.moving = posed;
         // Shown to the local client alone; hidden, to no one.
-        state.e_flags |= entity_iw4::CG_SCRIPT_MOVER_NODRAW;
-        row.mover.shown_to = if want.hidden { 0 } else { LOCAL_VIEWER };
+        row.mover
+            .show_only_to(if want.hidden { 0 } else { LOCAL_VIEWER });
         row.hidden = want.hidden;
         if row.model != want.model {
             row.model = want.model.clone();
             match want.model.strip_prefix('*') {
                 Some(brush) => {
                     row.dobj = None;
-                    state.index = super::super::host::natives::iw4::atoi(brush);
-                    state.solid = entity_iw4::SCRIPT_MOVER_BMODEL_SOLID;
+                    row.mover
+                        .set_brush_model(Some(super::super::host::natives::iw4::atoi(brush)));
                 }
                 None => {
-                    state.index = 0;
-                    state.solid = 0;
+                    row.mover.set_brush_model(None);
                     let capability = frame.model_capability(&want.model).flatten();
                     match row.dobj.as_mut() {
                         Some(dobj) => dobj.replace_model(&want.model, capability),

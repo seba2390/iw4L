@@ -335,7 +335,7 @@ impl FrameWorld<'_> {
         let Some(mover) = self.script_mover_mut_by_number(number) else {
             return false;
         };
-        pose_script_mover_state(&mut mover.state, time_ms, origin, angles);
+        mover.pose(time_ms, origin, angles);
         true
     }
 
@@ -626,48 +626,6 @@ impl FrameWorld<'_> {
         self.ecs
             .remove_resource::<crate::remote_missile::RemoteMissiles>();
     }
-}
-
-/// Poses a script mover's state at `time_ms`: moving on from where it stood
-/// one tick before at the speed between the two, else standing.
-pub(crate) fn pose_script_mover_state(
-    state: &mut entity_iw4::EntityState,
-    time_ms: i32,
-    origin: [f32; 3],
-    angles: [f32; 3],
-) {
-    let per_sec = 1000.0 / crate::MATCH_TICK_MS as f32;
-    let consecutive = time_ms - crate::MATCH_TICK_MS as i32;
-    let delta: [f32; 3] = if state.tr_time == consecutive {
-        core::array::from_fn(|i| (origin[i] - state.tr_base[i]) * per_sec)
-    } else {
-        [0.0; 3]
-    };
-    let apos_delta: [f32; 3] = if state.apos_tr_time == consecutive {
-        core::array::from_fn(|i| {
-            math_iw4::angle_subtract(angles[i], state.apos_tr_base[i]) * per_sec
-        })
-    } else {
-        [0.0; 3]
-    };
-    state.tr_type = if delta == [0.0; 3] {
-        entity_iw4::TR_STATIONARY
-    } else {
-        entity_iw4::TR_LINEAR
-    };
-    state.tr_time = time_ms;
-    state.tr_duration = 0;
-    state.tr_base = origin;
-    state.tr_delta = delta;
-    state.apos_tr_type = if apos_delta == [0.0; 3] {
-        entity_iw4::TR_STATIONARY
-    } else {
-        entity_iw4::TR_LINEAR
-    };
-    state.apos_tr_time = time_ms;
-    state.apos_tr_duration = 0;
-    state.apos_tr_base = angles;
-    state.apos_tr_delta = apos_delta;
 }
 
 pub(crate) fn state_entity(world: &World) -> Entity {
