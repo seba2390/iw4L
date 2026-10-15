@@ -133,6 +133,191 @@ impl Placement {
         }
         [x, y, w, h]
     }
+
+    /// A 640x480 x coordinate in real pixels (`ScrPlace_ApplyX`).
+    pub fn apply_x(&self, x: f32, horz_align: i32) -> f32 {
+        let x = x * self.ui_scale;
+        let sx = self.scale_virtual_to_real[0];
+        match horz_align {
+            1 => sx * x + self.real_viewable_min[0],
+            2 => sx * x + self.real_viewport_size[0] * 0.5 + self.real_viewport_base[0],
+            3 => sx * x + self.real_viewable_max[0],
+            4 => self.scale_virtual_to_full[0] * x + self.real_viewport_base[0],
+            5 => x,
+            6 => self.scale_real_to_virtual[0] * x,
+            7 => (self.real_viewable_max[0] + self.real_viewable_min[0]) * 0.5 + sx * x,
+            8 => sx * x + self.real_adjustable_min[0],
+            9 => (self.real_adjustable_max[0] + self.real_adjustable_min[0]) * 0.5 + sx * x,
+            10 => sx * x + self.real_adjustable_max[0],
+            _ => sx * x + self.sub_screen_left,
+        }
+    }
+
+    /// A 640x480 y coordinate in real pixels (`ScrPlace_ApplyY`).
+    pub fn apply_y(&self, y: f32, vert_align: i32) -> f32 {
+        let y = y * self.ui_scale;
+        let sy = self.scale_virtual_to_real[1];
+        match vert_align {
+            1 => sy * y + self.real_viewable_min[1],
+            2 => self.real_viewport_size[1] * 0.5 + sy * y + self.real_viewport_base[1],
+            3 => sy * y + self.real_viewable_max[1],
+            4 => self.scale_virtual_to_full[1] * y + self.real_viewport_base[1],
+            5 => y,
+            6 => self.scale_real_to_virtual[1] * y,
+            7 => (self.real_viewable_max[1] + self.real_viewable_min[1]) * 0.5 + sy * y,
+            8 => sy * y + self.real_adjustable_min[1],
+            9 => (self.real_adjustable_max[1] + self.real_adjustable_min[1]) * 0.5 + sy * y,
+            10 => sy * y + self.real_adjustable_max[1],
+            _ => sy * y,
+        }
+    }
+
+    /// A server `HudElem` material's width in real pixels (`HudElem_Width`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn hud_elem_width(
+        &self,
+        width: i32,
+        align_screen: i32,
+        from_width: i32,
+        from_align_screen: i32,
+        scale_start_time: i32,
+        scale_time: i32,
+        now: i32,
+        font_height: f32,
+    ) -> f32 {
+        let span = |w: i32, align: i32| {
+            if w == 0 {
+                font_height
+            } else if (align & 0xf0) == 0x40 {
+                w as f32 * self.scale_virtual_to_full[0]
+            } else {
+                (w as f32 * self.ui_scale) * self.scale_virtual_to_real[0]
+            }
+        };
+        let target = span(width, align_screen);
+        if scale_time <= 0 {
+            return target;
+        }
+        let elapsed = now - scale_start_time;
+        if elapsed >= scale_time {
+            return target;
+        }
+        let from = span(from_width, from_align_screen);
+        if elapsed <= 0 {
+            from
+        } else {
+            from + (elapsed as f32 / scale_time as f32) * (target - from)
+        }
+    }
+
+    /// A server `HudElem` material's height in real pixels (`HudElem_Height`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn hud_elem_height(
+        &self,
+        height: i32,
+        align_screen: i32,
+        from_height: i32,
+        from_align_screen: i32,
+        scale_start_time: i32,
+        scale_time: i32,
+        now: i32,
+        font_height: f32,
+    ) -> f32 {
+        let span = |h: i32, align: i32| {
+            if h == 0 {
+                font_height
+            } else if (align & 0x0f) == 4 {
+                h as f32 * self.scale_virtual_to_full[1]
+            } else {
+                (h as f32 * self.ui_scale) * self.scale_virtual_to_real[1]
+            }
+        };
+        let target = span(height, align_screen);
+        if scale_time <= 0 {
+            return target;
+        }
+        let elapsed = now - scale_start_time;
+        if elapsed >= scale_time {
+            return target;
+        }
+        let from = span(from_height, from_align_screen);
+        if elapsed <= 0 {
+            from
+        } else {
+            from + (elapsed as f32 / scale_time as f32) * (target - from)
+        }
+    }
+
+    /// A server `HudElem`'s top-left corner in real pixels (`HudElem_ToScreenPos`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn hud_elem_pos(
+        &self,
+        x: f32,
+        y: f32,
+        align_org: i32,
+        align_screen: i32,
+        from_x: f32,
+        from_y: f32,
+        from_align_org: i32,
+        from_align_screen: i32,
+        move_start_time: i32,
+        move_time: i32,
+        font_scale_start_time: i32,
+        font_scale_time: i32,
+        now: i32,
+        width: f32,
+        height: f32,
+    ) -> [f32; 2] {
+        const ORG_FACTOR: [f32; 4] = [0.0, 0.5, 1.0, 0.0];
+        let pos = |px: f32, py: f32, org: i32, scr: i32| -> [f32; 2] {
+            let sx = self.apply_x(self.ui_scale * px, (scr >> 4) & 0xf)
+                - ORG_FACTOR[((org >> 2) & 3) as usize] * width;
+            let sy = self.apply_y(self.ui_scale * py, scr & 0xf)
+                - ORG_FACTOR[(org & 3) as usize] * height;
+            [sx, sy]
+        };
+        if move_time > 0 {
+            let elapsed = now - move_start_time;
+            let frac = if elapsed <= 0 {
+                Some(0.0)
+            } else if elapsed < move_time {
+                let f = elapsed as f32 / move_time as f32;
+                (f != 1.0).then_some(f)
+            } else {
+                None
+            };
+            if let Some(frac) = frac {
+                let from = pos(from_x, from_y, from_align_org, from_align_screen);
+                let to = pos(x, y, align_org, align_screen);
+                return [
+                    from[0] + (to[0] - from[0]) * frac,
+                    from[1] + (to[1] - from[1]) * frac,
+                ];
+            }
+        }
+        let [mut out_x, mut out_y] = pos(x, y, align_org, align_screen);
+        if font_scale_time <= 0 || now - font_scale_start_time >= font_scale_time {
+            out_x = round_half_down(out_x);
+            out_y = round_half_down(out_y);
+        }
+        [out_x, out_y]
+    }
+}
+
+/// The UI font enum and base scale a server `HudElem`'s `font` field selects
+/// (`CG_GetHudElemInfo`): `bigfixed` draws bold at half scale, `smallfixed`
+/// console at a third, and every other font at a quarter.
+pub fn hud_elem_font(font: i32) -> (i32, f32) {
+    match font {
+        1 => (4, 0.5),
+        2 => (5, 1.0 / 3.0),
+        3 => (1, 0.25),
+        4 => (2, 0.25),
+        5 => (3, 0.25),
+        6 | 8 => (6, 0.25),
+        7 | 9 => (7, 0.25),
+        _ => (0, 0.25),
+    }
 }
 
 /// The UI font a menu item's font enum draws with at `scale`

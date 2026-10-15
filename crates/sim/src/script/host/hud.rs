@@ -22,6 +22,7 @@ const FONTS: &[&str] = &[
     "hudbig",
     "hudsmall",
     "extrabig",
+    "extrasmall",
 ];
 const ALIGN_X: &[&str] = &["left", "center", "right"];
 const ALIGN_Y: &[&str] = &["top", "middle", "bottom"];
