@@ -465,12 +465,45 @@ pub(crate) fn object_field_text(world: &World, id: u64, name: &str) -> String {
     let Some(runtime) = world.get_resource::<RoundScript>() else {
         return "-".to_owned();
     };
+    if let Some(csc_field) = name.strip_prefix("csc_") {
+        let Some(client_scripts) =
+            world.get_resource::<super::client_scripts::ClientScripts>()
+        else {
+            return "-".to_owned();
+        };
+        let Some(client_runtime) = client_scripts.world.get_resource::<RoundScript>() else {
+            return "-".to_owned();
+        };
+        if csc_field == "gibcount" {
+            return match field(client_runtime, 0, "gibcount") {
+                Some(Value::Int(n)) => n.to_string(),
+                _ => "-".to_owned(),
+            };
+        }
+        let Some(number) = runtime.entities.get(&id).map(|e| e.number) else {
+            return "-".to_owned();
+        };
+        let Some(client_game) = client_scripts
+            .world
+            .get_resource::<super::natives::t6::client::game::ClientGame>()
+        else {
+            return "-".to_owned();
+        };
+        let Some(cent) = client_game.entities.get(&number) else {
+            return "-".to_owned();
+        };
+        return match field(client_runtime, cent.object, csc_field) {
+            Some(Value::Int(n)) => n.to_string(),
+            Some(Value::String(s)) => s.to_string(),
+            _ => "-".to_owned(),
+        };
+    }
     match field(runtime, id, name) {
         None | Some(Value::Undefined) => "-".to_owned(),
         Some(Value::Int(n)) => n.to_string(),
         Some(Value::Float(f)) => format!("{f:.1}"),
         Some(Value::String(text)) => text.to_string(),
-        Some(Value::Vector(v)) => format!("({:.0} {:.0} {:.0})", v[0], v[1], v[2]),
+        Some(Value::Vector(v)) => format!("({:.1} {:.0} {:.0})", v[0], v[1], v[2]),
         Some(Value::Object(object)) => format!("object {object}"),
         Some(other) => format!("{other:?}"),
     }

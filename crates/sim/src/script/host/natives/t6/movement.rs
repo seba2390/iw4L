@@ -555,6 +555,59 @@ fn face(world: &mut World, id: u64, at: [f32; 3], enemy: Option<&Value>) {
     }
 }
 
+/// `Actor_UpdatePitchOrient` / `Actor_ProbeGroundPitch`: probes 10.9 units
+/// ahead and behind the actor along its yaw (`[-4, -4, 0]..[4, 4, 8]` box
+/// from `z + 30` down to `z - 30`, or `z - 45` for dogs) and steps the
+/// actor's pitch (`angles[0]`) toward the ground slope at up to 12 deg/tick.
+fn update_pitch_orient(world: &mut World, id: u64) {
+    let at = origin_of(world, id);
+    let angles = match world
+        .resource_mut::<RoundScript>()
+        .object_field(id, "angles")
+    {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    };
+    let is_dog = matches!(field(world, id, "isdog"), Value::Int(1));
+    let drop_depth = if is_dog { 45.0 } else { 30.0 };
+    let mins = [-4.0, -4.0, 0.0];
+    let maxs = [4.0, 4.0, 8.0];
+    let (sin, cos) = angles[1].to_radians().sin_cos();
+    let start = [at[0], at[1], at[2] + 30.0];
+    let mut probe = |sign: f32| -> Option<[f32; 3]> {
+        let end_horiz = [
+            start[0] + cos * 10.9 * sign,
+            start[1] + sin * 10.9 * sign,
+            start[2],
+        ];
+        let horiz = trace(world, start, end_horiz, mins, maxs, ACTOR_MASK);
+        if horiz.fraction == 0.0 {
+            return None;
+        }
+        let mid = lerp(start, end_horiz, horiz.fraction);
+        let end_down = [mid[0], mid[1], at[2] - drop_depth];
+        let down = trace(world, mid, end_down, mins, maxs, ACTOR_MASK);
+        if down.startsolid != 0 || down.fraction >= 1.0 {
+            Some(at)
+        } else {
+            Some(lerp(mid, end_down, down.fraction))
+        }
+    };
+    let target_pitch = match (probe(1.0), probe(-1.0)) {
+        (Some(front), Some(back)) if front != back => {
+            let dx = front[0] - back[0];
+            let dy = front[1] - back[1];
+            let dz = front[2] - back[2];
+            (-dz).atan2((dx * dx + dy * dy).sqrt()).to_degrees()
+        }
+        _ => 0.0,
+    };
+    let pitch = turn(angles[0], target_pitch, 12.0);
+    world
+        .resource_mut::<RoundScript>()
+        .set_object_field(id, "angles", Value::Vector([pitch, angles[1], angles[2]]));
+}
+
 fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     if !alive(world, id) || anim::scripted(world, id) {
         return Ok(());
@@ -676,6 +729,13 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         Script::Move => walk(world, id, at),
         Script::Stop | Script::Combat => face(world, id, at, enemy.as_ref()),
         Script::Pain | Script::Death => {}
+    }
+    if world
+        .get_resource::<super::extras::ActorPitch>()
+        .and_then(|p| p.0.get(&id))
+        .is_some_and(|&(orient, allow)| orient || allow)
+    {
+        update_pitch_orient(world, id);
     }
     let now = origin_of(world, id);
     if in_goal(world, id, now, goal) && !movement(world, id).goal_sent {

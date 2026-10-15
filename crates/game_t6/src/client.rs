@@ -104,6 +104,7 @@ pub(crate) fn program(
         state_change: has(&format!("{CALLBACKS}::statechange")),
         activate_exploder: has(&format!("{CALLBACKS}::callback_activate_exploder")),
         deactivate_exploder: has(&format!("{CALLBACKS}::callback_deactivate_exploder")),
+        gib_event: has(&format!("{CALLBACKS}::codecallback_gibevent")),
     };
     Rule::Known(ClientScriptProgram {
         entities: client_entities(&entities, &key_types),
