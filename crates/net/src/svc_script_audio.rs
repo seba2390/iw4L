@@ -70,6 +70,46 @@ pub(crate) fn encode_script_audio(out: &mut WireWriter, command: &ScriptAudioCom
             out.put_u8(1);
             out.put_i32(*fade_ms);
         }
+        ScriptAudioCommand::ClientSound {
+            client,
+            id,
+            alias,
+            origin,
+            volume,
+        } => {
+            out.put_u8(5);
+            out.put_u32(client.0);
+            out.put_i32(*id);
+            out.put_u16(alias.len() as u16);
+            out.put_bytes(alias.as_bytes());
+            match origin {
+                Some(origin) => {
+                    out.put_u8(1);
+                    for component in origin {
+                        out.put_f32(*component);
+                    }
+                }
+                None => out.put_u8(0),
+            }
+            out.put_f32(*volume);
+        }
+        ScriptAudioCommand::ClientSoundStop { client, id } => {
+            out.put_u8(6);
+            out.put_u32(client.0);
+            out.put_i32(*id);
+        }
+        ScriptAudioCommand::ClientSoundVolume { client, id, volume } => {
+            out.put_u8(7);
+            out.put_u32(client.0);
+            out.put_i32(*id);
+            out.put_f32(*volume);
+        }
+        ScriptAudioCommand::ClientSoundVolumeRate { client, id, rate } => {
+            out.put_u8(8);
+            out.put_u32(client.0);
+            out.put_i32(*id);
+            out.put_f32(*rate);
+        }
     }
 }
 
@@ -130,6 +170,44 @@ pub(crate) fn decode_script_audio(
         },
         1 => ScriptAudioCommand::MusicStop {
             fade_ms: input.get_i32()?,
+        },
+        5 => {
+            let client = ClientId(input.get_u32()?);
+            let id = input.get_i32()?;
+            let len = input.get_u16()? as usize;
+            if len > 1023 {
+                return Err(WireError::Malformed("client sound alias exceeds limit"));
+            }
+            let mut bytes = vec![0; len];
+            input.get_bytes(&mut bytes)?;
+            let alias = String::from_utf8(bytes)
+                .map_err(|_| WireError::Malformed("client sound alias is not UTF-8"))?;
+            let origin = match input.get_u8()? {
+                0 => None,
+                1 => Some([input.get_f32()?, input.get_f32()?, input.get_f32()?]),
+                _ => return Err(WireError::Malformed("client sound origin flag")),
+            };
+            ScriptAudioCommand::ClientSound {
+                client,
+                id,
+                alias,
+                origin,
+                volume: input.get_f32()?,
+            }
+        }
+        6 => ScriptAudioCommand::ClientSoundStop {
+            client: ClientId(input.get_u32()?),
+            id: input.get_i32()?,
+        },
+        7 => ScriptAudioCommand::ClientSoundVolume {
+            client: ClientId(input.get_u32()?),
+            id: input.get_i32()?,
+            volume: input.get_f32()?,
+        },
+        8 => ScriptAudioCommand::ClientSoundVolumeRate {
+            client: ClientId(input.get_u32()?),
+            id: input.get_i32()?,
+            rate: input.get_f32()?,
         },
         _ => return Err(WireError::Malformed("unknown script audio command")),
     };

@@ -434,6 +434,12 @@ impl SimWorld {
         crate::script::client::install(&mut self.ecs, program, natives, entries, callbacks, level)
     }
 
+    /// The local client's sound system's word on the sounds its client
+    /// scripts played, each frame it runs.
+    pub fn report_client_sounds(&mut self, statuses: Vec<crate::ClientSoundStatus>) {
+        crate::script::client::report_sounds(&mut self.ecs, statuses);
+    }
+
     /// Installs the compiled client scripts a local client runs beside the
     /// server's.
     pub fn install_compiled_client_scripts(

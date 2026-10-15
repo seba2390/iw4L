@@ -1259,6 +1259,8 @@ fn make_instance(
         priority: AtomicU32::new(policy.priority.to_bits()),
         rejection: AtomicU8::new(0),
         cursor: AtomicU64::new(0.0f64.to_bits()),
+        media_frames: AtomicU64::new(0),
+        media_rate: AtomicU32::new(0),
         rendered_at: AtomicU64::new(0),
         requested_at,
         first_device_us: AtomicU64::new(u64::MAX),
@@ -1359,6 +1361,14 @@ fn admit(
             }
         }
     }
+    request
+        .instance
+        .media_frames
+        .store(request.media.frames() as u64, Ordering::Release);
+    request
+        .instance
+        .media_rate
+        .store(request.media.rate(), Ordering::Release);
     request.instance.set_status(InstanceStatus::Accepted);
     let frame = request.frame;
     instances.push(LogicalInstance {

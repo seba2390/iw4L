@@ -3,6 +3,7 @@ mod ambient;
 mod attenuation;
 mod backend;
 mod breath;
+mod client_sounds;
 mod clip_store;
 mod decode_budget;
 mod emit;

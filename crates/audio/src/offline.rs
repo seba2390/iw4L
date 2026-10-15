@@ -95,6 +95,8 @@ impl OfflineRenderer {
             priority: AtomicU32::new(0),
             rejection: AtomicU8::new(0),
             cursor: AtomicU64::new(0.0f64.to_bits()),
+            media_frames: AtomicU64::new(0),
+            media_rate: AtomicU32::new(0),
             rendered_at: AtomicU64::new(0),
             requested_at: std::time::Instant::now(),
             first_device_us: AtomicU64::new(u64::MAX),
