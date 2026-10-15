@@ -136,6 +136,8 @@ pub struct PreparedWorld {
     pub exp_fog: Option<asset_world::ExpFog>,
     pub t6_vision: Option<asset_world::T6Vision>,
     pub t6_visions: asset_world::T6VisionCatalog,
+    /// Black Ops vision files by `vision/<name>.vision`.
+    pub t5_visions: asset_world::T5VisionCatalog,
 
     pub film_vision: Option<asset_world::FilmVision>,
     pub film_visions: std::collections::BTreeMap<
@@ -223,6 +225,7 @@ impl PreparedWorld {
             exp_fog: Default::default(),
             t6_vision: Default::default(),
             t6_visions: Default::default(),
+            t5_visions: Default::default(),
             film_vision: Default::default(),
             film_visions: Default::default(),
             createart_name: Default::default(),

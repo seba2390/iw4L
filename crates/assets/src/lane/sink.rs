@@ -208,6 +208,10 @@ pub(crate) struct ZoneWalkSink {
     xmodel_surface_names: HashMap<Ptr, Ptr>,
 
     pub sound: Option<asset_audio::ZoneSoundCapture>,
+
+    /// Black Ops vision files, and what reading them warned about.
+    pub t5_visions: asset_world::T5VisionCatalog,
+    pub t5_vision_warnings: Vec<String>,
 }
 
 #[derive(Default)]
@@ -218,6 +222,9 @@ pub(crate) struct CommonWalkSink {
     /// meshes built for the ones it holds.
     pub static_model_names: std::collections::BTreeSet<String>,
     pub static_meshes: Vec<asset_world::ForeignStaticMesh>,
+    /// Black Ops vision files, and what reading them warned about.
+    pub t5_visions: asset_world::T5VisionCatalog,
+    pub t5_vision_warnings: Vec<String>,
     pub shared_surfaces: asset_model::SharedXModelSurfaces,
     script_strings: ScriptStrings,
     pub walked: usize,
@@ -1009,6 +1016,13 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
         if let Some(sound) = self.sound.as_mut() {
             sound.raw_file(name, data, zlib_compressed);
         }
+        asset_world::capture_t5_vision(
+            &mut self.t5_visions,
+            &mut self.t5_vision_warnings,
+            name,
+            data,
+            zlib_compressed,
+        );
         if let Some((key, icons)) =
             asset_game::t5_settings_from_teamset_rawfile(name, data, zlib_compressed)
         {
@@ -1185,6 +1199,13 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         if let Some(text) = asset_world::decode_rawfile_text(data, zlib_compressed) {
             self.script_sound.capture(name, text.as_bytes(), false);
         }
+        asset_world::capture_t5_vision(
+            &mut self.t5_visions,
+            &mut self.t5_vision_warnings,
+            name,
+            data,
+            zlib_compressed,
+        );
         if asset_world::is_createart_source(name) {
             self.createart_name = Some(name.to_owned());
         }

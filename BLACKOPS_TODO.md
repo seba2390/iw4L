@@ -14,7 +14,9 @@ ends in a commit and a push.
 Kino loads and runs Black Ops' own zombie scripts (`_zombiemode` and
 everything it pulls in). All its static models draw and collide, the 58
 whose model another zone holds (teddy bears, lobby door tear-ins, perk
-bottles) included; its 540 dynamic entities do not spawn yet. Zombies spawn behind the windows, tear the boards,
+bottles) included; its 540 dynamic entities do not spawn yet. Its vision
+files load with the film constants Black Ops derives from them, but its post
+chain does not draw them yet (`t5.render.post_chain`). Zombies spawn behind the windows, tear the boards,
 climb through and run at the player, drawn with their animations. Builtins the
 runtime lacks are reported per call site instead of stopping the match. A
 Kino starts raises two script faults, the `is_in_array` pair in
@@ -268,8 +270,7 @@ Items that need a reference capture from the original game or a rule only the
 executable holds are listed, with exactly what is needed, under "Waiting on the
 maintainer" in `docs/fidelity/t5.md`: the zombies points column and
 scoreboard, script text hud elems, `UI_FONT_DEFAULT`, several HUD owner draws,
-weapon info details, engine dvar defaults, vision-set grading and Double Tap's
-fire-rate factor.
+weapon info details, engine dvar defaults and Double Tap's fire-rate factor.
 
 The first of them, the blanked executables, is answered: the CEG-filled
 `BlackOps.exe` and `BlackOpsMP.exe` from a Windows install are available
