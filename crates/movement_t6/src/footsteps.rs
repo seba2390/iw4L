@@ -86,7 +86,13 @@ pub(crate) fn bob_event<W: MoveWorld>(
     }
     if pm.ps.ground_entity_num == ENTITYNUM_NONE {
         if pm.ps.pm_flags & pm_flags::LADDER != 0 {
-            pm.gap(crate::Gap::Ladder);
+            if pm.ps.pm_flags & 0x0400_0000 == 0 {
+                pm.event(event::FOOTSTEP_RUN, 13);
+                pm.ps.pm_flags |= 0x0400_0000;
+            } else {
+                pm.event(134, 13);
+                pm.ps.pm_flags &= !0x0400_0000;
+            }
         }
         return;
     }
@@ -248,7 +254,21 @@ pub(crate) fn footsteps<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         && flags & pm_flags::MANTLE == 0
     {
         if flags & pm_flags::LADDER != 0 {
-            pm.gap(crate::Gap::Ladder);
+            if pm.cmd.server_time - pm.ps.jump_time >= 300 {
+                let vz = pm.ps.velocity[2];
+                let rate = if flags & pm_flags::SIGHT_AIMING == 0 && pm.ps.leanf == 0.0 {
+                    vz * 0.010498688 * 0.45
+                } else {
+                    vz * 0.026246719 * 0.35
+                };
+                let movetype = if vz >= 0.0 { 5 } else { 6 };
+                pm.out(MoveEvent::LegsMove(movetype, vz >= 0.0));
+                let old = pm.ps.bob_cycle;
+                let new = ((pml.msec as f32 * rate + old as f32) as i32) & 0xff;
+                pm.ps.bob_cycle = new;
+                let footsteps = (new & 0x7f) >= 0x40 && pm.ps.water_level < 5;
+                bob_event(pm, pml, old, new, footsteps);
+            }
             return;
         }
         falling_movetype(pm, pml, stance_anim);

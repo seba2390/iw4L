@@ -31,9 +31,10 @@ fn set_bounds<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 fn set_water_level<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let o = pm.ps.origin;
     let level = match pm.world.water_surface(o, 200.0, -200.0) {
-        Some(surface) if surface >= o[2] + 60.0 => 5,
-        Some(surface) if surface >= o[2] + 54.0 => 4,
-        Some(surface) if surface >= o[2] + 45.0 => 3,
+        Some(surface) if surface >= o[2] + 60.0 => 6,
+        Some(surface) if surface >= o[2] + 54.0 => 5,
+        Some(surface) if surface >= o[2] + 45.0 => 4,
+        Some(surface) if surface >= o[2] + 38.0 => 3,
         Some(surface) if surface >= o[2] + 24.0 => 2,
         Some(surface) if surface >= o[2] + 3.0 => 1,
         _ => 0,
@@ -348,11 +349,11 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     launch_end(pm);
     crate::dive::check_end(pm);
     if pm.ps.pm_flags & pm_flags::LADDER != 0 {
-        pm.gap(Gap::Ladder);
+        crate::ladder::ladder_move(pm, &mut pml);
     } else if pm.ps.pm_flags & pm_flags::LAUNCHED != 0 {
         pm.gap(Gap::Launched);
     } else if pm.ps.water_level >= 4 {
-        pm.gap(Gap::Swim);
+        moves::water_move(pm, &mut pml);
     } else if pml.walking {
         moves::walk_move(pm, &mut pml);
     } else {

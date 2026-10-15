@@ -105,6 +105,9 @@ pub(crate) fn program(
         activate_exploder: has(&format!("{CALLBACKS}::callback_activate_exploder")),
         deactivate_exploder: has(&format!("{CALLBACKS}::callback_deactivate_exploder")),
         gib_event: has(&format!("{CALLBACKS}::codecallback_gibevent")),
+        player_jump: has(&format!("{CALLBACKS}::codecallback_playerjump")),
+        player_land: has(&format!("{CALLBACKS}::codecallback_playerland")),
+        player_foliage: has(&format!("{CALLBACKS}::codecallback_playerfoliage")),
     };
     Rule::Known(ClientScriptProgram {
         entities: client_entities(&entities, &key_types),

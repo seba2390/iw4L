@@ -1,4 +1,4 @@
-use crate::math::{angle_delta, angle_vectors};
+use crate::math::{angle_delta, angle_vectors, vectoyaw};
 use crate::physics::effective_stance;
 use crate::prone::{ProneCheck, check_prone};
 use crate::state::{
@@ -309,7 +309,23 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
         && ps.ground_entity_num == ENTITYNUM_NONE
         && tuning::LADDER_YAWCAP != 0.0
     {
-        pm.gap(crate::Gap::Ladder);
+        let cap = tuning::LADDER_YAWCAP;
+        let center = vectoyaw(pm.ps.ladder_vec) + 180.0;
+        let delta = angle_delta(center, pm.ps.viewangles[1]);
+        if delta < -cap || delta > cap {
+            let adjust = if delta < -cap {
+                delta + cap
+            } else {
+                delta - cap
+            };
+            pm.ps.delta_angles[1] += adjust;
+            let capped = if adjust <= 0.0 {
+                center + cap
+            } else {
+                center - cap
+            };
+            pm.ps.viewangles[1] = wrap_360(capped);
+        }
     }
     if pm.ps.pm_flags & pm_flags::PRONE != 0 {
         prone_yaw_cap(pm, msec, old_yaw);

@@ -29,20 +29,10 @@ const DEAD_CLIP_MASK: u32 = 0x0081_0011;
 
 pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
     match gap {
-        Gap::Ladder => unknown!(
-            "t6.movement.ladder",
-            "Black Ops 2's ladder climbing: a player on a ladder does not move",
-            "Black Ops 2's ladder move from its executable"
-        ),
         Gap::Mantle => unknown!(
             "t6.movement.mantle",
             "Black Ops 2's mantling over ledges: never started",
             "Black Ops 2's mantle check and mantle move from its executable"
-        ),
-        Gap::Swim => unknown!(
-            "t6.movement.swim",
-            "Black Ops 2's swimming: a player in deep water does not move",
-            "Black Ops 2's water move from its executable"
         ),
         Gap::MountedView => unknown!(
             "t6.movement.mounted",
@@ -902,6 +892,48 @@ impl PlayerMovement for T6Movement {
         let (mut ps, mut last) = unpack(player);
         ps.perks = [0; 2];
         pack(player, &mut ps, &mut last);
+    }
+
+    fn footstep(&self, signal: &MoveSignal) -> Option<(&'static str, &'static str)> {
+        let MoveSignal::Event { event, parm } = *signal else {
+            return None;
+        };
+        let kind = match event {
+            event::FOOTSTEP_SPRINT => "sprint",
+            event::FOOTSTEP_RUN => "run",
+            event::FOOTSTEP_WALK => "walk",
+            event::FOOTSTEP_CROUCH_RUN => "crouch_run",
+            event::FOOTSTEP_CROUCH_WALK => "crouch_walk",
+            event::FOOTSTEP_PRONE => "prone",
+            _ => return None,
+        };
+        let surface = crate::missile::SURFACES
+            .get(usize::try_from(parm).ok()?)
+            .copied()?;
+        Some((kind, surface))
+    }
+
+    fn jump_land(&self, signal: &MoveSignal) -> Option<game_api::movement::JumpLand> {
+        use game_api::movement::JumpLand;
+        let MoveSignal::Event { event, parm } = *signal else {
+            return None;
+        };
+        let surface = |index: i32| {
+            crate::missile::SURFACES
+                .get(usize::try_from(index).ok()?)
+                .copied()
+        };
+        match event {
+            event::FOLIAGE_SOUND => Some(JumpLand::Foliage),
+            event::JUMP => Some(JumpLand::Jump(surface(parm)?)),
+            e if (event::LAND..event::FALL_DAMAGE).contains(&e) => {
+                Some(JumpLand::Land(surface(e - event::LAND)?, false))
+            }
+            e if (event::FALL_DAMAGE..event::FALL_DAMAGE + 32).contains(&e) => {
+                Some(JumpLand::Land(surface(e - event::FALL_DAMAGE)?, true))
+            }
+            _ => None,
+        }
     }
 
     fn weapon_spin(&self, player: &MovePlayer) -> f32 {

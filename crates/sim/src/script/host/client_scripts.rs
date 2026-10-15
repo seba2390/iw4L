@@ -31,6 +31,9 @@ pub(crate) struct ClientCallbacks {
     pub(crate) activate_exploder: Option<String>,
     pub(crate) deactivate_exploder: Option<String>,
     pub(crate) gib_event: Option<String>,
+    pub(crate) player_jump: Option<String>,
+    pub(crate) player_land: Option<String>,
+    pub(crate) player_foliage: Option<String>,
 }
 
 /// The server's world while the client's scripts run: the client game reads
@@ -141,6 +144,9 @@ pub(crate) fn install(
         activate_exploder: callbacks.activate_exploder.clone(),
         deactivate_exploder: callbacks.deactivate_exploder.clone(),
         gib_event: callbacks.gib_event.clone(),
+        player_jump: callbacks.player_jump.clone(),
+        player_land: callbacks.player_land.clone(),
+        player_foliage: callbacks.player_foliage.clone(),
     });
     server.insert_resource(ClientScripts {
         world,

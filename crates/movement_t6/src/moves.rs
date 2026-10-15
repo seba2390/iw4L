@@ -138,7 +138,65 @@ fn landing_slowdown(ps: &mut crate::PlayerState) {
     }
 }
 
-fn check_jump<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) -> bool {
+pub(crate) fn water_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
+    friction(pm, pml);
+    let fmove = f32::from(pm.cmd.forwardmove);
+    let rmove = f32::from(pm.cmd.rightmove);
+    let scale = cmd_scale_air(pm.ps, &pm.cmd) * tuning::WATER_SPEED_SCALE;
+    let mut accel = if pml.frametime < 0.008333334 {
+        let a = 3.0 - pml.frametime * 240.0;
+        if a >= 3.0 {
+            3.0
+        } else if 1.0 - a >= 0.0 {
+            1.0
+        } else {
+            a
+        }
+    } else {
+        1.0
+    };
+    accel *= 2.0;
+
+    let mut wish_x = pml.right[0] * rmove + pml.forward[0] * fmove;
+    let mut wish_y = pml.right[1] * rmove + pml.forward[1] * fmove;
+    let mut wish_z = pml.right[2] * rmove + pml.forward[2] * fmove;
+    if pm.ps.water_level == 4 && wish_z >= 0.0 {
+        wish_z = 0.0;
+    }
+    let wishspeed = sqrt(wish_x * wish_x + wish_y * wish_y + wish_z * wish_z);
+    let n = 1.0 / divisor(wishspeed);
+    wish_x *= n;
+    wish_y *= n;
+    wish_z *= n;
+
+    let clamped = pm.ps.move_speed_scale_multiplier.clamp(0.5, 1.5);
+    let mut buoyancy = if clamped > 1.0 {
+        clamped * 20.0
+    } else {
+        (1.0 - clamped) * -2.0 * 20.0 + 10.0
+    };
+    if pm.ps.water_level > 4 && fmove == 0.0 && rmove == 0.0 {
+        let mut up = [0.0, 0.0, 1.0];
+        if buoyancy < 0.0 {
+            up[2] = -1.0;
+            buoyancy = -buoyancy;
+        }
+        accelerate(pm.ps, pml, up, buoyancy, accel);
+    }
+    accelerate(
+        pm.ps,
+        pml,
+        [wish_x, wish_y, wish_z],
+        wishspeed * scale,
+        accel,
+    );
+    pml.ground_plane = false;
+    pml.walking = false;
+    step_slide_move(pm, pml, false);
+    set_movement_dir(pm, pml);
+}
+
+pub(crate) fn check_jump<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) -> bool {
     let ps = &*pm.ps;
     if ps.pm_flags & pm_flags::NO_JUMP != 0
         || pm.cmd.server_time - ps.jump_time < 500

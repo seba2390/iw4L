@@ -62,7 +62,7 @@ pub(crate) fn friction<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     }
     let ps = &mut *pm.ps;
     if ps.water_level != 0 {
-        const WATER_FRICTION: [f32; 6] = [0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
+        const WATER_FRICTION: [f32; 7] = [0.0, 1.0, 2.0, 2.0, 3.0, 3.0, 3.0];
         drop += WATER_FRICTION[ps.water_level as usize] * pml.frametime * speed;
     }
     if ps.pm_type == pm_type::SPECTATOR {
