@@ -77,6 +77,7 @@ pub struct SoundCatalog {
 
     group_volumes: HashMap<AssetNamespace, Vec<std::result::Result<f32, crate::MixerGroupError>>>,
     mixer_groups: HashMap<AssetNamespace, Vec<crate::MixerGroup>>,
+    mix_names: Option<crate::SoundMixNames>,
     by_alias: HashMap<(AssetNamespace, String), usize>,
 
     by_alias_ci: HashMap<(AssetNamespace, String), usize>,
@@ -147,6 +148,9 @@ impl SoundCatalog {
         }
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
+        }
+        if self.mix_names.is_none() {
+            self.mix_names = other.mix_names;
         }
         for (name, curve) in other.curves {
             match self.curves.get_mut(&name) {
@@ -220,6 +224,9 @@ impl SoundCatalog {
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
         }
+        if self.mix_names.is_none() {
+            self.mix_names = other.mix_names;
+        }
         for (name, curve) in other.curves {
             match self.curves.get_mut(&name) {
                 Some(existing) if existing.knots.is_empty() && !curve.knots.is_empty() => {
@@ -261,6 +268,16 @@ impl SoundCatalog {
             })
             .collect();
         self.group_volumes.insert(AssetNamespace::Iw5, volumes);
+    }
+
+    pub fn set_sound_mix_names(&mut self, names: crate::SoundMixNames) {
+        self.mix_names = Some(names);
+    }
+
+    /// The names the client's sound commands look up, for a game that has
+    /// them (Black Ops 2).
+    pub fn sound_mix_names(&self) -> Option<&crate::SoundMixNames> {
+        self.mix_names.as_ref()
     }
 
     pub fn ingest_mixer_groups(

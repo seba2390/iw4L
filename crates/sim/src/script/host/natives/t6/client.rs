@@ -3,6 +3,7 @@
 //! are the client's own code, not the server's: where one reads like the
 //! server's handler of the same name it is still ported from the client's.
 
+pub(crate) mod ambient;
 mod effects;
 pub(crate) mod entity;
 mod fields;
@@ -45,6 +46,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     fields::register(registry);
     effects::register(registry);
     sound::register(registry);
+    ambient::register(registry);
     registry.on_client_sync(game::sync);
     registry.on_client_present(game::present);
 }

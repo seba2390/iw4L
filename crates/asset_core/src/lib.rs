@@ -4,6 +4,7 @@ pub mod family;
 pub use family::{Family, FamilyId, Iw4, Iw5, T5, T6, T7};
 pub mod asset_key;
 pub mod ident;
+pub mod sound_mix;
 pub mod zone_format;
 pub mod zone_game;
 
@@ -16,6 +17,7 @@ pub use ident::{
     TechniqueSetIndex, TechniqueSetSpace, TracerIndex, TracerSpace, WalkLocalMaterialIndex,
     WorldWeaponIndex, WorldWeaponSpace, XAnimIndex, XAnimSpace, ZoneOwner, bound_zone_names,
 };
+pub use sound_mix::SoundMixNames;
 pub use zone_format::{
     BarrierAnim, BarrierPiece, BarrierType, BitLayout, BitMember, BitStruct, CollisionBox,
     CollisionBrush, CollisionLeaf, CollisionMaterial, CollisionModel, CollisionNode,

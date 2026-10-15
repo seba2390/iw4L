@@ -34,6 +34,7 @@ pub(crate) struct ClientCallbacks {
     pub(crate) player_jump: Option<String>,
     pub(crate) player_land: Option<String>,
     pub(crate) player_foliage: Option<String>,
+    pub(crate) sound_set_ambient_state: Option<String>,
 }
 
 /// The server's world while the client's scripts run: the client game reads
@@ -152,6 +153,7 @@ pub(crate) fn install(
         player_jump: callbacks.player_jump.clone(),
         player_land: callbacks.player_land.clone(),
         player_foliage: callbacks.player_foliage.clone(),
+        sound_set_ambient_state: callbacks.sound_set_ambient_state.clone(),
     });
     server.insert_resource(ClientScripts {
         world,
@@ -254,7 +256,13 @@ fn step(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
 /// its first wait.
 fn start(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
     let world = &mut client.world;
-    for (etype, pairs) in &client.setup.entities {
+    let mut triggers = Vec::new();
+    for ((etype, pairs), flags) in client
+        .setup
+        .entities
+        .iter()
+        .zip(client.setup.entity_spawnflags.iter().copied())
+    {
         let kind = super::natives::t6::client::game::type_name(*etype);
         let mut runtime = world.resource_mut::<RoundScript>();
         let Ok(id) = runtime.create_entity(super::entities::EntityKind::Map, kind) else {
@@ -265,7 +273,13 @@ fn start(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
             let value = super::entities::typed_key(game_key_type(*ty), value);
             runtime.set_object_field(id, key, value);
         }
+        if *etype == 0 {
+            triggers.push((id, flags));
+        }
     }
+    world.insert_resource(super::natives::t6::client::ambient::ClientTriggers(
+        triggers,
+    ));
     run_to_end(
         world,
         crate::script::runtime::STRUCT_INIT,
