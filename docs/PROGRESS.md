@@ -208,10 +208,10 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Wall weapons and the Mystery Box.
   - [x] The box takes its 950 and opens (Buried).
   - [x] Wall weapons sell through Black Ops 2's unitriggers on Nuketown, TranZit and Buried (the Olympia: 500 points, the gun changes).
-  - [ ] Wall weapons filed under a zone not yet active wait for it, as in the game; their ammo buys are not shown.
+  - [x] Wall weapons filed under a zone not yet active wait for it, as in the game; buying a wall weapon again refills its stock ammo for half price (TranZit: Olympia bought for 500, fired and reloaded, then refilled to 38 stock for 250).
   - [x] The box's weapon rises and is taken (Buried: 950 points, the Time Bomb, through Black Ops 2's box scripts and `useweaponmodel`).
   - [x] The box moves: in ten opens on Buried it gave the Time Bomb, M32, SRM1216, Ray Gun, DSR-50; on the seventh the teddy bear refunded the price (`moving_chest_now`, `box_moving`) and the box reopened in `zone_underground_courthouse2` (Saiga-12).
-  - [ ] Fire Sale's boxes (every location, 10 points) not shown; the Fire Sale power-up itself sets `zombie_powerup_fire_sale_on`.
+  - [x] Fire Sale's boxes (every location, 10 points) rise on all six chests (`start_fire_sale`, `zombie_powerup_fire_sale_on`), take 10 points (`500 -> 490`) and give their weapon (`dsr50_zm`).
 - [x] Doors and debris.
   - [x] Doors open for points on Nuketown, TranZit and Buried, debris clears on Nuketown and Buried, by the game's scripts through Black Ops 2's use rule (Buried: three doors and two debris piles in one run).
   - [x] Closed doors and debris cut the zombies' paths until they open (Black Ops 2's dynamic paths).
@@ -222,12 +222,12 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] Pack-a-Punch and every power-up.
   - [x] Pack-a-Punch upgrades a gun on Buried after the power (5000 points; the Olympia becomes `rottweil72_upgraded_zm` and is taken).
   - [x] Each power-up a map includes, dropped by Black Ops 2's `specific_powerup_drop` at the player, is grabbed and works: double points (`zombie_point_scalar` 2), insta-kill, max ammo (stock refilled), nuke (+400), fire sale (Nuketown); carpenter (`carpenter_finished`, +200), free perk, random weapon (Buried).
-  - [ ] TranZit's own (`insta_kill_ug`, `minigun`) and the bank's `teller_withdrawl` not shown; Nuketown's Pack-a-Punch arrives by perk drop.
+  - [x] TranZit's `insta_kill_ug` (`zombie_powerup_insta_kill_ug_on`) and the bank teller's `teller_withdrawl` (1100 paid at `bank_teller_transfer_trig`, 1000 picked up from the dropped `teller_withdrawl` power-up) work.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] Hits go through Black Ops 2's `finishplayerdamage` (damage timer, health, the `damage` notify); a lethal hit puts a player down and runs the last stand callback.
   - [x] Solo without Quick Revive: going down runs Black Ops 2's solo death (Nuketown's fall, `end_game`) and the match returns to the lobby on Nuketown, TranZit and Buried without faults (the fall linked to an anchor, `death_throe_zm` held, the rumbles stopped).
   - [x] With Quick Revive (TranZit, `IW4L_TEST_PLAYER=revive`): down at 51 s, Black Ops 2's solo revive stands him up at 61 s; the next down ends the game and the match returns to the lobby.
-  - [ ] Bleeding out is co-op only (see Co-op); the last stand vision and blur are not drawn (`t6.vision.last_stand`, `t6.player.blur`).
+  - [x] Bleeding out is co-op only (see Co-op); going down applies Black Ops 2's last-stand vision (`visionsetlaststand`, `"zombie_last_stand"`) and fading blur (`startfadingblur`, `3.0 -> 0.0` over 850 ms; `t6.vision.last_stand` and `t6.player.blur` closed).
 - [ ] The game's own HUD.
   - [x] Black Ops 2's Zombies LUI HUD widgets (`PerksArea`, `PowerUpsArea`, `BuildablesArea`, `CompetitiveScoreboard`, `DPadArea`, Buried's `AmmoAreaZombie` and `TimeBombArea`, `RoundStatus`, `Scoreboard`) run on `game_t6::ui` with timed transitions, LUI client field callbacks (`setupclientfieldcodecallbacks`), `luinotifyevent` (`score_event`), and round, score, weapon, ammo and offhand HUD updates.
   - [ ] Code-drawn pieces (reticle, low-health overlay, cursor hints, server `HudElem` materials) still use IW4L's HUD bridge (`t6.hud.code_hud`, `t6.hud.script_materials`).

@@ -3035,6 +3035,7 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
     encode_vision(out, state.missile_vision.as_ref());
     encode_vision(out, state.night_vision.as_ref());
     encode_vision(out, state.pain_vision.as_ref());
+    encode_vision(out, state.last_stand_vision.as_ref());
     encode_scene_effects(out, state);
     out.put_u16(state.vehicles.len() as u16);
     for vehicle in &state.vehicles {
@@ -3143,6 +3144,7 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
     state.missile_vision = decode_vision(input)?;
     state.night_vision = decode_vision(input)?;
     state.pain_vision = decode_vision(input)?;
+    state.last_stand_vision = decode_vision(input)?;
     decode_scene_effects(input, &mut state)?;
     for _ in 0..input.get_u16()? {
         state.vehicles.push(sim::CompassVehicle {

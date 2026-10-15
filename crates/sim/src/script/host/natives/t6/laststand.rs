@@ -10,7 +10,7 @@ use super::super::player::player;
 use super::{float, string, vector};
 use crate::ClientId;
 use crate::frame::FrameWorld;
-use crate::script::{Namespace, NativeRegistry, Value};
+use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
 
@@ -132,17 +132,22 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    // A vision the client shows while down; IW4L's client draws none.
-    registry.register(Function, "visionsetlaststand", |_, _, args| {
-        let ms = match args.len() {
+    registry.register(Function, "visionsetlaststand", |world, _, args| {
+        let duration_ms = match args.len() {
             1 => 1000,
             2 => (float(args, 1)? * 1000.0 + 9.313_226e-10).round() as i32,
             _ => return Ok(Value::Undefined),
         };
         let name = string(args, 0)?;
-        Err(format!(
-            "t6.vision.last_stand: the client's last stand vision \"{name}\" over {ms} ms is not drawn"
-        ))
+        let set_ms = world
+            .get_resource::<crate::step::StepRequest>()
+            .map_or(0, |r| crate::level_time_ms(r.tick));
+        world.resource_mut::<RoundScript>().engine.last_stand_vision = Some(crate::VisionChange {
+            name,
+            duration_ms,
+            set_ms,
+        });
+        Ok(Value::Undefined)
     });
     registry.register(Method, "docowardswayanims", |world, receiver, _| {
         client(world, receiver).map_err(|_| "USAGE: Must be called on a client\n".to_owned())?;

@@ -123,6 +123,9 @@ pub enum UseKind {
     /// A persistent buildable's table once built (`persistent` 1, `built`
     /// 1): `bptrigger_think_persistent` gives its weapon on use.
     Take,
+    /// The bank teller's transfer trigger (`level.bank_teller_transfer_trig`)
+    /// or the `teller_withdrawl` power-up it drops.
+    Teller,
 }
 
 /// Something a player buys or uses by pressing use near it: a trigger
@@ -386,15 +389,37 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
         }
     }
     let chests = items(runtime, field(runtime, 0, "chests"));
-    if let Some(chest) = int(field(runtime, 0, "chest_index"))
-        .and_then(|index| chests.get(usize::try_from(index).ok()?).cloned())
-        .and_then(|chest| object(Some(chest)))
-        && let stub = object(field(runtime, chest, "unitrigger_stub")).unwrap_or(chest)
-        && let Some(mut box_site) = site(runtime, UseKind::Box, stub, "cost")
+    for chest in chests.into_iter().filter_map(|c| object(Some(c))) {
+        if int(field(runtime, chest, "hidden")) == Some(1) {
+            continue;
+        }
+        let stub = object(field(runtime, chest, "unitrigger_stub")).unwrap_or(chest);
+        if let Some(mut box_site) = site(runtime, UseKind::Box, stub, "cost") {
+            box_site.cost = int(field(runtime, chest, "zombie_cost"))
+                .or_else(|| int(field(runtime, chest, "old_cost")));
+            sites.push(box_site);
+        }
+    }
+    let teller_drop = items(runtime, field(runtime, 0, "active_powerups"))
+        .into_iter()
+        .filter_map(|p| object(Some(p)))
+        .find(|&p| {
+            runtime.live(&p)
+                && string(field(runtime, p, "powerup_name")).as_deref() == Some("teller_withdrawl")
+        });
+    if let Some(drop_id) = teller_drop {
+        if let Some(mut drop_site) = site(runtime, UseKind::Teller, drop_id, "cost") {
+            drop_site.cost = Some(0);
+            drop_site.touch = true;
+            sites.push(drop_site);
+        }
+    } else if let Some(teller) = object(field(runtime, 0, "bank_teller_transfer_trig"))
+        && runtime.live(&teller)
+        && !int(field(runtime, teller, "trigger_off")).is_some_and(|off| off != 0)
+        && let Some(mut teller_site) = site(runtime, UseKind::Teller, teller, "cost")
     {
-        box_site.cost = int(field(runtime, chest, "zombie_cost"))
-            .or_else(|| int(field(runtime, chest, "old_cost")));
-        sites.push(box_site);
+        teller_site.cost = Some(1000 + int(field(runtime, 0, "ta_tellerfee")).unwrap_or(100));
+        sites.push(teller_site);
     }
     sites
 }
@@ -403,7 +428,11 @@ pub(crate) fn use_sites(world: &World) -> Vec<UseSite> {
 /// test player's log.
 pub(crate) fn level_array_entry(world: &World, array: &str, key: &str) -> Option<String> {
     let runtime = world.get_resource::<RoundScript>()?;
-    let Some(Value::Array(mut id)) = field(runtime, 0, array) else {
+    let (owner, key) = match key.strip_prefix("player.") {
+        Some(rest) => (super::entity_damage::player_object_id(world, 0)?, rest),
+        None => (0, key),
+    };
+    let Some(Value::Array(mut id)) = field(runtime, owner, array) else {
         return None;
     };
     // `team.key` reads a nested array (`level.zombie_vars["allies"][key]`).
