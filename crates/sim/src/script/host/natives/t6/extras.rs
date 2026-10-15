@@ -209,7 +209,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     // gscm_getentitytype: the entity's type, of those the engine's own
     // builtins show (a player 1, an item 3, a missile 4, a script mover 6,
-    // an actor 16).
+    // an actor 16, an actor corpse 18).
     registry.register(Method, "getentitytype", |world, receiver, _| {
         let id = super::super::engine::entity_id(world, receiver)?;
         let entity = &world.resource::<RoundScript>().entities[&id];
@@ -219,6 +219,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             EntityKind::Item(_) => 3,
             EntityKind::Missile(_) => 4,
             EntityKind::Actor => 16,
+            EntityKind::ActorCorpse => 18,
             EntityKind::Map | EntityKind::Spawned
                 if matches!(&*entity.classname, "script_model" | "script_brushmodel") =>
             {

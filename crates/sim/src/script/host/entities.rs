@@ -207,6 +207,8 @@ pub(crate) enum EntityKind {
     Item(i32),
     Missile(crate::ProjectileId),
     Vehicle,
+    /// What an actor leaves when its death animscript ends (Black Ops 2).
+    ActorCorpse,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -267,6 +267,17 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
     {
         return Ok(Value::Undefined);
     }
+    // An entity that takes no damage (an actor corpse) stops the swing and
+    // is not hit.
+    if let Value::Object(other) = strike.entity
+        && world
+            .resource::<RoundScript>()
+            .entities
+            .get(&other)
+            .is_some_and(|e| e.kind != EntityKind::Player && !e.can_damage)
+    {
+        return Ok(Value::Undefined);
+    }
     let damage = melee_damage(world, id)?;
     if world
         .resource::<RoundScript>()

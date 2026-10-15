@@ -480,6 +480,11 @@ pub struct LibraryMode {
 pub trait GameModes: Sync {
     fn mode(&self, gametype: &str) -> Rule<ModeRules>;
 
+    /// The mode's rules on one map, for games whose rules differ by map.
+    fn mode_on_map(&self, _map: &str, gametype: &str) -> Rule<ModeRules> {
+        self.mode(gametype)
+    }
+
     /// The game's zombies mode, when it has one the runtime can start.
     fn zombies(&self) -> Option<&'static LibraryMode>;
 }

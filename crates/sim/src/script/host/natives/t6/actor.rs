@@ -372,7 +372,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .resource::<RoundScript>()
             .entities
             .iter()
-            .filter(|(_, entity)| matches!(entity.kind, EntityKind::Corpse { .. }))
+            .filter(|(_, entity)| {
+                matches!(
+                    entity.kind,
+                    EntityKind::Corpse { .. } | EntityKind::ActorCorpse
+                )
+            })
             .map(|(id, _)| Value::Object(*id))
             .collect();
         new_array(world, corpses)

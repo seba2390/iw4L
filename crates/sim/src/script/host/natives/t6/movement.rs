@@ -88,6 +88,8 @@ struct Movement {
     /// `animcustom(func, [end_func])`: the running custom thread and its
     /// optional end function.
     custom: Option<(Option<u64>, Option<usize>)>,
+    /// The death animscript's thread, while it runs.
+    death: Option<u64>,
 }
 
 #[derive(Resource, Default)]
@@ -293,8 +295,12 @@ pub(super) fn set_script(
     anim::reset_orient(world, id);
     let now = super::super::super::players::now_ms(world);
     notify_now(world, Value::Object(id), "killanimscript", Vec::new(), now);
-    start_now(world, &main, Value::Object(id), Vec::new(), now)
-        .map_err(|fault| format!("{main}: {fault:?}"))
+    let thread = start_now(world, &main, Value::Object(id), Vec::new(), now)
+        .map_err(|fault| format!("{main}: {fault:?}"))?;
+    if script == Script::Death {
+        movement(world, id).death = thread;
+    }
+    Ok(thread)
 }
 
 /// The enemy an actor fights: its favorite enemy, while it lives and the
@@ -762,7 +768,22 @@ fn think(world: &mut World) {
     if let Some(mut movements) = world.get_resource_mut::<Movements>() {
         movements.0.retain(|id, _| actors.contains(id));
     }
+    super::corpse::forget_deleted(world);
     for id in actors {
+        // The death state: once its animscript has ended the actor is a
+        // corpse.
+        let state = movement(world, id);
+        let dead = state.script == Some(Script::Death) && !alive(world, id);
+        if dead
+            && !movement(world, id)
+                .death
+                .is_some_and(|t| thread_alive(world, t))
+        {
+            if let Err(fault) = super::corpse::finish_death(world, id) {
+                diag::warn!(Sim, "actor {id}: {fault}");
+            }
+            continue;
+        }
         if let Err(fault) = think_one(world, id) {
             diag::warn!(Sim, "actor {id}: {fault}");
         }

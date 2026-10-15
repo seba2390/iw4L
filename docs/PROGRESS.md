@@ -166,7 +166,7 @@ Only the top-level items count.
 Indented items are detail: they say what a milestone's runs have shown and
 what is still open (the open rules are in [`fidelity/t6.md`](fidelity/t6.md)).
 Only the top-level items count. Runs are headless, with the test player
-(`IW4L_TEST_PLAYER=1|rounds|use|down|revive`; `IW4L_TEST_USE` and `IW4L_TEST_PERK` pick what the use test buys, and the console's `script` command calls Black Ops 2's `_zm_score::add_to_player_score` to give it points) and `IW4L_T6_OWN_SCRIPTS=1`.
+(`IW4L_TEST_PLAYER=1|rounds|use|down|revive`; `IW4L_TEST_USE` and `IW4L_TEST_PERK` pick what the use test buys, and the console's `script` command calls Black Ops 2's `_zm_score::add_to_player_score` to give it points). Classic on every zombies map but Origins runs Black Ops 2's own scripts.
 
 | Map | Builtins not implemented yet |
 |---|---|
@@ -179,7 +179,7 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] The map loads, renders and collides (Nuketown).
   - [x] TranZit and Buried load and collide too, with their Classic zombie spawners (`AddonMapEnts`).
   - [x] The client scripts (CSC) run on a client VM of their own (`0 of 243` client builtins not implemented yet on Nuketown, `0 of 249` on TranZit, `0 of 257` on Buried): client-side map entities (`CG_SpawnEntities`), client fields (`zombie_has_eyes`, `zombie_power_on`), client system states (`statechange`), exploders, fxanim props and wall-buy chalk models (`spawn_weapon_model`).
-- [x] The game's own zombies scripts start the match and run round 1 (with `IW4L_T6_OWN_SCRIPTS=1`).
+- [x] The game's own zombies scripts start the match and run round 1.
   - [x] Every builtin the three maps' compiled scripts reference is registered (`0 of 692` on Nuketown, `0 of 741` on TranZit, `0 of 727` on Buried).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping and stances (`movement_t6`), shown by the walk test on Nuketown and TranZit (walk up to 190, sprint 285, jump 37.5, crouch view 40, prone 11).
@@ -206,6 +206,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] A zombie's swing that lands on another zombie does nothing, as Black Ops 2's melee hit does.
 - [x] Rounds advance past round 1.
   - [x] Nuketown reaches round 3 in the test player's 300 s runs, with round-end stats (`set_global_stat`, `update_playing_utc_time`) reading and writing `statstable_zm.ddl` without faults.
+  - [x] A plain launch runs Black Ops 2's own scripts: Nuketown's rounds test (Ray Gun given) reaches round 9 in 12 minutes (158 kills, 12 760 points) with every perk dropped in, and round 7 in 10 minutes grabbing seven power-ups (double points, max ammo, insta-kill, nuke) with `IW4L_TEST_GRAB=1`; a dead actor becomes a corpse in one of `ai_corpseCount` slots and frees its actor slot (before, round 4 stalled once 32 dead actors filled the slots), and a kill pays its points from the actor's `attacker`.
 - [x] Wall weapons and the Mystery Box.
   - [x] The box takes its 950 and opens (Buried).
   - [x] Wall weapons sell through Black Ops 2's unitriggers on Nuketown, TranZit and Buried (the Olympia: 500 points, the gun changes).

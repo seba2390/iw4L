@@ -966,7 +966,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
         let ent_type = match entity.kind {
             EntityKind::Player => "player",
             EntityKind::Actor => "actor",
-            EntityKind::Corpse { .. } => "NA",
+            EntityKind::Corpse { .. } | EntityKind::ActorCorpse => "NA",
             EntityKind::Missile(_) => "missile",
             EntityKind::Vehicle => {
                 if plane {

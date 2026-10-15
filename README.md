@@ -7,7 +7,7 @@
 |---|---|---|---|---|
 | Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | — | Rust: 460 / 460 (100%) |
 | Black Ops — Zombies | `████████████░░░░░░░░` 61% | 13 / 21 | 28 / 45 | Kino der Toten: 458 / 610 (75%)<br>Five: 455 / 609 (74%) |
-| Black Ops II — Zombies | `███████████████░░░░░` 76% | 16 / 21 | 54 / 60 | Nuketown: 692 / 692 (100%)<br>TranZit: 741 / 741 (100%)<br>Buried: 727 / 727 (100%) |
+| Black Ops II — Zombies | `███████████████░░░░░` 76% | 16 / 21 | 55 / 61 | Nuketown: 692 / 692 (100%)<br>TranZit: 741 / 741 (100%)<br>Buried: 727 / 727 (100%) |
 | Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |
 <!-- progress:end -->
 
@@ -39,7 +39,7 @@ where the game has them, zombies maps.
 |---|---|
 | Modern Warfare 2 | Multiplayer maps play: movement, combat, killstreaks, classes, bots, demos, online through a master ([run guide](docs/RUN.md)). |
 | Black Ops | Zombies (Kino der Toten first) runs Black Ops' own zombie scripts with Black Ops movement; co-op hosting. Roadmap: [`BLACKOPS_TODO.md`](BLACKOPS_TODO.md). Multiplayer maps are refused until their gametypes have their own rules. |
-| Black Ops II | Classic zombies on Nuketown, TranZit and Buried run Black Ops II's own compiled zombies scripts (`IW4L_T6_OWN_SCRIPTS=1`): zombies rise and hunt, rounds advance, doors and debris open for points. Movement and the weapon state machine are still Modern Warfare 2's, lent until Black Ops II's own exist ([milestones](docs/PROGRESS.md), [ledger](docs/fidelity/t6.md)). Experimental [FFA, TDM](docs/T6.md) with [in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md). |
+| Black Ops II | Classic zombies on Nuketown, TranZit and Buried run Black Ops II's own compiled zombies scripts: zombies rise and hunt, rounds advance, doors and debris open for points, perks, the box, Pack-a-Punch and power-ups work. Movement and weapons run Black Ops II's own `Pmove` and weapon state machine ([milestones](docs/PROGRESS.md), [ledger](docs/fidelity/t6.md)). Experimental [FFA, TDM](docs/T6.md) with [in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md). |
 | Black Ops III | Shadows of Evil's compiled scripts are read and translated (`gsc_t7`); its world is in progress, not playable yet ([ledger](docs/fidelity/t7.md)). |
 | Modern Warfare 3 | Maps are recognised and refused until MW3's own rules exist. |
 
