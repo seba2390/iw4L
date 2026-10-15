@@ -868,16 +868,12 @@ pub fn decode_map_preview(
     map_name: &str,
 ) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
     if asset_transport::zone_game_for_path(zone_ff) == Some(asset_core::ZoneGame::T6) {
-        return Ok(publication
-            .zone_image(
-                asset_core::AssetNamespace::T6,
-                &format!("loadscreen_{map_name}"),
-            )
+        let namespace = asset_core::AssetNamespace::T6;
+        return Ok(t6_zombies_loadscreen(publication, namespace, map_name)
+            .and_then(|name| publication.zone_image(namespace, &name))
+            .or_else(|| publication.zone_image(namespace, &format!("loadscreen_{map_name}")))
             .or_else(|| {
-                publication.zone_image(
-                    asset_core::AssetNamespace::T6,
-                    &format!("menu_{map_name}_map_select_final"),
-                )
+                publication.zone_image(namespace, &format!("menu_{map_name}_map_select_final"))
             })
             .map(|(width, height, rgba)| (width, height, rgba.as_ref().clone())));
     }
@@ -899,6 +895,32 @@ pub fn decode_map_preview(
         }
     }
     Ok(None)
+}
+
+/// Black Ops 2's zombies loading screen: the material
+/// `loadscreen_<map>_<ui_gametype>_<ui_zm_mapstartlocation>`, for the
+/// gametype and location the map starts with by default (its start row in
+/// `zm/gametypestable.csv`, the one marked `YES`).
+fn t6_zombies_loadscreen(
+    publication: &crate::UiImagePublication,
+    namespace: asset_core::AssetNamespace,
+    map_name: &str,
+) -> Option<String> {
+    const START_ROW: &str = "6";
+    let table = publication
+        .script_tables(namespace)
+        .into_iter()
+        .find(|table| table.name.eq_ignore_ascii_case("zm/gametypestable.csv"))?;
+    let start = table.cells.chunks_exact(table.columns.max(1)).find(|row| {
+        row.first().is_some_and(|cell| cell == START_ROW)
+            && row.get(2).is_some_and(|cell| cell == map_name)
+            && row.get(7).is_some_and(|cell| cell == "YES")
+    })?;
+    Some(format!(
+        "loadscreen_{map_name}_{}_{}",
+        start.get(4)?,
+        start.get(3)?
+    ))
 }
 
 pub fn game_main_for_zone(zone_ff: &Path) -> Result<PathBuf, String> {

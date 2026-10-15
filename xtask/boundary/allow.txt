@@ -203,7 +203,7 @@ pattern crates/asset_material/src/material_compile/technique/t5.rs fastfile_t5::
 pattern crates/asset_material/src/material_compile/technique/t5.rs lighting_iw4:: 1
 pattern crates/asset_material/src/material_compile/technique/t6.rs asset_iw4:: 2
 pattern crates/asset_material/src/material_draw.rs asset_iw4:: 7
-pattern crates/asset_material/src/material_images.rs AssetNamespace::<game> 6
+pattern crates/asset_material/src/material_images.rs AssetNamespace::<game> 5
 pattern crates/asset_material/src/material_images.rs ZoneGame::<game> 1
 pattern crates/asset_material/src/material_images.rs lighting_iw4:: 2
 pattern crates/asset_material/src/material_images/decode.rs asset_iw4:: 1

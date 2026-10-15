@@ -149,7 +149,7 @@ fn own_zombies(
         return Rule::Unknown(unknown!(
             "t6.scripts.ffotd",
             "Black Ops 2's zombies scripts call into modules the install does not carry (maps/mp/gametypes_zm/_globallogic is in the patch zone the game downloads at launch)",
-            "the downloaded patch zone, captured into <artifacts>/captured/"
+            "the downloaded patch zone, captured into ~/.config/iw4l/captured/ (or <artifacts>/captured/)"
         ));
     }
     let entries = start.entries(request.map, &built.program);

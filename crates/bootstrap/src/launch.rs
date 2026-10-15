@@ -180,7 +180,7 @@ fn run_menu(
     app.add_plugins(crate::plugins::default_plugins_with_quiet_log(
         WindowPlugin {
             primary_window: Some(Window {
-                title: "IW4L ? Game Library".into(),
+                title: "IW4L — Game Library".into(),
                 resolution: (1280, 720).into(),
                 ..default()
             }),

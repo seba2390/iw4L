@@ -1043,14 +1043,32 @@ pub struct T6UiArt {
 
 impl T6UiArt {
     pub fn publish(self) -> asset_material::UiImagePublication {
-        let namespace = asset_core::AssetNamespace::T6;
-        asset_material::ui_font::store_ui_fonts(namespace, self.fonts);
-        let mut images = asset_material::UiImageBuild::default();
-        images.script_tables(namespace, self.tables);
-        images.script_modules(namespace, self.modules);
-        images.zone_images(namespace, self.images);
-        images.publish()
+        let (publication, fonts) = self.into_parts();
+        store_t6_ui_fonts(fonts);
+        publication
     }
+
+    /// The published images, tables and modules, and the fonts left for the
+    /// caller to store (`store_t6_ui_fonts`) when it shows this art.
+    pub fn into_parts(
+        self,
+    ) -> (
+        asset_material::UiImagePublication,
+        Vec<asset_material::ui_font::UiBitmapFont>,
+    ) {
+        let mut images = asset_material::UiImageBuild::default();
+        images.script_tables(T6_UI, self.tables);
+        images.script_modules(T6_UI, self.modules);
+        images.zone_images(T6_UI, self.images);
+        (images.publish(), self.fonts)
+    }
+}
+
+const T6_UI: asset_core::AssetNamespace = asset_core::AssetNamespace::T6;
+
+/// Makes `fonts` the Black Ops 2 bitmap fonts the UI draws with.
+pub fn store_t6_ui_fonts(fonts: Vec<asset_material::ui_font::UiBitmapFont>) {
+    asset_material::ui_font::store_ui_fonts(T6_UI, fonts);
 }
 
 pub fn load_t6_ui_art(installation: &Path, zombies: bool) -> Result<T6UiArt, String> {
@@ -1127,11 +1145,13 @@ fn capture_weapon_icons(
             }
         }
     }
-    let icon_zones = asset_transport::t6_content::T6ContentMode::for_path(common).icons();
-    let mut ui_zones: Vec<_> = icon_zones
+    let mode = asset_transport::t6_content::T6ContentMode::for_path(common);
+    let mut ui_zones: Vec<_> = mode
+        .icons()
         .iter()
         .map(|name| common.with_file_name(name))
         .collect();
+    ui_zones.extend(mode.load_zones(common));
     match asset_transport::discover::find_t6_localized_zones(common, None) {
         Ok(zones) => ui_zones.extend(zones.into_iter().map(|zone| zone.path)),
         Err(error) => report.push(format!("t6 localized UI: {error}")),
@@ -1237,6 +1257,7 @@ fn capture_weapon_icons(
                 continue;
             };
             let presentation = name.starts_with("loadscreen_mp_")
+                || name.starts_with("loadscreen_zm_")
                 || name.starts_with("faction_")
                 || name.starts_with("hud_chalk_")
                 || (name.starts_with("specialty_") && name.contains("_zombie"))
