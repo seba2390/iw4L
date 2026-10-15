@@ -58,6 +58,28 @@ impl<'w> FrameWorld<'w> {
     pub(crate) fn new(ecs: &'w mut World, state_entity: Entity) -> Self {
         Self { ecs, state_entity }
     }
+
+    /// Allocates a dynamic entity from the entity pool, passing over the
+    /// numbers the scripts' entities hold: the engine has one pool, and the
+    /// scripts number their other entities themselves (`create_entity`),
+    /// which skip the pool's numbers in turn.
+    pub(crate) fn allocate_dynamic_entity(
+        &mut self,
+        kind: crate::gentity::EntityRunKind,
+    ) -> Result<crate::gentity::EntityRef, crate::gentity::EntityAllocError> {
+        let taken: std::collections::HashSet<i32> =
+            match self.ecs.get_resource::<crate::script::RoundScript>() {
+                Some(runtime) => runtime.entity_numbers().collect(),
+                None => std::collections::HashSet::new(),
+            };
+        let entity = self
+            .deref_mut()
+            .allocate_dynamic_entity_avoiding(kind, |number| taken.contains(&number))?;
+        if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
+            runtime.pool_numbers.insert(entity.number());
+        }
+        Ok(entity)
+    }
 }
 
 impl Deref for FrameWorld<'_> {

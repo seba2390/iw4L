@@ -215,6 +215,8 @@ pub(crate) fn sync_presence(world: &mut World) {
     }
     let tick = request.tick;
     let now = crate::level_time_ms(tick);
+    let pool = FrameWorld::from_world(world).dynamic_entity_numbers();
+    world.resource_mut::<RoundScript>().pool_numbers = pool.into_iter().collect();
     settle_collision(world);
     super::entity_damage::apply_script_blasts(world, tick);
     publish_loop_sounds(world);
