@@ -84,7 +84,7 @@ Only the top-level items count.
 - [x] The map loads, renders and collides (Kino der Toten).
   - [x] Static models (all 3326 slots, 58 of them models other zones hold: teddy bears, lobby door tear-ins, perk bottles) and script brush models (window boards, debris) draw and collide.
   - [ ] Zone data still dropped: dynamic entities (398 client and 142 server on Kino) and dynamic lights.
-  - [ ] Vision sets (Kino's grading, last stand, death) are never loaded.
+  - [ ] Vision sets (Kino's grading, last stand, death) are loaded with Black Ops' film constants but not drawn: its post chain and vision channels are not ported.
 - [x] The game's own zombies scripts start the match and run round 1.
   - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state, its models (moved, hidden, set; drawn through server twins), Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks; 64 of 173 client builtins not implemented yet, so their sound snapshots and contexts, vision and fog do nothing yet, and light changes are not drawn); 152 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
 - [x] The player moves by the game's own movement rules.

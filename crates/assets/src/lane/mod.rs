@@ -68,6 +68,25 @@ pub(crate) struct ForeignModels {
     pub clip_models: Vec<(String, helpers::T5ClipModelRow)>,
 }
 
+/// One report line with a Black Ops vision's film constants.
+pub(crate) fn t5_vision_report(key: &str, vision: &asset_world::T5Vision) -> String {
+    let film = vision.film();
+    let rows = |rows: &[[f32; 4]]| {
+        rows.iter()
+            .map(|row| format!("({:.4} {:.4} {:.4} {:.4})", row[0], row[1], row[2], row[3]))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    format!(
+        "t5 vision: {key} film={} lut={} s_curve={} postFxControl0-A {} s-curve {}",
+        film.enable,
+        film.lut,
+        film.s_curve_enable,
+        rows(&film.constants()),
+        rows(&film.s_curve_constants())
+    )
+}
+
 impl ForeignModels {
     pub(crate) fn names(&self) -> std::collections::BTreeSet<String> {
         self.static_models
@@ -124,6 +143,9 @@ pub type LochitTable = [f32; weapon_iw4::HITLOC_COUNT];
 pub struct CommonCensus {
     /// Draw meshes of the map static models this zone holds.
     pub static_meshes: Vec<asset_world::ForeignStaticMesh>,
+    /// Black Ops vision files, and what reading them warned about.
+    pub t5_visions: asset_world::T5VisionCatalog,
+    pub t5_vision_warnings: Vec<String>,
     pub ui_tables: Vec<asset_core::ZoneTable>,
     pub ui_modules: Vec<(String, std::sync::Arc<[u8]>)>,
     pub ui_images: Vec<(String, asset_material::material_images::ZoneUiImage)>,

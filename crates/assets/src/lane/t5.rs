@@ -224,6 +224,8 @@ impl T5Lane {
             teamsets: sink.teamsets,
             scene_models: sink.scene_models,
             static_meshes: sink.static_meshes,
+            t5_visions: sink.t5_visions,
+            t5_vision_warnings: sink.t5_vision_warnings,
             scripts: sink.scripts,
             film_visions: std::collections::BTreeMap::new(),
             ..Default::default()
@@ -243,7 +245,7 @@ impl ZoneLane for T5Lane {
         progress: &LoadProgress,
         _shared_surfaces: asset_model::SharedXModelSurfaces,
         material_seed: asset_material::MaterialCatalog,
-        common_film_visions: &super::FilmVisionCatalog,
+        _common_film_visions: &super::FilmVisionCatalog,
     ) -> LoadedWorld {
         let mut report = vec![format!("game: T5 ({})", path.display())];
         let stage = progress.begin_scoped(StageId::MapAssets, "header", None);
@@ -420,6 +422,19 @@ impl ZoneLane for T5Lane {
             }
         });
 
+        for warning in &sink.t5_vision_warnings {
+            report.push(format!("t5 vision: {warning}"));
+        }
+        if let Some(stem) = path.file_stem() {
+            let key = format!(
+                "vision/{}.vision",
+                stem.to_string_lossy().to_ascii_lowercase()
+            );
+            report.push(match sink.t5_visions.get(&key) {
+                Some(vision) => super::t5_vision_report(&key, vision),
+                None => format!("t5 vision: {key} not in the map zone"),
+            });
+        }
         stage.finish_from(&walked);
         let stage = progress.begin_scoped(StageId::Images, "map", None);
         let compass = std::mem::take(&mut sink.compass).resolve(&sink.materials);
@@ -681,8 +696,10 @@ impl ZoneLane for T5Lane {
                         exp_fog,
                         t6_vision: None,
                         t6_visions: Default::default(),
+                        t5_visions: std::mem::take(&mut sink.t5_visions),
                         film_vision: None,
-                        film_visions: common_film_visions.clone(),
+                        // Modern Warfare 2's visions are not Black Ops'.
+                        film_visions: Default::default(),
                         createart_name,
                         min,
                         max,
