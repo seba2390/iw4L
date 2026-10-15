@@ -22,6 +22,7 @@ net = { path = "../net" }
 updater = { path = "../updater" }
 session.workspace = true
 game_api.workspace = true
+game_t6.workspace = true
 sim.workspace = true
 weapon_iw4.workspace = true
 entity_iw4.workspace = true

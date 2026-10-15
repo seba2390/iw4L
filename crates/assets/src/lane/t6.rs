@@ -2519,6 +2519,15 @@ impl ZoneLane for T6Lane {
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             sources_stage.done();
+            let mut code_hud_menus = asset_game::MenuCatalog::default();
+            for zone in shared_loads.iter().chain(std::iter::once(&load)) {
+                code_hud_menus.absorb(asset_game::t6_menu_catalog(zone));
+            }
+            report.push(format!(
+                "T6 menus: {} menus in {} lists",
+                code_hud_menus.menus.len(),
+                code_hud_menus.lists.len()
+            ));
             let image_loads: Vec<_> = std::iter::once(&load).chain(&shared_loads).collect();
             let mut materials = material_seed;
             let mut decoded = DecodedTextures::new();
@@ -3323,6 +3332,9 @@ impl ZoneLane for T6Lane {
                                 .collect(),
                         })
                         .collect(),
+                    code_hud_menus: asset_game::SessionCodeHudMenus(Some(std::sync::Arc::new(
+                        code_hud_menus,
+                    ))),
                     ..Default::default()
                 },
                 report,

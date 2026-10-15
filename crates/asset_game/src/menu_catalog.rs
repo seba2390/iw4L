@@ -419,6 +419,22 @@ impl PartialEq for SessionHudMenus {
     }
 }
 
+/// The legacy menus a game's code-drawn HUD pieces run in, when its own HUD
+/// is otherwise drawn by other means (Black Ops 2's cursor hints, hit
+/// indicator and hold-breath hints beside its LUI HUD).
+#[derive(Clone, Debug, Default, Resource)]
+pub struct SessionCodeHudMenus(pub Option<Arc<MenuCatalog>>);
+
+impl PartialEq for SessionCodeHudMenus {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct HudMaterialPlan {
     pub texture_atlas: [u8; 2],

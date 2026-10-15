@@ -479,7 +479,14 @@ impl Scene {
                 .tables
                 .raw_set(&event, &key("controller"), controller.clone())
                 .map_err(|e| format!("{e:?}"))?;
-            if !notify.data.is_empty() {
+            if notify.name == "allow_round_animation" {
+                if let Some(&allow) = notify.data.first() {
+                    self.runtime
+                        .tables
+                        .raw_set(&event, &key("allow"), Value::Number(allow as f32))
+                        .map_err(|e| format!("{e:?}"))?;
+                }
+            } else if !notify.data.is_empty() {
                 let data = self
                     .runtime
                     .tables
@@ -1033,6 +1040,7 @@ impl Scene {
                         .unwrap_or(0) as u8,
                     clip,
                     content,
+                    text_shadow: true,
                 });
             }
         }

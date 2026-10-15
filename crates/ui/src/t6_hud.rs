@@ -384,6 +384,7 @@ fn fit_viewport(
 fn refresh_script_materials(
     mut commands: Commands,
     map: Option<Res<SessionMapIdentity>>,
+    code_menus: Option<Res<asset_game::SessionCodeHudMenus>>,
     roots: Query<(Entity, &Node), With<T6HudRoot>>,
     presented: Res<PresentedSnapshot>,
     local: Res<LocalPresentClient>,
@@ -403,7 +404,8 @@ fn refresh_script_materials(
     });
     let snapshot = presented.snapshot();
     let meta = snapshot.and_then(|snapshot| snapshot.meta.for_client(local.0));
-    let t6 = map.is_some_and(|map| map.namespace == Some(AssetNamespace::T6));
+    let t6 = map.is_some_and(|map| map.namespace == Some(AssetNamespace::T6))
+        && !code_menus.as_ref().is_some_and(|m| m.0.is_some());
     let (Some((root, width)), Some(snapshot), Some(meta), true) = (root, snapshot, meta, t6) else {
         for &entity in slots.iter() {
             if let Ok((_, mut node, _)) = sprites.get_mut(entity)
@@ -525,7 +527,10 @@ fn refresh(
     input: Res<frame::HudInputView>,
     generation: Option<Res<frame::WorldGeneration>>,
     clock: Option<Res<FrameClock>>,
-    mode: Option<Res<game_api::ModeRules>>,
+    (mode, code_menus): (
+        Option<Res<game_api::ModeRules>>,
+        Option<Res<asset_game::SessionCodeHudMenus>>,
+    ),
     mut feed: ResMut<Killfeed>,
     native: Res<super::script_ui::ScriptHud>,
     mut roots: Query<(&mut Node, &mut Visibility), (With<T6HudRoot>, Without<Field>)>,
@@ -653,6 +658,7 @@ fn refresh(
         String::new()
     };
     let lui_zombies = zombies && native.active;
+    let code_hud = code_menus.as_ref().is_some_and(|m| m.0.is_some());
     for (field, mut text, mut color, mut node) in &mut fields {
         let value = match field {
             Field::Match if !lui_zombies => {
@@ -680,7 +686,10 @@ fn refresh(
                 }
             }
             Field::Round | Field::Use | Field::Powerups
-                if zombies && alive && !scores && (!lui_zombies || matches!(field, Field::Use)) =>
+                if zombies
+                    && alive
+                    && !scores
+                    && (!lui_zombies || (matches!(field, Field::Use) && !code_hud)) =>
             {
                 let message = meta
                     .hud_archival
@@ -729,7 +738,7 @@ fn refresh(
                         .to_owned()
                 }
             }
-            Field::Use if alive && !scores => {
+            Field::Use if alive && !scores && !code_hud => {
                 let bind = input.use_key.as_deref().unwrap_or("");
                 if (1..=4).contains(&ps.cursor_hint) {
                     sim::hud_string_in_occupied(&snapshot.meta.hud_strings, ps.cursor_hint_string)
@@ -820,10 +829,10 @@ fn refresh(
                     format!("{clip:02}  /  {stock:03}")
                 }
             }
-            Field::Health if alive && !scores && ps.health < ps.max_health => {
+            Field::Health if alive && !scores && !code_hud && ps.health < ps.max_health => {
                 format!("HEALTH {}", ps.health)
             }
-            Field::Status if ended && snapshot.meta.kind.is_team() => {
+            Field::Status if !code_hud && ended && snapshot.meta.kind.is_team() => {
                 let team = usize::try_from(meta.client_state_team)
                     .ok()
                     .filter(|team| (1..=2).contains(team));
@@ -841,17 +850,22 @@ fn refresh(
                     },
                 )
             }
-            Field::Status if ended && zombies => "GAME OVER".into(),
-            Field::Status if alive && ps.pm_flags & playerstate_iw4::pm_flags::LAST_STAND != 0 => {
+            Field::Status if !code_hud && ended && zombies => "GAME OVER".into(),
+            Field::Status
+                if !code_hud
+                    && alive
+                    && ps.pm_flags & playerstate_iw4::pm_flags::LAST_STAND != 0 =>
+            {
                 "DOWNED - waiting for revive".into()
             }
-            Field::Status if ended => "Match complete".into(),
+            Field::Status if !code_hud && ended => "Match complete".into(),
             Field::Status
-                if ps.other_flags & playerstate_iw4::other_flags::DEAD_KILLCAM_TPV != 0 =>
+                if !code_hud
+                    && ps.other_flags & playerstate_iw4::other_flags::DEAD_KILLCAM_TPV != 0 =>
             {
                 "KILLCAM\nHold use to respawn".into()
             }
-            Field::Status if !alive => "Respawning...".into(),
+            Field::Status if !code_hud && !alive => "Respawning...".into(),
             Field::Killfeed if !scores => feed.clone(),
             Field::Scoreboard => scoreboard.clone(),
             _ => String::new(),
@@ -879,7 +893,10 @@ fn refresh_art(
     presented: Res<PresentedSnapshot>,
     local: Res<LocalPresentClient>,
     actions: Option<Res<ClientActionInput>>,
-    mode: Option<Res<game_api::ModeRules>>,
+    (mode, code_menus): (
+        Option<Res<game_api::ModeRules>>,
+        Option<Res<asset_game::SessionCodeHudMenus>>,
+    ),
     native: Res<super::script_ui::ScriptHud>,
     mut art: ResMut<crate::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
@@ -902,6 +919,7 @@ fn refresh_art(
         .is_some_and(|actions| actions.client.kb.scores.active);
     let zombies = mode.is_some_and(|mode| mode.hud.zombies);
     let lui_zombies = zombies && native.active;
+    let code_hud = code_menus.as_ref().is_some_and(|m| m.0.is_some());
     let labels: Vec<_> = meta
         .hud_archival
         .iter()
@@ -953,7 +971,7 @@ fn refresh_art(
                 },
                 &mut images,
             ),
-            HudArt::Damage if ps.health < ps.max_health => damage.clone(),
+            HudArt::Damage if !code_hud && ps.health < ps.max_health => damage.clone(),
             HudArt::Powerup(0) if zombies && !lui_zombies => double_art.clone(),
             HudArt::Powerup(1) if zombies && !lui_zombies => instant_art.clone(),
             HudArt::Perk(index)
@@ -1017,7 +1035,10 @@ fn refresh_graphics(
     local: Res<LocalPresentClient>,
     actions: Option<Res<ClientActionInput>>,
     weapons: Option<Res<PreparedWeapons>>,
-    mode: Option<Res<game_api::ModeRules>>,
+    (mode, code_menus): (
+        Option<Res<game_api::ModeRules>>,
+        Option<Res<asset_game::SessionCodeHudMenus>>,
+    ),
     native: Res<super::script_ui::ScriptHud>,
     catalog: Res<crate::ClassLoadoutCatalog>,
     mut art: ResMut<crate::t6_art::T6Art>,
@@ -1046,7 +1067,8 @@ fn refresh_graphics(
     let alive = meta.lifecycle == ClientLifecycle::Alive && ps.health > 0;
     let scores = actions.as_ref().is_some_and(|a| a.client.kb.scores.active);
     let lui_zombies = mode.is_some_and(|mode| mode.hud.zombies) && native.active;
-    let crosshair = alive && !scores && ps.f_weapon_pos_frac < 0.5;
+    let code_hud = code_menus.as_ref().is_some_and(|m| m.0.is_some());
+    let crosshair = !code_hud && alive && !scores && ps.f_weapon_pos_frac < 0.5;
     let spread = 5.0 + ps.aim_spread_scale.clamp(0.0, 255.0) / 255.0 * 18.0;
     for (arm, mut node, mut transform) in &mut arms {
         node.display = if crosshair {
@@ -1065,7 +1087,7 @@ fn refresh_graphics(
         *transform = UiTransform::from_translation(Val2::px(x, y));
     }
     for mut border in &mut damage {
-        *border = BorderColor::all(if alive && ps.health < ps.max_health / 2 {
+        *border = BorderColor::all(if !code_hud && alive && ps.health < ps.max_health / 2 {
             Color::srgba(0.8, 0.05, 0.02, 0.65)
         } else {
             Color::NONE

@@ -70,6 +70,7 @@ fn refresh(
     mut state: ResMut<ScriptHud>,
     mut art: ResMut<super::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
+    code_hud: Res<super::t6_code_hud::CodeHudDraws>,
 ) {
     let (screen, menu, local, clock, font, weapons) = view;
     state.scoreboard = false;
@@ -334,7 +335,14 @@ fn refresh(
         .sort_by_key(|player| (player.team, std::cmp::Reverse(player.score), player.id));
     let input = state.input.clone();
     let draws = match state.scene.as_mut().unwrap().update(&input) {
-        Ok(draws) => draws,
+        Ok(lui_draws) => {
+            let mut draws =
+                Vec::with_capacity(code_hud.back.len() + lui_draws.len() + code_hud.front.len());
+            draws.extend(code_hud.back.iter().cloned());
+            draws.extend(lui_draws);
+            draws.extend(code_hud.front.iter().cloned());
+            draws
+        }
         Err(error) => {
             diag::warn!(Ui, "authored HUD unavailable: {error}");
             state.scene = None;
@@ -445,24 +453,46 @@ fn refresh(
                     rectangle[0] = rectangle[2] - text_width;
                 }
                 rectangle[2] = rectangle[0] + text_width.max(1.0);
-                commands.entity(entity).insert((
-                    node(rectangle),
-                    Text::new(value),
-                    game_text_font(&font.0, size),
-                    TextColor(tint),
-                    super::t6_text::NativeFont(font_name.clone()),
-                ));
+                commands
+                    .entity(entity)
+                    .remove::<(ImageNode, BackgroundColor)>()
+                    .insert((
+                        node(rectangle),
+                        Text::new(value),
+                        game_text_font(&font.0, size),
+                        TextColor(tint),
+                        super::t6_text::NativeFont(font_name.clone()),
+                    ));
+                if draw.text_shadow {
+                    commands.entity(entity).remove::<super::t6_text::NoShadow>();
+                } else {
+                    commands.entity(entity).insert(super::t6_text::NoShadow);
+                }
             }
             Content::Image(name) => {
-                commands.entity(entity).insert(node(rectangle));
+                commands
+                    .entity(entity)
+                    .remove::<Text>()
+                    .insert(node(rectangle));
                 if name.is_empty() || name == "white" {
-                    commands.entity(entity).insert(BackgroundColor(tint));
+                    commands
+                        .entity(entity)
+                        .remove::<ImageNode>()
+                        .insert(BackgroundColor(tint));
                 } else if let Some(image) = art.image(name, &mut images) {
-                    commands.entity(entity).insert(ImageNode {
-                        image,
-                        color: tint,
-                        ..default()
-                    });
+                    commands
+                        .entity(entity)
+                        .remove::<BackgroundColor>()
+                        .insert(ImageNode {
+                            image,
+                            color: tint,
+                            ..default()
+                        });
+                } else if name == "black" {
+                    commands
+                        .entity(entity)
+                        .remove::<ImageNode>()
+                        .insert(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, draw.color[3])));
                 }
             }
             Content::Compass {
