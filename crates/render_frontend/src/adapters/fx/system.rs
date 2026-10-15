@@ -2030,7 +2030,7 @@ fn sprite_transform(sprite: &FxSpriteInstance, cam: &Transform) -> Transform {
             translation: Vec3::from_array(sprite.origin),
             rotation: cam.rotation * spin,
 
-            scale: Vec3::new(sprite.size0 * 2.0, sprite.size0 * 2.0, 1.0),
+            scale: Vec3::new(sprite.size0 * 2.0, sprite.size1 * 2.0, 1.0),
         }
     } else if sprite.elem_type == 2 {
         let origin = tail_anchor_origin(sprite.origin, sprite.vel_dir, sprite.size1);
@@ -2065,7 +2065,7 @@ fn sprite_transform(sprite: &FxSpriteInstance, cam: &Transform) -> Transform {
             translation: Vec3::from_array(sprite.origin),
             rotation: Quat::from_mat3(&mat) * spin,
 
-            scale: Vec3::new(sprite.size0 * 2.0, sprite.size0 * 2.0, 1.0),
+            scale: Vec3::new(sprite.size0 * 2.0, sprite.size1 * 2.0, 1.0),
         }
     }
 }

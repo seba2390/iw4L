@@ -109,12 +109,13 @@ pub use emit::{
     process_emitting_schedule,
 };
 pub use flags::{
-    FX_ELEM_DIE_ON_TOUCH, FX_ELEM_RUN_MASK, FX_ELEM_RUN_RELATIVE_TO_EFFECT,
-    FX_ELEM_RUN_RELATIVE_TO_OFFSET, FX_ELEM_RUN_RELATIVE_TO_SPAWN, FX_ELEM_RUNNER_USES_RAND_ROT,
-    FX_ELEM_SPAWN_FRUSTUM_CULL, FX_ELEM_UPDATE_HAS_VEL_GRAPH, FX_ELEM_USE_COLLISION,
-    FX_ELEM_USE_MODEL_PHYSICS, FX_ELEM_VEL_LOCAL, FX_ELEM_VEL_WORLD, elem_dies_on_touch,
-    elem_run_mode, elem_skips_position_update, elem_spawn_frustum_cull,
-    elem_update_has_velocity_graph, elem_uses_collision, elem_uses_vel_local, elem_uses_vel_world,
+    FX_ELEM_DIE_ON_TOUCH, FX_ELEM_NONUNIFORM_SCALE, FX_ELEM_RUN_MASK,
+    FX_ELEM_RUN_RELATIVE_TO_EFFECT, FX_ELEM_RUN_RELATIVE_TO_OFFSET, FX_ELEM_RUN_RELATIVE_TO_SPAWN,
+    FX_ELEM_RUNNER_USES_RAND_ROT, FX_ELEM_SPAWN_FRUSTUM_CULL, FX_ELEM_UPDATE_HAS_VEL_GRAPH,
+    FX_ELEM_USE_COLLISION, FX_ELEM_USE_MODEL_PHYSICS, FX_ELEM_VEL_LOCAL, FX_ELEM_VEL_WORLD,
+    elem_dies_on_touch, elem_nonuniform_scale, elem_run_mode, elem_skips_position_update,
+    elem_spawn_frustum_cull, elem_update_has_velocity_graph, elem_uses_collision,
+    elem_uses_vel_local, elem_uses_vel_world,
 };
 pub use glass::{
     FX_GLASS_AVEL_HALF, FX_GLASS_DEF, FX_GLASS_DYN_AVEL, FX_GLASS_DYN_FALL_TIME,
