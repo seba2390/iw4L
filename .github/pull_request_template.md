@@ -2,6 +2,8 @@
 
 <!-- One or two lines. For a game: which game, which behaviour. -->
 
+Closes #<!-- issue number; see AGENTS.md "Work from an issue". Small fixes without an issue: write "No issue — <why>". -->
+
 ## Checklist
 
 - [ ] **Source of each behaviour.** For every rule this PR adds or changes, say

@@ -10,12 +10,18 @@ Severity: **V** visible, **A** audible, **G** gameplay, **I** invisible.
 
 ## Open
 
-- [ ] **G** `weapon_change_complete` (a Black Ops notify) is raised in every
-      game (`sim/src/script/host/weapons.rs`).
-- [ ] **G** Modern Warfare 2 matches start `iw4l_t6/equipment` when the zones
-      carry it (Black Ops 2 equipment in an MW2 match, `Iw4Startup`) and mark `t6lethal`/`t6tactical` on classes
-      (`sim/src/script/host/players.rs`): cross-family composition, an IW4L
-      feature (docs/FAMILIES.md), not Modern Warfare 2.
+- [ ] **G** `iw4.weapons.notifies`: Modern Warfare 2 has no weapon-notify rule
+      of its own, so its matches get the shared path's notifies
+      (`notify_weapon_changes` in `sim/src/script/host/weapons.rs`), including
+      `weapon_change_complete`, a Black Ops notify.
+- [ ] **G** `iw4.scripts.t6_equipment`: every Modern Warfare 2 match starts
+      `iw4l_t6/equipment`, a Black Ops 2 equipment script written by IW4L
+      (`assets/src/t6_equipment.gsc.txt`, always inserted by the match walk and
+      started by `Iw4Startup`), and sets `t6lethal`/`t6tactical` on players;
+      foreign offhands map to Modern Warfare 2 stand-ins (`willy_pete` →
+      `smoke_grenade_mp`, … in `sim/src/script/host/players.rs`).
+      Cross-family composition, an IW4L feature
+      ([FAMILIES.md](../FAMILIES.md)), not Modern Warfare 2.
 
 ## Closed
 

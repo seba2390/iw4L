@@ -1,9 +1,12 @@
 # Native Perfetto
 
-Runtime observation is `iw4l-artifacts/runs/<uuid>/trace.pftrace`. Recording
-is off unless `IW4L_PERF=1` (`make bench` / `make bench-live` / `make scenario` /
-`make chaos` / `make lifecycle-*` force it on). Where the *run* spent its time,
-rather than one frame, is [`BENCH.md`](BENCH.md).
+Runtime observation is `iw4l-artifacts/runs/<uuid>/trace.pftrace`, on Linux and
+macOS only: on Windows the recorder compiles to nothing and `IW4L_PERF=1`
+records no trace. Recording is off unless `IW4L_PERF=1` (`make bench` /
+`make bench-live` / `make scenario` / `make chaos` / `make lifecycle-*` force
+it on). Where the *run* spent its time, rather than one frame, is
+[`BENCH.md`](BENCH.md). CPU sampling with Linux `perf` is `make bench-perf`
+(Linux only; `perf_event_paranoid` ≤ 2).
 
 ```bash
 make bench-live                            # record + compact p50/p90/p95/p99/hot-path report

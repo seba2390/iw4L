@@ -17,7 +17,7 @@ directories everywhere in the workspace, this crate included.
 | name | what it does |
 | --- | --- |
 | `master_duo_chaos` | two real clients join one dev master lobby, load `mp_boneyard` once, move for 4 seconds and run 16 seconds of RPG chaos with seven bots |
-| `heavy_gameplay_lifecycle` | cold load `mp_overgrown` with 16 players, three input scenes, production disconnect, a watched menu, a second map with three scenes, production quit |
+| `heavy_gameplay_lifecycle` | cold load `mp_overgrown` for free-for-all (`dm`) with 16 players, three input scenes, production disconnect, a watched menu, a second map with three scenes, production quit |
 
 The scenario's steps are in `src/scenarios/heavy_gameplay_lifecycle.rs` and
 nowhere else: maps, seed rule, scenes, positions, angles, weapons, durations

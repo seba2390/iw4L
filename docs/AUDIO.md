@@ -43,11 +43,13 @@ semantics need corpus validation.
 
 Desired loops use scope/epoch/object/slot versions and retain virtual cursors.
 Projectile cues follow authoritative bolts and retire on removal or timeline
-replacement.
-Control ranks eight map voices with a 0.002 gain floor. Device recovery uses
-bounded backoff; one-shots preserve PCM during short outages until their start
-deadlines expire. Master volume is applied once. `OfflineRenderer` shares the
-mixing kernel. Streaming, DSP buses/tails and acoustic propagation are unfinished.
+replacement. Control ranks eight map voices with a 0.002 gain floor. Device
+recovery uses bounded backoff; one-shots preserve PCM during short outages until
+their start deadlines expire. `mix_bus.rs` gives each game a bus with a trim and
+an optional compressor (T6 compressed, T5 +7 dB, IW5 −2.5 dB, IW4 and T7 flat)
+before master volume, which is applied once. `OfflineRenderer` shares the mixing
+kernel. Streaming, send/return effects with reverb tails and acoustic
+propagation are not implemented.
 
 `IW4L_AUDIO_DIAG=1` enables cue identities/decisions, request/preparation timings,
 slow control stages, affinity and device/null frame counts. Set
@@ -56,9 +58,7 @@ records. `dump` and `clip` include readiness and recent decisions. Device frames
 measure mixing into callbacks, before device latency or hardware playback.
 
 BO2 faction music uses native spawn/victory tracks, shared defeat music and the
-shared time-running-out cue for both host late-match states. Announcer routes
-translate host objective, flag, round and supported reward events into native
-faction aliases; mode variants share their base introduction. Routes require
-native catalog entries. Shared HUD text pulses use BO2 notification sounds.
-References absent from the installed native banks remain reported as missing;
-no replacement alias or media is synthesized for them.
+shared time-running-out cue. Announcer routes translate objective, flag, round
+and reward events into native faction aliases (mode variants share their base
+introduction); HUD text pulses use BO2 notification sounds. References missing
+from the installed banks are reported; no alias or media is synthesized.

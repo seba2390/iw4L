@@ -69,8 +69,8 @@ static update directory; its default is `./updates`. Upload the release blob
 before atomically replacing `manifest.toml`; see [`DEPLOY.md`](DEPLOY.md).
 A community descriptor is required for master networking. Address, TLS name
 and CA come only from that file.
-On Linux, selecting a descriptor retains the locally built executable and
-skips the Windows update flow. `IW4L_COMMUNITY` selects a descriptor next to the
+On Linux and macOS, selecting a descriptor retains the locally built executable
+and skips the Windows update flow. `IW4L_COMMUNITY` selects a descriptor next to the
 executable (an absolute path is also accepted).
 
 | Setting | What it changes and when to set it |
@@ -78,6 +78,8 @@ executable (an absolute path is also accepted).
 | `IW4L_MASTER_HOST_NAME` | The room name other players see. To host via `map`, set a name that is not empty or only whitespace, and leave `IW4L_MASTER_JOIN` unset. Names can occupy at most 48 UTF-8 bytes. Hosting through the menu uses `iw4l host` if the name is unset. Joining through the menu needs no host name. |
 | `IW4L_MASTER_MAX_PLAYERS` | The room capacity, **including the host**. Optional; defaults to `18`. Set an integer from `2` through `18` to limit the room size. It is read only when creating a room, via `map` or the menu; invalid values prevent room creation rather than being clamped. |
 | `IW4L_MASTER_PASSWORD` | The room password for command-line hosting and joining. Lobby settings can set, change or remove it; joining a protected room through the menu prompts for it. |
+| `IW4L_MASTER_JOIN` | Joins the room with this advert ID when launching with `map`. Set it or `IW4L_MASTER_HOST_NAME`, not both. |
+| `IW4L_GAMETYPE` | The mode a room created via `map` advertises; defaults to `dm`. Set it to the mode the map plays: `zombies` for Black Ops zombies, `zclassic` for Black Ops 2 zombies. |
 
 The host can start a match with:
 
@@ -87,8 +89,8 @@ make map mp_boneyard IW4L_MASTER_HOST_NAME='Friday match' IW4L_MASTER_MAX_PLAYER
 
 Other players open `make menu` and select the room, including rooms marked
 `IN MATCH`. Joining an ongoing match loads its current map; password, capacity
-and installed-content checks still apply. Master networking needs
-MW2 multiplayer data; it is disabled during demo replay.
+and installed-content checks still apply: a room requires the installed data
+of its map's game. Master networking is disabled during demo replay.
 
 When a setting appears in more than one place:
 

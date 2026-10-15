@@ -15,7 +15,8 @@ what the project actually claims:
 `README.md` says what is claimed. "Add everything the original had" is not a
 roadmap item.
 
-What a useful report contains, and nothing more:
+The Bug report issue form asks for what a useful report contains, and nothing
+more:
 
 * the release tag or commit
 * OS and GPU
@@ -25,26 +26,48 @@ What a useful report contains, and nothing more:
 That is the whole list. Do not attach your `.env`, a memory dump, or an archive
 of the game — none of those will be read, and the last one cannot be accepted.
 
+## Picking up work
+
+Open work is split into issues of a few hours to two days each:
+[open tasks](https://github.com/seba2390/iw4L/issues?q=is%3Aissue+is%3Aopen+label%3A%22status%3A+help+wanted%22).
+Filter by `game: …` (Modern Warfare 2, Black Ops 1, Black Ops 2, `all`),
+`mode: …` (Multiplayer, Zombies, `all`) and `area: …`. Each issue names its
+source (a ledger id in `docs/fidelity/`, a milestone in `docs/PROGRESS.md`), an
+acceptance list and a command that shows it working.
+
+* `status: help wanted` — free to take. Comment that you are taking it; a
+  maintainer assigns it and sets `status: in progress`. Agents with write
+  access claim it themselves, as [`AGENTS.md`](AGENTS.md) describes.
+* `status: in progress` — someone has it. A claim with no activity for seven
+  days goes back to `status: help wanted`.
+* `status: blocked` — waits on the issues under "Depends on".
+
+Stopping halfway is fine: say what is done and what is left in a comment.
+
 ## Changes
 
 Every change goes through a pull request into `main`: create a branch for
-the task, commit there, push the branch, open the pull request. Nobody pushes
-to `main` directly; it is protected and accepts merged pull requests whose
-checks (build, `publish-check`, `boundary`) pass.
+the task, commit there, push the branch, open the pull request with
+`Closes #<issue>`. Nobody pushes to `main` directly; it is protected and
+accepts merged pull requests whose checks pass.
 
 * **Small and self-contained** — a fix, a crash, a wrong constant, a doc
-  correction: open it directly.
-* **Architectural** — a new crate, a new subsystem, a change to how data flows
-  between `sim`, `render_frontend` and `net`: open an issue first. A large
-  branch that arrives unannounced is likely to be turned down for reasons that
-  have nothing to do with its quality.
+  correction: open it directly, no issue needed.
+* **Anything larger** — take an existing issue, or open one with the Task
+  form first. A new crate, a new subsystem or a change to how data flows
+  between `sim`, `render_frontend` and `net` is discussed in its issue before
+  the branch grows: a large branch that arrives unannounced is likely to be
+  turned down for reasons that have nothing to do with its quality.
 
-Before opening anything:
+Before opening a pull request, run what CI runs, plus the lints it does not
+gate yet:
 
 ```bash
-make publish-check   # the tracked tree is the product and nothing else
-make boundary        # each game runs on its own crates, nothing borrowed (docs/ARCHITECTURE.md)
-cargo fmt --all
+make publish-check                       # the tracked tree is the product and nothing else
+cargo check --workspace --all-targets
+cargo xtask boundary --enforce           # each game runs on its own crates (docs/ARCHITECTURE.md)
+cargo xtask progress                     # README table matches docs/PROGRESS.md
+rustfmt --edition 2024 <touched files>
 cargo clippy --workspace --all-targets
 ```
 

@@ -1,0 +1,33 @@
+name: Bug report
+description: Something the project says works does not.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach your `.env`, a memory dump or any game files. See [CONTRIBUTING.md](https://github.com/seba2390/iw4L/blob/main/CONTRIBUTING.md).
+  - type: input
+    id: revision
+    attributes:
+      label: Release tag or commit
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and GPU
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game data and map
+      placeholder: "Black Ops (Steam, Windows depot), t5:zombie_theater"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps, and what happened instead
+    validations:
+      required: true

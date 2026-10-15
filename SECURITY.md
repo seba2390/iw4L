@@ -1,8 +1,11 @@
 # Reporting a security issue
 
-Use GitHub's **Report a vulnerability** button under the repository's Security
-tab. It opens a private advisory that only the maintainer can see. Please use it
-instead of a public issue when the report contains exploitation detail.
+The repository has no private advisory channel (GitHub's private vulnerability
+reporting is not enabled). Open a [new issue](https://github.com/seba2390/iw4L/issues/new)
+titled "Security contact request" that says only that you have a report and
+which area it touches (network, update path, file access). Leave out every
+detail of the problem; the maintainer replies with a private contact, and the
+report goes there.
 
 This is a channel, not a program: there is no bounty, no triage SLA and no
 promised fix date. A single maintainer reads the reports.
@@ -24,10 +27,10 @@ reaches past that:
 
 ## What is already known and not a finding
 
-* The protocol is unversioned across builds and unstable by design; two
+* The protocol changes between builds and is unstable by design; two
   different releases failing to talk to each other is expected.
 * The master relays between clients and vouches for nobody. Connecting to a
-  match means trusting who you are playing with, as stated in `README.md`.
+  match means trusting who you are playing with ([`docs/MASTER.md`](docs/MASTER.md)).
 * IW4L parses game data that a local user chose to supply. Malformed data from
   your own install crashing the runtime is a bug, not a vulnerability.
 

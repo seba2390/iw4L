@@ -5,9 +5,9 @@
 
 | Game | Progress | Milestones | Steps | Builtins |
 |---|---|---|---|---|
-| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | — | Rust: 460 / 460 (100%) |
-| Black Ops — Zombies | `████████████░░░░░░░░` 61% | 13 / 21 | 28 / 45 | Kino der Toten: 458 / 610 (75%)<br>Five: 455 / 609 (74%) |
-| Black Ops II — Zombies | `███████████████░░░░░` 76% | 16 / 21 | 55 / 61 | Nuketown: 692 / 692 (100%)<br>TranZit: 741 / 741 (100%)<br>Buried: 727 / 727 (100%) |
+| Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | 0 / 13 | Rust: 460 / 460 (100%) |
+| Black Ops — Zombies | `████████████░░░░░░░░` 61% | 13 / 21 | 28 / 56 | Kino der Toten: 458 / 610 (75%)<br>Five: 455 / 609 (74%) |
+| Black Ops II — Zombies | `███████████████░░░░░` 76% | 16 / 21 | 57 / 64 | Nuketown: 692 / 692 (100%)<br>TranZit: 741 / 741 (100%)<br>Buried: 727 / 727 (100%) |
 | Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |
 <!-- progress:end -->
 
@@ -38,8 +38,8 @@ where the game has them, zombies maps.
 | Game | State |
 |---|---|
 | Modern Warfare 2 | Multiplayer maps play: movement, combat, killstreaks, classes, bots, demos, online through a master ([run guide](docs/RUN.md)). |
-| Black Ops | Zombies (Kino der Toten first) runs Black Ops' own zombie scripts with Black Ops movement; co-op hosting. Roadmap: [`BLACKOPS_TODO.md`](BLACKOPS_TODO.md). Multiplayer maps are refused until their gametypes have their own rules. |
-| Black Ops II | Classic zombies on Nuketown, TranZit and Buried run Black Ops II's own compiled zombies scripts: zombies rise and hunt, rounds advance, doors and debris open for points, perks, the box, Pack-a-Punch and power-ups work. Movement and weapons run Black Ops II's own `Pmove` and weapon state machine ([milestones](docs/PROGRESS.md), [ledger](docs/fidelity/t6.md)). Experimental [FFA, TDM](docs/T6.md) with [in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md). |
+| Black Ops | Zombies (Kino der Toten first) runs Black Ops' own zombie scripts with Black Ops movement; co-op hosting ([run guide](docs/BO1-ZOMBIES.md)). Multiplayer maps are refused until their gametypes have their own rules. |
+| Black Ops II | Classic zombies runs Black Ops II's own compiled zombies scripts on every map but Origins, which still runs survival rules written for IW4L. Played on Nuketown, TranZit and Buried: zombies rise and hunt, rounds advance, doors and debris open for points, perks, the box, Pack-a-Punch and power-ups work. Movement and weapons are Black Ops II's own ([run guide](docs/BO2-ZOMBIES.md), [milestones](docs/PROGRESS.md), [ledger](docs/fidelity/t6.md)). Experimental [FFA, TDM](docs/T6.md) with [in-match classes, settings and HUD](docs/MULTIPLAYER-UI.md). |
 | Black Ops III | Shadows of Evil's compiled scripts are read and translated (`gsc_t7`); its world is in progress, not playable yet ([ledger](docs/fidelity/t7.md)). |
 | Modern Warfare 3 | Maps are recognised and refused until MW3's own rules exist. |
 
@@ -49,11 +49,15 @@ peers must run the same build.
 
 ## Windows: prebuilt release
 
+No release has been published yet; until one is, build from source (below). Once
+published, the steps are:
+
 1. Download `iw4l-windows.zip` from [Releases](../../releases) and extract it into an
    empty writable folder. The archive password is `t.me/contextrot`.
-2. Launch `iw4l.exe`. It finds MW2 in your Steam libraries and creates a
-   `Modern Warfare 2.lnk` shortcut next to itself. For an install outside Steam, create
-   that shortcut to your MW2 folder yourself.
+2. Launch `iw4l.exe`. It finds the supported games in your Steam libraries and creates
+   a shortcut for each next to itself (`Modern Warfare 2.lnk`, `Black Ops II.lnk`, …).
+   For an install outside Steam, use the library's folder scan or create the shortcut
+   yourself.
 
 For online play, put the `.iw4l-server` file you received from a server operator next
 to `iw4l.exe`. With it the game finds that master and updates itself on launch. Details:
@@ -62,13 +66,17 @@ to `iw4l.exe`. With it the game finds that master and updates itself on launch. 
 ## Build and run
 
 Install Rust through rustup and GNU Make. [Build dependencies](docs/BUILD.md) cover
-Linux's C/C++ toolchain and system libraries, and macOS's Xcode command line tools.
-[Windows instructions](docs/WINDOWS.md) cover building and arranging a portable folder.
+Linux's C/C++ toolchain and system libraries, macOS's Xcode command line tools and
+native Windows' MSVC toolchain. The [Windows guide](docs/WINDOWS.md) covers the
+portable folder.
 
 You need your own installation of each game you want to load. IW4L distributes no game
 assets and reads installations without patching or replacing their files; how a game's
-data and scripts are read is in [`DECODING.md`](docs/DECODING.md). Caches, demos and logs go under `iw4l-artifacts/`; Linux settings use a separate
-configuration directory described in the [run guide](docs/RUN.md).
+data and scripts are read is in [`DECODING.md`](docs/DECODING.md). Caches, demos and
+logs go under `iw4l-artifacts/`. Settings live in `~/.config/iw4l/` on Linux and macOS
+and in `iw4l-artifacts/` on Windows ([run guide](docs/RUN.md),
+[environment variables](docs/ENV.md)). On Linux and macOS even the game library needs
+`IW4L_GAMES` set to an existing folder.
 
 From the repository root:
 
@@ -112,6 +120,9 @@ to load BO2 directly. Unoptimized `target/debug/iw4l.exe` is unsuitable for fram
 - [Map loading](docs/MAP-LOAD.md), [GSC runtime](docs/GSC-RUNTIME.md) and [bot AI](docs/BOTS.md): starting points for experiments and modifications.
 - [Game boundary](docs/ARCHITECTURE.md), [how games are read](docs/DECODING.md) and the per-game [fidelity ledgers](docs/fidelity/): what each game has of its own and what it still lacks.
 - [Documentation index](docs/INDEX.md), [contributing](CONTRIBUTING.md) and [security reports](SECURITY.md).
+- Contributing: open work is in the [issue list](https://github.com/seba2390/iw4L/issues),
+  filtered by the labels `game: …`, `mode: …` and `status: help wanted`; the rules and
+  checks are in [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 This whole project is written by LLMs.
 

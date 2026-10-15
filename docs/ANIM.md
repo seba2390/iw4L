@@ -35,20 +35,20 @@ gap, not "ordinary blending".
 
 ## Who picks the clip
 
-* `sim` — `player_anim_script.rs`, `mantle_xanim.rs`, `anim_script_gap.rs`:
-  what animation the player is in, and it travels into the snapshot as
-  semantics, not as a tree;
-* `assets` — `XAnimParts` → owning clips;
-* `render_frontend/adapters/anim/` + `render_anim` — the viewmodel (`fpv*.rs`,
-  `viewmodel_controller.rs`), third person (`third_person.rs`, `remote_body.rs`),
-  kick and sway (`view_kick.rs`, `view_sway.rs`), items and projectiles.
-  FPV actions come from the presented `weapAnim`, **never** from the
-  keyboard; the identity of the FPV mesh is
-  `weapon_iw4::get_viewmodel_weapon_index`.
-  The FPV consumer reads `PreparedFpv` only, never the weapon registry: views,
-  rigs and material bindings are built before Ready; an equip picks one, and a
-  mandatory material that failed is a refusal naming model, surface and
-  material. Remote kits (`PreparedRemoteKits`: models, hide bits, shared DObj)
-  and dropped items are composed at install, not on first sight.
+* `sim` — `player_anim_script.rs` and `mantle_xanim.rs`: what animation the
+  player is in; it travels into the snapshot as semantics, not as a tree.
+  Zombies actors play script-chosen animation trees on `xmodel_runtime`
+  (`sim/src/script/host/actor_anims.rs`, trees compiled at match install);
+* `asset_anim` — `XAnimParts` → owning clips (`xanim_catalog.rs`);
+* `render_anim/src/anim/` — the viewmodel (`fpv*.rs`, `viewmodel_controller.rs`),
+  remote bodies and sway; `render_anim/src/occupancy/` — third person, kick,
+  items and projectiles. `occupancy/fpv_present.rs` takes FPV actions from the
+  presented `weapAnim`, **never** from the keyboard; the identity of the FPV
+  mesh is `weapon_iw4::get_viewmodel_weapon_index`. The FPV consumer reads
+  `PreparedFpv` only, never the weapon registry: views, rigs and material
+  bindings are built before Ready; an equip picks one, and a mandatory material
+  that failed is a refusal naming model, surface and material. Remote kits
+  (`PreparedRemoteKits`: models, hide bits, shared DObj) and dropped items are
+  composed at install, not on first sight.
 
 To watch it live: `IW4L_PERF=1` / [`PERF.md`](PERF.md).

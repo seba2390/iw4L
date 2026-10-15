@@ -1,0 +1,54 @@
+name: Task
+description: A piece of open work, sized for one contributor (a few hours to two days).
+labels: ["status: help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One task per issue. Add a `game: …`, a `mode: …` and one or more `area: …` labels.
+        Link the ledger id (`docs/fidelity/<game>.md`) or milestone (`docs/PROGRESS.md`) instead of copying their text.
+        Working on it? Follow the claim steps in [AGENTS.md](https://github.com/seba2390/iw4L/blob/main/AGENTS.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What and why
+      description: The player-visible behaviour, and the game and mode it belongs to.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: Ledger ids, PROGRESS milestone or detail item, docs.
+      placeholder: "docs/fidelity/t5.md `t5.some.id`"
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Where it lives today (crates, files), what to do, known pitfalls, how the game's own rule is read (docs/DECODING.md).
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: Observable criteria; the ledger ids removed or the milestone ticked.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: verify
+    attributes:
+      label: Verify
+      description: The exact command(s) that show it working.
+      render: sh
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      placeholder: "#12, #34 — or none"
+  - type: dropdown
+    id: estimate
+    attributes:
+      label: Estimate
+      options: ["2-4 h", "4-8 h", "8-16 h"]

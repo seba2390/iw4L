@@ -28,9 +28,10 @@ protocol and ALPN.
 
 ## Packages
 
-`make release` builds the Windows executable and the static master once, then
-writes `dist/releases/<id>/`: `deployment.json`, `client/` and `server/`,
-`iw4l-windows-community.zip` with every descriptor, the public
+`make release` runs on an x86_64 Linux host: it cross-builds the Windows
+executable (cargo-xwin, `llvm-lib`) and a static `x86_64-unknown-linux-gnu`
+master once, then writes `dist/releases/<id>/`: `deployment.json`, `client/`
+and `server/`, `iw4l-windows-community.zip` with every descriptor, the public
 `iw4l-windows.zip` without them, and an unencrypted
 `iw4l-server-release-<id>.zip` for hosting panels:
 
@@ -67,6 +68,8 @@ manifest back.
 Servers are published one after another, each to completion. A failure prints
 the exact `make publish … RELEASE=…` line for the servers that remain;
 rerunning skips files already in place and leaves an unchanged master running.
+When the host answers but its UDP port is unreachable from this machine,
+publish warns; `IW4L_DEPLOY_REQUIRE_LOCAL_UDP=1` makes that fatal.
 
 ## GitHub
 

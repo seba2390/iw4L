@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Open tasks
+    url: https://github.com/seba2390/iw4L/issues?q=is%3Aissue+is%3Aopen+label%3A%22status%3A+help+wanted%22
+    about: Work that is free to pick up — claim it as AGENTS.md describes.

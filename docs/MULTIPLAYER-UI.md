@@ -1,5 +1,8 @@
 # BO2 multiplayer UI
 
+This page is Black Ops 2 multiplayer only; the zombies HUD is Black Ops 2's own
+LUI widgets ([BO2-ZOMBIES.md](BO2-ZOMBIES.md)).
+
 In an admitted native BO2 match, press **ESC** to open the pause menu.
 The online match continues. Use arrows to navigate, **Enter** to select,
 **ESC** to go back, or click an item. Controller menu navigation also works.
@@ -30,25 +33,20 @@ Native images and the distance-field bitmap font come from the owned installatio
 The HUD uses native score backing; pause/class/settings pages use native button art.
 Unsupported font characters retain the bundled font. Native glyphs wrap and cache
 until text, tint, atlas or available width changes.
-Layouts are IW4L-owned; BO2 LUI scripts and the multiplayer minimap remain absent.
+Layouts are IW4L-owned. Of BO2's LUI scripts, the Compass, Scoreboard and
+RewardSelection widgets run and draw (`t6.ui.bootstrap`, `t6.ui.render`); the full
+multiplayer HUD constructor and the compass's contacts and objectives are missing.
 
 Hosts can return everyone to the existing lobby with **End Match**.
 **Leave Match** disconnects only the local player.
-
-Zombies perk icons have twelve slots and use the installed BO2 perk materials,
-including Electric Cherry, Vulture Aid and Who's Who. Icon size, spacing and
-the perk-to-material table are IW4L's (`t6.hud.perk_slots`,
-`t6.hud.perk_materials` in docs/fidelity/t6.md), not read from the perk module;
-safe-area placement, split-screen scaling, perk acquisition animations and
-native client-field state remain unfinished. Zombies ammo is IW4L's unpadded
-clip/stock label (`t6.hud.zm_ammo`); dual-wield ammo and native multiplayer
-HUD digits remain unfinished.
 
 UI preparation decodes installed PC HavokScript modules and literal material names,
 including patch-zone HUD/menu artwork. The runtime supports scalar instructions,
 tables, userdata metatables, closures, host calls, basic library functions, owned
 elements/animation states with shared state metatables, scalar state
-registration/application, immediate transitions, script completion callbacks and
-cache control. Timed transitions, protected callback errors, remaining engine
-methods, collection, full libraries, rendered LUI and dynamic material names remain
-unfinished. No game scripts are bundled.
+registration/application, immediate and timed transitions, script completion
+callbacks and cache control, and draws the widgets it runs. Protected callback
+errors (`t6.ui.protected_calls`), collection (`t6.ui.gc`), metamethods
+(`t6.ui.metamethods`), the remaining instructions (`t6.ui.opcodes`) and engine
+methods (`t6.ui.engine_api`), full libraries and dynamic material names remain
+unfinished (ledger: [fidelity/t6.md](fidelity/t6.md)). No game scripts are bundled.
