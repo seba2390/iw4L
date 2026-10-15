@@ -49,9 +49,13 @@ pub fn script_zone_formats() -> Vec<asset_core::ScriptZoneFormat> {
 }
 
 /// The menu expression parser of each game whose menu catalogs tag their
-/// programs with the game (`asset_game`'s Black Ops catalog writes `t5`).
+/// programs with the game (`asset_game`'s Black Ops catalog writes `t5`,
+/// its Black Ops 2 catalog `t6`).
 pub fn menu_parsers() -> menu_expr::MenuParsers {
-    menu_expr::MenuParsers(vec![("t5", game_t5::parse_menu_expression)])
+    menu_expr::MenuParsers(vec![
+        ("t5", game_t5::parse_menu_expression),
+        ("t6", game_t6::parse_menu_expression),
+    ])
 }
 
 /// How the menus of the game a catalog belongs to are drawn.

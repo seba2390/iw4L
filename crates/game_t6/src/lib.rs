@@ -5,9 +5,11 @@ mod fire;
 mod fire_sound;
 mod grenade;
 mod keys;
+mod menu_expression;
 mod missile;
 mod movement;
 mod script_zones;
+pub mod scrplace;
 mod startup;
 pub mod ui;
 mod viewmodel;
@@ -21,6 +23,7 @@ pub struct T6;
 
 pub static GAME: T6 = T6;
 
+pub use menu_expression::parse_menu_expression;
 pub use script_zones::SCRIPT_ZONE_FORMAT;
 
 impl game_api::GameScripts for T6 {

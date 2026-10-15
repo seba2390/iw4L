@@ -50,6 +50,8 @@ pub struct MapFacts {
     pub path_nodes: Vec<asset_world::PathNode>,
 
     pub hud_menus: asset_game::SessionHudMenus,
+
+    pub code_hud_menus: asset_game::SessionCodeHudMenus,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

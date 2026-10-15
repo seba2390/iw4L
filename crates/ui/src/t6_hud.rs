@@ -525,7 +525,10 @@ fn refresh(
     input: Res<frame::HudInputView>,
     generation: Option<Res<frame::WorldGeneration>>,
     clock: Option<Res<FrameClock>>,
-    mode: Option<Res<game_api::ModeRules>>,
+    (mode, code_menus): (
+        Option<Res<game_api::ModeRules>>,
+        Option<Res<asset_game::SessionCodeHudMenus>>,
+    ),
     mut feed: ResMut<Killfeed>,
     native: Res<super::script_ui::ScriptHud>,
     mut roots: Query<(&mut Node, &mut Visibility), (With<T6HudRoot>, Without<Field>)>,
@@ -653,6 +656,7 @@ fn refresh(
         String::new()
     };
     let lui_zombies = zombies && native.active;
+    let code_hud = code_menus.as_ref().is_some_and(|m| m.0.is_some());
     for (field, mut text, mut color, mut node) in &mut fields {
         let value = match field {
             Field::Match if !lui_zombies => {
@@ -680,7 +684,10 @@ fn refresh(
                 }
             }
             Field::Round | Field::Use | Field::Powerups
-                if zombies && alive && !scores && (!lui_zombies || matches!(field, Field::Use)) =>
+                if zombies
+                    && alive
+                    && !scores
+                    && (!lui_zombies || (matches!(field, Field::Use) && !code_hud)) =>
             {
                 let message = meta
                     .hud_archival
@@ -729,7 +736,7 @@ fn refresh(
                         .to_owned()
                 }
             }
-            Field::Use if alive && !scores => {
+            Field::Use if alive && !scores && !code_hud => {
                 let bind = input.use_key.as_deref().unwrap_or("");
                 if (1..=4).contains(&ps.cursor_hint) {
                     sim::hud_string_in_occupied(&snapshot.meta.hud_strings, ps.cursor_hint_string)

@@ -117,6 +117,8 @@ pub struct Draw {
     pub alignment: u8,
     pub clip: Option<[f32; 4]>,
     pub content: Content,
+    /// Text draws with the renderer's drop shadow.
+    pub text_shadow: bool,
 }
 
 pub trait ScriptUi: Send + Sync {

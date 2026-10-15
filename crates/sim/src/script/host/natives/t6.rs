@@ -1179,7 +1179,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Err("The setHintString command only works on trigger_use, trigger_radius, trigger_box, trigger_radius_use, trigger_use_touch, or script mover entities.\n".into());
         }
         let hint = match args {
-            [Value::String(text)] if text.is_empty() => 0,
+            [Value::String(text)] if text.is_empty() => -1,
             _ => super::super::hud::string_index_with_args(world, args)?,
         };
         super::super::physics::usable(world, receiver)?.hint = hint;
@@ -1195,7 +1195,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Err("The setHintString command only works on trigger_use, trigger_radius, trigger_box or trigger_use_touch entities.\n".into());
         }
         if matches!(args.first(), Some(Value::String(text)) if text.is_empty()) {
-            super::super::physics::usable(world, receiver)?.hint = 0;
+            super::super::physics::usable(world, receiver)?.hint = -1;
             return Ok(Value::Undefined);
         }
         if matches!(&*classname, "trigger_radius" | "trigger_box") {
