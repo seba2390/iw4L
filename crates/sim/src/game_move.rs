@@ -179,10 +179,11 @@ fn update<T>(
     change: impl FnOnce(&mut MovePlayer) -> T,
 ) -> Option<T> {
     let frozen = frozen(world, id);
-    let ps = world.player_mut(id)?;
+    let ps = world.player(id).copied()?;
     let mut player = ps.move_player(id.0 as i32, frozen);
+    player.held = held_rounds(world, id, ps.weapons);
     let out = change(&mut player);
-    ps.store_move_player(&player);
+    world.player_mut(id)?.store_move_player(&player);
     Some(out)
 }
 
@@ -297,4 +298,54 @@ pub(crate) fn weapon_activity(
         return Some(game_api::movement::WeaponActivity::default());
     };
     Some(movement.weapon_activity(&ps.move_player(id.0 as i32, false)))
+}
+
+pub(crate) fn weapon_spin(world: &FrameWorld, id: ClientId) -> Option<f32> {
+    if !game_weapons(world) {
+        return None;
+    }
+    let movement = rules(world)?;
+    let ps = world.player(id)?;
+    Some(movement.weapon_spin(&ps.move_player(id.0 as i32, false)))
+}
+
+pub(crate) fn set_weapon_spin(world: &mut FrameWorld, id: ClientId, spin: f32) -> bool {
+    if !game_weapons(world) {
+        return false;
+    }
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| movement.set_weapon_spin(player, spin));
+    true
+}
+
+pub(crate) fn weapon_heat(world: &FrameWorld, id: ClientId, weapon: u32) -> Option<(f32, bool)> {
+    if !game_weapons(world) {
+        return None;
+    }
+    let movement = rules(world)?;
+    let ps = world.player(id)?;
+    Some(movement.weapon_heat(&ps.move_player(id.0 as i32, false), weapon))
+}
+
+pub(crate) fn set_weapon_heat(
+    world: &mut FrameWorld,
+    id: ClientId,
+    weapon: u32,
+    overheating: bool,
+    heat: f32,
+    end_val: f32,
+    overheat_weapon: bool,
+) -> bool {
+    if !game_weapons(world) {
+        return false;
+    }
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| {
+        movement.set_weapon_heat(player, weapon, overheating, heat, end_val, overheat_weapon)
+    });
+    true
 }

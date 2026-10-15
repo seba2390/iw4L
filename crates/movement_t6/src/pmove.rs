@@ -364,6 +364,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     pm.ps.left_hand = true;
     crate::weapon::pm_weapon(pm, &pml);
     pm.ps.left_hand = false;
+    crate::weapon::update_weapon_heat(pm, &pml);
     foliage_sound(pm);
 
     let o = pm.ps.origin;

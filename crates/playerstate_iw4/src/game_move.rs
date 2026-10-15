@@ -79,6 +79,8 @@ impl PlayerState {
             weapon_state: 0,
             weap_anim: self.weap_anim as u32,
             offhand: u32::try_from(self.off_hand_index).unwrap_or(0),
+            view_weapon: (self.weap_flags & crate::weap_flags::OFFHAND_VIEW != 0)
+                .then(|| u32::try_from(self.off_hand_index).unwrap_or(0)),
             grenade_time_left: self.grenade_time_left,
             game: self.game_move,
         }
@@ -119,7 +121,16 @@ impl PlayerState {
         self.f_weapon_pos_frac = player.weapon_pos_frac;
         self.aim_spread_scale = player.aim_spread_scale;
         self.weap_anim = player.weap_anim as i32;
-        self.off_hand_index = player.offhand as i32;
+        match player.view_weapon {
+            Some(view) if view != player.weapon && view != 0 => {
+                self.weap_flags |= crate::weap_flags::OFFHAND_VIEW;
+                self.off_hand_index = view as i32;
+            }
+            _ => {
+                self.weap_flags &= !crate::weap_flags::OFFHAND_VIEW;
+                self.off_hand_index = player.offhand as i32;
+            }
+        }
         self.grenade_time_left = player.grenade_time_left;
         self.game_move = player.game;
     }

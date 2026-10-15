@@ -6,7 +6,7 @@ use crate::Unknown;
 
 /// Bytes a game's movement keeps per player beyond the shared fields. The
 /// simulation stores, replicates and rolls them back with the player.
-pub const GAME_MOVE_BYTES: usize = 512;
+pub const GAME_MOVE_BYTES: usize = 576;
 
 /// The entity number for no entity: a player standing on nothing.
 pub const ENTITY_NONE: i32 = -1;
@@ -126,6 +126,7 @@ pub struct MovePlayer {
     /// Set by the weapon rules, in the game's numbering.
     pub weap_anim: u32,
     pub offhand: u32,
+    pub view_weapon: Option<u32>,
     pub grenade_time_left: i32,
     pub game: [u8; GAME_MOVE_BYTES],
 }
@@ -159,6 +160,7 @@ impl Default for MovePlayer {
             weapon_state: 0,
             weap_anim: 0,
             offhand: 0,
+            view_weapon: None,
             grenade_time_left: 0,
             game: [0; GAME_MOVE_BYTES],
         }
@@ -393,6 +395,27 @@ pub trait PlayerMovement: Sync {
     ) -> Vec<WeaponNotify>;
 
     fn clear_perks(&self, player: &mut MovePlayer);
+
+    fn weapon_spin(&self, _player: &MovePlayer) -> f32 {
+        0.0
+    }
+
+    fn set_weapon_spin(&self, _player: &mut MovePlayer, _spin: f32) {}
+
+    fn weapon_heat(&self, _player: &MovePlayer, _weapon: u32) -> (f32, bool) {
+        (0.0, false)
+    }
+
+    fn set_weapon_heat(
+        &self,
+        _player: &mut MovePlayer,
+        _weapon: u32,
+        _overheating: bool,
+        _heat: f32,
+        _end_val: f32,
+        _overheat_weapon: bool,
+    ) {
+    }
 
     /// What the server does with the events a command raised: the shots
     /// they fire. `before` is the player as the command found it, `player`
