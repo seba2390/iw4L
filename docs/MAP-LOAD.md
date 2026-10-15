@@ -1,8 +1,10 @@
 # Map load: what lives where
 
 Three floors: **disk** (`asset_transport`), **format** (`fastfile_*` → the
-`asset_iw4` IR), **products** (`asset_*` + `assets`). `assets` uses transport for disk access and its source lanes to compile
-format captures into products; `fastfile_*` knows the format and opens no files. Installing the match is `session`, not here.
+`asset_iw4` IR), **products** (`asset_*` + `assets`). `assets` uses transport for
+disk access and its source lanes to compile format captures into products;
+`fastfile_*` knows the format and opens no files. Installing the match is
+`session`, not here.
 
 ```text
 console/ui `map` → session::lifecycle   SessionSwapRequest, tear the previous
@@ -53,41 +55,36 @@ one row per image name. Two plans resolving the *same* archive entry into the
 same payload share one decode; a name three games spell alike but fill
 differently is an override, not a duplicate, and `load_jobs.csv`
 ([`BENCH.md`](BENCH.md)) counts the two apart. The per-game adapter is
-`assets::lane` (`ZoneGame` → iw4/iw5/t5/t6); a lane gap is a typed `LaneGap`, never
-silence.
+`assets::lane` (`ZoneGame` → iw4/iw5/t5/t6; anything else, such as Black Ops III,
+gets `UnreadLane`: every capability missing, an empty world). A lane gap is a
+typed `LaneGap`, never silence.
 
-`ZoneLane::load_common_mp` returns owned common builders and diagnostics. A lane whose preparation needs already assembled donors can retain a private, consumed-once `CommonFamilyCompiler` inside that result. The shared loader supplies owned weapon, material, FPV, world-model, projectile, animation and effect builders; compilation returns them together with dependency refusals. This stage finishes before the common set is published or cloned for a match. It is not invoked by frame execution.
+`ZoneLane::load_common_mp` returns owned common builders (weapon, material, FPV,
+world-model, projectile, animation, effect) with diagnostics and refusals; a lane
+that needs assembled donors keeps a consumed-once `CommonFamilyCompiler` there.
+The T6 lane keeps its captures private and owns donor lookup, technique linking
+and weapon dressing; missing donors are typed refusals. `ZoneLane::load_world`
+borrows the common `FilmVisionCatalog`; a map vision (or its parse error)
+overrides the common one without fallback. These are CPU contracts, not shader,
+media or GPU readiness. The common cache keys builders by path (`CommonKey`), so
+in-place edits to source files need a rebuilt common set.
 
-T6 model/material/effect captures stay private to the T6 lane. Its compiler owns stand-in donor lookup, native technique linking, named texture adaptations, animation admission, weapon dressing and projectile binding. Missing model/effect donors return typed refusals, while accepted contributions and existing builders remain available; source conversion diagnostics remain in the load report. Other lanes finish these products within their existing common walk. All lanes publish through the same common-set and match installation path.
-
-`ZoneLane::load_world` borrows the common `FilmVisionCatalog` immutably. The map's vision overrides a common vision, including a map parse error; a failed map parse does not silently fall back. Selection and the merged vision catalog belong to `LoadedWorld` output. Loading a map does not consume a caller's common vision entries.
-
-These are CPU compilation contracts. They do not establish shader-port admission, decoded-media readiness, GPU residency or playable readiness. The existing common cache owns compiled builders under its path-based `CommonKey`; a retained key does not detect edits to source files in place. Such content needs a rebuilt common set. No per-family decoder payload escapes the deferred compiler, and changing source content must not reuse its captured payload with unrelated donor builders.
-
-Installing it is `session::match_apply`. Preflight builds a `MatchInstallPlan` — mode, doors, objectives, scene conversion, drawable world —
-and publishes nothing until it hands one over. Commit publishes it, boots the
-sim and writes `MatchInstalled`. The authority then prepares bot navigation on
-`load_pool()` from a world snapshot; it reports `BotNavigationReady` with the
-world generation. Session owns readiness policy: dedicated advancement needs
-navigation; listen advancement also needs rendering unless headless. Graphical
-presentation and admission require generation-matched rendering and audio;
-headless policy bypasses those presentation services.
-Explicit silent audio satisfies that policy; missing or failed audio does not.
-Old completion reports cannot release a newer world, and renderer systems do
-not write the authority hold. Session also owns the local input predicate.
-The walk graph is cached (`nav`), keyed by the content digest with the bake's
-schema and hull, so the second start of a map reads it back instead of walking
-the grid again; a match teardown drops the in-memory copy, not the file.
+Installing it is `session::match_apply`. Preflight builds a `MatchInstallPlan`
+(mode, doors, objectives, scene conversion, drawable world) and publishes nothing
+until it hands one over. Commit publishes it, boots the sim and writes
+`frame::InstalledMatch`. The authority then bakes bot navigation on `load_pool()`
+and reports `BotNavigationReady` with the world generation; the walk graph is
+cached (`nav`, keyed by content digest, schema and hull). Session owns readiness:
+dedicated advancement needs navigation; listen advancement also needs
+generation-matched rendering and audio unless headless (explicit silent audio
+counts; failed audio does not). Old reports cannot release a newer world.
 
 `MatchLoadOutcome::Ready` is the CPU package, not render-ready. The loading
-screen also holds for GPU images, every queued pipeline (the HUD blood film is
-queued as soon as its material exists) and the `first_person` stage: every
-weapon's first-person materials admitted and compositions laid out
-(`render_anim::PreparedFpv`), and every body, world-weapon, map-model and
-projectile material plus the single-model DObjs (`PreparedModelMaterials`).
-Remote kits and dropped-item compositions are built at install.
-`load ledger:` in the log is one line per load of
-what was handed over or compiled new against what an earlier load left behind.
+screen also holds for GPU images, every queued pipeline and the `first_person`
+stage: first-person materials and compositions (`render_anim::PreparedFpv`) and
+body, world-weapon, map-model and projectile materials (`PreparedModelMaterials`).
+Remote kits and dropped items are built at install. `load ledger:` in the log is
+one line per load: what was handed over or compiled new against an earlier load.
 
 ## Cache, and poking it: `iw4l-artifacts/cache/<kind>/<prefix>/<key>`
 
@@ -95,6 +92,7 @@ Content-addressed leaf in `asset_transport::artifact_cache` (`cache_get` /
 `cache_put`, `fnv1a64`). A miss is silent — the caller computes the value anyway
 — and a hit must be the **same bytes** a miss would have written. The key names
 every input; if the encoder changed, bump the format word. Live kinds: `mips`,
-`wgsl`, `localize`, `nav` and `xwma_pcm`, whose miss is decoded by the native Rust T5 WMA2 decoder.
-`IW4L_GAMES` holds the game trees; no folder name is hardcoded. Live it is `make
-map mp_boneyard` ([`RUN.md`](RUN.md)), with stages in `LoadProgress`.
+`wgsl`, `wgsl_dxbc` (BO2 shaders), `localize`, `nav` and `xwma_pcm` (a miss runs
+the native Rust T5 WMA2 decoder). `IW4L_GAMES` holds the game trees; no folder
+name is hardcoded. Live it is `make map mp_boneyard` ([`RUN.md`](RUN.md)), with
+stages in `LoadProgress`.

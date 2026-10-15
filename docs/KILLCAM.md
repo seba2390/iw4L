@@ -27,6 +27,9 @@ start times and repeating schedules use the viewer's replay clock.
 `net::policy::killcam` selects archive history; `net::policy::seat` assembles
 the viewer's world. `render_anim::occupancy::killcam` owns camera transitions.
 `Snapshot::view_tick` supplies the clock for replay events. Audio context and
-FX ownership follow the entity event timeline.
+FX ownership follow the entity event timeline. `crates/killcam_iw4` holds
+Modern Warfare 2's killcam rules (camtime chain, window arithmetic, cancel
+gestures, final killcam, round end, death timeline); `net` uses only
+its entity-focus type.
 
 Mover camera metadata requires matching game protocols between peers.

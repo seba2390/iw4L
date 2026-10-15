@@ -14,7 +14,8 @@ picking up the repository finds it. It is not the project's contribution
 interface: fixing the runtime needs none of it — no `make mr`, no iteration
 naming, no `context/` at all. `CONTRIBUTING.md` is that door.
 
-Read in this order: this file → `AGENT.md` → `docs/INDEX.md`.
+Read in this order: `AGENTS.md` → `docs/INDEX.md` → this file (maintainer
+workflow).
 
 ## Layout
 
@@ -45,8 +46,10 @@ context/
   agent on the root needs **no** clone; a clone exists only when someone else is
   already working on the root. The agent's territory is code and `git commit`
   *inside the clone*; landing is a single command from the root (rebase onto
-  master → rustfmt the touched `.rs` → fast-forward → delete the clone), never
-  reproduced by hand. **Other agents' `mrs/*` are not to be touched without
+  main → rustfmt the touched `.rs` → fast-forward → delete the clone), never
+  reproduced by hand. It lands on the root's working copy, which then goes out
+  as the task's branch and pull request ([git](#git)). **Other agents'
+  `mrs/*` are not to be touched without
   being asked.** One verb drives the lifecycle, `cargo xtask mr` underneath:
   `make mr new <name>` (clone: branch `agent/<name>`, `.env` copied, the shared
   trees symlinked in), `make mr ship <name>` (land it), `make mr ls` (what is on
@@ -168,8 +171,8 @@ A probe is how a claim was proved. It is not part of the runtime, and the
 moment it stops being read it is a file the next agent has to understand before
 they may ignore it.
 
-So the last step of a slice, before `make mr ship` — or before the commit that
-lands on main when the agent works on the root and has no clone — is to read
+So the last step of a slice, before `make mr ship` — or before the last commit
+on the task branch when the agent works on the root and has no clone — is to read
 the branch's **own** diff:
 
 ```
@@ -205,11 +208,11 @@ the machine. It adds no behaviour. It takes the tree the agents built and
 leaves only the runtime: names, comments and tests that a reader who never
 opened `context/` can live with.
 
-**History.** Unpushed commits are the research path. Soft-reset them onto
-`origin/main` and make one commit whose message is the effect, not the
-investigation. Fixes, probes, reverts and "try this" do not survive as
-separate objects. History that has already been pushed is not rewritten —
-[`docs/DEPLOY.md`](docs/DEPLOY.md).
+**History.** Unpushed commits are the research path. Squash them before the
+first push into one commit whose message is the effect, not the investigation,
+or let the pull request be squash-merged. Fixes, probes, reverts and "try this"
+do not survive as separate objects. History that has already been pushed is
+not rewritten ([`AGENTS.md`](AGENTS.md)).
 
 **Tests.** Only `crates/approved_tests`, and only scenarios the owner approved
 by name. Anything else goes, however useful; `make publish-check` refuses it.
@@ -238,12 +241,12 @@ runtime, or as the traces of a dig?* The second answer is not a push.
 
 ```
 1. ship every mrs/ clone that is ready
-2. on the resulting master: delete, rename, strip
+2. on the resulting tree: delete, rename, strip
    — probes and tests outside approved_tests go without asking
 3. stop. the human reads the diff
 4. one commit, short message, the effect
 5. make publish-check
-6. push
+6. push the task branch, open the pull request
 ```
 
 ## Handing work over
@@ -264,15 +267,16 @@ omission.
 **`main` only changes through pull requests.** Each task gets its own
 branch from an up-to-date `main`; the branch is pushed and a pull request
 opened into `main`. Nothing is committed or pushed to `main` directly — it
-is protected on GitHub. Where this file says a slice or `make mr ship` "lands
-on main", read: lands on the task's branch, which reaches `main` through
-its pull request.
+is protected on GitHub. `make mr ship` lands a clone on the root's local
+checkout (it requires the root on `main`); push that as the task's branch and
+open its pull request — never push `main` itself.
 
 ```gitignore
 /context/
 ```
 
 The whole folder, with no exceptions. `git add -f` is not an escape hatch: the
-pre-commit hook that every `make mr` command installs refuses a staged path
-under `context/` a second time. This file is the contract; the rest is working
-memory.
+pre-commit hook refuses a staged path under `context/` a second time. It also
+refuses unstaged rustfmt-only changes and runs `cargo xtask boundary
+--enforce`. Only `make mr new|fmt|ship` installs it; a checkout that never ran
+them has no hook. This file is the contract; the rest is working memory.

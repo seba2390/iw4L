@@ -1,11 +1,12 @@
 # Server asset families
 
-Hosts select optional IW5, T5 and T6 assets in the private lobby's
-Game Setup → Game Assets submenu, before making the lobby public. Missing installations cannot be enabled. Installed
-families start enabled. Console settings are `set sv_assets_iw5 0|1`,
-`set sv_assets_t5 0|1` and `set sv_assets_t6 0|1`; launch defaults can be set with
-`IW4L_ASSETS_IW5`, `IW4L_ASSETS_T5` and `IW4L_ASSETS_T6` (0 or 1).
-IW4 remains required. A map from a disabled family cannot be selected or loaded.
+Hosts select optional IW5, T5 and T6 assets in the private lobby's Game Setup →
+Game Assets submenu, before making the lobby public. Missing installations cannot
+be enabled. Installed families start enabled. Console settings are
+`set sv_assets_iw5 0|1`, `set sv_assets_t5 0|1` and `set sv_assets_t6 0|1`; launch
+defaults can be set with `IW4L_ASSETS_IW5`, `IW4L_ASSETS_T5` and `IW4L_ASSETS_T6`
+(0 or 1). IW4 cannot be disabled. A map from a disabled family cannot be selected
+or loaded. Black Ops III has no switch and no lobby content flag yet.
 
 A public lobby fixes its enabled families when it is created. Return to private
 before changing them. Joining requires every enabled family, and all members

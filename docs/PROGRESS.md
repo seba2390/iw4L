@@ -44,12 +44,25 @@ request pays some of it off.
 
 - [x] Multiplayer maps load, render and collide.
 - [x] Players move by Modern Warfare 2's own movement rules.
+  - [ ] Step (18 standing, 10 prone), downward snap (9), landing (z ≥ 0.3) and solid-recovery limits come from Modern Warfare 2; today they are IW4L settings ([`provenance/movement-iw4.md`](provenance/movement-iw4.md), [`provenance/solid-recovery.md`](provenance/solid-recovery.md)).
 - [x] Weapons fire, reload, aim and take attachments by Modern Warfare 2's rules.
+  - [ ] Recoil and look sway follow Modern Warfare 2's response; today it is IW4L policy ([`provenance/recoil-and-sway.md`](provenance/recoil-and-sway.md)).
 - [x] Free-for-all and Team Deathmatch run on Modern Warfare 2's own gametype scripts.
+  - [ ] Score and time limits come from the gametype scripts; today they come from `IW4L_SCORE_LIMIT` or IW4L constants, and the HUD shows that value.
 - [ ] Every other gametype (Search and Destroy, Domination, Sabotage, Headquarters, Capture the Flag, Demolition, …) is verified in a match.
+  - [ ] The lobby offers every gametype the installation ships; today it cycles `dm war dom sd koth sab` (no `ctf`, no `dd`).
+  - [ ] Domination (`dom`).
+  - [ ] Search and Destroy (`sd`).
+  - [ ] Sabotage (`sab`).
+  - [ ] Headquarters (`koth`).
+  - [ ] Capture the Flag (`ctf`).
+  - [ ] Demolition (`dd`).
+  - [ ] The other gametypes the installation ships (refused today as `gsc.mode.out-of-scope`).
 - [x] Create-a-class, perks and progression.
 - [x] Killstreaks.
+  - [ ] The sentry's turn, lock, sweep and placement rules come from Modern Warfare 2; today they are IW4L values ([`KILLSTREAKS.md`](KILLSTREAKS.md), [`provenance/sentry-placement.md`](provenance/sentry-placement.md)).
 - [x] Bots join and fight.
+  - [ ] Bots play objectives: capture, plant, defuse and carry flags.
 - [x] Online play through a master server.
 - [x] Demos, clips and the killcam.
 - [x] Modern Warfare 2's HUD, menus and sound.
@@ -57,17 +70,38 @@ request pays some of it off.
 
 ### Technical debt
 
-- Boundary (`xtask/boundary/allow.txt`): about 2,800 Modern Warfare 2 crate
-  paths (`*_iw4::`) in shared crates — `sim` (792), `render_frontend` (470),
-  `hud` (248), `asset_game` (192), `net` (166), `asset_world` (144),
-  `render_anim`, `render_gpu`. The runtime grew out of Modern Warfare 2, and
-  most shared systems still call its crates directly.
-- Modern Warfare 3 (IW5) maps are recognised but have no section here; their
-  `fastfile_iw5::` and `AssetNamespace::Iw5` references (about 640, mostly
-  `asset_game`, `assets`, `asset_world`) are debt of the same kind.
-- Clippy: about 47 warnings in Modern Warfare 2 crates and files
+Boundary figures measured on 2026-10-15 from `xtask/boundary/allow.txt`: the
+sum of the counts on its `pattern <file> <crate>_iw4:: <n>` lines, grouped by
+the crate or file in the path. About 2,700 (2,711) Modern Warfare 2 crate paths
+remain in shared crates. The runtime grew out of Modern Warfare 2, and most
+shared systems still call its crates directly. One bullet per piece of work:
+
+- `sim` script host (`sim/src/script/host/`): 208.
+- `sim` combat: 199 (`combat.rs` 83, `bullet_collision.rs` 39, `damage.rs` 21,
+  `item.rs` 14, `penetration.rs`, `equipment.rs` and `corpse.rs` 11 each,
+  `weapon_content.rs` 9).
+- `sim` world and step: 289 (`world.rs` 93, `step.rs` 90, `script_player.rs`
+  61, `snapshot.rs` 13, `content.rs` 12, `frame.rs` 10, `world/content.rs` 10).
+  The rest of `sim` holds 88 more (784 in all).
+- Render lighting: 284 `lighting_iw4::` paths in `render_*` crates
+  (`render_frontend` 186, `render_gpu` 52, `render_backend` 24).
+- Render visibility and marks: 140 `dpvs_iw4::` (`render_frontend` 76,
+  `render_scene` 30, `render_anim` 20) and 81 `marks_iw4::` (`render_frontend`).
+  The `render_*` crates hold 321 other paths (`asset_iw4`, `hud_iw4`, `fx_iw4`, …).
+- `hud` 246 (`hud_iw4` 189) and `net` 164 (`playerstate_iw4` 61, `entity_iw4` 47).
+- Assets: 563 in `asset_game` (176), `asset_world` (139), `asset_material` (96),
+  `assets` (82), `asset_audio` (49) and `asset_anim` (21).
+- Clippy and dead code: about 47 warnings in Modern Warfare 2 crates and files
   (`weapon_iw4`, `clipmap_iw4`, `movement_iw4`, `input_iw4`,
-  `assets/src/lane/iw4.rs`), and 29 in `fx_iw4`.
+  `assets/src/lane/iw4.rs`) and 29 in `fx_iw4` (2026-10-14, not re-run). The
+  script-gap ledger (`gamemode_iw4/src/gaps.rs`, `sim/src/script_gaps.rs`) is
+  never raised, yet `sim::step` reports it every step.
+- `gamemode_iw4` is a `mixed` crate: its `GameModeKind` also carries the zombies
+  modes `Zombies` and `Zclassic`.
+- Modern Warfare 3 (IW5) maps are recognised but have no section here; their
+  569 `fastfile_iw5::` paths (allow.txt; mostly `asset_game`, `assets`,
+  `asset_world`) and 65 `AssetNamespace::Iw5` uses (grep of shared crates) are
+  debt of the same kind.
 
 ## Black Ops — Zombies
 
@@ -86,25 +120,25 @@ Only the top-level items count.
   - [ ] Zone data still dropped: dynamic entities (398 client and 142 server on Kino) and dynamic lights.
   - [ ] Vision sets (Kino's grading, last stand, death) are loaded with Black Ops' film constants but not drawn: its post chain and vision channels are not ported.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state, its models (moved, hidden, set; drawn through server twins), Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks; 64 of 173 client builtins not implemented yet, so their sound snapshots and contexts, vision and fog do nothing yet, and light changes are not drawn); 152 of 610 builtins still answer "not implemented yet" on Kino (see the table above).
+  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state, its models (moved, hidden, set; drawn through server twins), Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks; 64 of 173 client builtins not implemented yet, so their sound snapshots and contexts, vision and fog do nothing yet, and light changes are not drawn).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
 - [x] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Bullets (spread, pellets, penetration), melee, frag grenades, rockets (Ray Gun), script blasts.
   - [x] The viewmodel plays the weapon's own animations, picked by the game's client rules.
-  - [ ] Grenade launchers, sticky and special grenades, detonation, the Thundergun; dual wield (CZ75).
+  - [ ] Grenade launchers, sticky and special grenades, detonation; dual wield (CZ75).
   - [x] Muzzle flashes (view and world) and ejected shells, by Black Ops' client fire rules.
   - [ ] No tracer or view kick; viewmodel blend times and rates are the runtime's.
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Window spawns: boards torn off, mantle in.
-  - [ ] Rising from the ground unverified; crawlers, ragdoll and thrown gibs missing.
+  - [ ] Rising from the ground unverified; legless (gibbed) crawlers, ragdoll and thrown gibs missing.
 - [x] Zombies path to the player and get through barriers.
   - [ ] No actor collision with the world while walking; traversal coverage unverified.
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
 - [x] Rounds advance past round 1.
 - [x] Wall weapons and the Mystery Box.
-  - [ ] The box moving (teddy bear) and Fire Sale unverified.
+  - [ ] The box moving (teddy bear) and Fire Sale's extra boxes appearing at every location unverified.
 - [ ] Doors and debris.
   - [x] Kino's doors open for points.
   - [ ] Debris (Five) not reached.
@@ -115,7 +149,7 @@ Only the top-level items count.
 - [x] Pack-a-Punch and every power-up.
   - [x] Power-ups drop at the score thresholds; each of Kino's six (Max Ammo, Nuke, Double Points, Insta-Kill, Carpenter, Fire Sale) is picked up and runs, with its HUD icon and announcer line.
   - [x] Pack-a-Punch: paid, knuckle crack, the upgraded weapon taken (AK-74u to AK74fu2).
-  - [ ] Carpenter's boards skip `dontinterpolate`; the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
+  - [ ] Carpenter's repaired boards may still lerp (`t5.entities.interpolation`); the upgraded weapon's camo and the Pack-a-Punch weapon options are unverified.
 - [x] Going down, solo revive, bleeding out and game over return to the lobby.
   - [x] A lethal hit downs the player; with Quick Revive (`IW4L_TEST_PLAYER=revive`) the solo player holds `m1911_upgraded_zm` and revives after 10 s; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [x] Going down and `reviveplayer` raise Black Ops' stance animation events, clear damage counters and switch `startrevive`/`stoprevive`'s `LAST_STAND_REVIVED` move type (`t5.match.last_stand` closed).
@@ -142,9 +176,20 @@ Only the top-level items count.
   - [x] The teleporter's server side (`zombie_theater_teleporter`): linking the core and pad, teleporting players to the projection room and back to the theater after its timer.
   - [ ] The projector and the teleporter's visuals (client scripts); the auto turret's think (aiming and firing).
 - [ ] Every zombies map in the install (Five, Dead Ops Arcade).
+  - [ ] Five (`t5:zombie_pentagon`): loads and starts its scripts; its own systems (debris and the rest) are not reached.
+  - [ ] Dead Ops Arcade (`zombietron`): not offered by the game library yet.
+  - [ ] Nacht der Untoten (`t5:zombie_cod5_prototype`): offered by the library, not tried.
+  - [ ] Verrückt (`t5:zombie_cod5_asylum`): offered by the library, not tried.
+  - [ ] Shi No Numa (`t5:zombie_cod5_sumpf`): offered by the library, not tried.
+  - [ ] Der Riese (`t5:zombie_cod5_factory`): offered by the library, not tried.
+  - [ ] Ascension (`t5:zombie_cosmodrome`): offered by the library, not tried.
+  - [ ] Call of the Dead (`t5:zombie_coast`): offered by the library, not tried.
+  - [ ] Shangri-La (`t5:zombie_temple`): offered by the library, not tried.
+  - [ ] Moon (`t5:zombie_moon`): offered by the library, not tried.
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] A lobby host picks Kino; a joined player spawns at its co-op spawns, gets points and sees the zombies.
   - [ ] Revive, bleeding out, spectating; no two-machine test.
+  - [ ] Actor state reaches clients through the shared entity path; its cost with many zombies is not measured.
 - [ ] The game's fidelity ledger ([`fidelity/t5.md`](fidelity/t5.md)) has no open item.
 
 ### Technical debt
@@ -166,13 +211,22 @@ Only the top-level items count.
 Indented items are detail: they say what a milestone's runs have shown and
 what is still open (the open rules are in [`fidelity/t6.md`](fidelity/t6.md)).
 Only the top-level items count. Runs are headless, with the test player
-(`IW4L_TEST_PLAYER=1|rounds|use|down|revive`; `IW4L_TEST_USE` and `IW4L_TEST_PERK` pick what the use test buys, and the console's `script` command calls Black Ops 2's `_zm_score::add_to_player_score` to give it points). Classic on every zombies map but Origins runs Black Ops 2's own scripts.
+(`IW4L_TEST_PLAYER=1|rounds|use|down|revive`; `IW4L_TEST_USE`, `IW4L_TEST_PERK`, `IW4L_TEST_GOTO` and `IW4L_TEST_BUILD` steer the use test, `IW4L_TEST_WIELD`, `IW4L_TEST_PLACE` and `IW4L_TEST_GRAB` add actions, `IW4L_TEST_VARS` logs `level.zombie_vars`; all in [`BOTS.md`](BOTS.md#test-player)), and the console's `script` command calls Black Ops 2's `_zm_score::add_to_player_score` to give it points. A direct launch needs `IW4L_GAMETYPE=zclassic`, for example `IW4L_SOUND=off IW4L_GAMETYPE=zclassic IW4L_TEST_PLAYER=rounds cargo run --profile play -p launcher -- serve t6:zm_nuked --cmds 'wait world; wait 300s; quit'` ([`BO2-ZOMBIES.md`](BO2-ZOMBIES.md)). Classic on every zombies map but Origins runs Black Ops 2's own scripts.
 
 | Map | Builtins not implemented yet |
 |---|---|
 | Nuketown (`zm_nuked`, Classic) | 0 of 692 |
 | TranZit (`zm_transit`, Classic) | 0 of 741 |
 | Buried (`zm_buried`, Classic) | 0 of 727 |
+
+| Map | In the owner's install | Scripts | Run |
+|---|---|---|---|
+| Nuketown (`zm_nuked`) | yes | Black Ops 2's | headless, below |
+| TranZit (`zm_transit`) | yes | Black Ops 2's | headless, below |
+| Buried (`zm_buried`) | yes | Black Ops 2's | headless, below |
+| Die Rise (`zm_highrise`) | no | Black Ops 2's | not yet |
+| Mob of the Dead (`zm_prison`) | no | Black Ops 2's | not yet |
+| Origins (`zm_tomb`) | no | IW4L's rules | older builds only |
 
 - [x] The install is recognised; the map's zones and scripts are read.
   - [x] Nuketown, TranZit and Buried (the zombies maps in the install), with the FFOTD `_globallogic` captured from the owner's running game.
@@ -184,7 +238,8 @@ Only the top-level items count. Runs are headless, with the test player
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping and stances (`movement_t6`), shown by the walk test on Nuketown and TranZit (walk up to 190, sprint 285, jump 37.5, crouch view 40, prone 11).
   - [x] Script allowances (`allowstand`, `allowcrouch`, `allowprone`, `allowjump`, `allowlean`, `setstance`) set Black Ops 2's own player flags.
-  - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
+  - [x] Ladders (`PM_LadderMove`, `t6.movement.ladder` closed) and falling damage (server `EV_FALL_DAMAGE`, `MOD_FALLING`), with the client scripts' jump, land and foliage callbacks.
+  - [ ] Mantling (`t6.movement.mantle`), the water level (`PM_WaterMove` is ported but the runtime has no water query, so no player swims: `t6.movement.water`), mounted weapons, launches and the movement events and player animations (`t6.movement.events`).
 - [x] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Black Ops 2's weapon facts (damage, ranges, clip and stock, hit-location scales) are read from its zones.
   - [x] Black Ops 2's own weapon state machine (`movement_t6`: fire, burst, rechamber, reload, switch, melee, offhands, riot shield, weapon heat) and server fire (`game_t6/src/fire.rs`: seeded spread, pellets, penetration, damage falloff and hit locations, melee, grenades, rockets) run the weapons: the rounds test reaches round 2 on Nuketown (7 kills, 7 frags thrown) and Buried (12 kills) in 110 s, with reloads and knifing; TranZit sells the Olympia from the wall and it fires; Monkey Bombs are thrown on Buried and a claymore planted on TranZit. Remaining gaps (gun angles, antilag, gas, mounted fire, …) are in the ledger.
@@ -234,14 +289,16 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Black Ops 2's Zombies LUI HUD widgets (`PerksArea`, `PowerUpsArea`, `BuildablesArea`, `CompetitiveScoreboard`, `DPadArea`, Buried's `AmmoAreaZombie` and `TimeBombArea`, `RoundStatus`, `Scoreboard`) run on `game_t6::ui` with timed transitions, LUI client field callbacks (`setupclientfieldcodecallbacks`), `luinotifyevent` (`score_event`), and round, score, weapon, ammo and offhand HUD updates.
   - [ ] Code-drawn pieces (reticle, low-health overlay, cursor hints, server `HudElem` materials) still use IW4L's HUD bridge (`t6.hud.code_hud`, `t6.hud.script_materials`).
 - [ ] The game's own front end: menus, lobby and map selection.
-  - [ ] Nuketown, TranZit and Buried start from the game library; the menus are not Black Ops 2's.
+  - [x] Nuketown, TranZit and Buried start from the game library, with Black Ops 2's loading screens (`loadscreen_<map>_<gametype>_<location>` from the `*_load_zm` zones) and front-end art.
+  - [ ] The menus, lobby and map selection are IW4L's layout over Black Ops 2's art (`ui/src/launcher.rs`, `ui/src/t6_menu.rs`).
 - [ ] The game's own sound.
-  - [ ] Not verified (headless runs have sound off).
+  - [ ] Not verified (headless runs have sound off); the client scripts' sound builtins are still incomplete (`stopsound` and `getplaybacktime` fail, client volume, fades and loops are not applied: `t6.csc.sound.*`), so a sound-on run alone cannot tick it.
 - [x] The first map's own systems (Nuketown's perk drops and its end-game rocket).
   - [x] Quick Revive drops from the sky on its path vehicle (`perk_arrival_vehicle` on `info_vehicle_node`s to `reached_end_node`), lands and sells (500, drunk); the later drops follow the same path at rounds 3–5 on.
   - [x] At game over the rocket intermission plays to `rocket_hit_nuketown` and the match returns to the lobby (the camera calls are kept for the client to present).
 - [x] Every zombies map in the install (TranZit, Buried).
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
+  - [ ] Die Rise, Mob of the Dead and Origins are not in the owner's install: Die Rise and Mob of the Dead have not run on Black Ops 2's own scripts, and Origins runs IW4L's rules.
   - [x] TranZit's bus drives its route on its path nodes once the depot doors open, with the player riding it (depot, diner, forest, on toward the power station in 220 s), its scripts reading tags off its posed model and who stands on it.
   - [x] TranZit's power: the powerswitch built from its three parts, its lever thrown, `power_on` set by the map's 30 s power event, and a perk sold after it.
   - [x] TranZit's riot shield built from its two parts, taken from its table and held (its shield model attached).
@@ -251,7 +308,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] TranZit's screechers spawn in the fog, jump onto the player (`linkto`) and are knifed off (`screecher_StepBack_death`); the Avogadro spawns after the power event (`avogadro_arrival`) and fights with ranged bolts (`weapon_fired`).
   - [x] Buried's scripts run without faults through 300 s of opening the town (power, doors, debris): Leroy spawns in his cell, the buildable pieces spawn, the maze and the fountain move.
   - [x] Buried's Sloth (Leroy) is freed from his cell with the key (`open_cell`) and fed booze to smash through barriers (`jail_open_anim` -> `run_bezerk` -> `Wait_smash`, root-motion yaw and `isinscriptedstate`); the open-table buildables (`equip_turbine_zm`, `equip_springpad_zm`, `equip_subsurface_zm`, `equip_headchopper_zm`) are built and placed (including wallmount/microwave turret placement via `canplayerplaceturret`); the haunted mansion ghost waves (`_zm_ai_ghost.gsc`) spawn and attack.
-  - [ ] The bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against.
+  - [ ] The bus's collision model pieces (`setzbarriercolmodel`) are kept, not collided against (`t6.barriers.colmodel`).
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] With a bot as the second player on Nuketown: he joins and spawns, goes down, bleeds out after 45 s and respawns at the next round; the test player revives him (`player_revived`, the reviver named) each time he goes down; with both down the game ends and the match returns to the lobby.
   - [ ] A second player over the network (two machines) not tried.
@@ -264,7 +321,8 @@ Only the top-level items count. Runs are headless, with the test player
   `FamilyId::T6`, `ZoneGame::T6` checks), mostly in `assets` (lane/t6.rs),
   `asset_game` and `asset_transport`. The zombies and multiplayer hosts
   (`sim/src/script/host/t6_zombies*`, `t6_gametype.rs`) and `ui/src/t6_menu.rs`
-  are Black Ops II code living in shared crates.
+  are Black Ops II code living in shared crates; the zombies host is kept only
+  for Origins until it runs Black Ops II's scripts, then it goes.
 - Compiler warnings: unused `world`, `direction` and `key` and the unused
   `give`/`take` methods in `sim/src/script/host/t6_zombies/origins_staff.rs`;
   the unused `entity_string` import in `assets/src/lane/t6.rs`.
@@ -275,7 +333,8 @@ Only the top-level items count. Runs are headless, with the test player
   `t6_zombies/origins_staff.rs`.
 - Zombies maps need the patch zone Black Ops II downloads at launch
   (`t6.scripts.ffotd`); a machine without a capture in
-  `<artifacts>/captured/` cannot start Nuketown, TranZit or Buried.
+  `~/.config/iw4l/captured/` or `<artifacts>/captured/` cannot start
+  Nuketown, TranZit or Buried, and the capture tool is not in the repository.
 
 ## Black Ops III — Zombies
 
@@ -324,13 +383,18 @@ Debt in the shared runtime that no single game owns.
 - Boundary graph (`xtask/boundary/allow.txt`): 22 dependency edges outside
   the layer rules (`render_fx` on `sim`, `net`, `assets` and nine more;
   `replay` on `sim`, `net`, `frame`, `playerstate_iw4`; `weapon_iw4`,
-  `fastfile_iw4`, `marks_iw4` and `render_frame` on `asset_iw4`) and 25
+  `fastfile_iw4`, `marks_iw4` and `render_frame` on `asset_iw4`;
+  `render_frame` on `render_material`; `clipmap_iw4` on `trace_iw4`) and 25
   crates still in the `mixed` layer, which have to be split into a game and a
   neutral part.
-- Boundary patterns not tied to one game: about 230 (`render_frame::` and
-  `render_fx::` paths in `render_frontend`, `render_anim`, `render_gpu`).
-- Compiler warnings: 9 uses of Bevy's deprecated `Interaction` in `ui`
-  (move to `Hovered`/`Pressed`); 4 function pointer comparisons in
+- Boundary patterns not tied to one game: 224 (`render_frame::` 131, `fx::`
+  47, `render_fx::` 46), because `render_frame`, `render_fx` and `fx` serve
+  every game but are declared `game = "iw4"`. They sit in `render_frontend`
+  (113), `render_anim` (44), `render_gpu` (44), `render_backend` (12),
+  `render` (7), `console` (2), `session` and `render_scene` (1 each).
+- Compiler warnings: 9 uses of Bevy's deprecated `Interaction` in `ui` (6 in
+  `launcher.rs`, 3 in `t6_menu.rs`, which the Black Ops II section also
+  counts; move to `Hovered`/`Pressed`); 4 function pointer comparisons in
   `game_api`'s derived `PartialEq` (`ViewmodelRules::anim`,
   `font_scales_sent`, `MenuFonts`, `ClientFireRules::sound`); the deprecated
   `fetch_update` in `render_frame/src/skinning.rs`; an unused `name` in
@@ -338,8 +402,29 @@ Debt in the shared runtime that no single game owns.
 - Clippy: about 1,140 warnings across the workspace, nearly 1,000 of them in
   shared code — `sim` (207), `render_frontend` (161), `asset_game` (98),
   `render_anim` (90), `hud` (72), `render_gpu` (68), `console` (67), `net`
-  (66), `fx` (63). The workspace is not clippy clean, so CI only checks
-  changed lines.
+  (66), `fx` (63). The workspace is not clippy clean, and CI does not run
+  clippy (`.github/workflows/ci.yml` runs `make publish-check` and
+  `cargo check --workspace --all-targets`); CONTRIBUTING.md asks contributors
+  to run it.
 - Python (`ruff check` and `ruff format`): `scripts/bench-marks.py` has 3
   findings (a shebang on a non-executable file, two `zip` pairs for
-  `itertools.pairwise`) and is not formatted.
+  `itertools.pairwise`) and is not formatted. CI runs neither ruff nor rustfmt.
+- The headless `serve` launch installs `RuntimeRole::Listen`
+  (`bootstrap/src/plugins.rs::add_runtime_plugins`); `RuntimeRole::Dedicated`
+  and `NetPlugin::dedicated` exist, but no launch selects them.
+
+<!--
+How measured (2026-10-15, checkout iw4L-docs at 7d337727, nothing built):
+- Edges: `grep -c '^edge' xtask/boundary/allow.txt` = 22 (render_fx 12, replay 4,
+  render_frame 2, clipmap_iw4/fastfile_iw4/marks_iw4/weapon_iw4 1 each);
+  `grep -c '^mixed'` = 25.
+- Patterns: awk over `^pattern` lines summing column 4 where column 3 is
+  `render_frame::`, `render_fx::` or `fx::`, grouped by crate (path field 2).
+- Interaction: `grep -rn '\bInteraction\b' crates/ui/src`.
+- CI: read `.github/workflows/ci.yml`.
+- Dedicated: read `bootstrap/src/launch.rs` (`LaunchMode::Serve` → `Role::Dedicated`
+  → `add_runtime_plugins`) and `bootstrap/src/plugins.rs`.
+- NOT re-measured: compiler warning counts, clippy counts, ruff findings (kept as
+  written). The `*_iw4::` total in the MW2 section is 2,711 by the same awk
+  (`$3 ~ /_iw4::$/`), not "about 2,800".
+-->

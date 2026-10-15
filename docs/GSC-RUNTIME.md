@@ -1,20 +1,25 @@
 # GSC → IR → Bevy
 
-Rust language, IR and host integration live under `sim::script`.
-Gameplay policy belongs to loaded GSC; Rust supplies language and engine primitives.
-The scripts own the match flow,
+This is a long reference, exempt from the ≤50-line rule; splitting it is tracked as an issue.
+
+The language, IR, compiler, `Program`, `Catalog` and `Realm` live in the `gsc` crate;
+`gsc_t6` and `gsc_t7` translate Black Ops 2 and 3 compiled scripts into the same IR.
+`sim::script` holds the VM and the natives. Gameplay policy belongs to loaded scripts;
+Rust supplies language and engine primitives. The scripts own the match flow,
 player connect/spawn/damage/killed, the in-game menus, and the sounds they play.
 
 ## Sources and installation
 
-Matches support IW4 modes only (dm, war, dom, sd, sab, ctf, koth, dd).
-T5 and IW5 maps supply entities and map declarations; their gameplay/UI scripts
-are excluded. Menu/HUD layout and match flow stay IW4, with weapon and team icons
-from the corresponding game. Objective models, materials, shaders and effects
-come from the map's game, including the plant/defuse weapon viewmodels and animations.
-`ObjectiveVisuals` binds IW4 names to those assets at
-install; missing bindings or foreign objective assets refuse the transaction.
-Common scene models are selected from retained IW4 source strings, table cells,
+A match runs the scripts of the map's own game: Modern Warfare 2's modes (dm, war, dom,
+sd, sab, ctf, koth, dd), Black Ops zombies (`game_t5/src/zombie_startup.rs`), Black
+Ops 2 `zclassic` on its own scripts, and, partly, Black Ops 3 `zclassic` (`game_t7`).
+Black Ops 2 `dm`/`war` and Origins run the map's script beside IW4L host rules
+(`ModeRules::host_rules`). Black Ops multiplayer and MW3 maps are refused at load.
+Much of the rest of this file describes Modern Warfare 2's natives and services.
+
+On MW2 modes, `ObjectiveVisuals` binds IW4 objective names (models, materials, shaders,
+effects, the plant/defuse viewmodels and animations) to the map's assets at install;
+missing bindings or foreign objective assets refuse the transaction. Common scene models are selected from retained IW4 source strings, table cells,
 map entities and objective bindings, without a per-model capture allowlist.
 
 `Program::load` compiles a `SourceResolver`. `FileSources` reads explicit files.
@@ -53,8 +58,10 @@ in the call's namespace, then a unique include. Qualified names and `thread` cal
 never resolve to builtins. A developer builtin used as a statement compiles to nothing
 (arguments are not evaluated); using its value or referencing it fails the load.
 `prof_begin`/`prof_end` statements compile to nothing. SHA-256 covers decompressed source bytes
-after terminator removal. Fingerprints hash IR version 5 and each module's
-`(site, realm, origin)`; server modules of the IW4 and T5 realms are instantiated. Calls, `::f` references (script
+after terminator removal. Fingerprints hash `gsc::IR_VERSION` (`gsc/src/ir.rs`) and each
+module's `(site, realm, origin)`; the server modules of every realm are instantiated, and
+Black Ops and BO2 client scripts (CSC) run in a separate client VM
+(`sim/src/script/client.rs`). Calls, `::f` references (script
 `Function` or native `Builtin`), locals (per-function slots) and field names (symbol ids)
 are resolved at load, and `install` binds native slots once.
 UTF-8 and single-byte sources are supported; developer blocks are excluded.
@@ -125,7 +132,10 @@ keep persistent script values in script-owned roots rather than retain raw handl
 
 ## Engine boundary and restoration
 
-Natives are grouped by what they touch; the core three:
+Natives live in `script/host/natives/`, grouped by game and by what they touch:
+`shared`, `player`, `skill`, `local_profile`, `scene_effects`, `t5`, `t5_client`,
+`t5_turret`, `t5_zombie`, `t6` (with `t6/`) and `t7`, beside the three below.
+`session/src/games.rs` picks each match's registry by family. The engine-service three:
 - `script/host/natives/iw4.rs`: dvars (`getdvar*` with an optional default for a missing dvar,
   `setdvar` storing a localized value as its reference, `setdvarifuninitialized`,
   `makedvarserverinfo`), precache and `loadfx` (allowed only while the first tick is
@@ -142,9 +152,9 @@ Natives are grouped by what they touch; the core three:
 
 Argument reads live in `script/host/args.rs`, array helpers in `script/host/arrays.rs`,
 and table lookup in `script/host/tables.rs`. All three use `RoundScript` with explicit access to `MatchScript`
-(`arrays`, `next_object`, `tables`, `rng`). The compiler is `sim::script::compiler`:
-`Token`/`lex` and the call, expression, assignment, and statement methods sit in child
-modules, and `Parser` stays in the parent.
+(`arrays`, `next_object`, `tables`, `rng`). The compiler is `gsc::compiler`
+(`gsc/src/compiler.rs`): the lexer and the call, expression, assignment, and statement
+methods sit in `compiler/`, and `Parser` stays in the parent.
 
 `SoundExists(alias)` checks the composed match sound-alias catalog, installed
 before script entry points run even when audio output is disabled. Host aliases
@@ -174,7 +184,8 @@ determine spatial eligibility and attenuation. Represented moving entities use
 their presented positions. Named stops affect matching entity rumbles, including
 local weapon notetracks. Vibration preferences, focus, pad selection and player
 lifecycle still govern controller output. Missing definitions or graphs are
-diagnosed by the client.
+diagnosed by the client. Weapon notetrack rumbles bind their definitions and graphs
+when the bank and weapon table install; playback only looks up prepared entries.
 
 `PlaySound(alias)` and `PlaySoundAsMaster(alias)` emit the same spatial sound
 event in the MP runtime. They take one alias argument and require a live entity;
@@ -363,8 +374,8 @@ records source delivery, not a signature or platform identity. Full connection
 state parity, schema migration and platform identity remain incomplete.
 Remote profiles bind a signing key to member, connection, session, epoch and
 a fresh host challenge. Duplicate owners and stale contexts refuse admission.
-This protocol uses game-wire version 106; installed multiplayer validation remains
-required.
+It is part of the game wire (`net::PROTOCOL_VERSION`); installed multiplayer
+validation remains required.
 Host bots bind distinct temporary accounts before their join actions are queued.
 Their 8,188-byte buffers start at zero and use the first installed player schema
 without human profile defaults. Script writes and map restarts retain these
@@ -381,5 +392,7 @@ map, mode and rules kept, as it does when the map fails to load. A disconnect
 returns to the main menu. Browser/public-lobby
 actions are connected but still need multiplayer validation. Display mode/resolution, brightness, volume, VSync, shadows, depth of field and
 bloom are bound to runtime settings and persisted locally. Surround output, voice/chat
-settings, third-person camera and spectator restrictions remain incomplete. A true
-dedicated server still runs on the listen runtime.
+settings, third-person camera and spectator restrictions remain incomplete. The
+headless `serve` launch still installs `RuntimeRole::Listen`
+(`bootstrap/src/plugins.rs::add_runtime_plugins`); `RuntimeRole::Dedicated` and
+`NetPlugin::dedicated` exist but no launch selects them.

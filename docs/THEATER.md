@@ -43,8 +43,8 @@ Existing exports are preserved. Preview cuts plays edited order through seeks; e
 Recordings/clips receive sibling PNG previews; Theater captures missing previews
 when first watched. Films hold the final frame for editing; Play restarts them. Exit returns to the main menu. Back closes the library.
 
-`theater` opens the library; `theater play <name>` opens a film; `help theater`
-lists editor commands. Segment indices are zero-based.
+On the main menu `theater` opens the library; elsewhere it toggles pause. `theater
+play <name>` opens a film; `help theater` lists editor commands; segments count from 0.
 `replay` owns file decoding/recording; `theater` owns projects, timeline, browser,
 controls and cameras. Sharing, voting, party Theater, CODcast/PIP and video
 encoding are not implemented.

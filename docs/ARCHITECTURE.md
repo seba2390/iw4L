@@ -24,8 +24,7 @@ it to that game's `game_api` answers: `GameScripts` (builtins, startup, dvars),
 maps), `GameMenus` (fonts, `MenuLayout`), `GameVision` (shellshock), its native
 registry and menu expression parser. Assets come from the match's or the
 asset's own game, never another game's same-named asset. A rule `games.rs`
-lends across games is one visible, ledgered line (today: Black Ops 2 moves and
-fires by MW2's rules, by owner decision).
+lends across games would be one visible, ledgered line; no rule is lent today.
 
 **Unknown, not borrowed.** A game crate answers a rule it does not have with
 `Rule::Unknown(unknown!("t5.area.rule", what, needs))`. The caller reports it
@@ -42,11 +41,12 @@ Black Ops multiplayer and MW3 maps are refused today for that reason.
 * ledger — every `unknown!` id is in its game's ledger;
 * ownership — every game has its own format crate and its own `game_<game>`
   answering all four `game_api` traits, and `games.rs` answers a game only with
-  that game's crates; a lent rule is a named item whose type the borrowing
-  game's ledger names (`T6OnIw4Weapons`).
+  that game's crates; a lent rule is a named `static` in `games.rs` whose type
+  the borrowing game's ledger names.
 
 Ownership and ledger failures are errors. Graph and pattern debt is
 `xtask/boundary/allow.txt`, a ratchet: anything not in it is new, an entry that
 occurs less often is stale, `--update` only lowers it. `--enforce` fails on
-either; the pre-commit hook (`cargo xtask mr`) and CI
-(`.github/workflows/boundary.yml`, every push and pull request) run it.
+either; the pre-commit hook (installed by `make mr`) and CI
+(`.github/workflows/boundary.yml`, pushes to `main` and every pull request) run
+it.

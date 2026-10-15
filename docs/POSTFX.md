@@ -7,7 +7,7 @@ screen grade. Explicit script visions and transitions override the map preset.
 |---|---|---|
 | IW4 | Authored film contrast, brightness, desaturation, tints and glow | Extra glow/sky-bleed file controls need PC verification |
 | IW5 | Map/common vision film and glow through the shared film profile | Hero saturation and extra glow controls need verification |
-| T5 | Shared script blur/DoF; native film and bloom are not selected | Three-band film, bloom curves, persistence and streaks |
+| T5 | Script blur (`setblur`, `startfadingblur`) and DoF; visions are loaded (`asset_world/src/vision_t5.rs`) but not drawn | Three-band film, bloom curves, persistence and streaks (`t5.render.post_chain`, `t5.vision.channels` in [fidelity/t5.md](fidelity/t5.md)) |
 | T6 | Three-band film, bloom levels/gamma/tints, two-scale blur and highlight compression | HQ bloom, LUT volumes, SSAO and special camera filters |
 
 T6 bloom preserves authored RGB and luminance channels independently. Bloom

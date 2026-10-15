@@ -4,24 +4,28 @@ How to touch the live process. Observation is [`PERF.md`](PERF.md).
 Two players through the dev master: `make approved SCENARIO=master_duo_chaos`
 ([scenario and setup](../crates/approved_tests/README.md#two-clients-through-the-dev-master)).
 Black Ops Zombies: `IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater`
-([roadmap and co-op hosting](../BLACKOPS_TODO.md)).
+([`BO1-ZOMBIES.md`](BO1-ZOMBIES.md)); Black Ops 2 Zombies:
+`IW4L_GAMETYPE=zclassic ./target/play/iw4l map t6:zm_nuked`
+([`BO2-ZOMBIES.md`](BO2-ZOMBIES.md)). Environment variables: [`ENV.md`](ENV.md).
 
 ```bash
 set -a; . ./.env; set +a          # IW4L_GAMES; DISPLAY=:0 if the session has none
 make map mp_boneyard CMDS='spawn 0; wait 2s; quit'
-cargo run --profile play -p launcher -- map iw5:mp_overwatch --cmds '…'
+cargo run --profile play -p launcher -- map iw4:mp_rust --cmds '…'
 ```
 
 `make` passes no foreign flags through: in the `Makefile` it is `CMDS`, on the
 binary `--cmds`. A match runs the rules of the map's own game: Modern Warfare 2
 maps, Black Ops zombie maps and Black Ops 2 `dm`/`war`/`zclassic`
 ([`T6.md`](T6.md)) start; Black Ops multiplayer and MW3 maps are refused at load
-until their gametype scripts have their own natives ([`fidelity/`](fidelity/)). The colon is a GNU make pattern, so `make map iw5:…` fails —
-write `make map ZONE=iw5:mp_overwatch` or use `cargo run`. Recipes: `make
+until their gametype scripts have their own natives ([`fidelity/`](fidelity/)).
+The colon is a GNU make pattern, so `make map iw4:…` fails — write
+`make map ZONE=iw4:mp_rust` or use `cargo run`. Recipes: `make
 scenario`, `chaos`, `bench` ([`BENCH.md`](BENCH.md)), `bench-live`, `lifecycle-*`
 (`*_CMDS` in the `Makefile`). Live recipes use `[profile.play]`; LTO is `PROFILE=release`.
 
-Linux startup creates `iw4`, `iw5`, `t5` and `t6` symlinks in `IW4L_GAMES` for missing games with exactly one valid Steam installation. Existing entries are preserved.
+Linux and macOS startup creates `iw4`, `iw5`, `t5` and `t6` symlinks in `IW4L_GAMES`
+for missing games with exactly one valid Steam installation. Existing entries are preserved.
 
 `menu` opens the main menu immediately while the shared weapon catalog prepares
 in the background. Opening Classes before it is ready shows Loading Classes;
@@ -65,9 +69,10 @@ message text. Lines contain only `nickname: message`, without status prefixes.
 ## Verbs and traps
 
 `map spawn class give attach name god kill damage move tp look nudge press hold
-release bind bot wait mark record stoprecord clip demo dump screenshot ui disconnect quit
-finish_run`
-plus the debug `force_match_start` / `showpos`. `quit` leaves now and abandons
+release bind unbind set seta say say_team bot wait mark record stoprecord clip demo dump
+screenshot ui thirdperson unlock round_restart map_restart disconnect quit finish_run`
+plus the debug `force_match_start` / `showpos` / `script` (start a script thread on
+the host: `script <module::function> <level|playerN|targetname=NAME> [args…]`). `quit` leaves now and abandons
 whatever screenshot was queued or half-written; `finish_run` is the scripted
 ending that waits for those files first. `disconnect` leaves the session, not
 just the world — it also leaves the room, or closes it when hosting, and works
@@ -120,7 +125,8 @@ or use Left/Right on the focused slider; the value
 appears to its right. Multiplayer settings contain the player-name field
 (Enter to edit and accept, Escape to cancel). These settings persist across
 launches in `$XDG_CONFIG_HOME/iw4l/settings.cfg` or `~/.config/iw4l/settings.cfg`
-on Linux; `IW4L_SETTINGS_PATH` selects a separate settings file for probes.
+on Linux and macOS, and in `iw4l-artifacts/settings.cfg` on Windows;
+`IW4L_SETTINGS_PATH` selects a separate settings file for probes.
 Listen hosts also persist the three script completion percentages in `profile.cfg`
 beside that file. `IW4L_PROFILE_PATH` overrides the completion-profile path.
 

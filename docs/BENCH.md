@@ -65,10 +65,11 @@ The run's own directory, beside the `trace.pftrace`:
   job's payload without decoding anything, against what the merge kept and threw
   away. Only `prepared_bytes` is work.
 
-A diagnostic build with `--features bevy-trace` writes Bevy's own `tracing`
-spans — the ones inside the render graph, `queue_submit` among them — as a
-Chrome trace. It costs the frame it measures, so it is never a timed run;
-`scheduling.bevy_tracing` in the manifest says whether a run was one.
+A diagnostic build (`cargo run --profile play -p launcher --features
+bevy-trace`) writes Bevy's own `tracing` spans — the ones inside the render
+graph, `queue_submit` among them — as a Chrome trace. It costs the frame it
+measures, so it is never a timed run; `scheduling.bevy_tracing` in the
+manifest says whether a run was one.
 
 Render-world handoff spans are `receive_render_world`, `extract_body`, and
 `dispatch_render_world`. Receiving can execute worker/main-thread tasks as well

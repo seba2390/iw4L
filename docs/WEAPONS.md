@@ -34,9 +34,9 @@ Missing native dependencies refuse their dependent capabilities; source weapon
 rows never inherit another family's row. Publication retains captured family.
 
 The map selects the soldier kit and hands family. Weapon-authored hands are
-eligible only for that family. FPV composition validates typed native model
-pairs; T6 guns additionally admit an explicit `T6WithIw4Hands` connection for
-IW4 soldiers. Catalog owners must match. Unsupported family pairs refuse.
+eligible only for that family. FPV composition validates typed model pairs:
+`asset_game::fpv_family::FpvFamilyConnection` joins an IW4, IW5, T5 or T6 gun to
+hands of any of those families. Catalog owners must match; other families refuse.
 
 `FpvWeaponTable::bind` checks registry, mesh, clip, material, image and atlas owners
 before accepting handles and alternate links. Retained compositions validate model
@@ -47,7 +47,7 @@ Items and remote kits share `ItemComposition` topology/hide and registry/world o
 optional attachments and camo-to-base fallback preserve policy. Replacement clears
 successes/refusals. Kits retain body/world catalogs; `models()` accepts no catalogs.
 Prepared DObj identity controls reuse; heads use checked soldier capabilities.
-`PlayerAnimationBinding` retains the character kit/rig, paired tree/script and clips.
+`SoldierBodyAnimation` retains the character body/rig, paired tree/script and clips.
 Multiplayer body tracks validate leaves/tracks and soldier tree/script/clip family.
 Missing native profiles refuse; persistent trees reuse only the same binding.
 Body/tree/script/clip replacement resets animation and preserves corpse occupation; unchanged bindings preserve blend, phase and rate.
