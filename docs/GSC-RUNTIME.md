@@ -91,6 +91,10 @@ values without converting them into overlong UTF-8 strings. Text adapters for
 asset names, dvars and presentation remain separate from this byte storage.
 
 Arrays copy on assignment and argument/event transfer; objects preserve aliases.
+Each copy remembers the array it shares (`runtime/aliases.rs`) until a script
+writes to either, so a builtin that edits an array in place (`arrayinsert`,
+`arrayremoveindex`, `arrayremovevalue`) edits every copy that still shares it,
+as the engine's shared arrays do.
 Foreach snapshots sorted keys.
 
 Scheduling uses time buckets:
