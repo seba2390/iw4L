@@ -337,14 +337,14 @@ fn antilag_time(command_time: i32, world: &dyn FireWorld) -> i32 {
     }
 }
 
-fn dvar<T: DvarDefault>(world: &dyn FireWorld, name: &str, default: T) -> T {
+pub(crate) fn dvar<T: DvarDefault>(world: &dyn FireWorld, name: &str, default: T) -> T {
     world
         .dvar(name)
         .and_then(|value| T::parse(&value))
         .unwrap_or(default)
 }
 
-trait DvarDefault: Sized {
+pub(crate) trait DvarDefault: Sized {
     fn parse(value: &str) -> Option<Self>;
 }
 
@@ -439,12 +439,12 @@ fn distance_sq(a: [f32; 3], b: [f32; 3]) -> f32 {
     d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
 }
 
-/// Where a player's shot starts and the axes it is aimed by.
-struct WeaponParms {
-    forward: [f32; 3],
-    right: [f32; 3],
-    up: [f32; 3],
-    muzzle: [f32; 3],
+/// Where a shot starts and the axes it is aimed by.
+pub(crate) struct WeaponParms {
+    pub(crate) forward: [f32; 3],
+    pub(crate) right: [f32; 3],
+    pub(crate) up: [f32; 3],
+    pub(crate) muzzle: [f32; 3],
 }
 
 /// One bullet's state along its path.
@@ -658,8 +658,197 @@ impl Shot<'_> {
         (min, max)
     }
 
-    /// A bullet shot: each pellet's end from its seed, then its trace.
+    /// A bullet shot, by the player.
     fn bullet_fire(
+        &mut self,
+        def: &WeaponDefView<'_>,
+        weapon: u32,
+        spread: f32,
+        parms: &WeaponParms,
+        time: i32,
+        world: &mut dyn FireWorld,
+    ) {
+        let attacker = self.attacker();
+        Bullets {
+            attacker,
+            weapon_entity: attacker,
+            zombies: self.zombies,
+            gaps: self.gaps,
+        }
+        .fire(def, weapon, spread, parms, time, world);
+    }
+
+    /// A melee blow: the weapon that strikes (a bayonet or a weapon used as
+    /// a melee weapon, else the melee weapon), its reach, and its damage
+    /// to what its traces reach first.
+    fn melee(mut self, world: &mut dyn FireWorld) {
+        if self.ps.pm_flags & PMF_MOUNTED_MELEE != 0 {
+            self.gaps.push(mounted_unknown());
+            return;
+        }
+        let held = self.ps.weapon;
+        let strikes_with_held = weapon_bytes(world, held).is_some_and(|(def, variant)| {
+            WeaponDefView::new(&def, &variant).is_some_and(|d| d.bayonet() || d.use_as_melee())
+        });
+        let weapon = if strikes_with_held {
+            held
+        } else {
+            self.ps.melee_weapon
+        };
+        let Some((def_bytes, variant_bytes)) = weapon_bytes(world, weapon) else {
+            self.gaps.push(crate::movement::weapon_unknown());
+            return;
+        };
+        let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
+            self.gaps.push(crate::movement::weapon_unknown());
+            return;
+        };
+        let eye = view_origin(self.ps);
+        let (forward, right, up) = movement_t5::math::angle_vectors(self.ps.viewangles);
+        let range = if def.bayonet() {
+            dvar(world, "player_bayonetRange", 85.0f32)
+        } else {
+            dvar(world, "player_meleeRange", 64.0f32)
+        };
+        let width = dvar(world, "player_meleeWidth", 10.0f32);
+        let height = dvar(world, "player_meleeHeight", 10.0f32);
+        let damage = def.melee_damage();
+        let parms = WeaponParms {
+            forward,
+            right,
+            up,
+            muzzle: eye,
+        };
+        let Some((trace, point)) = self.melee_trace(&parms, damage, range, width, height, world)
+        else {
+            return;
+        };
+        let means = if def.bayonet() {
+            MOD_BAYONET
+        } else {
+            MOD_MELEE
+        };
+        if matches!(trace.hit, BulletHitType::Glass(_)) {
+            self.gaps.push(glass_unknown());
+            return;
+        }
+        let target = hit_id(&trace);
+        let entity = world.entity(target);
+        self.gaps.push(melee_events_unknown());
+        let Some(entity) = entity.filter(|e| e.takes_damage) else {
+            return;
+        };
+        let amount = damage + world.rand() % 5;
+        let dir = [forward[0], forward[1], forward[2] + 0.25];
+        let weapon = self.damage_weapon(world);
+        let attacker = self.attacker();
+        self::damage(
+            self.gaps,
+            attacker,
+            attacker,
+            entity,
+            Hit {
+                target,
+                dir,
+                point,
+                amount,
+                flags: 0,
+                means,
+                weapon,
+                location: trace.hit_location,
+                bone: trace.bone,
+            },
+            world,
+        );
+    }
+
+    /// The blow's traces from just behind the eye out to its reach, across
+    /// its width and height: the first that reaches a body, else the
+    /// nearest that hits anything. Damage triggers on the centre line.
+    fn melee_trace(
+        &mut self,
+        parms: &WeaponParms,
+        damage: i32,
+        range: f32,
+        width: f32,
+        height: f32,
+        world: &mut dyn FireWorld,
+    ) -> Option<(BulletTrace, [f32; 3])> {
+        let count = if width > 0.0 || height > 0.0 { 9 } else { 1 };
+        let attacker = self.attacker();
+        let start = mad(parms.muzzle, parms.forward, -10.0);
+        let mut best: Option<(BulletTrace, [f32; 3])> = None;
+        for &(across, along) in &MELEE_OFFSETS[..count] {
+            let mut end = mad(parms.muzzle, parms.forward, range);
+            if count > 1 {
+                end = mad(end, parms.right, across * width);
+                end = mad(end, parms.up, along * height);
+            }
+            let trace = world.bullet_trace(start, end, attacker, MELEE_MASK);
+            let f = trace.fraction;
+            let point = [
+                (end[0] - start[0]) * f + start[0],
+                (end[1] - start[1]) * f + start[1],
+                (end[2] - start[2]) * f + start[2],
+            ];
+            if across == 0.0 && along == 0.0 {
+                world.damage_triggers(attacker, parms.muzzle, point, damage, MEANS[MOD_MELEE]);
+            }
+            if f == 1.0 || trace.surface_flags & surf::NOIMPACT != 0 {
+                continue;
+            }
+            if world.entity(hit_id(&trace)).is_some_and(sentient) {
+                return Some((trace, point));
+            }
+            if best.as_ref().is_none_or(|(b, _)| f <= b.fraction) {
+                best = Some((trace, point));
+            }
+        }
+        best.filter(|(trace, _)| trace.fraction < 1.0)
+    }
+
+    /// The weapon a player's damage is credited to: the offhand while one
+    /// is thrown, the melee weapon in a blow with a weapon that is neither
+    /// a bayonet nor used as a melee weapon, else the held weapon.
+    fn damage_weapon(&self, world: &dyn FireWorld) -> u32 {
+        use movement_t5::weapon::state;
+        let ps = self.ps;
+        let s = ps.weaponstate;
+        if ps.weap_flags & movement_t5::state::weap_flags::OFFHAND_ACTIVE != 0
+            && state::OFFHAND_INIT < s
+            && s < state::DETONATING
+        {
+            return ps.offhand_index;
+        }
+        if matches!(s, state::MELEE_INIT | state::MELEE_FIRE | state::MELEE_END) {
+            let plain = weapon_bytes(world, ps.weapon).is_some_and(|(def, variant)| {
+                WeaponDefView::new(&def, &variant)
+                    .is_some_and(|d| !d.bayonet() && !d.use_as_melee())
+            });
+            if plain && s != state::MELEE_END {
+                return ps.melee_weapon;
+            }
+        }
+        ps.weapon
+    }
+}
+
+/// A bullet weapon's shot: by its attacker, from its weapon's entity (the
+/// attacker's own, or a turret's).
+pub(crate) struct Bullets<'a> {
+    pub(crate) attacker: i32,
+    pub(crate) weapon_entity: i32,
+    pub(crate) zombies: bool,
+    pub(crate) gaps: &'a mut Vec<&'static Unknown>,
+}
+
+impl Bullets<'_> {
+    fn attacker(&self) -> i32 {
+        self.attacker
+    }
+
+    /// A bullet shot: each pellet's end from its seed, then its trace.
+    pub(crate) fn fire(
         &mut self,
         def: &WeaponDefView<'_>,
         weapon: u32,
@@ -673,12 +862,12 @@ impl Shot<'_> {
         } else {
             (1, dvar(world, "bulletrange", 8192.0f32))
         };
-        let attacker = self.attacker();
+        let weapon_entity = self.weapon_entity;
         for shot in 0..shots {
             let (end, dir) = bullet_end(time.wrapping_add(shot), spread, parms, range);
             let mut bp = BulletParams {
-                weapon_entity: attacker,
-                ignore_entity: attacker,
+                weapon_entity,
+                ignore_entity: weapon_entity,
                 damage_multiplier: 1.0,
                 means: if def.rifle_bullet() {
                     MOD_RIFLE_BULLET
@@ -1035,160 +1224,6 @@ impl Shot<'_> {
             exit,
             from_server: player || actor || !client_side,
         });
-    }
-
-    /// A melee blow: the weapon that strikes (a bayonet or a weapon used as
-    /// a melee weapon, else the melee weapon), its reach, and its damage
-    /// to what its traces reach first.
-    fn melee(mut self, world: &mut dyn FireWorld) {
-        if self.ps.pm_flags & PMF_MOUNTED_MELEE != 0 {
-            self.gaps.push(mounted_unknown());
-            return;
-        }
-        let held = self.ps.weapon;
-        let strikes_with_held = weapon_bytes(world, held).is_some_and(|(def, variant)| {
-            WeaponDefView::new(&def, &variant).is_some_and(|d| d.bayonet() || d.use_as_melee())
-        });
-        let weapon = if strikes_with_held {
-            held
-        } else {
-            self.ps.melee_weapon
-        };
-        let Some((def_bytes, variant_bytes)) = weapon_bytes(world, weapon) else {
-            self.gaps.push(crate::movement::weapon_unknown());
-            return;
-        };
-        let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
-            self.gaps.push(crate::movement::weapon_unknown());
-            return;
-        };
-        let eye = view_origin(self.ps);
-        let (forward, right, up) = movement_t5::math::angle_vectors(self.ps.viewangles);
-        let range = if def.bayonet() {
-            dvar(world, "player_bayonetRange", 85.0f32)
-        } else {
-            dvar(world, "player_meleeRange", 64.0f32)
-        };
-        let width = dvar(world, "player_meleeWidth", 10.0f32);
-        let height = dvar(world, "player_meleeHeight", 10.0f32);
-        let damage = def.melee_damage();
-        let parms = WeaponParms {
-            forward,
-            right,
-            up,
-            muzzle: eye,
-        };
-        let Some((trace, point)) = self.melee_trace(&parms, damage, range, width, height, world)
-        else {
-            return;
-        };
-        let means = if def.bayonet() {
-            MOD_BAYONET
-        } else {
-            MOD_MELEE
-        };
-        if matches!(trace.hit, BulletHitType::Glass(_)) {
-            self.gaps.push(glass_unknown());
-            return;
-        }
-        let target = hit_id(&trace);
-        let entity = world.entity(target);
-        self.gaps.push(melee_events_unknown());
-        let Some(entity) = entity.filter(|e| e.takes_damage) else {
-            return;
-        };
-        let amount = damage + world.rand() % 5;
-        let dir = [forward[0], forward[1], forward[2] + 0.25];
-        let weapon = self.damage_weapon(world);
-        let attacker = self.attacker();
-        self::damage(
-            self.gaps,
-            attacker,
-            attacker,
-            entity,
-            Hit {
-                target,
-                dir,
-                point,
-                amount,
-                flags: 0,
-                means,
-                weapon,
-                location: trace.hit_location,
-                bone: trace.bone,
-            },
-            world,
-        );
-    }
-
-    /// The blow's traces from just behind the eye out to its reach, across
-    /// its width and height: the first that reaches a body, else the
-    /// nearest that hits anything. Damage triggers on the centre line.
-    fn melee_trace(
-        &mut self,
-        parms: &WeaponParms,
-        damage: i32,
-        range: f32,
-        width: f32,
-        height: f32,
-        world: &mut dyn FireWorld,
-    ) -> Option<(BulletTrace, [f32; 3])> {
-        let count = if width > 0.0 || height > 0.0 { 9 } else { 1 };
-        let attacker = self.attacker();
-        let start = mad(parms.muzzle, parms.forward, -10.0);
-        let mut best: Option<(BulletTrace, [f32; 3])> = None;
-        for &(across, along) in &MELEE_OFFSETS[..count] {
-            let mut end = mad(parms.muzzle, parms.forward, range);
-            if count > 1 {
-                end = mad(end, parms.right, across * width);
-                end = mad(end, parms.up, along * height);
-            }
-            let trace = world.bullet_trace(start, end, attacker, MELEE_MASK);
-            let f = trace.fraction;
-            let point = [
-                (end[0] - start[0]) * f + start[0],
-                (end[1] - start[1]) * f + start[1],
-                (end[2] - start[2]) * f + start[2],
-            ];
-            if across == 0.0 && along == 0.0 {
-                world.damage_triggers(attacker, parms.muzzle, point, damage, MEANS[MOD_MELEE]);
-            }
-            if f == 1.0 || trace.surface_flags & surf::NOIMPACT != 0 {
-                continue;
-            }
-            if world.entity(hit_id(&trace)).is_some_and(sentient) {
-                return Some((trace, point));
-            }
-            if best.as_ref().is_none_or(|(b, _)| f <= b.fraction) {
-                best = Some((trace, point));
-            }
-        }
-        best.filter(|(trace, _)| trace.fraction < 1.0)
-    }
-
-    /// The weapon a player's damage is credited to: the offhand while one
-    /// is thrown, the melee weapon in a blow with a weapon that is neither
-    /// a bayonet nor used as a melee weapon, else the held weapon.
-    fn damage_weapon(&self, world: &dyn FireWorld) -> u32 {
-        use movement_t5::weapon::state;
-        let ps = self.ps;
-        let s = ps.weaponstate;
-        if ps.weap_flags & movement_t5::state::weap_flags::OFFHAND_ACTIVE != 0
-            && state::OFFHAND_INIT < s
-            && s < state::DETONATING
-        {
-            return ps.offhand_index;
-        }
-        if matches!(s, state::MELEE_INIT | state::MELEE_FIRE | state::MELEE_END) {
-            let plain = weapon_bytes(world, ps.weapon).is_some_and(|(def, variant)| {
-                WeaponDefView::new(&def, &variant)
-                    .is_some_and(|d| !d.bayonet() && !d.use_as_melee())
-            });
-            if plain && s != state::MELEE_END {
-                return ps.melee_weapon;
-            }
-        }
-        ps.weapon
     }
 }
 

@@ -77,6 +77,7 @@ fn player_damage_with(
             target: crate::ScriptModelId::from_wire(0),
             amount: hit.amount,
             attacker: hit.attacker,
+            attacker_object: None,
             means: hit.means,
             weapon: hit.weapon,
             point: hit.point,

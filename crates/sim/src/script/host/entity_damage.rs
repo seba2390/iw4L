@@ -10,6 +10,8 @@ pub(crate) struct EntityHit {
     pub target: ScriptModelId,
     pub amount: i32,
     pub attacker: Option<ClientId>,
+    /// An attacker that is no player (a turret).
+    pub attacker_object: Option<u64>,
     pub means: &'static str,
     pub weapon: u32,
     pub point: [f32; 3],
@@ -130,6 +132,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                         target,
                         amount: hit.amount,
                         attacker: hit.attacker,
+                        attacker_object: None,
                         means: hit.means,
                         weapon: hit.weapon,
                         point: hit.origin,
@@ -164,6 +167,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     target,
                     amount,
                     attacker: blast.attacker,
+                    attacker_object: None,
                     means: blast.means,
                     weapon: blast.weapon,
                     point: mid,
@@ -268,7 +272,9 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
     let weapon = crate::script_player::weapon_name(&frame, hit.weapon);
     let attacker = match hit.attacker {
         Some(a) => super::players::player_object(world, a.0),
-        None => super::players::damage_entity(world, None),
+        None => {
+            super::players::damage_entity(world, hit.attacker_object.map(Value::Object).as_ref())
+        }
     };
     if world.resource::<RoundScript>().entities[&object].kind
         == super::entities::EntityKind::Vehicle

@@ -305,6 +305,7 @@ pub(crate) fn sync_engine_events(world: &mut World) {
     super::triggers::dispatch_grenade_touches(world);
     super::guidance::advance(world);
     super::turrets::advance(world);
+    super::natives::t5_turret::advance(world);
     settle_projectiles(world, &notes);
     settle_items(world);
     super::vehicles::advance(world);

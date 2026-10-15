@@ -322,6 +322,26 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x50))
     }
 
+    /// `overheatRate`
+    pub fn overheat_rate(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x54))
+    }
+
+    /// `cooldownRate`
+    pub fn cooldown_rate(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x58))
+    }
+
+    /// `overheatEndVal`
+    pub fn overheat_end_val(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x5c))
+    }
+
+    /// `coolWhileFiring`
+    pub fn cool_while_firing(&self) -> bool {
+        self.def[0x60] != 0
+    }
+
     /// `requireLockonToFire`
     pub fn require_lockon_to_fire(&self) -> bool {
         self.def[0x47c] != 0
@@ -590,6 +610,26 @@ impl<'a> WeaponDefView<'a> {
     /// `playerSpread`
     pub fn player_spread(&self) -> f32 {
         f32::from_le_bytes(Self::word(self.def, 0x758))
+    }
+
+    /// `minVertTurnSpeed`
+    pub fn min_vert_turn_speed(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x75c))
+    }
+
+    /// `minHorTurnSpeed`
+    pub fn min_hor_turn_speed(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x760))
+    }
+
+    /// `maxVertTurnSpeed`
+    pub fn max_vert_turn_speed(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x764))
+    }
+
+    /// `maxHorTurnSpeed`
+    pub fn max_hor_turn_speed(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x768))
     }
 
     /// `pitchConvergenceTime`

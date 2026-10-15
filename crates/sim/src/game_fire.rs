@@ -102,6 +102,66 @@ impl<'w, 'a> MatchFireWorld<'w, 'a> {
         number
     }
 
+    /// The number the game knows a script object by: a player's client, a
+    /// presented entity's number, else its script number.
+    pub(crate) fn number_of_object(&mut self, object: u64) -> i32 {
+        let (client, presence, number) = {
+            let Some(runtime) = self
+                .world
+                .ecs_ref()
+                .get_resource::<crate::script::RoundScript>()
+            else {
+                return ENTITY_NONE;
+            };
+            let Some(entity) = runtime.entities.get(&object) else {
+                return ENTITY_NONE;
+            };
+            (
+                runtime.player_client(object),
+                entity.presence,
+                entity.number,
+            )
+        };
+        if let Some(client) = client {
+            return client as i32;
+        }
+        match presence {
+            Some(id) => match self.number_of(id) {
+                ENTITY_NONE => number,
+                presented => presented,
+            },
+            None => number,
+        }
+    }
+
+    /// The script object an entity number stands for.
+    pub(crate) fn object(&mut self, entity: i32) -> Option<u64> {
+        self.object_of(entity)
+    }
+
+    fn sentient_at(&mut self, object: u64) -> Option<game_api::turret::Sentient> {
+        let view =
+            crate::script::host::natives::t5_turret::sentient_view(self.world.ecs(), object)?;
+        let entity = match (view.client, view.presence) {
+            (Some(client), _) => client as i32,
+            (None, Some(id)) => match self.number_of(id) {
+                ENTITY_NONE => view.number,
+                presented => presented,
+            },
+            (None, None) => view.number,
+        };
+        Some(game_api::turret::Sentient {
+            entity,
+            team: team_of(view.team.as_deref()),
+            ignore_me: view.ignore_me,
+            origin: view.origin,
+            eye: view.eye,
+            mins: view.mins,
+            maxs: view.maxs,
+            pm_type: view.pm_type,
+        })
+    }
+
     fn trace_of(&mut self, outcome: TraceOutcome) -> BulletTrace {
         let (fraction, normal, collider, start_solid, all_solid) = match outcome {
             TraceOutcome::Miss { .. } | TraceOutcome::Invalid { .. } => {
@@ -381,12 +441,17 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             return;
         }
         let attacker = self.client(damage.attacker);
+        let attacker_object = match attacker {
+            Some(_) => None,
+            None => self.object_of(damage.attacker),
+        };
         crate::script::damage_entity(
             self.world.ecs(),
             &crate::script::EntityHit {
                 target,
                 amount: damage.amount,
                 attacker,
+                attacker_object,
                 means: damage.means,
                 weapon: damage.weapon,
                 point: damage.point,
@@ -497,14 +562,34 @@ impl FireWorld for MatchFireWorld<'_, '_> {
 
     fn sight_clear(&mut self, start: [f32; 3], end: [f32; 3], pass: [i32; 2], mask: u32) -> bool {
         let ignore = pass.iter().find_map(|&e| self.client(e));
-        let ignore_model = pass.iter().find_map(|&e| self.model(e));
+        let models: Vec<ScriptModelId> = pass.iter().filter_map(|&e| self.model(e)).collect();
+        let ignore_model = models.first().copied();
+        // The trace ignores one model; a second passed one leaves the rows.
+        let others: Vec<_>;
+        let rows = if models.len() > 1 {
+            others = self
+                .query
+                .entities
+                .rows
+                .iter()
+                .filter(|row| {
+                    !row.owner
+                        .script_model()
+                        .is_some_and(|id| models.contains(&id))
+                })
+                .cloned()
+                .collect();
+            &others
+        } else {
+            &self.query.entities.rows
+        };
         let outcome = crate::bullet_collision::bullet_trace_with_entity_models(
             self.world.clip_brushes(),
             self.world.clip_bsp(),
             self.world.clip_cmodels(),
             self.world.clip_mesh(),
             &self.query.players.poses,
-            &self.query.entities.rows,
+            rows,
             &BulletTraceQuery {
                 start,
                 end,
@@ -1021,4 +1106,45 @@ pub(crate) fn think_game_missile(world: &mut FrameWorld, tick: Tick, entnum: i32
     }
     apply_missile_run(world, entnum, missile, run);
     true
+}
+
+impl game_api::turret::TurretWorld for MatchFireWorld<'_, '_> {
+    fn turret_pose(&mut self, turret: i32) -> ([f32; 3], [f32; 3]) {
+        match self.object_of(turret) {
+            Some(object) => {
+                crate::script::host::natives::t5_turret::turret_pose(self.world.ecs(), object)
+            }
+            None => ([0.0; 3], [0.0; 3]),
+        }
+    }
+
+    fn turret_tag(
+        &mut self,
+        turret: i32,
+        tag: &str,
+        gun_angles: [f32; 3],
+    ) -> Option<game_api::turret::TurretTag> {
+        let object = self.object_of(turret)?;
+        let (origin, axis) = crate::script::host::natives::t5_turret::turret_tag(
+            self.world.ecs(),
+            object,
+            tag,
+            gun_angles,
+        )?;
+        Some(game_api::turret::TurretTag { origin, axis })
+    }
+
+    fn sentient(&mut self, slot: usize) -> Option<game_api::turret::Sentient> {
+        let object =
+            crate::script::host::natives::t5_turret::sentient_in(self.world.ecs_ref(), slot)?;
+        self.sentient_at(object)
+    }
+
+    fn sentient_of(&mut self, entity: i32) -> Option<game_api::turret::Sentient> {
+        let object = self.object_of(entity)?;
+        crate::script::host::natives::t5_turret::sentients(self.world.ecs_ref())
+            .contains(&object)
+            .then(|| self.sentient_at(object))
+            .flatten()
+    }
 }

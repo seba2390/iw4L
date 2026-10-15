@@ -175,6 +175,17 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
             (presence, turret.model_rotations(base))
         })
         .collect();
+    let game_guns: BTreeMap<ScriptModelId, [f32; 3]> = {
+        let runtime = world.resource::<RoundScript>();
+        super::natives::t5_turret::turret_guns(world, only)
+            .into_iter()
+            .filter_map(|(object, gun)| Some((runtime.entities.get(&object)?.presence?, gun)))
+            .collect()
+    };
+    let game_bones = match game_guns.is_empty() {
+        true => None,
+        false => super::natives::t5_turret::rules(world).map(|rules| rules.bone_controls),
+    };
     let mut frame = FrameWorld::from_world(world);
     for row in frame.entity_collision_capabilities_mut() {
         let Some(&(origin, angles, hidden, solid)) =
@@ -188,6 +199,20 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
             && let Some(dobj) = row.dobj.as_mut()
         {
             dobj.set_tag_rotations(rotations.clone());
+        }
+        if let Some(bones) = game_bones
+            && let Some(&gun) = row.owner.script_model().and_then(|id| game_guns.get(&id))
+            && let Some(dobj) = row.dobj.as_mut()
+        {
+            let rotations = bones(gun, &|tag| dobj.has_tag(tag))
+                .into_iter()
+                .filter(|(tag, _)| dobj.has_tag(tag))
+                .map(|(tag, angles)| xmodel_runtime::TagRotation {
+                    tag: tag.into(),
+                    angles,
+                })
+                .collect();
+            dobj.set_tag_rotations(rotations);
         }
         let settled = row
             .followed_pose
