@@ -53,6 +53,7 @@ const MOD_PROJECTILE_SPLASH: usize = 6;
 const MOD_MELEE: usize = 7;
 const MOD_BAYONET: usize = 8;
 const MOD_FALLING: usize = 12;
+const MOD_SUICIDE: usize = 13;
 
 const HITLOC_RIOTSHIELD: i32 = 20;
 
@@ -90,6 +91,8 @@ const ANTILAG_MS: i32 = 1000;
 /// A dropped grenade's speed along each axis, at most.
 const DROP_SPEED: f32 = 160.0;
 const DROP_HEIGHT: f32 = 40.0;
+/// The damage of a grenade gone off in its thrower's hand.
+const SUICIDE_DAMAGE: i32 = 100_000;
 /// The eye is never lower than this above the feet.
 const EYE_FLOOR: f32 = 8.0;
 /// A melee blow's push lifts its direction by this.
@@ -236,8 +239,8 @@ fn offhand_pickup_unknown() -> &'static Unknown {
 fn grenade_suicide_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.grenade_suicide",
-        "a grenade cooked too long does not kill its thrower",
-        "the level flag Black Ops 2 checks to choose between its two grenade suicide rules, and its player death"
+        "with grenade suicide on (multiplayer), a grenade held past its fuse does not kill its thrower outright, credited to whoever threw it back",
+        "Black Ops 2's player death, which that rule calls without the damage rules"
     )
 }
 
@@ -634,7 +637,7 @@ impl Shot<'_> {
                 }
             }
             ev::GRENADE_DROP => self.drop_grenade(world),
-            ev::GRENADE_SUICIDE => self.gaps.push(grenade_suicide_unknown()),
+            ev::GRENADE_SUICIDE => self.grenade_suicide(parm_weapon, world),
             ev::DETONATE => world.notify(me, "detonate", &[]),
             e if (ev::FALL_DAMAGE..ev::FALL_DAMAGE + 32).contains(&e) => {
                 if self.ps.pm_flags & pm_flags::SLIDING == 0 {
@@ -1442,6 +1445,56 @@ impl Shot<'_> {
             world,
         );
         self.fired_grenade(&def, time_left, world);
+    }
+
+    /// A grenade held past its fuse. With grenade suicide off (as the
+    /// zombies scripts set it) it falls at the thrower's feet, already gone
+    /// off, and its thrower takes a blow no one survives unless Flak Jacket
+    /// spares them.
+    fn grenade_suicide(&mut self, weapon: u32, world: &mut dyn FireWorld) {
+        if !world.grenade_suicide_disabled() {
+            self.gaps.push(grenade_suicide_unknown());
+            return;
+        }
+        let me = self.attacker();
+        let offhand = self.ps.offhand_index;
+        if let Some((def_bytes, variant_bytes)) = self.weapon_bytes(offhand, world)
+            && let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes)
+        {
+            let time_left = self.ps.grenade_time_left;
+            let mut origin = self.ps.origin;
+            origin[2] += DROP_HEIGHT;
+            crate::grenade::spawn_grenade(
+                me,
+                offhand,
+                &def,
+                origin,
+                [0.0; 3],
+                [0.0; 3],
+                false,
+                time_left,
+                Some(time_left),
+                world,
+            );
+            self.fired_grenade(&def, time_left, world);
+        }
+        if self.has_perk(perks::FLAK_JACKET, world) {
+            return;
+        }
+        world.damage(&FireDamage {
+            target: me,
+            inflictor: me,
+            attacker: me,
+            dir: [0.0; 3],
+            point: [0.0; 3],
+            amount: SUICIDE_DAMAGE,
+            flags: 0,
+            means: MEANS[MOD_SUICIDE],
+            weapon,
+            location: 0,
+            hit_location: HIT_LOCATIONS[0],
+            bone: None,
+        });
     }
 
     /// What follows a player's grenade into the world: the cooked fuse it

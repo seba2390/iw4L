@@ -61,7 +61,7 @@ running match, which is where bot behaviour is judged: `make map mp_boneyard`
 (the Black Ops and Black Ops 2 zombies checks use it) and logs it every 5 s: `1`
 fights, `rounds` adds god mode and ammo, `use` buys what the map offers, `down`/`revive`
 test going down (a spectator holds forward, so a free one flies), `watch` only logs. `IW4L_TEST_USE`, `_PERK`, `_GOTO`, `_BUILD` steer
-the use test; `_WIELD`, `_PLACE`, `_THROW`, `_GRAB`, `_REVIVE`, `_RIDE`, `_WALK`, `_MANTLE` (`x y z yaw`: walks into a ledge there holding jump) add
+the use test; `_WIELD`, `_PLACE`, `_THROW` (`cook`: holds a frag until it goes off), `_GRAB`, `_REVIVE`, `_RIDE`, `_WALK`, `_MANTLE` (`x y z yaw`: walks into a ledge there holding jump) add
 actions; `_ACTORS`, `_WAITS`, `_VARS` add log fields (`IW4L_TEST_WALK=sprint`
 extends the walk's sprint phase to 9 s and logs how many milliseconds the sprint
 lasted); `_TIMING` logs each weapon state

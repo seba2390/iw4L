@@ -68,7 +68,9 @@
 //!
 //! `IW4L_TEST_THROW=1` (with any fighting mode): every 15 s it holds its
 //! lethal grenade's button for half a second at an actor in sight farther
-//! than 250 units, then lets go to throw it.
+//! than 250 units, then lets go to throw it. `IW4L_TEST_THROW=cook` holds
+//! the button for 12 s instead, at whatever it faces, so the grenade goes off
+//! in its hand; that test asks for no god mode.
 //!
 //! `IW4L_TEST_REVIVE=1`: when a teammate is down, the player goes beside
 //! him and holds use to revive him.
@@ -139,6 +141,7 @@ const LOG_PERIOD_MS: i32 = 5000;
 /// The throw test throws this often, at an actor at least this far.
 const THROW_PERIOD_MS: i32 = 15_000;
 const THROW_HOLD_MS: i32 = 500;
+const COOK_HOLD_MS: i32 = 12_000;
 const THROW_FROM: f32 = 250.0;
 /// The place aid waits this long with the weapon up, then holds fire.
 const PLACE_AFTER_MS: i32 = 2000;
@@ -318,6 +321,8 @@ pub(crate) struct TestPlayer {
     next_throw_ms: i32,
     throw_until_ms: i32,
     throws: u32,
+    /// The cook test's last weapon state logged.
+    cook_state: Option<i32>,
     /// The weapon its command last asked for, kept while nothing is up.
     selected: u16,
     /// What the sight lines to targets ended on: nothing, a model, the world.
@@ -1220,7 +1225,9 @@ pub(crate) fn drive_test_player(
         }
     };
     if test.mode.cheats() {
-        if !test.god_asked {
+        // The cook test plays mortal: its grenade is to take it down.
+        let cook = std::env::var("IW4L_TEST_THROW").is_ok_and(|t| t == "cook");
+        if !test.god_asked && !cook {
             test.god_asked = true;
             ask(ClientAction::ToggleGod {
                 request_id: request_ids.allocate(),
@@ -1887,13 +1894,23 @@ pub(crate) fn drive_test_player(
     let target = target.map(|(aim, _, _)| aim);
     aim_cmd(&mut cmd, target.map_or(ps.viewangles, |aim| look(eye, aim)));
     if let Ok(throw_arg) = std::env::var("IW4L_TEST_THROW") {
-        let named = (throw_arg != "1").then_some(throw_arg.as_str());
+        let cook = throw_arg == "cook";
+        let named = (throw_arg != "1" && !cook).then_some(throw_arg.as_str());
         let button = if named.is_some() {
             buttons::SMOKE
         } else {
             buttons::FRAG
         };
         if clock.time_ms < test.throw_until_ms {
+            let state = world.0.move_status(id).map(|s| s.weapon_state);
+            if cook && state != test.cook_state {
+                test.cook_state = state;
+                diag::info!(
+                    Sim,
+                    "test player: cooking t={}ms weapon state={state:?}",
+                    clock.time_ms
+                );
+            }
             cmd.buttons |= button;
             cmds.push(id, cmd);
             return;
@@ -1905,12 +1922,15 @@ pub(crate) fn drive_test_player(
             && ps.weaponstate_primary == 0
             && if named.is_some() {
                 held && target.is_some_and(|aim| distance(eye, aim) > KNIFE_REACH)
+            } else if cook {
+                held
             } else {
                 target.is_some_and(|aim| distance(eye, aim) > THROW_FROM)
             };
         if clock.time_ms >= test.next_throw_ms && ready {
             test.next_throw_ms = clock.time_ms + THROW_PERIOD_MS;
-            test.throw_until_ms = clock.time_ms + THROW_HOLD_MS;
+            test.throw_until_ms =
+                clock.time_ms + if cook { COOK_HOLD_MS } else { THROW_HOLD_MS };
             test.throws += 1;
             diag::info!(
                 Sim,
