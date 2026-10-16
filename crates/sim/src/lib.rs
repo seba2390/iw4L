@@ -180,7 +180,7 @@ pub use scene_effects::{
 pub use time_scale::ScriptSlowMotion;
 mod objectives;
 pub use objectives::{
-    CompassObjective, CompassVehicle, ObjectiveMatch, ObjectiveState, ScriptEffect,
+    CompassObjective, CompassVehicle, EffectEnd, ObjectiveMatch, ObjectiveState, ScriptEffect,
     VehicleHudTarget,
 };
 

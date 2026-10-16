@@ -4,6 +4,7 @@
 
 use super::super::{float, int, string, type_name, vector};
 use super::game::{LOCAL_CLIENT, client_entity, local_client, server_object};
+use crate::script::client::{ClientEffect, ClientOutput};
 use crate::script::host::args::arg;
 use crate::script::host::client_scripts::with_server;
 use crate::script::host::entities::EntityKind;
@@ -107,9 +108,8 @@ impl Default for LightState {
 struct ClientEffects {
     /// Loaded effect names by 1-based effect id.
     effects: Vec<String>,
-    /// Next playback handle for `playfx`, `playfxontag` and `playviewmodelfx`.
-    next_handle: i32,
-    /// Active effect handles and the client time (ms) they started at.
+    /// Tag and viewmodel effect handles and the client time (ms) they
+    /// started at.
     playing: BTreeMap<i32, i64>,
     /// The local client's current naked visionset name.
     naked_vision: Option<String>,
@@ -131,7 +131,6 @@ impl Default for ClientEffects {
     fn default() -> Self {
         Self {
             effects: Vec::new(),
-            next_handle: 0,
             playing: BTreeMap::new(),
             naked_vision: None,
             world_fog_bank: 0,
@@ -374,10 +373,8 @@ fn orient_angles(
 /// Allocates a client FX handle and marks it playing on this tick.
 fn start_fx_handle(world: &mut World) -> i32 {
     let now = now_ms(world);
-    let mut fx = state(world);
-    fx.next_handle = fx.next_handle.wrapping_add(1).max(1);
-    let handle = fx.next_handle;
-    fx.playing.insert(handle, now);
+    let handle = world.resource_mut::<ClientOutput>().effect_handle();
+    state(world).playing.insert(handle, now);
     handle
 }
 
@@ -453,6 +450,9 @@ fn play_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
         return Err(format!("CScr_PlayFX: invalid effect id {id}"));
     }
     let origin = vector(args, 2)?;
+    // The effect begins now, or at the time the sixth argument names in
+    // seconds.
+    let mut begin = None;
     let angles = if args.len() <= 4 {
         orient_angles(world, id, args, 3, 4)?
     } else {
@@ -473,7 +473,7 @@ fn play_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
             ));
         }
         if args.len() > 5 {
-            float(args, 5)?;
+            begin = Some(round_int(float(args, 5)? * 1000.0));
         }
         if args.len() > 6 && !matches!(args.get(6), None | Some(Value::Undefined)) {
             float(args, 6)?;
@@ -495,8 +495,55 @@ fn play_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
         ];
         axis_angles([forward, left, up])
     };
-    emit_fx_at(world, id, origin, angles);
-    Ok(Value::Int(start_fx_handle(world)))
+    let begin = begin.unwrap_or_else(|| now_ms(world) as i32);
+    Ok(Value::Int(play_point_effect(
+        world, id, origin, angles, begin,
+    )))
+}
+
+/// Plays an effect at a point for the local client from `begin`, answering
+/// its handle: the effect system holds it until its elements are gone
+/// (`isfxplaying`).
+fn play_point_effect(
+    world: &mut World,
+    id: i32,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    begin: i32,
+) -> i32 {
+    let name = effect_name(world, id);
+    let axis = angles_axis(angles);
+    let mut output = world.resource_mut::<ClientOutput>();
+    let handle = output.effect_handle();
+    if let Some(name) = name {
+        output.effects.insert(
+            handle,
+            ClientEffect {
+                name,
+                origin,
+                forward: axis[0],
+                up: axis[2],
+                begin_ms: Some(begin),
+                end_ms: None,
+                end: crate::EffectEnd::Playing,
+            },
+        );
+    }
+    handle
+}
+
+/// Ends a client effect its handle names: `Stopped` lets its elements live
+/// out their lives, `Killed` kills them; the effect system frees it after.
+fn end_effect(world: &mut World, handle: i32, end: crate::EffectEnd) {
+    if let Some(effect) = world
+        .resource_mut::<ClientOutput>()
+        .effects
+        .get_mut(&handle)
+        && effect.end == crate::EffectEnd::Playing
+    {
+        effect.end = end;
+    }
+    state(world).playing.remove(&handle);
 }
 
 /// `playfxontag(localclientnum, id, entity, tag)`.
@@ -676,33 +723,44 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         play_viewmodel_fx(world, args)
     });
     registry.register(Function, "spawnfx", |world, _, args| spawn_fx(world, args));
-    // stopfx(localclientnum, handle): stops a playing client effect.
+    // stopfx(localclientnum, handle): stops a playing client effect; its
+    // elements live out their lives.
     registry.register(Function, "stopfx", |world, _, args| {
         local_client(args, 0)?;
         let handle = int(args, 1)?;
-        state(world).playing.remove(&handle);
+        end_effect(world, handle, crate::EffectEnd::Stopped);
         Ok(Value::Undefined)
     });
-    // deletefx(localclientnum, handle, [immediate]): deletes a playing client
-    // effect.
+    // deletefx(localclientnum, handle, [immediate]): stops a client effect,
+    // killing its elements unless `immediate` is 0.
     registry.register(Function, "deletefx", |world, _, args| {
         local_client(args, 0)?;
         let handle = int(args, 1)?;
-        if args.len() >= 3 {
-            int(args, 2)?;
-        }
-        state(world).playing.remove(&handle);
+        let immediate = args.len() <= 2 || int(args, 2)? != 0;
+        let end = if immediate {
+            crate::EffectEnd::Killed
+        } else {
+            crate::EffectEnd::Stopped
+        };
+        end_effect(world, handle, end);
         Ok(Value::Undefined)
     });
-    // isfxplaying(localclientnum, handle): whether the effect is still active.
+    // isfxplaying(localclientnum, handle): whether the effect system still
+    // holds the handle's effect.
     registry.register(Function, "isfxplaying", |world, _, args| {
         local_client(args, 0)?;
         let handle = int(args, 1)?;
+        if world
+            .resource::<ClientOutput>()
+            .effects
+            .contains_key(&handle)
+        {
+            return Ok(Value::Int(1));
+        }
         let now = now_ms(world);
-        // t6.csc.fx.lifetime: IW4L's effect events do not report particle
-        // lifetimes back to the client VM; an effect answers as playing on the
-        // tick it started and finished once time advances or stopfx/deletefx
-        // stops it.
+        // t6.csc.fx.lifetime: an effect on a tag or the viewmodel answers as
+        // playing on the tick it started and finished once time advances or
+        // stopfx/deletefx stops it.
         let mut fx = state(world);
         let active = match fx.playing.get(&handle).copied() {
             Some(started) if now <= started => true,
@@ -719,8 +777,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "bullettracer", |_, _, args| {
         vector(args, 0)?;
         vector(args, 1)?;
-        // t6.csc.fx.bullet_tracer: IW4L has no client-spawned standalone
-        // bullet tracer beam presentation.
+        // t6.csc.fx.bullet_tracer: the engine spawns a tracer local entity
+        // with its `defaulttracer` definition; IW4L has no Black Ops 2
+        // tracer definitions or tracer drawing.
         Ok(Value::Undefined)
     });
 

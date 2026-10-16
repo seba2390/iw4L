@@ -36,6 +36,20 @@ pub struct ScriptEffect {
     pub repeat_ms: i32,
     pub cull_distance: f32,
     pub viewers: Option<u64>,
+    /// How a client script ended it, while the effect system still holds it.
+    pub end: EffectEnd,
+}
+
+/// How a client script ended an effect it plays (Black Ops 2's `stopfx` and
+/// `deletefx`): the effect stays in the effect system until it is freed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EffectEnd {
+    #[default]
+    Playing,
+    /// It spawns nothing more; its elements live out their lives.
+    Stopped,
+    /// Its elements are killed with it.
+    Killed,
 }
 
 impl ScriptEffect {

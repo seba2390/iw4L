@@ -3148,6 +3148,11 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
         out.put_f32(fx.cull_distance);
         out.put_u8(u8::from(fx.viewers.is_some()));
         out.put_u64(fx.viewers.unwrap_or(0));
+        out.put_u8(match fx.end {
+            sim::EffectEnd::Playing => 0,
+            sim::EffectEnd::Stopped => 1,
+            sim::EffectEnd::Killed => 2,
+        });
     }
     encode_vision(out, state.naked_vision.as_ref());
     encode_vision(out, state.thermal_vision.as_ref());
@@ -3255,6 +3260,12 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
                 let hidden = input.get_u8()? != 0;
                 let mask = input.get_u64()?;
                 hidden.then_some(mask)
+            },
+            end: match input.get_u8()? {
+                0 => sim::EffectEnd::Playing,
+                1 => sim::EffectEnd::Stopped,
+                2 => sim::EffectEnd::Killed,
+                _ => return Err(WireError::Malformed("bad effect end")),
             },
         });
     }

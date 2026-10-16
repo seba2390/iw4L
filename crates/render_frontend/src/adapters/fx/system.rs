@@ -2920,6 +2920,8 @@ struct ScriptFxRow {
     next_ms: i32,
     /// A one-shot effect that has run out (or never spawned), reported.
     finished: bool,
+    /// The script's stop or delete has reached the effect system.
+    ended: bool,
 }
 
 fn axis(forward: [f32; 3], up: [f32; 3]) -> [[f32; 3]; 3] {
@@ -3005,6 +3007,25 @@ fn sync_script_fx(
         };
         let name = catalog.0.map_fx_name(name);
         let axis = axis(fx.forward, fx.up);
+        if fx.end != sim::EffectEnd::Playing {
+            // A client script stopped or deleted it: the effect system stops
+            // it (or kills its elements) and frees it once they are gone.
+            if !row.ended {
+                row.ended = true;
+                match row.held {
+                    Some(handle) if fx.end == sim::EffectEnd::Killed => {
+                        host.0.kill_owned_held(handle);
+                    }
+                    Some(handle) => host.0.stop_owned_held(handle),
+                    None if !row.finished => {
+                        row.finished = true;
+                        never.push(fx.id);
+                    }
+                    None => {}
+                }
+            }
+            continue;
+        }
         let retriggered = row.start != fx.start_ms;
         row.start = fx.start_ms;
         let Some(start) = fx.start_ms else {

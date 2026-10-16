@@ -350,6 +350,9 @@ pub(crate) struct ClientEffect {
     /// When it begins; an untriggered `spawnFx` entity has none yet.
     pub(crate) begin_ms: Option<i32>,
     pub(crate) end_ms: Option<i32>,
+    /// A Black Ops 2 script stopped or deleted it: the effect system keeps
+    /// it until it frees it.
+    pub(crate) end: crate::EffectEnd,
 }
 
 impl ClientEffect {
