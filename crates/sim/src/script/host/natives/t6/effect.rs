@@ -80,6 +80,12 @@ fn angles_axis(angles: [f32; 3]) -> [[f32; 3]; 3] {
     ]
 }
 
+/// 16-bit network angle quantization (`MSG_WriteAngle16` / `MSG_ReadDeltaAngle`,
+/// `NetField` bits `-62` on `lerp.apos.trBase`).
+fn net_angle16(angle: f32) -> f32 {
+    f32::from(((angle * f32::from_bits(0x4336_0b61)) as i32) as i16) * f32::from_bits(0x3bb4_0000)
+}
+
 fn effect_name(world: &World, index: i32) -> Option<String> {
     world
         .resource::<MatchScript>()
@@ -147,7 +153,7 @@ fn playfx(world: &mut World, args: &[Value]) -> Result<Value, String> {
     {
         return Ok(Value::Undefined);
     }
-    let axis = angles_axis(angles);
+    let axis = angles_axis(angles.map(net_angle16));
     let effect = crate::frame::FrameWorld::from_world(world).effect_name_index(&name);
     super::super::engine::play_fx_at(world, effect, origin, axis[0], axis[2]);
     Ok(Value::Undefined)
@@ -256,7 +262,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         {
             return Ok(Value::Undefined);
         }
-        let axis = angles_axis(angles);
+        let axis = angles_axis(angles.map(net_angle16));
         let effect = crate::frame::FrameWorld::from_world(world).effect_name_index(&name);
         super::super::engine::play_fx_at(world, effect, origin, axis[0], axis[2]);
         Ok(Value::Undefined)

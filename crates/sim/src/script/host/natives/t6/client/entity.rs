@@ -144,6 +144,129 @@ struct ClientAnimTrees {
 #[derive(Resource, Default)]
 struct ZombieBoxWeapons(Vec<(String, String, bool)>);
 
+/// A map rope (`PhysConstraint` of type `CONSTRAINT_ROPE`) settled at load.
+struct ClientRope {
+    targetname: String,
+    particles: Vec<[f32; 3]>,
+}
+
+/// The map's settled ropes in `ClipMap.constraints` order.
+#[derive(Resource, Default)]
+struct ClientRopes(Vec<ClientRope>);
+
+fn settle_rope(
+    attach1: i32,
+    attach2: i32,
+    pos1: [f32; 3],
+    pos2: [f32; 3],
+    length: f32,
+) -> Vec<[f32; 3]> {
+    let count = ((length * 0.04) as i32).clamp(4, 25) as usize;
+    let seg_len = (length * 0.9) / (count - 1) as f32;
+    let delta = [pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2]];
+    let dist = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+    let dir = if dist > 0.0 {
+        delta.map(|c| c / dist)
+    } else {
+        [0.0, 0.0, -1.0]
+    };
+    let mut p: Vec<[f32; 3]> = (0..count)
+        .map(|i| std::array::from_fn(|a| pos1[a] + dir[a] * (i as f32 * seg_len)))
+        .collect();
+    let pin0 = attach1 == 0;
+    let pin_last = attach2 == 0 && pos1 != pos2;
+    if pin0 {
+        p[0] = pos1;
+    }
+    if pin_last {
+        p[count - 1] = pos2;
+    }
+    let mut prev = p.clone();
+    let dt = f32::from_bits(0x3c8b_4396);
+    let half_dt_sq = 0.5 * dt * dt;
+    for _ in 0..1000 {
+        for i in 0..count {
+            if (i == 0 && pin0) || (i == count - 1 && pin_last) {
+                continue;
+            }
+            let cur = p[i];
+            let vel: [f32; 3] = std::array::from_fn(|a| cur[a] - prev[i][a]);
+            let accel = [-0.5 * vel[0], -0.5 * vel[1], -800.0 - 0.5 * vel[2]];
+            prev[i] = cur;
+            p[i] = std::array::from_fn(|a| cur[a] + vel[a] + accel[a] * half_dt_sq);
+        }
+        for _ in 0..6 {
+            for i in 0..count - 1 {
+                let d: [f32; 3] = std::array::from_fn(|a| p[i + 1][a] - p[i][a]);
+                let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                if len <= 1e-6 {
+                    continue;
+                }
+                let err = (len - seg_len) / len;
+                if i == 0 && pin0 {
+                    for a in 0..3 {
+                        p[i + 1][a] -= d[a] * err;
+                    }
+                } else if i + 1 == count - 1 && pin_last {
+                    for a in 0..3 {
+                        p[i][a] += d[a] * err;
+                    }
+                } else {
+                    for a in 0..3 {
+                        p[i][a] += d[a] * (0.5 * err);
+                        p[i + 1][a] -= d[a] * (0.5 * err);
+                    }
+                }
+            }
+        }
+    }
+    p
+}
+
+fn ensure_ropes(world: &mut World) -> &ClientRopes {
+    if !world.contains_resource::<ClientRopes>() {
+        let raw = with_server(world, |server| {
+            server
+                .resource::<RoundScript>()
+                .restart
+                .as_ref()?
+                .raw_files
+                .get("physconstraints/ropes.txt")
+                .cloned()
+        })
+        .flatten();
+        let mut ropes = Vec::new();
+        if let Some(text) = raw {
+            for line in text.lines() {
+                let mut parts = line.split('\t');
+                let (Some(name), Some(a1), Some(a2), Some(p1), Some(p2), Some(len)) = (
+                    parts.next(),
+                    parts.next().and_then(|s| s.parse::<i32>().ok()),
+                    parts.next().and_then(|s| s.parse::<i32>().ok()),
+                    parts.next(),
+                    parts.next(),
+                    parts.next().and_then(|s| s.parse::<f32>().ok()),
+                ) else {
+                    continue;
+                };
+                let parse_v3 = |s: &str| -> Option<[f32; 3]> {
+                    let mut it = s.split_whitespace().filter_map(|x| x.parse::<f32>().ok());
+                    Some([it.next()?, it.next()?, it.next()?])
+                };
+                let (Some(pos1), Some(pos2)) = (parse_v3(p1), parse_v3(p2)) else {
+                    continue;
+                };
+                ropes.push(ClientRope {
+                    targetname: name.to_owned(),
+                    particles: settle_rope(a1, a2, pos1, pos2, len),
+                });
+            }
+        }
+        world.insert_resource(ClientRopes(ropes));
+    }
+    world.resource::<ClientRopes>()
+}
+
 fn with_server<R>(world: &World, f: impl FnOnce(&mut World) -> R) -> Option<R> {
     crate::script::host::client_scripts::with_server(world, f)
 }
@@ -1367,14 +1490,26 @@ pub(super) fn register(registry: &mut NativeRegistry) {
 
     // ent setmodel(model): sets a script mover's model.
     registry.register(Method, "setmodel", |world, receiver, args| {
-        let (id, _, etype) = receiver_entity(world, receiver)?;
+        let (id, number, etype) = receiver_entity(world, receiver)?;
         if etype != ETYPE_SCRIPTMOVER {
             return Err("SetModel can only be called on a script mover\n".into());
         }
         let model = string(args, 0)?;
+        let mirrored = client_entity(world, receiver).is_some();
         world
             .resource_mut::<RoundScript>()
             .set_object_field(id, "model", Value::string(&model));
+        if mirrored {
+            with_server(world, |server| {
+                if let Some(srv_id) = server_object(server, number) {
+                    server.resource_mut::<RoundScript>().set_object_field(
+                        srv_id,
+                        "model",
+                        Value::string(&model),
+                    );
+                }
+            });
+        }
         Ok(Value::Undefined)
     });
 
@@ -2065,24 +2200,49 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
 
     // getrope(targetname): looks up a map rope by targetname (-1 when none).
-    registry.register(Function, "getrope", |_, _, args| {
-        string(args, 0)?;
-        // t6.csc.ropes.lookup: IW4L does not load map rope assets on the
-        // client.
-        Ok(Value::Int(-1))
+    registry.register(Function, "getrope", |world, _, args| {
+        let name = string(args, 0)?;
+        let ropes = &ensure_ropes(world).0;
+        let index = ropes
+            .iter()
+            .position(|rope| rope.targetname.eq_ignore_ascii_case(&name))
+            .map_or(-1, |idx| idx as i32);
+        Ok(Value::Int(index))
     });
 
     // ropegetposition(rope, fraction): the world point `fraction` (0..1)
     // along the rope.
-    registry.register(Function, "ropegetposition", |_, _, args| {
-        int(args, 0)?;
+    registry.register(Function, "ropegetposition", |world, _, args| {
+        let index = int(args, 0)?;
         let fraction = float(args, 1)?;
         if !(0.0..=1.0).contains(&fraction) {
             return Err("The fraction must be between 0 and 1".into());
         }
-        // t6.csc.ropes.position: IW4L does not simulate map ropes on the
-        // client.
-        Ok(Value::Vector([0.0; 3]))
+        let ropes = &ensure_ropes(world).0;
+        let Some(rope) = usize::try_from(index)
+            .ok()
+            .and_then(|idx| ropes.get(idx))
+            .filter(|rope| !rope.particles.is_empty())
+        else {
+            return Ok(Value::Vector([0.0; 3]));
+        };
+        if rope.particles.len() == 1 || fraction <= 0.0 {
+            return Ok(Value::Vector(rope.particles[0]));
+        }
+        if fraction >= 1.0 {
+            return Ok(Value::Vector(rope.particles[rope.particles.len() - 1]));
+        }
+        let max_idx = (rope.particles.len() - 1) as f32;
+        let scaled = (fraction * max_idx).clamp(0.0, max_idx);
+        let i = (scaled.floor() as usize).min(rope.particles.len() - 2);
+        let t = scaled - i as f32;
+        let a = rope.particles[i];
+        let b = rope.particles[i + 1];
+        Ok(Value::Vector([
+            a[0] + (b[0] - a[0]) * t,
+            a[1] + (b[1] - a[1]) * t,
+            a[2] + (b[2] - a[2]) * t,
+        ]))
     });
 
     // player usealternateaimparams() / clearalternateaimparams(): toggles
@@ -2092,8 +2252,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if !is_local_player(world, receiver) {
             return Err("You can only call UseAlternateAim on players.".into());
         }
-        // t6.csc.player.alternate_aim: IW4L does not apply client alternate
-        // aim parameters.
+        world
+            .get_resource_or_insert_with(ClientGame::default)
+            .alternate_aim = true;
+        with_server(world, |server| {
+            crate::script::host::natives::player::send_client_dvar(
+                server,
+                LOCAL_CLIENT as u32,
+                "cg_alternateaim",
+                "1",
+            );
+        });
         Ok(Value::Undefined)
     });
     registry.register(Method, "clearalternateaimparams", |world, receiver, _| {
@@ -2101,6 +2270,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if !is_local_player(world, receiver) {
             return Err("You can only call ClearAlternateAim on players.".into());
         }
+        world
+            .get_resource_or_insert_with(ClientGame::default)
+            .alternate_aim = false;
+        with_server(world, |server| {
+            crate::script::host::natives::player::send_client_dvar(
+                server,
+                LOCAL_CLIENT as u32,
+                "cg_alternateaim",
+                "0",
+            );
+        });
         Ok(Value::Undefined)
     });
 
@@ -2111,8 +2291,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if !is_local_player(world, receiver) {
             return Err("You can only call EquipFlashlight on players.".into());
         }
-        // t6.csc.player.flashlight: IW4L has no client player flashlight
-        // light source.
+        world
+            .get_resource_or_insert_with(ClientGame::default)
+            .flashlight_equipped = true;
+        with_server(world, |server| {
+            crate::script::host::natives::player::send_client_dvar(
+                server,
+                LOCAL_CLIENT as u32,
+                "r_flashlight",
+                "1",
+            );
+        });
         Ok(Value::Undefined)
     });
     registry.register(Method, "removeflashlight", |world, receiver, _| {
@@ -2120,6 +2309,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if !is_local_player(world, receiver) {
             return Err("You can only call RemoveFlashlight on players.".into());
         }
+        world
+            .get_resource_or_insert_with(ClientGame::default)
+            .flashlight_equipped = false;
+        with_server(world, |server| {
+            crate::script::host::natives::player::send_client_dvar(
+                server,
+                LOCAL_CLIENT as u32,
+                "r_flashlight",
+                "0",
+            );
+        });
         Ok(Value::Undefined)
     });
 
@@ -2129,10 +2329,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Method,
         "setrenderinthirdpersonspectate",
         |world, receiver, args| {
-            receiver_entity(world, receiver)?;
-            int(args, 0)?;
-            // t6.csc.spectate.third_person_render: IW4L has no third-person
-            // spectate render flag on client entities.
+            let (id, _, _) = receiver_entity(world, receiver)?;
+            let enabled = int(args, 0)? != 0;
+            world
+                .get_resource_or_insert_with(ClientGame::default)
+                .third_person_spectate_render
+                .insert(id, enabled);
             Ok(Value::Undefined)
         },
     );
@@ -2144,22 +2346,46 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         "setsonarattachmentenabled",
         |world, receiver, args| {
             receiver_entity(world, receiver)?;
-            int(args, 0)?;
-            // t6.csc.weapons.sonar_attachment: IW4L has no sonar attachment
-            // overlay on the client.
+            let enabled = int(args, 0)? != 0;
+            world
+                .get_resource_or_insert_with(ClientGame::default)
+                .sonar_attachment_enabled = enabled;
+            with_server(world, |server| {
+                crate::script::host::natives::player::send_client_dvar(
+                    server,
+                    LOCAL_CLIENT as u32,
+                    "r_sonarattachment",
+                    if enabled { "1" } else { "0" },
+                );
+            });
             Ok(Value::Undefined)
         },
     );
 
     // zacklodscalerigid([scale, min_scale]): sets `r_lodScaleRigid` on the
     // client.
-    registry.register(Function, "zacklodscalerigid", |_, _, args| {
-        if args.len() == 2 {
-            float(args, 1)?;
-            float(args, 0)?;
-        }
-        // t6.csc.render.lod_scale_rigid: IW4L does not adjust rigid model
-        // LOD scale from client scripts.
+    registry.register(Function, "zacklodscalerigid", |world, _, args| {
+        let scale = if args.len() == 2 {
+            let min_scale = float(args, 1)?.max(0.6);
+            float(args, 0)?.clamp(min_scale, 4.0)
+        } else if args.is_empty() {
+            1.0
+        } else {
+            return Ok(Value::Undefined);
+        };
+        let value = scale.to_string();
+        world
+            .resource_mut::<crate::script::MatchScript>()
+            .dvars
+            .insert("r_lodScaleRigid".to_owned(), value.clone());
+        with_server(world, |server| {
+            crate::script::host::natives::player::send_client_dvar(
+                server,
+                LOCAL_CLIENT as u32,
+                "r_lodscalerigid",
+                &value,
+            );
+        });
         Ok(Value::Undefined)
     });
 

@@ -3152,6 +3152,34 @@ impl ZoneLane for T6Lane {
                 &mut scripts,
                 &mut report,
             );
+            for (zone, asset) in shared_loads
+                .iter()
+                .chain(std::iter::once(&load))
+                .flat_map(|zone| zone.assets.iter().map(move |asset| (zone, asset)))
+            {
+                if let Some(file) = fastfile_t6::raw_file(zone, asset)
+                    && file.name.ends_with(".shock")
+                    && let Ok(text) = std::str::from_utf8(file.bytes)
+                {
+                    scripts.capture_config(file.name, text.to_owned());
+                }
+            }
+            if let Ok(ropes) = capture_t6_ropes(&load)
+                && !ropes.is_empty()
+            {
+                scripts.capture_config("physconstraints/ropes.txt", ropes);
+            }
+            let world_fog_data = capture_t6_world_fog(&load, world_asset).ok();
+            if let Some((_, ref fog_text)) = world_fog_data
+                && !fog_text.is_empty()
+            {
+                scripts.capture_config("gfxworld/fog_volumes.txt", fog_text.clone());
+            }
+            if let Ok(luts) = capture_t6_lut_volumes(&load, world_asset)
+                && !luts.is_empty()
+            {
+                scripts.capture_config("gfxworld/lut_volumes.txt", luts);
+            }
             let light_grid = asset_world::world_t6::light_grid(&load, world_asset)
                 .map_err(|e| report.push(format!("T6 light grid: {e}")))
                 .ok();
@@ -3228,7 +3256,8 @@ impl ZoneLane for T6Lane {
                         )
                         .ok()?;
                     asset_world::t6_createart_fog(data)
-                });
+                })
+                .or_else(|| world_fog_data.and_then(|(default_fog, _)| default_fog));
             report.push(format!(
                 "T6 createart fog: {}",
                 if exp_fog.is_some() { "ready" } else { "none" }
@@ -3583,4 +3612,186 @@ impl ZoneLane for T6Lane {
             ..Default::default()
         }
     }
+}
+
+fn capture_t6_ropes(load: &ZoneLoad) -> Result<String, String> {
+    use asset_world::world_t6::Reader;
+    let Some(asset) = load
+        .assets
+        .iter()
+        .find(|a| matches!(a.ty, AssetType::ClipMap | AssetType::ClipMapPvs))
+    else {
+        return Ok(String::new());
+    };
+    let r = Reader(load);
+    let count = Reader::word(&asset.header, 312)?;
+    if count == 0 {
+        return Ok(String::new());
+    }
+    let table = Reader::ptr(&asset.header, 316)?;
+    let mut out = String::new();
+    for i in 0..count {
+        let p = table.at(i * 168);
+        let b = r.bytes(p, 168)?;
+        if Reader::word(b, 4)? != 8 {
+            continue;
+        }
+        let name_id = u16::from_le_bytes([b[0], b[1]]);
+        let name = load.script_string(name_id).unwrap_or("");
+        let attach1 = Reader::word(b, 8)? as i32;
+        let attach2 = Reader::word(b, 24)? as i32;
+        let pos1 = r.xyz(p.at(52))?;
+        let pos2 = r.xyz(p.at(64))?;
+        let length = r.f32(p.at(104))?;
+        out.push_str(&format!(
+            "{name}\t{attach1}\t{attach2}\t{} {} {}\t{} {} {}\t{length}\n",
+            pos1[0], pos1[1], pos1[2], pos2[0], pos2[1], pos2[2]
+        ));
+    }
+    Ok(out)
+}
+
+fn capture_t6_world_fog(
+    load: &ZoneLoad,
+    world: &fastfile_t6::LoadedAsset,
+) -> Result<(Option<asset_world::ExpFog>, String), String> {
+    use asset_world::world_t6::Reader;
+    let r = Reader(load);
+    let h = &world.header;
+    let default_rate = f32::from_bits(Reader::word(h, 188)?);
+    let mut def = [0.0f32; 16];
+    for (i, slot) in def.iter_mut().enumerate() {
+        *slot = f32::from_bits(Reader::word(h, 192 + i * 4)?);
+    }
+    let default_exp = (def[1] > 0.0 && def[0] >= 0.0).then(|| {
+        let (sp, cp) = (def[4].to_radians().sin(), def[4].to_radians().cos());
+        let (sy, cy) = (def[5].to_radians().sin(), def[5].to_radians().cos());
+        asset_world::ExpFog {
+            start_dist: def[0],
+            halfway_dist: def[1],
+            color_rgb: [def[8], def[9], def[10]],
+            max_opacity: def[11],
+            transition_time: if default_rate > 0.0 {
+                0.001 / default_rate
+            } else {
+                0.0
+            },
+            sun: Some(asset_world::SunFog {
+                color_rgb: [def[12], def[13], def[14]],
+                sun_dir: [cp * cy, cp * sy, -sp],
+                begin_angle_deg: def[6],
+                end_angle_deg: def[7],
+                scale: def[15],
+            }),
+            volumetric: (def[3] > 0.0).then_some(asset_world::VolFog {
+                halfway_height: def[3],
+                base_height: def[2],
+                color_scale: 1.0,
+            }),
+        }
+    });
+    let mut out = format!(
+        "default\t{default_rate}\t{}\n",
+        def.iter().map(f32::to_string).collect::<Vec<_>>().join(" ")
+    );
+    let vol_count = Reader::word(h, 308)?;
+    if vol_count > 0
+        && let Ok(vols) = Reader::ptr(h, 312)
+        && let Ok(planes) = Reader::ptr(h, 320)
+    {
+        for i in 0..vol_count {
+            let p = vols.at(i * 100);
+            let b = r.bytes(p, 100)?;
+            let packed = Reader::word(b, 12)?;
+            let bank_mask = packed & 0xff;
+            let plane_count = ((packed >> 8) & 0xff) + 1;
+            let first_plane = packed >> 16;
+            let rate = f32::from_bits(Reader::word(b, 28)?);
+            let script_id = u16::from_le_bytes([b[32], b[33]]);
+            let mut vals = Vec::with_capacity(16);
+            for j in 0..16 {
+                vals.push(f32::from_bits(Reader::word(b, 36 + j * 4)?).to_string());
+            }
+            let mut pl = Vec::with_capacity(plane_count as usize);
+            for j in 0..plane_count {
+                let c = r.xyzw(planes.at((first_plane + j) * 16))?;
+                pl.push(format!("{} {} {} {}", c[0], c[1], c[2], c[3]));
+            }
+            out.push_str(&format!(
+                "vol\t{bank_mask}\t{script_id}\t{rate}\t{}\t{}\n",
+                vals.join(" "),
+                pl.join(";")
+            ));
+        }
+    }
+    let mod_count = Reader::word(h, 324)?;
+    if mod_count > 0
+        && let Ok(mods) = Reader::ptr(h, 328)
+        && let Ok(planes) = Reader::ptr(h, 336)
+    {
+        for i in 0..mod_count {
+            let p = mods.at(i * 48);
+            let b = r.bytes(p, 48)?;
+            let packed = Reader::word(b, 0)?;
+            let bank_mask = packed & 0xff;
+            let plane_count = ((packed >> 8) & 0xff) + 1;
+            let first_plane = packed >> 16;
+            let rate = f32::from_bits(Reader::word(b, 20)?);
+            let dist_scale = f32::from_bits(Reader::word(b, 24)?);
+            let mut cscale = [0.0f32; 4];
+            for (j, slot) in cscale.iter_mut().enumerate() {
+                *slot = f32::from_bits(Reader::word(b, 32 + j * 4)?);
+            }
+            let mut pl = Vec::with_capacity(plane_count as usize);
+            for j in 0..plane_count {
+                let c = r.xyzw(planes.at((first_plane + j) * 16))?;
+                pl.push(format!("{} {} {} {}", c[0], c[1], c[2], c[3]));
+            }
+            out.push_str(&format!(
+                "mod\t{bank_mask}\t{rate}\t{dist_scale}\t{} {} {} {}\t{}\n",
+                cscale[0],
+                cscale[1],
+                cscale[2],
+                cscale[3],
+                pl.join(";")
+            ));
+        }
+    }
+    Ok((default_exp, out))
+}
+
+fn capture_t6_lut_volumes(
+    load: &ZoneLoad,
+    world: &fastfile_t6::LoadedAsset,
+) -> Result<String, String> {
+    use asset_world::world_t6::Reader;
+    let r = Reader(load);
+    let h = &world.header;
+    let count = Reader::word(h, 340)?;
+    if count == 0 {
+        return Ok(String::new());
+    }
+    let vols = Reader::ptr(h, 344)?;
+    let planes = Reader::ptr(h, 352)?;
+    let mut out = String::new();
+    for i in 0..count {
+        let p = vols.at(i * 36);
+        let b = r.bytes(p, 36)?;
+        let packed = Reader::word(b, 12)?;
+        let bank_mask = packed & 0xff;
+        let plane_count = ((packed >> 8) & 0xff) + 1;
+        let first_plane = packed >> 16;
+        let rate = f32::from_bits(Reader::word(b, 28)?);
+        let lut_idx = u16::from_le_bytes([b[32], b[33]]) & 0x1f;
+        let mut pl = Vec::with_capacity(plane_count as usize);
+        for j in 0..plane_count {
+            let c = r.xyzw(planes.at((first_plane + j) * 16))?;
+            pl.push(format!("{} {} {} {}", c[0], c[1], c[2], c[3]));
+        }
+        out.push_str(&format!(
+            "lut\t{bank_mask}\t{lut_idx}\t{rate}\t{}\n",
+            pl.join(";")
+        ));
+    }
+    Ok(out)
 }

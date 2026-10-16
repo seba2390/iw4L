@@ -89,6 +89,14 @@ pub(crate) struct ClientGame {
     pub(crate) allow_round_animation: Vec<i32>,
     /// `usealternatereviveicon(use_alternate)` (`waypoint_revive_zm` vs `waypoint_revive`).
     pub(crate) alternate_revive_icon: bool,
+    /// `usealternateaimparams()` / `clearalternateaimparams()` on the local player.
+    pub(crate) alternate_aim: bool,
+    /// `equipflashlight()` / `removeflashlight()` on the local player.
+    pub(crate) flashlight_equipped: bool,
+    /// `setsonarattachmentenabled(enable)` on the local client.
+    pub(crate) sonar_attachment_enabled: bool,
+    /// `setrenderinthirdpersonspectate(enable)` per client entity object id.
+    pub(crate) third_person_spectate_render: BTreeMap<u64, bool>,
     /// `setalphafadeforname(alpha)` per player entity number (`0..18`).
     pub(crate) name_fade_alpha: BTreeMap<i32, f32>,
     /// The client systems' states as last delivered, by system.
@@ -834,7 +842,9 @@ fn present_with(server: &mut World, client: &mut World) {
             .entities
             .iter()
             .filter(|(id, entity)| {
-                !snapshot.contains(id) && entity.kind == EntityKind::Spawned && entity.number >= 0
+                !snapshot.contains(id)
+                    && matches!(entity.kind, EntityKind::Spawned | EntityKind::Map)
+                    && entity.number >= 0
             })
             .map(|(id, entity)| (*id, entity.hidden))
             .collect();
@@ -842,7 +852,7 @@ fn present_with(server: &mut World, client: &mut World) {
             let Value::String(model) = runtime.object_field(id, "model") else {
                 continue;
             };
-            if model.is_empty() {
+            if model.is_empty() || model.starts_with('*') {
                 continue;
             }
             let origin = runtime.object_field(id, "origin");
