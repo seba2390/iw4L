@@ -314,6 +314,11 @@ fn weapon_grants<W: MoveWorld>(pm: &Pm<'_, W>, weapon: u32, perk: usize) -> bool
     perks::has(def(pm, weapon).def.variant_perks(), perk)
 }
 
+/// The perks the weapon's variant grants.
+pub(crate) fn variant_perks<W: MoveWorld>(pm: &Pm<'_, W>, weapon: u32) -> [u32; 2] {
+    def(pm, weapon).def.variant_perks()
+}
+
 /// The player's perks with those the weapon's variant grants.
 fn perks_with<W: MoveWorld>(pm: &Pm<'_, W>, weapon: u32) -> [u32; 2] {
     let v = def(pm, weapon).def.variant_perks();

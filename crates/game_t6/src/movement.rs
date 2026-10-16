@@ -38,9 +38,14 @@ const HEIGHT_LOCK_LIMIT: usize = 32;
 pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
     match gap {
         Gap::Mantle => unknown!(
-            "t6.movement.mantle",
-            "Black Ops 2's mantling over ledges: never started",
-            "Black Ops 2's mantle check and mantle move from its executable"
+            "t6.movement.mantle_anims",
+            "a Black Ops 2 mantle whose mantle animations (mp_mantle_up_*, the over animations) are not loaded: it does not start or move",
+            "the mantle animations from the zones"
+        ),
+        Gap::Mount => unknown!(
+            "t6.movement.mount",
+            "a mountable Black Ops 2 weapon set down on a ledge or while prone",
+            "Black Ops 2's weapon mount from its executable"
         ),
         Gap::MountedView => unknown!(
             "t6.movement.mounted",
@@ -334,6 +339,12 @@ fn game_state(
         ps.pm_type = pm_type::LAST_STAND_REVIVED;
     }
     b.i(&mut ps.water_level, write);
+    b.f(&mut ps.mantle_yaw, write);
+    b.i(&mut ps.mantle_timer, write);
+    b.i(&mut ps.mantle_trans_index, write);
+    b.word(&mut ps.mantle_flags, write);
+    b.i(&mut ps.mover_entity_num, write);
+    b.i(&mut ps.mover_timestamp, write);
 }
 
 pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
@@ -426,6 +437,7 @@ impl movement_t6::MoveWorld for World<'_> {
             allsolid: t.allsolid,
             startsolid: t.startsolid,
             walkable: t.walkable,
+            glass: t.glass,
         }
     }
 
@@ -464,6 +476,14 @@ impl movement_t6::MoveWorld for World<'_> {
 
     fn variant_parent(&self, weapon: u32) -> Option<u32> {
         self.world.weapon(weapon)?.variant_parent
+    }
+
+    fn anim_length_ms(&self, name: &str) -> Option<i32> {
+        self.world.anim_length_ms(name)
+    }
+
+    fn anim_root_delta(&self, name: &str, frac: f32) -> Option<[f32; 3]> {
+        self.world.anim_root_delta(name, frac)
     }
 
     fn height_lock(&self, point: [f32; 3], reach: f32) -> Option<bool> {
@@ -580,6 +600,11 @@ impl PlayerMovement for T6Movement {
                     MoveEvent::ProneAnim => MoveSignal::Anim { event: -1 },
                     MoveEvent::LegsMove(movetype, _) => MoveSignal::LegsMove { movetype },
                 });
+            }
+            if let Some((end, duration_ms)) = pm.mantle_started {
+                outcome
+                    .signals
+                    .push(MoveSignal::MantleStart { end, duration_ms });
             }
             outcome.gaps.extend(pm.gaps().map(gap_unknown));
             if !outcome.signals.is_empty() {

@@ -173,8 +173,11 @@ fn begin_weapon_change<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, to: u32, qui
     } else {
         a.drop_time()
     };
-    if super::pose::mantle_puts_away(ps) && ps.mantle_flags & 0x2000 != 0 {
-        pm.gap(Gap::Mantle);
+    if super::pose::mantle_puts_away(ps) && ps.mantle_flags & crate::mantle::flag::FAST != 0 {
+        match crate::mantle::drop_time_cap(pm) {
+            Some(cap) => pm.ps.weapon_time = cap.min(pm.ps.weapon_time),
+            None => pm.gap(Gap::Mantle),
+        }
     }
     let ps = &*pm.ps;
     if !matches!(

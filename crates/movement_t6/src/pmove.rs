@@ -337,8 +337,21 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         stance::check_duck(pm, &pml);
         ground::ground_trace(pm, &mut pml);
     }
-    pm.gap(Gap::Mantle);
+    crate::mantle::check(pm, &pml);
     if pm.ps.pm_flags & pm_flags::MANTLE != 0 {
+        crate::special::ladder_falls(pm.ps);
+        pm.ps.ground_entity_num = ENTITYNUM_NONE;
+        pml.ground_plane = false;
+        pml.walking = false;
+        crate::weapon::update_ads_intent(pm, &pml);
+        sprint::update(pm);
+        crate::weapon::update_sight_aiming(pm);
+        stance::check_duck(pm, &pml);
+        crate::mantle::mantle_move(pm, &pml);
+        crate::weapon::pm_weapon(pm, &pml);
+        pm.ps.left_hand = true;
+        crate::weapon::pm_weapon(pm, &pml);
+        pm.ps.left_hand = false;
         return output(pm, &pml);
     }
     crate::special::anim_lock(pm);

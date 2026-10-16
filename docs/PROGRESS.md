@@ -243,7 +243,10 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Walking, sprinting, jumping and stances (`movement_t6`), shown by the walk test on Nuketown and TranZit (walk up to 190, sprint 285, jump 37.5, crouch view 40, prone 11).
   - [x] Script allowances (`allowstand`, `allowcrouch`, `allowprone`, `allowjump`, `allowlean`, `setstance`) set Black Ops 2's own player flags.
   - [x] Ladders (`PM_LadderMove`, `t6.movement.ladder` closed) and falling damage (server `EV_FALL_DAMAGE`, `MOD_FALLING`), with the client scripts' jump, land and foliage callbacks.
-  - [ ] Mantling (`t6.movement.mantle`), the water level (`PM_WaterMove` is ported but the runtime has no water query, so no player swims: `t6.movement.water`), mounted weapons, launches and the movement events and player animations (`t6.movement.events`).
+  - [x] Mantling (`t6.movement.mantle` closed): the mantle aid climbs a Nuketown ledge (35 units, `ON`, about 470 ms on `mp_mantle_up_33`) on Black Ops 2's own check, start and move.
+  - [x] The water level comes from the engine's own water query (`t6.movement.water` closed); Nuketown's and TranZit's clip maps hold no water, so their players stay dry.
+  - [x] Spectators fly and linked players are held by Black Ops 2's own moves (`t6.movement.special` closed).
+  - [ ] Mounted weapons (`t6.movement.mount`), launches (`t6.movement.launch`) and the movement events and player animations (`t6.movement.events`).
 - [x] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Black Ops 2's weapon facts (damage, ranges, clip and stock, hit-location scales) are read from its zones.
   - [x] Black Ops 2's own weapon state machine (`movement_t6`: fire, burst, rechamber, reload, switch, melee, offhands, riot shield, weapon heat) and server fire (`game_t6/src/fire.rs`: seeded spread, pellets, penetration, damage falloff and hit locations, melee, grenades, rockets) run the weapons: the rounds test reaches round 2 on Nuketown (7 kills, 7 frags thrown) and Buried (12 kills) in 110 s, with reloads and knifing; TranZit sells the Olympia from the wall and it fires; Monkey Bombs are thrown on Buried and a claymore planted on TranZit. Remaining gaps (gun angles, antilag, gas, mounted fire, …) are in the ledger.

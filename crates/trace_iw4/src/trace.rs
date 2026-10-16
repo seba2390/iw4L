@@ -58,6 +58,7 @@ impl Trace {
             allsolid: self.allsolid != 0,
             startsolid: self.startsolid != 0,
             walkable: self.walkable != 0,
+            glass: self.hit_type == HITTYPE_GLASS && (self.fraction < 1.0 || self.startsolid != 0),
         }
     }
 }

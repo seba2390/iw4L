@@ -231,6 +231,8 @@ pub struct MoveTrace {
     pub allsolid: bool,
     pub startsolid: bool,
     pub walkable: bool,
+    /// What was hit is a piece of breakable glass.
+    pub glass: bool,
 }
 
 /// A weapon as its own game's player movement reads it: the definition and
@@ -310,6 +312,16 @@ pub trait MoveWorld {
     /// The water surface over `origin`, searched from `up` above to `down`
     /// below it.
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> WaterSurface;
+    /// The length in milliseconds of the game's animation `name`; `None`
+    /// when it is not loaded.
+    fn anim_length_ms(&self, _name: &str) -> Option<i32> {
+        None
+    }
+    /// The root translation animation `name` has made by `frac` (0 to 1) of
+    /// its length; `None` when it is not loaded.
+    fn anim_root_delta(&self, _name: &str, _frac: f32) -> Option<[f32; 3]> {
+        None
+    }
     /// A line from `start` to `end` against the world's own collision alone
     /// (no entity), stopping at what `mask` names; `None` when the match
     /// cannot trace it.
@@ -337,11 +349,23 @@ pub struct MoveContext {
 }
 
 /// What a movement step tells the match, in the game's own numbering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MoveSignal {
-    Event { event: i32, parm: i32 },
-    Anim { event: i32 },
-    LegsMove { movetype: i32 },
+    Event {
+        event: i32,
+        parm: i32,
+    },
+    Anim {
+        event: i32,
+    },
+    LegsMove {
+        movetype: i32,
+    },
+    /// A mantle began: where it ends and how long it takes.
+    MantleStart {
+        end: [f32; 3],
+        duration_ms: i32,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

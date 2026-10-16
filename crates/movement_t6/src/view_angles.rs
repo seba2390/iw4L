@@ -307,7 +307,7 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
         return;
     }
     if ps.pm_flags & pm_flags::MANTLE != 0 {
-        pm.gap(crate::Gap::Mantle);
+        crate::mantle::cap_view_yaw(pm);
         return;
     }
     if ps.pm_flags & pm_flags::LADDER != 0
