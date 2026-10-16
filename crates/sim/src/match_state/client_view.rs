@@ -67,6 +67,10 @@ pub struct ViewEffects {
     pub blur: Option<ScriptBlur>,
     /// The client scripts' latest vision calls, by serial.
     pub client_visions: Vec<(u32, crate::VisionCall)>,
+    /// Fog set for this client alone (by its player method or client script).
+    pub fog: Option<crate::ScriptFog>,
+    /// Water fog set for this client (`setWaterFog`).
+    pub water_fog: Option<crate::ScriptFogParams>,
 }
 
 /// How many client-script vision calls a snapshot carries.

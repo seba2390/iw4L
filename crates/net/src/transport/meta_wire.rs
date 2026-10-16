@@ -1214,6 +1214,11 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
         out.put_u32(*serial);
         encode_vision_call(out, call);
     }
+    encode_fog(out, meta.view_effects.fog);
+    out.put_u8(u8::from(meta.view_effects.water_fog.is_some()));
+    if let Some(water_fog) = meta.view_effects.water_fog {
+        encode_fog_params(out, water_fog);
+    }
     debug_assert!(meta.menu_commands.len() <= sim::MENU_COMMAND_TAIL);
     out.put_u8(meta.menu_commands.len() as u8);
     for command in &meta.menu_commands {
@@ -1466,6 +1471,12 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
                 calls.push((input.get_u32()?, decode_vision_call(input)?));
             }
             calls
+        },
+        fog: decode_fog(input)?,
+        water_fog: match input.get_u8()? {
+            0 => None,
+            1 => Some(decode_fog_params(input)?),
+            _ => return Err(WireError::Malformed("bad water fog tag")),
         },
     };
     let mut menu_commands = Vec::new();
@@ -2957,6 +2968,13 @@ fn encode_fog_params(out: &mut WireWriter, fog: sim::ScriptFogParams) {
         out.put_f32(sun.end_angle_deg);
         out.put_f32(sun.scale);
     }
+    out.put_u8(u8::from(fog.volumetric.is_some()));
+    if let Some(vol) = fog.volumetric {
+        out.put_f32(vol.halfway_height);
+        out.put_f32(vol.base_height);
+        out.put_f32(vol.color_scale);
+        out.put_f32(vol.max_density);
+    }
 }
 
 fn decode_fog_params(input: &mut WireReader<'_>) -> Result<sim::ScriptFogParams, WireError> {
@@ -2976,6 +2994,16 @@ fn decode_fog_params(input: &mut WireReader<'_>) -> Result<sim::ScriptFogParams,
             }),
             _ => return Err(WireError::Malformed("invalid fog sun tag")),
         },
+        volumetric: match input.get_u8()? {
+            0 => None,
+            1 => Some(sim::ScriptVolFog {
+                halfway_height: input.get_f32()?,
+                base_height: input.get_f32()?,
+                color_scale: input.get_f32()?,
+                max_density: input.get_f32()?,
+            }),
+            _ => return Err(WireError::Malformed("invalid fog volumetric tag")),
+        },
     };
     if !fog.valid() {
         return Err(WireError::Malformed("invalid fog parameters"));
@@ -2983,14 +3011,37 @@ fn decode_fog_params(input: &mut WireReader<'_>) -> Result<sim::ScriptFogParams,
     Ok(fog)
 }
 
-fn encode_scene_effects(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
-    out.put_u8(u8::from(state.fog.is_some()));
-    if let Some(fog) = state.fog {
+fn encode_fog(out: &mut WireWriter, fog: Option<sim::ScriptFog>) {
+    out.put_u8(u8::from(fog.is_some()));
+    if let Some(fog) = fog {
         encode_fog_params(out, fog.from);
         encode_fog_params(out, fog.to);
         out.put_i32(fog.start_ms);
         out.put_i32(fog.duration_ms);
     }
+}
+
+fn decode_fog(input: &mut WireReader<'_>) -> Result<Option<sim::ScriptFog>, WireError> {
+    match input.get_u8()? {
+        0 => Ok(None),
+        1 => {
+            let fog = sim::ScriptFog {
+                from: decode_fog_params(input)?,
+                to: decode_fog_params(input)?,
+                start_ms: input.get_i32()?,
+                duration_ms: input.get_i32()?,
+            };
+            if fog.duration_ms < 0 {
+                return Err(WireError::Malformed("negative fog duration"));
+            }
+            Ok(Some(fog))
+        }
+        _ => Err(WireError::Malformed("invalid fog tag")),
+    }
+}
+
+fn encode_scene_effects(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
+    encode_fog(out, state.fog);
     debug_assert!(state.earthquakes.len() <= sim::MAX_SCRIPT_EARTHQUAKES);
     out.put_u8(state.earthquakes.len() as u8);
     for quake in &state.earthquakes {
@@ -3009,22 +3060,7 @@ fn decode_scene_effects(
     input: &mut WireReader<'_>,
     state: &mut sim::ObjectiveMatch,
 ) -> Result<(), WireError> {
-    state.fog = match input.get_u8()? {
-        0 => None,
-        1 => {
-            let fog = sim::ScriptFog {
-                from: decode_fog_params(input)?,
-                to: decode_fog_params(input)?,
-                start_ms: input.get_i32()?,
-                duration_ms: input.get_i32()?,
-            };
-            if fog.duration_ms < 0 {
-                return Err(WireError::Malformed("negative fog duration"));
-            }
-            Some(fog)
-        }
-        _ => return Err(WireError::Malformed("invalid fog tag")),
-    };
+    state.fog = decode_fog(input)?;
     let count = input.get_u8()? as usize;
     if count > sim::MAX_SCRIPT_EARTHQUAKES {
         return Err(WireError::Malformed("too many earthquakes"));

@@ -95,7 +95,6 @@ impl MapFrameFog {
         .sample(time_ms);
         let mut result = exp_fog(sampled);
         result.transition_time = self.fog.transition_time;
-        result.volumetric = self.fog.volumetric;
         result
     }
 }
@@ -113,6 +112,12 @@ fn fog_params(fog: ExpFog) -> sim::ScriptFogParams {
             end_angle_deg: sun.end_angle_deg,
             scale: sun.scale,
         }),
+        volumetric: fog.volumetric.map(|vol| sim::ScriptVolFog {
+            halfway_height: vol.halfway_height,
+            base_height: vol.base_height,
+            color_scale: vol.color_scale,
+            max_density: vol.max_density,
+        }),
     }
 }
 
@@ -123,7 +128,12 @@ fn exp_fog(fog: sim::ScriptFogParams) -> ExpFog {
         color_rgb: fog.color_rgb,
         max_opacity: fog.max_opacity,
         transition_time: 0.0,
-        volumetric: None,
+        volumetric: fog.volumetric.map(|vol| asset_world::VolFog {
+            halfway_height: vol.halfway_height,
+            base_height: vol.base_height,
+            color_scale: vol.color_scale,
+            max_density: vol.max_density,
+        }),
         sun: fog.sun.map(|sun| SunFog {
             color_rgb: sun.color_rgb,
             sun_dir: sun.sun_dir,
@@ -143,6 +153,7 @@ pub(crate) struct ScriptFogPresentation {
 pub(crate) fn sync_script_fog(
     scene: Res<crate::prepare::scene::world::WorldScene>,
     presented: Res<net::PresentedSnapshot>,
+    local: Res<net::LocalPresentClient>,
     mut state: ResMut<ScriptFogPresentation>,
     mut map_fog: Option<ResMut<MapFrameFog>>,
     mut commands: Commands,
@@ -150,13 +161,25 @@ pub(crate) fn sync_script_fog(
     if !scene.spawned {
         return;
     }
-    let fog = presented
-        .snapshot()
-        .and_then(|snapshot| snapshot.meta.objectives.fog);
+    let fog = presented.snapshot().and_then(|snapshot| {
+        snapshot
+            .meta
+            .for_client(local.0)
+            .and_then(|meta| meta.view_effects.fog)
+            .or(snapshot.meta.objectives.fog)
+    });
     if fog == state.applied {
         return;
     }
     if let Some(fog) = fog {
+        diag::info!(
+            World,
+            "script fog: start={:.3} half={:.3} opacity={:.3} duration={}ms",
+            fog.to.start_dist,
+            fog.to.halfway_dist,
+            fog.to.max_opacity,
+            fog.duration_ms
+        );
         if state.applied.is_none() {
             state.baseline = map_fog.as_deref().copied();
         }

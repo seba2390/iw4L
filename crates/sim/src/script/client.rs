@@ -397,6 +397,10 @@ pub(crate) struct ClientOutput {
     next_effect: i32,
     /// The latest vision calls, by serial.
     pub(crate) vision_calls: std::collections::VecDeque<(u32, crate::VisionCall)>,
+    /// The latest fog call (`setVolFog` / `setVolFogForClient`) and its transition time.
+    pub(crate) fog_call: Option<(crate::ScriptFogParams, i32)>,
+    /// The latest water fog (`setWaterFog`).
+    pub(crate) water_fog: Option<crate::ScriptFogParams>,
     /// Dvars `setClientDvar` set this frame, for the local client.
     pub(crate) client_dvars: Vec<(String, String)>,
     next_vision_call: u32,
@@ -808,6 +812,20 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                 std::mem::take(&mut client.world.resource_mut::<ClientOutput>().client_dvars);
             for (name, value) in dvars {
                 super::host::natives::player::send_client_dvar(server, 0, &name, &value);
+            }
+            let fog_call = client.world.resource_mut::<ClientOutput>().fog_call.take();
+            if let Some((target, duration_ms)) = fog_call {
+                super::host::natives::t5_vision::set_fog(server, Some(0), target, duration_ms);
+            }
+            let water_fog = client.world.resource::<ClientOutput>().water_fog;
+            if let Some(water_fog) = water_fog {
+                let mut frame = crate::frame::FrameWorld::from_world(server);
+                if frame.client_meta(crate::ClientId(0)).is_some() {
+                    frame
+                        .client_meta_mut(crate::ClientId(0))
+                        .view_effects
+                        .water_fog = Some(water_fog);
+                }
             }
             present::present(server, &mut client);
             deliver_tag_effects(server, &mut client);

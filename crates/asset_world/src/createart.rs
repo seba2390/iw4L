@@ -22,6 +22,7 @@ pub struct VolFog {
     pub halfway_height: f32,
     pub base_height: f32,
     pub color_scale: f32,
+    pub max_density: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -386,6 +387,7 @@ pub fn parse_set_vol_fog(source: &str) -> Option<ExpFog> {
             halfway_height,
             base_height,
             color_scale,
+            max_density: 100.0 / halfway_dist,
         }),
     })
 }
@@ -408,6 +410,7 @@ pub fn vol_fog(v: [f32; 18]) -> ExpFog {
             halfway_height: v[2],
             base_height: v[3],
             color_scale: v[7],
+            max_density: if v[1] > 0.0 { 100.0 / v[1] } else { 0.0 },
         }),
     }
 }
@@ -593,6 +596,7 @@ fn t6_fog_dvars(bytes: &[u8]) -> Option<ExpFog> {
             halfway_height,
             base_height,
             color_scale: 1.0,
+            max_density: 100.0 / halfway_dist,
         }),
     })
 }

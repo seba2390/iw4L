@@ -176,6 +176,7 @@ mod scene_effects;
 mod time_scale;
 pub use scene_effects::{
     MAX_SCRIPT_EARTHQUAKES, ScriptEarthquake, ScriptFog, ScriptFogParams, ScriptSunFog,
+    ScriptVolFog,
 };
 pub use time_scale::ScriptSlowMotion;
 mod objectives;

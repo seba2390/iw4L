@@ -1432,7 +1432,6 @@ fn register_platform(registry: &mut NativeRegistry) {
         "setmatchflag",
         "setscoreboardcolumns",
         "setbombtimer",
-        "setvolfog",
         "reviveobituary",
         "artilleryiconlocation",
         "setteamsatellite",
