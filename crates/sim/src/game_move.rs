@@ -67,6 +67,14 @@ impl MoveWorld for MatchMoveWorld<'_> {
         WaterSurface::Unknown
     }
 
+    fn anim_length_ms(&self, name: &str) -> Option<i32> {
+        Some(self.world.anim_clip_named(name)?.length_msec())
+    }
+
+    fn anim_root_delta(&self, name: &str, frac: f32) -> Option<[f32; 3]> {
+        Some(self.world.anim_clip_named(name)?.abs_delta_trans(frac))
+    }
+
     fn world_line(&self, start: [f32; 3], end: [f32; 3], mask: u32) -> Option<MoveTrace> {
         let content = &self.content;
         let trace = crate::world::clip_trace(
@@ -203,6 +211,21 @@ pub(crate) fn run(
             }
             if let Some(jump_land) = movement.jump_land(signal) {
                 crate::script::client::jump_land(world.ecs(), id, jump_land);
+            }
+            // The server tells the player's scripts when the mantle ends.
+            if let MoveSignal::MantleStart { duration_ms, .. } = *signal {
+                use crate::script::host::entity_damage::{
+                    NotifyValue, notify_entity, player_object_id,
+                };
+                if let Some(object) = player_object_id(world.ecs(), id.0) {
+                    let end_time = crate::level_time_ms(tick) + duration_ms;
+                    notify_entity(
+                        world.ecs(),
+                        object,
+                        "mantle_start",
+                        &[NotifyValue::Int(end_time)],
+                    );
+                }
             }
         }
     }

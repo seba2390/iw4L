@@ -96,6 +96,11 @@
 //! and half a second later back where he stood; once a second at most. He
 //! logs which.
 //!
+//! `IW4L_TEST_MANTLE=<x> <y> <z> <yaw>` (with any fighting mode): 5 s in,
+//! he stands at that point facing the yaw and walks forward holding jump
+//! for 3 s, logging where he is every quarter second; the movement log
+//! shows the mantle starting and ending.
+//!
 //! `IW4L_TEST_WALK=1` (with any fighting mode): every 20 s, 10 s in, he
 //! walks toward a path node in a clear line 600 to 1200 units away: a jump, a walk, a
 //! sprint, then standing still crouched and prone. He only presses buttons
@@ -303,6 +308,8 @@ pub(crate) struct TestPlayer {
     /// to where he stood at this time.
     next_grab_ms: i32,
     grab_return: Option<(i32, [f32; 3])>,
+    /// The mantle aid: until when it walks into the ledge.
+    mantle_until_ms: Option<i32>,
     pressed: bool,
     next_log_ms: i32,
     shots: u32,
@@ -1075,6 +1082,59 @@ pub(crate) fn drive_test_player(
         return;
     }
     let since_ms = *test.alive_since_ms.get_or_insert(clock.time_ms);
+    // `IW4L_TEST_MANTLE=<x> <y> <z> <yaw>`: 5 s in, stands there facing
+    // the yaw and walks forward holding jump for 3 s, as a player climbing a
+    // ledge does.
+    if let Ok(spot) = std::env::var("IW4L_TEST_MANTLE")
+        && let [x, y, z, yaw] = spot
+            .split_whitespace()
+            .filter_map(|v| v.parse::<f32>().ok())
+            .collect::<Vec<_>>()[..]
+    {
+        match test.mantle_until_ms {
+            None if clock.time_ms - since_ms >= USE_START_MS / 2 => {
+                test.mantle_until_ms = Some(clock.time_ms + 3000);
+                diag::info!(Sim, "test player: mantle aid at ({x} {y} {z}) yaw {yaw}");
+                if let Err(error) = actions.push(
+                    id,
+                    ClientAction::Move {
+                        request_id: request_ids.allocate(),
+                        origin: [x, y, z],
+                        angles: [0.0, yaw, 0.0],
+                    },
+                ) {
+                    diag::warn!(Sim, "test player: request not queued — {error}");
+                }
+                return;
+            }
+            Some(until) if clock.time_ms < until => {
+                if clock.time_ms % 250 < 50 {
+                    diag::info!(
+                        Sim,
+                        "test player: mantle aid t={}ms at={}",
+                        clock.time_ms,
+                        fmt_point(ps.origin)
+                    );
+                }
+                cmds.push(
+                    id,
+                    UserCmd {
+                        server_time: clock.time_ms,
+                        weapon: ps.weapon as u16,
+                        weapon_mapped: ps.weapon as u16,
+                        forwardmove: 127,
+                        buttons: buttons::JUMP,
+                        angles: look_angles_from_degrees(std::array::from_fn(|axis| {
+                            [0.0, yaw, 0.0][axis] - ps.delta_angles[axis]
+                        })),
+                        ..UserCmd::default()
+                    },
+                );
+                return;
+            }
+            _ => {}
+        }
+    }
     // `IW4L_TEST_GOTO=<zone>[,<zone>…]`: goes to the path node nearest each
     // zone's middle that stands in the zone, so the zone and those beside it
     // come alive.

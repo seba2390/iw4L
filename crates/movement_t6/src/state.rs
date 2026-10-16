@@ -59,6 +59,7 @@ pub mod e_flags {
     pub const TURRET_CROUCH: u32 = 0x200;
     pub const TURRET: u32 = TURRET_PRONE | TURRET_CROUCH;
     pub const VEHICLE_VIEW: u32 = 0x4000;
+    pub const MANTLE: u32 = 0x8000;
     pub const TALKING: u32 = 0x2_0000;
 }
 
@@ -489,7 +490,11 @@ pub struct PlayerState {
     pub intro_shots_fired: i32,
     pub vehicle_pos: i32,
     pub link_flags: u32,
+    pub mantle_yaw: f32,
     pub mantle_timer: i32,
     pub mantle_trans_index: i32,
     pub mantle_flags: u32,
+    /// The entity the player stands on as it moves (a mantle onto one).
+    pub mover_entity_num: i32,
+    pub mover_timestamp: i32,
 }

@@ -7,6 +7,7 @@ mod footsteps;
 mod ground;
 mod inventory;
 mod ladder;
+mod mantle;
 pub mod math;
 mod moves;
 pub mod perks;
@@ -47,6 +48,8 @@ pub enum Gap {
     /// The match cannot tell whether a spectator stays inside the map's
     /// height-lock volumes.
     HeightLock = 128,
+    /// A mountable weapon set down on a ledge or while prone.
+    Mount = 256,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -69,6 +72,8 @@ pub struct Pm<'a, W: MoveWorld> {
     pub xyspeed: f32,
     pub step_smooth_time: i32,
     pub step_smooth_z: f32,
+    /// Set by a mantle's start: where it ends and how long it takes.
+    pub mantle_started: Option<([f32; 3], i32)>,
     touched: [i32; 32],
     numtouch: usize,
     out: [Option<MoveEvent>; MAX_OUT],
@@ -97,6 +102,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             xyspeed: 0.0,
             step_smooth_time: 0,
             step_smooth_z: 0.0,
+            mantle_started: None,
             touched: [0; 32],
             numtouch: 0,
             out: [None; MAX_OUT],
@@ -224,6 +230,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::Launched,
             Gap::AnimLock,
             Gap::HeightLock,
+            Gap::Mount,
         ]
         .into_iter()
         .filter(|g| self.gaps.get() & *g as u32 != 0)
