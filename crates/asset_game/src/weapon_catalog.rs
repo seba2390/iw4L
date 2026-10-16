@@ -947,6 +947,10 @@ weapon_sound_slots! {
     ProjIgnition => proj_ignition_sound,
     FireLast => fire_last,
     FireLastPlayer => fire_last_player,
+    FireLoop => fire_loop,
+    FireLoopPlayer => fire_loop_player,
+    FireStop => fire_stop,
+    FireStopPlayer => fire_stop_player,
 }
 
 impl WeaponSoundAliases {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use asset_game::WeaponRegistry;
+use asset_game::{WeaponRegistry, WeaponSoundSlot};
 use weapon_iw4::{HITLOC_COUNT, WeaponCombatFacts, WeaponHostRules};
 
 pub struct PreparedSimWeapons {
@@ -134,6 +134,11 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
         let Some(bytes) = weapon.game_bytes() else {
             continue;
         };
+        let authored = |slot| {
+            weapons
+                .authored_weapon_sound(id as u32, slot)
+                .map(str::to_owned)
+        };
         let ammo_index = *ammo.entry(bytes.ammo_name.clone()).or_insert(id as i32);
         let clip_index = *clip.entry(bytes.clip_name.clone()).or_insert(id as i32);
         out[id] = Some(Arc::new(game_api::movement::GameWeapon {
@@ -148,6 +153,18 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
             location_damage: bytes.location_damage.clone(),
             parallel_bounce: bytes.parallel_bounce.clone(),
             perpendicular_bounce: bytes.perpendicular_bounce.clone(),
+            world_flash: weapons
+                .combat_fx_of(id as u32)
+                .and_then(|fx| fx.world_flash_present())
+                .map(|fx| fx.name.to_owned()),
+            fire_loop_sounds: [
+                authored(WeaponSoundSlot::FireLoop),
+                authored(WeaponSoundSlot::FireLoopPlayer),
+            ],
+            fire_stop_sounds: [
+                authored(WeaponSoundSlot::FireStop),
+                authored(WeaponSoundSlot::FireStopPlayer),
+            ],
         }));
     }
     // The game's weapon 0 is its weapon named none.

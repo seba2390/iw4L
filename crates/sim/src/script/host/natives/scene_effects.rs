@@ -78,6 +78,38 @@ pub(super) fn set_exp_fog(world: &mut World, _: &Value, args: &[Value]) -> Resul
     Ok(Value::Undefined)
 }
 
+/// A camera shake the engine starts (a turret's shot), as the script
+/// earthquake carries it; none past the most at once.
+pub(crate) fn shake_camera(
+    world: &mut World,
+    scale: f32,
+    duration_ms: i32,
+    origin: [f32; 3],
+    radius: f32,
+) {
+    let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+    let mut quake = ScriptEarthquake {
+        id: 0,
+        scale,
+        duration_ms,
+        origin,
+        radius,
+        start_ms: now,
+    };
+    if !quake.valid() {
+        return;
+    }
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let engine = &mut runtime.engine;
+    engine.earthquakes.retain(|quake| quake.active(now));
+    if engine.earthquakes.len() >= crate::MAX_SCRIPT_EARTHQUAKES {
+        return;
+    }
+    quake.id = engine.next_earthquake;
+    engine.next_earthquake = engine.next_earthquake.wrapping_add(1);
+    engine.earthquakes.push(quake);
+}
+
 pub(super) fn earthquake(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
     if args.len() != 4 {
         return Err("earthquake expects scale, duration, origin and radius".into());
