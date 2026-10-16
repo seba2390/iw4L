@@ -48,11 +48,22 @@ pub enum MenuCommandKind {
     CloseInGame,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct VisionChange {
     pub name: String,
     pub duration_ms: i32,
     pub set_ms: i32,
+    /// Set by Black Ops 2's `visionsetnakedlerp`: the vision shown blends
+    /// from `name` toward another by a fraction, at once.
+    pub lerp: Option<VisionLerp>,
+}
+
+/// The other side of a vision blend: `fraction` 0 shows the change's `name`,
+/// 1 shows `from`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VisionLerp {
+    pub from: String,
+    pub fraction: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

@@ -309,22 +309,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .push(-number);
         Ok(Value::Undefined)
     });
-    // gsc_setculldist: sets the clients' draw distance (`r_zfar`).
-    registry.register(Function, "setculldist", |world, _, args| {
-        let mut dist = number(args.first()).ok_or("setculldist expects a distance")?;
-        if dist != 0.0 && dist < 1.0 {
-            dist = 1.0;
-        }
-        let value = dist.to_string();
-        world
-            .resource_mut::<crate::script::MatchScript>()
-            .dvars
-            .insert("r_zfar".to_owned(), value.clone());
-        crate::script::host::natives::player::send_client_dvar(world, 0, "r_zfar", &value);
+    // gsc_setculldist: the clients' draw distance (`t6.vision.fog`: not sent).
+    registry.register(Function, "setculldist", |_, _, args| {
+        number(args.first()).ok_or("setculldist expects a distance")?;
         Ok(Value::Undefined)
     });
-    // gsc_setvolfog: sets volumetric and sun fog for the clients.
-    registry.register(Function, "setvolfog", |world, _, args| {
+    // gsc_setvolfog: the engine's argument checks (`t6.vision.fog`: the fog
+    // is not sent).
+    registry.register(Function, "setvolfog", |_, _, args| {
         if args.len() != 8 && args.len() != 18 {
             return Err(VOLFOG_USAGE.into());
         }
@@ -342,78 +334,6 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if values[2] < 0.0 {
             return Err("setVolFog: halfwayHeight must be greater or equal to 0".into());
         }
-        let (target, transition_s, half_h, base_h, color_scale) = if values.len() == 18 {
-            (
-                crate::ScriptFogParams {
-                    start_dist: values[0],
-                    halfway_dist: values[1],
-                    color_rgb: [
-                        values[4].clamp(0.0, 1.0),
-                        values[5].clamp(0.0, 1.0),
-                        values[6].clamp(0.0, 1.0),
-                    ],
-                    max_opacity: values[17].clamp(0.0, 1.0),
-                    sun: Some(crate::ScriptSunFog {
-                        color_rgb: [
-                            values[8].clamp(0.0, 1.0),
-                            values[9].clamp(0.0, 1.0),
-                            values[10].clamp(0.0, 1.0),
-                        ],
-                        sun_dir: [values[11], values[12], values[13]],
-                        begin_angle_deg: values[14].clamp(0.0, 180.0),
-                        end_angle_deg: values[15].clamp(0.0, 180.0),
-                        scale: 1.0,
-                    }),
-                },
-                values[16].max(0.0),
-                values[2],
-                values[3],
-                values[7],
-            )
-        } else {
-            let scale = values[4].max(values[5]).max(values[6]);
-            let inv = if scale > 0.0 { 1.0 / scale } else { 0.0 };
-            (
-                crate::ScriptFogParams {
-                    start_dist: values[0],
-                    halfway_dist: values[1],
-                    color_rgb: [
-                        (values[4] * inv).clamp(0.0, 1.0),
-                        (values[5] * inv).clamp(0.0, 1.0),
-                        (values[6] * inv).clamp(0.0, 1.0),
-                    ],
-                    max_opacity: 1.0,
-                    sun: Some(crate::ScriptSunFog {
-                        color_rgb: [0.5; 3],
-                        sun_dir: [1.0, 0.0, 0.0],
-                        begin_angle_deg: 0.0,
-                        end_angle_deg: 0.0,
-                        scale: 1.0,
-                    }),
-                },
-                values[7].max(0.0),
-                values[2],
-                values[3],
-                scale,
-            )
-        };
-        let duration_ms = (f64::from(transition_s) * 1000.0)
-            .round()
-            .clamp(0.0, f64::from(i32::MAX)) as i32;
-        let now = world
-            .get_resource::<crate::step::StepRequest>()
-            .map_or(0, |r| crate::level_time_ms(r.tick));
-        let mut runtime = world.resource_mut::<RoundScript>();
-        let previous = runtime.engine.fog.map(|fog| fog.sample(now));
-        runtime.engine.fog = Some(crate::ScriptFog {
-            from: previous.unwrap_or(target),
-            to: target,
-            start_ms: now,
-            duration_ms: if previous.is_some() { duration_ms } else { 0 },
-        });
-        drop(runtime);
-        let vol = format!("1 {half_h} {base_h} {color_scale}");
-        crate::script::host::natives::player::send_client_dvar(world, 0, "r_volfog", &vol);
         Ok(Value::Undefined)
     });
     registry.register(Function, "luinotifyevent", |world, _, args| {
@@ -754,43 +674,23 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // gscm_shellshock(name, duration, [...]): a precached shock, the
-    // duration 0 to 60 s, applied to the player's state and client meta.
+    // duration 0 to 60 s; kept for the player's client to present
+    // (`t6.vision.shellshock`: no shock is shown).
     registry.register(Method, "shellshock", |world, receiver, args| {
         let name = string(args, 0)?.to_ascii_lowercase();
-        let Some(&index) = world
+        if !world
             .resource::<crate::script::MatchScript>()
             .precached
-            .get(&("shellshock", name.clone()))
-        else {
+            .contains_key(&("shellshock", name.clone()))
+        {
             return Err(format!("shellshock '{name}' was not precached\n"));
-        };
+        }
         let duration = number(args.get(1)).ok_or("shellshock expects a duration")?;
         let ms = (duration * 1000.0).round();
         if !(0.0..=60_000.0).contains(&ms) {
             return Err(format!("duration {} should be >= 0 and <= 60", ms * 0.001));
         }
-        let result = super::super::player::present(world, receiver, "shellshock", args)?;
-        if let Ok(ent_id) = super::super::engine::entity_id(world, receiver)
-            && let Some(client) = world.resource::<RoundScript>().player_client(ent_id)
-            && let Some(mut frame) = crate::frame::FrameWorld::try_from_world(world)
-        {
-            let id = crate::world::ClientId(client);
-            let shock = frame.shock(&name).cloned();
-            let now = frame
-                .ecs()
-                .get_resource::<crate::step::StepRequest>()
-                .map_or(0, |r| crate::level_time_ms(r.tick));
-            if let Some(ps) = frame.player_mut(id) {
-                ps.shellshock_index = index;
-                ps.shellshock_time = now;
-                ps.shellshock_duration = ms as i32;
-                if ps.health > 0 {
-                    ps.pm_flags |= playerstate_iw4::pm_flags::SHELLSHOCKED;
-                }
-            }
-            frame.client_meta_mut(id).shellshock = shock;
-        }
-        Ok(result)
+        super::super::player::present(world, receiver, "shellshock", args)
     });
     registry.register(Function, "addspawnpoints", |world, _, args| {
         let team = super::team(args, 0)?;

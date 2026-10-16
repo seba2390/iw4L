@@ -1559,6 +1559,14 @@ fn encode_vision(out: &mut WireWriter, vision: Option<&sim::VisionChange>) {
     put_text(out, &vision.name);
     out.put_i32(vision.duration_ms);
     out.put_i32(vision.set_ms);
+    match &vision.lerp {
+        None => out.put_u8(0),
+        Some(lerp) => {
+            out.put_u8(1);
+            put_text(out, &lerp.from);
+            out.put_f32(lerp.fraction);
+        }
+    }
 }
 
 fn encode_vision_call(out: &mut WireWriter, call: &sim::VisionCall) {
@@ -1608,6 +1616,14 @@ fn decode_vision(input: &mut WireReader<'_>) -> Result<Option<sim::VisionChange>
             name: get_text(input)?,
             duration_ms: input.get_i32()?,
             set_ms: input.get_i32()?,
+            lerp: match input.get_u8()? {
+                0 => None,
+                1 => Some(sim::VisionLerp {
+                    from: get_text(input)?,
+                    fraction: input.get_f32()?,
+                }),
+                _ => return Err(WireError::Malformed("bad vision lerp tag")),
+            },
         })),
         _ => Err(WireError::Malformed("bad vision tag")),
     }

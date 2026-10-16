@@ -127,6 +127,7 @@ fn vision_change(world: &World, args: &[Value]) -> Result<crate::VisionChange, S
         name,
         duration_ms: (seconds * 1000.0).round() as i32,
         set_ms: crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick),
+        lerp: None,
     })
 }
 

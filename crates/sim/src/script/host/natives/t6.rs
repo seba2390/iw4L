@@ -936,6 +936,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             name,
             duration_ms: (seconds * 1000.0).round() as i32,
             set_ms,
+            lerp: None,
         });
         Ok(Value::Undefined)
     });

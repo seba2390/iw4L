@@ -141,6 +141,63 @@ impl Default for ClientEffects {
     }
 }
 
+/// A `GfxWorld` world fog volume: its packed word (the bank bits are tested
+/// against the active bank mask), script id and bounding planes.
+struct FogVolume {
+    packed: u32,
+    script_id: u16,
+    planes: Vec<[f32; 4]>,
+}
+
+/// The map's world fog volumes in `GfxWorld` order, as the assets lane
+/// captures them.
+#[derive(Resource, Default)]
+struct FogVolumes(Vec<FogVolume>);
+
+fn ensure_fog_volumes(world: &mut World) -> &FogVolumes {
+    if !world.contains_resource::<FogVolumes>() {
+        let text = with_server(world, |server| {
+            server
+                .resource::<RoundScript>()
+                .restart
+                .as_ref()?
+                .raw_files
+                .get("gfxworld/fog_volumes.txt")
+                .cloned()
+        })
+        .flatten();
+        let volumes = text
+            .iter()
+            .flat_map(|text| text.lines())
+            .filter_map(|line| {
+                let mut parts = line.split('\t');
+                let packed = parts.next()?.parse().ok()?;
+                let script_id = parts.next()?.parse().ok()?;
+                let planes = parts
+                    .next()?
+                    .split(';')
+                    .map(|plane| {
+                        let mut values = plane.split(' ').filter_map(|v| v.parse().ok());
+                        Some([
+                            values.next()?,
+                            values.next()?,
+                            values.next()?,
+                            values.next()?,
+                        ])
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                Some(FogVolume {
+                    packed,
+                    script_id,
+                    planes,
+                })
+            })
+            .collect();
+        world.insert_resource(FogVolumes(volumes));
+    }
+    world.resource::<FogVolumes>()
+}
+
 fn state(world: &mut World) -> bevy_ecs::prelude::Mut<'_, ClientEffects> {
     world.get_resource_or_insert_with(ClientEffects::default)
 }
@@ -722,28 +779,31 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                         name,
                         duration_ms: duration_ms.max(0),
                         set_ms,
+                        lerp: None,
                     });
             }
         });
         Ok(Value::Undefined)
     });
 
-    // visionsetnakedlerp(localclientnum, from, to, fraction): blends between
-    // two naked visionsets by the clamped 0..1 fraction.
+    // visionsetnakedlerp(localclientnum, from, to, fraction): shows the
+    // naked vision blended from `to` (fraction 0) toward `from` (fraction 1),
+    // the fraction clamped to 0..1, at once.
     registry.register(Function, "visionsetnakedlerp", |world, _, args| {
         local_client(args, 0)?;
         let from = string(args, 1)?;
         let to = string(args, 2)?;
         let fraction = float(args, 3)?;
-        let upper = if fraction - 1.0 >= 0.0 { 1.0 } else { fraction };
-        let clamped = if -fraction >= 0.0 { 0.0 } else { upper };
+        let fraction = if -fraction >= 0.0 {
+            0.0
+        } else if fraction - 1.0 >= 0.0 {
+            1.0
+        } else {
+            fraction
+        };
         if from.is_empty() || to.is_empty() {
             return Ok(Value::Undefined);
         }
-        // t6.csc.vision.lerp: IW4L's vision channel transitions over a
-        // duration rather than blending two sets by an explicit lerp factor.
-        let chosen = if clamped > 0.0 { to } else { from };
-        state(world).naked_vision = Some(chosen.clone());
         with_server(world, |server| {
             let set_ms = crate::level_time_ms(server.resource::<crate::step::StepRequest>().tick);
             let mut frame = crate::frame::FrameWorld::from_world(server);
@@ -751,9 +811,10 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             if frame.client_meta(client_id).is_some() {
                 frame.client_meta_mut(client_id).view_effects.naked_vision =
                     Some(crate::VisionChange {
-                        name: chosen,
+                        name: to,
                         duration_ms: 0,
                         set_ms,
+                        lerp: Some(crate::VisionLerp { from, fraction }),
                     });
             }
         });
@@ -819,6 +880,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                             name,
                             duration_ms: 0,
                             set_ms,
+                            lerp: None,
                         });
                 }
             });
@@ -831,19 +893,40 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setworldfogactivebank", |world, _, args| {
         local_client(args, 0)?;
         let bank = (int(args, 1)? & 65535) as u16;
-        // t6.csc.fog.world_bank: IW4L's fog presentation uses exponential/sun
-        // fog parameters rather than client world fog bank masks.
+        // t6.csc.fog.world_bank: `getworldfogscriptid` tests the mask; the
+        // renderer draws no world fog volumes by bank.
         state(world).world_fog_bank = bank;
         Ok(Value::Undefined)
     });
 
     // getworldfogscriptid(localclientnum): the script id of the world fog
     // volume containing the camera, or -1 when in none.
-    registry.register(Function, "getworldfogscriptid", |_, _, args| {
+    registry.register(Function, "getworldfogscriptid", |world, _, args| {
         local_client(args, 0)?;
-        // t6.csc.fog.volumes: IW4L does not load GfxWorld fog volume planes
-        // or script ids, so the camera answers as outside any volume (-1).
-        Ok(Value::Int(-1))
+        let camera = with_server(world, |server| {
+            crate::script_player::eye(
+                &crate::frame::FrameWorld::from_world(server),
+                crate::ClientId(LOCAL_CLIENT as u32),
+            )
+        })
+        .flatten()
+        .unwrap_or([0.0; 3]);
+        let bank = u32::from(state(world).world_fog_bank);
+        let id = ensure_fog_volumes(world)
+            .0
+            .iter()
+            .find(|volume| {
+                volume.packed & bank != 0
+                    && volume.planes.iter().all(|plane| {
+                        plane[0] * camera[0]
+                            + plane[1] * camera[1]
+                            + plane[2] * camera[2]
+                            + plane[3]
+                            <= 0.0
+                    })
+            })
+            .map_or(-1, |volume| i32::from(volume.script_id));
+        Ok(Value::Int(id))
     });
 
     // setlutscriptindex(localclientnum, index): sets the color grading LUT
