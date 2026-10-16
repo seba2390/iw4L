@@ -136,6 +136,8 @@ pub struct ClientScriptProgram {
     pub starts: Vec<String>,
     /// The callbacks the client game calls itself.
     pub callbacks: ClientScriptCallbacks,
+    /// Mounted DLC package names (`dlc0`, `dlczm0`, `dlc3`, ...) in the install.
+    pub dlc_packages: Vec<String>,
 }
 
 /// The script functions a client game calls on its own events.

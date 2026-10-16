@@ -19,10 +19,7 @@ pub(crate) const LOCAL_CLIENT: i32 = 0;
 
 /// A client field the client scripts registered (`registerclientfield`).
 #[derive(Clone, Debug)]
-#[expect(
-    dead_code,
-    reason = "float fields arrive as the server set them (t6.csc.clientfield.float_precision); IW4L's one local client is the host"
-)]
+#[expect(dead_code, reason = "IW4L's one local client is the host")]
 pub(crate) struct FieldDef {
     pub(crate) pool: String,
     pub(crate) name: String,
@@ -250,7 +247,47 @@ fn server_values(
             .iter()
             .position(|field| field.pool == pool && field.name == *name)
         {
-            values.insert(client, value.clone());
+            let def = &game.fields[client];
+            let quantized = match (value, def.float) {
+                (Value::Float(v), true) => {
+                    let bits = def.bits.clamp(1, 32) as u32;
+                    let mask = if bits == 32 {
+                        u32::MAX
+                    } else {
+                        (1u32 << bits) - 1
+                    };
+                    let steps = mask as i32 as f32;
+                    let max_step = steps as i32;
+                    let span = def.max - def.min;
+                    let raw = if span.abs() > f32::EPSILON {
+                        (((steps / span) * (*v - def.min) + 0.5) as i32)
+                            .min(max_step)
+                            .max(0) as u32
+                    } else {
+                        0
+                    };
+                    let decoded = if mask > 0 {
+                        (f64::from(def.min)
+                            + ((f64::from(def.max) - f64::from(def.min)) / f64::from(mask as i32))
+                                * f64::from(raw)) as f32
+                    } else {
+                        def.min
+                    };
+                    Value::Float(decoded)
+                }
+                (Value::Int(v), false) => {
+                    let bits = def.bits.clamp(1, 32) as u32;
+                    let mask = if bits == 32 {
+                        u32::MAX
+                    } else {
+                        (1u32 << bits) - 1
+                    };
+                    let clamped = (*v).max(0) as u32 & mask;
+                    Value::Int(clamped as i32)
+                }
+                (other, _) => other.clone(),
+            };
+            values.insert(client, quantized);
         }
     }
     values

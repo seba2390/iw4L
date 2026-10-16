@@ -412,15 +412,28 @@ fn register_rest(registry: &mut NativeRegistry) {
         "throwbuttonpressed" => Throw,
     );
     registry.register(Method, "getvelocity", |world, receiver, _| {
-        let id = ClientId(player(world, receiver).map_err(|_| {
-            "t6.entities.velocity: the velocity of an entity that is not a player is not kept"
-                .to_owned()
-        })?);
-        Ok(Value::Vector(
-            FrameWorld::from_world(world)
-                .player(id)
-                .map_or([0.0; 3], |ps| ps.velocity),
-        ))
+        if let Ok(client) = player(world, receiver) {
+            return Ok(Value::Vector(
+                FrameWorld::from_world(world)
+                    .player(ClientId(client))
+                    .map_or([0.0; 3], |ps| ps.velocity),
+            ));
+        }
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let number = world.resource::<RoundScript>().entities[&id].number;
+        if let Some(proj) = FrameWorld::from_world(world).projectile_by_number(number) {
+            return Ok(Value::Vector(proj.velocity));
+        }
+        if let Some(vel) = super::vehicle::velocity(world, id) {
+            return Ok(Value::Vector(vel));
+        }
+        let now = world
+            .get_resource::<crate::step::StepRequest>()
+            .map_or(0, |r| i64::from(r.tick.0) * i64::from(crate::MATCH_TICK_MS));
+        let vel = world
+            .get_resource::<crate::script::host::mechanics::Mechanics>()
+            .map_or([0.0; 3], |m| m.velocity(id, now));
+        Ok(Value::Vector(vel))
     });
     registry.register(Method, "setvelocity", |world, receiver, args| {
         let id = ClientId(player(world, receiver)?);

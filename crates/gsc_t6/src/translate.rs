@@ -476,6 +476,14 @@ impl<'a> Translator<'a> {
                     slots += 1;
                     emit!(Op::Store(temp));
                     state.depth -= 1;
+                    if count == 0
+                        || (count == 1 && string_at(table + 6).is_none() && u32_at(table + 4) == 0)
+                    {
+                        emit!(Op::Load(temp));
+                        emit!(Op::Constant(Value::Int(0)));
+                        emit!(Op::Binary(Binary::Case));
+                        emit!(Op::Pop);
+                    }
                     let mut defaulted = false;
                     for position in 0..count {
                         let entry = table + 4 + 8 * position;

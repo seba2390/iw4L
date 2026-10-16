@@ -513,7 +513,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
             let b = r.bytes(p, 12)?;
             out.materials.push(ClipMapMaterial {
                 name: r.text(Reader::ptr(b, 0)?)?.to_owned(),
-                surface_flags: crate::clip_collision::treyarch_surface_flags(Reader::word(b, 4)?),
+                surface_flags: Reader::word(b, 4)?,
                 content_flags: Reader::word(b, 8)?,
             });
         }
@@ -534,10 +534,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
                     plane[axis] = if side == 0 { -1.0 } else { 1.0 };
                     plane[3] = if side == 0 { -mins[axis] } else { maxs[axis] };
                     planes.push(plane);
-                    flags.push(crate::clip_collision::treyarch_surface_flags(Reader::word(
-                        b,
-                        60 + side * 12 + axis * 4,
-                    )?));
+                    flags.push(Reader::word(b, 60 + side * 12 + axis * 4)?);
                 }
             }
             let count = Reader::word(b, 28)? as usize;
@@ -553,9 +550,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
                         r.f32(plane.at(8))?,
                         r.f32(plane.at(12))?,
                     ]);
-                    flags.push(crate::clip_collision::treyarch_surface_flags(Reader::word(
-                        sb, 8,
-                    )?));
+                    flags.push(Reader::word(sb, 8)?);
                 }
             }
             out.brushes.push(ClipBrush {
@@ -600,9 +595,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
                             half_size: surface.half_size,
                             bone_idx: i32::from(surface.bone),
                             contents: surface.contents,
-                            surf_flags: crate::clip_collision::treyarch_surface_flags(
-                                surface.surf_flags,
-                            ),
+                            surf_flags: surface.surf_flags,
                         })
                         .collect(),
                 };

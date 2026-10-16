@@ -347,37 +347,16 @@ struct SoundRandom {
     next_ms: i32,
 }
 
-/// The random one-shots, by when each next plays, and the random number
-/// state that spaces them.
-#[derive(bevy_ecs::prelude::Resource)]
+/// The random one-shots, by when each next plays, spaced by the client's
+/// shared `HoldRand` state.
+#[derive(bevy_ecs::prelude::Resource, Default)]
 pub(crate) struct SoundRandoms {
     scheduled: Vec<SoundRandom>,
-    seed: u32,
-}
-
-impl Default for SoundRandoms {
-    fn default() -> Self {
-        // t6.csc.sound.randoms: the engine's random state is shared with its
-        // other random draws and seeded by the process; IW4L's starts at 1.
-        Self {
-            scheduled: Vec::new(),
-            seed: 1,
-        }
-    }
 }
 
 impl SoundRandoms {
-    /// The engine's random integer from min to max (exclusive).
-    fn random_range(&mut self, min: i32, max: i32) -> i32 {
-        self.seed = self.seed.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
-        let span = i64::from(max.wrapping_sub(min));
-        ((span * i64::from(self.seed >> 17)) >> 15) as i32 + min
-    }
-
-    /// Schedules a random its spacing ahead of `now`, after those due no
-    /// later.
-    fn schedule(&mut self, mut random: SoundRandom, now: i32) {
-        random.next_ms = self.random_range(random.min_ms, random.max_ms) + now;
+    /// Inserts a random at `next_ms`, after those due no later.
+    fn insert(&mut self, random: SoundRandom) {
         let at = self
             .scheduled
             .iter()
@@ -398,24 +377,29 @@ fn client_time(world: &World) -> i32 {
 /// (one more than 250 msec late is passed over), and schedules each again.
 pub(crate) fn play_due_randoms(world: &mut World) {
     let now = client_time(world);
-    let Some(mut randoms) = world.get_resource_mut::<SoundRandoms>() else {
-        return;
+    let due = match world.get_resource_mut::<SoundRandoms>() {
+        Some(mut randoms) => {
+            let count = randoms
+                .scheduled
+                .iter()
+                .take_while(|random| now >= random.next_ms)
+                .count();
+            if count == 0 {
+                return;
+            }
+            randoms.scheduled.drain(..count).collect::<Vec<_>>()
+        }
+        None => return,
     };
-    let due = randoms
-        .scheduled
-        .iter()
-        .take_while(|random| now >= random.next_ms)
-        .count();
-    if due == 0 {
-        return;
-    }
-    let due: Vec<SoundRandom> = randoms.scheduled.drain(..due).collect();
     let mut play = Vec::new();
-    for random in due {
+    for mut random in due {
         if now - random.next_ms < 250 {
             play.push((random.alias.clone(), random.origin));
         }
-        randoms.schedule(random, now);
+        random.next_ms = super::pure::irand(world, random.min_ms, random.max_ms) + now;
+        world
+            .get_resource_or_insert_with(SoundRandoms::default)
+            .insert(random);
     }
     for (alias, origin) in play {
         self::play(world, &alias, Some(origin), 1.0, 0);
@@ -859,17 +843,16 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let min_ms = (float(args, 2)?.round_ties_even() as i32).wrapping_mul(1000);
         let max_ms = (float(args, 3)?.round_ties_even() as i32).wrapping_mul(1000);
         let now = client_time(world);
-        let mut randoms = world.get_resource_or_insert_with(SoundRandoms::default);
-        randoms.schedule(
-            SoundRandom {
+        let next_ms = super::pure::irand(world, min_ms, max_ms) + now;
+        world
+            .get_resource_or_insert_with(SoundRandoms::default)
+            .insert(SoundRandom {
                 alias: alias.to_string(),
                 origin,
                 min_ms,
                 max_ms,
-                next_ms: 0,
-            },
-            now,
-        );
+                next_ms,
+            });
         Ok(Value::Undefined)
     });
     // usefootsteptable(ai_index, name): binds a footstep sound table to an
