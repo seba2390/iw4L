@@ -148,6 +148,8 @@ fn exp_fog(fog: sim::ScriptFogParams) -> ExpFog {
 pub(crate) struct ScriptFogPresentation {
     applied: Option<sim::ScriptFog>,
     baseline: Option<MapFrameFog>,
+    /// How many client light overrides the last frame drew with.
+    light_overrides: usize,
 }
 
 pub(crate) fn sync_script_fog(
@@ -169,6 +171,18 @@ pub(crate) fn sync_script_fog(
         && !meta.view_effects.client_lights.is_empty()
     {
         const INV_255: f32 = f32::from_bits(0x3b80_8081);
+        if meta.view_effects.client_lights.len() != state.light_overrides {
+            state.light_overrides = meta.view_effects.client_lights.len();
+            let lights = &meta.view_effects.client_lights;
+            diag::info!(
+                World,
+                "client light overrides: {} of {} primary lights ({} turned, {} moved)",
+                state.light_overrides,
+                primary.lights.len(),
+                lights.iter().filter(|ov| ov.direction.is_some()).count(),
+                lights.iter().filter(|ov| ov.origin.is_some()).count()
+            );
+        }
         for ov in &meta.view_effects.client_lights {
             let index = usize::from(ov.index);
             let Some(pack) = primary.lights.get_mut(index) else {
@@ -180,6 +194,12 @@ pub(crate) fn sync_script_fog(
             pack.cos_outer = ov.cos_half_fov_outer;
             pack.cos_inner = ov.cos_half_fov_inner;
             pack.exponent = ov.color[3];
+            if let Some(direction) = ov.direction {
+                pack.direction = direction;
+            }
+            if let Some(origin) = ov.origin {
+                pack.origin = origin;
+            }
             if let Some(overrides) = primary.overrides.get_mut(index) {
                 let rgba = [rgb[0], rgb[1], rgb[2], 1.0];
                 overrides.diffuse = Some(rgba);

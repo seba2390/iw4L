@@ -66,6 +66,7 @@ pub(crate) fn install(
         entries: Vec::new(),
         schemas: level.schemas,
         player_data_defaults: level.player_data_defaults.map(Arc::new),
+        primary_lights: Arc::new(level.primary_lights),
     };
     install_level(world, Arc::new(program), plan)
 }

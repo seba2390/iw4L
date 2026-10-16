@@ -861,7 +861,12 @@ pub(super) fn irand(world: &mut World, min: i32, max: i32) -> i32 {
 
 /// A random float in `min..max`, the state's top 15 bits scaling the span.
 fn frand(world: &mut World, min: f32, max: f32) -> f32 {
+    frand_wide(world, min, max) as f32
+}
+
+/// `frand` as the engine's x87 code leaves it before a store.
+pub(super) fn frand_wide(world: &mut World, min: f32, max: f32) -> f64 {
     let state = next_rand(world);
-    (f64::from(state >> 17) * (f64::from(max) - f64::from(min)) * f64::from(1.0f32 / 32768.0)
-        + f64::from(min)) as f32
+    f64::from(state >> 17) * (f64::from(max) - f64::from(min)) * f64::from(1.0f32 / 32768.0)
+        + f64::from(min)
 }

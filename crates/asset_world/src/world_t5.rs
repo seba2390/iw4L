@@ -929,6 +929,7 @@ fn extract_t5_primary_lights(
             t5_cookie2: t5_vec4(s, light, t5_sz::COM_PRIMARY_LIGHT_COOKIE2_OFF),
             t5_diffuse_color: t5_vec4(s, light, t5_sz::COM_PRIMARY_LIGHT_DIFFUSE_COLOR_OFF),
             t5_specular_color: t5_vec4(s, light, t5_sz::COM_PRIMARY_LIGHT_SPECULAR_COLOR_OFF),
+            t6_limits: None,
         });
     }
     Ok(output)

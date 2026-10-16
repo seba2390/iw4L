@@ -48,5 +48,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     sound::register(registry);
     ambient::register(registry);
     registry.on_client_sync(game::sync);
-    registry.on_client_present(game::present);
+    registry.on_client_present(present);
+}
+
+/// The client game's frame after its scripts: its light mixers, then what it
+/// presents through the server.
+fn present(client: &mut bevy_ecs::prelude::World) {
+    effects::run_mixers(client);
+    game::present(client);
 }

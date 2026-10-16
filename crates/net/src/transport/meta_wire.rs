@@ -1230,6 +1230,12 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
         out.put_f32(light.radius);
         out.put_f32(light.cos_half_fov_outer);
         out.put_f32(light.cos_half_fov_inner);
+        for v in [light.direction, light.origin] {
+            out.put_u8(u8::from(v.is_some()));
+            for c in v.unwrap_or([0.0; 3]) {
+                out.put_f32(c);
+            }
+        }
     }
     debug_assert!(meta.menu_commands.len() <= sim::MENU_COMMAND_TAIL);
     out.put_u8(meta.menu_commands.len() as u8);
@@ -1506,6 +1512,8 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
                     radius: input.get_f32()?,
                     cos_half_fov_outer: input.get_f32()?,
                     cos_half_fov_inner: input.get_f32()?,
+                    direction: decode_light_vector(input)?,
+                    origin: decode_light_vector(input)?,
                 });
             }
             lights
@@ -1610,6 +1618,12 @@ fn encode_vision(out: &mut WireWriter, vision: Option<&sim::VisionChange>) {
             out.put_f32(lerp.fraction);
         }
     }
+}
+
+fn decode_light_vector(input: &mut WireReader<'_>) -> Result<Option<[f32; 3]>, WireError> {
+    let present = input.get_u8()? != 0;
+    let v = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+    Ok(present.then_some(v))
 }
 
 fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {

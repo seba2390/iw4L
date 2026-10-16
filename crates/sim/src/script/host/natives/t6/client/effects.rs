@@ -2,9 +2,11 @@
 //! sets, fog banks, screen overlays, filter passes, shader constants, and
 //! primary and mixer lights.
 
+mod mixers;
+
 use super::super::{float, int, string, type_name, vector};
 use super::game::{LOCAL_CLIENT, client_entity, local_client, server_object};
-use crate::script::client::{ClientEffect, ClientOutput};
+use crate::script::client::{ClientEffect, ClientLight, ClientLights, ClientOutput};
 use crate::script::host::args::arg;
 use crate::script::host::client_scripts::with_server;
 use crate::script::host::entities::EntityKind;
@@ -23,10 +25,6 @@ const FILTER_PASSES: i32 = 4;
 const FILTER_CONSTANTS: i32 = 16;
 /// Per-entity shader constant slots (0..=6).
 const SHADER_CONSTANT_SLOTS: i32 = 6;
-/// Maximum mixer light logic parameter index (0..=16) and mixer logic
-/// parameter index (0..=4).
-const MIXER_LIGHT_PARAM_MAX: i32 = 16;
-const MIXER_PARAM_MAX: i32 = 4;
 
 /// The shader constant names `mapshaderconstant` accepts (case aside).
 const SHADER_CONSTANTS: [&str; 23] = [
@@ -55,52 +53,16 @@ const SHADER_CONSTANTS: [&str; 23] = [
     "weaponParam9",
 ];
 
-/// The light behaviors the client engine's mixer steps in native code.
-const HARDCODED_LIGHT_BEHAVIORS: [&str; 12] = [
-    "firecaster",
-    "fire_flicker",
-    "electrical_flicker",
-    "flicker_then_stop",
-    "generic_double_strobe",
-    "generic_strobe",
-    "light_off",
-    "light_solid",
-    "television",
-    "generic_flickering",
-    "generic_pulsing",
-    "explode_then_flicker",
-];
-
-/// A client entity turned into a dynamic primary light (`makelight`).
+/// A client entity turned into a primary light (`makelight`): the map's
+/// light it was made from, as the map was compiled, and its mixer. Its
+/// color, intensity, exponent, radius and cone are the client's
+/// `ClientLights` entry, which the renderer's primary lights draw with.
 #[derive(Clone, Debug)]
 struct LightState {
-    color_bytes: [u8; 3],
-    exponent: u8,
-    intensity: f32,
-    radius: f32,
     bsp_radius: f32,
-    cos_half_fov_outer: f32,
-    cos_half_fov_inner: f32,
     bsp_cos_half_fov_outer: f32,
     bsp_cos_half_fov_inner: f32,
     mixer: Option<usize>,
-}
-
-impl Default for LightState {
-    fn default() -> Self {
-        Self {
-            color_bytes: [255, 255, 255],
-            exponent: 0,
-            intensity: 1.0,
-            radius: 200.0,
-            bsp_radius: f32::MAX,
-            cos_half_fov_outer: 0.5,
-            cos_half_fov_inner: 0.866_025_4,
-            bsp_cos_half_fov_outer: 0.0,
-            bsp_cos_half_fov_inner: 0.866_025_4,
-            mixer: None,
-        }
-    }
 }
 
 /// Client effects, visionsets, filter materials and lights.
@@ -119,10 +81,6 @@ struct ClientEffects {
     mapped_materials: [Option<String>; FILTER_MATERIAL_SLOTS],
     /// Entities turned into primary lights (`makelight`), by client object id.
     lights: BTreeMap<u64, LightState>,
-    /// Allocated mixer count (`allocatemixerlights`).
-    allocated_mixers: usize,
-    /// Number of mixers created so far (`makemixerlight`).
-    mixer_count: usize,
     /// The gump hide fade's colour: the last `sethidegumpalpha` colour.
     hide_fade_color: [f32; 3],
 }
@@ -136,8 +94,6 @@ impl Default for ClientEffects {
             world_fog_bank: 0,
             mapped_materials: std::array::from_fn(|_| None),
             lights: BTreeMap::new(),
-            allocated_mixers: 0,
-            mixer_count: 0,
             hide_fade_color: [0.0; 3],
         }
     }
@@ -651,6 +607,89 @@ fn light_entity(world: &World, receiver: &Value, with_period: bool) -> Result<u6
         });
     }
     Ok(id)
+}
+
+/// A light entity's `ClientLights` entry (`light_entity` checked it is one).
+fn client_light(world: &World, id: u64) -> ClientLight {
+    world.resource::<ClientLights>().lights[&id].clone()
+}
+
+fn client_light_mut(world: &mut World, id: u64) -> bevy_ecs::prelude::Mut<'_, ClientLight> {
+    world
+        .resource_mut::<ClientLights>()
+        .map_unchanged(|lights| lights.lights.get_mut(&id).expect("a light entity"))
+}
+
+/// The client game's lights run their frame: each light entity's light
+/// follows its entity (as its map light's limits allow), then the mixers
+/// run.
+pub(super) fn run_mixers(world: &mut World) {
+    let now = now_ms(world) as i32;
+    follow_entities(world);
+    mixers::run_frame(world, now);
+}
+
+/// Points each light along its entity's angles when its map light may turn
+/// (a rotation limit under 1), held within the limit's cone around the map
+/// light's direction, and stands it at its entity's origin when it may move
+/// (a translation limit over 0), held within that distance of the map
+/// light's origin.
+fn follow_entities(world: &mut World) {
+    let ids: Vec<u64> = world
+        .get_resource::<ClientEffects>()
+        .map(|fx| fx.lights.keys().copied().collect())
+        .unwrap_or_else(Vec::new);
+    for id in ids {
+        let Some((index, _)) = world
+            .resource::<ClientLights>()
+            .lights
+            .get(&id)
+            .map(|light| (light.index, ()))
+        else {
+            continue;
+        };
+        let Some(map) = world.resource::<ClientLights>().map.get(index).cloned() else {
+            continue;
+        };
+        let Some([rotation, translation]) = map.limits else {
+            continue;
+        };
+        let mut direction = None;
+        if rotation <= 1.0 && rotation != 1.0 {
+            let angles = entity_angles(world, id);
+            let (forward, _, _) = math_iw4::angle_vectors(angles);
+            let mut dir = forward.map(|v| -v);
+            if -1.0 < rotation {
+                let base = map.direction;
+                let dot = base[1] * dir[1] + base[0] * dir[0] + base[2] * dir[2];
+                if dot < rotation {
+                    let s = ((1.0 - rotation * rotation) / (1.0 - dot * dot)).sqrt();
+                    dir =
+                        std::array::from_fn(|k| base[k] * rotation + (base[k] * -dot + dir[k]) * s);
+                }
+            }
+            direction = Some(dir);
+        }
+        let mut origin = None;
+        if 0.0 < translation {
+            let mut at = entity_origin(world, id);
+            let d: [f32; 3] = std::array::from_fn(|k| at[k] - map.origin[k]);
+            let length_sq = d[1] * d[1] + d[0] * d[0] + d[2] * d[2];
+            if translation * translation <= length_sq {
+                let scale = translation / length_sq.sqrt();
+                at = std::array::from_fn(|k| d[k] * scale + map.origin[k]);
+            }
+            origin = Some(at);
+        }
+        if let Some(light) = world.resource_mut::<ClientLights>().lights.get_mut(&id) {
+            if direction.is_some() {
+                light.direction = direction;
+            }
+            if origin.is_some() {
+                light.origin = origin;
+            }
+        }
+    }
 }
 
 /// Checks that `receiver` is a light entity for a mixer builtin, formatting
@@ -1264,16 +1303,60 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // dynamic primary light initialized from the map's primary light.
     registry.register(Method, "makelight", |world, receiver, args| {
         let id = receiver_entity(world, receiver)?;
-        int(args, 0)?;
-        world
-            .resource_mut::<RoundScript>()
-            .set_object_field(id, "type", Value::string("NA"));
-        // t6.csc.light.primary: IW4L's sim world does not carry ComWorld
-        // primary light records, so makelight initializes default light
-        // parameters.
-        // t6.csc.light.render: IW4L's renderer does not draw client script
-        // dynamic light overrides.
-        state(world).lights.insert(id, LightState::default());
+        let index = int(args, 0)?;
+        let light = usize::try_from(index)
+            .ok()
+            .and_then(|i| world.resource::<ClientLights>().map.get(i).cloned())
+            .ok_or_else(|| format!("t6.csc.light.index: the map has no primary light {index}"))?;
+        // The color normalized by its brightest channel, which is the
+        // intensity; a black light is white at intensity 0.
+        let c = light.color;
+        let mut brightest = c[0];
+        if brightest < c[1] {
+            brightest = c[1];
+        }
+        if brightest < c[2] {
+            brightest = c[2];
+        }
+        let (intensity, color) = if brightest == 0.0 {
+            (0.0, [1.0; 3])
+        } else {
+            let scale = 1.0 / brightest;
+            (brightest, c.map(|channel| channel * scale))
+        };
+        let [r, g, b] = color.map(pack_color_byte);
+        let angles = math_iw4::vect_to_angles(light.direction.map(|d| -d));
+        {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(id, "origin", Value::Vector(light.origin));
+            runtime.set_object_field(id, "angles", Value::Vector(angles));
+            runtime.set_object_field(id, "type", Value::string("NA"));
+        }
+        world.resource_mut::<ClientLights>().lights.insert(
+            id,
+            ClientLight {
+                index: index as usize,
+                color: [r, g, b, light.exponent],
+                intensity,
+                radius: light.radius,
+                cos_half_fov_outer: light.cos_half_fov_outer,
+                cos_half_fov_inner: light.cos_half_fov_inner,
+                direction: None,
+                origin: None,
+            },
+        );
+        // t6.csc.light.render: the renderer draws the light's values at the
+        // map light's own direction and origin, without the engine's
+        // current-to-next state blend.
+        state(world).lights.insert(
+            id,
+            LightState {
+                bsp_radius: light.radius,
+                bsp_cos_half_fov_outer: light.cos_half_fov_outer,
+                bsp_cos_half_fov_inner: light.cos_half_fov_inner,
+                mixer: None,
+            },
+        );
         Ok(Value::Undefined)
     });
 
@@ -1288,7 +1371,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // ent getlightcolor(): the light entity's unpacked RGB color vector.
     registry.register(Method, "getlightcolor", |world, receiver, _| {
         let id = light_entity(world, receiver, true)?;
-        let bytes = state(world).lights[&id].color_bytes;
+        let bytes = client_light(world, id).color;
         let scale = 0.003_921_569;
         Ok(Value::Vector([
             f32::from(bytes[0]) * scale,
@@ -1301,17 +1384,16 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "setlightcolor", |world, receiver, args| {
         let id = light_entity(world, receiver, false)?;
         let rgb = vector(args, 0)?;
-        let packed = rgb.map(pack_color_byte);
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.color_bytes = packed;
-        }
+        let [r, g, b] = rgb.map(pack_color_byte);
+        let mut light = client_light_mut(world, id);
+        light.color = [r, g, b, light.color[3]];
         Ok(Value::Undefined)
     });
 
     // ent getlightintensity(): the light entity's intensity.
     registry.register(Method, "getlightintensity", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        Ok(Value::Float(state(world).lights[&id].intensity))
+        Ok(Value::Float(client_light(world, id).intensity))
     });
 
     // ent setlightintensity(intensity): sets the light entity's intensity.
@@ -1322,16 +1404,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             return Err("intensity must be >= 0".into());
         }
         let clamped = if intensity >= 0.0 { intensity } else { 0.0 };
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.intensity = clamped;
-        }
+        client_light_mut(world, id).intensity = clamped;
         Ok(Value::Undefined)
     });
 
     // ent getlightradius(): the light entity's radius.
     registry.register(Method, "getlightradius", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        Ok(Value::Float(state(world).lights[&id].radius))
+        Ok(Value::Float(client_light(world, id).radius))
     });
 
     // ent setlightradius(radius): sets the light entity's radius within the
@@ -1353,9 +1433,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         } else {
             radius.min(bsp_radius)
         };
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.radius = clamped;
-        }
+        client_light_mut(world, id).radius = clamped;
         Ok(Value::Undefined)
     });
 
@@ -1363,12 +1441,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // inner or outer cone angle in degrees.
     registry.register(Method, "getlightfovinner", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        let cos = state(world).lights[&id].cos_half_fov_inner;
+        let cos = client_light(world, id).cos_half_fov_inner;
         Ok(Value::Float(cos.acos() * 2.0 * 57.295_776))
     });
     registry.register(Method, "getlightfovouter", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        let cos = state(world).lights[&id].cos_half_fov_outer;
+        let cos = client_light(world, id).cos_half_fov_outer;
         Ok(Value::Float(cos.acos() * 2.0 * 57.295_776))
     });
 
@@ -1400,17 +1478,16 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         } else {
             bsp_cos_inner.max(cos_outer + 0.001_000_000_05)
         };
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.cos_half_fov_outer = cos_outer;
-            light.cos_half_fov_inner = cos_inner;
-        }
+        let mut light = client_light_mut(world, id);
+        light.cos_half_fov_outer = cos_outer;
+        light.cos_half_fov_inner = cos_inner;
         Ok(Value::Undefined)
     });
 
     // ent getlightexponent(): the light entity's falloff exponent.
     registry.register(Method, "getlightexponent", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        Ok(Value::Int(i32::from(state(world).lights[&id].exponent)))
+        Ok(Value::Int(i32::from(client_light(world, id).color[3])))
     });
 
     // ent setlightexponent(exponent): sets the light entity's falloff
@@ -1421,204 +1498,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if !(0..=100).contains(&exponent) {
             return Err("exponent must be in the range from 0 to 100".into());
         }
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.exponent = exponent as u8;
-        }
+        client_light_mut(world, id).color[3] = exponent as u8;
         Ok(Value::Undefined)
     });
 
-    // allocatemixerlights(count): allocates the client's light mixer table.
-    registry.register(Function, "allocatemixerlights", |world, _, args| {
-        let count = int(args, 0)?;
-        // t6.csc.light.mixer: IW4L's renderer does not evaluate or draw
-        // client light mixers.
-        let mut fx = state(world);
-        fx.allocated_mixers = count.max(0) as usize;
-        fx.mixer_count = 0;
-        Ok(Value::Undefined)
-    });
-
-    // ismixerlightbehaviorhardcoded(name): whether `name` is one of the
-    // engine's 12 native light behaviors.
-    registry.register(Function, "ismixerlightbehaviorhardcoded", |_, _, args| {
-        let name = string(args, 0)?;
-        Ok(Value::Int(
-            HARDCODED_LIGHT_BEHAVIORS.contains(&name.as_str()).into(),
-        ))
-    });
-
-    // ent makemixerlight(event): attaches a new mixer to the light entity.
-    registry.register(Method, "makemixerlight", |world, receiver, args| {
-        let id = mixer_light_entity(world, receiver)?;
-        string(args, 0)?;
-        let mut fx = state(world);
-        fx.mixer_count += 1;
-        let mixer = fx.mixer_count;
-        if let Some(light) = fx.lights.get_mut(&id) {
-            light.mixer = Some(mixer);
-        }
-        Ok(Value::Undefined)
-    });
-
-    // ent activatemixer(): activates the light entity's mixer.
-    registry.register(Method, "activatemixer", |world, receiver, _| {
-        mixer_entity(world, receiver)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerbehavior(name): sets the mixer's behavior.
-    registry.register(Method, "setmixerbehavior", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        string(args, 0)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerexploderid(id): associates a client exploder id with the
-    // mixer.
-    registry.register(Method, "setmixerexploderid", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        int(args, 0)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerl2rrampspeed(speed) / ent setmixerr2lrampspeed(speed): sets
-    // the mixer's left-to-right or right-to-left ramp speed.
-    for name in ["setmixerl2rrampspeed", "setmixerr2lrampspeed"] {
-        registry.register(Method, name, |world, receiver, args| {
-            mixer_entity(world, receiver)?;
-            float(args, 0)?;
-            Ok(Value::Undefined)
-        });
-    }
-
-    // ent setmixerlightrotatetime(seconds): sets the mixer's yaw rotation
-    // period.
-    registry.register(
-        Method,
-        "setmixerlightrotatetime",
-        |world, receiver, args| {
-            mixer_entity(world, receiver)?;
-            float(args, 0)?;
-            Ok(Value::Undefined)
-        },
-    );
-
-    // ent setmixerlightbehavior(side, name): sets a mixer side's hardcoded
-    // light behavior.
-    registry.register(Method, "setmixerlightbehavior", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        let behavior = string(args, 1)?;
-        if !HARDCODED_LIGHT_BEHAVIORS.contains(&behavior.as_str()) {
-            return Err(format!("Light behavior '{behavior}' unknown."));
-        }
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightcolor(side, rgb): sets a mixer side's color vector.
-    registry.register(Method, "setmixerlightcolor", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        vector(args, 1)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightexponent(side, exponent): sets a mixer side's
-    // exponent, clamped to 0..=100.
-    registry.register(Method, "setmixerlightexponent", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        int(args, 1)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightfovrange(side, outer, [inner]): sets a mixer side's
-    // outer and inner cone angles.
-    registry.register(Method, "setmixerlightfovrange", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        let outer = float(args, 1)?;
-        if args.len() == 3 {
-            let inner = float(args, 2)?;
-            if !(inner >= -0.001_000_000_05 && inner < outer + 0.001_000_000_05) {
-                return Err("inner fov must be in the range of 0 to outer fov".into());
-            }
-        }
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightintensity(side, intensity) /
-    // ent setmixerlightradius(side, radius).
-    for name in ["setmixerlightintensity", "setmixerlightradius"] {
-        registry.register(Method, name, |world, receiver, args| {
-            mixer_entity(world, receiver)?;
-            mixer_side(args, 0)?;
-            float(args, 1)?;
-            Ok(Value::Undefined)
-        });
-    }
-
-    // ent setmixerlightparam(side, index, value): sets a parameter (0..=16)
-    // on a mixer side's light behavior.
-    registry.register(Method, "setmixerlightparam", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        let index = int(args, 1)?;
-        if !(0..=MIXER_LIGHT_PARAM_MAX).contains(&index) {
-            return Err(format!(
-                "Please ensure light logic param number specified is in range 0 - {MIXER_LIGHT_PARAM_MAX}\n"
-            ));
-        }
-        check_mixer_param_value(
-            args,
-            2,
-            "Light logic parameter specified is of an invalid type.",
-        )?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerparam(index, value): sets a parameter (0..=4) on the
-    // mixer's behavior.
-    registry.register(Method, "setmixerparam", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        let index = int(args, 0)?;
-        if !(0..=MIXER_PARAM_MAX).contains(&index) {
-            return Err(format!(
-                "Please ensure light logic param number specified is in range 0 - {MIXER_PARAM_MAX}\n"
-            ));
-        }
-        check_mixer_param_value(
-            args,
-            1,
-            "Mixer logic parameter specified is of an invalid type.",
-        )?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightmodels(model_ent, on_model, off_model): associates on
-    // and off models with the mixer.
-    registry.register(Method, "setmixerlightmodels", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        entity_arg(world, args, 0)?;
-        string(args, 1)?;
-        string(args, 2)?;
-        // t6.csc.light.mixer_models: IW4L's server only tracks GSC
-        // precachemodel names, not Radiant map models in CS_MODELS.
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerspinmodels(model_ent, on_model, off_model, [fx_id, tag]):
-    // associates spinning on and off models (and optional effect) with the
-    // mixer.
-    registry.register(Method, "setmixerspinmodels", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        entity_arg(world, args, 0)?;
-        string(args, 1)?;
-        string(args, 2)?;
-        if !matches!(args.get(3), None | Some(Value::Undefined)) {
-            int(args, 3)?;
-            string(args, 4)?;
-        }
-        Ok(Value::Undefined)
-    });
+    mixers::register(registry);
 }

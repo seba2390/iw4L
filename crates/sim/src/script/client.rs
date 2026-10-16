@@ -256,9 +256,14 @@ pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSound
 /// effect system frees the effect.
 pub(crate) fn report_effects(server: &mut World, rows: Vec<u32>) {
     let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
+        crate::script::host::client_scripts::report_effects(server, rows);
         return;
     };
-    let mut output = client.world.resource_mut::<ClientOutput>();
+    forget_finished_effects(&mut client.world.resource_mut::<ClientOutput>(), rows);
+}
+
+/// A client VM forgets the point effects its effect system has freed.
+pub(crate) fn forget_finished_effects(output: &mut ClientOutput, rows: Vec<u32>) {
     for row in rows {
         if row & 0xc000_0000 == CLIENT_EFFECT_ROW {
             output.effects.remove(&((row & 0x3fff_ffff) as i32));
@@ -540,6 +545,10 @@ pub(crate) struct ClientLight {
     pub(crate) radius: f32,
     pub(crate) cos_half_fov_outer: f32,
     pub(crate) cos_half_fov_inner: f32,
+    /// Where the light points and stands, when its entity moves it
+    /// (Black Ops 2).
+    pub(crate) direction: Option<[f32; 3]>,
+    pub(crate) origin: Option<[f32; 3]>,
 }
 
 /// The map's primary lights, and the client entities made lights.
@@ -831,38 +840,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                         .water_fog = Some(water_fog);
                 }
             }
-            let client_lights: Vec<crate::ClientLightOverride> = {
-                let entities = &client.world.resource::<RoundScript>().entities;
-                let lights = &client.world.resource::<ClientLights>().lights;
-                let mut by_index = std::collections::BTreeMap::new();
-                for (id, light) in lights {
-                    if entities.contains_key(id)
-                        && let Ok(index) = u16::try_from(light.index)
-                    {
-                        by_index.insert(
-                            index,
-                            crate::ClientLightOverride {
-                                index,
-                                color: light.color,
-                                intensity: light.intensity,
-                                radius: light.radius,
-                                cos_half_fov_outer: light.cos_half_fov_outer,
-                                cos_half_fov_inner: light.cos_half_fov_inner,
-                            },
-                        );
-                    }
-                }
-                by_index.into_values().collect()
-            };
-            {
-                let mut frame = crate::frame::FrameWorld::from_world(server);
-                if frame.client_meta(crate::ClientId(0)).is_some() {
-                    frame
-                        .client_meta_mut(crate::ClientId(0))
-                        .view_effects
-                        .client_lights = client_lights;
-                }
-            }
+            publish_client_lights(server, &client.world);
             present::present(server, &mut client);
             deliver_tag_effects(server, &mut client);
         }
@@ -973,6 +951,43 @@ fn deliver_tag_effects(server: &mut World, client: &mut ClientScripts) {
     }
 }
 
+/// Publishes the client VM's light entities into the local client's view:
+/// each live one overrides the map's primary light it was made from.
+pub(crate) fn publish_client_lights(server: &mut World, client: &World) {
+    let Some(lights) = client.get_resource::<ClientLights>() else {
+        return;
+    };
+    let entities = &client.resource::<RoundScript>().entities;
+    let mut by_index = std::collections::BTreeMap::new();
+    for (id, light) in &lights.lights {
+        if entities.contains_key(id)
+            && let Ok(index) = u16::try_from(light.index)
+        {
+            by_index.insert(
+                index,
+                crate::ClientLightOverride {
+                    index,
+                    color: light.color,
+                    intensity: light.intensity,
+                    radius: light.radius,
+                    cos_half_fov_outer: light.cos_half_fov_outer,
+                    cos_half_fov_inner: light.cos_half_fov_inner,
+                    direction: light.direction,
+                    origin: light.origin,
+                },
+            );
+        }
+    }
+    let client_lights = by_index.into_values().collect();
+    let mut frame = crate::frame::FrameWorld::from_world(server);
+    if frame.client_meta(crate::ClientId(0)).is_some() {
+        frame
+            .client_meta_mut(crate::ClientId(0))
+            .view_effects
+            .client_lights = client_lights;
+    }
+}
+
 /// Row ids of the client's point effects and effect entities, apart from
 /// the server's effect entities.
 const CLIENT_EFFECT_ROW: u32 = 0x8000_0000;
@@ -991,10 +1006,15 @@ pub(crate) fn vision_calls(server: &World) -> Vec<(u32, crate::VisionCall)> {
 /// The effects the local client plays at points now, begun and alive, by
 /// their row ids.
 pub(crate) fn effect_rows(server: &World, now: i32) -> Vec<(u32, ClientEffect)> {
-    let Some(client) = server.get_resource::<ClientScripts>() else {
+    let output = if let Some(client) = server.get_resource::<ClientScripts>() {
+        client.world.resource::<ClientOutput>()
+    } else if let Some(client) =
+        server.get_resource::<crate::script::host::client_scripts::ClientScripts>()
+    {
+        client.world.resource::<ClientOutput>()
+    } else {
         return Vec::new();
     };
-    let output = client.world.resource::<ClientOutput>();
     let playing = |effect: &&ClientEffect| effect.begin_ms.is_some() && effect.alive(now);
     let points = output
         .effects

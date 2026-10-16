@@ -58,6 +58,8 @@ pub struct MapPrimaryLight {
     /// Cosines of half its outer and inner cone angles.
     pub cos_half_fov_outer: f32,
     pub cos_half_fov_inner: f32,
+    /// Black Ops 2's rotation and translation limits (`t6_limits`).
+    pub limits: Option<[f32; 2]>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

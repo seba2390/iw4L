@@ -20,7 +20,7 @@ const RUMBLE_SLOTS: i32 = 48;
 const LOCAL: crate::ClientId = crate::ClientId(LOCAL_CLIENT as u32);
 
 /// Plays a one-shot: its playback id, or -1 for no alias.
-fn play(
+pub(super) fn play(
     world: &mut World,
     alias: &str,
     origin: Option<[f32; 3]>,
