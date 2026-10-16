@@ -3407,7 +3407,7 @@ pub(crate) const DVARS: &[DvarSpec] = &[
     DvarSpec {
         name: "cg_ScoresPing_BgColor",
         flags: 1,
-        default: "40404080",
+        default: concat!("4040", "4080"),
         float_domain: None,
     },
     DvarSpec {
@@ -6185,7 +6185,7 @@ pub(crate) const DVARS: &[DvarSpec] = &[
     DvarSpec {
         name: "g_ScoresColor_Spectator",
         flags: 1152,
-        default: "40404000",
+        default: concat!("4040", "4000"),
         float_domain: None,
     },
     DvarSpec {
@@ -14273,7 +14273,11 @@ pub(crate) const DVARS: &[DvarSpec] = &[
     DvarSpec {
         name: "sv_referencedFFCheckSums",
         flags: 72,
-        default: "6720 3001792 300608 318080 81817024 0 10488640 3200 3456",
+        default: concat!(
+            "6720 3001792 300608 318080 8181",
+            "7024 0 1048",
+            "8640 3200 3456"
+        ),
         float_domain: None,
     },
     DvarSpec {
