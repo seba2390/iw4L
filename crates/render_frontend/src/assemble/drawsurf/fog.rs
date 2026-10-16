@@ -148,6 +148,8 @@ fn exp_fog(fog: sim::ScriptFogParams) -> ExpFog {
 pub(crate) struct ScriptFogPresentation {
     applied: Option<sim::ScriptFog>,
     baseline: Option<MapFrameFog>,
+    /// How many client light overrides the last frame drew with.
+    light_overrides: usize,
 }
 
 pub(crate) fn sync_script_fog(
@@ -169,6 +171,15 @@ pub(crate) fn sync_script_fog(
         && !meta.view_effects.client_lights.is_empty()
     {
         const INV_255: f32 = f32::from_bits(0x3b80_8081);
+        if meta.view_effects.client_lights.len() != state.light_overrides {
+            state.light_overrides = meta.view_effects.client_lights.len();
+            diag::info!(
+                World,
+                "client light overrides: {} of {} primary lights",
+                state.light_overrides,
+                primary.lights.len()
+            );
+        }
         for ov in &meta.view_effects.client_lights {
             let index = usize::from(ov.index);
             let Some(pack) = primary.lights.get_mut(index) else {

@@ -146,6 +146,15 @@ pub(crate) fn install(
     output.next_sound = 1;
     world.insert_resource(output);
     world.insert_resource(crate::script::client::ClientSoundReports::default());
+    world.insert_resource(crate::script::client::ClientLights {
+        map: server
+            .resource::<RoundScript>()
+            .restart
+            .as_ref()
+            .map(|plan| plan.primary_lights.as_ref().clone())
+            .unwrap_or_else(Vec::new),
+        ..Default::default()
+    });
     let callbacks = &setup.callbacks;
     world.insert_resource(ClientCallbacks {
         local_client_connect: callbacks.local_client_connect.clone(),
@@ -223,6 +232,7 @@ pub(crate) fn advance(world: &mut World) {
         for command in commands {
             frame.push_script_audio(command);
         }
+        crate::script::client::publish_client_lights(world, &client.world);
         client.world.remove_resource::<ServerWorld>();
         client.world.remove_resource::<crate::step::StepRequest>();
         if let Err(fault) = result.and_then(|()| {
@@ -351,6 +361,18 @@ fn game_key_type(ty: game_api::KeyType) -> super::entities::KeyType {
         game_api::KeyType::Float => super::entities::KeyType::Float,
         game_api::KeyType::String => super::entities::KeyType::String,
         game_api::KeyType::Vector => super::entities::KeyType::Vector,
+    }
+}
+
+/// The local client's effect system has freed these client game effects.
+pub(crate) fn report_effects(server: &mut World, rows: Vec<u32>) {
+    if let Some(mut client) = server.get_resource_mut::<ClientScripts>() {
+        crate::script::client::forget_finished_effects(
+            &mut client
+                .world
+                .resource_mut::<crate::script::client::ClientOutput>(),
+            rows,
+        );
     }
 }
 

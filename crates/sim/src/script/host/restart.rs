@@ -21,6 +21,8 @@ pub(crate) struct RestartPlan {
     pub entries: Vec<String>,
     pub schemas: BTreeMap<String, Arc<structured_data_iw4::DefinitionSet>>,
     pub player_data_defaults: Option<Arc<crate::PlayerDataDefaults>>,
+    /// The map's primary lights, for a client VM's `makelight`.
+    pub primary_lights: Arc<Vec<super::entities::MapPrimaryLight>>,
 }
 
 impl std::fmt::Debug for RestartPlan {

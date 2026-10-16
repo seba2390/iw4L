@@ -4,7 +4,7 @@
 
 use super::super::{float, int, string, type_name, vector};
 use super::game::{LOCAL_CLIENT, client_entity, local_client, server_object};
-use crate::script::client::{ClientEffect, ClientOutput};
+use crate::script::client::{ClientEffect, ClientLight, ClientLights, ClientOutput};
 use crate::script::host::args::arg;
 use crate::script::host::client_scripts::with_server;
 use crate::script::host::entities::EntityKind;
@@ -71,36 +71,16 @@ const HARDCODED_LIGHT_BEHAVIORS: [&str; 12] = [
     "explode_then_flicker",
 ];
 
-/// A client entity turned into a dynamic primary light (`makelight`).
+/// A client entity turned into a primary light (`makelight`): the map's
+/// light it was made from, as the map was compiled, and its mixer. Its
+/// color, intensity, exponent, radius and cone are the client's
+/// `ClientLights` entry, which the renderer's primary lights draw with.
 #[derive(Clone, Debug)]
 struct LightState {
-    color_bytes: [u8; 3],
-    exponent: u8,
-    intensity: f32,
-    radius: f32,
     bsp_radius: f32,
-    cos_half_fov_outer: f32,
-    cos_half_fov_inner: f32,
     bsp_cos_half_fov_outer: f32,
     bsp_cos_half_fov_inner: f32,
     mixer: Option<usize>,
-}
-
-impl Default for LightState {
-    fn default() -> Self {
-        Self {
-            color_bytes: [255, 255, 255],
-            exponent: 0,
-            intensity: 1.0,
-            radius: 200.0,
-            bsp_radius: f32::MAX,
-            cos_half_fov_outer: 0.5,
-            cos_half_fov_inner: 0.866_025_4,
-            bsp_cos_half_fov_outer: 0.0,
-            bsp_cos_half_fov_inner: 0.866_025_4,
-            mixer: None,
-        }
-    }
 }
 
 /// Client effects, visionsets, filter materials and lights.
@@ -651,6 +631,17 @@ fn light_entity(world: &World, receiver: &Value, with_period: bool) -> Result<u6
         });
     }
     Ok(id)
+}
+
+/// A light entity's `ClientLights` entry (`light_entity` checked it is one).
+fn client_light(world: &World, id: u64) -> ClientLight {
+    world.resource::<ClientLights>().lights[&id].clone()
+}
+
+fn client_light_mut(world: &mut World, id: u64) -> bevy_ecs::prelude::Mut<'_, ClientLight> {
+    world
+        .resource_mut::<ClientLights>()
+        .map_unchanged(|lights| lights.lights.get_mut(&id).expect("a light entity"))
 }
 
 /// Checks that `receiver` is a light entity for a mixer builtin, formatting
@@ -1264,16 +1255,58 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // dynamic primary light initialized from the map's primary light.
     registry.register(Method, "makelight", |world, receiver, args| {
         let id = receiver_entity(world, receiver)?;
-        int(args, 0)?;
-        world
-            .resource_mut::<RoundScript>()
-            .set_object_field(id, "type", Value::string("NA"));
-        // t6.csc.light.primary: IW4L's sim world does not carry ComWorld
-        // primary light records, so makelight initializes default light
-        // parameters.
-        // t6.csc.light.render: IW4L's renderer does not draw client script
-        // dynamic light overrides.
-        state(world).lights.insert(id, LightState::default());
+        let index = int(args, 0)?;
+        let light = usize::try_from(index)
+            .ok()
+            .and_then(|i| world.resource::<ClientLights>().map.get(i).cloned())
+            .ok_or_else(|| format!("t6.csc.light.index: the map has no primary light {index}"))?;
+        // The color normalized by its brightest channel, which is the
+        // intensity; a black light is white at intensity 0.
+        let c = light.color;
+        let mut brightest = c[0];
+        if brightest < c[1] {
+            brightest = c[1];
+        }
+        if brightest < c[2] {
+            brightest = c[2];
+        }
+        let (intensity, color) = if brightest == 0.0 {
+            (0.0, [1.0; 3])
+        } else {
+            let scale = 1.0 / brightest;
+            (brightest, c.map(|channel| channel * scale))
+        };
+        let [r, g, b] = color.map(pack_color_byte);
+        let angles = math_iw4::vect_to_angles(light.direction.map(|d| -d));
+        {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(id, "origin", Value::Vector(light.origin));
+            runtime.set_object_field(id, "angles", Value::Vector(angles));
+            runtime.set_object_field(id, "type", Value::string("NA"));
+        }
+        world.resource_mut::<ClientLights>().lights.insert(
+            id,
+            ClientLight {
+                index: index as usize,
+                color: [r, g, b, light.exponent],
+                intensity,
+                radius: light.radius,
+                cos_half_fov_outer: light.cos_half_fov_outer,
+                cos_half_fov_inner: light.cos_half_fov_inner,
+            },
+        );
+        // t6.csc.light.render: the renderer draws the light's values at the
+        // map light's own direction and origin, without the engine's
+        // current-to-next state blend.
+        state(world).lights.insert(
+            id,
+            LightState {
+                bsp_radius: light.radius,
+                bsp_cos_half_fov_outer: light.cos_half_fov_outer,
+                bsp_cos_half_fov_inner: light.cos_half_fov_inner,
+                mixer: None,
+            },
+        );
         Ok(Value::Undefined)
     });
 
@@ -1288,7 +1321,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // ent getlightcolor(): the light entity's unpacked RGB color vector.
     registry.register(Method, "getlightcolor", |world, receiver, _| {
         let id = light_entity(world, receiver, true)?;
-        let bytes = state(world).lights[&id].color_bytes;
+        let bytes = client_light(world, id).color;
         let scale = 0.003_921_569;
         Ok(Value::Vector([
             f32::from(bytes[0]) * scale,
@@ -1301,17 +1334,16 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "setlightcolor", |world, receiver, args| {
         let id = light_entity(world, receiver, false)?;
         let rgb = vector(args, 0)?;
-        let packed = rgb.map(pack_color_byte);
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.color_bytes = packed;
-        }
+        let [r, g, b] = rgb.map(pack_color_byte);
+        let mut light = client_light_mut(world, id);
+        light.color = [r, g, b, light.color[3]];
         Ok(Value::Undefined)
     });
 
     // ent getlightintensity(): the light entity's intensity.
     registry.register(Method, "getlightintensity", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        Ok(Value::Float(state(world).lights[&id].intensity))
+        Ok(Value::Float(client_light(world, id).intensity))
     });
 
     // ent setlightintensity(intensity): sets the light entity's intensity.
@@ -1322,16 +1354,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             return Err("intensity must be >= 0".into());
         }
         let clamped = if intensity >= 0.0 { intensity } else { 0.0 };
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.intensity = clamped;
-        }
+        client_light_mut(world, id).intensity = clamped;
         Ok(Value::Undefined)
     });
 
     // ent getlightradius(): the light entity's radius.
     registry.register(Method, "getlightradius", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        Ok(Value::Float(state(world).lights[&id].radius))
+        Ok(Value::Float(client_light(world, id).radius))
     });
 
     // ent setlightradius(radius): sets the light entity's radius within the
@@ -1353,9 +1383,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         } else {
             radius.min(bsp_radius)
         };
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.radius = clamped;
-        }
+        client_light_mut(world, id).radius = clamped;
         Ok(Value::Undefined)
     });
 
@@ -1363,12 +1391,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // inner or outer cone angle in degrees.
     registry.register(Method, "getlightfovinner", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        let cos = state(world).lights[&id].cos_half_fov_inner;
+        let cos = client_light(world, id).cos_half_fov_inner;
         Ok(Value::Float(cos.acos() * 2.0 * 57.295_776))
     });
     registry.register(Method, "getlightfovouter", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        let cos = state(world).lights[&id].cos_half_fov_outer;
+        let cos = client_light(world, id).cos_half_fov_outer;
         Ok(Value::Float(cos.acos() * 2.0 * 57.295_776))
     });
 
@@ -1400,17 +1428,16 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         } else {
             bsp_cos_inner.max(cos_outer + 0.001_000_000_05)
         };
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.cos_half_fov_outer = cos_outer;
-            light.cos_half_fov_inner = cos_inner;
-        }
+        let mut light = client_light_mut(world, id);
+        light.cos_half_fov_outer = cos_outer;
+        light.cos_half_fov_inner = cos_inner;
         Ok(Value::Undefined)
     });
 
     // ent getlightexponent(): the light entity's falloff exponent.
     registry.register(Method, "getlightexponent", |world, receiver, _| {
         let id = light_entity(world, receiver, false)?;
-        Ok(Value::Int(i32::from(state(world).lights[&id].exponent)))
+        Ok(Value::Int(i32::from(client_light(world, id).color[3])))
     });
 
     // ent setlightexponent(exponent): sets the light entity's falloff
@@ -1421,9 +1448,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if !(0..=100).contains(&exponent) {
             return Err("exponent must be in the range from 0 to 100".into());
         }
-        if let Some(light) = state(world).lights.get_mut(&id) {
-            light.exponent = exponent as u8;
-        }
+        client_light_mut(world, id).color[3] = exponent as u8;
         Ok(Value::Undefined)
     });
 
