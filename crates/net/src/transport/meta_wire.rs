@@ -1214,6 +1214,22 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
         out.put_u32(*serial);
         encode_vision_call(out, call);
     }
+    encode_fog(out, meta.view_effects.fog);
+    out.put_u8(u8::from(meta.view_effects.water_fog.is_some()));
+    if let Some(water_fog) = meta.view_effects.water_fog {
+        encode_fog_params(out, water_fog);
+    }
+    out.put_u16(meta.view_effects.client_lights.len() as u16);
+    for light in &meta.view_effects.client_lights {
+        out.put_u16(light.index);
+        for b in light.color {
+            out.put_u8(b);
+        }
+        out.put_f32(light.intensity);
+        out.put_f32(light.radius);
+        out.put_f32(light.cos_half_fov_outer);
+        out.put_f32(light.cos_half_fov_inner);
+    }
     debug_assert!(meta.menu_commands.len() <= sim::MENU_COMMAND_TAIL);
     out.put_u8(meta.menu_commands.len() as u8);
     for command in &meta.menu_commands {
@@ -1467,6 +1483,31 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             }
             calls
         },
+        fog: decode_fog(input)?,
+        water_fog: match input.get_u8()? {
+            0 => None,
+            1 => Some(decode_fog_params(input)?),
+            _ => return Err(WireError::Malformed("bad water fog tag")),
+        },
+        client_lights: {
+            let mut lights = Vec::new();
+            for _ in 0..input.get_u16()? {
+                lights.push(sim::ClientLightOverride {
+                    index: input.get_u16()?,
+                    color: [
+                        input.get_u8()?,
+                        input.get_u8()?,
+                        input.get_u8()?,
+                        input.get_u8()?,
+                    ],
+                    intensity: input.get_f32()?,
+                    radius: input.get_f32()?,
+                    cos_half_fov_outer: input.get_f32()?,
+                    cos_half_fov_inner: input.get_f32()?,
+                });
+            }
+            lights
+        },
     };
     let mut menu_commands = Vec::new();
     for _ in 0..input.get_u8()? {
@@ -1618,7 +1659,7 @@ fn encode_shock(out: &mut WireWriter, shock: Option<&hud_iw4::ShockParams>) {
         out.put_u8(0);
         return;
     };
-    out.put_u8(3);
+    out.put_u8(4);
     out.put_i32(shock.screen_type);
     out.put_i32(shock.white_fade_ms);
     out.put_i32(shock.shot_fade_ms);
@@ -1645,6 +1686,9 @@ fn encode_shock(out: &mut WireWriter, shock: Option<&hud_iw4::ShockParams>) {
             }
         }
     }
+    out.put_f32(shock.movement_scale);
+    out.put_u8(u8::from(shock.animation));
+    out.put_u8(u8::from(shock.look.reciprocal_fade));
 }
 
 fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParams>, WireError> {
@@ -1652,21 +1696,22 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
     if tag == 0 {
         return Ok(None);
     }
-    if tag != 1 && tag != 2 && tag != 3 {
+    if !(1..=4).contains(&tag) {
         return Err(WireError::Malformed("bad shellshock tag"));
     }
     let mut shock = hud_iw4::ShockParams {
         screen_type: input.get_i32()?,
         white_fade_ms: input.get_i32()?,
         shot_fade_ms: input.get_i32()?,
-        blur_blend_ms: if tag == 3 { input.get_i32()? } else { 0 },
-        blur_fade_ms: if tag == 3 { input.get_i32()? } else { 0 },
+        blur_blend_ms: if tag >= 3 { input.get_i32()? } else { 0 },
+        blur_fade_ms: if tag >= 3 { input.get_i32()? } else { 0 },
         look: hud_iw4::ShellshockLookParms {
             affect: input.get_u8()? != 0,
             fade_ms: input.get_i32()?,
             mouse_sensitivity: input.get_f32()?,
             max_pitch_speed: input.get_f32()?,
             max_yaw_speed: input.get_f32()?,
+            reciprocal_fade: false,
         },
         sound: hud_iw4::ShellshockSoundParms {
             channel_volumes: None,
@@ -1676,6 +1721,8 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
             abort_alias: get_text(input)?,
         },
         movement: input.get_u8()? != 0,
+        movement_scale: 1.0,
+        animation: false,
     };
     if shock.blur_blend_ms < 0 || shock.blur_fade_ms < 0 {
         return Err(WireError::Malformed("negative shellshock blur time"));
@@ -1705,6 +1752,14 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
                 shock.sound.channel_volumes = Some(volumes);
             }
             _ => return Err(WireError::Malformed("bad shellshock channel volumes tag")),
+        }
+    }
+    if tag >= 4 {
+        shock.movement_scale = input.get_f32()?;
+        shock.animation = input.get_u8()? != 0;
+        shock.look.reciprocal_fade = input.get_u8()? != 0;
+        if !shock.movement_scale.is_finite() {
+            return Err(WireError::Malformed("bad shellshock movement scale"));
         }
     }
     Ok(Some(shock))
@@ -2957,6 +3012,13 @@ fn encode_fog_params(out: &mut WireWriter, fog: sim::ScriptFogParams) {
         out.put_f32(sun.end_angle_deg);
         out.put_f32(sun.scale);
     }
+    out.put_u8(u8::from(fog.volumetric.is_some()));
+    if let Some(vol) = fog.volumetric {
+        out.put_f32(vol.halfway_height);
+        out.put_f32(vol.base_height);
+        out.put_f32(vol.color_scale);
+        out.put_f32(vol.max_density);
+    }
 }
 
 fn decode_fog_params(input: &mut WireReader<'_>) -> Result<sim::ScriptFogParams, WireError> {
@@ -2976,6 +3038,16 @@ fn decode_fog_params(input: &mut WireReader<'_>) -> Result<sim::ScriptFogParams,
             }),
             _ => return Err(WireError::Malformed("invalid fog sun tag")),
         },
+        volumetric: match input.get_u8()? {
+            0 => None,
+            1 => Some(sim::ScriptVolFog {
+                halfway_height: input.get_f32()?,
+                base_height: input.get_f32()?,
+                color_scale: input.get_f32()?,
+                max_density: input.get_f32()?,
+            }),
+            _ => return Err(WireError::Malformed("invalid fog volumetric tag")),
+        },
     };
     if !fog.valid() {
         return Err(WireError::Malformed("invalid fog parameters"));
@@ -2983,14 +3055,37 @@ fn decode_fog_params(input: &mut WireReader<'_>) -> Result<sim::ScriptFogParams,
     Ok(fog)
 }
 
-fn encode_scene_effects(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
-    out.put_u8(u8::from(state.fog.is_some()));
-    if let Some(fog) = state.fog {
+fn encode_fog(out: &mut WireWriter, fog: Option<sim::ScriptFog>) {
+    out.put_u8(u8::from(fog.is_some()));
+    if let Some(fog) = fog {
         encode_fog_params(out, fog.from);
         encode_fog_params(out, fog.to);
         out.put_i32(fog.start_ms);
         out.put_i32(fog.duration_ms);
     }
+}
+
+fn decode_fog(input: &mut WireReader<'_>) -> Result<Option<sim::ScriptFog>, WireError> {
+    match input.get_u8()? {
+        0 => Ok(None),
+        1 => {
+            let fog = sim::ScriptFog {
+                from: decode_fog_params(input)?,
+                to: decode_fog_params(input)?,
+                start_ms: input.get_i32()?,
+                duration_ms: input.get_i32()?,
+            };
+            if fog.duration_ms < 0 {
+                return Err(WireError::Malformed("negative fog duration"));
+            }
+            Ok(Some(fog))
+        }
+        _ => Err(WireError::Malformed("invalid fog tag")),
+    }
+}
+
+fn encode_scene_effects(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
+    encode_fog(out, state.fog);
     debug_assert!(state.earthquakes.len() <= sim::MAX_SCRIPT_EARTHQUAKES);
     out.put_u8(state.earthquakes.len() as u8);
     for quake in &state.earthquakes {
@@ -3009,22 +3104,7 @@ fn decode_scene_effects(
     input: &mut WireReader<'_>,
     state: &mut sim::ObjectiveMatch,
 ) -> Result<(), WireError> {
-    state.fog = match input.get_u8()? {
-        0 => None,
-        1 => {
-            let fog = sim::ScriptFog {
-                from: decode_fog_params(input)?,
-                to: decode_fog_params(input)?,
-                start_ms: input.get_i32()?,
-                duration_ms: input.get_i32()?,
-            };
-            if fog.duration_ms < 0 {
-                return Err(WireError::Malformed("negative fog duration"));
-            }
-            Some(fog)
-        }
-        _ => return Err(WireError::Malformed("invalid fog tag")),
-    };
+    state.fog = decode_fog(input)?;
     let count = input.get_u8()? as usize;
     if count > sim::MAX_SCRIPT_EARTHQUAKES {
         return Err(WireError::Malformed("too many earthquakes"));

@@ -20,6 +20,9 @@ pub(crate) struct FlashWhiteoutLatch {
     last_start: Option<i32>,
     pub(crate) save_sequence: u64,
     life_sequence: u64,
+    /// The shellshock screen this frame draws, copied into the tess frame
+    /// after it is reset.
+    pub(crate) shellshock_screen: Option<crate::gpu_list::ShellshockScreen>,
 }
 
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +61,6 @@ pub(crate) fn update_flash_whiteout(
     mut started: MessageReader<LifeStarted>,
     generation: Option<Res<frame::WorldGeneration>>,
     effects: Res<frame::ScreenEffectsView>,
-    mut gpu_frame: ResMut<crate::gpu_list::HudTessGpuFrame>,
 ) {
     *job = FlashGpuJob::Idle;
     for ev in started.read() {
@@ -70,7 +72,7 @@ pub(crate) fn update_flash_whiteout(
             latch.life_sequence = latch.life_sequence.wrapping_add(1);
         }
     }
-    gpu_frame.shellshock_screen = None;
+    latch.shellshock_screen = None;
     gaps.clear(HudGap::FlashWhiteout);
     if !matches!(*screen, AppScreen::InGame) {
         request_hide(&mut job, latch.packed.is_empty());
@@ -91,7 +93,7 @@ pub(crate) fn update_flash_whiteout(
     }
     let blend_ms = effects.blend_ms;
     if blend_ms > 0 {
-        gpu_frame.shellshock_screen = Some(crate::gpu_list::ShellshockScreen {
+        latch.shellshock_screen = Some(crate::gpu_list::ShellshockScreen {
             world_generation: generation.as_ref().and_then(|generation| generation.0),
             client: local.0.0,
             view_client: ps.kill_cam_client_num as u32,

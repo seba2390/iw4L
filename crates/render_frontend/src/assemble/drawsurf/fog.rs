@@ -95,7 +95,6 @@ impl MapFrameFog {
         .sample(time_ms);
         let mut result = exp_fog(sampled);
         result.transition_time = self.fog.transition_time;
-        result.volumetric = self.fog.volumetric;
         result
     }
 }
@@ -113,6 +112,12 @@ fn fog_params(fog: ExpFog) -> sim::ScriptFogParams {
             end_angle_deg: sun.end_angle_deg,
             scale: sun.scale,
         }),
+        volumetric: fog.volumetric.map(|vol| sim::ScriptVolFog {
+            halfway_height: vol.halfway_height,
+            base_height: vol.base_height,
+            color_scale: vol.color_scale,
+            max_density: vol.max_density,
+        }),
     }
 }
 
@@ -123,7 +128,12 @@ fn exp_fog(fog: sim::ScriptFogParams) -> ExpFog {
         color_rgb: fog.color_rgb,
         max_opacity: fog.max_opacity,
         transition_time: 0.0,
-        volumetric: None,
+        volumetric: fog.volumetric.map(|vol| asset_world::VolFog {
+            halfway_height: vol.halfway_height,
+            base_height: vol.base_height,
+            color_scale: vol.color_scale,
+            max_density: vol.max_density,
+        }),
         sun: fog.sun.map(|sun| SunFog {
             color_rgb: sun.color_rgb,
             sun_dir: sun.sun_dir,
@@ -143,20 +153,59 @@ pub(crate) struct ScriptFogPresentation {
 pub(crate) fn sync_script_fog(
     scene: Res<crate::prepare::scene::world::WorldScene>,
     presented: Res<net::PresentedSnapshot>,
+    local: Res<net::LocalPresentClient>,
     mut state: ResMut<ScriptFogPresentation>,
     mut map_fog: Option<ResMut<MapFrameFog>>,
+    mut primary_lights: Option<ResMut<super::MapPrimaryLights>>,
     mut commands: Commands,
 ) {
     if !scene.spawned {
         return;
     }
-    let fog = presented
-        .snapshot()
-        .and_then(|snapshot| snapshot.meta.objectives.fog);
+    if let Some(primary) = primary_lights.as_deref_mut()
+        && let Some(meta) = presented
+            .snapshot()
+            .and_then(|snapshot| snapshot.meta.for_client(local.0))
+        && !meta.view_effects.client_lights.is_empty()
+    {
+        const INV_255: f32 = f32::from_bits(0x3b80_8081);
+        for ov in &meta.view_effects.client_lights {
+            let index = usize::from(ov.index);
+            let Some(pack) = primary.lights.get_mut(index) else {
+                continue;
+            };
+            let rgb = std::array::from_fn(|i| f32::from(ov.color[i]) * INV_255 * ov.intensity);
+            pack.color = rgb;
+            pack.radius = ov.radius;
+            pack.cos_outer = ov.cos_half_fov_outer;
+            pack.cos_inner = ov.cos_half_fov_inner;
+            pack.exponent = ov.color[3];
+            if let Some(overrides) = primary.overrides.get_mut(index) {
+                let rgba = [rgb[0], rgb[1], rgb[2], 1.0];
+                overrides.diffuse = Some(rgba);
+                overrides.specular = Some(rgba);
+            }
+        }
+    }
+    let fog = presented.snapshot().and_then(|snapshot| {
+        snapshot
+            .meta
+            .for_client(local.0)
+            .and_then(|meta| meta.view_effects.fog)
+            .or(snapshot.meta.objectives.fog)
+    });
     if fog == state.applied {
         return;
     }
     if let Some(fog) = fog {
+        diag::info!(
+            World,
+            "script fog: start={:.3} half={:.3} opacity={:.3} duration={}ms",
+            fog.to.start_dist,
+            fog.to.halfway_dist,
+            fog.to.max_opacity,
+            fog.duration_ms
+        );
         if state.applied.is_none() {
             state.baseline = map_fog.as_deref().copied();
         }

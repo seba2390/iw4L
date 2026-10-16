@@ -378,7 +378,7 @@ impl MapXModelCatalog {
         Some(self.meshes[index].name.as_str())
     }
 
-    fn t5_reference_at_slot(&self, slot: Ptr) -> Option<&str> {
+    pub(crate) fn t5_reference_at_slot(&self, slot: Ptr) -> Option<&str> {
         let mut current = slot;
         for _ in 0..self.aliases.len().saturating_add(1) {
             if let Some(name) = self.t5_references.get(&current) {

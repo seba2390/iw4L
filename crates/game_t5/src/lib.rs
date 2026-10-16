@@ -8,6 +8,7 @@ mod missile;
 mod movement;
 mod post_chain;
 mod radius;
+mod shock;
 mod turret;
 mod viewmodel;
 mod vision;
@@ -199,6 +200,11 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: Some(turret::TURRETS),
     post_chain: Some(post_chain::POST_CHAIN),
+    dyn_ent_physics: Some(unknown!(
+        "t5.dynent.physics",
+        "Black Ops' dynamic entities are not pushed, broken or launched: bullets, explosions and players leave them in place",
+        "its dynamic entity physics: the physics objects, the bullet and explosion impulses (dynEnt_* dvars), damage, destruction and the spawned entities"
+    )),
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each
@@ -233,12 +239,13 @@ fn sent_font_scales(font_scale: f32, _from_font_scale: f32) -> (f32, f32) {
 }
 
 impl game_api::GameVision for T5 {
-    fn shellshock(&self) -> Rule<()> {
-        Rule::Unknown(unknown!(
-            "t5.vision.shellshock",
-            "Black Ops' shellshock files and how its screen draws a shellshock",
-            "Black Ops' .shock format and shellshock screen rules"
-        ))
+    /// Black Ops' shellshock files, whose screen blur and flash, look
+    /// control and timing are Modern Warfare 2's.
+    fn shellshock(&self) -> Rule<game_api::ShockFormat> {
+        Rule::Known(game_api::ShockFormat::Game {
+            parse: shock::parse,
+            fallback: shock::FALLBACK,
+        })
     }
 }
 

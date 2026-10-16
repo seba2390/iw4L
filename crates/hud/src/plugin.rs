@@ -237,6 +237,7 @@ fn flush_flash_tess(
 ) {
     let _body = gpu_list::TessBody::open();
     frame.saved_screen_sequence = latch.save_sequence;
+    frame.shellshock_screen = latch.shellshock_screen;
     match *job {
         FlashGpuJob::Write => {
             if latch.packed.is_empty() {

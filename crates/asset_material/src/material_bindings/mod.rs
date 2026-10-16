@@ -80,6 +80,7 @@ pub struct MaterialFogVolumeInputs {
     pub halfway_height: f32,
     pub base_height: f32,
     pub color_scale: f32,
+    pub max_density: f32,
 }
 
 #[derive(Clone, Copy, Debug)]

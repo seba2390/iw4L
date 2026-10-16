@@ -181,6 +181,21 @@ fn mask_command<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     }
 }
 
+/// A living player shocked by a shock with its own animation keeps the
+/// torso's shellshock animation running. Black Ops then raises the torso's
+/// vision set event while a vision set lerps, which the runtime does not keep,
+/// and once the shock is over sets the torso idle if it still plays the
+/// shellshock animation, whose torso animation the runtime does not keep.
+fn torso_anim<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+    if pm.ps.pm_type >= pm_type::DEAD {
+        return;
+    }
+    if pm.shellshock_animation() {
+        pm.anim_event(crate::events::anim::SHELLSHOCK, true, false);
+        pm.gap(Gap::ShellshockTorso);
+    }
+}
+
 /// Whether the weapon state lets a prone player's move cancel aiming.
 fn weapon_lets_prone_move(state: i32) -> bool {
     !matches!(state, 0x1b | 6 | 0x20 | 0x12..=0x1a | 0x22 | 0x23)
@@ -329,6 +344,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     if pm.ps.pm_flags & pm_flags::ANIM_LOCK != 0 {
         pm.gap(Gap::AnimLock);
     }
+    torso_anim(pm);
     crate::prone::upkeep(pm, &pml);
     drop_timers(pm, &pml);
     if pm.ps.pm_type > pm_type::INTERMISSION {

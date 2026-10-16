@@ -340,12 +340,39 @@ pub trait MoveWorld {
     ) -> VolumeColumn {
         VolumeColumn::Unknown
     }
+
+    /// What the moving player's shellshock, by its precache number, does to
+    /// movement; `None` when the match does not know it.
+    fn shellshock(&self, _index: i32) -> Option<ShockMove> {
+        None
+    }
+}
+
+/// What a shellshock file does to movement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShockMove {
+    /// The fraction of their speed a shocked player moves at.
+    pub movement_scale: f32,
+    /// The torso plays the shellshock animation and the weapon's fire
+    /// animation is skipped.
+    pub animation: bool,
+}
+
+/// A script's `shellshock` on a player.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShellshockStart {
+    /// The shock's precache number.
+    pub index: i32,
+    pub duration_ms: i32,
+    pub level_time: i32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MoveContext {
     /// A client predicts its own player.
     pub predicting: bool,
+    /// The server's time, in milliseconds.
+    pub level_time: i32,
 }
 
 /// What a movement step tells the match, in the game's own numbering.
@@ -478,6 +505,12 @@ pub trait PlayerMovement: Sync {
         _on: bool,
     ) -> Option<bool> {
         None
+    }
+
+    /// Starts (`Some`) or clears (`None`) the player's shellshock; false
+    /// when the game's movement keeps no shellshock.
+    fn shellshock(&self, _player: &mut MovePlayer, _shock: Option<ShellshockStart>) -> bool {
+        false
     }
 
     /// A hit of `damage` points on the player's damage timer, which slows

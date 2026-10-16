@@ -10,6 +10,10 @@ use frame::{
     CacWeaponOffer, ClassSelectHandoff, HostClassLoadouts, InstalledMatch, LaunchIdentity,
     LaunchReport, WorldProducts, WorldStamp,
 };
+use hud_iw4::{
+    SCREEN_BLEND_BLURRED, SCREEN_BLEND_FLASHED, SCREEN_BLEND_NONE, ShellshockLookParms,
+    ShellshockSoundParms, ShockParams,
+};
 use net::{AuthorityInputGate, AuthorityLoadHold, AuthorityWorld, ClientSet};
 
 use crate::SessionContentManifest;
@@ -203,8 +207,12 @@ pub fn apply_prepared_match(
 
     let world_report = std::mem::take(&mut prepared.report);
     log_world_report(&world_report);
+    // A zombies match reads its scripts, and their shock files, from the
+    // zombie zones' sources.
     let map_shocks: Vec<(String, String)> = prepared
-        .scripts
+        .zombie_scripts
+        .as_ref()
+        .unwrap_or(&prepared.scripts)
         .shocks()
         .map(|(name, text)| (name.to_owned(), text.to_owned()))
         .collect();
@@ -2344,11 +2352,14 @@ fn install_shocks(
     catalog: Option<&asset_game::MenuCatalog>,
     map_shocks: &[(String, String)],
 ) {
-    if let game_api::Rule::Unknown(gap) = crate::games::vision(family).shellshock() {
-        diag::info!(Zone, "game gap {}: {}", gap.id, gap.what);
-        world.set_shocks(std::collections::BTreeMap::new());
-        return;
-    }
+    let format = match crate::games::vision(family).shellshock() {
+        game_api::Rule::Known(format) => format,
+        game_api::Rule::Unknown(gap) => {
+            diag::info!(Zone, "game gap {}: {}", gap.id, gap.what);
+            world.set_shocks(std::collections::BTreeMap::new());
+            return;
+        }
+    };
     let common = catalog
         .filter(|catalog| catalog.namespace == Some(family))
         .into_iter()
@@ -2366,8 +2377,16 @@ fn install_shocks(
         .iter()
         .map(|(name, text)| (name.clone(), text.as_str()));
     let mut shocks = std::collections::BTreeMap::new();
+    let mut gaps = std::collections::BTreeMap::new();
     for (name, text) in common.chain(map) {
-        match hud_iw4::ShockParams::parse(text) {
+        let parsed = match format {
+            game_api::ShockFormat::ModernWarfare2 => ShockParams::parse(text),
+            game_api::ShockFormat::Game { parse, .. } => parse(text).map(|file| {
+                gaps.insert(name.clone(), file.unrun.clone());
+                game_shock(&file)
+            }),
+        };
+        match parsed {
             Ok(params) => {
                 shocks.insert(name, params);
             }
@@ -2376,6 +2395,43 @@ fn install_shocks(
     }
     diag::info!(Zone, "shellshocks: {:?}", shocks.keys().collect::<Vec<_>>());
     world.set_shocks(shocks);
+    if let game_api::ShockFormat::Game { fallback, .. } = format {
+        world.set_game_shocks(fallback, gaps);
+    }
+}
+
+/// A game's own shock file in the shared screen's terms. Its sound is the
+/// game's own and not played by the shared shellshock sound.
+fn game_shock(file: &game_api::ShockFile) -> ShockParams {
+    ShockParams {
+        screen_type: match file.screen {
+            game_api::ShockScreen::Blurred => SCREEN_BLEND_BLURRED,
+            game_api::ShockScreen::Flashed => SCREEN_BLEND_FLASHED,
+            game_api::ShockScreen::None => SCREEN_BLEND_NONE,
+        },
+        blur_blend_ms: file.blur_blend_ms,
+        blur_fade_ms: file.blur_fade_ms,
+        white_fade_ms: file.white_fade_ms,
+        shot_fade_ms: file.shot_fade_ms,
+        look: ShellshockLookParms {
+            affect: file.look.affect,
+            fade_ms: file.look.fade_ms,
+            mouse_sensitivity: file.look.mouse_sensitivity,
+            max_pitch_speed: file.look.max_pitch_speed,
+            max_yaw_speed: file.look.max_yaw_speed,
+            reciprocal_fade: file.look.reciprocal_fade,
+        },
+        sound: ShellshockSoundParms {
+            affect: false,
+            channel_volumes: None,
+            loop_alias: String::new(),
+            end_alias: String::new(),
+            abort_alias: String::new(),
+        },
+        movement: false,
+        movement_scale: file.movement_scale,
+        animation: file.animation,
+    }
 }
 
 fn charsets(arena_text: Option<&str>, zone: &str) -> (String, String) {

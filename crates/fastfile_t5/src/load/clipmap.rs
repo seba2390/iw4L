@@ -133,8 +133,10 @@ pub(super) fn load_clip_map(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSin
         load_cbrush(s, brush)?;
     }
 
-    load_dyn_ent_defs(s, links, p.at(0x108), dyn0)?;
-    load_dyn_ent_defs(s, links, p.at(0x10c), dyn1)?;
+    let dyn_ent_defs = [
+        load_dyn_ent_defs(s, links, p.at(0x108), dyn0)?,
+        load_dyn_ent_defs(s, links, p.at(0x10c), dyn1)?,
+    ];
 
     runtime_array(s, p.at(0x110), 4, sz::DYN_ENTITY_POSE * dyn0)?;
     runtime_array(s, p.at(0x114), 4, sz::DYN_ENTITY_POSE * dyn1)?;
@@ -196,6 +198,7 @@ pub(super) fn load_clip_map(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSin
         leafbrush_nodes,
         cmodels,
         dyn_ent_counts: [dyn0, dyn1, dyn2, dyn3],
+        dyn_ent_defs,
     });
 
     s.pop()
@@ -239,9 +242,9 @@ fn load_dyn_ent_defs(
     links: &mut dyn AssetLinkSink,
     slot: Ptr,
     count: usize,
-) -> Result<()> {
+) -> Result<Option<Ptr>> {
     let Some(defs) = always_array(s, slot, 4, sz::DYN_ENTITY_DEF * count)? else {
-        return Ok(());
+        return Ok(None);
     };
     for i in 0..count {
         let d = defs.at(i * sz::DYN_ENTITY_DEF);
@@ -276,5 +279,5 @@ fn load_dyn_ent_defs(
             d.at(sz::DYN_ENTITY_DEF_PHYS_PRESET_OFF),
         )?;
     }
-    Ok(())
+    Ok(Some(defs))
 }

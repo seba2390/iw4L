@@ -4,6 +4,7 @@ use super::helpers::{
     decode_reflection_probes, report_dpvs, report_ffa_spawns, report_intermission,
     report_map_models, report_world_batches, smodel_lighting_samples,
 };
+use super::sink::t5_iw4_ptr;
 use super::{
     CommonCensus, CommonWalkSink, LoadedWorld, MaterialPopulation, MaterialPopulationSink,
     ZoneLane, ZoneWalkSink,
@@ -204,11 +205,13 @@ impl T5Lane {
             "common_mp T5 teamset scripts: {} (_teamset_*.gsc icons)",
             sink.teamsets.len()
         ));
+        let light_defs = asset_world::capture_t5_light_defs(&stream);
         CommonCensus {
             pending_images,
             weapons,
             cac_tables: sink.stats_tables.into_values().collect(),
             material_population: materials,
+            light_defs,
             fpv: sink.fpv_meshes,
             projectile_meshes: sink.projectile_meshes,
             world_weapons: sink.world_weapons,
@@ -451,6 +454,29 @@ impl ZoneLane for T5Lane {
             materials.unrouted_material_count()
         ));
         let map_xmodels = std::mem::take(&mut sink.map_xmodels);
+        let (dyn_ents, dyn_ent_spare) = stream.clip_map().map_or_else(Default::default, |clip| {
+            asset_world::build_t5_dyn_ent_catalog(
+                &stream,
+                clip,
+                |slot| {
+                    map_xmodels
+                        .name_at_slot(t5_iw4_ptr(slot))
+                        .or_else(|| map_xmodels.t5_reference_at_slot(t5_iw4_ptr(slot)))
+                        .map(str::to_owned)
+                },
+                // A name starting with a comma refers to an effect in another zone.
+                |slot| {
+                    sink.fx
+                        .name_at_slot(t5_iw4_ptr(slot))
+                        .map(|name| name.strip_prefix(',').unwrap_or(name).to_owned())
+                },
+                |slot| sink.phys_presets.at_slot(t5_iw4_ptr(slot)).cloned(),
+            )
+        });
+        report.push(format!(
+            "{} spare_slots={dyn_ent_spare}",
+            dyn_ents.report_line()
+        ));
         let bodies = std::mem::take(&mut sink.bodies);
         let fpv_meshes = std::mem::take(&mut sink.fpv_meshes);
         let mut trees = asset_transport::NamespaceTrees::default();
@@ -683,7 +709,7 @@ impl ZoneLane for T5Lane {
                         script_brush_models,
                         flag_descriptors,
                         script_structs,
-                        dyn_ents: asset_world::DynEntCatalog::default(),
+                        dyn_ents,
                         smodel_lighting_samples,
                         light_grid,
                         fx: sink.fx,
@@ -842,9 +868,10 @@ impl ZoneLane for T5Lane {
             memory.images,
             memory.decoded_images,
         ));
+        let light_defs = asset_world::capture_t5_light_defs(&stream);
         MaterialPopulation {
             walked: sink.walked,
-            light_defs: Vec::new(),
+            light_defs,
             materials: sink.materials,
             report,
             cac_tables: sink.stats_tables.into_values().collect(),

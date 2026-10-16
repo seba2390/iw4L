@@ -7,8 +7,8 @@ use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
     MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
-    MoveWorld, PlayerMovement, ScriptFlag, Stance, WaterSurface, WeaponActivity, WeaponNotify,
-    WeaponNotifyMemory, buttons as intent,
+    MoveWorld, PlayerMovement, ScriptFlag, ShellshockStart, Stance, WaterSurface, WeaponActivity,
+    WeaponNotify, WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::events::event;
@@ -50,10 +50,10 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops' movement on turrets and vehicles",
             "Black Ops' turret and vehicle player moves from its executable"
         ),
-        Gap::Shellshock => unknown!(
-            "t5.movement.shellshock",
-            "a shellshocked Black Ops player moves at full speed",
-            "the movement scale in Black Ops' shellshock files"
+        Gap::ShellshockTorso => unknown!(
+            "t5.movement.shellshock_torso",
+            "a Black Ops shellshock that plays the torso's shellshock animation does not set the torso idle when it ends",
+            "the player's torso animation kept by the game's movement"
         ),
         Gap::Overheat => unknown!(
             "t5.weapons.overheat",
@@ -260,6 +260,9 @@ fn game_state(
     b.word(&mut ps.perks, write);
     b.f(&mut ps.aim_spread_scale, write);
     b.i(&mut ps.move_disabled, write);
+    b.i(&mut ps.shellshock_index, write);
+    b.i(&mut ps.shellshock_time, write);
+    b.i(&mut ps.shellshock_duration, write);
     let mut moves = (last.forwardmove as u8 as u32) | ((last.rightmove as u8 as u32) << 8);
     b.word(&mut moves, write);
     last.forwardmove = moves as u8 as i8;
@@ -450,6 +453,20 @@ impl movement_t5::MoveWorld for World<'_> {
             }
         }
     }
+
+    /// A shock the match does not know leaves movement as it is.
+    fn shellshock(&self, index: i32) -> movement_t5::Shellshock {
+        self.world.shellshock(index).map_or(
+            movement_t5::Shellshock {
+                movement: 1.0,
+                animation: false,
+            },
+            |shock| movement_t5::Shellshock {
+                movement: shock.movement_scale,
+                animation: shock.animation,
+            },
+        )
+    }
 }
 
 impl PlayerMovement for T5Movement {
@@ -462,6 +479,12 @@ impl PlayerMovement for T5Movement {
         context: MoveContext,
     ) -> MoveOutcome {
         let (mut ps, mut last) = unpack(player);
+        // The server's client think ends a shellshock whose time ran out.
+        if !context.predicting
+            && ps.shellshock_time.wrapping_add(ps.shellshock_duration) < context.level_time
+        {
+            ps.pm_flags &= !pm_flags::SHELLSHOCKED;
+        }
         if player.frozen {
             ps.pm_flags |= pm_flags::FROZEN;
         } else {
@@ -542,6 +565,26 @@ impl PlayerMovement for T5Movement {
         }
         pack(player, &mut ps, &mut last);
         outcome
+    }
+
+    fn shellshock(&self, player: &mut MovePlayer, shock: Option<ShellshockStart>) -> bool {
+        let (mut ps, mut last) = unpack(player);
+        match shock {
+            Some(shock) => {
+                ps.shellshock_index = shock.index;
+                ps.shellshock_time = shock.level_time;
+                ps.shellshock_duration = shock.duration_ms;
+                ps.pm_flags |= pm_flags::SHELLSHOCKED;
+            }
+            None => {
+                ps.shellshock_index = 0;
+                ps.shellshock_time = 0;
+                ps.shellshock_duration = 0;
+                ps.pm_flags &= !pm_flags::SHELLSHOCKED;
+            }
+        }
+        pack(player, &mut ps, &mut last);
+        true
     }
 
     /// Black Ops' client think: run speed from `g_speed`, gravity from

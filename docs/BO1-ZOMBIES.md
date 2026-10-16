@@ -72,6 +72,24 @@ teleporter sets `theaterAftereffectOverride` to -1 then); before that the
 client always plays the FOV one. `script maps/zombie_theater_teleporter::teleport_aftereffect_fov player0`
 sends one.
 
+`teleport_aftereffect_shellshock_electric` (a 3 s `electrocution`, which plays
+`shock/default.shock`) and `teleport_aftereffect_shellshock` (`explosion`)
+shellshock the player. The blurred screen blends the saved view over the new
+one, so it shows only while the view moves: turn right after the shock.
+
+```
+set sv_cheats 1; wait world; god; wait 3s; script maps/zombie_theater_teleporter::teleport_aftereffect_shellshock_electric player0; wait 500ms; mousemove 1500 0; screenshot shock; wait 4s; quit
+```
+
+The shocked player walks at 0.4 of their speed and cannot sprint
+(`IW4L_TEST_PLAYER=1 IW4L_TEST_WALK=1` logs the speeds).
+
+The map's dynamic entities (`dynents: models=142 … spare_slots=256` in the
+log) stand where the map puts them: the bar's bottles and glasses from
+`move 1000 430 60 0 10`, the lobby shelf's pitcher and paper stack from
+`move 420 -1356 100 0 10`. Nothing pushes or breaks them yet; a shot or a
+blast logs `game gap t5.dynent.physics`.
+
 ## Open question
 
 Does a friend need Modern Warfare 2 installed next to Black Ops? The main menu

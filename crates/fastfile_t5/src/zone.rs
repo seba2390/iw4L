@@ -307,6 +307,7 @@ pub struct ZoneStream<'a> {
     diag_skip_coll_nodes_virtual: bool,
     header: ZoneHeader,
     xmodel: Option<XModelGeometry>,
+    phys_preset: Option<Ptr>,
     weapon: Option<WeaponGeometry>,
     gfx_world: Option<GfxWorldGeometry>,
     clip_map: Option<ClipMapGeometry>,
@@ -627,6 +628,9 @@ pub struct ClipMapGeometry {
     /// Dynamic entity counts of the four lists; the first two have
     /// definitions and client state, the last two server state.
     pub dyn_ent_counts: [usize; 4],
+    /// The definitions of the first two lists (`DynEntityDef`, 84 bytes
+    /// each): models, then brushes.
+    pub dyn_ent_defs: [Option<Ptr>; 2],
 }
 
 /// The path network of a game world: `node_count` nodes of
@@ -889,6 +893,7 @@ impl<'a> ZoneStream<'a> {
             diag_skip_coll_nodes_virtual: false,
             header,
             xmodel: None,
+            phys_preset: None,
             weapon: None,
             gfx_world: None,
             clip_map: None,
@@ -916,6 +921,15 @@ impl<'a> ZoneStream<'a> {
 
     pub fn header(&self) -> &ZoneHeader {
         &self.header
+    }
+
+    /// Records the header of the physics preset just loaded.
+    pub fn record_phys_preset(&mut self, header: Ptr) {
+        self.phys_preset = Some(header);
+    }
+
+    pub fn latest_phys_preset(&self) -> Option<Ptr> {
+        self.phys_preset
     }
 
     pub fn record_xmodel(&mut self, geometry: XModelGeometry) {

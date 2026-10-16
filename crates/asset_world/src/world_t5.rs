@@ -9,7 +9,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use dpvs_iw4::{AABB_NODE_STRIDE, AabbNodeView, Bounds, CPlane, SurfRange};
 use fastfile_iw4::Ptr as Iw4Ptr;
 use fastfile_t5::size as t5_sz;
-use fastfile_t5::{GfxWorldGeometry, ZonePtr, ZoneStream};
+use fastfile_t5::{ClipMapGeometry, GfxWorldGeometry, Ptr as T5Ptr, ZonePtr, ZoneStream};
 
 use crate::world_draw::{
     CameraRangeKind, CameraSurfRange, CameraSurfRanges, DpvsWorldData, OwnedPortal,
@@ -503,23 +503,7 @@ pub fn build_t5_world_draw(
             brush_model_bounds,
             surface_materials,
             primary_lights,
-            light_defs: s
-                .light_defs()
-                .iter()
-                .filter_map(|def| {
-                    Some(crate::world_draw::CapturedLightDef {
-                        namespace: crate::AssetNamespace::T5,
-                        name: crate::AssetRef::decode(s.cstr(def.name?).ok()?),
-                        attenuation_image_name: def
-                            .attenuation_image_name
-                            .and_then(|p| s.cstr(p).ok())
-                            .map(str::to_owned),
-                        attenuation_width: def.attenuation_width,
-                        attenuation_sampler: def.attenuation_sampler,
-                        lmap_lookup_start: def.lmap_lookup_start,
-                    })
-                })
-                .collect(),
+            light_defs: capture_t5_light_defs(s),
             sun_primary_light_count: geometry.sun_primary_light_index as u32,
             sun_stages: Vec::new(),
             light_region_hulls: None,
@@ -957,6 +941,25 @@ fn t5_vec4(s: &ZoneStream<'_>, light: fastfile_t5::Ptr, off: usize) -> Option<[f
         s.f32_at(light, off + 8).ok()?,
         s.f32_at(light, off + 12).ok()?,
     ])
+}
+
+pub fn capture_t5_light_defs(s: &ZoneStream<'_>) -> Vec<crate::world_draw::CapturedLightDef> {
+    s.light_defs()
+        .iter()
+        .filter_map(|def| {
+            Some(crate::world_draw::CapturedLightDef {
+                namespace: crate::AssetNamespace::T5,
+                name: crate::AssetRef::decode(s.cstr(def.name?).ok()?),
+                attenuation_image_name: def
+                    .attenuation_image_name
+                    .and_then(|p| s.cstr(p).ok())
+                    .map(str::to_owned),
+                attenuation_width: def.attenuation_width,
+                attenuation_sampler: def.attenuation_sampler,
+                lmap_lookup_start: def.lmap_lookup_start,
+            })
+        })
+        .collect()
 }
 
 fn t5_def_name(s: &ZoneStream<'_>, light: fastfile_t5::Ptr) -> Option<String> {
@@ -1446,4 +1449,114 @@ fn decode_brush_models(
         });
     }
     (surfs, bounds)
+}
+
+/// Black Ops' dynamic entities: the clipmap's two definition lists (models,
+/// then brushes), read as `DynEntityDef` (84 bytes: type, pose, model,
+/// destroyed model, brush models, destroy effect, destroy sound, destroy
+/// pieces, physics preset, constraints, health, flags, contents, target
+/// names). A list keeps spare rows of type 0 after the map's own, for the
+/// entities a script spawns; they are counted, not kept.
+pub fn build_t5_dyn_ent_catalog(
+    stream: &ZoneStream<'_>,
+    geometry: ClipMapGeometry,
+    mut xmodel_name: impl FnMut(T5Ptr) -> Option<String>,
+    mut fx_name: impl FnMut(T5Ptr) -> Option<String>,
+    mut preset_at: impl FnMut(T5Ptr) -> Option<crate::OwnedPhysPreset>,
+) -> (crate::DynEntCatalog, usize) {
+    let mut catalog = crate::DynEntCatalog::default();
+    let mut spare = 0;
+    for (list, draw_type) in [crate::DynEntDrawType::Model, crate::DynEntDrawType::Brush]
+        .into_iter()
+        .enumerate()
+    {
+        let count = geometry.dyn_ent_counts[list];
+        let Some(base) = geometry.dyn_ent_defs[list] else {
+            catalog.truncated += count;
+            continue;
+        };
+        for index in 0..count {
+            let def = base.at(index * t5_sz::DYN_ENTITY_DEF);
+            let Some(scalars) = t5_dyn_ent_scalars(stream, def) else {
+                catalog.truncated += 1;
+                continue;
+            };
+            if scalars.ty == 0 {
+                spare += 1;
+                continue;
+            }
+            let xmodel = xmodel_name(def.at(t5_sz::DYN_ENTITY_DEF_XMODEL_OFF));
+            if xmodel.is_none() && draw_type == crate::DynEntDrawType::Model {
+                catalog.missing_xmodel += 1;
+            }
+            let phys_preset = preset_at(def.at(t5_sz::DYN_ENTITY_DEF_PHYS_PRESET_OFF));
+            if phys_preset.is_none() {
+                catalog.missing_preset += 1;
+            }
+            let def = crate::DynEntDef {
+                draw_type,
+                index: index as u16,
+                ty: crate::DynEntType::from_u8(scalars.ty),
+                quat: scalars.quat,
+                origin: scalars.origin,
+                xmodel,
+                brush_model: scalars.brush_model,
+                physics_brush_model: scalars.physics_brush_model,
+                destroy_fx: fx_name(def.at(t5_sz::DYN_ENTITY_DEF_DESTROY_FX_OFF)),
+                phys_preset,
+                health: scalars.health,
+                phys_mass: [0.0; 9],
+                contents: scalars.contents,
+            };
+            match draw_type {
+                crate::DynEntDrawType::Model => catalog.models.push(def),
+                crate::DynEntDrawType::Brush => catalog.brushes.push(def),
+            }
+        }
+    }
+    (catalog, spare)
+}
+
+fn t5_dyn_ent_scalars(stream: &ZoneStream<'_>, def: T5Ptr) -> Option<crate::DynEntDefScalars> {
+    let f32_at = |off| stream.f32_at(def, off).ok();
+    let ty = stream.u32_at(def, 0).ok()?;
+    Some(crate::DynEntDefScalars {
+        ty: u8::try_from(ty).unwrap_or(u8::MAX),
+        quat: [f32_at(4)?, f32_at(8)?, f32_at(12)?, f32_at(16)?],
+        origin: [f32_at(20)?, f32_at(24)?, f32_at(28)?],
+        brush_model: stream.u16_at(def, 0x28).ok()?,
+        physics_brush_model: stream.u16_at(def, 0x2a).ok()?,
+        health: stream.i32_at(def, 0x44).ok()?,
+        phys_mass: [0.0; 9],
+        contents: stream.i32_at(def, 0x4c).ok()?,
+    })
+}
+
+/// A Black Ops `PhysPreset` (84 bytes) in the shared preset's terms: name,
+/// flags, mass, bounce, friction, bullet and explosive force scales, sound
+/// alias prefix, pieces spread and upward velocity. Its float flag, gravity
+/// scale, centre of mass and buoyancy box are not kept.
+pub fn read_t5_phys_preset(
+    stream: &ZoneStream<'_>,
+    header: T5Ptr,
+) -> Option<crate::OwnedPhysPreset> {
+    let text = |off| match stream.ptr_at(header, off).ok()? {
+        ZonePtr::Offset(p) => stream.cstr(p).ok().map(str::to_owned),
+        _ => None,
+    };
+    let f32_at = |off| stream.f32_at(header, off).ok();
+    Some(crate::OwnedPhysPreset {
+        name: text(0)?,
+        preset_type: stream.i32_at(header, 4).ok()?,
+        mass: f32_at(8)?,
+        bounce: f32_at(12)?,
+        friction: f32_at(16)?,
+        bullet_force_scale: f32_at(20)?,
+        explosive_force_scale: f32_at(24)?,
+        snd_alias_prefix: text(28).unwrap_or_else(String::new),
+        pieces_spread_fraction: f32_at(32)?,
+        pieces_upward_velocity: f32_at(36)?,
+        temp_default_to_cylinder: false,
+        per_surface_snd_alias: false,
+    })
 }

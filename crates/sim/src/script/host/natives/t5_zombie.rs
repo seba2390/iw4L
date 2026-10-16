@@ -891,6 +891,21 @@ fn register_actor(registry: &mut NativeRegistry) {
         }
         Ok(Value::Float((to - from) * fraction + from))
     });
+    // `LerpVector(from, to, fraction)`, the fraction held to 0..1.
+    registry.register(Namespace::Function, "lerpvector", |_, _, args| {
+        let from = super::super::args::vector(args, 0)?;
+        let to = super::super::args::vector(args, 1)?;
+        let mut fraction = super::super::args::float(args, 2)?;
+        if fraction - 1.0 >= 0.0 {
+            fraction = 1.0;
+        }
+        if -fraction >= 0.0 {
+            fraction = 0.0;
+        }
+        Ok(Value::Vector(std::array::from_fn(|i| {
+            (to[i] - from[i]) * fraction + from[i]
+        })))
+    });
     registry.register(Namespace::Function, "modelhasphyspreset", |_, _, args| {
         super::super::args::string(args, 0)?;
         Ok(Value::Int(0))
