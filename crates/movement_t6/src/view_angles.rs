@@ -286,7 +286,7 @@ fn clamp_pitch_to_torso<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 
 pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
     let ps = &*pm.ps;
-    if ps.pm_type == pm_type::REMOTE_CONTROL {
+    if ps.pm_type == pm_type::INTERMISSION {
         return;
     }
     if ps.pm_type >= pm_type::DEAD && ps.e_flags2 & e_flags2::MOUNTED == 0 {
@@ -296,9 +296,14 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
     let old_yaw = ps.viewangles[1];
     angles_from_cmd(pm);
     let ps = &*pm.ps;
-    let linked = ps.pm_type == pm_type::NORMAL_LINKED && ps.pm_flags & pm_flags::VIEW_LINKED == 0;
-    if ps.e_flags & (e_flags::TURRET | e_flags::VEHICLE_VIEW) != 0 || linked {
+    let linked =
+        (ps.pm_type == pm_type::NORMAL_LINKED && ps.link_flags & 1 == 0) || ps.link_flags & 4 != 0;
+    if ps.e_flags & (e_flags::TURRET | e_flags::VEHICLE_VIEW) != 0 {
         pm.gap(crate::Gap::MountedView);
+        return;
+    }
+    // The runtime's player link clamps a linked view to the link's arcs.
+    if linked {
         return;
     }
     if ps.pm_flags & pm_flags::MANTLE != 0 {
@@ -330,7 +335,7 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
     if pm.ps.pm_flags & pm_flags::PRONE != 0 {
         prone_yaw_cap(pm, msec, old_yaw);
     }
-    if pm.ps.pm_type != pm_type::INTERMISSION {
+    if pm.ps.pm_type != pm_type::SPECTATOR {
         update_lean(pm, msec);
     }
 }

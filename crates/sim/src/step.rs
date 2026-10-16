@@ -21,8 +21,8 @@ use crate::world::{
     inventory_add_weapon,
 };
 use crate::{ActionOutcome, ActionResult, TickEffects, TickResult};
-use playerstate_iw4::PlayerState;
 use playerstate_iw4::buttons;
+use playerstate_iw4::{PM_TYPE_SPECTATOR, PlayerState, UserCmd};
 
 #[derive(Resource)]
 pub(crate) struct StepRequest {
@@ -352,10 +352,14 @@ fn run_players_system(ecs: &mut World) {
             let id = &command.client;
             let cmd = &command.command;
             world.select_lagcomp_command(*id, cmd.server_time);
-            if !world
-                .client_meta(*id)
-                .is_some_and(|m| m.lifecycle == ClientLifecycle::Alive)
-            {
+            let lifecycle = world.client_meta(*id).map(|m| m.lifecycle);
+            if lifecycle != Some(ClientLifecycle::Alive) {
+                if matches!(
+                    lifecycle,
+                    Some(ClientLifecycle::Spectating | ClientLifecycle::ChoosingClass)
+                ) {
+                    spectator_game_move(&mut world, *id, cmd, tick, &model_brushes);
+                }
                 continue;
             }
             if let Some(index) = result_index {
@@ -2220,6 +2224,77 @@ pub(crate) fn log_forced_spawn(
 struct PlayerBodyClip {
     entnum: u16,
     origin: [f32; 3],
+}
+
+/// A free spectator's command under the game's own spectator move.
+fn spectator_game_move(
+    world: &mut FrameWorld,
+    id: ClientId,
+    cmd: &UserCmd,
+    tick: crate::world::Tick,
+    model_brushes: &[SimBrush],
+) {
+    let Some(movement) = crate::game_move::rules(world) else {
+        return;
+    };
+    if !crate::script::host::spectators::flies(world.ecs(), id) {
+        return;
+    }
+    let Some(ps) = world.player(id) else {
+        return;
+    };
+    if ps.pm_type != PM_TYPE_SPECTATOR || cmd.server_time.wrapping_sub(ps.command_time) <= 0 {
+        return;
+    }
+    let content = world.content();
+    let linked_brushes: Vec<LinkedBrushCollisionBrush> = world
+        .entity_collision_capabilities()
+        .iter()
+        .flat_map(|c| c.solid_brushes().iter().cloned())
+        .collect();
+    let glass_damage = world.world_objects().glass_damage_pairs();
+    let backend = ClipBackend {
+        brushes: content.clip_brushes(),
+        bsp: content.clip_bsp(),
+        mesh: content.clip_mesh(),
+        glass_damage: &glass_damage,
+        bodies: &[],
+        self_entnum: id.0 as u16,
+        cmodels: &content.clip_cmodels().models,
+        linked_brushes: &linked_brushes,
+        model_brushes,
+    };
+    let trace = |start, end, mins, maxs, tracemask| {
+        CollisionBackend::trace(
+            &backend,
+            GroundTraceInput {
+                start,
+                end,
+                mins,
+                maxs,
+                tracemask,
+            },
+        )
+        .move_trace()
+    };
+    let before = ps.command_time;
+    let outcome = crate::game_move::run(world, movement, id, cmd.move_command(), &trace, tick);
+    for gap in outcome.gaps {
+        world.report_game_gap(gap);
+    }
+    if let Some(ps) = world.player(id)
+        && before / 5000 != cmd.server_time / 5000
+    {
+        diag::info!(
+            Sim,
+            "spectator move: client={} at=({:.0} {:.0} {:.0}) speed={}",
+            id.0,
+            ps.origin[0],
+            ps.origin[1],
+            ps.origin[2],
+            ps.speed
+        );
+    }
 }
 
 fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {

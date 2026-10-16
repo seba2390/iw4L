@@ -1696,6 +1696,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         } else {
             *mask |= bit;
         }
+        // The runtime's spectating picks targets and free flight by name.
+        if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
+            slot.spectate.insert(name.as_str().into(), allow);
+        }
         Ok(Value::Undefined)
     });
     registry.register(Method, "enableusability", |world, receiver, _| {

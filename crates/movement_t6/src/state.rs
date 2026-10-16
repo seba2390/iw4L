@@ -6,9 +6,9 @@ pub mod pm_type {
     pub const NORMAL_LINKED: i32 = 1;
     pub const NOCLIP: i32 = 2;
     pub const UFO: i32 = 3;
-    pub const SPECTATOR: i32 = 4;
-    pub const INTERMISSION: i32 = 5;
-    pub const REMOTE_CONTROL: i32 = 6;
+    pub const MPVIEWER: i32 = 4;
+    pub const SPECTATOR: i32 = 5;
+    pub const INTERMISSION: i32 = 6;
     pub const LAST_STAND: i32 = 7;
     pub const LAST_STAND_REVIVED: i32 = 8;
     pub const LAST_STAND_GETTING_UP: i32 = 9;

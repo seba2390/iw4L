@@ -7,7 +7,7 @@ use crate::world::ClientId;
 use game_api::movement::{
     GameWeapon, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
     MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveWorld, PlayerMovement, ScriptFlag,
-    Stance, WaterSurface,
+    Stance, VolumeColumn, WaterSurface,
 };
 
 /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask` names,
@@ -66,6 +66,66 @@ impl MoveWorld for MatchMoveWorld<'_> {
     fn water_surface(&self, _origin: [f32; 3], _up: f32, _down: f32) -> WaterSurface {
         WaterSurface::Unknown
     }
+
+    fn volume_column(
+        &self,
+        classname: &str,
+        limit: usize,
+        point: [f32; 3],
+        reach: f32,
+    ) -> VolumeColumn {
+        let Some(round) = self
+            .world
+            .ecs_ref()
+            .get_resource::<crate::script::RoundScript>()
+        else {
+            return VolumeColumn::Unknown;
+        };
+        let mut volumes: Vec<(u32, [f32; 3])> = Vec::new();
+        for pairs in round.zombies.authored.iter() {
+            if volumes.len() >= limit {
+                break;
+            }
+            let field = |key: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                    .map(|(_, v)| v.as_str())
+            };
+            if field("classname") != Some(classname) {
+                continue;
+            }
+            let model = field("model")
+                .and_then(|model| model.get(1..))
+                .map_or(0, |n| n.trim().parse::<u32>().unwrap_or(0) & 0xffff);
+            if volumes.iter().any(|(known, _)| *known == model) {
+                continue;
+            }
+            let mut origin = [0.0_f32; 3];
+            for (axis, value) in field("origin")
+                .unwrap_or("")
+                .split_whitespace()
+                .take(3)
+                .enumerate()
+            {
+                origin[axis] = value.parse().unwrap_or(0.0);
+            }
+            volumes.push((model, origin));
+        }
+        if volumes.is_empty() {
+            return VolumeColumn::NoVolumes;
+        }
+        let start = [point[0], point[1], point[2] + reach];
+        let end = [point[0], point[1], point[2] - reach];
+        for (model, origin) in volumes {
+            match crate::world::brush_model_line_hits(&self.content, model, origin, start, end) {
+                None => return VolumeColumn::Unknown,
+                Some(true) => return VolumeColumn::Inside,
+                Some(false) => {}
+            }
+        }
+        VolumeColumn::Outside
+    }
 }
 
 /// Runs one command with the game's movement and writes the player back;
@@ -82,6 +142,7 @@ pub(crate) fn run(
         return MoveOutcome::default();
     };
     let mut player = ps.move_player(id.0 as i32, frozen(world, id));
+    player.free_look = crate::script::host::spectators::free_look(world.ecs(), id);
     let held = held_rounds(world, id, ps.weapons);
     player.held = held;
     if world.publishes_snapshot() {

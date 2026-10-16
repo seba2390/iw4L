@@ -6,7 +6,7 @@ use crate::state::{buttons, e_flags, e_flags2, pm_flags, weap_flags, weapon_stat
 use crate::{MoveWorld, Pm, Pml, perks, tuning};
 
 /// The sights come up or go down at the variant's rates.
-pub(super) fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
+pub(crate) fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let weapon = aimed_weapon(pm);
     let d = def(pm, weapon).def;
     let ps = &mut *pm.ps;

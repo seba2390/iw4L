@@ -95,7 +95,7 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let ps = &mut *pm.ps;
     let target = ps.view_height_target;
     if target == 0 || ps.view_height_current == 0.0 {
-        ps.view_height_current = if ps.pm_type == pm_type::INTERMISSION {
+        ps.view_height_current = if ps.pm_type == pm_type::SPECTATOR {
             0.0
         } else {
             target as f32

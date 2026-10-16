@@ -105,6 +105,8 @@ pub struct MovePlayer {
     pub move_speed_scale: f32,
     /// A script froze the player's controls.
     pub frozen: bool,
+    /// A spectator may fly free (`allowspectateteam("freelook", …)`).
+    pub free_look: bool,
     /// Set by movement: the eye height above the origin.
     pub view_height: f32,
     /// Set by movement: the eye height the stance settles at.
@@ -147,6 +149,7 @@ impl Default for MovePlayer {
             weapon: 0,
             move_speed_scale: 1.0,
             frozen: false,
+            free_look: false,
             view_height: 0.0,
             view_height_target: 0,
             bob_cycle: 0,
@@ -275,6 +278,18 @@ pub enum WaterSurface {
     Unknown,
 }
 
+/// Where a point's vertical line lies against one class of the map's volume
+/// entities.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VolumeColumn {
+    /// The map places no such volume.
+    NoVolumes,
+    Inside,
+    Outside,
+    /// The match cannot tell.
+    Unknown,
+}
+
 /// The match around a moving player.
 pub trait MoveWorld {
     /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask`
@@ -295,6 +310,18 @@ pub trait MoveWorld {
     /// The water surface over `origin`, searched from `up` above to `down`
     /// below it.
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> WaterSurface;
+    /// Whether the vertical line `reach` above and below `point` crosses the
+    /// brush model of one of the first `limit` map entities of `classname`
+    /// (one per model).
+    fn volume_column(
+        &self,
+        _classname: &str,
+        _limit: usize,
+        _point: [f32; 3],
+        _reach: f32,
+    ) -> VolumeColumn {
+        VolumeColumn::Unknown
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -374,6 +401,11 @@ pub trait PlayerMovement: Sync {
     /// What the server sets on the player before each command, from the
     /// match's dvars.
     fn think(&self, player: &mut MovePlayer, dvar: &dyn Fn(&str) -> Option<String>);
+
+    /// The game's own movement flies a free spectator.
+    fn moves_spectators(&self) -> bool {
+        false
+    }
 
     /// A fresh player at spawn.
     fn spawn(&self, player: &mut MovePlayer);

@@ -7,6 +7,7 @@
 //! when `left_hand` is set; movement runs the rules once for each.
 
 mod ads;
+pub(crate) use ads::ads_lerp;
 mod fire;
 mod melee;
 mod offhand;
@@ -511,7 +512,7 @@ fn fire_button<W: MoveWorld>(pm: &Pm<'_, W>, weapon: u32, left: bool) -> u32 {
 pub(crate) fn update_firing_flag<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     pm.ps.e_flags &= !e_flags::FIRING;
     let ps = &*pm.ps;
-    if ps.pm_type == pm_type::REMOTE_CONTROL || ps.pm_flags & pm_flags::RESPAWNED != 0 {
+    if ps.pm_type == pm_type::INTERMISSION || ps.pm_flags & pm_flags::RESPAWNED != 0 {
         return;
     }
     let cmd = pm.cmd.buttons;
@@ -565,7 +566,7 @@ fn can_ads<W: MoveWorld>(pm: &Pm<'_, W>, pml: &Pml) -> bool {
                 return false;
             }
         }
-        pm_type::INTERMISSION | pm_type::REMOTE_CONTROL | pm_type::DEAD | pm_type::DEAD_LINKED => {
+        pm_type::SPECTATOR | pm_type::INTERMISSION | pm_type::DEAD | pm_type::DEAD_LINKED => {
             if ps.link_flags & 4 != 0 {
                 return true;
             }
