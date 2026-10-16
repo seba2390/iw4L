@@ -239,6 +239,21 @@ pub struct ZoneWeapon {
     pub cool_while_firing: bool,
     pub spin_up_time: i32,
     pub spin_down_time: i32,
+    /// Whether the variant's attachment table has a slot-0 entry (`BG_WeaponUsesAttachmentTable`).
+    pub has_attachment_table: bool,
+    /// Attachments supported by this weapon variant.
+    pub attachments: Vec<ZoneWeaponAttachment>,
+}
+
+/// An attachment supported on a `ZoneWeapon`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ZoneWeaponAttachment {
+    pub kind: u32,
+    pub clip_size_scale: f32,
+    pub clip_size: i32,
+    pub fire_type: i32,
+    pub alt_weapon: String,
+    pub dual_wield_weapon: String,
 }
 
 /// A zombies barrier type: pieces that open and close by animation, and the

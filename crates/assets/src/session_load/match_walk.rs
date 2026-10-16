@@ -257,6 +257,7 @@ pub(super) async fn walk_prepared_match(
     if !zombie.weapons.is_empty() {
         let before = weapons.len();
         weapons.absorb_overriding(zombie.weapons);
+        weapons.prepare_t6_configurations();
         fpv_meshes.absorb(zombie.fpv);
         world_weapons.absorb(zombie.world_weapons);
         projectile_meshes.absorb(zombie.projectiles);

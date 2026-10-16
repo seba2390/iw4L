@@ -718,7 +718,12 @@ pub(crate) fn resolve_give_id(
         return resolve(WeaponSelection::with(family.key.clone(), attachments));
     }
     let canonical = asset_game::FamilyKey::parse(raw).map(|key| key.asset_key());
-    let id = match registry.resolve_index(canonical.as_deref().unwrap_or(raw)) {
+    let lookup = canonical.as_deref().unwrap_or_else(|| {
+        raw.split_once(':')
+            .filter(|(_, rest)| rest.contains('+'))
+            .map_or(raw, |(_, rest)| rest)
+    });
+    let id = match registry.resolve_index(lookup) {
         Ok(Some(id)) => id,
         Ok(None) => return Err("empty weapon name".into()),
         Err(_) => return Err(format!("unknown weapon `{raw}`")),
@@ -730,6 +735,15 @@ pub(crate) fn resolve_give_id(
             .map_err(|refusal| format!("`{raw}`: {refusal} ({})", refusal.code()));
     }
     let Some(described) = registry.describe_configuration(id) else {
+        let mut sorted = attachments.to_vec();
+        sorted.sort_unstable();
+        let joined = format!("{}+{}", registry.name_of(id), sorted.join("+"));
+        if let Ok(Some(config_id)) = registry.resolve_index(&joined) {
+            return registry
+                .configuration_admission(config_id)
+                .map(|()| config_id)
+                .map_err(|refusal| format!("`{raw}`: {refusal} ({})", refusal.code()));
+        }
         return Err(format!("`{raw}` belongs to no weapon family"));
     };
     let mut selection = described.clone();

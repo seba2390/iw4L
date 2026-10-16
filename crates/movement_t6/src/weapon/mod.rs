@@ -294,14 +294,9 @@ impl Hand {
     }
 }
 
-/// A weapon's definition; a weapon with attachments runs on its variant
-/// alone.
+/// A weapon's definition, with any attachment scales and overrides applied.
 fn def<'a, W: MoveWorld>(pm: &Pm<'a, W>, weapon: u32) -> crate::Weapon<'a> {
-    let w = pm.world.weapon(weapon);
-    if w.name.contains('+') {
-        pm.gap(Gap::Attachments);
-    }
-    w
+    pm.world.weapon(weapon)
 }
 
 /// The weapon slot of a weapon number is filled.

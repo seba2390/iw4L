@@ -1202,7 +1202,28 @@ pub(crate) fn constrain_cmd(
     let Some(mut controls) = world.client_meta(id).map(|m| m.controls) else {
         return;
     };
-    if controls.switch_to != 0 && controls.switch_to == held {
+    let (no_cycling, raising) = crate::game_move::rules(world)
+        .and_then(|m| {
+            let ps = world.player(id)?;
+            let mp = ps.move_player(id.0 as i32, false);
+            Some((
+                m.status(&mp).is_some_and(|s| s.no_weapon_cycling),
+                m.weapon_activity(&mp).switching,
+            ))
+        })
+        .unwrap_or_else(|| {
+            (
+                false,
+                world
+                    .player(id)
+                    .is_some_and(|ps| matches!(ps.weaponstate_primary, 1..=5)),
+            )
+        });
+    if controls.switch_to != 0
+        && controls.switch_to == held
+        && !raising
+        && (u32::from(cmd.weapon) == held || !no_cycling)
+    {
         controls.switch_to = 0;
         world.client_meta_mut(id).controls.switch_to = 0;
     }
@@ -1233,7 +1254,7 @@ pub(crate) fn constrain_cmd(
     }
     if controls.switch_to != 0 {
         cmd.weapon = controls.switch_to as u16;
-    } else if controls.switch_disabled || controls.frozen {
+    } else if controls.switch_disabled || controls.frozen || no_cycling {
         cmd.weapon = held as u16;
     }
 }

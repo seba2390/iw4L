@@ -95,8 +95,7 @@ pub(super) fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     } else {
         -d.ads_out_rate()
     };
-    if perks::has(ps.perks, perks::FAST_ADS) {
-        pm.gap(Gap::AdsPerkAnimTypes);
+    if perks::has(ps.perks, perks::FAST_ADS) && !matches!(d.player_anim_type(), 3 | 17) {
         rate /= tuning::PERK_WEAP_ADS_MULTIPLIER;
     }
     if pm.ps.e_flags & e_flags::VEHICLE_VIEW != 0 {
@@ -162,10 +161,39 @@ pub(super) fn spin<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     }
 }
 
-/// Only a weapon with a variable-zoom attachment steps its zoom; IW4L's Black
-/// Ops 2 weapons carry no attachments (a named one raises the gap).
+/// Steps the zoom level on a weapon with a variable-zoom attachment (`vzoom`).
 pub(super) fn scope_zoom<W: MoveWorld>(pm: &mut Pm<'_, W>) {
-    let _ = def(pm, pm.ps.weapon);
+    let w = def(pm, pm.ps.weapon);
+    if !w
+        .name
+        .split('+')
+        .skip(1)
+        .any(|a| a.eq_ignore_ascii_case("vzoom"))
+    {
+        return;
+    }
+    let change_zoom = pm.cmd.buttons.held(buttons::CHANGE_ZOOM);
+    let ps = &mut *pm.ps;
+    if ps.ads_zoom_latched
+        || pm.cmd.server_time - ps.ads_zoom_time < 41
+        || !change_zoom
+        || ps.weapon_pos_frac < 1.0
+    {
+        if pm.cmd.server_time - ps.ads_zoom_time > 40 && !change_zoom && ps.weapon_pos_frac >= 1.0 {
+            ps.ads_zoom_latched = false;
+            ps.ads_zoom_time = pm.cmd.server_time;
+        }
+    } else {
+        ps.ads_prev_zoom_select = crate::inventory::held(ps, ps.weapon).map_or(0, |h| h.zoom);
+        ps.ads_prev_zoom_select_time = pm.cmd.server_time;
+        let weapon = ps.weapon;
+        if let Some(held) = crate::inventory::held_mut(ps, weapon) {
+            held.zoom = (held.zoom + 1) & 1;
+            ps.ads_zoom_latched = true;
+            ps.ads_zoom_time = pm.cmd.server_time;
+            pm.event(crate::events::event::SCOPE_ZOOM, 0);
+        }
+    }
 }
 
 /// Moves `from` towards `to` at `rate` per second; snaps when close.

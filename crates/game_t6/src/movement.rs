@@ -59,16 +59,6 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops 2's linked, noclip, ufo, spectator and intermission moves",
             "those player moves from its executable"
         ),
-        Gap::AdsPerkAnimTypes => unknown!(
-            "t6.weapons.ads_perk_anim_types",
-            "Black Ops 2's fast-ADS perk speeds every weapon's sights, sniper player animation types too",
-            "the indices of the sniper and rear-clip sniper types in mp/playeranimtypes.txt reaching movement"
-        ),
-        Gap::Attachments => unknown!(
-            "t6.weapons.attachments",
-            "Black Ops 2's weapon attachments: a held weapon runs on its variant alone, without its attachments' scales and overrides",
-            "attachment indices in IW4L's Black Ops 2 weapon numbers and the attachments' definitions reaching movement"
-        ),
     }
 }
 
@@ -88,27 +78,11 @@ fn water_unknown() -> &'static Unknown {
     )
 }
 
-fn variant_parent_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.variant_parent",
-        "a Black Ops 2 charge-shot weapon keeps its own clip and rounds instead of those of the weapon its variant loads under",
-        "each weapon's parent variant (the weapon whose alternate or dual-wield chain loads it) in IW4L's Black Ops 2 weapon data"
-    )
-}
-
 fn melee_lunge_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.melee_lunge",
         "a Black Ops 2 melee lunge: the client found a target, but IW4L's command carries no target entity, so the knife swings in place",
         "Black Ops 2's client melee target selection and the entity it sends in the command"
-    )
-}
-
-pub(crate) fn weapon_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.movement.weapon",
-        "a weapon without Black Ops 2's definition is read with every field zero",
-        "the weapon's Black Ops 2 weapon definition"
     )
 }
 
@@ -413,9 +387,7 @@ pub(crate) fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut Use
 
 struct World<'a> {
     world: &'a dyn MoveWorld,
-    weapon_unknown: core::cell::Cell<bool>,
     water_unknown: core::cell::Cell<bool>,
-    variant_parent_unknown: core::cell::Cell<bool>,
 }
 
 impl movement_t6::MoveWorld for World<'_> {
@@ -466,17 +438,14 @@ impl movement_t6::MoveWorld for World<'_> {
                 name: &w.name,
             })
         });
-        found.unwrap_or_else(|| {
-            self.weapon_unknown.set(true);
-            movement_t6::Weapon {
-                def: WeaponDefView::new(&ZERO_DEF, &ZERO_VARIANT).expect("full-size blocks"),
-                ammo_index: 0,
-                clip_index: 0,
-                alt_weapon: 0,
-                dual_wield_weapon: 0,
-                named_anims: 0,
-                name: "",
-            }
+        found.unwrap_or_else(|| movement_t6::Weapon {
+            def: WeaponDefView::new(&ZERO_DEF, &ZERO_VARIANT).expect("full-size blocks"),
+            ammo_index: 0,
+            clip_index: 0,
+            alt_weapon: 0,
+            dual_wield_weapon: 0,
+            named_anims: 0,
+            name: "",
         })
     }
 
@@ -484,9 +453,8 @@ impl movement_t6::MoveWorld for World<'_> {
         self.world.weapon(weapon).is_some()
     }
 
-    fn variant_parent(&self, _weapon: u32) -> Option<u32> {
-        self.variant_parent_unknown.set(true);
-        None
+    fn variant_parent(&self, weapon: u32) -> Option<u32> {
+        self.world.weapon(weapon)?.variant_parent
     }
 
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
@@ -549,9 +517,7 @@ impl PlayerMovement for T6Movement {
         };
         let adapter = World {
             world,
-            weapon_unknown: core::cell::Cell::new(false),
             water_unknown: core::cell::Cell::new(false),
-            variant_parent_unknown: core::cell::Cell::new(false),
         };
         let held: [movement_t6::HeldRounds; HELD_WEAPONS] = core::array::from_fn(|i| {
             (
@@ -591,12 +557,6 @@ impl PlayerMovement for T6Movement {
         }
         if adapter.water_unknown.get() {
             outcome.gaps.push(water_unknown());
-        }
-        if adapter.weapon_unknown.get() {
-            outcome.gaps.push(weapon_unknown());
-        }
-        if adapter.variant_parent_unknown.get() {
-            outcome.gaps.push(variant_parent_unknown());
         }
         for (slot, (weapon, clip, stock)) in movement_t6::held_rounds(&ps, &adapter)
             .into_iter()
@@ -833,6 +793,7 @@ impl PlayerMovement for T6Movement {
             "HINT_HEALTH",
             "HINT_SPECTATOR",
             "HINT_TEAMPOT",
+            "HINT_WEAPON",
         ]
     }
 
