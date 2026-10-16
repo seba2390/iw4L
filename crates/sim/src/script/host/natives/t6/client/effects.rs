@@ -123,6 +123,8 @@ struct ClientEffects {
     allocated_mixers: usize,
     /// Number of mixers created so far (`makemixerlight`).
     mixer_count: usize,
+    /// The gump hide fade's colour: the last `sethidegumpalpha` colour.
+    hide_fade_color: [f32; 3],
 }
 
 impl Default for ClientEffects {
@@ -137,6 +139,7 @@ impl Default for ClientEffects {
             lights: BTreeMap::new(),
             allocated_mixers: 0,
             mixer_count: 0,
+            hide_fade_color: [0.0; 3],
         }
     }
 }
@@ -1171,15 +1174,30 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // sethidegumpalpha(localclientnum, [color]): sets the gump transition
-    // fade color and alpha.
-    registry.register(Function, "sethidegumpalpha", |_, _, args| {
+    // sethidegumpalpha(localclientnum, [color]): starts the full-screen
+    // gump hide fade now, in `color` when given (else the last colour); the
+    // local client's draw runs the fade (`game_t6::client_screen`).
+    registry.register(Function, "sethidegumpalpha", |world, _, args| {
         local_client(args, 0)?;
-        if args.len() > 1 {
-            vector(args, 1)?;
-        }
-        // t6.csc.gump.hide_alpha: IW4L has no gump streaming transition fade
-        // overlay.
+        let color = if args.len() > 1 {
+            let color = vector(args, 1)?;
+            state(world).hide_fade_color = color;
+            color
+        } else {
+            state(world).hide_fade_color
+        };
+        with_server(world, |server| {
+            let set_ms = crate::level_time_ms(server.resource::<crate::step::StepRequest>().tick);
+            let mut frame = crate::frame::FrameWorld::from_world(server);
+            let client_id = crate::ClientId(LOCAL_CLIENT as u32);
+            if frame.client_meta(client_id).is_some() {
+                frame
+                    .client_meta_mut(client_id)
+                    .view_effects
+                    .client_screen
+                    .hide_fade = Some(crate::HideFade { set_ms, color });
+            }
+        });
         Ok(Value::Undefined)
     });
 

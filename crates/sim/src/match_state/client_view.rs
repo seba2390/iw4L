@@ -78,6 +78,36 @@ pub struct ViewEffects {
     pub blur: Option<ScriptBlur>,
     /// The client scripts' latest vision calls, by serial.
     pub client_visions: Vec<(u32, crate::VisionCall)>,
+    /// What Black Ops 2's client scripts set on the screen.
+    pub client_screen: ClientScreen,
+}
+
+/// The screen state Black Ops 2's client scripts set through its client
+/// game, as the local client's draw reads it each frame.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ClientScreen {
+    /// The last `sethidegumpalpha`.
+    pub hide_fade: Option<HideFade>,
+    /// The last `zacklodscalerigid`.
+    pub lod_scale_rigid: Option<LodScaleRigid>,
+}
+
+/// A `zacklodscalerigid` call: `r_lodScaleRigid`'s domain floor moves to
+/// `min` and its value is set to `value` (a value over the domain's top is
+/// refused).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LodScaleRigid {
+    pub set_ms: i32,
+    pub value: f32,
+    pub min: f32,
+}
+
+/// A `sethidegumpalpha` call: the screen hides behind a full-screen fade
+/// from `set_ms`, in `color` (the last colour a call gave, black at first).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HideFade {
+    pub set_ms: i32,
+    pub color: [f32; 3],
 }
 
 /// How many client-script vision calls a snapshot carries.

@@ -20,6 +20,10 @@ pub(crate) fn stamp_prepared_scene_view(
     fog: Res<crate::assemble::drawsurf::fog::FogDvars>,
     map_fog: Option<Res<crate::assemble::drawsurf::MapFrameFog>>,
     clock: Option<Res<net::FrameClock>>,
+    script_view: (
+        Option<Res<net::PresentedSnapshot>>,
+        Option<Res<net::LocalPresentClient>>,
+    ),
     depthhack: Res<RZnearDepthhackDvar>,
     subwindow: Res<RSubwindowDvar>,
     hosts: Query<&Transform, With<FlyCamera>>,
@@ -104,6 +108,14 @@ pub(crate) fn stamp_prepared_scene_view(
     lock_pvs.apply_after_stamp(&view);
 
     let (rigid, skinned) = &mut lod_parms;
+    if let (Some(presented), Some(local)) = script_view
+        && let Some(lod) = presented
+            .snapshot()
+            .and_then(|snapshot| snapshot.meta.for_client(local.0))
+            .and_then(|meta| meta.view_effects.client_screen.lod_scale_rigid)
+    {
+        rigid.apply_t6_script_scale(lod.set_ms, lod.value, lod.min);
+    }
     crate::prepare::scene::smodel_geom_cache::update_lod_parms(
         view.tan_half_fov_y(),
         rigid,

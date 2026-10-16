@@ -1214,6 +1214,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
         out.put_u32(*serial);
         encode_vision_call(out, call);
     }
+    encode_client_screen(out, &meta.view_effects.client_screen);
     debug_assert!(meta.menu_commands.len() <= sim::MENU_COMMAND_TAIL);
     out.put_u8(meta.menu_commands.len() as u8);
     for command in &meta.menu_commands {
@@ -1467,6 +1468,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             }
             calls
         },
+        client_screen: decode_client_screen(input)?,
     };
     let mut menu_commands = Vec::new();
     for _ in 0..input.get_u8()? {
@@ -1567,6 +1569,52 @@ fn encode_vision(out: &mut WireWriter, vision: Option<&sim::VisionChange>) {
             out.put_f32(lerp.fraction);
         }
     }
+}
+
+fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
+    match &screen.hide_fade {
+        None => out.put_u8(0),
+        Some(fade) => {
+            out.put_u8(1);
+            out.put_i32(fade.set_ms);
+            for channel in fade.color {
+                out.put_f32(channel);
+            }
+        }
+    }
+    match &screen.lod_scale_rigid {
+        None => out.put_u8(0),
+        Some(lod) => {
+            out.put_u8(1);
+            out.put_i32(lod.set_ms);
+            out.put_f32(lod.value);
+            out.put_f32(lod.min);
+        }
+    }
+}
+
+fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen, WireError> {
+    let hide_fade = match input.get_u8()? {
+        0 => None,
+        1 => Some(sim::HideFade {
+            set_ms: input.get_i32()?,
+            color: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+        }),
+        _ => return Err(WireError::Malformed("bad hide fade tag")),
+    };
+    let lod_scale_rigid = match input.get_u8()? {
+        0 => None,
+        1 => Some(sim::LodScaleRigid {
+            set_ms: input.get_i32()?,
+            value: input.get_f32()?,
+            min: input.get_f32()?,
+        }),
+        _ => return Err(WireError::Malformed("bad lod scale tag")),
+    };
+    Ok(sim::ClientScreen {
+        hide_fade,
+        lod_scale_rigid,
+    })
 }
 
 fn encode_vision_call(out: &mut WireWriter, call: &sim::VisionCall) {

@@ -26,6 +26,7 @@ const OWNERDRAW_CURSORHINT: i32 = 72;
 /// Draw ids of the code HUD, above the LUI scene's.
 pub(crate) const CODE_HUD_DRAW_ID: u32 = 0x8000_0000;
 const CODE_HUD_CROSSHAIR_ID: u32 = 0x8000_8000;
+const CODE_HUD_HIDE_FADE_ID: u32 = 0x8000_7fff;
 const CODE_HUD_MENU_DRAW_ID: u32 = 0x8001_0000;
 const CODE_HUD_FRONT_ELEM_ID: u32 = 0x8002_0000;
 
@@ -48,6 +49,13 @@ const COLOR_CODES: [[f32; 3]; 8] = [
 pub(crate) struct CodeHudDraws {
     pub(crate) back: Vec<Draw>,
     pub(crate) front: Vec<Draw>,
+}
+
+/// The gump hide fade and the last `sethidegumpalpha` it started from.
+#[derive(Default)]
+struct HideFadeView {
+    fade: t6::client_screen::HideFade,
+    seen: Option<i32>,
 }
 
 /// The cursor hint the client game keeps between frames.
@@ -588,6 +596,7 @@ fn update(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mut draws: ResMut<CodeHudDraws>,
     mut hint: Local<CursorHint>,
+    mut hide: Local<HideFadeView>,
 ) {
     draws.back.clear();
     draws.front.clear();
@@ -640,6 +649,45 @@ fn update(
     // The LUI scene's space is 720 high.
     let to_canvas = 720.0 / window.height().max(1.0);
     let use_key = input.use_key.as_deref().unwrap_or("");
+
+    // 0. The gump hide fade, over the whole viewport before the HUD.
+    if let Some(call) = meta.view_effects.client_screen.hide_fade
+        && hide.seen != Some(call.set_ms)
+    {
+        hide.seen = Some(call.set_ms);
+        hide.fade.start(call.set_ms, call.color);
+        diag::info!(
+            Ui,
+            "t6 code HUD: gump hide fade starts at {} color=({:.2},{:.2},{:.2})",
+            call.set_ms,
+            call.color[0],
+            call.color[1],
+            call.color[2]
+        );
+    }
+    let was_active = hide.fade.active();
+    // t6.csc.gump.stream: IW4L loads the whole map at start, so no gump zone
+    // is ever loading.
+    if let Some(color) = hide.fade.frame(now, false) {
+        let [x, y, w, h] = placement.apply_rect([0.0, 0.0, 640.0, 480.0], 4, 4);
+        draws.back.push(Draw {
+            id: CODE_HUD_HIDE_FADE_ID,
+            rectangle: [
+                x * to_canvas,
+                y * to_canvas,
+                (x + w) * to_canvas,
+                (y + h) * to_canvas,
+            ],
+            color,
+            rotation: 0.0,
+            alignment: 0,
+            clip: None,
+            content: Content::Image("white".to_owned()),
+            text_shadow: false,
+        });
+    } else if was_active {
+        diag::info!(Ui, "t6 code HUD: gump hide fade ends at {now}");
+    }
 
     // 1. Background server `HudElem`s (`CG_Draw2dHudElems(localClientNum, 0)`).
     draw_hud_elems(

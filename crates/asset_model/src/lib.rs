@@ -18,7 +18,12 @@ pub use model_kind::*;
 pub use model_lighting::*;
 pub use model_lod::*;
 pub use model_skel::*;
-pub use model_skel_t6::{T6Model, capture_model_skel_t6};
+pub use model_skel_t6::{
+    LOD_BIAS_RIGID_DEFAULT as T6_LOD_BIAS_RIGID_DEFAULT,
+    LOD_SCALE_RIGID_DEFAULT as T6_LOD_SCALE_RIGID_DEFAULT,
+    LOD_SCALE_RIGID_MAX as T6_LOD_SCALE_RIGID_MAX,
+    RIGID_LOD_FOV_HYSTERESIS as T6_RIGID_LOD_FOV_HYSTERESIS, T6Model, capture_model_skel_t6,
+};
 pub use packed_vertex::*;
 pub use projectile_mesh_catalog::*;
 pub use soldiers::*;

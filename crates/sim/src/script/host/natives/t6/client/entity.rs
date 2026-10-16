@@ -2177,15 +2177,37 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         },
     );
 
-    // zacklodscalerigid([scale, min_scale]): sets `r_lodScaleRigid` on the
-    // client.
-    registry.register(Function, "zacklodscalerigid", |_, _, args| {
-        if args.len() == 2 {
-            float(args, 1)?;
-            float(args, 0)?;
-        }
-        // t6.csc.render.lod_scale_rigid: IW4L does not adjust rigid model
-        // LOD scale from client scripts.
+    // zacklodscalerigid([scale, min_scale]): with no arguments puts
+    // `r_lodScaleRigid` and its domain's floor back to 1; with two, the
+    // floor becomes `min_scale` (at least 0.6) and the value `scale` held
+    // between the floor and the domain's top (4); other counts do nothing.
+    registry.register(Function, "zacklodscalerigid", |world, _, args| {
+        let (value, min) = match args.len() {
+            0 => (1.0, 1.0),
+            2 => {
+                let floor = float(args, 1)?;
+                let floor = if floor - 0.6 >= 0.0 { floor } else { 0.6 };
+                let scale = float(args, 0)?;
+                let mut value = if scale - 4.0 >= 0.0 { 4.0 } else { scale };
+                if floor - scale >= 0.0 {
+                    value = floor;
+                }
+                (value, floor)
+            }
+            _ => return Ok(Value::Undefined),
+        };
+        with_server(world, |server| {
+            let set_ms = crate::level_time_ms(server.resource::<crate::step::StepRequest>().tick);
+            let mut frame = crate::frame::FrameWorld::from_world(server);
+            let client_id = crate::ClientId(super::game::LOCAL_CLIENT as u32);
+            if frame.client_meta(client_id).is_some() {
+                frame
+                    .client_meta_mut(client_id)
+                    .view_effects
+                    .client_screen
+                    .lod_scale_rigid = Some(crate::LodScaleRigid { set_ms, value, min });
+            }
+        });
         Ok(Value::Undefined)
     });
 
