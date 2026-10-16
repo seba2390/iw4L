@@ -472,6 +472,12 @@ impl SimWorld {
         crate::script::client::report_sounds(&mut self.ecs, statuses);
     }
 
+    /// The local client's effect system's word that the script effects in
+    /// these rows have run out.
+    pub fn report_finished_effects(&mut self, rows: Vec<u32>) {
+        crate::script::client::report_effects(&mut self.ecs, rows);
+    }
+
     /// Installs the compiled client scripts a local client runs beside the
     /// server's.
     pub fn install_compiled_client_scripts(
@@ -685,13 +691,15 @@ impl SimWorld {
             .ecs
             .get::<SimState>(self.state_entity)
             .expect("simulation state entity is missing its SimState component");
-        state.snapshot_with_dynamic_rows(
+        let mut snapshot = state.snapshot_with_dynamic_rows(
             tick,
             collect_players(&self.ecs),
             collect_projectiles(&self.ecs),
             collect_script_movers(&self.ecs),
             collect_dropped_items(&self.ecs),
-        )
+        );
+        crate::script::client::present::present_in_snapshot(&self.ecs, &mut snapshot);
+        snapshot
     }
 
     pub fn slow_motion(&self) -> Option<crate::ScriptSlowMotion> {

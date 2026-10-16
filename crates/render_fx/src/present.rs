@@ -19,10 +19,10 @@ use fx::{
 use fx_iw4::{
     FX_ELEM_AT_REST_NONE, FX_ELEM_ATLAS_OFF, FX_ELEM_ATLAS_SIZE, FxElemType, FxRandomChannel,
     apply_lighting_frac_bgra, build_cloud, clamp_elem_rotation_time, cull_cloud, cull_elem_light,
-    effect_def_needs_lighting_sample, elem_light_color_rgb, elem_uses_lighting_frac,
-    evaluate_rotation_total, evaluate_scale, evaluate_size0, evaluate_size1, get_elem_angles_axis,
-    get_velocity_at_time, msec_for_sampling_axis, sample_f32, sprite_atlas_uv, vec3_normalize,
-    vis_blocker_add_prepared,
+    effect_def_needs_lighting_sample, elem_light_color_rgb, elem_nonuniform_scale,
+    elem_uses_lighting_frac, evaluate_rotation_total, evaluate_scale, evaluate_size0,
+    evaluate_size1, get_elem_angles_axis, get_velocity_at_time, msec_for_sampling_axis, sample_f32,
+    sprite_atlas_uv, vec3_normalize, vis_blocker_add_prepared,
 };
 use math_iw4::angle_vectors;
 use sim::SimWorld;
@@ -1146,6 +1146,20 @@ pub fn build_fx_verts(
                 return None;
             }
             s1
+        } else if ctx.elem_type <= 1 && elem_nonuniform_scale(elem.view.flags) {
+            // A non-uniform sprite's height has a draw of its own.
+            let Some(s1) = evaluate_size1(
+                elem.vis_samples.as_slice(),
+                elem.view.vis_state_interval_count,
+                ctx.norm_time,
+                sample_f32(ctx.elem_random_seed, FxRandomChannel::Size1),
+            ) else {
+                gaps.no_size1_sample = gaps.no_size1_sample.saturating_add(1);
+                return None;
+            };
+            s1
+        } else if ctx.elem_type <= 1 {
+            size0
         } else {
             0.0
         };

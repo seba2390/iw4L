@@ -14,6 +14,15 @@ pub const FX_ELEM_UPDATE_HAS_VEL_GRAPH: i32 = 0x0600_0000;
 
 pub const FX_ELEM_USE_MODEL_PHYSICS: i32 = 0x0800_0000;
 
+/// A sprite whose visual state sizes its height apart (`size[1]`); without
+/// it the height is its width.
+pub const FX_ELEM_NONUNIFORM_SCALE: i32 = 0x1000_0000;
+
+#[inline]
+pub const fn elem_nonuniform_scale(flags: i32) -> bool {
+    flags & FX_ELEM_NONUNIFORM_SCALE != 0
+}
+
 pub const FX_ELEM_RUN_MASK: i32 = 0xc0;
 pub const FX_ELEM_RUN_RELATIVE_TO_SPAWN: i32 = 0x40;
 pub const FX_ELEM_RUN_RELATIVE_TO_EFFECT: i32 = 0x80;

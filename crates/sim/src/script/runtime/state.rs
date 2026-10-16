@@ -82,6 +82,9 @@ pub(crate) struct RoundScript {
     pub(crate) reload_after_ms: Option<i64>,
     pub(crate) shown: BTreeMap<u64, host::presence::Shown>,
     pub(crate) retired_presence: Vec<(crate::ScriptModelId, bool)>,
+    /// Map models the server leaves to the client (Black Ops' client-only
+    /// map entities): never drawn or solid in the server's world.
+    pub(crate) withheld_presence: Vec<crate::ScriptModelId>,
     pub(crate) blasts: Vec<host::entity_damage::ScriptBlast>,
     pub(crate) hits: Vec<host::entity_damage::ScriptHit>,
     pub(crate) use_held: std::collections::BTreeSet<u32>,
@@ -179,6 +182,7 @@ impl RoundScript {
             reload_after_ms: Default::default(),
             shown: Default::default(),
             retired_presence: Default::default(),
+            withheld_presence: Default::default(),
             blasts: Default::default(),
             hits: Default::default(),
             use_held: Default::default(),

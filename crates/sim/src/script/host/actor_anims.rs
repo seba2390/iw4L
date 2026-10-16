@@ -84,6 +84,19 @@ impl ActorAnimTree {
     }
 }
 
+/// The animation trees a client VM's entities play, by lowercase name: the
+/// match's, which the client VM has no world of its own to read.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+pub(crate) struct ClientAnimTrees(pub(crate) BTreeMap<String, Arc<ActorAnimTree>>);
+
+/// The tree a script names: the client VM's copy, else the world's.
+fn tree_named(world: &mut World, name: &str) -> Option<Arc<ActorAnimTree>> {
+    if let Some(trees) = world.get_resource::<ClientAnimTrees>() {
+        return trees.0.get(&name.to_ascii_lowercase()).cloned();
+    }
+    FrameWorld::from_world(world).actor_anim_tree(name)
+}
+
 /// One actor's animation state: its tree and which nodes report notetracks
 /// under which notify name.
 #[derive(Clone, Debug)]
@@ -257,6 +270,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Err("expects an animation tree".into());
         };
         let name = name.clone();
+        if world.resource::<RoundScript>().client {
+            return client_use_tree(world, receiver, &name);
+        }
         match actor_id(world, receiver) {
             Ok(id) => attach(world, id, &name),
             // A script model plays single clips (`AnimScripted`); it needs
@@ -269,11 +285,36 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
 }
 
+/// Black Ops' client `useAnimTree`: only on its own entities (numbered from
+/// `0x400`) with a model.
+fn client_use_tree(world: &mut World, receiver: &Value, name: &str) -> Result<Value, String> {
+    let (id, number) = match world.resource::<RoundScript>().entity(receiver) {
+        Some((id, entity)) => (id, entity.number),
+        None => return Err("not an entity".into()),
+    };
+    if number < crate::script::client::present::CLIENT_ENTITY_BASE {
+        return Err("UseAnimTree: Entity is a server-based entity.".into());
+    }
+    if tree_named(world, name).is_none() {
+        return Err("Unknown anim tree\n".into());
+    }
+    if !has_model(world, id) {
+        return Err("Cannot set an animtree into an entity that has no model.".into());
+    }
+    attach(world, id, name)
+}
+
+fn has_model(world: &mut World, id: u64) -> bool {
+    matches!(
+        world.resource_mut::<RoundScript>().object_field(id, "model"),
+        Value::String(model) if !model.is_empty()
+    )
+}
+
 /// Gives an actor the named tree unless it already plays it.
 pub(crate) fn attach(world: &mut World, actor: u64, tree: &str) -> Result<Value, String> {
-    let tree = FrameWorld::from_world(world)
-        .actor_anim_tree(tree)
-        .ok_or_else(|| format!("animation tree '{tree}' is not loaded"))?;
+    let tree =
+        tree_named(world, tree).ok_or_else(|| format!("animation tree '{tree}' is not loaded"))?;
     let mut runtime = world.resource_mut::<RoundScript>();
     if runtime
         .actor_anims
@@ -286,8 +327,11 @@ pub(crate) fn attach(world: &mut World, actor: u64, tree: &str) -> Result<Value,
 }
 
 fn actor_id(world: &World, receiver: &Value) -> Result<u64, String> {
-    match world.resource::<RoundScript>().entity(receiver) {
+    let runtime = world.resource::<RoundScript>();
+    match runtime.entity(receiver) {
         Some((id, entity)) if entity.kind == EntityKind::Actor => Ok(id),
+        // Black Ops' client animates any entity it has a model for.
+        Some((id, entity)) if runtime.client && entity.kind != EntityKind::HudElem => Ok(id),
         _ => Err("receiver is not an actor".into()),
     }
 }
@@ -308,6 +352,23 @@ fn with_anim(
 ) -> Result<Value, String> {
     let id = actor_id(world, receiver)?;
     let name = anim_name(args, index)?;
+    // A client entity with no tree of its own plays its model's: the tree
+    // the animation is from.
+    if world.resource::<RoundScript>().client
+        && !world
+            .resource::<RoundScript>()
+            .actor_anims
+            .contains_key(&id)
+    {
+        let Value::Animation { tree, .. } = arg(args, index)? else {
+            return Err(format!("parameter {} is not an animation", index + 1));
+        };
+        let tree = tree.clone();
+        if !has_model(world, id) {
+            return Err("Client entity has no model or animtree.".into());
+        }
+        attach(world, id, &tree)?;
+    }
     let mut runtime = world.resource_mut::<RoundScript>();
     let anim = runtime
         .actor_anims

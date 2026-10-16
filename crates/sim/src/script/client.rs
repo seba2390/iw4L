@@ -9,6 +9,9 @@ use std::sync::Arc;
 use super::host::entities::EntityKind;
 use super::{Fault, MatchScript, NativeRegistry, Program, RoundScript, Value};
 
+pub(crate) mod present;
+pub(crate) mod triggers;
+
 /// VM-generic builtins the client VM shares with the server's: they read and
 /// write script values only.
 const SHARED_BUILTINS: &[(super::Namespace, &str)] = {
@@ -247,6 +250,21 @@ pub(crate) fn report_sounds(server: &mut World, statuses: Vec<crate::ClientSound
     apply_sound_reports(&mut client.world, statuses);
 }
 
+/// The local client's effect system says these effect rows have run out: a
+/// client point effect's handle dies, as Black Ops' handle does once its
+/// effect system frees the effect.
+pub(crate) fn report_effects(server: &mut World, rows: Vec<u32>) {
+    let Some(mut client) = server.get_resource_mut::<ClientScripts>() else {
+        return;
+    };
+    let mut output = client.world.resource_mut::<ClientOutput>();
+    for row in rows {
+        if row & 0xc000_0000 == CLIENT_EFFECT_ROW {
+            output.effects.remove(&((row & 0x3fff_ffff) as i32));
+        }
+    }
+}
+
 /// A client VM's world takes its sound system's reports.
 pub(crate) fn apply_sound_reports(world: &mut World, statuses: Vec<crate::ClientSoundStatus>) {
     {
@@ -320,8 +338,9 @@ pub(crate) struct ClientLoop {
 }
 
 /// An effect the client plays at a point (`playFx`, or a triggered
-/// `spawnFx` entity): it begins at `begin_ms` (level time) and is alive
-/// through `end_ms`.
+/// `spawnFx` entity): it begins at `begin_ms` (level time). A point effect
+/// is alive until the local client's effect system says it has run out; an
+/// effect entity's through `end_ms`.
 #[derive(Clone, Debug)]
 pub(crate) struct ClientEffect {
     pub(crate) name: String,
@@ -330,7 +349,13 @@ pub(crate) struct ClientEffect {
     pub(crate) up: [f32; 3],
     /// When it begins; an untriggered `spawnFx` entity has none yet.
     pub(crate) begin_ms: Option<i32>,
-    pub(crate) end_ms: i32,
+    pub(crate) end_ms: Option<i32>,
+}
+
+impl ClientEffect {
+    fn alive(&self, now: i32) -> bool {
+        self.end_ms.is_none_or(|end| now <= end)
+    }
 }
 
 /// An effect the client plays on an entity's tag (`playFxOnTag`).
@@ -372,6 +397,8 @@ pub(crate) struct ClientOutput {
     next_effect: i32,
     /// The latest vision calls, by serial.
     pub(crate) vision_calls: std::collections::VecDeque<(u32, crate::VisionCall)>,
+    /// Dvars `setClientDvar` set this frame, for the local client.
+    pub(crate) client_dvars: Vec<(String, String)>,
     next_vision_call: u32,
 }
 
@@ -395,7 +422,7 @@ impl ClientOutput {
     /// one's handle is forgotten.
     pub(crate) fn effect_alive(&mut self, handle: i32, now: i32) -> bool {
         if let Some(effect) = self.effects.get(&handle) {
-            if now <= effect.end_ms {
+            if effect.alive(now) {
                 return true;
             }
             self.effects.remove(&handle);
@@ -484,6 +511,14 @@ impl ClientEffectTable {
             .copied()
             .unwrap_or(0)
     }
+}
+
+/// The models the client's `setModel` may set: those the server precached
+/// and the map's entities' models, by lowercase name.
+#[derive(Resource, Default)]
+pub(crate) struct ClientModels {
+    pub(crate) names: std::collections::BTreeSet<String>,
+    precached: usize,
 }
 
 /// A client entity turned into a primary light (`makelight`).
@@ -610,6 +645,8 @@ struct ServerEntitySnapshot {
     is_dog: Option<bool>,
     weapon: Option<String>,
     targetname: Option<Value>,
+    /// An actor's team.
+    team: Option<Value>,
     client_flags: u16,
     has_eyes: bool,
     hidden: bool,
@@ -623,22 +660,10 @@ pub(crate) struct ClientScripts {
     entries: Vec<String>,
     callbacks: Option<game_api::ClientCallbacks>,
     mirrored: std::collections::BTreeMap<u64, MirroredEntity>,
-    /// The server entities the client's own models draw through, by client
-    /// entity.
-    twins: std::collections::BTreeMap<u64, Twin>,
-    /// Tag effects waiting for a twin made this frame to have its model.
-    pending_tag_events: Vec<ClientTagEvent>,
+    /// Touches whose `trigger` notify waits: (toucher, trigger).
+    trigger_queue: Vec<(u64, u64)>,
     started: bool,
     stopped: bool,
-}
-
-/// A server entity that draws a client entity's model.
-#[derive(Clone, Copy, Debug)]
-struct Twin {
-    server: u64,
-    /// Whether the client made it (a model it spawned), rather than a
-    /// client-only map model's own server entity.
-    made: bool,
 }
 
 impl NativeRegistry {
@@ -707,6 +732,11 @@ pub(crate) fn install(
     });
     world.insert_resource(ClientOutput::default());
     world.insert_resource(ClientSoundReports::default());
+    world.insert_resource(ClientModels::default());
+    world.insert_resource(super::host::actor_anims::ClientAnimTrees({
+        let frame = crate::frame::FrameWorld::from_world(server);
+        frame.actor_anim_trees().clone()
+    }));
     world.insert_resource(ClientEffectTable {
         lives: level.effect_lives.clone(),
         ..Default::default()
@@ -715,13 +745,14 @@ pub(crate) fn install(
         map: level.primary_lights.clone(),
         ..Default::default()
     });
+    triggers::spawn(server, &mut world);
+    server.insert_resource(present::ClientPresentation::default());
     server.insert_resource(ClientScripts {
         world,
         entries,
         callbacks,
         mirrored: Default::default(),
-        twins: Default::default(),
-        pending_tag_events: Vec::new(),
+        trigger_queue: Vec::new(),
         started: false,
         stopped: false,
     });
@@ -762,6 +793,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     .insert(name.clone(), value.clone());
             }
             sync_effect_table(server, &mut client.world);
+            sync_model_table(server, &mut client.world);
             let player = local_player_view(server);
             client.world.resource_mut::<ClientView>().locals[0].player = player;
             let snapshots = collect_server_entities(server);
@@ -772,8 +804,13 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             for command in commands {
                 frame.push_script_audio(command);
             }
-            let made = sync_client_models(server, &mut client);
-            deliver_tag_effects(server, &mut client, &made);
+            let dvars =
+                std::mem::take(&mut client.world.resource_mut::<ClientOutput>().client_dvars);
+            for (name, value) in dvars {
+                super::host::natives::player::send_client_dvar(server, 0, &name, &value);
+            }
+            present::present(server, &mut client);
+            deliver_tag_effects(server, &mut client);
         }
     }
     server.insert_resource(client);
@@ -800,197 +837,86 @@ fn sync_effect_table(server: &World, client: &mut World) {
     }
 }
 
-/// Plays and stops the client's tag effects on the server's entities the
-/// client sees, for the local client only; an effect on a client-only
-/// entity plays at its origin.
-fn deliver_tag_effects(
-    server: &mut World,
-    client: &mut ClientScripts,
-    made: &std::collections::BTreeSet<u64>,
-) {
-    let mut events = std::mem::take(&mut client.pending_tag_events);
-    events.extend(std::mem::take(
-        &mut client.world.resource_mut::<ClientOutput>().tag_events,
-    ));
+/// The client sees the models the server indexed: its precached models and
+/// its map entities' models.
+fn sync_model_table(server: &World, client: &mut World) {
+    let precached = &server.resource::<MatchScript>().precached;
+    let models: Vec<&String> = precached
+        .keys()
+        .filter(|(kind, _)| *kind == "model")
+        .map(|(_, name)| name)
+        .collect();
+    let mut table = client.resource_mut::<ClientModels>();
+    if table.precached == models.len() && !table.names.is_empty() {
+        return;
+    }
+    table.precached = models.len();
+    table
+        .names
+        .extend(models.into_iter().map(|name| name.to_ascii_lowercase()));
+    for pairs in server.resource::<RoundScript>().zombies.authored.iter() {
+        let model = pairs
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case("model"))
+            .map(|(_, model)| model.as_str());
+        if let Some(model) = model.filter(|m| !m.is_empty() && !m.starts_with(['*', '?'])) {
+            table.names.insert(model.to_ascii_lowercase());
+        }
+    }
+}
+
+/// Plays and stops the client's tag effects for the local client only: on
+/// the server's entities it sees, on its own entities' models (the same frame
+/// they are presented), and at the place of one without a model.
+fn deliver_tag_effects(server: &mut World, client: &mut ClientScripts) {
+    let events = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().tag_events);
+    let audience = crate::EventAudience::Client(crate::ClientId(0));
     for event in events {
         let effect = &event.effect;
-        // A twin made this frame has its model from the server's next
-        // frame on.
-        if made.contains(&effect.entity) {
-            client.pending_tag_events.push(event);
-            continue;
-        }
         let mirrored = client
             .mirrored
             .iter()
             .find(|(_, entry)| entry.client_object == effect.entity)
-            .map(|(server_id, _)| *server_id)
-            .or_else(|| client.twins.get(&effect.entity).map(|twin| twin.server));
-        let audience = crate::EventAudience::Client(crate::ClientId(0));
-        let result = match mirrored {
-            Some(server_id) => super::host::natives::engine::effect_on_tag(
+            .map(|(server_id, _)| *server_id);
+        if let Some(server_id) = mirrored {
+            if let Err(fault) = super::host::natives::engine::effect_on_tag(
                 server,
                 &effect.name,
                 &Value::Object(server_id),
                 &effect.tag,
                 event.stop,
-                audience,
-            ),
-            None if event.stop => Ok(()),
-            None => {
-                let origin = match client
-                    .world
-                    .resource_mut::<RoundScript>()
-                    .object_field(effect.entity, "origin")
-                {
-                    Value::Vector(origin) => origin,
-                    _ => continue,
-                };
-                let index =
-                    crate::frame::FrameWorld::from_world(server).effect_name_index(&effect.name);
-                super::host::natives::engine::play_fx_to(
-                    server,
-                    audience,
-                    index,
-                    origin,
-                    [0.0, 0.0, 1.0],
-                    [0.0; 3],
-                );
-                Ok(())
+                audience.clone(),
+            ) {
+                diag::warn!(Sim, "csc: tag effect {} not played: {fault}", effect.name);
             }
+            continue;
+        }
+        let index = crate::frame::FrameWorld::from_world(server).effect_name_index(&effect.name);
+        let presented = server
+            .get_resource::<present::ClientPresentation>()
+            .and_then(|presentation| presentation.tag(effect.entity, &effect.tag));
+        let origin = match client
+            .world
+            .resource_mut::<RoundScript>()
+            .object_field(effect.entity, "origin")
+        {
+            Value::Vector(origin) => origin,
+            _ if presented.is_none() => continue,
+            _ => [0.0; 3],
         };
-        if let Err(fault) = result {
-            diag::warn!(Sim, "csc: tag effect {} not played: {fault}", effect.name);
-        }
-    }
-}
-
-/// The client's own models draw through twins in the server's world: a
-/// client-only map model's own server entity, or one made for a model the
-/// client spawned (no-solid, client-only, never mirrored back). Each frame
-/// a twin takes its client entity's origin, angles, model and visibility.
-/// Answers the client entities whose twins were made this frame.
-fn sync_client_models(
-    server: &mut World,
-    client: &mut ClientScripts,
-) -> std::collections::BTreeSet<u64> {
-    struct Row {
-        object: u64,
-        presence: Option<crate::ScriptModelId>,
-        origin: [f32; 3],
-        angles: [f32; 3],
-        model: Value,
-        hidden: bool,
-    }
-    let rows: Vec<Row> = {
-        let mut runtime = client.world.resource_mut::<RoundScript>();
-        let own: Vec<(u64, Option<crate::ScriptModelId>, bool)> = runtime
-            .entities
-            .iter()
-            .filter(|(_, e)| e.kind != EntityKind::HudElem && e.number >= CLIENT_ENTITY_BASE)
-            .map(|(id, e)| (*id, e.presence, e.hidden))
-            .collect();
-        own.into_iter()
-            .map(|(object, presence, hidden)| {
-                let vector =
-                    |runtime: &mut RoundScript, field| match runtime.object_field(object, field) {
-                        Value::Vector(v) => v,
-                        _ => [0.0; 3],
-                    };
-                Row {
-                    object,
-                    presence,
-                    origin: vector(&mut runtime, "origin"),
-                    angles: vector(&mut runtime, "angles"),
-                    model: runtime.object_field(object, "model"),
-                    hidden,
-                }
-            })
-            .collect()
-    };
-    let alive: std::collections::BTreeSet<u64> = rows.iter().map(|row| row.object).collect();
-    let gone: Vec<(u64, Twin)> = client
-        .twins
-        .iter()
-        .filter(|(object, _)| !alive.contains(object))
-        .map(|(object, twin)| (*object, *twin))
-        .collect();
-    for (object, twin) in gone {
-        client.twins.remove(&object);
-        let mut runtime = server.resource_mut::<RoundScript>();
-        if twin.made {
-            runtime.delete_entity(twin.server);
-        } else if let Some(entity) = runtime.entities.get_mut(&twin.server) {
-            entity.hidden = true;
-        }
-    }
-    let mut made = std::collections::BTreeSet::new();
-    for row in rows {
-        let twin = match client.twins.get(&row.object) {
-            Some(twin) => *twin,
-            None => {
-                let twin = if let Some(presence) = row.presence {
-                    let Some(server_id) = server.resource::<RoundScript>().presented_by(presence)
-                    else {
-                        continue;
-                    };
-                    Twin {
-                        server: server_id,
-                        made: false,
-                    }
-                } else if matches!(&row.model, Value::String(m) if !m.is_empty() && !m.starts_with('*'))
-                {
-                    match make_twin(server, row.origin) {
-                        Ok(server_id) => {
-                            made.insert(row.object);
-                            Twin {
-                                server: server_id,
-                                made: true,
-                            }
-                        }
-                        Err(fault) => {
-                            diag::warn!(Sim, "csc: client model not drawn: {fault}");
-                            continue;
-                        }
-                    }
-                } else {
-                    continue;
-                };
-                client.twins.insert(row.object, twin);
-                twin
-            }
+        let (on, pose) = match presented {
+            Some((number, bone, pose)) => (bone.map(|bone| (number, bone)), pose),
+            None => (None, None),
         };
-        let mut runtime = server.resource_mut::<RoundScript>();
-        runtime.set_object_field(twin.server, "origin", Value::Vector(row.origin));
-        runtime.set_object_field(twin.server, "angles", Value::Vector(row.angles));
-        runtime.set_object_field(twin.server, "model", row.model);
-        if let Some(entity) = runtime.entities.get_mut(&twin.server) {
-            entity.hidden = row.hidden;
-        }
+        super::host::natives::engine::tag_effect_event(
+            server,
+            audience.clone(),
+            event.stop,
+            index,
+            on,
+            pose.unwrap_or((origin, [0.0, 0.0, 1.0])),
+        );
     }
-    made
-}
-
-/// The first client-only entity number.
-const CLIENT_ENTITY_BASE: i32 = 0x400;
-
-/// A server script model for a model the client spawned.
-fn make_twin(server: &mut World, origin: [f32; 3]) -> Result<u64, String> {
-    let presence = super::host::presence::spawn_presence(server, origin)?;
-    let number = crate::frame::FrameWorld::from_world(server).gentity_number(presence);
-    let mut runtime = server.resource_mut::<RoundScript>();
-    let id = runtime.create_entity(EntityKind::Spawned, "")?;
-    runtime.set_object_field(id, "origin", Value::Vector(origin));
-    runtime.set_object_field(id, "angles", Value::Vector([0.0; 3]));
-    if let Some(entity) = runtime.entities.get_mut(&id) {
-        entity.presence = Some(presence);
-        entity.client_only = true;
-        entity.solid = false;
-        if let Some(number) = number {
-            entity.number = number;
-        }
-    }
-    Ok(id)
 }
 
 /// Row ids of the client's point effects and effect entities, apart from
@@ -1015,7 +941,7 @@ pub(crate) fn effect_rows(server: &World, now: i32) -> Vec<(u32, ClientEffect)> 
         return Vec::new();
     };
     let output = client.world.resource::<ClientOutput>();
-    let playing = |effect: &&ClientEffect| effect.begin_ms.is_some() && now <= effect.end_ms;
+    let playing = |effect: &&ClientEffect| effect.begin_ms.is_some() && effect.alive(now);
     let points = output
         .effects
         .iter()
@@ -1086,7 +1012,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             }
             EntityKind::HudElem | EntityKind::Item(_) => continue,
         };
-        let (mut origin, mut angles, model, species, is_dog, targetname) = {
+        let (mut origin, mut angles, model, species, is_dog, targetname, team) = {
             let mut runtime = server.resource_mut::<RoundScript>();
             let origin = match runtime.object_field(id, "origin") {
                 Value::Vector(v) => v,
@@ -1125,7 +1051,11 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             } else {
                 None
             };
-            (origin, angles, model, species, is_dog, targetname)
+            let team = match (&entity.kind, runtime.object_field(id, "team")) {
+                (EntityKind::Actor, Value::String(team)) => Some(Value::String(team)),
+                _ => None,
+            };
+            (origin, angles, model, species, is_dog, targetname, team)
         };
         if entity.kind == EntityKind::Player
             && let Some(ps) =
@@ -1155,6 +1085,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             is_dog,
             weapon,
             targetname,
+            team,
             client_flags: flags,
             has_eyes,
             hidden: entity.hidden,
@@ -1197,6 +1128,7 @@ fn run_frame(
         }
     }
     sync_snapshot_entities(client, snapshots, tick);
+    triggers::run(client, i64::from(crate::level_time_ms(tick)));
     let world = &mut client.world;
     // The server's commands reach the client with its snapshot, before its
     // scripts run.
@@ -1267,8 +1199,9 @@ fn run_frame(
     super::runtime::advance_scheduler(world);
     let now = crate::level_time_ms(tick);
     super::host::mechanics::advance_client_mechanics(world, i64::from(now));
+    super::host::actor_anims::advance(world, crate::MATCH_TICK_MS as f32 / 1000.0);
     let mut output = world.resource_mut::<ClientOutput>();
-    output.effects.retain(|_, effect| now <= effect.end_ms);
+    output.effects.retain(|_, effect| effect.alive(now));
     output.tag_effects.retain(|_, effect| now <= effect.end_ms);
     world.remove_resource::<crate::step::StepRequest>();
     if let Some(fault) = world.resource::<RoundScript>().fault.clone() {
@@ -1374,6 +1307,9 @@ fn sync_snapshot_entities(
             }
             if let Some(targetname) = &snap.targetname {
                 runtime.set_object_field(client_object, "targetname", targetname.clone());
+            }
+            if let Some(team) = &snap.team {
+                runtime.set_object_field(client_object, "team", team.clone());
             }
         }
 

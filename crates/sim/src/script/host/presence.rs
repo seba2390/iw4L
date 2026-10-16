@@ -80,6 +80,43 @@ pub(crate) fn initialize_map_models(world: &mut World) {
     for (object, model) in objects {
         runtime.set_object_field(object, "model", Value::String(model.into()));
     }
+    withhold_client_map_models(world);
+}
+
+/// The map models the server leaves to the client draw and collide in the
+/// server's world no more: the client presents its own.
+fn withhold_client_map_models(world: &mut World) {
+    let withheld: std::collections::BTreeSet<ScriptModelId> = world
+        .resource::<RoundScript>()
+        .withheld_presence
+        .iter()
+        .copied()
+        .collect();
+    if withheld.is_empty() {
+        return;
+    }
+    let mut frame = FrameWorld::from_world(world);
+    for row in frame.entity_collision_capabilities_mut() {
+        if row
+            .owner
+            .script_model()
+            .is_some_and(|id| withheld.contains(&id))
+        {
+            row.hidden = true;
+            row.solid = false;
+        }
+    }
+    let numbers: Vec<i32> = crate::frame::collect_script_movers(frame.ecs())
+        .into_iter()
+        .filter(|mover| withheld.contains(&mover.id))
+        .map(|mover| mover.state.number)
+        .collect();
+    for number in numbers {
+        if let Some(mover) = frame.script_mover_mut_by_number(number) {
+            mover.show_only_to(0);
+            mover.nonsolid = true;
+        }
+    }
 }
 
 pub(crate) fn spawn_presence(world: &mut World, origin: [f32; 3]) -> Result<ScriptModelId, String> {
@@ -87,7 +124,9 @@ pub(crate) fn spawn_presence(world: &mut World, origin: [f32; 3]) -> Result<Scri
     let serial = runtime.next_spawned_presence;
     runtime.next_spawned_presence = serial
         .checked_add(1)
-        .filter(|n| *n < SPAWNED_PRESENCE_BASE)
+        .filter(|n| {
+            SPAWNED_PRESENCE_BASE + *n < crate::script::client::present::CLIENT_PRESENTED_BASE
+        })
         .ok_or("spawned script model identifiers exhausted")?;
     let id = ScriptModelId::from_wire(SPAWNED_PRESENCE_BASE + serial);
     let mut frame = FrameWorld::from_world(world);

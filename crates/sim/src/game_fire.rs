@@ -1147,4 +1147,41 @@ impl game_api::turret::TurretWorld for MatchFireWorld<'_, '_> {
             .then(|| self.sentient_at(object))
             .flatten()
     }
+
+    fn turret_loop_sound(&mut self, turret: i32, alias: Option<&str>) {
+        if let Some(object) = self.object_of(turret) {
+            crate::script::host::natives::t5_turret::set_loop_sound(
+                self.world.ecs(),
+                object,
+                alias,
+            );
+        }
+    }
+
+    fn turret_sound(&mut self, turret: i32, alias: &str) {
+        if let Some(object) = self.object_of(turret) {
+            crate::script::host::natives::t5_turret::play_sound(self.world.ecs(), object, alias);
+        }
+    }
+
+    fn turret_tag_effect(&mut self, turret: i32, effect: &str, tag: &str) {
+        if let Some(object) = self.object_of(turret) {
+            crate::script::host::natives::t5_turret::tag_effect(
+                self.world.ecs(),
+                object,
+                effect,
+                tag,
+            );
+        }
+    }
+
+    fn shake_camera(&mut self, origin: [f32; 3], scale: f32, duration_ms: i32, radius: f32) {
+        crate::script::host::natives::t5_turret::shake_camera(
+            self.world.ecs(),
+            scale,
+            duration_ms,
+            origin,
+            radius,
+        );
+    }
 }

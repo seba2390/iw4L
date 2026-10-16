@@ -42,6 +42,12 @@ const FLAG_OFF_CONE: u32 = 0x80;
 const FLAG_FIRE_DISABLED: u32 = 0x4000;
 /// Its model has a second barrel (`tag_flash_2`).
 const FLAG_TWO_BARRELS: u32 = 0x8000;
+/// `fireType` single shot and minigun.
+const FIRE_SINGLE_SHOT: i32 = 1;
+const FIRE_MINIGUN: i32 = 6;
+/// The camera shake a turret's shot starts on clients near it: scale,
+/// duration (ms) and radius.
+const SHOT_SHAKE: (f32, i32, f32) = (0.05, 100, 100.0);
 
 /// Firing states: off, firing, about to fire.
 const FIRING_ON: i32 = 1;
@@ -87,19 +93,11 @@ fn manned_unknown() -> &'static Unknown {
     )
 }
 
-fn fire_sound_unknown() -> &'static Unknown {
+fn single_shot_sound_unknown() -> &'static Unknown {
     unknown!(
-        "t5.turret.fire_sound",
-        "a turret's fire loop sound and its stop sound (the weapon's fireLoopSound and fireStopSound) are not played while and after it shoots",
-        "the weapon's fire loop and stop sound aliases read from its definition, and the entity loop sound and sound alias the turret's think sets and plays"
-    )
-}
-
-fn fire_event_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.turret.fire_event",
-        "clients do not see or hear a turret's shot: its fire event (the MG42 fire event per barrel) is not sent, so no muzzle flash or fire sound plays on it",
-        "Black Ops' turret fire event (EV_FIRE_WEAPON_MG42 and its second-barrel twin) carried to clients, and the client's handler for it (flash on the barrel's tag, the weapon's fire sound)"
+        "t5.turret.shot_sound",
+        "a single-shot turret weapon's fire sound is not played on clients",
+        "the weapon's world fire sound alias carried with the turret's shot and played at the turret, as Black Ops' client fire handler plays a single shot"
     )
 }
 
@@ -395,11 +393,62 @@ impl Think<'_> {
         }
     }
 
-    /// The fire loop sound's countdown after a shot.
+    /// The fire loop sound: each think clears the entity's loop sound and,
+    /// for three fire times after a shot, sets the weapon's fire loop (a
+    /// player's variant on a turret a player mans, which none does here);
+    /// when the countdown runs out on a weapon with a stop sound, the loop
+    /// stops and the stop sound plays.
     fn fire_sound(&mut self) {
-        if self.turret.state.fire_sound_ms > 0 {
-            self.gaps.push(fire_sound_unknown());
-            self.turret.state.fire_sound_ms -= THINK_MS;
+        let entity = self.turret.entity;
+        self.world.turret_loop_sound(entity, None);
+        if self.turret.state.fire_sound_ms <= 0 {
+            return;
+        }
+        let Some(weapon) = self.world.weapon(self.turret.weapon) else {
+            self.gaps.push(crate::movement::weapon_unknown());
+            return;
+        };
+        let fire_loop = weapon.fire_loop_sounds[0].clone();
+        let fire_stop = weapon.fire_stop_sounds[0].clone();
+        self.world.turret_loop_sound(entity, fire_loop.as_deref());
+        self.turret.state.fire_sound_ms -= THINK_MS;
+        if self.turret.state.fire_sound_ms <= 0
+            && let Some(stop) = fire_stop
+        {
+            self.world.turret_loop_sound(entity, None);
+            self.world.turret_sound(entity, &stop);
+        }
+    }
+
+    /// What the clients do for a shot (Black Ops' MG42 fire event, one per
+    /// barrel): the camera shake around it and, as their fire handler does,
+    /// the weapon's world flash on the barrel's tag. A minigun shows
+    /// nothing; any other automatic weapon's fire sound goes to the
+    /// client's automatic fire simulation.
+    fn fire_event(&mut self, def: &WeaponDefView<'_>) {
+        let entity = self.turret.entity;
+        let (origin, _) = self.world.turret_pose(entity);
+        let (scale, duration_ms, radius) = SHOT_SHAKE;
+        self.world.shake_camera(origin, scale, duration_ms, radius);
+        if def.fire_type() == FIRE_MINIGUN {
+            return;
+        }
+        let tag = if self.turret.state.barrel == 0 {
+            "tag_flash"
+        } else {
+            "tag_flash_2"
+        };
+        let flash = self
+            .world
+            .weapon(self.turret.weapon)
+            .and_then(|weapon| weapon.world_flash.clone());
+        if let Some(flash) = flash {
+            self.world.turret_tag_effect(entity, &flash, tag);
+        }
+        if def.fire_type() != FIRE_SINGLE_SHOT {
+            self.gaps.push(crate::fire_sound::autosim_unknown());
+        } else {
+            self.gaps.push(single_shot_sound_unknown());
         }
     }
 
@@ -892,7 +941,7 @@ impl Think<'_> {
         } else {
             self.gaps.push(weapon_type_unknown());
         }
-        self.gaps.push(fire_event_unknown());
+        self.fire_event(def);
         if *self.flags() & FLAG_TWO_BARRELS != 0 {
             self.turret.state.barrel = (self.turret.state.barrel + 1) % 2;
         }

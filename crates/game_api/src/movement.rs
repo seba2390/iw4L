@@ -256,6 +256,12 @@ pub struct GameWeapon {
     /// surface type, when it has them.
     pub parallel_bounce: Option<Box<[f32]>>,
     pub perpendicular_bounce: Option<Box<[f32]>>,
+    /// The effect a shot flashes in the world (not the first person's).
+    pub world_flash: Option<String>,
+    /// The fire loop and fire stop sound aliases, the world's then a
+    /// player's, when the definition names them.
+    pub fire_loop_sounds: [Option<String>; 2],
+    pub fire_stop_sounds: [Option<String>; 2],
 }
 
 /// The water over a point, as far as the match knows it.

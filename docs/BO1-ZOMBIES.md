@@ -51,8 +51,26 @@ Black Ops script function, the quickest way to one feature. Kino's stage auto
 turret, with the player in front of the stage so zombies walk into its arcs:
 
 ```
-set sv_cheats 1; wait world; god; script common_scripts/utility::flag_set level power_on; move 0 350 120 90 0; script maps/_zombiemode_auto_turret::auto_turret_activate targetname=pf54_auto_turret_trigger; wait 30s; quit
+set sv_cheats 1; wait world; god; wait 5s; script common_scripts/utility::flag_set level power_on; move 0 350 120 90 0; wait 15s; script maps/_zombiemode_auto_turret::auto_turret_activate targetname=pf54_auto_turret_trigger; wait 30s; quit
 ```
+
+A `move` right after `wait world` is lost (the player is not alive yet):
+wait a few seconds first. The turret fires only once zombies reach its arcs
+(about 15 s into the first round). `fx_dump 1000` logs the effects near the
+camera (`def=…`), which shows a muzzle flash a screenshot misses.
+
+The projector's film plays once power is on and the screen is down (about
+25 s); look at it from `move 0 350 120 90 0`. A teleport, from the pad by the
+projector room:
+
+```
+set sv_cheats 1; wait world; god; wait 5s; script common_scripts/utility::flag_set level power_on; wait 5s; move -304 1114 40 90 0; wait 1s; script maps/zombie_theater_teleporter::player_teleporting targetname=trigger_teleport_pad_0 0; wait 40s; quit
+```
+
+The teleporter's aftereffect is picked at random only after power on (the
+teleporter sets `theaterAftereffectOverride` to -1 then); before that the
+client always plays the FOV one. `script maps/zombie_theater_teleporter::teleport_aftereffect_fov player0`
+sends one.
 
 ## Open question
 

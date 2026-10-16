@@ -495,11 +495,6 @@ pub(crate) fn effect_on_tag(
     stop: bool,
     audience: crate::EventAudience,
 ) -> Result<(), String> {
-    let kind = if stop {
-        entity_iw4::EntityEventKind::STOP_FX_ON_TAG
-    } else {
-        entity_iw4::EntityEventKind::PLAY_FX_ON_TAG
-    };
     let presence = runtime(world).presence_of(entity);
     let fallback = (origin_of(world, entity)?, [0.0, 0.0, 1.0]);
     let mut frame = super::super::presence::settled(world);
@@ -516,8 +511,34 @@ pub(crate) fn effect_on_tag(
     let (bone, pose) = dobj.unwrap_or((None, None));
     let (origin, direction) = pose.unwrap_or(fallback);
     let index = frame.effect_name_index(name);
-    match (number, bone.and_then(|bone| i32::try_from(bone).ok())) {
-        (Some(number), Some(bone)) => {
+    tag_effect_event(
+        world,
+        audience,
+        stop,
+        index,
+        number.zip(bone),
+        (origin, direction),
+    );
+    Ok(())
+}
+
+/// An effect started or stopped on an entity's tag (its number and the
+/// tag's bone), else one played at the tag's (or the entity's) place.
+pub(crate) fn tag_effect_event(
+    world: &mut World,
+    audience: crate::EventAudience,
+    stop: bool,
+    index: u8,
+    on: Option<(i32, usize)>,
+    (origin, direction): ([f32; 3], [f32; 3]),
+) {
+    let kind = if stop {
+        entity_iw4::EntityEventKind::STOP_FX_ON_TAG
+    } else {
+        entity_iw4::EntityEventKind::PLAY_FX_ON_TAG
+    };
+    match on.and_then(|(number, bone)| Some((number, i32::try_from(bone).ok()?))) {
+        Some((number, bone)) => {
             let tick = world.resource::<crate::step::StepRequest>().tick;
             crate::frame::FrameWorld::from_world(world).push_entity_event(
                 tick,
@@ -532,10 +553,9 @@ pub(crate) fn effect_on_tag(
                 },
             );
         }
-        _ if !stop => play_fx_to(world, audience, index, origin, direction, [0.0; 3]),
-        _ => {}
+        None if !stop => play_fx_to(world, audience, index, origin, direction, [0.0; 3]),
+        None => {}
     }
-    Ok(())
 }
 
 /// An effect at a point; with an up axis, played along forward and up.

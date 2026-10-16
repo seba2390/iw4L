@@ -614,6 +614,50 @@ pub(crate) fn sentient_view(world: &mut World, object: u64) -> Option<SentientVi
     })
 }
 
+/// A turret's loop sound, which the snapshot carries while it is set.
+pub(crate) fn set_loop_sound(world: &mut World, object: u64, alias: Option<&str>) {
+    if let Some(entity) = world
+        .resource_mut::<RoundScript>()
+        .entities
+        .get_mut(&object)
+    {
+        entity.loop_sound = alias.map(Into::into);
+    }
+}
+
+/// A sound alias at a turret's origin.
+pub(crate) fn play_sound(world: &mut World, object: u64, alias: &str) {
+    let (origin, _) = turret_pose(world, object);
+    if let Err(fault) = super::engine::play_sound_at(world, origin, alias) {
+        diag::warn!(Sim, "turret sound {alias} not played: {fault}");
+    }
+}
+
+/// An effect on a tag of a turret's model, for every client.
+pub(crate) fn tag_effect(world: &mut World, object: u64, effect: &str, tag: &str) {
+    if let Err(fault) = super::engine::effect_on_tag(
+        world,
+        effect,
+        &Value::Object(object),
+        tag,
+        false,
+        crate::EventAudience::All,
+    ) {
+        diag::warn!(Sim, "turret effect {effect} not played: {fault}");
+    }
+}
+
+/// A camera shake from a turret's shot.
+pub(crate) fn shake_camera(
+    world: &mut World,
+    scale: f32,
+    duration_ms: i32,
+    origin: [f32; 3],
+    radius: f32,
+) {
+    super::scene_effects::shake_camera(world, scale, duration_ms, origin, radius);
+}
+
 /// A turret's origin and base angles.
 pub(crate) fn turret_pose(world: &mut World, object: u64) -> ([f32; 3], [f32; 3]) {
     let mut runtime = world.resource_mut::<RoundScript>();
