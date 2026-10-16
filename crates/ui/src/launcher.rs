@@ -238,10 +238,14 @@ struct MenuButton {
     accent: Color,
 }
 
+#[derive(Resource, Default)]
+pub(crate) struct T6ZombiesFrontEnd(pub(crate) Option<asset_core::AssetNamespace>);
+
 pub(crate) fn register(app: &mut App) {
     app.insert_resource(frame::UnifiedFrontend(true))
         .init_resource::<Menu>()
         .init_resource::<Inventory>()
+        .init_resource::<T6ZombiesFrontEnd>()
         .add_systems(Startup, load_backdrop)
         .add_systems(
             Update,
@@ -603,6 +607,10 @@ fn activate(
                 if let Some(map) = inventory.maps(menu.selected).first() {
                     dvars.set("ui_mapname", map.clone());
                 }
+            } else if page == Page::Zombies
+                && let Some(mode) = menu.selected.and_then(Game::zombies)
+            {
+                dvars.set("ui_gametype", mode.gametype);
             }
             if page == Page::Browser {
                 if let Some(browser) = browser {
@@ -940,7 +948,8 @@ fn input(
     let mut available = available;
     available.sort_by_key(|(order, _)| *order);
     let console_open = hud_input.as_ref().is_some_and(|input| input.console_open);
-    if !console_open && capture.command.is_none() && !capture.consumed_input {
+    let t6_zombies = menu.selected == Some(Game::BlackOps2) && menu.page == Page::Zombies;
+    if !console_open && !t6_zombies && capture.command.is_none() && !capture.consumed_input {
         if menu.page == Page::Password && dvars.get("ui_password_pending") != Some("1") {
             let mut password = dvars.get("ui_password_input").unwrap_or("").to_owned();
             for event in typing.iter().filter(|event| event.state.is_pressed()) {
@@ -1214,16 +1223,27 @@ fn rebuild(
     dvars: Res<frame::UiMenuDvars>,
     binding: Res<frame::UiBindingCapture>,
     roots: Query<Entity, With<Root>>,
-    mut last_signature: Local<String>,
+    (mut t6_front_end, mut last_signature, mut last_page): (
+        ResMut<T6ZombiesFrontEnd>,
+        Local<String>,
+        Local<Option<Page>>,
+    ),
     positions: Query<&ScrollPosition, With<ScrollContent>>,
-    mut last_page: Local<Option<Page>>,
 ) {
     if *screen != AppScreen::MainMenu {
+        t6_front_end.0 = None;
         return;
     }
     let (Some(font), Some(backdrop)) = (font, backdrop) else {
+        t6_front_end.0 = None;
         return;
     };
+    t6_front_end.0 = (menu.selected == Some(Game::BlackOps2)
+        && menu.page == Page::Zombies
+        && !backdrop.pending
+        && backdrop.native.is_some())
+    .then(|| Game::BlackOps2.namespace())
+    .flatten();
     let snapshot = browser.as_ref().map(|browser| browser.snapshot());
     let signature = format!(
         "{} {:?} {} {} {} {} {:?} {:?} {:?}",
@@ -1301,6 +1321,40 @@ fn rebuild(
             },
             BackgroundColor(Color::BLACK),
         ));
+        return;
+    }
+    if t6_front_end.0.is_some() {
+        commands
+            .spawn((
+                Root,
+                UiLayer::Shell,
+                UiLayerVisibility,
+                GlobalZIndex(80),
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    position_type: PositionType::Absolute,
+                    ..default()
+                },
+                BackgroundColor(Color::BLACK),
+            ))
+            .with_children(|root| {
+                root.spawn((
+                    ImageNode::new(
+                        backdrop
+                            .native
+                            .clone()
+                            .unwrap_or_else(|| backdrop.fallback.clone()),
+                    )
+                    .with_mode(bevy::ui::widget::NodeImageMode::Stretch),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        ..default()
+                    },
+                ));
+            });
         return;
     }
     let game = menu.selected;

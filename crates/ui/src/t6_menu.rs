@@ -321,10 +321,12 @@ fn drive(
         return;
     }
     menu.zombies = map.as_ref().is_some_and(|map| map.zone.starts_with("zm_"));
-    if !menu.zombies {
-        if let (Some(identity), Some(weapons)) = (identity.as_deref(), weapons.as_deref()) {
-            load(&mut menu, identity, &catalog, weapons.registry());
-        }
+    if menu.zombies {
+        reliable.clear();
+        return;
+    }
+    if let (Some(identity), Some(weapons)) = (identity.as_deref(), weapons.as_deref()) {
+        load(&mut menu, identity, &catalog, weapons.registry());
     }
     for event in reliable.read() {
         match &event.0 {
@@ -839,7 +841,7 @@ fn paint(
     for entity in &roots {
         commands.entity(entity).despawn();
     }
-    if !open.0 {
+    if !open.0 || menu.zombies {
         return;
     }
     let label = |key: &str| {

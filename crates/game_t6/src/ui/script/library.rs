@@ -165,3 +165,102 @@ impl Bindings for Library {
         }
     }
 }
+
+/// `table.sort`'s identity; the runtime runs it, calling the comparator.
+pub const SORT: u32 = 18;
+
+/// Why a sort stopped: it needs the comparator's answer for these two
+/// values, or the order is invalid.
+#[derive(Debug)]
+pub enum SortStop {
+    Need(Value, Value),
+    Fault(FaultKind),
+}
+
+/// Lua 5.1's `lua_lessthan` for two values without metamethods: numbers,
+/// or strings by their bytes.
+pub fn less_than(a: &Value, b: &Value) -> Result<bool, FaultKind> {
+    match (a, b) {
+        (Value::Number(a), Value::Number(b)) => Ok(a < b),
+        (Value::Bytes(a), Value::Bytes(b)) => Ok(a < b),
+        _ => Err(FaultKind::ScriptError(
+            b"attempt to compare two values".to_vec(),
+        )),
+    }
+}
+
+/// `ltablib.c`'s `auxsort` over `a` (Lua's indices are `a`'s plus one),
+/// asking `lt` for every comparison in the order Lua does.
+pub fn aux_sort(
+    a: &mut [Value],
+    mut l: usize,
+    mut u: usize,
+    lt: &mut dyn FnMut(&Value, &Value) -> Result<bool, SortStop>,
+) -> Result<(), SortStop> {
+    let invalid = || {
+        SortStop::Fault(FaultKind::ScriptError(
+            b"invalid order function for sorting".to_vec(),
+        ))
+    };
+    while l < u {
+        if lt(&a[u - 1], &a[l - 1])? {
+            a.swap(l - 1, u - 1);
+        }
+        if u - l == 1 {
+            break;
+        }
+        let mut i = (l + u) / 2;
+        if lt(&a[i - 1], &a[l - 1])? {
+            a.swap(i - 1, l - 1);
+        } else if lt(&a[u - 1], &a[i - 1])? {
+            a.swap(i - 1, u - 1);
+        }
+        if u - l == 2 {
+            break;
+        }
+        let pivot = a[i - 1].clone();
+        a.swap(i - 1, u - 2);
+        i = l;
+        let mut j = u - 1;
+        loop {
+            // Lua reads past the range (nil) before it notices; here the
+            // read itself stops it.
+            i += 1;
+            while lt(a.get(i - 1).ok_or_else(invalid)?, &pivot)? {
+                if i > u {
+                    return Err(invalid());
+                }
+                i += 1;
+            }
+            j -= 1;
+            while lt(
+                &pivot,
+                j.checked_sub(1)
+                    .and_then(|at| a.get(at))
+                    .ok_or_else(invalid)?,
+            )? {
+                if j < l {
+                    return Err(invalid());
+                }
+                j -= 1;
+            }
+            if j < i {
+                break;
+            }
+            a.swap(i - 1, j - 1);
+        }
+        a.swap(u - 2, i - 1);
+        let (low, high);
+        if i - l < u - i {
+            low = l;
+            high = i - 1;
+            l = i + 1;
+        } else {
+            low = i + 1;
+            high = u;
+            u = i - 1;
+        }
+        aux_sort(a, low, high, lt)?;
+    }
+    Ok(())
+}

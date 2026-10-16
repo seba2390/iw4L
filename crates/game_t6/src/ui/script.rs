@@ -1,4 +1,5 @@
 pub mod library;
+pub mod pattern;
 pub mod runtime;
 pub mod tables;
 
@@ -26,6 +27,8 @@ pub enum CallContinuation {
     Normal,
     CacheResult,
     Equal(bool),
+    /// A `table.sort` comparator returned its answer.
+    Sort,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -272,6 +275,10 @@ impl Frame {
     fn number(&self, value: Value) -> Result<f32, Fault> {
         match value {
             Value::Number(value) => Ok(value),
+            Value::Bytes(bytes) => core::str::from_utf8(&bytes)
+                .ok()
+                .and_then(|text| text.trim().parse::<f32>().ok())
+                .ok_or_else(|| self.fault(FaultKind::NumberRequired)),
             _ => Err(self.fault(FaultKind::NumberRequired)),
         }
     }
