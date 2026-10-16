@@ -2,6 +2,8 @@
 //! sets, fog banks, screen overlays, filter passes, shader constants, and
 //! primary and mixer lights.
 
+mod mixers;
+
 use super::super::{float, int, string, type_name, vector};
 use super::game::{LOCAL_CLIENT, client_entity, local_client, server_object};
 use crate::script::client::{ClientEffect, ClientLight, ClientLights, ClientOutput};
@@ -23,10 +25,6 @@ const FILTER_PASSES: i32 = 4;
 const FILTER_CONSTANTS: i32 = 16;
 /// Per-entity shader constant slots (0..=6).
 const SHADER_CONSTANT_SLOTS: i32 = 6;
-/// Maximum mixer light logic parameter index (0..=16) and mixer logic
-/// parameter index (0..=4).
-const MIXER_LIGHT_PARAM_MAX: i32 = 16;
-const MIXER_PARAM_MAX: i32 = 4;
 
 /// The shader constant names `mapshaderconstant` accepts (case aside).
 const SHADER_CONSTANTS: [&str; 23] = [
@@ -53,22 +51,6 @@ const SHADER_CONSTANTS: [&str; 23] = [
     "weaponParam7",
     "weaponParam8",
     "weaponParam9",
-];
-
-/// The light behaviors the client engine's mixer steps in native code.
-const HARDCODED_LIGHT_BEHAVIORS: [&str; 12] = [
-    "firecaster",
-    "fire_flicker",
-    "electrical_flicker",
-    "flicker_then_stop",
-    "generic_double_strobe",
-    "generic_strobe",
-    "light_off",
-    "light_solid",
-    "television",
-    "generic_flickering",
-    "generic_pulsing",
-    "explode_then_flicker",
 ];
 
 /// A client entity turned into a primary light (`makelight`): the map's
@@ -99,10 +81,6 @@ struct ClientEffects {
     mapped_materials: [Option<String>; FILTER_MATERIAL_SLOTS],
     /// Entities turned into primary lights (`makelight`), by client object id.
     lights: BTreeMap<u64, LightState>,
-    /// Allocated mixer count (`allocatemixerlights`).
-    allocated_mixers: usize,
-    /// Number of mixers created so far (`makemixerlight`).
-    mixer_count: usize,
     /// The gump hide fade's colour: the last `sethidegumpalpha` colour.
     hide_fade_color: [f32; 3],
 }
@@ -116,8 +94,6 @@ impl Default for ClientEffects {
             world_fog_bank: 0,
             mapped_materials: std::array::from_fn(|_| None),
             lights: BTreeMap::new(),
-            allocated_mixers: 0,
-            mixer_count: 0,
             hide_fade_color: [0.0; 3],
         }
     }
@@ -642,6 +618,12 @@ fn client_light_mut(world: &mut World, id: u64) -> bevy_ecs::prelude::Mut<'_, Cl
     world
         .resource_mut::<ClientLights>()
         .map_unchanged(|lights| lights.lights.get_mut(&id).expect("a light entity"))
+}
+
+/// The client game's light mixers run their frame.
+pub(super) fn run_mixers(world: &mut World) {
+    let now = now_ms(world) as i32;
+    mixers::run_frame(world, now);
 }
 
 /// Checks that `receiver` is a light entity for a mixer builtin, formatting
@@ -1452,198 +1434,5 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // allocatemixerlights(count): allocates the client's light mixer table.
-    registry.register(Function, "allocatemixerlights", |world, _, args| {
-        let count = int(args, 0)?;
-        // t6.csc.light.mixer: IW4L's renderer does not evaluate or draw
-        // client light mixers.
-        let mut fx = state(world);
-        fx.allocated_mixers = count.max(0) as usize;
-        fx.mixer_count = 0;
-        Ok(Value::Undefined)
-    });
-
-    // ismixerlightbehaviorhardcoded(name): whether `name` is one of the
-    // engine's 12 native light behaviors.
-    registry.register(Function, "ismixerlightbehaviorhardcoded", |_, _, args| {
-        let name = string(args, 0)?;
-        Ok(Value::Int(
-            HARDCODED_LIGHT_BEHAVIORS.contains(&name.as_str()).into(),
-        ))
-    });
-
-    // ent makemixerlight(event): attaches a new mixer to the light entity.
-    registry.register(Method, "makemixerlight", |world, receiver, args| {
-        let id = mixer_light_entity(world, receiver)?;
-        string(args, 0)?;
-        let mut fx = state(world);
-        fx.mixer_count += 1;
-        let mixer = fx.mixer_count;
-        if let Some(light) = fx.lights.get_mut(&id) {
-            light.mixer = Some(mixer);
-        }
-        Ok(Value::Undefined)
-    });
-
-    // ent activatemixer(): activates the light entity's mixer.
-    registry.register(Method, "activatemixer", |world, receiver, _| {
-        mixer_entity(world, receiver)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerbehavior(name): sets the mixer's behavior.
-    registry.register(Method, "setmixerbehavior", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        string(args, 0)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerexploderid(id): associates a client exploder id with the
-    // mixer.
-    registry.register(Method, "setmixerexploderid", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        int(args, 0)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerl2rrampspeed(speed) / ent setmixerr2lrampspeed(speed): sets
-    // the mixer's left-to-right or right-to-left ramp speed.
-    for name in ["setmixerl2rrampspeed", "setmixerr2lrampspeed"] {
-        registry.register(Method, name, |world, receiver, args| {
-            mixer_entity(world, receiver)?;
-            float(args, 0)?;
-            Ok(Value::Undefined)
-        });
-    }
-
-    // ent setmixerlightrotatetime(seconds): sets the mixer's yaw rotation
-    // period.
-    registry.register(
-        Method,
-        "setmixerlightrotatetime",
-        |world, receiver, args| {
-            mixer_entity(world, receiver)?;
-            float(args, 0)?;
-            Ok(Value::Undefined)
-        },
-    );
-
-    // ent setmixerlightbehavior(side, name): sets a mixer side's hardcoded
-    // light behavior.
-    registry.register(Method, "setmixerlightbehavior", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        let behavior = string(args, 1)?;
-        if !HARDCODED_LIGHT_BEHAVIORS.contains(&behavior.as_str()) {
-            return Err(format!("Light behavior '{behavior}' unknown."));
-        }
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightcolor(side, rgb): sets a mixer side's color vector.
-    registry.register(Method, "setmixerlightcolor", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        vector(args, 1)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightexponent(side, exponent): sets a mixer side's
-    // exponent, clamped to 0..=100.
-    registry.register(Method, "setmixerlightexponent", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        int(args, 1)?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightfovrange(side, outer, [inner]): sets a mixer side's
-    // outer and inner cone angles.
-    registry.register(Method, "setmixerlightfovrange", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        let outer = float(args, 1)?;
-        if args.len() == 3 {
-            let inner = float(args, 2)?;
-            if !(inner >= -0.001_000_000_05 && inner < outer + 0.001_000_000_05) {
-                return Err("inner fov must be in the range of 0 to outer fov".into());
-            }
-        }
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightintensity(side, intensity) /
-    // ent setmixerlightradius(side, radius).
-    for name in ["setmixerlightintensity", "setmixerlightradius"] {
-        registry.register(Method, name, |world, receiver, args| {
-            mixer_entity(world, receiver)?;
-            mixer_side(args, 0)?;
-            float(args, 1)?;
-            Ok(Value::Undefined)
-        });
-    }
-
-    // ent setmixerlightparam(side, index, value): sets a parameter (0..=16)
-    // on a mixer side's light behavior.
-    registry.register(Method, "setmixerlightparam", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        mixer_side(args, 0)?;
-        let index = int(args, 1)?;
-        if !(0..=MIXER_LIGHT_PARAM_MAX).contains(&index) {
-            return Err(format!(
-                "Please ensure light logic param number specified is in range 0 - {MIXER_LIGHT_PARAM_MAX}\n"
-            ));
-        }
-        check_mixer_param_value(
-            args,
-            2,
-            "Light logic parameter specified is of an invalid type.",
-        )?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerparam(index, value): sets a parameter (0..=4) on the
-    // mixer's behavior.
-    registry.register(Method, "setmixerparam", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        let index = int(args, 0)?;
-        if !(0..=MIXER_PARAM_MAX).contains(&index) {
-            return Err(format!(
-                "Please ensure light logic param number specified is in range 0 - {MIXER_PARAM_MAX}\n"
-            ));
-        }
-        check_mixer_param_value(
-            args,
-            1,
-            "Mixer logic parameter specified is of an invalid type.",
-        )?;
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerlightmodels(model_ent, on_model, off_model): associates on
-    // and off models with the mixer.
-    registry.register(Method, "setmixerlightmodels", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        entity_arg(world, args, 0)?;
-        string(args, 1)?;
-        string(args, 2)?;
-        // t6.csc.light.mixer_models: IW4L's server only tracks GSC
-        // precachemodel names, not Radiant map models in CS_MODELS.
-        Ok(Value::Undefined)
-    });
-
-    // ent setmixerspinmodels(model_ent, on_model, off_model, [fx_id, tag]):
-    // associates spinning on and off models (and optional effect) with the
-    // mixer.
-    registry.register(Method, "setmixerspinmodels", |world, receiver, args| {
-        mixer_entity(world, receiver)?;
-        entity_arg(world, args, 0)?;
-        string(args, 1)?;
-        string(args, 2)?;
-        if !matches!(args.get(3), None | Some(Value::Undefined)) {
-            int(args, 3)?;
-            string(args, 4)?;
-        }
-        Ok(Value::Undefined)
-    });
+    mixers::register(registry);
 }
