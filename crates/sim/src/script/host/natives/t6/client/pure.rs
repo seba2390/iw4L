@@ -26,11 +26,25 @@ const DLC_PACKAGES: [&str; 10] = [
     "textures",
 ];
 
-/// The client game's random state: the game's generator over its own state,
-/// which the engine seeds with the server's seed when the game starts. IW4L
-/// seeds it from the client runtime's random (`t6.csc.random.seed`).
+/// Mounted DLC packages (`dlc0`, `dlczm0`, `dlc3`, ...) in the install.
+#[derive(Resource, Default)]
+pub(crate) struct MountedDlc(pub(crate) Vec<String>);
+
+/// The client game's random state, seeded from the server's
+/// match seed (`G_InitGame` -> `BG_srand`) and shared with client sound
+/// randoms (`SND_UpdateRandoms`).
 #[derive(Resource)]
-struct HoldRand(u32);
+pub(crate) struct HoldRand(pub(crate) u32);
+
+static SYS_TIME_BASE: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// `Sys_Milliseconds`: milliseconds elapsed since its first read.
+pub(crate) fn sys_milliseconds() -> i32 {
+    SYS_TIME_BASE
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis() as i32
+}
 
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::Function;
@@ -436,13 +450,6 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // Time, from the host's clocks.
     registry.register(Function, "getsystemtime", |_, _, args| {
         let utc = args.len() == 1 && int(args, 0)? != 0;
-        if !utc {
-            return Err(
-                "t6.csc.time.local_zone: the host's local time zone (getsystemtime without \
-                 a true argument reads local time)"
-                    .into(),
-            );
-        }
         let seconds = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| "system time precedes the Unix epoch")?
@@ -456,44 +463,88 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                     .into(),
             );
         }
-        let of_day = seconds % 86_400;
-        Ok(Value::Vector([
-            (of_day / 3600) as f32,
-            (of_day / 60 % 60) as f32,
-            (of_day % 60) as f32,
-        ]))
+        use chrono::Timelike;
+        let (h, m, s) = if utc {
+            let Some(dt) = chrono::DateTime::from_timestamp(seconds, 0) else {
+                return Ok(Value::Vector([0.0, 0.0, 0.0]));
+            };
+            (dt.hour(), dt.minute(), dt.second())
+        } else {
+            let Some(dt) = chrono::TimeZone::timestamp_opt(&chrono::Local, seconds, 0).single()
+            else {
+                return Ok(Value::Vector([0.0, 0.0, 0.0]));
+            };
+            (dt.hour(), dt.minute(), dt.second())
+        };
+        Ok(Value::Vector([h as f32, m as f32, s as f32]))
     });
     registry.register(Function, "getrealtime", |_, _, _| {
-        Err(
-            "t6.csc.time.realtime: the engine's millisecond clock, counted from its first \
-             read when the process starts"
-                .into(),
-        )
+        Ok(Value::Int(sys_milliseconds()))
     });
 
     // Dvars. Each handler checks its arguments, then reads whether the
     // engine registered the dvar and its flags: setdvar sets only a dvar
     // scripts may set (or makes one), setsaveddvar only a saved one, and
     // setdvarfloat holds the value to the dvar's domain (or makes one).
-    registry.register(Function, "setdvar", |_, _, args| {
+    registry.register(Function, "setdvar", |world, _, args| {
         let name = text(args, 0)?;
-        text(args, 1)?;
+        let value = text(args, 1)?;
         check_dvar_name(&name)?;
-        Err(dvar_registry(&name))
+        let name_str = String::from_utf8_lossy(&name);
+        if let Some(spec) = super::super::dvars::lookup(&name_str)
+            && spec.flags & 0x4000 == 0
+        {
+            return Err(format!(
+                "Invalid Dvar set: {name_str} - Internal Dvars cannot be changed by script. Use 'setsaveddvar' to alter SAVED internal dvars\n"
+            ));
+        }
+        let val_str: String = value
+            .iter()
+            .take(0x3ff)
+            .map(|&b| if b == b'"' { '\'' } else { char::from(b) })
+            .collect();
+        diag::info!(Sim, "csc: setdvar {name_str} = {val_str}");
+        crate::script::set_dvar(world, &name_str, &val_str);
+        Ok(Value::Undefined)
     });
-    registry.register(Function, "setsaveddvar", |_, _, args| {
+    registry.register(Function, "setsaveddvar", |world, _, args| {
         let name = text(args, 0)?;
         if matches!(arg(args, 1)?, Value::LocalizedString(_)) {
             return Err("Cannot set saved dvar on client side with a string value".into());
         }
-        text(args, 1)?;
+        let value = text(args, 1)?;
         check_dvar_name(&name)?;
-        Err(dvar_registry(&name))
+        let name_str = String::from_utf8_lossy(&name);
+        let Some(spec) = super::super::dvars::lookup(&name_str) else {
+            return Err(format!(
+                "SetSavedDvar(): The dvar \"{name_str}\" does not exist."
+            ));
+        };
+        if spec.flags & 0x1000 == 0 {
+            return Err("SetSavedDvar can only be called on dvars with the SAVED flag set".into());
+        }
+        let val_str: String = value
+            .iter()
+            .take(0x3ff)
+            .map(|&b| if b == b'"' { '\'' } else { char::from(b) })
+            .collect();
+        diag::info!(Sim, "csc: setsaveddvar {name_str} = {val_str}");
+        crate::script::set_dvar(world, &name_str, &val_str);
+        Ok(Value::Undefined)
     });
-    registry.register(Function, "setdvarfloat", |_, _, args| {
+    registry.register(Function, "setdvarfloat", |world, _, args| {
         let name = text(args, 0)?;
-        float(args, 1)?;
-        Err(dvar_registry(&name))
+        let mut val = float(args, 1)?;
+        let name_str = String::from_utf8_lossy(&name);
+        if let Some(spec) = super::super::dvars::lookup(&name_str)
+            && let Some((lo, hi)) = spec.float_domain
+        {
+            val = val.clamp(lo, hi);
+        }
+        let val_str = val.to_string();
+        diag::info!(Sim, "csc: setdvarfloat {name_str} = {val_str}");
+        crate::script::set_dvar(world, &name_str, &val_str);
+        Ok(Value::Undefined)
     });
 
     // Session and platform. One handler answers both getmaxlocalclients and
@@ -513,13 +564,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int((int(args, 0)? == 0).into()))
     });
     registry.register(Function, "ismaturecontentenabled", |_, _, _| {
-        Err(
-            "t6.csc.profile.cg_mature: the owner's profile setting cg_mature (on unless a \
-             loaded profile turns it off)"
-                .into(),
-        )
+        Ok(Value::Int(1))
     });
-    registry.register(Function, "hasdlcavailable", |_, _, args| {
+    registry.register(Function, "hasdlcavailable", |world, _, args| {
         let name = text(args, 0)?;
         if !DLC_PACKAGES
             .iter()
@@ -530,11 +577,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 String::from_utf8_lossy(&name)
             ));
         }
-        Err(
-            "t6.csc.dlc.available: the content packages the engine has mounted (and, for \
-             some, an online session)"
-                .into(),
-        )
+        let available = world.get_resource::<MountedDlc>().is_some_and(|dlc| {
+            dlc.0
+                .iter()
+                .any(|pkg| pkg.as_bytes().eq_ignore_ascii_case(&name))
+        });
+        Ok(Value::Int(available.into()))
     });
     // No demo plays, so no demo camera is in use.
     registry.register(Function, "isdemoplaying", |_, _, _| Ok(Value::Int(0)));
@@ -794,14 +842,6 @@ fn check_dvar_name(name: &[u8]) -> Result<(), String> {
     }
 }
 
-fn dvar_registry(name: &[u8]) -> String {
-    format!(
-        "t6.csc.dvar.registry: whether the engine registered dvar {}, and its flags and \
-         domain",
-        String::from_utf8_lossy(name)
-    )
-}
-
 fn next_rand(world: &mut World) -> u32 {
     if !world.contains_resource::<HoldRand>() {
         let seed = crate::script::host::natives::math::random(world);
@@ -813,7 +853,7 @@ fn next_rand(world: &mut World) -> u32 {
 }
 
 /// A random int in `min..max`: the state's top 15 bits scale the span.
-fn irand(world: &mut World, min: i32, max: i32) -> i32 {
+pub(super) fn irand(world: &mut World, min: i32, max: i32) -> i32 {
     let state = next_rand(world);
     let span = i64::from(max.wrapping_sub(min));
     (((i64::from(state >> 17) * span) >> 15) as i32).wrapping_add(min)

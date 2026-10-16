@@ -178,6 +178,9 @@ pub fn binary(op: Binary, a: Value, b: Value) -> Result<Value, String> {
         }
         Binary::NotEqual => Value::Int(i32::from(!equality(a, b)?)),
         Binary::Case => match (&a, &b) {
+            (Value::Int(n), _) if !(-(0x7E8 << 12)..=(1 << 23) - 1).contains(n) => {
+                return Err(format!("switch index {n} out of range"));
+            }
             (Value::Int(_) | Value::String(_), _) => Value::Int(i32::from(a == b)),
             _ => return Err(format!("cannot switch on {}", type_name(&a))),
         },

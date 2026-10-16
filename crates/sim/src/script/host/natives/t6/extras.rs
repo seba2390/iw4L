@@ -12,10 +12,9 @@ use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-/// The owner and team scripts gave entities other than players and actors
-/// (`t6.entities.owner_team`: kept, not applied).
+/// The owner and team scripts gave entities other than players and actors.
 #[derive(Resource, Default)]
-struct OwnerTeams(BTreeMap<u64, (Option<u64>, Option<Arc<str>>)>);
+pub(super) struct OwnerTeams(pub(super) BTreeMap<u64, (Option<u64>, Option<Arc<str>>)>);
 
 /// Each actor's gib flags, as the engine sends them in its gib event.
 #[derive(Resource, Default)]
@@ -175,6 +174,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             args.first().ok_or("SetOwner expects an entity")?,
         )?;
         world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "owner", Value::Object(owner));
+        world
             .get_resource_or_insert_with(OwnerTeams::default)
             .0
             .entry(id)
@@ -185,8 +187,22 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "setteam", |world, receiver, args| {
         let id = owned(world, receiver, "SetTeam")?;
         let team = string(args, 0)?;
-        if super::team_index(&team).is_none() {
+        let Some(team_idx) = super::team_index(&team) else {
             return Err(format!("'{team}' is an illegal team string"));
+        };
+        let classname = world.resource::<RoundScript>().entities[&id]
+            .classname
+            .clone();
+        world.resource_mut::<RoundScript>().set_object_field(
+            id,
+            "team",
+            Value::String(team.clone().into()),
+        );
+        if super::HINT_CLASSES.contains(&&*classname) {
+            world
+                .get_resource_or_insert_with(super::EntityFlags::default)
+                .trigger_team
+                .insert(id, team_idx);
         }
         world
             .get_resource_or_insert_with(OwnerTeams::default)
@@ -196,9 +212,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .1 = Some(team.into());
         Ok(Value::Undefined)
     });
-    // gscm_getentitytype: the entity's type, of those the engine's own
-    // builtins show (a player 1, an item 3, a missile 4, a script mover 6,
-    // an actor 16, an actor corpse 18).
+    // gscm_getentitytype: the entity's type (`ent->s.eType`).
     registry.register(Method, "getentitytype", |world, receiver, _| {
         let id = super::super::engine::entity_id(world, receiver)?;
         let entity = &world.resource::<RoundScript>().entities[&id];
@@ -207,22 +221,24 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             EntityKind::Corpse { .. } => 2,
             EntityKind::Item(_) => 3,
             EntityKind::Missile(_) => 4,
+            EntityKind::Vehicle => 14,
             EntityKind::Actor => 16,
             EntityKind::ActorCorpse => 18,
-            EntityKind::Map | EntityKind::Spawned
-                if matches!(&*entity.classname, "script_model" | "script_brushmodel") =>
-            {
-                6
-            }
-            EntityKind::Spawned if &*entity.classname == "fx" => 8,
-            EntityKind::Spawned if &*entity.classname == "loopfx" => 9,
-            EntityKind::Map | EntityKind::Spawned if entity.classname.starts_with("actor_") => 17,
-            _ => {
-                return Err(format!(
-                    "t6.entities.type: the engine type of a '{}' is not known",
-                    entity.classname
-                ));
-            }
+            EntityKind::Map | EntityKind::Spawned => match &*entity.classname {
+                "script_model" | "script_brushmodel" | "script_origin" => 6,
+                "sound_blend" => 7,
+                "fx" => 8,
+                "loopfx" => 9,
+                "primary_light" => 10,
+                "misc_turret" => 11,
+                "helicopter" => 12,
+                "plane" => 13,
+                c if c.starts_with("script_vehicle") => 14,
+                c if c.starts_with("actor_") => 17,
+                c if c.starts_with("zbarrier") => 20,
+                _ => 0,
+            },
+            EntityKind::HudElem => 0,
         };
         Ok(Value::Int(kind))
     });

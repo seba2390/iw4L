@@ -3141,6 +3141,10 @@ impl ZoneLane for T6Lane {
             };
             let mut scripts = crate::ScriptSources::default();
             scripts.set_entities(entities.clone());
+            scripts.capture_config(
+                "dlc/mounted.txt",
+                asset_transport::t6_content::T6ContentMode::dlc_packages(path).join("\n"),
+            );
             super::capture_script_zones(
                 path,
                 image,

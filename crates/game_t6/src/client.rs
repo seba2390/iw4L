@@ -114,6 +114,15 @@ pub(crate) fn program(
         .into_iter()
         .map(|(etype, fields, flags)| ((etype, fields), flags))
         .unzip();
+    let dlc_packages = (request.config)("dlc/mounted.txt")
+        .map(|text| {
+            text.lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
     Rule::Known(ClientScriptProgram {
         entities: client_ents,
         entity_spawnflags,
@@ -121,6 +130,7 @@ pub(crate) fn program(
         precaches,
         starts,
         callbacks,
+        dlc_packages,
         program,
     })
 }

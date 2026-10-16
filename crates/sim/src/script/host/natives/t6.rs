@@ -17,6 +17,7 @@ pub(crate) mod client;
 mod combat;
 mod corpse;
 mod damage;
+pub(crate) mod dvars;
 mod effect;
 mod entity;
 mod extras;
@@ -58,8 +59,15 @@ fn dvar(world: &World, args: &[Value]) -> Result<String, String> {
                 .iter()
                 .find(|(name, _)| dvar_hash(name) == hash)
                 .map(|(_, value)| value.clone())
+                .or_else(|| dvars::lookup_hash(hash).map(|spec| spec.default.to_owned()))
         }
-        Value::String(name) => dvars.get(&name.to_string().to_ascii_lowercase()).cloned(),
+        Value::String(name) => {
+            let lower = name.to_string().to_ascii_lowercase();
+            dvars
+                .get(&lower)
+                .cloned()
+                .or_else(|| dvars::lookup(&lower).map(|spec| spec.default.to_owned()))
+        }
         other => return Err(format!("{} is not a dvar name", type_name(other))),
     };
     Ok(found.unwrap_or_else(String::new))
@@ -462,6 +470,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .resource::<crate::script::MatchScript>()
             .dvars
             .contains_key(&name)
+            || dvars::lookup(&name).is_some()
         {
             return Ok(Value::Undefined);
         }
@@ -2542,6 +2551,10 @@ fn client_field_pool(world: &World, id: u64) -> Option<&'static str> {
         EntityKind::Actor => Some("actor"),
         EntityKind::Player => Some("allplayers"),
         EntityKind::Vehicle => Some("vehicle"),
+        EntityKind::Missile(_) => Some("missile"),
+        _ if &*entity.classname == "misc_turret" => Some("turret"),
+        _ if &*entity.classname == "helicopter" => Some("helicopter"),
+        _ if &*entity.classname == "plane" => Some("plane"),
         _ if SCRIPT_MOVERS.contains(&&*entity.classname) => Some("scriptmover"),
         _ if entity.classname.starts_with("zbarrier") => Some("zbarrier"),
         _ => None,
@@ -3166,11 +3179,16 @@ fn frand(world: &mut World, min: f32, max: f32) -> f32 {
         + f64::from(min)) as f32
 }
 
-pub(super) fn next_rand(world: &mut World) -> u32 {
+pub(crate) fn initial_seed(world: &mut World) -> u32 {
     if !world.contains_resource::<HoldRand>() {
         let seed = super::math::random(world);
         world.insert_resource(HoldRand(seed));
     }
+    world.resource::<HoldRand>().0
+}
+
+pub(super) fn next_rand(world: &mut World) -> u32 {
+    let _ = initial_seed(world);
     let mut state = world.resource_mut::<HoldRand>();
     state.0 = state.0.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
     state.0

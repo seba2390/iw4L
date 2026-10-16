@@ -90,6 +90,27 @@ impl T6ContentMode {
         zones
     }
 
+    /// Mounted DLC package names (`dlc0`, `dlczm0`, `dlc1`, `dlc2`, `dlc3`,
+    /// `dlc4`, `dlc5`, `dlc0dd`, `seasonpass`, `textures`) whose load zone
+    /// (`<pack>_load_zm.ff` or `<pack>_load_mp.ff`) exists in the zone folder.
+    pub fn dlc_packages(zone_file: &Path) -> Vec<String> {
+        let Some(Ok(entries)) = zone_file.parent().map(std::fs::read_dir) else {
+            return Vec::new();
+        };
+        let mut packs: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().to_str().map(str::to_ascii_lowercase))
+            .filter_map(|name| {
+                name.strip_suffix("_load_zm.ff")
+                    .or_else(|| name.strip_suffix("_load_mp.ff"))
+                    .map(str::to_owned)
+            })
+            .collect();
+        packs.sort();
+        packs.dedup();
+        packs
+    }
+
     pub fn supplements(self, path: &Path) -> Vec<String> {
         let mut zones = vec![self.patch().to_owned()];
         if self == Self::Zombies {

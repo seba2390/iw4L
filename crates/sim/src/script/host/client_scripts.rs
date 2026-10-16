@@ -127,11 +127,17 @@ pub(crate) fn install(
     round.next_object = 3;
     round.next_entity_number = 1024;
     round.tables = server.resource::<RoundScript>().tables.clone();
-    round.rng = u32::from_le_bytes(program.fingerprint()[..4].try_into().unwrap()) | 1;
+    let seed = super::natives::t6::initial_seed(server);
+    round.rng = seed;
     round.loading = true;
+    let _ = super::natives::t6::client::pure::sys_milliseconds();
     let mut world = World::new();
     world.insert_resource(match_script);
     world.insert_resource(round);
+    world.insert_resource(super::natives::t6::client::pure::HoldRand(seed));
+    world.insert_resource(super::natives::t6::client::pure::MountedDlc(
+        setup.dlc_packages.clone(),
+    ));
     world.insert_resource(Mechanics::default());
     world.insert_resource(natives);
     world.insert_resource(ClientRuntime);
@@ -199,6 +205,11 @@ pub(crate) fn advance(world: &mut World) {
             .world
             .insert_resource(ServerWorld(std::ptr::from_mut(world)));
         let result = step(&mut client, now);
+        let client_dvars = client.world.resource::<MatchScript>().dvars.clone();
+        world
+            .resource_mut::<MatchScript>()
+            .dvars
+            .extend(client_dvars);
         // The sound system's random one-shots come due on the client's
         // frame, after its scripts.
         super::natives::t6::client::sound::play_due_randoms(&mut client.world);

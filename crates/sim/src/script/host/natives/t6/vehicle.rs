@@ -89,6 +89,33 @@ fn is_node(world: &World, id: u64) -> bool {
         .is_some_and(|entity| entity.classname.starts_with("info_vehicle_node"))
 }
 
+/// The current velocity of a path vehicle, if driving.
+pub(super) fn velocity(world: &mut World, id: u64) -> Option<[f32; 3]> {
+    let (drive, speed) = {
+        let vehicles = world.get_resource::<PathVehicles>()?;
+        let drive = *vehicles.driving.get(&id)?;
+        let speed = vehicles
+            .held
+            .get(&id)
+            .or_else(|| vehicles.speed.get(&id))
+            .copied()
+            .unwrap_or(0.0);
+        (drive, speed)
+    };
+    if speed <= 0.0 {
+        return Some([0.0; 3]);
+    }
+    let from = origin(world, drive.from);
+    let to = origin(world, drive.to);
+    let d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    if len <= MIN_STEP {
+        Some([0.0; 3])
+    } else {
+        Some(d.map(|c| c / len * speed))
+    }
+}
+
 /// The node a node's `target` names.
 fn next_node(world: &mut World, node: u64) -> Option<u64> {
     let target = text(world, node, "target")?;
@@ -530,6 +557,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         };
         let mut ignore = super::super::engine::trace_ignore(world, args.get(3));
         let second = super::super::engine::trace_ignore(world, args.get(4));
+        if args.len() > 5 {
+            super::int(args, 5)?;
+        }
         ignore.other_client = ignore.other_client.or(second.client);
         ignore.model = ignore.model.or(second.model);
         let passed = matches!(

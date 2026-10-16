@@ -297,8 +297,17 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
             origin[0], origin[1], origin[2]
         ));
     }
-    let attacker = entity_arg(world, args, 2);
+    let mut attacker = entity_arg(world, args, 2);
     let inflictor = entity_arg(world, args, 3);
+    if matches!(attacker, Value::Undefined)
+        && let Value::Object(inf_id) = inflictor
+        && let Some(owner) = world
+            .get_resource::<super::extras::OwnerTeams>()
+            .and_then(|ot| ot.0.get(&inf_id))
+            .and_then(|(owner, _)| *owner)
+    {
+        attacker = Value::Object(owner);
+    }
     let hit_location = if args.len() > 4 {
         hit_location_arg(args, 4)?
     } else {
