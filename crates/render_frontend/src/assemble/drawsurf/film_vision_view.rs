@@ -326,6 +326,7 @@ fn mix_optional_native_vision(
         film,
         bloom,
         tone_strength,
+        fields: None,
     })
 }
 
@@ -433,6 +434,9 @@ fn update_film_vision_view(
             let preset = wanted
                 .as_ref()
                 .and_then(|vision| loaded_script_vision(&scene, vision));
+            // A vision lerp whose sets do not load leaves the vision shown.
+            let unloaded_lerp =
+                preset.is_none() && wanted.as_ref().is_some_and(|v| v.lerp.is_some());
             let duration_ms = if screen_effects.instant_thermal || applied.instant_thermal {
                 0
             } else {
@@ -441,22 +445,24 @@ fn update_film_vision_view(
                     _ => 0,
                 }
             };
-            film.select(
-                scene.film_vision,
-                preset.and_then(ScriptVision::film),
-                clock.time(),
-                duration_ms,
-                glow.allowed || wanted.is_some(),
-                glow.allowed_script_forced || wanted.is_some(),
-            );
-            applied.native.select(
-                match preset {
-                    Some(ScriptVision::Native(grade)) => Some(grade),
-                    _ => scene.t6_vision,
-                },
-                clock.time(),
-                duration_ms,
-            );
+            if !unloaded_lerp {
+                film.select(
+                    scene.film_vision,
+                    preset.and_then(ScriptVision::film),
+                    clock.time(),
+                    duration_ms,
+                    glow.allowed || wanted.is_some(),
+                    glow.allowed_script_forced || wanted.is_some(),
+                );
+                applied.native.select(
+                    match preset {
+                        Some(ScriptVision::Native(grade)) => Some(grade),
+                        _ => scene.t6_vision,
+                    },
+                    clock.time(),
+                    duration_ms,
+                );
+            }
             applied.vision = Some(wanted);
         }
         applied.instant_thermal = screen_effects.instant_thermal;
@@ -647,6 +653,44 @@ fn loaded_script_vision(
         return None;
     }
     let key = format!("vision/{}.vision", vision.name.to_ascii_lowercase());
+    if let Some(lerp) = &vision.lerp {
+        let fields = |name: &str| {
+            let key = format!("vision/{}.vision", name.to_ascii_lowercase());
+            match scene.t6_visions.get(&key) {
+                Some(Ok(asset_world::T6Vision {
+                    fields: Some(fields),
+                    ..
+                })) => Some(*fields),
+                Some(Ok(_)) => None,
+                Some(Err(error)) => {
+                    diag::warn!(World, "vision {key}: {error:?}");
+                    None
+                }
+                None => {
+                    diag::warn!(World, "vision {key} is not loaded");
+                    None
+                }
+            }
+        };
+        let blend = asset_world::T6VisionFields::lerp(
+            &fields(&vision.name)?,
+            &fields(&lerp.from)?,
+            lerp.fraction,
+        );
+        return match blend.vision() {
+            Ok(grade) => Some(ScriptVision::Native(grade)),
+            Err(error) => {
+                diag::warn!(
+                    World,
+                    "vision lerp {} -> {} at {}: {error:?}",
+                    vision.name,
+                    lerp.from,
+                    lerp.fraction
+                );
+                None
+            }
+        };
+    }
     if let Some(grade) = scene.t6_visions.get(&key) {
         return match grade {
             Ok(grade) => Some(ScriptVision::Native(*grade)),

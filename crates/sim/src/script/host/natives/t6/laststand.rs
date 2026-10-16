@@ -153,6 +153,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             name,
             duration_ms,
             set_ms,
+            lerp: None,
         });
         Ok(Value::Undefined)
     });

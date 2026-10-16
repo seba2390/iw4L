@@ -268,6 +268,7 @@ pub(crate) fn publish(world: &mut World) {
             repeat_ms: fx.repeat_ms,
             cull_distance: fx.cull_distance,
             viewers,
+            end: crate::EffectEnd::Playing,
         })
         .collect();
     // The local client's own effects play for it alone.
@@ -285,6 +286,7 @@ pub(crate) fn publish(world: &mut World) {
                 repeat_ms: 0,
                 cull_distance: 0.0,
                 viewers: Some(1),
+                end: fx.end,
             }),
     );
     frame.objectives = ObjectiveMatch {

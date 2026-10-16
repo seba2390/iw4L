@@ -612,6 +612,7 @@ fn register_effects(registry: &mut NativeRegistry) {
                 up: axis[2],
                 begin_ms: None,
                 end_ms: Some(0),
+                end: crate::EffectEnd::Playing,
             },
         );
         Ok(Value::Object(entity))
@@ -1304,6 +1305,7 @@ fn play_effect(
                 up: axis[2],
                 begin_ms: Some(begin),
                 end_ms: None,
+                end: crate::EffectEnd::Playing,
             },
         );
     }

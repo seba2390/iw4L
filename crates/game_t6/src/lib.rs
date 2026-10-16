@@ -1,6 +1,7 @@
 mod builtins;
 mod client;
 mod client_builtins;
+pub mod client_screen;
 mod fire;
 mod fire_sound;
 mod grenade;

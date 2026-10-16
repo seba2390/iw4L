@@ -4,6 +4,7 @@
 
 use super::super::{float, int, string, type_name, vector};
 use super::game::{LOCAL_CLIENT, client_entity, local_client, server_object};
+use crate::script::client::{ClientEffect, ClientOutput};
 use crate::script::host::args::arg;
 use crate::script::host::client_scripts::with_server;
 use crate::script::host::entities::EntityKind;
@@ -107,9 +108,8 @@ impl Default for LightState {
 struct ClientEffects {
     /// Loaded effect names by 1-based effect id.
     effects: Vec<String>,
-    /// Next playback handle for `playfx`, `playfxontag` and `playviewmodelfx`.
-    next_handle: i32,
-    /// Active effect handles and the client time (ms) they started at.
+    /// Tag and viewmodel effect handles and the client time (ms) they
+    /// started at.
     playing: BTreeMap<i32, i64>,
     /// The local client's current naked visionset name.
     naked_vision: Option<String>,
@@ -123,13 +123,14 @@ struct ClientEffects {
     allocated_mixers: usize,
     /// Number of mixers created so far (`makemixerlight`).
     mixer_count: usize,
+    /// The gump hide fade's colour: the last `sethidegumpalpha` colour.
+    hide_fade_color: [f32; 3],
 }
 
 impl Default for ClientEffects {
     fn default() -> Self {
         Self {
             effects: Vec::new(),
-            next_handle: 0,
             playing: BTreeMap::new(),
             naked_vision: None,
             world_fog_bank: 0,
@@ -137,8 +138,66 @@ impl Default for ClientEffects {
             lights: BTreeMap::new(),
             allocated_mixers: 0,
             mixer_count: 0,
+            hide_fade_color: [0.0; 3],
         }
     }
+}
+
+/// A `GfxWorld` world fog volume: its packed word (the bank bits are tested
+/// against the active bank mask), script id and bounding planes.
+struct FogVolume {
+    packed: u32,
+    script_id: u16,
+    planes: Vec<[f32; 4]>,
+}
+
+/// The map's world fog volumes in `GfxWorld` order, as the assets lane
+/// captures them.
+#[derive(Resource, Default)]
+struct FogVolumes(Vec<FogVolume>);
+
+fn ensure_fog_volumes(world: &mut World) -> &FogVolumes {
+    if !world.contains_resource::<FogVolumes>() {
+        let text = with_server(world, |server| {
+            server
+                .resource::<RoundScript>()
+                .restart
+                .as_ref()?
+                .raw_files
+                .get("gfxworld/fog_volumes.txt")
+                .cloned()
+        })
+        .flatten();
+        let volumes = text
+            .iter()
+            .flat_map(|text| text.lines())
+            .filter_map(|line| {
+                let mut parts = line.split('\t');
+                let packed = parts.next()?.parse().ok()?;
+                let script_id = parts.next()?.parse().ok()?;
+                let planes = parts
+                    .next()?
+                    .split(';')
+                    .map(|plane| {
+                        let mut values = plane.split(' ').filter_map(|v| v.parse().ok());
+                        Some([
+                            values.next()?,
+                            values.next()?,
+                            values.next()?,
+                            values.next()?,
+                        ])
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                Some(FogVolume {
+                    packed,
+                    script_id,
+                    planes,
+                })
+            })
+            .collect();
+        world.insert_resource(FogVolumes(volumes));
+    }
+    world.resource::<FogVolumes>()
 }
 
 fn state(world: &mut World) -> bevy_ecs::prelude::Mut<'_, ClientEffects> {
@@ -314,10 +373,8 @@ fn orient_angles(
 /// Allocates a client FX handle and marks it playing on this tick.
 fn start_fx_handle(world: &mut World) -> i32 {
     let now = now_ms(world);
-    let mut fx = state(world);
-    fx.next_handle = fx.next_handle.wrapping_add(1).max(1);
-    let handle = fx.next_handle;
-    fx.playing.insert(handle, now);
+    let handle = world.resource_mut::<ClientOutput>().effect_handle();
+    state(world).playing.insert(handle, now);
     handle
 }
 
@@ -393,6 +450,9 @@ fn play_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
         return Err(format!("CScr_PlayFX: invalid effect id {id}"));
     }
     let origin = vector(args, 2)?;
+    // The effect begins now, or at the time the sixth argument names in
+    // seconds.
+    let mut begin = None;
     let angles = if args.len() <= 4 {
         orient_angles(world, id, args, 3, 4)?
     } else {
@@ -413,7 +473,7 @@ fn play_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
             ));
         }
         if args.len() > 5 {
-            float(args, 5)?;
+            begin = Some(round_int(float(args, 5)? * 1000.0));
         }
         if args.len() > 6 && !matches!(args.get(6), None | Some(Value::Undefined)) {
             float(args, 6)?;
@@ -435,8 +495,55 @@ fn play_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
         ];
         axis_angles([forward, left, up])
     };
-    emit_fx_at(world, id, origin, angles);
-    Ok(Value::Int(start_fx_handle(world)))
+    let begin = begin.unwrap_or_else(|| now_ms(world) as i32);
+    Ok(Value::Int(play_point_effect(
+        world, id, origin, angles, begin,
+    )))
+}
+
+/// Plays an effect at a point for the local client from `begin`, answering
+/// its handle: the effect system holds it until its elements are gone
+/// (`isfxplaying`).
+fn play_point_effect(
+    world: &mut World,
+    id: i32,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    begin: i32,
+) -> i32 {
+    let name = effect_name(world, id);
+    let axis = angles_axis(angles);
+    let mut output = world.resource_mut::<ClientOutput>();
+    let handle = output.effect_handle();
+    if let Some(name) = name {
+        output.effects.insert(
+            handle,
+            ClientEffect {
+                name,
+                origin,
+                forward: axis[0],
+                up: axis[2],
+                begin_ms: Some(begin),
+                end_ms: None,
+                end: crate::EffectEnd::Playing,
+            },
+        );
+    }
+    handle
+}
+
+/// Ends a client effect its handle names: `Stopped` lets its elements live
+/// out their lives, `Killed` kills them; the effect system frees it after.
+fn end_effect(world: &mut World, handle: i32, end: crate::EffectEnd) {
+    if let Some(effect) = world
+        .resource_mut::<ClientOutput>()
+        .effects
+        .get_mut(&handle)
+        && effect.end == crate::EffectEnd::Playing
+    {
+        effect.end = end;
+    }
+    state(world).playing.remove(&handle);
 }
 
 /// `playfxontag(localclientnum, id, entity, tag)`.
@@ -616,33 +723,44 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         play_viewmodel_fx(world, args)
     });
     registry.register(Function, "spawnfx", |world, _, args| spawn_fx(world, args));
-    // stopfx(localclientnum, handle): stops a playing client effect.
+    // stopfx(localclientnum, handle): stops a playing client effect; its
+    // elements live out their lives.
     registry.register(Function, "stopfx", |world, _, args| {
         local_client(args, 0)?;
         let handle = int(args, 1)?;
-        state(world).playing.remove(&handle);
+        end_effect(world, handle, crate::EffectEnd::Stopped);
         Ok(Value::Undefined)
     });
-    // deletefx(localclientnum, handle, [immediate]): deletes a playing client
-    // effect.
+    // deletefx(localclientnum, handle, [immediate]): stops a client effect,
+    // killing its elements unless `immediate` is 0.
     registry.register(Function, "deletefx", |world, _, args| {
         local_client(args, 0)?;
         let handle = int(args, 1)?;
-        if args.len() >= 3 {
-            int(args, 2)?;
-        }
-        state(world).playing.remove(&handle);
+        let immediate = args.len() <= 2 || int(args, 2)? != 0;
+        let end = if immediate {
+            crate::EffectEnd::Killed
+        } else {
+            crate::EffectEnd::Stopped
+        };
+        end_effect(world, handle, end);
         Ok(Value::Undefined)
     });
-    // isfxplaying(localclientnum, handle): whether the effect is still active.
+    // isfxplaying(localclientnum, handle): whether the effect system still
+    // holds the handle's effect.
     registry.register(Function, "isfxplaying", |world, _, args| {
         local_client(args, 0)?;
         let handle = int(args, 1)?;
+        if world
+            .resource::<ClientOutput>()
+            .effects
+            .contains_key(&handle)
+        {
+            return Ok(Value::Int(1));
+        }
         let now = now_ms(world);
-        // t6.csc.fx.lifetime: IW4L's effect events do not report particle
-        // lifetimes back to the client VM; an effect answers as playing on the
-        // tick it started and finished once time advances or stopfx/deletefx
-        // stops it.
+        // t6.csc.fx.lifetime: an effect on a tag or the viewmodel answers as
+        // playing on the tick it started and finished once time advances or
+        // stopfx/deletefx stops it.
         let mut fx = state(world);
         let active = match fx.playing.get(&handle).copied() {
             Some(started) if now <= started => true,
@@ -659,8 +777,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "bullettracer", |_, _, args| {
         vector(args, 0)?;
         vector(args, 1)?;
-        // t6.csc.fx.bullet_tracer: IW4L has no client-spawned standalone
-        // bullet tracer beam presentation.
+        // t6.csc.fx.bullet_tracer: the engine spawns a tracer local entity
+        // with its `defaulttracer` definition; IW4L has no Black Ops 2
+        // tracer definitions or tracer drawing.
         Ok(Value::Undefined)
     });
 
@@ -722,28 +841,31 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                         name,
                         duration_ms: duration_ms.max(0),
                         set_ms,
+                        lerp: None,
                     });
             }
         });
         Ok(Value::Undefined)
     });
 
-    // visionsetnakedlerp(localclientnum, from, to, fraction): blends between
-    // two naked visionsets by the clamped 0..1 fraction.
+    // visionsetnakedlerp(localclientnum, from, to, fraction): shows the
+    // naked vision blended from `to` (fraction 0) toward `from` (fraction 1),
+    // the fraction clamped to 0..1, at once.
     registry.register(Function, "visionsetnakedlerp", |world, _, args| {
         local_client(args, 0)?;
         let from = string(args, 1)?;
         let to = string(args, 2)?;
         let fraction = float(args, 3)?;
-        let upper = if fraction - 1.0 >= 0.0 { 1.0 } else { fraction };
-        let clamped = if -fraction >= 0.0 { 0.0 } else { upper };
+        let fraction = if -fraction >= 0.0 {
+            0.0
+        } else if fraction - 1.0 >= 0.0 {
+            1.0
+        } else {
+            fraction
+        };
         if from.is_empty() || to.is_empty() {
             return Ok(Value::Undefined);
         }
-        // t6.csc.vision.lerp: IW4L's vision channel transitions over a
-        // duration rather than blending two sets by an explicit lerp factor.
-        let chosen = if clamped > 0.0 { to } else { from };
-        state(world).naked_vision = Some(chosen.clone());
         with_server(world, |server| {
             let set_ms = crate::level_time_ms(server.resource::<crate::step::StepRequest>().tick);
             let mut frame = crate::frame::FrameWorld::from_world(server);
@@ -751,9 +873,10 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             if frame.client_meta(client_id).is_some() {
                 frame.client_meta_mut(client_id).view_effects.naked_vision =
                     Some(crate::VisionChange {
-                        name: chosen,
+                        name: to,
                         duration_ms: 0,
                         set_ms,
+                        lerp: Some(crate::VisionLerp { from, fraction }),
                     });
             }
         });
@@ -819,6 +942,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                             name,
                             duration_ms: 0,
                             set_ms,
+                            lerp: None,
                         });
                 }
             });
@@ -831,19 +955,40 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setworldfogactivebank", |world, _, args| {
         local_client(args, 0)?;
         let bank = (int(args, 1)? & 65535) as u16;
-        // t6.csc.fog.world_bank: IW4L's fog presentation uses exponential/sun
-        // fog parameters rather than client world fog bank masks.
+        // t6.csc.fog.world_bank: `getworldfogscriptid` tests the mask; the
+        // renderer draws no world fog volumes by bank.
         state(world).world_fog_bank = bank;
         Ok(Value::Undefined)
     });
 
     // getworldfogscriptid(localclientnum): the script id of the world fog
     // volume containing the camera, or -1 when in none.
-    registry.register(Function, "getworldfogscriptid", |_, _, args| {
+    registry.register(Function, "getworldfogscriptid", |world, _, args| {
         local_client(args, 0)?;
-        // t6.csc.fog.volumes: IW4L does not load GfxWorld fog volume planes
-        // or script ids, so the camera answers as outside any volume (-1).
-        Ok(Value::Int(-1))
+        let camera = with_server(world, |server| {
+            crate::script_player::eye(
+                &crate::frame::FrameWorld::from_world(server),
+                crate::ClientId(LOCAL_CLIENT as u32),
+            )
+        })
+        .flatten()
+        .unwrap_or([0.0; 3]);
+        let bank = u32::from(state(world).world_fog_bank);
+        let id = ensure_fog_volumes(world)
+            .0
+            .iter()
+            .find(|volume| {
+                volume.packed & bank != 0
+                    && volume.planes.iter().all(|plane| {
+                        plane[0] * camera[0]
+                            + plane[1] * camera[1]
+                            + plane[2] * camera[2]
+                            + plane[3]
+                            <= 0.0
+                    })
+            })
+            .map_or(-1, |volume| i32::from(volume.script_id));
+        Ok(Value::Int(id))
     });
 
     // setlutscriptindex(localclientnum, index): sets the color grading LUT
@@ -1088,15 +1233,30 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // sethidegumpalpha(localclientnum, [color]): sets the gump transition
-    // fade color and alpha.
-    registry.register(Function, "sethidegumpalpha", |_, _, args| {
+    // sethidegumpalpha(localclientnum, [color]): starts the full-screen
+    // gump hide fade now, in `color` when given (else the last colour); the
+    // local client's draw runs the fade (`game_t6::client_screen`).
+    registry.register(Function, "sethidegumpalpha", |world, _, args| {
         local_client(args, 0)?;
-        if args.len() > 1 {
-            vector(args, 1)?;
-        }
-        // t6.csc.gump.hide_alpha: IW4L has no gump streaming transition fade
-        // overlay.
+        let color = if args.len() > 1 {
+            let color = vector(args, 1)?;
+            state(world).hide_fade_color = color;
+            color
+        } else {
+            state(world).hide_fade_color
+        };
+        with_server(world, |server| {
+            let set_ms = crate::level_time_ms(server.resource::<crate::step::StepRequest>().tick);
+            let mut frame = crate::frame::FrameWorld::from_world(server);
+            let client_id = crate::ClientId(LOCAL_CLIENT as u32);
+            if frame.client_meta(client_id).is_some() {
+                frame
+                    .client_meta_mut(client_id)
+                    .view_effects
+                    .client_screen
+                    .hide_fade = Some(crate::HideFade { set_ms, color });
+            }
+        });
         Ok(Value::Undefined)
     });
 

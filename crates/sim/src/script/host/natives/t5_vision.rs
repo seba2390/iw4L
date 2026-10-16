@@ -459,6 +459,7 @@ fn server_vision(world: &World, args: &[Value], usage: &str) -> Result<VisionCha
         name: string(args, 0)?,
         duration_ms,
         set_ms: crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick),
+        lerp: None,
     })
 }
 

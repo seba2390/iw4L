@@ -202,158 +202,132 @@ pub struct T6Vision {
     pub film: Option<T6FilmGrade>,
     pub bloom: Option<T6Bloom>,
     pub tone_strength: f32,
+    /// The fields it was derived from, for a vision read from a file.
+    pub fields: Option<T6VisionFields>,
 }
 
-pub type T6VisionCatalog =
-    std::collections::BTreeMap<String, Result<T6Vision, T6FilmGradeParseError>>;
+/// Black Ops 2's vision vector fields (`vc_*`), in its vision field table
+/// order.
+pub const T6_VISION_VECTORS: [&str; 23] = [
+    "lib", "lig", "liw", "lob", "low", "rgbh", "rgbl", "yh", "yl", "rs", "re", "smr", "smg", "smb",
+    "mmr", "mmg", "mmb", "hmr", "hmg", "hmb", "fgm", "fsm", "fbm",
+];
 
-fn vector4(value: &str) -> Option<[f32; 4]> {
-    let values: Vec<f32> = value
-        .trim()
-        .trim_matches('"')
-        .split_whitespace()
-        .map(str::parse)
-        .collect::<Result<_, _>>()
-        .ok()?;
-    values.try_into().ok()
+/// A `.vision` file's color fields as Black Ops 2's vision loader keeps
+/// them: `r_filmEnable` and the `vc_*` vectors, `None` where the file sets
+/// none.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct T6VisionFields {
+    pub film_enable: Option<bool>,
+    pub vectors: [Option<[f32; 4]>; 23],
 }
 
-pub fn parse_t6_film_grade(source: &str) -> Result<Option<T6FilmGrade>, T6FilmGradeParseError> {
-    use T6FilmGradeParseError as Error;
-    let mut enable = None;
-    let mut fields = std::collections::HashMap::new();
-    for line in source.lines().map(str::trim) {
-        let Some(split) = line.find(char::is_whitespace) else {
-            continue;
-        };
-        let key = line[..split].to_ascii_lowercase();
-        let value = line[split..].trim();
-        if key == "r_filmenable" {
-            let value = value
-                .trim_matches('"')
-                .parse::<f32>()
-                .ok()
-                .filter(|v| v.is_finite())
-                .ok_or(Error::InvalidEnable)?;
-            enable = Some(value != 0.0);
-        } else if let Some(name) = key.strip_prefix("vc_") {
-            if !matches!(
-                name,
-                "rs" | "re"
-                    | "smr"
-                    | "smg"
-                    | "smb"
-                    | "mmr"
-                    | "mmg"
-                    | "mmb"
-                    | "hmr"
-                    | "hmg"
-                    | "hmb"
-                    | "fgm"
-                    | "fsm"
-                    | "fbm"
-            ) {
-                continue;
-            }
-            let values = vector4(value)
-                .filter(|values| values.iter().all(|v| v.is_finite()))
-                .ok_or_else(|| Error::InvalidVector(name.to_owned()))?;
-            fields.insert(name.to_owned(), values);
+impl T6VisionFields {
+    fn vector(&self, name: &'static str) -> Option<[f32; 4]> {
+        let index = T6_VISION_VECTORS.iter().position(|field| *field == name)?;
+        self.vectors[index]
+    }
+
+    /// `visionsetnakedlerp`'s blend: each vector from `to` (fraction 0)
+    /// toward `from` (fraction 1), `r_filmEnable` from `from`. A vector
+    /// either side lacks is lacked.
+    #[must_use]
+    pub fn lerp(to: &Self, from: &Self, fraction: f32) -> Self {
+        Self {
+            film_enable: from.film_enable,
+            vectors: std::array::from_fn(|i| {
+                let (a, b) = (to.vectors[i]?, from.vectors[i]?);
+                Some(std::array::from_fn(|c| (b[c] - a[c]) * fraction + a[c]))
+            }),
         }
     }
-    if !enable.ok_or(Error::MissingField("r_filmEnable"))? {
-        return Ok(None);
-    }
-    let field = |name: &'static str| fields.get(name).copied().ok_or(Error::MissingField(name));
-    let (mut rs, mut re) = (field("rs")?, field("re")?);
-    const EPSILON: f32 = 1.0 / 4096.0;
-    if re[0] <= rs[0] {
-        re[0] = rs[0] + EPSILON;
-    }
-    if re[1] <= rs[1] {
-        rs[1] = re[1] - EPSILON;
-    }
-    if re[2] <= rs[2] {
-        rs[2] = re[2] - EPSILON;
-    }
-    if rs[3] <= re[2] {
-        rs[3] = re[2] + EPSILON;
-    }
-    if re[3] <= rs[3] {
-        re[3] = rs[3] + EPSILON;
-    }
-    let scale = [
-        1.0 / (rs[0] - re[0]),
-        1.0 / (re[1] - rs[1]),
-        1.0 / (re[2] - rs[2]),
-        1.0 / (rs[3] - re[3]),
-    ];
-    let bias = [
-        -scale[0] * re[0],
-        -scale[1] * rs[1],
-        -scale[2] * rs[2],
-        -scale[3] * re[3],
-    ];
-    let fsm = field("fsm")?;
-    let sum = fsm[0] + fsm[1] + fsm[2];
-    if !sum.is_finite() || sum <= 0.0 || fsm[..3].iter().any(|v| *v < 0.0) {
-        return Err(Error::DegenerateFilterWeights);
-    }
-    let weight = 1.0 / sum;
-    let grade = T6FilmGrade {
-        controls: [
-            scale,
-            bias,
-            field("smr")?,
-            field("mmr")?,
-            field("hmr")?,
-            field("smg")?,
-            field("mmg")?,
-            field("hmg")?,
-            field("smb")?,
-            field("mmb")?,
-            field("hmb")?,
-            field("fgm")?,
-            [fsm[0] * weight, fsm[1] * weight, fsm[2] * weight, fsm[3]],
-            field("fbm")?,
-        ],
-        strength: 1.0,
-    };
-    if !grade.controls.iter().flatten().all(|v| v.is_finite()) {
-        return Err(Error::NonFiniteControls);
-    }
-    Ok(Some(grade))
-}
 
-pub fn parse_t6_vision(source: &str) -> Result<T6Vision, T6FilmGradeParseError> {
-    use T6FilmGradeParseError as Error;
-    let film = parse_t6_film_grade(source)?;
-    let mut fields = std::collections::HashMap::new();
-    for line in source.lines().map(str::trim) {
-        let Some(split) = line.find(char::is_whitespace) else {
-            continue;
-        };
-        let key = line[..split].to_ascii_lowercase();
-        if let Some(key) = key.strip_prefix("vc_") {
-            if !matches!(
-                key,
-                "lib" | "lig" | "liw" | "lob" | "low" | "rgbh" | "rgbl" | "yh" | "yl"
-            ) {
-                continue;
-            }
-            fields.insert(
-                key.to_owned(),
-                vector4(line[split..].trim())
-                    .filter(|v| v.iter().all(|x| x.is_finite()))
-                    .ok_or_else(|| Error::InvalidVector(key.to_owned()))?,
-            );
-        }
+    /// The film grade and bloom Black Ops 2 derives from these fields.
+    pub fn vision(&self) -> Result<T6Vision, T6FilmGradeParseError> {
+        Ok(T6Vision {
+            film: self.film_grade()?,
+            bloom: self.bloom()?,
+            tone_strength: 1.0,
+            fields: Some(*self),
+        })
     }
-    let names = [
-        "lib", "lig", "liw", "lob", "low", "rgbh", "rgbl", "yh", "yl",
-    ];
-    let bloom = if names.iter().any(|key| fields.contains_key(*key)) {
-        let get = |key: &'static str| fields.get(key).copied().ok_or(Error::MissingField(key));
+
+    fn film_grade(&self) -> Result<Option<T6FilmGrade>, T6FilmGradeParseError> {
+        use T6FilmGradeParseError as Error;
+        if !self
+            .film_enable
+            .ok_or(Error::MissingField("r_filmEnable"))?
+        {
+            return Ok(None);
+        }
+        let field = |name: &'static str| self.vector(name).ok_or(Error::MissingField(name));
+        let (mut rs, mut re) = (field("rs")?, field("re")?);
+        const EPSILON: f32 = 1.0 / 4096.0;
+        if re[0] <= rs[0] {
+            re[0] = rs[0] + EPSILON;
+        }
+        if re[1] <= rs[1] {
+            rs[1] = re[1] - EPSILON;
+        }
+        if re[2] <= rs[2] {
+            rs[2] = re[2] - EPSILON;
+        }
+        if rs[3] <= re[2] {
+            rs[3] = re[2] + EPSILON;
+        }
+        if re[3] <= rs[3] {
+            re[3] = rs[3] + EPSILON;
+        }
+        let scale = [
+            1.0 / (rs[0] - re[0]),
+            1.0 / (re[1] - rs[1]),
+            1.0 / (re[2] - rs[2]),
+            1.0 / (rs[3] - re[3]),
+        ];
+        let bias = [
+            -scale[0] * re[0],
+            -scale[1] * rs[1],
+            -scale[2] * rs[2],
+            -scale[3] * re[3],
+        ];
+        let fsm = field("fsm")?;
+        let sum = fsm[0] + fsm[1] + fsm[2];
+        if !sum.is_finite() || sum <= 0.0 || fsm[..3].iter().any(|v| *v < 0.0) {
+            return Err(Error::DegenerateFilterWeights);
+        }
+        let weight = 1.0 / sum;
+        let grade = T6FilmGrade {
+            controls: [
+                scale,
+                bias,
+                field("smr")?,
+                field("mmr")?,
+                field("hmr")?,
+                field("smg")?,
+                field("mmg")?,
+                field("hmg")?,
+                field("smb")?,
+                field("mmb")?,
+                field("hmb")?,
+                field("fgm")?,
+                [fsm[0] * weight, fsm[1] * weight, fsm[2] * weight, fsm[3]],
+                field("fbm")?,
+            ],
+            strength: 1.0,
+        };
+        if !grade.controls.iter().flatten().all(|v| v.is_finite()) {
+            return Err(Error::NonFiniteControls);
+        }
+        Ok(Some(grade))
+    }
+
+    fn bloom(&self) -> Result<Option<T6Bloom>, T6FilmGradeParseError> {
+        use T6FilmGradeParseError as Error;
+        let names = T6_VISION_VECTORS[..9].iter();
+        if !names.clone().any(|key| self.vector(key).is_some()) {
+            return Ok(None);
+        }
+        let get = |key: &'static str| self.vector(key).ok_or(Error::MissingField(key));
         let black = get("lib")?;
         let gamma = get("lig")?;
         let white = get("liw")?;
@@ -387,16 +361,66 @@ pub fn parse_t6_vision(source: &str) -> Result<T6Vision, T6FilmGradeParseError> 
         if gamma.iter().any(|g| *g <= 0.0) || !controls.iter().flatten().all(|v| v.is_finite()) {
             return Err(Error::NonFiniteControls);
         }
-        Some(T6Bloom {
+        Ok(Some(T6Bloom {
             controls,
             strength: 1.0,
-        })
-    } else {
-        None
+        }))
+    }
+}
+
+pub type T6VisionCatalog =
+    std::collections::BTreeMap<String, Result<T6Vision, T6FilmGradeParseError>>;
+
+fn vector4(value: &str) -> Option<[f32; 4]> {
+    let values: Vec<f32> = value
+        .trim()
+        .trim_matches('"')
+        .split_whitespace()
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    values.try_into().ok()
+}
+
+/// A `.vision` file's `r_filmEnable` and `vc_*` fields; a later line sets a
+/// field again.
+pub fn parse_t6_vision_fields(source: &str) -> Result<T6VisionFields, T6FilmGradeParseError> {
+    use T6FilmGradeParseError as Error;
+    let mut fields = T6VisionFields {
+        film_enable: None,
+        vectors: [None; 23],
     };
-    Ok(T6Vision {
-        film,
-        bloom,
-        tone_strength: 1.0,
-    })
+    for line in source.lines().map(str::trim) {
+        let Some(split) = line.find(char::is_whitespace) else {
+            continue;
+        };
+        let key = line[..split].to_ascii_lowercase();
+        let value = line[split..].trim();
+        if key == "r_filmenable" {
+            let value = value
+                .trim_matches('"')
+                .parse::<f32>()
+                .ok()
+                .filter(|v| v.is_finite())
+                .ok_or(Error::InvalidEnable)?;
+            fields.film_enable = Some(value != 0.0);
+        } else if let Some(name) = key.strip_prefix("vc_")
+            && let Some(index) = T6_VISION_VECTORS.iter().position(|field| *field == name)
+        {
+            fields.vectors[index] = Some(
+                vector4(value)
+                    .filter(|values| values.iter().all(|v| v.is_finite()))
+                    .ok_or_else(|| Error::InvalidVector(name.to_owned()))?,
+            );
+        }
+    }
+    Ok(fields)
+}
+
+pub fn parse_t6_film_grade(source: &str) -> Result<Option<T6FilmGrade>, T6FilmGradeParseError> {
+    parse_t6_vision_fields(source)?.film_grade()
+}
+
+pub fn parse_t6_vision(source: &str) -> Result<T6Vision, T6FilmGradeParseError> {
+    parse_t6_vision_fields(source)?.vision()
 }

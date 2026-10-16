@@ -7,6 +7,18 @@ use crate::packed_vertex::repack_vertex_t6;
 use asset_core::WalkLocalMaterialIndex;
 pub use xmodel_runtime::BoneCollision;
 
+/// Black Ops 2's rigid LOD parms keep their FOV scale (the view's
+/// tanHalfFovY times `t5_lod::FOV_SCALE_CONST`) until the new one is larger
+/// or the kept one is over 1.25 times it; the scale is that times
+/// `r_lodScaleRigid` (times an adaptive factor its view setup leaves at 1),
+/// the bias that times `r_lodBiasRigid`.
+pub const RIGID_LOD_FOV_HYSTERESIS: f32 = 1.25;
+/// `r_lodScaleRigid`'s default and domain: 1, from 1 to 4.
+pub const LOD_SCALE_RIGID_DEFAULT: f32 = 1.0;
+pub const LOD_SCALE_RIGID_MAX: f32 = 4.0;
+/// `r_lodBiasRigid`'s default.
+pub const LOD_BIAS_RIGID_DEFAULT: f32 = 0.0;
+
 mod off {
     pub const NAME: u32 = 0;
     pub const NUM_BONES: u32 = 4;
@@ -313,7 +325,7 @@ pub fn capture_model_skel_t6(
             .flatten()
             .collect(),
         mount_tag: None,
-        lod: Some(crate::ModelLodSelector::T5 {
+        lod: Some(crate::ModelLodSelector::T6 {
             num_lods: model.h_u16(off::NUM_LODS) as i16,
             lod_dist,
         }),

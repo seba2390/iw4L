@@ -675,6 +675,26 @@ impl FxSystemHost {
         self.play_release_ownership(handle);
     }
 
+    /// Stops an owned effect and keeps it owned: it spawns nothing more and
+    /// its elements live out their lives, which [`Self::owned_done`] tells.
+    pub fn stop_owned_held(&mut self, handle: u16) {
+        if let Some(slot) = self.slot_index_for_handle(handle) {
+            crate::spawn::stop_effect_non_recursive(self, slot);
+        }
+    }
+
+    /// Stops an owned effect and kills its elements and trails at once,
+    /// keeping it owned.
+    pub fn kill_owned_held(&mut self, handle: u16) {
+        let Some(slot) = self.slot_index_for_handle(handle) else {
+            return;
+        };
+        crate::spawn::stop_effect_non_recursive(self, slot);
+        crate::spawn::free_all_elems_for_effect(self, slot);
+        crate::spawn::free_all_trails_for_effect(self, slot);
+        self.needs_garbage_collection = true;
+    }
+
     pub fn kill_def_newer_than(&mut self, def_name: &str, msec_begin: i32) {
         let slots: Vec<_> = self
             .effects

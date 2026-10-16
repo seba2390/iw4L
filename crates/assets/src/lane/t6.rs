@@ -3152,6 +3152,16 @@ impl ZoneLane for T6Lane {
                 &mut scripts,
                 &mut report,
             );
+            if let Ok(ropes) = capture_t6_ropes(&load)
+                && !ropes.is_empty()
+            {
+                scripts.capture_config("physconstraints/ropes.txt", ropes);
+            }
+            if let Ok(volumes) = capture_t6_fog_volumes(&load, &world_asset.header)
+                && !volumes.is_empty()
+            {
+                scripts.capture_config("gfxworld/fog_volumes.txt", volumes);
+            }
             let light_grid = asset_world::world_t6::light_grid(&load, world_asset)
                 .map_err(|e| report.push(format!("T6 light grid: {e}")))
                 .ok();
@@ -3583,4 +3593,64 @@ impl ZoneLane for T6Lane {
             ..Default::default()
         }
     }
+}
+
+/// The targetnames of the map's ropes, one per line: the `ClipMap`
+/// constraints of type `CONSTRAINT_ROPE` (8), in map order, which is how
+/// `getrope` numbers them.
+fn capture_t6_ropes(load: &ZoneLoad) -> Result<String, String> {
+    use asset_world::world_t6::Reader;
+    let Some(asset) = load
+        .assets
+        .iter()
+        .find(|a| matches!(a.ty, AssetType::ClipMap | AssetType::ClipMapPvs))
+    else {
+        return Ok(String::new());
+    };
+    let r = Reader(load);
+    let count = Reader::word(&asset.header, 312)?;
+    if count == 0 {
+        return Ok(String::new());
+    }
+    let table = Reader::ptr(&asset.header, 316)?;
+    let mut out = String::new();
+    for i in 0..count {
+        let b = r.bytes(table.at(i * 168), 168)?;
+        if Reader::word(b, 4)? != 8 {
+            continue;
+        }
+        let name_id = u16::from_le_bytes([b[0], b[1]]);
+        out.push_str(load.script_string(name_id).unwrap_or(""));
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// The map's world fog volumes as `getworldfogscriptid` reads them, one per
+/// line: the `GfxWorld` volume's packed word (bank bits, plane count - 1 in
+/// bits 8..16, first plane from bit 16), its script id, and its planes.
+fn capture_t6_fog_volumes(load: &ZoneLoad, h: &[u8]) -> Result<String, String> {
+    use asset_world::world_t6::Reader;
+    let r = Reader(load);
+    let count = Reader::word(h, 308)? as u16;
+    if count == 0 {
+        return Ok(String::new());
+    }
+    let volumes = Reader::ptr(h, 312)?;
+    let planes = Reader::ptr(h, 320)?;
+    let mut out = String::new();
+    for i in 0..u32::from(count) {
+        let b = r.bytes(volumes.at(i * 100), 100)?;
+        let packed = Reader::word(b, 12)?;
+        let script_id = u16::from_le_bytes([b[32], b[33]]);
+        let first = packed >> 16;
+        let plane_count = ((packed >> 8) & 0xff) + 1;
+        let mut text = Vec::with_capacity(plane_count as usize);
+        for j in 0..plane_count {
+            let c = r.xyzw(planes.at((first + j) * 16))?;
+            text.push(format!("{} {} {} {}", c[0], c[1], c[2], c[3]));
+        }
+        out.push_str(&format!("{packed}\t{script_id}\t{}\n", text.join(";")));
+    }
+    Ok(out)
 }

@@ -44,6 +44,15 @@ pub struct LodRampDvar {
     pub t5_fov_threshold: f32,
 
     pub t5: asset_model::t5_lod::LodParmsAxis,
+
+    /// Black Ops 2's `r_lodScaleRigid`, its domain's floor and
+    /// `r_lodBiasRigid`.
+    pub t6_scale: f32,
+    pub t6_scale_min: f32,
+    pub t6_bias: f32,
+    pub t6: asset_model::t5_lod::LodParmsAxis,
+    /// The last client script `zacklodscalerigid` applied, by its time.
+    pub t6_script_set: Option<i32>,
 }
 
 impl Default for LodRampDvar {
@@ -57,11 +66,36 @@ impl Default for LodRampDvar {
             t5_bias: asset_model::t5_lod::R_LOD_BIAS_RIGID_DEFAULT,
             t5_fov_threshold: asset_model::t5_lod::R_FOV_SCALE_THRESHOLD_DEFAULT,
             t5: asset_model::t5_lod::LodParmsAxis::default(),
+            t6_scale: asset_model::T6_LOD_SCALE_RIGID_DEFAULT,
+            t6_scale_min: asset_model::T6_LOD_SCALE_RIGID_DEFAULT,
+            t6_bias: asset_model::T6_LOD_BIAS_RIGID_DEFAULT,
+            t6: asset_model::t5_lod::LodParmsAxis::default(),
+            t6_script_set: None,
         }
     }
 }
 
 impl LodRampDvar {
+    /// A client script's `zacklodscalerigid`: the domain's floor moves to
+    /// `min` and the scale is set to `value` when it is in the domain
+    /// (`min` to 4), as Black Ops 2's dvar set refuses one outside it.
+    pub fn apply_t6_script_scale(&mut self, set_ms: i32, value: f32, min: f32) {
+        if self.t6_script_set == Some(set_ms) {
+            return;
+        }
+        self.t6_script_set = Some(set_ms);
+        self.t6_scale_min = min;
+        if (min..=asset_model::T6_LOD_SCALE_RIGID_MAX).contains(&value) {
+            self.t6_scale = value;
+        }
+        diag::info!(
+            World,
+            "t6 r_lodScaleRigid = {} (min {}) from zacklodscalerigid at {set_ms}",
+            self.t6_scale,
+            self.t6_scale_min
+        );
+    }
+
     #[must_use]
     pub fn args(self) -> crate::assemble::drawsurf::tess::smodel::LodRampArgs {
         crate::assemble::drawsurf::tess::smodel::LodRampArgs {
@@ -71,6 +105,7 @@ impl LodRampDvar {
             world_unit: self.world_unit,
             t5: self.t5,
             t5_no_lod_cull_out: false,
+            t6: self.t6,
         }
     }
 }
@@ -89,6 +124,13 @@ pub fn update_lod_parms(
 ) {
     let (scale, bias, threshold) = (rigid.t5_scale, rigid.t5_bias, rigid.t5_fov_threshold);
     rigid.t5.update(tan_half_fov_y, scale, bias, threshold);
+    let (scale, bias) = (rigid.t6_scale, rigid.t6_bias);
+    rigid.t6.update(
+        tan_half_fov_y,
+        scale,
+        bias,
+        asset_model::T6_RIGID_LOD_FOV_HYSTERESIS,
+    );
     let (scale, bias, threshold) = (skinned.t5_scale, skinned.t5_bias, skinned.t5_fov_threshold);
     skinned.t5.update(tan_half_fov_y, scale, bias, threshold);
 }

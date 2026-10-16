@@ -1214,6 +1214,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
         out.put_u32(*serial);
         encode_vision_call(out, call);
     }
+    encode_client_screen(out, &meta.view_effects.client_screen);
     encode_fog(out, meta.view_effects.fog);
     out.put_u8(u8::from(meta.view_effects.water_fog.is_some()));
     if let Some(water_fog) = meta.view_effects.water_fog {
@@ -1483,6 +1484,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             }
             calls
         },
+        client_screen: decode_client_screen(input)?,
         fog: decode_fog(input)?,
         water_fog: match input.get_u8()? {
             0 => None,
@@ -1600,6 +1602,60 @@ fn encode_vision(out: &mut WireWriter, vision: Option<&sim::VisionChange>) {
     put_text(out, &vision.name);
     out.put_i32(vision.duration_ms);
     out.put_i32(vision.set_ms);
+    match &vision.lerp {
+        None => out.put_u8(0),
+        Some(lerp) => {
+            out.put_u8(1);
+            put_text(out, &lerp.from);
+            out.put_f32(lerp.fraction);
+        }
+    }
+}
+
+fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
+    match &screen.hide_fade {
+        None => out.put_u8(0),
+        Some(fade) => {
+            out.put_u8(1);
+            out.put_i32(fade.set_ms);
+            for channel in fade.color {
+                out.put_f32(channel);
+            }
+        }
+    }
+    match &screen.lod_scale_rigid {
+        None => out.put_u8(0),
+        Some(lod) => {
+            out.put_u8(1);
+            out.put_i32(lod.set_ms);
+            out.put_f32(lod.value);
+            out.put_f32(lod.min);
+        }
+    }
+}
+
+fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen, WireError> {
+    let hide_fade = match input.get_u8()? {
+        0 => None,
+        1 => Some(sim::HideFade {
+            set_ms: input.get_i32()?,
+            color: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+        }),
+        _ => return Err(WireError::Malformed("bad hide fade tag")),
+    };
+    let lod_scale_rigid = match input.get_u8()? {
+        0 => None,
+        1 => Some(sim::LodScaleRigid {
+            set_ms: input.get_i32()?,
+            value: input.get_f32()?,
+            min: input.get_f32()?,
+        }),
+        _ => return Err(WireError::Malformed("bad lod scale tag")),
+    };
+    Ok(sim::ClientScreen {
+        hide_fade,
+        lod_scale_rigid,
+    })
 }
 
 fn encode_vision_call(out: &mut WireWriter, call: &sim::VisionCall) {
@@ -1649,6 +1705,14 @@ fn decode_vision(input: &mut WireReader<'_>) -> Result<Option<sim::VisionChange>
             name: get_text(input)?,
             duration_ms: input.get_i32()?,
             set_ms: input.get_i32()?,
+            lerp: match input.get_u8()? {
+                0 => None,
+                1 => Some(sim::VisionLerp {
+                    from: get_text(input)?,
+                    fraction: input.get_f32()?,
+                }),
+                _ => return Err(WireError::Malformed("bad vision lerp tag")),
+            },
         })),
         _ => Err(WireError::Malformed("bad vision tag")),
     }
@@ -3164,6 +3228,11 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
         out.put_f32(fx.cull_distance);
         out.put_u8(u8::from(fx.viewers.is_some()));
         out.put_u64(fx.viewers.unwrap_or(0));
+        out.put_u8(match fx.end {
+            sim::EffectEnd::Playing => 0,
+            sim::EffectEnd::Stopped => 1,
+            sim::EffectEnd::Killed => 2,
+        });
     }
     encode_vision(out, state.naked_vision.as_ref());
     encode_vision(out, state.thermal_vision.as_ref());
@@ -3271,6 +3340,12 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
                 let hidden = input.get_u8()? != 0;
                 let mask = input.get_u64()?;
                 hidden.then_some(mask)
+            },
+            end: match input.get_u8()? {
+                0 => sim::EffectEnd::Playing,
+                1 => sim::EffectEnd::Stopped,
+                2 => sim::EffectEnd::Killed,
+                _ => return Err(WireError::Malformed("bad effect end")),
             },
         });
     }

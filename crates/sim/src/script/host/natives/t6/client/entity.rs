@@ -144,6 +144,29 @@ struct ClientAnimTrees {
 #[derive(Resource, Default)]
 struct ZombieBoxWeapons(Vec<(String, String, bool)>);
 
+/// The targetnames of the map's ropes: its `ClipMap` constraints of type
+/// `CONSTRAINT_ROPE`, in map order, as the assets lane captures them.
+#[derive(Resource, Default)]
+struct ClientRopes(Vec<String>);
+
+fn ensure_ropes(world: &mut World) -> &ClientRopes {
+    if !world.contains_resource::<ClientRopes>() {
+        let names = with_server(world, |server| {
+            server
+                .resource::<RoundScript>()
+                .restart
+                .as_ref()?
+                .raw_files
+                .get("physconstraints/ropes.txt")
+                .map(|text| text.lines().map(str::to_owned).collect::<Vec<_>>())
+        })
+        .flatten()
+        .unwrap_or_else(Vec::new);
+        world.insert_resource(ClientRopes(names));
+    }
+    world.resource::<ClientRopes>()
+}
+
 fn with_server<R>(world: &World, f: impl FnOnce(&mut World) -> R) -> Option<R> {
     crate::script::host::client_scripts::with_server(world, f)
 }
@@ -2065,11 +2088,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
 
     // getrope(targetname): looks up a map rope by targetname (-1 when none).
-    registry.register(Function, "getrope", |_, _, args| {
-        string(args, 0)?;
-        // t6.csc.ropes.lookup: IW4L does not load map rope assets on the
-        // client.
-        Ok(Value::Int(-1))
+    registry.register(Function, "getrope", |world, _, args| {
+        let name = string(args, 0)?;
+        let index = ensure_ropes(world)
+            .0
+            .iter()
+            .position(|rope| *rope == name)
+            .map_or(-1, |index| index as i32);
+        Ok(Value::Int(index))
     });
 
     // ropegetposition(rope, fraction): the world point `fraction` (0..1)
@@ -2151,15 +2177,37 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         },
     );
 
-    // zacklodscalerigid([scale, min_scale]): sets `r_lodScaleRigid` on the
-    // client.
-    registry.register(Function, "zacklodscalerigid", |_, _, args| {
-        if args.len() == 2 {
-            float(args, 1)?;
-            float(args, 0)?;
-        }
-        // t6.csc.render.lod_scale_rigid: IW4L does not adjust rigid model
-        // LOD scale from client scripts.
+    // zacklodscalerigid([scale, min_scale]): with no arguments puts
+    // `r_lodScaleRigid` and its domain's floor back to 1; with two, the
+    // floor becomes `min_scale` (at least 0.6) and the value `scale` held
+    // between the floor and the domain's top (4); other counts do nothing.
+    registry.register(Function, "zacklodscalerigid", |world, _, args| {
+        let (value, min) = match args.len() {
+            0 => (1.0, 1.0),
+            2 => {
+                let floor = float(args, 1)?;
+                let floor = if floor - 0.6 >= 0.0 { floor } else { 0.6 };
+                let scale = float(args, 0)?;
+                let mut value = if scale - 4.0 >= 0.0 { 4.0 } else { scale };
+                if floor - scale >= 0.0 {
+                    value = floor;
+                }
+                (value, floor)
+            }
+            _ => return Ok(Value::Undefined),
+        };
+        with_server(world, |server| {
+            let set_ms = crate::level_time_ms(server.resource::<crate::step::StepRequest>().tick);
+            let mut frame = crate::frame::FrameWorld::from_world(server);
+            let client_id = crate::ClientId(super::game::LOCAL_CLIENT as u32);
+            if frame.client_meta(client_id).is_some() {
+                frame
+                    .client_meta_mut(client_id)
+                    .view_effects
+                    .client_screen
+                    .lod_scale_rigid = Some(crate::LodScaleRigid { set_ms, value, min });
+            }
+        });
         Ok(Value::Undefined)
     });
 

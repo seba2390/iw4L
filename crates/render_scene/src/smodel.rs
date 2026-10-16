@@ -36,6 +36,8 @@ pub struct LodRampArgs {
     pub t5: asset_model::t5_lod::LodParmsAxis,
 
     pub t5_no_lod_cull_out: bool,
+    /// Black Ops 2's rigid LOD parms.
+    pub t6: asset_model::t5_lod::LodParmsAxis,
 }
 
 impl LodRampArgs {
@@ -83,12 +85,18 @@ pub fn smodel_camera_lod(
             xmodel_get_lod_for_dist(lod_start, num_lods, lod_dist, mid, last)
         }
 
-        asset_model::ModelLodSelector::T5 { num_lods, lod_dist } => {
+        asset_model::ModelLodSelector::T5 { num_lods, lod_dist }
+        | asset_model::ModelLodSelector::T6 { num_lods, lod_dist } => {
             let dx = eye.x - origin[0];
             let dy = eye.y - origin[1];
             let dz = eye.z - origin[2];
             let d = (dx * dx + dy * dy + dz * dz).sqrt();
-            let (ramped, base) = ramp.t5.smodel_call_dists(d, scale);
+            let parms = if matches!(lod, asset_model::ModelLodSelector::T6 { .. }) {
+                ramp.t6
+            } else {
+                ramp.t5
+            };
+            let (ramped, base) = parms.smodel_call_dists(d, scale);
             asset_model::t5_lod::xmodel_get_lod_for_dist(
                 num_lods,
                 lod_dist,
@@ -178,6 +186,7 @@ impl LodRampSkinnedDvar {
             world_unit: self.world_unit,
             t5: self.t5,
             t5_no_lod_cull_out: false,
+            t6: asset_model::t5_lod::LodParmsAxis::default(),
         }
     }
 }

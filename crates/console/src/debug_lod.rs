@@ -77,6 +77,7 @@ pub(crate) fn route_lod_ramp_commands(
                     Ok(v) if v.is_finite() => {
                         ramp.scale_mid = Some(v);
                         ramp.t5_scale = v;
+                        ramp.t6_scale = v;
                         echo(show_rigid(ramp), &mut console, &mut line);
                     }
                     _ => echo(
@@ -97,6 +98,7 @@ pub(crate) fn route_lod_ramp_commands(
                     Ok(v) if v.is_finite() => {
                         ramp.bias_mid = Some(v);
                         ramp.t5_bias = v;
+                        ramp.t6_bias = v;
                         echo(show_rigid(ramp), &mut console, &mut line);
                     }
                     _ => echo(

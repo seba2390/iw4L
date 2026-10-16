@@ -48,11 +48,22 @@ pub enum MenuCommandKind {
     CloseInGame,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct VisionChange {
     pub name: String,
     pub duration_ms: i32,
     pub set_ms: i32,
+    /// Set by Black Ops 2's `visionsetnakedlerp`: the vision shown blends
+    /// from `name` toward another by a fraction, at once.
+    pub lerp: Option<VisionLerp>,
+}
+
+/// The other side of a vision blend: `fraction` 0 shows the change's `name`,
+/// 1 shows `from`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VisionLerp {
+    pub from: String,
+    pub fraction: f32,
 }
 
 /// A client script's override of one of the map's primary lights (`makelight`).
@@ -78,12 +89,42 @@ pub struct ViewEffects {
     pub blur: Option<ScriptBlur>,
     /// The client scripts' latest vision calls, by serial.
     pub client_visions: Vec<(u32, crate::VisionCall)>,
+    /// What Black Ops 2's client scripts set on the screen.
+    pub client_screen: ClientScreen,
     /// Fog set for this client alone (by its player method or client script).
     pub fog: Option<crate::ScriptFog>,
     /// Water fog set for this client (`setWaterFog`).
     pub water_fog: Option<crate::ScriptFogParams>,
     /// Primary light overrides from the client's light entities (`makelight`).
     pub client_lights: Vec<ClientLightOverride>,
+}
+
+/// The screen state Black Ops 2's client scripts set through its client
+/// game, as the local client's draw reads it each frame.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ClientScreen {
+    /// The last `sethidegumpalpha`.
+    pub hide_fade: Option<HideFade>,
+    /// The last `zacklodscalerigid`.
+    pub lod_scale_rigid: Option<LodScaleRigid>,
+}
+
+/// A `zacklodscalerigid` call: `r_lodScaleRigid`'s domain floor moves to
+/// `min` and its value is set to `value` (a value over the domain's top is
+/// refused).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LodScaleRigid {
+    pub set_ms: i32,
+    pub value: f32,
+    pub min: f32,
+}
+
+/// A `sethidegumpalpha` call: the screen hides behind a full-screen fade
+/// from `set_ms`, in `color` (the last colour a call gave, black at first).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HideFade {
+    pub set_ms: i32,
+    pub color: [f32; 3],
 }
 
 /// How many client-script vision calls a snapshot carries.
