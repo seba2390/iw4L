@@ -95,7 +95,7 @@ impl WeaponCatalog {
             proj_ignition_slot: None,
             projectile_fx: WeaponProjectileFx::default(),
             gun_xmodel: weapon
-                .def_asset_array_name(fastfile_t6::weapon::def::GUN_XMODEL, 0)
+                .def_asset_array_name(d::GUN_XMODEL, 0)
                 .map(t6_model_name),
             hand_xmodel: None,
             knife_xmodel: None,
@@ -389,11 +389,15 @@ pub(super) fn capture_t6_body_facts(w: fastfile_t6::weapon::WeaponView<'_>) -> W
         ammo_counter_clip: w.def_i32(d::AMMO_COUNTER_CLIP),
         start_ammo: if unlimited && raw_clip <= 0 {
             10_000
+        } else if w.def_bool(d::CLIP_ONLY) {
+            w.def_i32(d::START_AMMO).min(raw_clip.max(0))
         } else {
             w.def_i32(d::START_AMMO)
         },
         max_ammo: if unlimited && raw_clip <= 0 {
             10_000
+        } else if w.def_bool(d::CLIP_ONLY) {
+            w.def_i32(d::MAX_AMMO).min(raw_clip.max(0))
         } else {
             w.def_i32(d::MAX_AMMO)
         },
@@ -546,6 +550,7 @@ pub(super) fn capture_t6_attachment_stats(
     let set = |off| Some(a.f32_at(off)).filter(|v| *v > 0.0);
     T6AttachmentStats {
         kind: a.attachment_type(),
+        raw: a.raw_bytes().into(),
         clip_size_scale: scale(at::CLIP_SIZE_SCALE),
         fire_time_scale: scale(at::FIRE_TIME_SCALE),
         reload_time_scales: std::array::from_fn(|i| scale(at::RELOAD_TIME_SCALES + 4 * i as u32)),
@@ -568,6 +573,261 @@ pub(super) fn capture_t6_attachment_stats(
         dual_mag: a.flag(at::DUAL_MAG),
         shared_ammo: a.flag(at::SHARED_AMMO),
     }
+}
+
+pub(super) fn apply_t6_attachment_game_bytes(
+    game_bytes: &mut Option<Arc<GameWeaponBytes>>,
+    stats: &[&T6AttachmentStats],
+    singles: &[&T6Attachment],
+    pair: Option<&T6Attachment>,
+    row_name: &str,
+) {
+    use fastfile_t6::weapon::{attachment as at, def as d, variant as v};
+    let Some(base) = game_bytes.as_deref() else {
+        return;
+    };
+    let mut def = base.def.to_vec();
+    let mut variant = base.variant.to_vec();
+    let mut named_anims = base.named_anims;
+    let mut clip_name = base.clip_name.clone();
+    if def.len() < d::SIZE || variant.len() < v::SIZE {
+        return;
+    }
+
+    let get_i32 = |buf: &[u8], off: u32| -> i32 {
+        let o = off as usize;
+        i32::from_le_bytes(buf[o..o + 4].try_into().unwrap())
+    };
+    let set_i32 = |buf: &mut [u8], off: u32, val: i32| {
+        let o = off as usize;
+        buf[o..o + 4].copy_from_slice(&val.to_le_bytes());
+    };
+    let get_f32 = |buf: &[u8], off: u32| -> f32 {
+        let o = off as usize;
+        f32::from_le_bytes(buf[o..o + 4].try_into().unwrap())
+    };
+    let set_f32 = |buf: &mut [u8], off: u32, val: f32| {
+        let o = off as usize;
+        buf[o..o + 4].copy_from_slice(&val.to_le_bytes());
+    };
+    let att_u32 = |raw: &[u8], off: u32| -> u32 {
+        let o = off as usize;
+        raw.get(o..o + 4)
+            .map_or(0, |b| u32::from_le_bytes(b.try_into().unwrap()))
+    };
+    let att_i32 = |raw: &[u8], off: u32| -> i32 { att_u32(raw, off) as i32 };
+    let att_f32 = |raw: &[u8], off: u32| -> f32 { f32::from_bits(att_u32(raw, off)) };
+    let att_flag =
+        |raw: &[u8], off: u32| -> bool { raw.get(off as usize).is_some_and(|&b| b != 0) };
+    let att_scale = |raw: &[u8], off: u32| -> f32 {
+        let val = att_f32(raw, off);
+        if val > 0.0 { val } else { 1.0 }
+    };
+
+    let ignore_attachments = variant[0x1d8] != 0;
+    let mut clip_scale = 1.0f32;
+    let mut stackfire_clip = None;
+    let mut unique_clip = false;
+    let mut fire_scale = 1.0f32;
+    let mut reload_scale = 1.0f32;
+    let mut reload_empty_scale = 1.0f32;
+    let mut reload_add_scale = 1.0f32;
+    let mut reload_quick_scale = 1.0f32;
+    let mut reload_quick_empty_scale = 1.0f32;
+    let mut reload_quick_add_scale = 1.0f32;
+    let mut ads_in_scale = 1.0f32;
+    let mut ads_out_scale = 1.0f32;
+    let mut ads_kick_center_scale = 1.0f32;
+    let mut ads_idle_scale = 1.0f32;
+    let mut range_scale = 1.0f32;
+    let mut hip_min_scale = 1.0f32;
+    let mut hip_max_scale = 1.0f32;
+
+    for s in stats {
+        let raw = &s.raw;
+        if s.kind == 0x18 {
+            stackfire_clip = Some(att_i32(raw, at::CLIP_SIZE));
+            set_i32(&mut def, d::FIRE_TYPE, att_i32(raw, at::FIRE_TYPE));
+            unique_clip = true;
+        } else {
+            let cs = att_scale(raw, at::CLIP_SIZE_SCALE);
+            if cs != 1.0 {
+                clip_scale *= cs;
+                unique_clip = true;
+            }
+        }
+        let pen = att_i32(raw, at::PENETRATE_TYPE);
+        if pen != 0 {
+            set_i32(&mut def, d::PENETRATE_TYPE, pen);
+        }
+        if att_flag(raw, at::DUAL_WIELD) {
+            def[d::DUAL_WIELD as usize] = 1;
+        }
+        if !ignore_attachments {
+            if att_flag(raw, at::SILENCED) {
+                variant[v::SILENCED as usize] = 1;
+            }
+            if att_flag(raw, at::DUAL_MAG) {
+                variant[v::DUAL_MAG as usize] = 1;
+            }
+            if att_flag(raw, at::LASER_SIGHT) {
+                def[0x64b] = 1;
+            }
+            if att_flag(raw, at::SHARED_AMMO) {
+                def[0x630] = 1;
+            }
+        }
+        if att_flag(raw, at::INFRARED) {
+            variant[0x246] = 1;
+        }
+        if att_flag(raw, at::BAYONET) {
+            variant[0x265] = 1;
+            def[0x64e] = 1;
+            let charge_range = att_f32(raw, at::MELEE_CHARGE_RANGE);
+            if charge_range > 0.0 {
+                set_f32(&mut variant, 0x270, charge_range);
+                set_f32(&mut def, 0x74c, charge_range);
+            }
+        }
+        if att_flag(raw, at::ADS_FIRE) {
+            def[0x65c] = 1;
+        }
+        if att_flag(raw, at::RELOAD_WHILE_ADS) {
+            def[0x65d] = 1;
+            def[0x63a] = 1;
+        }
+        fire_scale *= att_scale(raw, at::FIRE_TIME_SCALE);
+        reload_scale *= att_scale(raw, at::RELOAD_TIME_SCALES);
+        reload_empty_scale *= att_scale(raw, at::RELOAD_TIME_SCALES + 4);
+        reload_add_scale *= att_scale(raw, at::RELOAD_TIME_SCALES + 8);
+        reload_quick_scale *= att_scale(raw, at::RELOAD_TIME_SCALES + 12);
+        reload_quick_empty_scale *= att_scale(raw, at::RELOAD_TIME_SCALES + 16);
+        reload_quick_add_scale *= att_scale(raw, at::RELOAD_TIME_SCALES + 20);
+        ads_in_scale *= att_scale(raw, at::ADS_TRANS_IN_TIME_SCALE);
+        ads_out_scale *= att_scale(raw, at::ADS_TRANS_OUT_TIME_SCALE);
+        ads_kick_center_scale *= att_scale(raw, at::ADS_VIEW_KICK_CENTER_SPEED_SCALE);
+        ads_idle_scale *= att_scale(raw, at::ADS_IDLE_AMOUNT_SCALE);
+        range_scale *= att_scale(raw, at::DAMAGE_RANGE_SCALE);
+        hip_min_scale *= att_scale(raw, at::HIP_SPREAD_MIN_SCALE);
+        hip_max_scale *= att_scale(raw, at::HIP_SPREAD_MAX_SCALE);
+
+        let ads_move = att_f32(raw, at::ADS_MOVE_SPEED_SCALE);
+        if ads_move > 0.0 && ads_move != 1.0 {
+            set_f32(&mut def, d::ADS_MOVE_SPEED_SCALE, ads_move);
+        }
+        let ads_spread = att_f32(raw, at::ADS_SPREAD);
+        if ads_spread > 0.0 {
+            set_f32(&mut def, d::ADS_SPREAD, ads_spread);
+        }
+        for (i, off) in [at::ADS_ZOOM_FOV, at::ADS_ZOOM_FOV2, at::ADS_ZOOM_FOV3]
+            .into_iter()
+            .enumerate()
+        {
+            let fov = att_f32(raw, off);
+            if fov.is_finite() && fov > 1.0 && fov < 180.0 {
+                set_f32(&mut variant, v::ADS_ZOOM_FOV1 + 4 * i as u32, fov);
+            }
+        }
+        let zin = att_f32(raw, at::ADS_ZOOM_IN_FRAC);
+        if zin > 0.0 {
+            set_f32(&mut variant, v::ADS_ZOOM_IN_FRAC, zin);
+        }
+        let zout = att_f32(raw, at::ADS_ZOOM_OUT_FRAC);
+        if zout > 0.0 {
+            set_f32(&mut variant, v::ADS_ZOOM_OUT_FRAC, zout);
+        }
+        let p0 = get_i32(&variant, v::PERKS) as u32 | att_u32(raw, at::PERKS);
+        let p1 = get_i32(&variant, v::PERKS + 4) as u32 | att_u32(raw, at::PERKS + 4);
+        set_i32(&mut variant, v::PERKS, p0 as i32);
+        set_i32(&mut variant, v::PERKS + 4, p1 as i32);
+    }
+
+    if let Some(sc) = stackfire_clip {
+        set_i32(&mut variant, v::CLIP_SIZE, sc);
+    } else if clip_scale != 1.0 {
+        let base_clip = get_i32(&variant, v::CLIP_SIZE);
+        if base_clip > 1 {
+            let scaled =
+                ((base_clip as f32 * clip_scale + 9.313_226e-10).round_ties_even() as i32).max(1);
+            set_i32(&mut variant, v::CLIP_SIZE, scaled);
+        }
+    }
+    if unique_clip {
+        clip_name = format!("{clip_name}@{row_name}");
+    }
+
+    let scale_i32 = |buf: &mut [u8], off: u32, scale: f32| {
+        if scale != 1.0 {
+            let v = (get_i32(buf, off) as f32 * scale) as i32;
+            set_i32(buf, off, v);
+        }
+    };
+    scale_i32(&mut def, d::FIRE_TIME, fire_scale);
+    scale_i32(&mut variant, v::RELOAD_TIME, reload_scale);
+    scale_i32(&mut variant, v::RELOAD_EMPTY_TIME, reload_empty_scale);
+    scale_i32(&mut def, d::RELOAD_ADD_TIME, reload_add_scale);
+    scale_i32(&mut variant, v::RELOAD_QUICK_TIME, reload_quick_scale);
+    scale_i32(
+        &mut variant,
+        v::RELOAD_QUICK_EMPTY_TIME,
+        reload_quick_empty_scale,
+    );
+    scale_i32(&mut def, d::RELOAD_QUICK_ADD_TIME, reload_quick_add_scale);
+    if ads_in_scale != 1.0 {
+        scale_i32(&mut variant, v::ADS_TRANS_IN_TIME, ads_in_scale);
+        let rate = get_f32(&variant, 0x23c);
+        set_f32(&mut variant, 0x23c, rate / ads_in_scale);
+    }
+    if ads_out_scale != 1.0 {
+        scale_i32(&mut variant, v::ADS_TRANS_OUT_TIME, ads_out_scale);
+        let rate = get_f32(&variant, 0x240);
+        set_f32(&mut variant, 0x240, rate / ads_out_scale);
+    }
+    if ads_kick_center_scale != 1.0 {
+        let v = get_f32(&variant, v::ADS_VIEW_KICK_CENTER_SPEED) * ads_kick_center_scale;
+        set_f32(&mut variant, v::ADS_VIEW_KICK_CENTER_SPEED, v);
+    }
+    if ads_idle_scale != 1.0 {
+        let v = get_f32(&def, d::ADS_IDLE_AMOUNT) * ads_idle_scale;
+        set_f32(&mut def, d::ADS_IDLE_AMOUNT, v);
+    }
+    if range_scale != 1.0 {
+        for i in 0..d::DAMAGE_STEPS {
+            let off = d::DAMAGE_RANGE + 4 * i as u32;
+            let v = get_f32(&def, off) * range_scale;
+            set_f32(&mut def, off, v);
+        }
+    }
+    if hip_min_scale != 1.0 {
+        for off in [0x5b0, 0x5b4, 0x5b8] {
+            let v = get_f32(&def, off) * hip_min_scale;
+            set_f32(&mut def, off, v);
+        }
+    }
+    if hip_max_scale != 1.0 {
+        for off in [0x5bc, 0x5c0, 0x5c4] {
+            let v = get_f32(&def, off) * hip_max_scale;
+            set_f32(&mut def, off, v);
+        }
+    }
+    for u in singles.iter().copied().chain(pair) {
+        named_anims |= u.named_anims;
+        if !ignore_attachments && u.segmented_reload {
+            def[d::SEGMENTED_RELOAD as usize] = 1;
+        }
+    }
+
+    *game_bytes = Some(Arc::new(GameWeaponBytes {
+        def: def.into_boxed_slice(),
+        variant: variant.into_boxed_slice(),
+        ammo_name: base.ammo_name.clone(),
+        clip_name,
+        named_anims,
+        anim_slots: base.anim_slots,
+        location_damage: base.location_damage.clone(),
+        parallel_bounce: base.parallel_bounce.clone(),
+        perpendicular_bounce: base.perpendicular_bounce.clone(),
+    }));
 }
 
 pub(super) fn apply_t6_attachment_stats(facts: &mut WeaponBodyFacts, stats: &T6AttachmentStats) {
@@ -671,8 +931,11 @@ pub fn t6_attachment_ads_model(
 pub(super) fn capture_t6_attachment(
     unique: fastfile_t6::weapon::AttachmentUniqueView<'_>,
 ) -> Option<T6Attachment> {
-    use fastfile_t6::weapon::unique as u;
+    use fastfile_t6::weapon::{unique as u, variant as v};
     unique.name()?;
+    let named_anims = (0..v::XANIM_COUNT)
+        .filter(|&slot| unique.xanim(slot).is_some_and(|name| !name.is_empty()))
+        .fold(0u128, |bits, slot| bits | 1 << slot);
     Some(T6Attachment {
         kind: unique.attachment_type(),
         mask: unique.combined_mask(),
@@ -693,10 +956,12 @@ pub(super) fn capture_t6_attachment(
             .map(str::to_owned),
         hide_tags: unique.hide_tags().map(str::to_owned).collect(),
         xanims: t6_sz_xanims_by(|slot| unique.xanim(slot)),
+        named_anims,
         fire_sound: unique.sound(u::FIRE_SOUND).map(str::to_owned),
         fire_sound_player: unique.sound(u::FIRE_SOUND_PLAYER).map(str::to_owned),
         disable_base_attachment: unique.flag(u::DISABLE_BASE_ATTACHMENT),
         disable_base_clip: unique.flag(u::DISABLE_BASE_CLIP),
+        segmented_reload: unique.flag(u::SEGMENTED_RELOAD),
     })
 }
 

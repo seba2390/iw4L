@@ -406,6 +406,7 @@ pub mod unique {
     pub const DISABLE_BASE_ATTACHMENT: u32 = 168;
     pub const DISABLE_BASE_CLIP: u32 = 169;
     pub const OVERLAY_MATERIAL: u32 = 196;
+    pub const SEGMENTED_RELOAD: u32 = 228;
     pub const XANIMS: u32 = 232;
     pub const FIRE_SOUND: u32 = 256;
     pub const FIRE_SOUND_PLAYER: u32 = 260;
@@ -414,9 +415,15 @@ pub mod unique {
 pub mod attachment {
     pub const NAME: u32 = 0;
     pub const TYPE: u32 = 8;
+    pub const PENETRATE_TYPE: u32 = 16;
+    pub const FIRE_TYPE: u32 = 20;
+    pub const ADS_FIRE: u32 = 32;
+    pub const RELOAD_WHILE_ADS: u32 = 33;
     pub const SILENCED: u32 = 44;
     pub const DUAL_MAG: u32 = 45;
     pub const LASER_SIGHT: u32 = 46;
+    pub const INFRARED: u32 = 47;
+    pub const DUAL_WIELD: u32 = 49;
     pub const SHARED_AMMO: u32 = 50;
     pub const DAMAGE_RANGE_SCALE: u32 = 52;
     pub const ADS_ZOOM_FOV: u32 = 56;
@@ -426,6 +433,7 @@ pub mod attachment {
     pub const ADS_ZOOM_OUT_FRAC: u32 = 72;
     pub const ADS_TRANS_IN_TIME_SCALE: u32 = 76;
     pub const ADS_TRANS_OUT_TIME_SCALE: u32 = 80;
+    pub const ADS_SPREAD: u32 = 84;
     pub const ADS_VIEW_KICK_CENTER_SPEED_SCALE: u32 = 92;
     pub const ADS_IDLE_AMOUNT_SCALE: u32 = 96;
     pub const ADS_MOVE_SPEED_SCALE: u32 = 156;
@@ -433,7 +441,10 @@ pub mod attachment {
     pub const HIP_SPREAD_MAX_SCALE: u32 = 164;
     pub const FIRE_TIME_SCALE: u32 = 188;
     pub const RELOAD_TIME_SCALES: u32 = 192;
+    pub const BAYONET: u32 = 216;
+    pub const MELEE_CHARGE_RANGE: u32 = 228;
     pub const CLIP_SIZE_SCALE: u32 = 232;
+    pub const CLIP_SIZE: u32 = 236;
     pub const PERKS: u32 = 252;
 }
 
@@ -444,6 +455,10 @@ pub struct AttachmentView<'z> {
 }
 
 impl<'z> AttachmentView<'z> {
+    pub fn raw_bytes(&self) -> &'z [u8] {
+        &self.asset.header
+    }
+
     pub fn u32_at(&self, off: u32) -> u32 {
         let o = off as usize;
         self.asset
@@ -716,18 +731,20 @@ impl<'z> WeaponView<'z> {
 
     pub fn attachments(&self) -> impl Iterator<Item = AttachmentView<'z>> + 'z {
         let load = self.load;
+        let owner = self.asset;
         let arr = self.variant_ptr(variant::ATTACHMENTS);
         (0..variant::ATTACHMENT_COUNT).filter_map(move |i| {
-            let asset = load.asset_at(arr?.at(4 * i))?;
+            let asset = load.asset_in(owner, arr?.at(4 * i))?;
             (asset.ty == crate::AssetType::Attachment).then_some(AttachmentView { load, asset })
         })
     }
 
     pub fn attachment_uniques(&self) -> impl Iterator<Item = AttachmentUniqueView<'z>> + 'z {
         let load = self.load;
+        let owner = self.asset;
         let arr = self.variant_ptr(variant::ATTACHMENT_UNIQUES);
         (0..variant::ATTACHMENT_UNIQUE_COUNT).filter_map(move |i| {
-            let asset = load.asset_at(arr?.at(4 * i))?;
+            let asset = load.asset_in(owner, arr?.at(4 * i))?;
             (asset.ty == crate::AssetType::AttachmentUnique)
                 .then_some(AttachmentUniqueView { load, asset })
         })

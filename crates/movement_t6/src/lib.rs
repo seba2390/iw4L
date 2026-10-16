@@ -44,11 +44,6 @@ pub enum Gap {
     Launched = 32,
     AnimLock = 64,
     SpecialMove = 128,
-    /// A held weapon's attachments: IW4L's weapons carry none.
-    Attachments = 512,
-    /// The fast-ADS perk skips sniper player animation types, which
-    /// movement cannot name.
-    AdsPerkAnimTypes = 1024,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -226,8 +221,6 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::Launched,
             Gap::AnimLock,
             Gap::SpecialMove,
-            Gap::Attachments,
-            Gap::AdsPerkAnimTypes,
         ]
         .into_iter()
         .filter(|g| self.gaps.get() & *g as u32 != 0)

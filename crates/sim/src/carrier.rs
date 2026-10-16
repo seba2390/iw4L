@@ -249,6 +249,19 @@ impl SimWorld {
         crate::script::host::sightings::script_int(&self.ecs, owner, name)
     }
 
+    /// The specialties a player currently holds, sorted by name.
+    pub fn player_perks(&self, id: ClientId) -> Vec<String> {
+        let Some(runtime) = self.ecs.get_resource::<crate::script::RoundScript>() else {
+            return Vec::new();
+        };
+        let Some(slot) = runtime.players.get(&id.0) else {
+            return Vec::new();
+        };
+        let mut perks: Vec<String> = slot.perks.iter().map(|s| s.to_string()).collect();
+        perks.sort_unstable();
+        perks
+    }
+
     /// Starts a script thread on the host, for a test player: `receiver` is
     /// `level`, `playerN` or `targetname=<name>` (the first entity of that
     /// targetname); each argument reads as a number, an `(x,y,z)`

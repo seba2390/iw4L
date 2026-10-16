@@ -560,6 +560,10 @@ fn stand_point(
             [above[0], above[1], above[2] - 2.0 * WAIST_HEIGHT],
         );
         let stand = [above[0], above[1], above[2] - drop + 1.0];
+        let stand_eye = [stand[0], stand[1], stand[2] + EYE_HEIGHT];
+        if clear_run(world, id, stand_eye, center) + slack < distance(stand_eye, center) {
+            continue;
+        }
         if world.in_enabled_player_volume(stand) {
             return Some(stand);
         }
@@ -629,9 +633,15 @@ fn next_scenario(
             // Of the perks, Quick Revive: the one a solo player's down asks for.
             .filter(|site| {
                 let wanted = wanted_perk();
+                let owned = world.player_perks(id);
                 kind != UseKind::Perk
-                    || site.weapon.as_deref() == Some(wanted.as_str())
-                    || wanted == "any" && site.weapon.as_deref() != Some(QUICK_REVIVE)
+                    || (!owned
+                        .iter()
+                        .any(|p| site.weapon.as_deref() == Some(p.as_str()))
+                        && (wanted
+                            .split(',')
+                            .any(|w| site.weapon.as_deref() == Some(w.trim()))
+                            || wanted == "any" && site.weapon.as_deref() != Some(QUICK_REVIVE)))
             })
             .collect();
         // `_zm_unitrigger::main` offers only the stubs of active zones (and
@@ -647,13 +657,15 @@ fn next_scenario(
                 )
             })
             .collect();
-        // A buildable's part or table in an enabled zone is gone to: standing
-        // there makes its zone active, as walking there would.
+        // A buildable's part or table or perk machine in an enabled zone is
+        // gone to: standing there makes its zone active, as walking there would.
         of_kind.retain(|site| {
             site.zone.as_deref().is_none_or(|zone| {
                 world.zone_is_active(zone)
-                    || matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take)
-                        && world.zone_is_enabled(zone)
+                    || matches!(
+                        kind,
+                        UseKind::Piece | UseKind::Build | UseKind::Take | UseKind::Perk
+                    ) && world.zone_is_enabled(zone)
             })
         });
         if of_kind.is_empty() && offered > 0 {
@@ -785,7 +797,10 @@ fn next_scenario(
             home_angles: viewangles,
             phase: Phase::Arriving,
             until_ms: now_ms
-                + if matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take) {
+                + if matches!(
+                    kind,
+                    UseKind::Piece | UseKind::Build | UseKind::Take | UseKind::Perk
+                ) {
                     ZONE_ARRIVE_MS
                 } else {
                     ARRIVE_MS
@@ -1450,6 +1465,17 @@ pub(crate) fn drive_test_player(
                 {
                     scenario.until_ms = clock.time_ms + WATCH_MS;
                 }
+                Phase::Watching
+                    if scenario.site.kind == UseKind::Perk
+                        && (world
+                            .0
+                            .weapon_script_name(ps.weapon)
+                            .starts_with("zombie_perk_bottle_")
+                            || test.last_move.is_some_and(|s| s.no_weapon_cycling))
+                        && clock.time_ms < scenario.power_by_ms =>
+                {
+                    scenario.until_ms = clock.time_ms + 500;
+                }
                 // The box took its price: its weapon has risen, take it.
                 Phase::Watching
                     if matches!(scenario.site.kind, UseKind::Box | UseKind::PackAPunch)
@@ -1550,11 +1576,13 @@ pub(crate) fn drive_test_player(
                     if scenario.site.kind == UseKind::Perk {
                         diag::info!(
                             Sim,
-                            "test player: perks drunk (num_perks) {}",
+                            "test player: perks drunk (num_perks) {} — max_health={} perks={:?}",
                             world
                                 .0
                                 .script_int(ScriptOwner::Player(id), "num_perks")
-                                .map_or_else(|| "-".to_owned(), |n| n.to_string())
+                                .map_or_else(|| "-".to_owned(), |n| n.to_string()),
+                            ps.max_health,
+                            world.0.player_perks(id)
                         );
                     }
                     if matches!(scenario.site.kind, UseKind::WallBuy | UseKind::Box) {

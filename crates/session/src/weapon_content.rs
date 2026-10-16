@@ -148,6 +148,7 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
             clip_index,
             alt_weapon: weapon.alternate_wire_id(),
             dual_wield_weapon: weapon.dual_wield_wire_id(),
+            variant_parent: None,
             named_anims: bytes.named_anims,
             name: weapons.name_of(id as u32).to_owned(),
             location_damage: bytes.location_damage.clone(),
@@ -166,6 +167,30 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
                 authored(WeaponSoundSlot::FireStopPlayer),
             ],
         }));
+    }
+    let mut parents = vec![None; out.len()];
+    for id in 1..out.len() {
+        let Some(w) = out[id].as_deref() else {
+            continue;
+        };
+        let is_altmode = w
+            .def
+            .get(0x2c..0x30)
+            .is_some_and(|b| i32::from_le_bytes(b.try_into().unwrap()) == 3);
+        if !is_altmode {
+            for child in [w.alt_weapon as usize, w.dual_wield_weapon as usize] {
+                if child != 0 && child < parents.len() && child != id && parents[child].is_none() {
+                    parents[child] = Some(id as u32);
+                }
+            }
+        }
+    }
+    for (id, parent) in parents.into_iter().enumerate() {
+        if let Some(parent) = parent
+            && let Some(slot) = out.get_mut(id).and_then(Option::as_mut)
+        {
+            Arc::make_mut(slot).variant_parent = Some(parent);
+        }
     }
     // The game's weapon 0 is its weapon named none.
     if out.first().is_some_and(Option::is_none)

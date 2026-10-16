@@ -17,7 +17,7 @@ use movement_t6::state::{
     weapon_state as ws,
 };
 use movement_t6::weapon::{fire_type, weapon_type};
-use movement_t6::{Gap, PlayerState, perks};
+use movement_t6::{PlayerState, perks};
 
 use crate::missile::{DEG2RAD, HIT_LOCATIONS, MEANS, angle_vectors, mad};
 
@@ -673,18 +673,8 @@ impl Shot<'_> {
 
     /// A weapon's definition and variant bytes, copied out of the match.
     fn weapon_bytes(&mut self, weapon: u32, world: &dyn FireWorld) -> Option<WeaponBytes> {
-        let Some(w) = world.weapon(weapon) else {
-            self.gaps.push(crate::movement::weapon_unknown());
-            return None;
-        };
-        if w.name.contains('+') {
-            self.gaps
-                .push(crate::movement::gap_unknown(Gap::Attachments));
-        }
-        if WeaponDefView::new(&w.def, &w.variant).is_none() {
-            self.gaps.push(crate::movement::weapon_unknown());
-            return None;
-        }
+        let w = world.weapon(weapon)?;
+        WeaponDefView::new(&w.def, &w.variant)?;
         Some((w.def.clone(), w.variant.clone()))
     }
 

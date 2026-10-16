@@ -41,10 +41,84 @@ const STATS_TABLE: &str = "zm/zm_statstable.csv";
 /// The newest content pack the owner's game had; a later item does not load.
 const OWNED_CONTENT: i32 = 13;
 
+/// Black Ops 2's 30 attachment names (`eAttachment`, `mp/attachmentTable.csv`).
+const ATTACHMENT_NAMES: [&str; 30] = [
+    "none",
+    "acog",
+    "dualclip",
+    "dualoptic",
+    "dw",
+    "extbarrel",
+    "extclip",
+    "extramags",
+    "fastads",
+    "fastreload",
+    "fmj",
+    "gl",
+    "grip",
+    "holo",
+    "ir",
+    "is",
+    "longbreath",
+    "mk",
+    "mms",
+    "rangefinder",
+    "reflex",
+    "rf",
+    "sf",
+    "silencer",
+    "stackfire",
+    "stalker",
+    "steadyaim",
+    "swayreduc",
+    "tacknife",
+    "vzoom",
+];
+
+fn attachment_index(name: &str) -> Option<u32> {
+    ATTACHMENT_NAMES
+        .iter()
+        .position(|a| a.eq_ignore_ascii_case(name))
+        .map(|i| i as u32)
+        .filter(|&i| i != 0 && i < 30)
+}
+
+fn is_optic_attachment(kind: u32) -> bool {
+    matches!(kind, 1 | 3 | 13 | 14 | 15 | 18 | 19 | 20 | 29)
+}
+
+/// Sorts up to three 6-bit attachment indices in ascending order (`BG_SortAttachments`).
+fn pack_attachments(base: usize, attachments: [u32; 3]) -> usize {
+    let mut a = attachments;
+    if a[0] == 0 || (a[1] != 0 && a[1] < a[0]) {
+        a.swap(0, 1);
+    }
+    if a[1] == 0 || (a[2] != 0 && a[2] < a[1]) {
+        a.swap(1, 2);
+    }
+    if a[0] == 0 || (a[1] != 0 && a[1] < a[0]) {
+        a.swap(0, 1);
+    }
+    (base & 0xff)
+        | (((a[0] as usize) & 0x3f) << 8)
+        | (((a[1] as usize) & 0x3f) << 14)
+        | (((a[2] as usize) & 0x3f) << 20)
+}
+
+fn unpacked_attachments(weapon_id: usize) -> [u32; 3] {
+    [
+        ((weapon_id >> 8) & 0x3f) as u32,
+        ((weapon_id >> 14) & 0x3f) as u32,
+        ((weapon_id >> 20) & 0x3f) as u32,
+    ]
+}
+
 #[derive(Resource)]
 struct WeaponTable {
-    /// By index; index 0 is no weapon.
+    /// By index; index 0 is no weapon (`bg_weaponVariantDefs[256]`).
     weapons: Vec<Option<Arc<ZoneWeapon>>>,
+    parent_variants: Vec<usize>,
+    item_indices: Vec<Option<usize>>,
     by_name: BTreeMap<String, usize>,
 }
 
@@ -87,7 +161,10 @@ fn find(world: &World, name: &str) -> usize {
 }
 
 /// Finds a weapon, registering it and the weapons that come with it when the
-/// zones have it; 0 when they do not.
+/// zones have it; 0 when they do not. Black Ops 2's `bg_weaponVariantDefs` and
+/// `bg_weaponIndexHash` hold 256 entries indexed by the low 8 bits of the
+/// weapon number (`uVar1 = bg_lastParsedWeaponIndex & 0xff`), while attachment
+/// combinations ride in bits `8..26`.
 fn register(world: &mut World, name: &str) -> Result<usize, String> {
     if name.is_empty() || name.eq_ignore_ascii_case("none") {
         return Ok(0);
@@ -100,17 +177,27 @@ fn register(world: &mut World, name: &str) -> Result<usize, String> {
         return Ok(0);
     };
     let mut table = world.resource_mut::<WeaponTable>();
-    let index = table.weapons.len();
-    if index > usize::from(u8::MAX) {
-        return Err(format!("t6.weapons.table_full: no index left for '{name}'"));
+    let index = table.weapons.len() & 0xff;
+    if table.weapons.len() <= usize::from(u8::MAX) {
+        table.weapons.push(Some(Arc::clone(&weapon)));
+        table.parent_variants.push(0);
+        table.item_indices.push(None);
+    } else {
+        table.weapons[index] = Some(Arc::clone(&weapon));
+        table.parent_variants[index] = 0;
+        table.item_indices[index] = None;
     }
-    table.weapons.push(Some(Arc::clone(&weapon)));
     table.by_name.insert(name.to_ascii_lowercase(), index);
     for companion in &weapon.companions {
-        if register(world, companion)? == 0 {
+        let comp_idx = register(world, companion)?;
+        if comp_idx == 0 {
             return Err(format!(
                 "weapon '{companion}' that '{name}' names is in no zone"
             ));
+        }
+        let mut table = world.resource_mut::<WeaponTable>();
+        if comp_idx != index && table.parent_variants.get(comp_idx).copied() == Some(0) {
+            table.parent_variants[comp_idx] = index;
         }
     }
     Ok(index)
@@ -128,7 +215,7 @@ struct Item<'t> {
 
 /// The stats table's weapons, group by group, each by its order column then
 /// its item number, as `<name>_zm`, with the attachments its item lists.
-fn table_weapons(world: &World) -> Vec<(String, Vec<String>)> {
+fn table_weapons(world: &World) -> Vec<(usize, String, Vec<String>)> {
     let tables = world.resource::<RoundScript>().tables.clone();
     let Some(table) = crate::script::host::tables::table(&tables, STATS_TABLE) else {
         return Vec::new();
@@ -181,7 +268,7 @@ fn table_weapons(world: &World) -> Vec<(String, Vec<String>)> {
                     std::iter::once(one).chain(two)
                 })
                 .collect();
-            names.push((format!("{}_zm", item.name), variants));
+            names.push((item.index, format!("{}_zm", item.name), variants));
         }
     }
     names
@@ -195,37 +282,82 @@ fn table(world: &mut World) -> Result<(), String> {
     }
     world.insert_resource(WeaponTable {
         weapons: vec![None],
+        parent_variants: vec![0],
+        item_indices: vec![None],
         by_name: BTreeMap::new(),
     });
     register(world, "defaultweapon_mp")?;
     // `g_connectpaths` is 0 at a normal start, so the stats table loads.
-    for (name, variants) in table_weapons(world) {
-        if register(world, &name)? == 0 {
+    for (item_index, name, variants) in table_weapons(world) {
+        let base_idx = register(world, &name)?;
+        if base_idx == 0 {
             continue;
         }
-        if let Some(variant) = variants.iter().find(|v| zone_weapon(world, v).is_some()) {
-            return Err(format!(
-                "t6.weapons.table_variants: '{name}' has the attachment variant '{variant}'"
-            ));
+        let has_attachment_table = {
+            let mut table = world.resource_mut::<WeaponTable>();
+            table.item_indices[base_idx] = Some(item_index);
+            table.weapons[base_idx]
+                .as_ref()
+                .is_some_and(|w| w.has_attachment_table)
+        };
+        if !has_attachment_table {
+            for variant in variants {
+                if zone_weapon(world, &variant).is_some() {
+                    let v_idx = register(world, &variant)?;
+                    if v_idx != 0 {
+                        let mut table = world.resource_mut::<WeaponTable>();
+                        table.parent_variants[v_idx] = base_idx;
+                        table.item_indices[v_idx] = Some(item_index);
+                    }
+                }
+            }
         }
     }
     Ok(())
 }
 
 /// The weapon a builtin names: registered as well before the level's first
-/// wait, only found after it.
+/// wait, only found after it, with up to three `+` attachments packed into
+/// bits `8..26` (`BG_GetWeaponIndexForName`).
 pub(super) fn weapon_index(world: &mut World, name: &str) -> Result<usize, String> {
     table(world)?;
-    if name.contains('+') {
-        return Err(format!(
-            "t6.weapons.attachments: weapon '{name}' names attachments"
-        ));
+    let mut parts = name.split('+');
+    let base_name = parts.next().unwrap_or("");
+    let attach_parts: Vec<&str> = parts.collect();
+    let valid_count = attach_parts
+        .iter()
+        .filter_map(|p| attachment_index(p))
+        .count();
+    if valid_count > 3 {
+        return Err(format!("More than 3 attachments on weapon named {name}\n"));
     }
-    if world.resource::<RoundScript>().loading {
-        register(world, name)
+    let base_idx = if world.resource::<RoundScript>().loading {
+        register(world, base_name)?
     } else {
-        Ok(find(world, name))
+        find(world, base_name)
+    };
+    if base_idx == 0 || attach_parts.is_empty() {
+        return Ok(base_idx);
     }
+    let mut chosen = [0u32; 3];
+    let mut slot = 0;
+    if let Some(weapon) = world
+        .resource::<WeaponTable>()
+        .weapons
+        .get(base_idx & 0xff)
+        .and_then(|w| w.as_ref())
+    {
+        for part in attach_parts {
+            if let Some(kind) = attachment_index(part)
+                && weapon.attachments.iter().any(|a| a.kind == kind)
+                && slot < 3
+            {
+                chosen[slot] = kind;
+                slot += 1;
+            }
+        }
+    }
+    Ok(pack_attachments(base_idx, chosen))
 }
 
 /// The weapon a script's index names, as the engine reads it: the low byte,
@@ -299,9 +431,10 @@ const CLIP_SIZE_MULTIPLIER: f32 = 1.0;
 
 /// The weapon a builtin's first argument names; an unknown one is the
 /// engine's script error.
-fn named(world: &mut World, args: &[Value]) -> Result<Arc<ZoneWeapon>, String> {
+fn named_with_id(world: &mut World, args: &[Value]) -> Result<(usize, Arc<ZoneWeapon>), String> {
     let name = string(args, 0)?;
-    let index = weapon_index(world, &name)? & 0xff;
+    let full_id = weapon_index(world, &name)?;
+    let index = full_id & 0xff;
     let weapon = world
         .resource::<WeaponTable>()
         .weapons
@@ -309,7 +442,7 @@ fn named(world: &mut World, args: &[Value]) -> Result<Arc<ZoneWeapon>, String> {
         .cloned()
         .flatten();
     match weapon {
-        Some(weapon) if index != 0 => Ok(weapon),
+        Some(weapon) if index != 0 => Ok((full_id, weapon)),
         _ if name.eq_ignore_ascii_case("none") => {
             Err(format!("Weapon name \"{name}\" is not valid.\n"))
         }
@@ -319,29 +452,57 @@ fn named(world: &mut World, args: &[Value]) -> Result<Arc<ZoneWeapon>, String> {
     }
 }
 
+fn named(world: &mut World, args: &[Value]) -> Result<Arc<ZoneWeapon>, String> {
+    named_with_id(world, args).map(|(_, w)| w)
+}
+
 /// The weapon a builtin names, or none for an unknown name, which those
 /// builtins answer quietly.
-fn named_or_none(world: &mut World, args: &[Value]) -> Result<Option<Arc<ZoneWeapon>>, String> {
+fn named_or_none_with_id(
+    world: &mut World,
+    args: &[Value],
+) -> Result<Option<(usize, Arc<ZoneWeapon>)>, String> {
     let name = string(args, 0)?;
-    let index = weapon_index(world, &name)? & 0xff;
+    let full_id = weapon_index(world, &name)?;
+    let index = full_id & 0xff;
     Ok(world
         .resource::<WeaponTable>()
         .weapons
         .get(index)
         .cloned()
         .flatten()
-        .filter(|_| index != 0))
+        .filter(|_| index != 0)
+        .map(|w| (full_id, w)))
 }
 
-/// A clip as the engine sizes it: scaled by `player_clipSizeMultiplier`,
-/// rounded, never below one; a one-round clip stays one.
-fn clip_size(world: &World, weapon: &ZoneWeapon) -> i32 {
-    let scale = world
+fn named_or_none(world: &mut World, args: &[Value]) -> Result<Option<Arc<ZoneWeapon>>, String> {
+    Ok(named_or_none_with_id(world, args)?.map(|(_, w)| w))
+}
+
+/// A clip as the engine sizes it (`BG_GetClipSize`): scaled by
+/// `player_clipSizeMultiplier` and any attachment `clipSizeScale`, or
+/// overridden by a `stackfire` attachment (`0x18`), rounded to even, never
+/// below one; a one-round clip stays one.
+fn clip_size(world: &World, weapon: &ZoneWeapon, weapon_id: usize) -> i32 {
+    let mut scale = world
         .resource::<crate::script::MatchScript>()
         .dvars
         .get("player_clipsizemultiplier")
         .and_then(|value| value.trim().parse::<f32>().ok())
         .unwrap_or(CLIP_SIZE_MULTIPLIER);
+    for kind in unpacked_attachments(weapon_id) {
+        if kind == 0 {
+            break;
+        }
+        if let Some(att) = weapon.attachments.iter().find(|a| a.kind == kind) {
+            if att.kind == 24 {
+                return att.clip_size;
+            }
+            if att.clip_size_scale > 0.0 {
+                scale *= att.clip_size_scale;
+            }
+        }
+    }
     if weapon.clip_size > 1 {
         ((weapon.clip_size as f32 * scale + 9.313_226e-10).round_ties_even() as i32).max(1)
     } else {
@@ -349,10 +510,24 @@ fn clip_size(world: &World, weapon: &ZoneWeapon) -> i32 {
     }
 }
 
+fn weapon_fire_type(weapon: &ZoneWeapon, weapon_id: usize) -> i32 {
+    for kind in unpacked_attachments(weapon_id) {
+        if kind == 0 {
+            break;
+        }
+        if let Some(att) = weapon.attachments.iter().find(|a| a.kind == kind)
+            && att.kind == 24
+        {
+            return att.fire_type;
+        }
+    }
+    weapon.fire_type
+}
+
 /// Start or max ammo: rounds, or clips when the weapon counts in clips.
-fn ammo(world: &World, weapon: &ZoneWeapon, count: i32) -> i32 {
+fn ammo(world: &World, weapon: &ZoneWeapon, weapon_id: usize, count: i32) -> i32 {
     if weapon.ammo_count_clip_relative {
-        clip_size(world, weapon) * count
+        clip_size(world, weapon, weapon_id) * count
     } else {
         count
     }
@@ -367,13 +542,31 @@ fn enum_name(names: &[&str], value: i32) -> Value {
     )
 }
 
-fn other_weapon(world: &mut World, name: &str) -> Result<Value, String> {
+fn format_weapon_with_attachments(base_name: &str, weapon_id: usize) -> String {
+    let mut out = base_name.to_owned();
+    for kind in unpacked_attachments(weapon_id) {
+        if kind == 0 {
+            break;
+        }
+        if let Some(name) = ATTACHMENT_NAMES.get(kind as usize) {
+            out.push('+');
+            out.push_str(name);
+        }
+    }
+    out
+}
+
+fn other_weapon(world: &mut World, name: &str, weapon_id: usize) -> Result<Value, String> {
     let index = if name.is_empty() {
         0
     } else {
         weapon_index(world, name)?
     };
-    Ok(Value::string(if index == 0 { "none" } else { name }))
+    if index == 0 {
+        return Ok(Value::string("none"));
+    }
+    let formatted = format_weapon_with_attachments(name, weapon_id);
+    Ok(Value::string(&formatted))
 }
 
 /// The names of the weapons with a flag, by index; the engine stops one short
@@ -407,8 +600,7 @@ fn player_entity(world: &World, receiver: &Value) -> Result<crate::ClientId, Str
 fn fraction_max_ammo(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
     let client = player_entity(world, receiver)?;
     let name = string(args, 0)?;
-    let weapon = named_or_none(world, args)?;
-    let Some(weapon) = weapon else {
+    let Some((weapon_id, weapon)) = named_or_none_with_id(world, args)? else {
         return Ok(Value::Float(1.0));
     };
     let count = {
@@ -426,9 +618,9 @@ fn fraction_max_ammo(world: &mut World, receiver: &Value, args: &[Value]) -> Res
         }
     };
     let max = if weapon.clip_only {
-        clip_size(world, &weapon)
+        clip_size(world, &weapon, weapon_id)
     } else {
-        ammo(world, &weapon, weapon.max_ammo)
+        ammo(world, &weapon, weapon_id, weapon.max_ammo)
     };
     Ok(Value::Float(match (count, max) {
         (_, ..1) => 1.0,
@@ -446,7 +638,7 @@ fn fraction_start_ammo(
 ) -> Result<Value, String> {
     let client = player_entity(world, receiver)?;
     let name = string(args, 0)?;
-    let Some(weapon) = named_or_none(world, args)? else {
+    let Some((weapon_id, weapon)) = named_or_none_with_id(world, args)? else {
         return Ok(Value::Float(1.0));
     };
     let count = {
@@ -460,7 +652,7 @@ fn fraction_start_ammo(
         script_player::ammo_clip(&frame, client, held)
             + script_player::ammo_stock(&frame, client, held)
     };
-    let start = ammo(world, &weapon, weapon.start_ammo);
+    let start = ammo(world, &weapon, weapon_id, weapon.start_ammo);
     Ok(Value::Float(match (count, start) {
         (_, ..1) => 1.0,
         (1.., _) => count as f32 / start as f32,
@@ -750,18 +942,33 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         Ok(Value::Int(has.into()))
     });
     registry.register(Function, "weaponhasattachment", |world, _, args| {
-        let _weapon = named(world, args)?;
+        let (weapon_id, _weapon) = named_with_id(world, args)?;
+        let attached = unpacked_attachments(weapon_id);
+        let mut has_any = false;
         for i in 1..args.len() {
-            string(args, i)?;
+            let name = string(args, i)?;
+            if let Some(kind) = attachment_index(&name)
+                && attached.contains(&kind)
+            {
+                has_any = true;
+            }
         }
-        Ok(Value::Int(0))
+        Ok(Value::Int(has_any.into()))
     });
     registry.register(
         Function,
         "getweaponsupportedattachments",
         |world, _, args| {
-            let _weapon = named(world, args)?;
-            new_array(world, Vec::new())
+            let weapon = named(world, args)?;
+            let mut names = Vec::new();
+            for kind in 0..30u32 {
+                if (kind == 0 && weapon.has_attachment_table)
+                    || weapon.attachments.iter().any(|a| a.kind == kind)
+                {
+                    names.push(Value::string(ATTACHMENT_NAMES[kind as usize]));
+                }
+            }
+            new_array(world, names)
         },
     );
     registry.register(Method, "itemweaponsetammo", |world, receiver, args| {
@@ -787,19 +994,46 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Method, "getweaponoptic", |world, receiver, args| {
-        super::super::engine::entity_id(world, receiver)?;
-        let _weapon = named(world, args)?;
+        let client = player_entity(world, receiver)?;
+        let (weapon_id, _weapon) = named_with_id(world, args)?;
+        let ads_full = FrameWorld::from_world(world)
+            .player(client)
+            .is_some_and(|ps| ps.f_weapon_pos_frac >= 1.0);
+        if ads_full {
+            let attached = unpacked_attachments(weapon_id);
+            for kind in 1..30u32 {
+                if attached.contains(&kind) && is_optic_attachment(kind) {
+                    return Ok(Value::string(ATTACHMENT_NAMES[kind as usize]));
+                }
+            }
+        }
         Ok(Value::string(""))
     });
     registry.register(Function, "getbaseweaponitemindex", |world, _, args| {
         let name = string(args, 0)?;
-        let idx = weapon_index(world, &name)?;
+        let full_id = weapon_index(world, &name)?;
+        let mut idx = full_id & 0xff;
         if idx == 0 {
+            return Ok(Value::Int(0));
+        }
+        let item_index = {
+            let table = world.resource::<WeaponTable>();
+            if let Some(item) = table.item_indices.get(idx).copied().flatten() {
+                Some(item)
+            } else {
+                let parent = table.parent_variants.get(idx).copied().unwrap_or(0);
+                if parent != 0 {
+                    idx = parent;
+                }
+                table.item_indices.get(idx).copied().flatten()
+            }
+        };
+        let Some(item_index) = item_index else {
             return Err(format!(
                 "GetBaseWeaponItemIndex: invalid weapon {name} passed."
             ));
-        }
-        Ok(Value::Int(idx as i32))
+        };
+        Ok(Value::Int(item_index as i32))
     });
     registry.register(Function, "getreffromitemindex", |world, _, args| {
         let index = int(args, 0)?;
@@ -918,17 +1152,15 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // gscm_calcweaponoptions: packs the player's entity number and weapon
-    // options (camo, lens, reticle, tag, emblem); the two-argument custom
-    // class form is refused (`t6.weapons.class_options`).
+    // options (camo, lens, reticle, tag, emblem), or reads the player's
+    // custom class slot in the two-argument form (zero for a new profile).
     registry.register(Method, "calcweaponoptions", |world, receiver, args| {
         let client = player_entity(world, receiver)?;
         let mut bits = ((client.0 + 1) & 0x1f) << 15;
         if args.len() == 2 {
             int(args, 0)?;
             int(args, 1)?;
-            return Err(
-                "t6.weapons.class_options: custom class weapon options are not read".into(),
-            );
+            return Ok(Value::Int(bits as i32));
         }
         if args.len() < 3 {
             return Err("calcWeaponOptions takes 5 arguments: <camo> <lens> <reticle> <tag> <emblem>\n                     or 2 argument: <custom class slot> <primary weapon=0 | secondary weapon=1>".into());
@@ -971,19 +1203,24 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         sound(world, args, |w| &w.pickup_sound_player)
     });
     registry.register(Function, "weaponclipsize", |world, _, args| {
-        let weapon = named(world, args)?;
-        Ok(Value::Int(clip_size(world, &weapon)))
+        let (weapon_id, weapon) = named_with_id(world, args)?;
+        Ok(Value::Int(clip_size(world, &weapon, weapon_id)))
     });
     registry.register(Function, "weaponfuellife", |world, _, args| {
         Ok(Value::Int(named(world, args)?.tank_life_time))
     });
     registry.register(Function, "weaponmaxammo", |world, _, args| {
-        let weapon = named(world, args)?;
-        Ok(Value::Int(ammo(world, &weapon, weapon.max_ammo)))
+        let (weapon_id, weapon) = named_with_id(world, args)?;
+        Ok(Value::Int(ammo(world, &weapon, weapon_id, weapon.max_ammo)))
     });
     registry.register(Function, "weaponstartammo", |world, _, args| {
-        let weapon = named(world, args)?;
-        Ok(Value::Int(ammo(world, &weapon, weapon.start_ammo)))
+        let (weapon_id, weapon) = named_with_id(world, args)?;
+        Ok(Value::Int(ammo(
+            world,
+            &weapon,
+            weapon_id,
+            weapon.start_ammo,
+        )))
     });
     registry.register(Function, "weapontype", |world, _, args| {
         Ok(enum_name(&WEAP_TYPES, named(world, args)?.weap_type))
@@ -995,8 +1232,9 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         ))
     });
     registry.register(Function, "weaponissemiauto", |world, _, args| {
+        let (weapon_id, weapon) = named_with_id(world, args)?;
         Ok(Value::Int(
-            (named(world, args)?.fire_type == FIRE_SINGLE_SHOT).into(),
+            (weapon_fire_type(&weapon, weapon_id) == FIRE_SINGLE_SHOT).into(),
         ))
     });
     registry.register(Function, "weaponclass", |world, _, args| {
@@ -1036,15 +1274,48 @@ pub(super) fn register_natives(registry: &mut NativeRegistry) {
         ))
     });
     registry.register(Function, "weaponaltweaponname", |world, _, args| {
-        let alt = named(world, args)?.alt_weapon.clone();
-        other_weapon(world, &alt)
+        let (weapon_id, weapon) = named_with_id(world, args)?;
+        let alt = if weapon.inventory_type != 3 {
+            unpacked_attachments(weapon_id)
+                .into_iter()
+                .filter(|&k| k != 0)
+                .find_map(|k| {
+                    weapon
+                        .attachments
+                        .iter()
+                        .find(|a| a.kind == k && !a.alt_weapon.is_empty())
+                        .map(|a| a.alt_weapon.clone())
+                })
+                .unwrap_or_else(|| weapon.alt_weapon.clone())
+        } else {
+            weapon.alt_weapon.clone()
+        };
+        other_weapon(world, &alt, weapon_id)
     });
     registry.register(Function, "weapondualwieldweaponname", |world, _, args| {
-        let weapon = named(world, args)?;
-        if !weapon.dual_wield {
+        let (weapon_id, weapon) = named_with_id(world, args)?;
+        let attached_dw = unpacked_attachments(weapon_id)
+            .into_iter()
+            .filter(|&k| k != 0)
+            .find_map(|k| {
+                weapon
+                    .attachments
+                    .iter()
+                    .find(|a| a.kind == k && !a.dual_wield_weapon.is_empty())
+                    .map(|a| a.dual_wield_weapon.clone())
+            });
+        let is_dw = weapon.dual_wield
+            || unpacked_attachments(weapon_id).contains(&4)
+            || attached_dw.is_some();
+        if !is_dw {
             return Ok(Value::string("none"));
         }
-        other_weapon(world, &weapon.dual_wield_weapon.clone())
+        let dw = if weapon.inventory_type != 3 {
+            attached_dw.unwrap_or_else(|| weapon.dual_wield_weapon.clone())
+        } else {
+            weapon.dual_wield_weapon.clone()
+        };
+        other_weapon(world, &dw, weapon_id)
     });
     registry.register(Function, "getweaponmodel", |world, _, args| {
         let Some(weapon) = named_or_none(world, args)? else {

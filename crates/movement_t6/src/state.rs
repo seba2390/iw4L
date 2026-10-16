@@ -280,6 +280,7 @@ pub mod buttons {
     pub const SMOKE: u32 = 15;
     pub const NIGHTVISION: u32 = 18;
     pub const THROW: u32 = 24;
+    pub const CHANGE_ZOOM: u32 = 29;
     /// The throw keys beyond frag and smoke.
     pub const THROW_A: u32 = 30;
     pub const THROW_B: u32 = 31;
