@@ -112,6 +112,13 @@ impl PhysPresetCatalog {
         }
     }
 
+    /// Keeps a preset read by another game's walk at its slots.
+    pub fn insert(&mut self, slots: impl IntoIterator<Item = Ptr>, preset: OwnedPhysPreset) {
+        for slot in slots {
+            self.direct.insert(slot, preset.clone());
+        }
+    }
+
     pub fn alias(&mut self, slot: Ptr, target: Ptr) {
         self.aliases.insert(slot, target);
     }

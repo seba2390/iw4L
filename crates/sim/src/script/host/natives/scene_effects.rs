@@ -61,6 +61,7 @@ pub(super) fn set_exp_fog(world: &mut World, _: &Value, args: &[Value]) -> Resul
         } else {
             None
         },
+        volumetric: None,
     };
     if !target.valid() {
         return Err("invalid exponential fog parameters".into());

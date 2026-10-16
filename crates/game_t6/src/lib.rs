@@ -283,6 +283,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: None,
     post_chain: None,
+    dyn_ent_physics: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {
@@ -309,7 +310,7 @@ const OWN_ZOMBIES_MODE: ModeRules = ModeRules {
 };
 
 impl game_api::GameVision for T6 {
-    fn shellshock(&self) -> Rule<()> {
+    fn shellshock(&self) -> Rule<game_api::ShockFormat> {
         Rule::Unknown(unknown!(
             "t6.vision.shellshock",
             "Black Ops 2's shellshock files and how its screen draws a shellshock",

@@ -807,6 +807,25 @@ impl SimState {
         self.content.shocks().get(&name.to_ascii_lowercase())
     }
 
+    /// The shock file a precached name plays, for games whose precache falls
+    /// back to a default shock: its name, or the fallback's when it has none.
+    pub(crate) fn shock_file(&self, name: &str) -> Option<String> {
+        let name = name.to_ascii_lowercase();
+        if self.content.shocks().contains_key(&name) {
+            return Some(name);
+        }
+        let fallback = self.content.shock_fallback()?;
+        self.content
+            .shocks()
+            .contains_key(fallback)
+            .then(|| fallback.to_owned())
+    }
+
+    /// What of a shock file the runtime does not run.
+    pub(crate) fn shock_gaps(&self, file: &str) -> &[&'static game_api::Unknown] {
+        self.content.shock_gaps(file)
+    }
+
     pub(crate) fn map_custom(&self, key: &str) -> &str {
         self.content
             .map_custom()

@@ -197,6 +197,11 @@ struct ContentData {
     team_voice_prefix_axis: Option<String>,
     map_custom: std::collections::BTreeMap<String, String>,
     shocks: std::collections::BTreeMap<String, hud_iw4::ShockParams>,
+    /// The shock a precached name without a file of its own plays, for games
+    /// whose precache falls back.
+    shock_fallback: Option<String>,
+    /// The parts of each shock the runtime does not run.
+    shock_gaps: std::collections::BTreeMap<String, Vec<&'static game_api::Unknown>>,
     player_anim_script: Option<Arc<PlayerAnimScript>>,
 }
 
@@ -251,6 +256,8 @@ impl SimContentBuilder {
                 team_voice_prefix_axis: Default::default(),
                 map_custom: Default::default(),
                 shocks: Default::default(),
+                shock_fallback: None,
+                shock_gaps: Default::default(),
                 player_anim_script: Default::default(),
             },
         }
@@ -410,6 +417,17 @@ impl SimContentBuilder {
         self.data.shocks = shocks;
     }
 
+    /// The game's own shock files: the shock a name without a file plays, and
+    /// what of each shock the runtime does not run.
+    pub fn set_game_shocks(
+        &mut self,
+        fallback: &str,
+        gaps: std::collections::BTreeMap<String, Vec<&'static game_api::Unknown>>,
+    ) {
+        self.data.shock_fallback = Some(fallback.to_owned());
+        self.data.shock_gaps = gaps;
+    }
+
     pub fn set_clip_brushes(&mut self, brushes: Vec<SimBrush>) {
         self.data.clip_brushes = brushes;
         self.data.clip_bsp = SimClipBsp::default();
@@ -519,6 +537,12 @@ impl SimContent {
     }
     pub(super) fn shocks(&self) -> &std::collections::BTreeMap<String, hud_iw4::ShockParams> {
         &self.data.shocks
+    }
+    pub(super) fn shock_fallback(&self) -> Option<&str> {
+        self.data.shock_fallback.as_deref()
+    }
+    pub(super) fn shock_gaps(&self, name: &str) -> &[&'static game_api::Unknown] {
+        self.data.shock_gaps.get(name).map_or(&[], Vec::as_slice)
     }
     pub(super) fn player_anim_script(&self) -> &Option<Arc<PlayerAnimScript>> {
         &self.data.player_anim_script

@@ -30,6 +30,7 @@ pub(crate) fn fog(fog: &asset_world::ExpFog) -> asset_material::MaterialFogInput
                 halfway_height: v.halfway_height,
                 base_height: v.base_height,
                 color_scale: v.color_scale,
+                max_density: v.max_density,
             }),
         sun: fog.sun.map(|s| asset_material::MaterialFogSunInputs {
             color_rgb: s.color_rgb,

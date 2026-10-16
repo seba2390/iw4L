@@ -74,4 +74,17 @@ pub trait MoveWorld {
     /// The height of the water surface over `origin`, looking from `up`
     /// above to `down` below it.
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32>;
+
+    /// What a precached shellshock does to movement.
+    fn shellshock(&self, index: i32) -> Shellshock;
+}
+
+/// The parts of a shellshock file movement reads.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shellshock {
+    /// The fraction of their speed a shocked player moves at.
+    pub movement: f32,
+    /// The torso plays the shellshock animation and the weapon's fire
+    /// animation is skipped.
+    pub animation: bool,
 }

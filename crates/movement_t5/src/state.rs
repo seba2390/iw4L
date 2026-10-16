@@ -280,6 +280,11 @@ pub struct PlayerState {
     pub prone_check_waist_pitch: f32,
     pub launch_time: i32,
     pub move_speed_scale_multiplier: f32,
+    /// The running shellshock: its precache number (0 for none), start time
+    /// and length in milliseconds.
+    pub shellshock_index: i32,
+    pub shellshock_time: i32,
+    pub shellshock_duration: i32,
     pub anim_lock_end: i32,
     pub perks: u32,
     pub aim_spread_scale: f32,

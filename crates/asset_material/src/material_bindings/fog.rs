@@ -26,6 +26,9 @@ pub(super) fn prepare(steps: &mut Vec<FrameStep>, requested: &[u16]) {
         steps.push(FrameStep::Fog(FogPacking::T6));
     }
 }
+const DEG_TO_RAD: f32 = f32::from_bits(0x3c8e_fa35);
+const FLAT_SLOPE: f32 = f32::from_bits(0x4b18_9680);
+
 pub(super) fn produce(
     sources: &mut BindingWriter<'_>,
     fog: &MaterialFogInputs,
@@ -82,13 +85,10 @@ pub(super) fn produce(
         }
         None => ([0.0, 0.0, 0.0, fog.max_opacity], [0.0; 4], [0.0; 2]),
     };
-    let start = angles[0].to_radians().cos();
-    let end = angles[1].to_radians().cos();
-    let slope = if start == end {
-        1.0e7
-    } else {
-        1.0 / (start - end)
-    };
+    let start = (f64::from(angles[0] * DEG_TO_RAD)).cos() as f32;
+    let end = (f64::from(angles[1] * DEG_TO_RAD)).cos() as f32;
+    let diff = start - end;
+    let slope = if diff != 0.0 { 1.0 / diff } else { FLAT_SLOPE };
     put(sources, T5_CODE_SUN_FOG_COLOR, sun_color);
     put(sources, T5_CODE_SUN_FOG_DIR, sun_dir);
     put(sources, T5_CODE_SUN_FOG, [-end * slope, slope, 0.0, 0.0]);
@@ -97,8 +97,12 @@ pub(super) fn produce(
     } else {
         0.0
     };
+    let max_density = fog
+        .volumetric
+        .map_or(100.0 * density, |volume| volume.max_density);
     let (fog_row, fog2) = density_rows(
         density,
+        max_density,
         height_density,
         base_height,
         fog.start_dist,
@@ -133,6 +137,7 @@ pub(super) fn produce(
 
 fn density_rows(
     density: f32,
+    max_density: f32,
     height: f32,
     base: f32,
     start: f32,
@@ -142,26 +147,22 @@ fn density_rows(
     if !enabled || density == 0.0 {
         return ([0.0; 4], [0.0; 4]);
     }
-    let max_density = 100.0 * density;
-    let log_density =
-        (density / max_density).ln() - height * std::f32::consts::LN_2 * (eye_z - base);
-    let integral = if log_density >= 0.0 {
-        log_density + 1.0
+    let max_density = max_density.min(100.0 * density).max(density);
+    let ln2 = (2.0_f64).ln() as f32;
+    let log_ratio = (f64::from(density / max_density)).ln() as f32;
+    let log_density = log_ratio - (height * ln2) * (eye_z - base);
+    let integral = if log_density < 0.0 {
+        (f64::from(log_density)).exp() as f32
     } else {
-        log_density.exp()
+        log_density + 1.0
     };
     let scale = if height > 0.0 {
-        -max_density * std::f32::consts::LN_2
+        (-max_density) * ln2
     } else {
         -max_density
     };
     (
-        [
-            log_density,
-            scale,
-            start * density,
-            -height * std::f32::consts::LN_2,
-        ],
+        [log_density, scale, start * density, -(height * ln2)],
         [integral, 0.0, 0.0, 0.0],
     )
 }

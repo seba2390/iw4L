@@ -84,6 +84,7 @@ pub mod anim {
     pub const PRONE_TO_STAND: i32 = 12;
     pub const PRONE_TO_SPRINT: i32 = 13;
     pub const FLINCH: i32 = 17;
+    pub const SHELLSHOCK: i32 = 18;
     pub const DIVE: i32 = 23;
     pub const DIVE_LAND: i32 = 24;
     pub const STAND_TO_LAST_STAND: i32 = 25;

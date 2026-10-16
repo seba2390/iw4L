@@ -27,7 +27,7 @@ impl game_api::GameScripts for Iw5 {
 }
 
 impl game_api::GameVision for Iw5 {
-    fn shellshock(&self) -> Rule<()> {
+    fn shellshock(&self) -> Rule<game_api::ShockFormat> {
         Rule::Unknown(unknown!(
             "iw5.vision.shellshock",
             "Modern Warfare 3's shellshock files and how its screen draws a shellshock",

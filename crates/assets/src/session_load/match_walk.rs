@@ -1130,11 +1130,12 @@ fn resolve_world_lights(
     report: &mut Vec<String>,
 ) -> Option<asset_world::ResolvedLightDef> {
     asset_world::resolve_primary_light_attenuation(draw, global, common_light_defs);
-    let dynamic_light_name =
-        (map_namespace == Some(asset_core::AssetNamespace::Iw4)).then_some("light_dynamic");
-    let dynamic_light = dynamic_light_name.and_then(|name| {
-        asset_world::resolve_named_light_def(name, &draw.light_defs, common_light_defs, global)
-    });
+    let dynamic_light = asset_world::resolve_named_light_def(
+        "light_dynamic",
+        &draw.light_defs,
+        common_light_defs,
+        global,
+    );
     let (ordinal, source) = asset_world::resolve_outdoor_image(
         draw.outdoor_image_name.as_deref(),
         map_namespace?,
@@ -1223,9 +1224,12 @@ fn resolve_world_lights(
     }
 
     asset_world::resolve_primary_light_attenuation(draw, global, common_light_defs);
-    let resolved_dynamic = dynamic_light_name.and_then(|name| {
-        asset_world::resolve_named_light_def(name, &draw.light_defs, common_light_defs, global)
-    });
+    let resolved_dynamic = asset_world::resolve_named_light_def(
+        "light_dynamic",
+        &draw.light_defs,
+        common_light_defs,
+        global,
+    );
     let dynamic_decoded = resolved_dynamic
         .and_then(|light| light.attenuation_image)
         .is_some_and(|index| {
@@ -1243,7 +1247,7 @@ fn resolve_world_lights(
     ));
     let dynamic_light =
         resolved_dynamic.filter(|light| dynamic_decoded && light.falloff_image_width.is_some());
-    if dynamic_light_name.is_some() && dynamic_light.is_none() {
+    if map_namespace == Some(asset_core::AssetNamespace::Iw4) && dynamic_light.is_none() {
         report.push(
             "FX light_dynamic GAP: light definition or decoded attenuation image missing; additional FX lights unavailable"
                 .into(),

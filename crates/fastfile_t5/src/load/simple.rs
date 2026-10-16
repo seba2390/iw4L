@@ -91,7 +91,9 @@ pub(super) fn load_phys_preset(s: &mut ZoneStream<'_>) -> Result<()> {
     s.push(XFILE_BLOCK_VIRTUAL)?;
     follow_name(s, p, 0)?;
     follow_name(s, p, 28)?;
-    s.pop()
+    s.pop()?;
+    s.record_phys_preset(p);
+    Ok(())
 }
 
 pub(super) fn load_string_table(
