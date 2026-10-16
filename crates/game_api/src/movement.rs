@@ -310,6 +310,12 @@ pub trait MoveWorld {
     /// The water surface over `origin`, searched from `up` above to `down`
     /// below it.
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> WaterSurface;
+    /// A line from `start` to `end` against the world's own collision alone
+    /// (no entity), stopping at what `mask` names; `None` when the match
+    /// cannot trace it.
+    fn world_line(&self, _start: [f32; 3], _end: [f32; 3], _mask: u32) -> Option<MoveTrace> {
+        None
+    }
     /// Whether the vertical line `reach` above and below `point` crosses the
     /// brush model of one of the first `limit` map entities of `classname`
     /// (one per model).

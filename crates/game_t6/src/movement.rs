@@ -6,8 +6,8 @@ use fastfile_t6::weapon::{WeaponDefView, def, variant};
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
     MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
-    MoveWorld, PlayerMovement, ScriptFlag, Stance, VolumeColumn, WaterSurface, WeaponActivity,
-    WeaponNotify, WeaponNotifyMemory, buttons as intent,
+    MoveWorld, PlayerMovement, ScriptFlag, Stance, VolumeColumn, WeaponActivity, WeaponNotify,
+    WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t6::events::event;
@@ -28,6 +28,8 @@ const PLAYER_CLIP_MASK: u32 = 0x0281_c011;
 const DEAD_CLIP_MASK: u32 = 0x0081_0011;
 /// The spectator's height-lock volumes: the map's first 32 of these, one per
 /// brush model.
+const WATER_CONTENTS: u32 = 0x20;
+const SURFACE_TYPE_MASK: u32 = 0x03f0_0000;
 const SPECTATOR_CLIP_MASK: u32 = 0x0080_0811;
 const SPECTATOR_SPEED: i32 = 400;
 const HEIGHT_LOCK_CLASS: &str = "heli_height_lock";
@@ -79,8 +81,8 @@ fn events_unknown() -> &'static Unknown {
 fn water_unknown() -> &'static Unknown {
     unknown!(
         "t6.movement.water",
-        "the water level under a Black Ops 2 player: the match cannot tell, so players are taken as dry",
-        "a water surface query over the map's water for the runtime"
+        "the water level under a Black Ops 2 player: the match cannot trace a line against the world's water, so players are taken as dry",
+        "the runtime's world line trace"
     )
 }
 
@@ -479,15 +481,20 @@ impl movement_t6::MoveWorld for World<'_> {
         }
     }
 
+    /// The engine's water height: a line from `up` above to `down` below
+    /// against the world's water, which counts where it strikes a surface
+    /// with a surface type, or at its start when that is in water.
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
-        match self.world.water_surface(origin, up, down) {
-            WaterSurface::At(z) => Some(z),
-            WaterSurface::Dry => None,
-            WaterSurface::Unknown => {
-                self.water_unknown.set(true);
-                None
-            }
+        let start = [origin[0], origin[1], origin[2] + up];
+        let end = [origin[0], origin[1], origin[2] + down];
+        let Some(t) = self.world.world_line(start, end, WATER_CONTENTS) else {
+            self.water_unknown.set(true);
+            return None;
+        };
+        if t.fraction != 1.0 && t.surface_flags & SURFACE_TYPE_MASK != 0 {
+            return Some((end[2] - start[2]) * t.fraction + start[2]);
         }
+        t.startsolid.then_some(start[2])
     }
 }
 
