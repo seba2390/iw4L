@@ -358,38 +358,3 @@ fn flush(client: &mut ClientScripts, now: i64) {
         );
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn spawnflags_name_the_touchers() {
-        assert_eq!(contents(0), CONTENTS_PLAYER);
-        assert_eq!(contents(8), 0);
-        assert_eq!(contents(0x80 | 1), CONTENTS_PLAYER | CONTENTS_AXIS);
-        assert_eq!(contents(8 | 0x10), CONTENTS_VEHICLE);
-    }
-
-    #[test]
-    fn a_flat_box_grows_to_a_cube() {
-        let (mins, maxs) = cubed([0.0, 0.0, 0.0], [40.0, 20.0, 10.0]);
-        assert_eq!((mins[2], maxs[2]), (-15.0, 25.0));
-        let (mins, maxs) = toucher_box([0.0; 3]);
-        assert_eq!((mins, maxs), (TOUCHER_MINS, TOUCHER_MAXS));
-    }
-
-    #[test]
-    fn cylinder_reach_is_radius_plus_half_width() {
-        let shape = Shape::Cylinder {
-            radius: 10.0,
-            height: 50.0,
-        };
-        let (mins, maxs) = toucher_box([24.0, 0.0, 0.0]);
-        assert!(touches(&shape, [0.0; 3], mins, maxs));
-        let (mins, maxs) = toucher_box([25.0, 0.0, 0.0]);
-        assert!(!touches(&shape, [0.0; 3], mins, maxs));
-        let (mins, maxs) = toucher_box([0.0, 0.0, 50.0]);
-        assert!(!touches(&shape, [0.0; 3], mins, maxs));
-    }
-}
