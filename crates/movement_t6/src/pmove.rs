@@ -1,7 +1,8 @@
 use crate::math::angle_vectors;
 use crate::physics::{effective_stance, sqrt};
 use crate::state::{
-    ENTITYNUM_NONE, buttons, e_flags, e_flags2, other_flags, pm_flags, pm_type, weapon_state as ws,
+    ENTITYNUM_NONE, ENTITYNUM_WORLD, buttons, e_flags, e_flags2, other_flags, pm_flags, pm_type,
+    weapon_state as ws,
 };
 use crate::{
     Gap, MoveWorld, Pm, Pml, footsteps, ground, moves, sprint, stance, tuning, view_angles,
@@ -42,9 +43,14 @@ fn set_water_level<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     pm.ps.water_level = level;
 }
 
-fn drop_timers<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
+pub(crate) fn drop_timers<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let ps = &mut *pm.ps;
     if ps.pm_time != 0 {
+        if ps.pm_flags & pm_flags::PRONE_YAW_LOCKED != 0 && ps.ground_entity_num == ENTITYNUM_WORLD
+        {
+            ps.pm_flags &= !pm_flags::PRONE_YAW_LOCKED;
+            ps.pm_time = 0;
+        }
         if pml.msec >= ps.pm_time {
             if ps.pm_flags & pm_flags::JUMPING != 0 {
                 ground::clear_jumping(ps);
@@ -52,7 +58,7 @@ fn drop_timers<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
             ps.pm_flags &= !(pm_flags::JUMPING
                 | pm_flags::TIME_KNOCKBACK
                 | pm_flags::TIME_HARDLANDING
-                | pm_flags::LOW_READY);
+                | pm_flags::PRONE_YAW_LOCKED);
             ps.pm_time = 0;
         } else {
             ps.pm_time -= pml.msec;
@@ -89,7 +95,7 @@ fn dead_move(ps: &mut crate::PlayerState, pml: &Pml) {
     ps.velocity = [v[0] * n * speed, v[1] * n * speed, v[2] * n * speed];
 }
 
-fn launch_end<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+fn launch<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let ps = &mut *pm.ps;
     if ps.pm_flags & pm_flags::LAUNCHED != 0 {
         pm.gap(Gap::Launched);
@@ -298,24 +304,22 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         freeze_moves(pm);
     }
 
+    launch(pm);
     match pm.ps.pm_type {
-        pm_type::NORMAL_LINKED
-        | pm_type::DEAD_LINKED
-        | pm_type::NOCLIP
-        | pm_type::UFO
-        | pm_type::SPECTATOR
-        | pm_type::INTERMISSION
-        | pm_type::REMOTE_CONTROL => {
-            if pm.ps.pm_type == pm_type::INTERMISSION {
-                stance::check_duck(pm, &pml);
-            }
-            pm.gap(Gap::SpecialMove);
+        pm_type::NORMAL_LINKED | pm_type::DEAD_LINKED => {
+            crate::special::linked_move(pm, &mut pml);
+            return output(pm, &pml);
+        }
+        pm_type::SPECTATOR => {
+            crate::special::spectator_move(pm, &mut pml);
+            return output(pm, &pml);
+        }
+        pm_type::INTERMISSION => {
+            crate::special::intermission_move(pm, &pml);
             return output(pm, &pml);
         }
         pm_type::LAST_STAND | pm_type::LAST_STAND_REVIVED => {
-            if pm.ps.pm_flags & pm_flags::LADDER != 0 {
-                pm.ps.pm_flags = (pm.ps.pm_flags & !pm_flags::LADDER) | pm_flags::LADDER_FALL;
-            }
+            crate::special::ladder_falls(pm.ps);
             pm.ps.e_flags &= !e_flags::TURRET;
         }
         _ => {}
@@ -337,16 +341,13 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     if pm.ps.pm_flags & pm_flags::MANTLE != 0 {
         return output(pm, &pml);
     }
-    if pm.ps.pm_flags & pm_flags::ANIM_LOCK != 0 {
-        pm.gap(Gap::AnimLock);
-    }
+    crate::special::anim_lock(pm);
     crate::prone::upkeep(pm, &pml);
     drop_timers(pm, &pml);
-    if pm.ps.pm_type > pm_type::REMOTE_CONTROL {
+    if pm.ps.pm_type > pm_type::INTERMISSION {
         dead_move(pm.ps, &pml);
     }
     crate::ladder::check(pm, &mut pml);
-    launch_end(pm);
     crate::dive::check_end(pm);
     if pm.ps.pm_flags & pm_flags::LADDER != 0 {
         crate::ladder::ladder_move(pm, &mut pml);

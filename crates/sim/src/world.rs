@@ -3,6 +3,7 @@ mod collision;
 mod content;
 mod events;
 use bodies::{PlayerAnimInputs, PlayerBodyRuntime};
+use clipmap_iw4::transformed_capsule_trace;
 use collision::{CollisionRuntime, LagcompPlan};
 pub use content::{
     AnimClipLookup, PlayerKitCollision, SimBrush, SimClipBsp, SimClipCmodels, SimClipMesh,
@@ -3352,6 +3353,32 @@ pub(crate) fn clip_move_to_model_brushes(
     hit
 }
 
+/// Whether the line from `start` to `end` crosses inline brush model `model`
+/// placed at `origin`, against every content; `None` when the clip map has
+/// no such model.
+pub(crate) fn brush_model_line_hits(
+    content: &SimContent,
+    model: u32,
+    origin: [f32; 3],
+    start: [f32; 3],
+    end: [f32; 3],
+) -> Option<bool> {
+    let cmodel = content.clip_cmodels().models.get(model as usize)?;
+    let hit = transformed_capsule_trace(
+        cmodel,
+        &content.clip_bsp().leafbrushes,
+        content.clip_brushes(),
+        start,
+        end,
+        [0.0; 3],
+        [0.0; 3],
+        origin,
+        [0.0; 3],
+        u32::MAX,
+    );
+    Some(hit.fraction != 1.0)
+}
+
 pub(crate) fn clip_move_to_bmodels<'a>(
     mut hit: trace_iw4::Trace,
     cmodels: &[clipmap_iw4::ClipCmodel],
@@ -3367,7 +3394,7 @@ pub(crate) fn clip_move_to_bmodels<'a>(
         let Some(cmodel) = clipmap_iw4::clip_handle_to_model(cmodels, brush.cmodel_handle) else {
             continue;
         };
-        let other = clipmap_iw4::transformed_capsule_trace(
+        let other = transformed_capsule_trace(
             cmodel,
             leafbrushes,
             brushes,

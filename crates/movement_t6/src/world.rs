@@ -67,4 +67,8 @@ pub trait MoveWorld {
     fn variant_parent(&self, weapon: u32) -> Option<u32>;
 
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32>;
+
+    /// Whether the vertical line `reach` above and below `point` crosses one
+    /// of the map's height-lock volumes; `None` when the map has none.
+    fn height_lock(&self, point: [f32; 3], reach: f32) -> Option<bool>;
 }

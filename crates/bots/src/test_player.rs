@@ -88,7 +88,8 @@
 //! `IW4L_TEST_PLAYER=down` is the go-down test: no god mode, no fighting;
 //! he stands where he spawned until the zombies reach him and down him.
 //! Each change of his life state and last stand is logged, so a run shows
-//! going down and what the game does next.
+//! going down and what the game does next. As a spectator he holds
+//! forward, as one flying free does.
 //!
 //! `IW4L_TEST_GRAB=1` (with any fighting mode): when a power-up lies on
 //! the ground, he is moved onto it (as `setviewpos` does) to pick it up,
@@ -1051,6 +1052,21 @@ pub(crate) fn drive_test_player(
             );
         }
         test.seen = Some(now);
+        // A spectator still sends commands: he holds forward, as one flying
+        // free does.
+        if matches!(
+            meta.lifecycle,
+            ClientLifecycle::Spectating | ClientLifecycle::ChoosingClass
+        ) {
+            cmds.push(
+                id,
+                UserCmd {
+                    server_time: clock.time_ms,
+                    forwardmove: 127,
+                    ..UserCmd::default()
+                },
+            );
+        }
         if test.mode == Mode::Down || test.pending.is_empty() && test.scenario.is_none() {
             return;
         }

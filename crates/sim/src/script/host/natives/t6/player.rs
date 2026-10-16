@@ -388,10 +388,9 @@ fn register_rest(registry: &mut NativeRegistry) {
         move_status(world, receiver, |s| s.mantling)
     });
     // Sprinting and aiming down the sights: the shared allowances, through
-    // the game's own movement when it has one. Melee: the handler sets the
-    // no-melee pm flag in `movement_t6`, and IW4L also takes the melee
-    // button from the player's commands (`t6.player.allowances`). Each
-    // answers the previous allowance.
+    // the game's own movement when it has one. Melee: the handler only sets
+    // the no-melee pm flag, which nothing in the executable reads, so the
+    // player still knifes. Each answers the previous allowance.
     registry.register(Method, "allowsprint", |world, receiver, args| {
         allowance(
             world,
@@ -426,7 +425,6 @@ fn register_rest(registry: &mut NativeRegistry) {
                     game_api::movement::ScriptFlag::NoMelee,
                     !allowed,
                 );
-                frame.client_meta_mut(id).controls.melee_disabled = !allowed;
                 Ok(Value::Undefined)
             },
         )

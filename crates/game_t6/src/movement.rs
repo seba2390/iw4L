@@ -6,8 +6,8 @@ use fastfile_t6::weapon::{WeaponDefView, def, variant};
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
     MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
-    MoveWorld, PlayerMovement, ScriptFlag, Stance, WaterSurface, WeaponActivity, WeaponNotify,
-    WeaponNotifyMemory, buttons as intent,
+    MoveWorld, PlayerMovement, ScriptFlag, Stance, VolumeColumn, WaterSurface, WeaponActivity,
+    WeaponNotify, WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t6::events::event;
@@ -26,6 +26,12 @@ pub static MULTIPLAYER: T6Movement = T6Movement { zombies: false };
 
 const PLAYER_CLIP_MASK: u32 = 0x0281_c011;
 const DEAD_CLIP_MASK: u32 = 0x0081_0011;
+/// The spectator's height-lock volumes: the map's first 32 of these, one per
+/// brush model.
+const SPECTATOR_CLIP_MASK: u32 = 0x0080_0811;
+const SPECTATOR_SPEED: i32 = 400;
+const HEIGHT_LOCK_CLASS: &str = "heli_height_lock";
+const HEIGHT_LOCK_LIMIT: usize = 32;
 
 pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
     match gap {
@@ -54,10 +60,10 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops 2's scripted animation lock on a player",
             "the player animation script durations that end the lock"
         ),
-        Gap::SpecialMove => unknown!(
-            "t6.movement.special",
-            "Black Ops 2's linked, noclip, ufo, spectator and intermission moves",
-            "those player moves from its executable"
+        Gap::HeightLock => unknown!(
+            "t6.movement.height_lock",
+            "whether a Black Ops 2 spectator stays inside the map's height-lock volumes",
+            "the runtime's line test against the map's heli_height_lock brush models"
         ),
     }
 }
@@ -388,6 +394,7 @@ pub(crate) fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut Use
 struct World<'a> {
     world: &'a dyn MoveWorld,
     water_unknown: core::cell::Cell<bool>,
+    height_lock_unknown: core::cell::Cell<bool>,
 }
 
 impl movement_t6::MoveWorld for World<'_> {
@@ -457,6 +464,21 @@ impl movement_t6::MoveWorld for World<'_> {
         self.world.weapon(weapon)?.variant_parent
     }
 
+    fn height_lock(&self, point: [f32; 3], reach: f32) -> Option<bool> {
+        match self
+            .world
+            .volume_column(HEIGHT_LOCK_CLASS, HEIGHT_LOCK_LIMIT, point, reach)
+        {
+            VolumeColumn::NoVolumes => None,
+            VolumeColumn::Inside => Some(true),
+            VolumeColumn::Outside => Some(false),
+            VolumeColumn::Unknown => {
+                self.height_lock_unknown.set(true);
+                None
+            }
+        }
+    }
+
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
         match self.world.water_surface(origin, up, down) {
             WaterSurface::At(z) => Some(z),
@@ -510,7 +532,9 @@ impl PlayerMovement for T6Movement {
             fire_buttons_swapped: false,
             airburst_distance: 0,
         };
-        let mask = if ps.pm_type >= pm_type::DEAD {
+        let mask = if ps.pm_type == pm_type::SPECTATOR {
+            SPECTATOR_CLIP_MASK
+        } else if ps.pm_type >= pm_type::DEAD {
             DEAD_CLIP_MASK
         } else {
             PLAYER_CLIP_MASK
@@ -518,6 +542,7 @@ impl PlayerMovement for T6Movement {
         let adapter = World {
             world,
             water_unknown: core::cell::Cell::new(false),
+            height_lock_unknown: core::cell::Cell::new(false),
         };
         let held: [movement_t6::HeldRounds; HELD_WEAPONS] = core::array::from_fn(|i| {
             (
@@ -555,6 +580,9 @@ impl PlayerMovement for T6Movement {
             }
             last = pm.cmd;
         }
+        if adapter.height_lock_unknown.get() {
+            outcome.gaps.push(gap_unknown(Gap::HeightLock));
+        }
         if adapter.water_unknown.get() {
             outcome.gaps.push(water_unknown());
         }
@@ -574,6 +602,11 @@ impl PlayerMovement for T6Movement {
     }
 
     fn think(&self, player: &mut MovePlayer, dvar: &dyn Fn(&str) -> Option<String>) {
+        // The server's spectator think sets its own speed and runs no other.
+        if player.move_type == MoveType::Spectator {
+            player.speed = if player.free_look { SPECTATOR_SPEED } else { 0 };
+            return;
+        }
         let (ps, _) = unpack(player);
         let mut speed = dvar("g_speed")
             .and_then(|v| v.trim().parse::<f32>().ok())
@@ -588,6 +621,10 @@ impl PlayerMovement for T6Movement {
         player.gravity = dvar("bg_gravity")
             .and_then(|v| v.trim().parse::<f32>().ok())
             .unwrap_or(800.0) as i32;
+    }
+
+    fn moves_spectators(&self) -> bool {
+        true
     }
 
     fn spawn(&self, player: &mut MovePlayer) {

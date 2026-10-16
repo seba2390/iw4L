@@ -15,6 +15,7 @@ mod pml;
 mod pmove;
 mod prone;
 mod slide;
+mod special;
 mod sprint;
 mod stance;
 pub mod state;
@@ -43,7 +44,9 @@ pub enum Gap {
     Shellshock = 16,
     Launched = 32,
     AnimLock = 64,
-    SpecialMove = 128,
+    /// The match cannot tell whether a spectator stays inside the map's
+    /// height-lock volumes.
+    HeightLock = 128,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -220,7 +223,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::Shellshock,
             Gap::Launched,
             Gap::AnimLock,
-            Gap::SpecialMove,
+            Gap::HeightLock,
         ]
         .into_iter()
         .filter(|g| self.gaps.get() & *g as u32 != 0)
