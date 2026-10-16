@@ -875,7 +875,7 @@ pattern crates/sim/src/equipment.rs entity_iw4:: 7
 pattern crates/sim/src/equipment.rs playerstate_iw4:: 1
 pattern crates/sim/src/equipment.rs trace_iw4:: 1
 pattern crates/sim/src/equipment.rs weapon_iw4:: 2
-pattern crates/sim/src/frame.rs entity_iw4:: 5
+pattern crates/sim/src/frame.rs entity_iw4:: 1
 pattern crates/sim/src/frame.rs gamemode_iw4:: 3
 pattern crates/sim/src/frame.rs movement_iw4:: 1
 pattern crates/sim/src/frame.rs playerstate_iw4:: 1

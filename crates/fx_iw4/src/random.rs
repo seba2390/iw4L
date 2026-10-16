@@ -33,6 +33,8 @@ pub enum FxRandomChannel {
     VelocityY = 28,
     VelocityZ = 29,
     Visual = 30,
+    /// A non-uniform sprite's height, drawn apart from its width.
+    Size1 = 31,
 }
 
 const EFFECT_DOMAIN: &[u8; 24] = b"iw4l.random.effect......";

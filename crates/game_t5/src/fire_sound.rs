@@ -25,7 +25,7 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     left_from_own_weapon: true,
 };
 
-fn autosim_unknown() -> &'static Unknown {
+pub(crate) fn autosim_unknown() -> &'static Unknown {
     unknown!(
         "t5.audio.fire_autosim",
         "the fire sound of an automatic weapon fired by a player this client does not view in first person (and of a turret, and in a killcam) is not played",

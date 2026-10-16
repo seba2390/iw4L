@@ -562,6 +562,28 @@ impl RoundScript {
                 continue;
             }
             let client_only = t5 && is_t5_client_map_entity(classname, pairs);
+            // Black Ops' server leaves the client its own map entities: it
+            // skips a client-side `script_model`/`script_origin` (its model
+            // still precached) and frees a client trigger.
+            if !self.client
+                && client_only
+                && matches!(
+                    classname,
+                    "script_model"
+                        | "script_origin"
+                        | "trigger_multiple"
+                        | "trigger_radius"
+                        | "trigger_once"
+                )
+            {
+                if classname == "script_model"
+                    && let Ok(ordinal) = u32::try_from(ordinal)
+                {
+                    self.withheld_presence
+                        .push(crate::ScriptModelId::from_authored_source_ordinal(ordinal));
+                }
+                continue;
+            }
             if self.client
                 && t5
                 && is_t5_client_extra_struct(classname, pairs)

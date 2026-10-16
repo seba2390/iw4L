@@ -189,4 +189,17 @@ pub trait TurretWorld: FireWorld {
 
     /// The sentient an entity is.
     fn sentient_of(&mut self, entity: i32) -> Option<Sentient>;
+
+    /// The turret entity's loop sound, an alias, or none.
+    fn turret_loop_sound(&mut self, turret: i32, alias: Option<&str>);
+
+    /// A sound alias played at the turret entity.
+    fn turret_sound(&mut self, turret: i32, alias: &str);
+
+    /// An effect the clients play on a tag of the turret's model.
+    fn turret_tag_effect(&mut self, turret: i32, effect: &str, tag: &str);
+
+    /// A camera shake the clients near `origin` feel: its scale, how long
+    /// it lasts (ms) and how far it reaches.
+    fn shake_camera(&mut self, origin: [f32; 3], scale: f32, duration_ms: i32, radius: f32);
 }

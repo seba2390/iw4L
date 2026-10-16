@@ -4,10 +4,11 @@
 use super::super::args::{arg, float, int, optional, string, vector};
 use super::super::arrays::new_array;
 use super::super::entities::EntityKind;
+use crate::script::client::present::CLIENT_ENTITY_BASE;
 use crate::script::client::{
-    ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientOutput, ClientSoundReports,
-    ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LocalPlayerView, LoopSource,
-    SnapshotSpeeds,
+    ClientEffect, ClientEffectTable, ClientLight, ClientLights, ClientModels, ClientOutput,
+    ClientSoundReports, ClientTagEffect, ClientTagEvent, ClientView, FakeEnts, LocalPlayerView,
+    LoopSource, SnapshotSpeeds,
 };
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
@@ -15,6 +16,10 @@ use bevy_ecs::prelude::World;
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
     super::t5_vision::register_client(registry);
+    register_random(registry);
+    // Its entities' animation trees: `useAnimTree`, the `SetAnim` family and
+    // `clearAnim` on the client's own copy of the match's trees.
+    super::super::actor_anims::register(registry);
     // `playSound(local, alias, [origin], [volume])`: a sound the client
     // plays at a point (a local one without), answering its playback id.
     registry.register(Function, "playsound", |world, _, args| {
@@ -394,18 +399,89 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
         Ok(Value::Vector([hour as f32, minute as f32, second as f32]))
     });
+    // `setClientDvar(name, value)`: one of the local client's dvars.
+    registry.register(Function, "setclientdvar", |world, _, args| {
+        let name = super::player::text(arg(args, 0)?)?;
+        if name.is_empty() {
+            return Err("SetClientDvar: unknown dvar name".into());
+        }
+        let value = super::player::text(arg(args, 1)?)?;
+        if value.is_empty() {
+            return Err("SetClientDvar: unknown dvar value".into());
+        }
+        world
+            .resource_mut::<ClientOutput>()
+            .client_dvars
+            .push((name.to_string(), value.to_string()));
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));
 }
 
+/// Black Ops' client random: one generator for the whole client, which
+/// starts from a fixed state and which its own effects and sounds also draw
+/// from (`t5.csc.random`).
+#[derive(bevy_ecs::prelude::Resource)]
+struct ClientRandom(u32);
+
+const CLIENT_RANDOM_START: u32 = 0x89ab_cdef;
+
+/// The generator's next 15 bits.
+fn client_random(world: &mut World) -> u32 {
+    let state = &mut world
+        .get_resource_or_insert_with(|| ClientRandom(CLIENT_RANDOM_START))
+        .0;
+    *state = state.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
+    *state >> 17
+}
+
+/// An integer in `min..max`: the span scaled by the 15 bits.
+fn client_random_int(world: &mut World, min: i32, max: i32) -> i32 {
+    let bits = i64::from(client_random(world));
+    let span = i64::from(max.wrapping_sub(min));
+    (((span * bits) >> 15) as i32).wrapping_add(min)
+}
+
+/// A float in `min..max`, as its x87 code computes it.
+fn client_random_float(world: &mut World, min: f32, max: f32) -> f32 {
+    let bits = f64::from(client_random(world));
+    ((f64::from(max) - f64::from(min)) * bits * f64::from(1.0f32 / 32768.0) + f64::from(min)) as f32
+}
+
+fn register_random(registry: &mut NativeRegistry) {
+    use Namespace::Function;
+    registry.register(Function, "randomint", |world, _, args| {
+        let max = int(args, 0)?;
+        if max < 1 {
+            return Err("RandomInt parm must be positive integer.\n".into());
+        }
+        Ok(Value::Int(client_random_int(world, 0, max)))
+    });
+    registry.register(Function, "randomintrange", |world, _, args| {
+        let (min, max) = (int(args, 0)?, int(args, 1)?);
+        if max <= min {
+            return Err("RandomIntRange range must be positive integer.\n".into());
+        }
+        Ok(Value::Int(client_random_int(world, min, max)))
+    });
+    registry.register(Function, "randomfloat", |world, _, args| {
+        let max = float(args, 0)?;
+        Ok(Value::Float(client_random_float(world, 0.0, max)))
+    });
+    registry.register(Function, "randomfloatrange", |world, _, args| {
+        let (min, max) = (float(args, 0)?, float(args, 1)?);
+        if max < min {
+            return Err("Scr_RandomFloatRange range must be positive float.\n".into());
+        }
+        Ok(Value::Float(client_random_float(world, min, max)))
+    });
+}
+
 fn clock(time: &impl chrono::Timelike) -> (u32, u32, u32) {
     (time.hour(), time.minute(), time.second())
 }
-
-/// The first client-only entity number; lower ones are the server's
-/// entities in the client's snapshot.
-const CLIENT_ENTITY_BASE: i32 = 0x400;
 
 /// The client's effect slots: its effect configstrings 1 to 195.
 const EFFECT_IDS: std::ops::RangeInclusive<i32> = 1..=0xc3;
@@ -535,7 +611,7 @@ fn register_effects(registry: &mut NativeRegistry) {
                 forward: axis[0],
                 up: axis[2],
                 begin_ms: None,
-                end_ms: 0,
+                end_ms: Some(0),
             },
         );
         Ok(Value::Object(entity))
@@ -563,7 +639,7 @@ fn register_effects(registry: &mut NativeRegistry) {
             .get_mut(&entity)
         {
             effect.begin_ms = Some(begin);
-            effect.end_ms = begin.saturating_add(life).max(now);
+            effect.end_ms = Some(begin.saturating_add(life).max(now));
         }
         Ok(Value::Undefined)
     });
@@ -697,7 +773,8 @@ fn register_player_view(registry: &mut NativeRegistry) {
 
 fn register_models(registry: &mut NativeRegistry) {
     use Namespace::Method;
-    // `ent setModel(name)`: a script mover's model; "" clears it.
+    // `ent setModel(name)`: a script mover's model, a precached one or a
+    // brush model (`*N`); "" clears it.
     registry.register(Method, "setmodel", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
         let is_mover = matches!(
@@ -708,10 +785,27 @@ fn register_models(registry: &mut NativeRegistry) {
             return Err("SetModel can only be called on a script mover\n".into());
         }
         let model = string(args, 0)?;
+        if !model.is_empty()
+            && !model.starts_with('*')
+            && !world
+                .resource::<ClientModels>()
+                .names
+                .contains(&model.to_ascii_lowercase())
+        {
+            return Err(format!("model '{model}' not precached\n"));
+        }
         world
             .resource_mut::<RoundScript>()
             .set_object_field(id, "model", Value::string(&model));
         Ok(Value::Undefined)
+    });
+    // `ent isTouching(other)`: a client trigger and a player's or an
+    // actor's box.
+    registry.register(Method, "istouching", |world, receiver, args| {
+        let a = super::engine::entity_id(world, receiver)?;
+        let (b, _) = entity(world, arg(args, 0)?)?;
+        let touching = crate::script::client::triggers::is_touching(world, a, b)?;
+        Ok(Value::Int(touching.into()))
     });
     // `ent hide()` / `ent show()`: the entity's no-draw flag.
     registry.register(Method, "hide", |world, receiver, _| {
@@ -1189,7 +1283,7 @@ fn forward_up_axis(forward: [f32; 3], up: [f32; 3]) -> Result<[[f32; 3]; 3], Str
 }
 
 /// Plays an effect at a point from `begin`, answering its handle: it is
-/// alive until its longest life has passed, and at least this frame.
+/// alive until the local client's effect system says it has run out.
 fn play_effect(
     world: &mut World,
     id: i32,
@@ -1197,8 +1291,7 @@ fn play_effect(
     axis: [[f32; 3]; 3],
     begin: i32,
 ) -> i32 {
-    let now = now_ms(world);
-    let (name, life) = effect_name_life(world, id);
+    let (name, _) = effect_name_life(world, id);
     let mut output = world.resource_mut::<ClientOutput>();
     let handle = output.effect_handle();
     if let Some(name) = name {
@@ -1210,7 +1303,7 @@ fn play_effect(
                 forward: axis[0],
                 up: axis[2],
                 begin_ms: Some(begin),
-                end_ms: begin.saturating_add(life).max(now),
+                end_ms: None,
             },
         );
     }

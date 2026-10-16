@@ -77,7 +77,8 @@ impl game_api::GameScripts for T5 {
     }
 
     /// Black Ops' client loads `clientscripts/<map>.csc` and runs its `main`,
-    /// with the map's structs in `level.struct` (`codescripts/struct`).
+    /// with the map's structs in `level.struct` (`codescripts/struct`) and
+    /// `codescripts/delete` for its one-shot triggers.
     fn client_program(
         &self,
         request: &ScriptRequest<'_>,
@@ -86,6 +87,7 @@ impl game_api::GameScripts for T5 {
         (request.gametype == ZOMBIES).then(|| ScriptProgram {
             catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, client_catalog::T5_CLIENT),
             roots: vec![
+                "codescripts/delete".to_owned(),
                 "codescripts/struct".to_owned(),
                 format!("clientscripts/{}", request.map),
             ],
@@ -114,6 +116,7 @@ impl game_api::GameScripts for T5 {
             client_flag: "clientscripts/_callbacks::client_flag_callback",
             client_flag_as_val: "clientscripts/_callbacks::client_flagasval_callback",
             zombie_eye: "clientscripts/_zombiemode::zombie_eye_callback",
+            trigger_delete: "codescripts/delete::main",
         })
     }
 

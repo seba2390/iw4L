@@ -752,6 +752,62 @@ pub(crate) fn map_volume_touches(
     .touches(mins, maxs)
 }
 
+/// A brush model's own volume, kept apart from the world's clip data: its
+/// brushes' planes, or its bounds when it has none.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ModelVolume {
+    Brushes(Vec<Vec<[f32; 4]>>),
+    Bounds([f32; 3], [f32; 3]),
+}
+
+/// A brush model's volume from the world's clip data.
+pub(crate) fn model_volume(state: &crate::world::SimState, brush: u32) -> Option<ModelVolume> {
+    let model = state.clip_cmodels().models.get(brush as usize)?;
+    let first = model.first_brush as usize;
+    let ids = state
+        .clip_bsp()
+        .leafbrushes
+        .get(first..first + usize::from(model.num_brushes))
+        .unwrap_or(&[]);
+    if ids.is_empty() {
+        return Some(ModelVolume::Bounds(model.mins, model.maxs));
+    }
+    let brushes = state.clip_brushes();
+    Some(ModelVolume::Brushes(
+        ids.iter()
+            .filter_map(|&id| brushes.get(usize::from(id)))
+            .map(|brush| brush.planes.clone())
+            .collect(),
+    ))
+}
+
+impl ModelVolume {
+    /// Whether the box `mins..maxs` touches the model placed at `origin`, as
+    /// [`map_volume_touches`] tests it.
+    pub(crate) fn touches(&self, origin: [f32; 3], mins: [f32; 3], maxs: [f32; 3]) -> bool {
+        match self {
+            ModelVolume::Brushes(brushes) => {
+                let mid: [f32; 3] = std::array::from_fn(|i| (mins[i] + maxs[i]) * 0.5 - origin[i]);
+                let half: [f32; 3] = std::array::from_fn(|i| (maxs[i] - mins[i]) * 0.5);
+                brushes
+                    .iter()
+                    .any(|planes| brush_touches(planes, mid, half))
+            }
+            ModelVolume::Bounds(lo, hi) => {
+                (0..3).all(|i| mins[i] <= origin[i] + hi[i] && maxs[i] >= origin[i] + lo[i])
+            }
+        }
+    }
+}
+
+/// Whether a box at `mid` with half extents `half` overlaps a brush.
+fn brush_touches(planes: &[[f32; 4]], mid: [f32; 3], half: [f32; 3]) -> bool {
+    planes.iter().all(|p| {
+        let reach = p[0].abs() * half[0] + p[1].abs() * half[1] + p[2].abs() * half[2];
+        p[0] * mid[0] + p[1] * mid[1] + p[2] * mid[2] - p[3] <= reach
+    })
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Volume<'f> {
     Cylinder {
@@ -935,13 +991,7 @@ impl Volume<'_> {
                 let half: [f32; 3] = std::array::from_fn(|i| (maxs[i] - mins[i]) * 0.5);
                 ids.iter()
                     .filter_map(|&id| brushes.get(usize::from(id)))
-                    .any(|brush| {
-                        brush.planes.iter().all(|p| {
-                            let reach =
-                                p[0].abs() * half[0] + p[1].abs() * half[1] + p[2].abs() * half[2];
-                            p[0] * mid[0] + p[1] * mid[1] + p[2] * mid[2] - p[3] <= reach
-                        })
-                    })
+                    .any(|brush| brush_touches(&brush.planes, mid, half))
             }
             Volume::Cylinder {
                 origin,
