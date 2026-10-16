@@ -282,6 +282,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: None,
     post_chain: None,
+    dyn_ent_physics: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

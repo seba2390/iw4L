@@ -189,6 +189,20 @@ impl DynEntWakeBroadphase {
     }
 }
 
+/// Whether the match's game wakes its dynamic entities by Modern Warfare 2's
+/// rules. A game whose own rules are unknown wakes none, and its gap is
+/// reported once.
+fn runs_physics(rules: Option<&game_api::ModeRules>, reported: &mut bool) -> bool {
+    let Some(gap) = rules.and_then(|rules| rules.dyn_ent_physics) else {
+        return true;
+    };
+    if !*reported {
+        diag::info!(World, "game gap {}: {}", gap.id, gap.what);
+        *reported = true;
+    }
+    false
+}
+
 pub(crate) fn rebuild_dyn_ent_wake_broadphase(
     catalog: Option<Res<asset_world::MapXModelSceneCatalog>>,
     instances: Query<(Entity, &WorldDynEntInstance, &Transform), With<DynEntModelEntity>>,
@@ -497,7 +511,11 @@ pub(crate) fn on_entity_explosion(
     fx: Option<Res<PreparedFxCatalog>>,
     scene: Option<Res<WorldScene>>,
     entity_marks: Res<EntityMarks>,
+    (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
+    if !runs_physics(rules.as_deref(), &mut reported) {
+        return;
+    }
     let weapons = weapons
         .as_deref()
         .and_then(|weapons| weapons.for_event(explosion.event.world).ok());
@@ -697,7 +715,11 @@ pub(crate) fn on_entity_bullet_hit(
     fx: Option<Res<PreparedFxCatalog>>,
     scene: Option<Res<WorldScene>>,
     entity_marks: Res<EntityMarks>,
+    (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
+    if !runs_physics(rules.as_deref(), &mut reported) {
+        return;
+    }
     if hit.event.domain == net::EntityEventDomain::Predicted {
         return;
     }
@@ -816,7 +838,12 @@ pub(crate) fn hit_dyn_ents_from_pellets(
     fx: Option<Res<PreparedFxCatalog>>,
     scene: Option<Res<WorldScene>>,
     entity_marks: Res<EntityMarks>,
+    (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
+    if !runs_physics(rules.as_deref(), &mut reported) {
+        hits.clear();
+        return;
+    }
     let catalog = catalog.as_deref();
     let fx = fx.as_deref();
     let scene = scene.as_deref();
@@ -868,7 +895,11 @@ pub(crate) fn on_entity_event_sound(
     fx: Option<Res<PreparedFxCatalog>>,
     scene: Option<Res<WorldScene>>,
     entity_marks: Res<EntityMarks>,
+    (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
+    if !runs_physics(rules.as_deref(), &mut reported) {
+        return;
+    }
     if sound.event.event != EntityEventKind::MELEE_HIT {
         return;
     }
@@ -911,7 +942,11 @@ pub(crate) fn wake_player_overlap(
     catalog: Option<Res<asset_world::MapXModelSceneCatalog>>,
     instances: Query<(Entity, &WorldDynEntInstance, &Transform), With<DynEntModelEntity>>,
     mut impulses: MessageWriter<DynEntPhysImpulse>,
+    (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
+    if !runs_physics(rules.as_deref(), &mut reported) {
+        return;
+    }
     let Some(ps) = prediction.as_ref().and_then(|p| p.0.predicted_local()) else {
         return;
     };

@@ -200,6 +200,11 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: Some(turret::TURRETS),
     post_chain: Some(post_chain::POST_CHAIN),
+    dyn_ent_physics: Some(unknown!(
+        "t5.dynent.physics",
+        "Black Ops' dynamic entities are not pushed, broken or launched: bullets, explosions and players leave them in place",
+        "its dynamic entity physics: the physics objects, the bullet and explosion impulses (dynEnt_* dvars), damage, destruction and the spawned entities"
+    )),
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each

@@ -156,6 +156,7 @@ use asset_material::MaterialCatalog;
 use asset_model::{BodyMeshBuild, FpvMeshBuild, SoldierKit, WorldWeaponBuild, soldier_kits};
 use asset_transport::StageHandle;
 use asset_world::{ModelKind, build_xmodel_mesh, model_kind};
+use fastfile_t5::AssetType as T5Asset;
 
 #[derive(Default)]
 pub(crate) struct ZoneWalkSink {
@@ -1120,11 +1121,21 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         insert_slot: Option<fastfile_t5::Ptr>,
     ) -> fastfile_t5::Result<()> {
         self.materials.t5_loaded(stream, ty, slot, insert_slot);
-        if ty == fastfile_t5::AssetType::Fx {
+        if ty == T5Asset::Fx {
             self.fx
                 .note_loaded(t5_iw4_ptr(slot), insert_slot.map(t5_iw4_ptr));
         }
-        if ty == fastfile_t5::AssetType::XModel {
+        if ty == T5Asset::PhysPreset
+            && let Some(preset) = stream
+                .latest_phys_preset()
+                .and_then(|header| asset_world::read_t5_phys_preset(stream, header))
+        {
+            self.phys_presets.insert(
+                std::iter::once(slot).chain(insert_slot).map(t5_iw4_ptr),
+                preset,
+            );
+        }
+        if ty == T5Asset::XModel {
             self.map_xmodels.capture_t5(
                 stream,
                 &self.materials,
@@ -1146,17 +1157,21 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         target: fastfile_t5::Ptr,
     ) -> fastfile_t5::Result<()> {
         self.materials.t5_alias(ty, slot, target);
-        if ty == fastfile_t5::AssetType::Material {
+        if ty == T5Asset::Material {
             if let Some(name) = self.material_names_t5.get(&target).copied() {
                 self.material_names_t5.insert(slot, name);
             } else {
                 self.material_names_t5.remove(&slot);
             }
         }
-        if ty == fastfile_t5::AssetType::Fx {
+        if ty == T5Asset::Fx {
             self.fx.note_alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
         }
-        if ty == fastfile_t5::AssetType::XModel {
+        if ty == T5Asset::PhysPreset {
+            self.phys_presets
+                .alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
+        }
+        if ty == T5Asset::XModel {
             self.map_xmodels.alias(
                 Ptr {
                     block: slot.block,
@@ -2246,7 +2261,7 @@ fn kit_name(kit: Option<&SoldierKit>) -> String {
     }
 }
 
-fn t5_iw4_ptr(p: fastfile_t5::Ptr) -> Ptr {
+pub(crate) fn t5_iw4_ptr(p: fastfile_t5::Ptr) -> Ptr {
     Ptr {
         block: p.block,
         offset: p.offset,

@@ -76,6 +76,7 @@ const MODE: ModeRules = ModeRules {
     script_sounds_hashed: false,
     turrets: None,
     post_chain: None,
+    dyn_ent_physics: None,
 };
 
 impl game_api::GameVision for Iw4 {
