@@ -88,6 +88,15 @@ fn end(ps: &mut PlayerState, server_time: i32) {
     ps.sprint_button_up_required = 0;
 }
 
+/// A dive cut short by a link: the post-move pause starts from now.
+pub(crate) fn end_linked(ps: &mut PlayerState, server_time: i32) {
+    ps.pm_flags &= !pm_flags::DIVING;
+    ps.jump_time = 0;
+    ps.velocity = [0.0; 3];
+    ps.dive_end_time = (server_time - tuning::DTP_POST_MOVE_PAUSE as i32 - 1).max(0);
+    ps.sprint_button_up_required = 0;
+}
+
 pub(crate) fn check_end<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let ps = &*pm.ps;
     if !(tuning::DTP && ps.pm_flags & pm_flags::DIVING != 0 && ps.jump_time < 0) {

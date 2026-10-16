@@ -1941,7 +1941,8 @@ pub(crate) fn give_weapon(
         .resource::<RoundScript>()
         .program
         .as_ref()
-        .is_some_and(|program| program.rules() == crate::script::Realm::T5);
+        .map(|program| program.rules())
+        == Some(crate::script::Realm::T5);
     let model = if t5 {
         (optional(args, 2, int)?.unwrap_or(0) & 63) as u8
     } else {

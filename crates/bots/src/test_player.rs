@@ -88,12 +88,18 @@
 //! `IW4L_TEST_PLAYER=down` is the go-down test: no god mode, no fighting;
 //! he stands where he spawned until the zombies reach him and down him.
 //! Each change of his life state and last stand is logged, so a run shows
-//! going down and what the game does next.
+//! going down and what the game does next. As a spectator he holds
+//! forward, as one flying free does.
 //!
 //! `IW4L_TEST_GRAB=1` (with any fighting mode): when a power-up lies on
 //! the ground, he is moved onto it (as `setviewpos` does) to pick it up,
 //! and half a second later back where he stood; once a second at most. He
 //! logs which.
+//!
+//! `IW4L_TEST_MANTLE=<x> <y> <z> <yaw>` (with any fighting mode): 5 s in,
+//! he stands at that point facing the yaw and walks forward holding jump
+//! for 3 s, logging where he is every quarter second; the movement log
+//! shows the mantle starting and ending.
 //!
 //! `IW4L_TEST_WALK=1` (with any fighting mode): every 20 s, 10 s in, he
 //! walks toward a path node in a clear line 600 to 1200 units away: a jump, a walk, a
@@ -302,6 +308,8 @@ pub(crate) struct TestPlayer {
     /// to where he stood at this time.
     next_grab_ms: i32,
     grab_return: Option<(i32, [f32; 3])>,
+    /// The mantle aid: until when it walks into the ledge.
+    mantle_until_ms: Option<i32>,
     pressed: bool,
     next_log_ms: i32,
     shots: u32,
@@ -560,6 +568,10 @@ fn stand_point(
             [above[0], above[1], above[2] - 2.0 * WAIST_HEIGHT],
         );
         let stand = [above[0], above[1], above[2] - drop + 1.0];
+        let stand_eye = [stand[0], stand[1], stand[2] + EYE_HEIGHT];
+        if clear_run(world, id, stand_eye, center) + slack < distance(stand_eye, center) {
+            continue;
+        }
         if world.in_enabled_player_volume(stand) {
             return Some(stand);
         }
@@ -629,9 +641,15 @@ fn next_scenario(
             // Of the perks, Quick Revive: the one a solo player's down asks for.
             .filter(|site| {
                 let wanted = wanted_perk();
+                let owned = world.player_perks(id);
                 kind != UseKind::Perk
-                    || site.weapon.as_deref() == Some(wanted.as_str())
-                    || wanted == "any" && site.weapon.as_deref() != Some(QUICK_REVIVE)
+                    || (!owned
+                        .iter()
+                        .any(|p| site.weapon.as_deref() == Some(p.as_str()))
+                        && (wanted
+                            .split(',')
+                            .any(|w| site.weapon.as_deref() == Some(w.trim()))
+                            || wanted == "any" && site.weapon.as_deref() != Some(QUICK_REVIVE)))
             })
             .collect();
         // `_zm_unitrigger::main` offers only the stubs of active zones (and
@@ -647,13 +665,15 @@ fn next_scenario(
                 )
             })
             .collect();
-        // A buildable's part or table in an enabled zone is gone to: standing
-        // there makes its zone active, as walking there would.
+        // A buildable's part or table or perk machine in an enabled zone is
+        // gone to: standing there makes its zone active, as walking there would.
         of_kind.retain(|site| {
             site.zone.as_deref().is_none_or(|zone| {
                 world.zone_is_active(zone)
-                    || matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take)
-                        && world.zone_is_enabled(zone)
+                    || matches!(
+                        kind,
+                        UseKind::Piece | UseKind::Build | UseKind::Take | UseKind::Perk
+                    ) && world.zone_is_enabled(zone)
             })
         });
         if of_kind.is_empty() && offered > 0 {
@@ -785,7 +805,10 @@ fn next_scenario(
             home_angles: viewangles,
             phase: Phase::Arriving,
             until_ms: now_ms
-                + if matches!(kind, UseKind::Piece | UseKind::Build | UseKind::Take) {
+                + if matches!(
+                    kind,
+                    UseKind::Piece | UseKind::Build | UseKind::Take | UseKind::Perk
+                ) {
                     ZONE_ARRIVE_MS
                 } else {
                     ARRIVE_MS
@@ -1036,6 +1059,21 @@ pub(crate) fn drive_test_player(
             );
         }
         test.seen = Some(now);
+        // A spectator still sends commands: he holds forward, as one flying
+        // free does.
+        if matches!(
+            meta.lifecycle,
+            ClientLifecycle::Spectating | ClientLifecycle::ChoosingClass
+        ) {
+            cmds.push(
+                id,
+                UserCmd {
+                    server_time: clock.time_ms,
+                    forwardmove: 127,
+                    ..UserCmd::default()
+                },
+            );
+        }
         if test.mode == Mode::Down || test.pending.is_empty() && test.scenario.is_none() {
             return;
         }
@@ -1044,6 +1082,59 @@ pub(crate) fn drive_test_player(
         return;
     }
     let since_ms = *test.alive_since_ms.get_or_insert(clock.time_ms);
+    // `IW4L_TEST_MANTLE=<x> <y> <z> <yaw>`: 5 s in, stands there facing
+    // the yaw and walks forward holding jump for 3 s, as a player climbing a
+    // ledge does.
+    if let Ok(spot) = std::env::var("IW4L_TEST_MANTLE")
+        && let [x, y, z, yaw] = spot
+            .split_whitespace()
+            .filter_map(|v| v.parse::<f32>().ok())
+            .collect::<Vec<_>>()[..]
+    {
+        match test.mantle_until_ms {
+            None if clock.time_ms - since_ms >= USE_START_MS / 2 => {
+                test.mantle_until_ms = Some(clock.time_ms + 3000);
+                diag::info!(Sim, "test player: mantle aid at ({x} {y} {z}) yaw {yaw}");
+                if let Err(error) = actions.push(
+                    id,
+                    ClientAction::Move {
+                        request_id: request_ids.allocate(),
+                        origin: [x, y, z],
+                        angles: [0.0, yaw, 0.0],
+                    },
+                ) {
+                    diag::warn!(Sim, "test player: request not queued — {error}");
+                }
+                return;
+            }
+            Some(until) if clock.time_ms < until => {
+                if clock.time_ms % 250 < 50 {
+                    diag::info!(
+                        Sim,
+                        "test player: mantle aid t={}ms at={}",
+                        clock.time_ms,
+                        fmt_point(ps.origin)
+                    );
+                }
+                cmds.push(
+                    id,
+                    UserCmd {
+                        server_time: clock.time_ms,
+                        weapon: ps.weapon as u16,
+                        weapon_mapped: ps.weapon as u16,
+                        forwardmove: 127,
+                        buttons: buttons::JUMP,
+                        angles: look_angles_from_degrees(std::array::from_fn(|axis| {
+                            [0.0, yaw, 0.0][axis] - ps.delta_angles[axis]
+                        })),
+                        ..UserCmd::default()
+                    },
+                );
+                return;
+            }
+            _ => {}
+        }
+    }
     // `IW4L_TEST_GOTO=<zone>[,<zone>…]`: goes to the path node nearest each
     // zone's middle that stands in the zone, so the zone and those beside it
     // come alive.
@@ -1450,6 +1541,17 @@ pub(crate) fn drive_test_player(
                 {
                     scenario.until_ms = clock.time_ms + WATCH_MS;
                 }
+                Phase::Watching
+                    if scenario.site.kind == UseKind::Perk
+                        && (world
+                            .0
+                            .weapon_script_name(ps.weapon)
+                            .starts_with("zombie_perk_bottle_")
+                            || test.last_move.is_some_and(|s| s.no_weapon_cycling))
+                        && clock.time_ms < scenario.power_by_ms =>
+                {
+                    scenario.until_ms = clock.time_ms + 500;
+                }
                 // The box took its price: its weapon has risen, take it.
                 Phase::Watching
                     if matches!(scenario.site.kind, UseKind::Box | UseKind::PackAPunch)
@@ -1550,11 +1652,13 @@ pub(crate) fn drive_test_player(
                     if scenario.site.kind == UseKind::Perk {
                         diag::info!(
                             Sim,
-                            "test player: perks drunk (num_perks) {}",
+                            "test player: perks drunk (num_perks) {} — max_health={} perks={:?}",
                             world
                                 .0
                                 .script_int(ScriptOwner::Player(id), "num_perks")
-                                .map_or_else(|| "-".to_owned(), |n| n.to_string())
+                                .map_or_else(|| "-".to_owned(), |n| n.to_string()),
+                            ps.max_health,
+                            world.0.player_perks(id)
                         );
                     }
                     if matches!(scenario.site.kind, UseKind::WallBuy | UseKind::Box) {

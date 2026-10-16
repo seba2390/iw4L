@@ -355,7 +355,7 @@ impl WeaponBodyFacts {
 }
 
 fn leftover_clip_relative_rounds(count: i32, clip_size: i32, clip_relative: bool) -> i32 {
-    if clip_relative && clip_size > 0 && count > 0 {
+    if clip_relative && clip_size >= 0 && count >= 0 {
         count.saturating_mul(clip_size)
     } else {
         count
@@ -1314,15 +1314,18 @@ struct T6Attachment {
     pub overlay: Option<String>,
     pub hide_tags: Vec<String>,
     pub xanims: [Option<String>; WEAPON_ANIM_SLOTS],
+    pub named_anims: u128,
     pub fire_sound: Option<String>,
     pub fire_sound_player: Option<String>,
     pub disable_base_attachment: bool,
     pub disable_base_clip: bool,
+    pub segmented_reload: bool,
 }
 
 #[derive(Clone, Debug)]
 struct T6AttachmentStats {
     pub kind: u32,
+    pub raw: Box<[u8]>,
     pub clip_size_scale: f32,
     pub fire_time_scale: f32,
     pub reload_time_scales: [f32; 5],
@@ -1647,7 +1650,7 @@ pub struct Iw5PreparationCensus {
 }
 
 fn compose_t6_configuration(base: &WeaponRow, kinds: &[u32], name: String) -> Option<WeaponRow> {
-    if base.t6_attachments.is_empty() {
+    if base.t6_attachments.is_empty() && base.t6_attachment_stats.is_empty() {
         return None;
     }
     let singles: Vec<&T6Attachment> = kinds
@@ -1669,6 +1672,7 @@ fn compose_t6_configuration(base: &WeaponRow, kinds: &[u32], name: String) -> Op
         })
         .flatten();
     let mut row = base.clone();
+    row.native_script_name = name.clone();
     row.name = name;
     row.t6_attachments = Vec::new();
     row.hide_tags = Vec::new();
@@ -1723,13 +1727,24 @@ fn compose_t6_configuration(base: &WeaponRow, kinds: &[u32], name: String) -> Op
             }
         }
     }
-    for stats in kinds.iter().filter_map(|&kind| {
-        base.t6_attachment_stats
-            .iter()
-            .find(|stats| stats.kind == kind)
-    }) {
+    let matched_stats: Vec<&T6AttachmentStats> = kinds
+        .iter()
+        .filter_map(|&kind| {
+            base.t6_attachment_stats
+                .iter()
+                .find(|stats| stats.kind == kind)
+        })
+        .collect();
+    for stats in &matched_stats {
         apply_t6_attachment_stats(&mut row.facts, stats);
     }
+    apply_t6_attachment_game_bytes(
+        &mut row.game_bytes,
+        &matched_stats,
+        &singles,
+        pair,
+        &row.name,
+    );
     if singles.is_empty()
         && let Some(bare) = base
             .t6_attachments
@@ -1760,26 +1775,47 @@ pub struct T6PreparationCensus {
     pub alternates: usize,
 }
 
+const T6_ATTACHMENT_NAMES: [&str; 30] = [
+    "none",
+    "acog",
+    "dualclip",
+    "dualoptic",
+    "dw",
+    "extbarrel",
+    "extclip",
+    "extramags",
+    "fastads",
+    "fastreload",
+    "fmj",
+    "gl",
+    "grip",
+    "holo",
+    "ir",
+    "is",
+    "longbreath",
+    "mk",
+    "mms",
+    "rangefinder",
+    "reflex",
+    "rf",
+    "sf",
+    "silencer",
+    "stackfire",
+    "stalker",
+    "steadyaim",
+    "swayreduc",
+    "tacknife",
+    "vzoom",
+];
+
 fn t6_attachment_kinds(
-    tables: &[(crate::AssetNamespace, crate::CapturedStringTable)],
+    _tables: &[(crate::AssetNamespace, crate::CapturedStringTable)],
 ) -> HashMap<String, u32> {
-    tables
+    T6_ATTACHMENT_NAMES
         .iter()
-        .filter(|(namespace, table)| {
-            *namespace == crate::AssetNamespace::T6
-                && table.name.eq_ignore_ascii_case("mp/attachmentTable.csv")
-        })
-        .flat_map(|(_, table)| {
-            (1..table.rows as i32)
-                .filter(|&row| table.cell(row, 2) == "attachment")
-                .filter_map(|row| {
-                    Some((
-                        table.cell(row, 4).to_ascii_lowercase(),
-                        table.cell(row, 0).parse().ok()?,
-                    ))
-                })
-                .collect::<Vec<_>>()
-        })
+        .enumerate()
+        .skip(1)
+        .map(|(kind, name)| ((*name).to_owned(), kind as u32))
         .collect()
 }
 
@@ -1826,6 +1862,7 @@ impl WeaponBuild {
     }
 
     pub fn prepare_t6_configurations(&mut self) -> T6PreparationCensus {
+        let ns = crate::AssetNamespace::T6;
         let families = crate::WeaponFamilies::build(&self.family_tables, &self.registry);
         let kinds = t6_attachment_kinds(&self.family_tables);
         let mut census = T6PreparationCensus::default();
@@ -1875,6 +1912,73 @@ impl WeaponBuild {
                     ));
                 }
                 None => census.refused += 1,
+            }
+        }
+        let base_len = self.registry.rows.len();
+        for base_id in 1..base_len {
+            let base = &self.registry.rows[base_id];
+            if base.namespace != ns
+                || !base.name.ends_with("_zm")
+                || (base.t6_attachments.is_empty() && base.t6_attachment_stats.is_empty())
+            {
+                continue;
+            }
+            let mut single_kinds: Vec<u32> = base
+                .t6_attachment_stats
+                .iter()
+                .map(|s| s.kind)
+                .chain(
+                    base.t6_attachments
+                        .iter()
+                        .filter(|a| a.mask == 0)
+                        .map(|a| a.kind),
+                )
+                .filter(|&k| k > 0 && (k as usize) < T6_ATTACHMENT_NAMES.len())
+                .collect();
+            single_kinds.sort_unstable();
+            single_kinds.dedup();
+            let mut combos: Vec<Vec<u32>> = single_kinds.iter().map(|&k| vec![k]).collect();
+            for pair in &base.t6_attachments {
+                if pair.mask != 0 && pair.mask.count_ones() == 2 {
+                    let k1 = pair.mask.trailing_zeros();
+                    let k2 = (pair.mask & !(1 << k1)).trailing_zeros();
+                    if (k1 as usize) < T6_ATTACHMENT_NAMES.len()
+                        && (k2 as usize) < T6_ATTACHMENT_NAMES.len()
+                    {
+                        combos.push(vec![k1, k2]);
+                    }
+                }
+            }
+            for combo in combos {
+                let attach_names: Vec<String> = combo
+                    .iter()
+                    .map(|&k| T6_ATTACHMENT_NAMES[k as usize].to_owned())
+                    .collect();
+                let name = format!("{}+{}", base.name, attach_names.join("+"));
+                if self
+                    .registry
+                    .by_namespaced
+                    .contains_key(&(ns, name.clone()))
+                    || prepared.iter().any(|(_, _, r)| r.name == name)
+                {
+                    continue;
+                }
+                if let Some(mut row) =
+                    compose_t6_configuration(&self.registry.rows[base_id], &combo, name)
+                {
+                    row.prepared_attachments = attach_names.clone();
+                    prepared.push((
+                        base_id as u32,
+                        crate::WeaponSelection {
+                            family: Some(crate::FamilyKey::new(
+                                ns,
+                                &self.registry.rows[base_id].name,
+                            )),
+                            attachments: attach_names,
+                        },
+                        row,
+                    ));
+                }
             }
         }
         census.prepared = prepared.len();
@@ -1935,6 +2039,7 @@ impl WeaponBuild {
             .get(&(crate::AssetNamespace::T6, normalize_weapon_name(alt_name)))?;
         let mut alt = rows[alt_id as usize].clone();
         alt.name = format!("{}+{}", alt.name, config.name);
+        alt.native_script_name = alt.name.clone();
         alt.alternate_weapon = Some(config.name.clone());
         alt.attachment_view_models = config.attachment_view_models.clone();
         alt.attachment_world_models = config.attachment_world_models.clone();
@@ -2616,11 +2721,12 @@ pub fn gsc_weapon_script_name(catalog_bare: &str) -> String {
     if catalog_bare.is_empty() {
         return String::new();
     }
+    let base = catalog_bare.split('+').next().unwrap_or(catalog_bare);
     // Zombie and singleplayer scripts name their weapons without the MP suffix.
-    if catalog_bare.ends_with("_mp")
-        || catalog_bare.ends_with("_zm")
-        || catalog_bare.ends_with("_sp")
-        || catalog_bare.starts_with("zombie_")
+    if base.ends_with("_mp")
+        || base.ends_with("_zm")
+        || base.ends_with("_sp")
+        || base.starts_with("zombie_")
     {
         catalog_bare.to_owned()
     } else {

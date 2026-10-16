@@ -245,5 +245,27 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
         cool_while_firing: weapon.def_bool(def::COOL_WHILE_FIRING),
         spin_up_time: weapon.def_i32(def::SPIN_UP_TIME),
         spin_down_time: weapon.def_i32(def::SPIN_DOWN_TIME),
+        has_attachment_table: weapon.attachments().any(|a| a.attachment_type() == 0),
+        attachments: weapon
+            .attachments()
+            .filter(|a| a.attachment_type() != 0 && a.attachment_type() < 30)
+            .map(|a| {
+                let kind = a.attachment_type();
+                let unique = weapon
+                    .attachment_uniques()
+                    .find(|u| u.combined_mask() == 0 && u.attachment_type() == kind);
+                asset_core::ZoneWeaponAttachment {
+                    kind,
+                    clip_size_scale: a.f32_at(fastfile_t6::weapon::attachment::CLIP_SIZE_SCALE),
+                    clip_size: a.u32_at(fastfile_t6::weapon::attachment::CLIP_SIZE) as i32,
+                    fire_type: a.u32_at(fastfile_t6::weapon::attachment::FIRE_TYPE) as i32,
+                    alt_weapon: unique.and_then(|u| u.alt_weapon()).unwrap_or("").to_owned(),
+                    dual_wield_weapon: unique
+                        .and_then(|u| u.dual_wield_weapon())
+                        .unwrap_or("")
+                        .to_owned(),
+                }
+            })
+            .collect(),
     })
 }

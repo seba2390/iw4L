@@ -314,7 +314,7 @@ pub(crate) fn check_duck<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let was_prone = pm.ps.pm_flags & pm_flags::PRONE != 0;
     pm.mins = [-15.0, -15.0, 0.0];
     pm.maxs = [15.0, 15.0, 70.0];
-    if pm.ps.pm_type == pm_type::INTERMISSION {
+    if pm.ps.pm_type == pm_type::SPECTATOR {
         pm.mins = [-16.0, -16.0, -16.0];
         pm.maxs = [16.0, 16.0, 16.0];
         pm.ps.pm_flags &= !(pm_flags::PRONE | pm_flags::DUCKED);

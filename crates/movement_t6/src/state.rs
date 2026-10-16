@@ -6,9 +6,9 @@ pub mod pm_type {
     pub const NORMAL_LINKED: i32 = 1;
     pub const NOCLIP: i32 = 2;
     pub const UFO: i32 = 3;
-    pub const SPECTATOR: i32 = 4;
-    pub const INTERMISSION: i32 = 5;
-    pub const REMOTE_CONTROL: i32 = 6;
+    pub const MPVIEWER: i32 = 4;
+    pub const SPECTATOR: i32 = 5;
+    pub const INTERMISSION: i32 = 6;
     pub const LAST_STAND: i32 = 7;
     pub const LAST_STAND_REVIVED: i32 = 8;
     pub const LAST_STAND_GETTING_UP: i32 = 9;
@@ -59,6 +59,7 @@ pub mod e_flags {
     pub const TURRET_CROUCH: u32 = 0x200;
     pub const TURRET: u32 = TURRET_PRONE | TURRET_CROUCH;
     pub const VEHICLE_VIEW: u32 = 0x4000;
+    pub const MANTLE: u32 = 0x8000;
     pub const TALKING: u32 = 0x2_0000;
 }
 
@@ -280,6 +281,7 @@ pub mod buttons {
     pub const SMOKE: u32 = 15;
     pub const NIGHTVISION: u32 = 18;
     pub const THROW: u32 = 24;
+    pub const CHANGE_ZOOM: u32 = 29;
     /// The throw keys beyond frag and smoke.
     pub const THROW_A: u32 = 30;
     pub const THROW_B: u32 = 31;
@@ -488,7 +490,11 @@ pub struct PlayerState {
     pub intro_shots_fired: i32,
     pub vehicle_pos: i32,
     pub link_flags: u32,
+    pub mantle_yaw: f32,
     pub mantle_timer: i32,
     pub mantle_trans_index: i32,
     pub mantle_flags: u32,
+    /// The entity the player stands on as it moves (a mantle onto one).
+    pub mover_entity_num: i32,
+    pub mover_timestamp: i32,
 }

@@ -240,15 +240,9 @@ pub(crate) fn cmd_scale_walk<W: MoveWorld>(pm: &mut Pm<'_, W>, cmd: &UserCmd) ->
     if ps.pm_flags & pm_flags::SPRINTING != 0 && ps.view_height_target == view_height::STAND {
         scale *= tuning::SPRINT_SPEED_SCALE;
     }
-    match ps.pm_type {
-        pm_type::NOCLIP => scale *= 3.0,
-        pm_type::UFO => scale *= 6.0,
-        _ => {
-            scale *= stance_speed_scale(ps, cmd.server_time);
-            if ps.water_level >= 1 {
-                scale *= 1.0 - ps.water_level as f32 * 0.333333343 * 0.75;
-            }
-        }
+    scale *= stance_speed_scale(ps, cmd.server_time);
+    if ps.water_level >= 1 {
+        scale *= 1.0 - ps.water_level as f32 * 0.333333343 * 0.399999976;
     }
     if pm.zombiemode && crate::perks::has(ps.perks, crate::perks::NONAME) {
         scale *= if ps.pm_flags & pm_flags::SPRINTING != 0 {
@@ -302,11 +296,8 @@ pub(crate) fn cmd_scale_air(ps: &PlayerState, cmd: &UserCmd) -> f32 {
     {
         scale *= 0.4;
     }
-    match ps.pm_type {
-        pm_type::NOCLIP => scale *= 3.0,
-        pm_type::UFO => scale *= 6.0,
-        pm_type::SPECTATOR => scale *= tuning::SPECTATE_SPEED_SCALE,
-        _ => {}
+    if ps.pm_type == pm_type::SPECTATOR {
+        scale *= tuning::SPECTATE_SPEED_SCALE;
     }
     scale
 }

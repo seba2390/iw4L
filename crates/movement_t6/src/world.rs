@@ -11,6 +11,7 @@ pub struct Trace {
     pub allsolid: bool,
     pub startsolid: bool,
     pub walkable: bool,
+    pub glass: bool,
 }
 
 pub const SURF_SLICK: u32 = 0x2;
@@ -67,4 +68,16 @@ pub trait MoveWorld {
     fn variant_parent(&self, weapon: u32) -> Option<u32>;
 
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32>;
+
+    /// The length in milliseconds of the player animation `name`; `None`
+    /// when it is not loaded.
+    fn anim_length_ms(&self, name: &str) -> Option<i32>;
+
+    /// The root translation player animation `name` has made by `frac` of
+    /// its length; `None` when it is not loaded.
+    fn anim_root_delta(&self, name: &str, frac: f32) -> Option<[f32; 3]>;
+
+    /// Whether the vertical line `reach` above and below `point` crosses one
+    /// of the map's height-lock volumes; `None` when the map has none.
+    fn height_lock(&self, point: [f32; 3], reach: f32) -> Option<bool>;
 }

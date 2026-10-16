@@ -6,7 +6,7 @@ use fastfile_t6::weapon::{WeaponDefView, def, variant};
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
     MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
-    MoveWorld, PlayerMovement, ScriptFlag, Stance, WaterSurface, WeaponActivity, WeaponNotify,
+    MoveWorld, PlayerMovement, ScriptFlag, Stance, VolumeColumn, WeaponActivity, WeaponNotify,
     WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
@@ -26,13 +26,26 @@ pub static MULTIPLAYER: T6Movement = T6Movement { zombies: false };
 
 const PLAYER_CLIP_MASK: u32 = 0x0281_c011;
 const DEAD_CLIP_MASK: u32 = 0x0081_0011;
+/// The spectator's height-lock volumes: the map's first 32 of these, one per
+/// brush model.
+const WATER_CONTENTS: u32 = 0x20;
+const SURFACE_TYPE_MASK: u32 = 0x03f0_0000;
+const SPECTATOR_CLIP_MASK: u32 = 0x0080_0811;
+const SPECTATOR_SPEED: i32 = 400;
+const HEIGHT_LOCK_CLASS: &str = "heli_height_lock";
+const HEIGHT_LOCK_LIMIT: usize = 32;
 
 pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
     match gap {
         Gap::Mantle => unknown!(
-            "t6.movement.mantle",
-            "Black Ops 2's mantling over ledges: never started",
-            "Black Ops 2's mantle check and mantle move from its executable"
+            "t6.movement.mantle_anims",
+            "a Black Ops 2 mantle whose mantle animations (mp_mantle_up_*, the over animations) are not loaded: it does not start or move",
+            "the mantle animations from the zones"
+        ),
+        Gap::Mount => unknown!(
+            "t6.movement.mount",
+            "a mountable Black Ops 2 weapon set down on a ledge or while prone",
+            "Black Ops 2's weapon mount from its executable"
         ),
         Gap::MountedView => unknown!(
             "t6.movement.mounted",
@@ -54,20 +67,10 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops 2's scripted animation lock on a player",
             "the player animation script durations that end the lock"
         ),
-        Gap::SpecialMove => unknown!(
-            "t6.movement.special",
-            "Black Ops 2's linked, noclip, ufo, spectator and intermission moves",
-            "those player moves from its executable"
-        ),
-        Gap::AdsPerkAnimTypes => unknown!(
-            "t6.weapons.ads_perk_anim_types",
-            "Black Ops 2's fast-ADS perk speeds every weapon's sights, sniper player animation types too",
-            "the indices of the sniper and rear-clip sniper types in mp/playeranimtypes.txt reaching movement"
-        ),
-        Gap::Attachments => unknown!(
-            "t6.weapons.attachments",
-            "Black Ops 2's weapon attachments: a held weapon runs on its variant alone, without its attachments' scales and overrides",
-            "attachment indices in IW4L's Black Ops 2 weapon numbers and the attachments' definitions reaching movement"
+        Gap::HeightLock => unknown!(
+            "t6.movement.height_lock",
+            "whether a Black Ops 2 spectator stays inside the map's height-lock volumes",
+            "the runtime's line test against the map's heli_height_lock brush models"
         ),
     }
 }
@@ -83,16 +86,8 @@ fn events_unknown() -> &'static Unknown {
 fn water_unknown() -> &'static Unknown {
     unknown!(
         "t6.movement.water",
-        "the water level under a Black Ops 2 player: the match cannot tell, so players are taken as dry",
-        "a water surface query over the map's water for the runtime"
-    )
-}
-
-fn variant_parent_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.variant_parent",
-        "a Black Ops 2 charge-shot weapon keeps its own clip and rounds instead of those of the weapon its variant loads under",
-        "each weapon's parent variant (the weapon whose alternate or dual-wield chain loads it) in IW4L's Black Ops 2 weapon data"
+        "the water level under a Black Ops 2 player: the match cannot trace a line against the world's water, so players are taken as dry",
+        "the runtime's world line trace"
     )
 }
 
@@ -101,14 +96,6 @@ fn melee_lunge_unknown() -> &'static Unknown {
         "t6.weapons.melee_lunge",
         "a Black Ops 2 melee lunge: the client found a target, but IW4L's command carries no target entity, so the knife swings in place",
         "Black Ops 2's client melee target selection and the entity it sends in the command"
-    )
-}
-
-pub(crate) fn weapon_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.movement.weapon",
-        "a weapon without Black Ops 2's definition is read with every field zero",
-        "the weapon's Black Ops 2 weapon definition"
     )
 }
 
@@ -352,6 +339,12 @@ fn game_state(
         ps.pm_type = pm_type::LAST_STAND_REVIVED;
     }
     b.i(&mut ps.water_level, write);
+    b.f(&mut ps.mantle_yaw, write);
+    b.i(&mut ps.mantle_timer, write);
+    b.i(&mut ps.mantle_trans_index, write);
+    b.word(&mut ps.mantle_flags, write);
+    b.i(&mut ps.mover_entity_num, write);
+    b.i(&mut ps.mover_timestamp, write);
 }
 
 pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
@@ -413,9 +406,8 @@ pub(crate) fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut Use
 
 struct World<'a> {
     world: &'a dyn MoveWorld,
-    weapon_unknown: core::cell::Cell<bool>,
     water_unknown: core::cell::Cell<bool>,
-    variant_parent_unknown: core::cell::Cell<bool>,
+    height_lock_unknown: core::cell::Cell<bool>,
 }
 
 impl movement_t6::MoveWorld for World<'_> {
@@ -445,6 +437,7 @@ impl movement_t6::MoveWorld for World<'_> {
             allsolid: t.allsolid,
             startsolid: t.startsolid,
             walkable: t.walkable,
+            glass: t.glass,
         }
     }
 
@@ -466,17 +459,14 @@ impl movement_t6::MoveWorld for World<'_> {
                 name: &w.name,
             })
         });
-        found.unwrap_or_else(|| {
-            self.weapon_unknown.set(true);
-            movement_t6::Weapon {
-                def: WeaponDefView::new(&ZERO_DEF, &ZERO_VARIANT).expect("full-size blocks"),
-                ammo_index: 0,
-                clip_index: 0,
-                alt_weapon: 0,
-                dual_wield_weapon: 0,
-                named_anims: 0,
-                name: "",
-            }
+        found.unwrap_or_else(|| movement_t6::Weapon {
+            def: WeaponDefView::new(&ZERO_DEF, &ZERO_VARIANT).expect("full-size blocks"),
+            ammo_index: 0,
+            clip_index: 0,
+            alt_weapon: 0,
+            dual_wield_weapon: 0,
+            named_anims: 0,
+            name: "",
         })
     }
 
@@ -484,20 +474,47 @@ impl movement_t6::MoveWorld for World<'_> {
         self.world.weapon(weapon).is_some()
     }
 
-    fn variant_parent(&self, _weapon: u32) -> Option<u32> {
-        self.variant_parent_unknown.set(true);
-        None
+    fn variant_parent(&self, weapon: u32) -> Option<u32> {
+        self.world.weapon(weapon)?.variant_parent
     }
 
-    fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
-        match self.world.water_surface(origin, up, down) {
-            WaterSurface::At(z) => Some(z),
-            WaterSurface::Dry => None,
-            WaterSurface::Unknown => {
-                self.water_unknown.set(true);
+    fn anim_length_ms(&self, name: &str) -> Option<i32> {
+        self.world.anim_length_ms(name)
+    }
+
+    fn anim_root_delta(&self, name: &str, frac: f32) -> Option<[f32; 3]> {
+        self.world.anim_root_delta(name, frac)
+    }
+
+    fn height_lock(&self, point: [f32; 3], reach: f32) -> Option<bool> {
+        match self
+            .world
+            .volume_column(HEIGHT_LOCK_CLASS, HEIGHT_LOCK_LIMIT, point, reach)
+        {
+            VolumeColumn::NoVolumes => None,
+            VolumeColumn::Inside => Some(true),
+            VolumeColumn::Outside => Some(false),
+            VolumeColumn::Unknown => {
+                self.height_lock_unknown.set(true);
                 None
             }
         }
+    }
+
+    /// The engine's water height: a line from `up` above to `down` below
+    /// against the world's water, which counts where it strikes a surface
+    /// with a surface type, or at its start when that is in water.
+    fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> Option<f32> {
+        let start = [origin[0], origin[1], origin[2] + up];
+        let end = [origin[0], origin[1], origin[2] + down];
+        let Some(t) = self.world.world_line(start, end, WATER_CONTENTS) else {
+            self.water_unknown.set(true);
+            return None;
+        };
+        if t.fraction != 1.0 && t.surface_flags & SURFACE_TYPE_MASK != 0 {
+            return Some((end[2] - start[2]) * t.fraction + start[2]);
+        }
+        t.startsolid.then_some(start[2])
     }
 }
 
@@ -542,16 +559,17 @@ impl PlayerMovement for T6Movement {
             fire_buttons_swapped: false,
             airburst_distance: 0,
         };
-        let mask = if ps.pm_type >= pm_type::DEAD {
+        let mask = if ps.pm_type == pm_type::SPECTATOR {
+            SPECTATOR_CLIP_MASK
+        } else if ps.pm_type >= pm_type::DEAD {
             DEAD_CLIP_MASK
         } else {
             PLAYER_CLIP_MASK
         };
         let adapter = World {
             world,
-            weapon_unknown: core::cell::Cell::new(false),
             water_unknown: core::cell::Cell::new(false),
-            variant_parent_unknown: core::cell::Cell::new(false),
+            height_lock_unknown: core::cell::Cell::new(false),
         };
         let held: [movement_t6::HeldRounds; HELD_WEAPONS] = core::array::from_fn(|i| {
             (
@@ -583,20 +601,22 @@ impl PlayerMovement for T6Movement {
                     MoveEvent::LegsMove(movetype, _) => MoveSignal::LegsMove { movetype },
                 });
             }
+            if let Some((end, duration_ms)) = pm.mantle_started {
+                outcome
+                    .signals
+                    .push(MoveSignal::MantleStart { end, duration_ms });
+            }
             outcome.gaps.extend(pm.gaps().map(gap_unknown));
             if !outcome.signals.is_empty() {
                 outcome.gaps.push(events_unknown());
             }
             last = pm.cmd;
         }
+        if adapter.height_lock_unknown.get() {
+            outcome.gaps.push(gap_unknown(Gap::HeightLock));
+        }
         if adapter.water_unknown.get() {
             outcome.gaps.push(water_unknown());
-        }
-        if adapter.weapon_unknown.get() {
-            outcome.gaps.push(weapon_unknown());
-        }
-        if adapter.variant_parent_unknown.get() {
-            outcome.gaps.push(variant_parent_unknown());
         }
         for (slot, (weapon, clip, stock)) in movement_t6::held_rounds(&ps, &adapter)
             .into_iter()
@@ -614,6 +634,11 @@ impl PlayerMovement for T6Movement {
     }
 
     fn think(&self, player: &mut MovePlayer, dvar: &dyn Fn(&str) -> Option<String>) {
+        // The server's spectator think sets its own speed and runs no other.
+        if player.move_type == MoveType::Spectator {
+            player.speed = if player.free_look { SPECTATOR_SPEED } else { 0 };
+            return;
+        }
         let (ps, _) = unpack(player);
         let mut speed = dvar("g_speed")
             .and_then(|v| v.trim().parse::<f32>().ok())
@@ -628,6 +653,10 @@ impl PlayerMovement for T6Movement {
         player.gravity = dvar("bg_gravity")
             .and_then(|v| v.trim().parse::<f32>().ok())
             .unwrap_or(800.0) as i32;
+    }
+
+    fn moves_spectators(&self) -> bool {
+        true
     }
 
     fn spawn(&self, player: &mut MovePlayer) {
@@ -833,6 +862,7 @@ impl PlayerMovement for T6Movement {
             "HINT_HEALTH",
             "HINT_SPECTATOR",
             "HINT_TEAMPOT",
+            "HINT_WEAPON",
         ]
     }
 

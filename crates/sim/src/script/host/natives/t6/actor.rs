@@ -406,7 +406,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             let id = entity_id(world, receiver)?;
             let runtime = world.resource::<RoundScript>();
             let entity = &runtime.entities[&id];
-            if entity.kind != EntityKind::Actor && entity.brush.is_none() {
+            if !matches!(entity.kind, EntityKind::Actor | EntityKind::Vehicle)
+                && entity.brush.is_none()
+            {
                 return Err(
                     "Currently only supported on entities with brush models or actors".into(),
                 );

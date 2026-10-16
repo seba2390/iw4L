@@ -65,6 +65,7 @@ impl PlayerState {
             weapon: self.weapon,
             move_speed_scale: self.move_speed_scale_multiplier,
             frozen,
+            free_look: false,
             view_height: self.view_height_current,
             view_height_target: self.view_height_target,
             bob_cycle: self.bob_cycle,

@@ -157,11 +157,30 @@ fn player_link(
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {
-    // gscm_giveweapon: a weapon with an offhand slot becomes the player's
-    // offhand when he has none (`t6.weapons.state_machine`: by the shared
-    // equipment facts' offhand class).
+    // gscm_giveweapon: registers the weapon in the table when called during
+    // level init, and equips a weapon with an offhand slot when the player
+    // has none.
     registry.register(Namespace::Method, "giveweapon", |world, receiver, args| {
-        let (id, weapon) = super::super::player::give_weapon(world, receiver, args)?;
+        let name = super::string(args, 0)?;
+        super::weapon::weapon_index(world, &name)?;
+        if let Some(variant) = super::optional_int(args, 1)?
+            && !(0..=15).contains(&variant)
+        {
+            return Err(format!(
+                "GiveWeapon called with an invalid model variant: {variant}, valid is 0-15"
+            ));
+        }
+        let camo = (super::optional_int(args, 2)?.unwrap_or(0) & 127) as u8;
+        let forwarded = [args[0].clone()];
+        let (id, weapon) = super::super::player::give_weapon(world, receiver, &forwarded)?;
+        if camo != 0 {
+            crate::script_player::set_weapon_model(
+                &mut FrameWorld::from_world(world),
+                id,
+                weapon,
+                camo,
+            );
+        }
         crate::script_player::equip_offhand(&mut FrameWorld::from_world(world), id, weapon);
         Ok(Value::Undefined)
     });
@@ -238,6 +257,30 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             registry.register(Method, name, native);
         }
     }
+    macro_rules! register_weapon_method {
+        ($($name:literal),* $(,)?) => {$(
+            registry.register(Method, $name, |world, receiver, args| {
+                let w_name = super::string(args, 0)?;
+                super::weapon::weapon_index(world, &w_name)?;
+                let shared = NativeRegistry::engine_services();
+                let native = shared.get(Method, $name).expect("shared weapon method");
+                native(world, receiver, args)
+            });
+        )*};
+    }
+    register_weapon_method!(
+        "givestartammo",
+        "givemaxammo",
+        "switchtoweapon",
+        "switchtoweaponimmediate",
+        "hasweapon",
+        "setweaponammoclip",
+        "setweaponammostock",
+        "getweaponammoclip",
+        "getweaponammostock",
+        "getammocount",
+        "takeweapon",
+    );
     let black_ops = NativeRegistry::engine_services().with_black_ops();
     if let Some(native) = black_ops.get(Method, "islinkedto") {
         registry.register(Method, "islinkedto", native);
@@ -345,10 +388,9 @@ fn register_rest(registry: &mut NativeRegistry) {
         move_status(world, receiver, |s| s.mantling)
     });
     // Sprinting and aiming down the sights: the shared allowances, through
-    // the game's own movement when it has one. Melee: the handler sets the
-    // no-melee pm flag in `movement_t6`, and IW4L also takes the melee
-    // button from the player's commands (`t6.player.allowances`). Each
-    // answers the previous allowance.
+    // the game's own movement when it has one. Melee: the handler only sets
+    // the no-melee pm flag, which nothing in the executable reads, so the
+    // player still knifes. Each answers the previous allowance.
     registry.register(Method, "allowsprint", |world, receiver, args| {
         allowance(
             world,
@@ -383,7 +425,6 @@ fn register_rest(registry: &mut NativeRegistry) {
                     game_api::movement::ScriptFlag::NoMelee,
                     !allowed,
                 );
-                frame.client_meta_mut(id).controls.melee_disabled = !allowed;
                 Ok(Value::Undefined)
             },
         )

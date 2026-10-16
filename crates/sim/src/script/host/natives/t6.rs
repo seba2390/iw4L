@@ -125,6 +125,15 @@ fn int(args: &[Value], index: usize) -> Result<i32, String> {
     }
 }
 
+/// A builtin's optional int parameter: read only when the call passed it.
+fn optional_int(args: &[Value], index: usize) -> Result<Option<i32>, String> {
+    if args.len() > index {
+        int(args, index).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
 /// A builtin's string parameter: a string, or a number or vector as text.
 fn string(args: &[Value], index: usize) -> Result<String, String> {
     match arg(args, index)? {
@@ -1229,9 +1238,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let classname = world.resource::<RoundScript>().entities[&id]
             .classname
             .clone();
-        if HINT_CLASSES.contains(&&*classname) && name.eq_ignore_ascii_case("HINT_INHERIT") {
-            super::super::physics::usable(world, receiver)?.cursor = -1;
-            return Ok(Value::Undefined);
+        if HINT_CLASSES.contains(&&*classname) {
+            if name.eq_ignore_ascii_case("HINT_INHERIT") {
+                super::super::physics::usable(world, receiver)?.cursor = -1;
+                return Ok(Value::Undefined);
+            }
+            if name.eq_ignore_ascii_case("HINT_WEAPON") {
+                let weapon_name = string(args, 1)?;
+                weapon::weapon_index(world, &weapon_name)?;
+                super::super::physics::usable(world, receiver)?.cursor = 7;
+                return Ok(Value::Undefined);
+            }
         }
         let cursor = CURSOR_HINTS
             .iter()
@@ -1679,6 +1696,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         } else {
             *mask |= bit;
         }
+        // The runtime's spectating picks targets and free flight by name.
+        if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
+            slot.spectate.insert(name.as_str().into(), allow);
+        }
         Ok(Value::Undefined)
     });
     registry.register(Method, "enableusability", |world, receiver, _| {
@@ -1998,17 +2019,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "disableweapons"),
         (Method, "setviewmodel"),
         (Method, "setmovespeedscale"),
-        (Method, "givestartammo"),
-        (Method, "givemaxammo"),
-        (Method, "switchtoweapon"),
-        (Method, "switchtoweaponimmediate"),
         (Method, "setmaxhealth"),
-        (Method, "hasweapon"),
-        (Method, "setweaponammoclip"),
-        (Method, "setweaponammostock"),
-        (Method, "getweaponammoclip"),
-        (Method, "getweaponammostock"),
-        (Method, "getammocount"),
         (Method, "disableoffhandweapons"),
         (Function, "setplayerignoreradiusdamage"),
         (Method, "enableoffhandweapons"),
@@ -2018,7 +2029,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Method, "unsetperk"),
         (Method, "getweaponslistprimaries"),
         (Method, "getweaponslist"),
-        (Method, "takeweapon"),
         (Method, "takeallweapons"),
         (Method, "getcurrentweapon"),
         (Method, "isonground"),

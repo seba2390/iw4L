@@ -93,6 +93,31 @@ fn reset_pose(frame: &mut FrameWorld, client: ClientId, defaults: ([f32; 3], [f3
     }
 }
 
+/// A spectator following no one, moved by the game's own spectator move.
+pub(crate) fn flies(world: &mut World, client: ClientId) -> bool {
+    let free = world
+        .get_resource::<RoundScript>()
+        .and_then(|runtime| runtime.players.get(&client.0))
+        .is_some_and(|slot| {
+            &*slot.sessionstate == "spectator"
+                && slot.seat.archive_ms == 0
+                && slot.spectator.target.is_none()
+        });
+    free && game_flies(&FrameWorld::from_world(world))
+}
+
+/// The scripts let the spectator look around freely.
+pub(crate) fn free_look(world: &World, client: ClientId) -> bool {
+    world
+        .get_resource::<RoundScript>()
+        .and_then(|runtime| runtime.players.get(&client.0))
+        .is_some_and(|slot| permitted(slot, "freelook"))
+}
+
+fn game_flies(frame: &FrameWorld) -> bool {
+    crate::game_move::rules(frame).is_some_and(|movement| movement.moves_spectators())
+}
+
 pub(crate) fn advance(world: &mut World) {
     update(world, true);
 }
@@ -220,12 +245,13 @@ fn update(world: &mut World, input: bool) {
             }
         } else {
             let freelook = permitted(slot, "freelook");
-            if (previous.is_some() || !freelook)
+            let game_flies = game_flies(&frame);
+            if (previous.is_some() || !freelook && !game_flies)
                 && let Some((origin, angles)) = slot.spectator.defaults
             {
                 reset_pose(&mut frame, id, (origin, angles));
             }
-            if input && freelook {
+            if input && freelook && !game_flies {
                 let commands = frame
                     .ecs()
                     .resource::<crate::step::StepRequest>()

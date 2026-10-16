@@ -105,6 +105,8 @@ pub struct MovePlayer {
     pub move_speed_scale: f32,
     /// A script froze the player's controls.
     pub frozen: bool,
+    /// A spectator may fly free (`allowspectateteam("freelook", …)`).
+    pub free_look: bool,
     /// Set by movement: the eye height above the origin.
     pub view_height: f32,
     /// Set by movement: the eye height the stance settles at.
@@ -147,6 +149,7 @@ impl Default for MovePlayer {
             weapon: 0,
             move_speed_scale: 1.0,
             frozen: false,
+            free_look: false,
             view_height: 0.0,
             view_height_target: 0,
             bob_cycle: 0,
@@ -228,6 +231,8 @@ pub struct MoveTrace {
     pub allsolid: bool,
     pub startsolid: bool,
     pub walkable: bool,
+    /// What was hit is a piece of breakable glass.
+    pub glass: bool,
 }
 
 /// A weapon as its own game's player movement reads it: the definition and
@@ -245,6 +250,8 @@ pub struct GameWeapon {
     pub alt_weapon: u32,
     /// The weapon in the left hand when dual wielding; 0 when none.
     pub dual_wield_weapon: u32,
+    /// The weapon whose alternate or dual-wield chain loads this variant.
+    pub variant_parent: Option<u32>,
     /// The variant's animation slots that name an animation, by slot.
     pub named_anims: u128,
     /// The weapon's name in its game.
@@ -273,6 +280,18 @@ pub enum WaterSurface {
     Unknown,
 }
 
+/// Where a point's vertical line lies against one class of the map's volume
+/// entities.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VolumeColumn {
+    /// The map places no such volume.
+    NoVolumes,
+    Inside,
+    Outside,
+    /// The match cannot tell.
+    Unknown,
+}
+
 /// The match around a moving player.
 pub trait MoveWorld {
     /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask`
@@ -293,6 +312,34 @@ pub trait MoveWorld {
     /// The water surface over `origin`, searched from `up` above to `down`
     /// below it.
     fn water_surface(&self, origin: [f32; 3], up: f32, down: f32) -> WaterSurface;
+    /// The length in milliseconds of the game's animation `name`; `None`
+    /// when it is not loaded.
+    fn anim_length_ms(&self, _name: &str) -> Option<i32> {
+        None
+    }
+    /// The root translation animation `name` has made by `frac` (0 to 1) of
+    /// its length; `None` when it is not loaded.
+    fn anim_root_delta(&self, _name: &str, _frac: f32) -> Option<[f32; 3]> {
+        None
+    }
+    /// A line from `start` to `end` against the world's own collision alone
+    /// (no entity), stopping at what `mask` names; `None` when the match
+    /// cannot trace it.
+    fn world_line(&self, _start: [f32; 3], _end: [f32; 3], _mask: u32) -> Option<MoveTrace> {
+        None
+    }
+    /// Whether the vertical line `reach` above and below `point` crosses the
+    /// brush model of one of the first `limit` map entities of `classname`
+    /// (one per model).
+    fn volume_column(
+        &self,
+        _classname: &str,
+        _limit: usize,
+        _point: [f32; 3],
+        _reach: f32,
+    ) -> VolumeColumn {
+        VolumeColumn::Unknown
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -302,11 +349,23 @@ pub struct MoveContext {
 }
 
 /// What a movement step tells the match, in the game's own numbering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MoveSignal {
-    Event { event: i32, parm: i32 },
-    Anim { event: i32 },
-    LegsMove { movetype: i32 },
+    Event {
+        event: i32,
+        parm: i32,
+    },
+    Anim {
+        event: i32,
+    },
+    LegsMove {
+        movetype: i32,
+    },
+    /// A mantle began: where it ends and how long it takes.
+    MantleStart {
+        end: [f32; 3],
+        duration_ms: i32,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -372,6 +431,11 @@ pub trait PlayerMovement: Sync {
     /// What the server sets on the player before each command, from the
     /// match's dvars.
     fn think(&self, player: &mut MovePlayer, dvar: &dyn Fn(&str) -> Option<String>);
+
+    /// The game's own movement flies a free spectator.
+    fn moves_spectators(&self) -> bool {
+        false
+    }
 
     /// A fresh player at spawn.
     fn spawn(&self, player: &mut MovePlayer);

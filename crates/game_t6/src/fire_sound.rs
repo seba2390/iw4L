@@ -64,7 +64,7 @@ fn left_weapon_unknown() -> &'static Unknown {
 /// round when the weapon names one.
 fn sound(def: &[u8], variant: &[u8], shot: &FireSoundShot) -> Rule<Option<FireSound>> {
     let Some(def) = WeaponDefView::new(def, variant) else {
-        return Rule::Unknown(crate::movement::weapon_unknown());
+        return Rule::Known(None);
     };
     if shot.left && !shot.player_view {
         return Rule::Unknown(left_weapon_unknown());
