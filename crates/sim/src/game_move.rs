@@ -67,6 +67,22 @@ impl MoveWorld for MatchMoveWorld<'_> {
         WaterSurface::Unknown
     }
 
+    fn world_line(&self, start: [f32; 3], end: [f32; 3], mask: u32) -> Option<MoveTrace> {
+        let content = &self.content;
+        let trace = crate::world::clip_trace(
+            content.clip_brushes(),
+            content.clip_bsp(),
+            content.clip_mesh(),
+            start,
+            end,
+            [0.0; 3],
+            [0.0; 3],
+            mask,
+            &|_| true,
+        );
+        Some(trace.move_trace())
+    }
+
     fn volume_column(
         &self,
         classname: &str,
