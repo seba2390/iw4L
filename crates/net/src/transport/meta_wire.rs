@@ -1219,6 +1219,17 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     if let Some(water_fog) = meta.view_effects.water_fog {
         encode_fog_params(out, water_fog);
     }
+    out.put_u16(meta.view_effects.client_lights.len() as u16);
+    for light in &meta.view_effects.client_lights {
+        out.put_u16(light.index);
+        for b in light.color {
+            out.put_u8(b);
+        }
+        out.put_f32(light.intensity);
+        out.put_f32(light.radius);
+        out.put_f32(light.cos_half_fov_outer);
+        out.put_f32(light.cos_half_fov_inner);
+    }
     debug_assert!(meta.menu_commands.len() <= sim::MENU_COMMAND_TAIL);
     out.put_u8(meta.menu_commands.len() as u8);
     for command in &meta.menu_commands {
@@ -1477,6 +1488,25 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             0 => None,
             1 => Some(decode_fog_params(input)?),
             _ => return Err(WireError::Malformed("bad water fog tag")),
+        },
+        client_lights: {
+            let mut lights = Vec::new();
+            for _ in 0..input.get_u16()? {
+                lights.push(sim::ClientLightOverride {
+                    index: input.get_u16()?,
+                    color: [
+                        input.get_u8()?,
+                        input.get_u8()?,
+                        input.get_u8()?,
+                        input.get_u8()?,
+                    ],
+                    intensity: input.get_f32()?,
+                    radius: input.get_f32()?,
+                    cos_half_fov_outer: input.get_f32()?,
+                    cos_half_fov_inner: input.get_f32()?,
+                });
+            }
+            lights
         },
     };
     let mut menu_commands = Vec::new();

@@ -204,11 +204,13 @@ impl T5Lane {
             "common_mp T5 teamset scripts: {} (_teamset_*.gsc icons)",
             sink.teamsets.len()
         ));
+        let light_defs = asset_world::capture_t5_light_defs(&stream);
         CommonCensus {
             pending_images,
             weapons,
             cac_tables: sink.stats_tables.into_values().collect(),
             material_population: materials,
+            light_defs,
             fpv: sink.fpv_meshes,
             projectile_meshes: sink.projectile_meshes,
             world_weapons: sink.world_weapons,
@@ -842,9 +844,10 @@ impl ZoneLane for T5Lane {
             memory.images,
             memory.decoded_images,
         ));
+        let light_defs = asset_world::capture_t5_light_defs(&stream);
         MaterialPopulation {
             walked: sink.walked,
-            light_defs: Vec::new(),
+            light_defs,
             materials: sink.materials,
             report,
             cac_tables: sink.stats_tables.into_values().collect(),

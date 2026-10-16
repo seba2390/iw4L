@@ -156,10 +156,36 @@ pub(crate) fn sync_script_fog(
     local: Res<net::LocalPresentClient>,
     mut state: ResMut<ScriptFogPresentation>,
     mut map_fog: Option<ResMut<MapFrameFog>>,
+    mut primary_lights: Option<ResMut<super::MapPrimaryLights>>,
     mut commands: Commands,
 ) {
     if !scene.spawned {
         return;
+    }
+    if let Some(primary) = primary_lights.as_deref_mut()
+        && let Some(meta) = presented
+            .snapshot()
+            .and_then(|snapshot| snapshot.meta.for_client(local.0))
+        && !meta.view_effects.client_lights.is_empty()
+    {
+        const INV_255: f32 = f32::from_bits(0x3b80_8081);
+        for ov in &meta.view_effects.client_lights {
+            let index = usize::from(ov.index);
+            let Some(pack) = primary.lights.get_mut(index) else {
+                continue;
+            };
+            let rgb = std::array::from_fn(|i| f32::from(ov.color[i]) * INV_255 * ov.intensity);
+            pack.color = rgb;
+            pack.radius = ov.radius;
+            pack.cos_outer = ov.cos_half_fov_outer;
+            pack.cos_inner = ov.cos_half_fov_inner;
+            pack.exponent = ov.color[3];
+            if let Some(overrides) = primary.overrides.get_mut(index) {
+                let rgba = [rgb[0], rgb[1], rgb[2], 1.0];
+                overrides.diffuse = Some(rgba);
+                overrides.specular = Some(rgba);
+            }
+        }
     }
     let fog = presented.snapshot().and_then(|snapshot| {
         snapshot

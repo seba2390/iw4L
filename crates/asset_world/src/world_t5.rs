@@ -503,23 +503,7 @@ pub fn build_t5_world_draw(
             brush_model_bounds,
             surface_materials,
             primary_lights,
-            light_defs: s
-                .light_defs()
-                .iter()
-                .filter_map(|def| {
-                    Some(crate::world_draw::CapturedLightDef {
-                        namespace: crate::AssetNamespace::T5,
-                        name: crate::AssetRef::decode(s.cstr(def.name?).ok()?),
-                        attenuation_image_name: def
-                            .attenuation_image_name
-                            .and_then(|p| s.cstr(p).ok())
-                            .map(str::to_owned),
-                        attenuation_width: def.attenuation_width,
-                        attenuation_sampler: def.attenuation_sampler,
-                        lmap_lookup_start: def.lmap_lookup_start,
-                    })
-                })
-                .collect(),
+            light_defs: capture_t5_light_defs(s),
             sun_primary_light_count: geometry.sun_primary_light_index as u32,
             sun_stages: Vec::new(),
             light_region_hulls: None,
@@ -957,6 +941,25 @@ fn t5_vec4(s: &ZoneStream<'_>, light: fastfile_t5::Ptr, off: usize) -> Option<[f
         s.f32_at(light, off + 8).ok()?,
         s.f32_at(light, off + 12).ok()?,
     ])
+}
+
+pub fn capture_t5_light_defs(s: &ZoneStream<'_>) -> Vec<crate::world_draw::CapturedLightDef> {
+    s.light_defs()
+        .iter()
+        .filter_map(|def| {
+            Some(crate::world_draw::CapturedLightDef {
+                namespace: crate::AssetNamespace::T5,
+                name: crate::AssetRef::decode(s.cstr(def.name?).ok()?),
+                attenuation_image_name: def
+                    .attenuation_image_name
+                    .and_then(|p| s.cstr(p).ok())
+                    .map(str::to_owned),
+                attenuation_width: def.attenuation_width,
+                attenuation_sampler: def.attenuation_sampler,
+                lmap_lookup_start: def.lmap_lookup_start,
+            })
+        })
+        .collect()
 }
 
 fn t5_def_name(s: &ZoneStream<'_>, light: fastfile_t5::Ptr) -> Option<String> {

@@ -48,6 +48,7 @@ const SHARED_BUILTINS: &[(super::Namespace, &str)] = {
         (F, "length"),
         (F, "lengthsquared"),
         (F, "lerpfloat"),
+        (F, "lerpvector"),
         (F, "max"),
         (F, "min"),
         (F, "randomfloat"),
@@ -710,7 +711,7 @@ pub(crate) fn install(
         Arc::new(program),
         natives,
         &level.entities,
-        &level.keys,
+        level.client_keys.as_ref().unwrap_or(&level.keys),
         level.entity_fields.as_ref(),
     )?;
     let local = {
@@ -825,6 +826,38 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                         .client_meta_mut(crate::ClientId(0))
                         .view_effects
                         .water_fog = Some(water_fog);
+                }
+            }
+            let client_lights: Vec<crate::ClientLightOverride> = {
+                let entities = &client.world.resource::<RoundScript>().entities;
+                let lights = &client.world.resource::<ClientLights>().lights;
+                let mut by_index = std::collections::BTreeMap::new();
+                for (id, light) in lights {
+                    if entities.contains_key(id)
+                        && let Ok(index) = u16::try_from(light.index)
+                    {
+                        by_index.insert(
+                            index,
+                            crate::ClientLightOverride {
+                                index,
+                                color: light.color,
+                                intensity: light.intensity,
+                                radius: light.radius,
+                                cos_half_fov_outer: light.cos_half_fov_outer,
+                                cos_half_fov_inner: light.cos_half_fov_inner,
+                            },
+                        );
+                    }
+                }
+                by_index.into_values().collect()
+            };
+            {
+                let mut frame = crate::frame::FrameWorld::from_world(server);
+                if frame.client_meta(crate::ClientId(0)).is_some() {
+                    frame
+                        .client_meta_mut(crate::ClientId(0))
+                        .view_effects
+                        .client_lights = client_lights;
                 }
             }
             present::present(server, &mut client);

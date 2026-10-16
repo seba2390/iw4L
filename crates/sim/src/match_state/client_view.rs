@@ -55,6 +55,17 @@ pub struct VisionChange {
     pub set_ms: i32,
 }
 
+/// A client script's override of one of the map's primary lights (`makelight`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClientLightOverride {
+    pub index: u16,
+    pub color: [u8; 4],
+    pub intensity: f32,
+    pub radius: f32,
+    pub cos_half_fov_outer: f32,
+    pub cos_half_fov_inner: f32,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ViewEffects {
     pub naked_vision: Option<VisionChange>,
@@ -71,6 +82,8 @@ pub struct ViewEffects {
     pub fog: Option<crate::ScriptFog>,
     /// Water fog set for this client (`setWaterFog`).
     pub water_fog: Option<crate::ScriptFogParams>,
+    /// Primary light overrides from the client's light entities (`makelight`).
+    pub client_lights: Vec<ClientLightOverride>,
 }
 
 /// How many client-script vision calls a snapshot carries.
