@@ -1387,6 +1387,7 @@ fn preflight_match_install(
                 radius: light.radius,
                 cos_half_fov_outer: light.cos_outer,
                 cos_half_fov_inner: light.cos_inner,
+                limits: light.t6_limits,
             })
             .collect()
     });

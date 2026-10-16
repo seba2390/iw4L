@@ -146,13 +146,27 @@ pub(crate) fn install(
     output.next_sound = 1;
     world.insert_resource(output);
     world.insert_resource(crate::script::client::ClientSoundReports::default());
+    let map_lights = server
+        .resource::<RoundScript>()
+        .restart
+        .as_ref()
+        .map(|plan| plan.primary_lights.as_ref().clone())
+        .unwrap_or_else(Vec::new);
+    diag::info!(
+        Sim,
+        "csc: {} map primary lights ({} may turn, {} may move)",
+        map_lights.len(),
+        map_lights
+            .iter()
+            .filter(|l| l.limits.is_some_and(|[r, _]| r < 1.0))
+            .count(),
+        map_lights
+            .iter()
+            .filter(|l| l.limits.is_some_and(|[_, t]| t > 0.0))
+            .count()
+    );
     world.insert_resource(crate::script::client::ClientLights {
-        map: server
-            .resource::<RoundScript>()
-            .restart
-            .as_ref()
-            .map(|plan| plan.primary_lights.as_ref().clone())
-            .unwrap_or_else(Vec::new),
+        map: map_lights,
         ..Default::default()
     });
     let callbacks = &setup.callbacks;

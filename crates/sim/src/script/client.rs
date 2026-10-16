@@ -545,6 +545,10 @@ pub(crate) struct ClientLight {
     pub(crate) radius: f32,
     pub(crate) cos_half_fov_outer: f32,
     pub(crate) cos_half_fov_inner: f32,
+    /// Where the light points and stands, when its entity moves it
+    /// (Black Ops 2).
+    pub(crate) direction: Option<[f32; 3]>,
+    pub(crate) origin: Option<[f32; 3]>,
 }
 
 /// The map's primary lights, and the client entities made lights.
@@ -968,6 +972,8 @@ pub(crate) fn publish_client_lights(server: &mut World, client: &World) {
                     radius: light.radius,
                     cos_half_fov_outer: light.cos_half_fov_outer,
                     cos_half_fov_inner: light.cos_half_fov_inner,
+                    direction: light.direction,
+                    origin: light.origin,
                 },
             );
         }

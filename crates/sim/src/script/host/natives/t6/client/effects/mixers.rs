@@ -158,6 +158,10 @@ pub(super) struct Mixer {
     params: [u32; 5],
     exploder: i32,
     exploder_on: bool,
+    /// A full turn of the light every this many seconds (0: none), and the
+    /// time the next turn starts after.
+    rotate_seconds: f32,
+    rotate_next: i32,
 }
 
 /// The client's mixers, in `makemixerlight` order (a light's mixer index is
@@ -974,6 +978,52 @@ fn frame(world: &mut World, mixer: &mut Mixer, now: i32, out: &mut Requests) {
     }
 }
 
+/// The mixer's post step: a rotating mixer starts the light's next full
+/// yaw turn once the last is due and points the light along its entity's
+/// angles, past its rotation limit.
+fn rotate(world: &mut World, mixer: &mut Mixer, now: i32) {
+    if mixer.rotate_seconds == 0.0 {
+        return;
+    }
+    let Some(light) = mixer.light else {
+        return;
+    };
+    let angles = match world
+        .resource_mut::<RoundScript>()
+        .object_field(light, "angles")
+    {
+        Value::Vector(angles) => angles,
+        _ => [0.0; 3],
+    };
+    if mixer.rotate_next < now {
+        mixer.rotate_next = now.wrapping_sub(trunc(mixer.rotate_seconds * -1000.0));
+        let duration_ms = i64::from(trunc(mixer.rotate_seconds * 1000.0));
+        if duration_ms > 0 {
+            world
+                .resource_mut::<crate::script::host::mechanics::Mechanics>()
+                .start(
+                    light,
+                    crate::script::host::mechanics::Motion {
+                        field: "angles",
+                        path: crate::script::host::mechanics::MotionPath::Linear {
+                            from: angles,
+                            to: [angles[0], angles[1] + 360.0, angles[2]],
+                            accel: 0.0,
+                            decel: 0.0,
+                        },
+                        start_ms: i64::from(now),
+                        duration_ms,
+                        done: "",
+                    },
+                );
+        }
+    }
+    let (forward, _, _) = math_iw4::angle_vectors(angles);
+    if let Some(entry) = world.resource_mut::<ClientLights>().lights.get_mut(&light) {
+        entry.direction = Some(forward.map(|v| -v));
+    }
+}
+
 /// The client game's mixers run their frame: level notifies since the last
 /// frame activate mixers of that event, then each mixer runs, then the
 /// light loop exploders and sounds they asked for run.
@@ -997,6 +1047,7 @@ pub(crate) fn run_frame(world: &mut World, now: i32) {
     let before = light_values(world, &mixers);
     for mixer in &mut mixers.mixers {
         frame(world, mixer, now, &mut out);
+        rotate(world, mixer, now);
     }
     if !mixers.reported {
         let after = light_values(world, &mixers);
@@ -1178,10 +1229,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Method,
         "setmixerlightrotatetime",
         |world, receiver, args| {
-            mixer_of(world, receiver)?;
-            float(args, 0)?;
-            // t6.csc.light.rotate: the mixer's light does not turn: the
-            // renderer draws primary lights at their compiled direction.
+            let index = mixer_of(world, receiver)?;
+            let seconds = float(args, 0)?;
+            with_mixer(world, index, |mixer| mixer.rotate_seconds = seconds);
             Ok(Value::Undefined)
         },
     );

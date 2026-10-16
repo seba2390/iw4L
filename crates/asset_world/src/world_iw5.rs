@@ -889,6 +889,7 @@ fn extract_primary_lights(
             t5_cookie2: None,
             t5_diffuse_color: None,
             t5_specular_color: None,
+            t6_limits: None,
         });
     }
     Ok(output)

@@ -901,6 +901,7 @@ fn primary_lights(
                 v4(80)?
             }),
             t5_specular_color: None,
+            t6_limits: Some([r.f32(p.at(60))?, r.f32(p.at(64))?]),
         });
     }
     Ok(lights)

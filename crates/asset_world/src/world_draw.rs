@@ -508,6 +508,9 @@ pub struct WorldPrimaryLight {
     pub t5_diffuse_color: Option<[f32; 4]>,
 
     pub t5_specular_color: Option<[f32; 4]>,
+    /// Black Ops 2's rotation and translation limits: how far a light
+    /// entity made from this light may turn (a cosine) and move.
+    pub t6_limits: Option<[f32; 2]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1411,6 +1414,7 @@ fn extract_primary_lights(
             t5_cookie2: None,
             t5_diffuse_color: None,
             t5_specular_color: None,
+            t6_limits: None,
         });
     }
     Ok(output)

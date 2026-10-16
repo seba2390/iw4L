@@ -984,6 +984,8 @@ fn register_lights(registry: &mut NativeRegistry) {
                 radius: light.radius,
                 cos_half_fov_outer: light.cos_half_fov_outer,
                 cos_half_fov_inner: light.cos_half_fov_inner,
+                direction: None,
+                origin: None,
             },
         );
         Ok(Value::Undefined)

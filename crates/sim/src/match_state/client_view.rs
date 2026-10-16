@@ -75,6 +75,9 @@ pub struct ClientLightOverride {
     pub radius: f32,
     pub cos_half_fov_outer: f32,
     pub cos_half_fov_inner: f32,
+    /// Where it points and stands, when its entity moves it.
+    pub direction: Option<[f32; 3]>,
+    pub origin: Option<[f32; 3]>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

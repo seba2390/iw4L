@@ -620,10 +620,76 @@ fn client_light_mut(world: &mut World, id: u64) -> bevy_ecs::prelude::Mut<'_, Cl
         .map_unchanged(|lights| lights.lights.get_mut(&id).expect("a light entity"))
 }
 
-/// The client game's light mixers run their frame.
+/// The client game's lights run their frame: each light entity's light
+/// follows its entity (as its map light's limits allow), then the mixers
+/// run.
 pub(super) fn run_mixers(world: &mut World) {
     let now = now_ms(world) as i32;
+    follow_entities(world);
     mixers::run_frame(world, now);
+}
+
+/// Points each light along its entity's angles when its map light may turn
+/// (a rotation limit under 1), held within the limit's cone around the map
+/// light's direction, and stands it at its entity's origin when it may move
+/// (a translation limit over 0), held within that distance of the map
+/// light's origin.
+fn follow_entities(world: &mut World) {
+    let ids: Vec<u64> = world
+        .get_resource::<ClientEffects>()
+        .map(|fx| fx.lights.keys().copied().collect())
+        .unwrap_or_else(Vec::new);
+    for id in ids {
+        let Some((index, _)) = world
+            .resource::<ClientLights>()
+            .lights
+            .get(&id)
+            .map(|light| (light.index, ()))
+        else {
+            continue;
+        };
+        let Some(map) = world.resource::<ClientLights>().map.get(index).cloned() else {
+            continue;
+        };
+        let Some([rotation, translation]) = map.limits else {
+            continue;
+        };
+        let mut direction = None;
+        if rotation <= 1.0 && rotation != 1.0 {
+            let angles = entity_angles(world, id);
+            let (forward, _, _) = math_iw4::angle_vectors(angles);
+            let mut dir = forward.map(|v| -v);
+            if -1.0 < rotation {
+                let base = map.direction;
+                let dot = base[1] * dir[1] + base[0] * dir[0] + base[2] * dir[2];
+                if dot < rotation {
+                    let s = ((1.0 - rotation * rotation) / (1.0 - dot * dot)).sqrt();
+                    dir =
+                        std::array::from_fn(|k| base[k] * rotation + (base[k] * -dot + dir[k]) * s);
+                }
+            }
+            direction = Some(dir);
+        }
+        let mut origin = None;
+        if 0.0 < translation {
+            let mut at = entity_origin(world, id);
+            let d: [f32; 3] = std::array::from_fn(|k| at[k] - map.origin[k]);
+            let length_sq = d[1] * d[1] + d[0] * d[0] + d[2] * d[2];
+            if translation * translation <= length_sq {
+                let scale = translation / length_sq.sqrt();
+                at = std::array::from_fn(|k| d[k] * scale + map.origin[k]);
+            }
+            origin = Some(at);
+        }
+        if let Some(light) = world.resource_mut::<ClientLights>().lights.get_mut(&id) {
+            if direction.is_some() {
+                light.direction = direction;
+            }
+            if origin.is_some() {
+                light.origin = origin;
+            }
+        }
+    }
 }
 
 /// Checks that `receiver` is a light entity for a mixer builtin, formatting
@@ -1275,6 +1341,8 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 radius: light.radius,
                 cos_half_fov_outer: light.cos_half_fov_outer,
                 cos_half_fov_inner: light.cos_half_fov_inner,
+                direction: None,
+                origin: None,
             },
         );
         // t6.csc.light.render: the renderer draws the light's values at the
