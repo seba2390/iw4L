@@ -7,7 +7,7 @@ use crate::world::ClientId;
 use game_api::movement::{
     GameWeapon, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
     MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveWorld, PlayerMovement, ScriptFlag,
-    Stance, VolumeColumn, WaterSurface,
+    ShellshockStart, ShockMove, Stance, VolumeColumn, WaterSurface,
 };
 
 /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask` names,
@@ -37,6 +37,7 @@ fn frozen(world: &FrameWorld, id: ClientId) -> bool {
 /// and the game's weapon fields.
 struct MatchMoveWorld<'a> {
     world: &'a FrameWorld<'a>,
+    id: ClientId,
     content: std::sync::Arc<crate::SimContent>,
     trace: &'a MoveTraceFn<'a>,
 }
@@ -60,6 +61,16 @@ impl MoveWorld for MatchMoveWorld<'_> {
 
     fn weapon(&self, weapon: u32) -> Option<&GameWeapon> {
         self.content.game_weapon(weapon)
+    }
+
+    /// The moving player's shock: the one the match last started on them,
+    /// which is the one their state names.
+    fn shellshock(&self, _index: i32) -> Option<ShockMove> {
+        let shock = self.world.client_meta(self.id)?.shellshock.as_ref()?;
+        Some(ShockMove {
+            movement_scale: shock.movement_scale,
+            animation: shock.animation,
+        })
     }
 
     /// The runtime has no water query yet.
@@ -177,11 +188,13 @@ pub(crate) fn run(
     }
     let context = MoveContext {
         predicting: !world.publishes_snapshot(),
+        level_time: crate::level_time_ms(tick),
     };
     let before = player.clone();
     let mut outcome = {
         let around = MatchMoveWorld {
             world: &*world,
+            id,
             content: world.content(),
             trace,
         };
@@ -289,6 +302,19 @@ fn update<T>(
     let out = change(&mut player);
     world.player_mut(id)?.store_move_player(&player);
     Some(out)
+}
+
+/// Starts (`Some`) or clears (`None`) the player's shellshock in the game's
+/// own movement; false when the match runs the simulation's movement.
+pub(crate) fn shellshock(
+    world: &mut FrameWorld,
+    id: ClientId,
+    shock: Option<ShellshockStart>,
+) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| movement.shellshock(player, shock)).unwrap_or(false)
 }
 
 /// A script's restriction, kept by the game's own movement; false when the

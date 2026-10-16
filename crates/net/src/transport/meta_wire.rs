@@ -1659,7 +1659,7 @@ fn encode_shock(out: &mut WireWriter, shock: Option<&hud_iw4::ShockParams>) {
         out.put_u8(0);
         return;
     };
-    out.put_u8(3);
+    out.put_u8(4);
     out.put_i32(shock.screen_type);
     out.put_i32(shock.white_fade_ms);
     out.put_i32(shock.shot_fade_ms);
@@ -1686,6 +1686,9 @@ fn encode_shock(out: &mut WireWriter, shock: Option<&hud_iw4::ShockParams>) {
             }
         }
     }
+    out.put_f32(shock.movement_scale);
+    out.put_u8(u8::from(shock.animation));
+    out.put_u8(u8::from(shock.look.reciprocal_fade));
 }
 
 fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParams>, WireError> {
@@ -1693,21 +1696,22 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
     if tag == 0 {
         return Ok(None);
     }
-    if tag != 1 && tag != 2 && tag != 3 {
+    if !(1..=4).contains(&tag) {
         return Err(WireError::Malformed("bad shellshock tag"));
     }
     let mut shock = hud_iw4::ShockParams {
         screen_type: input.get_i32()?,
         white_fade_ms: input.get_i32()?,
         shot_fade_ms: input.get_i32()?,
-        blur_blend_ms: if tag == 3 { input.get_i32()? } else { 0 },
-        blur_fade_ms: if tag == 3 { input.get_i32()? } else { 0 },
+        blur_blend_ms: if tag >= 3 { input.get_i32()? } else { 0 },
+        blur_fade_ms: if tag >= 3 { input.get_i32()? } else { 0 },
         look: hud_iw4::ShellshockLookParms {
             affect: input.get_u8()? != 0,
             fade_ms: input.get_i32()?,
             mouse_sensitivity: input.get_f32()?,
             max_pitch_speed: input.get_f32()?,
             max_yaw_speed: input.get_f32()?,
+            reciprocal_fade: false,
         },
         sound: hud_iw4::ShellshockSoundParms {
             channel_volumes: None,
@@ -1717,6 +1721,8 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
             abort_alias: get_text(input)?,
         },
         movement: input.get_u8()? != 0,
+        movement_scale: 1.0,
+        animation: false,
     };
     if shock.blur_blend_ms < 0 || shock.blur_fade_ms < 0 {
         return Err(WireError::Malformed("negative shellshock blur time"));
@@ -1746,6 +1752,14 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
                 shock.sound.channel_volumes = Some(volumes);
             }
             _ => return Err(WireError::Malformed("bad shellshock channel volumes tag")),
+        }
+    }
+    if tag >= 4 {
+        shock.movement_scale = input.get_f32()?;
+        shock.animation = input.get_u8()? != 0;
+        shock.look.reciprocal_fade = input.get_u8()? != 0;
+        if !shock.movement_scale.is_finite() {
+            return Err(WireError::Malformed("bad shellshock movement scale"));
         }
     }
     Ok(Some(shock))

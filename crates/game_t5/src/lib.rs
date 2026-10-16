@@ -8,6 +8,7 @@ mod missile;
 mod movement;
 mod post_chain;
 mod radius;
+mod shock;
 mod turret;
 mod viewmodel;
 mod vision;
@@ -233,12 +234,13 @@ fn sent_font_scales(font_scale: f32, _from_font_scale: f32) -> (f32, f32) {
 }
 
 impl game_api::GameVision for T5 {
-    fn shellshock(&self) -> Rule<()> {
-        Rule::Unknown(unknown!(
-            "t5.vision.shellshock",
-            "Black Ops' shellshock files and how its screen draws a shellshock",
-            "Black Ops' .shock format and shellshock screen rules"
-        ))
+    /// Black Ops' shellshock files, whose screen blur and flash, look
+    /// control and timing are Modern Warfare 2's.
+    fn shellshock(&self) -> Rule<game_api::ShockFormat> {
+        Rule::Known(game_api::ShockFormat::Game {
+            parse: shock::parse,
+            fallback: shock::FALLBACK,
+        })
     }
 }
 

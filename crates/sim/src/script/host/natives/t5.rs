@@ -584,6 +584,111 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     register_entity(registry);
     register_platform(registry);
     register_refused(registry);
+    register_shellshock(registry);
+}
+
+/// Black Ops' shellshocks: the shock file is read at precache, a name
+/// without a file of its own playing the game's default shock.
+fn register_shellshock(registry: &mut NativeRegistry) {
+    registry.register(Function, "precacheshellshock", |world, _, args| {
+        if !world.resource::<RoundScript>().loading {
+            return Err(
+                "precacheShellShock must be called before any wait statements in the level script"
+                    .into(),
+            );
+        }
+        let name = string(args, 0)?;
+        super::iw4::precache(world, "shellshock", name.clone())?;
+        let frame = FrameWorld::from_world(world);
+        match frame.shock_file(&name) {
+            Some(file) if !file.eq_ignore_ascii_case(&name) => {
+                diag::info!(
+                    Sim,
+                    "shellshock: couldn't open 'shock/{name}.shock', playing shock/{file}.shock"
+                );
+                Ok(Value::Undefined)
+            }
+            Some(_) => Ok(Value::Undefined),
+            None => Err(format!("couldn't find shell shock '{name}' -- see console")),
+        }
+    });
+    registry.register(Method, "shellshock", |world, receiver, args| {
+        let id = ClientId(player_id(world, receiver)?);
+        let name = string(args, 0)?;
+        let duration = shock_milliseconds(float(args, 1)?);
+        if !(0..=60_000).contains(&duration) {
+            return Err(format!(
+                "duration {} should be >= 0 and <= 60",
+                duration as f32 * 0.001
+            ));
+        }
+        let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+        let mut frame = FrameWorld::from_world(world);
+        let Some(ps) = frame.player(id) else {
+            return Ok(Value::Undefined);
+        };
+        // A shock replaces the running one when it is at least as long or
+        // the running one is over.
+        if ps.shellshock_duration > duration
+            && ps.shellshock_duration > now.wrapping_sub(ps.shellshock_time)
+        {
+            return Ok(Value::Undefined);
+        }
+        let index = frame
+            .ecs_ref()
+            .resource::<crate::script::MatchScript>()
+            .precached
+            .iter()
+            .find(|((kind, item), _)| *kind == "shellshock" && item.eq_ignore_ascii_case(&name))
+            .map(|(_, &index)| index)
+            .ok_or_else(|| format!("shellshock '{name}' was not precached"))?;
+        let file = frame
+            .shock_file(&name)
+            .ok_or_else(|| format!("shellshock '{name}' has no shock file"))?;
+        let shock = frame.shock(&file).cloned();
+        for gap in frame.shock_gaps(&file).to_vec() {
+            frame.report_game_gap(gap);
+        }
+        let start = game_api::movement::ShellshockStart {
+            index,
+            duration_ms: duration,
+            level_time: now,
+        };
+        crate::game_move::shellshock(&mut frame, id, Some(start));
+        if let Some(ps) = frame.player_mut(id) {
+            ps.shellshock_index = index;
+            ps.shellshock_time = now;
+            ps.shellshock_duration = duration;
+        }
+        frame.client_meta_mut(id).shellshock = shock;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "stopshellshock", |world, receiver, args| {
+        if !args.is_empty() {
+            return Err("USAGE: <player> stopshellshock()".into());
+        }
+        let id = ClientId(player_id(world, receiver)?);
+        let mut frame = FrameWorld::from_world(world);
+        crate::game_move::shellshock(&mut frame, id, None);
+        if let Some(ps) = frame.player_mut(id) {
+            ps.shellshock_index = 0;
+            ps.shellshock_time = 0;
+            ps.shellshock_duration = 0;
+        }
+        Ok(Value::Undefined)
+    });
+}
+
+/// A script's seconds as the game's shellshock takes them: `seconds * 1000`
+/// in single precision, plus 2^-30, rounded to the nearest integer.
+fn shock_milliseconds(seconds: f32) -> i32 {
+    let bias = f64::from(2.0f32.powi(-30));
+    let rounded = (f64::from(seconds * 1000.0) + bias).round_ties_even();
+    if rounded.is_finite() && rounded.abs() < 2_147_483_648.0 {
+        rounded as i32
+    } else {
+        i32::MIN
+    }
 }
 
 fn register_script(registry: &mut NativeRegistry) {

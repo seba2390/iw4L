@@ -276,11 +276,10 @@ pub(crate) fn cmd_scale_walk<W: MoveWorld>(pm: &mut Pm<'_, W>, cmd: &UserCmd) ->
             scale *= ads_scale;
         }
     }
-    let multiplier = ps.move_speed_scale_multiplier;
     if ps.pm_flags & pm_flags::SHELLSHOCKED != 0 {
-        pm.gap(crate::Gap::Shellshock);
+        scale *= pm.world.shellshock(ps.shellshock_index).movement;
     }
-    multiplier * scale
+    ps.move_speed_scale_multiplier * scale
 }
 
 /// In zombies a sprinting player with a sprint perk moves at least 1.1 times

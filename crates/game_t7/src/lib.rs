@@ -125,7 +125,7 @@ fn gametype_settings<'a>(
 }
 
 impl game_api::GameVision for T7 {
-    fn shellshock(&self) -> Rule<()> {
+    fn shellshock(&self) -> Rule<game_api::ShockFormat> {
         Rule::Unknown(unknown!(
             "t7.vision.shellshock",
             "Black Ops 3's shellshock files and how its screen draws a shellshock",

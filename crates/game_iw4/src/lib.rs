@@ -79,8 +79,8 @@ const MODE: ModeRules = ModeRules {
 };
 
 impl game_api::GameVision for Iw4 {
-    fn shellshock(&self) -> Rule<()> {
-        Rule::Known(())
+    fn shellshock(&self) -> Rule<game_api::ShockFormat> {
+        Rule::Known(game_api::ShockFormat::ModernWarfare2)
     }
 }
 

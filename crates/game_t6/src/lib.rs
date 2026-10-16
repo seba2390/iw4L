@@ -308,7 +308,7 @@ const OWN_ZOMBIES_MODE: ModeRules = ModeRules {
 };
 
 impl game_api::GameVision for T6 {
-    fn shellshock(&self) -> Rule<()> {
+    fn shellshock(&self) -> Rule<game_api::ShockFormat> {
         Rule::Unknown(unknown!(
             "t6.vision.shellshock",
             "Black Ops 2's shellshock files and how its screen draws a shellshock",

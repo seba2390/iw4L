@@ -415,9 +415,63 @@ pub enum ScriptText {
 
 /// How a game's screen reacts to its match: shellshocks.
 pub trait GameVision: Sync {
-    /// The game's shellshock files are read with Modern Warfare 2's `.shock`
-    /// format and drawn by its shellshock screen.
-    fn shellshock(&self) -> Rule<()>;
+    /// How the game's shellshock files are read.
+    fn shellshock(&self) -> Rule<ShockFormat>;
+}
+
+/// How a game reads its `shock/<name>.shock` files.
+#[derive(Clone, Copy)]
+pub enum ShockFormat {
+    /// Modern Warfare 2's `.shock` format, drawn by its shellshock screen.
+    ModernWarfare2,
+    /// The game's own reader.
+    Game {
+        parse: fn(&str) -> Result<ShockFile, String>,
+        /// The shock a precached name without a file of its own plays.
+        fallback: &'static str,
+    },
+}
+
+/// A shellshock file in the shared screen's terms, as a game's own reader
+/// gives it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShockFile {
+    pub screen: ShockScreen,
+    /// The blur's blend time and the time it fades over at the end, in
+    /// milliseconds.
+    pub blur_blend_ms: i32,
+    pub blur_fade_ms: i32,
+    /// A flash's white and screen-shot fade times, in milliseconds.
+    pub white_fade_ms: i32,
+    pub shot_fade_ms: i32,
+    pub look: ShockLook,
+    /// The fraction of their speed a shocked player moves at.
+    pub movement_scale: f32,
+    /// A shocked player's torso plays the shellshock animation and the
+    /// weapon's fire animation is skipped.
+    pub animation: bool,
+    /// The parts of the shock the runtime does not run.
+    pub unrun: Vec<&'static Unknown>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShockScreen {
+    Blurred,
+    Flashed,
+    None,
+}
+
+/// How a shock slows the player's look.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShockLook {
+    pub affect: bool,
+    pub fade_ms: i32,
+    pub mouse_sensitivity: f32,
+    pub max_pitch_speed: f32,
+    pub max_yaw_speed: f32,
+    /// While fading, the max speeds are multiplied by the fade's reciprocal
+    /// instead of divided by the fade.
+    pub reciprocal_fade: bool,
 }
 
 /// How a game's menus are drawn.

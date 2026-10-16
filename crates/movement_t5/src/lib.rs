@@ -31,7 +31,7 @@ pub use pml::Pml;
 pub use pmove::{MoveOutput, pmove};
 pub use state::{Buttons, PlayerState, UserCmd};
 pub use world::{
-    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Trace, Weapon,
+    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Shellshock, Trace, Weapon,
 };
 
 /// A part of Black Ops' movement the player reached that IW4L does not run.
@@ -42,7 +42,9 @@ pub enum Gap {
     Mantle = 2,
     Swim = 4,
     MountedView = 8,
-    Shellshock = 16,
+    /// A shellshock that plays the torso's shellshock animation: the
+    /// animation is not reset when it ends.
+    ShellshockTorso = 16,
     Launched = 32,
     AnimLock = 64,
     SpecialMove = 128,
@@ -177,6 +179,13 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
         self.out(MoveEvent::Anim(event, cont, force));
     }
 
+    /// The player is shellshocked by a shock that plays the torso's
+    /// shellshock animation.
+    pub(crate) fn shellshock_animation(&self) -> bool {
+        self.ps.pm_flags & state::pm_flags::SHELLSHOCKED != 0
+            && self.world.shellshock(self.ps.shellshock_index).animation
+    }
+
     pub(crate) fn prone_anim(&mut self) {
         self.out(MoveEvent::ProneAnim);
     }
@@ -227,7 +236,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::Mantle,
             Gap::Swim,
             Gap::MountedView,
-            Gap::Shellshock,
+            Gap::ShellshockTorso,
             Gap::Launched,
             Gap::AnimLock,
             Gap::SpecialMove,

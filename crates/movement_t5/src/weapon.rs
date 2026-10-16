@@ -1452,12 +1452,8 @@ fn fire_timing<W: MoveWorld>(pm: &mut Pm<'_, W>, delay_done: bool) {
         if d.guided_missile_type() == 6 {
             ps.weap_flags |= weap_flags::FIRING_GUIDED;
         }
-        let shellshocked = ps.pm_flags & pm_flags::SHELLSHOCKED != 0;
         let settled = ps.view_height_current == ps.view_height_target as f32;
-        if shellshocked {
-            pm.gap(crate::Gap::Shellshock);
-        }
-        fire_anim = settled;
+        fire_anim = !pm.shellshock_animation() && settled;
     }
     if fire_anim {
         pm.anim_event(anim::FIRE_WEAPON, false, true);

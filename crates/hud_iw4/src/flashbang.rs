@@ -103,6 +103,10 @@ pub struct ShellshockLookParms {
     pub max_pitch_speed: f32,
 
     pub max_yaw_speed: f32,
+
+    /// While fading, the max speeds are multiplied by the fade's reciprocal
+    /// instead of divided by the fade.
+    pub reciprocal_fade: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -157,6 +161,14 @@ pub fn update_shellshock_look_control(
                 max_yaw_speed: parms.max_yaw_speed,
             };
         }
+        if parms.reciprocal_fade {
+            let inverse = 1.0 / fade;
+            return ShellshockLookState {
+                sensitivity: (parms.mouse_sensitivity - 1.0) * fade + 1.0,
+                max_pitch_speed: parms.max_pitch_speed * inverse,
+                max_yaw_speed: parms.max_yaw_speed * inverse,
+            };
+        }
         ShellshockLookState {
             sensitivity: fade * (parms.mouse_sensitivity - 1.0) + 1.0,
             max_pitch_speed: parms.max_pitch_speed / fade,
@@ -201,6 +213,15 @@ pub struct ShockParams {
     pub sound: ShellshockSoundParms,
 
     pub movement: bool,
+
+    /// The fraction of their speed a shocked player moves at, for movement
+    /// that scales by the shock (1 in this format, whose `movement` flag
+    /// applies a fixed scale).
+    pub movement_scale: f32,
+
+    /// The shocked player's torso plays the shellshock animation and the
+    /// weapon's fire animation is skipped.
+    pub animation: bool,
 }
 
 impl ShockParams {
@@ -273,6 +294,7 @@ impl ShockParams {
                 mouse_sensitivity: number("lookControl_mousesensitivityscale")?,
                 max_pitch_speed: number("lookControl_maxpitchspeed")?,
                 max_yaw_speed: number("lookControl_maxyawspeed")?,
+                reciprocal_fade: false,
             },
             sound: ShellshockSoundParms {
                 channel_volumes: Some(channel_volumes),
@@ -282,6 +304,8 @@ impl ShockParams {
                 abort_alias: text("soundEndAbort")?,
             },
             movement: flag("movement")?,
+            movement_scale: 1.0,
+            animation: false,
         })
     }
 }
