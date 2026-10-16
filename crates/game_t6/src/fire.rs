@@ -255,7 +255,7 @@ fn gas_unknown() -> &'static Unknown {
 fn rocket_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.rocket_launch",
-        "a rocket flies straight: Black Ops 2's guided, locked-on, airburst and wandering rockets are not run",
+        "a rocket flies straight: Black Ops 2's guided, locked-on, airburst and wandering rockets are not run, nor the mark that keeps a launched grenade from wandering",
         "Black Ops 2's whole rocket launch and guidance"
     )
 }
@@ -281,22 +281,6 @@ fn throwback_unknown() -> &'static Unknown {
         "t6.weapons.throwback",
         "a thrown-back grenade is credited to its thrower and not told to scripts",
         "Black Ops 2's grenade throwback ownership and notify"
-    )
-}
-
-fn throw_state_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.offhand_throw_state",
-        "a thrown offhand does not clear the per-client server field Black Ops 2 resets on each throw",
-        "what that client field is and what reads it"
-    )
-}
-
-fn launcher_flag_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.launcher_grenade_flag",
-        "a launched grenade does not carry the entity flag Black Ops 2 sets on it",
-        "what that entity flag does"
     )
 }
 
@@ -794,7 +778,6 @@ impl Shot<'_> {
         let Some(parms) = self.weapon_parms(&def, 0, world) else {
             return;
         };
-        self.gaps.push(throw_state_unknown());
         self.throw_grenade(weapon, &def, &parms, false, world);
     }
 
@@ -1407,9 +1390,6 @@ impl Shot<'_> {
             Some(time_left),
             world,
         );
-        if launcher {
-            self.gaps.push(launcher_flag_unknown());
-        }
         self.mover_velocity(world);
         self.fired_grenade(def, def.fuse_time(), world);
     }
