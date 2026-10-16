@@ -1,7 +1,9 @@
-use crate::layers::{GameUiFont, UiLayer, game_text_font};
+use crate::layers::{GameUiFont, UiLayer, UiLayerVisibility, game_text_font};
 use assets::{PreparedLocalizedStrings, PreparedWeapons, SessionCompass, SessionMapIdentity};
 use bevy::prelude::*;
-use game_api::ui::{Content, Draw, Font, Input, OffhandSlot, Player, ScriptUi, Table};
+use game_api::ui::{
+    Content, Draw, Font, Input, OffhandSlot, Player, ScriptUi, Table, UiEvent, UiRequest,
+};
 use net::{ClientActionInput, FrameClock, LocalPresentClient, PresentedSnapshot};
 use std::collections::{HashMap, HashSet};
 
@@ -14,6 +16,7 @@ struct ScriptRoot;
 #[derive(Resource, Default)]
 pub(crate) struct ScriptHud {
     publication: Option<u64>,
+    front_end: bool,
     scene: Option<Box<dyn ScriptUi>>,
     root: Option<Entity>,
     slots: HashMap<u32, (Entity, Entity, Draw)>,
@@ -21,6 +24,8 @@ pub(crate) struct ScriptHud {
     input: Input,
     client_field_serial: u32,
     lui_notify_serial: u32,
+    last_cursor: Option<Vec2>,
+    logged_texts: Vec<String>,
     pub(crate) active: bool,
     pub(crate) scoreboard: bool,
 }
@@ -46,13 +51,160 @@ fn node(rectangle: [f32; 4]) -> Node {
     }
 }
 
+fn load_fonts(namespace: asset_core::AssetNamespace) -> std::sync::Arc<[Font]> {
+    [
+        "normalFont",
+        "bigFont",
+        "smallFont",
+        "boldFont",
+        "consoleFont",
+        "extraSmallFont",
+        "extraBigFont",
+        "italicFont",
+        "smallItalicFont",
+        "distFont",
+        "smallDevFont",
+        "bigDevFont",
+    ]
+    .into_iter()
+    .filter_map(|name| {
+        let name = if matches!(name, "distFont" | "smallDevFont" | "bigDevFont") {
+            format!("fonts/{name}")
+        } else {
+            format!("fonts/720/{name}")
+        };
+        let font = asset_material::ui_font::ui_font(namespace, &name)?;
+        Some(Font {
+            name,
+            height: font.pixel_height as f32,
+            advances: font
+                .glyphs
+                .iter()
+                .map(|(code, glyph)| (*code, glyph.dx as f32))
+                .collect(),
+        })
+    })
+    .collect::<Vec<_>>()
+    .into()
+}
+
+fn collect_events(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    window: &Window,
+    messages: &[frame::UiMenuRequest],
+    in_game_zombies: bool,
+    menu_active: bool,
+    last_cursor: &mut Option<Vec2>,
+) -> Vec<UiEvent> {
+    let mut events = Vec::new();
+    if in_game_zombies
+        && (keys.just_pressed(KeyCode::Escape)
+            || messages.iter().any(|m| {
+                matches!(m, frame::UiMenuRequest::Toggle)
+                    || matches!(m, frame::UiMenuRequest::Open(n) if n == "t6/pause")
+                    || (menu_active && *m == frame::UiMenuRequest::Key(frame::UiMenuKey::Escape))
+            }))
+    {
+        events.push(UiEvent::InGameMenu {
+            menu: "class".into(),
+        });
+    }
+    if !menu_active {
+        return events;
+    }
+    for (code, req, button) in [
+        (KeyCode::Enter, Some(frame::UiMenuKey::Enter), "primary"),
+        (KeyCode::ArrowUp, Some(frame::UiMenuKey::Up), "up"),
+        (KeyCode::ArrowDown, Some(frame::UiMenuKey::Down), "down"),
+        (KeyCode::ArrowLeft, Some(frame::UiMenuKey::Left), "left"),
+        (KeyCode::ArrowRight, Some(frame::UiMenuKey::Right), "right"),
+        (
+            KeyCode::Backspace,
+            Some(frame::UiMenuKey::Backspace),
+            "secondary",
+        ),
+    ] {
+        if keys.just_pressed(code)
+            || req.is_some_and(|rk| messages.contains(&frame::UiMenuRequest::Key(rk)))
+        {
+            events.push(UiEvent::Button {
+                button,
+                qualifier: None,
+                down: true,
+            });
+            events.push(UiEvent::Button {
+                button,
+                qualifier: None,
+                down: false,
+            });
+        }
+    }
+    if !in_game_zombies
+        && (keys.just_pressed(KeyCode::Escape)
+            || messages.contains(&frame::UiMenuRequest::Key(frame::UiMenuKey::Escape)))
+    {
+        events.push(UiEvent::Button {
+            button: "secondary",
+            qualifier: None,
+            down: true,
+        });
+        events.push(UiEvent::Button {
+            button: "secondary",
+            qualifier: None,
+            down: false,
+        });
+    }
+    if let Some(pos) = window.cursor_position() {
+        let scale = (window.height() / 720.0).max(0.001);
+        let (x, y) = (pos.x / scale, pos.y / scale);
+        if *last_cursor != Some(Vec2::new(x, y)) {
+            *last_cursor = Some(Vec2::new(x, y));
+            events.push(UiEvent::MouseMove { x, y });
+        }
+        for (btn, name) in [(MouseButton::Left, "left"), (MouseButton::Right, "right")] {
+            if mouse.just_pressed(btn) {
+                events.push(UiEvent::Mouse {
+                    button: name,
+                    down: true,
+                    x,
+                    y,
+                });
+            }
+            if mouse.just_released(btn) {
+                events.push(UiEvent::Mouse {
+                    button: name,
+                    down: false,
+                    x,
+                    y,
+                });
+            }
+        }
+    }
+    events
+}
+
 type View<'w> = (
     Res<'w, frame::AppScreen>,
-    Res<'w, frame::NativeGameMenu>,
+    ResMut<'w, frame::NativeGameMenu>,
     Res<'w, LocalPresentClient>,
     Option<Res<'w, FrameClock>>,
     Res<'w, GameUiFont>,
     Option<Res<'w, PreparedWeapons>>,
+    Res<'w, Time>,
+    Res<'w, frame::GameSettings>,
+    Res<'w, super::launcher::T6ZombiesFrontEnd>,
+);
+
+type UiIo<'w, 's> = (
+    Res<'w, ButtonInput<KeyCode>>,
+    Res<'w, ButtonInput<MouseButton>>,
+    Option<Res<'w, frame::HudInputView>>,
+    MessageReader<'w, 's, frame::UiMenuRequest>,
+    MessageWriter<'w, frame::UiExecCommand>,
+    MessageWriter<'w, frame::UiPlaySound>,
+    MessageWriter<'w, frame::UiPlayMusic>,
+    MessageWriter<'w, frame::UiStopMusic>,
 );
 
 #[allow(clippy::too_many_arguments)]
@@ -63,6 +215,7 @@ fn refresh(
     mode: Option<Res<game_api::ModeRules>>,
     strings: Option<Res<PreparedLocalizedStrings>>,
     view: View<'_>,
+    mut io: UiIo<'_, '_>,
     presented: Res<PresentedSnapshot>,
     actions: Option<Res<ClientActionInput>>,
     compass: Option<Res<SessionCompass>>,
@@ -72,301 +225,505 @@ fn refresh(
     mut images: ResMut<Assets<Image>>,
     code_hud: Res<super::t6_code_hud::CodeHudDraws>,
 ) {
-    let (screen, menu, local, clock, font, weapons) = view;
+    let (screen, mut menu, local, clock, font, weapons, time, settings, t6_front_end) = view;
+    let (
+        keys,
+        mouse,
+        hud_input,
+        ref mut menu_in,
+        ref mut exec,
+        ref mut sound,
+        ref mut start_music,
+        ref mut stop_music,
+    ) = io;
+    let messages: Vec<_> = menu_in.read().cloned().collect();
+    let console_open = hud_input.as_ref().is_some_and(|h| h.console_open);
     state.scoreboard = false;
-    if *screen != frame::AppScreen::InGame {
+    let front_end_mode = *screen == frame::AppScreen::MainMenu && t6_front_end.0.is_some();
+    let in_game_mode = *screen == frame::AppScreen::InGame;
+    if !in_game_mode && menu.0 {
+        menu.0 = false;
+    }
+    if !front_end_mode && !in_game_mode {
         if let Some(root) = state.root.take() {
             commands.entity(root).despawn();
         }
         state.scene = None;
         state.active = false;
+        state.front_end = false;
         state.slots.clear();
         state.map_images.clear();
         state.publication = None;
         state.client_field_serial = 0;
         state.lui_notify_serial = 0;
+        state.logged_texts.clear();
         state.input = Input::default();
         return;
     }
-    let visible = *screen == frame::AppScreen::InGame && !menu.0;
-    if let Some(root) = state.root {
-        commands.entity(root).insert(if visible {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        });
-    }
-    if !visible {
-        return;
-    }
-    let Some(clock) = clock else {
-        return;
+    let publication = if front_end_mode {
+        art.publication()
+            .cloned()
+            .or_else(|| publication.as_deref().cloned())
+    } else {
+        publication.as_deref().cloned()
     };
-    let (Some(publication), Some(map), Some(namespace), Some(snapshot), Ok(window)) = (
-        publication.as_deref(),
-        map.as_deref(),
-        map.as_ref().and_then(|map| map.namespace),
-        presented.snapshot(),
-        windows.single(),
-    ) else {
+    let (Some(publication), Ok(window)) = (publication.as_ref(), windows.single()) else {
         return;
     };
     if window.width() <= 0.0 || window.height() <= 0.0 {
         return;
     }
-    if state.publication != Some(publication.id()) || state.input.map != map.zone {
-        if let Some(root) = state.root.take() {
-            commands.entity(root).despawn();
-        }
-        state.slots.clear();
-        state.map_images.clear();
-        state.client_field_serial = 0;
-        state.lui_notify_serial = 0;
-        state.publication = Some(publication.id());
-        let modules = publication.script_modules(namespace);
-        state.scene = match session::games::menus(namespace).script_ui(&modules) {
-            Ok(scene) => scene,
-            Err(error) => {
-                diag::warn!(Ui, "authored UI bootstrap: {error}");
-                None
-            }
-        };
-        state.active = state.scene.is_some();
-        state.input.map = map.zone.clone();
-        state.input.tables = publication
-            .script_tables(namespace)
-            .into_iter()
-            .map(|table| Table {
-                name: table.name,
-                columns: table.columns,
-                cells: table.cells,
-            })
-            .collect::<Vec<_>>()
-            .into();
-        state.input.localized = match strings.as_ref() {
-            Some(strings) => strings
-                .0
-                .iter()
-                .map(|(key, value)| (key.to_owned(), value.to_owned()))
-                .collect::<Vec<_>>(),
-            None => Vec::new(),
-        }
-        .into();
-        state.input.fonts = [
-            "normalFont",
-            "bigFont",
-            "smallFont",
-            "extraSmallFont",
-            "extraBigFont",
-            "italicFont",
-            "smallItalicFont",
-            "distFont",
-        ]
-        .into_iter()
-        .filter_map(|name| {
-            let name = if name == "distFont" {
-                format!("fonts/{name}")
-            } else {
-                format!("fonts/720/{name}")
-            };
-            let font = asset_material::ui_font::ui_font(namespace, &name)?;
-            Some(Font {
-                name,
-                height: font.pixel_height as f32,
-                advances: font
-                    .glyphs
-                    .iter()
-                    .map(|(code, glyph)| (*code, glyph.dx as f32))
-                    .collect(),
-            })
-        })
-        .collect::<Vec<_>>()
-        .into();
-    }
-    if state.scene.is_none() {
-        state.active = false;
-        return;
-    }
-    let Some(ps) = presented.player(local.0) else {
+    let namespace = if let Some(ns) = t6_front_end.0.filter(|_| front_end_mode) {
+        ns
+    } else if let Some(ns) = map.as_ref().and_then(|m| m.namespace) {
+        ns
+    } else {
         return;
     };
-    state.input.viewport = [window.width(), window.height()];
-    state.input.time = clock.time();
-    state.input.local_client = local.0.0;
-    state.input.zombies = mode.is_some_and(|mode| mode.hud.zombies);
-    state.input.team_game = snapshot.meta.kind.is_team();
-    state.input.scoreboard = actions
-        .as_ref()
-        .is_some_and(|actions| actions.client.kb.scores.active)
-        || snapshot.meta.phase == sim::MatchPhase::PostGame;
-    state.input.menu = menu.0;
-    state.input.rounds_played = snapshot.meta.rounds_played;
-    state.input.remaining = (snapshot.meta.time_limit_ms != 0).then(|| {
-        snapshot
-            .meta
-            .time_limit_ms
-            .saturating_sub(snapshot.meta.match_elapsed_ms) as i32
-    });
-    state.input.client_fields.clear();
-    state.input.lui_notifies.clear();
-    if let Some(meta) = snapshot.meta.for_client(local.0) {
-        let weapon = ps.weapon;
-        let bound_weapons = weapons
-            .as_ref()
-            .and_then(|w| w.for_snapshot(presented.weapon_epoch()).ok());
-        let registry = bound_weapons.as_ref().map(|w| w.registry());
-        let raw_weapon_name = registry
-            .as_ref()
-            .map_or_else(String::new, |r| r.name_of(weapon).to_owned());
-        state.input.weapon_name = raw_weapon_name
-            .strip_prefix("t6:weapon/")
-            .unwrap_or(&raw_weapon_name)
-            .to_owned();
-        state.input.weapon_display_name = registry.as_ref().map_or_else(String::new, |r| {
-            r.display_name_key_of(weapon)
-                .and_then(|key| strings.as_ref()?.0.text_in(namespace, key))
-                .unwrap_or_else(|| r.name_of(weapon))
-                .to_owned()
-        });
-        let hud_facts = bound_weapons
-            .as_ref()
-            .and_then(|w| w.row(weapon).and_then(|row| row.hud_facts()));
-        state.input.weapon_inventory_type = if hud_facts.is_some_and(|f| f.is_alternate()) {
-            3
-        } else {
-            0
-        };
-        let (clip, stock) = meta
-            .ammo_by_weapon
-            .iter()
-            .find(|(index, _, _)| *index == weapon)
-            .map_or((meta.ammo_clip, meta.ammo_stock), |(_, clip, stock)| {
-                (*clip, *stock)
-            });
-        state.input.ammo_clip = clip;
-        state.input.ammo_stock = stock;
-        state.input.low_clip = hud_facts.is_some_and(|f| {
-            f.clip_size > 0
-                && (clip as f32) <= (f.clip_size as f32 * f.low_ammo_warning_threshold).ceil()
-        });
-        let mut offhand = [OffhandSlot::default(), OffhandSlot::default()];
-        if let (Some(bound), Some(registry)) = (bound_weapons.as_ref(), registry.as_ref()) {
-            for &slot in &ps.weapons {
-                if slot <= 0 {
-                    continue;
-                }
-                let index = slot as u32;
-                let Some(facts) = bound.row(index).and_then(|w| w.hud_facts()) else {
-                    continue;
-                };
-                let bucket = match facts.offhand_class {
-                    1 | 4 | 5 => Some((0, "hud_us_grenade")),
-                    2 | 3 => Some((1, "hud_cymbal_monkey_bo2")),
-                    _ => None,
-                };
-                let Some((bucket, fallback)) = bucket else {
-                    continue;
-                };
-                let ammo = meta
-                    .ammo_by_weapon
-                    .iter()
-                    .find(|(w, _, _)| *w == index)
-                    .map_or(0, |(_, c, s)| c + s);
-                let material = registry
-                    .hud_icon_image_of(index)
-                    .unwrap_or(fallback)
-                    .to_owned();
-                offhand[bucket] = OffhandSlot { ammo, material };
-            }
-        }
-        state.input.offhand = offhand;
-        let prev_cf = state.client_field_serial;
-        state.input.client_fields = meta
-            .lui_client_fields
-            .iter()
-            .filter(|(serial, _)| *serial > prev_cf)
-            .map(|(_, ev)| ev.clone())
-            .collect();
-        if let Some((last, _)) = meta.lui_client_fields.last() {
-            state.client_field_serial = *last;
-        }
-        let prev_notify = state.lui_notify_serial;
-        state.input.lui_notifies = meta
-            .lui_notifies
-            .iter()
-            .filter(|(serial, _)| *serial > prev_notify)
-            .map(|(_, ev)| ev.clone())
-            .collect();
-        if let Some((last, _)) = meta.lui_notifies.last() {
-            state.lui_notify_serial = *last;
-        }
-    }
-    state.input.players = snapshot
-        .meta
-        .clients
-        .iter()
-        .map(|(id, meta)| Player {
-            id: id.0,
-            name: String::from_utf8_lossy(
-                &meta.name[..meta
-                    .name
-                    .iter()
-                    .position(|byte| *byte == 0)
-                    .unwrap_or(meta.name.len())],
-            )
-            .into_owned(),
-            team: if snapshot.meta.kind.is_team() {
-                meta.client_state_team
-            } else {
-                0
-            },
-            score: meta.score,
-            kills: meta.kills,
-            deaths: meta.deaths,
-            rank: meta.rank,
-            prestige: meta.prestige,
-            zombie_stats: meta.zombie_stats,
-            ping: None,
-        })
-        .collect();
-    state
-        .input
-        .players
-        .sort_by_key(|player| (player.team, std::cmp::Reverse(player.score), player.id));
-    let input = state.input.clone();
-    let draws = match state.scene.as_mut().unwrap().update(&input) {
-        Ok(lui_draws) => {
-            let mut draws =
-                Vec::with_capacity(code_hud.back.len() + lui_draws.len() + code_hud.front.len());
-            draws.extend(code_hud.back.iter().cloned());
-            draws.extend(lui_draws);
-            draws.extend(code_hud.front.iter().cloned());
-            draws
-        }
-        Err(error) => {
-            diag::warn!(Ui, "authored HUD unavailable: {error}");
-            state.scene = None;
-            state.active = false;
+    let mut ps_origin = [0.0f32; 3];
+    let mut ps_yaw = 0.0f32;
+    let draws = if front_end_mode {
+        let first_frame = state.publication != Some(publication.id()) || !state.front_end;
+        if first_frame {
             if let Some(root) = state.root.take() {
                 commands.entity(root).despawn();
             }
             state.slots.clear();
             state.map_images.clear();
+            state.logged_texts.clear();
+            state.publication = Some(publication.id());
+            state.front_end = true;
+            state.input = Input::default();
+            let modules = publication.script_modules(namespace);
+            state.scene = match session::games::menus(namespace).front_end_ui(&modules) {
+                Ok(scene) => scene,
+                Err(error) => {
+                    diag::warn!(Ui, "authored front-end bootstrap: {error}");
+                    None
+                }
+            };
+            state.active = state.scene.is_some();
+            state.input.zombies = true;
+            state.input.safe_area = [1.0, 1.0];
+            state.input.tables = publication
+                .script_tables(namespace)
+                .into_iter()
+                .map(|table| Table {
+                    name: table.name,
+                    columns: table.columns,
+                    cells: table.cells,
+                })
+                .collect::<Vec<_>>()
+                .into();
+            state.input.localized = publication.script_localized(namespace);
+            state.input.layouts = publication.script_layouts(namespace);
+            state.input.installed_maps = publication.script_installed_maps(namespace);
+            state.input.fonts = load_fonts(namespace);
+        }
+        if state.scene.is_none() {
+            state.active = false;
             return;
         }
+        state.input.viewport = [window.width(), window.height()];
+        let dt = ((time.delta_secs() * 1000.0).round() as i32).clamp(1, 100);
+        state.input.time = state.input.time.wrapping_add(dt);
+        state.input.players = vec![Player {
+            id: 0,
+            name: settings.player_name.clone(),
+            team: 1,
+            rank: 1,
+            ..Default::default()
+        }];
+        state.input.events = if console_open || first_frame {
+            Vec::new()
+        } else {
+            collect_events(
+                &keys,
+                &mouse,
+                window,
+                &messages,
+                false,
+                true,
+                &mut state.last_cursor,
+            )
+        };
+        let input = state.input.clone();
+        let scene = state.scene.as_mut().unwrap();
+        let lui_draws = match scene.update(&input) {
+            Ok(draws) => draws,
+            Err(error) => {
+                diag::warn!(Ui, "authored front end unavailable: {error}");
+                state.scene = None;
+                state.active = false;
+                return;
+            }
+        };
+        let requests = scene.take_requests();
+        for req in &requests {
+            match req {
+                UiRequest::Exec(text) if text == "startMultiplayer" => {
+                    exec.write(frame::UiExecCommand {
+                        text: "openmenu launcher/multiplayer".into(),
+                    });
+                }
+                UiRequest::Exec(text) if text == "startSingleplayer" => {
+                    exec.write(frame::UiExecCommand {
+                        text: "openmenu launcher/campaign".into(),
+                    });
+                }
+                UiRequest::Exec(text) => {
+                    if text.starts_with("map ")
+                        && let Some(zombies) = session::games::modes(namespace).zombies()
+                        && let Some(mode) = sim::HostGameModeSelection::from_token(zombies.gametype)
+                    {
+                        commands.insert_resource(mode);
+                    }
+                    exec.write(frame::UiExecCommand { text: text.clone() });
+                }
+                UiRequest::Sound(alias) => {
+                    sound.write(frame::UiPlaySound {
+                        alias: alias.clone(),
+                    });
+                }
+                UiRequest::MenuMusic(Some(alias)) => {
+                    start_music.write(frame::UiPlayMusic {
+                        alias: alias.clone(),
+                    });
+                }
+                UiRequest::MenuMusic(None) => {
+                    stop_music.write(frame::UiStopMusic);
+                }
+                UiRequest::Rumble { .. } => {}
+            }
+        }
+        let texts: Vec<String> = lui_draws
+            .iter()
+            .filter_map(|d| match &d.content {
+                Content::Text { value, .. } if d.color[3] > 0.0 && !value.is_empty() => {
+                    Some(value.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        if texts != state.logged_texts {
+            diag::info!(Ui, "t6 front end: texts={texts:?}");
+            state.logged_texts = texts;
+        }
+        lui_draws
+    } else {
+        let zombies = mode.as_ref().is_some_and(|mode| mode.hud.zombies);
+        let visible = !menu.0 || zombies;
+        if let Some(root) = state.root {
+            commands.entity(root).insert(if visible {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
+        }
+        if !visible {
+            return;
+        }
+        let (Some(clock), Some(map), Some(snapshot)) =
+            (clock.as_deref(), map.as_deref(), presented.snapshot())
+        else {
+            return;
+        };
+        if state.publication != Some(publication.id())
+            || state.input.map != map.zone
+            || state.front_end
+        {
+            if let Some(root) = state.root.take() {
+                commands.entity(root).despawn();
+            }
+            state.slots.clear();
+            state.map_images.clear();
+            state.client_field_serial = 0;
+            state.lui_notify_serial = 0;
+            state.logged_texts.clear();
+            state.publication = Some(publication.id());
+            state.front_end = false;
+            let modules = publication.script_modules(namespace);
+            state.scene = match session::games::menus(namespace).script_ui(&modules) {
+                Ok(scene) => scene,
+                Err(error) => {
+                    diag::warn!(Ui, "authored UI bootstrap: {error}");
+                    None
+                }
+            };
+            state.active = state.scene.is_some();
+            state.input.map = map.zone.clone();
+            state.input.tables = publication
+                .script_tables(namespace)
+                .into_iter()
+                .map(|table| Table {
+                    name: table.name,
+                    columns: table.columns,
+                    cells: table.cells,
+                })
+                .collect::<Vec<_>>()
+                .into();
+            let mut loc_map: std::collections::BTreeMap<String, String> = publication
+                .script_localized(namespace)
+                .iter()
+                .cloned()
+                .collect();
+            if let Some(strings) = strings.as_ref() {
+                for (k, v) in strings.0.iter() {
+                    loc_map.insert(k.to_owned(), v.to_owned());
+                }
+            }
+            state.input.localized = loc_map.into_iter().collect::<Vec<_>>().into();
+            state.input.layouts = publication.script_layouts(namespace);
+            state.input.installed_maps = publication.script_installed_maps(namespace);
+            state.input.fonts = load_fonts(namespace);
+        }
+        if state.scene.is_none() {
+            state.active = false;
+            return;
+        }
+        let Some(ps) = presented.player(local.0) else {
+            return;
+        };
+        ps_origin = ps.origin;
+        ps_yaw = ps.viewangles[1];
+        state.input.viewport = [window.width(), window.height()];
+        state.input.time = clock.time();
+        state.input.local_client = local.0.0;
+        state.input.zombies = zombies;
+        state.input.team_game = snapshot.meta.kind.is_team();
+        state.input.scoreboard = actions
+            .as_ref()
+            .is_some_and(|actions| actions.client.kb.scores.active)
+            || snapshot.meta.phase == sim::MatchPhase::PostGame;
+        let menu_active = state.scene.as_ref().is_some_and(|s| s.menu_open());
+        state.input.menu = menu.0 || menu_active;
+        state.input.events = if console_open {
+            Vec::new()
+        } else {
+            collect_events(
+                &keys,
+                &mouse,
+                window,
+                &messages,
+                zombies,
+                menu_active,
+                &mut state.last_cursor,
+            )
+        };
+        state.input.rounds_played = snapshot.meta.rounds_played;
+        state.input.remaining = (snapshot.meta.time_limit_ms != 0).then(|| {
+            snapshot
+                .meta
+                .time_limit_ms
+                .saturating_sub(snapshot.meta.match_elapsed_ms) as i32
+        });
+        state.input.client_fields.clear();
+        state.input.lui_notifies.clear();
+        if let Some(meta) = snapshot.meta.for_client(local.0) {
+            let weapon = ps.weapon;
+            let bound_weapons = weapons
+                .as_ref()
+                .and_then(|w| w.for_snapshot(presented.weapon_epoch()).ok());
+            let registry = bound_weapons.as_ref().map(|w| w.registry());
+            let raw_weapon_name = registry
+                .as_ref()
+                .map_or_else(String::new, |r| r.name_of(weapon).to_owned());
+            state.input.weapon_name = raw_weapon_name
+                .strip_prefix("t6:weapon/")
+                .unwrap_or(&raw_weapon_name)
+                .to_owned();
+            state.input.weapon_display_name = registry.as_ref().map_or_else(String::new, |r| {
+                r.display_name_key_of(weapon)
+                    .and_then(|key| strings.as_ref()?.0.text_in(namespace, key))
+                    .unwrap_or_else(|| r.name_of(weapon))
+                    .to_owned()
+            });
+            let hud_facts = bound_weapons
+                .as_ref()
+                .and_then(|w| w.row(weapon).and_then(|row| row.hud_facts()));
+            state.input.weapon_inventory_type = if hud_facts.is_some_and(|f| f.is_alternate()) {
+                3
+            } else {
+                0
+            };
+            let (clip, stock) = meta
+                .ammo_by_weapon
+                .iter()
+                .find(|(index, _, _)| *index == weapon)
+                .map_or((meta.ammo_clip, meta.ammo_stock), |(_, clip, stock)| {
+                    (*clip, *stock)
+                });
+            state.input.ammo_clip = clip;
+            state.input.ammo_stock = stock;
+            state.input.low_clip = hud_facts.is_some_and(|f| {
+                f.clip_size > 0
+                    && (clip as f32) <= (f.clip_size as f32 * f.low_ammo_warning_threshold).ceil()
+            });
+            let mut offhand = [OffhandSlot::default(), OffhandSlot::default()];
+            if let (Some(bound), Some(registry)) = (bound_weapons.as_ref(), registry.as_ref()) {
+                for &slot in &ps.weapons {
+                    if slot <= 0 {
+                        continue;
+                    }
+                    let index = slot as u32;
+                    let Some(facts) = bound.row(index).and_then(|w| w.hud_facts()) else {
+                        continue;
+                    };
+                    let bucket = match facts.offhand_class {
+                        1 | 4 | 5 => Some((0, "hud_us_grenade")),
+                        2 | 3 => Some((1, "hud_cymbal_monkey_bo2")),
+                        _ => None,
+                    };
+                    let Some((bucket, fallback)) = bucket else {
+                        continue;
+                    };
+                    let ammo = meta
+                        .ammo_by_weapon
+                        .iter()
+                        .find(|(w, _, _)| *w == index)
+                        .map_or(0, |(_, c, s)| c + s);
+                    let material = registry
+                        .hud_icon_image_of(index)
+                        .unwrap_or(fallback)
+                        .to_owned();
+                    offhand[bucket] = OffhandSlot { ammo, material };
+                }
+            }
+            state.input.offhand = offhand;
+            let prev_cf = state.client_field_serial;
+            state.input.client_fields = meta
+                .lui_client_fields
+                .iter()
+                .filter(|(serial, _)| *serial > prev_cf)
+                .map(|(_, ev)| ev.clone())
+                .collect();
+            if let Some((last, _)) = meta.lui_client_fields.last() {
+                state.client_field_serial = *last;
+            }
+            let prev_notify = state.lui_notify_serial;
+            state.input.lui_notifies = meta
+                .lui_notifies
+                .iter()
+                .filter(|(serial, _)| *serial > prev_notify)
+                .map(|(_, ev)| ev.clone())
+                .collect();
+            if let Some((last, _)) = meta.lui_notifies.last() {
+                state.lui_notify_serial = *last;
+            }
+        }
+        state.input.players = snapshot
+            .meta
+            .clients
+            .iter()
+            .map(|(id, meta)| Player {
+                id: id.0,
+                name: String::from_utf8_lossy(
+                    &meta.name[..meta
+                        .name
+                        .iter()
+                        .position(|byte| *byte == 0)
+                        .unwrap_or(meta.name.len())],
+                )
+                .into_owned(),
+                team: if snapshot.meta.kind.is_team() {
+                    meta.client_state_team
+                } else {
+                    0
+                },
+                score: meta.score,
+                kills: meta.kills,
+                deaths: meta.deaths,
+                rank: meta.rank,
+                prestige: meta.prestige,
+                zombie_stats: meta.zombie_stats,
+                ping: None,
+            })
+            .collect();
+        state
+            .input
+            .players
+            .sort_by_key(|player| (player.team, std::cmp::Reverse(player.score), player.id));
+        let input = state.input.clone();
+        let scene = state.scene.as_mut().unwrap();
+        let lui_draws = match scene.update(&input) {
+            Ok(draws) => draws,
+            Err(error) => {
+                diag::warn!(Ui, "authored HUD unavailable: {error}");
+                state.scene = None;
+                state.active = false;
+                if let Some(root) = state.root.take() {
+                    commands.entity(root).despawn();
+                }
+                state.slots.clear();
+                state.map_images.clear();
+                return;
+            }
+        };
+        let is_open = scene.menu_open();
+        let requests = scene.take_requests();
+        if zombies {
+            menu.0 = is_open;
+            if is_open {
+                let texts: Vec<String> = lui_draws
+                    .iter()
+                    .filter_map(|d| match &d.content {
+                        Content::Text { value, .. } if d.color[3] > 0.0 && !value.is_empty() => {
+                            Some(value.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if texts != state.logged_texts {
+                    diag::info!(Ui, "t6 pause menu: texts={texts:?}");
+                    state.logged_texts = texts;
+                }
+            } else {
+                state.logged_texts.clear();
+            }
+        }
+        for req in requests {
+            match req {
+                UiRequest::Exec(text) => {
+                    exec.write(frame::UiExecCommand { text });
+                }
+                UiRequest::Sound(alias) => {
+                    sound.write(frame::UiPlaySound { alias });
+                }
+                UiRequest::MenuMusic(Some(alias)) => {
+                    start_music.write(frame::UiPlayMusic { alias });
+                }
+                UiRequest::MenuMusic(None) => {
+                    stop_music.write(frame::UiStopMusic);
+                }
+                UiRequest::Rumble { .. } => {}
+            }
+        }
+        state.scoreboard = input.scoreboard && !is_open;
+        let mut draws =
+            Vec::with_capacity(code_hud.back.len() + lui_draws.len() + code_hud.front.len());
+        draws.extend(code_hud.back.iter().cloned());
+        draws.extend(lui_draws);
+        draws.extend(code_hud.front.iter().cloned());
+        draws
     };
     state.active = true;
-    state.scoreboard = input.scoreboard;
     let scale = window.height() / 720.0;
     let width = window.width() / scale;
     let root = if let Some(root) = state.root {
         root
     } else {
+        let layer = if front_end_mode {
+            UiLayer::Shell
+        } else {
+            UiLayer::Hud
+        };
         let root = commands
             .spawn((
                 ScriptRoot,
                 super::t6_text::NativeUiRoot(true),
-                UiLayer::Hud,
+                layer,
+                UiLayerVisibility,
+                GlobalZIndex(if front_end_mode { 85 } else { 0 }),
                 node([0.0, 0.0, width, 720.0]),
                 UiTransform::default(),
             ))
@@ -535,7 +892,7 @@ fn refresh(
                         });
                     } else {
                         let player =
-                            project(ps.origin[0] - corners.a[0], ps.origin[1] - corners.a[1])
+                            project(ps_origin[0] - corners.a[0], ps_origin[1] - corners.a[1])
                                 / span;
                         let center = Vec2::new(
                             (rectangle[0] + rectangle[2]) * 0.5,
@@ -544,9 +901,7 @@ fn refresh(
                         let size = span / *range * (rectangle[3] - rectangle[1]);
                         commands.entity(entity).insert((
                             node([center.x, center.y, center.x, center.y]),
-                            UiTransform::from_rotation(Rot2::degrees(
-                                ps.viewangles[1] - north.to_degrees(),
-                            )),
+                            UiTransform::from_rotation(Rot2::degrees(ps_yaw - north.to_degrees())),
                         ));
                         let map_image = *state
                             .map_images
@@ -590,7 +945,7 @@ fn refresh(
                                 .as_ref()
                                 .and_then(|compass| compass.north_yaw)
                                 .unwrap_or(0.0)
-                                - ps.viewangles[1]
+                                - ps_yaw
                         } else {
                             0.0
                         })),

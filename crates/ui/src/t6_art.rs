@@ -11,6 +11,9 @@ pub(crate) struct T6Art {
 }
 
 impl T6Art {
+    pub(crate) fn publication(&self) -> Option<&asset_material::UiImagePublication> {
+        self.publication.as_ref()
+    }
     pub(crate) fn adopt(&mut self, publication: asset_material::UiImagePublication) {
         if self
             .publication
@@ -78,7 +81,7 @@ pub(crate) fn sync_publication(
     publication: Option<Res<asset_material::UiImagePublication>>,
     mut art: ResMut<T6Art>,
 ) {
-    if let Some(publication) = publication {
+    if let Some(publication) = publication.filter(|p| p.is_changed()) {
         art.adopt(publication.clone());
     }
 }

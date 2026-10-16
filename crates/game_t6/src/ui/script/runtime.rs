@@ -1,4 +1,4 @@
-use super::library::{PCALL, XPCALL};
+use super::library::{PCALL, SORT, SortStop, XPCALL, aux_sort, less_than};
 use super::tables::Tables;
 use super::{
     CallContinuation, Capture, Environment, Fault, FaultKind, FieldLookup, Frame, Program, Step,
@@ -48,6 +48,20 @@ struct ProtectedCall {
 
 struct CallSite {
     cached: Value,
+    return_to: Option<ReturnTo>,
+    pc: usize,
+}
+
+/// A `table.sort` with a Lua comparator: the list as it was, the
+/// comparator's answers so far, and where the sort returns. Each answer
+/// replays the sort from the start, so the comparator sees Lua's calls in
+/// Lua's order.
+#[derive(Clone, Debug)]
+struct SortJob {
+    table: Value,
+    comparator: Value,
+    items: Vec<Value>,
+    answers: Vec<bool>,
     return_to: Option<ReturnTo>,
     pc: usize,
 }
@@ -110,11 +124,24 @@ pub struct Runtime {
     frames: Vec<Activation>,
     protected: Vec<ProtectedCall>,
     last_fault: Option<(usize, usize)>,
+    /// The frames active at the last fault, innermost first:
+    /// `(program, function, pc)`.
+    last_stack: Vec<(usize, usize, usize)>,
+    /// Also report the errors `pcall` and `xpcall` catch (for tracing).
+    pub report_pcall_errors: bool,
+    /// The `table.sort`s waiting on a Lua comparator, innermost last.
+    sorts: Vec<SortJob>,
 }
 
 impl Runtime {
     pub fn failure_source(&self) -> Option<(usize, usize)> {
         self.last_fault
+    }
+
+    /// The frames active at the last fault, innermost first:
+    /// `(program, function, pc)`.
+    pub fn failure_stack(&self) -> &[(usize, usize, usize)] {
+        &self.last_stack
     }
 
     fn resolve_callable(
@@ -189,6 +216,14 @@ impl Runtime {
     ) -> Result<Activation, FaultKind> {
         let closure = self.closure_index(callee)?;
         let target = &self.closures[closure];
+        if self.report_pcall_errors {
+            diag::info!(
+                Ui,
+                "lui enter: program {} fn {}",
+                target.program,
+                target.function
+            );
+        }
         let function = self.programs[target.program]
             .functions
             .get(target.function)
@@ -302,6 +337,15 @@ impl Runtime {
             let closure = &self.closures[active.closure];
             (closure.program, closure.function)
         });
+        self.last_stack = self
+            .frames
+            .iter()
+            .rev()
+            .map(|active| {
+                let closure = &self.closures[active.closure];
+                (closure.program, closure.function, active.frame.pc)
+            })
+            .collect();
         self.protected.clear();
         while let Some(activation) = self.frames.pop() {
             let _ = self.close_frame(self.frames.len(), 0, &activation.frame.registers);
@@ -542,6 +586,9 @@ impl Runtime {
         if identity == PCALL || identity == XPCALL {
             return self.start_pcall(identity, arguments, site, remaining, bindings);
         }
+        if identity == SORT {
+            return self.start_sort(arguments, site, remaining, bindings);
+        }
         let CallSite {
             cached,
             return_to,
@@ -753,6 +800,9 @@ impl Runtime {
                             fallback.clone()
                         }
                         ProtectedKind::Pcall { .. } => {
+                            if self.report_pcall_errors {
+                                self.errors.push(format!("(pcall) {report}"));
+                            }
                             match self.handle_pcall_error(protected.clone(), &fault, Value::Nil)? {
                                 Some(results) => results,
                                 None => continue,
@@ -776,7 +826,134 @@ impl Runtime {
         })
     }
 
+    /// `table.sort(t[, comp])`: sorts `t[1..#t]` in place; a binding
+    /// comparator, or none (`<`), runs at once, a Lua one through frames.
+    fn start_sort(
+        &mut self,
+        arguments: &[Value],
+        site: CallSite,
+        remaining: &mut usize,
+        bindings: &mut dyn Bindings,
+    ) -> Result<Option<Vec<Value>>, Fault> {
+        let pc = site.pc;
+        let fault = |kind| Fault { pc, kind };
+        let table = arguments
+            .first()
+            .cloned()
+            .ok_or(fault(FaultKind::Argument(1)))?;
+        let length = self.tables.length(&table).map_err(fault)?;
+        let items = (1..=length)
+            .map(|index| self.tables.raw_get(&table, &Value::Number(index as f32)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(fault)?;
+        let comparator = arguments.get(1).cloned().unwrap_or(Value::Nil);
+        let mut sorted = items.clone();
+        let outcome = match &comparator {
+            Value::Nil => aux_sort(&mut sorted, 1, length, &mut |a, b| {
+                less_than(a, b).map_err(SortStop::Fault)
+            }),
+            Value::Reference { kind: 10, identity } => {
+                let identity = *identity;
+                aux_sort(&mut sorted, 1, length, &mut |a, b| {
+                    *remaining = remaining
+                        .checked_sub(1)
+                        .ok_or(SortStop::Fault(FaultKind::Budget))?;
+                    bindings
+                        .call(identity, &[a.clone(), b.clone()], &mut self.tables)
+                        .map(|values| values.first().is_some_and(Value::truthy))
+                        .map_err(SortStop::Fault)
+                })
+            }
+            _ => {
+                self.sorts.push(SortJob {
+                    table,
+                    comparator,
+                    items,
+                    answers: Vec::new(),
+                    return_to: site.return_to,
+                    pc,
+                });
+                self.advance_sort()?;
+                return Ok(None);
+            }
+        };
+        match outcome {
+            Ok(()) => {}
+            Err(SortStop::Fault(kind)) => return Err(fault(kind)),
+            Err(SortStop::Need(..)) => return Err(fault(FaultKind::BindingRequired)),
+        }
+        for (index, value) in sorted.into_iter().enumerate() {
+            self.tables
+                .raw_set(&table, &Value::Number(index as f32 + 1.0), value)
+                .map_err(fault)?;
+        }
+        Ok(Some(Vec::new()))
+    }
+
+    /// Replays the innermost waiting sort with the answers it has: calls
+    /// the comparator for the next comparison, or writes the sorted list
+    /// back and returns to the sort's caller.
+    fn advance_sort(&mut self) -> Result<(), Fault> {
+        let job = self.sorts.last().cloned().ok_or(Fault {
+            pc: 0,
+            kind: FaultKind::BindingRequired,
+        })?;
+        let fault = |kind| Fault { pc: job.pc, kind };
+        let mut sorted = job.items.clone();
+        let length = sorted.len();
+        let mut asked = 0usize;
+        let outcome = aux_sort(&mut sorted, 1, length, &mut |a, b| {
+            let answer = job.answers.get(asked).copied();
+            asked += 1;
+            answer.ok_or_else(|| SortStop::Need(a.clone(), b.clone()))
+        });
+        match outcome {
+            Err(SortStop::Need(a, b)) => {
+                let (callee, arguments) = self
+                    .resolve_callable(&job.comparator, &[a, b])
+                    .map_err(fault)?;
+                let child = self
+                    .activation(
+                        &callee,
+                        &arguments,
+                        Value::Nil,
+                        Some(ReturnTo {
+                            register: 0,
+                            results: Some(1),
+                            continuation: CallContinuation::Sort,
+                        }),
+                    )
+                    .map_err(fault)?;
+                self.frames.push(child);
+                Ok(())
+            }
+            Err(SortStop::Fault(kind)) => {
+                self.sorts.pop();
+                Err(fault(kind))
+            }
+            Ok(()) => {
+                self.sorts.pop();
+                for (index, value) in sorted.into_iter().enumerate() {
+                    self.tables
+                        .raw_set(&job.table, &Value::Number(index as f32 + 1.0), value)
+                        .map_err(fault)?;
+                }
+                match job.return_to {
+                    Some(return_to) => self.finish_call(return_to, &[]),
+                    None => Err(fault(FaultKind::BindingRequired)),
+                }
+            }
+        }
+    }
+
     fn finish_call(&mut self, return_to: ReturnTo, values: &[Value]) -> Result<(), Fault> {
+        if let CallContinuation::Sort = return_to.continuation {
+            let answer = values.first().is_some_and(Value::truthy);
+            if let Some(job) = self.sorts.last_mut() {
+                job.answers.push(answer);
+            }
+            return self.advance_sort();
+        }
         let parent = self.frames.last_mut().ok_or(Fault {
             pc: 0,
             kind: FaultKind::Function(0),
@@ -792,7 +969,7 @@ impl Runtime {
             CallContinuation::CacheResult => {
                 parent.frame.cached = values.first().cloned().unwrap_or(Value::Nil);
             }
-            CallContinuation::Normal => {}
+            CallContinuation::Normal | CallContinuation::Sort => {}
         }
         let count = return_to.results.unwrap_or(values.len());
         let end = return_to

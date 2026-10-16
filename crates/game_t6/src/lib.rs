@@ -185,7 +185,7 @@ fn own_zombies(
 
 /// A zombies gametype's settings: `zm/gamesettings_default.cfg`, then the
 /// gametype's own file over it; each line is `gametype_setting <name> <value>`.
-fn gametype_settings<'a>(
+pub(crate) fn gametype_settings<'a>(
     config: &dyn Fn(&str) -> Option<&'a str>,
     gametype: &str,
 ) -> Vec<(String, String)> {
@@ -325,28 +325,89 @@ impl game_api::GameMenus for T6 {
         Ok(Some(Box::new(ui::scene::Scene::new(modules)?)))
     }
 
-    fn font(&self, _font_enum: i32, _placement_scale: f32, _text_scale: f32) -> Rule<&'static str> {
-        Rule::Unknown(unknown!(
-            "t6.hud.menu_font",
-            "the font a Black Ops 2 menu textfont names",
-            "Black Ops 2's menu font table"
+    fn front_end_ui(
+        &self,
+        modules: &[game_api::ui::Module],
+    ) -> Result<Option<Box<dyn game_api::ui::ScriptUi>>, String> {
+        Ok(Some(Box::new(ui::scene::Scene::front_end(modules)?)))
+    }
+
+    fn font(&self, font_enum: i32, placement_scale: f32, text_scale: f32) -> Rule<&'static str> {
+        Rule::Known(scrplace::menu_font_at(
+            font_enum,
+            placement_scale * text_scale,
+            0.563,
+            0.688,
         ))
     }
 
     fn layout(&self) -> Rule<&'static dyn game_api::MenuLayout> {
-        Rule::Unknown(unknown!(
-            "t6.hud.menu_layout",
-            "how Black Ops 2's menu engine places an item and scales its text",
-            "Black Ops 2's menu engine rules: text origin, text scale, screen placement"
-        ))
+        Rule::Known(&MenuLayout)
     }
 
     fn ingame_menu(&self) -> Rule<game_api::InGameMenu> {
-        Rule::Unknown(unknown!(
-            "t6.hud.ingame_menu",
-            "which menu Black Ops 2's in-game menu key opens",
-            "Black Ops 2's in-game menu rule"
-        ))
+        Rule::Known(game_api::InGameMenu::ScriptMainMenu)
+    }
+}
+
+/// Black Ops 2's legacy menu placement and text measures (`UI_TextWidth`,
+/// `UI_TextHeight`, `Item_Text_AutoWrapped_Paint`).
+struct MenuLayout;
+
+fn round_half_up(value: f32) -> f32 {
+    (value + 0.5).floor()
+}
+
+impl game_api::MenuLayout for MenuLayout {
+    fn text_scale(&self, pixel_height: i32, text_scale: f32) -> f32 {
+        (f64::from(text_scale) * 48.0 / f64::from(pixel_height)) as f32
+    }
+
+    fn text_height(&self, pixel_height: i32, text_scale: f32) -> f32 {
+        round_half_up(pixel_height as f32 * self.text_scale(pixel_height, text_scale))
+    }
+
+    fn text_width(&self, glyph_width: i32, pixel_height: i32, text_scale: f32) -> f32 {
+        round_half_up(glyph_width as f32 * self.text_scale(pixel_height, text_scale))
+    }
+
+    fn text_origin(
+        &self,
+        [x, y, w, h]: [f32; 4],
+        align_mode: i32,
+        align_x: f32,
+        align_y: f32,
+        measured_w: f32,
+        measured_h: f32,
+    ) -> (f32, f32) {
+        let mut offset_x = align_x;
+        let horizontal = align_mode & 3;
+        if horizontal != 0 {
+            let mut room = w - measured_w;
+            if horizontal == 1 {
+                room *= 0.5;
+            }
+            offset_x = room + align_x;
+        }
+        let offset_y = match align_mode & 0xc {
+            0 => align_y,
+            4 => measured_h + align_y,
+            8 => (h + measured_h) * 0.5 + align_y,
+            _ => h + align_y,
+        };
+        (x + offset_x, y + offset_y)
+    }
+
+    fn text_paint_scale(&self, text_scale: f32, _menu_scale: f32) -> f32 {
+        text_scale
+    }
+
+    fn window_rect(&self, rect: [f32; 4], _menu_scale: f32) -> [f32; 4] {
+        rect
+    }
+
+    fn safe_area(&self) -> f32 {
+        1.0
     }
 }
 

@@ -1,4 +1,4 @@
-use fastfile_t6::{AssetType, ZoneLoad};
+use fastfile_t6::{AssetType, ZoneLoad, ddl::ddl as parse_ddl};
 mod camouflage;
 mod common_compile;
 mod destructible;
@@ -1039,6 +1039,9 @@ pub struct T6UiArt {
     fonts: Vec<asset_material::ui_font::UiBitmapFont>,
     modules: Vec<(String, Arc<[u8]>)>,
     tables: Vec<asset_core::ZoneTable>,
+    layouts: Vec<asset_core::BitLayout>,
+    localized: Vec<(String, String)>,
+    installed_maps: Vec<String>,
 }
 
 impl T6UiArt {
@@ -1059,6 +1062,9 @@ impl T6UiArt {
         let mut images = asset_material::UiImageBuild::default();
         images.script_tables(T6_UI, self.tables);
         images.script_modules(T6_UI, self.modules);
+        images.script_layouts(T6_UI, self.layouts);
+        images.script_localized(T6_UI, self.localized);
+        images.script_installed_maps(T6_UI, self.installed_maps);
         images.zone_images(T6_UI, self.images);
         (images.publish(), self.fonts)
     }
@@ -1191,8 +1197,53 @@ fn capture_weapon_icons(
     let mut ui_modules = 0usize;
     let mut modules = BTreeMap::new();
     let mut tables = BTreeMap::new();
+    let mut layouts: Vec<asset_core::BitLayout> = Vec::new();
+    let mut localized = BTreeMap::new();
     for load in &all {
         for asset in &load.assets {
+            if asset.ty == AssetType::LocalizeEntry
+                && let (Some(value), Some(name)) = (
+                    header_str(load, &asset.header, 0),
+                    header_str(load, &asset.header, 4),
+                )
+            {
+                localized
+                    .entry(name.to_owned())
+                    .or_insert_with(|| value.to_owned());
+            }
+            if let Some(ddl) = parse_ddl(load, asset)
+                && let Some(def) = ddl.versions.into_iter().next()
+                && !layouts
+                    .iter()
+                    .any(|l| l.name.eq_ignore_ascii_case(&ddl.name))
+            {
+                layouts.push(asset_core::BitLayout {
+                    name: ddl.name,
+                    bits: def.structs.first().map_or(0, |r| r.size),
+                    structs: def
+                        .structs
+                        .into_iter()
+                        .map(|s| asset_core::BitStruct {
+                            name: s.name,
+                            members: s
+                                .members
+                                .into_iter()
+                                .map(|m| asset_core::BitMember {
+                                    name: m.name,
+                                    bits: m.bits,
+                                    offset: m.offset,
+                                    kind: m.kind,
+                                    external: m.external,
+                                    range: m.range,
+                                    array_size: m.array_size,
+                                    enum_index: m.enum_index,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                    enums: def.enums.into_iter().map(|e| e.members).collect(),
+                });
+            }
             if let Some(table) = fastfile_t6::string_table(load, asset) {
                 if table.name.eq_ignore_ascii_case("mp/rankicontable.csv") && table.columns > 1 {
                     for row in table.cells.chunks_exact(table.columns) {
@@ -1204,21 +1255,23 @@ fn capture_weapon_icons(
                         );
                     }
                 }
-                tables.insert(
-                    table.name.to_owned(),
-                    asset_core::ZoneTable {
+                tables
+                    .entry(table.name.to_ascii_lowercase())
+                    .or_insert_with(|| asset_core::ZoneTable {
                         name: table.name.to_owned(),
                         columns: table.columns,
                         rows: table.rows,
                         cells: table.cells.into_iter().map(str::to_owned).collect(),
-                    },
-                );
+                    });
             }
             if let Ok(Some(raw)) = fastfile_t6::read_raw_file(load, asset)
-                && (raw.name.starts_with("ui/") || raw.name.starts_with("ui_mp/"))
-                && raw.name.ends_with(".lua")
+                && (((raw.name.starts_with("ui/") || raw.name.starts_with("ui_mp/"))
+                    && raw.name.ends_with(".lua"))
+                    || raw.name.ends_with(".cfg"))
             {
-                modules.insert(raw.name.to_ascii_lowercase(), Arc::from(raw.bytes));
+                modules
+                    .entry(raw.name.to_ascii_lowercase())
+                    .or_insert_with(|| Arc::from(raw.bytes));
             }
         }
         let literals = load.ui_literals();
@@ -1260,6 +1313,10 @@ fn capture_weapon_icons(
                 || name.starts_with("loadscreen_zm_")
                 || name.starts_with("faction_")
                 || name.starts_with("hud_chalk_")
+                || name.starts_with("menu_")
+                || name.starts_with("ui_")
+                || name.starts_with("lui_")
+                || name.starts_with("controller_")
                 || (name.starts_with("specialty_") && name.contains("_zombie"))
                 || matches!(
                     name.as_str(),
@@ -1276,19 +1333,7 @@ fn capture_weapon_icons(
                         | "hud_faction_backing"
                         | "hud_faction_back_light"
                         | "compassping_player"
-                        | "menu_button_backing"
-                        | "menu_button_backing_highlight"
-                        | "menu_select_highlight"
-                        | "menu_popup_back"
-                        | "menu_mp_background_main"
-                        | "menu_zm_background_main"
-                        | "menu_mp_background_logo"
-                        | "lui_bkg"
-                        | "lui_bkg_zm"
-                        | "menu_white_line_faded"
-                )
-                || ((name.starts_with("menu_mp_") || name.starts_with("menu_zm_"))
-                    && name.ends_with("_map_select_final"));
+                );
             if (!wanted.contains(&name) && !presentation)
                 || icons.iter().any(|(seen, _)| seen == &name)
             {
@@ -1306,8 +1351,10 @@ fn capture_weapon_icons(
                 Err(error) => failed.push(format!("{name}: {error}")),
             }
         }
-    }
-    for load in &all {
+
+        if wanted.is_empty() {
+            continue;
+        }
         for asset in &load.assets {
             if asset.ty != AssetType::Image {
                 continue;
@@ -1342,11 +1389,29 @@ fn capture_weapon_icons(
         failed.len(),
         wanted.len()
     ));
+    let installed_maps = common
+        .parent()
+        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().to_str().map(str::to_owned))
+        .filter(|n| {
+            n.starts_with("zm_")
+                && n.ends_with(".ff")
+                && !n.contains("patch")
+                && !n.contains("gump")
+        })
+        .map(|n| n.trim_end_matches(".ff").to_owned())
+        .collect();
     T6UiArt {
         images: icons,
         fonts,
         modules: modules.into_iter().collect(),
         tables: tables.into_values().collect(),
+        layouts,
+        localized: localized.into_iter().collect(),
+        installed_maps,
     }
 }
 
