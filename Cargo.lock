@@ -3243,6 +3243,7 @@ dependencies = [
 name = "game_api"
 version = "0.1.0"
 dependencies = [
+ "asset_core",
  "bevy_ecs",
  "gsc",
 ]

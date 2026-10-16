@@ -945,7 +945,13 @@ pub fn find_t6_localized_zones(
 ) -> Result<Vec<ZoneFile>, String> {
     let (dir, prefix) = language_archive(anchor, language, crate::ZoneGame::T6)?;
     let mode = crate::t6_content::T6ContentMode::for_path(anchor);
-    let mut zones: Vec<String> = mode.localized().into_iter().map(str::to_owned).collect();
+    let patch_ui = match mode {
+        crate::t6_content::T6ContentMode::Multiplayer => "patch_ui_mp",
+        crate::t6_content::T6ContentMode::Zombies => "patch_ui_zm",
+    };
+    let mut zones: Vec<String> = std::iter::once(patch_ui.to_owned())
+        .chain(mode.localized().into_iter().map(str::to_owned))
+        .collect();
     if mode == crate::t6_content::T6ContentMode::Zombies {
         zones.push(mode.common().to_owned());
         if let Some(map) = anchor

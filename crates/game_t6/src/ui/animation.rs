@@ -187,8 +187,12 @@ fn field(tables: &mut Tables, table: &Value, name: &[u8]) -> Result<Value, Fault
 fn number(value: &Value) -> Result<f32, FaultKind> {
     match value {
         Value::Number(number) => Ok(*number),
+        Value::Bytes(bytes) => Ok(core::str::from_utf8(bytes)
+            .ok()
+            .and_then(|text| text.trim().parse::<f32>().ok())
+            .unwrap_or(0.0)),
         Value::Nil | Value::Boolean(_) | Value::Reference { .. } => Ok(0.0),
-        Value::Bytes(_) | Value::Hash(_) => Err(FaultKind::BindingRequired),
+        Value::Hash(_) => Err(FaultKind::BindingRequired),
     }
 }
 

@@ -1,4 +1,7 @@
 use super::Axis;
+
+mod front_end;
+mod stats;
 use super::elements::Elements;
 use super::script::runtime::{Bindings, Callback, Runtime};
 use super::script::tables::Tables;
@@ -26,6 +29,10 @@ fn text(value: &Value) -> Result<String, FaultKind> {
 fn number(value: Option<&Value>) -> Result<f32, FaultKind> {
     match value {
         Some(Value::Number(value)) => Ok(*value),
+        Some(Value::Bytes(bytes)) => core::str::from_utf8(bytes)
+            .ok()
+            .and_then(|text| text.trim().parse::<f32>().ok())
+            .ok_or(FaultKind::NumberRequired),
         _ => Err(FaultKind::NumberRequired),
     }
 }
@@ -86,6 +93,8 @@ pub struct Scene {
     runtime: Runtime,
     bindings: Host,
     module_names: Vec<String>,
+    /// The scene runs the front end (`T6.main`) instead of the match HUD.
+    front_end: bool,
     root: Option<Value>,
     scoreboard: Option<Value>,
     rewards: Option<Value>,
@@ -103,6 +112,7 @@ pub struct Scene {
 impl Scene {
     fn bootstrap_hud(&mut self, input: &Input) -> Result<(), String> {
         self.bindings.input = input.clone();
+        self.module("ui/t6/codroot.lua")?;
         self.module("ui/t6/codbase.lua")?;
         self.module("ui_mp/t6/hud.lua")?;
         let cod = self
@@ -126,7 +136,7 @@ impl Scene {
             .map_err(|e| format!("{e:?}"))? as u8;
         }
         let root = self
-            .invoke(&["LUI", "UIRoot", "new"], &[key("UIRootFull")])?
+            .invoke(&["LUI", "CoDRoot", "new"], &[key("UIRootFull")])?
             .first()
             .cloned()
             .ok_or("t6.ui.render: root missing")?;
@@ -213,8 +223,40 @@ impl Scene {
                 self.scoreboard = Some(scoreboard);
             }
         }
-        self.root = Some(root);
+        self.root = Some(root.clone());
+        self.bindings.front_end.root = Some(root);
+        self.bindings.zero_profile_settings();
+        self.bindings.front_end.session = 1 | (u32::from(input.zombies) << 4);
+        self.bindings.front_end.client_used = true;
+        self.bindings.front_end.client_primary = true;
+        self.bindings.front_end.party = true;
+        self.bindings.front_end.game_lobby = true;
+        self.sync_match_dvars(input);
         Ok(())
+    }
+
+    fn sync_match_dvars(&mut self, input: &Input) {
+        let group = self.bindings.zm_gamemode_group().to_owned();
+        let start = self.bindings.zm_start_location().to_owned();
+        for (name, value) in [
+            ("sv_running", "1"),
+            ("ui_mapname", input.map.as_str()),
+            ("mapname", input.map.as_str()),
+            ("ui_gametype", input.gametype.as_str()),
+            ("g_gametype", input.gametype.as_str()),
+            ("ui_zm_gamemodegroup", group.as_str()),
+            ("ui_zm_mapstartlocation", start.as_str()),
+        ] {
+            let _ = self.bindings.set_dvar(name, &key(value));
+        }
+        if self.bindings.front_end.gametype != input.gametype {
+            let configs = &self.bindings.configs;
+            self.bindings.front_end.gametype_settings = crate::gametype_settings(
+                &|name: &str| configs.get(&name.to_ascii_lowercase()).map(String::as_str),
+                &input.gametype,
+            );
+            self.bindings.front_end.gametype = input.gametype.clone();
+        }
     }
 
     fn add(&mut self, parent: &Value, child: &Value) -> Result<(), String> {
@@ -247,17 +289,16 @@ impl Scene {
             .call_with(&function, args, 1_000_000, &mut self.bindings)
             .map_err(|e| {
                 format!(
-                    "t6.ui.render: {}: {e:?}; source {:?}; binding {}",
+                    "t6.ui.render: {}: {e:?}; stack {}; binding {}",
                     path.join("."),
-                    self.runtime
-                        .failure_source()
-                        .map(|(program, function)| (self.module_names.get(program), function)),
+                    self.failure_trace(),
                     self.bindings.last_call
                 )
             })
     }
     pub fn new(modules: &[Module]) -> Result<Self, String> {
         let mut runtime = Runtime::default();
+        runtime.report_pcall_errors = std::env::var_os("IW4L_LUI_TRACE").is_some();
         let elements = Elements::install(&mut runtime.tables)
             .map_err(|e| format!("t6.ui.engine_api: {e:?}"))?;
         let mut host = Host {
@@ -273,6 +314,9 @@ impl Scene {
             force_mouse_root: false,
             maps: BTreeMap::new(),
             alignments: [0; 3],
+            front_end: front_end::FrontEnd::default(),
+            configs: BTreeMap::new(),
+            trace: std::env::var_os("IW4L_LUI_TRACE").is_some(),
         };
         let mut module_names = Vec::new();
         for (name, bytes) in modules {
@@ -285,6 +329,13 @@ impl Scene {
                         .trim_end_matches(".gsc");
                     host.maps.insert(stem.to_owned(), map);
                 }
+                continue;
+            }
+            if name.ends_with(".cfg") {
+                host.configs.insert(
+                    name.to_ascii_lowercase(),
+                    String::from_utf8_lossy(bytes).into_owned(),
+                );
                 continue;
             }
             if !name.ends_with(".lua") {
@@ -304,6 +355,7 @@ impl Scene {
             runtime,
             bindings: host,
             module_names,
+            front_end: false,
             root: None,
             scoreboard: None,
             rewards: None,
@@ -342,7 +394,39 @@ impl Scene {
                     .map_err(|e| format!("t6.ui.engine_api: {e:?}"))?;
             }
         }
+        scene
+            .bindings
+            .install_front_end(&mut scene.runtime.tables)
+            .map_err(|e| format!("t6.ui.engine_api: {e:?}"))?;
         Ok(scene)
+    }
+
+    /// Where the last fault happened: each active frame's module, function
+    /// and pc, innermost first.
+    fn failure_trace(&self) -> String {
+        self.runtime
+            .failure_stack()
+            .iter()
+            .map(|(program, function, pc)| {
+                format!(
+                    "{} fn {function} pc {pc}",
+                    self.module_names.get(*program).map_or("?", String::as_str)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" <- ")
+    }
+
+    /// Logs the script errors protected calls caught, naming each
+    /// program by its module.
+    fn report_errors(&mut self) {
+        for error in std::mem::take(&mut self.runtime.errors) {
+            let mut named = error;
+            for (index, name) in self.module_names.iter().enumerate() {
+                named = named.replace(&format!("program {index} fn"), &format!("{name} fn"));
+            }
+            diag::warn!(Ui, "lui error: {named}");
+        }
     }
 
     fn module(&mut self, name: &str) -> Result<(), String> {
@@ -377,6 +461,16 @@ impl Scene {
         name: &str,
         event: Value,
     ) -> Result<(), String> {
+        if !self.front_end
+            && method == "processEvent"
+            && self.root.as_ref() == Some(receiver)
+            && self.runtime.tables.raw_get(&event, &key("immediate")) == Ok(Value::Nil)
+        {
+            let _ = self
+                .runtime
+                .tables
+                .raw_set(&event, &key("immediate"), Value::Boolean(1));
+        }
         let callee = self
             .runtime
             .tables
@@ -391,10 +485,8 @@ impl Scene {
             )
             .map_err(|e| {
                 format!(
-                    "t6.ui.render: {method} {name}: {e:?}; source {:?}; binding {}",
-                    self.runtime
-                        .failure_source()
-                        .map(|(program, function)| (self.module_names.get(program), function)),
+                    "t6.ui.render: {method} {name}: {e:?}; stack {}; binding {}",
+                    self.failure_trace(),
                     self.bindings.last_call
                 )
             })?;
@@ -713,6 +805,14 @@ impl Scene {
 }
 
 impl ScriptUi for Scene {
+    fn take_requests(&mut self) -> Vec<game_api::ui::UiRequest> {
+        std::mem::take(&mut self.bindings.front_end.requests)
+    }
+
+    fn menu_open(&self) -> bool {
+        self.bindings.front_end.ingame_menu_open
+    }
+
     fn update(&mut self, input: &Input) -> Result<Vec<Draw>, String> {
         let mut input = input.clone();
         if input.gametype.is_empty() {
@@ -727,10 +827,21 @@ impl ScriptUi for Scene {
         }
         let input = &input;
         if self.root.is_none() {
-            self.bootstrap_hud(input)?;
+            if self.front_end {
+                self.bootstrap_front_end(input)?;
+            } else {
+                self.bootstrap_hud(input)?;
+            }
         }
         self.bindings.input = input.clone();
         let root = self.root.clone().ok_or("t6.ui.render: root missing")?;
+        if self.front_end {
+            return self.update_front_end(&root, input);
+        }
+        self.sync_match_dvars(input);
+        self.bindings.run_queued();
+        self.send_input(&root, input)?;
+        self.send(&root, "process_events", &[("immediate", Value::Boolean(1))])?;
         if self.reward_data != input.rewards
             && let Some(rewards) = self.rewards.clone()
         {
@@ -769,8 +880,9 @@ impl ScriptUi for Scene {
             )?;
             self.reward_data = input.rewards.clone();
         }
+        let menu_active = input.menu || self.bindings.front_end.ingame_menu_open;
         let refresh = self.refreshed.is_none_or(|(scoreboard, menu, _)| {
-            scoreboard != input.scoreboard || menu != input.menu
+            scoreboard != input.scoreboard || menu != menu_active
         });
         if refresh {
             self.event(&root, "dispatchEventToChildren", "hud_update_refresh")?;
@@ -784,20 +896,29 @@ impl ScriptUi for Scene {
                 .element_mut(&scoreboard)
                 .map_err(|e| format!("{e:?}"))?
                 .current
-                .opacity = input.scoreboard as u8 as f32;
+                .opacity = (input.scoreboard && !menu_active) as u8 as f32;
             if input.scoreboard
+                && !menu_active
                 && (refresh
                     || self
                         .refreshed
                         .is_none_or(|(_, _, time)| input.time.wrapping_sub(time) >= 100))
             {
                 self.event(&scoreboard, "processEvent", "update_scoreboard")?;
-                self.refreshed = Some((input.scoreboard, input.menu, input.time));
+                self.refreshed = Some((input.scoreboard, menu_active, input.time));
             }
         }
         if refresh {
-            self.refreshed = Some((input.scoreboard, input.menu, input.time));
+            self.refreshed = Some((input.scoreboard, menu_active, input.time));
         }
+        self.paint(&root, input)
+    }
+}
+
+impl Scene {
+    /// The scene's draws this frame, advancing its animations to `input.time`.
+    fn paint(&mut self, root: &Value, input: &Input) -> Result<Vec<Draw>, String> {
+        self.report_errors();
         let elapsed = self
             .last_time
             .map_or(0, |prev| input.time.wrapping_sub(prev).max(0));
@@ -805,7 +926,7 @@ impl ScriptUi for Scene {
         let width = input.viewport[0] / (input.viewport[1] / 720.0).max(0.001);
         let mut draws = Vec::new();
         self.draw(
-            identity(&root).map_err(|e| format!("{e:?}"))?,
+            identity(root).map_err(|e| format!("{e:?}"))?,
             [0.0, 0.0, width, 720.0],
             [1.0; 4],
             None,
@@ -831,6 +952,11 @@ struct Host {
     force_mouse_root: bool,
     maps: BTreeMap<String, (String, f32)>,
     alignments: [u8; 3],
+    front_end: front_end::FrontEnd,
+    /// The zones' config files (`.cfg`), by name without case.
+    configs: BTreeMap<String, String>,
+    /// `IW4L_LUI_TRACE`: log every engine call the scripts make.
+    trace: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1350,7 +1476,9 @@ impl Host {
         }
         tables.raw_set(&globals, &key("Dvar"), dvars)?;
         let string = tables.allocate()?;
-        for name in ["char", "sub", "len", "find", "match"] {
+        for name in [
+            "char", "sub", "len", "lower", "upper", "reverse", "find", "match", "gsub",
+        ] {
             self.bind(tables, &string, name)?;
         }
         tables.raw_set(&globals, &key("string"), string)?;
@@ -1358,6 +1486,14 @@ impl Host {
         for name in ["insert", "remove", "concat"] {
             self.bind(tables, &table, name)?;
         }
+        tables.raw_set(
+            &table,
+            &key("sort"),
+            Value::Reference {
+                kind: 10,
+                identity: super::script::library::SORT,
+            },
+        )?;
         tables.raw_set(&globals, &key("table"), table)?;
         let math = tables.allocate()?;
         for name in [
@@ -1365,7 +1501,33 @@ impl Host {
         ] {
             self.bind(tables, &math, name)?;
         }
+        // HavokScript numbers are single precision.
+        tables.raw_set(&math, &key("pi"), Value::Number(std::f32::consts::PI))?;
         tables.raw_set(&globals, &key("math"), math)?;
+        // Every other name the engine registers fails by its name when
+        // called, instead of reaching the scripts' `CoD.NullFunction`.
+        for (table, names, label) in [
+            ("Engine", super::engine_names::ENGINE, "Engine"),
+            (
+                "UIExpression",
+                super::engine_names::EXPRESSIONS,
+                "UIExpression",
+            ),
+            (
+                "UIContainer",
+                super::engine_names::ELEMENT_METHODS,
+                "UIElement",
+            ),
+        ] {
+            let table = tables.global(&key(table))?;
+            for name in names {
+                if tables.raw_get(&table, &key(name))? == Value::Nil {
+                    let identity = self.functions.len() as u32 + 100;
+                    self.functions.push(format!("missing:{label}.{name}"));
+                    tables.raw_set(&table, &key(name), Value::Reference { kind: 10, identity })?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1392,6 +1554,7 @@ impl Bindings for Host {
         self.callback
             .take()
             .or_else(|| self.elements.take_callback())
+            .or_else(|| self.front_end.callbacks.pop_front())
     }
 
     fn call(
@@ -1422,6 +1585,19 @@ impl Bindings for Host {
             .cloned()
             .ok_or(FaultKind::BindingRequired)?;
         self.last_call = format!("{name} {args:?}");
+        if self.trace {
+            let shown: Vec<String> = args
+                .iter()
+                .map(|arg| match arg {
+                    Value::Bytes(bytes) => format!("{:?}", String::from_utf8_lossy(bytes)),
+                    other => format!("{other:?}"),
+                })
+                .collect();
+            diag::info!(Ui, "lui call: {name}({})", shown.join(", "));
+        }
+        if let Some(result) = self.front_end_call(&name, args, tables) {
+            return result;
+        }
         match name.as_str() {
             "min" | "max" => {
                 let mut result = number(args.first())?;
@@ -1449,6 +1625,14 @@ impl Bindings for Host {
             })]),
             "ToUpper" => Ok(vec![key(&text(
                 args.last().ok_or(FaultKind::Argument(1))?,
+            )?
+            .to_uppercase())]),
+            "lower" => Ok(vec![key(&text(
+                args.first().ok_or(FaultKind::Argument(1))?,
+            )?
+            .to_lowercase())]),
+            "upper" => Ok(vec![key(&text(
+                args.first().ok_or(FaultKind::Argument(1))?,
             )?
             .to_uppercase())]),
             "char" => Ok(vec![Value::Bytes(Arc::from(
@@ -1522,7 +1706,6 @@ impl Bindings for Host {
                 Ok(Vec::new())
             }
             "Exec" if args.last() == Some(&key("ui_keyboard_cancel")) => Ok(Vec::new()),
-            "PlayMenuMusic" if args.last() == Some(&key("")) => Ok(Vec::new()),
             "StopEditingPresetClass"
             | "ForceHUDRefresh"
             | "SetDvar"
@@ -1683,11 +1866,11 @@ impl Bindings for Host {
                 let enabled = if tables.field(&cod, &key("BIT_HUD_VISIBLE"))? == *bit
                     || tables.field(&cod, &key("BIT_COMPASS_VISIBLE"))? == *bit
                 {
-                    true
+                    !self.front_end.ingame_menu_open
                 } else if tables.field(&cod, &key("BIT_SCOREBOARD_OPEN"))? == *bit {
-                    self.input.scoreboard
+                    self.input.scoreboard && !self.front_end.ingame_menu_open
                 } else if tables.field(&cod, &key("BIT_UI_ACTIVE"))? == *bit {
-                    self.input.menu
+                    self.input.menu || self.front_end.ingame_menu_open
                 } else {
                     false
                 };
@@ -1866,7 +2049,6 @@ impl Bindings for Host {
                 let name = names.get(index).copied().unwrap_or("");
                 Ok(vec![key(name)])
             }
-            "IsInGame" => Ok(vec![Value::Boolean(1)]),
             "GameModeIsMode" => Ok(vec![Value::Boolean(0)]),
             "GetDvarBool" | "DvarBool" => {
                 let name = text(args.last().ok_or(FaultKind::Argument(1))?)?;
@@ -1942,32 +2124,175 @@ impl Bindings for Host {
                         .ok_or(FaultKind::KeyRequired)?
                         + 1
                 };
-                Ok(entries.get(start).map_or_else(
-                    || vec![Value::Nil],
-                    |(key, value)| vec![key.clone(), value.clone()],
-                ))
+                // A key set to nil while the table is traversed stays in place,
+                // so the traversal goes on past it; nil values are skipped.
+                Ok(entries[start.min(entries.len())..]
+                    .iter()
+                    .find(|(_, value)| *value != Value::Nil)
+                    .map_or_else(
+                        || vec![Value::Nil],
+                        |(key, value)| vec![key.clone(), value.clone()],
+                    ))
             }
             "len" => Ok(vec![Value::Number(
                 text(args.first().ok_or(FaultKind::Argument(1))?)?.len() as f32,
             )]),
-            "find" => {
-                let haystack = text(args.first().ok_or(FaultKind::Argument(1))?)?;
-                let needle = text(args.get(1).ok_or(FaultKind::Argument(2))?)?;
-                Ok(match haystack.find(&needle) {
-                    Some(start) => vec![
-                        Value::Number((start + 1) as f32),
-                        Value::Number((start + needle.len()) as f32),
-                    ],
-                    None => vec![Value::Nil],
-                })
+            "reverse" => {
+                let mut bytes = match args.first().ok_or(FaultKind::Argument(1))? {
+                    Value::Bytes(bytes) => bytes.to_vec(),
+                    other => text(other)?.into_bytes(),
+                };
+                bytes.reverse();
+                Ok(vec![Value::Bytes(bytes.into())])
             }
-            "match" => {
-                let haystack = text(args.first().ok_or(FaultKind::Argument(1))?)?;
-                let needle = text(args.get(1).ok_or(FaultKind::Argument(2))?)?;
-                Ok(match haystack.find(&needle) {
-                    Some(start) => vec![key(&haystack[start..start + needle.len()])],
-                    None => vec![Value::Nil],
-                })
+            "gsub" => {
+                // `str_gsub`: replaces up to `n` matches with the
+                // replacement text (`%0`-`%9` the captures, `%%` a percent);
+                // returns the text and the count.
+                let source = match args.first().ok_or(FaultKind::Argument(1))? {
+                    Value::Bytes(bytes) => bytes.clone(),
+                    other => Arc::from(text(other)?.into_bytes()),
+                };
+                let pattern = match args.get(1).ok_or(FaultKind::Argument(2))? {
+                    Value::Bytes(bytes) => bytes.clone(),
+                    other => Arc::from(text(other)?.into_bytes()),
+                };
+                let replacement = match args.get(2).ok_or(FaultKind::Argument(3))? {
+                    Value::Bytes(bytes) => bytes.clone(),
+                    Value::Number(_) => Arc::from(text(&args[2])?.into_bytes()),
+                    _ => return Err(FaultKind::Unknown(super::script::ENGINE_API)),
+                };
+                let limit = match args.get(3) {
+                    Some(Value::Number(limit)) => *limit as usize,
+                    _ => source.len() + 1,
+                };
+                let anchor = pattern.first() == Some(&b'^');
+                let pattern = if anchor { &pattern[1..] } else { &pattern[..] };
+                let fail = |error: super::script::pattern::PatternError| {
+                    FaultKind::ScriptError(error.0.into())
+                };
+                let mut out = Vec::new();
+                let mut at = 0usize;
+                let mut count = 0usize;
+                while count < limit {
+                    match super::script::pattern::match_at(&source, pattern, at).map_err(fail)? {
+                        Some((end, captures)) => {
+                            count += 1;
+                            let capture = |index: usize| -> Result<Vec<u8>, FaultKind> {
+                                if index == 0 {
+                                    return Ok(source[at..end].to_vec());
+                                }
+                                match captures.get(index - 1) {
+                                    Some(super::script::pattern::Capture::Text(from, to)) => {
+                                        Ok(source[*from..*to].to_vec())
+                                    }
+                                    Some(super::script::pattern::Capture::Position(position)) => {
+                                        Ok((position + 1).to_string().into_bytes())
+                                    }
+                                    None if index == 1 && captures.is_empty() => {
+                                        Ok(source[at..end].to_vec())
+                                    }
+                                    None => Err(FaultKind::ScriptError(
+                                        b"invalid capture index".to_vec(),
+                                    )),
+                                }
+                            };
+                            let mut chars = replacement.iter().copied();
+                            while let Some(byte) = chars.next() {
+                                if byte != b'%' {
+                                    out.push(byte);
+                                    continue;
+                                }
+                                match chars.next() {
+                                    Some(digit) if digit.is_ascii_digit() => {
+                                        out.extend(capture((digit - b'0') as usize)?);
+                                    }
+                                    Some(other) => out.push(other),
+                                    None => {}
+                                }
+                            }
+                            if end > at {
+                                at = end;
+                            } else if at < source.len() {
+                                out.push(source[at]);
+                                at += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                        None if at < source.len() => {
+                            out.push(source[at]);
+                            at += 1;
+                        }
+                        None => break,
+                    }
+                    if anchor {
+                        break;
+                    }
+                }
+                out.extend_from_slice(&source[at.min(source.len())..]);
+                Ok(vec![
+                    Value::Bytes(Arc::from(out)),
+                    Value::Number(count as f32),
+                ])
+            }
+            "find" | "match" => {
+                // `str_find_aux`: `init` counts from 1 (negative from the
+                // end) and clamps into the text; `find` with `plain`, or a
+                // pattern without specials, searches for the text itself.
+                let haystack = match args.first().ok_or(FaultKind::Argument(1))? {
+                    Value::Bytes(bytes) => bytes.clone(),
+                    other => Arc::from(text(other)?.into_bytes()),
+                };
+                let needle = match args.get(1).ok_or(FaultKind::Argument(2))? {
+                    Value::Bytes(bytes) => bytes.clone(),
+                    other => Arc::from(text(other)?.into_bytes()),
+                };
+                let length = haystack.len() as i64;
+                let init = match args.get(2) {
+                    Some(Value::Nil) | None => 1,
+                    value => number(value)? as i64,
+                };
+                let init = if init < 0 { length + init + 1 } else { init };
+                let init = (init - 1).clamp(0, length) as usize;
+                let plain = name == "find"
+                    && (args.get(3).is_some_and(Value::truthy)
+                        || !super::script::pattern::has_specials(&needle));
+                if plain {
+                    return Ok(
+                        match haystack[init..]
+                            .windows(needle.len().max(1))
+                            .position(|window| needle.is_empty() || window == &needle[..])
+                            .map(|at| at + init)
+                            .filter(|at| at + needle.len() <= haystack.len())
+                        {
+                            Some(start) => vec![
+                                Value::Number((start + 1) as f32),
+                                Value::Number((start + needle.len()) as f32),
+                            ],
+                            None => vec![Value::Nil],
+                        },
+                    );
+                }
+                let found = super::script::pattern::find(&haystack, &needle, init)
+                    .map_err(|error| FaultKind::ScriptError(error.0.into()))?;
+                let Some((start, end, captures)) = found else {
+                    return Ok(vec![Value::Nil]);
+                };
+                let mut values = Vec::new();
+                if name == "find" {
+                    values.push(Value::Number((start + 1) as f32));
+                    values.push(Value::Number(end as f32));
+                } else if captures.is_empty() {
+                    values.push(Value::Bytes(Arc::from(&haystack[start..end])));
+                }
+                values.extend(captures.into_iter().map(|capture| match capture {
+                    super::script::pattern::Capture::Text(from, to) => {
+                        Value::Bytes(Arc::from(&haystack[from..to]))
+                    }
+                    super::script::pattern::Capture::Position(at) => Value::Number((at + 1) as f32),
+                }));
+                Ok(values)
             }
             "sub" => {
                 let value = text(args.first().ok_or(FaultKind::Argument(1))?)?;
@@ -2350,8 +2675,22 @@ impl Bindings for Host {
                 .map(Value::Number)
                 .collect()),
             "addElementToC" | "addElementBeforeInC" | "addElementAfterInC" => {
-                let parent = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
-                let child = identity(args.get(1).ok_or(FaultKind::Argument(2))?)?;
+                // `parent:addElementToC(child)` appends; `element:addElement
+                // {Before,After}InC(sibling)` puts the element beside the
+                // sibling, under its parent, with its priority.
+                let first = identity(args.first().ok_or(FaultKind::Argument(1))?)?;
+                let second = identity(args.get(1).ok_or(FaultKind::Argument(2))?)?;
+                let (parent, child, sibling) = if name == "addElementToC" {
+                    (first, second, None)
+                } else {
+                    let parent = self
+                        .nodes
+                        .get(&second)
+                        .ok_or(FaultKind::Userdata(second))?
+                        .parent
+                        .ok_or(FaultKind::BindingRequired)?;
+                    (parent, first, Some(second))
+                };
                 let old = self
                     .nodes
                     .get(&child)
@@ -2364,27 +2703,45 @@ impl Bindings for Host {
                         .children
                         .retain(|id| *id != child);
                 }
-                self.nodes
+                if let Some(sibling) = sibling {
+                    let priority = self.nodes[&sibling].priority;
+                    self.nodes
+                        .get_mut(&child)
+                        .ok_or(FaultKind::Userdata(child))?
+                        .priority = priority;
+                }
+                let child_node = self
+                    .nodes
                     .get_mut(&child)
-                    .ok_or(FaultKind::Userdata(child))?
-                    .parent = Some(parent);
+                    .ok_or(FaultKind::Userdata(child))?;
+                child_node.parent = Some(parent);
+                let child_priority = child_node.priority;
+                let priority_pos = if sibling.is_none() {
+                    self.nodes
+                        .get(&parent)
+                        .ok_or(FaultKind::Userdata(parent))?
+                        .children
+                        .iter()
+                        .position(|id| {
+                            self.nodes
+                                .get(id)
+                                .is_some_and(|node| node.priority > child_priority)
+                        })
+                } else {
+                    None
+                };
                 let children = &mut self
                     .nodes
                     .get_mut(&parent)
                     .ok_or(FaultKind::Userdata(parent))?
                     .children;
-                if name != "addElementToC"
-                    && let Some(sibling) = args.get(2).and_then(|v| identity(v).ok())
-                    && let Some(pos) = children.iter().position(|id| *id == sibling)
-                {
-                    let insert_at = if name == "addElementBeforeInC" {
-                        pos
-                    } else {
-                        pos + 1
-                    };
-                    children.insert(insert_at, child);
-                } else {
-                    children.push(child);
+                match sibling.and_then(|sibling| children.iter().position(|id| *id == sibling)) {
+                    Some(pos) if name == "addElementBeforeInC" => children.insert(pos, child),
+                    Some(pos) => children.insert(pos + 1, child),
+                    None => match priority_pos {
+                        Some(pos) => children.insert(pos, child),
+                        None => children.push(child),
+                    },
                 }
                 Ok(Vec::new())
             }

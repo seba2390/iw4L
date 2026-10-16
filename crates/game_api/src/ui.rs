@@ -88,6 +88,51 @@ pub struct Input {
     pub offhand: [OffhandSlot; 2],
     pub client_fields: Vec<ClientFieldEvent>,
     pub lui_notifies: Vec<LuiNotify>,
+    /// Input and engine events for the scene's menus this frame, in order.
+    pub events: Vec<UiEvent>,
+    /// The data definitions the zones carry (a player's stats layout among
+    /// them).
+    pub layouts: Arc<[asset_core::BitLayout]>,
+    /// The maps whose zones are installed, by zone name.
+    pub installed_maps: Arc<[String]>,
+}
+
+/// An event the engine sends the scene's roots.
+#[derive(Clone, Debug, PartialEq)]
+pub enum UiEvent {
+    /// A key or pad button the engine names for menus (`gamepad_button`):
+    /// `primary`, `secondary`, `up`, `down`, ...; `qualifier` is `dpad` or
+    /// `mwheel` when the engine sends one.
+    Button {
+        button: &'static str,
+        qualifier: Option<&'static str>,
+        down: bool,
+    },
+    /// The mouse moved to `x`, `y` in the root's units.
+    MouseMove { x: f32, y: f32 },
+    /// A mouse button (`left`, `right`) went down or up at `x`, `y`.
+    Mouse {
+        button: &'static str,
+        down: bool,
+        x: f32,
+        y: f32,
+    },
+    /// The in-game menu key opened the menu the server named.
+    InGameMenu { menu: String },
+}
+
+/// What the scene's scripts ask the engine to do.
+#[derive(Clone, Debug, PartialEq)]
+pub enum UiRequest {
+    /// Console text the scripts executed (`Engine.Exec`).
+    Exec(String),
+    /// The menu music the scripts started (`Engine.PlayMenuMusic`), or
+    /// `None` to stop it.
+    MenuMusic(Option<String>),
+    /// A sound the scripts played for the local client (`Engine.PlaySound`).
+    Sound(String),
+    /// The gamepad's motor speeds the scripts set (`Engine.PlayRumble`).
+    Rumble { left: f32, right: f32 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -123,4 +168,14 @@ pub struct Draw {
 
 pub trait ScriptUi: Send + Sync {
     fn update(&mut self, input: &Input) -> Result<Vec<Draw>, String>;
+
+    /// What the scripts asked of the engine since the last call.
+    fn take_requests(&mut self) -> Vec<UiRequest> {
+        Vec::new()
+    }
+
+    /// Whether a menu that takes the keys and mouse is open.
+    fn menu_open(&self) -> bool {
+        false
+    }
 }

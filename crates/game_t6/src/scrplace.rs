@@ -332,6 +332,13 @@ pub fn menu_font(
     ui_small_font: f32,
     ui_big_font: f32,
 ) -> &'static str {
+    let real = placement.ui_scale * scale * placement.scale_virtual_to_real[1];
+    menu_font_at(font, real, ui_small_font, ui_big_font)
+}
+
+/// The UI font a menu item's font enum draws with at `real` scale in
+/// screen pixels (`UI_GetFontHandle`).
+pub fn menu_font_at(font: i32, real: f32, ui_small_font: f32, ui_big_font: f32) -> &'static str {
     match font {
         1 => return NORMAL,
         2 => return BIG,
@@ -342,7 +349,6 @@ pub fn menu_font(
         8 => return DIST,
         _ => {}
     }
-    let real = placement.ui_scale * scale * placement.scale_virtual_to_real[1];
     if font == 4 {
         if ui_small_font >= real {
             return SMALL;

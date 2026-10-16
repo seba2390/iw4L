@@ -14,6 +14,9 @@ type UiKey = (AssetNamespace, String);
 pub struct UiImageBuild {
     modules: HashMap<UiKey, Arc<[u8]>>,
     tables: HashMap<UiKey, asset_core::ZoneTable>,
+    layouts: HashMap<AssetNamespace, Arc<[asset_core::BitLayout]>>,
+    localized: HashMap<AssetNamespace, Arc<[(String, String)]>>,
+    installed_maps: HashMap<AssetNamespace, Arc<[String]>>,
     images: HashMap<UiKey, String>,
     fallbacks: HashMap<UiKey, String>,
     zone: HashMap<UiKey, ZoneUiImage>,
@@ -71,6 +74,26 @@ impl UiImageBuild {
                 .into_iter()
                 .map(|(name, bytes)| ((namespace, name.to_ascii_lowercase()), bytes)),
         );
+    }
+
+    pub fn script_layouts(
+        &mut self,
+        namespace: AssetNamespace,
+        layouts: Vec<asset_core::BitLayout>,
+    ) {
+        self.layouts.insert(namespace, layouts.into());
+    }
+
+    pub fn script_localized(
+        &mut self,
+        namespace: AssetNamespace,
+        localized: Vec<(String, String)>,
+    ) {
+        self.localized.insert(namespace, localized.into());
+    }
+
+    pub fn script_installed_maps(&mut self, namespace: AssetNamespace, maps: Vec<String>) {
+        self.installed_maps.insert(namespace, maps.into());
     }
     pub fn retain_materials(&mut self, materials: &crate::MaterialCatalog) {
         for material in &materials.materials {
@@ -161,6 +184,34 @@ impl UiImagePublication {
         modules.sort_by(|a, b| a.0.cmp(&b.0));
         modules
     }
+
+    pub fn script_layouts(&self, namespace: AssetNamespace) -> Arc<[asset_core::BitLayout]> {
+        self.0
+            .build
+            .layouts
+            .get(&namespace)
+            .cloned()
+            .unwrap_or_else(|| Arc::from(&[][..]))
+    }
+
+    pub fn script_localized(&self, namespace: AssetNamespace) -> Arc<[(String, String)]> {
+        self.0
+            .build
+            .localized
+            .get(&namespace)
+            .cloned()
+            .unwrap_or_else(|| Arc::from(&[][..]))
+    }
+
+    pub fn script_installed_maps(&self, namespace: AssetNamespace) -> Arc<[String]> {
+        self.0
+            .build
+            .installed_maps
+            .get(&namespace)
+            .cloned()
+            .unwrap_or_else(|| Arc::from(&[][..]))
+    }
+
     pub fn with_assets(
         &self,
         namespace: AssetNamespace,
