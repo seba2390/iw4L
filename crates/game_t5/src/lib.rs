@@ -190,7 +190,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         script_text: game_api::ScriptText::MenuFonts(hud_elem_font),
         material_font_floor: false,
         zombies: true,
-        font_scales_sent: Some(sent_font_scales),
+        hud_elem_sent: Some(sent_hud_elem),
     },
     client_fire: Some(fire_sound::CLIENT_FIRE),
     viewmodel: Some(viewmodel::VIEWMODEL),
@@ -221,19 +221,55 @@ fn hud_elem_font(font: i32) -> (i32, f32) {
     }
 }
 
-/// Black Ops sends an elem's font scale in 6 bits as tenths above 1
-/// (`(scale - 1) x 10`, rounded to nearest), keeping only the low bits, so a
-/// script's 8 reaches the client as 1.6 and its 32 as 6.4. The from-font
-/// scale is not sent, so clients keep it at 0.
-fn sent_font_scales(font_scale: f32, _from_font_scale: f32) -> (f32, f32) {
-    let tenths = (font_scale - 1.0) * 10.0;
-    let rounded = (f64::from(tenths) + f64::from(2.0f32.powi(-30))).round_ties_even();
-    let sent = if rounded.is_finite() && rounded.abs() < 2_147_483_648.0 {
-        rounded as i32 & 0x3f
-    } else {
-        0
+/// Black Ops' hud elem network fields, read from its executable's field
+/// table and its message coders:
+/// - `x`, `y` and `z` go through its origin coders, which send the nearest
+///   integer (`v + 2^-30`, rounded to even, against a reference the reader
+///   shares);
+/// - the font scale in 6 bits as tenths above 1 (`(scale - 1) x 10`
+///   rounded the same way), keeping only the low bits, so a script's 8
+///   reaches the client as 1.6 and its 32 as 6.4; the from-font scale is
+///   not sent, so clients keep it at 0;
+/// - widths and heights in their low 10 bits;
+/// - colours with red, green and blue whole and alpha in 5 bits, which the
+///   reader widens back to 8 (`a5 << 3 | a5 >> 2`);
+/// - the fade, scale, move and font scale lengths in their low 16 bits.
+///
+/// `fromX` and `fromY` are sent whole (a 12-bit integer or the float's
+/// bits).
+fn sent_hud_elem(elem: &mut game_api::hud::SentHudElem) {
+    let nearest = |v: f32| {
+        let rounded = (f64::from(v) + f64::from(2.0f32.powi(-30))).round_ties_even();
+        (rounded.is_finite() && rounded.abs() < 2_147_483_648.0).then_some(rounded as i32)
     };
-    (sent as f32 * 0.1 + 1.0, 0.0)
+    for v in [&mut elem.x, &mut elem.y, &mut elem.z] {
+        if let Some(n) = nearest(*v) {
+            *v = n as f32;
+        }
+    }
+    let sent = nearest((elem.font_scale - 1.0) * 10.0).map_or(0, |tenths| tenths & 0x3f);
+    elem.font_scale = sent as f32 * 0.1 + 1.0;
+    elem.from_font_scale = 0.0;
+    for size in [
+        &mut elem.width,
+        &mut elem.height,
+        &mut elem.from_width,
+        &mut elem.from_height,
+    ] {
+        *size &= 0x3ff;
+    }
+    for color in [&mut elem.color, &mut elem.from_color, &mut elem.glow_color] {
+        let a5 = color[3] >> 3;
+        color[3] = (a5 << 3) | (a5 >> 2);
+    }
+    for time in [
+        &mut elem.fade_time,
+        &mut elem.scale_time,
+        &mut elem.move_time,
+        &mut elem.font_scale_time,
+    ] {
+        *time &= 0xffff;
+    }
 }
 
 impl game_api::GameVision for T5 {
@@ -308,6 +344,18 @@ fn round_half_up(value: f32) -> f32 {
 }
 
 impl game_api::MenuLayout for MenuLayout {
+    /// Black Ops' text measure skips `^` with a colour code `0` to `@` or
+    /// `F`, `^C` with a code `0` to `@`, and `^L`; any other `^` is a glyph.
+    fn caret_code(&self, next: Option<char>, after: Option<char>) -> usize {
+        let code = |c: char| ('0'..='@').contains(&c);
+        match next {
+            Some(c) if c != '^' && (code(c) || c == 'F') => 1,
+            Some('C') if after.is_some_and(|a| a != '^' && code(a)) => 2,
+            Some('L') => 1,
+            _ => 0,
+        }
+    }
+
     /// `text_scale` × 48 over the font's pixel height, worked in double
     /// precision and stored as a float.
     fn text_scale(&self, pixel_height: i32, text_scale: f32) -> f32 {
