@@ -665,6 +665,8 @@ impl Host {
                         if let (Some(name), Some(value)) = (words.next(), words.next()) {
                             let key_name = name.to_ascii_lowercase();
                             let value = value.trim_matches('"');
+                            // `set_dvar` takes `&mut self`: no entry can be held.
+                            #[allow(clippy::map_entry)]
                             if self.front_end.dvars.contains_key(&key_name) {
                                 let _ = self.set_dvar(&key_name, &key(value));
                             } else {
@@ -860,6 +862,8 @@ impl Host {
                         self.front_end.ingame_menu_open = false;
                     }
                     let value = super::key(&value);
+                    // `set_dvar` takes `&mut self`: no entry can be held.
+                    #[allow(clippy::map_entry)]
                     if self.front_end.dvars.contains_key(&key) {
                         if let Err(fault) = self.set_dvar(&key, &value) {
                             return Some(Err(fault));

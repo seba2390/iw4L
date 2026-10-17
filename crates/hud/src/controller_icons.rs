@@ -2,6 +2,10 @@ use frame::ControllerIcon;
 
 pub(crate) const SIZE: u32 = 64;
 
+#[expect(
+    clippy::manual_checked_ops,
+    reason = "one zero test guards a pixel's three divisions"
+)]
 pub(crate) fn rasterize(icon: ControllerIcon) -> Vec<u8> {
     let svg = match icon {
         ControllerIcon::A => include_str!("../icons/xbox/a.svg"),

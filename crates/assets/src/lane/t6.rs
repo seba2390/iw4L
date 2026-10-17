@@ -1444,7 +1444,7 @@ fn capture_ui_font(
         .0
         .iter()
         .filter_map(|row| {
-            let glyph = fastfile_iw4::GlyphCapture::from_row(row.try_into().ok()?);
+            let glyph = fastfile_iw4::GlyphCapture::from_row(row);
             [glyph.s0, glyph.t0, glyph.s1, glyph.t1]
                 .iter()
                 .all(|value| value.is_finite() && (0.0..=1.0).contains(value))

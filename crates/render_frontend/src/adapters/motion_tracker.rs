@@ -263,11 +263,9 @@ pub(crate) fn draw_motion_tracker(
         .flatten()
         .filter(|ping| (0..FADE_MS).contains(&(now - ping.time)))
         .count();
-    let max_points = if visible == 0 {
-        32
-    } else {
-        (634 / visible).min(32).max(1)
-    };
+    let max_points = 634usize
+        .checked_div(visible)
+        .map_or(32, |per_point| per_point.clamp(1, 32));
     for history in tracker.contacts.values() {
         for ping in history.iter().flatten() {
             let age = now - ping.time;

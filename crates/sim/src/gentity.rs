@@ -624,13 +624,15 @@ pub fn collect_use_presses(cmds: &[(u32, u32)], old_buttons: &[(u32, u32)]) -> V
 }
 
 pub fn init_script_mover_state(number: i32, origin: [f32; 3], angles: [f32; 3]) -> EntityState {
-    let mut es = EntityState::default();
-    es.number = number;
-    es.e_type = ET_SCRIPTMOVER;
-    es.tr_type = TR_STATIONARY;
-    es.tr_base = origin;
-    es.apos_tr_type = TR_STATIONARY;
-    es.apos_tr_base = angles;
+    let es = EntityState {
+        number,
+        e_type: ET_SCRIPTMOVER,
+        tr_type: TR_STATIONARY,
+        tr_base: origin,
+        apos_tr_type: TR_STATIONARY,
+        apos_tr_base: angles,
+        ..EntityState::default()
+    };
     es
 }
 
@@ -771,11 +773,13 @@ pub fn init_missile_state(
     apos: Trajectory,
     launch_time: i32,
 ) -> EntityState {
-    let mut es = EntityState::default();
-    es.number = number;
-    es.e_type = ET_MISSILE;
-    es.e_flags = 0;
-    es.index = weapon as i32;
+    let mut es = EntityState {
+        number,
+        e_type: ET_MISSILE,
+        e_flags: 0,
+        index: weapon as i32,
+        ..EntityState::default()
+    };
     write_pos(&mut es, pos);
     write_apos(&mut es, apos);
     es.set_launch_time(launch_time);
@@ -789,12 +793,14 @@ pub fn init_item_state(
     apos: Trajectory,
     owner_num: i32,
 ) -> EntityState {
-    let mut es = EntityState::default();
-    es.number = number;
-    es.e_type = ET_ITEM;
-    es.e_flags = 0;
-    es.index = weapon as i32;
-    es.client_num = owner_num;
+    let mut es = EntityState {
+        number,
+        e_type: ET_ITEM,
+        e_flags: 0,
+        index: weapon as i32,
+        client_num: owner_num,
+        ..EntityState::default()
+    };
     write_pos(&mut es, pos);
     write_apos(&mut es, apos);
     es

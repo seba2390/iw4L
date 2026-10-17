@@ -474,8 +474,8 @@ pub(crate) fn packed_skin_shape(
             let source = surface.src_first_vertex + local;
             let vertex = &mut vertices[surface.dest_first_vertex + local];
             if let Some(row) = skel.packed_vertices.get(source) {
-                for (word, bytes) in vertex.packed.iter_mut().zip(row.chunks_exact(4)) {
-                    *word = u32::from_le_bytes(bytes.try_into().unwrap());
+                for (word, bytes) in vertex.packed.iter_mut().zip(row.as_chunks::<4>().0) {
+                    *word = u32::from_le_bytes(*bytes);
                 }
             }
             if !active.get(source).copied().unwrap_or(false) {

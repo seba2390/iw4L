@@ -504,10 +504,12 @@ pub(crate) fn update_command_context_code_sources(
 
     dfog.0 = sampled_fog.as_ref().is_some_and(|fog| fog.sun.is_some());
 
-    let mut source = GfxCmdBufSource2d::default();
-    source.render_target_width = prepared.rt_w;
-    source.render_target_height = prepared.rt_h;
-    source.scene_viewport = prepared.scene_viewport;
+    let mut source = GfxCmdBufSource2d {
+        render_target_width: prepared.rt_w,
+        render_target_height: prepared.rt_h,
+        scene_viewport: prepared.scene_viewport,
+        ..GfxCmdBufSource2d::default()
+    };
     let full_vp = hud_iw4::GfxViewport {
         x: 0,
         y: 0,

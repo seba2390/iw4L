@@ -324,11 +324,13 @@ pub fn pack_smodel_meshes(
             match_surfaces,
             skip_surfaces,
         );
-        let mut packed_row = SmodelMeshSurfaces::default();
-        packed_row.vert_start = packed.len() as u32;
-        packed_row.lod_smc = model.lod_smc.map(|rows| rows[0]);
-        packed_row.lod_smc_rows = model.lod_smc;
-        packed_row.lod = model.lod;
+        let mut packed_row = SmodelMeshSurfaces {
+            vert_start: packed.len() as u32,
+            lod_smc: model.lod_smc.map(|rows| rows[0]),
+            lod_smc_rows: model.lod_smc,
+            lod: model.lod,
+            ..SmodelMeshSurfaces::default()
+        };
         let mut authored_row = Vec::new();
         let mut collision_row = Vec::new();
         for lod in 0..4 {

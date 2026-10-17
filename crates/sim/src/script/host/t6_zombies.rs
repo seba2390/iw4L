@@ -1477,8 +1477,10 @@ fn move_actors(
                 frame = FrameWorld::from_world(world);
             }
         }
-        let yaw = if actor.barrier.is_some() && waiting {
-            let end = state.barriers[actor.barrier.unwrap()].inside;
+        let yaw = if let Some(barrier) = actor.barrier
+            && waiting
+        {
+            let end = state.barriers[barrier].inside;
             let from = actor.entering.map_or(actor.origin, |(_, from)| from);
             (end[1] - from[1]).atan2(end[0] - from[0]).to_degrees()
         } else {
