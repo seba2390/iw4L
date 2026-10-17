@@ -340,6 +340,9 @@ pub struct ModeRules {
     /// The game's own post chain, drawn over every 3D frame in place of the
     /// renderer's; `None` keeps the renderer's.
     pub post_chain: Option<post::PostChainRules>,
+    /// The game's own screen overlays, drawn over the frame after its post
+    /// passes; `None` draws none.
+    pub overlays: Option<post::OverlayRules>,
     /// The game's own frame fog; `None` keeps the renderer's.
     pub frame_fog: Option<fog::FrameFogRules>,
     /// The game's own rules for what bullets, explosions and players do to

@@ -32,7 +32,10 @@ pub use code_sources::{
     CODE_POST_TEXTURE_COUNT, CODE_POST_TEXTURE0, CodeSourceError, CodeSourceLookup,
     CompiledConstantOverlay, LayeredCodeSources, RuntimeCodeSources, compile_constant_overlay,
 };
-pub use dxbc_abi::{CODE_T6_GRID_SH, CODE_T6_REFLECTION_SH, CODE_T6_SAMPLE_DECODE};
+pub use dxbc_abi::{
+    CODE_T6_FADE_EFFECT, CODE_T6_FLAME_DISTORTION, CODE_T6_GRID_SH, CODE_T6_OVERLAY_TEX_COORD,
+    CODE_T6_REFLECTION_SH, CODE_T6_SAMPLE_DECODE, CODE_T6_VIEWPORT_DIMENSIONS,
+};
 pub use execute::{
     ExecutablePass, ExecutablePassView, MaterialDrawKey, MaterialExecution, MaterialRefusal,
     PackedCodeConstantLane, PackedCodeConstants, PackedCodeSamplerLane, PackedCodeSamplers,

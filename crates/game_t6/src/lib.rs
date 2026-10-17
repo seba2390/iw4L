@@ -10,6 +10,7 @@ mod keys;
 mod menu_expression;
 mod missile;
 mod movement;
+mod overlay;
 mod script_zones;
 pub mod scrplace;
 mod startup;
@@ -284,6 +285,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: None,
     post_chain: None,
+    overlays: Some(overlay::OVERLAYS),
     frame_fog: Some(fog::FRAME_FOG),
     dyn_ent_physics: None,
 };
