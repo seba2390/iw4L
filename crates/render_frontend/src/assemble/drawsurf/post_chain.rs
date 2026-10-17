@@ -126,29 +126,35 @@ pub const CODE_TEXTURE_FEEDBACK: u32 = 8;
 /// The game time row.
 const CODE_GAMETIME: u16 = super::command_context::CODE_GAMETIME;
 /// The rows a game's overlays set.
-pub const OVERLAY_ROWS: [u16; 4] = [
+pub const OVERLAY_ROWS: [u16; 8] = [
     render_material::CODE_T6_FLAME_DISTORTION,
     render_material::CODE_T6_OVERLAY_TEX_COORD,
     render_material::CODE_T6_FADE_EFFECT,
     render_material::CODE_T6_VIEWPORT_DIMENSIONS,
+    render_material::CODE_T6_SCRIPT_VECTOR[0],
+    render_material::CODE_T6_SCRIPT_VECTOR[1],
+    render_material::CODE_T6_SCRIPT_VECTOR[2],
+    render_material::CODE_T6_SCRIPT_VECTOR[3],
 ];
 
-/// A game's overlays with each of their materials admitted, in the rule's
-/// order, and each material's texture atlas (rows, columns).
+/// A game's overlays with each material the loaded zones carry admitted, in
+/// the rule's order, and each material's texture atlas (rows, columns).
 #[derive(Clone, Debug)]
 pub struct RuntimeOverlays {
     pub rules: OverlayRules,
     pub materials: Vec<RuntimePostFx>,
-    pub atlases: Vec<[u8; 2]>,
+    pub atlases: Vec<(&'static str, [u8; 2])>,
     /// Each material's textures, by name hash.
     pub textures: Vec<Vec<(u32, render_material::RuntimeTextureBinding)>>,
 }
 
 /// The base every overlay draw executes against at `width` x `height`: the
-/// chain's base, the game time and overlay rows zero, and the frame bound
-/// as `feedback`.
+/// chain's base, its 2D projection split as a 2D view draws (the
+/// view-projection the same projection, the world identity), the game time
+/// and overlay rows zero, and the frame bound as `feedback`.
 pub fn overlay_sources(width: u32, height: u32) -> Option<RuntimeCodeSources> {
     let mut sources = post_chain_sources(width, height)?;
+    split_2d_projection(&mut sources);
     for row in std::iter::once(CODE_GAMETIME).chain(OVERLAY_ROWS) {
         sources.set_constant_rows(row, &[[0; 4]]);
     }
@@ -158,7 +164,32 @@ pub fn overlay_sources(width: u32, height: u32) -> Option<RuntimeCodeSources> {
     Some(sources)
 }
 
-/// Admits every overlay material, or names the first that refused.
+/// A 2D view's matrices from its world-view-projection rows: Black Ops 2's
+/// 2D view leaves the view identity, so its view-projection is the same 2D
+/// projection, and draws its quads with an identity world.
+pub fn split_2d_projection(sources: &mut RuntimeCodeSources) {
+    use super::command_context::{
+        CODE_TRANSPOSE_VIEW_PROJECTION, CODE_TRANSPOSE_WORLD_VIEW_PROJECTION0,
+        CODE_TRANSPOSE_WORLD0,
+    };
+    if let Some(projection) = sources.constant_arc(CODE_TRANSPOSE_WORLD_VIEW_PROJECTION0) {
+        sources.set_constant_rows(CODE_TRANSPOSE_VIEW_PROJECTION, &projection);
+    }
+    sources.set_constant_rows(
+        CODE_TRANSPOSE_WORLD0,
+        &[
+            [1.0f32.to_bits(), 0, 0, 0],
+            [0, 1.0f32.to_bits(), 0, 0],
+            [0, 0, 1.0f32.to_bits(), 0],
+            [0, 0, 0, 1.0f32.to_bits()],
+        ],
+    );
+}
+
+/// Admits each overlay and filter material the loaded zones carry, or names
+/// the first overlay material that refused. Black Ops 2 loads its overlay
+/// materials with the map: a map whose zones lack one (Nuketown has no
+/// electric shock) never turns that overlay on.
 pub(crate) fn build_runtime_overlays(
     catalog: &RuntimeMaterialCatalog,
     prepared: &PreparedMaterialTable,
@@ -176,38 +207,61 @@ pub(crate) fn build_runtime_overlays(
             },
         ),
     ))?;
-    let mut materials = Vec::with_capacity(rules.materials.len());
-    let mut atlases = Vec::with_capacity(rules.materials.len());
-    let mut textures = Vec::with_capacity(rules.materials.len());
-    for &name in rules.materials {
-        let material = postfx_material_in(catalog, name, namespace).map_err(|e| (name, e))?;
-        atlases.push(material.texture_atlas.unwrap_or([0, 0]));
-        textures.push(
-            material
-                .textures
-                .iter()
-                .filter_map(|(hash, binding)| Some((*hash, (*binding)?)))
-                .collect(),
-        );
-        materials.push(
-            admit_unlit_2d_material(
-                catalog,
-                prepared,
-                programs,
-                shaders,
-                (material, name),
-                false,
-                &sources,
-            )
-            .map_err(|e| (name, e))?,
-        );
-    }
-    Ok(RuntimeOverlays {
+    let admit = |name: &'static str| {
+        let material = postfx_material_in(catalog, name, namespace)?;
+        let admitted = admit_unlit_2d_material(
+            catalog,
+            prepared,
+            programs,
+            shaders,
+            (material, name),
+            false,
+            &sources,
+        )?;
+        let textures = material
+            .textures
+            .iter()
+            .filter_map(|(hash, binding)| Some((*hash, (*binding)?)))
+            .collect();
+        Ok::<_, PostFxAdmissionRefusal>((
+            admitted,
+            (name, material.texture_atlas.unwrap_or([0, 0])),
+            textures,
+        ))
+    };
+    let mut overlays = RuntimeOverlays {
         rules: *rules,
-        materials,
-        atlases,
-        textures,
-    })
+        materials: Vec::with_capacity(rules.materials.len()),
+        atlases: Vec::with_capacity(rules.materials.len()),
+        textures: Vec::with_capacity(rules.materials.len()),
+    };
+    let mut push = |(material, atlas, textures)| {
+        overlays.materials.push(material);
+        overlays.atlases.push(atlas);
+        overlays.textures.push(textures);
+    };
+    for &name in rules.materials {
+        match admit(name) {
+            Ok(admitted) => push(admitted),
+            Err(PostFxAdmissionRefusal::MaterialMissing) => {
+                diag::info!(World, "overlay material {name}: no loaded zone carries it");
+            }
+            Err(cause) => return Err((name, cause)),
+        }
+    }
+    for &name in rules.filter_materials {
+        match admit(name) {
+            Ok(admitted) => push(admitted),
+            Err(PostFxAdmissionRefusal::MaterialMissing) => {}
+            Err(cause) => {
+                diag::warn!(
+                    World,
+                    "overlay filter material admission: RED material={name} cause={cause:?}"
+                );
+            }
+        }
+    }
+    Ok(overlays)
 }
 
 /// The local client's vision channels, as its game's post chain keeps them,
@@ -345,7 +399,7 @@ pub(crate) fn update_post_vision(
 pub struct ScreenOverlayPasses {
     pub passes: Vec<game_api::post::OverlayPass>,
     /// The materials the last frame drew, for the log.
-    logged: Vec<&'static str>,
+    logged: Vec<String>,
 }
 
 /// Plans the frame's overlays from the presented client's screen.
@@ -363,14 +417,18 @@ pub(crate) fn plan_screen_overlays(
     let screen = presented
         .snapshot()
         .and_then(|snapshot| snapshot.meta.for_client(local.0))
-        .map(|meta| meta.view_effects.client_screen.overlays)
+        .map(|meta| meta.view_effects.client_screen.overlays.clone())
         .unwrap_or_else(game_api::post::ScreenOverlays::default);
     out.passes = (overlays.rules.plan)(&game_api::post::OverlayFrame {
         now_ms: clock.time(),
         screen: &screen,
         atlases: &overlays.atlases,
     });
-    let drawn: Vec<&'static str> = out.passes.iter().map(|pass| pass.material).collect();
+    let drawn: Vec<String> = out
+        .passes
+        .iter()
+        .map(|pass| pass.material.clone())
+        .collect();
     if drawn != out.logged {
         diag::info!(World, "screen overlays: {drawn:?} at {}", clock.time());
         out.logged = drawn;

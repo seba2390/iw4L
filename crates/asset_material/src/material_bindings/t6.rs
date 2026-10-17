@@ -20,6 +20,16 @@ pub(super) fn prepare_exposure(steps: &mut Vec<FrameStep>, requested: &[u16]) {
         .map(|(i, r)| (i, float4_bits(r)))
         .collect();
     super::push_static(steps, requested, rows);
+    // The client's per-entity script vectors are not drawn
+    // (`t6.csc.shader.constants`): a scene draw reads them as zero.
+    super::push_static(
+        steps,
+        requested,
+        render_material::CODE_T6_SCRIPT_VECTOR
+            .into_iter()
+            .map(|row| (row, [0; 4]))
+            .collect(),
+    );
     if requested.contains(&CODE_T6_SAMPLE_DECODE) {
         steps.push(FrameStep::LightSampleDecode);
     }

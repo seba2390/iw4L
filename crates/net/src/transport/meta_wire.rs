@@ -1692,6 +1692,14 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
     }
     out.put_u8(u8::from(overlays.flame_allowed));
     out.put_f32(overlays.flame_scaler);
+    out.put_u8(overlays.filters.len() as u8);
+    for filter in &overlays.filters {
+        out.put_u8(filter.filter);
+        put_text(out, &filter.material);
+        for constant in filter.constants {
+            out.put_f32(constant);
+        }
+    }
 }
 
 fn decode_flame_overlay(
@@ -1765,6 +1773,24 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         shock: decode_flame_overlay(input)?,
         flame_allowed: input.get_u8()? != 0,
         flame_scaler: input.get_f32()?,
+        filters: {
+            let count = input.get_u8()?;
+            let mut filters = Vec::with_capacity(usize::from(count));
+            for _ in 0..count {
+                let filter = input.get_u8()?;
+                let material = get_text(input)?;
+                let mut constants = [0.0; 16];
+                for constant in &mut constants {
+                    *constant = input.get_f32()?;
+                }
+                filters.push(sim::ScreenFilter {
+                    filter,
+                    material,
+                    constants,
+                });
+            }
+            filters
+        },
     };
     Ok(sim::ClientScreen {
         hide_fade,

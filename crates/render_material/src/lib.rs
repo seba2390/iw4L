@@ -34,7 +34,8 @@ pub use code_sources::{
 };
 pub use dxbc_abi::{
     CODE_T6_FADE_EFFECT, CODE_T6_FLAME_DISTORTION, CODE_T6_GRID_SH, CODE_T6_OVERLAY_TEX_COORD,
-    CODE_T6_REFLECTION_SH, CODE_T6_SAMPLE_DECODE, CODE_T6_VIEWPORT_DIMENSIONS,
+    CODE_T6_REFLECTION_SH, CODE_T6_SAMPLE_DECODE, CODE_T6_SCRIPT_VECTOR,
+    CODE_T6_VIEWPORT_DIMENSIONS,
 };
 pub use execute::{
     ExecutablePass, ExecutablePassView, MaterialDrawKey, MaterialExecution, MaterialRefusal,

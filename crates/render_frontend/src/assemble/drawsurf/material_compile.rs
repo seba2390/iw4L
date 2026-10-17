@@ -629,11 +629,24 @@ impl MaterialProgramCompile {
             .into_iter()
             .flatten()
             .chain(overlays.into_iter().flat_map(|(rules, namespace)| {
+                // A material the loaded zones lack is not drawn.
                 super::post_chain::game_material_compile_locations(
                     catalog,
                     rules.materials,
                     namespace,
                 )
+                .into_iter()
+                .chain(super::post_chain::game_material_compile_locations(
+                    catalog,
+                    rules.filter_materials,
+                    namespace,
+                ))
+                .filter(|(_, location)| {
+                    !matches!(
+                        location,
+                        Err(super::postfx_plan::PostFxAdmissionRefusal::MaterialMissing)
+                    )
+                })
             }));
         for (name, location) in chain {
             match location {

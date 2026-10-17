@@ -65,6 +65,16 @@ struct LightState {
     mixer: Option<usize>,
 }
 
+/// One filter pass as the client keeps it: the material set for it (the
+/// mapped slot's material when it was set), whether it is enabled, and its
+/// constants.
+#[derive(Clone, Default)]
+struct FilterPass {
+    material: Option<String>,
+    enabled: bool,
+    constants: [f32; FILTER_CONSTANTS as usize],
+}
+
 /// Client effects, visionsets, filter materials and lights.
 #[derive(Resource)]
 struct ClientEffects {
@@ -74,6 +84,8 @@ struct ClientEffects {
     naked_vision: Option<String>,
     /// The local client's mapped filter material names (`map_material`).
     mapped_materials: [Option<String>; FILTER_MATERIAL_SLOTS],
+    /// The local client's filter passes, by filter and pass.
+    filters: [[FilterPass; FILTER_PASSES as usize]; FILTER_SLOTS as usize],
     /// Entities turned into primary lights (`makelight`), by client object id.
     lights: BTreeMap<u64, LightState>,
     /// The gump hide fade's colour: the last `sethidegumpalpha` colour.
@@ -86,6 +98,7 @@ impl Default for ClientEffects {
             effects: Vec::new(),
             naked_vision: None,
             mapped_materials: std::array::from_fn(|_| None),
+            filters: Default::default(),
             lights: BTreeMap::new(),
             hide_fade_color: [0.0; 3],
         }
@@ -168,6 +181,37 @@ fn flame_overlay(
         crate::script::host::natives::t6::flame_overlay::start(server, client as u32, kind, ms);
     });
     Ok(Value::Undefined)
+}
+
+/// The client's screen takes the filters that draw: the backend's filter
+/// pass draws each filter whose first pass is enabled and has a material,
+/// with that pass's constants; the other passes draw nothing.
+fn publish_filters(world: &mut World) {
+    let filters: Vec<crate::ScreenFilter> = state(world)
+        .filters
+        .iter()
+        .zip(0u8..)
+        .filter_map(|(passes, filter)| {
+            let first = &passes[0];
+            Some(crate::ScreenFilter {
+                filter,
+                material: first.material.clone().filter(|_| first.enabled)?,
+                constants: first.constants,
+            })
+        })
+        .collect();
+    with_server(world, |server| {
+        let mut frame = crate::frame::FrameWorld::from_world(server);
+        let client_id = crate::ClientId(LOCAL_CLIENT as u32);
+        if frame.client_meta(client_id).is_some() {
+            frame
+                .client_meta_mut(client_id)
+                .view_effects
+                .client_screen
+                .overlays
+                .filters = filters;
+        }
+    });
 }
 
 fn now_ms(world: &World) -> i64 {
@@ -1134,14 +1178,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 "USAGE: ent map_material( <material index 0-63 >, <material name>)\n".into(),
             );
         }
-        // t6.csc.filter.pass: IW4L's post-processing does not run client
-        // script filter passes.
         state(world).mapped_materials[index as usize] = Some(name);
         Ok(Value::Undefined)
     });
 
-    // ent set_filter_pass_material(filter, pass, material): assigns a mapped
-    // material to a filter pass.
+    // ent set_filter_pass_material(filter, pass, material): sets a filter
+    // pass's material to the mapped slot's material.
     registry.register(
         Method,
         "set_filter_pass_material",
@@ -1159,12 +1201,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                         .into(),
                 );
             }
-            if state(world).mapped_materials[material as usize].is_none() {
+            let Some(name) = state(world).mapped_materials[material as usize].clone() else {
                 return Err(
                     "USAGE: ent set_filter_pass_material( <filterindex 0-3>, <passindex 0-15>, <materialindex 0-63>, <targetindex 0-4>, <sampler0index 0-4>, <sampler0index 0-4> ) - no material at that index\n"
                         .into(),
                 );
-            }
+            };
+            state(world).filters[filter as usize][pass as usize].material = Some(name);
+            publish_filters(world);
             Ok(Value::Undefined)
         },
     );
@@ -1178,13 +1222,15 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             receiver_entity(world, receiver)?;
             let filter = int(args, 0)?;
             let pass = int(args, 1)?;
-            let _enabled = int(args, 2)?;
+            let enabled = int(args, 2)?;
             if !(0..FILTER_SLOTS).contains(&filter) || !(0..FILTER_PASSES).contains(&pass) {
                 return Err(
                     "USAGE: ent set_filter_pass_enabled( <filterindex 0-3>, <passindex 0-16>, <enabled true/false> )\n"
                         .into(),
                 );
             }
+            state(world).filters[filter as usize][pass as usize].enabled = enabled != 0;
+            publish_filters(world);
             Ok(Value::Undefined)
         },
     );
@@ -1199,7 +1245,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             let filter = int(args, 0)?;
             let pass = int(args, 1)?;
             let constant = int(args, 2)?;
-            let _value = float(args, 3)?;
+            let value = float(args, 3)?;
             if !(0..FILTER_SLOTS).contains(&filter)
                 || !(0..FILTER_PASSES).contains(&pass)
                 || !(0..FILTER_CONSTANTS).contains(&constant)
@@ -1209,6 +1255,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                         .into(),
                 );
             }
+            state(world).filters[filter as usize][pass as usize].constants[constant as usize] =
+                value;
+            publish_filters(world);
             Ok(Value::Undefined)
         },
     );
