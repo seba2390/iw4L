@@ -560,31 +560,32 @@ pub(crate) fn update_killfeed(
                     && !victim.is_empty()
                     && font.is_some()
                     && font_tex_ok;
-                if line_names && *has_attacker {
-                    if let Some(def) = font {
-                        let attacker_w = text_width(def, attacker) as f32 * nscale;
-                        let applied = surface.apply_rect(
-                            x_virtual,
-                            y_virtual,
-                            nscale,
-                            nscale,
-                            i32::from(item.rect.horz_align),
-                            i32::from(item.rect.vert_align),
-                        );
-                        cmds.push(text_cmd(
-                            font_name,
-                            item.text_style,
-                            applied.x,
-                            applied.y,
-                            applied.w,
-                            applied.h,
-                            font_material.clone(),
-                            attacker.clone(),
-                            team_name_color(local_team, *attacker_team, dvars),
-                            "killfeed_obituary",
-                        ));
-                        x_virtual += attacker_w + icon_spacing;
-                    }
+                if line_names
+                    && *has_attacker
+                    && let Some(def) = font
+                {
+                    let attacker_w = text_width(def, attacker) as f32 * nscale;
+                    let applied = surface.apply_rect(
+                        x_virtual,
+                        y_virtual,
+                        nscale,
+                        nscale,
+                        i32::from(item.rect.horz_align),
+                        i32::from(item.rect.vert_align),
+                    );
+                    cmds.push(text_cmd(
+                        font_name,
+                        item.text_style,
+                        applied.x,
+                        applied.y,
+                        applied.w,
+                        applied.h,
+                        font_material.clone(),
+                        attacker.clone(),
+                        team_name_color(local_team, *attacker_team, dvars),
+                        "killfeed_obituary",
+                    ));
+                    x_virtual += attacker_w + icon_spacing;
                 }
 
                 let (icon_vw, icon_vh) = killicon_virtual_size(*kill_icon_ratio);

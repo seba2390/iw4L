@@ -222,8 +222,8 @@ pub(crate) fn flashbang(
         "flashbang",
         vec![
             Value::Vector(origin),
-            Value::Float(amount_distance.into()),
-            Value::Float(amount_angle.into()),
+            Value::Float(amount_distance),
+            Value::Float(amount_angle),
             attacker,
         ],
     );

@@ -3437,7 +3437,7 @@ pub(crate) fn clip_move_to_bmodels<'a>(
 
 thread_local! {
     static LEAF_AABB_SCRATCH: std::cell::RefCell<Vec<u16>> =
-        std::cell::RefCell::new(Vec::new());
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 pub(crate) fn clip_trace(
@@ -3560,11 +3560,11 @@ pub(crate) fn give_weapon_to_ps_akimbo(ps: &mut PlayerState, weapon: u32, akimbo
         return;
     }
     inventory_add_weapon(ps, weapon, akimbo);
-    if ps.weapons.iter().all(|&slot| slot != weapon as i32) {
-        if let Some(slot) = ps.weapons.first_mut() {
-            *slot = weapon as i32;
-            weapon_iw4::latch_weapon_dual_wield(&ps.weapons, &mut ps.weapon_data, weapon, akimbo);
-        }
+    if ps.weapons.iter().all(|&slot| slot != weapon as i32)
+        && let Some(slot) = ps.weapons.first_mut()
+    {
+        *slot = weapon as i32;
+        weapon_iw4::latch_weapon_dual_wield(&ps.weapons, &mut ps.weapon_data, weapon, akimbo);
     }
     ps.weapon = weapon;
     ps.scope_zoom_level = 0;
@@ -3577,10 +3577,10 @@ pub(crate) fn inventory_add_weapon(ps: &mut PlayerState, weapon: u32, akimbo: bo
         return;
     }
     let want = weapon as i32;
-    if !ps.weapons.iter().any(|&slot| slot == want) {
-        if let Some(slot) = ps.weapons.iter_mut().find(|slot| **slot == 0) {
-            *slot = want;
-        }
+    if !ps.weapons.contains(&want)
+        && let Some(slot) = ps.weapons.iter_mut().find(|slot| **slot == 0)
+    {
+        *slot = want;
     }
     weapon_iw4::latch_weapon_dual_wield(&ps.weapons, &mut ps.weapon_data, weapon, akimbo);
 }

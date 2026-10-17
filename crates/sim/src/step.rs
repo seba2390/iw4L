@@ -195,11 +195,11 @@ fn phase_animated_map_models(world: &mut FrameWorld, tick: Tick, msec: i32) {
                 dobj.pose_request = request;
             }
         }
-        if let Some(id) = capabilities.owner.script_model() {
-            if let Some((_, apos)) = mover_apos.iter().find(|(mover_id, _)| *mover_id == id) {
-                dobj.apply_trajectory_apos_at(*apos, at_time);
-                continue;
-            }
+        if let Some(id) = capabilities.owner.script_model()
+            && let Some((_, apos)) = mover_apos.iter().find(|(mover_id, _)| *mover_id == id)
+        {
+            dobj.apply_trajectory_apos_at(*apos, at_time);
+            continue;
         }
         if dobj.apos.is_some() {
             dobj.apply_apos_at(at_time);
@@ -486,13 +486,13 @@ fn run_players_system(ecs: &mut World) {
             let bodies = alive_body_clips(&world);
             let glass_damage = world.world_objects().glass_damage_pairs();
             let backend = ClipBackend {
-                brushes: &brushes,
-                bsp: &bsp,
-                mesh: &mesh,
+                brushes,
+                bsp,
+                mesh,
                 glass_damage: &glass_damage,
                 bodies: &bodies,
                 self_entnum: id.0 as u16,
-                cmodels: &cmodel_models,
+                cmodels: cmodel_models,
                 linked_brushes: &linked_brushes,
                 model_brushes: &model_brushes,
             };
@@ -1150,9 +1150,7 @@ fn apply_action(
             class_id,
             revision,
             loadout,
-        } => {
-            return apply_select_class(world, tick, id, request_id, class_id, revision, loadout);
-        }
+        } => apply_select_class(world, tick, id, request_id, class_id, revision, loadout),
         ClientAction::GiveWeapon {
             request_id,
             weapon,
@@ -1202,7 +1200,7 @@ fn apply_action(
             if !world.bootstrap_ref().allow_debug_actions {
                 return ActionOutcome::Refused;
             }
-            return apply_configuration_change(world, tick, id, request_id, from, to);
+            apply_configuration_change(world, tick, id, request_id, from, to)
         }
         ClientAction::ForceSpawn {
             request_id: _,
@@ -1289,9 +1287,7 @@ fn apply_action(
             request_id: _,
             origin,
             angles,
-        } => {
-            return apply_debug_move(world, id, origin, angles);
-        }
+        } => apply_debug_move(world, id, origin, angles),
         ClientAction::BeginScriptMoverRotateVelocity {
             request_id: _,
             speed,
@@ -1328,9 +1324,7 @@ fn apply_action(
         ClientAction::DebugDamage {
             request_id: _,
             amount,
-        } => {
-            return apply_debug_damage(world, tick, id, amount);
-        }
+        } => apply_debug_damage(world, tick, id, amount),
     }
 }
 
@@ -1609,14 +1603,14 @@ fn apply_configuration_change(
     next.weapon_primary = to;
     next.last_weapon_hand = weapon_iw4::num_hands_for_held(&next.weapons, &next.weapon_data, to);
     if old_ammo_key != new_ammo_key {
-        for row in next.ammo.chunks_exact_mut(8) {
+        for row in next.ammo.as_chunks_mut::<8>().0 {
             if row[..4] == old_ammo_key.to_le_bytes() {
                 row.fill(0);
             }
         }
     }
     if old_clip_key != new_clip_key {
-        for row in next.ammoclip.chunks_exact_mut(12) {
+        for row in next.ammoclip.as_chunks_mut::<12>().0 {
             if row[..4] == old_clip_key.to_le_bytes() {
                 row.fill(0);
             }
@@ -1679,14 +1673,14 @@ fn apply_configuration_change(
                     false,
                 );
                 if old_key != new_key {
-                    for row in next.ammo.chunks_exact_mut(8) {
+                    for row in next.ammo.as_chunks_mut::<8>().0 {
                         if row[..4] == old_key.to_le_bytes() {
                             row.fill(0);
                         }
                     }
                 }
                 if old_clip != new_clip {
-                    for row in next.ammoclip.chunks_exact_mut(12) {
+                    for row in next.ammoclip.as_chunks_mut::<12>().0 {
                         if row[..4] == old_clip.to_le_bytes() {
                             row.fill(0);
                         }
@@ -1834,16 +1828,15 @@ fn apply_give_weapon(
         next.weapon
     };
     let mut replaced = false;
-    if !next.weapons.contains(&(weapon as i32)) {
-        if let Some(slot) = next
+    if !next.weapons.contains(&(weapon as i32))
+        && let Some(slot) = next
             .weapons
             .iter()
             .position(|&w| w != 0 && w == outgoing as i32)
-        {
-            next.weapons[slot] = weapon as i32;
-            next.weapon_data[slot * 5..slot * 5 + 5].fill(0);
-            replaced = true;
-        }
+    {
+        next.weapons[slot] = weapon as i32;
+        next.weapon_data[slot * 5..slot * 5 + 5].fill(0);
+        replaced = true;
     }
     if replaced {
         let outgoing_facts = world
@@ -2109,8 +2102,7 @@ fn validate_class_content(
         .program
         .as_ref()
         .is_some_and(|program| program.rules() == crate::script::Realm::T6)
-    {
-        if def.primary == 0
+        && (def.primary == 0
             || def.perks != [0; 3]
             || !def.deathstreak.is_empty()
             || def
@@ -2121,10 +2113,9 @@ fn validate_class_content(
                     world
                         .weapon_setup(weapon)
                         .is_none_or(|setup| setup.realm != crate::script::Realm::T6)
-                })
-        {
-            return Err(crate::ClassRejectReason::LockedContent);
-        }
+                }))
+    {
+        return Err(crate::ClassRejectReason::LockedContent);
     }
     for (slot, perk) in def.perks.iter().copied().enumerate() {
         if perk != 0 && crate::match_state::perk_slot_from_class_catalog(perk) != Some(slot) {

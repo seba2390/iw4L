@@ -798,7 +798,7 @@ fn instruction(
             // A builtin that edits an array in place gets the caller's array.
             let in_place = match callee {
                 Callee::Native(index) => {
-                    IN_PLACE_BUILTINS.contains(&&*program.natives[index as usize].name)
+                    IN_PLACE_BUILTINS.contains(&program.natives[index as usize].name)
                 }
                 Callee::Script(_) | Callee::Unlinked(_) => false,
             };

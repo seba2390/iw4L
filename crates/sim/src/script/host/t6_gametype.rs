@@ -214,7 +214,7 @@ pub(crate) fn advance(world: &mut World) {
             entity_iw4::TEAM_FREE,
         );
         let Some(spawn) = report.accepted else {
-            if tick.0 % 100 == 0 {
+            if tick.0.is_multiple_of(100) {
                 diag::info!(
                     Sim,
                     "t6 spawn refused client={} tried={} rejected={:?}",
@@ -321,16 +321,15 @@ pub(crate) fn advance(world: &mut World) {
             }
         }
         if let Some(weapon) = weapon {
-            if let Some(secondary) = secondary {
-                if let Err(reason) =
+            if let Some(secondary) = secondary
+                && let Err(reason) =
                     crate::script_player::give_weapon(&mut frame, id, secondary, false)
-                {
-                    diag::info!(
-                        Sim,
-                        "t6 secondary equip refused client={} reason={reason}",
-                        id.0
-                    );
-                }
+            {
+                diag::info!(
+                    Sim,
+                    "t6 secondary equip refused client={} reason={reason}",
+                    id.0
+                );
             }
             match crate::script_player::give_weapon(&mut frame, id, weapon, false) {
                 Ok(()) => {

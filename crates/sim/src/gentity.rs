@@ -383,10 +383,10 @@ impl EntityKernel {
         let mut numbers = Vec::new();
         let mut number = GENTITY_RESERVED_COUNT;
         while number < self.high_water {
-            if let Some(kind) = self.occupied_kind(number) {
-                if matches(kind) {
-                    numbers.push(number);
-                }
+            if let Some(kind) = self.occupied_kind(number)
+                && matches(kind)
+            {
+                numbers.push(number);
             }
             number += 1;
         }

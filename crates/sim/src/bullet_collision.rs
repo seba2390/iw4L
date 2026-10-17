@@ -1407,13 +1407,13 @@ fn bullet_trace_filtered(
             continue;
         }
         if !pose.bones.is_empty() {
-            if let Some((mins, maxs)) = pose_bones_aabb(pose) {
-                if matches!(
+            if let Some((mins, maxs)) = pose_bones_aabb(pose)
+                && matches!(
                     ray_aabb_box(query.start, entity_end, mins, maxs),
                     RayAabb::Miss
-                ) {
-                    continue;
-                }
+                )
+            {
+                continue;
             }
             for bone in &pose.bones {
                 let collider = ColliderId::Player {
@@ -1924,16 +1924,16 @@ fn fire_penetrate(
 
         let mut rev_start = fwd_hit.as_ref().map(|h| h.end).unwrap_or(query.end);
         let rev_end = vec3_mad(entry_pos, REV_END_EPS, rev_dir);
-        if let Some(hit) = &fwd_hit {
-            if let Some(nudged) = advance_trace(
+        if let Some(hit) = &fwd_hit
+            && let Some(nudged) = advance_trace(
                 hit.end,
                 scale3(hit.normal, -1.0),
                 rev_dir,
                 is_world(hit.collider),
                 ADVANCE_TRACE_REV,
-            ) {
-                rev_start = nudged;
-            }
+            )
+        {
+            rev_start = nudged;
         }
 
         let rev_ignore = fwd_hit.as_ref().and_then(|h| player_id(h.collider));

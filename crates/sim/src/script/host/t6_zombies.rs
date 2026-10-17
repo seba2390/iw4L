@@ -586,14 +586,13 @@ fn initialize(world: &mut World, state: &mut Survival) {
         let Some(origin) = point(field(pairs, "origin")) else {
             continue;
         };
-        if field(pairs, "classname") == "node_pathnode" {
-            if let Some(origin) = ground(&frame, origin)
-                && !nodes.iter().any(|&other| {
-                    Vec3::from_array(origin).distance_squared(Vec3::from_array(other)) < 64.0
-                })
-            {
-                nodes.push(origin);
-            }
+        if field(pairs, "classname") == "node_pathnode"
+            && let Some(origin) = ground(&frame, origin)
+            && !nodes.iter().any(|&other| {
+                Vec3::from_array(origin).distance_squared(Vec3::from_array(other)) < 64.0
+            })
+        {
+            nodes.push(origin);
         }
         let note = field(pairs, "script_noteworthy");
         if target == "initial_spawn_points"
@@ -601,21 +600,21 @@ fn initialize(world: &mut World, state: &mut Survival) {
                 || field(pairs, "script_string")
                     .split_whitespace()
                     .any(|mode| mode.starts_with("zclassic") || mode == "zstandard_nuked"))
+            && let Some(at) = ground(&frame, origin)
         {
-            if let Some(at) = ground(&frame, origin) {
-                state
-                    .starts
-                    .push((at, point(field(pairs, "angles")).unwrap_or([0.0; 3])));
-            }
+            state
+                .starts
+                .push((at, point(field(pairs, "angles")).unwrap_or([0.0; 3])));
         }
-        if matches!(note, "spawn_location" | "riser_location") && target.contains("spawner") {
-            if let Some(origin) = ground(&frame, origin) {
-                state.spawn_sites.push(SpawnSite {
-                    origin,
-                    barrier: barrier_names.get(field(pairs, "script_string")).copied(),
-                    riser: note == "riser_location",
-                });
-            }
+        if matches!(note, "spawn_location" | "riser_location")
+            && target.contains("spawner")
+            && let Some(origin) = ground(&frame, origin)
+        {
+            state.spawn_sites.push(SpawnSite {
+                origin,
+                barrier: barrier_names.get(field(pairs, "script_string")).copied(),
+                riser: note == "riser_location",
+            });
         }
         let filters = field(pairs, "script_string");
         if target == "zm_perk_machine"
@@ -1004,14 +1003,13 @@ fn animate(world: &mut World, object: u64, actor: &mut Actor, mode: u8, clip: Op
         return;
     }
     actor.animation = mode;
-    if let Some(clip) = clip {
-        if let Some(entity) = world
+    if let Some(clip) = clip
+        && let Some(entity) = world
             .resource_mut::<RoundScript>()
             .entities
             .get_mut(&object)
-        {
-            entity.anim_op = Some(Some(clip.into()));
-        }
+    {
+        entity.anim_op = Some(Some(clip.into()));
     }
 }
 
@@ -1079,15 +1077,14 @@ fn board_visibility(world: &mut World, barrier: &mut Barrier, board: usize, visi
         });
     drop(frame);
     barrier.hiding[board] = (!visible).then_some(tick.0 + duration);
-    if let Some(object) = barrier.objects.get(board).copied().flatten() {
-        if let Some(entity) = world
+    if let Some(object) = barrier.objects.get(board).copied().flatten()
+        && let Some(entity) = world
             .resource_mut::<RoundScript>()
             .entities
             .get_mut(&object)
-        {
-            entity.hidden = !visible && duration == 0;
-            entity.anim_op = Some(Some(clip.into()));
-        }
+    {
+        entity.hidden = !visible && duration == 0;
+        entity.anim_op = Some(Some(clip.into()));
     }
 }
 
@@ -2109,29 +2106,31 @@ fn interactions(
             survivor.repair_round = state.round;
             survivor.repair_points = 0;
         }
-        if held && revival.is_none() && selected.is_none() {
-            if let Some(index) = repair {
-                if !survivor.use_held {
-                    survivor.repair_due = tick.0 + ticks(1000);
+        if held
+            && revival.is_none()
+            && selected.is_none()
+            && let Some(index) = repair
+        {
+            if !survivor.use_held {
+                survivor.repair_due = tick.0 + ticks(1000);
+            }
+            if tick.0 >= survivor.repair_due {
+                let barrier = &mut state.barriers[index];
+                let board = barrier.boards as usize;
+                barrier.boards += 1;
+                board_visibility(world, barrier, board, true);
+                survivor.repair_due = tick.0 + ticks(1000);
+                let cap = (state.round.min(10) as i32 * 40).max(40);
+                if survivor.repair_points < cap {
+                    score(world, client, state.powerups.reward(tick, 10));
+                    survivor.repair_points += 10;
                 }
-                if tick.0 >= survivor.repair_due {
-                    let barrier = &mut state.barriers[index];
-                    let board = barrier.boards as usize;
-                    barrier.boards += 1;
-                    board_visibility(world, barrier, board, true);
-                    survivor.repair_due = tick.0 + ticks(1000);
-                    let cap = (state.round.min(10) as i32 * 40).max(40);
-                    if survivor.repair_points < cap {
-                        score(world, client, state.powerups.reward(tick, 10));
-                        survivor.repair_points += 10;
-                    }
-                    diag::info!(
-                        Sim,
-                        "zombie barrier repaired client={} barrier={index} boards={}",
-                        client.0,
-                        barrier.boards
-                    );
-                }
+                diag::info!(
+                    Sim,
+                    "zombie barrier repaired client={} barrier={index} boards={}",
+                    client.0,
+                    barrier.boards
+                );
             }
         }
         if held
@@ -2207,7 +2206,7 @@ fn interactions(
             .filter(|_| revival.is_none())
             .map(|index| {
                 let row = &state.purchases[index];
-                if !purchase_powered(state, &row) && !state.upgrades.contains_key(&index) {
+                if !purchase_powered(state, row) && !state.upgrades.contains_key(&index) {
                     return "USE: Requires power".to_owned();
                 }
                 match &row.kind {

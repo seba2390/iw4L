@@ -170,24 +170,23 @@ pub(crate) fn advance_weapon_command(
                 && world
                     .combat_facts_for(parent)
                     .is_some_and(|f| f.alternate_weapon == target)
+                && let Some(facts) = world.combat_facts_for(target)
             {
-                if let Some(facts) = world.combat_facts_for(target) {
-                    let ammo = weapon_iw4::ammo_table_key(facts.ammo_index, target);
-                    let clip = weapon_iw4::clip_table_key(facts.clip_index, target);
-                    let (initial_clip, _, initial_stock) = weapon_iw4::spawn_clip_stock(&facts, 0);
-                    if !ammo_row_present(&ps.ammo, ammo) {
-                        set_ammo_not_in_clip(&mut ps.ammo, ammo, initial_stock);
-                    }
-                    if !clip_row_present(&ps.ammoclip, clip) {
-                        set_clip_for_hand(&mut ps.ammoclip, clip, 0, initial_clip);
-                    }
-                    world.client_meta_mut(*id).set_ammo(
-                        target,
-                        get_clip_for_hand(&ps.ammoclip, clip, 0),
-                        get_ammo_not_in_clip(&ps.ammo, ammo),
-                    );
-                    *world.player_mut(*id).expect("present player") = ps;
+                let ammo = weapon_iw4::ammo_table_key(facts.ammo_index, target);
+                let clip = weapon_iw4::clip_table_key(facts.clip_index, target);
+                let (initial_clip, _, initial_stock) = weapon_iw4::spawn_clip_stock(&facts, 0);
+                if !ammo_row_present(&ps.ammo, ammo) {
+                    set_ammo_not_in_clip(&mut ps.ammo, ammo, initial_stock);
                 }
+                if !clip_row_present(&ps.ammoclip, clip) {
+                    set_clip_for_hand(&mut ps.ammoclip, clip, 0, initial_clip);
+                }
+                world.client_meta_mut(*id).set_ammo(
+                    target,
+                    get_clip_for_hand(&ps.ammoclip, clip, 0),
+                    get_ammo_not_in_clip(&ps.ammo, ammo),
+                );
+                *world.player_mut(*id).expect("present player") = ps;
             }
         }
         let old_buttons = world
@@ -634,38 +633,37 @@ pub(crate) fn advance_weapon_command(
             meta.set_quick_reload_ready(started_weapon, hand0.quick_reload);
         }
 
-        if ammo_index != 0 || clip_index != 0 {
-            if let Some(ps_mut) = world.player_mut(*id) {
-                if ammo_index != 0 {
-                    let _ = set_ammo_not_in_clip(&mut ps_mut.ammo, ammo_index, hands[0].stock);
-                }
-                if clip_index != 0 {
-                    let _ = set_clip_for_hand(&mut ps_mut.ammoclip, clip_index, 0, hands[0].clip);
-                    if last_hand >= 1 {
-                        let _ =
-                            set_clip_for_hand(&mut ps_mut.ammoclip, clip_index, 1, hands[1].clip);
-                    }
+        if (ammo_index != 0 || clip_index != 0)
+            && let Some(ps_mut) = world.player_mut(*id)
+        {
+            if ammo_index != 0 {
+                let _ = set_ammo_not_in_clip(&mut ps_mut.ammo, ammo_index, hands[0].stock);
+            }
+            if clip_index != 0 {
+                let _ = set_clip_for_hand(&mut ps_mut.ammoclip, clip_index, 0, hands[0].clip);
+                if last_hand >= 1 {
+                    let _ = set_clip_for_hand(&mut ps_mut.ammoclip, clip_index, 1, hands[1].clip);
                 }
             }
         }
 
-        if hands[0].delayed_rechamber {
-            if let Some(ps) = world.player_mut(*id) {
-                movement_iw4::add_predictable_event(
-                    ps,
-                    entity_iw4::EntityEventKind::RECHAMBER_WEAPON.0,
-                    0,
-                );
-            }
+        if hands[0].delayed_rechamber
+            && let Some(ps) = world.player_mut(*id)
+        {
+            movement_iw4::add_predictable_event(
+                ps,
+                entity_iw4::EntityEventKind::RECHAMBER_WEAPON.0,
+                0,
+            );
         }
-        if hands[0].clip > clip_before {
-            if let Some(ps) = world.player_mut(*id) {
-                movement_iw4::add_predictable_event(
-                    ps,
-                    entity_iw4::EntityEventKind::RELOAD_ADDAMMO.0,
-                    0,
-                );
-            }
+        if hands[0].clip > clip_before
+            && let Some(ps) = world.player_mut(*id)
+        {
+            movement_iw4::add_predictable_event(
+                ps,
+                entity_iw4::EntityEventKind::RELOAD_ADDAMMO.0,
+                0,
+            );
         }
 
         let mut fire_ordinal = 0u16;
@@ -689,14 +687,14 @@ pub(crate) fn advance_weapon_command(
                 }
                 WeaponTickEvent::ReloadAmmoAdded { shells: _ } => {}
                 WeaponTickEvent::RechamberWeapon => {
-                    if !hands[_hand_i as usize].delayed_rechamber {
-                        if let Some(ps) = world.player_mut(*id) {
-                            movement_iw4::add_predictable_event(
-                                ps,
-                                entity_iw4::EntityEventKind::RECHAMBER_WEAPON.0,
-                                0,
-                            );
-                        }
+                    if !hands[_hand_i as usize].delayed_rechamber
+                        && let Some(ps) = world.player_mut(*id)
+                    {
+                        movement_iw4::add_predictable_event(
+                            ps,
+                            entity_iw4::EntityEventKind::RECHAMBER_WEAPON.0,
+                            0,
+                        );
                     }
                 }
                 WeaponTickEvent::EjectBrass => {
@@ -864,10 +862,10 @@ pub(crate) fn advance_weapon_command(
                             meta.set_ammo(weapon, 0, stock - 1);
                         }
                     }
-                    if let Some(facts) = combat {
-                        if let Some(ps) = world.player_mut(*id) {
-                            spend_ps_offhand_round(ps, weapon, facts);
-                        }
+                    if let Some(facts) = combat
+                        && let Some(ps) = world.player_mut(*id)
+                    {
+                        spend_ps_offhand_round(ps, weapon, facts);
                     }
                     if crate::equipment::spawn_offhand_projectile(
                         world,
@@ -875,26 +873,25 @@ pub(crate) fn advance_weapon_command(
                         weapon,
                         tick,
                         remaining_fuse_ms,
-                    ) {
-                        if let Some(ps) = world.player(*id).copied() {
-                            let origin = [
-                                ps.origin[0],
-                                ps.origin[1],
-                                ps.origin[2] + ps.view_height_current,
-                            ];
-                            world.push_entity_event(
-                                tick,
-                                EventAudience::All,
-                                entity_iw4::EntityEventKind::USE_OFFHAND,
-                                crate::EntityEventPayload {
-                                    number: id.0 as i32,
-                                    weapon,
-                                    origin,
-                                    event_parm: weapon as i32,
-                                    ..Default::default()
-                                },
-                            );
-                        }
+                    ) && let Some(ps) = world.player(*id).copied()
+                    {
+                        let origin = [
+                            ps.origin[0],
+                            ps.origin[1],
+                            ps.origin[2] + ps.view_height_current,
+                        ];
+                        world.push_entity_event(
+                            tick,
+                            EventAudience::All,
+                            entity_iw4::EntityEventKind::USE_OFFHAND,
+                            crate::EntityEventPayload {
+                                number: id.0 as i32,
+                                weapon,
+                                origin,
+                                event_parm: weapon as i32,
+                                ..Default::default()
+                            },
+                        );
                     }
                 }
                 WeaponTickEvent::OffhandCookedOff { weapon } => {
@@ -908,10 +905,10 @@ pub(crate) fn advance_weapon_command(
                             meta.set_ammo(weapon, 0, stock - 1);
                         }
                     }
-                    if let Some(facts) = combat {
-                        if let Some(ps) = world.player_mut(*id) {
-                            spend_ps_offhand_round(ps, weapon, facts);
-                        }
+                    if let Some(facts) = combat
+                        && let Some(ps) = world.player_mut(*id)
+                    {
+                        spend_ps_offhand_round(ps, weapon, facts);
                     }
                     crate::equipment::explode_offhand_in_hand(world, *id, weapon, tick);
                 }
