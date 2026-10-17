@@ -31,6 +31,11 @@ const CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD: i32 = 121;
 const CG_PLAYER_WEAPON_AMMO_STOCK: i32 = 122;
 const CG_PLAYER_ACTIONSLOT_1: i32 = 166;
 const CG_PLAYER_ACTIONSLOT_4: i32 = 169;
+/// The second `vehiclehud` owner draw and `amitalking`: neither of Black
+/// Ops' owner draw dispatches (text and picture) has a case for them in its
+/// single player, so they draw nothing.
+const CG_VEHICLE_HUD_2: i32 = 193;
+const CG_AMITALKING: i32 = 266;
 const CG_COMPETITIVE_MODE_SCORES: i32 = 288;
 
 /// What the local client knows that Black Ops' HUD expressions ask for.
@@ -904,6 +909,7 @@ fn paint_owner(
         CG_DEADQUOTE => paint_deadquote(state, &args, frame),
         CG_COMPETITIVE_MODE_SCORES => paint_competitive_scores(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+        CG_VEHICLE_HUD_2 | CG_AMITALKING => OwnerDrawPaint::Painted,
         _ => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
     }
 }
