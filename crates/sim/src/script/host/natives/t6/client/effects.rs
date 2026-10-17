@@ -1504,9 +1504,8 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 origin: None,
             },
         );
-        // t6.csc.light.render: the renderer draws the light's values at the
-        // map light's own direction and origin, without the engine's
-        // current-to-next state blend.
+        // The light's values here are its next state: the renderer blends to
+        // them from the last snapshot's (`render_frontend::fog`).
         state(world).lights.insert(
             id,
             LightState {
