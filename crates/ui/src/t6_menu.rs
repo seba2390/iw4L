@@ -6,6 +6,7 @@ use crate::classes::{
 use crate::layers::{GameUiFont, UiLayer, UiLayerVisibility, game_text_font};
 use asset_core::AssetNamespace;
 use assets::{PreparedWeapons, SessionMapIdentity};
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use frame::{AppScreen, GameSettings, NativeGameMenu, UiExecCommand, UiMenuKey, UiMenuRequest};
 use net::{ActionRequestIds, ClientActionInbox, LocalPresentClient, ReliableControlEvent};
@@ -284,7 +285,7 @@ fn drive(
     mut menu: ResMut<Menu>,
     mut open: ResMut<NativeGameMenu>,
     mut settings: ResMut<GameSettings>,
-    choices: Query<(&Interaction, &Choice)>,
+    choices: Query<(&Hovered, &Choice)>,
     authority: (
         ResMut<ClientActionInbox>,
         ResMut<ActionRequestIds>,
@@ -459,10 +460,7 @@ fn drive(
         }
     }
     if open.0 && mouse.just_pressed(MouseButton::Left) {
-        if let Some((_, choice)) = choices
-            .iter()
-            .find(|(interaction, _)| **interaction == Interaction::Pressed)
-        {
+        if let Some((_, choice)) = choices.iter().find(|(hovered, _)| hovered.get()) {
             selected.push(choice.action);
         }
     }
@@ -1184,8 +1182,7 @@ fn paint(
                         let backing = if order == menu.focus { row_selected.as_ref().or(row_back.as_ref()) } else { row_back.as_ref() };
                         panel
                             .spawn((
-                                Interaction::default(),
-                                bevy::ui::FocusPolicy::Block,
+                                Hovered::default(),
                                 Choice { order, action },
                                 ImageNode { image: backing.cloned().unwrap_or_default(), color: if backing.is_none() { Color::NONE } else if order == menu.focus { Color::srgba(0.8, 0.3, 0.04, 0.8) } else { Color::srgba(0.08, 0.08, 0.08, 0.7) }, image_mode: bevy::ui::widget::NodeImageMode::Stretch, ..default() },
                                 Node {
