@@ -139,6 +139,13 @@ fn melee_weapon(load: &fastfile_t6::ZoneLoad) -> Option<asset_game::T6Melee> {
 
 const COLOR_MAP_SAMPLER_HASH: u32 = 0xa0ab_1041;
 const HANDS_ZONE: &str = "faction_seals_mp.ff";
+
+/// The post materials Black Ops 2's renderer registers for its screen
+/// overlays (its burn and electric shock passes).
+const T6_OVERLAY_MATERIALS: [&str; 2] = [
+    "flamethrowerfx_color_distort_overlay_bloom",
+    "zombie_electric_shock_overlay",
+];
 const HANDS_MODEL: &str = "c_usa_mp_seal6_longsleeve_viewhands";
 
 fn hands_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
@@ -2838,6 +2845,58 @@ impl ZoneLane for T6Lane {
                 };
                 surface_materials.push(Some(row));
                 surface_layer_formats.push(layer_formats.get(&row).copied().unwrap_or(0));
+            }
+            // The renderer's own post materials its screen overlays draw,
+            // from the startup zone that carries them.
+            for name in T6_OVERLAY_MATERIALS {
+                if material_rows.contains_key(name) {
+                    continue;
+                }
+                let Some((source, material)) = image_loads.iter().find_map(|zone| {
+                    zone.assets
+                        .iter()
+                        .find(|a| {
+                            a.ty == AssetType::Material
+                                && header_str(zone, &a.header, 0) == Some(name)
+                        })
+                        .map(|a| (*zone, a))
+                }) else {
+                    report.push(format!("T6 overlay material {name}: no zone carries it"));
+                    continue;
+                };
+                let Some(native) = capture_native(
+                    source,
+                    &image_loads,
+                    None,
+                    material,
+                    ColourMapAlpha::Gloss,
+                    &ipaks,
+                    &mut decoded,
+                    &mut techsets,
+                    &mut report,
+                ) else {
+                    report.push(format!("T6 overlay material {name}: native capture failed"));
+                    continue;
+                };
+                let set = &techsets[&native.technique_set];
+                materials.link_t6_technique_set(set, T6Draw::Lit, &mut report);
+                let seed =
+                    native_material_seed(path, name, material, &set.name, false, &mut materials)?;
+                match materials.t6_material(
+                    seed,
+                    name,
+                    set,
+                    &native.textures,
+                    native.constants,
+                    &native.state,
+                    T6Draw::Lit,
+                    &mut report,
+                ) {
+                    Ok(row) => {
+                        material_rows.insert(name.to_owned(), row);
+                    }
+                    Err(error) => report.push(format!("T6 overlay material {name}: {error:?}")),
+                }
             }
             materials_stage.done();
             report.push(format!(

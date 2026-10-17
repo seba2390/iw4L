@@ -294,6 +294,9 @@ impl T6MaterialState {
     }
 }
 
+/// Black Ops 2's code texture index of `feedback`.
+const T6_CODE_TEXTURE_FEEDBACK: u32 = 8;
+
 pub const CODE_T6_HDR_CONTROL_0: u16 = 0x300;
 pub const CODE_T6_HDR_CONTROL_1: u16 = 0x301;
 pub const CODE_T6_SKY_COLOR_MULTIPLIER: u16 = 0x302;
@@ -378,6 +381,10 @@ fn engine_value(name: &str, reflection: &Reflection) -> EngineValue {
         "gridLightingSH0" => Code("T6_GRID_SH0"),
         "gridLightingSH1" => Code("T6_GRID_SH1"),
         "gridLightingSH2" => Code("T6_GRID_SH2"),
+        "flameDistortion" => Code("T6_FLAME_DISTORTION"),
+        "overlayTexCoord" => Code("T6_OVERLAY_TEX_COORD"),
+        "fadeEffect" => Code("T6_FADE_EFFECT"),
+        "viewportDimensions" => Code("T6_VIEWPORT_DIMENSIONS"),
         _ => Literal([0.0; 4]),
     }
 }
@@ -566,6 +573,10 @@ fn constant_argument(
                 "T6_GRID_SH0" => Some(CODE_T6_GRID_SH[0]),
                 "T6_GRID_SH1" => Some(CODE_T6_GRID_SH[1]),
                 "T6_GRID_SH2" => Some(CODE_T6_GRID_SH[2]),
+                "T6_FLAME_DISTORTION" => Some(render_material::CODE_T6_FLAME_DISTORTION),
+                "T6_OVERLAY_TEX_COORD" => Some(render_material::CODE_T6_OVERLAY_TEX_COORD),
+                "T6_FADE_EFFECT" => Some(render_material::CODE_T6_FADE_EFFECT),
+                "T6_VIEWPORT_DIMENSIONS" => Some(render_material::CODE_T6_VIEWPORT_DIMENSIONS),
                 "T6_FOG" => T6_FOG_NAMES
                     .iter()
                     .position(|fog| *fog == name)
@@ -633,6 +644,15 @@ fn sampler_argument(
                 destination,
                 name_hash: a.def,
             },
+        ));
+    }
+    // Black Ops 2's code texture 8 (`feedback`): the frame as drawn so far,
+    // which its screen overlays read.
+    if bound.is_some_and(|a| a.kind == t::CODE_PIXEL_SAMPLER && a.def == T6_CODE_TEXTURE_FEEDBACK) {
+        let index = iw4_code_texture_index("FEEDBACK")?;
+        return Some((
+            Tier::Object,
+            OwnedShaderArgument::CodePixelSampler { destination, index },
         ));
     }
     let name = texture_name(reflection, slot.texture).unwrap_or("");

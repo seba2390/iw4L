@@ -54,11 +54,28 @@ pub enum HostDObjPoseRefuse {
 #[derive(Resource, Default)]
 pub struct HostDObjPoseFrame {
     by_dobj: HashMap<u32, HostDObjPose>,
+    /// The bone names of the DObjs a bolt may name a tag on.
+    names: HashMap<u32, Vec<String>>,
 }
 
 impl HostDObjPoseFrame {
     pub fn clear(&mut self) {
         self.by_dobj.clear();
+        self.names.clear();
+    }
+
+    /// Names a published DObj's bones, in its bone order.
+    pub fn name_bones(&mut self, dobj: u32, names: Vec<String>) {
+        self.names.insert(dobj, names);
+    }
+
+    /// The first bone of the DObj the tag names, across its models.
+    pub fn bone_named(&self, dobj: u32, tag: &str) -> Option<u16> {
+        self.names
+            .get(&dobj)?
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(tag))
+            .and_then(|bone| u16::try_from(bone).ok())
     }
 
     pub fn publish(

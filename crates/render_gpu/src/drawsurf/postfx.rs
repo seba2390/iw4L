@@ -46,6 +46,8 @@ pub struct ExtractedPostFx {
     pub t6_vision: Option<asset_world::T6Vision>,
     /// The game's own post chain, drawn in place of the renderer's.
     pub post_chain: Option<super::post_chain::ExtractedPostChain>,
+    /// The game's screen overlays, drawn after the post passes.
+    pub overlays: Option<super::overlays::ExtractedOverlays>,
 }
 
 struct PreparedPostFxGpu {

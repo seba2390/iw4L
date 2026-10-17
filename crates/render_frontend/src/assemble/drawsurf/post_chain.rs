@@ -3,7 +3,7 @@
 //! code sources its passes execute against.
 
 use bevy::prelude::*;
-use game_api::post::PostChainRules;
+use game_api::post::{OverlayRules, PostChainRules};
 
 use super::postfx_plan::{
     PostFxAdmissionRefusal, RuntimePostFx, admit_unlit_2d_material, film_sources,
@@ -59,8 +59,16 @@ pub(crate) fn post_chain_compile_locations(
     rules: &PostChainRules,
     namespace: asset_core::AssetNamespace,
 ) -> Vec<(&'static str, CompileLocation)> {
-    rules
-        .materials
+    game_material_compile_locations(catalog, rules.materials, namespace)
+}
+
+/// The technique set and pass of each of a game's post materials.
+pub(crate) fn game_material_compile_locations(
+    catalog: &RuntimeMaterialCatalog,
+    materials: &[&'static str],
+    namespace: asset_core::AssetNamespace,
+) -> Vec<(&'static str, CompileLocation)> {
+    materials
         .iter()
         .map(|&name| {
             let location = postfx_material_in(catalog, name, namespace)
@@ -109,6 +117,96 @@ pub(crate) fn build_runtime_post_chain(
     Ok(RuntimePostChain {
         rules: *rules,
         materials,
+    })
+}
+
+/// The code texture of the frame as drawn so far (`feedback`), which a
+/// game's overlays read.
+pub const CODE_TEXTURE_FEEDBACK: u32 = 8;
+/// The game time row.
+const CODE_GAMETIME: u16 = super::command_context::CODE_GAMETIME;
+/// The rows a game's overlays set.
+pub const OVERLAY_ROWS: [u16; 4] = [
+    render_material::CODE_T6_FLAME_DISTORTION,
+    render_material::CODE_T6_OVERLAY_TEX_COORD,
+    render_material::CODE_T6_FADE_EFFECT,
+    render_material::CODE_T6_VIEWPORT_DIMENSIONS,
+];
+
+/// A game's overlays with each of their materials admitted, in the rule's
+/// order, and each material's texture atlas (rows, columns).
+#[derive(Clone, Debug)]
+pub struct RuntimeOverlays {
+    pub rules: OverlayRules,
+    pub materials: Vec<RuntimePostFx>,
+    pub atlases: Vec<[u8; 2]>,
+    /// Each material's textures, by name hash.
+    pub textures: Vec<Vec<(u32, render_material::RuntimeTextureBinding)>>,
+}
+
+/// The base every overlay draw executes against at `width` x `height`: the
+/// chain's base, the game time and overlay rows zero, and the frame bound
+/// as `feedback`.
+pub fn overlay_sources(width: u32, height: u32) -> Option<RuntimeCodeSources> {
+    let mut sources = post_chain_sources(width, height)?;
+    for row in std::iter::once(CODE_GAMETIME).chain(OVERLAY_ROWS) {
+        sources.set_constant_rows(row, &[[0; 4]]);
+    }
+    sources
+        .set_texture(CODE_TEXTURE_FEEDBACK, POST_CHAIN_SAMPLER)
+        .ok()?;
+    Some(sources)
+}
+
+/// Admits every overlay material, or names the first that refused.
+pub(crate) fn build_runtime_overlays(
+    catalog: &RuntimeMaterialCatalog,
+    prepared: &PreparedMaterialTable,
+    programs: &RuntimeProgramRegistry,
+    shaders: &[Handle<bevy::shader::Shader>],
+    rules: &OverlayRules,
+    namespace: asset_core::AssetNamespace,
+) -> Result<RuntimeOverlays, (&'static str, PostFxAdmissionRefusal)> {
+    let sources = overlay_sources(1, 1).ok_or((
+        "",
+        PostFxAdmissionRefusal::CodeSource(
+            super::postfx_plan::PostFxSourceRefusal::InvalidDimensions {
+                width: 1,
+                height: 1,
+            },
+        ),
+    ))?;
+    let mut materials = Vec::with_capacity(rules.materials.len());
+    let mut atlases = Vec::with_capacity(rules.materials.len());
+    let mut textures = Vec::with_capacity(rules.materials.len());
+    for &name in rules.materials {
+        let material = postfx_material_in(catalog, name, namespace).map_err(|e| (name, e))?;
+        atlases.push(material.texture_atlas.unwrap_or([0, 0]));
+        textures.push(
+            material
+                .textures
+                .iter()
+                .filter_map(|(hash, binding)| Some((*hash, (*binding)?)))
+                .collect(),
+        );
+        materials.push(
+            admit_unlit_2d_material(
+                catalog,
+                prepared,
+                programs,
+                shaders,
+                (material, name),
+                false,
+                &sources,
+            )
+            .map_err(|e| (name, e))?,
+        );
+    }
+    Ok(RuntimeOverlays {
+        rules: *rules,
+        materials,
+        atlases,
+        textures,
     })
 }
 
@@ -242,12 +340,56 @@ pub(crate) fn update_post_vision(
     }
 }
 
+/// The overlays this frame draws, as the game's rule planned them.
+#[derive(Resource, Default)]
+pub struct ScreenOverlayPasses {
+    pub passes: Vec<game_api::post::OverlayPass>,
+    /// The materials the last frame drew, for the log.
+    logged: Vec<&'static str>,
+}
+
+/// Plans the frame's overlays from the presented client's screen.
+pub(crate) fn plan_screen_overlays(
+    generation: Option<Res<super::MaterialGeneration>>,
+    clock: Res<net::FrameClock>,
+    presented: Res<net::PresentedSnapshot>,
+    local: Res<net::LocalPresentClient>,
+    mut out: ResMut<ScreenOverlayPasses>,
+) {
+    let Some(Ok(overlays)) = generation.as_ref().and_then(|g| g.overlays.as_ref()) else {
+        out.passes.clear();
+        return;
+    };
+    let screen = presented
+        .snapshot()
+        .and_then(|snapshot| snapshot.meta.for_client(local.0))
+        .map(|meta| meta.view_effects.client_screen.overlays)
+        .unwrap_or_else(game_api::post::ScreenOverlays::default);
+    out.passes = (overlays.rules.plan)(&game_api::post::OverlayFrame {
+        now_ms: clock.time(),
+        screen: &screen,
+        atlases: &overlays.atlases,
+    });
+    let drawn: Vec<&'static str> = out.passes.iter().map(|pass| pass.material).collect();
+    if drawn != out.logged {
+        diag::info!(World, "screen overlays: {drawn:?} at {}", clock.time());
+        out.logged = drawn;
+    }
+}
+
 pub fn register(app: &mut App) {
-    app.init_resource::<PostVisionState>().add_systems(
-        Update,
-        update_post_vision
-            .in_set(frame::InMatch)
-            .after(crate::prepare::scene::view_parms::stamp_prepared_scene_view)
-            .in_set(net::ClientSet::Present),
-    );
+    app.init_resource::<PostVisionState>()
+        .init_resource::<ScreenOverlayPasses>()
+        .add_systems(
+            Update,
+            (
+                update_post_vision
+                    .in_set(frame::InMatch)
+                    .after(crate::prepare::scene::view_parms::stamp_prepared_scene_view)
+                    .in_set(net::ClientSet::Present),
+                plan_screen_overlays
+                    .in_set(frame::InMatch)
+                    .in_set(net::ClientSet::Present),
+            ),
+        );
 }
