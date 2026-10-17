@@ -402,9 +402,9 @@ pub struct HudRules {
     /// The mode is zombies: a player's own points, the round, perks and
     /// power-ups stand where match scores and limits would.
     pub zombies: bool,
-    /// The font scale and from-font scale a client receives for an elem's
-    /// scripted ones, when the game's network encodes them.
-    pub font_scales_sent: Option<fn(f32, f32) -> (f32, f32)>,
+    /// What a client receives of an elem's fields, when the game's network
+    /// encodes them with less precision than the script set.
+    pub hud_elem_sent: Option<fn(&mut hud::SentHudElem)>,
 }
 
 /// How a mode's script text hud elems are drawn.
@@ -531,6 +531,12 @@ pub trait MenuLayout: Sync {
     /// The width of text whose glyphs advance `glyph_width` in a font of
     /// `pixel_height`, at `text_scale`.
     fn text_width(&self, glyph_width: i32, pixel_height: i32, text_scale: f32) -> f32;
+    /// How many of the characters after a `^` in measured text are a code
+    /// and not glyphs, given the two that follow it. The shared rule skips
+    /// a colour digit.
+    fn caret_code(&self, next: Option<char>, _after: Option<char>) -> usize {
+        usize::from(next.is_some_and(|c| c.is_ascii_digit()))
+    }
     /// Where an item's text starts inside its rect `[x, y, w, h]`.
     #[allow(clippy::too_many_arguments)]
     fn text_origin(
