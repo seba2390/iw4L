@@ -1575,10 +1575,7 @@ impl<'a> ZoneStream<'a> {
     }
 
     pub fn watermark(&self, block: u8) -> usize {
-        self.offsets
-            .get(block as usize)
-            .copied()
-            .unwrap_or_default()
+        self.offsets.get(block as usize).copied().unwrap_or(0)
     }
 
     pub fn block_overrun(&self, block: u8) -> usize {

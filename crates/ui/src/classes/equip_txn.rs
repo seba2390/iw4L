@@ -282,7 +282,7 @@ fn publish_class_availability(
     let feature_lock = catalog.progression_lock("cac", &player_data);
     dvars.set(
         "ui_class_feature_lock",
-        feature_lock.clone().unwrap_or_default(),
+        feature_lock.clone().unwrap_or_else(String::new),
     );
     for index in 0..sim::match_state::PERSONAL_CLASS_SLOTS {
         let reason = feature_lock
@@ -306,7 +306,7 @@ fn publish_class_availability(
             });
         dvars.set(
             &format!("ui_class_unavailable_{index}"),
-            reason.unwrap_or_default(),
+            reason.unwrap_or_else(String::new),
         );
     }
 }

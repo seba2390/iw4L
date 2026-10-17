@@ -129,7 +129,7 @@ impl AssetLinkSink for Iw5SoundCapture {
         pcm: Ptr,
         data_len: usize,
     ) -> fastfile_iw5::Result<()> {
-        let name = name_at(s, header, 0).unwrap_or_default();
+        let name = name_at(s, header, 0).unwrap_or_else(String::new);
 
         let (format, rate, bits, channels, samples, block_size) =
             if s.wire_format() == fastfile_iw5::Iw5WireFormat::X64 {
@@ -159,7 +159,7 @@ impl AssetLinkSink for Iw5SoundCapture {
         } else {
             s.slice_at(pcm, 0, data_len)
                 .map(|b| b.to_vec())
-                .unwrap_or_default()
+                .unwrap_or_else(|_| Vec::new())
         };
         if name.is_empty() {
             self.catalog.capture_gaps += 1;
@@ -208,7 +208,7 @@ impl AssetLinkSink for Iw5SoundCapture {
     }
 
     fn capture_snd_curve(&mut self, s: &ZoneStream<'_>, header: Ptr) -> fastfile_iw5::Result<()> {
-        let name = name_at(s, header, 0).unwrap_or_default();
+        let name = name_at(s, header, 0).unwrap_or_else(String::new);
         let count = s
             .u16_at(header, s.layout(SND_CURVE_KNOT_COUNT, 8))
             .unwrap_or(0) as usize;
@@ -236,7 +236,7 @@ impl AssetLinkSink for Iw5SoundCapture {
         count: usize,
         head: Option<Ptr>,
     ) -> fastfile_iw5::Result<()> {
-        let name = name_at(s, list, 0).unwrap_or_default();
+        let name = name_at(s, list, 0).unwrap_or_else(String::new);
         let Some(arr) = head else {
             if count > 0 {
                 self.catalog.capture_gaps += 1;
@@ -265,7 +265,7 @@ impl AssetLinkSink for Iw5SoundCapture {
 impl Iw5SoundCapture {
     fn capture_alias_row(&self, s: &ZoneStream<'_>, row: Ptr) -> CapturedAlias {
         let alias_name =
-            name_at(s, row, s.layout(sz::SND_ALIAS_ALIAS_NAME_OFF, 0)).unwrap_or_default();
+            name_at(s, row, s.layout(sz::SND_ALIAS_ALIAS_NAME_OFF, 0)).unwrap_or_else(String::new);
         let (
             loaded_name,
             streamed,
@@ -496,8 +496,8 @@ fn inspect_sound_file(s: &ZoneStream<'_>, file: Ptr) -> InspectedSoundFile {
             }
         }
         Some(2) | Some(3) => {
-            let dir = name_at(s, file, s.layout(4, 8)).unwrap_or_default();
-            let name = name_at(s, file, s.layout(8, 16)).unwrap_or_default();
+            let dir = name_at(s, file, s.layout(4, 8)).unwrap_or_else(String::new);
+            let name = name_at(s, file, s.layout(8, 16)).unwrap_or_else(String::new);
             let file_name = if dir.is_empty() {
                 name.clone()
             } else {
@@ -572,6 +572,7 @@ fn capture_loaded_edge(
     }
 }
 
+/// `None` for a null or empty name; a capture that keeps the asset names it empty.
 fn name_at(s: &ZoneStream<'_>, parent: Ptr, field: usize) -> Option<String> {
     match s.ptr_at(parent, field).ok()? {
         ZonePtr::Offset(q) => s

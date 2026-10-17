@@ -407,7 +407,11 @@ impl WeaponFamilies {
         table: &CapturedStringTable,
         content: &impl FamilyContent,
     ) {
-        let known = self.tables.get(&namespace).cloned().unwrap_or_default();
+        let known = self
+            .tables
+            .get(&namespace)
+            .cloned()
+            .unwrap_or_else(NamespaceTables::default);
         for row in 1..table.rows as i32 {
             let group = table.cell(row, 2);
             let base = table.cell(row, 4);

@@ -283,7 +283,7 @@ impl<'a> ScriptDvars<'a> {
 
     pub fn text(&self, name: &str, localize: impl Fn(&str) -> Option<String>) -> Option<String> {
         let mut parts = self.string(name)?.split(crate::HUD_PRINT_ARG_SEPARATOR);
-        let head = parts.next().unwrap_or_default();
+        let head = parts.next().unwrap_or("");
         let Some(key) = head.strip_prefix('@') else {
             return Some(head.to_owned());
         };

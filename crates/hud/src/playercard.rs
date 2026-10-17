@@ -54,7 +54,7 @@ impl UiLocalVars {
         self.ints
             .get(name)
             .map(|v| v.to_string())
-            .unwrap_or_default()
+            .unwrap_or_else(String::new)
     }
 }
 
@@ -218,7 +218,7 @@ impl ExprHost for PlayerCardExprHost<'_> {
                 .broadcast
                 .as_ref()
                 .map(|(_, description)| description.clone())
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         ))
     }
     fn get_perk(&self, _name: &str) -> Result<Operand, ExprError> {
@@ -311,7 +311,7 @@ fn apply_card_slots(
                     meta.player_card_nameplate,
                 )
             })
-            .unwrap_or_default();
+            .unwrap_or_else(PlayerCardData::default);
         cache.set(cmd.slot, data);
     }
 }
@@ -482,7 +482,7 @@ pub(crate) fn update_playercard(
         dvars: presented
             .snapshot()
             .map(|s| s.meta.script_dvars(local.0))
-            .unwrap_or_default(),
+            .unwrap_or_else(sim::ScriptDvars::default),
         local_vars: &local_vars,
         cache: &cache,
         catalog: Some(catalog),

@@ -370,7 +370,7 @@ pub(crate) fn route_debug_move_commands(
                         .as_ref()
                         .and_then(|a| a.0.client_meta(local.0))
                         .map(|m| m.life_sequence)
-                        .unwrap_or_default();
+                        .unwrap_or(sim::LifeSequence(0));
                     dispatch.wait_alive = Some((local.0, life));
                     dispatch.wait_alive_elapsed = 0.0;
                 }

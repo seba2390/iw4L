@@ -313,7 +313,7 @@ impl ClientCommandInbox {
                 .queued
                 .get_mut(&id)
                 .map(|queue| queue.drain(..take).collect())
-                .unwrap_or_default();
+                .unwrap_or_else(Vec::new);
             if drained.iter().all(|(seq, _, _)| seq.is_none()) && drained.len() > 1 {
                 drained.drain(..drained.len() - 1);
             }

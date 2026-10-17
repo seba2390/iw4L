@@ -249,7 +249,10 @@ pub(crate) fn advance_weapon_command(
         let Some(ps) = world.player(*id).copied() else {
             return accepted;
         };
-        let meta = world.client_meta(*id).cloned().unwrap_or_default();
+        let meta = world
+            .client_meta(*id)
+            .cloned()
+            .unwrap_or_else(crate::match_state::ClientMatchState::default);
         let started_weapon = ps.weapon;
         let ammo_weapon = if started_weapon != 0 {
             started_weapon
@@ -607,7 +610,7 @@ pub(crate) fn advance_weapon_command(
         let life = world
             .client_meta(*id)
             .map(|m| m.life_sequence)
-            .unwrap_or_default();
+            .unwrap_or(LifeSequence(0));
         let held_rechamber_pending = world.player(*id).map_or([false; 2], |ps| {
             std::array::from_fn(|hand| {
                 weapon_iw4::weapon_rechamber_pending(&ps.weapons, &ps.weapon_data, ps.weapon, hand)

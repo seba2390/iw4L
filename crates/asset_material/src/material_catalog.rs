@@ -1245,7 +1245,7 @@ impl MaterialCatalog {
             .name
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
-            .unwrap_or_default();
+            .unwrap_or(AssetRef::Real(String::new()));
 
         let graph = s
             .latest_technique_graph()
@@ -1316,7 +1316,7 @@ impl MaterialCatalog {
             .name
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
-            .unwrap_or_default();
+            .unwrap_or(AssetRef::Real(String::new()));
         Some(self.take_vertex_decl_slot(AuthoredVertexDecl {
             family: crate::VertexLayoutFamily::Iw4,
             name,
@@ -2113,7 +2113,7 @@ impl MaterialCatalog {
             .name
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
-            .unwrap_or_default();
+            .unwrap_or(AssetRef::Real(String::new()));
         let occupancy =
             fastfile_t5::occupancy_any(&geometry.technique_slots).then_some(T5TechniqueOccupancy {
                 slots: geometry.technique_slots,
@@ -2282,7 +2282,7 @@ impl MaterialCatalog {
             .name
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
-            .unwrap_or_default();
+            .unwrap_or(AssetRef::Real(String::new()));
         let mut bytes = Vec::with_capacity(geometry.program_words * 4);
         if let Some(program) = geometry.program {
             for i in 0..geometry.program_words {
@@ -2460,7 +2460,7 @@ impl MaterialCatalog {
             .name
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
-            .unwrap_or_default();
+            .unwrap_or(AssetRef::Real(String::new()));
         let fallback = s.latest_technique_graph().and_then(|graph| {
             (geometry.occupancy != 0)
                 .then(|| self.capture_owned_technique_graph_iw5(geometry, graph))
@@ -2653,7 +2653,7 @@ impl MaterialCatalog {
             .name
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
-            .unwrap_or_default();
+            .unwrap_or(AssetRef::Real(String::new()));
         let mut routing = [[0u8; 2]; asset_iw4::vertex_decl::ROUTING_COUNT];
         for (index, pair) in geometry.routing.iter().enumerate() {
             if let Some(slot) = routing.get_mut(index) {

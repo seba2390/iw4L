@@ -912,9 +912,9 @@ pub(super) fn capture_t5_body_facts(
             def: def.into(),
             variant: var.into(),
             ammo_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_AMMO_NAME_OFF)
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
             clip_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_CLIP_NAME_OFF)
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
             named_anims: geometry.sz_xanims.map_or(0, |arr| {
                 (0..sz::WEAPON_XANIM_COUNT)
                     .filter(|&slot| leftover_t5_cstr(stream, arr, slot * 4).is_some())

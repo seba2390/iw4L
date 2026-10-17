@@ -19,7 +19,6 @@ pub(super) fn advance(world: &mut World, state: &Survival, tick: Tick) {
             mines.push(*projectile);
         }
     });
-    drop(frame);
     mines.sort_by_key(|mine| mine.id.0);
     let mut counts = BTreeMap::<ClientId, usize>::new();
     for mine in mines {
@@ -58,7 +57,6 @@ pub(super) fn advance(world: &mut World, state: &Survival, tick: Tick) {
                 projectile.detonate_at_ms = Some(crate::level_time_ms(tick).saturating_add(400));
                 projectile.detonation_armed = true;
             }
-            drop(frame);
             let _ = super::super::natives::engine::play_sound_at(
                 world,
                 mine.origin,

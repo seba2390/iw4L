@@ -228,12 +228,8 @@ pub fn ladder_move<C: crate::CollisionBackend>(
         return;
     }
 
-    let mut upscale = (pml.forward[2] + LADDER_UPSCALE_BIAS) * LADDER_UPSCALE_MUL;
-    if upscale > 1.0 {
-        upscale = 1.0;
-    } else if upscale < LADDER_UPSCALE_MIN {
-        upscale = LADDER_UPSCALE_MIN;
-    }
+    let upscale = ((pml.forward[2] + LADDER_UPSCALE_BIAS) * LADDER_UPSCALE_MUL)
+        .clamp(LADDER_UPSCALE_MIN, 1.0);
 
     pml.forward[2] = 0.0;
     let _ = normalize3(&mut pml.forward);

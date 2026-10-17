@@ -299,7 +299,6 @@ fn apply_actions_system(world: &mut World) {
 
     frame.enter_kernel_phase(crate::gentity::KernelPhase::ApplyActions);
     let results = apply_actions(&mut frame, tick, &actions);
-    drop(frame);
     world.resource_mut::<StepRequest>().action_results = results;
 }
 
@@ -722,7 +721,6 @@ fn run_players_system(ecs: &mut World) {
     if allow_move && world.publishes_snapshot() {
         phase_stuck_in_client(&mut world);
     }
-    drop(world);
     let mut request = ecs.resource_mut::<StepRequest>();
     if allow_move {
         request.input.cmds = consumed;
@@ -874,7 +872,6 @@ fn publish_snapshot_system(ecs: &mut World) {
     } else {
         Snapshot::unpublished(tick)
     };
-    drop(world);
     let mut world = frame_world(ecs);
     let weapon_script_names = world.weapon_script_names();
     let pending_final_kill = world.take_pending_final_kill();
@@ -885,7 +882,6 @@ fn publish_snapshot_system(ecs: &mut World) {
         script_audio: world.take_pending_script_audio(),
         kicks: Vec::new(),
     };
-    drop(world);
     let script_seats = crate::script::script_seats(ecs);
     let mut runtime = ecs.resource_mut::<crate::script::RoundScript>();
     let script_exit_level = std::mem::take(&mut runtime.exit_level);
@@ -900,7 +896,6 @@ fn publish_snapshot_system(ecs: &mut World) {
         .into_iter()
         .map(|(client, reason)| (ClientId(client), reason))
         .collect();
-    drop(runtime);
     let mut request = ecs.resource_mut::<StepRequest>();
     let action_results = std::mem::take(&mut request.action_results);
     let fire_results = std::mem::take(&mut request.fire_results);
@@ -2183,7 +2178,7 @@ pub(crate) fn log_forced_spawn(
         .first()
         .filter(|(source, _)| *source == crate::spawn::FORCED_SPAWN_SOURCE)
         .map(|(_, reason)| format!(" fallback={}", reason.as_str()))
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     match &report.accepted {
         Some(d) => diag::info!(
             Sim,

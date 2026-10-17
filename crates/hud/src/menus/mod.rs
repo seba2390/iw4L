@@ -704,7 +704,7 @@ pub(crate) fn update_script_menus(
             }
             let choices = out.dvars.choices(&item.dvar).unwrap_or(&item.choices);
             if !choices.is_empty() {
-                let value = out.dvars.get(&item.dvar).unwrap_or_default();
+                let value = out.dvars.get(&item.dvar).unwrap_or("");
                 state.text = Some(
                     choice_index(choices, value)
                         .map(|at| choices[at].0.clone())

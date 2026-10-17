@@ -710,7 +710,7 @@ fn pose_remote_bodies(
                     .decode_errors()
                     .first()
                     .map(|error| format!("{error:?}"))
-                    .unwrap_or_default(),
+                    .unwrap_or_else(String::new),
             })
         }
         Some(sources)

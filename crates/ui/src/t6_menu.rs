@@ -1182,7 +1182,7 @@ fn paint(
                             .spawn((
                                 Hovered::default(),
                                 Choice { order, action },
-                                ImageNode { image: backing.cloned().unwrap_or_default(), color: if backing.is_none() { Color::NONE } else if order == menu.focus { Color::srgba(0.8, 0.3, 0.04, 0.8) } else { Color::srgba(0.08, 0.08, 0.08, 0.7) }, image_mode: bevy::ui::widget::NodeImageMode::Stretch, ..default() },
+                                ImageNode { image: backing.cloned().unwrap_or_else(Handle::default), color: if backing.is_none() { Color::NONE } else if order == menu.focus { Color::srgba(0.8, 0.3, 0.04, 0.8) } else { Color::srgba(0.08, 0.08, 0.08, 0.7) }, image_mode: bevy::ui::widget::NodeImageMode::Stretch, ..default() },
                                 Node {
                                     min_height: Val::Px(28.0),
                                     padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),

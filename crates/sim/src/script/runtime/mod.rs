@@ -1422,7 +1422,10 @@ fn run_ready(world: &mut World, program: &Program, now: i64) {
     loop {
         if resumed == RESUMPTIONS_PER_TICK {
             let mut runtime = world.resource_mut::<RoundScript>();
-            let rest = runtime.buckets.remove(&now).unwrap_or_default();
+            let rest = runtime
+                .buckets
+                .remove(&now)
+                .unwrap_or_else(std::collections::VecDeque::new);
             let next = now + i64::from(crate::MATCH_TICK_MS);
             let carried = rest.len();
             runtime.buckets.entry(next).or_default().extend(rest);

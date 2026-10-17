@@ -384,10 +384,26 @@ impl Staffs {
     }
 
     pub(super) fn status(&self, client: ClientId) -> String {
-        let staffs = self.owned.get(&client).cloned().unwrap_or_default();
-        let upgraded = self.upgraded.get(&client).cloned().unwrap_or_default();
-        let parts = self.parts.get(&client).cloned().unwrap_or_default();
-        let crystals = self.crystals.get(&client).cloned().unwrap_or_default();
+        let staffs = self
+            .owned
+            .get(&client)
+            .cloned()
+            .unwrap_or_else(std::collections::BTreeSet::new);
+        let upgraded = self
+            .upgraded
+            .get(&client)
+            .cloned()
+            .unwrap_or_else(std::collections::BTreeSet::new);
+        let parts = self
+            .parts
+            .get(&client)
+            .cloned()
+            .unwrap_or_else(std::collections::BTreeMap::new);
+        let crystals = self
+            .crystals
+            .get(&client)
+            .cloned()
+            .unwrap_or_else(std::collections::BTreeMap::new);
         let mut text = "STAFFS:".to_owned();
         for kind in [
             StaffKind::Fire,

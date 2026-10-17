@@ -303,7 +303,10 @@ impl WorldWeaponCatalog {
     }
 
     pub fn zone_of(&self, index: usize) -> crate::ZoneOwner {
-        self.zones.get(index).copied().unwrap_or_default()
+        self.zones
+            .get(index)
+            .copied()
+            .unwrap_or(crate::ZoneOwner::UNKNOWN)
     }
 
     pub fn get_at(&self, index: usize) -> Option<&WorldWeaponEntry> {

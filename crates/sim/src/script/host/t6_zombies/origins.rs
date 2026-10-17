@@ -103,7 +103,6 @@ impl PowerGrid {
         {
             return;
         }
-        drop(frame);
         let Some(generator) = self
             .generators
             .iter_mut()

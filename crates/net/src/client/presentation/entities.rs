@@ -154,7 +154,7 @@ pub fn sync_client_entities(
     *selected_tick = key;
     let players = next
         .map(|snapshot| snapshot.players.as_slice())
-        .unwrap_or_default();
+        .unwrap_or(&[]);
     let empty = PlayerCorpsePool::default();
     let corpses = next
         .map(|snapshot| &snapshot.meta.corpses)
@@ -198,7 +198,7 @@ pub(crate) fn sync_authority_entities(
         .0
         .as_ref()
         .map(|tick| tick.snapshot.players.as_slice())
-        .unwrap_or_default();
+        .unwrap_or(&[]);
     let empty = PlayerCorpsePool::default();
     let corpses = server_tick
         .0

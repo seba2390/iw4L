@@ -274,7 +274,9 @@ pub(crate) fn stamp_destructible_death_edges(
                 edge_from_index(
                     hint.clip,
                     index,
-                    index.map(|i| xanims.zone_of(i.order())).unwrap_or_default(),
+                    index
+                        .map(|i| xanims.zone_of(i.order()))
+                        .unwrap_or(ZoneOwner::UNKNOWN),
                 )
             },
             husk: {
@@ -284,7 +286,9 @@ pub(crate) fn stamp_destructible_death_edges(
                 edge_from_index(
                     hint.husk,
                     index,
-                    index.map(|i| models.zone_of(i.order())).unwrap_or_default(),
+                    index
+                        .map(|i| models.zone_of(i.order()))
+                        .unwrap_or(ZoneOwner::UNKNOWN),
                 )
             },
         })

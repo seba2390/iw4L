@@ -86,7 +86,7 @@ pub fn film_sources(
             1.0 / height as f32,
         ])],
     );
-    let authored = vision.unwrap_or_default();
+    let authored = vision.unwrap_or_else(asset_world::FilmVision::default);
     let vision = if authored.enable {
         authored
     } else {
@@ -243,7 +243,7 @@ impl Default for GlowFrame {
 
 impl GlowFrame {
     pub fn from_vision(vision: Option<asset_world::FilmVision>) -> Self {
-        let vision = vision.unwrap_or_default();
+        let vision = vision.unwrap_or_else(asset_world::FilmVision::default);
         Self {
             enable: vision.glow_enable,
             radius: vision.glow_radius,

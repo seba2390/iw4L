@@ -1976,7 +1976,7 @@ fn copy_ptr_array(
     let nbytes = count.saturating_mul(stride);
     s.slice_at(arr, 0, nbytes)
         .map(|b| b.to_vec())
-        .unwrap_or_default()
+        .unwrap_or_else(|_| Vec::new())
 }
 
 fn parse_vel_graph_channel(
@@ -2283,7 +2283,7 @@ fn leftover_copy_ptr_array_t5(
     let nbytes = count.saturating_mul(stride);
     s.slice_at(arr, 0, nbytes)
         .map(|b| b.to_vec())
-        .unwrap_or_default()
+        .unwrap_or_else(|_| Vec::new())
 }
 
 fn leftover_read_name_t5(

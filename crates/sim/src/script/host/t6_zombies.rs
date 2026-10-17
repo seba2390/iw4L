@@ -743,7 +743,6 @@ fn initialize(world: &mut World, state: &mut Survival) {
             riser: false,
         });
     }
-    drop(frame);
     state.weather.initialize(world, state.origins.present());
     state.nodes = Arc::new(nodes);
     state.edges = Arc::new(edges);
@@ -852,7 +851,6 @@ fn spawn_player(world: &mut World, state: &mut Survival, client: ClientId, tick:
     survivor.use_held = false;
     state.revives.remove(&client.0);
     let points = frame.client_meta(client).map_or(0, |meta| meta.score);
-    drop(frame);
     if points < 500 {
         score(world, client, 500 - points);
     }
@@ -916,7 +914,6 @@ fn spawn_actor(
         })
         .cloned();
     let Some(site) = site else { return false };
-    drop(frame);
     spawn_actor_site(world, state, tick, site)
 }
 
@@ -928,7 +925,6 @@ fn spawn_actor_site(world: &mut World, state: &mut Survival, tick: Tick, site: S
     let origin = site.origin;
     let walk = choose_animation(&mut frame, &state.walk);
     let run = choose_animation(&mut frame, &state.run);
-    drop(frame);
     let Ok(presence) = super::presence::spawn_presence(world, origin) else {
         return false;
     };
@@ -1075,7 +1071,6 @@ fn board_visibility(world: &mut World, barrier: &mut Barrier, board: usize, visi
         .map_or(0, |anim| {
             ticks((1000.0 / anim.frequency).clamp(0.0, 2500.0) as u32)
         });
-    drop(frame);
     barrier.hiding[board] = (!visible).then_some(tick.0 + duration);
     if let Some(object) = barrier.objects.get(board).copied().flatten()
         && let Some(entity) = world
@@ -1183,7 +1178,6 @@ fn prepare_machines(world: &mut World, state: &mut Survival, players: &[(ClientI
         if frame.model_capability(model).flatten().is_none() {
             continue;
         }
-        drop(frame);
         if row.object.is_none() {
             if world.resource::<RoundScript>().entities.len()
                 >= super::entities::MAX_SCRIPT_ENTITIES
@@ -1398,7 +1392,6 @@ fn move_actors(
                 state.actors.insert(object, actor);
                 continue;
             };
-            drop(frame);
             actor.animation = 0;
             animate(world, object, &mut actor, 2, Some(&attack.name));
             actor.swing = Some(Swing {
@@ -1417,7 +1410,7 @@ fn move_actors(
                 actor.path = reachable_node(&frame, &state.nodes, actor.origin)
                     .zip(reachable_node(&frame, &state.nodes, goal_target))
                     .map(|(start, goal)| route(state, start, goal))
-                    .unwrap_or_default();
+                    .unwrap_or_else(std::collections::VecDeque::new);
                 actor.repath = tick.0 + ticks(800) + object as u32 % ticks(300);
             }
             while actor.path.front().is_some_and(|&node| {
@@ -1463,7 +1456,6 @@ fn move_actors(
                     actor.path.clear();
                     actor.stalled = 0;
                 }
-                drop(frame);
                 let mode = if speed >= 100.0 { 5 } else { 1 };
                 if actor.animation != mode {
                     let movement = if speed >= 100.0 {
@@ -1580,7 +1572,6 @@ fn purchase(
                 entity.contents = 0;
             }
         }
-        drop(runtime);
         state.opened.insert(target.clone());
         score(world, client, -row.price);
         // Presence publishes the changed brush collision after this host step.
@@ -1625,7 +1616,6 @@ fn purchase(
                     return;
                 }
                 let gun = claim.weapon;
-                drop(frame);
                 if give_gun(world, survivor, client, gun, None) {
                     state.upgrades.remove(&index);
                     diag::info!(
@@ -1646,10 +1636,8 @@ fn purchase(
             else {
                 return;
             };
-            drop(frame);
             let mut frame = FrameWorld::from_world(world);
             crate::script_player::take_weapon(&mut frame, client, held);
-            drop(frame);
             survivor.guns.retain(|&gun| gun != held);
             if let Some(&remaining) = survivor.guns.first() {
                 let _ = crate::script_player::set_spawn_weapon(
@@ -1682,7 +1670,6 @@ fn purchase(
                     return;
                 }
                 let weapon = claim.weapon;
-                drop(frame);
                 if give_gun(world, survivor, client, weapon, None) {
                     state.box_claims.remove(&index);
                 }
@@ -1718,7 +1705,6 @@ fn purchase(
                     expires: tick.0 + ticks(15000),
                 },
             );
-            drop(frame);
             score(world, client, -price);
             diag::info!(Sim, "zombies box spin client={} cost={price}", client.0);
             return;
@@ -1741,7 +1727,6 @@ fn purchase(
             {
                 return;
             }
-            drop(frame);
             let mut frame = FrameWorld::from_world(world);
             if name == "juggernog" {
                 frame.client_meta_mut(client).max_health = 250;
@@ -1767,7 +1752,6 @@ fn purchase(
             if name == "revive" && solo {
                 survivor.solo_revives_bought += 1;
             }
-            drop(frame);
             score(world, client, -price);
             diag::info!(
                 Sim,
@@ -1784,7 +1768,6 @@ fn purchase(
         return;
     }
     let replace = matches!(row.kind, PurchaseKind::Upgrade).then_some(held);
-    drop(frame);
     if give_gun(world, survivor, client, gun, replace) {
         score(world, client, -price);
         diag::info!(
@@ -1891,7 +1874,6 @@ fn advance_revives(world: &mut World, state: &mut Survival, tick: Tick) {
             && quick
             && tick.0.saturating_sub(since) >= ticks(7000)
         {
-            drop(frame);
             restore_survivor(world, state, victim);
             continue;
         }
@@ -1933,7 +1915,6 @@ fn advance_revives(world: &mut World, state: &mut Survival, tick: Tick) {
                 ticks(3000)
             };
             if tick.0.saturating_sub(progress.1) >= duration {
-                drop(frame);
                 restore_survivor(world, state, victim);
                 score(world, helper, state.powerups.reward(tick, 50));
                 continue;
@@ -1967,7 +1948,10 @@ fn interactions(
     state.box_claims.retain(|_, claim| tick.0 < claim.expires);
     state.upgrades.retain(|_, claim| tick.0 < claim.expires);
     for &(client, origin) in players {
-        let mut survivor = state.survivors.remove(&client.0).unwrap_or_default();
+        let mut survivor = state
+            .survivors
+            .remove(&client.0)
+            .unwrap_or_else(Survivor::default);
         let mut frame = FrameWorld::from_world(world);
         let held = crate::script_player::buttons(&mut frame, client)
             & (playerstate_iw4::buttons::USE | playerstate_iw4::buttons::USE_RELOAD)
@@ -2054,7 +2038,6 @@ fn interactions(
             .map(|(index, _)| index);
         let solo = frame.client_ids_sorted().len() == 1;
         let cash = frame.client_meta(client).map_or(0, |meta| meta.score);
-        drop(frame);
         let shovel = state.tools.selected(world, client, origin);
         let dig = state.digs.selected(world, origin, client, tick);
         let staff = state.staffs.selected(world, client, origin);
@@ -2077,7 +2060,6 @@ fn interactions(
                 let frame = FrameWorld::from_world(world);
                 let current_weapon = frame.player(client).map_or(0, |ps| ps.weapon);
                 let weapon_name = frame.weapon_script_name(current_weapon).to_owned();
-                drop(frame);
 
                 for kind in origins_staff::StaffKind::ALL {
                     if weapon_name.contains(kind.weapon_tag()) && state.staffs.has(client, kind) {
@@ -2094,7 +2076,6 @@ fn interactions(
                         } else {
                             [1.0, 0.0, 0.0]
                         };
-                        drop(frame);
 
                         state
                             .staffs
@@ -2410,7 +2391,6 @@ pub(crate) fn advance(world: &mut World) {
             })
         })
         .collect();
-    drop(frame);
     for client in spawn {
         spawn_player(world, &mut state, client, tick);
     }
@@ -2427,7 +2407,6 @@ pub(crate) fn advance(world: &mut World) {
                     .is_some_and(|meta| meta.lifecycle == ClientLifecycle::Dead)
             })
             .collect();
-        drop(frame);
         for client in returning {
             spawn_player(world, &mut state, client, tick);
         }
@@ -2449,7 +2428,6 @@ pub(crate) fn advance(world: &mut World) {
         })
         .filter_map(|id| frame.player(id).map(|ps| (id, ps.origin)))
         .collect();
-    drop(frame);
     if players.is_empty() {
         let auto_revive_pending = connected.len() == 1
             && state.survivors.values().any(|survivor| {
@@ -2668,7 +2646,6 @@ pub(crate) fn entity_damage(
                 .filter(|barrier| barrier.boards == 0 && !barrier.models.is_empty())
                 .count();
             let mut powers = std::mem::take(&mut runtime.zombies.powerups);
-            drop(runtime);
             powers.killed(world, origin, destroyed);
             world.resource_mut::<RoundScript>().zombies.powerups = powers;
         }

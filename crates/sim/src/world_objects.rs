@@ -420,7 +420,7 @@ impl WorldObjectState {
     }
 
     fn glass_native_meta(&self, id: GlassPieceId) -> GlassNativeMeta {
-        lookup_value(&self.glass_native, id).unwrap_or_default()
+        lookup_value(&self.glass_native, id).unwrap_or_else(GlassNativeMeta::default)
     }
 
     pub fn glass_break_record(&self, id: GlassPieceId) -> Option<GlassBreakRecord> {

@@ -53,8 +53,8 @@ fn inspect_sound_file(s: &ZoneStream<'_>, file: Ptr) -> InspectedSoundFile {
             }
         }
         Some(2) | Some(3) => {
-            let dir = name_at(s, file, s.layout(4, 8)).unwrap_or_default();
-            let name = name_at(s, file, s.layout(8, 16)).unwrap_or_default();
+            let dir = name_at(s, file, s.layout(4, 8)).unwrap_or_else(String::new);
+            let name = name_at(s, file, s.layout(8, 16)).unwrap_or_else(String::new);
             let file_name = if dir.is_empty() {
                 name.clone()
             } else {
@@ -79,6 +79,7 @@ fn inspect_sound_file(s: &ZoneStream<'_>, file: Ptr) -> InspectedSoundFile {
     }
 }
 
+/// `None` for an unreadable name; a capture that keeps the asset names it empty.
 pub(super) fn name_at(s: &ZoneStream<'_>, parent: Ptr, field: usize) -> Option<String> {
     match s.ptr_at(parent, field).ok()? {
         ZonePtr::Offset(p) => s.cstr(s.resolve_alias(p)).ok().map(str::to_owned),
@@ -248,7 +249,7 @@ impl AssetLinkSink for SoundCatalog {
         pcm: Ptr,
         data_len: usize,
     ) -> Result<()> {
-        let name = name_at(s, header, 0).unwrap_or_default();
+        let name = name_at(s, header, 0).unwrap_or_else(String::new);
 
         let (format, rate, bits, channels, samples, block_size) =
             if s.wire_format() == fastfile_iw4::Iw4WireFormat::X64 {
@@ -322,7 +323,7 @@ impl AssetLinkSink for SoundCatalog {
     }
 
     fn capture_snd_curve(&mut self, s: &ZoneStream<'_>, header: Ptr) -> Result<()> {
-        let name = name_at(s, header, 0).unwrap_or_default();
+        let name = name_at(s, header, 0).unwrap_or_else(String::new);
         if name.is_empty() {
             self.capture_gaps += 1;
         }
@@ -364,7 +365,7 @@ impl AssetLinkSink for SoundCatalog {
         count: usize,
         head: Option<Ptr>,
     ) -> Result<()> {
-        let name = name_at(s, list, 0).unwrap_or_default();
+        let name = name_at(s, list, 0).unwrap_or_else(String::new);
         let Some(arr) = head else {
             if count > 0 {
                 self.capture_gaps += 1;
@@ -375,7 +376,8 @@ impl AssetLinkSink for SoundCatalog {
         let mut aliases = Vec::with_capacity(count);
         for i in 0..count {
             let row = arr.at(i * s.layout(sz::SND_ALIAS, 136));
-            let alias_name = name_at(s, row, s.layout(SND_ALIAS_ALIAS_NAME, 0)).unwrap_or_default();
+            let alias_name =
+                name_at(s, row, s.layout(SND_ALIAS_ALIAS_NAME, 0)).unwrap_or_else(String::new);
             let subtitle = optional_name(s, row, s.layout(SND_ALIAS_SUBTITLE, 8));
             let secondary = optional_name(s, row, s.layout(SND_ALIAS_SECONDARY, 16));
             let chain = optional_name(s, row, s.layout(SND_ALIAS_CHAIN, 24));

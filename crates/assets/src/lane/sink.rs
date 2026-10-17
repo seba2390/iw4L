@@ -412,7 +412,10 @@ impl fastfile_iw5::AssetLinkSink for ZoneWalkSink {
         &self,
         slot: fastfile_iw5::Ptr,
     ) -> (Option<fastfile_iw5::Ptr>, Option<fastfile_iw5::Ptr>) {
-        self.iw5_surfaces.get(&slot).copied().unwrap_or_default()
+        self.iw5_surfaces
+            .get(&slot)
+            .copied()
+            .unwrap_or((None, None))
     }
 
     fn loaded(
@@ -574,7 +577,10 @@ impl fastfile_iw5::AssetLinkSink for CommonWalkSink {
         &self,
         slot: fastfile_iw5::Ptr,
     ) -> (Option<fastfile_iw5::Ptr>, Option<fastfile_iw5::Ptr>) {
-        self.iw5_surfaces.get(&slot).copied().unwrap_or_default()
+        self.iw5_surfaces
+            .get(&slot)
+            .copied()
+            .unwrap_or((None, None))
     }
 
     fn capture_fx(

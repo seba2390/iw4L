@@ -347,7 +347,9 @@ impl MasterLaunchIntent {
             (None, None) => Ok(Self::disabled()),
             (Some(name), None) if !name.trim().is_empty() => {
                 Ok(Self(MasterLaunchMode::Host(HostConfig {
-                    password: std::env::var("IW4L_MASTER_PASSWORD").unwrap_or_default(),
+                    // No password when unset.
+                    password: std::env::var("IW4L_MASTER_PASSWORD")
+                        .unwrap_or_else(|_| String::new()),
                     auto_start_map: true,
                     target,
                     name,
@@ -359,7 +361,8 @@ impl MasterLaunchIntent {
                 })))
             }
             (None, Some(advert_id)) => Ok(Self(MasterLaunchMode::Join(JoinConfig {
-                password: std::env::var("IW4L_MASTER_PASSWORD").unwrap_or_default(),
+                // No password when unset.
+                password: std::env::var("IW4L_MASTER_PASSWORD").unwrap_or_else(|_| String::new()),
                 target,
                 advert_id: advert_id.parse()?,
                 map: map.to_owned(),
@@ -885,7 +888,7 @@ fn arm_master_browser(
     let state = Arc::new(Mutex::new(MasterBrowserSnapshot {
         community_name: updater::selected()
             .map(|community| community.name.clone())
-            .unwrap_or_default(),
+            .unwrap_or_else(String::new),
         loading: true,
         have: browser_config.have,
         ..default()
@@ -2218,7 +2221,7 @@ fn sync_membership_facts(
 ) {
     let previous_members: HashSet<MemberId> = previous
         .map(|view| view.members.iter().copied().collect())
-        .unwrap_or_default();
+        .unwrap_or_else(std::collections::HashSet::new);
     let next: HashSet<MemberId> = view.members.iter().copied().collect();
 
     for member_id in previous_members.difference(&next) {

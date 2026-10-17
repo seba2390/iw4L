@@ -222,7 +222,7 @@ impl ExprHost for SplashExprHost<'_> {
         Ok(Operand::Str(
             t.lookup_row_in_col(col0, key)
                 .map(|row| t.cell(row, result_col).to_owned())
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         ))
     }
     fn table_lookup_by_row(&self, table: &str, row: i32, col: i32) -> Result<Operand, ExprError> {
@@ -372,7 +372,7 @@ pub(crate) fn update_splash(
                     .string_table("mp/rankIconTable.csv")
                     .map(|table| table.lookup_col(&meta.rank.to_string(), column))
             })
-            .unwrap_or_default();
+            .unwrap_or("");
         let title = rank
             .and_then(|meta| {
                 catalog
@@ -380,7 +380,7 @@ pub(crate) fn update_splash(
                     .string_table("mp/rankTable.csv")
                     .map(|table| table.lookup_col(&meta.rank.to_string(), 5))
             })
-            .unwrap_or_default();
+            .unwrap_or("");
         for item in &mut promotion.items {
             if item.name.starts_with("promotion_rank_icon") {
                 item.material_exp.clear();

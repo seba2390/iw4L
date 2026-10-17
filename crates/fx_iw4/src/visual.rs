@@ -22,14 +22,7 @@ pub fn elem_norm_time(age_msec: i32, life_msec: i32) -> f32 {
     if life_msec <= 0 {
         return 1.0;
     }
-    let t = age_msec as f32 / life_msec as f32;
-    if t <= 0.0 {
-        0.0
-    } else if t >= 1.0 {
-        1.0
-    } else {
-        t
-    }
+    (age_msec as f32 / life_msec as f32).clamp(0.0, 1.0)
 }
 
 #[inline]

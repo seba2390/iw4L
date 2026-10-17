@@ -621,7 +621,7 @@ impl MaterialProgramCompile {
             .map(|(rules, namespace)| {
                 super::post_chain::post_chain_compile_locations(catalog, &rules, namespace)
             })
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         for (name, location) in chain {
             match location {
                 Ok((set_i, pass_i)) => {

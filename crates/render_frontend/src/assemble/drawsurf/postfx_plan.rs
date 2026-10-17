@@ -205,7 +205,7 @@ pub fn film_sources(
             1.0 / height as f32,
         ])],
     );
-    let authored = vision.unwrap_or_default();
+    let authored = vision.unwrap_or_else(asset_world::FilmVision::default);
     let vision = if authored.enable {
         authored
     } else {

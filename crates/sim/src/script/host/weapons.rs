@@ -632,7 +632,6 @@ fn settle_projectiles(world: &mut World, notes: &[WeaponNote]) {
                     "angles",
                     Value::Vector(entity_iw4::evaluate_trajectory(&projectile.apos, now)),
                 );
-                drop(runtime);
                 (rule.flying)(world, object, &projectile, stuck);
             }
             _ => {
@@ -649,7 +648,6 @@ fn settle_projectiles(world: &mut World, notes: &[WeaponNote]) {
                 if let Some(presence) = entity.presence.take() {
                     runtime.retired_presence.push((presence, true));
                 }
-                drop(runtime);
                 if let Some(origin) = detonated {
                     let args = (rule.exploded)(world, object, origin);
                     raise(world, receiver.clone(), "explode", args);

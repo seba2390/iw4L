@@ -812,7 +812,7 @@ fn setup_console(
 
     let maps = asset_transport::games_root_from_env()
         .map(|root| asset_transport::list_mp_maps(&root))
-        .unwrap_or_default();
+        .unwrap_or_else(|_| Vec::new());
     crate::feature_dispatch::register_feature_commands(&mut registry, &maps);
     crate::frontend::register(&mut registry);
     crate::class_menu::register(&mut registry);
@@ -2232,10 +2232,10 @@ fn dispatch_console_command(
 
             let rss = asset_transport::process_resident_bytes()
                 .map(|bytes| format!(" rss_mib={}", bytes >> 20))
-                .unwrap_or_default();
+                .unwrap_or_else(String::new);
             let heap = diag::process_live_heap_bytes()
                 .map(|bytes| format!(" heap_mib={}", bytes >> 20))
-                .unwrap_or_default();
+                .unwrap_or_else(String::new);
             let facts = mark_match_facts(
                 authority.as_deref(),
                 clock.as_deref(),
