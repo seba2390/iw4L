@@ -2552,8 +2552,8 @@ fn pad_aabb(mins: [f32; 3], maxs: [f32; 3]) -> ([f32; 3], [f32; 3]) {
 
 fn obb_world_aabb(bone: &AuthorityDObjCollisionBone) -> ([f32; 3], [f32; 3]) {
     let mut extent = [0.0_f32; 3];
-    for world_axis in 0..3 {
-        extent[world_axis] = bone.axes[0][world_axis].abs() * bone.half_size[0]
+    for (world_axis, half_extent) in extent.iter_mut().enumerate() {
+        *half_extent = bone.axes[0][world_axis].abs() * bone.half_size[0]
             + bone.axes[1][world_axis].abs() * bone.half_size[1]
             + bone.axes[2][world_axis].abs() * bone.half_size[2];
     }

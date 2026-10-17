@@ -344,6 +344,10 @@ fn load_gfxworld_draw(
         lightmap_count,
     )? {
         let retain = lightmap_count.min(MAX_LIGHTMAP_PAGES);
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "every stream record is read; only the first ones are kept"
+        )]
         for i in 0..lightmap_count {
             let lightmap = a.at(i * s.layout(sz::GFX_LIGHTMAP_ARRAY, 16));
             let serial = s.image_serial();
@@ -567,17 +571,10 @@ fn load_gfx_dpvs_static(
 
 fn load_gfx_dpvs_dynamic(s: &mut ZoneStream<'_>, p: Ptr, cell_count: usize) -> Result<()> {
     let word_count = [s.u32_at(p, 0)? as usize, s.u32_at(p, 4)? as usize];
-    for ty in 0..2 {
-        runtime_array(
-            s,
-            p,
-            16 + ty * s.pointer_bytes(),
-            4,
-            4,
-            word_count[ty] * cell_count,
-        )?;
+    for (ty, &words) in word_count.iter().enumerate() {
+        runtime_array(s, p, 16 + ty * s.pointer_bytes(), 4, 4, words * cell_count)?;
     }
-    for ty in 0..2 {
+    for (ty, &words) in word_count.iter().enumerate() {
         for vis in 0..3 {
             runtime_array(
                 s,
@@ -585,7 +582,7 @@ fn load_gfx_dpvs_dynamic(s: &mut ZoneStream<'_>, p: Ptr, cell_count: usize) -> R
                 s.layout(24, 32) + (ty * 3 + vis) * s.pointer_bytes(),
                 16,
                 1,
-                32 * word_count[ty],
+                32 * words,
             )?;
         }
     }

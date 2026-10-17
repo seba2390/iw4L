@@ -242,6 +242,10 @@ fn colour_band_saw<T: PartialEq>(
     decoded: &T,
     decode: &impl Fn([u32; 2]) -> T,
 ) -> bool {
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "the slot is also the bit tested in the slot mask"
+    )]
     for slot in TECHNIQUE_COLOR_BAND_FIRST..before {
         if (slots >> slot) & 1 == 0 {
             continue;

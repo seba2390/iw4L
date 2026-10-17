@@ -33,8 +33,7 @@ pub fn xmodel_lod_for_dist(num_lods: u8, lod_dist: [f32; 4], dist: f32) -> Optio
         return Some(0);
     }
     let n = usize::from(num_lods).min(4);
-    for lod in 0..n {
-        let d = lod_dist[lod];
+    for (lod, &d) in lod_dist.iter().enumerate().take(n) {
         if d == 0.0 || d > dist {
             return Some(lod as u8);
         }
@@ -502,6 +501,10 @@ fn capture_model_skel_iw4(
     let mut lod_surf_span = [(0u16, 0u16); 4];
     let mut any_surf = false;
 
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "one LOD number indexes the geometry's parallel LOD arrays"
+    )]
     for lod in 0..4 {
         let Some(surfaces) = geometry.lod_xsurfaces[lod] else {
             let count = usize::from(geometry.lod_numsurfs[lod]);
@@ -596,6 +599,10 @@ fn capture_model_skel_iw4(
                 geometry.num_bones,
             )?;
 
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "the vertex index is the stream record the offsets come from"
+            )]
             for vertex_index in 0..vertex_count {
                 let vertex = vertices.at(vertex_index * sz::GFX_PACKED_VERTEX);
                 packed_vertices.push(copy_packed_vertex_iw4(stream, vertex)?);
@@ -1130,8 +1137,12 @@ fn capture_model_skel_t5(
             _ => return None,
         };
         let mut part_bits = [0u32; 6];
-        for i in 0..fastfile_t5::size::XSURFACE_PART_BITS_WORDS {
-            part_bits[i] = stream
+        for (i, word) in part_bits
+            .iter_mut()
+            .enumerate()
+            .take(fastfile_t5::size::XSURFACE_PART_BITS_WORDS)
+        {
+            *word = stream
                 .u32_at(surface, fastfile_t5::size::XSURFACE_PART_BITS_OFF + i * 4)
                 .ok()?;
         }
@@ -1147,6 +1158,10 @@ fn capture_model_skel_t5(
             XRIGID_VERT_LIST,
         )?;
 
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "the vertex index is the stream record the offsets come from"
+        )]
         for vertex_index in 0..vertex_count {
             let vertex = vertices.at(vertex_index * GFX_PACKED_VERTEX);
             packed_vertices.push(copy_packed_vertex_t5(stream, vertex)?);
@@ -1771,6 +1786,10 @@ fn capture_model_skel_iw5(
             geometry.num_bones,
         )?;
 
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "the vertex index is the stream record the offsets come from"
+        )]
         for vertex_index in 0..vertex_count {
             let vertex = vertices.at(vertex_index * iw5sz::GFX_PACKED_VERTEX);
             positions.push([

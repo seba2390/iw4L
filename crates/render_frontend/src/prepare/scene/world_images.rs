@@ -108,10 +108,10 @@ fn paint_probe_debug(image: &mut Image, mode: ProbeDebug) {
     for level in 0..levels {
         let side = (size >> level).max(1) as usize;
         let level_bytes = side * side * 4;
-        for face in 0..6usize {
+        for face_colour in PROBE_FACE_COLOURS {
             let colour = match mode {
                 ProbeDebug::Flat(colour) => colour,
-                ProbeDebug::Faces => PROBE_FACE_COLOURS[face],
+                ProbeDebug::Faces => face_colour,
 
                 ProbeDebug::Mips { shift } if (level as usize) < PROBE_MIP_COLOURS.len() => {
                     let len = PROBE_MIP_COLOURS.len();

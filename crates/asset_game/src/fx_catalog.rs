@@ -2146,16 +2146,16 @@ fn leftover_t5_elem_view(bytes: &[u8]) -> Option<(FxElemDefView, [u8; 8])> {
     };
     let range2 = |off: usize| -> Option<[f32; 2]> { Some([f32_at(off)?, f32_at(off + 4)?]) };
     let mut spawn_origin = [[0.0f32; 2]; 3];
-    for i in 0..3 {
-        spawn_origin[i] = range2(0x38 + i * 8)?;
+    for (i, range) in spawn_origin.iter_mut().enumerate() {
+        *range = range2(0x38 + i * 8)?;
     }
     let mut spawn_angles = [[0.0f32; 2]; 3];
-    for i in 0..3 {
-        spawn_angles[i] = range2(0x60 + i * 8)?;
+    for (i, range) in spawn_angles.iter_mut().enumerate() {
+        *range = range2(0x60 + i * 8)?;
     }
     let mut angular_velocity = [[0.0f32; 2]; 3];
-    for i in 0..3 {
-        angular_velocity[i] = range2(0x78 + i * 8)?;
+    for (i, range) in angular_velocity.iter_mut().enumerate() {
+        *range = range2(0x78 + i * 8)?;
     }
     let atlas: [u8; 8] = bytes[sz_t5::FX_ELEM_ATLAS_OFF..sz_t5::FX_ELEM_ATLAS_OFF + 8]
         .try_into()

@@ -169,8 +169,8 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
         }));
     }
     let mut parents = vec![None; out.len()];
-    for id in 1..out.len() {
-        let Some(w) = out[id].as_deref() else {
+    for (id, w) in out.iter().enumerate().skip(1) {
+        let Some(w) = w.as_deref() else {
             continue;
         };
         let is_altmode = w

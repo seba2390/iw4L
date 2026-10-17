@@ -1125,8 +1125,7 @@ pub fn brush_model_vertex_centroid(
     let last = end.min(surface_index_ranges.len());
     let mut acc = [0.0f32; 3];
     let mut n = 0u32;
-    for surf in start..last {
-        let (index_start, index_count) = surface_index_ranges[surf];
+    for &(index_start, index_count) in surface_index_ranges.iter().take(last).skip(start) {
         let begin = index_start as usize;
         let stop = begin.saturating_add(index_count as usize);
         for &raw in packed_indices.get(begin..stop)? {

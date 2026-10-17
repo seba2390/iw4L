@@ -1709,8 +1709,8 @@ fn prepare_shadowmap_sun(
                 .or_default() += smodel_span_holes;
         }
         let retry_before = retry_n;
-        for slot_i in 0..static_draws.world[pi].len() {
-            if static_draws.world[pi][slot_i].is_some() {
+        for (slot_i, slot) in static_draws.world[pi].iter_mut().enumerate() {
+            if slot.is_some() {
                 continue;
             }
             let Some((src_start, count)) = world_spans[slot_i] else {
@@ -1744,15 +1744,15 @@ fn prepare_shadowmap_sun(
                     use_world_pretess: false,
                 },
             ) {
-                Ok(gpu) => static_draws.world[pi][slot_i] = Some(gpu),
+                Ok(gpu) => *slot = Some(gpu),
                 Err(cause) => {
                     miss = miss.saturating_add(1);
                     *miss_rows.entry(cause).or_default() += 1;
                 }
             }
         }
-        for slot_i in 0..static_draws.smodel[pi].len() {
-            if static_draws.smodel[pi][slot_i].is_some() {
+        for (slot_i, slot) in static_draws.smodel[pi].iter_mut().enumerate() {
+            if slot.is_some() {
                 continue;
             }
             let Some(span) = smodel_spans[slot_i] else {
@@ -1785,7 +1785,7 @@ fn prepare_shadowmap_sun(
                     use_world_pretess: false,
                 },
             ) {
-                Ok(gpu) => static_draws.smodel[pi][slot_i] = Some(gpu),
+                Ok(gpu) => *slot = Some(gpu),
                 Err(cause) => {
                     miss = miss.saturating_add(1);
                     *miss_rows.entry(cause).or_default() += 1;

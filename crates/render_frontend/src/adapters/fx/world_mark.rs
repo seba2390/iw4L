@@ -676,8 +676,8 @@ fn complete_glass_marks(host: &mut FxSystemHost, scene: &WorldScene) {
         };
         let normal = pane_axis[2].map(|v| if side < 0.0 { -v } else { v });
         for vertex in &mut vertices[..n] {
-            for k in 0..3 {
-                vertex.xyz[k] += normal[k] * thickness;
+            for (xyz, n) in vertex.xyz.iter_mut().zip(normal) {
+                *xyz += n * thickness;
             }
         }
         let mut used_tri = 0;

@@ -2166,6 +2166,10 @@ impl MaterialCatalog {
         let flags_by_slot =
             crate::t5_tech_map::remap_technique_flags_by_slot(&geometry.technique_flags_by_slot);
         let mut slots = Vec::with_capacity(asset_iw4::size::TECHNIQUE_SLOT_COUNT);
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "the slot is also the bit tested in the slot mask"
+        )]
         for iw4_slot in 0..asset_iw4::size::TECHNIQUE_SLOT_COUNT {
             if slots_bits & (1u64 << iw4_slot) == 0 {
                 slots.push(None);
@@ -2500,6 +2504,10 @@ impl MaterialCatalog {
         let flags_by_slot =
             crate::iw5_tech_map::remap_technique_flags_by_slot(&geometry.technique_flags_by_slot);
         let mut slots = Vec::with_capacity(asset_iw4::size::TECHNIQUE_SLOT_COUNT);
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "the slot is also the bit tested in the slot mask"
+        )]
         for iw4_slot in 0..asset_iw4::size::TECHNIQUE_SLOT_COUNT {
             if slots_bits & (1u64 << iw4_slot) == 0 {
                 slots.push(None);

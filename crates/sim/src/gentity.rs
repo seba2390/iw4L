@@ -624,7 +624,7 @@ pub fn collect_use_presses(cmds: &[(u32, u32)], old_buttons: &[(u32, u32)]) -> V
 }
 
 pub fn init_script_mover_state(number: i32, origin: [f32; 3], angles: [f32; 3]) -> EntityState {
-    let es = EntityState {
+    EntityState {
         number,
         e_type: ET_SCRIPTMOVER,
         tr_type: TR_STATIONARY,
@@ -632,8 +632,7 @@ pub fn init_script_mover_state(number: i32, origin: [f32; 3], angles: [f32; 3]) 
         apos_tr_type: TR_STATIONARY,
         apos_tr_base: angles,
         ..EntityState::default()
-    };
-    es
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

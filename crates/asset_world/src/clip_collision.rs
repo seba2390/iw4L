@@ -321,8 +321,8 @@ pub fn build_clip_collision(
         planes.push([0.0, 0.0, -1.0, -mins[2]]);
 
         let mut axial_mat = [0u16; 6];
-        for i in 0..6 {
-            axial_mat[i] = s
+        for (i, side) in axial_mat.iter_mut().enumerate() {
+            *side = s
                 .u16_at(brush, s.layout(12, 24) + i * 2)
                 .map_err(|_| ClipCollisionError::Truncated)?;
         }
@@ -698,9 +698,9 @@ fn read_placed_static_model(
         s.f32_at(sm, s.layout(12, 16)).ok()?,
     ];
     let mut inv_scaled_axis = [[0.0_f32; 3]; 3];
-    for row in 0..3 {
-        for col in 0..3 {
-            inv_scaled_axis[row][col] = s
+    for (row, axis) in inv_scaled_axis.iter_mut().enumerate() {
+        for (col, value) in axis.iter_mut().enumerate() {
+            *value = s
                 .f32_at(sm, s.layout(0x10, 20) + (row * 3 + col) * 4)
                 .ok()?;
         }
@@ -1117,8 +1117,8 @@ pub fn build_iw5_clip_collision(
         planes.push([0.0, 0.0, -1.0, -mins[2]]);
 
         let mut axial_mat = [0u16; 6];
-        for i in 0..6 {
-            axial_mat[i] = s
+        for (i, side) in axial_mat.iter_mut().enumerate() {
+            *side = s
                 .u16_at(brush, s.layout(12, 24) + i * 2)
                 .map_err(|_| ClipCollisionError::Truncated)?;
         }
@@ -1617,9 +1617,9 @@ fn read_iw5_placed_static_model(
     ];
     let axis_off = s.layout(0x10, 20);
     let mut inv_scaled_axis = [[0.0_f32; 3]; 3];
-    for row in 0..3 {
-        for col in 0..3 {
-            inv_scaled_axis[row][col] = s.f32_at(sm, axis_off + (row * 3 + col) * 4).ok()?;
+    for (row, axis) in inv_scaled_axis.iter_mut().enumerate() {
+        for (col, value) in axis.iter_mut().enumerate() {
+            *value = s.f32_at(sm, axis_off + (row * 3 + col) * 4).ok()?;
         }
     }
     let abs_bounds = s.layout(0x34, 56);

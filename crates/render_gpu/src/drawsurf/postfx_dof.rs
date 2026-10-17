@@ -414,11 +414,11 @@ pub fn gaussian_chain(radius: f32, width: u32, height: u32) -> Vec<GaussianPass>
             let (_, x) = gaussian_points(r, width, 2);
             let (_, y) = gaussian_points(r, height, 2);
             let mut taps = [[0.0; 4]; 8];
-            for j in 0..2 {
-                for i in 0..2 {
+            for (j, yj) in y[..2].iter().enumerate() {
+                for (i, xi) in x[..2].iter().enumerate() {
                     let k = j * 4 + i * 2;
-                    taps[k] = [-x[i][0], y[j][0], 0.0, x[i][1] * y[j][1]];
-                    taps[k + 1] = [x[i][0], y[j][0], 0.0, x[i][1] * y[j][1]];
+                    taps[k] = [-xi[0], yj[0], 0.0, xi[1] * yj[1]];
+                    taps[k + 1] = [xi[0], yj[0], 0.0, xi[1] * yj[1]];
                 }
             }
             passes.push(GaussianPass { half_taps: 8, taps });

@@ -70,9 +70,9 @@ pub fn append_mesh(
     }
 
     let base = vertices.len() as u32;
-    for i in 0..n {
+    for (i, &position) in positions.iter().enumerate() {
         vertices.push(SmodelVertex {
-            position: positions[i],
+            position,
             normal: normals
                 .and_then(|a| a.get(i).copied())
                 .unwrap_or([0.0, 0.0, 1.0]),
