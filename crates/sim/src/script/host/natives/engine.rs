@@ -495,9 +495,28 @@ pub(crate) fn effect_on_tag(
     stop: bool,
     audience: crate::EventAudience,
 ) -> Result<(), String> {
-    let presence = runtime(world).presence_of(entity);
     let fallback = (origin_of(world, entity)?, [0.0, 0.0, 1.0]);
-    let mut frame = super::super::presence::settled(world);
+    let (number, bone, pose) = tag_bolt(world, entity, tag);
+    let (origin, direction) = pose.unwrap_or(fallback);
+    let index = crate::frame::FrameWorld::from_world(world).effect_name_index(name);
+    tag_effect_event(
+        world,
+        audience,
+        stop,
+        index,
+        number.zip(bone),
+        (origin, direction),
+    );
+    Ok(())
+}
+
+/// An entity's snapshot number, the bone of its model a tag names and the
+/// tag's place and direction, as far as the entity is presented.
+pub(crate) type TagBolt = (Option<i32>, Option<usize>, Option<([f32; 3], [f32; 3])>);
+
+pub(crate) fn tag_bolt(world: &mut World, entity: &Value, tag: &str) -> TagBolt {
+    let presence = runtime(world).presence_of(entity);
+    let frame = super::super::presence::settled(world);
     let number = presence.and_then(|id| frame.gentity_number(id));
     let dobj = presence.and_then(|id| {
         frame
@@ -509,17 +528,7 @@ pub(crate) fn effect_on_tag(
             .map(|dobj| (dobj.tag_bone(tag), dobj.tag_world_pose(tag)))
     });
     let (bone, pose) = dobj.unwrap_or((None, None));
-    let (origin, direction) = pose.unwrap_or(fallback);
-    let index = frame.effect_name_index(name);
-    tag_effect_event(
-        world,
-        audience,
-        stop,
-        index,
-        number.zip(bone),
-        (origin, direction),
-    );
-    Ok(())
+    (number, bone, pose)
 }
 
 /// An effect started or stopped on an entity's tag (its number and the

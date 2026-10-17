@@ -547,7 +547,7 @@ pattern crates/render/src/extract.rs fx:: 1
 pattern crates/render/src/extract.rs render_frame:: 5
 pattern crates/render/src/plugin.rs render_fx:: 1
 pattern crates/render_anim/src/anim/dobj_pose.rs fx:: 4
-pattern crates/render_anim/src/anim/dobj_pose.rs fx_iw4:: 5
+pattern crates/render_anim/src/anim/dobj_pose.rs fx_iw4:: 4
 pattern crates/render_anim/src/anim/fpv.rs weapon_iw4:: 3
 pattern crates/render_anim/src/anim/fpv_host.rs fx:: 5
 pattern crates/render_anim/src/anim/fpv_host.rs weapon_iw4:: 1

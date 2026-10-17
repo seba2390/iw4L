@@ -118,6 +118,7 @@ pub const ENEMY_BOTS_DVAR: &str = "scr_game_enemybots";
 pub const FRIENDLY_BOTS_DVAR: &str = "scr_game_friendlybots";
 
 pub const TEAM_MENU: &str = "team_marinesopfor";
+pub use game_api::fog::ScriptFogSwitch;
 pub use game_api::post::VisionCall;
 pub use match_state::{
     CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle, ClientLightOverride,
@@ -181,8 +182,8 @@ pub use scene_effects::{
 pub use time_scale::ScriptSlowMotion;
 mod objectives;
 pub use objectives::{
-    CompassObjective, CompassVehicle, EffectEnd, ObjectiveMatch, ObjectiveState, ScriptEffect,
-    VehicleHudTarget,
+    CompassObjective, CompassVehicle, EffectBolt, EffectEnd, ObjectiveMatch, ObjectiveState,
+    ScriptEffect, VehicleHudTarget,
 };
 
 pub use world::{AnimClipLookup, SimContent, SimContentBuilder};

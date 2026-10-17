@@ -297,6 +297,7 @@ pub fn build_iw5_world_draw(
             outdoor_lookup: geometry.outdoor_lookup,
             sun_effects: None,
             t6_exposure: None,
+            world_fog: None,
             t5_sun_parse_exposure: None,
             sky_dynamic_intensity: None,
             t5_sun_light: None,

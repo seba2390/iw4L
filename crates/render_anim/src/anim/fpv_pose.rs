@@ -56,6 +56,8 @@ pub struct FpvBoltTags {
 pub struct FpvBoltFrame {
     pub bones: Vec<Mat4>,
     pub tags: FpvBoltTags,
+    /// The posed model's bone names, by bone index.
+    pub names: std::sync::Arc<[String]>,
 }
 
 /// One clip a hand is playing this frame. `node` is the scheduler slot it is

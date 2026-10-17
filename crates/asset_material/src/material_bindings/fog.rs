@@ -36,6 +36,12 @@ pub(super) fn produce(
     enabled: bool,
     packing: FogPacking,
 ) {
+    if let (FogPacking::T6, Some(rows)) = (packing, fog.game_rows) {
+        for (code, row) in CODE_T6_FOG.into_iter().zip(rows) {
+            sources.set_constant_rows(code, &[row.map(f32::to_bits)]);
+        }
+        return;
+    }
     let put = |sources: &mut BindingWriter<'_>, index, row: [f32; 4]| {
         if matches!(packing, FogPacking::T5) {
             sources.set_constant_rows(LEFTOVER_T5_CODE_BASE + index, &[row.map(f32::to_bits)]);

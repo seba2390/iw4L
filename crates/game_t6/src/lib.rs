@@ -4,6 +4,7 @@ mod client_builtins;
 pub mod client_screen;
 mod fire;
 mod fire_sound;
+pub mod fog;
 mod grenade;
 mod keys;
 mod menu_expression;
@@ -283,6 +284,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: None,
     post_chain: None,
+    frame_fog: Some(fog::FRAME_FOG),
     dyn_ent_physics: None,
 };
 

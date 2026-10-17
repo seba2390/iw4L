@@ -1646,6 +1646,26 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(lod.min);
         }
     }
+    match &screen.fog {
+        None => out.put_u8(0),
+        Some(fog) => {
+            out.put_u8(1);
+            out.put_u32(fog.serial);
+            out.put_u8(fog.slot);
+            for word in fog.block {
+                out.put_f32(word);
+            }
+            out.put_i32(fog.start_ms);
+            out.put_i32(fog.transition_ms);
+        }
+    }
+    match screen.fog_bank {
+        None => out.put_u8(0),
+        Some(bank) => {
+            out.put_u8(1);
+            out.put_u16(bank);
+        }
+    }
 }
 
 fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen, WireError> {
@@ -1666,9 +1686,35 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         }),
         _ => return Err(WireError::Malformed("bad lod scale tag")),
     };
+    let fog = match input.get_u8()? {
+        0 => None,
+        1 => {
+            let serial = input.get_u32()?;
+            let slot = input.get_u8()?;
+            let mut block = [0.0; 20];
+            for word in &mut block {
+                *word = input.get_f32()?;
+            }
+            Some(sim::ScriptFogSwitch {
+                serial,
+                slot,
+                block,
+                start_ms: input.get_i32()?,
+                transition_ms: input.get_i32()?,
+            })
+        }
+        _ => return Err(WireError::Malformed("bad script fog tag")),
+    };
+    let fog_bank = match input.get_u8()? {
+        0 => None,
+        1 => Some(input.get_u16()?),
+        _ => return Err(WireError::Malformed("bad fog bank tag")),
+    };
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
+        fog,
+        fog_bank,
     })
 }
 
@@ -2543,7 +2589,7 @@ fn decode_entity_state(input: &mut WireReader<'_>) -> Result<entity_iw4::EntityS
         apos_tr_base: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
         index: input.get_i32()?,
         solid: input.get_u32()?,
-        ..entity_iw4::EntityState::default()
+        ..Default::default()
     };
     es.set_launch_time(input.get_i32()?);
     es.client_num = input.get_i32()?;
@@ -3249,6 +3295,18 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
             sim::EffectEnd::Stopped => 1,
             sim::EffectEnd::Killed => 2,
         });
+        match &fx.bolt {
+            None => out.put_u8(0),
+            Some(sim::EffectBolt::Entity { number, bone }) => {
+                out.put_u8(1);
+                out.put_u16(*number);
+                out.put_u16(bone.unwrap_or(u16::MAX));
+            }
+            Some(sim::EffectBolt::Viewmodel { tag }) => {
+                out.put_u8(2);
+                put_text(out, tag);
+            }
+        }
     }
     encode_vision(out, state.naked_vision.as_ref());
     encode_vision(out, state.thermal_vision.as_ref());
@@ -3362,6 +3420,21 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
                 1 => sim::EffectEnd::Stopped,
                 2 => sim::EffectEnd::Killed,
                 _ => return Err(WireError::Malformed("bad effect end")),
+            },
+            bolt: match input.get_u8()? {
+                0 => None,
+                1 => {
+                    let number = input.get_u16()?;
+                    let bone = input.get_u16()?;
+                    Some(sim::EffectBolt::Entity {
+                        number,
+                        bone: (bone != u16::MAX).then_some(bone),
+                    })
+                }
+                2 => Some(sim::EffectBolt::Viewmodel {
+                    tag: get_text(input)?,
+                }),
+                _ => return Err(WireError::Malformed("bad effect bolt")),
             },
         });
     }

@@ -464,6 +464,19 @@ pub(crate) fn spawn_world(
                 frame::MatchScope::Live,
             );
         });
+        if let Some(rules) = mode.as_deref().and_then(|mode| mode.frame_fog) {
+            let world_fog = scene.world_fog.as_ref();
+            diag::info!(
+                World,
+                "frame fog: the game's own, {} fog volumes, {} modifier volumes",
+                world_fog.map_or(0, |w| w.volumes.len()),
+                world_fog.map_or(0, |w| w.modifiers.len())
+            );
+            let fog = crate::assemble::drawsurf::fog::GameFrameFog::new((rules.start)(world_fog));
+            commands.queue(move |world: &mut World| {
+                frame::scope::insert(world, fog, frame::MatchScope::Live);
+            });
+        }
         match scene.exp_fog {
             Some(fog) => {
                 diag::info!(

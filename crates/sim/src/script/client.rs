@@ -359,6 +359,8 @@ pub(crate) struct ClientEffect {
     /// A Black Ops 2 script stopped or deleted it: the effect system keeps
     /// it until it frees it.
     pub(crate) end: crate::EffectEnd,
+    /// The entity it plays bolted to.
+    pub(crate) bolt: Option<crate::EffectBolt>,
 }
 
 impl ClientEffect {

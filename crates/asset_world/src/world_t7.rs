@@ -139,6 +139,7 @@ pub fn build_world_draw(geometry: &WorldGeometry) -> WorldDraw {
         sun_effects: None,
         t5_sun_parse_exposure: None,
         t6_exposure: None,
+        world_fog: None,
         sky_dynamic_intensity: None,
         t5_sun_light: None,
         t5_tree_scatter_intensity: None,
