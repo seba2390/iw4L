@@ -504,6 +504,7 @@ dependencies = [
  "fastfile_t5",
  "fastfile_t6",
  "fx_iw4",
+ "game_api",
  "lighting_iw4",
  "weapon_iw4",
  "xmodel_runtime",

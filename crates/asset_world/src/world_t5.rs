@@ -519,6 +519,7 @@ pub fn build_t5_world_draw(
                 .map(|v| v.map(f32::from_bits))
                 .filter(|v| v.iter().all(|f| f.is_finite())),
             t6_exposure: None,
+            world_fog: None,
             t5_sun_parse_exposure: geometry
                 .sun_parse_exposure_bits
                 .map(f32::from_bits)

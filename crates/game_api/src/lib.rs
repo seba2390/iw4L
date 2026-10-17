@@ -3,6 +3,7 @@
 //! its place — never another game's rule.
 
 pub mod fire;
+pub mod fog;
 pub mod movement;
 pub mod post;
 pub mod turret;
@@ -337,6 +338,8 @@ pub struct ModeRules {
     /// The game's own post chain, drawn over every 3D frame in place of the
     /// renderer's; `None` keeps the renderer's.
     pub post_chain: Option<post::PostChainRules>,
+    /// The game's own frame fog; `None` keeps the renderer's.
+    pub frame_fog: Option<fog::FrameFogRules>,
     /// The game's own rules for what bullets, explosions and players do to
     /// the map's dynamic entities, when they are unknown: nothing wakes them
     /// and the gap is reported. `None` runs Modern Warfare 2's.

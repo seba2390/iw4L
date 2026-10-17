@@ -468,6 +468,11 @@ pub(crate) fn update_command_context_code_sources(
     prepared: Res<PreparedSceneView>,
     sun_shadow: Res<render_scene::PreparedSunShadowFrame>,
     scene: Option<Res<crate::prepare::scene::world::WorldScene>>,
+    game_fog: (
+        Option<ResMut<super::fog::GameFrameFog>>,
+        Option<Res<net::PresentedSnapshot>>,
+        Option<Res<net::LocalPresentClient>>,
+    ),
 ) {
     if !prepared.ready {
         return;
@@ -569,6 +574,16 @@ pub(crate) fn update_command_context_code_sources(
             mat_frame.material_bindings = Some(asset_material::compile_material_bindings(catalog));
         }
         let fog = sampled_fog.as_ref().unwrap_or(&NO_FRAME_FOG);
+        // A game's own frame fog draws in place of the map's fog.
+        let (mut game_fog, presented, local) = game_fog;
+        let game_rows = game_fog
+            .as_deref_mut()
+            .zip(presented.as_deref().zip(local.as_deref()))
+            .map(|(fog, (presented, local))| {
+                fog.frame(presented, local.0, float_time_ms, eye.to_array())
+            });
+        let mut fog_inputs = crate::prepare::scene::world_bindings::fog(fog);
+        fog_inputs.game_rows = game_rows;
         let inputs = asset_material::MaterialFrameBindingInputs {
             eye,
             clip_from_view,
@@ -578,7 +593,7 @@ pub(crate) fn update_command_context_code_sources(
             exposure: t5_exposure.as_deref().map(|e| e.exposure),
             world: scene.material_world,
             tree_scatter: t5_tree_scatter.as_deref().map(|s| [s.intensity, s.amount]),
-            fog: crate::prepare::scene::world_bindings::fog(fog),
+            fog: fog_inputs,
             fog_enabled: sampled_fog.is_some() && fog_dvars.enabled,
             sun: dir_light
                 .as_deref()

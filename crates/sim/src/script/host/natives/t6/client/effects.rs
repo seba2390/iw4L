@@ -75,8 +75,6 @@ struct ClientEffects {
     playing: BTreeMap<i32, i64>,
     /// The local client's current naked visionset name.
     naked_vision: Option<String>,
-    /// The local client's active world fog bank mask.
-    world_fog_bank: u16,
     /// The local client's mapped filter material names (`map_material`).
     mapped_materials: [Option<String>; FILTER_MATERIAL_SLOTS],
     /// Entities turned into primary lights (`makelight`), by client object id.
@@ -91,7 +89,6 @@ impl Default for ClientEffects {
             effects: Vec::new(),
             playing: BTreeMap::new(),
             naked_vision: None,
-            world_fog_bank: 0,
             mapped_materials: std::array::from_fn(|_| None),
             lights: BTreeMap::new(),
             hide_fade_color: [0.0; 3],
@@ -994,9 +991,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setworldfogactivebank", |world, _, args| {
         local_client(args, 0)?;
         let bank = (int(args, 1)? & 65535) as u16;
-        // t6.csc.fog.world_bank: `getworldfogscriptid` tests the mask; the
-        // renderer draws no world fog volumes by bank.
-        state(world).world_fog_bank = bank;
+        with_server(world, |server| {
+            super::fog::set_bank(server, LOCAL_CLIENT as u32, bank);
+        });
         Ok(Value::Undefined)
     });
 
@@ -1012,7 +1009,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         })
         .flatten()
         .unwrap_or([0.0; 3]);
-        let bank = u32::from(state(world).world_fog_bank);
+        let bank = u32::from(super::fog::bank(world));
         let id = ensure_fog_volumes(world)
             .0
             .iter()

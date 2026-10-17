@@ -1646,6 +1646,26 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(lod.min);
         }
     }
+    match &screen.fog {
+        None => out.put_u8(0),
+        Some(fog) => {
+            out.put_u8(1);
+            out.put_u32(fog.serial);
+            out.put_u8(fog.slot);
+            for word in fog.block {
+                out.put_f32(word);
+            }
+            out.put_i32(fog.start_ms);
+            out.put_i32(fog.transition_ms);
+        }
+    }
+    match screen.fog_bank {
+        None => out.put_u8(0),
+        Some(bank) => {
+            out.put_u8(1);
+            out.put_u16(bank);
+        }
+    }
 }
 
 fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen, WireError> {
@@ -1666,9 +1686,35 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         }),
         _ => return Err(WireError::Malformed("bad lod scale tag")),
     };
+    let fog = match input.get_u8()? {
+        0 => None,
+        1 => {
+            let serial = input.get_u32()?;
+            let slot = input.get_u8()?;
+            let mut block = [0.0; 20];
+            for word in &mut block {
+                *word = input.get_f32()?;
+            }
+            Some(sim::ScriptFogSwitch {
+                serial,
+                slot,
+                block,
+                start_ms: input.get_i32()?,
+                transition_ms: input.get_i32()?,
+            })
+        }
+        _ => return Err(WireError::Malformed("bad script fog tag")),
+    };
+    let fog_bank = match input.get_u8()? {
+        0 => None,
+        1 => Some(input.get_u16()?),
+        _ => return Err(WireError::Malformed("bad fog bank tag")),
+    };
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
+        fog,
+        fog_bank,
     })
 }
 

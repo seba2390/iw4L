@@ -7,6 +7,7 @@ pub(crate) mod ambient;
 mod effects;
 pub(crate) mod entity;
 mod fields;
+pub(crate) mod fog;
 pub(crate) mod game;
 pub(crate) mod pure;
 pub(crate) mod sound;
@@ -45,10 +46,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     entity::register(registry);
     fields::register(registry);
     effects::register(registry);
+    fog::register(registry);
     sound::register(registry);
     ambient::register(registry);
-    registry.on_client_sync(game::sync);
+    registry.on_client_sync(sync);
     registry.on_client_present(present);
+}
+
+/// The client game's snapshot: its entities and fields, then its fog.
+fn sync(client: &mut bevy_ecs::prelude::World) {
+    game::sync(client);
+    fog::sync(client);
 }
 
 /// The client game's frame after its scripts: its light mixers, then what it

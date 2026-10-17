@@ -276,6 +276,7 @@ pub fn build_world_draw(
         sun_effects: None,
         t5_sun_parse_exposure: None,
         t6_exposure: Some(f32::from_bits(Reader::word(&asset.header, 184)?)),
+        world_fog: world_fog(load, &asset.header)?,
         sky_dynamic_intensity: Some(core::array::from_fn(|i| {
             f32::from_bits(Reader::word(&asset.header, 356 + 4 * i).unwrap())
         })),
@@ -284,6 +285,77 @@ pub fn build_world_draw(
         t5_tree_scatter_amount: None,
         t5_exposure_volume_count: 0,
     })
+}
+
+/// The map's fog volumes as Black Ops 2's client reads them each frame: the
+/// default fog and its rate, the fog volumes (packed word, rate, fog) and
+/// their planes, and the fog modifier volumes (packed word, rate, scales)
+/// and theirs. `None` when the map has no fog volumes.
+fn world_fog(load: &ZoneLoad, h: &[u8]) -> Result<Option<game_api::fog::WorldFogData>, String> {
+    use game_api::fog::{WorldFogData, WorldFogModifier, WorldFogVolume};
+    let r = Reader(load);
+    let floats = |b: &[u8], at: usize| -> Result<[f32; 16], String> {
+        let mut out = [0.0; 16];
+        for (i, v) in out.iter_mut().enumerate() {
+            *v = f32::from_bits(Reader::word(b, at + 4 * i)?);
+        }
+        Ok(out)
+    };
+    let planes = |count: u32, at: usize| -> Result<Vec<[f32; 4]>, String> {
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        let p = Reader::ptr(h, at)?;
+        (0..count).map(|i| r.xyzw(p.at(i * 16))).collect()
+    };
+    let plane_count = |packed: &[u32]| {
+        packed
+            .iter()
+            .map(|word| (word >> 16) + ((word >> 8) & 0xff) + 1)
+            .max()
+            .unwrap_or(0)
+    };
+    let volume_count = Reader::word(h, 308)? as u16 as i16;
+    if volume_count <= 0 {
+        return Ok(None);
+    }
+    let volumes_at = Reader::ptr(h, 312)?;
+    let mut volumes = Vec::with_capacity(volume_count as usize);
+    for i in 0..volume_count as u32 {
+        let b = r.bytes(volumes_at.at(i * 100), 100)?;
+        volumes.push(WorldFogVolume {
+            packed: Reader::word(b, 12)?,
+            rate: f32::from_bits(Reader::word(b, 28)?),
+            fog: floats(b, 36)?,
+        });
+    }
+    let modifier_count = Reader::word(h, 324)? as u16 as i16;
+    let mut modifiers = Vec::new();
+    if modifier_count > 0 {
+        let modifiers_at = Reader::ptr(h, 328)?;
+        for i in 0..modifier_count as u32 {
+            let b = r.bytes(modifiers_at.at(i * 48), 48)?;
+            let mut scales = [0.0; 6];
+            for (j, v) in scales.iter_mut().enumerate() {
+                *v = f32::from_bits(Reader::word(b, 24 + 4 * j)?);
+            }
+            modifiers.push(WorldFogModifier {
+                packed: Reader::word(b, 0)?,
+                rate: f32::from_bits(Reader::word(b, 20)?),
+                scales,
+            });
+        }
+    }
+    let volume_packed: Vec<u32> = volumes.iter().map(|v| v.packed).collect();
+    let modifier_packed: Vec<u32> = modifiers.iter().map(|m| m.packed).collect();
+    Ok(Some(WorldFogData {
+        default_rate: f32::from_bits(Reader::word(h, 188)?),
+        default_fog: floats(h, 192)?,
+        volume_planes: planes(plane_count(&volume_packed), 320)?,
+        modifier_planes: planes(plane_count(&modifier_packed), 336)?,
+        volumes,
+        modifiers,
+    }))
 }
 
 const LAYER_HOST_STRIDE: usize = 32;

@@ -118,6 +118,7 @@ pub const ENEMY_BOTS_DVAR: &str = "scr_game_enemybots";
 pub const FRIENDLY_BOTS_DVAR: &str = "scr_game_friendlybots";
 
 pub const TEAM_MENU: &str = "team_marinesopfor";
+pub use game_api::fog::ScriptFogSwitch;
 pub use game_api::post::VisionCall;
 pub use match_state::{
     CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle, ClientLightOverride,

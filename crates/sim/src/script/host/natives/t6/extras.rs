@@ -7,6 +7,7 @@
 
 use super::super::super::entities::EntityKind;
 use super::string;
+use crate::script::host::args::float;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -117,6 +118,53 @@ fn lui_player(world: &World, receiver: &Value) -> Result<u32, String> {
 }
 
 const VOLFOG_USAGE: &str = "Incorrect number of parameters\nUSAGE: setVolFog(<startDist>, <halfwayDist>, <halfwayHeight>, <baseHeight>, <red>, <green>, <blue>, <transition time>)\nOR:    SetVolFog(<startDist>, <halfwayDist>, <halfwayHeight>, <baseHeight>, <red>, <green>, <blue>, <fogColorScale>, <sunFogRed>, <sunFogGreen>, <sunFogBlue>, <sunFogDirX>, <sunFogDirY>, <sunFogDirZ>, <sunFogStartAng>, <sunFogEndAng>, <transition time>)\n";
+
+/// The server's configstrings 10 (its fog) and 7 (its cull distance), as
+/// the clients parse them.
+#[derive(Resource, Default)]
+pub(crate) struct ServerFog {
+    /// The fog's values (in the client's order) and transition in msec.
+    pub(crate) values: Option<(super::client::fog::FogValues, i32)>,
+    /// Bumped by each fog set.
+    pub(crate) serial: u32,
+    pub(crate) cull: Option<f32>,
+}
+
+/// A configstring's `%g` value as a client's `atof` reads it back: six
+/// significant digits. The engine's runtime prints infinities and NaNs as
+/// `1.#INF`, `-1.#IND` and the like, which read back as 1 or -1.
+fn configstring_float(value: f32) -> f32 {
+    if value.is_finite() {
+        format!("{:.5e}", f64::from(value))
+            .parse::<f64>()
+            .map_or(0.0, |v| v as f32)
+    } else if value.is_sign_negative() {
+        -1.0
+    } else {
+        1.0
+    }
+}
+
+/// The engine's fog set: checks, then configstring 10 (each value through
+/// `%g`, the transition in msec through `%.0f`).
+fn set_fog(
+    world: &mut World,
+    name: &str,
+    values: super::client::fog::FogValues,
+    transition: f32,
+) -> Result<(), String> {
+    if values[0] < 0.0 {
+        return Err(format!("{name}: near distance must be >= 0"));
+    }
+    if transition < 0.0 {
+        return Err(format!("{name}: transition time must be >= 0 seconds"));
+    }
+    let transition_ms = f64::from(transition * 1000.0).round_ties_even() as i32;
+    let mut fog = world.get_resource_or_insert_with(ServerFog::default);
+    fog.values = Some((values.map(configstring_float), transition_ms));
+    fog.serial = fog.serial.wrapping_add(1);
+    Ok(())
+}
 
 fn number(value: Option<&Value>) -> Option<f32> {
     match value? {
@@ -309,31 +357,94 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .push(-number);
         Ok(Value::Undefined)
     });
-    // gsc_setculldist: the clients' draw distance (`t6.vision.fog`: not sent).
-    registry.register(Function, "setculldist", |_, _, args| {
-        number(args.first()).ok_or("setculldist expects a distance")?;
+    // gsc_setculldist: configstring 7, the clients' cull distance, through
+    // `%g` (`t6.vision.cull`: the clients do not cull by it).
+    registry.register(Function, "setculldist", |world, _, args| {
+        let distance = number(args.first()).ok_or("setculldist expects a distance")?;
+        world.get_resource_or_insert_with(ServerFog::default).cull =
+            Some(configstring_float(distance));
         Ok(Value::Undefined)
     });
-    // gsc_setvolfog: the engine's argument checks (`t6.vision.fog`: the fog
-    // is not sent).
-    registry.register(Function, "setvolfog", |_, _, args| {
+    // gsc_setvolfog: the volumetric fog every client draws, as configstring
+    // 10. The short form (deprecated: it prints so) takes the colour's
+    // largest channel as its colour scale and has a default sun.
+    registry.register(Function, "setvolfog", |world, _, args| {
         if args.len() != 8 && args.len() != 18 {
             return Err(VOLFOG_USAGE.into());
         }
-        let values = args
-            .iter()
-            .map(|arg| number(Some(arg)))
-            .collect::<Option<Vec<f32>>>()
-            .ok_or("setVolFog expects numbers")?;
-        if values[0] < 0.0 {
+        let start = float(args, 0)?;
+        if start < 0.0 {
             return Err("setExpFog: startDist must be greater or equal to 0".into());
         }
-        if values[1] <= 0.0 {
+        let halfway = float(args, 1)?;
+        if halfway <= 0.0 {
             return Err("setVolFog: halfwayDist must be greater than 0".into());
         }
-        if values[2] < 0.0 {
+        let half_height = float(args, 2)?;
+        if half_height < 0.0 {
             return Err("setVolFog: halfwayHeight must be greater or equal to 0".into());
         }
+        let base = float(args, 3)?;
+        let density = 1.0 / halfway;
+        let height_density = if half_height < 1.0 {
+            0.0
+        } else {
+            1.0 / half_height
+        };
+        let mut color = [float(args, 4)?, float(args, 5)?, float(args, 6)?];
+        let mut sun = [0.5, 0.5, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let (scale, transition) = if args.len() == 18 {
+            let scale = float(args, 7)?;
+            for (i, value) in sun.iter_mut().take(8).enumerate() {
+                *value = float(args, 8 + i)?;
+            }
+            let transition = float(args, 16)?;
+            sun[8] = float(args, 17)?;
+            (scale, transition)
+        } else {
+            diag::warn!(Sim, "setVolFog: Old syntax used. Please update script.");
+            let mut largest = color[0];
+            if largest < color[1] {
+                largest = color[1];
+            }
+            if largest < color[2] {
+                largest = color[2];
+            }
+            let inv = 1.0 / largest;
+            color = color.map(|c| inv * c);
+            (largest, float(args, 7)?)
+        };
+        let values = [
+            start,
+            color[0],
+            color[1],
+            color[2],
+            density,
+            height_density,
+            base,
+            scale,
+            sun[0],
+            sun[1],
+            sun[2],
+            sun[3],
+            sun[4],
+            sun[5],
+            sun[6],
+            sun[7],
+            sun[8],
+        ];
+        set_fog(world, "setVolFog", values, transition)?;
+        Ok(Value::Undefined)
+    });
+    // player setworldfogactivebank(bank): the player's client takes the
+    // bank as its active world fog bank mask.
+    registry.register(Method, "setworldfogactivebank", |world, receiver, args| {
+        let bank = super::int(args, 0)?;
+        let client = super::super::engine::entity_id(world, receiver)
+            .ok()
+            .and_then(|id| world.resource::<RoundScript>().player_client(id))
+            .ok_or("setworldfogactivebank() called on an invalid client entity.\n")?;
+        super::client::fog::set_bank(world, client, bank as u16);
         Ok(Value::Undefined)
     });
     registry.register(Function, "luinotifyevent", |world, _, args| {
@@ -497,18 +608,40 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    registry.register(Function, "setexpfog", |_, _, args| {
-        let start = number(args.first()).ok_or("setExpFog expects numbers")?;
+    // gsc_setexpfog: the server fog as configstring 10, with no height
+    // fog, a colour scale of 1 and a default sun (`t6.vision.fog_dvars`:
+    // the read-only fog dvars it also sets are not kept).
+    registry.register(Function, "setexpfog", |world, _, args| {
+        let start = float(args, 0)?;
         if start < 0.0 {
             return Err("setExpFog: startDist must be greater or equal to 0".into());
         }
-        let halfway = number(args.get(1)).ok_or("setExpFog expects numbers")?;
+        let halfway = float(args, 1)?;
         if halfway <= 0.0 {
             return Err("setExpFog: halfwayDist must be greater than 0".into());
         }
-        for i in 2..6 {
-            number(args.get(i)).ok_or("setExpFog expects numbers")?;
-        }
+        let color = [float(args, 2)?, float(args, 3)?, float(args, 4)?];
+        let transition = float(args, 5)?;
+        let values = [
+            start,
+            color[0],
+            color[1],
+            color[2],
+            1.0 / halfway,
+            0.0,
+            0.0,
+            1.0,
+            0.5,
+            0.5,
+            0.5,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        ];
+        set_fog(world, "setExpFog", values, transition)?;
         Ok(Value::Undefined)
     });
     registry.register(Function, "getfogsettings", |world, _, _| {
