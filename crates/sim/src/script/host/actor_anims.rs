@@ -60,7 +60,7 @@ impl ActorAnimTree {
     fn siblings(&self, node: u16) -> impl Iterator<Item = u16> + '_ {
         self.parent(node)
             .map(|parent| self.children[parent as usize].as_slice())
-            .unwrap_or_default()
+            .unwrap_or(&[])
             .iter()
             .copied()
             .filter(move |&sibling| sibling != node)

@@ -48,7 +48,7 @@ impl FilmVisionView {
         script_forced: bool,
     ) {
         if self.last_map.is_none() {
-            self.result = pack_film_vision(map.unwrap_or_default());
+            self.result = pack_film_vision(map.unwrap_or_else(asset_world::FilmVision::default));
             self.lerp.style = hud_iw4::VISION_SET_LERP_HOLD;
         }
         let (current, _) = hud_iw4::vision_sets_update(
@@ -60,7 +60,9 @@ impl FilmVisionView {
             allowed,
             script_forced,
         );
-        let target = preset.or(map).unwrap_or_default();
+        let target = preset
+            .or(map)
+            .unwrap_or_else(asset_world::FilmVision::default);
         (self.from, self.to, self.lerp) = hud_iw4::vision_set_start(
             now_ms,
             duration_ms,
@@ -135,7 +137,7 @@ pub fn presented_film_vision_with_glow_tweaks(
     if !use_tweaks {
         return map_vision;
     }
-    let mut vision = map_vision.unwrap_or_default();
+    let mut vision = map_vision.unwrap_or_else(asset_world::FilmVision::default);
     let selected = lighting_iw4::select_glow_view_info(
         lighting_iw4::GlowViewInfo {
             enable: vision.glow_enable,
@@ -277,7 +279,10 @@ fn mix_optional_native_vision(
     to: Option<asset_world::T6Vision>,
     fraction: f32,
 ) -> Option<asset_world::T6Vision> {
-    let (from, to) = (from.unwrap_or_default(), to.unwrap_or_default());
+    let (from, to) = (
+        from.unwrap_or_else(asset_world::T6Vision::default),
+        to.unwrap_or_else(asset_world::T6Vision::default),
+    );
     let mix = |a: f32, b: f32| a * (1.0 - fraction) + b * fraction;
     let film = match (from.film, to.film) {
         (Some(mut a), Some(b)) => {

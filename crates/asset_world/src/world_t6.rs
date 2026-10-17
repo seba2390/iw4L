@@ -671,7 +671,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
                         })
                         .collect(),
                 };
-                e.insert((model.name().unwrap_or_default().to_owned(), coll));
+                e.insert((model.name().unwrap_or("").to_owned(), coll));
             }
             let (name, coll) = &models[&key];
             let mins = r.xyz(row.at(60))?;

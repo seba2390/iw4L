@@ -1903,7 +1903,7 @@ fn capture_impact_table(
                         .filter(|fx| fx.ty == AssetType::Fx)
                         .and_then(|fx| header_str(load, &fx.header, 0))
                         .map(asset_game::t6_model_name)
-                        .unwrap_or_default();
+                        .unwrap_or_else(String::new);
                 }
                 for (i, name) in entry.flesh.iter_mut().enumerate() {
                     *name = load
@@ -1911,7 +1911,7 @@ fn capture_impact_table(
                         .filter(|fx| fx.ty == AssetType::Fx)
                         .and_then(|fx| header_str(load, &fx.header, 0))
                         .map(asset_game::t6_model_name)
-                        .unwrap_or_default();
+                        .unwrap_or_else(String::new);
                 }
                 entries.push(entry);
             }

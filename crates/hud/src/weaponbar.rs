@@ -7,8 +7,9 @@ use bevy::ui::{Display, FocusPolicy};
 use hud_iw4::{
     ExprError, ExprHost, LowAmmoWarningQuery, Operand, PERKS_INFO_HD_MENU, SCREEN_BLEND_BLURRED,
     SPECIALTY_NULL, WEAPON_NAME_FADE_DURATION_MS, WEAPON_NAME_FADE_TAIL_MS, WEAPONBAR_HD_MENU,
-    draw_player_weapon_low_ammo_warning, fade_color, get_perk_slot_index, is_flashbanged,
-    low_ammo_warning_color_pair, low_ammo_warning_pulse_frac, perk_code_key, vec4_lerp,
+    WeaponLockView, draw_player_weapon_low_ammo_warning, fade_color, get_perk_slot_index,
+    is_flashbanged, low_ammo_warning_color_pair, low_ammo_warning_pulse_frac, perk_code_key,
+    vec4_lerp,
 };
 use net::{FrameClock, LocalPresentClient, PresentedSnapshot, WeaponSelect};
 use playerstate_iw4::{ENTITYNUM_NONE, PM_TYPE_DEAD, PlayerState};
@@ -619,7 +620,7 @@ impl HudPlayerVisInput<'_> {
                         .script_name_of(get_viewmodel_weapon_index(ps))
                         .to_owned()
                 })
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
             ads_javelin: weapons.is_some_and(|w| ads_javelin(ps, w)),
             missilecam: snapshot
                 .and_then(|s| s.meta.for_client(local))
@@ -647,7 +648,7 @@ fn weapon_lock_view(
     let lock = meta
         .map(|m| m.weapon_lock)
         .filter(|lock| lock.weapon == ps.weapon && ps.health > 0)
-        .unwrap_or_default();
+        .unwrap_or_else(sim::WeaponLock::default);
     let mut screen_pos = [0.0; 2];
     if lock.flags & 3 != 0
         && let Some(Projection::Perspective(projection)) = projection
@@ -748,7 +749,7 @@ pub(crate) fn update_weaponbar(
     let weapon_script = weapons
         .as_ref()
         .map(|w| w.registry().script_name_of(viewmodel))
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     let name = localized_weapon_name(
         selected_weapon_index(ps, client_input.select.index),
         weapons.as_ref(),
@@ -882,7 +883,7 @@ pub(crate) fn update_weaponbar(
         dvars: presented
             .snapshot()
             .map(|s| s.meta.script_dvars(local.0))
-            .unwrap_or_default(),
+            .unwrap_or_else(sim::ScriptDvars::default),
         local_vars: &local_vars,
         catalog: Some(catalog),
         menu: None,
@@ -901,7 +902,7 @@ pub(crate) fn update_weaponbar(
                         &surface,
                     )
                 })
-                .unwrap_or_default(),
+                .unwrap_or_else(WeaponLockView::default),
         ),
         frag_ammo,
         smoke_ammo,

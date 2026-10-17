@@ -184,7 +184,9 @@ pub fn seal_render_frame(
     ),
 ) {
     let (retained, world_generation, world_products) = static_identity;
-    let world_products = world_products.map(|products| *products).unwrap_or_default();
+    let world_products = world_products
+        .map(|products| *products)
+        .unwrap_or(frame::WorldProducts(None));
     let (runtime, mat_frame, assembly, products) = material;
     let Some(runtime) = runtime.as_ref() else {
         insert_empty_colour(&mut commands);
@@ -530,12 +532,13 @@ pub fn seal_render_frame(
     let image_handles = images
         .as_ref()
         .map(|handles| (**handles).clone())
-        .unwrap_or_default();
+        .unwrap_or_else(render_frontend::assemble::drawsurf::RuntimeImageHandles::default);
 
-    let mut exec_frame = existing_frame
-        .as_ref()
-        .map(|frame| frame.exec_frame.clone())
-        .unwrap_or_default();
+    let mut exec_frame = match existing_frame.as_ref() {
+        Some(frame) => frame.exec_frame.clone(),
+        // The first extracted frame starts from an empty exec frame.
+        None => Default::default(),
+    };
     render_frontend::assemble::drawsurf::material_exec::refresh(
         &mut exec_frame,
         mat_frame,
@@ -584,7 +587,7 @@ pub fn seal_render_frame(
         skin_jobs: xmodel
             .as_ref()
             .map(|plan| plan.skin_jobs.clone())
-            .unwrap_or_default(),
+            .unwrap_or_else(Vec::new),
         frame_products,
         generation,
         world_generation,
@@ -595,11 +598,11 @@ pub fn seal_render_frame(
         pipeline_world_materials: spawn_job
             .as_ref()
             .map(|job| job.pipeline_world_materials.clone())
-            .unwrap_or_default(),
+            .unwrap_or_else(|| Arc::new(std::collections::HashSet::new())),
         pipeline_smodel_materials: spawn_job
             .as_ref()
             .map(|job| job.pipeline_smodel_materials.clone())
-            .unwrap_or_default(),
+            .unwrap_or_else(|| Arc::new(std::collections::HashSet::new())),
         pipeline_demand_revision: spawn_job
             .as_ref()
             .map(|job| job.pipeline_demand_revision)
@@ -638,7 +641,7 @@ pub fn seal_render_frame(
         glass_mesh_bounds: glass_mesh
             .as_ref()
             .and_then(|plan| plan.bounds_share.clone())
-            .unwrap_or_default(),
+            .unwrap_or_else(|| Arc::new(Vec::new())),
     };
     if let Some(existing) = existing_world.as_ref() {
         reuse_installed_rows(
@@ -875,7 +878,7 @@ pub fn extract_geometry(
     let g0_world_surfs = dpvs
         .as_ref()
         .map(|stats| stats.g0_world_surfs.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let generation = runtime.catalog.generation_id();
     let world_v = world
         .as_ref()

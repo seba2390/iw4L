@@ -1313,7 +1313,7 @@ pub fn trigger_models(s: &ZoneStream<'_>) -> Vec<Vec<MapTriggerHull>> {
         return Vec::new();
     };
     (0..geo.trigger_model_count)
-        .map(|n| capture_trigger_hulls(s, geo, n).unwrap_or_default())
+        .map(|n| capture_trigger_hulls(s, geo, n).unwrap_or_else(Vec::new))
         .collect()
 }
 
@@ -1357,7 +1357,7 @@ pub fn sun_stages(s: &ZoneStream<'_>) -> Vec<MapSunStage> {
             let trigger = usize::from(s.u16_at(stage, ptr + 12).ok()?);
             Some(MapSunStage {
                 origin,
-                trigger: capture_trigger_hulls(s, geo, trigger).unwrap_or_default(),
+                trigger: capture_trigger_hulls(s, geo, trigger).unwrap_or_else(Vec::new),
                 sun_primary_light: s.u8_at(stage, ptr + 14).ok()?,
             })
         })
@@ -1385,7 +1385,7 @@ pub fn sun_stages_iw5(s: &fastfile_iw5::ZoneStream<'_>) -> Vec<MapSunStage> {
             Some(MapSunStage {
                 origin,
                 trigger: capture_iw5_trigger_hulls(s, clip.stage_trigger, trigger)
-                    .unwrap_or_default(),
+                    .unwrap_or_else(Vec::new),
                 sun_primary_light: s.u8_at(stage, ptr + 14).ok()?,
             })
         })
@@ -1397,7 +1397,7 @@ pub fn trigger_models_iw5(s: &fastfile_iw5::ZoneStream<'_>) -> Vec<Vec<MapTrigge
         return Vec::new();
     };
     (0..geo.trigger_model_count)
-        .map(|n| capture_iw5_trigger_hulls(s, geo, n).unwrap_or_default())
+        .map(|n| capture_iw5_trigger_hulls(s, geo, n).unwrap_or_else(Vec::new))
         .collect()
 }
 

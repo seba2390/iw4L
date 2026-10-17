@@ -125,7 +125,6 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     Some(Value::Vector(at)) => at,
                     _ => hit.origin,
                 };
-                drop(runtime);
                 damage_entity(
                     world,
                     &EntityHit {
@@ -268,7 +267,7 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
                 .and_then(|dobj| dobj.bone_name(bone))
                 .map(str::to_owned)
         })
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     let weapon = crate::script_player::weapon_name(&frame, hit.weapon);
     let attacker = match hit.attacker {
         Some(a) => super::players::player_object(world, a.0),
@@ -300,7 +299,6 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
     };
     let after = before.saturating_sub(amount);
     runtime.set_object_field(object, "health", Value::Int(after));
-    drop(runtime);
     super::t6_zombies::entity_damage(world, object, hit, before, after, part.contains("head"));
     let receiver = Value::Object(object);
     raise(
@@ -456,7 +454,6 @@ pub(crate) fn destructible_debris(
     let entity = runtime.entities.get_mut(&object).unwrap();
     entity.presence = Some(presence);
     entity.solid = false;
-    drop(runtime);
     let now = super::players::now_ms(world);
     world
         .resource_mut::<RoundScript>()
@@ -530,7 +527,6 @@ pub(crate) fn shot_target(world: &mut World, target: ScriptModelId) -> Option<Sh
         runtime.object_field(object, "classname"),
         Value::String(name) if name.as_bytes() == b"script_model"
     );
-    drop(runtime);
     let eye = if actor {
         super::presence::tag_world(world, object, "tag_eye").map(|(at, _)| at)
     } else {

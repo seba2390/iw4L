@@ -1129,7 +1129,7 @@ pub(super) fn read_iw5_notetrack_overrides(
             sound_map: row
                 .sound_map
                 .map(|map| iw5_script_string_pairs(stream, strings, map, 24))
-                .unwrap_or_default(),
+                .unwrap_or_else(Vec::new),
         })
         .collect()
 }
@@ -1185,7 +1185,7 @@ pub(super) fn leftover_iw5_script_string_map(
 ) -> Vec<(String, String)> {
     fastfile_iw5::ScriptStringMap::at(stream, body, keys_off, values_off)
         .map(|map| iw5_script_string_pairs(stream, strings, map, cap))
-        .unwrap_or_default()
+        .unwrap_or_else(Vec::new)
 }
 
 pub(super) fn iw5_script_string_pairs(

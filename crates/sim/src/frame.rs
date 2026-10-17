@@ -106,7 +106,7 @@ impl FrameWorld<'_> {
         self.ecs
             .get_resource::<crate::script::RoundScript>()
             .map(|runtime| runtime.missile_collision_models(id))
-            .unwrap_or_default()
+            .unwrap_or_else(Vec::new)
     }
 
     pub(crate) fn emit_script_entity_trace(&self) {
@@ -615,7 +615,7 @@ impl FrameWorld<'_> {
             .iter()
             .find(|(id, _)| *id == local)
             .map(std::slice::from_ref)
-            .unwrap_or_default();
+            .unwrap_or(&[]);
         adopt_payload_rows(self.ecs, players, projectiles, movers, items);
         report
     }

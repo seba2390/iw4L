@@ -1647,7 +1647,7 @@ pub fn send_pending_commands(
         let actions: Vec<_> = action_inbox
             .as_deref()
             .map(|inbox| inbox.pending_for(local.0).collect())
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         let now_ms = cls.realtime();
         let newest = pending.newest_seq();
         let gameplay_due = pacer.gameplay_due(now_ms, newest);

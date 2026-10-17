@@ -1086,7 +1086,7 @@ fn config_sets(text: &str) -> Vec<(String, String)> {
 fn script_dvar_overrides() -> Vec<(String, String)> {
     std::env::var("IW4L_SCRIPT_DVARS")
         .map(|text| config_sets(&text.replace(';', "\n")))
-        .unwrap_or_default()
+        .unwrap_or_else(|_| Vec::new())
 }
 
 fn script_refusal(
@@ -1825,7 +1825,7 @@ fn player_kit_collision(
     Ok(sim::PlayerKitCollision {
         body_key: soldier.kit().body.clone(),
         body: soldier.body().skel.retained_capability().map(Arc::new),
-        head_key: soldier.kit().head.clone().unwrap_or_default(),
+        head_key: soldier.kit().head.clone().unwrap_or_else(String::new),
         head: head
             .and_then(|head| head.entry().skel.retained_capability())
             .map(Arc::new),

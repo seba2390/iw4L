@@ -910,7 +910,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
                     .family
                     .as_ref()
                     .map(|key| key.to_string())
-                    .unwrap_or_default(),
+                    .unwrap_or_else(String::new),
                 selection.attachments.join(" ")
             ))
             .collect::<Vec<_>>()

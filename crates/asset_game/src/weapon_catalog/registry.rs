@@ -522,7 +522,7 @@ impl WeaponRegistry {
             .map(|(_, kind, name)| WeaponDependencyGap {
                 id,
                 kind,
-                name: name.clone().unwrap_or_default(),
+                name: name.clone().unwrap_or_else(String::new),
             })
             .collect();
         for (name, edge) in row
@@ -998,7 +998,7 @@ impl WeaponRegistry {
                 }
                 label
             }
-            None => self.namespaced_key_of(id).unwrap_or_default(),
+            None => self.namespaced_key_of(id).unwrap_or_else(String::new),
         }
     }
 

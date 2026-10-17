@@ -67,7 +67,7 @@ fn rows_from_parsed(snap: &Snapshot, parsed: &ParsedScores) -> Vec<ScoreboardRow
         score.rank = meta.rank;
         rows.push(ScoreboardRow {
             score,
-            name: client_state_name(&meta.name).unwrap_or_default().to_owned(),
+            name: client_state_name(&meta.name).unwrap_or("").to_owned(),
             prestige: meta.prestige,
             dead: matches!(
                 meta.lifecycle,

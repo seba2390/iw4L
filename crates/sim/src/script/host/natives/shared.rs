@@ -32,7 +32,7 @@ pub(crate) fn weapon_facts(
     let index = frame
         .weapon_index_by_script_name(name)
         .ok_or_else(|| format!("unknown weapon '{name}'"))?;
-    Ok(frame.weapon_combat_row(index).unwrap_or_default())
+    Ok(frame.weapon_combat_row_or_none(index))
 }
 
 pub(crate) fn register(registry: &mut NativeRegistry) {

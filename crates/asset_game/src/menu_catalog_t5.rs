@@ -396,7 +396,7 @@ impl T5MenuSink {
         self.material_names
             .get(&slot)
             .map(|name| format!("t5:material/{name}"))
-            .unwrap_or_default()
+            .unwrap_or_else(String::new)
     }
 
     fn item(&self, s: &ZoneStream<'_>, p: Ptr) -> MenuItem {
@@ -422,7 +422,7 @@ impl T5MenuSink {
             if t5_item_has_text_def(ty) {
                 item.text_key = bytes_at(s, data, TEXT_DEF_TEXT)
                     .map(decode_localized_text)
-                    .unwrap_or_default();
+                    .unwrap_or_else(String::new);
                 if let Some(exp) = ptr_at(s, data, TEXT_DEF_TEXT_EXP) {
                     item.text_exp = rpn_dump(s, exp);
                 }
@@ -570,7 +570,7 @@ impl AssetLinkSink for T5MenuSink {
             self.material_key(s, p, off)
                 .strip_prefix("t5:material/")
                 .map(str::to_owned)
-                .unwrap_or_default()
+                .unwrap_or_else(String::new)
         };
         self.catalog.fonts.insert(
             name.to_ascii_lowercase(),

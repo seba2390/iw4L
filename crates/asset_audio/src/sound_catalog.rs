@@ -511,7 +511,7 @@ impl SoundCatalog {
         self.loaded
             .get(index)
             .map(|pcm| pcm.zone)
-            .unwrap_or_default()
+            .unwrap_or(ZoneOwner::UNKNOWN)
     }
 
     fn register_sound(&mut self, sound: CapturedSound) {
@@ -623,7 +623,10 @@ impl SoundCatalog {
     }
 
     pub fn zone_of_alias(&self, index: usize) -> ZoneOwner {
-        self.sounds.get(index).map(|s| s.zone).unwrap_or_default()
+        self.sounds
+            .get(index)
+            .map(|s| s.zone)
+            .unwrap_or(ZoneOwner::UNKNOWN)
     }
 
     fn loaded_name_for_offset(&self, s: &ZoneStream<'_>, p: Ptr) -> Option<String> {
@@ -958,7 +961,7 @@ impl SoundCatalog {
             return self
                 .rawfile_text_for_map(ns, &alt)
                 .map(crate::createfx::parse_createfx_loop_sounds)
-                .unwrap_or_default();
+                .unwrap_or_else(Vec::new);
         };
         crate::createfx::parse_createfx_loop_sounds(src)
     }

@@ -938,7 +938,7 @@ pub(crate) fn open_frame_products(
     inputs.frame_id = inputs.frame_id.wrapping_add(1);
     inputs.world_generation = world_generation
         .map(|generation| generation.stamp())
-        .unwrap_or_default();
+        .unwrap_or(frame::WorldStamp(None));
     inputs.catalog_generation = generation.catalog.generation_id();
     inputs.inv_image_height = lighting.as_ref().and_then(|lighting| {
         lighting_iw4::model_lighting_inv_image_height(lighting.dims.image_height)
@@ -950,7 +950,7 @@ pub(crate) fn open_frame_products(
     inputs.reflection_probe_sh.clear();
     inputs.smodel_lighting_sh = smodel_plan
         .map(|plan| plan.lighting_sh.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(|| Arc::new(Vec::new()));
     if let Some(map) = primary_lights.as_ref() {
         inputs
             .reflection_probe_sh
@@ -1016,7 +1016,7 @@ pub(crate) fn open_frame_products(
             .as_ref()
             .and_then(|map| map.overrides.get(index))
             .copied()
-            .unwrap_or_default();
+            .unwrap_or_else(asset_material::MaterialLightOverrides::default);
         let light_inputs = asset_material::MaterialLocalLightInputs {
             light_type: light.light_type,
             direction: light.direction,

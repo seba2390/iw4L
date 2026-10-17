@@ -78,10 +78,10 @@ impl MapLoadProcess {
         let with_trim_ms = self.requested_at.elapsed().as_secs_f32() * 1000.0;
         let rss = asset_transport::process_resident_bytes()
             .map(|bytes| format!(" rss_mib={}", bytes >> 20))
-            .unwrap_or_default();
+            .unwrap_or_else(String::new);
         let heap = diag::process_live_heap_bytes()
             .map(|bytes| format!(" heap_mib={}", bytes >> 20))
-            .unwrap_or_default();
+            .unwrap_or_else(String::new);
         diag::info!(
             World,
             "load complete: {installed_ms:.0}ms overlay-to-world-installed (+trim {with_trim_ms:.0}ms) for `{}`{rss}{heap} trim={trim_ms:.1}ms",

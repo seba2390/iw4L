@@ -411,7 +411,7 @@ pub(crate) fn explode_offhand_in_hand(
     let owner_life = world
         .client_meta(id)
         .map(|m| m.life_sequence)
-        .unwrap_or_default();
+        .unwrap_or(LifeSequence(0));
     let origin = [
         ps.origin[0],
         ps.origin[1],

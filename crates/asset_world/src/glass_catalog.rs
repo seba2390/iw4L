@@ -101,8 +101,9 @@ fn fill_fx(out: &mut GlassZoneCensus, s: &ZoneStream<'_>) {
         for i in 0..g.def_count {
             let d = defs.at(i * s.layout(sz::FX_GLASS_DEF, 48));
             out.fx_def_materials.push((
-                material_name_at(s, d.at(DEF_MATERIAL)).unwrap_or_default(),
-                material_name_at(s, d.at(s.layout(DEF_MATERIAL_SHATTERED, 32))).unwrap_or_default(),
+                material_name_at(s, d.at(DEF_MATERIAL)).unwrap_or_else(String::new),
+                material_name_at(s, d.at(s.layout(DEF_MATERIAL_SHATTERED, 32)))
+                    .unwrap_or_else(String::new),
             ));
         }
     }
@@ -121,7 +122,8 @@ fn fill_g_glass(out: &mut GlassZoneCensus, s: &ZoneStream<'_>) {
     out.g_names.reserve(g.name_count);
     for i in 0..g.name_count {
         let row = names.at(i * s.layout(sz::G_GLASS_NAME, 24));
-        out.g_names.push(cstr_field(s, row, 0).unwrap_or_default());
+        out.g_names
+            .push(cstr_field(s, row, 0).unwrap_or_else(String::new));
     }
 }
 
@@ -258,7 +260,7 @@ pub fn build_fx_glass_reset(stream: &ZoneStream<'_>) -> Option<FxGlassReset> {
         def_material_edges: Vec::new(),
         half_thickness,
         lighting_handles: copy_u16s(stream, g.init_piece_indices, g.init_piece_count)
-            .unwrap_or_default(),
+            .unwrap_or_else(Vec::new),
         geo_cursor,
         piece_limit: g.piece_limit,
         geo_data_limit: g.geo_data_limit,

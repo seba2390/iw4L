@@ -258,7 +258,9 @@ fn producer_keys(
     dynents: &DynEntDrawPlan,
     sky: Option<&super::sky::SkyModelDrawPlan>,
 ) -> ProducerKeys {
-    let sky_rev = sky.map(|sky| sky.revisions).unwrap_or_default();
+    let sky_rev = sky
+        .map(|sky| sky.revisions)
+        .unwrap_or_else(render_anim::draw::SourceRevisions::default);
     let sky_gen = sky.map(|sky| sky.generation).unwrap_or(0);
     ProducerKeys {
         generation: [

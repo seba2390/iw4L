@@ -579,7 +579,7 @@ fn generate_fx_transaction(
     let frustum_planes = scene_view
         .as_ref()
         .map(|view| view.frustum_planes.to_vec())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let (out, verts_gaps) = build_fx_verts(
         &mut host.0,
         &catalog.0,

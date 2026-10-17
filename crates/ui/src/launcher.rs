@@ -483,7 +483,7 @@ fn discover(
                             .cloned()
                             .collect()
                     })
-                    .unwrap_or_default();
+                    .unwrap_or_else(Vec::new);
                 let zombie_maps: Vec<String> = match (game.namespace(), game.zombies()) {
                     (Some(namespace), Some(mode)) if installed.is_some() => mode
                         .maps
@@ -1294,7 +1294,11 @@ fn rebuild(
     }
     *last_signature = signature;
     let scroll_position = if *last_page == Some(menu.page) {
-        positions.iter().next().cloned().unwrap_or_default()
+        positions
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(ScrollPosition::default)
     } else {
         ScrollPosition::default()
     };

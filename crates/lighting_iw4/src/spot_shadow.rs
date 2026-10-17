@@ -352,13 +352,7 @@ pub fn spot_shadow_z_near(near_bias: f32) -> f32 {
 
 #[must_use]
 pub fn spot_shadow_tan_half_fov(cos: f32) -> f32 {
-    let c = if cos < SPOT_SHADOW_COS_CLAMP_MIN {
-        SPOT_SHADOW_COS_CLAMP_MIN
-    } else if cos > SPOT_SHADOW_COS_CLAMP_MAX {
-        SPOT_SHADOW_COS_CLAMP_MAX
-    } else {
-        cos
-    };
+    let c = cos.clamp(SPOT_SHADOW_COS_CLAMP_MIN, SPOT_SHADOW_COS_CLAMP_MAX);
     libm::sqrtf(1.0 - c * c) / c
 }
 

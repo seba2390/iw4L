@@ -220,11 +220,5 @@ pub fn elem_def_gravity_accel_z(view: &FxElemDefView, u01: f32) -> f32 {
 }
 
 fn clamp01(x: f32) -> f32 {
-    if x < 0.0 {
-        0.0
-    } else if x > 1.0 {
-        1.0
-    } else {
-        x
-    }
+    x.clamp(0.0, 1.0)
 }

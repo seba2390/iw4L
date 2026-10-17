@@ -133,7 +133,7 @@ pub fn census_model_mesh(model: &ModelMesh) -> ModelColorCensus {
     let mut surfaces = Vec::with_capacity(model.lod_surfaces[0].len());
     let mut total = VertexColorStats::empty();
     for (surface_index, surface) in model.lod_surfaces[0].iter().enumerate() {
-        let stats = census_mesh_vertex_colors(&surface.mesh).unwrap_or_default();
+        let stats = census_mesh_vertex_colors(&surface.mesh).unwrap_or(VertexColorStats::empty());
         total.merge(&stats);
         surfaces.push(SurfaceColorCensus {
             surface_index,
@@ -622,7 +622,7 @@ impl MapXModelSceneCatalog {
         let zone = self
             .index_by_name(to)
             .map(|index| self.zone_of(index))
-            .unwrap_or_default();
+            .unwrap_or(ZoneOwner::UNKNOWN);
         let key = MapXModelAssetKey(from.to_owned());
         match self.order.iter().position(|k| k == &key) {
             Some(slot) => self.zones[slot] = zone,
@@ -636,7 +636,7 @@ impl MapXModelSceneCatalog {
     }
 
     pub fn zone_of(&self, index: usize) -> ZoneOwner {
-        self.zones.get(index).copied().unwrap_or_default()
+        self.zones.get(index).copied().unwrap_or(ZoneOwner::UNKNOWN)
     }
 
     pub fn index_by_name(&self, name: &str) -> Option<usize> {

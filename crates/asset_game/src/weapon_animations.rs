@@ -324,7 +324,7 @@ impl WeaponAnimations {
         let (reload_time_ms, reload_empty_time_ms, reload_start_time_ms, reload_end_time_ms) =
             registry.reload_timers_of(index);
         (self.reload_quick_time_ms, self.reload_quick_empty_time_ms) =
-            registry.quick_reload_timers_of(index).unwrap_or_default();
+            registry.quick_reload_timers_of(index).unwrap_or((0, 0));
         self.with_fire_raise(fire_time_ms, raise_time_ms)
             .with_switch_timers(drop_time_ms, quick_drop_time_ms, quick_raise_time_ms)
             .with_sprint_timers(
@@ -342,7 +342,7 @@ impl WeaponAnimations {
                 registry
                     .fpv_facts_of(index)
                     .map(|facts| facts.ads_overlay_convention())
-                    .unwrap_or_default(),
+                    .unwrap_or_else(AdsOverlayConvention::default),
             )
             .with_inherits_perks(
                 registry

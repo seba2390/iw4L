@@ -549,7 +549,7 @@ pub(crate) fn select_remote_models<'a>(
     }
     Ok(RemoteModelSet {
         body_name: kit.body.clone(),
-        head_name: kit.head.clone().unwrap_or_default(),
+        head_name: kit.head.clone().unwrap_or_else(String::new),
         body,
         head,
         gun,

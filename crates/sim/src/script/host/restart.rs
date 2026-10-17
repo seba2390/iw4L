@@ -203,7 +203,6 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
             }
         }
     }
-    drop(runtime);
     for entry in &plan.entries {
         if let Err(fault) = run_now(
             world,

@@ -816,7 +816,7 @@ fn tick(world: &mut World) {
                 } else {
                     -0.5
                 };
-                (spin_before + dt_ms * -1.0 * rate).clamp(-1.0, 0.0)
+                (spin_before + -dt_ms * rate).clamp(-1.0, 0.0)
             }
             _ => 0.0,
         };

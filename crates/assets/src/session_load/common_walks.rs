@@ -1306,7 +1306,7 @@ pub(super) fn walk_zombie_commons(
     let stem = zone_ff
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     let map_patch = format!("{stem}_patch");
     let mut scripts = crate::ScriptSources::default();
     let mut script_names = std::collections::BTreeSet::new();

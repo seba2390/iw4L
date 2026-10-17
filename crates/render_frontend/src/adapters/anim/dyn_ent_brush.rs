@@ -175,11 +175,11 @@ fn exec_cell_dyn_brush_cmds(
     let planes: Vec<[f32; 4]> = stats
         .as_ref()
         .map(|s| s.frustum_planes.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let brushes: Vec<_> = scene
         .as_ref()
         .map(|s| s.dyn_ent_brushes.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let bits = &membership.membership;
     let vis_len = brushes
         .iter()
@@ -583,7 +583,7 @@ fn exec_cell_scene_ent_cmds(
     let planes: Vec<[f32; 4]> = stats
         .as_ref()
         .map(|s| s.frustum_planes.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let mut pending: Vec<DpvsEntWorkerCmd> = Vec::new();
     let cull = world.as_ref().and_then(|w| w.cull.as_ref());
     let dpvs = cull.map(|cull| DpvsPlanes {
@@ -727,7 +727,7 @@ fn drain_dpvs_ent_cmds(
     let planes: Vec<[f32; 4]> = stats
         .as_ref()
         .map(|s| s.frustum_planes.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let cull = world.as_ref().and_then(|w| w.cull.as_ref());
     let dpvs = cull.map(|cull| DpvsPlanes {
         planes: &cull.dpvs.planes,

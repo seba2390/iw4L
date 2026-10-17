@@ -224,7 +224,7 @@ fn sorted_spawn_points(
         .spawn_points
         .get(point_team)
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let mask = team_mask(influencer_team);
     let mut scored = Vec::with_capacity(points.len());
     for point in points {
@@ -848,12 +848,14 @@ fn register_script(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "isweaponequipment", |world, _, args| {
         let name = string(args, 0)?;
-        let slot = stats_cell(world, weapon_reference(&name), STATS_SLOT).unwrap_or_default();
+        // A weapon without a stats row has no slot and no group.
+        let slot =
+            stats_cell(world, weapon_reference(&name), STATS_SLOT).unwrap_or_else(String::new);
         Ok(Value::Int(slot.eq_ignore_ascii_case("equipment").into()))
     });
     registry.register(Function, "isweaponspecificuse", |world, _, args| {
         let name = string(args, 0)?;
-        let group = stats_cell(world, weapon_reference(&name), 2).unwrap_or_default();
+        let group = stats_cell(world, weapon_reference(&name), 2).unwrap_or_else(String::new);
         Ok(Value::Int(group.eq_ignore_ascii_case("killstreak").into()))
     });
     registry.register(Function, "weaponreloadtime", |world, _, args| {
@@ -1190,7 +1192,7 @@ fn register_player(registry: &mut NativeRegistry) {
                     .map(|p| Value::String(p.clone().into()))
                     .collect()
             })
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         new_array(world, perks)
     });
     registry.register(Method, "getdstat", |world, receiver, args| {

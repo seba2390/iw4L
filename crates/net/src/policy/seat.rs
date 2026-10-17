@@ -437,7 +437,7 @@ fn overlay_killcam_hud(
         .meta
         .for_client(viewer)
         .map(|m| m.hud_current.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let wipe = session.focus.kill_cam_entity != playerstate_iw4::HITSCAN_KILL_CAM_ENTITY;
     let mut archival = if wipe {
         Vec::new()
@@ -445,7 +445,7 @@ fn overlay_killcam_hud(
         archived
             .and_then(|snap| snap.meta.for_client(session.focus_client))
             .map(|m| m.hud_archival.clone())
-            .unwrap_or_default()
+            .unwrap_or_else(Vec::new)
     };
     sim::rebase_hud_archival(&mut archival, rebase_ms);
     if let Some((_, meta)) = out.meta.clients.iter_mut().find(|(id, _)| *id == viewer) {

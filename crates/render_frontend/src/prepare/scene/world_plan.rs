@@ -268,7 +268,7 @@ pub(crate) fn prepare_fx_model_geometry(
         let Some(entry) = models.get_at(index) else {
             continue;
         };
-        let name = models.name_at(index).unwrap_or_default();
+        let name = models.name_at(index).unwrap_or("");
         let binding = (|| {
             let pose = entry.skel.pose.as_ref()?;
             let dobj = xmodel_runtime::DObj::build(&[(pose, None)]).ok()?;

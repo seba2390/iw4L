@@ -152,7 +152,7 @@ impl ClassMenuState {
                     .filter(|folder| Some(folder.namespace) == self.game)
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or_else(Vec::new)
     }
 
     fn choices(&self, catalog: &ClassLoadoutCatalog, store: &SessionClassStore) -> Vec<String> {
@@ -573,7 +573,7 @@ pub(crate) fn route(
                 "ui_class_rename" => {
                     let name: String = dvars
                         .get("ui_class_name")
-                        .unwrap_or_default()
+                        .unwrap_or("")
                         .trim()
                         .chars()
                         .take(20)
@@ -618,7 +618,7 @@ pub(crate) fn route(
     );
     dvars.set(
         "ui_class_feature_lock",
-        feature_lock.clone().unwrap_or_default(),
+        feature_lock.clone().unwrap_or_else(String::new),
     );
     dvars.set(
         "ui_class_feature_label",
@@ -635,7 +635,7 @@ pub(crate) fn route(
                 .get(at)
                 .filter(|_| player_data.custom_class_available(at))
                 .map(|slot| class_name(&slot.name))
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         );
     }
     if let Some(slot) = store.slots.get(store.selected) {
@@ -691,7 +691,7 @@ pub(crate) fn route(
                     .previews
                     .get(slot.row_value(row))
                     .and_then(|preview| loc.text(preview.desc_key.trim_start_matches('@')))
-                    .unwrap_or_default(),
+                    .unwrap_or(""),
             );
         }
         for (at, camo) in slot.camos.iter().enumerate() {
@@ -721,7 +721,7 @@ pub(crate) fn route(
                 let key = selected
                     .get(at)
                     .map(|attachment| format!("{weapon}+{attachment}"))
-                    .unwrap_or_default();
+                    .unwrap_or_else(String::new);
                 dvars.set(
                     &format!("ui_class_{name}_attachment_image_{at}"),
                     preview_image(&key, &catalog),
@@ -809,14 +809,14 @@ pub(crate) fn route(
         state
             .game
             .map(|game| game.as_str().to_uppercase())
-            .unwrap_or_default(),
+            .unwrap_or_else(String::new),
     );
     dvars.set(
         "ui_class_category_label",
         state
             .folder
             .map(|folder| category_label(folder, loc))
-            .unwrap_or_default(),
+            .unwrap_or_else(String::new),
     );
     state.page = state.page.min(choices.len().saturating_sub(1) / PAGE_SIZE);
     for at in 0..PAGE_SIZE {
@@ -838,21 +838,21 @@ pub(crate) fn route(
         });
         dvars.set(
             &format!("ui_class_choice_unavailable_{at}"),
-            choice_lock.unwrap_or_default(),
+            choice_lock.unwrap_or_else(String::new),
         );
         dvars.set(
             &format!("ui_class_game_{at}"),
             games
                 .get(at)
                 .map(|game| game.as_str().to_uppercase())
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         );
         dvars.set(
             &format!("ui_class_category_{at}"),
             folders
                 .get(at)
                 .map(|folder| category_label(*folder, loc))
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         );
         dvars.set(
             &format!("ui_class_choice_{at}"),
@@ -895,7 +895,7 @@ pub(crate) fn route(
                     let key = if state.attachments && !value.is_empty() {
                         slot.zip(state.row)
                             .map(|(slot, row)| format!("{}+{value}", slot.row_value(row)))
-                            .unwrap_or_default()
+                            .unwrap_or_else(String::new)
                     } else {
                         value.clone()
                     };
@@ -925,7 +925,7 @@ pub(crate) fn route(
                         lock.map_or_else(String::new, |reason| format!(" — {reason}"))
                     )
                 })
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         );
     }
     let title = if state.camo {
@@ -974,7 +974,7 @@ pub(crate) fn route(
                 format!("{}:material/{}", ns.as_str(), preview.image)
             }
         })
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     let image = if state.camo {
         choices
             .get(state.page * PAGE_SIZE + state.hover)
@@ -1028,7 +1028,7 @@ pub(crate) fn route(
                     label(key, &catalog, loc)
                 }
             })
-            .unwrap_or_default(),
+            .unwrap_or_else(String::new),
     );
     for (at, bar) in asset_game::CacStatBar::ALL.into_iter().enumerate() {
         let value = preview.and_then(|(_, p)| {
@@ -1070,11 +1070,11 @@ pub(crate) fn route(
                         .collect::<Vec<_>>()
                         .join("\n")
                 })
-                .unwrap_or_default()
+                .unwrap_or_else(String::new)
         } else {
             preview
                 .and_then(|(_, preview)| loc.text(preview.desc_key.trim_start_matches('@')))
-                .unwrap_or_default()
+                .unwrap_or("")
                 .to_owned()
         },
     );

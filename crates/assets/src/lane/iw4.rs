@@ -398,7 +398,6 @@ impl ZoneLane for Iw4Lane {
             report.push("no GfxWorld reached — nothing to draw".into());
             push_mapents_key_census(&mut report, &stream);
             let dm_spawns = dm_spawn_points(&stream);
-            drop(stream);
             let arena_bytes = memory.total_bytes();
             drop(memory);
             report.push(format!(
@@ -530,7 +529,6 @@ impl ZoneLane for Iw4Lane {
                 let airstrike_height = asset_world::airstrike_height(&stream);
                 let dm_spawns = dm_spawn_points(&stream);
                 push_mapents_key_census(&mut report, &stream);
-                drop(stream);
                 let arena_bytes = memory.total_bytes();
                 drop(memory);
                 report.push(format!(
@@ -697,7 +695,6 @@ impl ZoneLane for Iw4Lane {
                 report.push(format!("world mesh: {e}"));
                 let dm_spawns = dm_spawn_points(&stream);
                 push_mapents_key_census(&mut report, &stream);
-                drop(stream);
                 let arena_bytes = memory.total_bytes();
                 drop(memory);
                 LoadedWorld {
@@ -974,7 +971,6 @@ impl ZoneLane for Iw4Lane {
             sink.light_def_bodies,
             light_defs.len()
         ));
-        drop(stream);
         let s1_common_bytes = memory.total_bytes();
         drop(memory);
         report.push(format!(
@@ -1114,7 +1110,7 @@ impl ZoneLane for Iw4Lane {
                 material_population,
                 light_defs,
                 report,
-                pen_table: sink.pen_table.unwrap_or_default(),
+                pen_table: sink.pen_table.unwrap_or(super::PenTable::empty()),
                 pen_table_loaded: sink.pen_table.is_some(),
                 lochit_table: sink.lochit_table,
                 xmodel_walk: sink.models.walk_census(),
@@ -1157,7 +1153,7 @@ impl ZoneLane for Iw4Lane {
                 material_population: sink.materials,
                 light_defs,
                 report,
-                pen_table: sink.pen_table.unwrap_or_default(),
+                pen_table: sink.pen_table.unwrap_or(super::PenTable::empty()),
                 pen_table_loaded: sink.pen_table.is_some(),
                 lochit_table: sink.lochit_table,
                 xmodel_walk: sink.models.walk_census(),

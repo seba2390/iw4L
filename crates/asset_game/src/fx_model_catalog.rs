@@ -108,8 +108,13 @@ impl FxModelCatalog {
                 continue;
             }
             self.order.push(key.clone());
-            self.zones
-                .push(other.zones.get(index).copied().unwrap_or_default());
+            self.zones.push(
+                other
+                    .zones
+                    .get(index)
+                    .copied()
+                    .unwrap_or(ZoneOwner::UNKNOWN),
+            );
             self.entries.insert(key, entry);
         }
         self.entries.len().saturating_sub(before)
@@ -122,7 +127,7 @@ impl FxModelCatalog {
             if hints.contains(&key) {
                 self.order.push(key);
                 self.zones
-                    .push(old_zones.get(index).copied().unwrap_or_default());
+                    .push(old_zones.get(index).copied().unwrap_or(ZoneOwner::UNKNOWN));
             }
         }
         self.entries.retain(|key, _| hints.contains(key));
@@ -154,7 +159,7 @@ impl FxModelCatalog {
     }
 
     pub fn zone_of(&self, index: usize) -> ZoneOwner {
-        self.zones.get(index).copied().unwrap_or_default()
+        self.zones.get(index).copied().unwrap_or(ZoneOwner::UNKNOWN)
     }
 
     pub fn len(&self) -> usize {

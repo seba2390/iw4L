@@ -117,7 +117,6 @@ fn model(world: &mut World, name: &str, origin: [f32; 3], angles: [f32; 3]) -> O
     let object = runtime
         .create_entity(EntityKind::Spawned, "origins_dig")
         .ok()?;
-    drop(runtime);
     let Ok(presence) = super::super::presence::spawn_presence(world, origin) else {
         world.resource_mut::<RoundScript>().delete_entity(object);
         return None;
@@ -426,7 +425,6 @@ impl Digs {
                     false
                 }
             } else {
-                std::mem::drop(frame);
                 give_gun(world, survivor, client, drop.gun, None)
             };
             if acquired {
@@ -479,7 +477,6 @@ impl Digs {
                         3000,
                     )
                 });
-                drop(frame);
                 if spawned && roll(world, 4) != 0 && roll(world, 2) == 0 {
                     self.grenades.push((tick.0 + ticks(300), client, origin));
                 }
@@ -513,7 +510,6 @@ impl Digs {
             origin[2] += 40.0;
             let frame = FrameWorld::from_world(world);
             let can_spawn = frame.model_capability(part_model).flatten().is_some();
-            drop(frame);
             if can_spawn {
                 if let Some(object) = model(world, part_model, origin, [0.0, 0.0, 0.0]) {
                     self.staff_parts.push(StaffPartDrop {
@@ -630,7 +626,6 @@ impl Digs {
                     "origins dug weapon unavailable name={name} weapon={gun:?} model={mesh:?}"
                 );
             }
-            drop(frame);
             origin[2] += 40.0;
             match gun.zip(mesh).and_then(|(gun, mesh)| {
                 model(world, &mesh, origin, angles).map(|object| (gun, object))
