@@ -592,17 +592,13 @@ pub fn fill_spot_shadow_caster_plan(
                     return None;
                 }
                 let mesh = world.static_model_meshes.get(inst.mesh);
-                if smodel_camera_lod(
+                smodel_camera_lod(
                     mesh.and_then(|m| m.lod),
                     inst.origin,
                     inst.scale,
                     Some(view.eye),
                     lod_ramp,
-                )
-                .is_none()
-                {
-                    return None;
-                }
+                )?;
                 Some(inst.flags)
             },
             &mut smodel_ids,

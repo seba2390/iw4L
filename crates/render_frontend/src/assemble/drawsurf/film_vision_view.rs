@@ -569,55 +569,53 @@ fn update_film_vision_view(
     }
     let mut native_film_enabled = None;
     let mut native_bloom_enabled = None;
-    if let Some(snapshot) = presented.snapshot() {
-        if let Some(meta) = snapshot.meta.for_client(local.0) {
-            film.blur = meta
-                .view_effects
-                .blur
-                .map_or(0.0, |blur| blur.sample(clock.time()));
-            let mut vision = match film.current {
-                Some(vision) => vision,
-                None => asset_world::FilmVision::default(),
-            };
-            let mut grading = film.grading;
-            let mut blur = film.blur;
-            let mut enable_override = None;
-            for (name, value) in snapshot
-                .meta
-                .objectives
-                .server_info
-                .iter()
-                .chain(meta.client_dvars.iter())
+    if let Some(snapshot) = presented.snapshot()
+        && let Some(meta) = snapshot.meta.for_client(local.0)
+    {
+        film.blur = meta
+            .view_effects
+            .blur
+            .map_or(0.0, |blur| blur.sample(clock.time()));
+        let mut vision = match film.current {
+            Some(vision) => vision,
+            None => asset_world::FilmVision::default(),
+        };
+        let mut grading = film.grading;
+        let mut blur = film.blur;
+        let mut enable_override = None;
+        for (name, value) in snapshot
+            .meta
+            .objectives
+            .server_info
+            .iter()
+            .chain(meta.client_dvars.iter())
+        {
+            if matches!(
+                name.to_ascii_lowercase().as_str(),
+                "r_filmenable" | "r_filmtweakenable"
+            ) && let Ok(value) = value.parse::<f32>()
+                && value.is_finite()
             {
-                if matches!(
-                    name.to_ascii_lowercase().as_str(),
-                    "r_filmenable" | "r_filmtweakenable"
-                ) {
-                    if let Ok(value) = value.parse::<f32>() {
-                        if value.is_finite() {
-                            enable_override = Some(value != 0.0);
-                            native_film_enabled = enable_override;
-                        }
-                    }
-                }
-                if name.eq_ignore_ascii_case("r_glow") {
-                    native_bloom_enabled = value
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|v| v.is_finite())
-                        .map(|v| v != 0.0);
-                }
-                if apply_script_film_dvar(&mut vision, &mut grading, &mut blur, name, value) {
-                    film.script_forced = true;
-                }
+                enable_override = Some(value != 0.0);
+                native_film_enabled = enable_override;
             }
-            if let Some(enable) = enable_override {
-                vision.enable = enable;
+            if name.eq_ignore_ascii_case("r_glow") {
+                native_bloom_enabled = value
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|v| v.is_finite())
+                    .map(|v| v != 0.0);
             }
-            film.grading = grading;
-            film.blur = blur;
-            film.current = Some(vision);
+            if apply_script_film_dvar(&mut vision, &mut grading, &mut blur, name, value) {
+                film.script_forced = true;
+            }
         }
+        if let Some(enable) = enable_override {
+            vision.enable = enable;
+        }
+        film.grading = grading;
+        film.blur = blur;
+        film.current = Some(vision);
     }
     film.native_vision = if view.ready {
         let normal = applied.native.current(clock.time());

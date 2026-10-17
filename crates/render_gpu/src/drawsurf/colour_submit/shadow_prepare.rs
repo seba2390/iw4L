@@ -204,7 +204,7 @@ fn emit_local_rigid_shadow_flush(
     if hit_count == 0 {
         return Err(format!("{family}DynamicFlushEmpty"));
     }
-    if hit_count % 3 != 0 {
+    if !hit_count.is_multiple_of(3) {
         return Err(format!("{family}DynamicIndexCountNotTriangles"));
     }
     let start = hit_start as usize;
@@ -1563,7 +1563,7 @@ fn prepare_shadowmap_sun(
                 &packed_fallback
             }
         };
-        let Some(envelope) = draw_sun_shadow_map_forced(partition, Some(&packed)) else {
+        let Some(envelope) = draw_sun_shadow_map_forced(partition, Some(packed)) else {
             continue;
         };
         let Some(work) = envelope.work.as_ref() else {

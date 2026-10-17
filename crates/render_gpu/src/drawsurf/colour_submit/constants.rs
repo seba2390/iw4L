@@ -122,7 +122,7 @@ fn aligned_backing_span(start: usize, end: usize, backing_len: usize) -> Option<
     let end = end.min(backing_len);
     let start = start / 4 * 4;
     let end = end.next_multiple_of(4).min(backing_len);
-    if start >= end || (end - start) % 4 != 0 {
+    if start >= end || !(end - start).is_multiple_of(4) {
         return None;
     }
     Some((start, end))

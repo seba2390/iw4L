@@ -586,7 +586,7 @@ pub(crate) fn add_world_surfaces_frustum_only(
             &mut draw_msb[..],
         );
         for cell in 0..dpvs.cell_count {
-            if !msb_get(&draw_msb, cell) {
+            if !msb_get(draw_msb, cell) {
                 continue;
             }
             add_one_cell_frustum_only(dpvs, cell, frustum, &mut vis_data, &mut stats);

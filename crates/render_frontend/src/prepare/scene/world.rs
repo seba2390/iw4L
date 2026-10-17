@@ -1578,7 +1578,7 @@ pub fn world_scene_from_draw(
                 .collect()
         }),
     };
-    let sky_model = draw.sky_model.take().map(&convert_model);
+    let sky_model = draw.sky_model.take().map(convert_model);
     let static_model_meshes = world
         .static_model_meshes
         .into_iter()

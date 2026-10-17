@@ -107,7 +107,7 @@ thread_local! {
     };
 }
 
-fn pose_material<'a>(host: &'a FxSystemHost, against: MarkFragmentsAgainst) -> Option<&'a str> {
+fn pose_material(host: &FxSystemHost, against: MarkFragmentsAgainst) -> Option<&str> {
     impact_mark_material(
         [
             host.last_decal_mat0.as_deref(),

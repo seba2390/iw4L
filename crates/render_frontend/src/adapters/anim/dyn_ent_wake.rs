@@ -466,8 +466,8 @@ fn apply_radius_hit(
     let Some(scale) = explosion_falloff(dist, inner, outer, 1.0) else {
         return;
     };
-    if let Some(preset) = can_wake(inst) {
-        if let Some(impulse) = explosion_impulse(
+    if let Some(preset) = can_wake(inst)
+        && let Some(impulse) = explosion_impulse(
             origin,
             transform.translation,
             inner,
@@ -477,9 +477,9 @@ fn apply_radius_hit(
             explicit,
             false,
             dvars,
-        ) {
-            impulses.write(DynEntPhysImpulse { entity, impulse });
-        }
+        )
+    {
+        impulses.write(DynEntPhysImpulse { entity, impulse });
     }
     if !is_destroyable(inst.ty) {
         return;
@@ -910,7 +910,7 @@ pub(crate) fn on_entity_event_sound(
     let start = Vec3::from_array(payload.origin2);
     let end = Vec3::from_array(payload.origin);
     let catalog = catalog.as_deref();
-    let mut host = host.as_deref_mut();
+    let host = host.as_deref_mut();
     let fx = fx.as_deref();
     let scene = scene.as_deref();
     let marks = entity_marks.as_ref();
@@ -929,7 +929,7 @@ pub(crate) fn on_entity_event_sound(
         &mut instances,
         &mut impulses,
         phys.as_mut(),
-        host.as_deref_mut(),
+        host,
         fx,
         scene,
         marks,

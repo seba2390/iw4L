@@ -191,17 +191,18 @@ pub(crate) fn draw_motion_tracker(
                 enemy: !matches!(meta.client_state_team, 1 | 2)
                     || meta.client_state_team != actor.client_state_team,
             };
-            if ping.enemy && !tracker.ping_played {
-                if let Some([tl, bl, br]) = bolts.tracker_screen {
-                    let aspect = (br - bl).length() / (tl - bl).length();
-                    let angle = ping.yaw - yaw;
-                    let x = -angle.sin() * ping.distance / RANGE / aspect;
-                    let y = angle.cos() * ping.distance / RANGE + CENTER_Y;
-                    if x.abs() <= 0.5 && y.abs() <= 0.5 {
-                        let max_distance = RANGE * Vec2::new(0.5 * aspect, 0.5 - CENTER_Y).length();
-                        play("motiontracker_pong", 2.0 - ping.distance / max_distance);
-                        tracker.ping_played = true;
-                    }
+            if ping.enemy
+                && !tracker.ping_played
+                && let Some([tl, bl, br]) = bolts.tracker_screen
+            {
+                let aspect = (br - bl).length() / (tl - bl).length();
+                let angle = ping.yaw - yaw;
+                let x = -angle.sin() * ping.distance / RANGE / aspect;
+                let y = angle.cos() * ping.distance / RANGE + CENTER_Y;
+                if x.abs() <= 0.5 && y.abs() <= 0.5 {
+                    let max_distance = RANGE * Vec2::new(0.5 * aspect, 0.5 - CENTER_Y).length();
+                    play("motiontracker_pong", 2.0 - ping.distance / max_distance);
+                    tracker.ping_played = true;
                 }
             }
             let history = tracker.contacts.entry(*id).or_insert([None, None]);

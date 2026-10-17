@@ -119,7 +119,7 @@ fn paint_probe_debug(image: &mut Image, mode: ProbeDebug) {
                 }
                 ProbeDebug::Mips { .. } => [128, 128, 128, 255],
             };
-            for texel in data[offset..offset + level_bytes].chunks_exact_mut(4) {
+            for texel in data[offset..offset + level_bytes].as_chunks_mut::<4>().0 {
                 texel.copy_from_slice(&colour);
             }
             offset += level_bytes;

@@ -210,9 +210,8 @@ pub fn produce_frame_fog(
     sources.set_constant_rows(CODE_FOG_COLOR_LINEAR, &[float4_bits(linear)]);
     sources.set_constant_rows(CODE_FOG_COLOR_GAMMA, &[float4_bits(gamma)]);
 
-    match fog.sun.as_ref() {
-        Some(sun) => produce_iw4_sun_fog(sources, fog.density(), sun),
-        None => {}
+    if let Some(sun) = fog.sun.as_ref() {
+        produce_iw4_sun_fog(sources, fog.density(), sun)
     }
     if !r_fog_enabled {
         sources.set_constant_rows(CODE_FOG, &[float4_bits([0.0, 1.0, 0.0, 0.0])]);

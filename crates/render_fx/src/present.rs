@@ -593,13 +593,13 @@ fn record_spawn_decal(
                 host.note_models_go_skip(req.def_index);
             }
         }
-    } else if result.entered {
-        if let Some(scene) = world {
-            if scene.box_surfaces_prelude_ran(host) {
-                host.note_box_surfaces_run();
-            } else {
-                host.note_box_surfaces_skip();
-            }
+    } else if result.entered
+        && let Some(scene) = world
+    {
+        if scene.box_surfaces_prelude_ran(host) {
+            host.note_box_surfaces_run();
+        } else {
+            host.note_box_surfaces_skip();
         }
     }
     if !result.entered {
@@ -860,7 +860,7 @@ fn tick_fx_pass(
             Some(effect.view.msec_looping_life)
         },
         |q| {
-            let out = (|| {
+            (|| {
                 let effect = catalog_lookup(catalog, q.catalog_index)?;
                 let elem = effect.elems.get(q.def_index as usize)?;
                 if fx_iw4::elem_skips_position_update(elem.view.elem_type, elem.view.flags) {
@@ -908,8 +908,7 @@ fn tick_fx_pass(
                     elem.vel_graph_world.as_slice(),
                     q,
                 )
-            })();
-            out
+            })()
         },
         |q| {
             let effect = catalog_lookup(catalog, q.catalog_index)?;

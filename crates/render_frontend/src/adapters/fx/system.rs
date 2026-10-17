@@ -203,10 +203,10 @@ fn present_tracker_light(
         .then_some((generation.stamp(), local.0, meta.life_sequence, weapon))
     });
     if owner != light.owner {
-        if light.owner.is_some_and(|old| old.0 == generation.stamp()) {
-            if let Some((dobj, bone)) = light.bolt {
-                host.0.stop_bolted(EFFECT, dobj, bone);
-            }
+        if light.owner.is_some_and(|old| old.0 == generation.stamp())
+            && let Some((dobj, bone)) = light.bolt
+        {
+            host.0.stop_bolted(EFFECT, dobj, bone);
         }
         light.owner = owner;
         light.bolt = None;
@@ -673,7 +673,7 @@ fn commit_fx_transaction(
         verts_gaps,
         mark_mesh,
         post_lights,
-        mut tracers,
+        tracers,
         cam_tf,
         frustum_planes,
         clip_from_world,
@@ -887,7 +887,7 @@ fn commit_fx_transaction(
                 let base = vert_used;
 
                 let mut index_ok = true;
-                for chunk in mesh.index_pairs.chunks_exact(3) {
+                for chunk in mesh.index_pairs.as_chunks::<3>().0 {
                     let pairs = [chunk[0], chunk[1], chunk[2]];
                     let tris = fx_iw4::trail_index_quad_tris(pairs);
                     let mut six = [0u32; 6];
@@ -924,7 +924,7 @@ fn commit_fx_transaction(
     }
 
     present_tracer_beams(
-        &mut tracers,
+        &tracers,
         &cam_tf,
         clip_from_world,
         tan_half_fov,
@@ -2137,7 +2137,7 @@ fn publish_weapon_fire(
             let own_weapon = player.map_or(0, |ps| ps.weapon);
             return game_fire_alias(
                 &rules,
-                &weapons.registry(),
+                weapons.registry(),
                 &bank.0,
                 &fire.event,
                 player_view,
