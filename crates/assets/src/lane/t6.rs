@@ -142,9 +142,10 @@ const HANDS_ZONE: &str = "faction_seals_mp.ff";
 
 /// The post materials Black Ops 2's renderer registers for its screen
 /// overlays (its burn and electric shock passes).
-const T6_OVERLAY_MATERIALS: [&str; 2] = [
+const T6_OVERLAY_MATERIALS: [&str; 3] = [
     "flamethrowerfx_color_distort_overlay_bloom",
     "zombie_electric_shock_overlay",
+    "poison",
 ];
 /// The filter materials the installed maps' client scripts map and enable
 /// (`game_t6::overlay`), captured when the map's zones carry them.

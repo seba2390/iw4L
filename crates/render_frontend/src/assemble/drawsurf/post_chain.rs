@@ -405,6 +405,7 @@ pub struct ScreenOverlayPasses {
 /// Plans the frame's overlays from the presented client's screen.
 pub(crate) fn plan_screen_overlays(
     generation: Option<Res<super::MaterialGeneration>>,
+    view: Option<Res<crate::prepare::scene::view_parms::PreparedSceneView>>,
     clock: Res<net::FrameClock>,
     presented: Res<net::PresentedSnapshot>,
     local: Res<net::LocalPresentClient>,
@@ -423,6 +424,15 @@ pub(crate) fn plan_screen_overlays(
         now_ms: clock.time(),
         screen: &screen,
         atlases: &overlays.atlases,
+        viewport: view.as_ref().map_or([0.0; 4], |view| {
+            let viewport = view.scene_viewport;
+            [
+                viewport.x as f32,
+                viewport.y as f32,
+                viewport.width as f32,
+                viewport.height as f32,
+            ]
+        }),
     });
     let drawn: Vec<String> = out
         .passes

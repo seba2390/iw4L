@@ -1700,6 +1700,15 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(constant);
         }
     }
+    match overlays.poison {
+        None => out.put_u8(0),
+        Some(poison) => {
+            out.put_u8(1);
+            out.put_f32(poison.amount);
+            out.put_f32(poison.pulse);
+            out.put_f32(poison.dvision_x);
+        }
+    }
     out.put_u16(screen.script_vectors.len() as u16);
     for entity in &screen.script_vectors {
         out.put_u16(entity.number);
@@ -1805,6 +1814,15 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
                 });
             }
             filters
+        },
+        poison: match input.get_u8()? {
+            0 => None,
+            1 => Some(sim::PoisonOverlay {
+                amount: input.get_f32()?,
+                pulse: input.get_f32()?,
+                dvision_x: input.get_f32()?,
+            }),
+            _ => return Err(WireError::Malformed("bad poison overlay tag")),
         },
     };
     let count = input.get_u16()?;
