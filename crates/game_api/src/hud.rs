@@ -188,27 +188,3 @@ pub enum ScoreAlign {
     Center,
     Right,
 }
-
-/// The fields of a script hud elem a game's network may send with less
-/// precision than the script gave them. Colours are red, green, blue and
-/// alpha bytes.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct SentHudElem {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub font_scale: f32,
-    pub from_font_scale: f32,
-    pub width: i32,
-    pub height: i32,
-    pub from_width: i32,
-    pub from_height: i32,
-    pub color: [u8; 4],
-    pub from_color: [u8; 4],
-    pub glow_color: [u8; 4],
-    /// Transition lengths, in milliseconds.
-    pub fade_time: i32,
-    pub scale_time: i32,
-    pub move_time: i32,
-    pub font_scale_time: i32,
-}

@@ -77,6 +77,8 @@ pub struct SoundCatalog {
 
     group_volumes: HashMap<AssetNamespace, Vec<std::result::Result<f32, crate::MixerGroupError>>>,
     mixer_groups: HashMap<AssetNamespace, Vec<crate::MixerGroup>>,
+    mix_snapshots: HashMap<AssetNamespace, crate::MixSnapshots>,
+    sound_contexts: HashMap<AssetNamespace, crate::SoundContexts>,
     mix_names: Option<crate::SoundMixNames>,
     by_alias: HashMap<(AssetNamespace, String), usize>,
 
@@ -148,6 +150,12 @@ impl SoundCatalog {
         }
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
+        }
+        for (ns, snapshots) in other.mix_snapshots {
+            self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
+        }
+        for (ns, contexts) in other.sound_contexts {
+            self.sound_contexts.entry(ns).or_insert(contexts);
         }
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
@@ -224,6 +232,12 @@ impl SoundCatalog {
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
         }
+        for (ns, snapshots) in other.mix_snapshots {
+            self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
+        }
+        for (ns, contexts) in other.sound_contexts {
+            self.sound_contexts.entry(ns).or_insert(contexts);
+        }
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
         }
@@ -289,6 +303,40 @@ impl SoundCatalog {
         self.group_volumes.remove(&namespace);
         self.playback.clear();
         self.selection_weights.clear();
+    }
+
+    /// Mix snapshots a zone's sound banks carry, and the snapshot group
+    /// count its sound driver declares when it has one.
+    pub fn ingest_mix_snapshots(
+        &mut self,
+        namespace: AssetNamespace,
+        snapshots: Vec<crate::MixSnapshot>,
+        groups: Option<usize>,
+    ) {
+        self.mix_snapshots
+            .entry(namespace)
+            .or_default()
+            .absorb(crate::MixSnapshots {
+                list: snapshots,
+                groups,
+            });
+    }
+
+    pub fn mix_snapshots(&self, namespace: AssetNamespace) -> Option<&crate::MixSnapshots> {
+        self.mix_snapshots.get(&namespace)
+    }
+
+    /// The sound contexts a zone's sound driver declares.
+    pub fn ingest_sound_contexts(
+        &mut self,
+        namespace: AssetNamespace,
+        contexts: crate::SoundContexts,
+    ) {
+        self.sound_contexts.insert(namespace, contexts);
+    }
+
+    pub fn sound_contexts(&self, namespace: AssetNamespace) -> Option<&crate::SoundContexts> {
+        self.sound_contexts.get(&namespace)
     }
 
     pub fn playback_policy(
@@ -989,16 +1037,64 @@ impl SoundCatalog {
         shots
     }
 
+    /// The variant of an alias a play picks. `avoid` is the last one
+    /// picked; `context` answers a sound context's current value (its name
+    /// hash, 0 when unset). `None` when no variant can play.
     pub fn pick_variant_at(
         &self,
         index: usize,
         rng: &mut u32,
         avoid: Option<usize>,
+        context: &dyn Fn(u32) -> u32,
     ) -> Option<usize> {
+        let aliases = &self.sounds.get(index)?.aliases;
+        if aliases.iter().any(|alias| alias.context.is_some()) {
+            return pick_context_variant(aliases, rng, avoid, context);
+        }
         let weights = self
             .selection_weights
             .get(index)
             .filter(|weights| !weights.is_empty())?;
         Some(pick_weighted_variant_index(weights, rng, avoid))
     }
+}
+
+/// A bank whose aliases carry sound contexts (Black Ops') picks among the
+/// first 64 variants whose context is unset or has their value, with equal
+/// chances: the C library's `rand() % n`, drawn again (up to 100 times) while
+/// there are more than two and it repeats the last pick.
+fn pick_context_variant(
+    aliases: &[CapturedAlias],
+    rng: &mut u32,
+    avoid: Option<usize>,
+    context: &dyn Fn(u32) -> u32,
+) -> Option<usize> {
+    let candidates: Vec<usize> = aliases
+        .iter()
+        .take(64)
+        .enumerate()
+        .filter(|(_, alias)| match alias.context {
+            Some([ty, value]) => ty == 0 || value == 0 || context(ty) == value,
+            None => true,
+        })
+        .map(|(variant, _)| variant)
+        .collect();
+    let n = candidates.len();
+    match n {
+        0 => return None,
+        1 => return Some(candidates[0]),
+        _ => {}
+    }
+    let last = avoid.and_then(|variant| candidates.iter().position(|&c| c == variant));
+    let mut draw = || {
+        advance_lcg(rng);
+        ((*rng >> 16) & 0x7fff) as usize % n
+    };
+    let mut pick = draw();
+    let mut tries = 0;
+    while tries < 100 && n > 2 && Some(pick) == last {
+        pick = draw();
+        tries += 1;
+    }
+    Some(candidates[pick])
 }

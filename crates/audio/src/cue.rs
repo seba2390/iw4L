@@ -18,9 +18,14 @@ pub enum CueFailure {
     CompositionBudget,
     CompositionCycle,
     InvalidMixerGroup(asset_audio::MixerGroupError),
-    AmbiguousMediaBinding { matches: usize },
+    AmbiguousMediaBinding {
+        matches: usize,
+    },
     PendingBudget,
     MissingAlias,
+    /// No variant of the alias can play now: none has the value its sound
+    /// context holds.
+    NoVariant,
     MissingPolicy,
     InvalidMediaBinding,
     NoMedia,
@@ -51,6 +56,8 @@ pub(crate) struct CueExecutionPolicy {
     pub stereo_speaker_gains: Option<[[f32; 2]; 2]>,
     pub loaded_binding_origin: asset_audio::LoadedBindingOrigin,
     pub channel: Option<asset_audio::ChannelKey>,
+    /// The alias's namespace and snapshot group, when it has one.
+    pub snapshot_group: Option<(asset_core::AssetNamespace, u8)>,
     pub priority: Option<asset_audio::VoicePriority>,
     pub spatial: Option<Result<CueSpatialPolicy, StartFailure>>,
     admission: AdmissionPolicy,
@@ -82,6 +89,7 @@ impl CueExecutionPolicy {
             stereo_speaker_gains: policy.stereo_speaker_gains,
             loaded_binding_origin: policy.loaded_binding_origin,
             channel: policy.channel,
+            snapshot_group: policy.snapshot_group.map(|group| (policy.namespace, group)),
             priority: policy.priority.clone(),
             spatial,
             admission: alias_admission(bound.revision(), bound.alias_index(), policy),
@@ -301,9 +309,25 @@ impl CueResolver {
         if self.history.len() == SELECTOR_CAPACITY && !self.history.contains_key(&key) {
             return Err(CueFailure::SelectorBudget);
         }
+        let contexts = request
+            .execution
+            .mix
+            .as_ref()
+            .and_then(|mix| mix.contexts.read().ok());
+        let context = |ty: u32| {
+            contexts
+                .as_ref()
+                .and_then(|contexts| contexts.get(&ty).copied())
+                .unwrap_or(0)
+        };
         let variant = bank
-            .pick_variant_at(index, &mut self.lcg, self.history.get(&key).copied())
-            .ok_or(CueFailure::MissingAlias)?;
+            .pick_variant_at(
+                index,
+                &mut self.lcg,
+                self.history.get(&key).copied(),
+                &context,
+            )
+            .ok_or(CueFailure::NoVariant)?;
         let bound = bank
             .bind_published_alias(index, variant)
             .map_err(|_| CueFailure::MissingPolicy)?;

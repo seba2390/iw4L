@@ -68,6 +68,22 @@ pub enum ScriptAudioCommand {
         id: i32,
         rate: f32,
     },
+    /// A mix snapshot a client's scripts put in one of the game's snapshot
+    /// slots (`setGroupSnapshot` and its kin), at a weight of 0 to 1. An
+    /// empty name is the default snapshot.
+    ClientSnapshot {
+        client: crate::ClientId,
+        slot: u8,
+        name: String,
+        value: f32,
+    },
+    /// A sound context a client's scripts set (`setSoundContext`); an empty
+    /// value unsets it.
+    ClientSoundContext {
+        client: crate::ClientId,
+        context: String,
+        value: String,
+    },
 }
 
 /// What a client's sound system says of a sound its scripts played, for
@@ -90,7 +106,9 @@ impl ScriptAudioCommand {
             | Self::ClientSound { client, .. }
             | Self::ClientSoundStop { client, .. }
             | Self::ClientSoundVolume { client, .. }
-            | Self::ClientSoundVolumeRate { client, .. } => Some(*client),
+            | Self::ClientSoundVolumeRate { client, .. }
+            | Self::ClientSnapshot { client, .. }
+            | Self::ClientSoundContext { client, .. } => Some(*client),
             _ => None,
         }
     }
@@ -141,6 +159,12 @@ impl ScriptAudioCommand {
             Self::ClientSoundStop { .. } => true,
             Self::ClientSoundVolume { volume, .. } => volume.is_finite(),
             Self::ClientSoundVolumeRate { rate, .. } => rate.is_finite(),
+            Self::ClientSnapshot {
+                slot, name, value, ..
+            } => (1..=10).contains(slot) && name.len() <= 1023 && (0.0..=1.0).contains(value),
+            Self::ClientSoundContext { context, value, .. } => {
+                context.len() <= 1023 && value.len() <= 1023
+            }
         }
     }
 }

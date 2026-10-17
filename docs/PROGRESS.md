@@ -108,8 +108,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 151 of 610 |
-| Five (`t5:zombie_pentagon`) | 153 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 150 of 610 |
+| Five (`t5:zombie_pentagon`) | 152 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -117,7 +117,7 @@ Only the top-level items count.
   - [x] Zone data: the map's dynamic entities are drawn (Kino's 142 bottles, glasses, reels and paper stacks; Five's 215); they do not move or break yet (`t5.dynent.physics`).
   - [x] Vision sets and script fog: Kino's own vision draws through Black Ops' post chain (bloom, streaks, S-curve, film), picked and blended by its vision channels: `zombie_theater` from the server at start, `zombie_last_stand` while down and `zombie_death` while bleeding out, back on revive; the client scripts' calls reach the same channels (not yet seen in a run); server and client script fog (`setVolFog`, `setExpFog`, `setWaterFog`) blends and drives the world fog constants (`level_fog_init` at start, `dog_start` / `dog_stop` over 7 s). Open: the mission-failed fade, underwater and weapon-state channels, the post textures' sampler state.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state and primary light overrides (`makelight`, `_lights.csc`'s `fire_flicker`, `generic_pulsing` and power-on mixer via `lerpvector`), its own entities presented by the client itself (client-only map models, models it spawns, brush models; from the frame they spawn), its triggers (`touch`/`trigger`, `istouching`) and its entities' animation trees, Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks, vision and fog; 50 of 173 client builtins not implemented yet, so their sound snapshots and contexts do nothing yet).
+  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state and primary light overrides (`makelight`, `_lights.csc`'s `fire_flicker`, `generic_pulsing` and power-on mixer via `lerpvector`), its own entities presented by the client itself (client-only map models, models it spawns, brush models; from the frame they spawn), its triggers (`touch`/`trigger`, `istouching`) and its entities' animation trees, Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks, vision and fog, sound snapshots and contexts; 42 of 173 client builtins not implemented yet).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
@@ -167,7 +167,7 @@ Only the top-level items count.
   - [x] The player's own footsteps: Black Ops' movement footstep events reach the client scripts' `CodeCallback_PlayerFootstep` (`_footsteps.csc`), which plays `fly_step_<sprint|run|walk|…>_plr_<surface>`.
   - [x] The client scripts' sounds by playback id: the local sound system plays each one, stops and fades it by its id (`stopsound`, `setsoundvolume`, `setsoundvolumerate`), and reports back whether it plays, how far and how long (`soundplaying`, `getplaybacktime`, `getknownlength`), which `_music.csc`'s transitions wait on.
   - [x] The player's jumps and landings reach the client scripts' `CodeCallback_PlayerJump` / `CodeCallback_PlayerLand` (`_footsteps.csc`: `fly_step_run_*`, `fly_land_*`), and their line emitters (`soundlineemitter`) play at the point of their line nearest the player (Kino's wind alleys and water pipes).
-  - [ ] Gear, other players' footsteps, ambient rooms, sound contexts and snapshots, `setsoundblend`, another player's automatic fire; a server `PlaySound` notify waits a fixed 2 s.
+  - [ ] Gear, other players' footsteps, reverb rooms (ambient rooms, sound contexts and mix snapshots run: #234), another player's automatic fire; a server `PlaySound` notify waits a fixed 2 s.
 - [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.

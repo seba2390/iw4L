@@ -260,9 +260,7 @@ fn menu_font_text<'c>(
     }
     fonts.insert(font_name.to_owned(), font);
     let height = layout.text_height(font.pixel_height, text_scale);
-    // The game divides the text's width by the display's pixel aspect.
-    let width = crate::chrome::layout_text_width(layout, font, &text, text_scale)
-        / surface.display_pixel_aspect();
+    let width = layout.text_width(text_width(font, &text), font.pixel_height, text_scale);
     let glyph_h = layout.text_scale(font.pixel_height, text_scale);
     let glyph_w = glyph_h * scale_x / scale_y;
     let placed = hud_elem_placement(surface.placement(), elem, cg_time, width, height);
@@ -360,12 +358,15 @@ pub(crate) fn update_hud_elems(
     let cg_time = cg_clock.time();
     let mut layers: [Vec<Draw2dCmd>; 2] = Default::default();
     let mut fonts = HashMap::new();
-    let hud_elem_sent = mode.as_ref().and_then(|mode| mode.hud.hud_elem_sent);
+    let font_scales_sent = mode.as_ref().and_then(|mode| mode.hud.font_scales_sent);
     for (index, elem) in elems.iter().enumerate() {
         let sent_elem;
-        let elem: &HudElem = match hud_elem_sent {
+        let elem: &HudElem = match font_scales_sent {
             Some(sent) => {
-                sent_elem = sent_fields(elem, sent);
+                let mut copy = **elem;
+                (copy.font_scale, copy.from_font_scale) =
+                    sent(copy.font_scale, copy.from_font_scale);
+                sent_elem = copy;
                 &sent_elem
             }
             None => elem,
@@ -432,11 +433,9 @@ pub(crate) fn update_hud_elems(
                     h: size,
                 }
             } else {
-                // IW4 grows a material to the elem's font height. Black Ops
-                // aligns a box of the larger of the two, then moves the
-                // material back by the same alignment over the difference, so
-                // the material lands where its own size places it (and one of
-                // size 0 draws nothing).
+                // IW4 grows a material to the elem's font height; T5 zombie
+                // scripts give their chalk a large font scale for the round
+                // number it may later show, and draw the material at its size.
                 let floor = if mode
                     .as_ref()
                     .is_some_and(|mode| !mode.hud.material_font_floor)
@@ -610,46 +609,4 @@ pub(crate) fn update_hud_elems(
     });
     pass.hud_elems_back = back;
     pass.hud_elems = front;
-}
-
-/// The elem as the game's network delivers it to a client.
-fn sent_fields(elem: &HudElem, sent: fn(&mut game_api::hud::SentHudElem)) -> HudElem {
-    let mut fields = game_api::hud::SentHudElem {
-        x: elem.x,
-        y: elem.y,
-        z: elem.z,
-        font_scale: elem.font_scale,
-        from_font_scale: elem.from_font_scale,
-        width: elem.width,
-        height: elem.height,
-        from_width: elem.from_width,
-        from_height: elem.from_height,
-        color: elem.color_rgba.to_le_bytes(),
-        from_color: elem.from_color_rgba.to_le_bytes(),
-        glow_color: elem.glow_color_rgba.to_le_bytes(),
-        fade_time: elem.fade_time,
-        scale_time: elem.scale_time,
-        move_time: elem.move_time,
-        font_scale_time: elem.font_scale_time,
-    };
-    sent(&mut fields);
-    HudElem {
-        x: fields.x,
-        y: fields.y,
-        z: fields.z,
-        font_scale: fields.font_scale,
-        from_font_scale: fields.from_font_scale,
-        width: fields.width,
-        height: fields.height,
-        from_width: fields.from_width,
-        from_height: fields.from_height,
-        color_rgba: u32::from_le_bytes(fields.color),
-        from_color_rgba: u32::from_le_bytes(fields.from_color),
-        glow_color_rgba: u32::from_le_bytes(fields.glow_color),
-        fade_time: fields.fade_time,
-        scale_time: fields.scale_time,
-        move_time: fields.move_time,
-        font_scale_time: fields.font_scale_time,
-        ..*elem
-    }
 }

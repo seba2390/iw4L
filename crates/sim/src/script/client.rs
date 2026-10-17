@@ -391,6 +391,10 @@ pub(crate) struct ClientTagEvent {
 pub(crate) struct ClientOutput {
     /// The sound commands for the local client's sound system.
     pub(crate) sound_commands: Vec<crate::ScriptAudioCommand>,
+    /// The reverb each priority (level, shellshock) asks for: the room
+    /// type, dry and wet levels, and the fade in msec; `None` once
+    /// deactivated. Recorded, not rendered: the sound system has no reverb.
+    pub(crate) reverb: [Option<(String, f32, f32, i32)>; 2],
     /// Sounds played that the sound system has not reported on yet.
     pub(crate) issued: std::collections::BTreeSet<i32>,
     /// The next sound's playback id, as `playsound` answers it.
