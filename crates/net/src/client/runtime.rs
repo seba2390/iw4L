@@ -528,11 +528,11 @@ pub fn receive_ticks(
         }
         note_join_link(&mut watch, link);
 
-        if let Some(id) = link.assigned_client {
-            if local.0 != id {
-                local.0 = id;
-                prediction.0.set_local(id);
-            }
+        if let Some(id) = link.assigned_client
+            && local.0 != id
+        {
+            local.0 = id;
+            prediction.0.set_local(id);
         }
         return;
     }
@@ -1058,10 +1058,10 @@ pub fn sample_client_input(
         max_pitch,
         max_yaw,
     );
-    if std::mem::take(&mut actions.client.center_view) {
-        if let Some(ps) = ps {
-            look.angles[0] = (-ps.delta_angles[0] * input_iw4::ANGLE2SHORT) as i32;
-        }
+    if std::mem::take(&mut actions.client.center_view)
+        && let Some(ps) = ps
+    {
+        look.angles[0] = (-ps.delta_angles[0] * input_iw4::ANGLE2SHORT) as i32;
     }
     let ps_weapon = ps.map(|ps| ps.weapon).unwrap_or(0);
     let life_sequence = presented
@@ -1096,19 +1096,19 @@ pub fn sample_client_input(
         }
     }
     follow_held_weapon_select(&mut select, ps_weapon, life_sequence, clock.time());
-    if let Some(ps) = ps {
-        if select.index == ps.weapon {
-            select.mapped_index = if prediction
-                .0
-                .world()
-                .weapon_combat_row(ps.weapon)
-                .is_some_and(|facts| facts.inventory_type == 3)
-            {
-                ps.weapon_primary
-            } else {
-                ps.weapon
-            };
-        }
+    if let Some(ps) = ps
+        && select.index == ps.weapon
+    {
+        select.mapped_index = if prediction
+            .0
+            .world()
+            .weapon_combat_row(ps.weapon)
+            .is_some_and(|facts| facts.inventory_type == 3)
+        {
+            ps.weapon_primary
+        } else {
+            ps.weapon
+        };
     }
     let slots = std::mem::take(&mut actions.client.action_slots);
     if let (Some(inbox), Some(ids)) = (action_inbox.as_mut(), request_ids.as_mut()) {
@@ -1166,14 +1166,15 @@ pub fn sample_client_input(
     let in_killcam = view.is_some_and(|v| v.in_killcam());
     if let Some(ps) = ps {
         for next in cycles {
-            if next && gamemode_iw4::copycat_weapnext_bind_active(ps.pm_type, in_killcam) {
-                if let (Some(inbox), Some(ids)) = (action_inbox.as_mut(), request_ids.as_mut()) {
-                    let request_id = ids.allocate();
-                    if let Err(error) =
-                        inbox.push(local.0, sim::ClientAction::UseCopycat { request_id })
-                    {
-                        diag::warn!(Net, "use_copycat: not queued — {error}");
-                    }
+            if next
+                && gamemode_iw4::copycat_weapnext_bind_active(ps.pm_type, in_killcam)
+                && let (Some(inbox), Some(ids)) = (action_inbox.as_mut(), request_ids.as_mut())
+            {
+                let request_id = ids.allocate();
+                if let Err(error) =
+                    inbox.push(local.0, sim::ClientAction::UseCopycat { request_id })
+                {
+                    diag::warn!(Net, "use_copycat: not queued — {error}");
                 }
             }
             cycle_weapon_select(
@@ -1919,10 +1920,8 @@ pub fn publish_presented(
         }
     }
 
-    if archived {
-        if let Some(seat) = remote_poses.remove(&local.0) {
-            predicted = seat;
-        }
+    if archived && let Some(seat) = remote_poses.remove(&local.0) {
+        predicted = seat;
     }
     for mut runtime in &mut entities {
         runtime.presented_player = None;

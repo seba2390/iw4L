@@ -653,18 +653,17 @@ impl UdpAuthorityHub {
                             .iter()
                             .find(|(sample_seq, _)| *sample_seq == seq)
                             .map(|(_, sample)| *sample);
-                        if let Some(claim) = sample.as_mut() {
-                            if claim.quality.claims_history()
-                                && !self
-                                    .replication
-                                    .get(&header.connection)
-                                    .is_some_and(|peer| {
-                                        peer.sent_ticks.contains(&claim.left)
-                                            && peer.sent_ticks.contains(&claim.right)
-                                    })
-                            {
-                                claim.alpha = f32::NAN;
-                            }
+                        if let Some(claim) = sample.as_mut()
+                            && claim.quality.claims_history()
+                            && !self
+                                .replication
+                                .get(&header.connection)
+                                .is_some_and(|peer| {
+                                    peer.sent_ticks.contains(&claim.left)
+                                        && peer.sent_ticks.contains(&claim.right)
+                                })
+                        {
+                            claim.alpha = f32::NAN;
                         }
                         cmd_inbox.push(client, Some(seq), cmd, sample);
                     }
@@ -977,18 +976,17 @@ impl UdpAuthorityHub {
             {
                 continue;
             }
-            if peer.admits_gameplay(self.bootstrap.is_some()) {
-                if let Some(reliable) = reliable {
-                    if let Err(error) = peer.queue_control(
-                        &self.relay,
-                        target,
-                        conn,
-                        live_epoch,
-                        reliable.payload(client),
-                    ) {
-                        last_err = Some(error);
-                    }
-                }
+            if peer.admits_gameplay(self.bootstrap.is_some())
+                && let Some(reliable) = reliable
+                && let Err(error) = peer.queue_control(
+                    &self.relay,
+                    target,
+                    conn,
+                    live_epoch,
+                    reliable.payload(client),
+                )
+            {
+                last_err = Some(error);
             }
             let resync = peer.baseline.clear_missing_ack();
             if resync {

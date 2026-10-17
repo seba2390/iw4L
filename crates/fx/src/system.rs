@@ -1010,11 +1010,11 @@ impl FxSystemHost {
                 .map(|e| !e.ring_resident || !e.has_refs())
                 .unwrap_or(true);
             if dead {
-                if let Some(s) = slot {
-                    if self.effects.get(s).is_some_and(|e| e.ring_resident) {
-                        crate::spawn::free_all_elems_for_effect(self, s);
-                        crate::spawn::free_all_trails_for_effect(self, s);
-                    }
+                if let Some(s) = slot
+                    && self.effects.get(s).is_some_and(|e| e.ring_resident)
+                {
+                    crate::spawn::free_all_elems_for_effect(self, s);
+                    crate::spawn::free_all_trails_for_effect(self, s);
                 }
                 freed.push(handle);
             } else {
@@ -1128,7 +1128,7 @@ impl FxSystemHost {
 
 fn handle_to_slot(handle: u16) -> Option<usize> {
     let byte_off = (handle as u32) << 2;
-    if byte_off % FX_EFFECT_SLOT_SIZE as u32 != 0 {
+    if !byte_off.is_multiple_of(FX_EFFECT_SLOT_SIZE as u32) {
         return None;
     }
     let slot = (byte_off / FX_EFFECT_SLOT_SIZE as u32) as usize;
