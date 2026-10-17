@@ -31,10 +31,10 @@ changes a count updates its row.
 
 Each game section ends with its technical debt: work that is not a milestone
 but has to be paid off at some point. Those lists are plain bullets and do
-not count toward the percentage. Figures are from 2026-10-14
-(`xtask/boundary/allow.txt` occurrences, `cargo check` and
-`cargo clippy --workspace --all-targets` warnings); refresh them when a pull
-request pays some of it off.
+not count toward the percentage. Boundary figures are from 2026-10-14
+(`xtask/boundary/allow.txt` occurrences); warning figures are what
+`cargo xtask lints` counts on Linux (`xtask/lints/allow.txt`, 2026-10-17).
+Refresh them when a pull request pays some of it off.
 
 ## Modern Warfare 2 — multiplayer
 
@@ -91,10 +91,10 @@ shared systems still call its crates directly. One bullet per piece of work:
 - `hud` 246 (`hud_iw4` 189) and `net` 164 (`playerstate_iw4` 61, `entity_iw4` 47).
 - Assets: 563 in `asset_game` (176), `asset_world` (139), `asset_material` (96),
   `assets` (82), `asset_audio` (49) and `asset_anim` (21).
-- Clippy and dead code: about 47 warnings in Modern Warfare 2 crates and files
-  (`weapon_iw4`, `clipmap_iw4`, `movement_iw4`, `input_iw4`,
-  `assets/src/lane/iw4.rs`) and 29 in `fx_iw4` (2026-10-14, not re-run). The
-  script-gap ledger (`gamemode_iw4/src/gaps.rs`, `sim/src/script_gaps.rs`) is
+- Clippy: 89 warnings in Modern Warfare 2 crates and files (`hud_iw4`,
+  `weapon_iw4`, `fastfile_iw4`, `lighting_iw4`, `assets/src/lane/iw4.rs`, …)
+  and 14 in `fx_iw4`.
+- The script-gap ledger (`gamemode_iw4/src/gaps.rs`, `sim/src/script_gaps.rs`) is
   never raised, yet `sim::step` reports it every step.
 - `gamemode_iw4` is a `mixed` crate: its `GameModeKind` also carries the zombies
   modes `Zombies` and `Zclassic`.
@@ -204,9 +204,10 @@ Only the top-level items count.
   `asset_game` (menu_catalog_t5.rs, weapon_catalog/capture_t5.rs),
   `asset_world`, `asset_material`, `asset_model` and `asset_audio`. Each one
   should move behind a `game_api` rule or into `game_t5`/`fastfile_t5`.
-- Clippy: 18 warnings in Black Ops code (menu_catalog_t5.rs,
-  capture_t5.rs, world_t5.rs, game_t5): disallowed `unwrap_or_default`,
-  collapsible `if`s, `chunks_exact` with a constant size.
+- Clippy: 37 warnings in Black Ops code (`fastfile_t5`, `sound_load_t5.rs`,
+  `t5_light.rs`, `menu_catalog_t5.rs`, `world_t5.rs`, `natives/t5.rs`,
+  `capture_t5.rs`): disallowed `unwrap_or_default`, collapsible `if`s,
+  `chunks_exact` with a constant size.
 - Shared crates Black Ops runs on (`sim`, `hud`, `render_*`) carry most of
   the shared debt listed under Shared technical debt below.
 
@@ -336,14 +337,10 @@ Only the top-level items count. Runs are headless, with the test player
   (`sim/src/script/host/t6_zombies*`, `t6_gametype.rs`) and `ui/src/t6_menu.rs`
   are Black Ops II code living in shared crates; the zombies host is kept only
   for Origins until it runs Black Ops II's scripts, then it goes.
-- Compiler warnings: unused `world`, `direction` and `key` and the unused
-  `give`/`take` methods in `sim/src/script/host/t6_zombies/origins_staff.rs`;
-  the unused `entity_string` import in `assets/src/lane/t6.rs`.
-- Clippy: 88 warnings in Black Ops II code, most in
-  `sim/src/script/host/t6_zombies.rs` (36), `ui/src/t6_menu.rs` (11),
-  `t6_zombies/origins_staff.rs` (8) and `assets/src/lane/t6.rs` (8).
-- Not formatted by `rustfmt --edition 2024`: `t6_zombies.rs` and
-  `t6_zombies/origins_staff.rs`.
+- Clippy: 103 warnings in Black Ops II code, most in
+  `sim/src/script/host/t6_zombies.rs` (36), `game_t6/src/ui/scene/front_end.rs`
+  (27), `t6_zombies/origins_*.rs` (9), `assets/src/lane/t6.rs` (6) and
+  `ui/src/t6_menu.rs` (5).
 - Zombies maps need the patch zone Black Ops II downloads at launch
   (`t6.scripts.ffotd`); a machine without a capture in
   `~/.config/iw4l/captured/` or `<artifacts>/captured/` cannot start
@@ -405,23 +402,13 @@ Debt in the shared runtime that no single game owns.
   every game but are declared `game = "iw4"`. They sit in `render_frontend`
   (113), `render_anim` (44), `render_gpu` (44), `render_backend` (12),
   `render` (7), `console` (2), `session` and `render_scene` (1 each).
-- Compiler warnings: 9 uses of Bevy's deprecated `Interaction` in `ui` (6 in
-  `launcher.rs`, 3 in `t6_menu.rs`, which the Black Ops II section also
-  counts; move to `Hovered`/`Pressed`); 4 function pointer comparisons in
-  `game_api`'s derived `PartialEq` (`ViewmodelRules::anim`,
-  `font_scales_sent`, `MenuFonts`, `ClientFireRules::sound`); the deprecated
-  `fetch_update` in `render_frame/src/skinning.rs`; an unused `name` in
-  `audio/src/diagnostics.rs`.
-- Clippy: about 1,140 warnings across the workspace, nearly 1,000 of them in
-  shared code — `sim` (207), `render_frontend` (161), `asset_game` (98),
-  `render_anim` (90), `hud` (72), `render_gpu` (68), `console` (67), `net`
-  (66), `fx` (63). The workspace is not clippy clean, and CI does not run
-  clippy (`.github/workflows/ci.yml` runs `make publish-check` and
-  `cargo check --workspace --all-targets`); CONTRIBUTING.md asks contributors
-  to run it.
-- Python (`ruff check` and `ruff format`): `scripts/bench-marks.py` has 3
-  findings (a shebang on a non-executable file, two `zip` pairs for
-  `itertools.pairwise`) and is not formatted. CI runs neither ruff nor rustfmt.
+- Clippy: 1,012 warnings across the workspace, 741 of them in shared code —
+  `sim` (118), `render_frontend` (82), `asset_game` (78), `hud` (47),
+  `render_anim` (46), `asset_world` (44), `fx` (41), `console` (33), `net`
+  (33) — and 28 in Modern Warfare 3 code (`fastfile_iw5`, `*_iw5.rs`). CI
+  fails on a new one (`cargo xtask lints --enforce`) and on any rustc
+  warning; `cargo fmt --all -- --check` and ruff on `scripts/` gate
+  formatting.
 - The headless `serve` launch installs `RuntimeRole::Listen`
   (`bootstrap/src/plugins.rs::add_runtime_plugins`); `RuntimeRole::Dedicated`
   and `NetPlugin::dedicated` exist, but no launch selects them.
@@ -437,7 +424,7 @@ How measured (2026-10-15, checkout iw4L-docs at 7d337727, nothing built):
 - CI: read `.github/workflows/ci.yml`.
 - Dedicated: read `bootstrap/src/launch.rs` (`LaunchMode::Serve` → `Role::Dedicated`
   → `add_runtime_plugins`) and `bootstrap/src/plugins.rs`.
-- NOT re-measured: compiler warning counts, clippy counts, ruff findings (kept as
-  written). The `*_iw4::` total in the MW2 section is 2,711 by the same awk
+- Warnings: `cargo xtask lints` (2026-10-17, Linux, the pinned toolchain),
+  grouped by package and by file name. The `*_iw4::` total in the MW2 section is 2,711 by the same awk
   (`$3 ~ /_iw4::$/`), not "about 2,800".
 -->

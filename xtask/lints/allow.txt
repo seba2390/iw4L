@@ -133,7 +133,6 @@ audio crates/audio/src/ambient.rs clippy::collapsible_if 3
 audio crates/audio/src/clip_store.rs clippy::collapsible_if 1
 audio crates/audio/src/cue_execution.rs clippy::large_enum_variant 1
 audio crates/audio/src/device.rs clippy::clone_on_copy 1
-audio crates/audio/src/diagnostics.rs clippy::needless_return 1
 audio crates/audio/src/entity_events.rs clippy::needless_borrow 4
 audio crates/audio/src/event.rs clippy::manual_range_contains 2
 audio crates/audio/src/match_set.rs clippy::needless_borrow 1
