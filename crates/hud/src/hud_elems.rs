@@ -87,7 +87,7 @@ fn player_name(meta: &SnapshotMeta, value: f32) -> String {
         .find(|(c, _)| c.0 == id)
         .and_then(|(_, row)| entity_iw4::client_state_name(&row.name))
         .map(str::to_owned)
-        .unwrap_or_default()
+        .unwrap_or_else(String::new)
 }
 
 pub(crate) fn resolve_directive(
@@ -121,7 +121,7 @@ fn hud_string(
         return String::new();
     };
     replace_directive(&text, |cmd| {
-        resolve_directive(cmd, strings, input).unwrap_or_default()
+        resolve_directive(cmd, strings, input).unwrap_or_else(String::new)
     })
 }
 

@@ -297,7 +297,7 @@ pub(crate) fn route(
                 "set" | "seta" => {
                     if let [name, values @ ..] = command.args.as_slice() {
                         if values.is_empty() {
-                            echo.write(format!("{name} = {}", dvars.get(name).unwrap_or_default()));
+                            echo.write(format!("{name} = {}", dvars.get(name).unwrap_or("")));
                         } else {
                             if let Some((family, _, bit)) = frame::AssetFamilies::SETTINGS
                                 .iter()
@@ -437,7 +437,7 @@ pub(crate) fn route(
                 }
                 "ui_vote_skip" => services.submit(net::MasterMenuAction::VoteToSkip)?,
                 "ui_maps" => {
-                    let map = dvars.get("ui_mapname").unwrap_or_default();
+                    let map = dvars.get("ui_mapname").unwrap_or("");
                     state.map_pack = maps.pack_of(map).unwrap_or(0);
                     let index = pack_maps(&maps, state.map_pack)
                         .iter()
@@ -541,10 +541,7 @@ pub(crate) fn route(
                     if !party.in_lobby || !party.is_host {
                         return Err("Only the host can change the password".into());
                     }
-                    let password = dvars
-                        .get("ui_password_input")
-                        .unwrap_or_default()
-                        .to_owned();
+                    let password = dvars.get("ui_password_input").unwrap_or("").to_owned();
                     if password.len() > master_protocol::MAX_PASSWORD_BYTES {
                         return Err("Password must be at most 64 bytes".into());
                     }
@@ -562,10 +559,7 @@ pub(crate) fn route(
                         .password_advert
                         .clone()
                         .ok_or("Lobby is no longer available")?;
-                    let password = dvars
-                        .get("ui_password_input")
-                        .unwrap_or_default()
-                        .to_owned();
+                    let password = dvars.get("ui_password_input").unwrap_or("").to_owned();
                     if password.len() > master_protocol::MAX_PASSWORD_BYTES {
                         return Err("Password must be at most 64 bytes".into());
                     }
@@ -607,7 +601,7 @@ pub(crate) fn route(
                         } else if command.name == "ui_join_lobby_selected" {
                             dvars
                                 .get("ui_browser_join_id")
-                                .unwrap_or_default()
+                                .unwrap_or("")
                                 .parse()
                                 .map_err(|_| "Lobby is no longer available")?
                         } else {
@@ -876,7 +870,7 @@ pub(crate) fn route(
             &format!("ui_map_{row}"),
             pack.get(state.map_page * PAGE_SIZE + row)
                 .map(|map| label(map))
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         );
     }
     let pages = map_pages(&maps);
@@ -1003,7 +997,7 @@ pub(crate) fn route(
             &format!("ui_browser_{row}_id"),
             advert
                 .map(|advert| advert.id.to_string())
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
         );
         let cells = advert
             .map(|advert| {
@@ -1057,7 +1051,7 @@ pub(crate) fn route(
                     status,
                 ]
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| std::array::from_fn(|_| String::new()));
         for (key, value) in ["host", "map", "mode", "players", "assets", "state"]
             .into_iter()
             .zip(cells)

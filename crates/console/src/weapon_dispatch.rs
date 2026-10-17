@@ -839,5 +839,5 @@ pub fn attach_completions(weapons: &PreparedWeapons, current_weapon: u32) -> Vec
                 .map(|option| option.choice.name)
                 .collect()
         })
-        .unwrap_or_default()
+        .unwrap_or_else(|_| Vec::new())
 }

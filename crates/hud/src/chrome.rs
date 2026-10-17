@@ -381,7 +381,9 @@ fn item_dvar_shows(item: &MenuItem, host: &impl ExprHost) -> bool {
     {
         return true;
     }
-    let value = host.dvar_string(&item.dvar_test).unwrap_or_default();
+    let value = host
+        .dvar_string(&item.dvar_test)
+        .unwrap_or_else(|_| String::new());
     let listed = crate::menus::script_tokens(&item.enable_dvar)
         .iter()
         .any(|token| token.eq_ignore_ascii_case(&value));

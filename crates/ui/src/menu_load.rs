@@ -130,7 +130,7 @@ pub(crate) fn begin_load_from_session(
         .as_ref()
         .filter(|r| r.request_id == fact.request_id)
         .map(|r| r.progress.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(LoadProgress::default);
 
     identity.zone = zone.clone();
     if let Ok(mut window) = window.single_mut() {

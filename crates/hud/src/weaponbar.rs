@@ -619,7 +619,7 @@ impl HudPlayerVisInput<'_> {
                         .script_name_of(get_viewmodel_weapon_index(ps))
                         .to_owned()
                 })
-                .unwrap_or_default(),
+                .unwrap_or_else(String::new),
             ads_javelin: weapons.is_some_and(|w| ads_javelin(ps, w)),
             missilecam: snapshot
                 .and_then(|s| s.meta.for_client(local))
@@ -647,7 +647,7 @@ fn weapon_lock_view(
     let lock = meta
         .map(|m| m.weapon_lock)
         .filter(|lock| lock.weapon == ps.weapon && ps.health > 0)
-        .unwrap_or_default();
+        .unwrap_or_else(sim::WeaponLock::default);
     let mut screen_pos = [0.0; 2];
     if lock.flags & 3 != 0
         && let Some(Projection::Perspective(projection)) = projection
@@ -748,7 +748,7 @@ pub(crate) fn update_weaponbar(
     let weapon_script = weapons
         .as_ref()
         .map(|w| w.registry().script_name_of(viewmodel))
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     let name = localized_weapon_name(
         selected_weapon_index(ps, client_input.select.index),
         weapons.as_ref(),
@@ -882,7 +882,7 @@ pub(crate) fn update_weaponbar(
         dvars: presented
             .snapshot()
             .map(|s| s.meta.script_dvars(local.0))
-            .unwrap_or_default(),
+            .unwrap_or_else(sim::ScriptDvars::default),
         local_vars: &local_vars,
         catalog: Some(catalog),
         menu: None,
@@ -901,7 +901,7 @@ pub(crate) fn update_weaponbar(
                         &surface,
                     )
                 })
-                .unwrap_or_default(),
+                .unwrap_or_else(hud_iw4::WeaponLockView::default),
         ),
         frag_ammo,
         smoke_ammo,
