@@ -269,7 +269,9 @@ pub struct FailedLevelRules {
 
 /// What a game's mode asks of the code around its scripts. Staged for the
 /// match: the simulation reads it from its bootstrap, the HUD as a resource.
-#[derive(bevy_ecs::resource::Resource, Clone, Copy, Debug, PartialEq)]
+/// No `PartialEq` here or on the rules it holds: several hold function
+/// pointers, and Rust does not promise a function one address.
+#[derive(bevy_ecs::resource::Resource, Clone, Copy, Debug)]
 pub struct ModeRules {
     /// The level notify that ends the warmup.
     pub play_starts_on: &'static str,
@@ -344,7 +346,7 @@ pub struct ModeRules {
 }
 
 /// How a client's viewmodel plays a player's weapon animation number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ViewmodelRules {
     /// What a change of the weapon animation number plays; `named(i)` tells
     /// whether the weapon names its animation `i` (in the game's own order).
@@ -375,7 +377,7 @@ pub enum ViewmodelAnim {
 }
 
 /// Which of the code-drawn HUD pieces a mode shows, and how.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct HudRules {
     /// The code-drawn HUD (hud elems, blood, reticle, killfeed, names, hints,
     /// splash, playercard, flash, compass, score bar, scoreboard, the menus it
@@ -402,7 +404,7 @@ pub struct HudRules {
 }
 
 /// How a mode's script text hud elems are drawn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub enum ScriptText {
     /// Not drawn: the game's rule is not known.
     Off,
