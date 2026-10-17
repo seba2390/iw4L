@@ -104,7 +104,7 @@ pub fn process_emitting_schedule(
     loop {
         dist_last = dist_next;
         let u01 = next_spacing01();
-        dist_next = u01 * var_amp + base_dist_per_emit + dist_next;
+        dist_next += u01 * var_amp + base_dist_per_emit;
         if dist_next > dist_in_update {
             break;
         }

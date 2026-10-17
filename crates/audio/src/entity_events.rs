@@ -200,7 +200,7 @@ fn entity_event_sound(
         .ok_or_else(|| "sound bank is unavailable".to_owned())
         .and_then(|bank| {
             selected_alias(
-                &weapons.registry(),
+                weapons.registry(),
                 &bank.0,
                 weapon,
                 event,
@@ -585,10 +585,10 @@ pub(crate) fn bind_notetrack_sounds(
         }
         return;
     };
-    if table.owns(&bank.0, &weapons.registry()) {
+    if table.owns(&bank.0, weapons.registry()) {
         return;
     }
-    *table = NotetrackSoundTable::bind(&bank.0, &weapons.registry());
+    *table = NotetrackSoundTable::bind(&bank.0, weapons.registry());
 }
 
 pub(crate) fn play_viewmodel_notetrack_messages(
@@ -605,7 +605,7 @@ pub(crate) fn play_viewmodel_notetrack_messages(
     let bound_bank = bank
         .as_deref()
         .zip(weapons.as_deref())
-        .filter(|(bank, weapons)| table.owns(&bank.0, &weapons.registry()))
+        .filter(|(bank, weapons)| table.owns(&bank.0, weapons.registry()))
         .map(|(bank, _)| Arc::clone(&bank.0));
     for batch in notes.read() {
         if batch.generation != generation.stamp()

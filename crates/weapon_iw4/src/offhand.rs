@@ -297,10 +297,9 @@ pub fn weapon_offhand_throw(
         .inventory
         .iter_mut()
         .find(|row| row.weapon == weapon)
+        && row.ammo > 0
     {
-        if row.ammo > 0 {
-            row.ammo -= 1;
-        }
+        row.ammo -= 1;
     }
     cmd.weap_flags |= weap_flags::OFFHAND_VIEW;
     let remaining_fuse_ms =

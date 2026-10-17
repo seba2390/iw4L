@@ -461,7 +461,7 @@ fn view_damage_kick(angles: &mut ViewAngleBob, inputs: ViewAngleBobInputs) {
     let frac = inputs.org.weapon_pos_frac;
     let mut factor = 1.0 - frac * VIEW_DAMAGE_ADS_HALF;
     if frac != 0.0 && inputs.overlay_reticle != 0 {
-        factor = (frac * VIEW_DAMAGE_ADS_HALF + 1.0) * factor;
+        factor *= frac * VIEW_DAMAGE_ADS_HALF + 1.0;
     }
     let delta = inputs.time.wrapping_sub(inputs.damage_time) as f32;
     if delta < VIEW_DAMAGE_DEFLECT_MS {

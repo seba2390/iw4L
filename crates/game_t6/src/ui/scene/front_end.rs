@@ -814,7 +814,7 @@ impl Host {
             "dvarobj:getString" => {
                 return Some(
                     self.dvar_of(args.first(), tables)
-                        .and_then(|name| Ok(vec![key(&self.front_end.dvars[&name].1)])),
+                        .map(|name| vec![key(&self.front_end.dvars[&name].1)]),
                 );
             }
             "dvarobj:set" => {
@@ -982,7 +982,7 @@ impl Host {
             }
             "SessionModeIsMode" => {
                 let bit = mode_bit(args.first());
-                vec![Value::Boolean((self.front_end.session >> bit & 1).into())]
+                vec![Value::Boolean(self.front_end.session >> bit & 1)]
             }
             "SessionMode_IsOnlineGame"
             | "SessionMode_IsSystemlinkGame"
@@ -1014,9 +1014,7 @@ impl Host {
             }
             "GameModeIsMode" => {
                 let bit = mode_bit(args.first());
-                vec![Value::Boolean(
-                    (self.front_end.game_modes >> bit & 1).into(),
-                )]
+                vec![Value::Boolean(self.front_end.game_modes >> bit & 1)]
             }
             // `CL_PlayLocalSoundAliasByName` for the primary local client.
             "PlaySound" => {

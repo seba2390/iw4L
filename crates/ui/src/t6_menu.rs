@@ -374,9 +374,7 @@ fn drive(
             }
         }
         if keys.just_pressed(KeyCode::Backspace)
-            || messages
-                .iter()
-                .any(|m| *m == UiMenuRequest::Key(UiMenuKey::Backspace))
+            || messages.contains(&UiMenuRequest::Key(UiMenuKey::Backspace))
         {
             menu.rename.pop();
         }
@@ -442,10 +440,9 @@ fn drive(
                 if let Some((_, choice)) = choices
                     .iter()
                     .find(|(_, choice)| choice.order == menu.focus)
+                    && !matches!(choice.action, Action::Back | Action::Bindings)
                 {
-                    if !matches!(choice.action, Action::Back | Action::Bindings) {
-                        selected.push(choice.action);
-                    }
+                    selected.push(choice.action);
                 }
             }
             UiMenuKey::Enter if open.0 => {
@@ -459,10 +456,11 @@ fn drive(
             _ => {}
         }
     }
-    if open.0 && mouse.just_pressed(MouseButton::Left) {
-        if let Some((_, choice)) = choices.iter().find(|(hovered, _)| hovered.get()) {
-            selected.push(choice.action);
-        }
+    if open.0
+        && mouse.just_pressed(MouseButton::Left)
+        && let Some((_, choice)) = choices.iter().find(|(hovered, _)| hovered.get())
+    {
+        selected.push(choice.action);
     }
     for action in selected {
         match action {
@@ -759,18 +757,18 @@ fn drive(
             .is_none_or(|time| std::time::Instant::now() >= time)
     {
         let contents = encode_slots(&menu.profiles);
-        if menu.saved.as_deref() != Some(contents.as_str()) {
-            if let Some(path) = &menu.path {
-                match write_class_file(path, &contents) {
-                    Ok(()) => {
-                        menu.saved = Some(contents);
-                        menu.save_retry = None;
-                    }
-                    Err(error) => {
-                        menu.notice = format!("Cannot save loadout: {error}");
-                        menu.save_retry =
-                            Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
-                    }
+        if menu.saved.as_deref() != Some(contents.as_str())
+            && let Some(path) = &menu.path
+        {
+            match write_class_file(path, &contents) {
+                Ok(()) => {
+                    menu.saved = Some(contents);
+                    menu.save_retry = None;
+                }
+                Err(error) => {
+                    menu.notice = format!("Cannot save loadout: {error}");
+                    menu.save_retry =
+                        Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
                 }
             }
         }

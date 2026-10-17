@@ -778,7 +778,7 @@ pub fn weapon_time_adjust(
     facts: &WeaponCombatFacts,
     cmd: &WeaponCmd,
 ) -> i32 {
-    let reload_family = matches!(hand.weaponstate, 0x8 | 0x9 | 0xA | 0xB | 0xC);
+    let reload_family = matches!(hand.weaponstate, 0x8..=0xC);
     if !(reload_family && perk_fastreload_eligible(cmd.perks0, facts.inherits_perks)) {
         return cmd.msec;
     }

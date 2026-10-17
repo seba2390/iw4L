@@ -177,10 +177,10 @@ pub(crate) fn restore_menu_on_return(
     *app_screen = AppScreen::MainMenu;
 
     dismiss_loading_overlay(&mut commands, chrome.iter(), overlay_cams.iter(), false);
-    if maps.0.is_empty() {
-        if let Some(identity) = identity {
-            maps.0 = list_menu_map_packs(&asset_transport::GamesRoot(identity.games_root.clone()));
-        }
+    if maps.0.is_empty()
+        && let Some(identity) = identity
+    {
+        maps.0 = list_menu_map_packs(&asset_transport::GamesRoot(identity.games_root.clone()));
     }
     diag::info!(Ui, "session: main menu enabled");
     diag::lifecycle_boundary("menu_interactive", "");
