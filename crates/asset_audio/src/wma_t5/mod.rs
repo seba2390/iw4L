@@ -1,5 +1,6 @@
 mod entropy;
 mod fourier;
+mod table;
 
 use std::fmt;
 

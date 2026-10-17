@@ -85,6 +85,10 @@ impl EditorWeaponCatalog {
     pub fn len(&self) -> usize {
         self.registry.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     pub fn namespace_count(&self, ns: crate::AssetNamespace) -> usize {
         self.registry.namespace_count(ns)
     }

@@ -626,36 +626,21 @@ impl Shot<'_> {
 
     /// The hip spread at the player's eye height, and what overrides it.
     fn spread(&self, def: &WeaponDefView<'_>, world: &dyn FireWorld) -> (f32, f32) {
-        let ps = self.ps;
-        let (mut min, mut max);
-        if ps.spread_override_state == 2 {
-            min = ps.spread_override as f32;
-            max = ps.spread_override as f32;
-        } else {
-            let height = ps.view_height_current;
-            if height <= CROUCH_EYE {
-                let frac = (height - PRONE_EYE) * 0.0344827585;
-                min = (def.hip_spread_ducked_min() - def.hip_spread_prone_min()) * frac
-                    + def.hip_spread_prone_min();
-                max = (def.hip_spread_ducked_max() - def.hip_spread_prone_max()) * frac
-                    + def.hip_spread_prone_max();
-            } else {
-                let frac = (height - CROUCH_EYE) * 0.0500000007;
-                min = (def.hip_spread_stand_min() - def.hip_spread_ducked_min()) * frac
-                    + def.hip_spread_ducked_min();
-                max = (def.hip_spread_max() - def.hip_spread_ducked_max()) * frac
-                    + def.hip_spread_ducked_max();
-            }
-        }
-        if ps.spread_override_state == 1 {
-            max = ps.spread_override as f32;
-        }
-        if self.zombies && ps.perks & PERK_DEADSHOT != 0 && ps.weapon_pos_frac < 1.0 {
-            let scale = dvar(world, "perk_weapSpreadMultiplier", 0.65f32);
-            min *= scale;
-            max *= scale;
-        }
-        (min, max)
+        hip_spread(
+            self.ps,
+            [
+                def.hip_spread_stand_min(),
+                def.hip_spread_ducked_min(),
+                def.hip_spread_prone_min(),
+            ],
+            [
+                def.hip_spread_max(),
+                def.hip_spread_ducked_max(),
+                def.hip_spread_prone_max(),
+            ],
+            self.zombies
+                .then(|| dvar(world, "perk_weapSpreadMultiplier", 0.65f32)),
+        )
     }
 
     /// A bullet shot, by the player.
@@ -1463,4 +1448,42 @@ fn bullet_end(seed: i32, spread: f32, parms: &WeaponParms, range: f32) -> ([f32;
 
 fn libm_tan(x: f32) -> f32 {
     f64::from(x).tan() as f32
+}
+
+/// The hip spread at the player's eye height (stand, ducked and prone
+/// minimum and maximum), and what overrides it; in zombies Deadshot scales
+/// it by `deadshot_scale` while the sights are not fully up.
+pub(crate) fn hip_spread(
+    ps: &PlayerState,
+    min: [f32; 3],
+    max: [f32; 3],
+    deadshot_scale: Option<f32>,
+) -> (f32, f32) {
+    let (mut lo, mut hi);
+    if ps.spread_override_state == 2 {
+        lo = ps.spread_override as f32;
+        hi = ps.spread_override as f32;
+    } else {
+        let height = ps.view_height_current;
+        if height <= CROUCH_EYE {
+            let frac = (height - PRONE_EYE) * 0.0344827585;
+            lo = (min[1] - min[2]) * frac + min[2];
+            hi = (max[1] - max[2]) * frac + max[2];
+        } else {
+            let frac = (height - CROUCH_EYE) * 0.0500000007;
+            lo = (min[0] - min[1]) * frac + min[1];
+            hi = (max[0] - max[1]) * frac + max[1];
+        }
+    }
+    if ps.spread_override_state == 1 {
+        hi = ps.spread_override as f32;
+    }
+    if let Some(scale) = deadshot_scale
+        && ps.perks & PERK_DEADSHOT != 0
+        && ps.weapon_pos_frac < 1.0
+    {
+        lo *= scale;
+        hi *= scale;
+    }
+    (lo, hi)
 }

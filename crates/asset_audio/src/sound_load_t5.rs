@@ -8,9 +8,12 @@ use crate::zone::{T5ZoneMemory, open_zone_shared};
 use crate::{AssetNamespace, ZoneGame, ZoneOwner};
 use fastfile_t5::size as sz;
 use fastfile_t5::{
-    AssetLinkSink, AssetSink, AssetType, Ptr, ScriptStrings, ZonePtr, ZoneStream,
-    load_asset_at_observed, load_zone,
+    AssetLinkSink, AssetSink, AssetType, Ptr, Result as ZoneResult, ScriptStrings, ZonePtr,
+    ZoneStream, load_asset_at_observed, load_zone,
 };
+
+/// The namespace Black Ops' captures go to.
+const NAMESPACE: AssetNamespace = AssetNamespace::T5;
 
 #[derive(Default)]
 pub struct T5SoundCapture {
@@ -56,7 +59,7 @@ impl AssetSink for T5SoundSink {
         index: usize,
         ty: AssetType,
         slot: Ptr,
-    ) -> fastfile_t5::Result<()> {
+    ) -> ZoneResult<()> {
         self.stopped_at = Some((index, ty.name()));
         load_asset_at_observed(s, ty, slot, &mut self.capture)?;
         self.walked += 1;
@@ -71,7 +74,7 @@ impl AssetLinkSink for T5SoundCapture {
         s: &ZoneStream<'_>,
         rows: Ptr,
         count: usize,
-    ) -> fastfile_t5::Result<()> {
+    ) -> ZoneResult<()> {
         for i in 0..count {
             let row = rows.at(i * 100);
             let mut knots = Vec::with_capacity(8);
@@ -79,10 +82,9 @@ impl AssetLinkSink for T5SoundCapture {
                 knots.push((s.f32_at(row, 36 + n * 8)?, s.f32_at(row, 40 + n * 8)?));
             }
             let name = format!("t5/curve/{i}");
-            self.catalog.curves.insert(
-                (AssetNamespace::T5, name.clone()),
-                CapturedSndCurve { name, knots },
-            );
+            self.catalog
+                .curves
+                .insert((NAMESPACE, name.clone()), CapturedSndCurve { name, knots });
         }
         Ok(())
     }
@@ -92,16 +94,87 @@ impl AssetLinkSink for T5SoundCapture {
         s: &ZoneStream<'_>,
         rows: Ptr,
         count: usize,
-    ) -> fastfile_t5::Result<()> {
+    ) -> ZoneResult<()> {
         let mut groups = Vec::with_capacity(count);
         for i in 0..count {
             let row = rows.at(i * 80);
+            // Single player (zombies) reads the group's attenuation at 76;
+            // the one at 78 is multiplayer's.
             groups.push(crate::MixerGroup {
                 parent: s.i32_at(row, 68)?,
-                attenuation: f32::from(s.u16_at(row, 78)?) / 65535.0,
+                attenuation: f32::from(s.u16_at(row, 76)?) / 65535.0,
             });
         }
-        self.catalog.ingest_mixer_groups(AssetNamespace::T5, groups);
+        self.catalog.ingest_mixer_groups(NAMESPACE, groups);
+        Ok(())
+    }
+
+    fn capture_snd_snapshots(
+        &mut self,
+        s: &ZoneStream<'_>,
+        rows: Ptr,
+        count: usize,
+    ) -> ZoneResult<()> {
+        let mut snapshots = Vec::with_capacity(count);
+        for i in 0..count {
+            let row = rows.at(i * sz::SND_SNAPSHOT);
+            let name: Vec<u8> = (0..32)
+                .map_while(|n| s.u8_at(row, n).ok().filter(|&b| b != 0))
+                .collect();
+            let mut volumes = [1.0; 64];
+            for (group, volume) in volumes.iter_mut().enumerate() {
+                *volume = s.f32_at(row, sz::SND_SNAPSHOT_VOLUMES_OFF + group * 4)?;
+            }
+            snapshots.push(crate::MixSnapshot {
+                name: String::from_utf8_lossy(&name).into_owned(),
+                hash: s.u32_at(row, sz::SND_SNAPSHOT_HASH_OFF)?,
+                linked: s.u32_at(row, sz::SND_SNAPSHOT_LINKED_OFF)?,
+                fade_in: s.f32_at(row, sz::SND_SNAPSHOT_FADE_IN_OFF)?,
+                fade_out: s.f32_at(row, sz::SND_SNAPSHOT_FADE_OUT_OFF)?,
+                distance: s.f32_at(row, sz::SND_SNAPSHOT_DISTANCE_OFF)?,
+                volumes,
+            });
+        }
+        self.catalog
+            .ingest_mix_snapshots(NAMESPACE, snapshots, None);
+        Ok(())
+    }
+
+    /// The sound driver's contexts. A match starts with `mature` at
+    /// `explicit`: the sound system's start sets it from `cg_mature`
+    /// (default 1) outside online games.
+    fn capture_snd_contexts(
+        &mut self,
+        s: &ZoneStream<'_>,
+        rows: Ptr,
+        count: usize,
+    ) -> ZoneResult<()> {
+        let mut defs = Vec::with_capacity(count);
+        for i in 0..count {
+            let row = rows.at(i * 40);
+            let mut values = [0; 8];
+            for (n, value) in values.iter_mut().enumerate() {
+                *value = s.u32_at(row, 8 + n * 4)?;
+            }
+            defs.push(crate::SoundContextDef {
+                ty: s.u32_at(row, 0)?,
+                values,
+            });
+        }
+        let hash = asset_transport::sab::snd_hash_name;
+        self.catalog.ingest_sound_contexts(
+            NAMESPACE,
+            crate::SoundContexts {
+                defs,
+                initial: vec![(hash("mature"), hash("explicit"))],
+            },
+        );
+        Ok(())
+    }
+
+    fn capture_snd_snapshot_groups(&mut self, count: usize) -> ZoneResult<()> {
+        self.catalog
+            .ingest_mix_snapshots(NAMESPACE, Vec::new(), Some(count));
         Ok(())
     }
 
@@ -111,11 +184,11 @@ impl AssetLinkSink for T5SoundCapture {
         _ty: AssetType,
         _slot: Ptr,
         _insert_slot: Option<Ptr>,
-    ) -> fastfile_t5::Result<()> {
+    ) -> ZoneResult<()> {
         Ok(())
     }
 
-    fn alias(&mut self, _ty: AssetType, _slot: Ptr, _target: Ptr) -> fastfile_t5::Result<()> {
+    fn alias(&mut self, _ty: AssetType, _slot: Ptr, _target: Ptr) -> ZoneResult<()> {
         Ok(())
     }
 
@@ -124,7 +197,7 @@ impl AssetLinkSink for T5SoundCapture {
         name: &str,
         data: &[u8],
         zlib_compressed: bool,
-    ) -> fastfile_t5::Result<()> {
+    ) -> ZoneResult<()> {
         self.catalog.ingest_rawfile(name, data, zlib_compressed);
         Ok(())
     }
@@ -135,7 +208,7 @@ impl AssetLinkSink for T5SoundCapture {
         header: Ptr,
         pcm: Ptr,
         data_len: usize,
-    ) -> fastfile_t5::Result<()> {
+    ) -> ZoneResult<()> {
         let name = name_at(s, header, sz::LOADED_SOUND_NAME_OFF).unwrap_or_else(String::new);
         let asset = header.at(sz::LOADED_SOUND_ASSET_OFF);
         let t5_format = s.i32_at(asset, sz::SND_ASSET_FORMAT_OFF).unwrap_or(-1);
@@ -189,7 +262,7 @@ impl AssetLinkSink for T5SoundCapture {
         Ok(())
     }
 
-    fn bind_last_loaded_to_sound_file(&mut self, file: Ptr) -> fastfile_t5::Result<()> {
+    fn bind_last_loaded_to_sound_file(&mut self, file: Ptr) -> ZoneResult<()> {
         if let Some(name) = self.last_loaded_name.clone() {
             self.file_to_loaded.insert(file_key(file), name);
         } else {
@@ -198,12 +271,7 @@ impl AssetLinkSink for T5SoundCapture {
         Ok(())
     }
 
-    fn bind_streamed_sound_file(
-        &mut self,
-        file: Ptr,
-        dir: &str,
-        name: &str,
-    ) -> fastfile_t5::Result<()> {
+    fn bind_streamed_sound_file(&mut self, file: Ptr, dir: &str, name: &str) -> ZoneResult<()> {
         self.file_to_streamed
             .insert(file_key(file), (dir.to_owned(), name.to_owned()));
         Ok(())
@@ -215,7 +283,7 @@ impl AssetLinkSink for T5SoundCapture {
         list: Ptr,
         count: usize,
         head: Option<Ptr>,
-    ) -> fastfile_t5::Result<()> {
+    ) -> ZoneResult<()> {
         let name = name_at(s, list, sz::SND_ALIAS_LIST_NAME_OFF).unwrap_or_else(String::new);
         let Some(arr) = head else {
             if count > 0 {
@@ -407,6 +475,12 @@ impl T5SoundCapture {
             t6_speaker_pan: None,
             limit_count: s.u8_at(row, sz::SND_ALIAS_LIMIT_COUNT_OFF).ok(),
             entity_limit_count: s.u8_at(row, sz::SND_ALIAS_ENTITY_LIMIT_COUNT_OFF).ok(),
+            snapshot_group: s.u8_at(row, sz::SND_ALIAS_SNAPSHOT_GROUP_OFF).ok(),
+            context: s
+                .u32_at(row, sz::SND_ALIAS_CONTEXT_TYPE_OFF)
+                .ok()
+                .zip(s.u32_at(row, sz::SND_ALIAS_CONTEXT_VALUE_OFF).ok())
+                .map(|(ty, value)| [ty, value]),
         }
     }
 }

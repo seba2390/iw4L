@@ -290,6 +290,9 @@ pub(crate) struct WeaponBodyFacts {
 
     pub cook_off_hold: bool,
 
+    /// The crosshair stays up with the sights raised.
+    pub keep_crosshair_when_ads: bool,
+
     pub clip_only: bool,
 
     pub has_detonator: bool,

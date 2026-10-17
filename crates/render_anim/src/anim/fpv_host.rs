@@ -84,6 +84,10 @@ pub enum FpvPoseRefuse {
 }
 
 #[derive(Default)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one per frame, rewritten in place"
+)]
 pub enum FpvPoseKind {
     #[default]
     Hide,

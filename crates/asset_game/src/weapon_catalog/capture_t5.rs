@@ -840,6 +840,8 @@ pub(super) fn capture_t5_body_facts(
     facts.timed_detonation = u8_at_t5(stream, body, sz::WEAPON_DEF_TIMED_DETONATION_OFF) != 0;
     facts.projectile_rotates = u8_at_t5(stream, body, sz::WEAPON_DEF_ROTATE_OFF) != 0;
     facts.cook_off_hold = u8_at_t5(stream, body, sz::WEAPON_DEF_COOK_OFF_HOLD_OFF) != 0;
+    facts.keep_crosshair_when_ads =
+        u8_at_t5(stream, body, sz::WEAPON_DEF_KEEP_CROSSHAIR_WHEN_ADS_OFF) != 0;
     facts.offhand_hold_is_cancelable =
         Some(u8_at_t5(stream, body, sz::WEAPON_DEF_OFFHAND_HOLD_IS_CANCELABLE_OFF) != 0);
     facts.parallel_bounce = read_f32_array_t5(stream, body, sz::WEAPON_DEF_PARALLEL_BOUNCE_OFF);

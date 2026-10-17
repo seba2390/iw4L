@@ -4,6 +4,7 @@
 
 pub mod fire;
 pub mod fog;
+pub mod hud;
 pub mod movement;
 pub mod post;
 pub mod turret;
@@ -385,10 +386,10 @@ pub enum ViewmodelAnim {
 /// Which of the code-drawn HUD pieces a mode shows, and how.
 #[derive(Clone, Copy, Debug)]
 pub struct HudRules {
-    /// The code-drawn HUD (hud elems, blood, reticle, killfeed, names, hints,
-    /// splash, playercard, flash, compass, score bar, scoreboard, the menus it
-    /// paints) applies to this mode.
-    pub code_hud: Rule<()>,
+    /// The code-drawn HUD (blood, reticle, damage icons, killfeed, names,
+    /// hints, splash, playercard, flash, compass, score bar, scoreboard):
+    /// Modern Warfare 2's pieces or the game's own.
+    pub code_hud: Rule<hud::CodeHud>,
     /// The game's own HUD menus draw the weapon info in place of the code weaponbar.
     pub game_hud_menus: bool,
     /// While the code-drawn HUD is unknown, the game's HUD menus, script hud

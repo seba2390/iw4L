@@ -32,9 +32,9 @@ changes a count updates its row.
 Each game section ends with its technical debt: work that is not a milestone
 but has to be paid off at some point. Those lists are plain bullets and do
 not count toward the percentage. Boundary figures are from 2026-10-14
-(`xtask/boundary/allow.txt` occurrences); warning figures are what
-`cargo xtask lints` counts on Linux (`xtask/lints/allow.txt`, 2026-10-17).
-Refresh them when a pull request pays some of it off.
+(`xtask/boundary/allow.txt` occurrences); refresh them when a pull request
+pays some of it off. The workspace has no clippy or rustc warnings, and CI
+keeps it that way (`cargo xtask lints --enforce`).
 
 ## Modern Warfare 2 — multiplayer
 
@@ -91,9 +91,6 @@ shared systems still call its crates directly. One bullet per piece of work:
 - `hud` 246 (`hud_iw4` 189) and `net` 164 (`playerstate_iw4` 61, `entity_iw4` 47).
 - Assets: 563 in `asset_game` (176), `asset_world` (139), `asset_material` (96),
   `assets` (82), `asset_audio` (49) and `asset_anim` (21).
-- Clippy: 89 warnings in Modern Warfare 2 crates and files (`hud_iw4`,
-  `weapon_iw4`, `fastfile_iw4`, `lighting_iw4`, `assets/src/lane/iw4.rs`, …)
-  and 14 in `fx_iw4`.
 - The script-gap ledger (`gamemode_iw4/src/gaps.rs`, `sim/src/script_gaps.rs`) is
   never raised, yet `sim::step` reports it every step.
 - `gamemode_iw4` is a `mixed` crate: its `GameModeKind` also carries the zombies
@@ -111,8 +108,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 151 of 610 |
-| Five (`t5:zombie_pentagon`) | 153 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 150 of 610 |
+| Five (`t5:zombie_pentagon`) | 152 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -120,7 +117,7 @@ Only the top-level items count.
   - [x] Zone data: the map's dynamic entities are drawn (Kino's 142 bottles, glasses, reels and paper stacks; Five's 215); they do not move or break yet (`t5.dynent.physics`).
   - [x] Vision sets and script fog: Kino's own vision draws through Black Ops' post chain (bloom, streaks, S-curve, film), picked and blended by its vision channels: `zombie_theater` from the server at start, `zombie_last_stand` while down and `zombie_death` while bleeding out, back on revive; the client scripts' calls reach the same channels (not yet seen in a run); server and client script fog (`setVolFog`, `setExpFog`, `setWaterFog`) blends and drives the world fog constants (`level_fog_init` at start, `dog_start` / `dog_stop` over 7 s). Open: the mission-failed fade, underwater and weapon-state channels, the post textures' sampler state.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state and primary light overrides (`makelight`, `_lights.csc`'s `fire_flicker`, `generic_pulsing` and power-on mixer via `lerpvector`), its own entities presented by the client itself (client-only map models, models it spawns, brush models; from the frame they spawn), its triggers (`touch`/`trigger`, `istouching`) and its entities' animation trees, Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks, vision and fog; 50 of 173 client builtins not implemented yet, so their sound snapshots and contexts do nothing yet).
+  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state and primary light overrides (`makelight`, `_lights.csc`'s `fire_flicker`, `generic_pulsing` and power-on mixer via `lerpvector`), its own entities presented by the client itself (client-only map models, models it spawns, brush models; from the frame they spawn), its triggers (`touch`/`trigger`, `istouching`) and its entities' animation trees, Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks, vision and fog, sound snapshots and contexts; 42 of 173 client builtins not implemented yet).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
@@ -159,7 +156,7 @@ Only the top-level items count.
   - [x] `MissionFailed` ramps client blur to 32 over `g_deathDelay` (4000 ms), `setblur` and `startfadingblur` drive player blur, and `deadscreen` owner draw 97 (`CG_DEADQUOTE`) draws `ui_deadquote` with its `death` sound and post-delay fade-out; save-game restore, `com_codeTimeScale` slow-motion and sound-mixer fade remain open (`t5.match.level_failed`).
 - [ ] The game's own HUD.
   - [x] Black Ops' HUD menus (weapon info, dpad, points column `competitivemodescores`) with its fonts, layout, safe area and name-hash paint order; script hud elems (round chalk, point popups, game over text); text and icon use hints (`HINT_NOICON`, `HINT_SEAT`, `HINT_ACTIVATE`, `HINT_HEALTH`, `HINT_FRIENDLY`, `HINT_SPECTATOR`, `HINT_TEAMPOT`, weapons).
-  - [ ] Code-drawn pieces (reticle, blood, damage feedback), the scoreboard.
+  - [x] Code-drawn pieces (Black Ops' crosshair and damage icons, no code blood), the TAB scoreboard.
 - [ ] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
   - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as IW4L's bar.
@@ -170,7 +167,7 @@ Only the top-level items count.
   - [x] The player's own footsteps: Black Ops' movement footstep events reach the client scripts' `CodeCallback_PlayerFootstep` (`_footsteps.csc`), which plays `fly_step_<sprint|run|walk|…>_plr_<surface>`.
   - [x] The client scripts' sounds by playback id: the local sound system plays each one, stops and fades it by its id (`stopsound`, `setsoundvolume`, `setsoundvolumerate`), and reports back whether it plays, how far and how long (`soundplaying`, `getplaybacktime`, `getknownlength`), which `_music.csc`'s transitions wait on.
   - [x] The player's jumps and landings reach the client scripts' `CodeCallback_PlayerJump` / `CodeCallback_PlayerLand` (`_footsteps.csc`: `fly_step_run_*`, `fly_land_*`), and their line emitters (`soundlineemitter`) play at the point of their line nearest the player (Kino's wind alleys and water pipes).
-  - [ ] Gear, other players' footsteps, ambient rooms, sound contexts and snapshots, `setsoundblend`, another player's automatic fire; a server `PlaySound` notify waits a fixed 2 s.
+  - [ ] Gear, other players' footsteps, reverb rooms (ambient rooms, sound contexts and mix snapshots run: #234), another player's automatic fire; a server `PlaySound` notify waits a fixed 2 s.
 - [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.
@@ -204,10 +201,6 @@ Only the top-level items count.
   `asset_game` (menu_catalog_t5.rs, weapon_catalog/capture_t5.rs),
   `asset_world`, `asset_material`, `asset_model` and `asset_audio`. Each one
   should move behind a `game_api` rule or into `game_t5`/`fastfile_t5`.
-- Clippy: 37 warnings in Black Ops code (`fastfile_t5`, `sound_load_t5.rs`,
-  `t5_light.rs`, `menu_catalog_t5.rs`, `world_t5.rs`, `natives/t5.rs`,
-  `capture_t5.rs`): disallowed `unwrap_or_default`, collapsible `if`s,
-  `chunks_exact` with a constant size.
 - Shared crates Black Ops runs on (`sim`, `hud`, `render_*`) carry most of
   the shared debt listed under Shared technical debt below.
 
@@ -337,10 +330,6 @@ Only the top-level items count. Runs are headless, with the test player
   (`sim/src/script/host/t6_zombies*`, `t6_gametype.rs`) and `ui/src/t6_menu.rs`
   are Black Ops II code living in shared crates; the zombies host is kept only
   for Origins until it runs Black Ops II's scripts, then it goes.
-- Clippy: 103 warnings in Black Ops II code, most in
-  `sim/src/script/host/t6_zombies.rs` (36), `game_t6/src/ui/scene/front_end.rs`
-  (27), `t6_zombies/origins_*.rs` (9), `assets/src/lane/t6.rs` (6) and
-  `ui/src/t6_menu.rs` (5).
 - Zombies maps need the patch zone Black Ops II downloads at launch
   (`t6.scripts.ffotd`); a machine without a capture in
   `~/.config/iw4l/captured/` or `<artifacts>/captured/` cannot start
@@ -402,13 +391,6 @@ Debt in the shared runtime that no single game owns.
   every game but are declared `game = "iw4"`. They sit in `render_frontend`
   (113), `render_anim` (44), `render_gpu` (44), `render_backend` (12),
   `render` (7), `console` (2), `session` and `render_scene` (1 each).
-- Clippy: 1,012 warnings across the workspace, 741 of them in shared code —
-  `sim` (118), `render_frontend` (82), `asset_game` (78), `hud` (47),
-  `render_anim` (46), `asset_world` (44), `fx` (41), `console` (33), `net`
-  (33) — and 28 in Modern Warfare 3 code (`fastfile_iw5`, `*_iw5.rs`). CI
-  fails on a new one (`cargo xtask lints --enforce`) and on any rustc
-  warning; `cargo fmt --all -- --check` and ruff on `scripts/` gate
-  formatting.
 - The headless `serve` launch installs `RuntimeRole::Listen`
   (`bootstrap/src/plugins.rs::add_runtime_plugins`); `RuntimeRole::Dedicated`
   and `NetPlugin::dedicated` exist, but no launch selects them.
@@ -424,7 +406,6 @@ How measured (2026-10-15, checkout iw4L-docs at 7d337727, nothing built):
 - CI: read `.github/workflows/ci.yml`.
 - Dedicated: read `bootstrap/src/launch.rs` (`LaunchMode::Serve` → `Role::Dedicated`
   → `add_runtime_plugins`) and `bootstrap/src/plugins.rs`.
-- Warnings: `cargo xtask lints` (2026-10-17, Linux, the pinned toolchain),
-  grouped by package and by file name. The `*_iw4::` total in the MW2 section is 2,711 by the same awk
+- The `*_iw4::` total in the MW2 section is 2,711 by the same awk
   (`$3 ~ /_iw4::$/`), not "about 2,800".
 -->

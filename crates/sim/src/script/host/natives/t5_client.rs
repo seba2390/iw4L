@@ -289,6 +289,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .start_loop(LoopSource::Entity(id), alias);
         Ok(Value::Int(id))
     });
+    // `ent isPlayingLoopSound()`: whether the entity holds a loop sound; a
+    // receiver that is not an entity is printed and answers false.
+    registry.register(Method, "isplayingloopsound", |world, receiver, _| {
+        let Ok(id) = super::engine::entity_id(world, receiver) else {
+            diag::warn!(Sim, "csc: isplayingloopsound: not an entity");
+            return Ok(Value::Int(0));
+        };
+        Ok(Value::Int(
+            world
+                .resource::<ClientOutput>()
+                .loops
+                .contains_key(&LoopSource::Entity(id))
+                .into(),
+        ))
+    });
     registry.register(Method, "stoploopsound", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
         loop_fade(args, 0, "stoploopsound")?;
@@ -1411,6 +1426,88 @@ fn register_sound_ids(registry: &mut NativeRegistry) {
         );
         Ok(Value::Undefined)
     });
+    // The mix snapshot setters: the group, ambient, health and level fade
+    // slots (2, 1, 8 and 10). The health and level fade weights are clamped
+    // to 0..1; the others are put at full weight.
+    macro_rules! snapshot_setter {
+        ($name:literal, $slot:literal, $weighted:literal, $arity:literal) => {
+            registry.register(Function, $name, |world, _, args| {
+                set_snapshot(world, args, $slot, $weighted, $arity)
+            });
+        };
+    }
+    // `setReverb(priority, room, [dry 1], [wet 0.5], [fade 0])` and
+    // `deactivateReverb(priority, [fade 0])`: a wrong argument count or
+    // priority is printed, not raised; the fade is taken to msec (rounded,
+    // no less than 0).
+    registry.register(Function, "setreverb", |world, _, args| {
+        if !(2..=5).contains(&args.len()) {
+            diag::warn!(Sim, "csc: setreverb: Incorrect number of parameters");
+            return Ok(Value::Undefined);
+        }
+        let fade = optional(args, 4, float)?.unwrap_or(0.0);
+        let wet = optional(args, 3, float)?.unwrap_or(0.5);
+        let dry = optional(args, 2, float)?.unwrap_or(1.0);
+        let room = string(args, 1)?.to_string();
+        let priority = reverb_priority(&string(args, 0)?);
+        world.resource_mut::<ClientOutput>().reverb[priority] =
+            Some((room, dry, wet, reverb_fade_ms(fade)));
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "deactivatereverb", |world, _, args| {
+        let fade = match args.len() {
+            1 => 0.0,
+            2 => float(args, 1)?,
+            _ => {
+                diag::warn!(Sim, "csc: deactivatereverb: Incorrect number of params.");
+                return Ok(Value::Undefined);
+            }
+        };
+        let _ = reverb_fade_ms(fade);
+        let priority = reverb_priority(&string(args, 0)?);
+        world.resource_mut::<ClientOutput>().reverb[priority] = None;
+        Ok(Value::Undefined)
+    });
+    // Black Ops' own message names the wrong builtin.
+    registry.register(Function, "setsoundcontext", |world, _, args| {
+        if args.len() != 2 {
+            return Err("setAmbientSnapshot takes two parameters.".into());
+        }
+        let value = string(args, 1)?.to_string();
+        let context = string(args, 0)?.to_string();
+        world.resource_mut::<ClientOutput>().sound_commands.push(
+            crate::ScriptAudioCommand::ClientSoundContext {
+                client: crate::ClientId(0),
+                context,
+                value,
+            },
+        );
+        Ok(Value::Undefined)
+    });
+    snapshot_setter!(
+        "setgroupsnapshot",
+        2,
+        false,
+        "setGroupSnapshot takes one parameter."
+    );
+    snapshot_setter!(
+        "setambientsnapshot",
+        1,
+        false,
+        "setAmbientSnapshot takes one parameter."
+    );
+    snapshot_setter!(
+        "sethealthsnapshot",
+        8,
+        true,
+        "setHealthSnapshot takes two parameters."
+    );
+    snapshot_setter!(
+        "setlevelfadesnapshot",
+        10,
+        true,
+        "setLevelFadeSnapshot takes two parameters."
+    );
     registry.register(Function, "setsoundvolumerate", |world, _, args| {
         if args.len() != 2 {
             return Err("setsoundvolumerate takes two parameters.".into());
@@ -1429,6 +1526,71 @@ fn register_sound_ids(registry: &mut NativeRegistry) {
         );
         Ok(Value::Undefined)
     });
+}
+
+/// A reverb priority's slot: the level's (`snd_enveffectsprio_level`) or the
+/// shellshock's; any other name is printed and taken as the level's.
+fn reverb_priority(name: &str) -> usize {
+    if name.eq_ignore_ascii_case("snd_enveffectsprio_level") {
+        0
+    } else if name.eq_ignore_ascii_case("snd_enveffectsprio_shellshock") {
+        1
+    } else {
+        {
+            diag::warn!(
+                Sim,
+                "csc: priority must be 'snd_enveffectsprio_level' or 'snd_enveffectsprio_shellshock'"
+            );
+            0
+        }
+    }
+}
+
+/// A reverb fade in seconds as msec: rounded, and 0 when below 1.
+fn reverb_fade_ms(seconds: f32) -> i32 {
+    let ms = (f64::from(seconds * 1000.0) + f64::from(2.0f32.powi(-30))).round_ties_even();
+    let ms = if ms.is_finite() && ms.abs() < 2_147_483_648.0 {
+        ms as i32
+    } else {
+        i32::MIN
+    };
+    if ms < 1 { 0 } else { ms }
+}
+
+/// Puts a mix snapshot in one of the client's snapshot slots.
+fn set_snapshot(
+    world: &mut World,
+    args: &[Value],
+    slot: u8,
+    weighted: bool,
+    arity: &str,
+) -> Result<Value, String> {
+    if args.len() != 1 + usize::from(weighted) {
+        return Err(arity.into());
+    }
+    let value = if weighted {
+        let weight = float(args, 1)?;
+        let mut value = weight;
+        if 0.0 <= weight - 1.0 {
+            value = 1.0;
+        }
+        if 0.0 <= -weight {
+            value = 0.0;
+        }
+        value
+    } else {
+        1.0
+    };
+    let name = string(args, 0)?.to_string();
+    world.resource_mut::<ClientOutput>().sound_commands.push(
+        crate::ScriptAudioCommand::ClientSnapshot {
+            client: crate::ClientId(0),
+            slot,
+            name,
+            value,
+        },
+    );
+    Ok(Value::Undefined)
 }
 
 fn sound_status(world: &World, id: i32) -> Option<crate::ClientSoundStatus> {

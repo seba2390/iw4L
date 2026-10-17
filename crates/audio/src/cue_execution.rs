@@ -100,6 +100,10 @@ pub(crate) struct CueMix {
     pub epoch: u64,
     pub gain: LiveGain,
     pub channels: Arc<HashMap<asset_audio::ChannelKey, LiveGain>>,
+    /// The mix snapshot volume of each snapshot group, by namespace.
+    pub snapshot_groups: Arc<HashMap<(asset_core::AssetNamespace, u8), LiveGain>>,
+    /// Each sound context's current value, by context (name hashes).
+    pub contexts: Arc<std::sync::RwLock<HashMap<u32, u32>>>,
 }
 
 pub(crate) struct CueTrigger {
@@ -148,6 +152,10 @@ pub(crate) struct CueStart {
     pub lease: CueLease,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a step result consumed at once; boxing would allocate every cue"
+)]
 pub(crate) enum CueStep {
     Waiting,
     Finished,
@@ -308,6 +316,11 @@ impl CueWork {
                 .policy
                 .channel
                 .and_then(|channel| mix.channels.get(&channel))
+                .cloned();
+            media.snapshot_gain = cue
+                .policy
+                .snapshot_group
+                .and_then(|key| mix.snapshot_groups.get(&key))
                 .cloned();
         }
         let mut priority = cue

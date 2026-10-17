@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use asset_game::{FontDef, MapTeamSettings, MenuCatalog, SessionTeamSettings};
 use assets::PreparedLocalizedStrings;
 use bevy::prelude::*;
-use entity_iw4::client_state_name;
+pub(crate) use entity_iw4::client_state_name;
 use frame::LaunchIdentity;
 use gamemode_iw4::{ParsedScores, Score};
-use hud_iw4::{ALIGN_CENTER, normalized_text_scale};
+pub(crate) use hud_iw4::{ALIGN_CENTER, ALIGN_SUB, ALIGN_VIEWABLE, normalized_text_scale};
 use net::{
     ClientActionInput, LocalPresentClient, MasterBridge, MasterBridgeState, PresentedSnapshot,
     Scoreboard,

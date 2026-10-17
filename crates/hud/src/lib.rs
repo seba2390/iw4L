@@ -11,6 +11,7 @@ mod emp_static;
 mod expr_cache;
 mod flash;
 mod font_overlay;
+mod game_code_hud;
 mod gaps;
 mod gpu_list;
 mod hud_elems;

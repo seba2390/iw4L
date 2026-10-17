@@ -1,5 +1,6 @@
 mod catalog;
 mod client_catalog;
+mod code_hud;
 mod fire;
 mod fire_sound;
 mod grenade;
@@ -180,11 +181,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     binds_objectives: false,
     host_rules: false,
     hud: HudRules {
-        code_hud: Rule::Unknown(unknown!(
-            "t5.hud.code_hud",
-            "Black Ops zombies' code-drawn HUD: hud elem placement, blood, reticle, killfeed, names, hints, flash",
-            "Black Ops' HUD rules from its executable, or reference shots of each piece"
-        )),
+        code_hud: Rule::Known(game_api::hud::CodeHud::Game(&code_hud::CODE_HUD)),
         game_hud_menus: true,
         script_hud: true,
         scoreboard: false,

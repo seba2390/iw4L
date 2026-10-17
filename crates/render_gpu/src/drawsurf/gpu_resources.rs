@@ -905,6 +905,10 @@ pub struct SamplerTable {
 const RETAIL_MIP_FILTERS: [u32; 12] = [0, 1, 2, 0, 2, 2, 0, 1, 1, 0, 0, 0];
 
 impl SamplerTable {
+    #[expect(
+        clippy::result_large_err,
+        reason = "built once at startup; a mismatch reports both tables"
+    )]
     pub fn produce(inputs: SamplerRendererInputs) -> Result<Self, SamplerTableBuildRefusal> {
         let mip_mode = usize::from(inputs.mip_mode);
         if mip_mode >= 4 {
@@ -984,6 +988,10 @@ impl SamplerTable {
         Ok(Self { words })
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "built once at startup; a mismatch reports both tables"
+    )]
     pub fn captured_2026_08_11() -> Result<Self, SamplerTableBuildRefusal> {
         let table = Self::produce(RETAIL_SAMPLER_PROFILE_2026_08_11)?;
         if table.words != RETAIL_SAMPLER_WORDS_2026_08_11 {

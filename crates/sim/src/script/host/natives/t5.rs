@@ -1470,6 +1470,11 @@ fn register_entity(registry: &mut NativeRegistry) {
             .set_object_field(id, "owner", Value::Undefined);
         Ok(Value::Undefined)
     });
+    // Black Ops' single player handles these with an empty function: no
+    // receiver or argument check, nothing done.
+    for name in ["setsoundblend", "setreverb", "deactivatereverb"] {
+        registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
+    }
     macro_rules! entity_accepts {
         ($($name:literal),* $(,)?) => {$(
             registry.register(Method, $name, |world, receiver, _| {
