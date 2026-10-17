@@ -61,6 +61,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 fn sync(client: &mut bevy_ecs::prelude::World) {
     game::sync(client);
     effects::sync_script_vectors(client);
+    entity::sync_third_person_spectate(client);
     fog::sync(client);
     let now = client
         .get_resource::<crate::step::StepRequest>()
