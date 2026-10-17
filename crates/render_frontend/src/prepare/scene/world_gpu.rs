@@ -184,18 +184,18 @@ pub(crate) fn publish_gpu_submit_demand(
                 | WorldSpawnPhase::Gpu
         )
     });
-    let world_generation = generation.map(|g| g.stamp()).unwrap_or_default();
+    let world_generation = generation.map(|g| g.stamp()).unwrap_or(WorldStamp(None));
     let overlay_gpu_wait = spawn
         .as_ref()
         .is_some_and(|job| job.phase == WorldSpawnPhase::Gpu);
     let spawn_world = spawn
         .as_ref()
         .map(|job| job.images.pipeline_world_materials.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(|| Arc::new(std::collections::HashSet::new()));
     let spawn_smodel = spawn
         .as_ref()
         .map(|job| job.images.pipeline_smodel_materials.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(|| Arc::new(std::collections::HashSet::new()));
     tracker.sync_spawn(spawn_world, spawn_smodel);
     let (pipeline_world_materials, pipeline_smodel_materials, pipeline_demand_revision) =
         tracker.snapshot();

@@ -432,7 +432,6 @@ pub fn apply_dpvs_cull(
         stats.eye_cell_unresolved = stats.eye_cell_unresolved.saturating_add(1);
     }
     stats.visible_cells = vis.count_ones();
-    drop(vis);
     stats.cell_vis.clone_from(&words);
     stats.cell_vis_count = dpvs.cell_count;
     stats.cell_vis_all = eye_cell.is_none();

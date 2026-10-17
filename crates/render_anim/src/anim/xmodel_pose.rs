@@ -262,7 +262,7 @@ pub(crate) fn meshes_from_blended(
             surface_index: 0,
             mesh,
             material: None,
-            packed_vertices: posed_packed.unwrap_or_default(),
+            packed_vertices: posed_packed.unwrap_or_else(Vec::new),
             owner: FpvSurfOwner::Gun,
             model: 0,
         }]);
@@ -352,7 +352,7 @@ pub(crate) fn meshes_from_blended(
             .as_ref()
             .and_then(|vertices| vertices.get(first_vertex..vertex_end))
             .map(<[_]>::to_vec)
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         out.push(PosedModelSurface {
             surface_index,
             mesh,
@@ -524,7 +524,7 @@ pub fn smodel_surfaces_from_blended(
             surface_index: 0,
             vert_n: vertex_n,
             indices: skel.indices.to_vec(),
-            packed_vertices: posed_packed.unwrap_or_default(),
+            packed_vertices: posed_packed.unwrap_or_else(Vec::new),
         }]);
     }
     let lod_range = skel.surfaces_for_lod(lod);
@@ -568,7 +568,7 @@ pub fn smodel_surfaces_from_blended(
             .as_ref()
             .and_then(|vertices| vertices.get(first_vertex..vertex_end))
             .map(<[_]>::to_vec)
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         out.push(PosedSmodelSurface {
             surface_index,
             vert_n: vertex_count,

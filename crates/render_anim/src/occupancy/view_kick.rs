@@ -512,7 +512,9 @@ fn apply_fpv_lens_fov(
     b_position_to_ads: bool,
     actions: Option<&mut ClientActionInput>,
 ) -> Option<f32> {
-    let facts = facts.filter(|f| f.body_resolved).unwrap_or_default();
+    let facts = facts
+        .filter(|f| f.body_resolved)
+        .unwrap_or_else(WeaponFpvFacts::default);
     let overlay = WeaponAdsOverlayFacts {
         ads_zoom_in_frac: facts.ads_zoom_in_frac,
         ads_zoom_out_frac: facts.ads_zoom_out_frac,

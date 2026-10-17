@@ -356,7 +356,7 @@ fn emit_world_static_lane(
         let surface_samplers = world_plan
             .and_then(|plan| plan.surface_sampler_inputs.get(usize::from(item.surf)))
             .copied()
-            .unwrap_or_default();
+            .unwrap_or_else(render_frame::SurfaceSamplerInputs::default);
         let world_from_local =
             scene
                 .and_then(|scene| scene.cull.as_ref())
@@ -631,7 +631,9 @@ pub(crate) fn rebuild_static_draw_lane(
         .unwrap_or(&[]);
     let world_id = world_list.draw_items_id;
     let vis_id = dpvs.as_ref().map(|stats| stats.smodel_vis_id).unwrap_or(0);
-    let world_generation = world_generation.map(|g| g.stamp()).unwrap_or_default();
+    let world_generation = world_generation
+        .map(|g| g.stamp())
+        .unwrap_or(WorldStamp(None));
     let eye = prepared.as_ref().filter(|v| v.ready).map(|v| v.eye);
     let lod_args = lod_ramp.args();
     let eye_key = eye_lod_reuse_key(eye, lod_args);

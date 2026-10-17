@@ -654,7 +654,7 @@ pub fn fill_spot_shadow_caster_plan(
                     .map(|d| render_frontend::scene_info_entnum(d.info))
                     .collect()
             })
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         let pose_ok: Vec<bool> = gfx
             .map(|s| {
                 s.scene_dobjs
@@ -662,7 +662,7 @@ pub fn fill_spot_shadow_caster_plan(
                     .map(|d| lighting_iw4::spot_shadow_175d0_pose_ok(d.cull_gate))
                     .collect()
             })
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         spot_shadow_fill_scene_dobj_vis(
             &mut dobj_vis,
             slot.slot_index,

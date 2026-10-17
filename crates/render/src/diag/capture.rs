@@ -310,7 +310,7 @@ pub(crate) fn capture_frame(
         .map(|s| s.g0_world_surfs.len() as u32)
         .unwrap_or(0);
     let facts = CaptureFrameFacts {
-        screen: screen.map(|s| *s).unwrap_or_default(),
+        screen: screen.map(|s| *s).unwrap_or(AppScreen::MainMenu),
         loading_overlay: loading.is_some(),
         has_world: has_world
             .map(|w| *w.get() == frame::MatchScope::Live)

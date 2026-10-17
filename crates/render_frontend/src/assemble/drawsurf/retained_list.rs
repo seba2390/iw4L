@@ -216,7 +216,7 @@ fn emit_world_sun_shadow_surf(
         .surface_sampler_inputs
         .get(surf)
         .copied()
-        .unwrap_or_default();
+        .unwrap_or_else(super::SurfaceSamplerInputs::default);
 
     let world_rank = world_surface_rank(Some(cull), surf, packed, catalog);
     plan.items.push(with_catalog(

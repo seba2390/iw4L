@@ -510,7 +510,7 @@ fn presented_world_objects<'a>(
 
 fn glass_snapshot_rows(snap: Option<&sim::Snapshot>) -> Vec<GlassSnapRow> {
     snap.map(|snap| rows_from_world_objects(&snap.meta.world_objects))
-        .unwrap_or_default()
+        .unwrap_or_else(Vec::new)
 }
 
 fn glass_viewer_is_archived(snap: Option<&sim::Snapshot>, local: Option<sim::ClientId>) -> bool {
