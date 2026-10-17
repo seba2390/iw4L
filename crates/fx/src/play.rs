@@ -62,6 +62,15 @@ pub fn play_bolted(
     play_with_bolt(host, req, Some(target), true)
 }
 
+/// A bolted effect its caller keeps owning ([`PlayResult::Held`]).
+pub fn spawn_bolted(
+    host: &mut FxSystemHost,
+    req: FxPlayRequest<'_>,
+    target: FxBoltTarget,
+) -> PlayResult {
+    play_with_bolt(host, req, Some(target), false)
+}
+
 fn play_with_bolt(
     host: &mut FxSystemHost,
     req: FxPlayRequest<'_>,

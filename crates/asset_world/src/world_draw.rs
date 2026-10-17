@@ -386,6 +386,8 @@ pub struct WorldDraw {
 
     pub t5_sun_parse_exposure: Option<f32>,
     pub t6_exposure: Option<f32>,
+    /// The map's fog volumes, for a game whose frame fog draws them.
+    pub world_fog: Option<game_api::fog::WorldFogData>,
 
     pub sky_dynamic_intensity: Option<[f32; 4]>,
 
@@ -933,6 +935,7 @@ pub fn build_world_draw(
             sun_effects,
             t5_sun_parse_exposure: None,
             t6_exposure: None,
+            world_fog: None,
             sky_dynamic_intensity: None,
             t5_sun_light: None,
             t5_tree_scatter_intensity: None,

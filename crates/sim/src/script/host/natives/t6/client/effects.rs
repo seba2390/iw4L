@@ -70,13 +70,8 @@ struct LightState {
 struct ClientEffects {
     /// Loaded effect names by 1-based effect id.
     effects: Vec<String>,
-    /// Tag and viewmodel effect handles and the client time (ms) they
-    /// started at.
-    playing: BTreeMap<i32, i64>,
     /// The local client's current naked visionset name.
     naked_vision: Option<String>,
-    /// The local client's active world fog bank mask.
-    world_fog_bank: u16,
     /// The local client's mapped filter material names (`map_material`).
     mapped_materials: [Option<String>; FILTER_MATERIAL_SLOTS],
     /// Entities turned into primary lights (`makelight`), by client object id.
@@ -89,9 +84,7 @@ impl Default for ClientEffects {
     fn default() -> Self {
         Self {
             effects: Vec::new(),
-            playing: BTreeMap::new(),
             naked_vision: None,
-            world_fog_bank: 0,
             mapped_materials: std::array::from_fn(|_| None),
             lights: BTreeMap::new(),
             hide_fade_color: [0.0; 3],
@@ -326,14 +319,6 @@ fn orient_angles(
     Ok(axis_angles([forward, left, up]))
 }
 
-/// Allocates a client FX handle and marks it playing on this tick.
-fn start_fx_handle(world: &mut World) -> i32 {
-    let now = now_ms(world);
-    let handle = world.resource_mut::<ClientOutput>().effect_handle();
-    state(world).playing.insert(handle, now);
-    handle
-}
-
 /// Emits an effect on the server's presentation world when the effect asset is
 /// present.
 fn emit_fx_at(world: &World, id: i32, origin: [f32; 3], angles: [f32; 3]) {
@@ -482,6 +467,7 @@ fn play_point_effect(
                 begin_ms: Some(begin),
                 end_ms: None,
                 end: crate::EffectEnd::Playing,
+                bolt: None,
             },
         );
     }
@@ -499,10 +485,12 @@ fn end_effect(world: &mut World, handle: i32, end: crate::EffectEnd) {
     {
         effect.end = end;
     }
-    state(world).playing.remove(&handle);
 }
 
-/// `playfxontag(localclientnum, id, entity, tag)`.
+/// `playfxontag(localclientnum, id, entity, tag)`: plays an effect bolted
+/// to the entity's model at the tag's bone (the entity itself when its
+/// model has no such tag) from now, answering its handle; the effect system
+/// holds it until its elements are gone (`isfxplaying`).
 fn play_fx_on_tag(world: &mut World, args: &[Value]) -> Result<Value, String> {
     let client = local_client(args, 0)?;
     let id = int(args, 1)?;
@@ -516,48 +504,85 @@ fn play_fx_on_tag(world: &mut World, args: &[Value]) -> Result<Value, String> {
         return Err(format!("CScr_PlayFX: invalid effect id {id}"));
     }
     let tag = string(args, 3)?;
-    let snapshot_number = client_entity(world, &args[2]).map(|(number, _)| number);
-    let fallback_origin = entity_origin(world, ent_id);
-    let fallback_angles = entity_angles(world, ent_id);
-    if let Some(name) = effect_name(world, id) {
-        with_server(world, |server| {
-            if server
-                .resource::<RoundScript>()
-                .restart
-                .as_ref()
-                .is_some_and(|plan| plan.absent_effects.contains(&name))
-            {
-                return;
-            }
-            let (origin, angles) = snapshot_number
-                .and_then(|number| server_object(server, number))
-                .and_then(|srv_id| {
-                    crate::script::host::presence::tag_world(server, srv_id, &tag)
-                        .map(|(pos, axis)| (pos, math_iw4::axis_to_angles(axis)))
-                })
-                .unwrap_or((fallback_origin, fallback_angles));
-            let axis = angles_axis(angles);
-            let effect = crate::frame::FrameWorld::from_world(server).effect_name_index(&name);
-            crate::script::host::natives::engine::play_fx_at(
-                server, effect, origin, axis[0], axis[2],
+    let server_id = client_entity(world, &args[2])
+        .map(|(number, _)| number)
+        .and_then(|number| with_server(world, |server| server_object(server, number)).flatten())
+        .or_else(|| super::game::drawn_by(world, ent_id));
+    let mut origin = entity_origin(world, ent_id);
+    let mut angles = entity_angles(world, ent_id);
+    let mut bolt = None;
+    if let Some(server_id) = server_id {
+        let (number, bone, tag_pose) = with_server(world, |server| {
+            let (number, bone, _) = crate::script::host::natives::engine::tag_bolt(
+                server,
+                &Value::Object(server_id),
+                &tag,
             );
-        });
+            let pose = crate::script::host::presence::tag_world(server, server_id, &tag);
+            (number, bone, pose)
+        })
+        .unwrap_or((None, None, None));
+        let number = number.and_then(|number| u16::try_from(number).ok());
+        match (tag.is_empty(), bone, tag_pose) {
+            // t6.csc.fx.actor_tags: a tag IW4L finds on the entity's model
+            // but cannot index on its drawn model plays at the tag's place.
+            (false, None, Some((place, axis))) => {
+                origin = place;
+                angles = math_iw4::axis_to_angles(axis);
+            }
+            (_, bone, pose) => {
+                if let Some((place, _)) = pose {
+                    origin = place;
+                }
+                bolt = number.map(|number| crate::EffectBolt::Entity {
+                    number,
+                    bone: bone
+                        .filter(|_| !tag.is_empty())
+                        .and_then(|bone| u16::try_from(bone).ok()),
+                });
+            }
+        }
     }
-    Ok(Value::Int(start_fx_handle(world)))
+    let begin = now_ms(world) as i32;
+    let handle = play_point_effect(world, id, origin, angles, begin);
+    if let Some(effect) = world
+        .resource_mut::<ClientOutput>()
+        .effects
+        .get_mut(&handle)
+    {
+        effect.bolt = bolt;
+    }
+    Ok(Value::Int(handle))
 }
 
 /// `playviewmodelfx(localclientnum, id, tag)`: plays an effect bolted to the
-/// local client's viewmodel.
+/// local client's viewmodel at the tag's bone (the viewmodel itself when it
+/// has no such tag) from now, held as `playfxontag`'s.
 fn play_viewmodel_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
     local_client(args, 0)?;
-    let _id = int(args, 1)?;
+    let id = int(args, 1)?;
     let tag = string(args, 2)?;
     if tag.is_empty() {
         return Err("PlayViewmodelFX(): unable to find viewmodel tag.\n".into());
     }
-    // t6.csc.fx.viewmodel: IW4L has no client viewmodel DObj to bolt
-    // first-person weapon effects onto.
-    Ok(Value::Int(start_fx_handle(world)))
+    let eye = with_server(world, |server| {
+        crate::script_player::eye(
+            &crate::frame::FrameWorld::from_world(server),
+            crate::ClientId(LOCAL_CLIENT as u32),
+        )
+    })
+    .flatten()
+    .unwrap_or([0.0; 3]);
+    let begin = now_ms(world) as i32;
+    let handle = play_point_effect(world, id, eye, [0.0; 3], begin);
+    if let Some(effect) = world
+        .resource_mut::<ClientOutput>()
+        .effects
+        .get_mut(&handle)
+    {
+        effect.bolt = Some(crate::EffectBolt::Viewmodel { tag });
+    }
+    Ok(Value::Int(handle))
 }
 
 /// `spawnfx(localclientnum, id, origin, delay, [forward], [up])`.
@@ -789,37 +814,32 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "isfxplaying", |world, _, args| {
         local_client(args, 0)?;
         let handle = int(args, 1)?;
-        if world
+        // Point, tag and viewmodel effects alike: the effect system holds
+        // each until its elements are gone.
+        let playing = world
             .resource::<ClientOutput>()
             .effects
-            .contains_key(&handle)
-        {
-            return Ok(Value::Int(1));
-        }
-        let now = now_ms(world);
-        // t6.csc.fx.lifetime: an effect on a tag or the viewmodel answers as
-        // playing on the tick it started and finished once time advances or
-        // stopfx/deletefx stops it.
-        let mut fx = state(world);
-        let active = match fx.playing.get(&handle).copied() {
-            Some(started) if now <= started => true,
-            Some(_) => {
-                fx.playing.remove(&handle);
-                false
-            }
-            None => false,
-        };
-        Ok(Value::Int(active.into()))
+            .contains_key(&handle);
+        Ok(Value::Int(playing.into()))
     });
 
-    // bullettracer(start, end): spawns a client bullet tracer beam.
+    // bullettracer(start, end): the engine's tracer spawn for the local
+    // client, from no entity and no weapon. A segment of 5 units or less
+    // spawns nothing; a longer one first asks whether the null entity is
+    // using the local player's weapon, reading its fields.
     registry.register(Function, "bullettracer", |_, _, args| {
-        vector(args, 0)?;
-        vector(args, 1)?;
-        // t6.csc.fx.bullet_tracer: the engine spawns a tracer local entity
-        // with its `defaulttracer` definition; IW4L has no Black Ops 2
-        // tracer definitions or tracer drawing.
-        Ok(Value::Undefined)
+        let start = vector(args, 0)?;
+        let end = vector(args, 1)?;
+        let delta = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+        let length = (delta[1] * delta[1] + delta[0] * delta[0] + delta[2] * delta[2]).sqrt();
+        if length <= 5.0 {
+            return Ok(Value::Undefined);
+        }
+        Err(
+            "t6.csc.fx.bullet_tracer: Black Ops 2 reads the null entity it passes to its \
+             tracer spawn and faults"
+                .into(),
+        )
     });
 
     // ent earthquake(scale, duration, source, radius): shakes the local
@@ -994,9 +1014,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setworldfogactivebank", |world, _, args| {
         local_client(args, 0)?;
         let bank = (int(args, 1)? & 65535) as u16;
-        // t6.csc.fog.world_bank: `getworldfogscriptid` tests the mask; the
-        // renderer draws no world fog volumes by bank.
-        state(world).world_fog_bank = bank;
+        with_server(world, |server| {
+            super::fog::set_bank(server, LOCAL_CLIENT as u32, bank);
+        });
         Ok(Value::Undefined)
     });
 
@@ -1012,7 +1032,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         })
         .flatten()
         .unwrap_or([0.0; 3]);
-        let bank = u32::from(state(world).world_fog_bank);
+        let bank = u32::from(super::fog::bank(world));
         let id = ensure_fog_volumes(world)
             .0
             .iter()

@@ -1004,6 +1004,7 @@ pub fn publish_fpv_dobj_pose(
             continue;
         };
         let dobj = fx_iw4::FX_BOLT_VIEWMODEL_DOBJ_BASE + hand as u32;
+        bolts.bone_names[hand] = Some(frame.names.clone());
 
         if dobj_poses
             .publish(dobj, true, 0, fpv_plan.world_from_local, &frame.bones)

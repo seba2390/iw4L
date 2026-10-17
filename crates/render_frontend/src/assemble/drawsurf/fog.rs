@@ -144,6 +144,76 @@ fn exp_fog(fog: sim::ScriptFogParams) -> ExpFog {
     }
 }
 
+/// A game's own frame fog for the map (`game_api::ModeRules::frame_fog`):
+/// its client state, run each frame in place of the renderer's fog.
+#[derive(Resource)]
+pub struct GameFrameFog {
+    fog: Box<dyn game_api::fog::FrameFog>,
+    /// The client and its teleport bit the last frame drew for.
+    last_view: Option<(sim::ClientId, bool)>,
+    /// The last script fog switch logged.
+    logged: Option<u32>,
+}
+
+impl GameFrameFog {
+    pub fn new(fog: Box<dyn game_api::fog::FrameFog>) -> Self {
+        Self {
+            fog,
+            last_view: None,
+            logged: None,
+        }
+    }
+
+    /// Runs the frame for the presented client at `time_ms` from `eye`. The
+    /// view is cut on the first frame, when the presented client changes and
+    /// when its player's teleport bit flips.
+    pub(crate) fn frame(
+        &mut self,
+        presented: &net::PresentedSnapshot,
+        local: sim::ClientId,
+        time_ms: i32,
+        eye: [f32; 3],
+    ) -> game_api::fog::FogRows {
+        let snapshot = presented.snapshot();
+        let screen = snapshot
+            .and_then(|snapshot| snapshot.meta.for_client(local))
+            .map(|meta| {
+                (
+                    meta.view_effects.client_screen.fog,
+                    meta.view_effects.client_screen.fog_bank,
+                )
+            });
+        let teleport = snapshot
+            .and_then(|snapshot| snapshot.players.iter().find(|(id, _)| *id == local))
+            .is_some_and(|(_, ps)| ps.e_flags & net::EFLAGS_TELEPORT != 0);
+        let view_cut = self.last_view != Some((local, teleport));
+        self.last_view = Some((local, teleport));
+        let script = screen.and_then(|(fog, _)| fog);
+        if let Some(switch) = script
+            && self.logged != Some(switch.serial)
+        {
+            self.logged = Some(switch.serial);
+            diag::info!(
+                World,
+                "frame fog: script fog switch {} to slot {} at {} over {}ms (start={:.3} density={:.6})",
+                switch.serial,
+                switch.slot,
+                switch.start_ms,
+                switch.transition_ms,
+                switch.block[6],
+                switch.block[7]
+            );
+        }
+        self.fog.frame(&game_api::fog::FogFrame {
+            time_ms,
+            eye,
+            bank: screen.and_then(|(_, bank)| bank),
+            view_cut,
+            script,
+        })
+    }
+}
+
 #[derive(Resource, Default)]
 pub(crate) struct ScriptFogPresentation {
     applied: Option<sim::ScriptFog>,

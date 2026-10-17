@@ -788,6 +788,15 @@ pub(crate) fn local_client(args: &[Value], index: usize) -> Result<i32, String> 
     Ok(number)
 }
 
+/// The server object that draws one of the client's own entities.
+pub(crate) fn drawn_by(client: &World, object: u64) -> Option<u64> {
+    client
+        .get_resource::<ClientGame>()?
+        .drawn
+        .get(&object)
+        .copied()
+}
+
 /// The snapshot entity a script value is, with its entity number.
 pub(crate) fn client_entity(client: &World, value: &Value) -> Option<(i32, ClientEntity)> {
     let Value::Object(id) = value else {

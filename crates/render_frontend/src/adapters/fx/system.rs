@@ -10,13 +10,14 @@ use dpvs_iw4::pack_mark_mesh_draw_surf;
 use entity_iw4::{is_left_hand_fire_event, is_weapon_fire_last_shot_event};
 use frame::ViewSubject;
 use fx::{
-    CodeMeshStep, FxGapCause, FxMsec, FxSparkCloudInstance, FxSpriteInstance, FxSystemHost,
-    MarkReceiverEnable, PlayResult, axis_from_hit_normal,
+    CodeMeshStep, FxBoltTarget, FxGapCause, FxMsec, FxSparkCloudInstance, FxSpriteInstance,
+    FxSystemHost, MarkReceiverEnable, PlayResult, axis_from_hit_normal,
 };
 use fx_iw4::{
-    FX_ELEM_VEL_LOCAL, FX_ELEM_VEL_WORLD, FX_GLASS_SHATTER_FX_PER_FRAME, elem_run_mode,
-    elem_spawn_offset_mode, glass_shatter_fx_fallback, glass_shatter_fx_name,
-    laser_from_tag_orientation, tail_anchor_origin, tail_sprite_axes, tail_sprite_full_extent,
+    FX_BOLT_BONE_MASK, FX_BOLT_VIEWMODEL_DOBJ_BASE, FX_ELEM_VEL_LOCAL, FX_ELEM_VEL_WORLD,
+    FX_GLASS_SHATTER_FX_PER_FRAME, elem_run_mode, elem_spawn_offset_mode,
+    glass_shatter_fx_fallback, glass_shatter_fx_name, laser_from_tag_orientation,
+    tail_anchor_origin, tail_sprite_axes, tail_sprite_full_extent,
 };
 use net::{
     CEntity, CEntitySlots, ClientPredictionState, ClientSet, GameActive, LastAdoptedSnapshot,
@@ -46,8 +47,8 @@ use crate::{
         present::{
             FxDrawCull, FxScene, boot_createfx_effects, build_fx_verts,
             play_named_oriented_at_msec, play_named_oriented_in_world,
-            restamp_missing_packed_lighting, spawn_named_oriented_in_world, tick_fx_non_dependent,
-            tick_fx_remaining,
+            restamp_missing_packed_lighting, spawn_named_bolted_in_world,
+            spawn_named_oriented_in_world, tick_fx_non_dependent, tick_fx_remaining,
         },
         tracer::present_tracer_beams,
         world_mark::FrontendFxScene,
@@ -2922,6 +2923,8 @@ struct ScriptFxRow {
     finished: bool,
     /// The script's stop or delete has reached the effect system.
     ended: bool,
+    /// Frames a bolted effect has waited for its entity's pose.
+    bolt_waited: u8,
 }
 
 fn axis(forward: [f32; 3], up: [f32; 3]) -> [[f32; 3]; 3] {
@@ -2945,7 +2948,13 @@ fn sync_script_fx(
     local: Res<LocalPresentClient>,
     mut rows: ResMut<ScriptFxRows>,
     mut authority: Option<ResMut<net::AuthorityWorld>>,
+    bolts: (
+        Option<Res<crate::adapters::anim::dobj_pose::HostDObjPoseFrame>>,
+        ResMut<render_anim::ScriptModelBoltDemand>,
+        Res<crate::adapters::anim::fpv_present::FpvBoltTargets>,
+    ),
 ) {
+    let (poses, mut demand, fpv) = bolts;
     let (Some(adopted), Some(catalog)) = (adopted, catalog) else {
         return;
     };
@@ -3027,6 +3036,44 @@ fn sync_script_fx(
             continue;
         }
         let retriggered = row.start != fx.start_ms;
+        // A bolted effect waits a few frames for its entity's pose.
+        let no_bone = FX_BOLT_BONE_MASK as u16;
+        let target = fx.bolt.as_ref().and_then(|bolt| {
+            let (dobj, bone) = match bolt {
+                sim::EffectBolt::Entity { number, bone } => {
+                    (u32::from(*number), bone.unwrap_or(no_bone))
+                }
+                // The viewmodel's bone by the tag's name, else itself.
+                sim::EffectBolt::Viewmodel { tag } => {
+                    let names = fpv.bone_names[0].as_ref()?;
+                    let bone = names
+                        .iter()
+                        .position(|name| name.eq_ignore_ascii_case(tag))
+                        .and_then(|bone| u16::try_from(bone).ok())
+                        .unwrap_or(no_bone);
+                    (FX_BOLT_VIEWMODEL_DOBJ_BASE, bone)
+                }
+            };
+            let resolved = poses.as_deref()?.resolve_live_bolt(dobj, bone)?;
+            Some(FxBoltTarget {
+                dobj,
+                bone,
+                centity_teleport: resolved.centity_teleport,
+                orientation: resolved.orientation?,
+            })
+        });
+        if retriggered
+            && let Some(bolt) = &fx.bolt
+            && target.is_none()
+            && row.bolt_waited < TAG_FX_POSE_WAIT
+        {
+            if let sim::EffectBolt::Entity { number, .. } = bolt {
+                demand.insert(*number);
+            }
+            row.bolt_waited += 1;
+            continue;
+        }
+        row.bolt_waited = 0;
         row.start = fx.start_ms;
         let Some(start) = fx.start_ms else {
             continue;
@@ -3036,17 +3083,42 @@ fn sync_script_fx(
                 if let Some(handle) = row.held.take() {
                     host.0.stop_owned(handle);
                 }
-                row.held = spawn_named_oriented_in_world(
-                    &mut host.0,
-                    &catalog.0,
-                    &elem_infos.0,
-                    name,
-                    fx.origin,
-                    axis,
-                    start.wrapping_add(offset),
-                    scene,
-                )
-                .and_then(|result| match result {
+                if let Some(bolt) = &fx.bolt {
+                    diag::info!(
+                        World,
+                        "script fx {}: {} bolted to {:?} ({})",
+                        fx.id,
+                        name.name,
+                        bolt,
+                        if target.is_some() {
+                            "posed"
+                        } else {
+                            "unposed, at its place"
+                        }
+                    );
+                }
+                let spawned = match target {
+                    Some(target) => spawn_named_bolted_in_world(
+                        &mut host.0,
+                        &catalog.0,
+                        &elem_infos.0,
+                        name,
+                        target,
+                        start.wrapping_add(offset),
+                        scene,
+                    ),
+                    None => spawn_named_oriented_in_world(
+                        &mut host.0,
+                        &catalog.0,
+                        &elem_infos.0,
+                        name,
+                        fx.origin,
+                        axis,
+                        start.wrapping_add(offset),
+                        scene,
+                    ),
+                };
+                row.held = spawned.and_then(|result| match result {
                     PlayResult::Held { handle } => Some(handle),
                     _ => None,
                 });

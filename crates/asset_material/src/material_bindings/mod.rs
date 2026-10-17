@@ -73,6 +73,10 @@ pub struct MaterialFogInputs {
     pub start_dist: f32,
     pub volumetric: Option<MaterialFogVolumeInputs>,
     pub sun: Option<MaterialFogSunInputs>,
+    /// The fog code constant rows a game's own frame fog gave, set as they
+    /// are (colour, density, density integral, sun direction, sun colour,
+    /// sun angles).
+    pub game_rows: Option<[[f32; 4]; 6]>,
 }
 
 #[derive(Clone, Copy, Debug)]

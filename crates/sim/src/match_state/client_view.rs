@@ -110,6 +110,11 @@ pub struct ClientScreen {
     pub hide_fade: Option<HideFade>,
     /// The last `zacklodscalerigid`.
     pub lod_scale_rigid: Option<LodScaleRigid>,
+    /// The last switch of the client's script fog.
+    pub fog: Option<game_api::fog::ScriptFogSwitch>,
+    /// The active world fog bank mask, once the client's scripts or server
+    /// set one.
+    pub fog_bank: Option<u16>,
 }
 
 /// A `zacklodscalerigid` call: `r_lodScaleRigid`'s domain floor moves to

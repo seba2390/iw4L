@@ -336,6 +336,38 @@ pub fn play_named_oriented_at_msec(
     Some(result)
 }
 
+/// A bolted effect begun at `msec` whose caller keeps owning it.
+pub fn spawn_named_bolted_in_world(
+    host: &mut FxSystemHost,
+    catalog: &FxDefinitions,
+    cache: &FxElemInfoCache,
+    name: FxName<'_>,
+    target: FxBoltTarget,
+    msec: i32,
+    world: Option<&dyn FxScene>,
+) -> Option<PlayResult> {
+    let effect = name.resolve(catalog)?;
+    let elem_infos = cache.arc_for(catalog, effect);
+    let result = fx::spawn_bolted(
+        host,
+        FxPlayRequest {
+            def_name: effect.name.as_str(),
+            pose: FxPlayPose {
+                origin: target.orientation.origin,
+                axis: target.orientation.axis,
+                msec,
+            },
+            wants_spotlight: false,
+            catalog_index: catalog_index_of(catalog, effect),
+            def: Some(def_info(effect, &elem_infos)),
+        },
+        target,
+    );
+    let result = stamp_play_lighting(host, catalog, world, result);
+    drain_spawn_side_effects(host, catalog, cache, world);
+    Some(result)
+}
+
 pub fn play_named_bolted_in_world(
     host: &mut FxSystemHost,
     catalog: &FxDefinitions,

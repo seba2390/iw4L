@@ -42,7 +42,8 @@ pub use motion::{
 };
 pub use play::{
     FxPlayPose, FxPlayRequest, PlayResult, axis_from_hit_normal, axis_from_impact_velocity,
-    play_at_origin, play_bolted, play_oriented, spawn_impact_or_death_effect, spawn_oriented,
+    play_at_origin, play_bolted, play_oriented, spawn_bolted, spawn_impact_or_death_effect,
+    spawn_oriented,
 };
 pub use spark::{FxSparkCloudInstance, FxSparkFillVisual};
 pub use spawn::{sort_effect_elems, spawn_looping_partial};
