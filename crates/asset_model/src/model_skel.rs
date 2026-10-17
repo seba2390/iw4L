@@ -905,7 +905,7 @@ fn decode_surface_skin(
 ) -> Option<Vec<VertSkin>> {
     let mut skins = vec![VertSkin::default(); vertex_count];
     let bone_at = |raw: u16| -> Option<u8> {
-        if raw % BONE_STRIDE != 0 {
+        if !raw.is_multiple_of(BONE_STRIDE) {
             return None;
         }
         let bone = raw / BONE_STRIDE;
@@ -914,26 +914,26 @@ fn decode_surface_skin(
             .flatten()
     };
 
-    if vert_list_count > 0 {
-        if let Ok(ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, stream.layout(36, 56)) {
-            let list = stream.resolve_alias(list_ptr);
-            let mut vertex = 0usize;
-            for i in 0..vert_list_count {
-                let entry = list.at(i * stream.layout(sz::XRIGID_VERT_LIST, 16));
-                let bone_offset = stream.u16_at(entry, 0).ok()?;
-                let run = stream.u16_at(entry, 2).ok()? as usize;
-                let bone = bone_at(bone_offset)?;
-                for _ in 0..run {
-                    if vertex >= vertex_count {
-                        break;
-                    }
-                    skins[vertex] = VertSkin::rigid(bone);
-                    vertex += 1;
+    if vert_list_count > 0
+        && let Ok(ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, stream.layout(36, 56))
+    {
+        let list = stream.resolve_alias(list_ptr);
+        let mut vertex = 0usize;
+        for i in 0..vert_list_count {
+            let entry = list.at(i * stream.layout(sz::XRIGID_VERT_LIST, 16));
+            let bone_offset = stream.u16_at(entry, 0).ok()?;
+            let run = stream.u16_at(entry, 2).ok()? as usize;
+            let bone = bone_at(bone_offset)?;
+            for _ in 0..run {
+                if vertex >= vertex_count {
+                    break;
                 }
+                skins[vertex] = VertSkin::rigid(bone);
+                vertex += 1;
             }
-            if vertex == vertex_count {
-                return Some(skins);
-            }
+        }
+        if vertex == vertex_count {
+            return Some(skins);
         }
     }
 
@@ -1472,7 +1472,7 @@ fn decode_surface_skin_t5(
 ) -> Option<Vec<VertSkin>> {
     let mut skins = vec![VertSkin::default(); vertex_count];
     let bone_at = |raw: u16| -> Option<u8> {
-        if raw % BONE_STRIDE != 0 {
+        if !raw.is_multiple_of(BONE_STRIDE) {
             return None;
         }
         let bone = raw / BONE_STRIDE;
@@ -1481,26 +1481,26 @@ fn decode_surface_skin_t5(
             .flatten()
     };
 
-    if vert_list_count > 0 {
-        if let Ok(fastfile_t5::ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, 40) {
-            let list = stream.resolve_alias(list_ptr);
-            let mut vertex = 0usize;
-            for i in 0..vert_list_count {
-                let entry = list.at(i * rigid_stride);
-                let bone_offset = stream.u16_at(entry, 0).ok()?;
-                let run = stream.u16_at(entry, 2).ok()? as usize;
-                let bone = bone_at(bone_offset)?;
-                for _ in 0..run {
-                    if vertex >= vertex_count {
-                        break;
-                    }
-                    skins[vertex] = VertSkin::rigid(bone);
-                    vertex += 1;
+    if vert_list_count > 0
+        && let Ok(fastfile_t5::ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, 40)
+    {
+        let list = stream.resolve_alias(list_ptr);
+        let mut vertex = 0usize;
+        for i in 0..vert_list_count {
+            let entry = list.at(i * rigid_stride);
+            let bone_offset = stream.u16_at(entry, 0).ok()?;
+            let run = stream.u16_at(entry, 2).ok()? as usize;
+            let bone = bone_at(bone_offset)?;
+            for _ in 0..run {
+                if vertex >= vertex_count {
+                    break;
                 }
+                skins[vertex] = VertSkin::rigid(bone);
+                vertex += 1;
             }
-            if vertex == vertex_count {
-                return Some(skins);
-            }
+        }
+        if vertex == vertex_count {
+            return Some(skins);
         }
     }
 
@@ -1961,7 +1961,7 @@ fn decode_surface_skin_iw5(
 
     let mut skins = vec![VertSkin::default(); vertex_count];
     let bone_at = |raw: u16| -> Option<u8> {
-        if raw % BONE_STRIDE != 0 {
+        if !raw.is_multiple_of(BONE_STRIDE) {
             return None;
         }
         let bone = raw / BONE_STRIDE;
@@ -1971,29 +1971,28 @@ fn decode_surface_skin_iw5(
     };
 
     let mut rigid_assigned = 0usize;
-    if vert_list_count > 0 {
-        if let Ok(fastfile_iw5::ZonePtr::Offset(list_ptr)) =
+    if vert_list_count > 0
+        && let Ok(fastfile_iw5::ZonePtr::Offset(list_ptr)) =
             stream.ptr_at(surface, stream.layout(iw5sz::XSURFACE_VERT_LIST_OFF, 56))
-        {
-            let list = stream.resolve_alias(list_ptr);
-            let mut vertex = 0usize;
-            for i in 0..vert_list_count {
-                let entry = list.at(i * stream.layout(iw5sz::XRIGID_VERT_LIST, 16));
-                let bone_offset = stream.u16_at(entry, 0).ok()?;
-                let run = stream.u16_at(entry, 2).ok()? as usize;
-                let bone = bone_at(bone_offset)?;
-                for _ in 0..run {
-                    if vertex >= vertex_count {
-                        break;
-                    }
-                    skins[vertex] = VertSkin::rigid(bone);
-                    vertex += 1;
+    {
+        let list = stream.resolve_alias(list_ptr);
+        let mut vertex = 0usize;
+        for i in 0..vert_list_count {
+            let entry = list.at(i * stream.layout(iw5sz::XRIGID_VERT_LIST, 16));
+            let bone_offset = stream.u16_at(entry, 0).ok()?;
+            let run = stream.u16_at(entry, 2).ok()? as usize;
+            let bone = bone_at(bone_offset)?;
+            for _ in 0..run {
+                if vertex >= vertex_count {
+                    break;
                 }
+                skins[vertex] = VertSkin::rigid(bone);
+                vertex += 1;
             }
-            rigid_assigned = vertex;
-            if vertex == vertex_count {
-                return Some(skins);
-            }
+        }
+        rigid_assigned = vertex;
+        if vertex == vertex_count {
+            return Some(skins);
         }
     }
 

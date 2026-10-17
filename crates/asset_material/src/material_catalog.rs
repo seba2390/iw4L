@@ -512,9 +512,9 @@ impl MaterialCatalog {
         self.cross_game_techset_resolutions
             .extend(cross_game_techset_resolutions);
         for mut facts in techsets {
-            facts.table = facts.table.map(&rebase_table);
-            facts.iw5_fallback_table = facts.iw5_fallback_table.map(&rebase_table);
-            facts.t5_fallback_table = facts.t5_fallback_table.map(&rebase_table);
+            facts.table = facts.table.map(rebase_table);
+            facts.iw5_fallback_table = facts.iw5_fallback_table.map(rebase_table);
+            facts.t5_fallback_table = facts.t5_fallback_table.map(rebase_table);
             self.link_techset(facts);
         }
 
@@ -530,7 +530,7 @@ impl MaterialCatalog {
                         .image
                         .and_then(|index| image_ids.get(index).copied().flatten());
                 }
-                material.technique_table = material.technique_table.map(&rebase_table);
+                material.technique_table = material.technique_table.map(rebase_table);
                 Some(if host_materials_win {
                     self.link_material_host_real_wins(material)
                 } else {
@@ -618,9 +618,9 @@ impl MaterialCatalog {
             {
                 continue;
             }
-            facts.table = facts.table.map(&rebase_table);
-            facts.iw5_fallback_table = facts.iw5_fallback_table.map(&rebase_table);
-            facts.t5_fallback_table = facts.t5_fallback_table.map(&rebase_table);
+            facts.table = facts.table.map(rebase_table);
+            facts.iw5_fallback_table = facts.iw5_fallback_table.map(rebase_table);
+            facts.t5_fallback_table = facts.t5_fallback_table.map(rebase_table);
             self.link_techset(facts);
         }
         for mut material in materials {
@@ -632,7 +632,7 @@ impl MaterialCatalog {
                     .image
                     .and_then(|index| image_ids.get(index).copied());
             }
-            material.technique_table = material.technique_table.map(&rebase_table);
+            material.technique_table = material.technique_table.map(rebase_table);
             self.link_material(material);
         }
     }
@@ -1260,15 +1260,15 @@ impl MaterialCatalog {
             graph,
         });
 
-        if let Some(graph) = s.latest_technique_graph() {
-            if graph.rows_truncated != 0 || graph.arguments_truncated != 0 {
-                diag::warn!(
-                    Zone,
-                    "technique graph truncated for {name}: rows_truncated={} arguments_truncated={} (fixed capture cap)",
-                    graph.rows_truncated,
-                    graph.arguments_truncated
-                );
-            }
+        if let Some(graph) = s.latest_technique_graph()
+            && (graph.rows_truncated != 0 || graph.arguments_truncated != 0)
+        {
+            diag::warn!(
+                Zone,
+                "technique graph truncated for {name}: rows_truncated={} arguments_truncated={} (fixed capture cap)",
+                graph.rows_truncated,
+                graph.arguments_truncated
+            );
         }
         Some(
             self.take_techset_slot(TechniqueSetFacts {
@@ -1398,10 +1398,10 @@ impl AssetLinkSink for MaterialCatalog {
             self.link.bind_direct(map, insert_slot, index);
         }
 
-        if ty == AssetType::Material {
-            if let Some(header) = s.latest_material().and_then(|g| g.header) {
-                self.link.bind_direct(map, header, index);
-            }
+        if ty == AssetType::Material
+            && let Some(header) = s.latest_material().and_then(|g| g.header)
+        {
+            self.link.bind_direct(map, header, index);
         }
         Ok(())
     }
@@ -2127,15 +2127,15 @@ impl MaterialCatalog {
             fastfile_t5::occupancy_any(&geometry.technique_slots)
                 .then(|| self.capture_owned_technique_graph_t5(geometry, graph))
         });
-        if let Some(graph) = s.latest_technique_graph() {
-            if graph.rows_truncated != 0 || graph.arguments_truncated != 0 {
-                diag::warn!(
-                    Zone,
-                    "T5 technique graph truncated for {name}: rows_truncated={} arguments_truncated={}",
-                    graph.rows_truncated,
-                    graph.arguments_truncated
-                );
-            }
+        if let Some(graph) = s.latest_technique_graph()
+            && (graph.rows_truncated != 0 || graph.arguments_truncated != 0)
+        {
+            diag::warn!(
+                Zone,
+                "T5 technique graph truncated for {name}: rows_truncated={} arguments_truncated={}",
+                graph.rows_truncated,
+                graph.arguments_truncated
+            );
         }
         Some(
             self.take_techset_slot(TechniqueSetFacts {
@@ -2245,11 +2245,11 @@ impl MaterialCatalog {
                     .and_then(|slot| geometry.technique_body_by_slot.get(slot).copied().flatten())
                     .and_then(|body| self.link.technique(iw4_ptr(body)))
             };
-            if let (Some(slot), Some(technique)) = (t5_slot, &technique) {
-                if let Some(body) = geometry.technique_body_by_slot.get(slot).copied().flatten() {
-                    self.link
-                        .remember_technique(iw4_ptr(body), technique.clone());
-                }
+            if let (Some(slot), Some(technique)) = (t5_slot, &technique)
+                && let Some(body) = geometry.technique_body_by_slot.get(slot).copied().flatten()
+            {
+                self.link
+                    .remember_technique(iw4_ptr(body), technique.clone());
             }
             slots.push(technique);
         }
@@ -2461,15 +2461,15 @@ impl MaterialCatalog {
             (geometry.occupancy != 0)
                 .then(|| self.capture_owned_technique_graph_iw5(geometry, graph))
         });
-        if let Some(graph) = s.latest_technique_graph() {
-            if graph.rows_truncated != 0 || graph.arguments_truncated != 0 {
-                diag::warn!(
-                    Zone,
-                    "IW5 technique graph truncated for {name}: rows_truncated={} arguments_truncated={}",
-                    graph.rows_truncated,
-                    graph.arguments_truncated
-                );
-            }
+        if let Some(graph) = s.latest_technique_graph()
+            && (graph.rows_truncated != 0 || graph.arguments_truncated != 0)
+        {
+            diag::warn!(
+                Zone,
+                "IW5 technique graph truncated for {name}: rows_truncated={} arguments_truncated={}",
+                graph.rows_truncated,
+                graph.arguments_truncated
+            );
         }
 
         Some(
@@ -2583,11 +2583,11 @@ impl MaterialCatalog {
                     .and_then(|slot| geometry.technique_body_by_slot.get(slot).copied().flatten())
                     .and_then(|body| self.link.technique(iw5_ptr(body)))
             };
-            if let (Some(slot), Some(technique)) = (iw5_slot, &technique) {
-                if let Some(body) = geometry.technique_body_by_slot.get(slot).copied().flatten() {
-                    self.link
-                        .remember_technique(iw5_ptr(body), technique.clone());
-                }
+            if let (Some(slot), Some(technique)) = (iw5_slot, &technique)
+                && let Some(body) = geometry.technique_body_by_slot.get(slot).copied().flatten()
+            {
+                self.link
+                    .remember_technique(iw5_ptr(body), technique.clone());
             }
             slots.push(technique);
         }
