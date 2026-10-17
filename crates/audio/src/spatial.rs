@@ -10,8 +10,13 @@ pub(crate) struct ListenerSnapshot {
     pub right: [f32; 3],
 }
 
+/// The listener, and the origins of the entities whose sounds follow them
+/// (by entity number).
 #[derive(Default)]
-pub(crate) struct ListenerState(Mutex<Option<ListenerSnapshot>>);
+pub(crate) struct ListenerState(
+    Mutex<Option<ListenerSnapshot>>,
+    Mutex<std::sync::Arc<std::collections::HashMap<u32, [f32; 3]>>>,
+);
 
 impl ListenerState {
     pub(crate) fn set(&self, listener: Option<ListenerSnapshot>) {
@@ -26,6 +31,17 @@ impl ListenerState {
 
     pub(crate) fn get(&self) -> Option<ListenerSnapshot> {
         *self.0.lock().unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    pub(crate) fn set_emitters(&self, origins: std::collections::HashMap<u32, [f32; 3]>) {
+        *self.1.lock().unwrap_or_else(|poison| poison.into_inner()) = std::sync::Arc::new(origins);
+    }
+
+    pub(crate) fn emitters(&self) -> std::sync::Arc<std::collections::HashMap<u32, [f32; 3]>> {
+        self.1
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone()
     }
 }
 

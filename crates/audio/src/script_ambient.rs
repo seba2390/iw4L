@@ -111,6 +111,7 @@ pub(crate) fn update_script_ambient(
             bound: None,
             origin_inches: None,
             emitter: None,
+            follow_emitter: false,
             class: SoundClass::Ambience,
             epoch: epoch.0,
             pitch_scale: 1.0,

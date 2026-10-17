@@ -102,6 +102,11 @@ pub(crate) struct RoundScript {
     /// Notifies the engine raises later (a sound or animation done): when,
     /// on what, which notify with which arguments.
     pub(crate) timed_notifies: Vec<(i64, Value, std::sync::Arc<str>, Vec<Value>)>,
+    /// Black Ops' `playSound(alias, notify)` notifies, by entity number.
+    pub(crate) sound_notifies: BTreeMap<i32, SoundNotify>,
+    /// Clients' reports of those sounds' lengths (entity number, msec), for
+    /// the next step.
+    pub(crate) sound_lengths: Vec<(i32, i32)>,
     retired_items: Vec<u64>,
     finishing: std::collections::BTreeSet<u64>,
     finishing_order: Vec<u64>,
@@ -196,6 +201,8 @@ impl RoundScript {
             expected_players: Default::default(),
             client: Default::default(),
             timed_notifies: Default::default(),
+            sound_notifies: Default::default(),
+            sound_lengths: Default::default(),
             retired_items: Default::default(),
             finishing: Default::default(),
             finishing_order: Default::default(),
@@ -331,4 +338,15 @@ struct SymbolCache {
     /// How many dynamic symbols there were when it last learned one.
     dynamic: usize,
     ids: std::collections::HashMap<Box<str>, u32, std::hash::BuildHasherDefault<Fnv>>,
+}
+
+/// A sound notify an entity waits on: raised once its sound has played
+/// (`start_ms` plus the length the client reported; 5000 msec while none
+/// has been reported).
+#[derive(Clone, Debug)]
+pub(crate) struct SoundNotify {
+    pub(crate) receiver: Value,
+    pub(crate) notify: std::sync::Arc<str>,
+    pub(crate) start_ms: i64,
+    pub(crate) duration_ms: i32,
 }

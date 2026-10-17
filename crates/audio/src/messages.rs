@@ -22,6 +22,13 @@ pub enum AliasCommand {
         sound: PlayAlias,
         pitch: f32,
     },
+    /// A sound on an entity that follows it while it plays; with
+    /// `report`, the client reports its length back for that entity's
+    /// sound notify once its sound system knows it.
+    PlayOnEntity {
+        sound: PlayAlias,
+        report: Option<i32>,
+    },
     StopEntity {
         snd_ent: u32,
     },

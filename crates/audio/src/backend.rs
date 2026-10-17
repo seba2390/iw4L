@@ -34,6 +34,7 @@ pub(crate) fn register(app: &mut App) {
             PostUpdate,
             (
                 submit_presented_audio,
+                publish_emitter_origins,
                 cancel_audio_on_exit.after(submit_presented_audio),
             ),
         );
@@ -229,4 +230,28 @@ fn release_audio(mut runtime: ResMut<AudioRuntime>) {
     runtime.set_event_context(None);
     runtime.set_cue_mix(None);
     runtime.set_sources(Vec::new());
+}
+
+/// The origins of the presented snapshot's entities, by number, for the
+/// sounds that follow them.
+pub(crate) fn publish_emitter_origins(
+    runtime: Res<AudioRuntime>,
+    presented: Option<Res<net::PresentedSnapshot>>,
+) {
+    // No snapshot: no entity for a sound to follow.
+    let Some(snapshot) = presented
+        .as_ref()
+        .and_then(|presented| presented.snapshot())
+    else {
+        runtime.set_emitter_origins(std::collections::HashMap::new());
+        return;
+    };
+    runtime.set_emitter_origins(
+        snapshot
+            .meta
+            .entities
+            .iter()
+            .filter_map(|entity| Some((u32::try_from(entity.number).ok()?, entity.tr_base)))
+            .collect(),
+    );
 }

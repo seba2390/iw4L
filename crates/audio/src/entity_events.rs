@@ -113,8 +113,27 @@ fn entity_event_sound(
 ) {
     let event = sound.event.event;
     if event == EntityEventKind::STOPSOUNDS {
-        if let Some(snd_ent) = ent_from_number(sound.event.payload.number) {
+        let Some(snd_ent) = ent_from_number(sound.event.payload.number) else {
+            return;
+        };
+        // A stop that names an alias (Black Ops' `stopSound`) stops only
+        // that alias's sounds on the entity.
+        let index = u8::try_from(sound.event.payload.event_parm).unwrap_or(0);
+        if index == 0 {
             play.write(crate::AliasCommand::StopEntity { snd_ent });
+        } else if let Some((namespace, alias)) = adopted
+            .as_deref()
+            .and_then(|snap| snap.sound_alias_name(index))
+            .and_then(|alias| alias.split_once(':'))
+            .and_then(|(ns, name)| {
+                asset_core::AssetNamespace::parse(ns).map(|ns| (ns, name.to_owned()))
+            })
+        {
+            play.write(crate::AliasCommand::Stop {
+                namespace,
+                alias,
+                snd_ent: Some(snd_ent),
+            });
         }
         return;
     }
@@ -271,7 +290,7 @@ fn play_cs_sound_alias(
         );
         return;
     };
-    play.write(crate::AliasCommand::Play(PlayAlias {
+    let sound = PlayAlias {
         event,
         namespace,
         alias,
@@ -282,7 +301,18 @@ fn play_cs_sound_alias(
         } else {
             ent_from_number(payload.payload.number)
         },
-    }));
+    };
+    let reports = payload.payload.simulation_flags & sim::SOUND_REPORTS_LENGTH != 0;
+    // A sound event on an entity follows that entity while it plays (the
+    // world and other numbers no entity holds keep their origin).
+    play.write(if !local || reports {
+        crate::AliasCommand::PlayOnEntity {
+            sound,
+            report: reports.then_some(payload.payload.number),
+        }
+    } else {
+        crate::AliasCommand::Play(sound)
+    });
 }
 
 fn movement_sound(

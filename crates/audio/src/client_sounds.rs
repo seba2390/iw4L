@@ -66,6 +66,7 @@ pub(crate) fn update_client_sounds(
                     bound: None,
                     origin_inches: *origin,
                     emitter: None,
+                    follow_emitter: false,
                     class: SoundClass::World,
                     epoch: epoch.0,
                     pitch_scale: 1.0,
