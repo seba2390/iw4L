@@ -666,7 +666,7 @@ fn update(
         );
     }
     let was_active = hide.fade.active();
-    // t6.csc.gump.stream: IW4L loads the whole map at start, so no gump zone
+    // IW4L holds every gump's models from the map's start, so no gump zone
     // is ever loading.
     if let Some(color) = hide.fade.frame(now, false) {
         let [x, y, w, h] = placement.apply_rect([0.0, 0.0, 640.0, 480.0], 4, 4);

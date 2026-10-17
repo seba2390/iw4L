@@ -646,6 +646,7 @@ impl ZoneLane for Iw4Lane {
                         draw: Some(draw),
                         dynamic_light: None,
                         static_model_meshes,
+                        static_model_gumps: Vec::new(),
                         static_model_instances,
                         map_xmodel_scene_assets,
                         script_model_instances,

@@ -115,7 +115,14 @@ pub struct ClientScreen {
     /// The active world fog bank mask, once the client's scripts or server
     /// set one.
     pub fog_bank: Option<u16>,
+    /// The gump each of the local client's gump slots holds (`loadgump`):
+    /// a model the map's zones leave to gumps draws while a slot holds one
+    /// of the gumps that carry it.
+    pub gumps: [Option<String>; GUMP_SLOTS],
 }
+
+/// The gump slots Black Ops 2's client keeps.
+pub const GUMP_SLOTS: usize = 4;
 
 /// A `zacklodscalerigid` call: `r_lodScaleRigid`'s domain floor moves to
 /// `min` and its value is set to `value` (a value over the domain's top is

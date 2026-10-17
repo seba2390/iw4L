@@ -507,6 +507,9 @@ fn occupy_script_model_scene_ents(
         if *visibility == Visibility::Hidden {
             continue;
         }
+        if gumps_unheld(&assets, &owner.dobj_state, &presented, local.0) {
+            continue;
+        }
         let Some(skels) = presented_skel_arcs(&assets, &owner.dobj_state) else {
             continue;
         };
@@ -1077,6 +1080,41 @@ fn script_model_pose_topology_matches(
             }
             _ => false,
         }
+}
+
+/// Whether every model of the entity is one only gumps carry, none of them
+/// held by the local client's gump slots (Black Ops 2's `void` model until
+/// its gump loads).
+// t6.csc.gump.attached: an entity with such a model among others draws all
+// of them.
+fn gumps_unheld(
+    catalog: &asset_world::MapXModelSceneCatalog,
+    state: &xmodel_runtime::DObjSemanticState,
+    presented: &net::PresentedSnapshot,
+    local: sim::ClientId,
+) -> bool {
+    let models = &state.composition.models;
+    if models.is_empty()
+        || models
+            .iter()
+            .any(|descriptor| catalog.gumps_of(&descriptor.model).is_empty())
+    {
+        return false;
+    }
+    let held = presented
+        .snapshot()
+        .and_then(|snapshot| snapshot.meta.for_client(local))
+        .map(|meta| &meta.view_effects.client_screen.gumps);
+    !models.iter().any(|descriptor| {
+        catalog.gumps_of(&descriptor.model).iter().any(|gump| {
+            held.is_some_and(|slots| {
+                slots
+                    .iter()
+                    .flatten()
+                    .any(|slot| slot.eq_ignore_ascii_case(gump))
+            })
+        })
+    })
 }
 
 pub(crate) fn presented_skel_arcs(

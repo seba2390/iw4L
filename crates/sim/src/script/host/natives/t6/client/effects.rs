@@ -1280,18 +1280,6 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // loadgump(name, slot): streams a gump sub-zone into a slot when `name`
-    // is non-empty.
-    registry.register(Function, "loadgump", |_, _, args| {
-        let name = string(args, 0)?;
-        if !name.is_empty() {
-            int(args, 1)?;
-        }
-        // t6.csc.gump.stream: IW4L loads the whole map at start rather than
-        // streaming gump sub-zones.
-        Ok(Value::Undefined)
-    });
-
     // sethidegumpalpha(localclientnum, [color]): starts the full-screen
     // gump hide fade now, in `color` when given (else the last colour); the
     // local client's draw runs the fade (`game_t6::client_screen`).

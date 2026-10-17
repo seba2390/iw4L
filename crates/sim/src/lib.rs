@@ -123,13 +123,14 @@ pub use game_api::post::VisionCall;
 pub use match_state::{
     CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle, ClientLightOverride,
     ClientScreen, ClientSnapshotMeta, ConfigurationChangeRejectReason, DroppedItemAmmo,
-    EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, GiveRejectReason,
-    HealthRegenCensus, HideFade, InputReceipt, ItemPickupRecord, KillcamHud, LinkedWeaponView,
-    LoadoutSpec, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL, MatchEndReason, MenuCommand,
-    MenuCommandKind, PelletFxRecord, PersonalClass, RadarMode, RemoteMissile, RngDebugMeta,
-    SIM_EVENT_ROSTER, ScriptBlur, ScriptControls, ScriptDepthOfField, ScriptDvars, ScriptSeat,
-    SimEvent, SimEventRow, SnapshotMeta, TargetBoxDvar, UNRELIABLE_SIM_EVENT_COUNT, ViewEffects,
-    VisionChange, VisionLerp, is_postfx_dvar, sim_event_is_reliable,
+    EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, GUMP_SLOTS,
+    GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt, ItemPickupRecord, KillcamHud,
+    LinkedWeaponView, LoadoutSpec, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
+    MatchEndReason, MenuCommand, MenuCommandKind, PelletFxRecord, PersonalClass, RadarMode,
+    RemoteMissile, RngDebugMeta, SIM_EVENT_ROSTER, ScriptBlur, ScriptControls, ScriptDepthOfField,
+    ScriptDvars, ScriptSeat, SimEvent, SimEventRow, SnapshotMeta, TargetBoxDvar,
+    UNRELIABLE_SIM_EVENT_COUNT, ViewEffects, VisionChange, VisionLerp, is_postfx_dvar,
+    sim_event_is_reliable,
 };
 pub use player_anim_script::{
     AnimConditions, AnimScriptCommand, AnimScriptCondition, AnimScriptItem, PlayerAnimScript,

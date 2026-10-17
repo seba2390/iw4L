@@ -9,8 +9,10 @@ pub(crate) mod entity;
 mod fields;
 pub(crate) mod fog;
 pub(crate) mod game;
+mod gump;
 pub(crate) mod pure;
 pub(crate) mod sound;
+mod touch;
 
 use crate::script::{Namespace, NativeRegistry};
 
@@ -49,14 +51,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     fog::register(registry);
     sound::register(registry);
     ambient::register(registry);
+    gump::register(registry);
     registry.on_client_sync(sync);
     registry.on_client_present(present);
 }
 
-/// The client game's snapshot: its entities and fields, then its fog.
+/// The client game's snapshot: its entities and fields, then its fog, its
+/// touches and its gump loads.
 fn sync(client: &mut bevy_ecs::prelude::World) {
     game::sync(client);
     fog::sync(client);
+    let now = client
+        .get_resource::<crate::step::StepRequest>()
+        .map_or(0, |r| i64::from(r.tick.0) * i64::from(crate::MATCH_TICK_MS));
+    touch::frame(client, now);
+    gump::frame(client, now);
 }
 
 /// The client game's frame after its scripts: its light mixers, then what it

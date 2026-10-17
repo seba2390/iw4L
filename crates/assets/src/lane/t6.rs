@@ -415,6 +415,69 @@ fn content_zone(path: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::Zo
     Some(load)
 }
 
+/// The map's gumps: the zones `<map>_gump_<name>` beside it, each by the
+/// gump name the client scripts load it by.
+fn map_gumps(path: &Path, report: &mut Vec<String>) -> Vec<(String, ZoneLoad)> {
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return Vec::new();
+    };
+    let prefix = format!("{stem}_gump_");
+    let mut names: Vec<String> = path
+        .parent()
+        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok()?.file_name().to_str().map(str::to_owned))
+        .filter_map(|name| {
+            let gump = name.strip_suffix(".ff")?;
+            gump.starts_with(&prefix).then(|| gump.to_owned())
+        })
+        .collect();
+    names.sort_unstable();
+    names
+        .into_iter()
+        .filter_map(|gump| {
+            let load = content_zone(&path.with_file_name(format!("{gump}.ff")), report)?;
+            Some((gump, load))
+        })
+        .collect()
+}
+
+/// The models the gumps carry, by name, each with the gumps that carry it
+/// (the first gump's copy drawn for all). A model whose materials the gump
+/// and the map's zones do not define is left out.
+fn gump_models<'z>(
+    gumps: &'z [(String, ZoneLoad)],
+    zones: &[&'z ZoneLoad],
+) -> BTreeMap<&'z str, (asset_model::T6Model<'z>, Vec<String>)> {
+    let mut models: BTreeMap<&'z str, (asset_model::T6Model<'z>, Vec<String>)> = BTreeMap::new();
+    for (gump, load) in gumps {
+        for asset in &load.assets {
+            let Some(model) = asset_model::T6Model::new(load, asset) else {
+                continue;
+            };
+            let Some(name) = model.name().filter(|name| !name.starts_with(',')) else {
+                continue;
+            };
+            let defined = (0..model.surface_count()).all(|surface| {
+                model
+                    .material_slot(surface)
+                    .and_then(|slot| load.asset_at(slot))
+                    .is_some_and(|material| resolve_material(load, zones, material).is_ok())
+            });
+            if !defined {
+                continue;
+            }
+            models
+                .entry(name)
+                .or_insert_with(|| (model, Vec::new()))
+                .1
+                .push(gump.clone());
+        }
+    }
+    models
+}
+
 fn sound_zone(path: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
     let image = asset_transport::open_t6_zone(path)
         .map_err(|error| report.push(format!("t6 sound source {}: {error:?}", path.display())))
@@ -2627,18 +2690,44 @@ impl ZoneLane for T6Lane {
                     (0..count).map(|i| rows.at(i * 152 + 56)).collect()
                 }
             };
-            let mut smodels: Vec<(&fastfile_t6::LoadedAsset, asset_model::T6Model)> = Vec::new();
+            let gump_loads = map_gumps(path, &mut report);
+            let gump_models = gump_models(&gump_loads, &image_loads);
+            // Each static model's model, and the gumps that carry it: a model
+            // the map's zone only names (`,name`) is the engine's `void` until
+            // a gump that carries it loads.
+            let mut smodels: Vec<(&fastfile_t6::LoadedAsset, asset_model::T6Model, Vec<String>)> =
+                Vec::new();
             for &slot in &smodel_slots {
                 let Some(asset) = load.asset_in(world_asset, slot) else {
                     continue;
                 };
-                if smodels.iter().any(|(seen, _)| std::ptr::eq(*seen, asset)) {
+                if smodels
+                    .iter()
+                    .any(|(seen, _, _)| std::ptr::eq(*seen, asset))
+                {
                     continue;
                 }
-                if let Some(model) = asset_model::T6Model::new(&load, asset) {
-                    smodels.push((asset, model));
+                let Some(model) = asset_model::T6Model::new(&load, asset) else {
+                    continue;
+                };
+                match model
+                    .name()
+                    .and_then(|name| name.strip_prefix(','))
+                    .and_then(|name| gump_models.get(name))
+                {
+                    Some((carried, gumps)) => smodels.push((asset, *carried, gumps.clone())),
+                    None => smodels.push((asset, model, Vec::new())),
                 }
             }
+            report.push(format!(
+                "T6 gumps: {} zones carry {} models; {} static models are left to them",
+                gump_loads.len(),
+                gump_models.len(),
+                smodels
+                    .iter()
+                    .filter(|(_, _, gumps)| !gumps.is_empty())
+                    .count()
+            ));
             let script_placements = asset_world::parse_script_model_placements(&map_entities(
                 path,
                 &load,
@@ -2667,9 +2756,18 @@ impl ZoneLane for T6Lane {
                     }
                 }
             }
+            // The models only gumps carry, for the entities that set them;
+            // each draws while a gump that carries it is held.
+            let mut script_gumps = Vec::new();
+            for (name, (model, gumps)) in &gump_models {
+                if !script_xmodels.iter().any(|seen| seen.name() == Some(*name)) {
+                    script_xmodels.push(*model);
+                    script_gumps.push(((*name).to_owned(), gumps.clone()));
+                }
+            }
             let smodel_materials: Vec<_> = smodels
                 .iter()
-                .map(|(_, model)| model)
+                .map(|(_, model, _)| model)
                 .chain(&script_xmodels)
                 .flat_map(|model| {
                     (0..model.surface_count()).filter_map(|surface| {
@@ -2778,16 +2876,18 @@ impl ZoneLane for T6Lane {
                     .map(asset_core::WalkLocalMaterialIndex::from_walk)
             };
             let mut static_model_meshes = Vec::new();
+            let mut static_model_gumps = Vec::new();
             let mut smodel_mesh = Vec::with_capacity(smodels.len());
-            for (asset, model) in &smodels {
+            for (asset, model, gumps) in &smodels {
                 let mesh = asset_model::capture_model_skel_t6(*model, |surface| {
                     model_material(*model, surface)
                 })
-                .map(|skel| asset_world::world_t6::model_mesh(&load, *model, skel));
+                .map(|skel| asset_world::world_t6::model_mesh(model.source(), *model, skel));
                 match mesh {
                     Some(Ok(mesh)) => {
                         smodel_mesh.push((*asset, static_model_meshes.len()));
                         static_model_meshes.push(mesh);
+                        static_model_gumps.push(gumps.clone());
                     }
                     Some(Err(error)) => {
                         report.push(format!("T6 static model {:?}: {error}", model.name()))
@@ -2820,6 +2920,9 @@ impl ZoneLane for T6Lane {
                     asset_world::MapXModelAssetKey(name.to_owned()),
                     asset_world::MapXModelSceneAsset::T6(Arc::new(skel)),
                 );
+            }
+            for (name, gumps) in script_gumps {
+                map_xmodel_scene_assets.set_gumps(name, gumps);
             }
             let script_model_instances = script_placements
                 .iter()
@@ -3322,6 +3425,7 @@ impl ZoneLane for T6Lane {
                 light_grid,
                 reflection_probe_images,
                 static_model_meshes,
+                static_model_gumps,
                 static_model_instances,
                 map_xmodel_scene_assets,
                 script_model_instances,
