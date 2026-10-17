@@ -123,6 +123,8 @@ pub struct ClientScreen {
     pub overlays: game_api::post::ScreenOverlays,
     /// The script vector rows the client's scripts map on its entities.
     pub script_vectors: Vec<EntityScriptVectors>,
+    /// The entities the client does not draw this frame.
+    pub undrawn_entities: Vec<u16>,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

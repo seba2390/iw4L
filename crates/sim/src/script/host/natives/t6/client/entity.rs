@@ -2155,10 +2155,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Method,
         "setrenderinthirdpersonspectate",
         |world, receiver, args| {
-            receiver_entity(world, receiver)?;
-            int(args, 0)?;
-            // t6.csc.spectate.third_person_render: IW4L has no third-person
-            // spectate render flag on client entities.
+            let (id, number, _) = receiver_entity(world, receiver)?;
+            let enable = int(args, 0)? != 0;
+            let mut flagged = world.get_resource_or_insert_with(ThirdPersonSpectate::default);
+            if enable {
+                flagged.0.insert(id, number);
+            } else {
+                flagged.0.remove(&id);
+            }
             Ok(Value::Undefined)
         },
     );
@@ -2259,4 +2263,89 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
+}
+
+/// The client entities `setrenderinthirdpersonspectate` flags, by client
+/// object id: their numbers.
+#[derive(Resource, Default)]
+struct ThirdPersonSpectate(BTreeMap<u64, i32>);
+
+/// The client's draw of its flagged entities, each frame: one is drawn while
+/// the client renders in third person and its player state's other flags
+/// hold bit 2 or bit 4; otherwise (bit 2 aside, which keeps it undrawn) only
+/// an actor not linked to the local player is drawn. The client's screen
+/// takes those it does not draw.
+///
+/// t6.cg.rendering_third_person: the client's third-person rendering state is
+/// not ported, so the client renders in first person here.
+pub(super) fn sync_third_person_spectate(world: &mut World) {
+    let flagged: Vec<(u64, i32)> = world
+        .get_resource::<ThirdPersonSpectate>()
+        .map(|flagged| {
+            flagged
+                .0
+                .iter()
+                .map(|(id, number)| (*id, *number))
+                .collect()
+        })
+        .unwrap_or_else(Vec::new);
+    let alive: Vec<(u64, i32)> = {
+        let runtime = world.resource::<RoundScript>();
+        flagged
+            .into_iter()
+            .filter(|(id, _)| runtime.entities.contains_key(id))
+            .collect()
+    };
+    if let Some(mut flagged) = world.get_resource_mut::<ThirdPersonSpectate>() {
+        flagged
+            .0
+            .retain(|id, _| alive.iter().any(|(kept, _)| kept == id));
+    }
+    let rendering_third_person = false;
+    crate::script::host::client_scripts::with_server(world, |server| {
+        let local = ClientId(LOCAL_CLIENT as u32);
+        let other_flags = FrameWorld::from_world(server)
+            .player(local)
+            .map_or(0, |ps| ps.other_flags);
+        let undrawn: Vec<u16> = alive
+            .iter()
+            .filter(|(_, number)| {
+                let drawn = if other_flags & 2 != 0 {
+                    rendering_third_person
+                } else if other_flags & 4 != 0 && rendering_third_person {
+                    true
+                } else {
+                    actor_apart_from(server, *number, local)
+                };
+                !drawn
+            })
+            .filter_map(|(_, number)| u16::try_from(*number).ok())
+            .collect();
+        let mut frame = FrameWorld::from_world(server);
+        if frame.client_meta(local).is_some() {
+            let screen = &mut frame.client_meta_mut(local).view_effects.client_screen;
+            if screen.undrawn_entities != undrawn {
+                diag::info!(Sim, "t6 client undrawn entities: {undrawn:?}");
+                screen.undrawn_entities = undrawn;
+            }
+        }
+    });
+}
+
+/// Whether the entity is an actor not linked to the local player.
+fn actor_apart_from(server: &World, number: i32, local: ClientId) -> bool {
+    let runtime = server.resource::<RoundScript>();
+    let Some(entity) = server_object(server, number).and_then(|id| runtime.entities.get(&id))
+    else {
+        return false;
+    };
+    if entity.kind != EntityKind::Actor {
+        return false;
+    }
+    let parent = entity
+        .linked_to
+        .as_ref()
+        .and_then(|link| runtime.entities.get(&link.parent))
+        .map(|parent| parent.number);
+    parent != Some(local.0 as i32)
 }

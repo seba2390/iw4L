@@ -1709,6 +1709,10 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(poison.dvision_x);
         }
     }
+    out.put_u16(screen.undrawn_entities.len() as u16);
+    for number in &screen.undrawn_entities {
+        out.put_u16(*number);
+    }
     out.put_u16(screen.script_vectors.len() as u16);
     for entity in &screen.script_vectors {
         out.put_u16(entity.number);
@@ -1826,6 +1830,11 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         },
     };
     let count = input.get_u16()?;
+    let mut undrawn_entities = Vec::with_capacity(usize::from(count));
+    for _ in 0..count {
+        undrawn_entities.push(input.get_u16()?);
+    }
+    let count = input.get_u16()?;
     let mut script_vectors = Vec::with_capacity(usize::from(count));
     for _ in 0..count {
         let number = input.get_u16()?;
@@ -1852,6 +1861,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         gumps,
         overlays,
         script_vectors,
+        undrawn_entities,
     })
 }
 

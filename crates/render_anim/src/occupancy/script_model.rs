@@ -634,6 +634,23 @@ fn pose_script_models(
             continue;
         }
         let entnum = owner.gentity_number.map(u32::from);
+        // An entity the client's game does not draw this frame.
+        if let Some(number) = owner.gentity_number
+            && presented
+                .snapshot()
+                .and_then(|snapshot| snapshot.meta.for_client(local.0))
+                .is_some_and(|meta| {
+                    meta.view_effects
+                        .client_screen
+                        .undrawn_entities
+                        .contains(&number)
+                })
+        {
+            if let Some(id) = focused_owner_id {
+                focus.refuse(id, &owner.current_model.0, "client_undrawn");
+            }
+            continue;
+        }
 
         let slot = entnum.map(|entnum| script_scene_slot(&gfx_scene.scene, entnum));
         let walk_hidden = entnum.is_some_and(|entnum| gfx_scene.scene.scene_ent_hidden(entnum));
