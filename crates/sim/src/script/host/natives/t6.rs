@@ -302,9 +302,20 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         super::iw4::precache(world, "model", name).map_err(|_| String::from("precacheModel must be called before any wait statements in the gametype or level script"))?;
         Ok(Value::Undefined)
     });
+    // precacheshellshock(name): the shock's file, else the default shock's
+    // (`shock/default.shock`); with neither the engine errors.
     registry.register(Function, "precacheshellshock", |world, _, args| {
         let name = string(args, 0)?;
-        super::iw4::precache(world, "shellshock", name).map_err(|_| String::from("precacheShellShock must be called before any wait statements in the gametype or level script"))?;
+        super::iw4::precache(world, "shellshock", name.clone()).map_err(|_| String::from("precacheShellShock must be called before any wait statements in the gametype or level script"))?;
+        let frame = crate::frame::FrameWorld::from_world(world);
+        match frame.shock_file(&name) {
+            Some(file) if !file.eq_ignore_ascii_case(&name) => diag::info!(
+                Sim,
+                "shellshock: couldn't open 'shock/{name}.shock', playing shock/{file}.shock"
+            ),
+            Some(_) => {}
+            None => return Err(format!("couldn't find shell shock '{name}' -- see console")),
+        }
         Ok(Value::Undefined)
     });
     registry.register(Function, "loadfx", |world, _, args| {
@@ -2004,7 +2015,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         (Function, "isplayer"),
         (Function, "newclienthudelem"),
         (Method, "setdepthoffield"),
-        (Method, "stopshellshock"),
         (Method, "stopsounds"),
         (Method, "closemenu"),
         (Method, "closeingamemenu"),

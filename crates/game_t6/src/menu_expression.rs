@@ -72,7 +72,7 @@ fn parse(tokens: &[&str]) -> Result<Vec<Token>, ExprError> {
 }
 
 /// C's `atoi`: leading blanks, a sign, then digits; 0 when none.
-fn atoi(text: &str) -> i32 {
+pub(crate) fn atoi(text: &str) -> i32 {
     let text = text.trim_start();
     let (negative, digits) = match text.as_bytes().first() {
         Some(b'-') => (true, &text[1..]),
@@ -93,7 +93,7 @@ fn atoi(text: &str) -> i32 {
 }
 
 /// C's `atof`: the longest leading number; 0 when none.
-fn atof(text: &str) -> f32 {
+pub(crate) fn atof(text: &str) -> f32 {
     let text = text.trim_start();
     let bytes = text.as_bytes();
     let digits = |from: usize| {
