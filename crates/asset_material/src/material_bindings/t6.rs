@@ -20,8 +20,8 @@ pub(super) fn prepare_exposure(steps: &mut Vec<FrameStep>, requested: &[u16]) {
         .map(|(i, r)| (i, float4_bits(r)))
         .collect();
     super::push_static(steps, requested, rows);
-    // The client's per-entity script vectors are not drawn
-    // (`t6.csc.shader.constants`): a scene draw reads them as zero.
+    // The backend's script vector rows hold zero outside the model draws of
+    // an entity whose client scripts map them.
     super::push_static(
         steps,
         requested,

@@ -124,9 +124,9 @@ pub use game_api::post::{FlameOverlay, ScreenFilter, ScreenOverlays};
 pub use match_state::{
     CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle, ClientLightOverride,
     ClientScreen, ClientSnapshotMeta, ConfigurationChangeRejectReason, DroppedItemAmmo,
-    EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, GUMP_SLOTS,
-    GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt, ItemPickupRecord, KillcamHud,
-    LinkedWeaponView, LoadoutSpec, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
+    EntityEventPayload, EntityEventRecord, EntityScriptVectors, EventAudience, EventRecord,
+    GUMP_SLOTS, GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt, ItemPickupRecord,
+    KillcamHud, LinkedWeaponView, LoadoutSpec, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
     MatchEndReason, MenuCommand, MenuCommandKind, PelletFxRecord, PersonalClass, RadarMode,
     RemoteMissile, RngDebugMeta, SIM_EVENT_ROSTER, SOUND_REPORTS_LENGTH, ScriptBlur,
     ScriptControls, ScriptDepthOfField, ScriptDvars, ScriptSeat, SimEvent, SimEventRow,

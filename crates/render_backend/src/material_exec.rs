@@ -158,6 +158,8 @@ enum OverlayKeepExtra {
         handle: u32,
         packed: Option<[u8; 4]>,
         depth_hack: bool,
+        /// The entity whose script vectors the draw takes.
+        script_entity: Option<u32>,
     },
     Unique(u32),
 }
@@ -212,6 +214,29 @@ fn overlay_smodel_lighting_sh(
         .flatten()
         .unwrap_or([[1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0], [0.0; 4]]);
     for (index, row) in render_material::CODE_T6_GRID_SH.into_iter().zip(sh) {
+        scratch.set_constant_rows(index, &[row.map(f32::to_bits)]);
+    }
+}
+
+/// The script vector rows an entity's model draws take, as its client
+/// scripts mapped them; every other model draw reads them as zero.
+fn overlay_script_vectors(
+    frame: &MaterialExecFrame,
+    draw: &RetainedDrawItem,
+    scratch: &mut RuntimeCodeSources,
+) {
+    if frame.script_vectors.is_empty() {
+        return;
+    }
+    let RetainedDrawKind::XModel { scene_entnum, .. } = draw.kind else {
+        return;
+    };
+    let rows = scene_entnum.and_then(|entity| frame.script_vectors.get(&entity));
+    for (at, index) in render_material::CODE_T6_SCRIPT_VECTOR
+        .into_iter()
+        .enumerate()
+    {
+        let row = rows.and_then(|rows| rows[at]).unwrap_or([0.0; 4]);
         scratch.set_constant_rows(index, &[row.map(f32::to_bits)]);
     }
 }
@@ -310,6 +335,7 @@ fn overlay_keep_key(frame: &MaterialExecFrame, draw: &RetainedDrawItem) -> Overl
             handle: lighting_handle,
             packed: None,
             depth_hack: false,
+            script_entity: None,
         },
         RetainedDrawKind::Glass {
             lighting_handle, ..
@@ -317,6 +343,7 @@ fn overlay_keep_key(frame: &MaterialExecFrame, draw: &RetainedDrawItem) -> Overl
             handle: lighting_handle,
             packed: None,
             depth_hack: false,
+            script_entity: None,
         },
         RetainedDrawKind::Smodel {
             lighting_handle,
@@ -326,15 +353,18 @@ fn overlay_keep_key(frame: &MaterialExecFrame, draw: &RetainedDrawItem) -> Overl
             handle: lighting_handle,
             packed: packed_lighting,
             depth_hack: false,
+            script_entity: None,
         },
         RetainedDrawKind::XModel {
             lighting_handle,
             packed_lighting,
+            scene_entnum,
             ..
         } => OverlayKeepExtra::Lighting {
             handle: lighting_handle,
             packed: packed_lighting,
             depth_hack: xmodel_depth_hack(draw.key),
+            script_entity: scene_entnum.filter(|entity| frame.script_vectors.contains_key(entity)),
         },
         RetainedDrawKind::ParticleCloud { draw, .. } => OverlayKeepExtra::Unique(draw),
     };
@@ -351,6 +381,7 @@ fn overlay_draw_material(
     scratch.begin_overlay();
     overlay_reflection_sh(runtime.frame, draw, scratch);
     overlay_smodel_lighting_sh(runtime.frame, draw, scratch);
+    overlay_script_vectors(runtime.frame, draw, scratch);
     apply_shadowable_light(
         scratch,
         draw.key,
@@ -483,6 +514,7 @@ fn overlay_draw_obj_only(
     let inv_image_height = runtime.frame.inv_image_height;
     overlay_reflection_sh(runtime.frame, draw, scratch);
     overlay_smodel_lighting_sh(runtime.frame, draw, scratch);
+    overlay_script_vectors(runtime.frame, draw, scratch);
     match draw.kind {
         RetainedDrawKind::Smodel {
             lighting_handle,
@@ -669,6 +701,8 @@ pub struct MaterialRunCensus {
     /// writes fell because less is computed or because less was drawn.
     pub overlay_const_writes: u32,
     pub overlay_need_known: u32,
+    /// Model draws that took an entity's script vectors.
+    pub script_vector_draws: u32,
 }
 
 #[derive(Debug, Default)]
@@ -776,6 +810,13 @@ impl MaterialRunExecutor {
         self.place_lanes.clear();
         let share = execution_share_key(view.frame, draw, tech_type, vertex_type);
         let overlay_key = overlay_keep_key(view.frame, draw);
+        if let OverlayKeepExtra::Lighting {
+            script_entity: Some(_),
+            ..
+        } = overlay_key.extra
+        {
+            self.census.script_vector_draws = self.census.script_vector_draws.saturating_add(1);
+        }
         if self.run.as_ref().is_some_and(|run| run.share == share) {
             let Self {
                 run,

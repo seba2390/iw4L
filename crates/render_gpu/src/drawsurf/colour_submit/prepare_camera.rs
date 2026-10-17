@@ -1062,6 +1062,7 @@ fn add_run_census(a: MaterialRunCensus, b: MaterialRunCensus) -> MaterialRunCens
             .overlay_const_writes
             .saturating_add(b.overlay_const_writes),
         overlay_need_known: a.overlay_need_known.saturating_add(b.overlay_need_known),
+        script_vector_draws: a.script_vector_draws.saturating_add(b.script_vector_draws),
     }
 }
 

@@ -931,6 +931,9 @@ pub struct FrameAssemblyInputs {
     pub local_light_bindings: Vec<render_material::CompiledConstantOverlay>,
     pub reflection_probe_sh: Vec<Option<[[f32; 4]; 3]>>,
     pub smodel_lighting_sh: std::sync::Arc<Vec<Option<[[f32; 4]; 3]>>>,
+    /// The script vector rows each entity's model draws take, by entity, as
+    /// the presented client's screen holds them.
+    pub script_vectors: std::sync::Arc<std::collections::HashMap<u32, [Option<[f32; 4]>; 4]>>,
 }
 
 pub(crate) fn open_frame_products(
@@ -946,6 +949,8 @@ pub(crate) fn open_frame_products(
     mut spot_casters: ResMut<super::SpotShadowCasterPlan>,
     mut spot_lights: ResMut<super::SpotShadowMapLights>,
     mut mat_frame: ResMut<MaterialFrameInputs>,
+    presented: Option<Res<net::PresentedSnapshot>>,
+    local: Option<Res<net::LocalPresentClient>>,
 ) {
     spot_casters.clear_frame();
     spot_lights.0.clear();
@@ -967,6 +972,32 @@ pub(crate) fn open_frame_products(
     inputs.smodel_lighting_sh = smodel_plan
         .map(|plan| plan.lighting_sh.clone())
         .unwrap_or_else(|| Arc::new(Vec::new()));
+    let script_vectors = presented
+        .as_ref()
+        .zip(local.as_ref())
+        .and_then(|(presented, local)| presented.snapshot()?.meta.for_client(local.0))
+        .map_or(&[][..], |meta| {
+            meta.view_effects.client_screen.script_vectors.as_slice()
+        });
+    if script_vectors.len() != inputs.script_vectors.len()
+        || script_vectors.iter().any(|entity| {
+            inputs.script_vectors.get(&u32::from(entity.number)) != Some(&entity.rows)
+        })
+    {
+        if script_vectors.len() != inputs.script_vectors.len() {
+            diag::info!(
+                World,
+                "script vectors: {} entities draw with their own",
+                script_vectors.len()
+            );
+        }
+        inputs.script_vectors = Arc::new(
+            script_vectors
+                .iter()
+                .map(|entity| (u32::from(entity.number), entity.rows))
+                .collect(),
+        );
+    }
     if let Some(map) = primary_lights.as_ref() {
         inputs
             .reflection_probe_sh
