@@ -2001,13 +2001,10 @@ fn answer_custom_class(
     if !menu.eq_ignore_ascii_case("changeclass") {
         return None;
     }
-    let Some(slot) = response
+    let slot = response
         .strip_prefix("custom")
         .and_then(|n| n.parse::<u32>().ok())
-        .and_then(|n| n.checked_sub(1))
-    else {
-        return None;
-    };
+        .and_then(|n| n.checked_sub(1))?;
     let Some(def) = crate::script::personal_class(world.ecs(), id.0, crate::ClassId(slot)) else {
         return Some(ActionOutcome::Refused);
     };

@@ -86,7 +86,7 @@ pub fn ensure_primary_light_words(
 }
 
 pub fn relink_dyn_ent_primary_lights(
-    words: &mut Vec<u32>,
+    words: &mut [u32],
     closest: Option<&mut [u8]>,
     atpoint: &DynAtPointLookup,
     id: u32,

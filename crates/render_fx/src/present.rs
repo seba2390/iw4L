@@ -996,9 +996,7 @@ fn tick_fx_pass(
                 .copied()
         },
         |start, end, mins, maxs, mask| {
-            let Some(world) = clip_world else {
-                return None;
-            };
+            let world = clip_world?;
 
             let t = world.trace_world(start, end, mins, maxs, mask);
             Some(FxTrailCollideHit {

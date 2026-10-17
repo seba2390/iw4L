@@ -1637,9 +1637,7 @@ fn check_stunned(
     facts: &WeaponCombatFacts,
     cmd: &WeaponCmd,
 ) -> Option<WeaponState> {
-    let Some(primary) = hands.first() else {
-        return None;
-    };
+    let primary = hands.first()?;
     if cmd.cmd_weapon == 0 || matches!(primary.weaponstate, 1..=5 | 16..=21 | 29..=30) {
         return None;
     }

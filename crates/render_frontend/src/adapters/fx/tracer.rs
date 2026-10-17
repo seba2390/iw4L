@@ -84,7 +84,7 @@ pub(crate) fn present_tracer_beams(
                     &beam.tess,
                     view_pos,
                     view_fwd,
-                    clip_pair.map(|(c, i)| (c, i)),
+                    clip_pair,
                     &mut vert_buf,
                     &mut idx_buf,
                 ) else {

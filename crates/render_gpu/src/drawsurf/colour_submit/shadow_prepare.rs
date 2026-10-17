@@ -160,12 +160,12 @@ fn sun_flush_owner<'a>(
     let Some(item) = draws.get(draw_index) else {
         return Err(missing.into());
     };
-    let matches_kind = match (kind, &item.kind) {
-        (SunFlushKind::Smodel, RetainedDrawKind::Smodel { .. }) => true,
-        (SunFlushKind::XModel, RetainedDrawKind::XModel { .. }) => true,
-        (SunFlushKind::World, RetainedDrawKind::World { .. }) => true,
-        _ => false,
-    };
+    let matches_kind = matches!(
+        (kind, &item.kind),
+        (SunFlushKind::Smodel, RetainedDrawKind::Smodel { .. })
+            | (SunFlushKind::XModel, RetainedDrawKind::XModel { .. })
+            | (SunFlushKind::World, RetainedDrawKind::World { .. })
+    );
     if !matches_kind {
         return Err(missing.into());
     }

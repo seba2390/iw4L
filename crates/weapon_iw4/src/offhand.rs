@@ -143,9 +143,7 @@ pub fn weapon_update_grenade_throw(
     } else {
         hand.weapon
     };
-    let Some(row) = offhand_row(&cmd.offhand, weap) else {
-        return None;
-    };
+    let row = offhand_row(&cmd.offhand, weap)?;
     if row.weap_type != crate::WEAPTYPE_GRENADE {
         return None;
     }
