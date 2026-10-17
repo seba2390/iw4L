@@ -133,13 +133,6 @@ fn update_snapshot_mix(
             diag::warn!(Audio, "audio: could not find group snapshot {name}");
             None
         };
-        diag::info!(
-            Audio,
-            "PROBE snapshot slot={slot} name={name} value={value} found={} count={} groups={:?}",
-            hash.is_some(),
-            snapshots.list.len(),
-            snapshots.groups
-        );
         let slot = &mut mix.slots[usize::from(slot)];
         slot.hash = hash;
         slot.weight = value;
