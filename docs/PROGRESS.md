@@ -108,8 +108,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 150 of 610 |
-| Five (`t5:zombie_pentagon`) | 152 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 149 of 610 |
+| Five (`t5:zombie_pentagon`) | 151 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -167,7 +167,7 @@ Only the top-level items count.
   - [x] The player's own footsteps: Black Ops' movement footstep events reach the client scripts' `CodeCallback_PlayerFootstep` (`_footsteps.csc`), which plays `fly_step_<sprint|run|walk|…>_plr_<surface>`.
   - [x] The client scripts' sounds by playback id: the local sound system plays each one, stops and fades it by its id (`stopsound`, `setsoundvolume`, `setsoundvolumerate`), and reports back whether it plays, how far and how long (`soundplaying`, `getplaybacktime`, `getknownlength`), which `_music.csc`'s transitions wait on.
   - [x] The player's jumps and landings reach the client scripts' `CodeCallback_PlayerJump` / `CodeCallback_PlayerLand` (`_footsteps.csc`: `fly_step_run_*`, `fly_land_*`), and their line emitters (`soundlineemitter`) play at the point of their line nearest the player (Kino's wind alleys and water pipes).
-  - [ ] Gear, other players' footsteps, reverb rooms (ambient rooms, sound contexts and mix snapshots run: #234), another player's automatic fire; a server `PlaySound` notify waits a fixed 2 s.
+  - [ ] Gear, other players' footsteps, reverb rooms (ambient rooms, sound contexts and mix snapshots run: #234), another player's automatic fire (#392); server `PlaySound` notifies wait for the client's reported length and entity sounds follow their entity (#256).
 - [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.

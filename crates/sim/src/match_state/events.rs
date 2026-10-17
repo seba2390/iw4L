@@ -41,6 +41,10 @@ pub struct EventRecord {
     pub event: SimEvent,
 }
 
+/// On a sound alias event: the client reports the sound's length back for
+/// the event entity's waiting sound notify (Black Ops' `sl` command).
+pub const SOUND_REPORTS_LENGTH: u8 = 0x80;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct EntityEventPayload {
     pub number: i32,

@@ -662,6 +662,13 @@ impl CueFeedback {
         }
         self.cues.push(CueFeedbackEntry { handle });
     }
+
+    /// The cue pushed last.
+    pub(crate) fn last(&self) -> Option<crate::cue::CueHandle> {
+        self.cues
+            .last()
+            .map(|entry| crate::cue::CueHandle(entry.handle.0.clone()))
+    }
 }
 
 pub(crate) fn clip_keys_for_alias(

@@ -485,6 +485,18 @@ impl SimWorld {
         crate::script::client::report_sounds(&mut self.ecs, statuses);
     }
 
+    /// The local client's sound system's report of notified entity sounds'
+    /// lengths, in msec, by entity number (Black Ops' `sl` command).
+    pub fn report_sound_lengths(&mut self, reports: Vec<(i32, i32)>) {
+        for (number, length_ms) in reports {
+            crate::script::host::natives::engine::report_sound_length(
+                &mut self.ecs,
+                number,
+                length_ms,
+            );
+        }
+    }
+
     /// The local client's effect system's word that the script effects in
     /// these rows have run out.
     pub fn report_finished_effects(&mut self, rows: Vec<u32>) {

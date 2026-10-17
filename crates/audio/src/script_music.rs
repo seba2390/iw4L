@@ -89,6 +89,7 @@ pub(crate) fn update_script_music(
         bound: None,
         origin_inches: None,
         emitter: None,
+        follow_emitter: false,
         class: SoundClass::Music,
         epoch: epoch.0,
         pitch_scale: 1.0,
