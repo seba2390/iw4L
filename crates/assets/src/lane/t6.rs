@@ -401,7 +401,7 @@ fn patch_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::Zo
 }
 
 fn content_zone(path: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
-    let image = match asset_transport::open_t6_zone(&path) {
+    let image = match asset_transport::open_t6_zone(path) {
         Ok(image) => image,
         Err(error) => {
             report.push(format!("t6 content: {}: {error:?}", path.display()));
@@ -1228,7 +1228,7 @@ fn capture_weapon_icons(
     let extra: Vec<_> = ui_zones
         .iter()
         .filter_map(|path| {
-            let image = match asset_transport::open_t6_zone(&path) {
+            let image = match asset_transport::open_t6_zone(path) {
                 Ok(image) => image,
                 Err(error) => {
                     report.push(format!("t6 icons: {}: {error:?}", path.display()));
@@ -1503,9 +1503,11 @@ fn capture_ui_font(
         )
         .ok()?;
     let glyphs = bytes
-        .chunks_exact(24)
+        .as_chunks::<24>()
+        .0
+        .iter()
         .filter_map(|row| {
-            let glyph = fastfile_iw4::GlyphCapture::from_row(row.try_into().ok()?);
+            let glyph = fastfile_iw4::GlyphCapture::from_row(row);
             [glyph.s0, glyph.t0, glyph.s1, glyph.t1]
                 .iter()
                 .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
@@ -1593,7 +1595,7 @@ fn capture_icon(
 
 fn checked_iwi(bytes: Arc<[u8]>) -> Result<Arc<[u8]>, String> {
     asset_material::decode_iwi_rgba(&bytes)?;
-    Ok(bytes.into())
+    Ok(bytes)
 }
 
 fn attachment_rest(offset: [f32; 3], angles: [f32; 3]) -> (bevy::math::Quat, bevy::math::Vec3) {

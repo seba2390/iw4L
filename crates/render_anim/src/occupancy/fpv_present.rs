@@ -114,7 +114,7 @@ fn same_material_catalog(
     owned: &Arc<RuntimeMaterialCatalog>,
     current: Option<&render_scene::TessMaterials>,
 ) -> bool {
-    current.is_some_and(|current| Arc::ptr_eq(owned, &current.catalog()))
+    current.is_some_and(|current| Arc::ptr_eq(owned, current.catalog()))
 }
 
 #[derive(Resource, Default, Clone, Debug, PartialEq)]
@@ -557,19 +557,19 @@ pub fn tick_fpv_viewmodel(
     pending_notes.batch = None;
     bolts.clear();
     *product = FpvPoseProduct::default();
-    if let Some(ps) = presented.viewweapon_player(local.0) {
-        if !presented_is_third_person(
+    if let Some(ps) = presented.viewweapon_player(local.0)
+        && !presented_is_third_person(
             &presented,
             local.0,
             view.in_killcam(),
             settings.third_person,
-        ) {
-            product.drawgun = viewweapon_drawgun_value(
-                ps,
-                table,
-                kick.as_ref().map(|k| k.b_position_to_ads).unwrap_or(true),
-            );
-        }
+        )
+    {
+        product.drawgun = viewweapon_drawgun_value(
+            ps,
+            table,
+            kick.as_ref().map(|k| k.b_position_to_ads).unwrap_or(true),
+        );
     }
     let Some(session) = session_vm.0.as_mut() else {
         product.kind = FpvPoseKind::Hide;

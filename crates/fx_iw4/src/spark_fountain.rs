@@ -78,7 +78,7 @@ pub fn spark_fountain_slot_for_handle(handle: u16) -> Option<usize> {
         return None;
     }
     let off = handle as usize;
-    if off % FX_SPARK_FOUNTAIN_CLUSTER_STRIDE != 0 {
+    if !off.is_multiple_of(FX_SPARK_FOUNTAIN_CLUSTER_STRIDE) {
         return None;
     }
     let slot = off / FX_SPARK_FOUNTAIN_CLUSTER_STRIDE;

@@ -566,8 +566,8 @@ fn ingress_authority(
     if let (Some(ack), Some(local)) = (loopback_ack, local) {
         reliable.ack(local.0, ack.0);
     }
-    if let Some(mut hub) = hub {
-        if let Err(e) = hub.ingress(
+    if let Some(mut hub) = hub
+        && let Err(e) = hub.ingress(
             &mut cmd_inbox,
             &mut action_inbox,
             Some(&mut samples),
@@ -579,9 +579,9 @@ fn ingress_authority(
                     .map(|bridge| bridge.state().identity().match_key())
                     .unwrap_or(frame::MatchKey::NONE),
             )),
-        ) {
-            diag::warn!(Net, "udp ingress: {e}");
-        }
+        )
+    {
+        diag::warn!(Net, "udp ingress: {e}");
     }
 }
 
@@ -1016,8 +1016,8 @@ fn fanout_loopback(
             diag.line = Some(line);
         }
     }
-    if let Some(mut hub) = hub {
-        if let Err(e) = hub.fanout_with_seats(
+    if let Some(mut hub) = hub
+        && let Err(e) = hub.fanout_with_seats(
             &tick.snapshot,
             &acks,
             |peer, live| {
@@ -1034,11 +1034,11 @@ fn fanout_loopback(
             Some(&mut queues.pending_gamenotify),
             Some(&reliable),
             false,
-        ) {
-            let line = format!("udp fanout: {e}");
-            diag::info!(Net, "{line}");
-            diag.line = Some(line);
-        }
+        )
+    {
+        let line = format!("udp fanout: {e}");
+        diag::info!(Net, "{line}");
+        diag.line = Some(line);
     }
     let stranded = queues.pending_svc.drain_stranded();
     if !stranded.is_empty() {

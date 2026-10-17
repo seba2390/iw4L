@@ -233,8 +233,8 @@ pub fn cull_point_from_light_region_hull(
     local: [f32; 3],
     extra: f32,
 ) -> bool {
-    for i in 0..3 {
-        if (local[i] - hull.kdop_mid[i]).abs() >= extra + hull.kdop_half[i] {
+    for (i, &axis) in local.iter().enumerate() {
+        if (axis - hull.kdop_mid[i]).abs() >= extra + hull.kdop_half[i] {
             return true;
         }
     }

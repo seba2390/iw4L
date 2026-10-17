@@ -516,8 +516,11 @@ pub fn merge_xmodel_draw_plan(
         bodies.surface_ranges(),
         bodies.materials(),
         bodies.packed_vertices(),
-        bodies.draws().iter().filter_map(|d| {
-            scene_ent_admitted(scene, d.scene_entnum).then(|| {
+        bodies
+            .draws()
+            .iter()
+            .filter(|&d| scene_ent_admitted(scene, d.scene_entnum))
+            .map(|d| {
                 let object_id = next_body_object;
                 next_body_object = next_body_object.saturating_add(1);
                 XModelSurfaceDraw {
@@ -539,14 +542,13 @@ pub fn merge_xmodel_draw_plan(
                     // every player caster in both partitions.
                     caster_bound: None,
                 }
-            })
-        }),
+            }),
     ) {
         admitted |= ADMIT_BODY;
     }
 
-    if fpv_scene_colour(fpv, scene) {
-        if append_admitted_source(
+    if fpv_scene_colour(fpv, scene)
+        && append_admitted_source(
             merged,
             &mut packed,
             &mut packed_ok,
@@ -571,9 +573,9 @@ pub fn merge_xmodel_draw_plan(
                 body_client: None,
                 caster_bound: None,
             }),
-        ) {
-            admitted |= ADMIT_FPV;
-        }
+        )
+    {
+        admitted |= ADMIT_FPV;
     }
 
     if append_admitted_source(
@@ -659,8 +661,8 @@ pub fn merge_xmodel_draw_plan(
     ) {
         admitted |= ADMIT_DYNENT;
     }
-    if let Some((sky, eye)) = sky {
-        if append_admitted_source(
+    if let Some((sky, eye)) = sky
+        && append_admitted_source(
             merged,
             &mut packed,
             &mut packed_ok,
@@ -673,9 +675,9 @@ pub fn merge_xmodel_draw_plan(
                 world_from_local: Mat4::from_translation(eye),
                 ..*draw
             }),
-        ) {
-            admitted |= ADMIT_SKY;
-        }
+        )
+    {
+        admitted |= ADMIT_SKY;
     }
     let append_ms = append_started.elapsed().as_secs_f32() * 1000.0;
     let packed_started = Instant::now();
@@ -919,8 +921,11 @@ fn refresh_concat_draws(
         &mut range_base,
         bodies.surface_ranges().len(),
         bodies.materials(),
-        bodies.draws().iter().filter_map(|d| {
-            scene_ent_admitted(scene, d.scene_entnum).then(|| {
+        bodies
+            .draws()
+            .iter()
+            .filter(|&d| scene_ent_admitted(scene, d.scene_entnum))
+            .map(|d| {
                 let object_id = next_body_object;
                 next_body_object = next_body_object.saturating_add(1);
                 XModelSurfaceDraw {
@@ -941,8 +946,7 @@ fn refresh_concat_draws(
                     // every player caster in both partitions.
                     caster_bound: None,
                 }
-            })
-        }),
+            }),
     );
     if fpv_scene_colour(fpv, scene) {
         append_concat_owner_draws(
@@ -1223,10 +1227,8 @@ fn compact_admitted_source(
             };
             if *slot == UNMAPPED {
                 *slot = vert_base.saturating_add(new_verts);
-                if *packed_ok {
-                    if let Some(rows) = source_rows {
-                        packed.push(rows[old]);
-                    }
+                if *packed_ok && let Some(rows) = source_rows {
+                    packed.push(rows[old]);
                 }
                 new_verts = new_verts.saturating_add(1);
             }

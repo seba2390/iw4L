@@ -473,5 +473,5 @@ fn remove_key<K: Copy + PartialEq, V>(table: &mut Vec<(K, V)>, id: K) {
 }
 
 fn sort_pairs<K: Copy + Ord, V>(table: &mut [(K, V)]) {
-    table.sort_by(|(a, _), (b, _)| a.cmp(b));
+    table.sort_by_key(|(a, _)| *a);
 }

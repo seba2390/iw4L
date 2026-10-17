@@ -680,7 +680,7 @@ fn follow_entities(world: &mut World) {
             continue;
         };
         let mut direction = None;
-        if rotation <= 1.0 && rotation != 1.0 {
+        if rotation < 1.0 {
             let angles = entity_angles(world, id);
             let (forward, _, _) = math_iw4::angle_vectors(angles);
             let mut dir = forward.map(|v| -v);

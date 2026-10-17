@@ -665,6 +665,8 @@ impl Host {
                         if let (Some(name), Some(value)) = (words.next(), words.next()) {
                             let key_name = name.to_ascii_lowercase();
                             let value = value.trim_matches('"');
+                            // `set_dvar` takes `&mut self`: no entry can be held.
+                            #[allow(clippy::map_entry)]
                             if self.front_end.dvars.contains_key(&key_name) {
                                 let _ = self.set_dvar(&key_name, &key(value));
                             } else {
@@ -814,7 +816,7 @@ impl Host {
             "dvarobj:getString" => {
                 return Some(
                     self.dvar_of(args.first(), tables)
-                        .and_then(|name| Ok(vec![key(&self.front_end.dvars[&name].1)])),
+                        .map(|name| vec![key(&self.front_end.dvars[&name].1)]),
                 );
             }
             "dvarobj:set" => {
@@ -860,6 +862,8 @@ impl Host {
                         self.front_end.ingame_menu_open = false;
                     }
                     let value = super::key(&value);
+                    // `set_dvar` takes `&mut self`: no entry can be held.
+                    #[allow(clippy::map_entry)]
                     if self.front_end.dvars.contains_key(&key) {
                         if let Err(fault) = self.set_dvar(&key, &value) {
                             return Some(Err(fault));
@@ -982,7 +986,7 @@ impl Host {
             }
             "SessionModeIsMode" => {
                 let bit = mode_bit(args.first());
-                vec![Value::Boolean((self.front_end.session >> bit & 1).into())]
+                vec![Value::Boolean(self.front_end.session >> bit & 1)]
             }
             "SessionMode_IsOnlineGame"
             | "SessionMode_IsSystemlinkGame"
@@ -1014,9 +1018,7 @@ impl Host {
             }
             "GameModeIsMode" => {
                 let bit = mode_bit(args.first());
-                vec![Value::Boolean(
-                    (self.front_end.game_modes >> bit & 1).into(),
-                )]
+                vec![Value::Boolean(self.front_end.game_modes >> bit & 1)]
             }
             // `CL_PlayLocalSoundAliasByName` for the primary local client.
             "PlaySound" => {

@@ -33,8 +33,7 @@ pub fn xmodel_lod_for_dist(num_lods: u8, lod_dist: [f32; 4], dist: f32) -> Optio
         return Some(0);
     }
     let n = usize::from(num_lods).min(4);
-    for lod in 0..n {
-        let d = lod_dist[lod];
+    for (lod, &d) in lod_dist.iter().enumerate().take(n) {
         if d == 0.0 || d > dist {
             return Some(lod as u8);
         }
@@ -502,6 +501,10 @@ fn capture_model_skel_iw4(
     let mut lod_surf_span = [(0u16, 0u16); 4];
     let mut any_surf = false;
 
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "one LOD number indexes the geometry's parallel LOD arrays"
+    )]
     for lod in 0..4 {
         let Some(surfaces) = geometry.lod_xsurfaces[lod] else {
             let count = usize::from(geometry.lod_numsurfs[lod]);
@@ -596,6 +599,10 @@ fn capture_model_skel_iw4(
                 geometry.num_bones,
             )?;
 
+            #[expect(
+                clippy::needless_range_loop,
+                reason = "the vertex index is the stream record the offsets come from"
+            )]
             for vertex_index in 0..vertex_count {
                 let vertex = vertices.at(vertex_index * sz::GFX_PACKED_VERTEX);
                 packed_vertices.push(copy_packed_vertex_iw4(stream, vertex)?);
@@ -905,7 +912,7 @@ fn decode_surface_skin(
 ) -> Option<Vec<VertSkin>> {
     let mut skins = vec![VertSkin::default(); vertex_count];
     let bone_at = |raw: u16| -> Option<u8> {
-        if raw % BONE_STRIDE != 0 {
+        if !raw.is_multiple_of(BONE_STRIDE) {
             return None;
         }
         let bone = raw / BONE_STRIDE;
@@ -914,26 +921,26 @@ fn decode_surface_skin(
             .flatten()
     };
 
-    if vert_list_count > 0 {
-        if let Ok(ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, stream.layout(36, 56)) {
-            let list = stream.resolve_alias(list_ptr);
-            let mut vertex = 0usize;
-            for i in 0..vert_list_count {
-                let entry = list.at(i * stream.layout(sz::XRIGID_VERT_LIST, 16));
-                let bone_offset = stream.u16_at(entry, 0).ok()?;
-                let run = stream.u16_at(entry, 2).ok()? as usize;
-                let bone = bone_at(bone_offset)?;
-                for _ in 0..run {
-                    if vertex >= vertex_count {
-                        break;
-                    }
-                    skins[vertex] = VertSkin::rigid(bone);
-                    vertex += 1;
+    if vert_list_count > 0
+        && let Ok(ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, stream.layout(36, 56))
+    {
+        let list = stream.resolve_alias(list_ptr);
+        let mut vertex = 0usize;
+        for i in 0..vert_list_count {
+            let entry = list.at(i * stream.layout(sz::XRIGID_VERT_LIST, 16));
+            let bone_offset = stream.u16_at(entry, 0).ok()?;
+            let run = stream.u16_at(entry, 2).ok()? as usize;
+            let bone = bone_at(bone_offset)?;
+            for _ in 0..run {
+                if vertex >= vertex_count {
+                    break;
                 }
+                skins[vertex] = VertSkin::rigid(bone);
+                vertex += 1;
             }
-            if vertex == vertex_count {
-                return Some(skins);
-            }
+        }
+        if vertex == vertex_count {
+            return Some(skins);
         }
     }
 
@@ -1130,8 +1137,12 @@ fn capture_model_skel_t5(
             _ => return None,
         };
         let mut part_bits = [0u32; 6];
-        for i in 0..fastfile_t5::size::XSURFACE_PART_BITS_WORDS {
-            part_bits[i] = stream
+        for (i, word) in part_bits
+            .iter_mut()
+            .enumerate()
+            .take(fastfile_t5::size::XSURFACE_PART_BITS_WORDS)
+        {
+            *word = stream
                 .u32_at(surface, fastfile_t5::size::XSURFACE_PART_BITS_OFF + i * 4)
                 .ok()?;
         }
@@ -1147,6 +1158,10 @@ fn capture_model_skel_t5(
             XRIGID_VERT_LIST,
         )?;
 
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "the vertex index is the stream record the offsets come from"
+        )]
         for vertex_index in 0..vertex_count {
             let vertex = vertices.at(vertex_index * GFX_PACKED_VERTEX);
             packed_vertices.push(copy_packed_vertex_t5(stream, vertex)?);
@@ -1472,7 +1487,7 @@ fn decode_surface_skin_t5(
 ) -> Option<Vec<VertSkin>> {
     let mut skins = vec![VertSkin::default(); vertex_count];
     let bone_at = |raw: u16| -> Option<u8> {
-        if raw % BONE_STRIDE != 0 {
+        if !raw.is_multiple_of(BONE_STRIDE) {
             return None;
         }
         let bone = raw / BONE_STRIDE;
@@ -1481,26 +1496,26 @@ fn decode_surface_skin_t5(
             .flatten()
     };
 
-    if vert_list_count > 0 {
-        if let Ok(fastfile_t5::ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, 40) {
-            let list = stream.resolve_alias(list_ptr);
-            let mut vertex = 0usize;
-            for i in 0..vert_list_count {
-                let entry = list.at(i * rigid_stride);
-                let bone_offset = stream.u16_at(entry, 0).ok()?;
-                let run = stream.u16_at(entry, 2).ok()? as usize;
-                let bone = bone_at(bone_offset)?;
-                for _ in 0..run {
-                    if vertex >= vertex_count {
-                        break;
-                    }
-                    skins[vertex] = VertSkin::rigid(bone);
-                    vertex += 1;
+    if vert_list_count > 0
+        && let Ok(fastfile_t5::ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, 40)
+    {
+        let list = stream.resolve_alias(list_ptr);
+        let mut vertex = 0usize;
+        for i in 0..vert_list_count {
+            let entry = list.at(i * rigid_stride);
+            let bone_offset = stream.u16_at(entry, 0).ok()?;
+            let run = stream.u16_at(entry, 2).ok()? as usize;
+            let bone = bone_at(bone_offset)?;
+            for _ in 0..run {
+                if vertex >= vertex_count {
+                    break;
                 }
+                skins[vertex] = VertSkin::rigid(bone);
+                vertex += 1;
             }
-            if vertex == vertex_count {
-                return Some(skins);
-            }
+        }
+        if vertex == vertex_count {
+            return Some(skins);
         }
     }
 
@@ -1771,6 +1786,10 @@ fn capture_model_skel_iw5(
             geometry.num_bones,
         )?;
 
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "the vertex index is the stream record the offsets come from"
+        )]
         for vertex_index in 0..vertex_count {
             let vertex = vertices.at(vertex_index * iw5sz::GFX_PACKED_VERTEX);
             positions.push([
@@ -1961,7 +1980,7 @@ fn decode_surface_skin_iw5(
 
     let mut skins = vec![VertSkin::default(); vertex_count];
     let bone_at = |raw: u16| -> Option<u8> {
-        if raw % BONE_STRIDE != 0 {
+        if !raw.is_multiple_of(BONE_STRIDE) {
             return None;
         }
         let bone = raw / BONE_STRIDE;
@@ -1971,29 +1990,28 @@ fn decode_surface_skin_iw5(
     };
 
     let mut rigid_assigned = 0usize;
-    if vert_list_count > 0 {
-        if let Ok(fastfile_iw5::ZonePtr::Offset(list_ptr)) =
+    if vert_list_count > 0
+        && let Ok(fastfile_iw5::ZonePtr::Offset(list_ptr)) =
             stream.ptr_at(surface, stream.layout(iw5sz::XSURFACE_VERT_LIST_OFF, 56))
-        {
-            let list = stream.resolve_alias(list_ptr);
-            let mut vertex = 0usize;
-            for i in 0..vert_list_count {
-                let entry = list.at(i * stream.layout(iw5sz::XRIGID_VERT_LIST, 16));
-                let bone_offset = stream.u16_at(entry, 0).ok()?;
-                let run = stream.u16_at(entry, 2).ok()? as usize;
-                let bone = bone_at(bone_offset)?;
-                for _ in 0..run {
-                    if vertex >= vertex_count {
-                        break;
-                    }
-                    skins[vertex] = VertSkin::rigid(bone);
-                    vertex += 1;
+    {
+        let list = stream.resolve_alias(list_ptr);
+        let mut vertex = 0usize;
+        for i in 0..vert_list_count {
+            let entry = list.at(i * stream.layout(iw5sz::XRIGID_VERT_LIST, 16));
+            let bone_offset = stream.u16_at(entry, 0).ok()?;
+            let run = stream.u16_at(entry, 2).ok()? as usize;
+            let bone = bone_at(bone_offset)?;
+            for _ in 0..run {
+                if vertex >= vertex_count {
+                    break;
                 }
+                skins[vertex] = VertSkin::rigid(bone);
+                vertex += 1;
             }
-            rigid_assigned = vertex;
-            if vertex == vertex_count {
-                return Some(skins);
-            }
+        }
+        rigid_assigned = vertex;
+        if vertex == vertex_count {
+            return Some(skins);
         }
     }
 

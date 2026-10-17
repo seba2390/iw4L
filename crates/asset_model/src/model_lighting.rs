@@ -638,7 +638,7 @@ fn sample_light_grid_at(
         let tile = linear_light_grid_tile(&linear, 0xff, t6);
 
         let mut colors = [0u8; LIGHT_GRID_COLORS_BYTE_COUNT];
-        for (out, value) in colors.chunks_exact_mut(3).zip(linear) {
+        for (out, value) in colors.as_chunks_mut::<3>().0.iter_mut().zip(linear) {
             out.copy_from_slice(&value.map(|value| linear_light_grid_channel(value, t6)));
         }
         let compressed =
@@ -816,7 +816,7 @@ pub fn t6_smodel_palette_lighting(
         fastfile_t6::light_grid::decode_coefficients(grid.colors_row(u32::from(index))?)?;
     let linear = fastfile_t6::light_grid::directional_colors(&coefficients);
     let mut colors = [0u8; LIGHT_GRID_COLORS_BYTE_COUNT];
-    for (out, value) in colors.chunks_exact_mut(3).zip(linear) {
+    for (out, value) in colors.as_chunks_mut::<3>().0.iter_mut().zip(linear) {
         out.copy_from_slice(&value.map(|value| linear_light_grid_channel(value, true)));
     }
     let compressed = light_grid_compress_colors(&colors, 0xff)?;

@@ -75,7 +75,7 @@ impl Weather {
         }
         self.snow_round = 3 + super::super::natives::math::random(world) % 2;
         for bit in 0..5 {
-            if super::super::natives::math::random(world) % 2 != 0 {
+            if !super::super::natives::math::random(world).is_multiple_of(2) {
                 self.dry_rounds |= 1 << bit;
             }
         }

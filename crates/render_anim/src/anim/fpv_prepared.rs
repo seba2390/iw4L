@@ -267,7 +267,7 @@ impl FpvPreparationJob {
                 self.next_camouflage += 1;
                 let name = tess.catalog().parts().materials[bound].name.as_str();
                 admit_material(
-                    &tess.catalog(),
+                    tess.catalog(),
                     &tess.material_images,
                     bound,
                     name,
@@ -288,7 +288,7 @@ impl FpvPreparationJob {
                 .surfaces_for_lod(0)
                 .map(|surface| {
                     let verdict = admit_surface(
-                        &tess.catalog(),
+                        tess.catalog(),
                         tess.material_images.as_ref(),
                         entry,
                         surface,
@@ -941,7 +941,7 @@ pub fn prepare_fpv_compositions(inputs: PrepareFpvInputs, mut prepared: ResMut<P
         RuntimeSortedMaterialTable::Ready { .. }
     );
     let owner = FpvPreparationOwner {
-        materials: Arc::clone(&tess.catalog()),
+        materials: Arc::clone(tess.catalog()),
         images: Arc::clone(&tess.material_images),
         weapons: Arc::clone(weapons.registry()),
         meshes: Arc::clone(&fpv_meshes.0),

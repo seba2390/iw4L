@@ -185,8 +185,8 @@ fn matrix_inverse44(m: &[f32; 16]) -> Option<[f32; 16]> {
     for col in 0..4 {
         let mut pivot = col;
         let mut best = libm::fabsf(a[col][col]);
-        for r in (col + 1)..4 {
-            let v = libm::fabsf(a[r][col]);
+        for (r, row) in a.iter().enumerate().skip(col + 1) {
+            let v = libm::fabsf(row[col]);
             if v > best {
                 best = v;
                 pivot = r;
@@ -199,16 +199,17 @@ fn matrix_inverse44(m: &[f32; 16]) -> Option<[f32; 16]> {
             a.swap(col, pivot);
         }
         let inv_p = 1.0 / a[col][col];
-        for c in 0..8 {
-            a[col][c] *= inv_p;
+        for value in &mut a[col] {
+            *value *= inv_p;
         }
-        for r in 0..4 {
+        let pivot_row = a[col];
+        for (r, row) in a.iter_mut().enumerate() {
             if r == col {
                 continue;
             }
-            let f = a[r][col];
-            for c in 0..8 {
-                a[r][c] -= f * a[col][c];
+            let f = row[col];
+            for (value, pivot_value) in row.iter_mut().zip(pivot_row) {
+                *value -= f * pivot_value;
             }
         }
     }

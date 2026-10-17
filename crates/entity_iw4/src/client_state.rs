@@ -84,13 +84,11 @@ pub fn client_state_name(bytes: &[u8; CLIENT_STATE_NAME_LEN]) -> Option<&str> {
 pub fn pack_client_state_name(s: &str) -> [u8; CLIENT_STATE_NAME_LEN] {
     let mut bytes = [0u8; CLIENT_STATE_NAME_LEN];
     let cap = CLIENT_STATE_NAME_LEN - 1;
-    let mut n = 0usize;
-    for b in s.as_bytes() {
+    for (n, b) in s.as_bytes().iter().enumerate() {
         if n >= cap {
             break;
         }
         bytes[n] = *b;
-        n += 1;
     }
     bytes
 }

@@ -449,8 +449,8 @@ impl FxSystemHost {
             .map(|_| FxElemSlot::default())
             .collect();
 
-        for i in 0..FX_ELEM_POOL_CAPACITY as usize {
-            elems[i].next_elem_handle = if i + 1 < FX_ELEM_POOL_CAPACITY as usize {
+        for (i, slot) in elems.iter_mut().enumerate() {
+            slot.next_elem_handle = if i + 1 < FX_ELEM_POOL_CAPACITY as usize {
                 (i + 1) as u16
             } else {
                 FX_ELEM_HANDLE_NONE
@@ -460,8 +460,8 @@ impl FxSystemHost {
         let mut trails: Vec<FxTrailSlot> = (0..FX_TRAIL_POOL_CAPACITY)
             .map(|_| FxTrailSlot::default())
             .collect();
-        for i in 0..FX_TRAIL_POOL_CAPACITY as usize {
-            trails[i].next_trail_handle = if i + 1 < FX_TRAIL_POOL_CAPACITY as usize {
+        for (i, slot) in trails.iter_mut().enumerate() {
+            slot.next_trail_handle = if i + 1 < FX_TRAIL_POOL_CAPACITY as usize {
                 (i + 1) as u16
             } else {
                 FX_TRAIL_HANDLE_NONE
@@ -471,9 +471,8 @@ impl FxSystemHost {
         let mut trail_elems: Vec<FxTrailElemSlot> = (0..FX_TRAIL_ELEM_POOL_CAPACITY)
             .map(|_| FxTrailElemSlot::default())
             .collect();
-        for i in 0..FX_TRAIL_ELEM_POOL_CAPACITY as usize {
-            trail_elems[i].next_trail_elem_handle = if i + 1 < FX_TRAIL_ELEM_POOL_CAPACITY as usize
-            {
+        for (i, slot) in trail_elems.iter_mut().enumerate() {
+            slot.next_trail_elem_handle = if i + 1 < FX_TRAIL_ELEM_POOL_CAPACITY as usize {
                 (i + 1) as u16
             } else {
                 FX_TRAIL_HANDLE_NONE
@@ -483,8 +482,8 @@ impl FxSystemHost {
             ..FX_SPARK_CLOUD_HISTORY_CAPACITY)
             .map(|_| crate::spark::FxSparkCloudHistorySlot::default())
             .collect();
-        for i in 0..FX_SPARK_CLOUD_HISTORY_CAPACITY as usize {
-            spark_clouds[i].next_free = if i + 1 < FX_SPARK_CLOUD_HISTORY_CAPACITY as usize {
+        for (i, slot) in spark_clouds.iter_mut().enumerate() {
+            slot.next_free = if i + 1 < FX_SPARK_CLOUD_HISTORY_CAPACITY as usize {
                 (i + 1) as u16
             } else {
                 FX_SPARK_CLOUD_HANDLE_NONE
@@ -494,8 +493,8 @@ impl FxSystemHost {
             ..FX_SPARK_FOUNTAIN_CLUSTER_CAPACITY)
             .map(|_| crate::spark_fountain::FxSparkFountainClusterSlot::default())
             .collect();
-        for i in 0..FX_SPARK_FOUNTAIN_CLUSTER_CAPACITY as usize {
-            spark_fountains[i].next_free = if i + 1 < FX_SPARK_FOUNTAIN_CLUSTER_CAPACITY as usize {
+        for (i, slot) in spark_fountains.iter_mut().enumerate() {
+            slot.next_free = if i + 1 < FX_SPARK_FOUNTAIN_CLUSTER_CAPACITY as usize {
                 (i + 1) as u16
             } else {
                 FX_SPARK_FOUNTAIN_HANDLE_NONE
@@ -508,9 +507,8 @@ impl FxSystemHost {
             ..FX_SPARK_FOUNTAIN_MESH_CAPACITY)
             .map(|_| crate::spark_fountain::FxSparkFountainMeshSlot::default())
             .collect();
-        for i in 0..FX_SPARK_FOUNTAIN_MESH_CAPACITY as usize {
-            spark_fountain_meshes[i].next_free = if i + 1 < FX_SPARK_FOUNTAIN_MESH_CAPACITY as usize
-            {
+        for (i, slot) in spark_fountain_meshes.iter_mut().enumerate() {
+            slot.next_free = if i + 1 < FX_SPARK_FOUNTAIN_MESH_CAPACITY as usize {
                 (i + 1) as u16
             } else {
                 FX_SPARK_FOUNTAIN_HANDLE_NONE
@@ -1010,11 +1008,11 @@ impl FxSystemHost {
                 .map(|e| !e.ring_resident || !e.has_refs())
                 .unwrap_or(true);
             if dead {
-                if let Some(s) = slot {
-                    if self.effects.get(s).is_some_and(|e| e.ring_resident) {
-                        crate::spawn::free_all_elems_for_effect(self, s);
-                        crate::spawn::free_all_trails_for_effect(self, s);
-                    }
+                if let Some(s) = slot
+                    && self.effects.get(s).is_some_and(|e| e.ring_resident)
+                {
+                    crate::spawn::free_all_elems_for_effect(self, s);
+                    crate::spawn::free_all_trails_for_effect(self, s);
                 }
                 freed.push(handle);
             } else {
@@ -1128,7 +1126,7 @@ impl FxSystemHost {
 
 fn handle_to_slot(handle: u16) -> Option<usize> {
     let byte_off = (handle as u32) << 2;
-    if byte_off % FX_EFFECT_SLOT_SIZE as u32 != 0 {
+    if !byte_off.is_multiple_of(FX_EFFECT_SLOT_SIZE as u32) {
         return None;
     }
     let slot = (byte_off / FX_EFFECT_SLOT_SIZE as u32) as usize;

@@ -86,7 +86,7 @@ pub fn ensure_primary_light_words(
 }
 
 pub fn relink_dyn_ent_primary_lights(
-    words: &mut Vec<u32>,
+    words: &mut [u32],
     closest: Option<&mut [u8]>,
     atpoint: &DynAtPointLookup,
     id: u32,
@@ -607,7 +607,7 @@ fn append_dynent_draws(
     let atlas_changed = atlas.as_ref().is_some_and(|a| a.is_changed());
     let tess_changed = tess.as_ref().is_some_and(|h| h.is_changed());
     let tess = tess.as_deref().expect("checked");
-    let tess_catalog = std::sync::Arc::clone(&tess.catalog());
+    let tess_catalog = std::sync::Arc::clone(tess.catalog());
     let material_generation = tess.catalog().generation_id();
     let catalog_reset = catalog_changed
         || atlas_changed

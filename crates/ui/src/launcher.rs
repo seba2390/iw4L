@@ -612,10 +612,10 @@ fn activate(
             {
                 dvars.set("ui_gametype", mode.gametype);
             }
-            if page == Page::Browser {
-                if let Some(browser) = browser {
-                    browser.refresh();
-                }
+            if page == Page::Browser
+                && let Some(browser) = browser
+            {
+                browser.refresh();
             }
         }
         Action::ZombieMap(map) => {

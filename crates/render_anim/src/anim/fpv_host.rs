@@ -83,16 +83,12 @@ pub enum FpvPoseRefuse {
     },
 }
 
+#[derive(Default)]
 pub enum FpvPoseKind {
+    #[default]
     Hide,
     Refuse(FpvPoseRefuse),
     Posed(FpvPosedFrame),
-}
-
-impl Default for FpvPoseKind {
-    fn default() -> Self {
-        Self::Hide
-    }
 }
 
 /// What one frame asked of the rig: bones per hand, and the lens the right hand

@@ -247,10 +247,7 @@ impl RenderFocusSelect {
     }
 
     fn script_model_id(&self) -> Option<u32> {
-        match self.selector {
-            Some(RenderFocusSelector::ScriptModel(id)) => Some(id),
-            None => None,
-        }
+        self.selector.map(|RenderFocusSelector::ScriptModel(id)| id)
     }
 }
 
@@ -866,9 +863,7 @@ fn commit_script_model_draw_plan(
                 .iter()
                 .zip(posed.authored.iter().copied())
                 .map(|(_surface, authored)| {
-                    model_materials
-                        .authored(&tess.catalog(), authored?)
-                        .cloned()
+                    model_materials.authored(tess.catalog(), authored?).cloned()
                 })
                 .collect::<Vec<_>>();
             append_or_overwrite_script_model(
@@ -1130,9 +1125,7 @@ pub(crate) fn presented_skel_arcs(
             | asset_world::MapXModelSceneAsset::T5(skel) => std::sync::Arc::clone(skel),
             asset_world::MapXModelSceneAsset::Unavailable { .. } => return None,
         };
-        if skel.pose.is_none() {
-            return None;
-        }
+        skel.pose.as_ref()?;
         skels.push(skel);
     }
     Some(skels)
@@ -1151,9 +1144,7 @@ pub(crate) fn presented_skels<'a>(
             | asset_world::MapXModelSceneAsset::T5(skel) => skel.as_ref(),
             asset_world::MapXModelSceneAsset::Unavailable { .. } => return None,
         };
-        if skel.pose.is_none() {
-            return None;
-        }
+        skel.pose.as_ref()?;
         skels.push(skel);
     }
     Some(skels)

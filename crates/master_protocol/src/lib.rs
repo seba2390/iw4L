@@ -323,7 +323,7 @@ impl RoomView {
     }
 
     pub fn contains(&self, member_id: MemberId) -> bool {
-        self.members.iter().any(|id| *id == member_id)
+        self.members.contains(&member_id)
     }
 }
 

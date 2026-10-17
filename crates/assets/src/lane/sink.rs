@@ -463,10 +463,10 @@ impl fastfile_iw5::AssetLinkSink for ZoneWalkSink {
             sound.iw5_alias(ty, slot, target);
         }
         self.materials.iw5_alias(ty, slot, target);
-        if ty == fastfile_iw5::AssetType::XModelSurfs {
-            if let Some(surfaces) = self.iw5_surfaces.get(&target).copied() {
-                self.iw5_surfaces.insert(slot, surfaces);
-            }
+        if ty == fastfile_iw5::AssetType::XModelSurfs
+            && let Some(surfaces) = self.iw5_surfaces.get(&target).copied()
+        {
+            self.iw5_surfaces.insert(slot, surfaces);
         }
         if ty == fastfile_iw5::AssetType::XModel {
             self.map_xmodels.alias(
@@ -619,40 +619,39 @@ impl fastfile_iw5::AssetLinkSink for CommonWalkSink {
             sound.iw5_loaded(stream, ty, slot, insert_slot);
         }
         self.materials.iw5_loaded(stream, ty, slot, insert_slot);
-        if ty == fastfile_iw5::AssetType::Fx {
-            if let Some(name) = self.last_fx_name_iw5.take() {
-                self.fx_names_iw5.insert(slot, name.clone());
-                if let Some(insert_slot) = insert_slot {
-                    self.fx_names_iw5.insert(insert_slot, name);
-                }
+        if ty == fastfile_iw5::AssetType::Fx
+            && let Some(name) = self.last_fx_name_iw5.take()
+        {
+            self.fx_names_iw5.insert(slot, name.clone());
+            if let Some(insert_slot) = insert_slot {
+                self.fx_names_iw5.insert(insert_slot, name);
             }
         }
-        if ty == fastfile_iw5::AssetType::XModel {
-            if let Some(geometry) = stream.latest_xmodel()
-                && let Some(name) = geometry.name.and_then(|p| stream.cstr(p).ok())
-            {
-                let asset = asset_model::capture_xmodel_skel_iw5(
-                    stream,
-                    &self.strings_iw5,
-                    geometry,
-                    &self.materials,
-                )
-                .map(|skel| {
-                    let skel = std::sync::Arc::new(skel);
-                    self.shared_surfaces
-                        .retain_iw5(stream, geometry, skel.clone());
-                    let ns = Some(asset_core::AssetNamespace::Iw5);
-                    self.fpv_meshes.capture_shared(ns, &skel, &self.materials);
-                    self.world_weapons
-                        .capture_shared(ns, &skel, &self.materials);
-                    asset_world::MapXModelSceneAsset::Iw5(skel)
-                })
-                .unwrap_or(asset_world::MapXModelSceneAsset::Unavailable {
-                    reason: "IW5 common XModel skeleton capture failed",
-                });
-                self.scene_models
-                    .insert(asset_world::MapXModelAssetKey(name.to_owned()), asset);
-            }
+        if ty == fastfile_iw5::AssetType::XModel
+            && let Some(geometry) = stream.latest_xmodel()
+            && let Some(name) = geometry.name.and_then(|p| stream.cstr(p).ok())
+        {
+            let asset = asset_model::capture_xmodel_skel_iw5(
+                stream,
+                &self.strings_iw5,
+                geometry,
+                &self.materials,
+            )
+            .map(|skel| {
+                let skel = std::sync::Arc::new(skel);
+                self.shared_surfaces
+                    .retain_iw5(stream, geometry, skel.clone());
+                let ns = Some(asset_core::AssetNamespace::Iw5);
+                self.fpv_meshes.capture_shared(ns, &skel, &self.materials);
+                self.world_weapons
+                    .capture_shared(ns, &skel, &self.materials);
+                asset_world::MapXModelSceneAsset::Iw5(skel)
+            })
+            .unwrap_or(asset_world::MapXModelSceneAsset::Unavailable {
+                reason: "IW5 common XModel skeleton capture failed",
+            });
+            self.scene_models
+                .insert(asset_world::MapXModelAssetKey(name.to_owned()), asset);
         }
         Ok(())
     }
@@ -677,10 +676,10 @@ impl fastfile_iw5::AssetLinkSink for CommonWalkSink {
             sound.iw5_alias(ty, slot, target);
         }
         self.materials.iw5_alias(ty, slot, target);
-        if ty == fastfile_iw5::AssetType::XModelSurfs {
-            if let Some(surfaces) = self.iw5_surfaces.get(&target).copied() {
-                self.iw5_surfaces.insert(slot, surfaces);
-            }
+        if ty == fastfile_iw5::AssetType::XModelSurfs
+            && let Some(surfaces) = self.iw5_surfaces.get(&target).copied()
+        {
+            self.iw5_surfaces.insert(slot, surfaces);
         }
         if ty == fastfile_iw5::AssetType::Fx {
             self.fx_aliases_iw5.insert(slot, target);
@@ -692,10 +691,10 @@ impl fastfile_iw5::AssetLinkSink for CommonWalkSink {
                 self.material_names_iw5.remove(&slot);
             }
         }
-        if ty == fastfile_iw5::AssetType::XModel {
-            if let Some(&name) = self.xmodel_names_iw5.get(&target) {
-                self.xmodel_names_iw5.insert(slot, name);
-            }
+        if ty == fastfile_iw5::AssetType::XModel
+            && let Some(&name) = self.xmodel_names_iw5.get(&target)
+        {
+            self.xmodel_names_iw5.insert(slot, name);
         }
         Ok(())
     }
@@ -808,80 +807,77 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
             self.fx
                 .note_loaded(t5_iw4_ptr(slot), insert_slot.map(t5_iw4_ptr));
         }
-        if ty == fastfile_t5::AssetType::XModel {
-            if let Some(geometry) = stream.latest_xmodel()
-                && let Some(name) = geometry.name.and_then(|p| stream.cstr(p).ok())
+        if ty == fastfile_t5::AssetType::XModel
+            && let Some(geometry) = stream.latest_xmodel()
+            && let Some(name) = geometry.name.and_then(|p| stream.cstr(p).ok())
+        {
+            if self.static_model_names.contains(name)
+                && let Ok(mesh) =
+                    asset_world::build_t5_xmodel_mesh(stream, geometry, Some(&self.materials))
             {
-                if self.static_model_names.contains(name)
-                    && let Ok(mesh) =
-                        asset_world::build_t5_xmodel_mesh(stream, geometry, Some(&self.materials))
-                {
-                    let foreign_materials = geometry
-                        .lod_surf_span
-                        .iter()
-                        .zip(&mesh.lod_surfaces)
-                        .flat_map(|(&(first, _), surfaces)| {
-                            (0..surfaces.len()).map(move |at| usize::from(first) + at)
-                        })
-                        .zip(mesh.lod_surfaces.iter().flatten())
-                        .map(|(surface, draw)| {
-                            let handles = geometry.material_handles?;
-                            draw.material.is_none().then(|| {
-                                let slot = handles.at(surface * 4);
-                                let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
-                                Some(asset_core::AssetRef::bare_name(name).to_owned())
-                            })?
-                        })
-                        .collect();
-                    self.static_meshes.push(asset_world::ForeignStaticMesh {
-                        mesh,
-                        foreign_materials,
-                    });
-                }
-                let asset = asset_model::capture_xmodel_skel_t5(
-                    stream,
-                    &self.strings_t5,
-                    geometry,
-                    &self.materials,
-                )
-                .map(|skel| {
-                    let skel = std::sync::Arc::new(skel);
-                    let ns = asset_core::AssetNamespace::T5;
-                    self.fpv_meshes
-                        .capture_shared(Some(ns), &skel, &self.materials);
-                    self.world_weapons
-                        .capture_shared(Some(ns), &skel, &self.materials);
-                    self.projectile_meshes
-                        .capture_shared(ns, &skel, &self.materials);
-                    asset_world::MapXModelSceneAsset::T5(skel)
-                })
-                .unwrap_or(asset_world::MapXModelSceneAsset::Unavailable {
-                    reason: "T5 common XModel skeleton capture failed",
-                });
-                // Surfaces drawing a material another zone holds keep its name.
-                if let (asset_world::MapXModelSceneAsset::T5(skel), Some(handles)) =
-                    (&asset, geometry.material_handles)
-                {
-                    let names = skel
-                        .surface_materials
-                        .iter()
-                        .enumerate()
-                        .map(|(surface, bound)| {
+                let foreign_materials = geometry
+                    .lod_surf_span
+                    .iter()
+                    .zip(&mesh.lod_surfaces)
+                    .flat_map(|(&(first, _), surfaces)| {
+                        (0..surfaces.len()).map(move |at| usize::from(first) + at)
+                    })
+                    .zip(mesh.lod_surfaces.iter().flatten())
+                    .map(|(surface, draw)| {
+                        let handles = geometry.material_handles?;
+                        draw.material.is_none().then(|| {
                             let slot = handles.at(surface * 4);
-                            bound.is_none().then(|| {
-                                let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
-                                Some(asset_core::AssetRef::bare_name(name).to_owned())
-                            })?
-                        })
-                        .collect();
-                    self.scene_models.note_foreign_materials(
-                        asset_world::MapXModelAssetKey(name.to_owned()),
-                        names,
-                    );
-                }
-                self.scene_models
-                    .insert(asset_world::MapXModelAssetKey(name.to_owned()), asset);
+                            let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
+                            Some(asset_core::AssetRef::bare_name(name).to_owned())
+                        })?
+                    })
+                    .collect();
+                self.static_meshes.push(asset_world::ForeignStaticMesh {
+                    mesh,
+                    foreign_materials,
+                });
             }
+            let asset = asset_model::capture_xmodel_skel_t5(
+                stream,
+                &self.strings_t5,
+                geometry,
+                &self.materials,
+            )
+            .map(|skel| {
+                let skel = std::sync::Arc::new(skel);
+                let ns = asset_core::AssetNamespace::T5;
+                self.fpv_meshes
+                    .capture_shared(Some(ns), &skel, &self.materials);
+                self.world_weapons
+                    .capture_shared(Some(ns), &skel, &self.materials);
+                self.projectile_meshes
+                    .capture_shared(ns, &skel, &self.materials);
+                asset_world::MapXModelSceneAsset::T5(skel)
+            })
+            .unwrap_or(asset_world::MapXModelSceneAsset::Unavailable {
+                reason: "T5 common XModel skeleton capture failed",
+            });
+            // Surfaces drawing a material another zone holds keep its name.
+            if let (asset_world::MapXModelSceneAsset::T5(skel), Some(handles)) =
+                (&asset, geometry.material_handles)
+            {
+                let names = skel
+                    .surface_materials
+                    .iter()
+                    .enumerate()
+                    .map(|(surface, bound)| {
+                        let slot = handles.at(surface * 4);
+                        bound.is_none().then(|| {
+                            let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
+                            Some(asset_core::AssetRef::bare_name(name).to_owned())
+                        })?
+                    })
+                    .collect();
+                self.scene_models
+                    .note_foreign_materials(asset_world::MapXModelAssetKey(name.to_owned()), names);
+            }
+            self.scene_models
+                .insert(asset_world::MapXModelAssetKey(name.to_owned()), asset);
         }
         Ok(())
     }
@@ -903,10 +899,10 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
                 self.material_names_t5.remove(&slot);
             }
         }
-        if ty == fastfile_t5::AssetType::XModel {
-            if let Some(&name) = self.xmodel_names_t5.get(&target) {
-                self.xmodel_names_t5.insert(slot, name);
-            }
+        if ty == fastfile_t5::AssetType::XModel
+            && let Some(&name) = self.xmodel_names_t5.get(&target)
+        {
+            self.xmodel_names_t5.insert(slot, name);
         }
         Ok(())
     }
@@ -1302,7 +1298,7 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
 
 impl AssetSink for ZoneWalkSink {
     fn set_script_strings(&mut self, strings: ScriptStrings) {
-        self.fx_models.set_strings(strings.clone());
+        self.fx_models.set_strings(strings);
         self.script_strings = strings;
         self.bodies.set_strings(strings);
         self.fpv_meshes.set_strings(strings);
@@ -1538,7 +1534,7 @@ impl AssetSink for CommonWalkSink {
 
     fn set_script_strings(&mut self, strings: ScriptStrings) {
         self.script_strings = strings;
-        self.fx_models.set_strings(strings.clone());
+        self.fx_models.set_strings(strings);
         self.fpv_meshes.set_strings(strings);
         self.world_weapons.set_strings(strings);
         self.projectile_meshes.set_strings(strings);
@@ -1641,10 +1637,10 @@ impl AssetLinkSink for CommonWalkSink {
         if ty == AssetType::Tracer {
             self.tracers.note_alias(slot, target);
         }
-        if ty == AssetType::XModel {
-            if let Some(&name) = self.xmodel_names.get(&target) {
-                self.xmodel_names.insert(slot, name);
-            }
+        if ty == AssetType::XModel
+            && let Some(&name) = self.xmodel_names.get(&target)
+        {
+            self.xmodel_names.insert(slot, name);
         }
         Ok(())
     }
@@ -2212,15 +2208,14 @@ fn tracer_material_name(
         return Some(name);
     }
     let body = s.resolve_alias(target);
-    if body != target {
-        if let Some(name) = materials
+    if body != target
+        && let Some(name) = materials
             .material_index(body)
             .and_then(|i| materials.materials.get(i.get()))
             .map(|m| m.name.to_string())
             .filter(|n| !n.is_empty())
-        {
-            return Some(name);
-        }
+    {
+        return Some(name);
     }
     read_material_name_at_body(s, body)
 }

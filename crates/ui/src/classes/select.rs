@@ -6,7 +6,7 @@ use net::SignonState;
 use crate::classes::icons::{ClassSelectIconCache, UiAssetRoot, warm_class_select_icons};
 use crate::classes::store::SessionClassStore;
 
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ClassSelectOverlayOpen(pub bool);
 
 pub(crate) fn overlay_open_after_screen(
@@ -28,34 +28,20 @@ pub(crate) fn overlay_open_after_screen(
     false
 }
 
-impl Default for ClassSelectOverlayOpen {
-    fn default() -> Self {
-        Self(false)
-    }
-}
-
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ClassChangeAllowed(pub bool);
-
-impl Default for ClassChangeAllowed {
-    fn default() -> Self {
-        Self(false)
-    }
-}
 
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq)]
 pub struct ClassChangeBlockReason(pub Option<String>);
 
-#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, PartialEq, Eq, Default)]
 pub enum ClassSelectPhase {
+    #[default]
     Interactive,
-    Pending { request_id: u32, class_index: usize },
-}
-
-impl Default for ClassSelectPhase {
-    fn default() -> Self {
-        Self::Interactive
-    }
+    Pending {
+        request_id: u32,
+        class_index: usize,
+    },
 }
 
 impl ClassSelectPhase {
@@ -83,14 +69,8 @@ pub struct PendingClassEquip(pub Option<ClassEquipRequest>);
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq)]
 pub struct ClassSelectStatus(pub Option<String>);
 
-#[derive(Resource, Debug, Clone, Copy)]
+#[derive(Resource, Debug, Clone, Copy, Default)]
 pub struct ClassSelectHighlight(pub usize);
-
-impl Default for ClassSelectHighlight {
-    fn default() -> Self {
-        Self(0)
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClassEquipRefusal {

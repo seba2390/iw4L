@@ -280,12 +280,12 @@ pub(super) async fn walk_prepared_match(
     report.append(&mut common_report);
     report.extend(image_trees.report_lines());
 
-    if facts.team_settings.allies.is_none() && facts.team_settings.axis.is_none() {
-        if let Some(name) = facts.t5_teamset.as_ref() {
-            if let Some(icons) = teamsets.get(name) {
-                facts.team_settings = icons.clone();
-            }
-        }
+    if facts.team_settings.allies.is_none()
+        && facts.team_settings.axis.is_none()
+        && let Some(name) = facts.t5_teamset.as_ref()
+        && let Some(icons) = teamsets.get(name)
+    {
+        facts.team_settings = icons.clone();
     }
     if facts.t5_teamset.is_some() {
         facts.script_sound.attackers = facts

@@ -202,34 +202,34 @@ pub(super) fn load_clipmap(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink
         dyn_ent_count[ty] = s.u16_at(p, s.layout(168, 328) + ty * 2)? as usize;
         dyn_ent_defs[ty] = load_dyn_entity_defs(s, links, p, ty)?;
     }
-    for ty in 0..2 {
+    for (ty, &count) in dyn_ent_count.iter().enumerate() {
         runtime_array(
             s,
             p,
             s.layout(180, 352) + ty * s.pointer_bytes(),
             4,
             sz::DYN_ENTITY_POSE,
-            dyn_ent_count[ty],
+            count,
         )?;
     }
-    for ty in 0..2 {
+    for (ty, &count) in dyn_ent_count.iter().enumerate() {
         runtime_array(
             s,
             p,
             s.layout(188, 368) + ty * s.pointer_bytes(),
             4,
             s.layout(sz::DYN_ENTITY_CLIENT, 16),
-            dyn_ent_count[ty],
+            count,
         )?;
     }
-    for ty in 0..2 {
+    for (ty, &count) in dyn_ent_count.iter().enumerate() {
         runtime_array(
             s,
             p,
             s.layout(196, 384) + ty * s.pointer_bytes(),
             4,
             sz::DYN_ENTITY_COLL,
-            dyn_ent_count[ty],
+            count,
         )?;
     }
 

@@ -303,12 +303,12 @@ impl RuntimeProgramRegistry {
         indices
     }
 
-    pub fn catalog_pass<'a>(
-        catalog: &'a RuntimeMaterialCatalog,
+    pub fn catalog_pass(
+        catalog: &RuntimeMaterialCatalog,
         tech_type: TechType,
         set_i: usize,
         pass_i: usize,
-    ) -> Option<&'a RuntimePass> {
+    ) -> Option<&RuntimePass> {
         catalog
             .parts()
             .technique_sets
@@ -400,15 +400,15 @@ fn wgsl_census_key(error: &super::sm3_wgsl::Sm3WgslError) -> String {
         }) => format!("Wgsl/UnbalancedControlFlow({kind})"),
         other => {
             let text = format!("{other:?}");
-            if let Some(at) = text.find("UnknownOpcode") {
-                if let Some(op) = text[at..].find("opcode:") {
-                    let opcode = text[at + op + 7..]
-                        .split([',', '}'])
-                        .next()
-                        .unwrap_or("")
-                        .trim();
-                    return format!("UnknownOpcode({opcode})");
-                }
+            if let Some(at) = text.find("UnknownOpcode")
+                && let Some(op) = text[at..].find("opcode:")
+            {
+                let opcode = text[at + op + 7..]
+                    .split([',', '}'])
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                return format!("UnknownOpcode({opcode})");
             }
 
             let inner = text

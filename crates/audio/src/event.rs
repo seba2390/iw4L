@@ -168,7 +168,7 @@ impl EventJournal {
             }
             self.accepted.retain(|id, tick| {
                 let age = new.tick_for(*id).wrapping_sub(*tick);
-                age < EVENT_WINDOW_TICKS || age >= 1 << 31
+                !(EVENT_WINDOW_TICKS..1 << 31).contains(&age)
             });
             self.fire.retain(|_, (event, _)| {
                 let age = new.tick_for(event.id).wrapping_sub(event.tick);
@@ -282,7 +282,7 @@ impl EventJournal {
         }
         let context_tick = context.tick_for(id);
         let age = context_tick.wrapping_sub(event.tick);
-        if age >= EVENT_WINDOW_TICKS && age < 1 << 31 {
+        if (EVENT_WINDOW_TICKS..1 << 31).contains(&age) {
             return Err(CueFailure::StaleEvent);
         }
         if age >= 1 << 31 && event.tick.wrapping_sub(context_tick) > FUTURE_TICKS {

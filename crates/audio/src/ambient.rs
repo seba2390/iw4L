@@ -268,48 +268,47 @@ pub(crate) fn install_sound_bank(
         );
     }
 
-    if let IwdOpen::Opening(task) = &mut compose.iwd {
-        if let Some((indices, lines)) = future::block_on(future::poll_once(task)) {
-            for line in lines {
-                diag::info!(Audio, "{line}");
-            }
-            compose.iwd = IwdOpen::Open(Arc::new(indices));
+    if let IwdOpen::Opening(task) = &mut compose.iwd
+        && let Some((indices, lines)) = future::block_on(future::poll_once(task))
+    {
+        for line in lines {
+            diag::info!(Audio, "{line}");
         }
+        compose.iwd = IwdOpen::Open(Arc::new(indices));
     }
-    if compose.bank.is_none() {
-        if let Some(arrived) = map_sound.as_deref_mut() {
-            if arrived.load_key == compose.load_key {
-                compose.common_profile_id = arrived.common_profile_id;
-                let products_id = arrived.products_id;
-                let map = std::mem::replace(&mut arrived.sound, Err(String::new()));
-                commands.remove_resource::<assets::PreparedMatchSound>();
-                let kept = resident
-                    .0
-                    .as_ref()
-                    .filter(|resident| resident.zone == compose.zone)
-                    .and_then(|resident| resident.bank.as_ref())
-                    .filter(|bank| {
-                        bank.products_id == products_id
-                            && bank.common_profile_id == compose.common_profile_id
-                    })
-                    .map(|bank| ComposedBank {
-                        loaded: Ok((Arc::clone(&bank.catalog), bank.gaps)),
-                        namespace: bank.namespace,
-                        reused: true,
-                    });
-                let namespace = arrived.namespace;
-                let gaps = arrived.gaps;
-                let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-                compose.bank = Some(pool.spawn(async move {
-                    kept.unwrap_or_else(|| ComposedBank {
-                        loaded: map.map(|catalog| (Arc::new(catalog), gaps)),
-                        namespace,
-                        reused: false,
-                    })
-                }));
-                compose.products_id = products_id;
-            }
-        }
+    if compose.bank.is_none()
+        && let Some(arrived) = map_sound.as_deref_mut()
+        && arrived.load_key == compose.load_key
+    {
+        compose.common_profile_id = arrived.common_profile_id;
+        let products_id = arrived.products_id;
+        let map = std::mem::replace(&mut arrived.sound, Err(String::new()));
+        commands.remove_resource::<assets::PreparedMatchSound>();
+        let kept = resident
+            .0
+            .as_ref()
+            .filter(|resident| resident.zone == compose.zone)
+            .and_then(|resident| resident.bank.as_ref())
+            .filter(|bank| {
+                bank.products_id == products_id
+                    && bank.common_profile_id == compose.common_profile_id
+            })
+            .map(|bank| ComposedBank {
+                loaded: Ok((Arc::clone(&bank.catalog), bank.gaps)),
+                namespace: bank.namespace,
+                reused: true,
+            });
+        let namespace = arrived.namespace;
+        let gaps = arrived.gaps;
+        let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
+        compose.bank = Some(pool.spawn(async move {
+            kept.unwrap_or_else(|| ComposedBank {
+                loaded: map.map(|catalog| (Arc::new(catalog), gaps)),
+                namespace,
+                reused: false,
+            })
+        }));
+        compose.products_id = products_id;
     }
 
     let composed = match (&compose.iwd, compose.bank.as_mut()) {

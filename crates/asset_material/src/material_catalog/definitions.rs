@@ -542,23 +542,22 @@ impl MaterialDefinitions {
                 return TechsetResolve::Hit { index, facts };
             }
             let stripped = t5_feature_token_stripped(want);
-            if stripped != want {
-                if let Some((index, facts)) = find_named(&stripped) {
-                    if facts.table.is_some() {
-                        return TechsetResolve::Hit { index, facts };
-                    }
-                }
+            if stripped != want
+                && let Some((index, facts)) = find_named(&stripped)
+                && facts.table.is_some()
+            {
+                return TechsetResolve::Hit { index, facts };
             }
             return TechsetResolve::GraphMissing { index };
         }
         let stripped = t5_feature_token_stripped(want);
-        if stripped != want {
-            if let Some((index, facts)) = find_named(&stripped) {
-                if facts.table.is_some() {
-                    return TechsetResolve::Hit { index, facts };
-                }
-                return TechsetResolve::GraphMissing { index };
+        if stripped != want
+            && let Some((index, facts)) = find_named(&stripped)
+        {
+            if facts.table.is_some() {
+                return TechsetResolve::Hit { index, facts };
             }
+            return TechsetResolve::GraphMissing { index };
         }
         if let Some((index, facts)) = techsets.iter().enumerate().find(|(_, facts)| {
             facts.namespace != key.namespace
