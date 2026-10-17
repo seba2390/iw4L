@@ -534,10 +534,11 @@ pub fn seal_render_frame(
         .map(|handles| (**handles).clone())
         .unwrap_or_else(render_frontend::assemble::drawsurf::RuntimeImageHandles::default);
 
-    let mut exec_frame = existing_frame
-        .as_ref()
-        .map(|frame| frame.exec_frame.clone())
-        .unwrap_or_else(render_frame::MaterialExecFrame::default);
+    let mut exec_frame = match existing_frame.as_ref() {
+        Some(frame) => frame.exec_frame.clone(),
+        // The first extracted frame starts from an empty exec frame.
+        None => Default::default(),
+    };
     render_frontend::assemble::drawsurf::material_exec::refresh(
         &mut exec_frame,
         mat_frame,

@@ -7,8 +7,9 @@ use bevy::ui::{Display, FocusPolicy};
 use hud_iw4::{
     ExprError, ExprHost, LowAmmoWarningQuery, Operand, PERKS_INFO_HD_MENU, SCREEN_BLEND_BLURRED,
     SPECIALTY_NULL, WEAPON_NAME_FADE_DURATION_MS, WEAPON_NAME_FADE_TAIL_MS, WEAPONBAR_HD_MENU,
-    draw_player_weapon_low_ammo_warning, fade_color, get_perk_slot_index, is_flashbanged,
-    low_ammo_warning_color_pair, low_ammo_warning_pulse_frac, perk_code_key, vec4_lerp,
+    WeaponLockView, draw_player_weapon_low_ammo_warning, fade_color, get_perk_slot_index,
+    is_flashbanged, low_ammo_warning_color_pair, low_ammo_warning_pulse_frac, perk_code_key,
+    vec4_lerp,
 };
 use net::{FrameClock, LocalPresentClient, PresentedSnapshot, WeaponSelect};
 use playerstate_iw4::{ENTITYNUM_NONE, PM_TYPE_DEAD, PlayerState};
@@ -901,7 +902,7 @@ pub(crate) fn update_weaponbar(
                         &surface,
                     )
                 })
-                .unwrap_or_else(hud_iw4::WeaponLockView::default),
+                .unwrap_or_else(WeaponLockView::default),
         ),
         frag_ammo,
         smoke_ammo,

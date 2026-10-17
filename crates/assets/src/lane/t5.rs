@@ -221,9 +221,7 @@ impl T5Lane {
             impact_fx: sink.impact_fx.take_table(),
             fx_models: sink.fx_models,
             report,
-            pen_table: sink
-                .pen_table
-                .unwrap_or(weapon_iw4::PenetrationDepthTable::empty()),
+            pen_table: sink.pen_table.unwrap_or(super::PenTable::empty()),
             pen_table_loaded: sink.pen_table.is_some(),
             lochit_table: sink.lochit_table,
             teamsets: sink.teamsets,

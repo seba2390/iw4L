@@ -21,7 +21,7 @@ use crate::prepare::scene::view_parms::PreparedSceneView;
 use crate::prepare::scene::world::WorldScene;
 use bevy::prelude::*;
 use frame::{WorldGeneration, WorldStamp};
-use render_frame::{BspCameraLane, RetainedDrawItem, RetainedDrawKind};
+use render_frame::{BspCameraLane, RetainedDrawItem, RetainedDrawKind, SurfaceSamplerInputs};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -356,7 +356,7 @@ fn emit_world_static_lane(
         let surface_samplers = world_plan
             .and_then(|plan| plan.surface_sampler_inputs.get(usize::from(item.surf)))
             .copied()
-            .unwrap_or_else(render_frame::SurfaceSamplerInputs::default);
+            .unwrap_or_else(SurfaceSamplerInputs::default);
         let world_from_local =
             scene
                 .and_then(|scene| scene.cull.as_ref())

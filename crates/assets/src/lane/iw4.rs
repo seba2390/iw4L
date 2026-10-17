@@ -1109,9 +1109,7 @@ impl ZoneLane for Iw4Lane {
                 material_population,
                 light_defs,
                 report,
-                pen_table: sink
-                    .pen_table
-                    .unwrap_or(weapon_iw4::PenetrationDepthTable::empty()),
+                pen_table: sink.pen_table.unwrap_or(super::PenTable::empty()),
                 pen_table_loaded: sink.pen_table.is_some(),
                 lochit_table: sink.lochit_table,
                 xmodel_walk: sink.models.walk_census(),
@@ -1154,9 +1152,7 @@ impl ZoneLane for Iw4Lane {
                 material_population: sink.materials,
                 light_defs,
                 report,
-                pen_table: sink
-                    .pen_table
-                    .unwrap_or(weapon_iw4::PenetrationDepthTable::empty()),
+                pen_table: sink.pen_table.unwrap_or(super::PenTable::empty()),
                 pen_table_loaded: sink.pen_table.is_some(),
                 lochit_table: sink.lochit_table,
                 xmodel_walk: sink.models.walk_census(),
