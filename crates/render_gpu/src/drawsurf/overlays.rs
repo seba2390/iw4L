@@ -25,6 +25,9 @@ use std::collections::HashMap;
 
 /// The code texture of the frame as drawn so far (`feedback`).
 const CODE_TEXTURE_FEEDBACK: u32 = 8;
+/// The resolved scene's code texture: the overlay pass resolves the frame
+/// as drawn so far into it before its overlays draw.
+const CODE_TEXTURE_RESOLVED_SCENE: u32 = 10;
 /// The game time row.
 const CODE_GAMETIME: u16 = 0x07;
 /// The render target size row.
@@ -151,6 +154,13 @@ fn code_row(constant: OverlayConstant) -> Option<u16> {
         OverlayConstant::RenderTargetSize => CODE_RENDER_TARGET_SIZE,
         OverlayConstant::ScriptVector(at) => {
             *render_material::CODE_T6_SCRIPT_VECTOR.get(usize::from(at))?
+        }
+        OverlayConstant::PostFxControl(at) => {
+            let at = u16::from(at);
+            if at >= render_material::CODE_POST_CONTROL_COUNT {
+                return None;
+            }
+            render_material::CODE_POST_CONTROL0 + at
         }
     })
 }
@@ -338,7 +348,7 @@ fn draw_overlays(
         for binding in &film.port.abi().samplers {
             match binding.source {
                 SamplerSource::CodeTexture {
-                    index: CODE_TEXTURE_FEEDBACK,
+                    index: CODE_TEXTURE_FEEDBACK | CODE_TEXTURE_RESOLVED_SCENE,
                 } => bound.push((None, None)),
                 SamplerSource::MaterialTexture { name_hash } => {
                     let Some(&(_, image, sampler)) = material

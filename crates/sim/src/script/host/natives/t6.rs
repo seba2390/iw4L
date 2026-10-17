@@ -28,6 +28,7 @@ mod movement;
 mod mover;
 mod paths;
 mod player;
+pub(crate) mod poison_overlay;
 mod radius;
 mod riotshield;
 mod rumble;
@@ -2222,8 +2223,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     let black_ops = NativeRegistry::engine_services().with_black_ops();
     for (namespace, name) in [
         (Method, "stopburning"),
-        (Method, "startpoisoning"),
-        (Method, "stoppoisoning"),
         (Method, "setsprintduration"),
         (Method, "setsprintcooldown"),
         (Method, "playerknockback"),
@@ -2241,6 +2240,25 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             registry.register(namespace, name, native);
         }
     }
+    // startpoisoning / stoppoisoning set the player's poisoned word, which
+    // the client's poison overlay follows; ispoisoned answers it.
+    fn poisoning_client(world: &World, receiver: &Value) -> Result<u32, String> {
+        client_of(world, receiver).map_err(|_| "USAGE: Must be called on a client\n".to_owned())
+    }
+    registry.register(Method, "startpoisoning", |world, receiver, _| {
+        let client = poisoning_client(world, receiver)?;
+        poison_overlay::set_poisoned(world, client, true);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "stoppoisoning", |world, receiver, _| {
+        let client = poisoning_client(world, receiver)?;
+        poison_overlay::set_poisoned(world, client, false);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "ispoisoned", |world, receiver, _| {
+        let client = poisoning_client(world, receiver)?;
+        Ok(Value::Int(poison_overlay::poisoned(world, client).into()))
+    });
     // gscm_isthrowinggrenade and gscm_isswitchingweapons read the player's
     // weapon state: an offhand throw, or raising or dropping a weapon, as
     // `movement_t6` keeps it.

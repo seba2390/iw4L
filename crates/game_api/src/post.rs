@@ -200,6 +200,8 @@ pub struct OverlayFrame<'a> {
     pub screen: &'a ScreenOverlays,
     /// Each drawable material's texture atlas (rows, columns), by name.
     pub atlases: &'a [(&'static str, [u8; 2])],
+    /// The scene's viewport the overlays draw over: x, y, width, height.
+    pub viewport: [f32; 4],
 }
 
 /// One fullscreen draw of an overlay material.
@@ -223,6 +225,8 @@ pub enum OverlayConstant {
     RenderTargetSize,
     /// One of the four script vector rows, 0 to 3.
     ScriptVector(u8),
+    /// One of the sixteen post control rows, 0 to 15.
+    PostFxControl(u8),
 }
 
 /// The screen overlays a client's game keeps, as its scripts and server set
@@ -239,6 +243,18 @@ pub struct ScreenOverlays {
     pub flame_scaler: f32,
     /// The client scripts' filters that draw, in filter order.
     pub filters: Vec<ScreenFilter>,
+    /// The poison overlay, while its amount is over 0.
+    pub poison: Option<PoisonOverlay>,
+}
+
+/// The poison overlay: its amount and the render settings its draw reads.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PoisonOverlay {
+    pub amount: f32,
+    /// The distortion's pulse rate.
+    pub pulse: f32,
+    /// The double vision's horizontal offset.
+    pub dvision_x: f32,
 }
 
 /// A client script filter that draws: its first pass's material and the
