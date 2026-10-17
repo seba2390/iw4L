@@ -47,6 +47,7 @@ pub(crate) fn publish_audio_context(
     frontend: Option<Res<crate::frontend::FrontendAudio>>,
     mut mix: Option<ResMut<crate::script_mix::ScriptAudioMix>>,
     mut channels: Option<ResMut<crate::script_mix::ChannelAudioMix>>,
+    mut snapshots: Option<ResMut<crate::snapshot_mix::SnapshotMix>>,
     listeners: Query<&Transform, With<crate::AmbientListener>>,
     generation: Option<Res<frame::WorldGeneration>>,
     presented: Option<Res<net::PresentedSnapshot>>,
@@ -114,13 +115,21 @@ pub(crate) fn publish_audio_context(
     if let Some(channels) = channels.as_mut() {
         channels.reset_epoch(epoch.0);
     }
+    if let Some(snapshots) = snapshots.as_mut() {
+        snapshots.reset_epoch(epoch.0);
+    }
     runtime.set_cue_mix(
         mix.zip(channels)
-            .map(|(mix, channels)| crate::cue_execution::CueMix {
-                epoch: epoch.0,
-                gain: mix.gain.clone(),
-                channels: channels.bindings(),
-            }),
+            .zip(snapshots)
+            .map(
+                |((mix, channels), snapshots)| crate::cue_execution::CueMix {
+                    epoch: epoch.0,
+                    gain: mix.gain.clone(),
+                    channels: channels.bindings(),
+                    snapshot_groups: snapshots.bindings(),
+                    contexts: snapshots.contexts(),
+                },
+            ),
     );
     let mut listener = listeners.iter();
     let pose = listener.next();

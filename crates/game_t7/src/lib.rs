@@ -211,7 +211,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
         script_text: game_api::ScriptText::Off,
         material_font_floor: false,
         zombies: true,
-        hud_elem_sent: None,
+        font_scales_sent: None,
     },
     client_fire: None,
     viewmodel: None,

@@ -978,51 +978,7 @@ pub(crate) fn layout_text_width(
     text: &str,
     text_scale: f32,
 ) -> f32 {
-    layout.text_width(
-        coded_text_width(font, text, |next, after| layout.caret_code(next, after)),
-        font.pixel_height,
-        text_scale,
-    )
-}
-
-/// The glyph width of `text` with the codes `caret_code` names after each
-/// `^` skipped, as the game's measure skips them.
-pub(crate) fn coded_text_width(
-    font: &FontDef,
-    text: &str,
-    caret_code: impl Fn(Option<char>, Option<char>) -> usize,
-) -> i32 {
-    let mut width = 0i32;
-    let mut max_width = 0i32;
-    let chars: Vec<char> = text.chars().collect();
-    let mut at = 0;
-    while let Some(&c) = chars.get(at) {
-        at += 1;
-        if c == '^' {
-            let skip = caret_code(chars.get(at).copied(), chars.get(at + 1).copied());
-            if skip > 0 {
-                at += skip;
-                continue;
-            }
-        }
-        let letter = c as u32;
-        if letter == 13 || letter == 10 {
-            width = 0;
-            continue;
-        }
-        let dx = if frame::ControllerIcon::from_char(c).is_some() {
-            font.pixel_height
-        } else if let Some(glyph) = font.glyph(letter) {
-            i32::from(glyph.dx)
-        } else {
-            continue;
-        };
-        width += dx;
-        if max_width < width {
-            max_width = width;
-        }
-    }
-    max_width
+    layout.text_width(text_width(font, text), font.pixel_height, text_scale)
 }
 
 pub(crate) fn ui_text_width(font: &FontDef, text: &str, text_scale: f32) -> f32 {

@@ -80,9 +80,9 @@ pattern crates/asset_audio/src/sound_load_iw5.rs AssetNamespace::<game> 2
 pattern crates/asset_audio/src/sound_load_iw5.rs ZoneGame::<game> 4
 pattern crates/asset_audio/src/sound_load_iw5.rs asset_iw4:: 1
 pattern crates/asset_audio/src/sound_load_iw5.rs fastfile_iw5:: 13
-pattern crates/asset_audio/src/sound_load_t5.rs AssetNamespace::<game> 2
+pattern crates/asset_audio/src/sound_load_t5.rs AssetNamespace::<game> 1
 pattern crates/asset_audio/src/sound_load_t5.rs ZoneGame::<game> 4
-pattern crates/asset_audio/src/sound_load_t5.rs fastfile_t5:: 12
+pattern crates/asset_audio/src/sound_load_t5.rs fastfile_t5:: 2
 pattern crates/asset_audio/src/sound_load_t6.rs AssetNamespace::<game> 2
 pattern crates/asset_audio/src/sound_load_t6.rs ZoneGame::<game> 3
 pattern crates/asset_audio/src/sound_load_t6.rs fastfile_t6:: 1
