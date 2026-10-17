@@ -9,6 +9,7 @@ use crate::bullet_collision::{
 };
 use crate::script::{Arc, ArrayKey, Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
+use entity_iw4::EntityEventKind;
 
 const ZERO: [f32; 3] = [0.0; 3];
 
@@ -73,7 +74,7 @@ fn vector_field(world: &mut World, id: u64, name: &str) -> [f32; 3] {
     }
 }
 
-fn origin_of(world: &mut World, value: &Value) -> Result<[f32; 3], String> {
+pub(crate) fn origin_of(world: &mut World, value: &Value) -> Result<[f32; 3], String> {
     match value {
         Value::Object(id) if world.resource::<RoundScript>().live(id) => {
             Ok(vector_field(world, *id, "origin"))
@@ -542,9 +543,9 @@ pub(crate) fn tag_effect_event(
     (origin, direction): ([f32; 3], [f32; 3]),
 ) {
     let kind = if stop {
-        entity_iw4::EntityEventKind::STOP_FX_ON_TAG
+        EntityEventKind::STOP_FX_ON_TAG
     } else {
-        entity_iw4::EntityEventKind::PLAY_FX_ON_TAG
+        EntityEventKind::PLAY_FX_ON_TAG
     };
     match on.and_then(|(number, bone)| Some((number, i32::try_from(bone).ok()?))) {
         Some((number, bone)) => {
@@ -590,7 +591,7 @@ pub(crate) fn play_fx_to(
     world_event(
         world,
         audience,
-        entity_iw4::EntityEventKind::PLAY_FX,
+        EntityEventKind::PLAY_FX,
         index,
         origin,
         forward,
@@ -601,7 +602,7 @@ pub(crate) fn play_fx_to(
 fn world_event(
     world: &mut World,
     audience: crate::EventAudience,
-    kind: entity_iw4::EntityEventKind,
+    kind: EntityEventKind,
     index: u8,
     origin: [f32; 3],
     direction: [f32; 3],
@@ -636,7 +637,7 @@ pub(crate) fn sound_to(
     frame.push_entity_event(
         tick,
         audience,
-        entity_iw4::EntityEventKind::SOUND_ALIAS,
+        EntityEventKind::SOUND_ALIAS,
         crate::EntityEventPayload {
             number,
             event_parm: i32::from(index),
@@ -686,9 +687,113 @@ fn team_clients(world: &mut World, team: &str, except: Option<u32>) -> Vec<crate
 /// How long a sound plays before its done-notify, for want of its length.
 const SOUND_DONE_MS: i64 = 2000;
 
+/// How long Black Ops waits on a sound notify whose length no client has
+/// reported.
+const SOUND_NOTIFY_DEFAULT_MS: i32 = 5000;
+
+/// A one-shot sound on an entity that follows it (Black Ops' entity sound
+/// event); with `reports_length`, the clients report its length for the
+/// entity's sound notify.
+pub(crate) fn sound_on_entity(
+    world: &mut World,
+    number: i32,
+    origin: [f32; 3],
+    alias: &str,
+    reports_length: bool,
+) {
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let mut frame = crate::frame::FrameWorld::from_world(world);
+    let index = frame.sound_alias_index(alias);
+    if index == 0 {
+        return;
+    }
+    frame.push_entity_event(
+        tick,
+        crate::EventAudience::All,
+        EntityEventKind::SOUND_ALIAS,
+        crate::EntityEventPayload {
+            number,
+            event_parm: i32::from(index),
+            origin,
+            simulation_flags: if reports_length {
+                crate::SOUND_REPORTS_LENGTH
+            } else {
+                0
+            },
+            ..Default::default()
+        },
+    );
+}
+
+/// Stops an alias's sounds on an entity (Black Ops' `stopSound`): a stop
+/// sounds event that names the alias.
+pub(crate) fn stop_sound_on_entity(world: &mut World, number: i32, origin: [f32; 3], alias: &str) {
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let mut frame = crate::frame::FrameWorld::from_world(world);
+    let index = frame.sound_alias_index(alias);
+    if index == 0 {
+        return;
+    }
+    frame.push_entity_event(
+        tick,
+        crate::EventAudience::All,
+        EntityEventKind::STOPSOUNDS,
+        crate::EntityEventPayload {
+            number,
+            event_parm: i32::from(index),
+            origin,
+            ..Default::default()
+        },
+    );
+}
+
+/// A client's report of a notified sound's length (Black Ops' `sl`), taken
+/// up at the next step.
+pub(crate) fn report_sound_length(world: &mut World, number: i32, length_ms: i32) {
+    if !(0..=0x3ff).contains(&number) {
+        return;
+    }
+    if let Some(mut runtime) = world.get_resource_mut::<RoundScript>() {
+        runtime.sound_lengths.push((number, length_ms));
+    }
+}
+
 /// Raises the timed notifies that are due (sounds and animations done).
 pub(crate) fn deliver_timed_notifies(world: &mut World) {
     let now = super::super::players::now_ms(world);
+    let sounds: Vec<(Value, Arc<str>)> = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        // A longer length than the entity waits on restarts the wait from
+        // the report.
+        for (number, length_ms) in std::mem::take(&mut runtime.sound_lengths) {
+            if let Some(sound) = runtime.sound_notifies.get_mut(&number)
+                && sound.duration_ms < length_ms
+            {
+                sound.duration_ms = length_ms;
+                sound.start_ms = now;
+            }
+        }
+        let due: Vec<i32> = runtime
+            .sound_notifies
+            .iter()
+            .filter(|(_, sound)| {
+                let duration = if sound.duration_ms < 0 {
+                    SOUND_NOTIFY_DEFAULT_MS
+                } else {
+                    sound.duration_ms
+                };
+                now - sound.start_ms - i64::from(duration) >= 0
+            })
+            .map(|(number, _)| *number)
+            .collect();
+        due.into_iter()
+            .filter_map(|number| runtime.sound_notifies.remove(&number))
+            .map(|sound| (sound.receiver, sound.notify))
+            .collect()
+    };
+    for (receiver, notify) in sounds {
+        crate::script::runtime::raise(world, receiver, &notify, Vec::new());
+    }
     let due: Vec<(Value, Arc<str>, Vec<Value>)> = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let (due, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut runtime.timed_notifies)
@@ -742,7 +847,7 @@ pub(crate) fn sound_alias_event(
     world_event(
         world,
         crate::EventAudience::All,
-        entity_iw4::EntityEventKind::SOUND_ALIAS,
+        EntityEventKind::SOUND_ALIAS,
         index,
         origin,
         ZERO,

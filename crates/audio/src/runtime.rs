@@ -54,6 +54,8 @@ struct StartRequest {
     frame: u64,
     start_deadline: Option<Instant>,
     protect_attack: bool,
+    /// The entity whose origin the sound follows while it plays.
+    follow: Option<u32>,
 }
 
 #[derive(Clone, Copy)]
@@ -271,6 +273,11 @@ impl AudioRuntime {
         self.listener.set(listener);
     }
 
+    /// The origins of the entities sounds may follow, this frame.
+    pub(crate) fn set_emitter_origins(&self, origins: std::collections::HashMap<u32, [f32; 3]>) {
+        self.listener.set_emitters(origins);
+    }
+
     pub(crate) fn set_media_service(&self, media: Option<MediaService>) {
         let mut installed = self
             .media
@@ -323,6 +330,7 @@ impl AudioRuntime {
             bound,
             origin_inches,
             emitter,
+            follow_emitter,
             class,
             epoch,
             pitch_scale,
@@ -368,6 +376,7 @@ impl AudioRuntime {
                 event,
                 origin_inches,
                 emitter,
+                follow_emitter,
                 class,
                 deadline: Instant::now() + class.start_wait(),
                 depth: 0,
@@ -470,6 +479,7 @@ fn control(
         let diag_pass = Instant::now();
         diag_max_gap = diag_max_gap.max(diag_pass.duration_since(diag_previous_pass));
         diag_previous_pass = diag_pass;
+        let emitters = listener.emitters();
         let listener = listener.get();
         events.advance(event_context.get());
         let diag_stage = crate::diagnostics::slow_stage("context", diag_pass);
@@ -536,6 +546,12 @@ fn control(
                     .store(true, Ordering::Release);
             }
             if logical.source.is_none() {
+                if let (Some(entity), Some(spatial)) =
+                    (logical.request.follow, logical.request.spatial.as_mut())
+                    && let Some(origin) = emitters.get(&entity)
+                {
+                    spatial.origin_inches = *origin;
+                }
                 update_spatial(&logical.request, listener);
             }
         }
@@ -831,6 +847,12 @@ fn control(
                             protect_attack: work.source.is_none()
                                 && !start.looping
                                 && work.request.execution.class == crate::SoundClass::Weapon,
+                            follow: work
+                                .request
+                                .execution
+                                .follow_emitter
+                                .then_some(work.request.execution.emitter)
+                                .flatten(),
                             cancellation: Some(start.lease),
                             spatial: start.spatial,
                             admission: start.admission,
@@ -1001,6 +1023,7 @@ fn control(
                         event: None,
                         origin_inches: source.origin_inches,
                         emitter: cue.emitter,
+                        follow_emitter: false,
                         class: crate::SoundClass::Ambience,
                         deadline: Instant::now(),
                         depth: 0,

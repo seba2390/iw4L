@@ -15,7 +15,7 @@ pub(crate) use lifecycle::{
     CREATE_STRUCT, STRUCT_INIT, copy_state, install, install_client, install_level, reset,
     reset_round,
 };
-pub(crate) use state::{MatchScript, RoundScript};
+pub(crate) use state::{MatchScript, RoundScript, SoundNotify};
 
 /// Instructions one resumed thread may run before it is killed as a runaway loop.
 /// Level startup runs in one frame and needs over a million on the larger maps.

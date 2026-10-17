@@ -1470,6 +1470,53 @@ fn register_entity(registry: &mut NativeRegistry) {
             .set_object_field(id, "owner", Value::Undefined);
         Ok(Value::Undefined)
     });
+    // `ent playSound(alias, [notify])`: a sound event on the entity; with a
+    // notify, the entity raises it once the sound has played (a pending
+    // one is raised at once).
+    registry.register(Method, "playsound", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let alias = match args.first() {
+            Some(_) => string(args, 0)?.to_string(),
+            None => return Ok(Value::Undefined),
+        };
+        let notify = match args.get(1) {
+            Some(_) if args.len() > 1 => Some(Arc::<str>::from(string(args, 1)?.as_ref())),
+            _ => None,
+        };
+        let (number, origin) = entity_number_origin(world, receiver, id)?;
+        if alias.is_empty() {
+            return Ok(Value::Undefined);
+        }
+        if FrameWorld::from_world(world).script_sound_exists(&alias) == Some(true) {
+            super::engine::sound_on_entity(world, number, origin, &alias, notify.is_some());
+        }
+        if let Some(notify) = notify {
+            let now = super::super::players::now_ms(world);
+            let old = world.resource_mut::<RoundScript>().sound_notifies.insert(
+                number,
+                crate::script::runtime::SoundNotify {
+                    receiver: receiver.clone(),
+                    notify,
+                    start_ms: now,
+                    duration_ms: -1,
+                },
+            );
+            if let Some(old) = old {
+                crate::script::runtime::raise(world, old.receiver, &old.notify, Vec::new());
+            }
+        }
+        Ok(Value::Undefined)
+    });
+    // `ent stopSound(alias)`: stops the alias's sounds on the entity.
+    registry.register(Method, "stopsound", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let alias = string(args, 0)?.to_string();
+        let (number, origin) = entity_number_origin(world, receiver, id)?;
+        if !alias.is_empty() {
+            super::engine::stop_sound_on_entity(world, number, origin, &alias);
+        }
+        Ok(Value::Undefined)
+    });
     // Black Ops' single player handles these with an empty function: no
     // receiver or argument check, nothing done.
     for name in ["setsoundblend", "setreverb", "deactivatereverb"] {
@@ -1668,4 +1715,15 @@ fn client_sys_set_state(
         },
     );
     Ok(Value::Undefined)
+}
+
+/// An entity's number and origin, for its sound events.
+fn entity_number_origin(
+    world: &mut World,
+    receiver: &Value,
+    id: u64,
+) -> Result<(i32, [f32; 3]), String> {
+    let number = world.resource::<RoundScript>().entities[&id].number;
+    let origin = super::engine::origin_of(world, receiver)?;
+    Ok((number, origin))
 }

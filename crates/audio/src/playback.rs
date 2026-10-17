@@ -64,6 +64,7 @@ impl Plugin for PlayerSoundPlugin {
             .scoped::<crate::shellshock::ShellshockSources>(frame::Timeline::Running)
             .scoped::<crate::breath::BreathSources>(frame::Timeline::Running)
             .scoped_message::<AliasCommand>(frame::Timeline::Running)
+            .scoped::<SoundLengthReports>(frame::MatchScope::Live)
             .scoped_message::<Footstep>(frame::Timeline::Running)
             .scoped_message::<WeaponSound>(frame::Timeline::Running)
             .scoped_message::<BoundWeaponSound>(frame::Timeline::Running)
@@ -103,6 +104,9 @@ impl Plugin for PlayerSoundPlugin {
                     play_alias_messages
                         .in_set(frame::InMatch)
                         .after(FxSoundPublished),
+                    report_sound_lengths
+                        .in_set(frame::InMatch)
+                        .after(play_alias_messages),
                     play_footstep_messages.in_set(frame::InMatch),
                     crate::entity_events::play_viewmodel_notetrack_messages
                         .in_set(frame::InMatch)
@@ -201,6 +205,7 @@ fn play_alias_messages(
     bank: Option<Res<SoundBank>>,
     epoch: Res<ScopeEpoch<MatchScope>>,
     local: Res<net::LocalPresentClient>,
+    mut reports: ResMut<SoundLengthReports>,
 ) {
     for command in events.read() {
         let (event, pitch_scale) = match command {
@@ -208,7 +213,9 @@ fn play_alias_messages(
                 runtime.stop_emitter_cues(*snd_ent, epoch.0);
                 continue;
             }
-            AliasCommand::Play(event) => (event, 1.0),
+            AliasCommand::Play(event) | AliasCommand::PlayOnEntity { sound: event, .. } => {
+                (event, 1.0)
+            }
             AliasCommand::PlayPitched { sound, pitch } => (sound, *pitch),
             AliasCommand::Stop {
                 namespace,
@@ -227,7 +234,7 @@ fn play_alias_messages(
             );
             continue;
         };
-        play_oneshot_recorded(
+        play_oneshot_following(
             &bank.0,
             event.namespace,
             &event.alias,
@@ -237,6 +244,7 @@ fn play_alias_messages(
             &mut pending,
             &mut decisions,
             sound_entity(event.snd_ent, local.0),
+            matches!(command, AliasCommand::PlayOnEntity { .. }),
             SoundClass::World,
             epoch.0,
             pitch_scale,
@@ -244,6 +252,46 @@ fn play_alias_messages(
             event.fallback.iter().cloned().collect(),
             event.event,
         );
+        if let AliasCommand::PlayOnEntity {
+            report: Some(entity),
+            ..
+        } = command
+            && let Some(handle) = pending.last()
+        {
+            reports.pending.push((*entity, handle));
+        }
+    }
+}
+
+/// Notified entity sounds whose length the client still has to report.
+#[derive(Resource, Default)]
+pub(crate) struct SoundLengthReports {
+    pending: Vec<(i32, crate::cue::CueHandle)>,
+}
+
+/// Reports each notified sound's length once its sound system knows it
+/// (Black Ops' `sl` command); a sound that ends first reports nothing.
+pub(crate) fn report_sound_lengths(
+    mut reports: ResMut<SoundLengthReports>,
+    authority: Option<ResMut<net::AuthorityWorld>>,
+) {
+    let mut lengths = Vec::new();
+    reports.pending.retain(|(entity, handle)| {
+        let length_ms = handle
+            .0
+            .playback
+            .get()
+            .map_or(0, |instance| instance.playback_ms().1);
+        if length_ms > 0 {
+            lengths.push((*entity, length_ms));
+            return false;
+        }
+        handle.active()
+    });
+    if !lengths.is_empty()
+        && let Some(mut authority) = authority
+    {
+        authority.0.report_sound_lengths(lengths);
     }
 }
 
@@ -556,6 +604,47 @@ fn play_oneshot_recorded(
     fallbacks: Vec<String>,
     event: Option<crate::AudioEvent>,
 ) -> StartOutcome {
+    play_oneshot_following(
+        bank,
+        namespace,
+        alias,
+        bound,
+        origin_inches,
+        runtime,
+        pending,
+        decisions,
+        snd_ent,
+        false,
+        class,
+        epoch,
+        pitch_scale,
+        volume_scale,
+        fallbacks,
+        event,
+    )
+}
+
+/// A one-shot sound that, with `follow`, follows its emitter entity while
+/// it plays.
+#[allow(clippy::too_many_arguments)]
+fn play_oneshot_following(
+    bank: &Arc<SoundCatalog>,
+    namespace: AssetNamespace,
+    alias: &str,
+    bound: Option<usize>,
+    origin_inches: Option<[f32; 3]>,
+    runtime: &AudioRuntime,
+    pending: &mut CueFeedback,
+    decisions: &mut StartDecisions,
+    snd_ent: Option<u32>,
+    follow: bool,
+    class: SoundClass,
+    epoch: u64,
+    pitch_scale: f32,
+    volume_scale: f32,
+    fallbacks: Vec<String>,
+    event: Option<crate::AudioEvent>,
+) -> StartOutcome {
     let handle = runtime.trigger_cue(crate::cue_execution::CueTrigger {
         event,
         bank: bank.clone(),
@@ -564,6 +653,7 @@ fn play_oneshot_recorded(
         bound,
         origin_inches,
         emitter: snd_ent,
+        follow_emitter: follow,
         class,
         epoch,
         pitch_scale,

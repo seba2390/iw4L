@@ -29,7 +29,8 @@ pub use client_view::{
 };
 pub use events::{
     EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, PelletFxRecord,
-    SIM_EVENT_ROSTER, SimEvent, SimEventRow, UNRELIABLE_SIM_EVENT_COUNT, sim_event_is_reliable,
+    SIM_EVENT_ROSTER, SOUND_REPORTS_LENGTH, SimEvent, SimEventRow, UNRELIABLE_SIM_EVENT_COUNT,
+    sim_event_is_reliable,
 };
 pub use loadout::{
     CLASS_CATALOG_DEATHSTREAKS, CLASS_CATALOG_PERKS, ClassDef, ClassRejectReason,
