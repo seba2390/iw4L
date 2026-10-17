@@ -303,6 +303,7 @@ pub fn capture_t6_sounds<'n>(
                 t6_speaker_pan: pan.map(|(_, gains)| *gains),
                 limit_count: Some(row[93]),
                 entity_limit_count: Some(row[94]),
+                snapshot_group: None,
                 voice_priority: Some(crate::VoicePriority {
                     thresholds: [row[86], row[87]],
                     values: [row[90], row[91]],

@@ -20,7 +20,9 @@ pub(super) fn load_snd_bank(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSin
     }
     always_array(s, p.at(12), 4, sz::SND_INDEX_ENTRY * alias_count)?;
     always_array(s, p.at(0x1c), 4, sz::SND_RADVERB * radverb_count)?;
-    always_array(s, p.at(0x24), 4, sz::SND_SNAPSHOT * snapshot_count)?;
+    if let Some(rows) = always_array(s, p.at(0x24), 4, sz::SND_SNAPSHOT * snapshot_count)? {
+        links.capture_snd_snapshots(s, rows, snapshot_count)?;
+    }
     s.pop()
 }
 
@@ -37,6 +39,7 @@ pub(super) fn load_snd_driver_globals(
         match (pointer_offset, rows) {
             (8, Some(rows)) => links.capture_snd_groups(s, rows, count)?,
             (16, Some(rows)) => links.capture_snd_curves(s, rows, count)?,
+            (32, _) => links.capture_snd_snapshot_groups(count)?,
             _ => {}
         }
     }

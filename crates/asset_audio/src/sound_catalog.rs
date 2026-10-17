@@ -77,6 +77,7 @@ pub struct SoundCatalog {
 
     group_volumes: HashMap<AssetNamespace, Vec<std::result::Result<f32, crate::MixerGroupError>>>,
     mixer_groups: HashMap<AssetNamespace, Vec<crate::MixerGroup>>,
+    mix_snapshots: HashMap<AssetNamespace, crate::MixSnapshots>,
     mix_names: Option<crate::SoundMixNames>,
     by_alias: HashMap<(AssetNamespace, String), usize>,
 
@@ -148,6 +149,9 @@ impl SoundCatalog {
         }
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
+        }
+        for (ns, snapshots) in other.mix_snapshots {
+            self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
         }
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
@@ -224,6 +228,9 @@ impl SoundCatalog {
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
         }
+        for (ns, snapshots) in other.mix_snapshots {
+            self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
+        }
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
         }
@@ -289,6 +296,27 @@ impl SoundCatalog {
         self.group_volumes.remove(&namespace);
         self.playback.clear();
         self.selection_weights.clear();
+    }
+
+    /// Mix snapshots a zone's sound banks carry, and the snapshot group
+    /// count its sound driver declares when it has one.
+    pub fn ingest_mix_snapshots(
+        &mut self,
+        namespace: AssetNamespace,
+        snapshots: Vec<crate::MixSnapshot>,
+        groups: Option<usize>,
+    ) {
+        self.mix_snapshots
+            .entry(namespace)
+            .or_default()
+            .absorb(crate::MixSnapshots {
+                list: snapshots,
+                groups,
+            });
+    }
+
+    pub fn mix_snapshots(&self, namespace: AssetNamespace) -> Option<&crate::MixSnapshots> {
+        self.mix_snapshots.get(&namespace)
     }
 
     pub fn playback_policy(

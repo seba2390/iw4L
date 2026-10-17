@@ -460,6 +460,7 @@ impl Iw5SoundCapture {
             t6_speaker_pan: None,
             limit_count: None,
             entity_limit_count: None,
+            snapshot_group: None,
         }
     }
 }

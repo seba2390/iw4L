@@ -186,6 +186,8 @@ pub struct AliasPlaybackPolicy {
     pub pitch_range: ScalarRangePolicy,
     pub composition: CueCompositionPolicy,
     pub stereo_speaker_gains: Option<[[f32; 2]; 2]>,
+    /// The snapshot group whose mix snapshot volume the alias plays at.
+    pub snapshot_group: Option<u8>,
     pub loaded_binding_origin: crate::LoadedBindingOrigin,
 }
 

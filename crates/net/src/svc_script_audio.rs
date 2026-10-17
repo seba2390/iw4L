@@ -112,6 +112,19 @@ pub(crate) fn encode_script_audio(out: &mut WireWriter, command: &ScriptAudioCom
             out.put_i32(*id);
             out.put_f32(*rate);
         }
+        ScriptAudioCommand::ClientSnapshot {
+            client,
+            slot,
+            name,
+            value,
+        } => {
+            out.put_u8(9);
+            out.put_u32(client.0);
+            out.put_u8(*slot);
+            out.put_u16(name.len() as u16);
+            out.put_bytes(name.as_bytes());
+            out.put_f32(*value);
+        }
     }
 }
 
@@ -212,6 +225,24 @@ pub(crate) fn decode_script_audio(
             id: input.get_i32()?,
             rate: input.get_f32()?,
         },
+        9 => {
+            let client = ClientId(input.get_u32()?);
+            let slot = input.get_u8()?;
+            let len = input.get_u16()? as usize;
+            if len > 1023 {
+                return Err(WireError::Malformed("client snapshot name exceeds limit"));
+            }
+            let mut bytes = vec![0; len];
+            input.get_bytes(&mut bytes)?;
+            let name = String::from_utf8(bytes)
+                .map_err(|_| WireError::Malformed("client snapshot name is not UTF-8"))?;
+            ScriptAudioCommand::ClientSnapshot {
+                client,
+                slot,
+                name,
+                value: input.get_f32()?,
+            }
+        }
         _ => return Err(WireError::Malformed("unknown script audio command")),
     };
     if !command.valid() {

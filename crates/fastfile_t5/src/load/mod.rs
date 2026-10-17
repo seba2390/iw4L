@@ -118,6 +118,18 @@ pub trait AssetLinkSink {
         Ok(())
     }
 
+    /// A sound bank's mix snapshots.
+    fn capture_snd_snapshots(&mut self, s: &ZoneStream<'_>, rows: Ptr, count: usize) -> Result<()> {
+        let _ = (s, rows, count);
+        Ok(())
+    }
+
+    /// How many snapshot groups the sound driver declares.
+    fn capture_snd_snapshot_groups(&mut self, count: usize) -> Result<()> {
+        let _ = count;
+        Ok(())
+    }
+
     fn capture_raw_file(&mut self, name: &str, data: &[u8], zlib_compressed: bool) -> Result<()> {
         let _ = (name, data, zlib_compressed);
         Ok(())

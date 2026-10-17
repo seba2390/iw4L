@@ -402,6 +402,13 @@ pub const SND_ALIAS: usize = 84;
 pub const SND_INDEX_ENTRY: usize = 4;
 pub const SND_RADVERB: usize = 96;
 pub const SND_SNAPSHOT: usize = 348;
+pub const SND_SNAPSHOT_HASH_OFF: usize = 0x20;
+pub const SND_SNAPSHOT_LINKED_OFF: usize = 0x44;
+pub const SND_SNAPSHOT_FADE_IN_OFF: usize = 0x48;
+pub const SND_SNAPSHOT_FADE_OUT_OFF: usize = 0x4c;
+pub const SND_SNAPSHOT_DISTANCE_OFF: usize = 0x50;
+pub const SND_SNAPSHOT_VOLUMES_OFF: usize = 0x5c;
+const _: () = assert!(SND_SNAPSHOT_VOLUMES_OFF + 64 * 4 == SND_SNAPSHOT);
 pub const SND_PATCH: usize = 20;
 pub const SOUND_FILE: usize = 8;
 pub const LOADED_SOUND: usize = 60;
@@ -457,6 +464,7 @@ pub const SND_ALIAS_PRIORITY_MAX_OFF: usize = 74;
 
 pub const SND_ALIAS_LIMIT_COUNT_OFF: usize = 80;
 pub const SND_ALIAS_ENTITY_LIMIT_COUNT_OFF: usize = 81;
+pub const SND_ALIAS_SNAPSHOT_GROUP_OFF: usize = 82;
 
 const _: () = assert!(SND_ALIAS_LIMIT_COUNT_OFF + 2 < SND_ALIAS);
 const _: () = assert!(SND_ALIAS_ENTITY_LIMIT_COUNT_OFF + 1 < SND_ALIAS);

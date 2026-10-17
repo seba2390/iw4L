@@ -96,12 +96,52 @@ impl AssetLinkSink for T5SoundCapture {
         let mut groups = Vec::with_capacity(count);
         for i in 0..count {
             let row = rows.at(i * 80);
+            // Single player (zombies) reads the group's attenuation at 76;
+            // the one at 78 is multiplayer's.
             groups.push(crate::MixerGroup {
                 parent: s.i32_at(row, 68)?,
-                attenuation: f32::from(s.u16_at(row, 78)?) / 65535.0,
+                attenuation: f32::from(s.u16_at(row, 76)?) / 65535.0,
             });
         }
         self.catalog.ingest_mixer_groups(AssetNamespace::T5, groups);
+        Ok(())
+    }
+
+    fn capture_snd_snapshots(
+        &mut self,
+        s: &ZoneStream<'_>,
+        rows: Ptr,
+        count: usize,
+    ) -> fastfile_t5::Result<()> {
+        use fastfile_t5::size as sz;
+        let mut snapshots = Vec::with_capacity(count);
+        for i in 0..count {
+            let row = rows.at(i * sz::SND_SNAPSHOT);
+            let name: Vec<u8> = (0..32)
+                .map_while(|n| s.u8_at(row, n).ok().filter(|&b| b != 0))
+                .collect();
+            let mut volumes = [1.0; 64];
+            for (group, volume) in volumes.iter_mut().enumerate() {
+                *volume = s.f32_at(row, sz::SND_SNAPSHOT_VOLUMES_OFF + group * 4)?;
+            }
+            snapshots.push(crate::MixSnapshot {
+                name: String::from_utf8_lossy(&name).into_owned(),
+                hash: s.u32_at(row, sz::SND_SNAPSHOT_HASH_OFF)?,
+                linked: s.u32_at(row, sz::SND_SNAPSHOT_LINKED_OFF)?,
+                fade_in: s.f32_at(row, sz::SND_SNAPSHOT_FADE_IN_OFF)?,
+                fade_out: s.f32_at(row, sz::SND_SNAPSHOT_FADE_OUT_OFF)?,
+                distance: s.f32_at(row, sz::SND_SNAPSHOT_DISTANCE_OFF)?,
+                volumes,
+            });
+        }
+        self.catalog
+            .ingest_mix_snapshots(AssetNamespace::T5, snapshots, None);
+        Ok(())
+    }
+
+    fn capture_snd_snapshot_groups(&mut self, count: usize) -> fastfile_t5::Result<()> {
+        self.catalog
+            .ingest_mix_snapshots(AssetNamespace::T5, Vec::new(), Some(count));
         Ok(())
     }
 
@@ -407,6 +447,7 @@ impl T5SoundCapture {
             t6_speaker_pan: None,
             limit_count: s.u8_at(row, sz::SND_ALIAS_LIMIT_COUNT_OFF).ok(),
             entity_limit_count: s.u8_at(row, sz::SND_ALIAS_ENTITY_LIMIT_COUNT_OFF).ok(),
+            snapshot_group: s.u8_at(row, sz::SND_ALIAS_SNAPSHOT_GROUP_OFF).ok(),
         }
     }
 }

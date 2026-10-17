@@ -51,6 +51,8 @@ pub(crate) struct CueExecutionPolicy {
     pub stereo_speaker_gains: Option<[[f32; 2]; 2]>,
     pub loaded_binding_origin: asset_audio::LoadedBindingOrigin,
     pub channel: Option<asset_audio::ChannelKey>,
+    /// The alias's namespace and snapshot group, when it has one.
+    pub snapshot_group: Option<(asset_core::AssetNamespace, u8)>,
     pub priority: Option<asset_audio::VoicePriority>,
     pub spatial: Option<Result<CueSpatialPolicy, StartFailure>>,
     admission: AdmissionPolicy,
@@ -82,6 +84,7 @@ impl CueExecutionPolicy {
             stereo_speaker_gains: policy.stereo_speaker_gains,
             loaded_binding_origin: policy.loaded_binding_origin,
             channel: policy.channel,
+            snapshot_group: policy.snapshot_group.map(|group| (policy.namespace, group)),
             priority: policy.priority.clone(),
             spatial,
             admission: alias_admission(bound.revision(), bound.alias_index(), policy),

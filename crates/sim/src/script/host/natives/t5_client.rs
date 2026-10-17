@@ -1411,6 +1411,40 @@ fn register_sound_ids(registry: &mut NativeRegistry) {
         );
         Ok(Value::Undefined)
     });
+    // The mix snapshot setters: the group, ambient, health and level fade
+    // slots (2, 1, 8 and 10). The health and level fade weights are clamped
+    // to 0..1; the others are put at full weight.
+    macro_rules! snapshot_setter {
+        ($name:literal, $slot:literal, $weighted:literal, $arity:literal) => {
+            registry.register(Function, $name, |world, _, args| {
+                set_snapshot(world, args, $slot, $weighted, $arity)
+            });
+        };
+    }
+    snapshot_setter!(
+        "setgroupsnapshot",
+        2,
+        false,
+        "setGroupSnapshot takes one parameter."
+    );
+    snapshot_setter!(
+        "setambientsnapshot",
+        1,
+        false,
+        "setAmbientSnapshot takes one parameter."
+    );
+    snapshot_setter!(
+        "sethealthsnapshot",
+        8,
+        true,
+        "setHealthSnapshot takes two parameters."
+    );
+    snapshot_setter!(
+        "setlevelfadesnapshot",
+        10,
+        true,
+        "setLevelFadeSnapshot takes two parameters."
+    );
     registry.register(Function, "setsoundvolumerate", |world, _, args| {
         if args.len() != 2 {
             return Err("setsoundvolumerate takes two parameters.".into());
@@ -1429,6 +1463,42 @@ fn register_sound_ids(registry: &mut NativeRegistry) {
         );
         Ok(Value::Undefined)
     });
+}
+
+/// Puts a mix snapshot in one of the client's snapshot slots.
+fn set_snapshot(
+    world: &mut World,
+    args: &[Value],
+    slot: u8,
+    weighted: bool,
+    arity: &str,
+) -> Result<Value, String> {
+    if args.len() != 1 + usize::from(weighted) {
+        return Err(arity.into());
+    }
+    let value = if weighted {
+        let weight = float(args, 1)?;
+        let mut value = weight;
+        if 0.0 <= weight - 1.0 {
+            value = 1.0;
+        }
+        if 0.0 <= -weight {
+            value = 0.0;
+        }
+        value
+    } else {
+        1.0
+    };
+    let name = string(args, 0)?.to_string();
+    world.resource_mut::<ClientOutput>().sound_commands.push(
+        crate::ScriptAudioCommand::ClientSnapshot {
+            client: crate::ClientId(0),
+            slot,
+            name,
+            value,
+        },
+    );
+    Ok(Value::Undefined)
 }
 
 fn sound_status(world: &World, id: i32) -> Option<crate::ClientSoundStatus> {

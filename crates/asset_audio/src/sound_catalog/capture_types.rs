@@ -186,6 +186,8 @@ pub struct CapturedAlias {
     pub limit_count: Option<u8>,
 
     pub entity_limit_count: Option<u8>,
+    /// The snapshot group whose snapshot volume the alias plays at.
+    pub snapshot_group: Option<u8>,
 }
 
 impl CapturedAlias {
