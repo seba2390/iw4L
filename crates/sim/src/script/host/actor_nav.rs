@@ -1392,7 +1392,6 @@ pub(crate) fn choose_enemy(world: &mut World, actor: u64) {
         Value::Object(id) if !ignoring && runtime.live(&id) => Some(id),
         _ => None,
     };
-    drop(runtime);
     let enemy = favorite.filter(
         |&id| matches!(super::players::entity_field(world, id, "health"), Value::Int(n) if n > 0),
     );

@@ -842,7 +842,9 @@ fn weapon_facts(
     let index = frame
         .weapon_index_by_script_name(&name)
         .ok_or_else(|| format!("unknown weapon '{name}'"))?;
-    Ok(frame.weapon_combat_row(index).unwrap_or_default())
+    Ok(frame
+        .weapon_combat_row(index)
+        .unwrap_or(weapon_iw4::WeaponCombatFacts::none()))
 }
 
 const WEAPON_TYPES: &[&str] = &["bullet", "grenade", "projectile", "riotshield"];
@@ -1182,7 +1184,6 @@ fn register_appearance(registry: &mut NativeRegistry) {
             let entity = runtime.entities.get_mut(&id).unwrap();
             entity.brush = Some(brush);
             let presence = entity.presence;
-            drop(runtime);
             if let Some(presence) = presence
                 && let Some(row) =
                     crate::frame::FrameWorld::from_world(world).collision_owner_mut(presence)
@@ -1559,7 +1560,9 @@ fn register_attachments(registry: &mut NativeRegistry) {
 
     registry.register(Method, "attach", |world, receiver, args| {
         let model: Arc<str> = string(args, 0)?.into();
-        let tag: Arc<str> = optional(args, 1, string)?.unwrap_or_default().into();
+        let tag: Arc<str> = optional(args, 1, string)?
+            .unwrap_or_else(String::new)
+            .into();
         let id = entity_id(world, receiver)?;
         let mut runtime = runtime(world);
         let entity = runtime.entities.get_mut(&id).unwrap();
@@ -1945,7 +1948,6 @@ fn register_match(registry: &mut NativeRegistry) {
             return Err("exitlevel already called".into());
         }
         state.exit_level = true;
-        drop(state);
         signal(world, EXIT_LEVEL)
     });
     registry.register(Function, "map_restart", |world, _, args| {

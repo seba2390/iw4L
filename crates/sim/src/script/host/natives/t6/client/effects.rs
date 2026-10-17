@@ -384,7 +384,6 @@ fn load_fx(world: &mut World, args: &[Value]) -> Result<Value, String> {
     }
     fx.effects.push(name.clone());
     let id = fx.effects.len() as i32;
-    drop(fx);
     with_server(world, |server| {
         if !server
             .resource::<RoundScript>()

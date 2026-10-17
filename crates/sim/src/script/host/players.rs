@@ -777,7 +777,7 @@ pub(crate) fn script_weapon(world: &mut World, client: u32, weapon: u32) -> u32 
         .weapon_bridge
         .get(&client)
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     let frame = FrameWorld::from_world(world);
     if let Some(setup) = frame.weapon_setup(weapon)
         && let Some((stand_in, _)) = bridge
@@ -1321,7 +1321,6 @@ pub(crate) fn disconnect_player(world: &mut World, client: u32) {
         .filter(|(_, e)| e.audience == super::entities::HudAudience::Client(client))
         .map(|(id, _)| *id)
         .collect();
-    drop(runtime);
     for id in owned {
         super::hud::destroy(world, id);
     }

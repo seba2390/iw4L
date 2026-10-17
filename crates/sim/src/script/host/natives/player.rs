@@ -46,7 +46,7 @@ pub(crate) fn text(value: &Value) -> Result<Arc<str>, String> {
         Value::Int(n) => Ok(n.to_string().into()),
         Value::Vector(v) => Ok(format!("{} {} {}", v[0], v[1], v[2]).into()),
         Value::Float(f) => Ok(runtime::to_text(&Value::Float(*f))
-            .unwrap_or_default()
+            .unwrap_or_else(String::new)
             .into()),
         other => Err(format!("{} is not a string", kind(other))),
     }
@@ -1598,7 +1598,7 @@ fn register_inventory(registry: &mut NativeRegistry) {
                         .map(|t| Value::String(t.as_str().into()))
                         .collect()
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(Vec::new);
             new_array(world, tags)
         },
     );

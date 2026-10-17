@@ -760,7 +760,7 @@ impl SimState {
             .bullet_pen
             .get(weapon as usize)
             .copied()
-            .unwrap_or_default()
+            .unwrap_or_else(weapon_iw4::BulletPenFacts::default)
     }
 
     pub fn weapon_script_names(&self) -> Arc<[String]> {
@@ -2694,7 +2694,7 @@ impl SimState {
                 .iter()
                 .find(|(c, _)| c == id)
                 .map(|(_, m)| m.clone())
-                .unwrap_or_default();
+                .unwrap_or_else(ClientMatchState::default);
             row.adopt_snapshot_meta(meta);
             adopted_clients.push((*id, row));
             report.clients += 1;
@@ -3183,7 +3183,7 @@ impl SimState {
             .player_anim_node_names()
             .get(leaf as usize)
             .cloned()
-            .unwrap_or_default();
+            .unwrap_or_else(String::new);
         (kind, leaf, clip, time, persist, node_time, goal_weight)
     }
 

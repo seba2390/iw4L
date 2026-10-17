@@ -126,7 +126,6 @@ impl Powerups {
         if ground(&frame, at).is_none() {
             return;
         }
-        drop(frame);
         if self.bag.is_empty() {
             self.bag = vec![
                 Kind::DoublePoints,
@@ -239,7 +238,6 @@ pub(super) fn advance(world: &mut World, state: &mut Survival, tick: Tick) {
         })
         .filter_map(|id| frame.player(id).map(|ps| (id, ps.origin)))
         .collect();
-    drop(frame);
     for drop in std::mem::take(&mut powers.drops) {
         let elapsed = tick
             .0
