@@ -361,9 +361,7 @@ pub(crate) fn destructible_effect(
     up: [f32; 3],
 ) -> Option<u64> {
     let now = super::players::now_ms(world);
-    let Some(mut runtime) = world.get_resource_mut::<RoundScript>() else {
-        return None;
-    };
+    let mut runtime = world.get_resource_mut::<RoundScript>()?;
     let Ok(id) = runtime.create_entity(super::entities::EntityKind::Spawned, "script_model") else {
         return None;
     };

@@ -210,9 +210,8 @@ pub fn produce_frame_fog(
     sources.set_constant_rows(CODE_FOG_COLOR_LINEAR, &[float4_bits(linear)]);
     sources.set_constant_rows(CODE_FOG_COLOR_GAMMA, &[float4_bits(gamma)]);
 
-    match fog.sun.as_ref() {
-        Some(sun) => produce_iw4_sun_fog(sources, fog.density(), sun),
-        None => {}
+    if let Some(sun) = fog.sun.as_ref() {
+        produce_iw4_sun_fog(sources, fog.density(), sun)
     }
     if !r_fog_enabled {
         sources.set_constant_rows(CODE_FOG, &[float4_bits([0.0, 1.0, 0.0, 0.0])]);
@@ -510,10 +509,12 @@ pub(crate) fn update_command_context_code_sources(
 
     dfog.0 = sampled_fog.as_ref().is_some_and(|fog| fog.sun.is_some());
 
-    let mut source = GfxCmdBufSource2d::default();
-    source.render_target_width = prepared.rt_w;
-    source.render_target_height = prepared.rt_h;
-    source.scene_viewport = prepared.scene_viewport;
+    let mut source = GfxCmdBufSource2d {
+        render_target_width: prepared.rt_w,
+        render_target_height: prepared.rt_h,
+        scene_viewport: prepared.scene_viewport,
+        ..GfxCmdBufSource2d::default()
+    };
     let full_vp = hud_iw4::GfxViewport {
         x: 0,
         y: 0,

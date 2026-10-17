@@ -700,7 +700,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .actor_moves
             .get(&id)
             .and_then(|movement| movement.stances.as_ref())
-            .is_none_or(|stances| stances.iter().any(|s| *s == stance));
+            .is_none_or(|stances| stances.contains(&stance));
         Ok(Value::Int(allowed.into()))
     });
     registry.register(Method, "getmotionangle", |world, receiver, _| {
@@ -956,7 +956,7 @@ fn model_anim_scripted(
         .map_or(0.0, |clip| {
             f32::from(clip.numframes.max(1)) / clip.framerate.max(1.0)
         });
-    let now = i64::from(super::players::now_ms(world));
+    let now = super::players::now_ms(world);
     let mut runtime = world.resource_mut::<RoundScript>();
     runtime.set_object_field(id, "origin", Value::Vector(origin));
     runtime.set_object_field(id, "angles", Value::Vector(angles));

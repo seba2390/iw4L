@@ -190,7 +190,7 @@ pub(crate) fn run(
         predicting: !world.publishes_snapshot(),
         level_time: crate::level_time_ms(tick),
     };
-    let before = player.clone();
+    let before = player;
     let mut outcome = {
         let around = MatchMoveWorld {
             world: &*world,

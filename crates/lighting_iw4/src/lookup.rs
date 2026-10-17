@@ -81,6 +81,12 @@ impl LightGridLookupColorAccum {
     }
 }
 
+impl Default for LightGridLookupColorAccum {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn light_grid_lookup_accumulate_corner(
     weights: &mut LightGridLookupWeights,
     colors: &mut LightGridLookupColorAccum,

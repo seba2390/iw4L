@@ -2314,7 +2314,6 @@ fn install_clip_and_player(
         allow_debug_actions,
         intermission_view,
         airstrike_height,
-        ..Default::default()
     }) {
         diag::info!(Sim, "bootstrap: {err}");
         return Err(InstallRefusal::new(format!(

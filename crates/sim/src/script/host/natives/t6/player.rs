@@ -606,8 +606,8 @@ fn register_rest(registry: &mut NativeRegistry) {
             && let Some(ps) = FrameWorld::from_world(world).player_mut(id)
         {
             let push = 1000.0 * knockback as f32 * 0.004 * inv;
-            for i in 0..3 {
-                ps.velocity[i] += dir[i] * push;
+            for (velocity, d) in ps.velocity.iter_mut().zip(dir) {
+                *velocity += d * push;
             }
         }
         Ok(Value::Undefined)

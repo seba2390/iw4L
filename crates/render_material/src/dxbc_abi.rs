@@ -265,7 +265,7 @@ pub(crate) fn build_dxbc_pass_abi(
                 }
                 _ => None,
             })
-            .or_else(|| match (slot.texture, custom_sampler_flags) {
+            .or(match (slot.texture, custom_sampler_flags) {
                 (REFLECTION_PROBE_TEXTURE, flags) if flags & REFLECTION_PROBE_FLAG != 0 => {
                     Some(SamplerSource::SurfaceReflectionProbe)
                 }

@@ -2,6 +2,10 @@ use frame::ControllerIcon;
 
 pub(crate) const SIZE: u32 = 64;
 
+#[expect(
+    clippy::manual_checked_ops,
+    reason = "one zero test guards a pixel's three divisions"
+)]
 pub(crate) fn rasterize(icon: ControllerIcon) -> Vec<u8> {
     let svg = match icon {
         ControllerIcon::A => include_str!("../icons/xbox/a.svg"),
@@ -25,7 +29,7 @@ pub(crate) fn rasterize(icon: ControllerIcon) -> Vec<u8> {
         &mut pixmap.as_mut(),
     );
     let mut rgba = pixmap.take();
-    for pixel in rgba.chunks_exact_mut(4) {
+    for pixel in rgba.as_chunks_mut::<4>().0 {
         let alpha = u32::from(pixel[3]);
         if alpha != 0 {
             for channel in &mut pixel[..3] {

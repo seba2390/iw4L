@@ -848,19 +848,17 @@ fn pose_remote_bodies(
     let workers = skin_blend_worker_count(pose_frame.pending.len());
     let pending = std::mem::take(&mut pose_frame.pending);
     let assembled = assemble_meshes_parallel(pending, workers, &skin_shapes);
-    for assembled in assembled {
-        if let Ok(assembled) = assembled {
-            commit_assembled_body(
-                assembled.persist_key,
-                &assembled.transform,
-                assembled.geom,
-                assembled.radii,
-                assembled.radius_parents,
-                assembled.lods,
-                pose_frame.submit,
-                pose_frame.pose_hashes,
-            );
-        }
+    for assembled in assembled.into_iter().flatten() {
+        commit_assembled_body(
+            assembled.persist_key,
+            &assembled.transform,
+            assembled.geom,
+            assembled.radii,
+            assembled.radius_parents,
+            assembled.lods,
+            pose_frame.submit,
+            pose_frame.pose_hashes,
+        );
     }
 }
 
@@ -893,11 +891,11 @@ impl<'a> RemotePoseFrame<'a> {
         let corpse_age_ms =
             occupation_key.map(|key| runtime.pose_time_ms.wrapping_sub(key.spawn_time_ms));
 
-        if runtime.previous_pose.is_none() {
-            if let Some(slot) = self.trees.get_mut(persist_key) {
-                slot.legs_rate_sample.time_ms = 0;
-                slot.torso_rate_sample.time_ms = 0;
-            }
+        if runtime.previous_pose.is_none()
+            && let Some(slot) = self.trees.get_mut(persist_key)
+        {
+            slot.legs_rate_sample.time_ms = 0;
+            slot.torso_rate_sample.time_ms = 0;
         }
         let sample = remote_pose_sample(runtime);
         if is_corpse {
@@ -1529,10 +1527,10 @@ fn submit_remote_bodies(
     };
     if !last_catalog
         .as_ref()
-        .is_some_and(|old| Arc::ptr_eq(old, &tess.catalog()))
+        .is_some_and(|old| Arc::ptr_eq(old, tess.catalog()))
     {
         plan.clear_geometry();
-        *last_catalog = Some(Arc::clone(&tess.catalog()));
+        *last_catalog = Some(Arc::clone(tess.catalog()));
     }
 
     let mut last_cause = None;
@@ -1627,7 +1625,7 @@ fn submit_remote_bodies(
             let mat_idx = if let Some(&idx) = mat_by_key.get(key) {
                 idx
             } else {
-                let Some(material) = model_materials.material(&tess.catalog(), key).cloned() else {
+                let Some(material) = model_materials.material(tess.catalog(), key).cloned() else {
                     any_missing_material = true;
                     last_cause = Some(RenderGapCause::RemoteBodyMaterialMissing {
                         name: format!("{}:{}", key.namespace.as_str(), key.name),

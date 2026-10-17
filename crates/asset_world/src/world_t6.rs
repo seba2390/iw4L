@@ -643,7 +643,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
                 continue;
             };
             let key = std::ptr::from_ref(model_asset);
-            if !models.contains_key(&key) {
+            if let std::collections::hash_map::Entry::Vacant(e) = models.entry(key) {
                 let model = asset_model::T6Model::new(load, model_asset)
                     .ok_or("T6 collision model missing")?;
                 let (coll_lod, contents, surfaces) =
@@ -671,7 +671,7 @@ pub fn build_clip_collision(load: &ZoneLoad) -> Result<crate::ClipCollision, Str
                         })
                         .collect(),
                 };
-                models.insert(key, (model.name().unwrap_or_default().to_owned(), coll));
+                e.insert((model.name().unwrap_or_default().to_owned(), coll));
             }
             let (name, coll) = &models[&key];
             let mins = r.xyz(row.at(60))?;
@@ -1117,7 +1117,9 @@ pub fn static_model_vertex_lighting(
                 if let (Ok(p), true) = (Reader::ptr(info, 0), n > 0) {
                     *colors = r
                         .bytes(p, n * 4)?
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|c| [c[0], c[1], c[2], c[3]])
                         .collect();
                 }

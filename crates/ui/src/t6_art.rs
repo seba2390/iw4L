@@ -66,7 +66,7 @@ impl T6Art {
         };
         let mut pixels = (*pixels).clone();
         if name == "fonts/distfont" {
-            for pixel in pixels.chunks_exact_mut(4) {
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 let coverage = ((pixel[3] as f32 - 120.0) / 16.0).clamp(0.0, 1.0);
                 pixel[3] = (coverage * coverage * (3.0 - 2.0 * coverage) * 255.0) as u8;
             }

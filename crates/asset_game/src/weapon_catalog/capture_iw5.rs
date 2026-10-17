@@ -89,7 +89,6 @@ impl WeaponCatalog {
                 view_kick: facts.view_kick,
                 scales: facts.scales,
                 share_ammo_with_alt: facts.share_ammo_with_alt,
-                ..Default::default()
             },
         );
     }
@@ -277,12 +276,12 @@ impl WeaponCatalog {
     }
 }
 
-pub(super) fn iw5_best_pair_override<'a, T>(
-    rows: &'a [T],
+pub(super) fn iw5_best_pair_override<T>(
+    rows: &[T],
     selection: Iw5AttachmentSelection,
     override_type: u32,
     fields: impl Fn(&T) -> (u16, u16, u32),
-) -> Option<&'a T> {
+) -> Option<&T> {
     let candidates = selection.override_candidates();
     let mut best = None;
     let mut best_score = 0;
@@ -721,10 +720,9 @@ pub(super) fn leftover_iw5_overlay_name(
                 1352,
             )
         })
+        && overlay_name_is_hud_iris(&name)
     {
-        if overlay_name_is_hud_iris(&name) {
-            return Some(name);
-        }
+        return Some(name);
     }
     None
 }
@@ -1224,10 +1222,10 @@ pub(super) fn read_hide_tags_iw5(
         if id == 0 {
             continue;
         }
-        if let Some(name) = strings.get(stream, id) {
-            if !name.is_empty() {
-                out.push(name.to_owned());
-            }
+        if let Some(name) = strings.get(stream, id)
+            && !name.is_empty()
+        {
+            out.push(name.to_owned());
         }
     }
     out

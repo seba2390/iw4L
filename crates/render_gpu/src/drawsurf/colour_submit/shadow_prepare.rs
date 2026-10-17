@@ -160,12 +160,12 @@ fn sun_flush_owner<'a>(
     let Some(item) = draws.get(draw_index) else {
         return Err(missing.into());
     };
-    let matches_kind = match (kind, &item.kind) {
-        (SunFlushKind::Smodel, RetainedDrawKind::Smodel { .. }) => true,
-        (SunFlushKind::XModel, RetainedDrawKind::XModel { .. }) => true,
-        (SunFlushKind::World, RetainedDrawKind::World { .. }) => true,
-        _ => false,
-    };
+    let matches_kind = matches!(
+        (kind, &item.kind),
+        (SunFlushKind::Smodel, RetainedDrawKind::Smodel { .. })
+            | (SunFlushKind::XModel, RetainedDrawKind::XModel { .. })
+            | (SunFlushKind::World, RetainedDrawKind::World { .. })
+    );
     if !matches_kind {
         return Err(missing.into());
     }
@@ -204,7 +204,7 @@ fn emit_local_rigid_shadow_flush(
     if hit_count == 0 {
         return Err(format!("{family}DynamicFlushEmpty"));
     }
-    if hit_count % 3 != 0 {
+    if !hit_count.is_multiple_of(3) {
         return Err(format!("{family}DynamicIndexCountNotTriangles"));
     }
     let start = hit_start as usize;
@@ -1563,7 +1563,7 @@ fn prepare_shadowmap_sun(
                 &packed_fallback
             }
         };
-        let Some(envelope) = draw_sun_shadow_map_forced(partition, Some(&packed)) else {
+        let Some(envelope) = draw_sun_shadow_map_forced(partition, Some(packed)) else {
             continue;
         };
         let Some(work) = envelope.work.as_ref() else {
@@ -1709,8 +1709,8 @@ fn prepare_shadowmap_sun(
                 .or_default() += smodel_span_holes;
         }
         let retry_before = retry_n;
-        for slot_i in 0..static_draws.world[pi].len() {
-            if static_draws.world[pi][slot_i].is_some() {
+        for (slot_i, slot) in static_draws.world[pi].iter_mut().enumerate() {
+            if slot.is_some() {
                 continue;
             }
             let Some((src_start, count)) = world_spans[slot_i] else {
@@ -1744,15 +1744,15 @@ fn prepare_shadowmap_sun(
                     use_world_pretess: false,
                 },
             ) {
-                Ok(gpu) => static_draws.world[pi][slot_i] = Some(gpu),
+                Ok(gpu) => *slot = Some(gpu),
                 Err(cause) => {
                     miss = miss.saturating_add(1);
                     *miss_rows.entry(cause).or_default() += 1;
                 }
             }
         }
-        for slot_i in 0..static_draws.smodel[pi].len() {
-            if static_draws.smodel[pi][slot_i].is_some() {
+        for (slot_i, slot) in static_draws.smodel[pi].iter_mut().enumerate() {
+            if slot.is_some() {
                 continue;
             }
             let Some(span) = smodel_spans[slot_i] else {
@@ -1785,7 +1785,7 @@ fn prepare_shadowmap_sun(
                     use_world_pretess: false,
                 },
             ) {
-                Ok(gpu) => static_draws.smodel[pi][slot_i] = Some(gpu),
+                Ok(gpu) => *slot = Some(gpu),
                 Err(cause) => {
                     miss = miss.saturating_add(1);
                     *miss_rows.entry(cause).or_default() += 1;

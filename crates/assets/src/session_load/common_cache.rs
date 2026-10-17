@@ -927,10 +927,10 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let mut iw5_materials = iw5_materials;
     iw5_materials.mark_images_common_owned();
     let mut ui_images = asset_material::UiImageBuild::default();
-    if let Ok(games) = games_root_from_env() {
-        if let Err(error) = ui_images.retain_archives(&games) {
-            common_report.push(format!("UI archives: {error}"));
-        }
+    if let Ok(games) = games_root_from_env()
+        && let Err(error) = ui_images.retain_archives(&games)
+    {
+        common_report.push(format!("UI archives: {error}"));
     }
     ui_images.retain_materials(&material_seed);
     ui_images.retain_materials(&iw5_materials);

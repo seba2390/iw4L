@@ -287,8 +287,8 @@ pub(crate) fn update_script_menus(
             _ => {}
         }
     }
-    let mut menus = menu_states.0.as_deref_mut().unwrap_or(frontend_menus);
-    let mut locals = local_states
+    let menus = menu_states.0.as_deref_mut().unwrap_or(frontend_menus);
+    let locals = local_states
         .0
         .as_deref_mut()
         .unwrap_or(&mut local_states.1.0);
@@ -397,8 +397,8 @@ pub(crate) fn update_script_menus(
     let mut runner = Runner {
         catalog,
         world: &world,
-        menus: &mut menus,
-        locals: &mut locals,
+        menus,
+        locals,
         exprs: &mut exprs,
         dvars: &mut out.dvars,
         depth: 0,
@@ -539,7 +539,7 @@ pub(crate) fn update_script_menus(
         out.pause.0 = false;
     }
 
-    flush_outputs(&mut menus, &mut out, local.0);
+    flush_outputs(menus, &mut out, local.0);
     if let Some(view) = input.hud_input.as_mut() {
         let open = menus.captures_input();
         if view.script_menu_open != open {
@@ -734,29 +734,28 @@ pub(crate) fn update_script_menus(
             world: &world,
             dvars: &out.dvars,
             menu: def,
-            locals: &locals,
+            locals,
             open: &menus.stack,
             focus_rect: *focus_rect,
             focused: focused.as_deref(),
         };
         let mut owner_draw = |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| {
-            if args.item.owner_draw == 181 {
-                if let Some(map_namespace) = hud_images.map_namespace()
-                    && let Some(image) = input
-                        .compass
-                        .as_ref()
-                        .and_then(|c| c.declaration.image.as_ref())
-                {
-                    push_owner_pic(
-                        &args,
-                        image.clone(),
-                        map_namespace,
-                        args.color,
-                        Draw2dOp::StretchPic,
-                        frame,
-                    );
-                    return OwnerDrawPaint::Painted;
-                }
+            if args.item.owner_draw == 181
+                && let Some(map_namespace) = hud_images.map_namespace()
+                && let Some(image) = input
+                    .compass
+                    .as_ref()
+                    .and_then(|c| c.declaration.image.as_ref())
+            {
+                push_owner_pic(
+                    &args,
+                    image.clone(),
+                    map_namespace,
+                    args.color,
+                    Draw2dOp::StretchPic,
+                    frame,
+                );
+                return OwnerDrawPaint::Painted;
             }
             OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw)
         };

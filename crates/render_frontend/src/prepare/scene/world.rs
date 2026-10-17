@@ -1266,18 +1266,20 @@ pub fn world_scene_from_draw(
         products_id,
     } = materials;
     let Some(mut draw) = world.draw else {
-        let mut empty = WorldScene::default();
-        empty.sun_sample_size_near = world.policy.sun_sample_size_near;
-        empty.common_profile_id = common_profile_id;
-        empty.products_id = products_id;
-        empty.fx_glass = fx_glass;
-        empty.script_brush_gameobjects = script_brush_gameobjects;
-        empty.script_brush_exploders = script_brush_exploders;
-        empty.script_brush_targetnames = script_brush_targetnames;
-        empty.script_brush_models = script_brush_models;
-        empty.dyn_ent_instances = dyn_ent_instances;
-        empty.dyn_ent_brush_n = dyn_ent_brush_n;
-        empty.dyn_ent_brushes = world_dyn_ent_brushes(&world.dyn_ents.brushes, &[], &[]);
+        let empty = WorldScene {
+            sun_sample_size_near: world.policy.sun_sample_size_near,
+            common_profile_id,
+            products_id,
+            fx_glass,
+            script_brush_gameobjects,
+            script_brush_exploders,
+            script_brush_targetnames,
+            script_brush_models,
+            dyn_ent_instances,
+            dyn_ent_brush_n,
+            dyn_ent_brushes: world_dyn_ent_brushes(&world.dyn_ents.brushes, &[], &[]),
+            ..WorldScene::default()
+        };
         return Ok(empty);
     };
     let bmodel_baked = bake_t5_script_brush_poses(&mut draw, &world.script_brush_models);
@@ -1582,7 +1584,7 @@ pub fn world_scene_from_draw(
                 .collect()
         }),
     };
-    let sky_model = draw.sky_model.take().map(&convert_model);
+    let sky_model = draw.sky_model.take().map(convert_model);
     let static_model_meshes = world
         .static_model_meshes
         .into_iter()

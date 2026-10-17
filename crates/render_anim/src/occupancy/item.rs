@@ -416,7 +416,7 @@ fn append_item_draws(
                         return None;
                     }
                     let key = entry.material_keys.get(surface.surface_index)?.as_ref()?;
-                    model_materials.material(&tess.catalog(), key).cloned()
+                    model_materials.material(tess.catalog(), key).cloned()
                 })
                 .collect();
             if materials.iter().all(Option::is_none) {

@@ -119,7 +119,6 @@ fn loading_text_shadow() -> TextShadow {
     TextShadow {
         offset: Vec2::splat(1.5),
         color: Color::linear_rgba(0., 0., 0., 0.75),
-        ..default()
     }
 }
 

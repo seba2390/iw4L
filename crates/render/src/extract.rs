@@ -239,9 +239,8 @@ pub fn seal_render_frame(
         (ports, ports_started.elapsed().as_secs_f32() * 1000.0)
     };
     let warm_pipelines = spawn_job.as_ref().is_some_and(|job| job.warm_pipelines);
-    let (world_v, world_i, world_layer_n) =
-        world_colour_extract_counts(world.as_ref().map(|plan| &**plan));
-    let (smodel_v, smodel_i) = smodel_colour_extract_counts(smodel.as_ref().map(|plan| &**plan));
+    let (world_v, world_i, world_layer_n) = world_colour_extract_counts(world.as_deref());
+    let (smodel_v, smodel_i) = smodel_colour_extract_counts(smodel.as_deref());
 
     let skip_world_smodel = existing_world.as_ref().is_some_and(|world| {
         render_gpu::colour_world_smodel_static(

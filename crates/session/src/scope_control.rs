@@ -81,10 +81,10 @@ fn resolve_scope(world: &mut World) {
                 .resource_mut::<frame::Retiring>()
                 .hand_over(announcement);
         }
-        if target == MatchScope::Live {
-            if let Some(mut install) = world.resource_mut::<ScopeControl>().install.take() {
-                install.apply(world);
-            }
+        if target == MatchScope::Live
+            && let Some(mut install) = world.resource_mut::<ScopeControl>().install.take()
+        {
+            install.apply(world);
         }
         world.resource_mut::<NextState<MatchScope>>().set(target);
     }

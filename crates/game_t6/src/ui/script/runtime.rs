@@ -733,12 +733,7 @@ impl Runtime {
                         pc: active.frame.pc.saturating_sub(1),
                         kind,
                     })?;
-                if self
-                    .protected
-                    .last()
-                    .is_some_and(|p| p.frame_depth == index)
-                {
-                    let protected = self.protected.pop().unwrap();
+                if let Some(protected) = self.protected.pop_if(|p| p.frame_depth == index) {
                     match protected.kind {
                         ProtectedKind::Pcall {
                             handling_error: true,

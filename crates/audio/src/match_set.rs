@@ -196,7 +196,7 @@ fn queue_match_clips(
     let mut set = MatchRequests::default();
     let mut aliases = 0usize;
     for weapon in 1..=weapons.registry().len() as u32 {
-        aliases += request_weapon_aliases(clips, &bank.0, &weapons.registry(), weapon, &mut set);
+        aliases += request_weapon_aliases(clips, &bank.0, weapons.registry(), weapon, &mut set);
     }
     for alias in movement_prepare_names() {
         aliases += 1;

@@ -339,7 +339,7 @@ pub(crate) fn ammo_widths(
 
 fn background_key(raw: &str) -> Option<(asset_core::AssetNamespace, String)> {
     let key = asset_core::AssetKey::parse(raw).ok()?;
-    (key.kind == asset_core::AssetKind::Material).then(|| (key.namespace, key.name))
+    (key.kind == asset_core::AssetKind::Material).then_some((key.namespace, key.name))
 }
 
 /// A material stretched over `(x, y, w, h)` in the owner draw's alignment;

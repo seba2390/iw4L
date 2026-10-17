@@ -64,10 +64,10 @@ pub(super) fn apply_leftover_default_sound_overrides(sounds: &mut WeaponSoundAli
                     sounds.fire_player = ov.override_sound.clone();
                 }
             }
-            x if x == sz::SND_OVERRIDE_TYPE_PLAYER_LASTSHOT => {
-                if sounds.fire_last_player.is_none() {
-                    sounds.fire_last_player = ov.override_sound.clone();
-                }
+            x if x == sz::SND_OVERRIDE_TYPE_PLAYER_LASTSHOT
+                && sounds.fire_last_player.is_none() =>
+            {
+                sounds.fire_last_player = ov.override_sound.clone();
             }
             _ => {}
         }
@@ -90,10 +90,10 @@ pub(super) fn read_hide_tags(
         if id == 0 {
             continue;
         }
-        if let Some(name) = strings.get(stream, id) {
-            if !name.is_empty() {
-                out.push(name.to_owned());
-            }
+        if let Some(name) = strings.get(stream, id)
+            && !name.is_empty()
+        {
+            out.push(name.to_owned());
         }
     }
     out

@@ -173,6 +173,7 @@ pub use asset_core::GlassPaneBasis;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
+#[derive(Default)]
 pub struct ServerGlassPiece {
     pub damage: u16,
 
@@ -185,19 +186,6 @@ pub struct ServerGlassPiece {
     pub impact_pos: [u8; 2],
 
     _gap_0b: u8,
-}
-
-impl Default for ServerGlassPiece {
-    fn default() -> Self {
-        Self {
-            damage: 0,
-            collapse_time: 0,
-            last_state_change_time: 0,
-            impact_dir: 0,
-            impact_pos: [0; 2],
-            _gap_0b: 0,
-        }
-    }
 }
 
 impl ServerGlassPiece {

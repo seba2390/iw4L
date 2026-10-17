@@ -68,7 +68,7 @@ pub(super) fn draw_exact_colour(
     *working_set = crate::ColourWorkingSet::default();
     if pipeline.ports.is_empty() {
         emit_focused_owner_submit(
-            &products,
+            products,
             &mut focus_submit,
             Some((
                 &extracted.world.sorted_material_names,
@@ -84,7 +84,7 @@ pub(super) fn draw_exact_colour(
     }
     if extracted.world.sampler_table.is_none() {
         emit_focused_owner_submit(
-            &products,
+            products,
             &mut focus_submit,
             Some((
                 &extracted.world.sorted_material_names,
@@ -122,7 +122,7 @@ pub(super) fn draw_exact_colour(
             shadow_table.epoch(),
         );
         emit_focused_owner_submit(
-            &products,
+            products,
             &mut focus_submit,
             Some((
                 &extracted.world.sorted_material_names,
@@ -203,7 +203,7 @@ pub(super) fn draw_exact_colour(
         && emissive.ordered_draws.is_empty()
     {
         emit_focused_owner_submit(
-            &products,
+            products,
             &mut focus_submit,
             Some((
                 &extracted.world.sorted_material_names,
@@ -220,7 +220,7 @@ pub(super) fn draw_exact_colour(
     let (target, depth, extracted_view, _msaa) = view.into_inner();
     if !cam.active {
         emit_focused_owner_submit(
-            &products,
+            products,
             &mut focus_submit,
             Some((
                 &extracted.world.sorted_material_names,
@@ -583,7 +583,7 @@ pub(super) fn draw_exact_colour(
             .count() as u32
     });
     emit_focused_owner_submit(
-        &products,
+        products,
         &mut focus_submit,
         Some((
             &extracted.world.sorted_material_names,

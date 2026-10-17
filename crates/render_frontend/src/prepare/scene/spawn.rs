@@ -213,7 +213,7 @@ pub(crate) fn spawn_world(
         let gpu_ready = gpu.as_deref();
         let gpu_done = super::world_gpu::poll(&mut job.gpu_wait, spawn, gpu_ready, gap_ms);
         let fpv_done =
-            fpv.settled_for(&tess.catalog()) && model_materials.settled_for(&tess.catalog());
+            fpv.settled_for(tess.catalog()) && model_materials.settled_for(tess.catalog());
         if gpu_done && !fpv_done {
             diag::info!(
                 World,
@@ -341,7 +341,7 @@ pub(crate) fn spawn_world(
         let compile_finished = job.compile.until(&scene.runtime_material_catalog, deadline);
         job.last_work_ms = frame_started.elapsed().as_secs_f32() * 1000.0;
         let gap_ms = job.slice_gap_ms(std::time::Instant::now());
-        if compile_finished || job.last_work_ms >= 20.0 || job.compile.done() % 32 == 0 {
+        if compile_finished || job.last_work_ms >= 20.0 || job.compile.done().is_multiple_of(32) {
             let (wgsl_hit, wgsl_miss, wgsl_io_ms) = crate::assemble::drawsurf::wgsl_cache_stats();
             diag::info!(
                 World,
@@ -570,7 +570,7 @@ pub(crate) fn spawn_world(
             let value = crate::assemble::drawsurf::MapOutdoor {
                 image: scene
                     .outdoor_image
-                    .map(|id| crate::assemble::drawsurf::RuntimeImageId(id)),
+                    .map(crate::assemble::drawsurf::RuntimeImageId),
                 lookup: scene.outdoor_lookup,
             };
             commands.queue(move |world: &mut World| {

@@ -64,6 +64,12 @@ impl ModelIndexStream {
     }
 }
 
+impl Default for ModelIndexStream {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub const D3DPT_TRIANGLELIST: u32 = 4;
 
 pub const SMODEL_RIGID_DIP_VERTEX_COUNT: u32 = 0x2100;

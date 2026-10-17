@@ -678,7 +678,7 @@ fn add_heat(world: &mut World, client: u32, def: &ZoneWeapon, delta: f32) {
         *heat = 100.0;
         *overheating = true;
     }
-    if *heat <= 0.0 && *heat != 0.0 {
+    if *heat < 0.0 {
         *heat = 0.0;
     }
     if *heat <= def.overheat_end_val || !def.overheat_weapon {

@@ -558,7 +558,7 @@ fn prepare_one_material(
     let Some(entries) = material.state_bits_entry.as_ref() else {
         return PreparedMaterial { tech };
     };
-    for slot in 0..TECHNIQUE_SLOT_COUNT {
+    for (slot, slot_tech) in tech.iter_mut().enumerate() {
         let tech_type = TechType(u8::try_from(slot).unwrap_or(u8::MAX));
         let Some(technique) = set.technique(tech_type) else {
             continue;
@@ -620,7 +620,7 @@ fn prepare_one_material(
         }
         if !passes.is_empty() {
             let code_sampler_mask = code_sampler_mask_from_passes(&passes);
-            tech[slot] = Some(PreparedTechnique {
+            *slot_tech = Some(PreparedTechnique {
                 source_selection: technique.source_selection,
                 flags: technique.flags,
                 passes,

@@ -451,7 +451,7 @@ fn append_missile_draws(
             .map(|surface| {
                 let authored = entry.material_index(surface.surface_index)?;
                 prepared
-                    .projectile_material(&tess.catalog(), authored)
+                    .projectile_material(tess.catalog(), authored)
                     .cloned()
             })
             .collect();

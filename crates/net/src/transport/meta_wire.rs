@@ -2573,22 +2573,24 @@ fn decode_entity_states(
 }
 
 fn decode_entity_state(input: &mut WireReader<'_>) -> Result<entity_iw4::EntityState, WireError> {
-    let mut es = entity_iw4::EntityState::default();
-    es.number = input.get_i32()?;
-    es.e_type = input.get_i32()?;
-    es.e_flags = input.get_u32()?;
-    es.tr_time = input.get_i32()?;
-    es.tr_type = input.get_i32()?;
-    es.tr_duration = input.get_i32()?;
-    es.tr_delta = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
-    es.tr_base = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
-    es.apos_tr_time = input.get_i32()?;
-    es.apos_tr_type = input.get_i32()?;
-    es.apos_tr_duration = input.get_i32()?;
-    es.apos_tr_delta = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
-    es.apos_tr_base = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
-    es.index = input.get_i32()?;
-    es.solid = input.get_u32()?;
+    let mut es = entity_iw4::EntityState {
+        number: input.get_i32()?,
+        e_type: input.get_i32()?,
+        e_flags: input.get_u32()?,
+        tr_time: input.get_i32()?,
+        tr_type: input.get_i32()?,
+        tr_duration: input.get_i32()?,
+        tr_delta: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+        tr_base: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+        apos_tr_time: input.get_i32()?,
+        apos_tr_type: input.get_i32()?,
+        apos_tr_duration: input.get_i32()?,
+        apos_tr_delta: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+        apos_tr_base: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+        index: input.get_i32()?,
+        solid: input.get_u32()?,
+        ..Default::default()
+    };
     es.set_launch_time(input.get_i32()?);
     es.client_num = input.get_i32()?;
     es.legs_anim = input.get_i32()?;

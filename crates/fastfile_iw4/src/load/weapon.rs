@@ -1145,10 +1145,8 @@ fn follow_xmodel_ptr(
     slot: Ptr,
 ) -> Result<Option<Ptr>> {
     let loaded = load_asset_at_observed(s, AssetType::XModel, slot, links)?;
-    if loaded {
-        if let Some(name) = s.xmodel().and_then(|g| g.name) {
-            return Ok(Some(name));
-        }
+    if loaded && let Some(name) = s.xmodel().and_then(|g| g.name) {
+        return Ok(Some(name));
     }
     Ok(links
         .xmodel_name_ptr(slot)

@@ -51,10 +51,10 @@ impl VertexColorStats {
         if rgba[3] == 0 {
             self.alpha_zero += 1;
         }
-        for i in 0..4 {
-            self.min_rgba[i] = self.min_rgba[i].min(rgba[i]);
-            self.max_rgba[i] = self.max_rgba[i].max(rgba[i]);
-            self.sum_rgba[i] += u64::from(rgba[i]);
+        for (i, &channel) in rgba.iter().enumerate() {
+            self.min_rgba[i] = self.min_rgba[i].min(channel);
+            self.max_rgba[i] = self.max_rgba[i].max(channel);
+            self.sum_rgba[i] += u64::from(channel);
         }
     }
 
@@ -1145,7 +1145,7 @@ pub fn build_xmodel_mesh(
     let mut total_vertices = 0usize;
     let mut total_triangles = 0usize;
     let mut any = false;
-    for lod in 0..4 {
+    for (lod, lod_draws) in lod_surfaces.iter_mut().enumerate() {
         let Some(surfaces) = geometry.lod_xsurfaces[lod] else {
             continue;
         };
@@ -1165,7 +1165,7 @@ pub fn build_xmodel_mesh(
         any = any || !draws.is_empty();
         total_vertices += verts;
         total_triangles += tris;
-        lod_surfaces[lod] = draws;
+        *lod_draws = draws;
     }
     if !any {
         return Err(ModelMeshError::MissingSurfaces);
@@ -1202,7 +1202,7 @@ pub fn build_t5_xmodel_mesh(
     let mut lod_surfaces: [Vec<ModelSurfaceDraw>; 4] = Default::default();
     let mut total_vertices = 0usize;
     let mut total_triangles = 0usize;
-    for lod in 0..4 {
+    for (lod, lod_draws) in lod_surfaces.iter_mut().enumerate() {
         let (first_surface, surface_count) = geometry.lod_surf_span[lod];
         let first_surface = usize::from(first_surface);
         if surface_count == 0 || first_surface + usize::from(surface_count) > geometry.surface_count
@@ -1219,7 +1219,7 @@ pub fn build_t5_xmodel_mesh(
         )?;
         total_vertices += verts;
         total_triangles += tris;
-        lod_surfaces[lod] = draws;
+        *lod_draws = draws;
     }
     if lod_surfaces.iter().all(|lod| lod.is_empty()) {
         return Err(ModelMeshError::MissingSurfaces);

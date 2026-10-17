@@ -584,7 +584,7 @@ fn expand_cached_destination_batch(
                 cache,
                 pretess,
                 out,
-                custom_skip.as_mut().map(|set| &mut **set),
+                custom_skip.as_deref_mut(),
             );
             stats.emitted = stats.emitted.saturating_add(one.emitted);
             stats.skipped_custom = stats.skipped_custom.saturating_add(one.skipped_custom);
@@ -620,11 +620,7 @@ fn expand_cached_destination_batch(
             stats.emitted = stats.emitted.saturating_add(one.emitted);
             stats.skipped_custom = stats.skipped_custom.saturating_add(one.skipped_custom);
         }
-        note_custom_only_skip(
-            stats,
-            first.placement,
-            custom_skip.as_mut().map(|set| &mut **set),
-        );
+        note_custom_only_skip(stats, first.placement, custom_skip.as_deref_mut());
         return stats;
     }
     for &source in sources {
@@ -648,11 +644,7 @@ fn expand_cached_destination_batch(
             one.emitted = one.emitted.saturating_add(pushed.emitted);
             one.skipped_custom = one.skipped_custom.saturating_add(pushed.skipped_custom);
         }
-        note_custom_only_skip(
-            one,
-            source.placement,
-            custom_skip.as_mut().map(|set| &mut **set),
-        );
+        note_custom_only_skip(one, source.placement, custom_skip.as_deref_mut());
         stats.emitted = stats.emitted.saturating_add(one.emitted);
         stats.skipped_custom = stats.skipped_custom.saturating_add(one.skipped_custom);
     }
@@ -712,7 +704,7 @@ pub(super) fn consume_smodel_buckets(
                     cache,
                     pretess,
                     out,
-                    custom_skip.as_mut().map(|set| &mut **set),
+                    custom_skip.as_deref_mut(),
                 );
                 result.skipped_custom = result.skipped_custom.saturating_add(stats.skipped_custom);
                 i += 1;
@@ -747,7 +739,7 @@ pub(super) fn consume_smodel_buckets(
                 cache,
                 pretess,
                 out,
-                custom_skip.as_mut().map(|set| &mut **set),
+                custom_skip.as_deref_mut(),
             );
             result.skipped_custom = result.skipped_custom.saturating_add(stats.skipped_custom);
             i += n;
