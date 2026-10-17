@@ -115,18 +115,12 @@ pub(crate) fn slow_stage(stage: &str, started: Instant) -> Instant {
     now
 }
 
-#[cfg_attr(
-    not(target_os = "linux"),
-    expect(
-        unused_variables,
-        reason = "only Linux reports a thread's CPU affinity"
-    )
-)]
+/// A thread's CPU affinity, which only Linux reports.
+#[cfg(target_os = "linux")]
 pub(crate) fn thread(name: &str) {
     if !enabled() {
         return;
     }
-    #[cfg(target_os = "linux")]
     if let Ok(status) = std::fs::read_to_string("/proc/thread-self/status") {
         let affinity = status
             .lines()
@@ -135,3 +129,6 @@ pub(crate) fn thread(name: &str) {
         emit(format!("audio diag: thread={name} {affinity}"));
     }
 }
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn thread(_name: &str) {}
