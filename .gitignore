@@ -15,7 +15,8 @@ iw4l.community.*.tmp
 # the agent clones and the RE tooling and its bases all stay on this machine.
 /context/
 /.manus/
-/bo1_handoff_prompt.md
+# Agent handoff prompts (`<name>_prompt.md`) in the repository root.
+/*_prompt.md
 
 .direnv/
 result
