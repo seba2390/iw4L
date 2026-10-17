@@ -25,6 +25,9 @@ const FILTER_PASSES: i32 = 4;
 const FILTER_CONSTANTS: i32 = 16;
 /// Per-entity shader constant slots (0..=6).
 const SHADER_CONSTANT_SLOTS: i32 = 6;
+/// Where `scriptVector0` sits in [`SHADER_CONSTANTS`]: it and the next three
+/// are the rows the renderer takes per entity.
+const SCRIPT_VECTOR0: usize = 2;
 
 /// The shader constant names `mapshaderconstant` accepts (case aside).
 const SHADER_CONSTANTS: [&str; 23] = [
@@ -75,6 +78,8 @@ struct FilterPass {
     constants: [f32; FILTER_CONSTANTS as usize],
 }
 
+type ShaderConstantSlots = [Option<(usize, [f32; 4])>; SHADER_CONSTANT_SLOTS as usize + 1];
+
 /// Client effects, visionsets, filter materials and lights.
 #[derive(Resource)]
 struct ClientEffects {
@@ -86,6 +91,10 @@ struct ClientEffects {
     mapped_materials: [Option<String>; FILTER_MATERIAL_SLOTS],
     /// The local client's filter passes, by filter and pass.
     filters: [[FilterPass; FILTER_PASSES as usize]; FILTER_SLOTS as usize],
+    /// Each client entity's shader constant slots, by client object id:
+    /// its number, and each slot's constant (by [`SHADER_CONSTANTS`] index)
+    /// and vector.
+    shader_constants: BTreeMap<u64, (i32, ShaderConstantSlots)>,
     /// Entities turned into primary lights (`makelight`), by client object id.
     lights: BTreeMap<u64, LightState>,
     /// The gump hide fade's colour: the last `sethidegumpalpha` colour.
@@ -99,6 +108,7 @@ impl Default for ClientEffects {
             naked_vision: None,
             mapped_materials: std::array::from_fn(|_| None),
             filters: Default::default(),
+            shader_constants: BTreeMap::new(),
             lights: BTreeMap::new(),
             hide_fade_color: [0.0; 3],
         }
@@ -210,6 +220,69 @@ fn publish_filters(world: &mut World) {
                 .client_screen
                 .overlays
                 .filters = filters;
+        }
+    });
+}
+
+/// The client's entities as its snapshot left them: an entity it no longer
+/// has takes its shader constants with it.
+pub(super) fn sync_script_vectors(world: &mut World) {
+    let Some(effects) = world.get_resource::<ClientEffects>() else {
+        return;
+    };
+    let entities = &world.resource::<RoundScript>().entities;
+    if effects
+        .shader_constants
+        .keys()
+        .any(|id| !entities.contains_key(id))
+    {
+        publish_script_vectors(world);
+    }
+}
+
+/// The client's screen takes each entity's script vector rows: an entity's
+/// draws set each row one of its mapped slots names to that slot's vector,
+/// a later slot over an earlier one. An entity the client no longer has is
+/// forgotten.
+fn publish_script_vectors(world: &mut World) {
+    let alive: Vec<u64> = state(world).shader_constants.keys().copied().collect();
+    let gone: Vec<u64> = alive
+        .into_iter()
+        .filter(|id| !world.resource::<RoundScript>().entities.contains_key(id))
+        .collect();
+    let mut effects = state(world);
+    for id in gone {
+        effects.shader_constants.remove(&id);
+    }
+    let vectors: Vec<crate::EntityScriptVectors> = effects
+        .shader_constants
+        .values()
+        .filter_map(|(number, slots)| {
+            let mut rows = [None; 4];
+            for (known, vector) in slots.iter().flatten() {
+                if let Some(row) = known
+                    .checked_sub(SCRIPT_VECTOR0)
+                    .and_then(|at| rows.get_mut(at))
+                {
+                    *row = Some(*vector);
+                }
+            }
+            Some(crate::EntityScriptVectors {
+                number: u16::try_from(*number).ok()?,
+                rows,
+            })
+            .filter(|entity| entity.rows.iter().any(Option::is_some))
+        })
+        .collect();
+    with_server(world, |server| {
+        let mut frame = crate::frame::FrameWorld::from_world(server);
+        let client_id = crate::ClientId(LOCAL_CLIENT as u32);
+        if frame.client_meta(client_id).is_some() {
+            frame
+                .client_meta_mut(client_id)
+                .view_effects
+                .client_screen
+                .script_vectors = vectors;
         }
     });
 }
@@ -1266,32 +1339,52 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // binds a shader constant slot on the entity to a code constant name;
     // answers 1 on success, 0 on an out-of-range slot or unknown name.
     registry.register(Method, "mapshaderconstant", |world, receiver, args| {
-        receiver_entity(world, receiver)?;
+        let (id, number, _) = super::entity::receiver_entity(world, receiver)?;
         local_client(args, 0)?;
         let index = int(args, 1)?;
         let name = string(args, 2)?;
-        for at in 3..args.len().min(7) {
-            float(args, at)?;
+        let mut vector = [0.0; 4];
+        for (at, value) in (3..args.len().min(7)).zip(&mut vector) {
+            *value = float(args, at)?;
         }
-        // t6.csc.shader.constants: IW4L's renderer does not read per-entity
-        // script shader constant vectors.
-        let valid = (0..=SHADER_CONSTANT_SLOTS).contains(&index)
-            && SHADER_CONSTANTS
-                .iter()
-                .any(|known| known.eq_ignore_ascii_case(&name));
-        Ok(Value::Int(valid.into()))
+        let known = SHADER_CONSTANTS
+            .iter()
+            .position(|known| known.eq_ignore_ascii_case(&name));
+        let (Some(known), true) = (known, (0..=SHADER_CONSTANT_SLOTS).contains(&index)) else {
+            return Ok(Value::Int(0));
+        };
+        // t6.csc.shader.constants: of the names, the renderer takes only
+        // the four script vectors per entity.
+        state(world)
+            .shader_constants
+            .entry(id)
+            .or_insert_with(|| (number, Default::default()))
+            .1[index as usize] = Some((known, vector));
+        publish_script_vectors(world);
+        Ok(Value::Int(1))
     });
 
     // ent setshaderconstant(localclientnum, index, x, y, z, w): updates a
     // mapped shader constant vector on the entity.
     registry.register(Method, "setshaderconstant", |world, receiver, args| {
-        receiver_entity(world, receiver)?;
+        let (id, _, _) = super::entity::receiver_entity(world, receiver)?;
         local_client(args, 0)?;
-        int(args, 1)?;
-        float(args, 2)?;
-        float(args, 3)?;
-        float(args, 4)?;
-        float(args, 5)?;
+        let index = int(args, 1)?;
+        let vector = [
+            float(args, 2)?,
+            float(args, 3)?,
+            float(args, 4)?,
+            float(args, 5)?,
+        ];
+        // A slot the entity has not mapped keeps nothing.
+        let mut effects = state(world);
+        let slot = usize::try_from(index)
+            .ok()
+            .and_then(|index| effects.shader_constants.get_mut(&id)?.1.get_mut(index));
+        if let Some(Some((_, held))) = slot {
+            *held = vector;
+            publish_script_vectors(world);
+        }
         Ok(Value::Undefined)
     });
 

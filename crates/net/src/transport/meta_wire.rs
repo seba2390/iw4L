@@ -1700,6 +1700,21 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(constant);
         }
     }
+    out.put_u16(screen.script_vectors.len() as u16);
+    for entity in &screen.script_vectors {
+        out.put_u16(entity.number);
+        for row in entity.rows {
+            match row {
+                None => out.put_u8(0),
+                Some(row) => {
+                    out.put_u8(1);
+                    for value in row {
+                        out.put_f32(value);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn decode_flame_overlay(
@@ -1792,6 +1807,25 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
             filters
         },
     };
+    let count = input.get_u16()?;
+    let mut script_vectors = Vec::with_capacity(usize::from(count));
+    for _ in 0..count {
+        let number = input.get_u16()?;
+        let mut rows = [None; 4];
+        for row in &mut rows {
+            *row = match input.get_u8()? {
+                0 => None,
+                1 => Some([
+                    input.get_f32()?,
+                    input.get_f32()?,
+                    input.get_f32()?,
+                    input.get_f32()?,
+                ]),
+                _ => return Err(WireError::Malformed("bad script vector tag")),
+            };
+        }
+        script_vectors.push(sim::EntityScriptVectors { number, rows });
+    }
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
@@ -1799,6 +1833,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         fog_bank,
         gumps,
         overlays,
+        script_vectors,
     })
 }
 
