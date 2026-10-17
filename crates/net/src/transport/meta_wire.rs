@@ -3324,6 +3324,11 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
                 out.put_u8(2);
                 put_text(out, tag);
             }
+            Some(sim::EffectBolt::EntityTag { number, tag }) => {
+                out.put_u8(3);
+                out.put_u16(*number);
+                put_text(out, tag);
+            }
         }
     }
     encode_vision(out, state.naked_vision.as_ref());
@@ -3450,6 +3455,10 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
                     })
                 }
                 2 => Some(sim::EffectBolt::Viewmodel {
+                    tag: get_text(input)?,
+                }),
+                3 => Some(sim::EffectBolt::EntityTag {
+                    number: input.get_u16()?,
                     tag: get_text(input)?,
                 }),
                 _ => return Err(WireError::Malformed("bad effect bolt")),

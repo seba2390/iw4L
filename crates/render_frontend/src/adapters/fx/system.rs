@@ -3043,6 +3043,15 @@ fn sync_script_fx(
                 sim::EffectBolt::Entity { number, bone } => {
                     (u32::from(*number), bone.unwrap_or(no_bone))
                 }
+                // The drawn DObj's bone the tag names, else the entity.
+                sim::EffectBolt::EntityTag { number, tag } => {
+                    let dobj = u32::from(*number);
+                    let bone = poses
+                        .as_deref()
+                        .and_then(|poses| poses.bone_named(dobj, tag))
+                        .unwrap_or(no_bone);
+                    (dobj, bone)
+                }
                 // The viewmodel's bone by the tag's name, else itself.
                 sim::EffectBolt::Viewmodel { tag } => {
                     let names = fpv.bone_names[0].as_ref()?;
@@ -3067,7 +3076,9 @@ fn sync_script_fx(
             && target.is_none()
             && row.bolt_waited < TAG_FX_POSE_WAIT
         {
-            if let sim::EffectBolt::Entity { number, .. } = bolt {
+            if let sim::EffectBolt::Entity { number, .. }
+            | sim::EffectBolt::EntityTag { number, .. } = bolt
+            {
                 demand.insert(*number);
             }
             row.bolt_waited += 1;
@@ -3090,10 +3101,12 @@ fn sync_script_fx(
                         fx.id,
                         name.name,
                         bolt,
-                        if target.is_some() {
-                            "posed"
-                        } else {
-                            "unposed, at its place"
+                        match &target {
+                            Some(target) if u32::from(target.bone) == FX_BOLT_BONE_MASK => {
+                                "posed, on the entity".to_owned()
+                            }
+                            Some(target) => format!("posed, bone {}", target.bone),
+                            None => "unposed, at its place".to_owned(),
                         }
                     );
                 }

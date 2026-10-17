@@ -508,7 +508,7 @@ fn play_fx_on_tag(world: &mut World, args: &[Value]) -> Result<Value, String> {
         .and_then(|number| with_server(world, |server| server_object(server, number)).flatten())
         .or_else(|| super::game::drawn_by(world, ent_id));
     let mut origin = entity_origin(world, ent_id);
-    let mut angles = entity_angles(world, ent_id);
+    let angles = entity_angles(world, ent_id);
     let mut bolt = None;
     if let Some(server_id) = server_id {
         let (number, bone, tag_pose) = with_server(world, |server| {
@@ -522,25 +522,24 @@ fn play_fx_on_tag(world: &mut World, args: &[Value]) -> Result<Value, String> {
         })
         .unwrap_or((None, None, None));
         let number = number.and_then(|number| u16::try_from(number).ok());
-        match (tag.is_empty(), bone, tag_pose) {
-            // t6.csc.fx.actor_tags: a tag IW4L finds on the entity's model
-            // but cannot index on its drawn model plays at the tag's place.
-            (false, None, Some((place, axis))) => {
-                origin = place;
-                angles = math_iw4::axis_to_angles(axis);
-            }
-            (_, bone, pose) => {
-                if let Some((place, _)) = pose {
-                    origin = place;
-                }
-                bolt = number.map(|number| crate::EffectBolt::Entity {
-                    number,
-                    bone: bone
-                        .filter(|_| !tag.is_empty())
-                        .and_then(|bone| u16::try_from(bone).ok()),
-                });
-            }
+        if let Some((place, _)) = tag_pose {
+            origin = place;
         }
+        bolt = number.map(
+            |number| match bone.and_then(|bone| u16::try_from(bone).ok()) {
+                Some(bone) if !tag.is_empty() => crate::EffectBolt::Entity {
+                    number,
+                    bone: Some(bone),
+                },
+                // A tag the server's model of the entity does not index (an
+                // actor's attached head): the drawn models' bones name it.
+                _ if !tag.is_empty() => crate::EffectBolt::EntityTag {
+                    number,
+                    tag: tag.clone(),
+                },
+                _ => crate::EffectBolt::Entity { number, bone: None },
+            },
+        );
     }
     let begin = now_ms(world) as i32;
     let handle = play_point_effect(world, id, origin, angles, begin);
