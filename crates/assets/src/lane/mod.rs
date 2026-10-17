@@ -308,7 +308,7 @@ impl ZoneLane for UnreadLane {
         let map = path
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .unwrap_or_default();
+            .unwrap_or("");
         for zone in (format.script_zones)(map) {
             let scripts = if zone == map {
                 (format.scripts)(&image.bytes)

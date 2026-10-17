@@ -236,7 +236,7 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         alternate_drop_time_ms: weap_def
             .map(|body| s.i32_at(body, s.layout(0x298, 1000)))
             .transpose()?
-            .unwrap_or_default(),
+            .unwrap_or(0),
         name,
         kill_icon_slot,
         kill_icon,

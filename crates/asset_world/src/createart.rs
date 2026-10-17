@@ -279,7 +279,8 @@ fn strip_gsc_comments(source: &str) -> String {
         out.push(b[i]);
         i += 1;
     }
-    String::from_utf8(out).unwrap_or_default()
+    // Only ASCII comment bytes were dropped from UTF-8 text, so this is lossless.
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn parse_gsc_scalar_assigns(source: &str) -> HashMap<String, f32> {

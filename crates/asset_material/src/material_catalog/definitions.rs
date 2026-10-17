@@ -604,7 +604,7 @@ impl MaterialDefinitions {
         self.materials
             .get(index)
             .map(|material| material.zone)
-            .unwrap_or_default()
+            .unwrap_or(crate::asset_graph::ZoneOwner::UNKNOWN)
     }
 
     pub fn material_index_by_key(&self, key: &crate::MaterialKey) -> Option<crate::MaterialIndex> {

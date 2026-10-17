@@ -10,7 +10,7 @@ pub(super) async fn walk_prepared_match(
 ) -> (MatchLoadOutcome, Option<Arc<CommonSet>>) {
     let mut image_trees = games_root_from_env()
         .map(|root| asset_transport::NamespaceTrees::discover(&root))
-        .unwrap_or_default();
+        .unwrap_or_else(|_| asset_transport::NamespaceTrees::default());
     if let Ok(path) = &common_mp {
         image_trees.adopt_zone(path);
     }
@@ -23,7 +23,7 @@ pub(super) async fn walk_prepared_match(
         .ok()
         .and_then(|path| path.file_stem())
         .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
 
     let pool = load_pool();
     let map_open = {
@@ -1682,11 +1682,12 @@ fn treyarch_map_under_iw4_rules(
     family: asset_core::FamilyId,
 ) -> crate::ScriptSources {
     let module = format!("maps/mp/{zone_name}");
+    // A main script that is missing or not UTF-8 declares nothing.
     let main = map_scripts
         .read(&module)
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     let mut declarations = asset_world::MapDeclarations::from_t5_map_main(&main);
     declarations.set_teams(
         facts.script_sound.attackers.as_deref().unwrap_or("allies"),
@@ -1698,7 +1699,7 @@ fn treyarch_map_under_iw4_rules(
             asset_core::FamilyId::T6 => entities.to_owned(),
             _ => asset_world::t5_entities_for_iw4_rules(entities),
         })
-        .unwrap_or_default();
+        .unwrap_or_else(String::new);
     let mut scripts = crate::ScriptSources::default();
     let mut map_main;
     if family == asset_core::FamilyId::T6 {

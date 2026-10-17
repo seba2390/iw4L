@@ -2180,7 +2180,7 @@ impl WeaponBuild {
                 self.combat_slots
                     .get(base as usize)
                     .copied()
-                    .unwrap_or_default(),
+                    .unwrap_or_else(CombatFxSlots::default),
             );
             self.registry.rows.push(alternate);
         }
@@ -2199,7 +2199,7 @@ impl WeaponBuild {
         let rows = std::mem::take(&mut other.registry.rows);
         let mut slots = std::mem::take(&mut other.combat_slots).into_iter();
         for (index, row) in rows.into_iter().enumerate() {
-            let slot = slots.next().unwrap_or_default();
+            let slot = slots.next().unwrap_or_else(CombatFxSlots::default);
             let held = (index != 0)
                 .then(|| {
                     self.registry
@@ -2587,7 +2587,7 @@ impl WeaponBuild {
                                 .strip_prefix("ui_camoskin_")
                                 .map(|name| format!("iw5:material/weapon_camo_menu_{name}"))
                         })
-                        .unwrap_or_default(),
+                        .unwrap_or_else(String::new),
                 })
             })
             .collect();

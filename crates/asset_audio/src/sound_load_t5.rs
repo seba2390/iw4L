@@ -136,7 +136,7 @@ impl AssetLinkSink for T5SoundCapture {
         pcm: Ptr,
         data_len: usize,
     ) -> fastfile_t5::Result<()> {
-        let name = name_at(s, header, sz::LOADED_SOUND_NAME_OFF).unwrap_or_default();
+        let name = name_at(s, header, sz::LOADED_SOUND_NAME_OFF).unwrap_or_else(String::new);
         let asset = header.at(sz::LOADED_SOUND_ASSET_OFF);
         let t5_format = s.i32_at(asset, sz::SND_ASSET_FORMAT_OFF).unwrap_or(-1);
         let rate = s.u32_at(asset, sz::SND_ASSET_FRAME_RATE_OFF).unwrap_or(0);
@@ -150,7 +150,7 @@ impl AssetLinkSink for T5SoundCapture {
         } else {
             s.slice_at(pcm, 0, data_len)
                 .map(|b| b.to_vec())
-                .unwrap_or_default()
+                .unwrap_or_else(|_| Vec::new())
         };
         if name.is_empty() {
             self.catalog.capture_gaps += 1;
@@ -216,7 +216,7 @@ impl AssetLinkSink for T5SoundCapture {
         count: usize,
         head: Option<Ptr>,
     ) -> fastfile_t5::Result<()> {
-        let name = name_at(s, list, sz::SND_ALIAS_LIST_NAME_OFF).unwrap_or_default();
+        let name = name_at(s, list, sz::SND_ALIAS_LIST_NAME_OFF).unwrap_or_else(String::new);
         let Some(arr) = head else {
             if count > 0 {
                 self.catalog.capture_gaps += 1;
@@ -244,7 +244,7 @@ impl AssetLinkSink for T5SoundCapture {
 
 impl T5SoundCapture {
     fn capture_alias_row(&self, s: &ZoneStream<'_>, row: Ptr) -> CapturedAlias {
-        let alias_name = name_at(s, row, sz::SND_ALIAS_NAME_OFF).unwrap_or_default();
+        let alias_name = name_at(s, row, sz::SND_ALIAS_NAME_OFF).unwrap_or_else(String::new);
         let (
             loaded_name,
             streamed,
@@ -450,7 +450,7 @@ fn inspect_sound_file(s: &ZoneStream<'_>, file: Ptr) -> InspectedSoundFile {
                     }
                     _ => None,
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(String::new);
             let streamed = (!name.is_empty()).then(|| (String::new(), name.clone()));
             InspectedSoundFile {
                 file_type,
@@ -520,6 +520,7 @@ fn capture_loaded_edge(
     }
 }
 
+/// `None` for a null or empty name; a capture that keeps the asset names it empty.
 fn name_at(s: &ZoneStream<'_>, parent: Ptr, field: usize) -> Option<String> {
     match s.ptr_at(parent, field).ok()? {
         ZonePtr::Offset(q) => s

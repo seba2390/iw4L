@@ -1736,10 +1736,7 @@ impl<'a> ZoneStream<'a> {
     }
 
     pub fn watermark(&self, block: u8) -> usize {
-        self.offsets
-            .get(block as usize)
-            .copied()
-            .unwrap_or_default()
+        self.offsets.get(block as usize).copied().unwrap_or(0)
     }
 
     pub fn offset_is_settled(&self, p: Ptr) -> bool {

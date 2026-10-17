@@ -154,7 +154,7 @@ impl WeaponRegistry {
                         return Err(crate::ConfigurationRefusal::Incompatible {
                             a: slots[selected.scope as usize - 1]
                                 .clone()
-                                .unwrap_or_default(),
+                                .unwrap_or_else(String::new),
                             b: name.clone(),
                         });
                     }
@@ -165,7 +165,7 @@ impl WeaponRegistry {
                         return Err(crate::ConfigurationRefusal::Incompatible {
                             a: slots[selected.underbarrel as usize + 5]
                                 .clone()
-                                .unwrap_or_default(),
+                                .unwrap_or_else(String::new),
                             b: name.clone(),
                         });
                     }

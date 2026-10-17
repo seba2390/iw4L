@@ -165,7 +165,7 @@ impl XAnimCatalog {
     }
 
     pub fn zone_of(&self, index: usize) -> ZoneOwner {
-        self.zones.get(index).copied().unwrap_or_default()
+        self.zones.get(index).copied().unwrap_or(ZoneOwner::UNKNOWN)
     }
 
     pub fn name_at(&self, index: usize) -> Option<&str> {
@@ -804,7 +804,7 @@ fn copy_u8(s: &ZoneStream<'_>, ptr: Option<Ptr>, count: usize) -> Vec<u8> {
     };
     s.slice_at(p, 0, count)
         .map(|b| b.to_vec())
-        .unwrap_or_default()
+        .unwrap_or_else(|_| Vec::new())
 }
 
 fn copy_u16(s: &ZoneStream<'_>, ptr: Option<Ptr>, count: usize) -> Vec<u16> {
@@ -1071,7 +1071,7 @@ fn copy_u8_iw5(
     };
     s.slice_at(p, 0, count)
         .map(|b| b.to_vec())
-        .unwrap_or_default()
+        .unwrap_or_else(|_| Vec::new())
 }
 
 fn copy_u16_iw5(
@@ -1200,7 +1200,7 @@ fn copy_u8_t5(
     };
     s.slice_at(p, 0, count)
         .map(|b| b.to_vec())
-        .unwrap_or_default()
+        .unwrap_or_else(|_| Vec::new())
 }
 
 fn copy_u16_t5(

@@ -852,7 +852,7 @@ fn hud_unlit_pass_states(
             )
         })
         .collect::<Option<Vec<_>>>()
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     (count, states)
 }
 
