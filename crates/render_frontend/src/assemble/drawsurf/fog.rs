@@ -220,6 +220,14 @@ pub(crate) struct ScriptFogPresentation {
     baseline: Option<MapFrameFog>,
     /// How many client light overrides the last frame drew with.
     light_overrides: usize,
+    /// The presented snapshot's tick and client lights, and the previous
+    /// snapshot's: each light blends from its previous to its presented
+    /// values.
+    light_tick: Option<u32>,
+    lights_now: Vec<sim::ClientLightOverride>,
+    lights_before: Vec<sim::ClientLightOverride>,
+    /// Whether a snapshot has yet changed a light, for the log.
+    light_blend_logged: bool,
 }
 
 pub(crate) fn sync_script_fog(
@@ -241,6 +249,33 @@ pub(crate) fn sync_script_fog(
         && !meta.view_effects.client_lights.is_empty()
     {
         const INV_255: f32 = f32::from_bits(0x3b80_8081);
+        // Black Ops 2 draws a client light between its current state (its
+        // next as the last snapshot transition left it) and its next, by
+        // the frame's snapshot fraction: the colour times intensity by the
+        // fraction as it is, the radius, cone and exponent by it held to 0
+        // to 1 (the exponent truncated).
+        let tick = presented.snapshot().map(|snapshot| snapshot.tick.0);
+        if tick != state.light_tick {
+            state.light_tick = tick;
+            let now = std::mem::take(&mut state.lights_now);
+            state.lights_before = now;
+            state
+                .lights_now
+                .clone_from(&meta.view_effects.client_lights);
+            let changed = state
+                .lights_now
+                .iter()
+                .filter(|light| !state.lights_before.contains(light))
+                .count();
+            if changed > 0 && !state.lights_before.is_empty() && !state.light_blend_logged {
+                state.light_blend_logged = true;
+                diag::info!(
+                    World,
+                    "client lights: {changed} change at tick {tick:?}, blended from the last snapshot by the frame's fraction"
+                );
+            }
+        }
+        let fraction = presented.frame_interpolation();
         if meta.view_effects.client_lights.len() != state.light_overrides {
             state.light_overrides = meta.view_effects.client_lights.len();
             let lights = &meta.view_effects.client_lights;
@@ -253,17 +288,30 @@ pub(crate) fn sync_script_fog(
                 lights.iter().filter(|ov| ov.origin.is_some()).count()
             );
         }
+        let held = fraction.clamp(0.0, 1.0);
         for ov in &meta.view_effects.client_lights {
             let index = usize::from(ov.index);
             let Some(pack) = primary.lights.get_mut(index) else {
                 continue;
             };
-            let rgb = std::array::from_fn(|i| f32::from(ov.color[i]) * INV_255 * ov.intensity);
+            let current = state
+                .lights_before
+                .iter()
+                .find(|light| light.index == ov.index)
+                .unwrap_or(ov);
+            let rgb = std::array::from_fn(|i| {
+                let from = f32::from(current.color[i]) * INV_255 * current.intensity;
+                let to = f32::from(ov.color[i]) * INV_255 * ov.intensity;
+                (to - from) * fraction + from
+            });
+            let blend = |from: f32, to: f32| (to - from) * held + from;
             pack.color = rgb;
-            pack.radius = ov.radius;
-            pack.cos_outer = ov.cos_half_fov_outer;
-            pack.cos_inner = ov.cos_half_fov_inner;
-            pack.exponent = ov.color[3];
+            pack.radius = blend(current.radius, ov.radius);
+            pack.cos_outer = blend(current.cos_half_fov_outer, ov.cos_half_fov_outer);
+            pack.cos_inner = blend(current.cos_half_fov_inner, ov.cos_half_fov_inner);
+            let exponent = ((f32::from(ov.color[3]) - f32::from(current.color[3])) * held) as i32
+                + i32::from(current.color[3]);
+            pack.exponent = exponent.clamp(0, 255) as u8;
             if let Some(direction) = ov.direction {
                 pack.direction = direction;
             }

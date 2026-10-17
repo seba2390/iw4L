@@ -182,6 +182,12 @@ impl PresentedSnapshot {
         self.remote_provenance = remote_provenance;
     }
 
+    /// How far the frame stands from the presented snapshot to the next
+    /// one, as a fraction of the snapshot interval.
+    pub fn frame_interpolation(&self) -> f32 {
+        self.frame_interpolation
+    }
+
     pub fn interpolation_pair(&self) -> Option<(&Snapshot, &Snapshot, f32)> {
         Some((
             self.previous_inner.as_deref()?,
