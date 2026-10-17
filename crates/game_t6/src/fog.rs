@@ -205,8 +205,8 @@ impl VolumeFog {
             self.from = *fog;
         } else {
             let f = smoothstep(now.wrapping_sub(self.volume_start_ms) as f32 * rate);
-            for i in 0..16 {
-                self.current[i] = (fog[i] - self.from[i]) * f + self.from[i];
+            for ((current, to), from) in self.current.iter_mut().zip(fog).zip(&self.from) {
+                *current = (to - from) * f + from;
             }
         }
         let c = &self.current;

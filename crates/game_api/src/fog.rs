@@ -74,7 +74,7 @@ pub trait FrameFog: Send + Sync {
 
 /// A game's frame fog: `start` makes a client's state for a map with the
 /// given fog data.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct FrameFogRules {
     pub start: fn(world: Option<&WorldFogData>) -> Box<dyn FrameFog>,
 }
