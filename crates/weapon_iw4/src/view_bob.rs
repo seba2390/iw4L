@@ -216,13 +216,7 @@ pub fn crash_land_view_dip(fall_height: f32) -> i32 {
     let raw = (fall_height - LAND_VIEW_DIP_FALL_IN) / LAND_VIEW_DIP_SPAN_IN * LAND_VIEW_DIP_SCALE
         + LAND_VIEW_DIP_SCALE;
     let n = libm::roundf(raw) as i32;
-    if n > LAND_VIEW_DIP_MAX {
-        LAND_VIEW_DIP_MAX
-    } else if n < 0 {
-        0
-    } else {
-        n
-    }
+    n.clamp(0, LAND_VIEW_DIP_MAX)
 }
 
 pub fn land_origin_weight(delta_ms: f32) -> Option<f32> {
@@ -414,13 +408,7 @@ fn view_ads_bob_angles(angles: &mut ViewAngleBob, inputs: ViewAngleBobInputs) {
 
 pub fn view_kick_amplitude(damage_count: i32) -> f32 {
     let scaled = damage_count as f32 * BG_VIEW_KICK_SCALE;
-    if scaled < BG_VIEW_KICK_MIN {
-        BG_VIEW_KICK_MIN
-    } else if scaled > BG_VIEW_KICK_MAX {
-        BG_VIEW_KICK_MAX
-    } else {
-        scaled
-    }
+    scaled.clamp(BG_VIEW_KICK_MIN, BG_VIEW_KICK_MAX)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

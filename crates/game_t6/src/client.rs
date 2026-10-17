@@ -122,7 +122,7 @@ pub(crate) fn program(
                 .map(str::to_owned)
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     Rule::Known(ClientScriptProgram {
         entities: client_ents,
         entity_spawnflags,

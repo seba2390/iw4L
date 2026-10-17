@@ -984,17 +984,17 @@ fn fanout_loopback(
             .local
             .as_ref()
             .map(|id| queues.pending_svc.take_for(id.0))
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         let (svc_card_slots, svc_open_menus, svc_hud_splashes) = queues
             .local
             .as_ref()
             .map(|id| queues.pending_playercard.take_for(id.0))
-            .unwrap_or_default();
+            .unwrap_or_else(|| (Vec::new(), Vec::new(), Vec::new()));
         let svc_game_notifies = queues
             .local
             .as_ref()
             .map(|id| queues.pending_gamenotify.take_for(id.0))
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
         if let Err(e) = loopback.send_tick(
             &listen_snapshot,
             acks.clone(),

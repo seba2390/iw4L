@@ -25,7 +25,7 @@ pub fn next_free_demo_name(artifacts_root: &Path) -> String {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
-            .unwrap_or_default()
+            .unwrap_or(0)
     )
 }
 

@@ -295,7 +295,9 @@ impl Host {
     fn expression_dvar(&self, operator: &str, args: &[Value]) -> Result<Vec<Value>, FaultKind> {
         let name = text(args.last().ok_or(FaultKind::Argument(2))?)?.to_ascii_lowercase();
         if operator == "DvarString" {
-            return Ok(vec![key(&self.dvar_display(&name)?.unwrap_or_default())]);
+            return Ok(vec![key(&self
+                .dvar_display(&name)?
+                .unwrap_or_else(String::new))]);
         }
         let Some((kind, value)) = self.front_end.dvars.get(&name) else {
             return Ok(vec![Value::Number(0.0)]);
@@ -306,7 +308,7 @@ impl Host {
                 Kind::Float | Kind::Int => value.parse::<f32>().unwrap_or(0.0),
                 _ => self
                     .dvar_display(&name)?
-                    .unwrap_or_default()
+                    .unwrap_or_else(String::new)
                     .trim()
                     .parse::<f32>()
                     .unwrap_or(0.0),
@@ -318,7 +320,7 @@ impl Host {
             Kind::Float => value.parse::<f32>().unwrap_or(0.0) as i32,
             Kind::Int => value.parse().unwrap_or(0),
             Kind::Enum(_) if operator == "DvarInt" => value.parse().unwrap_or(0),
-            _ => atoi(&self.dvar_display(&name)?.unwrap_or_default()),
+            _ => atoi(&self.dvar_display(&name)?.unwrap_or_else(String::new)),
         };
         Ok(vec![Value::Number(number as f32)])
     }
@@ -551,8 +553,8 @@ impl Host {
                 {
                     continue;
                 }
-                let loc_ref = loc_row.get(3).cloned().unwrap_or_default();
-                let loc_name = loc_row.get(4).cloned().unwrap_or_default();
+                let loc_ref = loc_row.get(3).cloned().unwrap_or_else(String::new);
+                let loc_name = loc_row.get(4).cloned().unwrap_or_else(String::new);
                 let limit = atoi(loc_row.get(7).map_or("", String::as_str));
                 loc_seq += 1;
                 let mut found = 0;
@@ -573,7 +575,7 @@ impl Host {
                         continue;
                     };
                     found += 1;
-                    let gametype = row.get(4).cloned().unwrap_or_default();
+                    let gametype = row.get(4).cloned().unwrap_or_else(String::new);
                     if gametype != "zclassic" && gametype != "zstandard" {
                         continue;
                     }
@@ -582,11 +584,11 @@ impl Host {
                     let gametype_name = gt_row
                         .as_ref()
                         .and_then(|r| r.get(2).cloned())
-                        .unwrap_or_default();
+                        .unwrap_or_else(String::new);
                     let gametype_icon = gt_row
                         .as_ref()
                         .and_then(|r| r.get(4).cloned())
-                        .unwrap_or_default();
+                        .unwrap_or_else(String::new);
                     let group = gt_row
                         .as_ref()
                         .and_then(|r| r.get(9).cloned())
@@ -857,7 +859,10 @@ impl Host {
                     && !name.is_empty()
                 {
                     let key = name.to_ascii_lowercase();
-                    let value = args.get(1).and_then(|v| text(v).ok()).unwrap_or_default();
+                    let value = args
+                        .get(1)
+                        .and_then(|v| text(v).ok())
+                        .unwrap_or_else(String::new);
                     if key == "cl_paused" && (value == "0" || value == "0.0") {
                         self.front_end.ingame_menu_open = false;
                     }
@@ -1045,7 +1050,8 @@ impl Host {
             // Gamer profile settings by name: an int reads 0 for a name the
             // profile has no setting for; a set takes text.
             "GetProfileVarInt" | "ProfileInt" | "ProfileBool" => {
-                let name = text(args.get(1).unwrap_or(&Value::Nil)).unwrap_or_default();
+                let name =
+                    text(args.get(1).unwrap_or(&Value::Nil)).unwrap_or_else(|_| String::new());
                 let value = self
                     .front_end
                     .profile
@@ -1058,7 +1064,8 @@ impl Host {
                 vec![Value::Number(value as f32)]
             }
             "ProfileValueAsString" => {
-                let name = text(args.get(1).unwrap_or(&Value::Nil)).unwrap_or_default();
+                let name =
+                    text(args.get(1).unwrap_or(&Value::Nil)).unwrap_or_else(|_| String::new());
                 vec![key(self
                     .front_end
                     .profile
@@ -1066,14 +1073,15 @@ impl Host {
                     .map_or("", String::as_str))]
             }
             "SetProfileVar" => {
-                let name = text(args.get(1).unwrap_or(&Value::Nil)).unwrap_or_default();
+                let name =
+                    text(args.get(1).unwrap_or(&Value::Nil)).unwrap_or_else(|_| String::new());
                 let value = args
                     .get(2)
                     .map(text)
                     .transpose()
                     .ok()
                     .flatten()
-                    .unwrap_or_default();
+                    .unwrap_or_else(String::new);
                 if let Some(setting) = self.front_end.profile.get_mut(&name.to_ascii_lowercase()) {
                     *setting = value;
                 }
@@ -1108,7 +1116,10 @@ impl Host {
             )],
             "AloneInPartyIgnoreSplitscreen" => vec![Value::Number(1.0)],
             "IsXuidPrivatePartyHost" => {
-                let xuid = args.first().and_then(|v| text(v).ok()).unwrap_or_default();
+                let xuid = args
+                    .first()
+                    .and_then(|v| text(v).ok())
+                    .unwrap_or_else(String::new);
                 vec![Value::Boolean((self.front_end.party && xuid == "0").into())]
             }
             // Client 0's usage flags.
@@ -1170,7 +1181,10 @@ impl Host {
                 vec![Value::Number(f32::from(u8::from(present)))]
             }
             "DoesPartyHaveDLCForMap" => {
-                let map = args.first().and_then(|v| text(v).ok()).unwrap_or_default();
+                let map = args
+                    .first()
+                    .and_then(|v| text(v).ok())
+                    .unwrap_or_else(String::new);
                 let available = self
                     .maps_table()
                     .into_iter()
@@ -1179,7 +1193,10 @@ impl Host {
                 vec![Value::Boolean(available.into())]
             }
             "IsMapValid" => {
-                let map = args.first().and_then(|v| text(v).ok()).unwrap_or_default();
+                let map = args
+                    .first()
+                    .and_then(|v| text(v).ok())
+                    .unwrap_or_else(String::new);
                 let valid = !map.is_empty()
                     && self.maps_table().into_iter().any(|(zone, _, pack)| {
                         zone.eq_ignore_ascii_case(&map)
@@ -1319,7 +1336,10 @@ impl Host {
                 Vec::new()
             }
             "GetGametypeSetting" => {
-                let name = args.first().and_then(|v| text(v).ok()).unwrap_or_default();
+                let name = args
+                    .first()
+                    .and_then(|v| text(v).ok())
+                    .unwrap_or_else(String::new);
                 let in_ddl = self
                     .input
                     .layouts
@@ -1356,7 +1376,7 @@ impl Host {
                 let name = args
                     .first()
                     .and_then(|v| text(v).ok())
-                    .unwrap_or_default()
+                    .unwrap_or_else(String::new)
                     .to_ascii_lowercase();
                 let value = super::number(args.get(1)).unwrap_or(0.0);
                 let formatted = if value.fract() == 0.0 {
@@ -1376,7 +1396,10 @@ impl Host {
                 Vec::new()
             }
             "IsGametypeSettingDefault" => {
-                let name = args.first().and_then(|v| text(v).ok()).unwrap_or_default();
+                let name = args
+                    .first()
+                    .and_then(|v| text(v).ok())
+                    .unwrap_or_else(String::new);
                 let configs = &self.configs;
                 let defaults = crate::gametype_settings(
                     &|n: &str| configs.get(&n.to_ascii_lowercase()).map(String::as_str),
@@ -1506,7 +1529,7 @@ impl Host {
                         let desc_prefix = self
                             .table_row(GAMETYPES_TABLE, &[(0, "0"), (1, gt)])
                             .and_then(|row| row.get(3).cloned())
-                            .unwrap_or_default();
+                            .unwrap_or_else(String::new);
                         let desc = format!("{desc_prefix}_{loc_ref}");
                         let icon = self.asset(gt_icon);
                         for (field, value) in [
@@ -1751,11 +1774,11 @@ impl Host {
                     ) else {
                         continue;
                     };
-                    let gametype = row.get(4).cloned().unwrap_or_default();
+                    let gametype = row.get(4).cloned().unwrap_or_else(String::new);
                     let name = self
                         .table_row(GAMETYPES_TABLE, &[(0, "0"), (1, &gametype)])
                         .and_then(|row| row.get(2).cloned())
-                        .unwrap_or_default();
+                        .unwrap_or_else(String::new);
                     let entry = match tables.allocate() {
                         Ok(entry) => entry,
                         Err(fault) => return Some(Err(fault)),

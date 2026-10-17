@@ -179,9 +179,10 @@ pub fn init_log(artifacts_root: &Path) -> PathBuf {
     };
 
     if state.traces.is_some() {
-        let zone = std::env::var("IW4L_ZONE").unwrap_or_default();
+        // Unset variables read as empty in the trace header.
+        let zone = std::env::var("IW4L_ZONE").unwrap_or_else(|_| String::new());
         let role = std::env::var("IW4L_ROLE").unwrap_or_else(|_| "Listen".into());
-        let games = std::env::var("IW4L_GAMES").unwrap_or_default();
+        let games = std::env::var("IW4L_GAMES").unwrap_or_else(|_| String::new());
         let git = option_env!("IW4L_GIT_HASH").unwrap_or("unknown");
         let header = serde_json::json!({
             "t": 0,
@@ -297,7 +298,7 @@ fn emit_raw(
             "t": t,
             "ch": ch.as_str(),
             "lvl": lvl.as_str(),
-            "msg": if collapsed_banner { msg } else { msg },
+            "msg": msg,
         });
         if let Some(ev) = ev {
             obj["ev"] = serde_json::Value::String(ev.to_owned());
@@ -419,9 +420,7 @@ pub fn write_line(category: &str, message: &str) {
         "console" => Channel::Console,
         _ => Channel::Launch,
     };
-    let msg = if category.is_empty() {
-        message.to_owned()
-    } else if message.starts_with(category) {
+    let msg = if category.is_empty() || message.starts_with(category) {
         message.to_owned()
     } else {
         format!("{category}: {message}")

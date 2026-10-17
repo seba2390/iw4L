@@ -683,7 +683,8 @@ pub fn finish(run_dir: &Path, manifest: &mut Value, phases: &[Phase], outcome: &
             png_ok,
             png_to.display().to_string(),
         );
-        let lifetime_text = std::fs::read_to_string(&dump_to).unwrap_or_default();
+        // A missing dump already failed the capture check; it has no lifetimes.
+        let lifetime_text = std::fs::read_to_string(&dump_to).unwrap_or_else(|_| String::new());
         let lifetimes: BTreeMap<_, _> = lifetime_text
             .lines()
             .filter_map(|line| line.split_once(" = "))
