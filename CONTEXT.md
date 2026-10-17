@@ -54,7 +54,7 @@ context/
   `make mr new <name>` (clone: branch `agent/<name>`, `.env` copied, the shared
   trees symlinked in), `make mr ship <name>` (land it), `make mr ls` (what is on
   disk and whose move it is), and `make mr fmt FILES='…'` (rustfmt exactly those
-  paths — `cargo fmt --all` rewrites files the branch does not own). They refuse
+  paths; CI checks the whole tree with `cargo fmt --all -- --check`). They refuse
   rather than repair: uncommitted WIP, an untracked `.rs`, a dirty root or a
   rebase conflict leaves the clone where it is.
 * **burn the bridges** — not "a second path next to the first", but: physically

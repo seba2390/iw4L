@@ -279,8 +279,8 @@ logs:
 #                         out of the tree first. CONTEXT.md, "Before shipping".
 #   make mr ls            the clones on disk and whose move each one is
 #   make mr fmt FILES='crates/foo/src/a.rs'   rustfmt exactly those paths.
-#                         Empty / dir / non-rs refuse: `cargo fmt --all`
-#                         rewrites files this branch does not own.
+#                         Empty / dir / non-rs refuse; CI checks the whole
+#                         tree with `cargo fmt --all -- --check`.
 FILES ?=
 # Owner-approved end-to-end scenarios (crates/approved_tests/README.md).
 SCENARIO ?= heavy_gameplay_lifecycle
