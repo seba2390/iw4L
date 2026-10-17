@@ -70,16 +70,17 @@ pub(crate) fn start(world: &mut World, client: u32, kind: Flame, ms: i32) {
         fade_start_ms: 0,
         fade_ms: 0,
     };
-    let mut overlays = world.get_resource_or_insert_with(FlameOverlays::default);
-    overlays.0.entry(client).or_default()[slot(kind)] = State {
-        start_ms: now,
-        end_ms: now.wrapping_add(ms),
-        block: Some(Block {
-            overlay,
-            active: true,
-        }),
-    };
-    drop(overlays);
+    {
+        let mut overlays = world.get_resource_or_insert_with(FlameOverlays::default);
+        overlays.0.entry(client).or_default()[slot(kind)] = State {
+            start_ms: now,
+            end_ms: now.wrapping_add(ms),
+            block: Some(Block {
+                overlay,
+                active: true,
+            }),
+        };
+    }
     diag::info!(
         Sim,
         "t6 flame overlay: {kind:?} for client {client}, {ms} ms at {now}"
@@ -132,7 +133,7 @@ fn publish(world: &mut World, client: u32) {
         .get_resource::<FlameOverlays>()
         .and_then(|overlays| overlays.0.get(&client))
         .copied()
-        .unwrap_or_default();
+        .unwrap_or_else(<[State; 2]>::default);
     let drawn = |state: &State| {
         state
             .block

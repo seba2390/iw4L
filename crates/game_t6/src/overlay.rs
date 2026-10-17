@@ -15,7 +15,7 @@ const MATERIALS: [&str; 2] = [BURN, SHOCK];
 pub(crate) const OVERLAYS: OverlayRules = OverlayRules {
     materials: &MATERIALS,
     plan,
-    gaps: &[&unknown!(
+    gaps: &[unknown!(
         "t6.csc.overlay.revive",
         "the revive overlay that outranks the electric shock: what turns it on (the backend's revive flag and amount) was not found, so the shock always draws when the burn does not",
         "the client code that fills the refdef's revive overlay fields"

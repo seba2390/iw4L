@@ -364,7 +364,7 @@ pub(crate) fn plan_screen_overlays(
         .snapshot()
         .and_then(|snapshot| snapshot.meta.for_client(local.0))
         .map(|meta| meta.view_effects.client_screen.overlays)
-        .unwrap_or_default();
+        .unwrap_or_else(game_api::post::ScreenOverlays::default);
     out.passes = (overlays.rules.plan)(&game_api::post::OverlayFrame {
         now_ms: clock.time(),
         screen: &screen,

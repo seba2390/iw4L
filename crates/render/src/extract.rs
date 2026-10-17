@@ -879,7 +879,7 @@ pub fn extract_postfx(
         overlays.passes = overlay_passes
             .as_ref()
             .map(|passes| passes.passes.clone())
-            .unwrap_or_default();
+            .unwrap_or_else(Vec::new);
     }
     extracted.vision = film.current;
     extracted.t6_vision = film.native_vision;
