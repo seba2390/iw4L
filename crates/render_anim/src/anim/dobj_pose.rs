@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
+use fx_iw4::{FX_BOLT_BONE_MASK, FxGetBoneOrientationRoute as Route};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PosedPlayerHead {
@@ -103,8 +104,8 @@ impl HostDObjPoseFrame {
         let route = fx_iw4::get_bone_orientation_route(dobj, pose.current_valid, bone, Some(count))
             .map_err(HostDObjPoseRefuse::Bone)?;
         let orientation = match route {
-            fx_iw4::FxGetBoneOrientationRoute::EntityPose => pose.entity,
-            fx_iw4::FxGetBoneOrientationRoute::DObjBone(index) => pose.bones[index as usize],
+            Route::EntityPose => pose.entity,
+            Route::DObjBone(index) => pose.bones[index as usize],
         };
         Ok(fx::FxBoltOrientation {
             origin: orientation.origin,
@@ -114,9 +115,15 @@ impl HostDObjPoseFrame {
 
     pub fn resolve_live_bolt(&self, dobj: u32, bone: u16) -> Option<fx::FxResolvedBoltPose> {
         let pose = self.by_dobj.get(&dobj)?;
+        // A bolt to the entity itself packs bone -1 into the bone field.
+        let bone = if u32::from(bone) == FX_BOLT_BONE_MASK {
+            -1
+        } else {
+            i32::from(bone)
+        };
         Some(fx::FxResolvedBoltPose {
             centity_teleport: pose.centity_teleport,
-            orientation: self.resolve(dobj, i32::from(bone)).ok(),
+            orientation: self.resolve(dobj, bone).ok(),
         })
     }
 }

@@ -38,6 +38,19 @@ pub struct ScriptEffect {
     pub viewers: Option<u64>,
     /// How a client script ended it, while the effect system still holds it.
     pub end: EffectEnd,
+    /// The entity it is bolted to, when it plays on one.
+    pub bolt: Option<EffectBolt>,
+}
+
+/// What an effect is bolted to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EffectBolt {
+    /// An entity: its number and the bone of its model it follows (`None`:
+    /// the entity itself).
+    Entity { number: u16, bone: Option<u16> },
+    /// The local client's viewmodel, at the bone a tag names (the viewmodel
+    /// itself when it has no such tag).
+    Viewmodel { tag: String },
 }
 
 /// How a client script ended an effect it plays (Black Ops 2's `stopfx` and

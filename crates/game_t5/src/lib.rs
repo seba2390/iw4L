@@ -200,6 +200,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: Some(turret::TURRETS),
     post_chain: Some(post_chain::POST_CHAIN),
+    frame_fog: None,
     dyn_ent_physics: Some(unknown!(
         "t5.dynent.physics",
         "Black Ops' dynamic entities are not pushed, broken or launched: bullets, explosions and players leave them in place",

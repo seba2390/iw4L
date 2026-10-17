@@ -38,6 +38,7 @@ pub(crate) fn fog(fog: &asset_world::ExpFog) -> asset_material::MaterialFogInput
             begin_angle_deg: s.begin_angle_deg,
             end_angle_deg: s.end_angle_deg,
         }),
+        game_rows: None,
     }
 }
 

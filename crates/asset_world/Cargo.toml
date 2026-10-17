@@ -10,6 +10,7 @@ layer = "mixed"
 
 [dependencies]
 asset_core.workspace = true
+game_api.workspace = true
 asset_transport.workspace = true
 asset_material.workspace = true
 asset_model.workspace = true
