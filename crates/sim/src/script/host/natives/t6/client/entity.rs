@@ -1558,7 +1558,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // ent linkto(parent, [tag], [origin_offset], [angles_offset]): links a
     // client entity to `parent`.
     registry.register(Method, "linkto", |world, receiver, args| {
-        let (id, number, etype) = receiver_entity(world, receiver)?;
+        let (id, number, _) = receiver_entity(world, receiver)?;
         let (parent, _, _) = entity_arg(world, args, 0)?;
         let tag = match args.len() {
             2 => Some(string(args, 1)?),

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use asset_core::AssetNamespace;
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::tasks::{Task, futures_lite::future};
 use frame::{AppScreen, GameSettings, OtherGame, UiExecCommand, UiMenuRequest};
@@ -385,7 +386,7 @@ fn skin_buttons(
     backdrop: Option<Res<Backdrop>>,
     mut art: ResMut<crate::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
-    mut buttons: Query<(Entity, &MenuButton, &Interaction, Option<&mut ImageNode>)>,
+    mut buttons: Query<(Entity, &MenuButton, &Hovered, Option<&mut ImageNode>)>,
 ) {
     if menu.selected != Some(Game::BlackOps2)
         || !backdrop.is_some_and(|backdrop| backdrop.native.is_some())
@@ -394,9 +395,8 @@ fn skin_buttons(
     }
     let normal = art.image("menu_button_backing", &mut images);
     let selected = art.image("menu_button_backing_highlight", &mut images);
-    for (entity, button, interaction, previous) in &mut buttons {
-        let focused =
-            button.enabled && (button.order == menu.focus || *interaction != Interaction::None);
+    for (entity, button, hovered, previous) in &mut buttons {
+        let focused = button.enabled && (button.order == menu.focus || hovered.get());
         let Some(image) = (if focused {
             selected.as_ref().or(normal.as_ref())
         } else {
@@ -848,7 +848,7 @@ fn input(
     browser: Option<Res<net::MasterBrowser>>,
     mut buttons: Query<(
         Entity,
-        &Interaction,
+        &Hovered,
         &MenuButton,
         &mut BackgroundColor,
         &mut BorderColor,
@@ -1034,11 +1034,8 @@ fn input(
                 actions.push(action.clone());
             }
         }
-        for (_, interaction, button, _, _) in &buttons {
-            if button.enabled
-                && *interaction == Interaction::Pressed
-                && mouse.just_pressed(MouseButton::Left)
-            {
+        for (_, hovered, button, _, _) in &buttons {
+            if button.enabled && hovered.get() && mouse.just_pressed(MouseButton::Left) {
                 actions.push(button.action.clone());
             }
         }
@@ -1056,9 +1053,8 @@ fn input(
             browser.as_deref(),
         );
     }
-    for (_, interaction, button, mut background, mut border) in &mut buttons {
-        let focused =
-            button.enabled && (*interaction != Interaction::None || button.order == menu.focus);
+    for (_, hovered, button, mut background, mut border) in &mut buttons {
+        let focused = button.enabled && (hovered.get() || button.order == menu.focus);
         let color = if focused {
             Color::srgba(0.23, 0.26, 0.23, 0.85)
         } else {
@@ -1109,8 +1105,7 @@ fn button(
     *order += 1;
     parent
         .spawn((
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
+            Hovered::default(),
             MenuButton {
                 action,
                 order: index,

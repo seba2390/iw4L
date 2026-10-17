@@ -2891,7 +2891,6 @@ pub(crate) fn highest_client_field_version(world: &World) -> i32 {
 /// Registered client fields, and the values set on them by pool, owner and
 /// field.
 #[derive(Resource, Default)]
-#[expect(clippy::type_complexity, reason = "one map")]
 struct ClientFields(Vec<ClientField>, BTreeMap<(String, u64, usize), Value>);
 
 /// The minimap `setminimap` set.

@@ -218,6 +218,17 @@ excessive_precision = "allow"
 # with a mathematical standard-library constant can change those bits.
 approx_constant = "allow"
 assertions_on_constants = "deny"
+# Bevy systems take their resources and queries as parameters, and a query
+# names its components in its type: long lists and long types are the shape.
+too_many_arguments = "allow"
+type_complexity = "allow"
+# `!(a < b)` is true when either side is NaN and `a >= b` is not. Ported
+# comparisons keep the game's own NaN outcome; the negation is the point.
+neg_cmp_op_on_partial_ord = "allow"
+# Both suggest `unwrap_or_default()`, which `clippy.toml` bans: a fallback is
+# named where it is taken.
+unwrap_or_default = "allow"
+manual_unwrap_or_default = "allow"
 
 # Measured and kept: wall p50 -5.7%, binary 183 MB -> 114 MB. Do not drop these
 # two lines without a new two-map A/B on the same protocol.

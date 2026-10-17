@@ -2546,9 +2546,7 @@ impl ZoneLane for T6Lane {
         let result = (|| -> Result<LoadedWorld, String> {
             use asset_core::AssetNamespace;
             use asset_material::t6_techset::T6Draw;
-            use asset_world::world_t6::{
-                Reader, build_clip_collision, build_world_draw, entity_string,
-            };
+            use asset_world::world_t6::{Reader, build_clip_collision, build_world_draw};
             let (load, walked) = fastfile_t6::load_zone(schema()?, &image.bytes, |_, _| true);
             walked.map_err(|e| format!("T6 map walk: {e:?}"))?;
             let mut report = vec![format!("T6 map: {} assets", load.assets.len())];

@@ -42,7 +42,7 @@ pub struct SpawnDecision {
     pub traced_origin: [f32; 3],
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct MatchBootstrap {
     pub spawns: Vec<AuthoredSpawnPoint>,
     pub classes: Vec<ClassDef>,

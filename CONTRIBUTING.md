@@ -59,17 +59,24 @@ accepts merged pull requests whose checks pass.
   the branch grows: a large branch that arrives unannounced is likely to be
   turned down for reasons that have nothing to do with its quality.
 
-Before opening a pull request, run what CI runs, plus the lints it does not
-gate yet:
+Before opening a pull request, run what CI runs:
 
 ```bash
 make publish-check                       # the tracked tree is the product and nothing else
-cargo check --workspace --all-targets
+cargo check --workspace --all-targets    # no rustc warning (CI: Linux and macOS)
+cargo xtask lints --enforce              # clippy/rustc warnings never grow (xtask/lints/allow.txt)
+cargo fmt --all -- --check
+ruff check scripts && ruff format --check scripts
 cargo xtask boundary --enforce           # each game runs on its own crates (docs/ARCHITECTURE.md)
 cargo xtask progress                     # README table matches docs/PROGRESS.md
-rustfmt --edition 2024 <touched files>
-cargo clippy --workspace --all-targets
+cargo xtask ledger-guard --base origin/main
 ```
+
+`cargo xtask lints` counts on whatever platform it runs; CI counts on Linux
+with the toolchain `rust-toolchain.toml` pins, and a few cfg'd files count
+differently on macOS. A warning you fixed leaves a stale entry: lower the list
+with `cargo xtask lints --update` in the same pull request. `--update` never
+raises a count — a new warning is fixed, not listed.
 
 `CONTEXT.md` documents how the maintainer works — artifacts, iterations, agent
 clones. It is a maintainer's workflow, not a requirement for contributing: you
