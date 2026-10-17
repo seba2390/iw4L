@@ -27,6 +27,8 @@ use std::collections::HashMap;
 const CODE_TEXTURE_FEEDBACK: u32 = 8;
 /// The game time row.
 const CODE_GAMETIME: u16 = 0x07;
+/// The render target size row.
+const CODE_RENDER_TARGET_SIZE: u16 = 0x16;
 /// The sampler state the frame is read with, as the post chain reads it.
 const POST_SAMPLER: u8 = 0x62;
 
@@ -134,14 +136,19 @@ fn prepare_overlays(
     };
 }
 
-fn code_row(constant: OverlayConstant) -> u16 {
-    match constant {
+/// The code row a planned constant sets, if there is one.
+fn code_row(constant: OverlayConstant) -> Option<u16> {
+    Some(match constant {
         OverlayConstant::GameTime => CODE_GAMETIME,
         OverlayConstant::FlameDistortion => render_material::CODE_T6_FLAME_DISTORTION,
         OverlayConstant::OverlayTexCoord => render_material::CODE_T6_OVERLAY_TEX_COORD,
         OverlayConstant::FadeEffect => render_material::CODE_T6_FADE_EFFECT,
         OverlayConstant::ViewportDimensions => render_material::CODE_T6_VIEWPORT_DIMENSIONS,
-    }
+        OverlayConstant::RenderTargetSize => CODE_RENDER_TARGET_SIZE,
+        OverlayConstant::ScriptVector(at) => {
+            *render_material::CODE_T6_SCRIPT_VECTOR.get(usize::from(at))?
+        }
+    })
 }
 
 /// What a pass binds: the frame, or a material texture's view and sampler.
@@ -246,16 +253,30 @@ fn draw_overlays(
             report("screen overlays: RED film sources".into());
             return;
         };
-        for row in std::iter::once(CODE_GAMETIME).chain([
-            render_material::CODE_T6_FLAME_DISTORTION,
-            render_material::CODE_T6_OVERLAY_TEX_COORD,
-            render_material::CODE_T6_FADE_EFFECT,
-            render_material::CODE_T6_VIEWPORT_DIMENSIONS,
-        ]) {
+        for row in std::iter::once(CODE_GAMETIME)
+            .chain([
+                render_material::CODE_T6_FLAME_DISTORTION,
+                render_material::CODE_T6_OVERLAY_TEX_COORD,
+                render_material::CODE_T6_FADE_EFFECT,
+                render_material::CODE_T6_VIEWPORT_DIMENSIONS,
+            ])
+            .chain(render_material::CODE_T6_SCRIPT_VECTOR)
+        {
             sources.set_constant_rows(row, &[[0; 4]]);
         }
-        for &(constant, row) in &pass.constants {
-            sources.set_constant_rows(code_row(constant), &[row.map(f32::to_bits)]);
+        for &(constant, mut row) in &pass.constants {
+            let Some(code) = code_row(constant) else {
+                report(format!(
+                    "screen overlays: RED material={} constant {constant:?}",
+                    pass.material
+                ));
+                return;
+            };
+            if constant == OverlayConstant::RenderTargetSize {
+                row[0] = size.x as f32;
+                row[1] = size.y as f32;
+            }
+            sources.set_constant_rows(code, &[row.map(f32::to_bits)]);
         }
         if sources
             .set_texture(CODE_TEXTURE_FEEDBACK, POST_SAMPLER)
@@ -490,7 +511,7 @@ fn draw_overlays(
         overlays
             .passes
             .iter()
-            .map(|pass| pass.material)
+            .map(|pass| pass.material.as_str())
             .collect::<Vec<_>>()
             .join(" ")
     ));

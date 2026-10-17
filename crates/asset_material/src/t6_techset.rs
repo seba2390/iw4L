@@ -385,6 +385,9 @@ fn engine_value(name: &str, reflection: &Reflection) -> EngineValue {
         "overlayTexCoord" => Code("T6_OVERLAY_TEX_COORD"),
         "fadeEffect" => Code("T6_FADE_EFFECT"),
         "viewportDimensions" => Code("T6_VIEWPORT_DIMENSIONS"),
+        "scriptVector0" | "scriptVector1" | "scriptVector2" | "scriptVector3" => {
+            Code("T6_SCRIPT_VECTOR")
+        }
         _ => Literal([0.0; 4]),
     }
 }
@@ -577,6 +580,11 @@ fn constant_argument(
                 "T6_OVERLAY_TEX_COORD" => Some(render_material::CODE_T6_OVERLAY_TEX_COORD),
                 "T6_FADE_EFFECT" => Some(render_material::CODE_T6_FADE_EFFECT),
                 "T6_VIEWPORT_DIMENSIONS" => Some(render_material::CODE_T6_VIEWPORT_DIMENSIONS),
+                "T6_SCRIPT_VECTOR" => name
+                    .strip_prefix("scriptVector")
+                    .and_then(|index| index.parse::<usize>().ok())
+                    .and_then(|index| render_material::CODE_T6_SCRIPT_VECTOR.get(index))
+                    .copied(),
                 "T6_FOG" => T6_FOG_NAMES
                     .iter()
                     .position(|fog| *fog == name)

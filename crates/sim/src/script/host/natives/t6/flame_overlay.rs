@@ -6,7 +6,7 @@
 //! (`game_t6::overlay`).
 
 use bevy_ecs::prelude::{Resource, World};
-use game_api::post::{FlameOverlay, ScreenOverlays};
+use game_api::post::FlameOverlay;
 use std::collections::BTreeMap;
 
 /// Which overlay.
@@ -140,20 +140,22 @@ fn publish(world: &mut World, client: u32) {
             .filter(|block| block.active)
             .map(|block| block.overlay)
     };
-    let screen = ScreenOverlays {
-        burn: drawn(&states[slot(Flame::Burn)]),
-        shock: drawn(&states[slot(Flame::Shock)]),
-        flame_allowed: super::atoi(&dvar_text(world, "r_flame_allowed")) != 0,
-        flame_scaler: dvar_float(world, "r_flamescaler"),
-    };
+    let burn = drawn(&states[slot(Flame::Burn)]);
+    let shock = drawn(&states[slot(Flame::Shock)]);
+    let flame_allowed = super::atoi(&dvar_text(world, "r_flame_allowed")) != 0;
+    let flame_scaler = dvar_float(world, "r_flamescaler");
     let mut frame = crate::frame::FrameWorld::from_world(world);
     let id = crate::ClientId(client);
     if frame.client_meta(id).is_some() {
-        frame
+        let screen = &mut frame
             .client_meta_mut(id)
             .view_effects
             .client_screen
-            .overlays = screen;
+            .overlays;
+        screen.burn = burn;
+        screen.shock = shock;
+        screen.flame_allowed = flame_allowed;
+        screen.flame_scaler = flame_scaler;
     }
 }
 
