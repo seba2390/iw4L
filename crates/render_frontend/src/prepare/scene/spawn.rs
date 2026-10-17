@@ -192,6 +192,10 @@ pub(crate) fn spawn_world(
         .as_deref()
         .and_then(|mode| mode.post_chain)
         .zip(scene.source_namespace);
+    let overlays = mode
+        .as_deref()
+        .and_then(|mode| mode.overlays)
+        .zip(scene.source_namespace);
     if scene.readiness.generation != job.spawn || job.spawn.0.is_none() {
         return;
     }
@@ -335,6 +339,7 @@ pub(crate) fn spawn_world(
                 &scene.runtime_material_catalog,
                 progress.as_ref(),
                 post_chain,
+                overlays,
             );
             job.admit = crate::assemble::drawsurf::MaterialProgramAdmit::default();
         }
@@ -402,6 +407,7 @@ pub(crate) fn spawn_world(
             programs,
             exact_shaders,
             post_chain,
+            overlays,
         );
         {
             let value = render_scene::TessMaterials::new(
@@ -431,6 +437,20 @@ pub(crate) fn spawn_world(
             crate::assemble::drawsurf::RuntimePostFxResources::Uninstalled => {
                 diag::warn!(World, "post-fx film material: RED cause=Uninstalled")
             }
+        }
+        match &generation.overlays {
+            Some(Ok(overlays)) => {
+                diag::info!(
+                    World,
+                    "overlay materials: READY materials={}",
+                    overlays.materials.len()
+                );
+                for gap in overlays.rules.gaps {
+                    diag::info!(World, "game gap {}: {}", gap.id, gap.what);
+                }
+            }
+            Some(Err(cause)) => diag::warn!(World, "overlay materials: RED {cause}"),
+            None => {}
         }
         match &generation.post_chain {
             Some(Ok(chain)) => diag::info!(

@@ -259,6 +259,9 @@ pub struct MaterialGeneration {
     /// The game's own post chain, when its mode has one: admitted, or the
     /// material that refused and why.
     pub post_chain: Option<Result<super::post_chain::RuntimePostChain, String>>,
+    /// The game's own screen overlays, when its mode has them: admitted, or
+    /// the material that refused and why.
+    pub overlays: Option<Result<super::post_chain::RuntimeOverlays, String>>,
 }
 
 #[derive(Resource, Clone, Debug, Default)]
@@ -292,6 +295,7 @@ pub(crate) fn admit_material_generation(
     programs: RuntimeProgramRegistry,
     exact_shaders: Vec<Handle<bevy::shader::Shader>>,
     post_chain: Option<(game_api::post::PostChainRules, asset_core::AssetNamespace)>,
+    overlays: Option<(game_api::post::OverlayRules, asset_core::AssetNamespace)>,
 ) -> MaterialGeneration {
     let prepared = PreparedMaterialTable::from_catalog(&catalog, |pass, vertex_type| {
         programs
@@ -313,6 +317,17 @@ pub(crate) fn admit_material_generation(
         )
         .map_err(|(material, cause)| format!("material={material} cause={cause:?}"))
     });
+    let overlays = overlays.map(|(rules, namespace)| {
+        super::post_chain::build_runtime_overlays(
+            &catalog,
+            &prepared,
+            &programs,
+            &exact_shaders,
+            &rules,
+            namespace,
+        )
+        .map_err(|(material, cause)| format!("material={material} cause={cause:?}"))
+    });
     MaterialGeneration {
         catalog,
         prepared: Arc::new(prepared),
@@ -321,6 +336,7 @@ pub(crate) fn admit_material_generation(
         postfx,
         blood,
         post_chain,
+        overlays,
     }
 }
 

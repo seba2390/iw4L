@@ -209,6 +209,7 @@ pub struct OverlayPass {
 /// A code row an overlay material reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OverlayConstant {
+    GameTime,
     FlameDistortion,
     OverlayTexCoord,
     FadeEffect,

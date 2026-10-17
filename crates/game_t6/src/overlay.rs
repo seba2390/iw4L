@@ -63,6 +63,7 @@ fn flame_rows(
 ) -> Vec<(OverlayConstant, [f32; 4])> {
     let [x, y] = overlay.distortion;
     vec![
+        (OverlayConstant::GameTime, game_time(now_ms)),
         (
             OverlayConstant::OverlayTexCoord,
             [
@@ -87,6 +88,16 @@ fn flame_rows(
         ),
         (OverlayConstant::ViewportDimensions, [0.0, 0.0, 1.0, 1.0]),
     ]
+}
+
+/// The backend's game time row from the frame's time in msec: the sine and
+/// cosine of its fraction of a second's turn, the fraction, and the time in
+/// seconds.
+fn game_time(now_ms: i32) -> [f32; 4] {
+    let t = now_ms as f32 * 0.001;
+    let frac = t - t.floor();
+    let angle = f64::from(frac * std::f32::consts::TAU);
+    [angle.sin() as f32, angle.cos() as f32, frac, t]
 }
 
 /// The fade's progress, 0 to 1 (0 before it ends); a flame scaler other

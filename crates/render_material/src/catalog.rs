@@ -436,6 +436,9 @@ pub struct RuntimeMaterial {
     pub env_map_parms_bits: [u32; 4],
     pub textures: Vec<(u32, Option<RuntimeTextureBinding>)>,
     pub constants: Vec<(u32, [u32; 4])>,
+    /// The texture atlas (rows, columns) its material info holds, when it
+    /// holds one.
+    pub texture_atlas: Option<[u8; 2]>,
 }
 
 impl RuntimeMaterial {
