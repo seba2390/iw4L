@@ -192,6 +192,8 @@ pub struct HudTessPass {
     pub emp_static: TessJob,
     pub mantle_hint: TessJob,
     pub damage_direction: TessJob,
+    pub game_crosshair: TessJob,
+    pub game_scoreboard: TessJob,
     pub breath_hint: TessJob,
     pub connection_notice: TessJob,
     pub use_hint: TessJob,

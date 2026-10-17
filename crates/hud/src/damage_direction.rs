@@ -16,9 +16,17 @@ struct Hit {
     stun: bool,
 }
 
+/// Modern Warfare 2's damage icons; a game with its own code HUD names its own.
+const ENGINE_ICONS: game_api::hud::DamageIcons = game_api::hud::DamageIcons {
+    slots: 12,
+    time_ms: 6000,
+    hidden_by_flash_and_mantle: true,
+    stun_material: Some("hit_direction_stun"),
+};
+
 #[derive(Resource, Default)]
 pub(crate) struct DamageDirections {
-    hits: [Hit; 12],
+    hits: [Hit; ENGINE_ICONS.slots],
     event: Option<u32>,
     subject: Option<ViewSubject>,
     time: Option<i32>,
@@ -41,11 +49,17 @@ pub(crate) fn update(
     ui_draw: Res<UiDraw>,
     aim: Res<net::ViewweaponAim>,
     weapons: Option<Res<assets::PreparedWeapons>>,
+    mode: Option<Res<game_api::ModeRules>>,
     mut started: MessageReader<LifeStarted>,
     mut directions: ResMut<DamageDirections>,
     mut pass: ResMut<HudTessPass>,
 ) {
     pass.damage_direction = TessJob::Hide;
+    let icons = match mode.as_ref().map(|mode| mode.hud.code_hud) {
+        Some(game_api::Rule::Known(game_api::hud::CodeHud::Game(hud))) => hud.damage_icons,
+        _ => ENGINE_ICONS,
+    };
+    let slots = icons.slots.clamp(1, ENGINE_ICONS.slots);
     let now = clock.time();
     let reset = started.read().filter(|ev| ev.client == local.0.0).count() != 0
         || directions.subject != Some(*view)
@@ -70,10 +84,9 @@ pub(crate) fn update(
     {
         let duration = dvars
             .and_then(|d| d.int("cg_hudDamageIconTime"))
-            .unwrap_or(6000)
+            .unwrap_or(icons.time_ms)
             .max(0);
-        let slot = directions
-            .hits
+        let slot = directions.hits[..slots]
             .iter()
             .enumerate()
             .min_by_key(|(_, hit)| hit.time)
@@ -124,10 +137,10 @@ pub(crate) fn update(
             .shellshock(local.0)
             .map_or(hud_iw4::SCREEN_BLEND_BLURRED, |shock| shock.screen_type),
     ) != 0;
+    let flash_or_mantle = flashed || ps.pm_flags & playerstate_iw4::pm_flags::MANTLE != 0;
     if !surface.is_ready()
         || !ui_draw.0
-        || flashed
-        || ps.pm_flags & playerstate_iw4::pm_flags::MANTLE != 0
+        || (icons.hidden_by_flash_and_mantle && flash_or_mantle)
         || (scoped
             && dvars
                 .and_then(|d| d.int("cg_hudDamageIconInScope"))
@@ -163,7 +176,7 @@ pub(crate) fn update(
         center[1] += aim.xhair_y * factor;
     }
     let mut quads = Vec::new();
-    for hit in &directions.hits {
+    for hit in &directions.hits[..slots] {
         let age = now.saturating_sub(hit.time);
         if age <= 0 || age >= hit.duration {
             continue;
@@ -185,10 +198,9 @@ pub(crate) fn update(
                 1.0,
                 (2.0 - 2.0 * age as f32 / hit.duration as f32).min(1.0),
             ],
-            material: if hit.stun {
-                "hit_direction_stun"
-            } else {
-                "hit_direction"
+            material: match icons.stun_material {
+                Some(stun) if hit.stun => stun,
+                _ => "hit_direction",
             }
             .into(),
             material_namespace: crate::images::HUD_CHROME_NAMESPACE,

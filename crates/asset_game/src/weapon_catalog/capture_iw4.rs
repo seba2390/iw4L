@@ -432,6 +432,7 @@ impl WeaponCatalog {
                 aim_assist_range: geometry.aim_assist_range,
                 aim_assist_range_ads: geometry.aim_assist_range_ads,
                 cook_off_hold: geometry.cook_off_hold,
+                keep_crosshair_when_ads: false,
                 clip_only: geometry.clip_only,
                 has_detonator: geometry.has_detonator,
                 detonate_delay_ms: geometry.detonate_delay_ms,

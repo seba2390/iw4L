@@ -156,7 +156,7 @@ Only the top-level items count.
   - [x] `MissionFailed` ramps client blur to 32 over `g_deathDelay` (4000 ms), `setblur` and `startfadingblur` drive player blur, and `deadscreen` owner draw 97 (`CG_DEADQUOTE`) draws `ui_deadquote` with its `death` sound and post-delay fade-out; save-game restore, `com_codeTimeScale` slow-motion and sound-mixer fade remain open (`t5.match.level_failed`).
 - [ ] The game's own HUD.
   - [x] Black Ops' HUD menus (weapon info, dpad, points column `competitivemodescores`) with its fonts, layout, safe area and name-hash paint order; script hud elems (round chalk, point popups, game over text); text and icon use hints (`HINT_NOICON`, `HINT_SEAT`, `HINT_ACTIVATE`, `HINT_HEALTH`, `HINT_FRIENDLY`, `HINT_SPECTATOR`, `HINT_TEAMPOT`, weapons).
-  - [ ] Code-drawn pieces (reticle, blood, damage feedback), the scoreboard.
+  - [x] Code-drawn pieces (Black Ops' crosshair and damage icons, no code blood), the TAB scoreboard.
 - [ ] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
   - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as IW4L's bar.
