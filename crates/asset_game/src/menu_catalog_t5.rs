@@ -560,7 +560,7 @@ impl AssetLinkSink for T5MenuSink {
         let mut glyphs = Vec::with_capacity(count);
         if let Some(table) = ptr_at(s, p, fastfile_t5::size::FONT_GLYPHS_OFF) {
             let rows = s.slice_at(table, 0, count * fastfile_t5::size::FONT_GLYPH)?;
-            for chunk in rows.chunks_exact(fastfile_t5::size::FONT_GLYPH) {
+            for chunk in rows.as_chunks::<{ fastfile_t5::size::FONT_GLYPH }>().0 {
                 let mut row = [0u8; fastfile_t5::size::FONT_GLYPH];
                 row.copy_from_slice(chunk);
                 glyphs.push(GlyphCapture::from_row(&row));

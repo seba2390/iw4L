@@ -306,7 +306,7 @@ impl WorldVertexPayload {
             Self::T5(_) => "t5",
             Self::T6(_) => "t6",
             Self::Host(_) => "host",
-            Self::Unavailable { source_layout } => *source_layout,
+            Self::Unavailable { source_layout } => source_layout,
         }
     }
 }
@@ -1191,7 +1191,7 @@ fn decode_lightmap_images(
     primary: fastfile_iw4::GfxImageGeometry,
     image: fastfile_iw4::GfxImageGeometry,
 ) -> Result<WorldLightmap, WorldLightmapGap> {
-    if image.width == 0 || image.height < 2 || image.height % 2 != 0 || image.depth != 1 {
+    if image.width == 0 || image.height < 2 || !image.height.is_multiple_of(2) || image.depth != 1 {
         return Err(WorldLightmapGap::InvalidDimensions {
             width: image.width,
             height: image.height,
@@ -1339,8 +1339,10 @@ pub(crate) fn secondary_page_payloads(
     let mut ambient = source[..page_bytes].to_vec();
     let mut directional = source[page_bytes..].to_vec();
     for pixel in ambient
-        .chunks_exact_mut(4)
-        .chain(directional.chunks_exact_mut(4))
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .chain(directional.as_chunks_mut::<4>().0.iter_mut())
     {
         pixel.swap(0, 2);
     }
@@ -1697,13 +1699,10 @@ fn read_cell_reflection_probes(
     if count == 0 {
         return Ok(list);
     }
-    match s.ptr_at(cell, ptr_off)? {
-        ZonePtr::Offset(arr) => {
-            for k in 0..count {
-                list.push(s.u8_at(arr, k)?);
-            }
+    if let ZonePtr::Offset(arr) = s.ptr_at(cell, ptr_off)? {
+        for k in 0..count {
+            list.push(s.u8_at(arr, k)?);
         }
-        _ => {}
     }
     Ok(list)
 }

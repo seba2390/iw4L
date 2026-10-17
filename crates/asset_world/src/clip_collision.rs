@@ -646,10 +646,10 @@ fn extract_cmodels(
             .i32_at(cm, 64)
             .map_err(|_| ClipCollisionError::Truncated)?;
         let first_len = out.leafbrushes.len();
-        if lb_index >= 0 {
-            if let Some(lb_base) = lb_nodes {
-                append_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)?;
-            }
+        if lb_index >= 0
+            && let Some(lb_base) = lb_nodes
+        {
+            append_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)?;
         }
         let (first, num) = leafbrush_range(first_len, out.leafbrushes.len())?;
         out.cmodels.push(ClipCmodel {
@@ -906,10 +906,10 @@ fn extract_bsp_tables(
             .i32_at(leaf, 36)
             .map_err(|_| ClipCollisionError::Truncated)?;
         let first_len = out.leafbrushes.len();
-        if lb_index >= 0 {
-            if let Some(lb_base) = lb_nodes {
-                append_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)?;
-            }
+        if lb_index >= 0
+            && let Some(lb_base) = lb_nodes
+        {
+            append_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)?;
         }
         let (first, num) = leafbrush_range(first_len, out.leafbrushes.len())?;
         let first_coll_aabb_index = s
@@ -1220,10 +1220,10 @@ fn extract_iw5_bsp_tables(
             .i32_at(leaf, 36)
             .map_err(|_| ClipCollisionError::Truncated)?;
         let first_len = out.leafbrushes.len();
-        if lb_index >= 0 {
-            if let Some(lb_base) = lb_nodes {
-                append_iw5_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)?;
-            }
+        if lb_index >= 0
+            && let Some(lb_base) = lb_nodes
+        {
+            append_iw5_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)?;
         }
         let (first, num) = leafbrush_range(first_len, out.leafbrushes.len())?;
         let first_coll_aabb_index = s
@@ -1559,14 +1559,12 @@ fn extract_iw5_cmodels(
             .i32_at(cm, s.layout(0x44, 76))
             .map_err(|_| ClipCollisionError::Truncated)?;
         let first_len = out.leafbrushes.len();
-        if lb_index >= 0 {
-            if let Some(lb_base) = lb_nodes {
-                if append_iw5_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)
-                    .is_err()
-                {
-                    out.leafbrushes.truncate(first_len);
-                }
-            }
+        if lb_index >= 0
+            && let Some(lb_base) = lb_nodes
+            && append_iw5_leafbrush_node(s, lb_base, lb_index as usize, &mut out.leafbrushes)
+                .is_err()
+        {
+            out.leafbrushes.truncate(first_len);
         }
         let (first, num) = leafbrush_range(first_len, out.leafbrushes.len())?;
         out.cmodels.push(ClipCmodel {

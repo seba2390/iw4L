@@ -1534,7 +1534,7 @@ fn capture_trail_def(s: &impl FxRead, elem: Ptr) -> Option<OwnedFxTrailDef> {
 
     let vert_bytes = copy_ptr_array(s, trail, 0x18, vert_count, sz::FX_TRAIL_VERTEX);
     let mut verts = Vec::with_capacity(vert_count);
-    for chunk in vert_bytes.chunks_exact(sz::FX_TRAIL_VERTEX) {
+    for chunk in vert_bytes.as_chunks::<{ sz::FX_TRAIL_VERTEX }>().0 {
         let pos = [
             f32::from_le_bytes(chunk[0x00..0x04].try_into().ok()?),
             f32::from_le_bytes(chunk[0x04..0x08].try_into().ok()?),
@@ -1553,8 +1553,8 @@ fn capture_trail_def(s: &impl FxRead, elem: Ptr) -> Option<OwnedFxTrailDef> {
 
     let ind_bytes = copy_ptr_array(s, trail, s.layout(0x20, 40), ind_count, 2);
     let mut inds = Vec::with_capacity(ind_count);
-    for chunk in ind_bytes.chunks_exact(2) {
-        inds.push(u16::from_le_bytes(chunk.try_into().ok()?));
+    for chunk in ind_bytes.as_chunks::<2>().0 {
+        inds.push(u16::from_le_bytes(*chunk));
     }
 
     Some(OwnedFxTrailDef {
@@ -2566,7 +2566,9 @@ fn capture_elem_t6(
                 .collect()
         } else if t == elem_type::DECAL {
             elem.visuals
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| {
                     let material = |name: &String| OwnedFxVisual::Material {
                         material: authored.unresolved(),

@@ -407,10 +407,10 @@ impl fastfile_iw5::AssetLinkSink for Iw5TeamIconSink {
         data: &[u8],
         zlib: bool,
     ) -> fastfile_iw5::Result<()> {
-        if is_basemaps_arena_name(name) {
-            if let Some(text) = crate::decode_rawfile_text(data, zlib) {
-                self.arena_text = Some(text);
-            }
+        if is_basemaps_arena_name(name)
+            && let Some(text) = crate::decode_rawfile_text(data, zlib)
+        {
+            self.arena_text = Some(text);
         }
         Ok(())
     }
@@ -555,9 +555,7 @@ pub fn t5_teamset_from_map_gsc(script: &str) -> Option<&str> {
     let mut from = 0;
     while let Some(rel) = lower[from..].find("_teamset_") {
         let start = from + rel + "_teamset_".len();
-        let Some(rest) = script.get(start..) else {
-            return None;
-        };
+        let rest = script.get(start..)?;
         let Some(end) = rest.find("::") else {
             from = start;
             continue;

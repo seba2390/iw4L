@@ -61,18 +61,16 @@ pub struct ScriptBrushModelPlacement {
     pub script_fxid: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum ScriptBrushModelLink {
+    #[default]
     None,
     Linked(ScriptBrushModelPlacement),
 
-    Ambiguous { target: String, matches: usize },
-}
-
-impl Default for ScriptBrushModelLink {
-    fn default() -> Self {
-        Self::None
-    }
+    Ambiguous {
+        target: String,
+        matches: usize,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -446,7 +444,6 @@ pub fn dm_spawn_points_treyarch(text: &str) -> Vec<SpawnPoint> {
 /// spawns and each zone's respawn points.
 fn zombie_player_spawns(text: &str) -> Vec<([f32; 3], [f32; 3])> {
     parse_entities(text)
-        .into_iter()
         .filter(|entity| entity.classname == Some("script_struct"))
         .filter(|entity| {
             entity.targetname.is_some_and(|name| {
@@ -855,7 +852,7 @@ fn entity_string_iw5<'a>(s: &'a fastfile_iw5::ZoneStream<'_>) -> Option<&'a str>
 
 pub fn parse_intermission_view(text: &str) -> Option<IntermissionView> {
     for entity in parse_entities(text) {
-        if entity.classname.as_deref() == Some("mp_global_intermission") {
+        if entity.classname == Some("mp_global_intermission") {
             return Some(IntermissionView {
                 origin: entity.origin?,
                 angles: entity.angles.unwrap_or([0.0, 0.0, 0.0]),
@@ -871,7 +868,7 @@ fn parse_spawn_points(text: &str, classnames: &[&str]) -> Vec<SpawnPoint> {
         let Some(classname) = entity.classname else {
             continue;
         };
-        if !classnames.iter().any(|want| *want == classname) {
+        if !classnames.contains(&classname) {
             continue;
         }
         let Some(origin) = entity.origin else {
@@ -891,7 +888,7 @@ fn parse_spawn_points(text: &str, classnames: &[&str]) -> Vec<SpawnPoint> {
 pub fn parse_minimap_corners(text: &str) -> Option<MinimapCorners> {
     let mut corners: Vec<[f32; 2]> = Vec::new();
     for entity in parse_entities(text) {
-        if entity.targetname.as_deref() != Some("minimap_corner") {
+        if entity.targetname != Some("minimap_corner") {
             continue;
         }
         let Some(origin) = entity.origin else {
@@ -925,7 +922,7 @@ pub fn parse_script_model_placements(text: &str) -> Vec<ScriptModelPlacement> {
     let entities = parse_entities(text).collect::<Vec<_>>();
     let mut out = Vec::new();
     for (source_ordinal, entity) in entities.iter().enumerate() {
-        if entity.classname.as_deref() != Some("script_model") {
+        if entity.classname != Some("script_model") {
             continue;
         }
         let Some(model) = entity
