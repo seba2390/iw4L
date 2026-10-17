@@ -182,8 +182,8 @@ pub use scene_effects::{
 pub use time_scale::ScriptSlowMotion;
 mod objectives;
 pub use objectives::{
-    CompassObjective, CompassVehicle, EffectEnd, ObjectiveMatch, ObjectiveState, ScriptEffect,
-    VehicleHudTarget,
+    CompassObjective, CompassVehicle, EffectBolt, EffectEnd, ObjectiveMatch, ObjectiveState,
+    ScriptEffect, VehicleHudTarget,
 };
 
 pub use world::{AnimClipLookup, SimContent, SimContentBuilder};

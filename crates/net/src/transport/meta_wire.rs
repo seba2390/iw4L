@@ -3293,6 +3293,18 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
             sim::EffectEnd::Stopped => 1,
             sim::EffectEnd::Killed => 2,
         });
+        match &fx.bolt {
+            None => out.put_u8(0),
+            Some(sim::EffectBolt::Entity { number, bone }) => {
+                out.put_u8(1);
+                out.put_u16(*number);
+                out.put_u16(bone.unwrap_or(u16::MAX));
+            }
+            Some(sim::EffectBolt::Viewmodel { tag }) => {
+                out.put_u8(2);
+                put_text(out, tag);
+            }
+        }
     }
     encode_vision(out, state.naked_vision.as_ref());
     encode_vision(out, state.thermal_vision.as_ref());
@@ -3406,6 +3418,21 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
                 1 => sim::EffectEnd::Stopped,
                 2 => sim::EffectEnd::Killed,
                 _ => return Err(WireError::Malformed("bad effect end")),
+            },
+            bolt: match input.get_u8()? {
+                0 => None,
+                1 => {
+                    let number = input.get_u16()?;
+                    let bone = input.get_u16()?;
+                    Some(sim::EffectBolt::Entity {
+                        number,
+                        bone: (bone != u16::MAX).then_some(bone),
+                    })
+                }
+                2 => Some(sim::EffectBolt::Viewmodel {
+                    tag: get_text(input)?,
+                }),
+                _ => return Err(WireError::Malformed("bad effect bolt")),
             },
         });
     }

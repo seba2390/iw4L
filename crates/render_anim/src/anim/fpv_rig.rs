@@ -367,6 +367,7 @@ pub struct PreparedFpvRig {
     parts: PartBits,
     tags: FpvBoltTags,
     secondary_tags: Option<FpvBoltTags>,
+    bone_names: Arc<[String]>,
     slots: Vec<PlanSlot>,
     skin_shapes: Vec<std::sync::OnceLock<Arc<render_frame::skinning::PackedSkinShape>>>,
     tracks: [Vec<Option<Arc<[u16]>>>; 2],
@@ -541,6 +542,13 @@ impl PreparedFpvRig {
             }
             masks
         });
+        let bone_names = composition
+            .assembly
+            .dobj()
+            .bones
+            .iter()
+            .map(|bone| bone.name.clone())
+            .collect();
         Self {
             hand_parts,
             meshes,
@@ -551,6 +559,7 @@ impl PreparedFpvRig {
             parts,
             tags,
             secondary_tags,
+            bone_names,
             skin_shapes: (0..slots.len())
                 .map(|_| std::sync::OnceLock::new())
                 .collect(),
@@ -581,6 +590,7 @@ impl PreparedFpvRig {
         Some(FpvBoltFrame {
             bones: pose.bolt.bones.clone(),
             tags: self.secondary_tags?,
+            names: self.bone_names.clone(),
         })
     }
 
@@ -706,6 +716,7 @@ impl PreparedFpvRig {
             bolt: FpvBoltFrame {
                 bones,
                 tags: self.tags,
+                names: self.bone_names.clone(),
             },
         })
     }

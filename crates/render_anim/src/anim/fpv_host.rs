@@ -48,6 +48,8 @@ pub struct FpvBoltTargets {
     pub brass: [Option<fx::FxBoltTarget>; 2],
     pub knife: [Option<fx::FxBoltTarget>; 2],
     pub laser: [Option<fx::FxBoltTarget>; 2],
+    /// Each hand's posed viewmodel bone names, by bone index.
+    pub bone_names: [Option<std::sync::Arc<[String]>>; 2],
 }
 
 impl FpvBoltTargets {
@@ -59,6 +61,7 @@ impl FpvBoltTargets {
         self.brass = [None, None];
         self.knife = [None, None];
         self.laser = [None, None];
+        self.bone_names = [None, None];
     }
 
     pub fn set_pose(&mut self, hand: usize, bolt: FpvBoltFrame) {

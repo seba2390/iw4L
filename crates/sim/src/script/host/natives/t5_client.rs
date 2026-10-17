@@ -613,6 +613,7 @@ fn register_effects(registry: &mut NativeRegistry) {
                 begin_ms: None,
                 end_ms: Some(0),
                 end: crate::EffectEnd::Playing,
+                bolt: None,
             },
         );
         Ok(Value::Object(entity))
@@ -1308,6 +1309,7 @@ fn play_effect(
                 begin_ms: Some(begin),
                 end_ms: None,
                 end: crate::EffectEnd::Playing,
+                bolt: None,
             },
         );
     }
