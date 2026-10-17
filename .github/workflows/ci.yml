@@ -13,6 +13,19 @@ jobs:
       - name: make publish-check
         run: make publish-check
 
+  # Formatting: every Rust file as `cargo fmt` writes it, and the Python
+  # scripts as ruff writes them.
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo fmt --all -- --check
+        run: cargo fmt --all -- --check
+      - name: ruff check scripts
+        run: pipx run ruff==0.17.1 check scripts
+      - name: ruff format --check scripts
+        run: pipx run ruff==0.17.1 format --check scripts
+
   build:
     strategy:
       fail-fast: false
@@ -29,5 +42,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - uses: Swatinem/rust-cache@v2
-      - name: cargo check
-        run: cargo check --workspace --all-targets
+      # Fails on any rustc warning, on both platforms: some code is cfg'd.
+      - name: cargo check --workspace --all-targets
+        shell: bash
+        run: |
+          cargo check --workspace --all-targets 2>&1 | tee check.log
+          if grep -q '^warning' check.log; then
+            echo "::error::rustc warnings above: fix them"
+            exit 1
+          fi
+      # Clippy and rustc warnings may only go down (xtask/lints/allow.txt).
+      # Linux only: the counts are taken there.
+      - name: cargo xtask lints --enforce
+        if: runner.os == 'Linux'
+        run: cargo run -q -p xtask -- lints --enforce
