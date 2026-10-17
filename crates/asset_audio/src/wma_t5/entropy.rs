@@ -44,41 +44,26 @@ impl Format {
 pub(super) fn format() -> &'static Format {
     static FORMAT: OnceLock<Format> = OnceLock::new();
     FORMAT.get_or_init(|| {
-        let mut data = &include_bytes!("format.bin")[8..];
-        let word = |data: &mut &[u8], width: usize| -> u32 {
-            let mut value = 0;
-            for (i, byte) in data[..width].iter().enumerate() {
-                value |= u32::from(*byte) << (8 * i);
-            }
-            *data = &data[width..];
-            value
-        };
-        let count = word(&mut data, 2);
-        let mut books = Vec::new();
-        for _ in 0..count {
-            let count = word(&mut data, 2);
-            let mut entries = Vec::new();
-            for _ in 0..count {
-                entries.push(Word {
-                    boundary: word(&mut data, 4),
-                    width: word(&mut data, 1) as u8,
-                    operation: word(&mut data, 1) as u8,
-                    zeros: word(&mut data, 2) as u16,
-                    value: word(&mut data, 2) as i16,
-                });
-            }
-            books.push(Book(entries));
-        }
-        let count = word(&mut data, 2);
-        let mut bands = Vec::new();
-        for _ in 0..count {
-            let rate = word(&mut data, 4);
-            let size = word(&mut data, 2) as usize;
-            let count = word(&mut data, 2);
-            let widths = (0..count).map(|_| word(&mut data, 2) as usize).collect();
-            bands.push((rate, size, widths));
-        }
-        assert!(data.is_empty());
+        let books = super::table::BOOKS
+            .iter()
+            .map(|book| {
+                Book(
+                    book.iter()
+                        .map(|&(boundary, width, operation, zeros, value)| Word {
+                            boundary,
+                            width,
+                            operation,
+                            zeros,
+                            value,
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+        let bands = super::table::BANDS
+            .iter()
+            .map(|&(rate, size, widths)| (rate, size, widths.to_vec()))
+            .collect();
         Format { books, bands }
     })
 }
