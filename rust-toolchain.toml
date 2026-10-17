@@ -1,3 +1,6 @@
 [toolchain]
-channel = "stable"
+# Pinned: CI fails on any new clippy or rustc warning, and a new release adds
+# lints. Move it on purpose, with the warnings it brings fixed in the same pull
+# request.
+channel = "1.99.0"
 components = ["rustfmt", "clippy"]
