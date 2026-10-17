@@ -147,6 +147,7 @@ pub fn compile_material_catalog(source: &crate::MaterialDefinitions) -> RuntimeM
                 ),
                 sort_key: material.sort_key,
                 info_game_flags: material.info_game_flags,
+                texture_atlas: material.texture_atlas,
                 state_flags: material.state_flags,
                 surface_type_bits: material.surface_type_bits,
                 unlit: source.is_unlit(material).unwrap_or(false),

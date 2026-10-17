@@ -806,24 +806,83 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    // gscm_shellshock(name, duration, [...]): a precached shock, the
-    // duration 0 to 60 s; kept for the player's client to present
-    // (`t6.vision.shellshock`: no shock is shown).
+    // player shellshock(name, duration, [reduce]): starts the precached
+    // shock for the duration (in whole msec, 0 to 60000) from now,
+    // replacing any shock running; unless `reduce` is other than 1, a
+    // player with `specialty_shellshock` takes it for the duration times
+    // `perk_shellShockReduction`.
+    // t6.vision.shellshock_weapon_perk: the engine also reduces it when the
+    // player's weapon or its attachments carry the perk.
     registry.register(Method, "shellshock", |world, receiver, args| {
-        let name = string(args, 0)?.to_ascii_lowercase();
-        if !world
+        let client = super::super::player::player(world, receiver)?;
+        let name = string(args, 0)?;
+        let index = world
             .resource::<crate::script::MatchScript>()
             .precached
-            .contains_key(&("shellshock", name.clone()))
+            .iter()
+            .find(|((kind, item), _)| *kind == "shellshock" && item.eq_ignore_ascii_case(&name))
+            .map(|(_, &index)| index)
+            .ok_or_else(|| format!("shellshock '{name}' was not precached"))?;
+        let mut duration = shock_milliseconds(float(args, 1)?);
+        if !(0..=60_000).contains(&duration) {
+            return Err(format!(
+                "duration {} should be >= 0 and <= 60",
+                duration as f32 * 0.001
+            ));
+        }
+        let reduce = args.len() <= 2 || super::super::super::args::int(args, 2)? == 1;
+        let has_perk = world
+            .resource::<RoundScript>()
+            .players
+            .get(&client)
+            .is_some_and(|s| s.perks.iter().any(|p| p.as_ref() == "specialty_shellshock"));
+        if reduce && has_perk {
+            let scale = super::atof(
+                &world
+                    .resource::<crate::script::MatchScript>()
+                    .dvars
+                    .get("perk_shellshockreduction")
+                    .cloned()
+                    .or_else(|| {
+                        super::dvars::lookup("perk_shellshockreduction")
+                            .map(|spec| spec.default.to_owned())
+                    })
+                    .unwrap_or_else(String::new),
+            );
+            duration = (duration as f32 * scale) as i32;
+        }
+        let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+        let id = crate::ClientId(client);
+        let mut frame = crate::frame::FrameWorld::from_world(world);
+        let file = frame.shock_file(&name);
+        let shock = file.as_deref().and_then(|file| frame.shock(file).cloned());
+        if let Some(file) = &file {
+            for gap in frame.shock_gaps(file).to_vec() {
+                frame.report_game_gap(gap);
+            }
+        }
+        let Some(ps) = frame.player_mut(id) else {
+            return Ok(Value::Undefined);
+        };
+        ps.shellshock_index = index;
+        ps.shellshock_time = now;
+        ps.shellshock_duration = duration;
+        // t6.movement.shellshock: the engine also marks a living player
+        // shellshocked in its movement flags.
+        frame.client_meta_mut(id).shellshock = shock;
+        Ok(Value::Undefined)
+    });
+    // player stopshellshock(): ends the shock and its mark.
+    registry.register(Method, "stopshellshock", |world, receiver, _| {
+        let client = super::super::player::player(world, receiver)?;
+        if let Some(ps) =
+            crate::frame::FrameWorld::from_world(world).player_mut(crate::ClientId(client))
         {
-            return Err(format!("shellshock '{name}' was not precached\n"));
+            ps.shellshock_index = 0;
+            ps.shellshock_time = 0;
+            ps.shellshock_duration = 0;
         }
-        let duration = number(args.get(1)).ok_or("shellshock expects a duration")?;
-        let ms = (duration * 1000.0).round();
-        if !(0.0..=60_000.0).contains(&ms) {
-            return Err(format!("duration {} should be >= 0 and <= 60", ms * 0.001));
-        }
-        super::super::player::present(world, receiver, "shellshock", args)
+        Ok(Value::Undefined)
     });
     registry.register(Function, "addspawnpoints", |world, _, args| {
         let team = super::team(args, 0)?;
@@ -1131,4 +1190,16 @@ fn dvar_color(world: &World, args: &[Value], index: usize) -> Result<Value, Stri
         .and_then(|part| part.parse::<f32>().ok())
         .map_or(0.0, |v| v.clamp(0.0, 1.0));
     Ok(Value::Float(value))
+}
+
+/// Seconds to msec as the engine rounds them: `seconds * 1000` in single
+/// precision, plus 2^-30, rounded to the nearest integer.
+fn shock_milliseconds(seconds: f32) -> i32 {
+    let bias = f64::from(2.0f32.powi(-30));
+    let rounded = (f64::from(seconds * 1000.0) + bias).round_ties_even();
+    if rounded.is_finite() && rounded.abs() < 2_147_483_648.0 {
+        rounded as i32
+    } else {
+        i32::MIN
+    }
 }

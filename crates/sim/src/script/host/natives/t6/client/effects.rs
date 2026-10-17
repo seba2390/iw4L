@@ -153,6 +153,23 @@ fn state(world: &mut World) -> bevy_ecs::prelude::Mut<'_, ClientEffects> {
     world.get_resource_or_insert_with(ClientEffects::default)
 }
 
+fn flame_overlay(
+    world: &mut World,
+    args: &[Value],
+    kind: crate::script::host::natives::t6::flame_overlay::Flame,
+) -> Result<Value, String> {
+    let client = local_client(args, 0)?;
+    let seconds = float(args, 1)?;
+    if !(seconds >= 0.0) {
+        return Err("Time must be positive".into());
+    }
+    let ms = (seconds * 1000.0) as i32;
+    with_server(world, |server| {
+        crate::script::host::natives::t6::flame_overlay::start(server, client as u32, kind, ms);
+    });
+    Ok(Value::Undefined)
+}
+
 fn now_ms(world: &World) -> i64 {
     world
         .get_resource::<crate::step::StepRequest>()
@@ -508,7 +525,7 @@ fn play_fx_on_tag(world: &mut World, args: &[Value]) -> Result<Value, String> {
         .and_then(|number| with_server(world, |server| server_object(server, number)).flatten())
         .or_else(|| super::game::drawn_by(world, ent_id));
     let mut origin = entity_origin(world, ent_id);
-    let mut angles = entity_angles(world, ent_id);
+    let angles = entity_angles(world, ent_id);
     let mut bolt = None;
     if let Some(server_id) = server_id {
         let (number, bone, tag_pose) = with_server(world, |server| {
@@ -522,25 +539,24 @@ fn play_fx_on_tag(world: &mut World, args: &[Value]) -> Result<Value, String> {
         })
         .unwrap_or((None, None, None));
         let number = number.and_then(|number| u16::try_from(number).ok());
-        match (tag.is_empty(), bone, tag_pose) {
-            // t6.csc.fx.actor_tags: a tag IW4L finds on the entity's model
-            // but cannot index on its drawn model plays at the tag's place.
-            (false, None, Some((place, axis))) => {
-                origin = place;
-                angles = math_iw4::axis_to_angles(axis);
-            }
-            (_, bone, pose) => {
-                if let Some((place, _)) = pose {
-                    origin = place;
-                }
-                bolt = number.map(|number| crate::EffectBolt::Entity {
-                    number,
-                    bone: bone
-                        .filter(|_| !tag.is_empty())
-                        .and_then(|bone| u16::try_from(bone).ok()),
-                });
-            }
+        if let Some((place, _)) = tag_pose {
+            origin = place;
         }
+        bolt = number.map(
+            |number| match bone.and_then(|bone| u16::try_from(bone).ok()) {
+                Some(bone) if !tag.is_empty() => crate::EffectBolt::Entity {
+                    number,
+                    bone: Some(bone),
+                },
+                // A tag the server's model of the entity does not index (an
+                // actor's attached head): the drawn models' bones name it.
+                _ if !tag.is_empty() => crate::EffectBolt::EntityTag {
+                    number,
+                    tag: tag.clone(),
+                },
+                _ => crate::EffectBolt::Entity { number, bone: None },
+            },
+        );
     }
     let begin = now_ms(world) as i32;
     let handle = play_point_effect(world, id, origin, angles, begin);
@@ -1089,28 +1105,22 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // setburn(localclientnum, seconds): starts the first-person burn overlay.
-    registry.register(Function, "setburn", |_, _, args| {
-        local_client(args, 0)?;
-        let seconds = float(args, 1)?;
-        if !(seconds >= 0.0) {
-            return Err("Time must be positive".into());
-        }
-        // t6.csc.vision.burn: IW4L has no first-person screen burn overlay.
-        Ok(Value::Undefined)
+    // setburn(localclientnum, seconds) / setelectrified(localclientnum,
+    // seconds): starts the local client's burning (electric shock) overlay
+    // for that long, in whole msec.
+    registry.register(Function, "setburn", |world, _, args| {
+        flame_overlay(
+            world,
+            args,
+            crate::script::host::natives::t6::flame_overlay::Flame::Burn,
+        )
     });
-
-    // setelectrified(localclientnum, seconds): starts the first-person
-    // electrified overlay.
-    registry.register(Function, "setelectrified", |_, _, args| {
-        local_client(args, 0)?;
-        let seconds = float(args, 1)?;
-        if !(seconds >= 0.0) {
-            return Err("Time must be positive".into());
-        }
-        // t6.csc.vision.electrified: IW4L has no first-person screen
-        // electrified overlay.
-        Ok(Value::Undefined)
+    registry.register(Function, "setelectrified", |world, _, args| {
+        flame_overlay(
+            world,
+            args,
+            crate::script::host::natives::t6::flame_overlay::Flame::Shock,
+        )
     });
 
     // ent map_material(index, name): registers a filter material in slot

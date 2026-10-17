@@ -643,8 +643,11 @@ fn register_rest(registry: &mut NativeRegistry) {
         if seconds < 0.0 {
             return Err("Time must be positive".into());
         }
-        player(world, receiver)
+        let client = player(world, receiver)
             .map_err(|_| "setburn() called on an invalid client entity.\n".to_owned())?;
+        // The client takes the time in whole msec.
+        let ms = (seconds * 1000.0) as i32;
+        super::flame_overlay::start(world, client, super::flame_overlay::Flame::Burn, ms);
         Ok(Value::Undefined)
     });
     registry.register(Method, "setelectrified", |world, receiver, args| {
@@ -652,8 +655,10 @@ fn register_rest(registry: &mut NativeRegistry) {
         if seconds < 0.0 {
             return Err("Time must be positive".into());
         }
-        player(world, receiver)
+        let client = player(world, receiver)
             .map_err(|_| "setelectrified() called on an invalid client entity.\n".to_owned())?;
+        let ms = (seconds * 1000.0) as i32;
+        super::flame_overlay::start(world, client, super::flame_overlay::Flame::Shock, ms);
         Ok(Value::Undefined)
     });
     registry.register(Method, "sprintuprequired", |world, receiver, _| {

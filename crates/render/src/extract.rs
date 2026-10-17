@@ -735,6 +735,9 @@ pub fn extract_postfx(
     glow_dvars: Extract<Res<render_frontend::assemble::drawsurf::dof::GlowDvars>>,
     draw_method: Extract<Res<render_frontend::assemble::drawsurf::ColourDrawMethod>>,
     scene: Extract<Option<Res<render_frontend::prepare::scene::world::WorldScene>>>,
+    overlay_passes: Extract<
+        Option<Res<render_frontend::assemble::drawsurf::post_chain::ScreenOverlayPasses>>,
+    >,
     mut extracted: ResMut<render_gpu::ExtractedPostFx>,
 ) {
     use render_frontend::assemble::drawsurf::postfx_plan::RuntimePostFxResources;
@@ -824,6 +827,59 @@ pub fn extract_postfx(
         }
         None => extracted.post_chain = None,
         _ => {}
+    }
+    let overlays = runtime
+        .as_ref()
+        .and_then(|r| r.overlays.as_ref())
+        .and_then(|overlays| overlays.as_ref().ok());
+    match overlays {
+        Some(overlays)
+            if extracted.overlays.as_ref().is_none_or(|current| {
+                current.materials.first().map(|m| m.film.generation)
+                    != overlays.materials.first().map(|f| f.generation)
+            }) =>
+        {
+            let catalog = &runtime.as_ref().expect("overlay owner").catalog;
+            let materials = overlays
+                .materials
+                .iter()
+                .zip(&overlays.textures)
+                .map(|(film, textures)| render_gpu::ExtractedOverlayMaterial {
+                    film: render_gpu::ExtractedFilm {
+                        name: film.name,
+                        generation: film.generation,
+                        catalog: std::sync::Arc::clone(catalog),
+                        port: render_gpu::AdmittedExactPort {
+                            id: film.port.id(),
+                            abi: film.port.abi().clone(),
+                            module: film.port.shared_module(),
+                            layout: film.port.wgpu_layout().clone(),
+                        },
+                        shader: film.shader.clone(),
+                        shell: film.shell.clone(),
+                    },
+                    textures: textures
+                        .iter()
+                        .filter_map(|(hash, binding)| {
+                            let sampler = samplers.as_ref()?.decode(binding.sampler_state).ok()?;
+                            Some((*hash, binding.image, sampler))
+                        })
+                        .collect(),
+                })
+                .collect();
+            extracted.overlays = Some(render_gpu::ExtractedOverlays {
+                materials,
+                passes: Vec::new(),
+            });
+        }
+        None => extracted.overlays = None,
+        _ => {}
+    }
+    if let Some(overlays) = extracted.overlays.as_mut() {
+        overlays.passes = overlay_passes
+            .as_ref()
+            .map(|passes| passes.passes.clone())
+            .unwrap_or_else(Vec::new);
     }
     extracted.vision = film.current;
     extracted.t6_vision = film.native_vision;

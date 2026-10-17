@@ -1317,6 +1317,8 @@ fn lod_culled(
 fn publish_script_model_bolt_poses(
     owners: Query<(&WorldScriptModelInstance, &Transform)>,
     persist: Res<ScriptModelDobjs>,
+    assets: Option<Res<asset_world::MapXModelSceneCatalog>>,
+    xanims: Option<Res<assets::PreparedXAnims>>,
     mut demand: ResMut<crate::anim::dobj_pose::ScriptModelBoltDemand>,
     mut dobj_poses: ResMut<crate::anim::dobj_pose::HostDObjPoseFrame>,
 ) {
@@ -1336,15 +1338,39 @@ fn publish_script_model_bolt_poses(
         else {
             continue;
         };
+        // The pose it draws with: its animation where it plays one, else
+        // its bind pose.
+        let request = assets
+            .as_ref()
+            .and_then(|assets| {
+                assets
+                    .get(&owner.current_model)
+                    .and_then(asset_world::MapXModelSceneAsset::namespace)
+            })
+            .and_then(|namespace| {
+                owner
+                    .dobj_state
+                    .resolve_request(|name| xanims.as_ref()?.0.clip(namespace, name))
+                    .ok()
+            })
+            .unwrap_or_else(xmodel_runtime::DObjPoseRequest::bind_pose);
         let Ok(local) = xmodel_runtime::pose_dobj_with_controller(
             &slot.dobj,
-            &xmodel_runtime::DObjPoseRequest::bind_pose(),
+            &request,
             Mat4::IDENTITY,
             |_, _, _| {},
         ) else {
             continue;
         };
         let _ = dobj_poses.publish(u32::from(entnum), true, 0, transform.to_matrix(), &local);
+        dobj_poses.name_bones(
+            u32::from(entnum),
+            slot.dobj
+                .bones
+                .iter()
+                .map(|bone| bone.name.clone())
+                .collect(),
+        );
     }
     demand.retain(|entnum| live.contains(&entnum));
 }

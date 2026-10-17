@@ -165,3 +165,82 @@ pub trait VisionChannels: Send + Sync {
         &[]
     }
 }
+
+/// A game's screen overlays: fullscreen draws of its own post materials over
+/// the frame, after the renderer's post passes and before the HUD, each
+/// reading the frame as drawn so far.
+#[derive(Clone, Copy, Debug)]
+pub struct OverlayRules {
+    /// Every material a frame's overlays can draw.
+    pub materials: &'static [&'static str],
+    /// The frame's overlays, in draw order.
+    pub plan: fn(&OverlayFrame<'_>) -> Vec<OverlayPass>,
+    /// What the game's overlay choice still leaves unknown.
+    pub gaps: &'static [&'static Unknown],
+}
+
+/// Rules are told apart by their materials: function addresses are not
+/// stable to compare.
+impl PartialEq for OverlayRules {
+    fn eq(&self, other: &Self) -> bool {
+        self.materials == other.materials
+    }
+}
+
+/// What a frame's overlays are planned from.
+#[derive(Clone, Copy, Debug)]
+pub struct OverlayFrame<'a> {
+    /// The client's time in milliseconds.
+    pub now_ms: i32,
+    /// The overlay state the client's game holds.
+    pub screen: &'a ScreenOverlays,
+    /// Each material's texture atlas (rows, columns), in the rule's order.
+    pub atlases: &'a [[u8; 2]],
+}
+
+/// One fullscreen draw of an overlay material.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OverlayPass {
+    pub material: &'static str,
+    /// The rows this draw sets before it draws.
+    pub constants: Vec<(OverlayConstant, [f32; 4])>,
+}
+
+/// A code row an overlay material reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OverlayConstant {
+    GameTime,
+    FlameDistortion,
+    OverlayTexCoord,
+    FadeEffect,
+    ViewportDimensions,
+}
+
+/// The screen overlays a client's game keeps, as its scripts and server set
+/// them, with the render settings its overlay draw reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ScreenOverlays {
+    /// The burning overlay, while it plays.
+    pub burn: Option<FlameOverlay>,
+    /// The electric shock overlay, while it plays.
+    pub shock: Option<FlameOverlay>,
+    /// Whether flame overlays may draw at all.
+    pub flame_allowed: bool,
+    /// The flame overlays' fade override: 1 leaves the fade as it plays.
+    pub flame_scaler: f32,
+}
+
+/// A flame-style overlay (burning, electric shock): the settings it took
+/// when it began, and its fade once it ends.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlameOverlay {
+    /// The distortion scale (horizontal, vertical).
+    pub distortion: [f32; 2],
+    pub magnitude: f32,
+    /// The texture atlas frames per second.
+    pub fps: f32,
+    /// When the fade began (the client's time in milliseconds).
+    pub fade_start_ms: i32,
+    /// How long the fade lasts; 0 while the overlay has not ended.
+    pub fade_ms: i32,
+}

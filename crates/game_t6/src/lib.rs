@@ -10,8 +10,10 @@ mod keys;
 mod menu_expression;
 mod missile;
 mod movement;
+mod overlay;
 mod script_zones;
 pub mod scrplace;
+mod shock;
 mod startup;
 pub mod ui;
 mod viewmodel;
@@ -284,6 +286,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: None,
     post_chain: None,
+    overlays: Some(overlay::OVERLAYS),
     frame_fog: Some(fog::FRAME_FOG),
     dyn_ent_physics: None,
 };
@@ -312,12 +315,13 @@ const OWN_ZOMBIES_MODE: ModeRules = ModeRules {
 };
 
 impl game_api::GameVision for T6 {
+    /// Black Ops 2's shellshock files, drawn by the shared screen's rules,
+    /// which its client runs.
     fn shellshock(&self) -> Rule<game_api::ShockFormat> {
-        Rule::Unknown(unknown!(
-            "t6.vision.shellshock",
-            "Black Ops 2's shellshock files and how its screen draws a shellshock",
-            "Black Ops 2's .shock format and shellshock screen rules"
-        ))
+        Rule::Known(game_api::ShockFormat::Game {
+            parse: shock::parse,
+            fallback: shock::FALLBACK,
+        })
     }
 }
 

@@ -48,6 +48,9 @@ pub enum EffectBolt {
     /// An entity: its number and the bone of its model it follows (`None`:
     /// the entity itself).
     Entity { number: u16, bone: Option<u16> },
+    /// An entity, at the bone the tag names among the bones of its drawn
+    /// models (attached ones too), else the entity itself.
+    EntityTag { number: u16, tag: String },
     /// The local client's viewmodel, at the bone a tag names (the viewmodel
     /// itself when it has no such tag).
     Viewmodel { tag: String },
