@@ -93,10 +93,11 @@ pub use expr::{
     evaluate_string, is_expression_true, source_int, source_str,
 };
 pub use flashbang::{
-    SCREEN_BLEND_BLURRED, SCREEN_BLEND_FLASHED, SCREEN_BLEND_NONE, ShellshockLookParms,
-    ShellshockLookState, ShellshockSoundParms, ShockParams, is_flashbanged, shellshock_blend_time,
-    shellshock_flash_blend, shellshock_flash_fade_sin_cos, shellshock_remaining_ms,
-    shellshock_screen_alpha, update_shellshock_look_control,
+    SCREEN_BLEND_BLURRED, SCREEN_BLEND_FLASHED, SCREEN_BLEND_NONE, ShellshockKick,
+    ShellshockLookParms, ShellshockLookState, ShellshockSoundParms, ShellshockTimedSound,
+    ShellshockVision, ShockParams, is_flashbanged, shellshock_blend_time, shellshock_flash_blend,
+    shellshock_flash_fade_sin_cos, shellshock_perturb_axis, shellshock_remaining_ms,
+    shellshock_screen_alpha, shellshock_view_kick, update_shellshock_look_control,
 };
 pub use font::{
     G_COLOR_TABLE, HUDELEM_FONT_DEFAULT_BASE_SCALE, HUDELEM_FONT_HALF_BASE_SCALE,

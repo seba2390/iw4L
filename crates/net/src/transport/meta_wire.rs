@@ -1,3 +1,7 @@
+use hud_iw4::{
+    ShellshockKick, ShellshockLookParms, ShellshockSoundParms, ShellshockTimedSound,
+    ShellshockVision, ShockParams,
+};
 use playerstate_iw4::AnimPair;
 use sim::{
     AreaEntityLinkSnapshot, AreaEntityWorldSnapshot, AreaSectorSnapshot, ClassId,
@@ -1836,12 +1840,12 @@ fn decode_vision(input: &mut WireReader<'_>) -> Result<Option<sim::VisionChange>
     }
 }
 
-fn encode_shock(out: &mut WireWriter, shock: Option<&hud_iw4::ShockParams>) {
+fn encode_shock(out: &mut WireWriter, shock: Option<&ShockParams>) {
     let Some(shock) = shock else {
         out.put_u8(0);
         return;
     };
-    out.put_u8(4);
+    out.put_u8(5);
     out.put_i32(shock.screen_type);
     out.put_i32(shock.white_fade_ms);
     out.put_i32(shock.shot_fade_ms);
@@ -1871,23 +1875,56 @@ fn encode_shock(out: &mut WireWriter, shock: Option<&hud_iw4::ShockParams>) {
     out.put_f32(shock.movement_scale);
     out.put_u8(u8::from(shock.animation));
     out.put_u8(u8::from(shock.look.reciprocal_fade));
+    match &shock.kick {
+        None => out.put_u8(0),
+        Some(kick) => {
+            out.put_u8(1);
+            out.put_i32(kick.fade_ms);
+            out.put_f32(kick.rate);
+            out.put_f32(kick.radius);
+        }
+    }
+    match &shock.timed_sound {
+        None => out.put_u8(0),
+        Some(sound) => {
+            out.put_u8(1);
+            put_text(out, &sound.loop_alias);
+            put_text(out, &sound.end_alias);
+            out.put_i32(sound.fade_in_ms);
+            out.put_i32(sound.fade_out_ms);
+            out.put_i32(sound.mod_end_delay_ms);
+            put_text(out, &sound.room);
+            out.put_f32(sound.dry);
+            out.put_f32(sound.wet);
+            put_text(out, &sound.snapshot);
+        }
+    }
+    match &shock.vision {
+        None => out.put_u8(0),
+        Some(vision) => {
+            out.put_u8(1);
+            put_text(out, &vision.name);
+            out.put_i32(vision.in_ms);
+            out.put_i32(vision.out_ms);
+        }
+    }
 }
 
-fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParams>, WireError> {
+fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<ShockParams>, WireError> {
     let tag = input.get_u8()?;
     if tag == 0 {
         return Ok(None);
     }
-    if !(1..=4).contains(&tag) {
+    if !(1..=5).contains(&tag) {
         return Err(WireError::Malformed("bad shellshock tag"));
     }
-    let mut shock = hud_iw4::ShockParams {
+    let mut shock = ShockParams {
         screen_type: input.get_i32()?,
         white_fade_ms: input.get_i32()?,
         shot_fade_ms: input.get_i32()?,
         blur_blend_ms: if tag >= 3 { input.get_i32()? } else { 0 },
         blur_fade_ms: if tag >= 3 { input.get_i32()? } else { 0 },
-        look: hud_iw4::ShellshockLookParms {
+        look: ShellshockLookParms {
             affect: input.get_u8()? != 0,
             fade_ms: input.get_i32()?,
             mouse_sensitivity: input.get_f32()?,
@@ -1895,7 +1932,7 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
             max_yaw_speed: input.get_f32()?,
             reciprocal_fade: false,
         },
-        sound: hud_iw4::ShellshockSoundParms {
+        sound: ShellshockSoundParms {
             channel_volumes: None,
             affect: input.get_u8()? != 0,
             loop_alias: get_text(input)?,
@@ -1905,6 +1942,9 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
         movement: input.get_u8()? != 0,
         movement_scale: 1.0,
         animation: false,
+        kick: None,
+        timed_sound: None,
+        vision: None,
     };
     if shock.blur_blend_ms < 0 || shock.blur_fade_ms < 0 {
         return Err(WireError::Malformed("negative shellshock blur time"));
@@ -1943,6 +1983,41 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
         if !shock.movement_scale.is_finite() {
             return Err(WireError::Malformed("bad shellshock movement scale"));
         }
+    }
+    if tag >= 5 {
+        shock.kick = match input.get_u8()? {
+            0 => None,
+            1 => Some(ShellshockKick {
+                fade_ms: input.get_i32()?,
+                rate: input.get_f32()?,
+                radius: input.get_f32()?,
+            }),
+            _ => return Err(WireError::Malformed("bad shellshock kick tag")),
+        };
+        shock.timed_sound = match input.get_u8()? {
+            0 => None,
+            1 => Some(ShellshockTimedSound {
+                loop_alias: get_text(input)?,
+                end_alias: get_text(input)?,
+                fade_in_ms: input.get_i32()?,
+                fade_out_ms: input.get_i32()?,
+                mod_end_delay_ms: input.get_i32()?,
+                room: get_text(input)?,
+                dry: input.get_f32()?,
+                wet: input.get_f32()?,
+                snapshot: get_text(input)?,
+            }),
+            _ => return Err(WireError::Malformed("bad shellshock sound tag")),
+        };
+        shock.vision = match input.get_u8()? {
+            0 => None,
+            1 => Some(ShellshockVision {
+                name: get_text(input)?,
+                in_ms: input.get_i32()?,
+                out_ms: input.get_i32()?,
+            }),
+            _ => return Err(WireError::Malformed("bad shellshock vision tag")),
+        };
     }
     Ok(Some(shock))
 }

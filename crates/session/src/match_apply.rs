@@ -11,8 +11,8 @@ use frame::{
     LaunchReport, WorldProducts, WorldStamp,
 };
 use hud_iw4::{
-    SCREEN_BLEND_BLURRED, SCREEN_BLEND_FLASHED, SCREEN_BLEND_NONE, ShellshockLookParms,
-    ShellshockSoundParms, ShockParams,
+    SCREEN_BLEND_BLURRED, SCREEN_BLEND_FLASHED, SCREEN_BLEND_NONE, ShellshockKick,
+    ShellshockLookParms, ShellshockSoundParms, ShellshockTimedSound, ShellshockVision, ShockParams,
 };
 use net::{AuthorityInputGate, AuthorityLoadHold, AuthorityWorld, ClientSet};
 
@@ -2401,7 +2401,7 @@ fn install_shocks(
 }
 
 /// A game's own shock file in the shared screen's terms. Its sound is the
-/// game's own and not played by the shared shellshock sound.
+/// game's own timed sound, not the shared shellshock loop.
 fn game_shock(file: &game_api::ShockFile) -> ShockParams {
     ShockParams {
         screen_type: match file.screen {
@@ -2431,6 +2431,27 @@ fn game_shock(file: &game_api::ShockFile) -> ShockParams {
         movement: false,
         movement_scale: file.movement_scale,
         animation: file.animation,
+        kick: file.kick.map(|kick| ShellshockKick {
+            fade_ms: kick.fade_ms,
+            rate: kick.rate,
+            radius: kick.radius,
+        }),
+        timed_sound: file.sound.as_ref().map(|sound| ShellshockTimedSound {
+            loop_alias: sound.loop_alias.clone(),
+            end_alias: sound.end_alias.clone(),
+            fade_in_ms: sound.fade_in_ms,
+            fade_out_ms: sound.fade_out_ms,
+            mod_end_delay_ms: sound.mod_end_delay_ms,
+            room: sound.room.clone(),
+            dry: sound.dry,
+            wet: sound.wet,
+            snapshot: sound.snapshot.clone(),
+        }),
+        vision: file.vision.as_ref().map(|vision| ShellshockVision {
+            name: vision.name.clone(),
+            in_ms: vision.in_ms,
+            out_ms: vision.out_ms,
+        }),
     }
 }
 

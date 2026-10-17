@@ -88,6 +88,12 @@ impl SnapshotMix {
         self.contexts.clone()
     }
 
+    /// Puts a snapshot in a slot from the client's own code, as a script's
+    /// call would.
+    pub(crate) fn set_slot(&mut self, slot: u8, name: String, value: f32) {
+        self.pending.push_back((slot, name, value));
+    }
+
     pub(crate) fn reset_epoch(&mut self, epoch: u64) {
         if self.epoch != epoch {
             self.epoch = epoch;
@@ -107,7 +113,7 @@ impl SnapshotMix {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn update_snapshot_mix(
+pub(crate) fn update_snapshot_mix(
     mut mix: ResMut<SnapshotMix>,
     mut events: MessageReader<net::SvcScriptAudio>,
     bank: Option<Res<crate::SoundBank>>,

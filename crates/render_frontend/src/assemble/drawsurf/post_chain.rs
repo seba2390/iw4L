@@ -221,6 +221,8 @@ pub struct PostVisionState {
     server_last_stand: Option<(String, i32)>,
     client_serial: u32,
     picked: Option<(usize, String)>,
+    /// The local player's shellshock holds the naked vision at its own.
+    shock_vision: bool,
 }
 
 struct VisionFileTexts<'a>(&'a asset_world::T5VisionCatalog);
@@ -288,6 +290,7 @@ pub(crate) fn update_post_vision(
         server_last_stand,
         client_serial,
         picked,
+        shock_vision,
         ..
     } = &mut *state;
     let Some(channels) = channels.as_mut() else {
@@ -317,6 +320,22 @@ pub(crate) fn update_post_vision(
             *client_serial = *serial;
         }
     }
+    if let Some(ps) = presented.player(local.0) {
+        let shock = presented.shellshock(local.0);
+        shellshock_vision(
+            channels.as_mut(),
+            shock_vision,
+            shock.is_some(),
+            shock
+                .and_then(|shock| shock.vision.as_ref())
+                .map(|vision| (vision.name.as_str(), vision.in_ms, vision.out_ms)),
+            now_ms.wrapping_sub(ps.shellshock_time),
+            ps.shellshock_time,
+            ps.shellshock_duration,
+            now_ms,
+            &files,
+        );
+    }
     let view = game_api::post::VisionView {
         now_ms,
         last_stand: presented
@@ -339,6 +358,47 @@ pub(crate) fn update_post_vision(
         *picked = Some((channel, name.to_owned()));
     }
 }
+
+/// The shellshock's vision, as the game's client shock update sets it each
+/// frame of a shock: blended in over the shock's in time while it lasts,
+/// back to the server's naked vision over its out time once it is over, or
+/// over 3 s when the shock names no vision.
+#[allow(clippy::too_many_arguments)]
+fn shellshock_vision(
+    channels: &mut dyn game_api::post::VisionChannels,
+    active: &mut bool,
+    shocked: bool,
+    vision: Option<(&str, i32, i32)>,
+    elapsed: i32,
+    start: i32,
+    duration: i32,
+    now_ms: i32,
+    files: &dyn game_api::post::VisionFiles,
+) {
+    if !shocked || start == 0 || elapsed < 0 {
+        return;
+    }
+    match vision {
+        None if *active => {
+            *active = false;
+            channels.shellshock(None, SHOCK_VISION_RESTORE_MS, now_ms, files);
+        }
+        Some((name, in_ms, _)) if elapsed < duration => {
+            if !*active {
+                *active = true;
+                channels.shellshock(Some(name), in_ms, now_ms, files);
+            }
+        }
+        Some((_, _, out_ms)) if *active => {
+            *active = false;
+            channels.shellshock(None, out_ms, now_ms, files);
+        }
+        _ => {}
+    }
+}
+
+/// How long a shock without a vision takes to restore the naked vision.
+const SHOCK_VISION_RESTORE_MS: i32 = 3000;
 
 /// The overlays this frame draws, as the game's rule planned them.
 #[derive(Resource, Default)]

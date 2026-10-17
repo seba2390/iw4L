@@ -152,6 +152,15 @@ pub trait VisionFiles {
 pub trait VisionChannels: Send + Sync {
     /// Takes a script call at the client's time `now_ms`.
     fn call(&mut self, call: &VisionCall, now_ms: i32, files: &dyn VisionFiles);
+    /// The client's shellshock blends the naked vision to its own vision,
+    /// or back to the server's naked vision (`None`), over `duration_ms`.
+    fn shellshock(
+        &mut self,
+        vision: Option<&str>,
+        duration_ms: i32,
+        now_ms: i32,
+        files: &dyn VisionFiles,
+    );
     /// The vision this frame draws with, as the game's vision file reader
     /// leaves one.
     fn frame(&mut self, view: VisionView, files: &dyn VisionFiles) -> &[u32];

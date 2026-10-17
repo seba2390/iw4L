@@ -198,6 +198,9 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         },
         movement_scale: number("bg_shock_movement"),
         animation: flag("bg_shock_animation"),
+        kick: None,
+        sound: None,
+        vision: None,
         unrun,
     })
 }
