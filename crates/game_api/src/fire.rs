@@ -344,7 +344,7 @@ pub enum WeaponEvent {
 }
 
 /// What a client does when a player fires, by the game's own rules.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ClientFireRules {
     /// The fire sound a shot plays, from the weapon's definition and
     /// variant in the game's layout; `None` when the shot plays none.

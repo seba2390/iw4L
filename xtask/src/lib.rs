@@ -8,6 +8,7 @@ pub mod frame_budget;
 pub mod github;
 pub mod ledger_guard;
 pub mod licenses;
+pub mod lints;
 pub mod live;
 pub mod loc;
 pub mod master;

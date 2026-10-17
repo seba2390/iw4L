@@ -87,9 +87,11 @@ CI fails when the table and the milestones disagree.
 
 ## Checks before a pull request
 
-CI runs `make publish-check`, `cargo check --workspace --all-targets`,
-`cargo xtask boundary --enforce`, `cargo xtask progress` and
+CI runs `make publish-check`, `cargo check --workspace --all-targets` (fails
+on any rustc warning), `cargo xtask lints --enforce` (clippy and rustc warnings
+may only go down: `xtask/lints/allow.txt`), `cargo fmt --all -- --check`, ruff
+on `scripts/`, `cargo xtask boundary --enforce`, `cargo xtask progress` and
 `cargo xtask ledger-guard` (a game's code change also changes its ledger, or
 the pull request body says `Ledger: none — <reason>`). Run them before
-pushing, plus `cargo clippy` and `rustfmt --edition 2024` on the files you
-touched, and fill in the pull request template.
+pushing — CONTRIBUTING.md lists the exact commands — and fill in the pull
+request template.

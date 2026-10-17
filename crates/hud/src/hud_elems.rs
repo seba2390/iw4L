@@ -468,7 +468,7 @@ pub(crate) fn update_hud_elems(
         let script_text = mode
             .as_ref()
             .map_or(game_api::ScriptText::Engine, |mode| mode.hud.script_text);
-        if script_text == game_api::ScriptText::Off {
+        if matches!(script_text, game_api::ScriptText::Off) {
             gaps.raise(GapCause::HudElemT5TextRule);
             continue;
         }

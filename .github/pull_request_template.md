@@ -17,7 +17,11 @@ Closes #<!-- issue number; see AGENTS.md "Work from an issue". Small fixes witho
 - [ ] **Progress.** A milestone in `docs/PROGRESS.md` this PR reaches (or
       breaks) is ticked (or unticked) here, and `cargo xtask progress --write`
       has regenerated the README table. Otherwise: no milestone changed.
-- [ ] **Checks run.** `cargo xtask boundary --enforce` and `make publish-check`
-      are clean; clippy clean and `rustfmt --edition 2024` on touched files.
+- [ ] **Checks run.** What CI runs is clean: `make publish-check`,
+      `cargo check --workspace --all-targets` (no warnings),
+      `cargo xtask lints --enforce`, `cargo fmt --all -- --check`,
+      `ruff check scripts && ruff format --check scripts`,
+      `cargo xtask boundary --enforce`, `cargo xtask progress` and
+      `cargo xtask ledger-guard --base origin/main`.
 - [ ] **Review threads resolved before merge.** Every review comment is
       answered or fixed and its thread resolved; no merge over an open review.
