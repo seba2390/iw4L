@@ -2543,7 +2543,7 @@ fn decode_entity_state(input: &mut WireReader<'_>) -> Result<entity_iw4::EntityS
         apos_tr_base: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
         index: input.get_i32()?,
         solid: input.get_u32()?,
-        ..entity_iw4::EntityState::default()
+        ..Default::default()
     };
     es.set_launch_time(input.get_i32()?);
     es.client_num = input.get_i32()?;
