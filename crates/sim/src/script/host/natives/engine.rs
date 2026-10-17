@@ -851,9 +851,7 @@ fn weapon_facts(
     let index = frame
         .weapon_index_by_script_name(&name)
         .ok_or_else(|| format!("unknown weapon '{name}'"))?;
-    Ok(frame
-        .weapon_combat_row(index)
-        .unwrap_or(weapon_iw4::WeaponCombatFacts::none()))
+    Ok(frame.weapon_combat_row_or_none(index))
 }
 
 const WEAPON_TYPES: &[&str] = &["bullet", "grenade", "projectile", "riotshield"];

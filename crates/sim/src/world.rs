@@ -37,7 +37,7 @@ use crate::world_objects::WorldObjectState;
 use crate::{WeaponScriptSounds, WeaponSetup};
 use std::collections::HashMap;
 use std::sync::Arc;
-use weapon_iw4::WeaponCombatFacts;
+use weapon_iw4::{BulletPenFacts, WeaponCombatFacts};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Tick(pub u32);
@@ -760,7 +760,7 @@ impl SimState {
             .bullet_pen
             .get(weapon as usize)
             .copied()
-            .unwrap_or_else(weapon_iw4::BulletPenFacts::default)
+            .unwrap_or_else(BulletPenFacts::default)
     }
 
     pub fn weapon_script_names(&self) -> Arc<[String]> {
@@ -1033,6 +1033,12 @@ impl SimState {
             .weapon_combat
             .get(weapon as usize)
             .copied()
+    }
+
+    /// A weapon's combat facts; none for an index past the table.
+    pub fn weapon_combat_row_or_none(&self, weapon: u32) -> WeaponCombatFacts {
+        self.weapon_combat_row(weapon)
+            .unwrap_or(WeaponCombatFacts::none())
     }
 
     pub fn content_digest(&self) -> u64 {

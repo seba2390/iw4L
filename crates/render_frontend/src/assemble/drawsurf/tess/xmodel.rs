@@ -260,7 +260,7 @@ fn producer_keys(
 ) -> ProducerKeys {
     let sky_rev = sky
         .map(|sky| sky.revisions)
-        .unwrap_or_else(render_frame::SourceRevisions::default);
+        .unwrap_or_else(render_anim::draw::SourceRevisions::default);
     let sky_gen = sky.map(|sky| sky.generation).unwrap_or(0);
     ProducerKeys {
         generation: [
