@@ -358,7 +358,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // gsc_setculldist: configstring 7, the clients' cull distance, through
-    // `%g` (`t6.vision.cull`: the clients do not cull by it).
+    // `%g` (`t6.vision.cull`: IW4L's effects cull by no frustum).
     registry.register(Function, "setculldist", |world, _, args| {
         let distance = number(args.first()).ok_or("setculldist expects a distance")?;
         world.get_resource_or_insert_with(ServerFog::default).cull =
