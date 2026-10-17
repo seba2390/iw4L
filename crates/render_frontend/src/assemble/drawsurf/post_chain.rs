@@ -140,6 +140,8 @@ pub struct RuntimeOverlays {
     pub rules: OverlayRules,
     pub materials: Vec<RuntimePostFx>,
     pub atlases: Vec<[u8; 2]>,
+    /// Each material's textures, by name hash.
+    pub textures: Vec<Vec<(u32, render_material::RuntimeTextureBinding)>>,
 }
 
 /// The base every overlay draw executes against at `width` x `height`: the
@@ -176,9 +178,17 @@ pub(crate) fn build_runtime_overlays(
     ))?;
     let mut materials = Vec::with_capacity(rules.materials.len());
     let mut atlases = Vec::with_capacity(rules.materials.len());
+    let mut textures = Vec::with_capacity(rules.materials.len());
     for &name in rules.materials {
         let material = postfx_material_in(catalog, name, namespace).map_err(|e| (name, e))?;
         atlases.push(material.texture_atlas.unwrap_or([0, 0]));
+        textures.push(
+            material
+                .textures
+                .iter()
+                .filter_map(|(hash, binding)| Some((*hash, (*binding)?)))
+                .collect(),
+        );
         materials.push(
             admit_unlit_2d_material(
                 catalog,
@@ -196,6 +206,7 @@ pub(crate) fn build_runtime_overlays(
         rules: *rules,
         materials,
         atlases,
+        textures,
     })
 }
 
@@ -329,12 +340,56 @@ pub(crate) fn update_post_vision(
     }
 }
 
+/// The overlays this frame draws, as the game's rule planned them.
+#[derive(Resource, Default)]
+pub struct ScreenOverlayPasses {
+    pub passes: Vec<game_api::post::OverlayPass>,
+    /// The materials the last frame drew, for the log.
+    logged: Vec<&'static str>,
+}
+
+/// Plans the frame's overlays from the presented client's screen.
+pub(crate) fn plan_screen_overlays(
+    generation: Option<Res<super::MaterialGeneration>>,
+    clock: Res<net::FrameClock>,
+    presented: Res<net::PresentedSnapshot>,
+    local: Res<net::LocalPresentClient>,
+    mut out: ResMut<ScreenOverlayPasses>,
+) {
+    let Some(Ok(overlays)) = generation.as_ref().and_then(|g| g.overlays.as_ref()) else {
+        out.passes.clear();
+        return;
+    };
+    let screen = presented
+        .snapshot()
+        .and_then(|snapshot| snapshot.meta.for_client(local.0))
+        .map(|meta| meta.view_effects.client_screen.overlays)
+        .unwrap_or_default();
+    out.passes = (overlays.rules.plan)(&game_api::post::OverlayFrame {
+        now_ms: clock.time(),
+        screen: &screen,
+        atlases: &overlays.atlases,
+    });
+    let drawn: Vec<&'static str> = out.passes.iter().map(|pass| pass.material).collect();
+    if drawn != out.logged {
+        diag::info!(World, "screen overlays: {drawn:?} at {}", clock.time());
+        out.logged = drawn;
+    }
+}
+
 pub fn register(app: &mut App) {
-    app.init_resource::<PostVisionState>().add_systems(
-        Update,
-        update_post_vision
-            .in_set(frame::InMatch)
-            .after(crate::prepare::scene::view_parms::stamp_prepared_scene_view)
-            .in_set(net::ClientSet::Present),
-    );
+    app.init_resource::<PostVisionState>()
+        .init_resource::<ScreenOverlayPasses>()
+        .add_systems(
+            Update,
+            (
+                update_post_vision
+                    .in_set(frame::InMatch)
+                    .after(crate::prepare::scene::view_parms::stamp_prepared_scene_view)
+                    .in_set(net::ClientSet::Present),
+                plan_screen_overlays
+                    .in_set(frame::InMatch)
+                    .in_set(net::ClientSet::Present),
+            ),
+        );
 }
