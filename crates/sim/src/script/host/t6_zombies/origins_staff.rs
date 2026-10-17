@@ -260,7 +260,7 @@ impl Staffs {
         }
     }
 
-    pub(super) fn craft(&mut self, world: &mut World, client: ClientId, index: usize) -> bool {
+    pub(super) fn craft(&mut self, client: ClientId, index: usize) -> bool {
         let Some(station) = self.stations.get(index) else {
             return false;
         };
@@ -383,28 +383,6 @@ impl Staffs {
         !self.has(client, kind) && self.part_count(client, kind) >= 1
     }
 
-    pub(super) fn give(&mut self, client: ClientId, kind: StaffKind) {
-        self.owned.entry(client).or_default().insert(kind);
-        diag::info!(
-            Sim,
-            "origins staff given client={} kind={}",
-            client.0,
-            kind.name()
-        );
-    }
-
-    pub(super) fn take(&mut self, client: ClientId, kind: StaffKind) {
-        if let Some(staffs) = self.owned.get_mut(&client) {
-            staffs.remove(&kind);
-        }
-        diag::info!(
-            Sim,
-            "origins staff taken client={} kind={}",
-            client.0,
-            kind.name()
-        );
-    }
-
     pub(super) fn status(&self, client: ClientId) -> String {
         let staffs = self.owned.get(&client).cloned().unwrap_or_default();
         let upgraded = self.upgraded.get(&client).cloned().unwrap_or_default();
@@ -460,7 +438,9 @@ impl Staffs {
         client: ClientId,
         kind: StaffKind,
         origin: [f32; 3],
-        direction: [f32; 3],
+        // Where the player aims. The ability is not aimed yet: its effect
+        // plays at `origin`.
+        _direction: [f32; 3],
         tick: Tick,
     ) -> bool {
         if !self.has(client, kind) {
@@ -910,9 +890,9 @@ impl Staffs {
         index: usize,
         tick: Tick,
     ) -> bool {
-        let Some(key) = self.tank_keys_dropped.get(index) else {
+        if index >= self.tank_keys_dropped.len() {
             return false;
-        };
+        }
 
         // Give player the tank key weapon
         let mut frame = FrameWorld::from_world(world);

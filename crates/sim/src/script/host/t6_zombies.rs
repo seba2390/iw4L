@@ -2069,7 +2069,7 @@ fn interactions(
             } else if let Some(index) = tank_key {
                 state.staffs.take_tank_key(world, client, index, tick);
             } else if let Some(index) = staff {
-                state.staffs.craft(world, client, index);
+                state.staffs.craft(client, index);
             } else if let Some(index) = dig {
                 let mut digs = std::mem::take(&mut state.digs);
                 digs.dig(world, state, &mut survivor, client, index, tick);

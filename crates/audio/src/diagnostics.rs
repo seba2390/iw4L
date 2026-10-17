@@ -115,6 +115,13 @@ pub(crate) fn slow_stage(stage: &str, started: Instant) -> Instant {
     now
 }
 
+#[cfg_attr(
+    not(target_os = "linux"),
+    expect(
+        unused_variables,
+        reason = "only Linux reports a thread's CPU affinity"
+    )
+)]
 pub(crate) fn thread(name: &str) {
     if !enabled() {
         return;

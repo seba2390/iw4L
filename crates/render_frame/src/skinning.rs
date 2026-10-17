@@ -22,7 +22,7 @@ impl PackedSkinShape {
     pub fn new(vertices: Vec<PackedSkinVertex>) -> Arc<Self> {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let id = NEXT
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("skin shape identity exhausted");
         let required_bones = vertices
             .iter()

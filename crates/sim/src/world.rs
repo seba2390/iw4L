@@ -956,13 +956,6 @@ impl SimState {
         self.dobj_anim_mats.get(&(entnum, bone)).copied()
     }
 
-    pub(crate) fn allocate_dynamic_entity(
-        &mut self,
-        kind: crate::gentity::EntityRunKind,
-    ) -> Result<crate::gentity::EntityRef, crate::gentity::EntityAllocError> {
-        self.allocate_dynamic_entity_avoiding(kind, |_| false)
-    }
-
     /// Allocates a dynamic entity, passing over the numbers `taken` says a
     /// script entity holds.
     pub(crate) fn allocate_dynamic_entity_avoiding(
