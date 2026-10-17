@@ -7,7 +7,7 @@
 use super::super::{array_id, int, string};
 use super::game::ClientGame;
 use super::sound::{MixCommand, mix_command, mix_names, sound_hash};
-use crate::script::host::client_scripts::{ClientCallbacks, with_server};
+use crate::script::host::client_scripts::ClientCallbacks;
 use crate::script::{ArrayKey, Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 
@@ -19,8 +19,6 @@ const ROOM_TRIGGERS: usize = 16;
 const ROOM_CONTEXTS: usize = 16;
 /// The entities whose ambient state the engine follows.
 const STATES: usize = 64;
-/// A trigger's spawnflag that keeps players out of it.
-const NOT_PLAYER: i32 = 8;
 
 /// The client triggers the client spawned from the map, each with its
 /// spawnflags.
@@ -301,71 +299,19 @@ fn forced(args: &[Value]) -> Result<Option<u32>, String> {
     Ok(Some(if force { hash } else { 0 }))
 }
 
-/// The local player's touch box: 15 units out from its origin and 70 up.
-fn player_box(origin: [f32; 3]) -> ([f32; 3], [f32; 3]) {
-    (
-        [origin[0] - 15.0, origin[1] - 15.0, origin[2]],
-        [origin[0] + 15.0, origin[1] + 15.0, origin[2] + 70.0],
-    )
-}
-
 /// The ambient triggers the local player touches this frame, by entity
 /// number.
-// t6.csc.sound.ambient: the client's touch pass raises no `touch` or
-// `trigger` notify.
 fn touched_triggers(client: &mut World, player_number: i32) -> Vec<i32> {
-    let Some(origin) = with_server(client, |server| {
-        crate::frame::FrameWorld::from_world(server)
-            .player(crate::ClientId(player_number as u32))
-            .map(|ps| ps.origin)
-    })
-    .flatten() else {
-        return Vec::new();
-    };
-    let (mins, maxs) = player_box(origin);
-    let triggers = client
-        .get_resource::<ClientTriggers>()
-        .map_or_else(Vec::new, |t| t.0.clone());
-    let mut touched = Vec::new();
-    for (object, flags) in triggers {
-        if flags & NOT_PLAYER != 0 {
-            continue;
-        }
-        let mut runtime = client.resource_mut::<RoundScript>();
-        if !runtime.live(&object)
-            || runtime.object_field(object, "targetname") != Value::string("ambient_package")
-        {
-            continue;
-        }
-        let Some(number) = runtime.entities.get(&object).map(|e| e.number) else {
-            continue;
-        };
-        let at = match runtime.object_field(object, "origin") {
-            Value::Vector(v) => v,
-            _ => [0.0; 3],
-        };
-        let model = match runtime.object_field(object, "model") {
-            Value::String(text) => text.to_string(),
-            _ => String::new(),
-        };
-        let brush = model.strip_prefix('*').and_then(|n| n.parse::<u32>().ok());
-        let trigger_model = model.strip_prefix('?').and_then(|n| n.parse::<u32>().ok());
-        let touches = with_server(client, |server| {
-            crate::script::host::triggers::map_volume_touches(
-                &crate::frame::FrameWorld::from_world(server),
-                at,
-                brush,
-                trigger_model,
-                mins,
-                maxs,
-            )
+    super::touch::touched(client, player_number)
+        .into_iter()
+        .filter(|&(object, _)| {
+            client
+                .resource_mut::<RoundScript>()
+                .object_field(object, "targetname")
+                == Value::string("ambient_package")
         })
-        .unwrap_or(false);
-        if touches {
-            touched.push(number);
-        }
-    }
-    touched
+        .map(|(_, number)| number)
+        .collect()
 }
 
 /// The engine's ambient pass for a client frame: each ambient trigger the

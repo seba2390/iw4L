@@ -1280,6 +1280,7 @@ pub(crate) fn bake_static_sun_shadow_casters(
         let (smodel_near, smodel_far) = sun_smodel_vis.split_at_mut(1);
         let (msb_near, msb_far) = sun_frustum_draw_msb.split_at_mut(1);
 
+        let gump_hidden = cull.smodel_gump_hidden.as_slice();
         let lod_origin_eye = camera_view.map(|view| view.inverse().transform_point3(Vec3::ZERO));
         let buckets = super::retained_list::SmodelBucketBakeSrc {
             pretess_enable: pretess.enabled,
@@ -1326,6 +1327,7 @@ pub(crate) fn bake_static_sun_shadow_casters(
                                 smodel_vis,
                                 frustum_msb,
                             );
+                        crate::prepare::scene::cull::hide_gump_models(smodel_vis, gump_hidden);
                         if let Some(eye) = lod_origin_eye {
                             dpvs_iw4::cull_smodel_sun_shadow_vis(
                                 smodel_vis,

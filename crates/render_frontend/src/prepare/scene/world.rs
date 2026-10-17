@@ -131,6 +131,12 @@ pub struct WorldCull {
 
     pub static_model_entities: Vec<Option<Entity>>,
     pub static_model_cull_dists: Vec<u16>,
+    /// Per static model slot, the gumps one of which the local client's
+    /// gump slots must hold for it to draw (none: always).
+    pub static_model_gumps: Vec<Vec<String>>,
+    /// Per static model slot, whether its gumps are out of the local
+    /// client's gump slots this frame.
+    pub smodel_gump_hidden: Vec<bool>,
 
     pub smodel_vis: Vec<u8>,
 
@@ -396,6 +402,9 @@ pub struct WorldDrawGeometry {
 #[derive(Debug)]
 pub struct WorldStaticModelMesh {
     pub name: String,
+    /// The gumps that carry its model: it draws only while the local
+    /// client's gump slots hold one of them (none: always).
+    pub gumps: Vec<String>,
 
     pub lod_surfaces: [Vec<WorldStaticModelSurface>; 4],
 
@@ -1082,6 +1091,8 @@ impl WorldScene {
             draw_items_id: 0,
             g0_surfs: Vec::new(),
             static_model_entities: Vec::new(),
+            static_model_gumps: Vec::new(),
+            smodel_gump_hidden: Vec::new(),
             static_model_cull_dists: Vec::new(),
             smodel_vis: Vec::new(),
             cell_vis: Vec::new(),
@@ -1568,6 +1579,7 @@ pub fn world_scene_from_draw(
 
     let convert_model = |model: asset_world::ModelMesh| WorldStaticModelMesh {
         name: model.name,
+        gumps: Vec::new(),
         lod_smc: model.lod_smc,
         lod: model.lod,
         lod_surfaces: model.lod_surfaces.map(|lod| {
@@ -1585,10 +1597,14 @@ pub fn world_scene_from_draw(
         }),
     };
     let sky_model = draw.sky_model.take().map(convert_model);
+    let mut static_model_gumps = world.static_model_gumps.into_iter();
     let static_model_meshes = world
         .static_model_meshes
         .into_iter()
-        .map(convert_model)
+        .map(|model| WorldStaticModelMesh {
+            gumps: static_model_gumps.next().unwrap_or_else(Vec::new),
+            ..convert_model(model)
+        })
         .collect();
 
     let static_model_instances = world

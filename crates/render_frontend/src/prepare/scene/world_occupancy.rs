@@ -67,6 +67,15 @@ pub fn place(
 
         let mut entities = vec![None; slot_count];
         let mut cull_dists = vec![0; slot_count];
+        let gumps: Vec<Vec<String>> = static_model_instances
+            .iter()
+            .map(|instance| {
+                instance
+                    .as_ref()
+                    .and_then(|instance| scene.static_model_meshes.get(instance.mesh))
+                    .map_or_else(Vec::new, |mesh| mesh.gumps.clone())
+            })
+            .collect();
         let mut unresolved_slots = 0usize;
         let mut lit_slots = 0usize;
         let mut sample_without_technique = 0usize;
@@ -180,6 +189,7 @@ pub fn place(
         if let Some(cull) = scene.cull.as_mut() {
             cull.static_model_entities = entities;
             cull.static_model_cull_dists = cull_dists;
+            cull.static_model_gumps = gumps;
             cull.smodel_vis.resize(slot_count, 0);
         }
     }

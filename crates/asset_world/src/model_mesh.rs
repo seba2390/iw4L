@@ -375,6 +375,9 @@ pub struct MapXModelSceneCatalog {
     /// Per surface, the name of a material another zone holds (a `,name`
     /// reference), for surfaces the capturing walk could not bind.
     foreign_materials: BTreeMap<MapXModelAssetKey, Vec<Option<String>>>,
+    /// The models only gumps carry (Black Ops 2), each with those gumps: such
+    /// a model draws only while the local client's gump slots hold one.
+    gumps: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -394,6 +397,16 @@ impl MapXModelSceneCatalog {
 
     pub fn get_name(&self, name: &str) -> Option<&MapXModelSceneAsset> {
         self.assets.get(name)
+    }
+
+    /// The gumps that carry a model only gumps carry; empty for any other.
+    pub fn gumps_of(&self, name: &str) -> &[String] {
+        self.gumps.get(name).map_or(&[], Vec::as_slice)
+    }
+
+    /// Marks a model as one only these gumps carry.
+    pub fn set_gumps(&mut self, name: String, gumps: Vec<String>) {
+        self.gumps.insert(name, gumps);
     }
 
     pub fn resolve_surface_materials(
