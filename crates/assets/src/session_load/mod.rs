@@ -102,6 +102,10 @@ pub struct PreparedWorld {
     pub draw: Option<WorldDraw>,
     pub dynamic_light: Option<asset_world::ResolvedLightDef>,
     pub static_model_meshes: Vec<asset_world::ModelMesh>,
+    /// Per static model mesh, the gumps that carry its model (Black Ops 2):
+    /// it draws only while the local client's slots hold one of them. Empty
+    /// for a model of the map's own zones.
+    pub static_model_gumps: Vec<Vec<String>>,
 
     pub static_model_instances: Vec<Option<asset_world::StaticModelPlacement>>,
 
@@ -208,6 +212,7 @@ impl PreparedWorld {
             draw: Default::default(),
             dynamic_light: Default::default(),
             static_model_meshes: Default::default(),
+            static_model_gumps: Default::default(),
             static_model_instances: Default::default(),
             map_xmodel_scene_assets: Default::default(),
             script_model_instances: Default::default(),

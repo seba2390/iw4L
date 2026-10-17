@@ -1666,6 +1666,15 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_u16(bank);
         }
     }
+    for gump in &screen.gumps {
+        match gump {
+            None => out.put_u8(0),
+            Some(name) => {
+                out.put_u8(1);
+                put_text(out, name);
+            }
+        }
+    }
 }
 
 fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen, WireError> {
@@ -1710,11 +1719,20 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         1 => Some(input.get_u16()?),
         _ => return Err(WireError::Malformed("bad fog bank tag")),
     };
+    let mut gumps: [Option<String>; sim::GUMP_SLOTS] = Default::default();
+    for gump in &mut gumps {
+        *gump = match input.get_u8()? {
+            0 => None,
+            1 => Some(get_text(input)?),
+            _ => return Err(WireError::Malformed("bad gump tag")),
+        };
+    }
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
         fog,
         fog_bank,
+        gumps,
     })
 }
 

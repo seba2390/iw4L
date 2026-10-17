@@ -136,12 +136,27 @@ pub(crate) fn smodel_cull_dist_skips_slot(
     smodel_cull_dist_hides(cull_dist, dx * dx + dy * dy + dz * dz, scale_last)
 }
 
+/// Clears the visibility of the static model slots whose gumps the local
+/// client's slots do not hold.
+pub(crate) fn hide_gump_models(smodel_vis: &mut [u8], hidden: &[bool]) {
+    for (vis, &hidden) in smodel_vis.iter_mut().zip(hidden) {
+        if hidden {
+            *vis = 0;
+        }
+    }
+}
+
 pub fn apply_dpvs_cull(
     mut scene: ResMut<WorldScene>,
     mut stats: ResMut<DpvsFrameStats>,
     mut published_vis: ResMut<render_scene::PublishedCellVis>,
     prepared: Res<PreparedSceneView>,
     lock_pvs: Res<crate::prepare::scene::view_parms::RLockPvs>,
+    script_view: (
+        Option<Res<net::PresentedSnapshot>>,
+        Option<Res<net::LocalPresentClient>>,
+    ),
+    mut gump_logged: Local<Option<usize>>,
 ) {
     let _cull = perf::Span::RenderCullCpuMs.enter();
     stats.frustum_planes.clear();
@@ -293,6 +308,56 @@ pub fn apply_dpvs_cull(
                 &frustum,
                 &mut vis_data,
                 &mut aabb_stats,
+            );
+        }
+    }
+
+    // A static model a gump carries draws only while the local client's
+    // gump slots hold one of its gumps.
+    if cull
+        .static_model_gumps
+        .iter()
+        .any(|gumps| !gumps.is_empty())
+    {
+        let screen = match &script_view {
+            (Some(presented), Some(local)) => presented
+                .snapshot()
+                .and_then(|snapshot| snapshot.meta.for_client(local.0))
+                .map(|meta| &meta.view_effects.client_screen),
+            _ => None,
+        };
+        let held = |gump: &String| {
+            screen.is_some_and(|screen| {
+                screen
+                    .gumps
+                    .iter()
+                    .flatten()
+                    .any(|slot| slot.eq_ignore_ascii_case(gump))
+            })
+        };
+        cull.smodel_gump_hidden.clear();
+        cull.smodel_gump_hidden.extend(
+            cull.static_model_gumps
+                .iter()
+                .map(|gumps| !gumps.is_empty() && !gumps.iter().any(held)),
+        );
+        hide_gump_models(&mut cull.smodel_vis, &cull.smodel_gump_hidden);
+        let hidden = cull.smodel_gump_hidden.iter().filter(|&&h| h).count();
+        if *gump_logged != Some(hidden) {
+            *gump_logged = Some(hidden);
+            diag::info!(
+                World,
+                "t6 gumps: {} of {} gump static models drawn (slots {:?})",
+                cull.static_model_gumps
+                    .iter()
+                    .filter(|g| !g.is_empty())
+                    .count()
+                    - hidden,
+                cull.static_model_gumps
+                    .iter()
+                    .filter(|g| !g.is_empty())
+                    .count(),
+                screen.map(|screen| &screen.gumps)
             );
         }
     }
