@@ -823,14 +823,23 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(playing.into()))
     });
 
-    // bullettracer(start, end): spawns a client bullet tracer beam.
+    // bullettracer(start, end): the engine's tracer spawn for the local
+    // client, from no entity and no weapon. A segment of 5 units or less
+    // spawns nothing; a longer one first asks whether the null entity is
+    // using the local player's weapon, reading its fields.
     registry.register(Function, "bullettracer", |_, _, args| {
-        vector(args, 0)?;
-        vector(args, 1)?;
-        // t6.csc.fx.bullet_tracer: the engine spawns a tracer local entity
-        // with its `defaulttracer` definition; IW4L has no Black Ops 2
-        // tracer definitions or tracer drawing.
-        Ok(Value::Undefined)
+        let start = vector(args, 0)?;
+        let end = vector(args, 1)?;
+        let delta = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+        let length = (delta[1] * delta[1] + delta[0] * delta[0] + delta[2] * delta[2]).sqrt();
+        if length <= 5.0 {
+            return Ok(Value::Undefined);
+        }
+        Err(
+            "t6.csc.fx.bullet_tracer: Black Ops 2 reads the null entity it passes to its \
+             tracer spawn and faults"
+                .into(),
+        )
     });
 
     // ent earthquake(scale, duration, source, radius): shakes the local
