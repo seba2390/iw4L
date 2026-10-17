@@ -171,7 +171,8 @@ pub trait VisionChannels: Send + Sync {
 /// reading the frame as drawn so far.
 #[derive(Clone, Copy, Debug)]
 pub struct OverlayRules {
-    /// Every material the game's own overlays draw.
+    /// Every material the game's own overlays draw, drawn when the loaded
+    /// zones carry them.
     pub materials: &'static [&'static str],
     /// The materials the game's client scripts map to its filter passes,
     /// drawn when the loaded zones carry them.
@@ -197,8 +198,8 @@ pub struct OverlayFrame<'a> {
     pub now_ms: i32,
     /// The overlay state the client's game holds.
     pub screen: &'a ScreenOverlays,
-    /// Each material's texture atlas (rows, columns), in the rule's order.
-    pub atlases: &'a [[u8; 2]],
+    /// Each drawable material's texture atlas (rows, columns), by name.
+    pub atlases: &'a [(&'static str, [u8; 2])],
 }
 
 /// One fullscreen draw of an overlay material.

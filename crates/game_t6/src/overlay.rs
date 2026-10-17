@@ -56,12 +56,11 @@ fn exclusive(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
         (None, Some(shock)) => (SHOCK, shock),
         (None, None) => return None,
     };
-    let atlas = MATERIALS
+    let atlas = frame
+        .atlases
         .iter()
-        .position(|&name| name == material)
-        .and_then(|at| frame.atlases.get(at))
-        .copied()
-        .unwrap_or([0, 0]);
+        .find(|(name, _)| *name == material)
+        .map_or([0, 0], |(_, atlas)| *atlas);
     Some(OverlayPass {
         material: material.to_owned(),
         constants: flame_rows(&overlay, atlas, screen, frame.now_ms),
@@ -77,17 +76,11 @@ fn filter_pass(filter: &ScreenFilter, now_ms: i32) -> OverlayPass {
         (OverlayConstant::GameTime, game_time(now_ms)),
         (OverlayConstant::RenderTargetSize, [0.0; 4]),
     ];
+    let (rows, _) = filter.constants.as_chunks::<4>();
     constants.extend(
-        filter
-            .constants
-            .chunks_exact(4)
+        rows.iter()
             .zip(0u8..)
-            .map(|(row, at)| {
-                (
-                    OverlayConstant::ScriptVector(at),
-                    [row[0], row[1], row[2], row[3]],
-                )
-            }),
+            .map(|(row, at)| (OverlayConstant::ScriptVector(at), *row)),
     );
     constants.push((OverlayConstant::ViewportDimensions, [0.0, 0.0, 1.0, 1.0]));
     OverlayPass {

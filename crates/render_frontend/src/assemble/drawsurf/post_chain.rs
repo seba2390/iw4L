@@ -137,22 +137,24 @@ pub const OVERLAY_ROWS: [u16; 8] = [
     render_material::CODE_T6_SCRIPT_VECTOR[3],
 ];
 
-/// A game's overlays with each of their materials admitted, in the rule's
-/// order, and each material's texture atlas (rows, columns).
+/// A game's overlays with each material the loaded zones carry admitted, in
+/// the rule's order, and each material's texture atlas (rows, columns).
 #[derive(Clone, Debug)]
 pub struct RuntimeOverlays {
     pub rules: OverlayRules,
     pub materials: Vec<RuntimePostFx>,
-    pub atlases: Vec<[u8; 2]>,
+    pub atlases: Vec<(&'static str, [u8; 2])>,
     /// Each material's textures, by name hash.
     pub textures: Vec<Vec<(u32, render_material::RuntimeTextureBinding)>>,
 }
 
 /// The base every overlay draw executes against at `width` x `height`: the
-/// chain's base, the game time and overlay rows zero, and the frame bound
-/// as `feedback`.
+/// chain's base, its 2D projection split as a 2D view draws (the
+/// view-projection the same projection, the world identity), the game time
+/// and overlay rows zero, and the frame bound as `feedback`.
 pub fn overlay_sources(width: u32, height: u32) -> Option<RuntimeCodeSources> {
     let mut sources = post_chain_sources(width, height)?;
+    split_2d_projection(&mut sources);
     for row in std::iter::once(CODE_GAMETIME).chain(OVERLAY_ROWS) {
         sources.set_constant_rows(row, &[[0; 4]]);
     }
@@ -162,8 +164,32 @@ pub fn overlay_sources(width: u32, height: u32) -> Option<RuntimeCodeSources> {
     Some(sources)
 }
 
-/// Admits every overlay material, or names the first that refused, and
-/// each filter material the loaded zones carry.
+/// A 2D view's matrices from its world-view-projection rows: Black Ops 2's
+/// 2D view leaves the view identity, so its view-projection is the same 2D
+/// projection, and draws its quads with an identity world.
+pub fn split_2d_projection(sources: &mut RuntimeCodeSources) {
+    use super::command_context::{
+        CODE_TRANSPOSE_VIEW_PROJECTION, CODE_TRANSPOSE_WORLD_VIEW_PROJECTION0,
+        CODE_TRANSPOSE_WORLD0,
+    };
+    if let Some(projection) = sources.constant_arc(CODE_TRANSPOSE_WORLD_VIEW_PROJECTION0) {
+        sources.set_constant_rows(CODE_TRANSPOSE_VIEW_PROJECTION, &projection);
+    }
+    sources.set_constant_rows(
+        CODE_TRANSPOSE_WORLD0,
+        &[
+            [1.0f32.to_bits(), 0, 0, 0],
+            [0, 1.0f32.to_bits(), 0, 0],
+            [0, 0, 1.0f32.to_bits(), 0],
+            [0, 0, 0, 1.0f32.to_bits()],
+        ],
+    );
+}
+
+/// Admits each overlay and filter material the loaded zones carry, or names
+/// the first overlay material that refused. Black Ops 2 loads its overlay
+/// materials with the map: a map whose zones lack one (Nuketown has no
+/// electric shock) never turns that overlay on.
 pub(crate) fn build_runtime_overlays(
     catalog: &RuntimeMaterialCatalog,
     prepared: &PreparedMaterialTable,
@@ -199,7 +225,7 @@ pub(crate) fn build_runtime_overlays(
             .collect();
         Ok::<_, PostFxAdmissionRefusal>((
             admitted,
-            material.texture_atlas.unwrap_or([0, 0]),
+            (name, material.texture_atlas.unwrap_or([0, 0])),
             textures,
         ))
     };
@@ -215,7 +241,13 @@ pub(crate) fn build_runtime_overlays(
         overlays.textures.push(textures);
     };
     for &name in rules.materials {
-        push(admit(name).map_err(|e| (name, e))?);
+        match admit(name) {
+            Ok(admitted) => push(admitted),
+            Err(PostFxAdmissionRefusal::MaterialMissing) => {
+                diag::info!(World, "overlay material {name}: no loaded zone carries it");
+            }
+            Err(cause) => return Err((name, cause)),
+        }
     }
     for &name in rules.filter_materials {
         match admit(name) {
