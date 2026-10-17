@@ -60,7 +60,7 @@ const MODE: ModeRules = ModeRules {
     binds_objectives: true,
     host_rules: false,
     hud: HudRules {
-        code_hud: Rule::Known(()),
+        code_hud: Rule::Known(game_api::hud::CodeHud::ModernWarfare2),
         game_hud_menus: false,
         script_hud: false,
         scoreboard: true,

@@ -131,6 +131,8 @@ impl Plugin for HudPlugin {
                             update_hud_elems.in_set(frame::InMatch),
                             update_targetmap,
                             crate::damage_direction::update.in_set(frame::InMatch),
+                            crate::game_code_hud::update_crosshair.in_set(frame::InMatch),
+                            crate::game_code_hud::update_scoreboard.in_set(frame::InMatch),
                             crate::menus::update_script_menus,
                             crate::connection_notice::update.in_set(frame::InMatch),
                             hud_stage_close::<7>,
@@ -161,7 +163,9 @@ impl Plugin for HudPlugin {
                     flush_targetmap_tess,
                     flush_blood_tess,
                     flush_damage_direction_tess,
+                    flush_game_crosshair_tess,
                     flush_script_menus_tess,
+                    flush_game_scoreboard_tess,
                     flush_connection_notice_tess,
                 )
                     .chain()
@@ -353,6 +357,7 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
             );
             spawn_reticle(root);
             crate::damage_direction::spawn(root);
+            crate::game_code_hud::spawn_crosshair(root);
             spawn_iris(root);
             spawn_hud_elems_back(root);
             spawn_compass(root);
@@ -379,6 +384,7 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
             spawn_hud_elems(root);
             spawn_targetmap(root);
             crate::menus::spawn_script_menus(root);
+            crate::game_code_hud::spawn_scoreboard(root);
             crate::font_overlay::spawn_overlay(
                 root,
                 crate::connection_notice::ConnectionNoticeRaster,
@@ -402,20 +408,35 @@ fn sync_hud_visibility(
     mut reported: Local<Option<&'static str>>,
 ) {
     let ui_on = ui_draw.is_some_and(|d| d.0);
-    let unknown = match mode.as_ref().map(|mode| mode.hud.code_hud) {
+    let code_hud = mode.as_ref().map(|mode| mode.hud.code_hud);
+    let unknown = match code_hud {
         Some(game_api::Rule::Unknown(gap)) => Some(gap),
         _ => None,
     };
-    if unknown.map(|gap| gap.id) != *reported {
-        if let Some(gap) = unknown {
+    // The game's own code HUD reports the pieces the runtime does not draw.
+    let gaps: &[&'static game_api::Unknown] = match (code_hud, &unknown) {
+        (Some(game_api::Rule::Known(game_api::hud::CodeHud::Game(hud))), _) => hud.undrawn,
+        (_, Some(gap)) => core::slice::from_ref(gap),
+        _ => &[],
+    };
+    let first = gaps.first().map(|gap| gap.id);
+    if first != *reported {
+        for gap in gaps {
             diag::info!(Ui, "game gap {}: {}", gap.id, gap.what);
         }
-        *reported = unknown.map(|gap| gap.id);
+        *reported = first;
     }
     let script_hud = mode.as_ref().is_some_and(|mode| mode.hud.script_hud);
     let show =
         hud_draw.0 && hud_root_should_show(*screen, ui_on) && (unknown.is_none() || script_hud);
-    let piece = if unknown.is_none() {
+    // Modern Warfare 2's pieces draw only as Modern Warfare 2's code HUD.
+    let engine = matches!(
+        code_hud,
+        None | Some(game_api::Rule::Known(
+            game_api::hud::CodeHud::ModernWarfare2
+        ))
+    );
+    let piece = if engine {
         Visibility::Inherited
     } else {
         Visibility::Hidden
@@ -1026,4 +1047,64 @@ fn release_hud_publication(
     *frame = Default::default();
     *blood = BloodGpuJob::Hide;
     *flash = FlashGpuJob::Hide;
+}
+
+fn flush_game_crosshair_tess(
+    surface: Res<crate::surface::Hud2dSurface>,
+    mut pass: ResMut<HudTessPass>,
+    mut hud_images: ResMut<HudImages>,
+    mut images: ResMut<Assets<Image>>,
+    mut frame: ResMut<crate::gpu_list::HudTessGpuFrame>,
+    mut raster: Query<
+        (Entity, &mut Node, &mut crate::gpu_list::GpuListLatch),
+        With<crate::game_code_hud::GameCrosshairRaster>,
+    >,
+) {
+    let _body = gpu_list::TessBody::open();
+    if !surface.is_ready() {
+        return;
+    }
+    let job = std::mem::take(&mut pass.game_crosshair);
+    if let Ok((_, mut host, mut latch)) = raster.single_mut() {
+        gpu_list::apply_tess_job(
+            job,
+            &mut host,
+            &mut latch,
+            &mut hud_images,
+            &mut images,
+            &mut frame,
+            surface.width(),
+            surface.height(),
+        );
+    }
+}
+
+fn flush_game_scoreboard_tess(
+    surface: Res<crate::surface::Hud2dSurface>,
+    mut pass: ResMut<HudTessPass>,
+    mut hud_images: ResMut<HudImages>,
+    mut images: ResMut<Assets<Image>>,
+    mut frame: ResMut<crate::gpu_list::HudTessGpuFrame>,
+    mut raster: Query<
+        (Entity, &mut Node, &mut crate::gpu_list::GpuListLatch),
+        With<crate::game_code_hud::GameScoreboardRaster>,
+    >,
+) {
+    let _body = gpu_list::TessBody::open();
+    if !surface.is_ready() {
+        return;
+    }
+    let job = std::mem::take(&mut pass.game_scoreboard);
+    if let Ok((_, mut host, mut latch)) = raster.single_mut() {
+        gpu_list::apply_tess_job(
+            job,
+            &mut host,
+            &mut latch,
+            &mut hud_images,
+            &mut images,
+            &mut frame,
+            surface.width(),
+            surface.height(),
+        );
+    }
 }

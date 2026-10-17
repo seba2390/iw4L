@@ -697,6 +697,7 @@ pub const WEAPON_DEF_FUEL_TANK_OFF: usize = 0x61;
 pub const WEAPON_DEF_DUAL_WIELD_WEAPON_NAME_OFF: usize = 0x590;
 
 pub const WEAPON_DEF_COOK_OFF_HOLD_OFF: usize = 0x560;
+pub const WEAPON_DEF_KEEP_CROSSHAIR_WHEN_ADS_OFF: usize = 0x575;
 pub const WEAPON_DEF_AIM_DOWN_SIGHT_OFF: usize = 0x553;
 pub const WEAPON_DEF_RECHAMBER_WHILE_ADS_OFF: usize = 0x554;
 

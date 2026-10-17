@@ -67,6 +67,7 @@ pub(crate) fn update_blood_overlay(
     mut started: MessageReader<LifeStarted>,
     view: Res<ViewSubject>,
     ui_draw: Option<Res<UiDraw>>,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     *job = BloodGpuJob::Idle;
     for ev in started.read() {
@@ -106,7 +107,11 @@ pub(crate) fn update_blood_overlay(
     let win_w = surface.width();
     let win_h = surface.height();
 
-    let blood_enabled = true;
+    // A game with its own code HUD and no blood overlay draws none.
+    let blood_enabled = !matches!(
+        mode.as_ref().map(|mode| mode.hud.code_hud),
+        Some(game_api::Rule::Known(game_api::hud::CodeHud::Game(hud))) if !hud.blood
+    );
     let should_draw_hud = ui_draw.is_some_and(|d| d.0);
     let should_draw = should_draw_blood_overlay(
         blood_enabled,
