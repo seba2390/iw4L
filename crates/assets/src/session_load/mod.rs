@@ -195,6 +195,10 @@ pub struct PreparedMatch {
     pub sound_mix_names: Option<asset_audio::SoundMixNames>,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one per match load, unwrapped where it arrives"
+)]
 pub enum MatchLoadOutcome {
     Ready(PreparedMatch),
     Canceled,

@@ -130,6 +130,10 @@ impl MoveHistory {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "an ack result consumed at once; boxing would allocate every tick"
+)]
 pub enum AckMatch {
     Matched(MoveRecord),
 

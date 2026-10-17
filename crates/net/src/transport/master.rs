@@ -1084,21 +1084,22 @@ fn browser_worker(
             let Err(error) = browse(&target, &state, &refresh, &cancel).await else {
                 return;
             };
-            let mut current = state.lock().expect("master browser state poisoned");
-            current.loading = false;
-            current.ping_ms = None;
-            let message = error.to_string();
-            if !cancel.is_cancelled() && current.error.as_deref() != Some(message.as_str()) {
-                diag::warn!(
-                    Net,
-                    "master browser request failed target={} server_name={}: {}",
-                    target.address,
-                    target.server_name,
-                    message
-                );
+            {
+                let mut current = state.lock().expect("master browser state poisoned");
+                current.loading = false;
+                current.ping_ms = None;
+                let message = error.to_string();
+                if !cancel.is_cancelled() && current.error.as_deref() != Some(message.as_str()) {
+                    diag::warn!(
+                        Net,
+                        "master browser request failed target={} server_name={}: {}",
+                        target.address,
+                        target.server_name,
+                        message
+                    );
+                }
+                current.error = Some(message);
             }
-            current.error = Some(message);
-            drop(current);
             if !wait_for_refresh(&refresh, &cancel).await {
                 return;
             }
@@ -1168,30 +1169,31 @@ async fn browse(
                 }
             }
         };
-        let mut current = state.lock().expect("master browser state poisoned");
-        current.loading = false;
-        current.ping_ms = Some(connection.rtt().as_millis().max(1) as u64);
-        current.generation = generation;
-        let have = current.have;
-        current.adverts = adverts
-            .into_iter()
-            .map(|advert| MasterAdvert {
-                id: advert.id,
-                name: advert.name,
-                map: advert.map,
-                mode: advert.mode,
-                players: advert.players,
-                max_players: advert.max_players,
-                locked: advert.locked,
-                in_match: advert.in_match,
-                requires: advert.requires,
-                available: advert.available,
-                password_protected: advert.password_protected,
-                missing: advert.requires.missing_from(have),
-            })
-            .collect();
-        current.error = None;
-        drop(current);
+        {
+            let mut current = state.lock().expect("master browser state poisoned");
+            current.loading = false;
+            current.ping_ms = Some(connection.rtt().as_millis().max(1) as u64);
+            current.generation = generation;
+            let have = current.have;
+            current.adverts = adverts
+                .into_iter()
+                .map(|advert| MasterAdvert {
+                    id: advert.id,
+                    name: advert.name,
+                    map: advert.map,
+                    mode: advert.mode,
+                    players: advert.players,
+                    max_players: advert.max_players,
+                    locked: advert.locked,
+                    in_match: advert.in_match,
+                    requires: advert.requires,
+                    available: advert.available,
+                    password_protected: advert.password_protected,
+                    missing: advert.requires.missing_from(have),
+                })
+                .collect();
+            current.error = None;
+        }
         if !wait_for_refresh(refresh, cancel).await {
             return Ok(());
         }

@@ -597,6 +597,10 @@ struct PendingBodySkin<'a> {
     dest: CpuBodyGeom,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "per-body per-frame decision; boxing would allocate every frame"
+)]
 enum RemoteSkinAction<'a> {
     Culled,
     ReuseCache,

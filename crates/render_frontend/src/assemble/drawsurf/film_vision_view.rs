@@ -223,6 +223,10 @@ struct AppliedVision {
 }
 
 #[derive(Clone, Copy)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a Copy vision value; boxing would drop Copy"
+)]
 enum ScriptVision {
     Film(asset_world::FilmVision),
     Native(asset_world::T6Vision),

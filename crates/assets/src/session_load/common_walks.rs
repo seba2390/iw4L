@@ -691,6 +691,7 @@ pub(super) fn walk_shared_iw5_common(
     )
 }
 
+#[expect(clippy::large_enum_variant, reason = "built once per load")]
 pub(super) enum T5CommonPrep {
     Skip(Vec<String>),
     Ready {
