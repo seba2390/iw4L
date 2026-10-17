@@ -21,6 +21,7 @@ pub(crate) mod dvars;
 mod effect;
 mod entity;
 mod extras;
+pub(crate) mod flame_overlay;
 mod laststand;
 mod missile;
 mod movement;

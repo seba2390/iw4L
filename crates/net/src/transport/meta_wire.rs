@@ -1675,6 +1675,39 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             }
         }
     }
+    let overlays = &screen.overlays;
+    for flame in [overlays.burn, overlays.shock] {
+        match flame {
+            None => out.put_u8(0),
+            Some(flame) => {
+                out.put_u8(1);
+                out.put_f32(flame.distortion[0]);
+                out.put_f32(flame.distortion[1]);
+                out.put_f32(flame.magnitude);
+                out.put_f32(flame.fps);
+                out.put_i32(flame.fade_start_ms);
+                out.put_i32(flame.fade_ms);
+            }
+        }
+    }
+    out.put_u8(u8::from(overlays.flame_allowed));
+    out.put_f32(overlays.flame_scaler);
+}
+
+fn decode_flame_overlay(
+    input: &mut WireReader<'_>,
+) -> Result<Option<sim::FlameOverlay>, WireError> {
+    Ok(match input.get_u8()? {
+        0 => None,
+        1 => Some(sim::FlameOverlay {
+            distortion: [input.get_f32()?, input.get_f32()?],
+            magnitude: input.get_f32()?,
+            fps: input.get_f32()?,
+            fade_start_ms: input.get_i32()?,
+            fade_ms: input.get_i32()?,
+        }),
+        _ => return Err(WireError::Malformed("bad flame overlay tag")),
+    })
 }
 
 fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen, WireError> {
@@ -1727,12 +1760,19 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
             _ => return Err(WireError::Malformed("bad gump tag")),
         };
     }
+    let overlays = sim::ScreenOverlays {
+        burn: decode_flame_overlay(input)?,
+        shock: decode_flame_overlay(input)?,
+        flame_allowed: input.get_u8()? != 0,
+        flame_scaler: input.get_f32()?,
+    };
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
         fog,
         fog_bank,
         gumps,
+        overlays,
     })
 }
 

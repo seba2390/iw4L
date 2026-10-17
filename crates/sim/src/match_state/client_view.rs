@@ -119,6 +119,8 @@ pub struct ClientScreen {
     /// a model the map's zones leave to gumps draws while a slot holds one
     /// of the gumps that carry it.
     pub gumps: [Option<String>; GUMP_SLOTS],
+    /// The burning and electric shock overlays and the flame render dvars.
+    pub overlays: game_api::post::ScreenOverlays,
 }
 
 /// The gump slots Black Ops 2's client keeps.
