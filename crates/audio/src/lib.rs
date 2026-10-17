@@ -53,6 +53,7 @@ mod weapon_lock;
 mod script_ambient;
 mod script_mix;
 mod script_music;
+mod snapshot_mix;
 
 mod admission;
 mod cue;

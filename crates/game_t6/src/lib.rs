@@ -276,7 +276,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         script_text: game_api::ScriptText::Engine,
         material_font_floor: true,
         zombies: false,
-        hud_elem_sent: None,
+        font_scales_sent: None,
     },
     client_fire: Some(fire_sound::CLIENT_FIRE),
     viewmodel: Some(viewmodel::VIEWMODEL),

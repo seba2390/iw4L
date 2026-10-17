@@ -69,7 +69,7 @@ const MODE: ModeRules = ModeRules {
         script_text: game_api::ScriptText::Engine,
         material_font_floor: true,
         zombies: false,
-        hud_elem_sent: None,
+        font_scales_sent: None,
     },
     client_fire: None,
     viewmodel: None,

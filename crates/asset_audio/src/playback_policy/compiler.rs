@@ -78,6 +78,7 @@ pub(super) fn compile(
             semantics.secondary.1,
         ),
         stereo_speaker_gains: semantics.speaker_gains,
+        snapshot_group: row.snapshot_group,
         loaded_binding_origin: row.loaded_binding_origin,
         channel,
         channel_admission: channel
