@@ -762,6 +762,10 @@ enum ImageLink {
 }
 
 #[derive(Clone, Copy)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a capture-time link, copied while the zone is walked"
+)]
 enum TechniqueLink {
     Direct(fastfile_iw4::TechniqueSetGeometry),
     Alias(Ptr),

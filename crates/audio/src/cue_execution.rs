@@ -148,6 +148,10 @@ pub(crate) struct CueStart {
     pub lease: CueLease,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a step result consumed at once; boxing would allocate every cue"
+)]
 pub(crate) enum CueStep {
     Waiting,
     Finished,

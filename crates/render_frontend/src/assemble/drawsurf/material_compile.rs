@@ -240,6 +240,10 @@ struct CompileJob {
 }
 
 #[derive(Clone)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a per-pass result consumed at once"
+)]
 enum PassOutcome {
     Missing,
     Port {

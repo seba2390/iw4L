@@ -23,6 +23,10 @@ pub struct FxGeneratedFrame {
     pub world_present: bool,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one per frame; boxing would allocate every frame"
+)]
 pub enum FxFrameOutcome {
     Generated(FxGeneratedFrame),
     Unavailable(FxUnavailableCause),
