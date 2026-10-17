@@ -10,7 +10,7 @@ use hud_iw4::{
 };
 use movement_iw4::mantle::is_weapon_inactive;
 use net::{FrameClock, LocalPresentClient, PresentedSnapshot, ViewweaponAim};
-use playerstate_iw4::{KillCamMode, ThirdPersonViewInputs, is_third_person_view};
+use playerstate_iw4::{KillCamMode, PlayerState, ThirdPersonViewInputs, is_third_person_view};
 use weapon_iw4::{
     SpreadOverrideState, WeaponSpreadFacts, get_spread_for_weapon, get_viewmodel_weapon_index,
     perk_weap_spread_multiplier, should_apply_view_org_bob,
@@ -142,21 +142,7 @@ pub(crate) fn update_reticle(
     let aim_spread = ps.aim_spread_scale;
 
     let mantle_inactive = is_weapon_inactive(ps, true);
-    let linked_weapon_view = presented
-        .snapshot()
-        .and_then(|snapshot| snapshot.meta.for_client(local.0))
-        .is_some_and(|meta| meta.linked_weapon_view.is_some());
-    let rendering_third_person = (view.in_killcam()
-        && ps.kill_cam_entity != playerstate_iw4::ENTITYNUM_NONE)
-        || (!linked_weapon_view
-            && is_third_person_view(ThirdPersonViewInputs {
-                pm_type: ps.pm_type,
-                other_flags: ps.other_flags,
-                link_flags: ps.link_flags,
-                cg_third_person: settings.third_person && !view.in_killcam(),
-                in_killcam: view.in_killcam(),
-                killcam_mode: KillCamMode::Mode0,
-            }));
+    let rendering_third_person = rendering_third_person(ps, &presented, local.0, &view, &settings);
     let gate = HipCrosshairGate {
         rendering_third_person,
         e_flags: ps.e_flags,
@@ -390,4 +376,34 @@ fn slot_gap_cause(resolution: &SlotResolution) -> Option<GapCause> {
             miss: *miss,
         }),
     }
+}
+
+/// The view is not the local player's own eyes: a killcam, or a third
+/// person view the player state or the settings ask for.
+pub(crate) fn rendering_third_person(
+    ps: &PlayerState,
+    presented: &PresentedSnapshot,
+    local: sim::ClientId,
+    view: &ViewSubject,
+    settings: &frame::GameSettings,
+) -> bool {
+    let linked_weapon_view = presented
+        .snapshot()
+        .and_then(|snapshot| snapshot.meta.for_client(local))
+        .is_some_and(|meta| meta.linked_weapon_view.is_some());
+    (view.in_killcam() && ps.kill_cam_entity != playerstate_iw4::ENTITYNUM_NONE)
+        || (!linked_weapon_view
+            && is_third_person_view(ThirdPersonViewInputs {
+                pm_type: ps.pm_type,
+                other_flags: ps.other_flags,
+                link_flags: ps.link_flags,
+                cg_third_person: settings.third_person && !view.in_killcam(),
+                in_killcam: view.in_killcam(),
+                killcam_mode: KillCamMode::Mode0,
+            }))
+}
+
+/// The weapon the viewmodel shows.
+pub(crate) fn viewmodel_weapon(ps: &PlayerState) -> u32 {
+    get_viewmodel_weapon_index(ps)
 }
