@@ -53,7 +53,8 @@ fn scripts(content: &[u8]) -> asset_core::ZoneScripts {
         if let Some(file) = fastfile_t6::raw_file(&load, asset)
             && (file.name.ends_with(".cfg")
                 || file.name == "radiant/keys.txt"
-                || file.name.starts_with("info/"))
+                || file.name.starts_with("info/")
+                || (file.name.starts_with("shock/") && file.name.ends_with(".shock")))
             && let Ok(text) = std::str::from_utf8(file.bytes)
         {
             out.configs.push((file.name.to_owned(), text.to_owned()));

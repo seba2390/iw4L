@@ -76,6 +76,7 @@ const MODE: ModeRules = ModeRules {
     script_sounds_hashed: false,
     turrets: None,
     post_chain: None,
+    overlays: None,
     frame_fog: None,
     dyn_ent_physics: None,
 };

@@ -19,6 +19,12 @@ pub const CODE_T6_GRID_SH: [u16; 3] = [0x30c, 0x30d, 0x30e];
 /// x: model-lighting texel scale; y: weight of the reflection-probe alpha
 /// (T6 probes store rgb / alpha, probes from other maps keep no scale there).
 pub const CODE_T6_SAMPLE_DECODE: u16 = 0x30f;
+/// Black Ops 2's screen overlay rows (`flameDistortion`, `overlayTexCoord`,
+/// `fadeEffect`, `viewportDimensions`), which its overlay passes set.
+pub const CODE_T6_FLAME_DISTORTION: u16 = 0x312;
+pub const CODE_T6_OVERLAY_TEX_COORD: u16 = 0x313;
+pub const CODE_T6_FADE_EFFECT: u16 = 0x314;
+pub const CODE_T6_VIEWPORT_DIMENSIONS: u16 = 0x315;
 
 // D3D11 binds at most 14 constant buffers, so no shader reads buffer 14.
 const SAMPLE_DECODE_ROW: ConstantRow = ConstantRow { buffer: 14, row: 0 };

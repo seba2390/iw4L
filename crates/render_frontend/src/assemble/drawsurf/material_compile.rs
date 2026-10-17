@@ -536,6 +536,7 @@ impl MaterialProgramCompile {
         catalog: &Arc<RuntimeMaterialCatalog>,
         progress: Option<&asset_transport::LoadProgress>,
         post_chain: Option<(game_api::post::PostChainRules, asset_core::AssetNamespace)>,
+        overlays: Option<(game_api::post::OverlayRules, asset_core::AssetNamespace)>,
     ) {
         self.jobs.clear();
         self.catalog = Some(Arc::clone(catalog));
@@ -625,7 +626,15 @@ impl MaterialProgramCompile {
             .map(|(rules, namespace)| {
                 super::post_chain::post_chain_compile_locations(catalog, &rules, namespace)
             })
-            .unwrap_or_else(Vec::new);
+            .into_iter()
+            .flatten()
+            .chain(overlays.into_iter().flat_map(|(rules, namespace)| {
+                super::post_chain::game_material_compile_locations(
+                    catalog,
+                    rules.materials,
+                    namespace,
+                )
+            }));
         for (name, location) in chain {
             match location {
                 Ok((set_i, pass_i)) => {
