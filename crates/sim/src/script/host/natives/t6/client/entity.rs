@@ -2276,8 +2276,9 @@ struct ThirdPersonSpectate(BTreeMap<u64, i32>);
 /// an actor not linked to the local player is drawn. The client's screen
 /// takes those it does not draw.
 ///
-/// t6.cg.rendering_third_person: the client's third-person rendering state is
-/// not ported, so the client renders in first person here.
+/// t6.cg.rendering_third_person: the client's third-person rendering state
+/// reads Black Ops 2's own player state fields, which only `movement_t6`
+/// keeps, so the client renders in first person here.
 pub(super) fn sync_third_person_spectate(world: &mut World) {
     let flagged: Vec<(u64, i32)> = world
         .get_resource::<ThirdPersonSpectate>()
