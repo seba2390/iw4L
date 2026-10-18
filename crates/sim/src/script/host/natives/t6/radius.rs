@@ -269,6 +269,7 @@ fn radius_damage(
                 means,
                 weapon: weapon.clone(),
                 hit_location: 0,
+                located: false,
             },
         )?;
     }

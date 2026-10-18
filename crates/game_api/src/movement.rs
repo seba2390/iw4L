@@ -271,6 +271,26 @@ pub struct GameWeapon {
     pub fire_stop_sounds: [Option<String>; 2],
 }
 
+/// The match's weapons by number, as their own game defines them.
+pub trait WeaponTable {
+    /// `None` when the game's definition was not loaded for it.
+    fn weapon(&self, weapon: u32) -> Option<&GameWeapon>;
+}
+
+/// A hit `finishplayerdamage` lands on a player, as the game's movement sees
+/// it.
+#[derive(Clone, Copy)]
+pub struct PlayerHurt<'a> {
+    pub damage: i32,
+    /// The means of death, by the game's own numbers.
+    pub means: usize,
+    /// The hit's weapon; 0 when it names none.
+    pub weapon: u32,
+    /// The direction the hit travels, of length 1; `None` when it has none.
+    pub dir: Option<[f32; 3]>,
+    pub weapons: &'a dyn WeaponTable,
+}
+
 /// The water over a point, as far as the match knows it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WaterSurface {
@@ -472,8 +492,12 @@ pub trait PlayerMovement: Sync {
     fn set_stance(&self, player: &mut MovePlayer, stance: Stance) -> MoveOutcome;
 
     /// What entering last stand does to the player in the game's movement:
-    /// raises its down animation event and detaches a turret or vehicle.
-    fn enter_last_stand(&self, _player: &mut MovePlayer) -> MoveOutcome {
+    /// raises its down animation event and lets go of what the player holds.
+    fn enter_last_stand(
+        &self,
+        _player: &mut MovePlayer,
+        _weapons: &dyn WeaponTable,
+    ) -> MoveOutcome {
         MoveOutcome::default()
     }
 
@@ -513,9 +537,23 @@ pub trait PlayerMovement: Sync {
         false
     }
 
-    /// A hit of `damage` points on the player's damage timer, which slows
-    /// him while it runs down; `None` clears the timer.
-    fn damage_timer(&self, _player: &mut MovePlayer, _damage: Option<i32>) {}
+    /// Clears the player's damage timer, which slows them while it runs
+    /// down.
+    fn clear_damage_timer(&self, _player: &mut MovePlayer) {}
+
+    /// What `finishplayerdamage` does to the player's own state before it
+    /// takes the health; answers the damage the game takes after its own
+    /// scaling.
+    fn hurt(&self, _player: &mut MovePlayer, hurt: &PlayerHurt<'_>) -> i32 {
+        hurt.damage
+    }
+
+    /// What the game's player death does to the player's own state before
+    /// the scripts hear of it; `Err` with the player's move type, by the
+    /// game's numbers, when the death refuses to run.
+    fn die(&self, _player: &mut MovePlayer, _death: &PlayerHurt<'_>) -> Result<(), i32> {
+        Ok(())
+    }
 
     /// The cursor hint names `setcursorhint` accepts, in their `ps.cursorHint`
     /// order starting at `0` (`HINT_NONE`); weapon hints start right after the

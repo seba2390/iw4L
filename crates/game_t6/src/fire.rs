@@ -13,8 +13,7 @@ use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
 use movement_t6::events::event as ev;
 use movement_t6::state::{
-    ENTITYNUM_NONE, ENTITYNUM_WORLD, e_flags, e_flags2, pm_flags, pm_type, weap_flags,
-    weapon_state as ws,
+    ENTITYNUM_NONE, e_flags, e_flags2, pm_flags, pm_type, weap_flags, weapon_state as ws,
 };
 use movement_t6::weapon::{fire_type, weapon_type};
 use movement_t6::{PlayerState, perks};
@@ -53,6 +52,7 @@ const MOD_PROJECTILE_SPLASH: usize = 6;
 const MOD_MELEE: usize = 7;
 const MOD_BAYONET: usize = 8;
 const MOD_FALLING: usize = 12;
+const MOD_SUICIDE: usize = 13;
 
 const HITLOC_RIOTSHIELD: i32 = 20;
 
@@ -90,6 +90,8 @@ const ANTILAG_MS: i32 = 1000;
 /// A dropped grenade's speed along each axis, at most.
 const DROP_SPEED: f32 = 160.0;
 const DROP_HEIGHT: f32 = 40.0;
+/// The damage of a grenade gone off in its thrower's hand.
+const SUICIDE_DAMAGE: i32 = 100_000;
 /// The eye is never lower than this above the feet.
 const EYE_FLOOR: f32 = 8.0;
 /// A melee blow's push lifts its direction by this.
@@ -225,26 +227,18 @@ fn deploy_unknown() -> &'static Unknown {
     )
 }
 
-fn offhand_pickup_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.offhand_pickup",
-        "switching to an offhand while looking at a placed one does not pick it up",
-        "the entity a player's use hint points at in the player state and Black Ops 2's pick up callback"
-    )
-}
-
 fn grenade_suicide_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.grenade_suicide",
-        "a grenade cooked too long does not kill its thrower",
-        "the level flag Black Ops 2 checks to choose between its two grenade suicide rules, and its player death"
+        "with grenade suicide on (never on zombies, whose scripts turn it off before any player can cook), a grenade held past its fuse does not kill its thrower outright, credited to whoever threw it back",
+        "Black Ops 2's player death, which that rule calls without the damage rules"
     )
 }
 
 fn gas_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.gas",
-        "a gas weapon's flames are not fired",
+        "a gas weapon's flames are not fired (multiplayer: no zombies weapon is of the gas type or class)",
         "Black Ops 2's flame system"
     )
 }
@@ -252,8 +246,8 @@ fn gas_unknown() -> &'static Unknown {
 fn rocket_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.rocket_launch",
-        "a rocket flies straight: Black Ops 2's guided, locked-on, airburst and wandering rockets are not run",
-        "Black Ops 2's whole rocket launch and guidance"
+        "a rocket of a weapon that accelerates, wanders at random, is guided (other than a ballistic knife's fall) or destabilizes flies straight",
+        "Black Ops 2's accelerating, wandering, guided and destabilizing rocket flight"
     )
 }
 
@@ -265,43 +259,11 @@ fn missile_antilag_unknown() -> &'static Unknown {
     )
 }
 
-fn mover_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.mover_velocity",
-        "a missile fired by a player standing on an entity does not take that entity's velocity",
-        "which entities are movers in the runtime and their velocity"
-    )
-}
-
 fn throwback_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.throwback",
-        "a thrown-back grenade is credited to its thrower and not told to scripts",
-        "Black Ops 2's grenade throwback ownership and notify"
-    )
-}
-
-fn throw_state_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.offhand_throw_state",
-        "a thrown offhand does not clear the per-client server field Black Ops 2 resets on each throw",
-        "what that client field is and what reads it"
-    )
-}
-
-fn launcher_flag_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.launcher_grenade_flag",
-        "a launched grenade does not carry the entity flag Black Ops 2 sets on it",
-        "what that entity flag does"
-    )
-}
-
-fn last_stand_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.damage.last_stand_grace",
-        "a downed player takes damage without Black Ops 2's grace time check",
-        "the client time Black Ops 2 compares against while a player is down"
+        "a thrown grenade cannot be picked up and thrown back",
+        "thrown grenades as usable entities in the use search, the pick up on switching offhands, and the throw credited to the grenade's owner"
     )
 }
 
@@ -619,7 +581,15 @@ impl Shot<'_> {
                 self.gaps.push(deploy_unknown());
             }
             ev::USE_OFFHAND => self.throw_offhand(world),
-            ev::SWITCH_OFFHAND => self.gaps.push(offhand_pickup_unknown()),
+            // Switching offhands with the use hint on a thrown grenade picks
+            // it up to throw back; nothing else is picked up this way.
+            ev::SWITCH_OFFHAND
+                if self.ps.cursor_hint_ent_index != 0
+                    && self.ps.cursor_hint_ent_index != ENTITYNUM_NONE =>
+            {
+                self.gaps.push(throwback_unknown());
+            }
+            ev::SWITCH_OFFHAND => {}
             ev::PREP_RIOTSHIELD => world.notify(me, "raise_riotshield", &[]),
             ev::DEPLOY_RIOTSHIELD => world.notify(me, "deploy_riotshield", &[NotifyArg::Int(1)]),
             ev::LOWER_RIOTSHIELD => {
@@ -634,7 +604,7 @@ impl Shot<'_> {
                 }
             }
             ev::GRENADE_DROP => self.drop_grenade(world),
-            ev::GRENADE_SUICIDE => self.gaps.push(grenade_suicide_unknown()),
+            ev::GRENADE_SUICIDE => self.grenade_suicide(parm_weapon, world),
             ev::DETONATE => world.notify(me, "detonate", &[]),
             e if (ev::FALL_DAMAGE..ev::FALL_DAMAGE + 32).contains(&e) => {
                 if self.ps.pm_flags & pm_flags::SLIDING == 0 {
@@ -791,7 +761,6 @@ impl Shot<'_> {
         let Some(parms) = self.weapon_parms(&def, 0, world) else {
             return;
         };
-        self.gaps.push(throw_state_unknown());
         self.throw_grenade(weapon, &def, &parms, false, world);
     }
 
@@ -846,7 +815,7 @@ impl Shot<'_> {
         let ps = self.ps;
         if ps.link_flags & 4 != 0
             || ps.e_flags & (e_flags::TURRET | e_flags::VEHICLE_VIEW) != 0
-            || ps.e_flags2 & e_flags2::MOUNTED != 0
+            || ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0
         {
             self.gaps.push(mounted_unknown());
             return None;
@@ -1404,10 +1373,6 @@ impl Shot<'_> {
             Some(time_left),
             world,
         );
-        if launcher {
-            self.gaps.push(launcher_flag_unknown());
-        }
-        self.mover_velocity(world);
         self.fired_grenade(def, def.fuse_time(), world);
     }
 
@@ -1435,13 +1400,63 @@ impl Shot<'_> {
             &def,
             origin,
             vel,
-            [0.0; 3],
+            [[0.0; 3]; 2],
             true,
             time_left,
             Some(time_left),
             world,
         );
         self.fired_grenade(&def, time_left, world);
+    }
+
+    /// A grenade held past its fuse. With grenade suicide off (as the
+    /// zombies scripts set it) it falls at the thrower's feet, already gone
+    /// off, and its thrower takes a blow no one survives unless Flak Jacket
+    /// spares them.
+    fn grenade_suicide(&mut self, weapon: u32, world: &mut dyn FireWorld) {
+        if !world.grenade_suicide_disabled() {
+            self.gaps.push(grenade_suicide_unknown());
+            return;
+        }
+        let me = self.attacker();
+        let offhand = self.ps.offhand_index;
+        if let Some((def_bytes, variant_bytes)) = self.weapon_bytes(offhand, world)
+            && let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes)
+        {
+            let time_left = self.ps.grenade_time_left;
+            let mut origin = self.ps.origin;
+            origin[2] += DROP_HEIGHT;
+            crate::grenade::spawn_grenade(
+                me,
+                offhand,
+                &def,
+                origin,
+                [0.0; 3],
+                [[0.0; 3]; 2],
+                false,
+                time_left,
+                Some(time_left),
+                world,
+            );
+            self.fired_grenade(&def, time_left, world);
+        }
+        if self.has_perk(perks::FLAK_JACKET, world) {
+            return;
+        }
+        world.damage(&FireDamage {
+            target: me,
+            inflictor: me,
+            attacker: me,
+            dir: [0.0; 3],
+            point: [0.0; 3],
+            amount: SUICIDE_DAMAGE,
+            flags: 0,
+            means: MEANS[MOD_SUICIDE],
+            weapon,
+            location: 0,
+            hit_location: HIT_LOCATIONS[0],
+            bone: None,
+        });
     }
 
     /// What follows a player's grenade into the world: the cooked fuse it
@@ -1459,14 +1474,6 @@ impl Shot<'_> {
         // adopts the grenade's script entity.
     }
 
-    /// A player standing on an entity hands its velocity to the missile.
-    fn mover_velocity(&mut self, _world: &dyn FireWorld) {
-        let ground = self.ps.ground_entity_num;
-        if ground != ENTITYNUM_NONE && ground != ENTITYNUM_WORLD {
-            self.gaps.push(mover_unknown());
-        }
-    }
-
     /// A projectile weapon's rocket, its knockback on the shooter.
     fn fire_rocket(
         &mut self,
@@ -1476,9 +1483,14 @@ impl Shot<'_> {
         parms: &WeaponParms,
         world: &mut dyn FireWorld,
     ) {
-        self.gaps.push(rocket_unknown());
-        if def.guided_missile_type() != 6 {
-            self.mover_velocity(world);
+        // A straight or falling rocket is Black Ops 2's own; the others are
+        // not run.
+        if def.projectile_acceleration() > 0.0
+            || def.projectile_random_wander() > 0.0
+            || !matches!(def.guided_missile_type(), 0 | 4)
+            || def.guided_missile_type() == 0 && def.destabilization_rate_time() != 0.0
+        {
+            self.gaps.push(rocket_unknown());
         }
         let knockback = def.fire_type() != fire_type::FULL_AUTO
             && (!dvar_bool(world, "tu11_useMissileKnockbackHeldWeaponsOnly", true)
@@ -1666,13 +1678,8 @@ impl Shot<'_> {
                 if victim.pm_type == pm_type::DEAD || victim.other_flags & 1 != 0 {
                     return;
                 }
-                if matches!(
-                    victim.pm_type,
-                    pm_type::LAST_STAND | pm_type::LAST_STAND_REVIVED
-                ) && hit.means != MOD_MELEE
-                {
-                    self.gaps.push(last_stand_unknown());
-                }
+                // The grace after going down is the match's own G_Damage
+                // (`finishplayerdamage` keeps its time).
                 if hit.means != MOD_MELEE {
                     amount = self.located(amount, hit.location, hit.weapon, world);
                 }

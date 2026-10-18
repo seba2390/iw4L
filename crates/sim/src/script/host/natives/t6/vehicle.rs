@@ -933,4 +933,101 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Object(id))
     });
     registry.on_tick(drive);
+    registry.on_tick(record_platforms);
+}
+
+/// How many positions the engine keeps of each moving platform.
+const PLATFORM_SAMPLES: usize = 32;
+
+/// What the engine keeps of each moving platform, for what is fired from
+/// it: its last 32 positions with their level times.
+#[derive(Resource, Default)]
+struct PlatformHistory(BTreeMap<u64, PlatformTrack>);
+
+#[derive(Clone, Copy)]
+struct PlatformTrack {
+    samples: [([f32; 3], i32); PLATFORM_SAMPLES],
+    newest: usize,
+}
+
+/// Each tick every moving platform's place is kept: the first fills the
+/// whole history, a later one at the same time replaces the newest, a
+/// later one in time follows it.
+fn record_platforms(world: &mut World) {
+    let Some(vehicles) = world.get_resource::<PathVehicles>() else {
+        return;
+    };
+    let ids: Vec<u64> = vehicles.platforms.iter().copied().collect();
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let now = crate::corpse::level_time_ms(tick);
+    for id in ids {
+        if !world.resource::<RoundScript>().live(&id) {
+            if let Some(mut history) = world.get_resource_mut::<PlatformHistory>() {
+                history.0.remove(&id);
+            }
+            continue;
+        }
+        let at = origin(world, id);
+        let mut history = world.get_resource_or_insert_with(PlatformHistory::default);
+        match history.0.get_mut(&id) {
+            None => {
+                history.0.insert(
+                    id,
+                    PlatformTrack {
+                        samples: [(at, now); PLATFORM_SAMPLES],
+                        newest: 0,
+                    },
+                );
+            }
+            Some(track) => {
+                let newest = track.samples[track.newest].1;
+                if newest == now {
+                    track.samples[track.newest] = (at, now);
+                } else if newest < now {
+                    track.newest = (track.newest + 1) % PLATFORM_SAMPLES;
+                    track.samples[track.newest] = (at, now);
+                }
+            }
+        }
+    }
+}
+
+/// Where the moving platform a player rides was at level time `time`: the
+/// one their movement stands them on, by IW4L's rider rule
+/// (`t6.vehicles.platform`).
+pub(crate) fn ridden_platform_at(world: &mut World, client: u32, time: i32) -> Option<[f32; 3]> {
+    let platform = platform_of(world, client)?;
+    platform_position_at(world, platform, time)
+}
+
+/// Where a moving platform was at level time `time`: between the two
+/// samples around it, else its oldest or newest; `None` for an entity the
+/// engine keeps no history of.
+pub(crate) fn platform_position_at(world: &World, id: u64, time: i32) -> Option<[f32; 3]> {
+    let track = world.get_resource::<PlatformHistory>()?.0.get(&id)?;
+    let mut newer = track.newest;
+    let oldest = track.samples[(newer + 1) % PLATFORM_SAMPLES];
+    if time <= oldest.1 {
+        return Some(oldest.0);
+    }
+    if track.samples[newer].1 <= time {
+        return Some(track.samples[newer].0);
+    }
+    let mut older = (newer + PLATFORM_SAMPLES - 1) % PLATFORM_SAMPLES;
+    for _ in 0..PLATFORM_SAMPLES - 1 {
+        let (from, from_time) = track.samples[older];
+        let (to, to_time) = track.samples[newer];
+        if from_time <= time && time <= to_time {
+            let span = (to_time - from_time) as f32;
+            let f = if 0.0 < span {
+                (time - from_time) as f32 / span
+            } else {
+                0.0
+            };
+            return Some(std::array::from_fn(|i| (to[i] - from[i]) * f + from[i]));
+        }
+        newer = older;
+        older = (older + PLATFORM_SAMPLES - 1) % PLATFORM_SAMPLES;
+    }
+    None
 }

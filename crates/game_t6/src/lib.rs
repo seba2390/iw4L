@@ -12,6 +12,7 @@ mod menu_expression;
 mod missile;
 mod movement;
 mod overlay;
+mod player_damage;
 mod revive;
 mod script_zones;
 pub mod scrplace;

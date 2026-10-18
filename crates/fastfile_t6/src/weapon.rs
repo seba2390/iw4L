@@ -280,6 +280,9 @@ pub mod def {
     pub const ARMOR_PIERCING: u32 = 1586;
     pub const BULLET_BOUNCE: u32 = 1623;
     pub const BULLET_IMPACT_EXPLODE: u32 = 1839;
+    /// Its projectile's impact on a downed player revives them (the upgraded
+    /// ballistic knives).
+    pub const REVIVES_ON_IMPACT: u32 = 0x6a8;
     pub const TRACER_TYPE: u32 = 2320;
     pub const SIZE: usize = 2448;
 }
@@ -1627,6 +1630,16 @@ impl<'a> WeaponDefView<'a> {
 
     pub fn ads_reload_trans_time(&self) -> i32 {
         self.def_i32(0x874)
+    }
+
+    /// A rocket's acceleration: one with any starts at rest and speeds up.
+    pub fn projectile_acceleration(&self) -> f32 {
+        self.def_f32(0x6e0)
+    }
+
+    /// The cone a rocket's launch direction wanders in at random.
+    pub fn projectile_random_wander(&self) -> f32 {
+        self.def_f32(0x6e4)
     }
 
     pub fn destabilization_rate_time(&self) -> f32 {

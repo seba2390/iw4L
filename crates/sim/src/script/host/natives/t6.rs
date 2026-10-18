@@ -38,7 +38,7 @@ mod sound;
 mod stats;
 mod turret;
 mod usable;
-mod vehicle;
+pub(crate) mod vehicle;
 mod weapon;
 
 pub(crate) use usable::{axes as box_axes, oriented_box_touches};
@@ -995,9 +995,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .unwrap_or_else(|| super::super::triggers::is_touching(world, id, other));
         Ok(Value::Int(touching.into()))
     });
-    // gscm_setmodel.
+    // gscm_setmodel. A player's body is drawn as the soldier kit whose body
+    // it is, as the map's script dresses each survivor.
     registry.register(Method, "setmodel", |world, receiver, args| {
-        set_model(world, receiver, &string(args, 0)?)?;
+        let model = string(args, 0)?;
+        set_model(world, receiver, &model)?;
+        if let Some(client) = world.resource::<RoundScript>().player_client_of(receiver) {
+            let mut frame = crate::frame::FrameWorld::from_world(world);
+            let kit = frame.kit_of_body(&model);
+            diag::info!(Sim, "player {client} wears {model} (kit {kit:?})");
+            frame.set_player_kit(crate::ClientId(client), kit);
+        }
         Ok(Value::Undefined)
     });
     // gscm_useweaponmodel(weapon, [model], [options]): the entity shows the
@@ -1894,7 +1902,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "disablegrenadesuicide", |world, _, _| {
-        world.insert_resource(GrenadeSuicideDisabled);
+        world
+            .resource_mut::<RoundScript>()
+            .engine
+            .grenade_suicide_disabled = true;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "enablegrenadesuicide", |world, _, _| {
+        world
+            .resource_mut::<RoundScript>()
+            .engine
+            .grenade_suicide_disabled = false;
         Ok(Value::Undefined)
     });
     // Demo bookmarks only matter while a demo records.
@@ -2541,10 +2559,6 @@ fn absolute_bounds(world: &mut World, id: u64) -> ([f32; 3], [f32; 3]) {
     };
     (low.map(|v| v - 1.0), high.map(|v| v + 1.0))
 }
-
-/// `disablegrenadesuicide` was called.
-#[derive(Resource)]
-struct GrenadeSuicideDisabled;
 
 /// Each registered client system's state, for every client or one.
 #[derive(Resource, Default)]

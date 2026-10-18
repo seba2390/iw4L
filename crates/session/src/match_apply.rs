@@ -439,8 +439,9 @@ pub fn apply_prepared_match(
             sim.set_local_player_profile(profile);
         }
         content.set_player_kit_collisions(
-            player_kit_collision(soldiers.side(false).ok().map(Arc::as_ref))?,
-            player_kit_collision(soldiers.side(true).ok().map(Arc::as_ref))?,
+            (0..soldiers.kit_count())
+                .map(|kit| player_kit_collision(soldiers.kit(kit).ok().map(Arc::as_ref)))
+                .collect::<Result<Vec<_>, _>>()?,
         );
         if let Some(Ok(tree)) = player_anim_sources.compiled() {
             for axis in [false, true] {
@@ -1812,9 +1813,9 @@ fn objective_weapon_binding(
             let id = weapon.wire_id();
             registry.identity_namespace_of(id) == Some(family)
                 && registry.script_name_of(id) == script_name
-                && [false, true]
+                && [asset_model::ALLIES_KIT, asset_model::AXIS_KIT]
                     .into_iter()
-                    .all(|axis| registry.fpv_assemblies_of(id, axis).is_some())
+                    .all(|kit| registry.fpv_assemblies_of(id, kit).is_some())
         })
         .map(|weapon| weapon.wire_id())
 }

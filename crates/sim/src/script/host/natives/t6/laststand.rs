@@ -24,6 +24,9 @@ pub(super) struct Down {
     pub being_revived: bool,
     /// The weapon `setlaststandprevweap` named; `reviveplayer` clears it.
     pub prev_weapon: u32,
+    /// Until this level time a downed client takes no damage but a blow:
+    /// half a second past going down.
+    pub grace_until_ms: i64,
 }
 
 #[derive(Resource, Default)]
@@ -45,9 +48,20 @@ pub(super) fn is_down(world: &World, client: u32) -> bool {
         .is_some_and(|down| down.down)
 }
 
-/// A downed player's move type: last stand, which `movement_t6` moves him by.
+/// A downed player's move type: last stand, which `movement_t6` moves them
+/// by, and what going down does in the game's own movement.
 pub(super) fn enter_last_stand_move(world: &mut World, id: ClientId) {
-    crate::script_player::enter_script_last_stand(&mut FrameWorld::from_world(world), id);
+    let mut frame = FrameWorld::from_world(world);
+    crate::script_player::enter_script_last_stand(&mut frame, id);
+    crate::game_move::enter_last_stand(&mut frame, id);
+}
+
+/// A downed client still in the half second after going down.
+pub(super) fn in_grace(world: &World, client: u32, now_ms: i64) -> bool {
+    world
+        .get_resource::<Downs>()
+        .and_then(|downs| downs.0.get(&client))
+        .is_some_and(|down| down.down && down.grace_until_ms > now_ms)
 }
 
 fn client(world: &World, receiver: &Value) -> Result<u32, String> {
@@ -84,7 +98,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let mut frame = FrameWorld::from_world(world);
         crate::script_player::undo_last_stand(&mut frame, id);
         crate::game_move::revive(&mut frame, id);
-        crate::game_move::damage_timer(&mut frame, id, None);
+        crate::game_move::clear_damage_timer(&mut frame, id);
         if let Some(ps) = frame.player_mut(id) {
             ps.health = ps.max_health;
         }

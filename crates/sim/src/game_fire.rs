@@ -634,6 +634,22 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             .is_some_and(|runtime| runtime.engine.players_ignore_radius_damage)
     }
 
+    fn platform_at(&mut self, player: i32, time: i32) -> Option<[f32; 3]> {
+        let client = self.client(player)?;
+        crate::script::host::natives::t6::vehicle::ridden_platform_at(
+            self.world.ecs(),
+            client.0,
+            time,
+        )
+    }
+
+    fn grenade_suicide_disabled(&self) -> bool {
+        self.world
+            .ecs_ref()
+            .get_resource::<crate::script::RoundScript>()
+            .is_some_and(|runtime| runtime.engine.grenade_suicide_disabled)
+    }
+
     fn notify(&mut self, entity: i32, name: &str, args: &[NotifyArg]) {
         let receiver = self.object_of(entity);
         let args: Vec<crate::script::NotifyValue> = args

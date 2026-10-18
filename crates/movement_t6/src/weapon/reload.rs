@@ -171,7 +171,7 @@ pub(super) fn begin_reload<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     if !from
         || !super::some(weapon)
         || !pm.world.weapon_exists(weapon)
-        || pm.ps.e_flags2 & e_flags2::MOUNTED != 0
+        || pm.ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0
         || super::pose::mantling_anim(pm.ps)
     {
         return;

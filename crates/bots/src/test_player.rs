@@ -68,14 +68,20 @@
 //!
 //! `IW4L_TEST_THROW=1` (with any fighting mode): every 15 s it holds its
 //! lethal grenade's button for half a second at an actor in sight farther
-//! than 250 units, then lets go to throw it.
+//! than 250 units, then lets go to throw it. `IW4L_TEST_THROW=cook` holds
+//! the button for 12 s instead, at whatever it faces, so the grenade goes off
+//! in its hand; that test asks for no god mode. With the go-down test,
+//! `IW4L_TEST_THROW=down[:<ms>]` (with the go-down or revive test) holds the
+//! frag from the first hit on (or that many milliseconds after he spawns), so
+//! he goes down with it in hand.
 //!
 //! `IW4L_TEST_REVIVE=1`: when a teammate is down, the player goes beside
 //! him and holds use to revive him.
 //!
 //! `IW4L_TEST_RIDE=1|<seconds>` (with any fighting mode): 15 s (or the
 //! seconds given) in, the player steps
-//! onto TranZit's bus and stays, logging where he and the bus are.
+//! onto TranZit's bus and stays, logging where he and the bus are; with
+//! `IW4L_TEST_THROW=ride` he throws a frag ahead every 15 s as he rides.
 //!
 //! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
 //! he can pay for it he buys Quick Revive as the use test does (fighting
@@ -139,6 +145,7 @@ const LOG_PERIOD_MS: i32 = 5000;
 /// The throw test throws this often, at an actor at least this far.
 const THROW_PERIOD_MS: i32 = 15_000;
 const THROW_HOLD_MS: i32 = 500;
+const COOK_HOLD_MS: i32 = 12_000;
 const THROW_FROM: f32 = 250.0;
 /// The place aid waits this long with the weapon up, then holds fire.
 const PLACE_AFTER_MS: i32 = 2000;
@@ -318,6 +325,8 @@ pub(crate) struct TestPlayer {
     next_throw_ms: i32,
     throw_until_ms: i32,
     throws: u32,
+    /// The cook test's last weapon state logged.
+    cook_state: Option<i32>,
     /// The weapon its command last asked for, kept while nothing is up.
     selected: u16,
     /// What the sight lines to targets ended on: nothing, a model, the world.
@@ -1074,6 +1083,45 @@ pub(crate) fn drive_test_player(
                 },
             );
         }
+        // `IW4L_TEST_THROW=down[:<ms>]`: from the first hit on (or that long
+        // after he spawned), he holds his frag ready, so whatever downs him
+        // finds it in hand.
+        let hold_from = std::env::var("IW4L_TEST_THROW").ok().and_then(|t| {
+            let rest = t.strip_prefix("down")?;
+            Some(rest.strip_prefix(':').and_then(|ms| ms.parse::<i32>().ok()))
+        });
+        let alive_since = if meta.lifecycle == ClientLifecycle::Alive {
+            *test.alive_since_ms.get_or_insert(clock.time_ms)
+        } else {
+            clock.time_ms
+        };
+        if meta.lifecycle == ClientLifecycle::Alive
+            && hold_from.is_some_and(|after| {
+                ps.health < ps.max_health
+                    || after.is_some_and(|after| clock.time_ms - alive_since >= after)
+            })
+        {
+            let state = world.0.move_status(id).map(|s| s.weapon_state);
+            if state != test.cook_state {
+                test.cook_state = state;
+                diag::info!(
+                    Sim,
+                    "test player: holding the frag t={}ms health={} weapon state={state:?}",
+                    clock.time_ms,
+                    ps.health
+                );
+            }
+            let mut cmd = UserCmd {
+                server_time: clock.time_ms,
+                ..UserCmd::default()
+            };
+            cmd.angles = look_angles_from_degrees(std::array::from_fn(|axis| {
+                ps.viewangles[axis] - ps.delta_angles[axis]
+            }));
+            cmd.buttons |= buttons::FRAG;
+            cmds.push(id, cmd);
+            return;
+        }
         if test.mode == Mode::Down || test.pending.is_empty() && test.scenario.is_none() {
             return;
         }
@@ -1220,7 +1268,9 @@ pub(crate) fn drive_test_player(
         }
     };
     if test.mode.cheats() {
-        if !test.god_asked {
+        // The cook test plays mortal: its grenade is to take it down.
+        let cook = std::env::var("IW4L_TEST_THROW").is_ok_and(|t| t == "cook");
+        if !test.god_asked && !cook {
             test.god_asked = true;
             ask(ClientAction::ToggleGod {
                 request_id: request_ids.allocate(),
@@ -1793,6 +1843,25 @@ pub(crate) fn drive_test_player(
             );
         }
         if test.boarded {
+            // `IW4L_TEST_THROW=ride`: riding, he throws a frag the way he
+            // faces every 15 s.
+            if std::env::var("IW4L_TEST_THROW").is_ok_and(|t| t == "ride") {
+                if clock.time_ms < test.throw_until_ms {
+                    cmd.buttons |= buttons::FRAG;
+                } else if clock.time_ms >= test.next_throw_ms && ps.weaponstate_primary == 0 {
+                    test.next_throw_ms = clock.time_ms + THROW_PERIOD_MS;
+                    test.throw_until_ms = clock.time_ms + THROW_HOLD_MS;
+                    test.throws += 1;
+                    diag::info!(
+                        Sim,
+                        "test player: throw {} from the bus at {}, bus at {}",
+                        test.throws,
+                        fmt_point(ps.origin),
+                        fmt_point(bus)
+                    );
+                    cmd.buttons |= buttons::FRAG;
+                }
+            }
             cmds.push(id, cmd);
             return;
         }
@@ -1887,13 +1956,23 @@ pub(crate) fn drive_test_player(
     let target = target.map(|(aim, _, _)| aim);
     aim_cmd(&mut cmd, target.map_or(ps.viewangles, |aim| look(eye, aim)));
     if let Ok(throw_arg) = std::env::var("IW4L_TEST_THROW") {
-        let named = (throw_arg != "1").then_some(throw_arg.as_str());
+        let cook = throw_arg == "cook";
+        let named = (throw_arg != "1" && !cook).then_some(throw_arg.as_str());
         let button = if named.is_some() {
             buttons::SMOKE
         } else {
             buttons::FRAG
         };
         if clock.time_ms < test.throw_until_ms {
+            let state = world.0.move_status(id).map(|s| s.weapon_state);
+            if cook && state != test.cook_state {
+                test.cook_state = state;
+                diag::info!(
+                    Sim,
+                    "test player: cooking t={}ms weapon state={state:?}",
+                    clock.time_ms
+                );
+            }
             cmd.buttons |= button;
             cmds.push(id, cmd);
             return;
@@ -1905,12 +1984,14 @@ pub(crate) fn drive_test_player(
             && ps.weaponstate_primary == 0
             && if named.is_some() {
                 held && target.is_some_and(|aim| distance(eye, aim) > KNIFE_REACH)
+            } else if cook {
+                held
             } else {
                 target.is_some_and(|aim| distance(eye, aim) > THROW_FROM)
             };
         if clock.time_ms >= test.next_throw_ms && ready {
             test.next_throw_ms = clock.time_ms + THROW_PERIOD_MS;
-            test.throw_until_ms = clock.time_ms + THROW_HOLD_MS;
+            test.throw_until_ms = clock.time_ms + if cook { COOK_HOLD_MS } else { THROW_HOLD_MS };
             test.throws += 1;
             diag::info!(
                 Sim,

@@ -1175,6 +1175,13 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
             out.put_u8(team);
         }
     }
+    match meta.kit {
+        None => out.put_u8(0),
+        Some(kit) => {
+            out.put_u8(1);
+            out.put_u8(kit);
+        }
+    }
     out.put_i32(meta.client_state_team);
     out.put_i32(meta.rank);
     out.put_i32(meta.prestige);
@@ -1451,6 +1458,11 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         1 => Some(input.get_u8()?),
         _ => return Err(WireError::Malformed("bad ffa_team tag")),
     };
+    let kit = match input.get_u8()? {
+        0 => None,
+        1 => Some(input.get_u8()?),
+        _ => return Err(WireError::Malformed("bad kit tag")),
+    };
     let client_state_team = input.get_i32()?;
     let rank = input.get_i32()?;
     let prestige = input.get_i32()?;
@@ -1589,6 +1601,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         hud_archival,
         hud_current,
         ffa_team,
+        kit,
         client_state_team,
         rank,
         prestige,

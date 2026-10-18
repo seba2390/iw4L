@@ -166,7 +166,7 @@ fn mask_command<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         freeze_moves(pm);
         pm.ps.velocity = [0.0; 3];
     } else if pm.weapon_blocks_stance()
-        || (ps.e_flags2 & e_flags2::MOUNTED != 0 && ps.e_flags & e_flags::VEHICLE_VIEW == 0)
+        || (ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0 && ps.e_flags & e_flags::VEHICLE_VIEW == 0)
     {
         freeze_moves(pm);
         pm.cmd
@@ -241,7 +241,7 @@ fn snap_velocity(v: &mut [f32; 3]) {
 fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     set_bounds(pm);
     pm.ps.water_level = 0;
-    if pm.ps.e_flags2 & e_flags2::MOUNTED != 0 {
+    if pm.ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0 {
         pm.ps.velocity = [0.0; 3];
     }
     if pm.ps.pm_flags & pm_flags::LAUNCHED != 0 {
@@ -250,7 +250,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     }
     mask_command(pm);
     pm.ps.pm_flags &= !pm_flags::STANCE_CHANGED;
-    if pm.ps.pm_type >= pm_type::DEAD && pm.ps.e_flags2 & e_flags2::MOUNTED == 0 {
+    if pm.ps.pm_type >= pm_type::DEAD && pm.ps.e_flags2 & e_flags2::REMOTE_CONTROL == 0 {
         pm.tracemask &= !crate::PLAYER_BODY_CONTENTS;
     }
     prone_move_override(pm);
@@ -294,7 +294,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     } else if pm.cmd.forwardmove > 0 || pm.cmd.rightmove != 0 {
         pm.ps.pm_flags &= !pm_flags::BACKWARDS_RUN;
     }
-    if pm.ps.pm_type > pm_type::LAST_STAND && pm.ps.e_flags2 & e_flags2::MOUNTED == 0 {
+    if pm.ps.pm_type > pm_type::LAST_STAND && pm.ps.e_flags2 & e_flags2::REMOTE_CONTROL == 0 {
         freeze_moves(pm);
     }
     if stance == 1 && pm.ps.pm_flags & pm_flags::PRONEMOVE_OVERRIDDEN != 0 {
@@ -324,7 +324,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         }
         _ => {}
     }
-    if pm.ps.e_flags & e_flags::TURRET != 0 || pm.ps.e_flags2 & e_flags2::MOUNTED != 0 {
+    if pm.ps.e_flags & e_flags::TURRET != 0 || pm.ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0 {
         pm.gap(Gap::MountedView);
         return output(pm, &pml);
     }

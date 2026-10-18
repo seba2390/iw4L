@@ -211,6 +211,9 @@ pub struct SimState {
     pending_final_kill: Option<(ClientId, ClientId)>,
 
     last_pmove_walking: HashMap<ClientId, i32>,
+    /// The box the game's own movement last gave each player, about their
+    /// origin.
+    last_move_bounds: HashMap<ClientId, ([f32; 3], [f32; 3])>,
 
     stuck_holdrand: u32,
 
@@ -293,6 +296,7 @@ impl Default for SimState {
             presentation: PresentationQueue::default(),
             pending_final_kill: None,
             last_pmove_walking: HashMap::new(),
+            last_move_bounds: HashMap::new(),
             stuck_holdrand: 0,
             last_stuck_ejects: Vec::new(),
             last_anim_movement: HashMap::new(),
@@ -718,14 +722,41 @@ impl SimState {
         let Some(meta) = self.client_meta(id) else {
             return 0;
         };
-        usize::from(Self::kit_assignment_is_axis(
-            meta.client_state_team,
-            meta.ffa_team,
-        ))
+        Self::kit_index(meta)
     }
 
     fn collision_kit(&self, id: ClientId) -> &PlayerKitCollision {
-        &self.content.player_kits()[self.collision_kit_index(id)]
+        self.content.player_kit(self.collision_kit_index(id))
+    }
+
+    /// The kit whose body is `model`, when one is.
+    pub(crate) fn kit_of_body(&self, model: &str) -> Option<u8> {
+        let index = self
+            .content
+            .player_kits()
+            .iter()
+            .position(|kit| kit.body.is_some() && kit.body_key == model)?;
+        u8::try_from(index).ok()
+    }
+
+    /// Dresses the player in kit `kit` (`None`: their side's).
+    pub(crate) fn set_player_kit(&mut self, id: ClientId, kit: Option<u8>) {
+        if self.client_meta(id).is_some() {
+            self.client_meta_mut(id).kit = kit;
+        }
+    }
+
+    /// The kit the game dressed the player in, else their side's.
+    fn kit_index(meta: &ClientMatchState) -> usize {
+        meta.kit.map_or_else(
+            || {
+                usize::from(Self::kit_assignment_is_axis(
+                    meta.client_state_team,
+                    meta.ffa_team,
+                ))
+            },
+            usize::from,
+        )
     }
 
     fn kit_assignment_is_axis(client_state_team: i32, ffa_team: Option<u8>) -> bool {
@@ -1202,6 +1233,7 @@ impl SimState {
         self.player_bodies.forget_client(id);
         self.collision_runtime.forget_client(id);
         self.last_pmove_walking.remove(&id);
+        self.last_move_bounds.remove(&id);
         self.last_anim_movement.remove(&id);
         self.anim_command_buttons.remove(&id);
     }
@@ -2210,15 +2242,7 @@ impl SimState {
                 .filter(|(_, meta)| meta.lifecycle == crate::ClientLifecycle::Alive)
         };
         self.player_bodies.tick_dobjs(
-            alive().map(|(id, meta)| {
-                (
-                    *id,
-                    &self.content.player_kits()[usize::from(Self::kit_assignment_is_axis(
-                        meta.client_state_team,
-                        meta.ffa_team,
-                    ))],
-                )
-            }),
+            alive().map(|(id, meta)| (*id, self.content.player_kit(Self::kit_index(meta)))),
             hitbox_cmds,
         );
         self.player_bodies.tick_trees(
@@ -2329,6 +2353,16 @@ impl SimState {
 
     pub(crate) fn set_pmove_walking(&mut self, id: ClientId, walking: i32) {
         self.last_pmove_walking.insert(id, walking);
+    }
+
+    pub(crate) fn set_move_bounds(&mut self, id: ClientId, mins: [f32; 3], maxs: [f32; 3]) {
+        self.last_move_bounds.insert(id, (mins, maxs));
+    }
+
+    /// The box the game's own movement last gave the player, about their
+    /// origin; `None` before it ran.
+    pub(crate) fn move_bounds(&self, id: ClientId) -> Option<([f32; 3], [f32; 3])> {
+        self.last_move_bounds.get(&id).copied()
     }
 
     pub(crate) fn stuck_holdrand_mut(&mut self) -> &mut u32 {

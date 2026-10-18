@@ -47,6 +47,8 @@ use std::sync::Arc;
 #[require(RemoteFxBolts)]
 pub struct RemotePlayer {
     pub ffa_team: Option<u8>,
+    /// The soldier kit the game dressed the player in, when it did.
+    pub kit: Option<u8>,
 
     pub client_state_team: i32,
     pub shield: Option<sim::ShieldAttachment>,
@@ -286,7 +288,7 @@ fn prepare_remote_kits(
         return;
     };
     for (runtime, remote) in &remotes {
-        let axis = asset_model::kit_assignment_is_axis(remote.client_state_team, remote.ffa_team);
+        let kit = asset_model::kit_index(remote.client_state_team, remote.ffa_team, remote.kit);
         let sample = remote_pose_sample(runtime);
         let Some(weapon) = owner.row(sample.weapon) else {
             continue;
@@ -298,7 +300,7 @@ fn prepare_remote_kits(
                 &weapons,
                 &world,
                 &mut compositions,
-                axis,
+                kit,
                 weapon.handle(),
                 camo,
             );
@@ -384,8 +386,8 @@ fn occupy_remote_scene_ents(
             .and_then(|snap| snap.meta.for_client(client));
         let ffa_team = meta.and_then(|m| m.ffa_team);
         let client_state_team = meta.map(|m| m.client_state_team).unwrap_or(0);
-        let axis = asset_model::kit_assignment_is_axis(client_state_team, ffa_team);
-        let Ok(soldier) = soldiers.side(axis) else {
+        let kit = asset_model::kit_index(client_state_team, ffa_team, meta.and_then(|m| m.kit));
+        let Ok(soldier) = soldiers.kit(kit) else {
             continue;
         };
         if !soldier.owns_bodies(&bodies.0) {
@@ -397,7 +399,7 @@ fn occupy_remote_scene_ents(
         let held = remote_pose_sample(runtime).weapon;
         let (kit_models, radius, hide_part_bits) = match live_kits.filter(|_| shield.is_none()) {
             Some((kits, _world)) => {
-                let Some(kit) = kits.get(axis, held, 0) else {
+                let Some(kit) = kits.get(kit, held, 0) else {
                     continue;
                 };
                 let Some(models) = kit.models() else {
@@ -526,10 +528,9 @@ fn sync_remote_bodies(
             .and_then(|snap| snap.meta.for_client(client));
         let ffa_team = meta.and_then(|m| m.ffa_team);
         let client_state_team = meta.map(|m| m.client_state_team).unwrap_or(0);
-        let Ok(soldier) = soldiers.side(asset_model::kit_assignment_is_axis(
-            client_state_team,
-            ffa_team,
-        )) else {
+        let kit = meta.and_then(|m| m.kit);
+        let Ok(soldier) = soldiers.kit(asset_model::kit_index(client_state_team, ffa_team, kit))
+        else {
             if remote.is_some() {
                 commands
                     .entity(entity)
@@ -564,6 +565,7 @@ fn sync_remote_bodies(
         };
         let marker = RemotePlayer {
             ffa_team,
+            kit,
             client_state_team,
             shield: presented
                 .snapshot()
@@ -939,7 +941,8 @@ impl<'a> RemotePoseFrame<'a> {
         let slot_lods = slot.lods;
         let scene_ent_hidden = slot.hidden;
         let last_cache_hits = self.last_cache_hits;
-        let axis = asset_model::kit_assignment_is_axis(remote.client_state_team, remote.ffa_team);
+        let soldier_kit =
+            asset_model::kit_index(remote.client_state_team, remote.ffa_team, remote.kit);
         let eye = self.eye;
         let ramp = self.ramp;
         let dobj_poses = &mut *self.dobj_poses;
@@ -947,7 +950,7 @@ impl<'a> RemotePoseFrame<'a> {
         let world_gun_gap = &mut self.world_gun_gap;
         let result = (|| {
             let origin = transform.translation.to_array();
-            let soldier = self.soldiers.side(axis).map_err(str::to_owned)?;
+            let soldier = self.soldiers.kit(soldier_kit).map_err(str::to_owned)?;
             if !soldier.owns_bodies(&bodies.0) {
                 return Err("soldier body owner differs from prepared bodies".into());
             }
@@ -1002,8 +1005,10 @@ impl<'a> RemotePoseFrame<'a> {
                 return Ok(PoseOneOutcome::Posed);
             }
             let kit = kits
-                .and_then(|kits| kits.get(axis, weapon, sample.weapon_model))
-                .ok_or_else(|| format!("remote kit not prepared: axis={axis} weapon={weapon}"))?;
+                .and_then(|kits| kits.get(soldier_kit, weapon, sample.weapon_model))
+                .ok_or_else(|| {
+                    format!("remote kit not prepared: kit={soldier_kit} weapon={weapon}")
+                })?;
             let prepared_dobj = kit.dobj.as_ref();
             ensure_remote_dobj(&model_set, e_type, persist_key, trees, prepared_dobj)?;
             let dobj = trees

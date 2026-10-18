@@ -120,7 +120,10 @@ pub mod e_flags2 {
     pub const ADS_RESET: u32 = 0x4_0000;
     /// A minigun's barrels spin up.
     pub const SPINNING: u32 = 0x40_0000;
-    pub const MOUNTED: u32 = 0x1000_0000;
+    /// The player drives something from afar (a guided missile's camera, a
+    /// remote vehicle seat): `EF2_REMOTE_CONTROL`, as the server's player
+    /// death names it when it refuses to run.
+    pub const REMOTE_CONTROL: u32 = 0x1000_0000;
 }
 
 /// The player state's other flags.
@@ -404,6 +407,13 @@ pub struct PlayerState {
     pub torso_timer: i32,
     pub damage_timer: i32,
     pub damage_duration: i32,
+    /// Where the last hit came from against the view: 1 ahead, 2 behind
+    /// (or no direction), 3 the left, 4 the right (the player animation
+    /// script's `DMGDIRECTION`).
+    pub dmg_direction: i32,
+    /// What kind of hit the last one was (the player animation script's
+    /// `DMGTYPE`).
+    pub dmg_type: i32,
     pub movement_dir: i32,
     pub e_flags: u32,
     pub e_flags2: u32,

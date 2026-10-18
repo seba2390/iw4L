@@ -211,7 +211,7 @@ pub struct SoldierPresentation {
 
 impl SoldierPresentation {
     fn prepare(
-        axis: bool,
+        kit: usize,
         bodies: &Arc<BodyMeshCatalog>,
         meshes: &Arc<FpvMeshCatalog>,
         mounts: &Arc<[HandMounts]>,
@@ -222,7 +222,11 @@ impl SoldierPresentation {
             return Err("soldier meshes are not published".into());
         }
         let family = meshes.map_namespace.ok_or("soldier map family missing")?;
-        let kit = bodies.kits().kit(axis).ok_or("no map soldier kit")?.clone();
+        let kit = bodies
+            .kits()
+            .kit_at(kit)
+            .ok_or("no map soldier kit")?
+            .clone();
         let body = bodies.get(&kit.body).ok_or("soldier body missing")?;
         if body.namespace != family {
             return Err("soldier body differs from map family".into());
@@ -360,7 +364,8 @@ impl SoldierFpvPresentation {
 
 #[derive(Clone, Debug, Resource)]
 pub struct SoldierPresentations {
-    sides: [Result<Arc<SoldierPresentation>, String>; 2],
+    /// By kit: the allies', the axis', then the extra kits.
+    sides: Vec<Result<Arc<SoldierPresentation>, String>>,
     bodies: Arc<BodyMeshCatalog>,
     meshes: Arc<FpvMeshCatalog>,
     catalog: Arc<XAnimCatalog>,
@@ -392,14 +397,21 @@ impl SoldierPresentations {
                     .any(|bone| bone == "tag_weapon1"),
             })
             .collect();
-        let allies = SoldierPresentation::prepare(false, bodies, meshes, &mounts, sources, catalog);
-        let axis = if bodies.kits().kit(false) == bodies.kits().kit(true) {
-            allies.clone()
-        } else {
-            SoldierPresentation::prepare(true, bodies, meshes, &mounts, sources, catalog)
-        };
+        // A kit that is another's (the axis' standing in for missing allies)
+        // shares that one's presentation.
+        let kits = bodies.kits();
+        let mut sides: Vec<Result<Arc<SoldierPresentation>, String>> = Vec::new();
+        for index in 0..kits.len() {
+            let same = (0..index).find(|&other| kits.kit_at(other) == kits.kit_at(index));
+            sides.push(match same {
+                Some(other) => sides[other].clone(),
+                None => {
+                    SoldierPresentation::prepare(index, bodies, meshes, &mounts, sources, catalog)
+                }
+            });
+        }
         Self {
-            sides: [allies, axis],
+            sides,
             bodies: Arc::clone(bodies),
             meshes: Arc::clone(meshes),
             catalog: Arc::clone(catalog),
@@ -451,8 +463,20 @@ impl SoldierPresentations {
     }
 
     pub fn side(&self, axis: bool) -> Result<&Arc<SoldierPresentation>, &str> {
-        self.sides[usize::from(axis)]
+        self.kit(usize::from(axis))
+    }
+
+    /// The presentation of kit `index` (`asset_model::SoldierKits::kit_at`).
+    pub fn kit(&self, index: usize) -> Result<&Arc<SoldierPresentation>, &str> {
+        self.sides
+            .get(index)
+            .ok_or("no such soldier kit")?
             .as_ref()
             .map_err(String::as_str)
+    }
+
+    /// How many kits are presented.
+    pub fn kit_count(&self) -> usize {
+        self.sides.len()
     }
 }

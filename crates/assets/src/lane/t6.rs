@@ -2264,10 +2264,7 @@ fn capture_soldiers(
     let mut decoded = DecodedTextures::new();
     let mut techsets = BTreeMap::new();
     let mut bound = BTreeMap::new();
-    for kit in [kits.allies.as_ref(), kits.axis.as_ref()]
-        .into_iter()
-        .flatten()
-    {
+    for kit in kits.all() {
         for (name, hands) in
             std::iter::once((&kit.body, false)).chain(kit.arms.as_ref().map(|name| (name, true)))
         {
@@ -2414,9 +2411,9 @@ fn map_teams(
     if asset_transport::t6_content::T6ContentMode::for_path(path)
         == asset_transport::t6_content::T6ContentMode::Zombies
     {
-        // The map's script dresses its players; its first two characters the
-        // zones carry stand where a multiplayer map's factions would
-        // (`t6.zombies.player_kits`).
+        // The map's script dresses its players: each character the zones
+        // carry is a kit, in the script's order; the first two also stand
+        // for the sides.
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         // Classic's own zone, which the engine loads with the map, carries
         // the survivors of maps that have more than one mode.
@@ -2478,6 +2475,7 @@ fn map_teams(
             asset_model::SoldierKits {
                 allies: kit(0),
                 axis: kit(1).or_else(|| kit(0)),
+                extra: (2..characters.len()).filter_map(kit).collect(),
             },
         ));
     }

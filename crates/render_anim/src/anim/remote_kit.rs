@@ -67,7 +67,7 @@ struct RemoteKitOwner {
 #[derive(bevy::prelude::Resource, Default)]
 pub(crate) struct PreparedRemoteKits {
     owner: Option<RemoteKitOwner>,
-    kits: HashMap<(bool, u32, u8), Option<PreparedRemoteKit>>,
+    kits: HashMap<(usize, u32, u8), Option<PreparedRemoteKit>>,
     built: HashMap<KitModels, Option<Arc<xmodel_runtime::DObj>>>,
 }
 
@@ -109,10 +109,8 @@ impl PreparedRemoteKits {
         }
     }
 
-    pub(crate) fn get(&self, axis: bool, weapon: u32, camo: u8) -> Option<&PreparedRemoteKit> {
-        self.kits
-            .get(&(axis, weapon, camo))
-            .and_then(Option::as_ref)
+    pub(crate) fn get(&self, kit: usize, weapon: u32, camo: u8) -> Option<&PreparedRemoteKit> {
+        self.kits.get(&(kit, weapon, camo)).and_then(Option::as_ref)
     }
 
     pub(crate) fn prepare(
@@ -122,7 +120,7 @@ impl PreparedRemoteKits {
         weapons: &assets::PreparedWeapons,
         world_weapons: &assets::PreparedWorldWeapons,
         compositions: &mut PreparedItemCompositions,
-        axis: bool,
+        soldier_kit: usize,
         handle: asset_game::WeaponHandle,
         camo: u8,
     ) {
@@ -131,7 +129,7 @@ impl PreparedRemoteKits {
             return;
         };
         let weapon = bound.wire_id();
-        if self.kits.contains_key(&(axis, weapon, camo)) {
+        if self.kits.contains_key(&(soldier_kit, weapon, camo)) {
             return;
         }
         let shared = if weapon == 0 || bound.world_facts().is_some_and(|facts| facts.is_shield()) {
@@ -140,17 +138,17 @@ impl PreparedRemoteKits {
             match compositions.prepare(weapons, world_weapons, handle, camo) {
                 Ok(shared) => Some(shared),
                 Err(_) => {
-                    self.kits.insert((axis, weapon, camo), None);
+                    self.kits.insert((soldier_kit, weapon, camo), None);
                     return;
                 }
             }
         };
-        let Ok(soldier) = soldiers.side(axis) else {
-            self.kits.insert((axis, weapon, camo), None);
+        let Ok(soldier) = soldiers.kit(soldier_kit) else {
+            self.kits.insert((soldier_kit, weapon, camo), None);
             return;
         };
         if !soldier.owns_bodies(&bodies.0) {
-            self.kits.insert((axis, weapon, camo), None);
+            self.kits.insert((soldier_kit, weapon, camo), None);
             return;
         }
         let kit = self.compile(
@@ -162,7 +160,7 @@ impl PreparedRemoteKits {
             camo,
             shared.as_deref(),
         );
-        self.kits.insert((axis, weapon, camo), kit);
+        self.kits.insert((soldier_kit, weapon, camo), kit);
     }
 
     fn compile(

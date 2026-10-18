@@ -142,8 +142,15 @@ pub fn sync_fpv_to_held_weapon(
     {
         return;
     }
+    // The hands follow the kit the game dressed the player in.
+    let kit = presented
+        .snapshot()
+        .and_then(|snap| snap.meta.for_client(local.0))
+        .map(|meta| asset_model::kit_index(meta.client_state_team, meta.ffa_team, meta.kit));
     if session_vm.0.as_ref().is_some_and(|session| {
-        session.weapon_id == held && session.parent_weapon == ps.weapon_primary
+        session.weapon_id == held
+            && session.parent_weapon == ps.weapon_primary
+            && kit.is_none_or(|kit| session.kit == kit)
     }) {
         settled.0 = Some(held);
         return;

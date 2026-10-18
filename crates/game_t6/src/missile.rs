@@ -349,6 +349,14 @@ pub(crate) fn launch_rocket(
     let level = world.level_time();
     let speed = def.def_i32(def::PROJECTILE_SPEED) as f32;
     let hidden = ((speed * -35.0 * 0.001_666_666_7 + 85.0) as i32).clamp(20, 50);
+    // A player's moving platform adds to the gun's velocity, but not for a
+    // weapon of guided missile type 6.
+    let gun_velocity = if def.guided_missile_type() != 6 {
+        let platform = crate::grenade::platform_velocity(owner, world);
+        std::array::from_fn(|i| platform[i] + gun_velocity[i])
+    } else {
+        gun_velocity
+    };
     let delta = [
         ((dir[0] * speed) + gun_velocity[0]) as i32 as f32,
         ((speed * dir[1]) + gun_velocity[1]) as i32 as f32,
@@ -365,12 +373,18 @@ pub(crate) fn launch_rocket(
         ..State::default()
     }
     .write(&mut game);
+    // A ballistic knife (guided missile type 4) falls as a grenade does.
+    let kind = if def.guided_missile_type() == 4 {
+        TrajectoryKind::Gravity(crate::grenade::gravity(world))
+    } else {
+        TrajectoryKind::Linear
+    };
     let ent = world.spawn_missile(GameMissile {
         entity: ENTITY_NONE,
         owner,
         weapon,
         position: GameTrajectory {
-            kind: TrajectoryKind::Linear,
+            kind,
             time: level,
             duration: 0,
             base: origin,
@@ -763,7 +777,16 @@ impl MissilePhysics for T6Missiles {
             return (None, Vec::new());
         };
         let ent = grenade::spawn_grenade(
-            owner, weapon, &def, origin, velocity, [0.0; 3], true, fuse, None, world,
+            owner,
+            weapon,
+            &def,
+            origin,
+            velocity,
+            [[0.0; 3]; 2],
+            true,
+            fuse,
+            None,
+            world,
         );
         (ent, Vec::new())
     }
