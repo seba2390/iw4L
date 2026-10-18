@@ -812,7 +812,8 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // player with `specialty_shellshock` takes it for the duration times
     // `perk_shellShockReduction`.
     // t6.vision.shellshock_weapon_perk: the engine also reduces it when the
-    // player's weapon or its attachments carry the perk.
+    // player's weapon or its attachments carry the perk; no zombies weapon
+    // or attachment does.
     registry.register(Method, "shellshock", |world, receiver, args| {
         let client = super::super::player::player(world, receiver)?;
         let name = string(args, 0)?;

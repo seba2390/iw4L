@@ -60,10 +60,11 @@ fn dvar_text(world: &World, name: &str) -> String {
 /// poisoned and does not hold the protection perk, else toward 0, by the
 /// frame's time at the rate, stopping at the target.
 ///
-/// t6.csc.overlay.poison_gates: the client also holds the target at 0 on a
-/// player-state flag, and the amount at 0 on two more and while a demo's
-/// free or follow camera plays; what those player-state bits mean was not
-/// read, so they do not gate it here.
+/// t6.csc.overlay.poison_gates: the client also takes the client scripts'
+/// own poisoned word, holds the target at 0 for a weapon carrying the perk
+/// and during a killcam, and both at 0 under the guided missile camera, a
+/// weapon view link and a demo's free or follow camera; no installed map
+/// reaches any of them, so they do not gate it here.
 pub(crate) fn frame(world: &mut World, client: u32, dvars: &PoisonDvars) {
     let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
     let protected = world
