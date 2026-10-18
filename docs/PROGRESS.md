@@ -138,9 +138,9 @@ Only the top-level items count.
 - [x] Rounds advance past round 1.
 - [x] Wall weapons and the Mystery Box.
   - [x] The box moves when the teddy bear is rolled (the 950 points are refunded, `moving_chest_now` lifts the box away and shows rubble, and `level.chest_index` advances to the next location), and Fire Sale opens all nine chest locations at 10 points for 30 s before hiding the eight temporary chests again (`disabled` triggers are skipped by `use_sites`).
-- [ ] Doors and debris.
+- [x] Doors and debris.
   - [x] Kino's doors open for points.
-  - [ ] Debris (Five) not reached.
+  - [x] Five's doors and debris open for points (`IW4L_TEST_PLAYER=use`: a 750 door and a 1000 debris pile bought, their triggers gone); a door's blown slab is not launched (`physicslaunch`, no rigid-body physics).
 - [x] Power and perks.
   - [x] The power switch, buying and drinking a perk (Quick Revive), the perk icon.
   - [x] Juggernog fills the player's health to 250 (`SetMaxHealth`).
