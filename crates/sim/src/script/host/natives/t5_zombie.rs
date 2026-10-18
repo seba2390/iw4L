@@ -64,13 +64,34 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     // Script pacing on snapshot acknowledgement is left to the network layer:
     // scripts see no remote clients and wait a tenth of a second instead.
-    registry.register(Function, "numremoteclients", |_, _, args| {
+    // Offline (neither an online nor a system link game) there are none;
+    // otherwise the party's other members, which the session counts as its
+    // other players.
+    registry.register(Function, "numremoteclients", |world, _, args| {
         no_args(args)?;
-        Ok(Value::Int(0))
+        let online = dvar_set(world, "onlinegame") || dvar_set(world, "systemlink");
+        let remote = if online {
+            (players(world).len() as i32).max(1) - 1
+        } else {
+            0
+        };
+        Ok(Value::Int(remote))
     });
-    registry.register(Function, "getdifficulty", |_, _, args| {
+    // `g_gameskill` names the difficulty (registered 1, "medium").
+    registry.register(Function, "getdifficulty", |world, _, args| {
         no_args(args)?;
-        Ok(Value::string("medium"))
+        let skill = world
+            .resource::<crate::script::MatchScript>()
+            .dvars
+            .get("g_gameskill")
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or(1);
+        Ok(Value::string(
+            ["easy", "medium", "hard", "fu"]
+                .get(skill)
+                .copied()
+                .unwrap_or("medium"),
+        ))
     });
     registry.register(Function, "issaverecentlyloaded", |_, _, args| {
         no_args(args)?;
@@ -281,17 +302,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     }
 }
 
+/// A boolean engine dvar is set.
+fn dvar_set(world: &World, name: &str) -> bool {
+    world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get(name)
+        .is_some_and(|value| value.trim().parse::<f64>().is_ok_and(|v| v != 0.0))
+}
+
 /// Whether a failed level slows time: not while a listed dvar is set, nor
 /// in the excluded game type.
 fn slows_time(world: &World, slow: &game_api::FailedSlowMotion) -> bool {
     let dvars = &world.resource::<crate::script::MatchScript>().dvars;
-    let set = |name: &str| {
-        dvars
-            .get(name)
-            .is_some_and(|value| value.trim().parse::<f64>().is_ok_and(|v| v != 0.0))
-    };
     let gametype = dvars.get("ui_gametype").map_or("", String::as_str);
-    !slow.unless_dvars.iter().any(|name| set(name))
+    !slow.unless_dvars.iter().any(|name| dvar_set(world, name))
         && !gametype.eq_ignore_ascii_case(slow.unless_gametype)
 }
 

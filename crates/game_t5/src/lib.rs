@@ -50,6 +50,20 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     // Black Ops registers it true; `_zombiemode_load` sets
     // `level.clientscripts` from it, which `clientNotify` reads.
     ("cg_usingClientScripts", "1"),
+    // Engine dvars the HUD menus read, at the defaults the executable
+    // registers them with (no config a zombies match loads sets them).
+    ("actionSlotsHide", "0"),
+    ("ammoCounterHide", "0"),
+    ("hud_missionFailed", "0"),
+    ("cg_hideWeaponHeat", "0"),
+    ("cg_drawWeaponHeatVertical", "0"),
+    ("dec20_Enabled", "0"),
+    ("g_gameskill", "1"),
+    ("gpad_enabled", "0"),
+    ("arcademode", "0"),
+    // A solo game is offline: neither a system link nor an online game.
+    ("systemlink", "0"),
+    ("onlinegame", "0"),
 ];
 
 impl game_api::GameScripts for T5 {
@@ -129,6 +143,12 @@ impl game_api::GameScripts for T5 {
         } else {
             &[]
         }
+    }
+
+    /// A solo zombies match is offline and executes no match config; its
+    /// dvars are the engine's registered defaults.
+    fn match_config(&self) -> Option<&'static str> {
+        None
     }
 
     fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {

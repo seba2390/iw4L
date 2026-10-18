@@ -218,6 +218,12 @@ pub trait GameScripts: Sync {
 
     /// Engine dvars this game's code sets when the match config does not.
     fn config_defaults(&self) -> &'static [(&'static str, &'static str)];
+
+    /// The config file a match executes before its scripts, when the game
+    /// executes one.
+    fn match_config(&self) -> Option<&'static str> {
+        Some("default_xboxlive.cfg")
+    }
 }
 
 /// What being in last stand does to a player.
