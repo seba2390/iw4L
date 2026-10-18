@@ -202,14 +202,6 @@ fn player_hit_unknown() -> &'static Unknown {
     )
 }
 
-fn delayed_death_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.ai.delayed_death",
-        "an actor that may not die takes lethal damage without Black Ops' delayed death",
-        "the actor states Black Ops' delayed death checks"
-    )
-}
-
 fn achievement_unknown() -> &'static Unknown {
     unknown!(
         "t5.achievements",
@@ -1292,8 +1284,37 @@ pub(crate) fn damage(
         return;
     }
     amount = amount.max(1);
-    if entity.kind == FireEntityKind::Actor && !entity.allow_death && amount >= entity.health {
-        gaps.push(delayed_death_unknown());
+    // Delayed death: an actor that may not die, in a scripted animation or a
+    // traversal, keeps one point of health; the rest is told
+    // `damage_notdone`.
+    if entity.kind == FireEntityKind::Actor
+        && amount >= entity.health
+        && !entity.allow_death
+        && entity.delays_death
+    {
+        let absorbed = amount - entity.health + 1;
+        amount -= absorbed;
+        world.set_delayed_death(target);
+        world.notify(
+            target,
+            "damage_notdone",
+            &[
+                NotifyArg::Int(absorbed),
+                NotifyArg::Entity(attacker),
+                NotifyArg::Vector(normalized(dir)),
+                NotifyArg::Vector(point),
+                NotifyArg::String(MEANS[means]),
+                NotifyArg::String(""),
+                NotifyArg::String(""),
+                NotifyArg::String(
+                    HIT_LOCATIONS
+                        .get(location as usize)
+                        .copied()
+                        .unwrap_or("none"),
+                ),
+                NotifyArg::Int(flags),
+            ],
+        );
     }
     if flags & dflags::RADIUS == 0 && entity.demigod && entity.health <= amount {
         amount = entity.health - 1;

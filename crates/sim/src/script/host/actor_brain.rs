@@ -307,6 +307,16 @@ pub(crate) fn alive(world: &World, actor: u64) -> bool {
     brain(world, actor).is_some_and(|brain| brain.alive)
 }
 
+/// Whether the actor's pending states hold a scripted animation or a
+/// negotiation, which hold off a lethal hit while it may not die.
+pub(crate) fn delays_death(runtime: &RoundScript, actor: u64) -> bool {
+    runtime.actor_brains.get(&actor).is_some_and(|brain| {
+        brain.pending[..=brain.pending_depth]
+            .iter()
+            .any(|state| matches!(*state, ANIM_SCRIPTED | NEGOTIATION))
+    })
+}
+
 /// Runs the actor's animscript init and takes charge of it: exposed at the
 /// bottom of its state stack, started by nothing (its substate is none
 /// until its enemy is first missing or found).
