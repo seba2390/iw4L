@@ -574,6 +574,10 @@ impl FrameWorld<'_> {
         })
     }
 
+    pub fn current_bodies(&self, current: Tick) -> crate::bullet_collision::LagcompQuery {
+        SimState::current_bodies(self, current, |id| player_ref(self.ecs, id).copied())
+    }
+
     pub(crate) fn alive_origins(&self) -> Vec<[f32; 3]> {
         self.client_ids_sorted()
             .into_iter()

@@ -85,13 +85,28 @@ const OPEN_DEPTH: f32 = 100.0;
 const PRONE_EYE: f32 = 11.0;
 const CROUCH_EYE: f32 = 40.0;
 const PRONE_TO_CROUCH: f32 = 0.034_482_758;
-/// A command's antilag time is no more than this far behind the match.
+/// A command's antilag time is no more than this far behind the match; nor
+/// is an actor's or vehicle's rewind.
 const ANTILAG_MS: i32 = 1000;
+/// A player's rewind is no more than this.
+const ANTILAG_PLAYERS_MS: i32 = 400;
+/// A shot this close to the match moves nothing back.
+const ANTILAG_MIN_MS: i32 = 50;
 /// A dropped grenade's speed along each axis, at most.
 const DROP_SPEED: f32 = 160.0;
 const DROP_HEIGHT: f32 = 40.0;
 /// The damage of a grenade gone off in its thrower's hand.
 const SUICIDE_DAMAGE: i32 = 100_000;
+/// A bullet trace's priority for each hit location (none, helmet, head,
+/// neck, the torso, arms, hands, legs, feet, gun, shield): a part outranks
+/// every lower one along the ray, 0 and 1 are never hit (a part of class 0
+/// takes its parent's), and the shield's 101 cuts the ray short.
+const PISTOL_HIT_PRIORITY: [u8; 21] = [
+    1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 101,
+];
+const RIFLE_HIT_PRIORITY: [u8; 21] = [
+    1, 11, 11, 11, 10, 9, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 4, 3, 3, 0, 101,
+];
 /// The eye is never lower than this above the feet.
 const EYE_FLOOR: f32 = 8.0;
 /// A melee blow's push lifts its direction by this.
@@ -101,9 +116,9 @@ const SWIM_WATER_LEVEL: i32 = 4;
 
 fn gun_angles_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.gun_angles",
-        "Black Ops 2 aims a shot along the gun angles its client sends with each command; the runtime's client sends none, so shots go along the view the previous command left",
-        "the client's gun angle computation and the command fields that carry it"
+        "t6.weapons.gun_sway",
+        "a shot goes along the player's view; Black Ops 2's server turns it by its weapon sway (hip fire with a swaying weapon) and adds its view kick and aim-down-sight drift",
+        "Black Ops 2's server weapon sway state, its view kick and its aim-down-sight drift"
     )
 }
 
@@ -117,17 +132,25 @@ fn mounted_unknown() -> &'static Unknown {
 
 fn antilag_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.antilag",
-        "a Black Ops 2 shot or blow is traced against players and actors where the runtime's lag compensation puts them, not where Black Ops 2 moves them back to the command's time, and its damage carries no time offset",
-        "the runtime's player and actor positions at a given match time and the damage time offset"
+        "t6.weapons.antilag_history",
+        "a shot more than 50 ms behind the match is traced against players and actors where the runtime's lag compensation puts them, not where Black Ops 2 moves them back along its own history",
+        "Black Ops 2's 50 ms body history in the runtime and its rigid move of each body"
     )
 }
 
-fn hit_priority_unknown() -> &'static Unknown {
+fn hit_priority_order_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.hit_priority",
-        "which body part a bullet or blow hits where parts overlap is the runtime's choice, not Black Ops 2's rifle or pistol part priority",
-        "Black Ops 2's hit location priority lists in the runtime's locational trace"
+        "t6.weapons.hit_priority_order",
+        "where a shot crosses two bodies, Black Ops 2 tries them in its entity sectors' order, each one's parts only up to the nearest hit so far; the runtime tries players, then entities, by number",
+        "the server's entity sector order in the runtime's locational trace"
+    )
+}
+
+fn melee_bounds_unknown() -> &'static Unknown {
+    unknown!(
+        "t6.weapons.melee_bounds",
+        "a melee blow's trace carries no hit priority, so Black Ops 2 hits a player or actor at its bounds with no hit location; the runtime traces their parts",
+        "players' and actors' bounds in the runtime's melee trace"
     )
 }
 
@@ -253,9 +276,9 @@ fn rocket_unknown() -> &'static Unknown {
 
 fn missile_antilag_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.missile_antilag",
-        "a player's missile starts at the match's time; Black Ops 2 starts it at the command's time and runs it forward to catch up",
-        "running a new missile ahead by a time offset in the runtime"
+        "t6.weapons.missile_platforms",
+        "a missile launched behind the match catches up one frame against moving platforms where they stand; Black Ops 2 moves them back to the launch's time for that frame",
+        "the moving platforms' history in the runtime's catch-up frame"
     )
 }
 
@@ -360,9 +383,18 @@ fn ai_sound_event(event: i32) -> bool {
         || (ev::JUMP..ev::FALL_DAMAGE).contains(&event)
 }
 
+/// How far back Black Ops 2 moves players (and, with
+/// `g_actorAndVehicleAntilag`, actors) for a shot at `time`: no more than
+/// `cap`, and not at all within 50 ms of the match.
+fn rewind_ms(time: i32, cap: i32, world: &dyn FireWorld) -> i32 {
+    let level = world.level_time();
+    let behind = (level - time).min(cap);
+    if behind > ANTILAG_MIN_MS { behind } else { 0 }
+}
+
 /// The command's time a shot is fired at, no more than a second behind
 /// the match.
-fn antilag_time(command_time: i32, world: &dyn FireWorld) -> i32 {
+pub(crate) fn antilag_time(command_time: i32, world: &dyn FireWorld) -> i32 {
     let level = world.level_time();
     if level - command_time > ANTILAG_MS {
         level - ANTILAG_MS
@@ -495,6 +527,9 @@ struct WeaponParms {
 /// One bullet's state along its path.
 #[derive(Clone, Copy)]
 struct BulletParams {
+    /// The weapon fires rifle bullets: its trace takes the rifle hit
+    /// priority.
+    rifle: bool,
     weapon_entity: i32,
     ignore_entity: i32,
     damage_multiplier: f32,
@@ -538,6 +573,9 @@ struct Hit {
     weapon: u32,
     location: i32,
     bone: Option<u16>,
+    /// How far behind the match the shot was settled: a bullet's command
+    /// time; a blow's is none.
+    time_offset: i32,
 }
 
 struct Shot<'a> {
@@ -627,6 +665,7 @@ impl Shot<'_> {
                             location: 0,
                             hit_location: HIT_LOCATIONS[0],
                             bone: None,
+                            time_offset: 0,
                         });
                     }
                 }
@@ -764,8 +803,9 @@ impl Shot<'_> {
         self.throw_grenade(weapon, &def, &parms, false, world);
     }
 
-    /// The eye and the axes of the aim: the gun angles, a stacked weapon's
-    /// barrel turned aside by its share of the stack's spread.
+    /// The eye and the axes of the aim: the gun angles (the server's, from
+    /// the view this command left), a stacked weapon's barrel turned aside by
+    /// its share of the stack's spread.
     fn weapon_parms(
         &mut self,
         def: &WeaponDefView<'_>,
@@ -773,11 +813,7 @@ impl Shot<'_> {
         world: &mut dyn FireWorld,
     ) -> Option<WeaponParms> {
         self.gaps.push(gun_angles_unknown());
-        let mut angles = [
-            self.was.viewangles[0],
-            self.was.viewangles[1],
-            self.ps.viewangles[2],
-        ];
+        let mut angles = self.ps.viewangles;
         if def.fire_type() == fire_type::STACKED {
             let count = stack_count(def, world);
             if count > 1 {
@@ -888,8 +924,18 @@ impl Shot<'_> {
         world: &mut dyn FireWorld,
     ) {
         let time = antilag_time(self.ps.command_time, world);
-        self.gaps.push(antilag_unknown());
-        self.gaps.push(hit_priority_unknown());
+        let players = rewind_ms(time, ANTILAG_PLAYERS_MS, world);
+        // A player in a vehicle never fires here (`t6.weapons.mounted_fire`).
+        let actors = if dvar_bool(world, "g_actorAndVehicleAntilag", true) {
+            rewind_ms(time, ANTILAG_MS, world)
+        } else {
+            0
+        };
+        world.antilag(players, actors);
+        if players != 0 || actors != 0 {
+            self.gaps.push(antilag_unknown());
+        }
+        self.gaps.push(hit_priority_order_unknown());
         self.gaps.push(dynents_unknown());
         let spread_class = matches!(
             def.weapon_class(),
@@ -912,6 +958,7 @@ impl Shot<'_> {
             }
             let (end, dir) = bullet_end(&mut seed, spread, parms, range, shot, shots, flat);
             let mut bp = BulletParams {
+                rifle: def.rifle_bullet(),
                 weapon_entity: attacker,
                 ignore_entity: attacker,
                 damage_multiplier,
@@ -942,7 +989,17 @@ impl Shot<'_> {
         world: &mut dyn FireWorld,
     ) -> (bool, BulletResults) {
         let mut br = BulletResults {
-            trace: world.bullet_trace(bp.start, bp.end, bp.ignore_entity, BULLET_MASK),
+            trace: world.locational_trace(
+                bp.start,
+                bp.end,
+                bp.ignore_entity,
+                BULLET_MASK,
+                if bp.rifle {
+                    &RIFLE_HIT_PRIORITY
+                } else {
+                    &PISTOL_HIT_PRIORITY
+                },
+            ),
             ..BulletResults::default()
         };
         if br.trace.hit == BulletHitType::None && !br.sky() {
@@ -1282,6 +1339,7 @@ impl Shot<'_> {
                         weapon,
                         location,
                         bone: br.trace.bone,
+                        time_offset: world.level_time() - antilag_time(self.ps.command_time, world),
                     },
                     world,
                 );
@@ -1373,6 +1431,9 @@ impl Shot<'_> {
             Some(time_left),
             world,
         );
+        if crate::grenade::launch_offset(me, world) != 0 {
+            self.gaps.push(missile_antilag_unknown());
+        }
         self.fired_grenade(def, def.fuse_time(), world);
     }
 
@@ -1456,6 +1517,7 @@ impl Shot<'_> {
             location: 0,
             hit_location: HIT_LOCATIONS[0],
             bone: None,
+            time_offset: 0,
         });
     }
 
@@ -1463,7 +1525,6 @@ impl Shot<'_> {
     /// took is cleared and scripts are told.
     fn fired_grenade(&mut self, def: &WeaponDefView<'_>, fuse: i32, world: &mut dyn FireWorld) {
         let me = self.attacker();
-        self.gaps.push(missile_antilag_unknown());
         if self.ps.throw_back_grenade_owner != ENTITYNUM_NONE {
             self.gaps.push(throwback_unknown());
         }
@@ -1507,7 +1568,9 @@ impl Shot<'_> {
             knockback,
             world,
         );
-        self.gaps.push(missile_antilag_unknown());
+        if crate::grenade::launch_offset(me, world) != 0 {
+            self.gaps.push(missile_antilag_unknown());
+        }
         // `missile_fire` is raised as the runtime adopts the rocket's script entity.
     }
 
@@ -1555,8 +1618,9 @@ impl Shot<'_> {
                 dvar_f32(world, "player_meleeHeight", 10.0),
             )
         };
-        self.gaps.push(antilag_unknown());
-        self.gaps.push(hit_priority_unknown());
+        // A blow moves no body back.
+        world.antilag(0, 0);
+        self.gaps.push(melee_bounds_unknown());
         self.gaps.push(dynents_unknown());
         let damage = def.melee_damage();
         let parms = WeaponParms {
@@ -1606,6 +1670,7 @@ impl Shot<'_> {
                 weapon: held,
                 location,
                 bone: trace.bone,
+                time_offset: 0,
             },
             world,
         );
@@ -1718,6 +1783,7 @@ impl Shot<'_> {
                 .unwrap_or("none"),
             location: hit.location,
             bone: hit.bone,
+            time_offset: hit.time_offset,
         });
     }
 

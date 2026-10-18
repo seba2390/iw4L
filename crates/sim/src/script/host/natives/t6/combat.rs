@@ -282,6 +282,7 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
             weapon: Some("none".to_owned()),
             hit_location,
             located: false,
+            time_offset: 0,
         },
     )?;
     Ok(strike.entity)

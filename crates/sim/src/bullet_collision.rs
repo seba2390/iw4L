@@ -1052,9 +1052,14 @@ pub struct HistoryFrame {
 pub enum CurrentAuthorityReason {
     NoSampleClaim,
 
+    /// The game's own antilag left the bodies where they stand.
+    GameRule,
+
     SampleAtShot,
 
-    HistoryUnavailable { requested: Tick },
+    HistoryUnavailable {
+        requested: Tick,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1271,7 +1276,92 @@ pub fn bullet_trace_with_entity_models(
         script_models,
         query,
         glass_is_solid,
+        None,
     )
+}
+
+/// [`bullet_trace_with_entity_models`], with a hit priority per hit class
+/// when one is given: each body's parts are then tried as
+/// [`prioritized_part`] says, the table's last entry standing for a carried
+/// shield.
+pub fn bullet_trace_prioritized(
+    brushes: &[SimBrush],
+    bsp: &SimClipBsp,
+    cmodels: &SimClipCmodels,
+    mesh: &SimClipMesh,
+    players: &[PlayerCollisionPose],
+    script_models: &[EntityCollisionTraceGeom],
+    query: &BulletTraceQuery,
+    glass_is_solid: &dyn Fn(u16) -> bool,
+    priority: Option<&[u8]>,
+) -> TraceOutcome {
+    bullet_trace_filtered(
+        brushes,
+        bsp,
+        cmodels,
+        mesh,
+        players,
+        script_models,
+        query,
+        glass_is_solid,
+        priority,
+    )
+}
+
+/// Priorities a part of which cuts the trace short instead of outranking
+/// the others: a shield's.
+const PRIORITY_SHIELD: u8 = 101;
+const PRIORITY_SHIELD_NO_MESH: u8 = 102;
+/// A part below this priority is never hit.
+const PRIORITY_MIN: u8 = 2;
+
+/// One body's part under a hit priority table, before `limit`: a part
+/// outranks every part of lower priority however far along the ray, parts
+/// of one priority go by distance (the first tried wins a tie), and a shield
+/// is hit only before the best so far and then cuts the ray short at
+/// itself. `Err` is a part the ray starts in.
+fn prioritized_part<'a>(
+    query: &BulletTraceQuery,
+    parts: impl Iterator<Item = (&'a AuthorityDObjCollisionBone, ColliderId, u8)>,
+    priority: &[u8],
+    limit: f32,
+) -> Result<Option<TraceCandidate>, ColliderId> {
+    let mut best: Option<TraceCandidate> = None;
+    let mut best_fraction = limit;
+    let mut best_priority = PRIORITY_MIN;
+    let mut reach = limit;
+    for (bone, collider, class) in parts {
+        let Some(&rank) = priority.get(usize::from(class)) else {
+            continue;
+        };
+        if rank < best_priority {
+            continue;
+        }
+        let shield = rank == PRIORITY_SHIELD || rank == PRIORITY_SHIELD_NO_MESH;
+        let cap = if shield || rank == best_priority {
+            best_fraction
+        } else {
+            reach
+        };
+        let hit = match ray_obb(query.start, query.end, bone, collider) {
+            RayAabb::StartSolid => return Err(collider),
+            RayAabb::Hit(hit) if hit.fraction < cap => hit,
+            _ => continue,
+        };
+        if shield {
+            reach = hit.fraction;
+        } else {
+            best_priority = rank;
+        }
+        best_fraction = hit.fraction;
+        best = Some(hit);
+    }
+    Ok(best)
+}
+
+/// The nearest fraction any candidate so far reaches.
+fn nearest(candidates: &[TraceCandidate]) -> f32 {
+    candidates.iter().map(|c| c.fraction).fold(1.0, f32::min)
 }
 
 enum DObjGeometryVerdict {
@@ -1354,6 +1444,7 @@ fn bullet_trace_filtered(
     script_models: &[EntityCollisionTraceGeom],
     query: &BulletTraceQuery,
     glass_is_solid: &dyn Fn(u16) -> bool,
+    priority: Option<&[u8]>,
 ) -> TraceOutcome {
     if !is_finite_vec3(query.start) || !is_finite_vec3(query.end) {
         return TraceOutcome::Invalid {
@@ -1413,6 +1504,43 @@ fn bullet_trace_filtered(
                     RayAabb::Miss
                 )
             {
+                continue;
+            }
+            if let Some(priority) = priority {
+                let shield = priority.len().saturating_sub(1) as u8;
+                let parts = pose.bones.iter().map(|bone| {
+                    let collider = ColliderId::Player {
+                        client: pose.client,
+                        life: pose.life_sequence,
+                        hitloc: bone.part_classification,
+                    };
+                    let class = if bone.part_classification == crate::shield::HITLOC {
+                        shield
+                    } else {
+                        bone.part_classification
+                    };
+                    (bone, collider, class)
+                });
+                match prioritized_part(query, parts, priority, nearest(&candidates)) {
+                    Err(collider) => {
+                        return TraceOutcome::StartSolid {
+                            collider: Some(collider),
+                            end: query.start,
+                            all_solid: false,
+                        };
+                    }
+                    Ok(Some(mut c)) => {
+                        if let ColliderId::Player {
+                            hitloc: crate::shield::HITLOC,
+                            ..
+                        } = c.collider
+                        {
+                            c.normal = pose.shield_normal.unwrap_or(c.normal);
+                        }
+                        candidates.push(c);
+                    }
+                    Ok(None) => {}
+                }
                 continue;
             }
             for bone in &pose.bones {
@@ -1524,6 +1652,29 @@ fn bullet_trace_filtered(
             }
             DObjGeometryVerdict::Missed => continue,
             DObjGeometryVerdict::Unavailable => {}
+        }
+        if let Some(priority) = priority {
+            let parts = dobj_geom.bones.iter().map(|bone| {
+                let collider = ColliderId::EntityDObjBone {
+                    owner: geom.owner,
+                    bone: bone.bone,
+                    part_classification: bone.part_classification,
+                    surface_flags: 0,
+                };
+                (bone, collider, bone.part_classification)
+            });
+            match prioritized_part(query, parts, priority, nearest(&candidates)) {
+                Err(collider) => {
+                    return TraceOutcome::StartSolid {
+                        collider: Some(collider),
+                        end: query.start,
+                        all_solid: false,
+                    };
+                }
+                Ok(Some(c)) => candidates.push(c),
+                Ok(None) => {}
+            }
+            continue;
         }
         for bone in &dobj_geom.bones {
             let collider = ColliderId::EntityDObjBone {
@@ -1954,6 +2105,7 @@ fn fire_penetrate(
             world.script_models,
             &rev_q,
             world.glass_is_solid,
+            None,
         );
         let (rev_hit_pos, rev_surf, rev_hit) = match rev {
             TraceOutcome::Hit { end, collider, .. } => (Some(end), depth_surf(collider, 0), true),
@@ -2081,6 +2233,7 @@ fn trace_from(
             ignore_model: query.ignore_model,
         },
         world.glass_is_solid,
+        None,
     )
 }
 

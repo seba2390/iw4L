@@ -1485,6 +1485,7 @@ pub(crate) fn damage(
             .unwrap_or("none"),
         location,
         bone,
+        time_offset: 0,
     });
 }
 

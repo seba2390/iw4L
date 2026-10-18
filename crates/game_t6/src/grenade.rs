@@ -169,7 +169,7 @@ pub(crate) fn launch_grenade(
         *c = *c as i32 as f32;
     }
     let platform = platform_velocity(owner, world);
-    spawn_grenade(
+    let missile = spawn_grenade(
         owner,
         weapon,
         def,
@@ -180,7 +180,30 @@ pub(crate) fn launch_grenade(
         fuse,
         time_left,
         world,
-    )
+    );
+    catch_up(missile, launch_offset(owner, world), world);
+    missile
+}
+
+/// How far behind the match a player's commands put what they launch: the
+/// client's time (its latest command's, no more than a second back) less
+/// the match's; 0 when the owner is no player.
+pub(crate) fn launch_offset(owner: i32, world: &dyn FireWorld) -> i32 {
+    let Some(mut player) = world.player(owner) else {
+        return 0;
+    };
+    let (ps, _) = crate::movement::unpack(&mut player);
+    crate::fire::antilag_time(ps.command_time, world) - world.level_time()
+}
+
+/// A missile launched behind the match runs one frame at once, catching up
+/// on the time its trajectory started early.
+pub(crate) fn catch_up(missile: Option<i32>, offset: i32, world: &mut dyn FireWorld) {
+    if offset != 0
+        && let Some(missile) = missile
+    {
+        world.run_missile_now(missile);
+    }
 }
 
 /// What a moving platform a player stands on adds to what they throw or
@@ -268,6 +291,8 @@ pub(crate) fn spawn_grenade(
     world: &mut dyn FireWorld,
 ) -> Option<i32> {
     let level = world.level_time();
+    // A player's grenade starts at their client's time.
+    let launched = level + launch_offset(owner, world);
     let angles = vectoangles(vel);
     let [carried, platform] = added;
     let delta: [f32; 3] =
@@ -285,7 +310,7 @@ pub(crate) fn spawn_grenade(
         };
         GameTrajectory {
             kind: TrajectoryKind::Linear,
-            time: level,
+            time: launched,
             duration: 0,
             base,
             delta,
@@ -293,7 +318,7 @@ pub(crate) fn spawn_grenade(
     } else {
         GameTrajectory {
             kind: TrajectoryKind::Stationary,
-            time: level,
+            time: launched,
             duration: 0,
             base: angles,
             delta: [0.0; 3],
@@ -321,7 +346,7 @@ pub(crate) fn spawn_grenade(
         grenade: true,
         ground: ENTITY_NONE,
         explode_at,
-        spawned_at: level,
+        spawned_at: launched,
         ..State::default()
     };
     let mut game = [0u8; GAME_MISSILE_BYTES];
@@ -332,14 +357,14 @@ pub(crate) fn spawn_grenade(
         weapon,
         position: GameTrajectory {
             kind: TrajectoryKind::Gravity(gravity(world)),
-            time: level,
+            time: launched,
             duration: 0,
             base: start,
             delta,
         },
         angles: spin,
         origin: start,
-        visible_at: level + hidden,
+        visible_at: launched + hidden,
         game,
     })
 }
@@ -1052,6 +1077,7 @@ pub(crate) fn radius_damage(blast: &RadiusDamage, world: &mut dyn FireWorld) {
             hit_location: HIT_LOCATIONS[0],
             location: 0,
             bone: None,
+            time_offset: 0,
         });
     }
 }
