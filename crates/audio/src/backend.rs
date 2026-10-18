@@ -126,6 +126,7 @@ pub(crate) fn publish_audio_context(
                 |((mix, channels), snapshots)| crate::cue_execution::CueMix {
                     epoch: epoch.0,
                     gain: mix.gain.clone(),
+                    master: mix.master.gain.clone(),
                     channels: channels.bindings(),
                     snapshot_groups: snapshots.bindings(),
                     contexts: snapshots.contexts(),

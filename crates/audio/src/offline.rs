@@ -118,7 +118,7 @@ impl OfflineRenderer {
             looping: sound.looping,
         };
         // &mut self guarantees the single publisher/reclaimer required by slots.
-        unsafe { self.shared.publish(assignment) }.map_err(|_| OfflineError::VoiceBudget)?;
+        unsafe { self.shared.publish(assignment) }.ok_or(OfflineError::VoiceBudget)?;
         Ok(OfflineVoice(instance))
     }
 

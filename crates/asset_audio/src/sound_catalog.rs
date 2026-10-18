@@ -382,6 +382,18 @@ impl SoundCatalog {
         self.revision = mint_revision();
     }
 
+    /// A mixer group's sound category, when its game reads one.
+    pub(crate) fn mixer_group_category(
+        &self,
+        namespace: AssetNamespace,
+        group: u32,
+    ) -> Option<i32> {
+        self.mixer_groups
+            .get(&namespace)?
+            .get(group as usize)?
+            .category
+    }
+
     pub(crate) fn mixer_group_volumes_in(
         &self,
         namespace: AssetNamespace,

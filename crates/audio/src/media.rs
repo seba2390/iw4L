@@ -141,7 +141,7 @@ impl LiveGain {
 
 pub(crate) struct RenderGains {
     pan: [f32; 2],
-    envelopes: [GainEnvelope; 4],
+    envelopes: [GainEnvelope; 5],
 }
 
 impl RenderGains {
@@ -205,6 +205,8 @@ pub(crate) struct RenderMedia {
     pub channel_gain: Option<LiveGain>,
     /// The volume of the game's mix snapshots for the sound's snapshot group.
     pub snapshot_gain: Option<LiveGain>,
+    /// The game's whole-mix fade, for a sound it does not spare.
+    pub master_gain: Option<LiveGain>,
     pub release: Option<Arc<CueRelease>>,
     pub bus: asset_core::AssetNamespace,
 }
@@ -413,6 +415,7 @@ impl RenderMedia {
             gain: None,
             channel_gain: None,
             snapshot_gain: None,
+            master_gain: None,
             release: None,
             bus: asset_core::AssetNamespace::Iw4,
         }
@@ -425,11 +428,12 @@ impl RenderMedia {
         self.pcm.len() / usize::from(self.pcm.channels)
     }
 
-    pub fn gains(&self, cached: &mut [GainEnvelope; 4]) -> RenderGains {
+    pub fn gains(&self, cached: &mut [GainEnvelope; 5]) -> RenderGains {
         for (binding, cache) in [
             self.gain.as_ref(),
             self.channel_gain.as_ref(),
             self.snapshot_gain.as_ref(),
+            self.master_gain.as_ref(),
             self.release.as_ref().map(|release| &release.gain),
         ]
         .into_iter()

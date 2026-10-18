@@ -84,6 +84,9 @@ pub enum ScriptAudioCommand {
         context: String,
         value: String,
     },
+    /// Every client's whole mix fades out, and its streams stop (Black
+    /// Ops' `q 0` client command on a failed level).
+    SoundFadeOut,
     /// A turret's shot from one of its barrels, for every client's fire
     /// sound: its entity, weapon and the barrel's muzzle.
     TurretFire {
@@ -173,6 +176,7 @@ impl ScriptAudioCommand {
             Self::ClientSoundContext { context, value, .. } => {
                 context.len() <= 1023 && value.len() <= 1023
             }
+            Self::SoundFadeOut => true,
             Self::TurretFire { barrel, origin, .. } => {
                 (0..=1).contains(barrel) && origin.iter().all(|c| c.is_finite())
             }

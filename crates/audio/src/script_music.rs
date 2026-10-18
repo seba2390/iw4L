@@ -23,8 +23,11 @@ pub(crate) fn update_script_music(
     mut playback: ResMut<ScriptMusicPlayback>,
     mut mix: ResMut<crate::script_mix::ScriptAudioMix>,
     mut feedback: ResMut<crate::clip_store::CueFeedback>,
+    time: Res<Time<Real>>,
 ) {
     mix.reset_epoch(epoch.0);
+    let frame = runtime.audio_frame();
+    mix.master.step(frame, time.delta_secs());
     if playback
         .active
         .as_ref()
@@ -43,6 +46,14 @@ pub(crate) fn update_script_music(
             | sim::ScriptAudioCommand::ClientSnapshot { .. }
             | sim::ScriptAudioCommand::ClientSoundContext { .. }
             | sim::ScriptAudioCommand::TurretFire { .. } => {}
+            // The streams stop at once; every other sound fades.
+            sim::ScriptAudioCommand::SoundFadeOut => {
+                mix.master.fade_out();
+                playback.pending = None;
+                if let Some(handle) = playback.active.take() {
+                    handle.release(runtime.audio_frame(), 0);
+                }
+            }
             sim::ScriptAudioCommand::MusicPlay(alias) => {
                 if playback.pending.is_some() || playback.active.is_some() {
                     diag::warn!(

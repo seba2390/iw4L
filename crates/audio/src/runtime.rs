@@ -974,12 +974,12 @@ fn control(
             instance.set_status(InstanceStatus::Scheduled);
             // Only this thread may publish a new slot payload.
             match unsafe { shared.publish(assignment) } {
-                Ok(slot) => logical.slot = Some(slot),
-                Err(_) if logical.request.looping => instance.set_status(InstanceStatus::Virtual),
-                Err(_) if instance.has_reached(InstanceStatus::Started) => {
+                Some(slot) => logical.slot = Some(slot),
+                None if logical.request.looping => instance.set_status(InstanceStatus::Virtual),
+                None if instance.has_reached(InstanceStatus::Started) => {
                     instance.set_status(InstanceStatus::Virtual)
                 }
-                Err(_) => {}
+                None => {}
             }
             true
         });

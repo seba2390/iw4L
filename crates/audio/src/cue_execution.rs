@@ -99,6 +99,8 @@ impl CueCancellation {
 pub(crate) struct CueMix {
     pub epoch: u64,
     pub gain: LiveGain,
+    /// The game's whole-mix fade.
+    pub master: LiveGain,
     pub channels: Arc<HashMap<asset_audio::ChannelKey, LiveGain>>,
     /// The mix snapshot volume of each snapshot group, by namespace.
     pub snapshot_groups: Arc<HashMap<(asset_core::AssetNamespace, u8), LiveGain>>,
@@ -315,6 +317,7 @@ impl CueWork {
         media.release = Some(self.request.state.release.clone());
         if let Some(mix) = &intent.mix {
             media.gain = Some(mix.gain.clone());
+            media.master_gain = (!cue.policy.master_fade_exempt).then(|| mix.master.clone());
             media.channel_gain = cue
                 .policy
                 .channel

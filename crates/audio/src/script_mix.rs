@@ -10,6 +10,48 @@ use std::{collections::HashMap, sync::Arc};
 pub(crate) struct ScriptAudioMix {
     epoch: u64,
     pub(crate) gain: LiveGain,
+    pub(crate) master: MasterFade,
+}
+
+/// Black Ops' whole-mix fade: a level each voice plays at the square of,
+/// moving toward its target at its rate per second (from 1, at once); its
+/// `q 0` client command (a failed level) sends it to 0 at 0.5 a second.
+/// A one-shot in sound category 3 is spared.
+pub(crate) struct MasterFade {
+    level: f32,
+    target: f32,
+    rate: f32,
+    pub(crate) gain: LiveGain,
+}
+
+impl Default for MasterFade {
+    fn default() -> Self {
+        Self {
+            level: 1.0,
+            target: 1.0,
+            rate: 1.0,
+            gain: LiveGain::default(),
+        }
+    }
+}
+
+impl MasterFade {
+    pub(crate) fn fade_out(&mut self) {
+        self.rate = 0.5;
+        self.target = 0.0;
+    }
+
+    /// One mixer frame of `dt` seconds.
+    pub(crate) fn step(&mut self, frame: u64, dt: f32) {
+        let diff = self.target - self.level;
+        let sign = if 0.0 <= diff { 1.0 } else { -1.0 };
+        let step = diff.abs().min(self.rate * dt);
+        self.level += step * sign;
+        if 0.0 <= -self.rate {
+            self.level = self.target;
+        }
+        self.gain.fade(frame, self.level * self.level, 0);
+    }
 }
 
 impl ScriptAudioMix {
@@ -24,6 +66,12 @@ impl ScriptAudioMix {
         if self.epoch != epoch {
             self.epoch = epoch;
             self.gain.set(1.0);
+            let gain = self.master.gain.clone();
+            gain.set(1.0);
+            self.master = MasterFade {
+                gain,
+                ..MasterFade::default()
+            };
         }
     }
 }
