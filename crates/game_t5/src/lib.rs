@@ -65,6 +65,10 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     // A solo game is offline: neither a system link nor an online game.
     ("systemlink", "0"),
     ("onlinegame", "0"),
+    // Registered from the executable's content flag, which this build
+    // sets: the zombie scripts gib zombies (`is_mature`) only with it.
+    ("cg_mature", "1"),
+    ("cg_blood", "1"),
 ];
 
 impl game_api::GameScripts for T5 {
