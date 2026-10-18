@@ -612,6 +612,7 @@ fn impact(
                 hit_location: HIT_LOCATIONS[loc_idx],
                 location: hit_location,
                 bone: trace.bone,
+                time_offset: 0,
             });
         }
     } else {

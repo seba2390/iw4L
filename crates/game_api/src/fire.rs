@@ -105,6 +105,9 @@ pub struct FireDamage {
     pub hit_location: &'static str,
     pub location: i32,
     pub bone: Option<u16>,
+    /// How far behind the match the hit was settled, in milliseconds: the
+    /// damage callbacks' time offset.
+    pub time_offset: i32,
 }
 
 /// A bullet's mark on what it hit.
@@ -162,6 +165,13 @@ pub trait FireWorld {
     ) -> BulletTrace {
         let _ = priority;
         self.bullet_trace(start, end, pass_entity, mask)
+    }
+
+    /// Later traces see the bodies as the game's antilag leaves them:
+    /// players `players_ms` and actors `actors_ms` behind the match, 0
+    /// where it moves none back.
+    fn antilag(&mut self, players_ms: i32, actors_ms: i32) {
+        let _ = (players_ms, actors_ms);
     }
 
     fn entity(&mut self, entity: i32) -> Option<FireEntity>;

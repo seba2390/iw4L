@@ -1011,6 +1011,7 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                                 hit_location: None,
                                 part: None,
                                 inflictor: None,
+                                time_offset: 0,
                             },
                         ));
                     }
@@ -1170,6 +1171,7 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                                     hit_location: None,
                                     part: None,
                                     inflictor: None,
+                                    time_offset: 0,
                                 },
                             ));
                         }

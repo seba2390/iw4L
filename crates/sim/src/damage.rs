@@ -187,6 +187,7 @@ fn apply_entity_blast(world: &mut FrameWorld, blast: &ExplosionBlast) {
                 hit_location: None,
                 part: None,
                 inflictor: None,
+                time_offset: 0,
             },
         );
     }

@@ -1052,9 +1052,14 @@ pub struct HistoryFrame {
 pub enum CurrentAuthorityReason {
     NoSampleClaim,
 
+    /// The game's own antilag left the bodies where they stand.
+    GameRule,
+
     SampleAtShot,
 
-    HistoryUnavailable { requested: Tick },
+    HistoryUnavailable {
+        requested: Tick,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

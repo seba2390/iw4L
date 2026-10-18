@@ -1033,6 +1033,7 @@ fn strike(
             weapon: Some(def.name.clone()),
             hit_location: location,
             located: false,
+            time_offset: 0,
         },
     )
 }

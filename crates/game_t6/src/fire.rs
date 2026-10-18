@@ -85,8 +85,13 @@ const OPEN_DEPTH: f32 = 100.0;
 const PRONE_EYE: f32 = 11.0;
 const CROUCH_EYE: f32 = 40.0;
 const PRONE_TO_CROUCH: f32 = 0.034_482_758;
-/// A command's antilag time is no more than this far behind the match.
+/// A command's antilag time is no more than this far behind the match; nor
+/// is an actor's or vehicle's rewind.
 const ANTILAG_MS: i32 = 1000;
+/// A player's rewind is no more than this.
+const ANTILAG_PLAYERS_MS: i32 = 400;
+/// A shot this close to the match moves nothing back.
+const ANTILAG_MIN_MS: i32 = 50;
 /// A dropped grenade's speed along each axis, at most.
 const DROP_SPEED: f32 = 160.0;
 const DROP_HEIGHT: f32 = 40.0;
@@ -127,9 +132,9 @@ fn mounted_unknown() -> &'static Unknown {
 
 fn antilag_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.antilag",
-        "a Black Ops 2 shot or blow is traced against players and actors where the runtime's lag compensation puts them, not where Black Ops 2 moves them back to the command's time, and its damage carries no time offset",
-        "the runtime's player and actor positions at a given match time and the damage time offset"
+        "t6.weapons.antilag_history",
+        "a shot more than 50 ms behind the match is traced against players and actors where the runtime's lag compensation puts them, not where Black Ops 2 moves them back along its own history",
+        "Black Ops 2's 50 ms body history in the runtime and its rigid move of each body"
     )
 }
 
@@ -378,6 +383,15 @@ fn ai_sound_event(event: i32) -> bool {
         || (ev::JUMP..ev::FALL_DAMAGE).contains(&event)
 }
 
+/// How far back Black Ops 2 moves players (and, with
+/// `g_actorAndVehicleAntilag`, actors) for a shot at `time`: no more than
+/// `cap`, and not at all within 50 ms of the match.
+fn rewind_ms(time: i32, cap: i32, world: &dyn FireWorld) -> i32 {
+    let level = world.level_time();
+    let behind = (level - time).min(cap);
+    if behind > ANTILAG_MIN_MS { behind } else { 0 }
+}
+
 /// The command's time a shot is fired at, no more than a second behind
 /// the match.
 fn antilag_time(command_time: i32, world: &dyn FireWorld) -> i32 {
@@ -559,6 +573,9 @@ struct Hit {
     weapon: u32,
     location: i32,
     bone: Option<u16>,
+    /// How far behind the match the shot was settled: a bullet's command
+    /// time; a blow's is none.
+    time_offset: i32,
 }
 
 struct Shot<'a> {
@@ -648,6 +665,7 @@ impl Shot<'_> {
                             location: 0,
                             hit_location: HIT_LOCATIONS[0],
                             bone: None,
+                            time_offset: 0,
                         });
                     }
                 }
@@ -909,7 +927,17 @@ impl Shot<'_> {
         world: &mut dyn FireWorld,
     ) {
         let time = antilag_time(self.ps.command_time, world);
-        self.gaps.push(antilag_unknown());
+        let players = rewind_ms(time, ANTILAG_PLAYERS_MS, world);
+        // A player in a vehicle never fires here (`t6.weapons.mounted_fire`).
+        let actors = if dvar_bool(world, "g_actorAndVehicleAntilag", true) {
+            rewind_ms(time, ANTILAG_MS, world)
+        } else {
+            0
+        };
+        world.antilag(players, actors);
+        if players != 0 || actors != 0 {
+            self.gaps.push(antilag_unknown());
+        }
         self.gaps.push(hit_priority_order_unknown());
         self.gaps.push(dynents_unknown());
         let spread_class = matches!(
@@ -1314,6 +1342,7 @@ impl Shot<'_> {
                         weapon,
                         location,
                         bone: br.trace.bone,
+                        time_offset: world.level_time() - antilag_time(self.ps.command_time, world),
                     },
                     world,
                 );
@@ -1488,6 +1517,7 @@ impl Shot<'_> {
             location: 0,
             hit_location: HIT_LOCATIONS[0],
             bone: None,
+            time_offset: 0,
         });
     }
 
@@ -1587,7 +1617,8 @@ impl Shot<'_> {
                 dvar_f32(world, "player_meleeHeight", 10.0),
             )
         };
-        self.gaps.push(antilag_unknown());
+        // A blow moves no body back.
+        world.antilag(0, 0);
         self.gaps.push(melee_bounds_unknown());
         self.gaps.push(dynents_unknown());
         let damage = def.melee_damage();
@@ -1638,6 +1669,7 @@ impl Shot<'_> {
                 weapon: held,
                 location,
                 bone: trace.bone,
+                time_offset: 0,
             },
             world,
         );
@@ -1750,6 +1782,7 @@ impl Shot<'_> {
                 .unwrap_or("none"),
             location: hit.location,
             bone: hit.bone,
+            time_offset: hit.time_offset,
         });
     }
 

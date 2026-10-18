@@ -1052,6 +1052,7 @@ pub(crate) fn radius_damage(blast: &RadiusDamage, world: &mut dyn FireWorld) {
             hit_location: HIT_LOCATIONS[0],
             location: 0,
             bone: None,
+            time_offset: 0,
         });
     }
 }

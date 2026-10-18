@@ -88,6 +88,7 @@ fn player_damage_with(
             // The game's own fire numbers the hit location as its game does.
             part: (!ignore_radius).then_some(hit.hitloc),
             inflictor: None,
+            time_offset: 0,
         };
         for hook in hooks {
             if hook(world, object, &entity_hit) {
