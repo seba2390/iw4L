@@ -176,7 +176,8 @@ struct ContentData {
     clip_bsp: SimClipBsp,
     clip_mesh: SimClipMesh,
     clip_cmodels: SimClipCmodels,
-    player_kits: [PlayerKitCollision; 2],
+    /// By soldier kit: the allies', the axis', then the extra kits.
+    player_kits: Vec<PlayerKitCollision>,
     player_anim_tree: Option<Arc<xmodel_runtime::XAnimTreeDefinition>>,
     player_anim_node_names: Vec<String>,
     player_axis_anim_tree: Option<Arc<xmodel_runtime::XAnimTreeDefinition>>,
@@ -235,7 +236,7 @@ impl SimContentBuilder {
                 clip_bsp: Default::default(),
                 clip_mesh: Default::default(),
                 clip_cmodels: Default::default(),
-                player_kits: Default::default(),
+                player_kits: vec![PlayerKitCollision::default(); 2],
                 player_anim_tree: Default::default(),
                 player_anim_node_names: Default::default(),
                 player_axis_anim_tree: Default::default(),
@@ -328,12 +329,11 @@ impl SimContentBuilder {
         self.data.player_anim_script = script;
     }
 
-    pub fn set_player_kit_collisions(
-        &mut self,
-        allies: PlayerKitCollision,
-        axis: PlayerKitCollision,
-    ) {
-        self.data.player_kits = [allies, axis];
+    /// The collision of each soldier kit, by kit; the two sides are always
+    /// there.
+    pub fn set_player_kit_collisions(&mut self, mut kits: Vec<PlayerKitCollision>) {
+        kits.resize_with(kits.len().max(2), PlayerKitCollision::default);
+        self.data.player_kits = kits;
     }
 
     pub fn set_player_anim_tree(
@@ -475,8 +475,16 @@ impl SimContent {
     pub(super) fn family(&self) -> Option<asset_core::FamilyId> {
         self.data.family
     }
-    pub(super) fn player_kits(&self) -> &[PlayerKitCollision; 2] {
+    pub(super) fn player_kits(&self) -> &[PlayerKitCollision] {
         &self.data.player_kits
+    }
+
+    /// Kit `index`'s collision; the allies' for a kit the match has none of.
+    pub(super) fn player_kit(&self, index: usize) -> &PlayerKitCollision {
+        self.data
+            .player_kits
+            .get(index)
+            .unwrap_or(&self.data.player_kits[0])
     }
     pub(super) fn player_anim_tree(&self) -> &Option<Arc<xmodel_runtime::XAnimTreeDefinition>> {
         &self.data.player_anim_tree

@@ -40,7 +40,7 @@ impl AnimDObjSceneSkels {
             return;
         }
         let kits = bodies.0.kits();
-        for kit in [kits.kit(false), kits.kit(true)].into_iter().flatten() {
+        for kit in kits.all() {
             for name in std::iter::once(&kit.body).chain(kit.head.as_ref()) {
                 let Some(entry) = bodies.0.get(name) else {
                     continue;

@@ -75,7 +75,8 @@ pub struct SessionFpvMeshesHandles {
     pub weapon_id: u32,
     pub parent_weapon: u32,
     pub catalog_id: u64,
-    pub axis: bool,
+    /// The soldier kit whose hands are shown.
+    pub kit: usize,
     pub view: Arc<FpvWeaponView>,
     pub(crate) table: Arc<FpvWeaponTable>,
     pub fpv: EquippedFpv,
@@ -275,8 +276,8 @@ pub fn spawn_pending_fpv(
         .and_then(|snap| snap.meta.for_client(local.0));
     let ffa_team = meta.and_then(|m| m.ffa_team);
     let client_state_team = meta.map(|m| m.client_state_team).unwrap_or(0);
-    let axis = asset_model::kit_assignment_is_axis(client_state_team, ffa_team);
-    let view = match bound_table.slot(request.weapon_handle, request.parent_handle, axis) {
+    let kit = asset_model::kit_index(client_state_team, ffa_team, meta.and_then(|m| m.kit));
+    let view = match bound_table.slot(request.weapon_handle, request.parent_handle, kit) {
         Ok(FpvWeaponSlot::Ready(view)) => Arc::clone(view),
         Ok(FpvWeaponSlot::Refused(cause)) => {
             gaps.raise(cause.clone());
@@ -354,7 +355,7 @@ pub fn spawn_pending_fpv(
         parent_weapon: request.parent_weapon,
         catalog_id: request.catalog_id,
         table: Arc::clone(table),
-        axis,
+        kit,
         fpv: EquippedFpv::new(
             view.gun_name.clone(),
             view.gun_index,
@@ -626,7 +627,7 @@ pub fn tick_fpv_viewmodel(
                             owners.handles(presented.weapon_epoch(), weapon, ps.weapon_primary);
                         let next = owners.bind(table).and_then(|bound| {
                             handles.and_then(|(weapon, parent)| {
-                                bound.slot(weapon, parent, session.axis).ok()
+                                bound.slot(weapon, parent, session.kit).ok()
                             })
                         });
                         let same = match next {

@@ -64,6 +64,9 @@ pub struct ClientSnapshotMeta {
 
     pub ffa_team: Option<u8>,
 
+    /// The soldier kit the game dressed the player in, when it did.
+    pub kit: Option<u8>,
+
     pub client_state_team: i32,
 
     pub rank: i32,
