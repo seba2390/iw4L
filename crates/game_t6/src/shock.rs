@@ -5,12 +5,15 @@
 //! screen's rules: the saved screen's blend (0.01 to the power of its age
 //! over the blend time, at most 0.99), the blur blend time shrinking over
 //! the fade time, the flash's sine fades and the look control's fade with
-//! its speeds over the fade. Its view kick walks the shared kick noise and
+//! its speeds over the fade. With `bg_shock_sound` it plays its loop
+//! faded in until the shock is `-soundModEndDelay` from its end, then fades
+//! the loop out and plays its end sound (`soundEndAbort` never plays: the
+//! flag that would play it is never set). Its view kick walks the shared kick noise and
 //! turns the view axis with every sum in index order; the kick fades over a
 //! fixed 3 seconds (`bg_shock_viewKickFadeTime` is registered but never
 //! read).
 
-use game_api::{ShockFile, ShockKick, ShockLook, ShockScreen, Unknown, unknown};
+use game_api::{ShockFile, ShockKick, ShockLook, ShockScreen, ShockSound, Unknown, unknown};
 
 use crate::menu_expression::{atof, atoi};
 
@@ -93,10 +96,10 @@ enum Value<'a> {
     Text(&'a str),
 }
 
-const SOUND: &Unknown = unknown!(
-    "t6.audio.shellshock",
-    "a Black Ops 2 shellshock plays no sound: no loop, end sound, reverb room or snapshot",
-    "its shellshock sound rules, with the client sound snapshots and reverb"
+const MIX: &Unknown = unknown!(
+    "t6.audio.mix",
+    "a Black Ops 2 shellshock's reverb room (its soundRoomType, dry and wet levels) and snapshot slot are not heard",
+    "Black Ops 2's reverb and snapshot sound thread commands in the mixer"
 );
 const VISIONSET: &Unknown = unknown!(
     "t6.vision.shellshock_visionset",
@@ -171,8 +174,25 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         _ => ShockScreen::Blurred,
     };
     let mut unrun = Vec::new();
-    if flag("bg_shock_sound") {
-        unrun.push(SOUND);
+    let text = |name: &str| match get(name) {
+        Value::Text(v) => v.to_owned(),
+        _ => unreachable!("{name} is a text dvar"),
+    };
+    // The shock's parameters never copy `bg_shock_soundSnapshot`: its
+    // snapshot slot gets an empty name.
+    let sound = flag("bg_shock_sound").then(|| ShockSound {
+        loop_alias: text("bg_shock_soundLoop"),
+        end_alias: text("bg_shock_soundEnd"),
+        fade_in_ms: ms("bg_shock_soundFadeInTime"),
+        fade_out_ms: ms("bg_shock_soundFadeOutTime"),
+        mod_end_delay_ms: ms("bg_shock_soundModEndDelay"),
+        room: text("bg_shock_soundRoomType"),
+        dry: number("bg_shock_soundDryLevel"),
+        wet: number("bg_shock_soundWetLevel"),
+        snapshot: String::new(),
+    });
+    if sound.is_some() {
+        unrun.push(MIX);
     }
     if matches!(get("bg_shock_visionset_name"), Value::Text(name) if !name.is_empty()) {
         unrun.push(VISIONSET);
@@ -199,7 +219,7 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
             radius: number("bg_shock_viewKickRadius"),
             ordered_sums: true,
         }),
-        sound: None,
+        sound,
         vision: None,
         unrun,
     })
