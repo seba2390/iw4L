@@ -207,6 +207,7 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
             fade_ms: ms("bg_shock_viewKickFadeTime"),
             rate: kick_rate(number("bg_shock_viewKickPeriod")),
             radius: number("bg_shock_viewKickRadius"),
+            ordered_sums: false,
         }),
         sound,
         vision,

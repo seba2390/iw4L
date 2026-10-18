@@ -2441,6 +2441,7 @@ fn game_shock(file: &game_api::ShockFile) -> ShockParams {
             fade_ms: kick.fade_ms,
             rate: kick.rate,
             radius: kick.radius,
+            ordered_sums: kick.ordered_sums,
         }),
         timed_sound: file.sound.as_ref().map(|sound| ShellshockTimedSound {
             loop_alias: sound.loop_alias.clone(),

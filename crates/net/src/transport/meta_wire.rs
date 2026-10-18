@@ -2016,7 +2016,7 @@ fn encode_shock(out: &mut WireWriter, shock: Option<&ShockParams>) {
     match &shock.kick {
         None => out.put_u8(0),
         Some(kick) => {
-            out.put_u8(1);
+            out.put_u8(if kick.ordered_sums { 2 } else { 1 });
             out.put_i32(kick.fade_ms);
             out.put_f32(kick.rate);
             out.put_f32(kick.radius);
@@ -2125,10 +2125,11 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<ShockParams>, WireE
     if tag >= 5 {
         shock.kick = match input.get_u8()? {
             0 => None,
-            1 => Some(ShellshockKick {
+            tag @ (1 | 2) => Some(ShellshockKick {
                 fade_ms: input.get_i32()?,
                 rate: input.get_f32()?,
                 radius: input.get_f32()?,
+                ordered_sums: tag == 2,
             }),
             _ => return Err(WireError::Malformed("bad shellshock kick tag")),
         };
