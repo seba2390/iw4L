@@ -162,6 +162,47 @@ impl<'w, 'a> MatchFireWorld<'w, 'a> {
         })
     }
 
+    /// A trace through the world, players and entities; each body's part
+    /// chosen by `priority` when given.
+    fn trace_bodies(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        pass_entity: i32,
+        mask: u32,
+        priority: Option<&[u8]>,
+    ) -> BulletTrace {
+        let glass: HashMap<u32, u16> = self
+            .world
+            .world_objects()
+            .glass_damage_pairs()
+            .into_iter()
+            .collect();
+        let outcome = crate::bullet_collision::bullet_trace_prioritized(
+            self.world.clip_brushes(),
+            self.world.clip_bsp(),
+            self.world.clip_cmodels(),
+            self.world.clip_mesh(),
+            &self.query.players.poses,
+            &self.query.entities.rows,
+            &BulletTraceQuery {
+                start,
+                end,
+                mask,
+                ignore: self.client(pass_entity),
+                ignore_hit: None,
+                ignore_model: self.model(pass_entity),
+            },
+            &|piece| {
+                crate::world_objects::glass_piece_is_solid(
+                    glass.get(&u32::from(piece)).copied().unwrap_or(0),
+                )
+            },
+            priority,
+        );
+        self.trace_of(outcome)
+    }
+
     fn trace_of(&mut self, outcome: TraceOutcome) -> BulletTrace {
         let (fraction, normal, collider, start_solid, all_solid) = match outcome {
             TraceOutcome::Miss { .. } | TraceOutcome::Invalid { .. } => {
@@ -281,34 +322,55 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         pass_entity: i32,
         mask: u32,
     ) -> BulletTrace {
-        let glass: HashMap<u32, u16> = self
+        self.trace_bodies(start, end, pass_entity, mask, None)
+    }
+
+    fn locational_trace(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        pass_entity: i32,
+        mask: u32,
+        priority: &[u8],
+    ) -> BulletTrace {
+        self.trace_bodies(start, end, pass_entity, mask, Some(priority))
+    }
+
+    fn run_missile_now(&mut self, missile: i32) {
+        let Some(mut state) = self
             .world
-            .world_objects()
-            .glass_damage_pairs()
-            .into_iter()
-            .collect();
-        let outcome = crate::bullet_collision::bullet_trace_with_entity_models(
-            self.world.clip_brushes(),
-            self.world.clip_bsp(),
-            self.world.clip_cmodels(),
-            self.world.clip_mesh(),
-            &self.query.players.poses,
-            &self.query.entities.rows,
-            &BulletTraceQuery {
-                start,
-                end,
-                mask,
-                ignore: self.client(pass_entity),
-                ignore_hit: None,
-                ignore_model: self.model(pass_entity),
-            },
-            &|piece| {
-                crate::world_objects::glass_piece_is_solid(
-                    glass.get(&u32::from(piece)).copied().unwrap_or(0),
-                )
-            },
-        );
-        self.trace_of(outcome)
+            .ecs()
+            .get_resource::<GameMissiles>()
+            .and_then(|missiles| missiles.0.get(&missile).copied())
+        else {
+            return;
+        };
+        let (run, gaps) = if let Some(rules) = missile_rules(self.world) {
+            rules.0.run(&mut state, self)
+        } else if let Some(movement) = crate::game_move::rules(self.world) {
+            movement.run_missile(&mut state, self)
+        } else {
+            return;
+        };
+        for gap in gaps {
+            self.world.report_game_gap(gap);
+        }
+        apply_missile_run(self.world, missile, state, run);
+    }
+
+    fn antilag(&mut self, players_ms: i32, actors_ms: i32) {
+        // A body the game leaves in place is traced where it stands; one it
+        // moves back stays where the runtime's lag compensation puts it.
+        if players_ms != 0 && actors_ms != 0 {
+            return;
+        }
+        let current = self.world.current_bodies(self.tick);
+        if players_ms == 0 {
+            self.query.players = current.players;
+        }
+        if actors_ms == 0 {
+            self.query.entities = current.entities;
+        }
     }
 
     fn entity(&mut self, entity: i32) -> Option<FireEntity> {
@@ -472,6 +534,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 hit_location: Some(damage.hit_location),
                 part: None,
                 inflictor,
+                time_offset: damage.time_offset,
             },
         );
     }

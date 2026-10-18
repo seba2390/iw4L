@@ -589,6 +589,7 @@ pub fn create_cmd(input: &CreateCmdInput) -> UserCmd {
         rightmove: input.rightmove,
         melee_charge_yaw: 0.0,
         melee_charge_dist: 0,
+        melee_charge_ent: None,
         selected_location: [0; 3],
         remote_control: [0; 2],
         gun_angle_offset: [0.0; 2],

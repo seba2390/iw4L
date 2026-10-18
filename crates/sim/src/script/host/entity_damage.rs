@@ -25,6 +25,9 @@ pub(crate) struct EntityHit {
     /// What dealt the damage when it is not the attacker (a grenade, a
     /// turret); `None` is the attacker itself.
     pub inflictor: Option<u64>,
+    /// How far behind the match the hit was settled, in milliseconds (the
+    /// damage callbacks' time offset).
+    pub time_offset: i32,
 }
 
 const MEANS: &[&str] = &[
@@ -144,6 +147,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                         hit_location: None,
                         part: None,
                         inflictor: None,
+                        time_offset: 0,
                     },
                 );
             }
@@ -180,6 +184,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     hit_location: None,
                     part: None,
                     inflictor: None,
+                    time_offset: 0,
                 },
             );
         }

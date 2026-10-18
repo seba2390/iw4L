@@ -2902,7 +2902,7 @@ fn encode_script_movers(out: &mut WireWriter, movers: &[sim::ScriptMoverGentity]
     out.put_u16(movers.len() as u16);
     for mover in movers {
         out.put_u32(mover.id.to_wire());
-        out.put_u8(u8::from(mover.nonsolid));
+        out.put_u8(u8::from(mover.nonsolid) | u8::from(mover.aim_target) << 1);
         out.put_u8(mover.killcam_camera.map_or(0, |mode| mode.as_u8()));
         encode_entity_state(out, &mover.state);
     }
@@ -2915,7 +2915,8 @@ fn decode_script_movers(
     let mut movers = Vec::with_capacity(count.min(256));
     for _ in 0..count {
         let id = ScriptModelId::from_wire(input.get_u32()?);
-        let nonsolid = input.get_u8()? != 0;
+        let flags = input.get_u8()?;
+        let (nonsolid, aim_target) = (flags & 1 != 0, flags & 2 != 0);
         let killcam_camera = match input.get_u8()? {
             0 => None,
             1 => Some(playerstate_iw4::KillCamMode::Mode1Heli),
@@ -2927,6 +2928,7 @@ fn decode_script_movers(
             state: decode_entity_state(input)?,
             killcam_camera,
             nonsolid,
+            aim_target,
             ..Default::default()
         });
     }

@@ -73,6 +73,8 @@ pub struct MoveCommand {
     /// Where a melee lunge aims, found by the client: yaw and distance.
     pub melee_charge_yaw: f32,
     pub melee_charge_dist: u8,
+    /// The entity it aims at, when the client found one.
+    pub melee_charge_ent: Option<u16>,
 }
 
 /// The weapon slots a player has.
@@ -368,6 +370,54 @@ pub trait MoveWorld {
     fn shellshock(&self, _index: i32) -> Option<ShockMove> {
         None
     }
+
+    /// Where the entity numbered `entity` is, as this side of the match
+    /// keeps it; `None` when it is not in use.
+    fn entity_origin(&self, _entity: i32) -> Option<[f32; 3]> {
+        None
+    }
+
+    /// The entity's velocity (what its state carries as its trajectory's
+    /// delta); `None` when the match cannot tell.
+    fn entity_velocity(&self, _entity: i32) -> Option<[f32; 3]> {
+        None
+    }
+}
+
+/// A body a client may lunge at with a melee: an enemy player or an actor
+/// it is shown.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AimCandidate {
+    pub entity: i32,
+    pub origin: [f32; 3],
+    pub angles: [f32; 3],
+}
+
+/// What a client knows as it builds a command, for the game's melee lunge
+/// pick.
+pub struct MeleeAim<'a> {
+    pub player: &'a MovePlayer,
+    pub cmd: &'a MoveCommand,
+    /// The command before it.
+    pub last: &'a MoveCommand,
+    pub eye: [f32; 3],
+    /// The view's width over its height; `None` when the client cannot
+    /// tell.
+    pub aspect: Option<f32>,
+    pub candidates: &'a [AimCandidate],
+    /// Nothing blocks the line from the eye to `point` short of `entity`.
+    pub visible: &'a dyn Fn(i32, [f32; 3]) -> bool,
+    pub weapon: &'a dyn Fn(u32) -> Option<&'a GameWeapon>,
+    pub dvar: &'a dyn Fn(&str) -> Option<String>,
+}
+
+/// The target a client's command names for a melee lunge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeleeTarget {
+    pub entity: i32,
+    /// How far it is, less the reach, at most 255.
+    pub dist: u8,
+    pub yaw: f32,
 }
 
 /// What a shellshock file does to movement.
@@ -619,6 +669,12 @@ pub trait PlayerMovement: Sync {
         _end_val: f32,
         _overheat_weapon: bool,
     ) {
+    }
+
+    /// The target a client's command names for a melee lunge; `None` when
+    /// the game picks none.
+    fn melee_target(&self, _aim: &MeleeAim<'_>) -> Option<MeleeTarget> {
+        None
     }
 
     /// What the server does with the events a command raised: the shots

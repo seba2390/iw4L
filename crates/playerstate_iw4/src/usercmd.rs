@@ -11,6 +11,9 @@ pub struct UserCmd {
     pub rightmove: i8,
     pub melee_charge_yaw: f32,
     pub melee_charge_dist: u8,
+    /// The entity a melee lunge aims at, found by the client; Black Ops 2's
+    /// command carries it.
+    pub melee_charge_ent: Option<u16>,
     pub selected_location: [u8; 3],
     pub remote_control: [u8; 2],
 }

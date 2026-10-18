@@ -89,6 +89,8 @@ pub(super) struct Hit {
     pub hit_location: usize,
     /// The game's own fire already scaled the damage at its hit location.
     pub located: bool,
+    /// How far behind the match the hit was settled, in milliseconds.
+    pub time_offset: i32,
 }
 
 fn defined(value: &Value) -> Option<&Value> {
@@ -183,7 +185,7 @@ fn callback_args(hit: &Hit, damage: i32, weapon: &str) -> Vec<Value> {
         hit.point.map_or(Value::Undefined, Value::Vector),
         hit.dir.map_or(Value::Undefined, Value::Vector),
         Value::string(HIT_LOCATIONS[hit.hit_location.min(RIOTSHIELD)]),
-        Value::Int(0),
+        Value::Int(hit.time_offset),
         Value::Int(0),
     ]
 }
@@ -389,6 +391,7 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
             weapon,
             hit_location,
             located: false,
+            time_offset: 0,
         },
     )?;
     Ok(Value::Undefined)
@@ -818,6 +821,7 @@ fn entity_hit(
             hit_location,
             // The game's own fire scaled it at the hit location already.
             located: true,
+            time_offset: hit.time_offset,
         },
     );
     if let Err(fault) = result {

@@ -73,6 +73,31 @@ impl MoveWorld for MatchMoveWorld<'_> {
         })
     }
 
+    /// A player's origin, or a script entity's while it is in use.
+    fn entity_origin(&self, entity: i32) -> Option<[f32; 3]> {
+        if let Ok(client) = u32::try_from(entity)
+            && let Some(ps) = self.world.player(ClientId(client))
+        {
+            return Some(ps.origin);
+        }
+        let ecs = self.world.ecs_ref();
+        let object = crate::script::object_by_number(ecs, entity)?;
+        match ecs
+            .get_resource::<crate::script::RoundScript>()?
+            .peek_object_field(object, "origin")?
+        {
+            crate::script::Value::Vector(origin) => Some(origin),
+            _ => None,
+        }
+    }
+
+    /// A player's velocity, which is what the game's player state puts in
+    /// its entity's trajectory; other entities' are not known.
+    fn entity_velocity(&self, entity: i32) -> Option<[f32; 3]> {
+        let client = u32::try_from(entity).ok()?;
+        Some(self.world.player(ClientId(client))?.velocity)
+    }
+
     /// The runtime has no water query yet.
     fn water_surface(&self, _origin: [f32; 3], _up: f32, _down: f32) -> WaterSurface {
         WaterSurface::Unknown

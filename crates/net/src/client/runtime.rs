@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use entity_iw4::EntityEventKind;
 use frame::RuntimeRole;
-use playerstate_iw4::UserCmd;
+use playerstate_iw4::{PlayerState, UserCmd};
 
 use crate::ServerTime;
 use crate::authority::inbox::{
@@ -1256,12 +1256,73 @@ pub fn sample_client_input(
         cmd.melee_charge_yaw = yaw;
         cmd.melee_charge_dist = dist;
     }
+    if let (Some(ps), Some(snapshot)) = (ps, presented.snapshot())
+        && let Some(target) =
+            game_melee_target(ps, local.0, snapshot, &prediction, &cmd, &template.cmd)
+    {
+        cmd.melee_charge_ent = u16::try_from(target.entity).ok();
+        cmd.melee_charge_dist = target.dist;
+        cmd.melee_charge_yaw = target.yaw;
+    }
     if let Some(driven) = driven.0 {
         cmd = driven;
         look.angles = cmd.angles;
     }
     template.cmd = cmd;
     template.ready = true;
+}
+
+/// The game's own melee lunge pick for the command (Black Ops 2's
+/// automelee): enemy players and the actors the snapshot marks as aim
+/// targets, seen past the world.
+fn game_melee_target(
+    ps: &PlayerState,
+    local: sim::ClientId,
+    snapshot: &Snapshot,
+    prediction: &ClientPredictionState,
+    cmd: &UserCmd,
+    last: &UserCmd,
+) -> Option<sim::MeleeTarget> {
+    let world = prediction.0.world();
+    let local_team = snapshot.meta.for_client(local)?.client_state_team;
+    let mut candidates = Vec::new();
+    for (id, other) in &snapshot.players {
+        let Some(meta) = snapshot.meta.for_client(*id) else {
+            continue;
+        };
+        if *id == local
+            || meta.lifecycle != sim::ClientLifecycle::Alive
+            || meta.client_state_team == 3
+            || (local_team != 0 && meta.client_state_team == local_team)
+        {
+            continue;
+        }
+        candidates.push(sim::AimCandidate {
+            entity: id.0 as i32,
+            origin: other.origin,
+            angles: [0.0, other.viewangles[1], 0.0],
+        });
+    }
+    for mover in snapshot.meta.script_movers.iter().filter(|m| m.aim_target) {
+        candidates.push(sim::AimCandidate {
+            entity: mover.state.number,
+            origin: mover.state.tr_base,
+            angles: mover.state.apos_tr_base,
+        });
+    }
+    if candidates.is_empty() {
+        return None;
+    }
+    let eye = [
+        ps.origin[0],
+        ps.origin[1],
+        ps.origin[2] + ps.view_height_current,
+    ];
+    let visible = |_entity: i32, point: [f32; 3]| {
+        let hit = world.trace_static_world(eye, point, [0.0; 3], [0.0; 3], sim::MASK_SHOT);
+        hit.fraction >= 1.0
+    };
+    world.melee_target(local, ps, cmd, last, eye, None, &candidates, &visible)
 }
 
 const AIM_AUTOMELEE_RANGE: f32 = 128.0;

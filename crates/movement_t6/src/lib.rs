@@ -7,6 +7,7 @@ mod footsteps;
 mod ground;
 mod inventory;
 mod ladder;
+mod launch;
 mod mantle;
 pub mod math;
 mod moves;
@@ -43,7 +44,6 @@ pub enum Gap {
     Mantle = 2,
     MountedView = 8,
     Shellshock = 16,
-    Launched = 32,
     AnimLock = 64,
     /// The match cannot tell whether a spectator stays inside the map's
     /// height-lock volumes.
@@ -227,7 +227,6 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::Mantle,
             Gap::MountedView,
             Gap::Shellshock,
-            Gap::Launched,
             Gap::AnimLock,
             Gap::HeightLock,
             Gap::Mount,
