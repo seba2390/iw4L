@@ -144,29 +144,6 @@ struct ClientAnimTrees {
 #[derive(Resource, Default)]
 struct ZombieBoxWeapons(Vec<(String, String, bool)>);
 
-/// The targetnames of the map's ropes: its `ClipMap` constraints of type
-/// `CONSTRAINT_ROPE`, in map order, as the assets lane captures them.
-#[derive(Resource, Default)]
-struct ClientRopes(Vec<String>);
-
-fn ensure_ropes(world: &mut World) -> &ClientRopes {
-    if !world.contains_resource::<ClientRopes>() {
-        let names = with_server(world, |server| {
-            server
-                .resource::<RoundScript>()
-                .restart
-                .as_ref()?
-                .raw_files
-                .get("physconstraints/ropes.txt")
-                .map(|text| text.lines().map(str::to_owned).collect::<Vec<_>>())
-        })
-        .flatten()
-        .unwrap_or_else(Vec::new);
-        world.insert_resource(ClientRopes(names));
-    }
-    world.resource::<ClientRopes>()
-}
-
 fn with_server<R>(world: &World, f: impl FnOnce(&mut World) -> R) -> Option<R> {
     crate::script::host::client_scripts::with_server(world, f)
 }
@@ -2090,25 +2067,22 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // getrope(targetname): looks up a map rope by targetname (-1 when none).
     registry.register(Function, "getrope", |world, _, args| {
         let name = string(args, 0)?;
-        let index = ensure_ropes(world)
-            .0
-            .iter()
-            .position(|rope| *rope == name)
-            .map_or(-1, |index| index as i32);
-        Ok(Value::Int(index))
+        Ok(Value::Int(super::rope::find(world, &name)))
     });
 
     // ropegetposition(rope, fraction): the world point `fraction` (0..1)
     // along the rope.
-    registry.register(Function, "ropegetposition", |_, _, args| {
-        int(args, 0)?;
+    registry.register(Function, "ropegetposition", |world, _, args| {
+        let rope = int(args, 0)?;
         let fraction = float(args, 1)?;
         if !(0.0..=1.0).contains(&fraction) {
             return Err("The fraction must be between 0 and 1".into());
         }
-        // t6.csc.ropes.position: IW4L does not simulate map ropes on the
-        // client.
-        Ok(Value::Vector([0.0; 3]))
+        // A rope number with no rope leaves the engine's result unset; IW4L
+        // answers the origin.
+        Ok(Value::Vector(
+            super::rope::position(world, rope, fraction).unwrap_or([0.0; 3]),
+        ))
     });
 
     // player usealternateaimparams() / clearalternateaimparams(): toggles
