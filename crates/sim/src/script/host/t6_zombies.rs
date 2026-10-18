@@ -2495,6 +2495,15 @@ pub(crate) fn advance(world: &mut World) {
     }
 }
 
+/// Origins' giant robot, which takes IW4L's own damage rules.
+pub(crate) fn is_robot(world: &World, object: u64) -> bool {
+    world
+        .resource::<RoundScript>()
+        .zombies
+        .staffs
+        .is_robot(object)
+}
+
 pub(crate) fn entity_damage_amount(
     world: &mut World,
     object: u64,
