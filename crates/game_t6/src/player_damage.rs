@@ -178,6 +178,13 @@ pub(crate) fn going_down(ps: &mut PlayerState, weapons: &dyn WeaponTable) -> boo
         ps.weaponstate,
         ws::OFFHAND_INIT | ws::OFFHAND_PREPARE | ws::OFFHAND_HOLD
     ) {
+        diag::info!(
+            Sim,
+            "going down throws the held offhand {:#x} from weapon state {:#x}, {} ms left on its fuse",
+            ps.offhand_index,
+            ps.weaponstate,
+            ps.grenade_time_left
+        );
         ps.weaponstate = ws::OFFHAND_START;
         // An offhand carries no attachment to scale its fire time by.
         let (fire_time, fire_delay) = weapon_def(weapons, ps.offhand_index)

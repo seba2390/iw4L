@@ -87,6 +87,8 @@ pub(super) struct Hit {
     /// attacker's, is used.
     pub weapon: Option<String>,
     pub hit_location: usize,
+    /// The game's own fire already scaled the damage at its hit location.
+    pub located: bool,
 }
 
 fn defined(value: &Value) -> Option<&Value> {
@@ -271,7 +273,7 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
             return Ok(());
         }
         let weapon = weapon_of(world, &hit);
-        let damage = if hit.means == MOD_MELEE {
+        let damage = if hit.means == MOD_MELEE || hit.located {
             hit.damage.max(1)
         } else {
             scaled(world, &hit, &weapon)
@@ -285,7 +287,7 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
             return Ok(());
         }
         let weapon = weapon_of(world, &hit);
-        let damage = if hit.means == MOD_MELEE {
+        let damage = if hit.means == MOD_MELEE || hit.located {
             hit.damage.max(1)
         } else {
             scaled(world, &hit, &weapon)
@@ -386,6 +388,7 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
             means,
             weapon,
             hit_location,
+            located: false,
         },
     )?;
     Ok(Value::Undefined)
@@ -644,7 +647,7 @@ fn finish_player_damage(
         return Ok(Value::Undefined);
     }
     // A dying player's health is -999 unless it lies between that and 0.
-    if (left < -999 || left >= 0)
+    if !(-999..0).contains(&left)
         && let Some(ps) = FrameWorld::from_world(world).player_mut(id)
     {
         ps.health = -999;
@@ -701,6 +704,13 @@ fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), S
         );
         return Ok(());
     }
+    diag::info!(
+        Sim,
+        "player {client} dies: {} {} at {}",
+        MEANS_OF_DEATH[death.means],
+        death.weapon,
+        HIT_LOCATIONS[death.location]
+    );
     // No zombies script sets a vision lerp ratio, so no player dies flared.
     let poisoned = super::poison_overlay::poisoned(world, client);
     raise(
@@ -762,9 +772,11 @@ fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), S
 /// The contents the engine's corpse think gives a dead body.
 const CORPSE_CONTENTS: i32 = 0x0400_0000;
 
-/// A shot or blast IW4L's weapon rules landed on one of the game's actors:
-/// the game's own `G_Damage`, with the rules' damage, means and weapon, at
-/// the struck bone's hit location (its model's `partClassification`).
+/// A shot or blast the game's own weapon rules landed on a player or one of
+/// the game's actors: the rest of the game's `G_Damage` (the rules scaled
+/// the damage at its hit location already), with the rules' damage, means
+/// and weapon, at the struck bone's hit location (its model's
+/// `partClassification`).
 fn entity_hit(
     world: &mut World,
     object: u64,
@@ -804,6 +816,8 @@ fn entity_hit(
                 .unwrap_or(0),
             weapon: Some(weapon),
             hit_location,
+            // The game's own fire scaled it at the hit location already.
+            located: true,
         },
     );
     if let Err(fault) = result {

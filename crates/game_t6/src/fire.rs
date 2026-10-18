@@ -284,14 +284,6 @@ fn throwback_unknown() -> &'static Unknown {
     )
 }
 
-fn last_stand_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.damage.last_stand_grace",
-        "a downed player takes damage without Black Ops 2's grace time check",
-        "the client time Black Ops 2 compares against while a player is down"
-    )
-}
-
 fn actor_state_unknown() -> &'static Unknown {
     unknown!(
         "t6.damage.actor_state",
@@ -1699,13 +1691,8 @@ impl Shot<'_> {
                 if victim.pm_type == pm_type::DEAD || victim.other_flags & 1 != 0 {
                     return;
                 }
-                if matches!(
-                    victim.pm_type,
-                    pm_type::LAST_STAND | pm_type::LAST_STAND_REVIVED
-                ) && hit.means != MOD_MELEE
-                {
-                    self.gaps.push(last_stand_unknown());
-                }
+                // The grace after going down is the match's own G_Damage
+                // (`finishplayerdamage` keeps its time).
                 if hit.means != MOD_MELEE {
                     amount = self.located(amount, hit.location, hit.weapon, world);
                 }

@@ -28,31 +28,6 @@ const MELEE_MASK: u32 = 0x0280_e893;
 /// A swing's damage adds `rand() % 5` to its weapon's.
 const MELEE_ROLL: u32 = 5;
 const DEFAULT_WEAPON: &str = "defaultweapon_mp";
-/// The hit locations of IW4L's player collision, by its numbers, which are
-/// Modern Warfare 2's; each is taken as Black Ops 2's of the same name, its
-/// shield as the riot shield (`t6.player.hit_locations`).
-pub(super) const HIT_LOCATIONS: [&str; 20] = [
-    "none",
-    "helmet",
-    "head",
-    "neck",
-    "torso_upper",
-    "torso_lower",
-    "right_arm_upper",
-    "left_arm_upper",
-    "right_arm_lower",
-    "left_arm_lower",
-    "right_hand",
-    "left_hand",
-    "right_leg_upper",
-    "left_leg_upper",
-    "right_leg_lower",
-    "left_leg_lower",
-    "right_foot",
-    "left_foot",
-    "gun",
-    "riotshield",
-];
 /// The rays' offsets across the swing, in widths and heights.
 const MELEE_RAYS: [[f32; 2]; 9] = [
     [0.0, 0.0],
@@ -288,9 +263,10 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
             "t6.actors.melee_entities: a swing struck an entity that is not a player nor an actor of its team, for {damage}"
         ));
     }
-    let hit_location = HIT_LOCATIONS
-        .get(usize::from(strike.hitloc))
-        .and_then(|name| damage::HIT_LOCATIONS.iter().position(|ours| ours == name))
+    // A player's part is its body model's own part classification, which
+    // numbers Black Ops 2's hit locations.
+    let hit_location = Some(usize::from(strike.hitloc))
+        .filter(|&part| part < damage::HIT_LOCATIONS.len())
         .unwrap_or(0);
     damage::damage(
         world,
@@ -305,6 +281,7 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
             means: damage::MOD_MELEE,
             weapon: Some("none".to_owned()),
             hit_location,
+            located: false,
         },
     )?;
     Ok(strike.entity)

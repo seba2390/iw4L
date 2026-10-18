@@ -70,7 +70,10 @@
 //! lethal grenade's button for half a second at an actor in sight farther
 //! than 250 units, then lets go to throw it. `IW4L_TEST_THROW=cook` holds
 //! the button for 12 s instead, at whatever it faces, so the grenade goes off
-//! in its hand; that test asks for no god mode.
+//! in its hand; that test asks for no god mode. With the go-down test,
+//! `IW4L_TEST_THROW=down[:<ms>]` (with the go-down or revive test) holds the
+//! frag from the first hit on (or that many milliseconds after he spawns), so
+//! he goes down with it in hand.
 //!
 //! `IW4L_TEST_REVIVE=1`: when a teammate is down, the player goes beside
 //! him and holds use to revive him.
@@ -1078,6 +1081,45 @@ pub(crate) fn drive_test_player(
                     ..UserCmd::default()
                 },
             );
+        }
+        // `IW4L_TEST_THROW=down[:<ms>]`: from the first hit on (or that long
+        // after he spawned), he holds his frag ready, so whatever downs him
+        // finds it in hand.
+        let hold_from = std::env::var("IW4L_TEST_THROW").ok().and_then(|t| {
+            let rest = t.strip_prefix("down")?;
+            Some(rest.strip_prefix(':').and_then(|ms| ms.parse::<i32>().ok()))
+        });
+        let alive_since = if meta.lifecycle == ClientLifecycle::Alive {
+            *test.alive_since_ms.get_or_insert(clock.time_ms)
+        } else {
+            clock.time_ms
+        };
+        if meta.lifecycle == ClientLifecycle::Alive
+            && hold_from.is_some_and(|after| {
+                ps.health < ps.max_health
+                    || after.is_some_and(|after| clock.time_ms - alive_since >= after)
+            })
+        {
+            let state = world.0.move_status(id).map(|s| s.weapon_state);
+            if state != test.cook_state {
+                test.cook_state = state;
+                diag::info!(
+                    Sim,
+                    "test player: holding the frag t={}ms health={} weapon state={state:?}",
+                    clock.time_ms,
+                    ps.health
+                );
+            }
+            let mut cmd = UserCmd {
+                server_time: clock.time_ms,
+                ..UserCmd::default()
+            };
+            cmd.angles = look_angles_from_degrees(std::array::from_fn(|axis| {
+                ps.viewangles[axis] - ps.delta_angles[axis]
+            }));
+            cmd.buttons |= buttons::FRAG;
+            cmds.push(id, cmd);
+            return;
         }
         if test.mode == Mode::Down || test.pending.is_empty() && test.scenario.is_none() {
             return;
