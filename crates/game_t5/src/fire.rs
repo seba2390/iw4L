@@ -5,8 +5,8 @@
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
-    BulletHitType, BulletImpact, BulletTrace, FireDamage, FireEntity, FireEntityKind, FireWorld,
-    NotifyArg, WeaponEvent,
+    ActorMelee, BulletHitType, BulletImpact, BulletTrace, FireDamage, FireEntity, FireEntityKind,
+    FireWorld, NotifyArg, WeaponEvent,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
@@ -658,7 +658,7 @@ impl Shot<'_> {
     /// A melee blow: the weapon that strikes (a bayonet or a weapon used as
     /// a melee weapon, else the melee weapon), its reach, and its damage
     /// to what its traces reach first.
-    fn melee(mut self, world: &mut dyn FireWorld) {
+    fn melee(self, world: &mut dyn FireWorld) {
         if self.ps.pm_flags & PMF_MOUNTED_MELEE != 0 {
             self.gaps.push(mounted_unknown());
             return;
@@ -696,8 +696,17 @@ impl Shot<'_> {
             up,
             muzzle: eye,
         };
-        let Some((trace, point)) = self.melee_trace(&parms, damage, range, width, height, world)
-        else {
+        let attacker = self.attacker();
+        let blow = Blow {
+            attacker,
+            client: true,
+            parms: &parms,
+            damage,
+            range,
+            width,
+            height,
+        };
+        let Some((trace, point)) = melee_trace(&blow, world) else {
             return;
         };
         let means = if def.bayonet() {
@@ -718,7 +727,6 @@ impl Shot<'_> {
         let amount = damage + world.rand() % 5;
         let dir = [forward[0], forward[1], forward[2] + 0.25];
         let weapon = self.damage_weapon(world);
-        let attacker = self.attacker();
         self::damage(
             self.gaps,
             attacker,
@@ -737,51 +745,6 @@ impl Shot<'_> {
             },
             world,
         );
-    }
-
-    /// The blow's traces from just behind the eye out to its reach, across
-    /// its width and height: the first that reaches a body, else the
-    /// nearest that hits anything. Damage triggers on the centre line.
-    fn melee_trace(
-        &mut self,
-        parms: &WeaponParms,
-        damage: i32,
-        range: f32,
-        width: f32,
-        height: f32,
-        world: &mut dyn FireWorld,
-    ) -> Option<(BulletTrace, [f32; 3])> {
-        let count = if width > 0.0 || height > 0.0 { 9 } else { 1 };
-        let attacker = self.attacker();
-        let start = mad(parms.muzzle, parms.forward, -10.0);
-        let mut best: Option<(BulletTrace, [f32; 3])> = None;
-        for &(across, along) in &MELEE_OFFSETS[..count] {
-            let mut end = mad(parms.muzzle, parms.forward, range);
-            if count > 1 {
-                end = mad(end, parms.right, across * width);
-                end = mad(end, parms.up, along * height);
-            }
-            let trace = world.bullet_trace(start, end, attacker, MELEE_MASK);
-            let f = trace.fraction;
-            let point = [
-                (end[0] - start[0]) * f + start[0],
-                (end[1] - start[1]) * f + start[1],
-                (end[2] - start[2]) * f + start[2],
-            ];
-            if across == 0.0 && along == 0.0 {
-                world.damage_triggers(attacker, parms.muzzle, point, damage, MEANS[MOD_MELEE]);
-            }
-            if f == 1.0 || trace.surface_flags & surf::NOIMPACT != 0 {
-                continue;
-            }
-            if world.entity(hit_id(&trace)).is_some_and(sentient) {
-                return Some((trace, point));
-            }
-            if best.as_ref().is_none_or(|(b, _)| f <= b.fraction) {
-                best = Some((trace, point));
-            }
-        }
-        best.filter(|(trace, _)| trace.fraction < 1.0)
     }
 
     /// The weapon a player's damage is credited to: the offhand while one
@@ -808,6 +771,189 @@ impl Shot<'_> {
         }
         ps.weapon
     }
+}
+
+/// A melee blow: who strikes, from where, how hard and how far.
+struct Blow<'a> {
+    attacker: i32,
+    /// A player strikes; an actor otherwise.
+    client: bool,
+    parms: &'a WeaponParms,
+    damage: i32,
+    range: f32,
+    width: f32,
+    height: f32,
+}
+
+/// The blow's traces out to its reach, across its width and height, from
+/// the eye (a player's from just behind it): a player's first trace that
+/// reaches a body, else the nearest that hits anything. Damage triggers on
+/// the centre line.
+fn melee_trace(blow: &Blow<'_>, world: &mut dyn FireWorld) -> Option<(BulletTrace, [f32; 3])> {
+    let parms = blow.parms;
+    let count = if blow.width > 0.0 || blow.height > 0.0 {
+        9
+    } else {
+        1
+    };
+    let start = if blow.client {
+        mad(parms.muzzle, parms.forward, -10.0)
+    } else {
+        parms.muzzle
+    };
+    let mut best: Option<(BulletTrace, [f32; 3])> = None;
+    for &(across, along) in &MELEE_OFFSETS[..count] {
+        let mut end = mad(parms.muzzle, parms.forward, blow.range);
+        if count > 1 {
+            end = mad(end, parms.right, across * blow.width);
+            end = mad(end, parms.up, along * blow.height);
+        }
+        let trace = world.bullet_trace(start, end, blow.attacker, MELEE_MASK);
+        let f = trace.fraction;
+        let point = [
+            (end[0] - start[0]) * f + start[0],
+            (end[1] - start[1]) * f + start[1],
+            (end[2] - start[2]) * f + start[2],
+        ];
+        if across == 0.0 && along == 0.0 {
+            world.damage_triggers(
+                blow.attacker,
+                parms.muzzle,
+                point,
+                blow.damage,
+                MEANS[MOD_MELEE],
+            );
+        }
+        if f == 1.0 || trace.surface_flags & surf::NOIMPACT != 0 {
+            continue;
+        }
+        if blow.client && world.entity(hit_id(&trace)).is_some_and(sentient) {
+            return Some((trace, point));
+        }
+        if best.as_ref().is_none_or(|(b, _)| f <= b.fraction) {
+            best = Some((trace, point));
+        }
+    }
+    best.filter(|(trace, _)| trace.fraction < 1.0)
+}
+
+/// How far an actor that is not a dog reaches; its blow has no width or
+/// height.
+const ACTOR_MELEE_RANGE: f32 = 64.0;
+/// The most an actor in a melee charge strikes for.
+const MELEE_CHARGE_DAMAGE: i32 = 80;
+
+/// An actor's melee blow (its `melee` builtin): towards its enemy's eye
+/// (turned to the script's direction when it passes one, at the same
+/// height), else along the script's direction, else along its weapon's
+/// flash tag or its facing. A dog's blow spans the AI melee width and
+/// height; any other actor's is one line. Nothing on its own team is
+/// struck. Returns what it struck.
+pub(crate) fn actor_melee(
+    melee: &ActorMelee,
+    world: &mut dyn FireWorld,
+) -> (i32, Vec<&'static Unknown>) {
+    let mut gaps = Vec::new();
+    let (facing, right, up) = movement_t5::math::angle_vectors(melee.angles);
+    let mut forward = melee.flash_forward.unwrap_or(facing);
+    let enemy_eye = melee
+        .enemy
+        .and_then(|(enemy, eye)| player_eye(world, enemy).or(eye));
+    if let Some(at) = enemy_eye {
+        let to = sub(at, melee.eye);
+        let (x, y) = match melee.direction {
+            Some(dir) => {
+                let flat = (to[1] * to[1] + to[0] * to[0]).sqrt();
+                let scale = flat / (dir[0] * dir[0] + dir[1] * dir[1]).sqrt();
+                (dir[0] * scale, dir[1] * scale)
+            }
+            None => (to[0], to[1]),
+        };
+        forward = normalized_zyx([x, y, to[2]]);
+    } else if let Some(dir) = melee.direction {
+        forward = normalized_zyx(dir);
+    }
+    let attacker = world.entity(melee.attacker);
+    // Black Ops' dog species (dog and `zombie_dog`).
+    let dog = attacker
+        .as_ref()
+        .is_some_and(|e| matches!(e.ai_type, Some("dog" | "zombie_dog")));
+    let (range, width, height) = if dog {
+        (
+            dvar(world, "ai_meleeRange", 64.0f32),
+            dvar(world, "ai_meleeWidth", 20.0f32),
+            dvar(world, "ai_meleeHeight", 10.0f32),
+        )
+    } else {
+        (ACTOR_MELEE_RANGE, 0.0, 0.0)
+    };
+    let mut damage = if dog {
+        dvar(world, "dog_MeleeDamage", 150i32)
+    } else {
+        dvar(world, "ai_meleeDamage", 100i32)
+    };
+    if melee.in_melee_charge && damage > MELEE_CHARGE_DAMAGE {
+        damage = MELEE_CHARGE_DAMAGE;
+    }
+    let parms = WeaponParms {
+        forward,
+        right,
+        up,
+        muzzle: melee.eye,
+    };
+    let blow = Blow {
+        attacker: melee.attacker,
+        client: false,
+        parms: &parms,
+        damage,
+        range,
+        width,
+        height,
+    };
+    let Some((trace, point)) = melee_trace(&blow, world) else {
+        return (ENTITY_NONE, gaps);
+    };
+    if matches!(trace.hit, BulletHitType::Glass(_)) {
+        gaps.push(glass_unknown());
+        return (ENTITY_NONE, gaps);
+    }
+    let target = hit_id(&trace);
+    let entity = world.entity(target);
+    if let (Some(attacker), Some(hit)) = (&attacker, &entity)
+        && sentient(*attacker)
+        && sentient(*hit)
+        && attacker.team == hit.team
+    {
+        return (ENTITY_NONE, gaps);
+    }
+    gaps.push(melee_events_unknown());
+    let Some(entity) = entity.filter(|e| target != ENTITY_WORLD && e.takes_damage) else {
+        return (ENTITY_NONE, gaps);
+    };
+    let bayonet = weapon_bytes(world, melee.weapon).is_some_and(|(def, variant)| {
+        WeaponDefView::new(&def, &variant).is_some_and(|d| d.bayonet())
+    });
+    let amount = damage + world.rand() % 5;
+    let dir = [forward[0], forward[1], forward[2] + 0.25];
+    self::damage(
+        &mut gaps,
+        melee.attacker,
+        melee.attacker,
+        entity,
+        Hit {
+            target,
+            dir,
+            point,
+            amount,
+            flags: 0,
+            means: if bayonet { MOD_BAYONET } else { MOD_MELEE },
+            weapon: melee.weapon,
+            location: trace.hit_location,
+            bone: trace.bone,
+        },
+        world,
+    );
+    (target, gaps)
 }
 
 /// A bullet weapon's shot: by its attacker, from its weapon's entity (the
@@ -1384,6 +1530,14 @@ pub(crate) fn sentient(entity: FireEntity) -> bool {
 
 fn length_zyx(v: [f32; 3]) -> f32 {
     (v[2] * v[2] + v[1] * v[1] + v[0] * v[0]).sqrt()
+}
+
+/// `v` normalized, its length summed z, y, x.
+fn normalized_zyx(v: [f32; 3]) -> [f32; 3] {
+    let len = length_zyx(v);
+    let len = if -len >= 0.0 { 1.0 } else { len };
+    let inv = 1.0 / len;
+    [v[0] * inv, v[1] * inv, v[2] * inv]
 }
 
 /// The entity number a trace hit: the world for glass, none for nothing.

@@ -604,6 +604,16 @@ pub trait PlayerMovement: Sync {
         None
     }
 
+    /// An actor's melee blow by the game's own rules: the entity it struck
+    /// (`ENTITY_NONE` for none); `None` when the game has none.
+    fn actor_melee(
+        &self,
+        _melee: &crate::fire::ActorMelee,
+        _world: &mut dyn crate::fire::FireWorld,
+    ) -> Option<(i32, Vec<&'static Unknown>)> {
+        None
+    }
+
     /// One frame of a missile the game spawned.
     fn run_missile(
         &self,

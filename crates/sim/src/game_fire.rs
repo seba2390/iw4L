@@ -410,10 +410,14 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                     hitloc: 0,
                 })
             });
+            let attacker_object = match attacker {
+                Some(_) => None,
+                None => self.object_of(damage.attacker),
+            };
             let hit = crate::script_player::Hit {
                 victim,
                 attacker,
-                attacker_object: None,
+                attacker_object,
                 amount: damage.amount,
                 flags: damage.flags,
                 means: damage.means,
@@ -480,16 +484,19 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         amount: i32,
         means: &'static str,
     ) {
-        let Some(client) = self.client(attacker) else {
-            return;
+        let activator = match self.client(attacker) {
+            Some(client) => crate::script::host::triggers::Activator::Client(client),
+            None => match self.object_of(attacker) {
+                Some(object) => crate::script::host::triggers::Activator::Object(object),
+                None => return,
+            },
         };
-        crate::script::host::triggers::damage_line(
+        crate::script::host::triggers::damage_line_by(
             self.world.ecs(),
             start,
             end,
             amount,
-            client,
-            None,
+            activator,
             means,
         );
     }
@@ -850,6 +857,60 @@ pub(crate) fn script_blast(
         world.report_game_gap(gap);
     }
     true
+}
+
+/// An actor's melee blow as the script host knows it: its eye, facing,
+/// weapon flash and enemy, by script object.
+pub(crate) struct ScriptActorMelee {
+    pub actor: u64,
+    pub eye: [f32; 3],
+    pub angles: [f32; 3],
+    pub flash_forward: Option<[f32; 3]>,
+    /// The enemy, with an actor enemy's eye.
+    pub enemy: Option<(u64, Option<[f32; 3]>)>,
+    pub direction: Option<[f32; 3]>,
+    pub weapon: u32,
+    pub in_melee_charge: bool,
+}
+
+/// An actor's melee blow by the game's own rules: what it struck; `None`
+/// when the match runs no game rules for it.
+pub(crate) fn actor_melee(
+    world: &mut FrameWorld,
+    tick: Tick,
+    melee: &ScriptActorMelee,
+) -> Option<Option<u64>> {
+    let movement = crate::game_move::rules(world)?;
+    if !crate::game_move::game_weapons(world) {
+        return None;
+    }
+    let (hit, gaps) = {
+        let mut around = MatchFireWorld::new(world, tick, None);
+        let attacker = around.number_of_object(melee.actor);
+        let enemy = melee
+            .enemy
+            .map(|(object, eye)| (around.number_of_object(object), eye));
+        let rules = game_api::fire::ActorMelee {
+            attacker,
+            eye: melee.eye,
+            angles: melee.angles,
+            flash_forward: melee.flash_forward,
+            enemy,
+            direction: melee.direction,
+            weapon: melee.weapon,
+            in_melee_charge: melee.in_melee_charge,
+        };
+        let (hit, gaps) = movement.actor_melee(&rules, &mut around)?;
+        let hit = match hit {
+            ENTITY_NONE => None,
+            hit => around.object_of(hit),
+        };
+        (hit, gaps)
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    Some(hit)
 }
 
 /// The missiles a game's rules run, by entity number.

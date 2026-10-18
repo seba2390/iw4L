@@ -460,6 +460,29 @@ pub struct RadiusDamage {
     pub script: bool,
 }
 
+/// An actor's melee blow (its `melee` builtin), as the actor stands when it
+/// strikes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ActorMelee {
+    /// The actor, by entity number.
+    pub attacker: i32,
+    /// Its eye.
+    pub eye: [f32; 3],
+    /// Its facing (pitch, yaw, roll).
+    pub angles: [f32; 3],
+    /// The forward axis of its weapon's flash tag, when its model has one.
+    pub flash_forward: Option<[f32; 3]>,
+    /// Its enemy, by entity number, with an actor enemy's eye; a player's
+    /// comes from its movement.
+    pub enemy: Option<(i32, Option<[f32; 3]>)>,
+    /// The direction the script passed.
+    pub direction: Option<[f32; 3]>,
+    /// Its weapon.
+    pub weapon: u32,
+    /// It is in a melee charge (`inmeleecharge`).
+    pub in_melee_charge: bool,
+}
+
 /// How a trajectory moves.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum TrajectoryKind {
