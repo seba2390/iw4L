@@ -2,6 +2,8 @@
 pub struct MixerGroup {
     pub parent: i32,
     pub attenuation: f32,
+    /// The group's sound category, for a game that reads one.
+    pub category: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

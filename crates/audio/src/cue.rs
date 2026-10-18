@@ -58,6 +58,8 @@ pub(crate) struct CueExecutionPolicy {
     pub channel: Option<asset_audio::ChannelKey>,
     /// The alias's namespace and snapshot group, when it has one.
     pub snapshot_group: Option<(asset_core::AssetNamespace, u8)>,
+    /// The game's whole-mix fade spares the sound.
+    pub master_fade_exempt: bool,
     pub priority: Option<asset_audio::VoicePriority>,
     pub spatial: Option<Result<CueSpatialPolicy, StartFailure>>,
     admission: AdmissionPolicy,
@@ -90,6 +92,7 @@ impl CueExecutionPolicy {
             loaded_binding_origin: policy.loaded_binding_origin,
             channel: policy.channel,
             snapshot_group: policy.snapshot_group.map(|group| (policy.namespace, group)),
+            master_fade_exempt: policy.master_fade_exempt,
             priority: policy.priority.clone(),
             spatial,
             admission: alias_admission(bound.revision(), bound.alias_index(), policy),

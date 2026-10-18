@@ -281,6 +281,20 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     }
 }
 
+/// Whether a failed level slows time: not while a listed dvar is set, nor
+/// in the excluded game type.
+fn slows_time(world: &World, slow: &game_api::FailedSlowMotion) -> bool {
+    let dvars = &world.resource::<crate::script::MatchScript>().dvars;
+    let set = |name: &str| {
+        dvars
+            .get(name)
+            .is_some_and(|value| value.trim().parse::<f64>().is_ok_and(|v| v != 0.0))
+    };
+    let gametype = dvars.get("ui_gametype").map_or("", String::as_str);
+    !slow.unless_dvars.iter().any(|name| set(name))
+        && !gametype.eq_ignore_ascii_case(slow.unless_gametype)
+}
+
 /// An angle's distance from 0 in degrees, 0 to 180: the angle in turns
 /// less its floor (rounded through the float's 2^23 trick), back in
 /// degrees, folded at 180.
@@ -361,7 +375,8 @@ fn mission_failed(world: &mut World) -> Result<(), String> {
         let was = runtime.reloading;
         if !was {
             runtime.reloading = true;
-            runtime.reload_after_ms = Some(now + rules.reload_delay_ms + rules.death_delay_ms);
+            let delay = rules.reload_delay_ms + rules.death_delay_ms;
+            runtime.reload_after_ms = Some(now + delay);
             if let Some(gap) = rules.unrun {
                 diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
             }
@@ -369,6 +384,28 @@ fn mission_failed(world: &mut World) -> Result<(), String> {
         was
     };
     if !already_reloading {
+        if let Some(slow) = rules.slow_motion
+            && slows_time(world, &slow)
+        {
+            let ramp = rules.death_delay_ms;
+            let real = rules.reload_delay_ms + rules.death_delay_ms;
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.engine.slow_motion = Some(crate::ScriptSlowMotion {
+                from: 1.0,
+                to: slow.to,
+                start_ms: now_ms,
+                duration_ms: ramp as i32,
+            });
+            // The reload waits real time; under the ramp (linear in real
+            // time, then held) that much real time is this much match time.
+            let to = f64::from(slow.to);
+            let match_ms = ramp as f64 * (1.0 + to) * 0.5 + (real - ramp).max(0) as f64 * to;
+            runtime.reload_after_ms = Some(now + match_ms.round() as i64);
+        }
+        if rules.fade_out_sound {
+            crate::frame::FrameWorld::from_world(world)
+                .push_script_audio(crate::ScriptAudioCommand::SoundFadeOut);
+        }
         let mut frame = crate::frame::FrameWorld::from_world(world);
         for &client in &clients {
             if frame.client_meta(crate::ClientId(client)).is_some() {

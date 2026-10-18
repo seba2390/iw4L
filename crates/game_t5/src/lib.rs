@@ -159,10 +159,21 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         blur_target: 32.0,
         deadquote_dvar: "ui_deadquote",
         death_sound: "death",
+        // The client's `X` command ramps `com_codeTimeScale` from 1 to 0.1
+        // over `g_deathDelay` of real time (not in the "vs" game type), held
+        // until the reload; the time scale stays 1 in system link and
+        // online games.
+        slow_motion: Some(game_api::FailedSlowMotion {
+            to: 0.1,
+            unless_dvars: &["systemlink", "onlinegame"],
+            unless_gametype: "vs",
+        }),
+        // The client's `q 0` command.
+        fade_out_sound: true,
         unrun: Some(unknown!(
             "t5.match.level_failed",
-            "a failed level loads afresh instead of restoring its level-start save, counts its delay on the match clock without ramping com_codeTimeScale from 1 to 0.1, and does not fade out the sound mixer over 2 s",
-            "save games in the runtime (Black Ops saves the level at its start), and Black Ops' client timescale ramp and sound-queue fade"
+            "a failed level loads afresh instead of restoring its level-start save",
+            "save games in the runtime (Black Ops saves the level at its start, `_autosave::start_level_save`, and `loadgame_continue` restores it)"
         )),
     }),
     bullet_mask: None,

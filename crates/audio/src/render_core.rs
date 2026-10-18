@@ -154,7 +154,7 @@ impl Slot {
 struct Cursor {
     voice: RenderVoiceId,
     position: f64,
-    gains: [crate::media::GainEnvelope; 4],
+    gains: [crate::media::GainEnvelope; 5],
 }
 
 struct RenderState {
@@ -202,7 +202,7 @@ impl RenderShared {
                 cursors: [Cursor {
                     voice: RenderVoiceId(0),
                     position: 0.0,
-                    gains: [crate::media::GainEnvelope::default(); 4],
+                    gains: [crate::media::GainEnvelope::default(); 5],
                 }; PHYSICAL_VOICES],
                 buses: Default::default(),
                 limiter: Default::default(),
@@ -323,18 +323,17 @@ impl RenderShared {
     }
 
     // These operations require the sole control owner, including in offline use.
-    pub unsafe fn publish(&self, assignment: Assignment) -> Result<usize, Assignment> {
-        let Some(index) = self
+    /// Publishes an assignment to a free slot; with none free the
+    /// assignment is dropped.
+    pub unsafe fn publish(&self, assignment: Assignment) -> Option<usize> {
+        let index = self
             .slots
             .iter()
-            .position(|slot| slot.phase.load(Ordering::Acquire) == FREE)
-        else {
-            return Err(assignment);
-        };
+            .position(|slot| slot.phase.load(Ordering::Acquire) == FREE)?;
         let slot = &self.slots[index];
         unsafe { *slot.assignment.get() = Some(assignment) };
         slot.phase.store(PUBLISHED, Ordering::Release);
-        Ok(index)
+        Some(index)
     }
 
     pub unsafe fn reclaim(&self, index: usize) -> Option<Assignment> {
@@ -377,7 +376,7 @@ fn render_assignment(
     if cursor.voice != assignment.voice {
         cursor.voice = assignment.voice;
         cursor.position = assignment.start_cursor;
-        cursor.gains = [crate::media::GainEnvelope::default(); 4];
+        cursor.gains = [crate::media::GainEnvelope::default(); 5];
         if assignment.looping && !instance.paused.load(Ordering::Relaxed) {
             cursor.position += frame.saturating_sub(assignment.start_frame) as f64 * step;
         }

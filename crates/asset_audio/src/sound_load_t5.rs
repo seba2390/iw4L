@@ -103,6 +103,7 @@ impl AssetLinkSink for T5SoundCapture {
             groups.push(crate::MixerGroup {
                 parent: s.i32_at(row, 68)?,
                 attenuation: f32::from(s.u16_at(row, 76)?) / 65535.0,
+                category: Some(s.i32_at(row, 72)?),
             });
         }
         self.catalog.ingest_mixer_groups(NAMESPACE, groups);

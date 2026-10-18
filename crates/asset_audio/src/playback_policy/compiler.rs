@@ -66,9 +66,17 @@ pub(super) fn compile(
         GroupSelection::Unknown => GroupGainPolicy::UnknownIndexUnityCompatibility,
         GroupSelection::Ungrouped => GroupGainPolicy::Ungrouped,
     };
+    let looping = LoopingPolicy::compile(row.is_looping());
+    let master_fade_exempt = match semantics.group {
+        GroupSelection::Index(group) => {
+            !looping.is_looping() && catalog.mixer_group_category(namespace, group) == Some(3)
+        }
+        GroupSelection::Ungrouped | GroupSelection::Unknown => false,
+    };
     Some(AliasPlaybackPolicy {
         namespace,
-        looping: LoopingPolicy::compile(row.is_looping()),
+        looping,
+        master_fade_exempt,
         streamed_decode: semantics.streamed_decode,
         composition: CueCompositionPolicy::compile(
             row,

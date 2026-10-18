@@ -265,8 +265,22 @@ pub struct FailedLevelRules {
     pub deadquote_dvar: &'static str,
     /// The local sound played on every client when a dead quote is sent.
     pub death_sound: &'static str,
+    /// Time slows over the death delay, when the game slows it.
+    pub slow_motion: Option<FailedSlowMotion>,
+    /// Every client fades its whole mix out (and stops its streams).
+    pub fade_out_sound: bool,
     /// What failing does that is not run.
     pub unrun: Option<&'static Unknown>,
+}
+
+/// The game's time scale ramped from 1 to `to` over the death delay of
+/// real time and held until the level loads again; not while any of
+/// `unless_dvars` is set, nor in the game type `unless_gametype`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FailedSlowMotion {
+    pub to: f32,
+    pub unless_dvars: &'static [&'static str],
+    pub unless_gametype: &'static str,
 }
 
 /// What a game's mode asks of the code around its scripts. Staged for the

@@ -188,6 +188,9 @@ pub struct AliasPlaybackPolicy {
     pub stereo_speaker_gains: Option<[[f32; 2]; 2]>,
     /// The snapshot group whose mix snapshot volume the alias plays at.
     pub snapshot_group: Option<u8>,
+    /// The game's whole-mix fade leaves the sound alone: Black Ops spares a
+    /// one-shot whose group is in sound category 3.
+    pub master_fade_exempt: bool,
     pub loaded_binding_origin: crate::LoadedBindingOrigin,
 }
 

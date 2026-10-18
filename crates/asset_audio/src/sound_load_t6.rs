@@ -97,6 +97,7 @@ fn capture_globals(loads: &[&ZoneLoad]) -> SoundGlobals {
                     .map(|b| crate::MixerGroup {
                         parent: le32(b, 68) as i32,
                         attenuation: f32::from(le16(b, 78)) / 65535.0,
+                        category: None,
                     })
                     .collect();
             }
