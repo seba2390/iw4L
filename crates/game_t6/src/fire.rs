@@ -13,8 +13,7 @@ use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
 use movement_t6::events::event as ev;
 use movement_t6::state::{
-    ENTITYNUM_NONE, ENTITYNUM_WORLD, e_flags, e_flags2, pm_flags, pm_type, weap_flags,
-    weapon_state as ws,
+    ENTITYNUM_NONE, e_flags, e_flags2, pm_flags, pm_type, weap_flags, weapon_state as ws,
 };
 use movement_t6::weapon::{fire_type, weapon_type};
 use movement_t6::{PlayerState, perks};
@@ -228,18 +227,10 @@ fn deploy_unknown() -> &'static Unknown {
     )
 }
 
-fn offhand_pickup_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.offhand_pickup",
-        "switching to an offhand while looking at a placed one does not pick it up",
-        "the entity a player's use hint points at in the player state and Black Ops 2's pick up callback"
-    )
-}
-
 fn grenade_suicide_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.grenade_suicide",
-        "with grenade suicide on (multiplayer), a grenade held past its fuse does not kill its thrower outright, credited to whoever threw it back",
+        "with grenade suicide on (never on zombies, whose scripts turn it off before any player can cook), a grenade held past its fuse does not kill its thrower outright, credited to whoever threw it back",
         "Black Ops 2's player death, which that rule calls without the damage rules"
     )
 }
@@ -247,7 +238,7 @@ fn grenade_suicide_unknown() -> &'static Unknown {
 fn gas_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.gas",
-        "a gas weapon's flames are not fired",
+        "a gas weapon's flames are not fired (multiplayer: no zombies weapon is of the gas type or class)",
         "Black Ops 2's flame system"
     )
 }
@@ -255,8 +246,8 @@ fn gas_unknown() -> &'static Unknown {
 fn rocket_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.rocket_launch",
-        "a rocket flies straight: Black Ops 2's guided, locked-on, airburst and wandering rockets are not run, nor the mark that keeps a launched grenade from wandering",
-        "Black Ops 2's whole rocket launch and guidance"
+        "a rocket of a weapon that accelerates, wanders at random, is guided (other than a ballistic knife's fall) or destabilizes flies straight",
+        "Black Ops 2's accelerating, wandering, guided and destabilizing rocket flight"
     )
 }
 
@@ -268,19 +259,11 @@ fn missile_antilag_unknown() -> &'static Unknown {
     )
 }
 
-fn mover_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.mover_velocity",
-        "a missile fired by a player standing on an entity does not take that entity's velocity",
-        "which entities are movers in the runtime and their velocity"
-    )
-}
-
 fn throwback_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.throwback",
-        "a thrown-back grenade is credited to its thrower and not told to scripts",
-        "Black Ops 2's grenade throwback ownership and notify"
+        "a thrown grenade cannot be picked up and thrown back",
+        "thrown grenades as usable entities in the use search, the pick up on switching offhands, and the throw credited to the grenade's owner"
     )
 }
 
@@ -598,7 +581,15 @@ impl Shot<'_> {
                 self.gaps.push(deploy_unknown());
             }
             ev::USE_OFFHAND => self.throw_offhand(world),
-            ev::SWITCH_OFFHAND => self.gaps.push(offhand_pickup_unknown()),
+            // Switching offhands with the use hint on a thrown grenade picks
+            // it up to throw back; nothing else is picked up this way.
+            ev::SWITCH_OFFHAND
+                if self.ps.cursor_hint_ent_index != 0
+                    && self.ps.cursor_hint_ent_index != ENTITYNUM_NONE =>
+            {
+                self.gaps.push(throwback_unknown());
+            }
+            ev::SWITCH_OFFHAND => {}
             ev::PREP_RIOTSHIELD => world.notify(me, "raise_riotshield", &[]),
             ev::DEPLOY_RIOTSHIELD => world.notify(me, "deploy_riotshield", &[NotifyArg::Int(1)]),
             ev::LOWER_RIOTSHIELD => {
@@ -1382,7 +1373,6 @@ impl Shot<'_> {
             Some(time_left),
             world,
         );
-        self.mover_velocity(world);
         self.fired_grenade(def, def.fuse_time(), world);
     }
 
@@ -1410,7 +1400,7 @@ impl Shot<'_> {
             &def,
             origin,
             vel,
-            [0.0; 3],
+            [[0.0; 3]; 2],
             true,
             time_left,
             Some(time_left),
@@ -1442,7 +1432,7 @@ impl Shot<'_> {
                 &def,
                 origin,
                 [0.0; 3],
-                [0.0; 3],
+                [[0.0; 3]; 2],
                 false,
                 time_left,
                 Some(time_left),
@@ -1484,14 +1474,6 @@ impl Shot<'_> {
         // adopts the grenade's script entity.
     }
 
-    /// A player standing on an entity hands its velocity to the missile.
-    fn mover_velocity(&mut self, _world: &dyn FireWorld) {
-        let ground = self.ps.ground_entity_num;
-        if ground != ENTITYNUM_NONE && ground != ENTITYNUM_WORLD {
-            self.gaps.push(mover_unknown());
-        }
-    }
-
     /// A projectile weapon's rocket, its knockback on the shooter.
     fn fire_rocket(
         &mut self,
@@ -1501,9 +1483,14 @@ impl Shot<'_> {
         parms: &WeaponParms,
         world: &mut dyn FireWorld,
     ) {
-        self.gaps.push(rocket_unknown());
-        if def.guided_missile_type() != 6 {
-            self.mover_velocity(world);
+        // A straight or falling rocket is Black Ops 2's own; the others are
+        // not run.
+        if def.projectile_acceleration() > 0.0
+            || def.projectile_random_wander() > 0.0
+            || !matches!(def.guided_missile_type(), 0 | 4)
+            || def.guided_missile_type() == 0 && def.destabilization_rate_time() != 0.0
+        {
+            self.gaps.push(rocket_unknown());
         }
         let knockback = def.fire_type() != fire_type::FULL_AUTO
             && (!dvar_bool(world, "tu11_useMissileKnockbackHeldWeaponsOnly", true)

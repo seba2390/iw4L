@@ -1632,6 +1632,16 @@ impl<'a> WeaponDefView<'a> {
         self.def_i32(0x874)
     }
 
+    /// A rocket's acceleration: one with any starts at rest and speeds up.
+    pub fn projectile_acceleration(&self) -> f32 {
+        self.def_f32(0x6e0)
+    }
+
+    /// The cone a rocket's launch direction wanders in at random.
+    pub fn projectile_random_wander(&self) -> f32 {
+        self.def_f32(0x6e4)
+    }
+
     pub fn destabilization_rate_time(&self) -> f32 {
         self.def_f32(0x8f0)
     }
