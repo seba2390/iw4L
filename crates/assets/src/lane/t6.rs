@@ -141,11 +141,22 @@ const COLOR_MAP_SAMPLER_HASH: u32 = 0xa0ab_1041;
 const HANDS_ZONE: &str = "faction_seals_mp.ff";
 
 /// The post materials Black Ops 2's renderer registers for its screen
-/// overlays (its burn and electric shock passes).
-const T6_OVERLAY_MATERIALS: [&str; 3] = [
+/// overlays: its burn, electric shock, poison and revive passes, the blur
+/// pass's blend and the blur's eight filters.
+const T6_OVERLAY_MATERIALS: [&str; 13] = [
     "flamethrowerfx_color_distort_overlay_bloom",
     "zombie_electric_shock_overlay",
     "poison",
+    "revivefx",
+    "feedbackblend",
+    "filter_symmetric_1",
+    "filter_symmetric_2",
+    "filter_symmetric_3",
+    "filter_symmetric_4",
+    "filter_symmetric_5",
+    "filter_symmetric_6",
+    "filter_symmetric_7",
+    "filter_symmetric_8",
 ];
 /// The filter materials the installed maps' client scripts map and enable
 /// (`game_t6::overlay`), captured when the map's zones carry them.

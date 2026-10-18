@@ -204,6 +204,8 @@ pub struct T6Vision {
     pub tone_strength: f32,
     /// The fields it was derived from, for a vision read from a file.
     pub fields: Option<T6VisionFields>,
+    /// Its revive settings (`r_reviveFX_*`), when it names them.
+    pub revive: Option<game_api::post::ReviveFx>,
 }
 
 /// Black Ops 2's vision vector fields (`vc_*`), in its vision field table
@@ -220,6 +222,10 @@ pub const T6_VISION_VECTORS: [&str; 23] = [
 pub struct T6VisionFields {
     pub film_enable: Option<bool>,
     pub vectors: [Option<[f32; 4]>; 23],
+    /// The revive settings, once `r_reviveFX_enable` is named; a revive
+    /// field it does not name is 0 (t6.vision.cache_reuse: the client's
+    /// vision cache can leave a reused slot's value there instead).
+    pub revive: Option<game_api::post::ReviveFx>,
 }
 
 impl T6VisionFields {
@@ -235,6 +241,7 @@ impl T6VisionFields {
     pub fn lerp(to: &Self, from: &Self, fraction: f32) -> Self {
         Self {
             film_enable: from.film_enable,
+            revive: from.revive,
             vectors: std::array::from_fn(|i| {
                 let (a, b) = (to.vectors[i]?, from.vectors[i]?);
                 Some(std::array::from_fn(|c| (b[c] - a[c]) * fraction + a[c]))
@@ -249,6 +256,7 @@ impl T6VisionFields {
             bloom: self.bloom()?,
             tone_strength: 1.0,
             fields: Some(*self),
+            revive: self.revive,
         })
     }
 
@@ -389,7 +397,10 @@ pub fn parse_t6_vision_fields(source: &str) -> Result<T6VisionFields, T6FilmGrad
     let mut fields = T6VisionFields {
         film_enable: None,
         vectors: [None; 23],
+        revive: None,
     };
+    let mut revive = game_api::post::ReviveFx::default();
+    let mut revive_named = false;
     for line in source.lines().map(str::trim) {
         let Some(split) = line.find(char::is_whitespace) else {
             continue;
@@ -404,6 +415,38 @@ pub fn parse_t6_vision_fields(source: &str) -> Result<T6VisionFields, T6FilmGrad
                 .filter(|v| v.is_finite())
                 .ok_or(Error::InvalidEnable)?;
             fields.film_enable = Some(value != 0.0);
+        } else if let Some(name) = key.strip_prefix("r_revivefx_") {
+            let float = || {
+                value
+                    .trim_matches('"')
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|v| v.is_finite())
+                    .ok_or_else(|| Error::InvalidVector(key.clone()))
+            };
+            let triple = || {
+                let values: Vec<f32> = value
+                    .trim_matches('"')
+                    .split_whitespace()
+                    .map(str::parse)
+                    .collect::<Result<_, _>>()
+                    .map_err(|_| Error::InvalidVector(key.clone()))?;
+                <[f32; 3]>::try_from(values).map_err(|_| Error::InvalidVector(key.clone()))
+            };
+            match name {
+                "enable" => {
+                    revive.enable = float()? != 0.0;
+                    revive_named = true;
+                }
+                "edgecolortemp" => revive.edge_color_temp = float()?,
+                "edgesaturation" => revive.edge_saturation = float()?,
+                "edgescale" => revive.edge_scale = triple()?,
+                "edgecontrast" => revive.edge_contrast = triple()?,
+                "edgeoffset" => revive.edge_offset = triple()?,
+                "edgemaskadjust" => revive.edge_mask_adjust = float()?,
+                "edgeamount" => revive.edge_amount = float()?,
+                _ => {}
+            }
         } else if let Some(name) = key.strip_prefix("vc_")
             && let Some(index) = T6_VISION_VECTORS.iter().position(|field| *field == name)
         {
@@ -414,6 +457,7 @@ pub fn parse_t6_vision_fields(source: &str) -> Result<T6VisionFields, T6FilmGrad
             );
         }
     }
+    fields.revive = revive_named.then_some(revive);
     Ok(fields)
 }
 

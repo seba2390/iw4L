@@ -1711,6 +1711,32 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(poison.amount);
             out.put_f32(poison.pulse);
             out.put_f32(poison.dvision_x);
+            out.put_f32(poison.blur_min);
+            out.put_f32(poison.blur_max);
+        }
+    }
+    match overlays.revive_debug {
+        None => out.put_u8(0),
+        Some(revive) => {
+            out.put_u8(1);
+            out.put_u8(u8::from(revive.enable));
+            for word in [
+                revive.edge_color_temp,
+                revive.edge_saturation,
+                revive.edge_scale[0],
+                revive.edge_scale[1],
+                revive.edge_scale[2],
+                revive.edge_contrast[0],
+                revive.edge_contrast[1],
+                revive.edge_contrast[2],
+                revive.edge_offset[0],
+                revive.edge_offset[1],
+                revive.edge_offset[2],
+                revive.edge_mask_adjust,
+                revive.edge_amount,
+            ] {
+                out.put_f32(word);
+            }
         }
     }
     out.put_u16(screen.undrawn_entities.len() as u16);
@@ -1829,8 +1855,31 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
                 amount: input.get_f32()?,
                 pulse: input.get_f32()?,
                 dvision_x: input.get_f32()?,
+                blur_min: input.get_f32()?,
+                blur_max: input.get_f32()?,
             }),
             _ => return Err(WireError::Malformed("bad poison overlay tag")),
+        },
+        revive_debug: match input.get_u8()? {
+            0 => None,
+            1 => {
+                let enable = input.get_u8()? != 0;
+                let mut words = [0.0; 13];
+                for word in &mut words {
+                    *word = input.get_f32()?;
+                }
+                Some(sim::ReviveFx {
+                    enable,
+                    edge_color_temp: words[0],
+                    edge_saturation: words[1],
+                    edge_scale: [words[2], words[3], words[4]],
+                    edge_contrast: [words[5], words[6], words[7]],
+                    edge_offset: [words[8], words[9], words[10]],
+                    edge_mask_adjust: words[11],
+                    edge_amount: words[12],
+                })
+            }
+            _ => return Err(WireError::Malformed("bad revive debug tag")),
         },
     };
     let count = input.get_u16()?;
