@@ -6,8 +6,8 @@ use fastfile_t6::weapon::{WeaponDefView, def, variant};
 use game_api::movement::{
     ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MeleeTarget, MoveCommand,
     MoveContext, MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace,
-    MoveType, MoveWorld, PlayerMovement, ScriptFlag, Stance, VolumeColumn, WeaponActivity,
-    WeaponNotify, WeaponNotifyMemory, buttons as intent,
+    MoveType, MoveWorld, PlayerMovement, ScriptFlag, ShellshockStart, Stance, VolumeColumn,
+    WeaponActivity, WeaponNotify, WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t6::events::event;
@@ -54,8 +54,8 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
         ),
         Gap::Shellshock => unknown!(
             "t6.movement.shellshock",
-            "a shellshocked Black Ops 2 player moves at full speed",
-            "the movement scale in Black Ops 2's shellshock files"
+            "a shellshocked Black Ops 2 player whose shock file the match does not know moves at full speed",
+            "the shock's file in the match"
         ),
         Gap::AnimLock => unknown!(
             "t6.movement.anim_lock",
@@ -345,6 +345,9 @@ fn game_state(
     let mut kind = ps.dmg_type as u8;
     b.byte(&mut kind, write);
     ps.dmg_type = i32::from(kind);
+    b.i(&mut ps.shellshock_index, write);
+    b.i(&mut ps.shellshock_time, write);
+    b.i(&mut ps.shellshock_duration, write);
 }
 
 pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
@@ -506,6 +509,12 @@ impl movement_t6::MoveWorld for World<'_> {
         self.world.entity_origin(shared_entity(entity))
     }
 
+    fn shock_movement(&self, index: i32) -> Option<f32> {
+        self.world
+            .shellshock(index)
+            .map(|shock| shock.movement_scale)
+    }
+
     fn entity_velocity(&self, entity: i32) -> Option<[f32; 3]> {
         let entity = shared_entity(entity);
         let velocity = self.world.entity_velocity(entity);
@@ -542,6 +551,12 @@ impl PlayerMovement for T6Movement {
         context: MoveContext,
     ) -> MoveOutcome {
         let (mut ps, mut last) = unpack(player);
+        // The server's end of frame ends a shellshock whose time ran out.
+        if !context.predicting
+            && ps.shellshock_time.wrapping_add(ps.shellshock_duration) < context.level_time
+        {
+            ps.pm_flags &= !pm_flags::SHELLSHOCKED;
+        }
         if player.frozen {
             ps.pm_flags |= pm_flags::FROZEN;
         } else {
@@ -687,6 +702,29 @@ impl PlayerMovement for T6Movement {
         player.stance = Stance::Stand;
         player.sprinting = false;
         game_state(&mut ps, &mut last, &mut player.game, true);
+    }
+
+    /// `shellshock` keeps the shock's number, start and duration and marks
+    /// the player shellshocked (the builtin hands only a living player's
+    /// shock over); `stopshellshock` clears all four.
+    fn shellshock(&self, player: &mut MovePlayer, shock: Option<ShellshockStart>) -> bool {
+        let (mut ps, mut last) = unpack(player);
+        match shock {
+            Some(shock) => {
+                ps.shellshock_index = shock.index;
+                ps.shellshock_time = shock.level_time;
+                ps.shellshock_duration = shock.duration_ms;
+                ps.pm_flags |= pm_flags::SHELLSHOCKED;
+            }
+            None => {
+                ps.shellshock_index = 0;
+                ps.shellshock_time = 0;
+                ps.shellshock_duration = 0;
+                ps.pm_flags &= !pm_flags::SHELLSHOCKED;
+            }
+        }
+        pack(player, &mut ps, &mut last);
+        true
     }
 
     fn restrict(&self, player: &mut MovePlayer, what: MoveRestriction, allowed: bool) {

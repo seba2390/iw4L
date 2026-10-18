@@ -88,4 +88,9 @@ pub trait MoveWorld {
     /// The entity's velocity (its state's trajectory delta); `None` when
     /// the match cannot tell.
     fn entity_velocity(&self, entity: i32) -> Option<[f32; 3]>;
+
+    /// The fraction of their speed a player shocked by the shellshock
+    /// numbered `index` moves at (its file's `bg_shock_movement`); `None`
+    /// when the match does not know it.
+    fn shock_movement(&self, index: i32) -> Option<f32>;
 }

@@ -490,6 +490,8 @@ pub struct PlayerState {
     pub weap_anim: u32,
     pub weap_anim_left: u32,
     pub shellshock_index: i32,
+    pub shellshock_time: i32,
+    pub shellshock_duration: i32,
     pub offhand_throw: i32,
     pub ads_zoom_select: i32,
     pub ads_zoom_time: i32,
