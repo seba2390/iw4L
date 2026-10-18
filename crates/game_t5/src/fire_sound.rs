@@ -19,14 +19,14 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     // the event ejects the view or world shell (the last-shot pair for a
     // last shot when both are authored) from the brass tag of the firing
     // hand, unless the weapon is bolt action, whose rechamber ejects it.
-    // Tracers and the view kick are `t5.weapons.tracers` and
-    // `t5.weapons.view_kick`.
+    // Tracers are `t5.weapons.tracers`.
     effects: Rule::Known(()),
     left_from_own_weapon: true,
     autosim: Some(FireAutoSimRules {
         simulated,
         new: crate::fire_autosim::new,
     }),
+    view_kick: Some(crate::view_kick::RULES),
 };
 
 /// `fireType` burst.

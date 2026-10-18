@@ -884,9 +884,10 @@ pub fn sample_client_input(
         ResMut<LocationCursor>,
         Res<crate::ViewweaponAim>,
         Res<LocalCmdOverride>,
+        Res<crate::client::input::AimKick>,
     ),
 ) {
-    let (mut cursor, aim, driven) = aim_cursor;
+    let (mut cursor, aim, driven, kick) = aim_cursor;
     push_phase(trace, "Input");
     if !gate.local_cmds_enabled {
         actions.client.weapon_cycles.clear();
@@ -1192,6 +1193,7 @@ pub fn sample_client_input(
     let mut cmd = build_usercmd(&mut actions, &look, 0);
     use_reload_as_reload(&mut actions, &mut cmd, ps);
     look.angles = cmd.angles;
+    cmd.angles = kick.turn(cmd.angles);
     if !frozen
         && aim.live
         && ps.is_some_and(|ps| aim.weapon == playerstate_iw4::get_viewmodel_weapon_index(ps))

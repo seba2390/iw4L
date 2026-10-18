@@ -146,6 +146,7 @@ impl WeaponCatalog {
             rocket_model,
             knife_xmodel: None,
             dual_wield_weapon: None,
+            grenade_weapon: None,
             sz_xanims,
             sz_xanims_right,
             sz_xanims_left,

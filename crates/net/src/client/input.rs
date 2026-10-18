@@ -24,6 +24,18 @@ pub struct LookState {
     pub angles: [i32; 3],
 }
 
+/// The game's view kick on the client's aim, in degrees: it turns the
+/// angles each command carries, not the look the mouse builds up.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct AimKick(pub [f32; 3]);
+
+impl AimKick {
+    /// A command's angles turned by the kick.
+    pub fn turn(&self, angles: [i32; 3]) -> [i32; 3] {
+        std::array::from_fn(|i| angles[i].wrapping_add((self.0[i] * ANGLE2SHORT) as i32))
+    }
+}
+
 #[derive(Resource, Clone, Debug)]
 pub struct ClientActionInput {
     pub client: ClientInput,

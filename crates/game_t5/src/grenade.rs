@@ -203,7 +203,105 @@ pub(crate) fn fire_grenade(
         ]
     });
     spawn_grenade(
-        owner, weapon, def, muzzle, vel, carried, true, fuse, world, gaps,
+        owner, weapon, def, muzzle, vel, carried, true, false, None, fuse, world, gaps,
+    );
+}
+
+/// A grenade launcher's shot by a player: the grenade leaves along the aim
+/// at the weapon's projectile speed, its upward speed added, without spin,
+/// on the weapon's fuse, carrying the shooter's speed along its flight; it
+/// never destabilises. An actor's shot (aimed to land by its enemy) is not
+/// run.
+pub(crate) fn launch_grenade(
+    owner: i32,
+    weapon: u32,
+    def: &WeaponDefView<'_>,
+    forward: [f32; 3],
+    muzzle: [f32; 3],
+    world: &mut dyn FireWorld,
+    gaps: &mut Vec<&'static Unknown>,
+) {
+    let Some(player) = world.player(owner) else {
+        gaps.push(crate::fire::fire_unknown());
+        return;
+    };
+    let speed = def.projectile_speed() as f32;
+    let vel = [
+        forward[0] * speed,
+        forward[1] * speed,
+        forward[2] * speed + def.projectile_speed_up() as f32,
+    ];
+    let len = ((vel[1] * vel[1] + vel[0] * vel[0]) + vel[2] * vel[2]).sqrt();
+    let len = if -len >= 0.0 { 1.0 } else { len };
+    let inv = 1.0 / len;
+    let dir = [inv * vel[0], vel[1] * inv, inv * vel[2]];
+    let pv = player.velocity;
+    let along = (pv[1] * dir[1] + pv[2] * dir[2]) + pv[0] * dir[0];
+    let carried = [dir[0] * along, dir[1] * along, dir[2] * along];
+    spawn_grenade(
+        owner,
+        weapon,
+        def,
+        muzzle,
+        vel,
+        carried,
+        false,
+        true,
+        None,
+        def.fuse_time(),
+        world,
+        gaps,
+    );
+}
+
+/// What a grenade left by a bolt sticks in: the entity struck (the world
+/// for none) and the surface's normal.
+#[derive(Clone, Copy)]
+pub(crate) struct Stuck {
+    pub(crate) on: i32,
+    pub(crate) normal: [f32; 3],
+}
+
+/// A bolt's grenade (its weapon's `grenadeWeapon`) left where the bolt
+/// struck: stuck there, its fuse the grenade weapon's. Black Ops links it
+/// to the entity and bone struck; here it stays at the point.
+pub(crate) fn leave_grenade(
+    owner: i32,
+    weapon: u32,
+    start: [f32; 3],
+    dir: [f32; 3],
+    stuck: Stuck,
+    world: &mut dyn FireWorld,
+    gaps: &mut Vec<&'static Unknown>,
+) {
+    let Some((def_bytes, variant_bytes)) = world
+        .weapon(weapon)
+        .map(|w| (w.def.clone(), w.variant.clone()))
+    else {
+        gaps.push(crate::movement::weapon_unknown());
+        return;
+    };
+    let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
+        gaps.push(crate::movement::weapon_unknown());
+        return;
+    };
+    if stuck.on != ENTITY_WORLD {
+        gaps.push(grenade_unknown());
+    }
+    let fuse = def.fuse_time();
+    spawn_grenade(
+        owner,
+        weapon,
+        &def,
+        start,
+        dir,
+        [0.0; 3],
+        false,
+        false,
+        Some(stuck),
+        fuse,
+        world,
+        gaps,
     );
 }
 
@@ -219,6 +317,8 @@ fn spawn_grenade(
     vel: [f32; 3],
     carried: [f32; 3],
     rotate: bool,
+    launched: bool,
+    stuck: Option<Stuck>,
     fuse: i32,
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
@@ -264,7 +364,9 @@ fn spawn_grenade(
     let state = State {
         bounce: true,
         grenade: true,
-        ground: ENTITY_NONE,
+        launched,
+        ground: stuck.map_or(ENTITY_NONE, |stuck| stuck.on),
+        rest_normal: stuck.map_or([0.0; 3], |stuck| stuck.normal),
         explode_at: light_fuse(owner, def, fuse, level, world),
         spawned_at: level,
         ..State::default()
@@ -275,12 +377,21 @@ fn spawn_grenade(
         entity: ENTITY_NONE,
         owner,
         weapon,
-        position: GameTrajectory {
-            kind: TrajectoryKind::Gravity(gravity(world)),
-            time: level,
-            duration: 0,
-            base: start,
-            delta,
+        position: match stuck {
+            Some(_) => GameTrajectory {
+                kind: TrajectoryKind::Stationary,
+                time: 0,
+                duration: 0,
+                base: start,
+                delta: [0.0; 3],
+            },
+            None => GameTrajectory {
+                kind: TrajectoryKind::Gravity(gravity(world)),
+                time: level,
+                duration: 0,
+                base: start,
+                delta,
+            },
         },
         angles: spin,
         origin: start,

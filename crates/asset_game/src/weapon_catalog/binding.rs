@@ -42,6 +42,20 @@ impl<'a> BoundWeapon<'a> {
         self.registry.rows[self.handle.row as usize].alternate_index
     }
 
+    /// The grenade weapon's wire id; 0 when none.
+    pub fn grenade_wire_id(self) -> u32 {
+        let row = &self.registry.rows[self.handle.row as usize];
+        row.grenade_weapon
+            .as_deref()
+            .and_then(|name| {
+                self.registry
+                    .by_namespaced
+                    .get(&(row.namespace, super::normalize_weapon_name(name)))
+            })
+            .copied()
+            .unwrap_or(0)
+    }
+
     /// The left-hand weapon's wire id when dual wielding; 0 when none.
     pub fn dual_wield_wire_id(self) -> u32 {
         let row = &self.registry.rows[self.handle.row as usize];
