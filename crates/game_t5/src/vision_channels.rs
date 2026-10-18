@@ -328,6 +328,20 @@ impl VisionChannels for Channels {
         }
     }
 
+    fn shellshock(
+        &mut self,
+        vision: Option<&str>,
+        duration_ms: i32,
+        now_ms: i32,
+        files: &dyn VisionFiles,
+    ) {
+        if !self.started {
+            self.start(files);
+        }
+        let name = vision.map_or_else(|| self.names[NAKED].clone(), str::to_owned);
+        self.set(NAKED, STYLE_EASE, &name, duration_ms, now_ms, files);
+    }
+
     fn frame(&mut self, view: VisionView, files: &dyn VisionFiles) -> &[u32] {
         if !self.started {
             self.start(files);

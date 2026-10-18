@@ -14,6 +14,7 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
         "the rest of Black Ops 2's client fire event from its executable: the flash effect, shell ejection and its casing sound, tracers, the view kick and rumble"
     )),
     left_from_own_weapon: true,
+    autosim: None,
 };
 
 fn autosim_unknown() -> &'static Unknown {

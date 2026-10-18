@@ -1175,6 +1175,16 @@ impl game_api::turret::TurretWorld for MatchFireWorld<'_, '_> {
         }
     }
 
+    fn turret_fire_sound(&mut self, turret: i32, weapon: u32, barrel: i32, origin: [f32; 3]) {
+        self.world
+            .push_script_audio(crate::ScriptAudioCommand::TurretFire {
+                entity: turret,
+                weapon,
+                barrel,
+                origin,
+            });
+    }
+
     fn shake_camera(&mut self, origin: [f32; 3], scale: f32, duration_ms: i32, radius: f32) {
         crate::script::host::natives::t5_turret::shake_camera(
             self.world.ecs(),

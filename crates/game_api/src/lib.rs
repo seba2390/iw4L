@@ -463,8 +463,50 @@ pub struct ShockFile {
     /// A shocked player's torso plays the shellshock animation and the
     /// weapon's fire animation is skipped.
     pub animation: bool,
+    /// The view kick, when the game's shocks kick the view.
+    pub kick: Option<ShockKick>,
+    /// The shock's own timed sound, when the game times it from the file.
+    pub sound: Option<ShockSound>,
+    /// The vision the shock blends the naked vision to.
+    pub vision: Option<ShockVision>,
     /// The parts of the shock the runtime does not run.
     pub unrun: Vec<&'static Unknown>,
+}
+
+/// A shock's view kick: it fades over the shock's last `fade_ms`, walks the
+/// kick noise `rate` steps per msec and is `radius` at full strength.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShockKick {
+    pub fade_ms: i32,
+    pub rate: f32,
+    pub radius: f32,
+}
+
+/// A shock's own sound: a loop on the shocked player faded in over
+/// `fade_in_ms`, a reverb room (`room`, dry and wet levels) and a mix
+/// snapshot while it plays, then an end sound once the shock is within
+/// `-mod_end_delay_ms` of its end, the loop and room fading out over
+/// `fade_out_ms`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShockSound {
+    pub loop_alias: String,
+    pub end_alias: String,
+    pub fade_in_ms: i32,
+    pub fade_out_ms: i32,
+    pub mod_end_delay_ms: i32,
+    pub room: String,
+    pub dry: f32,
+    pub wet: f32,
+    pub snapshot: String,
+}
+
+/// The vision a shock blends the naked vision to over `in_ms`, and back
+/// from over `out_ms`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShockVision {
+    pub name: String,
+    pub in_ms: i32,
+    pub out_ms: i32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

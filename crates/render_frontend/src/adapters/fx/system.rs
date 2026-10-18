@@ -163,6 +163,17 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
                 .in_set(frame::InMatch)
                 .in_set(ClientSet::Effects),
         )
+        .scoped::<super::fire_autosim::AutoFireSounds>(frame::MatchScope::Live)
+        .add_systems(
+            Update,
+            (
+                super::fire_autosim::turret_fire_shots,
+                super::fire_autosim::run_fire_autosim,
+            )
+                .chain()
+                .in_set(frame::InMatch)
+                .in_set(ClientSet::Effects),
+        )
         .add_observer(publish_weapon_fire)
         .add_observer(eject_brass)
         .add_observer(explosion)
@@ -2084,6 +2095,7 @@ fn publish_weapon_fire(
     mut cursor: ResMut<FxJournalCursor>,
     mut combat: ResMut<CombatFxDump>,
     (mode, mut reported): (Option<Res<game_api::ModeRules>>, Local<Vec<&'static str>>),
+    mut autosim_sounds: ResMut<super::fire_autosim::AutoFireSounds>,
 ) {
     let weapons = weapons
         .as_deref()
@@ -2136,17 +2148,29 @@ fn publish_weapon_fire(
         let weapon = fire.event.payload.weapon;
         if let Some(rules) = client_fire {
             let own_weapon = player.map_or(0, |ps| ps.weapon);
-            return game_fire_alias(
+            let (weapon, shot) = player_fire_shot(
                 &rules,
                 weapons.registry(),
-                &bank.0,
                 &fire.event,
                 player_view,
                 view.in_killcam(),
                 own_weapon,
+            )?;
+            return game_fire_alias(
+                &rules,
+                weapons.registry(),
+                &bank.0,
+                weapon,
+                &shot,
                 &mut report,
             )
-            .map(|alias| (alias, player_view));
+            .map(|(alias, simulated)| {
+                (
+                    alias,
+                    player_view,
+                    simulated.map(|fire| (weapon, shot, fire)),
+                )
+            });
         }
         audio::select_cg_fire_alias(
             last_shot,
@@ -2172,9 +2196,9 @@ fn publish_weapon_fire(
                 &bank.0,
             ),
         )
-        .map(|alias| (alias, player_view))
+        .map(|alias| (alias, player_view, None))
     });
-    if let (Some((alias, player_view)), Some(sounds)) = (alias, sounds.as_deref_mut()) {
+    if let (Some((alias, player_view, simulated)), Some(sounds)) = (alias, sounds.as_deref_mut()) {
         if audio::audio_diagnostics_enabled() {
             audio::emit_audio_diagnostic(format!(
                 "audio diag: fire producer weapon={} alias={alias} player_view={player_view} event={:?}",
@@ -2193,6 +2217,31 @@ fn publish_weapon_fire(
         }) else {
             return;
         };
+        if let (Some((weapon, shot, fire_rate)), Some(autosim)) = (
+            simulated,
+            client_fire
+                .as_ref()
+                .and_then(|rules| rules.autosim.as_ref()),
+        ) {
+            let queued = game_api::fire::AutoFireShot {
+                entity: fire.event.payload.number,
+                weapon,
+                tag: u32::from(shot.left),
+                origin: sound_origin,
+                player: identities
+                    .get(fire.entity)
+                    .ok()
+                    .is_some_and(|identity| identity.client().is_some()),
+                last_shot: shot.last_shot,
+                fire: fire_rate,
+            };
+            if autosim_sounds
+                .queue(autosim, queued, sound_namespace, alias)
+                .is_none()
+            {
+                return;
+            }
+        }
         sounds.write(audio::WeaponSound {
             event: Some(audio::AudioEvent::from_entity(
                 generation.stamp(),
@@ -2218,44 +2267,21 @@ fn publish_weapon_fire(
     }
 }
 
-/// The fire sound a shot plays by the game's own client rules; `None`
-/// when it plays none, or its rule is not known (reported).
-#[allow(clippy::too_many_arguments)]
-fn game_fire_alias<'a>(
+/// The fire sound a shot plays by the game's own client rules, and how the
+/// game's automatic fire simulation takes it (`None`: at once); `None` when
+/// it plays none, or its rule is not known (reported).
+pub(super) fn game_fire_alias<'a>(
     rules: &game_api::fire::ClientFireRules,
     registry: &asset_game::WeaponRegistry,
     bank: &'a asset_audio::SoundCatalog,
-    event: &net::DispatchedEntityEvent,
-    player_view: bool,
-    killcam: bool,
-    own_weapon: u32,
+    weapon: u32,
+    shot: &game_api::fire::FireSoundShot,
     report: &mut impl FnMut(&'static game_api::Unknown),
-) -> Option<&'a str> {
+) -> Option<(&'a str, Option<game_api::fire::AutoFire>)> {
     use asset_game::WeaponSoundSlot as Slot;
     use game_api::fire::FireSound;
-    let left = is_left_hand_fire_event(event.event);
-    let weapon = if left && rules.left_from_own_weapon {
-        registry
-            .bind_published_row(own_weapon)
-            .ok()?
-            .dual_wield_wire_id()
-    } else {
-        event.payload.weapon
-    };
     let bytes = registry.bind_published_row(weapon).ok()?.game_bytes()?;
-    let last_slot = if player_view {
-        Slot::FireLastPlayer
-    } else {
-        Slot::FireLast
-    };
-    let shot = game_api::fire::FireSoundShot {
-        player_view,
-        left,
-        last_shot: is_weapon_fire_last_shot_event(event.event),
-        killcam,
-        last_shot_sound: registry.authored_weapon_sound(weapon, last_slot).is_some(),
-    };
-    let sound = match (rules.sound)(&bytes.def, &bytes.variant, &shot) {
+    let sound = match (rules.sound)(&bytes.def, &bytes.variant, shot) {
         game_api::Rule::Known(sound) => sound?,
         game_api::Rule::Unknown(gap) => {
             report(gap);
@@ -2268,7 +2294,48 @@ fn game_fire_alias<'a>(
         FireSound::LastShot => Slot::FireLast,
         FireSound::LastShotPlayer => Slot::FireLastPlayer,
     };
-    registry.weapon_sound_alias(weapon, slot, bank)
+    let simulated = rules
+        .autosim
+        .as_ref()
+        .and_then(|autosim| (autosim.simulated)(&bytes.def, &bytes.variant, shot));
+    Some((registry.weapon_sound_alias(weapon, slot, bank)?, simulated))
+}
+
+/// A player's shot as the game's fire sound rules see it, and the weapon
+/// whose sound it plays.
+fn player_fire_shot(
+    rules: &game_api::fire::ClientFireRules,
+    registry: &asset_game::WeaponRegistry,
+    event: &net::DispatchedEntityEvent,
+    player_view: bool,
+    killcam: bool,
+    own_weapon: u32,
+) -> Option<(u32, game_api::fire::FireSoundShot)> {
+    use asset_game::WeaponSoundSlot as Slot;
+    let left = is_left_hand_fire_event(event.event);
+    let weapon = if left && rules.left_from_own_weapon {
+        registry
+            .bind_published_row(own_weapon)
+            .ok()?
+            .dual_wield_wire_id()
+    } else {
+        event.payload.weapon
+    };
+    let last_slot = if player_view {
+        Slot::FireLastPlayer
+    } else {
+        Slot::FireLast
+    };
+    Some((
+        weapon,
+        game_api::fire::FireSoundShot {
+            player_view,
+            left,
+            last_shot: is_weapon_fire_last_shot_event(event.event),
+            killcam,
+            last_shot_sound: registry.authored_weapon_sound(weapon, last_slot).is_some(),
+        },
+    ))
 }
 
 fn drain_weapon_fire_fx(

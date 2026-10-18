@@ -3272,6 +3272,7 @@ name = "game_t5"
 version = "0.1.0"
 dependencies = [
  "asset_core",
+ "diag",
  "fastfile_t5",
  "game_api",
  "gsc",

@@ -62,6 +62,7 @@ impl Plugin for PlayerSoundPlugin {
             .scoped::<crate::ambient::ResidentSoundBank>(frame::MatchScope::Loading)
             .scoped::<crate::BobCycleTracker>(frame::MatchScope::Live)
             .scoped::<crate::shellshock::ShellshockSources>(frame::Timeline::Running)
+            .scoped::<crate::shellshock::TimedShockSound>(frame::Timeline::Running)
             .scoped::<crate::breath::BreathSources>(frame::Timeline::Running)
             .scoped_message::<AliasCommand>(frame::Timeline::Running)
             .scoped::<SoundLengthReports>(frame::MatchScope::Live)
@@ -98,6 +99,9 @@ impl Plugin for PlayerSoundPlugin {
                     crate::shellshock::update_shellshock_tinnitus
                         .in_set(frame::InMatch)
                         .before(play_alias_messages),
+                    crate::shellshock::update_shellshock_timed_sound
+                        .in_set(frame::InMatch)
+                        .before(crate::snapshot_mix::update_snapshot_mix),
                     crate::breath::update
                         .in_set(frame::InMatch)
                         .before(play_alias_messages),
@@ -347,7 +351,9 @@ fn play_weapon_sound_messages(
         return;
     };
     for event in events.read() {
-        let outcome = play_oneshot_recorded(
+        // A weapon sound at its shooter's place plays on the shooter's
+        // entity and follows it.
+        let outcome = play_oneshot_following(
             &bank.0,
             event.namespace,
             &event.alias,
@@ -357,6 +363,7 @@ fn play_weapon_sound_messages(
             &mut pending,
             &mut decisions,
             event.snd_ent,
+            event.origin_inches.is_some() && event.snd_ent.is_some(),
             SoundClass::Weapon,
             epoch.0,
             1.0,

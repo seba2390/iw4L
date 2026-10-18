@@ -3,7 +3,9 @@
 //! dvars, each first reset to its default, and the shock's parameters are
 //! then taken from the dvars.
 
-use game_api::{ShockFile, ShockLook, ShockScreen, Unknown, unknown};
+use game_api::{
+    ShockFile, ShockKick, ShockLook, ShockScreen, ShockSound, ShockVision, Unknown, unknown,
+};
 
 use crate::menu_expression::{atof, atoi};
 
@@ -86,20 +88,10 @@ enum Value<'a> {
     Text(&'a str),
 }
 
-const KICK: &Unknown = unknown!(
-    "t5.vision.shellshock_kick",
-    "a Black Ops shellshock does not kick the view",
-    "its view kick: the noise table and how the kick turns the view axis"
-);
-const SOUND: &Unknown = unknown!(
-    "t5.audio.shellshock",
-    "a Black Ops shellshock plays no sound: no loop, end sound, reverb room or snapshot",
-    "its shellshock sound rules, with the client sound snapshots and reverb"
-);
-const VISIONSET: &Unknown = unknown!(
-    "t5.vision.shellshock_visionset",
-    "a Black Ops shellshock's vision set is not applied",
-    "the shellshock's vision channel set from the client's shellshock update"
+const REVERB: &Unknown = unknown!(
+    "t5.audio.shellshock_reverb",
+    "a Black Ops shellshock's reverb room (its soundRoomType, dry and wet levels) is not heard",
+    "a reverb in the mixer and Black Ops' reverb presets"
 );
 
 /// Reads a shock file. A file that leaves a dvar out fails, as its precache
@@ -168,16 +160,33 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         Value::Int(2) => ShockScreen::None,
         _ => ShockScreen::Blurred,
     };
+    let text = |name: &str| match get(name) {
+        Value::Text(v) => v.to_owned(),
+        _ => unreachable!("{name} is a text dvar"),
+    };
     let mut unrun = Vec::new();
-    if number("bg_shock_viewKickRadius") != 0.0 {
-        unrun.push(KICK);
+    let sound = flag("bg_shock_sound").then(|| ShockSound {
+        loop_alias: text("bg_shock_soundLoop"),
+        end_alias: text("bg_shock_soundEnd"),
+        fade_in_ms: ms("bg_shock_soundFadeInTime"),
+        fade_out_ms: ms("bg_shock_soundFadeOutTime"),
+        mod_end_delay_ms: ms("bg_shock_soundModEndDelay"),
+        room: text("bg_shock_soundRoomType"),
+        dry: number("bg_shock_soundDryLevel"),
+        wet: number("bg_shock_soundWetLevel"),
+        snapshot: text("bg_shock_soundSnapshot"),
+    });
+    if sound.is_some() {
+        unrun.push(REVERB);
     }
-    if flag("bg_shock_sound") {
-        unrun.push(SOUND);
-    }
-    if matches!(get("bg_shock_visionset_name"), Value::Text(name) if !name.is_empty()) {
-        unrun.push(VISIONSET);
-    }
+    let vision = Some(text("bg_shock_visionset_name"))
+        .filter(|name| !name.is_empty())
+        .map(|name| ShockVision {
+            name,
+            // These two truncate.
+            in_ms: (number("bg_shock_visionset_inTime") * 1000.0) as i32,
+            out_ms: (number("bg_shock_visionset_outTime") * 1000.0) as i32,
+        });
     Ok(ShockFile {
         screen,
         blur_blend_ms: ms("bg_shock_screenBlurBlendTime"),
@@ -194,8 +203,26 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         },
         movement_scale: number("bg_shock_movement"),
         animation: flag("bg_shock_animation"),
+        kick: Some(ShockKick {
+            fade_ms: ms("bg_shock_viewKickFadeTime"),
+            rate: kick_rate(number("bg_shock_viewKickPeriod")),
+            radius: number("bg_shock_viewKickRadius"),
+        }),
+        sound,
+        vision,
         unrun,
     })
+}
+
+/// The kick noise steps a msec walks for a period in seconds: a thousandth
+/// over the period, a period of a thousandth or less taken as one.
+fn kick_rate(period: f32) -> f32 {
+    let period = if 0.001 - period < 0.0 || period.is_nan() {
+        period
+    } else {
+        0.001
+    };
+    0.001 / period
 }
 
 /// Seconds to milliseconds as the game rounds them: `seconds * 1000` in

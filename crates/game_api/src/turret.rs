@@ -199,6 +199,10 @@ pub trait TurretWorld: FireWorld {
     /// An effect the clients play on a tag of the turret's model.
     fn turret_tag_effect(&mut self, turret: i32, effect: &str, tag: &str);
 
+    /// A turret's shot from one of its barrels (0 or 1) at `origin`, for
+    /// the clients' fire sound, which their fire rules pick and time.
+    fn turret_fire_sound(&mut self, turret: i32, weapon: u32, barrel: i32, origin: [f32; 3]);
+
     /// A camera shake the clients near `origin` feel: its scale, how long
     /// it lasts (ms) and how far it reaches.
     fn shake_camera(&mut self, origin: [f32; 3], scale: f32, duration_ms: i32, radius: f32);

@@ -4,7 +4,8 @@ use bevy::prelude::*;
 use frame::{LifeStarted, ViewSubject};
 use hud_iw4::{
     CG_FOV_MIN_DEFAULT, CG_FOV_SCALE_DEFAULT, FovInputs, WeaponAdsOverlayFacts, calc_fov_from_ads,
-    horizontal_to_vertical_fov_deg, zoom_sensitivity,
+    horizontal_to_vertical_fov_deg, shellshock_perturb_axis, shellshock_view_kick,
+    zoom_sensitivity,
 };
 use math_iw4::{add_lean_to_position, angle_vectors};
 use net::{
@@ -232,9 +233,10 @@ pub fn sync_camera_from_presented(
 ) {
     kick.killcam_focus_distance = None;
     let base_fov = script_fov(&presented, local.0).unwrap_or(settings.fov);
+    let shock_kick = shock_view_kick(&presented, local.0, clock.time());
     if let Some(view) = sim_cam.view_override {
         for mut transform in &mut q {
-            *transform = view.transform;
+            *transform = shock_eye(view.transform, shock_kick);
         }
         for mut projection in &mut lenses {
             if let Projection::Perspective(perspective) = &mut *projection {
@@ -269,7 +271,7 @@ pub fn sync_camera_from_presented(
         death_cam_clip.0.as_deref(),
     ) {
         let pose = earthquake_pose(pose, &presented, clock.time());
-        let eye = transform_from_iw_view(pose);
+        let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
         for mut transform in &mut q {
             transform.translation = eye.translation;
             transform.rotation = eye.rotation;
@@ -292,7 +294,7 @@ pub fn sync_camera_from_presented(
         death_cam_clip.0.as_deref(),
     ) {
         let pose = earthquake_pose(pose, &presented, clock.time());
-        let eye = transform_from_iw_view(pose);
+        let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
         for mut transform in &mut q {
             transform.translation = eye.translation;
             transform.rotation = eye.rotation;
@@ -322,7 +324,7 @@ pub fn sync_camera_from_presented(
             return;
         };
         let pose = earthquake_pose(pose, &presented, clock.time());
-        let eye = transform_from_iw_view(pose);
+        let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
         for mut transform in &mut q {
             transform.translation = eye.translation;
             transform.rotation = eye.rotation;
@@ -449,7 +451,7 @@ pub fn sync_camera_from_presented(
     let pose = earthquake_pose(WorldCameraPose { origin, angles }, &presented, clock.time());
     kick.refdef_vieworg = pose.origin;
     kick.refdef_view_angles = pose.angles;
-    let eye = transform_from_iw_view(pose);
+    let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
     for mut transform in &mut q {
         transform.translation = eye.translation;
         transform.rotation = eye.rotation;
@@ -661,6 +663,38 @@ pub(crate) fn iw_view_placement_to_bevy_camera_local(
         rotation: crate::anim::fpv_pose::placement_angles_to_bevy_camera_quat(angles_deg),
         ..Default::default()
     }
+}
+
+/// The local player's shellshock view kick this frame: none without a shock
+/// file that kicks, before the shock starts or once it is over.
+fn shock_view_kick(presented: &PresentedSnapshot, local: sim::ClientId, now_ms: i32) -> [f32; 2] {
+    let (Some(ps), Some(kick)) = (
+        presented.player(local),
+        presented.shellshock(local).and_then(|shock| shock.kick),
+    ) else {
+        return [0.0; 2];
+    };
+    let elapsed = now_ms.wrapping_sub(ps.shellshock_time);
+    if ps.shellshock_time == 0 || elapsed < 0 {
+        return [0.0; 2];
+    }
+    shellshock_view_kick(kick, elapsed, ps.shellshock_duration)
+}
+
+/// The eye turned by a shellshock's view kick, after every other part of
+/// the view (the game turns its finished view axis).
+fn shock_eye(mut eye: Transform, kick: [f32; 2]) -> Transform {
+    if kick == [0.0; 2] {
+        return eye;
+    }
+    let axis = [
+        eye.forward().to_array(),
+        (-*eye.right()).to_array(),
+        eye.up().to_array(),
+    ];
+    let [forward, left, up] = shellshock_perturb_axis(kick, axis).map(Vec3::from_array);
+    eye.rotation = Quat::from_mat3(&Mat3::from_cols(-left, up, -forward));
+    eye
 }
 
 fn earthquake_pose(
