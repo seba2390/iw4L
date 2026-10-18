@@ -138,8 +138,11 @@ pub(crate) fn damage(
         hit.amount,
         hit.means
     );
+    let inflictor = hit
+        .inflictor
+        .map_or_else(|| attacker.clone(), Value::Object);
     let args = vec![
-        attacker.clone(),
+        inflictor,
         attacker,
         Value::Int(hit.amount),
         Value::Int(hit.flags),
@@ -159,23 +162,66 @@ pub(crate) fn damage(
 }
 
 /// `FinishActorDamage(inflictor, attacker, damage, flags, means, weapon,
-/// point, dir, hitLoc, modelIndex, timeOffset)`: applies the damage the
-/// callback settled on and kills the actor at zero health.
+/// point, dir, hitLoc, modelIndex, timeOffset)`, as Black Ops' handler runs
+/// it: nothing for no damage; a dead actor is only told
+/// `damage_afterdeath`; a living one loses the health, is told `damage`,
+/// and at no health left (held at -999 at most) is told `death` before the
+/// killed callback runs. Each notify then goes to the face event callback.
 fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value, String> {
     let amount = match args.get(2) {
         Some(Value::Int(n)) => *n,
         Some(Value::Float(f)) => *f as i32,
         _ => return Err("damage must be a number".into()),
     };
+    if amount <= 0 {
+        return Ok(Value::Undefined);
+    }
     let arg = |index: usize| args.get(index).cloned().unwrap_or(Value::Undefined);
-    let (before, model) = {
+    // The notify's model and tag name an attached model the hit struck (its
+    // index); the actor's own body (index 0) names none. Its part is the
+    // hit location.
+    let model_index = match arg(9) {
+        Value::Int(n) => n,
+        _ => 0,
+    };
+    let (model_name, tag_name) = if model_index == 0 {
+        (Value::string(""), Value::string(""))
+    } else {
+        attached_model_tag(world, actor, model_index)
+    };
+    let notify_args = vec![
+        Value::Int(amount),
+        arg(1),
+        arg(7),
+        arg(6),
+        arg(4),
+        model_name,
+        tag_name,
+        arg(8),
+        arg(3),
+    ];
+    let before = match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "health")
+    {
+        Value::Int(n) => n,
+        Value::Float(f) => f as i32,
+        _ => 0,
+    };
+    if before <= 0 {
+        raise(
+            world,
+            Value::Object(actor),
+            "damage_afterdeath",
+            notify_args,
+        );
+        face_event(world, actor, "damage_afterdeath");
+        return Ok(Value::Undefined);
+    }
+    let after = (before - amount).max(-999);
+    {
         let mut runtime = world.resource_mut::<RoundScript>();
-        let before = match runtime.object_field(actor, "health") {
-            Value::Int(n) => n,
-            Value::Float(f) => f as i32,
-            _ => 0,
-        };
-        runtime.set_object_field(actor, "health", Value::Int(before - amount));
+        runtime.set_object_field(actor, "health", Value::Int(after));
         // The last hit, as the engine records it on the actor for scripts.
         let yaw = match runtime.object_field(actor, "angles") {
             Value::Vector(v) => v[1],
@@ -202,26 +248,28 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         if !matches!(arg(1), Value::Undefined) {
             runtime.set_object_field(actor, "attacker", arg(1));
         }
-        (before, runtime.object_field(actor, "model"))
-    };
-    raise(
-        world,
-        Value::Object(actor),
-        "damage",
-        vec![
-            Value::Int(amount),
-            arg(1),
-            arg(7),
-            arg(6),
-            arg(4),
-            model,
-            Value::string(""),
-            Value::string(""),
-            arg(3),
-            arg(5),
-        ],
-    );
-    if before > 0 && before - amount <= 0 {
+    }
+    raise(world, Value::Object(actor), "damage", notify_args);
+    face_event(world, actor, "damage");
+    if after < 1 {
+        face_event(world, actor, "death");
+        // The weapon is undefined when the name names none.
+        let weapon = match arg(5) {
+            Value::String(name)
+                if crate::frame::FrameWorld::from_world(world)
+                    .weapon_index_by_script_name(&name)
+                    .is_some_and(|index| index != 0) =>
+            {
+                Value::String(name)
+            }
+            _ => Value::Undefined,
+        };
+        raise(
+            world,
+            Value::Object(actor),
+            "death",
+            vec![arg(1), arg(4), weapon],
+        );
         let killed = vec![
             arg(0),
             arg(1),
@@ -236,10 +284,38 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         if let Err(fault) = run_now(world, ACTOR_KILLED, Value::Object(actor), killed, now) {
             diag::warn!(Sim, "actor killed callback: {fault:?}");
         }
-        raise(world, Value::Object(actor), "death", vec![arg(1)]);
         super::actor_brain::kill(world, actor);
     }
     Ok(Value::Undefined)
+}
+
+const FACE_EVENT_NOTIFY: &str = "maps/_callbacksetup::codecallback_faceeventnotify";
+
+/// Black Ops tells its face animation callback of an actor's notify.
+fn face_event(world: &mut World, actor: u64, name: &str) {
+    let now = super::players::now_ms(world);
+    if let Err(fault) = run_now(
+        world,
+        FACE_EVENT_NOTIFY,
+        Value::Undefined,
+        vec![Value::string(name), Value::Object(actor)],
+        now,
+    ) {
+        diag::warn!(Sim, "face event callback: {fault:?}");
+    }
+}
+
+/// The model attached at `index` (from 1) and the tag it hangs on, as the
+/// damage notify names them; none when nothing hangs there.
+fn attached_model_tag(world: &World, actor: u64, index: i32) -> (Value, Value) {
+    let runtime = world.resource::<RoundScript>();
+    usize::try_from(index - 1)
+        .ok()
+        .and_then(|slot| runtime.entities.get(&actor)?.attachments.get(slot))
+        .map_or_else(
+            || (Value::string(""), Value::string("")),
+            |attached| (Value::string(&attached.0), Value::string(&attached.1)),
+        )
 }
 
 pub(crate) fn register_damage(registry: &mut NativeRegistry) {

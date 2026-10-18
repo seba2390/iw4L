@@ -22,6 +22,9 @@ pub(crate) struct EntityHit {
     pub hit_location: Option<&'static str>,
     /// The struck bone's hit location, in its model's own numbering.
     pub part: Option<u8>,
+    /// What dealt the damage when it is not the attacker (a grenade, a
+    /// turret); `None` is the attacker itself.
+    pub inflictor: Option<u64>,
 }
 
 const MEANS: &[&str] = &[
@@ -140,6 +143,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                         flags: hit.flags,
                         hit_location: None,
                         part: None,
+                        inflictor: None,
                     },
                 );
             }
@@ -175,6 +179,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     flags: 1,
                     hit_location: None,
                     part: None,
+                    inflictor: None,
                 },
             );
         }
