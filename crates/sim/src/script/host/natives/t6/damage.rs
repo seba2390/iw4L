@@ -63,6 +63,8 @@ pub(super) const MEANS_OF_DEATH: [&str; 21] = [
     "MOD_GAS",
 ];
 pub(super) const MOD_MELEE: usize = 7;
+const MOD_IMPACT: usize = 16;
+const MOD_HEAD_SHOT: usize = 9;
 /// Weapon types whose own hit-location scales apply: bullet, grenade and
 /// projectile.
 const LOCATION_SCALED_TYPES: [i32; 3] = [0, 1, 2];
@@ -85,6 +87,8 @@ pub(super) struct Hit {
     /// attacker's, is used.
     pub weapon: Option<String>,
     pub hit_location: usize,
+    /// The game's own fire already scaled the damage at its hit location.
+    pub located: bool,
 }
 
 fn defined(value: &Value) -> Option<&Value> {
@@ -195,12 +199,49 @@ fn callback(
     run_now(world, &entry, receiver, args, now).map_err(|fault| format!("{entry}: {fault:?}"))
 }
 
+/// A projectile that revives on impact (the upgraded ballistic knives),
+/// struck on a downed player by a player who is not down: the engine tells
+/// the downed player who revived them and does no damage.
+fn remote_revive(world: &mut World, target: &Value, client: u32, hit: &Hit) -> bool {
+    if hit.means != MOD_IMPACT || !super::laststand::is_down(world, client) {
+        return false;
+    }
+    let Some(reviver) = world
+        .resource::<RoundScript>()
+        .player_client_of(&hit.attacker)
+    else {
+        return false;
+    };
+    if super::laststand::is_down(world, reviver) {
+        return false;
+    }
+    let revives = hit
+        .weapon
+        .as_deref()
+        .and_then(|name| super::weapon::zone_weapon(world, name))
+        .is_some_and(|weapon| weapon.revives_on_impact);
+    if revives {
+        raise(
+            world,
+            target.clone(),
+            "remote_revive",
+            vec![hit.attacker.clone()],
+        );
+    }
+    revives
+}
+
 /// `G_Damage`: a player's or an actor's own branch; other entities' damage
 /// is not done (`t6.damage.entities`).
 pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), String> {
     let id = entity_id(world, target)?;
+    if let Some(client) = world.resource::<RoundScript>().player_client(id)
+        && remote_revive(world, target, client, &hit)
+    {
+        return Ok(());
+    }
     let takes_damage = !matches!(field(world, id, "takedamage"), Value::Int(0));
-    if world.resource::<RoundScript>().player_client(id).is_some() {
+    if let Some(client) = world.resource::<RoundScript>().player_client(id) {
         let playing = matches!(
             field(world, id, "sessionstate"),
             Value::String(state) if state.as_ref() == "playing"
@@ -226,8 +267,13 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
         {
             return Ok(());
         }
+        // Half a second after going down, only a blow hurts.
+        let now = super::super::super::players::now_ms(world);
+        if hit.means != MOD_MELEE && super::laststand::in_grace(world, client, now) {
+            return Ok(());
+        }
         let weapon = weapon_of(world, &hit);
-        let damage = if hit.means == MOD_MELEE {
+        let damage = if hit.means == MOD_MELEE || hit.located {
             hit.damage.max(1)
         } else {
             scaled(world, &hit, &weapon)
@@ -241,7 +287,7 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
             return Ok(());
         }
         let weapon = weapon_of(world, &hit);
-        let damage = if hit.means == MOD_MELEE {
+        let damage = if hit.means == MOD_MELEE || hit.located {
             hit.damage.max(1)
         } else {
             scaled(world, &hit, &weapon)
@@ -342,6 +388,7 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
             means,
             weapon,
             hit_location,
+            located: false,
         },
     )?;
     Ok(Value::Undefined)
@@ -487,10 +534,11 @@ fn finish_actor_damage(
 }
 
 /// `finishplayerdamage(inflictor, attacker, damage, dflags, mod, weapon,
-/// point, dir, hitloc, timeoffset, boneindex)`, as the engine's handler: the
-/// damage timer, the health, the `damage` notify; a player whose health runs
-/// out goes down and the last stand callback runs, and one it leaves at no
-/// health dies. What the handler also does for the client is listed under
+/// point, dir, hitloc, timeoffset, boneindex)`, as the engine's handler:
+/// what the game's movement keeps of the hit (`game_move::hurt`), the
+/// health, the `damage` notify; a player whose health runs out goes down and
+/// the last stand callback runs, and one it leaves at no health dies. What
+/// the handler also does for the client is listed under
 /// `t6.match.last_stand`.
 fn finish_player_damage(
     world: &mut World,
@@ -509,6 +557,7 @@ fn finish_player_damage(
     let dflags = int(args, 3)?;
     let means = means_arg(args, 4)?;
     let weapon = string(args, 5)?;
+    let weapon_index = super::weapon::weapon_index(world, &weapon)? as u32;
     let point = vector(args, 6).ok();
     let dir = vector(args, 7).ok().map(|d| {
         let length = d.iter().map(|c| c * c).sum::<f32>().sqrt();
@@ -524,7 +573,7 @@ fn finish_player_damage(
     }
     let offset = int(args, 9)?;
     int(args, 10)?;
-    let health = {
+    let (damage, health) = {
         let mut frame = FrameWorld::from_world(world);
         if frame
             .client_meta(id)
@@ -536,11 +585,13 @@ fn finish_player_damage(
         if frame.player(id).is_none() {
             return Ok(Value::Undefined);
         }
-        // The damage timer, which slows the player, is the movement's.
-        crate::game_move::damage_timer(&mut frame, id, Some(damage));
+        // A gunner's splash scale, the damage timer that slows the player,
+        // and the hit's direction and kind are the movement's.
+        let damage = crate::game_move::hurt(&mut frame, id, damage, means, weapon_index, dir)
+            .unwrap_or(damage);
         let ps = frame.player_mut(id).expect("checked above");
         ps.health -= damage;
-        ps.health
+        (damage, ps.health)
     };
     let zero = [0.0; 3];
     raise(
@@ -567,15 +618,18 @@ fn finish_player_damage(
     // The handler lets a player go down while any playing client is not
     // down, so the victim, who is not, always may.
     if !super::laststand::is_down(world, client) {
-        super::laststand::state(world, client).down = true;
+        let now = super::super::super::players::now_ms(world);
+        let down = super::laststand::state(world, client);
+        down.down = true;
+        down.grace_until_ms = now + LAST_STAND_GRACE_MS;
         super::laststand::enter_last_stand_move(world, id);
         callback(
             world,
             "codecallback_playerlaststand",
             receiver.clone(),
             vec![
-                inflictor,
-                attacker,
+                inflictor.clone(),
+                attacker.clone(),
                 Value::Int(damage),
                 Value::string(MEANS_OF_DEATH[means]),
                 Value::string(&weapon),
@@ -589,20 +643,140 @@ fn finish_player_damage(
     let left = FrameWorld::from_world(world)
         .player(id)
         .map_or(0, |ps| ps.health);
-    if left < 1 {
-        return Err(format!(
-            "t6.damage.player_die: player {client} is left at {left} health and the player's die handler is not run"
-        ));
+    if left >= 1 {
+        return Ok(Value::Undefined);
     }
+    // A dying player's health is -999 unless it lies between that and 0.
+    if !(-999..0).contains(&left)
+        && let Some(ps) = FrameWorld::from_world(world).player_mut(id)
+    {
+        ps.health = -999;
+    }
+    player_die(
+        world,
+        receiver,
+        Death {
+            inflictor,
+            attacker,
+            damage,
+            means,
+            weapon,
+            weapon_index,
+            dir,
+            location,
+            offset,
+        },
+    )?;
     Ok(Value::Undefined)
+}
+
+/// What a client going down is spared for: only a blow hurts them this
+/// long after.
+const LAST_STAND_GRACE_MS: i64 = 500;
+
+/// The killing hit, as the engine's player death takes it.
+struct Death {
+    inflictor: Value,
+    attacker: Value,
+    damage: i32,
+    means: usize,
+    weapon: String,
+    weapon_index: u32,
+    dir: Option<[f32; 3]>,
+    location: usize,
+    offset: i32,
+}
+
+/// The engine's player death: what the player's own state keeps
+/// (`game_move::die`), the `flared_or_tabuned_death` and `death` notifies,
+/// the scripts' killed callback, and the body that takes damage still.
+fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), String> {
+    let client = super::super::player::player(world, receiver)?;
+    let id = crate::ClientId(client);
+    let refused = {
+        let mut frame = FrameWorld::from_world(world);
+        crate::game_move::die(&mut frame, id, death.means, death.weapon_index)
+    };
+    if let Some(Err(move_type)) = refused {
+        diag::warn!(
+            Sim,
+            "Aborting player_die(). Client {client} has move type {move_type}"
+        );
+        return Ok(());
+    }
+    diag::info!(
+        Sim,
+        "player {client} dies: {} {} at {}",
+        MEANS_OF_DEATH[death.means],
+        death.weapon,
+        HIT_LOCATIONS[death.location]
+    );
+    // No zombies script sets a vision lerp ratio, so no player dies flared.
+    let poisoned = super::poison_overlay::poisoned(world, client);
+    raise(
+        world,
+        receiver.clone(),
+        "flared_or_tabuned_death",
+        vec![
+            death.attacker.clone(),
+            Value::Int(0),
+            Value::Int(i32::from(poisoned)),
+        ],
+    );
+    raise(
+        world,
+        receiver.clone(),
+        "death",
+        vec![
+            death.attacker.clone(),
+            Value::Int(i32::from(death.means == MOD_HEAD_SHOT)),
+            Value::string(&death.weapon),
+        ],
+    );
+    {
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        let mut frame = FrameWorld::from_world(world);
+        let attacker = frame
+            .ecs()
+            .resource::<RoundScript>()
+            .player_client_of(&death.attacker)
+            .map(crate::ClientId);
+        crate::script_player::script_death(&mut frame, tick, id, attacker);
+    }
+    callback(
+        world,
+        "codecallback_playerkilled",
+        receiver.clone(),
+        vec![
+            death.inflictor,
+            death.attacker,
+            Value::Int(death.damage),
+            Value::string(MEANS_OF_DEATH[death.means]),
+            Value::string(&death.weapon),
+            Value::Vector(death.dir.unwrap_or([0.0; 3])),
+            Value::string(HIT_LOCATIONS[death.location]),
+            Value::Int(death.offset),
+            // The death animation's length: the player animation script is
+            // not played (`t6.player.anim_events`).
+            Value::Int(0),
+        ],
+    )?;
+    // The body still takes damage; its contents are a corpse's.
+    let id = entity_id(world, receiver)?;
+    world
+        .resource_mut::<RoundScript>()
+        .set_object_field(id, "takedamage", Value::Int(1));
+    Ok(())
 }
 
 /// The contents the engine's corpse think gives a dead body.
 const CORPSE_CONTENTS: i32 = 0x0400_0000;
 
-/// A shot or blast IW4L's weapon rules landed on one of the game's actors:
-/// the game's own `G_Damage`, with the rules' damage, means and weapon, at
-/// the struck bone's hit location (its model's `partClassification`).
+/// A shot or blast the game's own weapon rules landed on a player or one of
+/// the game's actors: the rest of the game's `G_Damage` (the rules scaled
+/// the damage at its hit location already), with the rules' damage, means
+/// and weapon, at the struck bone's hit location (its model's
+/// `partClassification`).
 fn entity_hit(
     world: &mut World,
     object: u64,
@@ -642,6 +816,8 @@ fn entity_hit(
                 .unwrap_or(0),
             weapon: Some(weapon),
             hit_location,
+            // The game's own fire scaled it at the hit location already.
+            located: true,
         },
     );
     if let Err(fault) = result {

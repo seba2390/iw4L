@@ -189,6 +189,11 @@ pub trait FireWorld {
     /// A script asked that script blasts pass players by.
     fn players_ignore_radius_damage(&self) -> bool;
 
+    /// A script turned off grenade suicide: a grenade held past its fuse
+    /// falls at the thrower's feet and hurts them instead of killing them
+    /// outright.
+    fn grenade_suicide_disabled(&self) -> bool;
+
     /// Puts a game missile in the match; returns its entity number, or
     /// `None` when the match has no room for it.
     fn spawn_missile(&mut self, missile: GameMissile) -> Option<i32>;

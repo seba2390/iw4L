@@ -211,6 +211,9 @@ pub struct SimState {
     pending_final_kill: Option<(ClientId, ClientId)>,
 
     last_pmove_walking: HashMap<ClientId, i32>,
+    /// The box the game's own movement last gave each player, about their
+    /// origin.
+    last_move_bounds: HashMap<ClientId, ([f32; 3], [f32; 3])>,
 
     stuck_holdrand: u32,
 
@@ -293,6 +296,7 @@ impl Default for SimState {
             presentation: PresentationQueue::default(),
             pending_final_kill: None,
             last_pmove_walking: HashMap::new(),
+            last_move_bounds: HashMap::new(),
             stuck_holdrand: 0,
             last_stuck_ejects: Vec::new(),
             last_anim_movement: HashMap::new(),
@@ -1202,6 +1206,7 @@ impl SimState {
         self.player_bodies.forget_client(id);
         self.collision_runtime.forget_client(id);
         self.last_pmove_walking.remove(&id);
+        self.last_move_bounds.remove(&id);
         self.last_anim_movement.remove(&id);
         self.anim_command_buttons.remove(&id);
     }
@@ -2329,6 +2334,16 @@ impl SimState {
 
     pub(crate) fn set_pmove_walking(&mut self, id: ClientId, walking: i32) {
         self.last_pmove_walking.insert(id, walking);
+    }
+
+    pub(crate) fn set_move_bounds(&mut self, id: ClientId, mins: [f32; 3], maxs: [f32; 3]) {
+        self.last_move_bounds.insert(id, (mins, maxs));
+    }
+
+    /// The box the game's own movement last gave the player, about their
+    /// origin; `None` before it ran.
+    pub(crate) fn move_bounds(&self, id: ClientId) -> Option<([f32; 3], [f32; 3])> {
+        self.last_move_bounds.get(&id).copied()
     }
 
     pub(crate) fn stuck_holdrand_mut(&mut self) -> &mut u32 {

@@ -95,7 +95,7 @@ pub(super) fn check_melee<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, delay_don
     }
     let ps = &*pm.ps;
     if !md.has_melee_anim()
-        || ps.e_flags2 & e_flags2::MOUNTED != 0
+        || ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0
         || ws::is_raising_or_dropping(ps.weaponstate)
         || !(right || left)
     {

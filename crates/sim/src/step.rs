@@ -529,6 +529,7 @@ fn run_players_system(ecs: &mut World) {
                 );
                 world.set_pmove_walking(*id, i32::from(outcome.walking));
                 if let Some((mins, maxs)) = outcome.bounds {
+                    world.set_move_bounds(*id, mins, maxs);
                     world.link_player_area(
                         *id,
                         MoveBounds {

@@ -85,7 +85,8 @@ fn player_damage_with(
             bone: None,
             flags: hit.flags,
             hit_location: Some(hitloc),
-            part: None,
+            // The game's own fire numbers the hit location as its game does.
+            part: (!ignore_radius).then_some(hit.hitloc),
             inflictor: None,
         };
         for hook in hooks {

@@ -862,9 +862,9 @@ fn hit_location(collider: ColliderId) -> usize {
             part_classification,
             ..
         } => usize::from(part_classification),
-        ColliderId::Player { hitloc, .. } => super::combat::HIT_LOCATIONS
-            .get(usize::from(hitloc))
-            .and_then(|name| damage::HIT_LOCATIONS.iter().position(|ours| ours == name))
+        // A player's part is its body model's own part classification.
+        ColliderId::Player { hitloc, .. } => Some(usize::from(hitloc))
+            .filter(|&part| part < damage::HIT_LOCATIONS.len())
             .unwrap_or(0),
         _ => 0,
     }
@@ -1032,6 +1032,7 @@ fn strike(
             },
             weapon: Some(def.name.clone()),
             hit_location: location,
+            located: false,
         },
     )
 }

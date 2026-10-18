@@ -164,6 +164,7 @@ pub(crate) struct EngineState {
     pub ambient: Option<crate::ScriptAmbient>,
     pub ac130_ambient: Option<crate::ScriptAmbient>,
     pub players_ignore_radius_damage: bool,
+    pub grenade_suicide_disabled: bool,
     pub map_center: [f32; 3],
     pub winning_team: Option<String>,
     pub objectives: BTreeMap<u8, super::objectives::ScriptObjective>,

@@ -366,7 +366,7 @@ pub(super) fn check_offhand<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         || ws::is_dtp(s)
         || ws::is_lowready(s)
         || ws::is_riotshield(s)
-        || ps.e_flags2 & e_flags2::MOUNTED != 0
+        || ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0
         || ps.link_flags & 4 != 0
         || ps.weap_flags & weap_flags::FIRING_GUIDED != 0
     {
@@ -429,7 +429,7 @@ pub(super) fn check_riotshield<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         || ws::is_dtp(s)
         || ws::is_lowready(s)
         || (ws::OFFHAND_INIT..=ws::OFFHAND_END).contains(&s)
-        || ps.e_flags2 & e_flags2::MOUNTED != 0
+        || ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0
         || ps.weap_flags & weap_flags::FIRING_GUIDED != 0
         || !pm.cmd.buttons.held(buttons::ATTACK)
         || pm.oldcmd.buttons.held(buttons::ATTACK)

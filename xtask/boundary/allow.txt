@@ -1004,7 +1004,7 @@ pattern crates/sim/src/script_gaps.rs gamemode_iw4:: 1
 pattern crates/sim/src/script_player.rs entity_iw4:: 4
 pattern crates/sim/src/script_player.rs hud_iw4:: 5
 pattern crates/sim/src/script_player.rs movement_iw4:: 5
-pattern crates/sim/src/script_player.rs playerstate_iw4:: 27
+pattern crates/sim/src/script_player.rs playerstate_iw4:: 24
 pattern crates/sim/src/script_player.rs weapon_iw4:: 20
 pattern crates/sim/src/snapshot.rs clipmap_iw4:: 12
 pattern crates/sim/src/snapshot.rs playerstate_iw4:: 1

@@ -199,10 +199,16 @@ fn local_bounds(world: &World, id: u64) -> Result<([f32; 3], [f32; 3]), String> 
     use super::super::super::entities::EntityKind;
     let runtime = world.resource::<RoundScript>();
     match runtime.entities.get(&id).map(|entity| &entity.kind) {
-        Some(EntityKind::Player) => Err(
-            "getcentroid: t6.entity.player_bounds: a player's box (his stance's mins and maxs) is not kept"
-                .into(),
-        ),
+        // The box the player's last move gave them, by stance.
+        Some(EntityKind::Player) => {
+            let client = runtime
+                .player_client(id)
+                .ok_or("getcentroid: not a client")?;
+            world
+                .get::<crate::world::SimState>(crate::frame::state_entity(world))
+                .and_then(|state| state.move_bounds(crate::ClientId(client)))
+                .ok_or_else(|| "getcentroid: the player has not moved yet".into())
+        }
         Some(EntityKind::Actor) => {
             let (radius, floor, top) = world
                 .get_resource::<super::actor::Actors>()
@@ -291,7 +297,11 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             _ => [0.0; 3],
         };
         let origin = vector(runtime.object_field(id, "origin"));
-        let angles = vector(runtime.object_field(id, "angles"));
+        let mut angles = vector(runtime.object_field(id, "angles"));
+        // A player's entity keeps only the yaw of its view.
+        if runtime.player_client(id).is_some() {
+            angles = [0.0, angles[1], 0.0];
+        }
         let middle = [0, 1, 2].map(|i| (mins[i] + maxs[i]) * 0.5);
         let (fwd, right, up) = angle_axes(angles);
         let left = right.map(|r| -r);

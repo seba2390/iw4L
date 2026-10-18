@@ -345,6 +345,12 @@ fn game_state(
     b.word(&mut ps.mantle_flags, write);
     b.i(&mut ps.mover_entity_num, write);
     b.i(&mut ps.mover_timestamp, write);
+    let mut direction = ps.dmg_direction as u8;
+    b.byte(&mut direction, write);
+    ps.dmg_direction = i32::from(direction);
+    let mut kind = ps.dmg_type as u8;
+    b.byte(&mut kind, write);
+    ps.dmg_type = i32::from(kind);
 }
 
 pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
@@ -728,9 +734,15 @@ impl PlayerMovement for T6Movement {
         }
     }
 
-    fn enter_last_stand(&self, player: &mut MovePlayer) -> MoveOutcome {
+    /// What `finishplayerdamage` does to a player going down: its down
+    /// animation event by stance, then what the player lets go of
+    /// (`player_damage::going_down`).
+    fn enter_last_stand(
+        &self,
+        player: &mut MovePlayer,
+        weapons: &dyn game_api::movement::WeaponTable,
+    ) -> MoveOutcome {
         use movement_t6::events::anim;
-        use movement_t6::state::e_flags;
         let (mut ps, mut last) = unpack(player);
         ps.pm_type = pm_type::LAST_STAND;
         let event = if ps.pm_flags & pm_flags::DUCKED != 0 {
@@ -741,8 +753,7 @@ impl PlayerMovement for T6Movement {
             anim::STAND_TO_LAST_STAND
         };
         let mut gaps = vec![events_unknown()];
-        if ps.e_flags & (e_flags::TURRET | e_flags::VEHICLE_VIEW) != 0 {
-            ps.e_flags &= !(e_flags::TURRET | e_flags::VEHICLE_VIEW);
+        if crate::player_damage::going_down(&mut ps, weapons) {
             gaps.push(gap_unknown(Gap::MountedView));
         }
         pack(player, &mut ps, &mut last);
@@ -833,24 +844,30 @@ impl PlayerMovement for T6Movement {
         Some(was)
     }
 
-    /// `finishplayerdamage` adds the time per point of damage, up to the
-    /// cap, and the duration is where the timer starts;
-    /// `reviveplayer` clears both.
-    fn damage_timer(&self, player: &mut MovePlayer, damage: Option<i32>) {
-        use movement_t6::tuning::{DMGTIMER_MAX_TIME, DMGTIMER_TIME_PER_POINT};
+    /// `reviveplayer` clears the timer and where it started.
+    fn clear_damage_timer(&self, player: &mut MovePlayer) {
         let (mut ps, mut last) = unpack(player);
-        match damage {
-            Some(damage) => {
-                ps.damage_timer = (ps.damage_timer as f32 + damage as f32 * DMGTIMER_TIME_PER_POINT)
-                    .min(DMGTIMER_MAX_TIME) as i32;
-                ps.damage_duration = ps.damage_timer;
-            }
-            None => {
-                ps.damage_timer = 0;
-                ps.damage_duration = 0;
-            }
-        }
+        ps.damage_timer = 0;
+        ps.damage_duration = 0;
         pack(player, &mut ps, &mut last);
+    }
+
+    fn hurt(&self, player: &mut MovePlayer, hurt: &game_api::movement::PlayerHurt<'_>) -> i32 {
+        let (mut ps, mut last) = unpack(player);
+        let damage = crate::player_damage::hurt(&mut ps, hurt);
+        pack(player, &mut ps, &mut last);
+        damage
+    }
+
+    fn die(
+        &self,
+        player: &mut MovePlayer,
+        death: &game_api::movement::PlayerHurt<'_>,
+    ) -> Result<(), i32> {
+        let (mut ps, mut last) = unpack(player);
+        let out = crate::player_damage::die(&mut ps, death);
+        pack(player, &mut ps, &mut last);
+        out
     }
 
     fn cursor_hints(&self) -> &'static [&'static str] {

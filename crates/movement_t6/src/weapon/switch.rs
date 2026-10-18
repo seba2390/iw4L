@@ -435,7 +435,7 @@ pub(super) fn check_change_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         || ws::is_dtp(s)
         || ws::is_nightvision(s)
         || ws::is_riotshield(s)
-        || ps.e_flags2 & e_flags2::MOUNTED != 0
+        || ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0
         || ps.weap_flags & weap_flags::FIRING_GUIDED != 0
         || ps.link_flags & 4 != 0
         || super::pose::mantling_anim(ps)

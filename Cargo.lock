@@ -3290,6 +3290,7 @@ dependencies = [
  "game_api",
  "gsc",
  "gsc_t6",
+ "libm",
  "menu_expr",
  "movement_t6",
 ]
