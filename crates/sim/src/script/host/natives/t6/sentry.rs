@@ -1105,6 +1105,18 @@ fn bullet(
     Ok(())
 }
 
+/// The zone's depth of a surface type for a penetration type; `None` when
+/// the zones carry no table.
+pub(crate) fn zone_penetration_depth(
+    world: &World,
+    penetrate_type: i32,
+    surface_type: i32,
+) -> Option<f32> {
+    let table = depth_table(world).ok()?;
+    let row = table.get(usize::try_from(penetrate_type).ok()?)?;
+    row.get(usize::try_from(surface_type).ok()?).copied()
+}
+
 /// The zone's penetration depths by penetration type (none, small, medium,
 /// large) and surface type.
 fn depth_table(world: &World) -> Result<[[f32; 32]; 4], String> {

@@ -134,6 +134,17 @@ fn weapon_of(world: &mut World, hit: &Hit) -> String {
         .unwrap_or_else(|| "none".to_owned())
 }
 
+/// The game's scale at a hit location, when the zones carry its table.
+pub(crate) fn zone_location_scale(world: &World, location: usize) -> Option<f32> {
+    world
+        .resource::<RoundScript>()
+        .restart
+        .as_ref()?
+        .raw_files
+        .get(LOCATION_TABLE)?;
+    global_scales(world).get(location).copied()
+}
+
 /// The global scales by hit location: 1, the riot shield 0, then what the
 /// zone's `info/mp_lochit_dmgtable` sets.
 fn global_scales(world: &World) -> [f32; 21] {
@@ -233,8 +244,7 @@ fn remote_revive(world: &mut World, target: &Value, client: u32, hit: &Hit) -> b
     revives
 }
 
-/// `G_Damage`: a player's or an actor's own branch; other entities' damage
-/// is not done (`t6.damage.entities`).
+/// `G_Damage`: a player's, an actor's or another entity's own branch.
 pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), String> {
     let id = entity_id(world, target)?;
     if let Some(client) = world.resource::<RoundScript>().player_client(id)
@@ -285,7 +295,7 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
     }
     if is_actor(world, target) {
         let alive = number(world, id, "health", 0.0) > 0.0;
-        if !takes_damage || hit.damage < 1 || !alive {
+        if !takes_damage || hit.damage < 1 || !alive || hit.hit_location == RIOTSHIELD {
             return Ok(());
         }
         let weapon = weapon_of(world, &hit);
@@ -297,10 +307,84 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
         let args = callback_args(&hit, damage, &weapon);
         return callback(world, "codecallback_actordamage", target.clone(), args);
     }
-    Err(format!(
-        "t6.damage.entities: {} damage to an entity that is neither a player nor an actor",
-        hit.damage
-    ))
+    other_damage(world, target, id, hit, None)
+}
+
+/// `G_Damage` for an entity that is neither a player nor an actor. A
+/// vehicle takes damage only while it can, the damage is above 0 and it has
+/// health left; what it then does is not run (`t6.damage.vehicles`). Any
+/// other entity takes it while its `takedamage` is set: its health drops
+/// (a `trigger_lookat`'s does not), it is notified `damage`, and at no
+/// health (no lower than -999) `death` with the attacker. A hit at the riot
+/// shield's location does nothing. `struck` is the struck bone's tag and the
+/// entity's model, which the notify names. The entities scripts make (models, brush models, origins) have
+/// no pain or death handler of their own.
+fn other_damage(
+    world: &mut World,
+    target: &Value,
+    id: u64,
+    hit: Hit,
+    struck: Option<(String, String)>,
+) -> Result<(), String> {
+    let takes_damage = matches!(field(world, id, "takedamage"), Value::Int(n) if n != 0);
+    let vehicle = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&id)
+        .is_some_and(|entity| entity.kind == EntityKind::Vehicle);
+    if vehicle {
+        let health = number(world, id, "health", 0.0);
+        if !takes_damage || hit.damage < 1 || health <= 0.0 {
+            return Ok(());
+        }
+        return Err(format!(
+            "t6.damage.vehicles: {} damage to a vehicle",
+            hit.damage
+        ));
+    }
+    if hit.hit_location == RIOTSHIELD || !takes_damage {
+        return Ok(());
+    }
+    let attacker = super::super::super::players::damage_entity(world, Some(&hit.attacker));
+    let weapon = weapon_of(world, &hit);
+    let damage = hit.damage.max(1);
+    let lookat = matches!(
+        field(world, id, "classname"),
+        Value::String(name) if name.as_ref() == "trigger_lookat"
+    );
+    let mut health = number(world, id, "health", 0.0) as i32;
+    if !lookat {
+        health -= damage;
+    }
+    let zero = [0.0; 3];
+    raise(
+        world,
+        target.clone(),
+        "damage",
+        vec![
+            Value::Int(damage),
+            attacker.clone(),
+            Value::Vector(hit.dir.unwrap_or(zero)),
+            Value::Vector(hit.point.unwrap_or(zero)),
+            Value::string(MEANS_OF_DEATH[hit.means]),
+            Value::string(struck.as_ref().map_or("", |(tag, _)| tag.as_str())),
+            Value::string(struck.as_ref().map_or("", |(_, model)| model.as_str())),
+            Value::string(""),
+            Value::string(&weapon),
+            Value::Int(hit.dflags),
+            attacker.clone(),
+        ],
+    );
+    if health < 1 {
+        health = health.max(HEALTH_FLOOR);
+        raise(world, target.clone(), "death", vec![attacker]);
+    }
+    if !lookat {
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "health", Value::Int(health));
+    }
+    Ok(())
 }
 
 fn means_arg(args: &[Value], index: usize) -> Result<usize, String> {
@@ -780,6 +864,22 @@ const CORPSE_CONTENTS: i32 = 0x0400_0000;
 /// the damage at its hit location already), with the rules' damage, means
 /// and weapon, at the struck bone's hit location (its model's
 /// `partClassification`).
+/// The name of the bone a shot struck on a script entity's model.
+fn struck_tag(
+    world: &mut World,
+    model: crate::ScriptModelId,
+    bone: Option<usize>,
+) -> Option<String> {
+    let frame = FrameWorld::from_world(world);
+    frame
+        .entity_collision_capabilities()
+        .iter()
+        .find(|row| row.owner.script_model() == Some(model))
+        .and_then(|row| row.dobj.as_ref())
+        .and_then(|dobj| dobj.bone_name(bone?))
+        .map(str::to_owned)
+}
+
 fn entity_hit(
     world: &mut World,
     object: u64,
@@ -790,7 +890,15 @@ fn entity_hit(
         .resource::<RoundScript>()
         .player_client(object)
         .is_some();
-    if !is_player && !is_actor(world, &target) {
+    let other = !is_player && !is_actor(world, &target);
+    let kind = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&object)
+        .map(|entity| entity.kind.clone());
+    // Origins' giant robots keep IW4L's own rules (`t6_zombies`).
+    let robot = super::super::super::t6_zombies::is_robot(world, object);
+    if other && (robot || !matches!(kind, Some(EntityKind::Map | EntityKind::Spawned))) {
         return false;
     }
     let attacker = match hit.attacker {
@@ -803,27 +911,34 @@ fn entity_hit(
         (_, Some(name)) => HIT_LOCATIONS.iter().position(|n| *n == name).unwrap_or(0),
         _ => 0,
     };
-    let result = damage(
-        world,
-        &target,
-        Hit {
-            inflictor: attacker.clone(),
-            attacker,
-            dir: Some(hit.dir),
-            point: Some(hit.point),
-            damage: hit.amount,
-            dflags: hit.flags,
-            means: MEANS_OF_DEATH
-                .iter()
-                .position(|name| *name == hit.means)
-                .unwrap_or(0),
-            weapon: Some(weapon),
-            hit_location,
-            // The game's own fire scaled it at the hit location already.
-            located: true,
-            time_offset: hit.time_offset,
-        },
-    );
+    let (hit_bone, hit_model) = (hit.bone, hit.target);
+    let hit = Hit {
+        inflictor: attacker.clone(),
+        attacker,
+        dir: Some(hit.dir),
+        point: Some(hit.point),
+        damage: hit.amount,
+        dflags: hit.flags,
+        means: MEANS_OF_DEATH
+            .iter()
+            .position(|name| *name == hit.means)
+            .unwrap_or(0),
+        weapon: Some(weapon),
+        hit_location,
+        // The game's own fire scaled it at the hit location already.
+        located: true,
+        time_offset: hit.time_offset,
+    };
+    let result = if other {
+        let tag = struck_tag(world, hit_model, hit_bone);
+        let model = match field(world, object, "model") {
+            Value::String(model) => model.to_string(),
+            _ => String::new(),
+        };
+        other_damage(world, &target, object, hit, tag.map(|tag| (tag, model)))
+    } else {
+        damage(world, &target, hit)
+    };
     if let Err(fault) = result {
         diag::warn!(Sim, "actor {object}: {fault}");
     }

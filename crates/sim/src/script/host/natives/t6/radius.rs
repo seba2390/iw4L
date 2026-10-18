@@ -199,6 +199,43 @@ fn targets(world: &mut World) -> Vec<Target> {
             },
         });
     }
+    // Other entities that can take damage, measured at their origin
+    // (`t6.damage.radius_distance`).
+    let others: Vec<(u64, Option<crate::ScriptModelId>)> = world
+        .resource::<RoundScript>()
+        .entities
+        .iter()
+        .filter(|(_, entity)| {
+            matches!(
+                entity.kind,
+                EntityKind::Map | EntityKind::Spawned | EntityKind::Vehicle
+            )
+        })
+        .map(|(id, entity)| (*id, entity.presence))
+        .collect();
+    for (id, presence) in others {
+        let takes = matches!(
+            world
+                .resource_mut::<RoundScript>()
+                .object_field(id, "takedamage"),
+            Value::Int(n) if n != 0
+        );
+        if !takes {
+            continue;
+        }
+        let origin = super::movement::origin_of(world, id);
+        out.push(Target {
+            value: Value::Object(id),
+            origin,
+            mins: origin,
+            maxs: origin,
+            eye: None,
+            ignore: TraceIgnore {
+                model: presence,
+                ..Default::default()
+            },
+        });
+    }
     out
 }
 
@@ -273,36 +310,6 @@ fn radius_damage(
                 time_offset: 0,
             },
         )?;
-    }
-    // Other entities that take damage are not damaged yet: say so.
-    let others = world
-        .resource::<RoundScript>()
-        .entities
-        .iter()
-        .filter(|(id, entity)| {
-            entity.kind != EntityKind::Actor
-                && inflictor.as_ref() != Some(&Value::Object(**id))
-                && entity.presence.is_some()
-        })
-        .map(|(id, _)| *id)
-        .collect::<Vec<_>>();
-    let mut struck = 0;
-    for id in others {
-        let takes = !matches!(
-            world
-                .resource_mut::<RoundScript>()
-                .object_field(id, "takedamage"),
-            Value::Int(0) | Value::Undefined
-        );
-        let origin = super::movement::origin_of(world, id);
-        if takes && distance_sq(blast, origin, origin) < range * range {
-            struck += 1;
-        }
-    }
-    if struck > 0 {
-        return Err(format!(
-            "t6.damage.entities: the blast reached {struck} entities that are neither players nor actors"
-        ));
     }
     Ok(Value::Undefined)
 }

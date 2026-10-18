@@ -864,15 +864,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         // The game's own movement takes the shock: Black Ops 2 marks a living
         // player shellshocked in its movement flags until the shock ends.
-        crate::game_move::shellshock(
-            &mut frame,
-            id,
-            Some(game_api::movement::ShellshockStart {
-                index,
-                duration_ms: duration,
-                level_time: now,
-            }),
-        );
+        if frame.player(id).is_some_and(|ps| ps.health > 0) {
+            crate::game_move::shellshock(
+                &mut frame,
+                id,
+                Some(game_api::movement::ShellshockStart {
+                    index,
+                    duration_ms: duration,
+                    level_time: now,
+                }),
+            );
+        }
         let Some(ps) = frame.player_mut(id) else {
             return Ok(Value::Undefined);
         };
