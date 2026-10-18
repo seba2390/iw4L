@@ -123,6 +123,9 @@ impl LinkEdits {
     }
 }
 
+/// The most nodes `getanynodearray` returns.
+const ANY_NODES_MAX: usize = 1024;
+
 /// How many of the closest nodes are traced for a straight walk.
 const REACH_CANDIDATES: usize = 12;
 
@@ -477,6 +480,50 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "getnodearray", |world, _, args| {
         let found = find_nodes(world, args)?;
         super::arrays::new_array(world, found)
+    });
+    // `GetAnyNodeArray(origin, radius)`: the path nodes of any type within
+    // the radius across the ground (any height), nearest first, at most
+    // 1024.
+    registry.register(Function, "getanynodearray", |world, _, args| {
+        let origin = vector(args, 0)?;
+        let radius = float(args, 1)?;
+        let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+            return super::arrays::new_array(world, Vec::new());
+        };
+        let mut found: Vec<(f32, u16)> = paths
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                let dx = node.origin[0] - origin[0];
+                let dy = node.origin[1] - origin[1];
+                let dist_sq = dy * dy + dx * dx;
+                (radius * radius >= dist_sq).then_some((dist_sq, index as u16))
+            })
+            .collect();
+        found.sort_by(|a, b| a.0.total_cmp(&b.0));
+        found.truncate(ANY_NODES_MAX);
+        let nodes = found
+            .into_iter()
+            .map(|(_, index)| node_object(world, &paths, index))
+            .collect::<Result<Vec<_>, _>>()?;
+        super::arrays::new_array(world, nodes)
+    });
+    // `ai HasPath()`: whether the AI has a path.
+    registry.register(Method, "haspath", |world, receiver, _| {
+        let id = super::natives::engine::entity_id(world, receiver)?;
+        let runtime = world.resource::<RoundScript>();
+        if runtime.entities[&id].kind != EntityKind::Actor {
+            let classname = runtime.entities[&id].classname.clone();
+            return Err(format!(
+                "haspath must be called on an AI, not on a '{classname}'"
+            ));
+        }
+        let has = runtime
+            .actor_moves
+            .get(&id)
+            .is_some_and(ActorMove::has_path);
+        Ok(Value::Int(has.into()))
     });
     registry.register(Function, "getallnodes", |world, _, _| {
         let Some(paths) = FrameWorld::from_world(world).actor_paths() else {

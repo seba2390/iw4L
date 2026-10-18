@@ -112,6 +112,7 @@ impl WeaponCatalog {
                 .def_str(d::DUAL_WIELD_WEAPON)
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned),
+            grenade_weapon: None,
             impact_payload: None,
             sz_xanims_right: [const { None }; WEAPON_ANIM_SLOTS],
             sz_xanims_left: t6_sz_xanims_left(weapon),

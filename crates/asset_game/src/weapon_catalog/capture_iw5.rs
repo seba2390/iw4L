@@ -264,6 +264,7 @@ impl WeaponCatalog {
                 .and_then(|ptr| leftover_cstr_iw5(stream, ptr)),
             sz_xanims,
             dual_wield_weapon: None,
+            grenade_weapon: None,
             sz_xanims_right: [const { None }; WEAPON_ANIM_SLOTS],
             sz_xanims_left: [const { None }; WEAPON_ANIM_SLOTS],
             hide_tags: read_hide_tags_iw5(stream, strings, geometry.hide_tags),

@@ -404,6 +404,43 @@ pub struct ClientFireRules {
     /// The game's automatic fire simulation, when it plays some shots'
     /// sounds through one.
     pub autosim: Option<FireAutoSimRules>,
+    /// The game's view kick, when the client runs it.
+    pub view_kick: Option<ViewKickRules>,
+}
+
+/// How far a client's own shots have kicked its view and its gun.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ViewKick {
+    /// The view's kick (pitch, yaw, roll), in degrees; it turns the angles
+    /// the client's commands aim by.
+    pub angles: [f32; 3],
+    /// How fast the view's kick moves, in degrees per second.
+    pub velocity: [f32; 3],
+    /// How fast the gun's kick moves (pitch, yaw).
+    pub gun_velocity: [f32; 2],
+}
+
+/// A weapon as the view kick reads it: its definition and variant in the
+/// game's layout, and a dual-wield weapon's other-hand weapon.
+pub struct KickWeapon {
+    pub def: Box<[u8]>,
+    pub variant: Box<[u8]>,
+    pub dual_wield: Option<u32>,
+}
+
+/// The client's weapons, by number.
+pub type KickWeapons<'a> = &'a dyn Fn(u32) -> Option<KickWeapon>;
+
+/// A game's view kick, run by the client for its own player.
+#[derive(Clone, Copy, Debug)]
+pub struct ViewKickRules {
+    /// A shot of the client's own player kicks its view and its gun; `rand`
+    /// draws from 0 to 1.
+    pub fire: fn(&MovePlayer, KickWeapons<'_>, rand: &mut dyn FnMut() -> f32, &mut ViewKick),
+    /// A client frame of `frametime_ms` eases the view's kick back.
+    pub frame: fn(&MovePlayer, KickWeapons<'_>, frametime_ms: i32, &mut ViewKick),
+    /// What the kick adds to the client's aim angles.
+    pub aim: fn(&MovePlayer, KickWeapons<'_>, &ViewKick) -> [f32; 3],
 }
 
 /// A game's automatic fire simulation: shots it takes are not played at

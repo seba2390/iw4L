@@ -71,6 +71,8 @@ impl Plugin for NetPlugin {
         if self.role.runs_client() {
             configure_client_sets(app);
             app.init_resource::<crate::client::input::LookState>()
+                .init_resource::<crate::client::input::AimKick>()
+                .init_resource::<crate::client::input::CursorAim>()
                 .init_resource::<crate::client::input::ClientActionInput>();
 
             app.scoped::<ListenLoopback>(frame::MatchScope::Live);

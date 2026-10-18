@@ -15,6 +15,7 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     )),
     left_from_own_weapon: true,
     autosim: None,
+    view_kick: None,
 };
 
 fn autosim_unknown() -> &'static Unknown {

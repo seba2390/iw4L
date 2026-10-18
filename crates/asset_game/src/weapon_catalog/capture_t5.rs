@@ -6,6 +6,7 @@ impl WeaponCatalog {
         stream: &fastfile_t5::ZoneStream<'_>,
         strings: &fastfile_t5::ScriptStrings,
     ) {
+        use fastfile_t5::size as sz;
         let Some(geometry) = stream.weapon() else {
             return;
         };
@@ -181,12 +182,11 @@ impl WeaponCatalog {
                 .map(str::to_owned),
             sz_xanims,
             dual_wield_weapon: geometry.weap_def.and_then(|body| {
-                leftover_t5_cstr(
-                    stream,
-                    body,
-                    fastfile_t5::size::WEAPON_DEF_DUAL_WIELD_WEAPON_NAME_OFF,
-                )
+                leftover_t5_cstr(stream, body, sz::WEAPON_DEF_DUAL_WIELD_WEAPON_NAME_OFF)
             }),
+            grenade_weapon: geometry
+                .weap_def
+                .and_then(|body| leftover_t5_cstr(stream, body, sz::WEAPON_DEF_GRENADE_WEAPON_OFF)),
             sz_xanims_right: [const { None }; WEAPON_ANIM_SLOTS],
             sz_xanims_left: geometry
                 .sz_xanims

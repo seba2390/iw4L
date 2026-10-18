@@ -705,6 +705,8 @@ const _: () = assert!(WEAPON_DEF_HOLD_FIRE_TIME_OFF == WEAPON_DEF_RECHAMBER_BOLT
 pub const WEAPON_DEF_DUAL_WIELD_OFF: usize = 0x56a;
 pub const WEAPON_DEF_FUEL_TANK_OFF: usize = 0x61;
 pub const WEAPON_DEF_DUAL_WIELD_WEAPON_NAME_OFF: usize = 0x590;
+/// `grenadeWeapon`: the grenade a projectile leaves where it strikes.
+pub const WEAPON_DEF_GRENADE_WEAPON_OFF: usize = 0x58c;
 
 pub const WEAPON_DEF_COOK_OFF_HOLD_OFF: usize = 0x560;
 pub const WEAPON_DEF_KEEP_CROSSHAIR_WHEN_ADS_OFF: usize = 0x575;

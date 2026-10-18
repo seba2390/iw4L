@@ -11,7 +11,9 @@ mod movement;
 mod post_chain;
 mod radius;
 mod shock;
+mod top_down;
 mod turret;
+mod view_kick;
 mod viewmodel;
 mod vision;
 mod vision_channels;
@@ -64,6 +66,10 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     // A solo game is offline: neither a system link nor an online game.
     ("systemlink", "0"),
     ("onlinegame", "0"),
+    // Registered from the executable's content flag, which this build
+    // sets: the zombie scripts gib zombies (`is_mature`) only with it.
+    ("cg_mature", "1"),
+    ("cg_blood", "1"),
 ];
 
 impl game_api::GameScripts for T5 {
@@ -225,6 +231,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         font_scales_sent: Some(sent_font_scales),
     },
     client_fire: Some(fire_sound::CLIENT_FIRE),
+    top_down: Some(top_down::RULES),
     viewmodel: Some(viewmodel::VIEWMODEL),
     script_sounds_hashed: true,
     turrets: Some(turret::TURRETS),

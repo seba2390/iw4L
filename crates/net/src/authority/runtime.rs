@@ -1014,6 +1014,8 @@ fn fanout_loopback(
             let line = format!("loopback: send_tick failed: {e}");
             diag::info!(Net, "{line}");
             diag.line = Some(line);
+        } else if let Some(local) = queues.local.as_ref() {
+            reliable.ack_all(local.0);
         }
     }
     if let Some(mut hub) = hub

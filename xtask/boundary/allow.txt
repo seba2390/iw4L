@@ -493,7 +493,7 @@ pattern crates/hud/src/weaponbar.rs weapon_iw4:: 1
 pattern crates/master_protocol/src/lib.rs "<game>" 5
 pattern crates/net/src/authority/inbox.rs playerstate_iw4:: 1
 pattern crates/net/src/authority/runtime.rs playerstate_iw4:: 1
-pattern crates/net/src/client/input.rs input_iw4:: 3
+pattern crates/net/src/client/input.rs input_iw4:: 1
 pattern crates/net/src/client/input.rs playerstate_iw4:: 2
 pattern crates/net/src/client/pad_aim.rs weapon_iw4:: 1
 pattern crates/net/src/client/predict.rs entity_iw4:: 4

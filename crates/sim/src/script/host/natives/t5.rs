@@ -20,6 +20,10 @@ pub(crate) struct T5State {
     pub(crate) has_eyes: std::collections::BTreeSet<u64>,
     pub(crate) transmit_targetname: std::collections::BTreeSet<u64>,
     dstats: BTreeMap<(u32, String), Value>,
+    /// Each player's score multiplier (`setscoremultiplier`), by client.
+    score_multipliers: BTreeMap<u32, i32>,
+    /// Entities taken out of player collision (`setplayercollision`).
+    pub(crate) no_player_collision: std::collections::BTreeSet<u64>,
     statuses: std::collections::BTreeSet<(u32, &'static str)>,
     client_systems: Vec<Arc<str>>,
     spawn_ids: BTreeMap<u32, i32>,
@@ -1677,9 +1681,92 @@ fn register_refused(registry: &mut NativeRegistry) {
         "makegrenadedud", "launchbomb"
         => "receiver is not a guided missile");
 
+    // `player SetScoreMultiplier(n)` / `GetScoreMultiplier()`: a number the
+    // player's state carries (Dead Ops Arcade packs its multiplier and
+    // progress into it).
+    registry.register(Method, "setscoremultiplier", |world, receiver, args| {
+        let client = super::player::player(world, receiver)?;
+        let value = int(args, 0)?;
+        world
+            .resource_mut::<RoundScript>()
+            .t5
+            .score_multipliers
+            .insert(client, value);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getscoremultiplier", |world, receiver, _| {
+        let client = super::player::player(world, receiver)?;
+        let value = world
+            .resource::<RoundScript>()
+            .t5
+            .score_multipliers
+            .get(&client)
+            .copied()
+            .unwrap_or(0);
+        Ok(Value::Int(value))
+    });
+    // `ent SetPlayerCollision(on)`: whether players collide with the
+    // entity. Players here collide with no actor or entity body yet.
+    registry.register(Method, "setplayercollision", |world, receiver, args| {
+        if args.len() != 1 {
+            return Err("Bad number of paramaters\n".into());
+        }
+        let id = super::engine::entity_id(world, receiver)?;
+        let on = int(args, 0)? != 0;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        if on {
+            runtime.t5.no_player_collision.remove(&id);
+        } else {
+            runtime.t5.no_player_collision.insert(id);
+        }
+        Ok(Value::Undefined)
+    });
+    // `ent LaunchRagdoll(force, [bone])`: Black Ops launches an entity that
+    // is a ragdoll and leaves any other alone; the runtime has no ragdolls
+    // (#249).
+    registry.register(Method, "launchragdoll", |world, receiver, args| {
+        super::engine::entity_id(world, receiver)?;
+        vector(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    // `player StartCameraTween(seconds)`: Black Ops sends the player an
+    // event that eases its camera to the new view over that time; the
+    // runtime's client has no camera tween, so the view cuts.
+    registry.register(Method, "startcameratween", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().player_client(id).is_none() {
+            let number = world.resource::<RoundScript>().entities[&id].number;
+            return Err(format!("entity {number} is not a player"));
+        }
+        float(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    // `ent PhysicsLaunch([point, force])`: Black Ops hands the entity to
+    // its rigid-body physics; the runtime has none, so the entity stays
+    // where it is.
+    registry.register(Method, "physicslaunch", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let (number, classname) = {
+            let entity = &world.resource::<RoundScript>().entities[&id];
+            (entity.number, entity.classname.clone())
+        };
+        if !matches!(
+            &*classname,
+            "script_brushmodel" | "script_model" | "script_origin" | "light"
+        ) {
+            return Err(format!(
+                "entity {number} is not a script_brushmodel, script_model, script_origin, or light"
+            ));
+        }
+        if args.len() == 2 {
+            vector(args, 0)?;
+            vector(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
     refused!(Function: "spawntimedfx", "boundswouldtelefrag", "testspawnpoint"
         => "not simulated");
-    refused!(Method: "launch", "physicslaunch", "fakefire",
+    refused!(Method: "launch", "fakefire",
         "spawnnapalmgroundflame", "revive", "docowardswayanims",
         "ghost", "teleport", "istouchingswept", "istouchingvolume", "playersighttrace",
         "throwbuttonpressed", "actionslotonebuttonpressed", "depthinwater",

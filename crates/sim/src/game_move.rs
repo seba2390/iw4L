@@ -214,6 +214,7 @@ pub(crate) fn run(
     let context = MoveContext {
         predicting: !world.publishes_snapshot(),
         level_time: crate::level_time_ms(tick),
+        move_yaw: world.top_down_move_yaw(id),
     };
     let before = player;
     let mut outcome = {

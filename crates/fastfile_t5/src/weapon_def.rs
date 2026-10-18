@@ -896,6 +896,11 @@ impl<'a> WeaponDefView<'a> {
         self.def[0x63a] != 0
     }
 
+    /// `noCrumpleMissile`
+    pub fn no_crumple_missile(&self) -> bool {
+        self.def[0x63b] != 0
+    }
+
     /// `rotate`
     pub fn rotate(&self) -> bool {
         self.def[0x63c] != 0

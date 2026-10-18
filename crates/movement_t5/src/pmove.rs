@@ -286,7 +286,13 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     crate::weapon::aim_spread(pm, &pml);
     view_angles::update(pm, msec as f32);
     set_water_level(pm);
-    let (forward, right, up) = angle_vectors(pm.ps.viewangles);
+    let (forward, right, up) = match pm.move_yaw {
+        Some(yaw) if pm.ps.pm_type != pm_type::NOCLIP => {
+            let (forward, right, _) = angle_vectors([0.0, yaw, 0.0]);
+            (forward, right, [0.0; 3])
+        }
+        _ => angle_vectors(pm.ps.viewangles),
+    };
     pml.forward = forward;
     pml.right = right;
     pml.up = up;
