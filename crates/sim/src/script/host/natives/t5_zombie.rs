@@ -118,7 +118,19 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(0))
     });
     // The host keeps no AI budget, water simulation or exploder ids of its own.
-    registry.register(Function, "setailimit", |_, _, _| Ok(Value::Undefined));
+    // `SetAILimit(n)`: actor spawns fail while n actors are in use.
+    registry.register(Function, "setailimit", |world, _, args| {
+        let limit = super::super::args::int(args, 0)?;
+        if !(0..=32).contains(&limit) {
+            return Err("SetAILimit must take a value between 0 and 32 inclusive.".into());
+        }
+        world.resource_mut::<RoundScript>().ai_limit = limit;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "resetailimit", |world, _, _| {
+        world.resource_mut::<RoundScript>().ai_limit = 0;
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
     registry.register(Method, "setexploderid", |_, _, _| Ok(Value::Undefined));
     // Script-state tracing is a developer aid; `haseyes` sets the entity's
