@@ -547,6 +547,15 @@ impl Shot<'_> {
                     self.gaps,
                 );
             }
+            WEAPTYPE_PROJECTILE => crate::grenade::launch_grenade(
+                self.attacker(),
+                weapon,
+                &def,
+                parms.forward,
+                parms.muzzle,
+                world,
+                self.gaps,
+            ),
             WEAPTYPE_GRENADE | WEAPTYPE_MINE => crate::grenade::fire_grenade(
                 self.attacker(),
                 weapon,

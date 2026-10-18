@@ -250,6 +250,8 @@ pub struct GameWeapon {
     pub alt_weapon: u32,
     /// The weapon in the left hand when dual wielding; 0 when none.
     pub dual_wield_weapon: u32,
+    /// The grenade its projectile leaves where it strikes; 0 when none.
+    pub grenade_weapon: u32,
     /// The weapon whose alternate or dual-wield chain loads this variant.
     pub variant_parent: Option<u32>,
     /// The variant's animation slots that name an animation, by slot.

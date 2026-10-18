@@ -203,7 +203,53 @@ pub(crate) fn fire_grenade(
         ]
     });
     spawn_grenade(
-        owner, weapon, def, muzzle, vel, carried, true, fuse, world, gaps,
+        owner, weapon, def, muzzle, vel, carried, true, false, fuse, world, gaps,
+    );
+}
+
+/// A grenade launcher's shot by a player: the grenade leaves along the aim
+/// at the weapon's projectile speed, its upward speed added, without spin,
+/// on the weapon's fuse, carrying the shooter's speed along its flight; it
+/// never destabilises. An actor's shot (aimed to land by its enemy) is not
+/// run.
+pub(crate) fn launch_grenade(
+    owner: i32,
+    weapon: u32,
+    def: &WeaponDefView<'_>,
+    forward: [f32; 3],
+    muzzle: [f32; 3],
+    world: &mut dyn FireWorld,
+    gaps: &mut Vec<&'static Unknown>,
+) {
+    let Some(player) = world.player(owner) else {
+        gaps.push(crate::fire::fire_unknown());
+        return;
+    };
+    let speed = def.projectile_speed() as f32;
+    let vel = [
+        forward[0] * speed,
+        forward[1] * speed,
+        forward[2] * speed + def.projectile_speed_up() as f32,
+    ];
+    let len = ((vel[1] * vel[1] + vel[0] * vel[0]) + vel[2] * vel[2]).sqrt();
+    let len = if -len >= 0.0 { 1.0 } else { len };
+    let inv = 1.0 / len;
+    let dir = [inv * vel[0], vel[1] * inv, inv * vel[2]];
+    let pv = player.velocity;
+    let along = (pv[1] * dir[1] + pv[2] * dir[2]) + pv[0] * dir[0];
+    let carried = [dir[0] * along, dir[1] * along, dir[2] * along];
+    spawn_grenade(
+        owner,
+        weapon,
+        def,
+        muzzle,
+        vel,
+        carried,
+        false,
+        true,
+        def.fuse_time(),
+        world,
+        gaps,
     );
 }
 
@@ -219,6 +265,7 @@ fn spawn_grenade(
     vel: [f32; 3],
     carried: [f32; 3],
     rotate: bool,
+    launched: bool,
     fuse: i32,
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
@@ -264,6 +311,7 @@ fn spawn_grenade(
     let state = State {
         bounce: true,
         grenade: true,
+        launched,
         ground: ENTITY_NONE,
         explode_at: light_fuse(owner, def, fuse, level, world),
         spawned_at: level,

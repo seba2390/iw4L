@@ -187,6 +187,13 @@ impl WeaponCatalog {
                     fastfile_t5::size::WEAPON_DEF_DUAL_WIELD_WEAPON_NAME_OFF,
                 )
             }),
+            grenade_weapon: geometry.weap_def.and_then(|body| {
+                leftover_t5_cstr(
+                    stream,
+                    body,
+                    fastfile_t5::size::WEAPON_DEF_GRENADE_WEAPON_OFF,
+                )
+            }),
             sz_xanims_right: [const { None }; WEAPON_ANIM_SLOTS],
             sz_xanims_left: geometry
                 .sz_xanims

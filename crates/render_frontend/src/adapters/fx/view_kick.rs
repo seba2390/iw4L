@@ -46,11 +46,12 @@ impl GameViewKick {
 }
 
 fn kick_weapon(registry: &asset_game::WeaponRegistry, weapon: u32) -> Option<KickWeapon> {
-    let bytes = registry.bind_published_row(weapon).ok()?.game_bytes()?;
+    let bound = registry.bind_published_row(weapon).ok()?;
+    let bytes = bound.game_bytes()?;
     Some(KickWeapon {
         def: Box::from(&bytes.def[..]),
         variant: Box::from(&bytes.variant[..]),
-        dual_wield: registry.dual_wield_companion(weapon),
+        dual_wield: Some(bound.dual_wield_wire_id()).filter(|&left| left != 0),
     })
 }
 

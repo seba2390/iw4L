@@ -627,6 +627,8 @@ struct CatalogWeapon {
 
     pub hand_xmodel: Option<String>,
     pub dual_wield_weapon: Option<String>,
+    /// The grenade its projectile leaves where it strikes (`grenadeWeapon`).
+    pub grenade_weapon: Option<String>,
 
     pub world_model: Option<String>,
 
@@ -1385,6 +1387,7 @@ struct WeaponRow {
 
     hand_xmodel: Option<String>,
     dual_wield_weapon: Option<String>,
+    grenade_weapon: Option<String>,
     secondary_gun_xmodel: Option<String>,
 
     gun_xmodel_edge: AssetEdge<FpvMeshSpace>,
@@ -1525,6 +1528,7 @@ impl Default for WeaponRow {
             gun_xmodel: None,
             hand_xmodel: None,
             dual_wield_weapon: None,
+            grenade_weapon: None,
             secondary_gun_xmodel: None,
             gun_xmodel_edge: AssetEdge::Absent,
             hand_xmodel_edge: AssetEdge::Absent,

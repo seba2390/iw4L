@@ -256,6 +256,9 @@ impl WeaponBuild {
                     if existing.dual_wield_weapon.is_none() {
                         existing.dual_wield_weapon = entry.dual_wield_weapon;
                     }
+                    if existing.grenade_weapon.is_none() {
+                        existing.grenade_weapon = entry.grenade_weapon;
+                    }
                     if existing.hand_xmodel.is_none() {
                         existing.hand_xmodel = entry.hand_xmodel;
                     }
@@ -385,6 +388,7 @@ impl WeaponBuild {
                 gun_xmodel: entry.gun_xmodel,
                 hand_xmodel: entry.hand_xmodel,
                 dual_wield_weapon: entry.dual_wield_weapon,
+                grenade_weapon: entry.grenade_weapon,
                 secondary_gun_xmodel: None,
                 gun_xmodel_edge: AssetEdge::Absent,
                 hand_xmodel_edge: AssetEdge::Absent,
