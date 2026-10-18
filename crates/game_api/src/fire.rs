@@ -174,6 +174,12 @@ pub trait FireWorld {
         let _ = (players_ms, actors_ms);
     }
 
+    /// Runs a missile the game just spawned for one frame now, at the
+    /// match's time.
+    fn run_missile_now(&mut self, missile: i32) {
+        let _ = missile;
+    }
+
     fn entity(&mut self, entity: i32) -> Option<FireEntity>;
 
     /// How deep a bullet of `penetrate_type` goes into `surface_type`, from

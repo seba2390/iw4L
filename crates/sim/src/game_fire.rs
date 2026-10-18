@@ -336,6 +336,28 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         self.trace_bodies(start, end, pass_entity, mask, Some(priority))
     }
 
+    fn run_missile_now(&mut self, missile: i32) {
+        let Some(mut state) = self
+            .world
+            .ecs()
+            .get_resource::<GameMissiles>()
+            .and_then(|missiles| missiles.0.get(&missile).copied())
+        else {
+            return;
+        };
+        let (run, gaps) = if let Some(rules) = missile_rules(self.world) {
+            rules.0.run(&mut state, self)
+        } else if let Some(movement) = crate::game_move::rules(self.world) {
+            movement.run_missile(&mut state, self)
+        } else {
+            return;
+        };
+        for gap in gaps {
+            self.world.report_game_gap(gap);
+        }
+        apply_missile_run(self.world, missile, state, run);
+    }
+
     fn antilag(&mut self, players_ms: i32, actors_ms: i32) {
         // A body the game leaves in place is traced where it stands; one it
         // moves back stays where the runtime's lag compensation puts it.

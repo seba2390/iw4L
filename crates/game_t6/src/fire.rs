@@ -276,9 +276,9 @@ fn rocket_unknown() -> &'static Unknown {
 
 fn missile_antilag_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.missile_antilag",
-        "a player's missile starts at the match's time; Black Ops 2 starts it at the command's time and runs it forward to catch up",
-        "running a new missile ahead by a time offset in the runtime"
+        "t6.weapons.missile_platforms",
+        "a missile launched behind the match catches up one frame against moving platforms where they stand; Black Ops 2 moves them back to the launch's time for that frame",
+        "the moving platforms' history in the runtime's catch-up frame"
     )
 }
 
@@ -394,7 +394,7 @@ fn rewind_ms(time: i32, cap: i32, world: &dyn FireWorld) -> i32 {
 
 /// The command's time a shot is fired at, no more than a second behind
 /// the match.
-fn antilag_time(command_time: i32, world: &dyn FireWorld) -> i32 {
+pub(crate) fn antilag_time(command_time: i32, world: &dyn FireWorld) -> i32 {
     let level = world.level_time();
     if level - command_time > ANTILAG_MS {
         level - ANTILAG_MS
@@ -1434,6 +1434,9 @@ impl Shot<'_> {
             Some(time_left),
             world,
         );
+        if crate::grenade::launch_offset(me, world) != 0 {
+            self.gaps.push(missile_antilag_unknown());
+        }
         self.fired_grenade(def, def.fuse_time(), world);
     }
 
@@ -1525,7 +1528,6 @@ impl Shot<'_> {
     /// took is cleared and scripts are told.
     fn fired_grenade(&mut self, def: &WeaponDefView<'_>, fuse: i32, world: &mut dyn FireWorld) {
         let me = self.attacker();
-        self.gaps.push(missile_antilag_unknown());
         if self.ps.throw_back_grenade_owner != ENTITYNUM_NONE {
             self.gaps.push(throwback_unknown());
         }
@@ -1569,7 +1571,9 @@ impl Shot<'_> {
             knockback,
             world,
         );
-        self.gaps.push(missile_antilag_unknown());
+        if crate::grenade::launch_offset(me, world) != 0 {
+            self.gaps.push(missile_antilag_unknown());
+        }
         // `missile_fire` is raised as the runtime adopts the rocket's script entity.
     }
 

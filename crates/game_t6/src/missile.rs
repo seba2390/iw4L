@@ -347,6 +347,8 @@ pub(crate) fn launch_rocket(
     let inv = 1.0 / len;
     let dir = [dir[0] * inv, dir[1] * inv, dir[2] * inv];
     let level = world.level_time();
+    // A player's rocket starts at their client's time.
+    let offset = grenade::launch_offset(owner, world);
     let speed = def.def_i32(def::PROJECTILE_SPEED) as f32;
     let hidden = ((speed * -35.0 * 0.001_666_666_7 + 85.0) as i32).clamp(20, 50);
     // A player's moving platform adds to the gun's velocity, but not for a
@@ -385,7 +387,7 @@ pub(crate) fn launch_rocket(
         weapon,
         position: GameTrajectory {
             kind,
-            time: level,
+            time: level + offset,
             duration: 0,
             base: origin,
             delta,
@@ -398,13 +400,14 @@ pub(crate) fn launch_rocket(
             delta: [0.0; 3],
         },
         origin,
-        visible_at: level + hidden,
+        visible_at: level + offset + hidden,
         game,
     });
     if knockback {
         let z = (-forward[2]).min(0.0);
         world.push_player(owner, [-forward[0] * 64.0, -forward[1] * 64.0, z * 64.0]);
     }
+    grenade::catch_up(ent, offset, world);
     ent
 }
 
