@@ -53,8 +53,24 @@ const THINK_LIMIT: usize = 16;
 const DEATH_RELEASE_MS: i64 = 800;
 /// An enemy seen this recently is still fought (ms).
 const ENEMY_MEMORY_MS: i64 = 10_000;
-/// A sight check is reused for this long (ms).
-const SIGHT_CACHE_MS: i64 = 250;
+/// How old a sight check of the enemy (and `cansee`'s, by default) may be
+/// (ms).
+pub(crate) const SIGHT_MAX_AGE_MS: i64 = 250;
+/// An actor's sight: `fovcosine` and `maxsightdistsqrd` unless set.
+const FOV_COSINE: f32 = 0.01;
+const MAX_SIGHT_DIST_SQ: f32 = 8192.0 * 8192.0;
+/// A sentient's `maxvisibledist` unless set.
+const MAX_VISIBLE_DIST: f32 = 8192.0;
+/// The fog's limit on sight: Black Ops reads it from the fog with a format
+/// its fog no longer matches, so it stays the largest float.
+const FOG_SIGHT_DIST_SQ: f32 = f32::MAX;
+/// `ai_foliageSeeThroughDist` unless set.
+const FOLIAGE_SEE_THROUGH_DIST: f32 = 128.0;
+/// What a sight trace stops at, with foliage and through it.
+const SIGHT_MASK_FOLIAGE: u32 = 0x0280_d803;
+const SIGHT_MASK: u32 = 0x0280_d801;
+/// An actor with no `tag_eye` sees from this high over its origin.
+const EYE_FALLBACK_HEIGHT: f32 = 64.0;
 /// The stop-to-fight rule shrinks the goal by half its radius, at most this.
 const FIGHT_GOAL_SHRINK: f32 = 64.0;
 /// Far from its path's end by at least this, a non-combat actor runs.
@@ -780,32 +796,254 @@ fn enemy(world: &mut World, actor: u64) -> Option<u64> {
     }
 }
 
-/// Whether the actor sees its enemy, a check reused for a quarter second.
+/// Whether the actor sees its enemy: a sentient by a sight check reused for
+/// a quarter second, any other entity by a fresh one.
 fn can_see_enemy(world: &mut World, actor: u64) -> bool {
     let Some(enemy) = enemy(world, actor) else {
         return false;
     };
+    if is_sentient(world, enemy) {
+        return can_see_sentient(world, actor, enemy, SIGHT_MAX_AGE_MS);
+    }
+    let (fov, max_dist_sq) = sight_limits(world, actor);
+    sight(world, actor, enemy, fov, max_dist_sq)
+}
+
+/// A player's or an actor's.
+pub(crate) fn is_sentient(world: &World, object: u64) -> bool {
+    let runtime = world.resource::<RoundScript>();
+    runtime.player_client(object).is_some()
+        || runtime
+            .entities
+            .get(&object)
+            .is_some_and(|entity| entity.kind == super::entities::EntityKind::Actor)
+}
+
+/// The actor's own field of view and sight distance (`fovcosine`,
+/// `maxsightdistsqrd`).
+pub(crate) fn sight_limits(world: &mut World, actor: u64) -> (f32, f32) {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    (
+        float_field(&mut runtime, actor, "fovcosine").unwrap_or(FOV_COSINE),
+        float_field(&mut runtime, actor, "maxsightdistsqrd").unwrap_or(MAX_SIGHT_DIST_SQ),
+    )
+}
+
+/// Whether the actor sees a sentient, by the last sight check when it is no
+/// older than `max_age` (ms), else by a new one with its own sight.
+pub(crate) fn can_see_sentient(world: &mut World, actor: u64, target: u64, max_age: i64) -> bool {
     let now = super::players::now_ms(world);
     let cached = brain(world, actor)
-        .and_then(|brain| brain.sightings.get(&enemy).copied())
-        .filter(|sighting| {
-            sighting
-                .checked
-                .is_some_and(|at| at + SIGHT_CACHE_MS >= now)
-        });
+        .and_then(|brain| brain.sightings.get(&target).copied())
+        .filter(|sighting| sighting.checked.is_some_and(|at| at + max_age >= now));
     if let Some(sighting) = cached {
         return sighting.visible;
     }
-    let visible = super::actor_nav::sees(world, actor, enemy);
-    with_brain(world, actor, |brain| {
-        let sighting = brain.sightings.entry(enemy).or_default();
+    let (fov, max_dist_sq) = sight_limits(world, actor);
+    sight(world, actor, target, fov, max_dist_sq)
+}
+
+/// Black Ops' sight check of a target within a field of view (a cosine; 0
+/// for none) and a squared distance (0 for any): its eye, else a
+/// non-sentient's `tag_eye` or bounds centre, must be in view and a sight
+/// trace from the actor's eye reach it. An enemy or favorite enemy is seen
+/// all around, and a sentient no farther than its `maxvisibledist`. A
+/// sentient's result is remembered when the check was no wider or longer
+/// than the actor's own sight for a sighting, no narrower or shorter for a
+/// miss; an actor seen is told whether it sees back, by its own view.
+pub(crate) fn sight(
+    world: &mut World,
+    actor: u64,
+    target: u64,
+    fov: f32,
+    max_dist_sq: f32,
+) -> bool {
+    let (eye, eye_dir) = eye_view(world, actor);
+    if !is_sentient(world, target) {
+        let at = super::presence::tag_world(world, target, "tag_eye")
+            .map_or_else(|| bounds_centre(world, target), |(at, _)| at);
+        return in_view(eye, eye_dir, at, fov, max_dist_sq)
+            && sight_trace(world, actor, eye, at, target);
+    }
+    let Some(at) = super::natives::t5_turret::sentient_view(world, target).map(|view| view.eye)
+    else {
+        return false;
+    };
+    let favorite = match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "favoriteenemy")
+    {
+        Value::Object(favorite) => Some(favorite),
+        _ => None,
+    };
+    let view_fov = if enemy(world, actor) == Some(target) || favorite == Some(target) {
+        0.0
+    } else {
+        fov
+    };
+    let mut max = max_dist_sq;
+    let visible_dist = max_visible_dist(world, target);
+    let visible_dist_sq = visible_dist * visible_dist;
+    if !(max - visible_dist_sq < 0.0) {
+        max = visible_dist_sq;
+    }
+    let visible =
+        in_view(eye, eye_dir, at, view_fov, max) && sight_trace(world, actor, eye, at, target);
+    let (own_fov, own_max) = sight_limits(world, actor);
+    let remembered = if visible {
+        !(fov < own_fov) && !(own_max < max)
+    } else {
+        !(own_fov < fov) && !(max < own_max)
+    };
+    if remembered {
+        remember(world, actor, target, visible);
+    }
+    if !visible {
+        return false;
+    }
+    let target_is_actor = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&target)
+        .is_some_and(|entity| entity.kind == super::entities::EntityKind::Actor);
+    if target_is_actor && brain(world, target).is_some() {
+        let (target_fov, target_max) = sight_limits(world, target);
+        let mine = max_visible_dist(world, actor);
+        let mine_sq = mine * mine;
+        let back_max = if !(target_max - mine_sq < 0.0) {
+            mine_sq
+        } else {
+            target_max
+        };
+        let (_, target_dir) = eye_view(world, target);
+        let back = in_view(at, target_dir, eye, target_fov, back_max);
+        remember(world, target, actor, back);
+    }
+    true
+}
+
+/// Records a sight check: when it was made, and when the target was last
+/// seen; an actor that newly sees its enemy is told `enemy_visible`.
+fn remember(world: &mut World, actor: u64, target: u64, visible: bool) {
+    let now = super::players::now_ms(world);
+    let Some(was) = with_brain(world, actor, |brain| {
+        let sighting = brain.sightings.entry(target).or_default();
+        let was = sighting.visible;
         sighting.visible = visible;
         sighting.checked = Some(now);
         if visible {
             sighting.seen = Some(now);
         }
-    });
-    visible
+        was
+    }) else {
+        return;
+    };
+    if visible && !was && enemy(world, actor) == Some(target) {
+        raise(world, Value::Object(actor), "enemy_visible", Vec::new());
+    }
+}
+
+/// A sentient's `maxvisibledist`.
+fn max_visible_dist(world: &mut World, object: u64) -> f32 {
+    float_field(
+        &mut world.resource_mut::<RoundScript>(),
+        object,
+        "maxvisibledist",
+    )
+    .unwrap_or(MAX_VISIBLE_DIST)
+}
+
+/// The actor's eye and the way it looks: its `tag_eye` and that tag's
+/// forward axis, level and normalized; else 64 units over its origin and
+/// its facing.
+pub(crate) fn eye_view(world: &mut World, actor: u64) -> ([f32; 3], [f32; 3]) {
+    if let Some((at, axis)) = super::presence::tag_world(world, actor, "tag_eye") {
+        let [x, y, _] = axis[0];
+        let len = (x * x + y * y).sqrt();
+        let len = if -len >= 0.0 { 1.0 } else { len };
+        let inv = 1.0 / len;
+        return (at, [x * inv, y * inv, 0.0]);
+    }
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let origin = vector_field(&mut runtime, actor, "origin").unwrap_or([0.0; 3]);
+    let angles = vector_field(&mut runtime, actor, "angles").unwrap_or([0.0; 3]);
+    let (forward, _, _) = math_iw4::angle_vectors([angles[0], angles[1], 0.0]);
+    (
+        [origin[0], origin[1], origin[2] + EYE_FALLBACK_HEIGHT],
+        forward,
+    )
+}
+
+/// The middle of an entity's bounds, turned with it.
+fn bounds_centre(world: &mut World, object: u64) -> [f32; 3] {
+    let (mins, maxs) = super::triggers::entity_bounds(world, object);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let origin = vector_field(&mut runtime, object, "origin").unwrap_or([0.0; 3]);
+    let angles = vector_field(&mut runtime, object, "angles").unwrap_or([0.0; 3]);
+    let axis = math_iw4::angles_to_axis(angles);
+    let mid: [f32; 3] = std::array::from_fn(|i| (mins[i] + maxs[i]) * 0.5);
+    std::array::from_fn(|i| {
+        let turned = (axis[0][i] * mid[0] + axis[1][i] * mid[1]) + axis[2][i] * mid[2];
+        origin[i] + turned
+    })
+}
+
+/// Whether a point is within a squared distance (0 for any) of the eye and
+/// within a field of view of the way it looks (0 for all around).
+fn in_view(eye: [f32; 3], dir: [f32; 3], at: [f32; 3], fov: f32, max_dist_sq: f32) -> bool {
+    let d = [at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]];
+    let dist_sq = (d[0] * d[0] + d[2] * d[2]) + d[1] * d[1];
+    if max_dist_sq != 0.0 && (dist_sq > max_dist_sq || dist_sq > FOG_SIGHT_DIST_SQ) {
+        return false;
+    }
+    if fov == 0.0 {
+        return true;
+    }
+    let dot = (dir[0] * d[0] + dir[2] * d[2]) + dir[1] * d[1];
+    if 0.0 > dot {
+        return false;
+    }
+    !(dist_sq * fov * fov > dot * dot)
+}
+
+/// A sight trace from the eye to the point, through the actor and the
+/// target: foliage is seen through within `ai_foliageSeeThroughDist`
+/// (an actor that `ignoreclosefoliage` sees through it on that stretch of
+/// the line only).
+fn sight_trace(world: &mut World, actor: u64, eye: [f32; 3], at: [f32; 3], target: u64) -> bool {
+    let through = world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get("ai_foliageSeeThroughDist")
+        .and_then(|value| value.parse::<f32>().ok())
+        .unwrap_or(FOLIAGE_SEE_THROUGH_DIST);
+    let close = matches!(
+        world
+            .resource_mut::<RoundScript>()
+            .object_field(actor, "ignoreclosefoliage"),
+        Value::Int(n) if n != 0
+    );
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let mut frame = crate::frame::FrameWorld::from_world(world);
+    let pass = [actor, target];
+    if close {
+        let d = [at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]];
+        let len = ((d[2] * d[2] + d[0] * d[0]) + d[1] * d[1]).sqrt();
+        let len = if -len >= 0.0 { 1.0 } else { len };
+        let inv = 1.0 / len;
+        let mid: [f32; 3] = std::array::from_fn(|i| through * (inv * d[i]) + eye[i]);
+        crate::game_fire::sight_clear(&mut frame, tick, mid, at, pass, SIGHT_MASK_FOLIAGE)
+            && crate::game_fire::sight_clear(&mut frame, tick, eye, mid, pass, SIGHT_MASK)
+    } else {
+        let d = [at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]];
+        let dist_sq = (d[0] * d[0] + d[2] * d[2]) + d[1] * d[1];
+        let mask = if through * through > dist_sq {
+            SIGHT_MASK
+        } else {
+            SIGHT_MASK_FOLIAGE
+        };
+        crate::game_fire::sight_clear(&mut frame, tick, eye, at, pass, mask)
+    }
 }
 
 /// Whether the enemy was seen within the last ten seconds.

@@ -875,6 +875,21 @@ pub(crate) fn script_blast(
     true
 }
 
+/// A sight trace by the match's collision as it stands, through two script
+/// entities.
+pub(crate) fn sight_clear(
+    world: &mut FrameWorld,
+    tick: Tick,
+    start: [f32; 3],
+    end: [f32; 3],
+    pass: [u64; 2],
+    mask: u32,
+) -> bool {
+    let mut around = MatchFireWorld::new(world, tick, None);
+    let pass = pass.map(|object| around.number_of_object(object));
+    around.sight_clear(start, end, pass, mask)
+}
+
 /// An actor's melee blow as the script host knows it: its eye, facing,
 /// weapon flash and enemy, by script object.
 pub(crate) struct ScriptActorMelee {

@@ -123,9 +123,6 @@ impl LinkEdits {
     }
 }
 
-/// Sight lines run between eyes this high above the feet.
-const EYE_HEIGHT: f32 = 60.0;
-
 /// How many of the closest nodes are traced for a straight walk.
 const REACH_CANDIDATES: usize = 12;
 
@@ -645,10 +642,22 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             goal_position(world, id).is_none_or(|goal| horizontal_distance(goal, point) <= radius);
         Ok(Value::Int(inside.into()))
     });
+    // `cansee(entity, [seconds])`: a sentient by a sight check no older
+    // than that (a quarter second unless given), anything else by a new one.
     registry.register(Method, "cansee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let target = super::natives::engine::entity_id(world, arg(args, 0)?)?;
-        Ok(Value::Int(i32::from(sees(world, id, target))))
+        let seen = if super::actor_brain::is_sentient(world, target) {
+            let max_age = match args.get(1) {
+                Some(_) => i64::from((float(args, 1)? * 1000.0) as i32),
+                None => super::actor_brain::SIGHT_MAX_AGE_MS,
+            };
+            super::actor_brain::can_see_sentient(world, id, target, max_age)
+        } else {
+            let (fov, max_dist_sq) = super::actor_brain::sight_limits(world, id);
+            super::actor_brain::sight(world, id, target, fov, max_dist_sq)
+        };
+        Ok(Value::Int(i32::from(seen)))
     });
     registry.register(Method, "melee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
@@ -1304,22 +1313,6 @@ fn melee(world: &mut World, actor: u64, direction: Option<[f32; 3]>) -> Option<u
         in_melee_charge,
     };
     crate::game_fire::actor_melee(&mut FrameWorld::from_world(world), tick, &blow).flatten()
-}
-
-/// Whether `actor` sees `target`: an eye-to-eye trace clear of the world.
-pub(crate) fn sees(world: &mut World, actor: u64, target: u64) -> bool {
-    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
-    let Some(at) = as_vector(super::players::entity_field(world, target, "origin")) else {
-        return false;
-    };
-    let trace = FrameWorld::from_world(world).trace_clip(
-        [origin[0], origin[1], origin[2] + EYE_HEIGHT],
-        [at[0], at[1], at[2] + EYE_HEIGHT],
-        [0.0; 3],
-        [0.0; 3],
-        MASK_PLAYER_SOLID,
-    );
-    trace.startsolid == 0 && trace.fraction >= 1.0
 }
 
 /// Where the actor's goal is.
