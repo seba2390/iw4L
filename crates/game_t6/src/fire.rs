@@ -116,9 +116,9 @@ const SWIM_WATER_LEVEL: i32 = 4;
 
 fn gun_angles_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.gun_angles",
-        "Black Ops 2 aims a shot along the gun angles its client sends with each command; the runtime's client sends none, so shots go along the view the previous command left",
-        "the client's gun angle computation and the command fields that carry it"
+        "t6.weapons.gun_sway",
+        "a shot goes along the player's view; Black Ops 2's server turns it by its weapon sway (hip fire with a swaying weapon) and adds its view kick and aim-down-sight drift",
+        "Black Ops 2's server weapon sway state, its view kick and its aim-down-sight drift"
     )
 }
 
@@ -803,8 +803,9 @@ impl Shot<'_> {
         self.throw_grenade(weapon, &def, &parms, false, world);
     }
 
-    /// The eye and the axes of the aim: the gun angles, a stacked weapon's
-    /// barrel turned aside by its share of the stack's spread.
+    /// The eye and the axes of the aim: the gun angles (the server's, from
+    /// the view this command left), a stacked weapon's barrel turned aside by
+    /// its share of the stack's spread.
     fn weapon_parms(
         &mut self,
         def: &WeaponDefView<'_>,
@@ -812,11 +813,7 @@ impl Shot<'_> {
         world: &mut dyn FireWorld,
     ) -> Option<WeaponParms> {
         self.gaps.push(gun_angles_unknown());
-        let mut angles = [
-            self.was.viewangles[0],
-            self.was.viewangles[1],
-            self.ps.viewangles[2],
-        ];
+        let mut angles = self.ps.viewangles;
         if def.fire_type() == fire_type::STACKED {
             let count = stack_count(def, world);
             if count > 1 {
