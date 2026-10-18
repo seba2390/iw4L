@@ -862,23 +862,33 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 frame.report_game_gap(gap);
             }
         }
+        // The game's own movement takes the shock: Black Ops 2 marks a living
+        // player shellshocked in its movement flags until the shock ends.
+        crate::game_move::shellshock(
+            &mut frame,
+            id,
+            Some(game_api::movement::ShellshockStart {
+                index,
+                duration_ms: duration,
+                level_time: now,
+            }),
+        );
         let Some(ps) = frame.player_mut(id) else {
             return Ok(Value::Undefined);
         };
         ps.shellshock_index = index;
         ps.shellshock_time = now;
         ps.shellshock_duration = duration;
-        // t6.movement.shellshock: the engine also marks a living player
-        // shellshocked in its movement flags.
         frame.client_meta_mut(id).shellshock = shock;
         Ok(Value::Undefined)
     });
     // player stopshellshock(): ends the shock and its mark.
     registry.register(Method, "stopshellshock", |world, receiver, _| {
         let client = super::super::player::player(world, receiver)?;
-        if let Some(ps) =
-            crate::frame::FrameWorld::from_world(world).player_mut(crate::ClientId(client))
-        {
+        let id = crate::ClientId(client);
+        let mut frame = crate::frame::FrameWorld::from_world(world);
+        crate::game_move::shellshock(&mut frame, id, None);
+        if let Some(ps) = frame.player_mut(id) {
             ps.shellshock_index = 0;
             ps.shellshock_time = 0;
             ps.shellshock_duration = 0;
