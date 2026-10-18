@@ -11,6 +11,7 @@ pub(crate) mod fog;
 pub(crate) mod game;
 mod gump;
 pub(crate) mod pure;
+mod rope;
 pub(crate) mod sound;
 mod touch;
 
@@ -68,6 +69,16 @@ fn sync(client: &mut bevy_ecs::prelude::World) {
         .map_or(0, |r| i64::from(r.tick.0) * i64::from(crate::MATCH_TICK_MS));
     touch::frame(client, now);
     gump::frame(client, now);
+    let eye = crate::script::host::client_scripts::with_server(client, |server| {
+        crate::script_player::eye(
+            &crate::frame::FrameWorld::from_world(server),
+            crate::ClientId(game::LOCAL_CLIENT as u32),
+        )
+    })
+    .flatten();
+    if let Some(eye) = eye {
+        rope::frame(client, now, eye);
+    }
     let poison = super::poison_overlay::PoisonDvars::read(client);
     let revive = super::revive_overlay::read(client);
     crate::script::host::client_scripts::with_server(client, |server| {

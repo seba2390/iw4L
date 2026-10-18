@@ -3781,9 +3781,11 @@ impl ZoneLane for T6Lane {
     }
 }
 
-/// The targetnames of the map's ropes, one per line: the `ClipMap`
-/// constraints of type `CONSTRAINT_ROPE` (8), in map order, which is how
-/// `getrope` numbers them.
+/// The map's ropes, one per line: the `ClipMap` constraints of type
+/// `CONSTRAINT_ROPE` (8), in map order, which is how `getrope` numbers them.
+/// Each line is the targetname, then tab-separated: the start's and end's
+/// attachment types and entities, the start and end points, the length,
+/// the wind scale and the flags.
 fn capture_t6_ropes(load: &ZoneLoad) -> Result<String, String> {
     use asset_world::world_t6::Reader;
     let Some(asset) = load
@@ -3806,8 +3808,25 @@ fn capture_t6_ropes(load: &ZoneLoad) -> Result<String, String> {
             continue;
         }
         let name_id = u16::from_le_bytes([b[0], b[1]]);
+        let word = |off: usize| Reader::word(b, off);
+        let float = |off: usize| Reader::word(b, off).map(f32::from_bits);
         out.push_str(load.script_string(name_id).unwrap_or(""));
-        out.push('\n');
+        out.push_str(&format!(
+            "\t{} {}\t{} {}\t{} {} {}\t{} {} {}\t{}\t{}\t{}\n",
+            word(8)? as i32,
+            word(12)? as i32,
+            word(24)? as i32,
+            word(28)? as i32,
+            float(52)?,
+            float(56)?,
+            float(60)?,
+            float(64)?,
+            float(68)?,
+            float(72)?,
+            float(104)?,
+            float(116)?,
+            word(88)?,
+        ));
     }
     Ok(out)
 }
