@@ -123,13 +123,6 @@ impl LinkEdits {
     }
 }
 
-/// Sight lines run between eyes this high above the feet.
-const EYE_HEIGHT: f32 = 60.0;
-/// How far an actor's melee reaches, and how far off its facing.
-const MELEE_REACH: f32 = 96.0;
-const MELEE_ARC: f32 = 60.0;
-const DEFAULT_MELEE_DAMAGE: i32 = 60;
-
 /// How many of the closest nodes are traced for a straight walk.
 const REACH_CANDIDATES: usize = 12;
 
@@ -381,6 +374,8 @@ pub(crate) struct ActorMove {
     pub(crate) velocity: [f32; 3],
     /// A scripted animation placing the actor, once started.
     scripted: Option<Scripted>,
+    /// When the actor last struck with `melee`: once a frame.
+    melee_time: Option<i64>,
 }
 
 /// A negotiation link being crossed by its begin node's animscript.
@@ -647,67 +642,30 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             goal_position(world, id).is_none_or(|goal| horizontal_distance(goal, point) <= radius);
         Ok(Value::Int(inside.into()))
     });
+    // `cansee(entity, [seconds])`: a sentient by a sight check no older
+    // than that (a quarter second unless given), anything else by a new one.
     registry.register(Method, "cansee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let target = super::natives::engine::entity_id(world, arg(args, 0)?)?;
-        Ok(Value::Int(i32::from(sees(world, id, target))))
+        let seen = if super::actor_brain::is_sentient(world, target) {
+            let max_age = match args.get(1) {
+                Some(_) => i64::from((float(args, 1)? * 1000.0) as i32),
+                None => super::actor_brain::SIGHT_MAX_AGE_MS,
+            };
+            super::actor_brain::can_see_sentient(world, id, target, max_age)
+        } else {
+            let (fov, max_dist_sq) = super::actor_brain::sight_limits(world, id);
+            super::actor_brain::sight(world, id, target, fov, max_dist_sq)
+        };
+        Ok(Value::Int(i32::from(seen)))
     });
     registry.register(Method, "melee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
-        let (origin, angles) = pose(&mut world.resource_mut::<RoundScript>(), id);
-        let enemy = match world
-            .resource_mut::<RoundScript>()
-            .object_field(id, "enemy")
-        {
-            Value::Object(enemy) => enemy,
-            _ => return Ok(Value::Undefined),
+        let direction = match args.first() {
+            Some(_) => Some(vector(args, 0)?),
+            None => None,
         };
-        let Some(client) = world.resource::<RoundScript>().player_client(enemy) else {
-            return Ok(Value::Undefined);
-        };
-        let Some(at) = as_vector(super::players::entity_field(world, enemy, "origin")) else {
-            return Ok(Value::Undefined);
-        };
-        let dist = horizontal_distance(origin, at);
-        let aim_yaw = match args.first() {
-            Some(Value::Vector(dir)) if dir[0] != 0.0 || dir[1] != 0.0 => {
-                Some(dir[1].atan2(dir[0]).to_degrees())
-            }
-            _ if args.is_empty() => None,
-            _ => Some(angles[1]),
-        };
-        let facing_ok = aim_yaw.is_none_or(|yaw| {
-            dist <= 24.0 || math_iw4::angle_subtract(yaw_to(origin, at), yaw).abs() <= MELEE_ARC
-        });
-        if dist > MELEE_REACH || (origin[2] - at[2]).abs() > NODE_STEP_HEIGHT || !facing_ok {
-            return Ok(Value::Undefined);
-        }
-        let amount = match world
-            .resource_mut::<RoundScript>()
-            .object_field(id, "meleedamage")
-        {
-            Value::Int(n) => n,
-            Value::Float(f) => f as i32,
-            _ => DEFAULT_MELEE_DAMAGE,
-        };
-        let inflictor = world.resource::<RoundScript>().presence_of(receiver);
-        world
-            .resource_mut::<RoundScript>()
-            .hits
-            .push(crate::script::ScriptHit {
-                piece: None,
-                target: crate::script::HitTarget::Player(crate::ClientId(client)),
-                amount,
-                origin,
-                attacker: None,
-                attacker_object: Some(id),
-                inflictor,
-                means: "MOD_MELEE",
-                weapon: 0,
-                flags: 0,
-                hitloc: 0,
-            });
-        Ok(Value::Object(enemy))
+        Ok(melee(world, id, direction).map_or(Value::Undefined, Value::Object))
     });
     registry.register(Method, "allowedstances", |world, receiver, args| {
         let stances = (0..args.len())
@@ -1305,20 +1263,56 @@ fn goal_radius(world: &mut World, actor: u64) -> f32 {
     }
 }
 
-/// Whether `actor` sees `target`: an eye-to-eye trace clear of the world.
-pub(crate) fn sees(world: &mut World, actor: u64, target: u64) -> bool {
-    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
-    let Some(at) = as_vector(super::players::entity_field(world, target, "origin")) else {
-        return false;
+/// `melee([direction])`: the actor's blow, once a frame, by the game's melee
+/// rules from its eye towards its enemy; what it struck.
+fn melee(world: &mut World, actor: u64, direction: Option<[f32; 3]>) -> Option<u64> {
+    use super::natives::t5_turret::sentient_view;
+    let now = super::players::now_ms(world);
+    let (angles, weapon, enemy, in_melee_charge) = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let movement = runtime.actor_moves.entry(actor).or_default();
+        if movement.melee_time == Some(now) {
+            return None;
+        }
+        movement.melee_time = Some(now);
+        let (_, angles) = pose(&mut runtime, actor);
+        let weapon = match runtime.object_field(actor, "weapon") {
+            Value::String(name) => Some(name),
+            _ => None,
+        };
+        let enemy = match runtime.object_field(actor, "enemy") {
+            Value::Object(enemy) => Some(enemy),
+            _ => None,
+        };
+        let charge =
+            matches!(runtime.object_field(actor, "inmeleecharge"), Value::Int(n) if n != 0);
+        (angles, weapon, enemy, charge)
     };
-    let trace = FrameWorld::from_world(world).trace_clip(
-        [origin[0], origin[1], origin[2] + EYE_HEIGHT],
-        [at[0], at[1], at[2] + EYE_HEIGHT],
-        [0.0; 3],
-        [0.0; 3],
-        MASK_PLAYER_SOLID,
-    );
-    trace.startsolid == 0 && trace.fraction >= 1.0
+    // An unknown weapon is the game's "none".
+    let weapon = weapon
+        .and_then(|name| FrameWorld::from_world(world).weapon_index_by_script_name(&name))
+        .unwrap_or(0);
+    let eye = sentient_view(world, actor)?.eye;
+    let enemy = enemy.map(|enemy| {
+        let eye = sentient_view(world, enemy)
+            .filter(|view| view.client.is_none())
+            .map(|view| view.eye);
+        (enemy, eye)
+    });
+    let flash_forward =
+        super::presence::tag_world(world, actor, "tag_flash").map(|(_, axis)| axis[0]);
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let blow = crate::game_fire::ScriptActorMelee {
+        actor,
+        eye,
+        angles: [angles[0], angles[1], 0.0],
+        flash_forward,
+        enemy,
+        direction,
+        weapon,
+        in_melee_charge,
+    };
+    crate::game_fire::actor_melee(&mut FrameWorld::from_world(world), tick, &blow).flatten()
 }
 
 /// Where the actor's goal is.

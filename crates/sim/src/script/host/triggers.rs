@@ -178,6 +178,32 @@ pub(crate) fn damage_line(
     missile: Option<crate::ProjectileId>,
     means: &'static str,
 ) {
+    let activator = match missile {
+        Some(missile) => Activator::Missile(client, missile),
+        None => Activator::Client(client),
+    };
+    damage_line_by(world, start, end, amount, activator, means);
+}
+
+/// Who damages a trigger.
+#[derive(Clone, Copy)]
+pub(crate) enum Activator {
+    Client(crate::ClientId),
+    /// A player's missile: its owner, else the world.
+    Missile(crate::ClientId, crate::ProjectileId),
+    /// An entity, such as an actor striking.
+    Object(u64),
+}
+
+/// [`damage_line`] by any activator.
+pub(crate) fn damage_line_by(
+    world: &mut World,
+    start: [f32; 3],
+    end: [f32; 3],
+    amount: i32,
+    activator: Activator,
+    means: &'static str,
+) {
     if amount <= 0
         || world
             .get_resource::<RoundScript>()
@@ -188,7 +214,11 @@ pub(crate) fn damage_line(
     let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
     let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
     let hit = TriggerHit {
-        activator: attacker(&runtime, Some(client), missile),
+        activator: match activator {
+            Activator::Client(client) => attacker(&runtime, Some(client), None),
+            Activator::Missile(client, missile) => attacker(&runtime, Some(client), Some(missile)),
+            Activator::Object(object) => Value::Object(object),
+        },
         amount,
         direction: normalized(std::array::from_fn(|i| end[i] - start[i])),
         point: [0.0; 3],

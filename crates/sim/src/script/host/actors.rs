@@ -10,16 +10,152 @@ const SPAWNER_ONLY_FIELDS: [&str; 3] = ["count", "spawnflags", "export"];
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::Method;
     registry.register(Method, "codespawnerforcespawn", |world, receiver, _| {
-        spawn_from(world, receiver)
+        spawn_from(world, receiver, true)
+    });
+    // The zombie scripts' `DoSpawn` and `StalingradSpawn` are Black Ops'
+    // spawner spawn and forced spawn.
+    registry.register(Method, "codespawnerspawn", |world, receiver, _| {
+        spawn_from(world, receiver, false)
     });
     registry.register(Method, "dospawn", |world, receiver, _| {
-        spawn_from(world, receiver)
+        spawn_from(world, receiver, false)
     });
+}
+
+/// The box a spawn point needs clear, from its origin.
+const SPAWN_BOX: ([f32; 3], [f32; 3]) = ([-15.0, -15.0, 0.0], [15.0, 15.0, 70.0]);
+/// The box a player's sight of a spawn point is traced to, and the points
+/// in it, as fractions of its size.
+const SPAWN_SIGHT_BOX: ([f32; 3], [f32; 3]) = ([-15.0, -15.0, 0.0], [15.0, 15.0, 72.0]);
+const SPAWN_SIGHT_POINTS: [[f32; 3]; 11] = [
+    [0.5, 0.5, 0.8],
+    [0.5, 0.5, 0.5],
+    [0.5, 0.5, 0.2],
+    [0.0, 0.0, 1.0],
+    [0.0, 1.0, 1.0],
+    [1.0, 1.0, 1.0],
+    [1.0, 0.0, 1.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0],
+];
+/// What a player's sight of a spawn point stops at.
+const SPAWN_SIGHT_MASK: u32 = 0x1801;
+/// The fog's limit on that sight, which Black Ops never sets (see the
+/// actor sight's), and the share of the distance it takes.
+const SPAWN_SIGHT_FOG_SQ: f32 = f32::MAX;
+const SPAWN_SIGHT_FOG_SCALE: f32 = 0.685584;
+
+/// Why a spawn did not happen: Black Ops prints these.
+fn spawn_refused(world: &mut World, spawner: u64, why: &str) -> Result<Value, String> {
+    let name = spawner_name(world, spawner);
+    diag::info!(Sim, "couldn't spawn from {name}: {why}");
+    Ok(Value::Undefined)
+}
+
+fn spawner_name(world: &mut World, spawner: u64) -> String {
+    match world
+        .resource_mut::<RoundScript>()
+        .object_field(spawner, "targetname")
+    {
+        Value::String(name) => name.to_string(),
+        _ => "<unnamed>".into(),
+    }
+}
+
+/// A live player or a living actor stands where the spawn would put its
+/// actor.
+fn spawn_point_taken(world: &mut World, origin: [f32; 3]) -> bool {
+    let mins: [f32; 3] = std::array::from_fn(|i| origin[i] + SPAWN_BOX.0[i]);
+    let maxs: [f32; 3] = std::array::from_fn(|i| origin[i] + SPAWN_BOX.1[i]);
+    let candidates: Vec<(u64, Option<u32>)> = {
+        let runtime = world.resource::<RoundScript>();
+        runtime
+            .entities
+            .iter()
+            .filter(|(object, entity)| {
+                entity.kind == EntityKind::Actor || runtime.player_client(**object).is_some()
+            })
+            .map(|(object, _)| (*object, runtime.player_client(*object)))
+            .collect()
+    };
+    candidates.into_iter().any(|(object, client)| {
+        let (low, high) = super::triggers::entity_bounds(world, object);
+        let at = match world
+            .resource_mut::<RoundScript>()
+            .object_field(object, "origin")
+        {
+            Value::Vector(at) => at,
+            _ => return false,
+        };
+        let overlaps = (0..3).all(|i| at[i] + low[i] <= maxs[i] && at[i] + high[i] >= mins[i]);
+        if !overlaps {
+            return false;
+        }
+        match client {
+            // Black Ops asks for a player that is not dead.
+            Some(client) => crate::frame::FrameWorld::from_world(world)
+                .client_meta(crate::ClientId(client))
+                .is_some_and(|meta| meta.lifecycle == crate::match_state::ClientLifecycle::Alive),
+            None => matches!(
+                world.resource_mut::<RoundScript>().object_field(object, "health"),
+                Value::Int(n) if n > 0
+            ),
+        }
+    })
+}
+
+/// An allied player sees the spawn point: a clear sight line from its eye
+/// to any of the points over it.
+fn spawn_point_seen(world: &mut World, spawner: u64, origin: [f32; 3]) -> bool {
+    let players: Vec<u64> = world
+        .resource::<RoundScript>()
+        .players
+        .values()
+        .map(|slot| slot.object)
+        .collect();
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    players.into_iter().any(|player| {
+        let allied = matches!(
+            world.resource_mut::<RoundScript>().object_field(player, "team"),
+            Value::String(team) if team.as_bytes() == b"allies"
+        );
+        let Some(eye) = super::natives::t5_turret::sentient_view(world, player)
+            .filter(|_| allied)
+            .map(|view| view.eye)
+        else {
+            return false;
+        };
+        let d: [f32; 3] = std::array::from_fn(|i| eye[i] - origin[i]);
+        let dist_sq = (d[0] * d[0] + d[2] * d[2]) + d[1] * d[1];
+        if dist_sq * SPAWN_SIGHT_FOG_SCALE > SPAWN_SIGHT_FOG_SQ {
+            return false;
+        }
+        let (low, high) = SPAWN_SIGHT_BOX;
+        let mut frame = crate::frame::FrameWorld::from_world(world);
+        SPAWN_SIGHT_POINTS.iter().any(|frac| {
+            let point: [f32; 3] =
+                std::array::from_fn(|i| (high[i] - low[i]) * frac[i] + origin[i] + low[i]);
+            crate::game_fire::sight_clear(
+                &mut frame,
+                tick,
+                eye,
+                point,
+                [player, spawner],
+                SPAWN_SIGHT_MASK,
+            )
+        })
+    })
 }
 
 /// Spawns an actor from a map spawner: it takes the spawner's place and keys,
 /// runs its aitype script, and the spawner is told `spawned`.
-fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
+/// Black Ops' spawner spawn, once a frame per spawner: refused while
+/// `ai_disableSpawn` is set, the spawner's count is 0 or the AI limit's
+/// actors are in use; unless forced, also while a live player or a living
+/// actor stands on the spawn point or an allied player sees it.
+fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, String> {
     let spawner_id = entity_id(world, spawner)?;
     let (classname, count) = {
         let mut runtime = world.resource_mut::<RoundScript>();
@@ -30,12 +166,6 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
             .ok_or("spawner is gone")?;
         (classname, runtime.object_field(spawner_id, "count"))
     };
-    let Some(aitype) = classname.strip_prefix("actor_") else {
-        return Err(format!("{classname} is not an actor spawner"));
-    };
-    if matches!(count, Value::Int(n) if n <= 0) {
-        return Ok(Value::Undefined);
-    }
     let (origin, angles) = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let pose = |runtime: &mut RoundScript, name| match runtime.object_field(spawner_id, name) {
@@ -44,6 +174,62 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         };
         (pose(&mut runtime, "origin"), pose(&mut runtime, "angles"))
     };
+    let Some(aitype) = classname.strip_prefix("actor_") else {
+        let builtin = if force {
+            "CodeSpawnerForceSpawn"
+        } else {
+            "CodeSpawnerSpawn"
+        };
+        let name = spawner_name(world, spawner_id);
+        return Err(format!(
+            "{builtin} can only be called on actor spawners\nattempted to call {builtin} on entity with name '{name}' of type '{classname}' at ({:.0} {:.0} {:.0})\n",
+            origin[0], origin[1], origin[2]
+        ));
+    };
+    let now = super::players::now_ms(world);
+    if world
+        .resource::<RoundScript>()
+        .spawner_times
+        .get(&spawner_id)
+        .is_some_and(|&at| at >= now)
+    {
+        return Ok(Value::Undefined);
+    }
+    let disabled = world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get("ai_disableSpawn")
+        .is_some_and(|value| value.parse::<f32>().is_ok_and(|n| n != 0.0));
+    if disabled {
+        return spawn_refused(world, spawner_id, "spawning is off (ai_disableSpawn)");
+    }
+    if count == Value::Int(0) {
+        return spawn_refused(world, spawner_id, "its count is 0");
+    }
+    let (limit, in_use) = {
+        let runtime = world.resource::<RoundScript>();
+        let in_use = runtime
+            .entities
+            .values()
+            .filter(|entity| entity.kind == EntityKind::Actor)
+            .count();
+        (runtime.ai_limit, in_use)
+    };
+    if limit != 0 && in_use >= limit as usize {
+        return Ok(Value::Undefined);
+    }
+    if !force {
+        if spawn_point_taken(world, origin) {
+            return spawn_refused(world, spawner_id, "the spawn point would telefrag");
+        }
+        if spawn_point_seen(world, spawner_id, origin) {
+            return spawn_refused(world, spawner_id, "a player can see the spawn point");
+        }
+    }
+    world
+        .resource_mut::<RoundScript>()
+        .spawner_times
+        .insert(spawner_id, now);
 
     let presence = super::presence::spawn_presence(world, origin)?;
     let number = crate::frame::FrameWorld::from_world(world).gentity_number(presence);

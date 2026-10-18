@@ -918,6 +918,14 @@ impl PlayerMovement for T5Movement {
         Some(crate::radius::radius_damage(blast, world))
     }
 
+    fn actor_melee(
+        &self,
+        melee: &game_api::fire::ActorMelee,
+        world: &mut dyn game_api::fire::FireWorld,
+    ) -> Option<(i32, Vec<&'static Unknown>)> {
+        Some(crate::fire::actor_melee(melee, world))
+    }
+
     fn run_missile(
         &self,
         missile: &mut game_api::fire::GameMissile,

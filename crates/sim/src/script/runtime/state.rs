@@ -51,6 +51,10 @@ pub(crate) struct RoundScript {
     pub(crate) actor_moves: BTreeMap<u64, host::actor_nav::ActorMove>,
     /// Each enemy's hellhound attack spots, by the dogs holding them.
     pub(crate) dog_spots: BTreeMap<u64, host::actor_dog::AttackSpots>,
+    /// When each actor spawner last spawned (ms); one spawn a frame.
+    pub(crate) spawner_times: BTreeMap<u64, i64>,
+    /// `setailimit`: no spawn while this many actors are in use (0: none).
+    pub(crate) ai_limit: i32,
     /// Script objects standing for path nodes, by node index.
     pub(crate) path_node_objects: BTreeMap<u16, u64>,
     pub(crate) hud_slots: BTreeMap<u64, usize>,
@@ -161,6 +165,8 @@ impl RoundScript {
             actor_brains: Default::default(),
             actor_moves: Default::default(),
             dog_spots: Default::default(),
+            spawner_times: Default::default(),
+            ai_limit: Default::default(),
             path_node_objects: Default::default(),
             hud_slots: Default::default(),
             pool_numbers: Default::default(),

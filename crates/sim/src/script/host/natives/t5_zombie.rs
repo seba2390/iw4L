@@ -15,21 +15,41 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .collect();
         new_array(world, players)
     });
+    // `GetAIArray([team, ...])`: living actors on any of the teams (all when
+    // none is named), dogs and actors whose death is held off left out.
     registry.register(Function, "getaiarray", |world, _, args| {
-        let team = optional_team(args)?;
-        let actors = living_actors(world, team.as_deref())
-            .into_iter()
-            .map(Value::Object)
-            .collect();
+        let mut mask = 0;
+        for index in 0..args.len() {
+            mask |= team_mask(&super::super::args::string(args, index)?)?;
+        }
+        if mask == 0 {
+            mask = ALL_TEAMS;
+        }
+        let actors = ai_array(world, mask, |species| {
+            !matches!(species, "dog" | "zombie_dog")
+        })
+        .into_iter()
+        .map(Value::Object)
+        .collect();
         new_array(world, actors)
     });
-    // `GetAISpeciesArray(team, species)`: every actor here is of one species.
+    // `GetAISpeciesArray([team], [species])`: living actors on the team (or
+    // all) of the species (or all), actors whose death is held off left out.
     registry.register(Function, "getaispeciesarray", |world, _, args| {
-        let team = optional_team(&args[..args.len().min(1)])?;
-        let actors = living_actors(world, team.as_deref())
-            .into_iter()
-            .map(Value::Object)
-            .collect();
+        let mask = match args.first() {
+            Some(_) => team_mask(&super::super::args::string(args, 0)?)?,
+            None => ALL_TEAMS,
+        };
+        let species = match args.get(1) {
+            Some(_) => species_named(&super::super::args::string(args, 1)?)?,
+            None => None,
+        };
+        let actors = ai_array(world, mask, |own| {
+            species.is_none_or(|wanted| wanted == own)
+        })
+        .into_iter()
+        .map(Value::Object)
+        .collect();
         new_array(world, actors)
     });
     registry.register(Function, "issentient", |world, _, args| {
@@ -98,7 +118,19 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(0))
     });
     // The host keeps no AI budget, water simulation or exploder ids of its own.
-    registry.register(Function, "setailimit", |_, _, _| Ok(Value::Undefined));
+    // `SetAILimit(n)`: actor spawns fail while n actors are in use.
+    registry.register(Function, "setailimit", |world, _, args| {
+        let limit = super::super::args::int(args, 0)?;
+        if !(0..=32).contains(&limit) {
+            return Err("SetAILimit must take a value between 0 and 32 inclusive.".into());
+        }
+        world.resource_mut::<RoundScript>().ai_limit = limit;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "resetailimit", |world, _, _| {
+        world.resource_mut::<RoundScript>().ai_limit = 0;
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
     registry.register(Method, "setexploderid", |_, _, _| Ok(Value::Undefined));
     // Script-state tracing is a developer aid; `haseyes` sets the entity's
@@ -551,7 +583,37 @@ fn spawners(world: &mut World) -> Vec<u64> {
 }
 
 /// Actors alive on `team` (or any team), in entity order.
-fn living_actors(world: &mut World, team: Option<&str>) -> Vec<u64> {
+/// The teams `getaiarray` takes: axis, allies and neutral.
+const ALL_TEAMS: u32 = 0xe;
+
+/// A team name's bit in Black Ops' team mask.
+fn team_mask(name: &str) -> Result<u32, String> {
+    match name {
+        "axis" => Ok(1 << 1),
+        "allies" => Ok(1 << 2),
+        "neutral" => Ok(1 << 3),
+        "all" => Ok(ALL_TEAMS),
+        _ => Err(format!(
+            "unknown team '{name}' in getaiarray (should be axis, allies, or neutral)"
+        )),
+    }
+}
+
+/// A species name; `None` for all.
+fn species_named(name: &str) -> Result<Option<&'static str>, String> {
+    match name {
+        "all" => Ok(None),
+        _ => ["human", "dog", "zombie", "zombie_dog"]
+            .into_iter()
+            .find(|species| *species == name)
+            .map(Some)
+            .ok_or_else(|| format!("unknown species '{name}' (should be human, dog, or all)")),
+    }
+}
+
+/// Living actors, in entity order, on a team in the mask whose species
+/// `keep` takes; an actor whose death is held off is left out.
+fn ai_array(world: &mut World, mask: u32, keep: impl Fn(&str) -> bool) -> Vec<u64> {
     let actors: Vec<u64> = world
         .resource::<RoundScript>()
         .entities
@@ -559,19 +621,24 @@ fn living_actors(world: &mut World, team: Option<&str>) -> Vec<u64> {
         .filter(|(_, entity)| entity.kind == EntityKind::Actor)
         .map(|(id, _)| *id)
         .collect();
-    let mut runtime = world.resource_mut::<RoundScript>();
     actors
         .into_iter()
         .filter(|&id| {
-            let alive = match runtime.object_field(id, "health") {
-                Value::Int(n) => n > 0,
-                Value::Float(f) => f > 0.0,
-                _ => false,
+            if !super::super::actor_brain::alive(world, id) {
+                return false;
+            }
+            let mut runtime = world.resource_mut::<RoundScript>();
+            let delayed =
+                matches!(runtime.object_field(id, "delayeddeath"), Value::Int(n) if n != 0);
+            let bit = match runtime.object_field(id, "team") {
+                Value::String(team) => team_mask(&team).ok().filter(|&bit| bit != ALL_TEAMS),
+                _ => None,
             };
-            let on_team = team.is_none_or(|team| {
-                matches!(runtime.object_field(id, "team"), Value::String(own) if own.as_bytes() == team.as_bytes())
-            });
-            alive && on_team
+            let species = match runtime.object_field(id, "type") {
+                Value::String(species) => species.to_string(),
+                _ => String::new(),
+            };
+            !delayed && bit.is_some_and(|bit| bit & mask != 0) && keep(&species)
         })
         .collect()
 }
