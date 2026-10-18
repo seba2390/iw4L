@@ -2157,7 +2157,7 @@ fn publish_weapon_fire(
         )
     {
         let client = i32::try_from(local.0.0).unwrap_or(0);
-        view_kick.fire(&rules, client, ps, weapons.registry());
+        view_kick.fire(&rules, &ps.move_player(client, false), weapons.registry());
     }
     let last_shot = is_weapon_fire_last_shot_event(fire.event.event);
     let alias = identities.get(fire.entity).ok().and_then(|_| {

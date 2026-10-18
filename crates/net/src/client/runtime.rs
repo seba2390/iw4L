@@ -1193,9 +1193,7 @@ pub fn sample_client_input(
     let mut cmd = build_usercmd(&mut actions, &look, 0);
     use_reload_as_reload(&mut actions, &mut cmd, ps);
     look.angles = cmd.angles;
-    for (angle, kick) in cmd.angles.iter_mut().zip(kick.0) {
-        *angle = angle.wrapping_add((kick * input_iw4::ANGLE2SHORT) as i32);
-    }
+    cmd.angles = kick.turn(cmd.angles);
     if !frozen
         && aim.live
         && ps.is_some_and(|ps| aim.weapon == playerstate_iw4::get_viewmodel_weapon_index(ps))

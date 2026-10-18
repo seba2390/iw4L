@@ -33,14 +33,12 @@ impl GameViewKick {
     pub(crate) fn fire(
         &mut self,
         rules: &ViewKickRules,
-        client: i32,
-        ps: &playerstate_iw4::PlayerState,
+        player: &game_api::movement::MovePlayer,
         registry: &asset_game::WeaponRegistry,
     ) {
-        let player = ps.move_player(client, false);
         let weapons = |weapon: u32| kick_weapon(registry, weapon);
         let mut kick = self.kick;
-        (rules.fire)(&player, &weapons, &mut || self.rand(), &mut kick);
+        (rules.fire)(player, &weapons, &mut || self.rand(), &mut kick);
         self.kick = kick;
     }
 }
