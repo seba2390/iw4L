@@ -228,6 +228,42 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     // No water volumes are simulated.
     registry.register(Method, "depthinwater", |_, _, _| Ok(Value::Float(0.0)));
+    registry.register(Function, "absangleclamp180", |_, _, args| {
+        Ok(Value::Float(abs_angle_clamp180(super::super::args::float(
+            args, 0,
+        )?)))
+    });
+    // A single-player public demo build answers true; this is not one.
+    registry.register(Function, "iscoopepd", |_, _, args| {
+        if !args.is_empty() {
+            return Err("USAGE: bool = IsCoopEPD()\n".into());
+        }
+        Ok(Value::Int(0))
+    });
+    // Black Ops' handler does nothing.
+    registry.register(Method, "givegamerpicture", |_, _, _| Ok(Value::Undefined));
+    registry.register(Function, "weaponisboltaction", |world, _, args| {
+        let name = super::super::args::string(args, 0)?;
+        let frame = crate::frame::FrameWorld::from_world(world);
+        let Some(index) = frame
+            .weapon_index_by_script_name(&name)
+            .filter(|_| !name.eq_ignore_ascii_case("none"))
+        else {
+            return Err(if name.eq_ignore_ascii_case("none") {
+                format!("Weapon name \"{name}\" is not valid.\n")
+            } else {
+                format!(
+                    "Unknown weapon name \"{name}\": script may need to call PreCacheItem(\"{name}\") during level init.\n"
+                )
+            });
+        };
+        Ok(Value::Int(
+            frame.weapon_combat_row_or_none(index).bolt_action.into(),
+        ))
+    });
+    registry.register(Method, "uploadscore", |world, receiver, args| {
+        upload_score(world, receiver, args)
+    });
     registry.register(Function, "missionfailed", |world, _, _| {
         mission_failed(world)?;
         Ok(Value::Undefined)
@@ -243,6 +279,50 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     ] {
         registry.register(Function, name, |_, _, _| Ok(Value::Undefined));
     }
+}
+
+/// An angle's distance from 0 in degrees, 0 to 180: the angle in turns
+/// less its floor (rounded through the float's 2^23 trick), back in
+/// degrees, folded at 180.
+fn abs_angle_clamp180(angle: f32) -> f32 {
+    let turns = angle * (1.0 / 360.0);
+    let sign = f32::from_bits(turns.to_bits() & 0x8000_0000);
+    let magic = f32::from_bits(0x4b00_0000 | sign.to_bits());
+    let mut floor = turns + magic - magic;
+    // `cmpnless`: one less when rounding went up (or the difference is NaN).
+    if !(floor - turns <= sign) {
+        floor -= 1.0;
+    }
+    let degrees = (turns - floor) * 360.0;
+    if degrees > 180.0 {
+        360.0 - degrees
+    } else {
+        degrees
+    }
+}
+
+/// `uploadScore(leaderboard, value, …)`: nothing in a system link game;
+/// else the receiver must be a player and take 2 to 10 integers, which
+/// Black Ops sends that player's client as its leaderboard write command.
+/// No client here keeps a leaderboard, so nothing is sent.
+fn upload_score(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    // `systemlink` defaults to 0.
+    let systemlink = world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get("systemlink")
+        .is_some_and(|value| value.trim() == "1");
+    if systemlink {
+        return Ok(Value::Undefined);
+    }
+    super::player::player(world, receiver)?;
+    if !(2..=10).contains(&args.len()) {
+        return Err("Incorrect number of parameters\n".into());
+    }
+    for index in 0..args.len() {
+        super::super::args::int(args, index)?;
+    }
+    Ok(Value::Undefined)
 }
 
 /// Every client is sent the failure's client dvar; with a player in the level

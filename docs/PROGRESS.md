@@ -108,8 +108,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 149 of 610 |
-| Five (`t5:zombie_pentagon`) | 151 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 144 of 610 |
+| Five (`t5:zombie_pentagon`) | 146 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
