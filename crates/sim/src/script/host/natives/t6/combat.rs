@@ -254,15 +254,6 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
         return Ok(Value::Undefined);
     }
     let damage = melee_damage(world, id)?;
-    if world
-        .resource::<RoundScript>()
-        .player_client_of(&strike.entity)
-        .is_none()
-    {
-        return Err(format!(
-            "t6.actors.melee_entities: a swing struck an entity that is not a player nor an actor of its team, for {damage}"
-        ));
-    }
     // A player's part is its body model's own part classification, which
     // numbers Black Ops 2's hit locations.
     let hit_location = Some(usize::from(strike.hitloc))

@@ -440,7 +440,13 @@ impl FireWorld for MatchFireWorld<'_, '_> {
 
     fn penetration_depth(&self, penetrate_type: i32, surface_type: i32) -> Option<f32> {
         if !self.world.pen_table_loaded() {
-            return None;
+            // A game whose scripts the runtime runs keeps its table in the
+            // zones' raw files.
+            return crate::script::host::natives::t6::zone_penetration_depth(
+                self.world.ecs_ref(),
+                penetrate_type,
+                surface_type,
+            );
         }
         Some(
             self.world
@@ -450,8 +456,10 @@ impl FireWorld for MatchFireWorld<'_, '_> {
     }
 
     fn hit_location_multiplier(&self, hit_location: i32) -> Option<f32> {
-        self.content
-            .hit_location_multiplier(usize::try_from(hit_location).ok()?)
+        let location = usize::try_from(hit_location).ok()?;
+        self.content.hit_location_multiplier(location).or_else(|| {
+            crate::script::host::natives::t6::zone_location_scale(self.world.ecs_ref(), location)
+        })
     }
 
     fn damage(&mut self, damage: &FireDamage) {
