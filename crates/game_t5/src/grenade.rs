@@ -203,7 +203,7 @@ pub(crate) fn fire_grenade(
         ]
     });
     spawn_grenade(
-        owner, weapon, def, muzzle, vel, carried, true, false, fuse, world, gaps,
+        owner, weapon, def, muzzle, vel, carried, true, false, None, fuse, world, gaps,
     );
 }
 
@@ -247,7 +247,59 @@ pub(crate) fn launch_grenade(
         carried,
         false,
         true,
+        None,
         def.fuse_time(),
+        world,
+        gaps,
+    );
+}
+
+/// What a grenade left by a bolt sticks in: the entity struck (the world
+/// for none) and the surface's normal.
+#[derive(Clone, Copy)]
+pub(crate) struct Stuck {
+    pub(crate) on: i32,
+    pub(crate) normal: [f32; 3],
+}
+
+/// A bolt's grenade (its weapon's `grenadeWeapon`) left where the bolt
+/// struck: stuck there, its fuse the grenade weapon's. Black Ops links it
+/// to the entity and bone struck; here it stays at the point.
+pub(crate) fn leave_grenade(
+    owner: i32,
+    weapon: u32,
+    start: [f32; 3],
+    dir: [f32; 3],
+    stuck: Stuck,
+    world: &mut dyn FireWorld,
+    gaps: &mut Vec<&'static Unknown>,
+) {
+    let Some((def_bytes, variant_bytes)) = world
+        .weapon(weapon)
+        .map(|w| (w.def.clone(), w.variant.clone()))
+    else {
+        gaps.push(crate::movement::weapon_unknown());
+        return;
+    };
+    let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
+        gaps.push(crate::movement::weapon_unknown());
+        return;
+    };
+    if stuck.on != ENTITY_WORLD {
+        gaps.push(grenade_unknown());
+    }
+    let fuse = def.fuse_time();
+    spawn_grenade(
+        owner,
+        weapon,
+        &def,
+        start,
+        dir,
+        [0.0; 3],
+        false,
+        false,
+        Some(stuck),
+        fuse,
         world,
         gaps,
     );
@@ -266,6 +318,7 @@ fn spawn_grenade(
     carried: [f32; 3],
     rotate: bool,
     launched: bool,
+    stuck: Option<Stuck>,
     fuse: i32,
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
@@ -312,7 +365,8 @@ fn spawn_grenade(
         bounce: true,
         grenade: true,
         launched,
-        ground: ENTITY_NONE,
+        ground: stuck.map_or(ENTITY_NONE, |stuck| stuck.on),
+        rest_normal: stuck.map_or([0.0; 3], |stuck| stuck.normal),
         explode_at: light_fuse(owner, def, fuse, level, world),
         spawned_at: level,
         ..State::default()
@@ -323,12 +377,21 @@ fn spawn_grenade(
         entity: ENTITY_NONE,
         owner,
         weapon,
-        position: GameTrajectory {
-            kind: TrajectoryKind::Gravity(gravity(world)),
-            time: level,
-            duration: 0,
-            base: start,
-            delta,
+        position: match stuck {
+            Some(_) => GameTrajectory {
+                kind: TrajectoryKind::Stationary,
+                time: 0,
+                duration: 0,
+                base: start,
+                delta: [0.0; 3],
+            },
+            None => GameTrajectory {
+                kind: TrajectoryKind::Gravity(gravity(world)),
+                time: level,
+                duration: 0,
+                base: start,
+                delta,
+            },
         },
         angles: spin,
         origin: start,

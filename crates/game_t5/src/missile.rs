@@ -26,6 +26,8 @@ const MOD_PROJECTILE_SPLASH: usize = 6;
 const MOD_IMPACT: usize = 16;
 /// `weaponType`: a projectile weapon.
 const WEAPTYPE_PROJECTILE: i32 = 2;
+/// `projExplosionType` grenade: the projectile leaves its grenade weapon.
+const EXPLOSION_GRENADE: i32 = 9;
 /// The surface flags of a strike on flesh, alone.
 const SURF_FLESH: u32 = 7 << 20;
 /// How fast and how head on a strike crumples a bouncing projectile.
@@ -37,6 +39,14 @@ fn missile_unknown() -> &'static Unknown {
         "t5.weapons.missile",
         "a missile that accelerates, curves, destabilises, is guided, bounces or sticks flies straight instead",
         "Black Ops' missile acceleration, curvature, destabilisation, guidance, bounce and stick rules"
+    )
+}
+
+fn bolt_unknown() -> &'static Unknown {
+    unknown!(
+        "t5.weapons.bolt",
+        "a bolt (crossbow, ballistic knife) shows no impact where it strikes, and a retrievable one is not left to pick up",
+        "Black Ops' bolt impact event and its retrievable weapon objects"
     )
 }
 
@@ -520,11 +530,9 @@ fn impact(
             gaps.push(missile_unknown());
             return Some(MissileRun::Gone);
         }
-        if !(state.bounce && !def.proj_impact_explode()) {
-            gaps.push(missile_unknown());
-            return None;
-        }
-        if !crumples(missile, def, trace, world) {
+        // A projectile that neither explodes on impact nor bounces ends
+        // where it strikes, by its explosion type.
+        if state.bounce && !def.proj_impact_explode() && !crumples(missile, def, trace, world) {
             crate::grenade::bounce(missile, def, state, trace, end, world, gaps);
             return None;
         }
@@ -538,15 +546,44 @@ fn impact(
         trace.normal
     };
     gaps.push(missile_water_unknown());
-    world.explosion(&MissileExplosion {
-        missile: missile.entity,
-        owner: missile.owner,
-        weapon: missile.weapon,
-        origin: end,
-        normal,
-        surface_type: surface_type(trace) as u8,
-    });
-    if def.explosion_inner_damage() != 0 {
+    if def.proj_explosion_type() == EXPLOSION_GRENADE {
+        // A bolt: it leaves its grenade where it struck.
+        gaps.push(bolt_unknown());
+        let grenade = world
+            .weapon(missile.weapon)
+            .map_or(0, |weapon| weapon.grenade_weapon);
+        if grenade != 0 {
+            let on = match trace.hit {
+                BulletHitType::Entity(entity) => entity,
+                _ => ENTITY_WORLD,
+            };
+            crate::grenade::leave_grenade(
+                missile.owner,
+                grenade,
+                end,
+                dir,
+                crate::grenade::Stuck {
+                    on,
+                    normal: trace.normal,
+                },
+                world,
+                gaps,
+            );
+        }
+    } else {
+        world.explosion(&MissileExplosion {
+            missile: missile.entity,
+            owner: missile.owner,
+            weapon: missile.weapon,
+            origin: end,
+            normal,
+            surface_type: surface_type(trace) as u8,
+        });
+    }
+    if def.retrievable() || def.die_on_respawn() {
+        gaps.push(bolt_unknown());
+    }
+    if def.proj_impact_explode() && def.explosion_inner_damage() != 0 {
         let cone = (def.damage_cone_angle() - 180.0 < 0.0)
             .then(|| ((def.damage_cone_angle() * DEG2RAD) as f64).cos() as f32);
         // The entity struck directly is spared the blast, unless it has its
