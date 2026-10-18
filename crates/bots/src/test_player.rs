@@ -75,6 +75,11 @@
 //! frag from the first hit on (or that many milliseconds after he spawns), so
 //! he goes down with it in hand.
 //!
+//! `IW4L_TEST_LUNGE=1` (with any fighting mode): it waits for the actor in
+//! sight and, inside 200 units, walks at it pressing melee every other tick, naming the
+//! target the game's own automelee picks as a client's command does; each
+//! pick is logged, and his speed for a second after.
+//!
 //! `IW4L_TEST_REVIVE=1`: when a teammate is down, the player goes beside
 //! him and holds use to revive him.
 //!
@@ -124,7 +129,7 @@ use sim::{
     BulletTraceQuery, ClientAction, ClientId, ClientLifecycle, ColliderId, Tick, TraceOutcome,
 };
 
-use crate::motor::{UserCmd, buttons};
+use crate::motor::{PlayerState, UserCmd, buttons};
 use crate::roster::BotRoster;
 
 /// The height above an actor's origin it aims near: its chest. It aims at
@@ -141,6 +146,8 @@ const SWARM: usize = 2;
 /// It knifes an actor whose aim point is this near its eye: Black Ops 2's
 /// `player_zombieMeleeRange` default.
 const KNIFE_REACH: f32 = 85.0;
+/// The lunge test presses melee this near an actor.
+const LUNGE_FROM: f32 = 200.0;
 const LOG_PERIOD_MS: i32 = 5000;
 /// The throw test throws this often, at an actor at least this far.
 const THROW_PERIOD_MS: i32 = 15_000;
@@ -321,6 +328,9 @@ pub(crate) struct TestPlayer {
     next_log_ms: i32,
     shots: u32,
     knifes: u32,
+    /// The lunge test's last command and when it last named a target.
+    last_cmd: UserCmd,
+    lunged_ms: Option<i32>,
     /// The throw test's next throw, and until when it holds the button.
     next_throw_ms: i32,
     throw_until_ms: i32,
@@ -1955,6 +1965,22 @@ pub(crate) fn drive_test_player(
         .is_some_and(|(_, _, actor_id)| world.0.object_field_text(actor_id, "cant_melee") != "1");
     let target = target.map(|(aim, _, _)| aim);
     aim_cmd(&mut cmd, target.map_or(ps.viewangles, |aim| look(eye, aim)));
+    if std::env::var("IW4L_TEST_LUNGE").is_ok() {
+        lunge(
+            &mut test,
+            &world.0,
+            id,
+            &ps,
+            &snapshot,
+            eye,
+            target,
+            clock.time_ms,
+            &mut cmd,
+        );
+        test.last_cmd = cmd;
+        cmds.push(id, cmd);
+        return;
+    }
     if let Ok(throw_arg) = std::env::var("IW4L_TEST_THROW") {
         let cook = throw_arg == "cook";
         let named = (throw_arg != "1" && !cook).then_some(throw_arg.as_str());
@@ -2043,6 +2069,86 @@ pub(crate) fn drive_test_player(
         cmd.forwardmove = -127;
     }
     cmds.push(id, cmd);
+}
+
+/// It walks at the actor in sight and, inside lunge range, presses melee
+/// every other tick with the target the game's automelee picks.
+#[allow(clippy::too_many_arguments)]
+fn lunge(
+    test: &mut TestPlayer,
+    world: &sim::SimWorld,
+    id: ClientId,
+    ps: &PlayerState,
+    snapshot: &sim::Snapshot,
+    eye: [f32; 3],
+    target: Option<[f32; 3]>,
+    now: i32,
+    cmd: &mut UserCmd,
+) {
+    if let Some(since) = test.lunged_ms
+        && now - since <= 1000
+    {
+        let v = ps.velocity;
+        diag::info!(
+            Sim,
+            "test player: lunge +{}ms at {} speed {:.0}",
+            now - since,
+            fmt_point(ps.origin),
+            (v[0] * v[0] + v[1] * v[1]).sqrt()
+        );
+    }
+    let Some(aim) = target else {
+        return;
+    };
+    if flat_distance(eye, aim) > LUNGE_FROM {
+        return;
+    }
+    cmd.forwardmove = 127;
+    // A press is tried only while the last command had none, and kept only
+    // when the game picks a target for it.
+    if test.last_cmd.buttons & buttons::MELEE_CHARGE != 0 {
+        return;
+    }
+    cmd.buttons |= buttons::MELEE_CHARGE;
+    let candidates: Vec<_> = snapshot
+        .meta
+        .script_movers
+        .iter()
+        .filter(|mover| mover.aim_target)
+        .map(|mover| sim::AimCandidate {
+            entity: mover.state.number,
+            origin: mover.state.tr_base,
+            angles: mover.state.apos_tr_base,
+        })
+        .collect();
+    let visible = |_entity: i32, point: [f32; 3]| {
+        world
+            .trace_static_world(eye, point, [0.0; 3], [0.0; 3], sim::MASK_SHOT)
+            .fraction
+            >= 1.0
+    };
+    let last = test.last_cmd;
+    let Some(pick) = world.melee_target(id, ps, cmd, &last, eye, None, &candidates, &visible)
+    else {
+        cmd.buttons &= !buttons::MELEE_CHARGE;
+        return;
+    };
+    {
+        cmd.melee_charge_ent = u16::try_from(pick.entity).ok();
+        cmd.melee_charge_dist = pick.dist;
+        cmd.melee_charge_yaw = pick.yaw;
+        test.lunged_ms = Some(now);
+        diag::info!(
+            Sim,
+            "test player: lunge picks entity {} at {} units (dist {}, yaw {:.1}) from {} (weapon state {})",
+            pick.entity,
+            flat_distance(eye, aim) as i32,
+            pick.dist,
+            pick.yaw,
+            fmt_point(ps.origin),
+            ps.weaponstate_primary
+        );
+    }
 }
 
 /// `IW4L_TEST_TIMING`: logs each change of his weapon's state with how long

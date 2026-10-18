@@ -94,14 +94,6 @@ fn target_velocity_unknown() -> &'static Unknown {
     )
 }
 
-fn melee_lunge_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.melee_lunge",
-        "a Black Ops 2 melee lunge: the client found a target, but IW4L's command carries no target entity, so the knife swings in place",
-        "Black Ops 2's client melee target selection and the entity it sends in the command"
-    )
-}
-
 fn t6_entity(entity: i32) -> i32 {
     match entity {
         ENTITY_NONE => ENTITYNUM_NONE,
@@ -603,9 +595,6 @@ impl PlayerMovement for T6Movement {
         });
         movement_t6::load_held(&mut ps, &adapter, &held);
         let mut outcome = MoveOutcome::default();
-        if cmd.melee_charge_dist != 0 {
-            outcome.gaps.push(melee_lunge_unknown());
-        }
         let view_weapon;
         {
             let mut pm = Pm::new(&mut ps, t6cmd, last, mask, &adapter);
