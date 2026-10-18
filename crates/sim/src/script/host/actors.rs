@@ -68,13 +68,26 @@ fn spawn_from(world: &mut World, spawner: &Value) -> Result<Value, String> {
         runtime.set_object_field(id, "origin", Value::Vector(origin));
         runtime.set_object_field(id, "angles", Value::Vector(angles));
         runtime.set_object_field(id, "code_classname", Value::string("actor"));
-        runtime.set_object_field(id, "movemode", Value::string("run"));
+        // Black Ops' actor defaults.
+        runtime.set_object_field(id, "movemode", Value::string("stop"));
+        runtime.set_object_field(id, "allowpain", Value::Int(1));
+        runtime.set_object_field(id, "allowdeath", Value::Int(0));
+        for (name, value) in [
+            ("goalradius", 4.0),
+            ("goalheight", 80.0),
+            ("walkdist", 128.0),
+        ] {
+            if runtime.object_field(id, name) == Value::Undefined {
+                runtime.set_object_field(id, name, Value::Float(value));
+            }
+        }
         runtime.set_object_field(id, "ignoreme", Value::Int(0));
         runtime.set_object_field(id, "ignoreall", Value::Int(0));
         runtime.set_object_field(id, "safetochangescript", Value::Int(1));
         runtime.set_object_field(id, "leanamount", Value::Float(0.0));
         runtime.set_object_field(id, "damageyaw", Value::Int(0));
         runtime.set_object_field(id, "lookaheaddir", Value::Vector([0.0; 3]));
+        runtime.set_object_field(id, "isfacingmotion", Value::Int(0));
         runtime.set_object_field(id, "lookaheaddist", Value::Float(0.0));
         if let Value::Int(n) = count {
             runtime.set_object_field(spawner_id, "count", Value::Int(n - 1));
@@ -166,7 +179,8 @@ pub(crate) fn damage(
 /// it: nothing for no damage; a dead actor is only told
 /// `damage_afterdeath`; a living one loses the health, is told `damage`,
 /// and at no health left (held at -999 at most) is told `death` before the
-/// killed callback runs. Each notify then goes to the face event callback.
+/// killed callback runs and the AI dies; with health left it feels pain.
+/// Each notify then goes to the face event callback.
 fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value, String> {
     let amount = match args.get(2) {
         Some(Value::Int(n)) => *n,
@@ -208,7 +222,7 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         Value::Float(f) => f as i32,
         _ => 0,
     };
-    if before <= 0 {
+    if !super::actor_brain::alive(world, actor) {
         raise(
             world,
             Value::Object(actor),
@@ -219,36 +233,9 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         return Ok(Value::Undefined);
     }
     let after = (before - amount).max(-999);
-    {
-        let mut runtime = world.resource_mut::<RoundScript>();
-        runtime.set_object_field(actor, "health", Value::Int(after));
-        // The last hit, as the engine records it on the actor for scripts.
-        let yaw = match runtime.object_field(actor, "angles") {
-            Value::Vector(v) => v[1],
-            _ => 0.0,
-        };
-        let dir = match arg(7) {
-            Value::Vector(v) => v,
-            _ => [0.0; 3],
-        };
-        let from = if dir[0] == 0.0 && dir[1] == 0.0 {
-            0.0
-        } else {
-            let deg = dir[1].atan2(dir[0]).to_degrees();
-            if deg < 0.0 { deg + 360.0 } else { deg }
-        };
-        let turns = (from - yaw) * (1.0 / 360.0);
-        let damage_yaw = ((turns - (turns + 0.5).floor()) * 360.0) as i32;
-        runtime.set_object_field(actor, "damagetaken", Value::Int(amount));
-        runtime.set_object_field(actor, "damageyaw", Value::Int(damage_yaw));
-        runtime.set_object_field(actor, "damagemod", arg(4));
-        runtime.set_object_field(actor, "damageweapon", arg(5));
-        runtime.set_object_field(actor, "damagedir", arg(7));
-        runtime.set_object_field(actor, "damagelocation", arg(8));
-        if !matches!(arg(1), Value::Undefined) {
-            runtime.set_object_field(actor, "attacker", arg(1));
-        }
-    }
+    world
+        .resource_mut::<RoundScript>()
+        .set_object_field(actor, "health", Value::Int(after));
     raise(world, Value::Object(actor), "damage", notify_args);
     face_event(world, actor, "damage");
     if after < 1 {
@@ -284,7 +271,18 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
         if let Err(fault) = run_now(world, ACTOR_KILLED, Value::Object(actor), killed, now) {
             diag::warn!(Sim, "actor killed callback: {fault:?}");
         }
-        super::actor_brain::kill(world, actor);
+        super::actor_brain::die(world, actor, &arg(1), &arg(4), &arg(5), &arg(7), &arg(8));
+    } else {
+        super::actor_brain::pain(
+            world,
+            actor,
+            &arg(1),
+            amount,
+            &arg(4),
+            &arg(7),
+            &arg(8),
+            &arg(5),
+        );
     }
     Ok(Value::Undefined)
 }

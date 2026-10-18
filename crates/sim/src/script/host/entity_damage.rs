@@ -479,6 +479,9 @@ pub(crate) struct ShotTarget {
     pub ai_type: Option<&'static str>,
     pub ignore_locational_damage: bool,
     pub allow_death: bool,
+    /// An actor whose pending AI states (scripted animation, negotiation)
+    /// hold off a lethal hit.
+    pub delays_death: bool,
     pub origin: [f32; 3],
     pub angles: [f32; 3],
     pub script_model: bool,
@@ -522,6 +525,7 @@ pub(crate) fn shot_target(world: &mut World, target: ScriptModelId) -> Option<Sh
         int(runtime.object_field(object, "ignorelocationaldamage")).is_some_and(|n| n != 0);
     // Black Ops spawns its actors with allowdeath off.
     let allow_death = int(runtime.object_field(object, "allowdeath")).is_some_and(|n| n != 0);
+    let delays_death = actor && super::actor_brain::delays_death(&runtime, object);
     let vector = |value: Value| match value {
         Value::Vector(v) => v,
         _ => [0.0; 3],
@@ -581,6 +585,7 @@ pub(crate) fn shot_target(world: &mut World, target: ScriptModelId) -> Option<Sh
         ai_type,
         ignore_locational_damage,
         allow_death,
+        delays_death,
         origin,
         angles,
         script_model,

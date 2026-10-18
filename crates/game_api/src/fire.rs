@@ -78,6 +78,8 @@ pub struct FireEntity {
     pub ignore_locational_damage: bool,
     /// An actor's `allowdeath`.
     pub allow_death: bool,
+    /// An actor whose AI states hold off a lethal hit while it may not die.
+    pub delays_death: bool,
     /// God mode: no damage at all.
     pub god: bool,
     /// Demigod: damage never takes the last point of health.
@@ -208,6 +210,9 @@ pub trait FireWorld {
 
     /// Notifies `name` on an entity with these arguments.
     fn notify(&mut self, entity: i32, name: &str, args: &[NotifyArg]);
+
+    /// Records on an actor that a lethal hit was held off.
+    fn set_delayed_death(&mut self, _entity: i32) {}
 
     /// The map's centre a script set; missiles too far from it are gone.
     fn map_center(&self) -> [f32; 3];

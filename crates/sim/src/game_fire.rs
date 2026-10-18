@@ -341,6 +341,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 team,
                 ignore_locational_damage: false,
                 allow_death: true,
+                delays_death: false,
                 god: false,
                 demigod: false,
                 ai_type: None,
@@ -368,6 +369,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             team: team_of(target.team),
             ignore_locational_damage: target.ignore_locational_damage,
             allow_death: target.allow_death,
+            delays_death: target.delays_death,
             god: false,
             demigod: false,
             ai_type: target.ai_type,
@@ -644,6 +646,17 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             .collect();
         if let Some(receiver) = receiver {
             crate::script::notify_entity(self.world.ecs(), receiver, name, &args);
+        }
+    }
+
+    fn set_delayed_death(&mut self, entity: i32) {
+        if let Some(object) = self.object_of(entity)
+            && let Some(mut runtime) = self
+                .world
+                .ecs()
+                .get_resource_mut::<crate::script::RoundScript>()
+        {
+            runtime.set_object_field(object, "delayeddeath", crate::script::Value::Int(1));
         }
     }
 
