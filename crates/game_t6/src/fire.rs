@@ -92,6 +92,16 @@ const DROP_SPEED: f32 = 160.0;
 const DROP_HEIGHT: f32 = 40.0;
 /// The damage of a grenade gone off in its thrower's hand.
 const SUICIDE_DAMAGE: i32 = 100_000;
+/// A bullet trace's priority for each hit location (none, helmet, head,
+/// neck, the torso, arms, hands, legs, feet, gun, shield): a part outranks
+/// every lower one along the ray, 0 and 1 are never hit (a part of class 0
+/// takes its parent's), and the shield's 101 cuts the ray short.
+const PISTOL_HIT_PRIORITY: [u8; 21] = [
+    1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 101,
+];
+const RIFLE_HIT_PRIORITY: [u8; 21] = [
+    1, 11, 11, 11, 10, 9, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 4, 3, 3, 0, 101,
+];
 /// The eye is never lower than this above the feet.
 const EYE_FLOOR: f32 = 8.0;
 /// A melee blow's push lifts its direction by this.
@@ -123,11 +133,19 @@ fn antilag_unknown() -> &'static Unknown {
     )
 }
 
-fn hit_priority_unknown() -> &'static Unknown {
+fn hit_priority_order_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.hit_priority",
-        "which body part a bullet or blow hits where parts overlap is the runtime's choice, not Black Ops 2's rifle or pistol part priority",
-        "Black Ops 2's hit location priority lists in the runtime's locational trace"
+        "t6.weapons.hit_priority_order",
+        "where a shot crosses two bodies, Black Ops 2 tries them in its entity sectors' order, each one's parts only up to the nearest hit so far; the runtime tries players, then entities, by number",
+        "the server's entity sector order in the runtime's locational trace"
+    )
+}
+
+fn melee_bounds_unknown() -> &'static Unknown {
+    unknown!(
+        "t6.weapons.melee_bounds",
+        "a melee blow's trace carries no hit priority, so Black Ops 2 hits a player or actor at its bounds with no hit location; the runtime traces their parts",
+        "players' and actors' bounds in the runtime's melee trace"
     )
 }
 
@@ -495,6 +513,9 @@ struct WeaponParms {
 /// One bullet's state along its path.
 #[derive(Clone, Copy)]
 struct BulletParams {
+    /// The weapon fires rifle bullets: its trace takes the rifle hit
+    /// priority.
+    rifle: bool,
     weapon_entity: i32,
     ignore_entity: i32,
     damage_multiplier: f32,
@@ -889,7 +910,7 @@ impl Shot<'_> {
     ) {
         let time = antilag_time(self.ps.command_time, world);
         self.gaps.push(antilag_unknown());
-        self.gaps.push(hit_priority_unknown());
+        self.gaps.push(hit_priority_order_unknown());
         self.gaps.push(dynents_unknown());
         let spread_class = matches!(
             def.weapon_class(),
@@ -912,6 +933,7 @@ impl Shot<'_> {
             }
             let (end, dir) = bullet_end(&mut seed, spread, parms, range, shot, shots, flat);
             let mut bp = BulletParams {
+                rifle: def.rifle_bullet(),
                 weapon_entity: attacker,
                 ignore_entity: attacker,
                 damage_multiplier,
@@ -942,7 +964,17 @@ impl Shot<'_> {
         world: &mut dyn FireWorld,
     ) -> (bool, BulletResults) {
         let mut br = BulletResults {
-            trace: world.bullet_trace(bp.start, bp.end, bp.ignore_entity, BULLET_MASK),
+            trace: world.locational_trace(
+                bp.start,
+                bp.end,
+                bp.ignore_entity,
+                BULLET_MASK,
+                if bp.rifle {
+                    &RIFLE_HIT_PRIORITY
+                } else {
+                    &PISTOL_HIT_PRIORITY
+                },
+            ),
             ..BulletResults::default()
         };
         if br.trace.hit == BulletHitType::None && !br.sky() {
@@ -1556,7 +1588,7 @@ impl Shot<'_> {
             )
         };
         self.gaps.push(antilag_unknown());
-        self.gaps.push(hit_priority_unknown());
+        self.gaps.push(melee_bounds_unknown());
         self.gaps.push(dynents_unknown());
         let damage = def.melee_damage();
         let parms = WeaponParms {

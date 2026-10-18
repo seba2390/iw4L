@@ -162,6 +162,47 @@ impl<'w, 'a> MatchFireWorld<'w, 'a> {
         })
     }
 
+    /// A trace through the world, players and entities; each body's part
+    /// chosen by `priority` when given.
+    fn trace_bodies(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        pass_entity: i32,
+        mask: u32,
+        priority: Option<&[u8]>,
+    ) -> BulletTrace {
+        let glass: HashMap<u32, u16> = self
+            .world
+            .world_objects()
+            .glass_damage_pairs()
+            .into_iter()
+            .collect();
+        let outcome = crate::bullet_collision::bullet_trace_prioritized(
+            self.world.clip_brushes(),
+            self.world.clip_bsp(),
+            self.world.clip_cmodels(),
+            self.world.clip_mesh(),
+            &self.query.players.poses,
+            &self.query.entities.rows,
+            &BulletTraceQuery {
+                start,
+                end,
+                mask,
+                ignore: self.client(pass_entity),
+                ignore_hit: None,
+                ignore_model: self.model(pass_entity),
+            },
+            &|piece| {
+                crate::world_objects::glass_piece_is_solid(
+                    glass.get(&u32::from(piece)).copied().unwrap_or(0),
+                )
+            },
+            priority,
+        );
+        self.trace_of(outcome)
+    }
+
     fn trace_of(&mut self, outcome: TraceOutcome) -> BulletTrace {
         let (fraction, normal, collider, start_solid, all_solid) = match outcome {
             TraceOutcome::Miss { .. } | TraceOutcome::Invalid { .. } => {
@@ -281,34 +322,18 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         pass_entity: i32,
         mask: u32,
     ) -> BulletTrace {
-        let glass: HashMap<u32, u16> = self
-            .world
-            .world_objects()
-            .glass_damage_pairs()
-            .into_iter()
-            .collect();
-        let outcome = crate::bullet_collision::bullet_trace_with_entity_models(
-            self.world.clip_brushes(),
-            self.world.clip_bsp(),
-            self.world.clip_cmodels(),
-            self.world.clip_mesh(),
-            &self.query.players.poses,
-            &self.query.entities.rows,
-            &BulletTraceQuery {
-                start,
-                end,
-                mask,
-                ignore: self.client(pass_entity),
-                ignore_hit: None,
-                ignore_model: self.model(pass_entity),
-            },
-            &|piece| {
-                crate::world_objects::glass_piece_is_solid(
-                    glass.get(&u32::from(piece)).copied().unwrap_or(0),
-                )
-            },
-        );
-        self.trace_of(outcome)
+        self.trace_bodies(start, end, pass_entity, mask, None)
+    }
+
+    fn locational_trace(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        pass_entity: i32,
+        mask: u32,
+        priority: &[u8],
+    ) -> BulletTrace {
+        self.trace_bodies(start, end, pass_entity, mask, Some(priority))
     }
 
     fn entity(&mut self, entity: i32) -> Option<FireEntity> {

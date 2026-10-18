@@ -548,6 +548,32 @@ fn capture_movement_brushes(
     Some(brushes)
 }
 
+/// The smallest squared radius of a bone the game's hit test tries.
+const MIN_HIT_RADIUS_SQ: f32 = 4.0;
+
+/// Each bone's hit class as the game's hit test reads it: a bone of class
+/// 0 takes its parent's (a root bone keeps its own).
+fn part_classes(r: &Reader<'_>, model: &T6Model<'_>, num_bones: usize) -> Option<Vec<u8>> {
+    let classes = model.h_ptr(off::PART_CLASSIFICATION)?;
+    let num_root_bones = usize::from(model.h_u8(off::NUM_ROOT_BONES));
+    let parents = model.h_ptr(off::PARENT_LIST);
+    let mut out: Vec<u8> = Vec::with_capacity(num_bones);
+    for bone in 0..num_bones {
+        let mut class = r.u8(classes.at(bone as u32))?;
+        if class == 0
+            && bone >= num_root_bones
+            && let Some(parents) = parents
+        {
+            let offset = usize::from(r.u8(parents.at((bone - num_root_bones) as u32))?);
+            if let Some(&parent) = bone.checked_sub(offset).and_then(|p| out.get(p)) {
+                class = parent;
+            }
+        }
+        out.push(class);
+    }
+    Some(out)
+}
+
 #[allow(clippy::type_complexity)]
 fn capture_collision(
     r: &Reader<'_>,
@@ -573,11 +599,16 @@ fn capture_collision(
     };
     let mut bones = Vec::new();
     if let Some(info) = model.h_ptr(off::BONE_INFO) {
-        let classes = model.h_ptr(off::PART_CLASSIFICATION)?;
+        let classes = part_classes(r, model, num_bones)?;
         for bone in 0..num_bones as u32 {
             let row = info.at(bone * XBONE_INFO);
             let radius_sq = r.f32(row.at(36))?;
             if radius_sq == 0.0 {
+                bones.push(None);
+                continue;
+            }
+            // The game's hit test passes over a part smaller than this.
+            if radius_sq.is_finite() && radius_sq < MIN_HIT_RADIUS_SQ {
                 bones.push(None);
                 continue;
             }
@@ -589,7 +620,7 @@ fn capture_collision(
                 midpoint,
                 half_size,
                 radius_sq,
-                part_classification: r.u8(classes.at(bone))?,
+                part_classification: classes[bone as usize],
             }));
         }
     }

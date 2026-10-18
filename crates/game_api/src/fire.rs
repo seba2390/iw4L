@@ -150,6 +150,20 @@ pub trait FireWorld {
         mask: u32,
     ) -> BulletTrace;
 
+    /// [`Self::bullet_trace`] where each body's part is chosen by `priority`,
+    /// one entry per hit location, as the game's locational trace does.
+    fn locational_trace(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        pass_entity: i32,
+        mask: u32,
+        priority: &[u8],
+    ) -> BulletTrace {
+        let _ = priority;
+        self.bullet_trace(start, end, pass_entity, mask)
+    }
+
     fn entity(&mut self, entity: i32) -> Option<FireEntity>;
 
     /// How deep a bullet of `penetrate_type` goes into `surface_type`, from
