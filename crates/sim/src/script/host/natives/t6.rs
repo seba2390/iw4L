@@ -1894,7 +1894,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "disablegrenadesuicide", |world, _, _| {
-        world.insert_resource(GrenadeSuicideDisabled);
+        world.resource_mut::<RoundScript>().engine.grenade_suicide_disabled = true;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "enablegrenadesuicide", |world, _, _| {
+        world.resource_mut::<RoundScript>().engine.grenade_suicide_disabled = false;
         Ok(Value::Undefined)
     });
     // Demo bookmarks only matter while a demo records.
@@ -2541,10 +2545,6 @@ fn absolute_bounds(world: &mut World, id: u64) -> ([f32; 3], [f32; 3]) {
     };
     (low.map(|v| v - 1.0), high.map(|v| v + 1.0))
 }
-
-/// `disablegrenadesuicide` was called.
-#[derive(Resource)]
-struct GrenadeSuicideDisabled;
 
 /// Each registered client system's state, for every client or one.
 #[derive(Resource, Default)]
