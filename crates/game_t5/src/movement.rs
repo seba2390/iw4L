@@ -81,7 +81,7 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
 fn events_unknown() -> &'static Unknown {
     unknown!(
         "t5.movement.events",
-        "Black Ops' movement events and player animations are not played: landings, fall damage, stance and jump sounds, other players' footsteps, the legs and torso animations others see",
+        "Black Ops' movement events and player animations are not played (fall damage is): landing sounds, stance and jump sounds, other players' footsteps, the legs and torso animations others see",
         "Black Ops' client event handling and player animation script from its executable"
     )
 }
@@ -529,6 +529,7 @@ impl PlayerMovement for T5Movement {
             let mut pm = Pm::new(&mut ps, t5cmd, last, mask, &adapter);
             pm.zombiemode = self.zombies;
             pm.client_side = context.predicting;
+            pm.move_yaw = context.move_yaw;
             let out = movement_t5::pmove(&mut pm);
             outcome.walking = out.walking;
             outcome.bounds = Some((out.mins, out.maxs));

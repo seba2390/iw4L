@@ -423,11 +423,16 @@ fn append_foreign_leftover(
     prefix: Vec<ComparatorRecord>,
     foreign_leftover: Vec<ComparatorRecord>,
 ) -> Result<Vec<ComparatorRecord>, CatalogBuildError> {
+    // Materials past the retail sort range share its last band, as the
+    // foreign leftovers do (a map with more of its own than the range holds,
+    // Dead Ops Arcade beside the common set, keeps its order up to there).
     if prefix.len() > SortedMaterialOrdinal::RETAIL_LIMIT {
-        return Err(CatalogBuildError::SortedMaterialCapacity {
-            count: prefix.len(),
-            capacity: SortedMaterialOrdinal::RETAIL_LIMIT,
-        });
+        diag::warn!(
+            World,
+            "sorted materials: {} past the retail range of {} share its last band",
+            prefix.len() - SortedMaterialOrdinal::RETAIL_LIMIT,
+            SortedMaterialOrdinal::RETAIL_LIMIT
+        );
     }
     let mut keep = prefix;
     keep.extend(foreign_leftover);

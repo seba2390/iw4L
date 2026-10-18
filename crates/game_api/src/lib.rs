@@ -7,6 +7,7 @@ pub mod fog;
 pub mod hud;
 pub mod movement;
 pub mod post;
+pub mod top_down;
 pub mod turret;
 pub mod ui;
 
@@ -348,6 +349,9 @@ pub struct ModeRules {
     /// What a client does when a player fires; `None` runs Modern Warfare
     /// 2's.
     pub client_fire: Option<fire::ClientFireRules>,
+    /// The game's camera from above the players, which its client dvars
+    /// turn on; `None` keeps every client in its player's eye.
+    pub top_down: Option<top_down::TopDownRules>,
     /// How a client's viewmodel plays the game's own weapon animation
     /// numbers; `None` reads them as Modern Warfare 2's.
     pub viewmodel: Option<ViewmodelRules>,

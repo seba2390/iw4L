@@ -165,6 +165,16 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
         )
         .scoped::<super::fire_autosim::AutoFireSounds>(frame::MatchScope::Live)
         .scoped::<super::view_kick::GameViewKick>(frame::MatchScope::Live)
+        .scoped::<super::top_down::GameTopDown>(frame::MatchScope::Live)
+        .add_systems(
+            Update,
+            super::top_down::run_top_down
+                .after(frame::PresentedPublished)
+                .before(render_anim::occupancy::view_kick::sync_camera_from_presented)
+                .before(render_scene::GfxSceneAdd)
+                .in_set(ClientSet::Present)
+                .in_set(frame::InMatch),
+        )
         .add_systems(
             Update,
             (

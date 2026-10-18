@@ -1,8 +1,8 @@
 use bevy::prelude::Resource;
 use input_iw4::{
     ANGLE2SHORT, AdjustAnglesInput, CL_ANGLESPEEDKEY_DEFAULT, CL_PITCHSPEED_DEFAULT,
-    CL_YAWSPEED_DEFAULT, ClientInput, CreateCmdInput, adjust_angles, axis_to_move, create_cmd,
-    mouse_move_angles, sample_move,
+    CL_YAWSPEED_DEFAULT, ClientInput, CreateCmdInput, adjust_angles, apply_mouse_sensitivity,
+    axis_to_move, create_cmd, mouse_move_angles, sample_move,
 };
 use playerstate_iw4::UserCmd;
 use playerstate_iw4::buttons;
@@ -33,6 +33,54 @@ impl AimKick {
     /// A command's angles turned by the kick.
     pub fn turn(&self, angles: [i32; 3]) -> [i32; 3] {
         std::array::from_fn(|i| angles[i].wrapping_add((self.0[i] * ANGLE2SHORT) as i32))
+    }
+}
+
+/// A game camera from above the player aims through its own cursor: while
+/// one shows, the mouse leaves the look alone and goes to the game's rules,
+/// which hand back how far to turn it.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct CursorAim {
+    /// Such a camera shows; set each frame by the game's rules.
+    pub active: bool,
+    /// The mouse since the rules last took it, after sensitivity: right and
+    /// down.
+    pub mouse: [f32; 2],
+    /// The turn the rules ask of the look, in degrees (pitch, yaw), not yet
+    /// made.
+    pub turn: [f32; 2],
+}
+
+impl CursorAim {
+    /// While the camera shows, the frame's mouse goes to the rules instead
+    /// of the look.
+    pub(crate) fn take_mouse(&mut self, actions: &mut ClientActionInput) {
+        if !self.active {
+            self.mouse = [0.0; 2];
+            return;
+        }
+        let (right, down) = apply_mouse_sensitivity(
+            actions.mouse_x,
+            actions.mouse_y,
+            actions.mouse_x.abs() + actions.mouse_y.abs(),
+            actions.frame_msec.max(1) as f32,
+            actions.sensitivity,
+            actions.mouse_accel,
+            actions.fov_scale,
+        );
+        self.mouse[0] += right;
+        self.mouse[1] += down;
+        actions.mouse_x = 0.0;
+        actions.mouse_y = 0.0;
+        actions.pad_look_delta = [0.0; 2];
+    }
+
+    /// The look turned as the rules asked.
+    pub(crate) fn turn_look(&mut self, look: &mut LookState) {
+        let turn = std::mem::take(&mut self.turn);
+        for (axis, degrees) in turn.into_iter().enumerate() {
+            look.angles[axis] = look.angles[axis].wrapping_add((degrees * ANGLE2SHORT) as i32);
+        }
     }
 }
 
@@ -176,7 +224,7 @@ pub fn build_usercmd(input: &mut ClientActionInput, look: &LookState, server_tim
 
     let mouse_counts = input.mouse_x.abs() + input.mouse_y.abs();
     let frame_f = frame as f32;
-    let (mx, my) = input_iw4::apply_mouse_sensitivity(
+    let (mx, my) = apply_mouse_sensitivity(
         input.mouse_x,
         input.mouse_y,
         mouse_counts,
@@ -215,7 +263,7 @@ pub fn build_usercmd(input: &mut ClientActionInput, look: &LookState, server_tim
 }
 
 pub fn remote_control_axes(input: &ClientActionInput, mouse_x: f32, mouse_y: f32) -> [u8; 2] {
-    let (mx, my) = input_iw4::apply_mouse_sensitivity(
+    let (mx, my) = apply_mouse_sensitivity(
         mouse_x,
         mouse_y,
         mouse_x.abs() + mouse_y.abs(),

@@ -273,6 +273,9 @@ pub(crate) fn server_events(
             ev::DETONATE | ev::GRENADE_SUICIDE => {
                 gaps.push(fire_unknown());
             }
+            ev::FALL_DAMAGE..=FALL_DAMAGE_LAST => {
+                fall_damage(ps.client_num, parm, &mut gaps, world)
+            }
             _ => {}
         }
     }
@@ -1496,6 +1499,54 @@ pub(crate) fn damage(
         bone,
         time_offset: 0,
     });
+}
+
+/// The last fall damage event: one per surface type.
+const FALL_DAMAGE_LAST: i32 = ev::FALL_DAMAGE + 30;
+/// The share of health a fall of 100% or more takes.
+const FALL_DAMAGE_FULL: f32 = 1.1;
+
+/// A player's fall: the event's percent of its maximum health (110% from
+/// 100 up), no attacker.
+fn fall_damage(
+    client: i32,
+    percent: i32,
+    gaps: &mut Vec<&'static Unknown>,
+    world: &mut dyn FireWorld,
+) {
+    let Some(entity) = world.entity(client) else {
+        return;
+    };
+    if entity.kind != FireEntityKind::Player {
+        return;
+    }
+    let share = if percent >= 100 {
+        FALL_DAMAGE_FULL
+    } else {
+        percent as f32 * 0.01
+    };
+    if share == 0.0 {
+        return;
+    }
+    let amount = (entity.max_health as f32 * share) as i32;
+    damage(
+        gaps,
+        ENTITY_WORLD,
+        ENTITY_WORLD,
+        entity,
+        Hit {
+            target: client,
+            dir: [0.0; 3],
+            point: [0.0; 3],
+            amount,
+            flags: 0,
+            means: MOD_FALLING,
+            weapon: 0,
+            location: 0,
+            bone: None,
+        },
+        world,
+    );
 }
 
 /// A means of death's number, by its script name.

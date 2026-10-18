@@ -885,9 +885,10 @@ pub fn sample_client_input(
         Res<crate::ViewweaponAim>,
         Res<LocalCmdOverride>,
         Res<crate::client::input::AimKick>,
+        ResMut<crate::client::input::CursorAim>,
     ),
 ) {
-    let (mut cursor, aim, driven, kick) = aim_cursor;
+    let (mut cursor, aim, driven, kick, mut cursor_aim) = aim_cursor;
     push_phase(trace, "Input");
     if !gate.local_cmds_enabled {
         actions.client.weapon_cycles.clear();
@@ -1025,6 +1026,8 @@ pub fn sample_client_input(
             actions.pad_look_delta = [0.0; 2];
             mouse
         });
+    cursor_aim.take_mouse(&mut actions);
+    cursor_aim.turn_look(&mut look);
     let look_state = ps
         .zip(presented.shellshock(local.0))
         .map(|(ps, shock)| {
