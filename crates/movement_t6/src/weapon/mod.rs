@@ -163,7 +163,8 @@ pub mod offhand_class {
 /// while it follows the right.
 const LEFT_FOLLOWS: u32 = weap_anim::LEFT_FOLLOWS;
 
-fn start_anim(ps: &mut PlayerState, anim: u32) {
+/// Starts a view model animation in the right hand; a dead player's stays.
+pub fn start_anim(ps: &mut PlayerState, anim: u32) {
     if ps.pm_type < pm_type::DEAD {
         ps.weap_anim = (!ps.weap_anim & weap_anim::TOGGLE) | anim;
     }
@@ -575,7 +576,9 @@ fn can_ads<W: MoveWorld>(pm: &Pm<'_, W>, pml: &Pml) -> bool {
             if ps.link_flags & 4 != 0 {
                 return true;
             }
-            if ps.e_flags & e_flags::VEHICLE_VIEW == 0 || ps.e_flags2 & e_flags2::MOUNTED == 0 {
+            if ps.e_flags & e_flags::VEHICLE_VIEW == 0
+                || ps.e_flags2 & e_flags2::REMOTE_CONTROL == 0
+            {
                 return false;
             }
         }
@@ -747,7 +750,9 @@ pub(crate) fn pm_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         return;
     }
     let ps = &mut *pm.ps;
-    if ps.pm_type >= pm_type::DEAD && ps.link_flags & 4 == 0 && ps.e_flags2 & e_flags2::MOUNTED == 0
+    if ps.pm_type >= pm_type::DEAD
+        && ps.link_flags & 4 == 0
+        && ps.e_flags2 & e_flags2::REMOTE_CONTROL == 0
     {
         ps.weapon = 0;
         return;
@@ -756,7 +761,7 @@ pub(crate) fn pm_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         return;
     }
     if ps.e_flags & e_flags::TURRET != 0
-        && (ps.e_flags2 & e_flags2::MOUNTED == 0 || ps.weaponstate == ws::READY)
+        && (ps.e_flags2 & e_flags2::REMOTE_CONTROL == 0 || ps.weaponstate == ws::READY)
     {
         return;
     }

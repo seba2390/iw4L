@@ -18,6 +18,7 @@ gsc_t6.workspace = true
 menu_expr.workspace = true
 fastfile_t6.workspace = true
 movement_t6.workspace = true
+libm = { version = "0.2.16", default-features = false }
 
 [lints]
 workspace = true

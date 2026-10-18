@@ -230,6 +230,8 @@ pub struct ZoneWeapon {
     pub bullet_impact_explode: bool,
     /// Pellets laid on a level line; a single shot goes unspread.
     pub flat_spread: bool,
+    /// Its projectile's impact revives a downed player.
+    pub revives_on_impact: bool,
     /// How far a fired grenade flies before it arms; 0 for a thrown one.
     pub projectile_activate_dist: i32,
     pub overheat_weapon: bool,

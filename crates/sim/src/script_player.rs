@@ -9,6 +9,10 @@ use crate::world::{
 use movement_iw4::SHORT2ANGLE;
 use playerstate_iw4::buttons;
 use playerstate_iw4::eflags::TELEPORT;
+use playerstate_iw4::{
+    PM_TYPE_DEAD, PM_TYPE_DEAD_LINKED, PM_TYPE_INTERMISSION, PM_TYPE_LAST_STAND,
+    PM_TYPE_NORMAL_LINKED, PM_TYPE_SPECTATOR,
+};
 use weapon_iw4::WeaponState;
 
 pub(crate) fn spectator_lifecycle(team: i32) -> ClientLifecycle {
@@ -82,15 +86,15 @@ pub(crate) fn spawn(
     let lifecycle = match sessionstate {
         "playing" => ClientLifecycle::Alive,
         "intermission" => {
-            ps.pm_type = playerstate_iw4::PM_TYPE_INTERMISSION;
+            ps.pm_type = PM_TYPE_INTERMISSION;
             ClientLifecycle::Intermission
         }
         "dead" => {
-            ps.pm_type = playerstate_iw4::PM_TYPE_DEAD;
+            ps.pm_type = PM_TYPE_DEAD;
             ClientLifecycle::Dead
         }
         _ => {
-            ps.pm_type = playerstate_iw4::PM_TYPE_SPECTATOR;
+            ps.pm_type = PM_TYPE_SPECTATOR;
             spectator_lifecycle(
                 world
                     .client_meta(id)
@@ -387,7 +391,7 @@ fn enter_last_stand_move(world: &mut FrameWorld, id: ClientId, sets_view_height:
     let Some(ps) = world.player_mut(id) else {
         return;
     };
-    ps.pm_type = playerstate_iw4::PM_TYPE_LAST_STAND;
+    ps.pm_type = PM_TYPE_LAST_STAND;
     if sets_view_height {
         ps.view_height_target = movement_iw4::view_height::LAST_STAND;
     }
@@ -479,6 +483,55 @@ pub(crate) fn kill(
             source: commit.map(|c| c.source),
             weapon: commit.map_or(0, |c| c.weapon),
             killcam_entity_start_time: commit.map_or(0, |c| c.killcam_entity_start_time),
+        },
+    );
+}
+
+/// A player a game's own death handler killed: the runtime's bookkeeping of
+/// a death (life over, claims released, out of the area grid, the `Died`
+/// event) with the dead move type, and none of the shared death's pose or
+/// animation.
+pub(crate) fn script_death(
+    world: &mut FrameWorld,
+    tick: Tick,
+    victim: ClientId,
+    attacker: Option<ClientId>,
+) {
+    if !world
+        .client_meta(victim)
+        .is_some_and(|m| m.lifecycle == ClientLifecycle::Alive)
+    {
+        return;
+    }
+    let life_sequence = {
+        let meta = world.client_meta_mut(victim);
+        meta.lifecycle = ClientLifecycle::Dead;
+        meta.dead_since_tick = Some(tick.0);
+        meta.controls.switch_to = 0;
+        meta.life_sequence
+    };
+    crate::script::host::triggers::release_client_claims(world.ecs(), victim.0);
+    if let Some(ps) = world.player_mut(victim) {
+        ps.pm_type = if ps.pm_type == PM_TYPE_NORMAL_LINKED {
+            PM_TYPE_DEAD_LINKED
+        } else {
+            PM_TYPE_DEAD
+        };
+        ps.pm_flags &= !LAST_STAND;
+    }
+    world.unlink_player_area(victim);
+    let attacker_life = attacker.and_then(|a| world.client_meta(a).map(|m| m.life_sequence));
+    world.push_event(
+        tick,
+        EventAudience::All,
+        SimEvent::Died {
+            victim,
+            life_sequence,
+            attacker,
+            attacker_life,
+            source: None,
+            weapon: 0,
+            killcam_entity_start_time: 0,
         },
     );
 }

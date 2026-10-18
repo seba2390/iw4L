@@ -303,7 +303,7 @@ pub(super) fn fire_held<W: MoveWorld>(
     left: bool,
 ) -> bool {
     let ps = &*pm.ps;
-    if ps.e_flags2 & e_flags2::MOUNTED != 0 || ps.vehicle_entity != ENTITYNUM_NONE {
+    if ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0 || ps.vehicle_entity != ENTITYNUM_NONE {
         return false;
     }
     let weapon = ps.weapon;

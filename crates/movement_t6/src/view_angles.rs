@@ -289,7 +289,7 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
     if ps.pm_type == pm_type::INTERMISSION {
         return;
     }
-    if ps.pm_type >= pm_type::DEAD && ps.e_flags2 & e_flags2::MOUNTED == 0 {
+    if ps.pm_type >= pm_type::DEAD && ps.e_flags2 & e_flags2::REMOTE_CONTROL == 0 {
         update_lean(pm, msec);
         return;
     }

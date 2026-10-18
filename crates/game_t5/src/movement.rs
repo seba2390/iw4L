@@ -672,7 +672,11 @@ impl PlayerMovement for T5Movement {
     /// Black Ops' last stand entry: raises the stance-to-last-stand animation
     /// event (`CROUCH_TO_LAST_STAND` when ducked, `PRONE_TO_LAST_STAND` when
     /// prone, else `STAND_TO_LAST_STAND`) and detaches a turret or vehicle.
-    fn enter_last_stand(&self, player: &mut MovePlayer) -> MoveOutcome {
+    fn enter_last_stand(
+        &self,
+        player: &mut MovePlayer,
+        _weapons: &dyn game_api::movement::WeaponTable,
+    ) -> MoveOutcome {
         use movement_t5::events::anim;
         use movement_t5::state::e_flags;
         let (mut ps, mut last) = unpack(player);

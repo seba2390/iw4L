@@ -280,6 +280,9 @@ pub mod def {
     pub const ARMOR_PIERCING: u32 = 1586;
     pub const BULLET_BOUNCE: u32 = 1623;
     pub const BULLET_IMPACT_EXPLODE: u32 = 1839;
+    /// Its projectile's impact on a downed player revives them (the upgraded
+    /// ballistic knives).
+    pub const REVIVES_ON_IMPACT: u32 = 0x6a8;
     pub const TRACER_TYPE: u32 = 2320;
     pub const SIZE: usize = 2448;
 }

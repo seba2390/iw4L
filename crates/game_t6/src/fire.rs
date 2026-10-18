@@ -832,7 +832,7 @@ impl Shot<'_> {
         let ps = self.ps;
         if ps.link_flags & 4 != 0
             || ps.e_flags & (e_flags::TURRET | e_flags::VEHICLE_VIEW) != 0
-            || ps.e_flags2 & e_flags2::MOUNTED != 0
+            || ps.e_flags2 & e_flags2::REMOTE_CONTROL != 0
         {
             self.gaps.push(mounted_unknown());
             return None;

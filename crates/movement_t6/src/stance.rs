@@ -365,7 +365,7 @@ pub(crate) fn check_duck<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         return;
     }
     let turret = pm.ps.e_flags & e_flags::TURRET;
-    if turret != 0 && pm.ps.e_flags2 & crate::state::e_flags2::MOUNTED == 0 {
+    if turret != 0 && pm.ps.e_flags2 & crate::state::e_flags2::REMOTE_CONTROL == 0 {
         pm.ps.pm_flags = match turret {
             e_flags::TURRET_PRONE => (flags & !pm_flags::DUCKED) | pm_flags::PRONE,
             e_flags::TURRET_CROUCH => (flags & !pm_flags::PRONE) | pm_flags::DUCKED,

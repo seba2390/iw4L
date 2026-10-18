@@ -357,7 +357,10 @@ pub(crate) fn enter_last_stand(world: &mut FrameWorld, id: ClientId) {
     let Some(movement) = rules(world) else {
         return;
     };
-    if let Some(outcome) = update(world, id, |player| movement.enter_last_stand(player)) {
+    let content = world.content();
+    if let Some(outcome) = update(world, id, |player| {
+        movement.enter_last_stand(player, &*content)
+    }) {
         for gap in outcome.gaps {
             world.report_game_gap(gap);
         }
@@ -419,13 +422,66 @@ pub(crate) fn set_script_flag(
     .flatten()
 }
 
-/// A hit on the damage timer of the game's own movement (`None` clears it);
-/// false when the match runs the simulation's.
-pub(crate) fn damage_timer(world: &mut FrameWorld, id: ClientId, damage: Option<i32>) -> bool {
+/// What the game's own handler does to a hurt player's state before it takes
+/// the health: `means` by the game's numbers, `dir` of length 1. Answers the
+/// damage the game takes, `None` when the match runs the simulation's
+/// movement.
+pub(crate) fn hurt(
+    world: &mut FrameWorld,
+    id: ClientId,
+    damage: i32,
+    means: usize,
+    weapon: u32,
+    dir: Option<[f32; 3]>,
+) -> Option<i32> {
+    let movement = rules(world)?;
+    let content = world.content();
+    update(world, id, |player| {
+        movement.hurt(
+            player,
+            &game_api::movement::PlayerHurt {
+                damage,
+                means,
+                weapon,
+                dir,
+                weapons: &*content,
+            },
+        )
+    })
+}
+
+/// What the game's own player death does to the player's state; `None`
+/// when the match runs the simulation's movement, `Some(Err)` with the move
+/// type when the death refuses to run.
+pub(crate) fn die(
+    world: &mut FrameWorld,
+    id: ClientId,
+    means: usize,
+    weapon: u32,
+) -> Option<Result<(), i32>> {
+    let movement = rules(world)?;
+    let content = world.content();
+    update(world, id, |player| {
+        movement.die(
+            player,
+            &game_api::movement::PlayerHurt {
+                damage: 0,
+                means,
+                weapon,
+                dir: None,
+                weapons: &*content,
+            },
+        )
+    })
+}
+
+/// Clears the damage timer of the game's own movement; false when the match
+/// runs the simulation's.
+pub(crate) fn clear_damage_timer(world: &mut FrameWorld, id: ClientId) -> bool {
     let Some(movement) = rules(world) else {
         return false;
     };
-    update(world, id, |player| movement.damage_timer(player, damage));
+    update(world, id, |player| movement.clear_damage_timer(player));
     true
 }
 

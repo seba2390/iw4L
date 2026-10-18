@@ -548,3 +548,9 @@ impl SimContent {
         &self.data.player_anim_script
     }
 }
+
+impl game_api::movement::WeaponTable for SimContent {
+    fn weapon(&self, weapon: u32) -> Option<&game_api::movement::GameWeapon> {
+        self.game_weapon(weapon)
+    }
+}
