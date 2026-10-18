@@ -134,6 +134,17 @@ fn weapon_of(world: &mut World, hit: &Hit) -> String {
         .unwrap_or_else(|| "none".to_owned())
 }
 
+/// The game's scale at a hit location, when the zones carry its table.
+pub(crate) fn zone_location_scale(world: &World, location: usize) -> Option<f32> {
+    world
+        .resource::<RoundScript>()
+        .restart
+        .as_ref()?
+        .raw_files
+        .get(LOCATION_TABLE)?;
+    global_scales(world).get(location).copied()
+}
+
 /// The global scales by hit location: 1, the riot shield 0, then what the
 /// zone's `info/mp_lochit_dmgtable` sets.
 fn global_scales(world: &World) -> [f32; 21] {
