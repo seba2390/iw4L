@@ -133,6 +133,9 @@ pub struct ClientMatchState {
     pub linked_weapon_view: Option<LinkedWeaponView>,
 
     pub(crate) ffa_team: Option<u8>,
+    /// The soldier kit the game dressed the player in, when it did
+    /// (`asset_model::SoldierKits::kit_at`).
+    pub(crate) kit: Option<u8>,
 
     pub(crate) client_state_team: i32,
 
@@ -256,6 +259,7 @@ impl ClientMatchState {
             hud_archival: Vec::new(),
             hud_current: Vec::new(),
             ffa_team: self.ffa_team,
+            kit: self.kit,
             client_state_team: self.client_state_team,
             rank: self.rank,
             prestige: self.prestige,
@@ -336,6 +340,7 @@ impl ClientMatchState {
         self.look_at_killer_yaw = meta.look_at_killer_yaw;
         self.name = meta.name;
         self.ffa_team = meta.ffa_team;
+        self.kit = meta.kit;
         self.client_state_team = meta.client_state_team;
         self.rank = meta.rank;
         self.prestige = meta.prestige;

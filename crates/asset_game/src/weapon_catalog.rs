@@ -1395,11 +1395,13 @@ struct WeaponRow {
 
     attachment_view_model_edges: Vec<AssetEdge<FpvMeshSpace>>,
 
-    fpv_soldiers: [Option<Result<crate::SoldierFpvPresentation, String>>; 2],
+    /// By soldier kit.
+    fpv_soldiers: Vec<Option<Result<crate::SoldierFpvPresentation, String>>>,
 
     fpv_mount_plan: Option<Result<asset_model::FpvMountPlan, asset_model::FpvMountError>>,
 
-    fpv_assemblies: [Option<Result<crate::FpvSideAssemblies, String>>; 2],
+    /// By soldier kit.
+    fpv_assemblies: Vec<Option<Result<crate::FpvSideAssemblies, String>>>,
 
     world_model: Option<String>,
 
@@ -1528,9 +1530,9 @@ impl Default for WeaponRow {
             hand_xmodel_edge: AssetEdge::Absent,
             rocket_model_edge: AssetEdge::Absent,
             attachment_view_model_edges: Vec::new(),
-            fpv_soldiers: [None, None],
+            fpv_soldiers: Vec::new(),
             fpv_mount_plan: None,
-            fpv_assemblies: [None, None],
+            fpv_assemblies: Vec::new(),
             world_model: None,
             world_model_edge: AssetEdge::Absent,
             camo_models: WeaponCamoModels::default(),
@@ -1623,7 +1625,7 @@ pub struct WeaponRegistry {
     families: crate::WeaponFamilies,
     completion_names: Vec<String>,
 
-    alternate_fpv: HashMap<(u32, u32), [Option<Result<crate::FpvSideAssemblies, String>>; 2]>,
+    alternate_fpv: HashMap<(u32, u32), Vec<Option<Result<crate::FpvSideAssemblies, String>>>>,
     fpv_clip_tracks: Arc<crate::FpvClipTracks>,
 
     vehicle_turrets: HashMap<String, String>,

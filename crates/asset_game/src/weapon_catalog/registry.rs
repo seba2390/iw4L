@@ -390,12 +390,25 @@ impl WeaponRegistry {
     pub fn fpv_hands_of(
         &self,
         index: u32,
-        axis: bool,
+        kit: usize,
     ) -> Option<(&asset_model::FpvHands, crate::FpvMeshIndex)> {
-        self.rows.get(index as usize)?.fpv_soldiers[usize::from(axis)]
+        self.rows
+            .get(index as usize)?
+            .fpv_soldiers
+            .get(kit)?
             .as_ref()
             .and_then(|presentation| presentation.as_ref().ok())
             .map(|presentation| (presentation.hands().choice(), presentation.hands().model()))
+    }
+
+    /// How many soldier kits the first person is prepared for: the two
+    /// sides at least.
+    pub fn fpv_kits(&self) -> usize {
+        self.rows
+            .iter()
+            .map(|row| row.fpv_soldiers.len())
+            .max()
+            .map_or(2, |kits| kits.max(2))
     }
 
     pub fn alternate_fpv_pairs(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
@@ -406,29 +419,38 @@ impl WeaponRegistry {
         &self,
         index: u32,
         parent: u32,
-        axis: bool,
+        kit: usize,
     ) -> Option<&crate::FpvSideAssemblies> {
         if parent != 0 && self.facts_of(index).is_some_and(|f| f.inventory_type == 3) {
-            return self.alternate_fpv.get(&(index, parent))?[usize::from(axis)]
+            return self
+                .alternate_fpv
+                .get(&(index, parent))?
+                .get(kit)?
                 .as_ref()?
                 .as_ref()
                 .ok();
         }
-        self.fpv_assemblies_of(index, axis)
+        self.fpv_assemblies_of(index, kit)
     }
 
-    pub fn fpv_assemblies_of(&self, index: u32, axis: bool) -> Option<&crate::FpvSideAssemblies> {
-        self.rows.get(index as usize)?.fpv_assemblies[usize::from(axis)]
+    pub fn fpv_assemblies_of(&self, index: u32, kit: usize) -> Option<&crate::FpvSideAssemblies> {
+        self.rows
+            .get(index as usize)?
+            .fpv_assemblies
+            .get(kit)?
             .as_ref()?
             .as_ref()
             .ok()
     }
 
-    pub fn fpv_assembly_gap_of(&self, index: u32, axis: bool) -> String {
+    pub fn fpv_assembly_gap_of(&self, index: u32, kit: usize) -> String {
         let Some(row) = self.rows.get(index as usize) else {
             return "no such weapon".to_owned();
         };
-        match (&row.fpv_mount_plan, &row.fpv_assemblies[usize::from(axis)]) {
+        match (
+            &row.fpv_mount_plan,
+            row.fpv_assemblies.get(kit).unwrap_or(&None),
+        ) {
             (None, _) => "unlinked selected models".to_owned(),
             (Some(Err(error)), _) => error.to_string(),
             (_, None) => "effective kit / weapon hands".to_owned(),

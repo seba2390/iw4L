@@ -233,10 +233,16 @@ impl BodyMeshCatalog {
             census.unresolved,
             census.absent,
         )];
-        for (side, kit) in [
-            ("allies", kits.allies.as_ref()),
-            ("axis", kits.axis.as_ref()),
-        ] {
+        let sides = [
+            ("allies".to_owned(), kits.allies.as_ref()),
+            ("axis".to_owned(), kits.axis.as_ref()),
+        ];
+        let extra = kits
+            .extra
+            .iter()
+            .enumerate()
+            .map(|(n, kit)| (format!("kit {}", n + 2), Some(kit)));
+        for (side, kit) in sides.into_iter().chain(extra) {
             let Some(kit) = kit else {
                 continue;
             };
@@ -276,10 +282,7 @@ impl BodyMeshCatalog {
 
     pub fn kits_have_spine(&self) -> bool {
         let kits = self.kits();
-        for kit in [kits.allies.as_ref(), kits.axis.as_ref()]
-            .into_iter()
-            .flatten()
-        {
+        for kit in kits.all() {
             let Some(body) = self.entries.get(&kit.body) else {
                 return false;
             };

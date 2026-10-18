@@ -106,8 +106,9 @@ pub struct FpvWeaponTable {
     pub(super) hud_iris: Vec<bool>,
     pub(super) melee: Vec<u32>,
     pub(super) guns: Vec<Option<FpvMeshIndex>>,
-    pub(super) slots: Vec<[FpvWeaponSlot; 2]>,
-    pub(super) alternate_slots: HashMap<(u32, u32), [FpvWeaponSlot; 2]>,
+    /// By weapon, then by soldier kit.
+    pub(super) slots: Vec<Vec<FpvWeaponSlot>>,
+    pub(super) alternate_slots: HashMap<(u32, u32), Vec<FpvWeaponSlot>>,
     pub(super) census: FpvPreparationCensus,
 }
 
@@ -179,16 +180,18 @@ impl FpvWeaponTable {
         Ok(BoundFpvTable(self))
     }
 
-    fn slot_unchecked(&self, weapon: u32, parent: u32, axis: bool) -> &FpvWeaponSlot {
+    fn slot_unchecked(&self, weapon: u32, parent: u32, kit: usize) -> &FpvWeaponSlot {
         if parent != 0 && self.facts_of(weapon).is_some_and(|f| f.is_alternate()) {
             return self
                 .alternate_slots
                 .get(&(weapon, parent))
-                .map_or(&ABSENT_SLOT, |s| &s[usize::from(axis)]);
+                .and_then(|s| s.get(kit))
+                .unwrap_or(&ABSENT_SLOT);
         }
         self.slots
             .get(weapon as usize)
-            .map_or(&ABSENT_SLOT, |sides| &sides[usize::from(axis)])
+            .and_then(|sides| sides.get(kit))
+            .unwrap_or(&ABSENT_SLOT)
     }
 }
 
@@ -226,7 +229,7 @@ impl<'a> BoundFpvTable<'a> {
         &self,
         weapon: asset_game::WeaponHandle,
         parent: Option<asset_game::WeaponHandle>,
-        axis: bool,
+        kit: usize,
     ) -> Result<&'a FpvWeaponSlot, FpvBindingRefusal> {
         let registry = &self.0.owner.weapons;
         let weapon = registry
@@ -246,7 +249,7 @@ impl<'a> BoundFpvTable<'a> {
         {
             return Err(FpvBindingRefusal::InvalidAlternateParent);
         }
-        Ok(self.0.slot_unchecked(id, parent_id, axis))
+        Ok(self.0.slot_unchecked(id, parent_id, kit))
     }
 }
 

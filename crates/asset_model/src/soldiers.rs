@@ -10,7 +10,16 @@ pub struct SoldierKit {
 pub struct SoldierKits {
     pub allies: Option<SoldierKit>,
     pub axis: Option<SoldierKit>,
+    /// Kits past the two sides, from kit 2 on: a zombies map's further
+    /// characters, which its script dresses players in (`allies` and `axis`
+    /// are its first two).
+    pub extra: Vec<SoldierKit>,
 }
+
+/// The kit of the allies' side.
+pub const ALLIES_KIT: usize = 0;
+/// The kit of the axis' side.
+pub const AXIS_KIT: usize = 1;
 
 impl SoldierKits {
     pub fn kit(&self, axis: bool) -> Option<&SoldierKit> {
@@ -20,6 +29,48 @@ impl SoldierKits {
             (&self.allies, &self.axis)
         };
         mine.as_ref().or(theirs.as_ref())
+    }
+
+    /// Kit `index`: 0 the allies', 1 the axis' (each standing in for the
+    /// other when missing), then the extra kits.
+    pub fn kit_at(&self, index: usize) -> Option<&SoldierKit> {
+        match index {
+            ALLIES_KIT => self.kit(false),
+            AXIS_KIT => self.kit(true),
+            n => self.extra.get(n - 2),
+        }
+    }
+
+    /// How many kits there are to choose from: the two sides and the extra
+    /// ones.
+    pub fn len(&self) -> usize {
+        2 + self.extra.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.allies.is_none() && self.axis.is_none() && self.extra.is_empty()
+    }
+
+    /// Every kit once, sides first.
+    pub fn all(&self) -> impl Iterator<Item = &SoldierKit> {
+        [self.allies.as_ref(), self.axis.as_ref()]
+            .into_iter()
+            .flatten()
+            .chain(&self.extra)
+    }
+
+    /// The kit whose body is `body`, when one is.
+    pub fn index_of_body(&self, body: &str) -> Option<usize> {
+        (0..self.len()).find(|&index| self.kit_at(index).is_some_and(|kit| kit.body == body))
+    }
+}
+
+/// The kit a player wears: the one the game dressed them in when it did,
+/// else their side's.
+pub fn kit_index(client_state_team: i32, ffa_team: Option<u8>, chosen: Option<u8>) -> usize {
+    match chosen {
+        Some(kit) => usize::from(kit),
+        None => usize::from(kit_assignment_is_axis(client_state_team, ffa_team)),
     }
 }
 
@@ -61,6 +112,7 @@ pub fn soldier_kits(names: &[String]) -> SoldierKits {
     let mut kits = SoldierKits {
         allies: choose_kit(&bodies, &heads, &arms, Some(Side::Allies)),
         axis: choose_kit(&bodies, &heads, &arms, Some(Side::Axis)),
+        extra: Vec::new(),
     };
     if kits.allies.is_none() && kits.axis.is_none() {
         kits.allies = choose_kit(&bodies, &heads, &arms, None);

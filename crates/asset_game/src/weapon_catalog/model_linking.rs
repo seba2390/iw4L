@@ -39,8 +39,8 @@ impl WeaponBuild {
                         .bind_fpv(WeaponComponent::ViewModel, Some(name), fpv)
                 })
                 .collect();
-            row.fpv_soldiers = [None, None];
-            row.fpv_assemblies = [None, None];
+            row.fpv_soldiers = Vec::new();
+            row.fpv_assemblies = Vec::new();
             row.fpv_mount_plan = row.gun_xmodel_edge.bound_index().and_then(|gun| {
                 let attachments: Option<Vec<_>> = row
                     .attachment_view_model_edges
@@ -109,16 +109,16 @@ impl WeaponBuild {
     ) {
         self.registry.alternate_fpv.clear();
         for row in &mut self.registry.rows {
-            row.fpv_assemblies = [None, None];
+            row.fpv_assemblies = Vec::new();
         }
         let mesh_owner_matches = fpv.identity() != 0
             && self.registry.fpv_catalog_identity == fpv.identity()
             && soldiers.mesh_identity() == fpv.identity();
         for row in &mut self.registry.rows {
             if !mesh_owner_matches {
-                row.fpv_soldiers = std::array::from_fn(|_| {
-                    Some(Err("soldier mesh owner differs from FPV catalog".into()))
-                });
+                row.fpv_soldiers = (0..soldiers.kit_count())
+                    .map(|_| Some(Err("soldier mesh owner differs from FPV catalog".into())))
+                    .collect();
                 continue;
             }
             let hands = row.component_namespace(WeaponComponent::Hands).zip(
@@ -127,16 +127,18 @@ impl WeaponBuild {
                     .and_then(|index| fpv.get_at(index))
                     .map(|entry| entry.skel.name.as_str()),
             );
-            row.fpv_soldiers = std::array::from_fn(|side| {
-                Some(
-                    soldiers
-                        .side(side == 1)
-                        .map_err(str::to_owned)
-                        .and_then(|soldier| {
-                            soldier.connect_weapon(hands, row.secondary_gun_xmodel.is_some())
-                        }),
-                )
-            });
+            row.fpv_soldiers = (0..soldiers.kit_count())
+                .map(|kit| {
+                    Some(
+                        soldiers
+                            .kit(kit)
+                            .map_err(str::to_owned)
+                            .and_then(|soldier| {
+                                soldier.connect_weapon(hands, row.secondary_gun_xmodel.is_some())
+                            }),
+                    )
+                })
+                .collect();
         }
     }
 
@@ -147,11 +149,14 @@ impl WeaponBuild {
     ) -> FpvAssemblyCensus {
         if self.registry.fpv_catalog_identity != fpv.identity() {
             for row in &mut self.registry.rows {
-                row.fpv_assemblies = std::array::from_fn(|_| {
-                    Some(Err(
-                        "FPV mount plan belongs to another mesh publication".into()
-                    ))
-                });
+                let kits = row.fpv_soldiers.len();
+                row.fpv_assemblies = (0..kits)
+                    .map(|_| {
+                        Some(Err(
+                            "FPV mount plan belongs to another mesh publication".into()
+                        ))
+                    })
+                    .collect();
             }
             self.registry.alternate_fpv.clear();
             return FpvAssemblyCensus::default();
@@ -191,7 +196,7 @@ impl WeaponBuild {
         for (id, parent, hide_tags) in preparations {
             let row = &mut self.registry.rows[id as usize];
             if parent == 0 {
-                row.fpv_assemblies = [None, None];
+                row.fpv_assemblies = Vec::new();
             }
             let Some(Ok(mounts)) = &row.fpv_mount_plan else {
                 continue;
@@ -277,8 +282,10 @@ impl WeaponBuild {
                         Ok(assembly)
                     })
             };
-            let sides: [Option<Result<crate::FpvSideAssemblies, String>>; 2] =
-                std::array::from_fn(|side| {
+            let sides: Vec<Option<Result<crate::FpvSideAssemblies, String>>> = (0..row
+                .fpv_soldiers
+                .len())
+                .map(|side| {
                     let soldier = match row.fpv_soldiers[side].as_ref()? {
                         Ok(soldier) if soldier.mesh_identity() == fpv.identity() => soldier,
                         Ok(_) => {
@@ -332,7 +339,8 @@ impl WeaponBuild {
                         ads,
                         jammed,
                     }))
-                });
+                })
+                .collect();
             for side in sides.iter().flatten() {
                 match side {
                     Ok(_) => census.linked += 1,
