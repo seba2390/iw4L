@@ -294,6 +294,7 @@ impl WeaponCatalog {
                 fire_ptr_kind: None,
                 fire_player_ptr_kind: None,
                 reload_player_ptr_kind: None,
+                ..WeaponSoundAliases::default()
             },
             combat_slots: CombatFxSlots {
                 view_flash: geometry.view_flash_slot,

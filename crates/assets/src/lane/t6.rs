@@ -355,13 +355,15 @@ fn capture_sounds(
     content: &mut T6Content,
 ) {
     let mut names = std::collections::BTreeSet::new();
-    for asset in &load.assets {
-        let Some(weapon) = fastfile_t6::weapon::WeaponView::new(load, asset) else {
-            continue;
-        };
-        if weapon.name().is_some() {
-            names.extend(asset_game::t6_weapon_sound_names(weapon));
-            names.extend(asset_game::t6_attachment_sound_names(weapon));
+    for zone in std::iter::once(load).chain(others) {
+        for asset in &zone.assets {
+            let Some(weapon) = fastfile_t6::weapon::WeaponView::new(zone, asset) else {
+                continue;
+            };
+            if weapon.name().is_some() {
+                names.extend(asset_game::t6_weapon_sound_names(weapon));
+                names.extend(asset_game::t6_attachment_sound_names(weapon));
+            }
         }
     }
     names.extend(content.note_sounds.iter().cloned());
@@ -1906,6 +1908,64 @@ fn effect_name_at(load: &fastfile_t6::ZoneLoad, slot: fastfile_t6::Ptr) -> Optio
         .filter(|name| !name.is_empty())
 }
 
+fn capture_tracers(
+    zones: &[&ZoneLoad],
+    zone_path: &Path,
+    namespace: asset_core::AssetNamespace,
+) -> asset_game::TracerCatalog {
+    let mut catalog = asset_game::TracerCatalog::default();
+    catalog.set_capture_zone(asset_core::ZoneOwner::from_zone_path(zone_path));
+    catalog.set_capture_ns(namespace);
+    for load in zones {
+        for asset in &load.assets {
+            if asset.ty != AssetType::Tracer || asset.header.len() < 128 {
+                continue;
+            }
+            let Some(raw_name) = header_str(load, &asset.header, 0) else {
+                continue;
+            };
+            if raw_name.starts_with(',') || raw_name.is_empty() {
+                continue;
+            }
+            let name = asset_game::t6_model_name(raw_name);
+            let Some(slot) = decode_ptr(0xA000_0009) else {
+                continue;
+            };
+            let material_hint = load
+                .asset_in(asset, slot)
+                .filter(|m| m.ty == AssetType::Material)
+                .and_then(|m| header_str(load, &m.header, 0))
+                .map(asset_game::t6_model_name);
+            let f = |at: usize| f32::from_bits(header_u32(&asset.header, at).unwrap_or(0));
+            let colors =
+                std::array::from_fn(|row| std::array::from_fn(|col| f(48 + row * 16 + col * 4)));
+            catalog.capture_t6(asset_game::OwnedTracerDef {
+                namespace,
+                name,
+                material: if material_hint.is_some() {
+                    asset_core::AssetEdge::Unresolved(asset_core::AssetEdgeReason::CatalogMiss)
+                } else {
+                    asset_core::AssetEdge::Absent
+                },
+                material_authored: asset_game::AuthoredRef {
+                    slot: material_hint.is_some(),
+                    alias: false,
+                },
+                material_hint,
+                material_namespace: namespace,
+                draw_interval: header_u32(&asset.header, 12).unwrap_or(1),
+                speed: f(16),
+                beam_length: f(20),
+                beam_width: f(24),
+                screw_radius: f(28),
+                screw_dist: f(32),
+                colors,
+            });
+        }
+    }
+    catalog
+}
+
 fn capture_impact_table(
     zones: &[&fastfile_t6::ZoneLoad],
 ) -> Option<asset_game::OwnedFxImpactTable> {
@@ -1991,6 +2051,40 @@ fn capture_effects(
         }
     }
     let mut textures = DecodedTextures::new();
+    for &load in zones {
+        for asset in &load.assets {
+            if asset.ty != AssetType::Tracer {
+                continue;
+            }
+            let Some(slot) = decode_ptr(0xA000_0009) else {
+                continue;
+            };
+            let material = load.asset_in(asset, slot);
+            let name = material
+                .and_then(|m| header_str(load, &m.header, 0))
+                .map(asset_game::t6_model_name);
+            if let (Some(material), Some(name)) = (material, name)
+                && !content.fx_materials.contains_key(&name)
+            {
+                let native = load.blocks.ptr_at(slot).ok().flatten().and_then(|address| {
+                    capture_native(
+                        load,
+                        zones,
+                        Some(address),
+                        material,
+                        ColourMapAlpha::Mask,
+                        ipaks,
+                        &mut textures,
+                        &mut content.techsets,
+                        &mut content.report,
+                    )
+                });
+                content
+                    .fx_materials
+                    .insert(name, T6MaterialCapture { native });
+            }
+        }
+    }
     wanted.insert("maps/mp_maps/fx_mp_exp_bomb".to_owned());
     for load in zones {
         match destructible::effect_names(load) {
@@ -3739,6 +3833,7 @@ impl ZoneLane for T6Lane {
         report.extend(content.report.iter().cloned());
         let impact_loads: Vec<_> = std::iter::once(&load).chain(others.iter()).collect();
         let impact_fx = capture_impact_table(&impact_loads);
+        let tracers = capture_tracers(&impact_loads, path, image.game);
         let weapons = catalog.into_build();
         report.push(format!(
             "T6 content: walked {} assets; weapons {seen} seen, {captured} captured",
@@ -3750,6 +3845,7 @@ impl ZoneLane for T6Lane {
             ui_tables: icons.tables,
             weapons,
             impact_fx,
+            tracers,
             player_anim_sources: asset_anim::PlayerAnimSources::native_t6(),
             material_population: material_seed,
             report,

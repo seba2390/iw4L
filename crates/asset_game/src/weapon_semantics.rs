@@ -140,6 +140,31 @@ impl WeaponSemanticPolicy {
                     generic_miss: "wpn_melee_hit_other",
                 },
             }
+        } else if matches!(
+            cue_namespace,
+            WeaponCueNamespacePolicy::T6HostNamespaceCompatibility
+        ) {
+            Self {
+                cue_namespace,
+                melee_weapon,
+                breath_cues: BreathCuePolicy {
+                    source: BreathCueSource::T5ConventionCompatibility,
+                    inhale: "wpn_sniper_breathin",
+                    exhale: "wpn_sniper_breathout",
+                    gasp: "wpn_sniper_breathgasp",
+                    heartbeat: "wpn_sniper_heartbeat",
+                },
+                thermal_scope: ThermalScopePolicy::Native {
+                    enabled: native_thermal,
+                },
+                melee_cues: MeleeCuePolicy {
+                    precedence: MeleeCuePrecedence::T5AuthoredFirstCompatibility,
+                    knife_hit: "prj_bullet_impact_knife",
+                    knife_miss: "",
+                    generic_hit: "melee_hit",
+                    generic_miss: "",
+                },
+            }
         } else {
             Self {
                 cue_namespace,

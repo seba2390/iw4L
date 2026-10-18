@@ -2193,8 +2193,21 @@ fn publish_weapon_fire(
                 &mut report,
             )
             .map(|(alias, simulated)| {
+                let start_slot = if player_view {
+                    asset_game::WeaponSoundSlot::FireStartPlayer
+                } else {
+                    asset_game::WeaponSoundSlot::FireStart
+                };
+                let start_alias = (shot.parm == 1)
+                    .then(|| {
+                        weapons
+                            .registry()
+                            .weapon_sound_alias(weapon, start_slot, &bank.0)
+                    })
+                    .flatten();
                 (
                     alias,
+                    start_alias,
                     player_view,
                     simulated.map(|fire| (weapon, shot, fire)),
                 )
@@ -2224,9 +2237,11 @@ fn publish_weapon_fire(
                 &bank.0,
             ),
         )
-        .map(|alias| (alias, player_view, None))
+        .map(|alias| (alias, None, player_view, None))
     });
-    if let (Some((alias, player_view, simulated)), Some(sounds)) = (alias, sounds.as_deref_mut()) {
+    if let (Some((alias, start_alias, player_view, simulated)), Some(sounds)) =
+        (alias, sounds.as_deref_mut())
+    {
         if audio::audio_diagnostics_enabled() {
             audio::emit_audio_diagnostic(format!(
                 "audio diag: fire producer weapon={} alias={alias} player_view={player_view} event={:?}",
@@ -2245,6 +2260,20 @@ fn publish_weapon_fire(
         }) else {
             return;
         };
+        if let Some(start_alias) = start_alias {
+            sounds.write(audio::WeaponSound {
+                event: Some(audio::AudioEvent::from_entity(
+                    generation.stamp(),
+                    fire.entity,
+                    &fire.event,
+                    1,
+                )),
+                namespace: sound_namespace,
+                alias: start_alias.to_owned(),
+                origin_inches: (!player_view).then_some(sound_origin),
+                snd_ent: audio::ent_from_number(fire.event.payload.number),
+            });
+        }
         if let (Some((weapon, shot, fire_rate)), Some(autosim)) = (
             simulated,
             client_fire
@@ -2317,16 +2346,25 @@ pub(super) fn game_fire_alias<'a>(
         }
     };
     let slot = match sound {
-        FireSound::Fire => Slot::Fire,
-        FireSound::FirePlayer => Slot::FirePlayer,
+        FireSound::Fire | FireSound::FireWithStart => Slot::Fire,
+        FireSound::FirePlayer | FireSound::FirePlayerWithStart => Slot::FirePlayer,
         FireSound::LastShot => Slot::FireLast,
         FireSound::LastShotPlayer => Slot::FireLastPlayer,
+        FireSound::Killcam => Slot::FireKillcam,
+        FireSound::KillcamPlayer => Slot::FireKillcamPlayer,
     };
+    let alias = registry
+        .weapon_sound_alias(weapon, slot, bank)
+        .or_else(|| match sound {
+            FireSound::Killcam => registry.weapon_sound_alias(weapon, Slot::Fire, bank),
+            FireSound::KillcamPlayer => registry.weapon_sound_alias(weapon, Slot::FirePlayer, bank),
+            _ => None,
+        })?;
     let simulated = rules
         .autosim
         .as_ref()
         .and_then(|autosim| (autosim.simulated)(&bytes.def, &bytes.variant, shot));
-    Some((registry.weapon_sound_alias(weapon, slot, bank)?, simulated))
+    Some((alias, simulated))
 }
 
 /// A player's shot as the game's fire sound rules see it, and the weapon
@@ -2341,11 +2379,14 @@ fn player_fire_shot(
 ) -> Option<(u32, game_api::fire::FireSoundShot)> {
     use asset_game::WeaponSoundSlot as Slot;
     let left = is_left_hand_fire_event(event.event);
-    let weapon = if left && rules.left_from_own_weapon {
-        registry
-            .bind_published_row(own_weapon)
-            .ok()?
-            .dual_wield_wire_id()
+    let weapon = if left {
+        let base = if rules.left_from_own_weapon {
+            own_weapon
+        } else {
+            event.payload.weapon
+        };
+        let dw = registry.bind_published_row(base).ok()?.dual_wield_wire_id();
+        if dw != 0 { dw } else { base }
     } else {
         event.payload.weapon
     };
@@ -2362,6 +2403,7 @@ fn player_fire_shot(
             last_shot: is_weapon_fire_last_shot_event(event.event),
             killcam,
             last_shot_sound: registry.authored_weapon_sound(weapon, last_slot).is_some(),
+            parm: event.payload.event_parm,
         },
     ))
 }
@@ -3725,7 +3767,7 @@ fn melee_blood(
             .and_then(|bolts| bolts.knife)
     };
     let mut played = 0u32;
-    try_play_weapon_fx_bolted(
+    if !try_play_weapon_fx_bolted(
         &mut host.0,
         &catalog.0,
         &mut elem_infos.0,
@@ -3735,6 +3777,18 @@ fn melee_blood(
         target,
         &mut played,
         fx_world.view().as_ref().map(|s| s as &dyn FxScene),
-    );
+    ) {
+        try_play_weapon_fx_bolted(
+            &mut host.0,
+            &catalog.0,
+            &mut elem_infos.0,
+            fx_world
+                .family()
+                .map(|family| asset_game::FxName::new(family, "impacts/fx_flesh_hit_knife_mp")),
+            target,
+            &mut played,
+            fx_world.view().as_ref().map(|s| s as &dyn FxScene),
+        );
+    }
     cursor.impact_played = cursor.impact_played.saturating_add(played);
 }

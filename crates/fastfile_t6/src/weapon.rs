@@ -233,6 +233,7 @@ pub mod def {
     pub const ADS_GUN_KICK_STATIC_DECAY: u32 = 1972;
     pub const ADS_VIEW_KICK_PITCH_MIN: u32 = 1976;
     pub const ADS_VIEW_KICK_PITCH_MAX: u32 = 1980;
+    pub const ADS_VIEW_KICK_MIN_MAGNITUDE: u32 = 1984;
     pub const ADS_VIEW_KICK_YAW_MIN: u32 = 1988;
     pub const ADS_VIEW_KICK_YAW_MAX: u32 = 1992;
     pub const ADS_VIEW_SCATTER_MIN: u32 = 2008;
@@ -250,10 +251,15 @@ pub mod def {
     pub const HIP_GUN_KICK_STATIC_DECAY: u32 = 2056;
     pub const HIP_VIEW_KICK_PITCH_MIN: u32 = 2060;
     pub const HIP_VIEW_KICK_PITCH_MAX: u32 = 2064;
+    pub const HIP_VIEW_KICK_MIN_MAGNITUDE: u32 = 2068;
     pub const HIP_VIEW_KICK_YAW_MIN: u32 = 2072;
     pub const HIP_VIEW_KICK_YAW_MAX: u32 = 2076;
     pub const HIP_VIEW_SCATTER_MIN: u32 = 2080;
     pub const HIP_VIEW_SCATTER_MAX: u32 = 2084;
+    pub const FIGHT_DIST: u32 = 2088;
+    pub const MAX_DIST: u32 = 2092;
+    pub const FIRE_RUMBLE: u32 = 1800;
+    pub const MELEE_IMPACT_RUMBLE: u32 = 1804;
     pub const LOCATION_DAMAGE_MULTIPLIERS: u32 = 2300;
     pub const HIT_LOCATIONS: usize = 21;
     /// A turret's pitch and yaw convergence times (seconds).

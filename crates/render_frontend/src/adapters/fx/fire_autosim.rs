@@ -97,6 +97,7 @@ pub(crate) fn turret_fire_shots(
             last_shot_sound: registry
                 .authored_weapon_sound(*weapon, asset_game::WeaponSoundSlot::FireLast)
                 .is_some(),
+            parm: 0,
         };
         let Some((alias, simulated)) =
             super::system::game_fire_alias(&rules, registry, &bank.0, *weapon, &shot, &mut |gap| {

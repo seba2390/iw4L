@@ -32,7 +32,10 @@ impl WeaponBuild {
         let t6_knife = registry
             .rows
             .iter()
-            .position(|row| row.namespace == crate::AssetNamespace::T6 && row.name == t6_knife_name)
+            .position(|row| {
+                row.namespace == crate::AssetNamespace::T6
+                    && (row.name == t6_knife_name || row.name == "knife_zm")
+            })
             .map(|index| index as u32);
         for row in &mut registry.rows {
             row.preparation.set_source(row.namespace, &row.name);
@@ -70,6 +73,7 @@ impl WeaponBuild {
                     })
                 } else if row.namespace == crate::AssetNamespace::T6
                     && row.name != t6_knife_name
+                    && row.name != "knife_zm"
                     && row.facts.offhand_class == 0
                     && !row.facts.fire_melees
                     && row.facts.weap_type != weapon_iw4::WEAPTYPE_SHIELD

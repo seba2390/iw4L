@@ -213,6 +213,10 @@ pub(super) fn merge_sound_aliases(dst: &mut WeaponSoundAliases, src: &WeaponSoun
         (&mut dst.fire_stop_player, &src.fire_stop_player),
         (&mut dst.fire_last, &src.fire_last),
         (&mut dst.fire_last_player, &src.fire_last_player),
+        (&mut dst.fire_start, &src.fire_start),
+        (&mut dst.fire_start_player, &src.fire_start_player),
+        (&mut dst.fire_killcam, &src.fire_killcam),
+        (&mut dst.fire_killcam_player, &src.fire_killcam_player),
     ] {
         if dst.is_none() {
             *dst = src.clone();

@@ -458,14 +458,27 @@ pub(super) fn stamp_combat_fx(
     let tracer = slots
         .tracer
         .and_then(|s| tracers.index_at_slot(s))
+        .or_else(|| {
+            combat
+                .tracer_hint
+                .as_deref()
+                .and_then(|name| tracers.index_named(ns, name))
+        })
         .and_then(|index| Some((index, tracers.def_at(index)?)));
-    combat.tracer_hint = tracer.map(|(_, def)| def.name.clone());
-    combat.tracer = match (slots.tracer, tracer) {
-        (None, _) => AssetEdge::Absent,
-        (_, Some((index, _))) => AssetEdge::bind_order(index, tracers.zone_of(index)),
-        (Some(_), None) => AssetEdge::Unresolved(AssetEdgeReason::CatalogMiss),
+    if let Some((_, def)) = tracer {
+        combat.tracer_hint = Some(def.name.clone());
+    }
+    combat.tracer = match (
+        slots.tracer.is_some() || combat.tracer_hint.is_some(),
+        tracer,
+    ) {
+        (false, _) => AssetEdge::Absent,
+        (true, Some((index, _))) => AssetEdge::bind_order(index, tracers.zone_of(index)),
+        (true, None) => AssetEdge::Unresolved(AssetEdgeReason::CatalogMiss),
     };
-    combat.last_shot_eject_pair_authored = slots.last_shot_pair_authored();
+    combat.last_shot_eject_pair_authored = slots.last_shot_pair_authored()
+        || (combat.view_last_shot_eject_hint.is_some()
+            && combat.world_last_shot_eject_hint.is_some());
 }
 
 fn mw2_tracer_name(
@@ -503,6 +516,9 @@ pub(super) fn stamp_mw2_tracer(
     category: Option<crate::CacAuthoredCategory>,
     tracers: &crate::TracerCatalog,
 ) {
+    if combat.tracer.is_bound() || combat.tracer_hint.is_some() {
+        return;
+    }
     let Some(name) = mw2_tracer_name(facts, category) else {
         combat.tracer_hint = None;
         combat.tracer = AssetEdge::Absent;

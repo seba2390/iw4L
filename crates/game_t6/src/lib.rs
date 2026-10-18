@@ -5,6 +5,7 @@ mod client;
 mod client_builtins;
 pub mod client_screen;
 mod fire;
+mod fire_autosim;
 mod fire_sound;
 pub mod fog;
 mod grenade;
@@ -20,6 +21,7 @@ pub mod scrplace;
 mod shock;
 mod startup;
 pub mod ui;
+mod view_kick;
 mod viewmodel;
 
 use game_api::{

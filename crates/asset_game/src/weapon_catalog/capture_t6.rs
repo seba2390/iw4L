@@ -140,6 +140,9 @@ impl WeaponCatalog {
                 explosion_hint: weapon
                     .def_loaded_asset_name(fastfile_t6::weapon::def::PROJ_EXPLOSION_EFFECT)
                     .map(t6_model_name),
+                tracer_hint: weapon
+                    .def_loaded_asset_name(d::TRACER_TYPE)
+                    .map(t6_model_name),
                 ..WeaponCombatFx::empty(crate::AssetNamespace::T6)
             },
             combat_slots: CombatFxSlots::default(),
@@ -524,6 +527,12 @@ pub(super) fn capture_t6_sounds(w: fastfile_t6::weapon::WeaponView<'_>) -> Weapo
         fire_player,
         fire_last: name(d::FIRE_LAST_SOUND),
         fire_last_player: name(d::FIRE_LAST_SOUND_PLAYER),
+        fire_start: name(d::FIRE_START_SOUND),
+        fire_start_player: name(d::FIRE_START_SOUND_PLAYER),
+        fire_killcam: name(d::FIRE_KILLCAM_SOUND),
+        fire_killcam_player: name(d::FIRE_KILLCAM_SOUND_PLAYER),
+        pickup: name(d::PICKUP_SOUND),
+        pickup_player: name(d::PICKUP_SOUND_PLAYER),
         empty_fire: name(d::EMPTY_FIRE_SOUND),
         empty_fire_player: name(d::EMPTY_FIRE_SOUND_PLAYER),
         melee_swipe: name(d::MELEE_SWIPE_SOUND),
@@ -1006,6 +1015,12 @@ pub fn t6_weapon_sound_names(w: fastfile_t6::weapon::WeaponView<'_>) -> Vec<Stri
         s.fire_player,
         s.fire_last,
         s.fire_last_player,
+        s.fire_start,
+        s.fire_start_player,
+        s.fire_killcam,
+        s.fire_killcam_player,
+        s.pickup,
+        s.pickup_player,
         s.empty_fire,
         s.empty_fire_player,
         s.melee_swipe,

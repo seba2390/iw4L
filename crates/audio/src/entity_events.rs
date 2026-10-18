@@ -80,10 +80,23 @@ fn selected_alias<'a>(
                 .ok_or_else(|| "melee hit sound is not in the sound bank".to_owned());
         }
         EntityEventKind::MELEE_MISS => {
-            return weapons
-                .melee_impact_sound_key(weapon, knife, asset_game::MeleeImpact::Miss, bank)
-                .map(Some)
-                .ok_or_else(|| "melee miss sound is not in the sound bank".to_owned());
+            if let Some(key) =
+                weapons.melee_impact_sound_key(weapon, knife, asset_game::MeleeImpact::Miss, bank)
+            {
+                return Ok(Some(key));
+            }
+            if weapons
+                .authored_weapon_sound(weapon, WeaponSoundSlot::MeleeMiss)
+                .is_none()
+                && weapons.semantic_policy_of(weapon).is_some_and(|p| {
+                    p.melee_cues
+                        .generic(knife, asset_game::MeleeImpact::Miss)
+                        .is_empty()
+                })
+            {
+                return Ok(None);
+            }
+            return Err("melee miss sound is not in the sound bank".to_owned());
         }
         _ => return Ok(None),
     };
