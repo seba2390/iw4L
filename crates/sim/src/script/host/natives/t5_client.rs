@@ -17,6 +17,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
     super::t5_vision::register_client(registry);
     register_random(registry);
+    register_extra_camera(registry);
     // Its entities' animation trees: `useAnimTree`, the `SetAnim` family and
     // `clearAnim` on the client's own copy of the match's trees.
     super::super::actor_anims::register(registry);
@@ -1647,6 +1648,62 @@ fn line_emitter(args: &[Value], native: &str) -> Result<(String, [f32; 3], [f32;
     let start = vector(args, 1)?;
     let end = vector(args, 2)?;
     Ok((string(args, 0)?, start, end))
+}
+
+/// The extra camera's field of view while it is on, until a script sets
+/// one (`cg_fovExtraCam`'s default).
+const EXTRA_CAMERA_FOV: f32 = 65.0;
+
+/// Black Ops' extra camera: one client entity whose view the renderer draws
+/// for the materials that show it. Each native takes its arguments in the
+/// game's order: the count, then the local client.
+fn register_extra_camera(registry: &mut NativeRegistry) {
+    use Namespace::{Function, Method};
+    registry.register(Method, "isextracam", |world, receiver, args| {
+        if args.len() != 1 {
+            return Err("isextracam() called with wrong params.\n".into());
+        }
+        local_index(args)?;
+        let (_, entity) = entity(world, receiver)?;
+        let number = entity.number;
+        let output = &mut world.resource_mut::<ClientOutput>().extra_camera;
+        if output.is_some() {
+            return Err("There can be only one extra camera active in the level.".into());
+        }
+        *output = Some((number, EXTRA_CAMERA_FOV));
+        diag::info!(
+            Sim,
+            "t5.csc.extra_cam: extra camera on entity {number} is not drawn: the renderer has no second view"
+        );
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "stopextracam", |world, _, args| {
+        if args.len() != 1 {
+            return Err("CScr_StopExtraCam() called with wrong params.\n".into());
+        }
+        local_index(args)?;
+        world.resource_mut::<ClientOutput>().extra_camera = None;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamfov", |world, _, args| {
+        if args.len() != 2 {
+            return Err("CScr_SetExtraCamFov() called with wrong params.\n".into());
+        }
+        let fov = float(args, 1)?;
+        local_index(args)?;
+        match &mut world.resource_mut::<ClientOutput>().extra_camera {
+            Some((_, camera_fov)) => {
+                *camera_fov = fov;
+                Ok(Value::Undefined)
+            }
+            None => {
+                Err("CScr_SetExtraCamFov(), There is no extra cam active in the level.\n".into())
+            }
+        }
+    });
+    registry.register(Function, "extracamconfig", |_, _, _| {
+        Err("extracamconfig is deprecated".into())
+    });
 }
 
 /// The local client a native names: Black Ops refuses any but 0.
