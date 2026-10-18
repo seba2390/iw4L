@@ -43,7 +43,6 @@ const FLAG_FIRE_DISABLED: u32 = 0x4000;
 /// Its model has a second barrel (`tag_flash_2`).
 const FLAG_TWO_BARRELS: u32 = 0x8000;
 /// `fireType` single shot and minigun.
-const FIRE_SINGLE_SHOT: i32 = 1;
 const FIRE_MINIGUN: i32 = 6;
 /// The camera shake a turret's shot starts on clients near it: scale,
 /// duration (ms) and radius.
@@ -90,14 +89,6 @@ fn manned_unknown() -> &'static Unknown {
         "t5.turret.manned",
         "a turret in `manual` mode, or with a manual target (`settargetentity`) its search did not pick, holds still: Black Ops' manual-target aim and its manned (AI-used) think are not run",
         "Black Ops' manual-target aims (an entity, a sentient) and its manned-turret think, ported from its executable, and actors that use turrets"
-    )
-}
-
-fn single_shot_sound_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.turret.shot_sound",
-        "a single-shot turret weapon's fire sound is not played on clients",
-        "the weapon's world fire sound alias carried with the turret's shot and played at the turret, as Black Ops' client fire handler plays a single shot"
     )
 }
 
@@ -422,9 +413,8 @@ impl Think<'_> {
 
     /// What the clients do for a shot (Black Ops' MG42 fire event, one per
     /// barrel): the camera shake around it and, as their fire handler does,
-    /// the weapon's world flash on the barrel's tag. A minigun shows
-    /// nothing; any other automatic weapon's fire sound goes to the
-    /// client's automatic fire simulation.
+    /// the weapon's world flash on the barrel's tag and the fire sound from
+    /// the barrel (which their fire rules time). A minigun shows nothing.
     fn fire_event(&mut self, def: &WeaponDefView<'_>) {
         let entity = self.turret.entity;
         let (origin, _) = self.world.turret_pose(entity);
@@ -445,10 +435,10 @@ impl Think<'_> {
         if let Some(flash) = flash {
             self.world.turret_tag_effect(entity, &flash, tag);
         }
-        if def.fire_type() != FIRE_SINGLE_SHOT {
-            self.gaps.push(crate::fire_sound::autosim_unknown());
-        } else {
-            self.gaps.push(single_shot_sound_unknown());
+        if let Some(muzzle) = self.tag(tag) {
+            let barrel = self.turret.state.barrel;
+            self.world
+                .turret_fire_sound(entity, self.turret.weapon, barrel, muzzle.origin);
         }
     }
 

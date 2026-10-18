@@ -2,6 +2,7 @@ mod catalog;
 mod client_catalog;
 mod code_hud;
 mod fire;
+mod fire_autosim;
 mod fire_sound;
 mod grenade;
 mod menu_expression;

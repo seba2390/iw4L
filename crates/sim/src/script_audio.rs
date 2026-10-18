@@ -84,6 +84,14 @@ pub enum ScriptAudioCommand {
         context: String,
         value: String,
     },
+    /// A turret's shot from one of its barrels, for every client's fire
+    /// sound: its entity, weapon and the barrel's muzzle.
+    TurretFire {
+        entity: i32,
+        weapon: u32,
+        barrel: i32,
+        origin: [f32; 3],
+    },
 }
 
 /// What a client's sound system says of a sound its scripts played, for
@@ -164,6 +172,9 @@ impl ScriptAudioCommand {
             } => (1..=10).contains(slot) && name.len() <= 1023 && (0.0..=1.0).contains(value),
             Self::ClientSoundContext { context, value, .. } => {
                 context.len() <= 1023 && value.len() <= 1023
+            }
+            Self::TurretFire { barrel, origin, .. } => {
+                (0..=1).contains(barrel) && origin.iter().all(|c| c.is_finite())
             }
         }
     }

@@ -5,3 +5,4 @@ pub mod tracer;
 pub(crate) mod world_mark;
 
 pub(crate) mod entity_mark;
+pub(crate) mod fire_autosim;

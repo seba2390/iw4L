@@ -351,7 +351,9 @@ fn play_weapon_sound_messages(
         return;
     };
     for event in events.read() {
-        let outcome = play_oneshot_recorded(
+        // A weapon sound at its shooter's place plays on the shooter's
+        // entity and follows it.
+        let outcome = play_oneshot_following(
             &bank.0,
             event.namespace,
             &event.alias,
@@ -361,6 +363,7 @@ fn play_weapon_sound_messages(
             &mut pending,
             &mut decisions,
             event.snd_ent,
+            event.origin_inches.is_some() && event.snd_ent.is_some(),
             SoundClass::Weapon,
             epoch.0,
             1.0,

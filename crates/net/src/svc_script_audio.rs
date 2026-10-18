@@ -137,6 +137,20 @@ pub(crate) fn encode_script_audio(out: &mut WireWriter, command: &ScriptAudioCom
                 out.put_bytes(text.as_bytes());
             }
         }
+        ScriptAudioCommand::TurretFire {
+            entity,
+            weapon,
+            barrel,
+            origin,
+        } => {
+            out.put_u8(11);
+            out.put_i32(*entity);
+            out.put_u32(*weapon);
+            out.put_i32(*barrel);
+            for component in origin {
+                out.put_f32(*component);
+            }
+        }
     }
 }
 
@@ -275,6 +289,12 @@ pub(crate) fn decode_script_audio(
                 value,
             }
         }
+        11 => ScriptAudioCommand::TurretFire {
+            entity: input.get_i32()?,
+            weapon: input.get_u32()?,
+            barrel: input.get_i32()?,
+            origin: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+        },
         _ => return Err(WireError::Malformed("unknown script audio command")),
     };
     if !command.valid() {

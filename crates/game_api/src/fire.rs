@@ -354,6 +354,62 @@ pub struct ClientFireRules {
     /// A left-hand shot sounds the left-hand weapon of the weapon the
     /// client's own player holds, not the shooter's.
     pub left_from_own_weapon: bool,
+    /// The game's automatic fire simulation, when it plays some shots'
+    /// sounds through one.
+    pub autosim: Option<FireAutoSimRules>,
+}
+
+/// A game's automatic fire simulation: shots it takes are not played at
+/// once; the simulation replays the shooter's fire sound at the weapon's
+/// fire rate while the shooter keeps firing.
+#[derive(Clone, Copy, Debug)]
+pub struct FireAutoSimRules {
+    /// How the simulation takes a shot, from the weapon's definition and
+    /// variant in the game's layout; `None` plays the shot at once.
+    pub simulated: fn(def: &[u8], variant: &[u8], shot: &FireSoundShot) -> Option<AutoFire>,
+    /// A client's simulation.
+    pub new: fn() -> Box<dyn FireAutoSim>,
+}
+
+/// What the simulation needs of a shot's weapon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AutoFire {
+    /// The weapon's time between shots, in msec.
+    pub fire_time_ms: i32,
+    /// The weapon fires bursts.
+    pub burst: bool,
+}
+
+/// A shot the simulation takes and, later, plays.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AutoFireShot {
+    /// The shooter's entity number.
+    pub entity: i32,
+    pub weapon: u32,
+    /// The tag it fired from (a hand, a barrel), as the client numbers them.
+    pub tag: u32,
+    pub origin: [f32; 3],
+    /// The shooter is a player: its shots stop once it stops firing.
+    pub player: bool,
+    pub last_shot: bool,
+    pub fire: AutoFire,
+}
+
+/// One client's automatic fire simulation.
+pub trait FireAutoSim: Send + Sync {
+    /// Takes a shot the client did not play; gives it back when the
+    /// simulation cannot take it and it plays at once.
+    fn queue(&mut self, shot: AutoFireShot) -> Option<AutoFireShot>;
+    /// Runs one client frame of `frame_ms` msec, the view at `view_origin`;
+    /// `entity_flags` answers a player entity's flags as the client has them
+    /// (0 for one it does not have). Gives the shots whose sound plays this
+    /// frame.
+    fn update(
+        &mut self,
+        frame_ms: i32,
+        view_origin: [f32; 3],
+        entity_flags: &dyn Fn(i32) -> u32,
+    ) -> Vec<AutoFireShot>;
 }
 
 /// A shot as the client that plays its sound sees it.

@@ -246,12 +246,18 @@ pub(crate) fn publish_emitter_origins(
         runtime.set_emitter_origins(std::collections::HashMap::new());
         return;
     };
-    runtime.set_emitter_origins(
+    // Players are entities numbered by their client.
+    let mut origins: std::collections::HashMap<u32, [f32; 3]> = snapshot
+        .players
+        .iter()
+        .map(|(client, ps)| (client.0, ps.origin))
+        .collect();
+    origins.extend(
         snapshot
             .meta
             .entities
             .iter()
-            .filter_map(|entity| Some((u32::try_from(entity.number).ok()?, entity.tr_base)))
-            .collect(),
+            .filter_map(|entity| Some((u32::try_from(entity.number).ok()?, entity.tr_base))),
     );
+    runtime.set_emitter_origins(origins);
 }

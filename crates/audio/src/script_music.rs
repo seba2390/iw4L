@@ -41,7 +41,8 @@ pub(crate) fn update_script_music(
             | sim::ScriptAudioCommand::ClientSoundVolume { .. }
             | sim::ScriptAudioCommand::ClientSoundVolumeRate { .. }
             | sim::ScriptAudioCommand::ClientSnapshot { .. }
-            | sim::ScriptAudioCommand::ClientSoundContext { .. } => {}
+            | sim::ScriptAudioCommand::ClientSoundContext { .. }
+            | sim::ScriptAudioCommand::TurretFire { .. } => {}
             sim::ScriptAudioCommand::MusicPlay(alias) => {
                 if playback.pending.is_some() || playback.active.is_some() {
                     diag::warn!(
