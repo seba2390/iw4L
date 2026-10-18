@@ -132,6 +132,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
+    // `RefreshHudAmmoCounter()`: Black Ops tells every client to redraw
+    // its ammo counter; the runtime's HUD reads the ammo each frame.
+    registry.register(Function, "refreshhudammocounter", |_, _, _| {
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "setexploderid", |_, _, _| Ok(Value::Undefined));
     // Script-state tracing is a developer aid; `haseyes` sets the entity's
     // eye-glow flag in the snapshot.
