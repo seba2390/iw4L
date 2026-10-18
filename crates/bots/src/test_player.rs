@@ -1929,8 +1929,7 @@ pub(crate) fn drive_test_player(
             };
         if clock.time_ms >= test.next_throw_ms && ready {
             test.next_throw_ms = clock.time_ms + THROW_PERIOD_MS;
-            test.throw_until_ms =
-                clock.time_ms + if cook { COOK_HOLD_MS } else { THROW_HOLD_MS };
+            test.throw_until_ms = clock.time_ms + if cook { COOK_HOLD_MS } else { THROW_HOLD_MS };
             test.throws += 1;
             diag::info!(
                 Sim,

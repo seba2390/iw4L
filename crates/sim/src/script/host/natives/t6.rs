@@ -1894,11 +1894,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "disablegrenadesuicide", |world, _, _| {
-        world.resource_mut::<RoundScript>().engine.grenade_suicide_disabled = true;
+        world
+            .resource_mut::<RoundScript>()
+            .engine
+            .grenade_suicide_disabled = true;
         Ok(Value::Undefined)
     });
     registry.register(Function, "enablegrenadesuicide", |world, _, _| {
-        world.resource_mut::<RoundScript>().engine.grenade_suicide_disabled = false;
+        world
+            .resource_mut::<RoundScript>()
+            .engine
+            .grenade_suicide_disabled = false;
         Ok(Value::Undefined)
     });
     // Demo bookmarks only matter while a demo records.
