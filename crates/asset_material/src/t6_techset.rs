@@ -297,6 +297,9 @@ impl T6MaterialState {
 /// Black Ops 2's code texture index of `feedback`.
 const T6_CODE_TEXTURE_FEEDBACK: u32 = 8;
 const T6_CODE_TEXTURE_RESOLVED_SCENE: u32 = 10;
+/// Code texture 13 (`postEffect0`): the image the backend's screen blur
+/// leaves.
+const T6_CODE_TEXTURE_POST_EFFECT_0: u32 = 13;
 
 pub const CODE_T6_HDR_CONTROL_0: u16 = 0x300;
 pub const CODE_T6_HDR_CONTROL_1: u16 = 0x301;
@@ -390,6 +393,7 @@ fn engine_value(name: &str, reflection: &Reflection) -> EngineValue {
             Code("T6_SCRIPT_VECTOR")
         }
         _ if name.starts_with("postFxControl") => Code("POST_CONTROL"),
+        "filterTap" => Code("FILTER_TAP"),
         _ => Literal([0.0; 4]),
     }
 }
@@ -594,6 +598,33 @@ fn constant_argument(
                     .and_then(|index| u16::from_str_radix(index, 16).ok())
                     .filter(|index| *index < render_material::CODE_POST_CONTROL_COUNT)
                     .map(|index| render_material::CODE_POST_CONTROL0 + index),
+                // `filterTap[8]`: one code constant per tap.
+                "FILTER_TAP" => {
+                    let tap = row.row - first;
+                    let index = iw4_code_const_index(&format!("FILTER_TAP_{tap}"));
+                    let Some(index) = index else {
+                        gaps.insert(format!("{name}: no IW4 FILTER_TAP_{tap}"));
+                        return (
+                            Tier::Stable,
+                            literal_argument(stage, destination, Some([0; 4])),
+                        );
+                    };
+                    let argument = match stage {
+                        Stage::Vertex => OwnedShaderArgument::CodeVertexConstant {
+                            destination,
+                            index,
+                            first_row: 0,
+                            row_count: 1,
+                        },
+                        Stage::Pixel => OwnedShaderArgument::CodePixelConstant {
+                            destination,
+                            index,
+                            first_row: 0,
+                            row_count: 1,
+                        },
+                    };
+                    return (code_tier(index), argument);
+                }
                 "T6_FOG" => T6_FOG_NAMES
                     .iter()
                     .position(|fog| *fog == name)
@@ -678,6 +709,15 @@ fn sampler_argument(
         .is_some_and(|a| a.kind == t::CODE_PIXEL_SAMPLER && a.def == T6_CODE_TEXTURE_RESOLVED_SCENE)
     {
         let index = iw4_code_texture_index("RESOLVED_SCENE")?;
+        return Some((
+            Tier::Object,
+            OwnedShaderArgument::CodePixelSampler { destination, index },
+        ));
+    }
+    if bound
+        .is_some_and(|a| a.kind == t::CODE_PIXEL_SAMPLER && a.def == T6_CODE_TEXTURE_POST_EFFECT_0)
+    {
+        let index = iw4_code_texture_index("POST_EFFECT_0")?;
         return Some((
             Tier::Object,
             OwnedShaderArgument::CodePixelSampler { destination, index },

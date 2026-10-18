@@ -592,6 +592,11 @@ fn create_postfx_gpu(
 }
 
 pub(super) fn packed_fullscreen_vertices(width: u32, height: u32) -> Vec<u8> {
+    packed_fullscreen_vertices_colored(width, height, 0xffff_ffff)
+}
+
+/// A fullscreen quad in `color` (packed as the 2D vertices carry it).
+pub(super) fn packed_fullscreen_vertices_colored(width: u32, height: u32, color: u32) -> Vec<u8> {
     hud_iw4::draw_stretch_pic_pack(
         0.0,
         0.0,
@@ -601,7 +606,7 @@ pub(super) fn packed_fullscreen_vertices(width: u32, height: u32) -> Vec<u8> {
         0.0,
         1.0,
         1.0,
-        0xffff_ffff,
+        color,
     )
     .into_iter()
     .flat_map(hud_iw4::GfxTessVertex2d::to_bytes)

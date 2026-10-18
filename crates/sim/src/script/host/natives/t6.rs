@@ -30,6 +30,7 @@ mod paths;
 mod player;
 pub(crate) mod poison_overlay;
 mod radius;
+pub(crate) mod revive_overlay;
 mod riotshield;
 mod rumble;
 mod sentry;

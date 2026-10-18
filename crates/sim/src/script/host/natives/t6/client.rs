@@ -69,9 +69,11 @@ fn sync(client: &mut bevy_ecs::prelude::World) {
     touch::frame(client, now);
     gump::frame(client, now);
     let poison = super::poison_overlay::PoisonDvars::read(client);
+    let revive = super::revive_overlay::read(client);
     crate::script::host::client_scripts::with_server(client, |server| {
         super::flame_overlay::frame(server, game::LOCAL_CLIENT as u32);
         super::poison_overlay::frame(server, game::LOCAL_CLIENT as u32, &poison);
+        super::revive_overlay::publish(server, game::LOCAL_CLIENT as u32, revive);
     });
 }
 

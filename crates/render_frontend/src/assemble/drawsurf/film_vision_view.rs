@@ -331,12 +331,17 @@ fn mix_optional_native_vision(
     }
     .filter(|bloom| bloom.strength > 0.0);
     let tone_strength = mix(from.tone_strength, to.tone_strength);
-    (film.is_some() || bloom.is_some() || tone_strength > 0.0).then_some(asset_world::T6Vision {
-        film,
-        bloom,
-        tone_strength,
-        fields: None,
-    })
+    // t6.csc.vision.revive_blend: the revive settings are the target's.
+    let revive = to.revive;
+    (film.is_some() || bloom.is_some() || tone_strength > 0.0 || revive.is_some()).then_some(
+        asset_world::T6Vision {
+            film,
+            bloom,
+            tone_strength,
+            fields: None,
+            revive,
+        },
+    )
 }
 
 pub fn register(app: &mut App) {
@@ -347,12 +352,17 @@ pub fn register(app: &mut App) {
             Update,
             (update_film_vision_view, apply_screen_blur_request)
                 .chain()
+                .in_set(FilmVisionUpdated)
                 .in_set(frame::InMatch)
                 .after(crate::prepare::scene::view_parms::stamp_prepared_scene_view)
                 .after(frame::ScreenEffectsPublished)
                 .in_set(net::ClientSet::Present),
         );
 }
+
+/// The film view's update for the frame.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct FilmVisionUpdated;
 
 fn apply_screen_blur_request(
     request: Res<frame::ScreenBlurRequest>,

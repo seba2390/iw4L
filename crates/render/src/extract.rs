@@ -869,6 +869,7 @@ pub fn extract_postfx(
                 .collect();
             extracted.overlays = Some(render_gpu::ExtractedOverlays {
                 materials,
+                blur: overlays.rules.blur,
                 passes: Vec::new(),
             });
         }

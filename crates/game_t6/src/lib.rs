@@ -1,3 +1,4 @@
+mod blur;
 mod builtins;
 mod client;
 mod client_builtins;
@@ -11,6 +12,7 @@ mod menu_expression;
 mod missile;
 mod movement;
 mod overlay;
+mod revive;
 mod script_zones;
 pub mod scrplace;
 mod shock;
