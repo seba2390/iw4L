@@ -1066,8 +1066,6 @@ fn script_install_facts(
     )
 }
 
-const MATCH_CONFIG: &str = "default_xboxlive.cfg";
-
 fn config_sets(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| {
@@ -1526,23 +1524,28 @@ fn preflight_match_install(
                 }
             }
         });
-    let config = sources
-        .0
-        .config(MATCH_CONFIG)
-        .or_else(|| {
-            catalog
-                .filter(|catalog| catalog.namespace == Some(family))
-                .and_then(|catalog| catalog.rawfile_text(MATCH_CONFIG))
-        })
-        .map(str::to_owned);
-    let mut script_dvars = match config {
-        Some(text) => config_sets(&text),
-        None => {
-            diag::warn!(
-                Sim,
-                "gsc: {MATCH_CONFIG} is in neither the map's zones nor its game's menu catalog"
-            );
-            Vec::new()
+    let mut script_dvars = match game_scripts.match_config() {
+        None => Vec::new(),
+        Some(name) => {
+            let config = sources
+                .0
+                .config(name)
+                .or_else(|| {
+                    catalog
+                        .filter(|catalog| catalog.namespace == Some(family))
+                        .and_then(|catalog| catalog.rawfile_text(name))
+                })
+                .map(str::to_owned);
+            match config {
+                Some(text) => config_sets(&text),
+                None => {
+                    diag::warn!(
+                        Sim,
+                        "gsc: {name} is in neither the map's zones nor its game's menu catalog"
+                    );
+                    Vec::new()
+                }
+            }
         }
     };
     for (name, value) in game_scripts.config_defaults() {
@@ -1587,8 +1590,11 @@ fn preflight_match_install(
     if let Some(rules) = rules {
         diag::info!(
             Sim,
-            "gsc: {} host rule dvars over {MATCH_CONFIG}",
-            rules.0.len()
+            "gsc: {} host rule dvars over {}",
+            rules.0.len(),
+            game_scripts
+                .match_config()
+                .unwrap_or("the engine's defaults")
         );
     }
     script_dvars.extend(script_dvar_overrides());
