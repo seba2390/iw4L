@@ -418,6 +418,9 @@ pub(crate) struct ClientOutput {
     pub(crate) water_fog: Option<crate::ScriptFogParams>,
     /// Dvars `setClientDvar` set this frame, for the local client.
     pub(crate) client_dvars: Vec<(String, String)>,
+    /// The extra camera (`isExtraCam`): its entity's number and field of
+    /// view, while one is on.
+    pub(crate) extra_camera: Option<(i32, f32)>,
     next_vision_call: u32,
 }
 
