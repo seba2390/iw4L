@@ -1007,7 +1007,7 @@ pub(crate) fn platform_position_at(world: &World, id: u64, time: i32) -> Option<
     let track = world.get_resource::<PlatformHistory>()?.0.get(&id)?;
     let mut newer = track.newest;
     let oldest = track.samples[(newer + 1) % PLATFORM_SAMPLES];
-    if time == oldest.1 || time < oldest.1 {
+    if time <= oldest.1 {
         return Some(oldest.0);
     }
     if track.samples[newer].1 <= time {

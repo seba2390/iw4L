@@ -227,18 +227,10 @@ fn deploy_unknown() -> &'static Unknown {
     )
 }
 
-fn offhand_pickup_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.offhand_pickup",
-        "switching to an offhand while looking at a placed one does not pick it up",
-        "the entity a player's use hint points at in the player state and Black Ops 2's pick up callback"
-    )
-}
-
 fn grenade_suicide_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.grenade_suicide",
-        "with grenade suicide on (multiplayer), a grenade held past its fuse does not kill its thrower outright, credited to whoever threw it back",
+        "with grenade suicide on (never on zombies, whose scripts turn it off before any player can cook), a grenade held past its fuse does not kill its thrower outright, credited to whoever threw it back",
         "Black Ops 2's player death, which that rule calls without the damage rules"
     )
 }
@@ -246,7 +238,7 @@ fn grenade_suicide_unknown() -> &'static Unknown {
 fn gas_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.gas",
-        "a gas weapon's flames are not fired",
+        "a gas weapon's flames are not fired (multiplayer: no zombies weapon is of the gas type or class)",
         "Black Ops 2's flame system"
     )
 }
@@ -270,8 +262,8 @@ fn missile_antilag_unknown() -> &'static Unknown {
 fn throwback_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.throwback",
-        "a thrown-back grenade is credited to its thrower and not told to scripts",
-        "Black Ops 2's grenade throwback ownership and notify"
+        "a thrown grenade cannot be picked up and thrown back",
+        "thrown grenades as usable entities in the use search, the pick up on switching offhands, and the throw credited to the grenade's owner"
     )
 }
 
@@ -589,7 +581,15 @@ impl Shot<'_> {
                 self.gaps.push(deploy_unknown());
             }
             ev::USE_OFFHAND => self.throw_offhand(world),
-            ev::SWITCH_OFFHAND => self.gaps.push(offhand_pickup_unknown()),
+            // Switching offhands with the use hint on a thrown grenade picks
+            // it up to throw back; nothing else is picked up this way.
+            ev::SWITCH_OFFHAND
+                if self.ps.cursor_hint_ent_index != 0
+                    && self.ps.cursor_hint_ent_index != ENTITYNUM_NONE =>
+            {
+                self.gaps.push(throwback_unknown());
+            }
+            ev::SWITCH_OFFHAND => {}
             ev::PREP_RIOTSHIELD => world.notify(me, "raise_riotshield", &[]),
             ev::DEPLOY_RIOTSHIELD => world.notify(me, "deploy_riotshield", &[NotifyArg::Int(1)]),
             ev::LOWER_RIOTSHIELD => {
