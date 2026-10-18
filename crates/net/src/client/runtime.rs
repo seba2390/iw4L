@@ -1026,29 +1026,8 @@ pub fn sample_client_input(
             actions.pad_look_delta = [0.0; 2];
             mouse
         });
-    if cursor_aim.active {
-        let (right, down) = input_iw4::apply_mouse_sensitivity(
-            actions.mouse_x,
-            actions.mouse_y,
-            actions.mouse_x.abs() + actions.mouse_y.abs(),
-            actions.frame_msec.max(1) as f32,
-            actions.sensitivity,
-            actions.mouse_accel,
-            actions.fov_scale,
-        );
-        cursor_aim.mouse[0] += right;
-        cursor_aim.mouse[1] += down;
-        actions.mouse_x = 0.0;
-        actions.mouse_y = 0.0;
-        actions.pad_look_delta = [0.0; 2];
-    } else {
-        cursor_aim.mouse = [0.0; 2];
-    }
-    let turn = std::mem::take(&mut cursor_aim.turn);
-    for (axis, degrees) in turn.into_iter().enumerate() {
-        look.angles[axis] =
-            look.angles[axis].wrapping_add((degrees * input_iw4::ANGLE2SHORT) as i32);
-    }
+    cursor_aim.take_mouse(&mut actions);
+    cursor_aim.turn_look(&mut look);
     let look_state = ps
         .zip(presented.shellshock(local.0))
         .map(|(ps, shock)| {
