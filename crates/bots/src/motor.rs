@@ -1,6 +1,6 @@
 use math_iw4::{angle_normalize_360, angle_subtract, yaw_vectors_2d};
 use movement_iw4::ANGLE2SHORT;
-pub(crate) use playerstate_iw4::{UserCmd, buttons};
+pub(crate) use playerstate_iw4::{PlayerState, UserCmd, buttons};
 
 use crate::intent::{BotIntent, MotorReport, MoveMode, PathOutcome};
 use crate::observation::BotObservation;

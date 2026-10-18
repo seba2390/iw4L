@@ -439,7 +439,6 @@ pub struct PlayerState {
     pub dive_end_time: i32,
     pub prone_check_torso_pitch: f32,
     pub prone_check_waist_pitch: f32,
-    pub launch_time: i32,
     pub move_speed_scale_multiplier: f32,
     pub anim_lock_end: i32,
     pub perks: [u32; 2],

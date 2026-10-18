@@ -4,10 +4,10 @@
 
 use fastfile_t6::weapon::{WeaponDefView, def, variant};
 use game_api::movement::{
-    ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
-    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
-    MoveWorld, PlayerMovement, ScriptFlag, Stance, VolumeColumn, WeaponActivity, WeaponNotify,
-    WeaponNotifyMemory, buttons as intent,
+    ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MeleeTarget, MoveCommand,
+    MoveContext, MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace,
+    MoveType, MoveWorld, PlayerMovement, ScriptFlag, Stance, VolumeColumn, WeaponActivity,
+    WeaponNotify, WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t6::events::event;
@@ -57,11 +57,6 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
             "a shellshocked Black Ops 2 player moves at full speed",
             "the movement scale in Black Ops 2's shellshock files"
         ),
-        Gap::Launched => unknown!(
-            "t6.movement.launch",
-            "Black Ops 2's bayonet launch",
-            "Black Ops 2's launch move from its executable"
-        ),
         Gap::AnimLock => unknown!(
             "t6.movement.anim_lock",
             "Black Ops 2's scripted animation lock on a player",
@@ -91,11 +86,11 @@ fn water_unknown() -> &'static Unknown {
     )
 }
 
-fn melee_lunge_unknown() -> &'static Unknown {
+fn target_velocity_unknown() -> &'static Unknown {
     unknown!(
-        "t6.weapons.melee_lunge",
-        "a Black Ops 2 melee lunge: the client found a target, but IW4L's command carries no target entity, so the knife swings in place",
-        "Black Ops 2's client melee target selection and the entity it sends in the command"
+        "t6.movement.launch_target_velocity",
+        "a melee lunge at an actor is not steered onto where the actor is heading: Black Ops 2 reads the target entity's trajectory delta, and what an actor's carries is not read",
+        "what Black Ops 2's server puts in an actor's trajectory delta"
     )
 }
 
@@ -273,7 +268,6 @@ fn game_state(
     b.i(&mut ps.dive_end_time, write);
     b.f(&mut ps.prone_check_torso_pitch, write);
     b.f(&mut ps.prone_check_waist_pitch, write);
-    b.i(&mut ps.launch_time, write);
     b.i(&mut ps.anim_lock_end, write);
     b.word(&mut ps.perks[0], write);
     b.word(&mut ps.perks[1], write);
@@ -414,6 +408,7 @@ struct World<'a> {
     world: &'a dyn MoveWorld,
     water_unknown: core::cell::Cell<bool>,
     height_lock_unknown: core::cell::Cell<bool>,
+    target_velocity_unknown: core::cell::Cell<bool>,
 }
 
 impl movement_t6::MoveWorld for World<'_> {
@@ -507,6 +502,19 @@ impl movement_t6::MoveWorld for World<'_> {
         }
     }
 
+    fn entity_origin(&self, entity: i32) -> Option<[f32; 3]> {
+        self.world.entity_origin(shared_entity(entity))
+    }
+
+    fn entity_velocity(&self, entity: i32) -> Option<[f32; 3]> {
+        let entity = shared_entity(entity);
+        let velocity = self.world.entity_velocity(entity);
+        if velocity.is_none() && !self.world.is_player(entity) {
+            self.target_velocity_unknown.set(true);
+        }
+        velocity
+    }
+
     /// The engine's water height: a line from `up` above to `down` below
     /// against the world's water, which counts where it strikes a surface
     /// with a surface type, or at its start when that is in water.
@@ -560,8 +568,8 @@ impl PlayerMovement for T6Movement {
             alt_mode_weapon: cmd.alt_weapon,
             forwardmove: cmd.forwardmove,
             rightmove: cmd.rightmove,
-            melee_charge_ent: ENTITYNUM_NONE as u16,
-            melee_charge_dist: 0,
+            melee_charge_ent: cmd.melee_charge_ent.unwrap_or(ENTITYNUM_NONE as u16),
+            melee_charge_dist: cmd.melee_charge_dist,
             fire_buttons_swapped: false,
             airburst_distance: 0,
         };
@@ -576,6 +584,7 @@ impl PlayerMovement for T6Movement {
             world,
             water_unknown: core::cell::Cell::new(false),
             height_lock_unknown: core::cell::Cell::new(false),
+            target_velocity_unknown: core::cell::Cell::new(false),
         };
         let held: [movement_t6::HeldRounds; HELD_WEAPONS] = core::array::from_fn(|i| {
             (
@@ -586,9 +595,6 @@ impl PlayerMovement for T6Movement {
         });
         movement_t6::load_held(&mut ps, &adapter, &held);
         let mut outcome = MoveOutcome::default();
-        if cmd.melee_charge_dist != 0 {
-            outcome.gaps.push(melee_lunge_unknown());
-        }
         let view_weapon;
         {
             let mut pm = Pm::new(&mut ps, t6cmd, last, mask, &adapter);
@@ -620,6 +626,9 @@ impl PlayerMovement for T6Movement {
         }
         if adapter.height_lock_unknown.get() {
             outcome.gaps.push(gap_unknown(Gap::HeightLock));
+        }
+        if adapter.target_velocity_unknown.get() {
+            outcome.gaps.push(target_velocity_unknown());
         }
         if adapter.water_unknown.get() {
             outcome.gaps.push(water_unknown());
@@ -981,6 +990,10 @@ impl PlayerMovement for T6Movement {
             memory.sprint = sprint;
         }
         out
+    }
+
+    fn melee_target(&self, aim: &game_api::movement::MeleeAim<'_>) -> Option<MeleeTarget> {
+        crate::automelee::melee_target(aim)
     }
 
     fn server_events(

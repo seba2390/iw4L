@@ -285,6 +285,19 @@ fn vector(text: &str) -> [f32; 3] {
 }
 
 impl RoundScript {
+    /// A field's value, without adding its name to the symbols; `None` when
+    /// the object has no such field.
+    pub(crate) fn peek_object_field(&self, id: u64, name: &str) -> Option<Value> {
+        let symbol = self
+            .program
+            .as_ref()?
+            .symbol_ids
+            .get(name)
+            .copied()
+            .or_else(|| self.dynamic_symbols.get(name).copied())?;
+        self.objects.get(&id)?.get(&symbol).cloned()
+    }
+
     pub(crate) fn object_field(&mut self, id: u64, name: &str) -> Value {
         let field = self.symbol(name);
         self.objects

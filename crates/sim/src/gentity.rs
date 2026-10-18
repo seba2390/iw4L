@@ -652,6 +652,9 @@ pub struct ScriptMoverGentity {
     pub nonsolid: bool,
 
     pub shown_to: u64,
+
+    /// A living actor: clients take it as an aim target.
+    pub aim_target: bool,
 }
 
 impl Default for ScriptMoverGentity {
@@ -666,6 +669,7 @@ impl Default for ScriptMoverGentity {
             link_half: [0.0; 3],
             nonsolid: false,
             shown_to: 0,
+            aim_target: false,
         }
     }
 }

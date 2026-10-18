@@ -37,7 +37,7 @@ pub(crate) fn friction<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let mut drop = 0.0_f32;
     let slick = pml.ground_trace.surface_flags & SURF_SLICK != 0;
     if flags & pm_flags::LAUNCHED != 0 {
-        drop = speed / (pm.ps.launch_time as f32 * 0.00100000005) * pml.frametime;
+        drop = crate::launch::friction_drop(pm, pml);
     } else if pm.ps.water_level <= 1 {
         if pml.walking && !slick && flags & (pm_flags::LOW_READY | pm_flags::TIME_KNOCKBACK) == 0 {
             let mut control = if tuning::STOPSPEED > speed {
