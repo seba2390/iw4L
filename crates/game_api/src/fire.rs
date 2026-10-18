@@ -189,6 +189,13 @@ pub trait FireWorld {
     /// A script asked that script blasts pass players by.
     fn players_ignore_radius_damage(&self) -> bool;
 
+    /// Where the moving platform the player numbered `player` stands on was
+    /// at level time `time`; `None` when they stand on no platform the match
+    /// keeps a history of.
+    fn platform_at(&mut self, _player: i32, _time: i32) -> Option<[f32; 3]> {
+        None
+    }
+
     /// A script turned off grenade suicide: a grenade held past its fuse
     /// falls at the thrower's feet and hurts them instead of killing them
     /// outright.

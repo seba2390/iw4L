@@ -80,7 +80,8 @@
 //!
 //! `IW4L_TEST_RIDE=1|<seconds>` (with any fighting mode): 15 s (or the
 //! seconds given) in, the player steps
-//! onto TranZit's bus and stays, logging where he and the bus are.
+//! onto TranZit's bus and stays, logging where he and the bus are; with
+//! `IW4L_TEST_THROW=ride` he throws a frag ahead every 15 s as he rides.
 //!
 //! `IW4L_TEST_PLAYER=revive` is the go-down test with Quick Revive: once
 //! he can pay for it he buys Quick Revive as the use test does (fighting
@@ -1842,6 +1843,25 @@ pub(crate) fn drive_test_player(
             );
         }
         if test.boarded {
+            // `IW4L_TEST_THROW=ride`: riding, he throws a frag the way he
+            // faces every 15 s.
+            if std::env::var("IW4L_TEST_THROW").is_ok_and(|t| t == "ride") {
+                if clock.time_ms < test.throw_until_ms {
+                    cmd.buttons |= buttons::FRAG;
+                } else if clock.time_ms >= test.next_throw_ms && ps.weaponstate_primary == 0 {
+                    test.next_throw_ms = clock.time_ms + THROW_PERIOD_MS;
+                    test.throw_until_ms = clock.time_ms + THROW_HOLD_MS;
+                    test.throws += 1;
+                    diag::info!(
+                        Sim,
+                        "test player: throw {} from the bus at {}, bus at {}",
+                        test.throws,
+                        fmt_point(ps.origin),
+                        fmt_point(bus)
+                    );
+                    cmd.buttons |= buttons::FRAG;
+                }
+            }
             cmds.push(id, cmd);
             return;
         }

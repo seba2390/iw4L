@@ -38,7 +38,7 @@ mod sound;
 mod stats;
 mod turret;
 mod usable;
-mod vehicle;
+pub(crate) mod vehicle;
 mod weapon;
 
 pub(crate) use usable::{axes as box_axes, oriented_box_touches};

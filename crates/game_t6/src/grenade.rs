@@ -164,13 +164,84 @@ pub(crate) fn launch_grenade(
         ]
     });
     // `G_FireGrenade` truncates the base launch velocity before the caller
-    // adds the thrower's projected velocity.
+    // adds the thrower's projected velocity, then a moving platform's.
     for c in &mut vel {
         *c = *c as i32 as f32;
     }
+    let platform = platform_velocity(owner, world);
     spawn_grenade(
-        owner, weapon, def, origin, vel, carried, !launcher, fuse, time_left, world,
+        owner,
+        weapon,
+        def,
+        origin,
+        vel,
+        [carried, platform],
+        !launcher,
+        fuse,
+        time_left,
+        world,
     )
+}
+
+/// What a moving platform a player stands on adds to what they throw or
+/// fire: its travel over the last 200 ms of level time as a direction, times
+/// that travel's length × 1000 × 0.005 (the x87 product rounded once to
+/// single precision). Nothing when the thrower is no player or stands on no
+/// platform the match keeps a history of.
+pub(crate) fn platform_velocity(owner: i32, world: &mut dyn FireWorld) -> [f32; 3] {
+    if world.player(owner).is_none() {
+        return [0.0; 3];
+    }
+    let now = world.level_time();
+    let (Some(then), Some(at)) = (
+        world.platform_at(owner, now - 200),
+        world.platform_at(owner, now),
+    ) else {
+        return [0.0; 3];
+    };
+    let mut d = [at[0] - then[0], at[1] - then[1], at[2] - then[2]];
+    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    let inv = 1.0 / if -len >= 0.0 { 1.0 } else { len };
+    for c in &mut d {
+        *c *= inv;
+    }
+    let scale = x87_product_f32(f64::from(len) * 1000.0, f64::from(0.005_f32));
+    let velocity = [d[0] * scale, d[1] * scale, d[2] * scale];
+    diag::info!(
+        Sim,
+        "fired from a moving platform: {:.2} units in 200 ms, adds {velocity:?}",
+        len
+    );
+    velocity
+}
+
+/// `a × b` rounded once to single precision, as the x87 unit's exact product
+/// is when it is stored: the double product, its tie broken by the error
+/// the double rounding dropped.
+fn x87_product_f32(a: f64, b: f64) -> f32 {
+    let p = a * b;
+    let error = a.mul_add(b, -p);
+    let r = p as f32;
+    let r64 = f64::from(r);
+    if error == 0.0 || p == r64 {
+        return r;
+    }
+    let other = if p > r64 {
+        f32::from_bits(
+            r.to_bits()
+                .wrapping_add(if r >= 0.0 { 1 } else { -1i32 as u32 }),
+        )
+    } else {
+        f32::from_bits(
+            r.to_bits()
+                .wrapping_add(if r >= 0.0 { -1i32 as u32 } else { 1 }),
+        )
+    };
+    if (r64 + f64::from(other)) * 0.5 == p && (error > 0.0) == (f64::from(other) > r64) {
+        other
+    } else {
+        r
+    }
 }
 
 /// `G_FireGrenade` takes a player's cooked fuse, and clears it, unless the
@@ -188,7 +259,9 @@ pub(crate) fn spawn_grenade(
     def: &WeaponDefView<'_>,
     start: [f32; 3],
     vel: [f32; 3],
-    carried: [f32; 3],
+    // What the caller adds to the truncated velocity, in its order: the
+    // thrower's projected velocity, then a moving platform's.
+    added: [[f32; 3]; 2],
     rotate: bool,
     fuse: i32,
     time_left: Option<i32>,
@@ -196,11 +269,9 @@ pub(crate) fn spawn_grenade(
 ) -> Option<i32> {
     let level = world.level_time();
     let angles = vectoangles(vel);
-    let delta = [
-        vel[0] as i32 as f32 + carried[0],
-        vel[1] as i32 as f32 + carried[1],
-        vel[2] as i32 as f32 + carried[2],
-    ];
+    let [carried, platform] = added;
+    let delta: [f32; 3] =
+        std::array::from_fn(|i| platform[i] + (vel[i] as i32 as f32 + carried[i]));
     let spin = if rotate && def.def_bool(def::ROTATE) {
         let base = [normalize_360(angles[0] - 120.0), angles[1], angles[2]];
         let delta = if def.def_i32(def::ROTATE_TYPE) == 1 {

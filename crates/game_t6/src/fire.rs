@@ -13,8 +13,7 @@ use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
 use movement_t6::events::event as ev;
 use movement_t6::state::{
-    ENTITYNUM_NONE, ENTITYNUM_WORLD, e_flags, e_flags2, pm_flags, pm_type, weap_flags,
-    weapon_state as ws,
+    ENTITYNUM_NONE, e_flags, e_flags2, pm_flags, pm_type, weap_flags, weapon_state as ws,
 };
 use movement_t6::weapon::{fire_type, weapon_type};
 use movement_t6::{PlayerState, perks};
@@ -255,8 +254,8 @@ fn gas_unknown() -> &'static Unknown {
 fn rocket_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.rocket_launch",
-        "a rocket flies straight: Black Ops 2's guided, locked-on, airburst and wandering rockets are not run, nor the mark that keeps a launched grenade from wandering",
-        "Black Ops 2's whole rocket launch and guidance"
+        "a rocket of a weapon that accelerates, wanders at random, is guided (other than a ballistic knife's fall) or destabilizes flies straight",
+        "Black Ops 2's accelerating, wandering, guided and destabilizing rocket flight"
     )
 }
 
@@ -265,14 +264,6 @@ fn missile_antilag_unknown() -> &'static Unknown {
         "t6.weapons.missile_antilag",
         "a player's missile starts at the match's time; Black Ops 2 starts it at the command's time and runs it forward to catch up",
         "running a new missile ahead by a time offset in the runtime"
-    )
-}
-
-fn mover_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.mover_velocity",
-        "a missile fired by a player standing on an entity does not take that entity's velocity",
-        "which entities are movers in the runtime and their velocity"
     )
 }
 
@@ -1382,7 +1373,6 @@ impl Shot<'_> {
             Some(time_left),
             world,
         );
-        self.mover_velocity(world);
         self.fired_grenade(def, def.fuse_time(), world);
     }
 
@@ -1410,7 +1400,7 @@ impl Shot<'_> {
             &def,
             origin,
             vel,
-            [0.0; 3],
+            [[0.0; 3]; 2],
             true,
             time_left,
             Some(time_left),
@@ -1442,7 +1432,7 @@ impl Shot<'_> {
                 &def,
                 origin,
                 [0.0; 3],
-                [0.0; 3],
+                [[0.0; 3]; 2],
                 false,
                 time_left,
                 Some(time_left),
@@ -1484,14 +1474,6 @@ impl Shot<'_> {
         // adopts the grenade's script entity.
     }
 
-    /// A player standing on an entity hands its velocity to the missile.
-    fn mover_velocity(&mut self, _world: &dyn FireWorld) {
-        let ground = self.ps.ground_entity_num;
-        if ground != ENTITYNUM_NONE && ground != ENTITYNUM_WORLD {
-            self.gaps.push(mover_unknown());
-        }
-    }
-
     /// A projectile weapon's rocket, its knockback on the shooter.
     fn fire_rocket(
         &mut self,
@@ -1501,9 +1483,14 @@ impl Shot<'_> {
         parms: &WeaponParms,
         world: &mut dyn FireWorld,
     ) {
-        self.gaps.push(rocket_unknown());
-        if def.guided_missile_type() != 6 {
-            self.mover_velocity(world);
+        // A straight or falling rocket is Black Ops 2's own; the others are
+        // not run.
+        if def.projectile_acceleration() > 0.0
+            || def.projectile_random_wander() > 0.0
+            || !matches!(def.guided_missile_type(), 0 | 4)
+            || def.guided_missile_type() == 0 && def.destabilization_rate_time() != 0.0
+        {
+            self.gaps.push(rocket_unknown());
         }
         let knockback = def.fire_type() != fire_type::FULL_AUTO
             && (!dvar_bool(world, "tu11_useMissileKnockbackHeldWeaponsOnly", true)
