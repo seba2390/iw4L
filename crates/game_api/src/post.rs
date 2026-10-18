@@ -180,8 +180,12 @@ pub trait VisionChannels: Send + Sync {
 /// reading the frame as drawn so far.
 #[derive(Clone, Copy, Debug)]
 pub struct OverlayRules {
-    /// Every material a frame's overlays can draw.
+    /// Every material the game's own overlays draw, drawn when the loaded
+    /// zones carry them.
     pub materials: &'static [&'static str],
+    /// The materials the game's client scripts map to its filter passes,
+    /// drawn when the loaded zones carry them.
+    pub filter_materials: &'static [&'static str],
     /// The frame's overlays, in draw order.
     pub plan: fn(&OverlayFrame<'_>) -> Vec<OverlayPass>,
     /// What the game's overlay choice still leaves unknown.
@@ -192,7 +196,7 @@ pub struct OverlayRules {
 /// stable to compare.
 impl PartialEq for OverlayRules {
     fn eq(&self, other: &Self) -> bool {
-        self.materials == other.materials
+        self.materials == other.materials && self.filter_materials == other.filter_materials
     }
 }
 
@@ -203,14 +207,16 @@ pub struct OverlayFrame<'a> {
     pub now_ms: i32,
     /// The overlay state the client's game holds.
     pub screen: &'a ScreenOverlays,
-    /// Each material's texture atlas (rows, columns), in the rule's order.
-    pub atlases: &'a [[u8; 2]],
+    /// Each drawable material's texture atlas (rows, columns), by name.
+    pub atlases: &'a [(&'static str, [u8; 2])],
+    /// The scene's viewport the overlays draw over: x, y, width, height.
+    pub viewport: [f32; 4],
 }
 
 /// One fullscreen draw of an overlay material.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OverlayPass {
-    pub material: &'static str,
+    pub material: String,
     /// The rows this draw sets before it draws.
     pub constants: Vec<(OverlayConstant, [f32; 4])>,
 }
@@ -223,11 +229,18 @@ pub enum OverlayConstant {
     OverlayTexCoord,
     FadeEffect,
     ViewportDimensions,
+    /// The draw's target size: the draw puts its width and height in x and
+    /// y, and keeps the planned z and w.
+    RenderTargetSize,
+    /// One of the four script vector rows, 0 to 3.
+    ScriptVector(u8),
+    /// One of the sixteen post control rows, 0 to 15.
+    PostFxControl(u8),
 }
 
 /// The screen overlays a client's game keeps, as its scripts and server set
 /// them, with the render settings its overlay draw reads.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScreenOverlays {
     /// The burning overlay, while it plays.
     pub burn: Option<FlameOverlay>,
@@ -237,6 +250,30 @@ pub struct ScreenOverlays {
     pub flame_allowed: bool,
     /// The flame overlays' fade override: 1 leaves the fade as it plays.
     pub flame_scaler: f32,
+    /// The client scripts' filters that draw, in filter order.
+    pub filters: Vec<ScreenFilter>,
+    /// The poison overlay, while its amount is over 0.
+    pub poison: Option<PoisonOverlay>,
+}
+
+/// The poison overlay: its amount and the render settings its draw reads.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PoisonOverlay {
+    pub amount: f32,
+    /// The distortion's pulse rate.
+    pub pulse: f32,
+    /// The double vision's horizontal offset.
+    pub dvision_x: f32,
+}
+
+/// A client script filter that draws: its first pass's material and the
+/// sixteen constants the scripts set for that pass.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScreenFilter {
+    /// The filter, 0 to 7.
+    pub filter: u8,
+    pub material: String,
+    pub constants: [f32; 16],
 }
 
 /// A flame-style overlay (burning, electric shock): the settings it took

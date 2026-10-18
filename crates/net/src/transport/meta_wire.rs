@@ -1696,6 +1696,42 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
     }
     out.put_u8(u8::from(overlays.flame_allowed));
     out.put_f32(overlays.flame_scaler);
+    out.put_u8(overlays.filters.len() as u8);
+    for filter in &overlays.filters {
+        out.put_u8(filter.filter);
+        put_text(out, &filter.material);
+        for constant in filter.constants {
+            out.put_f32(constant);
+        }
+    }
+    match overlays.poison {
+        None => out.put_u8(0),
+        Some(poison) => {
+            out.put_u8(1);
+            out.put_f32(poison.amount);
+            out.put_f32(poison.pulse);
+            out.put_f32(poison.dvision_x);
+        }
+    }
+    out.put_u16(screen.undrawn_entities.len() as u16);
+    for number in &screen.undrawn_entities {
+        out.put_u16(*number);
+    }
+    out.put_u16(screen.script_vectors.len() as u16);
+    for entity in &screen.script_vectors {
+        out.put_u16(entity.number);
+        for row in entity.rows {
+            match row {
+                None => out.put_u8(0),
+                Some(row) => {
+                    out.put_u8(1);
+                    for value in row {
+                        out.put_f32(value);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn decode_flame_overlay(
@@ -1769,7 +1805,58 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         shock: decode_flame_overlay(input)?,
         flame_allowed: input.get_u8()? != 0,
         flame_scaler: input.get_f32()?,
+        filters: {
+            let count = input.get_u8()?;
+            let mut filters = Vec::with_capacity(usize::from(count));
+            for _ in 0..count {
+                let filter = input.get_u8()?;
+                let material = get_text(input)?;
+                let mut constants = [0.0; 16];
+                for constant in &mut constants {
+                    *constant = input.get_f32()?;
+                }
+                filters.push(sim::ScreenFilter {
+                    filter,
+                    material,
+                    constants,
+                });
+            }
+            filters
+        },
+        poison: match input.get_u8()? {
+            0 => None,
+            1 => Some(sim::PoisonOverlay {
+                amount: input.get_f32()?,
+                pulse: input.get_f32()?,
+                dvision_x: input.get_f32()?,
+            }),
+            _ => return Err(WireError::Malformed("bad poison overlay tag")),
+        },
     };
+    let count = input.get_u16()?;
+    let mut undrawn_entities = Vec::with_capacity(usize::from(count));
+    for _ in 0..count {
+        undrawn_entities.push(input.get_u16()?);
+    }
+    let count = input.get_u16()?;
+    let mut script_vectors = Vec::with_capacity(usize::from(count));
+    for _ in 0..count {
+        let number = input.get_u16()?;
+        let mut rows = [None; 4];
+        for row in &mut rows {
+            *row = match input.get_u8()? {
+                0 => None,
+                1 => Some([
+                    input.get_f32()?,
+                    input.get_f32()?,
+                    input.get_f32()?,
+                    input.get_f32()?,
+                ]),
+                _ => return Err(WireError::Malformed("bad script vector tag")),
+            };
+        }
+        script_vectors.push(sim::EntityScriptVectors { number, rows });
+    }
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
@@ -1777,6 +1864,8 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         fog_bank,
         gumps,
         overlays,
+        script_vectors,
+        undrawn_entities,
     })
 }
 

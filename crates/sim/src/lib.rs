@@ -120,13 +120,13 @@ pub const FRIENDLY_BOTS_DVAR: &str = "scr_game_friendlybots";
 pub const TEAM_MENU: &str = "team_marinesopfor";
 pub use game_api::fog::ScriptFogSwitch;
 pub use game_api::post::VisionCall;
-pub use game_api::post::{FlameOverlay, ScreenOverlays};
+pub use game_api::post::{FlameOverlay, PoisonOverlay, ScreenFilter, ScreenOverlays};
 pub use match_state::{
     CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle, ClientLightOverride,
     ClientScreen, ClientSnapshotMeta, ConfigurationChangeRejectReason, DroppedItemAmmo,
-    EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, GUMP_SLOTS,
-    GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt, ItemPickupRecord, KillcamHud,
-    LinkedWeaponView, LoadoutSpec, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
+    EntityEventPayload, EntityEventRecord, EntityScriptVectors, EventAudience, EventRecord,
+    GUMP_SLOTS, GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt, ItemPickupRecord,
+    KillcamHud, LinkedWeaponView, LoadoutSpec, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
     MatchEndReason, MenuCommand, MenuCommandKind, PelletFxRecord, PersonalClass, RadarMode,
     RemoteMissile, RngDebugMeta, SIM_EVENT_ROSTER, SOUND_REPORTS_LENGTH, ScriptBlur,
     ScriptControls, ScriptDepthOfField, ScriptDvars, ScriptSeat, SimEvent, SimEventRow,

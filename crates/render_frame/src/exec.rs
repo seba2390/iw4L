@@ -27,6 +27,8 @@ pub struct MaterialExecFrame {
     pub local_light_bindings: Vec<render_material::CompiledConstantOverlay>,
     pub reflection_probe_sh: Vec<Option<[[f32; 4]; 3]>>,
     pub smodel_lighting_sh: std::sync::Arc<Vec<Option<[[f32; 4]; 3]>>>,
+    /// The script vector rows each entity's model draws take, by entity.
+    pub script_vectors: std::sync::Arc<std::collections::HashMap<u32, [Option<[f32; 4]>; 4]>>,
 
     pub spot_receivers: Vec<Option<SpotShadowReceiver>>,
 }

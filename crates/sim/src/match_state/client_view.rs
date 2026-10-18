@@ -121,6 +121,19 @@ pub struct ClientScreen {
     pub gumps: [Option<String>; GUMP_SLOTS],
     /// The burning and electric shock overlays and the flame render dvars.
     pub overlays: game_api::post::ScreenOverlays,
+    /// The script vector rows the client's scripts map on its entities.
+    pub script_vectors: Vec<EntityScriptVectors>,
+    /// The entities the client does not draw this frame.
+    pub undrawn_entities: Vec<u16>,
+}
+
+/// The script vector rows an entity's draws take (`mapshaderconstant`,
+/// `setshaderconstant`): each of `scriptVector0` to `scriptVector3` the
+/// entity maps, with the vector its last slot for that row holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EntityScriptVectors {
+    pub number: u16,
+    pub rows: [Option<[f32; 4]>; 4],
 }
 
 /// The gump slots Black Ops 2's client keeps.

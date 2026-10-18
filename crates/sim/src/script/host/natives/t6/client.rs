@@ -60,14 +60,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 /// touches and its gump loads.
 fn sync(client: &mut bevy_ecs::prelude::World) {
     game::sync(client);
+    effects::sync_script_vectors(client);
+    entity::sync_third_person_spectate(client);
     fog::sync(client);
     let now = client
         .get_resource::<crate::step::StepRequest>()
         .map_or(0, |r| i64::from(r.tick.0) * i64::from(crate::MATCH_TICK_MS));
     touch::frame(client, now);
     gump::frame(client, now);
+    let poison = super::poison_overlay::PoisonDvars::read(client);
     crate::script::host::client_scripts::with_server(client, |server| {
         super::flame_overlay::frame(server, game::LOCAL_CLIENT as u32);
+        super::poison_overlay::frame(server, game::LOCAL_CLIENT as u32, &poison);
     });
 }
 

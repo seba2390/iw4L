@@ -25,8 +25,17 @@ use std::collections::HashMap;
 
 /// The code texture of the frame as drawn so far (`feedback`).
 const CODE_TEXTURE_FEEDBACK: u32 = 8;
+/// The resolved scene's code texture: the overlay pass resolves the frame
+/// as drawn so far into it before its overlays draw.
+const CODE_TEXTURE_RESOLVED_SCENE: u32 = 10;
 /// The game time row.
 const CODE_GAMETIME: u16 = 0x07;
+/// The render target size row.
+const CODE_RENDER_TARGET_SIZE: u16 = 0x16;
+/// The view-projection, world and world-view-projection rows.
+const CODE_TRANSPOSE_VIEW_PROJECTION: u16 = 0x56;
+const CODE_TRANSPOSE_WORLD0: u16 = 0x62;
+const CODE_TRANSPOSE_WORLD_VIEW_PROJECTION0: u16 = 0x6a;
 /// The sampler state the frame is read with, as the post chain reads it.
 const POST_SAMPLER: u8 = 0x62;
 
@@ -134,14 +143,26 @@ fn prepare_overlays(
     };
 }
 
-fn code_row(constant: OverlayConstant) -> u16 {
-    match constant {
+/// The code row a planned constant sets, if there is one.
+fn code_row(constant: OverlayConstant) -> Option<u16> {
+    Some(match constant {
         OverlayConstant::GameTime => CODE_GAMETIME,
         OverlayConstant::FlameDistortion => render_material::CODE_T6_FLAME_DISTORTION,
         OverlayConstant::OverlayTexCoord => render_material::CODE_T6_OVERLAY_TEX_COORD,
         OverlayConstant::FadeEffect => render_material::CODE_T6_FADE_EFFECT,
         OverlayConstant::ViewportDimensions => render_material::CODE_T6_VIEWPORT_DIMENSIONS,
-    }
+        OverlayConstant::RenderTargetSize => CODE_RENDER_TARGET_SIZE,
+        OverlayConstant::ScriptVector(at) => {
+            *render_material::CODE_T6_SCRIPT_VECTOR.get(usize::from(at))?
+        }
+        OverlayConstant::PostFxControl(at) => {
+            let at = u16::from(at);
+            if at >= render_material::CODE_POST_CONTROL_COUNT {
+                return None;
+            }
+            render_material::CODE_POST_CONTROL0 + at
+        }
+    })
 }
 
 /// What a pass binds: the frame, or a material texture's view and sampler.
@@ -170,6 +191,7 @@ fn draw_overlays(
     mut context: RenderContext,
     mut texture_table: ResMut<super::texture_table::ExactTextureTable>,
     mut reported: Local<Option<String>>,
+    mut frame_copy: Local<Option<Texture>>,
 ) {
     let Some(overlays) = extracted.overlays.as_ref() else {
         return;
@@ -246,16 +268,44 @@ fn draw_overlays(
             report("screen overlays: RED film sources".into());
             return;
         };
-        for row in std::iter::once(CODE_GAMETIME).chain([
-            render_material::CODE_T6_FLAME_DISTORTION,
-            render_material::CODE_T6_OVERLAY_TEX_COORD,
-            render_material::CODE_T6_FADE_EFFECT,
-            render_material::CODE_T6_VIEWPORT_DIMENSIONS,
-        ]) {
+        // A 2D view leaves the view identity: its view-projection is the
+        // same 2D projection, and it draws its quads with an identity world.
+        if let Some(projection) = sources.constant_arc(CODE_TRANSPOSE_WORLD_VIEW_PROJECTION0) {
+            sources.set_constant_rows(CODE_TRANSPOSE_VIEW_PROJECTION, &projection);
+        }
+        sources.set_constant_rows(
+            CODE_TRANSPOSE_WORLD0,
+            &[
+                [1.0f32.to_bits(), 0, 0, 0],
+                [0, 1.0f32.to_bits(), 0, 0],
+                [0, 0, 1.0f32.to_bits(), 0],
+                [0, 0, 0, 1.0f32.to_bits()],
+            ],
+        );
+        for row in std::iter::once(CODE_GAMETIME)
+            .chain([
+                render_material::CODE_T6_FLAME_DISTORTION,
+                render_material::CODE_T6_OVERLAY_TEX_COORD,
+                render_material::CODE_T6_FADE_EFFECT,
+                render_material::CODE_T6_VIEWPORT_DIMENSIONS,
+            ])
+            .chain(render_material::CODE_T6_SCRIPT_VECTOR)
+        {
             sources.set_constant_rows(row, &[[0; 4]]);
         }
-        for &(constant, row) in &pass.constants {
-            sources.set_constant_rows(code_row(constant), &[row.map(f32::to_bits)]);
+        for &(constant, mut row) in &pass.constants {
+            let Some(code) = code_row(constant) else {
+                report(format!(
+                    "screen overlays: RED material={} constant {constant:?}",
+                    pass.material
+                ));
+                return;
+            };
+            if constant == OverlayConstant::RenderTargetSize {
+                row[0] = size.x as f32;
+                row[1] = size.y as f32;
+            }
+            sources.set_constant_rows(code, &[row.map(f32::to_bits)]);
         }
         if sources
             .set_texture(CODE_TEXTURE_FEEDBACK, POST_SAMPLER)
@@ -298,7 +348,7 @@ fn draw_overlays(
         for binding in &film.port.abi().samplers {
             match binding.source {
                 SamplerSource::CodeTexture {
-                    index: CODE_TEXTURE_FEEDBACK,
+                    index: CODE_TEXTURE_FEEDBACK | CODE_TEXTURE_RESOLVED_SCENE,
                 } => bound.push((None, None)),
                 SamplerSource::MaterialTexture { name_hash } => {
                     let Some(&(_, image, sampler)) = material
@@ -365,23 +415,50 @@ fn draw_overlays(
     }
     let diagnostics = context.diagnostic_recorder();
     let diagnostics = diagnostics.as_deref();
+    let extent = Extent3d {
+        width: size.x,
+        height: size.y,
+        depth_or_array_layers: 1,
+    };
     for draw in &planned {
         let material = &gpu.materials[draw.material];
-        let post = target.post_process_write();
         let encoder = context.command_encoder();
         let span = diagnostics.time_span(encoder, GPU_SPAN_POSTFX);
-        if material.blends {
-            // A blended overlay draws over the frame as drawn so far.
-            encoder.copy_texture_to_texture(
-                post.source_texture.as_image_copy(),
-                post.destination_texture.as_image_copy(),
-                Extent3d {
-                    width: size.x,
-                    height: size.y,
-                    depth_or_array_layers: 1,
-                },
-            );
-        }
+        // An opaque overlay redraws the frame from the frame as drawn so
+        // far; a blended one draws over the frame itself, reading a copy of
+        // it when it reads the frame at all.
+        let copied_frame;
+        let (frame, output_texture, output): (&TextureView, &Texture, &TextureView) = if material
+            .blends
+        {
+            let main = target.main_texture();
+            if draw.bound.iter().any(|(image, _)| image.is_none()) {
+                if frame_copy
+                    .as_ref()
+                    .is_none_or(|copy| copy.size() != extent || copy.format() != main.format())
+                {
+                    *frame_copy = Some(device.create_texture(&TextureDescriptor {
+                        label: Some("overlay_frame_copy"),
+                        size: extent,
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: TextureDimension::D2,
+                        format: main.format(),
+                        usage: TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    }));
+                }
+                let copy = frame_copy.as_ref().expect("created above");
+                encoder.copy_texture_to_texture(main.as_image_copy(), copy.as_image_copy(), extent);
+                copied_frame = copy.create_view(&TextureViewDescriptor::default());
+            } else {
+                copied_frame = main.create_view(&TextureViewDescriptor::default());
+            }
+            (&copied_frame, main, target.main_texture_view())
+        } else {
+            let post = target.post_process_write();
+            (post.source, post.destination_texture, post.destination)
+        };
         let mut views: Vec<&TextureView> = Vec::new();
         let mut samplers: Vec<&Sampler> = Vec::new();
         let mut slots = vec![
@@ -415,7 +492,7 @@ fn draw_overlays(
                 _ => Bound::Frame,
             };
             let (view, sampler) = match bound {
-                Bound::Frame => (post.source, &frame_sampler_object),
+                Bound::Frame => (frame, &frame_sampler_object),
                 Bound::Material(view, sampler) => (
                     view,
                     gpu.samplers
@@ -448,15 +525,13 @@ fn draw_overlays(
         );
         let destination_srgb;
         let output = if material.srgb_write {
-            destination_srgb = post
-                .destination_texture
-                .create_view(&TextureViewDescriptor {
-                    format: Some(TextureFormat::Rgba8UnormSrgb),
-                    ..default()
-                });
+            destination_srgb = output_texture.create_view(&TextureViewDescriptor {
+                format: Some(TextureFormat::Rgba8UnormSrgb),
+                ..default()
+            });
             &destination_srgb
         } else {
-            post.destination
+            output
         };
         let attachments = [Some(RenderPassColorAttachment {
             view: output,
@@ -490,7 +565,7 @@ fn draw_overlays(
         overlays
             .passes
             .iter()
-            .map(|pass| pass.material)
+            .map(|pass| pass.material.as_str())
             .collect::<Vec<_>>()
             .join(" ")
     ));

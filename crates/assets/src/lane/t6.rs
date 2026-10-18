@@ -142,10 +142,14 @@ const HANDS_ZONE: &str = "faction_seals_mp.ff";
 
 /// The post materials Black Ops 2's renderer registers for its screen
 /// overlays (its burn and electric shock passes).
-const T6_OVERLAY_MATERIALS: [&str; 2] = [
+const T6_OVERLAY_MATERIALS: [&str; 3] = [
     "flamethrowerfx_color_distort_overlay_bloom",
     "zombie_electric_shock_overlay",
+    "poison",
 ];
+/// The filter materials the installed maps' client scripts map and enable
+/// (`game_t6::overlay`), captured when the map's zones carry them.
+const T6_FILTER_MATERIALS: [&str; 1] = ["generic_filter_zombie_perk_vulture"];
 const HANDS_MODEL: &str = "c_usa_mp_seal6_longsleeve_viewhands";
 
 fn hands_zone(common: &Path, report: &mut Vec<String>) -> Option<fastfile_t6::ZoneLoad> {
@@ -2847,8 +2851,14 @@ impl ZoneLane for T6Lane {
                 surface_layer_formats.push(layer_formats.get(&row).copied().unwrap_or(0));
             }
             // The renderer's own post materials its screen overlays draw,
-            // from the startup zone that carries them.
-            for name in T6_OVERLAY_MATERIALS {
+            // from the startup zone that carries them, and the client
+            // scripts' filter materials the map's zones carry.
+            let filters = T6_FILTER_MATERIALS.iter().map(|name| (*name, true));
+            for (name, filter) in T6_OVERLAY_MATERIALS
+                .iter()
+                .map(|name| (*name, false))
+                .chain(filters)
+            {
                 if material_rows.contains_key(name) {
                     continue;
                 }
@@ -2861,7 +2871,9 @@ impl ZoneLane for T6Lane {
                         })
                         .map(|a| (*zone, a))
                 }) else {
-                    report.push(format!("T6 overlay material {name}: no zone carries it"));
+                    if !filter {
+                        report.push(format!("T6 overlay material {name}: no zone carries it"));
+                    }
                     continue;
                 };
                 let Some(native) = capture_native(

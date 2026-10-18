@@ -25,6 +25,9 @@ pub const CODE_T6_FLAME_DISTORTION: u16 = 0x312;
 pub const CODE_T6_OVERLAY_TEX_COORD: u16 = 0x313;
 pub const CODE_T6_FADE_EFFECT: u16 = 0x314;
 pub const CODE_T6_VIEWPORT_DIMENSIONS: u16 = 0x315;
+/// Black Ops 2's first four script vector rows (`scriptVector0` to
+/// `scriptVector3`), which its filter pass sets from the scripts' constants.
+pub const CODE_T6_SCRIPT_VECTOR: [u16; 4] = [0x316, 0x317, 0x318, 0x319];
 
 // D3D11 binds at most 14 constant buffers, so no shader reads buffer 14.
 const SAMPLE_DECODE_ROW: ConstantRow = ConstantRow { buffer: 14, row: 0 };

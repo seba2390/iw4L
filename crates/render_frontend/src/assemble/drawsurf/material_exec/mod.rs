@@ -26,9 +26,11 @@ pub fn refresh(
     let Some(inputs) = inputs else {
         frame.inv_image_height = None;
         frame.smodel_lighting_sh = Default::default();
+        frame.script_vectors = Default::default();
         return;
     };
     frame.smodel_lighting_sh = inputs.smodel_lighting_sh.clone();
+    frame.script_vectors = inputs.script_vectors.clone();
     frame.inv_image_height = inputs.inv_image_height;
     frame
         .primary_lights

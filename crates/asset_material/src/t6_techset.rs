@@ -296,6 +296,7 @@ impl T6MaterialState {
 
 /// Black Ops 2's code texture index of `feedback`.
 const T6_CODE_TEXTURE_FEEDBACK: u32 = 8;
+const T6_CODE_TEXTURE_RESOLVED_SCENE: u32 = 10;
 
 pub const CODE_T6_HDR_CONTROL_0: u16 = 0x300;
 pub const CODE_T6_HDR_CONTROL_1: u16 = 0x301;
@@ -385,6 +386,10 @@ fn engine_value(name: &str, reflection: &Reflection) -> EngineValue {
         "overlayTexCoord" => Code("T6_OVERLAY_TEX_COORD"),
         "fadeEffect" => Code("T6_FADE_EFFECT"),
         "viewportDimensions" => Code("T6_VIEWPORT_DIMENSIONS"),
+        "scriptVector0" | "scriptVector1" | "scriptVector2" | "scriptVector3" => {
+            Code("T6_SCRIPT_VECTOR")
+        }
+        _ if name.starts_with("postFxControl") => Code("POST_CONTROL"),
         _ => Literal([0.0; 4]),
     }
 }
@@ -577,6 +582,18 @@ fn constant_argument(
                 "T6_OVERLAY_TEX_COORD" => Some(render_material::CODE_T6_OVERLAY_TEX_COORD),
                 "T6_FADE_EFFECT" => Some(render_material::CODE_T6_FADE_EFFECT),
                 "T6_VIEWPORT_DIMENSIONS" => Some(render_material::CODE_T6_VIEWPORT_DIMENSIONS),
+                "T6_SCRIPT_VECTOR" => name
+                    .strip_prefix("scriptVector")
+                    .and_then(|index| index.parse::<usize>().ok())
+                    .and_then(|index| render_material::CODE_T6_SCRIPT_VECTOR.get(index))
+                    .copied(),
+                // `postFxControl0` to `postFxControlF`: a game's post control
+                // rows.
+                "POST_CONTROL" => name
+                    .strip_prefix("postFxControl")
+                    .and_then(|index| u16::from_str_radix(index, 16).ok())
+                    .filter(|index| *index < render_material::CODE_POST_CONTROL_COUNT)
+                    .map(|index| render_material::CODE_POST_CONTROL0 + index),
                 "T6_FOG" => T6_FOG_NAMES
                     .iter()
                     .position(|fog| *fog == name)
@@ -650,6 +667,17 @@ fn sampler_argument(
     // which its screen overlays read.
     if bound.is_some_and(|a| a.kind == t::CODE_PIXEL_SAMPLER && a.def == T6_CODE_TEXTURE_FEEDBACK) {
         let index = iw4_code_texture_index("FEEDBACK")?;
+        return Some((
+            Tier::Object,
+            OwnedShaderArgument::CodePixelSampler { destination, index },
+        ));
+    }
+    // Code texture 10 (`resolvedScene`): the scene the backend last
+    // resolved, which its poison overlay reads.
+    if bound
+        .is_some_and(|a| a.kind == t::CODE_PIXEL_SAMPLER && a.def == T6_CODE_TEXTURE_RESOLVED_SCENE)
+    {
+        let index = iw4_code_texture_index("RESOLVED_SCENE")?;
         return Some((
             Tier::Object,
             OwnedShaderArgument::CodePixelSampler { destination, index },
