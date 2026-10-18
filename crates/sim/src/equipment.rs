@@ -1010,6 +1010,7 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                                 flags: 0,
                                 hit_location: None,
                                 part: None,
+                                inflictor: None,
                             },
                         ));
                     }
@@ -1168,6 +1169,7 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                                     flags: 0,
                                     hit_location: None,
                                     part: None,
+                                    inflictor: None,
                                 },
                             ));
                         }

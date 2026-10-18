@@ -86,6 +86,7 @@ fn player_damage_with(
             flags: hit.flags,
             hit_location: Some(hitloc),
             part: None,
+            inflictor: None,
         };
         for hook in hooks {
             if hook(world, object, &entity_hit) {

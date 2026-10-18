@@ -1571,6 +1571,7 @@ pub(crate) fn phase_trace(
                                 flags: 0,
                                 hit_location: None,
                                 part,
+                                inflictor: None,
                             },
                         );
                     }
@@ -1812,6 +1813,7 @@ fn fire_weapon_melee(
                         flags: 0,
                         hit_location: None,
                         part: None,
+                        inflictor: None,
                     },
                 );
                 if damaged && usize::from(segment.surf_type) == fx_iw4::FX_SURF_TYPE_FLESH {

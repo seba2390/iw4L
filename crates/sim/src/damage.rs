@@ -186,6 +186,7 @@ fn apply_entity_blast(world: &mut FrameWorld, blast: &ExplosionBlast) {
                 flags: IDFLAGS_RADIUS,
                 hit_location: None,
                 part: None,
+                inflictor: None,
             },
         );
     }

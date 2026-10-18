@@ -445,6 +445,11 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             Some(_) => None,
             None => self.object_of(damage.attacker),
         };
+        let inflictor = if damage.inflictor == damage.attacker {
+            None
+        } else {
+            self.object_of(damage.inflictor)
+        };
         crate::script::damage_entity(
             self.world.ecs(),
             &crate::script::EntityHit {
@@ -460,6 +465,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 flags: damage.flags,
                 hit_location: Some(damage.hit_location),
                 part: None,
+                inflictor,
             },
         );
     }
