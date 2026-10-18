@@ -38,7 +38,7 @@ pub use authority::runtime::{
 pub use client::frame_census::{ClientPhaseCensus, HUD_STAGE_N, UpdatePhaseCensus};
 pub use client::frame_clock::{FrameClock, GameActive, GameJoinCensus};
 pub use client::input::{
-    ClientActionInput, KEY_FRAME_MSEC_MAX, LookState, accumulate_look, build_usercmd,
+    AimKick, ClientActionInput, KEY_FRAME_MSEC_MAX, LookState, accumulate_look, build_usercmd,
     frame_time_msec, idle_usercmd, key_frame_msec, look_angles_from_degrees,
 };
 pub use client::predict::{

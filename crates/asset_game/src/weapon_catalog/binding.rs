@@ -114,6 +114,18 @@ impl WeaponRegistry {
         })
     }
 
+    /// A dual-wield weapon's other-hand weapon, by row.
+    pub fn dual_wield_companion(&self, row: u32) -> Option<u32> {
+        let weapon = self.rows.get(row as usize)?;
+        if !weapon.facts.dual_wield {
+            return None;
+        }
+        let name = weapon.dual_wield_weapon.as_deref()?;
+        self.by_namespaced
+            .get(&(weapon.namespace, super::normalize_weapon_name(name)))
+            .copied()
+    }
+
     pub fn bind_published_row(&self, row: u32) -> Result<BoundWeapon<'_>, WeaponBindingRefusal> {
         self.bind(WeaponHandle {
             revision: self.revision,

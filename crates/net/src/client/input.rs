@@ -24,6 +24,11 @@ pub struct LookState {
     pub angles: [i32; 3],
 }
 
+/// The game's view kick on the client's aim, in degrees: it turns the
+/// angles each command carries, not the look the mouse builds up.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct AimKick(pub [f32; 3]);
+
 #[derive(Resource, Clone, Debug)]
 pub struct ClientActionInput {
     pub client: ClientInput,

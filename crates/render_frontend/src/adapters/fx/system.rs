@@ -164,11 +164,13 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
                 .in_set(ClientSet::Effects),
         )
         .scoped::<super::fire_autosim::AutoFireSounds>(frame::MatchScope::Live)
+        .scoped::<super::view_kick::GameViewKick>(frame::MatchScope::Live)
         .add_systems(
             Update,
             (
                 super::fire_autosim::turret_fire_shots,
                 super::fire_autosim::run_fire_autosim,
+                super::view_kick::run_view_kick,
             )
                 .chain()
                 .in_set(frame::InMatch)
@@ -2094,7 +2096,11 @@ fn publish_weapon_fire(
     mut sounds: Option<ResMut<Messages<audio::WeaponSound>>>,
     mut cursor: ResMut<FxJournalCursor>,
     mut combat: ResMut<CombatFxDump>,
-    (mode, mut reported): (Option<Res<game_api::ModeRules>>, Local<Vec<&'static str>>),
+    (mode, mut reported, mut view_kick): (
+        Option<Res<game_api::ModeRules>>,
+        Local<Vec<&'static str>>,
+        ResMut<super::view_kick::GameViewKick>,
+    ),
     mut autosim_sounds: ResMut<super::fire_autosim::AutoFireSounds>,
 ) {
     let weapons = weapons
@@ -2141,6 +2147,18 @@ fn publish_weapon_fire(
         .get(fire.entity)
         .ok()
         .is_some_and(|identity| gate.skip_self_fpv(identity.number()));
+    // Black Ops' client kicks its own player's view on each of its shots.
+    if player_view
+        && !view.in_killcam()
+        && let (Some(rules), Some(ps), Some(weapons)) = (
+            client_fire.and_then(|rules| rules.view_kick),
+            player,
+            weapons.as_ref(),
+        )
+    {
+        let client = i32::try_from(local.0.0).unwrap_or(0);
+        view_kick.fire(&rules, client, ps, weapons.registry());
+    }
     let last_shot = is_weapon_fire_last_shot_event(fire.event.event);
     let alias = identities.get(fire.entity).ok().and_then(|_| {
         let weapons = weapons.as_ref()?;
