@@ -33,19 +33,19 @@ pub static GAME: T5 = T5;
 const ZOMBIES: &str = "zom";
 
 /// Engine dvars the zombie scripts read without setting: the mode itself and
-/// the AI locomotion tuning (run-weight updates each server frame, no lean or
-/// turn slowdown).
+/// the AI locomotion tuning the run animscript reads, at the defaults the
+/// executable registers (no config a zombies match loads sets them).
 const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     ("zombiemode", "1"),
     // The zombies executable is the singleplayer one; menus test this to
     // hide the multiplayer rows.
     ("ui_multiplayer", "0"),
     ("ai_runAnimUpdateFrequency", "0.05"),
-    ("ai_useLeanRunAnimations", "0"),
+    ("ai_useLeanRunAnimations", "1"),
     ("ai_slowdownRateBlendFactor", "1"),
     ("ai_slowdownMinRate", "1"),
-    ("ai_slowdownMinYawDiff", "180"),
-    ("ai_slowdownMaxYawDiff", "180"),
+    ("ai_slowdownMinYawDiff", "0"),
+    ("ai_slowdownMaxYawDiff", "90"),
     ("ai_meleeRange", "64"),
     // Black Ops registers it true; `_zombiemode_load` sets
     // `level.clientscripts` from it, which `clientNotify` reads.

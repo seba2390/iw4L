@@ -332,11 +332,16 @@ pub(crate) enum AnimMode {
 /// What an actor faces.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) enum Orient {
-    #[default]
     Motion,
     Enemy,
+    /// The enemy while standing (or with no path), else the motion.
+    EnemyOrMotion,
+    /// Its goal node's way.
+    Goal,
     Angle(f32),
     Point([f32; 3]),
+    /// The way it already faces.
+    #[default]
     Current,
 }
 
@@ -361,7 +366,13 @@ pub(crate) struct ActorMove {
     /// The traversal the actor is playing between two negotiation nodes.
     pub(crate) traversal: Option<Traversal>,
     pub(crate) anim_mode: AnimMode,
-    pub(crate) orient: Orient,
+    /// The script's `animmode`, kept until the animscript changes.
+    pub(crate) anim_mode_override: Option<AnimMode>,
+    /// The script's `orientmode`, over the AI's own until the animscript
+    /// changes ("face default").
+    pub(crate) orient: Option<Orient>,
+    /// What the AI's state faces.
+    pub(crate) code_orient: Orient,
     /// Stances a script allows; none recorded means all.
     stances: Option<Vec<String>>,
     /// Direction of travel over the last tick, in degrees.
@@ -370,8 +381,6 @@ pub(crate) struct ActorMove {
     pub(crate) velocity: [f32; 3],
     /// A scripted animation placing the actor, once started.
     scripted: Option<Scripted>,
-    /// `AnimScripted` was called; the scripted animscript starts it.
-    scripted_pending: bool,
 }
 
 /// A negotiation link being crossed by its begin node's animscript.
@@ -380,7 +389,6 @@ pub(crate) struct Traversal {
     pub(crate) begin: u16,
     pub(crate) end: u16,
     pub(crate) script: String,
-    pub(crate) thread: Option<u64>,
 }
 
 /// A scripted animation aligned to a point: the actor stands where the
@@ -403,6 +411,34 @@ impl ActorMove {
         self.waypoint_nodes.clear();
     }
 
+    /// Ends the path the AI follows; the goal stays, replanned once it moves.
+    pub(crate) fn drop_path(&mut self) {
+        self.clear_path();
+    }
+
+    /// Where the path ends.
+    pub(crate) fn path_end(&self) -> Option<[f32; 3]> {
+        self.waypoints.last().copied()
+    }
+
+    /// "face default": the script's facing is let go of, the AI keeping the
+    /// way it gave.
+    pub(crate) fn clear_script_orient(&mut self) {
+        if let Some(orient) = self.orient.take() {
+            self.code_orient = orient;
+        }
+    }
+
+    /// Ends a scripted animation.
+    pub(crate) fn stop_scripted(&mut self) {
+        self.scripted = None;
+    }
+
+    /// Whether a scripted animation still places the actor.
+    pub(crate) fn scripted_playing(&self) -> bool {
+        self.scripted.is_some()
+    }
+
     fn drop_waypoint(&mut self) {
         self.waypoints.remove(0);
         if !self.waypoint_nodes.is_empty() {
@@ -418,15 +454,6 @@ impl ActorMove {
         if self.waypoint_nodes.first() == Some(&Some(traversal.end)) {
             self.drop_waypoint();
         }
-    }
-
-    /// A scripted animation was asked for and has not started yet.
-    pub(crate) fn scripted_waiting(&self) -> bool {
-        self.scripted_pending && self.scripted.is_none()
-    }
-
-    pub(crate) fn is_scripted(&self) -> bool {
-        self.scripted.is_some() || self.scripted_pending
     }
 }
 
@@ -491,17 +518,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let Ok(id) = actor_id(world, receiver) else {
             return model_anim_scripted(world, receiver, args);
         };
-        let init = format!(
-            "animscripts/{}scripted::init",
-            super::actor_brain::prefix(world, id)
-        );
-        let now = super::players::now_ms(world);
-        crate::script::runtime::run_now(world, &init, receiver.clone(), args.to_vec(), now)
-            .map_err(|fault| format!("{init}: {fault:?}"))?;
-        with_move(world, receiver, |movement| {
-            movement.scripted = None;
-            movement.scripted_pending = true;
-        })
+        if args.len() > 8 {
+            return Err("too many parameters".into());
+        }
+        if args.len() < 4 {
+            return Err("Incorrect number of parameters for animscripted command".into());
+        }
+        super::actor_brain::anim_scripted(world, id, args)?;
+        Ok(Value::Undefined)
     });
     registry.register(Method, "startscriptedanim", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
@@ -543,15 +567,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 yaw: angles[1],
                 node,
             });
-            movement.scripted_pending = false;
             movement.clear_path();
         })
     });
     registry.register(Method, "stopanimscripted", |world, receiver, _| {
-        with_move(world, receiver, |movement| {
-            movement.scripted = None;
-            movement.scripted_pending = false;
-        })
+        if let Ok(id) = actor_id(world, receiver) {
+            super::actor_brain::stop_anim_scripted(world, id);
+        }
+        with_move(world, receiver, ActorMove::stop_scripted)
     });
     registry.register(Method, "forceteleport", force_teleport);
     registry.register(Method, "teleport", force_teleport);
@@ -591,8 +614,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         };
         registry.register(Method, name, native);
     }
-    // Traversals move by their animation alone until the animscript ends.
-    registry.register(Method, "traversemode", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "traversemode", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let mode = string(args, 0)?;
+        super::actor_brain::set_traverse_mode(world, id, &mode)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "animcustom", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let function = match arg(args, 0)? {
+            Value::Function(function) => *function as usize,
+            _ => return Err("animcustom expects a function".into()),
+        };
+        super::actor_brain::anim_custom(world, id, function);
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "maymovetopoint", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let to = vector(args, 0)?;
@@ -614,20 +650,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "cansee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let target = super::natives::engine::entity_id(world, arg(args, 0)?)?;
-        let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
-        let Some(at) = as_vector(super::players::entity_field(world, target, "origin")) else {
-            return Ok(Value::Int(0));
-        };
-        let trace = FrameWorld::from_world(world).trace_clip(
-            [origin[0], origin[1], origin[2] + EYE_HEIGHT],
-            [at[0], at[1], at[2] + EYE_HEIGHT],
-            [0.0; 3],
-            [0.0; 3],
-            MASK_PLAYER_SOLID,
-        );
-        Ok(Value::Int(i32::from(
-            trace.startsolid == 0 && trace.fraction >= 1.0,
-        )))
+        Ok(Value::Int(i32::from(sees(world, id, target))))
     });
     registry.register(Method, "melee", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
@@ -722,27 +745,63 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             enemy_position(world, id).map_or(f32::MAX, |enemy| distance_sq(origin, enemy)),
         ))
     });
+    // `animmode(mode, [clear_path])` sets the script's movement mode, which
+    // the AI's state uses while its animscript runs ("none" lets it go);
+    // a set mode with the flag ends the path.
     registry.register(Method, "animmode", |world, receiver, args| {
-        let mode = match string(args, 0)?.as_str() {
-            "normal" | "none" => AnimMode::Normal,
-            "gravity" | "pos deltas" => AnimMode::Gravity,
-            "zonly_physics" => AnimMode::ZOnlyPhysics,
-            "nogravity" | "noclip" | "nophysics" | "point relative" => AnimMode::NoGravity,
-            "angle deltas" => AnimMode::AngleDeltas,
-            other => return Err(format!("unknown animmode '{other}'")),
+        let name = string(args, 0)?;
+        let mode = match name.as_str() {
+            "none" => None,
+            "normal" => Some(AnimMode::Normal),
+            "gravity" | "pos deltas" => Some(AnimMode::Gravity),
+            "zonly_physics" => Some(AnimMode::ZOnlyPhysics),
+            "nogravity" | "noclip" | "nophysics" | "point relative" => Some(AnimMode::NoGravity),
+            "angle deltas" => Some(AnimMode::AngleDeltas),
+            _ => return Err("illegal call to animmode()\n".into()),
         };
-        with_move(world, receiver, |movement| movement.anim_mode = mode)
+        let clear = name != "none" && matches!(args.get(1), Some(Value::Int(n)) if *n != 0);
+        with_move(world, receiver, |movement| {
+            if clear {
+                movement.clear_path();
+            }
+            movement.anim_mode_override = mode;
+            if let Some(mode) = mode {
+                movement.anim_mode = mode;
+            }
+        })
     });
     registry.register(Method, "orientmode", |world, receiver, args| {
         let orient = match string(args, 0)?.as_str() {
-            "face motion" | "face default" => Orient::Motion,
-            "face enemy" | "face enemy or motion" => Orient::Enemy,
-            "face angle" => Orient::Angle(float(args, 1)?),
-            "face point" => Orient::Point(vector(args, 1)?),
-            "face current" => Orient::Current,
-            other => return Err(format!("unknown orientmode '{other}'")),
+            "face motion" => Some(Orient::Motion),
+            "face enemy" => Some(Orient::Enemy),
+            "face enemy or motion" => Some(Orient::EnemyOrMotion),
+            "face goal" => Some(Orient::Goal),
+            "face angle" => Some(Orient::Angle(float(args, 1)?)),
+            "face direction" => {
+                let dir = vector(args, 1)?;
+                if dir[0] == 0.0 && dir[1] == 0.0 {
+                    return Err("cannot face (0, 0, *)".into());
+                }
+                Some(Orient::Angle(dir[1].atan2(dir[0]).to_degrees()))
+            }
+            "face point" => Some(Orient::Point(vector(args, 1)?)),
+            "face current" => Some(Orient::Current),
+            "face default" => None,
+            _ => {
+                return Err(
+                    "orientMode must be 'face angle', 'face current', 'face direction', \
+                     'face enemy', 'face enemy or motion', 'face goal', 'face motion', \
+                     'face point', or 'face default'\n'face direction' and 'face point' take \
+                     a second argument that is a vector giving the way to face\n'face angle' \
+                     takes a second argument that is a yaw angle\n"
+                        .into(),
+                );
+            }
         };
-        with_move(world, receiver, |movement| movement.orient = orient)
+        with_move(world, receiver, |movement| match orient {
+            Some(orient) => movement.orient = Some(orient),
+            None => movement.clear_script_orient(),
+        })
     });
 }
 
@@ -1140,14 +1199,34 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         }
 
         movement.heading = heading;
-        let facing = match &movement.orient {
-            Orient::Motion => heading,
-            Orient::Angle(yaw) => Some(*yaw),
-            Orient::Point(point) => Some(yaw_to(origin, *point)),
-            Orient::Enemy => enemy_position(world, actor)
-                .map(|enemy| yaw_to(origin, enemy))
-                .or(heading),
-            Orient::Current => None,
+        let orient = movement
+            .orient
+            .clone()
+            .unwrap_or_else(|| movement.code_orient.clone());
+        // `isfacingmotion`: the facing took the motion's way this tick.
+        let mut facing_motion = false;
+        let facing = match orient {
+            Orient::Motion => {
+                facing_motion = true;
+                heading
+            }
+            Orient::Angle(yaw) => Some(yaw),
+            Orient::Point(point) => Some(yaw_to(origin, point)),
+            Orient::Enemy => enemy_position(world, actor).map(|enemy| yaw_to(origin, enemy)),
+            Orient::EnemyOrMotion => {
+                // The enemy without a path or while standing; on the move the
+                // motion, unless a seen enemy stands within 350 units, where
+                // Black Ops' path test (not ported) may face it instead.
+                let standing = movement.velocity[0] == 0.0 && movement.velocity[1] == 0.0;
+                if !movement.has_path() || standing {
+                    enemy_position(world, actor).map(|enemy| yaw_to(origin, enemy))
+                } else {
+                    facing_motion = true;
+                    heading
+                }
+            }
+            // A goal node's way, which no zombie claims.
+            Orient::Goal | Orient::Current => None,
         };
         if let Some(wanted) = facing {
             let turn = math_iw4::angle_subtract(wanted, angles[1]);
@@ -1173,10 +1252,20 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         if seconds > 0.0 {
             movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
         }
+        // The way along the path ahead: toward the next waypoint.
+        let lookahead = movement.waypoints.first().and_then(|next| {
+            let to = [next[0] - origin[0], next[1] - origin[1]];
+            let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
+            (length > 0.001).then(|| [to[0] / length, to[1] / length, 0.0])
+        });
         {
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
             runtime.set_object_field(actor, "angles", Value::Vector(angles));
+            runtime.set_object_field(actor, "isfacingmotion", Value::Int(facing_motion.into()));
+            if let Some(dir) = lookahead {
+                runtime.set_object_field(actor, "lookaheaddir", Value::Vector(dir));
+            }
             runtime.actor_moves.insert(actor, movement);
         }
         for event in events {
@@ -1201,7 +1290,6 @@ fn traversal_at(paths: &ActorPaths, nodes: &[Option<u16>]) -> Option<Traversal> 
             begin: *begin,
             end: *end,
             script: node.animscript.clone(),
-            thread: None,
         },
     )
 }
@@ -1215,6 +1303,27 @@ fn goal_radius(world: &mut World, actor: u64) -> f32 {
         Value::Float(f) => f,
         _ => DEFAULT_GOAL_RADIUS,
     }
+}
+
+/// Whether `actor` sees `target`: an eye-to-eye trace clear of the world.
+pub(crate) fn sees(world: &mut World, actor: u64, target: u64) -> bool {
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let Some(at) = as_vector(super::players::entity_field(world, target, "origin")) else {
+        return false;
+    };
+    let trace = FrameWorld::from_world(world).trace_clip(
+        [origin[0], origin[1], origin[2] + EYE_HEIGHT],
+        [at[0], at[1], at[2] + EYE_HEIGHT],
+        [0.0; 3],
+        [0.0; 3],
+        MASK_PLAYER_SOLID,
+    );
+    trace.startsolid == 0 && trace.fraction >= 1.0
+}
+
+/// Where the actor's goal is.
+pub(crate) fn goal_point(world: &mut World, actor: u64) -> Option<[f32; 3]> {
+    goal_position(world, actor)
 }
 
 fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
@@ -1400,14 +1509,6 @@ pub(crate) fn choose_enemy(world: &mut World, actor: u64) {
         "enemy",
         enemy.map_or(Value::Undefined, Value::Object),
     );
-}
-
-pub(crate) fn melee_range_enemy(world: &mut World, actor: u64, range: f32) -> bool {
-    let Some(enemy) = enemy_position(world, actor) else {
-        return false;
-    };
-    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
-    horizontal_distance(origin, enemy) <= range && (origin[2] - enemy[2]).abs() <= NODE_STEP_HEIGHT
 }
 
 fn as_vector(value: Value) -> Option<[f32; 3]> {
