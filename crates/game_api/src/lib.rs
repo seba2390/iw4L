@@ -500,6 +500,9 @@ pub struct ShockKick {
     pub fade_ms: i32,
     pub rate: f32,
     pub radius: f32,
+    /// The view axis is turned with every length and product summed in
+    /// index order (`hud_iw4::shellshock_perturb_axis`).
+    pub ordered_sums: bool,
 }
 
 /// A shock's own sound: a loop on the shocked player faded in over

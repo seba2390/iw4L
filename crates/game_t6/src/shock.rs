@@ -5,9 +5,12 @@
 //! screen's rules: the saved screen's blend (0.01 to the power of its age
 //! over the blend time, at most 0.99), the blur blend time shrinking over
 //! the fade time, the flash's sine fades and the look control's fade with
-//! its speeds over the fade.
+//! its speeds over the fade. Its view kick walks the shared kick noise and
+//! turns the view axis with every sum in index order; the kick fades over a
+//! fixed 3 seconds (`bg_shock_viewKickFadeTime` is registered but never
+//! read).
 
-use game_api::{ShockFile, ShockLook, ShockScreen, Unknown, unknown};
+use game_api::{ShockFile, ShockKick, ShockLook, ShockScreen, Unknown, unknown};
 
 use crate::menu_expression::{atof, atoi};
 
@@ -90,11 +93,6 @@ enum Value<'a> {
     Text(&'a str),
 }
 
-const KICK: &Unknown = unknown!(
-    "t6.vision.shellshock_kick",
-    "a Black Ops 2 shellshock does not kick the view",
-    "its view kick: the noise table and how the kick turns the view axis"
-);
 const SOUND: &Unknown = unknown!(
     "t6.audio.shellshock",
     "a Black Ops 2 shellshock plays no sound: no loop, end sound, reverb room or snapshot",
@@ -173,9 +171,6 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         _ => ShockScreen::Blurred,
     };
     let mut unrun = Vec::new();
-    if number("bg_shock_viewKickRadius") != 0.0 {
-        unrun.push(KICK);
-    }
     if flag("bg_shock_sound") {
         unrun.push(SOUND);
     }
@@ -198,11 +193,30 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         },
         movement_scale: number("bg_shock_movement"),
         animation: flag("bg_shock_animation"),
-        kick: None,
+        kick: Some(ShockKick {
+            fade_ms: KICK_FADE_MS,
+            rate: kick_rate(number("bg_shock_viewKickPeriod")),
+            radius: number("bg_shock_viewKickRadius"),
+            ordered_sums: true,
+        }),
         sound: None,
         vision: None,
         unrun,
     })
+}
+
+/// The view kick's fade, whatever the shock file says.
+const KICK_FADE_MS: i32 = 3000;
+
+/// The kick noise steps a msec walks for a period in seconds: a thousandth
+/// over the period, a period of a thousandth or less taken as one.
+fn kick_rate(period: f32) -> f32 {
+    let period = if 0.001 - period < 0.0 || period.is_nan() {
+        period
+    } else {
+        0.001
+    };
+    0.001 / period
 }
 
 /// Seconds to milliseconds as the game rounds them: `seconds * 1000` in

@@ -360,24 +360,38 @@ const KICK_FLOOR_BIAS: f64 = 0.4999999990686774;
 
 /// Turns a view axis (forward, left, up) by a shock's view kick: the kick
 /// is a forward axis tilted by it, completed to a frame with the world's up
-/// and applied ahead of the view axis.
+/// and applied ahead of the view axis. With `ordered_sums` the lengths are
+/// summed (x² + 1) + y² and (l1² + l0²) + l2², and each product element
+/// (a0·b0 + a1·b1) + a2·b2, as Black Ops 2's client sums them.
 #[must_use]
-pub fn shellshock_perturb_axis(kick: [f32; 2], axis: [[f32; 3]; 3]) -> [[f32; 3]; 3] {
+pub fn shellshock_perturb_axis(
+    kick: [f32; 2],
+    axis: [[f32; 3]; 3],
+    ordered_sums: bool,
+) -> [[f32; 3]; 3] {
     let [kx, ky] = kick;
     if kx == 0.0 && ky == 0.0 {
         return axis;
     }
     let inverse = |length: f32| 1.0 / if 0.0 <= -length { 1.0 } else { length };
-    let scale = inverse(libm::sqrtf(ky * ky + kx * kx + 1.0));
+    let length = if ordered_sums {
+        kx * kx + 1.0 + ky * ky
+    } else {
+        ky * ky + kx * kx + 1.0
+    };
+    let scale = inverse(libm::sqrtf(length));
     let f = [scale, scale * kx, scale * ky];
     let left = [
         f[2] * 0.0 - f[1],
         f[0] - f[2] * 0.0,
         f[1] * 0.0 - f[0] * 0.0,
     ];
-    let scale = inverse(libm::sqrtf(
-        left[2] * left[2] + left[1] * left[1] + left[0] * left[0],
-    ));
+    let length = if ordered_sums {
+        left[1] * left[1] + left[0] * left[0] + left[2] * left[2]
+    } else {
+        left[2] * left[2] + left[1] * left[1] + left[0] * left[0]
+    };
+    let scale = inverse(libm::sqrtf(length));
     let l = [left[0] * scale, left[1] * scale, left[2] * scale];
     let u = [
         l[2] * f[1] - l[1] * f[2],
@@ -385,6 +399,11 @@ pub fn shellshock_perturb_axis(kick: [f32; 2], axis: [[f32; 3]; 3]) -> [[f32; 3]
         l[1] * f[0] - l[0] * f[1],
     ];
     let (a, b) = ([f, l, u], axis);
+    if ordered_sums {
+        return core::array::from_fn(|i| {
+            core::array::from_fn(|j| a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j])
+        });
+    }
     // Each element sums its products in the order the game does.
     [
         [
@@ -413,6 +432,9 @@ pub struct ShellshockKick {
     pub fade_ms: i32,
     pub rate: f32,
     pub radius: f32,
+    /// The view axis is turned with every sum in index order
+    /// (`shellshock_perturb_axis`).
+    pub ordered_sums: bool,
 }
 
 /// A shock's own sound, for shock files that time it themselves: a loop on

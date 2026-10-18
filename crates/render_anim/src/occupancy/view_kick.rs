@@ -230,10 +230,21 @@ pub fn sync_camera_from_presented(
     view: Res<ViewSubject>,
     death_cam_clip: Res<crate::occupancy::dyn_ent::DynEntPhysClip>,
     mut missile_view: Local<RemoteMissileView>,
+    mut shock_kicking: Local<bool>,
 ) {
     kick.killcam_focus_distance = None;
     let base_fov = script_fov(&presented, local.0).unwrap_or(settings.fov);
     let shock_kick = shock_view_kick(&presented, local.0, clock.time());
+    if (shock_kick.0 != [0.0; 2]) != *shock_kicking {
+        *shock_kicking = !*shock_kicking;
+        diag::info!(
+            World,
+            "shellshock view kick: {} {:?} ordered_sums={}",
+            if *shock_kicking { "on" } else { "off" },
+            shock_kick.0,
+            shock_kick.1
+        );
+    }
     if let Some(view) = sim_cam.view_override {
         for mut transform in &mut q {
             *transform = shock_eye(view.transform, shock_kick);
@@ -667,23 +678,30 @@ pub(crate) fn iw_view_placement_to_bevy_camera_local(
 
 /// The local player's shellshock view kick this frame: none without a shock
 /// file that kicks, before the shock starts or once it is over.
-fn shock_view_kick(presented: &PresentedSnapshot, local: sim::ClientId, now_ms: i32) -> [f32; 2] {
+fn shock_view_kick(
+    presented: &PresentedSnapshot,
+    local: sim::ClientId,
+    now_ms: i32,
+) -> ([f32; 2], bool) {
     let (Some(ps), Some(kick)) = (
         presented.player(local),
         presented.shellshock(local).and_then(|shock| shock.kick),
     ) else {
-        return [0.0; 2];
+        return ([0.0; 2], false);
     };
     let elapsed = now_ms.wrapping_sub(ps.shellshock_time);
     if ps.shellshock_time == 0 || elapsed < 0 {
-        return [0.0; 2];
+        return ([0.0; 2], kick.ordered_sums);
     }
-    shellshock_view_kick(kick, elapsed, ps.shellshock_duration)
+    (
+        shellshock_view_kick(kick, elapsed, ps.shellshock_duration),
+        kick.ordered_sums,
+    )
 }
 
 /// The eye turned by a shellshock's view kick, after every other part of
 /// the view (the game turns its finished view axis).
-fn shock_eye(mut eye: Transform, kick: [f32; 2]) -> Transform {
+fn shock_eye(mut eye: Transform, (kick, ordered_sums): ([f32; 2], bool)) -> Transform {
     if kick == [0.0; 2] {
         return eye;
     }
@@ -692,7 +710,8 @@ fn shock_eye(mut eye: Transform, kick: [f32; 2]) -> Transform {
         (-*eye.right()).to_array(),
         eye.up().to_array(),
     ];
-    let [forward, left, up] = shellshock_perturb_axis(kick, axis).map(Vec3::from_array);
+    let [forward, left, up] =
+        shellshock_perturb_axis(kick, axis, ordered_sums).map(Vec3::from_array);
     eye.rotation = Quat::from_mat3(&Mat3::from_cols(-left, up, -forward));
     eye
 }
