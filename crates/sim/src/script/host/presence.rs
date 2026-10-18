@@ -369,7 +369,20 @@ fn present(world: &mut World, now: i32) {
             moving: false,
         });
         let posed = !near(shown.origin, want.origin) || !near_angles(shown.angles, want.angles);
+        let aim_target = {
+            let runtime = frame.ecs().resource::<RoundScript>();
+            runtime
+                .entities
+                .get(&want.object)
+                .is_some_and(|entity| entity.kind == super::entities::EntityKind::Actor)
+                && match runtime.peek_object_field(want.object, "health") {
+                    Some(crate::script::Value::Int(health)) => health > 0,
+                    Some(crate::script::Value::Float(health)) => health > 0.0,
+                    _ => false,
+                }
+        };
         if let Some(mover) = frame.script_mover_mut_by_number(mover.state.number) {
+            mover.aim_target = aim_target && !want.hidden;
             if want.hidden || want.collision_only {
                 mover.state.e_flags |= entity_iw4::CG_SCRIPT_MOVER_NODRAW;
             } else {

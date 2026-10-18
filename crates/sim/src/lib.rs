@@ -119,6 +119,7 @@ pub const FRIENDLY_BOTS_DVAR: &str = "scr_game_friendlybots";
 
 pub const TEAM_MENU: &str = "team_marinesopfor";
 pub use game_api::fog::ScriptFogSwitch;
+pub use game_api::movement::{AimCandidate, MeleeTarget};
 pub use game_api::post::VisionCall;
 pub use game_api::post::{FlameOverlay, PoisonOverlay, ReviveFx, ScreenFilter, ScreenOverlays};
 pub use match_state::{

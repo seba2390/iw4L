@@ -95,18 +95,6 @@ fn dead_move(ps: &mut crate::PlayerState, pml: &Pml) {
     ps.velocity = [v[0] * n * speed, v[1] * n * speed, v[2] * n * speed];
 }
 
-fn launch<W: MoveWorld>(pm: &mut Pm<'_, W>) {
-    let ps = &mut *pm.ps;
-    if ps.pm_flags & pm_flags::LAUNCHED != 0 {
-        pm.gap(Gap::Launched);
-        return;
-    }
-    ps.launch_time = 0;
-    if tuning::BAYONET_LAUNCH_PROOF && 0.0 > tuning::BAYONET_LAUNCH_Z_CAP - ps.velocity[2] {
-        ps.velocity[2] = tuning::BAYONET_LAUNCH_Z_CAP;
-    }
-}
-
 fn foliage_sound<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let now = pm.cmd.server_time;
     if tuning::FOLIAGE_MIN_SPEED > pm.xyspeed {
@@ -304,7 +292,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         freeze_moves(pm);
     }
 
-    launch(pm);
+    crate::launch::launch(pm, &pml);
     match pm.ps.pm_type {
         pm_type::NORMAL_LINKED | pm_type::DEAD_LINKED => {
             crate::special::linked_move(pm, &mut pml);
@@ -364,8 +352,6 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     crate::dive::check_end(pm);
     if pm.ps.pm_flags & pm_flags::LADDER != 0 {
         crate::ladder::ladder_move(pm, &mut pml);
-    } else if pm.ps.pm_flags & pm_flags::LAUNCHED != 0 {
-        pm.gap(Gap::Launched);
     } else if pm.ps.water_level >= 4 {
         moves::water_move(pm, &mut pml);
     } else if pml.walking {

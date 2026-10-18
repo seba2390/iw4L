@@ -2,7 +2,7 @@ use core::fmt;
 use core::ops::{Deref, DerefMut};
 
 use bevy_ecs::prelude::{Entity, World};
-use playerstate_iw4::PlayerState;
+use playerstate_iw4::{PlayerState, UserCmd};
 
 use crate::frame::{
     FrameWorld, PayloadIndex, collect_dropped_items, collect_players, collect_projectiles,
@@ -825,4 +825,50 @@ pub fn try_step(
     reason: StepReason,
 ) -> Result<crate::TickResult, crate::script::Fault> {
     world.run(tick, input, msec, reason)
+}
+
+impl SimWorld {
+    /// The game's melee lunge pick for the client's command, when the match
+    /// runs the game's own movement: the target, its distance and yaw.
+    #[allow(clippy::too_many_arguments)]
+    pub fn melee_target(
+        &self,
+        client: ClientId,
+        ps: &PlayerState,
+        cmd: &UserCmd,
+        last: &UserCmd,
+        eye: [f32; 3],
+        aspect: Option<f32>,
+        candidates: &[game_api::movement::AimCandidate],
+        visible: &dyn Fn(i32, [f32; 3]) -> bool,
+    ) -> Option<game_api::movement::MeleeTarget> {
+        let movement = match self.bootstrap_ref().mode?.movement {
+            game_api::Rule::Known(game_api::MovementRules::Game(movement)) => movement,
+            _ => return None,
+        };
+        let player = ps.move_player(client.0 as i32, false);
+        let content = self.content();
+        let script = self.ecs.get_resource::<crate::script::MatchScript>();
+        let dvar = |name: &str| {
+            script.and_then(|script| {
+                script
+                    .dvars
+                    .get(&name.to_ascii_lowercase())
+                    .or_else(|| script.dvars.get(name))
+                    .cloned()
+            })
+        };
+        let weapon = |weapon: u32| content.game_weapon(weapon);
+        movement.melee_target(&game_api::movement::MeleeAim {
+            player: &player,
+            cmd: &cmd.move_command(),
+            last: &last.move_command(),
+            eye,
+            aspect,
+            candidates,
+            visible,
+            weapon: &weapon,
+            dvar: &dvar,
+        })
+    }
 }

@@ -80,4 +80,12 @@ pub trait MoveWorld {
     /// Whether the vertical line `reach` above and below `point` crosses one
     /// of the map's height-lock volumes; `None` when the map has none.
     fn height_lock(&self, point: [f32; 3], reach: f32) -> Option<bool>;
+
+    /// Where the entity numbered `entity` is, as this side of the match
+    /// keeps it; `None` when it is not in use.
+    fn entity_origin(&self, entity: i32) -> Option<[f32; 3]>;
+
+    /// The entity's velocity (its state's trajectory delta); `None` when
+    /// the match cannot tell.
+    fn entity_velocity(&self, entity: i32) -> Option<[f32; 3]>;
 }

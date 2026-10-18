@@ -120,6 +120,17 @@ pub const ANTI_QUICK_SCOPE: bool = true;
 pub const AIM_SPREAD_MOVE_SPEED_THRESHOLD: f32 = 11.0;
 pub const BAYONET_LAUNCH_PROOF: bool = true;
 pub const BAYONET_LAUNCH_Z_CAP: f32 = 300.0;
+/// `player_meleeChargeFriction`.
+pub const MELEE_CHARGE_FRICTION: f32 = 1200.0;
+/// `player_meleeChargeMaxSpeed`.
+pub const MELEE_CHARGE_MAX_SPEED: f32 = 600.0;
+/// `player_meleeCalcSpeedFromTarget`.
+pub const MELEE_CALC_SPEED_FROM_TARGET: bool = true;
+/// `tu7_clampMeleeChargeJumping` and its `MaxZVel`.
+pub const CLAMP_MELEE_CHARGE_JUMPING: bool = false;
+pub const CLAMP_MELEE_CHARGE_JUMPING_MAX_Z_VEL: f32 = 240.0;
+/// `tu7_clampMeleeChargeHorzLaunch`.
+pub const CLAMP_MELEE_CHARGE_HORZ_LAUNCH: bool = false;
 pub const DISABLE_WEAPONS_ON_VEHICLE: bool = true;
 pub const ENFORCE_RECHAMBER_ON_SWITCH: bool = true;
 pub const ZM_STACK_FIRE_FIX: bool = true;

@@ -177,6 +177,7 @@ impl UserCmd {
             alt_weapon: u32::from(self.weapon_mapped),
             melee_charge_yaw: self.melee_charge_yaw,
             melee_charge_dist: self.melee_charge_dist,
+            melee_charge_ent: self.melee_charge_ent,
         }
     }
 }

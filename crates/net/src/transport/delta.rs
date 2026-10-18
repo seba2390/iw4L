@@ -426,6 +426,7 @@ pub(crate) fn encode_usercmd(out: &mut WireWriter, cmd: &UserCmd) {
     out.put_i8(cmd.rightmove);
     out.put_f32(cmd.melee_charge_yaw);
     out.put_u8(cmd.melee_charge_dist);
+    out.put_u16(cmd.melee_charge_ent.unwrap_or(u16::MAX));
     out.put_bytes(&cmd.selected_location);
     out.put_bytes(&cmd.remote_control);
     for angle in cmd.gun_angle_offset {
@@ -447,6 +448,7 @@ pub(crate) fn decode_usercmd(input: &mut WireReader<'_>) -> Result<UserCmd, Wire
     let rightmove = input.get_i8()?;
     let melee_charge_yaw = input.get_f32()?;
     let melee_charge_dist = input.get_u8()?;
+    let melee_charge_ent = Some(input.get_u16()?).filter(|&ent| ent != u16::MAX);
     let mut selected_location = [0u8; 3];
     input.get_bytes(&mut selected_location)?;
     let mut remote_control = [0u8; 2];
@@ -470,6 +472,7 @@ pub(crate) fn decode_usercmd(input: &mut WireReader<'_>) -> Result<UserCmd, Wire
         rightmove,
         melee_charge_yaw,
         melee_charge_dist,
+        melee_charge_ent,
         selected_location,
         remote_control,
     })
