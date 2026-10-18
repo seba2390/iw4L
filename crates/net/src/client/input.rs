@@ -36,6 +36,21 @@ impl AimKick {
     }
 }
 
+/// A game camera from above the player aims through its own cursor: while
+/// one shows, the mouse leaves the look alone and goes to the game's rules,
+/// which hand back how far to turn it.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct CursorAim {
+    /// Such a camera shows; set each frame by the game's rules.
+    pub active: bool,
+    /// The mouse since the rules last took it, after sensitivity: right and
+    /// down.
+    pub mouse: [f32; 2],
+    /// The turn the rules ask of the look, in degrees (pitch, yaw), not yet
+    /// made.
+    pub turn: [f32; 2],
+}
+
 #[derive(Resource, Clone, Debug)]
 pub struct ClientActionInput {
     pub client: ClientInput,

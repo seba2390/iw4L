@@ -11,6 +11,7 @@ mod movement;
 mod post_chain;
 mod radius;
 mod shock;
+mod top_down;
 mod turret;
 mod view_kick;
 mod viewmodel;
@@ -230,6 +231,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         font_scales_sent: Some(sent_font_scales),
     },
     client_fire: Some(fire_sound::CLIENT_FIRE),
+    top_down: Some(top_down::RULES),
     viewmodel: Some(viewmodel::VIEWMODEL),
     script_sounds_hashed: true,
     turrets: Some(turret::TURRETS),

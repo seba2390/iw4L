@@ -529,6 +529,7 @@ impl PlayerMovement for T5Movement {
             let mut pm = Pm::new(&mut ps, t5cmd, last, mask, &adapter);
             pm.zombiemode = self.zombies;
             pm.client_side = context.predicting;
+            pm.move_yaw = context.move_yaw;
             let out = movement_t5::pmove(&mut pm);
             outcome.walking = out.walking;
             outcome.bounds = Some((out.mins, out.maxs));

@@ -285,6 +285,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         font_scales_sent: None,
     },
     client_fire: Some(fire_sound::CLIENT_FIRE),
+    top_down: None,
     viewmodel: Some(viewmodel::VIEWMODEL),
     // gsc_playsoundatposition sends the alias's hash; nothing checks it.
     script_sounds_hashed: true,

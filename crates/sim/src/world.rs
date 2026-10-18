@@ -658,6 +658,21 @@ impl SimState {
             .unwrap_or(crate::bullet_collision::MASK_BULLET_WORLD)
     }
 
+    /// The yaw the game's camera from above turns this player's moves to,
+    /// from the client's dvars.
+    pub(crate) fn top_down_move_yaw(&self, id: ClientId) -> Option<f32> {
+        let rules = self.bootstrap_ref().mode?.top_down?;
+        let dvars = &self.client_meta(id)?.client_dvars;
+        let camera = (rules.camera)(&|name| {
+            dvars
+                .iter()
+                .rev()
+                .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                .map(|(_, value)| value.clone())
+        })?;
+        (rules.move_yaw)(&camera)
+    }
+
     pub(crate) fn bootstrap_ref(&self) -> &MatchBootstrap {
         &self.bootstrap
     }

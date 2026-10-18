@@ -72,6 +72,7 @@ const MODE: ModeRules = ModeRules {
         font_scales_sent: None,
     },
     client_fire: None,
+    top_down: None,
     viewmodel: None,
     script_sounds_hashed: false,
     turrets: None,

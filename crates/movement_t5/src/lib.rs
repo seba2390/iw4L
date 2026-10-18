@@ -69,6 +69,9 @@ pub struct Pm<'a, W: MoveWorld> {
     pub zombiemode: bool,
     /// The step runs on a client predicting its own player.
     pub client_side: bool,
+    /// A camera from above (`player_topDownCamMode` 2 and up) turns the
+    /// moves to its yaw.
+    pub move_yaw: Option<f32>,
     pub xyspeed: f32,
     pub step_smooth_time: i32,
     pub step_smooth_z: f32,
@@ -97,6 +100,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             world,
             zombiemode: false,
             client_side: false,
+            move_yaw: None,
             xyspeed: 0.0,
             step_smooth_time: 0,
             step_smooth_z: 0.0,
