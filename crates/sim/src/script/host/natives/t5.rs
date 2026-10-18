@@ -1677,9 +1677,32 @@ fn register_refused(registry: &mut NativeRegistry) {
         "makegrenadedud", "launchbomb"
         => "receiver is not a guided missile");
 
+    // `ent PhysicsLaunch([point, force])`: Black Ops hands the entity to
+    // its rigid-body physics; the runtime has none, so the entity stays
+    // where it is.
+    registry.register(Method, "physicslaunch", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let (number, classname) = {
+            let entity = &world.resource::<RoundScript>().entities[&id];
+            (entity.number, entity.classname.clone())
+        };
+        if !matches!(
+            &*classname,
+            "script_brushmodel" | "script_model" | "script_origin" | "light"
+        ) {
+            return Err(format!(
+                "entity {number} is not a script_brushmodel, script_model, script_origin, or light"
+            ));
+        }
+        if args.len() == 2 {
+            vector(args, 0)?;
+            vector(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
     refused!(Function: "spawntimedfx", "boundswouldtelefrag", "testspawnpoint"
         => "not simulated");
-    refused!(Method: "launch", "physicslaunch", "fakefire",
+    refused!(Method: "launch", "fakefire",
         "spawnnapalmgroundflame", "revive", "docowardswayanims",
         "ghost", "teleport", "istouchingswept", "istouchingvolume", "playersighttrace",
         "throwbuttonpressed", "actionslotonebuttonpressed", "depthinwater",

@@ -132,6 +132,19 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
+    // `CleanupSpawnedDynEnts()`: Black Ops removes the dynamic entities its
+    // clients spawned; the runtime spawns none.
+    registry.register(Function, "cleanupspawneddynents", |_, _, _| {
+        Ok(Value::Undefined)
+    });
+    // `GetCorpseArray()`: the actor and player corpses in use; the runtime
+    // frees a dead actor rather than keeping its corpse, so there are none.
+    registry.register(Function, "getcorpsearray", |world, _, args| {
+        if !args.is_empty() {
+            return Err("cannot call getcorpsearray with parameters".into());
+        }
+        new_array(world, Vec::new())
+    });
     // `RefreshHudAmmoCounter()`: Black Ops tells every client to redraw
     // its ammo counter; the runtime's HUD reads the ammo each frame.
     registry.register(Function, "refreshhudammocounter", |_, _, _| {
@@ -200,6 +213,67 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
+    // `player IsLookingAt(ent)`: whether the player's `lookatent` (a field
+    // scripts set) is that entity.
+    registry.register(Method, "islookingat", |world, receiver, args| {
+        let player = super::engine::entity_id(world, receiver)?;
+        if world
+            .resource::<RoundScript>()
+            .player_client(player)
+            .is_none()
+        {
+            let number = world.resource::<RoundScript>().entities[&player].number;
+            return Err(format!("entity {number} is not a player"));
+        }
+        let target = super::engine::entity_id(world, super::super::args::arg(args, 0)?)?;
+        let looking = world
+            .resource_mut::<RoundScript>()
+            .object_field(player, "lookatent")
+            == Value::Object(target);
+        Ok(Value::Int(looking.into()))
+    });
+    // `ent PlayWeaponDeathEffects(weapon, [int])`: Black Ops sends the
+    // entity's weapon death effect event to its clients, which is not sent
+    // here.
+    registry.register(Method, "playweapondeatheffects", |world, receiver, args| {
+        if args.is_empty() {
+            return Err("PlayWeaponDeathEffects <weaponName>.\n".into());
+        }
+        let name = super::super::args::string(args, 0)?;
+        let known = crate::frame::FrameWorld::from_world(world)
+            .weapon_index_by_script_name(&name)
+            .is_some_and(|index| index != 0);
+        if !known {
+            return Err(format!(
+                "PlayWeaponDeathEffects called with unknown weapon name {name}\n"
+            ));
+        }
+        super::engine::entity_id(world, receiver)?;
+        if args.len() == 2 {
+            super::super::args::int(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
+    // `ent SetSpawnerTeam(team)`: an AI spawner's team.
+    registry.register(Method, "setspawnerteam", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let spawner = world.resource::<RoundScript>().entities[&id]
+            .classname
+            .starts_with("actor_");
+        if !spawner {
+            return Err("setspawnerteam can only be applied to AI spawners".into());
+        }
+        let team = super::super::args::string(args, 0)?;
+        if !matches!(team.as_str(), "axis" | "allies" | "neutral") {
+            return Err(format!(
+                "unknown team '{team}', should be axis, allies, or neutral"
+            ));
+        }
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "team", Value::string(&team));
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "setblur", |world, receiver, args| {
         player_blur(world, receiver, args, false)
     });
