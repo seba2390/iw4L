@@ -1267,7 +1267,8 @@ pub(crate) fn damage(
         && means != MOD_MELEE
     {
         let scale = location_multiplier(location, weapon, world);
-        let capped = matches!(entity.ai_type, Some("zombie" | "dog"));
+        // Black Ops caps it for dogs and hellhounds (species 1 and 3), not zombies.
+        let capped = matches!(entity.ai_type, Some("dog" | "zombie_dog"));
         let scale = if capped && scale > 1.0 {
             1.0
         } else if scale == 0.0 {
