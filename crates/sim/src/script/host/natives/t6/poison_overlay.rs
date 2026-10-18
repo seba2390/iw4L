@@ -105,6 +105,8 @@ pub(crate) struct PoisonDvars {
     debug_enable: bool,
     pulse: f32,
     dvision_x: f32,
+    blur_min: f32,
+    blur_max: f32,
 }
 
 impl PoisonDvars {
@@ -113,6 +115,8 @@ impl PoisonDvars {
             debug_enable: super::atoi(&dvar_text(client, "r_poisonfx_debug_enable")) != 0,
             pulse: super::atof(&dvar_text(client, "r_poisonfx_pulse")),
             dvision_x: super::atof(&dvar_text(client, "r_poisonfx_dvisionx")),
+            blur_min: super::atof(&dvar_text(client, "r_poisonfx_blurmin")),
+            blur_max: super::atof(&dvar_text(client, "r_poisonfx_blurmax")),
         }
     }
 }
@@ -125,6 +129,8 @@ fn publish(world: &mut World, client: u32, amount: f32, dvars: &PoisonDvars) {
         amount,
         pulse: dvars.pulse,
         dvision_x: dvars.dvision_x,
+        blur_min: dvars.blur_min,
+        blur_max: dvars.blur_max,
     });
     let mut frame = crate::frame::FrameWorld::from_world(world);
     let id = crate::ClientId(client);

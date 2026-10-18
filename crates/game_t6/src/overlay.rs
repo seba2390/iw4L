@@ -2,18 +2,41 @@
 //! one exclusive overlay over the frame by precedence (the burning one
 //! first, then a revive one, then the electric shock, then the poison),
 //! each a fullscreen draw of its post material reading the frame as drawn
-//! so far; then its filter pass, which draws the client scripts' filters.
+//! so far; then its filter pass, which draws the client scripts' filters;
+//! then its blur pass.
 
 use game_api::post::{
-    FlameOverlay, OverlayConstant, OverlayFrame, OverlayPass, OverlayRules, PoisonOverlay,
-    ScreenFilter, ScreenOverlays,
+    BlurRules, FlameOverlay, OverlayConstant, OverlayFeedback, OverlayFrame, OverlayPass,
+    OverlayRules, PoisonOverlay, ReviveFx, ScreenFilter, ScreenOverlays,
 };
 use game_api::unknown;
 
 const BURN: &str = "flamethrowerfx_color_distort_overlay_bloom";
 const SHOCK: &str = "zombie_electric_shock_overlay";
 const POISON: &str = "poison";
-const MATERIALS: [&str; 3] = [BURN, SHOCK, POISON];
+const REVIVE: &str = "revivefx";
+const BLEND: &str = "feedbackblend";
+const MATERIALS: [&str; 13] = [
+    BURN,
+    SHOCK,
+    POISON,
+    REVIVE,
+    BLEND,
+    crate::blur::MATERIALS[0],
+    crate::blur::MATERIALS[1],
+    crate::blur::MATERIALS[2],
+    crate::blur::MATERIALS[3],
+    crate::blur::MATERIALS[4],
+    crate::blur::MATERIALS[5],
+    crate::blur::MATERIALS[6],
+    crate::blur::MATERIALS[7],
+];
+/// The revive pass's blur radius.
+const REVIVE_BLUR: f32 = 6.4;
+/// What the blur pass's smallest radius is, times the screen's height: a
+/// smaller blur draws at that radius, faded in by its share of it.
+const BLUR_FADE_HEIGHT: f32 = 2880.0;
+const WHITE: [u8; 4] = [255; 4];
 /// The filter materials the installed maps' client scripts map and enable:
 /// Buried's Vulture Aid stink overlay (`_zm_perk_vulture`). Every other
 /// filter their scripts map is enabled only by maps or modes that are not
@@ -24,21 +47,19 @@ pub(crate) const OVERLAYS: OverlayRules = OverlayRules {
     materials: &MATERIALS,
     filter_materials: &FILTER_MATERIALS,
     plan,
-    gaps: &[
-        unknown!(
-            "t6.csc.overlay.revive",
-            "the revive overlay that outranks the electric shock: what turns it on (the backend's revive flag and amount) was not found, so the shock always draws when the burn does not",
-            "the client code that fills the refdef's revive overlay fields"
-        ),
-        unknown!(
-            "t6.csc.overlay.poison_blur",
-            "the poison's blur, which the backend's blur pass draws with the script blur: it is not drawn",
-            "Black Ops 2's own blur pass"
-        ),
-    ],
+    blur: Some(BlurRules {
+        shift: 2,
+        plan: crate::blur::plan,
+    }),
+    gaps: &[unknown!(
+        "t6.csc.vision.revive_blend",
+        "while a vision channel blends from one vision to another, the revive settings blend by the vision field table's rules (switches at the halfway point for some blend modes, floats and vectors along the mode's curve); the overlay takes them from the vision the frame draws with",
+        "Black Ops 2's vision channel blend"
+    )],
 };
 
-/// The frame's overlays: the exclusive one, then the filters.
+/// The frame's overlays: the exclusive one, then the filters, then the
+/// blur.
 fn plan(frame: &OverlayFrame<'_>) -> Vec<OverlayPass> {
     let mut passes: Vec<OverlayPass> = exclusive(frame).into_iter().collect();
     passes.extend(
@@ -48,27 +69,105 @@ fn plan(frame: &OverlayFrame<'_>) -> Vec<OverlayPass> {
             .iter()
             .map(|filter| filter_pass(filter, frame.now_ms)),
     );
+    passes.extend(blur_pass(frame));
     passes
 }
 
+/// The blur pass: the frame blurred by the root of the sum of the squares of
+/// `r_blur` and the refdef's blur (the poison's while it plays, else the
+/// script blur), then blended back over it; a radius under its smallest
+/// draws at the smallest, faded by its share of it.
+fn blur_pass(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
+    let refdef = frame
+        .screen
+        .poison
+        .filter(|poison| poison.amount > 0.0)
+        .map_or(frame.script_blur, |poison| {
+            poison_blur(&poison, frame.now_ms)
+        });
+    if !(0.0 < frame.r_blur || 0.0 < refdef) {
+        return None;
+    }
+    let mut radius = (frame.r_blur * frame.r_blur + refdef * refdef).sqrt();
+    let smallest = BLUR_FADE_HEIGHT / frame.viewport[3];
+    let mut color = WHITE;
+    if smallest > radius {
+        let share = radius / smallest * 255.0;
+        color[3] = (f64::from(share) + crate::blur::NUDGE).round_ties_even() as i32 as u8;
+        radius = smallest;
+    }
+    Some(OverlayPass {
+        material: BLEND.to_owned(),
+        constants: Vec::new(),
+        blur: Some(radius),
+        feedback: OverlayFeedback::Blurred,
+        color,
+    })
+}
+
+/// The poison's blur, which takes the refdef's blur while it plays: between
+/// `blur_min` and `blur_max` along two sines of the frame's time (one weighted
+/// by the pulse's smoothstep, one by its rest), times the amount.
+fn poison_blur(poison: &PoisonOverlay, now_ms: i32) -> f32 {
+    use std::f32::consts::PI;
+    let t = now_ms as f32 * 0.001;
+    let pulse = poison.pulse - 1.0;
+    let pulse = if 0.0 > pulse { 0.0 } else { pulse };
+    let s = (pulse * -2.0 + 3.0) * pulse * pulse;
+    let range = poison.blur_max - poison.blur_min;
+    let slow =
+        (((t * 0.166_666_67 * PI * 2.5).sin() + 1.0) * 0.5 * range + poison.blur_min) * (1.0 - s);
+    let fast = (((t * 0.333_333_34 * PI * 2.5).sin() + 1.0) * 0.5 * range + poison.blur_min) * s;
+    (slow + fast) * poison.amount
+}
+
+/// The revive pass: the frame blurred, then drawn through the vision's edge
+/// colour matrix and mask over the frame.
+fn revive_pass(revive: &ReviveFx) -> OverlayPass {
+    let rows = crate::revive::rows(revive);
+    let mut constants: Vec<_> = rows
+        .iter()
+        .zip(0u8..)
+        .map(|(row, at)| (OverlayConstant::PostFxControl(at), *row))
+        .collect();
+    constants.push((OverlayConstant::ViewportDimensions, [0.0, 0.0, 1.0, 1.0]));
+    OverlayPass {
+        material: REVIVE.to_owned(),
+        constants,
+        blur: Some(REVIVE_BLUR),
+        feedback: OverlayFeedback::Frame,
+        color: WHITE,
+    }
+}
+
 /// The overlay the frame draws, if any: the burn when flame overlays are
-/// allowed and it plays, else the shock on the same terms, else the poison
-/// while its amount is over 0.
+/// allowed and it plays, else the revive while `r_reviveFX_debug` sets its
+/// settings or the vision enables it with an amount over 0, else the shock
+/// on the burn's terms, else the poison while its amount is over 0.
 fn exclusive(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
     let screen = frame.screen;
     let playing = |overlay: Option<FlameOverlay>| {
         overlay.filter(|o| screen.flame_allowed && plays(o, frame.now_ms))
     };
-    let (material, overlay) = match (playing(screen.burn), playing(screen.shock)) {
-        (Some(burn), _) => (BURN, burn),
-        (None, Some(shock)) => (SHOCK, shock),
-        (None, None) => {
+    let revive = screen.revive_debug.or_else(|| {
+        frame
+            .revive
+            .filter(|revive| revive.enable && revive.edge_amount > 0.0)
+    });
+    let (material, overlay) = match (playing(screen.burn), revive, playing(screen.shock)) {
+        (Some(burn), ..) => (BURN, burn),
+        (None, Some(revive), _) => return Some(revive_pass(&revive)),
+        (None, None, Some(shock)) => (SHOCK, shock),
+        (None, None, None) => {
             return screen
                 .poison
                 .filter(|poison| poison.amount > 0.0)
                 .map(|poison| OverlayPass {
                     material: POISON.to_owned(),
                     constants: poison_rows(&poison, frame.now_ms, frame.viewport),
+                    blur: None,
+                    feedback: OverlayFeedback::Frame,
+                    color: WHITE,
                 });
         }
     };
@@ -80,6 +179,9 @@ fn exclusive(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
     Some(OverlayPass {
         material: material.to_owned(),
         constants: flame_rows(&overlay, atlas, screen, frame.now_ms),
+        blur: None,
+        feedback: OverlayFeedback::Frame,
+        color: WHITE,
     })
 }
 
@@ -102,6 +204,9 @@ fn filter_pass(filter: &ScreenFilter, now_ms: i32) -> OverlayPass {
     OverlayPass {
         material: filter.material.clone(),
         constants,
+        blur: None,
+        feedback: OverlayFeedback::Frame,
+        color: WHITE,
     }
 }
 

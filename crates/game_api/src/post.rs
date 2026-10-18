@@ -188,8 +188,48 @@ pub struct OverlayRules {
     pub filter_materials: &'static [&'static str],
     /// The frame's overlays, in draw order.
     pub plan: fn(&OverlayFrame<'_>) -> Vec<OverlayPass>,
+    /// How the game blurs the frame for an overlay that asks for it.
+    pub blur: Option<BlurRules>,
     /// What the game's overlay choice still leaves unknown.
     pub gaps: &'static [&'static Unknown],
+}
+
+/// A game's screen blur: images the frame's size shifted right by `shift`,
+/// and the passes a radius takes over a frame of one size into images of
+/// another.
+#[derive(Clone, Copy, Debug)]
+pub struct BlurRules {
+    pub shift: u32,
+    pub plan: fn(radius: f32, frame: [u32; 2], image: [u32; 2]) -> Vec<BlurPass>,
+}
+
+/// One pass of a screen blur: a filter material drawn over all of `target`
+/// (`size`), reading `source` (as `feedback`), with eight filter tap rows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlurPass {
+    pub material: &'static str,
+    pub source: BlurImage,
+    pub target: BlurImage,
+    pub size: [u32; 2],
+    pub taps: [[f32; 4]; 8],
+}
+
+/// An image a blur reads or writes: the frame as the overlays found it,
+/// one of two working images, or the blurred image.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlurImage {
+    Frame,
+    Ping(u8),
+    Blurred,
+}
+
+/// What an overlay draw reads as `feedback`: the frame as drawn so far, or
+/// the image its blur left.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OverlayFeedback {
+    #[default]
+    Frame,
+    Blurred,
 }
 
 /// Rules are told apart by their materials: function addresses are not
@@ -211,6 +251,25 @@ pub struct OverlayFrame<'a> {
     pub atlases: &'a [(&'static str, [u8; 2])],
     /// The scene's viewport the overlays draw over: x, y, width, height.
     pub viewport: [f32; 4],
+    /// The client's script blur (`setblur`) as it stands this frame.
+    pub script_blur: f32,
+    /// The `r_blur` dvar.
+    pub r_blur: f32,
+    /// The revive settings of the vision the client draws with.
+    pub revive: Option<ReviveFx>,
+}
+
+/// A vision's revive settings (`r_reviveFX_*`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ReviveFx {
+    pub enable: bool,
+    pub edge_color_temp: f32,
+    pub edge_saturation: f32,
+    pub edge_scale: [f32; 3],
+    pub edge_contrast: [f32; 3],
+    pub edge_offset: [f32; 3],
+    pub edge_mask_adjust: f32,
+    pub edge_amount: f32,
 }
 
 /// One fullscreen draw of an overlay material.
@@ -219,6 +278,13 @@ pub struct OverlayPass {
     pub material: String,
     /// The rows this draw sets before it draws.
     pub constants: Vec<(OverlayConstant, [f32; 4])>,
+    /// The radius the frame is blurred with first (the blurred image is the
+    /// game's first post effect texture), if any.
+    pub blur: Option<f32>,
+    /// What the draw reads as `feedback`.
+    pub feedback: OverlayFeedback,
+    /// The draw's vertex colour.
+    pub color: [u8; 4],
 }
 
 /// A code row an overlay material reads.
@@ -254,6 +320,9 @@ pub struct ScreenOverlays {
     pub filters: Vec<ScreenFilter>,
     /// The poison overlay, while its amount is over 0.
     pub poison: Option<PoisonOverlay>,
+    /// The revive settings `r_reviveFX_debug` sets in place of the
+    /// vision's, while it is set.
+    pub revive_debug: Option<ReviveFx>,
 }
 
 /// The poison overlay: its amount and the render settings its draw reads.
@@ -264,6 +333,9 @@ pub struct PoisonOverlay {
     pub pulse: f32,
     /// The double vision's horizontal offset.
     pub dvision_x: f32,
+    /// The blur it adds, from `blur_min` to `blur_max`.
+    pub blur_min: f32,
+    pub blur_max: f32,
 }
 
 /// A client script filter that draws: its first pass's material and the

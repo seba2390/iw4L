@@ -123,8 +123,13 @@ pub(crate) fn build_runtime_post_chain(
 /// The code texture of the frame as drawn so far (`feedback`), which a
 /// game's overlays read.
 pub const CODE_TEXTURE_FEEDBACK: u32 = 8;
+/// A game's first post effect texture: the image its screen blur leaves,
+/// which an overlay after a blur reads.
+pub const CODE_TEXTURE_POST_EFFECT_0: u32 = 11;
 /// The game time row.
 const CODE_GAMETIME: u16 = super::command_context::CODE_GAMETIME;
+/// The first of the eight filter tap rows a blur's filter passes set.
+const CODE_FILTER_TAP0: u16 = 10;
 /// The rows a game's overlays set.
 pub const OVERLAY_ROWS: [u16; 8] = [
     render_material::CODE_T6_FLAME_DISTORTION,
@@ -155,11 +160,17 @@ pub struct RuntimeOverlays {
 pub fn overlay_sources(width: u32, height: u32) -> Option<RuntimeCodeSources> {
     let mut sources = post_chain_sources(width, height)?;
     split_2d_projection(&mut sources);
-    for row in std::iter::once(CODE_GAMETIME).chain(OVERLAY_ROWS) {
+    for row in std::iter::once(CODE_GAMETIME)
+        .chain(OVERLAY_ROWS)
+        .chain(CODE_FILTER_TAP0..CODE_FILTER_TAP0 + 8)
+    {
         sources.set_constant_rows(row, &[[0; 4]]);
     }
     sources
         .set_texture(CODE_TEXTURE_FEEDBACK, POST_CHAIN_SAMPLER)
+        .ok()?;
+    sources
+        .set_texture(CODE_TEXTURE_POST_EFFECT_0, POST_CHAIN_SAMPLER)
         .ok()?;
     Some(sources)
 }
@@ -469,17 +480,34 @@ pub(crate) fn plan_screen_overlays(
     clock: Res<net::FrameClock>,
     presented: Res<net::PresentedSnapshot>,
     local: Res<net::LocalPresentClient>,
+    film: Option<Res<super::film_vision_view::FilmVisionView>>,
     mut out: ResMut<ScreenOverlayPasses>,
 ) {
     let Some(Ok(overlays)) = generation.as_ref().and_then(|g| g.overlays.as_ref()) else {
         out.passes.clear();
         return;
     };
-    let screen = presented
-        .snapshot()
-        .and_then(|snapshot| snapshot.meta.for_client(local.0))
+    let snapshot = presented.snapshot();
+    let meta = snapshot.and_then(|snapshot| snapshot.meta.for_client(local.0));
+    let screen = meta
         .map(|meta| meta.view_effects.client_screen.overlays.clone())
         .unwrap_or_else(game_api::post::ScreenOverlays::default);
+    let script_blur = meta
+        .and_then(|meta| meta.view_effects.blur)
+        .map_or(0.0, |blur| blur.sample(clock.time()));
+    // `r_blur` as the server or the client last set it.
+    let r_blur = snapshot
+        .into_iter()
+        .flat_map(|snapshot| snapshot.meta.objectives.server_info.iter())
+        .chain(meta.into_iter().flat_map(|meta| meta.client_dvars.iter()))
+        .filter(|(name, _)| name.eq_ignore_ascii_case("r_blur"))
+        .filter_map(|(_, value)| value.parse::<f32>().ok())
+        .rfind(|value| value.is_finite())
+        .unwrap_or(0.0);
+    let revive = film
+        .as_ref()
+        .and_then(|film| film.native_vision)
+        .and_then(|vision| vision.revive);
     out.passes = (overlays.rules.plan)(&game_api::post::OverlayFrame {
         now_ms: clock.time(),
         screen: &screen,
@@ -493,6 +521,9 @@ pub(crate) fn plan_screen_overlays(
                 viewport.height as f32,
             ]
         }),
+        script_blur,
+        r_blur,
+        revive,
     });
     let drawn: Vec<String> = out
         .passes
@@ -517,6 +548,7 @@ pub fn register(app: &mut App) {
                     .in_set(net::ClientSet::Present),
                 plan_screen_overlays
                     .in_set(frame::InMatch)
+                    .after(super::film_vision_view::FilmVisionUpdated)
                     .in_set(net::ClientSet::Present),
             ),
         );
