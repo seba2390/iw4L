@@ -178,6 +178,12 @@ pub struct AuthorityDObjState {
     pub model_revision: u32,
     pub pose_revision: u32,
     pub capability: Option<std::sync::Arc<xmodel_runtime::RetainedModelCapability>>,
+    /// Attached submodels (heads, hats, gear) in attachment order, with the
+    /// tag each attaches to (`""` when merged onto the parent skeleton).
+    pub attached_models: Vec<(
+        std::sync::Arc<xmodel_runtime::RetainedModelCapability>,
+        xmodel_runtime::Attach,
+    )>,
 
     pub semantic_state: xmodel_runtime::DObjSemanticState,
     pub pose_request: xmodel_runtime::DObjPoseRequest,
@@ -322,6 +328,7 @@ impl AuthorityDObjState {
             model_revision: 1,
             pose_revision: 1,
             capability,
+            attached_models: Vec::new(),
             semantic_state: xmodel_runtime::DObjSemanticState::bind_pose(
                 current_model.clone(),
                 1,
@@ -392,29 +399,69 @@ impl AuthorityDObjState {
         self.current_collision = None;
     }
 
-    pub fn set_attachments(&mut self, attachments: &[(&str, &str)]) {
+    pub fn attachments_match(
+        &self,
+        attachments: &[(crate::script::Arc<str>, crate::script::Arc<str>)],
+    ) -> bool {
+        let composed = &self.semantic_state.composition.models;
+        if composed.len() != 1 + attachments.len() {
+            return false;
+        }
+        let present =
+            attachments
+                .iter()
+                .zip(composed.iter().skip(1))
+                .all(|((model, tag), desc)| {
+                    desc.model == **model && desc.attach_tag.as_deref() == Some(&**tag)
+                });
+        present && self.attached_models.len() <= attachments.len()
+    }
+
+    pub fn set_attachments(
+        &mut self,
+        attachments: &[(
+            &str,
+            &str,
+            Option<std::sync::Arc<xmodel_runtime::RetainedModelCapability>>,
+        )],
+    ) {
         let mut models = vec![xmodel_runtime::DObjModelDescriptor {
             model: self.current_model.clone(),
             parent_model: None,
             attach_tag: None,
             ignore_collision: false,
         }];
-        models.extend(
-            attachments
-                .iter()
-                .map(|(model, tag)| xmodel_runtime::DObjModelDescriptor {
-                    model: (*model).to_owned(),
-                    parent_model: Some(0),
-                    attach_tag: Some((*tag).to_owned()),
-                    ignore_collision: true,
-                }),
-        );
-        if self.semantic_state.composition.models == models {
+        models.extend(attachments.iter().map(|(model, tag, _)| {
+            xmodel_runtime::DObjModelDescriptor {
+                model: (*model).to_owned(),
+                parent_model: Some(0),
+                attach_tag: Some((*tag).to_owned()),
+                ignore_collision: true,
+            }
+        }));
+        let attached_models: Vec<_> = attachments
+            .iter()
+            .filter_map(|(_, tag, cap)| {
+                Some((
+                    cap.clone()?,
+                    xmodel_runtime::Attach {
+                        parent_model: 0,
+                        tag: (*tag).to_owned(),
+                    },
+                ))
+            })
+            .collect();
+        let same_attached = self.attached_models.len() == attached_models.len()
+            && self.attached_models.iter().zip(&attached_models).all(
+                |((a_cap, a_att), (b_cap, b_att))| a_cap.key == b_cap.key && a_att.tag == b_att.tag,
+            );
+        if self.semantic_state.composition.models == models && same_attached {
             return;
         }
         let composition = &mut self.semantic_state.composition;
         composition.revision = composition.revision.wrapping_add(1);
         composition.models = models;
+        self.attached_models = attached_models;
     }
 
     /// Put the model a destructible state asks for on this dobj.
@@ -473,23 +520,23 @@ impl AuthorityDObjState {
         self.materialized_pose_revision = None;
     }
 
-    pub fn bone_name(&self, bone: usize) -> Option<&str> {
-        self.capability
-            .as_ref()?
-            .pose
-            .bone_names
-            .get(bone)
-            .map(String::as_str)
+    pub fn bone_name(&self, mut bone: usize) -> Option<&str> {
+        let capability = self.capability.as_ref()?;
+        if bone < capability.pose.num_bones {
+            return capability.pose.bone_names.get(bone).map(String::as_str);
+        }
+        bone -= capability.pose.num_bones;
+        for (attached, _) in &self.attached_models {
+            if bone < attached.pose.num_bones {
+                return attached.pose.bone_names.get(bone).map(String::as_str);
+            }
+            bone -= attached.pose.num_bones;
+        }
+        None
     }
 
     pub fn set_tag_hidden(&mut self, tag: &str, hidden: bool) -> bool {
-        let Some(bone) = self.capability.as_ref().and_then(|capability| {
-            capability
-                .pose
-                .bone_names
-                .iter()
-                .position(|name| name.eq_ignore_ascii_case(tag))
-        }) else {
+        let Some(bone) = self.tag_bone(tag) else {
             return false;
         };
         let mut words = *self.semantic_state.hide_part_bits.words();
@@ -516,7 +563,9 @@ impl AuthorityDObjState {
             return;
         }
         self.pose_revision = self.pose_revision.wrapping_add(1);
+        let composition = self.semantic_state.composition.clone();
         self.semantic_state = xmodel_runtime::DObjSemanticState {
+            composition,
             hide_part_bits: self.semantic_state.hide_part_bits,
             ..xmodel_runtime::DObjSemanticState::bind_pose(
                 self.current_model.clone(),
@@ -542,6 +591,7 @@ impl AuthorityDObjState {
         self.semantic_state.composition =
             xmodel_runtime::DObjCompositionDescriptor::single(self.model_revision, current_model);
         self.capability = capability;
+        self.attached_models.clear();
         self.current_collision = None;
         self.materialized_model_revision = None;
         self.materialized_pose_revision = None;
@@ -705,29 +755,47 @@ impl AuthorityDObjState {
         }
     }
 
+    fn dobj(&self) -> Option<xmodel_runtime::DObj> {
+        let capability = self.capability.as_ref()?;
+        let mut specs = Vec::with_capacity(1 + self.attached_models.len());
+        specs.push((&capability.pose, None));
+        for (attached, attach) in &self.attached_models {
+            specs.push((&attached.pose, Some(attach.clone())));
+        }
+        xmodel_runtime::DObj::build(&specs)
+            .or_else(|_| xmodel_runtime::DObj::build(&[(&capability.pose, None)]))
+            .ok()
+    }
+
     pub fn tag_bone(&self, tag: &str) -> Option<usize> {
         let capability = self.capability.as_ref()?;
-        capability
-            .pose
-            .bone_names
-            .iter()
-            .position(|name| name == tag)
-            // Tag names are script strings, which match without case.
-            .or_else(|| {
-                capability
-                    .pose
+        let models = std::iter::once(&capability.pose)
+            .chain(self.attached_models.iter().map(|(cap, _)| &cap.pose));
+        let mut base = 0;
+        let mut case_match = None;
+        for pose in models {
+            if let Some(local) = pose.bone_names.iter().position(|name| name == tag) {
+                return Some(base + local);
+            }
+            if case_match.is_none()
+                && let Some(local) = pose
                     .bone_names
                     .iter()
                     .position(|name| name.eq_ignore_ascii_case(tag))
-            })
+            {
+                case_match = Some(base + local);
+            }
+            base += pose.num_bones;
+        }
+        // Tag names are script strings, which match without case.
+        case_match
     }
 
     pub fn tag_world_matrix(&self, tag: &str) -> Option<glam::Mat4> {
-        let capability = self.capability.as_ref()?;
-        let bone = self.tag_bone(tag)?;
-        let posed = capability
-            .pose(&self.pose_request, self.world_from_model)
-            .ok()?;
+        let dobj = self.dobj()?;
+        let bone = dobj.find(tag)?;
+        let posed =
+            xmodel_runtime::pose_dobj(&dobj, &self.pose_request, self.world_from_model).ok()?;
         posed.get(bone).copied()
     }
 
@@ -738,21 +806,21 @@ impl AuthorityDObjState {
         tag: &str,
         controls: &[(&str, [f32; 3])],
     ) -> Option<glam::Mat4> {
-        let capability = self.capability.as_ref()?;
-        let bone = self.tag_bone(tag)?;
-        let posed = capability
-            .pose_with_controller(
-                &self.pose_request,
-                self.world_from_model,
-                |dobj, _, locals| {
-                    for (name, angles) in controls {
-                        if let Some(controlled) = dobj.find(name) {
-                            xmodel_runtime::set_control_tag_angles(locals, controlled, *angles);
-                        }
+        let dobj = self.dobj()?;
+        let bone = dobj.find(tag)?;
+        let posed = xmodel_runtime::pose_dobj_with_controller(
+            &dobj,
+            &self.pose_request,
+            self.world_from_model,
+            |dobj, _, locals| {
+                for (name, angles) in controls {
+                    if let Some(controlled) = dobj.find(name) {
+                        xmodel_runtime::set_control_tag_angles(locals, controlled, *angles);
                     }
-                },
-            )
-            .ok()?;
+                }
+            },
+        )
+        .ok()?;
         posed.get(bone).copied()
     }
 

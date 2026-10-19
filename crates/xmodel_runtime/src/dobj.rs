@@ -196,12 +196,22 @@ impl DObj {
                     let found = bones[range.clone()]
                         .iter()
                         .position(|b| b.name == tag)
-                        .map(|i| slot.base + i);
-                    Some(found.ok_or_else(|| DObjError::AttachTag {
-                        model: model.name.clone(),
-                        tag: a.tag.clone(),
-                        parent: a.parent_model,
-                    })?)
+                        .or_else(|| {
+                            bones[range.clone()]
+                                .iter()
+                                .position(|b| b.name.eq_ignore_ascii_case(tag))
+                        })
+                        .map(|i| slot.base + i)
+                        .or_else(|| bones.iter().position(|b| b.name.eq_ignore_ascii_case(tag)));
+                    if a.tag.is_empty() && found.is_none() {
+                        None
+                    } else {
+                        Some(found.ok_or_else(|| DObjError::AttachTag {
+                            model: model.name.clone(),
+                            tag: a.tag.clone(),
+                            parent: a.parent_model,
+                        })?)
+                    }
                 }
             };
 
@@ -279,12 +289,14 @@ impl DObj {
         }
 
         let mut duplicates = Vec::new();
-        let mut first_by_name = std::collections::HashMap::<&str, usize>::new();
+        let mut first_by_name = std::collections::HashMap::<String, usize>::new();
         for (dest, bone) in bones.iter().enumerate() {
             if bone.name.is_empty() {
                 continue;
             }
-            let source = *first_by_name.entry(&bone.name).or_insert(dest);
+            let source = *first_by_name
+                .entry(bone.name.to_ascii_lowercase())
+                .or_insert(dest);
             // Models are appended in contiguous blocks. The first occurrence
             // is therefore also the first occurrence in any earlier model.
             if bones[source].model != bone.model && bone.parent != Some(source) {
@@ -304,7 +316,11 @@ impl DObj {
     }
 
     pub fn find(&self, name: &str) -> Option<usize> {
-        self.bones.iter().position(|b| b.name == name)
+        self.bones.iter().position(|b| b.name == name).or_else(|| {
+            self.bones
+                .iter()
+                .position(|b| b.name.eq_ignore_ascii_case(name))
+        })
     }
 
     pub fn all_parts(&self) -> PartBits {
