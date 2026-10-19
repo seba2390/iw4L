@@ -274,14 +274,6 @@ fn throwback_unknown() -> &'static Unknown {
     )
 }
 
-fn actor_state_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.damage.actor_state",
-        "an actor takes damage without the actor field Black Ops 2 checks first",
-        "what that actor field is and its value in the runtime"
-    )
-}
-
 fn destructible_unknown() -> &'static Unknown {
     unknown!(
         "t6.damage.destructibles",
@@ -1766,7 +1758,6 @@ impl Shot<'_> {
                 if amount < 1 {
                     return;
                 }
-                self.gaps.push(actor_state_unknown());
                 if hit.means != MOD_MELEE {
                     amount = self.located(amount, hit.location, hit.weapon, world);
                 }
