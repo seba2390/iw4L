@@ -108,8 +108,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 138 of 610 |
-| Five (`t5:zombie_pentagon`) | 138 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 133 of 610 |
+| Five (`t5:zombie_pentagon`) | 133 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -133,7 +133,8 @@ Only the top-level items count.
   - [ ] Legless (gibbed) crawlers, ragdoll and thrown gibs missing.
 - [x] Zombies path to the player and get through barriers.
   - [x] All ten of Kino's traversal scripts (54 `Begin` nodes: `zombie_mantle_over_40`, `zombie_jump_down_40`, `_72`, `_120`, `_127`, `_190`, `_240`, `_286`, `zombie_wall_crawl_drop` and `zombie_wall_crawl_drop_quick`) run from their start node to their end node.
-  - [ ] No actor collision with the world while walking.
+  - [x] Actors collide with the world while walking: Black Ops' actor box slides along walls, steps stairs, falls, and turns aside or plans again when blocked; doors, debris and window clips cut and rejoin their path links (`connectpaths`/`disconnectpaths`), badplaces keep paths out.
+  - [ ] Actors do not block each other or the player (Black Ops' blocking actor), and their slide is Black Ops' trace slide, not its default physics capsule.
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
 - [x] Rounds advance past round 1.
 - [x] Wall weapons and the Mystery Box.

@@ -1102,9 +1102,14 @@ fn toucher(runtime: &mut RoundScript, frame: &FrameWorld, object: u64) -> ([f32;
         .get(&object)
         .is_some_and(|e| e.kind == super::entities::EntityKind::Actor)
     {
+        let (mins, maxs) = runtime
+            .actor_moves
+            .get(&object)
+            .and_then(|movement| movement.bounds)
+            .unwrap_or(([-15.0, -15.0, 0.0], [15.0, 15.0, 72.0]));
         return (
-            [origin[0] - 15.0, origin[1] - 15.0, origin[2]],
-            [origin[0] + 15.0, origin[1] + 15.0, origin[2] + 72.0],
+            std::array::from_fn(|i| origin[i] + mins[i]),
+            std::array::from_fn(|i| origin[i] + maxs[i]),
         );
     }
     (origin, origin)
@@ -1118,6 +1123,13 @@ pub(crate) fn entity_bounds(world: &mut World, object: u64) -> ([f32; 3], [f32; 
     let Some(entity) = runtime.entities.get(&object) else {
         return ([0.0; 3], [0.0; 3]);
     };
+    if entity.kind == super::entities::EntityKind::Actor {
+        return runtime
+            .actor_moves
+            .get(&object)
+            .and_then(|movement| movement.bounds)
+            .unwrap_or(([-15.0, -15.0, 0.0], [15.0, 15.0, 72.0]));
+    }
     if let Some((radius, height)) = entity.cylinder {
         return ([-radius, -radius, 0.0], [radius, radius, height]);
     }

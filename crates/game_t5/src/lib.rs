@@ -49,6 +49,7 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     ("ai_slowdownMinYawDiff", "0"),
     ("ai_slowdownMaxYawDiff", "90"),
     ("ai_meleeRange", "64"),
+    ("ai_turnRate", "220"),
     // Black Ops registers it true; `_zombiemode_load` sets
     // `level.clientscripts` from it, which `clientNotify` reads.
     ("cg_usingClientScripts", "1"),

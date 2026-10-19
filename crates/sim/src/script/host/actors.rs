@@ -262,6 +262,8 @@ fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, 
             ("goalradius", 4.0),
             ("goalheight", 80.0),
             ("walkdist", 128.0),
+            ("badplaceawareness", 0.75),
+            ("animtranslationscale", 1.0),
         ] {
             if runtime.object_field(id, name) == Value::Undefined {
                 runtime.set_object_field(id, name, Value::Float(value));
@@ -270,8 +272,12 @@ fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, 
         runtime.set_object_field(id, "ignoreme", Value::Int(0));
         runtime.set_object_field(id, "ignoreall", Value::Int(0));
         runtime.set_object_field(id, "safetochangescript", Value::Int(1));
+        runtime.set_object_field(id, "pushable", Value::Int(1));
+        runtime.set_object_field(id, "nododgemove", Value::Int(0));
         runtime.set_object_field(id, "leanamount", Value::Float(0.0));
         runtime.set_object_field(id, "damageyaw", Value::Int(0));
+        runtime.set_object_field(id, "desiredangle", Value::Float(angles[1]));
+        runtime.set_object_field(id, "pathgoalpos", Value::Vector(origin));
         runtime.set_object_field(id, "lookaheaddir", Value::Vector([0.0; 3]));
         runtime.set_object_field(id, "isfacingmotion", Value::Int(0));
         runtime.set_object_field(id, "lookaheaddist", Value::Float(0.0));

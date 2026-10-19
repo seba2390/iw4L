@@ -8,6 +8,7 @@ pub mod arrays;
 pub mod client_effects;
 pub(crate) mod client_scripts;
 pub mod controls;
+pub(crate) mod dynamic_paths;
 pub mod entities;
 pub mod entity_damage;
 pub mod guidance;

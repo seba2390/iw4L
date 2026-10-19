@@ -163,34 +163,69 @@ fn settle_entity(world: &mut World, object: u64) {
 
 fn settle_rows(world: &mut World, only: Option<u64>) {
     let mut runtime = world.resource_mut::<RoundScript>();
-    let placed: Vec<(u64, ScriptModelId, bool, bool)> = match only {
+    let placed: Vec<(u64, ScriptModelId, bool, bool, Vec<(Arc<str>, Arc<str>)>)> = match only {
         Some(object) => runtime
             .entities
             .get(&object)
-            .and_then(|e| Some((object, e.presence?, e.hidden, e.solid)))
+            .and_then(|e| {
+                Some((
+                    object,
+                    e.presence?,
+                    e.hidden,
+                    e.solid,
+                    e.attachments.clone(),
+                ))
+            })
             .into_iter()
             .collect(),
         None => runtime
             .entities
             .iter()
-            .filter_map(|(id, e)| Some((*id, e.presence?, e.hidden, e.solid)))
+            .filter_map(|(id, e)| {
+                Some((*id, e.presence?, e.hidden, e.solid, e.attachments.clone()))
+            })
             .collect(),
     };
     if placed.is_empty() {
         return;
     }
-    let (origin_field, angles_field) = (runtime.symbol("origin"), runtime.symbol("angles"));
-    let wanted: BTreeMap<ScriptModelId, ([f32; 3], [f32; 3], bool, bool)> = placed
+    let (origin_field, angles_field, model_sym) = (
+        runtime.symbol("origin"),
+        runtime.symbol("angles"),
+        runtime.symbol("model"),
+    );
+    type SettledRow = (
+        [f32; 3],
+        [f32; 3],
+        bool,
+        bool,
+        Option<Arc<str>>,
+        Vec<(Arc<str>, Arc<str>)>,
+    );
+    let wanted: BTreeMap<ScriptModelId, SettledRow> = placed
         .into_iter()
-        .map(|(object, presence, hidden, solid)| {
+        .map(|(object, presence, hidden, solid, attachments)| {
             let fields = runtime.objects.get(&object);
             let field = |symbol| match fields.and_then(|fields| fields.get(&symbol)) {
                 Some(Value::Vector(v)) => *v,
                 _ => [0.0; 3],
             };
+            let model = match fields.and_then(|fields| fields.get(&model_sym)) {
+                Some(Value::String(m)) if !m.is_empty() && !m.starts_with('*') => {
+                    Some(m.clone().into())
+                }
+                _ => None,
+            };
             (
                 presence,
-                (field(origin_field), field(angles_field), hidden, solid),
+                (
+                    field(origin_field),
+                    field(angles_field),
+                    hidden,
+                    solid,
+                    model,
+                    attachments,
+                ),
             )
         })
         .collect();
@@ -226,14 +261,49 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         false => super::natives::t5_turret::rules(world).map(|rules| rules.bone_controls),
     };
     let mut frame = FrameWorld::from_world(world);
+    let mut model_caps: BTreeMap<
+        Arc<str>,
+        Option<std::sync::Arc<xmodel_runtime::RetainedModelCapability>>,
+    > = BTreeMap::new();
+    for (_, _, _, _, model, attachments) in wanted.values() {
+        if let Some(model) = model
+            && !model_caps.contains_key(model)
+        {
+            let cap = frame.model_capability(model).flatten();
+            model_caps.insert(model.clone(), cap);
+        }
+        for (att_model, _) in attachments {
+            if !model_caps.contains_key(att_model) {
+                let cap = frame.model_capability(att_model).flatten();
+                model_caps.insert(att_model.clone(), cap);
+            }
+        }
+    }
     for row in frame.entity_collision_capabilities_mut() {
-        let Some(&(origin, angles, hidden, solid)) =
+        let Some((origin, angles, hidden, solid, model, attachments)) =
             row.owner.script_model().and_then(|id| wanted.get(&id))
         else {
             continue;
         };
+        let (origin, angles, hidden, solid) = (*origin, *angles, *hidden, *solid);
         row.hidden = hidden;
         row.solid = solid;
+        if let Some(model) = model {
+            if row.dobj.is_none() {
+                let cap = model_caps.get(model).cloned().flatten();
+                row.dobj = Some(AuthorityDObjState::at_pose(model, cap, origin, angles));
+                row.followed_pose = Some((origin, angles));
+            }
+            if let Some(dobj) = row.dobj.as_mut()
+                && !dobj.attachments_match(attachments)
+            {
+                let resolved: Vec<_> = attachments
+                    .iter()
+                    .map(|(m, t)| (&**m, &**t, model_caps.get(m).cloned().flatten()))
+                    .collect();
+                dobj.set_attachments(&resolved);
+            }
+        }
         if let Some(rotations) = row.owner.script_model().and_then(|id| rotations.get(&id))
             && let Some(dobj) = row.dobj.as_mut()
         {
@@ -338,6 +408,7 @@ fn present(world: &mut World, now: i32) {
         };
         if spawned {
             frame.remove_script_mover_by_number(mover.state.number);
+            frame.remove_collision_owner(id);
         } else if let Some(mover) = frame.script_mover_mut_by_number(mover.state.number) {
             mover.state.e_flags |= entity_iw4::CG_SCRIPT_MOVER_NODRAW;
             mover.nonsolid = true;
@@ -452,23 +523,30 @@ fn with_tag_dobj<T>(
     {
         return read(dobj);
     }
-    let (model, origin, angles) = {
+    let (model, origin, angles, attachments) = {
         let mut runtime = world.resource_mut::<RoundScript>();
+        let attachments = runtime
+            .entities
+            .get(&object)
+            .map_or_else(Vec::new, |e| e.attachments.clone());
         (
             model_field(&mut runtime, object)?,
             vector(&mut runtime, object, "origin"),
             vector(&mut runtime, object, "angles"),
+            attachments,
         )
     };
-    let capability = FrameWorld::from_world(world)
-        .model_capability(&model)
-        .flatten()?;
-    read(&AuthorityDObjState::at_pose(
-        &model,
-        Some(capability),
-        origin,
-        angles,
-    ))
+    let frame = FrameWorld::from_world(world);
+    let capability = frame.model_capability(&model).flatten()?;
+    let mut dobj = AuthorityDObjState::at_pose(&model, Some(capability), origin, angles);
+    if !attachments.is_empty() {
+        let resolved: Vec<_> = attachments
+            .iter()
+            .map(|(m, t)| (&**m, &**t, frame.model_capability(m).flatten()))
+            .collect();
+        dobj.set_attachments(&resolved);
+    }
+    read(&dobj)
 }
 
 fn tag_lookup(world: &mut World, object: u64, tag: &str) -> Option<Option<[f32; 3]>> {
@@ -670,6 +748,11 @@ fn present_model(frame: &mut FrameWorld, want: &Wanted) {
         .anim_op
         .as_ref()
         .and_then(|op| op.as_deref().and_then(|clip| frame.script_model_anim(clip)));
+    let attachments: Vec<_> = want
+        .attachments
+        .iter()
+        .map(|(model, tag)| (&**model, &**tag, frame.model_capability(model).flatten()))
+        .collect();
     let Some(row) = frame.collision_owner_mut(want.presence) else {
         return;
     };
@@ -696,11 +779,6 @@ fn present_model(frame: &mut FrameWorld, want: &Wanted) {
     let Some(dobj) = row.dobj.as_mut() else {
         return;
     };
-    let attachments: Vec<(&str, &str)> = want
-        .attachments
-        .iter()
-        .map(|(model, tag)| (&**model, &**tag))
-        .collect();
     dobj.set_attachments(&attachments);
     for (tag, hidden) in &want.part_ops {
         dobj.set_tag_hidden(tag, *hidden);
