@@ -602,7 +602,13 @@ pub(crate) fn enter_last_stand(world: &mut FrameWorld, id: ClientId) {
         let outcome = movement.enter_last_stand(player, &*content);
         (outcome, *player)
     }) {
-        apply_move_anim_signals(world, id, &player, &MoveCommand::default(), &outcome.signals);
+        apply_move_anim_signals(
+            world,
+            id,
+            &player,
+            &MoveCommand::default(),
+            &outcome.signals,
+        );
         for gap in outcome.gaps {
             world.report_game_gap(gap);
         }
@@ -618,7 +624,13 @@ pub(crate) fn revive(world: &mut FrameWorld, id: ClientId) {
         let outcome = movement.revive(player);
         (outcome, *player)
     }) {
-        apply_move_anim_signals(world, id, &player, &MoveCommand::default(), &outcome.signals);
+        apply_move_anim_signals(
+            world,
+            id,
+            &player,
+            &MoveCommand::default(),
+            &outcome.signals,
+        );
         for gap in outcome.gaps {
             world.report_game_gap(gap);
         }
