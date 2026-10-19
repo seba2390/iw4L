@@ -73,8 +73,8 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
 fn events_unknown() -> &'static Unknown {
     unknown!(
         "t6.movement.events",
-        "Black Ops 2's movement events and player animations are not played: footsteps, landings, fall damage, stance and jump sounds, the legs and torso animations others see",
-        "Black Ops 2's client event handling and player animation script from its executable"
+        "Black Ops 2's player animations are not played: the legs and torso animations others see, and the mantle's event entity",
+        "Black Ops 2's player animation script from its executable"
     )
 }
 
@@ -614,7 +614,7 @@ impl PlayerMovement for T6Movement {
         {
             let mut pm = Pm::new(&mut ps, t6cmd, last, mask, &adapter);
             pm.zombiemode = self.zombies;
-            pm.client_side = context.predicting;
+            pm.client_side = !context.predicting;
             let out = movement_t6::pmove(&mut pm);
             view_weapon = movement_t6::weapon::view_weapon(&pm);
             outcome.walking = out.walking;
@@ -634,7 +634,14 @@ impl PlayerMovement for T6Movement {
                     .push(MoveSignal::MantleStart { end, duration_ms });
             }
             outcome.gaps.extend(pm.gaps().map(gap_unknown));
-            if !outcome.signals.is_empty() {
+            if outcome.signals.iter().any(|s| {
+                matches!(
+                    s,
+                    MoveSignal::Anim { .. }
+                        | MoveSignal::LegsMove { .. }
+                        | MoveSignal::MantleStart { .. }
+                )
+            }) {
                 outcome.gaps.push(events_unknown());
             }
             last = pm.cmd;
@@ -1063,6 +1070,7 @@ impl PlayerMovement for T6Movement {
             event::FOOTSTEP_CROUCH_RUN => "crouch_run",
             event::FOOTSTEP_CROUCH_WALK => "crouch_walk",
             event::FOOTSTEP_PRONE => "prone",
+            event::LADDER_HAND_GRAB => "ladder_hand",
             _ => return None,
         };
         let surface = crate::missile::SURFACES
@@ -1073,6 +1081,9 @@ impl PlayerMovement for T6Movement {
 
     fn jump_land(&self, signal: &MoveSignal) -> Option<game_api::movement::JumpLand> {
         use game_api::movement::JumpLand;
+        const SURFACE_CLASSES: [&str; 9] = [
+            "default", "metal", "concrete", "wood", "snow", "dirt", "gravel", "grass", "mud",
+        ];
         let MoveSignal::Event { event, parm } = *signal else {
             return None;
         };
@@ -1080,6 +1091,12 @@ impl PlayerMovement for T6Movement {
             crate::missile::SURFACES
                 .get(usize::try_from(index).ok()?)
                 .copied()
+        };
+        let surface_class = |index: i32| {
+            SURFACE_CLASSES
+                .get(usize::try_from(index).ok()?)
+                .copied()
+                .or(Some("default"))
         };
         match event {
             event::FOLIAGE_SOUND => Some(JumpLand::Foliage),
@@ -1090,6 +1107,13 @@ impl PlayerMovement for T6Movement {
             e if (event::FALL_DAMAGE..event::FALL_DAMAGE + 32).contains(&e) => {
                 Some(JumpLand::Land(surface(e - event::FALL_DAMAGE)?, true))
             }
+            event::MANTLE => Some(JumpLand::Mantle),
+            event::DIVE_START => Some(JumpLand::DiveStart),
+            event::DIVE_LAND => Some(JumpLand::DiveLand(surface_class(parm)?)),
+            event::SLIDE_LOOP_START => Some(JumpLand::SlideStart(surface_class(parm)?)),
+            event::SLIDE_LOOP_END => Some(JumpLand::SlideStop(surface_class(parm)?)),
+            event::NIGHTVISION_WEAR => Some(JumpLand::NightVision(true)),
+            event::NIGHTVISION_REMOVE => Some(JumpLand::NightVision(false)),
             _ => None,
         }
     }

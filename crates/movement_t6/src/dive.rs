@@ -10,7 +10,7 @@ const SURFACE_CLASS: [i32; 32] = [
     0, 3, 2, 4, 4, 2, 5, 2, 7, 5, 7, 6, 4, 1, 8, 2, 2, 2, 5, 4, 8, 3, 2, 2, 2, 2, 5, 5, 1, 5, 7, 1,
 ];
 
-fn surface_class(surface: i32) -> i32 {
+pub(crate) fn surface_class(surface: i32) -> i32 {
     SURFACE_CLASS.get(surface as usize).copied().unwrap_or(0)
 }
 

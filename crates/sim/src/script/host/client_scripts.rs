@@ -335,7 +335,15 @@ fn start(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
             runtime.set_object_field(id, key, value);
         }
     }
+    let mut aitype_indices = BTreeMap::new();
     for (name, index) in &client.setup.precaches {
+        if let Some(aitype) = name
+            .strip_prefix("aitype/clientscripts/")
+            .and_then(|rest| rest.strip_suffix("::precache"))
+            && let Ok(idx) = u8::try_from(*index)
+        {
+            aitype_indices.insert(aitype.to_owned(), idx);
+        }
         crate::script::runtime::run_now(
             world,
             name,
@@ -344,6 +352,9 @@ fn start(client: &mut ClientScripts, now: i64) -> Result<(), Fault> {
             now,
         )?;
     }
+    world
+        .get_resource_or_insert_with(super::natives::t6::client::game::ClientGame::default)
+        .aitype_indices = aitype_indices;
     for name in &client.setup.starts {
         crate::script::runtime::run_now(world, name, Value::level(), Vec::new(), now)?;
     }

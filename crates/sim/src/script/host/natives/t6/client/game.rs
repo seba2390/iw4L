@@ -91,6 +91,12 @@ pub(crate) struct ClientGame {
     pub(crate) alternate_revive_icon: bool,
     /// `setalphafadeforname(alpha)` per player entity number (`0..18`).
     pub(crate) name_fade_alpha: BTreeMap<i32, f32>,
+    /// `setsteptriggersound(alias)` per entity number.
+    pub(crate) step_trigger_sounds: BTreeMap<i32, String>,
+    /// `setmaterialoverride(surface)` per entity number.
+    pub(crate) material_overrides: BTreeMap<i32, u8>,
+    /// 1-based actor type indices from `aitype/clientscripts/<name>::precache`.
+    pub(crate) aitype_indices: BTreeMap<String, u8>,
     /// The client systems' states as last delivered, by system.
     states: BTreeMap<usize, String>,
     /// The client's own entities drawn through the server's presentation:
@@ -552,9 +558,9 @@ fn sync_with(server: &mut World, client: &mut World) {
         .into_iter()
         .filter_map(|(number, flags)| Some((game.entities.get(&number)?.object, flags)))
         .collect();
-    let local_player_object = game
-        .local_player
-        .and_then(|number| game.entities.get(&number).map(|e| e.object));
+    let actor_notes = server
+        .get_resource_mut::<super::super::anim::ActorClientNotes>()
+        .map_or_else(Vec::new, |mut notes| std::mem::take(&mut notes.0));
     let messages = server
         .get_resource_mut::<RoundScript>()
         .map_or_else(Vec::new, |mut runtime| {
@@ -568,6 +574,8 @@ fn sync_with(server: &mut World, client: &mut World) {
         .collect();
     let mut shutdowns = Vec::new();
     for number in gone {
+        game.step_trigger_sounds.remove(&number);
+        game.material_overrides.remove(&number);
         if let Some(entity) = game.entities.remove(&number) {
             shutdowns.push(entity.object);
         }
@@ -686,68 +694,8 @@ fn sync_with(server: &mut World, client: &mut World) {
             );
         }
     }
-    if let Some(player) = local_player_object {
-        for message in messages {
-            let crate::script::client::ClientMessage::JumpLand(event) = message else {
-                continue;
-            };
-            match event {
-                game_api::movement::JumpLand::Jump(surface) => {
-                    if let Some(name) = &callbacks.player_jump {
-                        run(
-                            client,
-                            name,
-                            Value::level(),
-                            vec![
-                                Value::Int(LOCAL_CLIENT),
-                                Value::Object(player),
-                                Value::string(surface),
-                                Value::Int(1),
-                                Value::Int(0),
-                                Value::Int(0),
-                            ],
-                            now,
-                        );
-                    }
-                }
-                game_api::movement::JumpLand::Land(surface, hurt) => {
-                    if let Some(name) = &callbacks.player_land {
-                        run(
-                            client,
-                            name,
-                            Value::level(),
-                            vec![
-                                Value::Int(LOCAL_CLIENT),
-                                Value::Object(player),
-                                Value::string(surface),
-                                Value::Int(1),
-                                Value::Int(0),
-                                Value::Int(hurt.into()),
-                                Value::Int(0),
-                            ],
-                            now,
-                        );
-                    }
-                }
-                game_api::movement::JumpLand::Foliage => {
-                    if let Some(name) = &callbacks.player_foliage {
-                        run(
-                            client,
-                            name,
-                            Value::level(),
-                            vec![
-                                Value::Int(LOCAL_CLIENT),
-                                Value::Object(player),
-                                Value::Int(1),
-                                Value::Int(0),
-                            ],
-                            now,
-                        );
-                    }
-                }
-            }
-        }
-    }
+    process_movement_messages(server, client, &callbacks, messages, now);
+    process_actor_notes(server, client, actor_notes, now);
     for object in shutdowns {
         crate::script::runtime::notify_now(
             client,
@@ -773,6 +721,471 @@ fn sync_with(server: &mut World, client: &mut World) {
 fn run(client: &mut World, name: &str, receiver: Value, args: Vec<Value>, now: i64) {
     if let Err(fault) = crate::script::runtime::run_now(client, name, receiver, args, now) {
         diag::warn!(Sim, "csc: {name}: {fault}");
+    }
+}
+
+fn player_perk(server: &World, client_num: u32, perk: &str) -> bool {
+    server
+        .resource::<RoundScript>()
+        .players
+        .get(&client_num)
+        .is_some_and(|slot| slot.perks.iter().any(|p| p.eq_ignore_ascii_case(perk)))
+}
+
+fn player_team(server: &mut World, client_num: u32) -> i32 {
+    crate::frame::FrameWorld::from_world(server)
+        .client_meta(crate::ClientId(client_num))
+        .map_or(0, |meta| meta.client_state_team)
+}
+
+fn step_trigger_volume(speed_sq: f32) -> f32 {
+    ((speed_sq.clamp(10_000.0, 81_225.0) - 10_000.0) * 1.404_001_4e-5 + 1.0) * 0.5
+}
+
+fn process_movement_messages(
+    server: &mut World,
+    client: &mut World,
+    callbacks: &ClientCallbacks,
+    messages: Vec<crate::script::client::ClientMessage>,
+    now: i64,
+) {
+    use crate::script::client::ClientMessage;
+    use game_api::movement::JumpLand;
+
+    for message in messages {
+        let client_num = match &message {
+            ClientMessage::Footstep(c, _, _) | ClientMessage::JumpLand(c, _) => *c,
+            _ => continue,
+        };
+        let number = client_num as i32;
+        let (player_object, firstperson, mat_override, step_sound) = {
+            let Some(game) = client.get_resource::<ClientGame>() else {
+                continue;
+            };
+            (
+                game.entities.get(&number).map(|e| e.object),
+                game.local_player == Some(number),
+                game.material_overrides.get(&number).copied().unwrap_or(0),
+                game.step_trigger_sounds.get(&number).cloned(),
+            )
+        };
+        let (origin, speed_sq) = crate::frame::FrameWorld::from_world(server)
+            .player(crate::ClientId(client_num))
+            .map_or(([0.0; 3], 0.0), |ps| {
+                let v = ps.velocity;
+                (ps.origin, v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+            });
+        let quiet = player_perk(server, client_num, "specialty_quieter");
+        let islouder = !firstperson
+            && player_perk(server, LOCAL_CLIENT as u32, "specialty_loudenemies")
+            && player_team(server, client_num) != player_team(server, LOCAL_CLIENT as u32);
+        match message {
+            ClientMessage::Footstep(_, kind, mut surface) => {
+                if mat_override != 0
+                    && let Some(&overridden) =
+                        super::super::entity::SURFACES.get(usize::from(mat_override))
+                {
+                    surface = overridden;
+                }
+                let alias = if !quiet {
+                    if firstperson {
+                        format!("fly_step_{kind}_plr_{surface}")
+                    } else if islouder {
+                        format!("fly_lstep_{kind}_npc_{surface}")
+                    } else {
+                        format!("fly_step_{kind}_npc_{surface}")
+                    }
+                } else if firstperson {
+                    format!("fly_qstep_{kind}_plr_{surface}")
+                } else if !islouder {
+                    format!("fly_qstep_{kind}_npc_{surface}")
+                } else {
+                    format!("fly_step_{kind}_npc_{surface}")
+                };
+                super::sound::play(client, &alias, Some(origin), 1.0, 0);
+                if !quiet
+                    && matches!(kind, "sprint" | "run")
+                    && let Some(step_alias) = step_sound
+                {
+                    super::sound::play(
+                        client,
+                        &step_alias,
+                        Some(origin),
+                        step_trigger_volume(speed_sq),
+                        0,
+                    );
+                }
+            }
+            ClientMessage::JumpLand(_, event) => match event {
+                JumpLand::Jump(surface) => {
+                    if let (Some(player), Some(name)) = (player_object, &callbacks.player_jump) {
+                        run(
+                            client,
+                            name,
+                            Value::level(),
+                            vec![
+                                Value::Int(LOCAL_CLIENT),
+                                Value::Object(player),
+                                Value::string(surface),
+                                Value::Int(firstperson.into()),
+                                Value::Int(quiet.into()),
+                                Value::Int(islouder.into()),
+                            ],
+                            now,
+                        );
+                    }
+                }
+                JumpLand::Land(surface, mut hurt) => {
+                    if hurt && player_perk(server, LOCAL_CLIENT as u32, "specialty_fallheight") {
+                        hurt = false;
+                    }
+                    if let (Some(player), Some(name)) = (player_object, &callbacks.player_land) {
+                        run(
+                            client,
+                            name,
+                            Value::level(),
+                            vec![
+                                Value::Int(LOCAL_CLIENT),
+                                Value::Object(player),
+                                Value::string(surface),
+                                Value::Int(firstperson.into()),
+                                Value::Int(quiet.into()),
+                                Value::Int(hurt.into()),
+                                Value::Int(islouder.into()),
+                            ],
+                            now,
+                        );
+                    }
+                }
+                JumpLand::Foliage => {
+                    if let (Some(player), Some(name)) = (player_object, &callbacks.player_foliage) {
+                        run(
+                            client,
+                            name,
+                            Value::level(),
+                            vec![
+                                Value::Int(LOCAL_CLIENT),
+                                Value::Object(player),
+                                Value::Int(firstperson.into()),
+                                Value::Int(quiet.into()),
+                            ],
+                            now,
+                        );
+                    }
+                }
+                JumpLand::Mantle => {
+                    let alias = if firstperson {
+                        "chr_launch_exert_plr"
+                    } else {
+                        "chr_launch_exert_npc"
+                    };
+                    super::sound::play(client, alias, Some(origin), 1.0, 0);
+                }
+                JumpLand::DiveStart => {
+                    if !quiet {
+                        let alias = if firstperson {
+                            "fly_dtp_launch_plr"
+                        } else {
+                            "fly_dtp_launch_npc"
+                        };
+                        super::sound::play(client, alias, Some(origin), 1.0, 0);
+                    }
+                }
+                JumpLand::DiveLand(surf) => {
+                    if !quiet {
+                        let pers = if firstperson { "plr" } else { "npc" };
+                        super::sound::play(
+                            client,
+                            &format!("fly_dtp_land_{pers}_{surf}"),
+                            Some(origin),
+                            1.0,
+                            0,
+                        );
+                        super::sound::play(
+                            client,
+                            &format!("fly_dtp_slide_loop_{pers}_{surf}"),
+                            Some(origin),
+                            1.0,
+                            0,
+                        );
+                    }
+                    if let Some(player) = player_object {
+                        crate::script::runtime::notify_now(
+                            client,
+                            Value::Object(player),
+                            "dtp_land",
+                            vec![Value::Int(LOCAL_CLIENT)],
+                            now,
+                        );
+                    }
+                }
+                JumpLand::SlideStart(surf) => {
+                    let pers = if firstperson { "plr" } else { "npc" };
+                    super::sound::play(
+                        client,
+                        &format!("fly_pslide_loop_{pers}_{surf}"),
+                        Some(origin),
+                        1.0,
+                        0,
+                    );
+                }
+                JumpLand::SlideStop(surf) => {
+                    let pers = if firstperson { "plr" } else { "npc" };
+                    super::sound::play(
+                        client,
+                        &format!("fly_pslide_stop_{pers}_{surf}"),
+                        Some(origin),
+                        1.0,
+                        0,
+                    );
+                }
+                JumpLand::NightVision(on) => {
+                    if firstperson {
+                        let alias = if on {
+                            "fly_nightvision_on"
+                        } else {
+                            "fly_nightvision_off"
+                        };
+                        super::sound::play(client, alias, Some(origin), 1.0, 0);
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+}
+
+fn process_actor_notes(
+    server: &mut World,
+    client: &mut World,
+    notes: Vec<super::super::anim::ActorClientNote>,
+    now: i64,
+) {
+    use super::super::anim::ActorClientNote;
+    use super::sound::ClientFootstepState;
+    use crate::bullet_collision::{ColliderId, TraceOutcome};
+    use crate::script::client::{ClientEffect, ClientOutput};
+
+    const FOOTSTEP_TRACE_MASK: u32 = 0x0280_e833;
+
+    for item in notes {
+        match item {
+            ActorClientNote::Sound { number, alias } => {
+                let Some(object) = client
+                    .get_resource::<ClientGame>()
+                    .and_then(|g| g.entities.get(&number).map(|e| e.object))
+                else {
+                    continue;
+                };
+                let at = match client
+                    .resource_mut::<RoundScript>()
+                    .object_field(object, "origin")
+                {
+                    Value::Vector(v) => v,
+                    _ => [0.0; 3],
+                };
+                super::sound::play(client, &alias, Some(at), 1.0, 0);
+            }
+            ActorClientNote::Rumble { number, rumble } => {
+                let Some(object) = client
+                    .get_resource::<ClientGame>()
+                    .and_then(|g| g.entities.get(&number).map(|e| e.object))
+                else {
+                    continue;
+                };
+                let _ = super::sound::play_rumble(
+                    client,
+                    &Value::Object(object),
+                    &[Value::Int(LOCAL_CLIENT), Value::string(&rumble)],
+                );
+            }
+            ActorClientNote::Footstep {
+                number,
+                aitype,
+                note,
+                bone,
+            } => {
+                let (Some(object), mat_override, step_sound, ai_index) = ({
+                    let game = client.get_resource::<ClientGame>();
+                    (
+                        game.and_then(|g| g.entities.get(&number).map(|e| e.object)),
+                        game.and_then(|g| g.material_overrides.get(&number).copied())
+                            .unwrap_or(0),
+                        game.and_then(|g| g.step_trigger_sounds.get(&number).cloned()),
+                        game.and_then(|g| {
+                            aitype
+                                .as_deref()
+                                .and_then(|name| g.aitype_indices.get(name).copied())
+                        }),
+                    )
+                }) else {
+                    continue;
+                };
+                let actor_origin = match client
+                    .resource_mut::<RoundScript>()
+                    .object_field(object, "origin")
+                {
+                    Value::Vector(v) => v,
+                    _ => [0.0; 3],
+                };
+                let server_id = server_object(server, number);
+                let pos = server_id
+                    .filter(|_| !bone.is_empty())
+                    .and_then(|id| crate::script::host::presence::tag_pose(server, id, bone))
+                    .flatten()
+                    .map_or(actor_origin, |(p, _)| p);
+                let root_dz = server_id
+                    .and_then(|id| {
+                        crate::script::host::presence::tag_pose(server, id, "j_mainroot")
+                    })
+                    .flatten()
+                    .map(|(p, _)| p[2] - pos[2]);
+                let speed_sq = server_id
+                    .map(|id| {
+                        let v = server
+                            .resource::<crate::script::host::mechanics::Mechanics>()
+                            .velocity(id, now);
+                        v[0] * v[0] + v[1] * v[1]
+                    })
+                    .unwrap_or(0.0);
+                let surface_idx = if mat_override != 0 {
+                    usize::from(mat_override)
+                } else {
+                    let start = [pos[0], pos[1], pos[2] + 15.0];
+                    let end = [pos[0], pos[1], pos[2] - 15.0];
+                    let outcome = crate::script::host::natives::engine::entity_trace(
+                        server,
+                        start,
+                        end,
+                        FOOTSTEP_TRACE_MASK,
+                        Default::default(),
+                    );
+                    match outcome {
+                        TraceOutcome::Hit {
+                            collider:
+                                ColliderId::World { surface_flags, .. }
+                                | ColliderId::EntityDObjBone { surface_flags, .. }
+                                | ColliderId::EntityLinkedBrush { surface_flags, .. },
+                            ..
+                        } => ((surface_flags >> 20) & 0x3f) as usize,
+                        _ => 0,
+                    }
+                };
+                let surface_name = super::super::entity::SURFACES
+                    .get(surface_idx)
+                    .copied()
+                    .unwrap_or("default");
+                let (gait, step_trigger) = if root_dz.is_some_and(|dz| dz < 6.0) {
+                    ("prone", false)
+                } else if root_dz.is_some_and(|dz| dz < 22.0) {
+                    (
+                        if speed_sq >= 10_000.0 {
+                            "crouch_run"
+                        } else {
+                            "crouch_walk"
+                        },
+                        false,
+                    )
+                } else if speed_sq >= 28_900.0 {
+                    ("sprint", true)
+                } else if speed_sq >= 10_000.0 {
+                    ("run", false)
+                } else {
+                    ("walk", false)
+                };
+                {
+                    let mut fs = client.get_resource_or_insert_with(ClientFootstepState::default);
+                    fs.do_sound = true;
+                    fs.do_fx = true;
+                }
+                let call_script = ai_index.is_some_and(|idx| {
+                    client
+                        .get_resource::<ClientFootstepState>()
+                        .is_some_and(|fs| fs.ai_callbacks.contains(&idx))
+                });
+                if call_script {
+                    run(
+                        client,
+                        "clientscripts/mp/_footsteps::playaifootstep",
+                        Value::Object(object),
+                        vec![
+                            Value::Int(LOCAL_CLIENT),
+                            Value::Vector(pos),
+                            Value::string(surface_name),
+                            Value::string(&note),
+                            Value::string(bone),
+                        ],
+                        now,
+                    );
+                }
+                let (do_sound, do_fx, table_name) = client
+                    .get_resource::<ClientFootstepState>()
+                    .map_or((true, true, None), |fs| {
+                        (
+                            fs.do_sound,
+                            fs.do_fx,
+                            ai_index.and_then(|idx| fs.ai_tables.get(&idx).cloned()),
+                        )
+                    });
+                if do_sound {
+                    let prefix = match table_name.as_deref() {
+                        None | Some("") | Some("default_ai") => "fly_step",
+                        Some(custom) => custom,
+                    };
+                    super::sound::play(
+                        client,
+                        &format!("{prefix}_{gait}_{surface_name}"),
+                        Some(pos),
+                        1.0,
+                        0,
+                    );
+                }
+                if do_fx {
+                    let fx_name = if surface_idx == 20 {
+                        Some("bio/player/fx_footstep_water")
+                    } else if surface_idx <= 19 || surface_idx == 21 {
+                        Some("bio/player/fx_footstep_dust")
+                    } else {
+                        None
+                    };
+                    if let Some(fx_name) = fx_name {
+                        let absent = server
+                            .resource::<RoundScript>()
+                            .restart
+                            .as_ref()
+                            .is_some_and(|plan| plan.absent_effects.contains(fx_name));
+                        if !absent {
+                            let _ = crate::frame::FrameWorld::from_world(server)
+                                .effect_name_index(fx_name);
+                            let mut output = client.resource_mut::<ClientOutput>();
+                            let handle = output.effect_handle();
+                            output.effects.insert(
+                                handle,
+                                ClientEffect {
+                                    name: fx_name.to_owned(),
+                                    origin: pos,
+                                    forward: [0.0, 0.0, 1.0],
+                                    up: [1.0, 0.0, 0.0],
+                                    begin_ms: Some(now as i32),
+                                    end_ms: None,
+                                    end: crate::EffectEnd::Playing,
+                                    bolt: None,
+                                },
+                            );
+                        }
+                    }
+                }
+                if step_trigger && let Some(step_alias) = step_sound {
+                    super::sound::play(
+                        client,
+                        &step_alias,
+                        Some(pos),
+                        step_trigger_volume(speed_sq),
+                        0,
+                    );
+                }
+            }
+        }
     }
 }
 

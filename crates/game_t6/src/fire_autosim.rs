@@ -169,9 +169,7 @@ impl FireAutoSim for AutoSim {
             };
             let shots_left = if q.shot.fire.burst { 3 } else { -1 };
             let mut first = q.shot;
-            if !q.shot.fire.burst && q.shot.player && !q.shot.last_shot {
-                first.last_shot = false;
-            } else if q.shot.fire.burst {
+            if q.shot.fire.burst || (q.shot.player && !q.shot.last_shot) {
                 first.last_shot = false;
             }
             played.push(first);

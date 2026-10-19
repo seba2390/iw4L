@@ -55,7 +55,10 @@ pub(crate) fn ground_trace<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
             pm.ps.slick_start_time = pm.cmd.server_time;
             pm.event(event::SLIDE_START, 0);
             if pm.client_side {
-                pm.event(event::SLIDE_LOOP_START, pm.surface_sound(pml));
+                pm.event(
+                    event::SLIDE_LOOP_START,
+                    crate::dive::surface_class(pm.surface_sound(pml)),
+                );
             }
         }
     } else {
@@ -64,7 +67,10 @@ pub(crate) fn ground_trace<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
             pm.ps.slick_start_time = 0;
             pm.event(event::SLIDE_END, 0);
             if pm.client_side {
-                pm.event(event::SLIDE_LOOP_END, pm.surface_sound(pml));
+                pm.event(
+                    event::SLIDE_LOOP_END,
+                    crate::dive::surface_class(pm.surface_sound(pml)),
+                );
             }
         }
     }

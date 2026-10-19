@@ -62,6 +62,7 @@ pub mod event {
     pub const FOOTSTEP_CROUCH_RUN: i32 = 131;
     pub const FOOTSTEP_CROUCH_WALK: i32 = 132;
     pub const FOOTSTEP_PRONE: i32 = 133;
+    pub const LADDER_HAND_GRAB: i32 = 134;
     pub const MANTLE: i32 = 135;
     pub const LAND_MEDIUM: i32 = FOOTSTEP_RUN;
     pub const LAND_SOFT: i32 = FOOTSTEP_WALK;

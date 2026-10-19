@@ -94,6 +94,105 @@ impl Default for ActorAnim {
 #[derive(Resource, Default)]
 pub(super) struct ActorAnims(pub(super) BTreeMap<u64, ActorAnim>);
 
+/// A client-side notetrack crossed by an actor's animation clip.
+#[derive(Clone, Debug)]
+pub(crate) enum ActorClientNote {
+    /// `sndnt#<alias>` played on the actor.
+    Sound { number: i32, alias: String },
+    /// `rmbnt#<rumble>` played on the actor.
+    Rumble { number: i32, rumble: String },
+    /// `footstep_*` or `dogstep_*` queued into `CG_ProcessFootsteps`.
+    Footstep {
+        number: i32,
+        aitype: Option<String>,
+        note: String,
+        bone: &'static str,
+    },
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct ActorClientNotes(pub(crate) Vec<ActorClientNote>);
+
+const FOOTSTEP_BONES: [(&str, &str); 26] = [
+    ("footstep_left_large", "j_ball_le"),
+    ("footstep_left_small", "j_ball_le"),
+    ("footstep_right_large", "j_ball_ri"),
+    ("footstep_right_small", "j_ball_ri"),
+    ("footstep_left", "j_ball_le"),
+    ("footstep_right", "j_ball_ri"),
+    ("footstep_front_left", "jnt_f_l_ankle"),
+    ("footstep_front_right", "jnt_f_r_ankle"),
+    ("footstep_rear_left", "jnt_r_l_ankle"),
+    ("footstep_rear_right", "jnt_r_r_ankle"),
+    ("footstep_front_left_small", "jnt_f_l_ankle"),
+    ("footstep_front_right_small", "jnt_f_r_ankle"),
+    ("footstep_rear_left_small", "jnt_r_l_ankle"),
+    ("footstep_rear_right_small", "jnt_r_r_ankle"),
+    ("footstep_front_left_shuffle", "jnt_f_l_ankle"),
+    ("footstep_front_right_shuffle", "jnt_f_r_ankle"),
+    ("footstep_rear_left_shuffle", "jnt_r_l_ankle"),
+    ("footstep_rear_right_shuffle", "jnt_r_r_ankle"),
+    ("footstep_front_left_scrape", "jnt_f_l_knee_upper_dmg"),
+    ("footstep_front_right_scrape", "jnt_f_r_knee_upper_dmg"),
+    ("footstep_rear_left_scrape", "jnt_r_l_knee_upper_dmg"),
+    ("footstep_rear_right_scrape", "jnt_r_r_knee_upper_dmg"),
+    ("dogstep_lf", "j_ball_le"),
+    ("dogstep_rf", "j_ball_ri"),
+    ("dogstep_lr", "j_palm_le"),
+    ("dogstep_rr", "j_palm_ri"),
+];
+
+fn record_client_notes(world: &mut World, id: u64, notes: &[String]) {
+    if notes.is_empty()
+        || !world.contains_resource::<crate::script::host::client_scripts::ClientScripts>()
+    {
+        return;
+    }
+    let (number, aitype) = {
+        let runtime = world.resource::<RoundScript>();
+        let Some(entity) = runtime.entities.get(&id) else {
+            return;
+        };
+        (
+            entity.number,
+            entity.classname.strip_prefix("actor_").map(str::to_owned),
+        )
+    };
+    if number < 0 {
+        return;
+    }
+    let mut out = world.get_resource_or_insert_with(ActorClientNotes::default);
+    for note in notes {
+        let lower = note.to_ascii_lowercase();
+        if let Some(alias) = lower.strip_prefix("sndnt#") {
+            if !alias.is_empty() {
+                out.0.push(ActorClientNote::Sound {
+                    number,
+                    alias: alias.to_owned(),
+                });
+            }
+        } else if let Some(rumble) = lower.strip_prefix("rmbnt#") {
+            if !rumble.is_empty() {
+                out.0.push(ActorClientNote::Rumble {
+                    number,
+                    rumble: rumble.to_owned(),
+                });
+            }
+        } else if lower.starts_with("footstep_") || lower.starts_with("dogstep_") {
+            let bone = FOOTSTEP_BONES
+                .iter()
+                .find(|(k, _)| *k == lower)
+                .map_or("", |(_, b)| *b);
+            out.0.push(ActorClientNote::Footstep {
+                number,
+                aitype: aitype.clone(),
+                note: lower,
+                bone,
+            });
+        }
+    }
+}
+
 fn actor(world: &World, receiver: &Value) -> Result<u64, String> {
     match world.resource::<RoundScript>().entity(receiver) {
         Some((id, entity)) if entity.kind == EntityKind::Actor => Ok(id),
@@ -411,6 +510,7 @@ fn advance(world: &mut World) {
         anim_mut(world, id).playing = Some(playing);
         place(world, id);
         pose(world, id, &clip, time);
+        record_client_notes(world, id, &notes);
         if let Some(notify) = notify {
             for note in notes {
                 raise(
