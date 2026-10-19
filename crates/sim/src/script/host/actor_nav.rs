@@ -3,12 +3,16 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
 use bevy_ecs::prelude::{Resource, World};
 
-use super::args::{arg, float, string, vector};
+use super::args::{arg, float, int, string, vector};
+use super::dynamic_paths;
 use super::entities::EntityKind;
-use crate::bullet_collision::MASK_PLAYER_SOLID;
 use crate::frame::FrameWorld;
 use crate::script::runtime::raise;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
+
+/// Black Ops' actor clipmask (`MASK_ACTORSOLID`): solid world, monster clip
+/// and body contents, without player clip.
+const MASK_ACTOR_SOLID: u32 = 0x0282_0011;
 
 /// A path node as actors use it.
 #[derive(Clone, Debug)]
@@ -60,8 +64,17 @@ pub struct ActorPaths {
     nodes: Vec<NavNode>,
 }
 
+/// A badplace volume active in the level.
+#[derive(Clone, Debug)]
+struct BadPlace {
+    name: Option<String>,
+    expires_ms: Option<i64>,
+    teams: u8,
+    links: Vec<(u16, u16)>,
+}
+
 /// Links scripts made or broke since the map loaded, over its authored ones.
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Clone, Debug, Default)]
 pub(crate) struct LinkEdits {
     added: BTreeMap<u16, Vec<(u16, f32)>>,
     removed: BTreeSet<(u16, u16)>,
@@ -69,6 +82,12 @@ pub(crate) struct LinkEdits {
     cuts: BTreeMap<u64, Vec<(u16, u16)>>,
     /// How many entities cut each link.
     cut_by: BTreeMap<(u16, u16), u32>,
+    /// Active badplaces and how many badplaces cover each link per team bit
+    /// (`0..4`: free, axis, allies, neutral).
+    badplaces: Vec<BadPlace>,
+    badplace_by: BTreeMap<(u16, u16), [u32; 4]>,
+    /// Whether the level's initial dynamic-path cuts ran.
+    level_cut: bool,
 }
 
 impl LinkEdits {
@@ -99,6 +118,15 @@ impl LinkEdits {
         self.cut_by.len()
     }
 
+    /// Whether the level's dynamic paths made their first cuts.
+    pub(crate) fn level_cut(&self) -> bool {
+        self.level_cut
+    }
+
+    pub(crate) fn mark_level_cut(&mut self) {
+        self.level_cut = true;
+    }
+
     /// Rejoins the links an entity cut.
     pub(crate) fn rejoin(&mut self, entity: u64) {
         let Some(links) = self.cuts.remove(&entity) else {
@@ -120,6 +148,75 @@ impl LinkEdits {
             links.retain(|&(next, _)| next != to);
         }
         self.removed.insert((from, to));
+    }
+
+    fn add_badplace(&mut self, place: BadPlace) {
+        if let Some(name) = &place.name {
+            self.remove_badplace_named(name);
+        }
+        for &link in &place.links {
+            let counts = self.badplace_by.entry(link).or_default();
+            for (bit, count) in counts.iter_mut().enumerate() {
+                if place.teams & (1 << bit) != 0 {
+                    *count += 1;
+                }
+            }
+        }
+        self.badplaces.push(place);
+    }
+
+    fn remove_badplace_named(&mut self, name: &str) -> Vec<(u16, u16)> {
+        let mut removed_links = Vec::new();
+        let mut i = 0;
+        while i < self.badplaces.len() {
+            if self.badplaces[i].name.as_deref() == Some(name) {
+                let place = self.badplaces.remove(i);
+                self.decrement_badplace(&place);
+                removed_links.extend(place.links);
+            } else {
+                i += 1;
+            }
+        }
+        removed_links
+    }
+
+    fn expire_badplaces(&mut self, now_ms: i64) {
+        let mut i = 0;
+        while i < self.badplaces.len() {
+            if self.badplaces[i]
+                .expires_ms
+                .is_some_and(|expires| expires < now_ms)
+            {
+                let place = self.badplaces.remove(i);
+                self.decrement_badplace(&place);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn decrement_badplace(&mut self, place: &BadPlace) {
+        for &link in &place.links {
+            let Some(counts) = self.badplace_by.get_mut(&link) else {
+                continue;
+            };
+            for (bit, count) in counts.iter_mut().enumerate() {
+                if place.teams & (1 << bit) != 0 && *count > 0 {
+                    *count -= 1;
+                }
+            }
+            if counts.iter().all(|&c| c == 0) {
+                self.badplace_by.remove(&link);
+            }
+        }
+    }
+
+    fn link_in_badplace(&self, link: (u16, u16), teams: u8) -> bool {
+        teams != 0
+            && self
+                .badplace_by
+                .get(&link)
+                .is_some_and(|counts| (0..4).any(|bit| teams & (1 << bit) != 0 && counts[bit] > 0))
     }
 }
 
@@ -226,6 +323,16 @@ impl ActorPaths {
     /// The cheapest node sequence from `start` to `goal` over the links,
     /// by link length.
     pub(crate) fn route(&self, start: u16, goal: u16, edits: &LinkEdits) -> Option<Vec<u16>> {
+        self.route_for_team(start, goal, edits, 0)
+    }
+
+    pub(crate) fn route_for_team(
+        &self,
+        start: u16,
+        goal: u16,
+        edits: &LinkEdits,
+        badplace_teams: u8,
+    ) -> Option<Vec<u16>> {
         let goal_origin = self.nodes.get(goal as usize)?.origin;
         let mut best: BTreeMap<u16, (f32, Option<u16>)> = BTreeMap::new();
         best.insert(start, (0.0, None));
@@ -247,6 +354,9 @@ impl ActorPaths {
             }
             let cost = best[&node].0;
             for (next, length, _) in self.links(node, edits) {
+                if edits.link_in_badplace((node, next), badplace_teams) {
+                    continue;
+                }
                 let reached = cost + length.max(1.0);
                 if best.get(&next).is_some_and(|(known, _)| *known <= reached) {
                     continue;
@@ -267,18 +377,23 @@ impl ActorPaths {
         &self,
         from: [f32; 3],
         to: [f32; 3],
+        edits: &LinkEdits,
+        badplace_teams: u8,
         reach: &mut dyn FnMut([f32; 3], [f32; 3]) -> bool,
     ) -> Option<Vec<u16>> {
         let start = self.nearest(from, reach)?;
         let goal = self.nearest(to, reach)?;
-        let mut path = self.route(start, goal, &LinkEdits::default())?;
+        let mut path = self.route_for_team(start, goal, edits, badplace_teams)?;
         // Already past the first node: head for the second.
         if let [first, second, ..] = path[..] {
             let (a, b) = (
                 self.nodes[first as usize].origin,
                 self.nodes[second as usize].origin,
             );
-            if distance_sq(from, b) < distance_sq(a, b) && reach(from, b) {
+            if distance_sq(from, b) < distance_sq(a, b)
+                && !edits.link_in_badplace((first, second), badplace_teams)
+                && reach(from, b)
+            {
                 path.remove(0);
             }
         }
@@ -315,12 +430,19 @@ pub(crate) enum AnimMode {
     /// The engine walks the actor along its path at the animation's speed.
     #[default]
     Normal,
-    /// The animation moves the actor; gravity keeps it on the ground.
+    /// The animation's translation moves the actor; gravity keeps it on the
+    /// ground.
+    PosDeltas,
+    /// The animation moves and turns the actor; gravity keeps it on the ground.
     Gravity,
     /// The animation moves the actor horizontally; the ground sets its height.
     ZOnlyPhysics,
-    /// The animation moves the actor freely.
+    /// The animation moves the actor in 3D, swept against the world and
+    /// entities without gravity (`ePhysicsType = 4`).
     NoGravity,
+    /// The animation moves the actor freely without collision (`noclip` /
+    /// `nophysics`).
+    NoClip,
     /// Only the animation's turn applies.
     AngleDeltas,
 }
@@ -348,17 +470,21 @@ pub(crate) enum Goal {
 }
 
 /// An actor's goal, path and movement modes.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(crate) struct ActorMove {
     goal: Option<Goal>,
+    /// Optional facing yaw at the goal (`setgoalpos(pos, angles)` or goal node).
+    pub(crate) goal_yaw: Option<f32>,
+    /// Optional goal volume entity (`setgoalvolume`).
+    pub(crate) goal_volume: Option<u64>,
     /// Where the engine's own think sends the actor ahead of its goal: a
     /// hellhound runs to the path node nearest its enemy.
     pursuit: Option<[f32; 3]>,
     /// Where the path was planned to; an entity goal replans when it moves.
     planned_to: Option<[f32; 3]>,
-    waypoints: Vec<[f32; 3]>,
+    pub(crate) waypoints: Vec<[f32; 3]>,
     /// The path node each waypoint stands on; the goal point has none.
-    waypoint_nodes: Vec<Option<u16>>,
+    pub(crate) waypoint_nodes: Vec<Option<u16>>,
     /// The traversal the actor is playing between two negotiation nodes.
     pub(crate) traversal: Option<Traversal>,
     pub(crate) anim_mode: AnimMode,
@@ -379,6 +505,63 @@ pub(crate) struct ActorMove {
     scripted: Option<Scripted>,
     /// When the actor last struck with `melee`: once a frame.
     melee_time: Option<i64>,
+    /// Custom physics bounds from `setphysparams`; defaults to
+    /// `([-15, -15, 0], [15, 15, 72])`.
+    pub(crate) bounds: Option<([f32; 3], [f32; 3])>,
+    /// Whether the actor pitches to the slope under it (`allowpitchangle` or
+    /// dog).
+    pub(crate) allow_pitch: bool,
+    /// What the last movement step hit (`"none"`, `"world"`, or `"obstacle"`).
+    pub(crate) hit_ent_type: &'static str,
+    /// Yaw away from the hit normal (`gethityaw`).
+    pub(crate) hit_yaw: f32,
+    /// What the actor stands on (`"none"`, `"world"`, or `"obstacle"`).
+    pub(crate) ground_ent_type: &'static str,
+    /// Whether the last movement step deflected off an obstacle (`isdeflected`).
+    pub(crate) deflected: bool,
+    /// The plane the actor stands on; `None` while airborne.
+    ground_normal: Option<[f32; 3]>,
+    /// Vertical speed while airborne.
+    fall_speed: f32,
+    /// The side the last deflection turned to (8 or 16), kept while the
+    /// actor keeps hitting something.
+    deflect_side: u8,
+    /// Whether `"orientdone"` was already raised for the current turn.
+    orient_notified: bool,
+}
+
+impl Default for ActorMove {
+    fn default() -> Self {
+        Self {
+            goal: None,
+            goal_yaw: None,
+            goal_volume: None,
+            pursuit: None,
+            planned_to: None,
+            waypoints: Vec::new(),
+            waypoint_nodes: Vec::new(),
+            traversal: None,
+            anim_mode: AnimMode::Normal,
+            anim_mode_override: None,
+            orient: None,
+            code_orient: Orient::Current,
+            stances: None,
+            heading: None,
+            velocity: [0.0; 3],
+            scripted: None,
+            melee_time: None,
+            bounds: None,
+            allow_pitch: false,
+            hit_ent_type: HIT_NONE,
+            hit_yaw: 0.0,
+            ground_ent_type: HIT_WORLD,
+            deflected: false,
+            ground_normal: Some([0.0, 0.0, 1.0]),
+            fall_speed: 0.0,
+            deflect_side: 0,
+            orient_notified: false,
+        }
+    }
 }
 
 /// A negotiation link being crossed by its begin node's animscript.
@@ -463,13 +646,55 @@ const REPLAN_DISTANCE: f32 = 64.0;
 const WAYPOINT_REACHED: f32 = 16.0;
 /// When a script names no radius.
 const DEFAULT_GOAL_RADIUS: f32 = 32.0;
-/// Degrees an actor turns per second toward what it faces.
-const TURN_RATE: f32 = 360.0;
-/// The actor's collision box for ground traces.
+/// When a script names no goal height.
+const DEFAULT_GOAL_HEIGHT: f32 = 80.0;
+/// What the movement hit and stands on, as `gethitenttype` and
+/// `getgroundenttype` answer.
+const HIT_NONE: &str = "none";
+const HIT_WORLD: &str = "world";
+/// Degrees an actor turns per second toward what it faces (`ai_turnRate`).
+const TURN_RATE: f32 = 220.0;
+/// The actor's default collision box.
 const ACTOR_MINS: [f32; 3] = [-15.0, -15.0, 0.0];
-const ACTOR_MAXS: [f32; 3] = [15.0, 15.0, 18.0];
-const GROUND_PROBE_STARTS: [f32; 3] = [48.0, 18.0, 1.0];
-const GROUND_PROBE_DOWN: f32 = 64.0;
+const ACTOR_MAXS: [f32; 3] = [15.0, 15.0, 72.0];
+/// Step height an actor climbs.
+const STEP_HEIGHT: f32 = 18.0;
+/// Walkable floor normal z threshold.
+const MIN_WALK_NORMAL: f32 = 0.7;
+/// Gravity on an airborne actor (`bg_gravity`), units/s².
+const ACTOR_GRAVITY: f32 = 800.0;
+/// How far below its feet an actor looks for ground while standing on it.
+const GROUND_PROBE: f32 = 0.25;
+/// The slide's clip overbounce: a velocity into a plane loses a little more
+/// than its part along the normal, one out of it a little less.
+const OVERCLIP_INTO: f32 = 1.001;
+const OVERCLIP_OUT: f32 = 0.999;
+/// A plane the velocity enters slower than this does not clip it.
+const CLIP_EPSILON: f32 = 0.1;
+/// A walk that ends further than this share of its wish from the wished
+/// point deflects off what it hit.
+const DEFLECT_MISS: f32 = 0.1;
+/// Each deflection's length against the last; the deflection blended into
+/// one already made to the other side.
+const DEFLECT_SCALE: f32 = 0.75;
+const DEFLECT_BLEND: f32 = 0.33;
+const DEFLECT_TRIES: usize = 2;
+/// A walk that gains less than this share of its wish is blocked.
+const BLOCKED_PROGRESS: f32 = 0.25;
+/// Ground pitch: the samples ahead of and behind the actor, the height
+/// window they look in, and the most the pitch turns per 50 ms tick.
+const PITCH_SAMPLE_OFFSET: f32 = 10.9;
+const PITCH_TRACE_WINDOW: f32 = 45.0;
+const PITCH_STEP_PER_TICK: f32 = 6.0;
+const PITCH_LIMIT: f32 = 40.0;
+/// The body Black Ops sweeps along a dynamic path's links against its
+/// brushes: `[-15, -15, 18]..[15, 15, 72]` above the node, with the actor's
+/// clipmask.
+const LINK_HULL: dynamic_paths::LinkHull = dynamic_paths::LinkHull {
+    low: 18.0,
+    high: 72.0,
+    sweep_mask: Some(MASK_ACTOR_SOLID),
+};
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
@@ -536,25 +761,58 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "setgoalpos", |world, receiver, args| {
         let goal = vector(args, 0)?;
-        set_goal(world, receiver, Goal::Position(goal))
+        let yaw = if args.len() == 2 {
+            Some(vector(args, 1)?[1])
+        } else {
+            None
+        };
+        set_goal(world, receiver, Goal::Position(goal), yaw)
     });
     registry.register(Method, "setgoalnode", |world, receiver, args| {
         let node = arg(args, 0)?.clone();
         let Value::Object(id) = node else {
             return Err("expects a path node".into());
         };
-        let origin = match world
-            .resource_mut::<RoundScript>()
-            .object_field(id, "origin")
-        {
-            Value::Vector(origin) => origin,
-            _ => return Err("path node has no origin".into()),
+        let (origin, yaw) = {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            let origin = match runtime.object_field(id, "origin") {
+                Value::Vector(origin) => origin,
+                _ => return Err("path node has no origin".into()),
+            };
+            let yaw = match runtime.object_field(id, "angles") {
+                Value::Vector(angles) => Some(angles[1]),
+                _ => None,
+            };
+            (origin, yaw)
         };
-        set_goal(world, receiver, Goal::Position(origin))
+        set_goal(world, receiver, Goal::Position(origin), yaw)
     });
     registry.register(Method, "setgoalentity", |world, receiver, args| {
         let target = super::natives::engine::entity_id(world, arg(args, 0)?)?;
-        set_goal(world, receiver, Goal::Entity(target))
+        let id = actor_id(world, receiver)?;
+        if let Some(movement) = world.resource_mut::<RoundScript>().actor_moves.get_mut(&id) {
+            movement.goal_volume = None;
+        }
+        set_goal(world, receiver, Goal::Entity(target), None)
+    });
+    registry.register(Method, "setgoalvolume", |world, receiver, args| {
+        let id = actor_id(world, receiver)?;
+        let volume = super::natives::engine::entity_id(world, arg(args, 0)?)?;
+        with_move(world, &Value::Object(id), |movement| {
+            movement.goal_volume = Some(volume);
+        })
+    });
+    registry.register(Method, "getgoalvolume", |world, receiver, _| {
+        let id = actor_id(world, receiver)?;
+        let volume = world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&id)
+            .and_then(|movement| movement.goal_volume);
+        Ok(volume.map_or(Value::Undefined, Value::Object))
+    });
+    registry.register(Method, "cleargoalvolume", |world, receiver, _| {
+        with_move(world, receiver, |movement| movement.goal_volume = None)
     });
     registry.register(Method, "animscripted", |world, receiver, args| {
         let Ok(id) = actor_id(world, receiver) else {
@@ -629,8 +887,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
             return Ok(Value::Int(0));
         };
+        let badplace_teams = actor_badplace_teams(world, id);
+        let edits = world
+            .get_resource::<LinkEdits>()
+            .cloned()
+            .unwrap_or_else(LinkEdits::default);
         let mut reach = |a: [f32; 3], b: [f32; 3]| walkable(world, a, b);
-        let Some(nodes) = paths.plan(from, to, &mut reach) else {
+        let Some(nodes) = paths.plan(from, to, &edits, badplace_teams, &mut reach) else {
             return Ok(Value::Int(0));
         };
         let mut length = 0.0;
@@ -683,12 +946,113 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "isingoal", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
+        if args.len() != 1 {
+            return Err("illegal call to isingoal()\n".into());
+        }
         let point = vector(args, 0)?;
         let radius = goal_radius(world, id);
-        let inside =
-            goal_position(world, id).is_none_or(|goal| horizontal_distance(goal, point) <= radius);
+        let height = goal_height(world, id);
+        let volume = world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&id)
+            .and_then(|movement| movement.goal_volume);
+        let inside = goal_position(world, id).is_none_or(|goal| {
+            let dz = point[2] - goal[2];
+            dz * dz <= height * height && horizontal_distance(goal, point) <= radius
+        }) && volume
+            .is_none_or(|volume| super::triggers::is_touching(world, id, volume));
         Ok(Value::Int(inside.into()))
     });
+    registry.register(Method, "gethitenttype", |world, receiver, _| {
+        let id = actor_id(world, receiver)?;
+        let kind = world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&id)
+            .map_or(HIT_NONE, |movement| movement.hit_ent_type);
+        Ok(Value::string(kind))
+    });
+    registry.register(Method, "gethityaw", |world, receiver, _| {
+        let id = actor_id(world, receiver)?;
+        let movement = world.resource::<RoundScript>().actor_moves.get(&id);
+        match movement.filter(|m| m.hit_ent_type != HIT_NONE) {
+            Some(m) => Ok(Value::Float(m.hit_yaw)),
+            None => Err("nothing was hit".into()),
+        }
+    });
+    registry.register(Method, "getgroundenttype", |world, receiver, _| {
+        let id = actor_id(world, receiver)?;
+        let kind = world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&id)
+            .map_or(HIT_WORLD, |movement| movement.ground_ent_type);
+        Ok(Value::string(kind))
+    });
+    registry.register(Method, "isdeflected", |world, receiver, _| {
+        let id = actor_id(world, receiver)?;
+        let deflected = world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&id)
+            .is_some_and(|movement| movement.deflected);
+        Ok(Value::Int(deflected.into()))
+    });
+    registry.register(Method, "allowpitchangle", |world, receiver, args| {
+        let id = actor_id(world, receiver)
+            .map_err(|_| "AllowPitchAngle() called on non-actor\n".to_owned())?;
+        if args.is_empty() {
+            return Err("AllowPitchAngle() called without an argument (0 or 1)\n".into());
+        }
+        let allow = int(args, 0)? != 0;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        runtime.actor_moves.entry(id).or_default().allow_pitch = allow;
+        if !allow {
+            let (_, mut angles) = pose(&mut runtime, id);
+            angles[0] = 0.0;
+            runtime.set_object_field(id, "angles", Value::Vector(angles));
+        }
+        Ok(Value::Undefined)
+    });
+    // `setPhysParams(radius, bottom, top)`: the actor's box becomes
+    // `(-radius, -radius, bottom)..(radius, radius, top)`.
+    registry.register(Method, "setphysparams", |world, receiver, args| {
+        if args.len() != 3 {
+            return Err("setphysparams takes three parameters\n".into());
+        }
+        super::natives::engine::entity_id(world, receiver)?;
+        let Ok(id) = actor_id(world, receiver) else {
+            return Err("setphysparams must be called on an AI only.".into());
+        };
+        let radius = float(args, 0)?;
+        let bottom = float(args, 1)?;
+        let top = float(args, 2)?;
+        with_move(world, &Value::Object(id), |movement| {
+            movement.bounds = Some(([-radius, -radius, bottom], [radius, radius, top]));
+        })
+    });
+    registry.register(Method, "disconnectpaths", |world, receiver, _| {
+        let id = super::natives::engine::entity_id(world, receiver)?;
+        if !dynamic_paths::dynamic_path(world, id) {
+            return dynamic_paths::refuse(world, id, "disconnect paths");
+        }
+        dynamic_paths::disconnect(world, id, LINK_HULL);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "connectpaths", |world, receiver, _| {
+        let id = super::natives::engine::entity_id(world, receiver)?;
+        if !dynamic_paths::dynamic_path(world, id) {
+            return dynamic_paths::refuse(world, id, "connect paths");
+        }
+        dynamic_paths::connect(world, id);
+        Ok(Value::Undefined)
+    });
+    registry.on_tick(|world| dynamic_paths::cut_level(world, LINK_HULL));
+    registry.register(Function, "badplace_delete", badplace_delete);
+    registry.register(Function, "badplace_cylinder", badplace_cylinder);
+    registry.register(Function, "badplace_arc", badplace_arc);
+    registry.register(Function, "badplace_brush", badplace_brush);
     // `cansee(entity, [seconds])`: a sentient by a sight check no older
     // than that (a quarter second unless given), anything else by a new one.
     registry.register(Method, "cansee", |world, receiver, args| {
@@ -758,9 +1122,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let mode = match name.as_str() {
             "none" => None,
             "normal" => Some(AnimMode::Normal),
-            "gravity" | "pos deltas" => Some(AnimMode::Gravity),
+            "pos deltas" => Some(AnimMode::PosDeltas),
+            "gravity" => Some(AnimMode::Gravity),
             "zonly_physics" => Some(AnimMode::ZOnlyPhysics),
-            "nogravity" | "noclip" | "nophysics" | "point relative" => Some(AnimMode::NoGravity),
+            "nogravity" | "point relative" => Some(AnimMode::NoGravity),
+            "noclip" | "nophysics" => Some(AnimMode::NoClip),
             "angle deltas" => Some(AnimMode::AngleDeltas),
             _ => return Err("illegal call to animmode()\n".into()),
         };
@@ -871,7 +1237,12 @@ fn force_teleport(world: &mut World, receiver: &Value, args: &[Value]) -> Result
     Ok(Value::Undefined)
 }
 
-fn set_goal(world: &mut World, receiver: &Value, goal: Goal) -> Result<Value, String> {
+fn set_goal(
+    world: &mut World,
+    receiver: &Value,
+    goal: Goal,
+    yaw: Option<f32>,
+) -> Result<Value, String> {
     let id = actor_id(world, receiver)?;
     let mut runtime = world.resource_mut::<RoundScript>();
     let movement = runtime.actor_moves.entry(id).or_default();
@@ -885,9 +1256,11 @@ fn set_goal(world: &mut World, receiver: &Value, goal: Goal) -> Result<Value, St
         _ => false,
     };
     movement.goal = Some(goal);
+    movement.goal_yaw = yaw;
     if !same {
         movement.planned_to = None;
         movement.clear_path();
+        raise(world, Value::Object(id), "goal_changed", Vec::new());
     }
     Ok(Value::Undefined)
 }
@@ -1037,6 +1410,11 @@ fn model_anim_scripted(
 }
 
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
+    let now = super::players::now_ms(world);
+    if let Some(mut edits) = world.get_resource_mut::<LinkEdits>() {
+        edits.expire_badplaces(now);
+    }
+    super::presence::settle_collision(world);
     let actors: Vec<u64> = world
         .resource::<RoundScript>()
         .actor_moves
@@ -1058,17 +1436,13 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         }
         let (mut origin, mut angles) = pose(&mut world.resource_mut::<RoundScript>(), actor);
         let before = origin;
-        let goal_radius = match world
-            .resource_mut::<RoundScript>()
-            .object_field(actor, "goalradius")
-        {
-            Value::Int(n) => n as f32,
-            Value::Float(f) => f,
-            _ => DEFAULT_GOAL_RADIUS,
-        };
+        let goal_radius = goal_radius(world, actor);
         let goal_at = goal_position(world, actor);
         let mut movement = world.resource::<RoundScript>().actor_moves[&actor].clone();
         let mut events: Vec<&'static str> = Vec::new();
+        let prev_ground = movement.ground_ent_type;
+        movement.hit_ent_type = HIT_NONE;
+        movement.deflected = false;
         // A pursuit ends where its path does; it is no script goal.
         let pursuing = movement.pursuit.is_some();
         let goal_radius = if pursuing {
@@ -1077,18 +1451,26 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             goal_radius
         };
 
+        let edits = world
+            .get_resource::<LinkEdits>()
+            .cloned()
+            .unwrap_or_else(LinkEdits::default);
+        let badplace_teams = actor_badplace_teams(world, actor);
         if let Some(goal_at) = goal_at {
-            let stale = movement.planned_to.is_none_or(|planned| {
-                distance_sq(planned, goal_at) > REPLAN_DISTANCE * REPLAN_DISTANCE
-            });
+            let path_blocked =
+                path_uses_blocked_link(&movement.waypoint_nodes, &edits, badplace_teams);
+            let stale = path_blocked
+                || movement.planned_to.is_none_or(|planned| {
+                    distance_sq(planned, goal_at) > REPLAN_DISTANCE * REPLAN_DISTANCE
+                });
             if stale {
                 movement.planned_to = Some(goal_at);
                 movement.clear_path();
                 if horizontal_distance(origin, goal_at) > goal_radius {
                     let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
-                    let planned = paths
-                        .as_deref()
-                        .and_then(|paths| paths.plan(origin, goal_at, &mut reach));
+                    let planned = paths.as_deref().and_then(|paths| {
+                        paths.plan(origin, goal_at, &edits, badplace_teams, &mut reach)
+                    });
                     match planned {
                         Some(nodes) => {
                             let paths = paths.as_deref().unwrap();
@@ -1144,15 +1526,23 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         }
         let delta = super::actor_anims::root_delta(world, actor);
         let (local, turned) = delta.unwrap_or(([0.0; 3], 0.0));
+        let scale = anim_translation_scale(world, actor);
         let (sin, cos) = angles[1].to_radians().sin_cos();
         let world_delta = [
-            local[0] * cos - local[1] * sin,
-            local[0] * sin + local[1] * cos,
-            local[2],
+            (local[0] * cos - local[1] * sin) * scale,
+            (local[0] * sin + local[1] * cos) * scale,
+            local[2] * scale,
         ];
         let mut heading = None;
         match movement.anim_mode {
             _ if movement.traversal.is_some() => {
+                for axis in 0..3 {
+                    origin[axis] += world_delta[axis];
+                }
+                angles[1] += turned;
+            }
+            // Black Ops adds a nogravity animation's delta as it is.
+            AnimMode::NoGravity | AnimMode::NoClip => {
                 for axis in 0..3 {
                     origin[axis] += world_delta[axis];
                 }
@@ -1179,28 +1569,48 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
                     let to = [next[0] - origin[0], next[1] - origin[1]];
                     let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
-                    if length > 0.001 {
+                    let wish = if length > 0.001 {
                         let advance = step.min(length);
-                        origin[0] += to[0] / length * advance;
-                        origin[1] += to[1] / length * advance;
                         heading = Some(to[1].atan2(to[0]).to_degrees());
-                    }
-                    origin = ground(world, origin);
+                        [to[0] / length * advance, to[1] / length * advance, 0.0]
+                    } else {
+                        [0.0; 3]
+                    };
+                    origin = walk_path(world, origin, wish, seconds, &mut movement);
+                } else {
+                    origin = physics_move(world, origin, [0.0; 3], seconds, &mut movement).0;
                 }
             }
-            AnimMode::Gravity | AnimMode::ZOnlyPhysics => {
-                origin[0] += world_delta[0];
-                origin[1] += world_delta[1];
-                origin = ground(world, origin);
+            AnimMode::PosDeltas => {
+                origin = physics_move(
+                    world,
+                    origin,
+                    [world_delta[0], world_delta[1], 0.0],
+                    seconds,
+                    &mut movement,
+                )
+                .0;
+            }
+            AnimMode::Gravity => {
+                origin = physics_move(
+                    world,
+                    origin,
+                    [world_delta[0], world_delta[1], 0.0],
+                    seconds,
+                    &mut movement,
+                )
+                .0;
                 angles[1] += turned;
             }
-            AnimMode::NoGravity => {
-                for axis in 0..3 {
-                    origin[axis] += world_delta[axis];
-                }
+            AnimMode::ZOnlyPhysics => {
+                origin = zonly_move(world, origin, world_delta, seconds, &mut movement);
                 angles[1] += turned;
             }
             AnimMode::AngleDeltas => angles[1] += turned,
+        }
+
+        if movement.ground_ent_type != prev_ground {
+            events.push("groundEntChanged");
         }
 
         movement.heading = heading;
@@ -1230,17 +1640,33 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     heading
                 }
             }
-            // A goal node's way, which no zombie claims.
-            Orient::Goal | Orient::Current => None,
+            Orient::Goal => movement.goal_yaw,
+            Orient::Current => None,
         };
         if let Some(wanted) = facing {
             let turn = math_iw4::angle_subtract(wanted, angles[1]);
-            let limit = TURN_RATE * seconds;
+            let rate = actor_turn_rate(world, actor);
+            let limit = rate * seconds;
             angles[1] += turn.clamp(-limit, limit);
+            if math_iw4::angle_subtract(wanted, angles[1]).abs() <= 0.01 {
+                if !movement.orient_notified {
+                    movement.orient_notified = true;
+                    events.push("orientdone");
+                }
+            } else {
+                movement.orient_notified = false;
+            }
+        }
+        if movement.allow_pitch {
+            let target_pitch = ground_pitch(world, origin, angles[1]);
+            let diff = math_iw4::angle_subtract(target_pitch, angles[0]);
+            angles[0] = (angles[0] + diff.clamp(-PITCH_STEP_PER_TICK, PITCH_STEP_PER_TICK))
+                .clamp(-PITCH_LIMIT, PITCH_LIMIT);
         }
 
         if let Some(goal_at) = goal_at
             && horizontal_distance(origin, goal_at) <= goal_radius
+            && (origin[2] - goal_at[2]).abs() <= goal_height(world, actor)
             && movement.planned_to.is_some()
             && (movement.waypoints.len() <= 1)
         {
@@ -1258,18 +1684,35 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
             movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
         }
         // The way along the path ahead: toward the next waypoint.
-        let lookahead = movement.waypoints.first().and_then(|next| {
-            let to = [next[0] - origin[0], next[1] - origin[1]];
-            let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
-            (length > 0.001).then(|| [to[0] / length, to[1] / length, 0.0])
-        });
+        let (lookahead, lookahead_dist) = movement
+            .waypoints
+            .first()
+            .and_then(|next| {
+                let to = [next[0] - origin[0], next[1] - origin[1]];
+                let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
+                (length > 0.001).then(|| ([to[0] / length, to[1] / length, 0.0], length))
+            })
+            .unzip();
         {
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
             runtime.set_object_field(actor, "angles", Value::Vector(angles));
+            runtime.set_object_field(
+                actor,
+                "desiredangle",
+                Value::Float(facing.unwrap_or(angles[1])),
+            );
             runtime.set_object_field(actor, "isfacingmotion", Value::Int(facing_motion.into()));
             if let Some(dir) = lookahead {
                 runtime.set_object_field(actor, "lookaheaddir", Value::Vector(dir));
+            }
+            runtime.set_object_field(
+                actor,
+                "lookaheaddist",
+                Value::Float(lookahead_dist.unwrap_or(0.0)),
+            );
+            if let Some(end) = movement.path_end().or(goal_at) {
+                runtime.set_object_field(actor, "pathgoalpos", Value::Vector(end));
             }
             runtime.actor_moves.insert(actor, movement);
         }
@@ -1308,6 +1751,737 @@ fn goal_radius(world: &mut World, actor: u64) -> f32 {
         Value::Float(f) => f,
         _ => DEFAULT_GOAL_RADIUS,
     }
+}
+
+fn goal_height(world: &mut World, actor: u64) -> f32 {
+    match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "goalheight")
+    {
+        Value::Int(n) => n as f32,
+        Value::Float(f) => f,
+        _ => DEFAULT_GOAL_HEIGHT,
+    }
+}
+
+fn anim_translation_scale(world: &mut World, actor: u64) -> f32 {
+    match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "animtranslationscale")
+    {
+        Value::Int(n) => n as f32,
+        Value::Float(f) => f,
+        _ => 1.0,
+    }
+}
+
+fn actor_turn_rate(world: &mut World, actor: u64) -> f32 {
+    let field = match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "turnrate")
+    {
+        Value::Int(n) if n > 0 => Some(n as f32),
+        Value::Float(f) if f > 0.0 => Some(f),
+        _ => None,
+    };
+    if let Some(rate) = field {
+        return rate;
+    }
+    world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get("ai_turnRate")
+        .and_then(|v| v.trim().parse::<f32>().ok())
+        .filter(|&r| r > 0.0)
+        .unwrap_or(TURN_RATE)
+}
+
+fn actor_badplace_teams(world: &mut World, actor: u64) -> u8 {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let aware = match runtime.object_field(actor, "badplaceawareness") {
+        Value::Int(n) => n as f32,
+        Value::Float(f) => f,
+        _ => 0.75,
+    };
+    if aware <= 0.0 {
+        return 0;
+    }
+    match runtime.object_field(actor, "team") {
+        Value::String(team) => match &*team {
+            "free" => 1 << 0,
+            "axis" => 1 << 1,
+            "allies" => 1 << 2,
+            "neutral" => 1 << 3,
+            _ => 0,
+        },
+        _ => 0,
+    }
+}
+
+fn path_uses_blocked_link(nodes: &[Option<u16>], edits: &LinkEdits, badplace_teams: u8) -> bool {
+    nodes.windows(2).any(|pair| {
+        let (Some(a), Some(b)) = (pair[0], pair[1]) else {
+            return false;
+        };
+        edits.removed.contains(&(a, b))
+            || edits.cut_by.get(&(a, b)).is_some_and(|&c| c > 0)
+            || edits.link_in_badplace((a, b), badplace_teams)
+    })
+}
+
+/// One actor move through the world, as Black Ops' actor physics runs it
+/// with `phys_ai_collision_mode` 0: the box swept along its velocity and
+/// slid along what it hits, stepping up stairs and down to the ground.
+struct Phys {
+    origin: [f32; 3],
+    velocity: [f32; 3],
+    mins: [f32; 3],
+    maxs: [f32; 3],
+    /// The walkable plane underfoot.
+    ground: Option<[f32; 3]>,
+    /// The last plane the move hit and where: `iHitEntnum`'s normal and
+    /// origin.
+    hit: Option<([f32; 3], [f32; 3])>,
+}
+
+fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn clip_velocity(velocity: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
+    let into = dot3(velocity, normal);
+    let backoff = into
+        * if into < 0.0 {
+            OVERCLIP_INTO
+        } else {
+            OVERCLIP_OUT
+        };
+    std::array::from_fn(|i| velocity[i] - normal[i] * backoff)
+}
+
+impl Phys {
+    fn trace(&self, world: &mut World, start: [f32; 3], end: [f32; 3]) -> trace_iw4::Trace {
+        FrameWorld::from_world(world).trace_clip(start, end, self.mins, self.maxs, MASK_ACTOR_SOLID)
+    }
+
+    /// Looks for ground under the actor: a step's height down while it
+    /// stands and is not rising (which keeps it on stairs), else a hair.
+    fn ground_trace(&mut self, world: &mut World) {
+        let snap = self.ground.is_some() && self.velocity[2] <= 0.0;
+        let depth = if snap { STEP_HEIGHT } else { GROUND_PROBE };
+        let end = [self.origin[0], self.origin[1], self.origin[2] - depth];
+        let trace = self.trace(world, self.origin, end);
+        if trace.allsolid != 0 || trace.fraction >= 1.0 {
+            self.ground = None;
+            return;
+        }
+        if trace.normal[2] < MIN_WALK_NORMAL {
+            self.ground = None;
+            self.hit = Some((trace.normal, trace.endpos));
+            return;
+        }
+        self.ground = Some(trace.normal);
+        if snap {
+            self.origin = trace.endpos;
+        }
+        if self.velocity[2] < 0.0 {
+            self.velocity[2] = 0.0;
+        }
+    }
+
+    /// Moves along the velocity for `dt`, sliding along up to four planes;
+    /// whether anything was hit.
+    fn slide(&mut self, world: &mut World, dt: f32, gravity: bool) -> bool {
+        let mut end_velocity = self.velocity;
+        if gravity {
+            end_velocity[2] -= ACTOR_GRAVITY * dt;
+            self.velocity[2] = (self.velocity[2] + end_velocity[2]) * 0.5;
+            if let Some(normal) = self.ground {
+                self.velocity = clip_velocity(self.velocity, normal);
+            }
+        }
+        let mut planes: Vec<[f32; 3]> = Vec::with_capacity(5);
+        if let Some(normal) = self.ground {
+            planes.push(normal);
+        }
+        let speed = dot3(self.velocity, self.velocity).sqrt();
+        if speed > 0.0 {
+            planes.push(self.velocity.map(|c| c / speed));
+        }
+        let mut left = dt;
+        let mut bumps = 0;
+        while bumps < 4 {
+            let end = std::array::from_fn(|i| self.origin[i] + self.velocity[i] * left);
+            let trace = self.trace(world, self.origin, end);
+            if trace.allsolid != 0 {
+                self.velocity[2] = 0.0;
+                return true;
+            }
+            if trace.fraction > 0.0 {
+                self.origin = trace.endpos;
+            }
+            if trace.fraction >= 1.0 {
+                break;
+            }
+            bumps += 1;
+            self.hit = Some((trace.normal, trace.endpos));
+            left -= left * trace.fraction;
+            if planes.len() >= 5 {
+                self.velocity = [0.0; 3];
+                return true;
+            }
+            // The same plane again: nudge off it.
+            if planes.iter().any(|plane| dot3(*plane, trace.normal) > 0.99) {
+                self.velocity = std::array::from_fn(|i| self.velocity[i] + trace.normal[i]);
+                continue;
+            }
+            planes.push(trace.normal);
+            let mut stuck = true;
+            for i in 0..planes.len() {
+                if dot3(self.velocity, planes[i]) >= CLIP_EPSILON {
+                    continue;
+                }
+                let mut clip = clip_velocity(self.velocity, planes[i]);
+                let mut end_clip = clip_velocity(end_velocity, planes[i]);
+                let mut blocked = false;
+                for j in 0..planes.len() {
+                    if j == i || dot3(clip, planes[j]) >= CLIP_EPSILON {
+                        continue;
+                    }
+                    clip = clip_velocity(clip, planes[j]);
+                    end_clip = clip_velocity(end_clip, planes[j]);
+                    if dot3(clip, planes[i]) >= 0.0 {
+                        continue;
+                    }
+                    // Into two planes: slide along their crease.
+                    let (a, b) = (planes[i], planes[j]);
+                    let crease = [
+                        a[1] * b[2] - a[2] * b[1],
+                        a[2] * b[0] - a[0] * b[2],
+                        a[0] * b[1] - a[1] * b[0],
+                    ];
+                    let length = dot3(crease, crease).sqrt();
+                    let dir = if length > 0.0 {
+                        crease.map(|c| c / length)
+                    } else {
+                        crease
+                    };
+                    let along = dot3(dir, self.velocity);
+                    clip = dir.map(|c| c * along);
+                    let end_along = dot3(dir, end_velocity);
+                    end_clip = dir.map(|c| c * end_along);
+                    for (k, plane) in planes.iter().enumerate() {
+                        if k != i && k != j && dot3(clip, *plane) < CLIP_EPSILON {
+                            blocked = true;
+                            break;
+                        }
+                    }
+                    if blocked {
+                        break;
+                    }
+                }
+                if blocked {
+                    self.velocity = [0.0; 3];
+                    return true;
+                }
+                self.velocity = clip;
+                end_velocity = end_clip;
+                stuck = false;
+                break;
+            }
+            if stuck {
+                break;
+            }
+        }
+        if gravity {
+            self.velocity = end_velocity;
+        }
+        bumps != 0
+    }
+
+    /// The slide, then the same move a step higher and back down; the
+    /// stepped one stands unless the plain one ended nearer the wished point.
+    fn step_slide(&mut self, world: &mut World, dt: f32, gravity: bool) {
+        let (start, start_velocity) = (self.origin, self.velocity);
+        if !self.slide(world, dt, gravity) {
+            return;
+        }
+        if self.velocity[2] > 0.0 {
+            let below = [start[0], start[1], start[2] - STEP_HEIGHT];
+            let trace = self.trace(world, start, below);
+            if trace.fraction >= 1.0 || trace.normal[2] < MIN_WALK_NORMAL {
+                return;
+            }
+        }
+        let (plain, plain_velocity, plain_hit) = (self.origin, self.velocity, self.hit);
+        let up = [start[0], start[1], start[2] + STEP_HEIGHT];
+        let trace = self.trace(world, start, up);
+        if trace.allsolid != 0 {
+            return;
+        }
+        let lifted = trace.endpos[2] - start[2];
+        self.origin = trace.endpos;
+        self.velocity = start_velocity;
+        self.slide(world, dt, gravity);
+        let wished = [
+            start[0] + start_velocity[0] * dt,
+            start[1] + start_velocity[1] * dt,
+        ];
+        let miss = |p: [f32; 3]| (wished[0] - p[0]).powi(2) + (wished[1] - p[1]).powi(2);
+        if miss(plain) < miss(self.origin) {
+            self.origin = plain;
+            self.velocity = plain_velocity;
+            self.hit = plain_hit;
+            return;
+        }
+        let down = [self.origin[0], self.origin[1], self.origin[2] - lifted];
+        let trace = self.trace(world, self.origin, down);
+        if trace.allsolid == 0 {
+            self.origin = trace.endpos;
+        }
+        if trace.fraction < 1.0 {
+            self.velocity = clip_velocity(self.velocity, trace.normal);
+        }
+    }
+
+    /// A step on the ground: the wish turned along the ground plane at its
+    /// own horizontal speed.
+    fn ground_walk(&mut self, world: &mut World, wish: [f32; 3], dt: f32) {
+        let flat = [wish[0] / dt, wish[1] / dt];
+        let speed = (flat[0] * flat[0] + flat[1] * flat[1]).sqrt();
+        self.velocity = [flat[0], flat[1], 0.0];
+        if let Some(n) = self.ground {
+            let along = [
+                flat[0] * n[2],
+                flat[1] * n[2],
+                -(flat[0] * n[0]) - flat[1] * n[1],
+            ];
+            if along[0] * flat[0] + along[1] * flat[1] > 0.0 {
+                let length = dot3(along, along).sqrt();
+                self.velocity = along.map(|c| c / length * speed);
+            }
+        }
+        if self.velocity[0] == 0.0 && self.velocity[1] == 0.0 {
+            return;
+        }
+        self.step_slide(world, dt, false);
+    }
+
+    /// A step in the air: the wish across, gravity down.
+    fn air_move(&mut self, world: &mut World, wish: [f32; 3], fall: f32, dt: f32) {
+        self.velocity = [wish[0] / dt, wish[1] / dt, fall];
+        self.step_slide(world, dt, true);
+    }
+}
+
+fn actor_box(movement: &ActorMove) -> ([f32; 3], [f32; 3]) {
+    movement.bounds.unwrap_or((ACTOR_MINS, ACTOR_MAXS))
+}
+
+/// What a move hit: the plane's normal and where.
+type Hit = Option<([f32; 3], [f32; 3])>;
+
+/// Runs one physics move from `origin` with the horizontal `wish`, on the
+/// ground or falling, and records what it hit and stands on.
+fn physics_move(
+    world: &mut World,
+    origin: [f32; 3],
+    wish: [f32; 3],
+    seconds: f32,
+    movement: &mut ActorMove,
+) -> ([f32; 3], Hit) {
+    let (mins, maxs) = actor_box(movement);
+    let mut phys = Phys {
+        origin,
+        velocity: [0.0, 0.0, movement.fall_speed],
+        mins,
+        maxs,
+        ground: movement.ground_normal,
+        hit: None,
+    };
+    phys.ground_trace(world);
+    if phys.ground.is_some() {
+        phys.ground_walk(world, wish, seconds);
+    } else {
+        phys.air_move(world, wish, movement.fall_speed, seconds);
+    }
+    phys.ground_trace(world);
+    settle_physics(&phys, movement);
+    (phys.origin, phys.hit)
+}
+
+/// `zonly_physics`: the animation's own motion slid through the world,
+/// with the ground setting the height.
+fn zonly_move(
+    world: &mut World,
+    origin: [f32; 3],
+    delta: [f32; 3],
+    seconds: f32,
+    movement: &mut ActorMove,
+) -> [f32; 3] {
+    let (mins, maxs) = actor_box(movement);
+    let mut phys = Phys {
+        origin,
+        velocity: delta.map(|c| c / seconds),
+        mins,
+        maxs,
+        ground: movement.ground_normal,
+        hit: None,
+    };
+    phys.slide(world, seconds, false);
+    phys.velocity[2] = 0.0;
+    phys.ground_trace(world);
+    settle_physics(&phys, movement);
+    phys.origin
+}
+
+fn settle_physics(phys: &Phys, movement: &mut ActorMove) {
+    movement.ground_normal = phys.ground;
+    movement.fall_speed = if phys.ground.is_some() {
+        0.0
+    } else {
+        phys.velocity[2]
+    };
+    movement.ground_ent_type = if phys.ground.is_some() {
+        HIT_WORLD
+    } else {
+        HIT_NONE
+    };
+    match phys.hit {
+        Some((normal, _)) => {
+            movement.hit_ent_type = HIT_WORLD;
+            let yaw = (-normal[1]).atan2(-normal[0]).to_degrees();
+            movement.hit_yaw = if yaw < 0.0 { yaw + 360.0 } else { yaw };
+        }
+        None => movement.hit_ent_type = HIT_NONE,
+    }
+}
+
+/// The walk along a path: the physics move, and when it hits something and
+/// falls short, up to two shorter tries turned aside along what it hit.
+/// Blocked still, the path is planned again from where the actor stands.
+fn walk_path(
+    world: &mut World,
+    origin: [f32; 3],
+    wish: [f32; 3],
+    seconds: f32,
+    movement: &mut ActorMove,
+) -> [f32; 3] {
+    let (ground, fall) = (movement.ground_normal, movement.fall_speed);
+    let (mut result, mut hit) = physics_move(world, origin, wish, seconds, movement);
+    let wish_length = (wish[0] * wish[0] + wish[1] * wish[1]).sqrt();
+    if hit.is_none() || wish_length <= 0.0 {
+        movement.deflect_side = 0;
+        return result;
+    }
+    let mut current = wish;
+    let miss = ((result[0] - (origin[0] + wish[0])).powi(2)
+        + (result[1] - (origin[1] + wish[1])).powi(2))
+    .sqrt();
+    if miss / wish_length > DEFLECT_MISS {
+        let next = movement.waypoints.first().copied().unwrap_or(origin);
+        let dir = [wish[0] / wish_length, wish[1] / wish_length];
+        let mut length = wish_length;
+        for _ in 0..DEFLECT_TRIES {
+            let Some((normal, at)) = hit else {
+                break;
+            };
+            let flat = (normal[0] * normal[0] + normal[1] * normal[1]).sqrt();
+            let n = if flat > 0.0 {
+                [normal[0] / flat, normal[1] / flat]
+            } else {
+                [1.0, 0.0]
+            };
+            length *= DEFLECT_SCALE;
+            let left = dir[0] * (next[1] - at[1]) - dir[1] * (next[0] - at[0]) <= 0.0;
+            let (side, other) = if left { (16, 8) } else { (8, 16) };
+            let turn = if left {
+                [-n[1] * length, n[0] * length]
+            } else {
+                [n[1] * length, -n[0] * length]
+            };
+            current = if movement.deflect_side == other {
+                [
+                    current[0] + turn[0] * DEFLECT_BLEND,
+                    current[1] + turn[1] * DEFLECT_BLEND,
+                    0.0,
+                ]
+            } else {
+                [turn[0], turn[1], 0.0]
+            };
+            movement.deflect_side = side;
+            movement.ground_normal = ground;
+            movement.fall_speed = fall;
+            (result, hit) = physics_move(world, origin, current, seconds, movement);
+            movement.deflected = true;
+            if hit.is_none() {
+                return result;
+            }
+        }
+    }
+    let length = (current[0] * current[0] + current[1] * current[1]).sqrt();
+    let gained = if length > 0.0 {
+        ((result[0] - origin[0]) * current[0] + (result[1] - origin[1]) * current[1]) / length
+    } else {
+        0.0
+    };
+    if gained < length * BLOCKED_PROGRESS {
+        // Planned again on the next step; the path stands until then.
+        movement.planned_to = None;
+    }
+    result
+}
+
+/// The slope under the actor along its yaw: the ground height a little
+/// ahead and behind, within a window above and below its feet.
+fn ground_pitch(world: &mut World, origin: [f32; 3], yaw: f32) -> f32 {
+    let (sin, cos) = yaw.to_radians().sin_cos();
+    let mut height = |offset: f32| {
+        let at = [
+            origin[0] + cos * offset,
+            origin[1] + sin * offset,
+            origin[2],
+        ];
+        let start = [at[0], at[1], at[2] + PITCH_TRACE_WINDOW];
+        let end = [at[0], at[1], at[2] - PITCH_TRACE_WINDOW];
+        let trace = FrameWorld::from_world(world).trace_clip(
+            start,
+            end,
+            [0.0; 3],
+            [0.0; 3],
+            MASK_ACTOR_SOLID,
+        );
+        (trace.allsolid == 0 && trace.fraction < 1.0).then_some(trace.endpos[2])
+    };
+    match (height(PITCH_SAMPLE_OFFSET), height(-PITCH_SAMPLE_OFFSET)) {
+        (Some(front), Some(back)) => (back - front).atan2(2.0 * PITCH_SAMPLE_OFFSET).to_degrees(),
+        _ => 0.0,
+    }
+}
+
+/// A badplace's shape: a cylinder (optionally cut to an arc of yaws) or a
+/// brush volume's box.
+enum BadPlaceShape {
+    Cylinder {
+        origin: [f32; 3],
+        radius: f32,
+        half_height: f32,
+        /// Yaws from and to, in degrees; `None` for the whole circle.
+        arc: Option<(f32, f32)>,
+    },
+    Volume {
+        mins: [f32; 3],
+        maxs: [f32; 3],
+    },
+}
+
+impl BadPlaceShape {
+    fn covers_point(&self, p: [f32; 3]) -> bool {
+        match *self {
+            Self::Cylinder {
+                origin,
+                radius,
+                half_height,
+                arc,
+            } => {
+                let (dx, dy, dz) = (p[0] - origin[0], p[1] - origin[1], p[2] - origin[2]);
+                dx * dx + dy * dy <= radius * radius
+                    && dz * dz <= half_height * half_height
+                    && in_arc(arc, dx, dy)
+            }
+            Self::Volume { mins, maxs } => (0..3).all(|i| mins[i] <= p[i] && p[i] <= maxs[i]),
+        }
+    }
+
+    /// Whether the link from `a` to `b` runs through the badplace.
+    fn covers_link(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        if self.covers_point(a) || self.covers_point(b) {
+            return true;
+        }
+        let Self::Cylinder { origin, .. } = *self else {
+            return false;
+        };
+        // The point of the link nearest the axis.
+        let d = [b[0] - a[0], b[1] - a[1]];
+        let length_sq = d[0] * d[0] + d[1] * d[1];
+        if length_sq <= 0.0 {
+            return false;
+        }
+        let t =
+            (((origin[0] - a[0]) * d[0] + (origin[1] - a[1]) * d[1]) / length_sq).clamp(0.0, 1.0);
+        self.covers_point(std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t))
+    }
+}
+
+fn in_arc(arc: Option<(f32, f32)>, dx: f32, dy: f32) -> bool {
+    let Some((from, to)) = arc else {
+        return true;
+    };
+    if dx == 0.0 && dy == 0.0 {
+        return true;
+    }
+    let yaw = dy.atan2(dx).to_degrees().rem_euclid(360.0);
+    if from <= to {
+        (from..=to).contains(&yaw)
+    } else {
+        yaw >= from || yaw <= to
+    }
+}
+
+/// The team bits a badplace's trailing team names name: every team but
+/// "free" when none is named.
+fn badplace_teams(args: &[Value], from: usize) -> Result<u8, String> {
+    let mut teams = 0u8;
+    for index in from..args.len() {
+        teams |= match string(args, index)?.as_str() {
+            "free" => 1 << 0,
+            "axis" => 1 << 1,
+            "allies" => 1 << 2,
+            "neutral" => 1 << 3,
+            other => return Err(format!("unknown team '{other}'")),
+        };
+    }
+    Ok(if teams == 0 { 0b1110 } else { teams })
+}
+
+/// A badplace's name and when it ends: seconds from now, or never for a
+/// duration of 0 or less, which only a named badplace may have.
+fn badplace_life(
+    world: &mut World,
+    args: &[Value],
+) -> Result<(Option<String>, Option<i64>), String> {
+    let name = string(args, 0)?;
+    let seconds = float(args, 1)?;
+    let name = (!name.is_empty()).then_some(name);
+    if seconds <= 0.0 {
+        if name.is_none() {
+            return Err("anonymous bad places must have a duration".into());
+        }
+        return Ok((name, None));
+    }
+    let now = super::players::now_ms(world);
+    Ok((name, Some(now + (seconds * 1000.0) as i64)))
+}
+
+fn add_badplace(
+    world: &mut World,
+    name: Option<String>,
+    expires_ms: Option<i64>,
+    teams: u8,
+    shape: &BadPlaceShape,
+) {
+    let mut links = Vec::new();
+    if let Some(paths) = FrameWorld::from_world(world).actor_paths() {
+        let edits = world.get_resource_or_insert_with(LinkEdits::default);
+        for (index, node) in paths.nodes().iter().enumerate() {
+            let from = index as u16;
+            for (to, _, _) in paths.links(from, &edits) {
+                if shape.covers_link(node.origin, paths.nodes()[usize::from(to)].origin) {
+                    links.push((from, to));
+                }
+            }
+        }
+    }
+    world
+        .get_resource_or_insert_with(LinkEdits::default)
+        .add_badplace(BadPlace {
+            name,
+            expires_ms,
+            teams,
+            links,
+        });
+}
+
+/// `badplace_delete(name)`.
+fn badplace_delete(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("Incorrect number of parameters\n".into());
+    }
+    let name = string(args, 0)?;
+    if name.is_empty() {
+        return Err("badplace_delete called with name \"\"".into());
+    }
+    world
+        .get_resource_or_insert_with(LinkEdits::default)
+        .remove_badplace_named(&name);
+    Ok(Value::Undefined)
+}
+
+/// `badplace_cylinder(name, seconds, origin, radius, height, [teams…])`.
+fn badplace_cylinder(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    if args.len() < 5 {
+        return Err("Incorrect badplace_cylinder() call.\n".into());
+    }
+    let (name, expires) = badplace_life(world, args)?;
+    let shape = BadPlaceShape::Cylinder {
+        origin: vector(args, 2)?,
+        radius: float(args, 3)?,
+        half_height: float(args, 4)? * 0.5,
+        arc: None,
+    };
+    let teams = badplace_teams(args, 5)?;
+    add_badplace(world, name, expires, teams, &shape);
+    Ok(Value::Undefined)
+}
+
+/// `badplace_arc(name, seconds, origin, radius, height, direction, left,
+/// right, [teams…])`: the cylinder's yaws from `left` before the
+/// direction's to `right` after it.
+fn badplace_arc(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    if args.len() < 8 {
+        return Err("Incorrect usage for badplace_arc()\n".into());
+    }
+    let (name, expires) = badplace_life(world, args)?;
+    let direction = vector(args, 5)?;
+    let left = float(args, 6)?;
+    if left < 0.0 {
+        return Err("left angle < 0 in badplace_arc\n".into());
+    }
+    let right = float(args, 7)?;
+    if right < 0.0 {
+        return Err("right angle < 0 in badplace_arc\n".into());
+    }
+    let yaw = direction[1].atan2(direction[0]).to_degrees();
+    let arc = (left + right < 360.0).then(|| {
+        (
+            (yaw - left).rem_euclid(360.0),
+            (yaw + right).rem_euclid(360.0),
+        )
+    });
+    let shape = BadPlaceShape::Cylinder {
+        origin: vector(args, 2)?,
+        radius: float(args, 3)?,
+        half_height: float(args, 4)? * 0.5,
+        arc,
+    };
+    let teams = badplace_teams(args, 8)?;
+    add_badplace(world, name, expires, teams, &shape);
+    Ok(Value::Undefined)
+}
+
+/// `badplace_brush(name, seconds, volume, [teams…])`: the links with an end
+/// inside the volume entity's bounds.
+fn badplace_brush(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    if args.len() < 3 {
+        return Err("Incorrect badplace_cylinder() call.\n".into());
+    }
+    let (name, expires) = badplace_life(world, args)?;
+    let volume = super::natives::engine::entity_id(world, arg(args, 2)?)?;
+    let origin = match world
+        .resource_mut::<RoundScript>()
+        .object_field(volume, "origin")
+    {
+        Value::Vector(origin) => origin,
+        _ => [0.0; 3],
+    };
+    let (mins, maxs) = super::triggers::entity_bounds(world, volume);
+    let shape = BadPlaceShape::Volume {
+        mins: std::array::from_fn(|i| origin[i] + mins[i]),
+        maxs: std::array::from_fn(|i| origin[i] + maxs[i]),
+    };
+    let teams = badplace_teams(args, 3)?;
+    add_badplace(world, name, expires, teams, &shape);
+    Ok(Value::Undefined)
 }
 
 /// `melee([direction])`: the actor's blow, once a frame, by the game's melee
@@ -1383,6 +2557,11 @@ fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
 pub(crate) fn set_pursuit(world: &mut World, actor: u64, pursuit: Option<[f32; 3]>) {
     let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
     let paths = FrameWorld::from_world(world).actor_paths();
+    let edits = world
+        .get_resource::<LinkEdits>()
+        .cloned()
+        .unwrap_or_else(LinkEdits::default);
+    let badplace_teams = actor_badplace_teams(world, actor);
     let Some(mut movement) = world
         .resource::<RoundScript>()
         .actor_moves
@@ -1405,7 +2584,8 @@ pub(crate) fn set_pursuit(world: &mut World, actor: u64, pursuit: Option<[f32; 3
                 if horizontal_distance(origin, goal_at) > WAYPOINT_REACHED {
                     let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
                     if let Some(paths) = paths.as_deref()
-                        && let Some(nodes) = paths.plan(origin, goal_at, &mut reach)
+                        && let Some(nodes) =
+                            paths.plan(origin, goal_at, &edits, badplace_teams, &mut reach)
                     {
                         movement.waypoints = nodes
                             .iter()
@@ -1484,30 +2664,6 @@ fn enemy_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
     as_vector(super::players::entity_field(world, enemy, "origin"))
 }
 
-/// The floor under an actor at `at`, or `at` when there is none in reach.
-/// The probe starts high to climb steps and lower when it starts in solid,
-/// as when the actor straddles a wall it just climbed.
-fn ground(world: &mut World, at: [f32; 3]) -> [f32; 3] {
-    let frame = FrameWorld::from_world(world);
-    let end = [at[0], at[1], at[2] - GROUND_PROBE_DOWN];
-    for up in GROUND_PROBE_STARTS {
-        let start = [at[0], at[1], at[2] + up];
-        let trace = frame.trace_clip(start, end, ACTOR_MINS, ACTOR_MAXS, MASK_PLAYER_SOLID);
-        if trace.startsolid != 0 {
-            continue;
-        }
-        if trace.fraction >= 1.0 {
-            return at;
-        }
-        return [
-            at[0],
-            at[1],
-            start[2] + (end[2] - start[2]) * trace.fraction,
-        ];
-    }
-    at
-}
-
 /// Nothing solid lies between two points at knee height.
 fn walkable(world: &mut World, from: [f32; 3], to: [f32; 3]) -> bool {
     let lift = |p: [f32; 3]| [p[0], p[1], p[2] + 18.0];
@@ -1516,7 +2672,7 @@ fn walkable(world: &mut World, from: [f32; 3], to: [f32; 3]) -> bool {
         lift(to),
         [-8.0, -8.0, 0.0],
         [8.0, 8.0, 18.0],
-        MASK_PLAYER_SOLID,
+        MASK_ACTOR_SOLID,
     );
     trace.startsolid == 0 && trace.fraction >= 1.0
 }

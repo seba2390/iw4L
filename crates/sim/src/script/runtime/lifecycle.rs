@@ -39,6 +39,7 @@ pub(crate) fn reset_round(world: &mut World) {
     let round = RoundScript::new(world.resource::<crate::script::MatchScript>());
     world.insert_resource(round);
     world.insert_resource(host::mechanics::Mechanics::default());
+    world.remove_resource::<host::actor_nav::LinkEdits>();
 }
 
 pub(crate) fn reset(world: &mut World) {

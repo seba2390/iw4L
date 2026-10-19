@@ -78,8 +78,12 @@ const WALK_DIST: f32 = 128.0;
 
 /// `movemode`'s values.
 const MOVE_STOP: u8 = 0;
+const MOVE_STOP_SOON: u8 = 1;
 const MOVE_WALK: u8 = 2;
 const MOVE_RUN: u8 = 3;
+/// A running actor this close in time to its path's end, at its speed, runs
+/// the stop animscript with `movemode = "stop_soon"`.
+const STOP_SOON_SECONDS: f32 = 0.2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transition {
@@ -372,7 +376,10 @@ pub(crate) fn begin(world: &mut World, actor: u64) -> Result<(), String> {
             sightings: Default::default(),
         },
     );
-    runtime.actor_moves.entry(actor).or_default();
+    let movement = runtime.actor_moves.entry(actor).or_default();
+    if dog {
+        movement.allow_pitch = true;
+    }
     Ok(())
 }
 
@@ -721,8 +728,9 @@ fn start_stop(world: &mut World, actor: u64) {
 }
 
 /// The move animscript along the path, running or walking; the stop
-/// animscript with no path. An actor not yet moving starts from stop and
-/// the normal movement mode.
+/// animscript with no path (or with `stop_soon` right before the path's
+/// end). An actor not yet moving starts from stop and the normal movement
+/// mode.
 fn start_move(world: &mut World, actor: u64, run: bool) {
     let zonly = world
         .resource::<RoundScript>()
@@ -745,6 +753,36 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
     }
     if !has_path(world, actor) {
         start_stop(world, actor);
+        return;
+    }
+    let stop_soon = run && {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let origin = vector_field(&mut runtime, actor, "origin");
+        let movement = runtime
+            .actor_moves
+            .get(&actor)
+            .filter(|movement| movement.traversal.is_none() && movement.waypoints.len() == 1);
+        let end = movement.and_then(super::actor_nav::ActorMove::path_end);
+        let speed_sq = movement.map_or(0.0, |movement| {
+            movement.velocity[0].powi(2) + movement.velocity[1].powi(2)
+        });
+        match (origin, end) {
+            (Some(origin), Some(end)) => {
+                let dx = end[0] - origin[0];
+                let dy = end[1] - origin[1];
+                speed_sq > 0.0 && dx * dx + dy * dy <= speed_sq * STOP_SOON_SECONDS.powi(2)
+            }
+            _ => false,
+        }
+    };
+    if stop_soon {
+        set_anim_script(
+            world,
+            actor,
+            AnimScript::Species(SpeciesScript::Stop),
+            MOVE_STOP_SOON,
+            AnimMode::Normal,
+        );
         return;
     }
     let movemode = if run { MOVE_RUN } else { MOVE_WALK };
@@ -1134,7 +1172,22 @@ fn noncombat(world: &mut World, actor: u64) {
     } else {
         start_stop(world, actor);
     }
-    set_code_orient(world, actor, Orient::Enemy);
+    let goal_yaw = if in_goal(world, actor) {
+        world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&actor)
+            .and_then(|movement| movement.goal_yaw)
+    } else {
+        None
+    };
+    if let Some(yaw) = goal_yaw {
+        with_movement(world, actor, |movement| {
+            movement.orient = Some(Orient::Angle(yaw));
+        });
+    } else {
+        set_code_orient(world, actor, Orient::Enemy);
+    }
 }
 
 /// Whether the actor stands at its goal, and its path (if any) ends there.
@@ -1292,7 +1345,7 @@ fn negotiation_start(world: &mut World, actor: u64) -> bool {
 fn negotiation_think(world: &mut World, actor: u64) -> u8 {
     let mode = match brain(world, actor).map(|brain| brain.traverse_mode) {
         Some(1) => AnimMode::Gravity,
-        // Noclip moves as nogravity does: actors collide with nothing here.
+        Some(3) => AnimMode::NoClip,
         _ => AnimMode::NoGravity,
     };
     let mode = override_or(world, actor, mode);

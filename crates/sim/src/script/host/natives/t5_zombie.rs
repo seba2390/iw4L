@@ -744,7 +744,7 @@ fn players(world: &mut World) -> Vec<u64> {
 }
 
 /// What Black Ops keeps on an actor for the methods below: the species it
-/// talks to and its goal volume.
+/// talks to.
 #[derive(bevy_ecs::prelude::Resource, Default)]
 struct ActorState(std::collections::BTreeMap<u64, ActorFields>);
 
@@ -752,20 +752,11 @@ struct ActorState(std::collections::BTreeMap<u64, ActorFields>);
 struct ActorFields {
     /// One bit per species `settalktospecies` names; -1 for all.
     talk_species: i32,
-    /// `setgoalvolume`'s volume.
-    goal_volume: Option<u64>,
     /// `setdeathcontents`'s contents.
     death_contents: Option<i32>,
     /// `setflashbanged`'s state and strength.
     flashbanged: (bool, f32),
-    /// `allowpitchangle`'s flag.
-    allow_pitch: bool,
-    /// `setphysparams`' bounds; the actor's own (72 tall) until set.
-    bounds: Option<([f32; 3], [f32; 3])>,
 }
-
-/// An actor's height before `setphysparams` changes its bounds.
-const ACTOR_HEIGHT: f32 = 72.0;
 
 /// Black Ops' objective states, by number.
 const OBJECTIVE_STATES: [&str; 6] = ["empty", "active", "invisible", "done", "current", "failed"];
@@ -821,11 +812,6 @@ fn register_actor(registry: &mut NativeRegistry) {
         actor_fields(world, id).talk_species = mask;
         Ok(Value::Undefined)
     });
-    registry.register(Method, "cleargoalvolume", |world, receiver, _| {
-        let id = actor(world, receiver)?;
-        actor_fields(world, id).goal_volume = None;
-        Ok(Value::Undefined)
-    });
     // The actor drops its enemy; its next think picks one again.
     registry.register(Method, "clearenemy", |world, receiver, _| {
         let id = actor(world, receiver)?;
@@ -862,9 +848,7 @@ fn register_actor(registry: &mut NativeRegistry) {
                 })
                 .unwrap_or(0.0),
             EntityKind::Actor => {
-                let height = actor_fields(world, id)
-                    .bounds
-                    .map_or(ACTOR_HEIGHT, |(_, maxs)| maxs[2]);
+                let height = super::super::triggers::entity_bounds(world, id).1[2];
                 height * 0.9_f32
             }
             _ => {
@@ -1091,39 +1075,6 @@ fn register_actor(registry: &mut NativeRegistry) {
         let contents = super::super::args::int(args, 0)?;
         actor_fields(world, id).death_contents = Some(contents);
         Ok(Value::Undefined)
-    });
-    registry.register(Method, "allowpitchangle", |world, receiver, args| {
-        let id = actor(world, receiver)
-            .map_err(|_| "AllowPitchAngle() called on non-actor\n".to_owned())?;
-        if args.is_empty() {
-            return Err("AllowPitchAngle() called without an argument (0 or 1)\n".into());
-        }
-        let allow = super::super::args::int(args, 0)? != 0;
-        actor_fields(world, id).allow_pitch = allow;
-        Ok(Value::Undefined)
-    });
-    // `setPhysParams(radius, bottom, top)`: the actor's box becomes
-    // (-radius, -radius, bottom)..(radius, radius, top).
-    registry.register(Method, "setphysparams", |world, receiver, args| {
-        if args.len() != 3 {
-            return Err("setphysparams takes three parameters\n".into());
-        }
-        super::engine::entity_id(world, receiver)?;
-        let Ok(id) = actor(world, receiver) else {
-            return Err("setphysparams must be called on an AI only.".into());
-        };
-        let radius = super::super::args::float(args, 0)?;
-        let bottom = super::super::args::float(args, 1)?;
-        let top = super::super::args::float(args, 2)?;
-        actor_fields(world, id).bounds = Some(([-radius, -radius, bottom], [radius, radius, top]));
-        Ok(Value::Undefined)
-    });
-    // Black Ops answers "none" until the actor's movement runs into an
-    // entity ("obstacle" for one flagged so, else "world"); the runtime's
-    // actor movement collides with nothing, so it is always "none".
-    registry.register(Method, "gethitenttype", |world, receiver, _| {
-        actor(world, receiver)?;
-        Ok(Value::string("none"))
     });
     registry.register(Namespace::Function, "objective_state", |world, _, args| {
         let index = super::super::args::int(args, 0)?;

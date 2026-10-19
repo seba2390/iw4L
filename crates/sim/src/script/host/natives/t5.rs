@@ -1542,8 +1542,6 @@ fn register_entity(registry: &mut NativeRegistry) {
         "enablelinkto",
         "setforcenocull",
         "setrevivehintstring",
-        "connectpaths",
-        "disconnectpaths",
         "sendfaceevent",
     );
 }

@@ -265,7 +265,7 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         Arc<str>,
         Option<std::sync::Arc<xmodel_runtime::RetainedModelCapability>>,
     > = BTreeMap::new();
-    for (_, (_, _, _, _, model, attachments)) in &wanted {
+    for (_, _, _, _, model, attachments) in wanted.values() {
         if let Some(model) = model
             && !model_caps.contains_key(model)
         {
@@ -408,6 +408,7 @@ fn present(world: &mut World, now: i32) {
         };
         if spawned {
             frame.remove_script_mover_by_number(mover.state.number);
+            frame.remove_collision_owner(id);
         } else if let Some(mover) = frame.script_mover_mut_by_number(mover.state.number) {
             mover.state.e_flags |= entity_iw4::CG_SCRIPT_MOVER_NODRAW;
             mover.nonsolid = true;
@@ -527,8 +528,7 @@ fn with_tag_dobj<T>(
         let attachments = runtime
             .entities
             .get(&object)
-            .map(|e| e.attachments.clone())
-            .unwrap_or_default();
+            .map_or_else(Vec::new, |e| e.attachments.clone());
         (
             model_field(&mut runtime, object)?,
             vector(&mut runtime, object, "origin"),

@@ -3435,6 +3435,37 @@ pub(crate) fn clip_move_to_model_brushes(
     hit
 }
 
+/// Whether a box (`mins`..`maxs`) swept from `start` to `end` hits inline
+/// brush model `model` placed at `origin` turned by `angles`, against the
+/// contents in `mask`; `None` when the clip map has no such model.
+#[allow(clippy::too_many_arguments)] // one sweep: the model, its pose, the box and its path, the mask
+pub(crate) fn brush_model_sweep_hits(
+    content: &SimContent,
+    model: u32,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    start: [f32; 3],
+    end: [f32; 3],
+    mins: [f32; 3],
+    maxs: [f32; 3],
+    mask: u32,
+) -> Option<bool> {
+    let cmodel = content.clip_cmodels().models.get(model as usize)?;
+    let hit = transformed_capsule_trace(
+        cmodel,
+        &content.clip_bsp().leafbrushes,
+        content.clip_brushes(),
+        start,
+        end,
+        mins,
+        maxs,
+        origin,
+        angles,
+        mask,
+    );
+    Some(hit.fraction < 1.0 || hit.startsolid != 0)
+}
+
 /// Whether the line from `start` to `end` crosses inline brush model `model`
 /// placed at `origin`, against every content; `None` when the clip map has
 /// no such model.
