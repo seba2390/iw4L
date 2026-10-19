@@ -197,9 +197,39 @@ fn xanim_notes<'z>(load: &'z fastfile_t6::ZoneLoad, header: &[u8]) -> Vec<&'z st
         .collect()
 }
 
+fn capture_player_anim_sources(
+    zones: &[&ZoneLoad],
+    family: asset_core::FamilyId,
+) -> asset_anim::PlayerAnimSources {
+    let mut sources = asset_anim::PlayerAnimSources::default();
+    for load in zones {
+        for asset in &load.assets {
+            if asset.ty != AssetType::RawFile || asset.header.len() < 12 {
+                continue;
+            }
+            let Some(name) = header_str(load, &asset.header, 0) else {
+                continue;
+            };
+            let Some(len) = header_u32(&asset.header, 4).map(|n| n as usize) else {
+                continue;
+            };
+            let Some(ptr) = header_u32(&asset.header, 8).and_then(decode_ptr) else {
+                continue;
+            };
+            let Ok(bytes) = load.blocks.bytes(ptr, len) else {
+                continue;
+            };
+            sources.capture(family, name, bytes, false);
+        }
+    }
+    sources.compile();
+    sources
+}
+
 fn capture_xanims(
     load: &fastfile_t6::ZoneLoad,
     others: &[fastfile_t6::ZoneLoad],
+    player_anim_sources: &asset_anim::PlayerAnimSources,
     content: &mut T6Content,
 ) {
     use fastfile_t6::weapon::WeaponView;
@@ -295,8 +325,10 @@ fn capture_xanims(
         "t6 xanims: {captured} of {total} weapon animations captured; {} notetrack sounds",
         content.note_sounds.len()
     ));
-    let mut body_names: std::collections::BTreeSet<_> =
-        asset_anim::PlayerAnimSources::native_t6_clip_names().collect();
+    let mut body_names: std::collections::BTreeSet<String> = player_anim_sources
+        .leaf_names()
+        .map(str::to_ascii_lowercase)
+        .collect();
     let total = body_names.len();
     let mut captured = 0;
     for (source, asset) in std::iter::once(load)
@@ -304,7 +336,8 @@ fn capture_xanims(
         .flat_map(|source| source.assets.iter().map(move |asset| (source, asset)))
     {
         if asset.ty == AssetType::XAnimParts
-            && header_str(source, &asset.header, 0).is_some_and(|name| body_names.remove(name))
+            && header_str(source, &asset.header, 0)
+                .is_some_and(|name| body_names.remove(&name.to_ascii_lowercase()))
             && content
                 .xanims
                 .capture_xanim_t6(asset_core::AssetNamespace::T6, "", source, asset)
@@ -3810,7 +3843,13 @@ impl ZoneLane for T6Lane {
         let mut content = capture_content(path, &load, &others, &ipaks);
         models_stage.done();
         let anims_stage = progress.begin_scoped(StageId::CommonAssets, "t6_anims", None);
-        capture_xanims(&load, &others, &mut content);
+        let ordered_loads: Vec<_> = early
+            .iter()
+            .chain(std::iter::once(&load))
+            .chain(late)
+            .collect();
+        let player_anim_sources = capture_player_anim_sources(&ordered_loads, image.game);
+        capture_xanims(&load, &others, &player_anim_sources, &mut content);
         anims_stage.done();
         let icons_stage = progress.begin_scoped(StageId::CommonAssets, "t6_icons", None);
         let icon_loads: Vec<_> = others.iter().chain(std::iter::once(&load)).collect();
@@ -3846,7 +3885,7 @@ impl ZoneLane for T6Lane {
             weapons,
             impact_fx,
             tracers,
-            player_anim_sources: asset_anim::PlayerAnimSources::native_t6(),
+            player_anim_sources,
             material_population: material_seed,
             report,
             preparation: Some(Box::new(common_compile::T6CommonCompiler {

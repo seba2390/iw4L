@@ -33,15 +33,20 @@ enum Field {
     Int(i32),
     Float(f32),
     Vector,
+    Str(&'static str),
 }
 
 /// The engine's plain actor fields that scripts read, with the values its
 /// actor spawn leaves in them (the rest of the actor is zeroed).
-const SPAWN_FIELDS: [(&str, Field); 84] = [
+const SPAWN_FIELDS: [(&str, Field); 105] = [
+    ("type", Field::Str("zombie")),
     ("accuracy", Field::Float(0.2)),
     ("lookforward", Field::Vector),
     ("lookright", Field::Vector),
     ("lookup", Field::Vector),
+    ("fovcosine", Field::Float(0.01)),
+    ("fovcosinebusy", Field::Float(0.574)),
+    ("maxsightdistsqrd", Field::Float(67_108_864.0)),
     ("sightlatency", Field::Int(0)),
     ("ignoreclosefoliage", Field::Int(0)),
     ("interval", Field::Float(0.0)),
@@ -49,10 +54,14 @@ const SPAWN_FIELDS: [(&str, Field); 84] = [
     ("damagetaken", Field::Int(0)),
     ("damagedir", Field::Vector),
     ("damageyaw", Field::Int(0)),
+    ("damagelocation", Field::Str("")),
+    ("damageweapon", Field::Str("")),
+    ("damagemod", Field::Str("")),
     ("proneok", Field::Int(0)),
     ("walkdist", Field::Float(0.0)),
     ("desiredangle", Field::Float(0.0)),
     ("pacifist", Field::Int(0)),
+    ("pacifistwait", Field::Float(0.0)),
     ("newenemyreactionpos", Field::Vector),
     ("newenemyreaction", Field::Int(0)),
     ("newenemyreactiondistsq", Field::Float(562500.0)),
@@ -63,6 +72,7 @@ const SPAWN_FIELDS: [(&str, Field); 84] = [
     ("suppressionduration", Field::Int(0)),
     ("suppressionstarttime", Field::Int(0)),
     ("suppressionmeter", Field::Float(0.0)),
+    ("aiweapon", Field::Str("")),
     ("dontavoidplayer", Field::Int(0)),
     ("grenadeawareness", Field::Float(0.0)),
     ("grenadeammo", Field::Int(0)),
@@ -76,13 +86,22 @@ const SPAWN_FIELDS: [(&str, Field); 84] = [
     ("forceragdollimmediate", Field::Int(0)),
     ("delayeddeath", Field::Int(0)),
     ("providecoveringfire", Field::Int(0)),
+    ("combatmode", Field::Str("cover")),
     ("doingambush", Field::Int(0)),
     ("canflank", Field::Int(0)),
-    ("iswounded", Field::Int(0)),
+    ("alertlevel", Field::Str("noncombat")),
     ("alertlevelint", Field::Int(1)),
+    ("ignoretriggers", Field::Int(0)),
+    ("pushable", Field::Int(1)),
+    ("ikpriority", Field::Int(0)),
+    ("noplayermeleeblood", Field::Int(0)),
+    ("iswounded", Field::Int(0)),
     ("dropweapon", Field::Int(1)),
     ("drawoncompass", Field::Int(1)),
     ("activatecrosshair", Field::Int(1)),
+    ("scriptstate", Field::Str("")),
+    ("lastscriptstate", Field::Str("")),
+    ("statechangereason", Field::Str("")),
     ("goalradius", Field::Float(4.0)),
     ("goalheight", Field::Float(80.0)),
     ("goalpos", Field::Vector),
@@ -93,6 +112,7 @@ const SPAWN_FIELDS: [(&str, Field); 84] = [
     ("pathrandompercent", Field::Int(0)),
     ("usechokepoints", Field::Int(0)),
     ("stopanimdistsq", Field::Float(0.0)),
+    ("movemode", Field::Str("run")),
     ("pathenemylookahead", Field::Float(0.0)),
     ("pathenemyfightdist", Field::Float(0.0)),
     ("meleeattackdist", Field::Float(0.0)),
@@ -111,6 +131,8 @@ const SPAWN_FIELDS: [(&str, Field); 84] = [
     ("lookaheaddir", Field::Vector),
     ("lookaheaddist", Field::Float(0.0)),
     ("prevanimdelta", Field::Vector),
+    ("maxfaceenemydist", Field::Float(500.0)),
+    ("stairsstate", Field::Str("none")),
     ("exposedduration", Field::Int(5000)),
     ("requestarrivalnotify", Field::Int(0)),
     ("finalaccuracy", Field::Float(-6969.0)),
@@ -134,6 +156,8 @@ pub(super) struct Actor {
     pub(super) free_camera_lock_on: bool,
     /// Which of the aitype's characters the actor wears (`setcharacterindex`).
     pub(super) character_index: u8,
+    /// Set at spawn, cleared by `Actor_Die` before the death animscript runs.
+    pub(super) in_use: bool,
 }
 
 impl Default for Actor {
@@ -143,6 +167,7 @@ impl Default for Actor {
             stances: 0b111,
             free_camera_lock_on: false,
             character_index: 0,
+            in_use: true,
         }
     }
 }
@@ -152,6 +177,20 @@ pub(super) fn character_index(world: &World, id: u64) -> u8 {
         .get_resource::<Actors>()
         .and_then(|actors| actors.0.get(&id))
         .map_or(0, |actor| actor.character_index)
+}
+
+pub(crate) fn in_use(world: &World, id: u64) -> bool {
+    world
+        .get_resource::<Actors>()
+        .is_none_or(|actors| actors.0.get(&id).is_some_and(|actor| actor.in_use))
+}
+
+pub(super) fn clear_in_use(world: &mut World, id: u64) {
+    if let Some(mut actors) = world.get_resource_mut::<Actors>()
+        && let Some(actor) = actors.0.get_mut(&id)
+    {
+        actor.in_use = false;
+    }
 }
 
 #[derive(Resource, Default)]
@@ -262,6 +301,7 @@ fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
                 Field::Int(n) => Value::Int(n),
                 Field::Float(f) => Value::Float(f),
                 Field::Vector => Value::Vector([0.0; 3]),
+                Field::Str(s) => Value::string(s),
             };
             runtime.set_object_field(id, name, value);
         }
@@ -330,6 +370,69 @@ fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
         runtime.set_object_field(spawner, "count", Value::Int(count - 1));
     }
     Ok(Value::Object(id))
+}
+
+/// Runs each distinct `actor_<aitype>`'s `precache(ai_index)` in map entity
+/// order, then runs `aitype/<aitype>::spawner()` on each placed actor spawner,
+/// as the engine's `Actor_InitGame` does before the level's `main` runs.
+pub(crate) fn init_spawners(world: &mut World) -> Result<(), crate::script::Fault> {
+    let Some(program) = world.resource::<RoundScript>().program.clone() else {
+        return Ok(());
+    };
+    if !world.get_resource::<NativeRegistry>().is_some_and(|reg| {
+        reg.get(Namespace::Function, "precacheanimstatedef")
+            .is_some()
+    }) {
+        return Ok(());
+    }
+    let aitypes: Vec<String> = {
+        let runtime = world.resource::<RoundScript>();
+        let Some(plan) = runtime.restart.as_ref() else {
+            return Ok(());
+        };
+        let mut seen = Vec::new();
+        for pairs in plan.entities.iter() {
+            if let Some(aitype) = pairs
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("classname"))
+                .and_then(|(_, v)| v.strip_prefix("actor_"))
+                .map(str::to_ascii_lowercase)
+                && !seen.contains(&aitype)
+            {
+                seen.push(aitype);
+            }
+        }
+        seen
+    };
+    for (index, aitype) in (1i32..).zip(&aitypes) {
+        super::anim::register_aitype_index(world, index, aitype);
+        let entry = format!("aitype/{aitype}::precache");
+        if program.names.contains_key(&entry) {
+            run_now(world, &entry, Value::level(), vec![Value::Int(index)], 0)?;
+        }
+    }
+    let spawners: Vec<(u64, String)> = {
+        let runtime = world.resource::<RoundScript>();
+        runtime
+            .entities
+            .iter()
+            .filter_map(|(&id, entity)| {
+                if entity.kind != EntityKind::Map {
+                    return None;
+                }
+                let aitype = entity.classname.strip_prefix("actor_")?;
+                Some((id, aitype.to_ascii_lowercase()))
+            })
+            .collect()
+    };
+    for (id, aitype) in spawners {
+        let entry = format!("aitype/{aitype}::spawner");
+        if program.names.contains_key(&entry) {
+            run_now(world, &entry, Value::Object(id), Vec::new(), 0)?;
+        }
+    }
+    world.resource_mut::<RoundScript>().started = false;
+    Ok(())
 }
 
 /// An actor method's receiver.

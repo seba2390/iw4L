@@ -1,8 +1,8 @@
-pub const PLAYER_ANIM_RESTART_TOGGLE: u16 = 0x200;
+pub const PLAYER_ANIM_RESTART_TOGGLE: u16 = 0x400;
 
-pub const PLAYER_ANIM_INDEX_MASK: u16 = 0x1ff;
+pub const PLAYER_ANIM_INDEX_MASK: u16 = 0x3ff;
 
-pub const PLAYER_ANIM_RAW_MASK: u16 = 0x3ff;
+pub const PLAYER_ANIM_RAW_MASK: u16 = 0x7ff;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(transparent)]
@@ -118,6 +118,13 @@ pub const ANIM_MT_NAMES: &[&str] = &[
     "IDLELASTSTAND",
     "CRAWLLASTSTAND",
     "CRAWLLASTSTANDBK",
+    "SHUFFLE",
+    "STUMBLE",
+    "STUMBLE_WALK",
+    "STUMBLE_SPRINT",
+    "SWIM",
+    "DTP_MOVE",
+    "SLIDE_MOVE",
 ];
 
 pub const ANIM_STATE_NAMES: &[&str] = &["COMBAT"];
@@ -145,6 +152,22 @@ pub const ANIM_ET_NAMES: &[&str] = &[
     "KNIFE_MELEE_CHARGE",
     "SHELLSHOCK",
     "STUNNED",
+    "FIRSTRAISEWEAPON",
+    "PRONE_TO_SPRINT",
+    "RUN_TO_IDLE",
+    "MELEELEFT",
+    "FLINCH",
+    "DTP_TAKEOFF",
+    "DTP_LAND",
+    "STAND_TO_LASTSTAND",
+    "CROUCH_TO_LASTSTAND",
+    "PRONE_TO_LASTSTAND",
+    "LASTSTAND_TO_STAND",
+    "LASTSTAND_TO_CROUCH",
+    "LASTSTAND_TO_PRONE",
+    "FLARED",
+    "LASTSTAND_SUICIDE",
+    "PRIME_GRENADE",
 ];
 
 pub const ANIM_ET_DEATH: u8 = 1;
@@ -155,6 +178,7 @@ pub const ANIM_ET_RELOAD: u8 = 10;
 pub const ANIM_ET_MELEEATTACK: u8 = 17;
 pub const ANIM_ET_KNIFE_MELEE: u8 = 18;
 pub const ANIM_ET_KNIFE_MELEE_CHARGE: u8 = 19;
+pub const ANIM_ET_LASTSTAND_SUICIDE: u8 = 36;
 
 pub const ANIM_COND_NAMES: &[&str] = &[
     "PLAYERANIMTYPE",

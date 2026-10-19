@@ -73,8 +73,8 @@ pub(crate) fn gap_unknown(gap: Gap) -> &'static Unknown {
 fn events_unknown() -> &'static Unknown {
     unknown!(
         "t6.movement.events",
-        "Black Ops 2's player animations are not played: the legs and torso animations others see, and the mantle's event entity",
-        "Black Ops 2's player animation script from its executable"
+        "the temporary event entity Black Ops 2's server spawns at a mantle's start for other clients is not spawned",
+        "the mantle start temporary event entity"
     )
 }
 
@@ -634,14 +634,11 @@ impl PlayerMovement for T6Movement {
                     .push(MoveSignal::MantleStart { end, duration_ms });
             }
             outcome.gaps.extend(pm.gaps().map(gap_unknown));
-            if outcome.signals.iter().any(|s| {
-                matches!(
-                    s,
-                    MoveSignal::Anim { .. }
-                        | MoveSignal::LegsMove { .. }
-                        | MoveSignal::MantleStart { .. }
-                )
-            }) {
+            if outcome
+                .signals
+                .iter()
+                .any(|s| matches!(s, MoveSignal::MantleStart { .. }))
+            {
                 outcome.gaps.push(events_unknown());
             }
             last = pm.cmd;
@@ -783,7 +780,6 @@ impl PlayerMovement for T6Movement {
         pack(player, &mut ps, &mut last);
         MoveOutcome {
             signals: vec![MoveSignal::Event { event, parm: 0 }],
-            gaps: vec![events_unknown()],
             ..MoveOutcome::default()
         }
     }
@@ -806,7 +802,7 @@ impl PlayerMovement for T6Movement {
         } else {
             anim::STAND_TO_LAST_STAND
         };
-        let mut gaps = vec![events_unknown()];
+        let mut gaps = Vec::new();
         if crate::player_damage::going_down(&mut ps, weapons) {
             gaps.push(gap_unknown(Gap::MountedView));
         }
@@ -832,7 +828,6 @@ impl PlayerMovement for T6Movement {
         pack(player, &mut ps, &mut last);
         MoveOutcome {
             signals: vec![MoveSignal::Anim { event }],
-            gaps: vec![events_unknown()],
             ..MoveOutcome::default()
         }
     }

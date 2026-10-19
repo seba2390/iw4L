@@ -3,9 +3,10 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 use anim_iw4::{
-    ANIM_BODY_PART_NAMES, ANIM_COND_IS_BITFLAGS, ANIM_COND_NAMES, ANIM_ET_NAMES, ANIM_MT_NAMES,
-    ANIM_PARSE_MODES, anim_cond_evaluable, anim_cond_null_value_defaults_to_one,
-    anim_cond_value_names,
+    ANIM_BODY_PART_NAMES, ANIM_COND_IS_BITFLAGS, ANIM_COND_MOVETYPE, ANIM_COND_NAMES,
+    ANIM_COND_PLAYERANIMTYPE, ANIM_COND_PLAYERANIMTYPEPRIMARY, ANIM_COND_WEAPONCLASS,
+    ANIM_ET_NAMES, ANIM_MT_NAMES, ANIM_PARSE_MODES, anim_cond_evaluable,
+    anim_cond_null_value_defaults_to_one, anim_cond_value_names,
 };
 
 use crate::animtree::CompiledAnimTreeDefinition;
@@ -154,6 +155,9 @@ pub(crate) fn parse_player_anim_script(
     let mut current_items: Option<Vec<ParsedAnimItem>> = None;
     let mut current_event_items: Option<Vec<ParsedAnimItem>> = None;
     let mut aliases: HashMap<(u8, String), u64> = HashMap::new();
+    if t5_syntax {
+        aliases.insert((ANIM_COND_WEAPONCLASS, "pistol_spread".into()), 1u64 << 4);
+    }
     if let Some(types) = player_anim_types {
         let mut types = AtrParser::new(types);
         for index in 0..64 {
@@ -161,13 +165,7 @@ pub(crate) fn parse_player_anim_script(
             if name.is_empty() {
                 break;
             }
-            if index_ci(&name, anim_iw4::ANIM_PLAYERANIMTYPE_NAMES).is_none() {
-                continue;
-            }
-            for condition in [
-                anim_iw4::ANIM_COND_PLAYERANIMTYPE,
-                anim_iw4::ANIM_COND_PLAYERANIMTYPEPRIMARY,
-            ] {
+            for condition in [ANIM_COND_PLAYERANIMTYPE, ANIM_COND_PLAYERANIMTYPEPRIMARY] {
                 aliases.insert((condition, ascii_lower(&name)), 1u64 << index);
             }
         }
@@ -527,7 +525,9 @@ fn parse_conditions(
             continue;
         }
         if t5_syntax
-            && (token.eq_ignore_ascii_case("stance") || token.eq_ignore_ascii_case("direction"))
+            && (token.eq_ignore_ascii_case("stance")
+                || token.eq_ignore_ascii_case("direction")
+                || token.eq_ignore_ascii_case("movestatus"))
         {
             if let Some(cond) = current.take() {
                 conditions.push(cond);
@@ -637,7 +637,10 @@ fn t5_pose_condition(name: &str, value: &str) -> Option<ParsedAnimCondition> {
     };
     let crouch = mask(&[2, 6, 7, 12, 13, 16, 17]);
     let prone = mask(&[3, 8, 9]);
-    let backward = mask(&[5, 7, 9, 11, 13]);
+    let backward = mask(&[5, 7, 9, 11, 13, 53]);
+    let stationary = mask(&[1, 2, 3, 14, 15, 16, 17, 51]);
+    let walk = mask(&[4, 5, 6, 7, 8, 9, 52, 53, 54, 56]);
+    let run = mask(&[10, 11, 12, 13, 20, 55, 57, 59, 60]);
     let (index, bitflags, bits, value) =
         match (ascii_lower(name).as_str(), ascii_lower(value).as_str()) {
             ("stance", "crouch") => (anim_iw4::ANIM_COND_MOVETYPE, true, crouch, 0),
@@ -647,6 +650,10 @@ fn t5_pose_condition(name: &str, value: &str) -> Option<ParsedAnimCondition> {
             ("direction", "forward") => (anim_iw4::ANIM_COND_MOVETYPE, true, !backward, 0),
             ("direction", "left") => (anim_iw4::ANIM_COND_STRAFING, false, 0, 1),
             ("direction", "right") => (anim_iw4::ANIM_COND_STRAFING, false, 0, 2),
+            ("movestatus", "stationary") => (ANIM_COND_MOVETYPE, true, stationary, 0),
+            ("movestatus", "walk") => (ANIM_COND_MOVETYPE, true, walk, 0),
+            ("movestatus", "run") => (ANIM_COND_MOVETYPE, true, run, 0),
+            ("movestatus", "moving") => (ANIM_COND_MOVETYPE, true, walk | run, 0),
             _ => return None,
         };
     Some(ParsedAnimCondition {

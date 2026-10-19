@@ -294,8 +294,9 @@ pub(super) fn damage(world: &mut World, target: &Value, hit: Hit) -> Result<(), 
         return callback(world, "codecallback_playerdamage", target.clone(), args);
     }
     if is_actor(world, target) {
+        let in_use = super::actor::in_use(world, id);
         let alive = number(world, id, "health", 0.0) > 0.0;
-        if !takes_damage || hit.damage < 1 || !alive || hit.hit_location == RIOTSHIELD {
+        if !takes_damage || hit.damage < 1 || !in_use || !alive || hit.hit_location == RIOTSHIELD {
             return Ok(());
         }
         let weapon = weapon_of(world, &hit);
@@ -543,7 +544,7 @@ fn finish_actor_damage(
     int(args, 10)?;
     let health = number(world, id, "health", 0.0) as i32;
     diag::debug!(Sim, "actor {id}: {damage} damage of {health} health");
-    if health <= 0 {
+    if !super::actor::in_use(world, id) || health <= 0 {
         return Err("Trying to do damage to a actor that is already dead".into());
     }
     let left = health - damage;
@@ -573,6 +574,7 @@ fn finish_actor_damage(
     );
     let dir = dir.unwrap_or(zero);
     if left < 1 {
+        super::actor::clear_in_use(world, id);
         // The dead actor's body is a corpse: the engine gives it the corpse
         // contents, which bullets and blows pass through.
         if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
@@ -614,7 +616,7 @@ fn finish_actor_damage(
     let allows = matches!(field(world, id, "allowpain"), Value::Int(n) if n != 0);
     let blocking = matches!(field(world, id, "blockingpain"), Value::Int(n) if n != 0);
     let minimum = number(world, id, "minpaindamage", 0.0) as i32;
-    if allows && !blocking && minimum < damage {
+    if allows && !blocking && minimum <= damage {
         movement::pain(world, id)?;
     }
     Ok(Value::Undefined)
@@ -820,16 +822,18 @@ fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), S
             Value::string(&death.weapon),
         ],
     );
-    {
+    let death_duration = {
         let tick = world.resource::<crate::step::StepRequest>().tick;
         let mut frame = FrameWorld::from_world(world);
+        let duration = crate::game_move::play_anim_event(&mut frame, id, 1, true).unwrap_or(0);
         let attacker = frame
             .ecs()
             .resource::<RoundScript>()
             .player_client_of(&death.attacker)
             .map(crate::ClientId);
         crate::script_player::script_death(&mut frame, tick, id, attacker);
-    }
+        duration
+    };
     callback(
         world,
         "codecallback_playerkilled",
@@ -843,9 +847,7 @@ fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), S
             Value::Vector(death.dir.unwrap_or([0.0; 3])),
             Value::string(HIT_LOCATIONS[death.location]),
             Value::Int(death.offset),
-            // The death animation's length: the player animation script is
-            // not played (`t6.player.anim_events`).
-            Value::Int(0),
+            Value::Int(death_duration),
         ],
     )?;
     // The body still takes damage; its contents are a corpse's.

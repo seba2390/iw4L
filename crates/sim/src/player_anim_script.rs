@@ -90,7 +90,7 @@ pub fn anim_conditions_from_pmove(
         conds.set_bit(ANIM_COND_MOVETYPE, movetype);
     }
     conds.set_value(ANIM_COND_STRAFING, u32::from(strafing));
-    conds.set_value(ANIM_COND_PERK, 0);
+    conds.set_value(ANIM_COND_PERK, u32::from(matches!(ps.pm_type, 7 | 8)));
     conds.set_value(ANIM_COND_RIOTSHIELDNEXT, 0);
     conds.set_value(
         ANIM_COND_WEAPON_POSITION,
@@ -175,9 +175,21 @@ impl PlayerAnimScript {
         if ps.pm_type >= 8 {
             return None;
         }
+        let parent_slot = match movetype {
+            5..=9 | 52 | 53 => Some(4),
+            11..=13 => Some(10),
+            16 => Some(14),
+            17 => Some(15),
+            _ => None,
+        };
         let selected = self
             .matching_item(self.items(0, movetype), conditions)
             .map(|item| (movetype, item))
+            .or_else(|| {
+                let slot = parent_slot?;
+                self.matching_item(self.items(0, slot), conditions)
+                    .map(|item| (movetype, item))
+            })
             .or_else(|| {
                 (movetype != 1)
                     .then(|| self.matching_item(self.items(0, 1), conditions))
@@ -201,18 +213,29 @@ impl PlayerAnimScript {
         seed: &mut u32,
         force: bool,
     ) -> bool {
+        self.apply_event_duration(ps, event, conditions, seed, force)
+            .is_some()
+    }
+
+    pub fn apply_event_duration(
+        &self,
+        ps: &mut PlayerState,
+        event: u8,
+        conditions: &AnimConditions,
+        seed: &mut u32,
+        force: bool,
+    ) -> Option<i32> {
         if event != ANIM_ET_DEATH && ps.pm_type >= 8 {
-            return false;
+            return None;
         }
-        let Some(item) = self.matching_item(self.event_items(event), conditions) else {
-            return false;
-        };
+        let item = self.matching_item(self.event_items(event), conditions)?;
         if item.commands.is_empty() {
-            return false;
+            return None;
         }
         let pick = (random(seed) as usize) % item.commands.len();
-        execute_command(ps, item.commands[pick], true, false, force);
-        true
+        let cmd = item.commands[pick];
+        execute_command(ps, cmd, true, false, force);
+        Some(cmd.duration_ms.saturating_add(50))
     }
 
     fn matching_item<'a>(

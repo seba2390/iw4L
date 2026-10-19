@@ -228,11 +228,15 @@ pub(crate) fn run(
     };
     // A command the game's movement could not run is still used up.
     player.command_time = player.command_time.max(cmd.server_time);
+    let dt_ms = (player.command_time - before.command_time).clamp(0, 200);
     if let Some(ps) = world.player_mut(id) {
+        ps.legs_timer = (ps.legs_timer - dt_ms).max(0);
+        ps.torso_timer = (ps.torso_timer - dt_ms).max(0);
         ps.store_move_player(&player);
     }
     apply_held(world, id, &held, &player.held);
     world.client_meta_mut(id).mirror_held_ammo(player.weapon);
+    apply_move_anim_signals(world, id, &player, &cmd, &outcome.signals);
     if world.publishes_snapshot()
         && outcome
             .signals
@@ -269,6 +273,216 @@ pub(crate) fn run(
         }
     }
     outcome
+}
+
+fn map_t6_anim_event(event: i32) -> Option<u8> {
+    Some(match event {
+        1 => 1,
+        2 => 2,
+        3 => 3,
+        4 => 5,
+        5 => 6,
+        6 => 7,
+        7 => 22,
+        8 => 10,
+        9 => 11,
+        10 => 12,
+        11 => 13,
+        12 => 14,
+        13 => 16,
+        14 => 23,
+        15 => 24,
+        16 => 17,
+        17 => 25,
+        18 => 18,
+        19 => 19,
+        20 => 26,
+        21 => 20,
+        26 => 27,
+        27 => 28,
+        28 => 29,
+        29 => 30,
+        30 => 31,
+        31 => 32,
+        32 => 33,
+        33 => 34,
+        34 => 35,
+        35 => 36,
+        36 => 37,
+        _ => return None,
+    })
+}
+
+fn map_t6_legs_movetype(player: &MovePlayer, cmd: &MoveCommand, movetype: i32) -> Option<u8> {
+    use game_api::movement::MoveType;
+    let backward = cmd.forwardmove < 0;
+    let last_stand = player.move_type == MoveType::LastStand;
+    Some(match movetype {
+        1 => {
+            if last_stand {
+                51
+            } else {
+                match player.stance {
+                    Stance::Stand => 1,
+                    Stance::Crouch => 2,
+                    Stance::Prone => 3,
+                }
+            }
+        }
+        2 => 54,
+        3 => {
+            if last_stand {
+                if backward { 53 } else { 52 }
+            } else {
+                match (player.stance, backward) {
+                    (Stance::Stand, false) => 4,
+                    (Stance::Stand, true) => 5,
+                    (Stance::Crouch, false) => 6,
+                    (Stance::Crouch, true) => 7,
+                    (Stance::Prone, false) => 8,
+                    (Stance::Prone, true) => 9,
+                }
+            }
+        }
+        4 => match (player.stance, backward) {
+            (Stance::Crouch, false) => 12,
+            (Stance::Crouch, true) => 13,
+            (_, false) => 10,
+            (_, true) => 11,
+        },
+        5 => 18,
+        6 => 19,
+        7 => 20,
+        8..=18 => (movetype + 13) as u8,
+        19 => {
+            if player.stance == Stance::Crouch {
+                16
+            } else {
+                14
+            }
+        }
+        20 => {
+            if player.stance == Stance::Crouch {
+                17
+            } else {
+                15
+            }
+        }
+        21 => 55,
+        22 => 56,
+        23 => 57,
+        24 => 58,
+        25 => 59,
+        26 => 60,
+        _ => return None,
+    })
+}
+
+fn apply_move_anim_signals(
+    world: &mut FrameWorld,
+    id: ClientId,
+    player: &MovePlayer,
+    cmd: &MoveCommand,
+    signals: &[MoveSignal],
+) {
+    let Some(script) = world.player_anim_script() else {
+        return;
+    };
+    let Some(ps) = world.player(id).copied() else {
+        return;
+    };
+    let (view_w, primary) = crate::pmove_anim_weapon_ids(&ps);
+    let view_facts = world.combat_facts_for(view_w);
+    let primary_facts = world.combat_facts_for(primary);
+    let strafing = crate::player_anim_script::anim_strafing(&ps, cmd.forwardmove, cmd.rightmove);
+    let mut current_movetype =
+        crate::player_anim_script::event_anim_movetype(&ps, world.last_anim_movetype(id));
+    let mut force_legs = false;
+    for signal in signals {
+        match *signal {
+            MoveSignal::Anim { event: -1 } => {
+                if let Some(ps) = world.player_mut(id) {
+                    crate::player_anim_script::reset_stance_torso(ps);
+                }
+            }
+            MoveSignal::Anim { event } => {
+                let Some(et) = map_t6_anim_event(event) else {
+                    continue;
+                };
+                let mut seed = world.anim_event_seed();
+                let Some(ps_now) = world.player(id).copied() else {
+                    continue;
+                };
+                let conds = crate::anim_conditions_from_pmove(
+                    &ps_now,
+                    view_facts,
+                    primary_facts,
+                    Some(current_movetype),
+                    strafing,
+                    cmd.buttons,
+                );
+                if let Some(ps_mut) = world.player_mut(id) {
+                    let force = matches!(et, 1 | 3 | 5 | 11..=16 | 26..=37);
+                    let _ = script.apply_event(ps_mut, et, &conds, &mut seed, force);
+                }
+            }
+            MoveSignal::LegsMove { movetype } => {
+                if (8..=18).contains(&movetype) {
+                    force_legs = true;
+                }
+                let Some(mt) = map_t6_legs_movetype(player, cmd, movetype) else {
+                    continue;
+                };
+                current_movetype = mt;
+                let Some(ps_now) = world.player(id).copied() else {
+                    continue;
+                };
+                let conds = crate::anim_conditions_from_pmove(
+                    &ps_now,
+                    view_facts,
+                    primary_facts,
+                    Some(mt),
+                    strafing,
+                    cmd.buttons,
+                );
+                if let Some(ps_mut) = world.player_mut(id)
+                    && let Some(selected) = script.apply(ps_mut, mt, id.0, &conds, force_legs)
+                {
+                    world.set_anim_movement(id, selected, strafing);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Runs a player animation script event (`event` in `ANIM_ET_NAMES`) and
+/// returns its duration in milliseconds (`duration_ms + 50`).
+pub(crate) fn play_anim_event(
+    world: &mut FrameWorld,
+    id: ClientId,
+    event: u8,
+    force: bool,
+) -> Option<i32> {
+    let script = world.player_anim_script()?;
+    let mut seed = world.anim_event_seed();
+    let ps = world.player(id).copied()?;
+    let (view_w, primary) = crate::pmove_anim_weapon_ids(&ps);
+    let view_facts = world.combat_facts_for(view_w);
+    let primary_facts = world.combat_facts_for(primary);
+    let movetype =
+        crate::player_anim_script::event_anim_movetype(&ps, world.last_anim_movetype(id));
+    let strafing = world.last_anim_strafing(id);
+    let conds = crate::anim_conditions_from_pmove(
+        &ps,
+        view_facts,
+        primary_facts,
+        Some(movetype),
+        strafing,
+        world.anim_command_buttons(id),
+    );
+    let ps_mut = world.player_mut(id)?;
+    script.apply_event_duration(ps_mut, event, &conds, &mut seed, force)
 }
 
 /// The weapons in the player's slots and their rounds.
@@ -384,9 +598,17 @@ pub(crate) fn enter_last_stand(world: &mut FrameWorld, id: ClientId) {
         return;
     };
     let content = world.content();
-    if let Some(outcome) = update(world, id, |player| {
-        movement.enter_last_stand(player, &*content)
+    if let Some((outcome, player)) = update(world, id, |player| {
+        let outcome = movement.enter_last_stand(player, &*content);
+        (outcome, *player)
     }) {
+        apply_move_anim_signals(
+            world,
+            id,
+            &player,
+            &MoveCommand::default(),
+            &outcome.signals,
+        );
         for gap in outcome.gaps {
             world.report_game_gap(gap);
         }
@@ -398,7 +620,17 @@ pub(crate) fn revive(world: &mut FrameWorld, id: ClientId) {
     let Some(movement) = rules(world) else {
         return;
     };
-    if let Some(outcome) = update(world, id, |player| movement.revive(player)) {
+    if let Some((outcome, player)) = update(world, id, |player| {
+        let outcome = movement.revive(player);
+        (outcome, *player)
+    }) {
+        apply_move_anim_signals(
+            world,
+            id,
+            &player,
+            &MoveCommand::default(),
+            &outcome.signals,
+        );
         for gap in outcome.gaps {
             world.report_game_gap(gap);
         }

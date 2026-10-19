@@ -499,11 +499,19 @@ pub(crate) struct ShotTarget {
 }
 
 pub(crate) fn shot_target(world: &mut World, target: ScriptModelId) -> Option<ShotTarget> {
+    let (object, actor, base_takes_damage) = {
+        let runtime = world.get_resource::<RoundScript>()?;
+        let object = runtime.presented_by(target)?;
+        let entity = &runtime.entities[&object];
+        (
+            object,
+            entity.kind == super::entities::EntityKind::Actor,
+            entity.accepts_damage(0),
+        )
+    };
+    let in_use = !actor || super::natives::t6::actor_in_use(world, object);
     let mut runtime = world.get_resource_mut::<RoundScript>()?;
-    let object = runtime.presented_by(target)?;
-    let entity = &runtime.entities[&object];
-    let actor = entity.kind == super::entities::EntityKind::Actor;
-    let takes_damage = entity.accepts_damage(0);
+    let takes_damage = base_takes_damage && in_use;
     let int = |value: Value| match value {
         Value::Int(n) => Some(n),
         Value::Float(f) => Some(f as i32),

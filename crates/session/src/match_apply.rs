@@ -1932,8 +1932,25 @@ fn map_script_item(
     catalog: &asset_anim::XAnimCatalog,
     namespace: asset_core::AssetNamespace,
 ) -> sim::AnimScriptItem {
+    let commands: Vec<_> = item
+        .commands
+        .iter()
+        .filter(|cmd| {
+            tree.and_then(|t| t.node(cmd.anim_index))
+                .is_none_or(|node| {
+                    catalog
+                        .get(namespace, &node.name)
+                        .is_some_and(|c| !c.parts.names.is_empty())
+                })
+        })
+        .map(|cmd| sim::AnimScriptCommand {
+            body_part: cmd.body_part,
+            anim_index: cmd.anim_index,
+            duration_ms: command_duration_ms(tree, catalog, cmd, namespace),
+        })
+        .collect();
     sim::AnimScriptItem {
-        skip: item.skip,
+        skip: item.skip || commands.is_empty(),
         conditions: item
             .conditions
             .iter()
@@ -1944,15 +1961,7 @@ fn map_script_item(
                 value: c.value,
             })
             .collect(),
-        commands: item
-            .commands
-            .iter()
-            .map(|cmd| sim::AnimScriptCommand {
-                body_part: cmd.body_part,
-                anim_index: cmd.anim_index,
-                duration_ms: command_duration_ms(tree, catalog, cmd, namespace),
-            })
-            .collect(),
+        commands,
     }
 }
 

@@ -144,12 +144,32 @@ fn flat_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
 }
 
-/// The engine's pain state: the pain script runs, and its choice of
-/// script waits until that one ends.
+/// The engine's pain state (`Actor_Pain` / `AIS_PAIN`): ignored while in
+/// `AIS_SCRIPTEDANIM` or `AIS_CUSTOMANIM` (whose state table `pain` callback
+/// returns `0`), otherwise starts the pain animscript and holds the actor's
+/// state choice until that thread ends.
 pub(super) fn pain(world: &mut World, id: u64) -> Result<(), String> {
+    if anim::scripted(world, id) || in_custom(world, id) {
+        return Ok(());
+    }
     let thread = set_script(world, id, Script::Pain)?;
     movement(world, id).pain = thread;
     Ok(())
+}
+
+pub(super) fn enter_scripted(world: &mut World, id: u64) {
+    movement(world, id).script = None;
+    record_script_state(world, id, "scripted", "scripted");
+}
+
+fn record_script_state(world: &mut World, id: u64, state: &str, reason: &str) {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let prev = runtime.object_field(id, "scriptstate");
+    if matches!(prev, Value::String(_)) {
+        runtime.set_object_field(id, "lastscriptstate", prev);
+    }
+    runtime.set_object_field(id, "scriptstate", Value::string(state));
+    runtime.set_object_field(id, "statechangereason", Value::string(reason));
 }
 
 /// The goal's test: within its radius across and its height up or down.
@@ -255,8 +275,7 @@ fn negotiation(world: &mut World, path: &[Waypoint], index: usize) -> Option<(u1
 }
 
 /// Starts an animscript's main as the engine switches scripts; the one it
-/// leaves is told `killanimscript` (`t6.actors.state_machine`). The thread
-/// while it lives on.
+/// leaves is told `killanimscript`. The thread while it lives on.
 pub(super) fn set_script(
     world: &mut World,
     id: u64,
@@ -266,6 +285,15 @@ pub(super) fn set_script(
         return Ok(None);
     }
     movement(world, id).script = Some(script);
+    let state_name = match script {
+        Script::Stop => "stop",
+        Script::Move => "move",
+        Script::Combat => "combat",
+        Script::Pain => "pain",
+        Script::Death => "death",
+        Script::Traverse(_) => "traverse",
+    };
+    record_script_state(world, id, state_name, state_name);
     let prefix = if matches!(
         world
             .resource_mut::<RoundScript>()
@@ -333,6 +361,10 @@ fn set_yaw(world: &mut World, id: u64, toward: f32) {
 
 /// Moves the body from `from` toward `to`: up a step, across until
 /// something blocks, then down onto the floor or falling.
+pub(super) fn step_actor(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3]) -> [f32; 3] {
+    step(world, id, from, to)
+}
+
 fn step(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3]) -> [f32; 3] {
     let (mins, maxs) = hull(world, id);
     let (mins, maxs) = ([mins[0], mins[1], 0.0], [maxs[0], maxs[1], maxs[2]]);
@@ -640,9 +672,16 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     }
     if let Some(pain) = movement(world, id).pain {
         if thread_alive(world, pain) {
+            let at = origin_of(world, id);
+            let enemy = enemy(world, id);
+            if anim::get(world, id).mode != "none" {
+                traverse(world, id, at);
+            }
+            face(world, id, at, enemy.as_ref());
             return Ok(());
         }
         movement(world, id).pain = None;
+        movement(world, id).script = None;
     }
     let at = origin_of(world, id);
     let enemy = enemy(world, id);
@@ -697,9 +736,26 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
             path.as_ref().map(Vec::len)
         );
         match path {
-            Some(path) => movement(world, id).path = path,
+            Some(path) => {
+                let first = path.first().map(|w| w.at);
+                movement(world, id).path = path;
+                let mut runtime = world.resource_mut::<RoundScript>();
+                runtime.set_object_field(id, "pathstartpos", Value::Vector(at));
+                runtime.set_object_field(id, "pathgoalpos", Value::Vector(goal));
+                runtime.set_object_field(
+                    id,
+                    "lookaheadnodepos",
+                    first.map_or(Value::Undefined, Value::Vector),
+                );
+            }
             None => {
                 movement(world, id).path.clear();
+                {
+                    let mut runtime = world.resource_mut::<RoundScript>();
+                    runtime.set_object_field(id, "pathstartpos", Value::Undefined);
+                    runtime.set_object_field(id, "pathgoalpos", Value::Undefined);
+                    runtime.set_object_field(id, "lookaheadnodepos", Value::Undefined);
+                }
                 raise(world, Value::Object(id), "bad_path", Vec::new());
             }
         }
@@ -770,16 +826,20 @@ fn think(world: &mut World) {
     }
     super::corpse::forget_deleted(world);
     for id in actors {
-        // The death state: once its animscript has ended the actor is a
-        // corpse.
+        // The death state (`AIS_DEATH`): steps the death clip's root motion
+        // while its animscript runs; once it ends the actor becomes a corpse.
         let state = movement(world, id);
         let dead = state.script == Some(Script::Death) && !alive(world, id);
-        if dead
-            && !movement(world, id)
+        if dead {
+            if movement(world, id)
                 .death
                 .is_some_and(|t| thread_alive(world, t))
-        {
-            if let Err(fault) = super::corpse::finish_death(world, id) {
+            {
+                if !anim::scripted(world, id) && anim::get(world, id).mode != "none" {
+                    let at = origin_of(world, id);
+                    traverse(world, id, at);
+                }
+            } else if let Err(fault) = super::corpse::finish_death(world, id) {
                 diag::warn!(Sim, "actor {id}: {fault}");
             }
             continue;
@@ -1023,6 +1083,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         };
         let prev_end = movement(world, id).custom.take().and_then(|(_, end)| end);
         movement(world, id).script = None;
+        record_script_state(world, id, "custom", "custom");
         anim::reset_orient(world, id);
         let now = super::super::super::players::now_ms(world);
         notify_now(world, receiver.clone(), "killanimscript", Vec::new(), now);

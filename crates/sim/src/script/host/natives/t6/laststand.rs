@@ -172,8 +172,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Method, "docowardswayanims", |world, receiver, _| {
-        client(world, receiver).map_err(|_| "USAGE: Must be called on a client\n".to_owned())?;
-        Err("t6.player.anim_events: the player's coward sway animation event is not played, so its length is not known".into())
+        let client = client(world, receiver).map_err(|_| "not a player".to_owned())?;
+        let mut frame = FrameWorld::from_world(world);
+        // `laststand_suicide` is index 36 in `ANIM_ET_NAMES`.
+        let duration = crate::game_move::play_anim_event(&mut frame, ClientId(client), 36, true)
+            .unwrap_or(100);
+        Ok(Value::Float((duration - 100) as f32 * 0.001))
     });
 }
 

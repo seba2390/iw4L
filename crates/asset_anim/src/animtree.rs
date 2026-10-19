@@ -9,7 +9,9 @@ use crate::dobj::{
 };
 
 pub const MULTIPLAYER_ANIMTREE_PATH: &str = "animtrees/multiplayer.atr";
+pub const ZOMBIE_PLAYER_ANIMTREE_PATH: &str = "animtrees/zombie_player.atr";
 pub const PLAYERANIM_SCRIPT_PATH: &str = "mp/playeranim.script";
+pub const ZOMBIE_PLAYERANIM_SCRIPT_PATH: &str = "zm/playeranim.script";
 
 pub const PLAYERANIM_TYPES_PATH: &str = "mp/playeranimtypes.txt";
 
@@ -36,17 +38,14 @@ pub struct PlayerAnimSources {
 }
 
 impl PlayerAnimSources {
-    pub fn native_t6() -> Self {
-        let (tree, script) = crate::t6_player::compile();
-        Self {
-            family: Some(asset_core::FamilyId::T6),
-            compiled: Some(Ok(tree)),
-            parsed_script: Some(Ok(script)),
-            ..Default::default()
-        }
-    }
-    pub fn native_t6_clip_names() -> impl Iterator<Item = &'static str> {
-        crate::t6_player::clip_names()
+    pub fn leaf_names(&self) -> impl Iterator<Item = &str> {
+        self.compiled
+            .as_ref()
+            .and_then(|c| c.as_ref().ok())
+            .into_iter()
+            .flat_map(|tree| tree.nodes().iter())
+            .filter(|node| node.child_count == 0)
+            .map(|node| node.name.as_str())
     }
     pub fn family(&self) -> Option<asset_core::FamilyId> {
         self.family
@@ -60,7 +59,9 @@ impl PlayerAnimSources {
     ) {
         if ![
             MULTIPLAYER_ANIMTREE_PATH,
+            ZOMBIE_PLAYER_ANIMTREE_PATH,
             PLAYERANIM_SCRIPT_PATH,
+            ZOMBIE_PLAYERANIM_SCRIPT_PATH,
             PLAYERANIM_TYPES_PATH,
         ]
         .contains(&name)
@@ -74,8 +75,12 @@ impl PlayerAnimSources {
         }
         self.family = Some(family);
         let (target, path) = match name {
-            MULTIPLAYER_ANIMTREE_PATH => (&mut self.multiplayer_atr, MULTIPLAYER_ANIMTREE_PATH),
-            PLAYERANIM_SCRIPT_PATH => (&mut self.playeranim_script, PLAYERANIM_SCRIPT_PATH),
+            MULTIPLAYER_ANIMTREE_PATH | ZOMBIE_PLAYER_ANIMTREE_PATH => {
+                (&mut self.multiplayer_atr, MULTIPLAYER_ANIMTREE_PATH)
+            }
+            PLAYERANIM_SCRIPT_PATH | ZOMBIE_PLAYERANIM_SCRIPT_PATH => {
+                (&mut self.playeranim_script, PLAYERANIM_SCRIPT_PATH)
+            }
             PLAYERANIM_TYPES_PATH => (&mut self.playeranim_types, PLAYERANIM_TYPES_PATH),
             _ => return,
         };
@@ -192,16 +197,6 @@ impl PlayerAnimSources {
     }
 
     pub fn compile_report_line(&self) -> String {
-        if self.family() == Some(asset_core::FamilyId::T6) {
-            return match self.compiled() {
-                Some(Ok(tree)) => format!(
-                    "native T6 player profile: nodes={} leaves={}",
-                    tree.node_count(),
-                    tree.leaf_count()
-                ),
-                _ => "native T6 player profile not compiled".into(),
-            };
-        }
         match self.compiled() {
             Some(Ok(tree)) => format!(
                 "multiplayer.atr compiled: nodes={} leaves={} ignored={} script_names={} legs={} torso={} turning={}",
