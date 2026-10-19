@@ -1844,6 +1844,14 @@ struct Phys {
     hit: Option<([f32; 3], [f32; 3])>,
 }
 
+/// What one sweep of the actor's box found.
+struct Sweep {
+    fraction: f32,
+    normal: [f32; 3],
+    endpos: [f32; 3],
+    allsolid: bool,
+}
+
 fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
@@ -1860,8 +1868,20 @@ fn clip_velocity(velocity: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
 }
 
 impl Phys {
-    fn trace(&self, world: &mut World, start: [f32; 3], end: [f32; 3]) -> trace_iw4::Trace {
-        FrameWorld::from_world(world).trace_clip(start, end, self.mins, self.maxs, MASK_ACTOR_SOLID)
+    fn trace(&self, world: &mut World, start: [f32; 3], end: [f32; 3]) -> Sweep {
+        let trace = FrameWorld::from_world(world).trace_clip(
+            start,
+            end,
+            self.mins,
+            self.maxs,
+            MASK_ACTOR_SOLID,
+        );
+        Sweep {
+            fraction: trace.fraction,
+            normal: trace.normal,
+            endpos: trace.endpos,
+            allsolid: trace.allsolid != 0,
+        }
     }
 
     /// Looks for ground under the actor: a step's height down while it
@@ -1871,7 +1891,7 @@ impl Phys {
         let depth = if snap { STEP_HEIGHT } else { GROUND_PROBE };
         let end = [self.origin[0], self.origin[1], self.origin[2] - depth];
         let trace = self.trace(world, self.origin, end);
-        if trace.allsolid != 0 || trace.fraction >= 1.0 {
+        if trace.allsolid || trace.fraction >= 1.0 {
             self.ground = None;
             return;
         }
@@ -1913,7 +1933,7 @@ impl Phys {
         while bumps < 4 {
             let end = std::array::from_fn(|i| self.origin[i] + self.velocity[i] * left);
             let trace = self.trace(world, self.origin, end);
-            if trace.allsolid != 0 {
+            if trace.allsolid {
                 self.velocity[2] = 0.0;
                 return true;
             }
@@ -2016,7 +2036,7 @@ impl Phys {
         let (plain, plain_velocity, plain_hit) = (self.origin, self.velocity, self.hit);
         let up = [start[0], start[1], start[2] + STEP_HEIGHT];
         let trace = self.trace(world, start, up);
-        if trace.allsolid != 0 {
+        if trace.allsolid {
             return;
         }
         let lifted = trace.endpos[2] - start[2];
@@ -2036,7 +2056,7 @@ impl Phys {
         }
         let down = [self.origin[0], self.origin[1], self.origin[2] - lifted];
         let trace = self.trace(world, self.origin, down);
-        if trace.allsolid == 0 {
+        if !trace.allsolid {
             self.origin = trace.endpos;
         }
         if trace.fraction < 1.0 {
