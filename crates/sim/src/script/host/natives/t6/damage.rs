@@ -822,16 +822,18 @@ fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), S
             Value::string(&death.weapon),
         ],
     );
-    {
+    let death_duration = {
         let tick = world.resource::<crate::step::StepRequest>().tick;
         let mut frame = FrameWorld::from_world(world);
+        let duration = crate::game_move::play_anim_event(&mut frame, id, 1, true).unwrap_or(0);
         let attacker = frame
             .ecs()
             .resource::<RoundScript>()
             .player_client_of(&death.attacker)
             .map(crate::ClientId);
         crate::script_player::script_death(&mut frame, tick, id, attacker);
-    }
+        duration
+    };
     callback(
         world,
         "codecallback_playerkilled",
@@ -845,9 +847,7 @@ fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), S
             Value::Vector(death.dir.unwrap_or([0.0; 3])),
             Value::string(HIT_LOCATIONS[death.location]),
             Value::Int(death.offset),
-            // The death animation's length: the player animation script is
-            // not played (`t6.player.anim_events`).
-            Value::Int(0),
+            Value::Int(death_duration),
         ],
     )?;
     // The body still takes damage; its contents are a corpse's.

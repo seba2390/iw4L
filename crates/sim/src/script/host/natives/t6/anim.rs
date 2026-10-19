@@ -8,7 +8,7 @@ use super::super::super::entities::EntityKind;
 use super::super::engine::trace;
 use super::{int, string, vector};
 use crate::frame::FrameWorld;
-use crate::script::runtime::{notify_now, raise, run_now, start_now, thread_alive};
+use crate::script::runtime::{notify_now, raise, run_now};
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::{Resource, World};
 use std::collections::BTreeMap;
@@ -82,7 +82,6 @@ pub(super) struct ActorAnim {
     table: Option<(String, Arc<AnimStateTable>)>,
     playing: Option<Playing>,
     blending: Vec<Playing>,
-    scripted_thread: Option<u64>,
     pub(super) mode: &'static str,
     pub(super) orient: &'static str,
     /// The yaw `face angle`, `face direction` or `face point` turns to.
@@ -102,7 +101,6 @@ impl Default for ActorAnim {
             table: None,
             playing: None,
             blending: Vec::new(),
-            scripted_thread: None,
             mode: "normal",
             orient: "face default",
             orient_yaw: None,
@@ -606,19 +604,10 @@ fn advance(world: &mut World) {
             world.resource_mut::<ActorAnims>().0.remove(&id);
             continue;
         }
-        let scripted_dead = anim_mut(world, id)
-            .scripted_thread
-            .is_some_and(|t| !thread_alive(world, t));
         {
             let anim = anim_mut(world, id);
             anim.step = [0.0; 3];
             anim.step_yaw = 0.0;
-            if scripted_dead {
-                anim.scripted_thread = None;
-                if let Some(playing) = anim.playing.as_mut() {
-                    playing.anchor = None;
-                }
-            }
         }
         let rate = world
             .get_resource::<AnimRates>()
@@ -672,11 +661,7 @@ fn advance(world: &mut World) {
             playing.weight = 1.0;
         }
         if playing.done {
-            if playing.anchor.is_some()
-                && !anim_mut(world, id)
-                    .scripted_thread
-                    .is_some_and(|t| thread_alive(world, t))
-            {
+            if playing.anchor.is_some() {
                 playing.anchor = None;
             }
             anim_mut(world, id).playing = Some(playing);
@@ -949,9 +934,8 @@ fn animscripted(world: &mut World, receiver: &Value, args: &[Value]) -> Result<V
     )
     .map_err(|fault| format!("{init}: {fault:?}"))?;
     let main = format!("{SCRIPTED}::main");
-    let thread = start_now(world, &main, receiver.clone(), Vec::new(), now)
+    run_now(world, &main, receiver.clone(), Vec::new(), now)
         .map_err(|fault| format!("{main}: {fault:?}"))?;
-    anim_mut(world, id).scripted_thread = thread;
     Ok(Value::Undefined)
 }
 
@@ -1033,14 +1017,10 @@ fn start_pose(world: &mut World, args: &[Value]) -> Result<([f32; 3], [f32; 3]),
 
 /// The scripted clip's anchor, while one plays.
 pub(super) fn scripted(world: &mut World, id: u64) -> bool {
-    let thread = anim_mut(world, id).scripted_thread;
-    if thread.is_some_and(|t| thread_alive(world, t)) {
-        return true;
-    }
     anim_mut(world, id)
         .playing
         .as_ref()
-        .is_some_and(|playing| playing.anchor.is_some() && !playing.done)
+        .is_some_and(|playing| playing.anchor.is_some())
 }
 
 pub(super) fn get(world: &mut World, id: u64) -> ActorAnim {
@@ -1281,9 +1261,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "startscriptedanim", start_scripted);
     registry.register(Method, "stopanimscripted", |world, receiver, _| {
         let id = actor(world, receiver)?;
-        let anim = anim_mut(world, id);
-        anim.scripted_thread = None;
-        if let Some(playing) = anim.playing.as_mut() {
+        if let Some(playing) = anim_mut(world, id).playing.as_mut() {
             playing.anchor = None;
         }
         Ok(Value::Undefined)

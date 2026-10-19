@@ -48,10 +48,10 @@ mixed sim
 mixed xmodel_runtime
 mixed xtask
 pattern crates/approved_tests/src/scenarios/heavy_gameplay_lifecycle.rs "<game>" 1
-pattern crates/asset_anim/src/animtree.rs FamilyId::<game> 9
+pattern crates/asset_anim/src/animtree.rs FamilyId::<game> 7
 pattern crates/asset_anim/src/animtree.rs anim_iw4:: 1
 pattern crates/asset_anim/src/atr_compile.rs anim_iw4:: 2
-pattern crates/asset_anim/src/playeranim_parse.rs anim_iw4:: 15
+pattern crates/asset_anim/src/playeranim_parse.rs anim_iw4:: 12
 pattern crates/asset_anim/src/xanim_catalog.rs AssetNamespace::<game> 5
 pattern crates/asset_anim/src/xanim_catalog.rs asset_iw4:: 1
 pattern crates/asset_anim/src/xanim_catalog.rs fastfile_iw4:: 2
