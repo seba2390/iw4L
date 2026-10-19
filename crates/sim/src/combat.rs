@@ -2033,7 +2033,7 @@ pub(crate) fn push_game_weapon_event(
     let Some(ps) = world.player(client).copied() else {
         return;
     };
-    let (kind, hand, origin) = match event {
+    let (kind, hand, origin, event_parm) = match event {
         E::Fire { left, last_shot } => (
             predicted_weapon_fire_event(i32::from(left), last_shot),
             u8::from(left),
@@ -2042,17 +2042,38 @@ pub(crate) fn push_game_weapon_event(
                 ps.origin[1],
                 ps.origin[2] + ps.view_height_current,
             ],
+            0,
         ),
-        E::Reload => (EntityEventKind::RELOAD, 0, ps.origin),
-        E::ReloadFromEmpty => (EntityEventKind::RELOAD_FROM_EMPTY, 0, ps.origin),
-        E::ReloadStart => (EntityEventKind::RELOAD_START, 0, ps.origin),
-        E::ReloadEnd => (EntityEventKind::RELOAD_END, 0, ps.origin),
-        E::Raise => (EntityEventKind::RAISE_WEAPON, 0, ps.origin),
-        E::FirstRaise => (EntityEventKind::FIRST_RAISE_WEAPON, 0, ps.origin),
-        E::Putaway => (EntityEventKind::PUTAWAY_WEAPON, 0, ps.origin),
-        E::Alt => (EntityEventKind::WEAPON_ALT, 0, ps.origin),
-        E::Pullback => (EntityEventKind::PULLBACK_WEAPON, 0, ps.origin),
-        E::Rechamber => (EntityEventKind::RECHAMBER_WEAPON, 0, ps.origin),
+        E::FireBurst {
+            left,
+            last_shot,
+            parm,
+        } => (
+            predicted_weapon_fire_event(i32::from(left), last_shot),
+            u8::from(left),
+            [
+                ps.origin[0],
+                ps.origin[1],
+                ps.origin[2] + ps.view_height_current,
+            ],
+            parm,
+        ),
+        E::NoAmmo => (EntityEventKind::NOAMMO, 0, ps.origin, 0),
+        E::EjectBrass => (EntityEventKind::EJECT_BRASS, 0, ps.origin, 0),
+        E::MeleeSwipe => (EntityEventKind::MELEE_SWIPE, 0, ps.origin, 0),
+        E::MeleeHit { point, knife } => (EntityEventKind::MELEE_HIT, 0, point, i32::from(knife)),
+        E::MeleeMiss { point, knife } => (EntityEventKind::MELEE_MISS, 0, point, i32::from(knife)),
+        E::MeleeBlood { point } => (EntityEventKind::MELEE_BLOOD, 0, point, 0),
+        E::Reload => (EntityEventKind::RELOAD, 0, ps.origin, 0),
+        E::ReloadFromEmpty => (EntityEventKind::RELOAD_FROM_EMPTY, 0, ps.origin, 0),
+        E::ReloadStart => (EntityEventKind::RELOAD_START, 0, ps.origin, 0),
+        E::ReloadEnd => (EntityEventKind::RELOAD_END, 0, ps.origin, 0),
+        E::Raise => (EntityEventKind::RAISE_WEAPON, 0, ps.origin, 0),
+        E::FirstRaise => (EntityEventKind::FIRST_RAISE_WEAPON, 0, ps.origin, 0),
+        E::Putaway => (EntityEventKind::PUTAWAY_WEAPON, 0, ps.origin, 0),
+        E::Alt => (EntityEventKind::WEAPON_ALT, 0, ps.origin, 0),
+        E::Pullback => (EntityEventKind::PULLBACK_WEAPON, 0, ps.origin, 0),
+        E::Rechamber => (EntityEventKind::RECHAMBER_WEAPON, 0, ps.origin, 0),
     };
     world.push_entity_event(
         tick,
@@ -2065,6 +2086,7 @@ pub(crate) fn push_game_weapon_event(
             hand,
             origin,
             direction: ps.viewangles,
+            event_parm,
             ..Default::default()
         },
     );

@@ -369,12 +369,32 @@ impl PartialEq for MissileRules {
 impl Eq for MissileRules {}
 
 /// A player's weapon event the clients present with the weapon's sounds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WeaponEvent {
     /// A shot, from the left hand or the right; the clip's last round.
     Fire {
         left: bool,
         last_shot: bool,
+    },
+    /// A shot carrying its burst/charge shot parameter (`eventParm`).
+    FireBurst {
+        left: bool,
+        last_shot: bool,
+        parm: i32,
+    },
+    NoAmmo,
+    EjectBrass,
+    MeleeSwipe,
+    MeleeHit {
+        point: [f32; 3],
+        knife: bool,
+    },
+    MeleeMiss {
+        point: [f32; 3],
+        knife: bool,
+    },
+    MeleeBlood {
+        point: [f32; 3],
     },
     Reload,
     ReloadFromEmpty,
@@ -507,6 +527,8 @@ pub struct FireSoundShot {
     pub killcam: bool,
     /// The weapon names a last shot sound for this view.
     pub last_shot_sound: bool,
+    /// The fire event's shot parameter (`eventParm`).
+    pub parm: i32,
 }
 
 /// Which of a weapon's fire sounds a shot plays.
@@ -516,6 +538,10 @@ pub enum FireSound {
     FirePlayer,
     LastShot,
     LastShotPlayer,
+    Killcam,
+    KillcamPlayer,
+    FireWithStart,
+    FirePlayerWithStart,
 }
 
 /// A blast: damage falling off with distance from its origin.

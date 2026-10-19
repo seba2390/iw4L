@@ -44,6 +44,8 @@ pub const T6_EFFECTS: &[&str] = &[
     "weapon/satchel/fx_explosion_satchel_generic",
     "weapon/sensor_grenade/fx_sensor_exp_scan_friendly",
     "weapon/sensor_grenade/fx_sensor_exp_scan_enemy",
+    "impacts/fx_flesh_hit_knife",
+    "impacts/fx_flesh_hit_knife_mp",
 ];
 
 pub const T6_EQUIPMENT_SOUNDS: &[&str] = &[
@@ -58,6 +60,8 @@ pub const T6_EQUIPMENT_SOUNDS: &[&str] = &[
     "wpn_trophy_alert",
     "wpn_trophy_spin",
     "fly_sensor_nade_lp",
+    "prj_bullet_impact_knife",
+    "melee_hit",
 ];
 
 pub const MELEE_WEAPON: &str = "knife_mp";

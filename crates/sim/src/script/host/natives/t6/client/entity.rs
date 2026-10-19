@@ -1948,6 +1948,18 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         let (b_id, b_num, b_etype) = entity_arg(world, args, 0)?;
         let a_origin = vector_field(world, a_id, "origin");
         let b_origin = vector_field(world, b_id, "origin");
+        let a_model = string_field(world, a_id, "model");
+        let b_model = string_field(world, b_id, "model");
+        let a_half = if matches!(a_etype, ETYPE_PLAYER | ETYPE_ACTOR) {
+            ([-15.0, -15.0, 0.0], [15.0, 15.0, 72.0])
+        } else {
+            ([-4.0, -4.0, 0.0], [4.0, 4.0, 10.0])
+        };
+        let b_half = if matches!(b_etype, ETYPE_PLAYER | ETYPE_ACTOR) {
+            ([-15.0, -15.0, 0.0], [15.0, 15.0, 72.0])
+        } else {
+            ([-4.0, -4.0, 0.0], [4.0, 4.0, 10.0])
+        };
         let touching = with_server(world, |server| {
             let s_a = server_object(server, a_num);
             let s_b = server_object(server, b_num);
@@ -1956,25 +1968,33 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                     .or_else(|| super::super::usable::spawned_box_touches(server, sb, sa))
                     .unwrap_or_else(|| crate::script::host::triggers::is_touching(server, sa, sb));
             }
+            let frame = FrameWorld::from_world(server);
+            for (vol_origin, model, other_origin, other_half) in [
+                (b_origin, b_model.as_str(), a_origin, a_half),
+                (a_origin, a_model.as_str(), b_origin, b_half),
+            ] {
+                let brush = model.strip_prefix('*').and_then(|n| n.parse::<u32>().ok());
+                let trigger_model = model.strip_prefix('?').and_then(|n| n.parse::<u32>().ok());
+                if (brush.is_some() || trigger_model.is_some())
+                    && crate::script::host::triggers::map_volume_touches(
+                        &frame,
+                        vol_origin,
+                        brush,
+                        trigger_model,
+                        std::array::from_fn(|i| other_origin[i] + other_half.0[i]),
+                        std::array::from_fn(|i| other_origin[i] + other_half.1[i]),
+                    )
+                {
+                    return true;
+                }
+            }
             false
         })
         .unwrap_or(false)
-            || {
-                let a_half = if matches!(a_etype, ETYPE_PLAYER | ETYPE_ACTOR) {
-                    ([-15.0, -15.0, 0.0], [15.0, 15.0, 72.0])
-                } else {
-                    ([-4.0, -4.0, 0.0], [4.0, 4.0, 10.0])
-                };
-                let b_half = if matches!(b_etype, ETYPE_PLAYER | ETYPE_ACTOR) {
-                    ([-15.0, -15.0, 0.0], [15.0, 15.0, 72.0])
-                } else {
-                    ([-4.0, -4.0, 0.0], [4.0, 4.0, 10.0])
-                };
-                (0..3).all(|i| {
-                    a_origin[i] + a_half.0[i] <= b_origin[i] + b_half.1[i]
-                        && a_origin[i] + a_half.1[i] >= b_origin[i] + b_half.0[i]
-                })
-            };
+            || (0..3).all(|i| {
+                a_origin[i] + a_half.0[i] <= b_origin[i] + b_half.1[i]
+                    && a_origin[i] + a_half.1[i] >= b_origin[i] + b_half.0[i]
+            });
         Ok(Value::Int(touching.into()))
     });
 

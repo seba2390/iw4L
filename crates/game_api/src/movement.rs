@@ -182,13 +182,19 @@ pub struct WeaponActivity {
     pub switching: bool,
 }
 
-/// A jump, landing or foliage step, with the surface's name.
+/// A jump, landing or movement sound event, with the surface's name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JumpLand {
     Jump(&'static str),
     /// A landing, and whether it hurt.
     Land(&'static str, bool),
     Foliage,
+    Mantle,
+    DiveStart,
+    DiveLand(&'static str),
+    SlideStart(&'static str),
+    SlideStop(&'static str),
+    NightVision(bool),
 }
 
 /// What a player's weapon notifies compare against, kept between frames.

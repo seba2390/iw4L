@@ -1014,6 +1014,7 @@ pub(super) fn leftover_iw5_sounds(
             sz::WEAPON_DEF_SND_RELOAD_PLAYER_OFF,
             328,
         ),
+        ..WeaponSoundAliases::default()
     };
     apply_leftover_default_sound_overrides(&mut sounds);
     sounds

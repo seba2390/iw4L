@@ -537,12 +537,46 @@ fn priority(args: &[Value], index: usize) -> Result<i32, String> {
     }
 }
 
-const STEP_TRIGGER: &str = "t6.csc.sound.step_trigger: IW4L's client game plays no footstep sounds";
+/// Client footstep tables, callbacks and per-step sound/FX flags.
+#[derive(bevy_ecs::prelude::Resource)]
+pub(crate) struct ClientFootstepState {
+    pub(crate) ai_tables: std::collections::BTreeMap<u8, String>,
+    pub(crate) ai_fx_tables: std::collections::BTreeMap<u8, String>,
+    pub(crate) ai_callbacks: std::collections::BTreeSet<u8>,
+    pub(crate) do_sound: bool,
+    pub(crate) do_fx: bool,
+}
+
+impl Default for ClientFootstepState {
+    fn default() -> Self {
+        Self {
+            ai_tables: std::collections::BTreeMap::new(),
+            ai_fx_tables: std::collections::BTreeMap::new(),
+            ai_callbacks: std::collections::BTreeSet::new(),
+            do_sound: true,
+            do_fx: true,
+        }
+    }
+}
+
+const FOOTSTEP_STRINGS: [&str; 7] = [
+    "sprint",
+    "run",
+    "walk",
+    "crouch_run",
+    "crouch_walk",
+    "prone",
+    "ladder_hand",
+];
 
 /// `ent playrumbleonentity(localclientnum, rumble)`: the rumble, by name
 /// (any case) or slot among the server's precached rumbles, on the entity
 /// for the local client once it has a snapshot.
-fn play_rumble(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+pub(super) fn play_rumble(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
     let (id, snapshot) = receiver_entity(world, receiver)?;
     local_client(args, 0)?;
     let slots: Vec<(i32, String)> = with_server(world, |server| {
@@ -857,26 +891,98 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     // usefootsteptable(ai_index, name): binds a footstep sound table to an
     // actor type on the client.
-    registry.register(Function, "usefootsteptable", |_, _, args| {
-        int(args, 0)?;
-        string(args, 1)?;
-        // t6.csc.sound.footsteps: IW4L's client game plays no actor footstep
-        // notetracks.
+    registry.register(Function, "usefootsteptable", |world, _, args| {
+        let index = int(args, 0)? as u8;
+        let name = string(args, 1)?;
+        if index != 0 {
+            world
+                .get_resource_or_insert_with(ClientFootstepState::default)
+                .ai_tables
+                .insert(index, name.to_string());
+        }
         Ok(Value::Undefined)
     });
-    // footstepdoeverything(): footsteps play their sounds and effects for
-    // every entity.
-    registry.register(Function, "footstepdoeverything", |_, _, _| {
-        Err("t6.csc.sound.footsteps: IW4L's client game plays no footsteps".into())
+    // usefootstepfxtable(ai_index, name): binds a footstep FX table to an
+    // actor type on the client.
+    registry.register(Function, "usefootstepfxtable", |world, _, args| {
+        let index = int(args, 0)? as u8;
+        let name = string(args, 1)?;
+        if index != 0 {
+            world
+                .get_resource_or_insert_with(ClientFootstepState::default)
+                .ai_fx_tables
+                .insert(index, name.to_string());
+        }
+        Ok(Value::Undefined)
+    });
+    // scriptcallbackonfootstepevent(ai_index): enables `playaifootstep` on
+    // footstep notetracks for the actor type.
+    registry.register(
+        Function,
+        "scriptcallbackonfootstepevent",
+        |world, _, args| {
+            let index = int(args, 0)? as u8;
+            if index != 0 {
+                world
+                    .get_resource_or_insert_with(ClientFootstepState::default)
+                    .ai_callbacks
+                    .insert(index);
+            }
+            Ok(Value::Undefined)
+        },
+    );
+    // getfootstepstrings(): the 7 movement gait names of a footstep table.
+    registry.register(Function, "getfootstepstrings", |world, _, _| {
+        crate::script::host::arrays::new_array(
+            world,
+            FOOTSTEP_STRINGS.iter().map(|s| Value::string(s)).collect(),
+        )
+    });
+    // footstepdoeverything() / footstepdonothing() / footstepdosound() /
+    // footstepdofootstepfx(): sets the client's footstep sound and FX flags.
+    registry.register(Function, "footstepdoeverything", |world, _, _| {
+        let mut state = world.get_resource_or_insert_with(ClientFootstepState::default);
+        state.do_sound = true;
+        state.do_fx = true;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "footstepdonothing", |world, _, _| {
+        let mut state = world.get_resource_or_insert_with(ClientFootstepState::default);
+        state.do_sound = false;
+        state.do_fx = false;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "footstepdosound", |world, _, _| {
+        world
+            .get_resource_or_insert_with(ClientFootstepState::default)
+            .do_sound = true;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "footstepdofootstepfx", |world, _, _| {
+        world
+            .get_resource_or_insert_with(ClientFootstepState::default)
+            .do_fx = true;
+        Ok(Value::Undefined)
     });
     // ent setsteptriggersound(alias) / ent clearsteptriggersound(): the
-    // alias a footstep in the trigger plays.
-    registry.register(Method, "setsteptriggersound", |_, _, args| {
-        string(args, 0)?;
-        Err(STEP_TRIGGER.into())
+    // alias a sprint or run footstep in the trigger plays.
+    registry.register(Method, "setsteptriggersound", |world, receiver, args| {
+        let (_, number, _) = super::entity::receiver_entity(world, receiver)?;
+        let alias = string(args, 0)?;
+        let mut game = world.get_resource_or_insert_with(ClientGame::default);
+        if alias.is_empty() {
+            game.step_trigger_sounds.remove(&number);
+        } else {
+            game.step_trigger_sounds.insert(number, alias.to_string());
+        }
+        Ok(Value::Undefined)
     });
-    registry.register(Method, "clearsteptriggersound", |_, _, _| {
-        Err(STEP_TRIGGER.into())
+    registry.register(Method, "clearsteptriggersound", |world, receiver, _| {
+        let (_, number, _) = super::entity::receiver_entity(world, receiver)?;
+        if let Some(mut game) = world.get_resource_mut::<ClientGame>() {
+            game.step_trigger_sounds.remove(&number);
+        }
+        Ok(Value::Undefined)
     });
     registry.register(Method, "playrumbleonentity", play_rumble);
 }

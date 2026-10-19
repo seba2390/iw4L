@@ -90,7 +90,7 @@ pub(crate) fn bob_event<W: MoveWorld>(
                 pm.event(event::FOOTSTEP_RUN, 13);
                 pm.ps.pm_flags |= 0x0400_0000;
             } else {
-                pm.event(134, 13);
+                pm.event(event::LADDER_HAND_GRAB, 13);
                 pm.ps.pm_flags &= !0x0400_0000;
             }
         }

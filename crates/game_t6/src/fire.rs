@@ -186,14 +186,6 @@ fn dynents_unknown() -> &'static Unknown {
     )
 }
 
-fn flesh_impacts_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.flesh_impacts",
-        "a bullet's hit on a player or actor shows no impact; Black Ops 2's client draws those from its own trace of the shot",
-        "Black Ops 2's client bullet trace and its body impact effects"
-    )
-}
-
 fn riotshield_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.riotshield_hits",
@@ -231,14 +223,6 @@ fn penetration_table_unknown() -> &'static Unknown {
         "t6.weapons.penetration_table",
         "a bullet's penetration depth is taken as nothing: the match has no penetration table",
         "Black Ops 2's bullet penetration table"
-    )
-}
-
-fn melee_events_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.melee_events",
-        "a melee blow's hit and miss events (sound, blood, the victim's rumble) are not sent",
-        "Black Ops 2's melee events in the runtime's event stream"
     )
 }
 
@@ -328,15 +312,24 @@ pub(crate) fn server_events(
         let &MoveSignal::Event { event, parm } = signal else {
             continue;
         };
-        if let Some(sent) = weapon_event(event) {
-            world.weapon_event(ps.client_num, ps.weapon, sent);
-        }
         let mut shot = Shot {
             ps,
             was,
             zombies,
             gaps: &mut gaps,
         };
+        let weapon = if event == ev::FIRE_WEAPON {
+            shot.shot_weapon(parm, ps.weapon, world)
+        } else {
+            ps.weapon
+        };
+        let clip_only = shot
+            .weapon_bytes(weapon, world)
+            .and_then(|(d, v)| WeaponDefView::new(&d, &v).map(|def| def.clip_only()))
+            .unwrap_or(false);
+        if let Some(sent) = weapon_event(event, parm, clip_only) {
+            world.weapon_event(ps.client_num, weapon, sent);
+        }
         shot.client_event(event, parm, world);
     }
     gaps.sort_by_key(|gap| gap.id);
@@ -345,24 +338,31 @@ pub(crate) fn server_events(
 }
 
 /// The weapon events of a player's movement every client hears.
-fn weapon_event(event: i32) -> Option<WeaponEvent> {
+fn weapon_event(event: i32, parm: i32, clip_only: bool) -> Option<WeaponEvent> {
     Some(match event {
-        ev::FIRE_WEAPON => WeaponEvent::Fire {
+        ev::FIRE_WEAPON => WeaponEvent::FireBurst {
             left: false,
             last_shot: false,
+            parm,
         },
-        ev::FIRE_WEAPON_LASTSHOT => WeaponEvent::Fire {
+        ev::FIRE_WEAPON_LASTSHOT => WeaponEvent::FireBurst {
             left: false,
             last_shot: true,
+            parm,
         },
-        ev::FIRE_WEAPON_LEFT => WeaponEvent::Fire {
+        ev::FIRE_WEAPON_LEFT => WeaponEvent::FireBurst {
             left: true,
             last_shot: false,
+            parm,
         },
-        ev::FIRE_WEAPON_LASTSHOT_LEFT => WeaponEvent::Fire {
+        ev::FIRE_WEAPON_LASTSHOT_LEFT => WeaponEvent::FireBurst {
             left: true,
             last_shot: true,
+            parm,
         },
+        ev::NOAMMO | ev::NOAMMO_LEFT if !clip_only => WeaponEvent::NoAmmo,
+        ev::EJECT_BRASS => WeaponEvent::EjectBrass,
+        ev::MELEE_SWIPE => WeaponEvent::MeleeSwipe,
         ev::RELOAD => WeaponEvent::Reload,
         ev::RELOAD_FROM_EMPTY => WeaponEvent::ReloadFromEmpty,
         ev::RELOAD_START => WeaponEvent::ReloadStart,
@@ -1300,9 +1300,6 @@ impl Shot<'_> {
         let damage =
             (bullet_damage(def, bp.origin, br.hit_pos) as f32 * bp.damage_multiplier) as i32;
         world.damage_triggers(attacker, bp.start, br.hit_pos, damage, MEANS[bp.means]);
-        if impact {
-            self.impact(weapon, bp, br, br.trace.normal, 0, world);
-        }
         if matches!(br.trace.hit, BulletHitType::Glass(_)) {
             self.gaps.push(glass_unknown());
         }
@@ -1326,6 +1323,7 @@ impl Shot<'_> {
                 if location == 1 || location == 2 {
                     flags |= 1;
                 }
+                let alive_before = sentient(entity) && entity.health > 0;
                 self.damage(
                     attacker,
                     entity,
@@ -1343,7 +1341,13 @@ impl Shot<'_> {
                     },
                     world,
                 );
+                if alive_before && world.entity(hit).is_none_or(|e| e.health <= 0) {
+                    flags |= 2;
+                }
             }
+        }
+        if impact {
+            self.impact(weapon, bp, br, br.trace.normal, flags, world);
         }
         if def.bullet_impact_explode() && def.explosion_inner_damage() != 0 {
             let angle = def.damage_cone_angle();
@@ -1382,15 +1386,9 @@ impl Shot<'_> {
         if br.ignore_hit_entity {
             return;
         }
-        let body = br
-            .hit_entity
-            .and_then(|e| world.entity(e))
-            .is_some_and(sentient);
-        if br.sky() || 1.0 <= br.trace.fraction || body {
+        if br.sky() || 1.0 <= br.trace.fraction || br.trace.hit_location == HITLOC_RIOTSHIELD {
             if br.trace.hit_location == HITLOC_RIOTSHIELD {
                 self.gaps.push(riotshield_unknown());
-            } else if body {
-                self.gaps.push(flesh_impacts_unknown());
             }
             return;
         }
@@ -1634,16 +1632,31 @@ impl Shot<'_> {
         else {
             return;
         };
-        self.gaps.push(melee_events_unknown());
+        let knife = def.def_i32(fastfile_t6::weapon::def::GUN_XMODEL) != 0 || def.bayonet();
         let amount = damage + world.rand() % 5;
         let dir = [forward[0], forward[1], forward[2] + MELEE_LIFT];
         let target = hit_id(&trace);
         if target == ENTITY_WORLD {
+            world.weapon_event(me, weapon, WeaponEvent::MeleeMiss { point, knife });
             return;
         }
-        let Some(entity) = world.entity(target).filter(|e| e.takes_damage) else {
+        let Some(entity) = world.entity(target) else {
+            world.weapon_event(me, weapon, WeaponEvent::MeleeMiss { point, knife });
             return;
         };
+        if sentient(entity) {
+            if !(entity.kind == FireEntityKind::Player && trace.hit_location == HITLOC_RIOTSHIELD)
+                && entity.health > 0
+            {
+                world.weapon_event(me, weapon, WeaponEvent::MeleeBlood { point });
+            }
+            world.weapon_event(me, weapon, WeaponEvent::MeleeHit { point, knife });
+        } else {
+            world.weapon_event(me, weapon, WeaponEvent::MeleeMiss { point, knife });
+        }
+        if !entity.takes_damage {
+            return;
+        }
         let mut location = trace.hit_location;
         if location == HITLOC_RIOTSHIELD {
             location = 0;

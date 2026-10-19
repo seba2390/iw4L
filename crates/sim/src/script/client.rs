@@ -192,43 +192,47 @@ pub(crate) enum ClientMessage {
     /// A client exploder the server started (a positive id) or stopped
     /// (a negative one), for every client.
     Exploder(i32),
-    /// The local player stepped (its movement type and surface).
-    Footstep(&'static str, &'static str),
-    /// The local player jumped or landed.
-    JumpLand(game_api::movement::JumpLand),
+    /// A player stepped (client number, movement type and surface).
+    Footstep(u32, &'static str, &'static str),
+    /// A player jumped, landed or triggered a movement event (client number
+    /// and event).
+    JumpLand(u32, game_api::movement::JumpLand),
 }
 
-/// A local player's jump or landing, for its client scripts.
+/// A player's jump, landing or movement event, for the client scripts.
 pub(crate) fn jump_land(
     server: &mut World,
     client: crate::ClientId,
     event: game_api::movement::JumpLand,
 ) {
-    if client.0 != 0
-        || (!server.contains_resource::<ClientScripts>()
-            && !server.contains_resource::<super::host::client_scripts::ClientScripts>())
+    if !server.contains_resource::<ClientScripts>()
+        && !server.contains_resource::<super::host::client_scripts::ClientScripts>()
     {
         return;
     }
     if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
-        runtime.client_messages.push(ClientMessage::JumpLand(event));
+        runtime
+            .client_messages
+            .push(ClientMessage::JumpLand(client.0, event));
     }
 }
 
-/// A local player's footstep, for its client scripts.
+/// A player's footstep, for the client scripts.
 pub(crate) fn footstep(
     server: &mut World,
     client: crate::ClientId,
     kind: &'static str,
     surface: &'static str,
 ) {
-    if client.0 != 0 || !server.contains_resource::<ClientScripts>() {
+    if !server.contains_resource::<ClientScripts>()
+        && !server.contains_resource::<super::host::client_scripts::ClientScripts>()
+    {
         return;
     }
     if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
         runtime
             .client_messages
-            .push(ClientMessage::Footstep(kind, surface));
+            .push(ClientMessage::Footstep(client.0, kind, surface));
     }
 }
 
@@ -1233,7 +1237,10 @@ fn run_frame(
             }
             ClientMessage::Exploder(id) => (callbacks.activate_exploder, vec![Value::Int(id)]),
             // Black Ops calls these for the first person, never quiet.
-            ClientMessage::JumpLand(event) => {
+            ClientMessage::JumpLand(client_num, event) => {
+                if client_num != 0 {
+                    continue;
+                }
                 let player = Value::Object(world.resource::<ClientView>().locals[0].object);
                 match event {
                     game_api::movement::JumpLand::Jump(surface) => (
@@ -1257,10 +1264,13 @@ fn run_frame(
                             Value::Int(hurt.into()),
                         ],
                     ),
-                    game_api::movement::JumpLand::Foliage => continue,
+                    _ => continue,
                 }
             }
-            ClientMessage::Footstep(kind, surface) => {
+            ClientMessage::Footstep(client_num, kind, surface) => {
+                if client_num != 0 {
+                    continue;
+                }
                 let player = world.resource::<ClientView>().locals[0].object;
                 (
                     callbacks.footstep,

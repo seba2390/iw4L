@@ -190,6 +190,11 @@ impl TracerCatalog {
         Ok(())
     }
 
+    pub fn capture_t6(&mut self, def: OwnedTracerDef) {
+        let index = self.published.insert_owned(def);
+        self.last_captured = Some(index);
+    }
+
     /// Ends the build: the tracer definitions travel on without the link map.
     pub fn publish(self) -> TracerDefinitions {
         self.published

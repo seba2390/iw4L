@@ -875,6 +875,11 @@ pub struct WeaponSoundAliases {
 
     pub fire_last_player: Option<String>,
 
+    pub fire_start: Option<String>,
+    pub fire_start_player: Option<String>,
+    pub fire_killcam: Option<String>,
+    pub fire_killcam_player: Option<String>,
+
     leftover_sound_overrides: Vec<LeftoverSoundOverride>,
 
     pub fire_ptr_kind: Option<&'static str>,
@@ -952,6 +957,10 @@ weapon_sound_slots! {
     ProjIgnition => proj_ignition_sound,
     FireLast => fire_last,
     FireLastPlayer => fire_last_player,
+    FireStart => fire_start,
+    FireStartPlayer => fire_start_player,
+    FireKillcam => fire_killcam,
+    FireKillcamPlayer => fire_killcam_player,
     FireLoop => fire_loop,
     FireLoopPlayer => fire_loop_player,
     FireStop => fire_stop,
@@ -1006,6 +1015,10 @@ impl WeaponSoundAliases {
             self.fire_stop_player.as_deref(),
             self.fire_last.as_deref(),
             self.fire_last_player.as_deref(),
+            self.fire_start.as_deref(),
+            self.fire_start_player.as_deref(),
+            self.fire_killcam.as_deref(),
+            self.fire_killcam_player.as_deref(),
         ];
         for slot in slots.into_iter().flatten() {
             if !slot.is_empty() {

@@ -1390,13 +1390,26 @@ pub(super) fn register(registry: &mut NativeRegistry) {
 
     // ent setmaterialoverride(surface) / ent clearmaterialoverride(): sets or
     // clears the entity's footstep surface type override.
-    registry.register(Method, "setmaterialoverride", |_, _, args| {
-        string(args, 0)?;
-        // t6.csc.sound.surface_override: IW4L's client game plays no footstep
-        // sounds for an entity surface material override.
+    registry.register(Method, "setmaterialoverride", |world, receiver, args| {
+        let (_, number, _) = super::entity::receiver_entity(world, receiver)?;
+        let surface = string(args, 0)?;
+        let index = super::super::entity::SURFACES
+            .iter()
+            .position(|s| s.eq_ignore_ascii_case(&surface))
+            .unwrap_or(0) as u8;
+        let mut game = world.get_resource_or_insert_with(super::game::ClientGame::default);
+        if index == 0 {
+            game.material_overrides.remove(&number);
+        } else {
+            game.material_overrides.insert(number, index);
+        }
         Ok(Value::Undefined)
     });
-    registry.register(Method, "clearmaterialoverride", |_, _, _| {
+    registry.register(Method, "clearmaterialoverride", |world, receiver, _| {
+        let (_, number, _) = super::entity::receiver_entity(world, receiver)?;
+        if let Some(mut game) = world.get_resource_mut::<super::game::ClientGame>() {
+            game.material_overrides.remove(&number);
+        }
         Ok(Value::Undefined)
     });
 
