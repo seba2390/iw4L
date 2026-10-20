@@ -75,4 +75,13 @@ if command -v cargo >/dev/null; then
   fi
 fi
 
+# Refresh the port graph (context/re/port_graph.sqlite) for the tree being
+# committed; a parser that no longer reads the source fails here, not in CI.
+if command -v python3 >/dev/null; then
+  if ! python3 "$ROOT/scripts/port_graph.py" build --quiet >&2; then
+    echo 'pre-commit: scripts/port_graph.py build failed.' >&2
+    exit 1
+  fi
+fi
+
 exit 0

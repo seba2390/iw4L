@@ -37,6 +37,11 @@ const SHARED: [(&str, Required); 2] = [
 /// `context/re/.gitignore` and the pre-commit hook.
 const RE_TRACKED: [&str; 5] = [".gitignore", "README.md", "re", "schema.sql", "ghidra"];
 
+/// Derived from the checkout's own `crates/` (`scripts/port_graph.py`), so each
+/// clone builds its own instead of sharing the root's. The build's temp files
+/// (`.port_graph.*`) are the same index half-written.
+const RE_PER_CHECKOUT: &str = "port_graph.sqlite";
+
 const HOOK: &str = include_str!("../githooks/pre-commit");
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -218,7 +223,11 @@ fn re_data(root: &Path) -> Res<Vec<String>> {
     for entry in entries {
         let entry = entry.map_err(|error| format!("reading {}: {error}", dir.display()))?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if RE_TRACKED.contains(&name.as_str()) || name.ends_with(".py") {
+        if RE_TRACKED.contains(&name.as_str())
+            || name.ends_with(".py")
+            || name == RE_PER_CHECKOUT
+            || name.starts_with(".port_graph.")
+        {
             continue;
         }
         out.push(format!("context/re/{name}"));

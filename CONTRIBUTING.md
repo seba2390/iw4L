@@ -70,6 +70,7 @@ ruff check scripts && ruff format --check scripts
 cargo xtask boundary --enforce           # each game runs on its own crates (docs/ARCHITECTURE.md)
 cargo xtask progress                     # README table matches docs/PROGRESS.md
 cargo xtask ledger-guard --base origin/main
+cargo xtask port-graph check --ci        # scripts/port_graph.py still parses the tree
 ```
 
 `cargo xtask lints` counts on whatever platform it runs; CI counts on Linux
