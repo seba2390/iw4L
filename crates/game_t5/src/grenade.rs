@@ -85,14 +85,6 @@ fn grenade_unknown() -> &'static Unknown {
     )
 }
 
-fn ai_grenade_events_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.ai.grenade_events",
-        "actors are not warned of a grenade landing or exploding near them",
-        "Black Ops' grenade danger and explosion notices to actors and their reaction to them"
-    )
-}
-
 fn dvar(world: &dyn FireWorld, name: &str, default: f32) -> f32 {
     world
         .dvar(name)
@@ -579,7 +571,6 @@ fn bounce_off(
         if !def.timed_detonation() {
             state.explode_at = 0;
         }
-        gaps.push(ai_grenade_events_unknown());
         world.notify(missile.entity, "stationary", &[]);
         return true;
     }
@@ -861,7 +852,6 @@ pub(crate) fn explode(
         base: at,
         delta: [0.0; 3],
     };
-    gaps.push(ai_grenade_events_unknown());
     if world.point_contents(at, CONTENTS_WATER) != 0 || !matches!(def.proj_explosion_type(), 0 | 6)
     {
         gaps.push(grenade_unknown());

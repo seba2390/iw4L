@@ -248,6 +248,7 @@ pub(crate) struct ScriptEntity {
     pub linked_to: Option<Link>,
     pub light: f32,
     pub attachments: Vec<(Arc<str>, Arc<str>)>,
+    pub attach_ignore_collision: u32,
     pub contents: i32,
     pub audience: HudAudience,
     pub presence: Option<crate::ScriptModelId>,
@@ -385,6 +386,7 @@ impl RoundScript {
                 linked_to: None,
                 light: 1.0,
                 attachments: Vec::new(),
+                attach_ignore_collision: 0,
                 contents: 0,
                 audience: HudAudience::All,
                 presence: None,
@@ -432,6 +434,7 @@ impl RoundScript {
                 linked_to: None,
                 light: 1.0,
                 attachments: Vec::new(),
+                attach_ignore_collision: 0,
                 contents: 0,
                 audience: HudAudience::All,
                 presence: None,
@@ -479,10 +482,18 @@ impl RoundScript {
             .flatten()
     }
 
+    pub(crate) fn missile_entity(&self, id: crate::ProjectileId) -> Option<u64> {
+        self.entities.iter().find_map(|(object, e)| {
+            matches!(e.kind, EntityKind::Missile(of) if of == id).then_some(*object)
+        })
+    }
+
     pub(crate) fn delete_entity(&mut self, id: u64) {
         self.actor_anims.remove(&id);
         self.actor_brains.remove(&id);
         self.actor_moves.remove(&id);
+        self.t5.blood_impact.remove(&id);
+        self.t5.ai_event_listeners.retain(|(e, _)| *e != id);
         super::actor_dog::release(self, id);
         if let Some(client) = self.player_client(id) {
             self.release_trigger_claims(client);

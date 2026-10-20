@@ -222,6 +222,7 @@ pub(crate) const T5_ZOMBIE: &[Builtin] = &[
     Builtin::new(Method, "reacquiremove", Entity, false),
     Builtin::new(Method, "reacquirestep", Entity, false),
     Builtin::new(Method, "reloadbuttonpressed", Entity, false),
+    Builtin::new(Method, "removeaieventlistener", Entity, false),
     Builtin::new(Method, "removevehiclefromcompass", Entity, false),
     Builtin::new(Method, "resetadswidthandlerp", Entity, false),
     Builtin::new(Method, "resetmissiledetonationtime", Entity, false),

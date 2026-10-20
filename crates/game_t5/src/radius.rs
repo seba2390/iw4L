@@ -1,7 +1,7 @@
 //! Black Ops' blasts: damage falling off from the blast's origin to what the
 //! blast can see, a body's half eye height or a model's bounds.
 
-use game_api::fire::{FireEntity, FireEntityKind, FireWorld, RadiusDamage};
+use game_api::fire::{AiEvent, AiPointEvent, FireEntity, FireEntityKind, FireWorld, RadiusDamage};
 use game_api::{Unknown, unknown};
 
 use crate::fire::{Hit, damage, means_index, sentient};
@@ -16,14 +16,6 @@ const BLAST_FLAGS: i32 = 0x5;
 /// How far to either side of a body a blast looks: an actor's, a player's.
 const ACTOR_SIDE: f32 = 15.0;
 const PLAYER_SIDE: f32 = 8.0;
-
-fn ai_explosion_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.ai.explosion_events",
-        "actors are not told of explosions near them",
-        "Black Ops' AI event broadcast for explosions and the actors' reaction to it"
-    )
-}
 
 pub(crate) fn blast_effects_unknown() -> &'static Unknown {
     unknown!(
@@ -214,7 +206,13 @@ pub(crate) fn radius_damage(
     blast: &RadiusDamage,
     world: &mut dyn FireWorld,
 ) -> Vec<&'static Unknown> {
-    let mut gaps = vec![ai_explosion_unknown(), blast_effects_unknown()];
+    let mut gaps = vec![blast_effects_unknown()];
+    world.ai_event(AiEvent::Point {
+        originator: blast.attacker,
+        kind: AiPointEvent::Explosion,
+        teams: Some(0xe),
+        origin: blast.origin,
+    });
     let radius = blast.radius.max(1.0);
     let reach = radius * 1.41421354;
     let o = blast.origin;

@@ -9,6 +9,15 @@ use crate::script::{Arc, BTreeMap, NativeRegistry, RoundScript, StringTable, Val
 use crate::world::ClientId;
 use bevy_ecs::prelude::World;
 
+/// Which blood effect a bullet impact on a flesh entity plays (`bloodimpact`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum BloodImpact {
+    #[default]
+    Normal,
+    None,
+    Hero,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct T5State {
     influencers: BTreeMap<i32, Influencer>,
@@ -19,6 +28,8 @@ pub(crate) struct T5State {
     pub(crate) client_flags: BTreeMap<u64, u16>,
     pub(crate) has_eyes: std::collections::BTreeSet<u64>,
     pub(crate) transmit_targetname: std::collections::BTreeSet<u64>,
+    pub(crate) blood_impact: BTreeMap<u64, BloodImpact>,
+    pub(crate) ai_event_listeners: Vec<(u64, u32)>,
     dstats: BTreeMap<(u32, String), Value>,
     /// Each player's score multiplier (`setscoremultiplier`), by client.
     score_multipliers: BTreeMap<u32, i32>,
@@ -325,16 +336,15 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
     if let Some(Value::String(means)) = args.get(4) {
         let means = super::super::entity_damage::means_named(means).unwrap_or("MOD_UNKNOWN");
         let hitloc = match args.get(5) {
-            Some(Value::String(name)) => weapon_iw4::HITLOC_NAMES
-                .iter()
-                .position(|&known| known.as_bytes() == name.as_bytes())
-                .map_or(0, |i| i as u8),
+            Some(Value::String(name)) => crate::script_player::hit_location_index(name),
             _ => 0,
         };
-        world
-            .resource_mut::<RoundScript>()
-            .hits
-            .push(crate::script::ScriptHit {
+        let weapon = attacker
+            .and_then(|c| FrameWorld::from_world(world).player(c).map(|ps| ps.weapon))
+            .unwrap_or(0);
+        apply_do_damage(
+            world,
+            crate::script::ScriptHit {
                 piece: None,
                 target,
                 amount,
@@ -343,10 +353,11 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
                 attacker_object,
                 inflictor,
                 means,
-                weapon: 0,
+                weapon,
                 flags: 0,
                 hitloc,
-            });
+            },
+        );
         return Ok(Value::Undefined);
     }
     let on_head = optional(args, 4, int)?.unwrap_or(0) != 0;
@@ -359,20 +370,18 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
         Some(name) if name != "none" => {
             crate::script_player::weapon_named(&FrameWorld::from_world(world), &name)?
         }
-        _ => 0,
+        _ => attacker
+            .and_then(|c| FrameWorld::from_world(world).player(c).map(|ps| ps.weapon))
+            .unwrap_or(0),
     };
     let hitloc = if on_head {
-        weapon_iw4::HITLOC_NAMES
-            .iter()
-            .position(|&name| name == "head")
-            .map_or(0, |i| i as u8)
+        crate::script_player::hit_location_index("head")
     } else {
         0
     };
-    world
-        .resource_mut::<RoundScript>()
-        .hits
-        .push(crate::script::ScriptHit {
+    apply_do_damage(
+        world,
+        crate::script::ScriptHit {
             piece: None,
             target,
             amount,
@@ -384,8 +393,50 @@ fn do_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
             weapon,
             flags,
             hitloc,
-        });
+        },
+    );
     Ok(Value::Undefined)
+}
+
+fn apply_do_damage(world: &mut World, hit: crate::script::ScriptHit) {
+    if let crate::script::HitTarget::Entity(target) = hit.target
+        && hit.piece.is_none()
+    {
+        let (inflictor, at) = {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            let inflictor = hit.inflictor.and_then(|id| runtime.presented_by(id));
+            let at = match runtime
+                .presented_by(target)
+                .map(|o| runtime.object_field(o, "origin"))
+            {
+                Some(Value::Vector(at)) => at,
+                _ => hit.origin,
+            };
+            (inflictor, at)
+        };
+        let hit_location = crate::script_player::hit_location_name(hit.hitloc);
+        super::super::entity_damage::damage_entity(
+            world,
+            &super::super::entity_damage::EntityHit {
+                target,
+                amount: hit.amount,
+                attacker: hit.attacker,
+                attacker_object: hit.attacker_object,
+                means: hit.means,
+                weapon: hit.weapon,
+                point: hit.origin,
+                dir: std::array::from_fn(|i| at[i] - hit.origin[i]),
+                bone: None,
+                flags: hit.flags,
+                hit_location: Some(hit_location),
+                part: Some(hit.hitloc),
+                inflictor,
+                time_offset: 0,
+            },
+        );
+        return;
+    }
+    world.resource_mut::<RoundScript>().hits.push(hit);
 }
 
 pub(crate) fn player_id(world: &World, receiver: &Value) -> Result<u32, String> {

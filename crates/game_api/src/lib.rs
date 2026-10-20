@@ -94,6 +94,9 @@ pub struct ClientCallbacks {
     /// A non-dog zombie actor's eye-glow flag (`haseyes`) changed:
     /// `self = actor, (local client, has_eyes)`.
     pub zombie_eye: &'static str,
+    /// An entity plays its death effect for a weapon (`playweapondeatheffects`):
+    /// `self = entity, (local client, weapon, userdata)`.
+    pub play_weapon_death_effects: &'static str,
     /// A one-shot client trigger was touched: `self = trigger`.
     pub trigger_delete: &'static str,
 }

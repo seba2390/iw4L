@@ -140,6 +140,7 @@ impl game_api::GameScripts for T5 {
             client_flag: "clientscripts/_callbacks::client_flag_callback",
             client_flag_as_val: "clientscripts/_callbacks::client_flagasval_callback",
             zombie_eye: "clientscripts/_zombiemode::zombie_eye_callback",
+            play_weapon_death_effects: "clientscripts/_callbacks::codecallback_playweapondeatheffects",
             trigger_delete: "codescripts/delete::main",
         })
     }

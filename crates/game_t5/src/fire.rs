@@ -5,8 +5,8 @@
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
-    ActorMelee, BulletHitType, BulletImpact, BulletTrace, FireDamage, FireEntity, FireEntityKind,
-    FireWorld, NotifyArg, WeaponEvent,
+    ActorMelee, AiEvent, AiLineEvent, AiPointEvent, BulletHitType, BulletImpact, BulletTrace,
+    FireDamage, FireEntity, FireEntityKind, FireWorld, NotifyArg, WeaponEvent,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
@@ -167,14 +167,6 @@ fn stack_fire_unknown() -> &'static Unknown {
         "t5.weapons.stack_fire",
         "a stacked-barrel weapon's per-barrel spread and yaw offsets are not applied",
         "the spread scale Black Ops' spread function takes for stacked fire"
-    )
-}
-
-fn ai_events_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.ai.bullet_events",
-        "actors are not told of bullets passing near them",
-        "Black Ops' AI event broadcast for bullets and the actors' reaction to it"
     )
 }
 
@@ -1256,7 +1248,40 @@ impl Bullets<'_> {
         world: &mut dyn FireWorld,
     ) -> u8 {
         let attacker = self.attacker();
-        self.gaps.push(ai_events_unknown());
+        if world.entity(self.attacker).is_some_and(sentient) {
+            if bp.damage_multiplier == 1.0 {
+                world.ai_event(AiEvent::Point {
+                    originator: self.attacker,
+                    kind: if def.silenced() {
+                        AiPointEvent::SilencedShot
+                    } else {
+                        AiPointEvent::Gunshot
+                    },
+                    teams: None,
+                    origin: bp.origin,
+                });
+            }
+            let d = sub(br.hit_pos, bp.origin);
+            let len = (d[2] * d[2] + d[0] * d[0] + d[1] * d[1]).sqrt();
+            let len = if -len >= 0.0 { 1.0 } else { len };
+            let inv = 1.0 / len;
+            let end = [
+                inv * d[0] * 200.0 + br.hit_pos[0],
+                inv * d[1] * 200.0 + br.hit_pos[1],
+                d[2] * inv * 200.0 + br.hit_pos[2],
+            ];
+            let friendly = world
+                .dvar("ai_friendlySuppression")
+                .is_none_or(|v| v.trim() != "0");
+            world.ai_event(AiEvent::Line {
+                originator: self.attacker,
+                hit: br.hit_entity.unwrap_or(ENTITY_NONE),
+                kind: AiLineEvent::Bullet,
+                teams: friendly.then_some(0xe),
+                start: bp.origin,
+                end,
+            });
+        }
         let damage = bullet_damage(def, bp, br);
         world.damage_triggers(attacker, bp.start, br.hit_pos, damage, MEANS[bp.means]);
         let mut out_flags = 0u8;

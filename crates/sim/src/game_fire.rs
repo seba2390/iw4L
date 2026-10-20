@@ -573,6 +573,22 @@ impl FireWorld for MatchFireWorld<'_, '_> {
     }
 
     fn impact(&mut self, impact: &BulletImpact) {
+        let mut surf_type = impact.surface_type;
+        if impact.entity != ENTITY_NONE
+            && surf_type == 7
+            && let Some(object) = self.object_of(impact.entity)
+            && let Some(mode) = self
+                .world
+                .ecs_ref()
+                .get_resource::<crate::script::RoundScript>()
+                .and_then(|runtime| runtime.t5.blood_impact.get(&object).copied())
+        {
+            match mode {
+                crate::script::host::natives::t5::BloodImpact::None => return,
+                crate::script::host::natives::t5::BloodImpact::Hero => surf_type = 0x1b,
+                crate::script::host::natives::t5::BloodImpact::Normal => {}
+            }
+        }
         let segment = self.segment;
         self.segment = self.segment.saturating_add(1);
         let mut surface_flags = impact.surface_flags;
@@ -590,7 +606,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             start: impact.start,
             end: impact.point,
             normal: impact.normal,
-            surf_type: impact.surface_type,
+            surf_type,
             surface_flags,
             flesh_flags: if impact.entity == ENTITY_NONE {
                 0
@@ -903,6 +919,35 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             runtime.set_object_field(object, "origin", crate::script::Value::Vector(origin));
             runtime.set_object_field(object, "angles", crate::script::Value::Vector(angles));
         }
+    }
+
+    fn ai_event(&mut self, event: game_api::fire::AiEvent) {
+        let (originator, hit) = match event {
+            game_api::fire::AiEvent::Point { originator, .. } => {
+                (self.entity_object_or_player(originator), None)
+            }
+            game_api::fire::AiEvent::Line {
+                originator, hit, ..
+            } => (
+                self.entity_object_or_player(originator),
+                self.entity_object_or_player(hit),
+            ),
+        };
+        crate::script::host::actors::broadcast_ai_event(self.world.ecs(), event, originator, hit);
+    }
+}
+
+impl MatchFireWorld<'_, '_> {
+    fn entity_object_or_player(&mut self, entity: i32) -> Option<u64> {
+        if let Some(client) = self.client(entity) {
+            let object =
+                crate::script::host::players::player_object(self.world.ecs_ref(), client.0);
+            if let crate::script::Value::Object(id) = object {
+                return Some(id);
+            }
+        }
+        self.object_of(entity)
+            .or_else(|| self.adopt_missile(entity))
     }
 }
 

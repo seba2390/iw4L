@@ -1675,6 +1675,7 @@ fn register_attachments(registry: &mut NativeRegistry) {
         let tag: Arc<str> = optional(args, 1, string)?
             .unwrap_or_else(String::new)
             .into();
+        let ignore = optional(args, 2, int)?.unwrap_or(0) != 0;
         let id = entity_id(world, receiver)?;
         let mut runtime = runtime(world);
         let entity = runtime.entities.get_mut(&id).unwrap();
@@ -1684,6 +1685,10 @@ fn register_attachments(registry: &mut NativeRegistry) {
             .any(|(m, t)| *m == model && *t == tag)
         {
             return Err(format!("model '{model}' already attached to tag '{tag}'"));
+        }
+        let slot = entity.attachments.len();
+        if ignore && slot < 32 {
+            entity.attach_ignore_collision |= 1 << slot;
         }
         entity.attachments.push((model, tag));
         Ok(Value::Undefined)
@@ -1700,10 +1705,22 @@ fn register_attachments(registry: &mut NativeRegistry) {
             .position(|(m, t)| *m == model && tag.as_ref().is_none_or(|tag| t == tag))
             .ok_or_else(|| format!("model '{model}' is not attached"))?;
         entity.attachments.remove(index);
+        if index < 32 {
+            let low = entity.attach_ignore_collision & ((1u32 << index) - 1);
+            let high = if index < 31 {
+                (entity.attach_ignore_collision >> (index + 1)) << index
+            } else {
+                0
+            };
+            entity.attach_ignore_collision = low | high;
+        }
         Ok(Value::Undefined)
     });
     registry.register(Method, "detachall", |world, receiver, _| {
-        with_entity(world, receiver, |e| e.attachments.clear())
+        with_entity(world, receiver, |e| {
+            e.attachments.clear();
+            e.attach_ignore_collision = 0;
+        })
     });
     registry.register(Method, "getattachsize", |world, receiver, _| {
         let id = entity_id(world, receiver)?;

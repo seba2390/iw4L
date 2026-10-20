@@ -1996,10 +1996,13 @@ impl SimState {
             let Some(ps) = player(*id) else {
                 continue;
             };
+            let (mins, maxs) = self.move_bounds(*id).unwrap_or((PLAYER_MINS, PLAYER_MAXS));
             if let Some(pose) = reuse.iter().find(|pose| {
                 pose.client == *id
                     && pose.life_sequence == meta.life_sequence
                     && pose.origin == ps.origin
+                    && pose.mins == mins
+                    && pose.maxs == maxs
                     && pose.viewangles == ps.viewangles
                     && pose.shield == meta.shield
             }) {
@@ -2016,8 +2019,8 @@ impl SimState {
             poses.push(PlayerCollisionPose {
                 client: *id,
                 origin: ps.origin,
-                mins: PLAYER_MINS,
-                maxs: PLAYER_MAXS,
+                mins,
+                maxs,
                 life_sequence: meta.life_sequence,
                 hit_volume: HitVolumeKind::Standing,
                 bones,

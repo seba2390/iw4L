@@ -155,6 +155,13 @@ fn apply_entity_blast(world: &mut FrameWorld, blast: &ExplosionBlast) {
         return;
     }
     let means = crate::script_player::means(world, blast.source, blast.weapon, 0, true);
+    let inflictor = match blast.source {
+        DamageSource::Projectile(id) => world
+            .ecs_ref()
+            .get_resource::<crate::script::RoundScript>()
+            .and_then(|r| r.missile_entity(id)),
+        _ => None,
+    };
     for (target, mid, dist) in
         crate::script::radius_targets(world.ecs(), blast.origin, blast.radius)
     {
@@ -184,9 +191,9 @@ fn apply_entity_blast(world: &mut FrameWorld, blast: &ExplosionBlast) {
                 dir: std::array::from_fn(|i| mid[i] - blast.origin[i]),
                 bone: None,
                 flags: IDFLAGS_RADIUS,
-                hit_location: None,
+                hit_location: Some("none"),
                 part: None,
-                inflictor: None,
+                inflictor,
                 time_offset: 0,
             },
         );

@@ -195,8 +195,23 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     // physics, weapon hide-tags on display models, the transporter screen
     // effect, save games and network stat reports.
     register_actor(registry);
+    registry.register(Method, "addaieventlistener", |world, receiver, args| {
+        let entity = super::engine::entity_id(world, receiver)?;
+        let name = super::super::args::string(args, 0)?;
+        super::super::actors::add_ai_event_listener(world, entity, &name)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "removeaieventlistener", |world, receiver, args| {
+        let entity = super::engine::entity_id(world, receiver)?;
+        let name = if args.is_empty() {
+            None
+        } else {
+            Some(super::super::args::string(args, 0)?)
+        };
+        super::super::actors::remove_ai_event_listener(world, entity, name.as_deref())?;
+        Ok(Value::Undefined)
+    });
     for name in [
-        "addaieventlistener",
         "setthreatbiasgroup",
         "setteamforentity",
         "setengagementmindist",
@@ -232,9 +247,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             == Value::Object(target);
         Ok(Value::Int(looking.into()))
     });
-    // `ent PlayWeaponDeathEffects(weapon, [int])`: Black Ops sends the
-    // entity's weapon death effect event to its clients, which is not sent
-    // here.
+    // `ent PlayWeaponDeathEffects(weapon, [int])`: sends the entity's weapon
+    // death effect event (0xc1) to the client's `CodeCallback_PlayWeaponDeathEffects`.
     registry.register(Method, "playweapondeatheffects", |world, receiver, args| {
         if args.is_empty() {
             return Err("PlayWeaponDeathEffects <weaponName>.\n".into());
@@ -248,10 +262,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 "PlayWeaponDeathEffects called with unknown weapon name {name}\n"
             ));
         }
-        super::engine::entity_id(world, receiver)?;
-        if args.len() == 2 {
-            super::super::args::int(args, 1)?;
-        }
+        let entity = super::engine::entity_id(world, receiver)?;
+        let userdata = if args.len() == 2 {
+            i32::from(super::super::args::int(args, 1)? as i16)
+        } else {
+            0
+        };
+        crate::script::client::weapon_death_effects(world, entity, name, userdata);
         Ok(Value::Undefined)
     });
     // `ent SetSpawnerTeam(team)`: an AI spawner's team.
@@ -917,19 +934,30 @@ fn register_actor(registry: &mut NativeRegistry) {
         };
         Ok(Value::Vector(velocity))
     });
-    // `BloodImpact("none" | "normal" | "hero")` picks the blood an entity's
-    // hits show; the client event that carries it is not sent (ledgered).
+    // `BloodImpact("none" | "normal" | "hero")` sets which blood impact
+    // effect a flesh hit on the entity plays (client event 0x4f).
     registry.register(Method, "bloodimpact", |world, receiver, args| {
-        super::engine::entity_id(world, receiver)?;
+        let entity = super::engine::entity_id(world, receiver)?;
         if args.is_empty() {
             return Err("BloodImpact() called without an argument\n".into());
         }
-        match super::super::args::string(args, 0)?.as_str() {
-            "none" | "normal" | "hero" => Ok(Value::Undefined),
-            _ => Err(
-                "BloodImpact() only takes \"normal\", \"hero\" or \"none\" as parameters.\n".into(),
-            ),
-        }
+        let mode = match super::super::args::string(args, 0)?.as_str() {
+            "none" => super::t5::BloodImpact::None,
+            "normal" => super::t5::BloodImpact::Normal,
+            "hero" => super::t5::BloodImpact::Hero,
+            _ => {
+                return Err(
+                    "BloodImpact() only takes \"normal\", \"hero\" or \"none\" as parameters.\n"
+                        .into(),
+                );
+            }
+        };
+        world
+            .resource_mut::<RoundScript>()
+            .t5
+            .blood_impact
+            .insert(entity, mode);
+        Ok(Value::Int(1))
     });
     registry.register(Method, "getplayerviewheight", |world, receiver, _| {
         let client = super::player::player(world, receiver)?;

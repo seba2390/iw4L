@@ -269,6 +269,56 @@ pub trait FireWorld {
     /// Updates an entity's script origin and angles before a notify wakes
     /// threads that read them.
     fn set_entity_pose(&mut self, _entity: i32, _origin: [f32; 3], _angles: [f32; 3]) {}
+
+    /// Broadcasts an AI perception event to actors and script AI event
+    /// listeners (`addAIEventListener`).
+    fn ai_event(&mut self, _event: AiEvent) {}
+}
+
+/// An AI perception event a shot, missile, grenade or explosion broadcasts
+/// to actors and script AI event listeners (`addAIEventListener`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AiEvent {
+    /// A point event at `origin` from `originator`, for teams in `teams`
+    /// (`None` = the originator's opposing team).
+    Point {
+        originator: i32,
+        kind: AiPointEvent,
+        teams: Option<u8>,
+        origin: [f32; 3],
+    },
+    /// A line event from `start` to `end` from `originator`, for teams in
+    /// `teams` (`None` = the originator's opposing team).
+    Line {
+        originator: i32,
+        hit: i32,
+        kind: AiLineEvent,
+        teams: Option<u8>,
+        start: [f32; 3],
+        end: [f32; 3],
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiPointEvent {
+    /// Event 8: `explosion` (`ai_eventDistExplosion` 1024).
+    Explosion,
+    /// Event 9: `grenade_ping` (`ai_eventDistGrenadePing` 512, `"grenade danger"`).
+    GrenadePing { no_ping: bool },
+    /// Event 10: `projectile_ping` (`ai_eventDistProjPing` 128, `"grenade danger"`).
+    ProjectilePing { no_ping: bool },
+    /// Event 11: `gunshot` (`ai_eventDistGunShot` 2048).
+    Gunshot,
+    /// Event 12: `silenced_shot` (`ai_eventDistSilencedShot` 128).
+    SilencedShot,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiLineEvent {
+    /// Event 15: `bullet` (`ai_eventDistBullet` 96, z 45, `"bulletwhizby"`).
+    Bullet,
+    /// Event 18: `projectile_impact` (`ai_eventDistProjImpact` 256, z 45, `"projectile_impact"`).
+    ProjectileImpact,
 }
 
 /// How a game launches, moves and detonates its missiles, even while a mode
