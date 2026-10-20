@@ -75,7 +75,11 @@ CREATE INDEX gsc_name ON gsc_calls(name);
 CREATE INDEX ledger_id ON ledger_items(id);
 CREATE INDEX ledger_ref_id ON ledger_code_refs(id);
 CREATE INDEX events_name ON entity_events(event_name);
+CREATE TABLE entity_event_triggers(action TEXT, event_type TEXT, file TEXT, line INT);
+CREATE TABLE bevy_observers(event_type TEXT, fn_name TEXT, file TEXT, line INT);
 CREATE INDEX actions_name ON entity_event_actions(action);
+CREATE INDEX triggers_action ON entity_event_triggers(action);
+CREATE INDEX observers_type ON bevy_observers(event_type);
 """
 
 GAMES = ("iw4", "iw5", "t5", "t6", "t7")
@@ -171,6 +175,9 @@ def fingerprint(root: Path) -> str:
                 h.update(
                     f"a:{md.relative_to(art)}:{st.st_mtime_ns}:{st.st_size}\n".encode()
                 )
+        for pkl in sorted((root / "context" / "re").glob("*_funcs.pkl")):
+            st = pkl.stat()
+            h.update(f"p:{pkl.name}:{st.st_mtime_ns}:{st.st_size}\n".encode())
         raw = root / "context" / "re" / "raw"
         if raw.is_dir():
             n = sum(1 for p in raw.rglob("*") if p.suffix in (".gsc", ".csc"))
@@ -797,10 +804,11 @@ def _event_role(path: str) -> str:
     return "other"
 
 
-def scan_crates(root: Path) -> tuple[list[tuple], list[tuple], list[tuple]]:
-    """(ledger_code_refs, entity_events, entity_event_actions) over `crates/`."""
-    refs, events, actions = set(), set(), set()
-    probe = re.compile(r"unknown!\(|EntityEvent|\"(?:" + "|".join(GAMES) + r")\.")
+def scan_crates(root: Path) -> dict[str, list[tuple]]:
+    """ledger_code_refs, entity_events, entity_event_actions, the `net` arms that
+    trigger an observer event per action, and every Bevy `On<…>` observer."""
+    refs, events, actions, triggers, observers = set(), set(), set(), set(), set()
+    probe = re.compile(r"unknown!\(|EntityEvent|On<|\"(?:" + "|".join(GAMES) + r")\.")
     for path in rust_files(root, "crates"):
         raw = path.read_text(encoding="utf-8", errors="replace")
         if not probe.search(raw):
@@ -835,7 +843,33 @@ def scan_crates(root: Path) -> tuple[list[tuple], list[tuple], list[tuple]]:
                     src_lines[line - 1].strip()[:160] if line <= len(src_lines) else ""
                 )
                 actions.add((m.group(1), role, rel_path, line, detail))
-    return sorted(refs), sorted(events), sorted(actions)
+        if role == "dispatch":
+            for m in re.finditer(r"EntityEventAction::(\w+)\)\s*=>\s*\{", text):
+                body = text[m.end() - 1 : balanced(text, m.end() - 1)]
+                t = re.search(r"\.trigger\(\s*([\w:]+)\s*[{(]", body)
+                if t:
+                    at = m.end() - 1 + t.start(1)
+                    triggers.add(
+                        (m.group(1), t.group(1).split("::")[-1], rel_path, lines.at(at))
+                    )
+        fns = [(m.start(), m.group(1)) for m in _FN.finditer(text)]
+        for m in re.finditer(r"\b\w+\s*:\s*On<\s*([\w:]+)", text):
+            owner = [n for a, n in fns if a < m.start()]
+            observers.add(
+                (
+                    m.group(1).split("::")[-1],
+                    owner[-1] if owner else "",
+                    rel_path,
+                    lines.at(m.start()),
+                )
+            )
+    return {
+        "ledger_code_refs": sorted(refs),
+        "entity_events": sorted(events),
+        "entity_event_actions": sorted(actions),
+        "entity_event_triggers": sorted(triggers),
+        "bevy_observers": sorted(observers),
+    }
 
 
 # ---------------------------------------------------------------- local tables
@@ -863,6 +897,8 @@ def scan_local(root: Path) -> dict[str, list[tuple]]:
         {(g, r, k, t, n, a, d, decomp.get(a, "")) for g, r, k, t, n, a, d in exe}
     )
     out["decomp_files"] = sorted(decomp.items())
+    if hasattr(re_tables, "extract_pkl_edges"):
+        edges = list(edges) + re_tables.extract_pkl_edges(root)
     out["call_edges"] = sorted(set(edges))
     out["journal_refs"] = sorted(set(re_tables.extract_journal_refs(root)))
     known = {row[4] for row in exe}
@@ -880,10 +916,7 @@ def build(root: Path, db: Path, quiet: bool = False) -> None:
         "rust_natives": scan_natives(root),
         "ledger_items": scan_ledgers(root),
     }
-    refs, events, actions = scan_crates(root)
-    tables["ledger_code_refs"] = refs
-    tables["entity_events"] = events
-    tables["entity_event_actions"] = actions
+    tables.update(scan_crates(root))
     tables.update(scan_local(root))
 
     db.parent.mkdir(parents=True, exist_ok=True)
@@ -985,13 +1018,16 @@ def journal_for(con: sqlite3.Connection, tokens_: list[str], limit: int) -> None
     show("journal", rows, lambda r: f"{r[0]}:{r[1]}  § {r[2]}", limit)
 
 
-def callees_line(con: sqlite3.Connection, addr: str) -> str:
+def callees_line(con: sqlite3.Connection, addr: str, which: str = "bo") -> str:
+    """Callees of `addr` in one binary (`bo` is the one the builtin tables and
+    `filled/c/bo/` describe; `mp` addresses are another image)."""
+    decomp = "d.path IS NOT NULL" if which == "bo" else "0"
     rows = con.execute(
-        "SELECT e.callee, d.path IS NOT NULL, x.name FROM call_edges e "
+        f"SELECT e.callee, {decomp}, x.name FROM call_edges e "
         "LEFT JOIN decomp_files d ON d.addr = e.callee "
-        "LEFT JOIN exe_builtins x ON x.addr = e.callee "
-        "WHERE e.caller = ? GROUP BY e.callee ORDER BY e.callee",
-        (addr,),
+        "LEFT JOIN exe_builtins x ON x.addr = e.callee AND e.which = 'bo' "
+        "WHERE e.caller = ? AND e.which = ? GROUP BY e.callee ORDER BY e.callee",
+        (addr, which),
     ).fetchall()
     if not rows:
         return ""
@@ -1080,10 +1116,20 @@ def cmd_builtin(con: sqlite3.Connection, names: list[str], game: str) -> None:
         print()
 
 
-def cmd_addr(con: sqlite3.Connection, addrs: list[str]) -> None:
+def cmd_addr(con: sqlite3.Connection, addrs: list[str], which: str) -> None:
     for raw in addrs:
         addr = norm_addr(raw)
-        print(f"== {addr}")
+        print(f"== {addr} ({which})")
+        if which != "bo":
+            callers = con.execute(
+                "SELECT caller FROM call_edges WHERE callee = ? AND which = ? "
+                "GROUP BY caller ORDER BY caller",
+                (addr, which),
+            ).fetchall()
+            show("callers", callers, lambda r: r[0], 20)
+            print(f"  {'callees':<10} {callees_line(con, addr, which) or '-'}")
+            print()
+            continue
         rows = con.execute(
             "SELECT game, realm, kind, table_label, name FROM exe_builtins WHERE addr = ?",
             (addr,),
@@ -1101,7 +1147,7 @@ def cmd_addr(con: sqlite3.Connection, addrs: list[str]) -> None:
         callers = con.execute(
             "SELECT e.caller, x.name FROM call_edges e "
             "LEFT JOIN exe_builtins x ON x.addr = e.caller "
-            "WHERE e.callee = ? GROUP BY e.caller ORDER BY e.caller",
+            "WHERE e.callee = ? AND e.which = 'bo' GROUP BY e.caller ORDER BY e.caller",
             (addr,),
         ).fetchall()
         show("callers", callers, lambda r: f"{r[0]}{f' ({r[1]})' if r[1] else ''}", 20)
@@ -1262,18 +1308,29 @@ def cmd_event(con: sqlite3.Connection, name: str | None) -> None:
         if m:
             acts.add(m.group(1))
     for act in sorted(acts):
-        rows = con.execute(
-            "SELECT file, line, detail FROM entity_event_actions WHERE action = ? "
-            "AND detail NOT LIKE '%EntityEventDispatch::%' ORDER BY file, line",
+        trig = con.execute(
+            "SELECT event_type, file, line FROM entity_event_triggers WHERE action = ? "
+            "ORDER BY file, line",
             (act,),
         ).fetchall()
         show(
             f"→ {act}",
-            rows,
-            lambda r: f"{r[0]}:{r[1]}  {r[2]}",
-            12,
-            empty="no observer",
+            trig,
+            lambda r: f"triggers {r[0]}  {r[1]}:{r[2]}",
+            empty="no trigger arm",
         )
+        for event_type in sorted({r[0] for r in trig}):
+            obs = con.execute(
+                "SELECT fn_name, file, line FROM bevy_observers WHERE event_type = ? "
+                "ORDER BY file, line",
+                (event_type,),
+            ).fetchall()
+            show(
+                "  observer",
+                obs,
+                lambda r, t=event_type: f"On<{t}> {r[0]}  {r[1]}:{r[2]}",
+                empty="no observer",
+            )
 
 
 def cmd_sql(con: sqlite3.Connection, query: str) -> None:
@@ -1290,7 +1347,14 @@ def cmd_check(root: Path, db: Path, ci: bool) -> int:
     ensure_fresh(root, db)
     con = read_only(db)
     problems = []
-    for table in ("catalog_builtins", "rust_natives", "ledger_items", "entity_events"):
+    for table in (
+        "catalog_builtins",
+        "rust_natives",
+        "ledger_items",
+        "entity_events",
+        "entity_event_triggers",
+        "bevy_observers",
+    ):
         n = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         if n == 0:
             problems.append(
@@ -1341,6 +1405,7 @@ def main(argv: list[str]) -> int:
         "addr", help="a handler address: builtin, decomp, callers, journal"
     )
     p.add_argument("addrs", nargs="+")
+    p.add_argument("--which", choices=("bo", "mp"), default="bo")
     p = sub.add_parser("unimplemented", help="catalog builtins with no working native")
     p.add_argument("--game", default="t5")
     p.add_argument("--realm", choices=("server", "client"))
@@ -1370,7 +1435,7 @@ def main(argv: list[str]) -> int:
         if args.cmd == "builtin":
             cmd_builtin(con, args.names, args.game)
         elif args.cmd == "addr":
-            cmd_addr(con, args.addrs)
+            cmd_addr(con, args.addrs, args.which)
         elif args.cmd == "unimplemented":
             cmd_unimplemented(con, args.game, args.realm, args.limit, args.no_dev)
         elif args.cmd == "ledger":
