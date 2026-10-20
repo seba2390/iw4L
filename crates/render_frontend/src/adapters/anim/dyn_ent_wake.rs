@@ -260,13 +260,6 @@ pub(crate) struct ExplosionDvars {
     min_force: f32,
 }
 
-#[cfg(test)]
-const GRENADE_EXPLODE_DVARS: ExplosionDvars = ExplosionDvars {
-    force: DYNENT_EXPLODE_FORCE,
-    upbias: DYNENT_EXPLODE_UPBIAS,
-    min_force: DYNENT_EXPLODE_MIN_FORCE,
-};
-
 const EXPLODING_BULLET_DVARS: ExplosionDvars = ExplosionDvars {
     force: DYNENT_EXPLODING_BULLET_FORCE,
     upbias: DYNENT_EXPLODE_UPBIAS,
@@ -351,12 +344,6 @@ pub(crate) fn explosion_impulse(
         return None;
     }
     Some(dir * force)
-}
-
-#[cfg(test)]
-pub(crate) fn bullet_impulse(hit_dir: Vec3, bullet_scale: f32) -> Option<Vec3> {
-    let dir = hit_dir.try_normalize()?;
-    Some(dir * DYNENT_BULLET_FORCE * bullet_scale)
 }
 
 fn bullet_impulse_with_rules(
@@ -484,27 +471,17 @@ fn kill_dyn_ent(
         inst.dead = true;
         *visibility = Visibility::Hidden;
     }
-    let Some(name) = inst.destroy_fx.as_deref() else {
-        return;
-    };
-    let Some(host) = host else {
-        return;
-    };
-    let Some(fx) = fx else {
-        return;
-    };
-    let cache = FxElemInfoCache::default();
-    let _ = play_named_oriented_in_world(
-        &mut host.0,
-        &fx.0,
-        &cache,
-        fx.0.map_fx_name(name),
-        transform.translation.to_array(),
-        axis_from_rotation(transform.rotation),
-        FrontendFxScene::wrap(scene, marks)
-            .as_ref()
-            .map(|s| s as &dyn render_fx::present::FxScene),
-    );
+    if let Some(name) = inst.destroy_fx.as_deref() {
+        play_dyn_ent_fx(
+            name,
+            transform.translation.to_array(),
+            transform.rotation,
+            host,
+            fx,
+            scene,
+            marks,
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1404,24 +1381,45 @@ fn sync_spawned_dyn_ents(
             impulse,
             ang_impulse,
         });
-        if let Some(fx_name) = launch.fx.as_deref()
-            && let Some(host) = host.as_deref_mut()
-            && let Some(fx) = fx
-        {
-            let cache = FxElemInfoCache::default();
-            let _ = play_named_oriented_in_world(
-                &mut host.0,
-                &fx.0,
-                &cache,
-                fx.0.map_fx_name(fx_name),
+        if let Some(fx_name) = launch.fx.as_deref() {
+            play_dyn_ent_fx(
+                fx_name,
                 launch.pos,
-                axis_from_rotation(rot),
-                FrontendFxScene::wrap(scene, marks)
-                    .as_ref()
-                    .map(|s| s as &dyn render_fx::present::FxScene),
+                rot,
+                host.as_deref_mut(),
+                fx,
+                scene,
+                marks,
             );
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn play_dyn_ent_fx(
+    name: &str,
+    origin: [f32; 3],
+    rot: Quat,
+    host: Option<&mut HostFxSystem>,
+    fx: Option<&PreparedFxCatalog>,
+    scene: Option<&WorldScene>,
+    marks: &EntityMarks,
+) {
+    let (Some(host), Some(fx)) = (host, fx) else {
+        return;
+    };
+    let cache = FxElemInfoCache::default();
+    let _ = play_named_oriented_in_world(
+        &mut host.0,
+        &fx.0,
+        &cache,
+        fx.0.map_fx_name(name),
+        origin,
+        axis_from_rotation(rot),
+        FrontendFxScene::wrap(scene, marks)
+            .as_ref()
+            .map(|s| s as &dyn render_fx::present::FxScene),
+    );
 }
 
 pub fn register_dyn_ent_wake(app: &mut App) {
