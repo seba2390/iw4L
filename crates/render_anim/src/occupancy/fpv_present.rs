@@ -1068,6 +1068,7 @@ pub fn apply_fpv_placement(
     local: Res<LocalPresentClient>,
     prepared: Res<PreparedFpv>,
     mut kick: ResMut<SessionViewKick>,
+    aim_kick: Option<Res<net::AimKick>>,
     cg_gun: Res<GunOffset>,
     mut aim: ResMut<ViewweaponAim>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
@@ -1176,7 +1177,7 @@ pub fn apply_fpv_placement(
     if facts.can_hold_breath {
         idle.ads_idle_amount *= ps.hold_breath_scale;
     }
-    let contrib = weapon_placement_assemble(
+    let mut contrib = weapon_placement_assemble(
         &mut state,
         ps_in,
         stance,
@@ -1193,6 +1194,11 @@ pub fn apply_fpv_placement(
         0.0,
         &mut steps,
     );
+    if let Some(aim_kick) = aim_kick.as_deref() {
+        for (angle, add) in contrib.angles.iter_mut().zip(aim_kick.viewmodel_angles) {
+            *angle += add;
+        }
+    }
     kick.placement_move_origin = state.movement_origin;
     kick.placement_move_angles = state.movement_angles;
     kick.weap_idle_time = state.weap_idle_time;

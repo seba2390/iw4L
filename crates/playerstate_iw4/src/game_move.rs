@@ -182,6 +182,7 @@ impl UserCmd {
             melee_charge_yaw: self.melee_charge_yaw,
             melee_charge_dist: self.melee_charge_dist,
             melee_charge_ent: self.melee_charge_ent,
+            gun_angle_offset: self.gun_angle_offset,
         }
     }
 }

@@ -21,6 +21,11 @@ const KICK_LIMIT: f32 = 10.0;
 const KICK_RETURN_SCALE: f32 = 0.06;
 /// The longest step of the ease back (ms).
 const KICK_STEP_MS: i32 = 5;
+/// The longest step of the gun kick spring (s).
+const GUN_KICK_STEP: f32 = 0.005;
+/// The smallest gun kick angle and speed the spring keeps moving.
+const GUN_KICK_MIN_ANGLE: f32 = 0.25;
+const GUN_KICK_MIN_SPEED: f32 = 1.0;
 /// A gas weapon's kick velocity on its first shot.
 const GAS_KICK_STEP: f32 = 0.001;
 /// The roll a shot's yaw kick gives, per degree.
@@ -279,6 +284,125 @@ fn frame(player: &MovePlayer, weapons: KickWeapons<'_>, frametime_ms: i32, kick:
         }
         left -= KICK_STEP_MS;
     }
+    gun_kick(&ps, weapons, weapon, frametime_ms, kick);
+}
+
+/// The gun's own recoil on the viewmodel: a weapon with sights steps its
+/// pitch and yaw springs in slices of at most 5 ms (accelerated back to
+/// centre, damped by its speed and static decays, and clamped to its max
+/// gun pitch/yaw and speed); a hip-only weapon subtracts the view's kick
+/// angles instead. Switching weapons zeroes the gun kick.
+fn gun_kick(
+    ps: &PlayerState,
+    weapons: KickWeapons<'_>,
+    weapon: u32,
+    frametime_ms: i32,
+    kick: &mut ViewKick,
+) {
+    if weapon != kick.weapon {
+        kick.weapon = weapon;
+        kick.gun_angles = [0.0; 2];
+        kick.gun_velocity = [0.0; 2];
+    }
+    let Some(own) = weapons(weapon) else {
+        kick.viewmodel_angles = [0.0; 3];
+        return;
+    };
+    let def = &own.def[..];
+    let has_ads = def
+        .get(sz::WEAPON_DEF_AIM_DOWN_SIGHT_OFF)
+        .is_some_and(|&b| b != 0);
+    if !has_ads {
+        kick.viewmodel_angles = kick.angles.map(|a| -a);
+        return;
+    }
+    let frac = ps.weapon_pos_frac;
+    let lerp = |hip_off: usize, ads_off: usize| {
+        let hip = f(def, hip_off);
+        (f(def, ads_off) - hip) * frac + hip
+    };
+    let accel = lerp(
+        sz::WEAPON_DEF_HIP_GUN_KICK_ACCEL_OFF,
+        sz::WEAPON_DEF_ADS_GUN_KICK_ACCEL_OFF,
+    );
+    let speed_max = lerp(
+        sz::WEAPON_DEF_HIP_GUN_KICK_SPEED_MAX_OFF,
+        sz::WEAPON_DEF_ADS_GUN_KICK_SPEED_MAX_OFF,
+    );
+    let speed_decay = lerp(
+        sz::WEAPON_DEF_HIP_GUN_KICK_SPEED_DECAY_OFF,
+        sz::WEAPON_DEF_ADS_GUN_KICK_SPEED_DECAY_OFF,
+    );
+    let static_decay = lerp(
+        sz::WEAPON_DEF_HIP_GUN_KICK_STATIC_DECAY_OFF,
+        sz::WEAPON_DEF_ADS_GUN_KICK_STATIC_DECAY_OFF,
+    );
+    let limits = [
+        f(def, sz::WEAPON_DEF_GUN_MAX_PITCH_OFF),
+        f(def, sz::WEAPON_DEF_GUN_MAX_YAW_OFF),
+    ];
+    let mut rem = frametime_ms as f32 * 0.001;
+    while rem > 0.0 {
+        let (dt, next_rem) = if rem <= GUN_KICK_STEP {
+            (rem, 0.0)
+        } else {
+            (GUN_KICK_STEP, rem - GUN_KICK_STEP)
+        };
+        let mut pitch_stopped = false;
+        for (axis, max) in limits.into_iter().enumerate() {
+            let mut angle = kick.gun_angles[axis];
+            let mut vel = kick.gun_velocity[axis];
+            if angle.abs() >= GUN_KICK_MIN_ANGLE || vel.abs() >= GUN_KICK_MIN_SPEED {
+                angle += vel * dt;
+                if angle > max {
+                    angle = max;
+                    if !(vel < 0.0) && vel != 0.0 {
+                        vel = 0.0;
+                    }
+                } else if angle < -max {
+                    angle = -max;
+                    if !(0.0 < vel) && vel != 0.0 {
+                        vel = 0.0;
+                    }
+                }
+                if angle > 0.0 {
+                    vel -= dt * accel;
+                } else if angle < 0.0 {
+                    vel += dt * accel;
+                }
+                vel -= vel * dt * speed_decay;
+                let step = dt * static_decay;
+                if vel <= 0.0 {
+                    vel += step;
+                    if !(vel < 0.0) && vel != 0.0 {
+                        vel = 0.0;
+                    }
+                } else {
+                    vel -= step;
+                    if !(0.0 < vel) && vel != 0.0 {
+                        vel = 0.0;
+                    }
+                }
+                if vel > speed_max {
+                    vel = speed_max;
+                } else if vel < -speed_max {
+                    vel = -speed_max;
+                }
+                kick.gun_angles[axis] = angle;
+                kick.gun_velocity[axis] = vel;
+            } else {
+                kick.gun_angles[axis] = 0.0;
+                kick.gun_velocity[axis] = 0.0;
+                if axis == 0 {
+                    pitch_stopped = true;
+                } else if pitch_stopped {
+                    break;
+                }
+            }
+        }
+        rem = next_rem;
+    }
+    kick.viewmodel_angles = [kick.gun_angles[0], kick.gun_angles[1], 0.0];
 }
 
 /// The aim the kick turns: its angles, a quarter of them with Deadshot in a

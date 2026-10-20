@@ -138,6 +138,7 @@ pub fn tick_session_view_kick(
     local: Res<LocalPresentClient>,
     weapons: Option<Res<PreparedWeapons>>,
     walk: Option<Res<AppliedEntityEventWalk>>,
+    mode: Option<Res<game_api::ModeRules>>,
     mut kick: ResMut<SessionViewKick>,
 ) {
     let Some(ps) = presented.player(local.0) else {
@@ -174,25 +175,33 @@ pub fn tick_session_view_kick(
 
     let dt = clock.frametime_secs();
     kick.seeded_this_frame = 0;
-
-    let n = walk.map(|w| w.local_fire).unwrap_or(0);
-    if n > 0 {
-        let reduce_window_active = ps.weapon_restrict_kick_time > 0;
-        let params = kick_params(&facts.kick);
-        for _ in 0..n {
-            kick.state.seed_fire(
-                &params,
-                ps.f_weapon_pos_frac,
-                ps.weap_flags,
-                ps.recoil_scale,
-                reduce_window_active,
-            );
+    let game_kick = mode
+        .as_deref()
+        .and_then(|mode| mode.client_fire)
+        .and_then(|rules| rules.view_kick)
+        .is_some();
+    if game_kick {
+        kick.state.reset();
+    } else {
+        let n = walk.map(|w| w.local_fire).unwrap_or(0);
+        if n > 0 {
+            let reduce_window_active = ps.weapon_restrict_kick_time > 0;
+            let params = kick_params(&facts.kick);
+            for _ in 0..n {
+                kick.state.seed_fire(
+                    &params,
+                    ps.f_weapon_pos_frac,
+                    ps.weap_flags,
+                    ps.recoil_scale,
+                    reduce_window_active,
+                );
+            }
+            kick.seeded_this_frame = n;
         }
-        kick.seeded_this_frame = n;
-    }
 
-    let params = kick_params(&facts.kick);
-    kick.state.advance(&params, ps.f_weapon_pos_frac, dt);
+        let params = kick_params(&facts.kick);
+        kick.state.advance(&params, ps.f_weapon_pos_frac, dt);
+    }
 
     let overlay_active = facts.overlay_reticle != 0;
     kick.sway.advance(

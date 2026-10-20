@@ -490,8 +490,14 @@ pub struct ViewKick {
     pub angles: [f32; 3],
     /// How fast the view's kick moves, in degrees per second.
     pub velocity: [f32; 3],
-    /// How fast the gun's kick moves (pitch, yaw).
+    /// The gun's kick (pitch, yaw), in degrees.
+    pub gun_angles: [f32; 2],
+    /// How fast the gun's kick moves (pitch, yaw), in degrees per second.
     pub gun_velocity: [f32; 2],
+    /// What the kick adds to the viewmodel's angles (pitch, yaw, roll).
+    pub viewmodel_angles: [f32; 3],
+    /// The view weapon the gun's kick belongs to.
+    pub weapon: u32,
 }
 
 /// A weapon as the view kick reads it: its definition and variant in the

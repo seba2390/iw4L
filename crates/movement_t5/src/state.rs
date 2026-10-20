@@ -202,6 +202,8 @@ pub struct UserCmd {
     /// Where a melee lunge aims, found by the client.
     pub melee_charge_yaw: f32,
     pub melee_charge_dist: u8,
+    /// The gun pitch and yaw the client sent in this command.
+    pub gun_angles: [f32; 2],
 }
 
 /// The weapons held, by slot.

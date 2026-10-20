@@ -146,14 +146,6 @@ fn melee_events_unknown() -> &'static Unknown {
     )
 }
 
-fn gun_angles_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.weapons.gun_angles",
-        "Black Ops aims a shot along the gun angles its client sends with each command; the runtime's client sends none, so shots go along the view the previous command left",
-        "the client's gun angle computation and the command fields that carry it"
-    )
-}
-
 fn mounted_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.mounted_fire",
@@ -206,7 +198,7 @@ fn achievement_unknown() -> &'static Unknown {
 pub(crate) fn server_events(
     ps: &PlayerState,
     aim_spread_before: f32,
-    view_before: [f32; 3],
+    gun_angles: [f32; 2],
     signals: &[MoveSignal],
     zombies: bool,
     world: &mut dyn FireWorld,
@@ -228,7 +220,7 @@ pub(crate) fn server_events(
                 let shot = Shot {
                     ps,
                     aim_spread_before,
-                    view_before,
+                    gun_angles,
                     zombies,
                     gaps: &mut gaps,
                 };
@@ -238,7 +230,7 @@ pub(crate) fn server_events(
                 let shot = Shot {
                     ps,
                     aim_spread_before,
-                    view_before,
+                    gun_angles,
                     zombies,
                     gaps: &mut gaps,
                 };
@@ -248,7 +240,7 @@ pub(crate) fn server_events(
                 let shot = Shot {
                     ps,
                     aim_spread_before,
-                    view_before,
+                    gun_angles,
                     zombies,
                     gaps: &mut gaps,
                 };
@@ -483,7 +475,7 @@ impl BulletResults {
 struct Shot<'a> {
     ps: &'a PlayerState,
     aim_spread_before: f32,
-    view_before: [f32; 3],
+    gun_angles: [f32; 2],
     zombies: bool,
     gaps: &'a mut Vec<&'static Unknown>,
 }
@@ -600,9 +592,11 @@ impl Shot<'_> {
         _parm: i32,
         world: &dyn FireWorld,
     ) -> WeaponParms {
-        self.gaps.push(gun_angles_unknown());
-        let mut angles = self.view_before;
-        angles[2] = self.ps.viewangles[2];
+        let mut angles = self.ps.viewangles;
+        if self.ps.pm_flags & 0x4000 == 0 && dvar(world, "player_topDownCamMode", 0) == 0 {
+            angles[0] = self.gun_angles[0];
+            angles[1] = self.gun_angles[1];
+        }
         if def.fire_type() == FIRETYPE_STACKED && self.ps.stack_fire_count > 1 {
             self.gaps.push(stack_fire_unknown());
         }

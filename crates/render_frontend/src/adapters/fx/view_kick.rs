@@ -75,12 +75,13 @@ pub(crate) fn run_view_kick(
     let (Some(rules), Some(registry), Some(ps)) = (rules, registry, prediction.0.predicted_local())
     else {
         state.kick = ViewKick::default();
-        aim.0 = [0.0; 3];
+        *aim = net::AimKick::default();
         return;
     };
     let registry = registry.registry();
     let player = ps.move_player(i32::try_from(local.0.0).unwrap_or(0), false);
     let weapons = |weapon: u32| kick_weapon(registry, weapon);
     (rules.frame)(&player, &weapons, clock.frametime(), &mut state.kick);
-    aim.0 = (rules.aim)(&player, &weapons, &state.kick);
+    aim.angles = (rules.aim)(&player, &weapons, &state.kick);
+    aim.viewmodel_angles = state.kick.viewmodel_angles;
 }
