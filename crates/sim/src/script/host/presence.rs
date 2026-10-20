@@ -375,6 +375,7 @@ pub(crate) fn sync_presence(world: &mut World) {
     let now = crate::level_time_ms(tick);
     let pool = FrameWorld::from_world(world).dynamic_entity_numbers();
     world.resource_mut::<RoundScript>().pool_numbers = pool.into_iter().collect();
+    step_t5_ragdolls(world);
     settle_collision(world);
     super::entity_damage::apply_script_blasts(world, tick);
     publish_loop_sounds(world);
@@ -387,6 +388,123 @@ pub(crate) fn sync_presence(world: &mut World) {
     publish_killcam_cameras(world);
     settle_collision(world);
     resolve_link_tags(world);
+}
+
+pub(crate) fn ragdoll_tag_rotations(
+    ragdoll: &super::natives::t5::T5Ragdoll,
+) -> Vec<xmodel_runtime::TagRotation> {
+    let p = ragdoll.pitch_fold;
+    let r = ragdoll.roll_fold;
+    vec![
+        xmodel_runtime::TagRotation {
+            tag: "j_mainroot".into(),
+            angles: [p * 0.75, 0.0, r * 0.5],
+        },
+        xmodel_runtime::TagRotation {
+            tag: "j_spinelower".into(),
+            angles: [p * 0.2, 0.0, r * 0.25],
+        },
+        xmodel_runtime::TagRotation {
+            tag: "j_spineupper".into(),
+            angles: [p * 0.2, 0.0, r * 0.25],
+        },
+        xmodel_runtime::TagRotation {
+            tag: "j_neck".into(),
+            angles: [-p * 0.3, 0.0, 0.0],
+        },
+    ]
+}
+
+fn step_t5_ragdolls(world: &mut World) {
+    const DT: f32 = crate::MATCH_TICK_MS as f32 * 0.001;
+    const GRAVITY: f32 = 800.0;
+    const MINS: [f32; 3] = [-12.0, -12.0, 0.0];
+    const MAXS: [f32; 3] = [12.0, 12.0, 24.0];
+    const MASK_SOLID: u32 = 1;
+    let active: Vec<(u64, [f32; 3], super::natives::t5::T5Ragdoll)> = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let ids: Vec<u64> = runtime
+            .t5
+            .ragdolls
+            .iter()
+            .filter_map(|(&id, r)| (r.launched && !r.grounded).then_some(id))
+            .collect();
+        ids.into_iter()
+            .filter_map(|id| {
+                let origin = match runtime.object_field(id, "origin") {
+                    crate::script::Value::Vector(v) => v,
+                    _ => return None,
+                };
+                let ragdoll = runtime.t5.ragdolls.get(&id)?.clone();
+                Some((id, origin, ragdoll))
+            })
+            .collect()
+    };
+    if active.is_empty() {
+        return;
+    }
+    let mut updates = Vec::with_capacity(active.len());
+    {
+        let frame = FrameWorld::from_world(world);
+        for (id, origin, mut ragdoll) in active {
+            ragdoll.velocity[2] -= GRAVITY * DT;
+            let next = [
+                origin[0] + ragdoll.velocity[0] * DT,
+                origin[1] + ragdoll.velocity[1] * DT,
+                origin[2] + ragdoll.velocity[2] * DT,
+            ];
+            let sweep = frame.trace_clip(origin, next, MINS, MAXS, MASK_SOLID);
+            let mut pos = if sweep.fraction < 1.0 {
+                let n = sweep.normal;
+                let vn = ragdoll.velocity[0] * n[0]
+                    + ragdoll.velocity[1] * n[1]
+                    + ragdoll.velocity[2] * n[2];
+                if vn < 0.0 {
+                    for i in 0..3 {
+                        ragdoll.velocity[i] -= 1.25 * vn * n[i];
+                    }
+                }
+                [
+                    origin[0] + (next[0] - origin[0]) * sweep.fraction + n[0] * 0.25,
+                    origin[1] + (next[1] - origin[1]) * sweep.fraction + n[1] * 0.25,
+                    origin[2] + (next[2] - origin[2]) * sweep.fraction + n[2] * 0.25,
+                ]
+            } else {
+                next
+            };
+            let ground = frame.trace_clip(
+                [pos[0], pos[1], pos[2] + 8.0],
+                [pos[0], pos[1], pos[2] - 4.0],
+                MINS,
+                MAXS,
+                MASK_SOLID,
+            );
+            if ground.fraction < 1.0 && ragdoll.velocity[2] <= 0.0 {
+                pos[2] = pos[2] + 8.0 - 12.0 * ground.fraction;
+                ragdoll.velocity[0] *= 0.45;
+                ragdoll.velocity[1] *= 0.45;
+                ragdoll.velocity[2] = 0.0;
+                ragdoll.pitch_fold = (ragdoll.pitch_fold + 220.0 * DT).min(85.0);
+                if ragdoll.velocity[0].hypot(ragdoll.velocity[1]) < 12.0
+                    && ragdoll.pitch_fold >= 80.0
+                {
+                    ragdoll.velocity = [0.0; 3];
+                    ragdoll.grounded = true;
+                }
+            } else {
+                ragdoll.pitch_fold =
+                    (ragdoll.pitch_fold + ragdoll.angular_vel[0].abs() * DT).min(85.0);
+                ragdoll.roll_fold =
+                    (ragdoll.roll_fold + ragdoll.angular_vel[2] * DT * 0.25).clamp(-35.0, 35.0);
+            }
+            updates.push((id, pos, ragdoll));
+        }
+    }
+    let mut runtime = world.resource_mut::<RoundScript>();
+    for (id, pos, ragdoll) in updates {
+        runtime.set_object_field(id, "origin", crate::script::Value::Vector(pos));
+        runtime.t5.ragdolls.insert(id, ragdoll);
+    }
 }
 
 fn publish_killcam_cameras(world: &mut World) {

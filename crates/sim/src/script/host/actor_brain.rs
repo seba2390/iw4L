@@ -411,9 +411,7 @@ pub(crate) fn think(world: &mut World) {
             }
         }
         if result == THINK_FINISHED {
-            let mut runtime = world.resource_mut::<RoundScript>();
-            runtime.actor_brains.remove(&actor);
-            runtime.request_delete(actor);
+            finish_death(world, actor);
         }
     }
 }
@@ -1549,11 +1547,150 @@ fn death_think(world: &mut World, actor: u64) -> u8 {
     THINK_DONE
 }
 
-/// Lets go of a dead actor: its path ends. (Black Ops also takes it off the
-/// other AI's minds and its links, not ported.)
+/// Lets go of a dead actor (at `state_time + 500`): its path ends and
+/// its contents move to `death_contents` (`0x0400_2000` default, or what
+/// `setdeathcontents` set).
 fn release_dead(world: &mut World, actor: u64) {
     clear_path(world, actor);
     with_brain(world, actor, |brain| brain.set_substate(DEATH_RELEASED));
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let contents = runtime
+        .t5
+        .death_contents
+        .get(&actor)
+        .copied()
+        .unwrap_or(0x0400_2000);
+    runtime.set_object_field(actor, "contents", Value::Int(contents));
+}
+
+/// Converts a dead actor whose death animscript finished into an
+/// `EntityKind::ActorCorpse`, bounded by `ai_corpseCount` (default `10`,
+/// max `32`; evicts the corpse least visible to player 0).
+fn finish_death(world: &mut World, actor: u64) {
+    let corpse_limit = world
+        .get_resource::<crate::script::MatchScript>()
+        .and_then(|m| m.dvars.get("ai_corpseCount"))
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(10)
+        .min(32);
+    let viewer = crate::frame::FrameWorld::from_world(world)
+        .player(crate::ClientId(0))
+        .map(|ps| {
+            let eye = [
+                ps.origin[0],
+                ps.origin[1],
+                ps.origin[2] + ps.view_height_current,
+            ];
+            let fwd = math_iw4::angles_to_axis(ps.viewangles)[0];
+            (eye, fwd)
+        });
+    let runtime = world.resource_mut::<RoundScript>().into_inner();
+    runtime.actor_brains.remove(&actor);
+    runtime.actor_moves.remove(&actor);
+    let entities = &runtime.entities;
+    runtime
+        .t5
+        .corpse_slots
+        .retain(|id| entities.contains_key(id));
+    let model = match runtime.object_field(actor, "model") {
+        Value::String(s) if !s.is_empty() => Some(s),
+        _ => None,
+    };
+    let hidden = runtime
+        .entities
+        .get(&actor)
+        .is_none_or(|entity| entity.hidden);
+    if corpse_limit > 0
+        && !hidden
+        && let Some(model) = model
+    {
+        while runtime.t5.corpse_slots.len() >= corpse_limit {
+            let evicted = evict_corpse_slot(runtime, viewer);
+            runtime.t5.corpse_slots.retain(|&id| id != evicted);
+            runtime.request_delete(evicted);
+        }
+        let origin = runtime.object_field(actor, "origin");
+        let angles = runtime.object_field(actor, "angles");
+        let team = runtime.object_field(actor, "team");
+        let (number, presence, attachments, attach_ignore_collision) =
+            match runtime.entities.get_mut(&actor) {
+                Some(entity) => (
+                    entity.number,
+                    entity.presence.take(),
+                    entity.attachments.clone(),
+                    entity.attach_ignore_collision,
+                ),
+                None => (0, None, Vec::new(), 0),
+            };
+        let shown = runtime.shown.remove(&actor);
+        let anim = runtime.actor_anims.remove(&actor);
+        let ragdoll = runtime.t5.ragdolls.remove(&actor);
+        let client_flags = runtime.t5.client_flags.remove(&actor);
+        let saved_next = runtime.next_entity_number;
+        if let Ok(corpse) =
+            runtime.create_entity(super::entities::EntityKind::ActorCorpse, "actor_corpse")
+        {
+            runtime.next_entity_number = saved_next;
+            if let Some(entity) = runtime.entities.get_mut(&corpse) {
+                entity.number = number;
+                entity.presence = presence;
+                entity.attachments = attachments;
+                entity.attach_ignore_collision = attach_ignore_collision;
+            }
+            runtime.set_object_field(corpse, "origin", origin);
+            runtime.set_object_field(corpse, "angles", angles);
+            runtime.set_object_field(corpse, "model", Value::String(model));
+            runtime.set_object_field(corpse, "team", team);
+            runtime.set_object_field(corpse, "contents", Value::Int(0x0400_0000));
+            if let Some(shown) = shown {
+                runtime.shown.insert(corpse, shown);
+            }
+            if let Some(anim) = anim {
+                runtime.actor_anims.insert(corpse, anim);
+            }
+            if let Some(ragdoll) = ragdoll {
+                runtime.t5.ragdolls.insert(corpse, ragdoll);
+            }
+            if let Some(flags) = client_flags {
+                runtime.t5.client_flags.insert(corpse, flags);
+            }
+            runtime.t5.corpse_slots.push(corpse);
+            diag::info!(
+                Sim,
+                "t5 actor_become_corpse actor={actor} corpse={corpse} num={number} active={}",
+                runtime.t5.corpse_slots.len()
+            );
+        }
+    }
+    runtime.request_delete(actor);
+}
+
+fn evict_corpse_slot(runtime: &mut RoundScript, viewer: Option<([f32; 3], [f32; 3])>) -> u64 {
+    let Some((eye, fwd)) = viewer else {
+        return runtime.t5.corpse_slots[0];
+    };
+    let slots = runtime.t5.corpse_slots.clone();
+    let mut best = (slots[0], 0u8, -1.0f32);
+    for id in slots {
+        let pos = vector_field(runtime, id, "origin").unwrap_or([0.0; 3]);
+        let dx = pos[0] - eye[0];
+        let dy = pos[1] - eye[1];
+        let dz = pos[2] - eye[2];
+        let dist_sq = dx * dx + dy * dy + dz * dz;
+        let dist = dist_sq.sqrt().max(1e-4);
+        let cos = (dx * fwd[0] + dy * fwd[1] + dz * fwd[2]) / dist;
+        let bucket = if cos <= 0.0 {
+            3u8
+        } else if cos < std::f32::consts::FRAC_1_SQRT_2 {
+            2u8
+        } else {
+            1u8
+        };
+        if (bucket, dist_sq) > (best.1, best.2) {
+            best = (id, bucket, dist_sq);
+        }
+    }
+    best.0
 }
 
 // --- Scripted and custom animation ---------------------------------------

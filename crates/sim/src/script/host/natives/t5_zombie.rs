@@ -132,18 +132,36 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
-    // `CleanupSpawnedDynEnts()`: Black Ops removes the dynamic entities its
-    // clients spawned; the runtime spawns none.
-    registry.register(Function, "cleanupspawneddynents", |_, _, _| {
+    // `CleanupSpawnedDynEnts()`: removes dynamic entities spawned
+    // via `CreateDynEntAndLaunch` on every client.
+    registry.register(Function, "cleanupspawneddynents", |world, _, _| {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        runtime.t5.dyn_ent_cleanup_serial = runtime.t5.dyn_ent_cleanup_serial.wrapping_add(1);
+        runtime.t5.spawned_dyn_ents.clear();
         Ok(Value::Undefined)
     });
-    // `GetCorpseArray()`: the actor and player corpses in use; the runtime
-    // frees a dead actor rather than keeping its corpse, so there are none.
+    // `GetCorpseArray()`: the active actor corpses in slot order.
     registry.register(Function, "getcorpsearray", |world, _, args| {
         if !args.is_empty() {
             return Err("cannot call getcorpsearray with parameters".into());
         }
-        new_array(world, Vec::new())
+        let corpses: Vec<Value> = {
+            let runtime = world.resource::<RoundScript>();
+            runtime
+                .t5
+                .corpse_slots
+                .iter()
+                .copied()
+                .filter(|id| {
+                    runtime
+                        .entities
+                        .get(id)
+                        .is_some_and(|e| e.kind == EntityKind::ActorCorpse)
+                })
+                .map(Value::Object)
+                .collect()
+        };
+        new_array(world, corpses)
     });
     // `RefreshHudAmmoCounter()`: Black Ops tells every client to redraw
     // its ammo counter; the runtime's HUD reads the ammo each frame.
@@ -223,11 +241,38 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "settransported",
         // A perk machine shaking as the power comes on.
         "vibrate",
-        // Gibbed limbs are not thrown yet; scripts swap the damaged models.
-        "gib",
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
+    // `ent Gib(type, tags_array)`: encodes the gib type (`"freeze"` ->
+    // `0x100`, `"up"` -> `0x200`, `"normal"` -> `0`) and location bitmask
+    // (`0..=7`) into event `0xca` for the client's `CodeCallback_GibEvent`.
+    registry.register(Method, "gib", |world, receiver, args| {
+        let entity = super::engine::entity_id(world, receiver)?;
+        let gib_type = super::super::args::string(args, 0)?;
+        let type_bits = match gib_type.as_str() {
+            "freeze" => 0x100u32,
+            "up" => 0x200u32,
+            _ => 0u32,
+        };
+        let tags = super::super::arrays::array_values(world, super::super::args::arg(args, 1)?)?;
+        let mut mask = type_bits;
+        for val in tags {
+            let Value::Int(bit) = val else {
+                return Err("gib takes an array of integer locations".into());
+            };
+            if !(0..=7).contains(&bit) {
+                return Err("gib location out of range 0..7".into());
+            }
+            mask |= 1u32 << (bit as u32);
+        }
+        diag::info!(
+            Sim,
+            "t5 server gib entity={entity} type={gib_type} mask=0x{mask:x}"
+        );
+        crate::script::client::gib_event(world, entity, mask);
+        Ok(Value::Undefined)
+    });
     // `player IsLookingAt(ent)`: whether the player's `lookatent` (a field
     // scripts set) is that entity.
     registry.register(Method, "islookingat", |world, receiver, args| {
@@ -1019,11 +1064,11 @@ fn register_actor(registry: &mut NativeRegistry) {
     registry.register(
         Namespace::Function,
         "physicsexplosioncylinder",
-        |_, _, args| {
+        |world, _, args| {
             if args.len() != 4 {
                 return Err("Incorrect number of parameters".into());
             }
-            let _origin = super::super::args::vector(args, 0)?;
+            let origin = super::super::args::vector(args, 0)?;
             let outer = super::super::args::int(args, 1)? as u16;
             let inner = super::super::args::float(args, 2)?;
             if inner < 0.0 {
@@ -1032,7 +1077,20 @@ fn register_actor(registry: &mut NativeRegistry) {
             if f32::from(outer) < inner {
                 return Err("Inner radius is outside the outer radius".into());
             }
-            let _magnitude = super::super::args::float(args, 3)?;
+            let magnitude = super::super::args::float(args, 3)?;
+            let tick = world.resource::<crate::step::StepRequest>().tick;
+            crate::gentity::push_physics_explosion(
+                &mut crate::frame::FrameWorld::from_world(world),
+                tick,
+                origin,
+                f32::from(outer),
+                inner,
+                magnitude,
+                0,
+                0,
+                true,
+                [0.0; 3],
+            );
             Ok(Value::Undefined)
         },
     );
@@ -1102,7 +1160,13 @@ fn register_actor(registry: &mut NativeRegistry) {
         };
         let contents = super::super::args::int(args, 0)?;
         actor_fields(world, id).death_contents = Some(contents);
-        Ok(Value::Undefined)
+        let prev = world
+            .resource_mut::<RoundScript>()
+            .t5
+            .death_contents
+            .insert(id, contents)
+            .unwrap_or(0x0400_2000);
+        Ok(Value::Int(prev))
     });
     registry.register(Namespace::Function, "objective_state", |world, _, args| {
         let index = super::super::args::int(args, 0)?;

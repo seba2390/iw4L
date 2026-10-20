@@ -706,6 +706,7 @@ pub(crate) fn present(world: &mut World) {
         crate::ScriptModelId,
         xmodel_runtime::XAnimTreeSnapshot,
         Option<XAnimTreeRuntime>,
+        Vec<xmodel_runtime::TagRotation>,
     )> = {
         let runtime = world.resource::<RoundScript>();
         runtime
@@ -715,17 +716,31 @@ pub(crate) fn present(world: &mut World) {
                 let presence = runtime.entities.get(actor)?.presence?;
                 let (tree, clips) = weighted_tree(anim);
                 let resolved = tree.resolve(|name| clips.get(name).cloned()).ok();
-                Some((presence, tree, resolved))
+                let ragdoll_rotations = runtime
+                    .t5
+                    .ragdolls
+                    .get(actor)
+                    .filter(|r| r.launched)
+                    .map(super::presence::ragdoll_tag_rotations)
+                    .unwrap_or_default();
+                Some((presence, tree, resolved, ragdoll_rotations))
             })
             .collect()
     };
     let mut frame = FrameWorld::from_world(world);
-    for (presence, tree, resolved) in posed {
+    for (presence, tree, resolved, ragdoll_rotations) in posed {
         if let Some(dobj) = frame
             .collision_owner_mut(presence)
             .and_then(|row| row.dobj.as_mut())
         {
             dobj.set_tree_pose(tree, resolved);
+            if !ragdoll_rotations.is_empty() {
+                let filtered = ragdoll_rotations
+                    .into_iter()
+                    .filter(|rot| dobj.has_tag(&rot.tag))
+                    .collect();
+                dobj.set_tag_rotations(filtered);
+            }
             dobj.materialize();
         }
     }

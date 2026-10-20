@@ -247,6 +247,16 @@ pub(super) fn present(server: &mut World, client: &mut super::ClientScripts) {
         if let Some(dobj) = row.dobj.as_mut() {
             dobj.set_world_pose(want.origin, want.angles);
         }
+        if let Some(mut dobjs) = client.world.get_resource_mut::<super::ClientEntityDobjs>() {
+            match &row.dobj {
+                Some(dobj) => {
+                    dobjs.0.insert(want.object, dobj.clone());
+                }
+                None => {
+                    dobjs.0.remove(&want.object);
+                }
+            }
+        }
     }
     server.insert_resource(presentation);
 }

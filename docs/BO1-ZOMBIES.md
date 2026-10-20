@@ -87,8 +87,8 @@ The shocked player walks at 0.4 of their speed and cannot sprint
 The map's dynamic entities (`dynents: models=142 … spare_slots=256` in the
 log) stand where the map puts them: the bar's bottles and glasses from
 `move 1000 430 60 0 10`, the lobby shelf's pitcher and paper stack from
-`move 420 -1356 100 0 10`. Nothing pushes or breaks them yet; a shot or a
-blast logs `game gap t5.dynent.physics`.
+`move 420 -1356 100 0 10`. Shots and blasts launch clutter and break
+destructible paper stacks (`t5.dynent.physics`, `t5.weapons.blast_effects`).
 
 ## Open question
 

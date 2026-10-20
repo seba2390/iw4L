@@ -1704,6 +1704,142 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
     registry.register(Function, "extracamconfig", |_, _, _| {
         Err("extracamconfig is deprecated".into())
     });
+    // `gettagorigin(tag)` / `gettagangles(tag)` / `gettagforwardvector(tag)`:
+    // bone world origin, angles, or forward axis on a mirrored or client
+    // entity's DObj.
+    registry.register(Method, "gettagorigin", |world, receiver, args| {
+        Ok(Value::Vector(client_tag_pose(world, receiver, args)?.0))
+    });
+    registry.register(Method, "gettagangles", |world, receiver, args| {
+        Ok(Value::Vector(math_iw4::axis_to_angles(
+            client_tag_pose(world, receiver, args)?.1,
+        )))
+    });
+    registry.register(Method, "gettagforwardvector", |world, receiver, args| {
+        Ok(Value::Vector(client_tag_pose(world, receiver, args)?.1[0]))
+    });
+    // `createDynEntAndLaunch(localClientNum, model, pos, angles, hitpos, force, [fx], [mature])`:
+    // spawns a dynamic clutter piece (such as a thrown zombie gib) and
+    // applies a directional impulse at `hitpos`.
+    registry.register(Function, "createdynentandlaunch", |world, _, args| {
+        if args.len() < 6 {
+            return Err(
+                "CreateDynEntAndLaunch called with invalid params. CreateDynEntAndLaunch( <local client num>, <model>, <pos>, <angles>, <hitpos>, <force>, <fx>, <mature> )"
+                    .into(),
+            );
+        }
+        local_index(args)?;
+        let model = string(args, 1)?;
+        let pos = vector(args, 2)?;
+        let angles = vector(args, 3)?;
+        let hit_pos = vector(args, 4)?;
+        let force = vector(args, 5)?;
+        let fx = if args.len() > 6 && !matches!(args[6], Value::Undefined) {
+            let id = int(args, 6)?;
+            if id != 0 {
+                effect_name_life(world, id).0
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if args.len() > 7 {
+            let _ = int(args, 7)?;
+        }
+        diag::info!(
+            Sim,
+            "t5 client createdynentandlaunch model={} pos=({:.1},{:.1},{:.1}) force=({:.1},{:.1},{:.1}) fx={:?}",
+            model,
+            pos[0],
+            pos[1],
+            pos[2],
+            force[0],
+            force[1],
+            force[2],
+            fx
+        );
+        world
+            .resource_mut::<ClientOutput>()
+            .spawn_dyn_ent(crate::SpawnedDynEntLaunch {
+                model,
+                pos,
+                angles,
+                hit_pos,
+                force,
+                fx,
+            });
+        Ok(Value::Undefined)
+    });
+    // `launchRagdoll(dir, [bone])`: client-side ragdoll impulse.
+    registry.register(Method, "launchragdoll", |world, receiver, args| {
+        let _ = entity(world, receiver)?;
+        if args.is_empty() {
+            return Err(
+                "LaunchRagdoll called with 0 params. Pick from:\n LaunchRagdoll( <vector dir>, <string bone> );\nLaunchRagdoll( <vector dir> );"
+                    .into(),
+            );
+        }
+        let _ = vector(args, 0)?;
+        if args.len() > 1 {
+            let _ = string(args, 1)?;
+        }
+        Ok(Value::Undefined)
+    });
+}
+
+fn client_tag_pose(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<([f32; 3], [[f32; 3]; 3]), String> {
+    let (id, _) = entity(world, receiver)?;
+    let tag = string(args, 0)?;
+    let origin = match super::super::players::entity_field(world, id, "origin") {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    };
+    let angles = match super::super::players::entity_field(world, id, "angles") {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    };
+    if let Some(dobjs) = world.get_resource::<crate::script::client::ClientEntityDobjs>()
+        && let Some(dobj) = dobjs.0.get(&id)
+    {
+        let matrix = dobj.tag_world_matrix(&tag).or_else(|| {
+            if tag.eq_ignore_ascii_case("j_helmet") {
+                dobj.tag_world_matrix("j_head")
+            } else {
+                None
+            }
+        });
+        if let Some(matrix) = matrix {
+            let axis = |v: glam::Vec4| v.truncate().normalize_or_zero().to_array();
+            return Ok((
+                matrix.w_axis.truncate().to_array(),
+                [
+                    axis(matrix.x_axis),
+                    axis(matrix.y_axis),
+                    axis(matrix.z_axis),
+                ],
+            ));
+        }
+    }
+    let local = match tag.to_ascii_lowercase().as_str() {
+        "tag_origin" => [0.0, 0.0, 0.0],
+        "j_helmet" | "j_head" | "j_neck" | "tag_eye" => [0.0, 0.0, 58.0],
+        "j_spinelower" | "j_spineupper" | "j_spine4" => [0.0, 0.0, 38.0],
+        "j_elbow_le" | "j_shoulder_le" => [0.0, 14.0, 46.0],
+        "j_elbow_ri" | "j_shoulder_ri" => [0.0, -14.0, 46.0],
+        "j_knee_le" | "j_hip_le" => [0.0, 8.0, 18.0],
+        "j_knee_ri" | "j_hip_ri" => [0.0, -8.0, 18.0],
+        _ => [0.0, 0.0, 36.0],
+    };
+    let axis = math_iw4::angles_to_axis(angles);
+    let pos = std::array::from_fn(|i| {
+        origin[i] + axis[0][i] * local[0] + axis[1][i] * local[1] + axis[2][i] * local[2]
+    });
+    Ok((pos, axis))
 }
 
 /// The local client a native names: Black Ops refuses any but 0.

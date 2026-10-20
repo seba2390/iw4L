@@ -260,11 +260,15 @@ pub(crate) fn publish(world: &mut World) {
     let earthquakes = runtime.engine.earthquakes.clone();
     let client_effects = crate::script::client::effect_rows(world, now);
     let client_visions = crate::script::client::vision_calls(world);
+    let (spawned_dyn_ents, dyn_ent_cleanup_serial) = crate::script::client::spawned_dyn_ents(world);
     let mut frame = FrameWorld::from_world(world);
-    // The local client's own vision calls reach its renderer alone.
+    // The local client's own vision calls and spawned dynamic entities reach its renderer alone.
     let local = crate::ClientId(0);
     if frame.client_meta(local).is_some() {
-        frame.client_meta_mut(local).view_effects.client_visions = client_visions;
+        let view_effects = &mut frame.client_meta_mut(local).view_effects;
+        view_effects.client_visions = client_visions;
+        view_effects.spawned_dyn_ents = spawned_dyn_ents;
+        view_effects.dyn_ent_cleanup_serial = dyn_ent_cleanup_serial;
     }
     let mut effects: Vec<ScriptEffect> = rows
         .into_iter()
