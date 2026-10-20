@@ -206,6 +206,8 @@ pub(crate) enum ClientMessage {
     },
     /// An entity was gibbed (`gib`, client event 0xca).
     GibEvent { entity: u64, bits: u32 },
+    /// A note of the local player's viewmodel animations.
+    ViewmodelNote(String),
 }
 
 /// An entity's weapon death effect (`playweapondeatheffects`), for the
@@ -238,6 +240,19 @@ pub(crate) fn gib_event(server: &mut World, entity: u64, bits: u32) {
         runtime
             .client_messages
             .push(ClientMessage::GibEvent { entity, bits });
+    }
+}
+
+/// The notes the local player's viewmodel animations reached, for the
+/// client scripts.
+pub(crate) fn viewmodel_notes(server: &mut World, notes: Vec<String>) {
+    if !server.contains_resource::<ClientScripts>() {
+        return;
+    }
+    if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
+        runtime
+            .client_messages
+            .extend(notes.into_iter().map(ClientMessage::ViewmodelNote));
     }
 }
 
@@ -1396,6 +1411,20 @@ fn run_frame(
                     ],
                 );
                 continue;
+            }
+            // Black Ops' client raises each note but `end` on level.
+            ClientMessage::ViewmodelNote(note) => {
+                if note.eq_ignore_ascii_case("end") {
+                    continue;
+                }
+                (
+                    callbacks.level_notify,
+                    vec![
+                        Value::string("notetrack"),
+                        Value::Int(0),
+                        Value::string(&note),
+                    ],
+                )
             }
             ClientMessage::GibEvent { entity, bits } => {
                 let Some(mirrored) = client.mirrored.get(&entity) else {

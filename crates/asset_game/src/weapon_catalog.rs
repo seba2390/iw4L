@@ -552,6 +552,9 @@ pub struct GameWeaponBytes {
     /// The runtime viewmodel slot each of the game's animation slots is
     /// captured into, by the game's slot.
     pub anim_slots: &'static [Option<usize>],
+    /// The left viewmodel's slot of each of the game's left-gun animation
+    /// slots, by the game's slot.
+    pub left_anim_slots: &'static [Option<usize>],
     /// The definition's damage multipliers by hit location.
     pub location_damage: Option<Box<[f32]>>,
     /// The definition's bounce coefficients along and across a surface, by
@@ -806,6 +809,10 @@ pub const T5_NOTE_RUMBLE_PREFIX: &str = "rmbnt#";
 pub struct LinkedNotetrackAction {
     pub sound_alias: Option<String>,
     pub rumble_alias: Option<String>,
+    /// An alias the game plays by its name's hash before `sound_alias` (a
+    /// Black Ops weapon's notetrack sound map): nothing plays when the bank
+    /// holds no such alias.
+    pub hashed_alias: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1030,9 +1037,13 @@ impl WeaponSoundAliases {
                 out.push(s);
             }
         }
-        for (_, alias) in &self.notetrack_sound_map {
-            if !alias.is_empty() {
-                out.push(alias.as_str());
+        // An inline-prefix game plays its map's aliases by hash: one the bank
+        // lacks plays nothing, so they are not required.
+        if self.notetrack_convention == NotetrackConvention::SoundMap {
+            for (_, alias) in &self.notetrack_sound_map {
+                if !alias.is_empty() {
+                    out.push(alias.as_str());
+                }
             }
         }
         for ov in &self.leftover_sound_overrides {
@@ -2488,6 +2499,14 @@ impl WeaponBuild {
                     }
                 }
                 NotetrackConvention::InlinePrefix => {
+                    for (note, alias) in &row.sounds.notetrack_sound_map {
+                        if !alias.is_empty() {
+                            actions
+                                .entry(note.to_ascii_lowercase())
+                                .or_default()
+                                .hashed_alias = Some(alias.clone());
+                        }
+                    }
                     let indices: std::collections::BTreeSet<_> = row
                         .sz_xanim_edges
                         .iter()

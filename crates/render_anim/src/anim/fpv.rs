@@ -155,6 +155,10 @@ pub struct FpvAuthoritySample {
     pub clip_ammo: Option<i32>,
 
     pub left_clip_ammo: Option<i32>,
+
+    /// The player's own fields in the game's layout (a game's viewmodel
+    /// rules read them).
+    pub game_move: [u8; game_api::movement::GAME_MOVE_BYTES],
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -221,17 +225,73 @@ pub enum WeapAnimEdge {
     ForceIdle,
 
     Dispatch(usize),
+
+    /// A game's own animation (`anim`, in its order) in a hand's `slot`.
+    GameDispatch {
+        slot: usize,
+        anim: usize,
+        left: bool,
+    },
 }
 
-/// A game's own viewmodel rules, with the held weapon's own animations.
-#[derive(Clone, Copy, Debug)]
+/// A game's own viewmodel rules, with the held weapon's own bytes.
+#[derive(Clone, Debug)]
 pub struct GameViewmodel {
     pub rules: game_api::ViewmodelRules,
-    /// The weapon's animation slots that name an animation, in the game's
-    /// order.
-    pub named_anims: u128,
-    /// The runtime slot of each of the game's animation slots.
-    pub anim_slots: &'static [Option<usize>],
+    pub weapon: Option<std::sync::Arc<asset_game::GameWeaponBytes>>,
+}
+
+impl GameViewmodel {
+    /// Whether the weapon names its animation `anim` (in the game's order).
+    fn named(&self, anim: usize) -> bool {
+        anim < 128
+            && self
+                .weapon
+                .as_ref()
+                .is_some_and(|weapon| weapon.named_anims & 1 << anim != 0)
+    }
+
+    fn slot(&self, anim: usize) -> Option<usize> {
+        self.weapon
+            .as_ref()?
+            .anim_slots
+            .get(anim)
+            .copied()
+            .flatten()
+    }
+
+    fn left_slot(&self, anim: usize) -> Option<usize> {
+        self.weapon
+            .as_ref()?
+            .left_anim_slots
+            .get(anim)
+            .copied()
+            .flatten()
+    }
+
+    /// The rate the game starts its animation `anim` of `length_ms` at;
+    /// `None` when it has no rule.
+    fn rate(
+        &self,
+        anim: usize,
+        length_ms: i32,
+        game: &[u8; game_api::movement::GAME_MOVE_BYTES],
+    ) -> Option<f32> {
+        let rate = self.rules.rate?;
+        let weapon = self.weapon.as_ref()?;
+        Some(rate(&game_api::ViewmodelStart {
+            anim,
+            length_ms,
+            def: &weapon.def,
+            variant: &weapon.variant,
+            game,
+        }))
+    }
+
+    /// Whether the player's own fields hide the viewmodel.
+    pub fn hidden(&self, game: &[u8; game_api::movement::GAME_MOVE_BYTES]) -> bool {
+        self.rules.hidden.is_some_and(|hidden| hidden(game))
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -271,32 +331,85 @@ impl FpvPresentState {
         observe_weap_anim_edge_on(&mut self.last_weap_anim_secondary, raw)
     }
 
-    /// The edge of the weapon animation number by the game's own rules.
-    fn observe_game_weap_anim_edge(&mut self, raw: i32, game: &GameViewmodel) -> WeapAnimEdge {
+    /// The edge of the weapon animation number by the game's own rules,
+    /// with what it does to the camera animations.
+    fn observe_game_weap_anim_edge(
+        &mut self,
+        raw: i32,
+        game: &GameViewmodel,
+    ) -> (WeapAnimEdge, Option<game_api::CameraAnim>) {
         if self.last_weap_anim.replace(raw) == Some(raw) {
-            return WeapAnimEdge::Unchanged;
+            return (WeapAnimEdge::Unchanged, None);
         }
-        let named = |anim: usize| anim < 128 && game.named_anims & 1 << anim != 0;
+        let named = |anim: usize| game.named(anim);
         let (anim, gap) = (game.rules.anim)(raw as u32, &named);
         if let Some(gap) = gap {
             self.report(gap);
         }
+        let camera = game
+            .rules
+            .camera
+            .and_then(|camera| (camera.anim)(raw as u32, &named));
+        (self.game_edge(anim, game, false), camera)
+    }
+
+    /// The edge of a dual-wield weapon's left-hand number by the game's own
+    /// rules; unchanged when it has none.
+    fn observe_game_left_edge(&mut self, raw: i32, game: &GameViewmodel) -> WeapAnimEdge {
+        let Some(left) = game.rules.left else {
+            return WeapAnimEdge::Unchanged;
+        };
+        if self.last_weap_anim_secondary.replace(raw) == Some(raw) {
+            return WeapAnimEdge::Unchanged;
+        }
+        let named = |anim: usize| game.named(anim);
+        let (anim, gap) = left(raw as u32, &named);
+        if let Some(gap) = gap {
+            self.report(gap);
+        }
+        self.game_edge(anim, game, true)
+    }
+
+    fn game_edge(
+        &mut self,
+        anim: game_api::ViewmodelAnim,
+        game: &GameViewmodel,
+        left: bool,
+    ) -> WeapAnimEdge {
         match anim {
             game_api::ViewmodelAnim::Idle => WeapAnimEdge::Idle,
             game_api::ViewmodelAnim::IdleNow => WeapAnimEdge::ForceIdle,
             game_api::ViewmodelAnim::Keep => WeapAnimEdge::Unchanged,
             game_api::ViewmodelAnim::Play(anim) => {
-                match game.anim_slots.get(anim).copied().flatten() {
-                    Some(slot) => {
-                        self.report(game.rules.playback);
-                        WeapAnimEdge::Dispatch(slot)
-                    }
-                    None => {
-                        self.report(game.rules.unslotted);
+                let right = (!left).then(|| game.slot(anim)).flatten();
+                match (right, game.left_slot(anim)) {
+                    (Some(slot), _) => self.game_dispatch(slot, anim, false, game),
+                    (None, Some(slot)) => self.game_dispatch(slot, anim, true, game),
+                    (None, None) => {
+                        if let Some(unslotted) = game.rules.unslotted {
+                            self.report(unslotted);
+                        }
                         WeapAnimEdge::Unchanged
                     }
                 }
             }
+        }
+    }
+
+    fn game_dispatch(
+        &mut self,
+        slot: usize,
+        anim: usize,
+        left: bool,
+        game: &GameViewmodel,
+    ) -> WeapAnimEdge {
+        match (game.rules.rate, game.rules.playback) {
+            (Some(_), _) => WeapAnimEdge::GameDispatch { slot, anim, left },
+            (None, Some(playback)) => {
+                self.report(playback);
+                WeapAnimEdge::Dispatch(slot)
+            }
+            (None, None) => WeapAnimEdge::Dispatch(slot),
         }
     }
 
@@ -464,9 +577,9 @@ pub fn tick_equipped_fpv_with_extra_events(
         apply_present_events(&mut equipped.controller, &events);
     }
     if let Some(sample) = sample {
-        let edge = match &game {
+        let (edge, camera) = match &game {
             Some(game) => present.observe_game_weap_anim_edge(sample.weap_anim, game),
-            None => present.observe_weap_anim_edge(sample.weap_anim),
+            None => (present.observe_weap_anim_edge(sample.weap_anim), None),
         };
         match edge {
             WeapAnimEdge::Unchanged => {}
@@ -483,6 +596,31 @@ pub fn tick_equipped_fpv_with_extra_events(
             }
             WeapAnimEdge::Dispatch(slot) => {
                 report_dispatch_slot(slot, equipped.controller.dispatch_sz_xanim_index(slot));
+            }
+            WeapAnimEdge::GameDispatch { slot, anim, left } => {
+                let controller = if left {
+                    equipped.left.as_mut()
+                } else {
+                    Some(&mut equipped.controller)
+                };
+                if let (Some(controller), Some(game)) = (controller, &game) {
+                    start_game_anim(controller, game, slot, anim, &sample.game_move);
+                }
+            }
+        }
+        if let (Some(camera), Some(game)) = (camera, &game) {
+            let cameras = asset_game::weap_anim_extra::CAMERAS;
+            match camera {
+                game_api::CameraAnim::Start(anim) => {
+                    if let Some(slot) = game.slot(anim) {
+                        equipped
+                            .controller
+                            .start_camera_anim(slot, cameras, |length_ms| {
+                                game.rate(anim, length_ms, &sample.game_move).unwrap_or(1.0)
+                            });
+                    }
+                }
+                game_api::CameraAnim::Stop => equipped.controller.stop_slots(cameras),
             }
         }
     }
@@ -507,22 +645,27 @@ pub fn tick_equipped_fpv_with_extra_events(
         && sample.last_weapon_hand == 1
     {
         left.set_predicted_perks(sample.perks0, sample.perks1);
-        let edge = match game {
-            Some(_) => WeapAnimEdge::Unchanged,
+        let edge = match &game {
+            Some(game) => present.observe_game_left_edge(sample.weap_anim_secondary, game),
             None => present.observe_weap_anim_secondary_edge(sample.weap_anim_secondary),
         };
+        // A game's left idle is never its empty one.
+        let empty = game.is_none() && sample.left_clip_ammo == Some(0);
         match edge {
             WeapAnimEdge::Unchanged => {}
             WeapAnimEdge::Idle => {
-                if !left.apply_idle_weap_anim(sample.left_clip_ammo == Some(0)) {
+                if !left.apply_idle_weap_anim(empty) {
                     present.last_weap_anim_secondary = None;
                 }
             }
-            WeapAnimEdge::ForceIdle => {
-                left.apply_force_idle_weap_anim(sample.left_clip_ammo == Some(0));
-            }
+            WeapAnimEdge::ForceIdle => left.apply_force_idle_weap_anim(empty),
             WeapAnimEdge::Dispatch(slot) => {
                 report_dispatch_slot(slot, left.dispatch_sz_xanim_index(slot));
+            }
+            WeapAnimEdge::GameDispatch { slot, anim, .. } => {
+                if let Some(game) = &game {
+                    start_game_anim(left, game, slot, anim, &sample.game_move);
+                }
             }
         }
         let advance = left.advance(dt_secs);
@@ -542,6 +685,25 @@ pub fn tick_equipped_fpv_with_extra_events(
         left.apply_ads_overlay_frame(0.0);
     }
     (sample_pose(&equipped.controller), notetracks)
+}
+
+/// Starts a game's own animation on a hand at the game's rate.
+fn start_game_anim(
+    controller: &mut ViewmodelController,
+    game: &GameViewmodel,
+    slot: usize,
+    anim: usize,
+    player: &[u8; game_api::movement::GAME_MOVE_BYTES],
+) {
+    let started = controller.start_game_anim(slot, |length_ms| {
+        game.rate(anim, length_ms, player).unwrap_or(1.0)
+    });
+    if !started {
+        diag::warn!(
+            Fpv,
+            "fpv: game animation {anim} (slot {slot}) missing — not started"
+        );
+    }
 }
 
 fn observe_weap_anim_edge_on(previous: &mut Option<i32>, raw: i32) -> WeapAnimEdge {

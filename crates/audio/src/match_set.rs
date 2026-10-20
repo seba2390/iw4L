@@ -512,5 +512,15 @@ fn request_weapon_aliases(
             }
         }
     }
+    // Played by hash: loaded when the bank has them, never missing.
+    for alias in registry.notetrack_hashed_aliases_of(weapon) {
+        if seen.insert(alias)
+            && let Some(ns) = registry.sound_namespace_for(weapon, alias)
+            && !clip_keys_for_alias(bank, ns, alias).is_empty()
+        {
+            n += 1;
+            request_named(clips, bank, ns, alias, set);
+        }
+    }
     n
 }

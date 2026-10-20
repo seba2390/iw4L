@@ -592,6 +592,42 @@ pub(crate) fn set_stance(world: &mut FrameWorld, id: ClientId, stance: &str) -> 
     true
 }
 
+/// A script hides (`hideviewmodel`) or shows the player's viewmodel by the
+/// game's own rules, sending the events they raise; false when the game has
+/// no such rule.
+pub(crate) fn hide_viewmodel(world: &mut FrameWorld, id: ClientId, hide: bool) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    let Some(before) = world
+        .player(id)
+        .map(|ps| ps.move_player(id.0 as i32, frozen(world, id)))
+    else {
+        return false;
+    };
+    let Some(Some((outcome, player))) = update(world, id, |player| {
+        movement
+            .hide_viewmodel(player, hide)
+            .map(|outcome| (outcome, *player))
+    }) else {
+        return false;
+    };
+    let tick = world
+        .ecs()
+        .get_resource::<crate::step::StepRequest>()
+        .map(|request| request.tick);
+    if let Some(tick) = tick
+        && world.publishes_snapshot()
+        && !outcome.signals.is_empty()
+    {
+        let mut around = crate::game_fire::MatchFireWorld::new(world, tick, Some(id));
+        for gap in movement.server_events(&before, &player, &outcome.signals, &mut around) {
+            world.report_game_gap(gap);
+        }
+    }
+    true
+}
+
 /// Enters last stand in the game's own movement.
 pub(crate) fn enter_last_stand(world: &mut FrameWorld, id: ClientId) {
     let Some(movement) = rules(world) else {

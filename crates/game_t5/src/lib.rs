@@ -143,6 +143,7 @@ impl game_api::GameScripts for T5 {
             play_weapon_death_effects: "clientscripts/_callbacks::codecallback_playweapondeatheffects",
             gib_event: "clientscripts/_callbacks::codecallback_gibevent",
             trigger_delete: "codescripts/delete::main",
+            level_notify: "clientscripts/_callbacks::level_notify",
         })
     }
 

@@ -242,6 +242,67 @@ impl ViewmodelController {
         self.start_action(slot, state, timer)
     }
 
+    /// A game's own start of the animation in `slot`: it cuts in from its
+    /// first frame at the rate the game gives for its length (msec, as the
+    /// game's animation system reads it), and every other animation stops.
+    /// False when the weapon has no animation there.
+    pub fn start_game_anim(&mut self, slot: usize, rate: impl FnOnce(i32) -> f32) -> bool {
+        self.zero_dispatch_slots(ACTION_GOAL_TIME_SECS);
+        self.action_remaining = None;
+        let Some(clip) = self.weapon.clip_at(slot).cloned() else {
+            self.action = None;
+            return false;
+        };
+        let rate = rate(clip_length_ms(&clip));
+        self.restart(slot, clip, rate);
+        self.action = WeaponAnimSlot::from_index(slot);
+        self.state = self.action.map_or(WeaponState::Ready, |slot| {
+            self.state_and_timer_for_slot(slot).0
+        });
+        true
+    }
+
+    /// A game's camera animation in `slot`, started over the others in
+    /// `cameras` beside what plays. False when the weapon has none there.
+    pub fn start_camera_anim(
+        &mut self,
+        slot: usize,
+        cameras: std::ops::Range<usize>,
+        rate: impl FnOnce(i32) -> f32,
+    ) -> bool {
+        let Some(clip) = self.weapon.clip_at(slot).cloned() else {
+            return false;
+        };
+        self.stop_slots(cameras);
+        let rate = rate(clip_length_ms(&clip));
+        self.restart(slot, clip, rate);
+        true
+    }
+
+    /// Stops the animations in `slots` at once.
+    pub fn stop_slots(&mut self, slots: std::ops::Range<usize>) {
+        for node in slots {
+            self.tree
+                .set_goal_weight(node, INACTIVE_GOAL_WEIGHT, ACTION_GOAL_TIME_SECS)
+                .expect("animation index is within tree");
+            self.tree
+                .set_rate(node, 1.0)
+                .expect("animation index is within tree");
+        }
+    }
+
+    fn restart(&mut self, slot: usize, clip: Arc<asset_anim::xanim_clip::AnimClip>, rate: f32) {
+        self.tree
+            .set_clip(slot, clip)
+            .expect("animation index is within tree");
+        self.tree
+            .set_rate(slot, rate)
+            .expect("animation index is within tree");
+        self.tree
+            .set_goal_weight(slot, ACTIVE_GOAL_WEIGHT, ACTION_GOAL_TIME_SECS)
+            .expect("animation index is within tree");
+    }
+
     fn state_and_timer_for_slot(&self, slot: WeaponAnimSlot) -> (WeaponState, Option<i32>) {
         match slot {
             WeaponAnimSlot::Fire
@@ -642,4 +703,10 @@ impl ViewmodelController {
 
 fn positive_ms(ms: i32) -> Option<i32> {
     (ms > 0).then_some(ms)
+}
+
+/// An animation's length in msec as the games' animation systems read it:
+/// its frame count over its frame rate, truncated.
+fn clip_length_ms(clip: &asset_anim::xanim_clip::AnimClip) -> i32 {
+    ((f32::from(clip.numframes) / clip.framerate) * 1000.0) as i32
 }

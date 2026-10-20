@@ -485,6 +485,12 @@ impl SimWorld {
         crate::script::client::report_sounds(&mut self.ecs, statuses);
     }
 
+    /// The notes the local player's viewmodel animations reached this
+    /// frame, for its client scripts.
+    pub fn report_viewmodel_notes(&mut self, notes: Vec<String>) {
+        crate::script::client::viewmodel_notes(&mut self.ecs, notes);
+    }
+
     /// The local client's sound system's report of notified entity sounds'
     /// lengths, in msec, by entity number (Black Ops' `sl` command).
     pub fn report_sound_lengths(&mut self, reports: Vec<(i32, i32)>) {

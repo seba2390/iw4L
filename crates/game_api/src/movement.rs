@@ -129,6 +129,9 @@ pub struct MovePlayer {
     pub weapon_state: i32,
     /// Set by the weapon rules, in the game's numbering.
     pub weap_anim: u32,
+    /// Set by the weapon rules of a game with a left-hand number, in its
+    /// numbering.
+    pub weap_anim_left: Option<u32>,
     pub offhand: u32,
     pub view_weapon: Option<u32>,
     pub grenade_time_left: i32,
@@ -164,6 +167,7 @@ impl Default for MovePlayer {
             aim_spread_scale: 0.0,
             weapon_state: 0,
             weap_anim: 0,
+            weap_anim_left: None,
             offhand: 0,
             view_weapon: None,
             grenade_time_left: 0,
@@ -601,6 +605,13 @@ pub trait PlayerMovement: Sync {
     /// Clears the player's damage timer, which slows them while it runs
     /// down.
     fn clear_damage_timer(&self, _player: &mut MovePlayer) {}
+
+    /// A script hides (`hideviewmodel`) or shows the player's viewmodel: what
+    /// the game does to the player's weapon state, with the events it sends;
+    /// `None` when the game's movement has no such rule.
+    fn hide_viewmodel(&self, _player: &mut MovePlayer, _hide: bool) -> Option<MoveOutcome> {
+        None
+    }
 
     /// What `finishplayerdamage` does to the player's own state before it
     /// takes the health; answers the damage the game takes after its own
