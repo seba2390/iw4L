@@ -4,8 +4,9 @@
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
-    BulletHitType, BulletTrace, FireWorld, GAME_MISSILE_BYTES, GameMissile, GameTrajectory,
-    MissileExplosion, MissileRun, NotifyArg, RadiusDamage, TrajectoryKind,
+    AiEvent, AiLineEvent, AiPointEvent, BulletHitType, BulletTrace, FireWorld, GAME_MISSILE_BYTES,
+    GameMissile, GameTrajectory, MissileExplosion, MissileRun, NotifyArg, RadiusDamage,
+    TrajectoryKind,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD};
 use game_api::{Unknown, unknown};
@@ -66,14 +67,6 @@ fn missile_glass_unknown() -> &'static Unknown {
     )
 }
 
-fn ai_missile_events_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.ai.missile_events",
-        "actors are not told of missiles flying near them or striking",
-        "Black Ops' AI event broadcast for missiles and the actors' reaction to it"
-    )
-}
-
 /// What the game keeps per missile beyond the shared fields.
 #[derive(Clone, Copy, Default)]
 pub(crate) struct State {
@@ -97,6 +90,8 @@ pub(crate) struct State {
     /// The surface it came to rest on.
     pub(crate) rest_normal: [f32; 3],
     pub(crate) spawned_at: i32,
+    /// When the grenade last broadcast its AI ping.
+    pub(crate) last_ping_at: i32,
 }
 
 impl State {
@@ -117,6 +112,7 @@ impl State {
             curve: f(20),
             rest_normal: [f(24), f(28), f(32)],
             spawned_at: i(36),
+            last_ping_at: i(40),
         }
     }
 
@@ -133,6 +129,7 @@ impl State {
             game[24 + i * 4..28 + i * 4].copy_from_slice(&c.to_le_bytes());
         }
         game[36..40].copy_from_slice(&self.spawned_at.to_le_bytes());
+        game[40..44].copy_from_slice(&self.last_ping_at.to_le_bytes());
     }
 }
 
@@ -294,7 +291,7 @@ pub(crate) fn run_missile(
     missile: &mut GameMissile,
     world: &mut dyn FireWorld,
 ) -> (MissileRun, Vec<&'static Unknown>) {
-    let mut gaps = vec![ai_missile_events_unknown()];
+    let mut gaps = Vec::new();
     let Some((def_bytes, variant_bytes)) = world
         .weapon(missile.weapon)
         .map(|w| (w.def.clone(), w.variant.clone()))
@@ -309,7 +306,27 @@ pub(crate) fn run_missile(
     let mut state = State::read(&missile.game);
     let level = world.level_time();
     if state.grenade {
+        if def.offhand_class() != 0 && level - state.last_ping_at > 250 {
+            world.ai_event(AiEvent::Point {
+                originator: missile.entity,
+                kind: AiPointEvent::GrenadePing {
+                    no_ping: def.no_ping(),
+                },
+                teams: Some(0xff),
+                origin: missile.origin,
+            });
+            state.last_ping_at = level;
+        }
         crate::grenade::start_falling(missile, &mut state, &def, world);
+    } else {
+        world.ai_event(AiEvent::Point {
+            originator: missile.entity,
+            kind: AiPointEvent::ProjectilePing {
+                no_ping: def.no_ping(),
+            },
+            teams: Some(0xff),
+            origin: missile.origin,
+        });
     }
     let run = fly(missile, &def, &mut state, level, world, &mut gaps);
     state.write(&mut missile.game);
@@ -494,6 +511,18 @@ fn impact(
         def.projectile_activate_dist() > 0 && state.travel <= def.projectile_activate_dist() as f32;
     let explodes = def.proj_impact_explode() && !unarmed;
     let means = if explodes { MOD_PROJECTILE } else { MOD_IMPACT };
+    if missile.owner != ENTITY_NONE
+        && let Some(owner) = world.entity(missile.owner)
+    {
+        world.ai_event(AiEvent::Line {
+            originator: missile.owner,
+            hit: ENTITY_NONE,
+            kind: AiLineEvent::ProjectileImpact,
+            teams: None,
+            start: owner.origin,
+            end,
+        });
+    }
     let amount = def.damage();
     let hit = world.entity(target);
     if let Some(entity) = hit.filter(|e| e.takes_damage)

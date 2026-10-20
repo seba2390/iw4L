@@ -12,6 +12,7 @@ pub(crate) struct Shown {
     angles: [f32; 3],
     model: Option<Arc<str>>,
     attachments: Vec<(Arc<str>, Arc<str>)>,
+    attach_ignore_collision: u32,
     hidden: bool,
     shown_to: u64,
     solid: bool,
@@ -27,6 +28,7 @@ struct Wanted {
     angles: [f32; 3],
     model: Option<Arc<str>>,
     attachments: Vec<(Arc<str>, Arc<str>)>,
+    attach_ignore_collision: u32,
     hidden: bool,
     shown_to: u64,
     solid: bool,
@@ -163,7 +165,15 @@ fn settle_entity(world: &mut World, object: u64) {
 
 fn settle_rows(world: &mut World, only: Option<u64>) {
     let mut runtime = world.resource_mut::<RoundScript>();
-    let placed: Vec<(u64, ScriptModelId, bool, bool, Vec<(Arc<str>, Arc<str>)>)> = match only {
+    type PlacedRow = (
+        u64,
+        ScriptModelId,
+        bool,
+        bool,
+        Vec<(Arc<str>, Arc<str>)>,
+        u32,
+    );
+    let placed: Vec<PlacedRow> = match only {
         Some(object) => runtime
             .entities
             .get(&object)
@@ -174,6 +184,7 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
                     e.hidden,
                     e.solid,
                     e.attachments.clone(),
+                    e.attach_ignore_collision,
                 ))
             })
             .into_iter()
@@ -182,7 +193,14 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
             .entities
             .iter()
             .filter_map(|(id, e)| {
-                Some((*id, e.presence?, e.hidden, e.solid, e.attachments.clone()))
+                Some((
+                    *id,
+                    e.presence?,
+                    e.hidden,
+                    e.solid,
+                    e.attachments.clone(),
+                    e.attach_ignore_collision,
+                ))
             })
             .collect(),
     };
@@ -201,33 +219,37 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         bool,
         Option<Arc<str>>,
         Vec<(Arc<str>, Arc<str>)>,
+        u32,
     );
     let wanted: BTreeMap<ScriptModelId, SettledRow> = placed
         .into_iter()
-        .map(|(object, presence, hidden, solid, attachments)| {
-            let fields = runtime.objects.get(&object);
-            let field = |symbol| match fields.and_then(|fields| fields.get(&symbol)) {
-                Some(Value::Vector(v)) => *v,
-                _ => [0.0; 3],
-            };
-            let model = match fields.and_then(|fields| fields.get(&model_sym)) {
-                Some(Value::String(m)) if !m.is_empty() && !m.starts_with('*') => {
-                    Some(m.clone().into())
-                }
-                _ => None,
-            };
-            (
-                presence,
+        .map(
+            |(object, presence, hidden, solid, attachments, attach_ignore_collision)| {
+                let fields = runtime.objects.get(&object);
+                let field = |symbol| match fields.and_then(|fields| fields.get(&symbol)) {
+                    Some(Value::Vector(v)) => *v,
+                    _ => [0.0; 3],
+                };
+                let model = match fields.and_then(|fields| fields.get(&model_sym)) {
+                    Some(Value::String(m)) if !m.is_empty() && !m.starts_with('*') => {
+                        Some(m.clone().into())
+                    }
+                    _ => None,
+                };
                 (
-                    field(origin_field),
-                    field(angles_field),
-                    hidden,
-                    solid,
-                    model,
-                    attachments,
-                ),
-            )
-        })
+                    presence,
+                    (
+                        field(origin_field),
+                        field(angles_field),
+                        hidden,
+                        solid,
+                        model,
+                        attachments,
+                        attach_ignore_collision,
+                    ),
+                )
+            },
+        )
         .collect();
     let turrets: Vec<_> = runtime
         .engine
@@ -265,7 +287,7 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         Arc<str>,
         Option<std::sync::Arc<xmodel_runtime::RetainedModelCapability>>,
     > = BTreeMap::new();
-    for (_, _, _, _, model, attachments) in wanted.values() {
+    for (_, _, _, _, model, attachments, _) in wanted.values() {
         if let Some(model) = model
             && !model_caps.contains_key(model)
         {
@@ -280,12 +302,13 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         }
     }
     for row in frame.entity_collision_capabilities_mut() {
-        let Some((origin, angles, hidden, solid, model, attachments)) =
+        let Some((origin, angles, hidden, solid, model, attachments, attach_ignore)) =
             row.owner.script_model().and_then(|id| wanted.get(&id))
         else {
             continue;
         };
-        let (origin, angles, hidden, solid) = (*origin, *angles, *hidden, *solid);
+        let (origin, angles, hidden, solid, attach_ignore) =
+            (*origin, *angles, *hidden, *solid, *attach_ignore);
         row.hidden = hidden;
         row.solid = solid;
         if let Some(model) = model {
@@ -294,14 +317,15 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
                 row.dobj = Some(AuthorityDObjState::at_pose(model, cap, origin, angles));
                 row.followed_pose = Some((origin, angles));
             }
-            if let Some(dobj) = row.dobj.as_mut()
-                && !dobj.attachments_match(attachments)
-            {
-                let resolved: Vec<_> = attachments
-                    .iter()
-                    .map(|(m, t)| (&**m, &**t, model_caps.get(m).cloned().flatten()))
-                    .collect();
-                dobj.set_attachments(&resolved);
+            if let Some(dobj) = row.dobj.as_mut() {
+                if !dobj.attachments_match(attachments) {
+                    let resolved: Vec<_> = attachments
+                        .iter()
+                        .map(|(m, t)| (&**m, &**t, model_caps.get(m).cloned().flatten()))
+                        .collect();
+                    dobj.set_attachments(&resolved);
+                }
+                dobj.set_attach_ignore_collision(attach_ignore);
             }
         }
         if let Some(rotations) = row.owner.script_model().and_then(|id| rotations.get(&id))
@@ -434,6 +458,7 @@ fn present(world: &mut World, now: i32) {
                 .and_then(|row| row.dobj.as_ref())
                 .map(|dobj| dobj.current_model.as_str().into()),
             attachments: Vec::new(),
+            attach_ignore_collision: 0,
             hidden: mover.state.e_flags & entity_iw4::CG_SCRIPT_MOVER_NODRAW != 0,
             shown_to: mover.shown_to,
             solid: !mover.nonsolid,
@@ -468,6 +493,7 @@ fn present(world: &mut World, now: i32) {
         }
         let reshaped = want.model != shown.model
             || want.attachments != shown.attachments
+            || want.attach_ignore_collision != shown.attach_ignore_collision
             || want.contents != shown.contents;
         if reshaped || !want.part_ops.is_empty() || want.anim_op.is_some() {
             present_model(&mut frame, &want);
@@ -480,6 +506,7 @@ fn present(world: &mut World, now: i32) {
                 angles: if posed { want.angles } else { shown.angles },
                 model: want.model,
                 attachments: want.attachments,
+                attach_ignore_collision: want.attach_ignore_collision,
                 hidden: want.hidden,
                 shown_to: want.shown_to,
                 solid: want.solid,
@@ -523,17 +550,18 @@ fn with_tag_dobj<T>(
     {
         return read(dobj);
     }
-    let (model, origin, angles, attachments) = {
+    let (model, origin, angles, attachments, attach_ignore) = {
         let mut runtime = world.resource_mut::<RoundScript>();
-        let attachments = runtime
-            .entities
-            .get(&object)
-            .map_or_else(Vec::new, |e| e.attachments.clone());
+        let (attachments, attach_ignore) = runtime.entities.get(&object).map_or_else(
+            || (Vec::new(), 0),
+            |e| (e.attachments.clone(), e.attach_ignore_collision),
+        );
         (
             model_field(&mut runtime, object)?,
             vector(&mut runtime, object, "origin"),
             vector(&mut runtime, object, "angles"),
             attachments,
+            attach_ignore,
         )
     };
     let frame = FrameWorld::from_world(world);
@@ -545,6 +573,7 @@ fn with_tag_dobj<T>(
             .map(|(m, t)| (&**m, &**t, frame.model_capability(m).flatten()))
             .collect();
         dobj.set_attachments(&resolved);
+        dobj.set_attach_ignore_collision(attach_ignore);
     }
     read(&dobj)
 }
@@ -693,6 +722,7 @@ fn collect_wanted(world: &mut World) -> Vec<Wanted> {
         let part_ops = std::mem::take(&mut entity.part_ops);
         let anim_op = entity.anim_op.take();
         let attachments = entity.attachments.clone();
+        let attach_ignore_collision = entity.attach_ignore_collision;
         let collision_only = matches!(entity.kind, EntityKind::Missile(_));
         let contents = entity.contents;
         let unchanged = part_ops.is_empty()
@@ -705,6 +735,7 @@ fn collect_wanted(world: &mut World) -> Vec<Wanted> {
                     && shown.contents == contents
                     && shown.model == model
                     && shown.attachments == attachments
+                    && shown.attach_ignore_collision == attach_ignore_collision
                     && near(shown.origin, origin)
                     && near_angles(shown.angles, angles)
             });
@@ -719,6 +750,7 @@ fn collect_wanted(world: &mut World) -> Vec<Wanted> {
             angles,
             model,
             attachments,
+            attach_ignore_collision,
             hidden,
             shown_to,
             solid,
@@ -780,6 +812,7 @@ fn present_model(frame: &mut FrameWorld, want: &Wanted) {
         return;
     };
     dobj.set_attachments(&attachments);
+    dobj.set_attach_ignore_collision(want.attach_ignore_collision);
     for (tag, hidden) in &want.part_ops {
         dobj.set_tag_hidden(tag, *hidden);
     }

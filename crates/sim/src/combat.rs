@@ -1549,6 +1549,8 @@ pub(crate) fn phase_trace(
                             }) => (Some(usize::from(bone)), Some(part_classification)),
                             _ => (None, None),
                         };
+                        let hit_location =
+                            part.map_or("none", crate::script_player::hit_location_name);
                         let means = crate::script_player::means(
                             world,
                             DamageSource::Shot(em.shot_id),
@@ -1569,7 +1571,7 @@ pub(crate) fn phase_trace(
                                 dir: em.direction,
                                 bone,
                                 flags: 0,
-                                hit_location: None,
+                                hit_location: Some(hit_location),
                                 part,
                                 inflictor: None,
                                 time_offset: 0,
@@ -1795,10 +1797,15 @@ fn fire_weapon_melee(
             if world.publishes_snapshot()
                 && let Some(target) = owner.script_model()
             {
-                let bone = match segment.collider {
-                    Some(ColliderId::EntityDObjBone { bone, .. }) => Some(usize::from(bone)),
-                    _ => None,
+                let (bone, part) = match segment.collider {
+                    Some(ColliderId::EntityDObjBone {
+                        bone,
+                        part_classification,
+                        ..
+                    }) => (Some(usize::from(bone)), Some(part_classification)),
+                    _ => (None, None),
                 };
+                let hit_location = part.map_or("none", crate::script_player::hit_location_name);
                 let damaged = crate::script::damage_entity(
                     world.ecs(),
                     &crate::script::EntityHit {
@@ -1812,8 +1819,8 @@ fn fire_weapon_melee(
                         dir: forward,
                         bone,
                         flags: 0,
-                        hit_location: None,
-                        part: None,
+                        hit_location: Some(hit_location),
+                        part,
                         inflictor: None,
                         time_offset: 0,
                     },

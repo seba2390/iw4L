@@ -13,7 +13,21 @@ use playerstate_iw4::{
     PM_TYPE_DEAD, PM_TYPE_DEAD_LINKED, PM_TYPE_INTERMISSION, PM_TYPE_LAST_STAND,
     PM_TYPE_NORMAL_LINKED, PM_TYPE_SPECTATOR,
 };
-use weapon_iw4::WeaponState;
+use weapon_iw4::{HITLOC_NAMES, WeaponState};
+
+pub(crate) fn hit_location_name(hitloc: u8) -> &'static str {
+    HITLOC_NAMES
+        .get(usize::from(hitloc))
+        .copied()
+        .unwrap_or("none")
+}
+
+pub(crate) fn hit_location_index(name: &str) -> u8 {
+    HITLOC_NAMES
+        .iter()
+        .position(|&known| known.eq_ignore_ascii_case(name))
+        .map_or(0, |i| i as u8)
+}
 
 pub(crate) fn spectator_lifecycle(team: i32) -> ClientLifecycle {
     if team == entity_iw4::TEAM_SPECTATOR {

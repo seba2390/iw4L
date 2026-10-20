@@ -989,12 +989,20 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                     ) = collider
                         && let Some(target) = owner.script_model()
                     {
-                        let bone = match collider {
-                            Some(ColliderId::EntityDObjBone { bone, .. }) => {
-                                Some(usize::from(bone))
-                            }
-                            _ => None,
+                        let (bone, part) = match collider {
+                            Some(ColliderId::EntityDObjBone {
+                                bone,
+                                part_classification,
+                                ..
+                            }) => (Some(usize::from(bone)), Some(part_classification)),
+                            _ => (None, None),
                         };
+                        let hit_location =
+                            part.map_or("none", crate::script_player::hit_location_name);
+                        let inflictor = world
+                            .ecs_ref()
+                            .get_resource::<crate::script::RoundScript>()
+                            .and_then(|r| r.missile_entity(projectile.id));
                         entity_hits.push((
                             DamageSource::Projectile(projectile.id),
                             crate::script::EntityHit {
@@ -1008,9 +1016,9 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                                 dir: projectile.velocity,
                                 bone,
                                 flags: 0,
-                                hit_location: None,
-                                part: None,
-                                inflictor: None,
+                                hit_location: Some(hit_location),
+                                part,
+                                inflictor,
                                 time_offset: 0,
                             },
                         ));
@@ -1151,10 +1159,20 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                             | ColliderId::EntityLinkedBrush { owner, .. } => owner.script_model(),
                             _ => None,
                         } {
-                            let bone = match collider {
-                                ColliderId::EntityDObjBone { bone, .. } => Some(usize::from(bone)),
-                                _ => None,
+                            let (bone, part) = match collider {
+                                ColliderId::EntityDObjBone {
+                                    bone,
+                                    part_classification,
+                                    ..
+                                } => (Some(usize::from(bone)), Some(part_classification)),
+                                _ => (None, None),
                             };
+                            let hit_location =
+                                part.map_or("none", crate::script_player::hit_location_name);
+                            let inflictor = world
+                                .ecs_ref()
+                                .get_resource::<crate::script::RoundScript>()
+                                .and_then(|r| r.missile_entity(projectile.id));
                             entity_hits.push((
                                 DamageSource::Projectile(projectile.id),
                                 crate::script::EntityHit {
@@ -1168,9 +1186,9 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                                     dir: projectile.velocity,
                                     bone,
                                     flags: 0,
-                                    hit_location: None,
-                                    part: None,
-                                    inflictor: None,
+                                    hit_location: Some(hit_location),
+                                    part,
+                                    inflictor,
                                     time_offset: 0,
                                 },
                             ));

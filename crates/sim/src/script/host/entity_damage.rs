@@ -124,6 +124,7 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     continue;
                 }
                 let mut runtime = world.resource_mut::<RoundScript>();
+                let inflictor = hit.inflictor.and_then(|id| runtime.presented_by(id));
                 let at = match runtime
                     .presented_by(target)
                     .map(|o| runtime.object_field(o, "origin"))
@@ -131,22 +132,23 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     Some(Value::Vector(at)) => at,
                     _ => hit.origin,
                 };
+                let hit_location = crate::script_player::hit_location_name(hit.hitloc);
                 damage_entity(
                     world,
                     &EntityHit {
                         target,
                         amount: hit.amount,
                         attacker: hit.attacker,
-                        attacker_object: None,
+                        attacker_object: hit.attacker_object,
                         means: hit.means,
                         weapon: hit.weapon,
                         point: hit.origin,
                         dir: std::array::from_fn(|i| at[i] - hit.origin[i]),
                         bone: None,
                         flags: hit.flags,
-                        hit_location: None,
-                        part: None,
-                        inflictor: None,
+                        hit_location: Some(hit_location),
+                        part: Some(hit.hitloc),
+                        inflictor,
                         time_offset: 0,
                     },
                 );
@@ -159,6 +161,9 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
             continue;
         }
         crate::damage::apply_script_blast(&mut frame, tick, &blast);
+        let inflictor = blast
+            .inflictor
+            .and_then(|id| world.get_resource::<RoundScript>()?.presented_by(id));
         for (target, mid, dist) in radius_targets(world, blast.origin, blast.radius) {
             if Some(target) == blast.inflictor {
                 continue;
@@ -181,9 +186,9 @@ pub(crate) fn apply_script_blasts(world: &mut World, tick: crate::Tick) {
                     dir: std::array::from_fn(|i| mid[i] - blast.origin[i]),
                     bone: None,
                     flags: 1,
-                    hit_location: None,
+                    hit_location: Some("none"),
                     part: None,
-                    inflictor: None,
+                    inflictor,
                     time_offset: 0,
                 },
             );
@@ -266,18 +271,18 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
         }
     }
     let frame = FrameWorld::from_world(world);
-    let part = hit
+    let (part, model_index) = hit
         .bone
         .and_then(|bone| {
-            frame
+            let dobj = frame
                 .entity_collision_capabilities()
                 .iter()
                 .find(|row| row.owner.script_model() == Some(hit.target))
-                .and_then(|row| row.dobj.as_ref())
-                .and_then(|dobj| dobj.bone_name(bone))
-                .map(str::to_owned)
+                .and_then(|row| row.dobj.as_ref())?;
+            let name = dobj.bone_name(bone).unwrap_or("").to_owned();
+            Some((name, dobj.bone_model_index(bone)))
         })
-        .unwrap_or_else(String::new);
+        .unwrap_or_else(|| (String::new(), 0));
     let weapon = crate::script_player::weapon_name(&frame, hit.weapon);
     let attacker = match hit.attacker {
         Some(a) => super::players::player_object(world, a.0),
@@ -293,15 +298,21 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
     }
     if world.resource::<RoundScript>().entities[&object].kind == super::entities::EntityKind::Actor
     {
-        super::actors::damage(world, object, hit, attacker, &weapon, &part);
+        super::actors::damage(world, object, hit, attacker, &weapon, model_index);
         return true;
     }
     let amount = super::t6_zombies::entity_damage_amount(world, object, hit);
-    let mut runtime = world.resource_mut::<RoundScript>();
-    let model = match runtime.object_field(object, "model") {
-        Value::String(model) => model,
-        _ => "".into(),
+    let (model_name, tag_name) = if model_index > 0 {
+        super::actors::attached_model_tag(world, object, model_index)
+    } else {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let model = match runtime.object_field(object, "model") {
+            Value::String(model) => Value::String(model),
+            _ => Value::string(""),
+        };
+        (model, Value::string(""))
     };
+    let mut runtime = world.resource_mut::<RoundScript>();
     let before = match runtime.object_field(object, "health") {
         Value::Int(health) => health,
         Value::Float(health) => health as i32,
@@ -321,8 +332,8 @@ pub(crate) fn damage_entity(world: &mut World, hit: &EntityHit) -> bool {
             Value::Vector(hit.dir),
             Value::Vector(hit.point),
             Value::string(hit.means),
-            Value::String(model),
-            Value::string(""),
+            model_name,
+            tag_name,
             Value::String(part.as_str().into()),
             Value::Int(hit.flags),
             Value::String(weapon.into()),

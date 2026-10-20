@@ -197,6 +197,32 @@ pub(crate) enum ClientMessage {
     /// A player jumped, landed or triggered a movement event (client number
     /// and event).
     JumpLand(u32, game_api::movement::JumpLand),
+    /// An entity plays its weapon death effect (`playweapondeatheffects`,
+    /// client event 0xc1).
+    WeaponDeathEffects {
+        entity: u64,
+        weapon: String,
+        userdata: i32,
+    },
+}
+
+/// An entity's weapon death effect (`playweapondeatheffects`), for the
+/// client scripts.
+pub(crate) fn weapon_death_effects(server: &mut World, entity: u64, weapon: String, userdata: i32) {
+    if !server.contains_resource::<ClientScripts>()
+        && !server.contains_resource::<super::host::client_scripts::ClientScripts>()
+    {
+        return;
+    }
+    if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
+        runtime
+            .client_messages
+            .push(ClientMessage::WeaponDeathEffects {
+                entity,
+                weapon,
+                userdata,
+            });
+    }
 }
 
 /// A player's jump, landing or movement event, for the client scripts.
@@ -1283,6 +1309,26 @@ fn run_frame(
                         Value::Int(0),
                     ],
                 )
+            }
+            ClientMessage::WeaponDeathEffects {
+                entity,
+                weapon,
+                userdata,
+            } => {
+                let Some(mirrored) = client.mirrored.get(&entity) else {
+                    continue;
+                };
+                start_callback(
+                    world,
+                    callbacks.play_weapon_death_effects,
+                    Value::Object(mirrored.client_object),
+                    vec![
+                        Value::Int(0),
+                        Value::String(weapon.into()),
+                        Value::Int(userdata),
+                    ],
+                );
+                continue;
             }
         };
         if let Err(fault) = super::runtime::start(world, function, Value::level(), args) {

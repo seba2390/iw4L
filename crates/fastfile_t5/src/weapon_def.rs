@@ -687,6 +687,16 @@ impl<'a> WeaponDefView<'a> {
         self.variant[0x85] != 0
     }
 
+    /// `silenced`
+    pub fn silenced(&self) -> bool {
+        self.variant[0x84] != 0
+    }
+
+    /// `noPing`
+    pub fn no_ping(&self) -> bool {
+        self.def[0x571] != 0
+    }
+
     /// `adsTransInTime`
     pub fn ads_trans_in_time(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.variant, 0x34))

@@ -155,6 +155,7 @@ pub type AuthorityDObjCollisionBone = xmodel_runtime::CollisionBone;
 #[derive(Clone, Debug, PartialEq)]
 pub struct AuthorityDObjCollision {
     pub bones: Vec<AuthorityDObjCollisionBone>,
+    pub surf_flags: Vec<u32>,
     pub coll: Option<AuthorityDObjCollTrace>,
 }
 
@@ -462,6 +463,32 @@ impl AuthorityDObjState {
         composition.revision = composition.revision.wrapping_add(1);
         composition.models = models;
         self.attached_models = attached_models;
+        self.current_collision = None;
+        self.materialized_model_revision = None;
+    }
+
+    pub fn set_attach_ignore_collision(&mut self, mask: u32) {
+        let mut changed = false;
+        for (slot, desc) in self
+            .semantic_state
+            .composition
+            .models
+            .iter_mut()
+            .skip(1)
+            .enumerate()
+        {
+            let ignore = slot < 32 && (mask & (1 << slot)) != 0;
+            if desc.ignore_collision != ignore {
+                desc.ignore_collision = ignore;
+                changed = true;
+            }
+        }
+        if changed {
+            self.semantic_state.composition.revision =
+                self.semantic_state.composition.revision.wrapping_add(1);
+            self.current_collision = None;
+            self.materialized_model_revision = None;
+        }
     }
 
     /// Put the model a destructible state asks for on this dobj.
@@ -533,6 +560,25 @@ impl AuthorityDObjState {
             bone -= attached.pose.num_bones;
         }
         None
+    }
+
+    /// The model slot (`0` for the body, `1..` for attached models) that owns
+    /// `bone` in the DObj.
+    pub fn bone_model_index(&self, mut bone: usize) -> i32 {
+        let Some(capability) = self.capability.as_ref() else {
+            return 0;
+        };
+        if bone < capability.pose.num_bones {
+            return 0;
+        }
+        bone -= capability.pose.num_bones;
+        for (index, (attached, _)) in self.attached_models.iter().enumerate() {
+            if bone < attached.pose.num_bones {
+                return (index + 1) as i32;
+            }
+            bone -= attached.pose.num_bones;
+        }
+        0
     }
 
     pub fn set_tag_hidden(&mut self, tag: &str, hidden: bool) -> bool {
@@ -726,20 +772,25 @@ impl AuthorityDObjState {
             self.materialize_error = None;
             return;
         }
-        match capability.geom_collision(
-            &self.pose_request,
-            self.world_from_model,
-            MASK_BULLET_WORLD,
-        ) {
-            Ok(bones) => {
-                let coll = coll_trace_from_capability(
-                    capability,
-                    &self.pose_request,
-                    self.world_from_model,
-                );
+        let capability = self.capability.clone().unwrap();
+        match self.dobj_bone_collision(&capability) {
+            Ok((bones, surf_flags)) => {
+                let coll = if self.body_hits {
+                    Ok(None)
+                } else {
+                    coll_trace_from_capability(
+                        &capability,
+                        &self.pose_request,
+                        self.world_from_model,
+                    )
+                };
                 match coll {
                     Ok(coll) => {
-                        self.current_collision = Some(AuthorityDObjCollision { bones, coll });
+                        self.current_collision = Some(AuthorityDObjCollision {
+                            bones,
+                            surf_flags,
+                            coll,
+                        });
                         self.materialized_model_revision = Some(self.model_revision);
                         self.materialized_pose_revision = Some(self.pose_revision);
                         self.materialize_error = None;
@@ -753,6 +804,78 @@ impl AuthorityDObjState {
                 self.materialize_error = Some(error);
             }
         }
+    }
+
+    fn dobj_bone_collision(
+        &self,
+        capability: &xmodel_runtime::RetainedModelCapability,
+    ) -> Result<(Vec<AuthorityDObjCollisionBone>, Vec<u32>), xmodel_runtime::MaterializeError> {
+        if !self.body_hits && !capability.coll_surfs.is_empty() {
+            let bones = capability.geom_collision(
+                &self.pose_request,
+                self.world_from_model,
+                MASK_BULLET_WORLD,
+            )?;
+            let surf_flags = capability
+                .coll_surfs
+                .iter()
+                .filter(|surf| surf.contents & MASK_BULLET_WORLD != 0)
+                .map(|surf| surf.surf_flags)
+                .collect();
+            return Ok((bones, surf_flags));
+        }
+        let mut models = Vec::with_capacity(1 + self.attached_models.len());
+        models.push((capability, None));
+        for (attached, attach) in &self.attached_models {
+            models.push((attached.as_ref(), Some(attach.clone())));
+        }
+        let Some(dobj) = self.dobj() else {
+            let bones = capability.collision(&self.pose_request, self.world_from_model)?;
+            return Ok((bones, Vec::new()));
+        };
+        let mut bones = xmodel_runtime::collision_dobj_with_controller(
+            &dobj,
+            &models,
+            &self.pose_request,
+            self.world_from_model,
+            |_, _, _| {},
+        )?;
+        let mut classes = vec![0u8; dobj.bones.len()];
+        for (slot, (model, _)) in dobj.models.iter().zip(models.iter()) {
+            for local in 0..slot.bone_count {
+                if let Some(collision) = model.bone_collision.get(local).and_then(Option::as_ref)
+                    && let Some(class) = classes.get_mut(slot.base + local)
+                {
+                    *class = collision.part_classification;
+                }
+            }
+        }
+        for i in 0..dobj.bones.len() {
+            if classes[i] == 0 {
+                let parent = dobj
+                    .duplicates
+                    .iter()
+                    .find_map(|&(parent, child)| (child == i).then_some(parent))
+                    .or(dobj.bones[i].parent);
+                if let Some(p) = parent.filter(|&p| p < i) {
+                    classes[i] = classes[p];
+                }
+            }
+        }
+        let composed = &self.semantic_state.composition.models;
+        bones.retain_mut(|bone| {
+            let idx = usize::from(bone.bone);
+            if bone.part_classification == 0
+                && let Some(&class) = classes.get(idx)
+            {
+                bone.part_classification = class;
+            }
+            let model_slot = dobj.bones.get(idx).map_or(0, |b| b.model);
+            !composed
+                .get(model_slot)
+                .is_some_and(|desc| desc.ignore_collision)
+        });
+        Ok((bones, Vec::new()))
     }
 
     fn dobj(&self) -> Option<xmodel_runtime::DObj> {
@@ -857,11 +980,13 @@ impl AuthorityDObjState {
                 });
                 if !already {
                     coll.bones.push(bone);
+                    coll.surf_flags.push(0);
                 }
             }
             None => {
                 self.current_collision = Some(AuthorityDObjCollision {
                     bones: vec![bone],
+                    surf_flags: vec![0],
                     coll: None,
                 });
             }
@@ -1722,12 +1847,12 @@ fn bullet_trace_filtered(
             DObjGeometryVerdict::Unavailable => {}
         }
         if let Some(priority) = priority {
-            let parts = dobj_geom.bones.iter().map(|bone| {
+            let parts = dobj_geom.bones.iter().enumerate().map(|(i, bone)| {
                 let collider = ColliderId::EntityDObjBone {
                     owner: geom.owner,
                     bone: bone.bone,
                     part_classification: bone.part_classification,
-                    surface_flags: 0,
+                    surface_flags: dobj_geom.surf_flags.get(i).copied().unwrap_or(0),
                 };
                 (bone, collider, bone.part_classification)
             });
@@ -1744,12 +1869,12 @@ fn bullet_trace_filtered(
             }
             continue;
         }
-        for bone in &dobj_geom.bones {
+        for (i, bone) in dobj_geom.bones.iter().enumerate() {
             let collider = ColliderId::EntityDObjBone {
                 owner: geom.owner,
                 bone: bone.bone,
                 part_classification: bone.part_classification,
-                surface_flags: 0,
+                surface_flags: dobj_geom.surf_flags.get(i).copied().unwrap_or(0),
             };
             match ray_obb(query.start, query.end, bone, collider) {
                 RayAabb::StartSolid => {
