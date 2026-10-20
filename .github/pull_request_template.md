@@ -21,7 +21,8 @@ Closes #<!-- issue number; see AGENTS.md "Work from an issue". Small fixes witho
       `cargo check --workspace --all-targets` (no warnings),
       `cargo xtask lints --enforce`, `cargo fmt --all -- --check`,
       `ruff check scripts && ruff format --check scripts`,
-      `cargo xtask boundary --enforce`, `cargo xtask progress` and
-      `cargo xtask ledger-guard --base origin/main`.
+      `cargo xtask boundary --enforce`, `cargo xtask progress`,
+      `cargo xtask ledger-guard --base origin/main` and
+      `cargo xtask port-graph check --ci`.
 - [ ] **Review threads resolved before merge.** Every review comment is
       answered or fixed and its thread resolved; no merge over an open review.

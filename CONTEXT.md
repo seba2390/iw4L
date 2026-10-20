@@ -24,7 +24,22 @@ context/
   artifacts/     one folder per task; the journal of how we got here
   externals/     third-party clones, kept for reference. Never a source of truth.
   mrs/           agent clones of the repo, one per parallel agent
+  re/            reverse-engineering bases and tools (Ghidra projects, decompiled
+                 functions, extracted scripts, port_graph.sqlite)
 ```
+
+`context/re/port_graph.sqlite` is the port graph (`cargo xtask port-graph`,
+[`docs/DECODING.md`](docs/DECODING.md)): the tracked tree joined with the
+executables' builtin tables (`context/re/re_tables.py`), `filled/c/` and the
+journal. Each checkout builds its own (the pre-commit hook refreshes it) and a
+query rebuilds it when stale — never read it with a bare `sqlite3`.
+
+Decompiling goes through a warm Ghidra daemon that keeps the executable open
+(one per binary, an hour's idle timeout): `zsh context/re/ghidra/decomp.sh warm bo|mp`,
+`decomp.sh status`, `decomp.sh stop`, and `decomp.sh bo <addr>,<addr>` writes
+`context/re/filled/c/bo/<addr>.c` — skipping what is already there (`--force`
+redoes it), falling back to a one-shot headless run, and rebuilding the port
+graph after.
 
 ## Glossary
 

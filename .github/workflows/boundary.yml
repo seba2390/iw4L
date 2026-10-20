@@ -18,6 +18,8 @@ jobs:
         run: cargo run -q -p xtask -- boundary --enforce
       - name: cargo xtask progress
         run: cargo run -q -p xtask -- progress
+      - name: cargo xtask port-graph check
+        run: cargo run -q -p xtask -- port-graph check --ci
       - name: cargo xtask ledger-guard
         if: github.event_name == 'pull_request'
         env:

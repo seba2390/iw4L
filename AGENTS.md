@@ -92,6 +92,12 @@ on any rustc warning), `cargo xtask lints --enforce` (clippy and rustc warnings
 may only go down: `xtask/lints/allow.txt`), `cargo fmt --all -- --check`, ruff
 on `scripts/`, `cargo xtask boundary --enforce`, `cargo xtask progress` and
 `cargo xtask ledger-guard` (a game's code change also changes its ledger, or
-the pull request body says `Ledger: none — <reason>`). Run them before
-pushing — CONTRIBUTING.md lists the exact commands — and fill in the pull
-request template.
+the pull request body says `Ledger: none — <reason>`) and
+`cargo xtask port-graph check --ci` (the port graph index still parses the
+tree). Run them before pushing — CONTRIBUTING.md lists the exact commands — and
+fill in the pull request template.
+
+Before porting a builtin, `cargo xtask port-graph builtin <name>…` shows its
+catalog rows, the native that serves it and (locally) the handler, its
+decompiled callees, journal sections and script call sites in one view;
+`unimplemented --game <g>` lists what is left ([`docs/DECODING.md`](docs/DECODING.md)).

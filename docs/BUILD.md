@@ -54,8 +54,8 @@ package version remains the textual build version.
 
 CI (`.github/workflows/`) runs `cargo check --workspace --all-targets` on Linux
 and macOS (no link, no Windows), `make publish-check`, `cargo xtask boundary
---enforce`, `cargo xtask progress` and, on pull requests, `cargo xtask
-ledger-guard`; it has no game data and runs no clippy, fmt or test step. The
+--enforce`, `cargo xtask progress`, `cargo xtask port-graph check --ci` and,
+on pull requests, `cargo xtask ledger-guard`; it has no game data and runs no clippy, fmt or test step. The
 boundary check keeps each game's rules in that game's crates
 ([`ARCHITECTURE.md`](ARCHITECTURE.md)); a new crate needs a
 `[package.metadata.iw4l] layer` or the check refuses it.

@@ -41,3 +41,11 @@ only from the game itself ([`CONTEXT.md`](../CONTEXT.md), glossary).
 **Tools.** Steam / `steamcmd` for the owner's install; throwaway Rust probes
 and Python scripts outside the tree (an artifact under `context/` keeps them);
 Capstone, `pefile`, Ghidra; Parallels for the Windows-only games.
+
+**Port graph.** `cargo xtask port-graph <cmd>` (`scripts/port_graph.py`) is one
+SQLite index of a builtin's catalog rows, the native that serves it per game,
+the ledger ids and their `unknown!` sites, and each `EntityEventKind`'s emit →
+dispatch → observer chain; on the maintainer's machine it adds the executable's
+handler, its decompiled callees, journal sections and script call sites. Commands:
+`builtin <name>…`, `addr <hex>`, `unimplemented [--game t5] [--realm …]`,
+`ledger [id]`, `event [name]`, `sql "SELECT …"`. It rebuilds itself when stale.

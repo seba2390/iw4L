@@ -37,7 +37,7 @@ Files here aim for ≤50 lines; `PROGRESS.md`, `fidelity/*` and `GSC-RUNTIME.md`
 | [`FFI.md`](FFI.md) | native data ownership, lifetimes, nullability, Perfetto adapters | changing a native boundary |
 | **Engine** | | |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | game boundary: layers, `game_api` traits, `unknown!` instead of another game's rule, `make boundary` | adding a game, a `boundary` failure |
-| [`DECODING.md`](DECODING.md) | how a game's data, scripts and rules are read from the owner's install | before reverse-engineering a rule |
+| [`DECODING.md`](DECODING.md) | how a game's data, scripts and rules are read from the owner's install; `cargo xtask port-graph` for a builtin, address, ledger id or entity event | before reverse-engineering a rule |
 | [`MAP-LOAD.md`](MAP-LOAD.md) | `session` → `assets` → install transaction, lanes by `ZoneGame`, the artifact cache | a zone won't load, an asset went missing |
 | [`ENTITIES.md`](ENTITIES.md) | the MW2 entity layout, where entity code lives, `TickInput` → `TickResult` | gameplay, networking, replay |
 | [`SIM-STEP.md`](SIM-STEP.md) | `sim::step` for authority and prediction, `StepReason`, determinism | touching the step or prediction |
