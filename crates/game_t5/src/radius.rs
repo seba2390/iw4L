@@ -17,14 +17,6 @@ const BLAST_FLAGS: i32 = 0x5;
 const ACTOR_SIDE: f32 = 15.0;
 const PLAYER_SIDE: f32 = 8.0;
 
-pub(crate) fn blast_effects_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.weapons.blast_effects",
-        "a blast pushes no physics objects, breaks no glass or dynamic models and sends no explosion event",
-        "Black Ops' explosion impulse, glass and dynamic model damage and explosion event in the runtime"
-    )
-}
-
 fn entity_handler_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.blast_handler",
@@ -206,7 +198,7 @@ pub(crate) fn radius_damage(
     blast: &RadiusDamage,
     world: &mut dyn FireWorld,
 ) -> Vec<&'static Unknown> {
-    let mut gaps = vec![blast_effects_unknown()];
+    let mut gaps = Vec::new();
     world.ai_event(AiEvent::Point {
         originator: blast.attacker,
         kind: AiPointEvent::Explosion,
@@ -269,5 +261,6 @@ pub(crate) fn radius_damage(
             world,
         );
     }
+    world.blast_effects(&blast);
     gaps
 }

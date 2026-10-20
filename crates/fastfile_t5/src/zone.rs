@@ -307,6 +307,7 @@ pub struct ZoneStream<'a> {
     diag_skip_coll_nodes_virtual: bool,
     header: ZoneHeader,
     xmodel: Option<XModelGeometry>,
+    xmodel_pieces: Option<XModelPiecesGeometry>,
     phys_preset: Option<Ptr>,
     weapon: Option<WeaponGeometry>,
     gfx_world: Option<GfxWorldGeometry>,
@@ -371,6 +372,15 @@ pub struct XModelGeometry {
     pub collision_maps: Option<Ptr>,
 
     pub collision_map_count: usize,
+
+    pub phys_preset: Option<Ptr>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct XModelPiecesGeometry {
+    pub name: Option<Ptr>,
+    pub pieces: Option<Ptr>,
+    pub count: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -893,6 +903,7 @@ impl<'a> ZoneStream<'a> {
             diag_skip_coll_nodes_virtual: false,
             header,
             xmodel: None,
+            xmodel_pieces: None,
             phys_preset: None,
             weapon: None,
             gfx_world: None,
@@ -938,6 +949,14 @@ impl<'a> ZoneStream<'a> {
 
     pub fn latest_xmodel(&self) -> Option<XModelGeometry> {
         self.xmodel
+    }
+
+    pub fn record_xmodel_pieces(&mut self, geometry: XModelPiecesGeometry) {
+        self.xmodel_pieces = Some(geometry);
+    }
+
+    pub fn latest_xmodel_pieces(&self) -> Option<XModelPiecesGeometry> {
+        self.xmodel_pieces
     }
 
     pub fn record_weapon(&mut self, geometry: WeaponGeometry) {

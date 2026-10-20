@@ -493,6 +493,9 @@ impl RoundScript {
         self.actor_brains.remove(&id);
         self.actor_moves.remove(&id);
         self.t5.blood_impact.remove(&id);
+        self.t5.ragdolls.remove(&id);
+        self.t5.death_contents.remove(&id);
+        self.t5.corpse_slots.retain(|&c| c != id);
         self.t5.ai_event_listeners.retain(|(e, _)| *e != id);
         super::actor_dog::release(self, id);
         if let Some(client) = self.player_client(id) {
@@ -508,6 +511,7 @@ impl RoundScript {
                     entity.kind,
                     EntityKind::Spawned
                         | EntityKind::Actor
+                        | EntityKind::ActorCorpse
                         | EntityKind::Vehicle
                         | EntityKind::Missile(_)
                 ),

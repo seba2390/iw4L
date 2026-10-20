@@ -189,30 +189,64 @@ impl DynEntWakeBroadphase {
     }
 }
 
-/// Whether the match's game wakes its dynamic entities by Modern Warfare 2's
-/// rules. A game whose own rules are unknown wakes none, and its gap is
-/// reported once.
-fn runs_physics(rules: Option<&game_api::ModeRules>, reported: &mut bool) -> bool {
-    let Some(gap) = rules.and_then(|rules| rules.dyn_ent_physics) else {
-        return true;
-    };
-    if !*reported {
-        diag::info!(World, "game gap {}: {}", gap.id, gap.what);
-        *reported = true;
+const DEFAULT_DYN_ENT_PHYSICS_RULES: game_api::DynEntPhysicsRules = game_api::DynEntPhysicsRules {
+    bullet_force: DYNENT_BULLET_FORCE,
+    bullet_upbias: 0.0,
+    bullet_spin_scale: 1.0,
+    explode_force: DYNENT_EXPLODE_FORCE,
+    explode_upbias: DYNENT_EXPLODE_UPBIAS,
+    explode_spin_scale: 1.0,
+    explode_min_force: DYNENT_EXPLODE_MIN_FORCE,
+    explode_max_ents: 20,
+    spawned_limit: 50,
+    sentient_auto_activate: true,
+    damage_radius_scale: 1.0,
+    destruct_uses_physics: true,
+};
+
+/// Resolves the match's dynamic entity physics rules; a game whose own rules
+/// are unknown wakes none, and its gap is reported once.
+fn physics_rules(
+    rules: Option<&game_api::ModeRules>,
+    reported: &mut bool,
+) -> Option<game_api::DynEntPhysicsRules> {
+    match rules.and_then(|rules| rules.dyn_ent_physics) {
+        None => Some(DEFAULT_DYN_ENT_PHYSICS_RULES),
+        Some(game_api::Rule::Known(rules)) => Some(rules),
+        Some(game_api::Rule::Unknown(gap)) => {
+            if !*reported {
+                diag::info!(World, "game gap {}: {}", gap.id, gap.what);
+                *reported = true;
+            }
+            None
+        }
     }
-    false
 }
 
 pub(crate) fn rebuild_dyn_ent_wake_broadphase(
     catalog: Option<Res<asset_world::MapXModelSceneCatalog>>,
     instances: Query<(Entity, &WorldDynEntInstance, &Transform), With<DynEntModelEntity>>,
     mut broadphase: ResMut<DynEntWakeBroadphase>,
+    rules: Option<Res<game_api::ModeRules>>,
 ) {
     let catalog = catalog.as_deref();
+    let phys_rules = rules
+        .as_deref()
+        .and_then(|r| match r.dyn_ent_physics {
+            None => Some(DEFAULT_DYN_ENT_PHYSICS_RULES),
+            Some(game_api::Rule::Known(rules)) => Some(rules),
+            Some(game_api::Rule::Unknown(_)) => None,
+        })
+        .unwrap_or(DEFAULT_DYN_ENT_PHYSICS_RULES);
     broadphase.rebuild(instances.iter().map(|(entity, inst, transform)| {
-        let radius = can_wake(inst)
-            .map(|_| xmodel_radius(catalog, &inst.current_model).max(1.0))
-            .unwrap_or(0.0);
+        let hittable = !inst.dead
+            && (can_wake_with_rules(inst, phys_rules).is_some()
+                || (is_destroyable(inst.ty) && inst.health > 0));
+        let radius = if hittable {
+            xmodel_radius(catalog, &inst.current_model).max(1.0)
+        } else {
+            0.0
+        };
         DynEntWakeEntry {
             entity,
             center: transform.translation,
@@ -227,12 +261,6 @@ pub(crate) struct ExplosionDvars {
     upbias: f32,
     min_force: f32,
 }
-
-const GRENADE_EXPLODE_DVARS: ExplosionDvars = ExplosionDvars {
-    force: DYNENT_EXPLODE_FORCE,
-    upbias: DYNENT_EXPLODE_UPBIAS,
-    min_force: DYNENT_EXPLODE_MIN_FORCE,
-};
 
 const EXPLODING_BULLET_DVARS: ExplosionDvars = ExplosionDvars {
     force: DYNENT_EXPLODING_BULLET_FORCE,
@@ -320,9 +348,25 @@ pub(crate) fn explosion_impulse(
     Some(dir * force)
 }
 
-pub(crate) fn bullet_impulse(hit_dir: Vec3, bullet_scale: f32) -> Option<Vec3> {
-    let dir = hit_dir.try_normalize()?;
-    Some(dir * DYNENT_BULLET_FORCE * bullet_scale)
+fn bullet_impulse_with_rules(
+    hit_dir: Vec3,
+    bullet_scale: f32,
+    rules: game_api::DynEntPhysicsRules,
+) -> Option<Vec3> {
+    if bullet_scale <= 0.0 {
+        return None;
+    }
+    let mut dir = hit_dir.try_normalize()?;
+    if rules.bullet_upbias != 0.0 {
+        dir.z += rules.bullet_upbias;
+        dir = dir.try_normalize()?;
+    }
+    Some(dir * rules.bullet_force * bullet_scale)
+}
+
+fn bullet_ang_impulse(hit_point: Vec3, center: Vec3, impulse: Vec3, spin_scale: f32) -> Vec3 {
+    let arm = (hit_point - center) * spin_scale;
+    arm.cross(impulse) * 0.02
 }
 
 fn closest_t_on_segment(start: Vec3, end: Vec3, point: Vec3) -> f32 {
@@ -354,8 +398,14 @@ fn aabb_sphere_overlap(mins: Vec3, maxs: Vec3, center: Vec3, radius: f32) -> boo
     q.distance_squared(center) <= radius * radius
 }
 
-fn can_wake(inst: &WorldDynEntInstance) -> Option<&asset_world::OwnedPhysPreset> {
+fn can_wake_with_rules(
+    inst: &WorldDynEntInstance,
+    rules: game_api::DynEntPhysicsRules,
+) -> Option<&asset_world::OwnedPhysPreset> {
     if inst.dead {
+        return None;
+    }
+    if !rules.destruct_uses_physics && inst.ty == asset_world::DynEntType::Destruct {
         return None;
     }
     let props = asset_world::dyn_ent_props(inst.ty)?;
@@ -413,33 +463,30 @@ fn kill_dyn_ent(
     scene: Option<&WorldScene>,
     marks: &EntityMarks,
 ) {
-    inst.dead = true;
     inst.health = 0;
-    *visibility = Visibility::Hidden;
     phys.destroy_body(entity);
-    let Some(name) = inst.destroy_fx.as_deref() else {
-        return;
-    };
-    let Some(host) = host else {
-        return;
-    };
-    let Some(fx) = fx else {
-        return;
-    };
-    let cache = FxElemInfoCache::default();
-    let _ = play_named_oriented_in_world(
-        &mut host.0,
-        &fx.0,
-        &cache,
-        fx.0.map_fx_name(name),
-        transform.translation.to_array(),
-        axis_from_rotation(transform.rotation),
-        FrontendFxScene::wrap(scene, marks)
-            .as_ref()
-            .map(|s| s as &dyn render_fx::present::FxScene),
-    );
+    if let Some(destroyed) = inst.destroyed_model.clone() {
+        inst.current_model = destroyed;
+        inst.dead = false;
+        *visibility = Visibility::Inherited;
+    } else {
+        inst.dead = true;
+        *visibility = Visibility::Hidden;
+    }
+    if let Some(name) = inst.destroy_fx.as_deref() {
+        play_dyn_ent_fx(
+            name,
+            transform.translation.to_array(),
+            transform.rotation,
+            host,
+            fx,
+            scene,
+            marks,
+        );
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_radius_hit(
     entity: Entity,
     inst: &mut WorldDynEntInstance,
@@ -448,8 +495,11 @@ fn apply_radius_hit(
     origin: Vec3,
     inner: f32,
     outer: f32,
+    in_scale: f32,
     explicit: Vec3,
+    cylinder: bool,
     dvars: ExplosionDvars,
+    phys_rules: game_api::DynEntPhysicsRules,
     inner_damage: i32,
     outer_damage: i32,
     impulses: &mut MessageWriter<DynEntPhysImpulse>,
@@ -462,24 +512,39 @@ fn apply_radius_hit(
     if inst.dead {
         return;
     }
-    let dist = transform.translation.distance(origin);
-    let Some(scale) = explosion_falloff(dist, inner, outer, 1.0) else {
+    let dist = if cylinder {
+        transform.translation.truncate().distance(origin.truncate())
+    } else {
+        transform.translation.distance(origin)
+    };
+    let Some(scale) = explosion_falloff(dist, inner, outer, in_scale) else {
         return;
     };
-    if let Some(preset) = can_wake(inst)
+    if let Some(preset) = can_wake_with_rules(inst, phys_rules)
         && let Some(impulse) = explosion_impulse(
             origin,
             transform.translation,
             inner,
             outer,
-            1.0,
+            in_scale,
             preset.explosive_force_scale,
             explicit,
-            false,
+            cylinder,
             dvars,
         )
     {
-        impulses.write(DynEntPhysImpulse { entity, impulse });
+        let idx = u32::from(inst.index);
+        let spin_offset = Vec3::new(
+            ((idx.wrapping_mul(73).wrapping_add(19) & 0xff) as f32 / 127.5) - 1.0,
+            ((idx.wrapping_mul(137).wrapping_add(53) & 0xff) as f32 / 127.5) - 1.0,
+            0.5,
+        ) * phys_rules.explode_spin_scale;
+        let ang_impulse = spin_offset.cross(impulse) * 0.01;
+        impulses.write(DynEntPhysImpulse {
+            entity,
+            impulse,
+            ang_impulse,
+        });
     }
     if !is_destroyable(inst.ty) {
         return;
@@ -513,15 +578,21 @@ pub(crate) fn on_entity_explosion(
     entity_marks: Res<EntityMarks>,
     (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
-    if !runs_physics(rules.as_deref(), &mut reported) {
+    let Some(phys_rules) = physics_rules(rules.as_deref(), &mut reported) else {
         return;
-    }
+    };
     let weapons = weapons
         .as_deref()
         .and_then(|weapons| weapons.for_event(explosion.event.world).ok());
     let payload = explosion.event.payload;
     let Some((inner, outer)) = weapon_radii(weapons.as_ref(), payload.weapon) else {
         return;
+    };
+    let outer = outer * phys_rules.damage_radius_scale;
+    let dvars = ExplosionDvars {
+        force: phys_rules.explode_force,
+        upbias: phys_rules.explode_upbias,
+        min_force: phys_rules.explode_min_force,
     };
     let (inner_damage, outer_damage) = weapon_explosion_damage(weapons.as_ref(), payload.weapon);
     let origin = Vec3::from_array(payload.origin);
@@ -555,8 +626,11 @@ pub(crate) fn on_entity_explosion(
                 origin,
                 inner,
                 outer,
+                1.0,
                 explicit,
-                GRENADE_EXPLODE_DVARS,
+                false,
+                dvars,
+                phys_rules,
                 inner_damage,
                 outer_damage,
                 &mut impulses,
@@ -577,8 +651,11 @@ pub(crate) fn on_entity_explosion(
                 origin,
                 inner,
                 outer,
+                1.0,
                 explicit,
-                GRENADE_EXPLODE_DVARS,
+                false,
+                dvars,
+                phys_rules,
                 inner_damage,
                 outer_damage,
                 &mut impulses,
@@ -596,6 +673,7 @@ pub(crate) fn on_entity_explosion(
 fn closest_segment_hit(
     start: Vec3,
     end: Vec3,
+    phys_rules: game_api::DynEntPhysicsRules,
     catalog: Option<&asset_world::MapXModelSceneCatalog>,
     broadphase: &mut DynEntWakeBroadphase,
     instances: &Query<
@@ -607,50 +685,67 @@ fn closest_segment_hit(
         ),
         With<DynEntModelEntity>,
     >,
-) -> Option<(Entity, Vec3, f32)> {
-    let mut best: Option<(f32, Entity, Vec3, f32)> = None;
+) -> Option<(Entity, Vec3, Vec3, f32)> {
+    let mut best: Option<(f32, Entity, Vec3, Vec3, f32)> = None;
     let started = Instant::now();
     if let Some(candidates) = broadphase.segment_candidates(start, end) {
         for &entity in candidates {
             let Ok((entity, inst, transform, _)) = instances.get(entity) else {
                 continue;
             };
-            let Some(preset) = can_wake(inst) else {
+            if inst.dead {
                 continue;
-            };
+            }
+            let wake_scale = can_wake_with_rules(inst, phys_rules)
+                .map(|preset| preset.bullet_force_scale)
+                .unwrap_or(0.0);
+            if wake_scale <= 0.0 && !(is_destroyable(inst.ty) && inst.health > 0) {
+                continue;
+            }
             let radius = xmodel_radius(catalog, &inst.current_model).max(1.0);
             let Some(t) = segment_hits_sphere(start, end, transform.translation, radius) else {
                 continue;
             };
-            if best.is_none_or(|(best_t, _, _, _)| t < best_t) {
-                best = Some((t, entity, transform.translation, preset.bullet_force_scale));
+            let hit_point = start + (end - start) * t;
+            if best.is_none_or(|(best_t, _, _, _, _)| t < best_t) {
+                best = Some((t, entity, transform.translation, hit_point, wake_scale));
             }
         }
     } else {
         for (entity, inst, transform, _) in instances {
-            let Some(preset) = can_wake(inst) else {
+            if inst.dead {
                 continue;
-            };
+            }
+            let wake_scale = can_wake_with_rules(inst, phys_rules)
+                .map(|preset| preset.bullet_force_scale)
+                .unwrap_or(0.0);
+            if wake_scale <= 0.0 && !(is_destroyable(inst.ty) && inst.health > 0) {
+                continue;
+            }
             let radius = xmodel_radius(catalog, &inst.current_model).max(1.0);
             let Some(t) = segment_hits_sphere(start, end, transform.translation, radius) else {
                 continue;
             };
-            if best.is_none_or(|(best_t, _, _, _)| t < best_t) {
-                best = Some((t, entity, transform.translation, preset.bullet_force_scale));
+            let hit_point = start + (end - start) * t;
+            if best.is_none_or(|(best_t, _, _, _, _)| t < best_t) {
+                best = Some((t, entity, transform.translation, hit_point, wake_scale));
             }
         }
     }
     broadphase.query_ms += started.elapsed().as_secs_f32() * 1000.0;
-    best.map(|(_, entity, pose, scale)| (entity, pose, scale))
+    best.map(|(_, entity, pose, hit_point, scale)| (entity, pose, hit_point, scale))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn hit_one_dyn_ent(
     entity: Entity,
     pose: Vec3,
+    hit_point: Vec3,
     start: Vec3,
     end: Vec3,
     bullet_scale: f32,
     damage: i32,
+    phys_rules: game_api::DynEntPhysicsRules,
     instances: &mut Query<
         (
             Entity,
@@ -671,8 +766,14 @@ fn hit_one_dyn_ent(
     if dir.length_squared() < 1e-12 {
         dir = pose - start;
     }
-    if let Some(impulse) = bullet_impulse(dir, bullet_scale) {
-        impulses.write(DynEntPhysImpulse { entity, impulse });
+    if let Some(impulse) = bullet_impulse_with_rules(dir, bullet_scale, phys_rules) {
+        let ang_impulse =
+            bullet_ang_impulse(hit_point, pose, impulse, phys_rules.bullet_spin_scale);
+        impulses.write(DynEntPhysImpulse {
+            entity,
+            impulse,
+            ang_impulse,
+        });
     }
     let Ok((_, mut inst, transform, mut visibility)) = instances.get_mut(entity) else {
         return;
@@ -717,9 +818,9 @@ pub(crate) fn on_entity_bullet_hit(
     entity_marks: Res<EntityMarks>,
     (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
-    if !runs_physics(rules.as_deref(), &mut reported) {
+    let Some(phys_rules) = physics_rules(rules.as_deref(), &mut reported) else {
         return;
-    }
+    };
     if hit.event.domain == net::EntityEventDomain::Predicted {
         return;
     }
@@ -734,16 +835,18 @@ pub(crate) fn on_entity_bullet_hit(
     let fx = fx.as_deref();
     let scene = scene.as_deref();
     let marks = entity_marks.as_ref();
-    if let Some((entity, pose, bullet_scale)) =
-        closest_segment_hit(start, end, catalog, &mut broadphase, &instances)
+    if let Some((entity, pose, hit_point, bullet_scale)) =
+        closest_segment_hit(start, end, phys_rules, catalog, &mut broadphase, &instances)
     {
         hit_one_dyn_ent(
             entity,
             pose,
+            hit_point,
             start,
             end,
             bullet_scale,
             weapon_hit_damage(weapons.as_ref(), payload.weapon),
+            phys_rules,
             &mut instances,
             &mut impulses,
             phys.as_mut(),
@@ -760,6 +863,7 @@ pub(crate) fn on_entity_bullet_hit(
         let Some((inner, outer)) = weapon_radii(weapons.as_ref(), payload.weapon) else {
             return;
         };
+        let outer = outer * phys_rules.damage_radius_scale;
         let (inner_damage, outer_damage) =
             weapon_explosion_damage(weapons.as_ref(), payload.weapon);
         let origin = end;
@@ -778,8 +882,11 @@ pub(crate) fn on_entity_bullet_hit(
                     origin,
                     inner,
                     outer,
+                    1.0,
                     Vec3::ZERO,
+                    false,
                     EXPLODING_BULLET_DVARS,
+                    phys_rules,
                     inner_damage,
                     outer_damage,
                     &mut impulses,
@@ -800,8 +907,11 @@ pub(crate) fn on_entity_bullet_hit(
                     origin,
                     inner,
                     outer,
+                    1.0,
                     Vec3::ZERO,
+                    false,
                     EXPLODING_BULLET_DVARS,
+                    phys_rules,
                     inner_damage,
                     outer_damage,
                     &mut impulses,
@@ -840,18 +950,23 @@ pub(crate) fn hit_dyn_ents_from_pellets(
     entity_marks: Res<EntityMarks>,
     (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
-    if !runs_physics(rules.as_deref(), &mut reported) {
+    let Some(phys_rules) = physics_rules(rules.as_deref(), &mut reported) else {
         hits.clear();
         return;
-    }
+    };
     let catalog = catalog.as_deref();
     let fx = fx.as_deref();
     let scene = scene.as_deref();
     let marks = entity_marks.as_ref();
     for hit in hits.read() {
-        let Some((entity, pose, bullet_scale)) =
-            closest_segment_hit(hit.start, hit.end, catalog, &mut broadphase, &instances)
-        else {
+        let Some((entity, pose, hit_point, bullet_scale)) = closest_segment_hit(
+            hit.start,
+            hit.end,
+            phys_rules,
+            catalog,
+            &mut broadphase,
+            &instances,
+        ) else {
             continue;
         };
         let weapons = weapons
@@ -860,10 +975,12 @@ pub(crate) fn hit_dyn_ents_from_pellets(
         hit_one_dyn_ent(
             entity,
             pose,
+            hit_point,
             hit.start,
             hit.end,
             bullet_scale,
             weapon_hit_damage(weapons.as_ref(), hit.weapon),
+            phys_rules,
             &mut instances,
             &mut impulses,
             phys.as_mut(),
@@ -897,9 +1014,9 @@ pub(crate) fn on_entity_event_sound(
     entity_marks: Res<EntityMarks>,
     (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
-    if !runs_physics(rules.as_deref(), &mut reported) {
+    let Some(phys_rules) = physics_rules(rules.as_deref(), &mut reported) else {
         return;
-    }
+    };
     if sound.event.event != EntityEventKind::MELEE_HIT {
         return;
     }
@@ -914,18 +1031,20 @@ pub(crate) fn on_entity_event_sound(
     let fx = fx.as_deref();
     let scene = scene.as_deref();
     let marks = entity_marks.as_ref();
-    let Some((entity, pose, bullet_scale)) =
-        closest_segment_hit(start, end, catalog, &mut broadphase, &instances)
+    let Some((entity, pose, hit_point, bullet_scale)) =
+        closest_segment_hit(start, end, phys_rules, catalog, &mut broadphase, &instances)
     else {
         return;
     };
     hit_one_dyn_ent(
         entity,
         pose,
+        hit_point,
         start,
         end,
         bullet_scale,
         weapon_hit_damage(weapons.as_ref(), payload.weapon),
+        phys_rules,
         &mut instances,
         &mut impulses,
         phys.as_mut(),
@@ -944,7 +1063,10 @@ pub(crate) fn wake_player_overlap(
     mut impulses: MessageWriter<DynEntPhysImpulse>,
     (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
-    if !runs_physics(rules.as_deref(), &mut reported) {
+    let Some(phys_rules) = physics_rules(rules.as_deref(), &mut reported) else {
+        return;
+    };
+    if !phys_rules.sentient_auto_activate {
         return;
     }
     let Some(ps) = prediction.as_ref().and_then(|p| p.0.predicted_local()) else {
@@ -962,7 +1084,7 @@ pub(crate) fn wake_player_overlap(
         if inst.ty != asset_world::DynEntType::Clutter || world.is_awake(entity) {
             continue;
         }
-        let Some(preset) = can_wake(inst) else {
+        let Some(preset) = can_wake_with_rules(inst, phys_rules) else {
             continue;
         };
         let radius = xmodel_radius(catalog, &inst.current_model).max(1.0);
@@ -972,15 +1094,35 @@ pub(crate) fn wake_player_overlap(
         impulses.write(DynEntPhysImpulse {
             entity,
             impulse: vel * preset.mass,
+            ang_impulse: Vec3::ZERO,
         });
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn on_physics_sphere(
     sphere: On<EntityPhysicsSphere>,
-    instances: Query<(Entity, &WorldDynEntInstance, &Transform), With<DynEntModelEntity>>,
+    mut broadphase: ResMut<DynEntWakeBroadphase>,
+    mut instances: Query<
+        (
+            Entity,
+            &mut WorldDynEntInstance,
+            &Transform,
+            &mut Visibility,
+        ),
+        With<DynEntModelEntity>,
+    >,
     mut impulses: MessageWriter<DynEntPhysImpulse>,
+    mut phys: ResMut<DynEntPhysWorld>,
+    mut host: Option<ResMut<HostFxSystem>>,
+    fx: Option<Res<PreparedFxCatalog>>,
+    scene: Option<Res<WorldScene>>,
+    entity_marks: Res<EntityMarks>,
+    (rules, mut reported): (Option<Res<game_api::ModeRules>>, Local<bool>),
 ) {
+    let Some(phys_rules) = physics_rules(rules.as_deref(), &mut reported) else {
+        return;
+    };
     if !sphere.origin.iter().all(|v| v.is_finite())
         || !sphere.outer_radius.is_finite()
         || !sphere.inner_radius.is_finite()
@@ -991,28 +1133,299 @@ fn on_physics_sphere(
         return;
     }
     let origin = Vec3::from_array(sphere.origin);
-    for (entity, inst, transform) in &instances {
-        let Some(preset) = can_wake(inst) else {
+    let outer = sphere.outer_radius * phys_rules.damage_radius_scale;
+    let explicit = Vec3::from_array(sphere.explicit);
+    let dvars = ExplosionDvars {
+        force: phys_rules.explode_force,
+        upbias: phys_rules.explode_upbias,
+        min_force: phys_rules.explode_min_force,
+    };
+    let mut host = host.as_deref_mut();
+    let fx = fx.as_deref();
+    let scene = scene.as_deref();
+    let marks = entity_marks.as_ref();
+    let started = Instant::now();
+    if !sphere.cylinder
+        && let Some(candidates) = broadphase.sphere_candidates(origin, outer)
+    {
+        for &entity in candidates {
+            let Ok((entity, mut inst, transform, mut visibility)) = instances.get_mut(entity)
+            else {
+                continue;
+            };
+            apply_radius_hit(
+                entity,
+                &mut inst,
+                transform,
+                &mut visibility,
+                origin,
+                sphere.inner_radius,
+                outer,
+                sphere.magnitude,
+                explicit,
+                sphere.cylinder,
+                dvars,
+                phys_rules,
+                sphere.inner_damage,
+                sphere.outer_damage,
+                &mut impulses,
+                phys.as_mut(),
+                host.as_deref_mut(),
+                fx,
+                scene,
+                marks,
+            );
+        }
+    } else {
+        for (entity, mut inst, transform, mut visibility) in &mut instances {
+            apply_radius_hit(
+                entity,
+                &mut inst,
+                transform,
+                &mut visibility,
+                origin,
+                sphere.inner_radius,
+                outer,
+                sphere.magnitude,
+                explicit,
+                sphere.cylinder,
+                dvars,
+                phys_rules,
+                sphere.inner_damage,
+                sphere.outer_damage,
+                &mut impulses,
+                phys.as_mut(),
+                host.as_deref_mut(),
+                fx,
+                scene,
+                marks,
+            );
+        }
+    }
+    broadphase.query_ms += started.elapsed().as_secs_f32() * 1000.0;
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct SpawnedDynEntState {
+    last_spawn_serial: u32,
+    last_cleanup_serial: u32,
+}
+
+fn fallback_phys_preset(name: &str) -> asset_world::OwnedPhysPreset {
+    asset_world::OwnedPhysPreset {
+        name: name.to_owned(),
+        preset_type: 0,
+        mass: 3.0,
+        bounce: 0.3,
+        friction: 0.6,
+        bullet_force_scale: 1.0,
+        explosive_force_scale: 1.0,
+        snd_alias_prefix: String::new(),
+        pieces_spread_fraction: 0.0,
+        pieces_upward_velocity: 0.0,
+        temp_default_to_cylinder: false,
+        per_surface_snd_alias: false,
+        gravity_scale: 1.0,
+        center_of_mass_offset: [0.0; 3],
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sync_spawned_dyn_ents(
+    presented: Option<Res<net::PresentedSnapshot>>,
+    local: Option<Res<net::LocalPresentClient>>,
+    prediction: Option<Res<ClientPredictionState>>,
+    catalog: Option<Res<asset_world::MapXModelSceneCatalog>>,
+    mut state: ResMut<SpawnedDynEntState>,
+    mut instances: Query<
+        (
+            Entity,
+            &mut WorldDynEntInstance,
+            &mut Transform,
+            &mut Visibility,
+        ),
+        With<DynEntModelEntity>,
+    >,
+    mut impulses: MessageWriter<DynEntPhysImpulse>,
+    mut phys: ResMut<DynEntPhysWorld>,
+    mut host: Option<ResMut<HostFxSystem>>,
+    fx: Option<Res<PreparedFxCatalog>>,
+    scene: Option<Res<WorldScene>>,
+    entity_marks: Res<EntityMarks>,
+    rules: Option<Res<game_api::ModeRules>>,
+) {
+    let Some(snapshot) = presented.as_ref().and_then(|p| p.snapshot()) else {
+        return;
+    };
+    let client_id = local.map_or(sim::ClientId(0), |l| l.0);
+    let Some(meta) = snapshot.meta.for_client(client_id) else {
+        return;
+    };
+    let phys_rules = rules
+        .as_deref()
+        .and_then(|r| match r.dyn_ent_physics {
+            None => Some(DEFAULT_DYN_ENT_PHYSICS_RULES),
+            Some(game_api::Rule::Known(rules)) => Some(rules),
+            Some(game_api::Rule::Unknown(_)) => None,
+        })
+        .unwrap_or(DEFAULT_DYN_ENT_PHYSICS_RULES);
+    if meta.view_effects.dyn_ent_cleanup_serial > state.last_cleanup_serial {
+        state.last_cleanup_serial = meta.view_effects.dyn_ent_cleanup_serial;
+        for (entity, mut inst, _, mut visibility) in &mut instances {
+            if inst.spawned_slot.is_some() && !inst.dead {
+                inst.dead = true;
+                *visibility = Visibility::Hidden;
+                phys.destroy_body(entity);
+            }
+        }
+    }
+    let prev_serial = state.last_spawn_serial;
+    let mut max_serial = prev_serial;
+    let pending: Vec<sim::SpawnedDynEntLaunch> = meta
+        .view_effects
+        .spawned_dyn_ents
+        .iter()
+        .filter(|(serial, _)| *serial > prev_serial)
+        .map(|(serial, launch)| {
+            max_serial = max_serial.max(*serial);
+            launch.clone()
+        })
+        .collect();
+    state.last_spawn_serial = max_serial;
+    if pending.is_empty() {
+        return;
+    }
+    let viewer = prediction
+        .as_ref()
+        .and_then(|p| p.0.predicted_local())
+        .map_or(Vec3::ZERO, |ps| Vec3::from_array(ps.origin));
+    let catalog = catalog.as_deref();
+    let mut host = host.as_deref_mut();
+    let fx = fx.as_deref();
+    let scene = scene.as_deref();
+    let marks = entity_marks.as_ref();
+    for launch in pending {
+        let mut active_spares: Vec<(Entity, u16, f32)> = Vec::new();
+        let mut first_free: Option<Entity> = None;
+        for (entity, inst, transform, _) in &instances {
+            let Some(slot) = inst.spawned_slot else {
+                continue;
+            };
+            if inst.dead {
+                if first_free.is_none() {
+                    first_free = Some(entity);
+                }
+            } else {
+                active_spares.push((entity, slot, transform.translation.distance_squared(viewer)));
+            }
+        }
+        if active_spares.len() >= phys_rules.spawned_limit
+            && let Some(&(farthest, _, _)) = active_spares.iter().max_by(|a, b| a.2.total_cmp(&b.2))
+            && let Ok((entity, mut inst, _, mut visibility)) = instances.get_mut(farthest)
+        {
+            inst.dead = true;
+            *visibility = Visibility::Hidden;
+            phys.destroy_body(entity);
+            if first_free.is_none() {
+                first_free = Some(entity);
+            }
+        }
+        let Some(target) = first_free else {
             continue;
         };
-        if let Some(impulse) = explosion_impulse(
-            origin,
-            transform.translation,
-            sphere.inner_radius,
-            sphere.outer_radius,
-            sphere.magnitude,
-            preset.explosive_force_scale,
-            Vec3::ZERO,
-            false,
-            GRENADE_EXPLODE_DVARS,
-        ) {
-            impulses.write(DynEntPhysImpulse { entity, impulse });
+        let Ok((entity, mut inst, mut transform, mut visibility)) = instances.get_mut(target)
+        else {
+            continue;
+        };
+        let key = asset_world::MapXModelAssetKey(launch.model.clone());
+        let preset = catalog
+            .and_then(|c| c.phys_preset(&key))
+            .cloned()
+            .unwrap_or_else(|| fallback_phys_preset(&launch.model));
+        let [pitch, yaw, roll] = launch.angles;
+        let rot = Quat::from_euler(
+            EulerRot::ZYX,
+            yaw.to_radians(),
+            pitch.to_radians(),
+            roll.to_radians(),
+        );
+        let pos = Vec3::from_array(launch.pos);
+        transform.translation = pos;
+        transform.rotation = rot;
+        inst.current_model = key;
+        inst.transform = *transform;
+        inst.lighting_origin = launch.pos;
+        let bullet_scale = preset.bullet_force_scale.max(0.1);
+        let mass = preset.mass.max(0.1);
+        inst.phys_preset = Some(preset);
+        inst.health = 0;
+        inst.dead = false;
+        *visibility = Visibility::Inherited;
+        phys.destroy_body(entity);
+
+        // Normalizes `force`, adds `phys_bulletUpBias` to Z, renormalizes, and
+        // scales by `|force| * bulletForceScale`.
+        let raw_force = Vec3::from_array(launch.force);
+        let len = raw_force.length();
+        let impulse = if len > 1e-4 {
+            let mut dir = raw_force / len;
+            dir.z += phys_rules.bullet_upbias;
+            dir = dir.try_normalize().unwrap_or(Vec3::Z);
+            dir * (len * bullet_scale)
+        } else {
+            Vec3::Z * (250.0 * mass)
+        };
+        let hit_pos = Vec3::from_array(launch.hit_pos);
+        let ang_impulse = bullet_ang_impulse(hit_pos, pos, impulse, phys_rules.bullet_spin_scale);
+        impulses.write(DynEntPhysImpulse {
+            entity,
+            impulse,
+            ang_impulse,
+        });
+        if let Some(fx_name) = launch.fx.as_deref() {
+            play_dyn_ent_fx(
+                fx_name,
+                launch.pos,
+                rot,
+                host.as_deref_mut(),
+                fx,
+                scene,
+                marks,
+            );
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn play_dyn_ent_fx(
+    name: &str,
+    origin: [f32; 3],
+    rot: Quat,
+    host: Option<&mut HostFxSystem>,
+    fx: Option<&PreparedFxCatalog>,
+    scene: Option<&WorldScene>,
+    marks: &EntityMarks,
+) {
+    let (Some(host), Some(fx)) = (host, fx) else {
+        return;
+    };
+    let cache = FxElemInfoCache::default();
+    let _ = play_named_oriented_in_world(
+        &mut host.0,
+        &fx.0,
+        &cache,
+        fx.0.map_fx_name(name),
+        origin,
+        axis_from_rotation(rot),
+        FrontendFxScene::wrap(scene, marks)
+            .as_ref()
+            .map(|s| s as &dyn render_fx::present::FxScene),
+    );
+}
+
 pub fn register_dyn_ent_wake(app: &mut App) {
     app.scoped::<DynEntWakeBroadphase>(frame::MatchScope::Live)
+        .scoped::<SpawnedDynEntState>(frame::MatchScope::Live)
         .scoped_message::<DynEntPelletHit>(frame::MatchScope::Live)
         .add_observer(on_entity_explosion)
         .add_observer(on_physics_sphere)
@@ -1032,7 +1445,7 @@ pub fn register_dyn_ent_wake(app: &mut App) {
         )
         .add_systems(
             Update,
-            wake_player_overlap
+            (sync_spawned_dyn_ents, wake_player_overlap)
                 .in_set(frame::InMatch)
                 .in_set(frame::WorkerCmdSet::Physics)
                 .before(render_anim::occupancy::dyn_ent_phys::step_phys_world0),

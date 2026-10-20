@@ -50,16 +50,20 @@ pub struct DynEntPhysImpulse {
     pub entity: Entity,
 
     pub impulse: Vec3,
+    pub ang_impulse: Vec3,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct DynEntPhysBody {
     origin: Vec3,
     vel: Vec3,
+    rot: Quat,
+    ang_vel: Vec3,
     mins: [f32; 3],
     maxs: [f32; 3],
     bounce: f32,
     friction: f32,
+    gravity_scale: f32,
     mask: u32,
     on_ground: bool,
     asleep_ms: i32,
@@ -104,12 +108,14 @@ pub fn step_phys_world0(
         }
         let (mins, maxs) = xmodel_phys_hull(catalog, &inst.current_model);
         let add_vel = impulse.impulse / preset.mass;
+        let add_ang_vel = impulse.ang_impulse / preset.mass.max(0.1);
         let phys_clip = clip.0.as_deref();
         world
             .bodies
             .entry(entity)
             .and_modify(|body| {
                 body.vel += add_vel;
+                body.ang_vel += add_ang_vel;
                 body.asleep_ms = 0;
             })
             .or_insert_with(|| {
@@ -120,10 +126,17 @@ pub fn step_phys_world0(
                 DynEntPhysBody {
                     origin,
                     vel: add_vel,
+                    rot: transform.rotation,
+                    ang_vel: add_ang_vel,
                     mins,
                     maxs,
                     bounce: preset.bounce,
                     friction: preset.friction,
+                    gravity_scale: if preset.gravity_scale > 0.0 {
+                        preset.gravity_scale
+                    } else {
+                        1.0
+                    },
                     mask,
                     on_ground: false,
                     asleep_ms: 0,
@@ -189,8 +202,10 @@ pub fn step_phys_world0(
             continue;
         };
         transform.translation = body.origin;
+        transform.rotation = body.rot;
         inst.lighting_origin = body.origin.to_array();
         inst.transform.translation = body.origin;
+        inst.transform.rotation = body.rot;
     }
 
     for entity in sleep {
@@ -232,13 +247,21 @@ fn narrowed_footprint(mins: [f32; 3], maxs: [f32; 3], scale: f32) -> ([f32; 3], 
 }
 
 fn integrate_free(body: &mut DynEntPhysBody, dt: f32) {
-    body.vel.z += GRAVITY_Z * dt;
+    body.vel.z += GRAVITY_Z * body.gravity_scale * dt;
     body.origin += body.vel * dt;
+    let w = body.ang_vel.length();
+    if w > 1e-4 {
+        body.rot = (Quat::from_axis_angle(body.ang_vel / w, w * dt) * body.rot).normalize();
+    }
     body.on_ground = false;
 }
 
 fn integrate_body(body: &mut DynEntPhysBody, clip: &ClipCollision, dt: f32) {
-    body.vel.z += GRAVITY_Z * dt;
+    body.vel.z += GRAVITY_Z * body.gravity_scale * dt;
+    let w = body.ang_vel.length();
+    if w > 1e-4 {
+        body.rot = (Quat::from_axis_angle(body.ang_vel / w, w * dt) * body.rot).normalize();
+    }
     let start = body.origin;
     let end = start + body.vel * dt;
     let hit = clip.sweep_box(
@@ -250,6 +273,7 @@ fn integrate_body(body: &mut DynEntPhysBody, clip: &ClipCollision, dt: f32) {
     );
     if hit.allsolid || hit.startsolid {
         body.vel = Vec3::ZERO;
+        body.ang_vel = Vec3::ZERO;
         body.on_ground = true;
         return;
     }
@@ -261,7 +285,9 @@ fn integrate_body(body: &mut DynEntPhysBody, clip: &ClipCollision, dt: f32) {
             body.vel -= (1.0 + body.bounce.max(0.0)) * vn * n;
             let n_comp = body.vel.dot(n) * n;
             let tan = body.vel - n_comp;
-            body.vel = n_comp + tan * (1.0 - body.friction.clamp(0.0, 1.0));
+            let friction = body.friction.clamp(0.0, 1.0);
+            body.vel = n_comp + tan * (1.0 - friction);
+            body.ang_vel = body.ang_vel * (1.0 - friction * 0.5) + n.cross(tan) * 0.05;
         }
         body.on_ground = n.z > GROUND_NZ;
     } else {

@@ -24,8 +24,9 @@ mod snapshot_meta;
 pub use client_view::{
     CLIENT_VISION_TAIL, ClientLightOverride, ClientScreen, EntityScriptVectors, GUMP_SLOTS,
     HideFade, KillcamHud, LinkedWeaponView, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
-    MenuCommand, MenuCommandKind, RadarMode, RemoteMissile, ScriptBlur, ScriptDepthOfField,
-    ScriptSeat, ViewEffects, VisionChange, VisionLerp, is_postfx_dvar,
+    MenuCommand, MenuCommandKind, RadarMode, RemoteMissile, SPAWNED_DYN_ENT_TAIL, ScriptBlur,
+    ScriptDepthOfField, ScriptSeat, SpawnedDynEntLaunch, ViewEffects, VisionChange, VisionLerp,
+    is_postfx_dvar,
 };
 pub use events::{
     EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, PelletFxRecord,

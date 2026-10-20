@@ -1248,6 +1248,22 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
             }
         }
     }
+    debug_assert!(meta.view_effects.spawned_dyn_ents.len() <= sim::SPAWNED_DYN_ENT_TAIL);
+    out.put_u8(meta.view_effects.spawned_dyn_ents.len() as u8);
+    for (serial, launch) in &meta.view_effects.spawned_dyn_ents {
+        out.put_u32(*serial);
+        put_text(out, &launch.model);
+        for v in [launch.pos, launch.angles, launch.hit_pos, launch.force] {
+            for c in v {
+                out.put_f32(c);
+            }
+        }
+        out.put_u8(u8::from(launch.fx.is_some()));
+        if let Some(fx) = &launch.fx {
+            put_text(out, fx);
+        }
+    }
+    out.put_u32(meta.view_effects.dyn_ent_cleanup_serial);
     debug_assert!(meta.menu_commands.len() <= sim::MENU_COMMAND_TAIL);
     out.put_u8(meta.menu_commands.len() as u8);
     for command in &meta.menu_commands {
@@ -1534,6 +1550,35 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             }
             lights
         },
+        spawned_dyn_ents: {
+            let mut entries = Vec::new();
+            for _ in 0..input.get_u8()? {
+                let serial = input.get_u32()?;
+                let model = get_text(input)?;
+                let pos = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+                let angles = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+                let hit_pos = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+                let force = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+                let fx = match input.get_u8()? {
+                    0 => None,
+                    1 => Some(get_text(input)?),
+                    _ => return Err(WireError::Malformed("bad spawned dynent fx tag")),
+                };
+                entries.push((
+                    serial,
+                    sim::SpawnedDynEntLaunch {
+                        model,
+                        pos,
+                        angles,
+                        hit_pos,
+                        force,
+                        fx,
+                    },
+                ));
+            }
+            entries
+        },
+        dyn_ent_cleanup_serial: input.get_u32()?,
     };
     let mut menu_commands = Vec::new();
     for _ in 0..input.get_u8()? {

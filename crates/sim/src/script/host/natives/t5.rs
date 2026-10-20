@@ -19,6 +19,17 @@ pub(crate) enum BloodImpact {
 }
 
 #[derive(Clone, Debug, Default)]
+pub(crate) struct T5Ragdoll {
+    pub(crate) launched: bool,
+    pub(crate) velocity: [f32; 3],
+    pub(crate) angular_vel: [f32; 3],
+    pub(crate) pitch_fold: f32,
+    pub(crate) roll_fold: f32,
+    pub(crate) hitloc: String,
+    pub(crate) grounded: bool,
+}
+
+#[derive(Clone, Debug, Default)]
 pub(crate) struct T5State {
     influencers: BTreeMap<i32, Influencer>,
     next_influencer: i32,
@@ -30,6 +41,12 @@ pub(crate) struct T5State {
     pub(crate) transmit_targetname: std::collections::BTreeSet<u64>,
     pub(crate) blood_impact: BTreeMap<u64, BloodImpact>,
     pub(crate) ai_event_listeners: Vec<(u64, u32)>,
+    pub(crate) ragdolls: BTreeMap<u64, T5Ragdoll>,
+    pub(crate) corpse_slots: Vec<u64>,
+    pub(crate) death_contents: BTreeMap<u64, i32>,
+    pub(crate) spawned_dyn_ents: std::collections::VecDeque<(u32, crate::SpawnedDynEntLaunch)>,
+    pub(crate) next_spawned_dyn_ent_serial: u32,
+    pub(crate) dyn_ent_cleanup_serial: u32,
     dstats: BTreeMap<(u32, String), Value>,
     /// Each player's score multiplier (`setscoremultiplier`), by client.
     score_multipliers: BTreeMap<u32, i32>,
@@ -986,11 +1003,6 @@ fn register_script(registry: &mut NativeRegistry) {
         super::engine::entity_id(world, receiver)?;
         Ok(Value::Undefined)
     });
-    registry.register(Method, "launchragdoll", |world, receiver, args| {
-        vector(args, 0)?;
-        super::player::corpse_anim(world, receiver)?;
-        Ok(Value::Undefined)
-    });
     registry.register(Function, "getmaxactivecontracts", |_, _, _| {
         Ok(Value::Int(0))
     });
@@ -1770,12 +1782,174 @@ fn register_refused(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    // `ent LaunchRagdoll(force, [bone])`: Black Ops launches an entity that
-    // is a ragdoll and leaves any other alone; the runtime has no ragdolls
-    // (#249).
+    // `ent StartRagdoll([from_impact])`, `ent IsRagdoll()`, and
+    // `ent LaunchRagdoll(force, [hitloc])`: transitions an actor
+    // or corpse into ragdoll state and applies whole-body or hit-location
+    // impulse scaled by `ragdoll_bullet_force / total_mass` (`500.0 / 138.6`).
+    registry.register(Method, "startragdoll", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if !args.is_empty() {
+            let _ = int(args, 0)?;
+        }
+        let mut runtime = world.resource_mut::<RoundScript>();
+        if let Some(movement) = runtime.actor_moves.get_mut(&id) {
+            movement.velocity = [0.0; 3];
+            movement.drop_path();
+        }
+        runtime.t5.ragdolls.entry(id).or_default();
+        diag::info!(Sim, "t5 startragdoll entity={id}");
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "isragdoll", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let active = world
+            .resource::<RoundScript>()
+            .t5
+            .ragdolls
+            .contains_key(&id);
+        Ok(Value::Int(i32::from(active)))
+    });
     registry.register(Method, "launchragdoll", |world, receiver, args| {
-        super::engine::entity_id(world, receiver)?;
-        vector(args, 0)?;
+        let id = super::engine::entity_id(world, receiver)?;
+        if args.is_empty() {
+            return Err("LaunchRagdoll requires a force vector".into());
+        }
+        let force = vector(args, 0)?;
+        let hitloc = if args.len() > 1 {
+            string(args, 1)?
+        } else {
+            String::new()
+        };
+        let scale = 500.0 / 138.6_f32;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        if let Some(movement) = runtime.actor_moves.get_mut(&id) {
+            movement.velocity = [0.0; 3];
+            movement.drop_path();
+        }
+        let ragdoll = runtime.t5.ragdolls.entry(id).or_default();
+        ragdoll.launched = true;
+        ragdoll.velocity[0] += force[0] * scale;
+        ragdoll.velocity[1] += force[1] * scale;
+        ragdoll.velocity[2] += (force[2] * scale).max(60.0);
+        ragdoll.angular_vel = [
+            force[2].clamp(-180.0, 180.0) + 120.0,
+            force[0].clamp(-180.0, 180.0),
+            force[1].clamp(-180.0, 180.0),
+        ];
+        ragdoll.hitloc = hitloc.clone();
+        ragdoll.grounded = false;
+        diag::info!(
+            Sim,
+            "t5 launchragdoll entity={id} force=({:.1},{:.1},{:.1}) hitloc={hitloc}",
+            force[0],
+            force[1],
+            force[2]
+        );
+        Ok(Value::Undefined)
+    });
+    // Server `CreateDynEntAndLaunch(model, pos, angles, hitpos, force, [fx])`.
+    registry.register(Function, "createdynentandlaunch", |world, _, args| {
+        if args.len() < 5 {
+            return Err(
+                "CreateDynEntAndLaunch called with invalid params. CreateDynEntAndLaunch( <model>, <pos>, <angles>, <hitpos>, <force>, <fx> )"
+                    .into(),
+            );
+        }
+        let model = string(args, 0)?;
+        let pos = vector(args, 1)?;
+        let angles = vector(args, 2)?;
+        let hit_pos = vector(args, 3)?;
+        let force = vector(args, 4)?;
+        let fx = if args.len() > 5 && !matches!(args[5], Value::Undefined) {
+            let id = int(args, 5)?;
+            world
+                .resource::<crate::script::MatchScript>()
+                .precached
+                .iter()
+                .find_map(|((kind, name), &idx)| {
+                    (*kind == "fx" && idx == id).then(|| name.clone())
+                })
+        } else {
+            None
+        };
+        let launch = crate::SpawnedDynEntLaunch {
+            model,
+            pos,
+            angles,
+            hit_pos,
+            force,
+            fx,
+        };
+        let state = t5(world);
+        state.next_spawned_dyn_ent_serial = state
+            .next_spawned_dyn_ent_serial
+            .max(1_000_000)
+            .wrapping_add(1);
+        let serial = state.next_spawned_dyn_ent_serial;
+        state.spawned_dyn_ents.push_back((serial, launch));
+        while state.spawned_dyn_ents.len() > crate::SPAWNED_DYN_ENT_TAIL {
+            state.spawned_dyn_ents.pop_front();
+        }
+        Ok(Value::Undefined)
+    });
+    // `PhysicsExplosionSphere(origin, outer, inner, magnitude, [inner_dmg], [outer_dmg])`.
+    registry.register(Function, "physicsexplosionsphere", |world, _, args| {
+        if !(4..=6).contains(&args.len()) {
+            return Err("Incorrect number of parameters".into());
+        }
+        let origin = vector(args, 0)?;
+        let outer = int(args, 1)? as i16 as f32;
+        let inner = float(args, 2)?;
+        if inner < 0.0 {
+            return Err("Radius is negative".into());
+        }
+        if outer < inner {
+            return Err("Inner radius is outside the outer radius".into());
+        }
+        let magnitude = float(args, 3)?;
+        let outer_damage = if args.len() >= 5 { int(args, 4)? } else { 0 };
+        let inner_damage = if args.len() == 6 {
+            int(args, 5)?
+        } else {
+            outer_damage
+        };
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        crate::gentity::push_physics_explosion(
+            &mut FrameWorld::from_world(world),
+            tick,
+            origin,
+            outer,
+            inner,
+            magnitude,
+            inner_damage,
+            outer_damage,
+            false,
+            [0.0; 3],
+        );
+        Ok(Value::Undefined)
+    });
+    // `PhysicsJolt(origin, outer, inner, force_vec)`.
+    registry.register(Function, "physicsjolt", |world, _, args| {
+        if args.len() != 4 {
+            return Err("Incorrect number of parameters".into());
+        }
+        let origin = vector(args, 0)?;
+        let outer = int(args, 1)? as i16 as f32;
+        let inner = int(args, 2)? as i16 as f32;
+        let force_vec = vector(args, 3)?;
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        crate::gentity::push_physics_explosion(
+            &mut FrameWorld::from_world(world),
+            tick,
+            origin,
+            outer,
+            inner.max(0.0),
+            1.0,
+            0,
+            0,
+            false,
+            force_vec,
+        );
         Ok(Value::Undefined)
     });
     // `player StartCameraTween(seconds)`: Black Ops sends the player an

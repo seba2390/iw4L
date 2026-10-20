@@ -106,6 +106,10 @@ pub struct EntityPhysicsSphere {
     pub outer_radius: f32,
     pub inner_radius: f32,
     pub magnitude: f32,
+    pub inner_damage: i32,
+    pub outer_damage: i32,
+    pub cylinder: bool,
+    pub explicit: [f32; 3],
 }
 
 #[derive(EntityEvent, Clone, Copy, Debug, PartialEq)]
@@ -671,6 +675,10 @@ fn dispatch_classified(
                 outer_radius,
                 inner_radius,
                 magnitude,
+                inner_damage: dispatched.payload.other_entity_num,
+                outer_damage: dispatched.payload.attacker_entity_num,
+                cylinder: dispatched.payload.event_parm != 0,
+                explicit: dispatched.payload.direction,
             });
         }
         Ok(EntityEventAction::PlayFx) => {

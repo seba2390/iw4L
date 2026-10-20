@@ -173,6 +173,7 @@ pub(super) fn load_xmodel(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         radius: Some(s.f32_at(p, sz::XMODEL_RADIUS_OFF)?),
         collision_maps: retained_ptr(sz::XMODEL_COLLMAPS_OFF)?,
         collision_map_count: num_collmaps,
+        phys_preset: retained_ptr(sz::XMODEL_PHYS_PRESET_OFF)?,
     });
 
     s.pop()
@@ -332,10 +333,20 @@ pub(super) fn load_xmodel_pieces(
     let num_pieces = s.i32_at(p, 4)?.max(0) as usize;
     s.push(XFILE_BLOCK_VIRTUAL)?;
     follow_name(s, p, 0)?;
-    if let Some(pieces) = always_array(s, p.at(8), 4, sz::XMODEL_PIECE * num_pieces)? {
+    let pieces = always_array(s, p.at(8), 4, sz::XMODEL_PIECE * num_pieces)?;
+    if let Some(pieces) = pieces {
         for i in 0..num_pieces {
             asset_ptr_at(s, links, AssetType::XModel, pieces.at(i * sz::XMODEL_PIECE))?;
         }
     }
+    let name = match s.ptr_at(p, 0)? {
+        ZonePtr::Offset(q) => Some(s.resolve_alias(q)),
+        _ => None,
+    };
+    s.record_xmodel_pieces(crate::zone::XModelPiecesGeometry {
+        name,
+        pieces,
+        count: num_pieces,
+    });
     s.pop()
 }

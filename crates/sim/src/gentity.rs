@@ -1,5 +1,5 @@
 use entity_iw4::{
-    CG_SCRIPT_MOVER_NODRAW, ET_ITEM, ET_MISSILE, ET_SCRIPTMOVER, EntityState,
+    CG_SCRIPT_MOVER_NODRAW, ET_ITEM, ET_MISSILE, ET_SCRIPTMOVER, EntityEventKind, EntityState,
     SCRIPT_MOVER_BMODEL_SOLID, TR_LINEAR, TR_LINEAR_STOP, TR_STATIONARY, Trajectory,
     evaluate_trajectory,
 };
@@ -846,4 +846,34 @@ pub fn begin_script_mover_rotate_velocity(
 
 pub fn gentity_spawn_base() -> i32 {
     GENTITY_SPAWN_BASE
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn push_physics_explosion(
+    world: &mut crate::frame::FrameWorld,
+    tick: crate::Tick,
+    origin: [f32; 3],
+    outer_radius: f32,
+    inner_radius: f32,
+    magnitude: f32,
+    inner_damage: i32,
+    outer_damage: i32,
+    cylinder: bool,
+    explicit: [f32; 3],
+) {
+    world.push_entity_event(
+        tick,
+        crate::EventAudience::All,
+        EntityEventKind::PHYS_EXPLOSION_SPHERE,
+        crate::EntityEventPayload {
+            number: i32::from(ENTITYNUM_WORLD),
+            other_entity_num: inner_damage,
+            attacker_entity_num: outer_damage,
+            event_parm: i32::from(cylinder),
+            origin,
+            origin2: [outer_radius, inner_radius, magnitude],
+            direction: explicit,
+            ..Default::default()
+        },
+    );
 }

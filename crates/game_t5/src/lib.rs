@@ -141,6 +141,7 @@ impl game_api::GameScripts for T5 {
             client_flag_as_val: "clientscripts/_callbacks::client_flagasval_callback",
             zombie_eye: "clientscripts/_zombiemode::zombie_eye_callback",
             play_weapon_death_effects: "clientscripts/_callbacks::codecallback_playweapondeatheffects",
+            gib_event: "clientscripts/_callbacks::codecallback_gibevent",
             trigger_delete: "codescripts/delete::main",
         })
     }
@@ -240,11 +241,20 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     post_chain: Some(post_chain::POST_CHAIN),
     overlays: None,
     frame_fog: None,
-    dyn_ent_physics: Some(unknown!(
-        "t5.dynent.physics",
-        "Black Ops' dynamic entities are not pushed, broken or launched: bullets, explosions and players leave them in place",
-        "its dynamic entity physics: the physics objects, the bullet and explosion impulses (dynEnt_* dvars), damage, destruction and the spawned entities"
-    )),
+    dyn_ent_physics: Some(Rule::Known(game_api::DynEntPhysicsRules {
+        bullet_force: 800.0,
+        bullet_upbias: 0.5,
+        bullet_spin_scale: 3.0,
+        explode_force: 12500.0,
+        explode_upbias: 0.5,
+        explode_spin_scale: 4.0,
+        explode_min_force: 40.0,
+        explode_max_ents: 20,
+        spawned_limit: 50,
+        sentient_auto_activate: true,
+        damage_radius_scale: 1.0,
+        destruct_uses_physics: false,
+    })),
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each

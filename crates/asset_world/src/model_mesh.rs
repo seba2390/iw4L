@@ -378,6 +378,8 @@ pub struct MapXModelSceneCatalog {
     /// The models only gumps carry (Black Ops 2), each with those gumps: such
     /// a model draws only while the local client's gump slots hold one.
     gumps: BTreeMap<String, Vec<String>>,
+    /// Per model, the physics preset its `XModel` header carries.
+    phys_presets: BTreeMap<MapXModelAssetKey, crate::OwnedPhysPreset>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -407,6 +409,14 @@ impl MapXModelSceneCatalog {
     /// Marks a model as one only these gumps carry.
     pub fn set_gumps(&mut self, name: String, gumps: Vec<String>) {
         self.gumps.insert(name, gumps);
+    }
+
+    pub fn set_phys_preset(&mut self, key: MapXModelAssetKey, preset: crate::OwnedPhysPreset) {
+        self.phys_presets.insert(key, preset);
+    }
+
+    pub fn phys_preset(&self, key: &MapXModelAssetKey) -> Option<&crate::OwnedPhysPreset> {
+        self.phys_presets.get(key)
     }
 
     pub fn resolve_surface_materials(
@@ -562,6 +572,9 @@ impl MapXModelSceneCatalog {
         for (key, names) in std::mem::take(&mut earlier.foreign_materials) {
             self.foreign_materials.entry(key).or_insert(names);
         }
+        for (key, preset) in std::mem::take(&mut earlier.phys_presets) {
+            self.phys_presets.entry(key).or_insert(preset);
+        }
         for (index, key) in earlier.order.into_iter().enumerate() {
             let asset = earlier
                 .assets
@@ -594,6 +607,7 @@ impl MapXModelSceneCatalog {
             .retain(|key, _| names.contains(&key.0));
         self.foreign_materials
             .retain(|key, _| names.contains(&key.0));
+        self.phys_presets.retain(|key, _| names.contains(&key.0));
         let mut at = 0;
         self.order.retain(|key| {
             let keep = names.contains(&key.0);
@@ -624,6 +638,9 @@ impl MapXModelSceneCatalog {
             .map(|index| self.zone_of(index))
             .unwrap_or(ZoneOwner::UNKNOWN);
         let key = MapXModelAssetKey(from.to_owned());
+        if let Some(preset) = self.phys_presets.get(to).cloned() {
+            self.phys_presets.insert(key.clone(), preset);
+        }
         match self.order.iter().position(|k| k == &key) {
             Some(slot) => self.zones[slot] = zone,
             None => {

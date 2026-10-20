@@ -204,6 +204,8 @@ pub(crate) enum ClientMessage {
         weapon: String,
         userdata: i32,
     },
+    /// An entity was gibbed (`gib`, client event 0xca).
+    GibEvent { entity: u64, bits: u32 },
 }
 
 /// An entity's weapon death effect (`playweapondeatheffects`), for the
@@ -222,6 +224,20 @@ pub(crate) fn weapon_death_effects(server: &mut World, entity: u64, weapon: Stri
                 weapon,
                 userdata,
             });
+    }
+}
+
+/// An entity's gib event (`gib`), for the client scripts.
+pub(crate) fn gib_event(server: &mut World, entity: u64, bits: u32) {
+    if !server.contains_resource::<ClientScripts>()
+        && !server.contains_resource::<super::host::client_scripts::ClientScripts>()
+    {
+        return;
+    }
+    if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
+        runtime
+            .client_messages
+            .push(ClientMessage::GibEvent { entity, bits });
     }
 }
 
@@ -452,6 +468,11 @@ pub(crate) struct ClientOutput {
     /// view, while one is on.
     pub(crate) extra_camera: Option<(i32, f32)>,
     next_vision_call: u32,
+    /// Dynamic entities spawned by script (`CreateDynEntAndLaunch`), by serial.
+    pub(crate) spawned_dyn_ents: std::collections::VecDeque<(u32, crate::SpawnedDynEntLaunch)>,
+    next_spawned_dyn_ent: u32,
+    /// Incremented when `CleanupSpawnedDynEnts` clears spawned dynamic entities.
+    pub(crate) dyn_ent_cleanup_serial: u32,
 }
 
 impl ClientOutput {
@@ -461,6 +482,16 @@ impl ClientOutput {
         self.vision_calls.push_back((self.next_vision_call, call));
         while self.vision_calls.len() > crate::CLIENT_VISION_TAIL {
             self.vision_calls.pop_front();
+        }
+    }
+
+    /// Records a spawned dynamic entity launch, keeping the latest tail.
+    pub(crate) fn spawn_dyn_ent(&mut self, launch: crate::SpawnedDynEntLaunch) {
+        self.next_spawned_dyn_ent = self.next_spawned_dyn_ent.wrapping_add(1).max(1);
+        self.spawned_dyn_ents
+            .push_back((self.next_spawned_dyn_ent, launch));
+        while self.spawned_dyn_ents.len() > crate::SPAWNED_DYN_ENT_TAIL {
+            self.spawned_dyn_ents.pop_front();
         }
     }
 
@@ -572,6 +603,13 @@ pub(crate) struct ClientModels {
     pub(crate) names: std::collections::BTreeSet<String>,
     precached: usize,
 }
+
+/// Posed DObjs of the client's entities (mirrored server entities and
+/// presented client entities), by client entity object id.
+#[derive(Resource, Default)]
+pub(crate) struct ClientEntityDobjs(
+    pub(crate) std::collections::BTreeMap<u64, crate::AuthorityDObjState>,
+);
 
 /// A client entity turned into a primary light (`makelight`).
 #[derive(Clone, Debug)]
@@ -706,6 +744,7 @@ struct ServerEntitySnapshot {
     client_flags: u16,
     has_eyes: bool,
     hidden: bool,
+    dobj: Option<crate::AuthorityDObjState>,
 }
 
 /// The client VM: its world, and the entries it starts with once the
@@ -789,6 +828,7 @@ pub(crate) fn install(
     world.insert_resource(ClientOutput::default());
     world.insert_resource(ClientSoundReports::default());
     world.insert_resource(ClientModels::default());
+    world.insert_resource(ClientEntityDobjs::default());
     world.insert_resource(super::host::actor_anims::ClientAnimTrees({
         let frame = crate::frame::FrameWorld::from_world(server);
         frame.actor_anim_trees().clone()
@@ -1042,6 +1082,25 @@ pub(crate) fn vision_calls(server: &World) -> Vec<(u32, crate::VisionCall)> {
         })
 }
 
+/// The local client's latest spawned dynamic entity launches and cleanup serial.
+pub(crate) fn spawned_dyn_ents(server: &World) -> (Vec<(u32, crate::SpawnedDynEntLaunch)>, u32) {
+    let mut out = server.get_resource::<ClientScripts>().map_or_else(
+        || (Vec::new(), 0),
+        |client| {
+            let output = client.world.resource::<ClientOutput>();
+            (
+                output.spawned_dyn_ents.iter().cloned().collect(),
+                output.dyn_ent_cleanup_serial,
+            )
+        },
+    );
+    if let Some(runtime) = server.get_resource::<RoundScript>() {
+        out.0.extend(runtime.t5.spawned_dyn_ents.iter().cloned());
+        out.1 = out.1.max(runtime.t5.dyn_ent_cleanup_serial);
+    }
+    out
+}
+
 /// The effects the local client plays at points now, begun and alive, by
 /// their row ids.
 pub(crate) fn effect_rows(server: &World, now: i32) -> Vec<(u32, ClientEffect)> {
@@ -1185,6 +1244,13 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
         } else {
             None
         };
+        let dobj = entity.presence.and_then(|presence| {
+            crate::frame::FrameWorld::from_world(server)
+                .entity_collision_capabilities()
+                .iter()
+                .find(|row| row.owner.script_model() == Some(presence))
+                .and_then(|row| row.dobj.clone())
+        });
         snapshots.push(ServerEntitySnapshot {
             server_id: id,
             number: entity.number,
@@ -1202,6 +1268,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             client_flags: flags,
             has_eyes,
             hidden: entity.hidden,
+            dobj,
         });
     }
     snapshots
@@ -1330,6 +1397,32 @@ fn run_frame(
                 );
                 continue;
             }
+            ClientMessage::GibEvent { entity, bits } => {
+                let Some(mirrored) = client.mirrored.get(&entity) else {
+                    continue;
+                };
+                let mut elems = Vec::new();
+                for i in 0..8 {
+                    if (bits & 0xffff & (1 << i)) != 0 {
+                        elems.push(Value::Int(i));
+                    }
+                }
+                let Ok(locations) = super::host::arrays::new_array(world, elems) else {
+                    continue;
+                };
+                let gib_type = match bits >> 8 {
+                    1 => "freeze",
+                    2 => "up",
+                    _ => "normal",
+                };
+                start_callback(
+                    world,
+                    callbacks.gib_event,
+                    Value::Object(mirrored.client_object),
+                    vec![Value::Int(0), Value::string(gib_type), locations],
+                );
+                continue;
+            }
         };
         if let Err(fault) = super::runtime::start(world, function, Value::level(), args) {
             diag::warn!(Sim, "csc: {function} not started: {fault}");
@@ -1366,7 +1459,27 @@ fn sync_snapshot_entities(
     let mut removed = Vec::with_capacity(stale_ids.len());
     for id in stale_ids {
         if let Some(entry) = client.mirrored.remove(&id) {
-            if entry.client_object == local_player_0 {
+            // An actor becoming an actor corpse keeps its entity number and
+            // client entity (`centity_t`) without firing `entityshutdown`.
+            let corpse_id = client
+                .world
+                .resource::<RoundScript>()
+                .entities
+                .get(&entry.client_object)
+                .map(|e| e.number)
+                .and_then(|number| {
+                    snapshots
+                        .iter()
+                        .find(|s| {
+                            s.kind == EntityKind::ActorCorpse
+                                && s.number == number
+                                && !client.mirrored.contains_key(&s.server_id)
+                        })
+                        .map(|s| s.server_id)
+                });
+            if let Some(corpse_id) = corpse_id {
+                client.mirrored.insert(corpse_id, entry);
+            } else if entry.client_object == local_player_0 {
                 shutdown_mirrored(client, entry, local_player_0, now);
             } else {
                 removed.push(entry);
@@ -1374,6 +1487,7 @@ fn sync_snapshot_entities(
         }
     }
 
+    let mut dobjs = std::collections::BTreeMap::new();
     for snap in &snapshots {
         let (client_object, new_ent, prev_flags) =
             if let Some(entry) = client.mirrored.get_mut(&snap.server_id) {
@@ -1451,6 +1565,9 @@ fn sync_snapshot_entities(
                 runtime.set_object_field(client_object, "team", team.clone());
             }
         }
+        if let Some(dobj) = &snap.dobj {
+            dobjs.insert(client_object, dobj.clone());
+        }
 
         if let Some(callbacks) = client.callbacks {
             if new_ent {
@@ -1500,6 +1617,8 @@ fn sync_snapshot_entities(
         }
     }
 
+    client.world.insert_resource(ClientEntityDobjs(dobjs));
+
     for entry in removed {
         shutdown_mirrored(client, entry, local_player_0, now);
     }
@@ -1531,8 +1650,8 @@ fn sync_snapshot_entities(
         } else {
             None
         };
-        let eye_cb = if snap.ent_type == "actor"
-            && snap.is_dog == Some(false)
+        let eye_cb = if matches!(snap.kind, EntityKind::Actor | EntityKind::ActorCorpse)
+            && snap.is_dog != Some(true)
             && entry.has_eyes != snap.has_eyes
         {
             entry.has_eyes = snap.has_eyes;

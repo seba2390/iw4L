@@ -240,20 +240,26 @@ pub fn place(
     let mut dyn_ready = 0usize;
     let mut dyn_unavailable = 0usize;
     for instance in dyn_ent_instances {
-        match map_xmodel_scene_assets.get(&instance.current_model) {
-            Some(asset_world::MapXModelSceneAsset::Iw4(_))
-            | Some(
-                asset_world::MapXModelSceneAsset::Iw5(_) | asset_world::MapXModelSceneAsset::T6(_),
-            )
-            | Some(asset_world::MapXModelSceneAsset::T5(_)) => dyn_ready += 1,
-            Some(asset_world::MapXModelSceneAsset::Unavailable { .. }) | None => {
-                dyn_unavailable += 1
+        let visibility = if instance.dead {
+            Visibility::Hidden
+        } else {
+            match map_xmodel_scene_assets.get(&instance.current_model) {
+                Some(asset_world::MapXModelSceneAsset::Iw4(_))
+                | Some(
+                    asset_world::MapXModelSceneAsset::Iw5(_)
+                    | asset_world::MapXModelSceneAsset::T6(_),
+                )
+                | Some(asset_world::MapXModelSceneAsset::T5(_)) => dyn_ready += 1,
+                Some(asset_world::MapXModelSceneAsset::Unavailable { .. }) | None => {
+                    dyn_unavailable += 1
+                }
             }
-        }
+            Visibility::Inherited
+        };
         let transform = instance.transform;
         commands.spawn((
             transform,
-            Visibility::Inherited,
+            visibility,
             crate::prepare::scene::cull::DynEntModelEntity,
             instance,
         ));
