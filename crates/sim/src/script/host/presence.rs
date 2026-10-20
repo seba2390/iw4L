@@ -460,8 +460,8 @@ fn step_t5_ragdolls(world: &mut World) {
                     + ragdoll.velocity[1] * n[1]
                     + ragdoll.velocity[2] * n[2];
                 if vn < 0.0 {
-                    for i in 0..3 {
-                        ragdoll.velocity[i] -= 1.25 * vn * n[i];
+                    for (vel, norm) in ragdoll.velocity.iter_mut().zip(n.iter()) {
+                        *vel -= 1.25 * vn * norm;
                     }
                 }
                 [

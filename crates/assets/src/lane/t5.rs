@@ -476,7 +476,7 @@ impl ZoneLane for T5Lane {
                         sink.xmodel_pieces
                             .get(&t5_iw4_ptr(slot))
                             .cloned()
-                            .unwrap_or_default()
+                            .unwrap_or_else(Vec::new)
                     },
                 )
             });

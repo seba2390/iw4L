@@ -242,9 +242,11 @@ pub(crate) fn rebuild_dyn_ent_wake_broadphase(
         let hittable = !inst.dead
             && (can_wake_with_rules(inst, phys_rules).is_some()
                 || (is_destroyable(inst.ty) && inst.health > 0));
-        let radius = hittable
-            .then(|| xmodel_radius(catalog, &inst.current_model).max(1.0))
-            .unwrap_or(0.0);
+        let radius = if hittable {
+            xmodel_radius(catalog, &inst.current_model).max(1.0)
+        } else {
+            0.0
+        };
         DynEntWakeEntry {
             entity,
             center: transform.translation,
@@ -1319,14 +1321,13 @@ fn sync_spawned_dyn_ents(
         }
         if active_spares.len() >= phys_rules.spawned_limit
             && let Some(&(farthest, _, _)) = active_spares.iter().max_by(|a, b| a.2.total_cmp(&b.2))
+            && let Ok((entity, mut inst, _, mut visibility)) = instances.get_mut(farthest)
         {
-            if let Ok((entity, mut inst, _, mut visibility)) = instances.get_mut(farthest) {
-                inst.dead = true;
-                *visibility = Visibility::Hidden;
-                phys.destroy_body(entity);
-                if first_free.is_none() {
-                    first_free = Some(entity);
-                }
+            inst.dead = true;
+            *visibility = Visibility::Hidden;
+            phys.destroy_body(entity);
+            if first_free.is_none() {
+                first_free = Some(entity);
             }
         }
         let Some(target) = first_free else {

@@ -722,7 +722,7 @@ pub(crate) fn present(world: &mut World) {
                     .get(actor)
                     .filter(|r| r.launched)
                     .map(super::presence::ragdoll_tag_rotations)
-                    .unwrap_or_default();
+                    .unwrap_or_else(Vec::new);
                 Some((presence, tree, resolved, ragdoll_rotations))
             })
             .collect()
