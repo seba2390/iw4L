@@ -426,8 +426,8 @@ pub struct ViewmodelRules {
     /// not run, when the game has no rate rule.
     pub playback: Option<&'static Unknown>,
     /// What an animation the runtime's viewmodel holds no slot for does not
-    /// do.
-    pub unslotted: &'static Unknown,
+    /// do; `None` when it holds them all.
+    pub unslotted: Option<&'static Unknown>,
 }
 
 pub type ViewmodelAnimFn =

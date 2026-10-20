@@ -25,11 +25,7 @@ pub(crate) const VIEWMODEL: ViewmodelRules = ViewmodelRules {
         anim: camera,
     }),
     playback: None,
-    unslotted: unknown!(
-        "t5.viewmodel.unslotted",
-        "a Black Ops weapon animation with no slot in the runtime's viewmodel is not played",
-        "slots for Black Ops' own weapon animations in the runtime's viewmodel"
-    ),
+    unslotted: None,
 };
 
 /// Where an animation's time comes from: a field of the weapon's definition
@@ -104,7 +100,9 @@ const INSTANT_RATE: f32 = 1000.0;
 const RELOAD_LEVEL_SHARE: f32 = 0.333_333_34;
 
 fn i32_at(bytes: &[u8], off: usize) -> Option<i32> {
-    Some(i32::from_le_bytes(bytes.get(off..off + 4)?.try_into().ok()?))
+    Some(i32::from_le_bytes(
+        bytes.get(off..off + 4)?.try_into().ok()?,
+    ))
 }
 
 /// Black Ops' client's rate for an animation it starts: the animation's
@@ -164,7 +162,10 @@ fn hidden(game: &[u8; GAME_MOVE_BYTES]) -> bool {
 /// the left idle (never its empty idle) once the left animations have
 /// finished, at once on a quick idle; the left fire, last shot and reloads;
 /// any other number leaves what plays.
-fn left(weap_anim: u32, _named: &dyn Fn(usize) -> bool) -> (ViewmodelAnim, Option<&'static Unknown>) {
+fn left(
+    weap_anim: u32,
+    _named: &dyn Fn(usize) -> bool,
+) -> (ViewmodelAnim, Option<&'static Unknown>) {
     use ViewmodelAnim::{Idle, IdleNow, Keep, Play};
     (
         match weap_anim & !w::TOGGLE {
@@ -273,18 +274,9 @@ fn anim(
         w::DTP_IN => (first(&[a::DTP_IN], IdleNow), None),
         w::DTP_LOOP => (first(&[a::DTP_LOOP], IdleNow), None),
         w::DTP_OUT => (first(&[a::DTP_OUT], IdleNow), None),
-        w::DTP_EMPTY_IN => (
-            first(&[a::DTP_EMPTY_IN, a::DTP_IN], IdleNow),
-            None,
-        ),
-        w::DTP_EMPTY_LOOP => (
-            first(&[a::DTP_EMPTY_LOOP, a::DTP_LOOP], IdleNow),
-            None,
-        ),
-        w::DTP_EMPTY_OUT => (
-            first(&[a::DTP_EMPTY_OUT, a::DTP_OUT], IdleNow),
-            None,
-        ),
+        w::DTP_EMPTY_IN => (first(&[a::DTP_EMPTY_IN, a::DTP_IN], IdleNow), None),
+        w::DTP_EMPTY_LOOP => (first(&[a::DTP_EMPTY_LOOP, a::DTP_LOOP], IdleNow), None),
+        w::DTP_EMPTY_OUT => (first(&[a::DTP_EMPTY_OUT, a::DTP_OUT], IdleNow), None),
         w::SLIDE_IN => (first(&[a::SLIDE_IN], IdleNow), None),
         w::MANTLE if named(a::MANTLE) || named(a::MANTLE_CAMERA) => (Keep, Some(mantle_unknown())),
         _ => (IdleNow, None),
@@ -298,9 +290,7 @@ fn camera(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> Option<CameraAnim> {
     let start = |anim: usize| named(anim).then_some(CameraAnim::Start(anim));
     match weap_anim & !w::TOGGLE {
         w::SPRINT_LOOP | w::SPRINT_EMPTY_LOOP => start(a::SPRINT_CAMERA),
-        w::SPRINT_OUT | w::SPRINT_EMPTY_OUT => {
-            named(a::SPRINT_CAMERA).then_some(CameraAnim::Stop)
-        }
+        w::SPRINT_OUT | w::SPRINT_EMPTY_OUT => named(a::SPRINT_CAMERA).then_some(CameraAnim::Stop),
         w::DTP_IN | w::DTP_EMPTY_IN => start(a::DTP_IN_CAMERA),
         w::DTP_LOOP | w::DTP_EMPTY_LOOP => start(a::DTP_LOOP_CAMERA),
         w::DTP_OUT | w::DTP_EMPTY_OUT => start(a::DTP_OUT_CAMERA),

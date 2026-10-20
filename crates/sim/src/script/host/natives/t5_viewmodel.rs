@@ -19,18 +19,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     // Black Ops on PC has no rumble: every rumble builtin is one empty
     // function, which reads none of its arguments.
-    for name in [
-        "playrumbleonentity",
-        "playrumblelooponentity",
-        "stoprumble",
-    ] {
+    for name in ["playrumbleonentity", "playrumblelooponentity", "stoprumble"] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
-    for name in [
-        "playrumbleonposition",
-        "stopallrumbles",
-        "precacherumble",
-    ] {
+    for name in ["playrumbleonposition", "stopallrumbles", "precacherumble"] {
         registry.register(Function, name, |_, _, _| Ok(Value::Undefined));
     }
 }
@@ -44,11 +36,7 @@ fn hide_viewmodel(world: &mut World, receiver: &Value, hide: bool) -> Result<Val
 /// The client's: the same empty rumble function, and `precacheRumble`
 /// answering 0.
 pub(crate) fn register_client(registry: &mut NativeRegistry) {
-    for name in [
-        "playrumbleonentity",
-        "playrumblelooponentity",
-        "stoprumble",
-    ] {
+    for name in ["playrumbleonentity", "playrumblelooponentity", "stoprumble"] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
     registry.register(Function, "playrumbleonposition", |_, _, _| {

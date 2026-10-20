@@ -108,8 +108,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 132 of 610 |
-| Five (`t5:zombie_pentagon`) | 132 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 130 of 610 |
+| Five (`t5:zombie_pentagon`) | 130 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -117,16 +117,16 @@ Only the top-level items count.
   - [x] Zone data: the map's dynamic entities are drawn (Kino's 142 bottles, glasses, reels and paper stacks; Five's 215), woken by bullets, blasts and players, broken at zero health (`destroyFx` and `destroyedModel`), and joined by script-spawned dynamic entities (`CreateDynEntAndLaunch`, `CleanupSpawnedDynEnts`, `dynEnt_spawnedLimit` 50; `t5.dynent.physics` and `t5.weapons.blast_effects` closed).
   - [x] Vision sets and script fog: Kino's own vision draws through Black Ops' post chain (bloom, streaks, S-curve, film), picked and blended by its vision channels: `zombie_theater` from the server at start, `zombie_last_stand` while down and `zombie_death` while bleeding out, back on revive; the client scripts' calls reach the same channels (not yet seen in a run); server and client script fog (`setVolFog`, `setExpFog`, `setWaterFog`) blends and drives the world fog constants (`level_fog_init` at start, `dog_start` / `dog_stop` over 7 s). Open: the mission-failed fade, underwater and weapon-state channels, the post textures' sampler state.
 - [x] The game's own zombies scripts start the match and run round 1.
-  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state and primary light overrides (`makelight`, `_lights.csc`'s `fire_flicker`, `generic_pulsing` and power-on mixer via `lerpvector`), its own entities presented by the client itself (client-only map models, models it spawns, brush models; from the frame they spawn), its triggers (`touch`/`trigger`, `istouching`) and its entities' animation trees, Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks, vision and fog, sound snapshots and contexts, the extra camera's state (`isextracam`, `stopextracam`, `setextracamfov`); 36 of 173 client builtins not implemented yet).
+  - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state and primary light overrides (`makelight`, `_lights.csc`'s `fire_flicker`, `generic_pulsing` and power-on mixer via `lerpvector`), its own entities presented by the client itself (client-only map models, models it spawns, brush models; from the frame they spawn), its triggers (`touch`/`trigger`, `istouching`) and its entities' animation trees, Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks, vision and fog, sound snapshots and contexts, the extra camera's state (`isextracam`, `stopextracam`, `setextracamfov`); 30 of 173 client builtins not implemented yet).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
   - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
 - [x] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Bullets (spread, pellets, penetration), melee, frag grenades, rockets (Ray Gun), script blasts.
   - [x] The viewmodel plays the weapon's own animations, picked by the game's client rules.
-  - [ ] Grenade launchers, sticky and special grenades, detonation; dual wield (CZ75).
+  - [ ] Grenade launchers, sticky and special grenades, detonation (the CZ75's dual wield animates both hands).
   - [x] Muzzle flashes (view and world) and ejected shells, by Black Ops' client fire rules.
-  - [ ] No tracer or view kick; viewmodel blend times and rates are the runtime's.
+  - [ ] The view kick and the viewmodel's blends, rates, camera animations, notetracks and `hideviewmodel` are Black Ops'; no tracer, gun kick, gun angles or client bullet impacts yet.
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Window spawns (boards torn off, mantle in) and rising from the ground (`do_zombie_rise`: `scripted rise` from `-45` or `-14` below the spot to the floor, then `find_flesh`).
   - [x] Black Ops' actor AI states choose each zombie's animscript: exposed (move along a path, fight at the goal), pain when shot (`zombie_pain`), death, scripted animations (rise, window attacks), `animcustom` and traversals (negotiation).

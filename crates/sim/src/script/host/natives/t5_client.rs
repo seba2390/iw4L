@@ -583,6 +583,31 @@ fn register_effects(registry: &mut NativeRegistry) {
         }
         Ok(Value::Int(handle))
     });
+    // `PlayViewmodelFX(local, id, tag)`: an effect bolted to the local
+    // player's viewmodel tag, answering its handle. The effect index is not
+    // checked.
+    registry.register(Function, "playviewmodelfx", |world, _, args| {
+        if args.len() != 3 {
+            return Err("PlayViewmodelFX() called with wrong params.\n".into());
+        }
+        local_index(args)?;
+        let id = int(args, 1)?;
+        let tag = string(args, 2)?;
+        if tag.is_empty() {
+            return Err("PlayViewmodelFX(): unable to find viewmodel tag.\n".into());
+        }
+        let now = now_ms(world);
+        let axis = math_iw4::angles_to_axis(DEFAULT_EFFECT_ANGLES);
+        let handle = play_effect(world, id, [0.0; 3], axis, now);
+        if let Some(effect) = world
+            .resource_mut::<ClientOutput>()
+            .effects
+            .get_mut(&handle)
+        {
+            effect.bolt = Some(crate::EffectBolt::Viewmodel { tag });
+        }
+        Ok(Value::Int(handle))
+    });
     // `spawnFx(local, id, origin, delay, [forward], [up])`: an effect
     // entity, which plays once `triggerFx` starts it; the delay is read
     // and unused.

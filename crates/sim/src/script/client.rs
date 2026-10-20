@@ -1419,7 +1419,11 @@ fn run_frame(
                 }
                 (
                     callbacks.level_notify,
-                    vec![Value::string("notetrack"), Value::Int(0), Value::string(&note)],
+                    vec![
+                        Value::string("notetrack"),
+                        Value::Int(0),
+                        Value::string(&note),
+                    ],
                 )
             }
             ClientMessage::GibEvent { entity, bits } => {

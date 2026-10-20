@@ -252,7 +252,12 @@ impl GameViewmodel {
     }
 
     fn slot(&self, anim: usize) -> Option<usize> {
-        self.weapon.as_ref()?.anim_slots.get(anim).copied().flatten()
+        self.weapon
+            .as_ref()?
+            .anim_slots
+            .get(anim)
+            .copied()
+            .flatten()
     }
 
     fn left_slot(&self, anim: usize) -> Option<usize> {
@@ -381,7 +386,9 @@ impl FpvPresentState {
                     (Some(slot), _) => self.game_dispatch(slot, anim, false, game),
                     (None, Some(slot)) => self.game_dispatch(slot, anim, true, game),
                     (None, None) => {
-                        self.report(game.rules.unslotted);
+                        if let Some(unslotted) = game.rules.unslotted {
+                            self.report(unslotted);
+                        }
                         WeapAnimEdge::Unchanged
                     }
                 }
@@ -609,8 +616,7 @@ pub fn tick_equipped_fpv_with_extra_events(
                         equipped
                             .controller
                             .start_camera_anim(slot, cameras, |length_ms| {
-                                game.rate(anim, length_ms, &sample.game_move)
-                                    .unwrap_or(1.0)
+                                game.rate(anim, length_ms, &sample.game_move).unwrap_or(1.0)
                             });
                     }
                 }
@@ -693,7 +699,10 @@ fn start_game_anim(
         game.rate(anim, length_ms, player).unwrap_or(1.0)
     });
     if !started {
-        diag::warn!(Fpv, "fpv: game animation {anim} (slot {slot}) missing — not started");
+        diag::warn!(
+            Fpv,
+            "fpv: game animation {anim} (slot {slot}) missing — not started"
+        );
     }
 }
 

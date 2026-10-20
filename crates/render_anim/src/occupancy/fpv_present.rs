@@ -703,13 +703,11 @@ pub fn tick_fpv_viewmodel(
     let game = mode
         .as_deref()
         .and_then(|mode| mode.viewmodel)
-        .map(|rules| {
-            crate::anim::fpv::GameViewmodel {
-                rules,
-                weapon: table
-                    .and_then(|table| table.game_bytes(session.weapon_id))
-                    .cloned(),
-            }
+        .map(|rules| crate::anim::fpv::GameViewmodel {
+            rules,
+            weapon: table
+                .and_then(|table| table.game_bytes(session.weapon_id))
+                .cloned(),
         });
     let (sample, predicted_fire) = match presented.snapshot() {
         Some(snap) => {
@@ -773,9 +771,7 @@ pub fn tick_fpv_viewmodel(
                     perks1: ps.map(|p| p.perks[1]).unwrap_or(0),
                     clip_ammo: clip_ammo(0),
                     left_clip_ammo: clip_ammo(1),
-                    game_move: ps.map_or([0; game_api::movement::GAME_MOVE_BYTES], |p| {
-                        p.game_move
-                    }),
+                    game_move: ps.map_or([0; game_api::movement::GAME_MOVE_BYTES], |p| p.game_move),
                 }),
                 predicted_fire,
             )
@@ -819,6 +815,10 @@ pub fn tick_fpv_viewmodel(
         view: equipped_view,
         ..
     } = session;
+    let camera_tag = game
+        .as_ref()
+        .and_then(|game| game.rules.camera)
+        .map(|camera| camera.tag);
     // A hidden viewmodel still animates and places its tags; it is not drawn.
     let hidden = game
         .as_ref()
@@ -862,6 +862,16 @@ pub fn tick_fpv_viewmodel(
             weapon_id,
             snapshot.view_tick(local.0),
         ));
+    }
+    if let (FpvPoseKind::Posed(frame), Some(tag)) = (&kind, camera_tag)
+        && let Some(pose) = frame.poses[0].as_ref()
+    {
+        product.camera_tag = pose
+            .bolt
+            .names
+            .iter()
+            .position(|name| name.eq_ignore_ascii_case(tag))
+            .and_then(|bone| pose.bolt.bones.get(bone).copied());
     }
     if let FpvPoseKind::Posed(frame) = &mut kind {
         // Nothing downstream of the bones waits for a vertex.
@@ -1277,6 +1287,21 @@ fn flush_fpv_spawn(world: &mut World) {
     world.flush();
 }
 
+/// A game's camera bone places the view: the camera turns and moves by the
+/// bone's pose, the viewmodel's root taken at the eye.
+fn apply_fpv_camera_tag(
+    product: Res<FpvPoseProduct>,
+    mut cameras: Query<&mut Transform, With<FlyCamera>>,
+) {
+    let (Some(tag), Ok(mut camera)) = (product.camera_tag, cameras.single_mut()) else {
+        return;
+    };
+    // The viewmodel's bones are posed with the game's axes (forward, left,
+    // up) turned into the camera's (-z, -x, y): the bone at rest is the eye.
+    let eye = Mat4::from_cols(Vec4::NEG_Z, Vec4::NEG_X, Vec4::Y, Vec4::W);
+    *camera = Transform::from_matrix(camera.to_matrix() * tag * eye.inverse());
+}
+
 fn publish_fpv_notetracks(
     pending: Res<PendingFpvNotetracks>,
     mut notes: MessageWriter<audio::ViewmodelNotetracks>,
@@ -1358,6 +1383,10 @@ pub fn register_fpv_present_systems(app: &mut App) {
                 publish_fpv_notetracks
                     .in_set(frame::InMatch)
                     .after(tick_fpv_viewmodel),
+                apply_fpv_camera_tag
+                    .in_set(frame::InMatch)
+                    .after(tick_fpv_viewmodel)
+                    .before(stamp_fpv_placement_matrix),
                 apply_fpv_placement
                     .in_set(frame::InMatch)
                     .after(tick_fpv_viewmodel)

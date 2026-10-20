@@ -329,7 +329,10 @@ static RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
         (t5_anim::ADS_DOWN, weap_anim::ADS_DOWN),
         (t5_anim::RELOAD_RIGHT, weap_anim_extra::RELOAD_RIGHT),
         (t5_anim::SPRINT_EMPTY_IN, weap_anim_extra::SPRINT_EMPTY_IN),
-        (t5_anim::SPRINT_EMPTY_LOOP, weap_anim_extra::SPRINT_EMPTY_LOOP),
+        (
+            t5_anim::SPRINT_EMPTY_LOOP,
+            weap_anim_extra::SPRINT_EMPTY_LOOP,
+        ),
         (t5_anim::SPRINT_EMPTY_OUT, weap_anim_extra::SPRINT_EMPTY_OUT),
         (t5_anim::LOWREADY_IN, weap_anim_extra::LOWREADY_IN),
         (t5_anim::LOWREADY_LOOP, weap_anim_extra::LOWREADY_LOOP),

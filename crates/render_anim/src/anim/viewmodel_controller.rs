@@ -256,9 +256,9 @@ impl ViewmodelController {
         let rate = rate(clip_length_ms(&clip));
         self.restart(slot, clip, rate);
         self.action = WeaponAnimSlot::from_index(slot);
-        self.state = self
-            .action
-            .map_or(WeaponState::Ready, |slot| self.state_and_timer_for_slot(slot).0);
+        self.state = self.action.map_or(WeaponState::Ready, |slot| {
+            self.state_and_timer_for_slot(slot).0
+        });
         true
     }
 
