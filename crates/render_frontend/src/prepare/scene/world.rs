@@ -674,8 +674,11 @@ fn bake_t5_script_brush_poses(
 pub(crate) fn world_dyn_ent_instances(
     catalog: &asset_world::DynEntCatalog,
 ) -> (Vec<WorldDynEntInstance>, usize) {
+    const SPARE_SLOTS: u16 = 256;
     let mut instances = Vec::new();
+    let mut next_index = 0u16;
     for def in &catalog.models {
+        next_index = next_index.max(def.index.saturating_add(1));
         let Some(name) = def.xmodel.as_ref().filter(|name| !name.is_empty()) else {
             continue;
         };
@@ -683,12 +686,36 @@ pub(crate) fn world_dyn_ent_instances(
             index: def.index,
             ty: def.ty,
             current_model: asset_world::MapXModelAssetKey(name.clone()),
+            destroyed_model: def
+                .destroyed_xmodel
+                .as_ref()
+                .filter(|name| !name.is_empty())
+                .cloned()
+                .map(asset_world::MapXModelAssetKey),
             transform: transform_from_gfx_placement(def.origin, def.quat),
             lighting_origin: def.origin,
             phys_preset: def.phys_preset.clone(),
             health: def.health,
             destroy_fx: def.destroy_fx.clone(),
+            destroy_pieces: def.destroy_pieces.clone(),
             dead: false,
+            spawned_slot: None,
+        });
+    }
+    for slot in 0..SPARE_SLOTS {
+        instances.push(WorldDynEntInstance {
+            index: next_index.saturating_add(slot),
+            ty: asset_world::DynEntType::Clutter,
+            current_model: asset_world::MapXModelAssetKey(String::new()),
+            destroyed_model: None,
+            transform: Transform::IDENTITY,
+            lighting_origin: [0.0; 3],
+            phys_preset: None,
+            health: 0,
+            destroy_fx: None,
+            destroy_pieces: Vec::new(),
+            dead: true,
+            spawned_slot: Some(slot),
         });
     }
     (instances, catalog.brushes.len())

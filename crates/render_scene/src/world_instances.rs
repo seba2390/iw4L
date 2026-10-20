@@ -19,6 +19,7 @@ pub struct WorldDynEntInstance {
     pub index: u16,
     pub ty: asset_world::DynEntType,
     pub current_model: asset_world::MapXModelAssetKey,
+    pub destroyed_model: Option<asset_world::MapXModelAssetKey>,
     pub transform: Transform,
     pub lighting_origin: [f32; 3],
 
@@ -27,6 +28,8 @@ pub struct WorldDynEntInstance {
     pub health: i32,
 
     pub destroy_fx: Option<String>,
+    pub destroy_pieces: Vec<(String, [f32; 3])>,
 
     pub dead: bool,
+    pub spawned_slot: Option<u16>,
 }

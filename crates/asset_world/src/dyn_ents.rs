@@ -90,6 +90,8 @@ pub struct OwnedPhysPreset {
     pub pieces_upward_velocity: f32,
     pub temp_default_to_cylinder: bool,
     pub per_surface_snd_alias: bool,
+    pub gravity_scale: f32,
+    pub center_of_mass_offset: [f32; 3],
 }
 
 #[derive(Clone, Debug, Default)]
@@ -154,10 +156,12 @@ pub struct DynEntDef {
 
     pub origin: [f32; 3],
     pub xmodel: Option<String>,
+    pub destroyed_xmodel: Option<String>,
 
     pub brush_model: u16,
     pub physics_brush_model: u16,
     pub destroy_fx: Option<String>,
+    pub destroy_pieces: Vec<(String, [f32; 3])>,
     pub phys_preset: Option<OwnedPhysPreset>,
     pub health: i32,
 
@@ -329,9 +333,11 @@ fn copy_list(
             quat: scalars.quat,
             origin: scalars.origin,
             xmodel,
+            destroyed_xmodel: None,
             brush_model: scalars.brush_model,
             physics_brush_model: scalars.physics_brush_model,
             destroy_fx: name(def.at(stream.layout(40, 48))),
+            destroy_pieces: Vec::new(),
             phys_preset,
             health: scalars.health,
             phys_mass: scalars.phys_mass,
@@ -359,6 +365,8 @@ fn read_phys_preset(
         pieces_upward_velocity: stream.f32_at(header, stream.layout(36, 44)).ok()?,
         temp_default_to_cylinder: stream.u8_at(header, stream.layout(40, 48)).ok()? != 0,
         per_surface_snd_alias: stream.u8_at(header, stream.layout(41, 49)).ok()? != 0,
+        gravity_scale: 1.0,
+        center_of_mass_offset: [0.0; 3],
     })
 }
 

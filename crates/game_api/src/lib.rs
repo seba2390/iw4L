@@ -97,6 +97,9 @@ pub struct ClientCallbacks {
     /// An entity plays its death effect for a weapon (`playweapondeatheffects`):
     /// `self = entity, (local client, weapon, userdata)`.
     pub play_weapon_death_effects: &'static str,
+    /// An entity was gibbed (`gib`):
+    /// `self = entity, (local client, type, locations)`.
+    pub gib_event: &'static str,
     /// A one-shot client trigger was touched: `self = trigger`.
     pub trigger_delete: &'static str,
 }
@@ -374,9 +377,26 @@ pub struct ModeRules {
     /// The game's own frame fog; `None` keeps the renderer's.
     pub frame_fog: Option<fog::FrameFogRules>,
     /// The game's own rules for what bullets, explosions and players do to
-    /// the map's dynamic entities, when they are unknown: nothing wakes them
-    /// and the gap is reported. `None` runs Modern Warfare 2's.
-    pub dyn_ent_physics: Option<&'static Unknown>,
+    /// the map's dynamic entities; `None` runs Modern Warfare 2's.
+    pub dyn_ent_physics: Option<Rule<DynEntPhysicsRules>>,
+}
+
+/// A game's dynamic entity physics parameters (`dynEnt_*` and `phys_bullet*`
+/// dvars) and type properties.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DynEntPhysicsRules {
+    pub bullet_force: f32,
+    pub bullet_upbias: f32,
+    pub bullet_spin_scale: f32,
+    pub explode_force: f32,
+    pub explode_upbias: f32,
+    pub explode_spin_scale: f32,
+    pub explode_min_force: f32,
+    pub explode_max_ents: usize,
+    pub spawned_limit: usize,
+    pub sentient_auto_activate: bool,
+    pub damage_radius_scale: f32,
+    pub destruct_uses_physics: bool,
 }
 
 /// How a client's viewmodel plays a player's weapon animation number.

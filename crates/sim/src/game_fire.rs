@@ -935,6 +935,44 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         };
         crate::script::host::actors::broadcast_ai_event(self.world.ecs(), event, originator, hit);
     }
+
+    fn blast_effects(&mut self, blast: &game_api::fire::RadiusDamage) {
+        let attacker = self.client(blast.attacker);
+        let exclude = self.model(blast.inflictor);
+        crate::t5_destructible::apply_radius(
+            self.world,
+            self.tick,
+            &crate::t5_destructible::RadiusDamage {
+                origin: blast.origin,
+                radius: blast.radius,
+                inner: blast.inner,
+                outer: blast.outer,
+                attacker,
+                exclude,
+                cone: blast.cone.map(|(cos, dir)| (dir, cos)),
+            },
+        );
+        crate::damage::apply_shared_glass_blast(
+            self.world,
+            self.tick,
+            blast.origin,
+            blast.inner as i32,
+            blast.outer as i32,
+            blast.radius,
+        );
+        crate::gentity::push_physics_explosion(
+            self.world,
+            self.tick,
+            blast.origin,
+            (blast.radius as i32) as i16 as f32,
+            0.0,
+            0.300000012,
+            blast.inner as i32,
+            blast.outer as i32,
+            false,
+            [0.0; 3],
+        );
+    }
 }
 
 impl MatchFireWorld<'_, '_> {

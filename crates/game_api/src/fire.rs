@@ -273,6 +273,10 @@ pub trait FireWorld {
     /// Broadcasts an AI perception event to actors and script AI event
     /// listeners (`addAIEventListener`).
     fn ai_event(&mut self, _event: AiEvent) {}
+
+    /// Applies a blast's world effects (dynamic entity damage and impulse,
+    /// destructible pieces, glass, and client physics explosion event).
+    fn blast_effects(&mut self, _blast: &RadiusDamage) {}
 }
 
 /// An AI perception event a shot, missile, grenade or explosion broadcasts

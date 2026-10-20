@@ -210,6 +210,17 @@ pub(super) async fn walk_prepared_match(
     let zombie_scene_names = zombie_scripts.as_ref().map(|scripts| {
         let mut names = scripts.asset_names();
         names.extend(foreign_model_names.iter().cloned());
+        for def in &world.dyn_ents.models {
+            if let Some(name) = &def.xmodel {
+                names.insert(name.clone());
+            }
+            if let Some(name) = &def.destroyed_xmodel {
+                names.insert(name.clone());
+            }
+            for (piece, _) in &def.destroy_pieces {
+                names.insert(piece.clone());
+            }
+        }
         names
     });
     let mut zombie_weapon_materials = zombie.fpv.material_names();
@@ -581,6 +592,18 @@ pub(super) async fn walk_prepared_match(
                 .collect();
             models.remap_walk_materials(&linked);
             world.map_xmodel_scene_assets.absorb_captured(models);
+            for def in &mut world.dyn_ents.models {
+                if def.phys_preset.is_none()
+                    && let Some(name) = &def.xmodel
+                    && let Some(preset) = world
+                        .map_xmodel_scene_assets
+                        .phys_preset(&asset_world::MapXModelAssetKey(name.clone()))
+                        .cloned()
+                {
+                    def.phys_preset = Some(preset);
+                    world.dyn_ents.missing_preset = world.dyn_ents.missing_preset.saturating_sub(1);
+                }
+            }
             for mesh in &mut meshes {
                 for surface in mesh.mesh.lod_surfaces.iter_mut().flatten() {
                     surface.material = surface

@@ -80,6 +80,18 @@ pub struct ClientLightOverride {
     pub origin: Option<[f32; 3]>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpawnedDynEntLaunch {
+    pub model: String,
+    pub pos: [f32; 3],
+    pub angles: [f32; 3],
+    pub hit_pos: [f32; 3],
+    pub force: [f32; 3],
+    pub fx: Option<String>,
+}
+
+pub const SPAWNED_DYN_ENT_TAIL: usize = 32;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ViewEffects {
     pub naked_vision: Option<VisionChange>,
@@ -100,6 +112,10 @@ pub struct ViewEffects {
     pub water_fog: Option<crate::ScriptFogParams>,
     /// Primary light overrides from the client's light entities (`makelight`).
     pub client_lights: Vec<ClientLightOverride>,
+    /// Dynamic entities spawned by script (`CreateDynEntAndLaunch`), by serial.
+    pub spawned_dyn_ents: Vec<(u32, SpawnedDynEntLaunch)>,
+    /// Incremented when `CleanupSpawnedDynEnts` clears spawned dynamic entities.
+    pub dyn_ent_cleanup_serial: u32,
 }
 
 /// The screen state Black Ops 2's client scripts set through its client

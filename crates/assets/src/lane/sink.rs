@@ -174,6 +174,7 @@ pub(crate) struct ZoneWalkSink {
     pub map_xmodels: MapXModelCatalog,
 
     pub phys_presets: asset_world::PhysPresetCatalog,
+    pub xmodel_pieces: HashMap<Ptr, Vec<(String, [f32; 3])>>,
 
     pub fx_glass_def_materials: Vec<(String, String)>,
 
@@ -243,6 +244,7 @@ pub(crate) struct CommonWalkSink {
     pub fx: FxCatalog,
     pub fx_models: asset_game::FxModelCatalog,
     pub impact_fx: ImpactFxCatalog,
+    pub phys_presets: asset_world::PhysPresetCatalog,
     pub tracers: asset_game::TracerCatalog,
 
     xmodel_names: HashMap<Ptr, Ptr>,
@@ -809,11 +811,21 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
         insert_slot: Option<fastfile_t5::Ptr>,
     ) -> fastfile_t5::Result<()> {
         self.materials.t5_loaded(stream, ty, slot, insert_slot);
-        if ty == fastfile_t5::AssetType::Fx {
+        if ty == T5Asset::Fx {
             self.fx
                 .note_loaded(t5_iw4_ptr(slot), insert_slot.map(t5_iw4_ptr));
         }
-        if ty == fastfile_t5::AssetType::XModel
+        if ty == T5Asset::PhysPreset
+            && let Some(preset) = stream
+                .latest_phys_preset()
+                .and_then(|header| asset_world::read_t5_phys_preset(stream, header))
+        {
+            self.phys_presets.insert(
+                std::iter::once(slot).chain(insert_slot).map(t5_iw4_ptr),
+                preset,
+            );
+        }
+        if ty == T5Asset::XModel
             && let Some(geometry) = stream.latest_xmodel()
             && let Some(name) = geometry.name.and_then(|p| stream.cstr(p).ok())
         {
@@ -882,6 +894,13 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
                 self.scene_models
                     .note_foreign_materials(asset_world::MapXModelAssetKey(name.to_owned()), names);
             }
+            if let Some(preset) = geometry
+                .phys_preset
+                .and_then(|slot| self.phys_presets.at_slot(t5_iw4_ptr(slot)).cloned())
+            {
+                self.scene_models
+                    .set_phys_preset(asset_world::MapXModelAssetKey(name.to_owned()), preset);
+            }
             self.scene_models
                 .insert(asset_world::MapXModelAssetKey(name.to_owned()), asset);
         }
@@ -895,8 +914,12 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
         target: fastfile_t5::Ptr,
     ) -> fastfile_t5::Result<()> {
         self.materials.t5_alias(ty, slot, target);
-        if ty == fastfile_t5::AssetType::Fx {
+        if ty == T5Asset::Fx {
             self.fx.note_alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
+        }
+        if ty == T5Asset::PhysPreset {
+            self.phys_presets
+                .alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
         }
         if ty == fastfile_t5::AssetType::Material {
             if let Some(&name) = self.material_names_t5.get(&target) {
@@ -1137,10 +1160,22 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
                 preset,
             );
         }
+        if ty == T5Asset::XModelPieces {
+            let pieces = asset_world::read_t5_xmodel_pieces(stream, |slot| {
+                self.map_xmodels
+                    .name_at_slot(t5_iw4_ptr(slot))
+                    .or_else(|| self.map_xmodels.t5_reference_at_slot(t5_iw4_ptr(slot)))
+                    .map(str::to_owned)
+            });
+            for s in std::iter::once(slot).chain(insert_slot) {
+                self.xmodel_pieces.insert(t5_iw4_ptr(s), pieces.clone());
+            }
+        }
         if ty == T5Asset::XModel {
             self.map_xmodels.capture_t5(
                 stream,
                 &self.materials,
+                &self.phys_presets,
                 slot,
                 insert_slot,
                 &self.strings_t5,
@@ -1172,6 +1207,11 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         if ty == T5Asset::PhysPreset {
             self.phys_presets
                 .alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
+        }
+        if ty == T5Asset::XModelPieces
+            && let Some(pieces) = self.xmodel_pieces.get(&t5_iw4_ptr(target)).cloned()
+        {
+            self.xmodel_pieces.insert(t5_iw4_ptr(slot), pieces);
         }
         if ty == T5Asset::XModel {
             self.map_xmodels.alias(

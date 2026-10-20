@@ -649,7 +649,7 @@ fn impact(
         );
     }
     if def.proj_explosion_type() == 2 {
-        gaps.push(crate::radius::blast_effects_unknown());
+        gaps.push(missile_unknown());
     }
     missile.origin = end;
     Some(MissileRun::Gone)

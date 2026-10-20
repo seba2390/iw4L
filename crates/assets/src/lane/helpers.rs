@@ -105,6 +105,7 @@ impl MapXModelCatalog {
         &mut self,
         stream: &fastfile_t5::ZoneStream<'_>,
         materials: &MaterialCatalog,
+        phys_presets: &asset_world::PhysPresetCatalog,
         slot: fastfile_t5::Ptr,
         insert_slot: Option<fastfile_t5::Ptr>,
         strings: &fastfile_t5::ScriptStrings,
@@ -132,6 +133,16 @@ impl MapXModelCatalog {
             return;
         };
         let scene_key = MapXModelAssetKey(mesh.name.clone());
+        if let Some(preset) = geometry.phys_preset.and_then(|preset_slot| {
+            phys_presets
+                .at_slot(Ptr {
+                    block: preset_slot.block,
+                    offset: preset_slot.offset,
+                })
+                .cloned()
+        }) {
+            self.scene_assets.set_phys_preset(scene_key.clone(), preset);
+        }
         let scene_asset = asset_model::capture_xmodel_skel_t5(stream, strings, geometry, materials)
             .map(|skel| MapXModelSceneAsset::T5(std::sync::Arc::new(skel)))
             .unwrap_or(MapXModelSceneAsset::Unavailable {
@@ -465,6 +476,11 @@ impl MapXModelCatalog {
 
     pub(crate) fn set_dynent_phys_preset_n(&mut self, n: usize) {
         self.scene_assets.set_dynent_phys_preset_n(n);
+    }
+
+    pub(crate) fn phys_preset(&self, name: &str) -> Option<&asset_world::OwnedPhysPreset> {
+        self.scene_assets
+            .phys_preset(&asset_world::MapXModelAssetKey(name.to_owned()))
     }
 }
 

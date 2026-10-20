@@ -1463,6 +1463,7 @@ pub fn build_t5_dyn_ent_catalog(
     mut xmodel_name: impl FnMut(T5Ptr) -> Option<String>,
     mut fx_name: impl FnMut(T5Ptr) -> Option<String>,
     mut preset_at: impl FnMut(T5Ptr) -> Option<crate::OwnedPhysPreset>,
+    mut pieces_at: impl FnMut(T5Ptr) -> Vec<(String, [f32; 3])>,
 ) -> (crate::DynEntCatalog, usize) {
     let mut catalog = crate::DynEntCatalog::default();
     let mut spare = 0;
@@ -1489,6 +1490,8 @@ pub fn build_t5_dyn_ent_catalog(
             if xmodel.is_none() && draw_type == crate::DynEntDrawType::Model {
                 catalog.missing_xmodel += 1;
             }
+            let destroyed_xmodel = xmodel_name(def.at(t5_sz::DYN_ENTITY_DEF_DESTROYED_XMODEL_OFF))
+                .filter(|name| !name.is_empty());
             let phys_preset = preset_at(def.at(t5_sz::DYN_ENTITY_DEF_PHYS_PRESET_OFF));
             if phys_preset.is_none() {
                 catalog.missing_preset += 1;
@@ -1500,9 +1503,11 @@ pub fn build_t5_dyn_ent_catalog(
                 quat: scalars.quat,
                 origin: scalars.origin,
                 xmodel,
+                destroyed_xmodel,
                 brush_model: scalars.brush_model,
                 physics_brush_model: scalars.physics_brush_model,
                 destroy_fx: fx_name(def.at(t5_sz::DYN_ENTITY_DEF_DESTROY_FX_OFF)),
+                destroy_pieces: pieces_at(def.at(t5_sz::DYN_ENTITY_DEF_DESTROY_PIECES_OFF)),
                 phys_preset,
                 health: scalars.health,
                 phys_mass: [0.0; 9],
@@ -1532,10 +1537,41 @@ fn t5_dyn_ent_scalars(stream: &ZoneStream<'_>, def: T5Ptr) -> Option<crate::DynE
     })
 }
 
+/// Reads the latest `XModelPieces` asset (`numpieces` entries of `{XModel*, offset[3]}`).
+pub fn read_t5_xmodel_pieces(
+    stream: &ZoneStream<'_>,
+    mut xmodel_name: impl FnMut(T5Ptr) -> Option<String>,
+) -> Vec<(String, [f32; 3])> {
+    let Some(geometry) = stream.latest_xmodel_pieces() else {
+        return Vec::new();
+    };
+    let Some(base) = geometry.pieces else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(geometry.count);
+    for i in 0..geometry.count {
+        let p = base.at(i * t5_sz::XMODEL_PIECE);
+        let Some(model) = xmodel_name(p).filter(|name| !name.is_empty()) else {
+            continue;
+        };
+        let Ok(x) = stream.f32_at(p, 4) else {
+            continue;
+        };
+        let Ok(y) = stream.f32_at(p, 8) else {
+            continue;
+        };
+        let Ok(z) = stream.f32_at(p, 12) else {
+            continue;
+        };
+        out.push((model, [x, y, z]));
+    }
+    out
+}
+
 /// A Black Ops `PhysPreset` (84 bytes) in the shared preset's terms: name,
 /// flags, mass, bounce, friction, bullet and explosive force scales, sound
-/// alias prefix, pieces spread and upward velocity. Its float flag, gravity
-/// scale, centre of mass and buoyancy box are not kept.
+/// alias prefix, pieces spread, upward velocity, gravity scale and centre of
+/// mass offset.
 pub fn read_t5_phys_preset(
     stream: &ZoneStream<'_>,
     header: T5Ptr,
@@ -1558,5 +1594,11 @@ pub fn read_t5_phys_preset(
         pieces_upward_velocity: f32_at(36)?,
         temp_default_to_cylinder: false,
         per_surface_snd_alias: false,
+        gravity_scale: f32_at(0x2c).unwrap_or(1.0),
+        center_of_mass_offset: [
+            f32_at(0x30).unwrap_or(0.0),
+            f32_at(0x34).unwrap_or(0.0),
+            f32_at(0x38).unwrap_or(0.0),
+        ],
     })
 }

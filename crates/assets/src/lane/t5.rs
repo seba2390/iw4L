@@ -454,25 +454,41 @@ impl ZoneLane for T5Lane {
             materials.unrouted_material_count()
         ));
         let map_xmodels = std::mem::take(&mut sink.map_xmodels);
-        let (dyn_ents, dyn_ent_spare) = stream.clip_map().map_or_else(Default::default, |clip| {
-            asset_world::build_t5_dyn_ent_catalog(
-                &stream,
-                clip,
-                |slot| {
-                    map_xmodels
-                        .name_at_slot(t5_iw4_ptr(slot))
-                        .or_else(|| map_xmodels.t5_reference_at_slot(t5_iw4_ptr(slot)))
-                        .map(str::to_owned)
-                },
-                // A name starting with a comma refers to an effect in another zone.
-                |slot| {
-                    sink.fx
-                        .name_at_slot(t5_iw4_ptr(slot))
-                        .map(|name| name.strip_prefix(',').unwrap_or(name).to_owned())
-                },
-                |slot| sink.phys_presets.at_slot(t5_iw4_ptr(slot)).cloned(),
-            )
-        });
+        let (mut dyn_ents, dyn_ent_spare) =
+            stream.clip_map().map_or_else(Default::default, |clip| {
+                asset_world::build_t5_dyn_ent_catalog(
+                    &stream,
+                    clip,
+                    |slot| {
+                        map_xmodels
+                            .name_at_slot(t5_iw4_ptr(slot))
+                            .or_else(|| map_xmodels.t5_reference_at_slot(t5_iw4_ptr(slot)))
+                            .map(str::to_owned)
+                    },
+                    // A name starting with a comma refers to an effect in another zone.
+                    |slot| {
+                        sink.fx
+                            .name_at_slot(t5_iw4_ptr(slot))
+                            .map(|name| name.strip_prefix(',').unwrap_or(name).to_owned())
+                    },
+                    |slot| sink.phys_presets.at_slot(t5_iw4_ptr(slot)).cloned(),
+                    |slot| {
+                        sink.xmodel_pieces
+                            .get(&t5_iw4_ptr(slot))
+                            .cloned()
+                            .unwrap_or_default()
+                    },
+                )
+            });
+        for def in &mut dyn_ents.models {
+            if def.phys_preset.is_none()
+                && let Some(name) = &def.xmodel
+                && let Some(preset) = map_xmodels.phys_preset(name).cloned()
+            {
+                def.phys_preset = Some(preset);
+                dyn_ents.missing_preset = dyn_ents.missing_preset.saturating_sub(1);
+            }
+        }
         report.push(format!(
             "{} spare_slots={dyn_ent_spare}",
             dyn_ents.report_line()
