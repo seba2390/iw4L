@@ -468,7 +468,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "ropesetflag",
         "savegame",
         "reportmtu",
-        "stopallrumbles",
         "disablegrenadesuicide",
     ] {
         registry.register(Function, name, |_, _, _| Ok(Value::Undefined));

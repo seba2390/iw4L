@@ -1280,9 +1280,20 @@ fn flush_fpv_spawn(world: &mut World) {
 fn publish_fpv_notetracks(
     pending: Res<PendingFpvNotetracks>,
     mut notes: MessageWriter<audio::ViewmodelNotetracks>,
+    authority: Option<ResMut<net::AuthorityWorld>>,
 ) {
     if let Some(batch) = &pending.batch {
         notes.write(batch.clone());
+        // The client scripts hear each note too.
+        if let Some(mut authority) = authority {
+            authority.0.report_viewmodel_notes(
+                batch
+                    .records
+                    .iter()
+                    .map(|record| record.name.clone())
+                    .collect(),
+            );
+        }
     }
 }
 

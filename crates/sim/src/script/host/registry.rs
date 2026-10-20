@@ -74,7 +74,10 @@ impl NativeRegistry {
 
     /// Black Ops' client VM natives (its client scripts, CSC).
     pub fn black_ops_client(server: &NativeRegistry) -> Self {
-        Self::client(server, natives::t5_client::register)
+        Self::client(server, |registry| {
+            natives::t5_client::register(registry);
+            natives::t5_viewmodel::register_client(registry);
+        })
     }
 
     /// Builtins every game's scripts are served the same way: the language
@@ -156,6 +159,7 @@ impl NativeRegistry {
         natives::t5::register(&mut self);
         natives::t5_zombie::register(&mut self);
         natives::t5_turret::register(&mut self);
+        natives::t5_viewmodel::register(&mut self);
         super::actors::register(&mut self);
         super::actors::register_damage(&mut self);
         super::actor_anims::register(&mut self);

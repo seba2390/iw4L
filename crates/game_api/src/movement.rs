@@ -129,6 +129,9 @@ pub struct MovePlayer {
     pub weapon_state: i32,
     /// Set by the weapon rules, in the game's numbering.
     pub weap_anim: u32,
+    /// Set by the weapon rules of a game with a left-hand number, in its
+    /// numbering.
+    pub weap_anim_left: Option<u32>,
     pub offhand: u32,
     pub view_weapon: Option<u32>,
     pub grenade_time_left: i32,
@@ -164,6 +167,7 @@ impl Default for MovePlayer {
             aim_spread_scale: 0.0,
             weapon_state: 0,
             weap_anim: 0,
+            weap_anim_left: None,
             offhand: 0,
             view_weapon: None,
             grenade_time_left: 0,
