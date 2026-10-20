@@ -328,6 +328,15 @@ impl WeaponRegistry {
             .filter_map(|action| action.sound_alias.as_deref())
     }
 
+    /// The aliases a weapon's notetracks play by hash (none required).
+    pub fn notetrack_hashed_aliases_of(&self, index: u32) -> impl Iterator<Item = &str> {
+        self.rows
+            .get(index as usize)
+            .into_iter()
+            .flat_map(|row| row.notetrack_actions.values())
+            .filter_map(|action| action.hashed_alias.as_deref())
+    }
+
     pub fn sz_xanim_right_edges_of(
         &self,
         index: u32,

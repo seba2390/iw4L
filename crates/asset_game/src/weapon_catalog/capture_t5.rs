@@ -251,20 +251,28 @@ pub(super) fn read_sz_xanims_t5(
     }
     let mut out = remap_t5_sz_xanims(&t5);
     if left {
-        use fastfile_t5::size::weap_anim as a;
-        for (src, dst) in [
-            (a::IDLE_LEFT, weap_anim::IDLE),
-            (a::EMPTY_IDLE_LEFT, weap_anim::EMPTY_IDLE),
-            (a::FIRE_LEFT, weap_anim::FIRE),
-            (a::LASTSHOT_LEFT, weap_anim::LASTSHOT),
-            (a::RELOAD_LEFT, weap_anim::RELOAD),
-            (a::RELOAD_EMPTY_LEFT, weap_anim::RELOAD_EMPTY),
-        ] {
-            out[dst] = t5[src].clone();
+        for (src, dst) in LEFT_ANIM_SLOTS.iter().enumerate() {
+            if let Some(dst) = *dst {
+                out[dst] = t5[src].clone();
+            }
         }
     }
     out
 }
+
+/// The left viewmodel's slot of each of the weapon's own (left gun's)
+/// animation slots.
+static LEFT_ANIM_SLOTS: &[Option<usize>] = &{
+    use fastfile_t5::size::{WEAPON_XANIM_COUNT, weap_anim as a};
+    let mut slots = [None; WEAPON_XANIM_COUNT];
+    slots[a::IDLE_LEFT] = Some(weap_anim::IDLE);
+    slots[a::EMPTY_IDLE_LEFT] = Some(weap_anim::EMPTY_IDLE);
+    slots[a::FIRE_LEFT] = Some(weap_anim::FIRE);
+    slots[a::LASTSHOT_LEFT] = Some(weap_anim::LASTSHOT);
+    slots[a::RELOAD_LEFT] = Some(weap_anim::RELOAD);
+    slots[a::RELOAD_EMPTY_LEFT] = Some(weap_anim::RELOAD_EMPTY);
+    slots
+};
 
 pub(super) fn remap_t5_sz_xanims(t5: &[Option<String>]) -> [Option<String>; WEAPON_ANIM_SLOTS] {
     let mut out = [const { None }; WEAPON_ANIM_SLOTS];
@@ -281,7 +289,7 @@ pub(super) fn remap_t5_sz_xanims(t5: &[Option<String>]) -> [Option<String>; WEAP
 /// The runtime slot of each of the weapon's own animation slots.
 static RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
     use fastfile_t5::size::{WEAPON_XANIM_COUNT, weap_anim as t5_anim};
-    const PAIRS: [(usize, usize); 34] = [
+    const PAIRS: [(usize, usize); 59] = [
         (t5_anim::IDLE, weap_anim::IDLE),
         (t5_anim::EMPTY_IDLE, weap_anim::EMPTY_IDLE),
         (t5_anim::FIRE, weap_anim::FIRE),
@@ -319,6 +327,31 @@ static RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
         (t5_anim::ADS_RECHAMBER, weap_anim::ADS_RECHAMBER),
         (t5_anim::ADS_UP, weap_anim::ADS_UP),
         (t5_anim::ADS_DOWN, weap_anim::ADS_DOWN),
+        (t5_anim::RELOAD_RIGHT, weap_anim_extra::RELOAD_RIGHT),
+        (t5_anim::SPRINT_EMPTY_IN, weap_anim_extra::SPRINT_EMPTY_IN),
+        (t5_anim::SPRINT_EMPTY_LOOP, weap_anim_extra::SPRINT_EMPTY_LOOP),
+        (t5_anim::SPRINT_EMPTY_OUT, weap_anim_extra::SPRINT_EMPTY_OUT),
+        (t5_anim::LOWREADY_IN, weap_anim_extra::LOWREADY_IN),
+        (t5_anim::LOWREADY_LOOP, weap_anim_extra::LOWREADY_LOOP),
+        (t5_anim::LOWREADY_OUT, weap_anim_extra::LOWREADY_OUT),
+        (t5_anim::CONT_FIRE_IN, weap_anim_extra::CONT_FIRE_IN),
+        (t5_anim::CONT_FIRE_LOOP, weap_anim_extra::CONT_FIRE_LOOP),
+        (t5_anim::CONT_FIRE_OUT, weap_anim_extra::CONT_FIRE_OUT),
+        (t5_anim::DEPLOY, weap_anim_extra::DEPLOY),
+        (t5_anim::BREAKDOWN, weap_anim_extra::BREAKDOWN),
+        (t5_anim::DTP_IN, weap_anim_extra::DTP_IN),
+        (t5_anim::DTP_LOOP, weap_anim_extra::DTP_LOOP),
+        (t5_anim::DTP_OUT, weap_anim_extra::DTP_OUT),
+        (t5_anim::DTP_EMPTY_IN, weap_anim_extra::DTP_EMPTY_IN),
+        (t5_anim::DTP_EMPTY_LOOP, weap_anim_extra::DTP_EMPTY_LOOP),
+        (t5_anim::DTP_EMPTY_OUT, weap_anim_extra::DTP_EMPTY_OUT),
+        (t5_anim::SLIDE_IN, weap_anim_extra::SLIDE_IN),
+        (t5_anim::MANTLE, weap_anim_extra::MANTLE),
+        (t5_anim::SPRINT_CAMERA, weap_anim_extra::SPRINT_CAMERA),
+        (t5_anim::DTP_IN_CAMERA, weap_anim_extra::DTP_IN_CAMERA),
+        (t5_anim::DTP_LOOP_CAMERA, weap_anim_extra::DTP_LOOP_CAMERA),
+        (t5_anim::DTP_OUT_CAMERA, weap_anim_extra::DTP_OUT_CAMERA),
+        (t5_anim::MANTLE_CAMERA, weap_anim_extra::MANTLE_CAMERA),
     ];
     let mut slots = [None; WEAPON_XANIM_COUNT];
     let mut i = 0;
@@ -923,6 +956,7 @@ pub(super) fn capture_t5_body_facts(
                     .fold(0u128, |bits, slot| bits | 1 << slot)
             }),
             anim_slots: RUNTIME_ANIM_SLOTS,
+            left_anim_slots: LEFT_ANIM_SLOTS,
             location_damage: read_f32_array_t5::<{ sz::WEAPON_LOCATION_DAMAGE_COUNT }>(
                 stream,
                 body,

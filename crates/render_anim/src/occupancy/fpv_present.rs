@@ -704,11 +704,11 @@ pub fn tick_fpv_viewmodel(
         .as_deref()
         .and_then(|mode| mode.viewmodel)
         .map(|rules| {
-            let bytes = table.and_then(|table| table.game_bytes(session.weapon_id));
             crate::anim::fpv::GameViewmodel {
                 rules,
-                named_anims: bytes.map_or(0, |bytes| bytes.named_anims),
-                anim_slots: bytes.map_or(&[], |bytes| bytes.anim_slots),
+                weapon: table
+                    .and_then(|table| table.game_bytes(session.weapon_id))
+                    .cloned(),
             }
         });
     let (sample, predicted_fire) = match presented.snapshot() {
@@ -773,6 +773,9 @@ pub fn tick_fpv_viewmodel(
                     perks1: ps.map(|p| p.perks[1]).unwrap_or(0),
                     clip_ammo: clip_ammo(0),
                     left_clip_ammo: clip_ammo(1),
+                    game_move: ps.map_or([0; game_api::movement::GAME_MOVE_BYTES], |p| {
+                        p.game_move
+                    }),
                 }),
                 predicted_fire,
             )
@@ -816,6 +819,11 @@ pub fn tick_fpv_viewmodel(
         view: equipped_view,
         ..
     } = session;
+    // A hidden viewmodel still animates and places its tags; it is not drawn.
+    let hidden = game
+        .as_ref()
+        .zip(sample.as_ref())
+        .is_some_and(|(game, sample)| game.hidden(&sample.game_move));
     let (mut kind, notetracks) = generate_fpv_pose(FpvGenerateArgs {
         dt,
         equipped,
@@ -866,7 +874,7 @@ pub fn tick_fpv_viewmodel(
             }
         }
     }
-    product.kind = kind;
+    product.kind = if hidden { FpvPoseKind::Hide } else { kind };
 }
 
 /// Write this frame's vertices into the buffer the rig published, and nothing

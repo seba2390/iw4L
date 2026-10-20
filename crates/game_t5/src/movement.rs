@@ -318,6 +318,15 @@ fn game_state(
     }
 }
 
+/// Whether a script hid the viewmodel: Black Ops' client keeps it beside
+/// its player state (the server's `hideviewmodel` command sets it); the
+/// runtime carries it in the player's last game byte, past the fields above.
+const VIEWMODEL_HIDDEN: usize = GAME_MOVE_BYTES - 1;
+
+pub(crate) fn viewmodel_hidden(game: &[u8; GAME_MOVE_BYTES]) -> bool {
+    game[VIEWMODEL_HIDDEN] != 0
+}
+
 pub(crate) fn unpack(player: &mut MovePlayer) -> (PlayerState, UserCmd) {
     let mut ps = PlayerState {
         client_num: player.client_num,
@@ -606,7 +615,9 @@ impl PlayerMovement for T5Movement {
             ..PlayerState::default()
         };
         let mut last = UserCmd::default();
+        let hidden = player.game[VIEWMODEL_HIDDEN];
         player.game = [0; GAME_MOVE_BYTES];
+        player.game[VIEWMODEL_HIDDEN] = hidden;
         player.view_height = ps.view_height_current;
         player.view_height_target = ps.view_height_target;
         player.stance = Stance::Stand;
@@ -788,6 +799,19 @@ impl PlayerMovement for T5Movement {
         }
         pack(player, &mut ps, &mut last);
         Some(was)
+    }
+
+    fn hide_viewmodel(&self, player: &mut MovePlayer, hide: bool) -> Option<MoveOutcome> {
+        let mut outcome = MoveOutcome::default();
+        if hide {
+            let (mut ps, mut last) = unpack(player);
+            if let Some((event, parm)) = movement_t5::weapon::hide_viewmodel(&mut ps) {
+                outcome.signals.push(MoveSignal::Event { event, parm });
+            }
+            pack(player, &mut ps, &mut last);
+        }
+        player.game[VIEWMODEL_HIDDEN] = u8::from(hide);
+        Some(outcome)
     }
 
     fn cursor_hints(&self) -> &'static [&'static str] {

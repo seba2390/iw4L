@@ -180,6 +180,7 @@ fn capture_t6_game_bytes(w: fastfile_t6::weapon::WeaponView<'_>) -> Option<Arc<G
             .map_or_else(String::new, str::to_owned),
         named_anims,
         anim_slots: T6_RUNTIME_ANIM_SLOTS,
+        left_anim_slots: &[],
         location_damage: w
             .def_f32_array::<{ d::HIT_LOCATIONS }>(d::LOCATION_DAMAGE_MULTIPLIERS)
             .map(Box::from),
@@ -834,6 +835,7 @@ pub(super) fn apply_t6_attachment_game_bytes(
         clip_name,
         named_anims,
         anim_slots: base.anim_slots,
+        left_anim_slots: base.left_anim_slots,
         location_damage: base.location_damage.clone(),
         parallel_bounce: base.parallel_bounce.clone(),
         perpendicular_bounce: base.perpendicular_bounce.clone(),

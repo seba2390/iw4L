@@ -102,6 +102,9 @@ pub struct ClientCallbacks {
     pub gib_event: &'static str,
     /// A one-shot client trigger was touched: `self = trigger`.
     pub trigger_delete: &'static str,
+    /// A level notify the client's engine raises (a viewmodel animation's
+    /// note: `("notetrack", local client, note)`).
+    pub level_notify: &'static str,
 }
 
 /// What a match compiles and where it starts.
@@ -406,9 +409,22 @@ pub struct ViewmodelRules {
     /// whether the weapon names its animation `i` (in the game's own order).
     /// The second value is what the change does that is not run.
     pub anim: ViewmodelAnimFn,
-    /// How the game starts an animation (its blend and rate), which the
-    /// runtime's viewmodel does not run.
-    pub playback: &'static Unknown,
+    /// The rate the game starts an animation at; `None` takes it from the
+    /// weapon's timers as the runtime's viewmodel does.
+    pub rate: Option<ViewmodelRateFn>,
+    /// What a change of a dual-wield weapon's left-hand animation number
+    /// plays (the left animations in the game's own order); `None` leaves
+    /// the left hand to the runtime's viewmodel.
+    pub left: Option<ViewmodelLeftFn>,
+    /// Whether the player's own fields hide the viewmodel (it still
+    /// animates); `None` never hides it.
+    pub hidden: Option<fn(&[u8; movement::GAME_MOVE_BYTES]) -> bool>,
+    /// The game's camera animations; `None` plays none and keeps the view
+    /// at the player's eye.
+    pub camera: Option<ViewmodelCamera>,
+    /// How the game starts an animation that the runtime's viewmodel does
+    /// not run, when the game has no rate rule.
+    pub playback: Option<&'static Unknown>,
     /// What an animation the runtime's viewmodel holds no slot for does not
     /// do.
     pub unslotted: &'static Unknown,
@@ -416,6 +432,48 @@ pub struct ViewmodelRules {
 
 pub type ViewmodelAnimFn =
     fn(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> (ViewmodelAnim, Option<&'static Unknown>);
+
+/// The left hand's animation for its number, as [`ViewmodelAnimFn`].
+pub type ViewmodelLeftFn = ViewmodelAnimFn;
+
+/// A game's camera animations: played on the viewmodel beside its
+/// animations, they move a bone of it that places the first-person view.
+#[derive(Clone, Copy, Debug)]
+pub struct ViewmodelCamera {
+    /// The bone whose pose (from the viewmodel's root at the eye) is the
+    /// view.
+    pub tag: &'static str,
+    /// What a weapon animation number does to the camera animations after
+    /// it starts its own (`named` as for [`ViewmodelAnimFn`]); any
+    /// animation's start stops them as well.
+    pub anim: fn(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> Option<CameraAnim>,
+}
+
+/// What a weapon animation number does to the camera animations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CameraAnim {
+    /// Starts this one (in the game's own order).
+    Start(usize),
+    /// Stops them.
+    Stop,
+}
+
+/// What the game's client knows when it starts a weapon animation.
+#[derive(Clone, Copy, Debug)]
+pub struct ViewmodelStart<'a> {
+    /// The animation, in the game's own order.
+    pub anim: usize,
+    /// The animation's length, in msec, as the game's animation system
+    /// reads it.
+    pub length_ms: i32,
+    /// The weapon's definition and variant, in the game's own layout.
+    pub def: &'a [u8],
+    pub variant: &'a [u8],
+    /// The player's own fields ([`movement::MovePlayer::game`]).
+    pub game: &'a [u8; movement::GAME_MOVE_BYTES],
+}
+
+pub type ViewmodelRateFn = fn(&ViewmodelStart<'_>) -> f32;
 
 /// What a viewmodel does on a weapon animation change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

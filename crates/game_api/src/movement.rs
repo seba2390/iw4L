@@ -602,6 +602,13 @@ pub trait PlayerMovement: Sync {
     /// down.
     fn clear_damage_timer(&self, _player: &mut MovePlayer) {}
 
+    /// A script hides (`hideviewmodel`) or shows the player's viewmodel: what
+    /// the game does to the player's weapon state, with the events it sends;
+    /// `None` when the game's movement has no such rule.
+    fn hide_viewmodel(&self, _player: &mut MovePlayer, _hide: bool) -> Option<MoveOutcome> {
+        None
+    }
+
     /// What `finishplayerdamage` does to the player's own state before it
     /// takes the health; answers the damage the game takes after its own
     /// scaling.

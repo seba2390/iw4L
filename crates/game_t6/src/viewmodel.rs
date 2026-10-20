@@ -12,11 +12,15 @@ const LAST_SHOT_LEFT: u32 = 5;
 
 pub(crate) const VIEWMODEL: ViewmodelRules = ViewmodelRules {
     anim,
-    playback: unknown!(
+    rate: None,
+    left: None,
+    hidden: None,
+    camera: None,
+    playback: Some(unknown!(
         "t6.viewmodel.playback",
         "a Black Ops 2 weapon animation starts with the runtime viewmodel's blend times and rates, not Black Ops 2's: it cuts to most animations at once, blends the crawl moves and a quick idle over half a second, and scales the rate by the player's perks for the weapon state (the reload, rate, switch, melee, sprint recovery, toss and equipment use multipliers)",
         "Black Ops 2's client animation start (its blend times and perk rates) in the runtime's viewmodel"
-    ),
+    )),
     unslotted: unknown!(
         "t6.viewmodel.unslotted",
         "a Black Ops 2 weapon animation with no slot in the runtime's viewmodel (fire intro, empty melee and melee charge, empty sprint, low ready, continuous fire, crawl, deploy, breakdown, ADS fire intro, dive to prone, slide, mantle) is not played",

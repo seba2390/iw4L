@@ -468,6 +468,10 @@ enum NotetrackSound {
 
 #[derive(Clone, Debug)]
 struct BoundNotetrack {
+    /// The alias the game plays by hash first, when the bank holds it.
+    hashed: Option<usize>,
+    /// The note names an alias played by hash, held or not.
+    hash_mapped: bool,
     sound: Option<NotetrackSound>,
     rumble: Option<Result<Arc<crate::rumble::Rumble>, String>>,
     rumble_alias: Option<String>,
@@ -480,6 +484,8 @@ fn direct_rumble_action(
 ) -> Option<BoundNotetrack> {
     bank.rawfile_bytes_in(namespace, &format!("rumble/{note}"))?;
     Some(BoundNotetrack {
+        hashed: None,
+        hash_mapped: false,
         sound: None,
         rumble: Some(crate::rumble::Rumble::prepare(bank, namespace, note)),
         rumble_alias: Some(if namespace == asset_core::AssetNamespace::Iw4 {
@@ -563,9 +569,16 @@ impl NotetrackSoundTable {
                         }
                     }
                 });
+                let hashed = action.hashed_alias.as_deref().and_then(|alias| {
+                    weapons
+                        .sound_namespace_for(weapon, alias)
+                        .and_then(|namespace| bank.index_in(namespace, alias))
+                });
                 actions.insert(
                     (weapon, note.to_owned()),
                     BoundNotetrack {
+                        hashed,
+                        hash_mapped: action.hashed_alias.is_some(),
                         sound,
                         rumble_alias: action.rumble_alias.as_ref().map(|alias| {
                             if namespace == asset_core::AssetNamespace::Iw4 {
@@ -741,6 +754,15 @@ fn apply_viewmodel_notetrack(
             }),
         }
     }
+    if let Some(index) = action.hashed {
+        output.write(crate::BoundWeaponSound {
+            event: Some(event),
+            bank_revision: bank.revision(),
+            index,
+            origin_inches: None,
+            snd_ent: Some(crate::SND_ENT_LOCAL),
+        });
+    }
     match action.sound {
         Some(NotetrackSound::Bound(index)) => {
             output.write(crate::BoundWeaponSound {
@@ -758,7 +780,7 @@ fn apply_viewmodel_notetrack(
                 )
             });
         }
-        None if action.rumble.is_none() => {
+        None if action.rumble.is_none() && !action.hash_mapped => {
             table.report_once(weapon, note, || {
                 format!("audio: notetrack `{note}` has no sound or rumble mapping")
             });

@@ -215,6 +215,18 @@ pub(crate) fn finish(ps: &mut crate::PlayerState) {
     start_anim_left(ps, weap_anim::IDLE);
 }
 
+/// A script hides the viewmodel (`hideviewmodel`): a reload in progress
+/// stops its sound (the event, with the weapon state, is answered), and
+/// both hands go back to ready.
+pub fn hide_viewmodel(ps: &mut crate::PlayerState) -> Option<(i32, i32)> {
+    let state = ps.weaponstate;
+    let stop = (ws::RELOADING..=ws::RELOADING_LEFT_INTERRUPT)
+        .contains(&state)
+        .then_some((event::STOP_WEAPON_SOUND, state));
+    finish(ps);
+    stop
+}
+
 /// The running hand's weapon state, time and delay.
 struct Hand {
     left: bool,

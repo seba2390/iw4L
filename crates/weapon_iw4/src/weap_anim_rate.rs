@@ -24,13 +24,44 @@ impl AnimRateOffsets {
     }
 }
 
-pub const WEAPON_ANIM_SLOTS: usize = WEAPON_ANIM_COUNT + 2;
+pub const WEAPON_ANIM_SLOTS: usize = WEAPON_ANIM_COUNT + 2 + weap_anim_extra::LATER_GAMES;
 
+/// Slots past Modern Warfare 2's own animations: its quick reloads, then the
+/// later games' animations it has none of (a game's viewmodel rule plays
+/// them).
 pub mod weap_anim_extra {
     use super::WEAPON_ANIM_COUNT;
 
     pub const RELOAD_QUICK: usize = WEAPON_ANIM_COUNT;
     pub const RELOAD_QUICK_EMPTY: usize = WEAPON_ANIM_COUNT + 1;
+    pub const RELOAD_RIGHT: usize = WEAPON_ANIM_COUNT + 2;
+    pub const SPRINT_EMPTY_IN: usize = WEAPON_ANIM_COUNT + 3;
+    pub const SPRINT_EMPTY_LOOP: usize = WEAPON_ANIM_COUNT + 4;
+    pub const SPRINT_EMPTY_OUT: usize = WEAPON_ANIM_COUNT + 5;
+    pub const LOWREADY_IN: usize = WEAPON_ANIM_COUNT + 6;
+    pub const LOWREADY_LOOP: usize = WEAPON_ANIM_COUNT + 7;
+    pub const LOWREADY_OUT: usize = WEAPON_ANIM_COUNT + 8;
+    pub const CONT_FIRE_IN: usize = WEAPON_ANIM_COUNT + 9;
+    pub const CONT_FIRE_LOOP: usize = WEAPON_ANIM_COUNT + 10;
+    pub const CONT_FIRE_OUT: usize = WEAPON_ANIM_COUNT + 11;
+    pub const DEPLOY: usize = WEAPON_ANIM_COUNT + 12;
+    pub const BREAKDOWN: usize = WEAPON_ANIM_COUNT + 13;
+    pub const DTP_IN: usize = WEAPON_ANIM_COUNT + 14;
+    pub const DTP_LOOP: usize = WEAPON_ANIM_COUNT + 15;
+    pub const DTP_OUT: usize = WEAPON_ANIM_COUNT + 16;
+    pub const DTP_EMPTY_IN: usize = WEAPON_ANIM_COUNT + 17;
+    pub const DTP_EMPTY_LOOP: usize = WEAPON_ANIM_COUNT + 18;
+    pub const DTP_EMPTY_OUT: usize = WEAPON_ANIM_COUNT + 19;
+    pub const SLIDE_IN: usize = WEAPON_ANIM_COUNT + 20;
+    pub const MANTLE: usize = WEAPON_ANIM_COUNT + 21;
+    pub const SPRINT_CAMERA: usize = WEAPON_ANIM_COUNT + 22;
+    pub const DTP_IN_CAMERA: usize = WEAPON_ANIM_COUNT + 23;
+    pub const DTP_LOOP_CAMERA: usize = WEAPON_ANIM_COUNT + 24;
+    pub const DTP_OUT_CAMERA: usize = WEAPON_ANIM_COUNT + 25;
+    pub const MANTLE_CAMERA: usize = WEAPON_ANIM_COUNT + 26;
+    /// The camera animations' slots.
+    pub const CAMERAS: core::ops::Range<usize> = SPRINT_CAMERA..MANTLE_CAMERA + 1;
+    pub(super) const LATER_GAMES: usize = 25;
 }
 
 pub const ANIM_RATE_TABLE: [AnimRateOffsets; WEAPON_ANIM_COUNT] = [
