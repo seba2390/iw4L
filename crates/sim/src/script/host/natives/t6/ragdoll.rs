@@ -561,7 +561,7 @@ fn step_body(
         ragdoll.step(
             def,
             tuning,
-            crate::MATCH_TICK_MS as u32,
+            crate::MATCH_TICK_MS,
             jitter,
             &mut Level(&frame),
         );

@@ -148,7 +148,7 @@ fn atoi(text: &str) -> i32 {
 pub(super) fn hide_weapon_tags(world: &mut World, id: u64, name: &str) {
     let tags = zone_weapon(world, name)
         .map(|facts| facts.hide_tags.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(Vec::new);
     if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
         entity.part_ops.push(("".into(), false));
         entity

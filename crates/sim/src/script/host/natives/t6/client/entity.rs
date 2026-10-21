@@ -762,7 +762,7 @@ pub(crate) fn zombie_box_weapons(server: &World) -> Vec<(String, String, bool)> 
         .get_resource::<crate::script::host::client_scripts::ClientScripts>()
         .and_then(|client| client.world.get_resource::<ZombieBoxWeapons>())
         .map(|list| list.0.clone())
-        .unwrap_or_default()
+        .unwrap_or_else(Vec::new)
 }
 
 pub(super) fn register(registry: &mut NativeRegistry) {

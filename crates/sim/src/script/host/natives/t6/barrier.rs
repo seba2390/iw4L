@@ -424,13 +424,13 @@ pub(crate) fn draw(world: &mut World) {
             (Arc::clone(&barrier.kind), barrier.pieces)
         };
         let count = (kind.piece_count.clamp(0, 6) as usize).min(kind.pieces.len());
-        for index in 0..count {
+        for (index, piece) in pieces.into_iter().enumerate().take(count) {
             draw_piece(
                 world,
                 id,
                 &kind,
                 index,
-                pieces[index],
+                piece,
                 origin,
                 angles,
                 now,

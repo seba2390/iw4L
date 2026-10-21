@@ -139,7 +139,7 @@ fn wanted(client: &mut World, mirrored: &std::collections::BTreeSet<u64>) -> Vec
                 .entities
                 .get_mut(&object)
                 .map(|entity| std::mem::take(&mut entity.part_ops))
-                .unwrap_or_default();
+                .unwrap_or_else(Vec::new);
             Some(Wanted {
                 object,
                 number,
