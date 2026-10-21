@@ -581,18 +581,28 @@ impl AuthorityDObjState {
         0
     }
 
+    /// Hides or shows a tag; an empty tag shown shows every tag.
     pub fn set_tag_hidden(&mut self, tag: &str, hidden: bool) -> bool {
+        let mut words = *self.semantic_state.hide_part_bits.words();
+        if tag.is_empty() && !hidden {
+            words.fill(0);
+            self.set_hide(xmodel_runtime::HidePartBits::from_words(words));
+            return true;
+        }
         let Some(bone) = self.tag_bone(tag) else {
             return false;
         };
-        let mut words = *self.semantic_state.hide_part_bits.words();
         let bit = 0x8000_0000 >> (bone % 32);
         if hidden {
             words[bone / 32] |= bit;
         } else {
             words[bone / 32] &= !bit;
         }
-        let hide = xmodel_runtime::HidePartBits::from_words(words);
+        self.set_hide(xmodel_runtime::HidePartBits::from_words(words));
+        true
+    }
+
+    fn set_hide(&mut self, hide: xmodel_runtime::HidePartBits) {
         if hide != self.semantic_state.hide_part_bits {
             self.semantic_state.hide_part_bits = hide;
             self.pose_request.hide_part_bits = hide;
@@ -601,7 +611,6 @@ impl AuthorityDObjState {
             self.current_collision = None;
             self.materialized_pose_revision = None;
         }
-        true
     }
 
     pub fn clear_script_model_play_anim(&mut self) {
@@ -681,6 +690,37 @@ impl AuthorityDObjState {
         self.pose_request.tree = runtime;
         self.current_collision = None;
         self.materialized_pose_revision = None;
+    }
+
+    /// Places bones outright (a ragdoll's), over what the animation does.
+    pub fn set_bone_overrides(&mut self, overrides: Vec<xmodel_runtime::BoneOverride>) {
+        if self.semantic_state.bone_overrides == overrides {
+            return;
+        }
+        self.pose_revision = self.pose_revision.wrapping_add(1);
+        self.semantic_state.pose_revision = self.pose_revision;
+        if let Some(tree) = self.semantic_state.tree.as_mut() {
+            tree.state_revision = self.pose_revision;
+        }
+        self.pose_request.bone_overrides = overrides.clone();
+        self.semantic_state.bone_overrides = overrides;
+        self.current_collision = None;
+        self.materialized_pose_revision = None;
+    }
+
+    /// The skeleton and every bone's world matrix as the animation poses it,
+    /// without the bones placed outright.
+    pub fn animated_bones(&self) -> Option<(xmodel_runtime::DObj, Vec<glam::Mat4>)> {
+        let dobj = self.dobj()?;
+        let request = xmodel_runtime::DObjPoseRequest {
+            tree: self.pose_request.tree.clone(),
+            tag_rotations: self.pose_request.tag_rotations.clone(),
+            bone_overrides: Vec::new(),
+            requested_parts: self.pose_request.requested_parts,
+            hide_part_bits: self.pose_request.hide_part_bits,
+        };
+        let posed = xmodel_runtime::pose_dobj(&dobj, &request, self.world_from_model).ok()?;
+        Some((dobj, posed))
     }
 
     pub fn advance_script_model_play_anim(&mut self, dt_seconds: f32) -> f32 {

@@ -574,13 +574,35 @@ fn paint_text(
             .text_align
             .unwrap_or((item.text_align_mode, item.text_align_x, item.text_align_y));
     let wrap_width = (style.rect.w.abs() - align_x.max(0.0)).max(1.0);
-    let lines = menu_text_lines(
-        &resolved.text,
-        (item.static_flags & 0x0080_0000 != 0).then_some(wrap_width),
-        |text| layout_text_width(layout, font, text, item.text_scale),
-    );
+    let autowrap = item.static_flags & 0x0080_0000 != 0;
+    let lines = autowrap
+        .then(|| {
+            game_wrap_lines(
+                layout,
+                font,
+                &resolved.text,
+                style.rect.w,
+                align_mode,
+                item.text_scale,
+            )
+        })
+        .flatten()
+        .unwrap_or_else(|| {
+            menu_text_lines(&resolved.text, autowrap.then_some(wrap_width), |text| {
+                layout_text_width(layout, font, text, item.text_scale)
+            })
+        });
+    // Aligned text leaves room for a dvar item's value, as its game says.
+    let value_room =
+        if align_mode & 3 != 0 && !item.dvar.is_empty() && layout.value_room(item.item_type) {
+            host.dvar_string(&item.dvar).map_or(0.0, |value| {
+                layout_text_width(layout, font, &value, item.text_scale)
+            })
+        } else {
+            0.0
+        };
     for (line, text) in lines.into_iter().enumerate() {
-        let measured_w = layout_text_width(layout, font, &text, item.text_scale);
+        let measured_w = layout_text_width(layout, font, &text, item.text_scale) + value_room;
         let measured_h = layout.text_height(font.pixel_height, item.text_scale);
         let rect = &style.rect;
         let (x, y) = layout.text_origin(
@@ -629,6 +651,27 @@ fn paint_text(
         });
     }
     frame.coverage.painted();
+}
+
+/// The game's own wrapped lines for `text` in a rect `rect_w` wide, when its
+/// menu layout breaks lines itself.
+fn game_wrap_lines(
+    layout: &dyn game_api::MenuLayout,
+    font: &FontDef,
+    text: &str,
+    rect_w: f32,
+    align_mode: i32,
+    text_scale: f32,
+) -> Option<Vec<String>> {
+    let glyph = |c: char| font.glyph(u32::from(c)).map_or(0, |g| i32::from(g.dx));
+    layout.wrap_lines(
+        text,
+        rect_w,
+        align_mode,
+        layout_text_width(layout, font, text, text_scale),
+        &glyph,
+        layout.text_scale(font.pixel_height, text_scale),
+    )
 }
 
 fn menu_text_lines(text: &str, width: Option<f32>, measure: impl Fn(&str) -> f32) -> Vec<String> {
@@ -739,11 +782,21 @@ pub(crate) fn push_owner_wrapped_text(
     };
     let layout = args.assets.layout().ok_or(ChromeGapKind::Layout)?;
     let wrap_width = (args.rect.w.abs() - args.item.text_align_x.max(0.0)).max(1.0);
-    let lines = menu_text_lines(
+    let lines = game_wrap_lines(
+        layout,
+        font,
         text,
-        (args.rect.w.abs() > 0.0).then_some(wrap_width),
-        |line| layout_text_width(layout, font, line, args.item.text_scale),
-    );
+        args.rect.w,
+        args.item.text_align_mode,
+        args.item.text_scale,
+    )
+    .unwrap_or_else(|| {
+        menu_text_lines(
+            text,
+            (args.rect.w.abs() > 0.0).then_some(wrap_width),
+            |line| layout_text_width(layout, font, line, args.item.text_scale),
+        )
+    });
     let measured_h = layout.text_height(font.pixel_height, args.item.text_scale);
     for (line_idx, line) in lines.into_iter().enumerate() {
         let measured_w = layout_text_width(layout, font, &line, args.item.text_scale);
@@ -978,7 +1031,47 @@ pub(crate) fn layout_text_width(
     text: &str,
     text_scale: f32,
 ) -> f32 {
-    layout.text_width(text_width(font, text), font.pixel_height, text_scale)
+    layout.text_width(
+        layout_glyph_width(layout, font, text),
+        font.pixel_height,
+        text_scale,
+    )
+}
+
+/// The widest line of `text` in font units, skipping the codes the game's
+/// menu layout skips.
+fn layout_glyph_width(layout: &dyn game_api::MenuLayout, font: &FontDef, text: &str) -> i32 {
+    let chars: Vec<char> = text.chars().collect();
+    let mut width = 0i32;
+    let mut max_width = 0i32;
+    let mut at = 0;
+    while at < chars.len() {
+        let c = chars[at];
+        at += 1;
+        if c == '^'
+            && let Some(&next) = chars.get(at)
+        {
+            let skip = layout.text_code_len(next, chars.get(at + 1).copied());
+            if skip > 0 {
+                at += skip;
+                continue;
+            }
+        }
+        if c == '\r' || c == '\n' {
+            width = 0;
+            continue;
+        }
+        let dx = if frame::ControllerIcon::from_char(c).is_some() {
+            font.pixel_height
+        } else if let Some(glyph) = font.glyph(u32::from(c)) {
+            i32::from(glyph.dx)
+        } else {
+            continue;
+        };
+        width += dx;
+        max_width = max_width.max(width);
+    }
+    max_width
 }
 
 pub(crate) fn ui_text_width(font: &FontDef, text: &str, text_scale: f32) -> f32 {

@@ -62,6 +62,7 @@ pub struct DObjSemanticState {
     pub composition: DObjCompositionDescriptor,
     pub pose_revision: u32,
     pub tag_rotations: Vec<crate::TagRotation>,
+    pub bone_overrides: Vec<crate::BoneOverride>,
     pub tree: Option<XAnimTreeSnapshot>,
     pub requested_parts: Option<PartBits>,
     pub hide_part_bits: HidePartBits,
@@ -73,6 +74,7 @@ impl DObjSemanticState {
             composition: DObjCompositionDescriptor::single(composition_revision, model),
             pose_revision,
             tag_rotations: Vec::new(),
+            bone_overrides: Vec::new(),
             tree: None,
             requested_parts: None,
             hide_part_bits: HidePartBits::default(),
@@ -90,6 +92,7 @@ impl DObjSemanticState {
             composition: DObjCompositionDescriptor::single(composition_revision, model),
             pose_revision,
             tag_rotations: Vec::new(),
+            bone_overrides: Vec::new(),
             tree: Some(XAnimTreeSnapshot {
                 definition_revision: 1,
                 state_revision: pose_revision,
@@ -125,6 +128,7 @@ impl DObjSemanticState {
         Ok(DObjPoseRequest {
             tree,
             tag_rotations: self.tag_rotations.clone(),
+            bone_overrides: self.bone_overrides.clone(),
             requested_parts: self.requested_parts,
             hide_part_bits: self.hide_part_bits,
         })

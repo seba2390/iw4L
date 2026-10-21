@@ -7,6 +7,12 @@
 //! player is least likely to see: the farthest behind him, else the
 //! farthest at least 45° off his view, else the farthest (distances on the
 //! level plane from his eye).
+//!
+//! A dying actor keeps its contents until it has been dead half a second,
+//! then takes the dying contents; its corpse forms with the new corpse
+//! contents and its think takes them to the settled corpse contents 300 ms
+//! later. Corpse entities come from a ring of eight: a new corpse frees the
+//! one that held its place in the ring.
 
 use super::super::super::entities::EntityKind;
 use crate::frame::FrameWorld;
@@ -20,12 +26,79 @@ const CORPSE_COUNT_DEFAULT: usize = 8;
 const CORPSE_COUNT_MAX: usize = 8;
 /// The contents the engine gives a corpse.
 const CORPSE_CONTENTS: i32 = 0x0400_4000;
+/// A corpse's contents once its think has run, `CORPSE_THINK_MS` after it
+/// formed.
+const SETTLED_CORPSE_CONTENTS: i32 = 0x0400_0000;
+const CORPSE_THINK_MS: i32 = 300;
+/// What a dying actor turns to once it has been dead `DYING_MS`.
+const DYING_CONTENTS: i32 = 0x0400_2000;
+const DYING_MS: i32 = 500;
+/// The engine's ring of corpse entities.
+const CORPSE_RING: usize = 8;
 /// A corpse's classname: what the engine's entity init leaves.
 const CORPSE_CLASSNAME: &str = "noclass";
 
 /// The corpse in each slot.
 #[derive(Resource)]
 struct CorpseSlots(Vec<Option<u64>>);
+
+/// When each dying actor died and each new corpse thinks, and the ring of
+/// corpse entities.
+#[derive(Resource, Default)]
+struct CorpseTimes {
+    dying: std::collections::BTreeMap<u64, i32>,
+    thinking: std::collections::BTreeMap<u64, i32>,
+    ring: [Option<u64>; CORPSE_RING],
+    next: usize,
+}
+
+fn times(world: &mut World) -> &mut CorpseTimes {
+    if !world.contains_resource::<CorpseTimes>() {
+        world.insert_resource(CorpseTimes::default());
+    }
+    world.resource_mut::<CorpseTimes>().into_inner()
+}
+
+fn now(world: &World) -> i32 {
+    crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick)
+}
+
+/// An actor has just died.
+pub(super) fn died(world: &mut World, actor: u64) {
+    let at = now(world);
+    times(world).dying.insert(actor, at);
+}
+
+/// The dying actors' and new corpses' contents, as their think changes them.
+pub(super) fn think(world: &mut World) {
+    let at = now(world);
+    let (dying, thought): (Vec<u64>, Vec<u64>) = {
+        let times = times(world);
+        let dying = times
+            .dying
+            .iter()
+            .filter(|(_, died)| at - **died >= DYING_MS)
+            .map(|(id, _)| *id)
+            .collect();
+        let thought = times
+            .thinking
+            .iter()
+            .filter(|(_, think)| at >= **think)
+            .map(|(id, _)| *id)
+            .collect();
+        (dying, thought)
+    };
+    for (ids, contents) in [(dying, DYING_CONTENTS), (thought, SETTLED_CORPSE_CONTENTS)] {
+        for id in ids {
+            let times = times(world);
+            times.dying.remove(&id);
+            times.thinking.remove(&id);
+            if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+                entity.contents = contents;
+            }
+        }
+    }
+}
 
 fn slots(world: &mut World) -> &mut Vec<Option<u64>> {
     if !world.contains_resource::<CorpseSlots>() {
@@ -132,6 +205,18 @@ fn take_slot(world: &mut World) -> Option<usize> {
 /// Turns a dead actor whose death animscript has ended into a corpse and
 /// frees the actor.
 pub(super) fn finish_death(world: &mut World, actor: u64) -> Result<(), String> {
+    times(world).dying.remove(&actor);
+    // The corpse takes the next entity of the ring, freeing the corpse there.
+    let ring = {
+        let times = times(world);
+        let ring = times.next;
+        times.next = (ring + 1) % CORPSE_RING;
+        ring
+    };
+    if let Some(held) = times(world).ring[ring].take() {
+        world.resource_mut::<RoundScript>().delete_entity(held);
+        forget_deleted(world);
+    }
     let slot = take_slot(world);
     if let Some(slot) = slot {
         let corpse = {
@@ -162,6 +247,11 @@ pub(super) fn finish_death(world: &mut World, actor: u64) -> Result<(), String> 
             corpse
         };
         slots(world)[slot] = Some(corpse);
+        let think = now(world) + CORPSE_THINK_MS;
+        let times = times(world);
+        times.ring[ring] = Some(corpse);
+        times.thinking.insert(corpse, think);
+        super::ragdoll::carry(world, actor, corpse);
     }
     raise(world, Value::Object(actor), "death", Vec::new());
     world.resource_mut::<RoundScript>().delete_entity(actor);

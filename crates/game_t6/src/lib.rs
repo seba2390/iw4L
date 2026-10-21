@@ -97,11 +97,13 @@ impl game_api::GameScripts for T6 {
         // The client game registers it on; server scripts then leave
         // createfx effects and sounds to client scripts. The engine
         // registers the turret placement dvar on (`_zm_equipment` reads it),
-        // and the actor corpse slots at their most (`ai_corpseCount`).
+        // and the actor corpse slots as the machine-spec table
+        // (`configure.csv`) sets them on any machine but a Core 2 or
+        // Phenom: 5 (its catch-all row's 16 is past the dvar's most, 8).
         &[
             ("cg_usingClientScripts", "1"),
             ("tu11_zombie_turret_placement_ignores_bodies", "1"),
-            ("ai_corpseCount", "8"),
+            ("ai_corpseCount", "5"),
         ]
     }
 
