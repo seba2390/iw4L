@@ -103,6 +103,8 @@ struct Wanted {
     angles: [f32; 3],
     model: Arc<str>,
     hidden: bool,
+    /// Tags to hide or show, in order.
+    part_ops: Vec<(Arc<str>, bool)>,
 }
 
 fn wanted(client: &mut World, mirrored: &std::collections::BTreeSet<u64>) -> Vec<Wanted> {
@@ -131,13 +133,21 @@ fn wanted(client: &mut World, mirrored: &std::collections::BTreeSet<u64>) -> Vec
                 Value::Vector(v) => v,
                 _ => [0.0; 3],
             };
+            let origin = vector("origin");
+            let angles = vector("angles");
+            let part_ops = runtime
+                .entities
+                .get_mut(&object)
+                .map(|entity| std::mem::take(&mut entity.part_ops))
+                .unwrap_or_default();
             Some(Wanted {
                 object,
                 number,
-                origin: vector("origin"),
-                angles: vector("angles"),
+                origin,
+                angles,
                 model,
                 hidden,
+                part_ops,
             })
         })
         .collect()
@@ -246,6 +256,9 @@ pub(super) fn present(server: &mut World, client: &mut super::ClientScripts) {
         }
         if let Some(dobj) = row.dobj.as_mut() {
             dobj.set_world_pose(want.origin, want.angles);
+            for (tag, hidden) in &want.part_ops {
+                dobj.set_tag_hidden(tag, *hidden);
+            }
         }
         if let Some(mut dobjs) = client.world.get_resource_mut::<super::ClientEntityDobjs>() {
             match &row.dobj {

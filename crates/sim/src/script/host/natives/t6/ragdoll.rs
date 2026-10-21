@@ -38,7 +38,7 @@ const START_SPEED_MAX: f32 = 600.0;
 const START_UP_SPEED_MAX: f32 = 50.0;
 /// The most ragdolls one explosion pushes, nearest first.
 const EXPLOSION_RAGDOLLS: usize = 4;
-/// The level surfaces ragdolls rest on (t6.actors.ragdoll: the physics
+/// The level surfaces ragdolls rest on (t6.actors.ragdoll_solver: the physics
 /// world's own collision filter is not read).
 const CONTENTS_SOLID: u32 = 1;
 
@@ -222,7 +222,7 @@ pub(super) fn start(world: &mut World, id: u64) {
         _ => TR_RAGDOLL,
     };
     ragdolls(world).bodies.entry(id).or_default().tr_type = tr_type;
-    diag::info!(Sim, "t6zm: startragdoll entity={id} trType={tr_type}");
+    diag::debug!(Sim, "t6zm: startragdoll entity={id} trType={tr_type}");
 }
 
 /// `isragdoll`: whether the entity's trajectory is a ragdoll one.
@@ -235,7 +235,7 @@ pub(super) fn is_ragdoll(world: &World, id: u64) -> bool {
 
 /// `launchragdoll`: pushes a ragdolling entity along `direction` (on one
 /// body when `bone` names one of its bones); nothing for another entity.
-pub(crate) fn launch(world: &mut World, id: u64, direction: [f32; 3], bone: Option<String>) {
+pub(super) fn launch(world: &mut World, id: u64, direction: [f32; 3], bone: Option<String>) {
     if !is_ragdoll(world, id) {
         return;
     }
@@ -249,7 +249,7 @@ pub(crate) fn launch(world: &mut World, id: u64, direction: [f32; 3], bone: Opti
         def.bones.len() as f32
     };
     let impulse = direction.map(|v| v * (force / share));
-    diag::info!(Sim, "t6zm: launchragdoll entity={id} dir={direction:?}");
+    diag::debug!(Sim, "t6zm: launchragdoll entity={id} dir={direction:?}");
     let body = ragdolls(world).bodies.entry(id).or_default();
     match body.ragdoll.as_mut() {
         Some(ragdoll) => ragdoll.launch(&def, impulse, bone.as_deref()),
@@ -288,7 +288,7 @@ fn view(world: &mut World) -> Option<[f32; 3]> {
 /// along `direction`), lifted by `ragdoll_explode_upbias`, as an impulse of
 /// `ragdoll_explode_force` shared among the bodies. A pushed ragdoll wakes
 /// and its life restarts.
-pub(crate) fn explosion(
+pub(super) fn explosion(
     world: &mut World,
     cylinder: bool,
     origin: [f32; 3],
@@ -381,7 +381,7 @@ pub(crate) fn explosion(
         pushed += 1;
     }
     if pushed > 0 {
-        diag::info!(
+        diag::debug!(
             Sim,
             "t6zm: ragdoll explosion cylinder={cylinder} at={:?} outer={outer} pushed={pushed}",
             origin.to_array()
@@ -540,7 +540,7 @@ fn step_body(
             ragdoll.launch(def, impulse, bone.as_deref());
         }
         ragdolls(world).started += 1;
-        diag::info!(
+        diag::debug!(
             Sim,
             "t6zm: ragdoll started entity={id} root={:?}",
             ragdoll.root()
@@ -568,22 +568,10 @@ fn step_body(
     }
     if ragdoll.mean_height() < FELL_OUT_HEIGHT || ragdoll.life_ms > max_life {
         ragdoll.state = RagdollState::Settled;
-        let root = ragdoll.root();
-        let floor = FrameWorld::from_world(world).trace_clip(
-            [root[0], root[1], root[2] + 20.0],
-            [root[0], root[1], root[2] - 200.0],
-            [0.0; 3],
-            [0.0; 3],
-            CONTENTS_SOLID,
-        );
-        let low = ragdoll
-            .body_centers()
-            .map(|c| c[2])
-            .fold(f32::MAX, f32::min);
-        diag::info!(
+        diag::debug!(
             Sim,
-            "t6zm: ragdoll settled entity={id} root={root:?} floor={} lowest_body={low}",
-            floor.endpos[2]
+            "t6zm: ragdoll settled entity={id} root={:?}",
+            ragdoll.root()
         );
     }
     let mut overrides = Vec::with_capacity(def.bones.len() + def.lerp_bones.len());

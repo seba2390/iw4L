@@ -755,6 +755,16 @@ fn delete_client_entity(world: &mut World, receiver: &Value) -> Result<Value, St
     Ok(Value::Undefined)
 }
 
+/// The local client's box weapons (weapon, model, dual wield), as its
+/// scripts listed them.
+pub(crate) fn zombie_box_weapons(server: &World) -> Vec<(String, String, bool)> {
+    server
+        .get_resource::<crate::script::host::client_scripts::ClientScripts>()
+        .and_then(|client| client.world.get_resource::<ZombieBoxWeapons>())
+        .map(|list| list.0.clone())
+        .unwrap_or_default()
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
@@ -1432,11 +1442,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         // The client handler checks the server VM's parameter count for the
         // third argument (which is zero while the client VM runs), so the
         // options parameter is never read from the client stack.
-        // t6.csc.weapons.hide_tags: client weapon hide tags and weapon
-        // options are not applied to the stand-in model.
-        let mut runtime = world.resource_mut::<RoundScript>();
-        runtime.set_object_field(id, "model", Value::string(&model));
-        runtime.set_object_field(id, "weapon", Value::string(&name));
+        {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(id, "model", Value::string(&model));
+            runtime.set_object_field(id, "weapon", Value::string(&name));
+        }
+        super::super::weapon::hide_weapon_tags(world, id, &name);
         Ok(Value::Undefined)
     });
 
@@ -1449,9 +1460,8 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 "useweaponhidetags called with unknown weapon name {name}\n"
             ));
         }
-        receiver_entity(world, receiver)?;
-        // t6.csc.weapons.hide_tags: client DObj hide-tag bitmask is not
-        // applied to stand-in models.
+        let (id, ..) = receiver_entity(world, receiver)?;
+        super::super::weapon::hide_weapon_tags(world, id, &name);
         Ok(Value::Undefined)
     });
 
@@ -2060,12 +2070,13 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // ent launchragdoll(velocity): pushes the entity's ragdoll (building it
     // first when the entity is ragdolling), as the launch event does.
     registry.register(Method, "launchragdoll", |world, receiver, args| {
-        let (entity, ..) = receiver_entity(world, receiver)?;
+        let (_, number, _) = receiver_entity(world, receiver)?;
         let direction = vector(args, 0)?;
-        world
-            .resource_mut::<crate::script::client::ClientOutput>()
-            .ragdoll_pushes
-            .push(crate::script::client::ClientRagdollPush::Launch { entity, direction });
+        crate::script::host::client_scripts::with_server(world, |server| {
+            if let Some(id) = super::game::server_object(server, number) {
+                super::super::ragdoll::launch(server, id, direction, None);
+            }
+        });
         Ok(Value::Undefined)
     });
 
@@ -2083,15 +2094,9 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             return Err("Inner radius is outside the outer radius".into());
         }
         let magnitude = float(args, 4)?;
-        world
-            .resource_mut::<crate::script::client::ClientOutput>()
-            .ragdoll_pushes
-            .push(crate::script::client::ClientRagdollPush::Cylinder {
-                origin,
-                outer,
-                inner,
-                magnitude,
-            });
+        crate::script::host::client_scripts::with_server(world, |server| {
+            super::super::ragdoll::explosion(server, true, origin, inner, outer, None, magnitude);
+        });
         Ok(Value::Undefined)
     });
 

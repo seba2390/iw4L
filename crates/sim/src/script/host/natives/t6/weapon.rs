@@ -143,6 +143,20 @@ fn atoi(text: &str) -> i32 {
     }
 }
 
+/// Sets an entity's hidden tags to a weapon's hide tags, as the engine's
+/// weapon hide-tag builtins replace the model's hidden parts.
+pub(super) fn hide_weapon_tags(world: &mut World, id: u64, name: &str) {
+    let tags = zone_weapon(world, name)
+        .map(|facts| facts.hide_tags.clone())
+        .unwrap_or_default();
+    if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+        entity.part_ops.push(("".into(), false));
+        entity
+            .part_ops
+            .extend(tags.iter().map(|tag| (Arc::from(tag.as_str()), true)));
+    }
+}
+
 pub(super) fn zone_weapon(world: &World, name: &str) -> Option<Arc<ZoneWeapon>> {
     world
         .resource::<RoundScript>()

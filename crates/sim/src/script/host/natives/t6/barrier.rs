@@ -1,5 +1,15 @@
 //! Black Ops 2's zombies barriers: a `zbarrier_<type>` map entity whose
 //! pieces open and close by animation, as its barrier handlers and think do.
+//!
+//! Clients draw each piece as its own entity at the barrier's place: the
+//! model its flags pick (upgraded, else alternate, else default), hidden by
+//! its flag, posed in its opening animation (its closing one under the close
+//! flag) as far as the piece has got. A piece using the box's rise logic
+//! carries a weapon model that, each time its opening animation passes a
+//! `switch` note, turns into one of the client's box weapons at random (the
+//! fourth piece shows that weapon's left-hand twin, or nothing); it goes
+//! once the animation has played. IW4L draws the pieces as models the
+//! authority places (`t6.zbarrier.client`).
 
 use super::super::super::arrays::new_array;
 use super::{float, int, string};
@@ -45,6 +55,22 @@ struct Piece {
 struct Barrier {
     kind: Arc<BarrierType>,
     pieces: [Piece; 6],
+    /// How each piece is drawn.
+    drawn: [Option<Drawn>; 6],
+}
+
+/// A piece's drawn model and the pose last given it, and the weapon models a
+/// rising box piece carries.
+struct Drawn {
+    object: u64,
+    shown: Option<(String, bool, Option<String>, u16)>,
+    rise: Option<Rise>,
+}
+
+struct Rise {
+    weapon: u64,
+    /// The animation's progress last frame, 0 to 1.
+    last: f32,
 }
 
 #[derive(Resource, Default)]
@@ -171,6 +197,7 @@ fn barrier<'w>(world: &'w mut World, receiver: &Value) -> Result<&'w mut Barrier
                     .cloned()
             })
             .ok_or_else(|| format!("entity {id} is not a zbarrier"))?;
+        let kind = with_loaded_timings(world, kind);
         // At level start every piece is closed, at full rate.
         let pieces = [Piece {
             state: CLOSED,
@@ -182,7 +209,14 @@ fn barrier<'w>(world: &'w mut World, receiver: &Value) -> Result<&'w mut Barrier
         world
             .get_resource_or_insert_with(Barriers::default)
             .0
-            .insert(id, Barrier { kind, pieces });
+            .insert(
+                id,
+                Barrier {
+                    kind,
+                    pieces,
+                    drawn: Default::default(),
+                },
+            );
     }
     let barrier = world
         .resource_mut::<Barriers>()
@@ -193,6 +227,377 @@ fn barrier<'w>(world: &'w mut World, receiver: &Value) -> Result<&'w mut Barrier
     advance(barrier, now)?;
     Ok(barrier)
 }
+
+/// A type whose piece animations its own zone lacks takes their lengths from
+/// the zones that carry them, as the engine resolves animations across the
+/// zones loaded.
+fn with_loaded_timings(world: &mut World, kind: Arc<BarrierType>) -> Arc<BarrierType> {
+    let missing = kind.pieces.iter().any(|piece| {
+        [&piece.open_anim, &piece.close_anim]
+            .into_iter()
+            .flatten()
+            .any(|anim| anim.timing.is_none())
+    });
+    if !missing {
+        return kind;
+    }
+    let frame = crate::frame::FrameWorld::from_world(world);
+    let mut owned = (*kind).clone();
+    for piece in &mut owned.pieces {
+        for anim in [&mut piece.open_anim, &mut piece.close_anim]
+            .into_iter()
+            .flatten()
+        {
+            if anim.timing.is_none()
+                && let Some(clip) = frame.anim_clip_named(&anim.name)
+            {
+                anim.timing = Some((clip.numframes, clip.framerate));
+            }
+        }
+    }
+    Arc::new(owned)
+}
+
+/// The model a piece draws as: the upgraded one when its flag is set and it
+/// has one, else the alternate one likewise, else its default.
+fn piece_model(piece: &asset_core::BarrierPiece, flags: u8) -> Option<&str> {
+    let [default, alternate, upgraded] = &piece.models;
+    if flags & UPGRADED_MODEL != 0
+        && let Some(model) = upgraded
+    {
+        return Some(model);
+    }
+    if flags & ALTERNATE_MODEL != 0
+        && let Some(model) = alternate
+    {
+        return Some(model);
+    }
+    default.as_deref()
+}
+
+/// How far through its animation a piece is (0 to 1): an opening or closing
+/// piece by its time and rate, any other at the end of its last one.
+fn progress(kind: &BarrierType, index: usize, piece: &Piece, now: i32) -> f32 {
+    if piece.state != OPENING && piece.state != CLOSING {
+        return 1.0;
+    }
+    let Ok(length) = anim_ms(kind, index, piece.flags & CLOSE_ANIM != 0) else {
+        return 1.0;
+    };
+    let duration = length as f32 * rate_of(piece.rate);
+    if duration <= 0.0 {
+        return 1.0;
+    }
+    ((now - piece.start) as f32 / duration).clamp(0.0, 1.0)
+}
+
+/// The class drawn pieces take, so scripts looking for their own script
+/// models do not meet them.
+const PIECE_CLASSNAME: &str = "zbarrier_piece";
+/// The model a rising box weapon starts as, and the tag of the rising piece
+/// it sits on.
+const RISE_MODEL: &str = "tag_origin";
+const RISE_TAG: &str = "tag_origin";
+/// The rising piece that cycles the weapon; the one after it holds the
+/// weapon's left-hand twin.
+const RISE_WEAPON_PIECE: usize = 3;
+/// The note at which the rising weapon changes.
+const RISE_SWITCH_NOTE: &str = "switch";
+
+fn spawn_piece(world: &mut World, origin: [f32; 3]) -> Option<u64> {
+    let spawned = super::super::engine::spawn_entity(
+        world,
+        &[Value::string("script_model"), Value::Vector(origin)],
+    );
+    let Ok(Value::Object(object)) = spawned else {
+        return None;
+    };
+    if let Some(entity) = world
+        .resource_mut::<RoundScript>()
+        .entities
+        .get_mut(&object)
+    {
+        entity.classname = PIECE_CLASSNAME.into();
+    }
+    Some(object)
+}
+
+/// Poses a drawn piece in one clip at `time` (0 to 1).
+fn pose_clip(world: &mut World, object: u64, clip: Arc<xmodel_runtime::AnimClip>, time: f32) {
+    use xmodel_runtime::{
+        XAnimNodeState, XAnimSemanticNode, XAnimSemanticNodeKind, XAnimTreeSnapshot,
+    };
+    let Some(presence) = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&object)
+        .and_then(|entity| entity.presence)
+    else {
+        return;
+    };
+    let tree = XAnimTreeSnapshot {
+        definition_revision: 1,
+        state_revision: 0,
+        nodes: vec![XAnimSemanticNode {
+            parent: None,
+            kind: XAnimSemanticNodeKind::Leaf,
+            clip: Some(clip.name.clone()),
+            parts: None,
+            state: XAnimNodeState {
+                time,
+                old_time: time,
+                goal_weight: 1.0,
+                weight: 1.0,
+                rate: 1.0,
+                ..XAnimNodeState::default()
+            },
+        }],
+    };
+    let resolved = tree
+        .resolve(|name| (name == clip.name).then(|| Arc::clone(&clip)))
+        .ok();
+    if let Some(dobj) = crate::frame::FrameWorld::from_world(world)
+        .collision_owner_mut(presence)
+        .and_then(|row| row.dobj.as_mut())
+    {
+        dobj.set_tree_pose(tree, resolved);
+        dobj.materialize();
+    }
+}
+
+fn set_model(world: &mut World, object: u64, model: &str, hidden: bool) {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    runtime.set_object_field(object, "model", Value::string(model));
+    if let Some(entity) = runtime.entities.get_mut(&object) {
+        entity.hidden = hidden;
+    }
+}
+
+fn place(world: &mut World, object: u64, origin: [f32; 3], angles: [f32; 3]) {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    runtime.set_object_field(object, "origin", Value::Vector(origin));
+    runtime.set_object_field(object, "angles", Value::Vector(angles));
+}
+
+/// Shows a weapon on a drawn model: its model and hide tags.
+fn show_weapon(world: &mut World, object: u64, weapon: &str, model: &str) {
+    set_model(world, object, model, false);
+    super::weapon::hide_weapon_tags(world, object, weapon);
+}
+
+fn delete(world: &mut World, object: u64) {
+    world.resource_mut::<RoundScript>().delete_entity(object);
+}
+
+/// Draws every barrier's pieces as its clients would.
+pub(crate) fn draw(world: &mut World) {
+    let candidates: Vec<u64> = world
+        .resource::<RoundScript>()
+        .entities
+        .iter()
+        .filter(|(_, entity)| entity.classname.starts_with("zbarrier_"))
+        .filter(|(_, entity)| &*entity.classname != PIECE_CLASSNAME)
+        .map(|(id, _)| *id)
+        .collect();
+    if candidates.is_empty() {
+        return;
+    }
+    let now = now_ms(world);
+    let box_weapons = super::client::entity::zombie_box_weapons(world);
+    for id in candidates {
+        if barrier(world, &Value::Object(id)).is_err() {
+            continue;
+        }
+        let (origin, angles) = {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            let vector = |value: Value| match value {
+                Value::Vector(v) => v,
+                _ => [0.0; 3],
+            };
+            (
+                vector(runtime.object_field(id, "origin")),
+                vector(runtime.object_field(id, "angles")),
+            )
+        };
+        let (kind, pieces) = {
+            let barrier = &world.resource::<Barriers>().0[&id];
+            (Arc::clone(&barrier.kind), barrier.pieces)
+        };
+        let count = (kind.piece_count.clamp(0, 6) as usize).min(kind.pieces.len());
+        for index in 0..count {
+            draw_piece(
+                world,
+                id,
+                &kind,
+                index,
+                pieces[index],
+                origin,
+                angles,
+                now,
+                &box_weapons,
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_piece(
+    world: &mut World,
+    id: u64,
+    kind: &BarrierType,
+    index: usize,
+    piece: Piece,
+    origin: [f32; 3],
+    angles: [f32; 3],
+    now: i32,
+    box_weapons: &[(String, String, bool)],
+) {
+    let def = &kind.pieces[index];
+    let Some(model) = piece_model(def, piece.flags) else {
+        return;
+    };
+    let mut drawn = world
+        .resource_mut::<Barriers>()
+        .0
+        .get_mut(&id)
+        .and_then(|barrier| barrier.drawn[index].take());
+    if drawn.as_ref().is_some_and(|d| {
+        !world
+            .resource::<RoundScript>()
+            .entities
+            .contains_key(&d.object)
+    }) {
+        drawn = None;
+    }
+    let mut drawn = match drawn {
+        Some(drawn) => drawn,
+        None => {
+            let Some(object) = spawn_piece(world, origin) else {
+                return;
+            };
+            diag::debug!(
+                Sim,
+                "t6zm: zbarrier {id} ({}) piece {index} drawn as {model}",
+                kind.name
+            );
+            Drawn {
+                object,
+                shown: None,
+                rise: None,
+            }
+        }
+    };
+    let close = piece.flags & CLOSE_ANIM != 0;
+    let anim = if close {
+        &def.close_anim
+    } else {
+        &def.open_anim
+    };
+    let progress = progress(kind, index, &piece, now);
+    let time_key = (progress * 1000.0) as u16;
+    let hidden = piece.flags & HIDDEN != 0;
+    let wanted = (
+        model.to_owned(),
+        hidden,
+        anim.as_ref().map(|anim| anim.name.clone()),
+        time_key,
+    );
+    if drawn.shown.as_ref() != Some(&wanted) {
+        if drawn.shown.as_ref().map(|shown| (&shown.1, &shown.2)) != Some((&wanted.1, &wanted.2)) {
+            diag::debug!(
+                Sim,
+                "t6zm: zbarrier {id} piece {index} state={} hidden={hidden} anim={:?} at {progress:.2}",
+                piece.state,
+                wanted.2
+            );
+        }
+        place(world, drawn.object, origin, angles);
+        set_model(world, drawn.object, model, hidden);
+        let clip = anim.as_ref().and_then(|anim| {
+            crate::frame::FrameWorld::from_world(world).anim_clip_named(&anim.name)
+        });
+        if let Some(clip) = clip {
+            pose_clip(world, drawn.object, clip, progress);
+        }
+        drawn.shown = Some(wanted);
+    }
+    // The rising box weapon: while the piece opens under the rise logic.
+    let rising = piece.flags & BOX_RISE != 0 && !close && piece.state == OPENING;
+    if rising && index >= RISE_WEAPON_PIECE {
+        let clip = def.open_anim.as_ref().and_then(|anim| {
+            crate::frame::FrameWorld::from_world(world).anim_clip_named(&anim.name)
+        });
+        let rise = match drawn.rise.take() {
+            Some(rise) => Some(rise),
+            None => spawn_piece(world, origin).map(|weapon| {
+                set_model(world, weapon, RISE_MODEL, false);
+                Rise { weapon, last: 0.0 }
+            }),
+        };
+        if let Some(mut rise) = rise {
+            // The weapon sits where the piece's animation carries its origin.
+            let (at, turned) =
+                super::super::super::presence::tag_world(world, drawn.object, RISE_TAG)
+                    .map_or((origin, angles), |(at, axis)| {
+                        (at, math_iw4::axis_to_angles(axis))
+                    });
+            place(world, rise.weapon, at, turned);
+            let switched = clip.as_ref().is_some_and(|clip| {
+                clip.notifies.iter().any(|note| {
+                    note.name.eq_ignore_ascii_case(RISE_SWITCH_NOTE)
+                        && note.time > rise.last
+                        && note.time <= progress
+                })
+            });
+            if switched && index == RISE_WEAPON_PIECE && !box_weapons.is_empty() {
+                let pick = rise_pick(world, id) % box_weapons.len();
+                let (weapon, model, dual_wield) = &box_weapons[pick];
+                show_weapon(world, rise.weapon, weapon, model);
+                diag::debug!(Sim, "t6zm: zbarrier {id} box weapon {weapon}");
+                let twin = world
+                    .resource_mut::<Barriers>()
+                    .0
+                    .get_mut(&id)
+                    .and_then(|barrier| barrier.drawn[index + 1].as_ref())
+                    .and_then(|d| d.rise.as_ref().map(|r| r.weapon));
+                if let Some(twin) = twin {
+                    let left = dual_wield
+                        .then(|| super::weapon::zone_weapon(world, weapon))
+                        .flatten()
+                        .and_then(|facts| {
+                            super::weapon::zone_weapon(world, &facts.dual_wield_weapon)
+                        })
+                        .and_then(|facts| facts.world_models.first().cloned())
+                        .filter(|model| !model.is_empty());
+                    match left {
+                        Some(left) => show_weapon(world, twin, weapon, &left),
+                        None => set_model(world, twin, RISE_MODEL, false),
+                    }
+                }
+            }
+            rise.last = progress;
+            drawn.rise = Some(rise);
+        }
+    } else if let Some(rise) = drawn.rise.take() {
+        delete(world, rise.weapon);
+    }
+    if let Some(barrier) = world.resource_mut::<Barriers>().0.get_mut(&id) {
+        barrier.drawn[index] = Some(drawn);
+    }
+}
+
+/// The client's random pick of a box weapon (`rand() % 32`, then by the
+/// list's size).
+fn rise_pick(world: &mut World, id: u64) -> usize {
+    let seed = world
+        .get_resource_or_insert_with(RiseSeed::default)
+        .into_inner();
+    seed.0 = seed.0.wrapping_mul(1_103_515_245).wrapping_add(12_345) ^ id as u32;
+    ((seed.0 >> 16) % 32) as usize
+}
+
+#[derive(Resource, Default)]
+struct RiseSeed(u32);
 
 fn piece_index(barrier: &Barrier, args: &[Value]) -> Result<usize, String> {
     let index = int(args, 0)?;
