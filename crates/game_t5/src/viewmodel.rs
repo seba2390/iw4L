@@ -5,7 +5,8 @@
 use fastfile_t5::size::weap_anim as a;
 use game_api::movement::{GAME_MOVE_BYTES, MovePlayer};
 use game_api::{
-    CameraAnim, Unknown, ViewmodelAnim, ViewmodelCamera, ViewmodelRules, ViewmodelStart, unknown,
+    CameraAnim, Unknown, ViewmodelAnim, ViewmodelCamera, ViewmodelPick, ViewmodelRules,
+    ViewmodelStart,
 };
 use movement_t5::weapon::state as ws;
 use movement_t5::weapon::weap_anim as w;
@@ -26,7 +27,7 @@ pub(crate) const VIEWMODEL: ViewmodelRules = ViewmodelRules {
     }),
     playback: None,
     unslotted: None,
-    pick: None,
+    pick: Some(pick),
     blend: None,
     left_empty_idle: false,
 };
@@ -112,10 +113,16 @@ fn i32_at(bytes: &[u8], off: usize) -> Option<i32> {
 /// length over the weapon's time for it (0 for a time of 0, 1 with none),
 /// sped by the fast reload perk while either hand reloads (by its level
 /// share of the reload multiplier) or by the rate of fire perk while the
-/// right hand rechambers. The mantle animations' rate from the mantle's own
-/// time is not run (`t5.viewmodel.mantle`: they are not played).
+/// right hand rechambers. While the weapon mantles its mantle animations
+/// run over the mantle's own length.
 fn rate(start: &ViewmodelStart<'_>) -> f32 {
+    let ps = player(start.game);
     let time = match TIMES.get(start.anim).copied().unwrap_or(Time::Own) {
+        _ if matches!(start.anim, a::MANTLE | a::MANTLE_CAMERA)
+            && movement_t5::weapon::mantling_anim(&ps) =>
+        {
+            Some(ps.mantle_length)
+        }
         Time::Def(off) => i32_at(start.def, off),
         Time::Variant(off) => i32_at(start.variant, off),
         Time::Own => None,
@@ -125,11 +132,6 @@ fn rate(start: &ViewmodelStart<'_>) -> f32 {
         Some(0) => 0.0,
         Some(time) => start.length_ms as f32 / time as f32,
     };
-    let mut player = MovePlayer {
-        game: *start.game,
-        ..MovePlayer::default()
-    };
-    let (ps, _) = crate::movement::unpack(&mut player);
     let reloading = |s: i32| (ws::RELOADING..=ws::RELOADING_LEFT_INTERRUPT).contains(&s);
     if (reloading(ps.weaponstate) || reloading(ps.weaponstate_left))
         && ps.perks & perks::FAST_RELOAD != 0
@@ -184,12 +186,27 @@ fn left(
     )
 }
 
-fn mantle_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.viewmodel.mantle",
-        "the mantle animation plays only for a mantle higher than mantle_weapon_anim_height (32); the player's mantle is not known, so it does not change what plays",
-        "Black Ops' mantling in movement_t5 and its mantle animation heights"
-    )
+fn player(game: &[u8; GAME_MOVE_BYTES]) -> movement_t5::PlayerState {
+    let mut player = MovePlayer {
+        game: *game,
+        ..MovePlayer::default()
+    };
+    crate::movement::unpack(&mut player).0
+}
+
+/// Black Ops' client on the mantle number: the weapon's mantle animation
+/// for a mantle higher than `mantle_weapon_anim_height`, else idle at once;
+/// every other number as [`anim`].
+fn pick(weap_anim: u32, pick: &ViewmodelPick<'_>) -> (ViewmodelAnim, Option<&'static Unknown>) {
+    if weap_anim & !w::TOGGLE != w::MANTLE {
+        return anim(weap_anim, pick.named);
+    }
+    let tall = movement_t5::mantle::tall_enough_for_weapon_anim(&player(pick.game));
+    if (pick.named)(a::MANTLE) && tall {
+        (ViewmodelAnim::Play(a::MANTLE), None)
+    } else {
+        (ViewmodelAnim::IdleNow, None)
+    }
 }
 
 /// Black Ops' client on a change of the weapon animation number. A sprint,
@@ -281,15 +298,19 @@ fn anim(
         w::DTP_EMPTY_LOOP => (first(&[a::DTP_EMPTY_LOOP, a::DTP_LOOP], IdleNow), None),
         w::DTP_EMPTY_OUT => (first(&[a::DTP_EMPTY_OUT, a::DTP_OUT], IdleNow), None),
         w::SLIDE_IN => (first(&[a::SLIDE_IN], IdleNow), None),
-        w::MANTLE if named(a::MANTLE) || named(a::MANTLE_CAMERA) => (Keep, Some(mantle_unknown())),
         _ => (IdleNow, None),
     }
 }
 
 /// Black Ops' client's camera animations: the sprint loop and the dive to
 /// prone's start their own when the weapon names it, the sprint out stops
-/// them. The mantle's is not run (`t5.viewmodel.mantle`).
-fn camera(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> Option<CameraAnim> {
+/// them; the mantle starts its own for a mantle higher than
+/// `mantle_weapon_anim_height`.
+fn camera(
+    weap_anim: u32,
+    named: &dyn Fn(usize) -> bool,
+    game: &[u8; GAME_MOVE_BYTES],
+) -> Option<CameraAnim> {
     let start = |anim: usize| named(anim).then_some(CameraAnim::Start(anim));
     match weap_anim & !w::TOGGLE {
         w::SPRINT_LOOP | w::SPRINT_EMPTY_LOOP => start(a::SPRINT_CAMERA),
@@ -297,6 +318,9 @@ fn camera(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> Option<CameraAnim> {
         w::DTP_IN | w::DTP_EMPTY_IN => start(a::DTP_IN_CAMERA),
         w::DTP_LOOP | w::DTP_EMPTY_LOOP => start(a::DTP_LOOP_CAMERA),
         w::DTP_OUT | w::DTP_EMPTY_OUT => start(a::DTP_OUT_CAMERA),
+        w::MANTLE if movement_t5::mantle::tall_enough_for_weapon_anim(&player(game)) => {
+            start(a::MANTLE_CAMERA)
+        }
         _ => None,
     }
 }

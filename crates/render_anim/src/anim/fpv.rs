@@ -371,7 +371,7 @@ impl FpvPresentState {
         let camera = game
             .rules
             .camera
-            .and_then(|camera| (camera.anim)(raw as u32, &named));
+            .and_then(|camera| (camera.anim)(raw as u32, &named, player));
         (self.game_edge(anim, game, false), camera)
     }
 

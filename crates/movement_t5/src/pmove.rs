@@ -343,8 +343,23 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         stance::check_duck(pm, &pml);
         ground::ground_trace(pm, &mut pml);
     }
-    pm.gap(Gap::Mantle);
+    crate::mantle::check(pm, &pml);
     if pm.ps.pm_flags & pm_flags::MANTLE != 0 {
+        if pm.ps.pm_flags & pm_flags::LADDER != 0 {
+            pm.ps.pm_flags = (pm.ps.pm_flags & !pm_flags::LADDER) | pm_flags::LADDER_FALL;
+        }
+        pm.ps.ground_entity_num = ENTITYNUM_NONE;
+        pml.ground_plane = false;
+        pml.walking = false;
+        crate::weapon::update_ads_intent(pm, &pml);
+        sprint::update(pm);
+        crate::weapon::update_sight_aiming(pm);
+        stance::check_duck(pm, &pml);
+        crate::mantle::mantle_move(pm, &pml);
+        crate::weapon::pm_weapon(pm, &pml);
+        pm.ps.left_hand = true;
+        crate::weapon::pm_weapon(pm, &pml);
+        pm.ps.left_hand = false;
         return output(pm, &pml);
     }
     if pm.ps.pm_flags & pm_flags::ANIM_LOCK != 0 {
@@ -360,7 +375,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     launch_end(pm);
     crate::dive::check_end(pm);
     if pm.ps.pm_flags & pm_flags::LADDER != 0 {
-        pm.gap(Gap::Ladder);
+        crate::ladder::ladder_move(pm, &mut pml);
     } else if pm.ps.pm_flags & pm_flags::LAUNCHED != 0 {
         pm.gap(Gap::Launched);
     } else if pm.ps.water_level >= 3 {

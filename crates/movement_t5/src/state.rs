@@ -339,4 +339,14 @@ pub struct PlayerState {
     pub ads_zoom_latched: bool,
     pub vehicle_pos: i32,
     pub mantle_flags: u32,
+    /// The yaw the mantle climbs along.
+    pub mantle_yaw: f32,
+    /// How far into the mantle the player is, in msec.
+    pub mantle_timer: i32,
+    /// Which of the mantle transitions (by ledge height) runs.
+    pub mantle_trans_index: i32,
+    /// What the running mantle's animations last, in msec: Black Ops
+    /// reads it from the mantle animation tree where it needs it, the
+    /// runtime keeps it for the client's viewmodel.
+    pub mantle_length: i32,
 }
