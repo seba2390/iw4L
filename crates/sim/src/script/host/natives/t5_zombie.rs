@@ -488,10 +488,25 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "ropesetflag",
         "savegame",
         "reportmtu",
-        "disablegrenadesuicide",
     ] {
         registry.register(Function, name, |_, _, _| Ok(Value::Undefined));
     }
+    // A player who holds a cooked grenade too long drops it at their feet
+    // (and still takes the blast) instead of dying at once.
+    registry.register(Function, "disablegrenadesuicide", |world, _, _| {
+        world
+            .resource_mut::<RoundScript>()
+            .engine
+            .grenade_suicide_disabled = true;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "enablegrenadesuicide", |world, _, _| {
+        world
+            .resource_mut::<RoundScript>()
+            .engine
+            .grenade_suicide_disabled = false;
+        Ok(Value::Undefined)
+    });
 }
 
 /// A boolean engine dvar is set.

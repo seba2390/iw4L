@@ -17,6 +17,11 @@ use crate::missile::{
 };
 
 const MOD_GRENADE_SPLASH: usize = 4;
+/// `stickiness`: stick to the ground, and to the ground keeping the yaw.
+const STICK_GROUND: i32 = 3;
+const STICK_GROUND_KEEP_YAW: i32 = 4;
+/// Radians to degrees, as Black Ops' landing angles scale them.
+const RAD2DEG: f32 = 57.2957764;
 /// A grenade rests on what faces up more than this.
 const REST_SLOPE: f32 = 0.699999988;
 /// The fuse a grenade without one is given, and the longest any has.
@@ -80,8 +85,8 @@ pub(crate) const SURFACE_NAMES: [&str; 31] = [
 fn grenade_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.grenade",
-        "a sticky, plantable, smoke, flash, gas or molotov grenade, a grenade landing on another missile or a mover, or one exploding in water, does not do what Black Ops does with it",
-        "Black Ops' sticky and plantable grenades, explosion tags, smoke, flash, gas and molotov effects, grenades riding entities and water explosions"
+        "a grenade that sticks to entities, a smoke, flash, gas or molotov grenade, a grenade landing on another missile or a mover, or one exploding in water, does not do what Black Ops does with it",
+        "Black Ops' grenades sticking to entities, explosion tags, smoke, flash, gas and molotov effects, grenades riding entities and water explosions"
     )
 }
 
@@ -315,7 +320,7 @@ fn spawn_grenade(
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
 ) -> Option<i32> {
-    if def.plantable() || def.stickiness() != 0 {
+    if sticks_to_entities(def) {
         gaps.push(grenade_unknown());
     }
     let level = world.level_time();
@@ -450,7 +455,7 @@ pub(crate) fn start_falling(
     }
     let start = missile.origin;
     let end = mad(start, state.rest_normal, -1.63499999);
-    let trace = missile_trace(start, end, missile.owner, clipmask(def), world);
+    let trace = missile_trace(def, start, end, missile.owner, clipmask(def), world);
     if trace.fraction == 1.0 {
         let level = world.level_time();
         missile.position = GameTrajectory {
@@ -525,7 +530,7 @@ fn bounce_off(
     let k = if rolls { -strike } else { strike * -2.0 };
     let mut delta = [n[0] * k + vel[0], k * n[1] + vel[1], k * n[2] + vel[2]];
     let struck = hit_id(trace);
-    if def.stickiness() != 0 {
+    if sticks_to_entities(def) {
         gaps.push(grenade_unknown());
     }
     if matches!(def.stickiness(), 1 | 2) || n[2] > REST_SLOPE {
@@ -559,7 +564,10 @@ fn bounce_off(
             base: missile.origin,
             delta: [0.0; 3],
         };
-        let angles = land_angles(missile, def, trace, true, false, world);
+        let angles = match def.stickiness() {
+            STICK_GROUND | STICK_GROUND_KEEP_YAW => ground_angles(missile, def, trace, world),
+            _ => land_angles(missile, def, trace, true, false, world),
+        };
         missile.angles = GameTrajectory {
             kind: TrajectoryKind::Stationary,
             time: 0,
@@ -581,7 +589,7 @@ fn bounce_off(
         n[1] * 0.100000001 + o[1],
         (n[2] * 0.100000001).min(0.0) + o[2],
     ];
-    let t = missile_trace(o, target, missile.owner, clipmask(def), world);
+    let t = missile_trace(def, o, target, missile.owner, clipmask(def), world);
     missile.origin = lerp(o, target, t.fraction);
     missile.position.base = missile.origin;
     missile.position.time = level;
@@ -728,7 +736,7 @@ fn roll(
             let k = dvar(world, "grenadeWobbleSideMag", 1.0) * damp * wobble;
             let o = missile.origin;
             let target = [side[0] * k + o[0], side[1] * k + o[1], side[2] * k + o[2]];
-            let t = missile_trace(o, target, missile.owner, clipmask(def), world);
+            let t = missile_trace(def, o, target, missile.owner, clipmask(def), world);
             missile.origin = lerp(o, target, t.fraction);
         }
         if state.curve == 0.0 {
@@ -912,4 +920,64 @@ pub(crate) fn explode(
         ));
     }
     MissileRun::Gone
+}
+
+/// The angles a grenade that sticks to the ground rests at: keeping its
+/// yaw it pitches along the slope under it, or (sticking to the ground
+/// alone) it lays its forward along the surface; either way it rolls to lie
+/// on the surface.
+fn ground_angles(
+    missile: &GameMissile,
+    def: &WeaponDefView<'_>,
+    trace: &BulletTrace,
+    world: &mut dyn FireWorld,
+) -> [f32; 3] {
+    let mut angles = evaluate(&missile.angles, impact_time(trace, world));
+    let n = trace.normal;
+    if def.stickiness() == STICK_GROUND_KEEP_YAW {
+        angles[0] = slope_pitch(angles[1], n);
+        angles[2] = 0.0;
+    } else {
+        let (f, _, _) = movement_t5::math::angle_vectors(angles);
+        let d = -((n[0] * f[0] + n[2] * f[2]) + n[1] * f[1]);
+        angles = vectoangles([n[0] * d + f[0], n[1] * d + f[1], n[2] * d + f[2]]);
+    }
+    let (_, right, up) = movement_t5::math::angle_vectors(angles);
+    let along_right = (n[0] * right[0] + n[1] * right[1]) + n[2] * right[2];
+    let along_up = (n[0] * up[0] + n[1] * up[1]) + n[2] * up[2];
+    angles[2] = f64::from(along_right).atan2(f64::from(along_up)) as f32 * RAD2DEG;
+    angles
+}
+
+/// The pitch of a surface along a yaw; straight down off a wall.
+fn slope_pitch(yaw: f32, n: [f32; 3]) -> f32 {
+    let (sin, cos) = f64::from(yaw * DEG2RAD).sin_cos();
+    if n[2] == 0.0 {
+        return 270.0;
+    }
+    let along = (f64::from(n[1]) * sin + f64::from(n[0]) * cos) / f64::from(n[2]);
+    (along.atan() * f64::from(RAD2DEG)) as f32
+}
+
+/// The grenade sticks to what it strikes, entities among them (stickiness
+/// 1, 2 and 5), which the runtime does not run.
+fn sticks_to_entities(def: &WeaponDefView<'_>) -> bool {
+    matches!(def.stickiness(), 1 | 2 | 5)
+}
+
+/// A grenade let go where its thrower stands (the thrower held it too
+/// long): 40 units up from its origin, still, on the fuse it has left.
+pub(crate) fn drop_grenade(
+    owner: i32,
+    weapon: u32,
+    def: &WeaponDefView<'_>,
+    origin: [f32; 3],
+    fuse: i32,
+    world: &mut dyn FireWorld,
+    gaps: &mut Vec<&'static Unknown>,
+) {
+    let start = [origin[0], origin[1], origin[2] + 40.0];
+    spawn_grenade(
+        owner, weapon, def, start, [0.0; 3], [0.0; 3], false, false, None, fuse, world, gaps,
+    );
 }

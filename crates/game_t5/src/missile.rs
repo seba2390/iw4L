@@ -11,7 +11,7 @@ use game_api::fire::{
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD};
 use game_api::{Unknown, unknown};
 
-use crate::fire::{DEG2RAD, Hit, MEANS, damage, hit_id};
+use crate::fire::{DEG2RAD, Hit, MEANS, damage, dvar, hit_id};
 
 /// What a missile stops at.
 pub(crate) const MISSILE_MASK: u32 = 0x0280_e091;
@@ -366,10 +366,10 @@ fn fly(
     } else {
         clipmask | CONTENTS_WATER
     };
-    let mut trace = missile_trace(old, new, missile.owner, mask, world);
+    let mut trace = missile_trace(def, old, new, missile.owner, mask, world);
     if surface_type(&trace) == SURF_WATER {
         gaps.push(missile_water_unknown());
-        trace = missile_trace(old, new, missile.owner, clipmask, world);
+        trace = missile_trace(def, old, new, missile.owner, clipmask, world);
     }
     if surface_type(&trace) == SURF_GLASS {
         gaps.push(missile_glass_unknown());
@@ -410,24 +410,41 @@ fn fly(
     MissileRun::Flying
 }
 
-/// What a missile of this weapon stops at: plantables stop at more.
+/// What a missile of this weapon stops at: plantables stop at more, and a
+/// grenade that sticks to the ground keeping its yaw passes bodies.
 pub(crate) fn clipmask(def: &WeaponDefView<'_>) -> u32 {
-    if def.plantable() {
+    let mask = if def.plantable() {
         MISSILE_MASK | 0x0001_0000
     } else {
         MISSILE_MASK
+    };
+    if def.stickiness() == 4 {
+        mask & !CONTENTS_BODY
+    } else {
+        mask
     }
 }
 
-/// A missile's trace; from inside a solid, it reports the way it came.
+/// The contents of a player's or an actor's body.
+const CONTENTS_BODY: u32 = 0x0200_0000;
+
+/// A missile's trace: a point, or for a plantable a box
+/// `missilePlantableSize` wide and twice as tall from the point up. From
+/// inside a solid it reports the way it came.
 pub(crate) fn missile_trace(
+    def: &WeaponDefView<'_>,
     start: [f32; 3],
     end: [f32; 3],
     owner: i32,
     mask: u32,
     world: &mut dyn FireWorld,
 ) -> BulletTrace {
-    let mut trace = world.bullet_trace(start, end, owner, mask);
+    let mut trace = if def.plantable() {
+        let r = dvar(world, "missilePlantableSize", 5.0f32);
+        world.box_trace(start, end, [-r, -r, 0.0], [r, r, r * 2.0], owner, mask)
+    } else {
+        world.bullet_trace(start, end, owner, mask)
+    };
     if trace.start_solid {
         trace.fraction = 0.0;
         let v = [start[0] - end[0], start[1] - end[1], start[2] - end[2]];
