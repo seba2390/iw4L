@@ -23,12 +23,16 @@ pub(crate) fn update(
     local: Res<LocalPresentClient>,
     input: Res<frame::HudInputView>,
     view: Option<Res<frame::ViewSubject>>,
+    mode: Option<Res<game_api::ModeRules>>,
     mut pass: ResMut<HudTessPass>,
     mut hud_images: ResMut<HudImages>,
     mut images: ResMut<Assets<Image>>,
 ) {
     pass.breath_hint = TessJob::Hide;
+    // A game with its own code HUD draws its own breath hints (its owner
+    // draws).
     if !surface.is_ready()
+        || crate::game_code_hud::game_hud(mode.as_deref()).is_some()
         || input.script_menu_open
         || input.console_open
         || view.as_ref().is_some_and(|v| v.in_killcam())

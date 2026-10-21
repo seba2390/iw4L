@@ -5,7 +5,7 @@
 
 use game_api::hud::{
     CodeScoreboard, Crosshair, CrosshairPicture, CrosshairView, DamageIcons, GameCodeHud,
-    ScoreAlign, ScoreColumn, ScoreValue,
+    OwnerHint, OwnerHintView, ScoreAlign, ScoreColumn, ScoreValue,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::weapon::state as ws;
@@ -20,12 +20,138 @@ pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     },
     crosshair,
     scoreboard: Some(&SCOREBOARD),
+    owner_hint,
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: grenade indicators, friendly names, the players-in-view scan, chat lines, the red damage flash, the burning, electrified and teleport overlays and the night vision overlay",
         "those pieces of its 2D draw (executable)"
     )],
 };
+
+/// Black Ops' hint and message owner draws.
+const CG_HOLD_BREATH: i32 = 71;
+const CG_MANTLE_HINT: i32 = 80;
+const CG_CENTER_OBITUARY: i32 = 90;
+const CG_INVALID_CMD_HINT: i32 = 113;
+const CG_SUCCESSFUL_CMD_HINT: i32 = 132;
+const CG_VEHICLE_HUD: i32 = 192;
+const CG_TALKER_1: i32 = 195;
+const CG_TALKER_3: i32 = 197;
+const CG_FRIENDLY_ARROWS: i32 = 199;
+const CG_FRIENDLY_NAMES: i32 = 200;
+const CG_HOLD_BREATH_ZOOM: i32 = 311;
+const CG_WRISTWATCH: i32 = 316;
+const CG_OBJECTIVE_INDICATORS: i32 = 322;
+
+/// Entity flags that hide the breath hints: on a vehicle or a turret, or
+/// the other crosshair.
+const EF_NO_BREATH_HINT: u32 = EF_VEHICLE_TURRET | EF_OTHER_CROSSHAIR;
+/// `mantleState.flags`: a mantle is offered; a mount is offered.
+const MANTLE_OFFERED: u32 = 0x10;
+const MOUNT_OFFERED: u32 = 0x80;
+/// The weapon state in which neither offer shows.
+const WEAPON_DEPLOYING: i32 = 0x24;
+/// The runtime's number for Black Ops' item weapon class (10).
+const WEAPCLASS_ITEM: i32 = 11;
+
+/// Black Ops' hint and message owner draws, read from its executable's text
+/// and picture owner draw dispatches. The zombies-only gate of the breath
+/// hint (the client's view linked to a camera) never holds: the client's
+/// `linktocamera` is not implemented.
+fn owner_hint(owner_draw: i32, view: &OwnerHintView<'_>) -> OwnerHint {
+    let dvar = |name: &str, default: f32| (view.dvar)(name).unwrap_or(default) != 0.0;
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    match owner_draw {
+        CG_HOLD_BREATH | CG_HOLD_BREATH_ZOOM => {
+            if !dvar("cg_drawBreathHint", 1.0)
+                || ps.weap_flags & movement_t5::state::weap_flags::HOLD_BREATH != 0
+                || ps.e_flags & EF_NO_BREATH_HINT != 0
+            {
+                return OwnerHint::Nothing;
+            }
+            if owner_draw == CG_HOLD_BREATH
+                && (!dvar("cg_drawpaused", 1.0) || view.scoreboard || view.paused)
+            {
+                return OwnerHint::Nothing;
+            }
+            let Some(weapon) = (view.weapon)(ps.weapon) else {
+                return OwnerHint::Nothing;
+            };
+            if !weapon.ads_overlay
+                || weapon.weap_class == WEAPCLASS_ITEM
+                || ps.weapon_pos_frac != 1.0
+            {
+                return OwnerHint::Nothing;
+            }
+            if owner_draw == CG_HOLD_BREATH {
+                OwnerHint::Text {
+                    key: "PLATFORM_HOLD_BREATH",
+                    binds: &["+holdbreath", "+melee_breath", "+breath_sprint"],
+                }
+            } else if weapon.zoom_varies {
+                OwnerHint::Text {
+                    key: "PLATFORM_HOLD_BREATH_ZOOM",
+                    binds: &["+melee"],
+                }
+            } else {
+                OwnerHint::Nothing
+            }
+        }
+        CG_MANTLE_HINT => {
+            if !dvar("cg_drawMantleHint", 1.0)
+                || !dvar("cg_drawpaused", 1.0)
+                || view.scoreboard
+                || view.paused
+                || ps.weaponstate == WEAPON_DEPLOYING
+            {
+                return OwnerHint::Nothing;
+            }
+            if ps.mantle_flags & MANTLE_OFFERED != 0 {
+                OwnerHint::Unrun(unknown!(
+                    "t5.hud.mantle_picture",
+                    "Black Ops' mantle hint (`PLATFORM_MANTLE` with the mantle picture) is not drawn",
+                    "the mantle hint's picture and layout (executable); mantling itself is t5.movement.mantle"
+                ))
+            } else if ps.mantle_flags & MOUNT_OFFERED != 0 {
+                OwnerHint::Text {
+                    key: "PLATFORM_MOUNT",
+                    binds: &["+usereload", "+activate"],
+                }
+            } else {
+                OwnerHint::Nothing
+            }
+        }
+        CG_CENTER_OBITUARY | CG_INVALID_CMD_HINT | CG_SUCCESSFUL_CMD_HINT => {
+            OwnerHint::Unrun(unknown!(
+                "t5.hud.messages",
+                "Black Ops' centre obituary, invalid command hints (no ammo, no grenade, stand or crouch blocked) and cheat messages are not drawn: the client keeps none of their texts",
+                "the client events and server commands that set them (executable)"
+            ))
+        }
+        // No client talks: the runtime carries no voice chat.
+        CG_TALKER_1..=CG_TALKER_3 => OwnerHint::Nothing,
+        CG_VEHICLE_HUD => {
+            if ps.e_flags & EF_OTHER_CROSSHAIR == 0 {
+                OwnerHint::Nothing
+            } else {
+                OwnerHint::Unrun(unknown!(
+                    "t5.hud.vehicle_hud",
+                    "Black Ops' vehicle HUD is not drawn",
+                    "its two vehicle HUD draws (executable); zombies has no vehicles"
+                ))
+            }
+        }
+        CG_FRIENDLY_ARROWS | CG_FRIENDLY_NAMES | CG_WRISTWATCH | CG_OBJECTIVE_INDICATORS => {
+            OwnerHint::Unrun(unknown!(
+                "t5.hud.markers",
+                "Black Ops' friendly arrows and names, wristwatch and objective indicators are not drawn",
+                "those picture owner draws (executable)"
+            ))
+        }
+        _ => OwnerHint::NotHint,
+    }
+}
 
 /// The weapon types whose cooked time grows the centre picture: grenades
 /// and mines.
