@@ -526,7 +526,15 @@ pub struct ClientFireRules {
     /// The beams the game's client draws along its bullets' paths, in place
     /// of the weapons' tracer definitions.
     pub beams: Option<BulletBeamRules>,
+    /// The sound the game's client plays where a bullet strikes, when it
+    /// plays its own (the impact effects' sounds otherwise).
+    pub impact_sound: Option<ImpactSoundFn>,
 }
+
+/// The alias a bullet's impact plays, from the weapon's definition and
+/// variant in the game's layout, the surface struck (by the game's
+/// numbers) and whether it is the exit side; `None` plays none.
+pub type ImpactSoundFn = fn(def: &[u8], variant: &[u8], surface: u8, exit: bool) -> Option<String>;
 
 /// A shooter as a game's beam rule reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

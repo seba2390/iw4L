@@ -27,7 +27,78 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     }),
     view_kick: Some(crate::view_kick::RULES),
     beams: Some(crate::tracer::RULES),
+    impact_sound: Some(impact_sound),
 };
+
+/// Black Ops' surface names, by its surface numbers; any other is
+/// `default`.
+const SURFACE_NAMES: [&str; 31] = [
+    "default",
+    "bark",
+    "brick",
+    "carpet",
+    "cloth",
+    "concrete",
+    "dirt",
+    "flesh",
+    "foliage",
+    "glass",
+    "grass",
+    "gravel",
+    "ice",
+    "metal",
+    "mud",
+    "paper",
+    "plaster",
+    "rock",
+    "sand",
+    "snow",
+    "water",
+    "wood",
+    "asphalt",
+    "ceramic",
+    "plastic",
+    "rubber",
+    "cushion",
+    "fruit",
+    "paintedmetal",
+    "player",
+    "tallgrass",
+];
+
+/// Black Ops' impact sound: its client picks a table by the weapon's
+/// `impactType` (the exit side's own for most bullets) and plays the
+/// table's alias for the surface struck, `<prefix>_<surface>`, where the
+/// bullet hit or the explosion went off (beside the weapon's own explosion
+/// sound). The bouncing and weapon-specific types (6, 11 to 13) sound
+/// through their weapon's own aliases.
+fn impact_sound(def: &[u8], variant: &[u8], surface: u8, exit: bool) -> Option<String> {
+    let def = WeaponDefView::new(def, variant)?;
+    let prefix = match (def.impact_type(), exit) {
+        (1, false) => "prj_bullet_impact_small",
+        (1, true) => "prj_bullet_impact_small_exit",
+        (2, false) => "prj_bullet_impact_large",
+        (2, true) => "prj_bullet_impact_large_exit",
+        (3, false) => "prj_bullet_impact_ap",
+        (3, true) => "prj_bullet_impact_ap_exit",
+        (4, false) => "prj_bullet_impact_xtreme",
+        (4, true) => "prj_bullet_impact_xtreme_exit",
+        (5, false) => "prj_bulletspray_impact_small",
+        (5, true) => "prj_bulletspray_small_exit",
+        (14, false) => "prj_bolt_impact",
+        (14, true) => "prj_bolt_impact_exit",
+        (15, _) => "prj_blade_impact",
+        (7, _) => "wpn_grenade_explode",
+        (8, _) => "wpn_rifle_grenade",
+        (9 | 10, _) => "wpn_rocket_explode",
+        _ => return None,
+    };
+    let surface = SURFACE_NAMES
+        .get(usize::from(surface))
+        .copied()
+        .unwrap_or("default");
+    Some(format!("{prefix}_{surface}"))
+}
 
 /// `fireType` burst.
 const FIRE_BURST: i32 = 3;
