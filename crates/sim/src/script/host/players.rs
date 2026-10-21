@@ -1539,6 +1539,9 @@ pub(crate) fn load_field(world: &mut World, client: u32, name: &str) -> Option<V
                 .unwrap_or(ps.map_or(0, |ps| ps.max_health)),
         ),
         "name" => Value::String(client_name(&meta?.name).into()),
+        // Black Ops' `playername`: `[clan]name`, or the name alone when the
+        // client has no clan tag (none here).
+        "playername" => Value::String(client_name(&meta?.name).into()),
         "score" => Value::Int(meta?.score),
         "kills" => Value::Int(meta?.kills),
         "deaths" => Value::Int(meta?.deaths),
