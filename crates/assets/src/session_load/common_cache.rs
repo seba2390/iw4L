@@ -7,6 +7,9 @@ pub struct CommonKey {
     pub(super) runtime: Option<PathBuf>,
     pub(super) foreign: Option<PathBuf>,
     pub(super) weapon_zone: Option<PathBuf>,
+    /// The zone the load's gametype adds to a zombies map: its weapons and
+    /// models join the common set.
+    mode_zone: Option<String>,
     source_revision: u64,
     families: frame::AssetFamilies,
 }
@@ -34,6 +37,7 @@ impl CommonKey {
                             == asset_transport::t6_content::T6ContentMode::Zombies
                 })
                 .map(Path::to_path_buf),
+            mode_zone: zone_ff.and_then(asset_transport::mode_zone),
             families,
         }
     }
@@ -51,6 +55,7 @@ impl CommonKey {
             runtime,
             foreign: None,
             weapon_zone: None,
+            mode_zone: None,
             families: frame::AssetFamilies::ALL,
         }
     }

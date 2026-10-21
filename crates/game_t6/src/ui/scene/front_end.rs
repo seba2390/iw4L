@@ -1952,11 +1952,21 @@ impl Scene {
             if let Some((_, map)) = self.bindings.front_end.dvars.get("ui_mapname")
                 && !map.is_empty()
             {
-                let map = map.strip_prefix("t6:").unwrap_or(map);
-                self.bindings
-                    .front_end
-                    .requests
-                    .push(UiRequest::Exec(format!("map t6:{map}")));
+                let map = map.strip_prefix("t6:").unwrap_or(map).to_owned();
+                let dvar = |name: &str| {
+                    self.bindings
+                        .front_end
+                        .dvars
+                        .get(name)
+                        .map_or_else(String::new, |(_, value)| value.clone())
+                };
+                let start = UiRequest::ZombiesStart {
+                    gametype: dvar("ui_gametype"),
+                    location: dvar("ui_zm_mapstartlocation"),
+                };
+                let requests = &mut self.bindings.front_end.requests;
+                requests.push(start);
+                requests.push(UiRequest::Exec(format!("map t6:{map}")));
             }
         }
         // Each frame the engine has every root process its queued events

@@ -201,7 +201,9 @@ struct ScrollContent;
 enum Action {
     Page(Page),
     Select(Game),
-    ZombieMap(String),
+    /// A zombies map, with the gametype and start location to run, when
+    /// not the mode's own.
+    ZombieMap(String, Option<(&'static str, &'static str)>),
     Back,
     Home,
     Wip(&'static str),
@@ -312,7 +314,7 @@ fn load_native_art(
             (
                 root,
                 menu.page == Page::Zombies
-                    || (menu.page == Page::Lobby && dvars.get("ui_gametype") == Some("zclassic")),
+                    || (menu.page == Page::Lobby && zombies_gametype(dvars.get("ui_gametype"))),
             )
         });
     if let Some((key, task)) = backdrop.loading.as_mut()
@@ -511,6 +513,11 @@ fn discover(
     }));
 }
 
+/// Whether the lobby's gametype is a zombies one.
+fn zombies_gametype(gametype: Option<&str>) -> bool {
+    matches!(gametype, Some("zclassic" | "zstandard"))
+}
+
 fn command(exec: &mut MessageWriter<UiExecCommand>, text: impl Into<String>) {
     exec.write(UiExecCommand { text: text.into() });
 }
@@ -618,7 +625,7 @@ fn activate(
                 browser.refresh();
             }
         }
-        Action::ZombieMap(map) => {
+        Action::ZombieMap(map, start) => {
             let changing_lobby = menu.editing_lobby;
             if changing_lobby {
                 command(exec, format!("ui_select_map {map}"));
@@ -633,7 +640,14 @@ fn activate(
                 return;
             };
             dvars.set("ui_mapname", map);
-            dvars.set("ui_gametype", mode.gametype);
+            dvars.set(
+                "ui_gametype",
+                start.map_or(mode.gametype, |(gametype, _)| gametype),
+            );
+            dvars.set(
+                "ui_zm_mapstartlocation",
+                start.map_or("", |(_, location)| location),
+            );
             dvars.set("ui_game_namespace", namespace.as_str());
             dvars.set("ui_scorelimit", "0");
             dvars.set("ui_timelimit", "0");
@@ -1441,7 +1455,13 @@ fn rebuild(
                                     let map = format!("{}:{zone}", namespace.as_str());
                                     let installed = owned.contains(&map);
                                     if installed {
-                                        button(content, &font.0, &mut order, *name, Action::ZombieMap(map), true, accent);
+                                        button(content, &font.0, &mut order, *name, Action::ZombieMap(map, None), true, accent);
+                                    }
+                                }
+                                for start in mode.starts {
+                                    let map = format!("{}:{}", namespace.as_str(), start.zone);
+                                    if owned.contains(&map) {
+                                        button(content, &font.0, &mut order, start.title, Action::ZombieMap(map, Some((start.gametype, start.location))), true, accent);
                                     }
                                 }
                                 if owned.is_empty() { label(content, &font.0, "No zombies map of this game is installed.", 17.0, accent); }
@@ -1514,7 +1534,7 @@ fn rebuild(
                             }
                             if party.is_host {
                                 button(content, &font.0, &mut order, "START MATCH", Action::Start, runnable, accent);
-                                button(content, &font.0, &mut order, "CHANGE MAP / RULES", if dvars.get("ui_gametype") == Some("zclassic") { Action::Page(Page::Zombies) } else { Action::Page(Page::Host) }, runnable, accent);
+                                button(content, &font.0, &mut order, "CHANGE MAP / RULES", if zombies_gametype(dvars.get("ui_gametype")) { Action::Page(Page::Zombies) } else { Action::Page(Page::Host) }, runnable, accent);
                                 button(content, &font.0, &mut order, "SET LOBBY PASSWORD", Action::Password, true, accent);
                                 button(content, &font.0, &mut order, "TOGGLE PUBLIC / PRIVATE", Action::Privacy, dvars.get("ui_master_configured") == Some("1"), accent);
                             }

@@ -1043,8 +1043,6 @@ pattern crates/sim/src/world_objects.rs entity_iw4:: 6
 pattern crates/ui/src/classes/setup.rs AssetNamespace::<game> 2
 pattern crates/ui/src/frontend/maps.rs "<game>" 3
 pattern crates/ui/src/frontend/maps.rs AssetNamespace::<game> 1
-pattern crates/ui/src/frontend/rules.rs "<gametype>" 1
-pattern crates/ui/src/frontend/rules.rs .token()=="…" 1
 pattern crates/ui/src/launcher.rs "<game>" 3
 pattern crates/ui/src/launcher.rs "<gametype>" 2
 pattern crates/ui/src/t6_art.rs AssetNamespace::<game> 5

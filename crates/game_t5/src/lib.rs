@@ -593,4 +593,5 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
         ("zombie_temple", "SHANGRI-LA"),
         ("zombie_moon", "MOON"),
     ],
+    starts: &[],
 };

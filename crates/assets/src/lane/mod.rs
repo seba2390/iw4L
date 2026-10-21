@@ -450,7 +450,8 @@ pub(crate) fn capture_script_zones(
         .file_stem()
         .and_then(|stem| stem.to_str())
         .unwrap_or("");
-    let zones = (format.script_zones)(map);
+    let mode_zone = asset_transport::mode_zone(path);
+    let zones = (format.script_zones)(map, mode_zone.as_deref());
     if zones.is_empty() {
         return;
     }

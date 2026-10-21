@@ -23,6 +23,9 @@ pub enum GameModeKind {
     Zombies = 8,
 
     Zclassic = 9,
+
+    /// Black Ops 2's Survival: its zombies gametype on one start location.
+    Zstandard = 10,
 }
 
 impl GameModeKind {
@@ -41,6 +44,7 @@ impl GameModeKind {
             b"sab" | b"sabotage" => Some(Self::Sabotage),
             b"zom" | b"zombies" => Some(Self::Zombies),
             b"zclassic" => Some(Self::Zclassic),
+            b"zstandard" => Some(Self::Zstandard),
             _ => None,
         }
     }
@@ -69,6 +73,7 @@ impl GameModeKind {
             Self::Sabotage => "sab",
             Self::Zombies => "zom",
             Self::Zclassic => "zclassic",
+            Self::Zstandard => "zstandard",
         }
     }
 
@@ -84,6 +89,7 @@ impl GameModeKind {
             Self::Sabotage => &["sab"],
             Self::Zombies => &["zom"],
             Self::Zclassic => &["zclassic"],
+            Self::Zstandard => &["zstandard"],
         }
     }
 
@@ -103,6 +109,7 @@ impl GameModeKind {
             7 => Some(Self::Sabotage),
             8 => Some(Self::Zombies),
             9 => Some(Self::Zclassic),
+            10 => Some(Self::Zstandard),
             _ => None,
         }
     }
@@ -117,12 +124,17 @@ impl GameModeKind {
             Self::CaptureTheFlag => "CAPTURE THE FLAG",
             Self::Headquarters => "HEADQUARTERS",
             Self::Sabotage => "SABOTAGE",
-            Self::Zombies | Self::Zclassic => "ZOMBIES",
+            Self::Zombies | Self::Zclassic | Self::Zstandard => "ZOMBIES",
         }
     }
 
+    /// Black Ops 2's zombies gametypes, which run on its zombies maps.
+    pub fn is_t6_zombies(self) -> bool {
+        matches!(self, Self::Zclassic | Self::Zstandard)
+    }
+
     pub fn is_team(self) -> bool {
-        !matches!(self, Self::FreeForAll | Self::Zclassic)
+        !matches!(self, Self::FreeForAll | Self::Zclassic | Self::Zstandard)
     }
 
     pub fn team_start_classname(self, axis: bool) -> Option<&'static str> {
@@ -134,7 +146,8 @@ impl GameModeKind {
             | Self::Headquarters
             | Self::Sabotage
             | Self::Zombies
-            | Self::Zclassic => None,
+            | Self::Zclassic
+            | Self::Zstandard => None,
             Self::Domination => Some(if axis {
                 dom::START_SPAWN_AXIS
             } else {
@@ -157,7 +170,8 @@ impl GameModeKind {
             | Self::Headquarters
             | Self::Sabotage
             | Self::Zombies
-            | Self::Zclassic => &[],
+            | Self::Zclassic
+            | Self::Zstandard => &[],
             Self::Domination => &[dom::SPAWN_CLASSNAME],
             Self::Demolition => {
                 if axis {
