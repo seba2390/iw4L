@@ -225,6 +225,16 @@ pub(super) async fn walk_prepared_match(
     });
     let mut zombie_weapon_materials = zombie.fpv.material_names();
     zombie_weapon_materials.extend(zombie.world_weapons.material_names());
+    // The client's own beam materials, when the zombie zones are the
+    // match's.
+    if zombie_scripts.is_some()
+        && let Some(namespace) = map_namespace
+    {
+        for material in asset_game::T5_CLIENT_BEAM_MATERIALS {
+            zombie_weapon_materials.insert((*material).to_owned());
+            common_tracers.add_client_beam(namespace, material);
+        }
+    }
     zombie_weapon_materials.extend(
         zombie
             .fx

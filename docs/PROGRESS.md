@@ -126,7 +126,7 @@ Only the top-level items count.
   - [x] The viewmodel plays the weapon's own animations, picked by the game's client rules.
   - [ ] Grenade launchers, sticky and special grenades, detonation (the CZ75's dual wield animates both hands).
   - [x] Muzzle flashes (view and world) and ejected shells, by Black Ops' client fire rules.
-  - [ ] The view kick and the viewmodel's blends, rates, camera animations, notetracks and `hideviewmodel` are Black Ops'; no tracer, gun kick, gun angles or client bullet impacts yet.
+  - [x] The view kick, the gun kick, the gun angles in each command, the bullets' tracers and streaks, and the viewmodel's blends, rates, camera animations, notetracks and `hideviewmodel` are Black Ops'; the client draws its beams and impacts along the server's trace of each bullet (`t5.weapons.client_trace`).
 - [x] Zombies spawn and animate (rising, or at a window).
   - [x] Window spawns (boards torn off, mantle in) and rising from the ground (`do_zombie_rise`: `scripted rise` from `-45` or `-14` below the spot to the floor, then `find_flesh`).
   - [x] Black Ops' actor AI states choose each zombie's animscript: exposed (move along a path, fight at the goal), pain when shot (`zombie_pain`), death, scripted animations (rise, window attacks), `animcustom` and traversals (negotiation).

@@ -917,6 +917,7 @@ impl Think<'_> {
             Bullets {
                 attacker: entity,
                 weapon_entity: entity,
+                hand: 0,
                 zombies: true,
                 gaps: self.gaps,
             }

@@ -5,8 +5,8 @@
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
-    ActorMelee, AiEvent, AiLineEvent, AiPointEvent, BulletHitType, BulletImpact, BulletTrace,
-    FireDamage, FireEntity, FireEntityKind, FireWorld, NotifyArg, WeaponEvent,
+    ActorMelee, AiEvent, AiLineEvent, AiPointEvent, BulletHitType, BulletImpact, BulletPath,
+    BulletTrace, FireDamage, FireEntity, FireEntityKind, FireWorld, NotifyArg, WeaponEvent,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
@@ -221,6 +221,10 @@ pub(crate) fn server_events(
                     ps,
                     aim_spread_before,
                     gun_angles,
+                    hand: u8::from(matches!(
+                        event,
+                        ev::FIRE_WEAPON_LEFT | ev::FIRE_WEAPON_LASTSHOT_LEFT
+                    )),
                     zombies,
                     gaps: &mut gaps,
                 };
@@ -231,6 +235,7 @@ pub(crate) fn server_events(
                     ps,
                     aim_spread_before,
                     gun_angles,
+                    hand: 0,
                     zombies,
                     gaps: &mut gaps,
                 };
@@ -241,6 +246,7 @@ pub(crate) fn server_events(
                     ps,
                     aim_spread_before,
                     gun_angles,
+                    hand: 0,
                     zombies,
                     gaps: &mut gaps,
                 };
@@ -439,6 +445,9 @@ struct BulletParams {
     dir: [f32; 3],
     /// Enemies this bullet killed.
     kills: i32,
+    /// The pellet of a spread shot, and the hand that fired it.
+    pellet: u16,
+    hand: u8,
 }
 
 /// What a shot or blow does to one entity, before the server's damage
@@ -476,6 +485,8 @@ struct Shot<'a> {
     ps: &'a PlayerState,
     aim_spread_before: f32,
     gun_angles: [f32; 2],
+    /// The hand that fired: 1 the left.
+    hand: u8,
     zombies: bool,
     gaps: &'a mut Vec<&'static Unknown>,
 }
@@ -647,6 +658,7 @@ impl Shot<'_> {
         Bullets {
             attacker,
             weapon_entity: attacker,
+            hand: self.hand,
             zombies: self.zombies,
             gaps: self.gaps,
         }
@@ -959,6 +971,8 @@ pub(crate) fn actor_melee(
 pub(crate) struct Bullets<'a> {
     pub(crate) attacker: i32,
     pub(crate) weapon_entity: i32,
+    /// The hand that fired: 1 the left.
+    pub(crate) hand: u8,
     pub(crate) zombies: bool,
     pub(crate) gaps: &'a mut Vec<&'static Unknown>,
 }
@@ -1000,6 +1014,8 @@ impl Bullets<'_> {
                 end,
                 dir,
                 kills: 0,
+                pellet: shot as u16,
+                hand: self.hand,
             };
             if def.penetrate_type() != 0 && !def.bullet_impact_explode() {
                 self.fire_penetrate(def, weapon, &mut bp, world);
@@ -1077,8 +1093,11 @@ impl Bullets<'_> {
         bp: &mut BulletParams,
         world: &mut dyn FireWorld,
     ) {
-        for _ in 0..BULLET_EXTENDED_SEGMENTS {
+        for segment in 0..BULLET_EXTENDED_SEGMENTS {
             let (hit, br) = self.bullet_trace(bp, 0, world);
+            if segment == 0 {
+                path(weapon, bp, hit, &br, world);
+            }
             if !hit {
                 return;
             }
@@ -1115,6 +1134,7 @@ impl Bullets<'_> {
         world: &mut dyn FireWorld,
     ) {
         let (hit, mut br) = self.bullet_trace(bp, 0, world);
+        path(weapon, bp, hit, &br, world);
         if !hit {
             return;
         }
@@ -1379,6 +1399,21 @@ impl Bullets<'_> {
             from_server: player || actor || !client_side,
         });
     }
+}
+
+/// A bullet's first trace goes to the client as the path it draws the
+/// bullet's beam along: Black Ops' client traces each bullet itself
+/// (`sv_clientSideBullets`) and spawns its beam from that first trace, to
+/// where it hit or, missing, to its end.
+fn path(weapon: u32, bp: &BulletParams, hit: bool, br: &BulletResults, world: &mut dyn FireWorld) {
+    world.bullet_path(&BulletPath {
+        shooter: bp.weapon_entity,
+        weapon,
+        pellet: bp.pellet,
+        hand: bp.hand,
+        start: bp.start,
+        end: if hit { br.hit_pos } else { bp.end },
+    });
 }
 
 /// The server's damage to what a shot, blow or blast reaches: a player's

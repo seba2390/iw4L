@@ -8,6 +8,11 @@ pub type TracerMaterial = AssetEdge<MaterialSpace>;
 
 pub type TracerMaterialReason = AssetEdgeReason;
 
+/// The materials Black Ops' client registers for the beams it draws along
+/// its bullets (a red and a green tracer, the bullet streak); the zombie
+/// zones hold them.
+pub const T5_CLIENT_BEAM_MATERIALS: &[&str] = &["gfx_red_tracer", "gfx_green_tracer", "gfx_bullet"];
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct OwnedTracerDef {
     pub namespace: crate::AssetNamespace,
@@ -190,6 +195,32 @@ impl TracerCatalog {
         Ok(())
     }
 
+    /// A beam the game's client draws by its own rules, named by its
+    /// material: the client gives the beam's speed, length and width.
+    pub fn add_client_beam(&mut self, namespace: crate::AssetNamespace, material: &str) {
+        if self.published.index_named(namespace, material).is_some() {
+            return;
+        }
+        self.published.insert_owned(OwnedTracerDef {
+            namespace,
+            name: material.to_owned(),
+            material: TracerMaterial::Absent,
+            material_hint: Some(material.to_owned()),
+            material_namespace: namespace,
+            material_authored: crate::AuthoredRef {
+                slot: true,
+                alias: false,
+            },
+            draw_interval: 1,
+            speed: 0.0,
+            beam_length: 0.0,
+            beam_width: 0.0,
+            screw_radius: 0.0,
+            screw_dist: 0.0,
+            colors: [[1.0; 4]; 5],
+        });
+    }
+
     pub fn capture_t6(&mut self, def: OwnedTracerDef) {
         let index = self.published.insert_owned(def);
         self.last_captured = Some(index);
@@ -258,6 +289,11 @@ impl TracerDefinitions {
             self.defs.push(def);
             index
         }
+    }
+
+    /// The first definition named `name`, in any namespace.
+    pub fn index_of_name(&self, name: &str) -> Option<usize> {
+        self.defs.iter().position(|def| def.name == name)
     }
 
     pub fn index_named(&self, namespace: crate::AssetNamespace, name: &str) -> Option<usize> {

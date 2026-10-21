@@ -7,7 +7,7 @@ use assets::PreparedWeapons;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use dpvs_iw4::pack_mark_mesh_draw_surf;
-use entity_iw4::{is_left_hand_fire_event, is_weapon_fire_last_shot_event};
+use entity_iw4::{TEAM_ALLIES, TEAM_AXIS, is_left_hand_fire_event, is_weapon_fire_last_shot_event};
 use frame::ViewSubject;
 use fx::{
     CodeMeshStep, FxBoltTarget, FxGapCause, FxMsec, FxSparkCloudInstance, FxSpriteInstance,
@@ -26,12 +26,13 @@ use net::{
 };
 
 use render_fx::{
-    CombatFxDump, EntityMarks, FireFxOccurrence, FireFxOutcome, FireFxRequest, FxCameraOrigin,
-    FxDumpRequest, FxFrameOutcome, FxGeneratedFrame, FxJournalCursor, FxMarkDvars,
-    FxUnavailableCause, FxWorldColorImages, HostFxDlights, HostFxPostLights, HostFxSystem,
-    LaserDvars, PreparedFxCatalog, PreparedFxElemInfos, PreparedFxModels, PreparedImpactFx,
-    PreparedTracers, PresentedFireFx, PresentedVehicleFx, PresentedVehicleFxRow, TracerDrawGate,
-    TracerWorld, clear_fx_owned_plans, publish_empty_fx_owned_plans, tick_tracer_beams,
+    ChosenBeam, CombatFxDump, EntityMarks, FireFxOccurrence, FireFxOutcome, FireFxRequest,
+    FxCameraOrigin, FxDumpRequest, FxFrameOutcome, FxGeneratedFrame, FxJournalCursor, FxMarkDvars,
+    FxUnavailableCause, FxWorldColorImages, GameBeam, HostFxDlights, HostFxPostLights,
+    HostFxSystem, LaserDvars, PreparedFxCatalog, PreparedFxElemInfos, PreparedFxModels,
+    PreparedImpactFx, PreparedTracers, PresentedFireFx, PresentedVehicleFx, PresentedVehicleFxRow,
+    TracerDrawGate, TracerWorld, clear_fx_owned_plans, publish_empty_fx_owned_plans,
+    tick_tracer_beams,
 };
 
 use render_fx::combat::{
@@ -165,6 +166,7 @@ pub(crate) fn register_combat_fx_systems(app: &mut App) {
         )
         .scoped::<super::fire_autosim::AutoFireSounds>(frame::MatchScope::Live)
         .scoped::<super::view_kick::GameViewKick>(frame::MatchScope::Live)
+        .scoped::<GameBeamShots>(frame::MatchScope::Live)
         .scoped::<super::top_down::GameTopDown>(frame::MatchScope::Live)
         .add_systems(
             Update,
@@ -3538,7 +3540,7 @@ fn drain_bullet_hit_fx(
     weapons: Option<Res<PreparedWeapons>>,
     tracers: Option<Res<PreparedTracers>>,
     mut tracer_world: ResMut<TracerWorld>,
-    mut gate: ResMut<TracerDrawGate>,
+    (mut gate, mode): (ResMut<TracerDrawGate>, Option<Res<game_api::ModeRules>>),
     (local, generation, timeline, mut occurrences, verdicts): (
         Res<LocalPresentClient>,
         Res<frame::WorldGeneration>,
@@ -3610,12 +3612,103 @@ fn drain_bullet_hit_fx(
             tracers.as_deref(),
             &mut tracer_world,
             &mut gate,
+            beam_rules(mode.as_deref()).map(|_| GameBeam::Impact),
             local.0.0 as i32,
             &mut host,
             &mut cursor,
             &mut combat,
             fx_world.view().as_ref().map(|s| s as &dyn FxScene),
         );
+    }
+}
+
+/// The game's beams along its client's bullets, when it has its own.
+fn beam_rules(mode: Option<&game_api::ModeRules>) -> Option<game_api::fire::BulletBeamRules> {
+    mode.and_then(|mode| mode.client_fire)
+        .and_then(|rules| rules.beams)
+}
+
+/// The client's count of each shooter's bullets, one byte per entity, for
+/// the game's beams.
+#[derive(Resource, Default)]
+struct GameBeamShots {
+    world: Option<frame::WorldStamp>,
+    shots: HashMap<i32, u8>,
+}
+
+/// What the game's own client rules draw for a bullet record.
+#[derive(SystemParam)]
+struct GameBeamAccess<'w> {
+    mode: Option<Res<'w, game_api::ModeRules>>,
+    shots: ResMut<'w, GameBeamShots>,
+    rand: ResMut<'w, super::view_kick::GameViewKick>,
+    clock: Res<'w, net::FrameClock>,
+    presented: Res<'w, PresentedSnapshot>,
+}
+
+impl GameBeamAccess<'_> {
+    /// `None` when the game draws its weapons' tracer definitions; else
+    /// the beam its rule draws along a path record (none for an impact).
+    fn choose(
+        &mut self,
+        world: frame::WorldStamp,
+        record: &sim::PelletFxRecord,
+        weapons: Option<&assets::BoundWeapons<'_>>,
+        tracers: Option<&PreparedTracers>,
+    ) -> Option<GameBeam> {
+        let rules = beam_rules(self.mode.as_deref())?;
+        if !record.path {
+            return Some(GameBeam::Impact);
+        }
+        if self.shots.world != Some(world) {
+            *self.shots = GameBeamShots {
+                world: Some(world),
+                shots: HashMap::new(),
+            };
+        }
+        let Some(bytes) = weapons
+            .and_then(|weapons| weapons.registry().bind_published_row(record.weapon).ok())
+            .and_then(|bound| bound.game_bytes())
+        else {
+            return Some(GameBeam::None);
+        };
+        let team = u32::try_from(record.attacker).ok().and_then(|client| {
+            self.presented
+                .snapshot()?
+                .meta
+                .for_client(sim::ClientId(client))
+                .map(|meta| meta.client_state_team)
+        });
+        let shooter = game_api::fire::BeamShooter {
+            kind: if team.is_some() {
+                game_api::fire::FireEntityKind::Player
+            } else {
+                game_api::fire::FireEntityKind::Other
+            },
+            team: match team {
+                Some(TEAM_AXIS) => Some(game_api::fire::FireTeam::Axis),
+                Some(TEAM_ALLIES) => Some(game_api::fire::FireTeam::Allies),
+                _ => None,
+            },
+        };
+        let shots = self.shots.shots.entry(record.attacker).or_insert(0);
+        let Some(beam) = (rules.beam)(&bytes.def, &bytes.variant, shooter, shots) else {
+            return Some(GameBeam::None);
+        };
+        let Some(def) = tracers.and_then(|tracers| tracers.0.index_of_name(beam.material)) else {
+            return Some(GameBeam::None);
+        };
+        let rand = &mut self.rand;
+        let start_back_ms = (rules.start_back)(self.clock.frametime(), &mut || rand.c_rand());
+        Some(GameBeam::Beam(ChosenBeam {
+            def,
+            speed: beam.speed,
+            length: beam.length,
+            width: beam.width,
+            screw_dist: beam.screw_dist,
+            screw_radius: beam.screw_radius,
+            start_back_ms,
+        }))
     }
 }
 
@@ -3631,7 +3724,7 @@ fn drain_pellet_fx(
     weapons: Option<Res<PreparedWeapons>>,
     tracers: Option<Res<PreparedTracers>>,
     mut tracer_world: ResMut<TracerWorld>,
-    mut gate: ResMut<TracerDrawGate>,
+    (mut gate, mut beams): (ResMut<TracerDrawGate>, GameBeamAccess),
     (local, generation, timeline, mut occurrences, verdicts, mut dyn_ent_hits): (
         Res<LocalPresentClient>,
         Res<frame::WorldGeneration>,
@@ -3676,6 +3769,7 @@ fn drain_pellet_fx(
         let bound = weapons
             .as_deref()
             .and_then(|weapons| weapons.for_event(world).ok());
+        let game_beam = beams.choose(world, &record, bound.as_ref(), tracers.as_deref());
         present_pellet_segment(
             generation.stamp(),
             timeline.timeline(),
@@ -3705,6 +3799,7 @@ fn drain_pellet_fx(
             tracers.as_deref(),
             &mut tracer_world,
             &mut gate,
+            game_beam,
             local.0.0 as i32,
             &mut host,
             &mut cursor,

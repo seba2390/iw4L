@@ -1500,6 +1500,7 @@ pub(crate) fn phase_trace(
                         surf_type: segment.surf_type,
                         surface_flags: segment.surface_flags,
                         flesh_flags,
+                        path: false,
                     });
                 }
             } else {
@@ -1517,6 +1518,7 @@ pub(crate) fn phase_trace(
                     surf_type: segment.surf_type,
                     surface_flags: segment.surface_flags,
                     flesh_flags: 0,
+                    path: false,
                 });
             }
             if exit || !world.publishes_snapshot() || scaled <= 0 {

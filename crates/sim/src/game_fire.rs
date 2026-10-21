@@ -8,8 +8,8 @@ use crate::identities::ShotId;
 use crate::world::{ClientId, Tick};
 use crate::{ScriptModelId, SimContent};
 use game_api::fire::{
-    BulletHitType, BulletImpact, BulletTrace, FireDamage, FireEntity, FireEntityKind, FireTeam,
-    FireWorld, GameMissile, MissileExplosion, MissileRun, NotifyArg, WeaponEvent,
+    BulletHitType, BulletImpact, BulletPath, BulletTrace, FireDamage, FireEntity, FireEntityKind,
+    FireTeam, FireWorld, GameMissile, MissileExplosion, MissileRun, NotifyArg, WeaponEvent,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, GameWeapon};
 use std::collections::HashMap;
@@ -613,6 +613,28 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             } else {
                 impact.flags & 0x3
             },
+            path: false,
+        });
+    }
+
+    fn bullet_path(&mut self, path: &BulletPath) {
+        let segment = self.segment;
+        self.segment = self.segment.saturating_add(1);
+        self.world.push_pellet_fx(crate::PelletFxRecord {
+            attacker: path.shooter,
+            weapon: path.weapon,
+            correlation: self.shot.0,
+            fire_cause: None,
+            pellet: path.pellet,
+            segment,
+            hand: path.hand,
+            start: path.start,
+            end: path.end,
+            normal: [0.0; 3],
+            surf_type: 0,
+            surface_flags: 0,
+            flesh_flags: 0,
+            path: true,
         });
     }
 
