@@ -34,6 +34,10 @@ mod paths;
 mod player;
 pub(crate) mod poison_overlay;
 mod radius;
+mod ragdoll;
+pub(crate) use ragdoll::{
+    explosion as ragdoll_explosion, launch as launch_ragdoll, present as ragdoll_present,
+};
 pub(crate) mod revive_overlay;
 mod riotshield;
 mod rumble;

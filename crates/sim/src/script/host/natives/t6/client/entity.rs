@@ -2057,18 +2057,22 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
 
-    // ent launchragdoll(velocity): starts a client ragdoll on the entity.
+    // ent launchragdoll(velocity): pushes the entity's ragdoll (building it
+    // first when the entity is ragdolling), as the launch event does.
     registry.register(Method, "launchragdoll", |world, receiver, args| {
-        receiver_entity(world, receiver)?;
-        vector(args, 0)?;
-        // t6.csc.physics.ragdoll: IW4L has no client ragdoll physics.
+        let (entity, ..) = receiver_entity(world, receiver)?;
+        let direction = vector(args, 0)?;
+        world
+            .resource_mut::<crate::script::client::ClientOutput>()
+            .ragdoll_pushes
+            .push(crate::script::client::ClientRagdollPush::Launch { entity, direction });
         Ok(Value::Undefined)
     });
 
     // physicsexplosioncylinder(localclientnum, origin, outer_radius,
     // inner_radius, magnitude): applies a client physics cylinder impulse.
-    registry.register(Function, "physicsexplosioncylinder", |_, _, args| {
-        vector(args, 1)?;
+    registry.register(Function, "physicsexplosioncylinder", |world, _, args| {
+        let origin = vector(args, 1)?;
         local_client(args, 0)?;
         let outer = float(args, 2)?;
         let inner = float(args, 3)?;
@@ -2078,9 +2082,16 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if inner > outer {
             return Err("Inner radius is outside the outer radius".into());
         }
-        float(args, 4)?;
-        // t6.csc.physics.explosion_cylinder: IW4L has no client physics
-        // explosion cylinder impulse.
+        let magnitude = float(args, 4)?;
+        world
+            .resource_mut::<crate::script::client::ClientOutput>()
+            .ragdoll_pushes
+            .push(crate::script::client::ClientRagdollPush::Cylinder {
+                origin,
+                outer,
+                inner,
+                magnitude,
+            });
         Ok(Value::Undefined)
     });
 

@@ -3257,6 +3257,17 @@ fn encode_entity_dobjs(
                 out.put_f32(angle);
             }
         }
+        debug_assert!(state.bone_overrides.len() <= u16::MAX as usize);
+        out.put_u16(state.bone_overrides.len() as u16);
+        for bone in &state.bone_overrides {
+            put_text(out, &bone.tag);
+            for value in bone.rotation {
+                out.put_f32(value);
+            }
+            for value in bone.origin {
+                out.put_f32(value);
+            }
+        }
         put_optional_part_bits(out, state.requested_parts);
         for word in state.hide_part_bits.words() {
             out.put_u32(*word);
@@ -3319,8 +3330,9 @@ fn decode_entity_dobjs(
             });
         }
         let pose_revision = input.get_u32()?;
+        let bone_capacity = anim_iw4::PartBits::CAPACITY;
         let rotation_count = input.get_u16()? as usize;
-        if rotation_count > anim_iw4::PartBits::CAPACITY {
+        if rotation_count > bone_capacity {
             return Err(WireError::Malformed("too many tag rotations"));
         }
         let mut tag_rotations = Vec::with_capacity(rotation_count);
@@ -3331,6 +3343,34 @@ fn decode_entity_dobjs(
                 return Err(WireError::Malformed("invalid tag rotation"));
             }
             tag_rotations.push(xmodel_runtime::TagRotation { tag, angles });
+        }
+        let override_count = input.get_u16()? as usize;
+        if override_count > bone_capacity {
+            return Err(WireError::Malformed("too many bone overrides"));
+        }
+        let mut bone_overrides = Vec::with_capacity(override_count);
+        for _ in 0..override_count {
+            let tag = get_text(input)?;
+            let rotation = [
+                input.get_f32()?,
+                input.get_f32()?,
+                input.get_f32()?,
+                input.get_f32()?,
+            ];
+            let origin = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+            if tag.is_empty()
+                || !rotation
+                    .iter()
+                    .chain(origin.iter())
+                    .all(|value| value.is_finite())
+            {
+                return Err(WireError::Malformed("invalid bone override"));
+            }
+            bone_overrides.push(xmodel_runtime::BoneOverride {
+                tag,
+                rotation,
+                origin,
+            });
         }
         let requested_parts = get_optional_part_bits(input)?;
         let mut hide_words = [0u32; anim_iw4::PartBits::WORDS];
@@ -3394,6 +3434,7 @@ fn decode_entity_dobjs(
                 },
                 pose_revision,
                 tag_rotations,
+                bone_overrides,
                 tree,
                 requested_parts,
                 hide_part_bits: xmodel_runtime::HidePartBits::from_words(hide_words),

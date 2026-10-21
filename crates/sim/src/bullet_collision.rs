@@ -683,6 +683,37 @@ impl AuthorityDObjState {
         self.materialized_pose_revision = None;
     }
 
+    /// Places bones outright (a ragdoll's), over what the animation does.
+    pub fn set_bone_overrides(&mut self, overrides: Vec<xmodel_runtime::BoneOverride>) {
+        if self.semantic_state.bone_overrides == overrides {
+            return;
+        }
+        self.pose_revision = self.pose_revision.wrapping_add(1);
+        self.semantic_state.pose_revision = self.pose_revision;
+        if let Some(tree) = self.semantic_state.tree.as_mut() {
+            tree.state_revision = self.pose_revision;
+        }
+        self.pose_request.bone_overrides = overrides.clone();
+        self.semantic_state.bone_overrides = overrides;
+        self.current_collision = None;
+        self.materialized_pose_revision = None;
+    }
+
+    /// The skeleton and every bone's world matrix as the animation poses it,
+    /// without the bones placed outright.
+    pub fn animated_bones(&self) -> Option<(xmodel_runtime::DObj, Vec<glam::Mat4>)> {
+        let dobj = self.dobj()?;
+        let request = xmodel_runtime::DObjPoseRequest {
+            tree: self.pose_request.tree.clone(),
+            tag_rotations: self.pose_request.tag_rotations.clone(),
+            bone_overrides: Vec::new(),
+            requested_parts: self.pose_request.requested_parts,
+            hide_part_bits: self.pose_request.hide_part_bits,
+        };
+        let posed = xmodel_runtime::pose_dobj(&dobj, &request, self.world_from_model).ok()?;
+        Some((dobj, posed))
+    }
+
     pub fn advance_script_model_play_anim(&mut self, dt_seconds: f32) -> f32 {
         let Some(play) = self.play_anim else {
             return 0.0;

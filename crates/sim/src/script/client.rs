@@ -488,6 +488,24 @@ pub(crate) struct ClientOutput {
     next_spawned_dyn_ent: u32,
     /// Incremented when `CleanupSpawnedDynEnts` clears spawned dynamic entities.
     pub(crate) dyn_ent_cleanup_serial: u32,
+    /// Ragdoll pushes client scripts made this frame.
+    pub(crate) ragdoll_pushes: Vec<ClientRagdollPush>,
+}
+
+/// A client script's push on ragdolls: `launchragdoll` on one of its
+/// entities, or a physics explosion cylinder.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ClientRagdollPush {
+    Launch {
+        entity: u64,
+        direction: [f32; 3],
+    },
+    Cylinder {
+        origin: [f32; 3],
+        outer: f32,
+        inner: f32,
+        magnitude: f32,
+    },
 }
 
 impl ClientOutput {
@@ -937,6 +955,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             publish_client_lights(server, &client.world);
             present::present(server, &mut client);
             deliver_tag_effects(server, &mut client);
+            deliver_ragdoll_pushes(server, &mut client);
         }
     }
     server.insert_resource(client);
@@ -992,6 +1011,34 @@ fn sync_model_table(server: &World, client: &mut World) {
 }
 
 /// Plays and stops the client's tag effects for the local client only: on
+/// Client scripts' ragdoll pushes land on the server entities their client
+/// entities mirror (the ragdolls IW4L steps with the bodies it poses).
+fn deliver_ragdoll_pushes(server: &mut World, client: &mut ClientScripts) {
+    let pushes = std::mem::take(&mut client.world.resource_mut::<ClientOutput>().ragdoll_pushes);
+    for push in pushes {
+        match push {
+            ClientRagdollPush::Launch { entity, direction } => {
+                let mirrored = client
+                    .mirrored
+                    .iter()
+                    .find(|(_, entry)| entry.client_object == entity)
+                    .map(|(server_id, _)| *server_id);
+                if let Some(server_id) = mirrored {
+                    super::host::natives::t6::launch_ragdoll(server, server_id, direction, None);
+                }
+            }
+            ClientRagdollPush::Cylinder {
+                origin,
+                outer,
+                inner,
+                magnitude,
+            } => super::host::natives::t6::ragdoll_explosion(
+                server, true, origin, inner, outer, None, magnitude,
+            ),
+        }
+    }
+}
+
 /// the server's entities it sees, on its own entities' models (the same frame
 /// they are presented), and at the place of one without a model.
 fn deliver_tag_effects(server: &mut World, client: &mut ClientScripts) {
