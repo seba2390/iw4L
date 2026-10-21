@@ -12,6 +12,7 @@ mod movement;
 mod post_chain;
 mod radius;
 mod shock;
+mod surface;
 mod top_down;
 mod tracer;
 mod turret;
@@ -146,6 +147,19 @@ impl game_api::GameScripts for T5 {
             gib_event: "clientscripts/_callbacks::codecallback_gibevent",
             trigger_delete: "codescripts/delete::main",
             level_notify: "clientscripts/_callbacks::level_notify",
+            // Black Ops' client turns an actor's `footstep_` / `dogstep_`
+            // note into a step at `j_ball_le` (a note whose tenth letter is
+            // `l`) or `j_ball_ri` within 1024 units of the view, the ground
+            // traced 15 units either side of it.
+            ai_footstep: Some(game_api::AiFootstep {
+                callback: "clientscripts/_footsteps::playaifootstep",
+                tags: ["j_ball_le", "j_ball_ri"],
+                tag_range: 1024.0,
+                trace_up: 15.0,
+                trace_down: 15.0,
+                trace_mask: 0x0282_0011,
+                surface: surface::name_of_flags,
+            }),
         })
     }
 

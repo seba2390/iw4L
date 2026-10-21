@@ -1096,6 +1096,26 @@ pub(crate) fn sight_clear(
     around.sight_clear(start, end, pass, mask)
 }
 
+/// The surface flags a trace from `start` to `end` stops on (0 when it
+/// stops on nothing), against the world and every entity but `pass`.
+pub(crate) fn surface_trace(
+    world: &mut FrameWorld,
+    tick: Tick,
+    start: [f32; 3],
+    end: [f32; 3],
+    pass: u64,
+    mask: u32,
+) -> u32 {
+    let mut around = MatchFireWorld::new(world, tick, None);
+    let pass = around.number_of_object(pass);
+    let trace = around.bullet_trace(start, end, pass, mask);
+    if trace.fraction < 1.0 {
+        trace.surface_flags
+    } else {
+        0
+    }
+}
+
 /// An actor's melee blow as the script host knows it: its eye, facing,
 /// weapon flash and enemy, by script object.
 pub(crate) struct ScriptActorMelee {

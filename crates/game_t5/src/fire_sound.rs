@@ -30,42 +30,6 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     impact_sound: Some(impact_sound),
 };
 
-/// Black Ops' surface names, by its surface numbers; any other is
-/// `default`.
-const SURFACE_NAMES: [&str; 31] = [
-    "default",
-    "bark",
-    "brick",
-    "carpet",
-    "cloth",
-    "concrete",
-    "dirt",
-    "flesh",
-    "foliage",
-    "glass",
-    "grass",
-    "gravel",
-    "ice",
-    "metal",
-    "mud",
-    "paper",
-    "plaster",
-    "rock",
-    "sand",
-    "snow",
-    "water",
-    "wood",
-    "asphalt",
-    "ceramic",
-    "plastic",
-    "rubber",
-    "cushion",
-    "fruit",
-    "paintedmetal",
-    "player",
-    "tallgrass",
-];
-
 /// Black Ops' impact sound: its client picks a table by the weapon's
 /// `impactType` (the exit side's own for most bullets) and plays the
 /// table's alias for the surface struck, `<prefix>_<surface>`, where the
@@ -93,11 +57,7 @@ fn impact_sound(def: &[u8], variant: &[u8], surface: u8, exit: bool) -> Option<S
         (9 | 10, _) => "wpn_rocket_explode",
         _ => return None,
     };
-    let surface = SURFACE_NAMES
-        .get(usize::from(surface))
-        .copied()
-        .unwrap_or("default");
-    Some(format!("{prefix}_{surface}"))
+    Some(format!("{prefix}_{}", crate::surface::name(surface)))
 }
 
 /// `fireType` burst.
