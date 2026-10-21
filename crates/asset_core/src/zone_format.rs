@@ -200,6 +200,8 @@ pub struct ZoneWeapon {
     pub world_models: Vec<String>,
     /// View models (`gunXModel`) by index; empty where none is set.
     pub view_models: Vec<String>,
+    /// The tags its models hide.
+    pub hide_tags: Vec<String>,
     /// Damage scales by hit location, in the game's order; empty when the
     /// weapon has none.
     pub location_damage: Vec<f32>,

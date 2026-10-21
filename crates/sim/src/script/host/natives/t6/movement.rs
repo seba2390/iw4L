@@ -825,6 +825,7 @@ fn think(world: &mut World) {
         movements.0.retain(|id, _| actors.contains(id));
     }
     super::corpse::forget_deleted(world);
+    super::corpse::think(world);
     for id in actors {
         // The death state (`AIS_DEATH`): steps the death clip's root motion
         // while its animscript runs; once it ends the actor becomes a corpse.

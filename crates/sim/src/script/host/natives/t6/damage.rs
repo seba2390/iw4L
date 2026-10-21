@@ -575,11 +575,7 @@ fn finish_actor_damage(
     let dir = dir.unwrap_or(zero);
     if left < 1 {
         super::actor::clear_in_use(world, id);
-        // The dead actor's body is a corpse: the engine gives it the corpse
-        // contents, which bullets and blows pass through.
-        if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
-            entity.contents = CORPSE_CONTENTS;
-        }
+        super::corpse::died(world, id);
         raise(world, receiver.clone(), "death", vec![attacker.clone()]);
         let recorded = defined(&attacker)
             .and_then(|a| held_weapon(world, &a.clone()))
@@ -858,9 +854,6 @@ fn player_die(world: &mut World, receiver: &Value, death: Death) -> Result<(), S
     Ok(())
 }
 
-/// The contents the engine's corpse think gives a dead body.
-const CORPSE_CONTENTS: i32 = 0x0400_0000;
-
 /// A shot or blast the game's own weapon rules landed on a player or one of
 /// the game's actors: the rest of the game's `G_Damage` (the rules scaled
 /// the damage at its hit location already), with the rules' damage, means
@@ -954,8 +947,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "dodamage", do_damage);
     registry.register(Method, "finishactordamage", finish_actor_damage);
     registry.register(Method, "finishplayerdamage", finish_player_damage);
-    registry.register(Method, "startragdoll", |world, receiver, _| {
-        entity_id(world, receiver)?;
-        Err("t6.actors.ragdoll: ragdoll physics are not simulated; the body stays where its death clip leaves it".into())
+    registry.register(Method, "startragdoll", |world, receiver, args| {
+        let id = entity_id(world, receiver)?;
+        if !args.is_empty() {
+            int(args, 0)?;
+        }
+        super::ragdoll::start(world, id);
+        Ok(Value::Undefined)
     });
 }

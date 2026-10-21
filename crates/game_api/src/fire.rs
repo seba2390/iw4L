@@ -68,6 +68,8 @@ pub struct FireEntity {
     pub eye: Option<[f32; 3]>,
     /// A script model: a blast reaches it by its model's bounds.
     pub script_model: bool,
+    /// A dead player's or actor's body.
+    pub corpse: bool,
     /// It has its own blast damage rule (a destructible).
     pub blast_handler: bool,
     pub takes_damage: bool,

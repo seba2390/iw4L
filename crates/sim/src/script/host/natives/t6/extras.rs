@@ -546,16 +546,19 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(1))
     });
     registry.register(Method, "launchragdoll", |world, receiver, args| {
-        super::super::engine::entity_id(world, receiver)?;
-        super::vector(args, 0)?;
-        if args.len() > 1 {
-            string(args, 1)?;
-        }
+        let id = super::super::engine::entity_id(world, receiver)?;
+        let direction = super::vector(args, 0)?;
+        let bone = if args.len() > 1 {
+            Some(string(args, 1)?)
+        } else {
+            None
+        };
+        super::ragdoll::launch(world, id, direction, bone);
         Ok(Value::Undefined)
     });
     registry.register(Method, "isragdoll", |world, receiver, _| {
-        super::super::engine::entity_id(world, receiver)?;
-        Ok(Value::Int(0))
+        let id = super::super::engine::entity_id(world, receiver)?;
+        Ok(Value::Int(i32::from(super::ragdoll::is_ragdoll(world, id))))
     });
     registry.register(Method, "bloodimpact", |world, receiver, args| {
         super::super::engine::entity_id(world, receiver)?;
@@ -709,8 +712,10 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "getdvarcolorblue", |world, _, args| {
         dvar_color(world, args, 2)
     });
-    registry.register(Function, "physicsexplosionsphere", |_, _, args| {
-        super::vector(args, 0)?;
+    // The physics explosions send their event with the outer radius as its
+    // 16-bit parameter; the client pushes the nearest ragdolls.
+    registry.register(Function, "physicsexplosionsphere", |world, _, args| {
+        let origin = super::vector(args, 0)?;
         let outer = super::int(args, 1)? & 0xffff;
         let inner = super::float(args, 2)?;
         if inner < 0.0 {
@@ -719,13 +724,28 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if (outer as f32) < inner {
             return Err("Inner radius is outside the outer radius".into());
         }
-        super::float(args, 3)?;
+        let magnitude = super::float(args, 3)?;
         if args.len() > 4 {
             super::float(args, 4)?;
         }
         if args.len() > 5 {
             super::float(args, 5)?;
         }
+        super::ragdoll::explosion(world, false, origin, inner, outer as f32, None, magnitude);
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "physicsexplosioncylinder", |world, _, args| {
+        let origin = super::vector(args, 0)?;
+        let outer = super::int(args, 1)? & 0xffff;
+        let inner = super::float(args, 2)?;
+        if inner < 0.0 {
+            return Err("Radius is negative".into());
+        }
+        if (outer as f32) < inner {
+            return Err("Inner radius is outside the outer radius".into());
+        }
+        let magnitude = super::float(args, 3)?;
+        super::ragdoll::explosion(world, true, origin, inner, outer as f32, None, magnitude);
         Ok(Value::Undefined)
     });
     registry.register(Function, "physicsjetthrust", |_, _, args| {

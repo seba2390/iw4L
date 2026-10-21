@@ -489,6 +489,8 @@ pub(crate) fn destructible_debris(
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShotTarget {
     pub actor: bool,
+    /// A dead player's or actor's body.
+    pub corpse: bool,
     pub takes_damage: bool,
     pub health: i32,
     pub team: Option<&'static str>,
@@ -510,13 +512,18 @@ pub(crate) struct ShotTarget {
 }
 
 pub(crate) fn shot_target(world: &mut World, target: ScriptModelId) -> Option<ShotTarget> {
-    let (object, actor, base_takes_damage) = {
+    let (object, actor, corpse, base_takes_damage) = {
         let runtime = world.get_resource::<RoundScript>()?;
         let object = runtime.presented_by(target)?;
         let entity = &runtime.entities[&object];
         (
             object,
             entity.kind == super::entities::EntityKind::Actor,
+            matches!(
+                entity.kind,
+                super::entities::EntityKind::Corpse { .. }
+                    | super::entities::EntityKind::ActorCorpse
+            ),
             entity.accepts_damage(0),
         )
     };
@@ -603,6 +610,7 @@ pub(crate) fn shot_target(world: &mut World, target: ScriptModelId) -> Option<Sh
         .unwrap_or((None, 0));
     Some(ShotTarget {
         actor,
+        corpse,
         takes_damage,
         health,
         team,

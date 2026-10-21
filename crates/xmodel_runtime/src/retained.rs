@@ -21,10 +21,21 @@ pub struct TagRotation {
     pub angles: [f32; 3],
 }
 
+/// A bone placed outright in model space (a ragdoll's body), instead of
+/// where its animated parent puts it. Bones under it keep their animated
+/// local transforms.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoneOverride {
+    pub tag: String,
+    pub rotation: [f32; 4],
+    pub origin: [f32; 3],
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct DObjPoseRequest {
     pub tree: Option<XAnimTreeRuntime>,
     pub tag_rotations: Vec<TagRotation>,
+    pub bone_overrides: Vec<BoneOverride>,
     pub requested_parts: Option<PartBits>,
     pub hide_part_bits: HidePartBits,
 }
@@ -34,6 +45,7 @@ impl DObjPoseRequest {
         Self {
             tree: None,
             tag_rotations: Vec::new(),
+            bone_overrides: Vec::new(),
             requested_parts: None,
             hide_part_bits: HidePartBits::from_words([0; PartBits::WORDS]),
         }
@@ -456,5 +468,44 @@ pub fn pose_dobj_with_controller(
     }
     controller(dobj, &requested, &mut locals);
     dobj.apply_duplicates(&mut locals);
-    Ok(dobj.compose(&locals, world_from_model))
+    let mut world = dobj.compose(&locals, world_from_model);
+    apply_bone_overrides(dobj, &request.bone_overrides, world_from_model, &mut world);
+    Ok(world)
+}
+
+/// Puts each overridden bone where its override says and carries the bones
+/// under it along, each keeping its transform relative to its parent.
+fn apply_bone_overrides(
+    dobj: &DObj,
+    overrides: &[BoneOverride],
+    world_from_model: Mat4,
+    world: &mut [Mat4],
+) {
+    if overrides.is_empty() {
+        return;
+    }
+    let mut placed: Vec<Option<Mat4>> = vec![None; world.len()];
+    for bone_override in overrides {
+        if let Some(bone) = dobj.find(&bone_override.tag)
+            && let Some(slot) = placed.get_mut(bone)
+        {
+            *slot = Some(
+                world_from_model
+                    * Mat4::from_rotation_translation(
+                        glam::Quat::from_array(bone_override.rotation).normalize(),
+                        Vec3::from_array(bone_override.origin),
+                    ),
+            );
+        }
+    }
+    let animated = world.to_vec();
+    for (index, bone) in dobj.bones.iter().enumerate() {
+        if let Some(placed) = placed[index] {
+            world[index] = placed;
+        } else if let Some(parent) = bone.parent
+            && world[parent] != animated[parent]
+        {
+            world[index] = world[parent] * animated[parent].inverse() * animated[index];
+        }
+    }
 }
