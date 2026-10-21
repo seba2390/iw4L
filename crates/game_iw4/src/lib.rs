@@ -37,7 +37,7 @@ impl game_api::GameScripts for Iw4 {
 
 /// Modern Warfare 2's modes: a prematch countdown, deaths, code-drawn HUD.
 const MODE: ModeRules = ModeRules {
-    play_starts_on: "prematch_over",
+    play_starts_on: Some("prematch_over"),
     every_player_downs: Rule::Known(false),
     downed: game_api::DownedRules::BRIEFLY_IMMUNE,
     level_failed: None,
@@ -46,7 +46,8 @@ const MODE: ModeRules = ModeRules {
     bullet_mask: None,
     melee_mask: None,
     missiles: None,
-    spawn_at_default_health: false,
+    spawn_health: game_api::SpawnHealth::Stored,
+    aitype_spawners: false,
     connect_team: None,
     scripts_spawn_players: false,
     spawn_classnames: None,

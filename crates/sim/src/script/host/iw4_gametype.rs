@@ -11,7 +11,7 @@ pub(crate) fn apply_level_notify(frame: &mut FrameWorld, name: &str) {
     let Some(mode) = frame.bootstrap_ref().mode else {
         return;
     };
-    if name == mode.play_starts_on && frame.phase() == MatchPhase::Warmup {
+    if mode.play_starts_on == Some(name) && frame.phase() == MatchPhase::Warmup {
         crate::score::finish_prematch(frame);
     }
 }

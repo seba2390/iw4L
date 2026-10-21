@@ -482,11 +482,28 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         mission_failed(world)?;
         Ok(Value::Undefined)
     });
+    // `SaveGame(name, description, screenshot, flag)`: Black Ops refuses a
+    // save while the first player is dead and saves the whole game under
+    // `<mapname>` ("levelstart") or `<mapname>-<name>`. The runtime keeps
+    // no save games: the level-start save `_autosave::start_level_save`
+    // asks for is not written (`t5.match.level_failed`).
+    registry.register(Function, "savegame", |world, _, _| {
+        let dead = crate::frame::FrameWorld::from_world(world)
+            .player(crate::ClientId(0))
+            .is_some_and(|player| player.health < 1);
+        if dead {
+            return Err("Attempting to save while dead\n".into());
+        }
+        diag::info!(
+            Sim,
+            "game gap t5.match.level_failed: savegame writes no save (the runtime keeps no save games)"
+        );
+        Ok(Value::Undefined)
+    });
     for name in [
         "createthreatbiasgroup",
         "setthreatbias",
         "ropesetflag",
-        "savegame",
         "reportmtu",
     ] {
         registry.register(Function, name, |_, _, _| Ok(Value::Undefined));
@@ -1271,10 +1288,55 @@ fn register_actor(registry: &mut NativeRegistry) {
             (to[i] - from[i]) * fraction + from[i]
         })))
     });
+    registry.register(Namespace::Function, "hascollectible", |world, _, args| {
+        has_collectible(world, args)
+    });
+    // `getWeaponClipModel(name)`: the weapon's world clip model, else "". An
+    // unknown name other than "" and "none" prints a warning.
+    registry.register(
+        Namespace::Function,
+        "getweaponclipmodel",
+        |world, _, args| {
+            let name = super::super::args::string(args, 0)?;
+            let frame = crate::frame::FrameWorld::from_world(world);
+            let Some(index) = frame
+                .weapon_index_by_script_name(&name)
+                .filter(|&index| index != 0)
+            else {
+                if !name.is_empty() && !name.eq_ignore_ascii_case("none") {
+                    diag::info!(Sim, "unknown weapon '{name}' in getWeaponClipModel");
+                }
+                return Ok(Value::string(""));
+            };
+            let model = frame
+                .content()
+                .game_weapon(index)
+                .and_then(|game| game.world_clip_model.clone());
+            Ok(Value::string(model.as_deref().unwrap_or("")))
+        },
+    );
     registry.register(Namespace::Function, "modelhasphyspreset", |_, _, args| {
         super::super::args::string(args, 0)?;
         Ok(Value::Int(0))
     });
+}
+
+/// `HasCollectible(n)`: Black Ops reads character `n − 1` of the
+/// `bg_collectibles` dvar, which the player's profile fills, as unlocked
+/// unless it is `'0'`. It does not check the index; with no profile the dvar
+/// is its registered default `""`, and a character past its end is taken as
+/// not unlocked.
+pub(crate) fn has_collectible(world: &World, args: &[Value]) -> Result<Value, String> {
+    let n = super::super::args::int(args, 0)?;
+    let unlocked = world
+        .get_resource::<crate::script::MatchScript>()
+        .and_then(|script| script.dvars.get("bg_collectibles"))
+        .and_then(|value| {
+            let index = usize::try_from(n.checked_sub(1)?).ok()?;
+            value.as_bytes().get(index).copied()
+        })
+        .is_some_and(|c| c != b'0');
+    Ok(Value::Int(unlocked.into()))
 }
 
 /// Black Ops' `weaponType` gas.

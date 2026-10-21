@@ -1729,6 +1729,10 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
     registry.register(Function, "extracamconfig", |_, _, _| {
         Err("extracamconfig is deprecated".into())
     });
+    // The client's `HasCollectible(n)` reads the same dvar as the server's.
+    registry.register(Function, "hascollectible", |world, _, args| {
+        super::t5_zombie::has_collectible(world, args)
+    });
     // `gettagorigin(tag)` / `gettagangles(tag)` / `gettagforwardvector(tag)`:
     // bone world origin, angles, or forward axis on a mirrored or client
     // entity's DObj.

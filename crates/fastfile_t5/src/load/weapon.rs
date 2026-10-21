@@ -87,6 +87,7 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         rocket_model_name: assets.rocket,
         projectile_model_name: assets.projectile,
         world_model_name: assets.world,
+        world_clip_model_name: assets.clip,
         move_speed_scale: body_combat.move_speed_scale,
         ads_move_speed_scale: body_combat.ads_move_speed_scale,
         weap_type: body_combat.weap_type,
@@ -146,7 +147,7 @@ fn load_weapon_def(
     let reticle_side = follow_material_name(s, links, p.at(0x1a4))?;
 
     let world0 = follow_xmodel_array(s, links, p, 0x30c)?;
-    asset_ptr_at(s, links, AssetType::XModel, p.at(0x310))?;
+    let clip = follow_xmodel_ptr(s, links, p.at(sz::WEAPON_DEF_WORLD_CLIP_MODEL_OFF))?;
     let rocket = follow_xmodel_ptr(s, links, p.at(0x314))?;
     for off in [0x318, 0x31c] {
         asset_ptr_at(s, links, AssetType::XModel, p.at(off))?;
@@ -236,6 +237,7 @@ fn load_weapon_def(
         rocket,
         projectile,
         world: world0,
+        clip,
         reticle_center,
         reticle_side,
     })
@@ -412,6 +414,7 @@ struct WeaponAssets {
     rocket: Option<Ptr>,
     projectile: Option<Ptr>,
     world: Option<Ptr>,
+    clip: Option<Ptr>,
     reticle_center: Option<Ptr>,
     reticle_side: Option<Ptr>,
 }

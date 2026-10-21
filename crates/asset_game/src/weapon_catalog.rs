@@ -156,6 +156,9 @@ pub(crate) struct WeaponBodyFacts {
 
     pub ads_zoom_fov: f32,
     pub scope_zoom: weapon_iw4::ScopeZoom,
+    /// The definition's three zoom fields of view, as stored, for a game
+    /// that keeps three; zero otherwise.
+    pub ads_zoom_fovs: [f32; 3],
 
     pub ads_dof: Option<[f32; 2]>,
 
@@ -561,6 +564,8 @@ pub struct GameWeaponBytes {
     /// surface type.
     pub parallel_bounce: Option<Box<[f32]>>,
     pub perpendicular_bounce: Option<Box<[f32]>>,
+    /// The definition's world clip model, when it names one.
+    pub world_clip_model: Option<String>,
 }
 
 #[derive(Clone, Debug)]

@@ -169,7 +169,9 @@ impl game_api::GameScripts for T5 {
 }
 
 const ZOMBIE_MODE: ModeRules = ModeRules {
-    play_starts_on: "all_players_connected",
+    // Black Ops' level runs its entities from the first frame: no warmup
+    // (`all_players_connected` is the scripts' own flag).
+    play_starts_on: None,
     movement: Rule::Known(MovementRules::Game(&movement::ZOMBIES)),
     weapons: Rule::Known(WeaponRules::Game),
     // In zombie mode every lethal hit downs the player: the scripts decide
@@ -211,7 +213,17 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     bullet_mask: None,
     melee_mask: None,
     missiles: None,
-    spawn_at_default_health: true,
+    // A player spawn sets health and max health to `g_player_maxhealth`
+    // (registered 100, 10 to 2000; no script sets it), never the stored
+    // max health.
+    spawn_health: game_api::SpawnHealth::Dvar {
+        name: "g_player_maxhealth",
+        default: 100,
+        range: (10, 2000),
+    },
+    // The level's start runs `spawner()` on every actor spawner before the
+    // aitypes' `precache()` and the level's `main()`.
+    aitype_spawners: true,
     connect_team: Some("allies"),
     scripts_spawn_players: true,
     spawn_classnames: None,

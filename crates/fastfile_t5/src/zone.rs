@@ -418,6 +418,8 @@ pub struct WeaponGeometry {
     pub hand_xmodel_name: Option<Ptr>,
 
     pub world_model_name: Option<Ptr>,
+    /// `worldClipModel`'s name.
+    pub world_clip_model_name: Option<Ptr>,
 
     pub rocket_model_name: Option<Ptr>,
 

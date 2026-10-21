@@ -727,6 +727,8 @@ const _: () = assert!(WEAPON_DEF_RETICLE_MIN_OFS_OFF == WEAPON_DEF_RETICLE_SIDE_
 
 pub const WEAPON_DEF_HUD_ICON_OFF: usize = 0x320;
 pub const WEAPON_DEF_KILL_ICON_OFF: usize = 0x578;
+/// `worldClipModel`: the clip model an AI's weapon drops on a reload.
+pub const WEAPON_DEF_WORLD_CLIP_MODEL_OFF: usize = 0x310;
 pub const WEAPON_DEF_KILL_ICON_RATIO_OFF: usize = 0x57c;
 pub const WEAPON_DEF_FLIP_KILL_ICON_OFF: usize = 0x580;
 

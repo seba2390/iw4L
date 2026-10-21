@@ -57,6 +57,116 @@ pub(crate) struct T5HudState<'a> {
     pub local_client: usize,
     pub scores: Vec<(usize, i32)>,
     pub deadquote_start_ms: Option<i32>,
+    /// What the game's hint and message owner draws show, by number.
+    pub owner_hints: Vec<(i32, OwnerHintText)>,
+}
+
+/// A hint or message owner draw, resolved for the frame.
+#[derive(Clone, Debug)]
+pub(crate) enum OwnerHintText {
+    Nothing,
+    /// Text centred on the item, in the colour the game draws it.
+    Text {
+        text: String,
+        white: bool,
+    },
+}
+
+/// The owner draws the game's hint rule answers for.
+const OWNER_HINT_DRAWS: [i32; 14] = [
+    71, 80, 90, 113, 132, 192, 195, 196, 197, 199, 200, 311, 316, 322,
+];
+
+/// Resolves the game's hint and message owner draws for the local player;
+/// a part of the game's rule the runtime does not run is logged once by its
+/// id and draws nothing.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn resolve_owner_hints(
+    hud: &game_api::hud::GameCodeHud,
+    ps: &PlayerState,
+    local: i32,
+    weapons: Option<&BoundWeapons<'_>>,
+    scoreboard: bool,
+    paused: bool,
+    dvars: sim::ScriptDvars<'_>,
+    strings: Option<&assets::PreparedLocalizedStrings>,
+    namespace: asset_core::AssetNamespace,
+    input: Option<&frame::HudInputView>,
+    reported: &mut std::collections::HashSet<&'static str>,
+) -> Vec<(i32, OwnerHintText)> {
+    let player = ps.move_player(local, false);
+    let weapon = |index: u32| {
+        let facts = weapons?.row(index)?.hud_facts()?;
+        let [a, b, c] = facts.ads_zoom_fovs;
+        Some(game_api::hud::HintWeapon {
+            ads_overlay: facts.overlay_reticle != 0
+                || weapons?.registry().overlay_material_of(index).is_some(),
+            weap_class: facts.weap_class,
+            zoom_varies: a != b || b != c,
+        })
+    };
+    let dvar = |name: &str| dvars.float(name);
+    let view = game_api::hud::OwnerHintView {
+        player: &player,
+        weapon: &weapon,
+        scoreboard,
+        paused,
+        dvar: &dvar,
+    };
+    let mut out = Vec::new();
+    for owner_draw in OWNER_HINT_DRAWS {
+        let shown = match (hud.owner_hint)(owner_draw, &view) {
+            game_api::hud::OwnerHint::NotHint => continue,
+            game_api::hud::OwnerHint::Nothing => OwnerHintText::Nothing,
+            game_api::hud::OwnerHint::Unrun(gap) => {
+                if reported.insert(gap.id) {
+                    diag::info!(Ui, "game gap {}: {}", gap.id, gap.what);
+                }
+                OwnerHintText::Nothing
+            }
+            game_api::hud::OwnerHint::Text { key, binds } => {
+                let Some(template) = strings.and_then(|s| s.0.text_in(namespace, key)) else {
+                    continue;
+                };
+                let bind = binds
+                    .iter()
+                    .find_map(|cmd| input.and_then(|i| i.binding_keys.get(*cmd)))
+                    .map_or("", String::as_str);
+                OwnerHintText::Text {
+                    text: template.replace("&&1", bind),
+                    white: owner_draw != 80,
+                }
+            }
+        };
+        out.push((owner_draw, shown));
+    }
+    out
+}
+
+/// Paints a resolved hint: Black Ops centres it on the item by half its
+/// width, rounded to the nearest whole unit.
+fn paint_owner_hint(
+    args: &OwnerDrawArgs<'_>,
+    hint: &OwnerHintText,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let OwnerHintText::Text { text, white } = hint else {
+        return OwnerDrawPaint::Painted;
+    };
+    let color = if *white { [1.0; 4] } else { args.color };
+    match crate::chrome::push_owner_text_at(
+        args,
+        text,
+        color,
+        |width, _| {
+            let half = (f64::from(width) * 0.5 + 9.313_225_746_154_785e-10).round_ties_even();
+            (args.rect.x - half as f32, args.rect.y)
+        },
+        frame,
+    ) {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
+    }
 }
 
 /// Latches the client time when `ui_deadquote` is set by `MissionFailed` (`'Y'`),
@@ -910,7 +1020,10 @@ fn paint_owner(
         CG_COMPETITIVE_MODE_SCORES => paint_competitive_scores(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         CG_VEHICLE_HUD_2 | CG_AMITALKING => OwnerDrawPaint::Painted,
-        _ => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+        n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
+            Some((_, hint)) => paint_owner_hint(&args, hint, frame),
+            None => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+        },
     }
 }
 
