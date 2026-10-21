@@ -424,6 +424,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 model_bounds: None,
                 eye: None,
                 script_model: false,
+                corpse: false,
                 blast_handler: false,
                 takes_damage: alive,
                 health: ps.health,
@@ -452,6 +453,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             model_bounds: target.brush.map(|(_, local)| local),
             eye: target.eye,
             script_model: target.script_model,
+            corpse: target.corpse,
             blast_handler: target.destructible,
             takes_damage: target.takes_damage,
             health: target.health,
@@ -1331,6 +1333,18 @@ pub(crate) fn make_game_missile_dud(world: &mut FrameWorld, entnum: i32) -> bool
     };
     rules.0.make_dud(missile);
     true
+}
+
+/// Whether a game's missile is a dud.
+pub(crate) fn game_missile_is_dud(world: &FrameWorld, entnum: i32) -> bool {
+    let Some(rules) = missile_rules(world) else {
+        return false;
+    };
+    world
+        .ecs_ref()
+        .get_resource::<GameMissiles>()
+        .and_then(|missiles| missiles.0.get(&entnum))
+        .is_some_and(|missile| rules.0.is_dud(missile))
 }
 
 pub(crate) fn reset_game_missile_detonation_time(

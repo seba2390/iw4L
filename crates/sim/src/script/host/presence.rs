@@ -385,6 +385,8 @@ pub(crate) fn sync_presence(world: &mut World) {
     present(world, now);
     super::actor_anims::present(world);
     super::natives::t6::anim_present(world);
+    super::natives::t6::draw_barriers(world);
+    super::natives::t6::ragdoll_present(world);
     publish_killcam_cameras(world);
     settle_collision(world);
     resolve_link_tags(world);

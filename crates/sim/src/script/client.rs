@@ -1099,10 +1099,17 @@ pub(crate) fn vision_calls(server: &World) -> Vec<(u32, crate::VisionCall)> {
 
 /// The local client's latest spawned dynamic entity launches and cleanup serial.
 pub(crate) fn spawned_dyn_ents(server: &World) -> (Vec<(u32, crate::SpawnedDynEntLaunch)>, u32) {
-    let mut out = server.get_resource::<ClientScripts>().map_or_else(
+    let output = server
+        .get_resource::<ClientScripts>()
+        .map(|client| client.world.resource::<ClientOutput>())
+        .or_else(|| {
+            server
+                .get_resource::<crate::script::host::client_scripts::ClientScripts>()
+                .map(|client| client.world.resource::<ClientOutput>())
+        });
+    let mut out = output.map_or_else(
         || (Vec::new(), 0),
-        |client| {
-            let output = client.world.resource::<ClientOutput>();
+        |output| {
             (
                 output.spawned_dyn_ents.iter().cloned().collect(),
                 output.dyn_ent_cleanup_serial,

@@ -26,6 +26,9 @@ pub(crate) const VIEWMODEL: ViewmodelRules = ViewmodelRules {
     }),
     playback: None,
     unslotted: None,
+    pick: None,
+    blend: None,
+    left_empty_idle: false,
 };
 
 /// Where an animation's time comes from: a field of the weapon's definition

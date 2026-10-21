@@ -370,6 +370,74 @@ impl game_api::GameMenus for T5 {
 /// so a menu's scale never changes an item.
 struct MenuLayout;
 
+/// Where Black Ops' wrapped lines start and end in `chars` at `width`
+/// (its line breaker): each `(start, end)`; a line that cannot hold one
+/// glyph stops the text.
+fn wrap_line_ends(
+    chars: &[char],
+    width: i32,
+    glyph: &dyn Fn(char) -> i32,
+    scale: f32,
+) -> Vec<(usize, usize)> {
+    let mut ends = Vec::new();
+    let mut start = 0;
+    while start < chars.len() {
+        let end = wrap_line_end(chars, start, width, glyph, scale);
+        if end <= start {
+            break;
+        }
+        ends.push((start, end));
+        start = end;
+        while start < chars.len() && chars[start] != '\n' && chars[start].is_whitespace() {
+            start += 1;
+        }
+    }
+    ends
+}
+
+/// One wrapped line of Black Ops' text from `start`: where it ends.
+fn wrap_line_end(
+    chars: &[char],
+    start: usize,
+    width: i32,
+    glyph: &dyn Fn(char) -> i32,
+    scale: f32,
+) -> usize {
+    let limit = width as f32;
+    let mut advance = 0;
+    let mut space_break = None;
+    let mut at = start;
+    while at < chars.len() {
+        let c = chars[at];
+        let mut next = at + 1;
+        match c {
+            '\r' => advance = 0,
+            '\n' => return next,
+            '^' if chars
+                .get(next)
+                .is_some_and(|&code| ('0'..='@').contains(&code) || code == 'F') =>
+            {
+                next += 1;
+            }
+            _ => {
+                advance += glyph(c);
+                if at != start && c.is_whitespace() {
+                    space_break = Some(next);
+                }
+                let wide = limit < advance as f32 * scale;
+                if let Some(end) = space_break.filter(|_| wide) {
+                    return end;
+                }
+                if wide {
+                    return at;
+                }
+            }
+        }
+        at = next;
+    }
+    chars.len()
+}
+
 /// Black Ops rounds a measured text size to the nearest whole pixel, halves up.
 fn round_half_up(value: f32) -> f32 {
     (value + 0.5).floor()
@@ -426,6 +494,64 @@ impl game_api::MenuLayout for MenuLayout {
 
     fn window_rect(&self, rect: [f32; 4], _menu_scale: f32) -> [f32; 4] {
         rect
+    }
+
+    /// Black Ops' text extents take the width of the dvar's value (as
+    /// stored, not as the item shows it) off the rect of these item types.
+    fn value_room(&self, item_type: i32) -> bool {
+        matches!(item_type, 5 | 7 | 13 | 14 | 22 | 30)
+    }
+
+    /// Black Ops' text width skips `^` with `0` to `@` or `F`, `^C` with a
+    /// `0` to `@` after it, and `^L`; any other `^` is a glyph.
+    fn text_code_len(&self, next: char, after: Option<char>) -> usize {
+        let code = |c: char| ('0'..='@').contains(&c);
+        match next {
+            c if code(c) || c == 'F' => 1,
+            'C' if after.is_some_and(code) => 2,
+            'L' => 1,
+            _ => 0,
+        }
+    }
+
+    /// Black Ops' wrapped text: each line ends after the last space before
+    /// the glyphs pass the rect's width (or mid-word when none), a `\n`
+    /// ends a line and `\r` restarts the count; spaces after a break are
+    /// skipped. Centred text that overflows is re-wrapped to as few lines,
+    /// at the narrowest width (from its even share, in steps of 8) that
+    /// keeps that many.
+    fn wrap_lines(
+        &self,
+        text: &str,
+        rect_w: f32,
+        align_mode: i32,
+        text_w: f32,
+        glyph: &dyn Fn(char) -> i32,
+        scale: f32,
+    ) -> Option<Vec<String>> {
+        let chars: Vec<char> = text.chars().collect();
+        let mut width = rect_w as i32;
+        if rect_w != 0.0 && rect_w < text_w && align_mode & 3 == 1 {
+            let lines = (f64::from(text_w) / f64::from(rect_w)).ceil() as i32;
+            let mut wrap = (f64::from(text_w) / f64::from(lines)).ceil() as i32;
+            let full = width;
+            width = loop {
+                if wrap >= full {
+                    break full;
+                }
+                if wrap_line_ends(&chars, wrap, glyph, scale).len() as i32 == lines {
+                    break wrap;
+                }
+                wrap += 8;
+            };
+        }
+        let ends = wrap_line_ends(&chars, width, glyph, scale);
+        let mut lines = Vec::with_capacity(ends.len());
+        for (start, end) in ends {
+            let line: String = chars[start..end].iter().collect();
+            lines.push(line.trim_end_matches(['\n', '\r']).to_owned());
+        }
+        Some(lines)
     }
 
     /// Black Ops' `ScrPlace_SetupFloatViewport` passes `1.0` for both the

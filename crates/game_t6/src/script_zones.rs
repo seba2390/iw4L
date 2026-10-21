@@ -220,6 +220,7 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
                     .to_owned()
             })
             .collect(),
+        hide_tags: weapon.hide_tags().map(str::to_owned).collect(),
         turret_convergence: def::TURRET_CONVERGENCE.map(|off| weapon.def_f32(off)),
         turret_arcs: def::TURRET_ARCS.map(|off| weapon.def_f32(off)),
         turret_spread: def::TURRET_SPREAD.map(|off| weapon.def_f32(off)),

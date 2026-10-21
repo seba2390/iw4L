@@ -202,14 +202,6 @@ fn vehicle_hits_unknown() -> &'static Unknown {
     )
 }
 
-fn corpse_unknown() -> &'static Unknown {
-    unknown!(
-        "t6.weapons.corpse_surface",
-        "a bullet hitting a dead player's or actor's body takes the surface the trace gives, not flesh",
-        "which entities are corpses in the runtime"
-    )
-}
-
 fn pass_through_unknown() -> &'static Unknown {
     unknown!(
         "t6.weapons.client_pass_through",
@@ -1008,10 +1000,10 @@ impl Shot<'_> {
             if br.trace.hit_location == HITLOC_RIOTSHIELD {
                 br.trace.surface_flags = surf::RIOTSHIELD;
             } else if br.trace.surface_flags == 0 {
-                match entity {
-                    Some(e) if sentient(e) => br.trace.surface_flags = surf::FLESH,
-                    Some(_) => self.gaps.push(corpse_unknown()),
-                    None => {}
+                // Players, actors and their corpses are flesh where the
+                // trace names no surface.
+                if entity.is_some_and(|e| sentient(e) || e.corpse) {
+                    br.trace.surface_flags = surf::FLESH;
                 }
             }
             br.ignore_hit_entity = self.ps.link_flags & 4 == 0

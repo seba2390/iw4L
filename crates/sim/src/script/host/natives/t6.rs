@@ -20,6 +20,7 @@ mod damage;
 pub(crate) use actor::in_use as actor_in_use;
 pub(crate) use actor::init_spawners as init_actor_spawners;
 pub(crate) use anim::present as anim_present;
+pub(crate) use barrier::draw as draw_barriers;
 pub(crate) use damage::zone_location_scale;
 pub(crate) mod dvars;
 mod effect;
@@ -34,6 +35,8 @@ mod paths;
 mod player;
 pub(crate) mod poison_overlay;
 mod radius;
+mod ragdoll;
+pub(crate) use ragdoll::present as ragdoll_present;
 pub(crate) mod revive_overlay;
 mod riotshield;
 mod rumble;
@@ -1033,6 +1036,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let options = if args.len() > 2 { int(args, 2)? } else { 0 };
         set_model(world, receiver, &model)?;
         let id = super::engine::entity_id(world, receiver)?;
+        weapon::hide_weapon_tags(world, id, &name);
         let flags = &mut *world.get_resource_or_insert_with(EntityFlags::default);
         flags.weapon_hide_tags.insert(id, name);
         flags.weapon_options.insert(id, options);
@@ -1611,6 +1615,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             ));
         }
         let id = super::engine::entity_id(world, receiver)?;
+        weapon::hide_weapon_tags(world, id, &name);
         world
             .get_resource_or_insert_with(EntityFlags::default)
             .weapon_hide_tags

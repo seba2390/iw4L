@@ -864,6 +864,10 @@ impl MissilePhysics for T6Missiles {
         state.write(&mut missile.game);
     }
 
+    fn is_dud(&self, missile: &GameMissile) -> bool {
+        State::read(&missile.game).dud
+    }
+
     fn reset_detonation_time(
         &self,
         missile: &mut GameMissile,

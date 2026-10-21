@@ -7,6 +7,9 @@ pub mod variant {
     pub const ALT_WEAPON_NAME: u32 = 16;
     pub const XANIMS: u32 = 32;
     pub const XANIM_COUNT: u32 = 88;
+    /// The tags the weapon's models hide (script strings).
+    pub const HIDE_TAGS: u32 = 36;
+    pub const HIDE_TAG_COUNT: u32 = 32;
     pub const ATTACH_VIEW_MODEL: u32 = 40;
     pub const ATTACH_WORLD_MODEL: u32 = 44;
     pub const ATTACH_VIEW_MODEL_OFFSETS: u32 = 56;
@@ -756,6 +759,17 @@ impl<'z> WeaponView<'z> {
             let asset = load.asset_in(owner, arr?.at(4 * i))?;
             (asset.ty == crate::AssetType::AttachmentUnique)
                 .then_some(AttachmentUniqueView { load, asset })
+        })
+    }
+
+    /// The tags the weapon hides on its models, in order.
+    pub fn hide_tags(&self) -> impl Iterator<Item = &'z str> + 'z {
+        let load = self.load;
+        let arr = self.variant_ptr(variant::HIDE_TAGS);
+        (0..variant::HIDE_TAG_COUNT).map_while(move |i| {
+            let b = load.blocks.bytes(arr?.at(2 * i), 2).ok()?;
+            let id = u16::from_le_bytes([b[0], b[1]]);
+            (id != 0).then(|| load.script_string(id)).flatten()
         })
     }
 

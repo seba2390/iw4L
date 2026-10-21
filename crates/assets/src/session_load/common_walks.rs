@@ -1538,6 +1538,20 @@ pub(super) fn walk_zombie_commons(
 /// The 2D materials zombie scripts and Black Ops' HUD menus and fonts name
 /// (round chalk, perk and power-up icons, the weapon info frame), decoded for
 /// the HUD from the zone images they sample.
+/// The pass state Black Ops draws a HUD material with: its technique set's
+/// 2D (unlit) technique's state bits, when IW4L can run them.
+fn hud_pass_state(
+    material: &asset_material::AuthoredMaterial,
+) -> Option<render_material::CompiledPassState> {
+    /// The technique slot Black Ops' 2D draws use (the `2d` technique set
+    /// fills only this one).
+    const UNLIT_SLOT: usize = 4;
+    let entry = *material.t5_state_bits_entry?.get(UNLIT_SLOT)?;
+    let words = *material.state_bits.get(usize::from(entry))?;
+    let state = asset_material::compile_material_state(material.namespace, words)?;
+    state.unsupported_host_fields().is_none().then_some(state)
+}
+
 fn zombie_hud_images(
     zones: &[(
         asset_world::MapXModelSceneCatalog,
@@ -1593,7 +1607,7 @@ fn zombie_hud_images(
                         name,
                         asset_material::ZoneUiImage {
                             iwi: std::sync::Arc::new([]),
-                            state: None,
+                            state: hud_pass_state(material),
                             rgba: Some((width, height, std::sync::Arc::new(rgba))),
                         },
                     ));
