@@ -257,6 +257,121 @@ fn drop_to_floor(world: &mut World, id: u64) {
         .set_object_field(id, "origin", Value::Vector(landed));
 }
 
+/// The box an unforced spawn may not overlap a player or living actor in,
+/// from the spawner's origin.
+const SPAWN_BOX: ([f32; 3], [f32; 3]) = ([-15.0, -15.0, 0.0], [15.0, 15.0, 70.0]);
+/// The box whose points a player must not see for an unforced spawn, and
+/// where in it each point lies (a share of its size on each axis).
+const SIGHT_BOX: ([f32; 3], [f32; 3]) = ([-15.0, -15.0, 0.0], [15.0, 15.0, 48.0]);
+const SIGHT_POINTS: [[f32; 3]; 11] = [
+    [0.5, 0.5, 0.8],
+    [0.5, 0.5, 0.5],
+    [0.5, 0.5, 0.2],
+    [0.0, 0.0, 1.0],
+    [0.0, 1.0, 1.0],
+    [1.0, 1.0, 1.0],
+    [1.0, 0.0, 1.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0],
+];
+/// The sight trace's contents.
+const SPAWN_SIGHT_MASK: u32 = 0x1801;
+
+/// Whether a spawn at `origin` would telefrag: a player, or an actor with
+/// health, overlaps the spawn box.
+fn spawn_telefrags(world: &mut World, origin: [f32; 3]) -> bool {
+    let mins: [f32; 3] = core::array::from_fn(|i| origin[i] + SPAWN_BOX.0[i]);
+    let maxs: [f32; 3] = core::array::from_fn(|i| origin[i] + SPAWN_BOX.1[i]);
+    let overlaps =
+        |lo: [f32; 3], hi: [f32; 3]| (0..3).all(|i| lo[i] <= maxs[i] && hi[i] >= mins[i]);
+    {
+        let frame = crate::frame::FrameWorld::from_world(world);
+        for id in frame.client_ids_sorted() {
+            if let Some(ps) = frame.player(id) {
+                let o = ps.origin;
+                if overlaps(
+                    [o[0] - 15.0, o[1] - 15.0, o[2]],
+                    [o[0] + 15.0, o[1] + 15.0, o[2] + 70.0],
+                ) {
+                    return true;
+                }
+            }
+        }
+    }
+    let living: Vec<(u64, [f32; 3])> = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let ids: Vec<u64> = runtime
+            .entities
+            .iter()
+            .filter(|(_, entity)| entity.kind == EntityKind::Actor)
+            .map(|(id, _)| *id)
+            .collect();
+        let mut living = Vec::new();
+        for id in ids {
+            let alive = matches!(runtime.object_field(id, "health"), Value::Int(h) if h > 0);
+            if let (true, Value::Vector(at)) = (alive, runtime.object_field(id, "origin")) {
+                living.push((id, at));
+            }
+        }
+        living
+    };
+    let hulls = world.get_resource::<Actors>();
+    living.into_iter().any(|(id, at)| {
+        let (radius, floor, top) = hulls
+            .and_then(|actors| actors.0.get(&id))
+            .map_or((15.0, 0.0, 72.0), |actor| actor.hull);
+        overlaps(
+            [at[0] - radius, at[1] - radius, at[2] + floor],
+            [at[0] + radius, at[1] + radius, at[2] + top],
+        )
+    })
+}
+
+/// Whether a living player sees any of the points of the sight box at
+/// `origin`, by sight traces from his eye that pass through neither him nor
+/// the spawner.
+fn spawn_seen(world: &mut World, spawner: u64, origin: [f32; 3]) -> bool {
+    let eyes: Vec<(crate::ClientId, [f32; 3])> = {
+        let frame = crate::frame::FrameWorld::from_world(world);
+        frame
+            .client_ids_sorted()
+            .into_iter()
+            .filter(|&id| {
+                frame
+                    .client_meta(id)
+                    .is_some_and(|m| m.lifecycle == crate::ClientLifecycle::Alive)
+            })
+            .filter_map(|id| Some((id, crate::script_player::eye(&frame, id)?)))
+            .collect()
+    };
+    let spawner_model = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&spawner)
+        .and_then(|entity| entity.presence);
+    for (client, eye) in eyes {
+        for share in SIGHT_POINTS {
+            let point: [f32; 3] = core::array::from_fn(|i| {
+                (SIGHT_BOX.1[i] - SIGHT_BOX.0[i]) * share[i] + origin[i] + SIGHT_BOX.0[i]
+            });
+            let ignore = super::super::engine::TraceIgnore {
+                client: Some(client),
+                other_client: None,
+                model: spawner_model,
+            };
+            if matches!(
+                super::super::engine::entity_trace(world, eye, point, SPAWN_SIGHT_MASK, ignore),
+                crate::bullet_collision::TraceOutcome::Miss { .. }
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
     let spawner = entity_id(world, receiver)?;
     let (classname, targetname, origin) = {
@@ -278,14 +393,36 @@ fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
             origin[0], origin[1], origin[2]
         ));
     };
-    if !args.is_empty() {
-        int(args, 0)?;
-    }
+    let forced = !args.is_empty() && int(args, 0)? != 0;
     let name = if args.len() > 1 {
         Value::String(string(args, 1)?.into())
     } else {
         Value::Undefined
     };
+    // An unforced spawn is refused where it would telefrag or a player
+    // would see it appear.
+    if !forced {
+        if spawn_telefrags(world, origin) {
+            diag::info!(
+                Sim,
+                "spawner '{targetname}' at ({:.0} {:.0} {:.0}) would telefrag; not spawned",
+                origin[0],
+                origin[1],
+                origin[2]
+            );
+            return Ok(Value::Undefined);
+        }
+        if spawn_seen(world, spawner, origin) {
+            diag::info!(
+                Sim,
+                "spawner '{targetname}' at ({:.0} {:.0} {:.0}) is in a player's sight; not spawned",
+                origin[0],
+                origin[1],
+                origin[2]
+            );
+            return Ok(Value::Undefined);
+        }
+    }
     if live_actors(world) >= ACTOR_SLOTS {
         diag::info!(Sim, "spawnactor: Actor allocation failed");
         return Ok(Value::Undefined);
