@@ -246,15 +246,20 @@ impl ViewmodelController {
     /// first frame at the rate the game gives for its length (msec, as the
     /// game's animation system reads it), and every other animation stops.
     /// False when the weapon has no animation there.
-    pub fn start_game_anim(&mut self, slot: usize, rate: impl FnOnce(i32) -> f32) -> bool {
-        self.zero_dispatch_slots(ACTION_GOAL_TIME_SECS);
+    pub fn start_game_anim(
+        &mut self,
+        slot: usize,
+        rate: impl FnOnce(i32) -> f32,
+        goal_time: f32,
+    ) -> bool {
+        self.zero_dispatch_slots(goal_time);
         self.action_remaining = None;
         let Some(clip) = self.weapon.clip_at(slot).cloned() else {
             self.action = None;
             return false;
         };
         let rate = rate(clip_length_ms(&clip));
-        self.restart(slot, clip, rate);
+        self.restart_over(slot, clip, rate, goal_time);
         self.action = WeaponAnimSlot::from_index(slot);
         self.state = self.action.map_or(WeaponState::Ready, |slot| {
             self.state_and_timer_for_slot(slot).0
@@ -292,6 +297,16 @@ impl ViewmodelController {
     }
 
     fn restart(&mut self, slot: usize, clip: Arc<asset_anim::xanim_clip::AnimClip>, rate: f32) {
+        self.restart_over(slot, clip, rate, ACTION_GOAL_TIME_SECS);
+    }
+
+    fn restart_over(
+        &mut self,
+        slot: usize,
+        clip: Arc<asset_anim::xanim_clip::AnimClip>,
+        rate: f32,
+        goal_time: f32,
+    ) {
         self.tree
             .set_clip(slot, clip)
             .expect("animation index is within tree");
@@ -299,7 +314,7 @@ impl ViewmodelController {
             .set_rate(slot, rate)
             .expect("animation index is within tree");
         self.tree
-            .set_goal_weight(slot, ACTIVE_GOAL_WEIGHT, ACTION_GOAL_TIME_SECS)
+            .set_goal_weight(slot, ACTIVE_GOAL_WEIGHT, goal_time)
             .expect("animation index is within tree");
     }
 
@@ -448,6 +463,17 @@ impl ViewmodelController {
     pub fn apply_force_idle_weap_anim(&mut self, empty_mag: bool) {
         let interrupt = self.dispatch_range_unfinished();
         self.start_idle_family(empty_mag, interrupt);
+    }
+
+    /// Idles now, blending over `goal_time` when an animation is still
+    /// playing (a game's own quick idle).
+    pub fn apply_force_idle_weap_anim_over(&mut self, empty_mag: bool, goal_time: f32) {
+        let goal_time = if self.dispatch_range_unfinished() {
+            goal_time
+        } else {
+            ACTION_GOAL_TIME_SECS
+        };
+        self.start_idle_slot(empty_mag, goal_time);
     }
 
     pub fn settle_fire_to_idle(&mut self) {
@@ -628,15 +654,19 @@ impl ViewmodelController {
     }
 
     fn start_idle_family(&mut self, empty: bool, interrupt: bool) {
-        let slot = if empty && self.weapon.clip(WeaponAnimSlot::EmptyIdle).is_some() {
-            WeaponAnimSlot::EmptyIdle
-        } else {
-            WeaponAnimSlot::Idle
-        };
         let goal_time = if interrupt {
             IDLE_INTERRUPT_GOAL_TIME_SECS
         } else {
             ACTION_GOAL_TIME_SECS
+        };
+        self.start_idle_slot(empty, goal_time);
+    }
+
+    fn start_idle_slot(&mut self, empty: bool, goal_time: f32) {
+        let slot = if empty && self.weapon.clip(WeaponAnimSlot::EmptyIdle).is_some() {
+            WeaponAnimSlot::EmptyIdle
+        } else {
+            WeaponAnimSlot::Idle
         };
         self.action = None;
         self.action_remaining = None;

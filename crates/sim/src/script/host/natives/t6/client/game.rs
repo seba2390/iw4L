@@ -1269,7 +1269,22 @@ fn present_with(server: &mut World, client: &mut World) {
             }
             let origin = runtime.object_field(id, "origin");
             let angles = runtime.object_field(id, "angles");
-            wanted.push((id, model.to_string(), origin, angles, hidden));
+            // What its scripts asked of its model: a clip to play, parts to
+            // hide or show.
+            let (anim_op, part_ops) = runtime
+                .entities
+                .get_mut(&id)
+                .map(|entity| (entity.anim_op.take(), std::mem::take(&mut entity.part_ops)))
+                .unwrap_or((None, Vec::new()));
+            wanted.push((
+                id,
+                model.to_string(),
+                origin,
+                angles,
+                hidden,
+                anim_op,
+                part_ops,
+            ));
         }
     }
     let live: std::collections::BTreeSet<u64> = wanted.iter().map(|w| w.0).collect();
@@ -1286,7 +1301,7 @@ fn present_with(server: &mut World, client: &mut World) {
                 .request_delete(stand_in);
         }
     }
-    for (id, model, origin, angles, hidden) in wanted {
+    for (id, model, origin, angles, hidden, anim_op, part_ops) in wanted {
         let stand_in = match game.drawn.get(&id) {
             Some(&stand_in) => stand_in,
             None => {
@@ -1318,6 +1333,10 @@ fn present_with(server: &mut World, client: &mut World) {
             // Shown to the local client alone.
             entity.hidden = true;
             entity.shown_to = if hidden { 0 } else { 1 << LOCAL_CLIENT };
+            if anim_op.is_some() {
+                entity.anim_op = anim_op;
+            }
+            entity.part_ops.extend(part_ops);
         }
     }
     let menu_events = std::mem::take(&mut game.menu_events);

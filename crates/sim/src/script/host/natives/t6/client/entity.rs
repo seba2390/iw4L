@@ -1157,11 +1157,18 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
 
     // ent isburning(): whether the entity has the burning flag set.
+    // ent isburning(): a player whose burning (`setburn`) runs, as the
+    // client keeps it (t6.csc.player.burning: other entities' burn flag).
     registry.register(Method, "isburning", |world, receiver, _| {
-        receiver_entity(world, receiver)?;
-        // t6.csc.player.burning: IW4L does not track the client entity burn
-        // flag in snapshots.
-        Ok(Value::Int(0))
+        let (_, number, etype) = receiver_entity(world, receiver)?;
+        let burning = etype == ETYPE_PLAYER
+            && u32::try_from(number).is_ok_and(|client| {
+                crate::script::host::client_scripts::with_server(world, |server| {
+                    crate::script::host::natives::t6::flame_overlay::burning(server, client)
+                })
+                .unwrap_or(false)
+            });
+        Ok(Value::Int(burning.into()))
     });
 
     // player isdriving(localclientnum): whether the player is driving a
@@ -1260,13 +1267,18 @@ pub(super) fn register(registry: &mut NativeRegistry) {
 
     // ent isgrenadedud(): whether a missile entity has been marked a dud.
     registry.register(Method, "isgrenadedud", |world, receiver, _| {
-        let (_, _, etype) = receiver_entity(world, receiver)?;
+        let (_, number, etype) = receiver_entity(world, receiver)?;
         if etype != ETYPE_MISSILE {
             return Ok(Value::Int(0));
         }
-        // t6.csc.missiles.dud: the missile dud flag is not carried in the
-        // client snapshot.
-        Ok(Value::Int(0))
+        let dud = crate::script::host::client_scripts::with_server(world, |server| {
+            crate::game_fire::game_missile_is_dud(
+                &crate::frame::FrameWorld::from_world(server),
+                number,
+            )
+        })
+        .unwrap_or(false);
+        Ok(Value::Int(dud.into()))
     });
 
     // spawn(localclientnum, origin, [classname]): spawns a client entity; a
@@ -2047,23 +2059,39 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // createdynentandlaunch(localclientnum, model, pos, angles, hitpos,
     // velocity, [fx], [ang_vel_flag]): spawns and launches a client dynamic
     // entity.
-    registry.register(Function, "createdynentandlaunch", |_, _, args| {
+    registry.register(Function, "createdynentandlaunch", |world, _, args| {
         int(args, 0)?;
         let model = string(args, 1)?;
         if model.is_empty() {
             return Err(format!("model '{model}' not precached\n"));
         }
-        vector(args, 2)?;
-        vector(args, 3)?;
-        vector(args, 4)?;
-        vector(args, 5)?;
-        if args.len() > 6 {
-            int(args, 6)?;
-        }
+        let pos = vector(args, 2)?;
+        let angles = vector(args, 3)?;
+        let hit_pos = vector(args, 4)?;
+        let force = vector(args, 5)?;
+        let fx = if args.len() > 6 {
+            match int(args, 6)? {
+                0 => None,
+                id => super::effects::effect_name(world, id),
+            }
+        } else {
+            None
+        };
         if args.len() > 7 {
             int(args, 7)?;
         }
-        // t6.csc.physics.dynent: IW4L has no client dynamic physics entities.
+        // The piece is spawned and launched by the runtime's dynamic entity
+        // physics (t6.csc.physics.dynent).
+        world
+            .resource_mut::<crate::script::client::ClientOutput>()
+            .spawn_dyn_ent(crate::SpawnedDynEntLaunch {
+                model,
+                pos,
+                angles,
+                hit_pos,
+                force,
+                fx,
+            });
         Ok(Value::Undefined)
     });
 

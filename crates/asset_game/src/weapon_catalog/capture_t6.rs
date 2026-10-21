@@ -180,7 +180,7 @@ fn capture_t6_game_bytes(w: fastfile_t6::weapon::WeaponView<'_>) -> Option<Arc<G
             .map_or_else(String::new, str::to_owned),
         named_anims,
         anim_slots: T6_RUNTIME_ANIM_SLOTS,
-        left_anim_slots: &[],
+        left_anim_slots: T6_LEFT_ANIM_SLOTS,
         location_damage: w
             .def_f32_array::<{ d::HIT_LOCATIONS }>(d::LOCATION_DAMAGE_MULTIPLIERS)
             .map(Box::from),
@@ -217,7 +217,7 @@ pub(super) fn t6_sz_xanims_by<'a>(
 /// The runtime slot of each of the weapon's own animation slots.
 static T6_RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
     use fastfile_t6::weapon::{variant::XANIM_COUNT, weap_anim as t6_anim};
-    const PAIRS: [(usize, usize); 34] = [
+    const PAIRS: [(usize, usize); 78] = [
         (t6_anim::IDLE, weap_anim::IDLE),
         (t6_anim::EMPTY_IDLE, weap_anim::EMPTY_IDLE),
         (t6_anim::FIRE, weap_anim::FIRE),
@@ -255,6 +255,62 @@ static T6_RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
         (t6_anim::ADS_RECHAMBER, weap_anim::ADS_RECHAMBER),
         (t6_anim::ADS_UP, weap_anim::ADS_UP),
         (t6_anim::ADS_DOWN, weap_anim::ADS_DOWN),
+        (t6_anim::RELOAD_RIGHT, weap_anim_extra::RELOAD_RIGHT),
+        (t6_anim::SPRINT_EMPTY_IN, weap_anim_extra::SPRINT_EMPTY_IN),
+        (
+            t6_anim::SPRINT_EMPTY_LOOP,
+            weap_anim_extra::SPRINT_EMPTY_LOOP,
+        ),
+        (t6_anim::SPRINT_EMPTY_OUT, weap_anim_extra::SPRINT_EMPTY_OUT),
+        (t6_anim::LOWREADY_IN, weap_anim_extra::LOWREADY_IN),
+        (t6_anim::LOWREADY_LOOP, weap_anim_extra::LOWREADY_LOOP),
+        (t6_anim::LOWREADY_OUT, weap_anim_extra::LOWREADY_OUT),
+        (t6_anim::CONT_FIRE_IN, weap_anim_extra::CONT_FIRE_IN),
+        (t6_anim::CONT_FIRE_LOOP, weap_anim_extra::CONT_FIRE_LOOP),
+        (t6_anim::CONT_FIRE_OUT, weap_anim_extra::CONT_FIRE_OUT),
+        (t6_anim::DEPLOY, weap_anim_extra::DEPLOY),
+        (t6_anim::BREAKDOWN, weap_anim_extra::BREAKDOWN),
+        (t6_anim::DTP_IN, weap_anim_extra::DTP_IN),
+        (t6_anim::DTP_LOOP, weap_anim_extra::DTP_LOOP),
+        (t6_anim::DTP_OUT, weap_anim_extra::DTP_OUT),
+        (t6_anim::DTP_EMPTY_IN, weap_anim_extra::DTP_EMPTY_IN),
+        (t6_anim::DTP_EMPTY_LOOP, weap_anim_extra::DTP_EMPTY_LOOP),
+        (t6_anim::DTP_EMPTY_OUT, weap_anim_extra::DTP_EMPTY_OUT),
+        (t6_anim::SLIDE_IN, weap_anim_extra::SLIDE_IN),
+        (t6_anim::MANTLE, weap_anim_extra::MANTLE),
+        (t6_anim::SPRINT_CAMERA, weap_anim_extra::SPRINT_CAMERA),
+        (t6_anim::DTP_IN_CAMERA, weap_anim_extra::DTP_IN_CAMERA),
+        (t6_anim::DTP_LOOP_CAMERA, weap_anim_extra::DTP_LOOP_CAMERA),
+        (t6_anim::DTP_OUT_CAMERA, weap_anim_extra::DTP_OUT_CAMERA),
+        (t6_anim::MANTLE_CAMERA, weap_anim_extra::MANTLE_CAMERA),
+        (t6_anim::FIRE_INTRO, weap_anim_extra::FIRE_INTRO),
+        (t6_anim::ADS_FIRE_INTRO, weap_anim_extra::ADS_FIRE_INTRO),
+        (t6_anim::MELEE1, weap_anim_extra::MELEE1),
+        (t6_anim::MELEE2, weap_anim_extra::MELEE2),
+        (t6_anim::MELEE3, weap_anim_extra::MELEE3),
+        (t6_anim::MELEE_EMPTY, weap_anim_extra::MELEE_EMPTY),
+        (
+            t6_anim::MELEE_CHARGE_EMPTY,
+            weap_anim_extra::MELEE_CHARGE_EMPTY,
+        ),
+        (t6_anim::CRAWL_IN, weap_anim_extra::CRAWL_IN),
+        (t6_anim::CRAWL_FORWARD, weap_anim_extra::CRAWL_FORWARD),
+        (t6_anim::CRAWL_BACK, weap_anim_extra::CRAWL_BACK),
+        (t6_anim::CRAWL_RIGHT, weap_anim_extra::CRAWL_RIGHT),
+        (t6_anim::CRAWL_LEFT, weap_anim_extra::CRAWL_LEFT),
+        (t6_anim::CRAWL_OUT, weap_anim_extra::CRAWL_OUT),
+        (t6_anim::CRAWL_EMPTY_IN, weap_anim_extra::CRAWL_EMPTY_IN),
+        (
+            t6_anim::CRAWL_EMPTY_FORWARD,
+            weap_anim_extra::CRAWL_EMPTY_FORWARD,
+        ),
+        (t6_anim::CRAWL_EMPTY_BACK, weap_anim_extra::CRAWL_EMPTY_BACK),
+        (
+            t6_anim::CRAWL_EMPTY_RIGHT,
+            weap_anim_extra::CRAWL_EMPTY_RIGHT,
+        ),
+        (t6_anim::CRAWL_EMPTY_LEFT, weap_anim_extra::CRAWL_EMPTY_LEFT),
+        (t6_anim::CRAWL_EMPTY_OUT, weap_anim_extra::CRAWL_EMPTY_OUT),
     ];
     let mut slots = [None; XANIM_COUNT as usize];
     let mut i = 0;
@@ -265,28 +321,43 @@ static T6_RUNTIME_ANIM_SLOTS: &[Option<usize>] = &{
     slots
 };
 
-pub(super) fn t6_sz_xanims_left(
-    w: fastfile_t6::weapon::WeaponView<'_>,
-) -> [Option<String>; WEAPON_ANIM_SLOTS] {
+/// The left viewmodel's slot of each of the weapon's left-gun animations
+/// (as `t6_sz_xanims_left` captures them).
+const T6_LEFT: [(usize, usize); 6] = {
     use fastfile_t6::weapon::weap_anim as t6_anim;
-    const LEFT: [(usize, usize); 6] = [
+    [
         (t6_anim::DW_LEFT_IDLE, weap_anim::IDLE),
         (t6_anim::DW_LEFT_EMPTY_IDLE, weap_anim::EMPTY_IDLE),
         (t6_anim::DW_LEFT_FIRE, weap_anim::FIRE),
         (t6_anim::DW_LEFT_LASTSHOT, weap_anim::LASTSHOT),
         (t6_anim::DW_LEFT_RELOAD, weap_anim::RELOAD),
         (t6_anim::DW_LEFT_RELOAD_EMPTY, weap_anim::RELOAD_EMPTY),
-    ];
+    ]
+};
+
+static T6_LEFT_ANIM_SLOTS: &[Option<usize>] = &{
+    let mut slots = [None; 128];
+    let mut i = 0;
+    while i < T6_LEFT.len() {
+        slots[T6_LEFT[i].0] = Some(T6_LEFT[i].1);
+        i += 1;
+    }
+    slots
+};
+
+pub(super) fn t6_sz_xanims_left(
+    w: fastfile_t6::weapon::WeaponView<'_>,
+) -> [Option<String>; WEAPON_ANIM_SLOTS] {
     let clip = |slot: usize| {
         w.xanim(slot as u32)
             .filter(|name| !name.is_empty())
             .map(|name| format!("{T6_XANIM_PREFIX}{}", name.to_ascii_lowercase()))
     };
-    if clip(t6_anim::DW_LEFT_IDLE).is_none() {
+    if clip(T6_LEFT[0].0).is_none() {
         return [const { None }; WEAPON_ANIM_SLOTS];
     }
     let mut out = t6_sz_xanims(w);
-    for (src, dst) in LEFT {
+    for (src, dst) in T6_LEFT {
         out[dst] = clip(src);
     }
     out

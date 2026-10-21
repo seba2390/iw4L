@@ -88,6 +88,14 @@ pub(crate) fn start(world: &mut World, client: u32, kind: Flame, ms: i32) {
     publish(world, client);
 }
 
+/// Whether a client's burning runs (its timer has not ended).
+pub(crate) fn burning(world: &World, client: u32) -> bool {
+    world
+        .get_resource::<FlameOverlays>()
+        .and_then(|overlays| overlays.0.get(&client))
+        .is_some_and(|states| states[slot(Flame::Burn)].end_ms != 0)
+}
+
 /// A client's frame: an overlay past its end time stops, beginning its
 /// fade (`r_flameFX_fadeDuration`) unless one already runs, and one whose
 /// fade has run longer than its fade time is gone.

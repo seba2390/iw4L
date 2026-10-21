@@ -42,6 +42,13 @@ const EXPLOSION_RAGDOLLS: usize = 4;
 /// world's own collision filter is not read).
 const CONTENTS_SOLID: u32 = 1;
 
+/// The physics world's mass unit against the config's: Black Ops 2's ragdoll
+/// and dynamic entity forces are a thousandth of Black Ops' (whose
+/// `ragdoll.cfg` gives the same masses), so its bodies weigh a thousandth of
+/// the config's numbers in the forces' units (`t6.actors.ragdoll_solver`:
+/// the engine's own unit is not read).
+const PHYSICS_MASS_SCALE: f32 = 0.001;
+
 /// Each joint's friction grows by up to this much of itself over
 /// `ragdoll_jointlerp_time`.
 const JOINT_FRICTION_RAMP: f32 = 1.0;
@@ -142,7 +149,7 @@ fn parse(text: &str, baselerp: u32) -> Option<RagdollDef> {
                     p1: words[3].to_owned(),
                     radius: num(4),
                     cog_lerp: num(5),
-                    mass: num(6),
+                    mass: num(6) * PHYSICS_MASS_SCALE,
                     friction: num(7),
                     parent: usize::try_from(parent).ok(),
                     extra_half_length: if def.bones.len() == NECK_BODY {
