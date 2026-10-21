@@ -729,6 +729,32 @@ pub trait MenuLayout: Sync {
     fn safe_area(&self) -> f32 {
         0.85
     }
+    /// Aligned text of a dvar item of `item_type` leaves room in its rect
+    /// for the width of the dvar's value.
+    fn value_room(&self, _item_type: i32) -> bool {
+        false
+    }
+    /// How many characters after a `^` a text's width skips as a colour or
+    /// formatting code (0: the `^` is a glyph of its own); `next` and
+    /// `after` are the two characters that follow it.
+    fn text_code_len(&self, next: char, _after: Option<char>) -> usize {
+        usize::from(next.is_ascii_digit())
+    }
+    /// The lines an autowrapped text breaks into in a rect `rect_w` wide,
+    /// whose whole text measures `text_w`; `None` keeps the runtime's own
+    /// line breaker. `glyph(c)` is a character's advance in font units and
+    /// `scale` the font's glyph scale.
+    fn wrap_lines(
+        &self,
+        _text: &str,
+        _rect_w: f32,
+        _align_mode: i32,
+        _text_w: f32,
+        _glyph: &dyn Fn(char) -> i32,
+        _scale: f32,
+    ) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// A mode the game library offers beside multiplayer, with the maps it runs on.
