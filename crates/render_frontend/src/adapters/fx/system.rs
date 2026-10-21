@@ -15,9 +15,9 @@ use fx::{
 };
 use fx_iw4::{
     FX_BOLT_BONE_MASK, FX_BOLT_VIEWMODEL_DOBJ_BASE, FX_ELEM_VEL_LOCAL, FX_ELEM_VEL_WORLD,
-    FX_GLASS_SHATTER_FX_PER_FRAME, elem_run_mode, elem_spawn_offset_mode,
-    glass_shatter_fx_fallback, glass_shatter_fx_name, laser_from_tag_orientation,
-    tail_anchor_origin, tail_sprite_axes, tail_sprite_full_extent,
+    FX_ENTITYNUM_WORLD, FX_GLASS_SHATTER_FX_PER_FRAME, FX_IMPACT_EXIT_SURFACE_FLAG, elem_run_mode,
+    elem_spawn_offset_mode, glass_shatter_fx_fallback, glass_shatter_fx_name,
+    laser_from_tag_orientation, tail_anchor_origin, tail_sprite_axes, tail_sprite_full_extent,
 };
 use net::{
     CEntity, CEntitySlots, ClientPredictionState, ClientSet, GameActive, LastAdoptedSnapshot,
@@ -2875,6 +2875,7 @@ fn explosion(
     mut cursor: ResMut<FxJournalCursor>,
     mut combat: ResMut<CombatFxDump>,
     fx_world: FxSceneAccess,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     let weapons = weapons
         .as_deref()
@@ -2957,6 +2958,25 @@ fn explosion(
                         payload.weapon,
                         asset_game::WeaponComponent::Sound,
                     )?;
+                    // A game with its own impact sound plays its table's
+                    // alias for the surface.
+                    if let Some(rule) = mode
+                        .as_deref()
+                        .and_then(|mode| mode.client_fire)
+                        .and_then(|rules| rules.impact_sound)
+                    {
+                        let bytes = weapons
+                            .registry()
+                            .bind_published_row(payload.weapon)
+                            .ok()?
+                            .game_bytes()?;
+                        let alias = rule(&bytes.def, &bytes.variant, payload.surf_type, false)?;
+                        return bank
+                            .0
+                            .sound_in(namespace, &alias)
+                            .is_some()
+                            .then_some((namespace, alias));
+                    }
                     if namespace != asset_core::AssetNamespace::Iw4 {
                         return None;
                     }
@@ -3736,7 +3756,7 @@ fn drain_pellet_fx(
     mut host: ResMut<HostFxSystem>,
     mut cursor: ResMut<FxJournalCursor>,
     mut combat: ResMut<CombatFxDump>,
-    fx_world: FxSceneAccess,
+    (fx_world, mut sounds): (FxSceneAccess, MessageWriter<audio::AliasCommand>),
 ) {
     if pending.is_empty() {
         return;
@@ -3770,7 +3790,13 @@ fn drain_pellet_fx(
             .as_deref()
             .and_then(|weapons| weapons.for_event(world).ok());
         let game_beam = beams.choose(world, &record, bound.as_ref(), tracers.as_deref());
-        present_pellet_segment(
+        let impact_sound = beams
+            .mode
+            .as_deref()
+            .and_then(|mode| mode.client_fire)
+            .and_then(|rules| rules.impact_sound)
+            .filter(|_| !record.path && record.normal != [0.0; 3]);
+        let report = present_pellet_segment(
             generation.stamp(),
             timeline.timeline(),
             request,
@@ -3806,6 +3832,40 @@ fn drain_pellet_fx(
             &mut combat,
             fx_world.view().as_ref().map(|s| s as &dyn FxScene),
         );
+        // The game's own client sounds the impact where the bullet struck,
+        // once per impact the client presents.
+        if let Some(rule) = impact_sound
+            && !matches!(
+                report.impact,
+                FireFxOutcome::Duplicate
+                    | FireFxOutcome::DeferredUntilAuthority
+                    | FireFxOutcome::StaleScope
+                    | FireFxOutcome::RefusedFire
+                    | FireFxOutcome::AuthorityConflict
+            )
+            && let Some(registry) = bound.as_ref().map(|bound| bound.registry())
+            && let Some(bytes) = registry
+                .bind_published_row(record.weapon)
+                .ok()
+                .and_then(|row| row.game_bytes())
+            && let Some(alias) = rule(
+                &bytes.def,
+                &bytes.variant,
+                record.surf_type,
+                record.surface_flags & FX_IMPACT_EXIT_SURFACE_FLAG != 0,
+            )
+            && let Some(namespace) =
+                registry.component_namespace_of(record.weapon, asset_game::WeaponComponent::Sound)
+        {
+            sounds.write(audio::AliasCommand::Play(audio::PlayAlias {
+                event: None,
+                namespace,
+                alias,
+                fallback: None,
+                origin_inches: Some(record.end),
+                snd_ent: Some(FX_ENTITYNUM_WORLD),
+            }));
+        }
     }
 }
 
