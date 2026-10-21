@@ -305,8 +305,9 @@ pub struct FailedSlowMotion {
 /// pointers, and Rust does not promise a function one address.
 #[derive(bevy_ecs::resource::Resource, Clone, Copy, Debug)]
 pub struct ModeRules {
-    /// The level notify that ends the warmup.
-    pub play_starts_on: &'static str,
+    /// The level notify that ends the warmup; `None` runs the match from its
+    /// first frame, with no warmup.
+    pub play_starts_on: Option<&'static str>,
     /// Every player goes down into last stand instead of dying.
     pub every_player_downs: Rule<bool>,
     /// What being down does to a player.
@@ -326,8 +327,11 @@ pub struct ModeRules {
     pub melee_mask: Option<u32>,
     /// How the game launches, moves and detonates its missiles.
     pub missiles: Option<fire::MissileRules>,
-    /// A spawn starts at the default full health, not the stored max health.
-    pub spawn_at_default_health: bool,
+    /// The health a spawning player starts at.
+    pub spawn_health: SpawnHealth,
+    /// Each actor spawner runs its aitype script's `spawner()` when the level
+    /// loads, before the level's own scripts start.
+    pub aitype_spawners: bool,
     /// The team every player joins on connect, when the scripts pick none.
     pub connect_team: Option<&'static str>,
     /// A connected player is held in place until the scripts spawn them.
@@ -387,6 +391,22 @@ pub struct ModeRules {
     /// ammo and clip names for the game's own rules, and keeps the match's
     /// rounds by the weapons' combat facts.
     pub ammo_numbers: Option<movement::AmmoNumbers>,
+}
+
+/// The health a spawning player starts at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpawnHealth {
+    /// The player's stored max health.
+    Stored,
+    /// The default full health, whatever max health is stored.
+    Default,
+    /// Health and max health are the dvar's value: its registered default
+    /// when the match does not set it, clamped to its range.
+    Dvar {
+        name: &'static str,
+        default: i32,
+        range: (i32, i32),
+    },
 }
 
 /// A game's dynamic entity physics parameters (`dynEnt_*` and `phys_bullet*`

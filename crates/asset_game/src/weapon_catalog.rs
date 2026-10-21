@@ -561,6 +561,8 @@ pub struct GameWeaponBytes {
     /// surface type.
     pub parallel_bounce: Option<Box<[f32]>>,
     pub perpendicular_bounce: Option<Box<[f32]>>,
+    /// The definition's world clip model, when it names one.
+    pub world_clip_model: Option<String>,
 }
 
 #[derive(Clone, Debug)]

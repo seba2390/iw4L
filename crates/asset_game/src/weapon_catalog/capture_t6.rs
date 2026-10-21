@@ -190,6 +190,7 @@ fn capture_t6_game_bytes(w: fastfile_t6::weapon::WeaponView<'_>) -> Option<Arc<G
         perpendicular_bounce: w
             .def_f32_array::<{ d::SURF_TYPE_COUNT }>(d::PERPENDICULAR_BOUNCE)
             .map(Box::from),
+        world_clip_model: None,
     }))
 }
 
@@ -839,6 +840,7 @@ pub(super) fn apply_t6_attachment_game_bytes(
         location_damage: base.location_damage.clone(),
         parallel_bounce: base.parallel_bounce.clone(),
         perpendicular_bounce: base.perpendicular_bounce.clone(),
+        world_clip_model: base.world_clip_model.clone(),
     }));
 }
 

@@ -972,6 +972,12 @@ pub(super) fn capture_t5_body_facts(
             .map(Box::from),
             parallel_bounce: facts.parallel_bounce.map(Box::from),
             perpendicular_bounce: facts.perpendicular_bounce.map(Box::from),
+            world_clip_model: geometry
+                .world_clip_model_name
+                .and_then(|ptr| stream.cstr(ptr).ok())
+                .map(asset_core::AssetRef::bare_name)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned),
         }))
     });
     (facts, game_bytes)
