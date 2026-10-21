@@ -234,5 +234,6 @@ pub(crate) fn install_level(
     host::natives::t5_turret::spawn_map_turrets(world);
     host::presence::initialize_map_models(world);
     host::natives::t6::init_actor_spawners(world)?;
+    host::actors::run_aitype_spawners(world)?;
     Ok(())
 }

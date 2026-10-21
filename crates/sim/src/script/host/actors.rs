@@ -22,6 +22,49 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
 }
 
+/// At the level's start, before its own scripts run, every actor spawner
+/// (in entity order) runs its aitype script's `spawner()` when the mode asks
+/// for it.
+pub(crate) fn run_aitype_spawners(world: &mut World) -> Result<(), crate::script::Fault> {
+    if !crate::frame::FrameWorld::from_world(world)
+        .bootstrap_ref()
+        .mode
+        .is_some_and(|mode| mode.aitype_spawners)
+    {
+        return Ok(());
+    }
+    let Some(program) = world.resource::<RoundScript>().program.clone() else {
+        return Ok(());
+    };
+    let spawners: Vec<(u64, String)> = {
+        let runtime = world.resource::<RoundScript>();
+        let mut spawners: Vec<(i32, u64, String)> = runtime
+            .entities
+            .iter()
+            .filter(|(_, entity)| entity.kind == EntityKind::Map)
+            .filter_map(|(&id, entity)| {
+                let aitype = entity.classname.strip_prefix("actor_")?;
+                Some((
+                    entity.number,
+                    id,
+                    format!("aitype/{}::spawner", aitype.to_ascii_lowercase()),
+                ))
+            })
+            .collect();
+        spawners.sort_unstable();
+        spawners
+            .into_iter()
+            .map(|(_, id, entry)| (id, entry))
+            .filter(|(_, entry)| program.names.contains_key(entry))
+            .collect()
+    };
+    for (id, entry) in spawners {
+        run_now(world, &entry, Value::Object(id), Vec::new(), 0)?;
+    }
+    world.resource_mut::<RoundScript>().started = false;
+    Ok(())
+}
+
 /// The box a spawn point needs clear, from its origin.
 const SPAWN_BOX: ([f32; 3], [f32; 3]) = ([-15.0, -15.0, 0.0], [15.0, 15.0, 70.0]);
 /// The box a player's sight of a spawn point is traced to, and the points

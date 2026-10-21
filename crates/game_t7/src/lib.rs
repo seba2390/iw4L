@@ -163,7 +163,7 @@ impl game_api::GameMenus for T7 {
 /// Classic zombies: the match is run by the gametype and map scripts; the
 /// engine imposes no limit and spawns no one on its own.
 const ZOMBIES_MODE: ModeRules = ModeRules {
-    play_starts_on: "all_players_connected",
+    play_starts_on: Some("all_players_connected"),
     every_player_downs: Rule::Unknown(unknown!(
         "t7.match.last_stand",
         "when a dying Black Ops 3 zombies player goes into last stand, and how a downed player moves and sees",
@@ -184,7 +184,8 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
     bullet_mask: None,
     melee_mask: None,
     missiles: None,
-    spawn_at_default_health: true,
+    spawn_health: game_api::SpawnHealth::Default,
+    aitype_spawners: false,
     connect_team: Some("allies"),
     scripts_spawn_players: true,
     spawn_classnames: None,

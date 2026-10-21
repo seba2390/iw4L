@@ -72,20 +72,35 @@ pub(crate) fn spawn(
     world.client_meta_mut(id).shield = None;
     let prev_health = world.player(id).map(|p| p.health);
     let mut ps = spawn_player_state(origin, angles);
-    // Zombie spectators copy their (dead) health into maxhealth before
-    // spawning; a T5 spawn starts at the default full health regardless.
-    if let Some(max) = world
-        .client_meta(id)
-        .map(|m| m.max_health)
-        .filter(|&n| n > 0)
-        .filter(|_| {
-            !world
-                .bootstrap_ref()
-                .mode
-                .is_some_and(|mode| mode.spawn_at_default_health)
-        })
+    match world
+        .bootstrap_ref()
+        .mode
+        .map_or(game_api::SpawnHealth::Stored, |mode| mode.spawn_health)
     {
-        ps.max_health = max;
+        game_api::SpawnHealth::Stored => {
+            if let Some(max) = world
+                .client_meta(id)
+                .map(|m| m.max_health)
+                .filter(|&n| n > 0)
+            {
+                ps.max_health = max;
+            }
+        }
+        game_api::SpawnHealth::Default => {}
+        game_api::SpawnHealth::Dvar {
+            name,
+            default,
+            range: (low, high),
+        } => {
+            let max = world
+                .ecs()
+                .get_resource::<crate::script::MatchScript>()
+                .and_then(|script| script.dvars.get(name))
+                .and_then(|value| value.trim().parse::<i32>().ok())
+                .map_or(default, |value| value.clamp(low, high));
+            ps.max_health = max;
+            world.client_meta_mut(id).max_health = max;
+        }
     }
     ps.health = match sessionstate {
         "playing" => ps.max_health,

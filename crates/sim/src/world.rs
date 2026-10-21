@@ -345,9 +345,8 @@ impl SimState {
         self.stuck_holdrand = bootstrap.seed as u32;
         self.last_stuck_ejects.clear();
         self.bootstrap = bootstrap;
-        self.phase = MatchPhase::Warmup;
         self.match_elapsed_ms = 0;
-        self.prematch = gamemode_iw4::PrematchStep::default();
+        self.start_phase();
         self.max_alive_seen = 0;
         self.game_win_winner = None;
         self.placement_cointoss_unwired = 0;
@@ -575,12 +574,25 @@ impl SimState {
 
     pub(crate) fn restart_level_phase(&mut self) {
         self.round_serial = self.round_serial.wrapping_add(1);
-        self.phase = MatchPhase::Warmup;
         self.match_elapsed_ms = 0;
-        self.prematch = gamemode_iw4::PrematchStep::default();
+        self.start_phase();
         self.max_alive_seen = 0;
         self.game_win_winner = None;
         self.pending_final_kill = None;
+    }
+
+    /// A level starts in its warmup, unless its mode has none: then it plays
+    /// from the first frame.
+    fn start_phase(&mut self) {
+        self.phase = MatchPhase::Warmup;
+        self.prematch = gamemode_iw4::PrematchStep::default();
+        if self
+            .bootstrap
+            .mode
+            .is_some_and(|mode| mode.play_starts_on.is_none())
+        {
+            self.set_phase(MatchPhase::Playing);
+        }
     }
 
     pub(crate) fn set_phase(&mut self, phase: MatchPhase) {
