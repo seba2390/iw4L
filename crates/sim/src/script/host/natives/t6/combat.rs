@@ -17,6 +17,15 @@ use std::collections::BTreeMap;
 const EYE_HEIGHT: f32 = 64.0;
 /// An actor's sight until scripts change it, as the engine spawns it.
 const FOV_COSINE: f32 = 0.01;
+/// The least latency a sentient target's sight is cached for.
+const MIN_SIGHT_LATENCY: i32 = 250;
+
+/// The cache drops pairs whose entities are gone once it holds this many.
+const SIGHT_CACHE_PRUNE: usize = 1024;
+
+/// Each actor's last sight test of each sentient: what it found and when.
+#[derive(Resource, Default)]
+struct SightCache(BTreeMap<(u64, u64), (bool, i32)>);
 const MAX_SIGHT_DIST_SQ: f32 = 8192.0 * 8192.0;
 /// The engine's sight trace, near and far of its fog distance.
 const SIGHT_MASK: u32 = 0x0280_9801;
@@ -118,23 +127,42 @@ pub(super) fn eye(world: &mut World, value: &Value) -> Result<[f32; 3], String> 
             ]);
         }
     }
-    let origin = origin_of(world, id);
+    Ok(actor_eye(world, id).map_or_else(|| origin_of(world, id), |(at, _)| at))
+}
+
+/// An actor's eye and the level direction it looks: its model's `tag_eye`
+/// and that tag's forward flattened, else its origin 64 up and its own
+/// facing; `None` for another entity.
+fn actor_eye(world: &mut World, id: u64) -> Option<([f32; 3], [f32; 3])> {
     let actor = world
         .resource::<RoundScript>()
         .entities
         .get(&id)
         .is_some_and(|entity| entity.kind == EntityKind::Actor);
-    Ok(if actor {
-        [origin[0], origin[1], origin[2] + EYE_HEIGHT]
-    } else {
-        origin
-    })
+    if !actor {
+        return None;
+    }
+    if let Some((at, axes)) = super::super::super::presence::tag_world(world, id, "tag_eye") {
+        let flat = [axes[0][0], axes[0][1], 0.0];
+        let length = flat[0].hypot(flat[1]);
+        let look = if length > 0.0 {
+            [flat[0] / length, flat[1] / length, 0.0]
+        } else {
+            flat
+        };
+        return Some((at, look));
+    }
+    let origin = origin_of(world, id);
+    Some((
+        [origin[0], origin[1], origin[2] + EYE_HEIGHT],
+        axis(world, id)[0],
+    ))
 }
 
 /// `cansee`: within the actor's sight distance and field of view, with
 /// nothing in the sight line (`t6.actors.sight` for what is not read).
 fn can_see(world: &mut World, id: u64, target: &Value) -> Result<bool, String> {
-    let from = eye(world, &Value::Object(id))?;
+    let (from, look) = actor_eye(world, id).ok_or("not an actor")?;
     let to = eye(world, target)?;
     let delta = sub(to, from);
     let distance_sq = dot(delta, delta);
@@ -142,7 +170,7 @@ fn can_see(world: &mut World, id: u64, target: &Value) -> Result<bool, String> {
         return Ok(false);
     }
     let fov = number(world, id, "fovcosine", FOV_COSINE);
-    let facing = dot(axis(world, id)[0], delta);
+    let facing = dot(look, delta);
     if fov != 0.0 && (facing < 0.0 || facing * facing < distance_sq * fov * fov) {
         return Ok(false);
     }
@@ -321,14 +349,47 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 .into(),
         ))
     });
+    // A sentient target's sight is cached for the latency (the actor's
+    // `sightlatency`, at least 250 ms, unless given); another target's is
+    // tested each time.
     registry.register(Method, "cansee", |world, receiver, args| {
         let id = actor(world, receiver)?;
         let target = args.first().ok_or("cansee expects an entity")?;
-        entity_id(world, target)?;
-        if args.len() > 1 {
-            super::int(args, 1)?;
+        let target_id = entity_id(world, target)?;
+        let latency = if args.len() > 1 {
+            super::int(args, 1)?
+        } else {
+            match field(world, id, "sightlatency") {
+                Value::Int(ms) => ms.max(MIN_SIGHT_LATENCY),
+                _ => MIN_SIGHT_LATENCY,
+            }
+        };
+        if !sentient(world, target) {
+            return Ok(Value::Int(can_see(world, id, target)?.into()));
         }
-        Ok(Value::Int(can_see(world, id, target)?.into()))
+        let now = super::super::super::players::now_ms(world) as i32;
+        if let Some(&(seen, at)) = world
+            .get_resource::<SightCache>()
+            .and_then(|cache| cache.0.get(&(id, target_id)))
+            && at != 0
+            && now <= at.saturating_add(latency)
+        {
+            return Ok(Value::Int(seen.into()));
+        }
+        let seen = can_see(world, id, target)?;
+        let live: Vec<u64> = world
+            .resource::<RoundScript>()
+            .entities
+            .keys()
+            .copied()
+            .collect();
+        let cache = &mut world.get_resource_or_insert_with(SightCache::default).0;
+        if cache.len() > SIGHT_CACHE_PRUNE {
+            cache
+                .retain(|(a, b), _| live.binary_search(a).is_ok() && live.binary_search(b).is_ok());
+        }
+        cache.insert((id, target_id), (seen, now));
+        Ok(Value::Int(seen.into()))
     });
     registry.register(Method, "melee", melee);
     registry.register(Method, "getweaponmuzzlepoint", |world, receiver, _| {
