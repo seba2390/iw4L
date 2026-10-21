@@ -397,7 +397,7 @@ fn angles_axis(angles: [f32; 3]) -> [[f32; 3]; 3] {
     ]
 }
 
-fn effect_name(world: &World, id: i32) -> Option<String> {
+pub(super) fn effect_name(world: &World, id: i32) -> Option<String> {
     let index = usize::try_from(id - 1).ok()?;
     world
         .get_resource::<ClientEffects>()

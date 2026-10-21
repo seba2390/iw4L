@@ -466,14 +466,23 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // gscm_dontinterpolate flips the entity's teleport flag, a player's in
-    // his player state (`t6.entities.interpolation`: other entities' flag
-    // is not sent, as IW4L's script entities carry none).
+    // his player state, a drawn entity's in its entity state.
     registry.register(Method, "dontinterpolate", |world, receiver, _| {
         let id = entity_id(world, receiver)?;
         if let Some(client) = world.resource::<RoundScript>().player_client(id) {
             crate::script_player::snap(
                 &mut crate::frame::FrameWorld::from_world(world),
                 crate::ClientId(client),
+            );
+        } else if let Some(presence) = world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .and_then(|entity| entity.presence)
+        {
+            crate::script_player::snap_presence(
+                &mut crate::frame::FrameWorld::from_world(world),
+                presence,
             );
         }
         Ok(Value::Undefined)

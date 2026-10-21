@@ -425,6 +425,11 @@ pub trait MissilePhysics: Sync {
     /// Marks a grenade a dud (`makegrenadedud`).
     fn make_dud(&self, missile: &mut GameMissile);
 
+    /// Whether a missile is a dud, as its state tells clients.
+    fn is_dud(&self, _missile: &GameMissile) -> bool {
+        false
+    }
+
     /// Resets a missile's detonation time (`resetmissiledetonationtime`):
     /// `after_ms` from now when given, else its weapon's fuse time when it
     /// has timed detonation.

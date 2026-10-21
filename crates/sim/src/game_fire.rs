@@ -1335,6 +1335,18 @@ pub(crate) fn make_game_missile_dud(world: &mut FrameWorld, entnum: i32) -> bool
     true
 }
 
+/// Whether a game's missile is a dud.
+pub(crate) fn game_missile_is_dud(world: &FrameWorld, entnum: i32) -> bool {
+    let Some(rules) = missile_rules(world) else {
+        return false;
+    };
+    world
+        .ecs_ref()
+        .get_resource::<GameMissiles>()
+        .and_then(|missiles| missiles.0.get(&entnum))
+        .is_some_and(|missile| rules.0.is_dud(missile))
+}
+
 pub(crate) fn reset_game_missile_detonation_time(
     world: &mut FrameWorld,
     tick: Tick,
