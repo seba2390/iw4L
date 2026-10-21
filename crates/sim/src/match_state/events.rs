@@ -100,6 +100,8 @@ pub struct PelletFxRecord {
     pub surface_flags: u32,
 
     pub flesh_flags: u8,
+    /// The record is a bullet's path for its client's beam, not an impact.
+    pub path: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

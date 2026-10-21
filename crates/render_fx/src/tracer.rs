@@ -220,6 +220,75 @@ fn spawn_moving_tracer(
     Ok(())
 }
 
+/// The beam a game's own client rules chose for a bullet record, in place
+/// of the weapon's tracer definition.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GameBeam {
+    /// The record is an impact: the game draws its beams from paths.
+    Impact,
+    /// The record is a bullet's path that draws no beam.
+    None,
+    Beam(ChosenBeam),
+}
+
+/// A beam along a bullet's path, by the game's rules.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ChosenBeam {
+    /// The tracer definition holding the beam's material.
+    pub def: usize,
+    pub speed: f32,
+    pub length: f32,
+    pub width: f32,
+    pub screw_dist: f32,
+    pub screw_radius: f32,
+    /// How many milliseconds before now the beam starts.
+    pub start_back_ms: i32,
+}
+
+/// A beam from `start` toward `end`: its head leaves at the beam's speed and
+/// it is gone once the head reaches `end`, its travel time cut to whole
+/// milliseconds.
+pub fn spawn_game_beam(
+    world: &mut TracerWorld,
+    catalog: &TracerDefinitions,
+    beam: &ChosenBeam,
+    start: [f32; 3],
+    end: [f32; 3],
+    clock: FxMsec,
+) -> Result<(), TracerSpawnSkip> {
+    let Some(def) = catalog.def_at(beam.def) else {
+        return Err(TracerSpawnSkip::NoDef);
+    };
+    let delta = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+    let dist = (delta[2] * delta[2] + delta[1] * delta[1] + delta[0] * delta[0]).sqrt();
+    let scale = if -dist >= 0.0 { 1.0 } else { 1.0 / dist };
+    let dir = [delta[0] * scale, delta[1] * scale, delta[2] * scale];
+    let start_time = clock.0.wrapping_sub(beam.start_back_ms);
+    let travel = (dist / beam.speed * -1000.0) as i32;
+    world.pool.alloc(LocalEntitySlot {
+        le_type: LE_MOVING_TRACER,
+        pos_tr_time: start_time,
+        pos_tr_type: LE_TR_LINEAR,
+        pos_tr_duration: 0,
+        pos_tr_delta: [
+            beam.speed * dir[0],
+            dir[1] * beam.speed,
+            dir[2] * beam.speed,
+        ],
+        pos_tr_base: start,
+        end_time: start_time.wrapping_sub(travel),
+        material: def.material.bound_index(),
+        tracer_clip_dist: dist,
+        beam_length: beam.length,
+        beam_width: beam.width,
+        screw_dist: beam.screw_dist,
+        screw_radius: beam.screw_radius,
+        colors: [[1.0; 4]; 5],
+        own_shot: false,
+    });
+    Ok(())
+}
+
 pub fn tick_tracer_beams(world: &mut TracerWorld, clock: FxMsec) {
     world.pool.free_expired(clock);
     world.queued.clear();

@@ -608,6 +608,7 @@ pub(crate) fn fire_bullet(
             surf_type,
             surface_flags,
             flesh_flags: 0,
+            path: false,
         });
     }
     let runtime = world.resource::<RoundScript>();

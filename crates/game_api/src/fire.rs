@@ -130,6 +130,22 @@ pub struct BulletImpact {
     pub from_server: bool,
 }
 
+/// A bullet's first trace, from where it was fired to where it stopped (its
+/// end when it hit nothing): the path the game's client draws its beam
+/// along.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BulletPath {
+    /// The entity that fired it.
+    pub shooter: i32,
+    pub weapon: u32,
+    /// The pellet of a spread shot, from 0.
+    pub pellet: u16,
+    /// The hand that fired it: 1 the left.
+    pub hand: u8,
+    pub start: [f32; 3],
+    pub end: [f32; 3],
+}
+
 /// The match around a shot.
 pub trait FireWorld {
     /// The match's time, in milliseconds.
@@ -205,6 +221,12 @@ pub trait FireWorld {
     );
 
     fn impact(&mut self, impact: &BulletImpact);
+
+    /// A bullet's path, for a game whose client draws its bullets' beams
+    /// ([`ClientFireRules::beams`]).
+    fn bullet_path(&mut self, path: &BulletPath) {
+        let _ = path;
+    }
 
     /// The entities whose bounds touch the box.
     fn entities_in_box(&mut self, mins: [f32; 3], maxs: [f32; 3]) -> Vec<i32>;
@@ -480,6 +502,44 @@ pub struct ClientFireRules {
     pub autosim: Option<FireAutoSimRules>,
     /// The game's view kick, when the client runs it.
     pub view_kick: Option<ViewKickRules>,
+    /// The beams the game's client draws along its bullets' paths, in place
+    /// of the weapons' tracer definitions.
+    pub beams: Option<BulletBeamRules>,
+}
+
+/// A shooter as a game's beam rule reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BeamShooter {
+    pub kind: FireEntityKind,
+    pub team: Option<FireTeam>,
+}
+
+/// A beam a bullet draws along its path, from the shooter's flash point.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BulletBeam {
+    /// The beam's material, by name.
+    pub material: &'static str,
+    /// How fast its head moves along the path, in units per second.
+    pub speed: f32,
+    /// Its longest drawn length.
+    pub length: f32,
+    pub width: f32,
+    /// The length of one turn of its screw, and its radius.
+    pub screw_dist: f32,
+    pub screw_radius: f32,
+}
+
+/// The beams a game's client draws along its bullets.
+#[derive(Clone, Copy, Debug)]
+pub struct BulletBeamRules {
+    /// The beam a bullet of the weapon (its definition and variant in the
+    /// game's layout) draws; `shots` is the client's count of the shooter's
+    /// bullets, which the rule advances. `None` draws none.
+    pub beam:
+        fn(def: &[u8], variant: &[u8], shooter: BeamShooter, shots: &mut u8) -> Option<BulletBeam>,
+    /// How many milliseconds before the client's frame a beam starts, from
+    /// the frame's length and the client's `rand()` (0 to 32767).
+    pub start_back: fn(frametime_ms: i32, rand: &mut dyn FnMut() -> i32) -> i32,
 }
 
 /// How far a client's own shots have kicked its view and its gun.
@@ -490,8 +550,14 @@ pub struct ViewKick {
     pub angles: [f32; 3],
     /// How fast the view's kick moves, in degrees per second.
     pub velocity: [f32; 3],
-    /// How fast the gun's kick moves (pitch, yaw).
+    /// The gun's kick (pitch, yaw), in degrees.
+    pub gun_angles: [f32; 2],
+    /// How fast the gun's kick moves (pitch, yaw), in degrees per second.
     pub gun_velocity: [f32; 2],
+    /// What the kick adds to the viewmodel's angles (pitch, yaw, roll).
+    pub viewmodel_angles: [f32; 3],
+    /// The view weapon the gun's kick belongs to.
+    pub weapon: u32,
 }
 
 /// A weapon as the view kick reads it: its definition and variant in the

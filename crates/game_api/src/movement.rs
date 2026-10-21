@@ -75,6 +75,8 @@ pub struct MoveCommand {
     pub melee_charge_dist: u8,
     /// The entity it aims at, when the client found one.
     pub melee_charge_ent: Option<u16>,
+    /// How far the client's gun angles turn from its view angles (pitch, yaw).
+    pub gun_angle_offset: [f32; 2],
 }
 
 /// The weapon slots a player has.

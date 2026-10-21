@@ -10,9 +10,10 @@ use weapon_iw4::SURFACE_TYPE_NAMES;
 use crate::present::{
     FxElemInfoCache, FxScene, play_named_bolted_in_world, play_named_oriented_in_world,
 };
+use crate::tracer::spawn_game_beam;
 use crate::{
     CombatFxDump, FireFxOccurrence, FireFxOutcome, FireFxRequest, FireFxResult, FxJournalCursor,
-    HostFxSystem, PreparedFxCatalog, PreparedImpactFx, PreparedTracers, PresentedFireFx,
+    GameBeam, HostFxSystem, PreparedFxCatalog, PreparedImpactFx, PreparedTracers, PresentedFireFx,
     TracerDrawGate, TracerSpawnSkip, TracerWorld, try_spawn_tracer,
 };
 
@@ -210,6 +211,7 @@ pub fn present_pellet_segment(
     tracers: Option<&PreparedTracers>,
     tracer_world: &mut TracerWorld,
     gate: &mut TracerDrawGate,
+    game_beam: Option<GameBeam>,
     local_number: i32,
     host: &mut HostFxSystem,
     cursor: &mut FxJournalCursor,
@@ -234,6 +236,10 @@ pub fn present_pellet_segment(
         if request.domain == net::EntityEventDomain::Predicted {
             return FireFxOutcome::DeferredUntilAuthority;
         }
+        // A path record's segment is its first impact's too.
+        if matches!(game_beam, Some(GameBeam::None | GameBeam::Beam(_))) {
+            return FireFxOutcome::NotApplicable("bullet_path");
+        }
         FireFxOutcome::Applied(host.0.glass.hit_segment(
             seg_start,
             seg_end,
@@ -256,6 +262,51 @@ pub fn present_pellet_segment(
             .unwrap_or(assets::AssetEdge::Absent);
         let own_shot = attacker_entity_num == local_number;
         let source_id = attacker_entity_num.max(0) as u32;
+        let flash = || {
+            if own_shot {
+                fpv_bolts.flash[usize::from(hand).min(fpv_bolts.flash.len() - 1)]
+            } else {
+                u16::try_from(attacker_entity_num)
+                    .ok()
+                    .and_then(|number| slots.entity_for_number(number))
+                    .and_then(|entity| world_bolts.get(entity).ok())
+                    .and_then(|bolts| bolts.flash)
+            }
+            .map(|target| target.orientation.origin)
+        };
+        match game_beam {
+            None => {}
+            Some(GameBeam::Impact) => return FireFxOutcome::NotApplicable("impact_record"),
+            Some(GameBeam::None) => return FireFxOutcome::PolicySkipped("no_beam"),
+            Some(GameBeam::Beam(beam)) => {
+                let tag_start = flash();
+                let start = tag_start.unwrap_or(seg_start);
+                let spawned = tracers.map(|t| {
+                    spawn_game_beam(
+                        tracer_world,
+                        &t.0,
+                        &beam,
+                        start,
+                        seg_end,
+                        FxMsec::from_host(&host.0),
+                    )
+                });
+                return match spawned {
+                    Some(Ok(())) => {
+                        combat.tracer_spawned = combat.tracer_spawned.saturating_add(1);
+                        if tag_start.is_some() {
+                            cursor.tracer_from_tag = cursor.tracer_from_tag.saturating_add(1);
+                        }
+                        FireFxOutcome::Created(1)
+                    }
+                    _ => {
+                        cursor.tracer_gap = cursor.tracer_gap.saturating_add(1);
+                        cursor.tracer_skip_no_def = cursor.tracer_skip_no_def.saturating_add(1);
+                        FireFxOutcome::DependencyRefused("tracer_definition")
+                    }
+                };
+            }
+        }
 
         let tag_start = gate
             .first_segment_of_pellet(
@@ -266,19 +317,8 @@ pub fn present_pellet_segment(
                 segment,
                 request.now,
             )
-            .then(|| {
-                if own_shot {
-                    fpv_bolts.flash[usize::from(hand).min(fpv_bolts.flash.len() - 1)]
-                } else {
-                    u16::try_from(attacker_entity_num)
-                        .ok()
-                        .and_then(|number| slots.entity_for_number(number))
-                        .and_then(|entity| world_bolts.get(entity).ok())
-                        .and_then(|bolts| bolts.flash)
-                }
-            })
-            .flatten()
-            .map(|target| target.orientation.origin);
+            .then(flash)
+            .flatten();
         let start = tag_start.unwrap_or(seg_start);
         match tracers.map(|t| {
             try_spawn_tracer(

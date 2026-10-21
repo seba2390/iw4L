@@ -12,6 +12,7 @@ mod post_chain;
 mod radius;
 mod shock;
 mod top_down;
+mod tracer;
 mod turret;
 mod view_kick;
 mod viewmodel;

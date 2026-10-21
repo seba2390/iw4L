@@ -269,6 +269,8 @@ fn game_state(
     last.rightmove = (moves >> 8) as u8 as i8;
     b.word(&mut last.buttons.0[0], write);
     b.word(&mut last.buttons.0[1], write);
+    b.f(&mut last.gun_angles[0], write);
+    b.f(&mut last.gun_angles[1], write);
 
     b.i(&mut ps.weapon_time, write);
     b.i(&mut ps.weapon_delay, write);
@@ -515,6 +517,14 @@ impl PlayerMovement for T5Movement {
             rightmove: cmd.rightmove,
             melee_charge_yaw: cmd.melee_charge_yaw,
             melee_charge_dist: cmd.melee_charge_dist,
+            gun_angles: [0, 1].map(|axis| {
+                const ANGLE2SHORT: f32 = 65536.0 / 360.0;
+                const SHORT2ANGLE: f32 = 360.0 / 65536.0;
+                let deg = movement_t5::math::angle_normalize_180(
+                    ps.viewangles[axis] + cmd.gun_angle_offset[axis],
+                );
+                f32::from(((deg * ANGLE2SHORT) as i32) as i16) * SHORT2ANGLE
+            }),
         };
         let mask = if ps.pm_type >= pm_type::DEAD {
             DEAD_CLIP_MASK
@@ -925,11 +935,19 @@ impl PlayerMovement for T5Movement {
         world: &mut dyn game_api::fire::FireWorld,
     ) -> Vec<&'static Unknown> {
         let (ps, _) = unpack(&mut player.clone());
-        let (was, _) = unpack(&mut before.clone());
+        let (was, was_cmd) = unpack(&mut before.clone());
+        // The server updates the client's gun angles after the command's
+        // events, so a shot uses the previous command's gun angles (zeroed
+        // on spawn).
+        let gun_angles = if was.command_time != 0 {
+            was_cmd.gun_angles
+        } else {
+            [ps.viewangles[0], ps.viewangles[1]]
+        };
         crate::fire::server_events(
             &ps,
             was.aim_spread_scale,
-            was.viewangles,
+            gun_angles,
             signals,
             self.zombies,
             world,

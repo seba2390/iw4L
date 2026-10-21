@@ -20,6 +20,7 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
         new: crate::fire_autosim::new,
     }),
     view_kick: Some(crate::view_kick::RULES),
+    beams: None,
 };
 
 /// A shot by a player this client does not view, of a turret, or in a

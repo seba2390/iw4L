@@ -939,6 +939,7 @@ fn encode_pellet_fx_record(out: &mut WireWriter, record: &PelletFxRecord) {
     out.put_u8(record.surf_type);
     out.put_u32(record.surface_flags);
     out.put_u8(record.flesh_flags);
+    out.put_u8(u8::from(record.path));
 }
 
 fn decode_pellet_fx_record(input: &mut WireReader<'_>) -> Result<PelletFxRecord, WireError> {
@@ -956,6 +957,7 @@ fn decode_pellet_fx_record(input: &mut WireReader<'_>) -> Result<PelletFxRecord,
         surf_type: input.get_u8()?,
         surface_flags: input.get_u32()?,
         flesh_flags: input.get_u8()?,
+        path: input.get_u8()? != 0,
     })
 }
 

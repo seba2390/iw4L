@@ -5,7 +5,8 @@
 use bevy::prelude::*;
 use game_api::fire::{KickWeapon, ViewKick, ViewKickRules};
 
-/// The client's view kick and the draws its shots take.
+/// The client's view kick and the client's `rand()`, which its shots and
+/// its bullets' beams draw from.
 #[derive(Resource)]
 pub(crate) struct GameViewKick {
     kick: ViewKick,
@@ -23,10 +24,15 @@ impl Default for GameViewKick {
 }
 
 impl GameViewKick {
+    /// The C library's `rand()`: 0 to 32767.
+    pub(crate) fn c_rand(&mut self) -> i32 {
+        self.holdrand = self.holdrand.wrapping_mul(214_013).wrapping_add(2_531_011);
+        ((self.holdrand >> 16) & 0x7fff) as i32
+    }
+
     /// A draw from 0 to 1: the C library's `rand()` over 32767.
     fn rand(&mut self) -> f32 {
-        self.holdrand = self.holdrand.wrapping_mul(214_013).wrapping_add(2_531_011);
-        ((self.holdrand >> 16) & 0x7fff) as f32 * (1.0 / 32767.0)
+        self.c_rand() as f32 * (1.0 / 32767.0)
     }
 
     /// A shot of the client's own player.
@@ -75,12 +81,13 @@ pub(crate) fn run_view_kick(
     let (Some(rules), Some(registry), Some(ps)) = (rules, registry, prediction.0.predicted_local())
     else {
         state.kick = ViewKick::default();
-        aim.0 = [0.0; 3];
+        *aim = net::AimKick::default();
         return;
     };
     let registry = registry.registry();
     let player = ps.move_player(i32::try_from(local.0.0).unwrap_or(0), false);
     let weapons = |weapon: u32| kick_weapon(registry, weapon);
     (rules.frame)(&player, &weapons, clock.frametime(), &mut state.kick);
-    aim.0 = (rules.aim)(&player, &weapons, &state.kick);
+    aim.angles = (rules.aim)(&player, &weapons, &state.kick);
+    aim.viewmodel_angles = state.kick.viewmodel_angles;
 }

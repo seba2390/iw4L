@@ -90,6 +90,16 @@ log) stand where the map puts them: the bar's bottles and glasses from
 `move 420 -1356 100 0 10`. Shots and blasts launch clutter and break
 destructible paper stacks (`t5.dynent.physics`, `t5.weapons.blast_effects`).
 
+Bullets draw Black Ops' beams from the gun's flash: most zombies guns draw a
+red tracer on every second bullet and a thin streak on the others (shotguns a
+tracer on every pellet). A beam lives only as long as its head takes to reach
+the hit at 7500 units a second, so a screenshot catches one only while the
+trigger is held:
+
+```
+set sv_cheats 1; wait world; god; wait 5s; give weapon/t5:ak74u_zm; wait 3s; press +attack 2; wait 500ms; screenshot tracers; wait 3s; quit
+```
+
 ## Open question
 
 Does a friend need Modern Warfare 2 installed next to Black Ops? The main menu

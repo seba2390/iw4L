@@ -33,8 +33,8 @@ pub use product::{
     publish_empty_fx_owned_plans,
 };
 pub use tracer::{
-    PreparedTracers, QueuedBeam, TracerDrawGate, TracerSpawnSkip, TracerWorld, tick_tracer_beams,
-    try_spawn_tracer,
+    ChosenBeam, GameBeam, PreparedTracers, QueuedBeam, TracerDrawGate, TracerSpawnSkip,
+    TracerWorld, tick_tracer_beams, try_spawn_tracer,
 };
 
 pub use model_draw::{FxModelStaging, PreparedFxModelGeometry};

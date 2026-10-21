@@ -1,5 +1,5 @@
 //! What Black Ops' client does when a player fires: which of the weapon's
-//! fire sounds the shot plays, and its flash and shell.
+//! fire sounds the shot plays, its flash and shell, and its bullets' beams.
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::Rule;
@@ -19,7 +19,6 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     // the event ejects the view or world shell (the last-shot pair for a
     // last shot when both are authored) from the brass tag of the firing
     // hand, unless the weapon is bolt action, whose rechamber ejects it.
-    // Tracers are `t5.weapons.tracers`.
     effects: Rule::Known(()),
     left_from_own_weapon: true,
     autosim: Some(FireAutoSimRules {
@@ -27,6 +26,7 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
         new: crate::fire_autosim::new,
     }),
     view_kick: Some(crate::view_kick::RULES),
+    beams: Some(crate::tracer::RULES),
 };
 
 /// `fireType` burst.

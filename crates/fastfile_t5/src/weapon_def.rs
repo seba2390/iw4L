@@ -317,6 +317,21 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x64))
     }
 
+    /// `tracerFrequency`
+    pub fn tracer_frequency(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x44))
+    }
+
+    /// `tracerWidth`
+    pub fn tracer_width(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x48))
+    }
+
+    /// `tracerLength`
+    pub fn tracer_length(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x4c))
+    }
+
     /// `overheatWeapon`
     pub fn overheat_weapon(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x50))
