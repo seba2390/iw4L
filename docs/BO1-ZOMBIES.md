@@ -29,7 +29,7 @@ The library offers ten maps (`ZOMBIES_LIBRARY`, `crates/game_t5/src/lib.rs`).
 | Map | Zone | State |
 |---|---|---|
 | Kino der Toten | `t5:zombie_theater` | Played solo; co-op on one machine |
-| Five | `t5:zombie_pentagon` | Loads and starts its scripts; its systems are not reached |
+| Five | `t5:zombie_pentagon` | Played solo: doors, debris, elevators, DEFCON portals, electric traps and the thief run |
 | Nacht der Untoten, Verrückt, Shi No Numa, Der Riese | `t5:zombie_cod5_prototype`, `_asylum`, `_sumpf`, `_factory` | Not tried |
 | Ascension, Call of the Dead, Shangri-La, Moon | `t5:zombie_cosmodrome`, `zombie_coast`, `zombie_temple`, `zombie_moon` | Not tried |
 | Dead Ops Arcade | `t5:zombietron` | Not offered |
@@ -99,6 +99,24 @@ trigger is held:
 ```
 set sv_cheats 1; wait world; god; wait 5s; give weapon/t5:ak74u_zm; wait 3s; press +attack 2; wait 500ms; screenshot tracers; wait 3s; quit
 ```
+
+Five's systems, each reached from the conference room with points and power
+(`script maps/_zombiemode_score::add_to_player_score player0 20000; script common_scripts/utility::flag_set level power_on`):
+
+- Elevator 2 (250): `move -1600 2050 70 -45 0; wait 1s; press +activate 0.3`
+  rides it down 320 units to the war room (its buy trigger needs the button
+  in view).
+- DEFCON: press use at the four `punch_switch` triggers
+  (`move -1294 2520 -280 0 0`, `-186 2159 -280`, `-1424 1596 -495`,
+  `-1125 2575 -495`); at DEFCON 5 the war room portal (`move -872 2254 -520 0 0`)
+  sends the player beside the Pack-a-Punch hideaway and starts the countdown.
+- Electric trap: pick up the battery (`move -675 2618 -530 0 20`), deliver
+  it (`move -690 2039 16 0 20`), then buy the trap (`move -680 2040 16 0 15`).
+- The thief: `script maps/_zombiemode_ai_thief::thief_round_start level; script maps/_zombiemode_ai_thief::thief_round_spawning level`.
+  It spawns in the labs and steals the held weapon; with the labs' doors
+  shut it cannot leave them, so start it after the DEFCON run above (the war
+  room), where it reaches the player within 20 s and takes them to the
+  power room.
 
 ## Open question
 
