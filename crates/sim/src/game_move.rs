@@ -23,6 +23,14 @@ pub(crate) fn rules(world: &FrameWorld) -> Option<&'static dyn PlayerMovement> {
     }
 }
 
+/// The match keeps rounds by the game's own ammo and clip numbers.
+pub(crate) fn game_ammo_numbers(world: &FrameWorld) -> bool {
+    world
+        .bootstrap_ref()
+        .mode
+        .is_some_and(|mode| mode.ammo_numbers.is_some())
+}
+
 /// The match runs the game's own weapon rules.
 pub(crate) fn game_weapons(world: &FrameWorld) -> bool {
     world.bootstrap_ref().mode.map(|mode| mode.weapons)
@@ -496,12 +504,31 @@ fn held_rounds(
         if weapon == 0 {
             return HeldWeapon::default();
         }
+        let left = left_weapon(world, weapon);
         HeldWeapon {
             weapon,
             clip: crate::script_player::ammo_clip(world, id, weapon),
             stock: crate::script_player::ammo_stock(world, id, weapon),
+            left_clip: if left == 0 {
+                0
+            } else {
+                crate::script_player::ammo_clip(world, id, left)
+            },
         }
     })
+}
+
+/// A held weapon's dual-wield left-hand weapon, where the game keeps the
+/// left hand's rounds by a weapon of its own; 0 for none.
+pub(crate) fn left_weapon(world: &FrameWorld, weapon: u32) -> u32 {
+    if !game_ammo_numbers(world) {
+        return 0;
+    }
+    world
+        .content()
+        .game_weapon(weapon)
+        .filter(|_| world.combat_facts_for(weapon).is_some_and(|f| f.dual_wield))
+        .map_or(0, |w| w.dual_wield_weapon)
 }
 
 /// What the game's weapon rules did to the slots: rounds spent or loaded,
@@ -525,6 +552,10 @@ fn apply_held(
         }
         if now.stock != was.stock {
             crate::script_player::set_ammo_stock(world, id, now.weapon, now.stock);
+        }
+        let left = left_weapon(world, now.weapon);
+        if left != 0 && now.left_clip != was.left_clip {
+            crate::script_player::set_ammo_clip(world, id, left, now.left_clip);
         }
     }
 }

@@ -183,8 +183,26 @@ pub(crate) fn hand_clip_empty<W: MoveWorld>(ps: &PlayerState, world: &W) -> bool
 }
 
 /// A held weapon and its rounds, as the match keeps them: `(weapon, clip,
-/// stock)`.
-pub type HeldRounds = (u32, i32, i32);
+/// stock, left clip)`, the last the clip of a dual-wield weapon's left-hand
+/// weapon.
+pub type HeldRounds = (u32, i32, i32, i32);
+
+/// A dual-wield weapon's left-hand weapon, which keeps a clip of its own.
+fn left_weapon(w: &Weapon<'_>) -> Option<u32> {
+    (w.def.dual_wield() && w.dual_wield_weapon != 0).then_some(w.dual_wield_weapon)
+}
+
+/// Puts a clip in a free slot, unless its clip is already kept.
+fn load_clip(ps: &mut PlayerState, clip_index: i32, count: i32) {
+    if !ps.ammo_in_clip.iter().any(|s| s.index == clip_index)
+        && let Some(slot) = ps.ammo_in_clip.iter_mut().find(|s| s.index == 0)
+    {
+        *slot = AmmoSlot {
+            index: clip_index,
+            count,
+        };
+    }
+}
 
 /// Takes the match's held weapons and rounds into the player state: rounds
 /// fill the shared clip and ammo slots, and a weapon new to its slot is given
@@ -192,18 +210,14 @@ pub type HeldRounds = (u32, i32, i32);
 pub fn load_held<W: MoveWorld>(ps: &mut PlayerState, world: &W, held: &[HeldRounds]) {
     ps.ammo_in_clip = [AmmoSlot::default(); crate::state::MAX_HELD_WEAPONS];
     ps.ammo_not_in_clip = [AmmoSlot::default(); crate::state::MAX_HELD_WEAPONS];
-    for &(weapon, clip, stock) in held {
+    for &(weapon, clip, stock, left_clip) in held {
         if weapon == 0 {
             continue;
         }
         let w = world.weapon(weapon);
-        if !ps.ammo_in_clip.iter().any(|s| s.index == w.clip_index)
-            && let Some(slot) = ps.ammo_in_clip.iter_mut().find(|s| s.index == 0)
-        {
-            *slot = AmmoSlot {
-                index: w.clip_index,
-                count: clip,
-            };
+        load_clip(ps, w.clip_index, clip);
+        if let Some(left) = left_weapon(&w) {
+            load_clip(ps, world.weapon(left).clip_index, left_clip);
         }
         if !ps.ammo_not_in_clip.iter().any(|s| s.index == w.ammo_index)
             && let Some(slot) = ps.ammo_not_in_clip.iter_mut().find(|s| s.index == 0)
@@ -215,7 +229,7 @@ pub fn load_held<W: MoveWorld>(ps: &mut PlayerState, world: &W, held: &[HeldRoun
         }
     }
     let mut given = [0u32; crate::state::MAX_HELD_WEAPONS];
-    for (i, &(weapon, _, _)) in held.iter().enumerate().take(ps.held_weapons.len()) {
+    for (i, &(weapon, _, _, _)) in held.iter().enumerate().take(ps.held_weapons.len()) {
         let slot = &mut ps.held_weapons[i];
         if slot.weapon == weapon {
             continue;
@@ -277,9 +291,10 @@ pub fn held_rounds<W: MoveWorld>(
     core::array::from_fn(|i| {
         let weapon = ps.held_weapons[i].weapon;
         if weapon == 0 {
-            return (0, 0, 0);
+            return (0, 0, 0, 0);
         }
         let w = world.weapon(weapon);
-        (weapon, clip(ps, &w), stock(ps, &w))
+        let left = left_weapon(&w).map_or(0, |left| clip(ps, &world.weapon(left)));
+        (weapon, clip(ps, &w), stock(ps, &w), left)
     })
 }

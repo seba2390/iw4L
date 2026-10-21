@@ -413,12 +413,32 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
-    // No gas weapons (nova gas) exist in the zombie maps this host runs.
-    registry.register(Function, "weaponisgasweapon", |_, _, _| Ok(Value::Int(0)));
-    // A dual-wield weapon's left hand shares its clip here: there is no
-    // separate left-hand weapon.
-    registry.register(Function, "weapondualwieldweaponname", |_, _, _| {
-        Ok(Value::string("none"))
+    // Black Ops: an unknown name is weapon 0, which is no gas weapon
+    // (`weaponType` 4).
+    registry.register(Function, "weaponisgasweapon", |world, _, args| {
+        let name = super::super::args::string(args, 0)?;
+        let frame = crate::frame::FrameWorld::from_world(world);
+        let gas = frame
+            .weapon_index_by_script_name(&name)
+            .filter(|&index| index != 0)
+            .and_then(|index| frame.combat_facts_for(index))
+            .is_some_and(|facts| facts.weap_type == WEAPTYPE_GAS);
+        Ok(Value::Int(gas.into()))
+    });
+    // The weapon a dual-wield weapon holds in its left hand, else "none".
+    registry.register(Function, "weapondualwieldweaponname", |world, _, args| {
+        let name = super::super::args::string(args, 0)?;
+        let frame = crate::frame::FrameWorld::from_world(world);
+        let weapon = named_weapon(&frame, &name)?;
+        let left = frame
+            .combat_facts_for(weapon)
+            .filter(|facts| facts.dual_wield)
+            .and(frame.content().game_weapon(weapon))
+            .map_or(0, |game| game.dual_wield_weapon);
+        if left == 0 {
+            return Ok(Value::string("none"));
+        }
+        Ok(Value::string(frame.weapon_script_name(left)))
     });
     // No water volumes are simulated.
     registry.register(Method, "depthinwater", |_, _, _| Ok(Value::Float(0.0)));
@@ -1240,4 +1260,23 @@ fn register_actor(registry: &mut NativeRegistry) {
         super::super::args::string(args, 0)?;
         Ok(Value::Int(0))
     });
+}
+
+/// Black Ops' `weaponType` gas.
+const WEAPTYPE_GAS: i32 = 4;
+
+/// A weapon by name, refused as Black Ops' builtins refuse "none" and a
+/// name it has not loaded.
+fn named_weapon(frame: &crate::frame::FrameWorld, name: &str) -> Result<u32, String> {
+    if name.eq_ignore_ascii_case("none") {
+        return Err(format!("Weapon name \"{name}\" is not valid.\n"));
+    }
+    frame
+        .weapon_index_by_script_name(name)
+        .filter(|&index| index != 0)
+        .ok_or_else(|| {
+            format!(
+                "Unknown weapon name \"{name}\": script may need to call PreCacheItem(\"{name}\") during level init.\n"
+            )
+        })
 }

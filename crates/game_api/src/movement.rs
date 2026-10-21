@@ -79,6 +79,23 @@ pub struct MoveCommand {
     pub gun_angle_offset: [f32; 2],
 }
 
+/// A loaded weapon as a game's ammo numbering reads it.
+#[derive(Clone, Copy, Debug)]
+pub struct AmmoWeapon<'a> {
+    /// Its definition and variant in the game's layout.
+    pub def: &'a [u8],
+    pub variant: &'a [u8],
+    pub ammo_name: &'a str,
+    pub clip_name: &'a str,
+    /// Its dual-wield weapon, by its place in the list.
+    pub dual_wield: Option<usize>,
+}
+
+/// The ammo and clip numbers a game gives its weapons, one pair per weapon
+/// in the order they were loaded: weapons with one number share those
+/// rounds. Neither number is 0.
+pub type AmmoNumbers = fn(&[AmmoWeapon<'_>]) -> Vec<(i32, i32)>;
+
 /// The weapon slots a player has.
 pub const HELD_WEAPONS: usize = 15;
 
@@ -88,6 +105,9 @@ pub struct HeldWeapon {
     pub weapon: u32,
     pub clip: i32,
     pub stock: i32,
+    /// The clip of its dual-wield left-hand weapon, where the game's left
+    /// hand holds a weapon of its own.
+    pub left_clip: i32,
 }
 
 /// One player as movement sees it: the fields the rest of the match shares,

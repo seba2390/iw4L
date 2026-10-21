@@ -403,6 +403,9 @@ pub struct WeaponGeometry {
     pub reticle_side_name: Option<Ptr>,
     pub name: Option<Ptr>,
     pub alternate_weapon_name: Option<Ptr>,
+    /// The variant's `ammoName` and `clipName`.
+    pub ammo_name: Option<Ptr>,
+    pub clip_name: Option<Ptr>,
     pub alternate_raise_time_ms: i32,
     pub alternate_drop_time_ms: i32,
 

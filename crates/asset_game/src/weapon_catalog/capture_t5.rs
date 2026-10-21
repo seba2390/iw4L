@@ -943,16 +943,20 @@ pub(super) fn capture_t5_body_facts(
     };
     facts.inherits_perks = leftover_t5_inherits_host_perks();
     facts.kick = leftover_t5_kick(stream, geometry);
+    // The ammo and clip names weapons share rounds by; an unnamed one is
+    // "".
+    let [ammo_name, clip_name] = [geometry.ammo_name, geometry.clip_name].map(|ptr| {
+        ptr.and_then(|p| stream.cstr(p).ok())
+            .map_or_else(String::new, str::to_owned)
+    });
     let game_bytes = geometry.variant.and_then(|variant| {
         let def = stream.slice_at(body, 0, sz::WEAPON_DEF).ok()?;
         let var = stream.slice_at(variant, 0, sz::WEAPON_VARIANT_DEF).ok()?;
         Some(Arc::new(GameWeaponBytes {
             def: def.into(),
             variant: var.into(),
-            ammo_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_AMMO_NAME_OFF)
-                .unwrap_or_else(String::new),
-            clip_name: leftover_t5_cstr(stream, variant, sz::WEAPON_VARIANT_CLIP_NAME_OFF)
-                .unwrap_or_else(String::new),
+            ammo_name: ammo_name.clone(),
+            clip_name: clip_name.clone(),
             named_anims: geometry.sz_xanims.map_or(0, |arr| {
                 (0..sz::WEAPON_XANIM_COUNT)
                     .filter(|&slot| leftover_t5_cstr(stream, arr, slot * 4).is_some())

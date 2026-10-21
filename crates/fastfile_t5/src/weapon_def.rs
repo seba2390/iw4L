@@ -317,6 +317,11 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x64))
     }
 
+    /// `sharedAmmo`
+    pub fn shared_ammo(&self) -> bool {
+        self.def[0x54c] != 0
+    }
+
     /// `tracerFrequency`
     pub fn tracer_frequency(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x44))

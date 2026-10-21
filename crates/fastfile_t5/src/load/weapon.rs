@@ -50,8 +50,8 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         _ => None,
     };
 
-    follow_name(s, p, 0x40)?;
-    follow_name(s, p, 0x48)?;
+    let ammo_name = s.follow_string(p, sz::WEAPON_VARIANT_AMMO_NAME_OFF)?;
+    let clip_name = s.follow_string(p, sz::WEAPON_VARIANT_CLIP_NAME_OFF)?;
     let overlay_material_name = follow_material_name(s, links, p.at(0x8c))?;
     let overlay_material_lowres_name = follow_material_name(s, links, p.at(0x90))?;
     asset_ptr_at(s, links, AssetType::Material, p.at(0x94))?;
@@ -72,6 +72,8 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         reticle_center_name: assets.reticle_center,
         reticle_side_name: assets.reticle_side,
         alternate_weapon_name,
+        ammo_name,
+        clip_name,
         alternate_raise_time_ms: s.i32_at(p, 0x3c)?,
         alternate_drop_time_ms: weap_def
             .map(|body| s.i32_at(body, 0x400))
