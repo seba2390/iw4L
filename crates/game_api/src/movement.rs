@@ -305,6 +305,8 @@ pub struct GameWeapon {
     /// player's, when the definition names them.
     pub fire_loop_sounds: [Option<String>; 2],
     pub fire_stop_sounds: [Option<String>; 2],
+    /// The definition's world clip model, when it names one.
+    pub world_clip_model: Option<String>,
 }
 
 /// The match's weapons by number, as their own game defines them.
