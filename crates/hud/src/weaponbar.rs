@@ -694,6 +694,9 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     hint_latch: Local<'s, crate::t5_hud::T5HintLatch>,
     score_latch: Local<'s, crate::t5_hud::T5ScoreLatch>,
     deadscreen_latch: Local<'s, crate::t5_hud::T5DeadscreenLatch>,
+    actions: Option<Res<'w, net::ClientActionInput>>,
+    pause: Option<Res<'w, frame::MatchPause>>,
+    hint_gaps: Local<'s, std::collections::HashSet<&'static str>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -811,6 +814,26 @@ pub(crate) fn update_weaponbar(
             client_input
                 .deadscreen_latch
                 .update(dvars, client_input.ui_dvars.as_deref(), ms);
+        let owner_hints = crate::game_code_hud::game_hud(client_input.mode.as_deref())
+            .map(|hud| {
+                crate::t5_hud::resolve_owner_hints(
+                    hud,
+                    ps,
+                    local.0.0 as i32,
+                    weapons.as_ref(),
+                    client_input
+                        .actions
+                        .as_ref()
+                        .is_some_and(|a| a.client.kb.scores.active),
+                    client_input.pause.as_ref().is_some_and(|p| p.0),
+                    dvars,
+                    strings.as_deref(),
+                    t5.namespace.unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+                    client_input.input.as_deref(),
+                    &mut client_input.hint_gaps,
+                )
+            })
+            .unwrap_or_else(Vec::new);
         let state = crate::t5_hud::T5HudState {
             ms,
             dvars,
@@ -829,6 +852,7 @@ pub(crate) fn update_weaponbar(
             local_client: local.0.0 as usize,
             scores,
             deadquote_start_ms,
+            owner_hints,
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,

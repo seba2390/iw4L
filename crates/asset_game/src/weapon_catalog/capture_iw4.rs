@@ -359,6 +359,7 @@ impl WeaponCatalog {
                 }),
                 ads_zoom_fov: geometry.ads_zoom_fov,
                 scope_zoom: weapon_iw4::ScopeZoom::NONE,
+                ads_zoom_fovs: [0.0; 3],
                 ads_dof: Some(geometry.ads_dof),
                 ads_zoom_in_frac: geometry.ads_zoom_in_frac,
                 ads_zoom_out_frac: geometry.ads_zoom_out_frac,

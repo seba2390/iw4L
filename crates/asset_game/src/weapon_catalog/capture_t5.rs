@@ -820,6 +820,12 @@ pub(super) fn capture_t5_body_facts(
                 f32_at_t5(stream, variant, sz::WEAPON_VARIANT_ADS_ZOOM_FOV1_OFF),
             ]);
         }
+        facts.ads_zoom_fovs = [
+            sz::WEAPON_VARIANT_ADS_ZOOM_FOV1_OFF,
+            sz::WEAPON_VARIANT_ADS_ZOOM_FOV2_OFF,
+            sz::WEAPON_VARIANT_ADS_ZOOM_FOV3_OFF,
+        ]
+        .map(|off| f32_at_t5(stream, variant, off));
         facts.ads_zoom_in_frac =
             f32_at_t5(stream, variant, sz::WEAPON_VARIANT_ADS_ZOOM_IN_FRAC_OFF);
         facts.ads_zoom_out_frac =

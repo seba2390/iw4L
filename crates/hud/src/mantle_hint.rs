@@ -51,7 +51,14 @@ pub(crate) fn update_mantle_hint(
     mut images: ResMut<Assets<Image>>,
     mut gaps: ResMut<HudPresentationGaps>,
     mut pass: ResMut<HudTessPass>,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
+    // A game with its own code HUD draws its own mantle hint (its owner
+    // draw).
+    if crate::game_code_hud::game_hud(mode.as_deref()).is_some() {
+        hide(&mut pass);
+        return;
+    }
     let Some(ps) = presented.alive_player(local.0) else {
         hide(&mut pass);
         return;
