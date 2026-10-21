@@ -859,6 +859,16 @@ pub(crate) fn give_weapon(
     };
     seed_ps_ammo_tables(ps, weapon, &facts, clip, clip_alt, akimbo, stock);
     world.client_meta_mut(id).set_ammo(weapon, clip, stock);
+    // A game whose left hand holds a weapon of its own fills that weapon's
+    // clip instead of the held weapon's second one.
+    let left = crate::game_move::left_weapon(world, weapon);
+    if left != 0 {
+        let key = weapon_iw4::clip_table_key(facts.clip_index, weapon);
+        if let Some(ps) = world.player_mut(id) {
+            let _ = weapon_iw4::set_clip_for_hand(&mut ps.ammoclip, key, 1, 0);
+        }
+        set_ammo_clip(world, id, left, clip_alt);
+    }
     Ok(())
 }
 
@@ -1038,28 +1048,45 @@ pub(crate) fn has_weapon(world: &FrameWorld, id: ClientId, weapon: u32) -> bool 
             .is_some_and(|ps| ps.weapons.contains(&(weapon as i32)))
 }
 
+/// The ammo and clip numbers the match keeps a weapon's rounds by: the
+/// game's own when it numbers them, else the weapon's combat facts'.
+fn round_keys(world: &FrameWorld, weapon: u32) -> Option<(i32, i32)> {
+    if crate::game_move::game_ammo_numbers(world)
+        && let Some(game) = world.content().game_weapon(weapon)
+    {
+        return Some((game.ammo_index, game.clip_index));
+    }
+    let facts = world.combat_facts_for(weapon)?;
+    Some((
+        weapon_iw4::ammo_table_key(facts.ammo_index, weapon),
+        weapon_iw4::clip_table_key(facts.clip_index, weapon),
+    ))
+}
+
 pub(crate) fn ammo_clip(world: &FrameWorld, id: ClientId, weapon: u32) -> i32 {
-    let (Some(ps), Some(facts)) = (world.player(id), world.combat_facts_for(weapon)) else {
+    let (Some(ps), Some((_, key))) = (world.player(id), round_keys(world, weapon)) else {
         return 0;
     };
-    let key = weapon_iw4::clip_table_key(facts.clip_index, weapon);
     weapon_iw4::get_clip_for_hand(&ps.ammoclip, key, 0)
 }
 
 pub(crate) fn ammo_stock(world: &FrameWorld, id: ClientId, weapon: u32) -> i32 {
-    let (Some(ps), Some(facts)) = (world.player(id), world.combat_facts_for(weapon)) else {
+    let (Some(ps), Some((key, _))) = (world.player(id), round_keys(world, weapon)) else {
         return 0;
     };
-    let key = weapon_iw4::ammo_table_key(facts.ammo_index, weapon);
     weapon_iw4::get_ammo_not_in_clip(&ps.ammo, key)
 }
 
 pub(crate) fn set_ammo_clip(world: &mut FrameWorld, id: ClientId, weapon: u32, count: i32) {
-    let Some(facts) = world.combat_facts_for(weapon) else {
+    let Some((_, key)) = round_keys(world, weapon) else {
         return;
     };
-    let count = count.clamp(0, facts.clip_size.max(0));
-    let key = weapon_iw4::clip_table_key(facts.clip_index, weapon);
+    // A weapon the match has no combat facts for (a dual-wield left gun)
+    // keeps what the game's rules give it.
+    let count = match world.combat_facts_for(weapon) {
+        Some(facts) => count.clamp(0, facts.clip_size.max(0)),
+        None => count.max(0),
+    };
     if let Some(ps) = world.player_mut(id) {
         let _ = weapon_iw4::set_clip_for_hand(&mut ps.ammoclip, key, 0, count);
     }
@@ -1073,11 +1100,13 @@ pub(crate) fn set_ammo_clip(world: &mut FrameWorld, id: ClientId, weapon: u32, c
 }
 
 pub(crate) fn set_ammo_stock(world: &mut FrameWorld, id: ClientId, weapon: u32, count: i32) {
-    let Some(facts) = world.combat_facts_for(weapon) else {
+    let Some((key, _)) = round_keys(world, weapon) else {
         return;
     };
-    let count = count.clamp(0, facts.max_ammo.max(0));
-    let key = weapon_iw4::ammo_table_key(facts.ammo_index, weapon);
+    let count = match world.combat_facts_for(weapon) {
+        Some(facts) => count.clamp(0, facts.max_ammo.max(0)),
+        None => count.max(0),
+    };
     if let Some(ps) = world.player_mut(id) {
         let _ = weapon_iw4::set_ammo_not_in_clip(&mut ps.ammo, key, count);
     }

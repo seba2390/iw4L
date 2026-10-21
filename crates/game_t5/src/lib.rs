@@ -1,3 +1,4 @@
+mod ammo;
 mod catalog;
 mod client_catalog;
 mod code_hud;
@@ -257,6 +258,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         damage_radius_scale: 1.0,
         destruct_uses_physics: false,
     })),
+    ammo_numbers: Some(crate::ammo::numbers),
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each

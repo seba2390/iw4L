@@ -296,6 +296,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     overlays: Some(overlay::OVERLAYS),
     frame_fog: Some(fog::FRAME_FOG),
     dyn_ent_physics: None,
+    ammo_numbers: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

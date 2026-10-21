@@ -382,6 +382,11 @@ pub struct ModeRules {
     /// The game's own rules for what bullets, explosions and players do to
     /// the map's dynamic entities; `None` runs Modern Warfare 2's.
     pub dyn_ent_physics: Option<Rule<DynEntPhysicsRules>>,
+    /// How the game numbers its weapons' ammo and clips; the match keeps a
+    /// player's rounds by these numbers. `None` numbers them by the weapons'
+    /// ammo and clip names for the game's own rules, and keeps the match's
+    /// rounds by the weapons' combat facts.
+    pub ammo_numbers: Option<movement::AmmoNumbers>,
 }
 
 /// A game's dynamic entity physics parameters (`dynEnt_*` and `phys_bullet*`

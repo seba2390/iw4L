@@ -26,18 +26,29 @@ pub(crate) fn compile(
     pen_table: weapon_iw4::PenetrationDepthTable,
     pen_table_loaded: bool,
     rank_progression: bool,
+    ammo_numbers: Option<game_api::movement::AmmoNumbers>,
 ) -> Result<PreparedSimWeapons, sim::SimWeaponContentRefusal> {
     let rules = WeaponHostRules::default();
     let aliases: Vec<_> = weapons.native_script_aliases().chain(aliases).collect();
     let mut refused = Vec::new();
     let groups = weapons.configuration_transition_groups();
-    let game_weapons = game_weapons(weapons);
+    let game_weapons = game_weapons(weapons, ammo_numbers);
     let rows = weapons.published_weapons().map(|weapon| {
         let id = weapon.wire_id();
         let execution = weapons
             .configuration_admission(id)
             .map_err(|reason| format!("{reason:?}"))
-            .and_then(|()| compile_combat(weapons, weapon, rules, global_location, &mut refused));
+            .and_then(|()| compile_combat(weapons, weapon, rules, global_location, &mut refused))
+            .map(|mut facts| {
+                // The game's own numbering: the first weapon with the name.
+                if ammo_numbers.is_some()
+                    && let Some(game) = &game_weapons[id as usize]
+                {
+                    facts.ammo_index = game.ammo_index;
+                    facts.clip_index = game.clip_index;
+                }
+                facts
+            });
         let setup = weapons.describe_configuration(id).and_then(|selection| {
             let family = selection.family.as_ref()?;
             Some(sim::WeaponSetup {
@@ -123,10 +134,40 @@ pub(crate) fn compile(
 }
 
 /// The weapons a game runs its own rules over, with what its loader
-/// resolves: weapons sharing an ammo or clip name share the first one's number.
-fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::GameWeapon>>> {
+/// resolves: the game's own ammo and clip numbers, else weapons sharing an
+/// ammo or clip name share the first one's number.
+fn game_weapons(
+    weapons: &WeaponRegistry,
+    ammo_numbers: Option<game_api::movement::AmmoNumbers>,
+) -> Vec<Option<Arc<game_api::movement::GameWeapon>>> {
     let mut ammo = std::collections::HashMap::new();
     let mut clip = std::collections::HashMap::new();
+    let numbered = ammo_numbers.map(|numbers| {
+        let loaded: Vec<_> = weapons
+            .published_weapons()
+            .filter_map(|weapon| Some((weapon, weapon.game_bytes()?)))
+            .collect();
+        let place: std::collections::HashMap<u32, usize> = loaded
+            .iter()
+            .enumerate()
+            .map(|(at, (weapon, _))| (weapon.wire_id(), at))
+            .collect();
+        let read: Vec<_> = loaded
+            .iter()
+            .map(|(weapon, bytes)| game_api::movement::AmmoWeapon {
+                def: &bytes.def,
+                variant: &bytes.variant,
+                ammo_name: &bytes.ammo_name,
+                clip_name: &bytes.clip_name,
+                dual_wield: place.get(&weapon.dual_wield_wire_id()).copied(),
+            })
+            .collect();
+        loaded
+            .iter()
+            .map(|(weapon, _)| weapon.wire_id())
+            .zip(numbers(&read))
+            .collect::<std::collections::HashMap<_, _>>()
+    });
     let mut out = Vec::new();
     for weapon in weapons.published_weapons() {
         let id = weapon.wire_id() as usize;
@@ -139,8 +180,13 @@ fn game_weapons(weapons: &WeaponRegistry) -> Vec<Option<Arc<game_api::movement::
                 .authored_weapon_sound(id as u32, slot)
                 .map(str::to_owned)
         };
-        let ammo_index = *ammo.entry(bytes.ammo_name.clone()).or_insert(id as i32);
-        let clip_index = *clip.entry(bytes.clip_name.clone()).or_insert(id as i32);
+        let (ammo_index, clip_index) = match &numbered {
+            Some(numbered) => numbered.get(&(id as u32)).copied().unwrap_or((0, 0)),
+            None => (
+                *ammo.entry(bytes.ammo_name.clone()).or_insert(id as i32),
+                *clip.entry(bytes.clip_name.clone()).or_insert(id as i32),
+            ),
+        };
         out[id] = Some(Arc::new(game_api::movement::GameWeapon {
             def: bytes.def.clone(),
             variant: bytes.variant.clone(),

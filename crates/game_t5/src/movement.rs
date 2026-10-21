@@ -541,6 +541,7 @@ impl PlayerMovement for T5Movement {
                 player.held[i].weapon,
                 player.held[i].clip,
                 player.held[i].stock,
+                player.held[i].left_clip,
             )
         });
         movement_t5::load_held(&mut ps, &adapter, &held);
@@ -574,7 +575,7 @@ impl PlayerMovement for T5Movement {
         if adapter.weapon_unknown.get() {
             outcome.gaps.push(weapon_unknown());
         }
-        for (slot, (weapon, clip, stock)) in movement_t5::held_rounds(&ps, &adapter)
+        for (slot, (weapon, clip, stock, left_clip)) in movement_t5::held_rounds(&ps, &adapter)
             .into_iter()
             .enumerate()
         {
@@ -582,6 +583,7 @@ impl PlayerMovement for T5Movement {
                 weapon,
                 clip,
                 stock,
+                left_clip,
             };
         }
         pack(player, &mut ps, &mut last);

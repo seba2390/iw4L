@@ -660,6 +660,7 @@ impl PlayerMovement for T6Movement {
                 weapon,
                 clip,
                 stock,
+                left_clip: player.held[slot].left_clip,
             };
         }
         pack(player, &mut ps, &mut last);
