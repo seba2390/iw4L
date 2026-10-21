@@ -260,9 +260,9 @@ pub(crate) fn server_events(
                     &[NotifyArg::Weapon(weapon)],
                 );
             }
-            ev::DETONATE | ev::GRENADE_SUICIDE => {
-                gaps.push(fire_unknown());
-            }
+            // Black Ops' scripts hear a detonation key as the player's notify.
+            ev::DETONATE => world.notify(ps.client_num, "detonate", &[]),
+            ev::GRENADE_SUICIDE => grenade_suicide(ps, zombies, &mut gaps, world),
             ev::FALL_DAMAGE..=FALL_DAMAGE_LAST => {
                 fall_damage(ps.client_num, parm, &mut gaps, world)
             }
@@ -1415,6 +1415,72 @@ fn path(weapon: u32, bp: &BulletParams, hit: bool, br: &BulletResults, world: &m
         end: if hit { br.hit_pos } else { bp.end },
     });
 }
+
+/// A player held a cooked grenade past its fuse. With grenade suicide on,
+/// Black Ops kills the player at once. With it off, the grenade drops at the
+/// player's feet on what is left of its fuse, and the player takes a killing
+/// blow anyway unless in zombies with PhD Flopper.
+fn grenade_suicide(
+    ps: &PlayerState,
+    zombies: bool,
+    gaps: &mut Vec<&'static Unknown>,
+    world: &mut dyn FireWorld,
+) {
+    let client = ps.client_num;
+    let Some(entity) = world.entity(client) else {
+        return;
+    };
+    if entity.kind != FireEntityKind::Player {
+        return;
+    }
+    if world.grenade_suicide_disabled() {
+        let weapon = ps.offhand_index;
+        if let Some((def_bytes, variant_bytes)) = world
+            .weapon(weapon)
+            .map(|w| (w.def.clone(), w.variant.clone()))
+            && let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes)
+        {
+            crate::grenade::drop_grenade(
+                client,
+                weapon,
+                &def,
+                ps.origin,
+                ps.grenade_time_left,
+                world,
+                gaps,
+            );
+        } else {
+            gaps.push(crate::movement::weapon_unknown());
+        }
+        if zombies && ps.perks & PERK_FLAKJACKET != 0 {
+            return;
+        }
+    }
+    damage(
+        gaps,
+        client,
+        client,
+        entity,
+        Hit {
+            target: client,
+            dir: [0.0; 3],
+            point: [0.0; 3],
+            amount: SUICIDE_DAMAGE,
+            flags: 0,
+            means: MOD_SUICIDE,
+            weapon: ps.offhand_index,
+            location: 0,
+            bone: None,
+        },
+        world,
+    );
+}
+
+/// The damage grenade suicide deals, and its means of death.
+const SUICIDE_DAMAGE: i32 = 100_000;
+const MOD_SUICIDE: usize = 13;
+/// PhD Flopper's perk bits (`specialty_flakjacket`).
+const PERK_FLAKJACKET: u32 = 0x3000;
 
 /// The server's damage to what a shot, blow or blast reaches: a player's
 /// own multipliers, an actor's hit location multipliers, then the entity's

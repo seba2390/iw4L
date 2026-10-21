@@ -169,6 +169,20 @@ pub trait FireWorld {
         mask: u32,
     ) -> BulletTrace;
 
+    /// [`Self::bullet_trace`] of a box from `mins` to `maxs` around the path.
+    fn box_trace(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        mask: u32,
+    ) -> BulletTrace {
+        let _ = (mins, maxs);
+        self.bullet_trace(start, end, pass_entity, mask)
+    }
+
     /// [`Self::bullet_trace`] where each body's part is chosen by `priority`,
     /// one entry per hit location, as the game's locational trace does.
     fn locational_trace(

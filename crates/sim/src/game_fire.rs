@@ -336,6 +336,34 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         self.trace_bodies(start, end, pass_entity, mask, Some(priority))
     }
 
+    fn box_trace(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        mask: u32,
+    ) -> BulletTrace {
+        // The box meets the world; the bodies it meets as a point.
+        let bodies = self.trace_bodies(start, end, pass_entity, mask, None);
+        let boxed = self.world.trace_world(start, end, mins, maxs, mask);
+        let start_solid = boxed.startsolid != 0;
+        if !(start_solid || boxed.fraction < bodies.fraction) || bodies.start_solid {
+            return bodies;
+        }
+        BulletTrace {
+            fraction: if start_solid { 0.0 } else { boxed.fraction },
+            normal: boxed.normal,
+            surface_flags: boxed.surface_flags,
+            contents: boxed.contents,
+            hit: BulletHitType::Entity(ENTITY_WORLD),
+            start_solid,
+            all_solid: boxed.allsolid != 0,
+            ..BulletTrace::default()
+        }
+    }
+
     fn run_missile_now(&mut self, missile: i32) {
         let Some(mut state) = self
             .world
