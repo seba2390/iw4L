@@ -22,9 +22,56 @@ pub struct GameCodeHud {
     pub damage_icons: DamageIcons,
     pub crosshair: CrosshairFn,
     pub scoreboard: Option<&'static CodeScoreboard>,
+    /// What the game's hint and message owner draws show.
+    pub owner_hint: OwnerHintFn,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
+}
+
+/// What a game's hint or message owner draw (its number) shows this frame.
+pub type OwnerHintFn = fn(i32, &OwnerHintView<'_>) -> OwnerHint;
+
+/// What a game's hint and message owner draws read.
+pub struct OwnerHintView<'a> {
+    /// The local player as the game's movement keeps him.
+    pub player: &'a MovePlayer,
+    /// The weapon's hint fields; `None` when the client does not know it.
+    pub weapon: &'a dyn Fn(u32) -> Option<HintWeapon>,
+    /// The scoreboard is up.
+    pub scoreboard: bool,
+    /// The offline game is paused.
+    pub paused: bool,
+    /// A client dvar's value, when the client keeps it.
+    pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+}
+
+/// A weapon definition's fields a hint reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HintWeapon {
+    /// The weapon draws a sight overlay when aimed.
+    pub ads_overlay: bool,
+    /// The weapon class, by the game's numbers.
+    pub weap_class: i32,
+    /// The scope has more than one zoom level.
+    pub zoom_varies: bool,
+}
+
+/// What a hint or message owner draw shows.
+#[derive(Clone, Copy, Debug)]
+pub enum OwnerHint {
+    /// Not one of the game's hint or message owner draws.
+    NotHint,
+    /// Nothing this frame.
+    Nothing,
+    /// The localized string `key`, its `&&1` the key bound to the first of
+    /// `binds` that has one, centred on the item.
+    Text {
+        key: &'static str,
+        binds: &'static [&'static str],
+    },
+    /// The game draws something the runtime does not.
+    Unrun(&'static Unknown),
 }
 
 /// The icons pointing at where damage came from.
