@@ -351,10 +351,7 @@ impl FpvPresentState {
         let named = |anim: usize| game.named(anim);
         let (anim, gap) = match (game.rules.pick, game.weapon.as_ref()) {
             (Some(pick), Some(weapon)) => {
-                self.random = self
-                    .random
-                    .wrapping_mul(1_103_515_245)
-                    .wrapping_add(12_345);
+                self.random = self.random.wrapping_mul(1_103_515_245).wrapping_add(12_345);
                 pick(
                     raw as u32,
                     &game_api::ViewmodelPick {

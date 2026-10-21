@@ -402,6 +402,7 @@ pub(crate) fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut Use
     player.aim_spread_scale = ps.aim_spread_scale;
     player.weapon_state = ps.weaponstate;
     player.weap_anim = ps.weap_anim;
+    player.weap_anim_left = Some(ps.weap_anim_left);
     player.offhand = ps.offhand_index;
     player.grenade_time_left = ps.grenade_time_left;
     game_state(ps, last, &mut player.game, true);

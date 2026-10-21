@@ -61,7 +61,26 @@ pub mod weap_anim_extra {
     pub const MANTLE_CAMERA: usize = WEAPON_ANIM_COUNT + 26;
     /// The camera animations' slots.
     pub const CAMERAS: core::ops::Range<usize> = SPRINT_CAMERA..MANTLE_CAMERA + 1;
-    pub(super) const LATER_GAMES: usize = 25;
+    pub const FIRE_INTRO: usize = WEAPON_ANIM_COUNT + 27;
+    pub const ADS_FIRE_INTRO: usize = WEAPON_ANIM_COUNT + 28;
+    pub const MELEE1: usize = WEAPON_ANIM_COUNT + 29;
+    pub const MELEE2: usize = WEAPON_ANIM_COUNT + 30;
+    pub const MELEE3: usize = WEAPON_ANIM_COUNT + 31;
+    pub const MELEE_EMPTY: usize = WEAPON_ANIM_COUNT + 32;
+    pub const MELEE_CHARGE_EMPTY: usize = WEAPON_ANIM_COUNT + 33;
+    pub const CRAWL_IN: usize = WEAPON_ANIM_COUNT + 34;
+    pub const CRAWL_FORWARD: usize = WEAPON_ANIM_COUNT + 35;
+    pub const CRAWL_BACK: usize = WEAPON_ANIM_COUNT + 36;
+    pub const CRAWL_RIGHT: usize = WEAPON_ANIM_COUNT + 37;
+    pub const CRAWL_LEFT: usize = WEAPON_ANIM_COUNT + 38;
+    pub const CRAWL_OUT: usize = WEAPON_ANIM_COUNT + 39;
+    pub const CRAWL_EMPTY_IN: usize = WEAPON_ANIM_COUNT + 40;
+    pub const CRAWL_EMPTY_FORWARD: usize = WEAPON_ANIM_COUNT + 41;
+    pub const CRAWL_EMPTY_BACK: usize = WEAPON_ANIM_COUNT + 42;
+    pub const CRAWL_EMPTY_RIGHT: usize = WEAPON_ANIM_COUNT + 43;
+    pub const CRAWL_EMPTY_LEFT: usize = WEAPON_ANIM_COUNT + 44;
+    pub const CRAWL_EMPTY_OUT: usize = WEAPON_ANIM_COUNT + 45;
+    pub(super) const LATER_GAMES: usize = 44;
 }
 
 pub const ANIM_RATE_TABLE: [AnimRateOffsets; WEAPON_ANIM_COUNT] = [
