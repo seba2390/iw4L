@@ -179,7 +179,7 @@ Only the top-level items count.
   - [x] The auto turret, bought, runs Black Ops' turret think: it is drawn with its model, picks zombies in its arcs and sight, swings onto them with its convergence, fires the turret weapon's bullets (`isfiringturret`, `turretstatechange`, `shootturret`) and kills them, itself the attacker. Its fire flash and sound are not shown (`t5.turret.fire_event`).
   - [ ] The projector and the teleporter's visuals (client scripts): the projector's film and beam (client effects on the client's own entities), the teleporter's aftereffects (visions, the FOV through `setClientDvar`, and the `electrocution` and `explosion` shellshocks' screen blur, look control and movement, but not their view kick or sound, #371) and its black-box vision play; its screen's extra camera does not (#361).
 - [ ] Every zombies map in the install (Five, Dead Ops Arcade).
-  - [ ] Five (`t5:zombie_pentagon`): loads and starts its scripts; its own systems (debris and the rest) are not reached.
+  - [x] Five (`t5:zombie_pentagon`) plays solo through its own systems: doors and debris, the elevators, the DEFCON switches and the portal to the Pack-a-Punch hideaway, the electric traps' batteries and the thief round; the test player reaches round 6 with no script errors.
   - [ ] Dead Ops Arcade (`zombietron`): not offered by the game library yet.
   - [ ] Nacht der Untoten (`t5:zombie_cod5_prototype`): offered by the library, not tried.
   - [ ] Verrückt (`t5:zombie_cod5_asylum`): offered by the library, not tried.
