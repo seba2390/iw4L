@@ -26,6 +26,9 @@ pub(crate) const VIEWMODEL: ViewmodelRules = ViewmodelRules {
         "a Black Ops 2 weapon animation with no slot in the runtime's viewmodel (fire intro, empty melee and melee charge, empty sprint, low ready, continuous fire, crawl, deploy, breakdown, ADS fire intro, dive to prone, slide, mantle) is not played",
         "slots for Black Ops 2's own weapon animations in the runtime's viewmodel"
     )),
+    pick: None,
+    blend: None,
+    left_empty_idle: false,
 };
 
 fn camera_unknown() -> &'static Unknown {

@@ -216,13 +216,16 @@ pub fn local_shot_identity(
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WeapAnimEdge {
     Unchanged,
 
     Idle,
 
     ForceIdle,
+
+    /// Idle now, blending in over this many seconds.
+    ForceIdleOver(f32),
 
     Dispatch(usize),
 
@@ -296,6 +299,9 @@ impl GameViewmodel {
 
 #[derive(Clone, Debug, Default)]
 pub struct FpvPresentState {
+    /// The client's random draws for a game's own picks.
+    random: u32,
+
     pub last_tick: Option<u32>,
 
     pub last_ads_frac: Option<f32>,
@@ -337,12 +343,31 @@ impl FpvPresentState {
         &mut self,
         raw: i32,
         game: &GameViewmodel,
+        player: &[u8; game_api::movement::GAME_MOVE_BYTES],
     ) -> (WeapAnimEdge, Option<game_api::CameraAnim>) {
         if self.last_weap_anim.replace(raw) == Some(raw) {
             return (WeapAnimEdge::Unchanged, None);
         }
         let named = |anim: usize| game.named(anim);
-        let (anim, gap) = (game.rules.anim)(raw as u32, &named);
+        let (anim, gap) = match (game.rules.pick, game.weapon.as_ref()) {
+            (Some(pick), Some(weapon)) => {
+                self.random = self
+                    .random
+                    .wrapping_mul(1_103_515_245)
+                    .wrapping_add(12_345);
+                pick(
+                    raw as u32,
+                    &game_api::ViewmodelPick {
+                        named: &named,
+                        def: &weapon.def,
+                        variant: &weapon.variant,
+                        game: player,
+                        random: self.random >> 16,
+                    },
+                )
+            }
+            _ => (game.rules.anim)(raw as u32, &named),
+        };
         if let Some(gap) = gap {
             self.report(gap);
         }
@@ -379,6 +404,7 @@ impl FpvPresentState {
         match anim {
             game_api::ViewmodelAnim::Idle => WeapAnimEdge::Idle,
             game_api::ViewmodelAnim::IdleNow => WeapAnimEdge::ForceIdle,
+            game_api::ViewmodelAnim::IdleOver(secs) => WeapAnimEdge::ForceIdleOver(secs),
             game_api::ViewmodelAnim::Keep => WeapAnimEdge::Unchanged,
             game_api::ViewmodelAnim::Play(anim) => {
                 let right = (!left).then(|| game.slot(anim)).flatten();
@@ -578,7 +604,9 @@ pub fn tick_equipped_fpv_with_extra_events(
     }
     if let Some(sample) = sample {
         let (edge, camera) = match &game {
-            Some(game) => present.observe_game_weap_anim_edge(sample.weap_anim, game),
+            Some(game) => {
+                present.observe_game_weap_anim_edge(sample.weap_anim, game, &sample.game_move)
+            }
             None => (present.observe_weap_anim_edge(sample.weap_anim), None),
         };
         match edge {
@@ -593,6 +621,11 @@ pub fn tick_equipped_fpv_with_extra_events(
                 equipped
                     .controller
                     .apply_force_idle_weap_anim(sample.clip_ammo == Some(0));
+            }
+            WeapAnimEdge::ForceIdleOver(secs) => {
+                equipped
+                    .controller
+                    .apply_force_idle_weap_anim_over(sample.clip_ammo == Some(0), secs);
             }
             WeapAnimEdge::Dispatch(slot) => {
                 report_dispatch_slot(slot, equipped.controller.dispatch_sz_xanim_index(slot));
@@ -649,8 +682,9 @@ pub fn tick_equipped_fpv_with_extra_events(
             Some(game) => present.observe_game_left_edge(sample.weap_anim_secondary, game),
             None => present.observe_weap_anim_secondary_edge(sample.weap_anim_secondary),
         };
-        // A game's left idle is never its empty one.
-        let empty = game.is_none() && sample.left_clip_ammo == Some(0);
+        // A game's left idle is its empty one only when the game says so.
+        let empty = game.as_ref().is_none_or(|game| game.rules.left_empty_idle)
+            && sample.left_clip_ammo == Some(0);
         match edge {
             WeapAnimEdge::Unchanged => {}
             WeapAnimEdge::Idle => {
@@ -659,6 +693,7 @@ pub fn tick_equipped_fpv_with_extra_events(
                 }
             }
             WeapAnimEdge::ForceIdle => left.apply_force_idle_weap_anim(empty),
+            WeapAnimEdge::ForceIdleOver(secs) => left.apply_force_idle_weap_anim_over(empty, secs),
             WeapAnimEdge::Dispatch(slot) => {
                 report_dispatch_slot(slot, left.dispatch_sz_xanim_index(slot));
             }
@@ -695,9 +730,12 @@ fn start_game_anim(
     anim: usize,
     player: &[u8; game_api::movement::GAME_MOVE_BYTES],
 ) {
-    let started = controller.start_game_anim(slot, |length_ms| {
-        game.rate(anim, length_ms, player).unwrap_or(1.0)
-    });
+    let goal_time = game.rules.blend.map_or(0.0, |blend| blend(anim));
+    let started = controller.start_game_anim(
+        slot,
+        |length_ms| game.rate(anim, length_ms, player).unwrap_or(1.0),
+        goal_time,
+    );
     if !started {
         diag::warn!(
             Fpv,

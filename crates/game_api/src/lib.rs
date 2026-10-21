@@ -453,7 +453,32 @@ pub struct ViewmodelRules {
     /// What an animation the runtime's viewmodel holds no slot for does not
     /// do; `None` when it holds them all.
     pub unslotted: Option<&'static Unknown>,
+    /// What a change of the weapon animation number plays, read with the
+    /// weapon's and the player's own fields and a random draw; when set it
+    /// stands in for `anim`.
+    pub pick: Option<ViewmodelPickFn>,
+    /// The seconds the game blends an animation it starts in over (the
+    /// others out); `None` cuts to it.
+    pub blend: Option<fn(anim: usize) -> f32>,
+    /// A dual-wield weapon's left gun idles empty while its clip is.
+    pub left_empty_idle: bool,
 }
+
+/// What [`ViewmodelPickFn`] reads.
+pub struct ViewmodelPick<'a> {
+    /// Whether the weapon names its animation `i` (in the game's own order).
+    pub named: &'a dyn Fn(usize) -> bool,
+    /// The weapon's definition and variant, in the game's own layout.
+    pub def: &'a [u8],
+    pub variant: &'a [u8],
+    /// The player's own fields ([`movement::MovePlayer::game`]).
+    pub game: &'a [u8; movement::GAME_MOVE_BYTES],
+    /// A random draw for the game's own random pick.
+    pub random: u32,
+}
+
+pub type ViewmodelPickFn =
+    fn(weap_anim: u32, pick: &ViewmodelPick<'_>) -> (ViewmodelAnim, Option<&'static Unknown>);
 
 pub type ViewmodelAnimFn =
     fn(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> (ViewmodelAnim, Option<&'static Unknown>);
@@ -501,12 +526,14 @@ pub struct ViewmodelStart<'a> {
 pub type ViewmodelRateFn = fn(&ViewmodelStart<'_>) -> f32;
 
 /// What a viewmodel does on a weapon animation change.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ViewmodelAnim {
     /// Idle once the animations playing have finished.
     Idle,
     /// Idle now.
     IdleNow,
+    /// Idle now, blending in over this many seconds.
+    IdleOver(f32),
     /// The weapon's animation by its index in the game's own order.
     Play(usize),
     /// What plays goes on.
