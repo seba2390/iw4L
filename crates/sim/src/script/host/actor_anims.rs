@@ -476,6 +476,8 @@ fn set_anim(
 /// that flagged animations crossed, then `end` for ones that finished.
 pub(crate) fn advance(world: &mut World, seconds: f32) {
     let mut notifies = Vec::new();
+    let footsteps = crate::script::client::ai_footstep_rule(world);
+    let mut steps = Vec::new();
     {
         let mut runtime = world.resource_mut::<RoundScript>();
         for (actor, anim) in &mut runtime.actor_anims {
@@ -490,10 +492,27 @@ pub(crate) fn advance(world: &mut World, seconds: f32) {
                 let XAnimNodeKind::Leaf { clip, .. } = &tree.definition.nodes()[leaf].kind else {
                     continue;
                 };
+                let wrapped = state.cycle_count != state.old_cycle_count;
+                let crossed = |time: f32| {
+                    if wrapped {
+                        time > state.old_time || time <= state.time
+                    } else {
+                        time > state.old_time && time <= state.time
+                    }
+                };
+                // The game's client hears a footstep note on any animation
+                // its actor plays: the tenth letter `l` is the left foot.
+                if footsteps.is_some() {
+                    for note in clip.notifies.iter().filter(|note| crossed(note.time)) {
+                        let name = note.name.to_ascii_lowercase();
+                        if name.starts_with("footstep_") || name.starts_with("dogstep_") {
+                            steps.push((*actor, name.as_bytes().get(9) == Some(&b'l')));
+                        }
+                    }
+                }
                 let Some(flag) = flag_for(&tree, &anim.flags, leaf as u16) else {
                     continue;
                 };
-                let wrapped = state.cycle_count != state.old_cycle_count;
                 for note in &clip.notifies {
                     let crossed = if wrapped {
                         note.time > state.old_time || note.time <= state.time
@@ -518,6 +537,61 @@ pub(crate) fn advance(world: &mut World, seconds: f32) {
             vec![Value::string(&note)],
         );
     }
+    if let Some(rule) = footsteps {
+        for (actor, left) in steps {
+            footstep(world, &rule, actor, left);
+        }
+    }
+}
+
+/// An actor's footstep as the game's client sounds it: at its foot tag
+/// when the actor is near the local view, else at its origin, on the
+/// surface a short trace finds under that point.
+fn footstep(world: &mut World, rule: &game_api::AiFootstep, actor: u64, left: bool) {
+    let field = |world: &mut World, name: &str| {
+        world
+            .resource_mut::<RoundScript>()
+            .object_field(actor, name)
+    };
+    let (Value::Vector(origin), Value::Vector(angles)) =
+        (field(world, "origin"), field(world, "angles"))
+    else {
+        return;
+    };
+    let dog = matches!(field(world, "isdog"), Value::Int(n) if n != 0);
+    let view = FrameWorld::from_world(world)
+        .player(crate::ClientId(0))
+        .map(|ps| {
+            [
+                ps.origin[0],
+                ps.origin[1],
+                ps.origin[2] + ps.view_height_current,
+            ]
+        });
+    let near = view.is_some_and(|view| {
+        let d: [f32; 3] = std::array::from_fn(|i| origin[i] - view[i]);
+        d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < rule.tag_range * rule.tag_range
+    });
+    let tag = rule.tags[usize::from(!left)];
+    let position = near
+        .then(|| super::presence::tag_offset(world, actor, tag))
+        .flatten()
+        .map_or(origin, |offset| {
+            let axis = math_iw4::angles_to_axis(angles);
+            std::array::from_fn(|i| {
+                origin[i] + axis[0][i] * offset[0] + axis[1][i] * offset[1] + axis[2][i] * offset[2]
+            })
+        });
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let flags = crate::game_fire::surface_trace(
+        &mut FrameWorld::from_world(world),
+        tick,
+        [position[0], position[1], position[2] + rule.trace_up],
+        [position[0], position[1], position[2] - rule.trace_down],
+        actor,
+        rule.trace_mask,
+    );
+    crate::script::client::ai_footstep(world, actor, position, (rule.surface)(flags), dog);
 }
 
 fn flag_for(tree: &ActorAnimTree, flags: &BTreeMap<u16, Arc<str>>, leaf: u16) -> Option<Arc<str>> {

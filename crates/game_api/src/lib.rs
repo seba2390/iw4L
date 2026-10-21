@@ -105,6 +105,27 @@ pub struct ClientCallbacks {
     /// A level notify the client's engine raises (a viewmodel animation's
     /// note: `("notetrack", local client, note)`).
     pub level_notify: &'static str,
+    /// An actor's foot struck the ground, when the game's client sounds it.
+    pub ai_footstep: Option<AiFootstep>,
+}
+
+/// How a game's client sounds an actor's footstep (its `footstep_` or
+/// `dogstep_` notetrack): `callback(local client, entity, position, surface,
+/// on fire[, true for a dog])` on the level.
+#[derive(Clone, Copy, Debug)]
+pub struct AiFootstep {
+    pub callback: &'static str,
+    /// The left and right foot tags; the step sounds at its foot when the
+    /// actor is within `tag_range` of the view, else at the actor's origin.
+    pub tags: [&'static str; 2],
+    pub tag_range: f32,
+    /// The trace for the ground under the step: this far above and below
+    /// it, stopping on these contents.
+    pub trace_up: f32,
+    pub trace_down: f32,
+    pub trace_mask: u32,
+    /// The surface name a trace's surface flags give.
+    pub surface: fn(surface_flags: u32) -> &'static str,
 }
 
 /// What a match compiles and where it starts.
