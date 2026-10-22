@@ -52,18 +52,16 @@ pub(crate) fn ground_trace<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
         if pm.ps.slick_start_time == 0 {
             pm.ps.slick_start_time = pm.cmd.server_time;
             pm.event(event::SLIDE_START, 0);
-            if pm.client_side {
-                pm.event(event::SLIDE_LOOP_START, pm.surface_sound(pml));
-            }
+            let surface = crate::dive::surface_class(pm.surface_sound(pml));
+            pm.event(event::SLIDE_LOOP_START, surface);
         }
     } else {
         pm.ps.pm_flags &= !pm_flags::SLIDING;
         if pm.ps.slick_start_time != 0 {
             pm.ps.slick_start_time = 0;
             pm.event(event::SLIDE_END, 0);
-            if pm.client_side {
-                pm.event(event::SLIDE_LOOP_END, pm.surface_sound(pml));
-            }
+            let surface = crate::dive::surface_class(pm.surface_sound(pml));
+            pm.event(event::SLIDE_LOOP_END, surface);
         }
     }
     if trace.allsolid && !correct_all_solid(pm, pml, &mut trace) {

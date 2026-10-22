@@ -72,6 +72,17 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x40))
     }
 
+    /// `gunXModel` slot 0 is non-null.
+    pub fn has_gun_model(&self) -> bool {
+        let arr = i32::from_le_bytes(Self::word(self.def, 0x4));
+        arr != 0
+    }
+
+    /// `suppressAmmoReserveDisplay`
+    pub fn suppress_ammo_reserve_display(&self) -> bool {
+        self.def[0x565] != 0
+    }
+
     /// `fireDelay`
     pub fn fire_delay(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x378))

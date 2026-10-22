@@ -138,6 +138,7 @@ impl game_api::GameScripts for T5 {
             footstep: "clientscripts/_callbacks::codecallback_playerfootstep",
             player_jump: "clientscripts/_callbacks::codecallback_playerjump",
             player_land: "clientscripts/_callbacks::codecallback_playerland",
+            player_foliage: "clientscripts/_callbacks::codecallback_playerfoliage",
             entity_spawned: "clientscripts/_callbacks::entityspawned",
             player_spawned: "clientscripts/_callbacks::playerspawned",
             entity_shutdown: "clientscripts/_callbacks::entityshutdown_callback",

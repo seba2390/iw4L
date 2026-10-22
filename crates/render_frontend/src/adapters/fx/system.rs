@@ -2970,7 +2970,15 @@ fn explosion(
                             .bind_published_row(payload.weapon)
                             .ok()?
                             .game_bytes()?;
-                        let alias = rule(&bytes.def, &bytes.variant, payload.surf_type, false)?;
+                        let weapon = game_api::fire::ImpactSoundWeapon {
+                            def: &bytes.def,
+                            variant: &bytes.variant,
+                            explosion_sounds: &bytes.explosion_sounds,
+                            bounce_sounds: bytes.bounce_sounds.as_deref(),
+                            whizby_sound: bytes.whizby_sound.as_deref(),
+                            crack_sound: bytes.crack_sound.as_deref(),
+                        };
+                        let alias = rule(&weapon, payload.surf_type, false)?;
                         return bank
                             .0
                             .sound_in(namespace, &alias)
@@ -3832,8 +3840,58 @@ fn drain_pellet_fx(
             &mut combat,
             fx_world.view().as_ref().map(|s| s as &dyn FxScene),
         );
-        // The game's own client sounds the impact where the bullet struck,
-        // once per impact the client presents.
+        // The game's own client sounds a bullet passing the view (whizby)
+        // and the impact where the bullet struck.
+        if record.path
+            && record.attacker != local.0.0 as i32
+            && let Some(whizby_rule) = beams
+                .mode
+                .as_deref()
+                .and_then(|mode| mode.client_fire)
+                .and_then(|rules| rules.whizby)
+            && let Some(ps) = beams.presented.player(local.0)
+            && let Some(registry) = bound.as_ref().map(|bound| bound.registry())
+            && let Some(bytes) = registry
+                .bind_published_row(record.weapon)
+                .ok()
+                .and_then(|row| row.game_bytes())
+            && let Some(namespace) =
+                registry.component_namespace_of(record.weapon, asset_game::WeaponComponent::Sound)
+        {
+            let weapon = game_api::fire::ImpactSoundWeapon {
+                def: &bytes.def,
+                variant: &bytes.variant,
+                explosion_sounds: &bytes.explosion_sounds,
+                bounce_sounds: bytes.bounce_sounds.as_deref(),
+                whizby_sound: bytes.whizby_sound.as_deref(),
+                crack_sound: bytes.crack_sound.as_deref(),
+            };
+            let view_origin = [
+                ps.origin[0],
+                ps.origin[1],
+                ps.origin[2] + ps.view_height_current,
+            ];
+            if let Some(whizby) = whizby_rule(&weapon, record.start, record.end, view_origin) {
+                sounds.write(audio::AliasCommand::Play(audio::PlayAlias {
+                    event: None,
+                    namespace,
+                    alias: whizby.alias,
+                    fallback: None,
+                    origin_inches: Some(whizby.origin),
+                    snd_ent: Some(FX_ENTITYNUM_WORLD),
+                }));
+                if let Some(crack) = whizby.crack_alias {
+                    sounds.write(audio::AliasCommand::Play(audio::PlayAlias {
+                        event: None,
+                        namespace,
+                        alias: crack,
+                        fallback: None,
+                        origin_inches: Some(whizby.origin),
+                        snd_ent: Some(FX_ENTITYNUM_WORLD),
+                    }));
+                }
+            }
+        }
         if let Some(rule) = impact_sound
             && !matches!(
                 report.impact,
@@ -3849,8 +3907,14 @@ fn drain_pellet_fx(
                 .ok()
                 .and_then(|row| row.game_bytes())
             && let Some(alias) = rule(
-                &bytes.def,
-                &bytes.variant,
+                &game_api::fire::ImpactSoundWeapon {
+                    def: &bytes.def,
+                    variant: &bytes.variant,
+                    explosion_sounds: &bytes.explosion_sounds,
+                    bounce_sounds: bytes.bounce_sounds.as_deref(),
+                    whizby_sound: bytes.whizby_sound.as_deref(),
+                    crack_sound: bytes.crack_sound.as_deref(),
+                },
                 record.surf_type,
                 record.surface_flags & FX_IMPACT_EXIT_SURFACE_FLAG != 0,
             )

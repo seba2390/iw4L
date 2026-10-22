@@ -1598,6 +1598,21 @@ impl<'a> ZoneStream<'a> {
         core::str::from_utf8(&buf[s..end]).map_err(|_| ZoneError::NotUtf8)
     }
 
+    /// Reads an array of `N` C string pointers at `p + off`.
+    pub fn string_array_at<const N: usize>(&self, p: Ptr, off: usize) -> Option<[Option<&str>; N]> {
+        let arr = match self.ptr_at(p, off).ok()? {
+            ZonePtr::Offset(q) => self.resolve_alias(q),
+            _ => return None,
+        };
+        Some(core::array::from_fn(|i| {
+            let ptr = match self.ptr_at(arr, i * 4).ok()? {
+                ZonePtr::Offset(q) => self.resolve_alias(q),
+                _ => return None,
+            };
+            self.cstr(ptr).ok().filter(|s| !s.is_empty())
+        }))
+    }
+
     pub fn watermark(&self, block: u8) -> usize {
         self.offsets.get(block as usize).copied().unwrap_or(0)
     }
