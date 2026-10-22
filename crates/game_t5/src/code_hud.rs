@@ -98,6 +98,8 @@ const EF_NO_BREATH_HINT: u32 = EF_VEHICLE_TURRET | EF_OTHER_CROSSHAIR;
 /// `mantleState.flags`: a mantle is offered; a mount is offered.
 const MANTLE_OFFERED: u32 = 0x10;
 const MOUNT_OFFERED: u32 = 0x80;
+/// How far the mantle hint rises when a mount is offered too.
+const MANTLE_RAISE_WITH_MOUNT: f32 = -35.0;
 /// The weapon state in which neither offer shows.
 const WEAPON_DEPLOYING: i32 = 0x24;
 /// The runtime's number for Black Ops' item weapon class (10).
@@ -156,12 +158,19 @@ fn owner_hint(owner_draw: i32, view: &OwnerHintView<'_>) -> OwnerHint {
             {
                 return OwnerHint::Nothing;
             }
+            // With a mount offered too, the mantle hint is raised above it;
+            // the runtime draws one hint per owner draw, the mantle's.
             if ps.mantle_flags & MANTLE_OFFERED != 0 {
-                OwnerHint::Unrun(unknown!(
-                    "t5.hud.mantle_picture",
-                    "Black Ops' mantle hint (`PLATFORM_MANTLE` with the mantle picture) is not drawn",
-                    "the mantle hint's picture and layout (executable)"
-                ))
+                OwnerHint::TextPicture {
+                    key: "PLATFORM_MANTLE",
+                    binds: &["+gostand", "+moveup"],
+                    material: "hint_mantle",
+                    raise: if ps.mantle_flags & MOUNT_OFFERED != 0 {
+                        MANTLE_RAISE_WITH_MOUNT
+                    } else {
+                        0.0
+                    },
+                }
             } else if ps.mantle_flags & MOUNT_OFFERED != 0 {
                 OwnerHint::Text {
                     key: "PLATFORM_MOUNT",
@@ -190,11 +199,10 @@ fn owner_hint(owner_draw: i32, view: &OwnerHintView<'_>) -> OwnerHint {
             let alpha = ((view.now - hint.time) % interval) as f32 / interval as f32;
             OwnerHint::Faded { key, alpha }
         }
-        CG_CENTER_OBITUARY | CG_SUCCESSFUL_CMD_HINT => OwnerHint::Unrun(unknown!(
-            "t5.hud.messages",
-            "Black Ops' centre obituary and cheat messages are not drawn: the client keeps none of their texts",
-            "the client events and server commands that set them (executable)"
-        )),
+        // Black Ops' single player sets the centre obituary only from the
+        // `obituary` builtin, which no zombies script calls, and never sets
+        // the cheat message; both stay empty.
+        CG_CENTER_OBITUARY | CG_SUCCESSFUL_CMD_HINT => OwnerHint::Nothing,
         // No client talks: the runtime carries no voice chat.
         CG_TALKER_1..=CG_TALKER_3 => OwnerHint::Nothing,
         CG_VEHICLE_HUD => {
