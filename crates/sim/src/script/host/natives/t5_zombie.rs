@@ -251,7 +251,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "playerknockback",
         "enablehealthshield",
         "useweaponhidetags",
-        "settransported",
         // A perk machine shaking as the power comes on.
         "vibrate",
     ] {
@@ -1158,24 +1157,29 @@ fn register_actor(registry: &mut NativeRegistry) {
             Ok(Value::Undefined)
         },
     );
-    registry.register(Method, "setelectrified", |world, receiver, args| {
-        let time = super::super::args::float(args, 0)?;
-        if time < 0.0 {
-            return Err("Time must be positive".into());
-        }
-        super::player::player(world, receiver)
-            .map_err(|_| "setelectrified() called on an invalid client entity.\n".to_owned())?;
-        Ok(Value::Undefined)
-    });
-    registry.register(Method, "setburn", |world, receiver, args| {
-        let time = super::super::args::float(args, 0)?;
-        if time < 0.0 {
-            return Err("Time must be positive".into());
-        }
-        super::player::player(world, receiver)
-            .map_err(|_| "setburn() called on an invalid client entity.\n".to_owned())?;
-        Ok(Value::Undefined)
-    });
+    // `ent setElectrified(time)`, `ent setBurn(time)` and
+    // `ent setTransported(time)`: the player's client plays the overlay for
+    // the time in whole msec; 0 ends it, fading from then.
+    macro_rules! flame {
+        ($($name:literal => $kind:ident),* $(,)?) => {$(
+            registry.register(Method, $name, |world, receiver, args| {
+                let time = super::super::args::float(args, 0)?;
+                if time < 0.0 {
+                    return Err("Time must be positive".into());
+                }
+                let client = super::player::player(world, receiver).map_err(|_| {
+                    concat!($name, "() called on an invalid client entity.\n").to_owned()
+                })?;
+                timed_flame(world, client, super::t6::flame_overlay::Flame::$kind, time);
+                Ok(Value::Undefined)
+            });
+        )*};
+    }
+    flame!(
+        "setelectrified" => Shock,
+        "setburn" => Burn,
+        "settransported" => Transporter,
+    );
     registry.register(
         Method,
         "resetmissiledetonationtime",
@@ -1369,4 +1373,20 @@ fn named_weapon(frame: &crate::frame::FrameWorld, name: &str) -> Result<u32, Str
                 "Unknown weapon name \"{name}\": script may need to call PreCacheItem(\"{name}\") during level init.\n"
             )
         })
+}
+
+/// The overlay the server sends its client for `seconds`: the client starts
+/// it for the whole msec, or stops it at 0.
+fn timed_flame(
+    world: &mut World,
+    client: u32,
+    kind: super::t6::flame_overlay::Flame,
+    seconds: f32,
+) {
+    let ms = (seconds * 1000.0) as i32;
+    if ms == 0 {
+        super::t6::flame_overlay::stop(world, client, kind);
+    } else {
+        super::t6::flame_overlay::start(world, client, kind, ms);
+    }
 }

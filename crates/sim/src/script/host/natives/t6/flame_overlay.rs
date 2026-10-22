@@ -1,9 +1,10 @@
-//! Black Ops 2's flame-style screen overlays, burning and electric shock, as
-//! a client keeps them: a timed start (the server's `setburn` and
-//! `setelectrified`, which send their client the time, or the client
+//! The flame-style screen overlays of Black Ops and Black Ops 2 (burning,
+//! electric shock, and Black Ops' transporter) as a client keeps them: a
+//! timed start (the server's `setburn`, `setelectrified` and
+//! `settransported`, which send their client the time, or the client
 //! scripts' own), the settings each takes from the `r_flameFX_*` dvars as it
-//! starts, and its fade once it ends. The client's screen draws them
-//! (`game_t6::overlay`).
+//! starts, and its fade once it ends. The client's screen draws them (the
+//! games' `overlay` modules).
 
 use bevy_ecs::prelude::{Resource, World};
 use game_api::post::FlameOverlay;
@@ -14,6 +15,7 @@ use std::collections::BTreeMap;
 pub(crate) enum Flame {
     Burn,
     Shock,
+    Transporter,
 }
 
 /// One overlay of a client: its timer (start and end, 0 when it runs no
@@ -33,12 +35,13 @@ struct Block {
 }
 
 #[derive(Resource, Default)]
-struct FlameOverlays(BTreeMap<u32, [State; 2]>);
+struct FlameOverlays(BTreeMap<u32, [State; 3]>);
 
 fn slot(kind: Flame) -> usize {
     match kind {
         Flame::Burn => 0,
         Flame::Shock => 1,
+        Flame::Transporter => 2,
     }
 }
 
@@ -83,9 +86,44 @@ pub(crate) fn start(world: &mut World, client: u32, kind: Flame, ms: i32) {
     }
     diag::info!(
         Sim,
-        "t6 flame overlay: {kind:?} for client {client}, {ms} ms at {now}"
+        "flame overlay: {kind:?} for client {client}, {ms} ms at {now}"
     );
     publish(world, client);
+}
+
+/// Stops the overlay's timer: it fades from now (`r_flameFX_fadeDuration`)
+/// unless a fade already runs.
+pub(crate) fn stop(world: &mut World, client: u32, kind: Flame) {
+    let now = now_ms(world);
+    let fade_ms = (dvar_float(world, "r_flamefx_fadeduration") * 1000.0) as i32;
+    let Some(mut overlays) = world.get_resource_mut::<FlameOverlays>() else {
+        return;
+    };
+    let Some(state) = overlays
+        .0
+        .get_mut(&client)
+        .map(|states| &mut states[slot(kind)])
+    else {
+        return;
+    };
+    end(state, now, fade_ms);
+    diag::info!(
+        Sim,
+        "flame overlay: {kind:?} for client {client} ends at {now}"
+    );
+    publish(world, client);
+}
+
+/// An overlay's timer stops, and it begins its fade unless one already runs.
+fn end(state: &mut State, now: i32, fade_ms: i32) {
+    state.start_ms = 0;
+    state.end_ms = 0;
+    if let Some(block) = state.block.as_mut()
+        && block.overlay.fade_ms == 0
+    {
+        block.overlay.fade_start_ms = now;
+        block.overlay.fade_ms = fade_ms;
+    }
 }
 
 /// Whether a client's burning runs (its timer has not ended).
@@ -112,14 +150,7 @@ pub(crate) fn frame(world: &mut World, client: u32) {
     let mut next = states;
     for state in &mut next {
         if state.end_ms != 0 && state.end_ms < now {
-            state.start_ms = 0;
-            state.end_ms = 0;
-            if let Some(block) = state.block.as_mut()
-                && block.overlay.fade_ms == 0
-            {
-                block.overlay.fade_start_ms = now;
-                block.overlay.fade_ms = fade_ms;
-            }
+            end(state, now, fade_ms);
         }
         if let Some(block) = state.block.as_mut()
             && block.active
@@ -141,7 +172,7 @@ fn publish(world: &mut World, client: u32) {
         .get_resource::<FlameOverlays>()
         .and_then(|overlays| overlays.0.get(&client))
         .copied()
-        .unwrap_or_else(<[State; 2]>::default);
+        .unwrap_or_else(<[State; 3]>::default);
     let drawn = |state: &State| {
         state
             .block
@@ -150,6 +181,7 @@ fn publish(world: &mut World, client: u32) {
     };
     let burn = drawn(&states[slot(Flame::Burn)]);
     let shock = drawn(&states[slot(Flame::Shock)]);
+    let transporter = drawn(&states[slot(Flame::Transporter)]);
     let flame_allowed = super::atoi(&dvar_text(world, "r_flame_allowed")) != 0;
     let flame_scaler = dvar_float(world, "r_flamescaler");
     let mut frame = crate::frame::FrameWorld::from_world(world);
@@ -162,6 +194,7 @@ fn publish(world: &mut World, client: u32) {
             .overlays;
         screen.burn = burn;
         screen.shock = shock;
+        screen.transporter = transporter;
         screen.flame_allowed = flame_allowed;
         screen.flame_scaler = flame_scaler;
     }
