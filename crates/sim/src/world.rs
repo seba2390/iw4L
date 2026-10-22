@@ -1112,6 +1112,10 @@ impl SimState {
             .copied()
     }
 
+    pub fn game_weapon(&self, weapon: u32) -> Option<&game_api::movement::GameWeapon> {
+        self.content.game_weapon(weapon)
+    }
+
     /// A weapon's combat facts; none for an index past the table.
     pub fn weapon_combat_row_or_none(&self, weapon: u32) -> WeaponCombatFacts {
         self.weapon_combat_row(weapon)

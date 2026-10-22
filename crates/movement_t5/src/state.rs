@@ -139,7 +139,9 @@ pub mod buttons {
     pub const SMOKE: u32 = 15;
     pub const NIGHTVISION: u32 = 18;
     pub const THROW: u32 = 24;
+    pub const SPECIAL_FIRE: u32 = 38;
     pub const DIVE: u32 = 44;
+    pub const OFFHAND_CANCEL: u32 = 49;
 }
 
 /// Black Ops' view heights: they also say which stance a player is in.

@@ -145,6 +145,9 @@ pub struct KbuttonSet {
     pub scores: Kbutton,
     pub talk: Kbutton,
     pub stance: Kbutton,
+    pub moveup: Kbutton,
+    pub leanleft: Kbutton,
+    pub leanright: Kbutton,
 }
 
 impl KbuttonSet {
@@ -212,6 +215,15 @@ impl KbuttonSet {
         if self.sprint.active || self.sprint.was_pressed {
             f("+sprint");
         }
+        if self.moveup.active || self.moveup.was_pressed {
+            f("+moveup");
+        }
+        if self.leanleft.active || self.leanleft.was_pressed {
+            f("+leanleft");
+        }
+        if self.leanright.active || self.leanright.was_pressed {
+            f("+leanright");
+        }
     }
 
     pub fn clear_was_pressed(&mut self) {
@@ -243,7 +255,26 @@ impl KbuttonSet {
         self.sprint.was_pressed = false;
         self.scores.was_pressed = false;
         self.talk.was_pressed = false;
+        self.moveup.was_pressed = false;
+        self.leanleft.was_pressed = false;
+        self.leanright.was_pressed = false;
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StanceCmd {
+    StanceDown(i32),
+    StanceUp,
+    GoStandDown,
+    GoStandUp,
+    MoveUpDown,
+    MoveUpUp,
+    LowerStance,
+    RaiseStance,
+    ToggleCrouch,
+    ToggleProne,
+    GoProne,
+    GoCrouch,
 }
 
 #[derive(Clone, Debug)]
@@ -257,8 +288,11 @@ pub struct ClientInput {
 
     pub weapon_cycles: Vec<bool>,
     pub action_slots: Vec<usize>,
+    pub stance_cmds: Vec<StanceCmd>,
+    pub attack_presses: Vec<i32>,
 
     pub offhand_hold_cancel: bool,
+    pub nightvision_press: bool,
 
     pub stance_held: Option<(i32, i32)>,
     pub center_view: bool,
@@ -274,7 +308,10 @@ impl Default for ClientInput {
             stance_latch: 0,
             weapon_cycles: Vec::new(),
             action_slots: Vec::new(),
+            stance_cmds: Vec::new(),
+            attack_presses: Vec::new(),
             offhand_hold_cancel: false,
+            nightvision_press: false,
             stance_held: None,
             center_view: false,
             airborne: false,
@@ -300,7 +337,13 @@ fn apply_pair(btn: &mut Kbutton, cmd_id: u32, key: i32, now_msec: i32, frame_mse
 
 pub fn input_cmd(client: &mut ClientInput, cmd_id: u32, key: i32, now_msec: i32, frame_msec: u32) {
     match cmd_id {
-        1 | 2 => apply_pair(&mut client.kb.attack, cmd_id, key, now_msec, frame_msec),
+        1 | 2 => {
+            let was_active = client.kb.attack.active;
+            apply_pair(&mut client.kb.attack, cmd_id, key, now_msec, frame_msec);
+            if !was_active && client.kb.attack.active {
+                client.attack_presses.push(now_msec);
+            }
+        }
         3 | 4 => apply_pair(&mut client.kb.melee, cmd_id, key, now_msec, frame_msec),
         5 | 6 => apply_pair(&mut client.kb.frag, cmd_id, key, now_msec, frame_msec),
         7 | 8 => apply_pair(&mut client.kb.smoke, cmd_id, key, now_msec, frame_msec),
@@ -326,10 +369,23 @@ pub fn input_cmd(client: &mut ClientInput, cmd_id: u32, key: i32, now_msec: i32,
             apply_pair(&mut client.kb.stance, cmd_id, key, now_msec, frame_msec);
             if was_active != client.kb.stance.active {
                 stance_button(client, client.kb.stance.active, now_msec);
+                client.stance_cmds.push(if client.kb.stance.active {
+                    StanceCmd::StanceDown(now_msec)
+                } else {
+                    StanceCmd::StanceUp
+                });
             }
         }
         25 | 26 => {
+            let was_active = client.kb.gostand.active;
             apply_pair(&mut client.kb.gostand, cmd_id, key, now_msec, frame_msec);
+            if was_active != client.kb.gostand.active {
+                client.stance_cmds.push(if client.kb.gostand.active {
+                    StanceCmd::GoStandDown
+                } else {
+                    StanceCmd::GoStandUp
+                });
+            }
         }
         27 | 28 => apply_pair(&mut client.kb.forward, cmd_id, key, now_msec, frame_msec),
         29 | 30 => apply_pair(&mut client.kb.back, cmd_id, key, now_msec, frame_msec),
@@ -346,6 +402,32 @@ pub fn input_cmd(client: &mut ClientInput, cmd_id: u32, key: i32, now_msec: i32,
             apply_pair(&mut client.kb.changezoom, cmd_id, key, now_msec, frame_msec);
             apply_pair(&mut client.kb.melee, cmd_id, key, now_msec, frame_msec);
         }
+        83 | 84 => {
+            let was_active = client.kb.moveup.active;
+            apply_pair(&mut client.kb.moveup, cmd_id, key, now_msec, frame_msec);
+            if was_active != client.kb.moveup.active {
+                client.stance_cmds.push(if client.kb.moveup.active {
+                    StanceCmd::MoveUpDown
+                } else {
+                    StanceCmd::MoveUpUp
+                });
+            }
+        }
+        85 | 86 => apply_pair(&mut client.kb.leanleft, cmd_id, key, now_msec, frame_msec),
+        87 | 88 => apply_pair(&mut client.kb.leanright, cmd_id, key, now_msec, frame_msec),
+        89 | 90 => apply_pair(&mut client.kb.throw_btn, cmd_id, key, now_msec, frame_msec),
+        91 | 92 => {
+            if pair_down(cmd_id) {
+                client.using_ads = false;
+            }
+            apply_pair(&mut client.kb.speed, cmd_id, key, now_msec, frame_msec);
+        }
+        93 | 94 => {
+            apply_pair(&mut client.kb.melee, cmd_id, key, now_msec, frame_msec);
+            apply_pair(&mut client.kb.holdbreath, cmd_id, key, now_msec, frame_msec);
+        }
+        95 => client.stance_cmds.push(StanceCmd::LowerStance),
+        96 => client.stance_cmds.push(StanceCmd::RaiseStance),
         47 | 48 => apply_pair(&mut client.kb.holdbreath, cmd_id, key, now_msec, frame_msec),
         49 | 50 => apply_pair(&mut client.kb.activate, cmd_id, key, now_msec, frame_msec),
         51 | 52 => apply_pair(&mut client.kb.reload, cmd_id, key, now_msec, frame_msec),
@@ -374,9 +456,20 @@ pub fn input_cmd(client: &mut ClientInput, cmd_id: u32, key: i32, now_msec: i32,
             } else {
                 stance
             };
+            client.stance_cmds.push(if cmd_id == 72 {
+                StanceCmd::ToggleCrouch
+            } else {
+                StanceCmd::ToggleProne
+            });
         }
-        74 => client.stance_latch = buttons::PRONE as i32,
-        75 => client.stance_latch = buttons::CROUCH as i32,
+        74 => {
+            client.stance_latch = buttons::PRONE as i32;
+            client.stance_cmds.push(StanceCmd::GoProne);
+        }
+        75 => {
+            client.stance_latch = buttons::CROUCH as i32;
+            client.stance_cmds.push(StanceCmd::GoCrouch);
+        }
         76 => client.using_ads = !client.using_ads,
         77 => set_ads(client, false),
         _ => {}
@@ -484,6 +577,8 @@ pub fn cmd_buttons(state: &KbuttonSet) -> u32 {
     update_cmd_button(&state.prone, buttons::PRONE, &mut bits);
     update_cmd_button(&state.gostand, buttons::JUMP, &mut bits);
     update_cmd_button(&state.throw_btn, buttons::THROW, &mut bits);
+    update_cmd_button(&state.leanleft, buttons::LEAN_LEFT, &mut bits);
+    update_cmd_button(&state.leanright, buttons::LEAN_RIGHT, &mut bits);
     bits
 }
 

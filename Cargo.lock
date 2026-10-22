@@ -4632,6 +4632,7 @@ dependencies = [
  "diag",
  "entity_iw4",
  "frame",
+ "game_api",
  "gamemode_iw4",
  "hud_iw4",
  "input_iw4",
