@@ -144,19 +144,56 @@ impl PlayerState {
         self.grenade_time_left = player.grenade_time_left;
         self.game_move = player.game;
     }
+
+    pub fn push_stance_event(&mut self, stance: Stance) {
+        let event = match stance {
+            Stance::Stand => 0x06,
+            Stance::Crouch => 0x07,
+            Stance::Prone => 0x08,
+        };
+        self.push_predictable_event(event, 0);
+    }
+
+    pub fn push_reset_ads_event(&mut self) {
+        self.push_predictable_event(0x11, 0);
+    }
+
+    fn push_predictable_event(&mut self, event: i32, parm: i32) {
+        match self.event_sequence & 3 {
+            0 => {
+                self.events_0 = event;
+                self.event_parms_0 = parm;
+            }
+            1 => {
+                self.events_1 = event;
+                self.event_parms_1 = parm;
+            }
+            2 => {
+                self.events_2 = event;
+                self.event_parms_2 = parm;
+            }
+            _ => {
+                self.events_3 = event;
+                self.event_parms_3 = parm;
+            }
+        }
+        self.event_sequence = self.event_sequence.wrapping_add(1) & 0x7ff;
+    }
 }
 
 impl UserCmd {
-    /// The command by what the player does; the runtime has no lean keys.
+    /// The command by what the player does.
     #[must_use]
     pub fn move_command(&self) -> MoveCommand {
-        const MAP: [(u32, u32); 15] = [
+        const MAP: [(u32, u32); 21] = [
             (buttons::ATTACK, intent::ATTACK),
             (buttons::SPRINT, intent::SPRINT),
             (buttons::MELEE_CHARGE, intent::MELEE),
             (buttons::USE, intent::USE),
             (buttons::RELOAD, intent::RELOAD),
             (buttons::USE_RELOAD, intent::USE_RELOAD),
+            (buttons::LEAN_LEFT, intent::LEAN_LEFT),
+            (buttons::LEAN_RIGHT, intent::LEAN_RIGHT),
             (buttons::PRONE, intent::PRONE),
             (buttons::CROUCH, intent::CROUCH),
             (buttons::JUMP, intent::JUMP),
@@ -166,6 +203,10 @@ impl UserCmd {
             (buttons::FRAG, intent::FRAG),
             (buttons::SMOKE, intent::SMOKE),
             (buttons::THROW, intent::THROW),
+            (buttons::NIGHTVISION, intent::NIGHTVISION),
+            (buttons::OFFHAND_HOLD_CANCEL, intent::OFFHAND_HOLD_CANCEL),
+            (buttons::DIVE, intent::DIVE),
+            (buttons::SPECIAL_FIRE, intent::SPECIAL_FIRE),
         ];
         MoveCommand {
             server_time: self.server_time,

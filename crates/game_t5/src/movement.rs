@@ -5,10 +5,11 @@
 use fastfile_t5::size::{WEAPON_DEF, WEAPON_VARIANT_DEF};
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::movement::{
-    ENTITY_NONE, ENTITY_WORLD, GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext,
-    MoveOutcome, MovePlayer, MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType,
-    MoveWorld, PlayerMovement, ScriptFlag, ShellshockStart, Stance, WaterSurface, WeaponActivity,
-    WeaponNotify, WeaponNotifyMemory, buttons as intent,
+    ClientInputFrame, ClientInputState, ClientStanceCmd, ENTITY_NONE, ENTITY_WORLD,
+    GAME_MOVE_BYTES, HELD_WEAPONS, HeldWeapon, MoveCommand, MoveContext, MoveOutcome, MovePlayer,
+    MoveRestriction, MoveSignal, MoveStatus, MoveTrace, MoveType, MoveWorld, PlayerMovement,
+    ScriptFlag, ShellshockStart, Stance, WaterSurface, WeaponActivity, WeaponNotify,
+    WeaponNotifyMemory, buttons as intent,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::events::event;
@@ -129,7 +130,7 @@ fn pm_type_of(move_type: MoveType) -> i32 {
 }
 
 fn buttons_of(cmd: &MoveCommand) -> Buttons {
-    const MAP: [(u32, u32); 17] = [
+    const MAP: [(u32, u32); 21] = [
         (intent::ATTACK, buttons::ATTACK),
         (intent::SPRINT, buttons::SPRINT),
         (intent::MELEE, buttons::MELEE),
@@ -147,6 +148,10 @@ fn buttons_of(cmd: &MoveCommand) -> Buttons {
         (intent::FRAG, buttons::FRAG),
         (intent::SMOKE, buttons::SMOKE),
         (intent::THROW, buttons::THROW),
+        (intent::NIGHTVISION, buttons::NIGHTVISION),
+        (intent::OFFHAND_HOLD_CANCEL, buttons::OFFHAND_CANCEL),
+        (intent::DIVE, buttons::DIVE),
+        (intent::SPECIAL_FIRE, buttons::SPECIAL_FIRE),
     ];
     let mut out = Buttons::default();
     for (from, to) in MAP {
@@ -158,14 +163,6 @@ fn buttons_of(cmd: &MoveCommand) -> Buttons {
         out.0[0] |= 0x4;
     }
     out
-}
-
-/// Black Ops' client asks for a dive when the stance key goes down while
-/// the player sprints standing.
-fn dive_asked(ps: &PlayerState, cmd: &MoveCommand) -> bool {
-    cmd.buttons & intent::PRONE != 0
-        && ps.pm_flags & pm_flags::SPRINTING != 0
-        && ps.view_height_current >= 60.0
 }
 
 /// The player state Black Ops keeps beyond the shared fields, in the game bytes.
@@ -511,10 +508,7 @@ impl PlayerMovement for T5Movement {
         } else {
             ps.pm_flags &= !pm_flags::FROZEN;
         }
-        let mut buttons = buttons_of(cmd);
-        if dive_asked(&ps, cmd) {
-            buttons.press(buttons::DIVE);
-        }
+        let buttons = buttons_of(cmd);
         let t5cmd = UserCmd {
             server_time: cmd.server_time,
             buttons,
@@ -1030,6 +1024,205 @@ impl PlayerMovement for T5Movement {
             }
             _ => None,
         }
+    }
+
+    fn client_input(
+        &self,
+        state: &mut ClientInputState,
+        frame: &ClientInputFrame<'_>,
+    ) -> Option<u32> {
+        const STANCE_HOLD_MS: i32 = 300;
+        const DTP_HOLD_MS: i32 = 200;
+
+        let key_override = frame.prone_key_active || frame.movedown_key_active;
+        if !key_override {
+            for &forced in frame.forced_stances {
+                state.stance = match forced {
+                    Stance::Stand => 0,
+                    Stance::Crouch => 1,
+                    Stance::Prone => 2,
+                };
+            }
+        }
+
+        for &cmd in frame.stance_cmds {
+            match cmd {
+                ClientStanceCmd::StanceDown(at) if !key_override => {
+                    state.stance_held = true;
+                    state.stance_press_time = at;
+                    if !frame.sprint_standing {
+                        state.prev_stance = state.stance;
+                        if state.stance != 1 {
+                            state.stance = 1;
+                        }
+                    }
+                }
+                ClientStanceCmd::StanceUp if !key_override => {
+                    if frame.sprint_standing {
+                        state.stance = 1;
+                    } else if state.stance_held && state.prev_stance == 1 {
+                        state.stance = 0;
+                    }
+                    state.stance_held = false;
+                }
+                ClientStanceCmd::LowerStance if !key_override => {
+                    if state.stance == 0 {
+                        state.stance = 1;
+                    } else if state.stance == 1 {
+                        state.stance = 2;
+                    }
+                }
+                ClientStanceCmd::RaiseStance if !key_override => {
+                    if state.stance == 1 {
+                        state.stance = 0;
+                    } else if state.stance == 2 {
+                        state.stance = 1;
+                    }
+                }
+                ClientStanceCmd::ToggleCrouch if !key_override => {
+                    state.stance = u8::from(state.stance != 1);
+                }
+                ClientStanceCmd::ToggleProne if !key_override => {
+                    let target = if frame.sprint_standing { 3 } else { 2 };
+                    state.stance = if state.stance != target { target } else { 0 };
+                }
+                ClientStanceCmd::GoProne if !key_override => {
+                    state.stance = 2;
+                }
+                ClientStanceCmd::GoCrouch if !key_override => {
+                    state.stance = 1;
+                }
+                ClientStanceCmd::GoStandDown => {
+                    if state.stance == 0 {
+                        if !state.up_held_by_gostand && !state.up_held_by_moveup {
+                            state.up_was_pressed = true;
+                        }
+                        state.up_held_by_gostand = true;
+                    } else if !key_override {
+                        state.stance = 0;
+                    }
+                }
+                ClientStanceCmd::GoStandUp => {
+                    state.up_held_by_gostand = false;
+                }
+                ClientStanceCmd::MoveUpDown if !key_override => {
+                    if state.stance == 1 {
+                        state.stance = 0;
+                    } else if state.stance == 2 {
+                        state.stance = 1;
+                    } else {
+                        if !state.up_held_by_gostand && !state.up_held_by_moveup {
+                            state.up_was_pressed = true;
+                        }
+                        state.up_held_by_moveup = true;
+                    }
+                }
+                ClientStanceCmd::MoveUpUp => {
+                    state.up_held_by_moveup = false;
+                }
+                _ => {}
+            }
+        }
+
+        let jam_time = frame
+            .weapon
+            .and_then(|w| WeaponDefView::new(&w.def, &w.variant))
+            .filter(|def| def.fire_type() == 1)
+            .map_or(0, |def| def.jam_fire_time());
+        for &at in frame.attack_presses {
+            let mut jammed = false;
+            if !state.attack_latched && jam_time > 0 {
+                let dt = at.wrapping_sub(state.last_attack_down_msec);
+                if dt > 0 && dt < jam_time {
+                    let chance = ((60000.0 / dt as f32) - (60000.0 / jam_time as f32)) as i32;
+                    let chance = chance.clamp(0, 100);
+                    if at.rem_euclid(100) < chance {
+                        state.special_fire_active = true;
+                        state.special_fire_was_pressed = true;
+                        jammed = true;
+                    }
+                }
+            }
+            if !jammed && !state.attack_latched {
+                state.attack_latched = true;
+                state.last_attack_down_msec = at;
+            }
+        }
+        if !frame.attack_key_active {
+            state.attack_latched = false;
+            state.special_fire_active = false;
+        }
+
+        let mut out = 0u32;
+        if frame.prone_key_active {
+            out |= intent::PRONE | intent::STANCE_HELD;
+        } else if frame.movedown_key_active {
+            out |= intent::CROUCH | intent::STANCE_HELD;
+        } else {
+            if state.stance_held {
+                let (hold_ms, is_dtp) = if frame.sprint_standing {
+                    (DTP_HOLD_MS, true)
+                } else {
+                    (STANCE_HOLD_MS, false)
+                };
+                if frame.now_msec.wrapping_sub(state.stance_press_time) >= hold_ms {
+                    state.stance = if is_dtp {
+                        3
+                    } else if state.prev_stance == 2 {
+                        0
+                    } else {
+                        2
+                    };
+                    state.stance_held = false;
+                }
+            }
+            match state.stance {
+                1 => out |= intent::CROUCH,
+                2 => out |= intent::PRONE,
+                3 => out |= intent::PRONE | intent::DIVE,
+                _ => {}
+            }
+        }
+        if state.up_held_by_gostand || state.up_held_by_moveup || state.up_was_pressed {
+            out |= intent::JUMP;
+            state.up_was_pressed = false;
+        }
+        if state.special_fire_active || state.special_fire_was_pressed {
+            out |= intent::SPECIAL_FIRE;
+            state.special_fire_was_pressed = false;
+        }
+        Some(out)
+    }
+
+    fn forced_stance(&self, signal: &MoveSignal) -> Option<Stance> {
+        let MoveSignal::Event { event, .. } = *signal else {
+            return None;
+        };
+        match event {
+            event::STANCE_FORCE_STAND => Some(Stance::Stand),
+            event::STANCE_FORCE_CROUCH => Some(Stance::Crouch),
+            event::STANCE_FORCE_PRONE => Some(Stance::Prone),
+            _ => None,
+        }
+    }
+
+    fn resets_ads(&self, signal: &MoveSignal) -> bool {
+        matches!(
+            *signal,
+            MoveSignal::Event {
+                event: event::RESET_ADS,
+                ..
+            }
+        )
+    }
+
+    fn offhand_cancel_state(&self, player: &MovePlayer) -> Option<u32> {
+        use movement_t5::weapon::state as ws;
+        let mut copy = *player;
+        let (ps, _) = unpack(&mut copy);
+        (ws::OFFHAND_INIT..=ws::OFFHAND)
+            .contains(&ps.weaponstate)
+            .then_some(ps.offhand_index)
     }
 
     /// Black Ops' client names a footstep event's movement type and its

@@ -1,11 +1,11 @@
 use bevy::prelude::Resource;
 use input_iw4::{
     ANGLE2SHORT, AdjustAnglesInput, CL_ANGLESPEEDKEY_DEFAULT, CL_PITCHSPEED_DEFAULT,
-    CL_YAWSPEED_DEFAULT, ClientInput, CreateCmdInput, adjust_angles, apply_mouse_sensitivity,
-    axis_to_move, create_cmd, mouse_move_angles, sample_move,
+    CL_YAWSPEED_DEFAULT, ClientInput, CreateCmdInput, StanceCmd, adjust_angles,
+    apply_mouse_sensitivity, axis_to_move, create_cmd, mouse_move_angles, sample_move,
 };
-use playerstate_iw4::UserCmd;
 use playerstate_iw4::buttons;
+use playerstate_iw4::{PlayerState, UserCmd, pm_flags};
 use std::collections::BTreeSet;
 
 pub const KEY_FRAME_MSEC_MAX: u32 = 200;
@@ -93,6 +93,7 @@ pub struct ClientActionInput {
     pub client: ClientInput,
     pub(crate) stance_life: Option<u32>,
     pub(crate) stance_event_sequence: i32,
+    pub(crate) game_input: game_api::movement::ClientInputState,
 
     pub scripted_ids: BTreeSet<u32>,
     pub mouse_x: f32,
@@ -139,6 +140,7 @@ impl Default for ClientActionInput {
             client: ClientInput::default(),
             stance_life: None,
             stance_event_sequence: 0,
+            game_input: game_api::movement::ClientInputState::default(),
             scripted_ids: BTreeSet::new(),
             mouse_x: 0.0,
             mouse_y: 0.0,
@@ -219,12 +221,16 @@ pub fn build_usercmd(input: &mut ClientActionInput, look: &LookState, server_tim
     let now = input.now_msec.max(1);
     let frame = input.frame_msec.max(1);
     let (bits, axes) = sample_move(&mut input.client, now, frame);
-    let bits = if input.client.offhand_hold_cancel {
+    let mut bits = if input.client.offhand_hold_cancel {
         input.client.offhand_hold_cancel = false;
         bits | buttons::OFFHAND_HOLD_CANCEL
     } else {
         bits
     };
+    if input.client.nightvision_press {
+        input.client.nightvision_press = false;
+        bits |= buttons::NIGHTVISION;
+    }
 
     let mouse_counts = input.mouse_x.abs() + input.mouse_y.abs();
     let frame_f = frame as f32;
@@ -295,5 +301,72 @@ pub fn idle_usercmd(server_time: i32) -> UserCmd {
     UserCmd {
         server_time,
         ..UserCmd::default()
+    }
+}
+
+pub(crate) fn apply_game_client_input(
+    input: &mut ClientActionInput,
+    cmd: &mut UserCmd,
+    movement: Option<&'static dyn game_api::movement::PlayerMovement>,
+    ps: Option<&PlayerState>,
+    forced_stances: &[game_api::movement::Stance],
+    weapon: Option<&game_api::movement::GameWeapon>,
+) {
+    use game_api::movement::{ClientInputFrame, ClientStanceCmd, buttons as intent};
+
+    let stance_cmds: Vec<ClientStanceCmd> = std::mem::take(&mut input.client.stance_cmds)
+        .into_iter()
+        .map(|cmd| match cmd {
+            StanceCmd::StanceDown(at) => ClientStanceCmd::StanceDown(at),
+            StanceCmd::StanceUp => ClientStanceCmd::StanceUp,
+            StanceCmd::GoStandDown => ClientStanceCmd::GoStandDown,
+            StanceCmd::GoStandUp => ClientStanceCmd::GoStandUp,
+            StanceCmd::MoveUpDown => ClientStanceCmd::MoveUpDown,
+            StanceCmd::MoveUpUp => ClientStanceCmd::MoveUpUp,
+            StanceCmd::LowerStance => ClientStanceCmd::LowerStance,
+            StanceCmd::RaiseStance => ClientStanceCmd::RaiseStance,
+            StanceCmd::ToggleCrouch => ClientStanceCmd::ToggleCrouch,
+            StanceCmd::ToggleProne => ClientStanceCmd::ToggleProne,
+            StanceCmd::GoProne => ClientStanceCmd::GoProne,
+            StanceCmd::GoCrouch => ClientStanceCmd::GoCrouch,
+        })
+        .collect();
+    let attack_presses = std::mem::take(&mut input.client.attack_presses);
+    let Some(movement) = movement else {
+        return;
+    };
+    let sprint_standing = ps
+        .is_some_and(|ps| ps.view_height_current >= 60.0 && ps.pm_flags & pm_flags::SPRINTING != 0);
+    let frame = ClientInputFrame {
+        now_msec: input.now_msec.max(1),
+        sprint_standing,
+        prone_key_active: input.client.kb.prone.active,
+        movedown_key_active: input.client.kb.movedown.active,
+        attack_key_active: input.client.kb.attack.active,
+        stance_cmds: &stance_cmds,
+        forced_stances,
+        attack_presses: &attack_presses,
+        weapon,
+    };
+    let Some(bits) = movement.client_input(&mut input.game_input, &frame) else {
+        return;
+    };
+    cmd.buttons &= !(buttons::CROUCH
+        | buttons::PRONE
+        | buttons::STANCE_HELD
+        | buttons::JUMP
+        | buttons::DIVE
+        | buttons::SPECIAL_FIRE);
+    for (from, to) in [
+        (intent::CROUCH, buttons::CROUCH),
+        (intent::PRONE, buttons::PRONE),
+        (intent::STANCE_HELD, buttons::STANCE_HELD),
+        (intent::JUMP, buttons::JUMP),
+        (intent::DIVE, buttons::DIVE),
+        (intent::SPECIAL_FIRE, buttons::SPECIAL_FIRE),
+    ] {
+        if bits & from != 0 {
+            cmd.buttons |= to;
+        }
     }
 }

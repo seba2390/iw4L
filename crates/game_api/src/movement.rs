@@ -55,6 +55,63 @@ pub mod buttons {
     pub const SMOKE: u32 = 1 << 15;
     pub const THROW: u32 = 1 << 16;
     pub const TALKING: u32 = 1 << 17;
+    pub const NIGHTVISION: u32 = 1 << 18;
+    pub const OFFHAND_HOLD_CANCEL: u32 = 1 << 19;
+    pub const DIVE: u32 = 1 << 20;
+    pub const SPECIAL_FIRE: u32 = 1 << 21;
+}
+
+/// A stance or jump command the player pressed or released.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClientStanceCmd {
+    /// `+stance` pressed at `now_msec`.
+    StanceDown(i32),
+    /// `-stance` released.
+    StanceUp,
+    /// `+gostand` pressed.
+    GoStandDown,
+    /// `-gostand` released.
+    GoStandUp,
+    /// `+moveup` pressed.
+    MoveUpDown,
+    /// `-moveup` released.
+    MoveUpUp,
+    LowerStance,
+    RaiseStance,
+    ToggleCrouch,
+    ToggleProne,
+    GoProne,
+    GoCrouch,
+}
+
+/// The client's own stance and fire input state across frames.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ClientInputState {
+    /// 0 stand, 1 crouch, 2 prone, 3 dive.
+    pub stance: u8,
+    pub prev_stance: u8,
+    pub stance_held: bool,
+    pub stance_press_time: i32,
+    pub up_held_by_gostand: bool,
+    pub up_held_by_moveup: bool,
+    pub up_was_pressed: bool,
+    pub attack_latched: bool,
+    pub last_attack_down_msec: i32,
+    pub special_fire_active: bool,
+    pub special_fire_was_pressed: bool,
+}
+
+/// What the game's client input rule reads for one frame's command.
+pub struct ClientInputFrame<'a> {
+    pub now_msec: i32,
+    pub sprint_standing: bool,
+    pub prone_key_active: bool,
+    pub movedown_key_active: bool,
+    pub attack_key_active: bool,
+    pub stance_cmds: &'a [ClientStanceCmd],
+    pub forced_stances: &'a [Stance],
+    pub attack_presses: &'a [i32],
+    pub weapon: Option<&'a GameWeapon>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -688,6 +745,38 @@ pub trait PlayerMovement: Sync {
     /// The invalid command hint a movement signal raises for the player
     /// (no grenade, target too close, ...), by the game's number for it.
     fn command_hint(&self, _signal: &MoveSignal) -> Option<i32> {
+        None
+    }
+
+    /// Applies the game's own client stance and fire input rules to the
+    /// frame's command buttons (`buttons::CROUCH`, `PRONE`, `DIVE`,
+    /// `STANCE_HELD`, `JUMP`, `SPECIAL_FIRE`); `None` keeps Modern Warfare
+    /// 2's client input.
+    fn client_input(
+        &self,
+        _state: &mut ClientInputState,
+        _frame: &ClientInputFrame<'_>,
+    ) -> Option<u32> {
+        None
+    }
+
+    /// A forced-stance event (`EV_STANCE_FORCE_STAND`, `CROUCH`, `PRONE`) a
+    /// movement signal raises for the player's client; `None` for other
+    /// signals.
+    fn forced_stance(&self, _signal: &MoveSignal) -> Option<Stance> {
+        None
+    }
+
+    /// Whether a movement signal resets the client's toggled aim-down-sights
+    /// (`EV_RESET_ADS`).
+    fn resets_ads(&self, _signal: &MoveSignal) -> bool {
+        false
+    }
+
+    /// While the player's weapon state is in an offhand throw, answers the
+    /// offhand weapon index so cycling weapons cancels the throw when the
+    /// offhand allows it.
+    fn offhand_cancel_state(&self, _player: &MovePlayer) -> Option<u32> {
         None
     }
 
