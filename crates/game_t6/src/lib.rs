@@ -496,7 +496,7 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
         exempt: &[ORIGINS],
         note: "Black Ops II's zombies scripts need the patch zone the game downloads at launch (ffotd_*_zm*.ff), captured from your own running game. Put it in",
     }),
-    // TranZit's Survival and Grief and Buried's Turned starts, as
+    // TranZit's Survival and Grief and Buried's Grief and Turned starts, as
     // `zm/gametypestable.csv` lists them (TranZit's Diner Turned needs a zone
     // the install lacks: `t6.scripts.zm_gametype_zone`).
     starts: &[
@@ -529,6 +529,12 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
             gametype: "zgrief",
             location: "farm",
             title: "FARM (GRIEF)",
+        },
+        LibraryStart {
+            zone: "zm_buried",
+            gametype: "zgrief",
+            location: "street",
+            title: "BOROUGH (GRIEF)",
         },
         LibraryStart {
             zone: "zm_buried",

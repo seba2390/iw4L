@@ -992,9 +992,10 @@ pub(crate) fn drive_test_player(
             .filter(|(other, _)| *other != id)
             .map(|(other, other_ps)| {
                 format!(
-                    "client {} {:?} health {} laststand {} sessionstate {} spectator_respawn {}",
+                    "client {} {:?} team {} health {} laststand {} sessionstate {} spectator_respawn {}",
                     other.0,
                     snapshot.meta.for_client(*other).map(|m| m.lifecycle),
+                    world.0.player_field_text(*other, "team"),
                     other_ps.health,
                     world
                         .0
@@ -1006,7 +1007,11 @@ pub(crate) fn drive_test_player(
             })
             .collect();
         if !others.is_empty() {
-            diag::info!(Sim, "test player: other players {others:?}");
+            diag::info!(
+                Sim,
+                "test player: team {}, other players {others:?}",
+                world.0.player_field_text(id, "team")
+            );
         }
         if let Ok(fields) = std::env::var("IW4L_TEST_ACTORS") {
             for actor in &actors {
