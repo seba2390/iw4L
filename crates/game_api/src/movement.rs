@@ -538,6 +538,10 @@ pub enum ScriptFlag {
     NoMelee,
     /// `disableweaponcycling`.
     NoWeaponCycling,
+    /// `disableweapons`.
+    WeaponsDisabled,
+    /// `disableoffhandweapons`.
+    OffhandsDisabled,
 }
 
 /// What a script may forbid a player.

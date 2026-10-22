@@ -25,6 +25,7 @@ mod view_height;
 pub mod weapon;
 mod world;
 
+pub use dive::end_dive_for_disabled_weapons;
 pub use events::MoveEvent;
 pub use inventory::{HeldRounds, held_rounds, load_held};
 pub use physics::effective_stance;
