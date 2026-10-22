@@ -2205,9 +2205,13 @@ pub(crate) fn log_forced_spawn(
     }
 }
 
+/// A body a sweep meets: a live player's, or (in an actor's sweep) a live
+/// actor's, with its box.
 struct PlayerBodyClip {
     entnum: u16,
     origin: [f32; 3],
+    mins: [f32; 3],
+    maxs: [f32; 3],
 }
 
 /// A free spectator's command under the game's own spectator move.
@@ -2282,8 +2286,8 @@ fn spectator_game_move(
 }
 
 /// What an actor's sweep meets this tick beyond the world: the brush
-/// entities, the models' brushes and the live players' bodies (which its
-/// clipmask lets through unless it names bodies).
+/// entities, the models' brushes and the live players' and actors' bodies
+/// (which its clipmask lets through unless it names bodies).
 pub(crate) struct ActorClip {
     linked_brushes: Vec<LinkedBrushCollisionBrush>,
     model_brushes: Vec<SimBrush>,
@@ -2303,10 +2307,28 @@ impl ActorClip {
         }
     }
 
-    /// Whether the trace stopped on one of the players' bodies.
-    pub(crate) fn hit_body(&self, trace: &Trace) -> bool {
-        trace.hit_type == HITTYPE_ENTITY
-            && self.bodies.iter().any(|body| body.entnum == trace.hit_id)
+    /// A live actor's body, as entity `entnum` with its box at `origin`.
+    pub(crate) fn add_body(&mut self, entnum: u16, origin: [f32; 3], bounds: ([f32; 3], [f32; 3])) {
+        self.bodies.push(PlayerBodyClip {
+            entnum,
+            origin,
+            mins: bounds.0,
+            maxs: bounds.1,
+        });
+    }
+
+    /// Entity `entnum`'s body moved to `origin`.
+    pub(crate) fn move_body(&mut self, entnum: u16, origin: [f32; 3]) {
+        for body in self.bodies.iter_mut().filter(|body| body.entnum == entnum) {
+            body.origin = origin;
+        }
+    }
+
+    /// The body the trace stopped on (a sentient's), by entity number.
+    pub(crate) fn hit_body(&self, trace: &Trace) -> Option<u16> {
+        (trace.hit_type == HITTYPE_ENTITY)
+            .then_some(trace.hit_id)
+            .filter(|&hit| self.bodies.iter().any(|body| body.entnum == hit))
     }
 
     pub(crate) fn trace(
@@ -2317,6 +2339,7 @@ impl ActorClip {
         mins: [f32; 3],
         maxs: [f32; 3],
         mask: u32,
+        self_entnum: u16,
     ) -> Trace {
         let content = world.content();
         let glass_damage = world.world_objects().glass_damage_pairs();
@@ -2326,7 +2349,7 @@ impl ActorClip {
             mesh: content.clip_mesh(),
             glass_damage: &glass_damage,
             bodies: &self.bodies,
-            self_entnum: u16::MAX,
+            self_entnum,
             cmodels: &content.clip_cmodels().models,
             linked_brushes: &self.linked_brushes,
             model_brushes: &self.model_brushes,
@@ -2357,6 +2380,8 @@ fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
             world.player(id).map(|ps| PlayerBodyClip {
                 entnum: id.0 as u16,
                 origin: ps.origin,
+                mins: PLAYER_MINS,
+                maxs: PLAYER_MAXS,
             })
         })
         .collect();
@@ -2367,6 +2392,8 @@ fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
             .map(|body| PlayerBodyClip {
                 entnum: body.client.0 as u16,
                 origin: body.origin,
+                mins: PLAYER_MINS,
+                maxs: PLAYER_MAXS,
             }),
     );
     bodies
@@ -2427,8 +2454,8 @@ impl CollisionBackend for ClipBackend<'_> {
             let body_input = GroundTraceInput {
                 start: body.origin,
                 end: body.origin,
-                mins: PLAYER_MINS,
-                maxs: PLAYER_MAXS,
+                mins: body.mins,
+                maxs: body.maxs,
                 tracemask: input.tracemask,
             };
             let Some(fixed) = crate::penetration::capsule(body_input, true) else {
@@ -2666,8 +2693,8 @@ fn clip_move_to_players(
             input.mins,
             input.maxs,
             body.origin,
-            PLAYER_MINS,
-            PLAYER_MAXS,
+            body.mins,
+            body.maxs,
             crate::world::CONTENTS_BODY,
             input.tracemask,
         );

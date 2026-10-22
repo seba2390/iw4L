@@ -531,8 +531,12 @@ pub(crate) struct ActorMove {
     /// `pushplayer(true)`: the actor's clipmask leaves player bodies out,
     /// so it walks through players.
     pub(crate) push_player: bool,
-    /// The last move was stopped by a player's body.
-    hit_body: bool,
+    /// The body (a player's or an actor's, by entity number) that stopped
+    /// the last move.
+    hit_body: Option<u16>,
+    /// Black Ops' blocking actor: the actor this one steps away from while
+    /// it holds it.
+    pub(crate) blocker: Option<u64>,
 }
 
 impl Default for ActorMove {
@@ -566,7 +570,8 @@ impl Default for ActorMove {
             deflect_side: 0,
             orient_notified: false,
             push_player: false,
-            hit_body: false,
+            hit_body: None,
+            blocker: None,
         }
     }
 }
@@ -1428,8 +1433,21 @@ fn model_anim_scripted(
 }
 
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
-    let clip = crate::step::ActorClip::gather(&FrameWorld::from_world(world));
-    world.insert_resource(ActorClipTick(clip));
+    let mut clip = crate::step::ActorClip::gather(&FrameWorld::from_world(world));
+    // Live actors' bodies block each other's sweeps (their contents are a
+    // body's, which the actor clipmask names).
+    let actors: Vec<u64> = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .keys()
+        .copied()
+        .collect();
+    for actor in actors {
+        if let Some((entnum, origin, bounds)) = live_body(world, actor) {
+            clip.add_body(entnum, origin, bounds);
+        }
+    }
+    world.insert_resource(ActorClipTick(clip, u16::MAX));
     locomote_actors(world, seconds);
     world.remove_resource::<ActorClipTick>();
 }
@@ -1461,6 +1479,10 @@ fn locomote_actors(world: &mut World, seconds: f32) {
         }
         let (mut origin, mut angles) = pose(&mut world.resource_mut::<RoundScript>(), actor);
         let before = origin;
+        let entnum = entity_number(world, actor);
+        if let Some(mut clip) = world.get_resource_mut::<ActorClipTick>() {
+            clip.1 = entnum;
+        }
         let goal_radius = goal_radius(world, actor);
         let goal_at = goal_position(world, actor);
         let mut movement = world.resource::<RoundScript>().actor_moves[&actor].clone();
@@ -1547,6 +1569,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
             runtime.set_object_field(actor, "angles", Value::Vector(angles));
             runtime.actor_moves.insert(actor, movement);
+            move_body(world, entnum, origin);
             continue;
         }
         let delta = super::actor_anims::root_delta(world, actor);
@@ -1746,6 +1769,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             }
             runtime.actor_moves.insert(actor, movement);
         }
+        move_body(world, entnum, origin);
         for event in events {
             raise(world, Value::Object(actor), event, Vec::new());
         }
@@ -1872,8 +1896,8 @@ struct Phys {
     /// The last plane the move hit and where: `iHitEntnum`'s normal and
     /// origin.
     hit: Option<([f32; 3], [f32; 3])>,
-    /// Whether that hit was a player's body (a sentient).
-    hit_body: bool,
+    /// The body that hit was (a sentient's), by entity number.
+    hit_body: Option<u16>,
     /// The actor's clipmask.
     mask: u32,
 }
@@ -1884,12 +1908,13 @@ struct Sweep {
     normal: [f32; 3],
     endpos: [f32; 3],
     allsolid: bool,
-    body: bool,
+    body: Option<u16>,
 }
 
-/// What actors' sweeps meet this tick beyond the world, gathered once.
+/// What actors' sweeps meet this tick beyond the world, gathered once, and
+/// the entity number of the actor moving (whose own body it skips).
 #[derive(bevy_ecs::prelude::Resource)]
-struct ActorClipTick(crate::step::ActorClip);
+struct ActorClipTick(crate::step::ActorClip, u16);
 
 fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -1913,10 +1938,10 @@ impl Phys {
         let trace = match &clip {
             Some(clip) => clip
                 .0
-                .trace(&frame, start, end, self.mins, self.maxs, self.mask),
+                .trace(&frame, start, end, self.mins, self.maxs, self.mask, clip.1),
             None => frame.trace_clip(start, end, self.mins, self.maxs, self.mask),
         };
-        let body = clip.as_ref().is_some_and(|clip| clip.0.hit_body(&trace));
+        let body = clip.as_ref().and_then(|clip| clip.0.hit_body(&trace));
         if let Some(clip) = clip {
             world.insert_resource(clip);
         }
@@ -2177,7 +2202,7 @@ fn physics_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
-        hit_body: false,
+        hit_body: None,
         mask: actor_mask(movement),
     };
     phys.ground_trace(world);
@@ -2208,7 +2233,7 @@ fn zonly_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
-        hit_body: false,
+        hit_body: None,
         mask: actor_mask(movement),
     };
     phys.slide(world, seconds, false);
@@ -2220,7 +2245,7 @@ fn zonly_move(
 
 fn settle_physics(phys: &Phys, movement: &mut ActorMove) {
     movement.ground_normal = phys.ground;
-    movement.hit_body = phys.hit.is_some() && phys.hit_body;
+    movement.hit_body = phys.hit.and(phys.hit_body);
     movement.fall_speed = if phys.ground.is_some() {
         0.0
     } else {
@@ -2311,11 +2336,38 @@ fn walk_path(
     };
     // A sentient in the way (a player) does not replan the path: Black Ops
     // keeps it as the blocker.
-    if gained < length * BLOCKED_PROGRESS && !movement.hit_body {
+    if gained < length * BLOCKED_PROGRESS && movement.hit_body.is_none() {
         // Planned again on the next step; the path stands until then.
         movement.planned_to = None;
     }
     result
+}
+
+fn entity_number(world: &World, actor: u64) -> u16 {
+    world
+        .resource::<RoundScript>()
+        .entities
+        .get(&actor)
+        .and_then(|entity| u16::try_from(entity.number).ok())
+        .unwrap_or(u16::MAX)
+}
+
+/// A live actor's body: its entity number, origin and box.
+fn live_body(world: &mut World, actor: u64) -> Option<(u16, [f32; 3], ([f32; 3], [f32; 3]))> {
+    if !matches!(super::players::entity_field(world, actor, "health"), Value::Int(n) if n > 0) {
+        return None;
+    }
+    let entnum = entity_number(world, actor);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let bounds = actor_box(runtime.actor_moves.get(&actor)?);
+    Some((entnum, pose(&mut runtime, actor).0, bounds))
+}
+
+/// The moved actor's body follows it for the actors that move after it.
+fn move_body(world: &mut World, entnum: u16, origin: [f32; 3]) {
+    if let Some(mut clip) = world.get_resource_mut::<ActorClipTick>() {
+        clip.0.move_body(entnum, origin);
+    }
 }
 
 /// The other live actors, by entity, with their origins.
