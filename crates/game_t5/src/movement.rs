@@ -1007,14 +1007,20 @@ impl PlayerMovement for T5Movement {
 
     /// Black Ops' client turns these events of its own player into its
     /// invalid command hint: no frag grenade (2), no special grenade (3),
-    /// target too close (8), lock-on required (9), not enough clearance
-    /// (10).
+    /// stand blocked (6), crouch blocked (7), target too close (8), lock-on
+    /// required (9), not enough clearance (10).
     fn command_hint(&self, signal: &MoveSignal) -> Option<i32> {
         use movement_t5::events::event;
-        let MoveSignal::Event { event, .. } = *signal else {
+        let MoveSignal::Event { event, parm } = *signal else {
             return None;
         };
         match event {
+            event::STANCE_FORCE_CROUCH | event::STANCE_FORCE_PRONE if parm == 1 => {
+                Some(crate::code_hud::HINT_STAND_BLOCKED)
+            }
+            event::STANCE_FORCE_CROUCH | event::STANCE_FORCE_PRONE if parm == 2 => {
+                Some(crate::code_hud::HINT_CROUCH_BLOCKED)
+            }
             event::NO_FRAG_GRENADE_HINT => Some(crate::code_hud::HINT_NO_FRAG_GRENADE),
             event::NO_SPECIAL_GRENADE_HINT => Some(crate::code_hud::HINT_NO_SPECIAL_GRENADE),
             event::TARGET_TOO_CLOSE_HINT => Some(crate::code_hud::HINT_TARGET_TOO_CLOSE),
