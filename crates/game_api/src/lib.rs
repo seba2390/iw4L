@@ -752,6 +752,19 @@ pub enum InGameMenu {
     },
 }
 
+/// A picture of a game's own item paint, in the item's coordinates (its
+/// rect's alignment places it).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MenuQuad {
+    /// `[x, y, w, h]`.
+    pub rect: [f32; 4],
+    pub color: [f32; 4],
+    pub material: &'static str,
+    /// The degrees the game's rotated picture turns about its centre
+    /// (negative turns it counter-clockwise on screen); 0 for none.
+    pub turn: f32,
+}
+
 /// How a game's menu engine places and scales an item's rect and text.
 pub trait MenuLayout: Sync {
     /// The glyph scale of a font of `pixel_height` drawn at `text_scale`.
@@ -806,6 +819,20 @@ pub trait MenuLayout: Sync {
         _glyph: &dyn Fn(char) -> i32,
         _scale: f32,
     ) -> Option<Vec<String>> {
+        None
+    }
+    /// What a slider item in `rect` `[x, y, w, h]` paints with its value
+    /// `fraction` of the way through its range, its text aligned by
+    /// `align_mode` and offset by `align_x`, `align_y`; `None` keeps the
+    /// runtime's own bar and value text.
+    fn slider(
+        &self,
+        _rect: [f32; 4],
+        _align_mode: i32,
+        _align_x: f32,
+        _align_y: f32,
+        _fraction: f32,
+    ) -> Option<Vec<MenuQuad>> {
         None
     }
 }

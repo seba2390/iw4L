@@ -204,6 +204,9 @@ pub(crate) struct ChromeItemOverride {
     pub rect: Option<MenuRect>,
     pub style: Option<i32>,
     pub background: Option<&'static str>,
+    /// The degrees the background picture turns about its centre, as
+    /// [`game_api::MenuQuad::turn`].
+    pub turn: Option<f32>,
 }
 
 #[derive(Default)]
@@ -1137,6 +1140,7 @@ pub(crate) struct EvaluatedItemStyle {
     pub fore_color: [f32; 4],
     pub glow_color: [f32; 4],
     pub back_color: [f32; 4],
+    pub turn: f32,
 
     pub unsupported: Option<u32>,
 }
@@ -1166,6 +1170,7 @@ fn evaluate_item_style(
         fore_color: state.fore.unwrap_or(item.fore_color),
         glow_color: item.glow_color,
         back_color: state.back.unwrap_or(item.back_color),
+        turn: state.turn.unwrap_or(0.0),
         unsupported: None,
     };
     style.rect.x += parent.x - captured_parent.x;
@@ -1332,7 +1337,20 @@ fn push_stretch(
         t1: if rect.h < 0.0 { t0 } else { t1 },
         color,
         material,
-        op: Draw2dOp::StretchPic,
+        // A turn of the texture about the picture's centre: the game turns
+        // the quad itself, the same for a square picture turned by quarters.
+        op: if style.turn == 0.0 {
+            Draw2dOp::StretchPic
+        } else {
+            Draw2dOp::RotateSt {
+                center_s: 0.5,
+                center_t: 0.5,
+                radius_st: 0.5,
+                scale_final_s: 1.0,
+                scale_final_t: 1.0,
+                deg: -style.turn,
+            }
+        },
         provenance: Draw2dProvenance::MenuItem {
             menu: menu.name.clone(),
             index,
