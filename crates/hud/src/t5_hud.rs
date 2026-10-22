@@ -40,6 +40,8 @@ const CG_AMITALKING: i32 = 266;
 const CG_COMPETITIVE_MODE_SCORES: i32 = 288;
 const CG_PLAYER_ACTIONSLOT_ARROW_1: i32 = 294;
 const CG_PLAYER_ACTIONSLOT_ARROW_4: i32 = 297;
+const CG_PLAYER_ACTIONSLOT_BIND_1: i32 = 392;
+const CG_PLAYER_ACTIONSLOT_BIND_4: i32 = 395;
 
 /// What the local client knows that Black Ops' HUD expressions ask for.
 pub(crate) struct T5HudState<'a> {
@@ -75,14 +77,32 @@ pub(crate) struct WeaponInfoFrame<'a> {
     pub shown_at: i32,
 }
 
+/// The invalid command hint the client keeps, and what it last saw of the
+/// server's count of them and of the action slot presses.
+#[derive(Default)]
+pub(crate) struct CommandHintLatch {
+    pub seen_count: Option<u8>,
+    pub slot_time: i32,
+    pub kept: game_api::hud::CommandHint,
+}
+
 /// A hint or message owner draw, resolved for the frame.
 #[derive(Clone, Debug)]
 pub(crate) enum OwnerHintText {
     Nothing,
-    /// Text centred on the item, in the colour the game draws it.
+    /// Text centred on the item, in the colour the game draws it, with
+    /// its alpha when the game sets one.
     Text {
         text: String,
         white: bool,
+        alpha: Option<f32>,
+    },
+    /// White text and after it a picture at the item's size, the pair
+    /// centred on the item's left edge and raised by `raise`.
+    TextPicture {
+        text: String,
+        material: String,
+        raise: f32,
     },
 }
 
@@ -107,6 +127,8 @@ pub(crate) fn resolve_owner_hints(
     namespace: asset_core::AssetNamespace,
     input: Option<&frame::HudInputView>,
     reported: &mut std::collections::HashSet<&'static str>,
+    now: i32,
+    command_hint: game_api::hud::CommandHint,
 ) -> Vec<(i32, OwnerHintText)> {
     let player = ps.move_player(local, false);
     let weapon = |index: u32| {
@@ -126,6 +148,8 @@ pub(crate) fn resolve_owner_hints(
         scoreboard,
         paused,
         dvar: &dvar,
+        now,
+        command_hint,
     };
     let mut out = Vec::new();
     for owner_draw in OWNER_HINT_DRAWS {
@@ -149,6 +173,36 @@ pub(crate) fn resolve_owner_hints(
                 OwnerHintText::Text {
                     text: template.replace("&&1", bind),
                     white: owner_draw != 80,
+                    alpha: None,
+                }
+            }
+            game_api::hud::OwnerHint::TextPicture {
+                key,
+                binds,
+                material,
+                raise,
+            } => {
+                let Some(template) = strings.and_then(|s| s.0.text_in(namespace, key)) else {
+                    continue;
+                };
+                let bind = binds
+                    .iter()
+                    .find_map(|cmd| input.and_then(|i| i.binding_keys.get(*cmd)))
+                    .map_or("", String::as_str);
+                OwnerHintText::TextPicture {
+                    text: template.replace("&&1", bind),
+                    material: material.to_owned(),
+                    raise,
+                }
+            }
+            game_api::hud::OwnerHint::Faded { key, alpha } => {
+                let Some(text) = strings.and_then(|s| s.0.text_in(namespace, key)) else {
+                    continue;
+                };
+                OwnerHintText::Text {
+                    text: text.to_owned(),
+                    white: false,
+                    alpha: Some(alpha),
                 }
             }
         };
@@ -164,10 +218,21 @@ fn paint_owner_hint(
     hint: &OwnerHintText,
     frame: &mut ChromeFrame,
 ) -> OwnerDrawPaint {
-    let OwnerHintText::Text { text, white } = hint else {
+    if let OwnerHintText::TextPicture {
+        text,
+        material,
+        raise,
+    } = hint
+    {
+        return paint_text_picture(args, text, material, *raise, frame);
+    }
+    let OwnerHintText::Text { text, white, alpha } = hint else {
         return OwnerDrawPaint::Painted;
     };
-    let color = if *white { [1.0; 4] } else { args.color };
+    let mut color = if *white { [1.0; 4] } else { args.color };
+    if let Some(alpha) = alpha {
+        color[3] = *alpha;
+    }
     match crate::chrome::push_owner_text_at(
         args,
         text,
@@ -181,6 +246,49 @@ fn paint_owner_hint(
         Ok(()) => OwnerDrawPaint::Painted,
         Err(kind) => OwnerDrawPaint::Gap(kind),
     }
+}
+
+/// Black Ops' mantle hint: the text at the item's left edge less half the
+/// text and picture's width, half the text's height below the item's top;
+/// the picture after the text, half the item's height above its top.
+fn paint_text_picture(
+    args: &OwnerDrawArgs<'_>,
+    text: &str,
+    material: &str,
+    raise: f32,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let rect = args.rect;
+    let mut left = None;
+    let placed = crate::chrome::push_owner_text_at(
+        args,
+        text,
+        [1.0; 4],
+        |width, height| {
+            let width = width.trunc();
+            let x = rect.x - (width + rect.w) * 0.5;
+            left = Some(x + width);
+            (x, rect.y + height.trunc() * 0.5 + raise)
+        },
+        frame,
+    );
+    if let Err(kind) = placed {
+        return OwnerDrawPaint::Gap(kind);
+    }
+    if let (Some(x), Some(namespace)) = (left, args.assets.catalog.and_then(|c| c.namespace)) {
+        push_pic_at(
+            args,
+            namespace,
+            material.to_owned(),
+            x,
+            rect.y - rect.h * 0.5 + raise,
+            rect.w,
+            rect.h,
+            [1.0; 4],
+            frame,
+        );
+    }
+    OwnerDrawPaint::Painted
 }
 
 /// Latches the client time when `ui_deadquote` is set by `MissionFailed` (`'Y'`),
@@ -341,6 +449,7 @@ fn unset_dvar(name: &str) -> String {
 
 struct T5HudHost<'a, 'b> {
     state: &'a T5HudState<'b>,
+    localize: Option<&'a LocalizeCatalog>,
 }
 
 impl ExprHost for T5HudHost<'_, '_> {
@@ -416,8 +525,17 @@ impl ExprHost for T5HudHost<'_, '_> {
             .input
             .and_then(|input| input.action_slot_keys.get(slot))
             .and_then(|key| key.as_deref())
-            .unwrap_or("");
-        Ok(Operand::Str(key.to_owned()))
+            .filter(|key| !key.is_empty());
+        // Black Ops answers an unbound command with `KEY_UNBOUND`.
+        let key = match key {
+            Some(key) => key.to_owned(),
+            None => self
+                .localize
+                .and_then(|l| l.text("KEY_UNBOUND"))
+                .unwrap_or("KEY_UNBOUND")
+                .to_owned(),
+        };
+        Ok(Operand::Str(key))
     }
     fn is_dual_wield(&self) -> Result<i32, ExprError> {
         Ok(i32::from(self.state.ammo.as_ref().is_some_and(|a| a.dual)))
@@ -1040,6 +1158,12 @@ fn paint_owner(
                 frame,
             )
         }
+        slot @ CG_PLAYER_ACTIONSLOT_BIND_1..=CG_PLAYER_ACTIONSLOT_BIND_4 => paint_action_slot_bind(
+            state,
+            &args,
+            (slot - CG_PLAYER_ACTIONSLOT_BIND_1) as usize,
+            frame,
+        ),
         CG_PLAYER_WEAPON_LOW_AMMO_WARNING => paint_low_ammo_warning(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         CG_VEHICLE_HUD_2 | CG_AMITALKING => OwnerDrawPaint::Painted,
@@ -1082,6 +1206,37 @@ fn paint_action_slot_arrow(
         frame,
     );
     OwnerDrawPaint::Painted
+}
+
+/// An action slot's key label: the item's text (`dpad_zombie`'s
+/// `"[" + keybinding("+actionslot N") + "]"`) at the item's corner, in the
+/// colour the game's weapon info rule gives it.
+fn paint_action_slot_bind(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    slot: usize,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(info) = state.weapon_info else {
+        return OwnerDrawPaint::Painted;
+    };
+    let color = (info.rules.bind_label)(info.view, slot, args.color, info.shown_at);
+    if color[3] == 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let Some(text) = args.text.as_deref().filter(|t| !t.is_empty()) else {
+        return OwnerDrawPaint::Painted;
+    };
+    match crate::chrome::push_owner_text_at(
+        args,
+        text,
+        color,
+        |_, _| (args.rect.x, args.rect.y),
+        frame,
+    ) {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
+    }
 }
 
 /// The low ammo warning: the item's picture, when it has one, and the
@@ -1197,7 +1352,7 @@ pub(crate) fn paint(
     surface: &crate::surface::Hud2dSurface,
     exprs: &mut crate::expr_cache::MenuExprCache,
 ) -> (Draw2dList, Vec<String>) {
-    let host = T5HudHost { state };
+    let host = T5HudHost { state, localize };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
     let mut lists: Vec<String> = T5_HUD_MENU_LISTS

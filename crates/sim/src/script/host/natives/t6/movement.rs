@@ -767,6 +767,8 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         let gap = flat_distance(at, path[0].at);
         gap <= 1.0 || stalled && gap <= POINT_REACHED
     });
+    // IW4L's choice (`t6.actors.script_choice`: the engine's exposed state
+    // runs combat with no path, and its stop or combat script when slow).
     let script = match crossing {
         _ if path.is_empty() && enemy.is_some() => Script::Combat,
         _ if path.is_empty() => Script::Stop,
