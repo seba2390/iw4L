@@ -24,6 +24,9 @@ pub struct GameCodeHud {
     pub scoreboard: Option<&'static CodeScoreboard>,
     /// What the game's hint and message owner draws show.
     pub owner_hint: OwnerHintFn,
+    /// The game's weapon info: its action slot arrows and low ammo
+    /// warning.
+    pub weapon_info: Option<&'static WeaponInfoRules>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
@@ -72,6 +75,58 @@ pub enum OwnerHint {
     },
     /// The game draws something the runtime does not.
     Unrun(&'static Unknown),
+}
+
+/// A game's weapon info: the pieces of its HUD shown for a while after
+/// the player touches his weapons, then faded out.
+#[derive(Debug)]
+pub struct WeaponInfoRules {
+    /// The client time the weapon info was last shown, given the time it
+    /// was shown before (0: not shown): the player's input and weapons this
+    /// frame show it again, and it is let go once it has faded.
+    pub update: fn(&WeaponInfoView<'_>, i32) -> i32,
+    /// The alpha of an action slot's arrow (by slot, from 0), given the
+    /// item's own alpha and the time the weapon info was shown.
+    pub arrow: fn(&WeaponInfoView<'_>, usize, f32, i32) -> f32,
+    /// The low ammo warning, given the time the weapon info was shown.
+    pub low_ammo: fn(&WeaponInfoView<'_>, i32) -> Option<LowAmmoWarning>,
+}
+
+/// What a game's weapon info reads of the local player.
+pub struct WeaponInfoView<'a> {
+    /// The local player as the game's movement keeps him.
+    pub player: &'a MovePlayer,
+    /// The client time.
+    pub now: i32,
+    /// The weapon the client has selected, and the client time it last
+    /// changed its selection.
+    pub selected: u32,
+    pub selected_at: i32,
+    /// The client time an action slot key was last pressed.
+    pub slot_pressed_at: i32,
+    /// An action slot's kind and weapon, by slot.
+    pub action_slot: &'a dyn Fn(usize) -> (i32, u32),
+    /// A weapon's definition and variant in the game's layout.
+    pub weapon: &'a dyn Fn(u32) -> Option<(&'a [u8], &'a [u8])>,
+    /// A weapon's alternate weapon and its left-hand weapon; 0 when none.
+    pub alternate: &'a dyn Fn(u32) -> u32,
+    pub left_hand: &'a dyn Fn(u32) -> u32,
+    /// The rounds in a weapon's clip and beside it, and its ammo number
+    /// (weapons with one number share the rounds beside the clip).
+    pub clip: &'a dyn Fn(u32) -> i32,
+    pub stock: &'a dyn Fn(u32) -> i32,
+    pub ammo_number: &'a dyn Fn(u32) -> i32,
+    /// A client dvar's value, when the client keeps it.
+    pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+}
+
+/// The low ammo warning: a localized string whose `&&1` is the key bound
+/// to `bind`, drawn in `color`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LowAmmoWarning {
+    pub key: &'static str,
+    pub bind: &'static str,
+    pub color: [f32; 4],
 }
 
 /// The icons pointing at where damage came from.

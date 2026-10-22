@@ -21,6 +21,7 @@ pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     crosshair,
     scoreboard: Some(&SCOREBOARD),
     owner_hint,
+    weapon_info: Some(&crate::weapon_info::WEAPON_INFO),
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: grenade indicators, friendly names, the players-in-view scan, chat lines, the red damage flash, the burning, electrified and teleport overlays and the night vision overlay",

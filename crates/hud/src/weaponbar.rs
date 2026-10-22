@@ -697,6 +697,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     actions: Option<Res<'w, net::ClientActionInput>>,
     pause: Option<Res<'w, frame::MatchPause>>,
     hint_gaps: Local<'s, std::collections::HashSet<&'static str>>,
+    weapon_info_shown: Local<'s, i32>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -834,6 +835,66 @@ pub(crate) fn update_weaponbar(
                 )
             })
             .unwrap_or_else(Vec::new);
+        let info_rules = crate::game_code_hud::game_hud(client_input.mode.as_deref())
+            .and_then(|hud| hud.weapon_info);
+        let info_player = ps.move_player(local.0.0 as i32, false);
+        let action_slot = |slot: usize| {
+            (
+                ps.action_slot_type.get(slot).copied().unwrap_or(0),
+                ps.action_slot_param
+                    .get(slot)
+                    .map_or(0, |&weapon| weapon.max(0) as u32),
+            )
+        };
+        let weapon_bytes = |weapon: u32| {
+            let bytes = weapons.as_ref()?.row(weapon)?.game_bytes()?;
+            Some((&*bytes.def, &*bytes.variant))
+        };
+        let alternate = |weapon: u32| {
+            weapons
+                .as_ref()
+                .and_then(|w| w.row(weapon))
+                .map_or(0, |row| row.alternate_wire_id())
+        };
+        let left_hand = |weapon: u32| {
+            weapons
+                .as_ref()
+                .and_then(|w| w.row(weapon))
+                .map_or(0, |row| row.dual_wield_wire_id())
+        };
+        let rounds = |weapon: u32| {
+            weapons.as_ref().map_or((0, 0, 0), |w| {
+                crate::ammo::weapon_rounds(ps, w, meta, weapon)
+            })
+        };
+        let clip = |weapon: u32| rounds(weapon).0;
+        let stock = |weapon: u32| rounds(weapon).1;
+        let ammo_number = |weapon: u32| rounds(weapon).2;
+        let info_dvar = |name: &str| dvars.float(name);
+        let info_view = game_api::hud::WeaponInfoView {
+            player: &info_player,
+            now: cg_clock.time(),
+            selected: client_input.select.index,
+            selected_at: client_input.select.time,
+            slot_pressed_at: client_input.select.slot_time,
+            action_slot: &action_slot,
+            weapon: &weapon_bytes,
+            alternate: &alternate,
+            left_hand: &left_hand,
+            clip: &clip,
+            stock: &stock,
+            ammo_number: &ammo_number,
+            dvar: &info_dvar,
+        };
+        let weapon_info = info_rules.map(|rules| {
+            *client_input.weapon_info_shown =
+                (rules.update)(&info_view, *client_input.weapon_info_shown);
+            crate::t5_hud::WeaponInfoFrame {
+                rules,
+                view: &info_view,
+                shown_at: *client_input.weapon_info_shown,
+            }
+        });
         let state = crate::t5_hud::T5HudState {
             ms,
             dvars,
@@ -853,6 +914,7 @@ pub(crate) fn update_weaponbar(
             scores,
             deadquote_start_ms,
             owner_hints,
+            weapon_info,
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,

@@ -106,6 +106,36 @@ pub(crate) fn weaponbar_ammo(
     })
 }
 
+/// The rounds in a weapon's clip and beside it as the player state keeps
+/// them, else as the client's match state does (0 when neither keeps
+/// them), and the weapon's ammo number.
+pub(crate) fn weapon_rounds(
+    ps: &PlayerState,
+    weapons: &BoundWeapons<'_>,
+    meta: Option<&ClientSnapshotMeta>,
+    weapon: u32,
+) -> (i32, i32, i32) {
+    let Some(facts) = weapons.row(weapon).and_then(|row| row.hud_facts()) else {
+        return (0, 0, 0);
+    };
+    let clip_key = clip_table_key(facts.clip_index, weapon);
+    let ammo_key = ammo_table_key(facts.ammo_index, weapon);
+    let kept = meta
+        .and_then(|m| m.ammo_by_weapon.iter().find(|(w, _, _)| *w == weapon))
+        .map_or((0, 0), |&(_, clip, stock)| (clip, stock));
+    let clip = if clip_row_present(&ps.ammoclip, clip_key) {
+        get_clip_for_hand(&ps.ammoclip, clip_key, 0)
+    } else {
+        kept.0
+    };
+    let stock = if ammo_row_present(&ps.ammo, ammo_key) {
+        get_ammo_not_in_clip(&ps.ammo, ammo_key)
+    } else {
+        kept.1
+    };
+    (clip, stock, facts.ammo_index)
+}
+
 pub(crate) fn stock_digits(count: i32) -> String {
     format!("{count:3}")
 }
