@@ -447,8 +447,8 @@ pub(crate) enum MixCommand {
 #[derive(bevy_ecs::prelude::Resource, Default)]
 pub(crate) struct MixCommands(pub(crate) Vec<MixCommand>);
 
-// t6.audio.mix: IW4L's audio does not apply the mixer commands (snapshots,
-// side-chain ducks, futz, reverb rooms, contexts); they are kept, and traced.
+// t6.audio.mix: the client's sound system runs the snapshots (ducks); the
+// side-chain ducks, futz, reverb rooms and contexts are kept, and traced.
 pub(crate) fn mix_command(world: &mut World, command: MixCommand) {
     if crate::sound_trace::enabled() {
         diag::info!(Sim, "sound trace: mix {command:?}");
@@ -492,6 +492,9 @@ fn known_or_default(list: &[u32], name: &str, what: &str) -> u32 {
     }
 }
 
+/// `setambientsnapshot` / `setgroupsnapshot`: the duck in the slot at a
+/// value of 1 (the engine's sound command 0x14), an unknown one the
+/// `default` duck; the client's sound system runs it.
 fn set_snapshot(world: &mut World, slot: i32, name: &str) {
     let Some(names) = mix_names(world) else {
         return;
@@ -499,6 +502,19 @@ fn set_snapshot(world: &mut World, slot: i32, name: &str) {
     let name = if name.is_empty() { "default" } else { name };
     let id = known_or_default(&names.snapshots, name, "duck");
     mix_command(world, MixCommand::Snapshot { slot, id });
+    let known = if id == sound_hash(name) {
+        name
+    } else {
+        "default"
+    };
+    world.resource_mut::<ClientOutput>().sound_commands.push(
+        crate::ScriptAudioCommand::ClientSnapshot {
+            client: LOCAL,
+            slot: slot as u8,
+            name: known.to_owned(),
+            value: 1.0,
+        },
+    );
 }
 
 /// A context type and value the driver allows, by hash; an empty value is
@@ -847,8 +863,21 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setsoundcontext", |world, _, args| {
         let value = string(args, 1)?;
         let kind = string(args, 0)?;
-        if let Some((kind, value)) = context(world, &kind, &value) {
-            mix_command(world, MixCommand::Context { kind, value });
+        if let Some((kind_id, value_id)) = context(world, &kind, &value) {
+            mix_command(
+                world,
+                MixCommand::Context {
+                    kind: kind_id,
+                    value: value_id,
+                },
+            );
+            world.resource_mut::<ClientOutput>().sound_commands.push(
+                crate::ScriptAudioCommand::ClientSoundContext {
+                    client: LOCAL,
+                    context: kind.to_string(),
+                    value: value.to_string(),
+                },
+            );
         }
         Ok(Value::Undefined)
     });

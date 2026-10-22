@@ -78,6 +78,7 @@ pub struct SoundCatalog {
     group_volumes: HashMap<AssetNamespace, Vec<std::result::Result<f32, crate::MixerGroupError>>>,
     mixer_groups: HashMap<AssetNamespace, Vec<crate::MixerGroup>>,
     mix_snapshots: HashMap<AssetNamespace, crate::MixSnapshots>,
+    ducks: HashMap<AssetNamespace, Vec<crate::SoundDuck>>,
     sound_contexts: HashMap<AssetNamespace, crate::SoundContexts>,
     mix_names: Option<crate::SoundMixNames>,
     /// What a game's server answers for an alias's playback time, by
@@ -160,6 +161,9 @@ impl SoundCatalog {
         for (ns, contexts) in other.sound_contexts {
             self.sound_contexts.entry(ns).or_insert(contexts);
         }
+        for (ns, ducks) in other.ducks {
+            self.ingest_ducks(ns, ducks);
+        }
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
         }
@@ -241,6 +245,9 @@ impl SoundCatalog {
         }
         for (ns, contexts) in other.sound_contexts {
             self.sound_contexts.entry(ns).or_insert(contexts);
+        }
+        for (ns, ducks) in other.ducks {
+            self.ingest_ducks(ns, ducks);
         }
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
@@ -344,6 +351,20 @@ impl SoundCatalog {
 
     pub fn mix_snapshots(&self, namespace: AssetNamespace) -> Option<&crate::MixSnapshots> {
         self.mix_snapshots.get(&namespace)
+    }
+
+    /// A game's sound ducks, the first of each hash kept.
+    pub fn ingest_ducks(&mut self, namespace: AssetNamespace, ducks: Vec<crate::SoundDuck>) {
+        let list = self.ducks.entry(namespace).or_default();
+        for duck in ducks {
+            if !list.iter().any(|known| known.hash == duck.hash) {
+                list.push(duck);
+            }
+        }
+    }
+
+    pub fn sound_ducks(&self, namespace: AssetNamespace) -> Option<&[crate::SoundDuck]> {
+        self.ducks.get(&namespace).map(Vec::as_slice)
     }
 
     /// The sound contexts a zone's sound driver declares.

@@ -41,6 +41,26 @@ impl MixSnapshots {
     }
 }
 
+/// A Black Ops 2 sound duck (its banks' 76-byte snapshots): how far it
+/// pulls each duck group down while it is in force, and how it comes and
+/// goes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SoundDuck {
+    /// The name's hash, as the game looks ducks up.
+    pub hash: u32,
+    /// Fade-in, fade-out and start delay, in seconds.
+    pub fade_in: f32,
+    pub fade_out: f32,
+    pub start_delay: f32,
+    /// The distance a sound carrying it applies it over (0: everywhere).
+    pub distance: f32,
+    /// How long it lasts once set, in seconds; under the engine's epsilon
+    /// it lasts until replaced.
+    pub length: f32,
+    /// Each duck group's volume under it (1 leaves the group alone).
+    pub attenuation: Vec<f32>,
+}
+
 /// A sound context of a game's sound driver: the values it may take. An
 /// alias that names a context plays only while the context has its value.
 #[derive(Clone, Debug, PartialEq, Eq)]
