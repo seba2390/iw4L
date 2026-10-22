@@ -945,4 +945,34 @@ impl<'a> WeaponDefView<'a> {
     pub fn keep_rolling(&self) -> bool {
         self.def[0x63d] != 0
     }
+
+    /// `maxAmmo`
+    pub fn max_ammo(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x344))
+    }
+
+    /// `sharedAmmoCap`
+    pub fn shared_ammo_cap(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x354))
+    }
+
+    /// `ammoCountClipRelative`
+    pub fn ammo_count_clip_relative(&self) -> bool {
+        self.def[0x359] != 0
+    }
+
+    /// `ammoCounterClip`
+    pub fn ammo_counter_clip(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x338))
+    }
+
+    /// `isCarriedKillstreakWeapon`
+    pub fn is_carried_killstreak_weapon(&self) -> bool {
+        self.def[0x552] != 0
+    }
+
+    /// `lowAmmoWarningThreshold`
+    pub fn low_ammo_warning_threshold(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x644))
+    }
 }

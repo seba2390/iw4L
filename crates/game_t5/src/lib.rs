@@ -21,6 +21,7 @@ mod viewmodel;
 mod vision;
 mod vision_channels;
 mod vision_file;
+mod weapon_info;
 mod zombie_catalog;
 mod zombie_startup;
 

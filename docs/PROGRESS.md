@@ -159,6 +159,7 @@ Only the top-level items count.
 - [ ] The game's own HUD.
   - [x] Black Ops' HUD menus (weapon info, dpad, points column `competitivemodescores`) with its fonts, layout, safe area and name-hash paint order; script hud elems (round chalk, point popups, game over text); text and icon use hints (`HINT_NOICON`, `HINT_SEAT`, `HINT_ACTIVATE`, `HINT_HEALTH`, `HINT_FRIENDLY`, `HINT_SPECTATOR`, `HINT_TEAMPOT`, weapons).
   - [x] Code-drawn pieces (Black Ops' crosshair and damage icons, no code blood), the TAB scoreboard.
+  - [x] The weapon info fade, the dpad arrows and the low ammo warning (`PLATFORM_RELOAD`, `WEAPON_NO_AMMO`, `PLATFORM_LOW_AMMO_NO_RELOAD`) by Black Ops' client rules.
 - [ ] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
   - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as IW4L's bar.

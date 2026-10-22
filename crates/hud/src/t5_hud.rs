@@ -29,6 +29,7 @@ const CG_PLAYER_WEAPON_BACKGROUND: i32 = 116;
 const CG_PLAYER_WEAPON_AMMO_CLIP: i32 = 120;
 const CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD: i32 = 121;
 const CG_PLAYER_WEAPON_AMMO_STOCK: i32 = 122;
+const CG_PLAYER_WEAPON_LOW_AMMO_WARNING: i32 = 123;
 const CG_PLAYER_ACTIONSLOT_1: i32 = 166;
 const CG_PLAYER_ACTIONSLOT_4: i32 = 169;
 /// The second `vehiclehud` owner draw and `amitalking`: neither of Black
@@ -37,6 +38,8 @@ const CG_PLAYER_ACTIONSLOT_4: i32 = 169;
 const CG_VEHICLE_HUD_2: i32 = 193;
 const CG_AMITALKING: i32 = 266;
 const CG_COMPETITIVE_MODE_SCORES: i32 = 288;
+const CG_PLAYER_ACTIONSLOT_ARROW_1: i32 = 294;
+const CG_PLAYER_ACTIONSLOT_ARROW_4: i32 = 297;
 
 /// What the local client knows that Black Ops' HUD expressions ask for.
 pub(crate) struct T5HudState<'a> {
@@ -59,6 +62,17 @@ pub(crate) struct T5HudState<'a> {
     pub deadquote_start_ms: Option<i32>,
     /// What the game's hint and message owner draws show, by number.
     pub owner_hints: Vec<(i32, OwnerHintText)>,
+    /// The game's weapon info rules, what they read and the client time
+    /// the weapon info was last shown.
+    pub weapon_info: Option<WeaponInfoFrame<'a>>,
+}
+
+/// The game's weapon info for a frame.
+#[derive(Clone, Copy)]
+pub(crate) struct WeaponInfoFrame<'a> {
+    pub rules: &'static game_api::hud::WeaponInfoRules,
+    pub view: &'a game_api::hud::WeaponInfoView<'a>,
+    pub shown_at: i32,
 }
 
 /// A hint or message owner draw, resolved for the frame.
@@ -325,11 +339,11 @@ fn unset_dvar(name: &str) -> String {
     String::new()
 }
 
-struct T5HudHost<'a> {
-    state: &'a T5HudState<'a>,
+struct T5HudHost<'a, 'b> {
+    state: &'a T5HudState<'b>,
 }
 
-impl ExprHost for T5HudHost<'_> {
+impl ExprHost for T5HudHost<'_, '_> {
     fn binding_label(&self, command: &str) -> Option<&str> {
         self.state
             .input?
@@ -1018,12 +1032,101 @@ fn paint_owner(
         },
         CG_DEADQUOTE => paint_deadquote(state, &args, frame),
         CG_COMPETITIVE_MODE_SCORES => paint_competitive_scores(state, &args, frame),
+        slot @ CG_PLAYER_ACTIONSLOT_ARROW_1..=CG_PLAYER_ACTIONSLOT_ARROW_4 => {
+            paint_action_slot_arrow(
+                state,
+                &args,
+                (slot - CG_PLAYER_ACTIONSLOT_ARROW_1) as usize,
+                frame,
+            )
+        }
+        CG_PLAYER_WEAPON_LOW_AMMO_WARNING => paint_low_ammo_warning(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         CG_VEHICLE_HUD_2 | CG_AMITALKING => OwnerDrawPaint::Painted,
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
             None => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         },
+    }
+}
+
+/// An action slot's arrow: the item's picture in its colour, with the alpha
+/// the game's weapon info rule gives it.
+fn paint_action_slot_arrow(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    slot: usize,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(info) = state.weapon_info else {
+        return OwnerDrawPaint::Painted;
+    };
+    let alpha = (info.rules.arrow)(info.view, slot, args.color[3], info.shown_at);
+    if alpha == 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let Some((namespace, material)) = background_key(&args.item.background) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let [r, g, b, _] = args.color;
+    let rect = args.rect;
+    push_pic_at(
+        args,
+        namespace,
+        material,
+        rect.x,
+        rect.y,
+        rect.w,
+        rect.h,
+        [r, g, b, alpha],
+        frame,
+    );
+    OwnerDrawPaint::Painted
+}
+
+/// The low ammo warning: the item's picture, when it has one, and the
+/// warning's text with the reload key, both in the warning's colour.
+fn paint_low_ammo_warning(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(info) = state.weapon_info else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(warning) = (info.rules.low_ammo)(info.view, info.shown_at) else {
+        return OwnerDrawPaint::Painted;
+    };
+    if let Some((namespace, material)) = background_key(&args.item.background) {
+        let rect = args.rect;
+        push_pic_at(
+            args,
+            namespace,
+            material,
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h,
+            warning.color,
+            frame,
+        );
+    }
+    let localize = |key: &str| {
+        args.assets
+            .localize
+            .and_then(|l| l.text(key))
+            .unwrap_or(key)
+            .to_owned()
+    };
+    let bind = state
+        .input
+        .and_then(|input| input.binding_keys.get(warning.bind))
+        .cloned()
+        .unwrap_or_else(|| localize("KEY_UNBOUND"));
+    let text = localize(warning.key).replace("&&1", &bind);
+    match push_owner_text(args, &text, warning.color, frame) {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
     }
 }
 
