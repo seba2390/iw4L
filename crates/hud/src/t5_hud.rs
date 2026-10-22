@@ -97,6 +97,13 @@ pub(crate) enum OwnerHintText {
         white: bool,
         alpha: Option<f32>,
     },
+    /// White text and after it a picture at the item's size, the pair
+    /// centred on the item's left edge and raised by `raise`.
+    TextPicture {
+        text: String,
+        material: String,
+        raise: f32,
+    },
 }
 
 /// The owner draws the game's hint rule answers for.
@@ -169,6 +176,25 @@ pub(crate) fn resolve_owner_hints(
                     alpha: None,
                 }
             }
+            game_api::hud::OwnerHint::TextPicture {
+                key,
+                binds,
+                material,
+                raise,
+            } => {
+                let Some(template) = strings.and_then(|s| s.0.text_in(namespace, key)) else {
+                    continue;
+                };
+                let bind = binds
+                    .iter()
+                    .find_map(|cmd| input.and_then(|i| i.binding_keys.get(*cmd)))
+                    .map_or("", String::as_str);
+                OwnerHintText::TextPicture {
+                    text: template.replace("&&1", bind),
+                    material: material.to_owned(),
+                    raise,
+                }
+            }
             game_api::hud::OwnerHint::Faded { key, alpha } => {
                 let Some(text) = strings.and_then(|s| s.0.text_in(namespace, key)) else {
                     continue;
@@ -192,6 +218,14 @@ fn paint_owner_hint(
     hint: &OwnerHintText,
     frame: &mut ChromeFrame,
 ) -> OwnerDrawPaint {
+    if let OwnerHintText::TextPicture {
+        text,
+        material,
+        raise,
+    } = hint
+    {
+        return paint_text_picture(args, text, material, *raise, frame);
+    }
     let OwnerHintText::Text { text, white, alpha } = hint else {
         return OwnerDrawPaint::Painted;
     };
@@ -212,6 +246,49 @@ fn paint_owner_hint(
         Ok(()) => OwnerDrawPaint::Painted,
         Err(kind) => OwnerDrawPaint::Gap(kind),
     }
+}
+
+/// Black Ops' mantle hint: the text at the item's left edge less half the
+/// text and picture's width, half the text's height below the item's top;
+/// the picture after the text, half the item's height above its top.
+fn paint_text_picture(
+    args: &OwnerDrawArgs<'_>,
+    text: &str,
+    material: &str,
+    raise: f32,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let rect = args.rect;
+    let mut left = None;
+    let placed = crate::chrome::push_owner_text_at(
+        args,
+        text,
+        [1.0; 4],
+        |width, height| {
+            let width = width.trunc();
+            let x = rect.x - (width + rect.w) * 0.5;
+            left = Some(x + width);
+            (x, rect.y + height.trunc() * 0.5 + raise)
+        },
+        frame,
+    );
+    if let Err(kind) = placed {
+        return OwnerDrawPaint::Gap(kind);
+    }
+    if let (Some(x), Some(namespace)) = (left, args.assets.catalog.and_then(|c| c.namespace)) {
+        push_pic_at(
+            args,
+            namespace,
+            material.to_owned(),
+            x,
+            rect.y - rect.h * 0.5 + raise,
+            rect.w,
+            rect.h,
+            [1.0; 4],
+            frame,
+        );
+    }
+    OwnerDrawPaint::Painted
 }
 
 /// Latches the client time when `ui_deadquote` is set by `MissionFailed` (`'Y'`),
