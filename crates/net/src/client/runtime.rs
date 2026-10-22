@@ -288,8 +288,11 @@ pub struct WeaponSelect {
 
     pub last_primary: u32,
     pub mapped_index: u32,
-    /// The client time an action slot key was last pressed.
+    /// The client time an action slot key was last pressed, its slot and
+    /// the weapon selected before it.
     pub slot_time: i32,
+    pub slot: u8,
+    pub slot_from: u32,
 }
 
 pub fn follow_held_weapon_select(
@@ -1117,8 +1120,10 @@ pub fn sample_client_input(
         };
     }
     let slots = std::mem::take(&mut actions.client.action_slots);
-    if !slots.is_empty() {
+    if let Some(&slot) = slots.last() {
         select.slot_time = clock.time();
+        select.slot = slot as u8;
+        select.slot_from = select.index;
     }
     if let (Some(inbox), Some(ids)) = (action_inbox.as_mut(), request_ids.as_mut()) {
         for &slot in &slots {

@@ -685,6 +685,12 @@ pub trait PlayerMovement: Sync {
     /// test it.
     fn weapon_activity(&self, player: &MovePlayer) -> WeaponActivity;
 
+    /// The invalid command hint a movement signal raises for the player
+    /// (no grenade, target too close, ...), by the game's number for it.
+    fn command_hint(&self, _signal: &MoveSignal) -> Option<i32> {
+        None
+    }
+
     /// A footstep a movement signal is, as the game's client scripts are
     /// told of it: its movement type and the surface's name.
     fn footstep(&self, _signal: &MoveSignal) -> Option<(&'static str, &'static str)> {

@@ -4,8 +4,8 @@
 //! (`_gameskill`).
 
 use game_api::hud::{
-    CodeScoreboard, Crosshair, CrosshairPicture, CrosshairView, DamageIcons, GameCodeHud,
-    OwnerHint, OwnerHintView, ScoreAlign, ScoreColumn, ScoreValue,
+    CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, DamageIcons,
+    GameCodeHud, OwnerHint, OwnerHintView, ScoreAlign, ScoreColumn, ScoreValue,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::weapon::state as ws;
@@ -22,12 +22,60 @@ pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     scoreboard: Some(&SCOREBOARD),
     owner_hint,
     weapon_info: Some(&crate::weapon_info::WEAPON_INFO),
+    command_hint: Some(command_hint),
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: grenade indicators, friendly names, the players-in-view scan, chat lines, the red damage flash, the burning, electrified and teleport overlays and the night vision overlay",
         "those pieces of its 2D draw (executable)"
     )],
 };
+
+/// Black Ops' invalid command hints, by its number for them.
+pub(crate) const HINT_NO_AMMO: i32 = 1;
+pub(crate) const HINT_NO_FRAG_GRENADE: i32 = 2;
+pub(crate) const HINT_NO_SPECIAL_GRENADE: i32 = 3;
+pub(crate) const HINT_NO_EQUIPMENT: i32 = 5;
+pub(crate) const HINT_STAND_BLOCKED: i32 = 6;
+pub(crate) const HINT_CROUCH_BLOCKED: i32 = 7;
+pub(crate) const HINT_TARGET_TOO_CLOSE: i32 = 8;
+pub(crate) const HINT_LOCKON_REQUIRED: i32 = 9;
+pub(crate) const HINT_TARGET_NOT_ENOUGH_CLEARANCE: i32 = 10;
+/// `cg_invalidCmdHintDuration`, `cg_invalidCmdHintBlinkInterval`.
+const INVALID_CMD_HINT_DURATION: f32 = 1800.0;
+const INVALID_CMD_HINT_BLINK_INTERVAL: f32 = 600.0;
+/// The last movement type that shows the invalid command hint.
+const PM_TYPE_LAST_HINT: i32 = 8;
+
+/// Black Ops' client keeps one invalid command hint: a new one replaces a
+/// different one and starts its time, the same one keeps its time; it is
+/// let go `cg_invalidCmdHintDuration` after its time.
+fn command_hint(kept: CommandHint, event: Option<i32>, now: i32) -> CommandHint {
+    let mut kept = kept;
+    if kept.kind != 0 && INVALID_CMD_HINT_DURATION as i32 + kept.time < now {
+        kept.kind = 0;
+    }
+    match event {
+        Some(kind) if kind != kept.kind => CommandHint { kind, time: now },
+        _ => kept,
+    }
+}
+
+/// The invalid command hint's text, by its number; the others draw
+/// nothing.
+fn command_hint_key(kind: i32) -> Option<&'static str> {
+    Some(match kind {
+        HINT_NO_AMMO => "WEAPON_NO_AMMO",
+        HINT_NO_FRAG_GRENADE => "WEAPON_NO_FRAG_GRENADE",
+        HINT_NO_SPECIAL_GRENADE => "WEAPON_NO_SPECIAL_GRENADE",
+        HINT_NO_EQUIPMENT => "WEAPON_NO_EQUIPMENT",
+        HINT_STAND_BLOCKED => "GAME_STAND_BLOCKED",
+        HINT_CROUCH_BLOCKED => "GAME_CROUCH_BLOCKED",
+        HINT_TARGET_TOO_CLOSE => "WEAPON_TARGET_TOO_CLOSE",
+        HINT_LOCKON_REQUIRED => "WEAPON_LOCKON_REQUIRED",
+        HINT_TARGET_NOT_ENOUGH_CLEARANCE => "WEAPON_TARGET_NOT_ENOUGH_CLEARANCE",
+        _ => return None,
+    })
+}
 
 /// Black Ops' hint and message owner draws.
 const CG_HOLD_BREATH: i32 = 71;
@@ -123,13 +171,30 @@ fn owner_hint(owner_draw: i32, view: &OwnerHintView<'_>) -> OwnerHint {
                 OwnerHint::Nothing
             }
         }
-        CG_CENTER_OBITUARY | CG_INVALID_CMD_HINT | CG_SUCCESSFUL_CMD_HINT => {
-            OwnerHint::Unrun(unknown!(
-                "t5.hud.messages",
-                "Black Ops' centre obituary, invalid command hints (no ammo, no grenade, stand or crouch blocked) and cheat messages are not drawn: the client keeps none of their texts",
-                "the client events and server commands that set them (executable)"
-            ))
+        CG_INVALID_CMD_HINT => {
+            let duration = (view.dvar)("cg_invalidCmdHintDuration")
+                .unwrap_or(INVALID_CMD_HINT_DURATION) as i32;
+            let hint = view.command_hint;
+            if hint.kind == 0 || duration + hint.time < view.now || ps.pm_type > PM_TYPE_LAST_HINT {
+                return OwnerHint::Nothing;
+            }
+            let Some(key) = command_hint_key(hint.kind) else {
+                return OwnerHint::Nothing;
+            };
+            // It blinks in: its alpha climbs from 0 to 1 over each interval.
+            let interval = (view.dvar)("cg_invalidCmdHintBlinkInterval")
+                .unwrap_or(INVALID_CMD_HINT_BLINK_INTERVAL) as i32;
+            if interval <= 0 {
+                return OwnerHint::Nothing;
+            }
+            let alpha = ((view.now - hint.time) % interval) as f32 / interval as f32;
+            OwnerHint::Faded { key, alpha }
         }
+        CG_CENTER_OBITUARY | CG_SUCCESSFUL_CMD_HINT => OwnerHint::Unrun(unknown!(
+            "t5.hud.messages",
+            "Black Ops' centre obituary and cheat messages are not drawn: the client keeps none of their texts",
+            "the client events and server commands that set them (executable)"
+        )),
         // No client talks: the runtime carries no voice chat.
         CG_TALKER_1..=CG_TALKER_3 => OwnerHint::Nothing,
         CG_VEHICLE_HUD => {
