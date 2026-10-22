@@ -521,6 +521,7 @@ pub struct MoveStatus {
     pub on_ladder: bool,
     pub mantling: bool,
     pub sprinting: bool,
+    pub diving: bool,
     /// What is left of the damage timer, in milliseconds.
     pub damage_timer: i32,
     pub no_melee: bool,
@@ -666,6 +667,13 @@ pub trait PlayerMovement: Sync {
             "HINT_HEALTH",
             "HINT_FRIENDLY",
         ]
+    }
+
+    /// The cursor hint a map's `trigger_use` and `trigger_use_touch` start
+    /// with (before its `cursorhint` key or a script sets one); `None`
+    /// keeps the runtime's own.
+    fn map_use_cursor(&self) -> Option<i32> {
+        None
     }
 
     /// Sets or clears a perk; false when the game has no perk of that name.

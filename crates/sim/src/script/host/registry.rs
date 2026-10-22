@@ -159,6 +159,7 @@ impl NativeRegistry {
         natives::t5::register(&mut self);
         natives::t5_zombie::register(&mut self);
         natives::t5_turret::register(&mut self);
+        natives::t5_use::register(&mut self);
         natives::t5_viewmodel::register(&mut self);
         super::actors::register(&mut self);
         super::actors::register_damage(&mut self);
