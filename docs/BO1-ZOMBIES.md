@@ -103,7 +103,7 @@ set sv_cheats 1; wait world; god; wait 5s; give weapon/t5:ak74u_zm; wait 3s; pre
 Five's systems, each reached from the conference room with points and power
 (`script maps/_zombiemode_score::add_to_player_score player0 20000; script common_scripts/utility::flag_set level power_on`):
 
-- Elevator 2 (250): `move -1600 2050 70 -45 0; wait 1s; press +activate 0.3`
+- Elevator 2 (250): `move -1590 2040 70 -45 0; wait 1s; press +activate 0.3`
   rides it down 320 units to the war room (its buy trigger needs the button
   in view).
 - DEFCON: press use at the four `punch_switch` triggers

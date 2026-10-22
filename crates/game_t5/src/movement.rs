@@ -792,6 +792,7 @@ impl PlayerMovement for T5Movement {
             on_ladder: ps.pm_flags & pm_flags::LADDER != 0,
             mantling: ps.pm_flags & pm_flags::MANTLE != 0,
             sprinting: ps.pm_flags & pm_flags::SPRINTING != 0,
+            diving: ps.pm_flags & pm_flags::DIVING != 0,
             damage_timer: ps.damage_timer,
             no_melee: ps.pm_flags & pm_flags::NO_MELEE != 0,
             no_weapon_cycling: ps.weap_flags & movement_t5::state::weap_flags::CYCLING_DISABLED
@@ -853,6 +854,12 @@ impl PlayerMovement for T5Movement {
             "HINT_SPECTATOR",
             "HINT_TEAMPOT",
         ]
+    }
+
+    /// Black Ops' `trigger_use` spawn starts a map trigger at
+    /// `HINT_ACTIVATE`.
+    fn map_use_cursor(&self) -> Option<i32> {
+        Some(3)
     }
 
     fn set_perk(&self, player: &mut MovePlayer, perk: &str, on: bool) -> bool {
