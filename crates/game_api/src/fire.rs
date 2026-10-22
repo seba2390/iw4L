@@ -787,6 +787,9 @@ pub enum MissileRun {
     Exploded([f32; 3]),
     /// It is gone without an explosion scripts hear of.
     Gone,
+    /// It came to rest where it struck and stays this frame for the scripts
+    /// it told (a retrievable bolt); the match removes it after.
+    Stationary,
 }
 
 /// A missile's explosion effect.
@@ -810,4 +813,12 @@ pub enum NotifyArg {
     Float(f32),
     Int(i32),
     String(&'static str),
+    /// The name of a bone of an entity's model, by the number the match
+    /// reported it under; empty when it has none.
+    Bone {
+        entity: i32,
+        bone: u16,
+    },
+    /// No value (`undefined`).
+    Undefined,
 }

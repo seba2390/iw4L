@@ -87,6 +87,20 @@ impl<'w, 'a> MatchFireWorld<'w, 'a> {
         crate::script::object_by_number(self.world.ecs(), entity)
     }
 
+    /// The name of a bone on an entity's model, empty when unknown.
+    fn bone_name(&mut self, entity: i32, bone: u16) -> String {
+        let Some(model) = self.model(entity) else {
+            return String::new();
+        };
+        self.world
+            .entity_collision_capabilities()
+            .iter()
+            .find(|row| row.owner.script_model() == Some(model))
+            .and_then(|row| row.dobj.as_ref())
+            .and_then(|dobj| dobj.bone_name(usize::from(bone)))
+            .map_or_else(String::new, str::to_owned)
+    }
+
     /// A missile the game just spawned, given its script entity.
     fn adopt_missile(&mut self, entity: i32) -> Option<u64> {
         let projectile = self.world.projectile_by_number(entity)?;
@@ -804,6 +818,10 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 NotifyArg::Float(f) => crate::script::NotifyValue::Float(f),
                 NotifyArg::Int(n) => crate::script::NotifyValue::Int(n),
                 NotifyArg::String(text) => crate::script::NotifyValue::String(text.to_owned()),
+                NotifyArg::Bone { entity, bone } => {
+                    crate::script::NotifyValue::String(self.bone_name(entity, bone))
+                }
+                NotifyArg::Undefined => crate::script::NotifyValue::Entity(None),
             })
             .collect();
         if let Some(receiver) = receiver {
@@ -1170,6 +1188,11 @@ pub(crate) fn actor_melee(
     Some(hit)
 }
 
+/// Missiles that came to rest for their scripts this frame; the next missile
+/// pass removes them.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct RestingGameMissiles(std::collections::BTreeSet<i32>);
+
 /// The missiles a game's rules run, by entity number.
 #[derive(bevy_ecs::prelude::Resource, Default)]
 pub(crate) struct GameMissiles(std::collections::BTreeMap<i32, GameMissile>);
@@ -1194,6 +1217,26 @@ fn apply_missile_run(world: &mut FrameWorld, entnum: i32, missile: GameMissile, 
             if let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() {
                 missiles.0.insert(entnum, missile);
             }
+        }
+        MissileRun::Stationary => {
+            if let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() {
+                missiles.0.remove(&entnum);
+            }
+            if let Some(projectile) = world.projectile_mut_by_number(entnum) {
+                projectile.origin = missile.origin;
+                projectile.pos =
+                    crate::equipment::game_trajectory(&game_api::fire::GameTrajectory {
+                        kind: game_api::fire::TrajectoryKind::Stationary,
+                        base: missile.origin,
+                        ..missile.position
+                    });
+                projectile.velocity = [0.0; 3];
+            }
+            world
+                .ecs()
+                .get_resource_or_insert_with(RestingGameMissiles::default)
+                .0
+                .insert(entnum);
         }
         MissileRun::Exploded(_) | MissileRun::Gone => {
             if let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() {
@@ -1437,6 +1480,13 @@ pub(crate) fn think_game_missile(world: &mut FrameWorld, tick: Tick, entnum: i32
         .get_resource::<GameMissiles>()
         .and_then(|missiles| missiles.0.get(&entnum).copied())
     else {
+        if world
+            .ecs()
+            .get_resource_mut::<RestingGameMissiles>()
+            .is_some_and(|mut resting| resting.0.remove(&entnum))
+        {
+            let _ = world.despawn_projectile(entnum);
+        }
         return true;
     };
     let owner = u32::try_from(missile.owner).ok().map(ClientId);

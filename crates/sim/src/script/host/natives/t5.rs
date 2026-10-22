@@ -649,6 +649,10 @@ pub(crate) fn visibility(
     Ok(Value::Undefined)
 }
 
+/// A spawned `trigger_radius_use`'s size (Black Ops' spawn function).
+const RADIUS_USE_RADIUS: f32 = 72.0;
+const RADIUS_USE_HEIGHT: f32 = 96.0;
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
     register_script(registry);
     register_spawning(registry);
@@ -1383,6 +1387,33 @@ fn register_player(registry: &mut NativeRegistry) {
         "disableoffhandweapons" => OffhandsDisabled = true,
         "enableoffhandweapons" => OffhandsDisabled = false,
     );
+    // Black Ops' `Spawn` makes a `trigger_radius_use` by its spawn function:
+    // 72 wide and 96 high whatever the arguments, with no cursor hint yet.
+    registry.register(Function, "spawn", |world, _, args| {
+        if super::super::args::string(args, 0)? != "trigger_radius_use" {
+            return super::engine::spawn_entity(world, args);
+        }
+        let origin = super::super::args::vector(args, 1)?;
+        let flags = super::super::args::optional(args, 2, super::super::args::int)?.unwrap_or(0);
+        let mut runtime = world.resource_mut::<crate::script::RoundScript>();
+        let id = runtime.create_entity(
+            super::super::entities::EntityKind::Spawned,
+            "trigger_radius_use",
+        )?;
+        runtime.set_object_field(id, "origin", Value::Vector(origin));
+        runtime.set_object_field(id, "angles", Value::Vector([0.0; 3]));
+        runtime.set_object_field(id, "spawnflags", Value::Int(flags));
+        if let Some(entity) = runtime.entities.get_mut(&id) {
+            entity.cylinder = Some((RADIUS_USE_RADIUS, RADIUS_USE_HEIGHT));
+            entity.usable = Some(super::super::entities::Usable {
+                cursor: 0,
+                hint: -1,
+                enabled: true,
+                barred: Default::default(),
+            });
+        }
+        Ok(Value::Object(id))
+    });
     registry.register(Method, "disableweaponcycling", |world, receiver, _| {
         let client = player_id(world, receiver)?;
         crate::game_move::set_script_flag(
