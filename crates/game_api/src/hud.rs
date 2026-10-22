@@ -90,6 +90,16 @@ pub enum OwnerHint {
         key: &'static str,
         binds: &'static [&'static str],
     },
+    /// The localized string `key` (its `&&1` the key bound to the first of
+    /// `binds` that has one) and after it `material` at the item's size,
+    /// white, the pair centred on the item's left edge and raised by
+    /// `raise`.
+    TextPicture {
+        key: &'static str,
+        binds: &'static [&'static str],
+        material: &'static str,
+        raise: f32,
+    },
     /// The localized string `key` centred on the item in the item's colour
     /// with this alpha.
     Faded { key: &'static str, alpha: f32 },
