@@ -884,6 +884,8 @@ impl PlayerMovement for T6Movement {
                 &mut ps.weap_flags,
                 movement_t6::state::weap_flags::CYCLING_DISABLED,
             ),
+            // The runtime's command mask still runs these for Black Ops 2.
+            ScriptFlag::WeaponsDisabled | ScriptFlag::OffhandsDisabled => return None,
         };
         let was = *word & bit != 0;
         if on {

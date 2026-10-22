@@ -794,15 +794,21 @@ impl PlayerMovement for T5Movement {
 
     /// `allowmelee` sets the no-melee pm flag (`0x0800_0000`);
     /// `disableweaponcycling` and `enableweaponcycling` set and clear the
-    /// weapon flag (`0x200`) that keeps an empty weapon in hand.
+    /// weapon flag (`0x200`) that keeps an empty weapon in hand;
+    /// `disableweapons` and `disableoffhandweapons` (and their enables) the
+    /// weapon flags `0x80` and `0x100`. `disableweapons` also ends a dive at
+    /// once.
     fn set_script_flag(&self, player: &mut MovePlayer, flag: ScriptFlag, on: bool) -> Option<bool> {
+        use movement_t5::state::weap_flags;
         let (mut ps, mut last) = unpack(player);
+        if flag == ScriptFlag::WeaponsDisabled && on {
+            movement_t5::end_dive_for_disabled_weapons(&mut ps);
+        }
         let (word, bit) = match flag {
             ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
-            ScriptFlag::NoWeaponCycling => (
-                &mut ps.weap_flags,
-                movement_t5::state::weap_flags::CYCLING_DISABLED,
-            ),
+            ScriptFlag::NoWeaponCycling => (&mut ps.weap_flags, weap_flags::CYCLING_DISABLED),
+            ScriptFlag::WeaponsDisabled => (&mut ps.weap_flags, weap_flags::WEAPONS_DISABLED),
+            ScriptFlag::OffhandsDisabled => (&mut ps.weap_flags, weap_flags::OFFHANDS_DISABLED),
         };
         let was = *word & bit != 0;
         if on {
