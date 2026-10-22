@@ -528,6 +528,11 @@ pub(crate) struct ActorMove {
     deflect_side: u8,
     /// Whether `"orientdone"` was already raised for the current turn.
     orient_notified: bool,
+    /// `pushplayer(true)`: the actor's clipmask leaves player bodies out,
+    /// so it walks through players.
+    pub(crate) push_player: bool,
+    /// The last move was stopped by a player's body.
+    hit_body: bool,
 }
 
 impl Default for ActorMove {
@@ -560,6 +565,8 @@ impl Default for ActorMove {
             fall_speed: 0.0,
             deflect_side: 0,
             orient_notified: false,
+            push_player: false,
+            hit_body: false,
         }
     }
 }
@@ -1410,6 +1417,13 @@ fn model_anim_scripted(
 }
 
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
+    let clip = crate::step::ActorClip::gather(&FrameWorld::from_world(world));
+    world.insert_resource(ActorClipTick(clip));
+    locomote_actors(world, seconds);
+    world.remove_resource::<ActorClipTick>();
+}
+
+fn locomote_actors(world: &mut World, seconds: f32) {
     let now = super::players::now_ms(world);
     if let Some(mut edits) = world.get_resource_mut::<LinkEdits>() {
         edits.expire_badplaces(now);
@@ -1842,6 +1856,10 @@ struct Phys {
     /// The last plane the move hit and where: `iHitEntnum`'s normal and
     /// origin.
     hit: Option<([f32; 3], [f32; 3])>,
+    /// Whether that hit was a player's body (a sentient).
+    hit_body: bool,
+    /// The actor's clipmask.
+    mask: u32,
 }
 
 /// What one sweep of the actor's box found.
@@ -1850,7 +1868,12 @@ struct Sweep {
     normal: [f32; 3],
     endpos: [f32; 3],
     allsolid: bool,
+    body: bool,
 }
+
+/// What actors' sweeps meet this tick beyond the world, gathered once.
+#[derive(bevy_ecs::prelude::Resource)]
+struct ActorClipTick(crate::step::ActorClip);
 
 fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -1869,18 +1892,24 @@ fn clip_velocity(velocity: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
 
 impl Phys {
     fn trace(&self, world: &mut World, start: [f32; 3], end: [f32; 3]) -> Sweep {
-        let trace = FrameWorld::from_world(world).trace_clip(
-            start,
-            end,
-            self.mins,
-            self.maxs,
-            MASK_ACTOR_SOLID,
-        );
+        let clip = world.remove_resource::<ActorClipTick>();
+        let frame = FrameWorld::from_world(world);
+        let trace = match &clip {
+            Some(clip) => clip
+                .0
+                .trace(&frame, start, end, self.mins, self.maxs, self.mask),
+            None => frame.trace_clip(start, end, self.mins, self.maxs, self.mask),
+        };
+        let body = clip.as_ref().is_some_and(|clip| clip.0.hit_body(&trace));
+        if let Some(clip) = clip {
+            world.insert_resource(clip);
+        }
         Sweep {
             fraction: trace.fraction,
             normal: trace.normal,
             endpos: trace.endpos,
             allsolid: trace.allsolid != 0,
+            body,
         }
     }
 
@@ -1898,6 +1927,7 @@ impl Phys {
         if trace.normal[2] < MIN_WALK_NORMAL {
             self.ground = None;
             self.hit = Some((trace.normal, trace.endpos));
+            self.hit_body = trace.body;
             return;
         }
         self.ground = Some(trace.normal);
@@ -1945,6 +1975,7 @@ impl Phys {
             }
             bumps += 1;
             self.hit = Some((trace.normal, trace.endpos));
+            self.hit_body = trace.body;
             left -= left * trace.fraction;
             if planes.len() >= 5 {
                 self.velocity = [0.0; 3];
@@ -2033,7 +2064,8 @@ impl Phys {
                 return;
             }
         }
-        let (plain, plain_velocity, plain_hit) = (self.origin, self.velocity, self.hit);
+        let (plain, plain_velocity, plain_hit, plain_body) =
+            (self.origin, self.velocity, self.hit, self.hit_body);
         let up = [start[0], start[1], start[2] + STEP_HEIGHT];
         let trace = self.trace(world, start, up);
         if trace.allsolid {
@@ -2052,6 +2084,7 @@ impl Phys {
             self.origin = plain;
             self.velocity = plain_velocity;
             self.hit = plain_hit;
+            self.hit_body = plain_body;
             return;
         }
         let down = [self.origin[0], self.origin[1], self.origin[2] - lifted];
@@ -2094,6 +2127,16 @@ impl Phys {
     }
 }
 
+/// The actor's clipmask: Black Ops' `MASK_ACTORSOLID`, less player bodies
+/// after `pushplayer(true)`.
+fn actor_mask(movement: &ActorMove) -> u32 {
+    if movement.push_player {
+        MASK_ACTOR_SOLID & !crate::world::CONTENTS_BODY
+    } else {
+        MASK_ACTOR_SOLID
+    }
+}
+
 fn actor_box(movement: &ActorMove) -> ([f32; 3], [f32; 3]) {
     movement.bounds.unwrap_or((ACTOR_MINS, ACTOR_MAXS))
 }
@@ -2118,6 +2161,8 @@ fn physics_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
+        hit_body: false,
+        mask: actor_mask(movement),
     };
     phys.ground_trace(world);
     if phys.ground.is_some() {
@@ -2147,6 +2192,8 @@ fn zonly_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
+        hit_body: false,
+        mask: actor_mask(movement),
     };
     phys.slide(world, seconds, false);
     phys.velocity[2] = 0.0;
@@ -2157,6 +2204,7 @@ fn zonly_move(
 
 fn settle_physics(phys: &Phys, movement: &mut ActorMove) {
     movement.ground_normal = phys.ground;
+    movement.hit_body = phys.hit.is_some() && phys.hit_body;
     movement.fall_speed = if phys.ground.is_some() {
         0.0
     } else {
@@ -2245,7 +2293,9 @@ fn walk_path(
     } else {
         0.0
     };
-    if gained < length * BLOCKED_PROGRESS {
+    // A sentient in the way (a player) does not replan the path: Black Ops
+    // keeps it as the blocker.
+    if gained < length * BLOCKED_PROGRESS && !movement.hit_body {
         // Planned again on the next step; the path stands until then.
         movement.planned_to = None;
     }
