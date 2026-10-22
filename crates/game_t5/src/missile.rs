@@ -46,8 +46,8 @@ fn missile_unknown() -> &'static Unknown {
 fn bolt_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.bolt",
-        "a bolt (crossbow, ballistic knife) shows no impact where it strikes",
-        "Black Ops' bolt impact event and the client's handling of it"
+        "a bolt without a grenade (the ballistic knife) is not drawn stuck in what it struck",
+        "Black Ops' client's stuck bolt model for its impact event"
     )
 }
 
@@ -593,12 +593,24 @@ fn impact(
     };
     gaps.push(missile_water_unknown());
     if def.proj_explosion_type() == EXPLOSION_GRENADE {
-        // A bolt: it leaves its grenade where it struck.
-        gaps.push(bolt_unknown());
+        // A bolt: its impact event plays the surface's bolt impact where it
+        // struck, and it leaves its grenade there. Without a grenade the
+        // client also leaves the bolt's model stuck in what it hit, which
+        // is not drawn.
+        world.explosion(&MissileExplosion {
+            missile: missile.entity,
+            owner: missile.owner,
+            weapon: missile.weapon,
+            origin: end,
+            normal,
+            surface_type: surface_type(trace) as u8,
+        });
         let grenade = world
             .weapon(missile.weapon)
             .map_or(0, |weapon| weapon.grenade_weapon);
-        if grenade != 0 {
+        if grenade == 0 {
+            gaps.push(bolt_unknown());
+        } else {
             let on = match trace.hit {
                 BulletHitType::Entity(entity) => entity,
                 _ => ENTITY_WORLD,
