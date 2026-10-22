@@ -478,6 +478,14 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
         ("zm_buried", "BURIED"),
         ("zm_tomb", "ORIGINS"),
     ],
+    // Black Ops 2's own zombies scripts import its `_globallogic`, which only
+    // the patch zone the game downloads at launch carries
+    // (`t6.scripts.ffotd`); Origins runs IW4L's rules without it.
+    capture: Some(game_api::LibraryCapture {
+        suffix: "_zm",
+        exempt: &[ORIGINS],
+        note: "Black Ops II's zombies scripts need the patch zone the game downloads at launch (ffotd_*_zm*.ff), captured from your own running game. Put it in",
+    }),
     // TranZit's Survival starts, as `zm/gametypestable.csv` lists them.
     starts: &[
         LibraryStart {

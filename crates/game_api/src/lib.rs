@@ -849,6 +849,18 @@ pub struct LibraryMode {
     pub maps: &'static [(&'static str, &'static str)],
     /// Other gametypes and start locations offered on those maps.
     pub starts: &'static [LibraryStart],
+    /// A patch zone the game downloads at launch that the mode's own
+    /// scripts need, captured by the user (`None`: no such need).
+    pub capture: Option<LibraryCapture>,
+}
+
+/// A downloaded patch zone a library mode needs captured: the files
+/// `ffotd_*<suffix>*.ff`, needed by every map of the mode but the exempt.
+pub struct LibraryCapture {
+    pub suffix: &'static str,
+    pub exempt: &'static [&'static str],
+    /// What is missing, shown in the library.
+    pub note: &'static str,
 }
 
 /// A gametype on one of a map's start locations, offered beside the map.

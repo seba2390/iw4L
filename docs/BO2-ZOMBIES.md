@@ -30,7 +30,11 @@ Every map needs `maps/mp/gametypes_zm/_globallogic`, which Black Ops 2 downloads
 at launch and keeps only in memory. Without a capture of that patch zone
 (`ffotd_*_zm*.ff`) in `~/.config/iw4l/captured/` or `<artifacts>/captured/` the
 game's scripts are refused (`t6.scripts.ffotd`). The capture tool is not in the
-repository, so a machine without a capture cannot start these maps yet.
+repository, so a machine without a capture cannot start these maps yet: the
+library's Zombies page then greys out every Black Ops 2 map that needs it
+(Origins, on IW4L's rules, does not) and names the file and the folders it is
+read from. Copying a capture you made from your own game into one of those
+folders makes the maps startable at the next visit to the page.
 
 ## Maps
 

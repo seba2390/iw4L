@@ -1451,18 +1451,25 @@ fn rebuild(
                         Page::Zombies => {
                             if let (Some(namespace), Some(mode)) = (game.and_then(Game::namespace), game.and_then(Game::zombies)) {
                                 let owned = game.and_then(|game| inventory.installation(game)).map_or(&[][..], |entry| &entry.zombie_maps[..]);
+                                // A map whose scripts need a downloaded patch nobody captured is not offered.
+                                let missing = mode.capture.as_ref().filter(|capture| asset_transport::t6_content::captured_patch_files(capture.suffix).is_empty());
+                                let runs = |zone: &str| missing.is_none_or(|capture| capture.exempt.contains(&zone));
                                 for (zone, name) in mode.maps {
                                     let map = format!("{}:{zone}", namespace.as_str());
                                     let installed = owned.contains(&map);
                                     if installed {
-                                        button(content, &font.0, &mut order, *name, Action::ZombieMap(map, None), true, accent);
+                                        button(content, &font.0, &mut order, *name, Action::ZombieMap(map, None), runs(zone), accent);
                                     }
                                 }
                                 for start in mode.starts {
                                     let map = format!("{}:{}", namespace.as_str(), start.zone);
                                     if owned.contains(&map) {
-                                        button(content, &font.0, &mut order, start.title, Action::ZombieMap(map, Some((start.gametype, start.location))), true, accent);
+                                        button(content, &font.0, &mut order, start.title, Action::ZombieMap(map, Some((start.gametype, start.location))), runs(start.zone), accent);
                                     }
+                                }
+                                if let Some(capture) = missing {
+                                    let folders: Vec<String> = asset_transport::t6_content::capture_folders().iter().map(|folder| folder.display().to_string()).collect();
+                                    label(content, &font.0, &format!("{} {} (see docs/BO2-ZOMBIES.md).", capture.note, folders.join(" or ")), 16.0, accent);
                                 }
                                 if owned.is_empty() { label(content, &font.0, "No zombies map of this game is installed.", 17.0, accent); }
                                 label(content, &font.0, mode.note, 16.0, Color::WHITE);
