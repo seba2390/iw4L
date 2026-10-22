@@ -663,4 +663,5 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
         ("zombie_moon", "MOON"),
     ],
     starts: &[],
+    capture: None,
 };

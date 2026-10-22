@@ -1,7 +1,7 @@
 //! Black Ops 2's client builtins: entities, the local client and its player
 //! state, movers, animations, traces, fake entities and physics.
 
-use super::super::{atof, float, g, int, string, type_name, vector};
+use super::super::{float, g, int, string, type_name, vector};
 use super::game::{
     ClientGame, LOCAL_CLIENT, client_entity, local_client, server_object, type_name as etype_name,
 };
@@ -765,7 +765,28 @@ pub(crate) fn zombie_box_weapons(server: &World) -> Vec<(String, String, bool)> 
         .unwrap_or_else(Vec::new)
 }
 
+/// The revive icon material each team's downed players show
+/// (`setteamreviveicon`), by the engine's team number; kept for the
+/// client's revive icons (`t6.csc.hud.team_revive_icon`).
+#[derive(bevy_ecs::prelude::Resource, Default)]
+pub(crate) struct TeamReviveIcons(pub(crate) BTreeMap<usize, String>);
+
 pub(super) fn register(registry: &mut NativeRegistry) {
+    // setteamreviveicon(team, material): the team's revive icon (an illegal
+    // team is the engine's team error).
+    registry.register(
+        Namespace::Function,
+        "setteamreviveicon",
+        |world, _, args| {
+            let team = super::super::team(args, 0)?;
+            let material = super::super::string(args, 1)?;
+            world
+                .get_resource_or_insert_with(TeamReviveIcons::default)
+                .0
+                .insert(team, material.to_string());
+            Ok(Value::Undefined)
+        },
+    );
     use Namespace::{Function, Method};
 
     // addzombieboxweapon(weapon, model, is_dual_wield): adds a weapon to the
@@ -2020,23 +2041,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(touching.into()))
     });
 
-    // getgametypesetting(setting): reads a gametype setting from the server's
-    // table.
+    // getgametypesetting(setting): the server's game setting, as the
+    // server's builtin reads it (the client reads the same settings).
     registry.register(Function, "getgametypesetting", |world, _, args| {
         let name = string(args, 0)?.to_ascii_lowercase();
-        let value = with_server(world, |server| {
-            server
-                .get_resource::<crate::script::GametypeSettings>()
-                .and_then(|settings| settings.0.get(&name).cloned())
+        Ok(with_server(world, |server| {
+            super::super::gametype_setting(server, &name)
         })
-        .flatten();
-        let Some(value) = value else {
-            return Ok(Value::Undefined);
-        };
-        Ok(match value.parse::<i32>() {
-            Ok(n) => Value::Int(n),
-            Err(_) => Value::Float(atof(&value)),
-        })
+        .unwrap_or(Value::Undefined))
     });
 
     // iprintlnbold(text): prints a bold message on the local client.

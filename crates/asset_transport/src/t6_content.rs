@@ -128,36 +128,48 @@ impl T6ContentMode {
     /// user's IW4L folder (`~/.config/iw4l/captured/`), which every checkout
     /// and launch shares.
     pub fn captured_patches(self) -> Vec<std::path::PathBuf> {
-        let suffix = match self {
+        captured_patch_files(match self {
             Self::Multiplayer => "_mp",
             Self::Zombies => "_zm",
+        })
+    }
+}
+
+/// The folders captured patch zones are read from: `<artifacts>/captured/`,
+/// then the user's IW4L folder's (`~/.config/iw4l/captured/`).
+pub fn capture_folders() -> Vec<std::path::PathBuf> {
+    crate::discover::ensure_artifacts_dir()
+        .ok()
+        .into_iter()
+        .chain(crate::discover::user_data_dir())
+        .map(|dir| dir.join("captured"))
+        .collect()
+}
+
+/// The captured downloaded patch zones (`ffotd_*<suffix>*.ff`) in the
+/// capture folders, by file name.
+pub fn captured_patch_files(suffix: &str) -> Vec<std::path::PathBuf> {
+    let folders = capture_folders();
+    let mut zones: Vec<std::path::PathBuf> = Vec::new();
+    for folder in folders {
+        let Ok(entries) = std::fs::read_dir(folder) else {
+            continue;
         };
-        let folders = crate::discover::ensure_artifacts_dir()
-            .ok()
-            .into_iter()
-            .chain(crate::discover::user_data_dir())
-            .map(|dir| dir.join("captured"));
-        let mut zones: Vec<std::path::PathBuf> = Vec::new();
-        for folder in folders {
-            let Ok(entries) = std::fs::read_dir(folder) else {
-                continue;
-            };
-            for path in entries.filter_map(|entry| entry.ok().map(|entry| entry.path())) {
-                let captured = path
-                    .file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .is_some_and(|stem| stem.starts_with("ffotd_") && stem.contains(suffix))
-                    && path.extension().is_some_and(|ext| ext == "ff");
-                if captured
-                    && !zones
-                        .iter()
-                        .any(|seen| seen.file_name() == path.file_name())
-                {
-                    zones.push(path);
-                }
+        for path in entries.filter_map(|entry| entry.ok().map(|entry| entry.path())) {
+            let captured = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .is_some_and(|stem| stem.starts_with("ffotd_") && stem.contains(suffix))
+                && path.extension().is_some_and(|ext| ext == "ff");
+            if captured
+                && !zones
+                    .iter()
+                    .any(|seen| seen.file_name() == path.file_name())
+            {
+                zones.push(path);
             }
         }
-        zones.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
-        zones
     }
+    zones.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    zones
 }

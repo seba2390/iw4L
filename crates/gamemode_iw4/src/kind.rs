@@ -26,6 +26,12 @@ pub enum GameModeKind {
 
     /// Black Ops 2's Survival: its zombies gametype on one start location.
     Zstandard = 10,
+
+    /// Black Ops 2's Grief: two teams of survivors.
+    Zgrief = 11,
+
+    /// Black Ops 2's Turned: players as zombies.
+    Zcleansed = 12,
 }
 
 impl GameModeKind {
@@ -45,6 +51,8 @@ impl GameModeKind {
             b"zom" | b"zombies" => Some(Self::Zombies),
             b"zclassic" => Some(Self::Zclassic),
             b"zstandard" => Some(Self::Zstandard),
+            b"zgrief" => Some(Self::Zgrief),
+            b"zcleansed" => Some(Self::Zcleansed),
             _ => None,
         }
     }
@@ -74,6 +82,8 @@ impl GameModeKind {
             Self::Zombies => "zom",
             Self::Zclassic => "zclassic",
             Self::Zstandard => "zstandard",
+            Self::Zgrief => "zgrief",
+            Self::Zcleansed => "zcleansed",
         }
     }
 
@@ -90,6 +100,8 @@ impl GameModeKind {
             Self::Zombies => &["zom"],
             Self::Zclassic => &["zclassic"],
             Self::Zstandard => &["zstandard"],
+            Self::Zgrief => &["zgrief"],
+            Self::Zcleansed => &["zcleansed"],
         }
     }
 
@@ -110,6 +122,8 @@ impl GameModeKind {
             8 => Some(Self::Zombies),
             9 => Some(Self::Zclassic),
             10 => Some(Self::Zstandard),
+            11 => Some(Self::Zgrief),
+            12 => Some(Self::Zcleansed),
             _ => None,
         }
     }
@@ -124,13 +138,18 @@ impl GameModeKind {
             Self::CaptureTheFlag => "CAPTURE THE FLAG",
             Self::Headquarters => "HEADQUARTERS",
             Self::Sabotage => "SABOTAGE",
-            Self::Zombies | Self::Zclassic | Self::Zstandard => "ZOMBIES",
+            Self::Zombies | Self::Zclassic | Self::Zstandard | Self::Zgrief | Self::Zcleansed => {
+                "ZOMBIES"
+            }
         }
     }
 
     /// Black Ops 2's zombies gametypes, which run on its zombies maps.
     pub fn is_t6_zombies(self) -> bool {
-        matches!(self, Self::Zclassic | Self::Zstandard)
+        matches!(
+            self,
+            Self::Zclassic | Self::Zstandard | Self::Zgrief | Self::Zcleansed
+        )
     }
 
     pub fn is_team(self) -> bool {
@@ -147,7 +166,9 @@ impl GameModeKind {
             | Self::Sabotage
             | Self::Zombies
             | Self::Zclassic
-            | Self::Zstandard => None,
+            | Self::Zstandard
+            | Self::Zgrief
+            | Self::Zcleansed => None,
             Self::Domination => Some(if axis {
                 dom::START_SPAWN_AXIS
             } else {
@@ -171,7 +192,9 @@ impl GameModeKind {
             | Self::Sabotage
             | Self::Zombies
             | Self::Zclassic
-            | Self::Zstandard => &[],
+            | Self::Zstandard
+            | Self::Zgrief
+            | Self::Zcleansed => &[],
             Self::Domination => &[dom::SPAWN_CLASSNAME],
             Self::Demolition => {
                 if axis {

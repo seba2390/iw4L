@@ -30,7 +30,11 @@ Every map needs `maps/mp/gametypes_zm/_globallogic`, which Black Ops 2 downloads
 at launch and keeps only in memory. Without a capture of that patch zone
 (`ffotd_*_zm*.ff`) in `~/.config/iw4l/captured/` or `<artifacts>/captured/` the
 game's scripts are refused (`t6.scripts.ffotd`). The capture tool is not in the
-repository, so a machine without a capture cannot start these maps yet.
+repository, so a machine without a capture cannot start these maps yet: the
+library's Zombies page then greys out every Black Ops 2 map that needs it
+(Origins, on IW4L's rules, does not) and names the file and the folders it is
+read from. Copying a capture you made from your own game into one of those
+folders makes the maps startable at the next visit to the page.
 
 ## Maps
 
@@ -45,8 +49,14 @@ repository, so a machine without a capture cannot start these maps yet.
 
 TranZit's Survival runs on Bus Depot, Town and Farm (Library → Zombies, or
 `IW4L_GAMETYPE=zstandard IW4L_ZM_LOCATION=town|farm|transit` on the command
-line); the rounds test reaches round 2 on each. Grief and Turned are refused
-(`t6.scripts.zm_gametypes`).
+line); the rounds test reaches round 2 on each. Grief runs on TranZit's Town
+and Farm (`IW4L_GAMETYPE=zgrief`; add a player with `bot add 1`), but every
+player lands on `allies`: IW4L's sessions have no party teams
+(`t6.session.party_teams`). Turned runs on Buried's Borough
+(`IW4L_GAMETYPE=zcleansed IW4L_ZM_LOCATION=street t6:zm_buried`): players start
+as zombies and the one who takes the cure turns human. TranZit's Diner Turned
+is refused, its script being in no installed zone
+(`t6.scripts.zm_gametype_zone`).
 
 ## Origins (IW4L's rules)
 

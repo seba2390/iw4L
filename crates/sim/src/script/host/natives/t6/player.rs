@@ -261,7 +261,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         ($($name:literal),* $(,)?) => {$(
             registry.register(Method, $name, |world, receiver, args| {
                 let w_name = super::string(args, 0)?;
-                super::weapon::weapon_index(world, &w_name)?;
+                let index = super::weapon::weapon_index(world, &w_name)?;
+                // A name that is no weapon has no rounds (the engine's
+                // handlers answer 0 for weapon index 0).
+                if index == 0 && matches!($name, "getweaponammoclip" | "getweaponammostock") {
+                    return Ok(Value::Int(0));
+                }
                 let shared = NativeRegistry::engine_services();
                 let native = shared.get(Method, $name).expect("shared weapon method");
                 native(world, receiver, args)
