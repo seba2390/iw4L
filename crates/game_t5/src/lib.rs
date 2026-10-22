@@ -516,6 +516,61 @@ impl game_api::MenuLayout for MenuLayout {
         matches!(item_type, 5 | 7 | 13 | 14 | 22 | 30)
     }
 
+    /// Black Ops' slider: no text and no value, only ten 9 × 9 notches
+    /// across 100 units (placed by the text alignment), lit up to the value
+    /// (the notch at the value split in two halves of 4), and the
+    /// `ui_arrow_right` marker turned to point up at the value from below.
+    fn slider(
+        &self,
+        rect: [f32; 4],
+        align_mode: i32,
+        align_x: f32,
+        align_y: f32,
+        fraction: f32,
+    ) -> Option<Vec<game_api::MenuQuad>> {
+        const LIT: [f32; 4] = [0.96, 0.58, 0.11, 1.0];
+        const DIM: [f32; 4] = [0.96, 0.58, 0.11, 0.2];
+        let [x, y, w, h] = rect;
+        let mut x0 = x + align_x;
+        match align_mode & 3 {
+            0 => {}
+            1 => x0 += (w - 100.0) * 0.5,
+            _ => x0 += w - 100.0,
+        }
+        let mut y0 = y + align_y;
+        match align_mode & 0xc {
+            0xc => y0 += h - 9.0,
+            8 => y0 += (h - 9.0) * 0.5,
+            _ => {}
+        }
+        let at = x0 + fraction * 100.0;
+        let quad = |x: f32, w: f32, color| game_api::MenuQuad {
+            rect: [x, y0, w, 9.0],
+            color,
+            material: "white",
+            turn: 0.0,
+        };
+        let mut quads = Vec::with_capacity(12);
+        for step in (0..100).step_by(10) {
+            let sx = step as f32 + x0;
+            if at + 2.0 > sx + 10.0 {
+                quads.push(quad(sx, 9.0, LIT));
+            } else if sx > at - 2.0 {
+                quads.push(quad(sx, 9.0, DIM));
+            } else {
+                quads.push(quad(sx, 4.0, LIT));
+                quads.push(quad(sx + 4.0, 4.0, DIM));
+            }
+        }
+        quads.push(game_api::MenuQuad {
+            rect: [at - 3.0 - 1.0, y0 + 9.0 - 1.0, 7.0, 7.0],
+            color: LIT,
+            material: "ui_arrow_right",
+            turn: -90.0,
+        });
+        Some(quads)
+    }
+
     /// Black Ops' text width skips `^` with `0` to `@` or `F`, `^C` with a
     /// `0` to `@` after it, and `^L`; any other `^` is a glyph.
     fn text_code_len(&self, next: char, after: Option<char>) -> usize {
