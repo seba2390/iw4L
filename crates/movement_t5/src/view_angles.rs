@@ -162,6 +162,28 @@ fn prone_check<W: MoveWorld>(pm: &mut Pm<'_, W>, yaw: f32, feet: f32, keep_pitch
 
 /// A prone body turns slowly after the view, only where it fits; the view
 /// may not turn further than the yaw cap from the body.
+/// Hanging on a ladder the view turns at most `bg_ladder_yawcap` from
+/// facing it.
+fn ladder_yaw_cap<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+    let cap = tuning::LADDER_YAWCAP;
+    let center = crate::math::vectoyaw(pm.ps.ladder_vec) + 180.0;
+    let delta = angle_delta(center, pm.ps.viewangles[1]);
+    if cap < delta || delta < -cap {
+        let adjust = if delta <= cap {
+            cap + delta
+        } else {
+            delta - cap
+        };
+        pm.ps.delta_angles[1] += adjust;
+        let capped = if adjust <= 0.0 {
+            cap + center
+        } else {
+            center - cap
+        };
+        pm.ps.viewangles[1] = wrap_360(capped);
+    }
+}
+
 fn prone_yaw_cap<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32, old_yaw: f32) {
     let yaw_at_entry = pm.ps.viewangles[1];
     let mut blocked = false;
@@ -306,14 +328,14 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
         return;
     }
     if ps.pm_flags & pm_flags::MANTLE != 0 {
-        pm.gap(crate::Gap::Mantle);
+        crate::mantle::cap_view_yaw(pm);
         return;
     }
     if ps.pm_flags & pm_flags::LADDER != 0
         && ps.ground_entity_num == ENTITYNUM_NONE
         && tuning::LADDER_YAWCAP != 0.0
     {
-        pm.gap(crate::Gap::Ladder);
+        ladder_yaw_cap(pm);
     }
     if pm.ps.pm_flags & pm_flags::PRONE != 0 {
         prone_yaw_cap(pm, msec, old_yaw);

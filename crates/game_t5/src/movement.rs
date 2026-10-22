@@ -30,15 +30,10 @@ const DEAD_CLIP_MASK: u32 = 0x0081_0011;
 
 fn gap_unknown(gap: Gap) -> &'static Unknown {
     match gap {
-        Gap::Ladder => unknown!(
-            "t5.movement.ladder",
-            "Black Ops' ladder climbing: a player on a ladder does not move",
-            "Black Ops' ladder move from its executable"
-        ),
         Gap::Mantle => unknown!(
-            "t5.movement.mantle",
-            "Black Ops' mantling over ledges: never started",
-            "Black Ops' mantle check and mantle move from its executable"
+            "t5.movement.mantle_anims",
+            "a mantle whose PLAYER_MANTLE animations the match has not loaded is not started or stops where it is",
+            "the player_mantle_* animations from the zone"
         ),
         Gap::Swim => unknown!(
             "t5.movement.swim",
@@ -263,6 +258,11 @@ fn game_state(
     b.i(&mut ps.shellshock_index, write);
     b.i(&mut ps.shellshock_time, write);
     b.i(&mut ps.shellshock_duration, write);
+    b.word(&mut ps.mantle_flags, write);
+    b.f(&mut ps.mantle_yaw, write);
+    b.i(&mut ps.mantle_timer, write);
+    b.i(&mut ps.mantle_trans_index, write);
+    b.i(&mut ps.mantle_length, write);
     let mut moves = (last.forwardmove as u8 as u32) | ((last.rightmove as u8 as u32) << 8);
     b.word(&mut moves, write);
     last.forwardmove = moves as u8 as i8;
@@ -416,6 +416,7 @@ impl movement_t5::MoveWorld for World<'_> {
             allsolid: t.allsolid,
             startsolid: t.startsolid,
             walkable: t.walkable,
+            glass: t.glass,
         }
     }
 
@@ -464,6 +465,14 @@ impl movement_t5::MoveWorld for World<'_> {
                 None
             }
         }
+    }
+
+    fn anim_length_ms(&self, name: &str) -> Option<i32> {
+        self.world.anim_length_ms(name)
+    }
+
+    fn anim_root_delta(&self, name: &str, frac: f32) -> Option<[f32; 3]> {
+        self.world.anim_root_delta(name, frac)
     }
 
     /// A shock the match does not know leaves movement as it is.

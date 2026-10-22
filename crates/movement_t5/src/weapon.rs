@@ -1227,7 +1227,7 @@ fn begin_reload<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 }
 
 /// Mantling with the mantle viewmodel animation up.
-fn mantling_anim(ps: &crate::PlayerState) -> bool {
+pub fn mantling_anim(ps: &crate::PlayerState) -> bool {
     ps.pm_flags & pm_flags::MANTLE != 0
         && (!tuning::MANTLE_ENABLE || ps.mantle_flags & mantle_flags::NO_WEAPON != 0)
 }
