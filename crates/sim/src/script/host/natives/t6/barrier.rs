@@ -317,7 +317,11 @@ fn spawn_piece(world: &mut World, origin: [f32; 3]) -> Option<u64> {
         .entities
         .get_mut(&object)
     {
+        // The engine draws the pieces as the barrier's own parts: nothing
+        // stands, blocks a shot or a sight line where they are drawn.
         entity.classname = PIECE_CLASSNAME.into();
+        entity.solid = false;
+        entity.contents = 0;
     }
     Some(object)
 }

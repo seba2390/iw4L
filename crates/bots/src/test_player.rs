@@ -325,6 +325,10 @@ pub(crate) struct TestPlayer {
     /// The mantle aid: until when it walks into the ledge.
     mantle_until_ms: Option<i32>,
     pressed: bool,
+    /// The player's command time when `pressed` last flipped: it flips
+    /// again only once a move has run with it, so a semi-automatic gun
+    /// sees its trigger let go between shots however the moves batch.
+    pressed_at: i32,
     next_log_ms: i32,
     shots: u32,
     knifes: u32,
@@ -2038,7 +2042,10 @@ pub(crate) fn drive_test_player(
             return;
         }
     }
-    test.pressed = !test.pressed;
+    if ps.command_time != test.pressed_at {
+        test.pressed = !test.pressed;
+        test.pressed_at = ps.command_time;
+    }
     let hold_fire = wielding && std::env::var("IW4L_TEST_PLACE").is_err();
     if test.pressed || hold_fire {
         // It knifes only when it cannot fire: a gun with rounds fires, and

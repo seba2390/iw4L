@@ -15,11 +15,11 @@ use bevy_ecs::prelude::World;
 const NODES_HEIGHT: f32 = 512.0;
 const NODES_MAX: usize = 256;
 /// The body a link is tested with: 15 each way, from 18 to 48 above the
-/// node.
+/// node, traced against the entity's collision with the engine's mask.
 const HULL: LinkHull = LinkHull {
     low: 18.0,
     high: 48.0,
-    sweep_mask: None,
+    sweep_mask: Some(0x282_0011),
 };
 
 /// `getnodesinradius(origin, max, min, [height], [type], [count])`: the

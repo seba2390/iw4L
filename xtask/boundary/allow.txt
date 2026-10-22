@@ -1025,13 +1025,13 @@ pattern crates/sim/src/t5_destructible.rs trace_iw4:: 1
 pattern crates/sim/src/weapon_content.rs gamemode_iw4:: 4
 pattern crates/sim/src/weapon_content.rs weapon_iw4:: 5
 pattern crates/sim/src/world.rs anim_iw4:: 3
-pattern crates/sim/src/world.rs clipmap_iw4:: 23
+pattern crates/sim/src/world.rs clipmap_iw4:: 22
 pattern crates/sim/src/world.rs entity_iw4:: 17
 pattern crates/sim/src/world.rs gamemode_iw4:: 8
 pattern crates/sim/src/world.rs hud_iw4:: 1
 pattern crates/sim/src/world.rs movement_iw4:: 12
 pattern crates/sim/src/world.rs playerstate_iw4:: 6
-pattern crates/sim/src/world.rs trace_iw4:: 16
+pattern crates/sim/src/world.rs trace_iw4:: 14
 pattern crates/sim/src/world.rs weapon_iw4:: 6
 pattern crates/sim/src/world/bodies.rs anim_iw4:: 1
 pattern crates/sim/src/world/bodies.rs playerstate_iw4:: 1
