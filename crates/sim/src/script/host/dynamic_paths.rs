@@ -80,6 +80,44 @@ fn obstacle(world: &mut World, id: u64) -> Option<Obstacle> {
     Some((origin, axes(angles), mins, maxs))
 }
 
+/// The entity's model's collision brushes (its collmaps), placed at its
+/// origin and turned by its axes; none when the model has none.
+fn model_brushes(
+    world: &mut World,
+    id: u64,
+    origin: [f32; 3],
+    axis: [[f32; 3]; 3],
+) -> Vec<crate::world::SimBrush> {
+    let model = match field(world, id, "model") {
+        Value::String(name) => name.to_string(),
+        _ => return Vec::new(),
+    };
+    let Some(capability) = FrameWorld::from_world(world)
+        .model_capability(&model)
+        .flatten()
+    else {
+        return Vec::new();
+    };
+    capability
+        .movement_brushes
+        .iter()
+        .map(|brush| crate::world::SimBrush {
+            planes: brush
+                .planes
+                .iter()
+                .map(|&[x, y, z, d]| {
+                    let normal: [f32; 3] =
+                        std::array::from_fn(|i| axis[0][i] * x + axis[1][i] * y + axis[2][i] * z);
+                    [normal[0], normal[1], normal[2], d + dot(normal, origin)]
+                })
+                .collect(),
+            contents: brush.contents,
+            plane_surface_flags: brush.plane_surface_flags.clone(),
+            glass_encoded: 0,
+        })
+        .collect()
+}
+
 /// The axes of `angles` (pitch, yaw, roll in degrees): forward, left, up.
 fn axes(angles: [f32; 3]) -> [[f32; 3]; 3] {
     let [p, y, r] = angles.map(f32::to_radians);
@@ -148,11 +186,19 @@ pub(crate) fn disconnect(world: &mut World, id: u64, hull: LinkHull) {
     let content = FrameWorld::from_world(world).content();
     let hull_mins = [-HULL_HALF, -HULL_HALF, hull.low];
     let hull_maxs = [HULL_HALF, HULL_HALF, hull.high];
+    let model_brushes = if brush.is_none() && hull.sweep_mask.is_some() {
+        model_brushes(world, id, origin, axis)
+    } else {
+        Vec::new()
+    };
     let blocks = |a: [f32; 3], b: [f32; 3]| match (hull.sweep_mask, brush) {
         (Some(mask), Some(model)) => crate::world::brush_model_sweep_hits(
             &content, model, origin, angles, a, b, hull_mins, hull_maxs, mask,
         )
         .unwrap_or(false),
+        (Some(mask), None) if !model_brushes.is_empty() => {
+            crate::world::brushes_sweep_hits(&model_brushes, a, b, hull_mins, hull_maxs, mask)
+        }
         _ => crosses(box_, hull, a, b),
     };
     let mut lo = [f32::MAX; 3];

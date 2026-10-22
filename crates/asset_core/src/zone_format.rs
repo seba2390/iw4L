@@ -343,10 +343,16 @@ pub struct BitMember {
 pub struct ScriptZoneFormat {
     pub game: FamilyId,
     /// The zones whose scripts a map runs, the map's own among them, in load
-    /// order: a later zone's module replaces an earlier one's.
-    pub script_zones: fn(&str) -> Vec<String>,
+    /// order: a later zone's module replaces an earlier one's. The second
+    /// argument is the zone the load's mode adds to the map, if any.
+    pub script_zones: fn(&str, Option<&str>) -> Vec<String>,
     /// The compiled modules, configs and tables a decoded zone carries.
     pub scripts: fn(&[u8]) -> ZoneScripts,
+    /// The zone a gametype adds to a map, by the game's tables (those the
+    /// game's patch zone carries): `(tables, map, gametype)`.
+    pub mode_zone: fn(&[ZoneTable], &str, &str) -> Option<String>,
+    /// The zone that carries the tables `mode_zone` reads, beside the map.
+    pub mode_tables_zone: &'static str,
 }
 
 impl ZoneFormat {

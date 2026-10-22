@@ -23,7 +23,12 @@ pub(crate) fn program(
     request: &ScriptRequest<'_>,
     sources: &dyn gsc::SourceResolver,
 ) -> Rule<ClientScriptProgram> {
-    let Some(start) = startup::ZombiesStart::of(request.map, request.table) else {
+    let Some(start) = startup::ZombiesStart::of(
+        request.map,
+        request.gametype,
+        request.location,
+        request.table,
+    ) else {
         return Rule::Unknown(unknown!(
             "t6.scripts.zm_start",
             "where a Black Ops 2 zombies map starts: its default row in zm/gametypestable.csv",

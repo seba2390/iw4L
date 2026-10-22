@@ -116,7 +116,7 @@ impl T6ContentMode {
         if self == Self::Zombies {
             let map = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
             if map.starts_with("zm_") {
-                zones.push(format!("so_zclassic_{map}"));
+                zones.extend(crate::mode_zone(path));
                 zones.push(format!("{map}_patch"));
             }
         }

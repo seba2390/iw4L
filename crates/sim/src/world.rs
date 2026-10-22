@@ -3,7 +3,7 @@ mod collision;
 mod content;
 mod events;
 use bodies::{PlayerAnimInputs, PlayerBodyRuntime};
-use clipmap_iw4::transformed_capsule_trace;
+use clipmap_iw4::{brush_ref, transformed_capsule_trace};
 use collision::{CollisionRuntime, LagcompPlan};
 pub use content::{
     AnimClipLookup, PlayerKitCollision, SimBrush, SimClipBsp, SimClipCmodels, SimClipMesh,
@@ -37,6 +37,7 @@ use crate::world_objects::WorldObjectState;
 use crate::{WeaponScriptSounds, WeaponSetup};
 use std::collections::HashMap;
 use std::sync::Arc;
+use trace_iw4::{Trace, trace_capsule};
 use weapon_iw4::{BulletPenFacts, WeaponCombatFacts};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -3425,15 +3426,15 @@ fn player_controller_input(ps: &PlayerState) -> xmodel_runtime::PlayerController
 }
 
 pub(crate) fn clip_move_to_model_brushes(
-    mut hit: trace_iw4::Trace,
+    mut hit: Trace,
     brushes: &[SimBrush],
     input: movement_iw4::GroundTraceInput,
-) -> trace_iw4::Trace {
+) -> Trace {
     if hit.fraction == 0.0 || brushes.is_empty() {
         return hit;
     }
-    let other = trace_iw4::trace_capsule(
-        brushes.iter().map(clipmap_iw4::brush_ref),
+    let other = trace_capsule(
+        brushes.iter().map(brush_ref),
         input.start,
         input.end,
         input.mins,
@@ -3448,6 +3449,20 @@ pub(crate) fn clip_move_to_model_brushes(
     hit.startsolid = startsolid;
     hit.allsolid = allsolid;
     hit
+}
+
+/// Whether a box (`mins`..`maxs`) swept from `start` to `end` hits any of
+/// `brushes` (world-space planes) of the contents in `mask`.
+pub(crate) fn brushes_sweep_hits(
+    brushes: &[SimBrush],
+    start: [f32; 3],
+    end: [f32; 3],
+    mins: [f32; 3],
+    maxs: [f32; 3],
+    mask: u32,
+) -> bool {
+    let hit = trace_capsule(brushes.iter().map(brush_ref), start, end, mins, maxs, mask);
+    hit.fraction < 1.0 || hit.startsolid != 0
 }
 
 /// Whether a box (`mins`..`maxs`) swept from `start` to `end` hits inline

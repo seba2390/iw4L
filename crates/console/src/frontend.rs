@@ -419,6 +419,13 @@ pub(crate) fn route(
                         .unwrap_or_else(|| frame::AssetFamilies::from_inventory(have, &dvars))?;
                     families.require_map(&map)?;
                     commands.insert_resource(host_rules(&dvars));
+                    asset_transport::select_zombies_start(Some(asset_transport::ZombiesStart {
+                        gametype: mode.token().into(),
+                        location: dvars
+                            .get("ui_zm_mapstartlocation")
+                            .filter(|location| !location.is_empty())
+                            .map(str::to_owned),
+                    }));
                     if state.public {
                         services.submit(net::MasterMenuAction::StartMatch {
                             map,

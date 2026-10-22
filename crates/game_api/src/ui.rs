@@ -73,6 +73,9 @@ pub struct Input {
     pub local_client: u32,
     pub map: String,
     pub gametype: String,
+    /// The zombies start location the match runs, empty for the map's
+    /// default (`ui_zm_mapstartlocation`).
+    pub location: String,
     pub localized: Arc<[(String, String)]>,
     pub tables: Arc<[Table]>,
     pub fonts: Arc<[Font]>,
@@ -133,6 +136,10 @@ pub enum UiRequest {
     Sound(String),
     /// The gamepad's motor speeds the scripts set (`Engine.PlayRumble`).
     Rumble { left: f32, right: f32 },
+    /// The zombies gametype and start location the menus picked
+    /// (`ui_gametype`, `ui_zm_mapstartlocation`), for the map the next
+    /// `Exec` starts.
+    ZombiesStart { gametype: String, location: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]

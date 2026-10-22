@@ -6,21 +6,38 @@ pub static SCRIPT_ZONE_FORMAT: asset_core::ScriptZoneFormat = asset_core::Script
     game: asset_core::FamilyId::T6,
     script_zones,
     scripts,
+    mode_zone,
+    mode_tables_zone: "patch_zm",
 };
 
 /// The engine loads the common zone, its patch, the gametype's zone, the map
 /// and the map's own patch, in that order.
-fn script_zones(map: &str) -> Vec<String> {
+fn script_zones(map: &str, mode_zone: Option<&str>) -> Vec<String> {
     if !map.starts_with("zm_") {
         return Vec::new();
     }
-    vec![
-        "common_zm".to_owned(),
-        "patch_zm".to_owned(),
-        format!("so_zclassic_{map}"),
-        map.to_owned(),
-        format!("{map}_patch"),
-    ]
+    ["common_zm", "patch_zm"]
+        .into_iter()
+        .chain(mode_zone)
+        .map(str::to_owned)
+        .chain([map.to_owned(), format!("{map}_patch")])
+        .collect()
+}
+
+/// The zone a zombies gametype adds to a map: `so_<group>_<map>`, the group
+/// being the gametype's mode group in `zm/gametypestable.csv`
+/// (`ui_zm_gamemodegroup`).
+fn mode_zone(tables: &[asset_core::ZoneTable], map: &str, gametype: &str) -> Option<String> {
+    if !map.starts_with("zm_") {
+        return None;
+    }
+    let table = tables.iter().find(|table| {
+        table
+            .name
+            .eq_ignore_ascii_case(crate::startup::GAMETYPES_TABLE)
+    })?;
+    let group = crate::startup::mode_group(table.columns, &table.cells, gametype)?;
+    Some(format!("so_{group}_{map}"))
 }
 
 fn schema() -> Result<&'static fastfile_t6::schema::Schema, String> {

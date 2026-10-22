@@ -43,6 +43,9 @@ macro_rules! unknown {
 pub struct ScriptRequest<'a> {
     pub map: &'a str,
     pub gametype: &'a str,
+    /// The start location the host picked, for games whose zombies maps
+    /// start at one of several (`ui_zm_mapstartlocation`).
+    pub location: Option<&'a str>,
     /// The map's entity string.
     pub entities: &'a str,
     /// The traversal animscripts the map's negotiation begin nodes name.
@@ -844,6 +847,16 @@ pub struct LibraryMode {
     pub note: &'static str,
     /// `(zone, title)`; a map is offered when its zone is installed.
     pub maps: &'static [(&'static str, &'static str)],
+    /// Other gametypes and start locations offered on those maps.
+    pub starts: &'static [LibraryStart],
+}
+
+/// A gametype on one of a map's start locations, offered beside the map.
+pub struct LibraryStart {
+    pub zone: &'static str,
+    pub gametype: &'static str,
+    pub location: &'static str,
+    pub title: &'static str,
 }
 
 pub trait GameModes: Sync {
