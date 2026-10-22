@@ -609,6 +609,11 @@ pub(crate) fn update_script_menus(
         };
         let mut overrides = item_overrides(def, open);
         let mut slider_parts = Vec::new();
+        let layout = ChromeAssets {
+            catalog: Some(catalog),
+            localize,
+        }
+        .layout();
         for (index, (item, state)) in def.items.iter().zip(&mut overrides).enumerate() {
             if let Some(reason) = class_unavailable(&open.name, item, &out.dvars) {
                 if let Some(slot) = custom_class_slot(item) {
@@ -650,6 +655,38 @@ pub(crate) fn update_script_menus(
                     .and_then(|v| v.parse::<f32>().ok())
                     .unwrap_or(slider.min);
                 let fraction = ((value - slider.min) / (slider.max - slider.min)).clamp(0.0, 1.0);
+                let r = item.rect;
+                if let Some(quads) = layout.and_then(|layout| {
+                    layout.slider(
+                        [r.x, r.y, r.w, r.h],
+                        item.text_align_mode,
+                        item.text_align_x,
+                        item.text_align_y,
+                        fraction,
+                    )
+                }) {
+                    for quad in quads {
+                        let mut rect = r;
+                        [rect.x, rect.y, rect.w, rect.h] = quad.rect;
+                        slider_parts.push((
+                            index,
+                            ChromeItemOverride {
+                                hidden: state.hidden,
+                                fore: state.fore,
+                                back: Some(quad.color),
+                                text: Some(String::new()),
+                                rect: Some(rect),
+                                style: Some(1),
+                                background: Some(quad.material),
+                                turn: Some(quad.turn),
+                                ..Default::default()
+                            },
+                        ));
+                    }
+                    state.background = Some("");
+                    state.text = Some(String::new());
+                    continue;
+                }
                 for (x, y, w, h, color) in [
                     (0.0, 9.0, item.rect.w, 2.0, [0.6, 0.6, 0.6, 1.0]),
                     (

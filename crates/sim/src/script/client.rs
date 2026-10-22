@@ -208,6 +208,39 @@ pub(crate) enum ClientMessage {
     GibEvent { entity: u64, bits: u32 },
     /// A note of the local player's viewmodel animations.
     ViewmodelNote(String),
+    /// An actor's footstep: where it sounds and the surface's name.
+    AiFootstep {
+        entity: u64,
+        position: [f32; 3],
+        surface: &'static str,
+        dog: bool,
+    },
+}
+
+/// How the game's client sounds an actor's footstep, when it does.
+pub(crate) fn ai_footstep_rule(server: &World) -> Option<game_api::AiFootstep> {
+    server
+        .get_resource::<ClientScripts>()?
+        .callbacks?
+        .ai_footstep
+}
+
+/// An actor's footstep, for the client scripts.
+pub(crate) fn ai_footstep(
+    server: &mut World,
+    entity: u64,
+    position: [f32; 3],
+    surface: &'static str,
+    dog: bool,
+) {
+    if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
+        runtime.client_messages.push(ClientMessage::AiFootstep {
+            entity,
+            position,
+            surface,
+            dog,
+        });
+    }
 }
 
 /// An entity's weapon death effect (`playweapondeatheffects`), for the
@@ -1432,6 +1465,31 @@ fn run_frame(
                         Value::string(&note),
                     ],
                 )
+            }
+            ClientMessage::AiFootstep {
+                entity,
+                position,
+                surface,
+                dog,
+            } => {
+                let (Some(mirrored), Some(rule)) =
+                    (client.mirrored.get(&entity), callbacks.ai_footstep)
+                else {
+                    continue;
+                };
+                // Black Ops' actors have no burning flag here: never on fire.
+                let mut args = vec![
+                    Value::Int(0),
+                    Value::Object(mirrored.client_object),
+                    Value::Vector(position),
+                    Value::string(surface),
+                    Value::Int(0),
+                ];
+                if dog {
+                    args.push(Value::Int(1));
+                }
+                start_callback(world, rule.callback, Value::level(), args);
+                continue;
             }
             ClientMessage::GibEvent { entity, bits } => {
                 let Some(mirrored) = client.mirrored.get(&entity) else {

@@ -37,6 +37,11 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x20))
     }
 
+    /// `impactType`
+    pub fn impact_type(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x28))
+    }
+
     /// `inventoryType`
     pub fn inventory_type(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x2c))

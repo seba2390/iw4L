@@ -108,6 +108,27 @@ pub struct ClientCallbacks {
     /// A level notify the client's engine raises (a viewmodel animation's
     /// note: `("notetrack", local client, note)`).
     pub level_notify: &'static str,
+    /// An actor's foot struck the ground, when the game's client sounds it.
+    pub ai_footstep: Option<AiFootstep>,
+}
+
+/// How a game's client sounds an actor's footstep (its `footstep_` or
+/// `dogstep_` notetrack): `callback(local client, entity, position, surface,
+/// on fire[, true for a dog])` on the level.
+#[derive(Clone, Copy, Debug)]
+pub struct AiFootstep {
+    pub callback: &'static str,
+    /// The left and right foot tags; the step sounds at its foot when the
+    /// actor is within `tag_range` of the view, else at the actor's origin.
+    pub tags: [&'static str; 2],
+    pub tag_range: f32,
+    /// The trace for the ground under the step: this far above and below
+    /// it, stopping on these contents.
+    pub trace_up: f32,
+    pub trace_down: f32,
+    pub trace_mask: u32,
+    /// The surface name a trace's surface flags give.
+    pub surface: fn(surface_flags: u32) -> &'static str,
 }
 
 /// What a match compiles and where it starts.
@@ -498,8 +519,13 @@ pub struct ViewmodelCamera {
     pub tag: &'static str,
     /// What a weapon animation number does to the camera animations after
     /// it starts its own (`named` as for [`ViewmodelAnimFn`]); any
-    /// animation's start stops them as well.
-    pub anim: fn(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> Option<CameraAnim>,
+    /// animation's start stops them as well; `game` is the player's own
+    /// fields ([`movement::MovePlayer::game`]).
+    pub anim: fn(
+        weap_anim: u32,
+        named: &dyn Fn(usize) -> bool,
+        game: &[u8; movement::GAME_MOVE_BYTES],
+    ) -> Option<CameraAnim>,
 }
 
 /// What a weapon animation number does to the camera animations.
@@ -729,6 +755,19 @@ pub enum InGameMenu {
     },
 }
 
+/// A picture of a game's own item paint, in the item's coordinates (its
+/// rect's alignment places it).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MenuQuad {
+    /// `[x, y, w, h]`.
+    pub rect: [f32; 4],
+    pub color: [f32; 4],
+    pub material: &'static str,
+    /// The degrees the game's rotated picture turns about its centre
+    /// (negative turns it counter-clockwise on screen); 0 for none.
+    pub turn: f32,
+}
+
 /// How a game's menu engine places and scales an item's rect and text.
 pub trait MenuLayout: Sync {
     /// The glyph scale of a font of `pixel_height` drawn at `text_scale`.
@@ -783,6 +822,20 @@ pub trait MenuLayout: Sync {
         _glyph: &dyn Fn(char) -> i32,
         _scale: f32,
     ) -> Option<Vec<String>> {
+        None
+    }
+    /// What a slider item in `rect` `[x, y, w, h]` paints with its value
+    /// `fraction` of the way through its range, its text aligned by
+    /// `align_mode` and offset by `align_x`, `align_y`; `None` keeps the
+    /// runtime's own bar and value text.
+    fn slider(
+        &self,
+        _rect: [f32; 4],
+        _align_mode: i32,
+        _align_x: f32,
+        _align_y: f32,
+        _fraction: f32,
+    ) -> Option<Vec<MenuQuad>> {
         None
     }
 }

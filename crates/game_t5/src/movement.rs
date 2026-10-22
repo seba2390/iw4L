@@ -30,15 +30,10 @@ const DEAD_CLIP_MASK: u32 = 0x0081_0011;
 
 fn gap_unknown(gap: Gap) -> &'static Unknown {
     match gap {
-        Gap::Ladder => unknown!(
-            "t5.movement.ladder",
-            "Black Ops' ladder climbing: a player on a ladder does not move",
-            "Black Ops' ladder move from its executable"
-        ),
         Gap::Mantle => unknown!(
-            "t5.movement.mantle",
-            "Black Ops' mantling over ledges: never started",
-            "Black Ops' mantle check and mantle move from its executable"
+            "t5.movement.mantle_anims",
+            "a mantle whose PLAYER_MANTLE animations the match has not loaded is not started or stops where it is",
+            "the player_mantle_* animations from the zone"
         ),
         Gap::Swim => unknown!(
             "t5.movement.swim",
@@ -263,6 +258,11 @@ fn game_state(
     b.i(&mut ps.shellshock_index, write);
     b.i(&mut ps.shellshock_time, write);
     b.i(&mut ps.shellshock_duration, write);
+    b.word(&mut ps.mantle_flags, write);
+    b.f(&mut ps.mantle_yaw, write);
+    b.i(&mut ps.mantle_timer, write);
+    b.i(&mut ps.mantle_trans_index, write);
+    b.i(&mut ps.mantle_length, write);
     let mut moves = (last.forwardmove as u8 as u32) | ((last.rightmove as u8 as u32) << 8);
     b.word(&mut moves, write);
     last.forwardmove = moves as u8 as i8;
@@ -416,6 +416,7 @@ impl movement_t5::MoveWorld for World<'_> {
             allsolid: t.allsolid,
             startsolid: t.startsolid,
             walkable: t.walkable,
+            glass: t.glass,
         }
     }
 
@@ -464,6 +465,14 @@ impl movement_t5::MoveWorld for World<'_> {
                 None
             }
         }
+    }
+
+    fn anim_length_ms(&self, name: &str) -> Option<i32> {
+        self.world.anim_length_ms(name)
+    }
+
+    fn anim_root_delta(&self, name: &str, frac: f32) -> Option<[f32; 3]> {
+        self.world.anim_root_delta(name, frac)
     }
 
     /// A shock the match does not know leaves movement as it is.
@@ -794,15 +803,21 @@ impl PlayerMovement for T5Movement {
 
     /// `allowmelee` sets the no-melee pm flag (`0x0800_0000`);
     /// `disableweaponcycling` and `enableweaponcycling` set and clear the
-    /// weapon flag (`0x200`) that keeps an empty weapon in hand.
+    /// weapon flag (`0x200`) that keeps an empty weapon in hand;
+    /// `disableweapons` and `disableoffhandweapons` (and their enables) the
+    /// weapon flags `0x80` and `0x100`. `disableweapons` also ends a dive at
+    /// once.
     fn set_script_flag(&self, player: &mut MovePlayer, flag: ScriptFlag, on: bool) -> Option<bool> {
+        use movement_t5::state::weap_flags;
         let (mut ps, mut last) = unpack(player);
+        if flag == ScriptFlag::WeaponsDisabled && on {
+            movement_t5::end_dive_for_disabled_weapons(&mut ps);
+        }
         let (word, bit) = match flag {
             ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
-            ScriptFlag::NoWeaponCycling => (
-                &mut ps.weap_flags,
-                movement_t5::state::weap_flags::CYCLING_DISABLED,
-            ),
+            ScriptFlag::NoWeaponCycling => (&mut ps.weap_flags, weap_flags::CYCLING_DISABLED),
+            ScriptFlag::WeaponsDisabled => (&mut ps.weap_flags, weap_flags::WEAPONS_DISABLED),
+            ScriptFlag::OffhandsDisabled => (&mut ps.weap_flags, weap_flags::OFFHANDS_DISABLED),
         };
         let was = *word & bit != 0;
         if on {

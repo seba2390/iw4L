@@ -7,6 +7,7 @@ mod footsteps;
 mod ground;
 mod inventory;
 mod ladder;
+pub mod mantle;
 pub mod math;
 mod moves;
 pub mod perks;
@@ -24,6 +25,7 @@ mod view_height;
 pub mod weapon;
 mod world;
 
+pub use dive::end_dive_for_disabled_weapons;
 pub use events::MoveEvent;
 pub use inventory::{HeldRounds, held_rounds, load_held};
 pub use physics::effective_stance;
@@ -38,7 +40,7 @@ pub use world::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Gap {
-    Ladder = 1,
+    /// A mantle whose animations are not loaded.
     Mantle = 2,
     Swim = 4,
     MountedView = 8,
@@ -236,7 +238,6 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
 
     pub fn gaps(&self) -> impl Iterator<Item = Gap> + '_ {
         [
-            Gap::Ladder,
             Gap::Mantle,
             Gap::Swim,
             Gap::MountedView,
