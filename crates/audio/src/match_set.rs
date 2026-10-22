@@ -196,11 +196,27 @@ fn queue_match_clips(
     let mut set = MatchRequests::default();
     let mut aliases = 0usize;
     for weapon in 1..=weapons.registry().len() as u32 {
-        aliases += request_weapon_aliases(clips, &bank.0, weapons.registry(), weapon, &mut set);
+        aliases += request_weapon_aliases(
+            clips,
+            &bank.0,
+            weapons.registry(),
+            weapon,
+            namespace.namespace,
+            &mut set,
+        );
     }
-    for alias in movement_prepare_names() {
-        aliases += 1;
-        request_named(clips, &bank.0, AssetNamespace::Iw4, alias, &mut set);
+    // The runtime's own movement sounds play only from its own movement
+    // events; a bank that holds none of them belongs to a game whose
+    // movement sounds come another way (Black Ops' client scripts).
+    let movement = AssetNamespace::Iw4;
+    if movement_prepare_names()
+        .iter()
+        .any(|alias| !clip_keys_for_alias(&bank.0, movement, alias).is_empty())
+    {
+        for alias in movement_prepare_names() {
+            aliases += 1;
+            request_named(clips, &bank.0, movement, alias, &mut set);
+        }
     }
     if let Some(identity) = identity.as_deref() {
         let ns = namespace.namespace;
@@ -486,30 +502,39 @@ fn request_named(
     }
 }
 
+/// A weapon's sounds; one of another game's bank that this match's bank
+/// cannot play is not asked for (the match's own game never gives it).
 fn request_weapon_aliases(
     clips: &mut ClipStore,
     bank: &SoundCatalog,
     registry: &WeaponRegistry,
     weapon: u32,
+    match_ns: AssetNamespace,
     set: &mut MatchRequests,
 ) -> usize {
+    let wanted = |ns: AssetNamespace, alias: &str| {
+        ns == match_ns || !clip_keys_for_alias(bank, ns, alias).is_empty()
+    };
     let sounds = registry.sounds_of(weapon);
     let mut n = 0usize;
     if let Some(aliases) = sounds {
         for alias in aliases.reachable_aliases() {
-            n += 1;
-            if let Some(ns) = registry.sound_namespace_for(weapon, alias) {
+            if let Some(ns) = registry.sound_namespace_for(weapon, alias)
+                && wanted(ns, alias)
+            {
+                n += 1;
                 request_named(clips, bank, ns, alias, set);
             }
         }
     }
     let mut seen = HashSet::new();
     for alias in registry.notetrack_sound_aliases_of(weapon) {
-        if seen.insert(alias) {
+        if seen.insert(alias)
+            && let Some(ns) = registry.sound_namespace_for(weapon, alias)
+            && wanted(ns, alias)
+        {
             n += 1;
-            if let Some(ns) = registry.sound_namespace_for(weapon, alias) {
-                request_named(clips, bank, ns, alias, set);
-            }
+            request_named(clips, bank, ns, alias, set);
         }
     }
     // Played by hash: loaded when the bank has them, never missing.

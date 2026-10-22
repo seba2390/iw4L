@@ -2281,6 +2281,69 @@ fn spectator_game_move(
     }
 }
 
+/// What an actor's sweep meets this tick beyond the world: the brush
+/// entities, the models' brushes and the live players' bodies (which its
+/// clipmask lets through unless it names bodies).
+pub(crate) struct ActorClip {
+    linked_brushes: Vec<LinkedBrushCollisionBrush>,
+    model_brushes: Vec<SimBrush>,
+    bodies: Vec<PlayerBodyClip>,
+}
+
+impl ActorClip {
+    pub(crate) fn gather(world: &FrameWorld) -> Self {
+        Self {
+            linked_brushes: world
+                .entity_collision_capabilities()
+                .iter()
+                .flat_map(|c| c.solid_brushes().iter().cloned())
+                .collect(),
+            model_brushes: world.model_movement_brushes(),
+            bodies: alive_body_clips(world),
+        }
+    }
+
+    /// Whether the trace stopped on one of the players' bodies.
+    pub(crate) fn hit_body(&self, trace: &Trace) -> bool {
+        trace.hit_type == HITTYPE_ENTITY
+            && self.bodies.iter().any(|body| body.entnum == trace.hit_id)
+    }
+
+    pub(crate) fn trace(
+        &self,
+        world: &FrameWorld,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        mask: u32,
+    ) -> Trace {
+        let content = world.content();
+        let glass_damage = world.world_objects().glass_damage_pairs();
+        let backend = ClipBackend {
+            brushes: content.clip_brushes(),
+            bsp: content.clip_bsp(),
+            mesh: content.clip_mesh(),
+            glass_damage: &glass_damage,
+            bodies: &self.bodies,
+            self_entnum: u16::MAX,
+            cmodels: &content.clip_cmodels().models,
+            linked_brushes: &self.linked_brushes,
+            model_brushes: &self.model_brushes,
+        };
+        CollisionBackend::trace(
+            &backend,
+            GroundTraceInput {
+                start,
+                end,
+                mins,
+                maxs,
+                tracemask: mask,
+            },
+        )
+    }
+}
+
 fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
     let mut bodies: Vec<_> = world
         .client_ids_sorted()

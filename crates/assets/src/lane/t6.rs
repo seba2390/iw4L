@@ -2495,16 +2495,17 @@ fn capture_soldiers(
     Ok((bodies, fpv))
 }
 
-/// The map's entities, then those Classic's zone adds to them, as the engine
-/// reads on from the map's into the addon's.
+/// The map's entities, then those its gametype's zone adds to them, as the
+/// engine reads on from the map's into the addon's.
 fn map_entities(path: &Path, load: &ZoneLoad, report: &mut Vec<String>) -> Result<String, String> {
     let mut entities = asset_world::world_t6::entity_string(load)?.to_owned();
     if asset_transport::t6_content::T6ContentMode::for_path(path)
         == asset_transport::t6_content::T6ContentMode::Zombies
-        && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-        && let zone = format!("so_zclassic_{stem}")
-        && let Some(classic) = content_zone(&path.with_file_name(format!("{zone}.ff")), report)
-        && let Some(addon) = asset_world::world_t6::addon_entity_string(&classic, &zone)
+        && let Some(zone) = asset_transport::mode_zone(path)
+        && let source = path.with_file_name(format!("{zone}.ff"))
+        && source.is_file()
+        && let Some(mode) = content_zone(&source, report)
+        && let Some(addon) = asset_world::world_t6::addon_entity_string(&mode, &zone)
     {
         entities.push_str(addon);
     }
@@ -2542,16 +2543,16 @@ fn map_teams(
         // carry is a kit, in the script's order; the first two also stand
         // for the sides.
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        // Classic's own zone, which the engine loads with the map, carries
-        // the survivors of maps that have more than one mode.
-        let classic: Vec<ZoneLoad> = content_zone(
-            &path.with_file_name(format!("so_zclassic_{stem}.ff")),
-            report,
-        )
-        .into_iter()
-        .collect();
+        // The gametype's own zone, which the engine loads with the map,
+        // carries the survivors of maps that have more than one mode.
+        let gametype_zone: Vec<ZoneLoad> = asset_transport::mode_zone(path)
+            .map(|zone| path.with_file_name(format!("{zone}.ff")))
+            .filter(|source| source.is_file())
+            .and_then(|source| content_zone(&source, report))
+            .into_iter()
+            .collect();
         let carried = |name: &str| {
-            std::iter::once(map).chain(&classic).any(|load| {
+            std::iter::once(map).chain(&gametype_zone).any(|load| {
                 load.assets.iter().any(|asset| {
                     asset_model::T6Model::new(load, asset)
                         .is_some_and(|model| model.name() == Some(name))
@@ -2560,7 +2561,7 @@ fn map_teams(
         };
         let script = |name: &str| {
             std::iter::once(map)
-                .chain(&classic)
+                .chain(&gametype_zone)
                 .find_map(|load| script_bytes(load, name))
                 .or_else(|| {
                     let patch = content_zone(
@@ -2598,7 +2599,7 @@ fn map_teams(
         };
         return Ok((
             asset_game::MapTeamSettings::default(),
-            classic,
+            gametype_zone,
             asset_model::SoldierKits {
                 allies: kit(0),
                 axis: kit(1).or_else(|| kit(0)),

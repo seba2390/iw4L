@@ -25,8 +25,8 @@ mod view_kick;
 mod viewmodel;
 
 use game_api::{
-    HudRules, LibraryMode, ModeRules, MovementRules, Rule, ScriptProgram, ScriptRequest,
-    WeaponRules, unknown,
+    HudRules, LibraryMode, LibraryStart, ModeRules, MovementRules, Rule, ScriptProgram,
+    ScriptRequest, WeaponRules, unknown,
 };
 
 pub struct T6;
@@ -43,7 +43,7 @@ impl game_api::GameScripts for T6 {
         sources: &dyn gsc::SourceResolver,
     ) -> Rule<ScriptProgram> {
         let zombies_map = request.map.starts_with("zm_");
-        if request.gametype == "zclassic" && own_scripts(request.map) {
+        if own_gametype(request.gametype) && own_scripts(request.map) {
             return own_zombies(request, sources);
         }
         match (zombies_map, request.gametype) {
@@ -51,14 +51,14 @@ impl game_api::GameScripts for T6 {
             (true, _) => {
                 return Rule::Unknown(unknown!(
                     "t6.scripts.zm_gametypes",
-                    "Black Ops 2 zombies maps run only Classic (zclassic); Grief, Turned and the TranZit locations have no rules",
-                    "Black Ops 2's zombies submode and location rules"
+                    "Black Ops 2 zombies maps run Classic (zclassic) and Survival (zstandard); Grief and Turned have no rules",
+                    "Black Ops 2's Grief and Turned rules"
                 ));
             }
-            (false, "zclassic") => {
+            (false, "zclassic" | "zstandard") => {
                 return Rule::Unknown(unknown!(
                     "t6.scripts.zclassic_on_mp",
-                    "Classic zombies needs a Black Ops 2 zombies map",
+                    "Black Ops 2's zombies gametypes need a zombies map",
                     "a zombies map (zm_*)"
                 ));
             }
@@ -89,7 +89,7 @@ impl game_api::GameScripts for T6 {
         request: &ScriptRequest<'_>,
         sources: &dyn gsc::SourceResolver,
     ) -> Option<Rule<game_api::ClientScriptProgram>> {
-        (request.gametype == "zclassic" && own_scripts(request.map))
+        (own_gametype(request.gametype) && own_scripts(request.map))
             .then(|| client::program(request, sources))
     }
 
@@ -118,6 +118,12 @@ fn own_scripts(map: &str) -> bool {
     map.starts_with("zm_") && map != ORIGINS
 }
 
+/// The zombies gametypes Black Ops 2's own scripts run here: Classic and
+/// Survival.
+fn own_gametype(gametype: &str) -> bool {
+    matches!(gametype, "zclassic" | "zstandard")
+}
+
 /// The map whose Classic still runs IW4L's rules.
 const ORIGINS: &str = "zm_tomb";
 
@@ -125,10 +131,15 @@ fn own_zombies(
     request: &ScriptRequest<'_>,
     sources: &dyn gsc::SourceResolver,
 ) -> Rule<ScriptProgram> {
-    let Some(start) = startup::ZombiesStart::of(request.map, request.table) else {
+    let Some(start) = startup::ZombiesStart::of(
+        request.map,
+        request.gametype,
+        request.location,
+        request.table,
+    ) else {
         return Rule::Unknown(unknown!(
             "t6.scripts.zm_start",
-            "where a Black Ops 2 zombies map starts: its default row in zm/gametypestable.csv",
+            "where a Black Ops 2 zombies map starts: its row in zm/gametypestable.csv for the gametype and location",
             "the map's start location and gametype"
         ));
     };
@@ -435,7 +446,7 @@ impl game_api::GameModes for T6 {
         match gametype {
             "dm" => Rule::Known(FREE_FOR_ALL_MODE),
             "war" => Rule::Known(TEAM_DEATHMATCH_MODE),
-            "zclassic" => Rule::Known(OWN_ZOMBIES_MODE),
+            "zclassic" | "zstandard" => Rule::Known(OWN_ZOMBIES_MODE),
             _ => Rule::Unknown(unknown!(
                 "t6.scripts.gametypes",
                 "Black Ops 2 multiplayer modes other than Free for All and Team Deathmatch have no rules",
@@ -466,5 +477,26 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
         ("zm_prison", "MOB OF THE DEAD"),
         ("zm_buried", "BURIED"),
         ("zm_tomb", "ORIGINS"),
+    ],
+    // TranZit's Survival starts, as `zm/gametypestable.csv` lists them.
+    starts: &[
+        LibraryStart {
+            zone: "zm_transit",
+            gametype: "zstandard",
+            location: "transit",
+            title: "BUS DEPOT (SURVIVAL)",
+        },
+        LibraryStart {
+            zone: "zm_transit",
+            gametype: "zstandard",
+            location: "town",
+            title: "TOWN (SURVIVAL)",
+        },
+        LibraryStart {
+            zone: "zm_transit",
+            gametype: "zstandard",
+            location: "farm",
+            title: "FARM (SURVIVAL)",
+        },
     ],
 };

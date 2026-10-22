@@ -359,6 +359,7 @@ fn refresh(
             }
         };
         let requests = scene.take_requests();
+        let mut picked_mode = None;
         for req in &requests {
             match req {
                 UiRequest::Exec(text) if text == "startMultiplayer" => {
@@ -371,10 +372,19 @@ fn refresh(
                         text: "openmenu launcher/campaign".into(),
                     });
                 }
+                UiRequest::ZombiesStart { gametype, location } => {
+                    asset_transport::select_zombies_start(Some(asset_transport::ZombiesStart {
+                        gametype: gametype.clone(),
+                        location: (!location.is_empty()).then(|| location.clone()),
+                    }));
+                    picked_mode = sim::HostGameModeSelection::from_token(gametype);
+                }
                 UiRequest::Exec(text) => {
                     if text.starts_with("map ")
                         && let Some(zombies) = session::games::modes(namespace).zombies()
-                        && let Some(mode) = sim::HostGameModeSelection::from_token(zombies.gametype)
+                        && let Some(mode) = picked_mode
+                            .take()
+                            .or_else(|| sim::HostGameModeSelection::from_token(zombies.gametype))
                     {
                         commands.insert_resource(mode);
                     }
@@ -452,6 +462,12 @@ fn refresh(
             };
             state.active = state.scene.is_some();
             state.input.map = map.zone.clone();
+            if let Some(start) = asset_transport::zombies_start()
+                && map.zone.starts_with("zm_")
+            {
+                state.input.gametype = start.gametype;
+                state.input.location = start.location.unwrap_or_else(String::new);
+            }
             state.input.tables = publication
                 .script_tables(namespace)
                 .into_iter()
@@ -695,7 +711,7 @@ fn refresh(
                 UiRequest::MenuMusic(None) => {
                     stop_music.write(frame::UiStopMusic);
                 }
-                UiRequest::Rumble { .. } => {}
+                UiRequest::Rumble { .. } | UiRequest::ZombiesStart { .. } => {}
             }
         }
         state.scoreboard = input.scoreboard && !is_open;

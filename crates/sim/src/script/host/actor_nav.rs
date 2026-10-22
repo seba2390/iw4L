@@ -528,6 +528,11 @@ pub(crate) struct ActorMove {
     deflect_side: u8,
     /// Whether `"orientdone"` was already raised for the current turn.
     orient_notified: bool,
+    /// `pushplayer(true)`: the actor's clipmask leaves player bodies out,
+    /// so it walks through players.
+    pub(crate) push_player: bool,
+    /// The last move was stopped by a player's body.
+    hit_body: bool,
 }
 
 impl Default for ActorMove {
@@ -560,6 +565,8 @@ impl Default for ActorMove {
             fall_speed: 0.0,
             deflect_side: 0,
             orient_notified: false,
+            push_player: false,
+            hit_body: false,
         }
     }
 }
@@ -681,6 +688,17 @@ const DEFLECT_BLEND: f32 = 0.33;
 const DEFLECT_TRIES: usize = 2;
 /// A walk that gains less than this share of its wish is blocked.
 const BLOCKED_PROGRESS: f32 = 0.25;
+/// Black Ops' blocking actor: another live actor within 30 flat and 80 up
+/// or down of this one.
+const BLOCKING_RADIUS_SQ: f32 = 900.0;
+const BLOCKING_HEIGHT_SQ: f32 = 6400.0;
+const BLOCKING_HEIGHT: f32 = 80.0;
+/// A step away from the blocker is at least this long, squared; it counts
+/// when it moves a quarter of its length, squared; each deflection is
+/// three quarters as long and needs that much less.
+const STEP_AWAY_MIN_SQ: f32 = 2.25;
+const STEP_AWAY_PROGRESS_SQ: f32 = 0.25;
+const STEP_AWAY_DEFLECT_PROGRESS_SQ: f32 = 0.5625;
 /// Ground pitch: the samples ahead of and behind the actor, the height
 /// window they look in, and the most the pitch turns per 50 ms tick.
 const PITCH_SAMPLE_OFFSET: f32 = 10.9;
@@ -1410,6 +1428,13 @@ fn model_anim_scripted(
 }
 
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
+    let clip = crate::step::ActorClip::gather(&FrameWorld::from_world(world));
+    world.insert_resource(ActorClipTick(clip));
+    locomote_actors(world, seconds);
+    world.remove_resource::<ActorClipTick>();
+}
+
+fn locomote_actors(world: &mut World, seconds: f32) {
     let now = super::players::now_ms(world);
     if let Some(mut edits) = world.get_resource_mut::<LinkEdits>() {
         edits.expire_badplaces(now);
@@ -1576,7 +1601,12 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
                     } else {
                         [0.0; 3]
                     };
-                    origin = walk_path(world, origin, wish, seconds, &mut movement);
+                    origin = match blocking_actor(world, actor, origin) {
+                        Some(blocker) => {
+                            step_away(world, actor, origin, blocker, step, seconds, &mut movement)
+                        }
+                        None => walk_path(world, origin, wish, seconds, &mut movement),
+                    };
                 } else {
                     origin = physics_move(world, origin, [0.0; 3], seconds, &mut movement).0;
                 }
@@ -1842,6 +1872,10 @@ struct Phys {
     /// The last plane the move hit and where: `iHitEntnum`'s normal and
     /// origin.
     hit: Option<([f32; 3], [f32; 3])>,
+    /// Whether that hit was a player's body (a sentient).
+    hit_body: bool,
+    /// The actor's clipmask.
+    mask: u32,
 }
 
 /// What one sweep of the actor's box found.
@@ -1850,7 +1884,12 @@ struct Sweep {
     normal: [f32; 3],
     endpos: [f32; 3],
     allsolid: bool,
+    body: bool,
 }
+
+/// What actors' sweeps meet this tick beyond the world, gathered once.
+#[derive(bevy_ecs::prelude::Resource)]
+struct ActorClipTick(crate::step::ActorClip);
 
 fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -1869,18 +1908,24 @@ fn clip_velocity(velocity: [f32; 3], normal: [f32; 3]) -> [f32; 3] {
 
 impl Phys {
     fn trace(&self, world: &mut World, start: [f32; 3], end: [f32; 3]) -> Sweep {
-        let trace = FrameWorld::from_world(world).trace_clip(
-            start,
-            end,
-            self.mins,
-            self.maxs,
-            MASK_ACTOR_SOLID,
-        );
+        let clip = world.remove_resource::<ActorClipTick>();
+        let frame = FrameWorld::from_world(world);
+        let trace = match &clip {
+            Some(clip) => clip
+                .0
+                .trace(&frame, start, end, self.mins, self.maxs, self.mask),
+            None => frame.trace_clip(start, end, self.mins, self.maxs, self.mask),
+        };
+        let body = clip.as_ref().is_some_and(|clip| clip.0.hit_body(&trace));
+        if let Some(clip) = clip {
+            world.insert_resource(clip);
+        }
         Sweep {
             fraction: trace.fraction,
             normal: trace.normal,
             endpos: trace.endpos,
             allsolid: trace.allsolid != 0,
+            body,
         }
     }
 
@@ -1898,6 +1943,7 @@ impl Phys {
         if trace.normal[2] < MIN_WALK_NORMAL {
             self.ground = None;
             self.hit = Some((trace.normal, trace.endpos));
+            self.hit_body = trace.body;
             return;
         }
         self.ground = Some(trace.normal);
@@ -1945,6 +1991,7 @@ impl Phys {
             }
             bumps += 1;
             self.hit = Some((trace.normal, trace.endpos));
+            self.hit_body = trace.body;
             left -= left * trace.fraction;
             if planes.len() >= 5 {
                 self.velocity = [0.0; 3];
@@ -2033,7 +2080,8 @@ impl Phys {
                 return;
             }
         }
-        let (plain, plain_velocity, plain_hit) = (self.origin, self.velocity, self.hit);
+        let (plain, plain_velocity, plain_hit, plain_body) =
+            (self.origin, self.velocity, self.hit, self.hit_body);
         let up = [start[0], start[1], start[2] + STEP_HEIGHT];
         let trace = self.trace(world, start, up);
         if trace.allsolid {
@@ -2052,6 +2100,7 @@ impl Phys {
             self.origin = plain;
             self.velocity = plain_velocity;
             self.hit = plain_hit;
+            self.hit_body = plain_body;
             return;
         }
         let down = [self.origin[0], self.origin[1], self.origin[2] - lifted];
@@ -2094,6 +2143,16 @@ impl Phys {
     }
 }
 
+/// The actor's clipmask: Black Ops' `MASK_ACTORSOLID`, less player bodies
+/// after `pushplayer(true)`.
+fn actor_mask(movement: &ActorMove) -> u32 {
+    if movement.push_player {
+        MASK_ACTOR_SOLID & !crate::world::CONTENTS_BODY
+    } else {
+        MASK_ACTOR_SOLID
+    }
+}
+
 fn actor_box(movement: &ActorMove) -> ([f32; 3], [f32; 3]) {
     movement.bounds.unwrap_or((ACTOR_MINS, ACTOR_MAXS))
 }
@@ -2118,6 +2177,8 @@ fn physics_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
+        hit_body: false,
+        mask: actor_mask(movement),
     };
     phys.ground_trace(world);
     if phys.ground.is_some() {
@@ -2147,6 +2208,8 @@ fn zonly_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
+        hit_body: false,
+        mask: actor_mask(movement),
     };
     phys.slide(world, seconds, false);
     phys.velocity[2] = 0.0;
@@ -2157,6 +2220,7 @@ fn zonly_move(
 
 fn settle_physics(phys: &Phys, movement: &mut ActorMove) {
     movement.ground_normal = phys.ground;
+    movement.hit_body = phys.hit.is_some() && phys.hit_body;
     movement.fall_speed = if phys.ground.is_some() {
         0.0
     } else {
@@ -2245,11 +2309,146 @@ fn walk_path(
     } else {
         0.0
     };
-    if gained < length * BLOCKED_PROGRESS {
+    // A sentient in the way (a player) does not replan the path: Black Ops
+    // keeps it as the blocker.
+    if gained < length * BLOCKED_PROGRESS && !movement.hit_body {
         // Planned again on the next step; the path stands until then.
         movement.planned_to = None;
     }
     result
+}
+
+/// The other live actors, by entity, with their origins.
+fn other_actors(world: &mut World, actor: u64) -> Vec<(u64, [f32; 3])> {
+    let ids: Vec<u64> = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .keys()
+        .copied()
+        .filter(|&id| id != actor)
+        .collect();
+    let mut out = Vec::new();
+    for id in ids {
+        if matches!(super::players::entity_field(world, id, "health"), Value::Int(n) if n > 0) {
+            out.push((id, pose(&mut world.resource_mut::<RoundScript>(), id).0));
+        }
+    }
+    out
+}
+
+/// Black Ops' blocking actor: the first other live actor within 30 flat
+/// and 80 up or down.
+fn blocking_actor(world: &mut World, actor: u64, origin: [f32; 3]) -> Option<([f32; 3], u64)> {
+    other_actors(world, actor)
+        .into_iter()
+        .find(|&(_, at)| {
+            (at[2] - origin[2]).powi(2) <= BLOCKING_HEIGHT_SQ
+                && (origin[0] - at[0]).powi(2) + (origin[1] - at[1]).powi(2) <= BLOCKING_RADIUS_SQ
+        })
+        .map(|(id, at)| (at, id))
+}
+
+/// Black Ops' `crandom`: its own seed, a value in [-1, 1).
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct ActorRand(u32);
+
+fn crandom(world: &mut World) -> f32 {
+    let mut rand = world.get_resource_or_insert_with(ActorRand::default);
+    rand.0 = rand.0.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
+    (rand.0 >> 17) as f32 * (1.0 / 16384.0) - 1.0
+}
+
+/// Whether a move from `from` to `to` ends within 30 of an actor (other than
+/// the blocker) it was not within before, at about the same height.
+fn steps_into_actor(
+    world: &mut World,
+    actor: u64,
+    blocker: u64,
+    from: [f32; 3],
+    to: [f32; 3],
+) -> bool {
+    other_actors(world, actor)
+        .into_iter()
+        .filter(|&(id, _)| id != blocker)
+        .any(|(_, at)| {
+            (at[0] - to[0]).powi(2) + (at[1] - to[1]).powi(2) < BLOCKING_RADIUS_SQ
+                && (at[0] - from[0]).powi(2) + (at[1] - from[1]).powi(2) >= BLOCKING_RADIUS_SQ
+                && (from[2] - at[2]).abs() < BLOCKING_HEIGHT
+        })
+}
+
+/// With a blocking actor the walk steps away from it instead of along the
+/// path: by the animation's step (at least 1.5), straight away from the
+/// blocker (a random way when they stand on one spot). The step stands
+/// when it ends further from the blocker, moves a quarter of its length
+/// and walks into no other actor; else up to two shorter steps turned
+/// along what it hit, and else the actor stays.
+fn step_away(
+    world: &mut World,
+    actor: u64,
+    origin: [f32; 3],
+    (blocker_at, blocker): ([f32; 3], u64),
+    step: f32,
+    seconds: f32,
+    movement: &mut ActorMove,
+) -> [f32; 3] {
+    let (ground, fall) = (movement.ground_normal, movement.fall_speed);
+    let away = [origin[0] - blocker_at[0], origin[1] - blocker_at[1]];
+    let apart = (away[0] * away[0] + away[1] * away[1]).sqrt();
+    let dir = if apart == 0.0 {
+        let (x, y) = (crandom(world), crandom(world));
+        let n = (x * x + y * y).sqrt();
+        let n = if n > 0.0 { n } else { 1.0 };
+        [x / n, y / n]
+    } else {
+        [away[0] / apart, away[1] / apart]
+    };
+    let before_sq = apart * apart;
+    let mut length = (step * step).max(STEP_AWAY_MIN_SQ).sqrt();
+    let mut progress_sq = length * length * STEP_AWAY_PROGRESS_SQ;
+    let stands = |world: &mut World, result: [f32; 3], progress_sq: f32| {
+        (blocker_at[0] - result[0]).powi(2) + (blocker_at[1] - result[1]).powi(2) > before_sq
+            && (origin[0] - result[0]).powi(2) + (origin[1] - result[1]).powi(2) > progress_sq
+            && !steps_into_actor(world, actor, blocker, origin, result)
+    };
+    let (result, mut hit) = physics_move(
+        world,
+        origin,
+        [dir[0] * length, dir[1] * length, 0.0],
+        seconds,
+        movement,
+    );
+    if stands(world, result, progress_sq) {
+        return result;
+    }
+    for _ in 0..DEFLECT_TRIES {
+        let Some((normal, _)) = hit else {
+            break;
+        };
+        let flat = (normal[0] * normal[0] + normal[1] * normal[1]).sqrt();
+        let n = if flat > 0.0 {
+            [normal[0] / flat, normal[1] / flat]
+        } else {
+            [1.0, 0.0]
+        };
+        length *= DEFLECT_SCALE;
+        progress_sq *= STEP_AWAY_DEFLECT_PROGRESS_SQ;
+        let turn = if n[1] * dir[0] <= n[0] * dir[1] {
+            [-n[1] * length, n[0] * length, 0.0]
+        } else {
+            [n[1] * length, -n[0] * length, 0.0]
+        };
+        movement.ground_normal = ground;
+        movement.fall_speed = fall;
+        let result;
+        (result, hit) = physics_move(world, origin, turn, seconds, movement);
+        if stands(world, result, progress_sq) {
+            return result;
+        }
+    }
+    movement.ground_normal = ground;
+    movement.fall_speed = fall;
+    origin
 }
 
 /// The slope under the actor along its yaw: the ground height a little

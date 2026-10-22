@@ -229,12 +229,25 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         super::super::actors::remove_ai_event_listener(world, entity, name.as_deref())?;
         Ok(Value::Undefined)
     });
+    // `pushplayer(true)` leaves player bodies out of the actor's clipmask,
+    // `false` puts them back.
+    registry.register(Method, "pushplayer", |world, receiver, args| {
+        let actor = super::engine::entity_id(world, receiver)?;
+        let push = super::super::args::int(args, 0)? != 0;
+        if let Some(movement) = world
+            .resource_mut::<crate::script::RoundScript>()
+            .actor_moves
+            .get_mut(&actor)
+        {
+            movement.push_player = push;
+        }
+        Ok(Value::Undefined)
+    });
     for name in [
         "setthreatbiasgroup",
         "setteamforentity",
         "setengagementmindist",
         "setengagementmaxdist",
-        "pushplayer",
         "playerknockback",
         "enablehealthshield",
         "useweaponhidetags",

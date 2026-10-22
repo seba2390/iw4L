@@ -14,38 +14,70 @@ impl T6Startup {
     }
 }
 
-/// Where a zombies map starts by default, as `zm/gametypestable.csv` lists it.
+/// Where a zombies map starts: its gametype, start location and mode group,
+/// a start row of `zm/gametypestable.csv`.
 pub(crate) struct ZombiesStart {
     pub(crate) gametype: String,
     pub(crate) location: String,
     pub(crate) group: String,
 }
 
-const GAMETYPES_TABLE: &str = "zm/gametypestable.csv";
+pub(crate) const GAMETYPES_TABLE: &str = "zm/gametypestable.csv";
 /// The table's sections, by first cell: gametypes and start locations per map.
 const GAMETYPE_ROW: &str = "0";
 const START_ROW: &str = "6";
 
+/// A gametype's mode group (`ui_zm_gamemodegroup`): the last column of its
+/// gametype row.
+pub(crate) fn mode_group(columns: usize, cells: &[String], gametype: &str) -> Option<String> {
+    cells
+        .chunks_exact(columns.max(1))
+        .find(|row| {
+            row.first().is_some_and(|c| c == GAMETYPE_ROW)
+                && row.get(1).is_some_and(|c| c == gametype)
+        })?
+        .get(9)
+        .filter(|group| !group.is_empty())
+        .cloned()
+}
+
 impl ZombiesStart {
-    pub(crate) fn of<'a>(map: &str, table: &game_api::TableLookup<'a>) -> Option<Self> {
+    /// The start row for the map, gametype and location: with no location,
+    /// the gametype's row marked `YES`, else its first. A map with no row for
+    /// the gametype starts at its own default (the `YES` row of any
+    /// gametype), as Nuketown, which has only Survival, does under Classic.
+    pub(crate) fn of<'a>(
+        map: &str,
+        gametype: &str,
+        location: Option<&str>,
+        table: &game_api::TableLookup<'a>,
+    ) -> Option<Self> {
         let (columns, cells) = table(GAMETYPES_TABLE)?;
-        let rows = || cells.chunks_exact(columns.max(1));
-        let start = rows().find(|row| {
-            row.first().is_some_and(|c| c == START_ROW)
-                && row.get(2).is_some_and(|c| c == map)
-                && row.get(7).is_some_and(|c| c == "YES")
-        })?;
+        let starts = || {
+            cells.chunks_exact(columns.max(1)).filter(|row| {
+                row.first().is_some_and(|c| c == START_ROW) && row.get(2).is_some_and(|c| c == map)
+            })
+        };
+        let default = |row: &&[String]| row.get(7).is_some_and(|c| c == "YES");
+        let start = match location {
+            Some(location) => starts().find(|row| {
+                row.get(4).is_some_and(|c| c == gametype)
+                    && row.get(3).is_some_and(|c| c == location)
+            })?,
+            None => {
+                let of_gametype =
+                    || starts().filter(|row| row.get(4).is_some_and(|c| c == gametype));
+                of_gametype()
+                    .find(default)
+                    .or_else(|| of_gametype().next())
+                    .or_else(|| starts().find(default))?
+            }
+        };
         let gametype = start.get(4)?.clone();
-        let group = rows()
-            .find(|row| {
-                row.first().is_some_and(|c| c == GAMETYPE_ROW) && row.get(1) == Some(&gametype)
-            })?
-            .get(9)?
-            .clone();
         Some(Self {
             location: start.get(3)?.clone(),
+            group: mode_group(columns, cells, &gametype)?,
             gametype,
-            group,
         })
     }
 
