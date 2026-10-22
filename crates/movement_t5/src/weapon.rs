@@ -1527,7 +1527,7 @@ fn special_fire<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 }
 
 /// Black Ops' special fire button.
-const SPECIAL_FIRE_BUTTON: u32 = 38;
+const SPECIAL_FIRE_BUTTON: u32 = buttons::SPECIAL_FIRE;
 
 /// The fire button (or a dual wield's left trigger) is held, or a burst or a
 /// shot in progress keeps firing.
@@ -2291,7 +2291,7 @@ mod throw_buttons {
     pub const C: u32 = 32;
     pub const D: u32 = 33;
     /// Cancels a cancelable offhand hold.
-    pub const CANCEL: u32 = 49;
+    pub const CANCEL: u32 = super::buttons::OFFHAND_CANCEL;
 }
 
 /// Black Ops' offhand slots.

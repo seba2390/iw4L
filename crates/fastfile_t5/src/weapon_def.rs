@@ -67,6 +67,11 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x3ac))
     }
 
+    /// `jamFireTime`
+    pub fn jam_fire_time(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x40))
+    }
+
     /// `fireDelay`
     pub fn fire_delay(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x378))

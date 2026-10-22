@@ -31,6 +31,10 @@ pub mod buttons {
 
     pub const USE_RELOAD: u32 = 0x20;
 
+    pub const LEAN_LEFT: u32 = 0x40;
+
+    pub const LEAN_RIGHT: u32 = 0x80;
+
     pub const PRONE: u32 = 0x100;
 
     pub const CROUCH: u32 = 0x200;
@@ -51,11 +55,17 @@ pub mod buttons {
 
     pub const LOCATION_CANCEL: u32 = 0x20000;
 
+    pub const NIGHTVISION: u32 = 0x40000;
+
     pub const THROW: u32 = 0x80000;
 
     pub const REMOTE_CONTROL: u32 = 0x100000;
 
     pub const OFFHAND_HOLD_CANCEL: u32 = 0x200000;
+
+    pub const DIVE: u32 = 1 << 22;
+
+    pub const SPECIAL_FIRE: u32 = 1 << 23;
 
     pub const CHANGE_ZOOM: u32 = 1 << 26;
 

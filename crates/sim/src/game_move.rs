@@ -241,6 +241,14 @@ pub(crate) fn run(
         ps.legs_timer = (ps.legs_timer - dt_ms).max(0);
         ps.torso_timer = (ps.torso_timer - dt_ms).max(0);
         ps.store_move_player(&player);
+        for signal in &outcome.signals {
+            if let Some(stance) = movement.forced_stance(signal) {
+                ps.push_stance_event(stance);
+            }
+            if movement.resets_ads(signal) {
+                ps.push_reset_ads_event();
+            }
+        }
     }
     apply_held(world, id, &held, &player.held);
     world.client_meta_mut(id).mirror_held_ammo(player.weapon);
@@ -620,6 +628,13 @@ pub(crate) fn set_stance(world: &mut FrameWorld, id: ClientId, stance: &str) -> 
         _ => return true,
     };
     if let Some(outcome) = update(world, id, |player| movement.set_stance(player, stance)) {
+        if let Some(ps) = world.player_mut(id) {
+            for signal in &outcome.signals {
+                if let Some(forced) = movement.forced_stance(signal) {
+                    ps.push_stance_event(forced);
+                }
+            }
+        }
         for gap in outcome.gaps {
             world.report_game_gap(gap);
         }

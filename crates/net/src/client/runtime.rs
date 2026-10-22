@@ -14,8 +14,8 @@ use crate::authority::inbox::{
 use crate::authority::runtime::{AuthorityInputGate, AuthorityWorld, ClientShotSamples};
 use crate::client::frame_clock::{FrameClock, GameActive, GameJoinCensus};
 use crate::client::input::{
-    ClientActionInput, LookState, accumulate_look, build_usercmd, frame_time_msec, key_frame_msec,
-    remote_control_axes,
+    ClientActionInput, LookState, accumulate_look, apply_game_client_input, build_usercmd,
+    frame_time_msec, key_frame_msec, remote_control_axes,
 };
 use crate::client::predict::{ClientPrediction, CmdSeq};
 use crate::client::presentation::presented::{
@@ -324,14 +324,21 @@ pub fn cycle_weapon_select(
     world: &sim::SimWorld,
     time: i32,
     next: bool,
+    movement: Option<&'static dyn game_api::movement::PlayerMovement>,
 ) {
     use input_iw4::weapon_select::{cycle_weapon, weapon_cycle_allowed};
     if !weapon_cycle_allowed(ps, time, select.time, 0, 0) {
         return;
     }
 
-    if (0x10..0x13).contains(&ps.weaponstate_primary) {
-        let offhand = ps.off_hand_index.max(0) as u32;
+    let offhand = movement
+        .and_then(|m| m.offhand_cancel_state(&ps.move_player(0, false)))
+        .or_else(|| {
+            (0x10..0x13)
+                .contains(&ps.weaponstate_primary)
+                .then_some(ps.off_hand_index.max(0) as u32)
+        });
+    if let Some(offhand) = offhand {
         let cancelable = world
             .weapon_combat_row(offhand)
             .unwrap_or_else(weapon_iw4::WeaponCombatFacts::none)
@@ -891,13 +898,20 @@ pub fn sample_client_input(
         Res<LocalCmdOverride>,
         Res<crate::client::input::AimKick>,
         ResMut<crate::client::input::CursorAim>,
+        Option<Res<game_api::ModeRules>>,
     ),
 ) {
-    let (mut cursor, aim, driven, kick, mut cursor_aim) = aim_cursor;
+    let (mut cursor, aim, driven, kick, mut cursor_aim, mode) = aim_cursor;
+    let movement = mode.as_deref().and_then(|mode| match mode.movement {
+        game_api::Rule::Known(game_api::MovementRules::Game(m)) => Some(m),
+        _ => None,
+    });
     push_phase(trace, "Input");
     if !gate.local_cmds_enabled {
         actions.client.weapon_cycles.clear();
         actions.client.action_slots.clear();
+        actions.client.stance_cmds.clear();
+        actions.client.attack_presses.clear();
         return;
     }
     actions.frame_msec = key_frame_msec(time.delta_secs());
@@ -1078,8 +1092,10 @@ pub fn sample_client_input(
         .and_then(|snapshot| snapshot.meta.for_client(local.0))
         .map(|meta| meta.life_sequence.0)
         .unwrap_or(0);
+    let mut forced_stances = Vec::new();
     if actions.stance_life != Some(life_sequence) {
         actions.client.stance_latch = 0;
+        actions.game_input = game_api::movement::ClientInputState::default();
         actions.stance_life = Some(life_sequence);
         actions.stance_event_sequence = ps.map_or(0, |ps| ps.event_sequence);
     } else if let Some(ps) = ps {
@@ -1091,12 +1107,20 @@ pub fn sample_client_input(
             for age in (0..pending.min(4)).rev() {
                 let seq = ps.event_sequence.wrapping_sub(1 + age);
                 match EntityEventKind(events[(seq & 3) as usize]) {
-                    EntityEventKind::STANCE_FORCE_STAND => actions.client.stance_latch = 0,
+                    EntityEventKind::STANCE_FORCE_STAND => {
+                        actions.client.stance_latch = 0;
+                        forced_stances.push(game_api::movement::Stance::Stand);
+                    }
                     EntityEventKind::STANCE_FORCE_CROUCH => {
                         actions.client.stance_latch = playerstate_iw4::buttons::CROUCH as i32;
+                        forced_stances.push(game_api::movement::Stance::Crouch);
                     }
                     EntityEventKind::STANCE_FORCE_PRONE => {
                         actions.client.stance_latch = playerstate_iw4::buttons::PRONE as i32;
+                        forced_stances.push(game_api::movement::Stance::Prone);
+                    }
+                    EntityEventKind::RESET_ADS => {
+                        actions.client.using_ads = false;
                     }
                     _ => {}
                 }
@@ -1150,6 +1174,10 @@ pub fn sample_client_input(
                     Some(facts) => facts.alternate_weapon,
                     None => 0,
                 },
+                Some(3) => {
+                    actions.client.nightvision_press = true;
+                    0
+                }
                 _ => 0,
             };
             if target == 0 {
@@ -1198,12 +1226,22 @@ pub fn sample_client_input(
                 prediction.0.world(),
                 clock.time(),
                 next,
+                movement,
             );
         }
     }
     actions.client.airborne =
         ps.is_some_and(|ps| ps.ground_entity_num == playerstate_iw4::ENTITYNUM_NONE);
     let mut cmd = build_usercmd(&mut actions, &look, 0);
+    let held_weapon = prediction.0.world().game_weapon(select.index);
+    apply_game_client_input(
+        &mut actions,
+        &mut cmd,
+        movement,
+        ps,
+        &forced_stances,
+        held_weapon,
+    );
     use_reload_as_reload(&mut actions, &mut cmd, ps);
     look.angles = cmd.angles;
     cmd.angles = kick.turn(cmd.angles);
