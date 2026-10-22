@@ -1011,6 +1011,27 @@ impl PlayerMovement for T5Movement {
         crate::missile::reset_detonation_time(missile, after_ms, world);
     }
 
+    /// Black Ops' client turns these events of its own player into its
+    /// invalid command hint: no frag grenade (2), no special grenade (3),
+    /// target too close (8), lock-on required (9), not enough clearance
+    /// (10).
+    fn command_hint(&self, signal: &MoveSignal) -> Option<i32> {
+        use movement_t5::events::event;
+        let MoveSignal::Event { event, .. } = *signal else {
+            return None;
+        };
+        match event {
+            event::NO_FRAG_GRENADE_HINT => Some(crate::code_hud::HINT_NO_FRAG_GRENADE),
+            event::NO_SPECIAL_GRENADE_HINT => Some(crate::code_hud::HINT_NO_SPECIAL_GRENADE),
+            event::TARGET_TOO_CLOSE_HINT => Some(crate::code_hud::HINT_TARGET_TOO_CLOSE),
+            event::LOCKON_REQUIRED_HINT => Some(crate::code_hud::HINT_LOCKON_REQUIRED),
+            event::TARGET_NOT_ENOUGH_CLEARANCE => {
+                Some(crate::code_hud::HINT_TARGET_NOT_ENOUGH_CLEARANCE)
+            }
+            _ => None,
+        }
+    }
+
     /// Black Ops' client names a footstep event's movement type and its
     /// parm's surface for `CodeCallback_PlayerFootstep`.
     fn footstep(&self, signal: &MoveSignal) -> Option<(&'static str, &'static str)> {

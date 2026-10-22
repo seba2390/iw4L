@@ -27,10 +27,24 @@ pub struct GameCodeHud {
     /// The game's weapon info: its action slot arrows and low ammo
     /// warning.
     pub weapon_info: Option<&'static WeaponInfoRules>,
+    /// The invalid command hint the client keeps, given what it kept, the
+    /// hint an event raised this frame (by the game's number) and the
+    /// client time.
+    pub command_hint: Option<CommandHintFn>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
 }
+
+/// The invalid command hint a client keeps: the game's number for it and
+/// the client time it was raised; number 0 is none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CommandHint {
+    pub kind: i32,
+    pub time: i32,
+}
+
+pub type CommandHintFn = fn(CommandHint, Option<i32>, i32) -> CommandHint;
 
 /// What a game's hint or message owner draw (its number) shows this frame.
 pub type OwnerHintFn = fn(i32, &OwnerHintView<'_>) -> OwnerHint;
@@ -47,6 +61,9 @@ pub struct OwnerHintView<'a> {
     pub paused: bool,
     /// A client dvar's value, when the client keeps it.
     pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+    /// The client time and the invalid command hint the client keeps.
+    pub now: i32,
+    pub command_hint: CommandHint,
 }
 
 /// A weapon definition's fields a hint reads.
@@ -73,6 +90,9 @@ pub enum OwnerHint {
         key: &'static str,
         binds: &'static [&'static str],
     },
+    /// The localized string `key` centred on the item in the item's colour
+    /// with this alpha.
+    Faded { key: &'static str, alpha: f32 },
     /// The game draws something the runtime does not.
     Unrun(&'static Unknown),
 }
@@ -94,6 +114,9 @@ pub struct WeaponInfoRules {
     pub bind_label: fn(&WeaponInfoView<'_>, usize, [f32; 4], i32) -> [f32; 4],
     /// The low ammo warning, given the time the weapon info was shown.
     pub low_ammo: fn(&WeaponInfoView<'_>, i32) -> Option<LowAmmoWarning>,
+    /// The invalid command hint (the game's number) pressing the action
+    /// slot `slot_pressed` raises.
+    pub slot_hint: fn(&WeaponInfoView<'_>) -> Option<i32>,
 }
 
 /// What a game's weapon info reads of the local player.
@@ -106,8 +129,12 @@ pub struct WeaponInfoView<'a> {
     /// changed its selection.
     pub selected: u32,
     pub selected_at: i32,
-    /// The client time an action slot key was last pressed.
+    /// The client time an action slot key was last pressed, and its slot
+    /// (from 0).
     pub slot_pressed_at: i32,
+    pub slot_pressed: usize,
+    /// The weapon selected when that key was pressed.
+    pub slot_pressed_from: u32,
     /// An action slot's kind and weapon, by slot.
     pub action_slot: &'a dyn Fn(usize) -> (i32, u32),
     /// A weapon's definition and variant in the game's layout.

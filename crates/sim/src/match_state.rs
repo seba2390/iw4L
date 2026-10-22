@@ -156,6 +156,10 @@ pub struct ClientMatchState {
     pub(crate) controls: ScriptControls,
 
     pub(crate) max_health: i32,
+
+    /// The last invalid command hint the game's movement raised for the
+    /// player (the game's number for it), and a count of them.
+    pub(crate) command_hint: (u8, i32),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -237,6 +241,7 @@ impl ClientMatchState {
             item_use_press_ms: self.item_use_press_ms,
             ammo_clip: self.ammo_clip,
             ammo_stock: self.ammo_stock,
+            command_hint: self.command_hint,
             score: self.score,
             kills: self.kills,
             deaths: self.deaths,

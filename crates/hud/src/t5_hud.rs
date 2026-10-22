@@ -77,14 +77,25 @@ pub(crate) struct WeaponInfoFrame<'a> {
     pub shown_at: i32,
 }
 
+/// The invalid command hint the client keeps, and what it last saw of the
+/// server's count of them and of the action slot presses.
+#[derive(Default)]
+pub(crate) struct CommandHintLatch {
+    pub seen_count: Option<u8>,
+    pub slot_time: i32,
+    pub kept: game_api::hud::CommandHint,
+}
+
 /// A hint or message owner draw, resolved for the frame.
 #[derive(Clone, Debug)]
 pub(crate) enum OwnerHintText {
     Nothing,
-    /// Text centred on the item, in the colour the game draws it.
+    /// Text centred on the item, in the colour the game draws it, with
+    /// its alpha when the game sets one.
     Text {
         text: String,
         white: bool,
+        alpha: Option<f32>,
     },
 }
 
@@ -109,6 +120,8 @@ pub(crate) fn resolve_owner_hints(
     namespace: asset_core::AssetNamespace,
     input: Option<&frame::HudInputView>,
     reported: &mut std::collections::HashSet<&'static str>,
+    now: i32,
+    command_hint: game_api::hud::CommandHint,
 ) -> Vec<(i32, OwnerHintText)> {
     let player = ps.move_player(local, false);
     let weapon = |index: u32| {
@@ -128,6 +141,8 @@ pub(crate) fn resolve_owner_hints(
         scoreboard,
         paused,
         dvar: &dvar,
+        now,
+        command_hint,
     };
     let mut out = Vec::new();
     for owner_draw in OWNER_HINT_DRAWS {
@@ -151,6 +166,17 @@ pub(crate) fn resolve_owner_hints(
                 OwnerHintText::Text {
                     text: template.replace("&&1", bind),
                     white: owner_draw != 80,
+                    alpha: None,
+                }
+            }
+            game_api::hud::OwnerHint::Faded { key, alpha } => {
+                let Some(text) = strings.and_then(|s| s.0.text_in(namespace, key)) else {
+                    continue;
+                };
+                OwnerHintText::Text {
+                    text: text.to_owned(),
+                    white: false,
+                    alpha: Some(alpha),
                 }
             }
         };
@@ -166,10 +192,13 @@ fn paint_owner_hint(
     hint: &OwnerHintText,
     frame: &mut ChromeFrame,
 ) -> OwnerDrawPaint {
-    let OwnerHintText::Text { text, white } = hint else {
+    let OwnerHintText::Text { text, white, alpha } = hint else {
         return OwnerDrawPaint::Painted;
     };
-    let color = if *white { [1.0; 4] } else { args.color };
+    let mut color = if *white { [1.0; 4] } else { args.color };
+    if let Some(alpha) = alpha {
+        color[3] = *alpha;
+    }
     match crate::chrome::push_owner_text_at(
         args,
         text,
