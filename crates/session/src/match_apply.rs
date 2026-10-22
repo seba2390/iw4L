@@ -1467,9 +1467,11 @@ fn preflight_match_install(
         .collect();
     traversals.sort_unstable();
     traversals.dedup();
+    let start = asset_transport::zombies_start().filter(|start| start.gametype == gametype);
     let request = game_api::ScriptRequest {
         map: zone,
         gametype,
+        location: start.as_ref().and_then(|start| start.location.as_deref()),
         entities: sources.0.entities().unwrap_or(""),
         traversals: &traversals,
         config: &config,

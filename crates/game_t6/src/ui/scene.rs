@@ -1210,17 +1210,46 @@ impl Host {
         if table.columns <= column.max(7) {
             return None;
         }
-        table
-            .cells
-            .chunks_exact(table.columns)
-            .find(|row| {
-                row[0] == "6" && row[2].eq_ignore_ascii_case(&self.input.map) && row[7] == "YES"
+        let starts = || {
+            table
+                .cells
+                .chunks_exact(table.columns)
+                .filter(|row| row[0] == "6" && row[2].eq_ignore_ascii_case(&self.input.map))
+        };
+        // The match's gametype and location, else the map's default start.
+        let picked = || {
+            starts().filter(|row| {
+                row[4] == self.input.gametype
+                    && (self.input.location.is_empty() || row[3] == self.input.location)
             })
+        };
+        picked()
+            .find(|row| row[7] == "YES")
+            .or_else(|| picked().next())
+            .or_else(|| starts().find(|row| row[7] == "YES"))
             .map(|row| row[column].as_str())
     }
 
+    /// The start's gametype's mode group: the last column of its gametype
+    /// row.
     fn zm_gamemode_group(&self) -> &str {
-        self.zm_default_row(9).unwrap_or("zclassic")
+        let group = self.zm_default_row(4).and_then(|gametype| {
+            let table = self
+                .input
+                .tables
+                .iter()
+                .find(|table| table.name.eq_ignore_ascii_case("zm/gametypestable.csv"))?;
+            table
+                .cells
+                .chunks_exact(table.columns.max(1))
+                .find(|row| {
+                    row.first().is_some_and(|c| c == "0")
+                        && row.get(1).is_some_and(|c| c == gametype)
+                })?
+                .get(9)
+                .map(String::as_str)
+        });
+        group.unwrap_or("zclassic")
     }
 
     fn zm_start_location(&self) -> &str {

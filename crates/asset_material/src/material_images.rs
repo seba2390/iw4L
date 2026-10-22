@@ -897,9 +897,9 @@ pub fn decode_map_preview(
 }
 
 /// Black Ops 2's zombies loading screen: the material
-/// `loadscreen_<map>_<ui_gametype>_<ui_zm_mapstartlocation>`, for the
-/// gametype and location the map starts with by default (its start row in
-/// `zm/gametypestable.csv`, the one marked `YES`).
+/// `loadscreen_<map>_<ui_gametype>_<ui_zm_mapstartlocation>`, for the start
+/// row of `zm/gametypestable.csv` the load runs: the picked gametype and
+/// location's, else the map's default (the row marked `YES`).
 fn t6_zombies_loadscreen(
     publication: &crate::UiImagePublication,
     namespace: asset_core::AssetNamespace,
@@ -910,11 +910,30 @@ fn t6_zombies_loadscreen(
         .script_tables(namespace)
         .into_iter()
         .find(|table| table.name.eq_ignore_ascii_case("zm/gametypestable.csv"))?;
-    let start = table.cells.chunks_exact(table.columns.max(1)).find(|row| {
-        row.first().is_some_and(|cell| cell == START_ROW)
-            && row.get(2).is_some_and(|cell| cell == map_name)
-            && row.get(7).is_some_and(|cell| cell == "YES")
-    })?;
+    let starts = || {
+        table
+            .cells
+            .chunks_exact(table.columns.max(1))
+            .filter(|row| {
+                row.first().is_some_and(|cell| cell == START_ROW)
+                    && row.get(2).is_some_and(|cell| cell == map_name)
+            })
+    };
+    let default = |row: &&[String]| row.get(7).is_some_and(|cell| cell == "YES");
+    let picked = asset_transport::zombies_start().and_then(|start| {
+        let start = &start;
+        let of_start = || {
+            starts().filter(move |row| {
+                row.get(4) == Some(&start.gametype)
+                    && start
+                        .location
+                        .as_ref()
+                        .is_none_or(|location| row.get(3) == Some(location))
+            })
+        };
+        of_start().find(default).or_else(|| of_start().next())
+    });
+    let start = picked.or_else(|| starts().find(default))?;
     Some(format!(
         "loadscreen_{map_name}_{}_{}",
         start.get(4)?,

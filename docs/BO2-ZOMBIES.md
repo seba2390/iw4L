@@ -43,7 +43,9 @@ repository, so a machine without a capture cannot start these maps yet.
 | Mob of the Dead | `t6:zm_prison` | Black Ops 2's | not yet run |
 | Origins | `t6:zm_tomb` | IW4L's rules | older builds only |
 
-Grief, Turned and TranZit's Town, Farm and Bus Depot are refused
+TranZit's Survival runs on Bus Depot, Town and Farm (Library → Zombies, or
+`IW4L_GAMETYPE=zstandard IW4L_ZM_LOCATION=town|farm|transit` on the command
+line); the rounds test reaches round 2 on each. Grief and Turned are refused
 (`t6.scripts.zm_gametypes`).
 
 ## Origins (IW4L's rules)

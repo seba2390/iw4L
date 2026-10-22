@@ -3,6 +3,7 @@ pub mod discover;
 pub mod ipak;
 pub mod iwd;
 pub mod load_jobs;
+pub mod mode_zone;
 pub mod namespace_trees;
 pub mod progress;
 pub mod sab;
@@ -37,6 +38,7 @@ pub use iwd::{
     iwd_read_cost, read_iwd_named, read_text,
 };
 pub use load_jobs::{CacheResult, Job, JobKind};
+pub use mode_zone::{ZombiesStart, mode_zone, select_zombies_start, zombies_start};
 pub use namespace_trees::{NamespaceSoundIwd, NamespaceTree, NamespaceTrees};
 pub use progress::{
     LoadLaneTiming, LoadProgress, LoadSnapshot, StageEnd, StageHandle, StageId, StageKey,
