@@ -46,8 +46,8 @@ fn missile_unknown() -> &'static Unknown {
 fn bolt_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.bolt",
-        "a bolt (crossbow, ballistic knife) shows no impact where it strikes, and a retrievable one is not left to pick up",
-        "Black Ops' bolt impact event and its retrievable weapon objects"
+        "a bolt (crossbow, ballistic knife) shows no impact where it strikes",
+        "Black Ops' bolt impact event and the client's handling of it"
     )
 }
 
@@ -626,8 +626,46 @@ fn impact(
             surface_type: surface_type(trace) as u8,
         });
     }
-    if def.retrievable() || def.die_on_respawn() {
-        gaps.push(bolt_unknown());
+    // A retrievable bolt (the ballistic knife) stays as a weapon object:
+    // its scripts hear where it came to rest and what it struck.
+    let retrievable = def.retrievable() || def.die_on_respawn();
+    if retrievable {
+        let prey = match trace.hit {
+            BulletHitType::Entity(entity) if entity != ENTITY_WORLD => entity,
+            _ => ENTITY_NONE,
+        };
+        let bone = match (prey, trace.bone) {
+            (ENTITY_NONE, _) => NotifyArg::String(""),
+            (entity, Some(bone)) => NotifyArg::Bone { entity, bone },
+            (entity, None) => match world.entity(entity) {
+                Some(e)
+                    if matches!(
+                        e.kind,
+                        game_api::fire::FireEntityKind::Player
+                            | game_api::fire::FireEntityKind::Actor
+                    ) =>
+                {
+                    NotifyArg::String("j_knee_ri")
+                }
+                _ => NotifyArg::String(""),
+            },
+        };
+        world.notify(
+            missile.entity,
+            "stationary",
+            &[
+                NotifyArg::Vector(end),
+                NotifyArg::Vector(trace.normal),
+                NotifyArg::Vector(vectoangles(dir)),
+                NotifyArg::Entity(missile.owner),
+                if prey == ENTITY_NONE {
+                    NotifyArg::Undefined
+                } else {
+                    NotifyArg::Entity(prey)
+                },
+                bone,
+            ],
+        );
     }
     if def.proj_impact_explode() && def.explosion_inner_damage() != 0 {
         let cone = (def.damage_cone_angle() - 180.0 < 0.0)
@@ -669,7 +707,11 @@ fn impact(
         gaps.push(missile_unknown());
     }
     missile.origin = end;
-    Some(MissileRun::Gone)
+    Some(if retrievable {
+        MissileRun::Stationary
+    } else {
+        MissileRun::Gone
+    })
 }
 
 /// Resets a missile's fuse (`resetmissiledetonationtime`): `after_ms` from
