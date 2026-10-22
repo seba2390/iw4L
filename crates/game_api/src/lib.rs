@@ -80,6 +80,9 @@ pub struct ClientCallbacks {
     /// The local player landed: `(local client, player, surface, first
     /// person, quiet, hurt)`.
     pub player_land: &'static str,
+    /// The local player moved through foliage: `(local client, player,
+    /// first person, quiet)`.
+    pub player_foliage: &'static str,
     /// A snapshot entity (actor, missile, vehicle) spawned on the client:
     /// `self = entity, (local client)`.
     pub entity_spawned: &'static str,

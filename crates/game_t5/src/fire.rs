@@ -138,14 +138,6 @@ pub(crate) fn fire_unknown() -> &'static Unknown {
     )
 }
 
-fn melee_events_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.weapons.melee_events",
-        "a melee blow's hit event (its sound and effect on what it struck) is not sent",
-        "Black Ops' melee hit events in the runtime's event stream"
-    )
-}
-
 fn mounted_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.mounted_fire",
@@ -208,8 +200,8 @@ pub(crate) fn server_events(
         let &MoveSignal::Event { event, parm } = signal else {
             continue;
         };
-        if let Some(sent) = weapon_event(event) {
-            world.weapon_event(ps.client_num, ps.weapon, sent);
+        if let Some((weapon, sent)) = weapon_event(ps, event, parm, world) {
+            world.weapon_event(ps.client_num, weapon, sent);
         }
         match event {
             ev::FIRE_WEAPON
@@ -276,8 +268,14 @@ pub(crate) fn server_events(
 
 /// The weapon events of a player's movement every client hears: the ones
 /// Black Ops' client event handler plays a weapon sound for.
-fn weapon_event(event: i32) -> Option<WeaponEvent> {
-    Some(match event {
+fn weapon_event(
+    ps: &PlayerState,
+    event: i32,
+    parm: i32,
+    world: &dyn FireWorld,
+) -> Option<(u32, WeaponEvent)> {
+    let mut weapon = ps.weapon;
+    let sent = match event {
         ev::FIRE_WEAPON => WeaponEvent::Fire {
             left: false,
             last_shot: false,
@@ -294,6 +292,32 @@ fn weapon_event(event: i32) -> Option<WeaponEvent> {
             left: true,
             last_shot: true,
         },
+        ev::NOAMMO | ev::NOAMMO_LEFT => {
+            if event == ev::NOAMMO_LEFT {
+                weapon = world.weapon(weapon).map_or(0, |w| w.dual_wield_weapon);
+            }
+            let suppressed = weapon_bytes(world, weapon).is_some_and(|(def, var)| {
+                WeaponDefView::new(&def, &var).is_some_and(|d| d.suppress_ammo_reserve_display())
+            });
+            if suppressed {
+                return None;
+            }
+            WeaponEvent::NoAmmo
+        }
+        ev::EJECT_BRASS => WeaponEvent::EjectBrass,
+        ev::MELEE_SWIPE => {
+            let strikes_with_held = weapon_bytes(world, weapon).is_some_and(|(def, var)| {
+                WeaponDefView::new(&def, &var).is_some_and(|d| d.bayonet() || d.use_as_melee())
+            });
+            if !strikes_with_held {
+                weapon = ps.melee_weapon;
+            }
+            WeaponEvent::MeleeSwipe
+        }
+        ev::PREP_OFFHAND => {
+            weapon = u32::try_from(parm).unwrap_or(ps.offhand_index);
+            WeaponEvent::Pullback
+        }
         ev::RELOAD => WeaponEvent::Reload,
         ev::RELOAD_FROM_EMPTY => WeaponEvent::ReloadFromEmpty,
         ev::RELOAD_START => WeaponEvent::ReloadStart,
@@ -305,7 +329,8 @@ fn weapon_event(event: i32) -> Option<WeaponEvent> {
         ev::PULLBACK_WEAPON => WeaponEvent::Pullback,
         ev::RECHAMBER_WEAPON => WeaponEvent::Rechamber,
         _ => return None,
-    })
+    };
+    Some((weapon, sent))
 }
 
 /// The time a shot is fired at: the command's, no more than a second behind
@@ -730,7 +755,14 @@ impl Shot<'_> {
         }
         let target = hit_id(&trace);
         let entity = world.entity(target);
-        self.gaps.push(melee_events_unknown());
+        let knife = def.has_gun_model();
+        let hit_sentient = entity.is_some_and(sentient);
+        if hit_sentient {
+            world.weapon_event(attacker, weapon, WeaponEvent::MeleeBlood { point });
+            world.weapon_event(attacker, weapon, WeaponEvent::MeleeHit { point, knife });
+        } else {
+            world.weapon_event(attacker, weapon, WeaponEvent::MeleeMiss { point, knife });
+        }
         let Some(entity) = entity.filter(|e| e.takes_damage) else {
             return;
         };
@@ -936,7 +968,6 @@ pub(crate) fn actor_melee(
     {
         return (ENTITY_NONE, gaps);
     }
-    gaps.push(melee_events_unknown());
     let Some(entity) = entity.filter(|e| target != ENTITY_WORLD && e.takes_damage) else {
         return (ENTITY_NONE, gaps);
     };

@@ -1389,7 +1389,8 @@ fn run_frame(
                 if client_num != 0 {
                     continue;
                 }
-                let player = Value::Object(world.resource::<ClientView>().locals[0].object);
+                let player_obj = world.resource::<ClientView>().locals[0].object;
+                let player = Value::Object(player_obj);
                 match event {
                     game_api::movement::JumpLand::Jump(surface) => (
                         callbacks.player_jump,
@@ -1412,6 +1413,37 @@ fn run_frame(
                             Value::Int(hurt.into()),
                         ],
                     ),
+                    game_api::movement::JumpLand::Foliage => (
+                        callbacks.player_foliage,
+                        vec![Value::Int(0), player, Value::Int(1), Value::Int(0)],
+                    ),
+                    game_api::movement::JumpLand::Mantle => {
+                        play_local_code_sound(world, "chr_launch_exert_plr".to_owned());
+                        continue;
+                    }
+                    game_api::movement::JumpLand::DiveStart => {
+                        play_local_code_sound(world, "fly_dtp_launch_plr".to_owned());
+                        continue;
+                    }
+                    game_api::movement::JumpLand::DiveLand(surf) => {
+                        play_local_code_sound(world, format!("fly_dtp_land_plr_{surf}"));
+                        play_local_code_sound(world, format!("fly_dtp_slide_loop_plr_{surf}"));
+                        super::notify_entity(
+                            world,
+                            player_obj,
+                            "dtp_land",
+                            &[super::NotifyValue::Int(0)],
+                        );
+                        continue;
+                    }
+                    game_api::movement::JumpLand::SlideStart(surf) => {
+                        play_local_code_sound(world, format!("fly_pslide_loop_plr_{surf}"));
+                        continue;
+                    }
+                    game_api::movement::JumpLand::SlideStop(surf) => {
+                        play_local_code_sound(world, format!("fly_pslide_stop_plr_{surf}"));
+                        continue;
+                    }
                     _ => continue,
                 }
             }
@@ -1534,6 +1566,22 @@ fn run_frame(
         diag::warn!(Sim, "csc: client scripts stopped: {fault}");
         client.stopped = true;
     }
+}
+
+fn play_local_code_sound(world: &mut World, alias: String) {
+    let mut output = world.resource_mut::<ClientOutput>();
+    let id = output.sound_id();
+    output.issued.insert(id);
+    output
+        .sound_commands
+        .push(crate::ScriptAudioCommand::ClientSound {
+            client: crate::ClientId(0),
+            id,
+            alias,
+            origin: None,
+            volume: 1.0,
+            fade_in_ms: 0,
+        });
 }
 
 fn sync_snapshot_entities(

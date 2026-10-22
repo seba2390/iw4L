@@ -529,12 +529,42 @@ pub struct ClientFireRules {
     /// The sound the game's client plays where a bullet strikes, when it
     /// plays its own (the impact effects' sounds otherwise).
     pub impact_sound: Option<ImpactSoundFn>,
+    /// The whizby and crack sounds a bullet passing the view plays.
+    pub whizby: Option<WhizbyFn>,
+}
+
+/// The weapon fields [`ImpactSoundFn`] and [`WhizbyFn`] read.
+pub struct ImpactSoundWeapon<'a> {
+    pub def: &'a [u8],
+    pub variant: &'a [u8],
+    pub explosion_sounds: &'a [Option<String>; 3],
+    pub bounce_sounds: Option<&'a [Option<String>; 31]>,
+    pub whizby_sound: Option<&'a str>,
+    pub crack_sound: Option<&'a str>,
+}
+
+/// What a bullet passing the view plays, and where along its segment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WhizbySound {
+    pub origin: [f32; 3],
+    pub alias: String,
+    pub crack_alias: Option<String>,
 }
 
 /// The alias a bullet's impact plays, from the weapon's definition and
 /// variant in the game's layout, the surface struck (by the game's
 /// numbers) and whether it is the exit side; `None` plays none.
-pub type ImpactSoundFn = fn(def: &[u8], variant: &[u8], surface: u8, exit: bool) -> Option<String>;
+pub type ImpactSoundFn =
+    fn(weapon: &ImpactSoundWeapon<'_>, surface: u8, exit: bool) -> Option<String>;
+
+/// The whizby sound a bullet from `start` to `end` plays when passing
+/// `view_origin`.
+pub type WhizbyFn = fn(
+    weapon: &ImpactSoundWeapon<'_>,
+    start: [f32; 3],
+    end: [f32; 3],
+    view_origin: [f32; 3],
+) -> Option<WhizbySound>;
 
 /// A shooter as a game's beam rule reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
