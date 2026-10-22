@@ -10,6 +10,7 @@ use movement_t5::weapon::state as ws;
 pub(crate) static WEAPON_INFO: WeaponInfoRules = WeaponInfoRules {
     update,
     arrow,
+    bind_label,
     low_ammo,
 };
 
@@ -19,6 +20,9 @@ const FADE_AMMO_DISPLAY: f32 = 8.0;
 const FADE_OUT_MS: i32 = 700;
 /// A lit arrow's alpha.
 const ARROW_LIT_ALPHA: f32 = 0.8;
+/// A lit key label's green and blue factors.
+const BIND_LIT_GREEN: f32 = 0.8;
+const BIND_LIT_BLUE: f32 = 0.4;
 /// The share of a weapon's most rounds beside the clip under which they
 /// count as low.
 const LOW_STOCK_FRAC: f32 = 0.2;
@@ -270,6 +274,21 @@ fn arrow(view: &WeaponInfoView<'_>, slot: usize, item_alpha: f32, shown_at: i32)
         item_alpha
     };
     alpha * fade(view, shown_at)
+}
+
+/// A key label lights by the arrows' rule: its green and blue take 0.8 and
+/// 0.4 and its alpha is 0.8; then it takes the weapon info's fade.
+fn bind_label(view: &WeaponInfoView<'_>, slot: usize, color: [f32; 4], shown_at: i32) -> [f32; 4] {
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    let mut color = color;
+    if slot_lit(view, &ps, slot) {
+        color[1] *= BIND_LIT_GREEN;
+        color[2] *= BIND_LIT_BLUE;
+        color[3] = ARROW_LIT_ALPHA;
+    }
+    color[3] *= fade(view, shown_at);
+    color
 }
 
 fn slot_lit(view: &WeaponInfoView<'_>, ps: &PlayerState, slot: usize) -> bool {

@@ -88,6 +88,10 @@ pub struct WeaponInfoRules {
     /// The alpha of an action slot's arrow (by slot, from 0), given the
     /// item's own alpha and the time the weapon info was shown.
     pub arrow: fn(&WeaponInfoView<'_>, usize, f32, i32) -> f32,
+    /// The colour of an action slot's key label (by slot, from 0), given
+    /// the item's own colour and the time the weapon info was shown; alpha
+    /// 0 draws nothing.
+    pub bind_label: fn(&WeaponInfoView<'_>, usize, [f32; 4], i32) -> [f32; 4],
     /// The low ammo warning, given the time the weapon info was shown.
     pub low_ammo: fn(&WeaponInfoView<'_>, i32) -> Option<LowAmmoWarning>,
 }
