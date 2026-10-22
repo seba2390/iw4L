@@ -50,6 +50,7 @@ mod projectile_loops;
 
 mod weapon_lock;
 
+mod duck_mix;
 mod script_ambient;
 mod script_mix;
 mod script_music;

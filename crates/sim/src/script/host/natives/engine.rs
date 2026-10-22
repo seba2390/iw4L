@@ -771,6 +771,7 @@ pub(crate) fn deliver_timed_notifies(world: &mut World) {
             {
                 sound.duration_ms = length_ms;
                 sound.start_ms = now;
+                crate::sound_trace::length_report(number, length_ms);
             }
         }
         let due: Vec<i32> = runtime
@@ -787,8 +788,16 @@ pub(crate) fn deliver_timed_notifies(world: &mut World) {
             .map(|(number, _)| *number)
             .collect();
         due.into_iter()
-            .filter_map(|number| runtime.sound_notifies.remove(&number))
-            .map(|sound| (sound.receiver, sound.notify))
+            .filter_map(|number| {
+                let sound = runtime.sound_notifies.remove(&number)?;
+                crate::sound_trace::notify_due(
+                    number,
+                    &sound.notify,
+                    now - sound.start_ms,
+                    sound.duration_ms >= 0,
+                );
+                Some((sound.receiver, sound.notify))
+            })
             .collect()
     };
     for (receiver, notify) in sounds {

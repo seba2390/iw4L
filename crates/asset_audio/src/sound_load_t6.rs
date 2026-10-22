@@ -16,6 +16,9 @@ const SND_ALIAS: u32 = 96;
 const SND_ALIAS_SECONDARY: usize = 12;
 const SND_ALIAS_FLAGS0: usize = 24;
 
+/// The namespace Black Ops 2's sounds are captured under.
+const NAMESPACE: crate::AssetNamespace = crate::AssetNamespace::T6;
+
 fn le16(b: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([b[at], b[at + 1]])
 }
@@ -51,6 +54,9 @@ struct SoundGlobals {
     pans: Vec<(String, [f32; 6])>,
     groups: Vec<crate::MixerGroup>,
     mix: Option<crate::SoundMixNames>,
+    /// How many duck groups the driver declares (each duck's attenuation
+    /// has one volume per group).
+    duck_groups: u32,
 }
 
 /// Each name hash at `at` in the rows of a count and pointer.
@@ -127,6 +133,9 @@ fn capture_globals(loads: &[&ZoneLoad]) -> SoundGlobals {
                     snapshots: Vec::new(),
                 });
             }
+            if globals.duck_groups == 0 {
+                globals.duck_groups = le32(&asset.header, 0x1c);
+            }
             if globals.pans.is_empty() {
                 globals.pans = rows(20, 24, 60)
                     .iter()
@@ -136,6 +145,39 @@ fn capture_globals(loads: &[&ZoneLoad]) -> SoundGlobals {
         }
     }
     globals
+}
+
+/// A bank's ducks (76 bytes each, count and pointer at 0x18): the name's
+/// hash at 0x20, fade-in, fade-out, start delay, distance and length at
+/// 0x24 to 0x34, and a pointer to one volume per duck group at 0x40.
+fn bank_ducks(load: &ZoneLoad, header: &[u8], groups: u32) -> Vec<crate::SoundDuck> {
+    const SIZE: u32 = 76;
+    let Some(base) = header.get(0x1c..0x20).and_then(|b| decode_ptr(le32(b, 0))) else {
+        return Vec::new();
+    };
+    let float = |b: &[u8], at| f32::from_bits(le32(b, at));
+    (0..le32(header, 0x18))
+        .map_while(|i| load.blocks.bytes(base.at(i * SIZE), SIZE as usize).ok())
+        .map(|row| crate::SoundDuck {
+            hash: le32(row, 0x20),
+            fade_in: float(row, 0x24),
+            fade_out: float(row, 0x28),
+            start_delay: float(row, 0x2c),
+            distance: float(row, 0x30),
+            length: float(row, 0x34),
+            attenuation: decode_ptr(le32(row, 0x40))
+                .and_then(|at| load.blocks.bytes(at, groups as usize * 4).ok())
+                .map(|bytes| {
+                    bytes
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|b| f32::from_le_bytes(*b))
+                        .collect()
+                })
+                .unwrap_or_else(Vec::new),
+        })
+        .collect()
 }
 
 fn sound_rawfile(name: &str) -> bool {
@@ -217,7 +259,7 @@ pub fn capture_t6_sounds<'n>(
         }
     }
     let (rawfile_count, rawfile_bytes) = catalog
-        .rawfiles_in(crate::AssetNamespace::T6)
+        .rawfiles_in(NAMESPACE)
         .fold((0usize, 0usize), |(count, bytes), (_, data)| {
             (count + 1, bytes + data.len())
         });
@@ -225,7 +267,22 @@ pub fn capture_t6_sounds<'n>(
         "t6 audio rawfiles: n={rawfile_count} bytes={rawfile_bytes} ignored={ignored_rawfiles}"
     ));
     if !globals.groups.is_empty() {
-        catalog.ingest_mixer_groups(crate::AssetNamespace::T6, globals.groups.clone());
+        catalog.ingest_mixer_groups(NAMESPACE, globals.groups.clone());
+    }
+    if let Some(mix) = &globals.mix {
+        // The driver's contexts, the `mature` one starting `explicit` (the
+        // game setting the client hands its sound thread, on by default).
+        catalog.ingest_sound_contexts(
+            NAMESPACE,
+            crate::SoundContexts {
+                defs: mix
+                    .contexts
+                    .iter()
+                    .map(|&(ty, values)| crate::SoundContextDef { ty, values })
+                    .collect(),
+                initial: vec![(snd_hash_name("mature"), snd_hash_name("explicit"))],
+            },
+        );
     }
     if let Some(mut mix) = globals.mix.clone() {
         // Each bank's mixer snapshots (76 bytes, at 0x18), every bank
@@ -235,6 +292,10 @@ pub fn capture_t6_sounds<'n>(
                 if bank.header.len() >= 0x20 {
                     mix.snapshots
                         .extend(row_hashes(load, &bank.header, 0x18, 76, 0x20));
+                    catalog.ingest_ducks(
+                        NAMESPACE,
+                        bank_ducks(load, &bank.header, globals.duck_groups),
+                    );
                 }
             }
         }
@@ -251,6 +312,7 @@ pub fn capture_t6_sounds<'n>(
             report.push(format!("t6 sound {name}: no alias"));
             continue;
         };
+        catalog.set_playback_ms(NAMESPACE, name, playback_ms(load, head, count, banks));
         let mut aliases = Vec::with_capacity(count as usize);
         for k in 0..count {
             let Ok(row) = load
@@ -304,8 +366,10 @@ pub fn capture_t6_sounds<'n>(
                 t6_speaker_pan: pan.map(|(_, gains)| *gains),
                 limit_count: Some(row[93]),
                 entity_limit_count: Some(row[94]),
-                snapshot_group: None,
-                context: None,
+                // The duck group whose volume the voice plays at.
+                snapshot_group: Some(row[95]),
+                // The context type and the value the variant plays in.
+                context: Some([le32(row, 36), le32(row, 40)]),
                 voice_priority: Some(crate::VoicePriority {
                     thresholds: [row[86], row[87]],
                     values: [row[90], row[91]],
@@ -329,6 +393,51 @@ pub fn capture_t6_sounds<'n>(
     catalog.resolve_loaded_edges();
     catalog.publish();
     (catalog, filled, report)
+}
+
+/// The engine's playback time of an alias (`soundgetplaybacktime`): the
+/// longest of its first 64 variants, each its asset's length in msec and
+/// 500 more from a loaded bank, 250 more from a streamed one; a variant with
+/// no asset makes it 0, one whose asset is in no bank is passed over, and
+/// -1 when none counts.
+fn playback_ms(load: &ZoneLoad, head: Ptr, count: u32, banks: &[SoundAssetBank]) -> i32 {
+    const VARIANTS: u32 = 64;
+    const LOADED_EXTRA_MS: u32 = 500;
+    const STREAMED_EXTRA_MS: u32 = 250;
+    let mut longest = -1;
+    for k in 0..count.min(VARIANTS) {
+        let Ok(row) = load
+            .blocks
+            .bytes(head.at(k * SND_ALIAS), SND_ALIAS as usize)
+        else {
+            continue;
+        };
+        let asset = le32(row, 16);
+        if asset == 0 {
+            return 0;
+        }
+        let found = |loaded: bool| {
+            banks.iter().find_map(|bank| {
+                let streamed = bank
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("sabs"));
+                (streamed != loaded).then(|| bank.entry(asset)).flatten()
+            })
+        };
+        let Some((entry, extra)) = found(true)
+            .map(|entry| (entry, LOADED_EXTRA_MS))
+            .or_else(|| found(false).map(|entry| (entry, STREAMED_EXTRA_MS)))
+        else {
+            continue;
+        };
+        let Some(rate) = entry.frame_rate() else {
+            continue;
+        };
+        let ms = (entry.frame_count.wrapping_mul(1000) / rate + extra) as i32;
+        longest = longest.max(ms);
+    }
+    longest
 }
 
 fn load_asset(

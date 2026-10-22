@@ -1,19 +1,17 @@
-//! Black Ops 2's `playsoundwithnotify`: a sound at the entity, and a notify
-//! once the sound's length has passed.
+//! Black Ops 2's `playsoundwithnotify`: a sound on the entity, and a notify
+//! once the sound has played, as long as the client reports it lasts (the
+//! engine's wait when no client reported it: 5000 ms).
 
 use super::string;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
-use bevy_ecs::prelude::{Resource, World};
-use std::collections::BTreeMap;
+use bevy_ecs::prelude::World;
 use std::sync::Arc;
 
-/// How long the engine waits when no length was reported for the sound.
-const UNREPORTED_LENGTH_MS: i64 = 5000;
-
-/// Each entity's notify waiting on its sound.
-#[derive(Resource, Default)]
-struct SoundWaits(BTreeMap<u64, Arc<str>>);
-
+/// `playsoundwithnotify(alias, [notify])`: an alias the game has is played
+/// on the entity, the clients told to report its length; with a notify, the
+/// entity raises it once that length has passed since the report (5000 ms
+/// when none comes), a notify still waiting being raised first. An unknown
+/// alias plays nothing and sets no notify.
 fn play_sound_with_notify(
     world: &mut World,
     receiver: &Value,
@@ -30,50 +28,37 @@ fn play_sound_with_notify(
     } else {
         None
     };
-    if alias.is_empty() {
+    let known = !alias.is_empty()
+        && crate::frame::FrameWorld::from_world(world)
+            .script_sound_exists(&alias)
+            .ok_or("t6.sound.aliases: the sound alias catalog is not installed")?;
+    if !known {
         return Ok(Value::Undefined);
     }
-    let origin = match world
-        .resource_mut::<RoundScript>()
-        .object_field(id, "origin")
-    {
-        Value::Vector(origin) => origin.map(f32::trunc),
-        _ => [0.0; 3],
-    };
-    super::super::engine::sound_alias_event(world, origin, &alias)?;
-    let Some(notify) = notify else {
-        return Ok(Value::Undefined);
-    };
-    // A notify still waiting is raised now, before the new one waits.
-    let waiting = world
-        .get_resource_or_insert_with(SoundWaits::default)
-        .0
-        .insert(id, Arc::clone(&notify));
-    if let Some(old) = waiting {
-        let pending = {
-            let mut runtime = world.resource_mut::<RoundScript>();
-            let before = runtime.timed_notifies.len();
-            runtime.timed_notifies.retain(|(_, target, name, _)| {
-                !(matches!(target, Value::Object(o) if *o == id) && *name == old)
-            });
-            runtime.timed_notifies.len() != before
-        };
-        if pending {
-            crate::script::runtime::raise(world, receiver.clone(), &old, Vec::new());
+    let number = world.resource::<RoundScript>().entities[&id].number;
+    let origin = super::movement::origin_of(world, id);
+    super::super::engine::sound_on_entity(world, number, origin, &alias, notify.is_some());
+    if let Some(notify) = notify {
+        let now = super::super::super::players::now_ms(world);
+        let old = world.resource_mut::<RoundScript>().sound_notifies.insert(
+            number,
+            crate::script::runtime::SoundNotify {
+                receiver: receiver.clone(),
+                notify,
+                start_ms: now,
+                duration_ms: -1,
+            },
+        );
+        if let Some(old) = old {
+            crate::script::runtime::raise(world, old.receiver, &old.notify, Vec::new());
         }
     }
-    let at = super::super::super::players::now_ms(world) + UNREPORTED_LENGTH_MS;
-    world.resource_mut::<RoundScript>().timed_notifies.push((
-        at,
-        receiver.clone(),
-        notify,
-        Vec::new(),
-    ));
     Ok(Value::Undefined)
 }
 
-/// `playsoundtoplayer`: the sound at the receiver, sent to that player
-/// alone.
+/// `playsoundtoplayer(alias, player)`: an alias the game has plays on the
+/// receiver (the event carries the entity, so the sound follows it), sent
+/// to that player alone; an unknown alias plays nothing.
 fn play_sound_to_player(
     world: &mut World,
     receiver: &Value,
@@ -88,8 +73,21 @@ fn play_sound_to_player(
     };
     let id = super::super::engine::entity_id(world, receiver)?;
     let alias = string(args, 0)?;
+    let known = crate::frame::FrameWorld::from_world(world)
+        .script_sound_exists(&alias)
+        .ok_or("t6.sound.aliases: the sound alias catalog is not installed")?;
+    if !known {
+        return Ok(Value::Undefined);
+    }
+    let number = world.resource::<RoundScript>().entities[&id].number;
     let origin = super::movement::origin_of(world, id);
-    super::super::engine::sound_to_client(world, crate::ClientId(client), &alias, origin);
+    super::super::engine::sound_to(
+        world,
+        crate::EventAudience::Client(crate::ClientId(client)),
+        &alias,
+        number,
+        origin,
+    );
     Ok(Value::Undefined)
 }
 
@@ -108,19 +106,17 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .ok_or("t6.sound.aliases: the sound alias catalog is not installed")?;
         Ok(Value::Int(exists.into()))
     });
+    // gsc_soundgetplaybacktime: the alias's playback time as the engine
+    // works it out from its banks (-1 for an alias it lacks).
     registry.register(
         Namespace::Function,
         "soundgetplaybacktime",
         |world, _, args| {
             let alias = string(args, 0)?;
-            let exists = crate::frame::FrameWorld::from_world(world)
-                .script_sound_exists(&alias)
+            let ms = crate::frame::FrameWorld::from_world(world)
+                .script_sound_playback_ms(&alias)
                 .ok_or("t6.sound.aliases: the sound alias catalog is not installed")?;
-            Ok(Value::Int(if exists {
-                UNREPORTED_LENGTH_MS as i32
-            } else {
-                -1
-            }))
+            Ok(Value::Int(ms))
         },
     );
     registry.register(
