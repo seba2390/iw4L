@@ -1121,7 +1121,8 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     // gsc_getassignedteam(player): the team the session's party gave the
     // player's client, as a number; IW4L's sessions have no party teams, so
     // every player has the one a client without a party slot has (0), and
-    // the scripts' `menuautoassign` puts it on `allies`.
+    // the scripts' `menuautoassign` puts it on `allies`
+    // (`t6.session.party_teams`).
     registry.register(Function, "getassignedteam", |world, _, args| {
         super::super::engine::entity_id(world, super::arg(args, 0)?)
             .map_err(|_| String::from("getAssignedTeam Error: param 1 is not an entity."))?;

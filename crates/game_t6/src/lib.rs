@@ -143,6 +143,16 @@ fn own_zombies(
             "the map's start location and gametype"
         ));
     };
+    let gametype = format!("maps/mp/gametypes_zm/{}", start.gametype);
+    // A gametype whose own script the map's zones lack (Turned on TranZit's
+    // Diner: only Buried's patch zone carries one here) has nothing to run.
+    if sources.read_module(&gametype).is_err() {
+        return Rule::Unknown(unknown!(
+            "t6.scripts.zm_gametype_zone",
+            "a Black Ops 2 zombies gametype runs its own script, which the map's zones must carry",
+            "the zone carrying that gametype's script for this map"
+        ));
+    }
     let map = format!("maps/mp/{}", request.map);
     // The scripts the engine loads itself, then the gametype's and the map's.
     let roots = [
@@ -154,7 +164,7 @@ fn own_zombies(
         "maps/mp/gametypes_zm/_persistence".to_owned(),
         "maps/mp/gametypes_zm/_spawning".to_owned(),
         "maps/mp/zombies/_zm".to_owned(),
-        format!("maps/mp/gametypes_zm/{}", start.gametype),
+        gametype,
         map,
     ]
     .into_iter()
@@ -486,8 +496,9 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
         exempt: &[ORIGINS],
         note: "Black Ops II's zombies scripts need the patch zone the game downloads at launch (ffotd_*_zm*.ff), captured from your own running game. Put it in",
     }),
-    // TranZit's Survival, Grief and Turned starts, as `zm/gametypestable.csv`
-    // lists them.
+    // TranZit's Survival and Grief and Buried's Turned starts, as
+    // `zm/gametypestable.csv` lists them (TranZit's Diner Turned needs a zone
+    // the install lacks: `t6.scripts.zm_gametype_zone`).
     starts: &[
         LibraryStart {
             zone: "zm_transit",
@@ -520,10 +531,10 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
             title: "FARM (GRIEF)",
         },
         LibraryStart {
-            zone: "zm_transit",
+            zone: "zm_buried",
             gametype: "zcleansed",
-            location: "diner",
-            title: "DINER (TURNED)",
+            location: "street",
+            title: "BOROUGH (TURNED)",
         },
     ],
 };

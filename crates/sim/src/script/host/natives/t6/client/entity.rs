@@ -1,7 +1,7 @@
 //! Black Ops 2's client builtins: entities, the local client and its player
 //! state, movers, animations, traces, fake entities and physics.
 
-use super::super::{atof, float, g, int, string, type_name, vector};
+use super::super::{float, g, int, string, type_name, vector};
 use super::game::{
     ClientGame, LOCAL_CLIENT, client_entity, local_client, server_object, type_name as etype_name,
 };
@@ -2041,23 +2041,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(touching.into()))
     });
 
-    // getgametypesetting(setting): reads a gametype setting from the server's
-    // table.
+    // getgametypesetting(setting): the server's game setting, as the
+    // server's builtin reads it (the client reads the same settings).
     registry.register(Function, "getgametypesetting", |world, _, args| {
         let name = string(args, 0)?.to_ascii_lowercase();
-        let value = with_server(world, |server| {
-            server
-                .get_resource::<crate::script::GametypeSettings>()
-                .and_then(|settings| settings.0.get(&name).cloned())
+        Ok(with_server(world, |server| {
+            super::super::gametype_setting(server, &name)
         })
-        .flatten();
-        let Some(value) = value else {
-            return Ok(Value::Undefined);
-        };
-        Ok(match value.parse::<i32>() {
-            Ok(n) => Value::Int(n),
-            Err(_) => Value::Float(atof(&value)),
-        })
+        .unwrap_or(Value::Undefined))
     });
 
     // iprintlnbold(text): prints a bold message on the local client.

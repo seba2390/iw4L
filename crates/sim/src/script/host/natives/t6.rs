@@ -422,41 +422,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         new_array(world, listed)
     });
 
-    // A gametype setting the configs name; a whole number reads as an int.
     // gsc_getgametypesetting(name): a member of the game settings
-    // (`ddl_mp/gametype_settings.ddl`), as the gametype's configs set it
-    // and 0 when none did, a float for the float kinds (5, 6) and an
-    // integer otherwise; a name the settings lack answers nothing.
+    // (`ddl_mp/gametype_settings.ddl`), as `gametype_setting` reads it.
     registry.register(Function, "getgametypesetting", |world, _, args| {
         let name = string(args, 0)?.to_ascii_lowercase();
-        let float_kind = world
-            .resource::<RoundScript>()
-            .restart
-            .as_ref()
-            .and_then(|plan| plan.layouts.get(SETTINGS_LAYOUT))
-            .map(|layout| {
-                layout
-                    .structs
-                    .first()
-                    .and_then(|root| member_named(root, &name))
-                    .map(|member| matches!(member.kind, 5 | 6))
-            });
-        let value = world
-            .get_resource::<crate::script::GametypeSettings>()
-            .and_then(|settings| settings.0.get(&name).cloned());
-        Ok(match (value, float_kind) {
-            (_, Some(None)) => Value::Undefined,
-            (Some(value), Some(Some(true))) => Value::Float(atof(&value)),
-            (Some(value), Some(Some(false))) => Value::Int(atoi(&value)),
-            (None, Some(Some(true))) => Value::Float(0.0),
-            (None, Some(Some(false))) => Value::Int(0),
-            // Without the settings layout: as the configs set it.
-            (Some(value), None) => match value.parse::<i32>() {
-                Ok(n) => Value::Int(n),
-                Err(_) => Value::Float(atof(&value)),
-            },
-            (None, None) => Value::Undefined,
-        })
+        Ok(gametype_setting(world, &name))
     });
 
     registry.register(Function, "precachestring", |world, _, args| {
@@ -2693,6 +2663,41 @@ fn set_client_field(
         .1
         .insert((pool.to_owned(), owner, field), value);
     Ok(Value::Undefined)
+}
+
+/// A member of the game settings (`ddl_mp/gametype_settings.ddl`), as the
+/// gametype's configs set it and 0 when none did: a float for the float
+/// kinds (5, 6) and an integer otherwise; a name the settings lack answers
+/// nothing. Both the server's and the client's builtin read the server's.
+pub(crate) fn gametype_setting(world: &World, name: &str) -> Value {
+    let float_kind = world
+        .resource::<RoundScript>()
+        .restart
+        .as_ref()
+        .and_then(|plan| plan.layouts.get(SETTINGS_LAYOUT))
+        .map(|layout| {
+            layout
+                .structs
+                .first()
+                .and_then(|root| member_named(root, name))
+                .map(|member| matches!(member.kind, 5 | 6))
+        });
+    let value = world
+        .get_resource::<crate::script::GametypeSettings>()
+        .and_then(|settings| settings.0.get(name).cloned());
+    match (value, float_kind) {
+        (_, Some(None)) => Value::Undefined,
+        (Some(value), Some(Some(true))) => Value::Float(atof(&value)),
+        (Some(value), Some(Some(false))) => Value::Int(atoi(&value)),
+        (None, Some(Some(true))) => Value::Float(0.0),
+        (None, Some(Some(false))) => Value::Int(0),
+        // Without the settings layout: as the configs set it.
+        (Some(value), None) => match value.parse::<i32>() {
+            Ok(n) => Value::Int(n),
+            Err(_) => Value::Float(atof(&value)),
+        },
+        (None, None) => Value::Undefined,
+    }
 }
 
 /// The layout of a zombies player's stats.
