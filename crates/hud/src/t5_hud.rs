@@ -40,6 +40,8 @@ const CG_AMITALKING: i32 = 266;
 const CG_COMPETITIVE_MODE_SCORES: i32 = 288;
 const CG_PLAYER_ACTIONSLOT_ARROW_1: i32 = 294;
 const CG_PLAYER_ACTIONSLOT_ARROW_4: i32 = 297;
+const CG_PLAYER_ACTIONSLOT_BIND_1: i32 = 392;
+const CG_PLAYER_ACTIONSLOT_BIND_4: i32 = 395;
 
 /// What the local client knows that Black Ops' HUD expressions ask for.
 pub(crate) struct T5HudState<'a> {
@@ -341,6 +343,7 @@ fn unset_dvar(name: &str) -> String {
 
 struct T5HudHost<'a, 'b> {
     state: &'a T5HudState<'b>,
+    localize: Option<&'a LocalizeCatalog>,
 }
 
 impl ExprHost for T5HudHost<'_, '_> {
@@ -416,8 +419,17 @@ impl ExprHost for T5HudHost<'_, '_> {
             .input
             .and_then(|input| input.action_slot_keys.get(slot))
             .and_then(|key| key.as_deref())
-            .unwrap_or("");
-        Ok(Operand::Str(key.to_owned()))
+            .filter(|key| !key.is_empty());
+        // Black Ops answers an unbound command with `KEY_UNBOUND`.
+        let key = match key {
+            Some(key) => key.to_owned(),
+            None => self
+                .localize
+                .and_then(|l| l.text("KEY_UNBOUND"))
+                .unwrap_or("KEY_UNBOUND")
+                .to_owned(),
+        };
+        Ok(Operand::Str(key))
     }
     fn is_dual_wield(&self) -> Result<i32, ExprError> {
         Ok(i32::from(self.state.ammo.as_ref().is_some_and(|a| a.dual)))
@@ -1040,6 +1052,12 @@ fn paint_owner(
                 frame,
             )
         }
+        slot @ CG_PLAYER_ACTIONSLOT_BIND_1..=CG_PLAYER_ACTIONSLOT_BIND_4 => paint_action_slot_bind(
+            state,
+            &args,
+            (slot - CG_PLAYER_ACTIONSLOT_BIND_1) as usize,
+            frame,
+        ),
         CG_PLAYER_WEAPON_LOW_AMMO_WARNING => paint_low_ammo_warning(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         CG_VEHICLE_HUD_2 | CG_AMITALKING => OwnerDrawPaint::Painted,
@@ -1082,6 +1100,37 @@ fn paint_action_slot_arrow(
         frame,
     );
     OwnerDrawPaint::Painted
+}
+
+/// An action slot's key label: the item's text (`dpad_zombie`'s
+/// `"[" + keybinding("+actionslot N") + "]"`) at the item's corner, in the
+/// colour the game's weapon info rule gives it.
+fn paint_action_slot_bind(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    slot: usize,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(info) = state.weapon_info else {
+        return OwnerDrawPaint::Painted;
+    };
+    let color = (info.rules.bind_label)(info.view, slot, args.color, info.shown_at);
+    if color[3] == 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let Some(text) = args.text.as_deref().filter(|t| !t.is_empty()) else {
+        return OwnerDrawPaint::Painted;
+    };
+    match crate::chrome::push_owner_text_at(
+        args,
+        text,
+        color,
+        |_, _| (args.rect.x, args.rect.y),
+        frame,
+    ) {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
+    }
 }
 
 /// The low ammo warning: the item's picture, when it has one, and the
@@ -1197,7 +1246,7 @@ pub(crate) fn paint(
     surface: &crate::surface::Hud2dSurface,
     exprs: &mut crate::expr_cache::MenuExprCache,
 ) -> (Draw2dList, Vec<String>) {
-    let host = T5HudHost { state };
+    let host = T5HudHost { state, localize };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
     let mut lists: Vec<String> = T5_HUD_MENU_LISTS
