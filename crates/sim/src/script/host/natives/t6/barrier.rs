@@ -647,9 +647,8 @@ fn all_in(world: &mut World, receiver: &Value, states: &[u8]) -> Result<Value, S
     Ok(Value::Int(all.into()))
 }
 
-/// The collision model each zbarrier was given.
-#[derive(bevy_ecs::prelude::Resource, Default)]
-struct CollisionModels(std::collections::BTreeMap<u64, String>);
+/// The contents `setzbarriercolmodel` gives a zbarrier, beside its model's.
+const COLMODEL_CONTENTS: u32 = 0x2080;
 
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
@@ -669,18 +668,47 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         new_array(world, listed)
     });
-    // gscm_setzbarriercolmodel: the zbarrier's own model, its collision
-    // (`t6.barriers.colmodel`: kept, not collided against).
+    // gscm_setzbarriercolmodel: the zbarrier takes the model (G_SetModel)
+    // as its collision, contents 0x2080 and the model's own, and is linked.
+    // The client draws its pieces, not the model.
     registry.register(Method, "setzbarriercolmodel", |world, receiver, args| {
         barrier(world, receiver)?;
         let Some(Value::String(model)) = args.first() else {
             return Err("setzbarriercolmodel expects a model".into());
         };
+        let model = model.to_string();
         let id = super::super::engine::entity_id(world, receiver)?;
-        world
-            .get_resource_or_insert_with(CollisionModels::default)
-            .0
-            .insert(id, model.to_string());
+        let presence = world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .and_then(|entity| entity.presence);
+        let presence = match presence {
+            Some(presence) => presence,
+            None => {
+                let origin = match world
+                    .resource_mut::<RoundScript>()
+                    .object_field(id, "origin")
+                {
+                    Value::Vector(origin) => origin,
+                    _ => [0.0; 3],
+                };
+                super::super::super::presence::spawn_presence(world, origin)?
+            }
+        };
+        let model_contents = crate::frame::FrameWorld::from_world(world)
+            .model_capability(&model)
+            .flatten()
+            .and_then(|capability| capability.contents)
+            .unwrap_or(0);
+        let mut runtime = world.resource_mut::<RoundScript>();
+        runtime.set_object_field(id, "model", Value::string(&model));
+        if let Some(entity) = runtime.entities.get_mut(&id) {
+            entity.presence = Some(presence);
+            entity.contents = (COLMODEL_CONTENTS | model_contents) as i32;
+            entity.solid = true;
+            entity.hidden = true;
+        }
         Ok(Value::Undefined)
     });
     registry.register(Method, "iszbarrier", |world, receiver, _| {
