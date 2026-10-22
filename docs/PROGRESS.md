@@ -120,7 +120,7 @@ Only the top-level items count.
   - [ ] Client scripts (CSC) run on a client VM of their own (Kino's `main` and `localclientconnect`, its one-shot and loop sounds, its effects — 190 createfx `loopfx`/`oneshotfx` effects, tag effects and effect entities — its lights' state and primary light overrides (`makelight`, `_lights.csc`'s `fire_flicker`, `generic_pulsing` and power-on mixer via `lerpvector`), its own entities presented by the client itself (client-only map models, models it spawns, brush models; from the frame they spawn), its triggers (`touch`/`trigger`, `istouching`) and its entities' animation trees, Kino's clocks, sounds by playback id with the sound system's status fed back (`soundplaying`, `getplaybacktime`, `getknownlength`, `stopsound`, volume and rate), the client's view of its own player (health, weapon, ADS, melee, grenade, position, eye, clip ammo, speed), line emitters, jumps and landings, the server's client system states, `clientNotify`s, client exploders, mirrored snapshot entities and `setclientflag` callbacks, vision and fog, sound snapshots and contexts, the extra camera's state (`isextracam`, `stopextracam`, `setextracamfov`); 30 of 173 client builtins not implemented yet).
 - [x] The player moves by the game's own movement rules.
   - [x] Walking, sprinting, jumping, stances, the firing flag (`movement_t5`).
-  - [ ] Ladders, mantling, swimming, mounted weapons, launches, falling damage and the other movement events.
+  - [ ] Ladders and mantling run by Black Ops' rules (not yet seen in game: Kino and Five have no ladder or mantle surface, #461); swimming, mounted weapons, launches and the other movement events remain.
 - [x] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Bullets (spread, pellets, penetration), melee, frag grenades, rockets (Ray Gun), script blasts.
   - [x] The viewmodel plays the weapon's own animations, picked by the game's client rules.
@@ -134,7 +134,7 @@ Only the top-level items count.
 - [x] Zombies path to the player and get through barriers.
   - [x] All ten of Kino's traversal scripts (54 `Begin` nodes: `zombie_mantle_over_40`, `zombie_jump_down_40`, `_72`, `_120`, `_127`, `_190`, `_240`, `_286`, `zombie_wall_crawl_drop` and `zombie_wall_crawl_drop_quick`) run from their start node to their end node.
   - [x] Actors collide with the world while walking: Black Ops' actor box slides along walls, steps stairs, falls, and turns aside or plans again when blocked; doors, debris and window clips cut and rejoin their path links (`connectpaths`/`disconnectpaths`), badplaces keep paths out.
-  - [ ] Actors do not block each other or the player (Black Ops' blocking actor), and their slide is Black Ops' trace slide, not its default physics capsule.
+  - [ ] Actors block each other and the player (Black Ops' blocking actor steps them apart, they collide with player bodies and brush entities, `pushplayer`); their slide is Black Ops' trace slide, not its default physics capsule (#465).
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
 - [x] Rounds advance past round 1.
 - [x] Wall weapons and the Mystery Box.
@@ -162,7 +162,7 @@ Only the top-level items count.
   - [x] The weapon info fade, the dpad arrows and the low ammo warning (`PLATFORM_RELOAD`, `WEAPON_NO_AMMO`, `PLATFORM_LOW_AMMO_NO_RELOAD`) by Black Ops' client rules.
 - [ ] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
-  - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as IW4L's bar.
+  - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as Black Ops' own, but sit at their minimum: its client dvars are not behind them.
 - [ ] The game's own sound.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
   - [x] The client scripts' one-shot sounds (`playsound` on the client VM): Kino's random ambient emitters (`_audio::soundrandom_thread`: wind, metal, rope, whispers, wood) play their aliases to the local client.
