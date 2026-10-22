@@ -1361,6 +1361,28 @@ fn register_player(registry: &mut NativeRegistry) {
         "beginlocationmortarselection",
         "beginlocationnapalmselection",
     );
+    // Black Ops' handlers set and clear the player's weapon flags its
+    // movement reads; nothing masks the command.
+    macro_rules! weapon_flag {
+        ($($name:literal => $flag:ident = $on:literal),* $(,)?) => {$(
+            registry.register(Method, $name, |world, receiver, _| {
+                let client = player_id(world, receiver)?;
+                crate::game_move::set_script_flag(
+                    &mut crate::frame::FrameWorld::from_world(world),
+                    crate::ClientId(client),
+                    game_api::movement::ScriptFlag::$flag,
+                    $on,
+                );
+                Ok(Value::Undefined)
+            });
+        )*};
+    }
+    weapon_flag!(
+        "disableweapons" => WeaponsDisabled = true,
+        "enableweapons" => WeaponsDisabled = false,
+        "disableoffhandweapons" => OffhandsDisabled = true,
+        "enableoffhandweapons" => OffhandsDisabled = false,
+    );
     registry.register(Method, "disableweaponcycling", |world, receiver, _| {
         let client = player_id(world, receiver)?;
         crate::game_move::set_script_flag(

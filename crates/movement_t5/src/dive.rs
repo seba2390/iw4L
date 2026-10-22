@@ -91,6 +91,13 @@ fn end(ps: &mut PlayerState, server_time: i32) {
     ps.sprint_button_up_required = 0;
 }
 
+/// `disableweapons` ends a running dive as of the player's command time.
+pub fn end_dive_for_disabled_weapons(ps: &mut PlayerState) {
+    if ps.pm_flags & pm_flags::DIVING != 0 {
+        end(ps, ps.command_time);
+    }
+}
+
 /// A sliding dive that has slowed down ends.
 pub(crate) fn check_end<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let ps = &*pm.ps;
