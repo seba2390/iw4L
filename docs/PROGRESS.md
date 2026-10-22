@@ -262,7 +262,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Window boards and the Mystery Box are drawn as their zbarrier pieces (TranZit: 303 pieces, Buried's boards pulled with their `o_zombie_board_*_pull` animations), and an opening box cycles the client's box weapons at its rise animation's `switch` notes, with their hide tags (Buried: 40 switches; `t6.csc.weapons.zombie_box`, `t6.csc.weapons.hide_tags`, `t6.zbarrier.anim` closed).
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
-  - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
+  - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback (Nuketown's go-down test: down at 51 s; the swing passes through the zombie's own body).
   - [x] The weapons that fire are Black Ops 2's own (see the weapons milestone); the lethal grenade `giveweapon` gives is the player's offhand and is thrown (`grenade_fire`, `explode`).
   - [x] A zombie's swing that lands on another zombie does nothing, as Black Ops 2's melee hit does.
 - [x] Rounds advance past round 1.

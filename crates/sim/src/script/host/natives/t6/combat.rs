@@ -2,7 +2,7 @@
 //! which entities are sentient, and the melee swing (`melee`).
 
 use super::super::super::entities::EntityKind;
-use super::super::engine::{TraceIgnore, collider_entity, entity_id, entity_trace};
+use super::super::engine::{TraceIgnore, collider_entity, entity_id, entity_trace, trace_ignore};
 use super::damage;
 use super::movement::{actor, field, origin_of};
 use super::vector;
@@ -185,8 +185,9 @@ fn can_see(world: &mut World, id: u64, target: &Value) -> Result<bool, String> {
 }
 
 /// `melee`: the actor swings at most once a frame, from its eye toward its
-/// enemy (or along the direction given, or ahead), over nine rays; the
-/// first player hit, else the nearest hit, is struck.
+/// enemy (or along the direction given, or ahead), over nine rays that pass
+/// through its own body; the first player hit, else the nearest hit, is
+/// struck.
 fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
     let id = actor(world, receiver)?;
     let now = super::super::super::players::now_ms(world);
@@ -217,6 +218,9 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
         (None, Some(given)) => normalize(given),
         (None, None) => forward,
     };
+    // The swing passes through the swinging actor's own body, as the
+    // engine's melee trace passes its own entity.
+    let ignore = trace_ignore(world, Some(receiver));
     let mut struck: Option<Strike> = None;
     for [across, high] in MELEE_RAYS {
         let end: [f32; 3] = std::array::from_fn(|i| {
@@ -225,13 +229,7 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
                 + right[i] * MELEE_WIDTH * across
                 + up[i] * MELEE_HEIGHT * high
         });
-        let (fraction, collider) = traced(entity_trace(
-            world,
-            start,
-            end,
-            MELEE_MASK,
-            TraceIgnore::default(),
-        ));
+        let (fraction, collider) = traced(entity_trace(world, start, end, MELEE_MASK, ignore));
         let Some(collider) = collider.filter(|_| fraction < 1.0) else {
             continue;
         };
