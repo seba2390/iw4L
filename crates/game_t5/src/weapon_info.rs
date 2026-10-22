@@ -10,7 +10,9 @@ use movement_t5::weapon::state as ws;
 pub(crate) static WEAPON_INFO: WeaponInfoRules = WeaponInfoRules {
     update,
     arrow,
+    bind_label,
     low_ammo,
+    slot_hint,
 };
 
 /// `hud_fade_ammodisplay`: how long the weapon info shows, in seconds.
@@ -19,6 +21,9 @@ const FADE_AMMO_DISPLAY: f32 = 8.0;
 const FADE_OUT_MS: i32 = 700;
 /// A lit arrow's alpha.
 const ARROW_LIT_ALPHA: f32 = 0.8;
+/// A lit key label's green and blue factors.
+const BIND_LIT_GREEN: f32 = 0.8;
+const BIND_LIT_BLUE: f32 = 0.4;
 /// The share of a weapon's most rounds beside the clip under which they
 /// count as low.
 const LOW_STOCK_FRAC: f32 = 0.2;
@@ -43,6 +48,8 @@ const INVENTORY_ALT_MODE: i32 = 3;
 const OFFHAND_SLOT_EQUIPMENT: i32 = 3;
 /// A guided missile type that never warns of low ammo.
 const GUIDED_NO_WARNING: i32 = 6;
+/// The weapon class a carried killstreak's action slot may switch to.
+const WEAPCLASS_KILLSTREAK_ALT: i32 = 12;
 /// Action slot kinds.
 const ACTION_SLOT_WEAPON: i32 = 1;
 const ACTION_SLOT_ALT_WEAPON: i32 = 2;
@@ -272,6 +279,21 @@ fn arrow(view: &WeaponInfoView<'_>, slot: usize, item_alpha: f32, shown_at: i32)
     alpha * fade(view, shown_at)
 }
 
+/// A key label lights by the arrows' rule: its green and blue take 0.8 and
+/// 0.4 and its alpha is 0.8; then it takes the weapon info's fade.
+fn bind_label(view: &WeaponInfoView<'_>, slot: usize, color: [f32; 4], shown_at: i32) -> [f32; 4] {
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    let mut color = color;
+    if slot_lit(view, &ps, slot) {
+        color[1] *= BIND_LIT_GREEN;
+        color[2] *= BIND_LIT_BLUE;
+        color[3] = ARROW_LIT_ALPHA;
+    }
+    color[3] *= fade(view, shown_at);
+    color
+}
+
 fn slot_lit(view: &WeaponInfoView<'_>, ps: &PlayerState, slot: usize) -> bool {
     let (kind, weapon) = (view.action_slot)(slot);
     match kind {
@@ -319,6 +341,32 @@ fn has_alternate(view: &WeaponInfoView<'_>, ps: &PlayerState, selected: u32) -> 
                 && def(view, w)
                     .is_some_and(|d| d.inventory_type() == 0 && !d.is_carried_killstreak_weapon())
         })
+}
+
+/// Pressing an action slot whose weapon is equipment the player holds, had
+/// not selected and has no rounds of (and no detonator) raises "no
+/// equipment".
+fn slot_hint(view: &WeaponInfoView<'_>) -> Option<i32> {
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    if ps.weap_flags & WEAP_FLAG_HIDE_INFO != 0 {
+        return None;
+    }
+    let (kind, weapon) = (view.action_slot)(view.slot_pressed);
+    if kind != ACTION_SLOT_WEAPON || weapon == view.slot_pressed_from {
+        return None;
+    }
+    let held_killstreak = def(view, ps.weapon).is_some_and(|d| d.is_carried_killstreak_weapon());
+    let slot_def = def(view, weapon)?;
+    if held_killstreak && slot_def.weapon_class() == WEAPCLASS_KILLSTREAK_ALT {
+        return None;
+    }
+    if !owns(&ps, weapon) || ps.weapon == weapon {
+        return None;
+    }
+    let empty = (view.clip)(weapon) == 0 && (view.stock)(weapon) == 0 && !slot_def.unlimited_ammo();
+    (slot_def.offhand_slot() == OFFHAND_SLOT_EQUIPMENT && empty && !slot_def.has_detonator())
+        .then_some(crate::code_hud::HINT_NO_EQUIPMENT)
 }
 
 /// Black Ops' low ammo warning: `PLATFORM_RELOAD` when the clip is low and

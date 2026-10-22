@@ -140,6 +140,9 @@ pub(crate) struct OwnerDrawArgs<'a> {
     pub item: &'a MenuItem,
     pub rect: MenuRect,
     pub color: [f32; 4],
+    /// The item's own text (its string or text expression), localized;
+    /// `None` when it has none or it does not resolve.
+    pub text: Option<String>,
     pub surface: &'a crate::surface::Hud2dSurface,
     pub assets: ChromeAssets<'a>,
     pub anim: ChromeMenuAnim,
@@ -439,12 +442,17 @@ fn paint_item(
     }
     let rect = style.rect;
     if item.owner_draw != 0 {
+        let text = resolve_text(item, state, host, assets.localize, exprs)
+            .ok()
+            .flatten()
+            .map(|resolved| resolved.text);
         let args = OwnerDrawArgs {
             menu,
             index,
             item,
             rect,
             color: style.fore_color,
+            text,
             surface,
             assets,
             anim,

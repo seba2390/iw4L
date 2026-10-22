@@ -698,6 +698,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     pause: Option<Res<'w, frame::MatchPause>>,
     hint_gaps: Local<'s, std::collections::HashSet<&'static str>>,
     weapon_info_shown: Local<'s, i32>,
+    command_hint_latch: Local<'s, crate::t5_hud::CommandHintLatch>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -815,26 +816,6 @@ pub(crate) fn update_weaponbar(
             client_input
                 .deadscreen_latch
                 .update(dvars, client_input.ui_dvars.as_deref(), ms);
-        let owner_hints = crate::game_code_hud::game_hud(client_input.mode.as_deref())
-            .map(|hud| {
-                crate::t5_hud::resolve_owner_hints(
-                    hud,
-                    ps,
-                    local.0.0 as i32,
-                    weapons.as_ref(),
-                    client_input
-                        .actions
-                        .as_ref()
-                        .is_some_and(|a| a.client.kb.scores.active),
-                    client_input.pause.as_ref().is_some_and(|p| p.0),
-                    dvars,
-                    strings.as_deref(),
-                    t5.namespace.unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
-                    client_input.input.as_deref(),
-                    &mut client_input.hint_gaps,
-                )
-            })
-            .unwrap_or_else(Vec::new);
         let info_rules = crate::game_code_hud::game_hud(client_input.mode.as_deref())
             .and_then(|hud| hud.weapon_info);
         let info_player = ps.move_player(local.0.0 as i32, false);
@@ -877,6 +858,8 @@ pub(crate) fn update_weaponbar(
             selected: client_input.select.index,
             selected_at: client_input.select.time,
             slot_pressed_at: client_input.select.slot_time,
+            slot_pressed: usize::from(client_input.select.slot),
+            slot_pressed_from: client_input.select.slot_from,
             action_slot: &action_slot,
             weapon: &weapon_bytes,
             alternate: &alternate,
@@ -895,6 +878,51 @@ pub(crate) fn update_weaponbar(
                 shown_at: *client_input.weapon_info_shown,
             }
         });
+        let code_hud = crate::game_code_hud::game_hud(client_input.mode.as_deref());
+        let command_hint = code_hud.and_then(|hud| hud.command_hint).map_or(
+            game_api::hud::CommandHint::default(),
+            |update| {
+                let latch = &mut *client_input.command_hint_latch;
+                let count = meta.map_or(0, |m| m.command_hint.0);
+                let mut event = None;
+                if latch.seen_count.is_some_and(|seen| seen != count)
+                    && let Some(kind) = meta.map(|m| m.command_hint.1).filter(|&k| k != 0)
+                {
+                    event = Some(kind);
+                }
+                latch.seen_count = Some(count);
+                if latch.slot_time != info_view.slot_pressed_at {
+                    latch.slot_time = info_view.slot_pressed_at;
+                    if let Some(kind) = info_rules.and_then(|rules| (rules.slot_hint)(&info_view)) {
+                        event = Some(kind);
+                    }
+                }
+                latch.kept = update(latch.kept, event, info_view.now);
+                latch.kept
+            },
+        );
+        let owner_hints = crate::game_code_hud::game_hud(client_input.mode.as_deref())
+            .map(|hud| {
+                crate::t5_hud::resolve_owner_hints(
+                    hud,
+                    ps,
+                    local.0.0 as i32,
+                    weapons.as_ref(),
+                    client_input
+                        .actions
+                        .as_ref()
+                        .is_some_and(|a| a.client.kb.scores.active),
+                    client_input.pause.as_ref().is_some_and(|p| p.0),
+                    dvars,
+                    strings.as_deref(),
+                    t5.namespace.unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+                    client_input.input.as_deref(),
+                    &mut client_input.hint_gaps,
+                    info_view.now,
+                    command_hint,
+                )
+            })
+            .unwrap_or_else(Vec::new);
         let state = crate::t5_hud::T5HudState {
             ms,
             dvars,
