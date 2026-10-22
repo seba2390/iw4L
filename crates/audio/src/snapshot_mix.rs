@@ -54,6 +54,9 @@ pub(crate) struct SnapshotMix {
     /// The contexts have their starting values for this match.
     contexts_ready: bool,
     pending_contexts: std::collections::VecDeque<(String, String)>,
+    /// A game whose banks carry sound ducks (Black Ops 2) runs them instead
+    /// of the slots.
+    ducks: crate::duck_mix::DuckMix,
 }
 
 impl Default for SnapshotMix {
@@ -75,6 +78,7 @@ impl Default for SnapshotMix {
             contexts: Default::default(),
             contexts_ready: false,
             pending_contexts: Default::default(),
+            ducks: Default::default(),
         }
     }
 }
@@ -102,6 +106,7 @@ impl SnapshotMix {
             self.pending.clear();
             self.pending_contexts.clear();
             self.contexts_ready = false;
+            self.ducks = Default::default();
             if let Ok(mut contexts) = self.contexts.write() {
                 contexts.clear();
             }
@@ -151,6 +156,23 @@ pub(crate) fn update_snapshot_mix(
     };
     let namespace = namespace.namespace;
     update_contexts(&mut mix, bank.0.sound_contexts(namespace));
+    if let Some(ducks) = bank.0.sound_ducks(namespace) {
+        while let Some((slot, name, value)) = mix.pending.pop_front() {
+            let name = if name.is_empty() { "default" } else { &name };
+            let hash = asset_transport::sab::snd_hash_name(name);
+            mix.ducks.set(ducks, usize::from(slot), hash, value);
+        }
+        let dt = time.delta_secs();
+        let gains = mix.ducks.update(ducks, dt);
+        let now = runtime.audio_frame();
+        let frames = (f64::from(dt) * f64::from(crate::render_core::SAMPLE_RATE)) as u64;
+        for (group, volume) in gains.iter().enumerate() {
+            if let Some(gain) = mix.gains.get(&(namespace, group as u8)) {
+                gain.fade(now, *volume, frames);
+            }
+        }
+        return;
+    }
     let Some(snapshots) = bank.0.mix_snapshots(namespace) else {
         return;
     };

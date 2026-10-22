@@ -46,8 +46,8 @@ fn missile_unknown() -> &'static Unknown {
 fn bolt_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.bolt",
-        "a bolt (crossbow, ballistic knife) shows no impact where it strikes, and a retrievable one is not left to pick up",
-        "Black Ops' bolt impact event and its retrievable weapon objects"
+        "a bolt without a grenade (the ballistic knife) is not drawn stuck in what it struck",
+        "Black Ops' client's stuck bolt model for its impact event"
     )
 }
 
@@ -593,12 +593,24 @@ fn impact(
     };
     gaps.push(missile_water_unknown());
     if def.proj_explosion_type() == EXPLOSION_GRENADE {
-        // A bolt: it leaves its grenade where it struck.
-        gaps.push(bolt_unknown());
+        // A bolt: its impact event plays the surface's bolt impact where it
+        // struck, and it leaves its grenade there. Without a grenade the
+        // client also leaves the bolt's model stuck in what it hit, which
+        // is not drawn.
+        world.explosion(&MissileExplosion {
+            missile: missile.entity,
+            owner: missile.owner,
+            weapon: missile.weapon,
+            origin: end,
+            normal,
+            surface_type: surface_type(trace) as u8,
+        });
         let grenade = world
             .weapon(missile.weapon)
             .map_or(0, |weapon| weapon.grenade_weapon);
-        if grenade != 0 {
+        if grenade == 0 {
+            gaps.push(bolt_unknown());
+        } else {
             let on = match trace.hit {
                 BulletHitType::Entity(entity) => entity,
                 _ => ENTITY_WORLD,
@@ -626,8 +638,46 @@ fn impact(
             surface_type: surface_type(trace) as u8,
         });
     }
-    if def.retrievable() || def.die_on_respawn() {
-        gaps.push(bolt_unknown());
+    // A retrievable bolt (the ballistic knife) stays as a weapon object:
+    // its scripts hear where it came to rest and what it struck.
+    let retrievable = def.retrievable() || def.die_on_respawn();
+    if retrievable {
+        let prey = match trace.hit {
+            BulletHitType::Entity(entity) if entity != ENTITY_WORLD => entity,
+            _ => ENTITY_NONE,
+        };
+        let bone = match (prey, trace.bone) {
+            (ENTITY_NONE, _) => NotifyArg::String(""),
+            (entity, Some(bone)) => NotifyArg::Bone { entity, bone },
+            (entity, None) => match world.entity(entity) {
+                Some(e)
+                    if matches!(
+                        e.kind,
+                        game_api::fire::FireEntityKind::Player
+                            | game_api::fire::FireEntityKind::Actor
+                    ) =>
+                {
+                    NotifyArg::String("j_knee_ri")
+                }
+                _ => NotifyArg::String(""),
+            },
+        };
+        world.notify(
+            missile.entity,
+            "stationary",
+            &[
+                NotifyArg::Vector(end),
+                NotifyArg::Vector(trace.normal),
+                NotifyArg::Vector(vectoangles(dir)),
+                NotifyArg::Entity(missile.owner),
+                if prey == ENTITY_NONE {
+                    NotifyArg::Undefined
+                } else {
+                    NotifyArg::Entity(prey)
+                },
+                bone,
+            ],
+        );
     }
     if def.proj_impact_explode() && def.explosion_inner_damage() != 0 {
         let cone = (def.damage_cone_angle() - 180.0 < 0.0)
@@ -669,7 +719,11 @@ fn impact(
         gaps.push(missile_unknown());
     }
     missile.origin = end;
-    Some(MissileRun::Gone)
+    Some(if retrievable {
+        MissileRun::Stationary
+    } else {
+        MissileRun::Gone
+    })
 }
 
 /// Resets a missile's fuse (`resetmissiledetonationtime`): `after_ms` from

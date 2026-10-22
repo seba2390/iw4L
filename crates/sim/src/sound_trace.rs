@@ -57,6 +57,27 @@ pub(crate) fn client_report(status: &crate::ClientSoundStatus) {
     );
 }
 
+/// A client's report of a notified sound's length, taken up by the entity
+/// waiting on it.
+pub(crate) fn length_report(number: i32, length_ms: i32) {
+    if enabled() {
+        diag::info!(
+            Sim,
+            "sound trace: length entity={number} length={length_ms}ms"
+        );
+    }
+}
+
+/// A sound notify raised after the time it waited.
+pub(crate) fn notify_due(number: i32, notify: &str, waited_ms: i64, reported: bool) {
+    if enabled() {
+        diag::info!(
+            Sim,
+            "sound trace: notify entity={number} {notify} after={waited_ms}ms reported={reported}"
+        );
+    }
+}
+
 /// The loops playing at the last trace, by owner.
 #[derive(Resource, Default)]
 pub(crate) struct TracedLoops(BTreeMap<crate::ScriptModelId, String>);
