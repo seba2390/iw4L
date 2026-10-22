@@ -686,6 +686,38 @@ pub(crate) fn use_reached(world: &mut World, trigger: u64, client: u32) -> Optio
     reached
 }
 
+/// A trigger as a game's use rule reads it: its absolute bounds and whether
+/// the box `mins..maxs` touches its volume; `None` when it has none.
+pub(crate) fn trigger_reach(
+    world: &mut World,
+    trigger: u64,
+    mins: [f32; 3],
+    maxs: [f32; 3],
+) -> Option<(([f32; 3], [f32; 3]), bool)> {
+    let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
+    let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
+    let frame = FrameWorld::from_world(world);
+    let found = volume(&mut runtime, &frame, trigger).map(|v| (v.bounds(), v.touches(mins, maxs)));
+    *world.resource_mut::<RoundScript>() = runtime;
+    found
+}
+
+/// Whether `client` may use `trigger` as the runtime decides it: its claim,
+/// team, usability and the player's.
+pub(crate) fn use_eligible(world: &mut World, trigger: u64, client: u32) -> bool {
+    let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
+    let runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
+    let allowed = eligible(
+        &runtime,
+        &FrameWorld::from_world(world),
+        trigger,
+        client,
+        true,
+    );
+    *world.resource_mut::<RoundScript>() = runtime;
+    allowed
+}
+
 fn volume<'f>(runtime: &mut RoundScript, frame: &'f FrameWorld, object: u64) -> Option<Volume<'f>> {
     let entity = runtime.entities.get(&object)?;
     let (cylinder, box_half, brush, trigger_model) = (
@@ -913,6 +945,65 @@ fn segment_planes(start: [f32; 3], end: [f32; 3], planes: impl Iterator<Item = [
 }
 
 impl Volume<'_> {
+    /// The absolute box around the volume.
+    fn bounds(&self) -> ([f32; 3], [f32; 3]) {
+        match *self {
+            Volume::Cylinder {
+                origin,
+                radius,
+                height,
+            } => (
+                [origin[0] - radius, origin[1] - radius, origin[2]],
+                [origin[0] + radius, origin[1] + radius, origin[2] + height],
+            ),
+            Volume::OrientedBox {
+                origin,
+                angles,
+                half,
+            } => {
+                let axis = super::natives::t6::box_axes(angles);
+                let reach: [f32; 3] =
+                    std::array::from_fn(|i| (0..3).map(|k| (axis[k][i] * half[k]).abs()).sum());
+                (
+                    std::array::from_fn(|i| origin[i] - reach[i]),
+                    std::array::from_fn(|i| origin[i] + reach[i]),
+                )
+            }
+            Volume::Box { mins, maxs } => (mins, maxs),
+            Volume::Brushes {
+                origin,
+                ids,
+                brushes,
+            } => {
+                let mut lo = [f32::MAX; 3];
+                let mut hi = [f32::MIN; 3];
+                for brush in ids.iter().filter_map(|&id| brushes.get(usize::from(id))) {
+                    for plane in &brush.planes {
+                        for i in 0..3 {
+                            if plane[i] == 1.0 {
+                                hi[i] = hi[i].max(origin[i] + plane[3]);
+                            } else if plane[i] == -1.0 {
+                                lo[i] = lo[i].min(origin[i] - plane[3]);
+                            }
+                        }
+                    }
+                }
+                (lo, hi)
+            }
+            Volume::Hulls { origin, hulls } => {
+                let mut lo = [f32::MAX; 3];
+                let mut hi = [f32::MIN; 3];
+                for hull in hulls {
+                    for i in 0..3 {
+                        lo[i] = lo[i].min(origin[i] + hull.mid[i] - hull.half[i]);
+                        hi[i] = hi[i].max(origin[i] + hull.mid[i] + hull.half[i]);
+                    }
+                }
+                (lo, hi)
+            }
+        }
+    }
+
     fn crosses(&self, start: [f32; 3], end: [f32; 3]) -> bool {
         if !start.into_iter().chain(end).all(f32::is_finite) {
             return false;

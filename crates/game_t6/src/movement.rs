@@ -864,6 +864,7 @@ impl PlayerMovement for T6Movement {
             on_ladder: ps.pm_flags & pm_flags::LADDER != 0,
             mantling: ps.pm_flags & pm_flags::MANTLE != 0,
             sprinting: ps.pm_flags & pm_flags::SPRINTING != 0,
+            diving: ps.pm_flags & pm_flags::DIVING != 0,
             damage_timer: ps.damage_timer,
             no_melee: ps.pm_flags & pm_flags::NO_MELEE != 0,
             no_weapon_cycling: ps.weap_flags & movement_t6::state::weap_flags::CYCLING_DISABLED

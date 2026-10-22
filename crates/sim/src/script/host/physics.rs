@@ -14,6 +14,37 @@ const HINTS: [&str; 5] = [
     "HINT_FRIENDLY",
 ];
 
+/// The cursor hint a map's use trigger starts with by the game's rule: its
+/// `cursorhint` key when it names a hint, else the game's default.
+pub(crate) fn map_use_cursor(world: &mut World, object: u64) -> Option<i32> {
+    let movement = crate::game_move::rules(&FrameWorld::from_world(world))?;
+    let default = movement.map_use_cursor()?;
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let entity = runtime.entities.get(&object)?;
+    if entity.kind != super::entities::EntityKind::Map
+        || !matches!(&*entity.classname, "trigger_use" | "trigger_use_touch")
+    {
+        return None;
+    }
+    let key = match runtime.object_field(object, "cursorhint") {
+        Value::String(name) => Some(name),
+        _ => None,
+    };
+    // `HINT_INHERIT` is -1; the names are matched from the first after
+    // `HINT_NONE`.
+    Some(key.map_or(default, |name| {
+        if name.eq_ignore_ascii_case("HINT_INHERIT") {
+            return -1;
+        }
+        movement
+            .cursor_hints()
+            .iter()
+            .skip(1)
+            .position(|hint| hint.eq_ignore_ascii_case(&name))
+            .map_or(default, |at| at as i32 + 1)
+    }))
+}
+
 fn object_of(world: &World, receiver: &Value) -> Result<u64, String> {
     super::natives::engine::entity_id(world, receiver)
 }
@@ -23,6 +54,7 @@ pub(crate) fn usable<'a>(
     receiver: &Value,
 ) -> Result<&'a mut super::entities::Usable, String> {
     let object = object_of(world, receiver)?;
+    let map_cursor = map_use_cursor(world, object);
     let runtime = world.resource_mut::<RoundScript>().into_inner();
     let entity = runtime.entities.get_mut(&object).unwrap();
     // A use trigger works until it is turned off; other entities wait for
@@ -31,7 +63,7 @@ pub(crate) fn usable<'a>(
     Ok(entity
         .usable
         .get_or_insert_with(|| super::entities::Usable {
-            cursor: 1,
+            cursor: map_cursor.unwrap_or(1),
             hint: -1,
             enabled: trigger,
             barred: Default::default(),
