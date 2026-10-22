@@ -516,8 +516,13 @@ pub struct ViewmodelCamera {
     pub tag: &'static str,
     /// What a weapon animation number does to the camera animations after
     /// it starts its own (`named` as for [`ViewmodelAnimFn`]); any
-    /// animation's start stops them as well.
-    pub anim: fn(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> Option<CameraAnim>,
+    /// animation's start stops them as well; `game` is the player's own
+    /// fields ([`movement::MovePlayer::game`]).
+    pub anim: fn(
+        weap_anim: u32,
+        named: &dyn Fn(usize) -> bool,
+        game: &[u8; movement::GAME_MOVE_BYTES],
+    ) -> Option<CameraAnim>,
 }
 
 /// What a weapon animation number does to the camera animations.

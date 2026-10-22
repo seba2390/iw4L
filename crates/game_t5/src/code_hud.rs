@@ -111,7 +111,7 @@ fn owner_hint(owner_draw: i32, view: &OwnerHintView<'_>) -> OwnerHint {
                 OwnerHint::Unrun(unknown!(
                     "t5.hud.mantle_picture",
                     "Black Ops' mantle hint (`PLATFORM_MANTLE` with the mantle picture) is not drawn",
-                    "the mantle hint's picture and layout (executable); mantling itself is t5.movement.mantle"
+                    "the mantle hint's picture and layout (executable)"
                 ))
             } else if ps.mantle_flags & MOUNT_OFFERED != 0 {
                 OwnerHint::Text {

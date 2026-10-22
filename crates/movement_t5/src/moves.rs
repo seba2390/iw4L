@@ -139,7 +139,7 @@ fn landing_slowdown(ps: &mut crate::PlayerState) {
     }
 }
 
-fn check_jump<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) -> bool {
+pub(crate) fn check_jump<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) -> bool {
     let ps = &*pm.ps;
     if ps.pm_flags & pm_flags::NO_JUMP != 0
         || pm.cmd.server_time - ps.jump_time < 500

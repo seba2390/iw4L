@@ -11,6 +11,8 @@ pub struct Trace {
     pub allsolid: bool,
     pub startsolid: bool,
     pub walkable: bool,
+    /// What was hit is a piece of breakable glass.
+    pub glass: bool,
 }
 
 pub const SURF_SLICK: u32 = 0x2;
@@ -77,6 +79,13 @@ pub trait MoveWorld {
 
     /// What a precached shellshock does to movement.
     fn shellshock(&self, index: i32) -> Shellshock;
+
+    /// The length of the named animation, in msec; `None` when it is not
+    /// loaded.
+    fn anim_length_ms(&self, name: &str) -> Option<i32>;
+
+    /// The named animation's root translation `frac` of the way through.
+    fn anim_root_delta(&self, name: &str, frac: f32) -> Option<[f32; 3]>;
 }
 
 /// The parts of a shellshock file movement reads.

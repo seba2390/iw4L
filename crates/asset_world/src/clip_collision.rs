@@ -1727,14 +1727,6 @@ const T5_CBRUSH_SIDE: usize = 12;
 
 const T5_CBRUSH_SIDE_SFLAGS: usize = 8;
 
-pub(crate) fn treyarch_surface_flags(flags: u32) -> u32 {
-    let mantle_on = flags & 0x0400_0000 != 0;
-    let mantle_over = flags & 0x0800_0000 != 0;
-    (flags & !0x1e00_0000)
-        | if mantle_on { 0x0200_0000 } else { 0 }
-        | if mantle_over { 0x0400_0000 } else { 0 }
-}
-
 pub fn build_t5_clip_collision(
     s: &fastfile_t5::ZoneStream<'_>,
     g: fastfile_t5::ClipMapGeometry,
@@ -1782,9 +1774,7 @@ pub fn build_t5_clip_collision(
                 .map_err(|_| ClipCollisionError::Truncated)?;
         }
         let mut plane_surface_flags = Vec::with_capacity(6);
-        plane_surface_flags.extend_from_slice(&t5_axial_plane_flags(
-            axial_sflags.map(treyarch_surface_flags),
-        ));
+        plane_surface_flags.extend_from_slice(&t5_axial_plane_flags(axial_sflags));
 
         let numsides = s
             .u32_at(brush, T5_BRUSH_NUMSIDES)
@@ -1794,10 +1784,10 @@ pub fn build_t5_clip_collision(
                 let side = sides.at(j * T5_CBRUSH_SIDE);
                 if let Some(plane) = read_t5_side_plane(s, side)? {
                     planes.push(plane);
-                    plane_surface_flags.push(treyarch_surface_flags(
+                    plane_surface_flags.push(
                         s.u32_at(side, T5_CBRUSH_SIDE_SFLAGS)
                             .map_err(|_| ClipCollisionError::Truncated)?,
-                    ));
+                    );
                 }
             }
         }
@@ -1877,9 +1867,7 @@ fn extract_t5_mesh_tables(
             let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
             out.materials.push(ClipMapMaterial {
                 name: String::from_utf8_lossy(&bytes[..end]).into_owned(),
-                surface_flags: treyarch_surface_flags(
-                    s.u32_at(p, 64).map_err(|_| ClipCollisionError::Truncated)?,
-                ),
+                surface_flags: s.u32_at(p, 64).map_err(|_| ClipCollisionError::Truncated)?,
                 content_flags: s.u32_at(p, 68).map_err(|_| ClipCollisionError::Truncated)?,
             });
         }

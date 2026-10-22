@@ -316,7 +316,11 @@ fn pick(weap_anim: u32, pick: &ViewmodelPick<'_>) -> (ViewmodelAnim, Option<&'st
 /// Black Ops 2's client's camera animations: the sprint loop and the dive to
 /// prone's start their own when the weapon names it, the sprint out stops
 /// them. The mantle's is not run (`t6.viewmodel.mantle`).
-fn camera(weap_anim: u32, named: &dyn Fn(usize) -> bool) -> Option<CameraAnim> {
+fn camera(
+    weap_anim: u32,
+    named: &dyn Fn(usize) -> bool,
+    _game: &[u8; GAME_MOVE_BYTES],
+) -> Option<CameraAnim> {
     let start = |anim: usize| named(anim).then_some(CameraAnim::Start(anim));
     match weap_anim & !w::TOGGLE {
         w::SPRINT_LOOP | w::SPRINT_EMPTY_LOOP => start(a::SPRINT_CAMERA),

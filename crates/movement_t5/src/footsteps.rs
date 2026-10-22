@@ -8,11 +8,19 @@ use crate::{MoveWorld, Pm, Pml, SURF_SLICK, tuning};
 /// Black Ops' movement animation types the legs are asked to play.
 pub mod movetype {
     pub const IDLE: i32 = 1;
+    pub const CLIMB_UP: i32 = 5;
+    pub const CLIMB_DOWN: i32 = 6;
     pub const SPRINT: i32 = 7;
     pub const SWIM: i32 = 24;
     pub const DIVE: i32 = 25;
     pub const SLIDE: i32 = 26;
 }
+
+/// The player trace mask less bodies and the 0x4000, 0x8000 and 0x10000
+/// contents, for a ladder step's sweep.
+const LADDER_STEP_MASK: u32 = 0xfdfe_3fff;
+/// The surface a ladder step sounds like when the sweep meets none.
+const LADDER_SURFACE: i32 = 21;
 
 /// `[stance (+3 running backwards)][speed]` → movement animation type.
 const MOVING: [[i32; 3]; 6] = [
@@ -94,12 +102,54 @@ pub(crate) fn bob_event<W: MoveWorld>(
     }
     if pm.ps.ground_entity_num == ENTITYNUM_NONE {
         if pm.ps.pm_flags & pm_flags::LADDER != 0 {
-            pm.gap(crate::Gap::Ladder);
+            ladder_step(pm);
         }
         return;
     }
     let surface = pm.surface_sound(pml);
     pm.event(footstep_event(pm), surface);
+}
+
+/// A step on a ladder sounds like the rung the player holds: the surface
+/// a sweep into the ladder meets, the ladder's own when it meets none.
+fn ladder_step<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+    let l = pm.ps.ladder_vec;
+    let o = pm.ps.origin;
+    let end = [o[0] - l[0] * 31.0, o[1] - l[1] * 31.0, o[2] - l[2] * 31.0];
+    let mins = [pm.mins[0] + 6.0, pm.mins[1] + 6.0, 8.0];
+    let maxs = [pm.maxs[0] - 6.0, pm.maxs[1] - 6.0, pm.maxs[2].max(8.0)];
+    let mask = pm.tracemask & LADDER_STEP_MASK;
+    let trace = pm.trace(o, end, mins, maxs, mask);
+    let mut surface = trace.surface_type();
+    if trace.fraction == 1.0 || surface == 0 {
+        surface = LADDER_SURFACE;
+    }
+    pm.event(event::FOOTSTEP_RUN, surface);
+}
+
+/// On a ladder the legs climb up or down at a rate from the vertical
+/// speed (slower aiming or leaning), stepping as the cycle turns; for 300
+/// ms after a jump they hold.
+fn ladder_climb<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
+    if pm.cmd.server_time - pm.ps.jump_time < 300 {
+        return;
+    }
+    let ps = &*pm.ps;
+    let vz = ps.velocity[2];
+    let rate = if ps.pm_flags & pm_flags::SIGHT_AIMING == 0 && ps.leanf == 0.0 {
+        vz * 0.010498688 * 0.45
+    } else {
+        vz * 0.026246719 * 0.35
+    };
+    if vz >= 0.0 {
+        pm.out(MoveEvent::LegsMove(movetype::CLIMB_UP, true));
+    } else {
+        pm.out(MoveEvent::LegsMove(movetype::CLIMB_DOWN, false));
+    }
+    let old = pm.ps.bob_cycle;
+    let new = ((pml.msec as f32 * rate + old as f32) as i32) & 0xff;
+    pm.ps.bob_cycle = new;
+    bob_event(pm, pml, old, new, true);
 }
 
 /// The fastest the player could move as they move now, for the bob rate.
@@ -258,7 +308,7 @@ pub(crate) fn footsteps<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         && flags & pm_flags::MANTLE == 0
     {
         if flags & pm_flags::LADDER != 0 {
-            pm.gap(crate::Gap::Ladder);
+            ladder_climb(pm, pml);
             return;
         }
         falling_movetype(pm, pml, stance_anim);
