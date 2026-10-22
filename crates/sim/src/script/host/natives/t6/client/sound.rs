@@ -608,12 +608,24 @@ pub(super) fn play_rumble(
     if slot == 0 {
         return Err(format!("unknown rumble name '{name}'"));
     }
-    // t6.csc.rumble.intermission: the client game also plays no rumble
-    // during intermission, which IW4L's client game does not see.
+    // The client game plays a rumble only with a snapshot of its own player
+    // that is not a spectator (the snapshot player state's pm type 5, which
+    // the server gives a spectating session).
     if !world
         .get_resource::<ClientGame>()
         .is_some_and(|game| game.has_snapshot)
     {
+        return Ok(Value::Undefined);
+    }
+    let spectating = with_server(world, |server| {
+        server
+            .resource::<RoundScript>()
+            .players
+            .get(&LOCAL_CLIENT.unsigned_abs())
+            .is_some_and(|slot| &*slot.sessionstate == "spectator")
+    })
+    .unwrap_or(false);
+    if spectating {
         return Ok(Value::Undefined);
     }
     let Some(slot) = (1..RUMBLE_SLOTS).find(|&slot| slot_name(slot) == name) else {

@@ -195,6 +195,7 @@ pub struct PreparedMatch {
     pub sound: Option<Result<asset_audio::SoundCatalog, String>>,
     pub sound_gaps: usize,
     pub script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
+    pub script_sound_playback_ms: std::collections::BTreeMap<String, i32>,
     /// The names the client's sound commands look up (Black Ops 2).
     pub sound_mix_names: Option<asset_audio::SoundMixNames>,
 }

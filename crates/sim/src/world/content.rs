@@ -168,6 +168,8 @@ struct ContentData {
     map: Arc<asset_core::MapContentDefinition>,
     weapons: Arc<crate::SimWeaponContent>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
+    /// Each alias's playback time, for games whose server works it out.
+    script_sound_playback_ms: std::collections::BTreeMap<String, i32>,
     /// The names the client's sound commands look up (Black Ops 2).
     sound_mix_names: Option<asset_core::SoundMixNames>,
     /// The game the match's map belongs to: whose sound aliases its scripts name.
@@ -230,6 +232,7 @@ impl SimContentBuilder {
                 map: Default::default(),
                 weapons,
                 script_sound_aliases: Default::default(),
+                script_sound_playback_ms: Default::default(),
                 sound_mix_names: None,
                 family: None,
                 clip_brushes: Default::default(),
@@ -278,6 +281,13 @@ impl SimContentBuilder {
                 .map(|(name, looping)| (name.to_ascii_lowercase(), looping))
                 .collect()
         });
+    }
+
+    pub fn set_script_sound_playback_ms(&mut self, times: std::collections::BTreeMap<String, i32>) {
+        self.data.script_sound_playback_ms = times
+            .into_iter()
+            .map(|(name, ms)| (name.to_ascii_lowercase(), ms))
+            .collect();
     }
 
     pub fn set_sound_mix_names(&mut self, names: Option<asset_core::SoundMixNames>) {
@@ -468,6 +478,9 @@ impl SimContent {
         &self,
     ) -> &Option<std::collections::BTreeMap<String, Option<bool>>> {
         &self.data.script_sound_aliases
+    }
+    pub(super) fn script_sound_playback_ms(&self) -> &std::collections::BTreeMap<String, i32> {
+        &self.data.script_sound_playback_ms
     }
     pub(super) fn sound_mix_names(&self) -> Option<&asset_core::SoundMixNames> {
         self.data.sound_mix_names.as_ref()

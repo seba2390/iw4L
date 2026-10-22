@@ -16,6 +16,9 @@ const SND_ALIAS: u32 = 96;
 const SND_ALIAS_SECONDARY: usize = 12;
 const SND_ALIAS_FLAGS0: usize = 24;
 
+/// The namespace Black Ops 2's sounds are captured under.
+const NAMESPACE: crate::AssetNamespace = crate::AssetNamespace::T6;
+
 fn le16(b: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([b[at], b[at + 1]])
 }
@@ -217,7 +220,7 @@ pub fn capture_t6_sounds<'n>(
         }
     }
     let (rawfile_count, rawfile_bytes) = catalog
-        .rawfiles_in(crate::AssetNamespace::T6)
+        .rawfiles_in(NAMESPACE)
         .fold((0usize, 0usize), |(count, bytes), (_, data)| {
             (count + 1, bytes + data.len())
         });
@@ -225,7 +228,7 @@ pub fn capture_t6_sounds<'n>(
         "t6 audio rawfiles: n={rawfile_count} bytes={rawfile_bytes} ignored={ignored_rawfiles}"
     ));
     if !globals.groups.is_empty() {
-        catalog.ingest_mixer_groups(crate::AssetNamespace::T6, globals.groups.clone());
+        catalog.ingest_mixer_groups(NAMESPACE, globals.groups.clone());
     }
     if let Some(mut mix) = globals.mix.clone() {
         // Each bank's mixer snapshots (76 bytes, at 0x18), every bank
@@ -251,6 +254,7 @@ pub fn capture_t6_sounds<'n>(
             report.push(format!("t6 sound {name}: no alias"));
             continue;
         };
+        catalog.set_playback_ms(NAMESPACE, name, playback_ms(load, head, count, banks));
         let mut aliases = Vec::with_capacity(count as usize);
         for k in 0..count {
             let Ok(row) = load
@@ -329,6 +333,51 @@ pub fn capture_t6_sounds<'n>(
     catalog.resolve_loaded_edges();
     catalog.publish();
     (catalog, filled, report)
+}
+
+/// The engine's playback time of an alias (`soundgetplaybacktime`): the
+/// longest of its first 64 variants, each its asset's length in msec and
+/// 500 more from a loaded bank, 250 more from a streamed one; a variant with
+/// no asset makes it 0, one whose asset is in no bank is passed over, and
+/// -1 when none counts.
+fn playback_ms(load: &ZoneLoad, head: Ptr, count: u32, banks: &[SoundAssetBank]) -> i32 {
+    const VARIANTS: u32 = 64;
+    const LOADED_EXTRA_MS: u32 = 500;
+    const STREAMED_EXTRA_MS: u32 = 250;
+    let mut longest = -1;
+    for k in 0..count.min(VARIANTS) {
+        let Ok(row) = load
+            .blocks
+            .bytes(head.at(k * SND_ALIAS), SND_ALIAS as usize)
+        else {
+            continue;
+        };
+        let asset = le32(row, 16);
+        if asset == 0 {
+            return 0;
+        }
+        let found = |loaded: bool| {
+            banks.iter().find_map(|bank| {
+                let streamed = bank
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("sabs"));
+                (streamed != loaded).then(|| bank.entry(asset)).flatten()
+            })
+        };
+        let Some((entry, extra)) = found(true)
+            .map(|entry| (entry, LOADED_EXTRA_MS))
+            .or_else(|| found(false).map(|entry| (entry, STREAMED_EXTRA_MS)))
+        else {
+            continue;
+        };
+        let Some(rate) = entry.frame_rate() else {
+            continue;
+        };
+        let ms = (entry.frame_count.wrapping_mul(1000) / rate + extra) as i32;
+        longest = longest.max(ms);
+    }
+    longest
 }
 
 fn load_asset(

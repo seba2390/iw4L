@@ -80,6 +80,9 @@ pub struct SoundCatalog {
     mix_snapshots: HashMap<AssetNamespace, crate::MixSnapshots>,
     sound_contexts: HashMap<AssetNamespace, crate::SoundContexts>,
     mix_names: Option<crate::SoundMixNames>,
+    /// What a game's server answers for an alias's playback time, by
+    /// lowercase alias name, for games that work it out from their banks.
+    playback_ms: HashMap<(AssetNamespace, String), i32>,
     by_alias: HashMap<(AssetNamespace, String), usize>,
 
     by_alias_ci: HashMap<(AssetNamespace, String), usize>,
@@ -160,6 +163,7 @@ impl SoundCatalog {
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
         }
+        self.playback_ms.extend(other.playback_ms);
         for (name, curve) in other.curves {
             match self.curves.get_mut(&name) {
                 Some(existing) if existing.knots.is_empty() && !curve.knots.is_empty() => {
@@ -241,6 +245,9 @@ impl SoundCatalog {
         if self.mix_names.is_none() {
             self.mix_names = other.mix_names;
         }
+        for (key, ms) in other.playback_ms {
+            self.playback_ms.entry(key).or_insert(ms);
+        }
         for (name, curve) in other.curves {
             match self.curves.get_mut(&name) {
                 Some(existing) if existing.knots.is_empty() && !curve.knots.is_empty() => {
@@ -282,6 +289,19 @@ impl SoundCatalog {
             })
             .collect();
         self.group_volumes.insert(AssetNamespace::Iw5, volumes);
+    }
+
+    pub fn set_playback_ms(&mut self, ns: AssetNamespace, alias: &str, ms: i32) {
+        self.playback_ms
+            .insert((ns, alias.to_ascii_lowercase()), ms);
+    }
+
+    /// Each alias's playback time, keyed as `script_alias_looping` keys it.
+    pub fn script_alias_playback_ms(&self) -> std::collections::BTreeMap<String, i32> {
+        self.playback_ms
+            .iter()
+            .map(|((ns, name), ms)| (format!("{}:{name}", ns.as_str()), *ms))
+            .collect()
     }
 
     pub fn set_sound_mix_names(&mut self, names: crate::SoundMixNames) {

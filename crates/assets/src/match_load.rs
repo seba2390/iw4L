@@ -185,6 +185,7 @@ fn start_match_load(
                         );
                         prepared.sound_gaps = bank.gaps.len();
                         prepared.script_sound_aliases = Some(bank.catalog.script_alias_looping());
+                        prepared.script_sound_playback_ms = bank.catalog.script_alias_playback_ms();
                         prepared.sound_mix_names = bank.catalog.sound_mix_names().cloned();
                         Ok(bank.catalog)
                     }

@@ -439,6 +439,19 @@ impl SimState {
         aliases.contains_key(&key).then_some(key)
     }
 
+    /// What the game's server answers for an alias's playback time, when
+    /// it works it out from its banks: `None` when it does not, `Some(-1)`
+    /// for an alias it lacks.
+    pub fn script_sound_playback_ms(&self, name: &str) -> Option<i32> {
+        let times = self.content.script_sound_playback_ms();
+        if times.is_empty() {
+            return None;
+        }
+        let family = self.content.family()?;
+        let key = format!("{}:{}", family.as_str(), name.to_ascii_lowercase());
+        Some(times.get(&key).copied().unwrap_or(-1))
+    }
+
     pub fn script_sound_exists(&self, name: &str) -> Option<bool> {
         self.content
             .script_sound_aliases()
