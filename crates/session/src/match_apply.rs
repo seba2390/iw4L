@@ -267,6 +267,7 @@ pub fn apply_prepared_match(
             engine_dvars,
             account_defaults,
             script_sound_aliases,
+            script_sound_playback_ms,
             sound_mix_names,
             objective_weapons,
             kind,
@@ -423,6 +424,7 @@ pub fn apply_prepared_match(
             .set_map(Arc::clone(&prepared_map.content))
             .map_err(|error| InstallRefusal::new(format!("Invalid map content: {error}")))?;
         content.set_script_sound_aliases(script_sound_aliases);
+        content.set_script_sound_playback_ms(script_sound_playback_ms);
         content.set_sound_mix_names(sound_mix_names);
         content.set_family(prepared_map.namespace);
         let mut sim = sim::SimWorld::new();
@@ -995,6 +997,7 @@ struct MatchInstallPlan {
     engine_dvars: Vec<String>,
     account_defaults: Option<sim::PlayerDataDefaults>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
+    script_sound_playback_ms: std::collections::BTreeMap<String, i32>,
     sound_mix_names: Option<asset_core::SoundMixNames>,
     objective_weapons: Vec<(String, u32)>,
     kind: gamemode_iw4::GameModeKind,
@@ -1677,6 +1680,7 @@ fn preflight_match_install(
         ui_images: prepared.ui_images,
         mode,
         script_sound_aliases: prepared.script_sound_aliases,
+        script_sound_playback_ms: prepared.script_sound_playback_ms,
         sound_mix_names: prepared.sound_mix_names,
         scripts,
         actor_anim_sources,
