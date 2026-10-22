@@ -670,6 +670,8 @@ pub struct MaterialGeometry {
     pub surface_type_bits: u32,
     pub layered_surface_types: u32,
     pub sort_key: u8,
+    /// The texture atlas's rows and columns.
+    pub texture_atlas: [u8; 2],
 
     pub info_game_flags: u8,
 

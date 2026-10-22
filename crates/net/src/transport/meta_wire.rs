@@ -1744,7 +1744,7 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
         }
     }
     let overlays = &screen.overlays;
-    for flame in [overlays.burn, overlays.shock] {
+    for flame in [overlays.burn, overlays.shock, overlays.transporter] {
         match flame {
             None => out.put_u8(0),
             Some(flame) => {
@@ -1893,6 +1893,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
     let overlays = sim::ScreenOverlays {
         burn: decode_flame_overlay(input)?,
         shock: decode_flame_overlay(input)?,
+        transporter: decode_flame_overlay(input)?,
         flame_allowed: input.get_u8()? != 0,
         flame_scaler: input.get_f32()?,
         filters: {

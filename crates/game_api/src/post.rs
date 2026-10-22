@@ -312,6 +312,8 @@ pub struct ScreenOverlays {
     pub burn: Option<FlameOverlay>,
     /// The electric shock overlay, while it plays.
     pub shock: Option<FlameOverlay>,
+    /// The transporter overlay, while it plays.
+    pub transporter: Option<FlameOverlay>,
     /// Whether flame overlays may draw at all.
     pub flame_allowed: bool,
     /// The flame overlays' fade override: 1 leaves the fade as it plays.
@@ -348,8 +350,8 @@ pub struct ScreenFilter {
     pub constants: [f32; 16],
 }
 
-/// A flame-style overlay (burning, electric shock): the settings it took
-/// when it began, and its fade once it ends.
+/// A flame-style overlay (burning, electric shock, transporter): the
+/// settings it took when it began, and its fade once it ends.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlameOverlay {
     /// The distortion scale (horizontal, vertical).

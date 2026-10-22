@@ -9,6 +9,7 @@ mod grenade;
 mod menu_expression;
 mod missile;
 mod movement;
+mod overlay;
 mod post_chain;
 mod radius;
 mod shock;
@@ -270,7 +271,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     script_sounds_hashed: true,
     turrets: Some(turret::TURRETS),
     post_chain: Some(post_chain::POST_CHAIN),
-    overlays: None,
+    overlays: Some(overlay::OVERLAYS),
     frame_fog: None,
     dyn_ent_physics: Some(Rule::Known(game_api::DynEntPhysicsRules {
         bullet_force: 800.0,
