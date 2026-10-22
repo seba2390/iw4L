@@ -335,6 +335,7 @@ fn boot_bots(
             diag::warn!(Sim, "bots: client {} not booted — {error}", bot.id.0);
             continue;
         }
+        world.0.mark_test_client(bot.id);
         bot.joined = true;
         bot.class_picks += 1;
         diag::info!(

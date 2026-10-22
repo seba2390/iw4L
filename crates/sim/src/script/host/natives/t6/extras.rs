@@ -193,6 +193,69 @@ fn clear_sentient(world: &mut World, player: u64) {
     }
 }
 
+/// The team number the session's party gave each member's client.
+#[derive(Resource, Default)]
+struct PartyTeams(BTreeMap<u32, i32>);
+
+/// A client's party team. A test client (a bot) sits in no party slot and
+/// has team 0, as the engine answers for one. The lobby host splits its
+/// members over teams 1 to the gametype's `teamCount` when
+/// `zm/gametypesTable.csv` names the gametype team-based (its ninth column
+/// not `NO`), else every member has team 0. Its balancer weighs party and
+/// clan groups and skill in a random search; IW4L's sessions have no
+/// parties, clans or skill, so each member is a group of one and joins the
+/// team with fewest members, ties broken by the game's `rand`
+/// (`t6.session.party_teams`).
+fn party_team(world: &mut World, client: u32) -> i32 {
+    if world
+        .get_resource::<crate::TestClients>()
+        .is_some_and(|test| test.0.contains(&client))
+    {
+        return 0;
+    }
+    if let Some(&team) = world
+        .get_resource::<PartyTeams>()
+        .and_then(|teams| teams.0.get(&client))
+    {
+        return team;
+    }
+    let gametype =
+        super::dvar(world, &[Value::string("g_gametype")]).unwrap_or_else(|_| String::new());
+    let team_based = {
+        let tables = &world.resource::<RoundScript>().tables;
+        crate::script::host::tables::table(tables, "zm/gametypesTable.csv").is_some_and(|table| {
+            (0..table.rows).any(|row| {
+                table.cell(row, 0) == Some("0")
+                    && table
+                        .cell(row, 1)
+                        .is_some_and(|name| name.eq_ignore_ascii_case(&gametype))
+                    && table
+                        .cell(row, 8)
+                        .is_some_and(|team_based| !team_based.eq_ignore_ascii_case("NO"))
+            })
+        })
+    };
+    let count = match super::gametype_setting(world, "teamcount") {
+        Value::Int(n) => n,
+        _ => 0,
+    };
+    let team = if team_based && count > 0 {
+        let teams = world.get_resource_or_insert_with(PartyTeams::default);
+        let members = |team: i32| teams.0.values().filter(|&&t| t == team).count();
+        let fewest = (1..=count).map(members).min().unwrap_or(0);
+        let open: Vec<i32> = (1..=count).filter(|&t| members(t) == fewest).collect();
+        let roll = ((super::next_rand(world) >> 16) & 0x7fff) as usize;
+        open[roll % open.len()]
+    } else {
+        0
+    };
+    world
+        .get_resource_or_insert_with(PartyTeams::default)
+        .0
+        .insert(client, team);
+    team
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
@@ -1119,14 +1182,15 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // gsc_getassignedteam(player): the team the session's party gave the
-    // player's client, as a number; IW4L's sessions have no party teams, so
-    // every player has the one a client without a party slot has (0), and
-    // the scripts' `menuautoassign` puts it on `allies`
-    // (`t6.session.party_teams`).
+    // player's client, as a number (`party_team`).
     registry.register(Function, "getassignedteam", |world, _, args| {
-        super::super::engine::entity_id(world, super::arg(args, 0)?)
+        let player = super::arg(args, 0)?;
+        super::super::engine::entity_id(world, player)
             .map_err(|_| String::from("getAssignedTeam Error: param 1 is not an entity."))?;
-        Ok(Value::Int(0))
+        let client = world.resource::<RoundScript>().player_client_of(player);
+        Ok(Value::Int(
+            client.map_or(0, |client| party_team(world, client)),
+        ))
     });
     for name in ["kick", "ban", "sethostmigrationstatus"] {
         registry.register(Function, name, |_, _, args| {

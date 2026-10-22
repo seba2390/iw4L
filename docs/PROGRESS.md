@@ -263,7 +263,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] Window boards and the Mystery Box are drawn as their zbarrier pieces (TranZit: 303 pieces, Buried's boards pulled with their `o_zombie_board_*_pull` animations), and an opening box cycles the client's box weapons at its rise animation's `switch` notes, with their hide tags (Buried: 40 switches; `t6.csc.weapons.zombie_box`, `t6.csc.weapons.hide_tags`, `t6.zbarrier.anim` closed).
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
   - [x] Shots and the knife kill zombies through Black Ops 2's `G_Damage` and death callbacks; kills and hits earn its points (Nuketown: round 3, 16 kills in 300 s).
-  - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback.
+  - [x] Zombies hurt the player through Black Ops 2's actor melee and player damage callback (Nuketown's go-down test: down at 51 s; the swing passes through the zombie's own body).
   - [x] The weapons that fire are Black Ops 2's own (see the weapons milestone); the lethal grenade `giveweapon` gives is the player's offhand and is thrown (`grenade_fire`, `explode`).
   - [x] A zombie's swing that lands on another zombie does nothing, as Black Ops 2's melee hit does.
 - [x] Rounds advance past round 1.
@@ -312,7 +312,7 @@ Only the top-level items count. Runs are headless, with the test player
   - [x] At game over the rocket intermission plays to `rocket_hit_nuketown` and the match returns to the lobby (the camera calls are kept for the client to present).
 - [x] Every zombies map in the install (TranZit, Buried).
   - [x] TranZit and Buried run round 1 with zombies spawning; doors open on TranZit, the box on Buried.
-  - [x] Their other gametypes start from the library: TranZit's Survival (Bus Depot, Town, Farm) and Grief (Town, Farm: a bot goes down, bleeds out and the game ends, both players on one team for want of party teams, `t6.session.party_teams`) and Buried's Turned (Borough: the test player starts a zombie, takes the cure and scores as the human); Diner's Turned needs a zone the install lacks (`t6.scripts.zm_gametype_zone`).
+  - [x] Their other gametypes start from the library: TranZit's Survival (Bus Depot, Town, Farm), Grief (Town, Farm: a bot goes down, bleeds out and the game ends; with `party_autoteams` 1 the test player is on `axis` and the bot on `allies`, `t6.session.party_teams`) and Buried's Grief and Turned (Borough: zombies spawn in round 1 and Grief plays to `end_game`; in Turned the test player starts a zombie, takes the cure and scores as the human); Diner's Turned needs a zone the install lacks (`t6.scripts.zm_gametype_zone`).
   - [ ] Die Rise, Mob of the Dead and Origins are not in the owner's install: Die Rise and Mob of the Dead have not run on Black Ops 2's own scripts, and Origins runs IW4L's rules.
   - [x] TranZit's bus drives its route on its path nodes once the depot doors open, with the player riding it (depot, diner, forest, on toward the power station in 220 s), its scripts reading tags off its posed model and who stands on it.
   - [x] TranZit's power: the powerswitch built from its three parts, its lever thrown, `power_on` set by the map's 30 s power event, and a perk sold after it.
