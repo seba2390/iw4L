@@ -46,6 +46,11 @@ pub struct Tick(pub u32);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ClientId(pub u32);
 
+/// The clients the host's bots play: the engines' test clients, which no
+/// lobby party seats.
+#[derive(bevy_ecs::prelude::Resource, Clone, Debug, Default)]
+pub struct TestClients(pub std::collections::BTreeSet<u32>);
+
 pub(crate) const CONTENTS_BODY: u32 = 0x0200_0000;
 
 #[derive(Clone, Debug, PartialEq)]

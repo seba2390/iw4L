@@ -405,6 +405,14 @@ impl SimWorld {
         self.ecs.resource::<crate::PersistentDataStore>()
     }
 
+    /// Marks a client as a test client: one of the host's bots.
+    pub fn mark_test_client(&mut self, id: crate::ClientId) {
+        self.ecs
+            .get_resource_or_insert_with(crate::TestClients::default)
+            .0
+            .insert(id.0);
+    }
+
     pub fn persistent_data_mut(&mut self) -> &mut crate::PersistentDataStore {
         self.ecs
             .resource_mut::<crate::PersistentDataStore>()

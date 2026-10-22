@@ -598,8 +598,22 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "ismp", |_, _, _| Ok(Value::Int(1)));
     // One online client, the owner's.
-    registry.register(Function, "getnumexpectedplayers", |_, _, _| {
-        Ok(Value::Int(1))
+    // The session party's members, at least 1: the host's lobby members,
+    // else the connected players; a test client (a bot) sits in no party
+    // slot, so a bot that connects while `onallplayersready` counts players
+    // keeps that loop waiting, as it does in Black Ops 2.
+    registry.register(Function, "getnumexpectedplayers", |world, _, _| {
+        let runtime = world.resource::<RoundScript>();
+        let test = world.get_resource::<crate::TestClients>();
+        let members = runtime
+            .entities
+            .keys()
+            .filter_map(|&id| runtime.player_client(id))
+            .filter(|client| !test.is_some_and(|test| test.0.contains(client)))
+            .count();
+        Ok(Value::Int(
+            members.max(runtime.expected_players).max(1) as i32
+        ))
     });
 
     // The math opcodes.

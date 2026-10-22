@@ -50,8 +50,12 @@ folders makes the maps startable at the next visit to the page.
 TranZit's Survival runs on Bus Depot, Town and Farm (Library → Zombies, or
 `IW4L_GAMETYPE=zstandard IW4L_ZM_LOCATION=town|farm|transit` on the command
 line); the rounds test reaches round 2 on each. Grief runs on TranZit's Town
-and Farm (`IW4L_GAMETYPE=zgrief`; add a player with `bot add 1`), but every
-player lands on `allies`: IW4L's sessions have no party teams
+and Farm and Buried's Borough (`IW4L_GAMETYPE=zgrief`, `IW4L_ZM_LOCATION=street`
+for Borough). Add a bot once the level has started (`wait world; wait 20s;
+bot add 1`): a bot is no party member, and one that connects while the level
+counts its players keeps it waiting, as Black Ops 2 does. Players split over
+the two teams only with `party_autoteams` 1 (`IW4L_SCRIPT_DVARS='set
+party_autoteams 1'`), and a bot always lands on `allies`
 (`t6.session.party_teams`). Turned runs on Buried's Borough
 (`IW4L_GAMETYPE=zcleansed IW4L_ZM_LOCATION=street t6:zm_buried`): players start
 as zombies and the one who takes the cure turns human. TranZit's Diner Turned
