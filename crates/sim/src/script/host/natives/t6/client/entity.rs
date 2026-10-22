@@ -765,7 +765,28 @@ pub(crate) fn zombie_box_weapons(server: &World) -> Vec<(String, String, bool)> 
         .unwrap_or_else(Vec::new)
 }
 
+/// The revive icon material each team's downed players show
+/// (`setteamreviveicon`), by the engine's team number; kept for the
+/// client's revive icons (`t6.csc.hud.team_revive_icon`).
+#[derive(bevy_ecs::prelude::Resource, Default)]
+pub(crate) struct TeamReviveIcons(pub(crate) BTreeMap<usize, String>);
+
 pub(super) fn register(registry: &mut NativeRegistry) {
+    // setteamreviveicon(team, material): the team's revive icon (an illegal
+    // team is the engine's team error).
+    registry.register(
+        Namespace::Function,
+        "setteamreviveicon",
+        |world, _, args| {
+            let team = super::super::team(args, 0)?;
+            let material = super::super::string(args, 1)?;
+            world
+                .get_resource_or_insert_with(TeamReviveIcons::default)
+                .0
+                .insert(team, material.to_string());
+            Ok(Value::Undefined)
+        },
+    );
     use Namespace::{Function, Method};
 
     // addzombieboxweapon(weapon, model, is_dual_wield): adds a weapon to the

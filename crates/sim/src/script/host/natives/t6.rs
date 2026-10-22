@@ -423,17 +423,39 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
 
     // A gametype setting the configs name; a whole number reads as an int.
+    // gsc_getgametypesetting(name): a member of the game settings
+    // (`ddl_mp/gametype_settings.ddl`), as the gametype's configs set it
+    // and 0 when none did, a float for the float kinds (5, 6) and an
+    // integer otherwise; a name the settings lack answers nothing.
     registry.register(Function, "getgametypesetting", |world, _, args| {
         let name = string(args, 0)?.to_ascii_lowercase();
-        let Some(value) = world
+        let float_kind = world
+            .resource::<RoundScript>()
+            .restart
+            .as_ref()
+            .and_then(|plan| plan.layouts.get(SETTINGS_LAYOUT))
+            .map(|layout| {
+                layout
+                    .structs
+                    .first()
+                    .and_then(|root| member_named(root, &name))
+                    .map(|member| matches!(member.kind, 5 | 6))
+            });
+        let value = world
             .get_resource::<crate::script::GametypeSettings>()
-            .and_then(|settings| settings.0.get(&name).cloned())
-        else {
-            return Ok(Value::Undefined);
-        };
-        Ok(match value.parse::<i32>() {
-            Ok(n) => Value::Int(n),
-            Err(_) => Value::Float(atof(&value)),
+            .and_then(|settings| settings.0.get(&name).cloned());
+        Ok(match (value, float_kind) {
+            (_, Some(None)) => Value::Undefined,
+            (Some(value), Some(Some(true))) => Value::Float(atof(&value)),
+            (Some(value), Some(Some(false))) => Value::Int(atoi(&value)),
+            (None, Some(Some(true))) => Value::Float(0.0),
+            (None, Some(Some(false))) => Value::Int(0),
+            // Without the settings layout: as the configs set it.
+            (Some(value), None) => match value.parse::<i32>() {
+                Ok(n) => Value::Int(n),
+                Err(_) => Value::Float(atof(&value)),
+            },
+            (None, None) => Value::Undefined,
         })
     });
 
@@ -1879,10 +1901,32 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let Some((layout, at)) = stat_path(world, args, path)? else {
             return Ok(Value::Undefined);
         };
-        let delta = int(args, path)?;
+        // The engine reads the amount as a float from an integer or a
+        // float, and adds it by the stat's type: an unsigned stat added a
+        // loss larger than it holds goes to 0 under `fixNegativeLosses`.
+        let delta = match arg(args, path)? {
+            Value::Int(n) => *n as f32,
+            Value::Float(f) => *f,
+            _ => return Err("addweaponstat: Expected floats or integers only.".into()),
+        };
+        let fix_negative = atoi(&dvar(world, &[Value::string("fixNegativeLosses")])?) != 0;
         let stats = player_stats(world, client, &layout);
-        let value = read_bits(stats, at.offset, at.bits) as i64 + i64::from(delta);
-        write_bits(stats, at.offset, at.bits, value as u64);
+        let old = read_bits(stats, at.offset, at.bits);
+        let value = match at.kind {
+            0..=2 => {
+                let held = old as u32;
+                let delta = delta as i32;
+                if fix_negative && delta < 0 && held < delta.unsigned_abs() {
+                    0
+                } else {
+                    u64::from((held as i32).wrapping_add(delta) as u32)
+                }
+            }
+            3 => u64::from((old as u32 as i32).wrapping_add(delta as i32) as u32),
+            5 | 6 => u64::from((f32::from_bits(old as u32) + delta).to_bits()),
+            _ => return Err("AddWeaponStat: stat type undefined".into()),
+        };
+        write_bits(stats, at.offset, at.bits, value);
         Ok(Value::Undefined)
     });
     // Counts for the online match record only.
@@ -2653,6 +2697,8 @@ fn set_client_field(
 
 /// The layout of a zombies player's stats.
 const STATS_LAYOUT: &str = "ddl_zm/stats.ddl";
+/// The game settings' layout, whose members `getgametypesetting` reads.
+const SETTINGS_LAYOUT: &str = "ddl_mp/gametype_settings.ddl";
 
 /// Where a stat path ends: its bits and the member's type.
 struct StatAt {

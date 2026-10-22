@@ -51,11 +51,11 @@ impl game_api::GameScripts for T6 {
             (true, _) => {
                 return Rule::Unknown(unknown!(
                     "t6.scripts.zm_gametypes",
-                    "Black Ops 2 zombies maps run Classic (zclassic) and Survival (zstandard); Grief and Turned have no rules",
-                    "Black Ops 2's Grief and Turned rules"
+                    "Black Ops 2's zombies gametypes are Classic, Survival, Grief and Turned (zclassic, zstandard, zgrief, zcleansed)",
+                    "one of Black Ops 2's zombies gametypes"
                 ));
             }
-            (false, "zclassic" | "zstandard") => {
+            (false, "zclassic" | "zstandard" | "zgrief" | "zcleansed") => {
                 return Rule::Unknown(unknown!(
                     "t6.scripts.zclassic_on_mp",
                     "Black Ops 2's zombies gametypes need a zombies map",
@@ -118,10 +118,10 @@ fn own_scripts(map: &str) -> bool {
     map.starts_with("zm_") && map != ORIGINS
 }
 
-/// The zombies gametypes Black Ops 2's own scripts run here: Classic and
-/// Survival.
+/// The zombies gametypes Black Ops 2's own scripts run here: Classic,
+/// Survival, Grief and Turned (the gametype rows of `zm/gametypestable.csv`).
 fn own_gametype(gametype: &str) -> bool {
-    matches!(gametype, "zclassic" | "zstandard")
+    matches!(gametype, "zclassic" | "zstandard" | "zgrief" | "zcleansed")
 }
 
 /// The map whose Classic still runs IW4L's rules.
@@ -446,7 +446,7 @@ impl game_api::GameModes for T6 {
         match gametype {
             "dm" => Rule::Known(FREE_FOR_ALL_MODE),
             "war" => Rule::Known(TEAM_DEATHMATCH_MODE),
-            "zclassic" | "zstandard" => Rule::Known(OWN_ZOMBIES_MODE),
+            "zclassic" | "zstandard" | "zgrief" | "zcleansed" => Rule::Known(OWN_ZOMBIES_MODE),
             _ => Rule::Unknown(unknown!(
                 "t6.scripts.gametypes",
                 "Black Ops 2 multiplayer modes other than Free for All and Team Deathmatch have no rules",
@@ -486,7 +486,8 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
         exempt: &[ORIGINS],
         note: "Black Ops II's zombies scripts need the patch zone the game downloads at launch (ffotd_*_zm*.ff), captured from your own running game. Put it in",
     }),
-    // TranZit's Survival starts, as `zm/gametypestable.csv` lists them.
+    // TranZit's Survival, Grief and Turned starts, as `zm/gametypestable.csv`
+    // lists them.
     starts: &[
         LibraryStart {
             zone: "zm_transit",
@@ -505,6 +506,24 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
             gametype: "zstandard",
             location: "farm",
             title: "FARM (SURVIVAL)",
+        },
+        LibraryStart {
+            zone: "zm_transit",
+            gametype: "zgrief",
+            location: "town",
+            title: "TOWN (GRIEF)",
+        },
+        LibraryStart {
+            zone: "zm_transit",
+            gametype: "zgrief",
+            location: "farm",
+            title: "FARM (GRIEF)",
+        },
+        LibraryStart {
+            zone: "zm_transit",
+            gametype: "zcleansed",
+            location: "diner",
+            title: "DINER (TURNED)",
         },
     ],
 };

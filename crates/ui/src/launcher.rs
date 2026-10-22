@@ -515,7 +515,9 @@ fn discover(
 
 /// Whether the lobby's gametype is a zombies one.
 fn zombies_gametype(gametype: Option<&str>) -> bool {
-    matches!(gametype, Some("zclassic" | "zstandard"))
+    gametype
+        .and_then(sim::HostGameModeSelection::from_token)
+        .is_some_and(|mode| mode.kind().is_t6_zombies())
 }
 
 fn command(exec: &mut MessageWriter<UiExecCommand>, text: impl Into<String>) {
@@ -1469,7 +1471,7 @@ fn rebuild(
                                 }
                                 if let Some(capture) = missing {
                                     let folders: Vec<String> = asset_transport::t6_content::capture_folders().iter().map(|folder| folder.display().to_string()).collect();
-                                    label(content, &font.0, &format!("{} {} (see docs/BO2-ZOMBIES.md).", capture.note, folders.join(" or ")), 16.0, accent);
+                                    label(content, &font.0, format!("{} {} (see docs/BO2-ZOMBIES.md).", capture.note, folders.join(" or ")), 16.0, accent);
                                 }
                                 if owned.is_empty() { label(content, &font.0, "No zombies map of this game is installed.", 17.0, accent); }
                                 label(content, &font.0, mode.note, 16.0, Color::WHITE);

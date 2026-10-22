@@ -1044,7 +1044,6 @@ pattern crates/ui/src/classes/setup.rs AssetNamespace::<game> 2
 pattern crates/ui/src/frontend/maps.rs "<game>" 3
 pattern crates/ui/src/frontend/maps.rs AssetNamespace::<game> 1
 pattern crates/ui/src/launcher.rs "<game>" 3
-pattern crates/ui/src/launcher.rs "<gametype>" 2
 pattern crates/ui/src/t6_art.rs AssetNamespace::<game> 5
 pattern crates/ui/src/t6_hud.rs AssetNamespace::<game> 4
 pattern crates/ui/src/t6_hud.rs entity_iw4:: 2
