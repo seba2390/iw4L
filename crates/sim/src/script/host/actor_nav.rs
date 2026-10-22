@@ -702,6 +702,11 @@ const BLOCKING_HEIGHT: f32 = 80.0;
 /// when it moves a quarter of its length, squared; each deflection is
 /// three quarters as long and needs that much less.
 const STEP_AWAY_MIN_SQ: f32 = 2.25;
+/// A held blocker is kept within 37.5 flat.
+const BLOCKER_KEEP_SQ: f32 = 1406.25;
+/// An enemy within 15 flat (and 80 up or down) leaves only players to block
+/// the actor.
+const ENEMY_CLOSE_SQ: f32 = 225.0;
 const STEP_AWAY_PROGRESS_SQ: f32 = 0.25;
 const STEP_AWAY_DEFLECT_PROGRESS_SQ: f32 = 0.5625;
 /// Ground pitch: the samples ahead of and behind the actor, the height
@@ -1624,14 +1629,21 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                     } else {
                         [0.0; 3]
                     };
-                    origin = match blocking_actor(world, actor, origin) {
+                    // Holding a blocker, it steps away from it instead.
+                    origin = match held_blocker(world, &movement) {
                         Some(blocker) => {
                             step_away(world, actor, origin, blocker, step, seconds, &mut movement)
                         }
                         None => walk_path(world, origin, wish, seconds, &mut movement),
                     };
                 } else {
-                    origin = physics_move(world, origin, [0.0; 3], seconds, &mut movement).0;
+                    let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+                    origin = match held_blocker(world, &movement) {
+                        Some(blocker) => {
+                            step_away(world, actor, origin, blocker, step, seconds, &mut movement)
+                        }
+                        None => physics_move(world, origin, [0.0; 3], seconds, &mut movement).0,
+                    };
                 }
             }
             AnimMode::PosDeltas => {
@@ -2388,16 +2400,134 @@ fn other_actors(world: &mut World, actor: u64) -> Vec<(u64, [f32; 3])> {
     out
 }
 
-/// Black Ops' blocking actor: the first other live actor within 30 flat
-/// and 80 up or down.
-fn blocking_actor(world: &mut World, actor: u64, origin: [f32; 3]) -> Option<([f32; 3], u64)> {
-    other_actors(world, actor)
-        .into_iter()
-        .find(|&(_, at)| {
-            (at[2] - origin[2]).powi(2) <= BLOCKING_HEIGHT_SQ
-                && (origin[0] - at[0]).powi(2) + (origin[1] - at[1]).powi(2) <= BLOCKING_RADIUS_SQ
+/// The blocker the actor holds, where it stands now.
+fn held_blocker(world: &mut World, movement: &ActorMove) -> Option<([f32; 3], u64)> {
+    let blocker = movement.blocker?;
+    let at = pose(&mut world.resource_mut::<RoundScript>(), blocker).0;
+    Some((at, blocker))
+}
+
+/// Whether the actor's enemy stands within 80 up or down and 15 flat of
+/// it: then only a player may block it.
+fn enemy_close(world: &mut World, actor: u64) -> bool {
+    let enemy = match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "enemy")
+    {
+        Value::Object(id) => id,
+        _ => return false,
+    };
+    let (Some(at), Some(origin)) = (
+        as_vector(super::players::entity_field(world, enemy, "origin")),
+        as_vector(super::players::entity_field(world, actor, "origin")),
+    ) else {
+        return false;
+    };
+    (origin[2] - at[2]).powi(2) <= BLOCKING_HEIGHT_SQ
+        && (at[0] - origin[0]).powi(2) + (at[1] - origin[1]).powi(2) <= ENEMY_CLOSE_SQ
+}
+
+fn blocker_of(world: &World, actor: u64) -> Option<u64> {
+    world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .and_then(|movement| movement.blocker)
+}
+
+fn set_blocker(world: &mut World, actor: u64, blocker: Option<u64>) {
+    if let Some(movement) = world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .get_mut(&actor)
+    {
+        movement.blocker = blocker;
+    }
+}
+
+/// `other` takes `actor` as its blocker unless it holds one (or, with
+/// `sentient_only`, while its enemy is close).
+fn give_blocker(world: &mut World, other: u64, actor: u64, sentient_only: bool) {
+    if blocker_of(world, other).is_none() && !(sentient_only && enemy_close(world, other)) {
+        set_blocker(world, other, Some(actor));
+    }
+}
+
+/// Black Ops' blocking actor, looked for as an actor stops or fights: the
+/// first other live actor within 30 flat and 80 up or down, unless it
+/// holds one or its enemy is close.
+pub(crate) fn acquire_blocker(world: &mut World, actor: u64) -> bool {
+    if blocker_of(world, actor).is_some() {
+        return true;
+    }
+    if enemy_close(world, actor) {
+        return false;
+    }
+    let Some(origin) = as_vector(super::players::entity_field(world, actor, "origin")) else {
+        return false;
+    };
+    let found = other_actors(world, actor).into_iter().find(|&(_, at)| {
+        (at[2] - origin[2]).powi(2) <= BLOCKING_HEIGHT_SQ
+            && (origin[0] - at[0]).powi(2) + (origin[1] - at[1]).powi(2) <= BLOCKING_RADIUS_SQ
+    });
+    if let Some((blocker, _)) = found {
+        set_blocker(world, actor, Some(blocker));
+    }
+    found.is_some()
+}
+
+/// Whether the actor holds a blocker.
+pub(crate) fn has_blocker(world: &World, actor: u64) -> bool {
+    blocker_of(world, actor).is_some()
+}
+
+/// The blocker's lifetime, at the start of each think: one no longer alive
+/// is let go; one beyond 37.5 flat is let go (and lets go of this actor if
+/// it held it); one 30 or more away and behind the actor along its path is
+/// let go.
+pub(crate) fn update_blocker(world: &mut World, actor: u64) {
+    let Some(blocker) = blocker_of(world, actor) else {
+        return;
+    };
+    let alive =
+        matches!(super::players::entity_field(world, blocker, "health"), Value::Int(n) if n > 0);
+    let (Some(origin), Some(at)) = (
+        as_vector(super::players::entity_field(world, actor, "origin")),
+        as_vector(super::players::entity_field(world, blocker, "origin")),
+    ) else {
+        set_blocker(world, actor, None);
+        return;
+    };
+    let apart_sq = (at[1] - origin[1]).powi(2) + (at[0] - origin[0]).powi(2);
+    if !alive {
+        set_blocker(world, actor, None);
+        return;
+    }
+    if apart_sq >= BLOCKER_KEEP_SQ {
+        if blocker_of(world, blocker) == Some(actor) {
+            set_blocker(world, blocker, None);
+        }
+        set_blocker(world, actor, None);
+        return;
+    }
+    let ahead = {
+        let runtime = world.resource::<RoundScript>();
+        runtime.actor_moves.get(&actor).and_then(|movement| {
+            if movement.anim_mode != AnimMode::Normal || !movement.has_path() {
+                return None;
+            }
+            let next = movement.waypoints.first()?;
+            let to = [next[0] - origin[0], next[1] - origin[1]];
+            let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
+            (length > 0.001).then(|| [to[0] / length, to[1] / length])
         })
-        .map(|(id, at)| (at, id))
+    };
+    if let Some(dir) = ahead
+        && apart_sq >= BLOCKING_RADIUS_SQ
+        && dir[1] * (origin[1] - at[1]) + dir[0] * (origin[0] - at[0]) > 0.0
+    {
+        set_blocker(world, actor, None);
+    }
 }
 
 /// Black Ops' `crandom`: its own seed, a value in [-1, 1).
@@ -2410,8 +2540,10 @@ fn crandom(world: &mut World) -> f32 {
     (rand.0 >> 17) as f32 * (1.0 / 16384.0) - 1.0
 }
 
-/// Whether a move from `from` to `to` ends within 30 of an actor (other than
-/// the blocker) it was not within before, at about the same height.
+/// Whether a move from `from` to `to` ends within 30 of an actor (other
+/// than the blocker) it was not within before, at about the same height;
+/// each such actor that holds no blocker (and whose enemy is not close)
+/// takes this one as its blocker.
 fn steps_into_actor(
     world: &mut World,
     actor: u64,
@@ -2419,14 +2551,20 @@ fn steps_into_actor(
     from: [f32; 3],
     to: [f32; 3],
 ) -> bool {
-    other_actors(world, actor)
+    let into: Vec<u64> = other_actors(world, actor)
         .into_iter()
         .filter(|&(id, _)| id != blocker)
-        .any(|(_, at)| {
-            (at[0] - to[0]).powi(2) + (at[1] - to[1]).powi(2) < BLOCKING_RADIUS_SQ
-                && (at[0] - from[0]).powi(2) + (at[1] - from[1]).powi(2) >= BLOCKING_RADIUS_SQ
+        .filter(|&(_, at)| {
+            (at[1] - to[1]).powi(2) + (at[0] - to[0]).powi(2) < BLOCKING_RADIUS_SQ
+                && (at[1] - from[1]).powi(2) + (at[0] - from[0]).powi(2) >= BLOCKING_RADIUS_SQ
                 && (from[2] - at[2]).abs() < BLOCKING_HEIGHT
         })
+        .map(|(id, _)| id)
+        .collect();
+    for &other in &into {
+        give_blocker(world, other, actor, true);
+    }
+    !into.is_empty()
 }
 
 /// With a blocking actor the walk steps away from it instead of along the
@@ -2434,7 +2572,8 @@ fn steps_into_actor(
 /// blocker (a random way when they stand on one spot). The step stands
 /// when it ends further from the blocker, moves a quarter of its length
 /// and walks into no other actor; else up to two shorter steps turned
-/// along what it hit, and else the actor stays.
+/// along what it hit, and else the actor stays and the blocker, holding
+/// none, takes it as its own blocker.
 fn step_away(
     world: &mut World,
     actor: u64,
@@ -2500,6 +2639,7 @@ fn step_away(
     }
     movement.ground_normal = ground;
     movement.fall_speed = fall;
+    give_blocker(world, blocker, actor, false);
     origin
 }
 

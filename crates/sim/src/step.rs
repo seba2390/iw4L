@@ -494,6 +494,7 @@ fn run_players_system(ecs: &mut World) {
                 cmodels: cmodel_models,
                 linked_brushes: &linked_brushes,
                 model_brushes: &model_brushes,
+                leaves_bodies: false,
             };
             if let Some(movement) = crate::game_move::rules(&world) {
                 let moved_from = ps.origin;
@@ -2251,6 +2252,7 @@ fn spectator_game_move(
         cmodels: &content.clip_cmodels().models,
         linked_brushes: &linked_brushes,
         model_brushes,
+        leaves_bodies: false,
     };
     let trace = |start, end, mins, maxs, tracemask| {
         CollisionBackend::trace(
@@ -2353,6 +2355,7 @@ impl ActorClip {
             cmodels: &content.clip_cmodels().models,
             linked_brushes: &self.linked_brushes,
             model_brushes: &self.model_brushes,
+            leaves_bodies: true,
         };
         CollisionBackend::trace(
             &backend,
@@ -2410,6 +2413,9 @@ struct ClipBackend<'a> {
     cmodels: &'a [clipmap_iw4::ClipCmodel],
     linked_brushes: &'a [LinkedBrushCollisionBrush],
     model_brushes: &'a [SimBrush],
+    /// A sweep that starts inside a body and leaves it is not stopped by it
+    /// (an actor's sweep).
+    leaves_bodies: bool,
 }
 
 impl CollisionBackend for ClipBackend<'_> {
@@ -2499,7 +2505,13 @@ impl CollisionBackend for ClipBackend<'_> {
             input,
         );
         let with_models = clip_move_to_model_brushes(with_bmodels, self.model_brushes, input);
-        clip_move_to_players(with_models, self.bodies, self.self_entnum, input)
+        clip_move_to_players(
+            with_models,
+            self.bodies,
+            self.self_entnum,
+            self.leaves_bodies,
+            input,
+        )
     }
 }
 
@@ -2608,6 +2620,7 @@ pub(crate) fn script_slide(
         cmodels: &content.clip_cmodels().models,
         linked_brushes: &linked_brushes,
         model_brushes: &model_brushes,
+        leaves_bodies: false,
     };
     slide.advance(origin, &backend, mask)
 }
@@ -2651,6 +2664,7 @@ pub(crate) fn script_mantle(
         cmodels: &content.clip_cmodels().models,
         linked_brushes: &linked_brushes,
         model_brushes: &model_brushes,
+        leaves_bodies: false,
     };
     let forward = math_iw4::angle_vectors(ps.viewangles).0;
     let mantle = world.xanims();
@@ -2678,6 +2692,7 @@ fn clip_move_to_players(
     mut hit: Trace,
     bodies: &[PlayerBodyClip],
     self_entnum: u16,
+    leaves_bodies: bool,
     input: GroundTraceInput,
 ) -> Trace {
     if hit.fraction == 0.0 {
@@ -2699,6 +2714,9 @@ fn clip_move_to_players(
             input.tracemask,
         );
         if other.fraction >= hit.fraction && other.startsolid == 0 && other.allsolid == 0 {
+            continue;
+        }
+        if leaves_bodies && other.startsolid != 0 && other.allsolid == 0 {
             continue;
         }
         let startsolid = hit.startsolid | other.startsolid;
