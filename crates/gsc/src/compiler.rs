@@ -74,6 +74,27 @@ impl Parser {
     fn is(&self, text: &str) -> bool {
         self.tokens[self.pos].is(text)
     }
+    /// A `foreach ( value in …` or `foreach ( key, value in …` loop
+    /// starts here. Anything else named `foreach` is a call: Black Ops'
+    /// scripts have no such loop and define a function of that name.
+    fn foreach_loop_ahead(&self) -> bool {
+        let at = |offset: usize| self.tokens.get(self.pos + offset);
+        let is = |offset: usize, text: &str| at(offset).is_some_and(|t| t.is(text));
+        let name = |offset: usize| {
+            at(offset).is_some_and(|t| {
+                !t.string
+                    && t.text
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            })
+        };
+        is(0, "foreach")
+            && is(1, "(")
+            && name(2)
+            && (is(3, "in") || (is(3, ",") && name(4) && is(5, "in")))
+    }
+
     fn eat(&mut self, text: &str) -> bool {
         if self.is(text) {
             self.pos += 1;
