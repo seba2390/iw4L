@@ -2716,7 +2716,12 @@ fn clip_move_to_players(
         if other.fraction >= hit.fraction && other.startsolid == 0 && other.allsolid == 0 {
             continue;
         }
-        if leaves_bodies && other.startsolid != 0 && other.allsolid == 0 {
+        if leaves_bodies
+            && other.startsolid != 0
+            && (input.end[0] - body.origin[0]).powi(2) + (input.end[1] - body.origin[1]).powi(2)
+                >= (input.start[0] - body.origin[0]).powi(2)
+                    + (input.start[1] - body.origin[1]).powi(2)
+        {
             continue;
         }
         let startsolid = hit.startsolid | other.startsolid;

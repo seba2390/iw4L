@@ -131,7 +131,20 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         world.resource_mut::<RoundScript>().ai_limit = 0;
         Ok(Value::Undefined)
     });
-    registry.register(Function, "watersimenable", |_, _, _| Ok(Value::Undefined));
+    registry.register(Function, "watersimenable", |world, _, args| {
+        if args.len() != 1 {
+            return Err("watersimenable() called with wrong params.\n".into());
+        }
+        let enabled = super::super::args::int(args, 0)? != 0;
+        world
+            .resource_mut::<crate::script::MatchScript>()
+            .dvars
+            .insert(
+                "r_watersim_enabled".into(),
+                if enabled { "1" } else { "0" }.into(),
+            );
+        Ok(Value::Undefined)
+    });
     // `CleanupSpawnedDynEnts()`: removes dynamic entities spawned
     // via `CreateDynEntAndLaunch` on every client.
     registry.register(Function, "cleanupspawneddynents", |world, _, _| {
@@ -168,7 +181,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "refreshhudammocounter", |_, _, _| {
         Ok(Value::Undefined)
     });
-    registry.register(Method, "setexploderid", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "setexploderid", |world, receiver, args| {
+        let _ = super::engine::entity_id(world, receiver)?;
+        let _ = super::super::args::int(args, 0)?;
+        Ok(Value::Undefined)
+    });
     // Script-state tracing is a developer aid; `haseyes` sets the entity's
     // eye-glow flag in the snapshot.
     registry.register(Method, "trackscriptstate", |_, _, _| Ok(Value::Undefined));
@@ -243,11 +260,40 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
+    registry.register(Method, "setengagementmindist", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+            return Err("not an actor".into());
+        }
+        let dist = super::super::args::float(args, 0)?;
+        let falloff = super::super::args::float(args, 1)?;
+        if dist < falloff {
+            return Err(format!(
+                "Min dist falloff must be <= min dist. [{dist:.6} < {falloff:.6}]"
+            ));
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setengagementmaxdist", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+            return Err("not an actor".into());
+        }
+        let dist = super::super::args::float(args, 0)?;
+        let falloff = super::super::args::float(args, 1)?;
+        if falloff < dist {
+            return Err(format!(
+                "Max dist falloff must be >= max dist. [{falloff:.6} > {dist:.6}]"
+            ));
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "getthreatbiasgroup", |_, _, _| {
+        Ok(Value::string(""))
+    });
     for name in [
         "setthreatbiasgroup",
         "setteamforentity",
-        "setengagementmindist",
-        "setengagementmaxdist",
         "playerknockback",
         "enablehealthshield",
         "useweaponhidetags",
@@ -389,12 +435,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             });
         )*};
     }
-    restriction!(
-        "allowlean" => Lean,
+    restriction! {
+        "allowstand" => Stand,
         "allowcrouch" => Crouch,
         "allowprone" => Prone,
-        "allowstand" => Stand,
-    );
+        "allowlean" => Lean,
+    }
     // `allowmelee(0)` sets the no-melee pm flag (`0x0800_0000`); `allowmelee(1)`
     // clears it.
     registry.register(Method, "allowmelee", |world, receiver, args| {
@@ -416,14 +462,42 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     // No search for a spot that sees a lost enemy: the reacquire steps fail
     // and the animscripts fall back to running at the enemy along the paths.
-    registry.register(Method, "reacquirestep", |_, _, _| Ok(Value::Int(0)));
-    registry.register(Method, "usereacquirenode", |_, _, _| Ok(Value::Int(0)));
+    registry.register(Method, "reacquirestep", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+            return Err("not an actor".into());
+        }
+        let _ = super::super::args::float(args, 0)?;
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "usereacquirenode", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+            return Err("not an actor".into());
+        }
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "reacquiremove", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+            return Err("not an actor".into());
+        }
+        Ok(Value::Int(0))
+    });
     for name in [
         "findreacquirenode",
         "getreacquirenode",
+        "findreacquiredirectpath",
+        "findreacquireproximatepath",
         "flagenemyunattackable",
     ] {
-        registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
+        registry.register(Method, name, |world, receiver, _| {
+            let id = super::engine::entity_id(world, receiver)?;
+            if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+                return Err("not an actor".into());
+            }
+            Ok(Value::Undefined)
+        });
     }
     // Black Ops: an unknown name is weapon 0, which is no gas weapon
     // (`weaponType` 4).
@@ -487,6 +561,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             frame.weapon_combat_row_or_none(index).bolt_action.into(),
         ))
     });
+    registry.register(Function, "getthreatbias", |_, _, _| Ok(Value::Int(0)));
     registry.register(Method, "uploadscore", |world, receiver, args| {
         upload_score(world, receiver, args)
     });
