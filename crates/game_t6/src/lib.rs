@@ -321,6 +321,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     frame_fog: Some(fog::FRAME_FOG),
     dyn_ent_physics: None,
     ammo_numbers: None,
+    extra_camera: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

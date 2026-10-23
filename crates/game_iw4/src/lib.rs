@@ -82,6 +82,7 @@ const MODE: ModeRules = ModeRules {
     frame_fog: None,
     dyn_ent_physics: None,
     ammo_numbers: None,
+    extra_camera: None,
 };
 
 impl game_api::GameVision for Iw4 {

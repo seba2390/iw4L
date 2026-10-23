@@ -418,6 +418,26 @@ pub struct ModeRules {
     /// ammo and clip names for the game's own rules, and keeps the match's
     /// rounds by the weapons' combat facts.
     pub ammo_numbers: Option<movement::AmmoNumbers>,
+    /// How the game draws a client's extra camera, the second view of the
+    /// world its materials sample; `None` draws none.
+    pub extra_camera: Option<ExtraCameraRules>,
+}
+
+/// The game's second view of the world: a client script's camera entity
+/// seen into a target its materials sample.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExtraCameraRules {
+    /// The target's size in pixels; its aspect is the view's.
+    pub size: [u32; 2],
+}
+
+/// Where a client's extra camera stands and looks this frame, and its
+/// vertical field of view in degrees.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ExtraCamera {
+    pub origin: [f32; 3],
+    pub angles: [f32; 3],
+    pub fov: f32,
 }
 
 /// The health a spawning player starts at.

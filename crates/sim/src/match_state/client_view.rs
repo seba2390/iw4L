@@ -141,6 +141,9 @@ pub struct ClientScreen {
     pub script_vectors: Vec<EntityScriptVectors>,
     /// The entities the client does not draw this frame.
     pub undrawn_entities: Vec<u16>,
+    /// Black Ops' extra camera while a client script has one on: its
+    /// entity's place and the view's field of view.
+    pub extra_camera: Option<game_api::ExtraCamera>,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

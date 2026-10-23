@@ -512,9 +512,9 @@ pub(crate) struct ClientOutput {
     pub(crate) water_fog: Option<crate::ScriptFogParams>,
     /// Dvars `setClientDvar` set this frame, for the local client.
     pub(crate) client_dvars: Vec<(String, String)>,
-    /// The extra camera (`isExtraCam`): its entity's number and field of
-    /// view, while one is on.
-    pub(crate) extra_camera: Option<(i32, f32)>,
+    /// The extra camera (`isExtraCam`): its entity and field of view, while
+    /// one is on.
+    pub(crate) extra_camera: Option<(u64, f32)>,
     next_vision_call: u32,
     /// Dynamic entities spawned by script (`CreateDynEntAndLaunch`), by serial.
     pub(crate) spawned_dyn_ents: std::collections::VecDeque<(u32, crate::SpawnedDynEntLaunch)>,
@@ -966,6 +966,15 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                         .view_effects
                         .water_fog = Some(water_fog);
                 }
+            }
+            let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
+            let mut frame = crate::frame::FrameWorld::from_world(server);
+            if frame.client_meta(crate::ClientId(0)).is_some() {
+                frame
+                    .client_meta_mut(crate::ClientId(0))
+                    .view_effects
+                    .client_screen
+                    .extra_camera = extra_camera;
             }
             // Its screen overlays past their time stop and fade, and fades
             // past their time end.
