@@ -1290,35 +1290,41 @@ pub(super) struct ZombieCommons {
 /// animations, weapons and shared models in `common_zombie` and its patch.
 /// `static_models` names the models the map's static model slots take from
 /// these zones.
+/// The zone of Black Ops' front-end level.
+pub(crate) const T5_FRONT_END_LEVEL: &str = "frontend";
+
 pub(super) fn walk_zombie_commons(
     zone_ff: &Path,
     progress: &LoadProgress,
     static_models: &std::collections::BTreeSet<String>,
 ) -> ZombieCommons {
     let mut commons = ZombieCommons::default();
-    let is_zombie_map = zone_ff
-        .file_stem()
-        .is_some_and(|stem| stem.to_string_lossy().starts_with("zombie"));
-    if !is_zombie_map
-        || asset_transport::zone_game_for_path(zone_ff) != Some(asset_core::ZoneGame::T5)
-    {
-        return commons;
-    }
     let stem = zone_ff
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
         .unwrap_or_else(String::new);
+    // Black Ops' front end is a singleplayer level of its own: it takes the
+    // singleplayer zones a zombie map does, without the zombie ones.
+    let is_zombie_map = stem.starts_with("zombie");
+    let is_front_end = stem == T5_FRONT_END_LEVEL;
+    if !(is_zombie_map || is_front_end)
+        || asset_transport::zone_game_for_path(zone_ff) != Some(asset_core::ZoneGame::T5)
+    {
+        return commons;
+    }
     let map_patch = format!("{stem}_patch");
     let mut scripts = crate::ScriptSources::default();
     let mut script_names = std::collections::BTreeSet::new();
-    for zone in [
-        "code_post_gfx",
-        "common",
-        "common_zombie",
-        "common_zombie_patch",
-        stem.as_str(),
-        map_patch.as_str(),
-    ] {
+    let zombie_zones: &[&str] = if is_zombie_map {
+        &["common_zombie", "common_zombie_patch"]
+    } else {
+        &[]
+    };
+    for zone in ["code_post_gfx", "common"]
+        .into_iter()
+        .chain(zombie_zones.iter().copied())
+        .chain([stem.as_str(), map_patch.as_str()])
+    {
         let found = match asset_transport::find_zone_for_tree(zone_ff, zone) {
             Ok(found) => found,
             Err(error) => {
