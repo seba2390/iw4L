@@ -1226,6 +1226,25 @@ fn register_player(registry: &mut NativeRegistry) {
         "depthofplayerinwater", "needsrevive");
     answers!(Value::Int(1) => "isitempurchased");
     answers!(Value::Undefined => "getvehicleoccupied");
+    // `OpenMainMenu(name)` tells the player's client to open a script menu:
+    // `main` makes the client's main menu active, which opens the menu of
+    // that name. Answers that the client was told.
+    registry.register(Method, "openmainmenu", |world, receiver, args| {
+        let client = player_id(world, receiver)?;
+        let menu = string(args, 0)?.to_ascii_lowercase();
+        super::player::send_menu_command(world, client, crate::MenuCommandKind::Open(menu));
+        Ok(Value::Int(1))
+    });
+    // `CloseMainMenu()` closes every menu on the client and leaves no menu
+    // active; Black Ops' named form closes one menu, which no script uses.
+    registry.register(Method, "closemainmenu", |world, receiver, args| {
+        let client = player_id(world, receiver)?;
+        if !args.is_empty() {
+            return Err("closemainmenu: closing one named menu is not supported".into());
+        }
+        super::player::send_menu_command(world, client, crate::MenuCommandKind::CloseInGame);
+        Ok(Value::Int(1))
+    });
     registry.register(Method, "islocaltohost", |world, receiver, _| {
         Ok(Value::Int((player_id(world, receiver)? == 0).into()))
     });

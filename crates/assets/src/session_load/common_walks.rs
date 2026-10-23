@@ -1401,7 +1401,17 @@ pub(super) fn walk_zombie_commons(
     commons.scripts = Some(scripts);
     let mut hud_menus = asset_game::MenuCatalog::default();
     let mut menu_zones = Vec::new();
-    for zone in ["code_post_gfx", "patch"] {
+    // The front end's own menus (its main menu, lobby and map select) ship
+    // in its level's zone.
+    let front_end_menus: &[&str] = if is_front_end {
+        &[T5_FRONT_END_LEVEL]
+    } else {
+        &[]
+    };
+    for zone in ["code_post_gfx", "patch"]
+        .into_iter()
+        .chain(front_end_menus.iter().copied())
+    {
         match asset_transport::find_zone_for_tree(zone_ff, zone) {
             Ok(found) => menu_zones.push((zone.to_owned(), found.path)),
             Err(error) => commons.report.push(format!("t5 menus {zone}: {error}")),
