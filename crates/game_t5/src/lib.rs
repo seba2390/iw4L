@@ -405,7 +405,7 @@ impl game_api::GameMenus for T5 {
 /// as the runtime's does; `cg_fov_default` is the player's field of view.
 /// `r_gamma` sets a device gamma ramp and the other sound dvars set Black
 /// Ops' own volume groups, which the runtime has not (docs/fidelity/t5.md).
-const MENU_DVARS: [game_api::MenuDvar; 10] = {
+const MENU_DVARS: [game_api::MenuDvar; 12] = {
     use game_api::{MenuDvar, MenuSetting};
     const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
         MenuDvar {
@@ -437,6 +437,10 @@ const MENU_DVARS: [game_api::MenuDvar; 10] = {
         shown("r_gamma", "0.9"),
         shown("r_texFilterAnisoMin", "1"),
         shown("cl_freelook", "1"),
+        // The front end's main menu opens its lockout first, and its
+        // buttons test the language.
+        shown("ui_skipMainLockout", "0"),
+        shown("loc_language", "0"),
     ]
 };
 
