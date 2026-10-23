@@ -214,7 +214,7 @@ pub(super) fn nearest_node_within(
             .nodes()
             .iter()
             .enumerate()
-            .filter(|(_, node)| !node.links.is_empty())
+            .filter(|(_, node)| !node.links.is_empty() && node.kind != NavNodeKind::Bad)
             .map(|(index, node)| {
                 let d: f32 = (0..3).map(|i| (node.origin[i] - at[i]).powi(2)).sum();
                 (d, index as u16)
