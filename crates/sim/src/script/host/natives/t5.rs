@@ -1307,7 +1307,6 @@ fn register_player(registry: &mut NativeRegistry) {
         )*};
     }
     status!(
-        "setburn" => "burning" = true,
         "stopburning" => "burning" = false,
         "startpoisoning" => "poisoned" = true,
         "stoppoisoning" => "poisoned" = false,

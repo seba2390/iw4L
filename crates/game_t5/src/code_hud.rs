@@ -4,14 +4,27 @@
 //! (`_gameskill`).
 
 use game_api::hud::{
-    CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, DamageIcons,
-    GameCodeHud, OwnerHint, OwnerHintView, ScoreAlign, ScoreColumn, ScoreValue,
+    CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, DamageFlash,
+    DamageIcons, GameCodeHud, OwnerHint, OwnerHintView, ScoreAlign, ScoreColumn, ScoreValue,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::weapon::state as ws;
 
 pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     blood: false,
+    damage_flash: Some(DamageFlash {
+        kick_scale: 0.2,
+        kick_min: 0.5,
+        kick_max: 90.0,
+        kick_random: 0.4,
+        time_ms: 500,
+        alpha_per_ms: 0.002,
+        alpha_max: 5.0,
+        color: [0.2, 0.0, 0.0, 0.2],
+        alpha_scale: 0.7,
+        corner: -10.0,
+        grow: 10.0,
+    }),
     damage_icons: DamageIcons {
         slots: 8,
         time_ms: 2000,
@@ -25,7 +38,7 @@ pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     command_hint: Some(command_hint),
     undrawn: &[unknown!(
         "t5.hud.code_hud",
-        "Black Ops' other code-drawn HUD pieces are not drawn: grenade indicators, friendly names, the players-in-view scan, chat lines, the red damage flash, the burning, electrified and teleport overlays and the night vision overlay",
+        "Black Ops' other code-drawn HUD pieces are not drawn: grenade indicators, friendly names, the players-in-view scan, chat lines and the night vision overlay",
         "those pieces of its 2D draw (executable)"
     )],
 };
