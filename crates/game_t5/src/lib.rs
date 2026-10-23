@@ -40,6 +40,9 @@ pub static GAME: T5 = T5;
 
 const ZOMBIES: &str = "zom";
 
+/// Black Ops' front-end level: the main menu draws over it.
+const FRONT_END_LEVEL: &str = "frontend";
+
 /// Engine dvars the zombie scripts read without setting: the mode itself and
 /// the AI locomotion tuning the run animscript reads, at the defaults the
 /// executable registers (no config a zombies match loads sets them).
@@ -103,7 +106,12 @@ impl game_api::GameScripts for T5 {
             settings: Vec::new(),
             key_types: Vec::new(),
             entity_fields: Vec::new(),
-            dvars: Vec::new(),
+            dvars: if request.map == FRONT_END_LEVEL {
+                // The front end is a singleplayer level, not a zombies one.
+                vec![("zombiemode".to_owned(), "0".to_owned())]
+            } else {
+                Vec::new()
+            },
         })
     }
 

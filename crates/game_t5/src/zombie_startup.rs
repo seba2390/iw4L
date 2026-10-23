@@ -16,6 +16,14 @@ const ANIMSCRIPT_MODULES: &[&str] = &[
     "animscripts/zombie_dog_death",
     "animscripts/zombie_dog_pain",
     "animscripts/zombie_dog_scripted",
+    // Black Ops' human species (the front end's actors).
+    "animscripts/init",
+    "animscripts/stop",
+    "animscripts/move",
+    "animscripts/combat",
+    "animscripts/death",
+    "animscripts/pain",
+    "animscripts/scripted",
 ];
 
 /// The zombie mode starts from the map's own main, which sets up `_zombiemode`;

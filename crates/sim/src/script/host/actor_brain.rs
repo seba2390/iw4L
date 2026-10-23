@@ -348,6 +348,8 @@ pub(crate) fn begin(world: &mut World, actor: u64) -> Result<(), String> {
         .object_field(actor, "type")
     {
         Value::String(kind) if kind.as_bytes().starts_with(b"zombie_dog") => ("zombie_dog_", true),
+        // Black Ops' human species runs the singleplayer animscripts.
+        Value::String(kind) if &*kind == "human" => ("", false),
         _ => ("zombie_", false),
     };
     let now = super::players::now_ms(world);
