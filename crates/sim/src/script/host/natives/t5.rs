@@ -954,8 +954,19 @@ fn register_script(registry: &mut NativeRegistry) {
         super::super::vehicles::all_nodes(world)
     });
     registry.register(Function, "getweaponstowedmodel", |world, _, args| {
-        weapon_facts(world, &string(args, 0)?)?;
-        Ok(Value::Int(0))
+        let name = string(args, 0)?;
+        let frame = FrameWorld::from_world(world);
+        let Some(index) = frame
+            .weapon_index_by_script_name(&name)
+            .filter(|&index| index != 0 && !name.eq_ignore_ascii_case("none"))
+        else {
+            return Ok(Value::Int(0));
+        };
+        let stowed = frame
+            .content()
+            .game_weapon(index)
+            .is_some_and(|w| w.has_stowed_model);
+        Ok(Value::Int(stowed.into()))
     });
     registry.register(Function, "getaitriggerflags", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "getvehicletriggerflags", |_, _, _| {
@@ -1307,7 +1318,6 @@ fn register_player(registry: &mut NativeRegistry) {
         )*};
     }
     status!(
-        "setburn" => "burning" = true,
         "stopburning" => "burning" = false,
         "startpoisoning" => "poisoned" = true,
         "stoppoisoning" => "poisoned" = false,
@@ -1346,7 +1356,6 @@ fn register_player(registry: &mut NativeRegistry) {
         "starttanning",
         "setsprintduration",
         "setsprintcooldown",
-        "setlaststandprevweap",
         "setblockweaponpickup",
         "cameraactivate",
         "camerasetposition",
@@ -1365,6 +1374,11 @@ fn register_player(registry: &mut NativeRegistry) {
         "beginlocationmortarselection",
         "beginlocationnapalmselection",
     );
+    registry.register(Method, "setlaststandprevweap", |world, receiver, args| {
+        let _ = player_id(world, receiver)?;
+        let _ = string(args, 0)?;
+        Ok(Value::Undefined)
+    });
     // Black Ops' handlers set and clear the player's weapon flags its
     // movement reads; nothing masks the command.
     macro_rules! weapon_flag {

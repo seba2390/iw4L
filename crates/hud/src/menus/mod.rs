@@ -1,6 +1,8 @@
 mod host;
 mod runtime;
 mod script;
+mod settings;
+pub(crate) use settings::sync_game_menu_dvars;
 mod state;
 
 use runtime::Runner;

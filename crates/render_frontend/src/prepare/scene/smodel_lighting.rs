@@ -179,17 +179,41 @@ pub(crate) fn slot_is_lit_candidate(
     surfaces_take_model_lighting && slot_has_lighting_sample(lighting, index)
 }
 
-pub(crate) fn update_smodel_lighting(
-    mut lighting: Option<ResMut<WorldSmodelLighting>>,
-    mut geom_cache: Option<ResMut<crate::prepare::scene::smodel_geom_cache::WorldStaticModelCache>>,
-    atlas: Option<Res<WorldModelLightingAtlas>>,
-    scene: Res<WorldScene>,
-    mut images: ResMut<Assets<Image>>,
-    mut tile_writes: ResMut<ModelLightingAtlasTileWrites>,
-    prepared: Res<PreparedSceneView>,
-    lock_pvs: Res<crate::prepare::scene::view_parms::RLockPvs>,
-    lod_ramp: Res<LodRampDvar>,
-) {
+#[derive(bevy::ecs::system::SystemParam)]
+pub(crate) struct SmodelLightingFrame<'w> {
+    lighting: Option<ResMut<'w, WorldSmodelLighting>>,
+    geom_cache: Option<ResMut<'w, crate::prepare::scene::smodel_geom_cache::WorldStaticModelCache>>,
+    atlas: Option<Res<'w, WorldModelLightingAtlas>>,
+    scene: Res<'w, WorldScene>,
+    images: ResMut<'w, Assets<Image>>,
+    tile_writes: ResMut<'w, ModelLightingAtlasTileWrites>,
+    prepared: Res<'w, PreparedSceneView>,
+    lock_pvs: Res<'w, crate::prepare::scene::view_parms::RLockPvs>,
+    lod_ramp: Res<'w, LodRampDvar>,
+}
+
+pub(crate) fn update_smodel_lighting(frame: SmodelLightingFrame) {
+    allocate_visible_smodel_lighting(frame, true);
+}
+
+/// The extra view's visible static models take lighting from the same
+/// allocator within the frame the main view began.
+pub(crate) fn update_extra_view_smodel_lighting(frame: SmodelLightingFrame) {
+    allocate_visible_smodel_lighting(frame, false);
+}
+
+fn allocate_visible_smodel_lighting(frame: SmodelLightingFrame, new_frame: bool) {
+    let SmodelLightingFrame {
+        mut lighting,
+        mut geom_cache,
+        atlas,
+        scene,
+        mut images,
+        mut tile_writes,
+        prepared,
+        lock_pvs,
+        lod_ramp,
+    } = frame;
     let Some(lighting) = lighting.as_mut() else {
         return;
     };
@@ -247,7 +271,9 @@ pub(crate) fn update_smodel_lighting(
             return;
         };
 
-        glob.toggle_frame();
+        if new_frame {
+            glob.toggle_frame();
+        }
         glob.clear_dirty_bits();
 
         for slot in visible {

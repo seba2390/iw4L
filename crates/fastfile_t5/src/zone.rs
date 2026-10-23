@@ -420,6 +420,8 @@ pub struct WeaponGeometry {
     pub world_model_name: Option<Ptr>,
     /// `worldClipModel`'s name.
     pub world_clip_model_name: Option<Ptr>,
+    /// `worldModel` slot 1 (the stowed model) is non-null.
+    pub has_stowed_model: bool,
 
     pub rocket_model_name: Option<Ptr>,
 
@@ -670,6 +672,8 @@ pub struct MaterialGeometry {
     pub surface_type_bits: u32,
     pub layered_surface_types: u32,
     pub sort_key: u8,
+    /// The texture atlas's rows and columns.
+    pub texture_atlas: [u8; 2],
 
     pub info_game_flags: u8,
 
@@ -1596,6 +1600,21 @@ impl<'a> ZoneStream<'a> {
             .position(|&c| c == 0)
             .map_or(buf.len(), |i| s + i);
         core::str::from_utf8(&buf[s..end]).map_err(|_| ZoneError::NotUtf8)
+    }
+
+    /// Reads an array of `N` C string pointers at `p + off`.
+    pub fn string_array_at<const N: usize>(&self, p: Ptr, off: usize) -> Option<[Option<&str>; N]> {
+        let arr = match self.ptr_at(p, off).ok()? {
+            ZonePtr::Offset(q) => self.resolve_alias(q),
+            _ => return None,
+        };
+        Some(core::array::from_fn(|i| {
+            let ptr = match self.ptr_at(arr, i * 4).ok()? {
+                ZonePtr::Offset(q) => self.resolve_alias(q),
+                _ => return None,
+            };
+            self.cstr(ptr).ok().filter(|s| !s.is_empty())
+        }))
     }
 
     pub fn watermark(&self, block: u8) -> usize {

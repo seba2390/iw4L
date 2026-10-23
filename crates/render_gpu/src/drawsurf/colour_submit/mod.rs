@@ -92,6 +92,9 @@ pub const CODE_TEXTURE_SHADOWMAP_SUN: u32 = 6;
 
 pub const CODE_TEXTURE_SHADOWMAP_SPOT: u32 = 7;
 
+/// The extra camera's view, as the renderer's code texture numbers it.
+pub const CODE_TEXTURE_EXTRA_CAM: u32 = 0x1a;
+
 mod publication;
 use publication::ExtractedColourRefs;
 pub use publication::{
@@ -100,6 +103,8 @@ pub use publication::{
 };
 
 mod encode;
+mod extra_cam;
+pub use extra_cam::PublishedExtraView;
 mod shadow_encode;
 mod shadow_prepare;
 use shadow_prepare::{
@@ -265,6 +270,24 @@ impl ExactColourTargetViews {
                     ..Default::default()
                 })
             }),
+        }
+    }
+
+    /// Views of a single-sample texture of its own (the extra camera's).
+    fn of_texture(texture: &bevy::render::render_resource::Texture) -> Self {
+        let raw_format = texture.format();
+        Self {
+            main_raw: texture.create_view(&TextureViewDescriptor {
+                label: Some("iw4_exact_colour_extra_raw"),
+                ..Default::default()
+            }),
+            main_srgb: texture.create_view(&TextureViewDescriptor {
+                label: Some("iw4_exact_colour_extra_srgb"),
+                format: Some(raw_format.add_srgb_suffix()),
+                ..Default::default()
+            }),
+            sampled_raw: None,
+            sampled_srgb: None,
         }
     }
 
@@ -2940,6 +2963,8 @@ pub(super) fn register(app: &mut App) {
         .init_resource::<prepare_camera::InstalledColourPass>()
         .init_resource::<indirect::ExactIndirectDraws>()
         .init_resource::<ResidentShadowStaticDraws>()
+        .init_resource::<PublishedExtraView>()
+        .init_resource::<extra_cam::ExtraCamLane>()
         .add_systems(
             Render,
             (
@@ -2952,14 +2977,22 @@ pub(super) fn register(app: &mut App) {
                     .after(super::scene_depth::prepare_scene_depth)
                     .after(pipeline::kick_extracted_colour_pipelines)
                     .after(super::gpu_resources::prepare_uploaded_image_registry),
-                prepare_camera::prepare_colour_lanes
+                extra_cam::prepare_extra_cam_colour
                     .in_set(RenderSystems::Prepare)
                     .after(prepare_camera::install_shared_colour_pass),
+                prepare_camera::prepare_colour_lanes
+                    .in_set(RenderSystems::Prepare)
+                    .after(prepare_camera::install_shared_colour_pass)
+                    .after(extra_cam::prepare_extra_cam_colour),
             ),
         )
         .add_systems(
             Core3d,
             (
+                extra_cam::draw_extra_cam_colour
+                    .in_set(Core3dSystems::MainPass)
+                    .after(main_opaque_pass_3d)
+                    .before(record::draw_exact_colour),
                 record::draw_exact_colour
                     .in_set(Core3dSystems::MainPass)
                     .in_set(super::draw::ExactColourDrawSet)

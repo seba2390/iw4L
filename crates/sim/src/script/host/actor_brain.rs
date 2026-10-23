@@ -84,6 +84,8 @@ const MOVE_RUN: u8 = 3;
 /// A running actor this close in time to its path's end, at its speed, runs
 /// the stop animscript with `movemode = "stop_soon"`.
 const STOP_SOON_SECONDS: f32 = 0.2;
+/// A blocked actor slower than this, squared, starts to stop.
+const BLOCKED_STILL_SQ: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transition {
@@ -394,6 +396,7 @@ pub(crate) fn think(world: &mut World) {
         .copied()
         .collect();
     for actor in actors {
+        super::actor_nav::update_blocker(world, actor);
         let mut result = THINK_DONE;
         for round in 0..THINK_LIMIT {
             if brain(world, actor).is_none() {
@@ -714,8 +717,13 @@ fn safe_to_change_script(world: &mut World, actor: u64) -> bool {
     )
 }
 
-/// The stop animscript, walking mode.
+/// The stop animscript, walking mode; it looks for a blocker first, and
+/// with one starts as a blocked move does.
 fn start_stop(world: &mut World, actor: u64) {
+    if super::actor_nav::acquire_blocker(world, actor) {
+        start_blocked(world, actor);
+        return;
+    }
     set_anim_script(
         world,
         actor,
@@ -751,6 +759,10 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
     }
     if !has_path(world, actor) {
         start_stop(world, actor);
+        return;
+    }
+    if super::actor_nav::has_blocker(world, actor) {
+        start_blocked(world, actor);
         return;
     }
     let stop_soon = run && {
@@ -793,14 +805,45 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
     );
 }
 
-/// The combat animscript, gravity movement.
+/// The combat animscript, gravity movement; it looks for a blocker first,
+/// and with one moves normally (stepping away from it).
 fn start_combat(world: &mut World, actor: u64) {
+    let anim_mode = if super::actor_nav::acquire_blocker(world, actor) {
+        AnimMode::Normal
+    } else {
+        AnimMode::Gravity
+    };
     set_anim_script(
         world,
         actor,
         AnimScript::Species(SpeciesScript::Combat),
         MOVE_STOP,
-        AnimMode::Gravity,
+        anim_mode,
+    );
+}
+
+/// A move start while holding a blocker: nearly still, the stop animscript
+/// about to stop; else the move animscript, walking.
+fn start_blocked(world: &mut World, actor: u64) {
+    let speed_sq = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map_or(0.0, |movement| {
+            movement.velocity[0] * movement.velocity[0]
+                + movement.velocity[1] * movement.velocity[1]
+        });
+    let (script, movemode) = if speed_sq < BLOCKED_STILL_SQ {
+        (SpeciesScript::Stop, MOVE_STOP_SOON)
+    } else {
+        (SpeciesScript::Move, MOVE_WALK)
+    };
+    set_anim_script(
+        world,
+        actor,
+        AnimScript::Species(script),
+        movemode,
+        AnimMode::Normal,
     );
 }
 

@@ -347,9 +347,23 @@ fn has_alternate(view: &WeaponInfoView<'_>, ps: &PlayerState, selected: u32) -> 
 /// not selected and has no rounds of (and no detonator) raises "no
 /// equipment".
 fn slot_hint(view: &WeaponInfoView<'_>) -> Option<i32> {
+    use movement_t5::state::{pm_flags, pm_type, weap_flags};
     let mut player = *view.player;
     let (ps, _) = crate::movement::unpack(&mut player);
-    if ps.weap_flags & WEAP_FLAG_HIDE_INFO != 0 {
+    if matches!(
+        ps.weaponstate,
+        ws::DROPPING_ALT | ws::RAISING | ws::RAISING_ALT | ws::DEPLOYING
+    ) || ps.pm_flags & (pm_flags::RESPAWNED | pm_flags::FROZEN | pm_flags::DIVING) != 0
+        || ps.e_flags2 & 0x4000_0000 != 0
+        || ps.pm_type >= 9
+        || ps.weap_flags & weap_flags::CYCLING_DISABLED != 0
+        || matches!(
+            ps.pm_type,
+            pm_type::LAST_STAND | pm_type::LAST_STAND_REVIVED
+        )
+        || ps.weap_flags & WEAP_FLAG_HIDE_INFO != 0
+        || ps.e_flags2 & 0x1000_0000 != 0
+    {
         return None;
     }
     let (kind, weapon) = (view.action_slot)(view.slot_pressed);

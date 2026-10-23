@@ -108,8 +108,8 @@ Only the top-level items count.
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Kino der Toten (`t5:zombie_theater`) | 128 of 610 |
-| Five (`t5:zombie_pentagon`) | 128 of 609 |
+| Kino der Toten (`t5:zombie_theater`) | 120 of 610 |
+| Five (`t5:zombie_pentagon`) | 120 of 609 |
 
 - [x] The install is recognised; the map's zones and scripts are read.
 - [x] The map loads, renders and collides (Kino der Toten).
@@ -156,13 +156,15 @@ Only the top-level items count.
   - [x] A lethal hit downs the player; with Quick Revive (`IW4L_TEST_PLAYER=revive`) the solo player holds `m1911_upgraded_zm` and revives after 10 s; a solo game over fails the level and Kino loads again, as Black Ops does.
   - [x] Going down and `reviveplayer` raise Black Ops' stance animation events, clear damage counters and switch `startrevive`/`stoprevive`'s `LAST_STAND_REVIVED` move type (`t5.match.last_stand` closed).
   - [x] `MissionFailed` ramps client blur to 32 over `g_deathDelay` (4000 ms), `setblur` and `startfadingblur` drive player blur, and `deadscreen` owner draw 97 (`CG_DEADQUOTE`) draws `ui_deadquote` with its `death` sound and post-delay fade-out, `com_codeTimeScale` slows to 0.1 over the delay and the mix fades out; the save-game restore remains open (`t5.match.level_failed`).
-- [ ] The game's own HUD.
+- [x] The game's own HUD.
   - [x] Black Ops' HUD menus (weapon info, dpad, points column `competitivemodescores`) with its fonts, layout, safe area and name-hash paint order; script hud elems (round chalk, point popups, game over text); text and icon use hints (`HINT_NOICON`, `HINT_SEAT`, `HINT_ACTIVATE`, `HINT_HEALTH`, `HINT_FRIENDLY`, `HINT_SPECTATOR`, `HINT_TEAMPOT`, weapons).
   - [x] Code-drawn pieces (Black Ops' crosshair and damage icons, no code blood), the TAB scoreboard.
   - [x] The weapon info fade, the dpad arrows and the low ammo warning (`PLATFORM_RELOAD`, `WEAPON_NO_AMMO`, `PLATFORM_LOW_AMMO_NO_RELOAD`) by Black Ops' client rules.
+  - [x] The red damage flash on every hit, the burning, electrified and teleport overlays (`setburn`, `setelectrified`, `settransported`), and the stand/crouch blocked hints.
 - [ ] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
-  - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as Black Ops' own, but sit at their minimum: its client dvars are not behind them.
+  - [x] The settings menus' sliders show Black Ops' client dvars at their defaults; mouse sensitivity, field of view and master volume move the runtime's own settings (gamma and the other volume groups do not yet).
+  - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library.
 - [ ] The game's own sound.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
   - [x] The client scripts' one-shot sounds (`playsound` on the client VM): Kino's random ambient emitters (`_audio::soundrandom_thread`: wind, metal, rope, whispers, wood) play their aliases to the local client.
@@ -171,14 +173,14 @@ Only the top-level items count.
   - [x] The client scripts' sounds by playback id: the local sound system plays each one, stops and fades it by its id (`stopsound`, `setsoundvolume`, `setsoundvolumerate`), and reports back whether it plays, how far and how long (`soundplaying`, `getplaybacktime`, `getknownlength`), which `_music.csc`'s transitions wait on.
   - [x] The player's jumps and landings reach the client scripts' `CodeCallback_PlayerJump` / `CodeCallback_PlayerLand` (`_footsteps.csc`: `fly_step_run_*`, `fly_land_*`), and their line emitters (`soundlineemitter`) play at the point of their line nearest the player (Kino's wind alleys and water pipes).
   - [ ] Gear, other players' footsteps, reverb rooms (ambient rooms, sound contexts and mix snapshots run: #234), another player's automatic fire (#392); server `PlaySound` notifies wait for the client's reported length and entity sounds follow their entity (#256).
-- [ ] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
+- [x] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.
   - [x] The Thundergun (`_zombiemode_weap_thundergun`), Cymbal Monkey bombs (`_zombiemode_weap_cymbal_monkey`) and electric traps (`_zombiemode_traps`): `thundergun_zm` equips its viewmodel, fires and blasts zombies and hellhounds in its cone; thrown Cymbal Monkeys animate (`%o_monkey_bomb`), reset their fuse (`resetmissiledetonationtime`), generate attractor positions, play their song and detonate; electric traps activate, shock players and electrocute zombies (`setelectrified`).
   - [x] Nova crawlers (`_zombiemode_ai_quad`, `zombie_theater_quad`): crawlers spawn on the roof, drop through Kino's broken ceilings and hunt the player (`allowpitchangle`, `setphysparams`, `gethitenttype`, Black Ops' `calcpathlength`).
   - [x] The teleporter's server side (`zombie_theater_teleporter`): linking the core and pad, teleporting players to the projection room and back to the theater after its timer.
   - [x] The auto turret, bought, runs Black Ops' turret think: it is drawn with its model, picks zombies in its arcs and sight, swings onto them with its convergence, fires the turret weapon's bullets (`isfiringturret`, `turretstatechange`, `shootturret`) and kills them, itself the attacker. Its fire flash and sound are not shown (`t5.turret.fire_event`).
-  - [ ] The projector and the teleporter's visuals (client scripts): the projector's film and beam (client effects on the client's own entities), the teleporter's aftereffects (visions, the FOV through `setClientDvar`, and the `electrocution` and `explosion` shellshocks' screen blur, look control and movement, but not their view kick or sound, #371) and its black-box vision play; its screen's extra camera does not (#361).
+  - [x] The projector and the teleporter's visuals (client scripts): the projector's film and beam (client effects on the client's own entities), the teleporter's aftereffects (visions, the FOV through `setClientDvar`, and the `electrocution` and `explosion` shellshocks) and its black-box vision play, and its backstage screen's extra camera: a second view of the world from the camera entity, drawn into the image the screen's material samples.
 - [ ] Every zombies map in the install (Five, Dead Ops Arcade).
   - [x] Five (`t5:zombie_pentagon`) plays solo through its own systems: doors and debris, the elevators, the DEFCON switches and the portal to the Pack-a-Punch hideaway, the electric traps' batteries and the thief round; the test player reaches round 6 with no script errors.
   - [ ] Dead Ops Arcade (`zombietron`): not offered by the game library yet.

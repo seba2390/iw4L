@@ -1007,14 +1007,20 @@ impl PlayerMovement for T5Movement {
 
     /// Black Ops' client turns these events of its own player into its
     /// invalid command hint: no frag grenade (2), no special grenade (3),
-    /// target too close (8), lock-on required (9), not enough clearance
-    /// (10).
+    /// stand blocked (6), crouch blocked (7), target too close (8), lock-on
+    /// required (9), not enough clearance (10).
     fn command_hint(&self, signal: &MoveSignal) -> Option<i32> {
         use movement_t5::events::event;
-        let MoveSignal::Event { event, .. } = *signal else {
+        let MoveSignal::Event { event, parm } = *signal else {
             return None;
         };
         match event {
+            event::STANCE_FORCE_CROUCH | event::STANCE_FORCE_PRONE if parm == 1 => {
+                Some(crate::code_hud::HINT_STAND_BLOCKED)
+            }
+            event::STANCE_FORCE_CROUCH | event::STANCE_FORCE_PRONE if parm == 2 => {
+                Some(crate::code_hud::HINT_CROUCH_BLOCKED)
+            }
             event::NO_FRAG_GRENADE_HINT => Some(crate::code_hud::HINT_NO_FRAG_GRENADE),
             event::NO_SPECIAL_GRENADE_HINT => Some(crate::code_hud::HINT_NO_SPECIAL_GRENADE),
             event::TARGET_TOO_CLOSE_HINT => Some(crate::code_hud::HINT_TARGET_TOO_CLOSE),
@@ -1248,11 +1254,15 @@ impl PlayerMovement for T5Movement {
     }
 
     /// Black Ops' client game tells its scripts of a jump (event 108, the
-    /// surface in its parameter) and a landing (109 plus the surface, or
-    /// the fall-damage events 140 plus the surface, which hurt).
+    /// surface in its parameter), a landing (109 plus the surface, or the
+    /// fall-damage events 140 plus the surface, which hurt) and foliage
+    /// (event 1), and sounds its mantle, dive and slide code sounds.
     fn jump_land(&self, signal: &MoveSignal) -> Option<game_api::movement::JumpLand> {
         use game_api::movement::JumpLand;
         use movement_t5::events::event;
+        const SURFACE_CLASSES: [&str; 9] = [
+            "default", "metal", "concrete", "wood", "snow", "dirt", "gravel", "grass", "mud",
+        ];
         let MoveSignal::Event { event, parm } = *signal else {
             return None;
         };
@@ -1261,7 +1271,14 @@ impl PlayerMovement for T5Movement {
                 .get(usize::try_from(index).ok()?)
                 .copied()
         };
+        let surface_class = |index: i32| {
+            SURFACE_CLASSES
+                .get(usize::try_from(index).ok()?)
+                .copied()
+                .or(Some("default"))
+        };
         match event {
+            event::FOLIAGE_SOUND => Some(JumpLand::Foliage),
             event::JUMP => Some(JumpLand::Jump(surface(parm)?)),
             e if (event::LAND..event::FALL_DAMAGE).contains(&e) => {
                 Some(JumpLand::Land(surface(e - event::LAND)?, false))
@@ -1269,6 +1286,13 @@ impl PlayerMovement for T5Movement {
             e if (event::FALL_DAMAGE..event::FALL_DAMAGE + 31).contains(&e) => {
                 Some(JumpLand::Land(surface(e - event::FALL_DAMAGE)?, true))
             }
+            event::MANTLE => Some(JumpLand::Mantle),
+            event::DIVE_START => Some(JumpLand::DiveStart),
+            event::DIVE_LAND => Some(JumpLand::DiveLand(surface_class(parm)?)),
+            event::SLIDE_LOOP_START => Some(JumpLand::SlideStart(surface_class(parm)?)),
+            event::SLIDE_LOOP_END => Some(JumpLand::SlideStop(surface_class(parm)?)),
+            event::NIGHTVISION_WEAR => Some(JumpLand::NightVision(true)),
+            event::NIGHTVISION_REMOVE => Some(JumpLand::NightVision(false)),
             _ => None,
         }
     }

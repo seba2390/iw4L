@@ -138,27 +138,11 @@ pub(crate) fn fire_unknown() -> &'static Unknown {
     )
 }
 
-fn melee_events_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.weapons.melee_events",
-        "a melee blow's hit event (its sound and effect on what it struck) is not sent",
-        "Black Ops' melee hit events in the runtime's event stream"
-    )
-}
-
 fn mounted_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.mounted_fire",
         "a shot from a player on a turret or in a vehicle is not fired",
         "Black Ops' turret and vehicle fire for players"
-    )
-}
-
-fn stack_fire_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.weapons.stack_fire",
-        "a stacked-barrel weapon's per-barrel spread and yaw offsets are not applied",
-        "the spread scale Black Ops' spread function takes for stacked fire"
     )
 }
 
@@ -208,8 +192,8 @@ pub(crate) fn server_events(
         let &MoveSignal::Event { event, parm } = signal else {
             continue;
         };
-        if let Some(sent) = weapon_event(event) {
-            world.weapon_event(ps.client_num, ps.weapon, sent);
+        if let Some((weapon, sent)) = weapon_event(ps, event, parm, world) {
+            world.weapon_event(ps.client_num, weapon, sent);
         }
         match event {
             ev::FIRE_WEAPON
@@ -276,8 +260,14 @@ pub(crate) fn server_events(
 
 /// The weapon events of a player's movement every client hears: the ones
 /// Black Ops' client event handler plays a weapon sound for.
-fn weapon_event(event: i32) -> Option<WeaponEvent> {
-    Some(match event {
+fn weapon_event(
+    ps: &PlayerState,
+    event: i32,
+    parm: i32,
+    world: &dyn FireWorld,
+) -> Option<(u32, WeaponEvent)> {
+    let mut weapon = ps.weapon;
+    let sent = match event {
         ev::FIRE_WEAPON => WeaponEvent::Fire {
             left: false,
             last_shot: false,
@@ -294,6 +284,32 @@ fn weapon_event(event: i32) -> Option<WeaponEvent> {
             left: true,
             last_shot: true,
         },
+        ev::NOAMMO | ev::NOAMMO_LEFT => {
+            if event == ev::NOAMMO_LEFT {
+                weapon = world.weapon(weapon).map_or(0, |w| w.dual_wield_weapon);
+            }
+            let suppressed = weapon_bytes(world, weapon).is_some_and(|(def, var)| {
+                WeaponDefView::new(&def, &var).is_some_and(|d| d.suppress_ammo_reserve_display())
+            });
+            if suppressed {
+                return None;
+            }
+            WeaponEvent::NoAmmo
+        }
+        ev::EJECT_BRASS => WeaponEvent::EjectBrass,
+        ev::MELEE_SWIPE => {
+            let strikes_with_held = weapon_bytes(world, weapon).is_some_and(|(def, var)| {
+                WeaponDefView::new(&def, &var).is_some_and(|d| d.bayonet() || d.use_as_melee())
+            });
+            if !strikes_with_held {
+                weapon = ps.melee_weapon;
+            }
+            WeaponEvent::MeleeSwipe
+        }
+        ev::PREP_OFFHAND => {
+            weapon = u32::try_from(parm).unwrap_or(ps.offhand_index);
+            WeaponEvent::Pullback
+        }
         ev::RELOAD => WeaponEvent::Reload,
         ev::RELOAD_FROM_EMPTY => WeaponEvent::ReloadFromEmpty,
         ev::RELOAD_START => WeaponEvent::ReloadStart,
@@ -305,7 +321,8 @@ fn weapon_event(event: i32) -> Option<WeaponEvent> {
         ev::PULLBACK_WEAPON => WeaponEvent::Pullback,
         ev::RECHAMBER_WEAPON => WeaponEvent::Rechamber,
         _ => return None,
-    })
+    };
+    Some((weapon, sent))
 }
 
 /// The time a shot is fired at: the command's, no more than a second behind
@@ -600,7 +617,7 @@ impl Shot<'_> {
     fn weapon_parms(
         &mut self,
         def: &WeaponDefView<'_>,
-        _parm: i32,
+        parm: i32,
         world: &dyn FireWorld,
     ) -> WeaponParms {
         let mut angles = self.ps.viewangles;
@@ -609,7 +626,18 @@ impl Shot<'_> {
             angles[1] = self.gun_angles[1];
         }
         if def.fire_type() == FIRETYPE_STACKED && self.ps.stack_fire_count > 1 {
-            self.gaps.push(stack_fire_unknown());
+            let spread = def.stack_fire_spread();
+            let count = self.ps.stack_fire_count;
+            let offset = if count == 2 {
+                if self.ps.weapon_shot_count == 2 {
+                    spread * 0.5
+                } else {
+                    spread * -0.5
+                }
+            } else {
+                (parm - 1) as f32 * (spread / (count - 1) as f32) - spread * 0.5
+            };
+            angles[1] += offset;
         }
         let (forward, right, up) = movement_t5::math::angle_vectors(angles);
         let muzzle = mad(
@@ -627,7 +655,7 @@ impl Shot<'_> {
 
     /// The hip spread at the player's eye height, and what overrides it.
     fn spread(&self, def: &WeaponDefView<'_>, world: &dyn FireWorld) -> (f32, f32) {
-        hip_spread(
+        hip_spread_stacked(
             self.ps,
             [
                 def.hip_spread_stand_min(),
@@ -639,6 +667,7 @@ impl Shot<'_> {
                 def.hip_spread_ducked_max(),
                 def.hip_spread_prone_max(),
             ],
+            (def.fire_type() == FIRETYPE_STACKED).then(|| def.stack_fire_accuracy_decay()),
             self.zombies
                 .then(|| dvar(world, "perk_weapSpreadMultiplier", 0.65f32)),
         )
@@ -730,7 +759,14 @@ impl Shot<'_> {
         }
         let target = hit_id(&trace);
         let entity = world.entity(target);
-        self.gaps.push(melee_events_unknown());
+        let knife = def.has_gun_model();
+        let hit_sentient = entity.is_some_and(sentient);
+        if hit_sentient {
+            world.weapon_event(attacker, weapon, WeaponEvent::MeleeBlood { point });
+            world.weapon_event(attacker, weapon, WeaponEvent::MeleeHit { point, knife });
+        } else {
+            world.weapon_event(attacker, weapon, WeaponEvent::MeleeMiss { point, knife });
+        }
         let Some(entity) = entity.filter(|e| e.takes_damage) else {
             return;
         };
@@ -936,7 +972,6 @@ pub(crate) fn actor_melee(
     {
         return (ENTITY_NONE, gaps);
     }
-    gaps.push(melee_events_unknown());
     let Some(entity) = entity.filter(|e| target != ENTITY_WORLD && e.takes_damage) else {
         return (ENTITY_NONE, gaps);
     };
@@ -1816,6 +1851,16 @@ pub(crate) fn hip_spread(
     max: [f32; 3],
     deadshot_scale: Option<f32>,
 ) -> (f32, f32) {
+    hip_spread_stacked(ps, min, max, None, deadshot_scale)
+}
+
+fn hip_spread_stacked(
+    ps: &PlayerState,
+    min: [f32; 3],
+    max: [f32; 3],
+    stack_fire_decay: Option<f32>,
+    deadshot_scale: Option<f32>,
+) -> (f32, f32) {
     let (mut lo, mut hi);
     if ps.spread_override_state == 2 {
         lo = ps.spread_override as f32;
@@ -1831,6 +1876,13 @@ pub(crate) fn hip_spread(
             lo = (min[0] - min[1]) * frac + min[1];
             hi = (max[0] - max[1]) * frac + max[1];
         }
+    }
+    if let Some(decay) = stack_fire_decay
+        && ps.stack_fire_count > 1
+    {
+        let scale = f64::from(decay).powf(f64::from(ps.stack_fire_count - 1));
+        lo = (f64::from(lo) * scale) as f32;
+        hi = (f64::from(hi) * scale) as f32;
     }
     if ps.spread_override_state == 1 {
         hi = ps.spread_override as f32;

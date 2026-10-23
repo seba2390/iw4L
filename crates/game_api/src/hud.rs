@@ -19,6 +19,8 @@ pub enum CodeHud {
 pub struct GameCodeHud {
     /// Modern Warfare 2's blood overlay is the game's too.
     pub blood: bool,
+    /// Each hit flashes the screen red, by how hard it kicks the view.
+    pub damage_flash: Option<DamageFlash>,
     pub damage_icons: DamageIcons,
     pub crosshair: CrosshairFn,
     pub scoreboard: Option<&'static CodeScoreboard>,
@@ -168,6 +170,29 @@ pub struct LowAmmoWarning {
     pub key: &'static str,
     pub bind: &'static str,
     pub color: [f32; 4],
+}
+
+/// The red flash a hit draws over the whole screen: the hit's view kick
+/// (its damage times `kick_scale`, held to `kick_min..=kick_max`; a hit from
+/// a direction kicks by how far ahead it came from, plus a random share up
+/// to `kick_random` of how far to the side) fades over `time_ms`, the
+/// flash's alpha the kick times the msec left times `alpha_per_ms`, at most
+/// `alpha_max`, times the colour's alpha and `alpha_scale`.
+#[derive(Clone, Copy, Debug)]
+pub struct DamageFlash {
+    pub kick_scale: f32,
+    pub kick_min: f32,
+    pub kick_max: f32,
+    pub kick_random: f32,
+    pub time_ms: i32,
+    pub alpha_per_ms: f32,
+    pub alpha_max: f32,
+    pub color: [f32; 4],
+    pub alpha_scale: f32,
+    /// The flash's top left corner, in pixels on both axes, and how much it
+    /// is wider and taller than the screen.
+    pub corner: f32,
+    pub grow: f32,
 }
 
 /// The icons pointing at where damage came from.

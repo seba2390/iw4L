@@ -99,7 +99,10 @@ pub(super) fn prepare_colour_lanes(
     ),
 ) {
     let mut cameras = views.iter();
-    let view = cameras.next();
+    let view = cameras.next().map(|(target, _, _, msaa)| CameraTargetSpec {
+        format: target.main_texture_format(),
+        samples: msaa.map_or(1, Msaa::samples),
+    });
     let extra_views = cameras.count();
     run_colour_lanes(
         CameraLane {
@@ -144,7 +147,7 @@ pub(super) fn prepare_colour_lanes(
 }
 
 pub(super) struct CameraLane<'a> {
-    pub view: Option<CameraTargetView<'a>>,
+    pub view: Option<CameraTargetSpec>,
     pub extra_views: usize,
     pub frame: &'a PublishedRenderFrame,
     pub installed: &'a InstalledColourPass,
@@ -209,7 +212,11 @@ pub(super) fn prepare_camera_colour(lane: CameraLane<'_>) {
         return;
     }
 
-    let Some((target, _depth, _extracted_view, msaa)) = view else {
+    let Some(CameraTargetSpec {
+        format: target_format,
+        samples,
+    }) = view
+    else {
         return;
     };
     let extra = extra_views;
@@ -219,7 +226,6 @@ pub(super) fn prepare_camera_colour(lane: CameraLane<'_>) {
         });
         return;
     }
-    let samples = msaa.map_or(1, Msaa::samples);
     let needs_floatz = installed.camera.needs_floatz;
     let needs_resolved_scene = installed.camera.needs_resolved_scene;
 
@@ -368,7 +374,7 @@ pub(super) fn prepare_camera_colour(lane: CameraLane<'_>) {
     let exec_view = exec_tables(extracted)
         .map(|(catalog, prepared)| MaterialExecView::camera(catalog, prepared, exec_frame));
     let prepare_target = ExactPrepareTarget {
-        color: target.main_texture_format(),
+        color: target_format,
         samples,
         depth: SCENE_DEPTH_FORMAT,
         forward_z: false,
@@ -588,6 +594,17 @@ pub(super) struct InstalledColourPass {
     camera: CameraFrameTargets,
 }
 
+impl InstalledColourPass {
+    /// The extra camera's pass: no shadows, no float z, no resolved scene.
+    pub(super) fn extra_camera(ready: bool) -> Self {
+        Self {
+            ready,
+            sun_shadow_view_ready: false,
+            camera: CameraFrameTargets::default(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct CameraFrameTargets {
     needs_floatz: bool,
@@ -701,6 +718,13 @@ pub(super) fn install_shared_colour_pass(
         sun_shadow_view_ready: shared.sun_shadow_view_ready,
         camera,
     };
+}
+
+/// The colour target a camera lane prepares its draws for.
+#[derive(Clone, Copy)]
+pub(super) struct CameraTargetSpec {
+    pub format: bevy::render::render_resource::TextureFormat,
+    pub samples: u32,
 }
 
 type CameraTargetView<'a> = (
@@ -1514,7 +1538,7 @@ fn prepare_camera_rows(
     }
 }
 
-fn open_scene_table_epoch(
+pub(super) fn open_scene_table_epoch(
     binding_cache: &mut ExactColourBindingCache,
     scene_tables: &mut SceneTextureTables,
     scratch: &mut ColourSubmitScratch,

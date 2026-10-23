@@ -80,6 +80,9 @@ pub struct ClientCallbacks {
     /// The local player landed: `(local client, player, surface, first
     /// person, quiet, hurt)`.
     pub player_land: &'static str,
+    /// The local player moved through foliage: `(local client, player,
+    /// first person, quiet)`.
+    pub player_foliage: &'static str,
     /// A snapshot entity (actor, missile, vehicle) spawned on the client:
     /// `self = entity, (local client)`.
     pub entity_spawned: &'static str,
@@ -415,6 +418,26 @@ pub struct ModeRules {
     /// ammo and clip names for the game's own rules, and keeps the match's
     /// rounds by the weapons' combat facts.
     pub ammo_numbers: Option<movement::AmmoNumbers>,
+    /// How the game draws a client's extra camera, the second view of the
+    /// world its materials sample; `None` draws none.
+    pub extra_camera: Option<ExtraCameraRules>,
+}
+
+/// The game's second view of the world: a client script's camera entity
+/// seen into a target its materials sample.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExtraCameraRules {
+    /// The target's size in pixels; its aspect is the view's.
+    pub size: [u32; 2],
+}
+
+/// Where a client's extra camera stands and looks this frame, and its
+/// vertical field of view in degrees.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ExtraCamera {
+    pub origin: [f32; 3],
+    pub angles: [f32; 3],
+    pub fov: f32,
 }
 
 /// The health a spawning player starts at.
@@ -739,6 +762,29 @@ pub trait GameMenus: Sync {
 
     /// The menu the in-game menu key (Escape) opens.
     fn ingame_menu(&self) -> Rule<InGameMenu>;
+
+    /// The game's own dvars behind its menus' settings, which the runtime
+    /// does not register.
+    fn menu_dvars(&self) -> &'static [MenuDvar] {
+        &[]
+    }
+}
+
+/// A runtime setting a game's menus show and set through a dvar of their own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuSetting {
+    MasterVolume,
+    MouseSensitivity,
+    FieldOfView,
+}
+
+/// One of a game's dvars behind its menus: its registered default, which the
+/// menus show until set, and the runtime setting it stands for, if any.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MenuDvar {
+    pub name: &'static str,
+    pub default: &'static str,
+    pub setting: Option<MenuSetting>,
 }
 
 /// What the in-game menu key opens.

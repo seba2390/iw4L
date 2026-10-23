@@ -3,7 +3,10 @@
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::Rule;
-use game_api::fire::{AutoFire, ClientFireRules, FireAutoSimRules, FireSound, FireSoundShot};
+use game_api::fire::{
+    AutoFire, ClientFireRules, FireAutoSimRules, FireSound, FireSoundShot, ImpactSoundWeapon,
+    WhizbySound,
+};
 
 /// `weaponClass` turret.
 const CLASS_TURRET: i32 = 7;
@@ -28,16 +31,19 @@ pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     view_kick: Some(crate::view_kick::RULES),
     beams: Some(crate::tracer::RULES),
     impact_sound: Some(impact_sound),
+    whizby: Some(whizby),
 };
 
 /// Black Ops' impact sound: its client picks a table by the weapon's
 /// `impactType` (the exit side's own for most bullets) and plays the
 /// table's alias for the surface struck, `<prefix>_<surface>`, where the
 /// bullet hit or the explosion went off (beside the weapon's own explosion
-/// sound). The bouncing and weapon-specific types (6, 11 to 13) sound
-/// through their weapon's own aliases.
-fn impact_sound(def: &[u8], variant: &[u8], surface: u8, exit: bool) -> Option<String> {
-    let def = WeaponDefView::new(def, variant)?;
+/// sound). Type 6 reads the weapon's bounce sound table, and types 11 to 13
+/// read the weapon's own explosion sound fields (falling back to
+/// `wpn_mortar_shell_<surface>` and `wpn_tank_shell_<surface>` for 12 and
+/// 13).
+fn impact_sound(weapon: &ImpactSoundWeapon<'_>, surface: u8, exit: bool) -> Option<String> {
+    let def = WeaponDefView::new(weapon.def, weapon.variant)?;
     let prefix = match (def.impact_type(), exit) {
         (1, false) => "prj_bullet_impact_small",
         (1, true) => "prj_bullet_impact_small_exit",
@@ -49,6 +55,25 @@ fn impact_sound(def: &[u8], variant: &[u8], surface: u8, exit: bool) -> Option<S
         (4, true) => "prj_bullet_impact_xtreme_exit",
         (5, false) => "prj_bulletspray_impact_small",
         (5, true) => "prj_bulletspray_small_exit",
+        (6, _) => {
+            return weapon
+                .bounce_sounds
+                .and_then(|table| table.get(usize::from(surface)))
+                .and_then(Clone::clone);
+        }
+        (11, _) => return weapon.explosion_sounds[0].clone(),
+        (12, _) => {
+            if let Some(alias) = &weapon.explosion_sounds[1] {
+                return Some(alias.clone());
+            }
+            "wpn_mortar_shell"
+        }
+        (13, _) => {
+            if let Some(alias) = &weapon.explosion_sounds[2] {
+                return Some(alias.clone());
+            }
+            "wpn_tank_shell"
+        }
         (14, false) => "prj_bolt_impact",
         (14, true) => "prj_bolt_impact_exit",
         (15, _) => "prj_blade_impact",
@@ -58,6 +83,86 @@ fn impact_sound(def: &[u8], variant: &[u8], surface: u8, exit: bool) -> Option<S
         _ => return None,
     };
     Some(format!("{prefix}_{}", crate::surface::name(surface)))
+}
+
+/// Black Ops' bullet whizby test: a bullet coming from in front of the view
+/// origin (`dot(dir, normalize(start - view)) < 0`) that intersects the
+/// 250-unit sphere around `view_origin` plays the weapon's own `whizbySound`
+/// (else `prj_whizby`) and, when named, its `crackSound`.
+fn whizby(
+    weapon: &ImpactSoundWeapon<'_>,
+    start: [f32; 3],
+    end: [f32; 3],
+    view_origin: [f32; 3],
+) -> Option<WhizbySound> {
+    const RADIUS: f32 = 250.0;
+    let dx = end[0] - start[0];
+    let dy = end[1] - start[1];
+    let dz = end[2] - start[2];
+    let d_len = (dz * dz + dx * dx + dy * dy).sqrt();
+    let d_inv = if -d_len >= 0.0 { 1.0 } else { 1.0 / d_len };
+    let dir = [dx * d_inv, dy * d_inv, dz * d_inv];
+
+    let sx = start[0] - view_origin[0];
+    let sy = start[1] - view_origin[1];
+    let sz = start[2] - view_origin[2];
+    let s_len = (sz * sz + sx * sx + sy * sy).sqrt();
+    let s_inv = if -s_len >= 0.0 { 1.0 } else { 1.0 / s_len };
+    let dot = dir[2] * sz * s_inv + dir[1] * sy * s_inv + dir[0] * sx * s_inv;
+    if dot >= 0.0 {
+        return None;
+    }
+
+    let a = dx * dx + dz * dz + dy * dy;
+    let b = (sz * dz + sy * dy + sx * dx) * 2.0;
+    let c = (view_origin[2] * view_origin[2]
+        + view_origin[1] * view_origin[1]
+        + view_origin[0] * view_origin[0]
+        + start[2] * start[2]
+        + start[1] * start[1]
+        + start[0] * start[0]
+        - (view_origin[2] * start[2] + view_origin[1] * start[1] + view_origin[0] * start[0])
+            * 2.0)
+        - RADIUS * RADIUS;
+    let disc = b * b - c * a * 4.0;
+    if disc <= 0.0 {
+        return None;
+    }
+    let root = disc.sqrt();
+    let denom = a * 2.0;
+    let mut t0 = (root - b) / denom;
+    if t0 >= 1.0 {
+        t0 = 1.0;
+    }
+    if -t0 >= 0.0 {
+        t0 = 0.0;
+    }
+    let mut t1 = (-b - root) / denom;
+    if t1 >= 1.0 {
+        t1 = 1.0;
+    }
+    if -t1 >= 0.0 {
+        t1 = 0.0;
+    }
+    if t0 == t1 {
+        return None;
+    }
+    let ta = if t1 <= t0 { t1 } else { t0 };
+    let origin = [dx * ta + start[0], dy * ta + start[1], dz * ta + start[2]];
+    let alias = weapon
+        .whizby_sound
+        .filter(|s| !s.is_empty())
+        .unwrap_or("prj_whizby")
+        .to_owned();
+    let crack_alias = weapon
+        .crack_sound
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    Some(WhizbySound {
+        origin,
+        alias,
+        crack_alias,
+    })
 }
 
 /// `fireType` burst.

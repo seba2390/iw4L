@@ -116,6 +116,9 @@ pub const CODE_TEXTURE_FLOATZ: u32 = 0x0f;
 
 pub const CODE_TEXTURE_RESOLVED_POST_SUN: u32 = 9;
 
+/// The extra camera's view (Modern Warfare 2's alternate scene slot).
+pub const CODE_TEXTURE_EXTRA_CAM: u32 = 0x1a;
+
 pub const CODE_TEXTURE_FLOATZ_SAMPLER: u8 = 0x61;
 
 pub use super::fog::MapFrameFog;
@@ -466,7 +469,10 @@ pub(crate) fn update_command_context_code_sources(
     cg_clock: Option<Res<FrameClock>>,
     prepared: Res<PreparedSceneView>,
     sun_shadow: Res<render_scene::PreparedSunShadowFrame>,
-    scene: Option<Res<crate::prepare::scene::world::WorldScene>>,
+    (scene, rules): (
+        Option<Res<crate::prepare::scene::world::WorldScene>>,
+        Option<Res<game_api::ModeRules>>,
+    ),
     game_fog: (
         Option<ResMut<super::fog::GameFrameFog>>,
         Option<Res<net::PresentedSnapshot>>,
@@ -624,6 +630,16 @@ pub(crate) fn update_command_context_code_sources(
     let _ = mat_frame
         .code_sources
         .set_texture(CODE_TEXTURE_RESOLVED_POST_SUN, 0x62);
+    // A game with an extra camera samples its view as the resolved scene is
+    // sampled.
+    if rules
+        .as_ref()
+        .is_some_and(|rules| rules.extra_camera.is_some())
+    {
+        let _ = mat_frame
+            .code_sources
+            .set_texture(CODE_TEXTURE_EXTRA_CAM, 0x62);
+    }
     if let Some(frame) = sun_shadow.0 {
         let _ = produce_sun_shadow_code_texture(&mut mat_frame.code_sources);
         produce_sun_shadow_receiver_constants(&mut mat_frame.code_sources, frame);

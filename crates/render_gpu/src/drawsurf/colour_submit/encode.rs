@@ -6,7 +6,7 @@ use crate::drawsurf::exact_pipeline::ExactPipelineRegistry;
 use crate::drawsurf::scene_depth::SceneDepthTexture;
 use bevy::render::render_phase::TrackedRenderPass;
 use bevy::render::render_resource::{
-    BindGroup, Buffer, CommandEncoder, IndexFormat, LoadOp, RenderPassColorAttachment,
+    BindGroup, Buffer, CommandEncoder, IndexFormat, LoadOp, Operations, RenderPassColorAttachment,
     RenderPassDescriptor, StoreOp,
 };
 use bevy::render::renderer::RenderDevice;
@@ -134,11 +134,60 @@ pub(super) fn record_colour_pass<'a>(
     if draws.peek().is_none() {
         return ColourRecordResult::default();
     }
-    let views = ExactColourTargetViews::new(target);
+    record_colour_pass_into(
+        input,
+        encoder,
+        &ExactColourTargetViews::new(target),
+        TargetLoad::View(target),
+        textures_bind,
+        draws,
+        label,
+    )
+}
+
+/// How a colour pass loads its target: as the view's attachment says, or
+/// cleared to a colour before its first draw.
+#[derive(Clone, Copy)]
+pub(super) enum TargetLoad<'t> {
+    View(&'t ViewTarget),
+    Clear(bevy::color::LinearRgba),
+    Load,
+}
+
+/// Records the draws into `views`, loading the target as `load` says.
+pub(super) fn record_colour_pass_into<'a>(
+    input: &ColourPassInputs<'_>,
+    encoder: &mut CommandEncoder,
+    views: &ExactColourTargetViews,
+    load: TargetLoad<'_>,
+    textures_bind: [&BindGroup; 2],
+    draws: impl IntoIterator<Item = &'a PreparedExactDraw>,
+    label: &'static str,
+) -> ColourRecordResult {
+    let mut draws = draws.into_iter().peekable();
+    if draws.peek().is_none() {
+        return ColourRecordResult::default();
+    }
     let mut result = ColourRecordResult::default();
+    let mut cleared = false;
     while let Some(first) = draws.peek() {
         let srgb_write = first.state.srgb_write_enable();
-        let mut ops = target.get_color_attachment().ops;
+        let mut ops = match load {
+            TargetLoad::View(target) => target.get_color_attachment().ops,
+            TargetLoad::Clear(colour) => Operations {
+                load: if cleared {
+                    LoadOp::Load
+                } else {
+                    LoadOp::Clear(colour.into())
+                },
+                store: StoreOp::Store,
+            },
+            TargetLoad::Load => Operations {
+                load: LoadOp::Load,
+                store: StoreOp::Store,
+            },
+        };
+        cleared = true;
         if srgb_write && matches!(ops.load, LoadOp::Clear(_)) {
             let (view, resolve_target) = views.attachment_views(false);
             let clear_attachments = [Some(RenderPassColorAttachment {

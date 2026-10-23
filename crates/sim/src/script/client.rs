@@ -512,9 +512,9 @@ pub(crate) struct ClientOutput {
     pub(crate) water_fog: Option<crate::ScriptFogParams>,
     /// Dvars `setClientDvar` set this frame, for the local client.
     pub(crate) client_dvars: Vec<(String, String)>,
-    /// The extra camera (`isExtraCam`): its entity's number and field of
-    /// view, while one is on.
-    pub(crate) extra_camera: Option<(i32, f32)>,
+    /// The extra camera (`isExtraCam`): its entity and field of view, while
+    /// one is on.
+    pub(crate) extra_camera: Option<(u64, f32)>,
     next_vision_call: u32,
     /// Dynamic entities spawned by script (`CreateDynEntAndLaunch`), by serial.
     pub(crate) spawned_dyn_ents: std::collections::VecDeque<(u32, crate::SpawnedDynEntLaunch)>,
@@ -967,6 +967,18 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                         .water_fog = Some(water_fog);
                 }
             }
+            let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
+            let mut frame = crate::frame::FrameWorld::from_world(server);
+            if frame.client_meta(crate::ClientId(0)).is_some() {
+                frame
+                    .client_meta_mut(crate::ClientId(0))
+                    .view_effects
+                    .client_screen
+                    .extra_camera = extra_camera;
+            }
+            // Its screen overlays past their time stop and fade, and fades
+            // past their time end.
+            super::host::natives::t6::flame_overlay::frame(server, 0);
             publish_client_lights(server, &client.world);
             present::present(server, &mut client);
             deliver_tag_effects(server, &mut client);
@@ -1389,7 +1401,8 @@ fn run_frame(
                 if client_num != 0 {
                     continue;
                 }
-                let player = Value::Object(world.resource::<ClientView>().locals[0].object);
+                let player_obj = world.resource::<ClientView>().locals[0].object;
+                let player = Value::Object(player_obj);
                 match event {
                     game_api::movement::JumpLand::Jump(surface) => (
                         callbacks.player_jump,
@@ -1412,6 +1425,37 @@ fn run_frame(
                             Value::Int(hurt.into()),
                         ],
                     ),
+                    game_api::movement::JumpLand::Foliage => (
+                        callbacks.player_foliage,
+                        vec![Value::Int(0), player, Value::Int(1), Value::Int(0)],
+                    ),
+                    game_api::movement::JumpLand::Mantle => {
+                        play_local_code_sound(world, "chr_launch_exert_plr".to_owned());
+                        continue;
+                    }
+                    game_api::movement::JumpLand::DiveStart => {
+                        play_local_code_sound(world, "fly_dtp_launch_plr".to_owned());
+                        continue;
+                    }
+                    game_api::movement::JumpLand::DiveLand(surf) => {
+                        play_local_code_sound(world, format!("fly_dtp_land_plr_{surf}"));
+                        play_local_code_sound(world, format!("fly_dtp_slide_loop_plr_{surf}"));
+                        super::notify_entity(
+                            world,
+                            player_obj,
+                            "dtp_land",
+                            &[super::NotifyValue::Int(0)],
+                        );
+                        continue;
+                    }
+                    game_api::movement::JumpLand::SlideStart(surf) => {
+                        play_local_code_sound(world, format!("fly_pslide_loop_plr_{surf}"));
+                        continue;
+                    }
+                    game_api::movement::JumpLand::SlideStop(surf) => {
+                        play_local_code_sound(world, format!("fly_pslide_stop_plr_{surf}"));
+                        continue;
+                    }
                     _ => continue,
                 }
             }
@@ -1534,6 +1578,22 @@ fn run_frame(
         diag::warn!(Sim, "csc: client scripts stopped: {fault}");
         client.stopped = true;
     }
+}
+
+fn play_local_code_sound(world: &mut World, alias: String) {
+    let mut output = world.resource_mut::<ClientOutput>();
+    let id = output.sound_id();
+    output.issued.insert(id);
+    output
+        .sound_commands
+        .push(crate::ScriptAudioCommand::ClientSound {
+            client: crate::ClientId(0),
+            id,
+            alias,
+            origin: None,
+            volume: 1.0,
+            fade_in_ms: 0,
+        });
 }
 
 fn sync_snapshot_entities(

@@ -717,6 +717,16 @@ pub(super) fn leftover_t5_sounds(
         ),
         melee_hit: leftover_t5_cstr(stream, body, sz::WEAPON_DEF_SND_MELEE_HIT_OFF),
         melee_miss: leftover_t5_cstr(stream, body, sz::WEAPON_DEF_SND_MELEE_MISS_OFF),
+        pickup: leftover_t5_cstr(stream, body, 0x07c),
+        pickup_player: leftover_t5_cstr(stream, body, 0x080),
+        ammo_pickup: leftover_t5_cstr(stream, body, 0x084),
+        ammo_pickup_player: leftover_t5_cstr(stream, body, 0x088),
+        detonate: leftover_t5_cstr(stream, body, 0x130),
+        detonate_player: leftover_t5_cstr(stream, body, 0x134),
+        bounce: stream
+            .string_array_at::<31>(body, 0x174)
+            .map(|arr| arr.map(|s| s.map(str::to_owned)))
+            .unwrap_or([const { None }; 31]),
         notetrack_sound_map: leftover_t5_script_string_map(
             stream,
             strings,
@@ -984,6 +994,13 @@ pub(super) fn capture_t5_body_facts(
                 .map(asset_core::AssetRef::bare_name)
                 .filter(|s| !s.is_empty())
                 .map(str::to_owned),
+            has_stowed_model: geometry.has_stowed_model,
+            explosion_sounds: [0x620, 0x624, 0x628].map(|off| leftover_t5_cstr(stream, body, off)),
+            bounce_sounds: stream
+                .string_array_at::<31>(body, 0x174)
+                .map(|arr| Box::new(arr.map(|s| s.map(str::to_owned)))),
+            whizby_sound: leftover_t5_cstr(stream, body, 0x0cc),
+            crack_sound: leftover_t5_cstr(stream, body, 0x0c8),
         }))
     });
     (facts, game_bytes)

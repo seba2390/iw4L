@@ -478,6 +478,11 @@ const T5_CONST_ALIASES: &[(&str, &str)] = &[
     ("PARTICLE_CLOUD_MATRIX", "PARTICLE_CLOUD_MATRIX0"),
 ];
 
+/// Black Ops' code textures the renderer serves under another name: the
+/// missile camera's and the extra camera's view (they share the slot) is the
+/// renderer's alternate scene.
+const T5_TEXTURE_ALIASES: &[(&str, &str)] = &[("MISSILE_CAM", "ALTERNATE_SCENE")];
+
 pub const T5_CODE_CONST_LIMIT: usize = 0xe5;
 pub const T5_CODE_TEXTURE_LIMIT: usize = 0x2b;
 
@@ -529,11 +534,23 @@ const fn build_const_remap() -> [Option<u16>; T5_CODE_CONST_LIMIT] {
     out
 }
 
+const fn texture_alias_of(name: &str) -> &str {
+    let mut i = 0;
+    while i < T5_TEXTURE_ALIASES.len() {
+        if name_eq(name, T5_TEXTURE_ALIASES[i].0) {
+            return T5_TEXTURE_ALIASES[i].1;
+        }
+        i += 1;
+    }
+    name
+}
+
 const fn build_texture_remap() -> [Option<u16>; T5_CODE_TEXTURE_LIMIT] {
     let mut out = [None; T5_CODE_TEXTURE_LIMIT];
     let mut i = 0;
     while i < T5_CODE_TEXTURE.len() {
         let (name, t5) = T5_CODE_TEXTURE[i];
+        let name = texture_alias_of(name);
         let slot = t5 as usize;
         let mut j = 0;
         while j < IW4_CODE_TEXTURE.len() {
@@ -616,6 +633,14 @@ pub const T5_CODE_SUN_SPECULAR: u16 = 0x34;
 pub const T5_CODE_HDRCONTROL_0: u16 = 0x89;
 
 pub const T5_CODE_POSTFX_CONTROL0: u16 = 0x79;
+
+pub const T5_CODE_COMPOSITE_FX_DISTORTION: u16 = 0x56;
+
+pub const T5_CODE_COMPOSITE_FX_OVERLAY_TEXCOORD: u16 = 0x58;
+
+pub const T5_CODE_POSTFX_FADE_EFFECT: u16 = 0x5c;
+
+pub const T5_CODE_VIEWPORT_DIMENSIONS: u16 = 0x5d;
 
 pub const T5_CODE_POSTFX_CONTROLF: u16 = 0x88;
 
@@ -724,10 +749,16 @@ pub fn leftover_t5_code_bank(t5: u16) -> Option<u16> {
     }
 }
 
-/// Black Ops' post and HDR controls are the renderer's post bank.
+/// Black Ops' post and HDR controls are the renderer's post bank, and the
+/// rows its screen overlays set (distortion, atlas, fade, viewport) are the
+/// renderer's overlay rows.
 #[must_use]
 pub fn post_t5_code_bank(t5: u16) -> Option<u16> {
     match t5 {
+        T5_CODE_COMPOSITE_FX_DISTORTION => Some(render_material::CODE_T6_FLAME_DISTORTION),
+        T5_CODE_COMPOSITE_FX_OVERLAY_TEXCOORD => Some(render_material::CODE_T6_OVERLAY_TEX_COORD),
+        T5_CODE_POSTFX_FADE_EFFECT => Some(render_material::CODE_T6_FADE_EFFECT),
+        T5_CODE_VIEWPORT_DIMENSIONS => Some(render_material::CODE_T6_VIEWPORT_DIMENSIONS),
         T5_CODE_POSTFX_CONTROL0..=T5_CODE_POSTFX_CONTROLF => {
             Some(render_material::CODE_POST_CONTROL0 + (t5 - T5_CODE_POSTFX_CONTROL0))
         }
@@ -740,8 +771,8 @@ pub fn post_t5_code_bank(t5: u16) -> Option<u16> {
 
 #[must_use]
 pub fn remap_t5_code_const_source(t5: u16) -> Option<u16> {
-    remap_code_const_index(t5)
-        .or_else(|| post_t5_code_bank(t5))
+    post_t5_code_bank(t5)
+        .or_else(|| remap_code_const_index(t5))
         .or_else(|| leftover_t5_code_bank(t5))
 }
 

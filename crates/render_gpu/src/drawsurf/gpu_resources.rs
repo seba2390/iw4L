@@ -153,6 +153,9 @@ pub struct RuntimeUploadedImageRegistry {
     pub spot_shadow_rt10: Option<Result<TextureView, UploadedViewRefusal>>,
 
     pub spot_shadow_rt11: Option<Result<TextureView, UploadedViewRefusal>>,
+
+    /// The extra camera's target, once a game's extra camera has drawn.
+    pub extra_cam: Option<Result<TextureView, UploadedViewRefusal>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1340,6 +1343,7 @@ fn take_uploaded_material(
 
 fn is_runtime_render_target_code_image(index: u32) -> bool {
     index == crate::drawsurf::CODE_TEXTURE_RESOLVED_POST_SUN
+        || index == crate::drawsurf::CODE_TEXTURE_EXTRA_CAM
         || index == crate::drawsurf::CODE_TEXTURE_FLOATZ
         || index == crate::drawsurf::CODE_TEXTURE_SHADOWMAP_SUN
         || index == crate::drawsurf::CODE_TEXTURE_SHADOWMAP_SPOT
@@ -1357,6 +1361,14 @@ fn take_uploaded_code_image(
             .resolved_post_sun
             .clone()
             .ok_or(TextureBindRefusal::ResolvedPostSunUnavailable { register })?
+            .map_err(|cause| TextureBindRefusal::UploadedView { register, cause })?;
+        return Ok((view, UploadedTextureIdentity::Code(index)));
+    }
+    if index == crate::drawsurf::CODE_TEXTURE_EXTRA_CAM {
+        let view = uploaded
+            .extra_cam
+            .clone()
+            .ok_or(TextureBindRefusal::ExtraCamUnavailable { register })?
             .map_err(|cause| TextureBindRefusal::UploadedView { register, cause })?;
         return Ok((view, UploadedTextureIdentity::Code(index)));
     }
@@ -1510,6 +1522,9 @@ pub enum TextureBindRefusal {
         register: u16,
     },
     ResolvedPostSunUnavailable {
+        register: u16,
+    },
+    ExtraCamUnavailable {
         register: u16,
     },
     FloatZUnresolved {
