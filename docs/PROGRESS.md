@@ -163,7 +163,8 @@ Only the top-level items count.
   - [x] The red damage flash on every hit, the burning, electrified and teleport overlays (`setburn`, `setelectrified`, `settransported`), and the stand/crouch blocked hints.
 - [ ] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
-  - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library. Sliders draw as Black Ops' own, but sit at their minimum: its client dvars are not behind them.
+  - [x] The settings menus' sliders show Black Ops' client dvars at their defaults; mouse sensitivity, field of view and master volume move the runtime's own settings (gamma and the other volume groups do not yet).
+  - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library.
 - [ ] The game's own sound.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
   - [x] The client scripts' one-shot sounds (`playsound` on the client VM): Kino's random ambient emitters (`_audio::soundrandom_thread`: wind, metal, rope, whispers, wood) play their aliases to the local client.
