@@ -1033,6 +1033,13 @@ pub(super) fn reset_orient(world: &mut World, id: u64) {
     anim.orient_yaw = None;
 }
 
+/// What an animscript switch leaves: the orient mode `face default` and
+/// the anim mode `normal`, the one the actor spawns with.
+pub(super) fn reset_modes(world: &mut World, id: u64) {
+    reset_orient(world, id);
+    anim_mut(world, id).mode = "normal";
+}
+
 pub(super) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
 
