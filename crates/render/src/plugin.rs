@@ -24,7 +24,8 @@ impl Plugin for RenderPlugin {
             PostUpdate,
             (stamp_gpu_submit_ready, crate::extract::seal_render_frame)
                 .chain()
-                .after(frame::RenderSet::FrontendAssemble),
+                .after(frame::RenderSet::FrontendAssemble)
+                .after(render_frontend::prepare::scene::extra_view::run_extra_view),
         )
         .add_systems(
             Update,

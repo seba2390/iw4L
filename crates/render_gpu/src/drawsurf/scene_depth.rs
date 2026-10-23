@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::render::camera::ExtractedCamera;
 use bevy::render::render_resource::*;
 use bevy::render::renderer::RenderDevice;
-use bevy::render::texture::TextureCache;
+use bevy::render::texture::{CachedTexture, TextureCache};
 use bevy::render::view::{Msaa, ViewDepthStencilTexture};
 
 pub const SCENE_DEPTH_FORMAT: TextureFormat = TextureFormat::Depth24PlusStencil8;
@@ -16,6 +16,20 @@ pub struct SceneDepthTexture {
 }
 
 impl SceneDepthTexture {
+    /// A depth target of its own, cleared to `clear` on its first pass.
+    pub(crate) fn of_cached(texture: CachedTexture, clear: f32) -> Self {
+        let raw = texture.texture.clone();
+        let sampled = raw.create_view(&TextureViewDescriptor {
+            aspect: TextureAspect::DepthOnly,
+            ..Default::default()
+        });
+        Self {
+            texture: raw,
+            sampled,
+            attachment: ViewDepthStencilTexture::new(texture, Some(clear), Some(0)),
+        }
+    }
+
     pub fn view(&self) -> &TextureView {
         &self.sampled
     }

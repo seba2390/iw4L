@@ -37,6 +37,7 @@ GPU modules live in `render_gpu/src/drawsurf/colour_submit/`:
 * `geometry.rs` and `residency.rs` track capacity, live length, allocation generation and uploaded revision. Shrinking retains buffers; changed packed segments upload alone.
 * `binding.rs` and `constants.rs` cache textures and constants. Recording checks prepared work and table epochs against the extracted frame.
 * `prepare_camera.rs` and `shadow_prepare.rs` prepare concurrently after shared shadow-view installation. Shadow frames remove dynamic tails and retain static patch targets. Multiple camera views refuse with `MultipleCameraViews`.
+* `extra_cam.rs` is a game's extra camera (`ModeRules::extra_camera`): the frontend's `prepare/scene/extra_view.rs` swaps in the second view's resources and reruns cull, lists and camera products for it; the seal adds its products to the main frame's geometry, and its own lane draws it into a target the main view samples as a code texture.
 * `record.rs`, `encode.rs`, `shadow_encode.rs` and `indirect.rs` record draws. `IW4L_MULTI_DRAW` plus device support merges adjacent compatible commands while preserving order.
 
 `render/src/extract.rs` replaces `InstalledRenderWorld` when geometry, ports or

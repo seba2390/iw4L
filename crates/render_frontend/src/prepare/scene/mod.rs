@@ -1,6 +1,7 @@
 pub mod camera;
 pub mod cell_frustum_cmds;
 pub mod cull;
+pub mod extra_view;
 pub mod frustum;
 pub mod gfx_scene;
 pub mod model_lighting_atlas;

@@ -1822,6 +1822,16 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             }
         }
     }
+    match screen.extra_camera {
+        None => out.put_u8(0),
+        Some(camera) => {
+            out.put_u8(1);
+            for value in camera.origin.into_iter().chain(camera.angles) {
+                out.put_f32(value);
+            }
+            out.put_f32(camera.fov);
+        }
+    }
 }
 
 fn decode_flame_overlay(
@@ -1971,6 +1981,15 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         }
         script_vectors.push(sim::EntityScriptVectors { number, rows });
     }
+    let extra_camera = match input.get_u8()? {
+        0 => None,
+        1 => Some(game_api::ExtraCamera {
+            origin: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+            angles: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+            fov: input.get_f32()?,
+        }),
+        _ => return Err(WireError::Malformed("bad extra camera tag")),
+    };
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
@@ -1980,6 +1999,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         overlays,
         script_vectors,
         undrawn_entities,
+        extra_camera,
     })
 }
 

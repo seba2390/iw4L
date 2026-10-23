@@ -1,5 +1,5 @@
 use super::frame_products::{FrameAssemblyInputs, MaterialFrameInputs};
-use render_frame::{MaterialExecFrame, OutdoorLookup};
+pub use render_frame::{MaterialExecFrame, OutdoorLookup};
 
 pub fn refresh(
     frame: &mut MaterialExecFrame,

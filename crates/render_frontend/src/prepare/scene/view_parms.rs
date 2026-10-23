@@ -92,7 +92,7 @@ pub(crate) fn stamp_prepared_scene_view(
         }
         _ => bevy::camera::ClearColorConfig::Default,
     };
-    let dpvs_z_near = hud_iw4::znear_from_refdef(0.0, znear.value);
+    let dpvs_z_near = dpvs_z_near(&znear);
     *view = prepare_scene_view(
         lens_world_from_parent_child(*parent, *child),
         persp.fov,
@@ -121,4 +121,42 @@ pub(crate) fn stamp_prepared_scene_view(
         rigid,
         skinned,
     );
+}
+
+/// A game's extra camera's view: its entity's origin and angles, its
+/// vertical field of view in degrees, and the aspect of its target. The near
+/// and far planes and the depth hack are the main view's.
+pub(crate) fn extra_scene_view(
+    origin: [f32; 3],
+    angles: [f32; 3],
+    fov: f32,
+    size: [u32; 2],
+    main: &PreparedSceneView,
+    znear: &RZnearDvar,
+) -> PreparedSceneView {
+    let world_from_view =
+        render_scene::transform_from_iw_view(render_scene::WorldCameraPose { origin, angles })
+            .to_matrix();
+    let (width, height) = (size[0] as i32, size[1] as i32);
+    let mut full_viewport = main.scene_viewport;
+    full_viewport.x = 0;
+    full_viewport.y = 0;
+    full_viewport.width = width;
+    full_viewport.height = height;
+    prepare_scene_view(
+        world_from_view,
+        fov.to_radians(),
+        size[0] as f32 / size[1] as f32,
+        main.near,
+        main.far,
+        width,
+        height,
+        dpvs_z_near(znear),
+        main.depth_hack_near,
+        full_viewport,
+    )
+}
+
+fn dpvs_z_near(znear: &RZnearDvar) -> f32 {
+    hud_iw4::znear_from_refdef(0.0, znear.value)
 }

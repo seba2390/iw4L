@@ -1679,6 +1679,18 @@ fn line_emitter(args: &[Value], native: &str) -> Result<(String, [f32; 3], [f32;
 /// one (`cg_fovExtraCam`'s default).
 const EXTRA_CAMERA_FOV: f32 = 65.0;
 
+/// The extra camera this frame: its entity's origin and angles (Black Ops
+/// reads the camera entity's lerp origin and angles each frame) and the
+/// field of view.
+pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
+    let (id, fov) = world.resource::<ClientOutput>().extra_camera?;
+    Some(game_api::ExtraCamera {
+        origin: entity_vector(world, id, "origin"),
+        angles: entity_vector(world, id, "angles"),
+        fov,
+    })
+}
+
 /// Black Ops' extra camera: one client entity whose view the renderer draws
 /// for the materials that show it. Each native takes its arguments in the
 /// game's order: the count, then the local client.
@@ -1689,17 +1701,12 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
             return Err("isextracam() called with wrong params.\n".into());
         }
         local_index(args)?;
-        let (_, entity) = entity(world, receiver)?;
-        let number = entity.number;
+        let (id, _) = entity(world, receiver)?;
         let output = &mut world.resource_mut::<ClientOutput>().extra_camera;
         if output.is_some() {
             return Err("There can be only one extra camera active in the level.".into());
         }
-        *output = Some((number, EXTRA_CAMERA_FOV));
-        diag::info!(
-            Sim,
-            "t5.csc.extra_cam: extra camera on entity {number} is not drawn: the renderer has no second view"
-        );
+        *output = Some((id, EXTRA_CAMERA_FOV));
         Ok(Value::Undefined)
     });
     registry.register(Function, "stopextracam", |world, _, args| {

@@ -478,6 +478,11 @@ const T5_CONST_ALIASES: &[(&str, &str)] = &[
     ("PARTICLE_CLOUD_MATRIX", "PARTICLE_CLOUD_MATRIX0"),
 ];
 
+/// Black Ops' code textures the renderer serves under another name: the
+/// missile camera's and the extra camera's view (they share the slot) is the
+/// renderer's alternate scene.
+const T5_TEXTURE_ALIASES: &[(&str, &str)] = &[("MISSILE_CAM", "ALTERNATE_SCENE")];
+
 pub const T5_CODE_CONST_LIMIT: usize = 0xe5;
 pub const T5_CODE_TEXTURE_LIMIT: usize = 0x2b;
 
@@ -529,11 +534,23 @@ const fn build_const_remap() -> [Option<u16>; T5_CODE_CONST_LIMIT] {
     out
 }
 
+const fn texture_alias_of(name: &str) -> &str {
+    let mut i = 0;
+    while i < T5_TEXTURE_ALIASES.len() {
+        if name_eq(name, T5_TEXTURE_ALIASES[i].0) {
+            return T5_TEXTURE_ALIASES[i].1;
+        }
+        i += 1;
+    }
+    name
+}
+
 const fn build_texture_remap() -> [Option<u16>; T5_CODE_TEXTURE_LIMIT] {
     let mut out = [None; T5_CODE_TEXTURE_LIMIT];
     let mut i = 0;
     while i < T5_CODE_TEXTURE.len() {
         let (name, t5) = T5_CODE_TEXTURE[i];
+        let name = texture_alias_of(name);
         let slot = t5 as usize;
         let mut j = 0;
         while j < IW4_CODE_TEXTURE.len() {
