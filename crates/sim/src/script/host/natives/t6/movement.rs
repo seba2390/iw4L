@@ -309,7 +309,9 @@ fn negotiation(world: &mut World, path: &[Waypoint], index: usize) -> Option<(u1
 }
 
 /// Starts an animscript's main as the engine switches scripts; the one it
-/// leaves is told `killanimscript`. The thread while it lives on.
+/// leaves is told `killanimscript`, and the actor's anim mode and orient
+/// mode go back to `normal` and `face default`, as the engine's switch
+/// leaves them. The thread while it lives on.
 pub(super) fn set_script(
     world: &mut World,
     id: u64,
@@ -352,9 +354,9 @@ pub(super) fn set_script(
     };
     let at = origin_of(world, id);
     diag::debug!(Sim, "actor {id}: animscript {main} at {at:?}");
-    anim::reset_orient(world, id);
     let now = super::super::super::players::now_ms(world);
     notify_now(world, Value::Object(id), "killanimscript", Vec::new(), now);
+    anim::reset_modes(world, id);
     let thread = start_now(world, &main, Value::Object(id), Vec::new(), now)
         .map_err(|fault| format!("{main}: {fault:?}"))?;
     if script == Script::Death {
