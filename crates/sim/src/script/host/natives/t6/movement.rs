@@ -1,6 +1,6 @@
 //! Black Ops 2's actor movement: the goal scripts give an actor, the path
 //! planned to it over the map's path nodes, the animscript the engine runs
-//! for it (stop, move, combat, or a negotiation node's traversal), and the
+//! for it (move, combat, or a negotiation node's traversal), and the
 //! walk its clips' root motion drives along the path.
 
 use super::super::super::actor_nav::{LinkEdits, NavNodeKind, node_value};
@@ -36,7 +36,6 @@ const ANIMSCRIPTS: &str = "maps/mp/animscripts";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Script {
-    Stop,
     Move,
     Combat,
     /// The traversal its negotiation begin node names.
@@ -286,7 +285,6 @@ pub(super) fn set_script(
     }
     movement(world, id).script = Some(script);
     let state_name = match script {
-        Script::Stop => "stop",
         Script::Move => "move",
         Script::Combat => "combat",
         Script::Pain => "pain",
@@ -305,7 +303,6 @@ pub(super) fn set_script(
         "zm_"
     };
     let main = match script {
-        Script::Stop => format!("{ANIMSCRIPTS}/{prefix}stop::main"),
         Script::Move => format!("{ANIMSCRIPTS}/{prefix}move::main"),
         Script::Combat => format!("{ANIMSCRIPTS}/{prefix}combat::main"),
         Script::Pain => format!("{ANIMSCRIPTS}/{prefix}pain::main"),
@@ -763,15 +760,17 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     // A traversal starts on its begin node, or as near as the walk got.
     let path = movement(world, id).path.clone();
     let stalled = movement(world, id).stalled;
+    // The engine's exposed state runs combat for an actor with no path, or
+    // with one while it is not safe to change its script, enemy or not;
+    // with a path its move choice runs (here a traversal or move: the
+    // choice's arrivals and slow-actor stop are `t6.actors.script_choice`).
+    let safe = !matches!(field(world, id, "safetochangescript"), Value::Int(0));
     let crossing = negotiation(world, &path, 0).filter(|_| {
         let gap = flat_distance(at, path[0].at);
-        gap <= 1.0 || stalled && gap <= POINT_REACHED
+        safe && (gap <= 1.0 || stalled && gap <= POINT_REACHED)
     });
-    // IW4L's choice (`t6.actors.script_choice`: the engine's exposed state
-    // runs combat with no path, and its stop or combat script when slow).
     let script = match crossing {
-        _ if path.is_empty() && enemy.is_some() => Script::Combat,
-        _ if path.is_empty() => Script::Stop,
+        _ if path.is_empty() || !safe => Script::Combat,
         Some((begin, _)) => Script::Traverse(begin),
         None => Script::Move,
     };
@@ -793,7 +792,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
             }
         }
         Script::Move => walk(world, id, at),
-        Script::Stop | Script::Combat => face(world, id, at, enemy.as_ref()),
+        Script::Combat => face(world, id, at, enemy.as_ref()),
         Script::Pain | Script::Death => {}
     }
     if world
