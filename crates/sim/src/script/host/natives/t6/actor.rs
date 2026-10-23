@@ -38,7 +38,7 @@ enum Field {
 
 /// The engine's plain actor fields that scripts read, with the values its
 /// actor spawn leaves in them (the rest of the actor is zeroed).
-const SPAWN_FIELDS: [(&str, Field); 105] = [
+const SPAWN_FIELDS: [(&str, Field); 104] = [
     ("type", Field::Str("zombie")),
     ("accuracy", Field::Float(0.2)),
     ("lookforward", Field::Vector),
@@ -109,7 +109,6 @@ const SPAWN_FIELDS: [(&str, Field); 105] = [
     ("ignoreforfixednodesafecheck", Field::Int(0)),
     ("fixednode", Field::Int(0)),
     ("fixednodesaferadius", Field::Float(64.0)),
-    ("pathrandompercent", Field::Int(0)),
     ("usechokepoints", Field::Int(0)),
     ("stopanimdistsq", Field::Float(0.0)),
     ("movemode", Field::Str("run")),
@@ -293,6 +292,18 @@ fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
 
     let presence = super::super::super::presence::spawn_presence(world, origin)?;
     let number = crate::frame::FrameWorld::from_world(world).gentity_number(presence);
+    // The actor's path takes its random share from the dvar as it spawns.
+    let random_percent = {
+        let name = "ai_pathRandomPercent";
+        let text = world
+            .resource::<crate::script::MatchScript>()
+            .dvars
+            .get(name)
+            .cloned()
+            .or_else(|| super::dvars::lookup(name).map(|spec| spec.default.to_owned()))
+            .unwrap_or_else(String::new);
+        super::atoi(&text)
+    };
     let id = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let id = runtime.create_entity(EntityKind::Actor, &classname)?;
@@ -305,6 +316,7 @@ fn spawn_actor(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
             };
             runtime.set_object_field(id, name, value);
         }
+        runtime.set_object_field(id, "pathrandompercent", Value::Int(random_percent));
         let fields: Vec<(u32, Value)> = runtime
             .objects
             .get(&spawner)

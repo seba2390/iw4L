@@ -244,8 +244,19 @@ fn plan(world: &mut World, id: u64, from: [f32; 3], goal: [f32; 3]) -> Option<Ve
     let paths = FrameWorld::from_world(world).actor_paths()?;
     let start = nearest_node(world, id, from)?;
     let end = nearest_node(world, id, goal)?;
-    let edits = world.get_resource_or_insert_with(LinkEdits::default);
-    let route = paths.route(start, end, &edits)?;
+    let holding = traversals_held(world);
+    let edits = world
+        .get_resource_or_insert_with(LinkEdits::default)
+        .clone();
+    let route = super::path_search::route(
+        world,
+        id,
+        &paths,
+        &edits,
+        &holding,
+        (start, end),
+        (from, goal),
+    )?;
     let mut points: Vec<Waypoint> = route
         .iter()
         .map(|&node| Waypoint {
@@ -255,6 +266,30 @@ fn plan(world: &mut World, id: u64, from: [f32; 3], goal: [f32; 3]) -> Option<Ve
         .collect();
     points.push(arrival);
     Some(points)
+}
+
+/// How many actors' paths hold each traversal's begin node as the next
+/// traversal they cross, as the engine counts them on the node.
+fn traversals_held(world: &mut World) -> BTreeMap<u16, u32> {
+    let paths: Vec<Vec<Waypoint>> = world
+        .get_resource::<Movements>()
+        .map(|movements| {
+            movements
+                .0
+                .values()
+                .filter(|movement| movement.traversal.is_none())
+                .map(|movement| movement.path.clone())
+                .collect()
+        })
+        .unwrap_or_else(Vec::new);
+    let mut held = BTreeMap::new();
+    for path in paths {
+        if let Some((begin, _)) = (0..path.len()).find_map(|index| negotiation(world, &path, index))
+        {
+            *held.entry(begin).or_default() += 1;
+        }
+    }
+    held
 }
 
 /// The negotiation link the path crosses from its `index`th point: a begin
