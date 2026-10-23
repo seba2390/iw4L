@@ -5,6 +5,7 @@ mod code_hud;
 mod fire;
 mod fire_autosim;
 mod fire_sound;
+mod front_end_catalog;
 mod grenade;
 mod menu_expression;
 mod missile;
@@ -94,7 +95,8 @@ impl game_api::GameScripts for T5 {
         let startup = zombie_startup::T5ZombieStartup::new(sources, request.map, request.entities);
         Rule::Known(ScriptProgram {
             catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, catalog::T5)
-                .extended(zombie_catalog::T5_ZOMBIE.iter().cloned()),
+                .extended(zombie_catalog::T5_ZOMBIE.iter().cloned())
+                .extended(front_end_catalog::T5_FRONT_END.iter().cloned()),
             roots: startup.roots,
             entries: startup.entries,
             built: None,

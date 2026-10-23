@@ -1,0 +1,43 @@
+// Builtins Black Ops' front-end level scripts (`frontend.ff`: the level, its
+// interrogation room actors' animscripts and its terminal) call beyond the
+// zombie catalogs, as the executable's script tables list them.
+use gsc::{Builtin, Namespace::*, Owner::*};
+
+pub(crate) const T5_FRONT_END: &[Builtin] = &[
+    Builtin::new(Function, "anglelerp", Script, false),
+    Builtin::new(Function, "badplace_delete", Script, false),
+    Builtin::new(Function, "canspawnturret", Script, false),
+    Builtin::new(Function, "getspawnerteamarray", Script, false),
+    Builtin::new(Function, "gettimescale", Script, false),
+    Builtin::new(Function, "isassetloaded", Script, false),
+    Builtin::new(Function, "isgodmode", Script, false),
+    Builtin::new(Function, "record3dtext", Script, true),
+    Builtin::new(Function, "recordenttext", Script, true),
+    Builtin::new(Function, "startmultiplayergame", Script, false),
+    Builtin::new(Function, "weaponfightdist", Script, false),
+    Builtin::new(Function, "weaponmaxdist", Script, false),
+    Builtin::new(Method, "attachtodec20terminal", Player, false),
+    Builtin::new(Method, "checkcoverexitposwithpath", Entity, false),
+    Builtin::new(Method, "checkprone", Entity, false),
+    Builtin::new(Method, "clearpitchorient", Entity, false),
+    Builtin::new(Method, "clearruntopos", Entity, false),
+    Builtin::new(Method, "closemainmenu", Player, false),
+    Builtin::new(Method, "detachdec20terminal", Player, false),
+    Builtin::new(Method, "disableaimassist", Entity, false),
+    Builtin::new(Method, "firegunnerweapon", Vehicle, false),
+    Builtin::new(Method, "getdebugeye", Entity, true),
+    Builtin::new(Method, "gethityaw", Entity, false),
+    Builtin::new(Method, "getnormalhealth", Entity, false),
+    Builtin::new(Method, "initdec20terminal", Player, false),
+    Builtin::new(Method, "isdeflected", Entity, false),
+    Builtin::new(Method, "itemweaponsetoptions", Entity, false),
+    Builtin::new(Method, "lerpposition", Entity, false),
+    Builtin::new(Method, "openmainmenu", Player, false),
+    Builtin::new(Method, "pickupgrenade", Entity, false),
+    Builtin::new(Method, "predictanim", Entity, false),
+    Builtin::new(Method, "predictoriginandangles", Entity, false),
+    Builtin::new(Method, "setgunnertargetent", Vehicle, false),
+    Builtin::new(Method, "setturretanim", Entity, false),
+    Builtin::new(Method, "startcoverarrival", Entity, false),
+    Builtin::new(Method, "stopuseanimtree", Entity, false),
+];
