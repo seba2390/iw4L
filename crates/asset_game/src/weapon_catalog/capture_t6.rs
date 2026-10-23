@@ -191,6 +191,7 @@ fn capture_t6_game_bytes(w: fastfile_t6::weapon::WeaponView<'_>) -> Option<Arc<G
             .def_f32_array::<{ d::SURF_TYPE_COUNT }>(d::PERPENDICULAR_BOUNCE)
             .map(Box::from),
         world_clip_model: None,
+        has_stowed_model: false,
         explosion_sounds: [const { None }; 3],
         bounce_sounds: None,
         whizby_sound: None,
@@ -916,6 +917,7 @@ pub(super) fn apply_t6_attachment_game_bytes(
         parallel_bounce: base.parallel_bounce.clone(),
         perpendicular_bounce: base.perpendicular_bounce.clone(),
         world_clip_model: base.world_clip_model.clone(),
+        has_stowed_model: base.has_stowed_model,
         explosion_sounds: base.explosion_sounds.clone(),
         bounce_sounds: base.bounce_sounds.clone(),
         whizby_sound: base.whizby_sound.clone(),

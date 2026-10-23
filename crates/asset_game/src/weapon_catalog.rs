@@ -566,6 +566,8 @@ pub struct GameWeaponBytes {
     pub perpendicular_bounce: Option<Box<[f32]>>,
     /// The definition's world clip model, when it names one.
     pub world_clip_model: Option<String>,
+    /// Whether the weapon has a stowed world model (`GetWeaponStowedModel`).
+    pub has_stowed_model: bool,
     /// The definition's explosion sounds (`projExplosionSoundSmall` and the
     /// two after it).
     pub explosion_sounds: [Option<String>; 3],

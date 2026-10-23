@@ -837,10 +837,15 @@ pub(crate) fn give_weapon(
         // The game's own rules hold a weapon by its definition; a melee
         // weapon takes a slot and becomes the melee weapon.
         if game_rules && world.content().game_weapon(weapon).is_some() {
+            let had = has_weapon(world, id, weapon);
             let ps = world.player_mut(id).expect("checked above");
             inventory_add_weapon(ps, weapon, false);
             if !ps.weapons.contains(&(weapon as i32)) {
                 return Err("the player's inventory is full".into());
+            }
+            if crate::game_move::game_ammo_numbers(world) {
+                give_alt_weapons(world, id, weapon);
+                give_player_weapon_ammo(world, id, weapon, had);
             }
             return Ok(());
         }
@@ -860,10 +865,17 @@ pub(crate) fn give_weapon(
     let had = world
         .player(id)
         .is_some_and(|ps| ps.weapons.contains(&(weapon as i32)));
-    let ps = world.player_mut(id).expect("checked above");
-    inventory_add_weapon(ps, weapon, akimbo);
-    if !ps.weapons.contains(&(weapon as i32)) {
-        return Err("the player's inventory is full".into());
+    {
+        let ps = world.player_mut(id).expect("checked above");
+        inventory_add_weapon(ps, weapon, akimbo);
+        if !ps.weapons.contains(&(weapon as i32)) {
+            return Err("the player's inventory is full".into());
+        }
+    }
+    if crate::game_move::game_ammo_numbers(world) && world.content().game_weapon(weapon).is_some() {
+        give_alt_weapons(world, id, weapon);
+        give_player_weapon_ammo(world, id, weapon, had);
+        return Ok(());
     }
     if had {
         return Ok(());
@@ -872,6 +884,7 @@ pub(crate) fn give_weapon(
         Some(eq) => (eq.spawn_clip_count(), 0, 0),
         None => weapon_iw4::spawn_clip_stock(&facts, i32::from(akimbo)),
     };
+    let ps = world.player_mut(id).expect("checked above");
     seed_ps_ammo_tables(ps, weapon, &facts, clip, clip_alt, akimbo, stock);
     world.client_meta_mut(id).set_ammo(weapon, clip, stock);
     // A game whose left hand holds a weapon of its own fills that weapon's
@@ -1102,8 +1115,18 @@ pub(crate) fn set_ammo_clip(world: &mut FrameWorld, id: ClientId, weapon: u32, c
         Some(facts) => count.clamp(0, facts.clip_size.max(0)),
         None => count.max(0),
     };
+    let clear_second = crate::game_move::left_weapon(world, weapon) != 0;
     if let Some(ps) = world.player_mut(id) {
         let _ = weapon_iw4::set_clip_for_hand(&mut ps.ammoclip, key, 0, count);
+        if clear_second {
+            let _ = ps
+                .ammoclip
+                .as_chunks_mut::<12>()
+                .0
+                .iter_mut()
+                .find(|row| row[..4] == key.to_le_bytes())
+                .map(|row| row[8..12].fill(0));
+        }
     }
     let held = world.player(id).map(|ps| ps.weapon);
     let stock = ammo_stock(world, id, weapon);
@@ -1118,8 +1141,13 @@ pub(crate) fn set_ammo_stock(world: &mut FrameWorld, id: ClientId, weapon: u32, 
     let Some((key, _)) = round_keys(world, weapon) else {
         return;
     };
-    let count = match world.combat_facts_for(weapon) {
-        Some(facts) => count.clamp(0, facts.max_ammo.max(0)),
+    let max = if crate::game_move::game_ammo_numbers(world) {
+        game_max_ammo(world, id, weapon)
+    } else {
+        world.combat_facts_for(weapon).map(|f| f.max_ammo.max(0))
+    };
+    let count = match max {
+        Some(max) => count.clamp(0, max),
         None => count.max(0),
     };
     if let Some(ps) = world.player_mut(id) {
@@ -1135,6 +1163,17 @@ pub(crate) fn set_ammo_stock(world: &mut FrameWorld, id: ClientId, weapon: u32, 
 }
 
 pub(crate) fn give_max_ammo(world: &mut FrameWorld, id: ClientId, weapon: u32) {
+    if crate::game_move::game_ammo_numbers(world) && world.content().game_weapon(weapon).is_some() {
+        if !has_weapon(world, id, weapon) {
+            return;
+        }
+        let max = game_max_ammo(world, id, weapon).unwrap_or(0);
+        let stock = ammo_stock(world, id, weapon);
+        if max > stock {
+            game_add_ammo(world, id, weapon, max - stock, false);
+        }
+        return;
+    }
     let Some(facts) = world.combat_facts_for(weapon) else {
         return;
     };
@@ -1149,6 +1188,12 @@ pub(crate) fn give_max_ammo(world: &mut FrameWorld, id: ClientId, weapon: u32) {
 }
 
 pub(crate) fn give_start_ammo(world: &mut FrameWorld, id: ClientId, weapon: u32) {
+    if crate::game_move::game_ammo_numbers(world) && world.content().game_weapon(weapon).is_some() {
+        if has_weapon(world, id, weapon) {
+            give_player_weapon_ammo(world, id, weapon, false);
+        }
+        return;
+    }
     let Some(facts) = world.combat_facts_for(weapon) else {
         return;
     };
@@ -1162,6 +1207,206 @@ pub(crate) fn give_start_ammo(world: &mut FrameWorld, id: ClientId, weapon: u32)
     let (clip, _, stock) = weapon_iw4::spawn_clip_stock(&facts, 0);
     set_ammo_clip(world, id, weapon, clip);
     set_ammo_stock(world, id, weapon, stock);
+}
+
+fn game_word(bytes: &[u8], off: usize) -> i32 {
+    bytes
+        .get(off..off + 4)
+        .map_or(0, |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+}
+
+fn game_clip_size(game: &game_api::movement::GameWeapon) -> i32 {
+    game_word(&game.variant, 0x20).max(0)
+}
+
+fn game_start_ammo(game: &game_api::movement::GameWeapon) -> i32 {
+    let raw = game_word(&game.def, 0x33c);
+    if game.def.get(0x359).copied().unwrap_or(0) == 0 {
+        raw
+    } else {
+        raw * game_clip_size(game)
+    }
+}
+
+fn game_weapon_max_ammo(game: &game_api::movement::GameWeapon) -> i32 {
+    let raw = game_word(&game.def, 0x344);
+    if game.def.get(0x359).copied().unwrap_or(0) == 0 {
+        raw
+    } else {
+        raw * game_clip_size(game)
+    }
+}
+
+/// The maximum stock rounds a player may carry for `weapon`'s shared ammo
+/// index: a shared cap when set, `clip_size` for a clip-only weapon, else
+/// the sum of `maxAmmo` across held weapons sharing `ammo_index`.
+fn game_max_ammo(world: &FrameWorld, id: ClientId, weapon: u32) -> Option<i32> {
+    let content = world.content();
+    let game = content.game_weapon(weapon)?;
+    if game.def.get(0x561).copied().unwrap_or(0) != 0 {
+        return Some(game_clip_size(game));
+    }
+    let ps = world.player(id)?;
+    let mut sum = 0;
+    for &held in &ps.weapons {
+        if held <= 0 {
+            continue;
+        }
+        let held = held as u32;
+        let Some(h_game) = content.game_weapon(held) else {
+            continue;
+        };
+        if h_game.ammo_index != game.ammo_index {
+            continue;
+        }
+        if game_word(&h_game.def, 0x2c) == 3 && h_game.alt_weapon == held {
+            continue;
+        }
+        sum += game_weapon_max_ammo(h_game);
+    }
+    Some(sum.max(0))
+}
+
+/// Adds a non-offhand weapon's alternate-mode chain to the player's held
+/// weapon slots.
+pub(crate) fn give_alt_weapons(world: &mut FrameWorld, id: ClientId, weapon: u32) {
+    let Some(game) = world.content().game_weapon(weapon).cloned() else {
+        return;
+    };
+    if matches!(game_word(&game.def, 0x20), 7 | 8 | 10) || game_word(&game.def, 0x68) != 0 {
+        return;
+    }
+    let mut alt = game.alt_weapon;
+    for _ in 0..16 {
+        if alt == 0 || alt == weapon || has_weapon(world, id, alt) {
+            break;
+        }
+        let Some(ps) = world.player_mut(id) else {
+            break;
+        };
+        inventory_add_weapon(ps, alt, false);
+        if !ps.weapons.contains(&(alt as i32)) {
+            break;
+        }
+        alt = world.content().game_weapon(alt).map_or(0, |g| g.alt_weapon);
+    }
+}
+
+/// How many rounds of `cur`'s start ammo remain to be given, accounting for
+/// the shared stock and any other held weapons sharing `cur`'s ammo index.
+fn game_ammo_to_give(world: &FrameWorld, id: ClientId, cur: u32) -> i32 {
+    let content = world.content();
+    let Some(cur_game) = content.game_weapon(cur) else {
+        return 0;
+    };
+    let mut already = ammo_stock(world, id, cur);
+    if let Some(ps) = world.player(id) {
+        for &held in &ps.weapons {
+            if held <= 0 || held as u32 == cur {
+                continue;
+            }
+            let held = held as u32;
+            let Some(h_game) = content.game_weapon(held) else {
+                continue;
+            };
+            if h_game.ammo_index == cur_game.ammo_index {
+                already += ammo_clip(world, id, held) - game_start_ammo(h_game);
+            }
+        }
+    }
+    if already < 0 {
+        already = 0;
+    }
+    game_start_ammo(cur_game) - already
+}
+
+fn game_fill_clip(world: &mut FrameWorld, id: ClientId, cur: u32) {
+    let Some(size) = world.content().game_weapon(cur).map(game_clip_size) else {
+        return;
+    };
+    let clip = ammo_clip(world, id, cur);
+    let stock = ammo_stock(world, id, cur);
+    let add = (size - clip).min(stock);
+    if add > 0 {
+        set_ammo_stock(world, id, cur, stock - add);
+        set_ammo_clip(world, id, cur, clip + add);
+    }
+}
+
+fn game_add_ammo(world: &mut FrameWorld, id: ClientId, cur: u32, count: i32, fill: bool) {
+    let Some(cur_game) = world.content().game_weapon(cur).cloned() else {
+        return;
+    };
+    let max = game_max_ammo(world, id, cur).unwrap_or(0);
+    let mut stock = (ammo_stock(world, id, cur) + count).max(0);
+    let mut clip = ammo_clip(world, id, cur);
+    let size = game_clip_size(&cur_game);
+    let clip_only = cur_game.def.get(0x561).copied().unwrap_or(0) != 0;
+    if fill || clip_only {
+        let add = (size - clip).min(stock).max(0);
+        stock -= add;
+        clip += add;
+    }
+    if clip_only {
+        stock = 0;
+    } else if stock > max {
+        stock = max;
+    }
+    if clip > size {
+        clip = size;
+    }
+    set_ammo_clip(world, id, cur, clip);
+    set_ammo_stock(world, id, cur, stock);
+}
+
+/// Gives start ammo and fills clips across `weapon`, its dual-wield partner
+/// and its alternate-mode chain.
+pub(crate) fn give_player_weapon_ammo(
+    world: &mut FrameWorld,
+    id: ClientId,
+    weapon: u32,
+    had: bool,
+) {
+    let mut cur = weapon;
+    let mut saved_alt = 0u32;
+    for _ in 0..32 {
+        let Some(cur_game) = world.content().game_weapon(cur).cloned() else {
+            break;
+        };
+        let to_give = game_ammo_to_give(world, id, cur);
+        if to_give > 0 {
+            game_add_ammo(world, id, cur, to_give, !had);
+        } else if !had {
+            game_fill_clip(world, id, cur);
+        }
+        let dual = cur_game.def.get(0x56a).copied().unwrap_or(0) != 0;
+        cur = if dual {
+            if cur_game.alt_weapon != 0 {
+                saved_alt = cur_game.alt_weapon;
+            }
+            cur_game.dual_wield_weapon
+        } else {
+            cur_game.alt_weapon
+        };
+        if cur == 0 || cur == weapon {
+            break;
+        }
+        let cur_dual = world
+            .content()
+            .game_weapon(cur)
+            .is_some_and(|g| g.def.get(0x56a).copied().unwrap_or(0) != 0);
+        if !has_weapon(world, id, cur) && !cur_dual {
+            break;
+        }
+    }
+    if saved_alt != 0 {
+        let to_give = game_ammo_to_give(world, id, saved_alt);
+        if to_give > 0 {
+            game_add_ammo(world, id, saved_alt, to_give, !had);
+        } else if !had {
+            game_fill_clip(world, id, saved_alt);
+        }
+    }
 }
 
 fn perk_bits(name: &str) -> ([u32; 2], u32) {

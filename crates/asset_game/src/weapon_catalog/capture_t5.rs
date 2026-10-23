@@ -994,6 +994,7 @@ pub(super) fn capture_t5_body_facts(
                 .map(asset_core::AssetRef::bare_name)
                 .filter(|s| !s.is_empty())
                 .map(str::to_owned),
+            has_stowed_model: geometry.has_stowed_model,
             explosion_sounds: [0x620, 0x624, 0x628].map(|off| leftover_t5_cstr(stream, body, off)),
             bounce_sounds: stream
                 .string_array_at::<31>(body, 0x174)

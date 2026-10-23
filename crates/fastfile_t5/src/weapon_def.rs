@@ -478,6 +478,11 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x480))
     }
 
+    /// `stackFireAccuracyDecay`
+    pub fn stack_fire_accuracy_decay(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x488))
+    }
+
     /// `rotateType`
     pub fn rotate_type(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x634))

@@ -1888,6 +1888,12 @@ fn apply_give_weapon(
     meta.rechamber_pending = false;
     meta.rechamber_pending_secondary = false;
     meta.pending_brass = [None; 2];
+    if crate::game_move::game_ammo_numbers(world) && world.content().game_weapon(weapon).is_some() {
+        crate::script_player::set_ammo_clip(world, id, weapon, 0);
+        crate::script_player::set_ammo_stock(world, id, weapon, 0);
+        crate::script_player::give_alt_weapons(world, id, weapon);
+        crate::script_player::give_player_weapon_ammo(world, id, weapon, false);
+    }
     world.push_event(
         tick,
         EventAudience::Client(id),
