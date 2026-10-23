@@ -134,6 +134,7 @@ impl Plugin for HudPlugin {
                             crate::game_code_hud::update_crosshair.in_set(frame::InMatch),
                             crate::game_code_hud::update_scoreboard.in_set(frame::InMatch),
                             crate::menus::update_script_menus,
+                            crate::menus::sync_game_menu_dvars,
                             crate::connection_notice::update.in_set(frame::InMatch),
                             hud_stage_close::<7>,
                         )
