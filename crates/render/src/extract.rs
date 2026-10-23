@@ -118,6 +118,7 @@ fn smodel_colour_extract_counts(plan: Option<&SmodelGpuPlan>) -> (usize, usize) 
 pub fn extract_exact_colour(
     mut commands: Commands,
     sealed: Extract<Option<Res<PublishedRenderFrame>>>,
+    extra: Extract<Option<Res<render_gpu::PublishedExtraView>>>,
     existing: Option<Res<PublishedRenderFrame>>,
     mut focus_submit: ResMut<render_gpu::FocusedOwnerSubmitState>,
     slot: Option<Res<SharedRenderStagesSlot>>,
@@ -141,6 +142,12 @@ pub fn extract_exact_colour(
     } else {
         insert_empty_colour(&mut commands);
     }
+    commands.insert_resource(
+        extra
+            .as_ref()
+            .map(|extra| (**extra).clone())
+            .unwrap_or_else(render_gpu::PublishedExtraView::default),
+    );
     if let Some(slot) = slot {
         slot.stamp_extract_products(started.elapsed().as_secs_f32() * 1000.0, 1, 0);
         slot.stamp_extract_colour(0.0, 0.0, 1, 0, 0, 1, 1, 0);
@@ -173,7 +180,10 @@ pub fn seal_render_frame(
     glass_mesh: Option<Res<GfxGlassMeshPlan>>,
     samplers: Option<Res<SamplerTable>>,
     images: Option<Res<render_frontend::assemble::drawsurf::RuntimeImageHandles>>,
-    spawn_job: Option<Res<render_gpu::GpuSubmitReady>>,
+    (spawn_job, extra_view): (
+        Option<Res<render_gpu::GpuSubmitReady>>,
+        Option<Res<render_frontend::prepare::scene::extra_view::ExtraViewFrame>>,
+    ),
     sun: (
         Option<Res<render_frontend::assemble::drawsurf::MapSunEffects>>,
         Option<Res<render_frontend::assemble::drawsurf::SunEffectsFrameInput>>,
@@ -183,6 +193,7 @@ pub fn seal_render_frame(
         Option<Res<PublishedRenderFrame>>,
     ),
 ) {
+    commands.insert_resource(render_gpu::PublishedExtraView::default());
     let (retained, world_generation, world_products) = static_identity;
     let world_products = world_products
         .map(|products| *products)
@@ -583,7 +594,7 @@ pub fn seal_render_frame(
         }),
         sun_effects: sun.0.and_then(|sun| sun.def),
     };
-    let next_frame = render_gpu::RenderFrameData {
+    let mut next_frame = render_gpu::RenderFrameData {
         skin_jobs: xmodel
             .as_ref()
             .map(|plan| plan.skin_jobs.clone())
@@ -655,8 +666,54 @@ pub fn seal_render_frame(
         );
     }
     let world = InstalledRenderWorld::new(next_world);
+    let extra = extra_view.as_deref().and_then(|extra| {
+        seal_extra_view(extra, &world, &mut next_frame, generation, world_generation)
+    });
     commands.insert_resource(world.clone());
     commands.insert_resource(PublishedRenderFrame::seal(world, next_frame));
+    if let Some(extra) = extra {
+        commands.insert_resource(extra);
+    }
+}
+
+/// The extra camera's frame: the main frame's geometry with the extra view's
+/// products and material frame. The main frame alone carries the frame's
+/// uploads (skinning jobs and static model cache patches).
+fn seal_extra_view(
+    extra: &render_frontend::prepare::scene::extra_view::ExtraViewFrame,
+    world: &InstalledRenderWorld,
+    main: &mut render_gpu::RenderFrameData,
+    generation: render_frontend::assemble::drawsurf::MaterialGenerationId,
+    world_generation: frame::WorldStamp,
+) -> Option<render_gpu::PublishedExtraView> {
+    let products = extra.products.as_ref()?;
+    let coherent = extra.frame_id == products.frame_id
+        && products.products.iter().all(|product| {
+            matches!(
+                product.status,
+                render_frontend::assemble::drawsurf::FrameProductStatus::Missing(_)
+            ) || product.generation_id == generation
+        });
+    if !coherent || main.world_generation != world_generation {
+        return None;
+    }
+    let skin_jobs = std::mem::take(&mut main.skin_jobs);
+    let smc_vb_patches = std::mem::take(&mut main.smc_vb_patches);
+    let smc_ib_patches = std::mem::take(&mut main.smc_ib_patches);
+    let data = render_gpu::RenderFrameData {
+        frame_products: ExtractedRenderFrameProducts(Arc::clone(products)),
+        exec_frame: extra.exec_frame.clone(),
+        sun_shadow: None,
+        sun_effects: None,
+        ..main.clone()
+    };
+    main.skin_jobs = skin_jobs;
+    main.smc_vb_patches = smc_vb_patches;
+    main.smc_ib_patches = smc_ib_patches;
+    Some(render_gpu::PublishedExtraView {
+        frame: Some(PublishedRenderFrame::seal(world.clone(), data)),
+        size: extra.size,
+    })
 }
 
 /// Which rows of the installed world the seal decided are still the ones the
