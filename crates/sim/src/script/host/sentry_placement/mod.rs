@@ -31,15 +31,14 @@ struct Queries<'w> {
 
 impl Queries<'_> {
     fn world_sweep(&self, start: [f32; 3], end: [f32; 3], radius: f32) -> trace_iw4::Trace {
+        let ignore = self.ignore.model.map(AuthorityModelOwner::ScriptModel);
         self.frame.trace_world_hull_except(
-            movement_iw4::GroundTraceInput {
-                start,
-                end,
-                mins: [-radius; 3],
-                maxs: [radius; 3],
-                tracemask: MASK_PLAYER_SOLID,
-            },
-            self.ignore.model.map(AuthorityModelOwner::ScriptModel),
+            start,
+            end,
+            [-radius; 3],
+            [radius; 3],
+            MASK_PLAYER_SOLID,
+            &|owner| Some(owner) == ignore,
         )
     }
 

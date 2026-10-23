@@ -45,6 +45,8 @@ pub enum NavNodeKind {
     NegotiationBegin,
     NegotiationEnd,
     Other,
+    /// A node the game found unusable as the level loaded.
+    Bad,
 }
 
 impl NavNodeKind {
@@ -54,6 +56,7 @@ impl NavNodeKind {
             Self::NegotiationBegin => "Begin",
             Self::NegotiationEnd => "End",
             Self::Other => "Other",
+            Self::Bad => "BAD NODE",
         }
     }
 }
@@ -250,6 +253,11 @@ impl ActorPaths {
                 summary.join(", ")
             );
         }
+        Self { nodes }
+    }
+
+    /// The same network with its nodes changed as the level loaded.
+    pub(crate) fn with_nodes(nodes: Vec<NavNode>) -> Self {
         Self { nodes }
     }
 
