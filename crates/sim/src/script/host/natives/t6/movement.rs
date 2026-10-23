@@ -6,6 +6,7 @@
 use super::super::super::actor_nav::{LinkEdits, NavNodeKind, node_value};
 use super::super::super::entities::EntityKind;
 use super::super::engine::{entity_id, trace};
+use super::path_follow::{Follow, Lookahead, Probe};
 use super::{anim, vector};
 use crate::frame::FrameWorld;
 use crate::script::runtime::{notify_now, raise, start_function_now, start_now, thread_alive};
@@ -20,6 +21,12 @@ const GOAL_HEIGHT: f32 = 80.0;
 pub(super) const NODE_NEAR: f32 = 192.0;
 const NODE_FAR: f32 = 512.0;
 pub(super) const ACTOR_MASK: u32 = 0x0282_0011;
+/// The code move's step: the clip's root-motion distance, scaled by the
+/// lookahead's flat share to the power 0.333 (at least 0.6), and no further
+/// than the lookahead.
+const MIN_FLAT_SQ: f32 = 0.000_001;
+const SPEED_EXPONENT: f32 = 0.333;
+const MIN_SPEED_SCALE: f32 = 0.6;
 /// IW4L's walking rules (`t6.actors.path_following`).
 const POINT_REACHED: f32 = 16.0;
 const TURN_RATE: f32 = 360.0;
@@ -76,6 +83,10 @@ struct Movement {
     /// The path to the goal; planned again when the goal changes.
     planned: bool,
     path: Vec<Waypoint>,
+    /// The path as the engine follows it, and the lookahead it keeps
+    /// across paths.
+    follow: Option<Follow>,
+    look: Lookahead,
     script: Option<Script>,
     falling: f32,
     /// The walk made no headway on its last frame.
@@ -268,6 +279,67 @@ fn plan(world: &mut World, id: u64, from: [f32; 3], goal: [f32; 3]) -> Option<Ve
     Some(points)
 }
 
+/// What the follower asks of the world for an actor.
+struct WorldProbe<'w> {
+    world: &'w mut World,
+    id: u64,
+    paths: Option<std::sync::Arc<crate::script::ActorPaths>>,
+    edits: LinkEdits,
+}
+
+impl Probe for WorldProbe<'_> {
+    /// Whether the actor's body walks from one point to the other: IW4L's
+    /// hull trace (`t6.actors.path_following`).
+    fn walkable(&mut self, from: [f32; 3], to: [f32; 3]) -> bool {
+        clear(self.world, self.id, from, to)
+    }
+
+    fn linked(&mut self, from: u16, to: u16) -> bool {
+        self.paths.as_ref().is_some_and(|paths| {
+            paths
+                .links(from, &self.edits)
+                .any(|(next, _, _)| next == to)
+        })
+    }
+}
+
+fn probe(world: &mut World, id: u64) -> WorldProbe<'_> {
+    let paths = FrameWorld::from_world(world).actor_paths();
+    let edits = world
+        .get_resource_or_insert_with(LinkEdits::default)
+        .clone();
+    WorldProbe {
+        world,
+        id,
+        paths,
+        edits,
+    }
+}
+
+/// The follower for a planned path from `from`: a straight walk starts
+/// where the actor stands, a path over the nodes at its first node.
+fn follow_path(world: &mut World, id: u64, from: [f32; 3], path: &[Waypoint]) -> Follow {
+    let mut route: Vec<([f32; 3], Option<u16>)> = Vec::with_capacity(path.len() + 1);
+    if path.first().is_none_or(|point| point.node.is_none()) {
+        route.push((from, None));
+    }
+    route.extend(path.iter().map(|point| (point.at, point.node)));
+    // The goal is no point of its own where it stands on the last node.
+    if let [.., (node_at, Some(_)), (goal, None)] = route[..]
+        && node_at[0] == goal[0]
+        && node_at[1] == goal[1]
+    {
+        route.pop();
+    }
+    let offset = route.len().saturating_sub(path.len()).min(1);
+    let negotiation = (0..path.len())
+        .find(|&index| negotiation(world, path, index).is_some())
+        .map(|index| index + offset);
+    let look = movement(world, id).look;
+    let mut probe = probe(world, id);
+    Follow::new(&route, negotiation, look, from, &mut probe)
+}
+
 /// How many actors' paths hold each traversal's begin node as the next
 /// traversal they cross, as the engine counts them on the node.
 fn traversals_held(world: &mut World) -> BTreeMap<u16, u32> {
@@ -290,6 +362,19 @@ fn traversals_held(world: &mut World) -> BTreeMap<u16, u32> {
         }
     }
     held
+}
+
+/// The points the actor's follower has left ahead of it, nearest first.
+fn sync_path(state: &mut Movement) {
+    if let Some(follow) = &state.follow {
+        state.path = follow
+            .ahead()
+            .map(|point| Waypoint {
+                at: point.origin,
+                node: point.node,
+            })
+            .collect();
+    }
 }
 
 /// The negotiation link the path crosses from its `index`th point: a begin
@@ -450,43 +535,50 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
         anim.mode,
         "none" | "zonly_physics" | "angle deltas" | "nophysics" | "point relative"
     );
-    let mut left = if moves {
+    let speed = if moves {
         (anim.step[0].powi(2) + anim.step[1].powi(2)).sqrt()
     } else {
         0.0
     };
-    let mut at = from;
-    let mut heading = None;
-    let path = movement(world, id).path.clone();
-    let mut passed = 0;
-    while let Some(point) = path.get(passed).map(|waypoint| waypoint.at) {
-        let gap = flat_distance(at, point);
-        if gap > 0.01 {
-            heading = Some((point[1] - at[1]).atan2(point[0] - at[0]).to_degrees());
+    let Some(mut follow) = movement(world, id).follow.take() else {
+        return;
+    };
+    // The engine's code move: the lookahead first (planned again from here
+    // when the link ahead was cut), then the step along it.
+    let kept = follow.update(from, (false, false, true), &mut probe(world, id));
+    if !kept {
+        let goal = movement(world, id).goal;
+        match goal.and_then(|goal| plan(world, id, from, goal)) {
+            Some(path) => follow = follow_path(world, id, from, &path),
+            None => {
+                follow.update(from, (false, false, false), &mut probe(world, id));
+            }
         }
-        // A negotiation's begin node is walked onto, not past.
-        let last = passed + 1 == path.len() || negotiation(world, &path, passed).is_some();
-        if !last && gap <= POINT_REACHED {
-            passed += 1;
-            continue;
-        }
-        let along = left.min(gap);
-        if gap > 0.0 {
-            at[0] += (point[0] - at[0]) / gap * along;
-            at[1] += (point[1] - at[1]) / gap * along;
-        }
-        left -= along;
-        if along < gap || last {
-            break;
-        }
-        passed += 1;
     }
-    movement(world, id).path.drain(..passed);
+    let [dx, dy, _] = follow.look.dir;
+    let flat = dx * dx + dy * dy;
+    let factor = flat
+        .max(MIN_FLAT_SQ)
+        .powf(SPEED_EXPONENT)
+        .max(MIN_SPEED_SCALE);
+    let dist = (speed * factor).min(follow.look.dist);
+    let at = [from[0] + dx * dist, from[1] + dy * dist, from[2]];
+    let heading = (flat > 0.0).then(|| dy.atan2(dx).to_degrees());
+    {
+        let state = movement(world, id);
+        state.look = follow.look;
+        state.follow = Some(follow);
+        sync_path(state);
+    }
     let landed = step(world, id, from, at);
     movement(world, id).stalled = flat_distance(from, landed) < 0.1;
-    world
-        .resource_mut::<RoundScript>()
-        .set_object_field(id, "origin", Value::Vector(landed));
+    {
+        let look = movement(world, id).look;
+        let mut runtime = world.resource_mut::<RoundScript>();
+        runtime.set_object_field(id, "origin", Value::Vector(landed));
+        runtime.set_object_field(id, "lookaheaddir", Value::Vector(look.dir));
+        runtime.set_object_field(id, "lookaheaddist", Value::Float(look.dist));
+    }
     if let Some(yaw) = heading
         && matches!(
             anim.orient,
@@ -732,6 +824,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     {
         let state = movement(world, id);
         state.path.clear();
+        state.follow = None;
         state.planned = false;
         state.falling = 0.0;
         return Ok(());
@@ -772,7 +865,12 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         match path {
             Some(path) => {
                 let first = path.first().map(|w| w.at);
-                movement(world, id).path = path;
+                let follow = follow_path(world, id, at, &path);
+                let state = movement(world, id);
+                state.look = follow.look;
+                state.follow = Some(follow);
+                state.path = path;
+                sync_path(state);
                 let mut runtime = world.resource_mut::<RoundScript>();
                 runtime.set_object_field(id, "pathstartpos", Value::Vector(at));
                 runtime.set_object_field(id, "pathgoalpos", Value::Vector(goal));
@@ -784,6 +882,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
             }
             None => {
                 movement(world, id).path.clear();
+                movement(world, id).follow = None;
                 {
                     let mut runtime = world.resource_mut::<RoundScript>();
                     runtime.set_object_field(id, "pathstartpos", Value::Undefined);
@@ -844,6 +943,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         let state = movement(world, id);
         state.goal_sent = true;
         state.path.clear();
+        state.follow = None;
         diag::debug!(Sim, "actor {id}: reached its goal at {now:?}");
         raise(world, Value::Object(id), "goal", Vec::new());
     }
@@ -902,6 +1002,7 @@ fn set_goal(world: &mut World, id: u64, goal: [f32; 3]) {
 pub(super) fn replan(world: &mut World, id: u64) {
     let state = movement(world, id);
     state.path.clear();
+    state.follow = None;
     state.planned = false;
 }
 
