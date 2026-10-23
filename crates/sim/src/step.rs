@@ -494,6 +494,7 @@ fn run_players_system(ecs: &mut World) {
                 cmodels: cmodel_models,
                 linked_brushes: &linked_brushes,
                 model_brushes: &model_brushes,
+                leaves_bodies: false,
             };
             if let Some(movement) = crate::game_move::rules(&world) {
                 let moved_from = ps.origin;
@@ -2205,9 +2206,13 @@ pub(crate) fn log_forced_spawn(
     }
 }
 
+/// A body a sweep meets: a live player's, or (in an actor's sweep) a live
+/// actor's, with its box.
 struct PlayerBodyClip {
     entnum: u16,
     origin: [f32; 3],
+    mins: [f32; 3],
+    maxs: [f32; 3],
 }
 
 /// A free spectator's command under the game's own spectator move.
@@ -2247,6 +2252,7 @@ fn spectator_game_move(
         cmodels: &content.clip_cmodels().models,
         linked_brushes: &linked_brushes,
         model_brushes,
+        leaves_bodies: false,
     };
     let trace = |start, end, mins, maxs, tracemask| {
         CollisionBackend::trace(
@@ -2282,8 +2288,8 @@ fn spectator_game_move(
 }
 
 /// What an actor's sweep meets this tick beyond the world: the brush
-/// entities, the models' brushes and the live players' bodies (which its
-/// clipmask lets through unless it names bodies).
+/// entities, the models' brushes and the live players' and actors' bodies
+/// (which its clipmask lets through unless it names bodies).
 pub(crate) struct ActorClip {
     linked_brushes: Vec<LinkedBrushCollisionBrush>,
     model_brushes: Vec<SimBrush>,
@@ -2303,10 +2309,28 @@ impl ActorClip {
         }
     }
 
-    /// Whether the trace stopped on one of the players' bodies.
-    pub(crate) fn hit_body(&self, trace: &Trace) -> bool {
-        trace.hit_type == HITTYPE_ENTITY
-            && self.bodies.iter().any(|body| body.entnum == trace.hit_id)
+    /// A live actor's body, as entity `entnum` with its box at `origin`.
+    pub(crate) fn add_body(&mut self, entnum: u16, origin: [f32; 3], bounds: ([f32; 3], [f32; 3])) {
+        self.bodies.push(PlayerBodyClip {
+            entnum,
+            origin,
+            mins: bounds.0,
+            maxs: bounds.1,
+        });
+    }
+
+    /// Entity `entnum`'s body moved to `origin`.
+    pub(crate) fn move_body(&mut self, entnum: u16, origin: [f32; 3]) {
+        for body in self.bodies.iter_mut().filter(|body| body.entnum == entnum) {
+            body.origin = origin;
+        }
+    }
+
+    /// The body the trace stopped on (a sentient's), by entity number.
+    pub(crate) fn hit_body(&self, trace: &Trace) -> Option<u16> {
+        (trace.hit_type == HITTYPE_ENTITY)
+            .then_some(trace.hit_id)
+            .filter(|&hit| self.bodies.iter().any(|body| body.entnum == hit))
     }
 
     pub(crate) fn trace(
@@ -2317,6 +2341,7 @@ impl ActorClip {
         mins: [f32; 3],
         maxs: [f32; 3],
         mask: u32,
+        self_entnum: u16,
     ) -> Trace {
         let content = world.content();
         let glass_damage = world.world_objects().glass_damage_pairs();
@@ -2326,10 +2351,11 @@ impl ActorClip {
             mesh: content.clip_mesh(),
             glass_damage: &glass_damage,
             bodies: &self.bodies,
-            self_entnum: u16::MAX,
+            self_entnum,
             cmodels: &content.clip_cmodels().models,
             linked_brushes: &self.linked_brushes,
             model_brushes: &self.model_brushes,
+            leaves_bodies: true,
         };
         CollisionBackend::trace(
             &backend,
@@ -2357,6 +2383,8 @@ fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
             world.player(id).map(|ps| PlayerBodyClip {
                 entnum: id.0 as u16,
                 origin: ps.origin,
+                mins: PLAYER_MINS,
+                maxs: PLAYER_MAXS,
             })
         })
         .collect();
@@ -2367,6 +2395,8 @@ fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
             .map(|body| PlayerBodyClip {
                 entnum: body.client.0 as u16,
                 origin: body.origin,
+                mins: PLAYER_MINS,
+                maxs: PLAYER_MAXS,
             }),
     );
     bodies
@@ -2383,6 +2413,9 @@ struct ClipBackend<'a> {
     cmodels: &'a [clipmap_iw4::ClipCmodel],
     linked_brushes: &'a [LinkedBrushCollisionBrush],
     model_brushes: &'a [SimBrush],
+    /// A sweep that starts inside a body and leaves it is not stopped by it
+    /// (an actor's sweep).
+    leaves_bodies: bool,
 }
 
 impl CollisionBackend for ClipBackend<'_> {
@@ -2427,8 +2460,8 @@ impl CollisionBackend for ClipBackend<'_> {
             let body_input = GroundTraceInput {
                 start: body.origin,
                 end: body.origin,
-                mins: PLAYER_MINS,
-                maxs: PLAYER_MAXS,
+                mins: body.mins,
+                maxs: body.maxs,
                 tracemask: input.tracemask,
             };
             let Some(fixed) = crate::penetration::capsule(body_input, true) else {
@@ -2472,7 +2505,13 @@ impl CollisionBackend for ClipBackend<'_> {
             input,
         );
         let with_models = clip_move_to_model_brushes(with_bmodels, self.model_brushes, input);
-        clip_move_to_players(with_models, self.bodies, self.self_entnum, input)
+        clip_move_to_players(
+            with_models,
+            self.bodies,
+            self.self_entnum,
+            self.leaves_bodies,
+            input,
+        )
     }
 }
 
@@ -2581,6 +2620,7 @@ pub(crate) fn script_slide(
         cmodels: &content.clip_cmodels().models,
         linked_brushes: &linked_brushes,
         model_brushes: &model_brushes,
+        leaves_bodies: false,
     };
     slide.advance(origin, &backend, mask)
 }
@@ -2624,6 +2664,7 @@ pub(crate) fn script_mantle(
         cmodels: &content.clip_cmodels().models,
         linked_brushes: &linked_brushes,
         model_brushes: &model_brushes,
+        leaves_bodies: false,
     };
     let forward = math_iw4::angle_vectors(ps.viewangles).0;
     let mantle = world.xanims();
@@ -2651,6 +2692,7 @@ fn clip_move_to_players(
     mut hit: Trace,
     bodies: &[PlayerBodyClip],
     self_entnum: u16,
+    leaves_bodies: bool,
     input: GroundTraceInput,
 ) -> Trace {
     if hit.fraction == 0.0 {
@@ -2666,12 +2708,20 @@ fn clip_move_to_players(
             input.mins,
             input.maxs,
             body.origin,
-            PLAYER_MINS,
-            PLAYER_MAXS,
+            body.mins,
+            body.maxs,
             crate::world::CONTENTS_BODY,
             input.tracemask,
         );
         if other.fraction >= hit.fraction && other.startsolid == 0 && other.allsolid == 0 {
+            continue;
+        }
+        if leaves_bodies
+            && other.startsolid != 0
+            && (input.end[0] - body.origin[0]).powi(2) + (input.end[1] - body.origin[1]).powi(2)
+                >= (input.start[0] - body.origin[0]).powi(2)
+                    + (input.start[1] - body.origin[1]).powi(2)
+        {
             continue;
         }
         let startsolid = hit.startsolid | other.startsolid;

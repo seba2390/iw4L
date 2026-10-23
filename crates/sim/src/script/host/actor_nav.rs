@@ -531,8 +531,12 @@ pub(crate) struct ActorMove {
     /// `pushplayer(true)`: the actor's clipmask leaves player bodies out,
     /// so it walks through players.
     pub(crate) push_player: bool,
-    /// The last move was stopped by a player's body.
-    hit_body: bool,
+    /// The body (a player's or an actor's, by entity number) that stopped
+    /// the last move.
+    hit_body: Option<u16>,
+    /// Black Ops' blocking actor: the actor this one steps away from while
+    /// it holds it.
+    pub(crate) blocker: Option<u64>,
 }
 
 impl Default for ActorMove {
@@ -566,7 +570,8 @@ impl Default for ActorMove {
             deflect_side: 0,
             orient_notified: false,
             push_player: false,
-            hit_body: false,
+            hit_body: None,
+            blocker: None,
         }
     }
 }
@@ -697,6 +702,8 @@ const BLOCKING_HEIGHT: f32 = 80.0;
 /// when it moves a quarter of its length, squared; each deflection is
 /// three quarters as long and needs that much less.
 const STEP_AWAY_MIN_SQ: f32 = 2.25;
+/// A held blocker is kept within 37.5 flat.
+const BLOCKER_KEEP_SQ: f32 = 1406.25;
 const STEP_AWAY_PROGRESS_SQ: f32 = 0.25;
 const STEP_AWAY_DEFLECT_PROGRESS_SQ: f32 = 0.5625;
 /// Ground pitch: the samples ahead of and behind the actor, the height
@@ -1428,8 +1435,21 @@ fn model_anim_scripted(
 }
 
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
-    let clip = crate::step::ActorClip::gather(&FrameWorld::from_world(world));
-    world.insert_resource(ActorClipTick(clip));
+    let mut clip = crate::step::ActorClip::gather(&FrameWorld::from_world(world));
+    // Live actors' bodies block each other's sweeps (their contents are a
+    // body's, which the actor clipmask names).
+    let actors: Vec<u64> = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .keys()
+        .copied()
+        .collect();
+    for actor in actors {
+        if let Some((entnum, origin, bounds)) = live_body(world, actor) {
+            clip.add_body(entnum, origin, bounds);
+        }
+    }
+    world.insert_resource(ActorClipTick(clip, u16::MAX));
     locomote_actors(world, seconds);
     world.remove_resource::<ActorClipTick>();
 }
@@ -1461,6 +1481,10 @@ fn locomote_actors(world: &mut World, seconds: f32) {
         }
         let (mut origin, mut angles) = pose(&mut world.resource_mut::<RoundScript>(), actor);
         let before = origin;
+        let entnum = entity_number(world, actor);
+        if let Some(mut clip) = world.get_resource_mut::<ActorClipTick>() {
+            clip.1 = entnum;
+        }
         let goal_radius = goal_radius(world, actor);
         let goal_at = goal_position(world, actor);
         let mut movement = world.resource::<RoundScript>().actor_moves[&actor].clone();
@@ -1547,6 +1571,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
             runtime.set_object_field(actor, "angles", Value::Vector(angles));
             runtime.actor_moves.insert(actor, movement);
+            move_body(world, entnum, origin);
             continue;
         }
         let delta = super::actor_anims::root_delta(world, actor);
@@ -1601,42 +1626,77 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                     } else {
                         [0.0; 3]
                     };
-                    origin = match blocking_actor(world, actor, origin) {
+                    // Holding a blocker, it steps away from it instead.
+                    origin = match held_blocker(world, &movement) {
                         Some(blocker) => {
                             step_away(world, actor, origin, blocker, step, seconds, &mut movement)
                         }
                         None => walk_path(world, origin, wish, seconds, &mut movement),
                     };
                 } else {
-                    origin = physics_move(world, origin, [0.0; 3], seconds, &mut movement).0;
+                    let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+                    origin = match held_blocker(world, &movement) {
+                        Some(blocker) => {
+                            step_away(world, actor, origin, blocker, step, seconds, &mut movement)
+                        }
+                        None => physics_move(world, origin, [0.0; 3], seconds, &mut movement).0,
+                    };
                 }
             }
             AnimMode::PosDeltas => {
-                origin = physics_move(
-                    world,
-                    origin,
-                    [world_delta[0], world_delta[1], 0.0],
-                    seconds,
-                    &mut movement,
-                )
-                .0;
+                let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+                origin = match held_blocker(world, &movement) {
+                    Some(blocker) => {
+                        step_away(world, actor, origin, blocker, step, seconds, &mut movement)
+                    }
+                    None => {
+                        physics_move(
+                            world,
+                            origin,
+                            [world_delta[0], world_delta[1], 0.0],
+                            seconds,
+                            &mut movement,
+                        )
+                        .0
+                    }
+                };
             }
             AnimMode::Gravity => {
-                origin = physics_move(
-                    world,
-                    origin,
-                    [world_delta[0], world_delta[1], 0.0],
-                    seconds,
-                    &mut movement,
-                )
-                .0;
+                let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+                origin = match held_blocker(world, &movement) {
+                    Some(blocker) => {
+                        step_away(world, actor, origin, blocker, step, seconds, &mut movement)
+                    }
+                    None => {
+                        physics_move(
+                            world,
+                            origin,
+                            [world_delta[0], world_delta[1], 0.0],
+                            seconds,
+                            &mut movement,
+                        )
+                        .0
+                    }
+                };
                 angles[1] += turned;
             }
             AnimMode::ZOnlyPhysics => {
-                origin = zonly_move(world, origin, world_delta, seconds, &mut movement);
+                let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+                origin = match held_blocker(world, &movement) {
+                    Some(blocker) => {
+                        step_away(world, actor, origin, blocker, step, seconds, &mut movement)
+                    }
+                    None => zonly_move(world, origin, world_delta, seconds, &mut movement),
+                };
                 angles[1] += turned;
             }
-            AnimMode::AngleDeltas => angles[1] += turned,
+            AnimMode::AngleDeltas => {
+                if let Some(blocker) = held_blocker(world, &movement) {
+                    let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+                    origin = step_away(world, actor, origin, blocker, step, seconds, &mut movement);
+                }
+                angles[1] += turned;
+            }
         }
 
         if movement.ground_ent_type != prev_ground {
@@ -1746,6 +1806,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             }
             runtime.actor_moves.insert(actor, movement);
         }
+        move_body(world, entnum, origin);
         for event in events {
             raise(world, Value::Object(actor), event, Vec::new());
         }
@@ -1872,8 +1933,8 @@ struct Phys {
     /// The last plane the move hit and where: `iHitEntnum`'s normal and
     /// origin.
     hit: Option<([f32; 3], [f32; 3])>,
-    /// Whether that hit was a player's body (a sentient).
-    hit_body: bool,
+    /// The body that hit was (a sentient's), by entity number.
+    hit_body: Option<u16>,
     /// The actor's clipmask.
     mask: u32,
 }
@@ -1884,12 +1945,13 @@ struct Sweep {
     normal: [f32; 3],
     endpos: [f32; 3],
     allsolid: bool,
-    body: bool,
+    body: Option<u16>,
 }
 
-/// What actors' sweeps meet this tick beyond the world, gathered once.
+/// What actors' sweeps meet this tick beyond the world, gathered once, and
+/// the entity number of the actor moving (whose own body it skips).
 #[derive(bevy_ecs::prelude::Resource)]
-struct ActorClipTick(crate::step::ActorClip);
+struct ActorClipTick(crate::step::ActorClip, u16);
 
 fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -1913,10 +1975,10 @@ impl Phys {
         let trace = match &clip {
             Some(clip) => clip
                 .0
-                .trace(&frame, start, end, self.mins, self.maxs, self.mask),
+                .trace(&frame, start, end, self.mins, self.maxs, self.mask, clip.1),
             None => frame.trace_clip(start, end, self.mins, self.maxs, self.mask),
         };
-        let body = clip.as_ref().is_some_and(|clip| clip.0.hit_body(&trace));
+        let body = clip.as_ref().and_then(|clip| clip.0.hit_body(&trace));
         if let Some(clip) = clip {
             world.insert_resource(clip);
         }
@@ -1934,21 +1996,39 @@ impl Phys {
     fn ground_trace(&mut self, world: &mut World) {
         let snap = self.ground.is_some() && self.velocity[2] <= 0.0;
         let depth = if snap { STEP_HEIGHT } else { GROUND_PROBE };
+        let start = [
+            self.origin[0],
+            self.origin[1],
+            self.origin[2] + GROUND_PROBE,
+        ];
         let end = [self.origin[0], self.origin[1], self.origin[2] - depth];
-        let trace = self.trace(world, self.origin, end);
-        if trace.allsolid || trace.fraction >= 1.0 {
+        let mut trace = self.trace(world, start, end);
+        if trace.allsolid && trace.body.is_some() && self.mask & crate::world::CONTENTS_BODY != 0 {
+            self.mask &= !crate::world::CONTENTS_BODY;
+            trace = self.trace(world, start, end);
+        }
+        if trace.allsolid {
+            trace = self.trace(world, self.origin, end);
+            if trace.allsolid {
+                self.ground = Some([0.0, 0.0, 1.0]);
+                return;
+            }
+        }
+        if trace.fraction >= 1.0 {
             self.ground = None;
             return;
         }
         if trace.normal[2] < MIN_WALK_NORMAL {
             self.ground = None;
-            self.hit = Some((trace.normal, trace.endpos));
-            self.hit_body = trace.body;
+            if self.hit.is_none() && (trace.normal[0] != 0.0 || trace.normal[1] != 0.0) {
+                self.hit = Some((trace.normal, trace.endpos));
+                self.hit_body = trace.body;
+            }
             return;
         }
         self.ground = Some(trace.normal);
-        if snap {
-            self.origin = trace.endpos;
+        if trace.endpos[2] < self.origin[2] {
+            self.origin[2] = trace.endpos[2];
         }
         if self.velocity[2] < 0.0 {
             self.velocity[2] = 0.0;
@@ -1981,6 +2061,10 @@ impl Phys {
             let trace = self.trace(world, self.origin, end);
             if trace.allsolid {
                 self.velocity[2] = 0.0;
+                if self.hit.is_none() {
+                    self.hit = Some((trace.normal, self.origin));
+                    self.hit_body = trace.body;
+                }
                 return true;
             }
             if trace.fraction > 0.0 {
@@ -1990,8 +2074,13 @@ impl Phys {
                 break;
             }
             bumps += 1;
-            self.hit = Some((trace.normal, trace.endpos));
-            self.hit_body = trace.body;
+            if self.hit.is_none()
+                && trace.normal[2] < MIN_WALK_NORMAL
+                && (trace.normal[0] != 0.0 || trace.normal[1] != 0.0)
+            {
+                self.hit = Some((trace.normal, trace.endpos));
+                self.hit_body = trace.body;
+            }
             left -= left * trace.fraction;
             if planes.len() >= 5 {
                 self.velocity = [0.0; 3];
@@ -2087,6 +2176,8 @@ impl Phys {
         if trace.allsolid {
             return;
         }
+        self.hit = None;
+        self.hit_body = None;
         let lifted = trace.endpos[2] - start[2];
         self.origin = trace.endpos;
         self.velocity = start_velocity;
@@ -2177,7 +2268,7 @@ fn physics_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
-        hit_body: false,
+        hit_body: None,
         mask: actor_mask(movement),
     };
     phys.ground_trace(world);
@@ -2208,7 +2299,7 @@ fn zonly_move(
         maxs,
         ground: movement.ground_normal,
         hit: None,
-        hit_body: false,
+        hit_body: None,
         mask: actor_mask(movement),
     };
     phys.slide(world, seconds, false);
@@ -2220,7 +2311,7 @@ fn zonly_move(
 
 fn settle_physics(phys: &Phys, movement: &mut ActorMove) {
     movement.ground_normal = phys.ground;
-    movement.hit_body = phys.hit.is_some() && phys.hit_body;
+    movement.hit_body = phys.hit.and(phys.hit_body);
     movement.fall_speed = if phys.ground.is_some() {
         0.0
     } else {
@@ -2311,11 +2402,38 @@ fn walk_path(
     };
     // A sentient in the way (a player) does not replan the path: Black Ops
     // keeps it as the blocker.
-    if gained < length * BLOCKED_PROGRESS && !movement.hit_body {
+    if gained < length * BLOCKED_PROGRESS && movement.hit_body.is_none() {
         // Planned again on the next step; the path stands until then.
         movement.planned_to = None;
     }
     result
+}
+
+fn entity_number(world: &World, actor: u64) -> u16 {
+    world
+        .resource::<RoundScript>()
+        .entities
+        .get(&actor)
+        .and_then(|entity| u16::try_from(entity.number).ok())
+        .unwrap_or(u16::MAX)
+}
+
+/// A live actor's body: its entity number, origin and box.
+fn live_body(world: &mut World, actor: u64) -> Option<(u16, [f32; 3], ([f32; 3], [f32; 3]))> {
+    if !matches!(super::players::entity_field(world, actor, "health"), Value::Int(n) if n > 0) {
+        return None;
+    }
+    let entnum = entity_number(world, actor);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let bounds = actor_box(runtime.actor_moves.get(&actor)?);
+    Some((entnum, pose(&mut runtime, actor).0, bounds))
+}
+
+/// The moved actor's body follows it for the actors that move after it.
+fn move_body(world: &mut World, entnum: u16, origin: [f32; 3]) {
+    if let Some(mut clip) = world.get_resource_mut::<ActorClipTick>() {
+        clip.0.move_body(entnum, origin);
+    }
 }
 
 /// The other live actors, by entity, with their origins.
@@ -2336,16 +2454,110 @@ fn other_actors(world: &mut World, actor: u64) -> Vec<(u64, [f32; 3])> {
     out
 }
 
-/// Black Ops' blocking actor: the first other live actor within 30 flat
-/// and 80 up or down.
-fn blocking_actor(world: &mut World, actor: u64, origin: [f32; 3]) -> Option<([f32; 3], u64)> {
-    other_actors(world, actor)
-        .into_iter()
-        .find(|&(_, at)| {
-            (at[2] - origin[2]).powi(2) <= BLOCKING_HEIGHT_SQ
-                && (origin[0] - at[0]).powi(2) + (origin[1] - at[1]).powi(2) <= BLOCKING_RADIUS_SQ
+/// The blocker the actor holds, where it stands now.
+fn held_blocker(world: &mut World, movement: &ActorMove) -> Option<([f32; 3], u64)> {
+    let blocker = movement.blocker?;
+    let at = pose(&mut world.resource_mut::<RoundScript>(), blocker).0;
+    Some((at, blocker))
+}
+
+fn blocker_of(world: &World, actor: u64) -> Option<u64> {
+    world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .and_then(|movement| movement.blocker)
+}
+
+fn set_blocker(world: &mut World, actor: u64, blocker: Option<u64>) {
+    if let Some(movement) = world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .get_mut(&actor)
+    {
+        movement.blocker = blocker;
+    }
+}
+
+/// `other` takes `actor` as its blocker unless it holds one.
+fn give_blocker(world: &mut World, other: u64, actor: u64) {
+    if blocker_of(world, other).is_none() {
+        set_blocker(world, other, Some(actor));
+    }
+}
+
+/// Black Ops' blocking actor, looked for as an actor stops or fights: the
+/// first other live actor within 30 flat and 80 up or down, unless it
+/// holds one.
+pub(crate) fn acquire_blocker(world: &mut World, actor: u64) -> bool {
+    if blocker_of(world, actor).is_some() {
+        return true;
+    }
+    let Some(origin) = as_vector(super::players::entity_field(world, actor, "origin")) else {
+        return false;
+    };
+    let found = other_actors(world, actor).into_iter().find(|&(_, at)| {
+        (at[2] - origin[2]).powi(2) <= BLOCKING_HEIGHT_SQ
+            && (origin[0] - at[0]).powi(2) + (origin[1] - at[1]).powi(2) <= BLOCKING_RADIUS_SQ
+    });
+    if let Some((blocker, _)) = found {
+        set_blocker(world, actor, Some(blocker));
+    }
+    found.is_some()
+}
+
+/// Whether the actor holds a blocker.
+pub(crate) fn has_blocker(world: &World, actor: u64) -> bool {
+    blocker_of(world, actor).is_some()
+}
+
+/// The blocker's lifetime, at the start of each think: one no longer alive
+/// is let go; one beyond 37.5 flat is let go (and lets go of this actor if
+/// it held it); one 30 or more away and behind the actor along its path is
+/// let go.
+pub(crate) fn update_blocker(world: &mut World, actor: u64) {
+    let Some(blocker) = blocker_of(world, actor) else {
+        return;
+    };
+    let alive =
+        matches!(super::players::entity_field(world, blocker, "health"), Value::Int(n) if n > 0);
+    let (Some(origin), Some(at)) = (
+        as_vector(super::players::entity_field(world, actor, "origin")),
+        as_vector(super::players::entity_field(world, blocker, "origin")),
+    ) else {
+        set_blocker(world, actor, None);
+        return;
+    };
+    let apart_sq = (at[1] - origin[1]).powi(2) + (at[0] - origin[0]).powi(2);
+    if !alive {
+        set_blocker(world, actor, None);
+        return;
+    }
+    if apart_sq >= BLOCKER_KEEP_SQ {
+        if blocker_of(world, blocker) == Some(actor) {
+            set_blocker(world, blocker, None);
+        }
+        set_blocker(world, actor, None);
+        return;
+    }
+    let ahead = {
+        let runtime = world.resource::<RoundScript>();
+        runtime.actor_moves.get(&actor).and_then(|movement| {
+            if movement.anim_mode != AnimMode::Normal || !movement.has_path() {
+                return None;
+            }
+            let next = movement.waypoints.first()?;
+            let to = [next[0] - origin[0], next[1] - origin[1]];
+            let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
+            (length > 0.001).then(|| [to[0] / length, to[1] / length])
         })
-        .map(|(id, at)| (at, id))
+    };
+    if let Some(dir) = ahead
+        && apart_sq >= BLOCKING_RADIUS_SQ
+        && dir[1] * (origin[1] - at[1]) + dir[0] * (origin[0] - at[0]) > 0.0
+    {
+        set_blocker(world, actor, None);
+    }
 }
 
 /// Black Ops' `crandom`: its own seed, a value in [-1, 1).
@@ -2358,8 +2570,10 @@ fn crandom(world: &mut World) -> f32 {
     (rand.0 >> 17) as f32 * (1.0 / 16384.0) - 1.0
 }
 
-/// Whether a move from `from` to `to` ends within 30 of an actor (other than
-/// the blocker) it was not within before, at about the same height.
+/// Whether a move from `from` to `to` ends within 30 of an actor (other
+/// than the blocker) it was not within before, at about the same height;
+/// each such actor that holds no blocker (and whose enemy is not close)
+/// takes this one as its blocker.
 fn steps_into_actor(
     world: &mut World,
     actor: u64,
@@ -2367,14 +2581,20 @@ fn steps_into_actor(
     from: [f32; 3],
     to: [f32; 3],
 ) -> bool {
-    other_actors(world, actor)
+    let into: Vec<u64> = other_actors(world, actor)
         .into_iter()
         .filter(|&(id, _)| id != blocker)
-        .any(|(_, at)| {
-            (at[0] - to[0]).powi(2) + (at[1] - to[1]).powi(2) < BLOCKING_RADIUS_SQ
-                && (at[0] - from[0]).powi(2) + (at[1] - from[1]).powi(2) >= BLOCKING_RADIUS_SQ
+        .filter(|&(_, at)| {
+            (at[1] - to[1]).powi(2) + (at[0] - to[0]).powi(2) < BLOCKING_RADIUS_SQ
+                && (at[1] - from[1]).powi(2) + (at[0] - from[0]).powi(2) >= BLOCKING_RADIUS_SQ
                 && (from[2] - at[2]).abs() < BLOCKING_HEIGHT
         })
+        .map(|(id, _)| id)
+        .collect();
+    for &other in &into {
+        give_blocker(world, other, actor);
+    }
+    !into.is_empty()
 }
 
 /// With a blocking actor the walk steps away from it instead of along the
@@ -2382,7 +2602,8 @@ fn steps_into_actor(
 /// blocker (a random way when they stand on one spot). The step stands
 /// when it ends further from the blocker, moves a quarter of its length
 /// and walks into no other actor; else up to two shorter steps turned
-/// along what it hit, and else the actor stays.
+/// along what it hit, and else the actor stays and the blocker, holding
+/// none, takes it as its own blocker.
 fn step_away(
     world: &mut World,
     actor: u64,
@@ -2411,15 +2632,14 @@ fn step_away(
             && (origin[0] - result[0]).powi(2) + (origin[1] - result[1]).powi(2) > progress_sq
             && !steps_into_actor(world, actor, blocker, origin, result)
     };
-    let (result, mut hit) = physics_move(
-        world,
-        origin,
-        [dir[0] * length, dir[1] * length, 0.0],
-        seconds,
-        movement,
-    );
-    if stands(world, result, progress_sq) {
-        return result;
+    let mut current = [dir[0] * length, dir[1] * length, 0.0];
+    let (first_result, mut hit) = physics_move(world, origin, current, seconds, movement);
+    if stands(world, first_result, progress_sq) {
+        movement.deflect_side = 0;
+        return first_result;
+    }
+    if movement.ground_normal.is_none() {
+        return first_result;
     }
     for _ in 0..DEFLECT_TRIES {
         let Some((normal, _)) = hit else {
@@ -2433,21 +2653,35 @@ fn step_away(
         };
         length *= DEFLECT_SCALE;
         progress_sq *= STEP_AWAY_DEFLECT_PROGRESS_SQ;
-        let turn = if n[1] * dir[0] <= n[0] * dir[1] {
-            [-n[1] * length, n[0] * length, 0.0]
+        let left = n[1] * dir[0] <= n[0] * dir[1];
+        let (side, other) = if left { (16, 8) } else { (8, 16) };
+        let turn = if left {
+            [-n[1] * length, n[0] * length]
         } else {
-            [n[1] * length, -n[0] * length, 0.0]
+            [n[1] * length, -n[0] * length]
+        };
+        current = if movement.deflect_side == other {
+            [
+                current[0] + turn[0] * DEFLECT_BLEND,
+                current[1] + turn[1] * DEFLECT_BLEND,
+                0.0,
+            ]
+        } else {
+            [turn[0], turn[1], 0.0]
         };
         movement.ground_normal = ground;
         movement.fall_speed = fall;
         let result;
-        (result, hit) = physics_move(world, origin, turn, seconds, movement);
+        (result, hit) = physics_move(world, origin, current, seconds, movement);
         if stands(world, result, progress_sq) {
+            movement.deflect_side = side;
             return result;
         }
     }
+    movement.deflect_side = 0;
     movement.ground_normal = ground;
     movement.fall_speed = fall;
+    give_blocker(world, blocker, actor);
     origin
 }
 
