@@ -762,6 +762,29 @@ pub trait GameMenus: Sync {
 
     /// The menu the in-game menu key (Escape) opens.
     fn ingame_menu(&self) -> Rule<InGameMenu>;
+
+    /// The game's own dvars behind its menus' settings, which the runtime
+    /// does not register.
+    fn menu_dvars(&self) -> &'static [MenuDvar] {
+        &[]
+    }
+}
+
+/// A runtime setting a game's menus show and set through a dvar of their own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuSetting {
+    MasterVolume,
+    MouseSensitivity,
+    FieldOfView,
+}
+
+/// One of a game's dvars behind its menus: its registered default, which the
+/// menus show until set, and the runtime setting it stands for, if any.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MenuDvar {
+    pub name: &'static str,
+    pub default: &'static str,
+    pub setting: Option<MenuSetting>,
 }
 
 /// What the in-game menu key opens.

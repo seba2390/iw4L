@@ -384,7 +384,51 @@ impl game_api::GameMenus for T5 {
     fn layout(&self) -> Rule<&'static dyn game_api::MenuLayout> {
         Rule::Known(&MenuLayout)
     }
+
+    fn menu_dvars(&self) -> &'static [game_api::MenuDvar] {
+        &MENU_DVARS
+    }
 }
+
+/// The client dvars Black Ops' options menus show, with their registered
+/// defaults. `sensitivity` scales the mouse by `m_yaw` / `m_pitch` (0.022)
+/// as the runtime's does; `cg_fov_default` is the player's field of view.
+/// `r_gamma` sets a device gamma ramp and the other sound dvars set Black
+/// Ops' own volume groups, which the runtime has not (docs/fidelity/t5.md).
+const MENU_DVARS: [game_api::MenuDvar; 10] = {
+    use game_api::{MenuDvar, MenuSetting};
+    const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
+        MenuDvar {
+            name,
+            default,
+            setting: None,
+        }
+    }
+    [
+        MenuDvar {
+            name: "sensitivity",
+            default: "5",
+            setting: Some(MenuSetting::MouseSensitivity),
+        },
+        MenuDvar {
+            name: "cg_fov_default",
+            default: "65",
+            setting: Some(MenuSetting::FieldOfView),
+        },
+        MenuDvar {
+            name: "snd_menu_master",
+            default: "1",
+            setting: Some(MenuSetting::MasterVolume),
+        },
+        shown("snd_menu_music", "1"),
+        shown("snd_menu_sfx", "1"),
+        shown("snd_menu_voice", "1"),
+        shown("snd_menu_cinematic", "1"),
+        shown("r_gamma", "0.9"),
+        shown("r_texFilterAnisoMin", "1"),
+        shown("cl_freelook", "1"),
+    ]
+};
 
 /// Black Ops' menu engine placement and text measures, read from its
 /// executable. Its menus have no scale transition (no `lerp` menu command),
