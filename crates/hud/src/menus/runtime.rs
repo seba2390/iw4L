@@ -178,6 +178,27 @@ impl Runner<'_, '_> {
         }
     }
 
+    /// A command argument as the command runs: `dvarString(name)` and
+    /// `localVarString(name)` read the dvar or local variable now.
+    fn argument(&self, arg: &str) -> String {
+        let Some(call) = arg.strip_prefix(script::EXPRESSION_ARG) else {
+            return arg.to_owned();
+        };
+        let (function, name) = call
+            .strip_suffix(')')
+            .and_then(|call| call.split_once('('))
+            .unwrap_or((call, ""));
+        let name = name.trim().trim_matches('"');
+        match function.to_ascii_lowercase().as_str() {
+            "dvarstring" => self.dvar(name).unwrap_or("").to_owned(),
+            "localvarstring" => self.locals.string(name),
+            _ => {
+                diag::warn!(Ui, "menu command argument `{call}` is not evaluated");
+                String::new()
+            }
+        }
+    }
+
     pub(crate) fn command(&mut self, menu: &str, item: Option<usize>, command: Command) {
         let target = |name: &str| {
             if name.eq_ignore_ascii_case("self") {
@@ -187,8 +208,14 @@ impl Runner<'_, '_> {
             }
         };
         match command {
-            Command::Open(name) => self.open(&name),
-            Command::Close(name) => self.close(&target(&name)),
+            Command::Open(name) => {
+                let name = self.argument(&name);
+                self.open(&name);
+            }
+            Command::Close(name) => {
+                let name = self.argument(&name);
+                self.close(&target(&name));
+            }
             Command::Escape(name) => self.escape(&target(&name)),
             Command::SetFocus(name) => {
                 let Some(def) = self.def(menu) else {
