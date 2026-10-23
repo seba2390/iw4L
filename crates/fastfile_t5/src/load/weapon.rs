@@ -65,6 +65,16 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         ZonePtr::Offset(q) => Some(s.resolve_alias(q)),
         _ => None,
     };
+    let has_stowed_model = !matches!(body_combat.weap_class, 5 | 12)
+        && weap_def
+            .and_then(|body| match s.ptr_at(body, 0x30c).ok()? {
+                ZonePtr::Offset(q) => Some(!matches!(
+                    s.ptr_at(s.resolve_alias(q), 4).ok()?,
+                    ZonePtr::Null
+                )),
+                _ => None,
+            })
+            .unwrap_or(false);
     s.record_weapon(WeaponGeometry {
         kill_icon_name: assets.kill_icon,
         overlay_material_name,
@@ -88,6 +98,7 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         projectile_model_name: assets.projectile,
         world_model_name: assets.world,
         world_clip_model_name: assets.clip,
+        has_stowed_model,
         move_speed_scale: body_combat.move_speed_scale,
         ads_move_speed_scale: body_combat.ads_move_speed_scale,
         weap_type: body_combat.weap_type,

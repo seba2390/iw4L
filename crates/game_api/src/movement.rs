@@ -364,6 +364,8 @@ pub struct GameWeapon {
     pub fire_stop_sounds: [Option<String>; 2],
     /// The definition's world clip model, when it names one.
     pub world_clip_model: Option<String>,
+    /// Whether the weapon has a stowed world model (`GetWeaponStowedModel`).
+    pub has_stowed_model: bool,
 }
 
 /// The match's weapons by number, as their own game defines them.

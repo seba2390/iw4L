@@ -420,6 +420,8 @@ pub struct WeaponGeometry {
     pub world_model_name: Option<Ptr>,
     /// `worldClipModel`'s name.
     pub world_clip_model_name: Option<Ptr>,
+    /// `worldModel` slot 1 (the stowed model) is non-null.
+    pub has_stowed_model: bool,
 
     pub rocket_model_name: Option<Ptr>,
 

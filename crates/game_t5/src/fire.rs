@@ -146,14 +146,6 @@ fn mounted_unknown() -> &'static Unknown {
     )
 }
 
-fn stack_fire_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.weapons.stack_fire",
-        "a stacked-barrel weapon's per-barrel spread and yaw offsets are not applied",
-        "the spread scale Black Ops' spread function takes for stacked fire"
-    )
-}
-
 fn glass_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.glass",
@@ -625,7 +617,7 @@ impl Shot<'_> {
     fn weapon_parms(
         &mut self,
         def: &WeaponDefView<'_>,
-        _parm: i32,
+        parm: i32,
         world: &dyn FireWorld,
     ) -> WeaponParms {
         let mut angles = self.ps.viewangles;
@@ -634,7 +626,18 @@ impl Shot<'_> {
             angles[1] = self.gun_angles[1];
         }
         if def.fire_type() == FIRETYPE_STACKED && self.ps.stack_fire_count > 1 {
-            self.gaps.push(stack_fire_unknown());
+            let spread = def.stack_fire_spread();
+            let count = self.ps.stack_fire_count;
+            let offset = if count == 2 {
+                if self.ps.weapon_shot_count == 2 {
+                    spread * 0.5
+                } else {
+                    spread * -0.5
+                }
+            } else {
+                (parm - 1) as f32 * (spread / (count - 1) as f32) - spread * 0.5
+            };
+            angles[1] += offset;
         }
         let (forward, right, up) = movement_t5::math::angle_vectors(angles);
         let muzzle = mad(
@@ -652,7 +655,7 @@ impl Shot<'_> {
 
     /// The hip spread at the player's eye height, and what overrides it.
     fn spread(&self, def: &WeaponDefView<'_>, world: &dyn FireWorld) -> (f32, f32) {
-        hip_spread(
+        hip_spread_stacked(
             self.ps,
             [
                 def.hip_spread_stand_min(),
@@ -664,6 +667,7 @@ impl Shot<'_> {
                 def.hip_spread_ducked_max(),
                 def.hip_spread_prone_max(),
             ],
+            (def.fire_type() == FIRETYPE_STACKED).then(|| def.stack_fire_accuracy_decay()),
             self.zombies
                 .then(|| dvar(world, "perk_weapSpreadMultiplier", 0.65f32)),
         )
@@ -1847,6 +1851,16 @@ pub(crate) fn hip_spread(
     max: [f32; 3],
     deadshot_scale: Option<f32>,
 ) -> (f32, f32) {
+    hip_spread_stacked(ps, min, max, None, deadshot_scale)
+}
+
+fn hip_spread_stacked(
+    ps: &PlayerState,
+    min: [f32; 3],
+    max: [f32; 3],
+    stack_fire_decay: Option<f32>,
+    deadshot_scale: Option<f32>,
+) -> (f32, f32) {
     let (mut lo, mut hi);
     if ps.spread_override_state == 2 {
         lo = ps.spread_override as f32;
@@ -1862,6 +1876,13 @@ pub(crate) fn hip_spread(
             lo = (min[0] - min[1]) * frac + min[1];
             hi = (max[0] - max[1]) * frac + max[1];
         }
+    }
+    if let Some(decay) = stack_fire_decay
+        && ps.stack_fire_count > 1
+    {
+        let scale = f64::from(decay).powf(f64::from(ps.stack_fire_count - 1));
+        lo = (f64::from(lo) * scale) as f32;
+        hi = (f64::from(hi) * scale) as f32;
     }
     if ps.spread_override_state == 1 {
         hi = ps.spread_override as f32;

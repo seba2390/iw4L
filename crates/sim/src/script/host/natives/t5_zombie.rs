@@ -499,6 +499,72 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             Ok(Value::Undefined)
         });
     }
+    registry.register(Method, "magicgrenade", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let classname = {
+            let runtime = world.resource::<RoundScript>();
+            if runtime.entities[&id].kind != EntityKind::Actor {
+                return Err("MagicGrenade only supports actors.\n".into());
+            }
+            runtime.entities[&id].classname.clone()
+        };
+        if args.len() != 2 && args.len() != 3 {
+            return Err(
+                "<actor> MagicGrenade <origin> <target position> [time to blow (seconds)].\n"
+                    .into(),
+            );
+        }
+        let _ = super::super::args::vector(args, 0)?;
+        let _ = super::super::args::vector(args, 1)?;
+        if args.len() == 3 {
+            let _ = super::super::args::float(args, 2)?;
+        }
+        Err(format!(
+            "Actor [{classname}] doesn't have a grenade weapon set."
+        ))
+    });
+    registry.register(Method, "magicgrenademanual", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let classname = {
+            let runtime = world.resource::<RoundScript>();
+            if runtime.entities[&id].kind != EntityKind::Actor {
+                return Err("MagicGrenadeManual only supports actors.\n".into());
+            }
+            runtime.entities[&id].classname.clone()
+        };
+        if args.len() != 2 && args.len() != 3 {
+            return Err(
+                "<actor> MagicGrenadeManual <origin> <velocity> [time To Blow (seconds)].\n".into(),
+            );
+        }
+        let _ = super::super::args::vector(args, 0)?;
+        let _ = super::super::args::vector(args, 1)?;
+        if args.len() == 3 {
+            let _ = super::super::args::float(args, 2)?;
+        }
+        Err(format!(
+            "Actor [{classname}] doesn't have a grenade weapon set."
+        ))
+    });
+    registry.register(Method, "dropweapon", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+            return Err("not an actor".into());
+        }
+        let name = super::super::args::string(args, 0)?;
+        if name.is_empty() || name.eq_ignore_ascii_case("none") {
+            return Ok(Value::Undefined);
+        }
+        let _ = super::super::args::string(args, 1)?;
+        let _ = super::super::args::float(args, 2)?;
+        let known = crate::frame::FrameWorld::from_world(world)
+            .weapon_index_by_script_name(&name)
+            .is_some_and(|index| index != 0);
+        if !known {
+            return Err(format!("unknown weapon '{name}' in dropWeapon"));
+        }
+        Ok(Value::Undefined)
+    });
     // Black Ops: an unknown name is weapon 0, which is no gas weapon
     // (`weaponType` 4).
     registry.register(Function, "weaponisgasweapon", |world, _, args| {

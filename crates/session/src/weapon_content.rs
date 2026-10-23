@@ -214,6 +214,7 @@ fn game_weapons(
                 authored(WeaponSoundSlot::FireStopPlayer),
             ],
             world_clip_model: bytes.world_clip_model.clone(),
+            has_stowed_model: bytes.has_stowed_model,
         }));
     }
     let mut parents = vec![None; out.len()];

@@ -608,9 +608,7 @@ fn impact(
         let grenade = world
             .weapon(missile.weapon)
             .map_or(0, |weapon| weapon.grenade_weapon);
-        if grenade == 0 {
-            gaps.push(bolt_unknown());
-        } else {
+        if grenade != 0 {
             let on = match trace.hit {
                 BulletHitType::Entity(entity) => entity,
                 _ => ENTITY_WORLD,
@@ -627,6 +625,8 @@ fn impact(
                 world,
                 gaps,
             );
+        } else if !def.retrievable() && !def.die_on_respawn() {
+            gaps.push(bolt_unknown());
         }
     } else {
         world.explosion(&MissileExplosion {
