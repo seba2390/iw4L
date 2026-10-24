@@ -552,14 +552,14 @@ impl ExprHost for T5HudHost<'_, '_> {
     }
 }
 
-/// The left-to-right widths `weaponinfo_zombie` positions the clip with, in
-/// the fonts of its `ammoStock` and `clip` items.
+/// The left-to-right widths `weaponinfo_zombie` positions the clip with: the
+/// printed counts in the fonts of its `ammoStock` and `clip` items.
 pub(crate) fn ammo_widths(
     catalog: &MenuCatalog,
-    stock: Option<i32>,
-    clip: Option<i32>,
+    stock: Option<String>,
+    clip: Option<String>,
 ) -> [i32; 2] {
-    let width = |item_name: &str, value: Option<i32>| {
+    let width = |item_name: &str, value: Option<String>| {
         let Some(value) = value else {
             return 0;
         };
@@ -575,7 +575,7 @@ pub(crate) fn ammo_widths(
                 Some(crate::chrome::layout_text_width(
                     assets.layout()?,
                     catalog.font(font)?,
-                    &value.to_string(),
+                    &value,
                     item.text_scale,
                 ) as i32)
             })
@@ -1075,25 +1075,33 @@ fn paint_owner(
     let ammo = state.ammo.as_ref().filter(|_| !state.hide_ammo);
     match args.item.owner_draw {
         CG_PLAYER_WEAPON_BACKGROUND => {
-            if let Some((namespace, material)) = background_key(&args.item.background) {
-                push_pic(&args, namespace, material, frame);
+            let alpha = state
+                .weapon_info
+                .map_or(1.0, |info| (info.rules.fade)(info.view, info.shown_at));
+            if alpha != 0.0
+                && let Some((namespace, material)) = background_key(&args.item.background)
+            {
+                let rect = args.rect;
+                let [r, g, b, a] = args.color;
+                push_pic_at(
+                    &args,
+                    namespace,
+                    material,
+                    rect.x,
+                    rect.y,
+                    rect.w,
+                    rect.h,
+                    [r, g, b, a * alpha],
+                    frame,
+                );
             }
             OwnerDrawPaint::Painted
         }
-        CG_PLAYER_WEAPON_AMMO_CLIP => match ammo.and_then(|a| a.clip) {
-            Some(clip) => text(&args, &clip.to_string(), frame),
-            None => OwnerDrawPaint::Painted,
-        },
-        CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD => match ammo.and_then(|a| a.clip_alt) {
-            Some(clip) => text(&args, &clip.to_string(), frame),
-            None => OwnerDrawPaint::Painted,
-        },
-        CG_PLAYER_WEAPON_AMMO_STOCK => match ammo.and_then(|a| a.stock) {
-            Some(stock) => text(&args, &stock.to_string(), frame),
-            None => OwnerDrawPaint::Painted,
-        },
+        CG_PLAYER_WEAPON_AMMO_CLIP
+        | CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD
+        | CG_PLAYER_WEAPON_AMMO_STOCK => paint_ammo(state, ammo, &args, frame),
         CG_PLAYER_WEAPON_NAME => match state.weapon_name.as_deref() {
-            Some(name) if !state.hide_ammo => text(&args, name, frame),
+            Some(name) if !state.hide_ammo => paint_weapon_name(state, name, &args, frame),
             _ => OwnerDrawPaint::Painted,
         },
         CG_OFFHAND_WEAPON_ICON_FRAG | CG_OFFHAND_WEAPON_ICON_SMOKEFLASH => {
@@ -1206,6 +1214,92 @@ fn paint_action_slot_arrow(
         frame,
     );
     OwnerDrawPaint::Painted
+}
+
+/// A round count as the game's weapon info prints it, in its fade: the clip
+/// by the item's text alignment, the rounds beside it at the item's corner.
+fn paint_ammo(
+    state: &T5HudState<'_>,
+    ammo: Option<&WeaponbarAmmo>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(ammo) = ammo else {
+        return OwnerDrawPaint::Painted;
+    };
+    let od = args.item.owner_draw;
+    let clip = if od == CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD {
+        ammo.clip_alt
+    } else {
+        ammo.clip
+    };
+    let value = if od == CG_PLAYER_WEAPON_AMMO_STOCK {
+        ammo.stock
+    } else {
+        clip
+    };
+    let Some(value) = value else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(info) = state.weapon_info else {
+        return text(args, &value.to_string(), frame);
+    };
+    let alpha = (info.rules.ammo_fade)(info.view, info.shown_at);
+    if alpha == 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let printed = (info.rules.ammo_text)(info.view, clip.unwrap_or(0), ammo.stock.unwrap_or(0));
+    let mut color = args.color;
+    color[3] *= alpha;
+    let result = if od == CG_PLAYER_WEAPON_AMMO_STOCK {
+        if let Some([r, g, b]) = printed.stock_rgb {
+            color[..3].copy_from_slice(&[r, g, b]);
+        }
+        crate::chrome::push_owner_text_at(
+            args,
+            &printed.stock,
+            color,
+            |_, _| (args.rect.x, args.rect.y),
+            frame,
+        )
+    } else {
+        push_owner_text(args, &printed.clip, color, frame)
+    };
+    match result {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
+    }
+}
+
+/// The weapon name, ending the game's gap left of the item's right edge, in
+/// the name's own fade.
+fn paint_weapon_name(
+    state: &T5HudState<'_>,
+    name: &str,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(info) = state.weapon_info else {
+        return text(args, name, frame);
+    };
+    let alpha = (info.rules.name_fade)(info.view);
+    if alpha == 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let mut color = args.color;
+    color[3] *= alpha;
+    let rect = args.rect;
+    let gap = info.rules.name_right_gap;
+    match crate::chrome::push_owner_text_at(
+        args,
+        name,
+        color,
+        |width, _| (rect.x + rect.w - width - gap, rect.y),
+        frame,
+    ) {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
+    }
 }
 
 /// An action slot's key label: the item's text (`dpad_zombie`'s

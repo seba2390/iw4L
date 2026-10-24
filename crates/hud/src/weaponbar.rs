@@ -778,11 +778,6 @@ pub(crate) fn update_weaponbar(
             hide(&mut pass);
             return;
         };
-        let ammo_widths = crate::t5_hud::ammo_widths(
-            t5,
-            ammo.as_ref().and_then(|a| a.stock),
-            ammo.as_ref().and_then(|a| a.clip),
-        );
         let ms = milliseconds() as i32;
         let hint = client_input
             .hint_latch
@@ -923,6 +918,25 @@ pub(crate) fn update_weaponbar(
                 )
             })
             .unwrap_or_else(Vec::new);
+        // The widths of the counts as the weapon info prints them.
+        let (stock_text, clip_text) = match (ammo.as_ref(), weapon_info.as_ref()) {
+            (Some(ammo), Some(info)) => {
+                let printed = (info.rules.ammo_text)(
+                    info.view,
+                    ammo.clip.unwrap_or(0),
+                    ammo.stock.unwrap_or(0),
+                );
+                (
+                    ammo.stock.map(|_| printed.stock),
+                    ammo.clip.map(|_| printed.clip),
+                )
+            }
+            (ammo, _) => (
+                ammo.and_then(|a| a.stock).map(|v| v.to_string()),
+                ammo.and_then(|a| a.clip).map(|v| v.to_string()),
+            ),
+        };
+        let ammo_widths = crate::t5_hud::ammo_widths(t5, stock_text, clip_text);
         let state = crate::t5_hud::T5HudState {
             ms,
             dvars,
