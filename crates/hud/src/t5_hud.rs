@@ -1303,8 +1303,10 @@ fn paint_weapon_name(
 }
 
 /// An action slot's key label: the item's text (`dpad_zombie`'s
-/// `"[" + keybinding("+actionslot N") + "]"`) at the item's corner, in the
-/// colour the game's weapon info rule gives it.
+/// `"[" + keybinding("+actionslot N") + "]"`) placed in the item's rect by
+/// its text alignment (`[5]` left and `[6]` right of the bottom, `[X]`
+/// centred under the top), in the colour the game's weapon info rule gives
+/// it.
 fn paint_action_slot_bind(
     state: &T5HudState<'_>,
     args: &OwnerDrawArgs<'_>,
@@ -1321,13 +1323,7 @@ fn paint_action_slot_bind(
     let Some(text) = args.text.as_deref().filter(|t| !t.is_empty()) else {
         return OwnerDrawPaint::Painted;
     };
-    match crate::chrome::push_owner_text_at(
-        args,
-        text,
-        color,
-        |_, _| (args.rect.x, args.rect.y),
-        frame,
-    ) {
+    match push_owner_text(args, text, color, frame) {
         Ok(()) => OwnerDrawPaint::Painted,
         Err(kind) => OwnerDrawPaint::Gap(kind),
     }
