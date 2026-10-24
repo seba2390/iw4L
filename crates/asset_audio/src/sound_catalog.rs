@@ -1,7 +1,7 @@
 mod capture_types;
 pub use capture_types::{
     CapturedAlias, CapturedSndCurve, CapturedSound, ChannelKey, LoadedSoundPcm, MSS_PCM,
-    VoicePriority,
+    ReverbSendCapture, VoicePriority,
 };
 use capture_types::{capture_loaded_edge, is_null_sound_name};
 mod capture_iw4;
@@ -78,6 +78,8 @@ pub struct SoundCatalog {
     group_volumes: HashMap<AssetNamespace, Vec<std::result::Result<f32, crate::MixerGroupError>>>,
     mixer_groups: HashMap<AssetNamespace, Vec<crate::MixerGroup>>,
     mix_snapshots: HashMap<AssetNamespace, crate::MixSnapshots>,
+    /// Each game's reverb rooms, the first of each hash kept.
+    reverb_presets: HashMap<AssetNamespace, Vec<crate::ReverbPreset>>,
     ducks: HashMap<AssetNamespace, Vec<crate::SoundDuck>>,
     sound_contexts: HashMap<AssetNamespace, crate::SoundContexts>,
     mix_names: Option<crate::SoundMixNames>,
@@ -157,6 +159,9 @@ impl SoundCatalog {
         }
         for (ns, snapshots) in other.mix_snapshots {
             self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
+        }
+        for (ns, presets) in other.reverb_presets {
+            self.ingest_reverb_presets(ns, presets);
         }
         for (ns, contexts) in other.sound_contexts {
             self.sound_contexts.entry(ns).or_insert(contexts);
@@ -242,6 +247,9 @@ impl SoundCatalog {
         }
         for (ns, snapshots) in other.mix_snapshots {
             self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
+        }
+        for (ns, presets) in other.reverb_presets {
+            self.ingest_reverb_presets(ns, presets);
         }
         for (ns, contexts) in other.sound_contexts {
             self.sound_contexts.entry(ns).or_insert(contexts);
@@ -351,6 +359,32 @@ impl SoundCatalog {
 
     pub fn mix_snapshots(&self, namespace: AssetNamespace) -> Option<&crate::MixSnapshots> {
         self.mix_snapshots.get(&namespace)
+    }
+
+    /// Reverb rooms a zone's sound banks carry, the first of each hash kept.
+    pub fn ingest_reverb_presets(
+        &mut self,
+        namespace: AssetNamespace,
+        presets: Vec<crate::ReverbPreset>,
+    ) {
+        let list = self.reverb_presets.entry(namespace).or_default();
+        for preset in presets {
+            if !list.iter().any(|kept| kept.hash == preset.hash) {
+                list.push(preset);
+            }
+        }
+    }
+
+    /// A game's reverb room by its name's hash.
+    pub fn reverb_preset(
+        &self,
+        namespace: AssetNamespace,
+        hash: u32,
+    ) -> Option<&crate::ReverbPreset> {
+        self.reverb_presets
+            .get(&namespace)?
+            .iter()
+            .find(|preset| preset.hash == hash)
     }
 
     /// A game's sound ducks, the first of each hash kept.
@@ -918,6 +952,21 @@ impl SoundCatalog {
                     if let (Some(dry), Some(near)) = (dry, near) {
                         self.sounds[i].aliases[j].near_falloff = Some(near.clone());
                         self.sounds[i].aliases[j].volume_falloff = Some(dry.clone());
+                    } else {
+                        remaining += 1;
+                    }
+                }
+                if let Some(send) = self.sounds[i].aliases[j]
+                    .reverb_send
+                    .as_mut()
+                    .filter(|send| send.falloff.is_none())
+                {
+                    let [far, near] = send.curves;
+                    let far = self.curves.get(&(namespace, format!("t5/curve/{far}")));
+                    let near = self.curves.get(&(namespace, format!("t5/curve/{near}")));
+                    if let (Some(far), Some(near)) = (far, near) {
+                        send.falloff = Some(far.clone());
+                        send.near_falloff = Some(near.clone());
                     } else {
                         remaining += 1;
                     }

@@ -15,6 +15,8 @@ mod pcm;
 mod pcm_budget;
 mod playback;
 mod plugin;
+mod radverb;
+mod reverb_mix;
 mod rumble;
 mod shellshock;
 mod space;

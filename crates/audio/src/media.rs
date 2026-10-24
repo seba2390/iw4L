@@ -141,17 +141,23 @@ impl LiveGain {
 
 pub(crate) struct RenderGains {
     pan: [f32; 2],
+    reverb_pan: Option<[f32; 2]>,
     envelopes: [GainEnvelope; GAIN_STAGES],
 }
 
 impl RenderGains {
-    pub fn sample(&self, frame: u64) -> [f32; 2] {
+    /// The voice's gains at `frame`, per side: to the mix, and to the
+    /// reverb when it sends to one.
+    pub fn sample(&self, frame: u64) -> ([f32; 2], Option<[f32; 2]>) {
         let gain = self
             .envelopes
             .iter()
             .map(|envelope| envelope.sample(frame))
             .product::<f32>();
-        [self.pan[0] * gain, self.pan[1] * gain]
+        (
+            [self.pan[0] * gain, self.pan[1] * gain],
+            self.reverb_pan.map(|pan| [pan[0] * gain, pan[1] * gain]),
+        )
     }
 }
 
@@ -203,6 +209,8 @@ pub(crate) const GAIN_STAGES: usize = 6;
 pub(crate) struct RenderMedia {
     pcm: PcmBuffer,
     pub pan: Option<LivePan>,
+    /// What the voice sends to the game's reverb, per side, while one runs.
+    pub reverb_pan: Option<LivePan>,
     pub output_gain: [f32; 2],
     pub gain: Option<LiveGain>,
     pub channel_gain: Option<LiveGain>,
@@ -416,6 +424,7 @@ impl RenderMedia {
         Self {
             pcm,
             pan: None,
+            reverb_pan: None,
             output_gain: [1.0; 2],
             gain: None,
             channel_gain: None,
@@ -455,6 +464,10 @@ impl RenderMedia {
         let (left, right) = self.pan.as_ref().map_or((1.0, 1.0), LivePan::get);
         RenderGains {
             pan: [left, right],
+            reverb_pan: self.reverb_pan.as_ref().map(|pan| {
+                let (left, right) = pan.get();
+                [left, right]
+            }),
             envelopes: *cached,
         }
     }

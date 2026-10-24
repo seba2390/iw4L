@@ -16,5 +16,6 @@ impl Plugin for AudioPlugin {
         crate::client_sounds::register(app);
         crate::script_mix::register(app);
         crate::snapshot_mix::register(app);
+        crate::reverb_mix::register(app);
     }
 }

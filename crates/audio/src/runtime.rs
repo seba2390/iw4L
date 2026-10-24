@@ -302,6 +302,30 @@ impl AudioRuntime {
             .cloned()
     }
 
+    /// The game's reverb: its parameters and the bus it joins (none stops
+    /// it), and the room's dry and wet levels.
+    pub(crate) fn set_reverb(
+        &self,
+        reverb: Option<(crate::radverb::ReverbParameters, asset_core::AssetNamespace)>,
+        dry: f32,
+        wet: f32,
+    ) {
+        let control = &self.shared.reverb;
+        *control
+            .parameters
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = reverb;
+        let level = |value: f32| {
+            if value.is_finite() {
+                value.max(0.0)
+            } else {
+                0.0
+            }
+        };
+        control.dry.store(level(dry).to_bits(), Ordering::Relaxed);
+        control.wet.store(level(wet).to_bits(), Ordering::Relaxed);
+    }
+
     pub(crate) fn set_cue_mix(&self, mix: Option<CueMix>) {
         *self
             .cue_mix
@@ -1170,6 +1194,11 @@ fn update_spatial(request: &StartRequest, listener: Option<ListenerSnapshot>) {
         let parameters = spatial.evaluate(listener);
         if let Some(pan) = &request.media.pan {
             pan.set(parameters.gains[0], parameters.gains[1]);
+        }
+        if let (Some(pan), Some([left, right])) =
+            (&request.media.reverb_pan, parameters.reverb_gains)
+        {
+            pan.set(left, right);
         }
         request.instance.priority.store(
             if parameters.priority.is_finite() {

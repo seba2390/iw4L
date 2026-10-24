@@ -1477,8 +1477,14 @@ fn register_sound_ids(registry: &mut NativeRegistry) {
         let dry = optional(args, 2, float)?.unwrap_or(1.0);
         let room = string(args, 1)?.to_string();
         let priority = reverb_priority(&string(args, 0)?);
-        world.resource_mut::<ClientOutput>().reverb[priority] =
-            Some((room, dry, wet, reverb_fade_ms(fade)));
+        world.resource_mut::<ClientOutput>().sound_commands.push(
+            crate::ScriptAudioCommand::ClientReverb {
+                client: crate::ClientId(0),
+                priority,
+                room: Some((room, dry, wet)),
+                fade_ms: reverb_fade_ms(fade),
+            },
+        );
         Ok(Value::Undefined)
     });
     registry.register(Function, "deactivatereverb", |world, _, args| {
@@ -1490,9 +1496,16 @@ fn register_sound_ids(registry: &mut NativeRegistry) {
                 return Ok(Value::Undefined);
             }
         };
-        let _ = reverb_fade_ms(fade);
+        let fade_ms = reverb_fade_ms(fade);
         let priority = reverb_priority(&string(args, 0)?);
-        world.resource_mut::<ClientOutput>().reverb[priority] = None;
+        world.resource_mut::<ClientOutput>().sound_commands.push(
+            crate::ScriptAudioCommand::ClientReverb {
+                client: crate::ClientId(0),
+                priority,
+                room: None,
+                fade_ms,
+            },
+        );
         Ok(Value::Undefined)
     });
     // Black Ops' own message names the wrong builtin.
@@ -1555,20 +1568,20 @@ fn register_sound_ids(registry: &mut NativeRegistry) {
     });
 }
 
-/// A reverb priority's slot: the level's (`snd_enveffectsprio_level`) or the
-/// shellshock's; any other name is printed and taken as the level's.
-fn reverb_priority(name: &str) -> usize {
+/// A reverb priority: the level's (`snd_enveffectsprio_level`, 1) or the
+/// shellshock's (2); any other name is printed and taken as the level's.
+fn reverb_priority(name: &str) -> u8 {
     if name.eq_ignore_ascii_case("snd_enveffectsprio_level") {
-        0
-    } else if name.eq_ignore_ascii_case("snd_enveffectsprio_shellshock") {
         1
+    } else if name.eq_ignore_ascii_case("snd_enveffectsprio_shellshock") {
+        2
     } else {
         {
             diag::warn!(
                 Sim,
                 "csc: priority must be 'snd_enveffectsprio_level' or 'snd_enveffectsprio_shellshock'"
             );
-            0
+            1
         }
     }
 }

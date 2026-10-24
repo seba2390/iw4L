@@ -119,6 +119,10 @@ pub(crate) fn publish_audio_context(
     if let Some(snapshots) = snapshots.as_mut() {
         snapshots.reset_epoch(epoch.0);
     }
+    // The game's reverb runs only in a match, which keeps it up to date.
+    if mix.is_none() {
+        runtime.set_reverb(None, 1.0, 0.0);
+    }
     runtime.set_cue_mix(
         mix.zip(channels)
             .zip(snapshots)
@@ -231,6 +235,7 @@ fn release_audio(mut runtime: ResMut<AudioRuntime>) {
     runtime.set_media_service(None);
     runtime.set_event_context(None);
     runtime.set_cue_mix(None);
+    runtime.set_reverb(None, 1.0, 0.0);
     runtime.set_sources(Vec::new());
 }
 

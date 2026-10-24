@@ -472,9 +472,10 @@ macro_rules! forward_iw5_sound {
 #[macro_export]
 macro_rules! forward_t5_sound {
     () => {
-        fn capture_snd_curves(
+        fn capture_snd_rows(
             &mut self,
             s: &fastfile_t5::ZoneStream<'_>,
+            kind: fastfile_t5::SndRows,
             rows: fastfile_t5::Ptr,
             count: usize,
         ) -> fastfile_t5::Result<()> {
@@ -482,23 +483,7 @@ macro_rules! forward_t5_sound {
                 && let Some(capture) = sound.t5()
             {
                 let result =
-                    fastfile_t5::AssetLinkSink::capture_snd_curves(capture, s, rows, count);
-                sound.guard(result);
-            }
-            Ok(())
-        }
-
-        fn capture_snd_groups(
-            &mut self,
-            s: &fastfile_t5::ZoneStream<'_>,
-            rows: fastfile_t5::Ptr,
-            count: usize,
-        ) -> fastfile_t5::Result<()> {
-            if let Some(sound) = self.sound.as_mut()
-                && let Some(capture) = sound.t5()
-            {
-                let result =
-                    fastfile_t5::AssetLinkSink::capture_snd_groups(capture, s, rows, count);
+                    fastfile_t5::AssetLinkSink::capture_snd_rows(capture, s, kind, rows, count);
                 sound.guard(result);
             }
             Ok(())

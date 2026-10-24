@@ -54,10 +54,14 @@ pub(crate) struct SpatialSource {
     pub near_knots: Option<Arc<[[f32; 2]]>>,
     pub priority: Option<asset_audio::VoicePriority>,
     pub base_volume: f32,
+    /// What it sends to the game's reverb, while one runs.
+    pub reverb: Option<asset_audio::ReverbSendPolicy>,
 }
 
 pub(crate) struct SpatialParameters {
     pub gains: [f32; 2],
+    /// Its reverb send per side, when it sends to one.
+    pub reverb_gains: Option<[f32; 2]>,
     pub priority: f32,
 }
 
@@ -89,8 +93,35 @@ impl SpatialSource {
             self.origin_inches,
             gain,
         );
+        // The send falls off along its own curves, from the dry falloff's
+        // start to its own end; without them it sends nothing.
+        let reverb_gains = self.reverb.as_ref().map(|reverb| {
+            let falloff = reverb.falloff.as_ref().map_or(0.0, |falloff| {
+                distance_attenuation(
+                    &falloff.knots,
+                    falloff.near_knots.as_deref(),
+                    distance,
+                    falloff.dist_min,
+                    falloff.dist_max,
+                )
+            });
+            let send = self.base_volume * falloff * reverb.send;
+            let send = if distance.is_finite() && send.is_finite() {
+                send.max(0.0)
+            } else {
+                0.0
+            };
+            let (left, right) = channel_gains(
+                listener.origin_inches,
+                listener.right,
+                self.origin_inches,
+                send,
+            );
+            [left, right]
+        });
         SpatialParameters {
             gains: [left, right],
+            reverb_gains,
             priority: if distance.is_finite() {
                 self.priority
                     .as_ref()

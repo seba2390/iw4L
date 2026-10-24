@@ -16,6 +16,14 @@ pub struct MixSnapshot {
     pub volumes: [f32; 64],
 }
 
+/// A reverb room of a game's sound banks: its name's hash and the fifteen
+/// values its reverb takes from it, in bank order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReverbPreset {
+    pub hash: u32,
+    pub values: [f32; 15],
+}
+
 /// A game's mix snapshots and how many snapshot groups its sound driver
 /// declares.
 #[derive(Clone, Debug, Default, PartialEq)]

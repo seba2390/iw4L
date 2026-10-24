@@ -19,7 +19,9 @@ pub(super) fn load_snd_bank(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSin
         }
     }
     always_array(s, p.at(12), 4, sz::SND_INDEX_ENTRY * alias_count)?;
-    always_array(s, p.at(0x1c), 4, sz::SND_RADVERB * radverb_count)?;
+    if let Some(rows) = always_array(s, p.at(0x1c), 4, sz::SND_RADVERB * radverb_count)? {
+        links.capture_snd_rows(s, super::SndRows::Radverbs, rows, radverb_count)?;
+    }
     if let Some(rows) = always_array(s, p.at(0x24), 4, sz::SND_SNAPSHOT * snapshot_count)? {
         links.capture_snd_snapshots(s, rows, snapshot_count)?;
     }
@@ -37,8 +39,8 @@ pub(super) fn load_snd_driver_globals(
         let count = s.u32_at(p, count_offset)? as usize;
         let rows = always_array(s, p.at(pointer_offset), 4, stride * count)?;
         match (pointer_offset, rows) {
-            (8, Some(rows)) => links.capture_snd_groups(s, rows, count)?,
-            (16, Some(rows)) => links.capture_snd_curves(s, rows, count)?,
+            (8, Some(rows)) => links.capture_snd_rows(s, super::SndRows::Groups, rows, count)?,
+            (16, Some(rows)) => links.capture_snd_rows(s, super::SndRows::Curves, rows, count)?,
             (32, _) => links.capture_snd_snapshot_groups(count)?,
             (40, Some(rows)) => links.capture_snd_contexts(s, rows, count)?,
             _ => {}

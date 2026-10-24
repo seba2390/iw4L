@@ -3,9 +3,7 @@
 //! dvars, each first reset to its default, and the shock's parameters are
 //! then taken from the dvars.
 
-use game_api::{
-    ShockFile, ShockKick, ShockLook, ShockScreen, ShockSound, ShockVision, Unknown, unknown,
-};
+use game_api::{ShockFile, ShockKick, ShockLook, ShockScreen, ShockSound, ShockVision};
 
 use crate::menu_expression::{atof, atoi};
 
@@ -88,12 +86,6 @@ enum Value<'a> {
     Text(&'a str),
 }
 
-const REVERB: &Unknown = unknown!(
-    "t5.audio.shellshock_reverb",
-    "a Black Ops shellshock's reverb room (its soundRoomType, dry and wet levels) is not heard",
-    "a reverb in the mixer and Black Ops' reverb presets"
-);
-
 /// Reads a shock file. A file that leaves a dvar out fails, as its precache
 /// does.
 pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
@@ -164,7 +156,6 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         Value::Text(v) => v.to_owned(),
         _ => unreachable!("{name} is a text dvar"),
     };
-    let mut unrun = Vec::new();
     let sound = flag("bg_shock_sound").then(|| ShockSound {
         loop_alias: text("bg_shock_soundLoop"),
         end_alias: text("bg_shock_soundEnd"),
@@ -176,9 +167,6 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         wet: number("bg_shock_soundWetLevel"),
         snapshot: text("bg_shock_soundSnapshot"),
     });
-    if sound.is_some() {
-        unrun.push(REVERB);
-    }
     let vision = Some(text("bg_shock_visionset_name"))
         .filter(|name| !name.is_empty())
         .map(|name| ShockVision {
@@ -211,7 +199,7 @@ pub(crate) fn parse(text: &str) -> Result<ShockFile, String> {
         }),
         sound,
         vision,
-        unrun,
+        unrun: Vec::new(),
     })
 }
 

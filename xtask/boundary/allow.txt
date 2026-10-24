@@ -89,7 +89,7 @@ pattern crates/asset_audio/src/sound_load_t6.rs fastfile_t6:: 1
 pattern crates/asset_audio/src/zone_sound.rs ZoneGame::<game> 10
 pattern crates/asset_audio/src/zone_sound.rs fastfile_iw4:: 29
 pattern crates/asset_audio/src/zone_sound.rs fastfile_iw5:: 29
-pattern crates/asset_audio/src/zone_sound.rs fastfile_t5:: 24
+pattern crates/asset_audio/src/zone_sound.rs fastfile_t5:: 21
 pattern crates/asset_game/src/arena.rs AssetNamespace::<game> 4
 pattern crates/asset_game/src/arena.rs fastfile_iw5:: 26
 pattern crates/asset_game/src/attachment_hide.rs AssetNamespace::<game> 1

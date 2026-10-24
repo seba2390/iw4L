@@ -110,6 +110,28 @@ impl AssetLinkSink for T5SoundCapture {
         Ok(())
     }
 
+    fn capture_snd_radverbs(
+        &mut self,
+        s: &ZoneStream<'_>,
+        rows: Ptr,
+        count: usize,
+    ) -> ZoneResult<()> {
+        let mut presets = Vec::with_capacity(count);
+        for i in 0..count {
+            let row = rows.at(i * sz::SND_RADVERB);
+            let mut values = [0.0; 15];
+            for (at, value) in values.iter_mut().enumerate() {
+                *value = s.f32_at(row, sz::SND_RADVERB_VALUES_OFF + at * 4)?;
+            }
+            presets.push(crate::ReverbPreset {
+                hash: s.u32_at(row, sz::SND_RADVERB_HASH_OFF)?,
+                values,
+            });
+        }
+        self.catalog.ingest_reverb_presets(NAMESPACE, presets);
+        Ok(())
+    }
+
     fn capture_snd_snapshots(
         &mut self,
         s: &ZoneStream<'_>,
@@ -451,6 +473,20 @@ impl T5SoundCapture {
                 .ok()
                 .zip(s.u8_at(row, 78).ok())
                 .map(|(dry, near)| [dry, near]),
+            reverb_send: s
+                .u8_at(row, 77)
+                .ok()
+                .zip(s.u8_at(row, 79).ok())
+                .map(|curves| crate::ReverbSendCapture {
+                    send: u16_unit(s, row, sz::SND_ALIAS_REVERB_SEND_OFF, 65535.0),
+                    dist_max: s
+                        .u16_at(row, sz::SND_ALIAS_PRIORITY_DISTANCE_OFF)
+                        .map(f32::from)
+                        .unwrap_or(0.0),
+                    curves: [curves.0, curves.1],
+                    falloff: None,
+                    near_falloff: None,
+                }),
             near_falloff: None,
             voice_priority: Some(crate::VoicePriority {
                 thresholds: [

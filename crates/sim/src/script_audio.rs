@@ -77,6 +77,16 @@ pub enum ScriptAudioCommand {
         name: String,
         value: f32,
     },
+    /// A reverb room a client's scripts set at a reverb priority
+    /// (`setReverb`: 1 the level's, 2 the shellshock's), at dry and wet
+    /// levels, faded to over `fade_ms`; `None` deactivates the priority
+    /// (`deactivateReverb`).
+    ClientReverb {
+        client: crate::ClientId,
+        priority: u8,
+        room: Option<(String, f32, f32)>,
+        fade_ms: i32,
+    },
     /// A sound context a client's scripts set (`setSoundContext`); an empty
     /// value unsets it.
     ClientSoundContext {
@@ -119,6 +129,7 @@ impl ScriptAudioCommand {
             | Self::ClientSoundVolume { client, .. }
             | Self::ClientSoundVolumeRate { client, .. }
             | Self::ClientSnapshot { client, .. }
+            | Self::ClientReverb { client, .. }
             | Self::ClientSoundContext { client, .. } => Some(*client),
             _ => None,
         }
@@ -175,6 +186,18 @@ impl ScriptAudioCommand {
             } => (1..=10).contains(slot) && name.len() <= 1023 && (0.0..=1.0).contains(value),
             Self::ClientSoundContext { context, value, .. } => {
                 context.len() <= 1023 && value.len() <= 1023
+            }
+            Self::ClientReverb {
+                priority,
+                room,
+                fade_ms,
+                ..
+            } => {
+                (1..=2).contains(priority)
+                    && *fade_ms >= 0
+                    && room.as_ref().is_none_or(|(name, dry, wet)| {
+                        name.len() <= 1023 && dry.is_finite() && wet.is_finite()
+                    })
             }
             Self::SoundFadeOut => true,
             Self::TurretFire { barrel, origin, .. } => {

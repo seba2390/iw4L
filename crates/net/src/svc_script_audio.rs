@@ -138,6 +138,27 @@ pub(crate) fn encode_script_audio(out: &mut WireWriter, command: &ScriptAudioCom
             }
         }
         ScriptAudioCommand::SoundFadeOut => out.put_u8(12),
+        ScriptAudioCommand::ClientReverb {
+            client,
+            priority,
+            room,
+            fade_ms,
+        } => {
+            out.put_u8(13);
+            out.put_u32(client.0);
+            out.put_u8(*priority);
+            out.put_i32(*fade_ms);
+            match room {
+                None => out.put_u8(0),
+                Some((name, dry, wet)) => {
+                    out.put_u8(1);
+                    out.put_u16(name.len() as u16);
+                    out.put_bytes(name.as_bytes());
+                    out.put_f32(*dry);
+                    out.put_f32(*wet);
+                }
+            }
+        }
         ScriptAudioCommand::TurretFire {
             entity,
             weapon,
@@ -297,6 +318,31 @@ pub(crate) fn decode_script_audio(
             origin: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
         },
         12 => ScriptAudioCommand::SoundFadeOut,
+        13 => {
+            let client = ClientId(input.get_u32()?);
+            let priority = input.get_u8()?;
+            let fade_ms = input.get_i32()?;
+            let room = match input.get_u8()? {
+                0 => None,
+                _ => {
+                    let len = input.get_u16()? as usize;
+                    if len > 1023 {
+                        return Err(WireError::Malformed("client reverb room exceeds limit"));
+                    }
+                    let mut bytes = vec![0; len];
+                    input.get_bytes(&mut bytes)?;
+                    let name = String::from_utf8(bytes)
+                        .map_err(|_| WireError::Malformed("client reverb room is not UTF-8"))?;
+                    Some((name, input.get_f32()?, input.get_f32()?))
+                }
+            };
+            ScriptAudioCommand::ClientReverb {
+                client,
+                priority,
+                room,
+                fade_ms,
+            }
+        }
         _ => return Err(WireError::Malformed("unknown script audio command")),
     };
     if !command.valid() {

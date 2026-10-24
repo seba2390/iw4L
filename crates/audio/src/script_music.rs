@@ -44,6 +44,7 @@ pub(crate) fn update_script_music(
             | sim::ScriptAudioCommand::ClientSoundVolume { .. }
             | sim::ScriptAudioCommand::ClientSoundVolumeRate { .. }
             | sim::ScriptAudioCommand::ClientSnapshot { .. }
+            | sim::ScriptAudioCommand::ClientReverb { .. }
             | sim::ScriptAudioCommand::ClientSoundContext { .. }
             | sim::ScriptAudioCommand::TurretFire { .. } => {}
             // The streams stop at once; every other sound fades.
