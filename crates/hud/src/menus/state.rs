@@ -32,6 +32,8 @@ pub struct ScriptMenus {
     /// Menus `showMenu` made visible without opening them; they paint
     /// beneath the open stack.
     pub(crate) shown: Vec<String>,
+    /// The map the menus were opened on: a new level closes them all.
+    pub(crate) level: Option<String>,
     pub(crate) applied_serial: u32,
     pub(crate) responses: Vec<(String, String)>,
     /// Messages for the level's scripts, in order: `sendMenuNotify`'s, and
