@@ -896,6 +896,10 @@ pub struct LibraryMode {
     pub note: &'static str,
     /// `(zone, title)`; a map is offered when its zone is installed.
     pub maps: &'static [(&'static str, &'static str)],
+    /// The zone of the game's own front end: picking the game in the
+    /// library starts it, and its menus choose the map (`None`: the
+    /// library's own pages do).
+    pub front_end: Option<&'static str>,
     /// Other gametypes and start locations offered on those maps.
     pub starts: &'static [LibraryStart],
     /// A patch zone the game downloads at launch that the mode's own

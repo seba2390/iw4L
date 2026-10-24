@@ -722,9 +722,9 @@ impl game_api::GameModes for T5 {
 
 static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     gametype: ZOMBIES,
-    note: "Runs the map's own zombie scripts. MAIN MENU starts Black Ops' own front end (Zombies, then Solo, picks the map); Kino der Toten and Five play solo; gaps are listed in docs/fidelity/t5.md.",
+    note: "Runs the map's own zombie scripts. Kino der Toten and Five play solo; gaps are listed in docs/fidelity/t5.md.",
+    front_end: Some(FRONT_END_LEVEL),
     maps: &[
-        (FRONT_END_LEVEL, "MAIN MENU"),
         ("zombie_theater", "KINO DER TOTEN"),
         ("zombie_pentagon", "\"FIVE\""),
         ("zombie_cod5_prototype", "NACHT DER UNTOTEN"),
