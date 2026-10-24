@@ -53,6 +53,15 @@ pub struct SpatialPlaybackPolicy {
     pub near_knots: Option<Arc<[[f32; 2]]>>,
 }
 
+/// An alias's reverb send: its level, and the distance falloff it takes
+/// for a placed sound (the dry falloff's start, the send's own end and
+/// curves) once its curves resolve.
+#[derive(Clone, Debug)]
+pub struct ReverbSendPolicy {
+    pub send: f32,
+    pub falloff: Option<SpatialPlaybackPolicy>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScalarRangePolicy {
     Authored([f32; 2]),
@@ -194,6 +203,9 @@ pub struct AliasPlaybackPolicy {
     /// The sound category of the alias's mixer group, whose menu volume it
     /// plays at, for a game that reads one.
     pub volume_category: Option<i32>,
+    /// What it sends to the game's reverb, for a game whose aliases carry a
+    /// send.
+    pub reverb: Option<ReverbSendPolicy>,
     pub loaded_binding_origin: crate::LoadedBindingOrigin,
 }
 

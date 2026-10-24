@@ -107,6 +107,18 @@ pub struct CapturedSndCurve {
     pub knots: Vec<(f32, f32)>,
 }
 
+/// An alias's reverb send: its level, the distance it falls off to, the
+/// two falloff curves (by id) it falls off along, and those curves once
+/// resolved.
+#[derive(Clone, Debug, Default)]
+pub struct ReverbSendCapture {
+    pub send: f32,
+    pub dist_max: f32,
+    pub curves: [u8; 2],
+    pub falloff: Option<CapturedSndCurve>,
+    pub near_falloff: Option<CapturedSndCurve>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CapturedAlias {
     pub alias_name: String,
@@ -168,6 +180,10 @@ pub struct CapturedAlias {
     pub volume_falloff: Option<CapturedSndCurve>,
 
     pub t5_distance_curves: Option<[u8; 2]>,
+
+    /// What the alias sends to the game's reverb, for a game whose aliases
+    /// carry a send.
+    pub reverb_send: Option<ReverbSendCapture>,
 
     pub near_falloff: Option<CapturedSndCurve>,
 

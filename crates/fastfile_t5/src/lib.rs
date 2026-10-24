@@ -23,7 +23,8 @@ pub use envelope::{
     ZONE_VERSION_PC, parse_file_header,
 };
 pub use load::{
-    AssetLinkSink, NestedShaderKind, load_asset_at, load_asset_at_observed, load_asset_body,
+    AssetLinkSink, NestedShaderKind, SndRows, load_asset_at, load_asset_at_observed,
+    load_asset_body,
 };
 pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,

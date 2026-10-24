@@ -444,6 +444,7 @@ impl Iw5SoundCapture {
                 .unwrap_or(0),
             volume_falloff,
             t5_distance_curves: None,
+            reverb_send: None,
             near_falloff: None,
             voice_priority: None,
             envelop_min: s

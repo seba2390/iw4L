@@ -82,6 +82,7 @@ pub(super) fn compile(
         looping,
         master_fade_exempt,
         volume_category,
+        reverb: common::reverb_send(row),
         streamed_decode: semantics.streamed_decode,
         composition: CueCompositionPolicy::compile(
             row,

@@ -62,6 +62,15 @@ fn load_asset_body_observed(
     }
 }
 
+/// The sound rows a loader hands its sink: a sound driver's mixer groups
+/// and falloff curves, and a sound bank's reverb presets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SndRows {
+    Groups,
+    Curves,
+    Radverbs,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NestedShaderKind {
     Vertex,
@@ -114,6 +123,27 @@ pub trait AssetLinkSink {
     }
 
     fn capture_snd_groups(&mut self, s: &ZoneStream<'_>, rows: Ptr, count: usize) -> Result<()> {
+        let _ = (s, rows, count);
+        Ok(())
+    }
+
+    /// Sound rows of one kind, handed to the method for that kind.
+    fn capture_snd_rows(
+        &mut self,
+        s: &ZoneStream<'_>,
+        kind: SndRows,
+        rows: Ptr,
+        count: usize,
+    ) -> Result<()> {
+        match kind {
+            SndRows::Groups => self.capture_snd_groups(s, rows, count),
+            SndRows::Curves => self.capture_snd_curves(s, rows, count),
+            SndRows::Radverbs => self.capture_snd_radverbs(s, rows, count),
+        }
+    }
+
+    /// A sound bank's reverb presets (96-byte rows).
+    fn capture_snd_radverbs(&mut self, s: &ZoneStream<'_>, rows: Ptr, count: usize) -> Result<()> {
         let _ = (s, rows, count);
         Ok(())
     }
