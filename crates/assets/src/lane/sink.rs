@@ -785,8 +785,11 @@ impl fastfile_t5::AssetSink for CommonWalkSink {
         slot: fastfile_t5::Ptr,
     ) -> fastfile_t5::Result<()> {
         let loaded = fastfile_t5::load_asset_at_observed(s, ty, slot, self)?;
-        if loaded && ty == fastfile_t5::AssetType::Weapon {
-            self.weapons.capture_t5(s, &self.strings_t5);
+        if loaded
+            && ty == fastfile_t5::AssetType::Weapon
+            && let Some(w) = s.weapon_view(&self.strings_t5)
+        {
+            self.weapons.capture_t5(w);
         }
         self.asset_walked();
         Ok(())
@@ -794,13 +797,9 @@ impl fastfile_t5::AssetSink for CommonWalkSink {
 }
 
 impl fastfile_t5::AssetLinkSink for CommonWalkSink {
-    fn capture_impact_fx(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        name: fastfile_t5::Ptr,
-        entries: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.impact_fx.capture_t5(s, name, entries, &self.fx)
+    fn capture_impact_fx(&mut self, table: fastfile_t5::ImpactFxRead) -> fastfile_t5::Result<()> {
+        self.impact_fx.capture_t5(table, &self.fx);
+        Ok(())
     }
 
     fn loaded(
@@ -1100,13 +1099,9 @@ impl fastfile_t5::AssetSink for ZoneWalkSink {
 }
 
 impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
-    fn capture_impact_fx(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        name: fastfile_t5::Ptr,
-        entries: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.impact_fx.capture_t5(s, name, entries, &self.fx)
+    fn capture_impact_fx(&mut self, table: fastfile_t5::ImpactFxRead) -> fastfile_t5::Result<()> {
+        self.impact_fx.capture_t5(table, &self.fx);
+        Ok(())
     }
 
     fn capture_fx(

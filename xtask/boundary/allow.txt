@@ -105,7 +105,7 @@ pattern crates/asset_game/src/fx_model_catalog.rs fastfile_iw4:: 1
 pattern crates/asset_game/src/graph_support.rs fastfile_iw4:: 1
 pattern crates/asset_game/src/impact_fx_catalog.rs AssetNamespace::<game> 5
 pattern crates/asset_game/src/impact_fx_catalog.rs fastfile_iw4:: 3
-pattern crates/asset_game/src/impact_fx_catalog.rs fastfile_t5:: 8
+pattern crates/asset_game/src/impact_fx_catalog.rs fastfile_t5:: 2
 pattern crates/asset_game/src/impact_fx_catalog.rs fx_iw4:: 2
 pattern crates/asset_game/src/localize.rs ZoneGame::<game> 7
 pattern crates/asset_game/src/localize.rs fastfile_iw4:: 4
@@ -116,10 +116,9 @@ pattern crates/asset_game/src/lochit.rs weapon_iw4:: 1
 pattern crates/asset_game/src/menu_catalog.rs asset_iw4:: 14
 pattern crates/asset_game/src/menu_catalog.rs fastfile_iw4:: 32
 pattern crates/asset_game/src/menu_catalog.rs gamemode_iw4:: 1
-pattern crates/asset_game/src/menu_catalog_t5.rs "<game>" 1
 pattern crates/asset_game/src/menu_catalog_t5.rs AssetNamespace::<game> 1
 pattern crates/asset_game/src/menu_catalog_t5.rs fastfile_iw4:: 1
-pattern crates/asset_game/src/menu_catalog_t5.rs fastfile_t5:: 15
+pattern crates/asset_game/src/menu_catalog_t5.rs fastfile_t5:: 2
 pattern crates/asset_game/src/penetration.rs weapon_iw4:: 1
 pattern crates/asset_game/src/soldier_presentation.rs FamilyId::<game> 1
 pattern crates/asset_game/src/structured_data.rs fastfile_iw4:: 1
@@ -144,7 +143,7 @@ pattern crates/asset_game/src/weapon_catalog/capture_iw5.rs fastfile_iw5:: 93
 pattern crates/asset_game/src/weapon_catalog/capture_iw5.rs weapon_iw4:: 1
 pattern crates/asset_game/src/weapon_catalog/capture_merge.rs fastfile_iw5:: 1
 pattern crates/asset_game/src/weapon_catalog/capture_t5.rs AssetNamespace::<game> 2
-pattern crates/asset_game/src/weapon_catalog/capture_t5.rs fastfile_t5:: 77
+pattern crates/asset_game/src/weapon_catalog/capture_t5.rs fastfile_t5:: 2
 pattern crates/asset_game/src/weapon_catalog/capture_t5.rs weapon_iw4:: 2
 pattern crates/asset_game/src/weapon_catalog/capture_t6.rs AssetNamespace::<game> 1
 pattern crates/asset_game/src/weapon_catalog/capture_t6.rs fastfile_t6:: 43
@@ -326,7 +325,7 @@ pattern crates/assets/src/lane/sink.rs AssetNamespace::<game> 4
 pattern crates/assets/src/lane/sink.rs asset_iw4:: 1
 pattern crates/assets/src/lane/sink.rs fastfile_iw4:: 38
 pattern crates/assets/src/lane/sink.rs fastfile_iw5:: 131
-pattern crates/assets/src/lane/sink.rs fastfile_t5:: 164
+pattern crates/assets/src/lane/sink.rs fastfile_t5:: 160
 pattern crates/assets/src/lane/sink.rs weapon_iw4:: 2
 pattern crates/assets/src/lane/t5.rs AssetNamespace::<game> 6
 pattern crates/assets/src/lane/t5.rs ZoneGame::<game> 4

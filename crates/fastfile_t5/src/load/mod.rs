@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use crate::asset_type::AssetType;
 use crate::size as sz;
 use crate::zone::{Ptr, Result, XFILE_BLOCK_TEMP, ZoneError, ZonePtr, ZoneStream};
@@ -98,7 +100,7 @@ pub trait AssetLinkSink {
         Ok(())
     }
 
-    fn capture_impact_fx(&mut self, _s: &ZoneStream<'_>, _name: Ptr, _entries: Ptr) -> Result<()> {
+    fn capture_impact_fx(&mut self, _table: ImpactFxRead) -> Result<()> {
         Ok(())
     }
 
@@ -362,6 +364,16 @@ pub(crate) fn follow_name(s: &mut ZoneStream<'_>, p: Ptr, field: usize) -> Resul
     Ok(())
 }
 
+/// Effects an impact table row names: its surface types, then flesh.
+pub const IMPACT_FX_COLUMNS: usize = sz::FX_IMPACT_ENTRY / 4;
+
+/// An impact effect table: its name, and each row's effect slots in order
+/// (`IMPACT_FX_COLUMNS` a row), `None` where the row names none.
+pub struct ImpactFxRead {
+    pub name: alloc::string::String,
+    pub slots: Vec<Option<Ptr>>,
+}
+
 fn load_impact_fx(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink) -> Result<()> {
     let p = s.alloc_load(4, sz::FX_IMPACT_TABLE)?;
     s.push(crate::zone::XFILE_BLOCK_VIRTUAL)?;
@@ -379,7 +391,13 @@ fn load_impact_fx(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink) -> Resu
             }
         }
         if let ZonePtr::Offset(name) = s.ptr_at(p, 0)? {
-            links.capture_impact_fx(s, s.resolve_alias(name), arr)?;
+            let name = s.cstr(s.resolve_alias(name))?.into();
+            let mut slots = Vec::with_capacity(sz::FX_IMPACT_ENTRY_COUNT * IMPACT_FX_COLUMNS);
+            for i in 0..sz::FX_IMPACT_ENTRY_COUNT * IMPACT_FX_COLUMNS {
+                let slot = arr.at(i * 4);
+                slots.push((s.ptr_at(slot, 0)? != ZonePtr::Null).then_some(slot));
+            }
+            links.capture_impact_fx(ImpactFxRead { name, slots })?;
         }
     }
     s.pop()
