@@ -1274,6 +1274,23 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
         if is_world || entity.client_only {
             continue;
         }
+        // A player is linked from its first spawn; before it, Black Ops'
+        // snapshots leave it out (its first one carries the model the
+        // spawn gave it).
+        if entity.kind == EntityKind::Player
+            && crate::frame::FrameWorld::from_world(server)
+                .client_meta(crate::ClientId(entity.number as u32))
+                .is_some_and(|meta| {
+                    matches!(
+                        meta.lifecycle,
+                        crate::ClientLifecycle::Connecting
+                            | crate::ClientLifecycle::ChoosingClass
+                            | crate::ClientLifecycle::SpawnPending
+                    )
+                })
+        {
+            continue;
+        }
         let ent_type = match entity.kind {
             EntityKind::Player => "player",
             EntityKind::Actor => "actor",

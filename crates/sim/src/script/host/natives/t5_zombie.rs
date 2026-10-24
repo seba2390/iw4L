@@ -632,6 +632,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         ))
     });
     registry.register(Function, "getthreatbias", |_, _, _| Ok(Value::Int(0)));
+    // The server's `UpdateGamerProfile()` does nothing in Black Ops.
+    registry.register(Function, "updategamerprofile", |_, _, _| {
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "uploadscore", |world, receiver, args| {
         upload_score(world, receiver, args)
     });
