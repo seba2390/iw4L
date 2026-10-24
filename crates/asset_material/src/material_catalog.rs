@@ -1730,6 +1730,79 @@ fn iw5_ptr(p: fastfile_iw5::Ptr) -> Ptr {
     }
 }
 
+/// The nested shader and vertex declaration hooks of a Black Ops zone walk;
+/// the walk's sinks hand them here (`fastfile_t5::forward_nested_links!`).
+mod t5_links {
+    use fastfile_t5::{
+        AssetLinkSink, NestedShaderKind, Ptr as Ptr5, Result as ZoneResult, ZoneStream,
+    };
+
+    use super::*;
+
+    impl AssetLinkSink for MaterialCatalog {
+        fn nested_shader(
+            &mut self,
+            s: &ZoneStream<'_>,
+            kind: NestedShaderKind,
+            slot: Ptr5,
+        ) -> ZoneResult<()> {
+            let kind = match kind {
+                NestedShaderKind::Vertex => AssetType::VertexShader,
+                NestedShaderKind::Pixel => AssetType::PixelShader,
+            };
+            let Some(index) = self.capture_shader_t5(s, kind) else {
+                self.capture_gaps += 1;
+                return Ok(());
+            };
+            let links = match kind {
+                AssetType::VertexShader => LinkKind::VertexShader,
+                AssetType::PixelShader => LinkKind::PixelShader,
+                _ => return Ok(()),
+            };
+            let slot = iw4_ptr(slot);
+            self.link.bind_direct(links, slot, index);
+            if let Some(header) = s.latest_shader().and_then(|g| g.header) {
+                self.link.bind_direct(links, iw4_ptr(header), index);
+            }
+            Ok(())
+        }
+
+        fn nested_shader_alias(
+            &mut self,
+            kind: NestedShaderKind,
+            slot: Ptr5,
+            target: Ptr5,
+        ) -> ZoneResult<()> {
+            let links = match kind {
+                NestedShaderKind::Vertex => LinkKind::VertexShader,
+                NestedShaderKind::Pixel => LinkKind::PixelShader,
+            };
+            self.link.bind_alias(links, iw4_ptr(slot), iw4_ptr(target));
+            Ok(())
+        }
+
+        fn nested_vertex_decl(&mut self, s: &ZoneStream<'_>, slot: Ptr5) -> ZoneResult<()> {
+            let Some(index) = self.capture_vertex_decl_t5(s) else {
+                self.capture_gaps += 1;
+                return Ok(());
+            };
+            let slot = iw4_ptr(slot);
+            self.link.bind_direct(LinkKind::VertexDecl, slot, index);
+            if let Some(header) = s.latest_vertex_decl().and_then(|g| g.header) {
+                self.link
+                    .bind_direct(LinkKind::VertexDecl, iw4_ptr(header), index);
+            }
+            Ok(())
+        }
+
+        fn nested_vertex_decl_alias(&mut self, slot: Ptr5, target: Ptr5) -> ZoneResult<()> {
+            self.link
+                .bind_alias(LinkKind::VertexDecl, iw4_ptr(slot), iw4_ptr(target));
+            Ok(())
+        }
+    }
+}
+
 impl MaterialCatalog {
     pub fn t5_loaded(
         &mut self,
@@ -1798,71 +1871,6 @@ impl MaterialCatalog {
             _ => return,
         };
         self.link.bind_alias(map, slot, target);
-    }
-
-    pub fn t5_nested_shader(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-    ) {
-        let kind = match kind {
-            fastfile_t5::NestedShaderKind::Vertex => AssetType::VertexShader,
-            fastfile_t5::NestedShaderKind::Pixel => AssetType::PixelShader,
-        };
-        let Some(index) = self.capture_shader_t5(s, kind) else {
-            self.capture_gaps += 1;
-            return;
-        };
-        let links = match kind {
-            AssetType::VertexShader => LinkKind::VertexShader,
-            AssetType::PixelShader => LinkKind::PixelShader,
-            _ => return,
-        };
-        let slot = iw4_ptr(slot);
-        self.link.bind_direct(links, slot, index);
-        if let Some(header) = s.latest_shader().and_then(|g| g.header) {
-            self.link.bind_direct(links, iw4_ptr(header), index);
-        }
-    }
-
-    pub fn t5_nested_shader_alias(
-        &mut self,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) {
-        let links = match kind {
-            fastfile_t5::NestedShaderKind::Vertex => LinkKind::VertexShader,
-            fastfile_t5::NestedShaderKind::Pixel => LinkKind::PixelShader,
-        };
-        self.link.bind_alias(links, iw4_ptr(slot), iw4_ptr(target));
-    }
-
-    pub fn t5_nested_vertex_decl(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        slot: fastfile_t5::Ptr,
-    ) {
-        let Some(index) = self.capture_vertex_decl_t5(s) else {
-            self.capture_gaps += 1;
-            return;
-        };
-        let slot = iw4_ptr(slot);
-        self.link.bind_direct(LinkKind::VertexDecl, slot, index);
-        if let Some(header) = s.latest_vertex_decl().and_then(|g| g.header) {
-            self.link
-                .bind_direct(LinkKind::VertexDecl, iw4_ptr(header), index);
-        }
-    }
-
-    pub fn t5_nested_vertex_decl_alias(
-        &mut self,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) {
-        self.link
-            .bind_alias(LinkKind::VertexDecl, iw4_ptr(slot), iw4_ptr(target));
     }
 
     pub fn iw5_loaded(

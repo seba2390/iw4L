@@ -8,6 +8,7 @@ mod content;
 mod envelope;
 mod fx;
 pub mod light_grid;
+mod link_names;
 mod load;
 mod map;
 mod material;
@@ -15,6 +16,7 @@ mod memory;
 pub mod menu_read;
 pub mod size;
 pub mod state_bits;
+mod string_table;
 pub mod vertex_decl;
 pub mod weapon_def;
 mod weapon_view;
@@ -33,6 +35,7 @@ pub use envelope::{
     ZONE_VERSION_PC, parse_file_header, split_file,
 };
 pub use fx::{FxEffectRead, FxElemRead, FxMaterialSlotRead, FxVisualsRead};
+pub use link_names::LinkNames;
 pub use load::{
     AssetLinkSink, IMPACT_FX_COLUMNS, ImpactFxRead, LinkForward, NestedShaderKind, SndRows,
     forward_link, load_asset_at, load_asset_at_observed, load_asset_body,
@@ -44,6 +47,7 @@ pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,
     occupancy_test,
 };
+pub use string_table::StringTableRead;
 pub use weapon_view::WeaponView;
 pub use xanim::{XAnimDeltaQuat, XAnimDeltaTrans, XAnimRead};
 pub use xmodel::{

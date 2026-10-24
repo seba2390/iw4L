@@ -182,7 +182,7 @@ pattern crates/asset_material/src/material_catalog.rs asset_iw4:: 33
 pattern crates/asset_material/src/material_catalog.rs dpvs_iw4:: 1
 pattern crates/asset_material/src/material_catalog.rs fastfile_iw4:: 3
 pattern crates/asset_material/src/material_catalog.rs fastfile_iw5:: 24
-pattern crates/asset_material/src/material_catalog.rs fastfile_t5:: 32
+pattern crates/asset_material/src/material_catalog.rs fastfile_t5:: 19
 pattern crates/asset_material/src/material_catalog/definitions.rs AssetNamespace::<game> 3
 pattern crates/asset_material/src/material_catalog/definitions.rs asset_iw4:: 17
 pattern crates/asset_material/src/material_catalog/definitions.rs fastfile_iw4:: 1
@@ -325,7 +325,7 @@ pattern crates/assets/src/lane/sink.rs AssetNamespace::<game> 4
 pattern crates/assets/src/lane/sink.rs asset_iw4:: 1
 pattern crates/assets/src/lane/sink.rs fastfile_iw4:: 38
 pattern crates/assets/src/lane/sink.rs fastfile_iw5:: 131
-pattern crates/assets/src/lane/sink.rs fastfile_t5:: 160
+pattern crates/assets/src/lane/sink.rs fastfile_t5:: 97
 pattern crates/assets/src/lane/sink.rs weapon_iw4:: 2
 pattern crates/assets/src/lane/t5.rs AssetNamespace::<game> 6
 pattern crates/assets/src/lane/t5.rs ZoneGame::<game> 4
