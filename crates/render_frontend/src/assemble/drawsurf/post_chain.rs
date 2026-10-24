@@ -481,6 +481,7 @@ pub(crate) fn plan_screen_overlays(
     presented: Res<net::PresentedSnapshot>,
     local: Res<net::LocalPresentClient>,
     film: Option<Res<super::film_vision_view::FilmVisionView>>,
+    menu_blur: Res<frame::MenuBlur>,
     mut out: ResMut<ScreenOverlayPasses>,
 ) {
     let Some(Ok(overlays)) = generation.as_ref().and_then(|g| g.overlays.as_ref()) else {
@@ -522,6 +523,7 @@ pub(crate) fn plan_screen_overlays(
             ]
         }),
         script_blur,
+        menu_blur: menu_blur.0,
         r_blur,
         revive,
     });

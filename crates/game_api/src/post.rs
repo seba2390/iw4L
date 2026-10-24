@@ -253,6 +253,8 @@ pub struct OverlayFrame<'a> {
     pub viewport: [f32; 4],
     /// The client's script blur (`setblur`) as it stands this frame.
     pub script_blur: f32,
+    /// The blur the menus shown over the world ask for this frame.
+    pub menu_blur: f32,
     /// The `r_blur` dvar.
     pub r_blur: f32,
     /// The revive settings of the vision the client draws with.

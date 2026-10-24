@@ -2,34 +2,88 @@
 //! exclusive overlay over the frame by precedence (the burning one first,
 //! then the electric shock, then the transporter), each a fullscreen draw of
 //! its post material reading the frame as drawn so far, while flame overlays
-//! are allowed.
+//! are allowed; then its blur pass.
 
 use game_api::post::{
-    FlameOverlay, OverlayConstant, OverlayFeedback, OverlayFrame, OverlayPass, OverlayRules,
+    BlurRules, FlameOverlay, OverlayConstant, OverlayFeedback, OverlayFrame, OverlayPass,
+    OverlayRules,
 };
 use game_api::unknown;
 
 const BURN: &str = "flamethrowerfx_color_distort_overlay_bloom";
 const SHOCK: &str = "zombie_electric_shock_overlay";
 const TRANSPORTER: &str = "zombie_transporter_overlay";
-const MATERIALS: [&str; 3] = [BURN, SHOCK, TRANSPORTER];
+const BLEND: &str = "feedbackblend";
+const MATERIALS: [&str; 12] = [
+    BURN,
+    SHOCK,
+    TRANSPORTER,
+    BLEND,
+    game_api::blur::MATERIALS[0],
+    game_api::blur::MATERIALS[1],
+    game_api::blur::MATERIALS[2],
+    game_api::blur::MATERIALS[3],
+    game_api::blur::MATERIALS[4],
+    game_api::blur::MATERIALS[5],
+    game_api::blur::MATERIALS[6],
+    game_api::blur::MATERIALS[7],
+];
+/// What the blur pass's smallest radius is, times the screen's height: a
+/// smaller blur draws at that radius, faded in by its share of it.
+const BLUR_FADE_HEIGHT: f32 = 1440.0;
 const WHITE: [u8; 4] = [255; 4];
 
 pub(crate) const OVERLAYS: OverlayRules = OverlayRules {
     materials: &MATERIALS,
     filter_materials: &[],
     plan,
-    blur: None,
+    blur: Some(BlurRules {
+        shift: 2,
+        plan: game_api::blur::plan,
+    }),
     gaps: &[unknown!(
         "t5.render.overlay_rest",
-        "the overlay pass's other draws: water sheeting (between the burn and the shock), the three after the transporter, and the pass's own blur of the frame; the script blur draws through the film pass",
-        "Black Ops' overlay pass beyond the flame-style overlays"
+        "the overlay pass's other draws: water sheeting (between the burn and the shock) and the three after the transporter",
+        "Black Ops' overlay pass beyond the flame-style overlays and the blur"
     )],
 };
 
-/// The frame's overlay: the burn, else the shock, else the transporter,
-/// each while flame overlays are allowed and it plays.
+/// The frame's overlays: the exclusive one, then the blur.
 fn plan(frame: &OverlayFrame<'_>) -> Vec<OverlayPass> {
+    let mut passes: Vec<OverlayPass> = exclusive(frame).into_iter().collect();
+    passes.extend(blur_pass(frame));
+    passes
+}
+
+/// The blur pass: the frame blurred by the root of the sum of the squares of
+/// `r_blur` and the refdef's blur (the menus' and the script's as a root of
+/// squares), then blended back over it; a radius under its smallest draws at
+/// the smallest, faded by its share of it.
+fn blur_pass(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
+    let refdef = (frame.menu_blur * frame.menu_blur + frame.script_blur * frame.script_blur).sqrt();
+    if !(0.0 < frame.r_blur || 0.0 < refdef) {
+        return None;
+    }
+    let mut radius = (frame.r_blur * frame.r_blur + refdef * refdef).sqrt();
+    let smallest = BLUR_FADE_HEIGHT / frame.viewport[3];
+    let mut color = WHITE;
+    if smallest > radius {
+        let share = radius / smallest * 255.0;
+        color[3] = (f64::from(share) + game_api::blur::NUDGE).round_ties_even() as i32 as u8;
+        radius = smallest;
+    }
+    Some(OverlayPass {
+        material: BLEND.to_owned(),
+        constants: Vec::new(),
+        blur: Some(radius),
+        feedback: OverlayFeedback::Blurred,
+        color,
+    })
+}
+
+/// The frame's exclusive overlay: the burn, else the shock, else the
+/// transporter, each while flame overlays are allowed and it plays.
+fn exclusive(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
     let screen = frame.screen;
     let playing = |overlay: Option<FlameOverlay>| {
         overlay.filter(|o| screen.flame_allowed && plays(o, frame.now_ms))
@@ -42,7 +96,7 @@ fn plan(frame: &OverlayFrame<'_>) -> Vec<OverlayPass> {
         (Some(burn), ..) => (BURN, burn, true),
         (None, Some(shock), _) => (SHOCK, shock, false),
         (None, None, Some(transporter)) => (TRANSPORTER, transporter, false),
-        (None, None, None) => return Vec::new(),
+        (None, None, None) => return None,
     };
     let atlas = frame
         .atlases
@@ -50,13 +104,13 @@ fn plan(frame: &OverlayFrame<'_>) -> Vec<OverlayPass> {
         .find(|(name, _)| *name == material)
         .map_or([0, 0], |(_, atlas)| *atlas);
     let scaler = scaled.then_some(screen.flame_scaler);
-    vec![OverlayPass {
+    Some(OverlayPass {
         material: material.to_owned(),
         constants: flame_rows(&overlay, atlas, scaler, frame.now_ms),
         blur: None,
         feedback: OverlayFeedback::Frame,
         color: WHITE,
-    }]
+    })
 }
 
 /// The client keeps a flame overlay until its fade has run longer than its
