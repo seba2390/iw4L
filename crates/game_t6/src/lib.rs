@@ -482,6 +482,7 @@ impl game_api::GameModes for T6 {
 static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     gametype: "zclassic",
     note: "Black Ops II's own zombies scripts; Origins runs survival rules written for IW4L (docs/fidelity/t6.md).",
+    front_end: None,
     maps: &[
         ("zm_nuked", "NUKETOWN ZOMBIES"),
         ("zm_transit", "TRANZIT"),

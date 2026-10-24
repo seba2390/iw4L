@@ -121,11 +121,12 @@ Five's systems, each reached from the conference room with points and power
 ## Black Ops alone
 
 Does a friend need Modern Warfare 2 installed next to Black Ops? No. With a
-games root that holds only Black Ops, the game library offers its zombies
-maps and MAIN MENU; Black Ops' own front end runs (title screen, main menu,
-ZOMBIES → SOLO → map select) and starts Kino or Five. Black Ops' own
-localized zones supply the text.
+games root that holds only Black Ops, picking Black Ops in the game library
+runs Black Ops' own front end (title screen, main menu, ZOMBIES → SOLO → map
+select), which starts Kino or Five. Black Ops' own localized zones supply the
+text.
 
-The front end from the game library: pick Black Ops → Zombies → MAIN MENU,
-press any key, then ZOMBIES → SOLO and a map. The same from the command line:
-`IW4L_GAMETYPE=zombies make map ZONE=t5:frontend`.
+The front end from the game library: pick BLACK OPS, press any key, then
+ZOMBIES → SOLO and a map. The same from the command line:
+`IW4L_GAMETYPE=zombies make map ZONE=t5:frontend`. To start a map without the
+front end: `IW4L_GAMETYPE=zombies make map ZONE=t5:zombie_theater`.

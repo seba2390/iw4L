@@ -146,6 +146,8 @@ struct Installation {
     maps: Vec<String>,
     /// The game's zombie maps whose zones are installed, `ns:zone`.
     zombie_maps: Vec<String>,
+    /// The game's own front end, `ns:zone`, when installed.
+    front_end: Option<String>,
 }
 
 #[derive(Resource, Default)]
@@ -495,10 +497,23 @@ fn discover(
                         .collect(),
                     _ => Vec::new(),
                 };
-                if let (Some(namespace), false) = (game.namespace(), zombie_maps.is_empty()) {
+                let front_end = match (game.namespace(), game.zombies()) {
+                    (Some(namespace), Some(mode)) if installed.is_some() => mode
+                        .front_end
+                        .map(|zone| format!("{}:{zone}", namespace.as_str()))
+                        .filter(|map| asset_transport::find_zone_file(&root, map).is_ok()),
+                    _ => None,
+                };
+                // The front end is a level the lobby starts, not a map offered.
+                let startable: Vec<String> = zombie_maps
+                    .iter()
+                    .cloned()
+                    .chain(front_end.clone())
+                    .collect();
+                if let (Some(namespace), false) = (game.namespace(), startable.is_empty()) {
                     packs.push(asset_transport::MapPack {
                         label: format!("{} Zombies", namespace.as_str().to_uppercase()),
-                        maps: zombie_maps.clone(),
+                        maps: startable,
                     });
                 }
                 Installation {
@@ -506,6 +521,7 @@ fn discover(
                     root: installed,
                     maps: game_maps,
                     zombie_maps,
+                    front_end,
                 }
             })
             .collect();
@@ -657,6 +673,26 @@ fn activate(
                 command(exec, "ui_create_lobby");
             }
             menu.navigate(Page::Lobby);
+        }
+        // A game with its own front end starts it: its menus pick the map.
+        Action::Select(game)
+            if let Some(map) = inventory
+                .installation(game)
+                .and_then(|entry| entry.front_end.clone()) =>
+        {
+            menu.selected = Some(game);
+            activate(
+                Action::ZombieMap(map, None),
+                menu,
+                settings,
+                inventory,
+                dvars,
+                exec,
+                binds,
+                browser,
+            );
+            command(exec, "ui_start_match");
+            menu.notice = format!("Starting {}…", game.title());
         }
         Action::Select(game) => {
             menu.selected = Some(game);
