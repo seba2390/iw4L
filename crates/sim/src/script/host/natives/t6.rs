@@ -31,6 +31,8 @@ mod laststand;
 mod missile;
 mod movement;
 mod mover;
+mod path_follow;
+mod path_search;
 mod paths;
 mod player;
 pub(crate) mod poison_overlay;

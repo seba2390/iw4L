@@ -250,6 +250,10 @@ pub struct SimState {
     item_pickups: Vec<crate::ItemPickupRecord>,
 
     publish_snapshot: bool,
+
+    /// The path network as the game dropped it to the floor when the level
+    /// loaded, over the authored one the content holds.
+    dropped_paths: Option<Arc<crate::script::ActorPaths>>,
 }
 
 impl Default for SimState {
@@ -319,6 +323,7 @@ impl Default for SimState {
             use_start_spawns: gamemode_iw4::USE_START_SPAWNS_AT_START,
             item_pickups: Vec::new(),
             publish_snapshot: true,
+            dropped_paths: None,
         };
         world.recompute_content_digest();
         world
@@ -1549,30 +1554,35 @@ impl SimState {
         mask: u32,
         exclude: Option<crate::AuthorityModelOwner>,
     ) -> trace_iw4::Trace {
-        self.trace_world_hull_except(
-            movement_iw4::GroundTraceInput {
-                start,
-                end,
-                mins: [0.0; 3],
-                maxs: [0.0; 3],
-                tracemask: mask,
-            },
-            exclude,
-        )
+        self.trace_world_hull_except(start, end, [0.0; 3], [0.0; 3], mask, &|owner| {
+            Some(owner) == exclude
+        })
     }
 
+    /// A box trace through the world and its entities, passing through
+    /// every entity whose collision `skip` names.
     pub(crate) fn trace_world_hull_except(
         &self,
-        input: movement_iw4::GroundTraceInput,
-        exclude: Option<crate::AuthorityModelOwner>,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        mask: u32,
+        skip: &dyn Fn(crate::AuthorityModelOwner) -> bool,
     ) -> trace_iw4::Trace {
         self.trace_clip_maps_glass(
             self.content.clip_brushes(),
             self.content.clip_bsp(),
             self.content.clip_mesh(),
-            input,
+            movement_iw4::GroundTraceInput {
+                start,
+                end,
+                mins,
+                maxs,
+                tracemask: mask,
+            },
             false,
-            exclude,
+            skip,
         )
     }
 
@@ -1644,7 +1654,7 @@ impl SimState {
                 tracemask: mask,
             },
             false,
-            None,
+            &|_| false,
         )
     }
 
@@ -1670,7 +1680,7 @@ impl SimState {
                 tracemask: mask,
             },
             true,
-            None,
+            &|_| false,
         )
     }
 
@@ -1681,7 +1691,7 @@ impl SimState {
         clip_mesh: &SimClipMesh,
         input: movement_iw4::GroundTraceInput,
         ignore_glass: bool,
-        exclude: Option<crate::AuthorityModelOwner>,
+        skip: &dyn Fn(crate::AuthorityModelOwner) -> bool,
     ) -> trace_iw4::Trace {
         let movement_iw4::GroundTraceInput {
             start,
@@ -1704,7 +1714,7 @@ impl SimState {
         let linked = self
             .entity_collision_capabilities
             .iter()
-            .filter(|c| Some(c.owner) != exclude)
+            .filter(|c| !skip(c.owner))
             .flat_map(|c| c.solid_brushes().iter());
         let hit = clip_move_to_bmodels(
             world_hit,
@@ -1722,7 +1732,7 @@ impl SimState {
         );
         clip_move_to_model_brushes(
             hit,
-            &self.model_movement_brushes_where(|row| Some(row.owner) != exclude),
+            &self.model_movement_brushes_where(|row| !skip(row.owner)),
             input,
         )
     }
@@ -2509,7 +2519,18 @@ impl SimState {
     }
 
     pub(crate) fn actor_paths(&self) -> Option<Arc<crate::script::ActorPaths>> {
-        self.content.actor_paths()
+        self.dropped_paths
+            .clone()
+            .or_else(|| self.content.actor_paths())
+    }
+
+    /// Whether the level's path network was dropped to the floor yet.
+    pub(crate) fn paths_dropped(&self) -> bool {
+        self.dropped_paths.is_some()
+    }
+
+    pub(crate) fn set_dropped_paths(&mut self, paths: crate::script::ActorPaths) {
+        self.dropped_paths = Some(Arc::new(paths));
     }
 
     /// The animation trees the match loaded, by lowercase name.
@@ -3033,6 +3054,7 @@ impl SimState {
         if !Arc::ptr_eq(&self.content, &content) {
             self.player_bodies.reset();
             self.collision_runtime.reset();
+            self.dropped_paths = None;
         }
         self.content = content;
     }

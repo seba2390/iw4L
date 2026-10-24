@@ -959,7 +959,6 @@ pattern crates/sim/src/script/host/restart.rs structured_data_iw4:: 1
 pattern crates/sim/src/script/host/rumble.rs entity_iw4:: 1
 pattern crates/sim/src/script/host/rumble.rs trace_iw4:: 1
 pattern crates/sim/src/script/host/sentry_placement/mod.rs clipmap_iw4:: 1
-pattern crates/sim/src/script/host/sentry_placement/mod.rs movement_iw4:: 1
 pattern crates/sim/src/script/host/sentry_placement/mod.rs trace_iw4:: 1
 pattern crates/sim/src/script/host/spectators.rs movement_iw4:: 2
 pattern crates/sim/src/script/host/spectators.rs playerstate_iw4:: 9
@@ -1029,7 +1028,7 @@ pattern crates/sim/src/world.rs clipmap_iw4:: 22
 pattern crates/sim/src/world.rs entity_iw4:: 17
 pattern crates/sim/src/world.rs gamemode_iw4:: 8
 pattern crates/sim/src/world.rs hud_iw4:: 1
-pattern crates/sim/src/world.rs movement_iw4:: 12
+pattern crates/sim/src/world.rs movement_iw4:: 11
 pattern crates/sim/src/world.rs playerstate_iw4:: 6
 pattern crates/sim/src/world.rs trace_iw4:: 14
 pattern crates/sim/src/world.rs weapon_iw4:: 6
