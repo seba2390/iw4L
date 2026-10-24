@@ -201,12 +201,15 @@ Only the top-level items count.
 
 ### Technical debt
 
-- Boundary (`xtask/boundary/allow.txt`): about 680 Black Ops references
+- Boundary (`xtask/boundary/allow.txt`): about 280 Black Ops references
   outside the game crates (`fastfile_t5::` paths and `AssetNamespace::T5`,
-  `ZoneGame::T5`, `"t5"` checks), mostly in `assets` (lane/t5.rs),
-  `asset_game` (menu_catalog_t5.rs, weapon_catalog/capture_t5.rs),
-  `asset_world`, `asset_material`, `asset_model` and `asset_audio`. Each one
-  should move behind a `game_api` rule or into `game_t5`/`fastfile_t5`.
+  `ZoneGame::T5` checks). The zone readers moved into `fastfile_t5` (#263);
+  what stays is the zone walk's side: the three Black Ops sinks' trait
+  signatures in `assets` (lane/sink.rs, about 100), the lane drivers
+  (lane/t5.rs, helpers.rs), the catalogs' Black Ops entry points in
+  `asset_game`, `asset_material`, `asset_world` (world_t5.rs) and
+  `asset_model`, and the world and light readers that still take the zone
+  stream. Clippy has no warnings in Black Ops code.
 - Shared crates Black Ops runs on (`sim`, `hud`, `render_*`) carry most of
   the shared debt listed under Shared technical debt below.
 
