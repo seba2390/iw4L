@@ -68,48 +68,13 @@ fn iw5_cac_table(
     })
 }
 
-fn t5_string_table(
-    s: &fastfile_t5::ZoneStream<'_>,
-    header: fastfile_t5::Ptr,
-) -> Option<asset_game::CapturedStringTable> {
-    let name = match s.ptr_at(header, 0).ok() {
-        Some(fastfile_t5::ZonePtr::Offset(p)) => {
-            s.cstr(s.resolve_alias(p)).ok().unwrap_or("").to_owned()
-        }
-        _ => return None,
-    };
-    let columns = s.i32_at(header, 4).unwrap_or(0).max(0) as usize;
-    let rows = s.i32_at(header, 8).unwrap_or(0).max(0) as usize;
-    let cells_n = columns.saturating_mul(rows);
-    let arr = match s.ptr_at(header, 12).ok() {
-        Some(fastfile_t5::ZonePtr::Offset(p)) => s.resolve_alias(p),
-        _ => {
-            return Some(asset_game::CapturedStringTable {
-                name,
-                columns,
-                rows,
-                cells: Vec::new(),
-            });
-        }
-    };
-    let mut cells = Vec::with_capacity(cells_n);
-    let cell_sz = fastfile_t5::size::STRING_TABLE_CELL;
-    for i in 0..cells_n {
-        let cell = arr.at(i * cell_sz);
-        let value = match s.ptr_at(cell, 0).ok() {
-            Some(fastfile_t5::ZonePtr::Offset(p)) => {
-                s.cstr(s.resolve_alias(p)).ok().unwrap_or("").to_owned()
-            }
-            _ => String::new(),
-        };
-        cells.push(value);
+fn t5_string_table(read: fastfile_t5::StringTableRead) -> asset_game::CapturedStringTable {
+    asset_game::CapturedStringTable {
+        name: read.name,
+        columns: read.columns,
+        rows: read.rows,
+        cells: read.cells,
     }
-    Some(asset_game::CapturedStringTable {
-        name,
-        columns,
-        rows,
-        cells,
-    })
 }
 
 fn iw4_string_table(s: &ZoneStream<'_>, header: Ptr) -> Option<asset_game::CapturedStringTable> {
@@ -167,7 +132,7 @@ pub(crate) struct ZoneWalkSink {
     pub models: ModelCensus,
     pub materials: MaterialCatalog,
     pub fx: FxCatalog,
-    material_names_t5: HashMap<fastfile_t5::Ptr, fastfile_t5::Ptr>,
+    material_names_t5: fastfile_t5::LinkNames,
     pub fx_models: asset_game::FxModelCatalog,
     pub impact_fx: ImpactFxCatalog,
     pub tracers: asset_game::TracerCatalog,
@@ -251,8 +216,8 @@ pub(crate) struct CommonWalkSink {
     xmodel_surfaces: HashMap<Ptr, Ptr>,
     xmodel_surface_names: HashMap<Ptr, Ptr>,
     strings_t5: fastfile_t5::ScriptStrings,
-    xmodel_names_t5: HashMap<fastfile_t5::Ptr, fastfile_t5::Ptr>,
-    material_names_t5: HashMap<fastfile_t5::Ptr, fastfile_t5::Ptr>,
+    xmodel_names_t5: fastfile_t5::LinkNames,
+    material_names_t5: fastfile_t5::LinkNames,
     strings_iw5: fastfile_iw5::ScriptStrings,
     iw5_surfaces:
         HashMap<fastfile_iw5::Ptr, (Option<fastfile_iw5::Ptr>, Option<fastfile_iw5::Ptr>)>,
@@ -844,7 +809,7 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
                         let handles = geometry.material_handles?;
                         draw.material.is_none().then(|| {
                             let slot = handles.at(surface * 4);
-                            let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
+                            let name = stream.cstr(self.material_names_t5.get(slot)?).ok()?;
                             Some(asset_core::AssetRef::bare_name(name).to_owned())
                         })?
                     })
@@ -882,7 +847,7 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
                     .map(|(surface, bound)| {
                         let slot = handles.at(surface * 4);
                         bound.is_none().then(|| {
-                            let name = stream.cstr(self.material_name_ptr(slot)?).ok()?;
+                            let name = stream.cstr(self.material_names_t5.get(slot)?).ok()?;
                             Some(asset_core::AssetRef::bare_name(name).to_owned())
                         })?
                     })
@@ -917,52 +882,17 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
             self.phys_presets
                 .alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
         }
-        if ty == fastfile_t5::AssetType::Material {
-            if let Some(&name) = self.material_names_t5.get(&target) {
-                self.material_names_t5.insert(slot, name);
-            } else {
-                self.material_names_t5.remove(&slot);
-            }
+        if ty == T5Asset::Material {
+            self.material_names_t5.alias_or_forget(slot, target);
         }
-        if ty == fastfile_t5::AssetType::XModel
-            && let Some(&name) = self.xmodel_names_t5.get(&target)
-        {
-            self.xmodel_names_t5.insert(slot, name);
+        if ty == T5Asset::XModel {
+            self.xmodel_names_t5.alias(slot, target);
         }
         Ok(())
     }
 
-    fn remember_material_name(
-        &mut self,
-        slot: fastfile_t5::Ptr,
-        insert_slot: Option<fastfile_t5::Ptr>,
-        name: fastfile_t5::Ptr,
-    ) {
-        self.material_names_t5.insert(slot, name);
-        if let Some(insert_slot) = insert_slot {
-            self.material_names_t5.insert(insert_slot, name);
-        }
-    }
-
-    fn material_name_ptr(&self, slot: fastfile_t5::Ptr) -> Option<fastfile_t5::Ptr> {
-        self.material_names_t5.get(&slot).copied()
-    }
-
-    fn remember_xmodel_name(
-        &mut self,
-        slot: fastfile_t5::Ptr,
-        insert_slot: Option<fastfile_t5::Ptr>,
-        name: fastfile_t5::Ptr,
-    ) {
-        self.xmodel_names_t5.insert(slot, name);
-        if let Some(insert_slot) = insert_slot {
-            self.xmodel_names_t5.insert(insert_slot, name);
-        }
-    }
-
-    fn xmodel_name_ptr(&self, slot: fastfile_t5::Ptr) -> Option<fastfile_t5::Ptr> {
-        self.xmodel_names_t5.get(&slot).copied()
-    }
+    fastfile_t5::forward_material_names!(material_names_t5);
+    fastfile_t5::forward_xmodel_names!(xmodel_names_t5);
 
     fn capture_xanim(
         &mut self,
@@ -981,56 +911,12 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
     ) -> fastfile_t5::Result<()> {
         self.fx
             .capture_t5(geometry.read(s), &self.materials, &|slot| {
-                let name = self.material_names_t5.get(&slot).copied().or_else(|| {
-                    let fastfile_t5::ZonePtr::Offset(target) = s.ptr_at(slot, 0).ok()? else {
-                        return None;
-                    };
-                    self.material_names_t5
-                        .get(&s.resolve_alias(target))
-                        .copied()
-                })?;
-                s.cstr(s.resolve_alias(name)).ok().map(str::to_owned)
+                self.material_names_t5.name_at(s, slot).map(str::to_owned)
             });
         Ok(())
     }
 
-    fn nested_shader(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_shader(s, kind, slot);
-        Ok(())
-    }
-
-    fn nested_shader_alias(
-        &mut self,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_shader_alias(kind, slot, target);
-        Ok(())
-    }
-
-    fn nested_vertex_decl(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        slot: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_vertex_decl(s, slot);
-        Ok(())
-    }
-
-    fn nested_vertex_decl_alias(
-        &mut self,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_vertex_decl_alias(slot, target);
-        Ok(())
-    }
+    fastfile_t5::forward_nested_links!(materials);
 
     fn capture_raw_file(
         &mut self,
@@ -1068,7 +954,7 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
         s: &fastfile_t5::ZoneStream<'_>,
         header: fastfile_t5::Ptr,
     ) -> fastfile_t5::Result<()> {
-        if let Some(table) = t5_string_table(s, header) {
+        if let Some(table) = s.read_string_table(header).map(t5_string_table) {
             self.scripts.capture_table(&table);
             if is_cac_table(&table.name) {
                 self.keep_stats_table(table);
@@ -1111,15 +997,7 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
     ) -> fastfile_t5::Result<()> {
         self.fx
             .capture_t5(geometry.read(s), &self.materials, &|slot| {
-                let name = self.material_names_t5.get(&slot).copied().or_else(|| {
-                    let fastfile_t5::ZonePtr::Offset(target) = s.ptr_at(slot, 0).ok()? else {
-                        return None;
-                    };
-                    self.material_names_t5
-                        .get(&s.resolve_alias(target))
-                        .copied()
-                })?;
-                s.cstr(s.resolve_alias(name)).ok().map(str::to_owned)
+                self.material_names_t5.name_at(s, slot).map(str::to_owned)
             });
         Ok(())
     }
@@ -1190,11 +1068,7 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
     ) -> fastfile_t5::Result<()> {
         self.materials.t5_alias(ty, slot, target);
         if ty == T5Asset::Material {
-            if let Some(name) = self.material_names_t5.get(&target).copied() {
-                self.material_names_t5.insert(slot, name);
-            } else {
-                self.material_names_t5.remove(&slot);
-            }
+            self.material_names_t5.alias_or_forget(slot, target);
         }
         if ty == T5Asset::Fx {
             self.fx.note_alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
@@ -1223,21 +1097,7 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         Ok(())
     }
 
-    fn remember_material_name(
-        &mut self,
-        slot: fastfile_t5::Ptr,
-        insert_slot: Option<fastfile_t5::Ptr>,
-        name: fastfile_t5::Ptr,
-    ) {
-        self.material_names_t5.insert(slot, name);
-        if let Some(slot) = insert_slot {
-            self.material_names_t5.insert(slot, name);
-        }
-    }
-
-    fn material_name_ptr(&self, slot: fastfile_t5::Ptr) -> Option<fastfile_t5::Ptr> {
-        self.material_names_t5.get(&slot).copied()
-    }
+    fastfile_t5::forward_material_names!(material_names_t5);
 
     fn capture_raw_file(
         &mut self,
@@ -1281,7 +1141,7 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         s: &fastfile_t5::ZoneStream<'_>,
         header: fastfile_t5::Ptr,
     ) -> fastfile_t5::Result<()> {
-        if let Some(table) = t5_string_table(s, header) {
+        if let Some(table) = s.read_string_table(header).map(t5_string_table) {
             self.scripts.capture_table(&table);
         }
         Ok(())
@@ -1297,43 +1157,7 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         Ok(())
     }
 
-    fn nested_shader(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_shader(s, kind, slot);
-        Ok(())
-    }
-
-    fn nested_shader_alias(
-        &mut self,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_shader_alias(kind, slot, target);
-        Ok(())
-    }
-
-    fn nested_vertex_decl(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        slot: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_vertex_decl(s, slot);
-        Ok(())
-    }
-
-    fn nested_vertex_decl_alias(
-        &mut self,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_vertex_decl_alias(slot, target);
-        Ok(())
-    }
+    fastfile_t5::forward_nested_links!(materials);
 
     asset_audio::forward_t5_sound!();
 }
@@ -2035,43 +1859,7 @@ impl fastfile_t5::AssetLinkSink for MaterialPopulationSink {
         Ok(())
     }
 
-    fn nested_shader(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_shader(s, kind, slot);
-        Ok(())
-    }
-
-    fn nested_shader_alias(
-        &mut self,
-        kind: fastfile_t5::NestedShaderKind,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_shader_alias(kind, slot, target);
-        Ok(())
-    }
-
-    fn nested_vertex_decl(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        slot: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_vertex_decl(s, slot);
-        Ok(())
-    }
-
-    fn nested_vertex_decl_alias(
-        &mut self,
-        slot: fastfile_t5::Ptr,
-        target: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        self.materials.t5_nested_vertex_decl_alias(slot, target);
-        Ok(())
-    }
+    fastfile_t5::forward_nested_links!(materials);
 
     fn capture_raw_file(
         &mut self,
@@ -2091,7 +1879,7 @@ impl fastfile_t5::AssetLinkSink for MaterialPopulationSink {
         s: &fastfile_t5::ZoneStream<'_>,
         header: fastfile_t5::Ptr,
     ) -> fastfile_t5::Result<()> {
-        let table = t5_string_table(s, header);
+        let table = s.read_string_table(header).map(t5_string_table);
         if let Some(table) = &table {
             self.scripts.capture_table(table);
         }

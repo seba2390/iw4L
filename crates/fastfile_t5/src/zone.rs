@@ -131,7 +131,7 @@ impl core::fmt::Display for ZoneError {
 
 pub type Result<T> = core::result::Result<T, ZoneError>;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Ptr {
     pub block: u8,
     pub offset: u32,

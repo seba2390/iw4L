@@ -98,3 +98,84 @@ macro_rules! forward_sound_links {
         }
     };
 }
+
+/// The nested shader and vertex declaration hooks of [`AssetLinkSink`],
+/// written inside an `impl` of it: each goes to the sink in the field named.
+#[macro_export]
+macro_rules! forward_nested_links {
+    ($field:ident) => {
+        fn nested_shader(
+            &mut self,
+            s: &$crate::ZoneStream<'_>,
+            kind: $crate::NestedShaderKind,
+            slot: $crate::Ptr,
+        ) -> $crate::Result<()> {
+            $crate::AssetLinkSink::nested_shader(&mut self.$field, s, kind, slot)
+        }
+
+        fn nested_shader_alias(
+            &mut self,
+            kind: $crate::NestedShaderKind,
+            slot: $crate::Ptr,
+            target: $crate::Ptr,
+        ) -> $crate::Result<()> {
+            $crate::AssetLinkSink::nested_shader_alias(&mut self.$field, kind, slot, target)
+        }
+
+        fn nested_vertex_decl(
+            &mut self,
+            s: &$crate::ZoneStream<'_>,
+            slot: $crate::Ptr,
+        ) -> $crate::Result<()> {
+            $crate::AssetLinkSink::nested_vertex_decl(&mut self.$field, s, slot)
+        }
+
+        fn nested_vertex_decl_alias(
+            &mut self,
+            slot: $crate::Ptr,
+            target: $crate::Ptr,
+        ) -> $crate::Result<()> {
+            $crate::AssetLinkSink::nested_vertex_decl_alias(&mut self.$field, slot, target)
+        }
+    };
+}
+
+/// The material name hooks of [`AssetLinkSink`], written inside an `impl`
+/// of it: they keep and answer the [`crate::LinkNames`] in the field named.
+#[macro_export]
+macro_rules! forward_material_names {
+    ($field:ident) => {
+        fn remember_material_name(
+            &mut self,
+            slot: $crate::Ptr,
+            insert_slot: Option<$crate::Ptr>,
+            name: $crate::Ptr,
+        ) {
+            self.$field.remember(slot, insert_slot, name);
+        }
+
+        fn material_name_ptr(&self, slot: $crate::Ptr) -> Option<$crate::Ptr> {
+            self.$field.get(slot)
+        }
+    };
+}
+
+/// The model name hooks of [`AssetLinkSink`], as
+/// [`forward_material_names`] writes the material ones.
+#[macro_export]
+macro_rules! forward_xmodel_names {
+    ($field:ident) => {
+        fn remember_xmodel_name(
+            &mut self,
+            slot: $crate::Ptr,
+            insert_slot: Option<$crate::Ptr>,
+            name: $crate::Ptr,
+        ) {
+            self.$field.remember(slot, insert_slot, name);
+        }
+
+        fn xmodel_name_ptr(&self, slot: $crate::Ptr) -> Option<$crate::Ptr> {
+            self.$field.get(slot)
+        }
+    };
+}
