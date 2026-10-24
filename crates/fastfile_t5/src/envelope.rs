@@ -44,3 +44,10 @@ pub fn parse_file_header(bytes: &[u8]) -> Result<FileHeader, FileHeaderError> {
     }
     Ok(FileHeader { signing, version })
 }
+
+/// A zone file's header and, after its preamble, the deflated zone it
+/// carries.
+pub fn split_file(bytes: &[u8]) -> Result<(FileHeader, &[u8]), FileHeaderError> {
+    let header = parse_file_header(bytes)?;
+    Ok((header, &bytes[FILE_PREAMBLE_LEN..]))
+}
