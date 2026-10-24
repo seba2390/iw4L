@@ -10,11 +10,11 @@ use asset_world::{
     StaticModelDrawError, StaticModelInstance, StaticModelPlacement,
     build_iw5_static_model_instances, build_iw5_xmodel_mesh, build_static_model_instances,
     build_t5_static_model_instances, build_t5_xmodel_mesh, build_xmodel_mesh, flag_descriptors,
-    flag_descriptors_iw5, flag_descriptors_t5, map_script_structs, map_script_structs_iw5,
-    map_script_structs_t5, map_use_triggers_iw5, map_use_triggers_t5,
-    script_brush_model_placements, script_brush_model_placements_iw5,
-    script_brush_model_placements_t5, script_model_placements, script_model_placements_iw5,
-    script_model_placements_t5,
+    flag_descriptors_iw5, map_script_structs, map_script_structs_iw5, map_use_triggers_iw5,
+    parse_flag_descriptors, parse_map_script_structs, parse_map_use_triggers,
+    parse_script_brush_model_placements, parse_script_model_placements,
+    script_brush_model_placements, script_brush_model_placements_iw5, script_model_placements,
+    script_model_placements_iw5,
 };
 
 #[derive(Default)]
@@ -578,25 +578,27 @@ pub(crate) fn build_t5_static_model_draw(
     geometry: fastfile_t5::GfxWorldGeometry,
     catalog: MapXModelCatalog,
 ) -> PreparedMapModels {
-    let (placements, static_error) = match build_t5_static_model_instances(stream, geometry) {
-        Ok(placements) => (placements, None),
-        Err(_) => (
-            Vec::new(),
-            Some(StaticModelDrawError::InstancesUnavailable {
-                smodel_count: geometry.smodel_count,
-            }),
-        ),
-    };
-    let mut scripts = script_model_placements_t5(stream);
-    let mut brushes = script_brush_model_placements_t5(stream);
+    let (placements, static_error) =
+        match build_t5_static_model_instances(geometry.read_static_model_draws(stream)) {
+            Ok(placements) => (placements, None),
+            Err(_) => (
+                Vec::new(),
+                Some(StaticModelDrawError::InstancesUnavailable {
+                    smodel_count: geometry.smodel_count,
+                }),
+            ),
+        };
+    let entities = stream.map_entity_string();
+    let mut scripts = entities.map_or_else(Vec::new, parse_script_model_placements);
+    let mut brushes = entities.map_or_else(Vec::new, parse_script_brush_model_placements);
     normalize_bomb_sites(
         &mut scripts,
         &mut brushes,
-        &map_use_triggers_t5(stream),
+        &entities.map_or_else(Vec::new, parse_map_use_triggers),
         "bombzone_dem",
     );
-    let descriptors = flag_descriptors_t5(stream);
-    let structs = map_script_structs_t5(stream);
+    let descriptors = entities.map_or_else(Vec::new, parse_flag_descriptors);
+    let structs = entities.map_or_else(Vec::new, parse_map_script_structs);
     link_model_placements(
         placements,
         static_error,

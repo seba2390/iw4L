@@ -8,6 +8,7 @@ mod content;
 mod envelope;
 pub mod light_grid;
 mod load;
+mod map;
 mod material;
 mod memory;
 pub mod size;
@@ -32,6 +33,7 @@ pub use load::{
     AssetLinkSink, LinkForward, NestedShaderKind, SndRows, forward_link, load_asset_at,
     load_asset_at_observed, load_asset_body,
 };
+pub use map::StaticModelDrawRead;
 pub use material::{MaterialConstantRead, MaterialTextureRead, TechniqueOccupancy};
 pub use memory::ZoneMemory;
 pub use size::{
