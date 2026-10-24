@@ -346,7 +346,7 @@ impl ZoneLane for T5Lane {
                 geometry.vert_count,
                 geometry.tri_count
             ));
-            match build_t5_clip_collision(&stream, geometry).and_then(|mut clip| {
+            match build_t5_clip_collision(stream.clip_map_view(geometry)).and_then(|mut clip| {
                 let foreign = sink
                     .map_xmodels
                     .attach_t5_clip_models(&stream, geometry, &mut clip)?;

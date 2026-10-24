@@ -4,6 +4,7 @@
 extern crate alloc;
 
 mod asset_type;
+pub mod clipmap_read;
 mod content;
 mod envelope;
 mod fx;
@@ -52,8 +53,8 @@ pub use weapon_view::WeaponView;
 pub use xanim::{XAnimDeltaQuat, XAnimDeltaTrans, XAnimRead};
 pub use xmodel::{
     GFX_PACKED_VERTEX, XBoneCollisionRead, XCollSurfRead, XCollTriRead, XModelBrushRead,
-    XModelCollisionRead, XModelPoseRead, XModelRead, XSurfaceBlendRead, XSurfaceRead,
-    XSurfaceSkinRead,
+    XModelCollisionRead, XModelPoseRead, XModelRead, XRigidVertListRead, XSurfaceBlendRead,
+    XSurfaceCollisionTreeRead, XSurfaceMeshError, XSurfaceMeshRead, XSurfaceRead, XSurfaceSkinRead,
 };
 pub use zone::{
     ALIGN_WASTE_SITE_COUNT, AlignWasteSite, AlignWasteStats, BLOCK_STACK_CAP, BlockType,

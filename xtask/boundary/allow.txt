@@ -259,7 +259,7 @@ pattern crates/asset_world/src/clip_collision.rs asset_iw4:: 1
 pattern crates/asset_world/src/clip_collision.rs clipmap_iw4:: 42
 pattern crates/asset_world/src/clip_collision.rs fastfile_iw4:: 1
 pattern crates/asset_world/src/clip_collision.rs fastfile_iw5:: 57
-pattern crates/asset_world/src/clip_collision.rs fastfile_t5:: 16
+pattern crates/asset_world/src/clip_collision.rs fastfile_t5:: 7
 pattern crates/asset_world/src/draw_policy.rs FamilyId::<game> 4
 pattern crates/asset_world/src/dyn_ents.rs asset_iw4:: 1
 pattern crates/asset_world/src/dyn_ents.rs fastfile_iw4:: 5
@@ -273,10 +273,10 @@ pattern crates/asset_world/src/map_entities.rs asset_iw4:: 1
 pattern crates/asset_world/src/map_entities.rs fastfile_iw4:: 2
 pattern crates/asset_world/src/map_entities.rs fastfile_iw5:: 17
 pattern crates/asset_world/src/model_mesh.rs AssetNamespace::<game> 4
-pattern crates/asset_world/src/model_mesh.rs asset_iw4:: 24
+pattern crates/asset_world/src/model_mesh.rs asset_iw4:: 20
 pattern crates/asset_world/src/model_mesh.rs fastfile_iw4:: 3
 pattern crates/asset_world/src/model_mesh.rs fastfile_iw5:: 10
-pattern crates/asset_world/src/model_mesh.rs fastfile_t5:: 23
+pattern crates/asset_world/src/model_mesh.rs fastfile_t5:: 11
 pattern crates/asset_world/src/model_mesh.rs lighting_iw4:: 1
 pattern crates/asset_world/src/path_network.rs fastfile_t5:: 1
 pattern crates/asset_world/src/world_draw.rs "<game>" 4

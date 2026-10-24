@@ -466,3 +466,173 @@ fn read_surface_skin(
         blend: Some(XSurfaceBlendRead { counts, words }),
     })
 }
+
+/// One `XSurface` as a draw mesh reads it.
+#[derive(Clone, Debug)]
+pub struct XSurfaceMeshRead {
+    /// The surface's `flags` word.
+    pub flags: u16,
+    pub vertices: Vec<[u8; GFX_PACKED_VERTEX]>,
+    /// Three a triangle, as the zone stores them (not yet checked against
+    /// the vertex count).
+    pub indices: Vec<u16>,
+    pub vert_lists: Vec<XRigidVertListRead>,
+}
+
+/// An `XRigidVertList`'s triangle range and its collision tree.
+#[derive(Clone, Debug)]
+pub struct XRigidVertListRead {
+    pub tri_offset: u16,
+    pub tri_count: u16,
+    pub tree: Option<XSurfaceCollisionTreeRead>,
+}
+
+#[derive(Clone, Debug)]
+pub struct XSurfaceCollisionTreeRead {
+    pub trans: [f32; 3],
+    pub scale: [f32; 3],
+    /// Each node's mins, maxs, child begin index and child count.
+    pub nodes: Vec<[u16; 8]>,
+    /// Each leaf's triangle begin index.
+    pub leafs: Vec<u16>,
+}
+
+/// Why a surface did not read: a pointer the mesh needs is not there, or the
+/// zone ran out under a field.
+#[derive(Clone, Copy, Debug)]
+pub enum XSurfaceMeshError {
+    Missing,
+    Zone(crate::ZoneError),
+}
+
+impl From<crate::ZoneError> for XSurfaceMeshError {
+    fn from(error: crate::ZoneError) -> Self {
+        Self::Zone(error)
+    }
+}
+
+impl ZoneStream<'_> {
+    /// Surface `index` of the `XSurface` array at `surfaces`.
+    pub fn read_xsurface_mesh(
+        &self,
+        surfaces: Ptr,
+        index: usize,
+    ) -> Result<XSurfaceMeshRead, XSurfaceMeshError> {
+        use XSurfaceMeshError::Missing;
+        let surface = surfaces.at(index * XSURFACE);
+        let vertex_count = self.u16_at(surface, 4).map_err(|_| Missing)? as usize;
+        let tri_count = self.u16_at(surface, 6).map_err(|_| Missing)? as usize;
+        let vertices = self.resolved(surface, 32)?;
+        let triangles = self.resolved(surface, 12)?;
+        let vertices = (0..vertex_count)
+            .map(|i| {
+                let mut packed = [0u8; GFX_PACKED_VERTEX];
+                let bytes = self
+                    .slice_at(vertices.at(i * GFX_PACKED_VERTEX), 0, GFX_PACKED_VERTEX)
+                    .map_err(|_| Missing)?;
+                packed.copy_from_slice(bytes);
+                Ok(packed)
+            })
+            .collect::<Result<Vec<_>, XSurfaceMeshError>>()?;
+        let indices = (0..tri_count * 3)
+            .map(|i| self.u16_at(triangles, i * 2).map_err(|_| Missing))
+            .collect::<Result<Vec<_>, _>>()?;
+        let flags = self.u16_at(surface, 2).map_err(|_| Missing)?;
+        Ok(XSurfaceMeshRead {
+            flags,
+            vertices,
+            indices,
+            vert_lists: self.read_rigid_vert_lists(surface)?,
+        })
+    }
+
+    fn resolved(&self, parent: Ptr, field: usize) -> Result<Ptr, XSurfaceMeshError> {
+        match self
+            .ptr_at(parent, field)
+            .map_err(|_| XSurfaceMeshError::Missing)?
+        {
+            ZonePtr::Offset(ptr) => Ok(self.resolve_alias(ptr)),
+            _ => Err(XSurfaceMeshError::Missing),
+        }
+    }
+
+    fn read_rigid_vert_lists(
+        &self,
+        surface: Ptr,
+    ) -> Result<Vec<XRigidVertListRead>, XSurfaceMeshError> {
+        let count = self.u8_at(surface, 1)? as usize;
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        let lists = self.resolved(surface, 40)?;
+        self.slice_at(lists, 0, count * size::XRIGID_VERT_LIST)?;
+        let mut out = Vec::with_capacity(count);
+        for list_index in 0..count {
+            let list = lists.at(list_index * size::XRIGID_VERT_LIST);
+            let tri_offset = self.u16_at(list, 4)?;
+            let tri_count = self.u16_at(list, 6)?;
+            let tree = match self.ptr_at(list, 8)? {
+                ZonePtr::Null => None,
+                ZonePtr::Offset(tree) => Some(self.read_collision_tree(self.resolve_alias(tree))?),
+                ZonePtr::Following | ZonePtr::Insert => return Err(XSurfaceMeshError::Missing),
+            };
+            out.push(XRigidVertListRead {
+                tri_offset,
+                tri_count,
+                tree,
+            });
+        }
+        Ok(out)
+    }
+
+    fn read_collision_tree(
+        &self,
+        tree: Ptr,
+    ) -> Result<XSurfaceCollisionTreeRead, XSurfaceMeshError> {
+        let mut trans = [0.0; 3];
+        let mut scale = [0.0; 3];
+        for axis in 0..3 {
+            trans[axis] = self.f32_at(tree, axis * 4)?;
+            scale[axis] = self.f32_at(tree, 12 + axis * 4)?;
+        }
+        let node_count = self.u32_at(tree, 24)? as usize;
+        let leaf_count = self.u32_at(tree, 32)? as usize;
+        let nodes_ptr = if node_count == 0 {
+            None
+        } else {
+            let rows = self.resolved(tree, 28)?;
+            self.slice_at(rows, 0, node_count * size::XSURFACE_COLLISION_NODE)?;
+            Some(rows)
+        };
+        let leafs_ptr = if leaf_count == 0 {
+            None
+        } else {
+            let rows = self.resolved(tree, 36)?;
+            self.slice_at(rows, 0, leaf_count * size::XSURFACE_COLLISION_LEAF)?;
+            Some(rows)
+        };
+        let mut nodes = Vec::with_capacity(node_count);
+        if let Some(rows) = nodes_ptr {
+            for index in 0..node_count {
+                let row = rows.at(index * size::XSURFACE_COLLISION_NODE);
+                let mut node = [0u16; 8];
+                for (word, value) in node.iter_mut().enumerate() {
+                    *value = self.u16_at(row, word * 2)?;
+                }
+                nodes.push(node);
+            }
+        }
+        let mut leafs = Vec::with_capacity(leaf_count);
+        if let Some(rows) = leafs_ptr {
+            for index in 0..leaf_count {
+                leafs.push(self.u16_at(rows, index * size::XSURFACE_COLLISION_LEAF)?);
+            }
+        }
+        Ok(XSurfaceCollisionTreeRead {
+            trans,
+            scale,
+            nodes,
+            leafs,
+        })
+    }
+}
