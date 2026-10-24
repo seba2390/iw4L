@@ -54,6 +54,13 @@ pub fn register_game_menus(menus: GameMenusOf) {
     let _ = GAME_MENUS.set(menus);
 }
 
+/// The script binding the default keys of the game whose menus `catalog`
+/// holds, when the game keeps its own (`GameMenus::default_controls`).
+pub fn game_default_controls(catalog: &MenuCatalog) -> Option<&str> {
+    let name = game_menus(catalog.namespace?)?.default_controls()?;
+    catalog.rawfiles.get(name).map(String::as_str)
+}
+
 pub(crate) fn game_menus(
     family: asset_core::AssetNamespace,
 ) -> Option<&'static dyn game_api::GameMenus> {

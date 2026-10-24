@@ -101,6 +101,7 @@ impl Plugin for ConsolePlugin {
             )
             .init_resource::<crate::user_settings::PendingMenuBinding>()
             .init_resource::<crate::user_settings::UserSettingsPersistence>()
+            .init_resource::<crate::user_settings::GameBinds>()
             .init_resource::<crate::game_folders::FolderPicks>()
             .init_resource::<crate::saved_position::SavedPosition>()
             .init_resource::<sim::LocalPlayerProfile>()
@@ -232,7 +233,11 @@ impl Plugin for ConsolePlugin {
                             crate::community_servers::community_server_menu,
                         )
                             .chain(),
-                        crate::user_settings::sync_binding_view,
+                        (
+                            crate::user_settings::switch_game_binds,
+                            crate::user_settings::sync_binding_view,
+                        )
+                            .chain(),
                         crate::user_settings::apply_master_volume,
                         crate::user_settings::sync_player_name.in_set(frame::InMatch),
                         crate::user_settings::save_user_settings,

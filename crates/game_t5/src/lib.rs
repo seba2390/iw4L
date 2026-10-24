@@ -415,6 +415,12 @@ impl game_api::GameMenus for T5 {
     fn menu_dvars(&self) -> &'static [game_api::MenuDvar] {
         &MENU_DVARS
     }
+
+    /// `default.cfg` runs `default_controls.cfg` (the localized
+    /// `code_pre_gfx`): `unbindall`, then Black Ops' own keyboard binds.
+    fn default_controls(&self) -> Option<&'static str> {
+        Some("default_controls.cfg")
+    }
 }
 
 /// The client dvars Black Ops' options menus show, with their registered

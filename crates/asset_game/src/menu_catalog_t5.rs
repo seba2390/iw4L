@@ -12,8 +12,8 @@ use std::path::Path;
 use asset_transport::{T5ZoneMemory, open_zone};
 use fastfile_iw4::GlyphCapture;
 use fastfile_t5::{
-    AssetLinkSink, AssetSink, AssetType, Ptr, ScriptStrings, ZonePtr, ZoneStream,
-    load_asset_at_observed, load_zone,
+    AssetLinkSink, AssetSink, AssetType, Ptr, Result as ZoneResult, ScriptStrings, ZonePtr,
+    ZoneStream, load_asset_at_observed, load_zone,
 };
 
 use crate::localize::decode_localized_text;
@@ -589,6 +589,22 @@ impl AssetLinkSink for T5MenuSink {
                 glyphs,
             },
         );
+        Ok(())
+    }
+
+    /// The game's config scripts (`default_controls.cfg`, ...) its menus and
+    /// key binds run.
+    fn capture_raw_file(
+        &mut self,
+        name: &str,
+        data: &[u8],
+        zlib_compressed: bool,
+    ) -> ZoneResult<()> {
+        if name.ends_with(".cfg")
+            && let Some(text) = asset_world::decode_rawfile_text(data, zlib_compressed)
+        {
+            self.catalog.rawfiles.insert(name.to_owned(), text);
+        }
         Ok(())
     }
 

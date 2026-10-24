@@ -11,6 +11,72 @@ use bevy::{
 
 use crate::{BindButton, KeyBinds, binds::wheel_button, display_button};
 
+/// Key binds per game: a game with default controls of its own keeps its own
+/// set while one of its sessions runs, and the shared set waits.
+#[derive(Resource, Default)]
+pub(crate) struct GameBinds {
+    /// The game whose set the binds hold now, and the shared set put aside.
+    active: Option<(String, KeyBinds)>,
+    /// Each game's saved set, as bind-script lines.
+    saved: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+/// The settings file's prefix for a game's own bind lines.
+const GAME_BIND_PREFIX: &str = "game.";
+
+/// Swaps in the binds of the game whose menus the session loaded, when that
+/// game binds its own default keys: its saved set, else its default
+/// controls (the gamepad binds kept). Leaving it brings the shared set back.
+pub(crate) fn switch_game_binds(
+    menus: Option<Res<asset_game::SessionHudMenus>>,
+    settings: Res<frame::GameSettings>,
+    mut binds: ResMut<KeyBinds>,
+    mut game: ResMut<GameBinds>,
+) {
+    let wanted = menus
+        .as_ref()
+        .and_then(|menus| menus.0.as_deref())
+        .and_then(|catalog| {
+            let script = hud::game_default_controls(catalog)?;
+            Some((catalog.namespace?.as_str().to_owned(), script))
+        });
+    let active = game.active.as_ref().map(|(name, _)| name.as_str());
+    if active == wanted.as_ref().map(|(name, _)| name.as_str()) {
+        return;
+    }
+    let game = &mut *game;
+    if let Some((name, shared)) = game.active.take() {
+        game.saved.insert(name, binds.list_lines());
+        *binds = shared;
+    }
+    let Some((name, script)) = wanted else {
+        return;
+    };
+    let shared = binds.clone();
+    match game.saved.get(&name) {
+        Some(lines) => {
+            binds.clear_all();
+            let _ = binds.apply_config_script(&lines.join("\n"));
+        }
+        None => {
+            let pads: Vec<_> = binds.iter().filter(|(button, _)| button.is_pad()).collect();
+            // The game's own keys; commands the runtime has no binding for
+            // (screenshots, invitations, ...) stay unbound.
+            for warning in binds.apply_config_script(script) {
+                debug!("{name} default controls: {warning}");
+            }
+            for (button, id) in pads {
+                binds.set(button, id);
+            }
+            if !binds.has_pad_binds() {
+                binds.apply_pad_layout(usize::from(settings.pad_layout.min(4)));
+            }
+        }
+    }
+    info!("key binds: {name}'s own set");
+    game.active = Some((name, shared));
+}
+
 #[derive(Resource, Default)]
 pub(crate) struct PendingMenuBinding {
     id: Option<u32>,
@@ -27,6 +93,7 @@ pub(crate) fn load_user_settings(
     identity: Res<ui::LaunchIdentity>,
     mut settings: ResMut<frame::GameSettings>,
     mut binds: ResMut<KeyBinds>,
+    mut game_binds: ResMut<GameBinds>,
     mut persistence: ResMut<UserSettingsPersistence>,
 ) {
     let Some(path) = settings_path(&identity.artifacts) else {
@@ -36,7 +103,7 @@ pub(crate) fn load_user_settings(
     persistence.path = Some(path.clone());
     match fs::read_to_string(&path) {
         Ok(source) => {
-            parse_settings(&source, &mut settings, &mut binds);
+            parse_settings(&source, &mut settings, &mut binds, &mut game_binds);
             persistence.last_payload = Some(source);
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -51,7 +118,7 @@ pub(crate) fn load_user_settings(
     }
     settings.sanitize();
     if persistence.last_payload.is_none() {
-        persistence.last_payload = Some(serialize_settings(&settings, &binds));
+        persistence.last_payload = Some(serialize_settings(&settings, &binds, &game_binds));
     }
 }
 
@@ -252,12 +319,13 @@ pub(crate) fn sync_player_name(
 pub(crate) fn save_user_settings(
     settings: Res<frame::GameSettings>,
     binds: Res<KeyBinds>,
+    game_binds: Res<GameBinds>,
     mut persistence: ResMut<UserSettingsPersistence>,
 ) {
-    if !settings.is_changed() && !binds.is_changed() {
+    if !settings.is_changed() && !binds.is_changed() && !game_binds.is_changed() {
         return;
     }
-    let payload = serialize_settings(&settings, &binds);
+    let payload = serialize_settings(&settings, &binds, &game_binds);
     if persistence.last_payload.as_deref() == Some(payload.as_str()) {
         return;
     }
@@ -314,7 +382,11 @@ fn parse_into<T: std::str::FromStr>(value: &str, slot: &mut T) {
     }
 }
 
-fn serialize_settings(settings: &frame::GameSettings, binds: &KeyBinds) -> String {
+fn serialize_settings(
+    settings: &frame::GameSettings,
+    binds: &KeyBinds,
+    game_binds: &GameBinds,
+) -> String {
     let safe_name = settings.player_name.replace(['\n', '\r', '='], " ");
     let mut lines = vec![
         "// IW4L user settings v3".to_owned(),
@@ -352,17 +424,52 @@ fn serialize_settings(settings: &frame::GameSettings, binds: &KeyBinds) -> Strin
         format!("pad_deadzone_right={:.2}", settings.pad_deadzone_right),
     ];
     lines.extend(crate::game_folders::serialize_game_folders(settings));
+    // The shared set, and each game's own (the active game's as it is now).
+    let (shared, active) = match &game_binds.active {
+        Some((name, shared)) => (shared, Some((name.as_str(), binds.list_lines()))),
+        None => (binds, None),
+    };
     lines.push("unbindall".to_owned());
-    lines.extend(binds.list_lines());
+    lines.extend(shared.list_lines());
+    let mut games: std::collections::BTreeMap<&str, Vec<String>> = game_binds
+        .saved
+        .iter()
+        .map(|(name, lines)| (name.as_str(), lines.clone()))
+        .collect();
+    games.extend(active);
+    for (name, game_lines) in games {
+        lines.push(format!("{GAME_BIND_PREFIX}{name} unbindall"));
+        lines.extend(
+            game_lines
+                .iter()
+                .map(|line| format!("{GAME_BIND_PREFIX}{name} {line}")),
+        );
+    }
     lines.push(String::new());
     lines.join("\n")
 }
 
-fn parse_settings(source: &str, settings: &mut frame::GameSettings, binds: &mut KeyBinds) {
+fn parse_settings(
+    source: &str,
+    settings: &mut frame::GameSettings,
+    binds: &mut KeyBinds,
+    game_binds: &mut GameBinds,
+) {
     let mut bind_script = String::new();
     for raw in source.lines() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix(GAME_BIND_PREFIX)
+            && let Some((name, bind)) = rest.split_once(' ')
+        {
+            let saved = game_binds.saved.entry(name.to_owned()).or_default();
+            if bind.trim() == "unbindall" {
+                saved.clear();
+            } else {
+                saved.push(bind.trim().to_owned());
+            }
             continue;
         }
         if line.starts_with("bind ") || line == "unbindall" {
