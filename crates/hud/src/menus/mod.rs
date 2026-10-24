@@ -1174,7 +1174,11 @@ fn flush_outputs(menus: &mut ScriptMenus, out: &mut MenuOutputs, local: sim::Cli
             },
         );
     }
-    for text in menus.menu_messages.drain(..) {
+    let paused = out.pause.0;
+    for (text, pausable) in menus.menu_messages.drain(..) {
+        if pausable && paused {
+            continue;
+        }
         let mut words = text.split_whitespace();
         let (Some(name), Some(arg)) = (
             sim::menu_response_field(words.next().unwrap_or("")),

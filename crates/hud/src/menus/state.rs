@@ -34,8 +34,9 @@ pub struct ScriptMenus {
     pub(crate) shown: Vec<String>,
     pub(crate) applied_serial: u32,
     pub(crate) responses: Vec<(String, String)>,
-    /// `sendMenuNotify` messages for the level's scripts.
-    pub(crate) menu_messages: Vec<String>,
+    /// Messages for the level's scripts, in order: `sendMenuNotify`'s, and
+    /// the menus opened and closed (`true`: dropped while paused).
+    pub(crate) menu_messages: Vec<(String, bool)>,
     pub(crate) exec: Vec<String>,
     pub(crate) sounds: Vec<String>,
     pub(crate) reported: std::collections::HashSet<String>,

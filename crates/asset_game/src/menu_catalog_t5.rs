@@ -41,6 +41,7 @@ const WINDOW_OWNER_DRAW: usize = 68;
 const WINDOW_STATIC_FLAGS: usize = 80;
 const WINDOW_FORE_COLOR: usize = 92;
 const WINDOW_BACK_COLOR: usize = 108;
+const WINDOW_ROTATION: usize = 156;
 const WINDOW_BACKGROUND: usize = 160;
 
 const MENU_FULLSCREEN: usize = 168;
@@ -409,6 +410,7 @@ impl T5MenuSink {
             rect: rect_at(s, p.at(ITEM_DEF_WINDOW_RECT)),
             fore_color: color_at(s, p, WINDOW_FORE_COLOR),
             back_color: color_at(s, p, WINDOW_BACK_COLOR),
+            rotation: f32_at(s, p, WINDOW_ROTATION),
             background: self.material_key(s, p, WINDOW_BACKGROUND),
             dvar: str_at(s, p, ITEM_DVAR).unwrap_or("").to_owned(),
             dvar_test: str_at(s, p, ITEM_DVAR_TEST).unwrap_or("").to_owned(),

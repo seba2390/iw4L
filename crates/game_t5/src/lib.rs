@@ -409,7 +409,7 @@ impl game_api::GameMenus for T5 {
 /// as the runtime's does; `cg_fov_default` is the player's field of view.
 /// `r_gamma` sets a device gamma ramp and the other sound dvars set Black
 /// Ops' own volume groups, which the runtime has not (docs/fidelity/t5.md).
-const MENU_DVARS: [game_api::MenuDvar; 12] = {
+const MENU_DVARS: [game_api::MenuDvar; 14] = {
     use game_api::{MenuDvar, MenuSetting};
     const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
         MenuDvar {
@@ -445,6 +445,10 @@ const MENU_DVARS: [game_api::MenuDvar; 12] = {
         // buttons test the language.
         shown("ui_skipMainLockout", "0"),
         shown("loc_language", "0"),
+        // The zombie map select lists Five and Dead Ops Arcade while these
+        // (archived booleans, registered 1) are on.
+        shown("zombiefive_discovered", "1"),
+        shown("zombietron_discovered", "1"),
     ]
 };
 
@@ -718,8 +722,9 @@ impl game_api::GameModes for T5 {
 
 static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     gametype: ZOMBIES,
-    note: "Runs the map's own zombie scripts. Kino der Toten is the map played so far; gaps are listed in docs/fidelity/t5.md.",
+    note: "Runs the map's own zombie scripts. MAIN MENU starts Black Ops' own front end (Zombies, then Solo, picks the map); Kino der Toten and Five play solo; gaps are listed in docs/fidelity/t5.md.",
     maps: &[
+        (FRONT_END_LEVEL, "MAIN MENU"),
         ("zombie_theater", "KINO DER TOTEN"),
         ("zombie_pentagon", "\"FIVE\""),
         ("zombie_cod5_prototype", "NACHT DER UNTOTEN"),

@@ -1245,6 +1245,57 @@ fn register_player(registry: &mut NativeRegistry) {
         super::player::send_menu_command(world, client, crate::MenuCommandKind::CloseInGame);
         Ok(Value::Int(1))
     });
+    // Black Ops' `SetDepthOfField` checks only its distances: each is at
+    // least 0, a near range that does not open turns near blur off, a far
+    // range that does not open or a far blur of 0 turns far blur off, and
+    // an open far range must start at or past the near end. Its blurs are
+    // taken as given.
+    registry.register(Method, "setdepthoffield", |world, receiver, args| {
+        let client = player_id(world, receiver)?;
+        if args.len() != 6 {
+            return Err("Incorrect number of parameters".into());
+        }
+        let mut values = [0.0; 6];
+        for (i, value) in values.iter_mut().enumerate() {
+            *value = super::super::args::float(args, i)?;
+        }
+        let [near_start, near_end, far_start, far_end, near_blur, far_blur] = values;
+        for (value, what) in [
+            (near_start, "near start"),
+            (near_end, "near end"),
+            (far_start, "far start"),
+            (far_end, "far end"),
+        ] {
+            if value < 0.0 {
+                return Err(format!("{what} must be >= 0"));
+            }
+        }
+        let (near_start, near_end) = if near_start >= near_end {
+            (0.0, 0.0)
+        } else {
+            (near_start, near_end)
+        };
+        let (far_start, far_end) = if far_start >= far_end || far_blur == 0.0 {
+            (0.0, 0.0)
+        } else {
+            if near_end > far_start {
+                return Err("far start must be >= near end, or far depth of field should be disabled with far start >= far end or far blur == 0".into());
+            }
+            (far_start, far_end)
+        };
+        let dof = crate::ScriptDepthOfField {
+            near_start,
+            near_end,
+            far_start,
+            far_end,
+            near_blur,
+            far_blur,
+        };
+        super::super::client_effects::edit_view(world, client, |view| {
+            view.depth_of_field = dof
+        });
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "islocaltohost", |world, receiver, _| {
         Ok(Value::Int((player_id(world, receiver)? == 0).into()))
     });

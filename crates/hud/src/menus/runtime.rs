@@ -361,7 +361,7 @@ impl Runner<'_, '_> {
             Command::SendMenuNotify(text) => {
                 // Sent only while `ui_menuLvlNotify` (registered 1) is on.
                 if self.dvar("ui_menuLvlNotify") != Some("0") {
-                    self.menus.menu_messages.push(text);
+                    self.menus.menu_messages.push((text, false));
                 }
             }
             Command::Unhandled(name) => {
@@ -518,6 +518,18 @@ impl Runner<'_, '_> {
         {
             self.focus_step(&name, 1, true);
         }
+        self.level_menu_event("open", &name);
+    }
+
+    /// Black Ops tells the level each menu it opens and closes (`mlvl open
+    /// <menu>`), while `ui_menuLvlNotify` (registered 1) is on and the game
+    /// is not paused.
+    fn level_menu_event(&mut self, event: &str, menu: &str) {
+        if self.dvar("ui_menuLvlNotify") != Some("0") {
+            self.menus
+                .menu_messages
+                .push((format!("{event} {menu}"), true));
+        }
     }
 
     pub(crate) fn close(&mut self, name: &str) {
@@ -537,8 +549,9 @@ impl Runner<'_, '_> {
             self.run_events(name, None, &def.handlers.close);
         }
         if let Some(pos) = self.menus.position(name) {
-            self.menus.stack.remove(pos);
+            let open = self.menus.stack.remove(pos);
             diag::info!(Ui, "menu close: {name}");
+            self.level_menu_event("close", &open.name);
         }
     }
 
