@@ -399,96 +399,46 @@ impl XAnimBuild {
         );
     }
 
-    pub fn capture_xanim_t5(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        strings: &fastfile_t5::ScriptStrings,
-        geometry: fastfile_t5::XAnimPartsGeometry,
-    ) {
-        let Some(name_ptr) = geometry.name else {
+    pub fn capture_xanim_t5(&mut self, read: Option<fastfile_t5::XAnimRead>) {
+        let Some(read) = read else {
             self.capture_gaps += 1;
             return;
         };
-        let Ok(name) = s.cstr(name_ptr) else {
-            self.capture_gaps += 1;
-            return;
-        };
-        if name.is_empty() {
-            self.capture_gaps += 1;
-            return;
-        }
-
-        let track_count = geometry.bone_count[9] as usize;
-        let mut names = Vec::with_capacity(track_count);
-        if let Some(arr) = geometry.names {
-            for i in 0..track_count {
-                let sid = s.u16_at(arr, i * 2).unwrap_or(0);
-                names.push(strings.get(s, sid).unwrap_or("").to_owned());
-            }
-        } else if track_count > 0 {
-            self.capture_gaps += 1;
-            return;
-        }
-
-        let mut notifies = Vec::with_capacity(geometry.notify_count);
-        if let Some(arr) = geometry.notify {
-            for i in 0..geometry.notify_count {
-                let b = arr.at(i * fastfile_t5::size::XANIM_NOTIFY_INFO);
-                let sid = s.u16_at(b, 0).unwrap_or(0);
-                let time = s.f32_at(b, 4).unwrap_or(0.0);
-                notifies.push(ClipNotify {
-                    name: strings.get(s, sid).unwrap_or("").to_owned(),
-                    time,
-                });
-            }
-        }
-
-        let data_byte = copy_u8_t5(s, geometry.data_byte, geometry.data_byte_count);
-        let data_short = copy_u16_t5(s, geometry.data_short, geometry.data_short_count);
-        let data_int = copy_u32_t5(s, geometry.data_int, geometry.data_int_count);
-        let random_data_short = copy_u16_t5(
-            s,
-            geometry.random_data_short,
-            geometry.random_data_short_count,
-        );
-        let random_data_byte = copy_u8_t5(
-            s,
-            geometry.random_data_byte,
-            geometry.random_data_byte_count,
-        );
-        let random_data_int =
-            copy_u32_t5(s, geometry.random_data_int, geometry.random_data_int_count);
-        let indices = if geometry.indices_are_bytes {
-            copy_u8_t5(s, geometry.indices, geometry.index_count)
-                .into_iter()
-                .map(u16::from)
-                .collect()
-        } else {
-            copy_u16_t5(s, geometry.indices, geometry.index_count)
-        };
-
-        let (delta_trans, delta_quat) = copy_delta_t5(s, geometry.delta, geometry.numframes);
         self.insert_in(
             AssetNamespace::T5,
             CapturedXAnim {
                 namespace: AssetNamespace::T5,
                 parts: Arc::new(RawXAnimParts {
-                    name: name.to_owned(),
-                    data_byte,
-                    data_short,
-                    data_int,
-                    random_data_byte,
-                    random_data_short,
-                    random_data_int,
-                    numframes: geometry.numframes,
-                    flags: geometry.flags,
-                    bone_count: geometry.bone_count,
-                    framerate: geometry.framerate,
-                    names,
-                    notifies,
-                    indices,
-                    delta_trans,
-                    delta_quat,
+                    name: read.name,
+                    data_byte: read.data_byte,
+                    data_short: read.data_short,
+                    data_int: read.data_int,
+                    random_data_byte: read.random_data_byte,
+                    random_data_short: read.random_data_short,
+                    random_data_int: read.random_data_int,
+                    numframes: read.numframes,
+                    flags: read.flags,
+                    bone_count: read.bone_count,
+                    framerate: read.framerate,
+                    names: read.names,
+                    notifies: read
+                        .notifies
+                        .into_iter()
+                        .map(|(name, time)| ClipNotify { name, time })
+                        .collect(),
+                    indices: read.indices,
+                    delta_trans: read.delta_trans.map(|delta| RawDeltaTrans {
+                        size: delta.size,
+                        small: delta.small,
+                        mins: delta.mins,
+                        step: delta.step,
+                        indices: delta.indices,
+                        packed: delta.packed,
+                    }),
+                    delta_quat: read.delta_quat.map(|delta| RawDeltaQuat {
+                        indices: delta.indices,
+                        frames: delta.frames,
+                    }),
                 }),
             },
         );
@@ -1096,135 +1046,6 @@ fn copy_u16_iw5(
 fn copy_u32_iw5(
     s: &fastfile_iw5::ZoneStream<'_>,
     ptr: Option<fastfile_iw5::Ptr>,
-    count: usize,
-) -> Vec<u32> {
-    let Some(p) = ptr else {
-        return Vec::new();
-    };
-    let Ok(bytes) = s.slice_at(p, 0, count * 4) else {
-        return Vec::new();
-    };
-    bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect()
-}
-
-fn copy_delta_t5(
-    s: &fastfile_t5::ZoneStream<'_>,
-    delta: Option<fastfile_t5::Ptr>,
-    numframes: u16,
-) -> (Option<RawDeltaTrans>, Option<RawDeltaQuat>) {
-    let Some(delta) = delta else {
-        return (None, None);
-    };
-    let body = |slot: usize| match s.ptr_at(delta, slot) {
-        Ok(fastfile_t5::ZonePtr::Offset(p)) => Some(s.resolve_alias(p)),
-        _ => None,
-    };
-    let indices = |p: fastfile_t5::Ptr, n: usize| -> Vec<u16> {
-        if numframes < 256 {
-            copy_u8_t5(s, Some(p), n)
-                .into_iter()
-                .map(u16::from)
-                .collect()
-        } else {
-            copy_u16_t5(s, Some(p), n)
-        }
-    };
-    let frames_at = |p: fastfile_t5::Ptr, off: usize| match s.ptr_at(p, off) {
-        Ok(fastfile_t5::ZonePtr::Offset(q)) => Some(s.resolve_alias(q)),
-        _ => None,
-    };
-    let vec3 = |p: fastfile_t5::Ptr, off: usize| -> Option<[f32; 3]> {
-        Some([
-            s.f32_at(p, off).ok()?,
-            s.f32_at(p, off + 4).ok()?,
-            s.f32_at(p, off + 8).ok()?,
-        ])
-    };
-
-    let trans = body(0).and_then(|p| {
-        let size = s.u16_at(p, 0).ok()?;
-        let small = s.u8_at(p, 2).ok()? != 0;
-        if size == 0 {
-            return Some(RawDeltaTrans {
-                size,
-                small,
-                mins: vec3(p, 4)?,
-                ..RawDeltaTrans::default()
-            });
-        }
-        let n = usize::from(size) + 1;
-        let packed = copy_u8_t5(s, frames_at(p, 28), if small { 3 * n } else { 6 * n });
-        Some(RawDeltaTrans {
-            size,
-            small,
-            mins: vec3(p, 4)?,
-            step: vec3(p, 16)?,
-            indices: indices(p.at(32), n),
-            packed,
-        })
-    });
-
-    let quat = body(4).and_then(|p| {
-        let size = s.u16_at(p, 0).ok()?;
-        let pair = |q: fastfile_t5::Ptr, i: usize| -> Option<[i16; 4]> {
-            Some([0, 0, s.i16_at(q, i * 4).ok()?, s.i16_at(q, i * 4 + 2).ok()?])
-        };
-        if size == 0 {
-            return Some(RawDeltaQuat {
-                indices: Vec::new(),
-                frames: vec![pair(p.at(4), 0)?],
-            });
-        }
-        let n = usize::from(size) + 1;
-        let frames = frames_at(p, 4)?;
-        Some(RawDeltaQuat {
-            indices: indices(p.at(8), n),
-            frames: (0..n).map(|i| pair(frames, i)).collect::<Option<_>>()?,
-        })
-    });
-    (trans, quat)
-}
-
-fn copy_u8_t5(
-    s: &fastfile_t5::ZoneStream<'_>,
-    ptr: Option<fastfile_t5::Ptr>,
-    count: usize,
-) -> Vec<u8> {
-    let Some(p) = ptr else {
-        return Vec::new();
-    };
-    s.slice_at(p, 0, count)
-        .map(|b| b.to_vec())
-        .unwrap_or_else(|_| Vec::new())
-}
-
-fn copy_u16_t5(
-    s: &fastfile_t5::ZoneStream<'_>,
-    ptr: Option<fastfile_t5::Ptr>,
-    count: usize,
-) -> Vec<u16> {
-    let Some(p) = ptr else {
-        return Vec::new();
-    };
-    let Ok(bytes) = s.slice_at(p, 0, count * 2) else {
-        return Vec::new();
-    };
-    bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .collect()
-}
-
-fn copy_u32_t5(
-    s: &fastfile_t5::ZoneStream<'_>,
-    ptr: Option<fastfile_t5::Ptr>,
     count: usize,
 ) -> Vec<u32> {
     let Some(p) = ptr else {

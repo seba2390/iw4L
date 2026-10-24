@@ -1,6 +1,8 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+extern crate alloc;
+
 mod asset_type;
 mod content;
 mod envelope;
@@ -10,6 +12,7 @@ pub mod size;
 pub mod state_bits;
 pub mod vertex_decl;
 pub mod weapon_def;
+mod xanim;
 pub mod xmodel_lod;
 mod zone;
 
@@ -30,6 +33,7 @@ pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,
     occupancy_test,
 };
+pub use xanim::{XAnimDeltaQuat, XAnimDeltaTrans, XAnimRead};
 pub use zone::{
     ALIGN_WASTE_SITE_COUNT, AlignWasteSite, AlignWasteStats, BLOCK_STACK_CAP, BlockType,
     ClipMapGeometry, ComWorldGeometry, FxEffectDefGeometry, GfxImageGeometry, GfxLightGridGeometry,
