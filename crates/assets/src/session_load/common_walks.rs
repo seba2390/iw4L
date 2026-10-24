@@ -1424,6 +1424,14 @@ pub(super) fn walk_zombie_commons(
             .push("t5 menus: no localized code_post_gfx (fonts)".into()),
         Err(error) => commons.report.push(format!("t5 menus fonts: {error}")),
     }
+    // The localized `code_pre_gfx` holds the game's default key binds.
+    match asset_transport::discover::find_t5_localized_zone(zone_ff, None, "code_pre_gfx") {
+        Ok(Some(found)) => menu_zones.push((found.zone_name.clone(), found.path)),
+        Ok(None) => commons
+            .report
+            .push("t5 menus: no localized code_pre_gfx (key binds)".into()),
+        Err(error) => commons.report.push(format!("t5 menus key binds: {error}")),
+    }
     for (zone, path) in &menu_zones {
         match asset_game::load_t5_menu_catalog(path) {
             Ok(part) => {

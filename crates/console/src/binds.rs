@@ -177,6 +177,20 @@ impl PadButton {
     }
 }
 
+/// A config line without its `//` comment; a `//` inside quotes is text.
+fn strip_comment(line: &str) -> &str {
+    let mut quoted = false;
+    let bytes = line.as_bytes();
+    for (i, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'"' => quoted = !quoted,
+            b'/' if !quoted && bytes.get(i + 1) == Some(&b'/') => return &line[..i],
+            _ => {}
+        }
+    }
+    line
+}
+
 pub(crate) fn gameplay_binding(button: BindButton, command: u32, akimbo: bool) -> u32 {
     if !akimbo || !button.is_pad() {
         return command;
@@ -337,8 +351,8 @@ impl KeyBinds {
     fn apply_script_inner(&mut self, script: &str, echo_success: bool) -> Vec<String> {
         let mut output = Vec::new();
         for raw in script.split([';', '\n']) {
-            let line = raw.trim();
-            if line.is_empty() || line.starts_with("//") {
+            let line = strip_comment(raw).trim();
+            if line.is_empty() {
                 continue;
             }
             let Some(command) = crate::ConsoleCommand::parse(line) else {
