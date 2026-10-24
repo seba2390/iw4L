@@ -62,6 +62,8 @@ pub(crate) struct CueExecutionPolicy {
     pub master_fade_exempt: bool,
     /// The sound category whose menu volume the sound plays at.
     pub volume_category: Option<i32>,
+    /// What the sound sends to the game's reverb.
+    pub reverb: Option<asset_audio::ReverbSendPolicy>,
     pub priority: Option<asset_audio::VoicePriority>,
     pub spatial: Option<Result<CueSpatialPolicy, StartFailure>>,
     admission: AdmissionPolicy,
@@ -96,6 +98,7 @@ impl CueExecutionPolicy {
             snapshot_group: policy.snapshot_group.map(|group| (policy.namespace, group)),
             master_fade_exempt: policy.master_fade_exempt,
             volume_category: policy.volume_category,
+            reverb: policy.reverb.clone(),
             priority: policy.priority.clone(),
             spatial,
             admission: alias_admission(bound.revision(), bound.alias_index(), policy),

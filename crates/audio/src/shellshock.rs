@@ -188,8 +188,12 @@ pub(crate) fn update_shellshock_timed_sound(
     runtime: Res<crate::AudioRuntime>,
     epoch: Res<frame::ScopeEpoch<frame::MatchScope>>,
     mut state: ResMut<TimedShockSound>,
-    mut mix: ResMut<crate::snapshot_mix::SnapshotMix>,
+    (mut mix, mut reverb): (
+        ResMut<crate::snapshot_mix::SnapshotMix>,
+        ResMut<crate::reverb_mix::ReverbMix>,
+    ),
 ) {
+    use crate::reverb_mix::SHELLSHOCK_PRIORITY;
     let frame = runtime.audio_frame();
     let in_game = screen.is_some_and(|s| matches!(*s, AppScreen::InGame));
     let (true, Some(cg_clock), Some(presented), Some(local)) =
@@ -213,16 +217,19 @@ pub(crate) fn update_shellshock_timed_sound(
     let elapsed = cg_clock.time().wrapping_sub(ps.shellshock_time);
     let shock = presented.shellshock(local.0);
     let Some(shock) = shock.filter(|_| ps.shellshock_time != 0 && elapsed >= 0) else {
-        // The shock is over or cleared: the slot goes back to the default
-        // snapshot (the shock's reverb room is let go too).
+        // The shock is over or cleared: its reverb room goes at once and
+        // the slot goes back to the default snapshot.
+        reverb.deactivate(SHELLSHOCK_PRIORITY, 0);
         state.set_snapshot(&mut mix, "default");
         state.stop_voice(frame, 0);
         return;
     };
     // A shock without its own sound only lets the reverb room go.
     let Some(sound) = &shock.timed_sound else {
+        reverb.deactivate(SHELLSHOCK_PRIORITY, 0);
         return;
     };
+    let room = asset_transport::sab::snd_hash_name(&sound.room);
     let snapshot = if sound.snapshot.is_empty() {
         "default"
     } else {
@@ -234,11 +241,20 @@ pub(crate) fn update_shellshock_timed_sound(
         .wrapping_sub(elapsed)
         .wrapping_add(sound.fade_out_ms)
         .wrapping_add(ps.shellshock_duration);
+    // The room is set every frame: over what is left of the fade-in, then
+    // at once; it is let go over what is left of the fade-out.
     let active = if elapsed < sound.fade_in_ms || sound.fade_out_ms < left {
+        let fade = if elapsed < sound.fade_in_ms {
+            sound.fade_in_ms - elapsed
+        } else {
+            0
+        };
+        reverb.set(SHELLSHOCK_PRIORITY, room, sound.dry, sound.wet, fade);
         state.set_snapshot(&mut mix, snapshot);
         true
     } else {
         if left >= 0 && left < sound.fade_out_ms {
+            reverb.deactivate(SHELLSHOCK_PRIORITY, left);
             state.set_snapshot(&mut mix, "default");
         }
         false

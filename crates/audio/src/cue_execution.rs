@@ -362,6 +362,7 @@ impl CueWork {
                     near_knots: policy.near_knots.clone(),
                     priority: cue.policy.priority.clone(),
                     base_volume: volume.max(0.0),
+                    reverb: cue.policy.reverb.clone().filter(|_| intent.mix.is_some()),
                 };
                 let distance = origin
                     .iter()
@@ -388,9 +389,21 @@ impl CueWork {
                 let pan = LivePan::unity();
                 pan.set(parameters.gains[0], parameters.gains[1]);
                 media.pan = Some(pan);
+                media.reverb_pan = parameters
+                    .reverb_gains
+                    .map(|[left, right]| LivePan::new(left, right));
                 (Some(source), 1.0)
             }
-            _ => (None, volume),
+            _ => {
+                // An unplaced sound sends its alias's level, at its volume.
+                media.reverb_pan = cue
+                    .policy
+                    .reverb
+                    .as_ref()
+                    .filter(|_| intent.mix.is_some())
+                    .map(|reverb| LivePan::new(reverb.send, reverb.send));
+                (None, volume)
+            }
         };
         media.bus = self.request.namespace;
         let start = CueStart {

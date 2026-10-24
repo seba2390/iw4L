@@ -161,6 +161,40 @@ struct RenderState {
     cursors: [Cursor; PHYSICAL_VOICES],
     buses: crate::mix_bus::MixBuses,
     limiter: crate::mix_bus::MasterLimiter,
+    reverb: crate::radverb::Radverb,
+    /// The game's reverb parameters this block, and the bus it mixes into.
+    reverb_parameters: Option<(crate::radverb::ReverbParameters, asset_core::AssetNamespace)>,
+    /// The four-channel mix the voices send to the reverb this block.
+    reverb_input: [[f32; 4]; QUANTUM],
+    reverb_output: [[f32; 4]; QUANTUM],
+}
+
+/// The game's reverb as the control side sets it: its parameters and the
+/// bus its output joins (none while no game reverb runs), and the room's
+/// dry and wet levels.
+pub(crate) struct ReverbControl {
+    pub parameters:
+        std::sync::Mutex<Option<(crate::radverb::ReverbParameters, asset_core::AssetNamespace)>>,
+    pub dry: AtomicU32,
+    pub wet: AtomicU32,
+}
+
+impl Default for ReverbControl {
+    fn default() -> Self {
+        Self {
+            parameters: std::sync::Mutex::new(None),
+            dry: AtomicU32::new(1.0f32.to_bits()),
+            wet: AtomicU32::new(0.0f32.to_bits()),
+        }
+    }
+}
+
+/// Where a voice renders: the mix (at the room's dry level) and, while the
+/// game's reverb runs, the reverb's mix (at the room's wet level).
+struct VoiceOutputs<'a> {
+    mix: &'a mut [[f32; 2]; QUANTUM],
+    dry: f32,
+    reverb: Option<(&'a mut [[f32; 4]; QUANTUM], f32)>,
 }
 
 pub(crate) struct RenderShared {
@@ -179,6 +213,7 @@ pub(crate) struct RenderShared {
     pub device_underruns: AtomicU64,
     pub cancelled: AtomicBool,
     pub peak: AtomicU32,
+    pub reverb: ReverbControl,
 }
 
 // The bounded rendering lease exclusively owns RenderState. Slot payload access
@@ -206,6 +241,10 @@ impl RenderShared {
                 }; PHYSICAL_VOICES],
                 buses: Default::default(),
                 limiter: Default::default(),
+                reverb: Default::default(),
+                reverb_parameters: None,
+                reverb_input: [[0.0; 4]; QUANTUM],
+                reverb_output: [[0.0; 4]; QUANTUM],
             }),
             frame: AtomicU64::new(0),
             match_epoch: AtomicU64::new(0),
@@ -219,6 +258,7 @@ impl RenderShared {
             device_underruns: AtomicU64::new(0),
             cancelled: AtomicBool::new(false),
             peak: AtomicU32::new(0),
+            reverb: ReverbControl::default(),
         }
     }
 
@@ -246,6 +286,16 @@ impl RenderShared {
         let epoch = self.match_epoch.load(Ordering::Acquire);
         let cancelled = self.cancelled.load(Ordering::Acquire);
         let hold_one_shots = device == Some(false) && self.device_required.load(Ordering::Relaxed);
+        // A block keeps the last parameters while the control side writes.
+        if let Ok(parameters) = self.reverb.parameters.try_lock() {
+            state.reverb_parameters = *parameters;
+        }
+        let room_dry = f32::from_bits(self.reverb.dry.load(Ordering::Relaxed));
+        let room_wet = f32::from_bits(self.reverb.wet.load(Ordering::Relaxed));
+        let reverb_on = state.reverb_parameters.is_some();
+        if reverb_on {
+            state.reverb_input = [[0.0; 4]; QUANTUM];
+        }
         for (index, slot) in self.slots.iter().enumerate() {
             if slot.phase.load(Ordering::Acquire) != PUBLISHED {
                 continue;
@@ -260,7 +310,11 @@ impl RenderShared {
                     epoch,
                     cancelled,
                     hold_one_shots,
-                    state.buses.bus(assignment.media.bus),
+                    VoiceOutputs {
+                        mix: state.buses.bus(assignment.media.bus),
+                        dry: if reverb_on { room_dry } else { 1.0 },
+                        reverb: reverb_on.then_some((&mut state.reverb_input, room_wet)),
+                    },
                 );
                 match device {
                     Some(true) => {
@@ -294,6 +348,22 @@ impl RenderShared {
             };
             if ended {
                 slot.phase.store(RETIRED, Ordering::Release);
+            }
+        }
+        if let Some((parameters, namespace)) = state.reverb_parameters {
+            state
+                .reverb
+                .process(&parameters, &state.reverb_input, &mut state.reverb_output);
+            // A stereo mix takes the reverb's fourth channel on the left and
+            // its second on the right.
+            for (target, reverb) in state
+                .buses
+                .bus(namespace)
+                .iter_mut()
+                .zip(&state.reverb_output)
+            {
+                target[0] += reverb[3];
+                target[1] += reverb[1];
             }
         }
         state.buses.mix_into(output);
@@ -354,8 +424,13 @@ fn render_assignment(
     epoch: u64,
     cancelled: bool,
     hold_one_shots: bool,
-    output: &mut [[f32; 2]; QUANTUM],
+    outputs: VoiceOutputs<'_>,
 ) -> (bool, usize) {
+    let VoiceOutputs {
+        mix: output,
+        dry,
+        mut reverb,
+    } = outputs;
     let instance = &assignment.instance;
     if cancelled
         || instance.stopped.load(Ordering::Acquire)
@@ -433,9 +508,22 @@ fn render_assignment(
         let sample = assignment
             .media
             .interpolate(cursor.position, assignment.looping);
-        let gains = gains.sample(audio_frame);
-        target[0] += sample[0] * gain * gains[0];
-        target[1] += sample[1] * gain * gains[1];
+        let (gains, sends) = gains.sample(audio_frame);
+        target[0] += sample[0] * gain * gains[0] * dry;
+        target[1] += sample[1] * gain * gains[1] * dry;
+        // A stereo mix sends each side to two of the reverb's channels, at
+        // the square root of a half: left to the first and fourth, right to
+        // the second and third.
+        if let (Some(sends), Some((input, wet))) = (sends, reverb.as_mut()) {
+            let scale = gain * *wet * std::f32::consts::FRAC_1_SQRT_2;
+            let left = sample[0] * sends[0] * scale;
+            let right = sample[1] * sends[1] * scale;
+            let channels = &mut input[first + offset];
+            channels[0] += left;
+            channels[1] += right;
+            channels[2] += right;
+            channels[3] += left;
+        }
         cursor.position += step;
         rendered += 1;
     }
