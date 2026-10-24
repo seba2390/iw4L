@@ -973,7 +973,8 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
         s: &fastfile_t5::ZoneStream<'_>,
         geometry: fastfile_t5::XAnimPartsGeometry,
     ) -> fastfile_t5::Result<()> {
-        self.xanims.capture_xanim_t5(s, &self.strings_t5, geometry);
+        self.xanims
+            .capture_xanim_t5(geometry.read(s, &self.strings_t5));
         Ok(())
     }
 
@@ -1297,7 +1298,8 @@ impl fastfile_t5::AssetLinkSink for ZoneWalkSink {
         s: &fastfile_t5::ZoneStream<'_>,
         geometry: fastfile_t5::XAnimPartsGeometry,
     ) -> fastfile_t5::Result<()> {
-        self.xanims.capture_xanim_t5(s, &self.strings_t5, geometry);
+        self.xanims
+            .capture_xanim_t5(geometry.read(s, &self.strings_t5));
         Ok(())
     }
 
