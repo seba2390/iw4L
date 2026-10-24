@@ -231,7 +231,7 @@ pattern crates/asset_model/src/model_skel.rs asset_iw4:: 1
 pattern crates/asset_model/src/model_skel.rs dpvs_iw4:: 4
 pattern crates/asset_model/src/model_skel.rs fastfile_iw4:: 2
 pattern crates/asset_model/src/model_skel.rs fastfile_iw5:: 37
-pattern crates/asset_model/src/model_skel.rs fastfile_t5:: 35
+pattern crates/asset_model/src/model_skel.rs fastfile_t5:: 4
 pattern crates/asset_model/src/model_skel_t6.rs dpvs_iw4:: 1
 pattern crates/asset_model/src/model_skel_t6.rs fastfile_t6:: 3
 pattern crates/asset_model/src/packed_vertex.rs dpvs_iw4:: 1

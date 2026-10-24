@@ -809,16 +809,6 @@ fn copy_packed_vertex_iw4(
     Some(packed)
 }
 
-fn copy_packed_vertex_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    vertex: fastfile_t5::Ptr,
-) -> Option<[u8; sz::GFX_PACKED_VERTEX]> {
-    let bytes = stream.slice_at(vertex, 0, sz::GFX_PACKED_VERTEX).ok()?;
-    let mut packed = [0u8; sz::GFX_PACKED_VERTEX];
-    packed.copy_from_slice(bytes);
-    Some(packed)
-}
-
 fn copy_packed_vertex_iw5(
     stream: &fastfile_iw5::ZoneStream<'_>,
     vertex: fastfile_iw5::Ptr,
@@ -1009,169 +999,96 @@ fn decode_surface_skin(
     Some(skins)
 }
 
-pub fn capture_fpv_skel_t5(
+/// The zone's latest Black Ops model, read and built when its name is of
+/// `kind` (any name for `None`).
+pub(crate) fn capture_latest_skel_t5(
+    kind: Option<ModelKind>,
     stream: &fastfile_t5::ZoneStream<'_>,
     strings: &fastfile_t5::ScriptStrings,
-    geometry: fastfile_t5::XModelGeometry,
     materials: Option<&MaterialCatalog>,
 ) -> Option<ModelSkel> {
-    let name = geometry.name.and_then(|p| stream.cstr(p).ok())?.to_owned();
-    if model_kind(&name) != Some(ModelKind::Fpv) {
+    let geometry = stream.latest_xmodel()?;
+    let name = geometry.name_in(stream)?;
+    if kind.is_some() && model_kind(name) != kind {
         return None;
     }
-    capture_model_skel_t5(stream, strings, geometry, name, materials)
+    capture_xmodel_skel_t5(geometry.read(stream, strings)?, materials)
 }
 
-pub fn capture_body_skel_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    strings: &fastfile_t5::ScriptStrings,
-    geometry: fastfile_t5::XModelGeometry,
-    materials: Option<&MaterialCatalog>,
-) -> Option<ModelSkel> {
-    let name = geometry.name.and_then(|p| stream.cstr(p).ok())?.to_owned();
-    if model_kind(&name) != Some(ModelKind::Soldier) {
-        return None;
-    }
-    capture_model_skel_t5(stream, strings, geometry, name, materials)
-}
-
-pub fn capture_world_weapon_skel_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    strings: &fastfile_t5::ScriptStrings,
-    geometry: fastfile_t5::XModelGeometry,
-    materials: Option<&MaterialCatalog>,
-) -> Option<ModelSkel> {
-    let name = geometry.name.and_then(|p| stream.cstr(p).ok())?.to_owned();
-    if model_kind(&name) != Some(ModelKind::WorldWeapon) {
-        return None;
-    }
-    capture_model_skel_t5(stream, strings, geometry, name, materials)
-}
-
+/// A Black Ops model, read out of its zone, as a skeleton and mesh.
 pub fn capture_xmodel_skel_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    strings: &fastfile_t5::ScriptStrings,
-    geometry: fastfile_t5::XModelGeometry,
-    materials: &MaterialCatalog,
-) -> Option<ModelSkel> {
-    let name = geometry.name.and_then(|p| stream.cstr(p).ok())?.to_owned();
-    capture_model_skel_t5(stream, strings, geometry, name, Some(materials))
-}
-
-fn capture_model_skel_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    strings: &fastfile_t5::ScriptStrings,
-    geometry: fastfile_t5::XModelGeometry,
-    name: String,
+    read: fastfile_t5::XModelRead,
     materials: Option<&MaterialCatalog>,
 ) -> Option<ModelSkel> {
-    const XSURFACE: usize = 68;
-    const DOBJ_ANIM_MAT: usize = 32;
-    const GFX_PACKED_VERTEX: usize = 32;
-    const XRIGID_VERT_LIST: usize = 12;
-
-    let surfaces = geometry.surfaces?;
-    let bone_names = geometry.bone_names?;
-    let base_mat = geometry.base_mat?;
-
-    let mut bones = Vec::with_capacity(geometry.num_bones);
-    let mut bone_name_strs = Vec::with_capacity(geometry.num_bones);
+    let name = read.name;
+    let mut bones = Vec::with_capacity(read.num_bones);
     let mut tag_view = None;
     let mut tag_weapon = None;
-    for i in 0..geometry.num_bones {
-        let id = stream.u16_at(bone_names, i * 2).ok()?;
-        let bone_name = strings.get(stream, id).unwrap_or("").to_owned();
+    for (i, ((quat, trans), bone_name)) in read.base_mat.iter().zip(&read.bone_names).enumerate() {
         if bone_name == "tag_view" && tag_view.is_none() {
             tag_view = Some(i);
         }
         if bone_name == "tag_weapon" && tag_weapon.is_none() {
             tag_weapon = Some(i);
         }
-        bone_name_strs.push(bone_name);
-        let m = base_mat.at(i * DOBJ_ANIM_MAT);
         bones.push(BoneBind {
-            quat: [
-                stream.f32_at(m, 0).ok()?,
-                stream.f32_at(m, 4).ok()?,
-                stream.f32_at(m, 8).ok()?,
-                stream.f32_at(m, 12).ok()?,
-            ],
-            trans: [
-                stream.f32_at(m, 16).ok()?,
-                stream.f32_at(m, 20).ok()?,
-                stream.f32_at(m, 24).ok()?,
-            ],
+            quat: *quat,
+            trans: *trans,
         });
     }
+    let pose = read.pose.map(|pose| {
+        let base_mat: Vec<(Quat, Vec3)> = bones
+            .iter()
+            .map(|b| {
+                (
+                    Quat::from_xyzw(b.quat[0], b.quat[1], b.quat[2], b.quat[3]),
+                    Vec3::from_array(b.trans),
+                )
+            })
+            .collect();
+        ModelPoseSrc {
+            name: name.clone(),
+            num_bones: read.num_bones,
+            num_root_bones: read.num_root_bones,
+            scale: 1.0,
+            no_scale_part_bits: [0; 6],
+            bone_names: read.bone_names.clone(),
+            parent_list: pose.parent_list,
+            quats: pose.quats,
+            trans: pose.trans,
+            base_mat,
+            root_rest: None,
+        }
+    });
 
-    let num_child = geometry.num_bones.saturating_sub(geometry.num_root_bones);
-    let pose = capture_pose_src_t5(stream, &geometry, &bone_name_strs, &bones, num_child);
-
+    let surface_count = read.surfaces.len();
     let mut positions = Vec::new();
     let mut indices = Vec::new();
-    let mut surface_materials = Vec::with_capacity(geometry.surface_count);
-    let mut surface_vertex_ranges = Vec::with_capacity(geometry.surface_count);
-    let mut surface_index_ranges = Vec::with_capacity(geometry.surface_count);
+    let mut surface_materials = Vec::with_capacity(surface_count);
+    let mut surface_vertex_ranges = Vec::with_capacity(surface_count);
+    let mut surface_index_ranges = Vec::with_capacity(surface_count);
     let mut vert_skin = Vec::new();
     let mut rigid_verts = 0usize;
     let mut blend_verts = 0usize;
     let mut packed_vertices = Vec::new();
-    let mut surface_part_bits = Vec::with_capacity(geometry.surface_count);
-    let mut surface_deformed = Vec::with_capacity(geometry.surface_count);
-    let mut surface_vert_list_count = Vec::with_capacity(geometry.surface_count);
+    let mut surface_part_bits = Vec::with_capacity(surface_count);
+    let mut surface_deformed = Vec::with_capacity(surface_count);
+    let mut surface_vert_list_count = Vec::with_capacity(surface_count);
 
-    for surface_index in 0..geometry.surface_count {
-        let surface = surfaces.at(surface_index * XSURFACE);
-        let vert_list_count = stream.u8_at(surface, 1).ok()? as usize;
-
-        surface_deformed.push(Some(stream.u16_at(surface, 2).ok()? & 0x80 != 0));
-        surface_vert_list_count.push(Some(vert_list_count as u32));
-        let vertex_count = stream.u16_at(surface, 4).ok()? as usize;
-        let tri_count = stream.u16_at(surface, 6).ok()? as usize;
-        let vertices = match stream.ptr_at(surface, 32).ok()? {
-            fastfile_t5::ZonePtr::Offset(p) => stream.resolve_alias(p),
-            _ => return None,
-        };
-        let triangles = match stream.ptr_at(surface, 12).ok()? {
-            fastfile_t5::ZonePtr::Offset(p) => stream.resolve_alias(p),
-            _ => return None,
-        };
-        let mut part_bits = [0u32; 6];
-        for (i, word) in part_bits
-            .iter_mut()
-            .enumerate()
-            .take(fastfile_t5::size::XSURFACE_PART_BITS_WORDS)
-        {
-            *word = stream
-                .u32_at(surface, fastfile_t5::size::XSURFACE_PART_BITS_OFF + i * 4)
-                .ok()?;
-        }
+    for (surface_index, surface) in read.surfaces.iter().enumerate() {
+        let vertex_count = surface.vertices.len();
+        surface_deformed.push(Some(surface.deformed));
+        surface_vert_list_count.push(Some(surface.vert_list_count));
 
         let base = positions.len();
         let index_start = indices.len();
-        let surface_skins = decode_surface_skin_t5(
-            stream,
-            surface,
-            vertex_count,
-            vert_list_count,
-            geometry.num_bones,
-            XRIGID_VERT_LIST,
-        )?;
-
-        #[expect(
-            clippy::needless_range_loop,
-            reason = "the vertex index is the stream record the offsets come from"
-        )]
-        for vertex_index in 0..vertex_count {
-            let vertex = vertices.at(vertex_index * GFX_PACKED_VERTEX);
-            packed_vertices.push(copy_packed_vertex_t5(stream, vertex)?);
-            positions.push([
-                stream.f32_at(vertex, 0).ok()?,
-                stream.f32_at(vertex, 4).ok()?,
-                stream.f32_at(vertex, 8).ok()?,
-            ]);
-
-            let skin = surface_skins[vertex_index];
+        let surface_skins = decode_surface_skin_t5(&surface.skin, vertex_count, read.num_bones)?;
+        for (packed, skin) in surface.vertices.iter().zip(surface_skins) {
+            let f32_at = |at: usize| {
+                f32::from_le_bytes([packed[at], packed[at + 1], packed[at + 2], packed[at + 3]])
+            };
+            positions.push([f32_at(0), f32_at(4), f32_at(8)]);
+            packed_vertices.push(*packed);
             if skin.is_rigid() {
                 rigid_verts += 1;
             } else {
@@ -1179,8 +1096,7 @@ fn capture_model_skel_t5(
             }
             vert_skin.push(skin);
         }
-        for index_offset in 0..tri_count * 3 {
-            let index = stream.u16_at(triangles, index_offset * 2).ok()?;
+        for &index in &surface.indices {
             if usize::from(index) >= vertex_count {
                 return None;
             }
@@ -1188,8 +1104,8 @@ fn capture_model_skel_t5(
         }
         surface_vertex_ranges.push((base, vertex_count));
         surface_index_ranges.push((index_start, indices.len() - index_start));
-        surface_part_bits.push(part_bits);
-        surface_materials.push(geometry.material_handles.and_then(|handles| {
+        surface_part_bits.push(surface.part_bits);
+        surface_materials.push(read.material_handles.and_then(|handles| {
             materials?.material_index(Ptr {
                 block: handles.block,
                 offset: handles.offset + (surface_index * 4) as u32,
@@ -1197,15 +1113,56 @@ fn capture_model_skel_t5(
         }));
     }
 
-    let (bone_collision, coll_surfs) = capture_collision_t5(stream, geometry).or_else(|| {
+    let Some(collision) = read.collision else {
         diag::warn!(Zone, "T5 XModel {name}: malformed collision payload");
-        None
-    })?;
+        return None;
+    };
+    let bone_collision = collision
+        .bones
+        .into_iter()
+        .map(|bone| {
+            bone.map(|bone| BoneCollision {
+                midpoint: bone.midpoint,
+                half_size: bone.half_size,
+                radius_sq: bone.radius_sq,
+                part_classification: bone.part_classification,
+            })
+        })
+        .collect();
+    let coll_surfs = collision
+        .surfaces
+        .into_iter()
+        .map(|surf| xmodel_runtime::CollSurfCollision {
+            bone: surf.bone,
+            contents: surf.contents,
+            surf_flags: surf.surf_flags,
+            midpoint: surf.midpoint,
+            half_size: surf.half_size,
+            tris: surf
+                .tris
+                .into_iter()
+                .map(|tri| xmodel_runtime::CollTri {
+                    plane: tri.plane,
+                    svec: tri.svec,
+                    tvec: tri.tvec,
+                })
+                .collect(),
+        })
+        .collect();
+    let movement_brushes = read
+        .movement_brushes?
+        .into_iter()
+        .map(|brush| xmodel_runtime::ModelMovementBrush {
+            planes: brush.planes,
+            contents: brush.contents,
+            plane_surface_flags: brush.plane_surface_flags,
+        })
+        .collect();
     Some(ModelSkel {
         name,
         bones,
         bone_collision,
-        bone_names: bone_name_strs,
+        bone_names: read.bone_names,
         tag_view,
         tag_weapon,
         pose,
@@ -1221,269 +1178,28 @@ fn capture_model_skel_t5(
         rigid_verts,
         blend_verts,
         packed_vertices: packed_vertices.into(),
-        radius: geometry.radius,
+        radius: read.radius,
         bounds: None,
-        contents: Some(geometry.contents),
-        coll_lod: geometry.coll_lod,
+        contents: Some(read.contents),
+        coll_lod: read.coll_lod,
         coll_surfs,
-        movement_brushes: capture_movement_brushes_t5(stream, geometry)?,
+        movement_brushes,
 
         mount_tag: None,
         lod: Some(crate::ModelLodSelector::T5 {
-            num_lods: geometry.num_lods,
-            lod_dist: geometry.lod_dist,
+            num_lods: read.num_lods,
+            lod_dist: read.lod_dist,
         }),
         lod_smc: None,
         lod_part_bits: None,
-        lod_surf_span: geometry.lod_surf_span,
-    })
-}
-
-fn capture_movement_brushes_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    geometry: fastfile_t5::XModelGeometry,
-) -> Option<Vec<xmodel_runtime::ModelMovementBrush>> {
-    use fastfile_t5::{Ptr, ZonePtr, size};
-    let pointer = |p: Ptr, offset| match stream.ptr_at(p, offset).ok()? {
-        ZonePtr::Offset(p) => Some(stream.resolve_alias(p)),
-        _ => None,
-    };
-    if geometry.collision_map_count == 0 {
-        return Some(Vec::new());
-    }
-    let maps = geometry.collision_maps?;
-    if stream.ptr_at(maps, 0).ok()? == ZonePtr::Null {
-        return Some(Vec::new());
-    }
-    let list = pointer(maps, 0)?;
-    let count = stream.u32_at(list, 0).ok()? as usize;
-    if count == 0 {
-        return Some(Vec::new());
-    }
-    let geoms = pointer(list, 4)?;
-    let mut brushes = Vec::new();
-    for i in 0..count {
-        let geom = geoms.at(i * size::PHYS_GEOM_INFO);
-        if stream.ptr_at(geom, 0).ok()? == ZonePtr::Null {
-            continue;
-        }
-        let brush = pointer(geom, 0)?;
-        let mut planes = Vec::new();
-        let mut plane_surface_flags = Vec::new();
-        for side in 0..2 {
-            for axis in 0..3 {
-                let mut plane = [0.0; 4];
-                plane[axis] = if side == 0 { -1.0 } else { 1.0 };
-                plane[3] = stream.f32_at(brush, side * 16 + axis * 4).ok()? * plane[axis];
-                planes.push(plane);
-                plane_surface_flags.push(stream.u32_at(brush, 60 + (side * 3 + axis) * 4).ok()?);
-            }
-        }
-        let side_count = stream
-            .u32_at(brush, size::BRUSH_WRAPPER_NUMSIDES_OFF)
-            .ok()? as usize;
-        if side_count != 0 {
-            let sides = pointer(brush, size::BRUSH_WRAPPER_SIDES_OFF)?;
-            for j in 0..side_count {
-                let side = sides.at(j * size::CBRUSH_SIDE);
-                let plane = pointer(side, 0)?;
-                planes.push([
-                    stream.f32_at(plane, 0).ok()?,
-                    stream.f32_at(plane, 4).ok()?,
-                    stream.f32_at(plane, 8).ok()?,
-                    stream.f32_at(plane, 12).ok()?,
-                ]);
-                plane_surface_flags.push(stream.u32_at(side, 8).ok()?);
-            }
-        }
-        brushes.push(xmodel_runtime::ModelMovementBrush {
-            planes,
-            contents: stream.u32_at(brush, 12).ok()?,
-            plane_surface_flags,
-        });
-    }
-    Some(brushes)
-}
-
-#[allow(clippy::type_complexity)]
-fn capture_collision_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    geometry: fastfile_t5::XModelGeometry,
-) -> Option<(
-    Vec<Option<BoneCollision>>,
-    Vec<xmodel_runtime::CollSurfCollision>,
-)> {
-    use fastfile_t5::{Ptr, ZonePtr, size as t5sz};
-    let bounds = |row: Ptr, off| {
-        let mut midpoint = [0.0; 3];
-        let mut half_size = [0.0; 3];
-        for axis in 0..3 {
-            let min = stream.f32_at(row, off + axis * 4).ok()?;
-            let max = stream.f32_at(row, off + 12 + axis * 4).ok()?;
-            if !min.is_finite() || !max.is_finite() || min > max {
-                return None;
-            }
-            midpoint[axis] = (min + max) * 0.5;
-            half_size[axis] = (max - min) * 0.5;
-        }
-        Some((midpoint, half_size))
-    };
-    let mut bones = Vec::new();
-    if let Some(info) = geometry.bone_info {
-        let classes = geometry.part_classification?;
-        for bone in 0..geometry.num_bones {
-            let row = info.at(bone * t5sz::XBONE_INFO);
-
-            let radius_sq = stream.f32_at(row, 36).ok()?;
-            if radius_sq == 0.0 {
-                bones.push(None);
-                continue;
-            }
-            if !radius_sq.is_finite() || radius_sq < 0.0 {
-                return None;
-            }
-            let (midpoint, half_size) = bounds(row, 0)?;
-            bones.push(Some(BoneCollision {
-                midpoint,
-                half_size,
-                radius_sq,
-                part_classification: stream.u8_at(classes, bone).ok()?,
-            }));
-        }
-    }
-    let mut surfs = Vec::with_capacity(geometry.num_coll_surfs);
-    if geometry.num_coll_surfs != 0 {
-        let arr = geometry.coll_surfs?;
-        for i in 0..geometry.num_coll_surfs {
-            let row = arr.at(i * t5sz::XMODEL_COLL_SURF);
-            let (midpoint, half_size) = bounds(row, 8)?;
-            let bone = u16::try_from(stream.i32_at(row, 32).ok()?).ok()?;
-            if usize::from(bone) >= geometry.num_bones {
-                return None;
-            }
-            let num = usize::try_from(stream.i32_at(row, 4).ok()?).ok()?;
-            let mut tris = Vec::with_capacity(num);
-            if num != 0 {
-                let ZonePtr::Offset(arr) = stream.ptr_at(row, 0).ok()? else {
-                    return None;
-                };
-                let arr = stream.resolve_alias(arr);
-                for i in 0..num {
-                    let tri = arr.at(i * t5sz::XMODEL_COLL_TRI);
-                    let vec4 = |off| {
-                        let mut v = [0.0; 4];
-                        for (j, value) in v.iter_mut().enumerate() {
-                            *value = stream.f32_at(tri, off + j * 4).ok()?;
-                            if !value.is_finite() {
-                                return None;
-                            }
-                        }
-                        Some(v)
-                    };
-                    tris.push(xmodel_runtime::CollTri {
-                        plane: vec4(0)?,
-                        svec: vec4(16)?,
-                        tvec: vec4(32)?,
-                    });
-                }
-            }
-            surfs.push(xmodel_runtime::CollSurfCollision {
-                bone,
-                contents: stream.u32_at(row, 36).ok()?,
-                surf_flags: stream.u32_at(row, 40).ok()?,
-                midpoint,
-                half_size,
-                tris,
-            });
-        }
-    }
-    Some((bones, surfs))
-}
-
-fn capture_pose_src_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    geometry: &fastfile_t5::XModelGeometry,
-    bone_names: &[String],
-    bones: &[BoneBind],
-    num_child: usize,
-) -> Option<ModelPoseSrc> {
-    use fastfile_t5::size as t5sz;
-
-    let parent_list = if num_child == 0 {
-        Vec::new()
-    } else {
-        let arr = geometry.parent_list?;
-        (0..num_child)
-            .map(|i| stream.u8_at(arr, i).ok())
-            .collect::<Option<Vec<_>>>()?
-    };
-    let quats = if num_child == 0 {
-        Vec::new()
-    } else {
-        let arr = geometry.quats?;
-        (0..num_child)
-            .map(|i| {
-                let o = i * t5sz::XMODEL_QUAT;
-                Some([
-                    stream.i16_at(arr, o).ok()?,
-                    stream.i16_at(arr, o + 2).ok()?,
-                    stream.i16_at(arr, o + 4).ok()?,
-                    stream.i16_at(arr, o + 6).ok()?,
-                ])
-            })
-            .collect::<Option<Vec<_>>>()?
-    };
-    let trans = if num_child == 0 {
-        Vec::new()
-    } else {
-        let arr = geometry.trans?;
-        (0..num_child)
-            .map(|i| {
-                let o = i * t5sz::XMODEL_TRANS_STRIDE;
-                Some([
-                    stream.f32_at(arr, o).ok()?,
-                    stream.f32_at(arr, o + 4).ok()?,
-                    stream.f32_at(arr, o + 8).ok()?,
-                ])
-            })
-            .collect::<Option<Vec<_>>>()?
-    };
-    let base_mat: Vec<(Quat, Vec3)> = bones
-        .iter()
-        .map(|b| {
-            (
-                Quat::from_xyzw(b.quat[0], b.quat[1], b.quat[2], b.quat[3]),
-                Vec3::from_array(b.trans),
-            )
-        })
-        .collect();
-
-    Some(ModelPoseSrc {
-        name: geometry
-            .name
-            .and_then(|p| stream.cstr(p).ok())
-            .unwrap_or("")
-            .to_owned(),
-        num_bones: geometry.num_bones,
-        num_root_bones: geometry.num_root_bones,
-        scale: 1.0,
-        no_scale_part_bits: [0; 6],
-        bone_names: bone_names.to_vec(),
-        parent_list,
-        quats,
-        trans,
-        base_mat,
-        root_rest: None,
+        lod_surf_span: read.lod_surf_span,
     })
 }
 
 fn decode_surface_skin_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    surface: fastfile_t5::Ptr,
+    skin: &fastfile_t5::XSurfaceSkinRead,
     vertex_count: usize,
-    vert_list_count: usize,
     num_bones: usize,
-    rigid_stride: usize,
 ) -> Option<Vec<VertSkin>> {
     let mut skins = vec![VertSkin::default(); vertex_count];
     let bone_at = |raw: u16| -> Option<u8> {
@@ -1496,15 +1212,9 @@ fn decode_surface_skin_t5(
             .flatten()
     };
 
-    if vert_list_count > 0
-        && let Ok(fastfile_t5::ZonePtr::Offset(list_ptr)) = stream.ptr_at(surface, 40)
-    {
-        let list = stream.resolve_alias(list_ptr);
+    if !skin.rigid.is_empty() {
         let mut vertex = 0usize;
-        for i in 0..vert_list_count {
-            let entry = list.at(i * rigid_stride);
-            let bone_offset = stream.u16_at(entry, 0).ok()?;
-            let run = stream.u16_at(entry, 2).ok()? as usize;
+        for &(bone_offset, run) in &skin.rigid {
             let bone = bone_at(bone_offset)?;
             for _ in 0..run {
                 if vertex >= vertex_count {
@@ -1519,23 +1229,14 @@ fn decode_surface_skin_t5(
         }
     }
 
-    let vi = surface.at(16);
-    let counts = [
-        stream.i16_at(vi, 0).ok()?.max(0) as usize,
-        stream.i16_at(vi, 2).ok()?.max(0) as usize,
-        stream.i16_at(vi, 4).ok()?.max(0) as usize,
-        stream.i16_at(vi, 6).ok()?.max(0) as usize,
-    ];
-    let blend_ptr = match stream.ptr_at(vi, 8).ok()? {
-        fastfile_t5::ZonePtr::Offset(p) => stream.resolve_alias(p),
-        fastfile_t5::ZonePtr::Null if counts.iter().all(|&c| c == 0) => {
-            for skin in &mut skins {
-                *skin = VertSkin::rigid(0);
-            }
-            return Some(skins);
+    let blend = skin.blend.as_ref()?;
+    let Some(words) = &blend.words else {
+        for skin in &mut skins {
+            *skin = VertSkin::rigid(0);
         }
-        _ => return None,
+        return Some(skins);
     };
+    let word = |at: usize| words.get(at).copied();
 
     let mut cursor = 0usize;
     let mut vertex = 0usize;
@@ -1543,20 +1244,20 @@ fn decode_surface_skin_t5(
         *cursor = cursor.checked_add(n)?;
         Some(())
     };
-    for (bucket, count) in counts.iter().enumerate() {
+    for (bucket, count) in blend.counts.iter().enumerate() {
         let influences = bucket + 1;
         for _ in 0..*count {
             let words = 1 + (influences - 1) * 2;
             let start = cursor;
             take(&mut cursor, words)?;
             let mut skin = VertSkin::default();
-            let b0 = stream.u16_at(blend_ptr, start * 2).ok()?;
+            let b0 = word(start)?;
             skin.bones[0] = bone_at(b0)?;
             let mut remaining = 1.0f32;
             for extra in 1..influences {
                 let off = start + 1 + (extra - 1) * 2;
-                let b = stream.u16_at(blend_ptr, off * 2).ok()?;
-                let raw = stream.u16_at(blend_ptr, off * 2 + 2).ok()?;
+                let b = word(off)?;
+                let raw = word(off + 1)?;
                 let w = dpvs_iw4::skin_blend_weight(raw);
                 skin.bones[extra] = bone_at(b)?;
                 skin.set_weight(extra, w);
