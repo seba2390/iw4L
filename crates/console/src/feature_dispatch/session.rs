@@ -51,7 +51,16 @@ pub(crate) fn route_session_commands(
                     Err(error) => echo.write(format!("round_restart: {error}")),
                 }
             }
-            "map_restart" => {
+            "map_restart" | "fast_restart" => {
+                // `fast_restart`: the level comes back as the save it made
+                // at its start, when its game keeps one (Black Ops' zombies,
+                // the pause menu's restart).
+                if cmd.name == "fast_restart"
+                    && let Some(authority) = authority.as_deref_mut()
+                    && authority.0.request_save_load()
+                {
+                    echo.write("fast_restart: the level's save loads with it");
+                }
                 let zone = manifest.as_ref().and_then(|manifest| match &manifest.map {
                     ::session::ManifestFact::Known(map)
                         if (*has_world.get() == frame::MatchScope::Live) =>
@@ -63,19 +72,19 @@ pub(crate) fn route_session_commands(
                 match (cmd.args.is_empty(), zone) {
                     (false, _) => {
                         dispatch.release();
-                        echo.write("usage: map_restart");
+                        echo.write(format!("usage: {}", cmd.name));
                     }
                     (true, None) => {
                         dispatch.release();
-                        echo.write("map_restart: no map to restart");
+                        echo.write(format!("{}: no map to restart", cmd.name));
                     }
                     (true, Some(zone)) => match transition.request_zone(zone.clone()) {
                         Ok(id) => {
-                            echo.write(format!("map_restart: requested `{zone}` (swap #{id})"))
+                            echo.write(format!("{}: requested `{zone}` (swap #{id})", cmd.name))
                         }
                         Err(error) => {
                             dispatch.release();
-                            echo.write(format!("map_restart: {error}"));
+                            echo.write(format!("{}: {error}", cmd.name));
                         }
                     },
                 }

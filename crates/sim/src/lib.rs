@@ -40,6 +40,7 @@ pub use persistent_data::{
 pub use persistent_defaults::PlayerDataDefaults;
 mod presence;
 mod remote_missile;
+mod save_game;
 pub mod script;
 mod weapon_lock;
 pub use weapon_lock::WeaponLock;

@@ -636,7 +636,10 @@ pub(crate) fn state_entity(world: &World) -> Entity {
     world.resource::<SimStateEntity>().0
 }
 
-pub(crate) fn collect_players(world: &World) -> Vec<(ClientId, PlayerState)> {
+/// Each player's row, by client.
+pub(crate) type PlayerRows = Vec<(ClientId, PlayerState)>;
+
+pub(crate) fn collect_players(world: &World) -> PlayerRows {
     let mut rows = Vec::new();
     for id in player_ids_sorted(world) {
         if let Some(state) = player_ref(world, id) {

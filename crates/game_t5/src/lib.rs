@@ -232,10 +232,13 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         }),
         // The client's `q 0` command.
         fade_out_sound: true,
+        // `loadgame_continue`: a zombies game loads its save in memory, or
+        // stops.
+        missing_save: Some("Unable to find save."),
         unrun: Some(unknown!(
             "t5.match.level_failed",
-            "a failed level loads afresh instead of restoring its level-start save",
-            "save games in the runtime (Black Ops saves the level at its start, `_autosave::start_level_save`, and `loadgame_continue` restores it)"
+            "a failed level loads its zones again before its save takes its place; Black Ops restarts in place",
+            "a restart that keeps the level's zones loaded"
         )),
     }),
     bullet_mask: None,

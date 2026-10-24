@@ -256,6 +256,10 @@ pub fn register_feature_commands(registry: &mut crate::ConsoleRegistry, maps: &[
             "map_restart — a new match on the current map, on what the last one prepared",
         ),
         (
+            "fast_restart",
+            "fast_restart — restart the current map; a game that saved the level at its start (Black Ops' zombies) loads that save",
+        ),
+        (
             "disconnect",
             "disconnect — leave the session: tear the world down, leave the room, back to the main menu",
         ),

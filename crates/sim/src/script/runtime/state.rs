@@ -227,6 +227,22 @@ impl RoundScript {
         }
     }
 
+    /// Puts a saved script state in place over this freshly installed one,
+    /// keeping the installed program, its natives and tables.
+    pub(crate) fn restore_saved(&mut self, saved: RoundScript) {
+        let program = self.program.take();
+        let natives = std::mem::take(&mut self.natives);
+        let tables = Arc::clone(&self.tables);
+        let restart = self.restart.take();
+        let symbol_cache = std::mem::take(&mut self.symbol_cache);
+        *self = saved;
+        self.program = program;
+        self.natives = natives;
+        self.tables = tables;
+        self.restart = restart;
+        self.symbol_cache = symbol_cache;
+    }
+
     pub(crate) fn program_fingerprint(&self) -> Option<[u8; 32]> {
         self.program.as_ref().map(|program| program.fingerprint())
     }

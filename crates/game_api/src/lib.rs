@@ -314,6 +314,9 @@ pub struct FailedLevelRules {
     pub slow_motion: Option<FailedSlowMotion>,
     /// Every client fades its whole mix out (and stops its streams).
     pub fade_out_sound: bool,
+    /// The reload loads the save the level made (`loadgame_continue`);
+    /// without one the game stops with this error.
+    pub missing_save: Option<&'static str>,
     /// What failing does that is not run.
     pub unrun: Option<&'static Unknown>,
 }

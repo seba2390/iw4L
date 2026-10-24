@@ -88,6 +88,7 @@ pub(crate) fn schedule() -> Schedule {
                 crate::script::sync_engine_events,
                 crate::script::host::client_scripts::advance,
                 finalize_system,
+                crate::save_game::write_requested,
                 crate::script::host::natives::iw4::deliver_local_presentation_dvars,
                 publish_snapshot_system,
             )
@@ -885,14 +886,27 @@ fn publish_snapshot_system(ecs: &mut World) {
         kicks: Vec::new(),
     };
     let script_seats = crate::script::script_seats(ecs);
+    let missing_save = crate::frame::FrameWorld::from_world(ecs)
+        .bootstrap_ref()
+        .mode
+        .and_then(|mode| mode.level_failed)
+        .and_then(|failed| failed.missing_save);
     let mut runtime = ecs.resource_mut::<crate::script::RoundScript>();
-    let script_exit_level = std::mem::take(&mut runtime.exit_level);
+    let mut script_exit_level = std::mem::take(&mut runtime.exit_level);
     // A failed level loads again once the match clock is past its delay.
-    let level_reload_due = runtime
+    let mut level_reload_due = runtime
         .reload_after_ms
         .is_some_and(|after| i64::from(crate::level_time_ms(tick)) > after);
     if level_reload_due {
         runtime.reload_after_ms = None;
+        // With its save, or not at all.
+        if let Some(error) = missing_save
+            && !crate::save_game::request_load()
+        {
+            diag::error!(Sim, "{error}");
+            level_reload_due = false;
+            script_exit_level = true;
+        }
     }
     let level_change = match &runtime.change_level {
         Some((_, at)) if i64::from(crate::level_time_ms(tick)) >= *at => {

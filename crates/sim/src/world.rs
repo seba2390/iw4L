@@ -256,6 +256,38 @@ pub struct SimState {
     dropped_paths: Option<Arc<crate::script::ActorPaths>>,
 }
 
+impl SimState {
+    /// The match as a save keeps it: all of it but the level's content,
+    /// which the level that restores the save has loaded again.
+    pub(crate) fn save_copy(&self) -> SimState {
+        let mut copy = self.clone();
+        copy.content = SimContentBuilder::bootstrap().finish();
+        copy.model_library = Arc::default();
+        copy.dropped_paths = None;
+        copy
+    }
+
+    /// Puts a saved match in place over this freshly loaded level, keeping
+    /// the level's content.
+    pub(crate) fn restore_saved(&mut self, saved: SimState) {
+        let content = Arc::clone(&self.content);
+        let model_library = Arc::clone(&self.model_library);
+        let bootstrap = self.bootstrap.clone();
+        let content_digest = self.content_digest;
+        let content_components = self.content_components;
+        let publish_snapshot = self.publish_snapshot;
+        let dropped_paths = self.dropped_paths.take();
+        *self = saved;
+        self.content = content;
+        self.model_library = model_library;
+        self.bootstrap = bootstrap;
+        self.content_digest = content_digest;
+        self.content_components = content_components;
+        self.publish_snapshot = publish_snapshot;
+        self.dropped_paths = dropped_paths;
+    }
+}
+
 impl Default for SimState {
     fn default() -> Self {
         let mut world = Self {
