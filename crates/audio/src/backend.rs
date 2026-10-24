@@ -127,6 +127,7 @@ pub(crate) fn publish_audio_context(
                     epoch: epoch.0,
                     gain: mix.gain.clone(),
                     master: mix.master.gain.clone(),
+                    categories: mix.categories.clone(),
                     channels: channels.bindings(),
                     snapshot_groups: snapshots.bindings(),
                     contexts: snapshots.contexts(),

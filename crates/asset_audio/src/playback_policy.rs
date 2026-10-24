@@ -191,6 +191,9 @@ pub struct AliasPlaybackPolicy {
     /// The game's whole-mix fade leaves the sound alone: Black Ops spares a
     /// one-shot whose group is in sound category 3.
     pub master_fade_exempt: bool,
+    /// The sound category of the alias's mixer group, whose menu volume it
+    /// plays at, for a game that reads one.
+    pub volume_category: Option<i32>,
     pub loaded_binding_origin: crate::LoadedBindingOrigin,
 }
 

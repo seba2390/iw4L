@@ -40,7 +40,9 @@ pub use session::{
     ReadinessState, RuntimeRole, TeardownReason, UiCamera, UiDraw, UiOverlayInput, UiPointerFree,
     ViewSubject, WorldGeneration, WorldProducts, WorldReadiness, WorldStamp,
 };
-pub use settings::{DisplayResolution, GameSettings, OtherGame};
+pub use settings::{
+    DisplayGamma, DisplayResolution, GameSettings, OtherGame, SoundCategoryVolumes,
+};
 pub use ui::{
     AssetFamilies, FrontendContentLoading, HostMatchRules, MatchPause, NativeGameMenu,
     UiBindRequest, UiBindingCapture, UiExecCommand, UiMenuDvars, UiMenuKey, UiMenuRequest,

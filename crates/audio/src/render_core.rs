@@ -154,7 +154,7 @@ impl Slot {
 struct Cursor {
     voice: RenderVoiceId,
     position: f64,
-    gains: [crate::media::GainEnvelope; 5],
+    gains: [crate::media::GainEnvelope; crate::media::GAIN_STAGES],
 }
 
 struct RenderState {
@@ -202,7 +202,7 @@ impl RenderShared {
                 cursors: [Cursor {
                     voice: RenderVoiceId(0),
                     position: 0.0,
-                    gains: [crate::media::GainEnvelope::default(); 5],
+                    gains: [crate::media::GainEnvelope::default(); crate::media::GAIN_STAGES],
                 }; PHYSICAL_VOICES],
                 buses: Default::default(),
                 limiter: Default::default(),
@@ -376,7 +376,7 @@ fn render_assignment(
     if cursor.voice != assignment.voice {
         cursor.voice = assignment.voice;
         cursor.position = assignment.start_cursor;
-        cursor.gains = [crate::media::GainEnvelope::default(); 5];
+        cursor.gains = [crate::media::GainEnvelope::default(); crate::media::GAIN_STAGES];
         if assignment.looping && !instance.paused.load(Ordering::Relaxed) {
             cursor.position += frame.saturating_sub(assignment.start_frame) as f64 * step;
         }

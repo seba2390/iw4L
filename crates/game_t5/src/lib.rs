@@ -426,8 +426,10 @@ impl game_api::GameMenus for T5 {
 /// The client dvars Black Ops' options menus show, with their registered
 /// defaults. `sensitivity` scales the mouse by `m_yaw` / `m_pitch` (0.022)
 /// as the runtime's does; `cg_fov_default` is the player's field of view.
-/// `r_gamma` sets a device gamma ramp and the other sound dvars set Black
-/// Ops' own volume groups, which the runtime has not (docs/fidelity/t5.md).
+/// `r_gamma` sets the display's gamma ramp; a sound plays at the square of
+/// its mixer group category's volume: `snd_menu_sfx` for categories 0 and
+/// 3, `snd_menu_music` for 1, `snd_menu_voice` for 2. `snd_menu_cinematic`
+/// is the cinematics' (docs/fidelity/t5.md).
 const MENU_DVARS: [game_api::MenuDvar; 14] = {
     use game_api::{MenuDvar, MenuSetting};
     const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
@@ -453,11 +455,27 @@ const MENU_DVARS: [game_api::MenuDvar; 14] = {
             default: "1",
             setting: Some(MenuSetting::MasterVolume),
         },
-        shown("snd_menu_music", "1"),
-        shown("snd_menu_sfx", "1"),
-        shown("snd_menu_voice", "1"),
+        MenuDvar {
+            name: "snd_menu_music",
+            default: "1",
+            setting: Some(MenuSetting::CategoryVolume(&[1])),
+        },
+        MenuDvar {
+            name: "snd_menu_sfx",
+            default: "1",
+            setting: Some(MenuSetting::CategoryVolume(&[0, 3])),
+        },
+        MenuDvar {
+            name: "snd_menu_voice",
+            default: "1",
+            setting: Some(MenuSetting::CategoryVolume(&[2])),
+        },
         shown("snd_menu_cinematic", "1"),
-        shown("r_gamma", "0.9"),
+        MenuDvar {
+            name: "r_gamma",
+            default: "0.9",
+            setting: Some(MenuSetting::DisplayGamma),
+        },
         shown("r_texFilterAnisoMin", "1"),
         shown("cl_freelook", "1"),
         // The front end's main menu opens its lockout first, and its
