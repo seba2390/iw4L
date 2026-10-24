@@ -8,6 +8,7 @@ pub mod fog;
 pub mod hud;
 pub mod movement;
 pub mod post;
+pub mod shake;
 pub mod top_down;
 pub mod turret;
 pub mod ui;
@@ -393,6 +394,8 @@ pub struct ModeRules {
     /// The game's camera from above the players, which its client dvars
     /// turn on; `None` keeps every client in its player's eye.
     pub top_down: Option<top_down::TopDownRules>,
+    /// The game's own camera shake from earthquakes; `None` runs IW4L's.
+    pub camera_shake: Option<shake::ShakeRules>,
     /// How a client's viewmodel plays the game's own weapon animation
     /// numbers; `None` reads them as Modern Warfare 2's.
     pub viewmodel: Option<ViewmodelRules>,

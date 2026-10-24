@@ -661,6 +661,36 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     register_platform(registry);
     register_refused(registry);
     register_shellshock(registry);
+    register_earthquake(registry);
+}
+
+/// `earthquake(scale, duration, origin, radius, [player])`: every client
+/// receives it; a scale, msec or radius not above 0 is an error.
+fn register_earthquake(registry: &mut NativeRegistry) {
+    registry.register(Function, "earthquake", |world, _, args| {
+        let scale = float(args, 0)?;
+        let duration_ms = earthquake_ms(float(args, 1)?);
+        let origin = vector(args, 2)?;
+        let radius = float(args, 3)?;
+        if scale <= 0.0 {
+            return Err("Scale must be greater than 0".into());
+        }
+        if duration_ms < 1 {
+            return Err("duration must be greater than 0".into());
+        }
+        if radius <= 0.0 {
+            return Err("Radius must be greater than 0".into());
+        }
+        if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE sv earthquake scale={scale} ms={duration_ms} origin={origin:?} r={radius}"); }
+        super::scene_effects::shake_camera(world, scale, duration_ms, origin, radius);
+        Ok(Value::Undefined)
+    });
+}
+
+/// An earthquake's seconds in msec: times 1000 as a float, to the nearest
+/// (ties to even).
+pub(super) fn earthquake_ms(seconds: f32) -> i32 {
+    (seconds * 1000.0).round_ties_even() as i32
 }
 
 /// Black Ops' shellshocks: the shock file is read at precache, a name

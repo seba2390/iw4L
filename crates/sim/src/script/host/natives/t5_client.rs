@@ -52,6 +52,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(play(world, alias, Some(origin), volume))
     });
     register_sound_ids(registry);
+    // `player earthQuake(scale, duration, origin, radius)` shakes the local
+    // client's view; nothing is checked.
+    registry.register(Method, "earthquake", |world, _, args| {
+        let quake = crate::ScriptEarthquake {
+            id: 0,
+            scale: float(args, 0)?,
+            duration_ms: super::t5::earthquake_ms(float(args, 1)?),
+            origin: vector(args, 2)?,
+            radius: float(args, 3)?,
+            start_ms: 0,
+        };
+        if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE csc earthquake {quake:?}"); }
+        world.resource_mut::<ClientOutput>().earthquakes.push(quake);
+        Ok(Value::Undefined)
+    });
     // Every local client is active; there is only client 0.
     registry.register(Function, "getlocalplayers", |world, _, _| {
         let players = locals(world).into_iter().map(Value::Object).collect();
@@ -534,6 +549,7 @@ fn register_effects(registry: &mut NativeRegistry) {
         let now = now_ms(world);
         let id = effect_id(args, 1)?;
         let origin = vector(args, 2)?;
+        if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE csc playfx id={id} origin={origin:?} t={now}"); }
         let (axis, begin) = match args.len() {
             3 => (math_iw4::angles_to_axis(DEFAULT_EFFECT_ANGLES), now),
             4 => {
@@ -1961,4 +1977,19 @@ fn register_ui3d(registry: &mut NativeRegistry) {
             .get_or_insert_default()[window] = place;
         Ok(Value::Undefined)
     });
+}
+
+/// The earthquakes the client's scripts started this frame reach the local
+/// client's view.
+pub(crate) fn deliver_earthquakes(client: &mut World, server: &mut World) {
+    let quakes = std::mem::take(&mut client.resource_mut::<ClientOutput>().earthquakes);
+    for quake in quakes {
+        super::scene_effects::shake_camera(
+            server,
+            quake.scale,
+            quake.duration_ms,
+            quake.origin,
+            quake.radius,
+        );
+    }
 }

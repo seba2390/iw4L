@@ -510,6 +510,8 @@ pub(crate) struct ClientOutput {
     pub(crate) water_fog: Option<crate::ScriptFogParams>,
     /// Dvars `setClientDvar` set this frame, for the local client.
     pub(crate) client_dvars: Vec<(String, String)>,
+    /// Earthquakes started this frame (`earthQuake`), for the local client.
+    pub(crate) earthquakes: Vec<crate::ScriptEarthquake>,
     /// The extra camera (`isExtraCam`): its entity and field of view, while
     /// one is on.
     pub(crate) extra_camera: Option<(u64, f32)>,
@@ -965,6 +967,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                         .water_fog = Some(water_fog);
                 }
             }
+            super::host::natives::t5_client::deliver_earthquakes(&mut client.world, server);
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let mut frame = crate::frame::FrameWorld::from_world(server);
