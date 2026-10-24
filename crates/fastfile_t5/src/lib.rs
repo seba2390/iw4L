@@ -8,6 +8,7 @@ mod content;
 mod envelope;
 pub mod light_grid;
 mod load;
+mod memory;
 pub mod size;
 pub mod state_bits;
 pub mod vertex_decl;
@@ -23,12 +24,13 @@ pub use content::{
 };
 pub use envelope::{
     FILE_PREAMBLE_LEN, FileHeader, FileHeaderError, MAGIC_SIGNED, MAGIC_UNSIGNED, Signing,
-    ZONE_VERSION_PC, parse_file_header,
+    ZONE_VERSION_PC, parse_file_header, split_file,
 };
 pub use load::{
     AssetLinkSink, LinkForward, NestedShaderKind, SndRows, forward_link, load_asset_at,
     load_asset_at_observed, load_asset_body,
 };
+pub use memory::ZoneMemory;
 pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,
     occupancy_test,
