@@ -512,6 +512,9 @@ pub(crate) struct ClientOutput {
     pub(crate) client_dvars: Vec<(String, String)>,
     /// Earthquakes started this frame (`earthQuake`), for the local client.
     pub(crate) earthquakes: Vec<crate::ScriptEarthquake>,
+    /// The local client takes the alternate aim parameters
+    /// (`useAlternateAimParams`).
+    pub(crate) alternate_aim: bool,
     /// The extra camera (`isExtraCam`): its entity and field of view, while
     /// one is on.
     pub(crate) extra_camera: Option<(u64, f32)>,
@@ -970,6 +973,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             super::host::natives::t5_client::deliver_earthquakes(&mut client.world, server);
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
+            let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
             let mut frame = crate::frame::FrameWorld::from_world(server);
             if frame.client_meta(crate::ClientId(0)).is_some() {
                 let screen = &mut frame
@@ -978,6 +982,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     .client_screen;
                 screen.extra_camera = extra_camera;
                 screen.ui3d_windows = ui3d_windows;
+                screen.alternate_aim = alternate_aim;
             }
             // Its screen overlays past their time stop and fade, and fades
             // past their time end.

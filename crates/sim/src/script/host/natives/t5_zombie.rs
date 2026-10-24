@@ -288,6 +288,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
+    registry.register(Method, "useweaponhidetags", |world, receiver, args| {
+        super::t5_client::use_weapon_hide_tags(world, receiver, args, |world, name| {
+            super::t5_client::weapon_model(world, name).map(|(_, tags)| tags)
+        })
+    });
     registry.register(Method, "getthreatbiasgroup", |_, _, _| {
         Ok(Value::string(""))
     });
@@ -296,7 +301,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "setteamforentity",
         "playerknockback",
         "enablehealthshield",
-        "useweaponhidetags",
         // A perk machine shaking as the power comes on.
         "vibrate",
     ] {

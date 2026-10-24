@@ -129,6 +129,7 @@ fn owner_hint(owner_draw: i32, view: &OwnerHintView<'_>) -> OwnerHint {
     match owner_draw {
         CG_HOLD_BREATH | CG_HOLD_BREATH_ZOOM => {
             if !dvar("cg_drawBreathHint", 1.0)
+                || view.alternate_aim
                 || ps.weap_flags & movement_t5::state::weap_flags::HOLD_BREATH != 0
                 || ps.e_flags & EF_NO_BREATH_HINT != 0
             {

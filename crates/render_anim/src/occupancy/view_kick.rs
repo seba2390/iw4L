@@ -438,6 +438,10 @@ pub fn sync_camera_from_presented(
             hold_breath_scale: ps.hold_breath_scale,
             weap_idle_time: kick.weap_idle_time,
             view_last_idle_factor: kick.view_last_idle_factor,
+            no_camera_idle: presented
+                .snapshot()
+                .and_then(|snapshot| snapshot.meta.for_client(local.0))
+                .is_some_and(|meta| meta.view_effects.client_screen.alternate_aim),
         }),
         _ => view_damage_angles(ViewAngleBobInputs {
             org,

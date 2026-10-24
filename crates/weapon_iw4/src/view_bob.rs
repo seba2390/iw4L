@@ -349,6 +349,8 @@ pub struct ViewAngleBobInputs {
     pub weap_idle_time: i32,
 
     pub view_last_idle_factor: f32,
+    /// The scope's idle sway is off (Black Ops' alternate aim parameters).
+    pub no_camera_idle: bool,
 }
 
 #[inline]
@@ -528,7 +530,9 @@ pub fn view_angle_bob(inputs: ViewAngleBobInputs) -> ViewAngleBob {
         ..ViewAngleBob::default()
     };
     view_damage_kick(&mut angles, inputs);
-    view_camera_idle(&mut angles, inputs);
+    if !inputs.no_camera_idle {
+        view_camera_idle(&mut angles, inputs);
+    }
     view_overlay_bob_angles(&mut angles, inputs);
     view_ads_bob_angles(&mut angles, inputs);
     angles
