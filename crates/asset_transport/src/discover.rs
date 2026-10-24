@@ -618,28 +618,39 @@ pub fn find_common_mp_for_zone(zone_ff: &Path) -> Result<ZoneFile, String> {
     find_named_zone_for_tree(zone_ff, common)
 }
 
-pub fn find_runtime_zone(root: &GamesRoot, zone_ff: &Path, zone: &str) -> Result<ZoneFile, String> {
-    match zone_game_for_path(zone_ff) {
-        Some(crate::ZoneGame::Iw4) | Some(crate::ZoneGame::T6) | None => {
-            find_zone_for_tree(zone_ff, zone)
-        }
+/// Whether the runtime's zones for this level come from the level's own tree.
+fn runtime_zones_in_tree(zone_ff: &Path) -> bool {
+    matches!(
+        zone_game_for_path(zone_ff),
+        Some(crate::ZoneGame::Iw4) | Some(crate::ZoneGame::T6) | None
+    )
+}
 
-        Some(_) => {
-            let found = find_zone_file_under(&root.0, zone)?;
-            match peek_zone_version(&found.path) {
-                Some(IW4_ZONE_VERSION) => Ok(found),
-                Some(version) => Err(format!(
-                    "runtime profile is IW4 FFA; {zone} at {} is version {version:#x} \
-                     (want IW4 {IW4_ZONE_VERSION:#x})",
-                    found.path.display()
-                )),
-                None => Err(format!(
-                    "runtime profile is IW4 FFA; {zone} at {} is not a readable IWff envelope",
-                    found.path.display()
-                )),
-            }
-        }
+pub fn find_runtime_zone(root: &GamesRoot, zone_ff: &Path, zone: &str) -> Result<ZoneFile, String> {
+    if runtime_zones_in_tree(zone_ff) {
+        return find_zone_for_tree(zone_ff, zone);
     }
+    let found = find_zone_file_under(&root.0, zone)?;
+    match peek_zone_version(&found.path) {
+        Some(IW4_ZONE_VERSION) => Ok(found),
+        Some(version) => Err(format!(
+            "runtime profile is IW4 FFA; {zone} at {} is version {version:#x} \
+             (want IW4 {IW4_ZONE_VERSION:#x})",
+            found.path.display()
+        )),
+        None => Err(format!(
+            "runtime profile is IW4 FFA; {zone} at {} is not a readable IWff envelope",
+            found.path.display()
+        )),
+    }
+}
+
+/// Whether a level of this zone's game loads without the runtime's own
+/// `common_mp`: Modern Warfare 2's levels and Black Ops 2's (which take their
+/// own common zone) need theirs; the other games' levels draw on their own
+/// commons, and the runtime's only adds to them when it is installed.
+pub fn runtime_common_mp_optional(zone_ff: &Path) -> bool {
+    !runtime_zones_in_tree(zone_ff)
 }
 
 pub fn find_runtime_common_mp(root: &GamesRoot, zone_ff: &Path) -> Result<ZoneFile, String> {
