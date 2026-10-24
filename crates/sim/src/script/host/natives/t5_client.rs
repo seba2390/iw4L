@@ -2097,6 +2097,14 @@ fn register_profile(registry: &mut NativeRegistry) {
     registry.register(Method, "clearalternateaimparams", |world, receiver, _| {
         alternate_aim(world, receiver, false)
     });
+    // `UpdateGamerProfile(localClientNum)`: Black Ops copies the profile's
+    // dvars into the local client's gamer profile and writes it; no gamer
+    // profile is kept here, so after the local client check there is
+    // nothing to write.
+    registry.register(Function, "updategamerprofile", |_, _, args| {
+        local_index(args)?;
+        Ok(Value::Undefined)
+    });
     // `SetCollectible(index)`: marks the collectible at that 1-based index
     // in the profile's `bg_collectibles`; an index past the string's end
     // marks nothing.

@@ -6,7 +6,7 @@
 | Game | Progress | Milestones | Steps | Builtins |
 |---|---|---|---|---|
 | Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | 0 / 13 | Rust: 460 / 460 (100%) |
-| Black Ops — Zombies | `█████████████████░░░` 85% | 18 / 21 | 51 / 66 | Kino der Toten: 490 / 610 (80%)<br>Five: 489 / 609 (80%) |
+| Black Ops — Zombies | `█████████████████░░░` 85% | 18 / 21 | 52 / 66 | Kino der Toten: 490 / 610 (80%)<br>Five: 489 / 609 (80%) |
 | Black Ops II — Zombies | `██████████████████░░` 90% | 19 / 21 | 72 / 77 | Nuketown: 692 / 692 (100%)<br>TranZit: 741 / 741 (100%)<br>Buried: 727 / 727 (100%) |
 | Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |
 <!-- progress:end -->
