@@ -118,8 +118,14 @@ Five's systems, each reached from the conference room with points and power
   room), where it reaches the player within 20 s and takes them to the
   power room.
 
-## Open question
+## Black Ops alone
 
-Does a friend need Modern Warfare 2 installed next to Black Ops? The main menu
-and lobby are Modern Warfare 2's, so today the answer is yes; whether the match
-itself stands on Black Ops data alone is untested (Black Ops' own front end).
+Does a friend need Modern Warfare 2 installed next to Black Ops? No. With a
+games root that holds only Black Ops, the game library offers its zombies
+maps and MAIN MENU; Black Ops' own front end runs (title screen, main menu,
+ZOMBIES → SOLO → map select) and starts Kino or Five. Black Ops' own
+localized zones supply the text.
+
+The front end from the game library: pick Black Ops → Zombies → MAIN MENU,
+press any key, then ZOMBIES → SOLO and a map. The same from the command line:
+`IW4L_GAMETYPE=zombies make map ZONE=t5:frontend`.
