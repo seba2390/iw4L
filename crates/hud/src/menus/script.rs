@@ -53,6 +53,9 @@ pub(crate) enum Command {
         value: String,
         menu: String,
     },
+    /// Black Ops' `uiScript sendMenuNotify "name arg"`: a message to the
+    /// level's scripts.
+    SendMenuNotify(String),
     Unhandled(String),
 }
 
@@ -91,6 +94,36 @@ pub(crate) fn tokens(script: &str) -> Vec<String> {
             }
         }
         out.push(token);
+    }
+    fold_expression_args(out)
+}
+
+/// Marks a command argument Black Ops evaluates when the command runs: a
+/// function of the menu expressions, `name ( args )`, folded to one token.
+pub(crate) const EXPRESSION_ARG: char = '\u{1}';
+
+fn fold_expression_args(tokens: Vec<String>) -> Vec<String> {
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        let call = tokens[i]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && tokens.get(i + 1).is_some_and(|t| t == "(");
+        let close = call
+            .then(|| tokens[i + 2..].iter().position(|t| t == ")"))
+            .flatten();
+        match close {
+            Some(close) => {
+                let args = tokens[i + 2..i + 2 + close].join(" ");
+                out.push(format!("{EXPRESSION_ARG}{}({args})", tokens[i]));
+                i += close + 3;
+            }
+            None => {
+                out.push(tokens[i].clone());
+                i += 1;
+            }
+        }
     }
     out
 }
@@ -176,6 +209,7 @@ pub(crate) fn parse(script: &str) -> Vec<Command> {
                 let script = arg(i + 1).to_ascii_lowercase();
                 match script.as_str() {
                     "quit" => (Command::Exec("quit".into()), 2),
+                    "sendmenunotify" => (Command::SendMenuNotify(arg(i + 2)), 3),
                     "openmenuondvar" | "openmenuondvarnot" | "closemenuondvar"
                     | "closemenuondvarnot" => (
                         Command::MenuOnDvar {

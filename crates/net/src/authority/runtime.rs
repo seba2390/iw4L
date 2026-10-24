@@ -12,7 +12,9 @@ use crate::policy::seat::ActiveKillcams;
 use crate::schedule::AuthoritySet;
 use crate::transport::archive::FrameArchive;
 use crate::transport::loopback_live::ListenLoopback;
-use frame::{ExitLevelCalled, LevelReloadCalled, RuntimeRole, register_script_notify};
+use frame::{
+    ExitLevelCalled, LevelChangeCalled, LevelReloadCalled, RuntimeRole, register_script_notify,
+};
 use sim::{ClientId, ClientLifecycle, DamageSource, SimEvent};
 
 #[derive(Resource)]
@@ -805,6 +807,7 @@ struct FanoutQueues<'w> {
     configuration_changes: ResMut<'w, DumpConfigurationChangeLog>,
     exit_level: MessageWriter<'w, ExitLevelCalled>,
     level_reload: MessageWriter<'w, LevelReloadCalled>,
+    level_change: MessageWriter<'w, LevelChangeCalled>,
 }
 
 fn fanout_loopback(
@@ -863,6 +866,10 @@ fn fanout_loopback(
     if tick.level_reload_due {
         queues.level_reload.write(LevelReloadCalled);
         diag::info!(Sim, "level reload: a failed level loads again");
+    }
+    if let Some(map) = &tick.level_change {
+        queues.level_change.write(LevelChangeCalled(map.clone()));
+        diag::info!(Sim, "changeLevel: `{map}` loads next");
     }
     queues.deaths.push_journal(&tick.snapshot.meta.journal);
     queues.gives.push_journal(&tick.snapshot.meta.journal);

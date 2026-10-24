@@ -161,10 +161,10 @@ Only the top-level items count.
   - [x] Code-drawn pieces (Black Ops' crosshair and damage icons, no code blood), the TAB scoreboard.
   - [x] The weapon info fade, the dpad arrows and the low ammo warning (`PLATFORM_RELOAD`, `WEAPON_NO_AMMO`, `PLATFORM_LOW_AMMO_NO_RELOAD`) by Black Ops' client rules.
   - [x] The red damage flash on every hit, the burning, electrified and teleport overlays (`setburn`, `setelectrified`, `settransported`), and the stand/crouch blocked hints.
-- [ ] The game's own front end: menus, lobby and map selection.
+- [x] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
   - [x] The settings menus' sliders show Black Ops' client dvars at their defaults; mouse sensitivity, field of view and master volume move the runtime's own settings (gamma and the other volume groups do not yet).
-  - [ ] Main menu and lobby are Modern Warfare 2's; Kino starts from the game library.
+  - [x] The game library's MAIN MENU runs Black Ops' own front end (`frontend`): its title screen and main menu over the interrogation room, ZOMBIES → SOLO → its map select (Kino, Five, Dead Ops Arcade), whose `startlevel` runs the front end's own `ChangeLevel` into the map; the menus tell the level each menu they open and close, and an install with Black Ops alone (no Modern Warfare 2) gets there. ONLINE's party lobby comes with co-op (#445).
 - [ ] The game's own sound.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
   - [x] The client scripts' one-shot sounds (`playsound` on the client VM): Kino's random ambient emitters (`_audio::soundrandom_thread`: wind, metal, rope, whispers, wood) play their aliases to the local client.

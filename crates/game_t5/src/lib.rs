@@ -5,6 +5,7 @@ mod code_hud;
 mod fire;
 mod fire_autosim;
 mod fire_sound;
+mod front_end_catalog;
 mod grenade;
 mod menu_expression;
 mod missile;
@@ -38,6 +39,9 @@ pub struct T5;
 pub static GAME: T5 = T5;
 
 const ZOMBIES: &str = "zom";
+
+/// Black Ops' front-end level: the main menu draws over it.
+const FRONT_END_LEVEL: &str = "frontend";
 
 /// Engine dvars the zombie scripts read without setting: the mode itself and
 /// the AI locomotion tuning the run animscript reads, at the defaults the
@@ -94,14 +98,20 @@ impl game_api::GameScripts for T5 {
         let startup = zombie_startup::T5ZombieStartup::new(sources, request.map, request.entities);
         Rule::Known(ScriptProgram {
             catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, catalog::T5)
-                .extended(zombie_catalog::T5_ZOMBIE.iter().cloned()),
+                .extended(zombie_catalog::T5_ZOMBIE.iter().cloned())
+                .extended(front_end_catalog::T5_FRONT_END.iter().cloned()),
             roots: startup.roots,
             entries: startup.entries,
             built: None,
             settings: Vec::new(),
             key_types: Vec::new(),
             entity_fields: Vec::new(),
-            dvars: Vec::new(),
+            dvars: if request.map == FRONT_END_LEVEL {
+                // The front end is a singleplayer level, not a zombies one.
+                vec![("zombiemode".to_owned(), "0".to_owned())]
+            } else {
+                Vec::new()
+            },
         })
     }
 
@@ -292,6 +302,10 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     // zones leaves the default mode, 256 by 256 (aspect 1, with
     // `r_extracam_custom_aspectratio` at its -1 default).
     extra_camera: Some(game_api::ExtraCameraRules { size: [256, 256] }),
+    // Black Ops' singleplayer and zombies run the menus and the level in
+    // one process: a menu's `setDvar` is what `GetDvar` reads (the front
+    // end's map select sets `ui_load_level` for `ChangeLevel`).
+    menu_dvars_reach_server: true,
 };
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each
@@ -395,7 +409,7 @@ impl game_api::GameMenus for T5 {
 /// as the runtime's does; `cg_fov_default` is the player's field of view.
 /// `r_gamma` sets a device gamma ramp and the other sound dvars set Black
 /// Ops' own volume groups, which the runtime has not (docs/fidelity/t5.md).
-const MENU_DVARS: [game_api::MenuDvar; 10] = {
+const MENU_DVARS: [game_api::MenuDvar; 14] = {
     use game_api::{MenuDvar, MenuSetting};
     const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
         MenuDvar {
@@ -427,6 +441,14 @@ const MENU_DVARS: [game_api::MenuDvar; 10] = {
         shown("r_gamma", "0.9"),
         shown("r_texFilterAnisoMin", "1"),
         shown("cl_freelook", "1"),
+        // The front end's main menu opens its lockout first, and its
+        // buttons test the language.
+        shown("ui_skipMainLockout", "0"),
+        shown("loc_language", "0"),
+        // The zombie map select lists Five and Dead Ops Arcade while these
+        // (archived booleans, registered 1) are on.
+        shown("zombiefive_discovered", "1"),
+        shown("zombietron_discovered", "1"),
     ]
 };
 
@@ -700,8 +722,9 @@ impl game_api::GameModes for T5 {
 
 static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     gametype: ZOMBIES,
-    note: "Runs the map's own zombie scripts. Kino der Toten is the map played so far; gaps are listed in docs/fidelity/t5.md.",
+    note: "Runs the map's own zombie scripts. MAIN MENU starts Black Ops' own front end (Zombies, then Solo, picks the map); Kino der Toten and Five play solo; gaps are listed in docs/fidelity/t5.md.",
     maps: &[
+        (FRONT_END_LEVEL, "MAIN MENU"),
         ("zombie_theater", "KINO DER TOTEN"),
         ("zombie_pentagon", "\"FIVE\""),
         ("zombie_cod5_prototype", "NACHT DER UNTOTEN"),

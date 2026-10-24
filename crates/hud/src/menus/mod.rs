@@ -253,6 +253,7 @@ pub(crate) struct MenuOutputs<'w> {
     exec: MessageWriter<'w, UiExecCommand>,
     inbox: Option<ResMut<'w, ClientActionInbox>>,
     ids: Option<ResMut<'w, ActionRequestIds>>,
+    rules: Option<Res<'w, game_api::ModeRules>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1096,6 +1097,26 @@ fn handle_input(
     }
 }
 
+/// The `set name value` commands in a command line.
+fn set_commands(text: &str) -> Vec<(String, String)> {
+    text.split(';')
+        .filter_map(|command| {
+            let mut words = command.split_whitespace();
+            match (words.next(), words.next()) {
+                (Some("set" | "seta"), Some(name)) => Some((
+                    name.to_owned(),
+                    words
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .trim_matches('"')
+                        .to_owned(),
+                )),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 fn flush_outputs(menus: &mut ScriptMenus, out: &mut MenuOutputs, local: sim::ClientId) {
     for command in menus.bind_requests.drain(..) {
         out.binds.write(frame::UiBindRequest { command });
@@ -1103,8 +1124,18 @@ fn flush_outputs(menus: &mut ScriptMenus, out: &mut MenuOutputs, local: sim::Cli
     for alias in menus.sounds.drain(..) {
         out.sounds.write(UiPlaySound { alias });
     }
+    // The dvars these commands set are also the server's when the game's
+    // menus share its dvars.
+    let shares_dvars = out
+        .rules
+        .as_ref()
+        .is_some_and(|rules| rules.menu_dvars_reach_server);
+    let mut server_dvars = Vec::new();
     for text in menus.exec.drain(..) {
         diag::info!(Ui, "menu exec: {text}");
+        if shares_dvars {
+            server_dvars.extend(set_commands(&text));
+        }
         out.exec.write(UiExecCommand { text });
     }
     let private_host = out.dvars.get("ui_lobby_host") == Some("1")
@@ -1123,8 +1154,51 @@ fn flush_outputs(menus: &mut ScriptMenus, out: &mut MenuOutputs, local: sim::Cli
     });
     let (Some(inbox), Some(ids)) = (out.inbox.as_mut(), out.ids.as_mut()) else {
         menus.responses.clear();
+        menus.menu_messages.clear();
         return;
     };
+    for (name, value) in server_dvars {
+        let (Some(name), Some(value)) = (
+            sim::menu_response_field(&name),
+            sim::menu_response_field(&value),
+        ) else {
+            continue;
+        };
+        let request_id = ids.allocate();
+        let _ = inbox.push(
+            local,
+            sim::ClientAction::ScriptDvar {
+                request_id,
+                name,
+                value,
+            },
+        );
+    }
+    let paused = out.pause.0;
+    for (text, pausable) in menus.menu_messages.drain(..) {
+        if pausable && paused {
+            continue;
+        }
+        let mut words = text.split_whitespace();
+        let (Some(name), Some(arg)) = (
+            sim::menu_response_field(words.next().unwrap_or("")),
+            sim::menu_response_field(words.next().unwrap_or("")),
+        ) else {
+            continue;
+        };
+        let request_id = ids.allocate();
+        match inbox.push(
+            local,
+            sim::ClientAction::MenuMessage {
+                request_id,
+                name,
+                arg,
+            },
+        ) {
+            Ok(_) => diag::info!(Ui, "menu message: {text}"),
+            Err(error) => diag::warn!(Ui, "menu message `{text}` not queued: {error}"),
+        }
+    }
     for (menu, response) in menus.responses.drain(..) {
         if menu.eq_ignore_ascii_case("changeclass")
             && let Some(slot) = response

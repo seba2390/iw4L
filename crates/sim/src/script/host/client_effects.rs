@@ -181,7 +181,11 @@ fn depth_of_field(args: &[Value]) -> Result<crate::ScriptDepthOfField, String> {
     })
 }
 
-fn edit_view(world: &mut World, client: u32, edit: impl FnOnce(&mut crate::ViewEffects)) {
+pub(crate) fn edit_view(
+    world: &mut World,
+    client: u32,
+    edit: impl FnOnce(&mut crate::ViewEffects),
+) {
     let mut frame = FrameWorld::from_world(world);
     if frame.client_meta(ClientId(client)).is_some() {
         edit(&mut frame.client_meta_mut(ClientId(client)).view_effects);

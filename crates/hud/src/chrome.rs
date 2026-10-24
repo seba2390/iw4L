@@ -1178,7 +1178,7 @@ fn evaluate_item_style(
         fore_color: state.fore.unwrap_or(item.fore_color),
         glow_color: item.glow_color,
         back_color: state.back.unwrap_or(item.back_color),
-        turn: state.turn.unwrap_or(0.0),
+        turn: state.turn.unwrap_or(item.rotation),
         unsupported: None,
     };
     style.rect.x += parent.x - captured_parent.x;

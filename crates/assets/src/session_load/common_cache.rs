@@ -494,7 +494,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
                 None => {
                     progress.record_skipped(StageId::Localization);
                     report.push(
-                        "localize: no runtime common_mp — every on-screen string is a gap".into(),
+                        "localize: no runtime common_mp — its strings are gaps (a level's own localized zones still load)".into(),
                     );
                     LocalizeCatalog::default()
                 }

@@ -158,6 +158,9 @@ pub struct MenuItem {
     pub rect: MenuRect,
     pub fore_color: [f32; 4],
     pub back_color: [f32; 4],
+    /// The degrees the item's background turns about its centre, as
+    /// `game_api::MenuQuad::turn`; 0 for none.
+    pub rotation: f32,
     pub glow_color: [f32; 4],
     pub text_scale: f32,
 

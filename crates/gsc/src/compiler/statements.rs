@@ -25,7 +25,8 @@ impl Parser {
             } else {
                 self.patch(branch, self.code.len());
             }
-        } else if self.eat("foreach") {
+        } else if self.foreach_loop_ahead() {
+            self.pos += 1;
             self.expect("(")?;
             let first = self.ident()?.to_ascii_lowercase();
             let (key, value) = if self.eat(",") {

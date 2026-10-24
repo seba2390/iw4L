@@ -894,6 +894,12 @@ fn publish_snapshot_system(ecs: &mut World) {
     if level_reload_due {
         runtime.reload_after_ms = None;
     }
+    let level_change = match &runtime.change_level {
+        Some((_, at)) if i64::from(crate::level_time_ms(tick)) >= *at => {
+            runtime.change_level.take().map(|(map, _)| map)
+        }
+        _ => None,
+    };
     effects.kicks = std::mem::take(&mut runtime.kicks)
         .into_iter()
         .map(|(client, reason)| (ClientId(client), reason))
@@ -912,6 +918,7 @@ fn publish_snapshot_system(ecs: &mut World) {
         script_seats,
         script_exit_level,
         level_reload_due,
+        level_change,
     });
 }
 
@@ -1047,6 +1054,8 @@ fn action_needs_player_row(action: &ClientAction) -> bool {
             | ClientAction::ActionSlot { .. }
             | ClientAction::ChooseDefaultClass { .. }
             | ClientAction::MenuResponse { .. }
+            | ClientAction::MenuMessage { .. }
+            | ClientAction::ScriptDvar { .. }
     )
 }
 
@@ -1104,6 +1113,32 @@ fn apply_action(
             }
 
             ActionOutcome::Accepted
+        }
+        ClientAction::MenuMessage {
+            request_id: _,
+            name,
+            arg,
+        } => {
+            let name = crate::menu_response_text(&name);
+            let arg = crate::menu_response_text(&arg);
+            crate::script::menu_message(world.ecs(), name, arg);
+
+            ActionOutcome::Accepted
+        }
+        ClientAction::ScriptDvar {
+            request_id: _,
+            name,
+            value,
+        } => {
+            // Only the host's menus share the server's dvars.
+            if id.0 != 0 {
+                return ActionOutcome::Refused;
+            }
+            let name = crate::menu_response_text(&name);
+            let value = crate::menu_response_text(&value);
+            crate::script::set_menu_dvar(world.ecs(), name, value);
+
+            ActionOutcome::Applied
         }
         ClientAction::LeaveMatch { request_id: _ } => {
             world.retire_client(id);

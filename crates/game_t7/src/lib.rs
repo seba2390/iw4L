@@ -225,6 +225,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
     dyn_ent_physics: None,
     ammo_numbers: None,
     extra_camera: None,
+    menu_dvars_reach_server: false,
 };
 
 impl game_api::GameModes for T7 {

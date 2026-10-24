@@ -124,7 +124,7 @@ fn start_match_load(
         .zone_ff
         .as_ref()
         .err()
-        .or_else(|| request.common_mp.as_ref().err())
+        .or_else(|| required_common_mp(&request.zone_ff, &request.common_mp))
     {
         failed.write(MapLoadFailed {
             request_id: request.request_id,
@@ -307,7 +307,7 @@ fn approve_map_load(
         let error = zone_ff
             .as_ref()
             .err()
-            .or_else(|| common_mp.as_ref().err())
+            .or_else(|| required_common_mp(&zone_ff, &common_mp))
             .cloned();
         if let Some(error) = error {
             failed.write(MapLoadFailed {
@@ -489,4 +489,22 @@ fn cancel_loading(task: Option<Res<MatchLoadTask>>, mut busy: ResMut<MatchLoadBu
         task.progress.cancel();
     }
     busy.0 = false;
+}
+
+/// The runtime `common_mp`'s error, when the level cannot load without it.
+fn required_common_mp<'a>(
+    zone_ff: &Result<PathBuf, String>,
+    common_mp: &'a Result<PathBuf, String>,
+) -> Option<&'a String> {
+    let error = common_mp.as_ref().err()?;
+    match zone_ff {
+        Ok(path) if asset_transport::runtime_common_mp_optional(path) => {
+            diag::info!(
+                World,
+                "match load: no runtime common_mp ({error}); the level's own commons only"
+            );
+            None
+        }
+        _ => Some(error),
+    }
 }

@@ -503,6 +503,30 @@ fn run_level_reload(
     }
 }
 
+/// `ChangeLevel`: the named level of the current map's game loads next.
+fn run_level_change(
+    mut called: MessageReader<frame::LevelChangeCalled>,
+    manifest: Option<Res<crate::SessionContentManifest>>,
+    mut transition: ResMut<SessionSwapRequest>,
+) {
+    let Some(frame::LevelChangeCalled(map)) = called.read().last().cloned() else {
+        return;
+    };
+    let namespace = manifest.as_ref().and_then(|manifest| match &manifest.map {
+        crate::ManifestFact::Known(current) => Some(current.namespace),
+        _ => None,
+    });
+    let Some(namespace) = namespace else {
+        diag::info!(Sim, "session: changeLevel refused — no current map");
+        return;
+    };
+    let zone = format!("{}:{map}", namespace.as_str());
+    match transition.request_zone(zone.clone()) {
+        Ok(id) => diag::info!(Sim, "session: changeLevel → `{zone}` (swap #{id})"),
+        Err(err) => diag::info!(Sim, "session: changeLevel refused — {err}"),
+    }
+}
+
 fn retire_handed_over(mut retiring: ResMut<Retiring>, scope: Res<State<frame::MatchScope>>) {
     let (batch, teardown) = retiring.take_batch();
     if batch.is_empty() {
@@ -804,6 +828,7 @@ pub fn register_lifecycle(app: &mut App) {
                 follow_master_match,
                 run_exit_level,
                 run_level_reload,
+                run_level_change,
                 run_peer_lobby_return,
                 run_udp_peer_lobby_return,
                 request_teardown,
