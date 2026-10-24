@@ -469,90 +469,11 @@ macro_rules! forward_iw5_sound {
     };
 }
 
+/// The Black Ops sound hooks, handed to the sink's `sound` capture.
 #[macro_export]
 macro_rules! forward_t5_sound {
     () => {
-        fn capture_snd_rows(
-            &mut self,
-            s: &fastfile_t5::ZoneStream<'_>,
-            kind: fastfile_t5::SndRows,
-            rows: fastfile_t5::Ptr,
-            count: usize,
-        ) -> fastfile_t5::Result<()> {
-            if let Some(sound) = self.sound.as_mut()
-                && let Some(capture) = sound.t5()
-            {
-                let result =
-                    fastfile_t5::AssetLinkSink::capture_snd_rows(capture, s, kind, rows, count);
-                sound.guard(result);
-            }
-            Ok(())
-        }
-
-        fn capture_loaded_sound(
-            &mut self,
-            s: &fastfile_t5::ZoneStream<'_>,
-            header: fastfile_t5::Ptr,
-            pcm: fastfile_t5::Ptr,
-            data_len: usize,
-        ) -> fastfile_t5::Result<()> {
-            if let Some(sound) = self.sound.as_mut()
-                && let Some(capture) = sound.t5()
-            {
-                let result = fastfile_t5::AssetLinkSink::capture_loaded_sound(
-                    capture, s, header, pcm, data_len,
-                );
-                sound.guard(result);
-            }
-            Ok(())
-        }
-
-        fn bind_last_loaded_to_sound_file(
-            &mut self,
-            file: fastfile_t5::Ptr,
-        ) -> fastfile_t5::Result<()> {
-            if let Some(sound) = self.sound.as_mut()
-                && let Some(capture) = sound.t5()
-            {
-                let result =
-                    fastfile_t5::AssetLinkSink::bind_last_loaded_to_sound_file(capture, file);
-                sound.guard(result);
-            }
-            Ok(())
-        }
-
-        fn capture_sound(
-            &mut self,
-            s: &fastfile_t5::ZoneStream<'_>,
-            list: fastfile_t5::Ptr,
-            count: usize,
-            head: Option<fastfile_t5::Ptr>,
-        ) -> fastfile_t5::Result<()> {
-            if let Some(sound) = self.sound.as_mut()
-                && let Some(capture) = sound.t5()
-            {
-                let result =
-                    fastfile_t5::AssetLinkSink::capture_sound(capture, s, list, count, head);
-                sound.guard(result);
-            }
-            Ok(())
-        }
-
-        fn bind_streamed_sound_file(
-            &mut self,
-            file: fastfile_t5::Ptr,
-            dir: &str,
-            name: &str,
-        ) -> fastfile_t5::Result<()> {
-            if let Some(sound) = self.sound.as_mut()
-                && let Some(capture) = sound.t5()
-            {
-                let result =
-                    fastfile_t5::AssetLinkSink::bind_streamed_sound_file(capture, file, dir, name);
-                sound.guard(result);
-            }
-            Ok(())
-        }
+        fastfile_t5::forward_sound_links!(sound);
     };
 }
 
