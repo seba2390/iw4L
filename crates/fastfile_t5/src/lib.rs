@@ -12,10 +12,12 @@ mod load;
 mod map;
 mod material;
 mod memory;
+pub mod menu_read;
 pub mod size;
 pub mod state_bits;
 pub mod vertex_decl;
 pub mod weapon_def;
+mod weapon_view;
 mod xanim;
 mod xmodel;
 pub mod xmodel_lod;
@@ -32,8 +34,8 @@ pub use envelope::{
 };
 pub use fx::{FxEffectRead, FxElemRead, FxMaterialSlotRead, FxVisualsRead};
 pub use load::{
-    AssetLinkSink, LinkForward, NestedShaderKind, SndRows, forward_link, load_asset_at,
-    load_asset_at_observed, load_asset_body,
+    AssetLinkSink, IMPACT_FX_COLUMNS, ImpactFxRead, LinkForward, NestedShaderKind, SndRows,
+    forward_link, load_asset_at, load_asset_at_observed, load_asset_body,
 };
 pub use map::StaticModelDrawRead;
 pub use material::{MaterialConstantRead, MaterialTextureRead, TechniqueOccupancy};
@@ -42,6 +44,7 @@ pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,
     occupancy_test,
 };
+pub use weapon_view::WeaponView;
 pub use xanim::{XAnimDeltaQuat, XAnimDeltaTrans, XAnimRead};
 pub use xmodel::{
     GFX_PACKED_VERTEX, XBoneCollisionRead, XCollSurfRead, XCollTriRead, XModelBrushRead,

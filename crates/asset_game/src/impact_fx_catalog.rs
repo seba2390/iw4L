@@ -125,47 +125,41 @@ fn name_at_cell(
 }
 
 impl ImpactFxCatalog {
-    pub fn capture_t5(
-        &mut self,
-        s: &fastfile_t5::ZoneStream<'_>,
-        name: fastfile_t5::Ptr,
-        entries: fastfile_t5::Ptr,
-        fx: &crate::FxCatalog,
-    ) -> fastfile_t5::Result<()> {
-        let mut rows = Vec::with_capacity(fastfile_t5::size::FX_IMPACT_ENTRY_COUNT);
+    pub fn capture_t5(&mut self, table: fastfile_t5::ImpactFxRead, fx: &crate::FxCatalog) {
         let mut gaps = 0;
-        for row in 0..fastfile_t5::size::FX_IMPACT_ENTRY_COUNT {
-            let mut result = OwnedFxImpactEntry::default();
-            {
-                for (column, cell) in result
+        let rows = table
+            .slots
+            .chunks(fastfile_t5::IMPACT_FX_COLUMNS)
+            .map(|slots| {
+                let mut result = OwnedFxImpactEntry::default();
+                for (cell, slot) in result
                     .nonflesh
                     .iter_mut()
                     .chain(result.flesh.iter_mut())
-                    .enumerate()
+                    .zip(slots)
                 {
-                    let ptr = entries.at(row * fastfile_t5::size::FX_IMPACT_ENTRY + column * 4);
-                    if s.ptr_at(ptr, 0)? != fastfile_t5::ZonePtr::Null {
-                        if let Some(name) = fx.name_at_slot(fastfile_iw4::Ptr {
-                            block: ptr.block,
-                            offset: ptr.offset,
-                        }) {
-                            *cell = name.to_owned();
-                        } else {
-                            gaps += 1;
-                        }
+                    let Some(slot) = slot else {
+                        continue;
+                    };
+                    if let Some(name) = fx.name_at_slot(fastfile_iw4::Ptr {
+                        block: slot.block,
+                        offset: slot.offset,
+                    }) {
+                        *cell = name.to_owned();
+                    } else {
+                        gaps += 1;
                     }
                 }
-            }
-            rows.push(result);
-        }
+                result
+            })
+            .collect();
         self.capture_gaps += gaps;
         self.table = Some(OwnedFxImpactTable {
             family: Some(crate::AssetNamespace::T5),
-            name: s.cstr(name)?.to_owned(),
+            name: table.name,
             entries: rows,
             capture_gaps: gaps,
         });
-        Ok(())
     }
 }
 
