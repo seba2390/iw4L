@@ -183,12 +183,12 @@ pattern crates/asset_material/src/material_catalog.rs asset_iw4:: 33
 pattern crates/asset_material/src/material_catalog.rs dpvs_iw4:: 1
 pattern crates/asset_material/src/material_catalog.rs fastfile_iw4:: 3
 pattern crates/asset_material/src/material_catalog.rs fastfile_iw5:: 24
-pattern crates/asset_material/src/material_catalog.rs fastfile_t5:: 37
+pattern crates/asset_material/src/material_catalog.rs fastfile_t5:: 32
 pattern crates/asset_material/src/material_catalog/definitions.rs AssetNamespace::<game> 3
 pattern crates/asset_material/src/material_catalog/definitions.rs asset_iw4:: 17
 pattern crates/asset_material/src/material_catalog/definitions.rs fastfile_iw4:: 1
 pattern crates/asset_material/src/material_catalog/definitions.rs fastfile_iw5:: 1
-pattern crates/asset_material/src/material_catalog/definitions.rs fastfile_t5:: 8
+pattern crates/asset_material/src/material_catalog/definitions.rs fastfile_t5:: 2
 pattern crates/asset_material/src/material_catalog/zone_link.rs fastfile_iw4:: 1
 pattern crates/asset_material/src/material_compile/mod.rs dpvs_iw4:: 2
 pattern crates/asset_material/src/material_compile/sort.rs AssetNamespace::<game> 2

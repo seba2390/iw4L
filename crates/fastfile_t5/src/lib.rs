@@ -9,6 +9,7 @@ mod envelope;
 pub mod light_grid;
 mod load;
 mod map;
+mod material;
 mod memory;
 pub mod size;
 pub mod state_bits;
@@ -33,6 +34,7 @@ pub use load::{
     load_asset_at_observed, load_asset_body,
 };
 pub use map::StaticModelDrawRead;
+pub use material::{MaterialConstantRead, MaterialTextureRead, TechniqueOccupancy};
 pub use memory::ZoneMemory;
 pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,
