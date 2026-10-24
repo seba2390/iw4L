@@ -412,6 +412,131 @@ fn paint_menu_window(
     }
 }
 
+/// The window's full border (kind 1) where the game's window paint draws
+/// one: lines of the border's size along the top and bottom, then the left
+/// and right between them, in the border colour.
+#[allow(clippy::too_many_arguments)]
+fn push_border(
+    menu: &MenuDef,
+    index: usize,
+    item: &MenuItem,
+    style: &EvaluatedItemStyle,
+    surface: &crate::surface::Hud2dSurface,
+    assets: ChromeAssets<'_>,
+    time_ms: i32,
+    anim: ChromeMenuAnim,
+    list: &mut Draw2dList,
+) {
+    let Some(border) = item
+        .border
+        .filter(|border| border.kind == 1 && border.size > 0.0)
+    else {
+        return;
+    };
+    if !assets
+        .layout()
+        .is_some_and(|layout| layout.paints_menu_window())
+    {
+        return;
+    }
+    let MenuRect { x, y, w, h, .. } = style.rect;
+    let size = border.size;
+    let [r, g, b, a] = border.color;
+    let line = MenuItem::default();
+    for [lx, ly, lw, lh] in [
+        [x, y, w, size],
+        [x, y + h - size, w, size],
+        [x, y + size, size, h - 2.0 * size],
+        [x + w - size, y + size, size, h - 2.0 * size],
+    ] {
+        let edge = EvaluatedItemStyle {
+            rect: MenuRect {
+                x: lx,
+                y: ly,
+                w: lw,
+                h: lh,
+                ..style.rect
+            },
+            window_style: 3,
+            fore_color: [r, g, b, a * anim.alpha],
+            glow_color: [0.0; 4],
+            back_color: [0.0; 4],
+            turn: 0.0,
+            unsupported: None,
+        };
+        push_stretch(
+            menu,
+            index,
+            &line,
+            &edge,
+            "white".to_owned(),
+            surface,
+            assets.catalog,
+            time_ms,
+            anim,
+            list,
+        );
+    }
+}
+
+/// A framed picture: a 4 by 4 grid whose outer columns and rows keep the
+/// frame's size (in the rect's scale) and the texture's outer `inset`, the
+/// middle stretching; the border cells of a side the frame lacks are not
+/// drawn and its line sits on the rect's edge.
+#[allow(clippy::too_many_arguments)]
+fn push_framed(
+    menu: &MenuDef,
+    index: usize,
+    frame: asset_game::MenuFrame,
+    [x, y, w, h]: [f32; 4],
+    [scale_x, scale_y]: [f32; 2],
+    color: [f32; 4],
+    material_namespace: asset_core::AssetNamespace,
+    material: String,
+    list: &mut Draw2dList,
+) {
+    let (size_x, size_y) = (frame.size * scale_x, frame.size * scale_y);
+    let has = |bit: u8| frame.edges & bit != 0;
+    let xs = [
+        x,
+        if has(1) { x + size_x } else { x },
+        if has(2) { x + w - size_x } else { x + w },
+        x + w,
+    ];
+    let ys = [
+        y,
+        if has(4) { y + size_y } else { y },
+        if has(8) { y + h - size_y } else { y + h },
+        y + h,
+    ];
+    let uv = [0.0, frame.inset, 1.0 - frame.inset, 1.0];
+    let cols = [has(1), true, has(2)];
+    let rows = [has(4), true, has(8)];
+    for (row, _) in rows.iter().enumerate().filter(|(_, on)| **on) {
+        for (col, _) in cols.iter().enumerate().filter(|(_, on)| **on) {
+            list.cmds.push(Draw2dCmd {
+                material_namespace,
+                x: xs[col],
+                y: ys[row],
+                w: xs[col + 1] - xs[col],
+                h: ys[row + 1] - ys[row],
+                s0: uv[col],
+                t0: uv[row],
+                s1: uv[col + 1],
+                t1: uv[row + 1],
+                color,
+                material: material.clone(),
+                op: Draw2dOp::StretchPic,
+                provenance: Draw2dProvenance::MenuItem {
+                    menu: menu.name.clone(),
+                    index,
+                },
+                layer: 1,
+            });
+        }
+    }
+}
+
 pub(crate) fn item_screen_rects(
     menu: &MenuDef,
     host: &impl ExprHost,
@@ -550,6 +675,16 @@ fn paint_item(
     }
     match resolved_material(item, state.background, host, exprs) {
         Ok(Some(material)) => {
+            // A name an expression gives is a material of the menus' own game.
+            let material = if asset_core::AssetKey::parse(&material).is_err()
+                && assets
+                    .layout()
+                    .is_some_and(|layout| layout.paints_menu_window())
+            {
+                format!("{}:material/{material}", assets.namespace().as_str())
+            } else {
+                material
+            };
             push_stretch(
                 menu,
                 index,
@@ -558,6 +693,17 @@ fn paint_item(
                 material,
                 surface,
                 assets.catalog,
+                host.milliseconds(),
+                anim,
+                &mut frame.list,
+            );
+            push_border(
+                menu,
+                index,
+                item,
+                &style,
+                surface,
+                assets,
                 host.milliseconds(),
                 anim,
                 &mut frame.list,
@@ -577,6 +723,38 @@ fn paint_item(
             }
         }
         Ok(None) => {
+            // A filled window with no picture fills its rect in the back
+            // colour, where the game paints item windows.
+            if style.window_style == 1
+                && style.back_color[3] > 0.0
+                && assets
+                    .layout()
+                    .is_some_and(|layout| layout.paints_menu_window())
+            {
+                push_stretch(
+                    menu,
+                    index,
+                    item,
+                    &style,
+                    "white".to_owned(),
+                    surface,
+                    assets.catalog,
+                    host.milliseconds(),
+                    anim,
+                    &mut frame.list,
+                );
+            }
+            push_border(
+                menu,
+                index,
+                item,
+                &style,
+                surface,
+                assets,
+                host.milliseconds(),
+                anim,
+                &mut frame.list,
+            );
             if state
                 .text
                 .as_ref()
@@ -1237,7 +1415,9 @@ pub(crate) struct EvaluatedItemStyle {
 
 impl EvaluatedItemStyle {
     pub fn fill_color(&self) -> [f32; 4] {
-        if self.window_style == 1 {
+        // Filled windows and the back-coloured frame (style 11) draw in the
+        // back colour.
+        if self.window_style == 1 || self.window_style == 11 {
             self.back_color
         } else {
             self.fore_color
@@ -1414,6 +1594,21 @@ fn push_stretch(
         Ok(key) if key.kind == asset_core::AssetKind::Material => (key.namespace, key.name),
         _ => (crate::images::HUD_CHROME_NAMESPACE, material),
     };
+    if let Some(frame) = item.frame.filter(|_| matches!(style.window_style, 10 | 11)) {
+        let scale = [applied.w / rect.w.abs(), applied.h / rect.h.abs()];
+        push_framed(
+            menu,
+            index,
+            frame,
+            [applied.x, applied.y, applied.w, applied.h],
+            scale,
+            color,
+            material_namespace,
+            material,
+            list,
+        );
+        return;
+    }
     let [s0, t0, s1, t1] = atlas_frame_st(catalog, &material, time_ms);
     list.cmds.push(Draw2dCmd {
         material_namespace,

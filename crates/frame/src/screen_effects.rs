@@ -18,6 +18,11 @@ pub struct ScreenEffectsPublished;
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ScreenBlurRequest(pub f32);
 
+/// The blur the menus shown over the world ask for this frame; it adds to the
+/// view's own blur as a root of squares.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct MenuBlur(pub f32);
+
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScreenEffectsDvars {
     pub draw_shellshock: bool,

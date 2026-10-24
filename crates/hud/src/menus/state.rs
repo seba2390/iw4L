@@ -52,6 +52,8 @@ pub struct ScriptMenus {
     pub(crate) bind_requests: Vec<String>,
     /// The in-game menu key opened a menu its game pauses an offline match under.
     pub(crate) pause_requested: bool,
+    /// The game's own cursor was drawn this frame: the system pointer hides.
+    pub(crate) draws_cursor: bool,
 }
 
 impl ScriptMenus {
@@ -61,6 +63,11 @@ impl ScriptMenus {
 
     /// The mouse turns the view while a menu holds the keys: the focused
     /// menu paints into a UI3D window, which takes no cursor.
+    /// The game draws its own cursor over the menus this frame.
+    pub fn draws_cursor(&self) -> bool {
+        self.draws_cursor
+    }
+
     pub fn mouse_looks(&self) -> bool {
         self.input_menu().is_some_and(|menu| menu.ui3d)
     }
