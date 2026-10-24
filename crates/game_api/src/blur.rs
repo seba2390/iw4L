@@ -1,14 +1,14 @@
-//! Black Ops 2's screen blur: a Gaussian blur of the full frame into a
-//! quarter-size image, planned the way its backend plans one. A blur radius
-//! (in 480-line units) becomes a vertical radius in the frame's pixels and a
-//! horizontal one scaled by the screen's pixel aspect; a first pass filters
-//! the frame down into the quarter-size image in two dimensions, spending the
-//! smaller radius (at most the widest a two-tap pass covers) at the frame's
-//! size, and the passes that follow ping-pong between two quarter-size
-//! images, one dimension at a time, until the radius left is too small to
-//! matter; the last pass writes the blurred image.
+//! A screen blur as the backends that share one plan it: a Gaussian blur of
+//! the full frame into a quarter-size image. A blur radius (in 480-line
+//! units) becomes a vertical radius in the frame's pixels and a horizontal
+//! one scaled by the screen's pixel aspect; a first pass filters the frame
+//! down into the quarter-size image in two dimensions, spending the smaller
+//! radius (at most the widest a two-tap pass covers) at the frame's size,
+//! and the passes that follow ping-pong between two quarter-size images, one
+//! dimension at a time, until the radius left is too small to matter; the
+//! last pass writes the blurred image.
 
-use game_api::post::{BlurImage, BlurPass};
+use crate::post::{BlurImage, BlurPass};
 
 /// The smallest radius a pass is planned for.
 const RADIUS_MIN: f32 = 0.329_505_12;
@@ -32,10 +32,10 @@ const FILTERS: [&str; 8] = [
 
 /// What the backend adds before rounding a value to the nearest integer
 /// (ties to even): 2^-30.
-pub(crate) const NUDGE: f64 = 9.313_225_746_154_785e-10;
+pub const NUDGE: f64 = 9.313_225_746_154_785e-10;
 
 /// Every material a blur draws with.
-pub(crate) const MATERIALS: [&str; 8] = FILTERS;
+pub const MATERIALS: [&str; 8] = FILTERS;
 
 /// The display aspect the auto aspect ratio picks for a screen: 16:10 when
 /// its height is ten sixteenths of its width (rounded), 16:9 below, 4:3
@@ -54,7 +54,7 @@ fn display_aspect([width, height]: [u32; 2]) -> f32 {
 
 /// The blur passes for `radius` over a frame of `full` size, into images of
 /// `quarter` size.
-pub(crate) fn plan(radius: f32, full: [u32; 2], quarter: [u32; 2]) -> Vec<BlurPass> {
+pub fn plan(radius: f32, full: [u32; 2], quarter: [u32; 2]) -> Vec<BlurPass> {
     // Both in the x87 unit's precision, as the backend works them out.
     let pixel_aspect =
         (f64::from(full[1]) * f64::from(display_aspect(full)) / f64::from(full[0])) as f32;

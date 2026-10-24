@@ -22,14 +22,14 @@ const MATERIALS: [&str; 13] = [
     POISON,
     REVIVE,
     BLEND,
-    crate::blur::MATERIALS[0],
-    crate::blur::MATERIALS[1],
-    crate::blur::MATERIALS[2],
-    crate::blur::MATERIALS[3],
-    crate::blur::MATERIALS[4],
-    crate::blur::MATERIALS[5],
-    crate::blur::MATERIALS[6],
-    crate::blur::MATERIALS[7],
+    game_api::blur::MATERIALS[0],
+    game_api::blur::MATERIALS[1],
+    game_api::blur::MATERIALS[2],
+    game_api::blur::MATERIALS[3],
+    game_api::blur::MATERIALS[4],
+    game_api::blur::MATERIALS[5],
+    game_api::blur::MATERIALS[6],
+    game_api::blur::MATERIALS[7],
 ];
 /// The revive pass's blur radius.
 const REVIVE_BLUR: f32 = 6.4;
@@ -49,7 +49,7 @@ pub(crate) const OVERLAYS: OverlayRules = OverlayRules {
     plan,
     blur: Some(BlurRules {
         shift: 2,
-        plan: crate::blur::plan,
+        plan: game_api::blur::plan,
     }),
     gaps: &[unknown!(
         "t6.csc.vision.revive_blend",
@@ -93,7 +93,7 @@ fn blur_pass(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
     let mut color = WHITE;
     if smallest > radius {
         let share = radius / smallest * 255.0;
-        color[3] = (f64::from(share) + crate::blur::NUDGE).round_ties_even() as i32 as u8;
+        color[3] = (f64::from(share) + game_api::blur::NUDGE).round_ties_even() as i32 as u8;
         radius = smallest;
     }
     Some(OverlayPass {

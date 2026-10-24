@@ -2,6 +2,7 @@
 //! is [`Rule::Unknown`]: the caller reports it as a gap and applies nothing in
 //! its place — never another game's rule.
 
+pub mod blur;
 pub mod fire;
 pub mod fog;
 pub mod hud;
