@@ -1,5 +1,4 @@
 mod automelee;
-mod blur;
 mod builtins;
 mod client;
 mod client_builtins;

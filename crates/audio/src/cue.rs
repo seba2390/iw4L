@@ -60,6 +60,8 @@ pub(crate) struct CueExecutionPolicy {
     pub snapshot_group: Option<(asset_core::AssetNamespace, u8)>,
     /// The game's whole-mix fade spares the sound.
     pub master_fade_exempt: bool,
+    /// The sound category whose menu volume the sound plays at.
+    pub volume_category: Option<i32>,
     pub priority: Option<asset_audio::VoicePriority>,
     pub spatial: Option<Result<CueSpatialPolicy, StartFailure>>,
     admission: AdmissionPolicy,
@@ -93,6 +95,7 @@ impl CueExecutionPolicy {
             channel: policy.channel,
             snapshot_group: policy.snapshot_group.map(|group| (policy.namespace, group)),
             master_fade_exempt: policy.master_fade_exempt,
+            volume_category: policy.volume_category,
             priority: policy.priority.clone(),
             spatial,
             admission: alias_admission(bound.revision(), bound.alias_index(), policy),

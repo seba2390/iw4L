@@ -2,6 +2,7 @@ mod admitted;
 mod backend;
 mod colour_submit;
 mod depth_range;
+mod display_gamma;
 mod draw;
 mod exact_pipeline;
 mod floatz;

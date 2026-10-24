@@ -2,6 +2,7 @@
 //! is [`Rule::Unknown`]: the caller reports it as a gap and applies nothing in
 //! its place — never another game's rule.
 
+pub mod blur;
 pub mod fire;
 pub mod fog;
 pub mod hud;
@@ -803,6 +804,12 @@ pub enum MenuSetting {
     MasterVolume,
     MouseSensitivity,
     FieldOfView,
+    /// The display's gamma ramp: each level to the power of one over the
+    /// value.
+    DisplayGamma,
+    /// The volume of the sounds whose mixer group has one of these
+    /// categories: they play at the value's square.
+    CategoryVolume(&'static [i32]),
 }
 
 /// One of a game's dvars behind its menus: its registered default, which the

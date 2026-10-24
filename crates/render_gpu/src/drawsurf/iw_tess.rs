@@ -759,6 +759,7 @@ fn prepare_hud_blood(
 
 pub(super) fn register(app: &mut App) {
     super::shellshock_screen::register(app);
+    super::display_gamma::register(app);
     bevy::asset::embedded_asset!(app, "iw_tess.wgsl");
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
         return;
@@ -790,6 +791,7 @@ pub(super) fn register(app: &mut App) {
             Core3d,
             (
                 draw_iw_tess
+                    .in_set(HudTessSet)
                     .in_set(Core3dSystems::PostProcess)
                     .after(super::postfx::PostFxSet),
                 draw_ui3d
@@ -798,6 +800,10 @@ pub(super) fn register(app: &mut App) {
             ),
         );
 }
+
+/// The HUD's draw into the frame.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub(super) struct HudTessSet;
 
 /// The menus a game paints into its 3D UI texture this frame.
 #[derive(Resource, Default)]

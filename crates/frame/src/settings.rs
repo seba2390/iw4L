@@ -212,3 +212,14 @@ impl GameSettings {
         }
     }
 }
+
+/// The gamma a game's menus set for the display's gamma ramp, while the
+/// game's menus have one.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct DisplayGamma(pub Option<f32>);
+
+/// The volumes a game's menus set for the sounds of each mixer group
+/// category, as (category, volume); a sound plays at its category's
+/// volume squared.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct SoundCategoryVolumes(pub Vec<(i32, f32)>);

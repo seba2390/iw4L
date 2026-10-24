@@ -11,6 +11,9 @@ pub(crate) struct ScriptAudioMix {
     epoch: u64,
     pub(crate) gain: LiveGain,
     pub(crate) master: MasterFade,
+    /// The menus' volume of each sound category, which its sounds play at
+    /// the square of.
+    pub(crate) categories: Arc<HashMap<i32, LiveGain>>,
 }
 
 /// Black Ops' whole-mix fade: a level each voice plays at the square of,
@@ -284,12 +287,35 @@ fn update_channel_mix(
     }
 }
 
+/// The menus' category volumes move the category gains; a category they no
+/// longer set plays at full volume.
+fn update_category_volumes(
+    volumes: Option<Res<frame::SoundCategoryVolumes>>,
+    mut mix: ResMut<ScriptAudioMix>,
+) {
+    let volumes = volumes.as_deref().map_or(&[][..], |volumes| &volumes.0[..]);
+    for (category, gain) in mix.categories.iter() {
+        if !volumes.iter().any(|(set, _)| set == category) {
+            gain.set(1.0);
+        }
+    }
+    for &(category, volume) in volumes {
+        if let Some(gain) = mix.categories.get(&category) {
+            gain.set(volume * volume);
+        } else {
+            let gain = LiveGain::default();
+            gain.set(volume * volume);
+            Arc::make_mut(&mut mix.categories).insert(category, gain);
+        }
+    }
+}
+
 pub(crate) fn register(app: &mut App) {
     app.scoped::<ScriptAudioMix>(frame::MatchScope::Live)
         .scoped::<ChannelAudioMix>(frame::MatchScope::Live)
         .add_systems(
             Update,
-            update_channel_mix
+            (update_channel_mix, update_category_volumes)
                 .in_set(frame::InMatch)
                 .in_set(net::ClientSet::Effects),
         );

@@ -73,10 +73,15 @@ pub(super) fn compile(
         }
         GroupSelection::Ungrouped | GroupSelection::Unknown => false,
     };
+    let volume_category = match semantics.group {
+        GroupSelection::Index(group) => catalog.mixer_group_category(namespace, group),
+        GroupSelection::Ungrouped | GroupSelection::Unknown => None,
+    };
     Some(AliasPlaybackPolicy {
         namespace,
         looping,
         master_fade_exempt,
+        volume_category,
         streamed_decode: semantics.streamed_decode,
         composition: CueCompositionPolicy::compile(
             row,
