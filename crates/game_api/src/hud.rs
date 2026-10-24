@@ -66,6 +66,8 @@ pub struct OwnerHintView<'a> {
     /// The client time and the invalid command hint the client keeps.
     pub now: i32,
     pub command_hint: CommandHint,
+    /// The client's scripts asked for the alternate aim parameters.
+    pub alternate_aim: bool,
 }
 
 /// A weapon definition's fields a hint reads.

@@ -147,6 +147,10 @@ pub struct ClientScreen {
     /// The 3D UI windows' places in their texture, once a client script
     /// sets one (`ui3dsetwindow`); every window is empty until then.
     pub ui3d_windows: Option<game_api::Ui3dWindows>,
+    /// Black Ops' client scripts asked for the alternate aim parameters
+    /// (`useAlternateAimParams`, Deadshot): the scope sways no more, and
+    /// the hold-breath hints do not show.
+    pub alternate_aim: bool,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

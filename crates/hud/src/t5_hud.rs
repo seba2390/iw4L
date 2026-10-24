@@ -129,6 +129,7 @@ pub(crate) fn resolve_owner_hints(
     reported: &mut std::collections::HashSet<&'static str>,
     now: i32,
     command_hint: game_api::hud::CommandHint,
+    alternate_aim: bool,
 ) -> Vec<(i32, OwnerHintText)> {
     let player = ps.move_player(local, false);
     let weapon = |index: u32| {
@@ -150,6 +151,7 @@ pub(crate) fn resolve_owner_hints(
         dvar: &dvar,
         now,
         command_hint,
+        alternate_aim,
     };
     let mut out = Vec::new();
     for owner_draw in OWNER_HINT_DRAWS {

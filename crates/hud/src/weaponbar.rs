@@ -915,6 +915,7 @@ pub(crate) fn update_weaponbar(
                     &mut client_input.hint_gaps,
                     info_view.now,
                     command_hint,
+                    meta.is_some_and(|meta| meta.view_effects.client_screen.alternate_aim),
                 )
             })
             .unwrap_or_else(Vec::new);
