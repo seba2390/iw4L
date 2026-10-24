@@ -976,82 +976,34 @@ pub fn build_iw5_static_model_instances(
 }
 
 pub fn build_t5_static_model_instances(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    world: fastfile_t5::GfxWorldGeometry,
+    draws: Option<Vec<fastfile_t5::StaticModelDrawRead>>,
 ) -> Result<Vec<StaticModelInstance>, ModelMeshError> {
-    let (Some(draw_insts), Some(_insts)) = (world.smodel_draw_insts, world.smodel_insts) else {
-        return Err(ModelMeshError::MissingStaticModelInstances);
-    };
-    const DRAW_INST: usize = 76;
-
-    const CULL_DIST_OFF: usize = 0x00;
-    const PLACEMENT_OFF: usize = 0x04;
-    const ORIGIN_OFF: usize = PLACEMENT_OFF;
-    const AXIS_OFF: usize = PLACEMENT_OFF + 12;
-    const SCALE_OFF: usize = PLACEMENT_OFF + 0x30;
-    const MODEL_OFF: usize = 0x38;
-    let mut out = Vec::with_capacity(world.smodel_count);
-    for index in 0..world.smodel_count {
-        let inst = draw_insts.at(index * DRAW_INST);
-        let mut axis = [[0.0; 3]; 3];
-        for (row, values) in axis.iter_mut().enumerate() {
-            for (column, value) in values.iter_mut().enumerate() {
-                *value = stream
-                    .f32_at(inst, AXIS_OFF + (row * 3 + column) * 4)
-                    .map_err(|_| ModelMeshError::MissingStaticModelInstances)?;
-            }
-        }
-        // A model first defined inline is recorded at this field, so the field is its slot.
-        let model = match stream
-            .ptr_at(inst, MODEL_OFF)
-            .map_err(|_| ModelMeshError::MissingStaticModelInstances)?
-        {
-            fastfile_t5::ZonePtr::Offset(p) => p,
-            _ => inst.at(MODEL_OFF),
-        };
-        out.push(StaticModelInstance {
+    let draws = draws.ok_or(ModelMeshError::MissingStaticModelInstances)?;
+    Ok(draws
+        .into_iter()
+        .map(|draw| StaticModelInstance {
             model_slot: Ptr {
-                block: model.block,
-                offset: model.offset,
+                block: draw.model_slot.block,
+                offset: draw.model_slot.offset,
             },
-            origin: [
-                stream
-                    .f32_at(inst, ORIGIN_OFF)
-                    .map_err(|_| ModelMeshError::MissingStaticModelInstances)?,
-                stream
-                    .f32_at(inst, ORIGIN_OFF + 4)
-                    .map_err(|_| ModelMeshError::MissingStaticModelInstances)?,
-                stream
-                    .f32_at(inst, ORIGIN_OFF + 8)
-                    .map_err(|_| ModelMeshError::MissingStaticModelInstances)?,
-            ],
-            axis,
-            scale: stream
-                .f32_at(inst, SCALE_OFF)
-                .map_err(|_| ModelMeshError::MissingStaticModelInstances)?,
+            origin: draw.origin,
+            axis: draw.axis,
+            scale: draw.scale,
 
-            cull_dist: {
-                let dist = stream
-                    .f32_at(inst, CULL_DIST_OFF)
-                    .map_err(|_| ModelMeshError::MissingStaticModelInstances)?;
-                if dist.is_finite() && (0.0..=f32::from(u16::MAX)).contains(&dist) {
-                    dist as u16
-                } else {
-                    0
-                }
+            cull_dist: if draw.cull_dist.is_finite()
+                && (0.0..=f32::from(u16::MAX)).contains(&draw.cull_dist)
+            {
+                draw.cull_dist as u16
+            } else {
+                0
             },
 
-            reflection_probe_index: stream
-                .u8_at(inst, 0x4a)
-                .map_err(|_| ModelMeshError::MissingStaticModelInstances)?,
-            primary_light_index: stream
-                .u8_at(inst, 0x4b)
-                .map_err(|_| ModelMeshError::MissingStaticModelInstances)?,
+            reflection_probe_index: draw.reflection_probe_index,
+            primary_light_index: draw.primary_light_index,
 
             flags: 0,
-        });
-    }
-    Ok(out)
+        })
+        .collect())
 }
 
 impl std::error::Error for ModelMeshError {}

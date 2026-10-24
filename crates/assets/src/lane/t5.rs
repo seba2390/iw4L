@@ -16,7 +16,8 @@ use asset_transport::progress::{LoadProgress, StageId};
 use asset_transport::{T5ZoneMemory, ZoneImage};
 use asset_world::{
     MASK_PLAYER_SOLID, WorldDrawPolicy, build_t5_clip_collision, build_t5_world_draw,
-    dm_spawn_points_t5, intermission_view_t5, minimap_corners_t5,
+    dm_spawn_points_treyarch, parse_intermission_view, parse_minimap_corners,
+    parse_worldspawn_north_yaw,
 };
 
 pub struct T5Lane;
@@ -404,7 +405,7 @@ impl ZoneLane for T5Lane {
             report.push(format!("path network: {} nodes", path_nodes.len()));
         }
         let mut scripts = std::mem::take(&mut sink.scripts);
-        if let Some(entities) = asset_world::map_ents_entity_string_t5(&stream) {
+        if let Some(entities) = stream.map_entity_string() {
             scripts.set_entities(entities.to_owned());
         }
         match (&createart_name, exp_fog) {
@@ -526,7 +527,9 @@ impl ZoneLane for T5Lane {
         let Some(geometry) = stream.gfx_world() else {
             stage.fail();
             report.push("no GfxWorld retained — nothing to draw".into());
-            let dm_spawns = dm_spawn_points_t5(&stream);
+            let dm_spawns = stream
+                .map_entity_string()
+                .map_or_else(Vec::new, dm_spawn_points_treyarch);
             let mut loaded = LoadedWorld {
                 scripts,
                 sound: map_sound,
@@ -616,10 +619,15 @@ impl ZoneLane for T5Lane {
                         *slot = Some(model.placement);
                     }
                 }
-                let intermission_view = intermission_view_t5(&stream);
-                let minimap_corners = minimap_corners_t5(&stream);
-                let north_yaw = asset_world::worldspawn_north_yaw_t5(&stream);
-                let dm_spawns = dm_spawn_points_t5(&stream);
+                let intermission_view =
+                    stream.map_entity_string().and_then(parse_intermission_view);
+                let minimap_corners = stream.map_entity_string().and_then(parse_minimap_corners);
+                let north_yaw = stream
+                    .map_entity_string()
+                    .and_then(parse_worldspawn_north_yaw);
+                let dm_spawns = stream
+                    .map_entity_string()
+                    .map_or_else(Vec::new, dm_spawn_points_treyarch);
                 report_ffa_spawns(&mut report, &dm_spawns);
                 report_intermission(&mut report, intermission_view.as_ref());
                 report.push(format!(
@@ -773,7 +781,9 @@ impl ZoneLane for T5Lane {
             }
             Err(e) => {
                 report.push(format!("T5 world mesh: {e}"));
-                let dm_spawns = dm_spawn_points_t5(&stream);
+                let dm_spawns = stream
+                    .map_entity_string()
+                    .map_or_else(Vec::new, dm_spawn_points_treyarch);
                 let mut loaded = LoadedWorld {
                     scripts,
                     sound: map_sound,
