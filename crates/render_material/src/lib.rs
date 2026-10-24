@@ -29,8 +29,9 @@ pub use catalog::{
 pub use code_sources::{
     CODE_PARTICLE_CLOUD_SIZE, CODE_PARTICLE_CLOUD_VELOCITY, CODE_POST_CONTROL_COUNT,
     CODE_POST_CONTROL0, CODE_POST_HDR_CONTROL_COUNT, CODE_POST_HDR_CONTROL0,
-    CODE_POST_TEXTURE_COUNT, CODE_POST_TEXTURE0, CodeSourceError, CodeSourceLookup,
-    CompiledConstantOverlay, LayeredCodeSources, RuntimeCodeSources, compile_constant_overlay,
+    CODE_POST_TEXTURE_COUNT, CODE_POST_TEXTURE0, CODE_UI3D_TEXTURE, CODE_UI3D_UV_SETUP_COUNT,
+    CODE_UI3D_UV_SETUP0, CodeSourceError, CodeSourceLookup, CompiledConstantOverlay,
+    LayeredCodeSources, RuntimeCodeSources, compile_constant_overlay,
 };
 pub use dxbc_abi::{
     CODE_T6_FADE_EFFECT, CODE_T6_FLAME_DISTORTION, CODE_T6_GRID_SH, CODE_T6_OVERLAY_TEX_COORD,

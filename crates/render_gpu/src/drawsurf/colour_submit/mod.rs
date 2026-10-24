@@ -2983,7 +2983,8 @@ pub(super) fn register(app: &mut App) {
                 prepare_camera::prepare_colour_lanes
                     .in_set(RenderSystems::Prepare)
                     .after(prepare_camera::install_shared_colour_pass)
-                    .after(extra_cam::prepare_extra_cam_colour),
+                    .after(extra_cam::prepare_extra_cam_colour)
+                    .after(super::iw_tess::prepare_ui3d),
             ),
         )
         .add_systems(

@@ -16,6 +16,10 @@ use bevy::render::render_resource::{
     TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
     TextureView, TextureViewDescriptor, VertexAttribute, VertexFormat, VertexState, VertexStepMode,
 };
+use bevy::render::render_resource::{
+    BufferInitDescriptor, LoadOp, Operations, RenderPassColorAttachment, RenderPassDescriptor,
+    StoreOp,
+};
 use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::texture::GpuImage;
 use bevy::render::view::{ExtractedView, ViewTarget};
@@ -764,8 +768,10 @@ pub(super) fn register(app: &mut App) {
         .init_resource::<HudBloodGpu>()
         .init_resource::<SavedScreenGpu>()
         .init_resource::<SpecializedRenderPipelines<IwTessPipeline>>()
+        .init_resource::<ExtractedUi3d>()
+        .init_resource::<Ui3dGpu>()
         .add_systems(RenderStartup, init_pipeline)
-        .add_systems(ExtractSchedule, extract_iw_tess)
+        .add_systems(ExtractSchedule, (extract_iw_tess, extract_ui3d))
         .add_systems(
             Render,
             (
@@ -775,9 +781,289 @@ pub(super) fn register(app: &mut App) {
             ),
         )
         .add_systems(
+            Render,
+            prepare_ui3d
+                .in_set(RenderSystems::Prepare)
+                .after(super::gpu_resources::prepare_uploaded_image_registry),
+        )
+        .add_systems(
             Core3d,
-            draw_iw_tess
-                .in_set(Core3dSystems::PostProcess)
-                .after(super::postfx::PostFxSet),
+            (
+                draw_iw_tess
+                    .in_set(Core3dSystems::PostProcess)
+                    .after(super::postfx::PostFxSet),
+                draw_ui3d
+                    .in_set(Core3dSystems::MainPass)
+                    .before(super::draw::ExactColourDrawSet),
+            ),
         );
+}
+
+/// The menus a game paints into its 3D UI texture this frame.
+#[derive(Resource, Default)]
+pub(super) struct ExtractedUi3d(hud::Ui3dHudFrame);
+
+fn extract_ui3d(mut extracted: ResMut<ExtractedUi3d>, frame: Extract<Res<hud::Ui3dHudFrame>>) {
+    extracted.0 = frame.clone();
+}
+
+struct Ui3dTarget {
+    size: [u32; 2],
+    format: TextureFormat,
+    _texture: Texture,
+    view: TextureView,
+    sampled: TextureView,
+    /// Not drawn into yet: the first pass clears it.
+    fresh: bool,
+}
+
+struct Ui3dWindowDraw {
+    rect: [u32; 4],
+    vb: Buffer,
+    ib: Buffer,
+    batches: Vec<HudTessBatch>,
+}
+
+/// A game's 3D UI texture and the windows to draw into it this frame.
+#[derive(Resource, Default)]
+pub(super) struct Ui3dGpu {
+    target: Option<Ui3dTarget>,
+    params: Option<Buffer>,
+    draws: Vec<Ui3dWindowDraw>,
+    pending: bool,
+}
+
+fn ui3d_target(device: &RenderDevice, size: [u32; 2], format: TextureFormat) -> Ui3dTarget {
+    let mut view_formats = Vec::new();
+    for variant in [format.add_srgb_suffix(), format.remove_srgb_suffix()] {
+        if variant != format && !view_formats.contains(&variant) {
+            view_formats.push(variant);
+        }
+    }
+    let texture = device.create_texture(&TextureDescriptor {
+        label: Some("ui3d"),
+        size: Extent3d {
+            width: size[0],
+            height: size[1],
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format,
+        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        view_formats: &view_formats,
+    });
+    let view = texture.create_view(&TextureViewDescriptor::default());
+    // Sampled as the extra camera's target is: its colour bytes as written.
+    let sampled = texture.create_view(&TextureViewDescriptor {
+        label: Some("ui3d_sampled"),
+        format: Some(format.remove_srgb_suffix()),
+        ..Default::default()
+    });
+    Ui3dTarget {
+        size,
+        format,
+        _texture: texture,
+        view,
+        sampled,
+        fresh: true,
+    }
+}
+
+/// Keeps the game's 3D UI texture, publishes it for the materials that
+/// sample it, and uploads the windows drawn into it this frame.
+pub(super) fn prepare_ui3d(
+    extracted: Res<ExtractedUi3d>,
+    views: Query<&ViewTarget, With<Camera3d>>,
+    device: Res<RenderDevice>,
+    queue: Res<RenderQueue>,
+    mut gpu: ResMut<Ui3dGpu>,
+    mut uploaded: ResMut<super::gpu_resources::RuntimeUploadedImageRegistry>,
+) {
+    let gpu = gpu.as_mut();
+    gpu.draws.clear();
+    gpu.pending = false;
+    let size = extracted.0.size;
+    if size[0] == 0 || size[1] == 0 {
+        if gpu.target.take().is_some() {
+            uploaded.publish_frame_target(|registry| &mut registry.ui3d, None);
+        }
+        return;
+    }
+    let Some(main) = views.iter().next() else {
+        return;
+    };
+    let format = main.main_texture_format();
+    if gpu
+        .target
+        .as_ref()
+        .is_none_or(|target| target.size != size || target.format != format)
+    {
+        gpu.target = Some(ui3d_target(&device, size, format));
+    }
+    let params = gpu.params.get_or_insert_with(|| {
+        device.create_buffer(&BufferDescriptor {
+            label: Some("ui3d_params"),
+            size: PARAMS_SIZE,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    });
+    if let Some(projection) = cmd_buf_set_2d_projection(size[0] as i32, size[1] as i32) {
+        let coeffs = set_2d_clip_coeffs(&projection);
+        queue.write_buffer(params, 0, bytemuck::bytes_of(&coeffs));
+    }
+    for window in &extracted.0.windows {
+        let frame = &window.frame;
+        if frame.vertices.is_empty() || frame.indices.is_empty() {
+            continue;
+        }
+        let vertices: Vec<IwTessVertex> = frame
+            .vertices
+            .iter()
+            .map(|v| IwTessVertex {
+                xyzw: v.xyzw,
+                color_bgra: v.color_bgra,
+                uv: v.uv,
+                packed_normal: v.packed_normal,
+            })
+            .collect();
+        let mut indices = frame.indices.clone();
+        if indices.len() % 2 == 1 {
+            indices.push(0);
+        }
+        gpu.draws.push(Ui3dWindowDraw {
+            rect: window.rect,
+            vb: device.create_buffer_with_data(&BufferInitDescriptor {
+                label: Some("ui3d_vb"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: BufferUsages::VERTEX,
+            }),
+            ib: device.create_buffer_with_data(&BufferInitDescriptor {
+                label: Some("ui3d_ib"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: BufferUsages::INDEX,
+            }),
+            batches: frame.batches.clone(),
+        });
+    }
+    let target = gpu.target.as_ref().expect("target made above");
+    gpu.pending = target.fresh || !gpu.draws.is_empty();
+    uploaded.publish_frame_target(|registry| &mut registry.ui3d, Some(target.sampled.clone()));
+}
+
+/// Draws each window the game painted this frame into its rect of the 3D
+/// UI texture, before the scene samples it. A window not drawn keeps what
+/// it showed.
+#[allow(clippy::too_many_arguments)] // one render system's resources
+fn draw_ui3d(
+    mut gpu: ResMut<Ui3dGpu>,
+    pipeline: Res<IwTessPipeline>,
+    mut specialized: ResMut<SpecializedRenderPipelines<IwTessPipeline>>,
+    cache: Res<PipelineCache>,
+    device: Res<RenderDevice>,
+    images: Res<RenderAssets<GpuImage>>,
+    mut context: RenderContext,
+) {
+    let Ui3dGpu {
+        target,
+        params,
+        draws,
+        pending,
+    } = gpu.as_mut();
+    if !std::mem::take(pending) {
+        return;
+    }
+    let (Some(target), Some(params)) = (target.as_mut(), params.as_ref()) else {
+        return;
+    };
+    let load = if std::mem::take(&mut target.fresh) {
+        LoadOp::Clear(LinearRgba::BLACK.into())
+    } else {
+        LoadOp::Load
+    };
+    let layout = cache.get_bind_group_layout(&pipeline.modulate_layout);
+    // Every window's draws and bind groups first: the pass borrows them.
+    let mut windows = Vec::with_capacity(draws.len());
+    for draw in draws.iter() {
+        let [x, y, w, h] = draw.rect;
+        let x = x.min(target.size[0]);
+        let y = y.min(target.size[1]);
+        let w = w.min(target.size[0] - x);
+        let h = h.min(target.size[1] - y);
+        if w == 0 || h == 0 {
+            continue;
+        }
+        let mut batches = Vec::with_capacity(draw.batches.len());
+        for batch in &draw.batches {
+            if batch.technique != HudTessTechnique::Modulate
+                || batch.index_count == 0
+                || batch.index_count % 3 != 0
+            {
+                continue;
+            }
+            let Some(gpu_image) = images.get(&batch.image) else {
+                continue;
+            };
+            let id = specialized.specialize(
+                &cache,
+                &pipeline,
+                IwTessPipelineKey {
+                    target: target.format,
+                    samples: 1,
+                    state: batch.state,
+                },
+            );
+            if cache.get_render_pipeline(id).is_none() {
+                continue;
+            }
+            let bind = device.create_bind_group(
+                "ui3d_modulate",
+                &layout,
+                &BindGroupEntries::sequential((
+                    params.as_entire_buffer_binding(),
+                    &gpu_image.texture_view,
+                    &gpu_image.sampler,
+                )),
+            );
+            batches.push((id, bind, batch));
+        }
+        windows.push(([x, y, w, h], draw, batches));
+    }
+    let attachments = [Some(RenderPassColorAttachment {
+        view: &target.view,
+        depth_slice: None,
+        resolve_target: None,
+        ops: Operations {
+            load,
+            store: StoreOp::Store,
+        },
+    })];
+    let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
+        label: Some("ui3d_pass"),
+        color_attachments: &attachments,
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    for ([x, y, w, h], draw, batches) in &windows {
+        pass.set_scissor_rect(*x, *y, *w, *h);
+        pass.set_vertex_buffer(0, draw.vb.slice(..));
+        pass.set_index_buffer(draw.ib.slice(..), IndexFormat::Uint16);
+        for (id, bind, batch) in batches {
+            let Some(gpu_pipeline) = cache.get_render_pipeline(*id) else {
+                continue;
+            };
+            pass.set_render_pipeline(gpu_pipeline);
+            pass.set_bind_group(0, bind, &[]);
+            let first = batch.first_index;
+            pass.draw_indexed(
+                first..first + batch.index_count,
+                batch.first_vertex as i32,
+                0..1,
+            );
+        }
+    }
 }

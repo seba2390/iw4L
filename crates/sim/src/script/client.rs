@@ -483,6 +483,8 @@ pub(crate) struct ClientTagEvent {
 /// loops it plays, and its effects.
 #[derive(Resource, Default)]
 pub(crate) struct ClientOutput {
+    /// The 3D UI windows the client's scripts placed (`ui3dsetwindow`).
+    pub(crate) ui3d_windows: Option<game_api::Ui3dWindows>,
     /// The sound commands for the local client's sound system.
     pub(crate) sound_commands: Vec<crate::ScriptAudioCommand>,
     /// The reverb each priority (level, shellshock) asks for: the room
@@ -968,13 +970,15 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                 }
             }
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
+            let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let mut frame = crate::frame::FrameWorld::from_world(server);
             if frame.client_meta(crate::ClientId(0)).is_some() {
-                frame
+                let screen = &mut frame
                     .client_meta_mut(crate::ClientId(0))
                     .view_effects
-                    .client_screen
-                    .extra_camera = extra_camera;
+                    .client_screen;
+                screen.extra_camera = extra_camera;
+                screen.ui3d_windows = ui3d_windows;
             }
             // Its screen overlays past their time stop and fade, and fades
             // past their time end.

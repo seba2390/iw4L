@@ -208,6 +208,9 @@ pub struct MenuDef {
     pub window_background: String,
     pub expr_dvars: String,
     pub fullscreen: i32,
+    /// The game's 3D UI window the menu paints into instead of the screen
+    /// (Black Ops' `ui3dWindowId`); `None` paints on the screen.
+    pub ui3d_window: Option<u8>,
     pub static_flags: i32,
     pub focus_color: Option<[f32; 4]>,
 

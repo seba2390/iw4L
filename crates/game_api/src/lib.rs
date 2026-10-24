@@ -424,6 +424,23 @@ pub struct ModeRules {
     /// The dvars the host's menus set are the server's: the game runs its
     /// menus and its level in one process with one dvar table.
     pub menu_dvars_reach_server: bool,
+    /// The game's 3D UI texture, which menus with a window paint into and
+    /// world materials sample; `None` has none.
+    pub ui3d: Option<Ui3dRules>,
+}
+
+/// The windows of a game's 3D UI texture.
+pub const UI3D_WINDOWS: usize = 6;
+
+/// Each 3D UI window's place in the texture, `[x, y, w, h]` as fractions
+/// of its size.
+pub type Ui3dWindows = [[f32; 4]; UI3D_WINDOWS];
+
+/// A game's 3D UI texture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ui3dRules {
+    /// The texture's size in pixels.
+    pub size: [u32; 2],
 }
 
 /// The game's second view of the world: a client script's camera entity

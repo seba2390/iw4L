@@ -44,6 +44,35 @@ impl Hud2dSurface {
         }
     }
 
+    /// A 3D UI window `width` by `height` pixels: the virtual 640 by 480
+    /// screen stretched over the whole window, with no safe area, as Black
+    /// Ops places a window's menus.
+    pub fn ui3d_window(width: f32, height: f32) -> Self {
+        let size = [width.max(1.0), height.max(1.0)];
+        let scale = [size[0] / 640.0, size[1] / 480.0];
+        let place = ScreenPlacement {
+            scale_virtual_to_real: scale,
+            scale_virtual_to_full: scale,
+            scale_real_to_virtual: [640.0 / size[0], 480.0 / size[1]],
+            real_viewport_position: [0.0, 0.0],
+            real_viewport_size: size,
+            virtual_viewable_min: [0.0, 0.0],
+            virtual_viewable_max: [640.0, 480.0],
+            real_viewable_min: [0.0, 0.0],
+            real_viewable_max: size,
+            virtual_adjustable_min: [0.0, 0.0],
+            virtual_adjustable_max: [640.0, 480.0],
+            real_adjustable_min: [0.0, 0.0],
+            real_adjustable_max: size,
+            sub_screen_left: 0.0,
+        };
+        Self {
+            width,
+            height,
+            place,
+        }
+    }
+
     pub fn is_ready(&self) -> bool {
         self.width > 1.0 && self.height > 1.0
     }

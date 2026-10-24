@@ -306,7 +306,20 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     // one process: a menu's `setDvar` is what `GetDvar` reads (the front
     // end's map select sets `ui_load_level` for `ChangeLevel`).
     menu_dvars_reach_server: true,
+    // A zombies map's 3D UI texture; the front end's is square
+    // (`ui3d_size`).
+    ui3d: Some(game_api::Ui3dRules { size: [1024, 512] }),
 };
+
+/// Black Ops' 3D UI texture: 1024 by 1024 on the front end and the `menu_`
+/// levels, 1024 by 512 on every other map.
+fn ui3d_size(map: &str) -> [u32; 2] {
+    if map == FRONT_END_LEVEL || map.starts_with("menu_") {
+        [1024, 1024]
+    } else {
+        [1024, 512]
+    }
+}
 
 /// Black Ops' hud elem fonts, read from its executable: the menu font each
 /// draws with and its base scale. `bigfixed` draws bold at half scale,
@@ -713,6 +726,18 @@ impl game_api::GameModes for T5 {
             ));
         }
         Rule::Known(ZOMBIE_MODE)
+    }
+
+    fn mode_on_map(&self, map: &str, gametype: &str) -> Rule<ModeRules> {
+        match self.mode(gametype) {
+            Rule::Known(mode) => Rule::Known(ModeRules {
+                ui3d: Some(game_api::Ui3dRules {
+                    size: ui3d_size(map),
+                }),
+                ..mode
+            }),
+            unknown => unknown,
+        }
     }
 
     fn zombies(&self) -> Option<&'static LibraryMode> {

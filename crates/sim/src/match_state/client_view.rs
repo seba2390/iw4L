@@ -144,6 +144,9 @@ pub struct ClientScreen {
     /// Black Ops' extra camera while a client script has one on: its
     /// entity's place and the view's field of view.
     pub extra_camera: Option<game_api::ExtraCamera>,
+    /// The 3D UI windows' places in their texture, once a client script
+    /// sets one (`ui3dsetwindow`); every window is empty until then.
+    pub ui3d_windows: Option<game_api::Ui3dWindows>,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

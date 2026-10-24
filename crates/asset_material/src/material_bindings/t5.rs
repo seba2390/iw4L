@@ -260,6 +260,10 @@ pub(super) fn prepare_defaults(steps: &mut Vec<FrameStep>, requested: &[u16]) {
             &[[0; 4]],
         );
     }
+    // Every 3D UI window is empty until the frame places it.
+    for window in 0..render_material::CODE_UI3D_UV_SETUP_COUNT {
+        writer.set_constant_rows(render_material::CODE_UI3D_UV_SETUP0 + window, &[[0; 4]]);
+    }
     super::push_static(
         steps,
         requested,

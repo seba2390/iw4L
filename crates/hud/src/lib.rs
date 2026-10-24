@@ -45,7 +45,8 @@ pub use draw2d::{
 pub use expr_cache::GameMenuParsers;
 pub use gaps::{GapCause, HudGap, HudPresentationGaps};
 pub use gpu_list::{
-    HudTessBatch, HudTessGpuFrame, HudTessTechnique, HudTessVertex, ShellshockScreen,
+    HudTessBatch, HudTessGpuFrame, HudTessTechnique, HudTessVertex, ShellshockScreen, Ui3dHudFrame,
+    Ui3dHudWindow,
 };
 pub use hudelem::HudElemSoundLatch;
 pub use menus::{MenuState, ScriptMenus};
