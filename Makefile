@@ -11,6 +11,7 @@ GOAL := $(firstword $(MAKECMDGOALS))
 ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 
 .PHONY: map export-gltf play bench bench-load-session bench-live bench-overhead bench-perf menu menu-shots scenario chaos lifecycle-all lifecycle-swap lifecycle-replace lifecycle-play-in lifecycle-demo-out lifecycle-demo-map launcher deploy logs loc clean help
+.PHONY: build start bo1 kino five
 .PHONY: build-windows setup-windows release publish github-release
 .PHONY: mr publish-check approved boundary
 .PHONY: $(ARGS)
@@ -224,6 +225,21 @@ lifecycle-demo-map: require-games
 menu: require-games
 	cd $(ROOT) && $(CARGO) run $(PROFILE_ARG) -p launcher -- menu $(CMDS_ARG)
 
+# Everyday commands. Each start builds first when anything changed.
+build:
+	cd $(ROOT) && $(CARGO) build $(PROFILE_ARG) -p launcher
+
+start: menu
+
+bo1: require-games
+	cd $(ROOT) && IW4L_GAMETYPE=zombies $(CARGO) run $(PROFILE_ARG) -p launcher -- map t5:frontend $(CMDS_ARG)
+
+kino: require-games
+	cd $(ROOT) && IW4L_GAMETYPE=zombies $(CARGO) run $(PROFILE_ARG) -p launcher -- map t5:zombie_theater $(CMDS_ARG)
+
+five: require-games
+	cd $(ROOT) && IW4L_GAMETYPE=zombies $(CARGO) run $(PROFILE_ARG) -p launcher -- map t5:zombie_pentagon $(CMDS_ARG)
+
 menu-shots:
 	@test -n "$$IW4L_GAMES" -o -n "$(IW4L_GAMES)" || { echo "set IW4L_GAMES to the games root"; exit 1; }
 	@mkdir -p iw4l-artifacts/menu-shots
@@ -321,6 +337,14 @@ clean:
 	 df -h $(ROOT) | tail -1
 
 help:
+	@echo "Everyday:"
+	@echo "make build        build the game"
+	@echo "make start        build if needed, then open the game library"
+	@echo "make bo1          build if needed, then open Black Ops' own front end"
+	@echo "make kino         build if needed, then start Kino der Toten (Black Ops zombies)"
+	@echo "make five         build if needed, then start \"Five\" (Black Ops zombies)"
+	@echo ""
+	@echo "Everything else:"
 	@echo "make map <zone>   run crates/launcher, zone e.g. mp_boneyard"
 	@echo "                  make map ZONE=iw5:mp_overwatch  (colon cannot be a make goal)"
 	@echo "                  add CMDS='spawn 0; hold +attack' to script it"

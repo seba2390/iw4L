@@ -86,7 +86,17 @@ cp .env.example .env
 make map mp_boneyard CMDS='wait world; spawn 0; force_match_start; bot add 3'
 ```
 
-This builds the optimized `play` profile and starts a local Modern Warfare 2 match with
+Everyday commands (each builds first when anything changed; `make help` lists the rest):
+
+```bash
+make build    # build the game
+make start    # the game library
+make bo1      # Black Ops' own front end (main menu → Zombies → Solo → a map)
+make kino     # Kino der Toten, Black Ops zombies
+make five     # "Five", Black Ops zombies
+```
+
+The `make map` line above builds the optimized `play` profile and starts a local Modern Warfare 2 match with
 three bots. `force_match_start` skips the warmup that otherwise freezes movement. Other
 games' maps take their game's prefix:
 

@@ -11,10 +11,11 @@ missing or lent: [`fidelity/t5.md`](fidelity/t5.md). Black Ops II: [`BO2-ZOMBIES
 
 ## Start a game
 
-- Solo: the game library, Black Ops → Zombies → Kino der Toten. Directly:
-  `IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater` (or
-  `IW4L_GAMETYPE=zombies make map ZONE=t5:zombie_theater`). Without
-  `IW4L_GAMETYPE=zombies` a Black Ops map is refused at load.
+- Solo: `make start` opens the game library; pick Black Ops for its own
+  front end. `make bo1` opens the front end directly, `make kino` and
+  `make five` start the maps (each builds first when anything changed).
+  By hand: `IW4L_GAMETYPE=zombies ./target/play/iw4l map t5:zombie_theater`;
+  without `IW4L_GAMETYPE=zombies` a Black Ops map is refused at load.
 - Headless, as a dedicated server ([`RUN.md`](RUN.md) for `--cmds`):
   `IW4L_SOUND=off IW4L_GAMETYPE=zombies ./target/play/iw4l serve t5:zombie_theater --cmds 'wait world; bot add 1; wait 20s; quit'`
 - Co-op host: `set ui_mapname t5:zombie_theater; set ui_gametype zom;
