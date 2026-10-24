@@ -53,6 +53,9 @@ pub(crate) enum Command {
         value: String,
         menu: String,
     },
+    /// Black Ops' `uiScript sendMenuNotify "name arg"`: a message to the
+    /// level's scripts.
+    SendMenuNotify(String),
     Unhandled(String),
 }
 
@@ -206,6 +209,7 @@ pub(crate) fn parse(script: &str) -> Vec<Command> {
                 let script = arg(i + 1).to_ascii_lowercase();
                 match script.as_str() {
                     "quit" => (Command::Exec("quit".into()), 2),
+                    "sendmenunotify" => (Command::SendMenuNotify(arg(i + 2)), 3),
                     "openmenuondvar" | "openmenuondvarnot" | "closemenuondvar"
                     | "closemenuondvarnot" => (
                         Command::MenuOnDvar {

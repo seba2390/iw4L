@@ -225,6 +225,26 @@ pub(crate) fn encode_action(out: &mut WireWriter, action: &ClientAction) {
             out.put_u32(request_id);
             out.put_bytes(&name);
         }
+        ClientAction::MenuMessage {
+            request_id,
+            name,
+            arg,
+        } => {
+            out.put_u8(25);
+            out.put_u32(request_id);
+            out.put_bytes(&name);
+            out.put_bytes(&arg);
+        }
+        ClientAction::ScriptDvar {
+            request_id,
+            name,
+            value,
+        } => {
+            out.put_u8(26);
+            out.put_u32(request_id);
+            out.put_bytes(&name);
+            out.put_bytes(&value);
+        }
     }
 }
 
@@ -372,6 +392,27 @@ pub(crate) fn decode_action(input: &mut WireReader<'_>) -> Result<ClientAction, 
                 _ => return Err(WireError::Malformed("unknown SpawnPick tag")),
             };
             Ok(ClientAction::ForceSpawn { request_id, pick })
+        }
+        tag @ (25 | 26) => {
+            let tag_message = tag == 25;
+            let request_id = input.get_u32()?;
+            let mut first = [0u8; sim::MENU_RESPONSE_BYTES];
+            input.get_bytes(&mut first)?;
+            let mut second = [0u8; sim::MENU_RESPONSE_BYTES];
+            input.get_bytes(&mut second)?;
+            Ok(if tag_message {
+                ClientAction::MenuMessage {
+                    request_id,
+                    name: first,
+                    arg: second,
+                }
+            } else {
+                ClientAction::ScriptDvar {
+                    request_id,
+                    name: first,
+                    value: second,
+                }
+            })
         }
         _ => Err(WireError::Malformed("unknown ClientAction tag")),
     }

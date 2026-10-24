@@ -125,6 +125,22 @@ pub enum ClientAction {
         request_id: ActionRequestId,
     },
 
+    /// A menu's message to the level's scripts (Black Ops' `sendMenuNotify`,
+    /// sent as its `mlvl` command): its two words.
+    MenuMessage {
+        request_id: ActionRequestId,
+        name: [u8; MENU_RESPONSE_BYTES],
+        arg: [u8; MENU_RESPONSE_BYTES],
+    },
+
+    /// A dvar the client's menus set, for a game whose menus and server
+    /// share one dvar table.
+    ScriptDvar {
+        request_id: ActionRequestId,
+        name: [u8; MENU_RESPONSE_BYTES],
+        value: [u8; MENU_RESPONSE_BYTES],
+    },
+
     GiveKillstreak {
         request_id: ActionRequestId,
         name: [u8; MENU_RESPONSE_BYTES],
@@ -242,6 +258,8 @@ pub fn action_request_id(action: &ClientAction) -> ActionRequestId {
         | ClientAction::ActionSlot { request_id, .. }
         | ClientAction::ChooseDefaultClass { request_id, .. }
         | ClientAction::MenuResponse { request_id, .. }
+        | ClientAction::MenuMessage { request_id, .. }
+        | ClientAction::ScriptDvar { request_id, .. }
         | ClientAction::GiveKillstreak { request_id, .. }
         | ClientAction::ResupplyAmmo { request_id } => request_id,
     }

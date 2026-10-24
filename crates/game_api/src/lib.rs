@@ -421,6 +421,9 @@ pub struct ModeRules {
     /// How the game draws a client's extra camera, the second view of the
     /// world its materials sample; `None` draws none.
     pub extra_camera: Option<ExtraCameraRules>,
+    /// The dvars the host's menus set are the server's: the game runs its
+    /// menus and its level in one process with one dvar table.
+    pub menu_dvars_reach_server: bool,
 }
 
 /// The game's second view of the world: a client script's camera entity

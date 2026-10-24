@@ -358,6 +358,12 @@ impl Runner<'_, '_> {
                     }
                 }
             }
+            Command::SendMenuNotify(text) => {
+                // Sent only while `ui_menuLvlNotify` (registered 1) is on.
+                if self.dvar("ui_menuLvlNotify") != Some("0") {
+                    self.menus.menu_messages.push(text);
+                }
+            }
             Command::Unhandled(name) => {
                 diag::debug!(Ui, "menu {menu}: script command `{name}` not run");
             }

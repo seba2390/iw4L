@@ -31,7 +31,7 @@ pub use host::natives::engine::{EXIT_LEVEL, MAP_RESTART};
 pub(crate) use host::natives::iw4::set_dvar;
 pub use host::natives::t7::GametypeSettings;
 pub(crate) use host::players::{
-    answer_join, answer_menu, apply_disconnects, apply_player_links, choose_class,
+    answer_join, answer_menu, menu_message, set_menu_dvar, apply_disconnects, apply_player_links, choose_class,
     choose_default_class, disconnect_player, flashbang, force_death, game_player_damage,
     give_killstreak, is_t5, note_team_answer, personal_class, player_damage, script_seats,
     set_profile, sync_players,

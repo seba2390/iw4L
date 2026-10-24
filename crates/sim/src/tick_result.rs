@@ -64,4 +64,6 @@ pub struct TickResult {
     pub script_exit_level: bool,
     /// A failed level's delay has passed: the level loads again.
     pub level_reload_due: bool,
+    /// `ChangeLevel`'s exit time has passed: this level loads next.
+    pub level_change: Option<String>,
 }

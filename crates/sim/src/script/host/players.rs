@@ -408,6 +408,33 @@ pub(crate) fn answer_menu(world: &mut World, client: u32, menu: &str, response: 
     );
 }
 
+const MENU_MESSAGE: &str = "maps/_callbacksetup::codecallback_menumessage";
+
+/// Black Ops' `mlvl`: a menu's message runs the level's menu message
+/// callback with its two words.
+pub(crate) fn menu_message(world: &mut World, name: &str, arg: &str) {
+    if world.get_resource::<RoundScript>().is_none() {
+        return;
+    }
+    let now = now_ms(world);
+    if let Err(fault) = run_now(
+        world,
+        MENU_MESSAGE,
+        Value::Undefined,
+        vec![Value::string(name), Value::string(arg)],
+        now,
+    ) {
+        diag::warn!(Sim, "menu message `{name} {arg}`: {fault:?}");
+    }
+}
+
+/// A dvar the host's menus set, where they share the server's dvars.
+pub(crate) fn set_menu_dvar(world: &mut World, name: &str, value: &str) {
+    if world.get_resource::<crate::script::MatchScript>().is_some() {
+        super::natives::iw4::set_dvar(world, name, value);
+    }
+}
+
 pub(crate) fn answer_join(world: &mut World, client: u32) {
     if world.resource_mut::<RoundScript>().joined.insert(client) {
         answer_menu(world, client, TEAM_MENU, "autoassign");
