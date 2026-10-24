@@ -99,6 +99,9 @@ struct Menu {
     wip_mode: String,
     editing_lobby: bool,
     password_setup: bool,
+    /// A game's own front end is starting: its lobby is the launcher's
+    /// plumbing, never shown.
+    starting_front_end: bool,
 }
 
 impl Menu {
@@ -681,6 +684,7 @@ fn activate(
                 .and_then(|entry| entry.front_end.clone()) =>
         {
             menu.selected = Some(game);
+            let page = menu.page;
             activate(
                 Action::ZombieMap(map, None),
                 menu,
@@ -692,6 +696,8 @@ fn activate(
                 browser,
             );
             command(exec, "ui_start_match");
+            menu.navigate(page);
+            menu.starting_front_end = true;
             menu.notice = format!("Starting {}…", game.title());
         }
         Action::Select(game) => {
@@ -945,6 +951,9 @@ fn input(
         }
         if let UiMenuRequest::Open(name) = request {
             if name == "game_lobby" {
+                if std::mem::take(&mut menu.starting_front_end) {
+                    continue;
+                }
                 let game = dvars
                     .get("ui_mapname")
                     .and_then(|map| map.split_once(':'))
