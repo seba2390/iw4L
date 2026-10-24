@@ -52,6 +52,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(play(world, alias, Some(origin), volume))
     });
     register_sound_ids(registry);
+    register_weapon_models(registry);
+    register_profile(registry);
     // `player earthQuake(scale, duration, origin, radius)` shakes the local
     // client's view; nothing is checked.
     registry.register(Method, "earthquake", |world, _, args| {
@@ -1990,4 +1992,143 @@ pub(crate) fn deliver_earthquakes(client: &mut World, server: &mut World) {
             quake.radius,
         );
     }
+}
+
+/// The server's weapon by its script name, with its world model and hide
+/// tags; `None` for an unknown name (and "none", weapon 0).
+pub(super) fn weapon_model(world: &mut World, name: &str) -> Option<(String, Vec<String>)> {
+    let frame = crate::frame::FrameWorld::from_world(world);
+    let weapon = frame
+        .weapon_index_by_script_name(name)
+        .filter(|&weapon| weapon != 0)?;
+    let (model, tags) = frame.weapon_world_model(weapon).unwrap_or(("", &[]));
+    Some((model.to_owned(), tags.to_vec()))
+}
+
+/// The client's copy of a server weapon's world model and hide tags.
+fn client_weapon(world: &World, name: &str) -> Option<(String, Vec<String>)> {
+    world
+        .resource::<crate::script::client::ClientWeaponModels>()
+        .by_name
+        .get(name)
+        .cloned()
+}
+
+/// An entity's parts show again, then the weapon's hide tags hide, as
+/// `useWeaponHideTags` does it on the server and the client alike: a
+/// missing argument or an unknown weapon is an error.
+pub(super) fn use_weapon_hide_tags(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    tags: impl FnOnce(&mut World, &str) -> Option<Vec<String>>,
+) -> Result<Value, String> {
+    if args.is_empty() {
+        return Err("useweaponhidetags <weaponName>.\n".into());
+    }
+    let name = string(args, 0)?;
+    let Some(tags) = tags(world, &name) else {
+        return Err(format!(
+            "useweaponhidetags called with unknown weapon name {name}\n"
+        ));
+    };
+    let id = super::engine::entity_id(world, receiver)?;
+    if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
+        entity.part_ops.push(("".into(), false));
+        entity.part_ops.extend(
+            tags.iter()
+                .map(|tag| (std::sync::Arc::from(tag.as_str()), true)),
+        );
+    }
+    Ok(Value::Undefined)
+}
+
+/// The box's and the client's weapon models: their world model and the
+/// parts they hide.
+fn register_weapon_models(registry: &mut NativeRegistry) {
+    use Namespace::{Function, Method};
+    // `GetWeaponModel(weapon, [variant], [viewmodel])`: the weapon's world
+    // model; an unknown weapon other than "none" is printed and answers "".
+    registry.register(Function, "getweaponmodel", |world, _, args| {
+        let name = string(args, 0)?;
+        let model = client_weapon(world, &name);
+        let Some((model, _)) = model else {
+            if !name.is_empty() && name != "none" {
+                diag::info!(Sim, "csc: unknown weapon '{name}' in getWeaponModel");
+            }
+            return Ok(Value::string(""));
+        };
+        Ok(Value::string(&model))
+    });
+    registry.register(Method, "useweaponhidetags", |world, receiver, args| {
+        use_weapon_hide_tags(world, receiver, args, |world, name| {
+            client_weapon(world, name).map(|(_, tags)| tags)
+        })
+    });
+}
+
+fn alternate_aim(world: &mut World, receiver: &Value, on: bool) -> Result<Value, String> {
+    let (call, verb) = if on {
+        ("UseAlternateAim", "UseAlternateAimParams")
+    } else {
+        ("ClearAlternateAim", "ClearAlternateAimParams")
+    };
+    let (id, ent) = entity(world, receiver)?;
+    if ent.kind != EntityKind::Player {
+        return Err(format!("You can only call {call} on players."));
+    }
+    if !locals(world).contains(&id) {
+        return Err(format!("{verb} had no effect..."));
+    }
+    world.resource_mut::<ClientOutput>().alternate_aim = on;
+    Ok(Value::Undefined)
+}
+
+/// Deadshot's aim, collectibles and the input mappings.
+fn register_profile(registry: &mut NativeRegistry) {
+    use Namespace::{Function, Method};
+    // `player useAlternateAimParams()` / `clearAlternateAimParams()`: the
+    // local client named takes the alternate aim parameters, or lets them
+    // go; any other player is an error.
+    registry.register(Method, "usealternateaimparams", |world, receiver, _| {
+        alternate_aim(world, receiver, true)
+    });
+    registry.register(Method, "clearalternateaimparams", |world, receiver, _| {
+        alternate_aim(world, receiver, false)
+    });
+    // `SetCollectible(index)`: marks the collectible at that 1-based index
+    // in the profile's `bg_collectibles`; an index past the string's end
+    // marks nothing.
+    registry.register(Function, "setcollectible", |world, _, args| {
+        let index = int(args, 0)?;
+        let held = world
+            .resource::<crate::script::MatchScript>()
+            .dvars
+            .get("bg_collectibles")
+            .map_or(String::new(), |value| value.to_string());
+        let mut marks: Vec<u8> = held.into_bytes();
+        marks.truncate(49);
+        if let Some(mark) = usize::try_from(index - 1)
+            .ok()
+            .and_then(|at| marks.get_mut(at))
+        {
+            *mark = b'1';
+        }
+        let marks = String::from_utf8_lossy(&marks).into_owned();
+        world
+            .resource_mut::<ClientOutput>()
+            .client_dvars
+            .push(("bg_collectibles".into(), marks));
+        Ok(Value::Undefined)
+    });
+    // `ForceGameModeMappings(localClientNum, mode)`: a pad's binds for the
+    // mode; without a pad nothing but the key state it clears.
+    registry.register(Function, "forcegamemodemappings", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to ForceGameModeMappings()\nUSAGE: ForceGameModeMappings( <localClientNum>, <modeName>)\n".into());
+        }
+        int(args, 0)?;
+        string(args, 1)?;
+        Ok(Value::Undefined)
+    });
 }

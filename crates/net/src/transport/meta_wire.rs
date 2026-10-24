@@ -1882,6 +1882,7 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             }
         }
     }
+    out.put_u8(screen.alternate_aim.into());
 }
 
 fn decode_flame_overlay(
@@ -2051,6 +2052,11 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         }
         _ => return Err(WireError::Malformed("bad 3D UI windows tag")),
     };
+    let alternate_aim = match input.get_u8()? {
+        0 => false,
+        1 => true,
+        _ => return Err(WireError::Malformed("bad alternate aim flag")),
+    };
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
@@ -2062,6 +2068,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         undrawn_entities,
         extra_camera,
         ui3d_windows,
+        alternate_aim,
     })
 }
 

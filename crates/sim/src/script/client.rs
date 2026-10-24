@@ -512,6 +512,9 @@ pub(crate) struct ClientOutput {
     pub(crate) client_dvars: Vec<(String, String)>,
     /// Earthquakes started this frame (`earthQuake`), for the local client.
     pub(crate) earthquakes: Vec<crate::ScriptEarthquake>,
+    /// The local client takes the alternate aim parameters
+    /// (`useAlternateAimParams`).
+    pub(crate) alternate_aim: bool,
     /// The extra camera (`isExtraCam`): its entity and field of view, while
     /// one is on.
     pub(crate) extra_camera: Option<(u64, f32)>,
@@ -650,6 +653,15 @@ impl ClientEffectTable {
 pub(crate) struct ClientModels {
     pub(crate) names: std::collections::BTreeSet<String>,
     precached: usize,
+}
+
+/// The weapons the client's scripts may name (`GetWeaponModel`,
+/// `useWeaponHideTags`): each one's world model and the tags it hides, by
+/// script name, as the server's weapons have them.
+#[derive(Resource, Default)]
+pub(crate) struct ClientWeaponModels {
+    pub(crate) by_name: std::collections::HashMap<String, (String, Vec<String>)>,
+    weapons: usize,
 }
 
 /// Posed DObjs of the client's entities (mirrored server entities and
@@ -876,6 +888,7 @@ pub(crate) fn install(
     world.insert_resource(ClientOutput::default());
     world.insert_resource(ClientSoundReports::default());
     world.insert_resource(ClientModels::default());
+    world.insert_resource(ClientWeaponModels::default());
     world.insert_resource(ClientEntityDobjs::default());
     world.insert_resource(super::host::actor_anims::ClientAnimTrees({
         let frame = crate::frame::FrameWorld::from_world(server);
@@ -938,6 +951,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             }
             sync_effect_table(server, &mut client.world);
             sync_model_table(server, &mut client.world);
+            sync_weapon_models(server, &mut client.world);
             let player = local_player_view(server);
             client.world.resource_mut::<ClientView>().locals[0].player = player;
             let snapshots = collect_server_entities(server);
@@ -970,6 +984,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             super::host::natives::t5_client::deliver_earthquakes(&mut client.world, server);
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
+            let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
             let mut frame = crate::frame::FrameWorld::from_world(server);
             if frame.client_meta(crate::ClientId(0)).is_some() {
                 let screen = &mut frame
@@ -978,6 +993,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     .client_screen;
                 screen.extra_camera = extra_camera;
                 screen.ui3d_windows = ui3d_windows;
+                screen.alternate_aim = alternate_aim;
             }
             // Its screen overlays past their time stop and fade, and fades
             // past their time end.
@@ -988,6 +1004,34 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
         }
     }
     server.insert_resource(client);
+}
+
+/// The client knows the server's weapons and may set their world models.
+fn sync_weapon_models(server: &mut World, client: &mut World) {
+    let frame = crate::frame::FrameWorld::from_world(server);
+    let names = frame.weapon_script_names();
+    if client.resource::<ClientWeaponModels>().weapons == names.len() {
+        return;
+    }
+    let mut by_name = std::collections::HashMap::new();
+    for (weapon, name) in names.iter().enumerate().skip(1) {
+        let Some((model, tags)) = u32::try_from(weapon)
+            .ok()
+            .and_then(|weapon| frame.weapon_world_model(weapon))
+        else {
+            continue;
+        };
+        by_name.insert(name.clone(), (model.to_owned(), tags.to_vec()));
+    }
+    let models: Vec<String> = by_name
+        .values()
+        .filter(|(model, _)| !model.is_empty())
+        .map(|(model, _)| model.to_ascii_lowercase())
+        .collect();
+    client.resource_mut::<ClientModels>().names.extend(models);
+    let mut table = client.resource_mut::<ClientWeaponModels>();
+    table.by_name = by_name;
+    table.weapons = names.len();
 }
 
 /// The client sees the effects the server registered.
