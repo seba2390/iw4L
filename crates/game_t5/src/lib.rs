@@ -278,7 +278,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     },
     client_fire: Some(fire_sound::CLIENT_FIRE),
     top_down: Some(top_down::RULES),
-   camera_shake: Some(shake::RULES),
+    camera_shake: Some(shake::RULES),
     viewmodel: Some(viewmodel::VIEWMODEL),
     script_sounds_hashed: true,
     turrets: Some(turret::TURRETS),

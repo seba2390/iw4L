@@ -63,7 +63,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             radius: float(args, 3)?,
             start_ms: 0,
         };
-        if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE csc earthquake {quake:?}"); }
         world.resource_mut::<ClientOutput>().earthquakes.push(quake);
         Ok(Value::Undefined)
     });
@@ -549,7 +548,6 @@ fn register_effects(registry: &mut NativeRegistry) {
         let now = now_ms(world);
         let id = effect_id(args, 1)?;
         let origin = vector(args, 2)?;
-        if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE csc playfx id={id} origin={origin:?} t={now}"); }
         let (axis, begin) = match args.len() {
             3 => (math_iw4::angles_to_axis(DEFAULT_EFFECT_ANGLES), now),
             4 => {

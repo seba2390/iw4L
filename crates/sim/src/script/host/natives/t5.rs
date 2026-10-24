@@ -681,7 +681,6 @@ fn register_earthquake(registry: &mut NativeRegistry) {
         if radius <= 0.0 {
             return Err("Radius must be greater than 0".into());
         }
-        if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE sv earthquake scale={scale} ms={duration_ms} origin={origin:?} r={radius}"); }
         super::scene_effects::shake_camera(world, scale, duration_ms, origin, radius);
         Ok(Value::Undefined)
     });

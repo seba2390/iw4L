@@ -66,7 +66,6 @@ fn start(state: &mut ShakeState, mut quake: Earthquake, now_ms: i32) {
         return;
     };
     quake.start_ms = now_ms;
-    if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE shake start slot={slot} {quake:?}"); }
     slots[slot] = ShakeSlot {
         quake,
         strength: 0.0,
@@ -110,12 +109,10 @@ fn angles(state: &mut ShakeState, eye: [f32; 3], now_ms: i32) -> [f32; 3] {
     }
     let amplitude = if best > 1.0 { 1.0 } else { best };
     let phase = state.phase;
-    let out = WAVES.map(|(rate, size)| {
+    WAVES.map(|(rate, size)| {
         let wave = f64::from(time * rate + phase).sin() as f32;
         wave * best_fade * amplitude * size
-    });
-    if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE shake t={now_ms} best={best} fade={best_fade} phase={phase} eye={eye:?} angles={out:?}"); }
-    out
+    })
 }
 
 /// The C runtime's rand, from -1 to just under 1.

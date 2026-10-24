@@ -834,7 +834,7 @@ fn earthquake_pose(
         .snapshot()
         .map(|snapshot| &snapshot.meta.objectives.earthquakes[..]);
     let Some(rules) = kick.shake_rules else {
-        for quake in quakes.unwrap_or_default() {
+        for quake in quakes.into_iter().flatten() {
             let offset = quake.angle_offset(pose.origin, now_ms);
             for (angle, delta) in pose.angles.iter_mut().zip(offset) {
                 *angle += delta;
