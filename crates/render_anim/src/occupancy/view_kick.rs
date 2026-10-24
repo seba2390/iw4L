@@ -74,6 +74,10 @@ pub struct SessionViewKick {
     pub v_dmg_pitch: f32,
 
     pub v_dmg_roll: f32,
+    /// The game's own view kick for a hit, when its code HUD has one, and
+    /// the client random state that kick draws from.
+    damage_rules: Option<game_api::hud::DamageFlash>,
+    damage_random: u32,
     last_weapon_id: u32,
     last_origin: [f32; 3],
     last_velocity: [f32; 3],
@@ -141,6 +145,10 @@ pub fn tick_session_view_kick(
     mode: Option<Res<game_api::ModeRules>>,
     mut kick: ResMut<SessionViewKick>,
 ) {
+    kick.damage_rules = match mode.as_deref().map(|mode| mode.hud.code_hud) {
+        Some(game_api::Rule::Known(game_api::hud::CodeHud::Game(hud))) => hud.damage_flash,
+        _ => None,
+    };
     let Some(ps) = presented.player(local.0) else {
         return;
     };
@@ -623,26 +631,96 @@ fn stamp_damage_feedback(
 ) {
     let mut stamped = false;
     if kick.have_damage_prev && damage_event != kick.last_damage_event && damage_count != 0 {
-        let punch = damage_feedback_kick(damage_yaw, damage_pitch, damage_count, viewangles);
-        kick.v_dmg_pitch = punch.v_dmg_pitch;
-        kick.v_dmg_roll = punch.v_dmg_roll;
+        stamp_kick(kick, damage_yaw, damage_pitch, damage_count, viewangles);
         kick.damage_time = cg_time.max(1);
         stamped = true;
     }
     if !stamped && hurt.0 > 0 {
         hurt.0 -= 1;
-        let punch = damage_feedback_kick(
+        stamp_kick(
+            kick,
             VIEW_DAMAGE_UNDIRECTED,
             VIEW_DAMAGE_UNDIRECTED,
             1,
             viewangles,
         );
-        kick.v_dmg_pitch = punch.v_dmg_pitch;
-        kick.v_dmg_roll = punch.v_dmg_roll;
         kick.damage_time = cg_time.max(1);
     }
     kick.last_damage_event = damage_event;
     kick.have_damage_prev = true;
+}
+
+/// A hit kicks the view by the game's own rule when it has one, else by
+/// Modern Warfare 2's.
+fn stamp_kick(kick: &mut SessionViewKick, yaw: u32, pitch: u32, damage: i32, viewangles: [f32; 3]) {
+    if let Some(rules) = kick.damage_rules {
+        game_damage_kick(kick, &rules, [yaw, pitch], damage, viewangles);
+        return;
+    }
+    let punch = damage_feedback_kick(yaw, pitch, damage, viewangles);
+    kick.v_dmg_pitch = punch.v_dmg_pitch;
+    kick.v_dmg_roll = punch.v_dmg_roll;
+}
+
+/// A hit's view kick by the game's rule: its damage times `kick_scale`, held
+/// to `kick_min..=kick_max`; straight up when it came from no direction;
+/// else the pitch by how far ahead it came from and the roll by how far to
+/// the left, each plus a random share up to `kick_random` of the other; a
+/// hit from yaw and pitch 0 keeps the last kick.
+fn game_damage_kick(
+    kick: &mut SessionViewKick,
+    rules: &game_api::hud::DamageFlash,
+    [yaw, pitch]: [u32; 2],
+    damage: i32,
+    viewangles: [f32; 3],
+) {
+    let amount = damage as f32 * rules.kick_scale;
+    let amount = if amount < rules.kick_min || rules.kick_max < amount {
+        if amount < rules.kick_min {
+            rules.kick_min
+        } else {
+            rules.kick_max
+        }
+    } else {
+        amount
+    };
+    if yaw == VIEW_DAMAGE_UNDIRECTED && pitch == VIEW_DAMAGE_UNDIRECTED {
+        kick.v_dmg_roll = 0.0;
+        kick.v_dmg_pitch = -amount;
+        return;
+    }
+    if yaw == 0 && pitch == 0 {
+        return;
+    }
+    let turn = 360.0f32 / 255.0;
+    let (dir, _, _) = angle_vectors([pitch as f32 * turn, yaw as f32 * turn, 0.0]);
+    let (forward, right, _) = angle_vectors(viewangles);
+    let dot = |a: [f32; 3], b: [f32; 3]| a[1] * b[1] + a[2] * b[2] + a[0] * b[0];
+    let left = dot([-right[0], -right[1], -right[2]], dir);
+    let ahead = dot(forward, dir);
+    kick.v_dmg_roll = -(left * amount);
+    kick.v_dmg_pitch = ahead * amount;
+    // The random shares are worked in the x87 unit's precision.
+    let share = flrand(
+        &mut kick.damage_random,
+        -rules.kick_random,
+        rules.kick_random,
+    );
+    kick.v_dmg_roll =
+        (share * f64::from(ahead) * f64::from(amount) + f64::from(kick.v_dmg_roll)) as f32;
+    let share = flrand(
+        &mut kick.damage_random,
+        -rules.kick_random,
+        rules.kick_random,
+    );
+    kick.v_dmg_pitch =
+        (share * f64::from(left) * f64::from(amount) + f64::from(kick.v_dmg_pitch)) as f32;
+}
+
+/// The client's random float from `min` to `max`.
+fn flrand(random: &mut u32, min: f32, max: f32) -> f64 {
+    *random = random.wrapping_mul(214013).wrapping_add(2531011);
+    f64::from(*random >> 17) * (f64::from(max) - f64::from(min)) * (1.0 / 32768.0) + f64::from(min)
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
