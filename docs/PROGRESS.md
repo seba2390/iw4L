@@ -124,7 +124,7 @@ Only the top-level items count.
 - [x] Weapons fire, reload, throw and melee by the game's own rules.
   - [x] Bullets (spread, pellets, penetration), melee, frag grenades, rockets (Ray Gun), script blasts.
   - [x] The viewmodel plays the weapon's own animations, picked by the game's client rules.
-  - [ ] Grenade launchers, sticky and special grenades, detonation (the CZ75's dual wield animates both hands).
+  - [x] Grenade launchers (the China Lake), plantable and ground-sticking grenades (the Claymore), the Cymbal Monkey, the detonate key and grenade suicide; the CZ75's dual wield animates both hands. Grenades that stick to entities and smoke, flash, gas and molotov grenades are not on Kino or Five (`t5.weapons.grenade`).
   - [x] Muzzle flashes (view and world) and ejected shells, by Black Ops' client fire rules.
   - [x] The view kick, the gun kick, the gun angles in each command, the bullets' tracers and streaks, and the viewmodel's blends, rates, camera animations, notetracks and `hideviewmodel` are Black Ops'; the client draws its beams and impacts along the server's trace of each bullet (`t5.weapons.client_trace`).
 - [x] Zombies spawn and animate (rising, or at a window).
