@@ -1455,22 +1455,7 @@ fn merge_t5_occupancy(
     match (incoming, existing) {
         (None, None) => None,
         (Some(occupancy), None) | (None, Some(occupancy)) => Some(occupancy),
-        (Some(mut incoming), Some(existing)) => {
-            for i in 0..fastfile_t5::TECHNIQUE_OCCUPANCY_WORDS {
-                incoming.slots[i] |= existing.slots[i];
-                incoming.scanned[i] |= existing.scanned[i];
-            }
-            incoming.max_pass_count = incoming.max_pass_count.max(existing.max_pass_count);
-            if incoming.technique0_flags == 0 {
-                incoming.technique0_flags = existing.technique0_flags;
-            }
-            for i in 0..fastfile_t5::TECHNIQUE_SLOT_COUNT {
-                if incoming.pass_count_by_slot[i] == 0 {
-                    incoming.pass_count_by_slot[i] = existing.pass_count_by_slot[i];
-                }
-            }
-            Some(incoming)
-        }
+        (Some(incoming), Some(existing)) => Some(incoming.union(existing)),
     }
 }
 
@@ -1528,10 +1513,7 @@ fn read_state_bits(mut word: impl FnMut(usize) -> Option<u32>, count: usize) -> 
     table
 }
 
-fn t5_colour_keeps_prepass_depth(
-    entry: Option<&[u8; fastfile_t5::TECHNIQUE_SLOT_COUNT]>,
-    mut table: Vec<[u32; 2]>,
-) -> Vec<[u32; 2]> {
+fn t5_colour_keeps_prepass_depth(entry: Option<&[u8]>, mut table: Vec<[u32; 2]>) -> Vec<[u32; 2]> {
     const DEPTH_PREPASS: usize = 0;
     let prepass_writes_depth = entry
         .map(|entry| usize::from(entry[DEPTH_PREPASS]))
@@ -1987,13 +1969,7 @@ impl MaterialCatalog {
             .name
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)?;
-        let payload = if geometry.source_len == 0 {
-            Vec::new()
-        } else {
-            s.source_slice(geometry.source_offset, geometry.source_len)
-                .ok()?
-                .to_vec()
-        };
+        let payload = geometry.read_payload(s)?;
         Some(
             self.take_image_slot(AuthoredImage {
                 namespace: self
@@ -2026,43 +2002,32 @@ impl MaterialCatalog {
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)?;
         let technique_set = self.link.take_techset()?;
-        let mut textures = Vec::with_capacity(geometry.texture_count);
-        if let Some(table) = geometry.textures {
-            for i in 0..geometry.texture_count {
-                let texture = table.at(i * 16);
-                let semantic = s.u8_at(texture, 7).ok()?;
-                textures.push(MaterialTextureBinding {
-                    name_hash: s.u32_at(texture, 0).ok()?,
-                    name_start: s.u8_at(texture, 4).ok()?,
-                    name_end: s.u8_at(texture, 5).ok()?,
-                    sampler_state: s.u8_at(texture, 6).ok()?,
-                    semantic,
-                    image: (semantic != 11)
-                        .then(|| self.link.resolve(LinkKind::Image, iw4_ptr(texture.at(12))))
-                        .flatten(),
-                });
-            }
-        }
-        let mut constants = Vec::with_capacity(geometry.constant_count);
-        if let Some(table) = geometry.constants {
-            for i in 0..geometry.constant_count {
-                let constant = table.at(i * 32);
-                let mut name = [0; 12];
-                for (offset, byte) in name.iter_mut().enumerate() {
-                    *byte = s.u8_at(constant, 4 + offset).ok()?;
-                }
-                constants.push(MaterialConstant {
-                    name_hash: s.u32_at(constant, 0).ok()?,
-                    name,
-                    literal: [
-                        s.f32_at(constant, 16).ok()?,
-                        s.f32_at(constant, 20).ok()?,
-                        s.f32_at(constant, 24).ok()?,
-                        s.f32_at(constant, 28).ok()?,
-                    ],
-                });
-            }
-        }
+        let textures = geometry
+            .read_textures(s)?
+            .into_iter()
+            .map(|texture| MaterialTextureBinding {
+                name_hash: texture.name_hash,
+                name_start: texture.name_start,
+                name_end: texture.name_end,
+                sampler_state: texture.sampler_state,
+                semantic: texture.semantic,
+                image: (texture.semantic != 11)
+                    .then(|| {
+                        self.link
+                            .resolve(LinkKind::Image, iw4_ptr(texture.image_slot))
+                    })
+                    .flatten(),
+            })
+            .collect();
+        let constants = geometry
+            .read_constants(s)?
+            .into_iter()
+            .map(|constant| MaterialConstant {
+                name_hash: constant.name_hash,
+                name: constant.name,
+                literal: constant.literal,
+            })
+            .collect();
         Some(
             self.take_material_slot(AuthoredMaterial {
                 name,
@@ -2085,11 +2050,8 @@ impl MaterialCatalog {
                 state_flags: geometry.state_flags,
                 camera_region: geometry.camera_region,
                 state_bits: t5_colour_keeps_prepass_depth(
-                    geometry.state_bits_entry.as_ref(),
-                    read_state_bits(
-                        |offset| s.u32_at(geometry.state_bits?, offset).ok(),
-                        geometry.state_bits_count,
-                    ),
+                    geometry.state_bits_entry.as_ref().map(|entry| &entry[..]),
+                    geometry.read_state_bits(s),
                 ),
 
                 state_bits_entry: geometry
@@ -2114,17 +2076,11 @@ impl MaterialCatalog {
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
             .unwrap_or(AssetRef::Real(String::new()));
-        let occupancy =
-            fastfile_t5::occupancy_any(&geometry.technique_slots).then_some(T5TechniqueOccupancy {
-                slots: geometry.technique_slots,
-                scanned: geometry.technique_slots_scanned,
-                technique0_flags: geometry.technique0_flags,
-                max_pass_count: geometry.max_pass_count,
-                pass_count_by_slot: geometry.pass_count_by_slot,
-            });
+        let occupancy = geometry.occupancy();
 
         let fallback = s.latest_technique_graph().and_then(|graph| {
-            fastfile_t5::occupancy_any(&geometry.technique_slots)
+            occupancy
+                .is_some()
                 .then(|| self.capture_owned_technique_graph_t5(geometry, graph))
         });
         if let Some(graph) = s.latest_technique_graph()
@@ -2283,12 +2239,7 @@ impl MaterialCatalog {
             .and_then(|name| s.cstr(name).ok())
             .map(AssetRef::decode)
             .unwrap_or(AssetRef::Real(String::new()));
-        let mut bytes = Vec::with_capacity(geometry.program_words * 4);
-        if let Some(program) = geometry.program {
-            for i in 0..geometry.program_words {
-                bytes.extend_from_slice(&s.u32_at(program, i * 4).ok()?.to_le_bytes());
-            }
-        }
+        let bytes = geometry.read_program(s)?;
         Some(
             self.take_shader_slot(AuthoredShader {
                 namespace: self

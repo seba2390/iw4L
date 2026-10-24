@@ -8,6 +8,7 @@ mod content;
 mod envelope;
 pub mod light_grid;
 mod load;
+mod material;
 mod memory;
 pub mod size;
 pub mod state_bits;
@@ -30,6 +31,7 @@ pub use load::{
     AssetLinkSink, LinkForward, NestedShaderKind, SndRows, forward_link, load_asset_at,
     load_asset_at_observed, load_asset_body,
 };
+pub use material::{MaterialConstantRead, MaterialTextureRead, TechniqueOccupancy};
 pub use memory::ZoneMemory;
 pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,

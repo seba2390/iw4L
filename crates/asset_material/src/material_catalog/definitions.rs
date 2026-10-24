@@ -302,32 +302,7 @@ impl Default for TechniqueTable {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct T5TechniqueOccupancy {
-    pub slots: [u64; fastfile_t5::TECHNIQUE_OCCUPANCY_WORDS],
-    pub scanned: [u64; fastfile_t5::TECHNIQUE_OCCUPANCY_WORDS],
-    pub technique0_flags: u8,
-    pub max_pass_count: u16,
-    pub pass_count_by_slot: [u8; fastfile_t5::TECHNIQUE_SLOT_COUNT],
-}
-
-impl Default for T5TechniqueOccupancy {
-    fn default() -> Self {
-        Self {
-            slots: [0; fastfile_t5::TECHNIQUE_OCCUPANCY_WORDS],
-            scanned: [0; fastfile_t5::TECHNIQUE_OCCUPANCY_WORDS],
-            technique0_flags: 0,
-            max_pass_count: 0,
-            pass_count_by_slot: [0; fastfile_t5::TECHNIQUE_SLOT_COUNT],
-        }
-    }
-}
-
-impl T5TechniqueOccupancy {
-    pub fn slot_occupied(self, slot: usize) -> bool {
-        fastfile_t5::occupancy_test(&self.slots, slot)
-    }
-}
+pub use fastfile_t5::TechniqueOccupancy as T5TechniqueOccupancy;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CrossGameReason {
