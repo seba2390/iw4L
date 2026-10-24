@@ -265,7 +265,7 @@ pub fn load_localize_catalog_t5(path: &Path) -> Result<LocalizeCatalog, String> 
         ),
         ..Default::default()
     };
-    let walk = fastfile_t5::load_zone(&mut stream, &mut sink);
+    let walk = fastfile_t5::load_zone_observed(&mut stream, &mut sink);
     if let Some(sound) = sink.sound.take() {
         sound.deposit(walk.as_ref().map(|_| ()).map_err(|e| e.to_string()));
     }
@@ -502,30 +502,10 @@ impl fastfile_iw5::AssetSink for Iw5LocalizeSink {
 #[derive(Default)]
 struct T5LocalizeSink {
     catalog: LocalizeCatalog,
-    walked: usize,
     sound: Option<asset_audio::ZoneSoundCapture>,
 }
 
 impl fastfile_t5::AssetLinkSink for T5LocalizeSink {
-    fn loaded(
-        &mut self,
-        _s: &fastfile_t5::ZoneStream<'_>,
-        _ty: fastfile_t5::AssetType,
-        _slot: fastfile_t5::Ptr,
-        _insert_slot: Option<fastfile_t5::Ptr>,
-    ) -> fastfile_t5::Result<()> {
-        Ok(())
-    }
-
-    fn alias(
-        &mut self,
-        _ty: fastfile_t5::AssetType,
-        _slot: fastfile_t5::Ptr,
-        _target: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        Ok(())
-    }
-
     fn capture_localize(&mut self, name: &str, value: &[u8]) -> fastfile_t5::Result<()> {
         self.catalog.insert_bytes(name, value);
         Ok(())
@@ -544,22 +524,6 @@ impl fastfile_t5::AssetLinkSink for T5LocalizeSink {
     }
 
     asset_audio::forward_t5_sound!();
-}
-
-impl fastfile_t5::AssetSink for T5LocalizeSink {
-    fn set_script_strings(&mut self, _strings: fastfile_t5::ScriptStrings) {}
-
-    fn load_asset(
-        &mut self,
-        s: &mut fastfile_t5::ZoneStream<'_>,
-        _index: usize,
-        ty: fastfile_t5::AssetType,
-        slot: fastfile_t5::Ptr,
-    ) -> fastfile_t5::Result<()> {
-        fastfile_t5::load_asset_at_observed(s, ty, slot, self)?;
-        self.walked += 1;
-        Ok(())
-    }
 }
 
 pub const MP_LOCALIZED_ZONES: &[&str] = &[

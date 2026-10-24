@@ -6,6 +6,7 @@ extern crate alloc;
 mod asset_type;
 mod content;
 mod envelope;
+mod fx;
 pub mod light_grid;
 mod load;
 mod map;
@@ -23,12 +24,13 @@ mod zone;
 pub use asset_type::AssetType;
 pub use content::{
     AssetSink, AssetTable, ScriptStrings, XASSET_ENTRY_LEN, XASSET_LIST_LEN, load_zone,
-    open_asset_table,
+    load_zone_observed, open_asset_table,
 };
 pub use envelope::{
     FILE_PREAMBLE_LEN, FileHeader, FileHeaderError, MAGIC_SIGNED, MAGIC_UNSIGNED, Signing,
     ZONE_VERSION_PC, parse_file_header, split_file,
 };
+pub use fx::{FxEffectRead, FxElemRead, FxMaterialSlotRead, FxVisualsRead};
 pub use load::{
     AssetLinkSink, LinkForward, NestedShaderKind, SndRows, forward_link, load_asset_at,
     load_asset_at_observed, load_asset_body,
