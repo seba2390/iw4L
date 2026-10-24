@@ -11,6 +11,7 @@ use fastfile_iw4::{
 };
 use fastfile_iw4::{WireAssetTable, WireTableError, read_wire_asset_table};
 use fastfile_iw5::Signing as Iw5Signing;
+pub use fastfile_t5::ZoneMemory as T5ZoneMemory;
 
 const AUTHED_CHUNK_SIZE: usize = 0x2000;
 
@@ -326,13 +327,10 @@ fn parse_iw4_zone_image(bytes: &[u8]) -> Result<ZoneImage, ZoneOpenError> {
 }
 
 fn parse_t5_zone_image(bytes: &[u8]) -> Result<ZoneImage, ZoneOpenError> {
-    let header = fastfile_t5::parse_file_header(bytes).map_err(ZoneOpenError::T5Header)?;
-    let body = &bytes[fastfile_t5::FILE_PREAMBLE_LEN..];
-
-    let _ = header.signing;
+    let (header, body) = fastfile_t5::split_file(bytes).map_err(ZoneOpenError::T5Header)?;
     let image = inflate_zone(body)?;
 
-    if image.len() < fastfile_t5::XFILE_HEADER_LEN {
+    if fastfile_t5::parse_zone_header(&image).is_err() {
         return Err(ZoneOpenError::Truncated);
     }
 
@@ -436,49 +434,6 @@ impl ZoneMemory {
         ];
         ZoneStream::new(image, blocks, &mut self.insert_map)
     }
-}
-
-pub struct T5ZoneMemory {
-    blocks: [Vec<u8>; fastfile_t5::MAX_XFILE_COUNT],
-    insert_map: Vec<u8>,
-}
-
-impl T5ZoneMemory {
-    pub fn for_header(header: &fastfile_t5::ZoneHeader) -> T5ZoneMemory {
-        let blocks = std::array::from_fn(|i| vec![0u8; t5_block_capacity(header, i)]);
-        let insert_map = vec![0u8; fastfile_t5::ZoneStream::insert_map_len(header)];
-        T5ZoneMemory { blocks, insert_map }
-    }
-
-    pub fn total_bytes(&self) -> usize {
-        self.blocks.iter().map(|b| b.len()).sum()
-    }
-
-    pub fn stream<'a>(
-        &'a mut self,
-        image: &'a [u8],
-    ) -> Result<fastfile_t5::ZoneStream<'a>, fastfile_t5::ZoneError> {
-        let [b0, b1, b2, b3, b4, b5, b6] = &mut self.blocks;
-        let blocks: [&mut [u8]; fastfile_t5::MAX_XFILE_COUNT] = [
-            b0.as_mut_slice(),
-            b1.as_mut_slice(),
-            b2.as_mut_slice(),
-            b3.as_mut_slice(),
-            b4.as_mut_slice(),
-            b5.as_mut_slice(),
-            b6.as_mut_slice(),
-        ];
-        fastfile_t5::ZoneStream::new(image, blocks, &mut self.insert_map)
-    }
-}
-
-fn t5_block_capacity(header: &fastfile_t5::ZoneHeader, block: usize) -> usize {
-    let logical = header.block_size[block] as usize;
-    if logical == 0 || block != fastfile_t5::XFILE_BLOCK_RUNTIME {
-        return logical;
-    }
-
-    logical.saturating_add(0x0f).next_multiple_of(0x1000)
 }
 
 pub struct Iw5ZoneMemory {

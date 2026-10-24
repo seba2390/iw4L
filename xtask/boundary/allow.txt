@@ -255,7 +255,7 @@ pattern crates/asset_transport/src/steam.rs ZoneGame::<game> 4
 pattern crates/asset_transport/src/zone.rs ZoneGame::<game> 12
 pattern crates/asset_transport/src/zone.rs fastfile_iw4:: 7
 pattern crates/asset_transport/src/zone.rs fastfile_iw5:: 15
-pattern crates/asset_transport/src/zone.rs fastfile_t5:: 16
+pattern crates/asset_transport/src/zone.rs fastfile_t5:: 7
 pattern crates/asset_transport/src/zone.rs fastfile_t6:: 7
 pattern crates/asset_world/src/capture.rs dpvs_iw4:: 1
 pattern crates/asset_world/src/caster.rs dpvs_iw4:: 1
