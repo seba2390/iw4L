@@ -153,13 +153,10 @@ impl WorldWeaponBuild {
         strings: &fastfile_t5::ScriptStrings,
         materials: &MaterialCatalog,
     ) {
-        let Some(geometry) = stream.latest_xmodel() else {
-            return;
-        };
-        let Some(skel) = crate::model_skel::capture_world_weapon_skel_t5(
+        let Some(skel) = crate::model_skel::capture_latest_skel_t5(
+            Some(crate::ModelKind::WorldWeapon),
             stream,
             strings,
-            geometry,
             Some(materials),
         ) else {
             return;

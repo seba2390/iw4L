@@ -6,7 +6,7 @@ use crate::asset_graph::{
     AssetEdge, AssetEdgeCensus, capture_xmodel_material_slots, stamp_xmodel_material_edges,
 };
 use crate::model_skel::{
-    ModelSkel, capture_body_skel, capture_body_skel_iw5, capture_body_skel_t5,
+    ModelSkel, capture_body_skel, capture_body_skel_iw5, capture_latest_skel_t5,
 };
 use crate::soldiers::{SoldierKits, body_has_tp_attach_bones, is_body_model, soldier_kits};
 use asset_material::{MaterialCatalog, MaterialDefinitions};
@@ -126,10 +126,12 @@ impl BodyMeshBuild {
         strings: &fastfile_t5::ScriptStrings,
         materials: &MaterialCatalog,
     ) {
-        let Some(geometry) = stream.latest_xmodel() else {
-            return;
-        };
-        let Some(skel) = capture_body_skel_t5(stream, strings, geometry, Some(materials)) else {
+        let Some(skel) = capture_latest_skel_t5(
+            Some(crate::ModelKind::Soldier),
+            stream,
+            strings,
+            Some(materials),
+        ) else {
             return;
         };
         self.insert_entry(

@@ -5,7 +5,7 @@ use fastfile_iw4::{ScriptStrings, ZoneStream};
 use crate::asset_graph::{
     AssetEdge, AssetEdgeCensus, capture_xmodel_material_slots, stamp_xmodel_material_edges,
 };
-use crate::model_skel::{FpvSkel, capture_fpv_skel, capture_fpv_skel_iw5, capture_fpv_skel_t5};
+use crate::model_skel::{FpvSkel, capture_fpv_skel, capture_fpv_skel_iw5, capture_latest_skel_t5};
 use crate::{ModelKind, model_kind};
 use asset_core::AssetNamespace;
 use asset_core::FpvMeshIndex;
@@ -276,19 +276,9 @@ impl FpvMeshBuild {
         strings: &fastfile_t5::ScriptStrings,
         materials: &MaterialCatalog,
     ) {
-        let Some(geometry) = stream.latest_xmodel() else {
-            return;
-        };
-        let Some(name_ptr) = geometry.name else {
-            return;
-        };
-        let Ok(name) = stream.cstr(name_ptr) else {
-            return;
-        };
-        if model_kind(name) != Some(ModelKind::Fpv) {
-            return;
-        }
-        let Some(skel) = capture_fpv_skel_t5(stream, strings, geometry, Some(materials)) else {
+        let Some(skel) =
+            capture_latest_skel_t5(Some(ModelKind::Fpv), stream, strings, Some(materials))
+        else {
             return;
         };
         self.insert_in(AssetNamespace::T5, skel, Some(materials));

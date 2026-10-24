@@ -146,11 +146,8 @@ impl ProjectileMeshBuild {
         strings: &fastfile_t5::ScriptStrings,
         materials: &MaterialCatalog,
     ) {
-        let Some(geometry) = stream.latest_xmodel() else {
-            return;
-        };
         let Some(skel) =
-            crate::model_skel::capture_xmodel_skel_t5(stream, strings, geometry, materials)
+            crate::model_skel::capture_latest_skel_t5(None, stream, strings, Some(materials))
         else {
             return;
         };

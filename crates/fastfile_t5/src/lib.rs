@@ -14,6 +14,7 @@ pub mod state_bits;
 pub mod vertex_decl;
 pub mod weapon_def;
 mod xanim;
+mod xmodel;
 pub mod xmodel_lod;
 mod zone;
 
@@ -36,6 +37,11 @@ pub use size::{
     occupancy_test,
 };
 pub use xanim::{XAnimDeltaQuat, XAnimDeltaTrans, XAnimRead};
+pub use xmodel::{
+    GFX_PACKED_VERTEX, XBoneCollisionRead, XCollSurfRead, XCollTriRead, XModelBrushRead,
+    XModelCollisionRead, XModelPoseRead, XModelRead, XSurfaceBlendRead, XSurfaceRead,
+    XSurfaceSkinRead,
+};
 pub use zone::{
     ALIGN_WASTE_SITE_COUNT, AlignWasteSite, AlignWasteStats, BLOCK_STACK_CAP, BlockType,
     ClipMapGeometry, ComWorldGeometry, FxEffectDefGeometry, GfxImageGeometry, GfxLightGridGeometry,
