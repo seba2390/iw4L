@@ -1008,9 +1008,13 @@ pub fn build_t5_static_model_instances(
 
 impl std::error::Error for ModelMeshError {}
 
-impl From<fastfile_t5::ZoneError> for ModelMeshError {
-    fn from(error: fastfile_t5::ZoneError) -> Self {
-        Self::T5Zone(error)
+impl From<fastfile_t5::XSurfaceMeshError> for ModelMeshError {
+    fn from(error: fastfile_t5::XSurfaceMeshError) -> Self {
+        use fastfile_t5::XSurfaceMeshError::{Missing, Zone};
+        match error {
+            Missing => Self::MissingSurfaces,
+            Zone(error) => Self::T5Zone(error),
+        }
     }
 }
 
@@ -1229,76 +1233,33 @@ fn decode_t5_xsurfaces(
     material_handles: Option<fastfile_t5::Ptr>,
     materials: Option<&MaterialCatalog>,
 ) -> Result<(Vec<ModelSurfaceDraw>, usize, usize), ModelMeshError> {
-    const XSURFACE: usize = 68;
-    const VERT_COUNT_OFF: usize = 4;
-    const TRI_COUNT_OFF: usize = 6;
-    const TRIANGLES_OFF: usize = 12;
-    const VERTICES_OFF: usize = 32;
-    const PACKED_VERTEX: usize = 32;
-
     let end_surface = first_surface + surface_count;
     let mut draws = Vec::with_capacity(surface_count);
     let mut total_vertices = 0usize;
     let mut total_triangles = 0usize;
 
     for surface_index in first_surface..end_surface {
-        let surface = surfaces.at(surface_index * XSURFACE);
-        let vertex_count = stream
-            .u16_at(surface, VERT_COUNT_OFF)
-            .map_err(|_| ModelMeshError::MissingSurfaces)? as usize;
-        let tri_count = stream
-            .u16_at(surface, TRI_COUNT_OFF)
-            .map_err(|_| ModelMeshError::MissingSurfaces)? as usize;
-        let vertices = resolved_ptr_t5(stream, surface, VERTICES_OFF)?;
-        let triangles = resolved_ptr_t5(stream, surface, TRIANGLES_OFF)?;
+        let read = stream
+            .read_xsurface_mesh(surfaces, surface_index)
+            .map_err(ModelMeshError::from)?;
+        let vertex_count = read.vertices.len();
+        let tri_count = read.indices.len() / 3;
+        let word = |packed: &[u8; 32], at: usize| {
+            u32::from_le_bytes([packed[at], packed[at + 1], packed[at + 2], packed[at + 3]])
+        };
 
         let mut positions = Vec::with_capacity(vertex_count);
         let mut normals = Vec::with_capacity(vertex_count);
         let mut colors = Vec::with_capacity(vertex_count);
         let mut uvs = Vec::with_capacity(vertex_count);
-        let mut packed_vertices = Vec::with_capacity(vertex_count);
         let mut indices = Vec::with_capacity(tri_count * 3);
-
-        for vertex_index in 0..vertex_count {
-            let vertex = vertices.at(vertex_index * PACKED_VERTEX);
-            let mut packed = [0u8; PACKED_VERTEX];
-            for (offset, byte) in packed.iter_mut().enumerate() {
-                *byte = stream
-                    .u8_at(vertex, offset)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?;
-            }
-            packed_vertices.push(packed);
-            positions.push([
-                stream
-                    .f32_at(vertex, 0)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?,
-                stream
-                    .f32_at(vertex, 4)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?,
-                stream
-                    .f32_at(vertex, 8)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?,
-            ]);
-            colors.push(unpack_color(
-                stream
-                    .u32_at(vertex, 16)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?,
-            ));
-            uvs.push(unpack_packed_tex_coords(
-                stream
-                    .u32_at(vertex, 20)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?,
-            ));
-            normals.push(normalize_or_up(unpack_unit_vec(
-                stream
-                    .u32_at(vertex, 24)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?,
-            )));
+        for packed in &read.vertices {
+            positions.push([0, 4, 8].map(|at| f32::from_bits(word(packed, at))));
+            colors.push(unpack_color(word(packed, 16)));
+            uvs.push(unpack_packed_tex_coords(word(packed, 20)));
+            normals.push(normalize_or_up(unpack_unit_vec(word(packed, 24))));
         }
-        for index_offset in 0..tri_count * 3 {
-            let index = stream
-                .u16_at(triangles, index_offset * 2)
-                .map_err(|_| ModelMeshError::MissingSurfaces)?;
+        for &index in &read.indices {
             if usize::from(index) >= vertex_count {
                 return Err(ModelMeshError::InvalidIndex {
                     surface: surface_index,
@@ -1332,18 +1293,12 @@ fn decode_t5_xsurfaces(
         draws.push(ModelSurfaceDraw {
             mesh,
             material,
-            packed_vertices,
+            packed_vertices: read.vertices,
 
-            xsurface_plus_1: Some(u8::from(
-                stream
-                    .u16_at(surface, 2)
-                    .map_err(|_| ModelMeshError::MissingSurfaces)?
-                    & 0x80
-                    != 0,
-            )),
+            xsurface_plus_1: Some(u8::from(read.flags & 0x80 != 0)),
             xsurface_base_index: 0,
             xsurface_vert_offset: 0,
-            collision: capture_t5_xsurface_collision(stream, surface, surface_index, tri_count)?,
+            collision: t5_xsurface_collision(read.vert_lists, surface_index, tri_count)?,
         });
     }
 
@@ -1630,144 +1585,61 @@ fn capture_iw4_collision_tree(
     })
 }
 
-fn capture_t5_xsurface_collision(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    surface: fastfile_t5::Ptr,
+fn t5_xsurface_collision(
+    lists: Vec<fastfile_t5::XRigidVertListRead>,
     surface_index: usize,
     surface_tri_count: usize,
 ) -> Result<XSurfaceCollisionPayload, ModelMeshError> {
-    let count = stream.u8_at(surface, 1)? as usize;
-    if count == 0 {
-        return Ok(XSurfaceCollisionPayload::Iw4(Vec::new()));
-    }
-    let lists = resolved_ptr_t5(stream, surface, 40)?;
-    stream.slice_at(lists, 0, count * fastfile_t5::size::XRIGID_VERT_LIST)?;
-    let mut trees = Vec::with_capacity(count);
-    for list_index in 0..count {
-        let list = lists.at(list_index * fastfile_t5::size::XRIGID_VERT_LIST);
-        let tri_offset = stream.u16_at(list, 4)?;
-        let tri_count = stream.u16_at(list, 6)?;
-        let tri_end = usize::from(tri_offset)
-            .checked_add(usize::from(tri_count))
-            .filter(|end| *end <= surface_tri_count)
-            .ok_or(ModelMeshError::InvalidCollisionTree {
-                surface: surface_index,
-                vert_list: list_index,
-                reason: asset_iw4::XSurfaceCollisionRangeError::RigidTriangleRange,
-            })?;
-        let tree = match stream.ptr_at(list, 8)? {
-            fastfile_t5::ZonePtr::Null => None,
-            fastfile_t5::ZonePtr::Offset(tree) => {
-                let tree = capture_t5_collision_tree(stream, stream.resolve_alias(tree))?;
-                asset_iw4::validate_xsurface_collision_ranges(
-                    &tree.nodes,
-                    &tree.leafs,
-                    usize::from(tri_offset),
-                    tri_end,
-                )
-                .map_err(|reason| ModelMeshError::InvalidCollisionTree {
-                    surface: surface_index,
-                    vert_list: list_index,
-                    reason,
-                })?;
-                Some(tree)
-            }
-            fastfile_t5::ZonePtr::Following | fastfile_t5::ZonePtr::Insert => {
-                return Err(ModelMeshError::MissingSurfaces);
-            }
+    let mut trees = Vec::with_capacity(lists.len());
+    for (list_index, list) in lists.into_iter().enumerate() {
+        let invalid = |reason| ModelMeshError::InvalidCollisionTree {
+            surface: surface_index,
+            vert_list: list_index,
+            reason,
         };
+        let tri_end = usize::from(list.tri_offset)
+            .checked_add(usize::from(list.tri_count))
+            .filter(|end| *end <= surface_tri_count)
+            .ok_or(invalid(
+                asset_iw4::XSurfaceCollisionRangeError::RigidTriangleRange,
+            ))?;
+        let tree = list.tree.map(|tree| OwnedXSurfaceCollisionTree {
+            trans: tree.trans,
+            scale: tree.scale,
+            nodes: tree
+                .nodes
+                .iter()
+                .map(|n| asset_iw4::XSurfaceCollisionNode {
+                    mins: [n[0], n[1], n[2]],
+                    maxs: [n[3], n[4], n[5]],
+                    child_begin_index: n[6],
+                    child_count: n[7],
+                })
+                .collect(),
+            leafs: tree
+                .leafs
+                .iter()
+                .map(|&triangle_begin_index| asset_iw4::XSurfaceCollisionLeaf {
+                    triangle_begin_index,
+                })
+                .collect(),
+        });
+        if let Some(tree) = &tree {
+            asset_iw4::validate_xsurface_collision_ranges(
+                &tree.nodes,
+                &tree.leafs,
+                usize::from(list.tri_offset),
+                tri_end,
+            )
+            .map_err(invalid)?;
+        }
         trees.push(OwnedXRigidVertListCollision {
-            tri_offset,
-            tri_count,
+            tri_offset: list.tri_offset,
+            tri_count: list.tri_count,
             tree,
         });
     }
     Ok(XSurfaceCollisionPayload::Iw4(trees))
-}
-
-fn capture_t5_collision_tree(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    tree: fastfile_t5::Ptr,
-) -> Result<OwnedXSurfaceCollisionTree, ModelMeshError> {
-    let mut trans = [0.0; 3];
-    let mut scale = [0.0; 3];
-    for axis in 0..3 {
-        trans[axis] = stream.f32_at(tree, axis * 4)?;
-        scale[axis] = stream.f32_at(tree, 12 + axis * 4)?;
-    }
-    let node_count = stream.u32_at(tree, 24)? as usize;
-    let leaf_count = stream.u32_at(tree, 32)? as usize;
-    let nodes_ptr = if node_count == 0 {
-        None
-    } else {
-        let rows = resolved_ptr_t5(stream, tree, 28)?;
-        stream.slice_at(
-            rows,
-            0,
-            node_count * asset_iw4::size::XSURFACE_COLLISION_NODE,
-        )?;
-        Some(rows)
-    };
-    let leafs_ptr = if leaf_count == 0 {
-        None
-    } else {
-        let rows = resolved_ptr_t5(stream, tree, 36)?;
-        stream.slice_at(
-            rows,
-            0,
-            leaf_count * asset_iw4::size::XSURFACE_COLLISION_LEAF,
-        )?;
-        Some(rows)
-    };
-    let mut nodes = Vec::with_capacity(node_count);
-    if let Some(rows) = nodes_ptr {
-        for index in 0..node_count {
-            let row = rows.at(index * asset_iw4::size::XSURFACE_COLLISION_NODE);
-            nodes.push(asset_iw4::XSurfaceCollisionNode {
-                mins: [
-                    stream.u16_at(row, 0)?,
-                    stream.u16_at(row, 2)?,
-                    stream.u16_at(row, 4)?,
-                ],
-                maxs: [
-                    stream.u16_at(row, 6)?,
-                    stream.u16_at(row, 8)?,
-                    stream.u16_at(row, 10)?,
-                ],
-                child_begin_index: stream.u16_at(row, 12)?,
-                child_count: stream.u16_at(row, 14)?,
-            });
-        }
-    }
-    let mut leafs = Vec::with_capacity(leaf_count);
-    if let Some(rows) = leafs_ptr {
-        for index in 0..leaf_count {
-            leafs.push(asset_iw4::XSurfaceCollisionLeaf {
-                triangle_begin_index: stream
-                    .u16_at(rows, index * asset_iw4::size::XSURFACE_COLLISION_LEAF)?,
-            });
-        }
-    }
-    Ok(OwnedXSurfaceCollisionTree {
-        trans,
-        scale,
-        nodes,
-        leafs,
-    })
-}
-
-fn resolved_ptr_t5(
-    stream: &fastfile_t5::ZoneStream<'_>,
-    parent: fastfile_t5::Ptr,
-    field: usize,
-) -> Result<fastfile_t5::Ptr, ModelMeshError> {
-    match stream
-        .ptr_at(parent, field)
-        .map_err(|_| ModelMeshError::MissingSurfaces)?
-    {
-        fastfile_t5::ZonePtr::Offset(ptr) => Ok(stream.resolve_alias(ptr)),
-        _ => Err(ModelMeshError::MissingSurfaces),
-    }
 }
 
 fn resolved_ptr_iw5(
