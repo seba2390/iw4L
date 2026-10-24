@@ -98,7 +98,7 @@ pattern crates/asset_game/src/fpv_family.rs FamilyId::<game> 12
 pattern crates/asset_game/src/fx_catalog.rs AssetNamespace::<game> 1
 pattern crates/asset_game/src/fx_catalog.rs asset_iw4:: 2
 pattern crates/asset_game/src/fx_catalog.rs fastfile_iw4:: 10
-pattern crates/asset_game/src/fx_catalog.rs fastfile_t5:: 36
+pattern crates/asset_game/src/fx_catalog.rs fastfile_t5:: 13
 pattern crates/asset_game/src/fx_catalog.rs fx_iw4:: 21
 pattern crates/asset_game/src/fx_catalog/iw5.rs fastfile_iw5:: 12
 pattern crates/asset_game/src/fx_model_catalog.rs fastfile_iw4:: 1
@@ -110,7 +110,7 @@ pattern crates/asset_game/src/impact_fx_catalog.rs fx_iw4:: 2
 pattern crates/asset_game/src/localize.rs ZoneGame::<game> 7
 pattern crates/asset_game/src/localize.rs fastfile_iw4:: 4
 pattern crates/asset_game/src/localize.rs fastfile_iw5:: 20
-pattern crates/asset_game/src/localize.rs fastfile_t5:: 20
+pattern crates/asset_game/src/localize.rs fastfile_t5:: 4
 pattern crates/asset_game/src/localize.rs fastfile_t6:: 4
 pattern crates/asset_game/src/lochit.rs weapon_iw4:: 1
 pattern crates/asset_game/src/menu_catalog.rs asset_iw4:: 14

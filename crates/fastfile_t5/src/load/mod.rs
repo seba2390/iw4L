@@ -88,9 +88,15 @@ pub trait AssetLinkSink {
         ty: AssetType,
         slot: Ptr,
         insert_slot: Option<Ptr>,
-    ) -> Result<()>;
+    ) -> Result<()> {
+        let _ = (s, ty, slot, insert_slot);
+        Ok(())
+    }
 
-    fn alias(&mut self, ty: AssetType, slot: Ptr, target: Ptr) -> Result<()>;
+    fn alias(&mut self, ty: AssetType, slot: Ptr, target: Ptr) -> Result<()> {
+        let _ = (ty, slot, target);
+        Ok(())
+    }
 
     fn capture_impact_fx(&mut self, _s: &ZoneStream<'_>, _name: Ptr, _entries: Ptr) -> Result<()> {
         Ok(())

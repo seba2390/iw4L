@@ -1,4 +1,5 @@
 use crate::asset_type::AssetType;
+use crate::load::{AssetLinkSink, load_asset_at_observed};
 use crate::zone::{Ptr, Result, XFILE_BLOCK_VIRTUAL, ZoneError, ZonePtr, ZoneStream};
 
 pub const XASSET_LIST_LEN: usize = 16;
@@ -116,6 +117,34 @@ pub fn load_zone(s: &mut ZoneStream<'_>, sink: &mut dyn AssetSink) -> Result<Ass
 
     s.pop()?;
     Ok(table)
+}
+
+/// Walks the zone's assets, handing what each one loads and links to
+/// `links`.
+pub fn load_zone_observed(
+    s: &mut ZoneStream<'_>,
+    links: &mut dyn AssetLinkSink,
+) -> Result<AssetTable> {
+    load_zone(s, &mut Observed { links })
+}
+
+struct Observed<'l> {
+    links: &'l mut dyn AssetLinkSink,
+}
+
+impl AssetSink for Observed<'_> {
+    fn set_script_strings(&mut self, _strings: ScriptStrings) {}
+
+    fn load_asset(
+        &mut self,
+        s: &mut ZoneStream<'_>,
+        _index: usize,
+        ty: AssetType,
+        slot: Ptr,
+    ) -> Result<()> {
+        load_asset_at_observed(s, ty, slot, self.links)?;
+        Ok(())
+    }
 }
 
 fn load_script_strings(s: &mut ZoneStream<'_>, p: ZonePtr, count: usize) -> Result<ScriptStrings> {
