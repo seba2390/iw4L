@@ -5,7 +5,7 @@ pub use scope::{
 };
 mod screen_effects;
 pub use screen_effects::{
-    ScreenBlurRequest, ScreenEffectsDvars, ScreenEffectsPublished, ScreenEffectsView,
+    MenuBlur, ScreenBlurRequest, ScreenEffectsDvars, ScreenEffectsPublished, ScreenEffectsView,
 };
 pub mod class_presets;
 pub mod pad;

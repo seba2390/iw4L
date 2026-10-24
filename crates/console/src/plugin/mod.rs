@@ -688,9 +688,13 @@ fn sync_cursor_grab(
         cursor.grab_mode = CursorGrabMode::None;
         return;
     }
+    // The game's own cursor stands in for the system pointer over its menus.
+    let visible = want == CursorGrabMode::None && !script_menus.is_some_and(|m| m.draws_cursor());
+    if cursor.visible != visible {
+        cursor.visible = visible;
+    }
     if cursor.grab_mode != want {
         cursor.grab_mode = want;
-        cursor.visible = want == CursorGrabMode::None;
         let grab_label = if grab { "locked" } else { "none" };
         diag::event!(Input, Debug, "cursor", "cursor grab={grab_label}");
     }

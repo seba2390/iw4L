@@ -721,6 +721,13 @@ impl game_api::MenuLayout for MenuLayout {
         Some(lines)
     }
 
+    /// `UI_Refresh` draws `ui_cursor` 32 by 32 (virtual, in the full screen
+    /// placement's scale) centred on the cursor while the cursor is in the
+    /// window and the focused menu has no 3D window, in no colour.
+    fn cursor(&self) -> Option<(&'static str, f32)> {
+        Some(("ui_cursor", 32.0))
+    }
+
     /// Black Ops' `ScrPlace_SetupFloatViewport` passes `1.0` for both the
     /// viewable and the adjustable safe areas.
     fn safe_area(&self) -> f32 {
