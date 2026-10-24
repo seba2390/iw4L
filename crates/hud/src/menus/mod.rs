@@ -305,6 +305,17 @@ pub(crate) fn update_script_menus(
         out.binding.command = None;
         *menus = ScriptMenus::default();
     }
+    // A level that replaces another closes every menu, as the game's level
+    // load does: the front end's menus do not stay open over the map it
+    // started.
+    let level = input.map_identity.as_ref().map(|map| map.zone.clone());
+    if menus.level != level {
+        if menus.level.is_some() && level.is_some() {
+            out.binding.command = None;
+            *menus = ScriptMenus::default();
+        }
+        menus.level = level;
+    }
     if out.pause.0 && !matches!(*input.screen, AppScreen::InGame | AppScreen::ClassSelect) {
         out.pause.0 = false;
     }
