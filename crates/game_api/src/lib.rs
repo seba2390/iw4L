@@ -867,9 +867,16 @@ pub trait MenuLayout: Sync {
     /// The menu paint draws the menu's own window under its items: a
     /// fullscreen menu's background across the screen, then the window by its
     /// style (filled: the background, or a fill, in the back colour; shader:
-    /// the background in the fore colour) inside its border.
+    /// the background in the fore colour) inside its border. Item windows
+    /// filled with no picture fill their rect the same way.
     fn paints_menu_window(&self) -> bool {
         false
+    }
+    /// The material and virtual size of the cursor the UI draws over menus
+    /// that take the mouse, centred on the mouse; `None` leaves the
+    /// system's pointer.
+    fn cursor(&self) -> Option<(&'static str, f32)> {
+        None
     }
     /// Aligned text of a dvar item of `item_type` leaves room in its rect
     /// for the width of the dvar's value.

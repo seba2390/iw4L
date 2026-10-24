@@ -18,8 +18,8 @@ use fastfile_t5::{
 
 use crate::localize::decode_localized_text;
 use crate::menu_catalog::{
-    FontDef, MenuCatalog, MenuDef, MenuEditField, MenuEvent, MenuItem, MenuRect, MenuSlider,
-    T5EventScript, T5ScriptCondition,
+    FontDef, MenuBorder, MenuCatalog, MenuDef, MenuEditField, MenuEvent, MenuFrame, MenuItem,
+    MenuRect, MenuSlider, T5EventScript, T5ScriptCondition,
 };
 
 /// The HUD menu lists a Black Ops zombies client draws, in its load order:
@@ -37,6 +37,12 @@ const FLOAT_FORECOLOR_A: u32 = 8;
 
 const ITEM_DEF_WINDOW_RECT: usize = 4;
 const WINDOW_STYLE: usize = 56;
+const WINDOW_FRAME_EDGES: usize = 59;
+const WINDOW_FRAME_INSET: usize = 60;
+const WINDOW_FRAME_SIZE: usize = 64;
+const WINDOW_BORDER_COLOR: usize = 124;
+/// The window styles that draw their picture as a frame.
+const STYLE_FRAMED: [u8; 2] = [10, 11];
 const WINDOW_BORDER: usize = 57;
 const WINDOW_BORDER_SIZE: usize = 76;
 const WINDOW_OWNER_DRAW: usize = 68;
@@ -47,6 +53,7 @@ const WINDOW_ROTATION: usize = 156;
 const WINDOW_BACKGROUND: usize = 160;
 
 const MENU_FULLSCREEN: usize = 168;
+const MENU_BLUR_WORLD: usize = 0xd0;
 const MENU_UI3D_WINDOW: usize = 172;
 /// Black Ops' 3D UI windows (`ui3dsetwindow` ids 0 to 5).
 const UI3D_WINDOWS: usize = 6;
@@ -416,6 +423,24 @@ impl T5MenuSink {
             fore_color: color_at(s, p, WINDOW_FORE_COLOR),
             back_color: color_at(s, p, WINDOW_BACK_COLOR),
             rotation: f32_at(s, p, WINDOW_ROTATION),
+            frame: s
+                .u8_at(p, WINDOW_STYLE)
+                .ok()
+                .filter(|style| STYLE_FRAMED.contains(style))
+                .map(|_| MenuFrame {
+                    size: f32_at(s, p, WINDOW_FRAME_SIZE),
+                    inset: f32_at(s, p, WINDOW_FRAME_INSET),
+                    edges: s.u8_at(p, WINDOW_FRAME_EDGES).unwrap_or(0),
+                }),
+            border: s
+                .u8_at(p, WINDOW_BORDER)
+                .ok()
+                .filter(|&kind| kind != 0)
+                .map(|kind| MenuBorder {
+                    kind,
+                    size: f32_at(s, p, WINDOW_BORDER_SIZE),
+                    color: color_at(s, p, WINDOW_BORDER_COLOR),
+                }),
             background: self.material_key(s, p, WINDOW_BACKGROUND),
             dvar: str_at(s, p, ITEM_DVAR).unwrap_or("").to_owned(),
             dvar_test: str_at(s, p, ITEM_DVAR_TEST).unwrap_or("").to_owned(),
@@ -619,6 +644,7 @@ impl AssetLinkSink for T5MenuSink {
         def.window_border = i32::from(s.u8_at(p, WINDOW_BORDER).unwrap_or(0));
         def.window_border_size = f32_at(s, p, WINDOW_BORDER_SIZE);
         def.fullscreen = i32_at(s, p, MENU_FULLSCREEN);
+        def.blur_world = f32_at(s, p, MENU_BLUR_WORLD);
         // Six windows; a negative id paints on the screen.
         def.ui3d_window = u8::try_from(i32_at(s, p, MENU_UI3D_WINDOW))
             .ok()

@@ -154,6 +154,10 @@ pub struct MenuItem {
 
     pub style: i32,
     pub owner_draw: i32,
+    /// The framed picture's slicing, for a game whose window style draws one.
+    pub frame: Option<MenuFrame>,
+    /// The window's border, for a game whose window paint draws one.
+    pub border: Option<MenuBorder>,
 
     pub rect: MenuRect,
     pub fore_color: [f32; 4],
@@ -200,6 +204,25 @@ pub struct MenuItem {
     pub cover: bool,
 }
 
+/// A picture drawn as a frame: its corners and edges keep `size` (virtual
+/// units) and the texture's outer `inset` of each side, the middle stretches;
+/// `edges` says which sides it has (1 left, 2 right, 4 top, 8 bottom).
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct MenuFrame {
+    pub size: f32,
+    pub inset: f32,
+    pub edges: u8,
+}
+
+/// A window border: its kind (1 full, 2 horizontal, 3 vertical, 4..6
+/// shaded), line size (virtual units) and colour.
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct MenuBorder {
+    pub kind: u8,
+    pub size: f32,
+    pub color: [f32; 4],
+}
+
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MenuDef {
@@ -214,6 +237,9 @@ pub struct MenuDef {
     pub window_border: i32,
     pub window_border_size: f32,
     pub expr_dvars: String,
+    /// How much the world behind blurs while the menu shows (Black Ops'
+    /// `blurWorld`); the shown menus' blurs add as a root of squares.
+    pub blur_world: f32,
     pub fullscreen: i32,
     /// The game's 3D UI window the menu paints into instead of the screen
     /// (Black Ops' `ui3dWindowId`); `None` paints on the screen.

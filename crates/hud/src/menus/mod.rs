@@ -60,7 +60,7 @@ use crate::chrome::{
     ChromeMenuOverrides, MenuVisOnError, OwnerDrawArgs, OwnerDrawPaint,
     execute_chrome_menu_overrides, item_screen_rects, push_owner_pic,
 };
-use crate::draw2d::{Draw2dList, Draw2dOp, tessellate_fonts};
+use crate::draw2d::{Draw2dCmd, Draw2dList, Draw2dOp, Draw2dProvenance, tessellate_fonts};
 use crate::expr_cache::MenuExprCache;
 use crate::gpu_list::{HudTessPass, TessJob};
 use crate::images::HudImages;
@@ -255,6 +255,7 @@ pub(crate) struct MenuOutputs<'w> {
     ids: Option<ResMut<'w, ActionRequestIds>>,
     rules: Option<Res<'w, game_api::ModeRules>>,
     ui3d: ResMut<'w, crate::gpu_list::Ui3dHudFrame>,
+    blur: Option<ResMut<'w, frame::MenuBlur>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -298,6 +299,10 @@ pub(crate) fn update_script_menus(
         .unwrap_or(&mut local_states.1.0);
     pass.script_menus = TessJob::Hide;
     out.ui3d.windows.clear();
+    menus.draws_cursor = false;
+    if let Some(blur) = out.blur.as_deref_mut() {
+        blur.0 = 0.0;
+    }
     if transitions
         .read()
         .any(|event| event.exited == Some(frame::MatchScope::Live))
@@ -798,6 +803,7 @@ pub(crate) fn update_script_menus(
         });
     out.ui3d.size = ui3d.map_or([0, 0], |(size, _)| size);
     let mut window_lists: [Option<Draw2dList>; game_api::UI3D_WINDOWS] = Default::default();
+    let mut blur_squares = 0.0;
     for (name, def, overrides, extra_items, focus_rect) in &layers {
         // A menu with a window paints into it, a window of no pixels shows
         // nothing; on a game with no 3D UI it paints on the screen.
@@ -824,6 +830,13 @@ pub(crate) fn update_script_menus(
             focus_rect: *focus_rect,
             focused: focused.as_deref(),
         };
+        // A shown menu blurs the world while a menu holds the input.
+        if def.blur_world != 0.0
+            && menus.captures_input()
+            && (def.vis_exp.is_empty() || exprs.is_true(&def.vis_exp, &host).unwrap_or(false))
+        {
+            blur_squares += def.blur_world * def.blur_world;
+        }
         let mut owner_draw = |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| {
             if args.item.owner_draw == 181
                 && let Some(map_namespace) = hud_images.map_namespace()
@@ -910,6 +923,15 @@ pub(crate) fn update_script_menus(
         }
     }
     menus.reported = reported;
+    if let Some(blur) = out.blur.as_deref_mut() {
+        blur.0 = f32::sqrt(blur_squares);
+    }
+    let pointer = input
+        .windows
+        .single()
+        .ok()
+        .and_then(|w| w.cursor_position());
+    menus.draws_cursor = push_cursor(menus, catalog, &surface, pointer, &mut list);
     let mut fonts: HashMap<String, &asset_game::FontDef> = HashMap::new();
     for cmd in list
         .cmds
@@ -946,6 +968,54 @@ pub(crate) fn update_script_menus(
 
 /// A 3D UI window's rect in its texture's pixels, `[x, y, w, h]`: Black Ops
 /// truncates each fraction of the texture's size.
+/// The game's cursor over the menus that take the mouse: its material at
+/// its virtual size, centred on the pointer while the pointer is in the
+/// window and the menu holding the keys paints on the screen.
+fn push_cursor(
+    menus: &ScriptMenus,
+    catalog: &MenuCatalog,
+    surface: &crate::surface::Hud2dSurface,
+    pointer: Option<Vec2>,
+    list: &mut Draw2dList,
+) -> bool {
+    let assets = ChromeAssets {
+        catalog: Some(catalog),
+        localize: None,
+    };
+    let (Some((material, size)), Some(pointer), Some(menu)) = (
+        assets.layout().and_then(|layout| layout.cursor()),
+        pointer,
+        menus.input_menu(),
+    ) else {
+        return false;
+    };
+    if menu.ui3d {
+        return false;
+    }
+    let [sx, sy] = surface.scale_virtual_to_real();
+    let (w, h) = (size * sx, size * sy);
+    list.cmds.push(Draw2dCmd {
+        material_namespace: assets.namespace(),
+        x: pointer.x - w * 0.5,
+        y: pointer.y - h * 0.5,
+        w,
+        h,
+        s0: 0.0,
+        t0: 0.0,
+        s1: 1.0,
+        t1: 1.0,
+        color: [1.0; 4],
+        material: material.to_owned(),
+        op: Draw2dOp::StretchPic,
+        provenance: Draw2dProvenance::MenuItem {
+            menu: menu.name.clone(),
+            index: usize::MAX,
+        },
+        layer: 1,
+    });
+    true
+}
+
 fn ui3d_window_pixels(size: [u32; 2], [x, y, w, h]: [f32; 4]) -> [u32; 4] {
     let [width, height] = size.map(|n| n as f32);
     [

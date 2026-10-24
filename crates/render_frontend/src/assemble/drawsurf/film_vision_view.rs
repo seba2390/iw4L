@@ -348,6 +348,7 @@ pub fn register(app: &mut App) {
     app.init_resource::<AppliedVision>();
     app.init_resource::<FilmVisionView>()
         .init_resource::<frame::ScreenBlurRequest>()
+        .init_resource::<frame::MenuBlur>()
         .add_systems(
             Update,
             (update_film_vision_view, apply_screen_blur_request)
@@ -366,9 +367,11 @@ pub(crate) struct FilmVisionUpdated;
 
 fn apply_screen_blur_request(
     request: Res<frame::ScreenBlurRequest>,
+    menu: Res<frame::MenuBlur>,
     mut film: ResMut<FilmVisionView>,
 ) {
-    film.blur = film.blur.max(request.0);
+    // The menus' blur joins the view's as a root of squares.
+    film.blur = film.blur.max(request.0).hypot(menu.0);
 }
 
 #[allow(clippy::too_many_arguments)]
