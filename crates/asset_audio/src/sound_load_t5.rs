@@ -8,8 +8,8 @@ use crate::zone::{T5ZoneMemory, open_zone_shared};
 use crate::{AssetNamespace, ZoneGame, ZoneOwner};
 use fastfile_t5::size as sz;
 use fastfile_t5::{
-    AssetLinkSink, AssetSink, AssetType, Ptr, Result as ZoneResult, ScriptStrings, ZonePtr,
-    ZoneStream, load_asset_at_observed, load_zone,
+    AssetLinkSink, AssetSink, AssetType, LinkForward, Ptr, Result as ZoneResult, ScriptStrings,
+    ZonePtr, ZoneStream, load_asset_at_observed, load_zone,
 };
 
 /// The namespace Black Ops' captures go to.
@@ -730,6 +730,20 @@ fn offset_deref_kind(s: &ZoneStream<'_>, q: Ptr) -> Option<&'static str> {
         Some(ZonePtr::Null) => Some("null"),
         Some(ZonePtr::Offset(_)) => Some("offset"),
         None => None,
+    }
+}
+
+/// A zone walk's sound hooks go to its Black Ops capture while it reads;
+/// a hook that fails stops the capture, not the walk.
+impl LinkForward for crate::zone_sound::ZoneSoundCapture {
+    type Sink = T5SoundCapture;
+
+    fn sink(&mut self) -> Option<&mut T5SoundCapture> {
+        self.t5()
+    }
+
+    fn keep(&mut self, result: ZoneResult<()>) {
+        self.guard(result);
     }
 }
 

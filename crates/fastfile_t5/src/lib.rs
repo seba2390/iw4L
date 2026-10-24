@@ -27,8 +27,8 @@ pub use envelope::{
     ZONE_VERSION_PC, parse_file_header, split_file,
 };
 pub use load::{
-    AssetLinkSink, NestedShaderKind, SndRows, load_asset_at, load_asset_at_observed,
-    load_asset_body,
+    AssetLinkSink, LinkForward, NestedShaderKind, SndRows, forward_link, load_asset_at,
+    load_asset_at_observed, load_asset_body,
 };
 pub use memory::ZoneMemory;
 pub use size::{

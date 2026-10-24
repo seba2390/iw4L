@@ -193,10 +193,13 @@ fn sound_sources(games: &GamesRoot, map: &Path) -> (Vec<SoundSource>, Vec<SoundS
         merge,
         absent,
     };
-    let donor = |namespace, name: &'static str, version| SoundSource {
+    let donor = |namespace: AssetNamespace, name: &'static str| SoundSource {
         namespace,
         name: name.to_owned(),
-        found: find_zone_file_version(games, name, version).map(|zone| zone.path),
+        found: crate::zone_version(namespace)
+            .ok_or_else(|| format!("{} zones are not read", namespace.prefix()))
+            .and_then(|version| find_zone_file_version(games, name, version))
+            .map(|zone| zone.path),
         merge: Merge::Missing,
         absent: Absent::Skip,
     };
@@ -213,41 +216,13 @@ fn sound_sources(games: &GamesRoot, map: &Path) -> (Vec<SoundSource>, Vec<SoundS
     };
     let mut after_map = zombie_sound_sources(map);
     after_map.extend([
-        donor(
-            AssetNamespace::Iw5,
-            "code_post_gfx_mp",
-            fastfile_iw5::ZONE_VERSION_PC,
-        ),
-        donor(
-            AssetNamespace::Iw5,
-            "common_mp",
-            fastfile_iw5::ZONE_VERSION_PC,
-        ),
-        donor(
-            AssetNamespace::Iw5,
-            "localized_common_mp",
-            fastfile_iw5::ZONE_VERSION_PC,
-        ),
-        donor(
-            AssetNamespace::T5,
-            "code_post_gfx_mp",
-            fastfile_t5::ZONE_VERSION_PC,
-        ),
-        donor(
-            AssetNamespace::T5,
-            "common_mp",
-            fastfile_t5::ZONE_VERSION_PC,
-        ),
-        donor(
-            AssetNamespace::T5,
-            "localized_common_mp",
-            fastfile_t5::ZONE_VERSION_PC,
-        ),
-        donor(
-            AssetNamespace::T6,
-            "common_mp",
-            fastfile_t6::ZONE_VERSION_PC,
-        ),
+        donor(AssetNamespace::Iw5, "code_post_gfx_mp"),
+        donor(AssetNamespace::Iw5, "common_mp"),
+        donor(AssetNamespace::Iw5, "localized_common_mp"),
+        donor(AssetNamespace::T5, "code_post_gfx_mp"),
+        donor(AssetNamespace::T5, "common_mp"),
+        donor(AssetNamespace::T5, "localized_common_mp"),
+        donor(AssetNamespace::T6, "common_mp"),
     ]);
     after_map.retain(|source| composes || Some(source.namespace) == family);
     (before_map, after_map)
