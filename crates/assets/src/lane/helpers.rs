@@ -143,7 +143,9 @@ impl MapXModelCatalog {
         }) {
             self.scene_assets.set_phys_preset(scene_key.clone(), preset);
         }
-        let scene_asset = asset_model::capture_xmodel_skel_t5(stream, strings, geometry, materials)
+        let scene_asset = geometry
+            .read(stream, strings)
+            .and_then(|read| asset_model::capture_xmodel_skel_t5(read, Some(materials)))
             .map(|skel| MapXModelSceneAsset::T5(std::sync::Arc::new(skel)))
             .unwrap_or(MapXModelSceneAsset::Unavailable {
                 reason: "T5 XModel scene skeleton capture failed",

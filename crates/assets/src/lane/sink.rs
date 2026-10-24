@@ -855,26 +855,23 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
                     foreign_materials,
                 });
             }
-            let asset = asset_model::capture_xmodel_skel_t5(
-                stream,
-                &self.strings_t5,
-                geometry,
-                &self.materials,
-            )
-            .map(|skel| {
-                let skel = std::sync::Arc::new(skel);
-                let ns = asset_core::AssetNamespace::T5;
-                self.fpv_meshes
-                    .capture_shared(Some(ns), &skel, &self.materials);
-                self.world_weapons
-                    .capture_shared(Some(ns), &skel, &self.materials);
-                self.projectile_meshes
-                    .capture_shared(ns, &skel, &self.materials);
-                asset_world::MapXModelSceneAsset::T5(skel)
-            })
-            .unwrap_or(asset_world::MapXModelSceneAsset::Unavailable {
-                reason: "T5 common XModel skeleton capture failed",
-            });
+            let asset = geometry
+                .read(stream, &self.strings_t5)
+                .and_then(|read| asset_model::capture_xmodel_skel_t5(read, Some(&self.materials)))
+                .map(|skel| {
+                    let skel = std::sync::Arc::new(skel);
+                    let ns = asset_core::AssetNamespace::T5;
+                    self.fpv_meshes
+                        .capture_shared(Some(ns), &skel, &self.materials);
+                    self.world_weapons
+                        .capture_shared(Some(ns), &skel, &self.materials);
+                    self.projectile_meshes
+                        .capture_shared(ns, &skel, &self.materials);
+                    asset_world::MapXModelSceneAsset::T5(skel)
+                })
+                .unwrap_or(asset_world::MapXModelSceneAsset::Unavailable {
+                    reason: "T5 common XModel skeleton capture failed",
+                });
             // Surfaces drawing a material another zone holds keep its name.
             if let (asset_world::MapXModelSceneAsset::T5(skel), Some(handles)) =
                 (&asset, geometry.material_handles)
