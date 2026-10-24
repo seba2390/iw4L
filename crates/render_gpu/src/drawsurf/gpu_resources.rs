@@ -156,6 +156,9 @@ pub struct RuntimeUploadedImageRegistry {
 
     /// The extra camera's target, once a game's extra camera has drawn.
     pub extra_cam: Option<Result<TextureView, UploadedViewRefusal>>,
+
+    /// A game's 3D UI texture, while the game has one.
+    pub ui3d: Option<Result<TextureView, UploadedViewRefusal>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1344,6 +1347,7 @@ fn take_uploaded_material(
 fn is_runtime_render_target_code_image(index: u32) -> bool {
     index == crate::drawsurf::CODE_TEXTURE_RESOLVED_POST_SUN
         || index == crate::drawsurf::CODE_TEXTURE_EXTRA_CAM
+        || index == render_material::CODE_UI3D_TEXTURE
         || index == crate::drawsurf::CODE_TEXTURE_FLOATZ
         || index == crate::drawsurf::CODE_TEXTURE_SHADOWMAP_SUN
         || index == crate::drawsurf::CODE_TEXTURE_SHADOWMAP_SPOT
@@ -1369,6 +1373,14 @@ fn take_uploaded_code_image(
             .extra_cam
             .clone()
             .ok_or(TextureBindRefusal::ExtraCamUnavailable { register })?
+            .map_err(|cause| TextureBindRefusal::UploadedView { register, cause })?;
+        return Ok((view, UploadedTextureIdentity::Code(index)));
+    }
+    if index == render_material::CODE_UI3D_TEXTURE {
+        let view = uploaded
+            .ui3d
+            .clone()
+            .ok_or(TextureBindRefusal::Ui3dUnavailable { register })?
             .map_err(|cause| TextureBindRefusal::UploadedView { register, cause })?;
         return Ok((view, UploadedTextureIdentity::Code(index)));
     }
@@ -1525,6 +1537,9 @@ pub enum TextureBindRefusal {
         register: u16,
     },
     ExtraCamUnavailable {
+        register: u16,
+    },
+    Ui3dUnavailable {
         register: u16,
     },
     FloatZUnresolved {

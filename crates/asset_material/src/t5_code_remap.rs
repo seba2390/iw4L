@@ -663,6 +663,12 @@ pub const T5_CODE_HERO_LIGHTING_B: u16 = 0xa8;
 pub const T5_CODE_GENERIC_PARAM4: u16 = 0xbb;
 
 pub const T5_CODE_EXTRA_CAM_PARAM: u16 = 0xc3;
+/// Black Ops' six 3D UI window rows, `(w, h, x, y)` of each window in the
+/// 3D UI texture.
+pub const T5_CODE_UI3D_UV_SETUP_0: u16 = 0xad;
+pub const T5_CODE_UI3D_UV_SETUP_5: u16 = 0xb2;
+/// Black Ops' 3D UI texture.
+pub const T5_CODE_UI3D: u32 = 0x27;
 
 pub const T5_CODE_GENERIC_PARAM0: u16 = 0xb7;
 
@@ -765,6 +771,9 @@ pub fn post_t5_code_bank(t5: u16) -> Option<u16> {
         T5_CODE_HDRCONTROL_0 | T5_CODE_HDRCONTROL_1 => {
             Some(render_material::CODE_POST_HDR_CONTROL0 + (t5 - T5_CODE_HDRCONTROL_0))
         }
+        T5_CODE_UI3D_UV_SETUP_0..=T5_CODE_UI3D_UV_SETUP_5 => {
+            Some(render_material::CODE_UI3D_UV_SETUP0 + (t5 - T5_CODE_UI3D_UV_SETUP_0))
+        }
         _ => None,
     }
 }
@@ -789,6 +798,9 @@ pub fn post_t5_code_texture(t5: u32) -> Option<u32> {
 pub fn remap_code_texture_index(t5: u32) -> Option<u32> {
     if let Some(post) = post_t5_code_texture(t5) {
         return Some(post);
+    }
+    if t5 == T5_CODE_UI3D {
+        return Some(render_material::CODE_UI3D_TEXTURE);
     }
     let index = u16::try_from(t5).ok()?;
     T5_TO_IW4_CODE_TEXTURE

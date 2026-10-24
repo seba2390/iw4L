@@ -583,6 +583,19 @@ pub(crate) fn update_command_context_code_sources(
         let fog = sampled_fog.as_ref().unwrap_or(&NO_FRAME_FOG);
         // A game's own frame fog draws in place of the map's fog.
         let (mut game_fog, presented, local) = game_fog;
+        let ui3d_windows =
+            presented
+                .as_deref()
+                .zip(local.as_deref())
+                .and_then(|(presented, local)| {
+                    presented
+                        .snapshot()?
+                        .meta
+                        .for_client(local.0)?
+                        .view_effects
+                        .client_screen
+                        .ui3d_windows
+                });
         let game_rows = game_fog
             .as_deref_mut()
             .zip(presented.as_deref().zip(local.as_deref()))
@@ -613,6 +626,20 @@ pub(crate) fn update_command_context_code_sources(
             .expect("material bindings compiled")
             .bind_frame(catalog, &mut mat_frame.code_sources, &inputs)
             .expect("material binding generation correlated");
+        // A game with a 3D UI texture: each window's place in it, `(w, h, x,
+        // y)`, for the materials that show a window.
+        if rules.as_ref().is_some_and(|rules| rules.ui3d.is_some()) {
+            for (window, [x, y, w, h]) in ui3d_windows
+                .unwrap_or([[0.0; 4]; game_api::UI3D_WINDOWS])
+                .into_iter()
+                .enumerate()
+            {
+                mat_frame.code_sources.set_constant_rows(
+                    render_material::CODE_UI3D_UV_SETUP0 + window as u16,
+                    &[float4_bits([w, h, x, y])],
+                );
+            }
+        }
     } else {
         mat_frame.material_bindings = None;
     }
@@ -639,6 +666,12 @@ pub(crate) fn update_command_context_code_sources(
         let _ = mat_frame
             .code_sources
             .set_texture(CODE_TEXTURE_EXTRA_CAM, 0x62);
+    }
+    // A game's 3D UI texture is sampled as the extra camera's view is.
+    if rules.as_ref().is_some_and(|rules| rules.ui3d.is_some()) {
+        let _ = mat_frame
+            .code_sources
+            .set_texture(render_material::CODE_UI3D_TEXTURE, 0x62);
     }
     if let Some(frame) = sun_shadow.0 {
         let _ = produce_sun_shadow_code_texture(&mut mat_frame.code_sources);

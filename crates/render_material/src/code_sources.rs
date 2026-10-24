@@ -14,6 +14,12 @@ pub const CODE_POST_HDR_CONTROL_COUNT: u16 = 2;
 /// A game's four post textures: the images its post materials sample.
 pub const CODE_POST_TEXTURE0: u32 = 0x40;
 pub const CODE_POST_TEXTURE_COUNT: u32 = 4;
+/// A game's 3D UI texture: the image its menus with a window paint into.
+pub const CODE_UI3D_TEXTURE: u32 = 0x30;
+/// A game's 3D UI windows: one row each, `(w, h, x, y)` of the window in
+/// the 3D UI texture.
+pub const CODE_UI3D_UV_SETUP0: u16 = 0x340;
+pub const CODE_UI3D_UV_SETUP_COUNT: u16 = 6;
 
 #[derive(Clone, Debug, Default)]
 pub struct RuntimeCodeSources {

@@ -323,6 +323,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     ammo_numbers: None,
     extra_camera: None,
     menu_dvars_reach_server: false,
+    ui3d: None,
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {

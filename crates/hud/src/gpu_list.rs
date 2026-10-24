@@ -166,7 +166,52 @@ fn fingerprint_quads<'a>(n: usize, quads: impl Iterator<Item = &'a Draw2dQuad>) 
 
 pub fn register(app: &mut App) {
     app.init_resource::<HudTessPass>()
-        .init_resource::<HudTessGpuFrame>();
+        .init_resource::<HudTessGpuFrame>()
+        .init_resource::<Ui3dHudFrame>();
+}
+
+/// The menus a game paints into its 3D UI texture this frame: the texture's
+/// size and, for each window with something to draw, its pixel rect and its
+/// geometry in the texture's pixels. A window not listed keeps what it last
+/// showed.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct Ui3dHudFrame {
+    pub size: [u32; 2],
+    pub windows: Vec<Ui3dHudWindow>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Ui3dHudWindow {
+    /// `[x, y, w, h]` in the texture's pixels.
+    pub rect: [u32; 4],
+    pub frame: HudTessGpuFrame,
+}
+
+/// Packs a 3D UI window's quads, in the texture's pixels, as the screen's
+/// lists are packed.
+pub(crate) fn pack_ui3d_window(
+    quads: &[Draw2dQuad],
+    size: [u32; 2],
+    hud_images: &mut HudImages,
+    images: &mut Assets<Image>,
+) -> HudTessGpuFrame {
+    let mut frame = HudTessGpuFrame {
+        surface_w: size[0] as f32,
+        surface_h: size[1] as f32,
+        visible: true,
+        ..Default::default()
+    };
+    present_list(PresentInput {
+        host: &mut Node::default(),
+        latch: &mut GpuListLatch::default(),
+        quads,
+        hud_images,
+        images,
+        frame: &mut frame,
+        surface_w: size[0] as f32,
+        surface_h: size[1] as f32,
+    });
+    frame
 }
 
 #[derive(Default)]

@@ -1873,6 +1873,15 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(camera.fov);
         }
     }
+    match screen.ui3d_windows {
+        None => out.put_u8(0),
+        Some(windows) => {
+            out.put_u8(1);
+            for value in windows.into_iter().flatten() {
+                out.put_f32(value);
+            }
+        }
+    }
 }
 
 fn decode_flame_overlay(
@@ -2031,6 +2040,17 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         }),
         _ => return Err(WireError::Malformed("bad extra camera tag")),
     };
+    let ui3d_windows = match input.get_u8()? {
+        0 => None,
+        1 => {
+            let mut windows = [[0.0; 4]; game_api::UI3D_WINDOWS];
+            for value in windows.iter_mut().flatten() {
+                *value = input.get_f32()?;
+            }
+            Some(windows)
+        }
+        _ => return Err(WireError::Malformed("bad 3D UI windows tag")),
+    };
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
@@ -2041,6 +2061,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         script_vectors,
         undrawn_entities,
         extra_camera,
+        ui3d_windows,
     })
 }
 

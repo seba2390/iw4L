@@ -254,6 +254,7 @@ pub(crate) struct MenuOutputs<'w> {
     inbox: Option<ResMut<'w, ClientActionInbox>>,
     ids: Option<ResMut<'w, ActionRequestIds>>,
     rules: Option<Res<'w, game_api::ModeRules>>,
+    ui3d: ResMut<'w, crate::gpu_list::Ui3dHudFrame>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -296,6 +297,7 @@ pub(crate) fn update_script_menus(
         .as_deref_mut()
         .unwrap_or(&mut local_states.1.0);
     pass.script_menus = TessJob::Hide;
+    out.ui3d.windows.clear();
     if transitions
         .read()
         .any(|event| event.exited == Some(frame::MatchScope::Live))
@@ -769,7 +771,38 @@ pub(crate) fn update_script_menus(
         layers.push((open.name.clone(), def, overrides, slider_parts, focus_rect));
     }
     let focused = menus.input_menu().map(|m| m.name.clone());
+    // The game's 3D UI texture and its windows, for the menus that paint
+    // into one.
+    let ui3d = out
+        .rules
+        .as_ref()
+        .and_then(|rules| rules.ui3d)
+        .map(|rules| {
+            let windows = meta.and_then(|meta| meta.view_effects.client_screen.ui3d_windows);
+            (
+                rules.size,
+                windows.unwrap_or([[0.0; 4]; game_api::UI3D_WINDOWS]),
+            )
+        });
+    out.ui3d.size = ui3d.map_or([0, 0], |(size, _)| size);
+    let mut window_lists: [Option<Draw2dList>; game_api::UI3D_WINDOWS] = Default::default();
     for (name, def, overrides, extra_items, focus_rect) in &layers {
+        // A menu with a window paints into it, a window of no pixels shows
+        // nothing; on a game with no 3D UI it paints on the screen.
+        let window = match (def.ui3d_window, ui3d) {
+            (Some(window), Some((size, windows))) => {
+                let rect = ui3d_window_pixels(size, windows[usize::from(window)]);
+                if rect[2] == 0 || rect[3] == 0 {
+                    continue;
+                }
+                Some((usize::from(window), rect))
+            }
+            _ => None,
+        };
+        let window_surface = window.map(|(_, rect)| {
+            crate::surface::Hud2dSurface::ui3d_window(rect[2] as f32, rect[3] as f32)
+        });
+        let paint_surface = window_surface.as_ref().unwrap_or(&surface);
         let host = MenuHost {
             world: &world,
             dvars: &out.dvars,
@@ -802,7 +835,7 @@ pub(crate) fn update_script_menus(
         let frame = execute_chrome_menu_overrides(
             def,
             &host,
-            &surface,
+            paint_surface,
             ChromeAssets {
                 catalog: Some(catalog),
                 localize,
@@ -852,11 +885,25 @@ pub(crate) fn update_script_menus(
                 gaps.join(" ")
             );
         }
-        list.cmds.extend(frame.list.cmds);
+        match window {
+            Some((window, rect)) => {
+                let list = window_lists[window].get_or_insert_with(|| ui3d_window_clear(rect));
+                list.cmds.extend(frame.list.cmds.into_iter().map(|mut cmd| {
+                    cmd.x += rect[0] as f32;
+                    cmd.y += rect[1] as f32;
+                    cmd
+                }));
+            }
+            None => list.cmds.extend(frame.list.cmds),
+        }
     }
     menus.reported = reported;
     let mut fonts: HashMap<String, &asset_game::FontDef> = HashMap::new();
-    for cmd in &list.cmds {
+    for cmd in list
+        .cmds
+        .iter()
+        .chain(window_lists.iter().flatten().flat_map(|list| &list.cmds))
+    {
         let _ = hud_images.get_native(cmd.material_namespace, &cmd.material, &mut images);
         if let Draw2dOp::TextRun { font, .. } = &cmd.op
             && !fonts.contains_key(font)
@@ -868,6 +915,56 @@ pub(crate) fn update_script_menus(
     let (quads, _) = tessellate_fonts(&list, &fonts);
     if !quads.is_empty() {
         pass.script_menus = TessJob::Quads(quads);
+    }
+    let size = out.ui3d.size;
+    for (window, window_list) in window_lists.iter().enumerate() {
+        let Some(window_list) = window_list else {
+            continue;
+        };
+        let (quads, _) = tessellate_fonts(window_list, &fonts);
+        let frame = crate::gpu_list::pack_ui3d_window(&quads, size, &mut hud_images, &mut images);
+        if let Some((_, windows)) = ui3d {
+            out.ui3d.windows.push(crate::gpu_list::Ui3dHudWindow {
+                rect: ui3d_window_pixels(size, windows[window]),
+                frame,
+            });
+        }
+    }
+}
+
+/// A 3D UI window's rect in its texture's pixels, `[x, y, w, h]`: Black Ops
+/// truncates each fraction of the texture's size.
+fn ui3d_window_pixels(size: [u32; 2], [x, y, w, h]: [f32; 4]) -> [u32; 4] {
+    let [width, height] = size.map(|n| n as f32);
+    [
+        (width * x) as u32,
+        (height * y) as u32,
+        (width * w) as u32,
+        (height * h) as u32,
+    ]
+}
+
+/// Black Ops clears a window it draws to opaque black first.
+fn ui3d_window_clear([x, y, w, h]: [u32; 4]) -> Draw2dList {
+    Draw2dList {
+        cmds: vec![crate::draw2d::Draw2dCmd {
+            x: x as f32,
+            y: y as f32,
+            w: w as f32,
+            h: h as f32,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: [0.0, 0.0, 0.0, 1.0],
+            material: "white".to_owned(),
+            material_namespace: crate::images::HUD_CHROME_NAMESPACE,
+            op: Draw2dOp::StretchPic,
+            provenance: crate::draw2d::Draw2dProvenance::CgDraw {
+                site: "ui3d window clear",
+            },
+            layer: 1,
+        }],
     }
 }
 
@@ -1058,6 +1155,10 @@ fn handle_input(
     let Some(def) = runner.catalog.get(&top) else {
         return;
     };
+    // A menu in a 3D UI window takes no cursor.
+    if def.ui3d_window.is_some() {
+        return;
+    }
     let host = MenuHost {
         world: runner.world,
         dvars: runner.dvars,

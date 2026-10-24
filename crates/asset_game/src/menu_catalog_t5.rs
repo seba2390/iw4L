@@ -45,6 +45,9 @@ const WINDOW_ROTATION: usize = 156;
 const WINDOW_BACKGROUND: usize = 160;
 
 const MENU_FULLSCREEN: usize = 168;
+const MENU_UI3D_WINDOW: usize = 172;
+/// Black Ops' 3D UI windows (`ui3dsetwindow` ids 0 to 5).
+const UI3D_WINDOWS: usize = 6;
 const MENU_ITEM_COUNT: usize = 0xb0;
 const MENU_VISIBLE_EXP: usize = 276;
 const MENU_SOUND_NAME: usize = 316;
@@ -609,6 +612,10 @@ impl AssetLinkSink for T5MenuSink {
         def.sound_name = str_at(s, p, MENU_SOUND_NAME).unwrap_or("").to_owned();
         def.window_background = self.material_key(s, p, WINDOW_BACKGROUND);
         def.fullscreen = i32_at(s, p, MENU_FULLSCREEN);
+        // Six windows; a negative id paints on the screen.
+        def.ui3d_window = u8::try_from(i32_at(s, p, MENU_UI3D_WINDOW))
+            .ok()
+            .filter(|&window| usize::from(window) < UI3D_WINDOWS);
         def.static_flags = i32_at(s, p, WINDOW_STATIC_FLAGS);
         def.focus_color = Some(color_at(s, p, MENU_FOCUS_COLOR));
         def.rect = rect_at(s, p.at(ITEM_DEF_WINDOW_RECT));

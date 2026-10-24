@@ -18,6 +18,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     super::t5_vision::register_client(registry);
     register_random(registry);
     register_extra_camera(registry);
+    register_ui3d(registry);
     // Its entities' animation trees: `useAnimTree`, the `SetAnim` family and
     // `clearAnim` on the client's own copy of the match's trees.
     super::super::actor_anims::register(registry);
@@ -1918,4 +1919,33 @@ fn is_alive(world: &mut World, receiver: &Value) -> Result<Value, String> {
         return Err("IsAlive called on the wrong kind of entity".into());
     }
     Ok(Value::Int(1))
+}
+
+/// `ui3dsetwindow(<window id>, <x>, <y>, <width>, <height>)`: Black Ops
+/// places a window of its 3D UI texture, as fractions of the texture's size.
+/// The corner is clamped into the texture and the size to what is left of
+/// it; a window id past the six is ignored.
+fn register_ui3d(registry: &mut NativeRegistry) {
+    registry.register(Namespace::Function, "ui3dsetwindow", |world, _, args| {
+        if args.len() != 5 {
+            return Err("USAGE: ui3dsetwindow(<window id>, <x>, <y>, <width>, <height>)\n".into());
+        }
+        let window = int(args, 0)?;
+        let [x, y, w, h] = [1, 2, 3, 4].map(|i| float(args, i));
+        let (x, y, w, h) = (x?, y?, w?, h?);
+        let Some(window) = usize::try_from(window)
+            .ok()
+            .filter(|&window| window < game_api::UI3D_WINDOWS)
+        else {
+            return Ok(Value::Undefined);
+        };
+        let x = x.clamp(0.0, 1.0);
+        let y = y.clamp(0.0, 1.0);
+        let place = [x, y, w.min(1.0 - x).max(0.0), h.min(1.0 - y).max(0.0)];
+        world
+            .resource_mut::<ClientOutput>()
+            .ui3d_windows
+            .get_or_insert_default()[window] = place;
+        Ok(Value::Undefined)
+    });
 }
