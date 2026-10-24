@@ -427,7 +427,11 @@ pub(crate) fn admit_unlit_2d_material(
             actual: actual_state,
         });
     }
-    if pass.state.alpha_test().is_some() {
+    if pass
+        .state
+        .alpha_test()
+        .is_some_and(|test| !alpha_test_blends_away(test, pass.state.blend(false)))
+    {
         return Err(PostFxAdmissionRefusal::AlphaTestEnabled);
     }
     let Some(port) = programs.get(pass.port).cloned() else {
@@ -458,6 +462,29 @@ pub(crate) fn admit_unlit_2d_material(
         shader: shader.clone(),
         shell,
     })
+}
+
+/// An alpha test that only discards alpha 0 changes nothing under a blend
+/// that weighs the source colour by its alpha and keeps the frame where
+/// the source alpha is 0: such a pixel leaves the frame as it was either
+/// way.
+fn alpha_test_blends_away(
+    test: d3d9_state::AlphaTest,
+    blend: render_material::state::DrawBlend,
+) -> bool {
+    use d3d9_state::BlendFactor::{InvSrcAlpha, One, SrcAlpha};
+    use render_material::state::DrawBlendOperation::Add;
+    let render_material::state::DrawBlend::Factors { colour, alpha } = blend else {
+        return false;
+    };
+    let keeps_frame = |dst| matches!(dst, InvSrcAlpha | One);
+    test.func == d3d9_state::CompareFunc::Greater
+        && test.reference == 0
+        && colour.src == SrcAlpha
+        && keeps_frame(colour.dst)
+        && colour.operation == Add
+        && keeps_frame(alpha.dst)
+        && alpha.operation == Add
 }
 
 fn admission_sources() -> Result<RuntimeCodeSources, PostFxSourceRefusal> {

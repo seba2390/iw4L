@@ -716,6 +716,7 @@ pub(super) fn register(app: &mut App) {
             draw_overlays
                 .in_set(Core3dSystems::PostProcess)
                 .after(tonemapping)
-                .after(PostFxSet),
+                .after(PostFxSet)
+                .before(super::iw_tess::HudTessSet),
         );
 }
