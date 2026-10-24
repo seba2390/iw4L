@@ -597,6 +597,7 @@ pub(crate) fn update_script_menus(
             let state = OpenMenu {
                 name: def.name.clone(),
                 captures_input: false,
+                ui3d: def.ui3d_window.is_some(),
                 focus: None,
                 hover: None,
                 items: vec![state::ItemState::default(); def.items.len()],

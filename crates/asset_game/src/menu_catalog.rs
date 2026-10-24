@@ -206,6 +206,13 @@ pub struct MenuDef {
     pub name: String,
     pub sound_name: String,
     pub window_background: String,
+    /// The menu's own window: its style, colours and border, painted under
+    /// its items where the game's menu paint does (`MenuLayout::paints_menu_window`).
+    pub window_style: i32,
+    pub window_fore_color: [f32; 4],
+    pub window_back_color: [f32; 4],
+    pub window_border: i32,
+    pub window_border_size: f32,
     pub expr_dvars: String,
     pub fullscreen: i32,
     /// The game's 3D UI window the menu paints into instead of the screen

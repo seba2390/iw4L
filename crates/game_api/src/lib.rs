@@ -864,6 +864,13 @@ pub trait MenuLayout: Sync {
     fn safe_area(&self) -> f32 {
         0.85
     }
+    /// The menu paint draws the menu's own window under its items: a
+    /// fullscreen menu's background across the screen, then the window by its
+    /// style (filled: the background, or a fill, in the back colour; shader:
+    /// the background in the fore colour) inside its border.
+    fn paints_menu_window(&self) -> bool {
+        false
+    }
     /// Aligned text of a dvar item of `item_type` leaves room in its rect
     /// for the width of the dvar's value.
     fn value_room(&self, _item_type: i32) -> bool {

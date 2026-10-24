@@ -37,6 +37,8 @@ const FLOAT_FORECOLOR_A: u32 = 8;
 
 const ITEM_DEF_WINDOW_RECT: usize = 4;
 const WINDOW_STYLE: usize = 56;
+const WINDOW_BORDER: usize = 57;
+const WINDOW_BORDER_SIZE: usize = 76;
 const WINDOW_OWNER_DRAW: usize = 68;
 const WINDOW_STATIC_FLAGS: usize = 80;
 const WINDOW_FORE_COLOR: usize = 92;
@@ -611,6 +613,11 @@ impl AssetLinkSink for T5MenuSink {
         def.name = name.clone();
         def.sound_name = str_at(s, p, MENU_SOUND_NAME).unwrap_or("").to_owned();
         def.window_background = self.material_key(s, p, WINDOW_BACKGROUND);
+        def.window_style = i32::from(s.u8_at(p, WINDOW_STYLE).unwrap_or(0));
+        def.window_fore_color = color_at(s, p, WINDOW_FORE_COLOR);
+        def.window_back_color = color_at(s, p, WINDOW_BACK_COLOR);
+        def.window_border = i32::from(s.u8_at(p, WINDOW_BORDER).unwrap_or(0));
+        def.window_border_size = f32_at(s, p, WINDOW_BORDER_SIZE);
         def.fullscreen = i32_at(s, p, MENU_FULLSCREEN);
         // Six windows; a negative id paints on the screen.
         def.ui3d_window = u8::try_from(i32_at(s, p, MENU_UI3D_WINDOW))

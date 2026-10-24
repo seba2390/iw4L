@@ -12,6 +12,8 @@ pub(crate) struct ItemState {
 pub(crate) struct OpenMenu {
     pub(crate) name: String,
     pub(crate) captures_input: bool,
+    /// Paints into a UI3D window: it takes the keys but not the mouse.
+    pub(crate) ui3d: bool,
     pub(crate) focus: Option<usize>,
     pub(crate) hover: Option<usize>,
     pub(crate) items: Vec<ItemState>,
@@ -55,6 +57,12 @@ pub struct ScriptMenus {
 impl ScriptMenus {
     pub fn captures_input(&self) -> bool {
         self.input_menu().is_some()
+    }
+
+    /// The mouse turns the view while a menu holds the keys: the focused
+    /// menu paints into a UI3D window, which takes no cursor.
+    pub fn mouse_looks(&self) -> bool {
+        self.input_menu().is_some_and(|menu| menu.ui3d)
     }
 
     pub(crate) fn input_menu(&self) -> Option<&OpenMenu> {

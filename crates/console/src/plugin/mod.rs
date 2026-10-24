@@ -412,6 +412,14 @@ fn publish_client_action_input(
         || keys.just_pressed(KeyCode::Escape)
         || pad.is_some_and(|pad| pad.just_pressed(bevy::input::gamepad::GamepadButton::Start));
     let captured = !devices.focused || modal_captured || overlay.0;
+    // A menu painted into a UI3D window keeps the keys and leaves the mouse
+    // to the view (the front end's chair look).
+    let mouse_looks = devices.focused
+        && !overlay.0
+        && !console.open
+        && !native_menu.0
+        && !chat.as_ref().is_some_and(|chat| chat.captures_input())
+        && script_menus.is_some_and(|menus| menus.mouse_looks());
     physical.blocked.retain(|button| inputs.pressed(*button));
 
     let akimbo = prediction
@@ -449,6 +457,10 @@ fn publish_client_action_input(
         let mut mouse_activity = 0.0;
         for event in motion.read() {
             mouse_activity += event.delta.x.abs() + event.delta.y.abs();
+            if mouse_looks {
+                out.mouse_x += event.delta.x;
+                out.mouse_y += event.delta.y;
+            }
         }
         if devices.focused {
             physical.mouse_activity += mouse_activity;
@@ -458,7 +470,11 @@ fn publish_client_action_input(
             }
         }
         wheel.clear();
-        scripted.take_mouse();
+        let (sx, sy) = scripted.take_mouse();
+        if mouse_looks {
+            out.mouse_x += sx;
+            out.mouse_y += sy;
+        }
         *wheel_carry = 0.0;
         for key_num in 0..input_iw4::KEY_COUNT {
             if out.client.keys[key_num].down != 0 {
@@ -642,7 +658,8 @@ fn sync_cursor_grab(
     }
     returned |= entered.read().count() > 0;
 
-    let menu_open = native_menu.0 || script_menus.is_some_and(|m| m.captures_input());
+    let menu_open =
+        native_menu.0 || script_menus.is_some_and(|m| m.captures_input() && !m.mouse_looks());
     let in_game = screen
         .as_ref()
         .is_some_and(|s| matches!(**s, AppScreen::InGame));
