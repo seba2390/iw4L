@@ -9,6 +9,7 @@ mod decode_budget;
 mod emit;
 mod entity_events;
 mod frontend;
+mod master_mix;
 mod media_queue;
 mod messages;
 mod pcm;
@@ -16,7 +17,6 @@ mod pcm_budget;
 mod playback;
 mod plugin;
 mod radverb;
-mod master_mix;
 mod reverb_mix;
 mod rumble;
 mod shellshock;
@@ -73,8 +73,8 @@ pub use admission::AdmissionFailure;
 pub use render_core::InstanceStatus;
 pub use runtime::{AudioDiagnostics, AudioRuntime};
 
-mod media;
 mod master_chain;
+mod media;
 mod mix_bus;
 
 mod offline;

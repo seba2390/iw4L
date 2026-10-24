@@ -272,9 +272,7 @@ impl MasterChain {
     ) {
         for (side, channel) in self.channels.iter_mut().enumerate() {
             let mut samples: [f32; QUANTUM] = std::array::from_fn(|at| bus[at][side]);
-            channel
-                .no_voice
-                .run(&parameters.no_voice_bus, &mut samples);
+            channel.no_voice.run(&parameters.no_voice_bus, &mut samples);
             for (sample, direct) in samples.iter_mut().zip(direct) {
                 *sample += direct[side];
             }

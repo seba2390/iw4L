@@ -393,15 +393,12 @@ impl RenderShared {
             }
         }
         if let Some((parameters, namespace)) = state.master_parameters {
-            let probe_in = state.buses.bus(namespace).iter().fold(0.0f32, |m, f| m.max(f[0].abs()).max(f[1].abs()));
-            let probe_direct = state.master_direct.iter().fold(0.0f32, |m, f| m.max(f[0].abs()).max(f[1].abs()));
             state.master_chain.process(
                 &parameters,
                 state.buses.bus(namespace),
                 &state.master_direct,
             );
             state.master_direct = [[0.0; 2]; QUANTUM];
-            if std::env::var_os("IW4L_PROBE").is_some() && (frame / QUANTUM as u64) % 375 == 0 { let out = state.buses.bus(namespace).iter().fold(0.0f32, |m, f| m.max(f[0].abs()).max(f[1].abs())); eprintln!("PROBE chain block={frame} in={probe_in} direct={probe_direct} out={out}"); }
         }
         state.buses.mix_into(output);
         let master = f32::from_bits(self.master.load(Ordering::Relaxed));

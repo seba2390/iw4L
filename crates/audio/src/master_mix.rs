@@ -28,7 +28,6 @@ fn update_master_mix(
             namespace,
         ))
     });
-    if std::env::var_os("IW4L_PROBE").is_some() { static LAST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None); let now = format!("{:?}", chain.as_ref().map(|(p, ns)| (ns, p.master_bus, p.no_voice_bus))); let mut last = LAST.lock().unwrap(); if last.as_deref() != Some(now.as_str()) { eprintln!("PROBE master chain {now}"); *last = Some(now); } }
     runtime.set_master_chain(chain);
 }
 
