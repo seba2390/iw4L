@@ -544,6 +544,12 @@ fn round_half_up(value: f32) -> f32 {
 }
 
 impl game_api::MenuLayout for MenuLayout {
+    /// `Menu_Paint` draws a fullscreen menu's background over the 640×480
+    /// screen in the menu's alignment, then `Window_Paint`s the menu window.
+    fn paints_menu_window(&self) -> bool {
+        true
+    }
+
     /// `text_scale` × 48 over the font's pixel height, worked in double
     /// precision and stored as a float.
     fn text_scale(&self, pixel_height: i32, text_scale: f32) -> f32 {

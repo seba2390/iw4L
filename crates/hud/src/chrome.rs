@@ -302,6 +302,20 @@ pub(crate) fn execute_chrome_menu_overrides(
     };
     parent.x += anim.offset[0];
     parent.y += anim.offset[1];
+    if assets
+        .layout()
+        .is_some_and(|layout| layout.paints_menu_window())
+    {
+        paint_menu_window(
+            menu,
+            &parent,
+            surface,
+            assets,
+            host.milliseconds(),
+            anim,
+            &mut frame.list,
+        );
+    }
     let default = ChromeItemOverride::default();
     let items = menu
         .items
@@ -328,6 +342,74 @@ pub(crate) fn execute_chrome_menu_overrides(
         );
     }
     frame
+}
+
+/// The menu's own window under its items: a fullscreen menu's background
+/// over the whole screen, then the window by its style inside its border.
+fn paint_menu_window(
+    menu: &MenuDef,
+    parent: &MenuRect,
+    surface: &crate::surface::Hud2dSurface,
+    assets: ChromeAssets<'_>,
+    time_ms: i32,
+    anim: ChromeMenuAnim,
+    list: &mut Draw2dList,
+) {
+    let background = background_stem(&menu.window_background);
+    let mut paint = |rect: MenuRect, color: [f32; 4], material: String| {
+        let style = EvaluatedItemStyle {
+            rect,
+            window_style: 3,
+            fore_color: [color[0], color[1], color[2], color[3] * anim.alpha],
+            glow_color: [0.0; 4],
+            back_color: [0.0; 4],
+            turn: 0.0,
+            unsupported: None,
+        };
+        let item = MenuItem::default();
+        push_stretch(
+            menu,
+            usize::MAX,
+            &item,
+            &style,
+            material,
+            surface,
+            assets.catalog,
+            time_ms,
+            anim,
+            list,
+        );
+    };
+    if menu.fullscreen != 0
+        && let Some(material) = background.clone()
+    {
+        let screen = MenuRect {
+            x: 0.0,
+            y: 0.0,
+            w: 640.0,
+            h: 480.0,
+            ..*parent
+        };
+        // Drawn with no colour: white.
+        paint(screen, [1.0; 4], material);
+    }
+    let mut rect = *parent;
+    if menu.window_border != 0 && menu.window_border_size > 0.0 {
+        let size = menu.window_border_size;
+        rect.x += size;
+        rect.y += size;
+        rect.w -= size + 1.0;
+        rect.h -= size + 1.0;
+    }
+    match (menu.window_style, background) {
+        (1, material) => paint(
+            rect,
+            menu.window_back_color,
+            material.unwrap_or_else(|| "white".to_owned()),
+        ),
+        (3 | 12, Some(material)) => paint(rect, menu.window_fore_color, material),
+        _ => {}
+    }
 }
 
 pub(crate) fn item_screen_rects(
