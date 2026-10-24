@@ -2005,6 +2005,15 @@ pub(super) fn weapon_model(world: &mut World, name: &str) -> Option<(String, Vec
     Some((model.to_owned(), tags.to_vec()))
 }
 
+/// The client's copy of a server weapon's world model and hide tags.
+fn client_weapon(world: &World, name: &str) -> Option<(String, Vec<String>)> {
+    world
+        .resource::<crate::script::client::ClientWeaponModels>()
+        .by_name
+        .get(name)
+        .cloned()
+}
+
 /// An entity's parts show again, then the weapon's hide tags hide, as
 /// `useWeaponHideTags` does it on the server and the client alike: a
 /// missing argument or an unknown weapon is an error.
@@ -2024,12 +2033,12 @@ pub(super) fn use_weapon_hide_tags(
         ));
     };
     let id = super::engine::entity_id(world, receiver)?;
-    if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE useweaponhidetags {name} id={id} tags={tags:?} client={}", crate::script::host::client_scripts::is_client(world)); }
     if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {
         entity.part_ops.push(("".into(), false));
-        entity
-            .part_ops
-            .extend(tags.iter().map(|tag| (std::sync::Arc::from(tag.as_str()), true)));
+        entity.part_ops.extend(
+            tags.iter()
+                .map(|tag| (std::sync::Arc::from(tag.as_str()), true)),
+        );
     }
     Ok(Value::Undefined)
 }
@@ -2042,24 +2051,18 @@ fn register_weapon_models(registry: &mut NativeRegistry) {
     // model; an unknown weapon other than "none" is printed and answers "".
     registry.register(Function, "getweaponmodel", |world, _, args| {
         let name = string(args, 0)?;
-        let model = super::super::client_scripts::with_server(world, |server| {
-            weapon_model(server, &name)
-        })
-        .flatten();
+        let model = client_weapon(world, &name);
         let Some((model, _)) = model else {
             if !name.is_empty() && name != "none" {
                 diag::info!(Sim, "csc: unknown weapon '{name}' in getWeaponModel");
             }
             return Ok(Value::string(""));
         };
-        if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE csc getweaponmodel {name} -> {model}"); }
         Ok(Value::string(&model))
     });
     registry.register(Method, "useweaponhidetags", |world, receiver, args| {
         use_weapon_hide_tags(world, receiver, args, |world, name| {
-            super::super::client_scripts::with_server(world, |server| weapon_model(server, name))
-                .flatten()
-                .map(|(_, tags)| tags)
+            client_weapon(world, name).map(|(_, tags)| tags)
         })
     });
 }
