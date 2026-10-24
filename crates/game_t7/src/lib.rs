@@ -216,6 +216,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
     },
     client_fire: None,
     top_down: None,
+    camera_shake: None,
     viewmodel: None,
     script_sounds_hashed: false,
     turrets: None,

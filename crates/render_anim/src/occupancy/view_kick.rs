@@ -78,6 +78,11 @@ pub struct SessionViewKick {
     /// the client random state that kick draws from.
     damage_rules: Option<game_api::hud::DamageFlash>,
     damage_random: u32,
+    /// The game's own camera shake, when it has one, the earthquakes the
+    /// client keeps for it and the snapshot's earthquakes it has taken.
+    shake_rules: Option<game_api::shake::ShakeRules>,
+    shake: game_api::shake::ShakeState,
+    shake_taken: Vec<u32>,
     last_weapon_id: u32,
     last_origin: [f32; 3],
     last_velocity: [f32; 3],
@@ -149,6 +154,15 @@ pub fn tick_session_view_kick(
         Some(game_api::Rule::Known(game_api::hud::CodeHud::Game(hud))) => hud.damage_flash,
         _ => None,
     };
+    let shake_rules = mode.as_deref().and_then(|mode| mode.camera_shake);
+    if kick.shake_rules.is_none()
+        && let Some(rules) = shake_rules
+    {
+        for gap in rules.gaps {
+            diag::warn!(World, "camera shake: {} — needs {}", gap.what, gap.needs);
+        }
+    }
+    kick.shake_rules = shake_rules;
     let Some(ps) = presented.player(local.0) else {
         return;
     };
@@ -298,7 +312,7 @@ pub fn sync_camera_from_presented(
         weapons.as_deref(),
         death_cam_clip.0.as_deref(),
     ) {
-        let pose = earthquake_pose(pose, &presented, clock.time());
+        let pose = earthquake_pose(pose, &presented, clock.time(), &mut kick);
         let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
         for mut transform in &mut q {
             transform.translation = eye.translation;
@@ -321,7 +335,7 @@ pub fn sync_camera_from_presented(
         clock.time(),
         death_cam_clip.0.as_deref(),
     ) {
-        let pose = earthquake_pose(pose, &presented, clock.time());
+        let pose = earthquake_pose(pose, &presented, clock.time(), &mut kick);
         let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
         for mut transform in &mut q {
             transform.translation = eye.translation;
@@ -351,7 +365,7 @@ pub fn sync_camera_from_presented(
         else {
             return;
         };
-        let pose = earthquake_pose(pose, &presented, clock.time());
+        let pose = earthquake_pose(pose, &presented, clock.time(), &mut kick);
         let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
         for mut transform in &mut q {
             transform.translation = eye.translation;
@@ -476,7 +490,12 @@ pub fn sync_camera_from_presented(
     if origin[2] < min_z {
         origin[2] = min_z;
     }
-    let pose = earthquake_pose(WorldCameraPose { origin, angles }, &presented, clock.time());
+    let pose = earthquake_pose(
+        WorldCameraPose { origin, angles },
+        &presented,
+        clock.time(),
+        &mut kick,
+    );
     kick.refdef_vieworg = pose.origin;
     kick.refdef_view_angles = pose.angles;
     let eye = shock_eye(transform_from_iw_view(pose), shock_kick);
@@ -803,19 +822,46 @@ fn shock_eye(mut eye: Transform, (kick, ordered_sums): ([f32; 2], bool)) -> Tran
     eye
 }
 
+/// The view turned by the earthquakes the snapshot carries: by the game's
+/// own shake, which takes each one once, or else by IW4L's.
 fn earthquake_pose(
     mut pose: WorldCameraPose,
     presented: &PresentedSnapshot,
     now_ms: i32,
+    kick: &mut SessionViewKick,
 ) -> WorldCameraPose {
-    if let Some(snapshot) = presented.snapshot() {
-        let eye = pose.origin;
-        for quake in &snapshot.meta.objectives.earthquakes {
-            let offset = quake.angle_offset(eye, now_ms);
+    let quakes = presented
+        .snapshot()
+        .map(|snapshot| &snapshot.meta.objectives.earthquakes[..]);
+    let Some(rules) = kick.shake_rules else {
+        for quake in quakes.into_iter().flatten() {
+            let offset = quake.angle_offset(pose.origin, now_ms);
             for (angle, delta) in pose.angles.iter_mut().zip(offset) {
                 *angle += delta;
             }
         }
+        return pose;
+    };
+    if let Some(quakes) = quakes {
+        for quake in quakes {
+            if kick.shake_taken.contains(&quake.id) {
+                continue;
+            }
+            let taken = game_api::shake::Earthquake {
+                scale: quake.scale,
+                duration_ms: quake.duration_ms,
+                origin: quake.origin,
+                radius: quake.radius,
+                start_ms: quake.start_ms,
+            };
+            (rules.start)(&mut kick.shake, taken, now_ms);
+        }
+        kick.shake_taken.clear();
+        kick.shake_taken.extend(quakes.iter().map(|quake| quake.id));
+    }
+    let offset = (rules.angles)(&mut kick.shake, pose.origin, now_ms);
+    for (angle, delta) in pose.angles.iter_mut().zip(offset) {
+        *angle += delta;
     }
     pose
 }
