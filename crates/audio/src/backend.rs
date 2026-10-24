@@ -185,7 +185,10 @@ fn cancel_audio_on_exit(mut exit: MessageReader<AppExit>, runtime: Res<AudioRunt
 fn submit_presented_audio(
     mut runtime: ResMut<AudioRuntime>,
     epoch: Res<ScopeEpoch<MatchScope>>,
-    settings: Option<Res<frame::GameSettings>>,
+    (settings, master_gain): (
+        Option<Res<frame::GameSettings>>,
+        Option<Res<frame::MasterVolumeGain>>,
+    ),
     listeners: Query<&Transform, With<crate::AmbientListener>>,
     destructibles: Option<Res<crate::destructible_loops::DestructibleSources>>,
     projectiles: Option<Res<crate::projectile_loops::ProjectileSources>>,
@@ -202,7 +205,10 @@ fn submit_presented_audio(
         origin_inches: crate::transform_inches(pose.translation),
         right: (pose.rotation * Vec3::X).to_array(),
     }));
-    if let Some(settings) = settings {
+    // The game's menus may make their own gain of the master volume.
+    if let Some(gain) = master_gain.and_then(|gain| gain.0) {
+        runtime.set_master_volume(gain);
+    } else if let Some(settings) = settings {
         runtime.set_master_volume(settings.master_volume);
     }
     let mut desired = Vec::new();

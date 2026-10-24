@@ -250,15 +250,13 @@ pub(super) fn prepare_defaults(steps: &mut Vec<FrameStep>, requested: &[u16]) {
     };
     produce_leftover_t5_light_hero_scale(&mut writer);
     produce_leftover_t5_hero_lighting_matrix(&mut writer);
-    for code in [
-        crate::t5_code_remap::T5_CODE_GENERIC_PARAM0,
-        crate::t5_code_remap::T5_CODE_GENERIC_PARAM1,
-        crate::t5_code_remap::T5_CODE_EXTRA_CAM_PARAM,
-    ] {
-        writer.set_constant_rows(
-            crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + code,
-            &[[0; 4]],
-        );
+    writer.set_constant_rows(
+        crate::t5_code_remap::LEFTOVER_T5_CODE_BASE + crate::t5_code_remap::T5_CODE_EXTRA_CAM_PARAM,
+        &[[0; 4]],
+    );
+    // An entity's script vectors are zero until its client scripts map them.
+    for row in render_material::CODE_T6_SCRIPT_VECTOR {
+        writer.set_constant_rows(row, &[[0; 4]]);
     }
     // Every 3D UI window is empty until the frame places it.
     for window in 0..render_material::CODE_UI3D_UV_SETUP_COUNT {

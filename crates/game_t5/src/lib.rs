@@ -447,7 +447,8 @@ impl game_api::GameMenus for T5 {
 
 /// The client dvars Black Ops' options menus show, with their registered
 /// defaults. `sensitivity` scales the mouse by `m_yaw` / `m_pitch` (0.022)
-/// as the runtime's does; `cg_fov_default` is the player's field of view.
+/// as the runtime's does; `cg_fov_default` is the player's field of view;
+/// every sound plays at the square of `snd_menu_master`.
 /// `r_gamma` sets the display's gamma ramp; a sound plays at the square of
 /// its mixer group category's volume: `snd_menu_sfx` for categories 0 and
 /// 3, `snd_menu_music` for 1, `snd_menu_voice` for 2. `snd_menu_cinematic`
@@ -476,7 +477,7 @@ const MENU_DVARS: [game_api::MenuDvar; 16] = {
         MenuDvar {
             name: "snd_menu_master",
             default: "1",
-            setting: Some(MenuSetting::MasterVolume),
+            setting: Some(MenuSetting::SquaredMasterVolume),
         },
         MenuDvar {
             name: "snd_menu_music",

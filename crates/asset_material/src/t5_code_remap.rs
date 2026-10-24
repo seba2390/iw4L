@@ -670,9 +670,11 @@ pub const T5_CODE_UI3D_UV_SETUP_5: u16 = 0xb2;
 /// Black Ops' 3D UI texture.
 pub const T5_CODE_UI3D: u32 = 0x27;
 
+/// Black Ops' `scriptVector0` (its first generic parameter); `scriptVector1`
+/// to `scriptVector3` follow it.
 pub const T5_CODE_GENERIC_PARAM0: u16 = 0xb7;
 
-pub const T5_CODE_GENERIC_PARAM1: u16 = 0xb8;
+pub const T5_CODE_GENERIC_PARAM3: u16 = 0xba;
 
 pub const T5_CODE_GENERIC_PARAM5: u16 = 0xbc;
 
@@ -737,8 +739,6 @@ pub fn leftover_t5_code_bank(t5: u16) -> Option<u16> {
         | T5_CODE_HERO_LIGHTING_G
         | T5_CODE_HERO_LIGHTING_B
         | T5_CODE_EXTRA_CAM_PARAM
-        | T5_CODE_GENERIC_PARAM0
-        | T5_CODE_GENERIC_PARAM1
         | T5_CODE_GENERIC_PARAM4
         | T5_CODE_GENERIC_PARAM5
         | T5_CODE_GENERIC_PARAM6
@@ -755,9 +755,10 @@ pub fn leftover_t5_code_bank(t5: u16) -> Option<u16> {
     }
 }
 
-/// Black Ops' post and HDR controls are the renderer's post bank, and the
+/// Black Ops' post and HDR controls are the renderer's post bank, the
 /// rows its screen overlays set (distortion, atlas, fade, viewport) are the
-/// renderer's overlay rows.
+/// renderer's overlay rows, and its first four script vectors are the
+/// renderer's per-entity script vector rows.
 #[must_use]
 pub fn post_t5_code_bank(t5: u16) -> Option<u16> {
     match t5 {
@@ -773,6 +774,11 @@ pub fn post_t5_code_bank(t5: u16) -> Option<u16> {
         }
         T5_CODE_UI3D_UV_SETUP_0..=T5_CODE_UI3D_UV_SETUP_5 => {
             Some(render_material::CODE_UI3D_UV_SETUP0 + (t5 - T5_CODE_UI3D_UV_SETUP_0))
+        }
+        // An entity's script vectors, which its client scripts map
+        // (`mapShaderConstant`).
+        T5_CODE_GENERIC_PARAM0..=T5_CODE_GENERIC_PARAM3 => {
+            Some(render_material::CODE_T6_SCRIPT_VECTOR[usize::from(t5 - T5_CODE_GENERIC_PARAM0)])
         }
         _ => None,
     }
