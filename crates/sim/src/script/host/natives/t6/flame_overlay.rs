@@ -34,8 +34,8 @@ struct Block {
     active: bool,
 }
 
-#[derive(Resource, Default)]
-struct FlameOverlays(BTreeMap<u32, [State; 3]>);
+#[derive(Resource, Clone, Default)]
+pub(crate) struct FlameOverlays(BTreeMap<u32, [State; 3]>);
 
 fn slot(kind: Flame) -> usize {
     match kind {

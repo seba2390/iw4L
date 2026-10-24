@@ -71,7 +71,8 @@ pub use gsc::{FileSources, SourceOrigin, SourceResolver, decode_source, normaliz
 pub use gsc::{ModuleIdentity, Program, Realm, Site};
 pub use gsc::{ScriptString, Value};
 pub(crate) use runtime::{
-    advance_scheduler, copy_state, healthy, install, preflight, reset, start, take_signals,
+    advance_scheduler, copy_state, forget_thread_index, healthy, install, preflight, reset, start,
+    take_signals,
 };
 pub(crate) use vm::state::{Frame, Thread, ThreadState, Waiter, WaiterKind};
 

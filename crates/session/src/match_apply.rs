@@ -792,6 +792,13 @@ pub fn apply_prepared_match(
             sim.spawn_brush_mover(id, cmodel, origin, angles)
                 .expect("no free dynamic entity slot for a brush model");
         }
+        // A failed level comes back as its save (`loadgame_continue`): the
+        // match resumes at the tick the save was made at.
+        let resumed = sim.load_requested_save();
+        if resumed.is_some() {
+            sim.world_objects_mut()
+                .set_map_round_epoch(load_key.match_key.match_epoch);
+        }
         stamp_script_mover_numbers(&mut scene, &sim);
         if !model_spawns.is_empty() {
             diag::info!(
@@ -900,6 +907,19 @@ pub fn apply_prepared_match(
                     world.insert_resource(class_handoff);
                 });
         });
+        if let Some(tick) = resumed {
+            install.push(move |world: &mut World| {
+                world
+                    .resource_mut::<crate::scope_control::InstallAnnouncement>()
+                    .0
+                    .push(move |world: &mut World| {
+                        world.insert_resource(net::AuthorityClock {
+                            tick: tick.0,
+                            time_ms: (tick.0 as i32).wrapping_mul(net::AUTHORITY_MS),
+                        });
+                    });
+            });
+        }
         stage_resource(&mut install, crate::LiveWorldIdentity { load_key });
         stage_resource(
             &mut install,

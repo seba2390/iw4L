@@ -48,12 +48,12 @@ struct Turret {
     owner: Option<u64>,
 }
 
-#[derive(Resource, Default)]
-struct Turrets(BTreeMap<u64, Turret>);
+#[derive(Resource, Clone, Default)]
+pub(crate) struct Turrets(BTreeMap<u64, Turret>);
 
 /// The game's sentient pool: the players and living actors, each in the
 /// lowest slot free when it joined.
-#[derive(Resource, Default)]
+#[derive(Resource, Clone, Default)]
 pub(crate) struct Sentients(Vec<Option<u64>>);
 
 pub(crate) fn rules(world: &mut World) -> Option<TurretRules> {

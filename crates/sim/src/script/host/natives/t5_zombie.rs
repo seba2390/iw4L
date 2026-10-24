@@ -113,9 +113,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 .unwrap_or("medium"),
         ))
     });
-    registry.register(Function, "issaverecentlyloaded", |_, _, args| {
+    registry.register(Function, "issaverecentlyloaded", |world, _, args| {
         no_args(args)?;
-        Ok(Value::Int(0))
+        Ok(Value::Int(i32::from(crate::save_game::recently_loaded(
+            world,
+        ))))
     });
     // The host keeps no AI budget, water simulation or exploder ids of its own.
     // `SetAILimit(n)`: actor spawns fail while n actors are in use.
@@ -674,22 +676,41 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // `SaveGame(name, description, screenshot, flag)`: Black Ops refuses a
-    // save while the first player is dead and saves the whole game under
-    // `<mapname>` ("levelstart") or `<mapname>-<name>`. The runtime keeps
-    // no save games: the level-start save `_autosave::start_level_save`
-    // asks for is not written (`t5.match.level_failed`).
-    registry.register(Function, "savegame", |world, _, _| {
+    // save while the first player is dead, and saves the whole game at the
+    // end of the frame under `<mapname>` ("levelstart") or
+    // `<mapname>-<name>`; it answers the save's id.
+    registry.register(Function, "savegame", |world, _, args| {
         let dead = crate::frame::FrameWorld::from_world(world)
             .player(crate::ClientId(0))
             .is_some_and(|player| player.health < 1);
         if dead {
             return Err("Attempting to save while dead\n".into());
         }
-        diag::info!(
-            Sim,
-            "game gap t5.match.level_failed: savegame writes no save (the runtime keeps no save games)"
-        );
+        save(world, args, true)
+    });
+    // `SaveGameNoCommit`: refuses while any player is dead, and keeps the
+    // save aside until `CommitSave` takes it.
+    registry.register(Function, "savegamenocommit", |world, _, args| {
+        let dead = crate::frame::FrameWorld::from_world(world)
+            .client_ids_sorted()
+            .into_iter()
+            .any(|id| {
+                crate::frame::FrameWorld::from_world(world)
+                    .player(id)
+                    .is_some_and(|player| player.health < 1)
+            });
+        if dead {
+            return Err("Attempting to save while dead\n".into());
+        }
+        save(world, args, false)
+    });
+    registry.register(Function, "commitsave", |_, _, args| {
+        let id = super::super::args::int(args, 0)?;
+        crate::save_game::commit(id)?;
         Ok(Value::Undefined)
+    });
+    registry.register(Function, "issavesuccessful", |world, _, _| {
+        Ok(Value::Int(i32::from(crate::save_game::successful(world))))
     });
     for name in [
         "createthreatbiasgroup",
@@ -715,6 +736,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .grenade_suicide_disabled = false;
         Ok(Value::Undefined)
     });
+}
+
+/// A save's arguments: its name (`""` is "auto"); the description, the
+/// screenshot and the flag are not kept.
+fn save(world: &mut World, args: &[Value], commit: bool) -> Result<Value, String> {
+    let name = super::super::args::string(args, 0)?;
+    crate::save_game::request(world, &name, commit).map(Value::Int)
 }
 
 /// A boolean engine dvar is set.

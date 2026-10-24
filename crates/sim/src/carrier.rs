@@ -573,6 +573,19 @@ impl SimWorld {
             .map(|program| program.rules())
     }
 
+    /// Asks for the level's current save to load with the level the next
+    /// time it loads (`fast_restart`); false when there is none.
+    pub fn request_save_load(&mut self) -> bool {
+        crate::save_game::request_load()
+    }
+
+    /// Loads the save `loadgame_continue` asked for in place of this freshly
+    /// installed level, when it is this level's: answers the tick the save
+    /// was made at, which the match's clock resumes from.
+    pub fn load_requested_save(&mut self) -> Option<Tick> {
+        crate::save_game::load_requested(&mut self.ecs)
+    }
+
     pub fn gsc_program_fingerprint(&self) -> Option<[u8; 32]> {
         self.ecs
             .resource::<crate::script::RoundScript>()

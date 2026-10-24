@@ -1091,6 +1091,11 @@ fn register(
 #[derive(Resource, Default)]
 struct ThreadIndex(std::collections::HashMap<u64, Entity>);
 
+/// Drops the thread index, which the next lookup builds again.
+pub(crate) fn forget_thread_index(world: &mut World) {
+    world.remove_resource::<ThreadIndex>();
+}
+
 pub(crate) fn thread_alive(world: &mut World, serial: u64) -> bool {
     find_thread(world, serial).is_some()
 }

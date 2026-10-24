@@ -2214,12 +2214,12 @@ fn dispatch_console_command(
         let sync = !command.background
             && matches!(
                 command.name.as_str(),
-                "map" | "map_restart" | "disconnect" | "demo" | "play" | "spawn"
+                "map" | "map_restart" | "fast_restart" | "disconnect" | "demo" | "play" | "spawn"
             );
         if command.background
             && matches!(
                 command.name.as_str(),
-                "map" | "map_restart" | "disconnect" | "demo" | "play" | "spawn"
+                "map" | "map_restart" | "fast_restart" | "disconnect" | "demo" | "play" | "spawn"
             )
         {
             diag::info!(Console, "{} &: async — FIFO not blocked", command.name);
