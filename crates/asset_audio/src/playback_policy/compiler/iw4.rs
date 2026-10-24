@@ -18,6 +18,7 @@ impl CueCompiler for Iw4CueCompiler {
             mixer_group_supported: true,
             zero_volume_unity: true,
             streamed_decode: crate::StreamedDecodePolicy::Detected,
+            master_bus_direct: false,
             secondary: (
                 SecondaryActivation::OnPrimaryPrepared,
                 SecondaryPolicySource::PrimaryPreparedCompatibility,

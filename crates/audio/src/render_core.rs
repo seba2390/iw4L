@@ -167,7 +167,18 @@ struct RenderState {
     /// The four-channel mix the voices send to the reverb this block.
     reverb_input: [[f32; 4]; QUANTUM],
     reverb_output: [[f32; 4]; QUANTUM],
+    master_chain: crate::master_chain::MasterChain,
+    /// The game's master chain parameters this block, and the bus it runs
+    /// on.
+    master_parameters: Option<MasterChainControl>,
+    /// The mix of the voices sent to the master bus directly this block.
+    master_direct: [[f32; 2]; QUANTUM],
 }
+
+type MasterChainControl = (
+    crate::master_chain::MasterChainParameters,
+    asset_core::AssetNamespace,
+);
 
 /// The game's reverb as the control side sets it: its parameters and the
 /// bus its output joins (none while no game reverb runs), and the room's
@@ -214,6 +225,7 @@ pub(crate) struct RenderShared {
     pub cancelled: AtomicBool,
     pub peak: AtomicU32,
     pub reverb: ReverbControl,
+    pub master_chain: std::sync::Mutex<Option<MasterChainControl>>,
 }
 
 // The bounded rendering lease exclusively owns RenderState. Slot payload access
@@ -245,6 +257,9 @@ impl RenderShared {
                 reverb_parameters: None,
                 reverb_input: [[0.0; 4]; QUANTUM],
                 reverb_output: [[0.0; 4]; QUANTUM],
+                master_chain: Default::default(),
+                master_parameters: None,
+                master_direct: [[0.0; 2]; QUANTUM],
             }),
             frame: AtomicU64::new(0),
             match_epoch: AtomicU64::new(0),
@@ -259,6 +274,7 @@ impl RenderShared {
             cancelled: AtomicBool::new(false),
             peak: AtomicU32::new(0),
             reverb: ReverbControl::default(),
+            master_chain: std::sync::Mutex::new(None),
         }
     }
 
@@ -290,6 +306,10 @@ impl RenderShared {
         if let Ok(parameters) = self.reverb.parameters.try_lock() {
             state.reverb_parameters = *parameters;
         }
+        if let Ok(parameters) = self.master_chain.try_lock() {
+            state.master_parameters = *parameters;
+        }
+        let direct_bus = state.master_parameters.map(|(_, namespace)| namespace);
         let room_dry = f32::from_bits(self.reverb.dry.load(Ordering::Relaxed));
         let room_wet = f32::from_bits(self.reverb.wet.load(Ordering::Relaxed));
         let reverb_on = state.reverb_parameters.is_some();
@@ -311,7 +331,13 @@ impl RenderShared {
                     cancelled,
                     hold_one_shots,
                     VoiceOutputs {
-                        mix: state.buses.bus(assignment.media.bus),
+                        mix: if assignment.media.master_bus_direct
+                            && direct_bus == Some(assignment.media.bus)
+                        {
+                            &mut state.master_direct
+                        } else {
+                            state.buses.bus(assignment.media.bus)
+                        },
                         dry: if reverb_on { room_dry } else { 1.0 },
                         reverb: reverb_on.then_some((&mut state.reverb_input, room_wet)),
                     },
@@ -365,6 +391,17 @@ impl RenderShared {
                 target[0] += reverb[3];
                 target[1] += reverb[1];
             }
+        }
+        if let Some((parameters, namespace)) = state.master_parameters {
+            let probe_in = state.buses.bus(namespace).iter().fold(0.0f32, |m, f| m.max(f[0].abs()).max(f[1].abs()));
+            let probe_direct = state.master_direct.iter().fold(0.0f32, |m, f| m.max(f[0].abs()).max(f[1].abs()));
+            state.master_chain.process(
+                &parameters,
+                state.buses.bus(namespace),
+                &state.master_direct,
+            );
+            state.master_direct = [[0.0; 2]; QUANTUM];
+            if std::env::var_os("IW4L_PROBE").is_some() && (frame / QUANTUM as u64) % 375 == 0 { let out = state.buses.bus(namespace).iter().fold(0.0f32, |m, f| m.max(f[0].abs()).max(f[1].abs())); eprintln!("PROBE chain block={frame} in={probe_in} direct={probe_direct} out={out}"); }
         }
         state.buses.mix_into(output);
         let master = f32::from_bits(self.master.load(Ordering::Relaxed));

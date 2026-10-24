@@ -80,6 +80,8 @@ pub struct SoundCatalog {
     mix_snapshots: HashMap<AssetNamespace, crate::MixSnapshots>,
     /// Each game's reverb rooms, the first of each hash kept.
     reverb_presets: HashMap<AssetNamespace, Vec<crate::ReverbPreset>>,
+    /// Each game's master presets, the first of each hash kept.
+    master_presets: HashMap<AssetNamespace, Vec<crate::MasterPreset>>,
     ducks: HashMap<AssetNamespace, Vec<crate::SoundDuck>>,
     sound_contexts: HashMap<AssetNamespace, crate::SoundContexts>,
     mix_names: Option<crate::SoundMixNames>,
@@ -162,6 +164,9 @@ impl SoundCatalog {
         }
         for (ns, presets) in other.reverb_presets {
             self.ingest_reverb_presets(ns, presets);
+        }
+        for (ns, presets) in other.master_presets {
+            self.ingest_master_presets(ns, presets);
         }
         for (ns, contexts) in other.sound_contexts {
             self.sound_contexts.entry(ns).or_insert(contexts);
@@ -250,6 +255,9 @@ impl SoundCatalog {
         }
         for (ns, presets) in other.reverb_presets {
             self.ingest_reverb_presets(ns, presets);
+        }
+        for (ns, presets) in other.master_presets {
+            self.ingest_master_presets(ns, presets);
         }
         for (ns, contexts) in other.sound_contexts {
             self.sound_contexts.entry(ns).or_insert(contexts);
@@ -382,6 +390,33 @@ impl SoundCatalog {
         hash: u32,
     ) -> Option<&crate::ReverbPreset> {
         self.reverb_presets
+            .get(&namespace)?
+            .iter()
+            .find(|preset| preset.hash == hash)
+    }
+
+    /// Master presets a zone's sound driver carries, the first of each hash
+    /// kept.
+    pub fn ingest_master_presets(
+        &mut self,
+        namespace: AssetNamespace,
+        presets: Vec<crate::MasterPreset>,
+    ) {
+        let list = self.master_presets.entry(namespace).or_default();
+        for preset in presets {
+            if !list.iter().any(|kept| kept.hash == preset.hash) {
+                list.push(preset);
+            }
+        }
+    }
+
+    /// A game's master preset by its name's hash.
+    pub fn master_preset(
+        &self,
+        namespace: AssetNamespace,
+        hash: u32,
+    ) -> Option<&crate::MasterPreset> {
+        self.master_presets
             .get(&namespace)?
             .iter()
             .find(|preset| preset.hash == hash)

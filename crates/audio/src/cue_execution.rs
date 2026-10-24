@@ -406,6 +406,7 @@ impl CueWork {
             }
         };
         media.bus = self.request.namespace;
+        media.master_bus_direct = cue.policy.master_bus_direct;
         let start = CueStart {
             looping: self.source.is_some()
                 || (matches!(intent.class, SoundClass::Music | SoundClass::Ambience)

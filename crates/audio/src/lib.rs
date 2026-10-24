@@ -16,6 +16,7 @@ mod pcm_budget;
 mod playback;
 mod plugin;
 mod radverb;
+mod master_mix;
 mod reverb_mix;
 mod rumble;
 mod shellshock;
@@ -73,6 +74,7 @@ pub use render_core::InstanceStatus;
 pub use runtime::{AudioDiagnostics, AudioRuntime};
 
 mod media;
+mod master_chain;
 mod mix_bus;
 
 mod offline;

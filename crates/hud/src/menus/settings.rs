@@ -37,9 +37,10 @@ pub(crate) fn sync_game_menu_dvars(
     ),
     mut dvars: ResMut<frame::UiMenuDvars>,
     mut settings: ResMut<frame::GameSettings>,
-    (mut gamma, mut volumes): (
+    (mut gamma, mut volumes, mut master_preset): (
         ResMut<frame::DisplayGamma>,
         ResMut<frame::SoundCategoryVolumes>,
+        ResMut<frame::MasterPreset>,
     ),
     mut shown: Local<HashMap<&'static str, String>>,
 ) {
@@ -52,6 +53,7 @@ pub(crate) fn sync_game_menu_dvars(
     let Some(menus) = namespace.and_then(crate::chrome::game_menus) else {
         gamma.set_if_neq(frame::DisplayGamma::default());
         volumes.set_if_neq(frame::SoundCategoryVolumes::default());
+        master_preset.set_if_neq(frame::MasterPreset::default());
         return;
     };
     let mut moved = false;
@@ -100,6 +102,9 @@ pub(crate) fn sync_game_menu_dvars(
     }
     gamma.set_if_neq(frame::DisplayGamma(display_gamma));
     volumes.set_if_neq(frame::SoundCategoryVolumes(category_volumes));
+    master_preset.set_if_neq(frame::MasterPreset(
+        menus.master_preset(&|name| dvars.get(name).map(str::to_owned)),
+    ));
     if moved {
         settings.sanitize();
         settings.touch();

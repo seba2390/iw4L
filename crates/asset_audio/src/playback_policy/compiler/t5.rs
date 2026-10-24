@@ -21,6 +21,7 @@ impl CueCompiler for T5CueCompiler {
             mixer_group_supported: false,
             zero_volume_unity: false,
             streamed_decode: crate::StreamedDecodePolicy::WmaContainerWithWaveCompatibility,
+            master_bus_direct: row.flags.is_some_and(|flags| (flags >> 12) & 3 == 2),
             secondary: (
                 SecondaryActivation::OnResolution,
                 SecondaryPolicySource::IndependentLayers,

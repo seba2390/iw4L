@@ -69,6 +69,7 @@ pub enum SndRows {
     Groups,
     Curves,
     Radverbs,
+    Masters,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,7 +140,14 @@ pub trait AssetLinkSink {
             SndRows::Groups => self.capture_snd_groups(s, rows, count),
             SndRows::Curves => self.capture_snd_curves(s, rows, count),
             SndRows::Radverbs => self.capture_snd_radverbs(s, rows, count),
+            SndRows::Masters => self.capture_snd_masters(s, rows, count),
         }
+    }
+
+    /// The sound driver's master presets (176-byte rows).
+    fn capture_snd_masters(&mut self, s: &ZoneStream<'_>, rows: Ptr, count: usize) -> Result<()> {
+        let _ = (s, rows, count);
+        Ok(())
     }
 
     /// A sound bank's reverb presets (96-byte rows).

@@ -15,6 +15,7 @@ struct CueSemantics {
     mixer_group_supported: bool,
     streamed_decode: crate::StreamedDecodePolicy,
     secondary: (SecondaryActivation, SecondaryPolicySource),
+    master_bus_direct: bool,
 }
 
 enum GroupSelection {
@@ -83,6 +84,7 @@ pub(super) fn compile(
         master_fade_exempt,
         volume_category,
         reverb: common::reverb_send(row),
+        master_bus_direct: semantics.master_bus_direct,
         streamed_decode: semantics.streamed_decode,
         composition: CueCompositionPolicy::compile(
             row,
