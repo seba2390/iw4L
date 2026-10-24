@@ -1105,7 +1105,11 @@ fn set_commands(text: &str) -> Vec<(String, String)> {
             match (words.next(), words.next()) {
                 (Some("set" | "seta"), Some(name)) => Some((
                     name.to_owned(),
-                    words.collect::<Vec<_>>().join(" ").trim_matches('"').to_owned(),
+                    words
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .trim_matches('"')
+                        .to_owned(),
                 )),
                 _ => None,
             }

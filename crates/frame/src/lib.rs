@@ -29,7 +29,9 @@ pub use schedule::{
     configure_client_sets, configure_render_sets, configure_worker_cmd_sets, worker_cmd_name,
 };
 pub use script_entity_notify::{AbortKillcam, BeginKillcam, KillcamEnded, SpawnedPlayer};
-pub use script_notify::{ExitLevelCalled, LevelReloadCalled, register_script_notify};
+pub use script_notify::{
+    ExitLevelCalled, LevelChangeCalled, LevelReloadCalled, register_script_notify,
+};
 pub use session::{
     AdmissionKey, AppScreen, BotNavigationReady, CacWeaponOffer, ClassSelectHandoff,
     DisplayEncodedCamera, Headless, HostClassLoadouts, HostClassSlot, HudDraw, HudInputView,

@@ -635,6 +635,36 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         mission_failed(world)?;
         Ok(Value::Undefined)
     });
+    // `ChangeLevel(map, persistent, exitTime)`: the level `map` loads once
+    // `exitTime` seconds have passed. Without the third argument Black Ops
+    // waits `g_changelevel_time` (registered 0); the runtime keeps no
+    // weapons across levels, so `persistent` is read and dropped.
+    registry.register(Function, "changelevel", |world, _, args| {
+        let map = super::super::args::string(args, 0)?;
+        if args.len() > 1 {
+            super::super::args::int(args, 1)?;
+        }
+        let exit_ms = if args.len() > 2 {
+            let ms = (super::super::args::float(args, 2)? * 1000.0).round() as i64;
+            if ms < 0 {
+                return Err("exitTime cannot be negative".into());
+            }
+            ms
+        } else {
+            let time = world
+                .resource::<crate::script::MatchScript>()
+                .dvars
+                .get("g_changelevel_time")
+                .and_then(|value| value.parse::<f32>().ok())
+                .unwrap_or(0.0);
+            (time.max(0.0) * 1000.0).round() as i64
+        };
+        let now = i64::from(crate::level_time_ms(
+            world.resource::<crate::step::StepRequest>().tick,
+        ));
+        world.resource_mut::<RoundScript>().change_level = Some((map, now + exit_ms));
+        Ok(Value::Undefined)
+    });
     // `SaveGame(name, description, screenshot, flag)`: Black Ops refuses a
     // save while the first player is dead and saves the whole game under
     // `<mapname>` ("levelstart") or `<mapname>-<name>`. The runtime keeps
