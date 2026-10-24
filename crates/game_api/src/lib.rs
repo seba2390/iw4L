@@ -793,6 +793,12 @@ pub trait GameMenus: Sync {
         &[]
     }
 
+    /// The master preset of the game's sound driver that its menu dvars
+    /// pick (`dvar` reads one); `None` leaves the sound driver's default.
+    fn master_preset(&self, _dvar: &dyn Fn(&str) -> Option<String>) -> Option<&'static str> {
+        None
+    }
+
     /// The config script in the game's zones that binds its default keys; a
     /// session of the game keeps its own key binds, starting from these.
     /// `None` uses the runtime's shared binds.

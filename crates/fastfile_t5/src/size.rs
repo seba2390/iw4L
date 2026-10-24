@@ -404,6 +404,14 @@ pub const SND_RADVERB: usize = 96;
 pub const SND_RADVERB_HASH_OFF: usize = 0x20;
 pub const SND_RADVERB_VALUES_OFF: usize = 0x24;
 const _: () = assert!(SND_RADVERB_VALUES_OFF + 15 * 4 == SND_RADVERB);
+/// A master preset (the sound driver's sixth array): its two submix
+/// effects' parameters, the master bus's in two runs.
+pub const SND_MASTER: usize = 176;
+pub const SND_MASTER_HASH_OFF: usize = 0x20;
+pub const SND_MASTER_BUS_OFF: usize = 0x34;
+pub const SND_MASTER_NO_VOICE_OFF: usize = 0x78;
+pub const SND_MASTER_COMPRESSOR_OFF: usize = 0x94;
+const _: () = assert!(SND_MASTER_COMPRESSOR_OFF + 7 * 4 == SND_MASTER);
 pub const SND_SNAPSHOT: usize = 348;
 pub const SND_SNAPSHOT_HASH_OFF: usize = 0x20;
 pub const SND_SNAPSHOT_LINKED_OFF: usize = 0x44;

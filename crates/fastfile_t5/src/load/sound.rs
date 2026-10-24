@@ -43,6 +43,7 @@ pub(super) fn load_snd_driver_globals(
             (16, Some(rows)) => links.capture_snd_rows(s, super::SndRows::Curves, rows, count)?,
             (32, _) => links.capture_snd_snapshot_groups(count)?,
             (40, Some(rows)) => links.capture_snd_contexts(s, rows, count)?,
+            (48, Some(rows)) => links.capture_snd_rows(s, super::SndRows::Masters, rows, count)?,
             _ => {}
         }
     }

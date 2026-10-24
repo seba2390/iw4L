@@ -41,7 +41,7 @@ pub use session::{
     ViewSubject, WorldGeneration, WorldProducts, WorldReadiness, WorldStamp,
 };
 pub use settings::{
-    DisplayGamma, DisplayResolution, GameSettings, OtherGame, SoundCategoryVolumes,
+    DisplayGamma, DisplayResolution, GameSettings, MasterPreset, OtherGame, SoundCategoryVolumes,
 };
 pub use ui::{
     AssetFamilies, FrontendContentLoading, HostMatchRules, MatchPause, NativeGameMenu,

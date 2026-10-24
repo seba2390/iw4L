@@ -222,6 +222,9 @@ pub(crate) struct RenderMedia {
     pub category_gain: Option<LiveGain>,
     pub release: Option<Arc<CueRelease>>,
     pub bus: asset_core::AssetNamespace,
+    /// While the game's master chain runs, the voice joins its master bus
+    /// directly, past the bus ahead of it.
+    pub master_bus_direct: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -433,6 +436,7 @@ impl RenderMedia {
             category_gain: None,
             release: None,
             bus: asset_core::AssetNamespace::Iw4,
+            master_bus_direct: false,
         }
     }
 
