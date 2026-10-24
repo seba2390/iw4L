@@ -163,16 +163,16 @@ Only the top-level items count.
   - [x] The red damage flash on every hit, the burning, electrified and teleport overlays (`setburn`, `setelectrified`, `settransported`), and the stand/crouch blocked hints.
 - [x] The game's own front end: menus, lobby and map selection.
   - [x] In a match, Escape opens Black Ops' own pause menu (`pausedmenu`: RESUME CARNAGE, SETTINGS, RESTART LEVEL, QUIT) and its settings menus, run by its own event scripts; a solo match pauses under it.
-  - [x] The settings menus' sliders show Black Ops' client dvars at their defaults; mouse sensitivity, field of view and master volume move the runtime's own settings (gamma and the other volume groups do not yet).
+  - [x] The settings menus' sliders show Black Ops' client dvars at their defaults; mouse sensitivity, field of view and master volume move the runtime's own settings, `r_gamma` the display's gamma ramp and the music, effects and voice sliders their sound categories' volumes.
   - [x] Picking Black Ops in the game library runs Black Ops' own front end (`frontend`): its title screen and main menu over the interrogation room, ZOMBIES → SOLO → its map select (Kino, Five, Dead Ops Arcade), whose `startlevel` runs the front end's own `ChangeLevel` into the map; the menus tell the level each menu they open and close, and an install with Black Ops alone (no Modern Warfare 2) gets there. ONLINE's party lobby comes with co-op (#445).
-- [ ] The game's own sound.
+- [x] The game's own sound.
   - [x] Weapon fire, reload, raise and putaway sounds, notetrack sounds, zombie vocals and script sounds, all Black Ops aliases.
   - [x] The client scripts' one-shot sounds (`playsound` on the client VM): Kino's random ambient emitters (`_audio::soundrandom_thread`: wind, metal, rope, whispers, wood) play their aliases to the local client.
   - [x] The client scripts' loop sounds (`playloopsound` on fake entities and client entities, `soundloopemitter`): Kino's fires, steam, chandeliers, power boxes, circuits and projector loop where its client scripts place them.
   - [x] The player's own footsteps: Black Ops' movement footstep events reach the client scripts' `CodeCallback_PlayerFootstep` (`_footsteps.csc`), which plays `fly_step_<sprint|run|walk|…>_plr_<surface>`.
   - [x] The client scripts' sounds by playback id: the local sound system plays each one, stops and fades it by its id (`stopsound`, `setsoundvolume`, `setsoundvolumerate`), and reports back whether it plays, how far and how long (`soundplaying`, `getplaybacktime`, `getknownlength`), which `_music.csc`'s transitions wait on.
   - [x] The player's jumps and landings reach the client scripts' `CodeCallback_PlayerJump` / `CodeCallback_PlayerLand` (`_footsteps.csc`: `fly_step_run_*`, `fly_land_*`), and their line emitters (`soundlineemitter`) play at the point of their line nearest the player (Kino's wind alleys and water pipes).
-  - [ ] Gear, other players' footsteps, reverb rooms (ambient rooms, sound contexts and mix snapshots run: #234), another player's automatic fire (#392); server `PlaySound` notifies wait for the client's reported length and entity sounds follow their entity (#256).
+  - [x] Reverb and the mix: the client scripts' ambient rooms and a shellshock set Black Ops' reverb rooms by priority (`setReverb` / `deactivateReverb` and their fades), which run its four-line reverb with the banks' presets, every voice sending by its alias's reverb send and falloff; sound contexts and mix snapshots run (#234); server `PlaySound` notifies wait for the client's reported length, entity sounds follow their entity and other players' automatic fire runs its simulation (#256, #392).
 - [x] The first map's own systems (Kino's teleporter, its wonder weapon and the rest).
   - [x] The auto turrets spawn as Black Ops' `misc_turret`s and answer its turret methods; Kino starts with no turret faults.
   - [x] Hellhound rounds (`_zombiemode_ai_dogs`, `zombie_dog_*` animscripts): dogs spawn with lightning and sound, claim attack spots around the player, chase, leap to bite for 40 damage, die and drop Max Ammo (`full_ammo`) on the last dog.
@@ -195,6 +195,7 @@ Only the top-level items count.
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] A lobby host picks Kino; a joined player spawns at its co-op spawns, gets points and sees the zombies.
   - [ ] Revive, bleeding out, spectating; no two-machine test.
+  - [ ] Other players' footsteps reach the client scripts (#458).
   - [ ] Actor state reaches clients through the shared entity path; its cost with many zombies is not measured.
 - [ ] The game's fidelity ledger ([`fidelity/t5.md`](fidelity/t5.md)) has no open item.
 
