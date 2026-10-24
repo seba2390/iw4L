@@ -12,7 +12,9 @@ use game_api::MenuSetting;
 /// others live in the menus' dvars.
 fn setting_value(settings: &frame::GameSettings, setting: MenuSetting) -> Option<f32> {
     match setting {
-        MenuSetting::MasterVolume => Some(settings.master_volume),
+        MenuSetting::MasterVolume | MenuSetting::SquaredMasterVolume => {
+            Some(settings.master_volume)
+        }
         MenuSetting::MouseSensitivity => Some(settings.sensitivity),
         MenuSetting::FieldOfView => Some(settings.fov),
         MenuSetting::DisplayGamma | MenuSetting::CategoryVolume(_) => None,
@@ -21,7 +23,9 @@ fn setting_value(settings: &frame::GameSettings, setting: MenuSetting) -> Option
 
 fn set_setting(settings: &mut frame::GameSettings, setting: MenuSetting, value: f32) {
     match setting {
-        MenuSetting::MasterVolume => settings.master_volume = value,
+        MenuSetting::MasterVolume | MenuSetting::SquaredMasterVolume => {
+            settings.master_volume = value
+        }
         MenuSetting::MouseSensitivity => settings.sensitivity = value,
         MenuSetting::FieldOfView => settings.fov = value,
         MenuSetting::DisplayGamma | MenuSetting::CategoryVolume(_) => {}
@@ -37,10 +41,11 @@ pub(crate) fn sync_game_menu_dvars(
     ),
     mut dvars: ResMut<frame::UiMenuDvars>,
     mut settings: ResMut<frame::GameSettings>,
-    (mut gamma, mut volumes, mut master_preset): (
+    (mut gamma, mut volumes, mut master_preset, mut master_gain): (
         ResMut<frame::DisplayGamma>,
         ResMut<frame::SoundCategoryVolumes>,
         ResMut<frame::MasterPreset>,
+        ResMut<frame::MasterVolumeGain>,
     ),
     mut shown: Local<HashMap<&'static str, String>>,
 ) {
@@ -54,6 +59,7 @@ pub(crate) fn sync_game_menu_dvars(
         gamma.set_if_neq(frame::DisplayGamma::default());
         volumes.set_if_neq(frame::SoundCategoryVolumes::default());
         master_preset.set_if_neq(frame::MasterPreset::default());
+        master_gain.set_if_neq(frame::MasterVolumeGain::default());
         return;
     };
     let mut moved = false;
@@ -102,6 +108,13 @@ pub(crate) fn sync_game_menu_dvars(
     }
     gamma.set_if_neq(frame::DisplayGamma(display_gamma));
     volumes.set_if_neq(frame::SoundCategoryVolumes(category_volumes));
+    let squared = menus
+        .menu_dvars()
+        .iter()
+        .any(|dvar| dvar.setting == Some(MenuSetting::SquaredMasterVolume));
+    master_gain.set_if_neq(frame::MasterVolumeGain(
+        squared.then(|| settings.master_volume * settings.master_volume),
+    ));
     master_preset.set_if_neq(frame::MasterPreset(
         menus.master_preset(&|name| dvars.get(name).map(str::to_owned)),
     ));

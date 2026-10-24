@@ -45,6 +45,7 @@ impl Plugin for HudPlugin {
             .init_resource::<frame::DisplayGamma>()
             .init_resource::<frame::SoundCategoryVolumes>()
             .init_resource::<frame::MasterPreset>()
+            .init_resource::<frame::MasterVolumeGain>()
             .init_resource::<HudImages>()
             .init_resource::<HudPresentationGaps>()
             .init_resource::<ReticleAdsLatch>()

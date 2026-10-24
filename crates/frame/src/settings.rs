@@ -218,6 +218,11 @@ impl GameSettings {
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
 pub struct DisplayGamma(pub Option<f32>);
 
+/// The gain a game's menus make of the master volume, while the game's
+/// menus have one; `None` plays at the master volume itself.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct MasterVolumeGain(pub Option<f32>);
+
 /// The master preset of its sound driver a game's menus pick, while the
 /// game's menus have one.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]

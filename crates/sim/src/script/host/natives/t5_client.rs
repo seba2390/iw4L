@@ -53,6 +53,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     register_sound_ids(registry);
     register_weapon_models(registry);
+    register_shader_constants(registry);
     register_profile(registry);
     // `player earthQuake(scale, duration, origin, radius)` shakes the local
     // client's view; nothing is checked.
@@ -2131,4 +2132,132 @@ fn register_profile(registry: &mut NativeRegistry) {
         string(args, 1)?;
         Ok(Value::Undefined)
     });
+}
+
+/// The constants an entity's shader constant slots may name, and the code
+/// constant each stands for.
+const SHADER_CONSTANTS: [(&str, u16); 13] = [
+    ("__characterCharredAmount", 0x76),
+    ("__characterDissolveColor", 0xb3),
+    ("scriptVector0", SCRIPT_VECTOR0),
+    ("scriptVector1", SCRIPT_VECTOR0 + 1),
+    ("scriptVector2", SCRIPT_VECTOR0 + 2),
+    ("scriptVector3", SCRIPT_VECTOR0 + 3),
+    ("scriptVector4", SCRIPT_VECTOR0 + 4),
+    ("scriptVector5", SCRIPT_VECTOR0 + 5),
+    ("scriptVector6", SCRIPT_VECTOR0 + 6),
+    ("scriptVector7", SCRIPT_VECTOR0 + 7),
+    ("heroLightingR", 0xa6),
+    ("heroLightingG", 0xa7),
+    ("heroLightingB", 0xa8),
+];
+/// `scriptVector0`'s code constant; the renderer takes the first four.
+const SCRIPT_VECTOR0: u16 = 0xb7;
+/// The shader constant slots an entity has.
+const SHADER_CONSTANT_SLOTS: usize = 7;
+
+/// `ent mapShaderConstant(localClientNum, index, name, [x, y, z, w])` maps a
+/// slot to a named constant and sets its vector (missing parts 0);
+/// `ent setShaderConstant(localClientNum, index, x, y, z, w)` sets a mapped
+/// slot's vector. A slot past the last, an unknown name or an unmapped slot
+/// does nothing.
+fn register_shader_constants(registry: &mut NativeRegistry) {
+    use Namespace::Method;
+    registry.register(Method, "mapshaderconstant", |world, receiver, args| {
+        let (id, number) = entity(world, receiver).map(|(id, ent)| (id, ent.number))?;
+        if !(3..=7).contains(&args.len()) {
+            return Err(
+                "USAGE: ent mapshaderconstant( <localClientNum>, <index>, <constant name>)\n"
+                    .into(),
+            );
+        }
+        local_index(args)?;
+        let index = int(args, 1)?;
+        let name = string(args, 2)?;
+        let mut vector = [0.0; 4];
+        for (at, value) in (3..args.len()).zip(&mut vector) {
+            *value = float(args, at)?;
+        }
+        let code = SHADER_CONSTANTS
+            .iter()
+            .find(|(known, _)| known.eq_ignore_ascii_case(&name))
+            .map(|&(_, code)| code);
+        let (Some(code), Some(slot)) = (
+            code,
+            usize::try_from(index)
+                .ok()
+                .filter(|&slot| slot < SHADER_CONSTANT_SLOTS),
+        ) else {
+            return Ok(Value::Undefined);
+        };
+        world
+            .resource_mut::<ClientOutput>()
+            .shader_constants
+            .entry(id)
+            .or_insert_with(|| (number, [None; SHADER_CONSTANT_SLOTS]))
+            .1[slot] = Some((code, vector));
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setshaderconstant", |world, receiver, args| {
+        let (id, _) = entity(world, receiver)?;
+        if args.len() != 6 {
+            return Err(
+                "USAGE: ent setshaderconstant( <localClientNum>, <index>, <x>, <y>, <z>, <w>)\n"
+                    .into(),
+            );
+        }
+        local_index(args)?;
+        let index = int(args, 1)?;
+        let vector = [
+            float(args, 2)?,
+            float(args, 3)?,
+            float(args, 4)?,
+            float(args, 5)?,
+        ];
+        let mut output = world.resource_mut::<ClientOutput>();
+        let slot = usize::try_from(index).ok().and_then(|slot| {
+            output
+                .shader_constants
+                .get_mut(&id)?
+                .1
+                .get_mut(slot)?
+                .as_mut()
+        });
+        if let Some((_, held)) = slot {
+            *held = vector;
+        }
+        Ok(Value::Undefined)
+    });
+}
+
+/// Each entity's script vector rows, for the renderer: the vector of every
+/// slot mapping one of the first four script vectors, a later slot over an
+/// earlier one. An entity the client no longer has is forgotten.
+pub(crate) fn script_vectors(world: &mut World) -> Vec<crate::EntityScriptVectors> {
+    if std::env::var_os("IW4L_PROBE_NOSV").is_some() { return Vec::new(); }
+    let alive: std::collections::BTreeSet<u64> =
+        world.resource::<RoundScript>().entities.keys().copied().collect();
+    let mut output = world.resource_mut::<ClientOutput>();
+    output.shader_constants.retain(|id, _| alive.contains(id));
+    output
+        .shader_constants
+        .values()
+        .filter_map(|(number, slots)| {
+            if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE sv {number} {slots:?}"); }
+            let mut rows = [None; 4];
+            for (code, vector) in slots.iter().flatten() {
+                if let Some(row) = code
+                    .checked_sub(SCRIPT_VECTOR0)
+                    .and_then(|at| rows.get_mut(usize::from(at)))
+                {
+                    *row = Some(*vector);
+                }
+            }
+            Some(crate::EntityScriptVectors {
+                number: u16::try_from(*number).ok()?,
+                rows,
+            })
+            .filter(|entity| entity.rows.iter().any(Option::is_some))
+        })
+        .collect()
 }
