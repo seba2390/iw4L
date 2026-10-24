@@ -2234,16 +2234,18 @@ fn register_shader_constants(registry: &mut NativeRegistry) {
 /// slot mapping one of the first four script vectors, a later slot over an
 /// earlier one. An entity the client no longer has is forgotten.
 pub(crate) fn script_vectors(world: &mut World) -> Vec<crate::EntityScriptVectors> {
-    if std::env::var_os("IW4L_PROBE_NOSV").is_some() { return Vec::new(); }
-    let alive: std::collections::BTreeSet<u64> =
-        world.resource::<RoundScript>().entities.keys().copied().collect();
+    let alive: std::collections::BTreeSet<u64> = world
+        .resource::<RoundScript>()
+        .entities
+        .keys()
+        .copied()
+        .collect();
     let mut output = world.resource_mut::<ClientOutput>();
     output.shader_constants.retain(|id, _| alive.contains(id));
     output
         .shader_constants
         .values()
         .filter_map(|(number, slots)| {
-            if std::env::var_os("IW4L_PROBE").is_some() { eprintln!("PROBE sv {number} {slots:?}"); }
             let mut rows = [None; 4];
             for (code, vector) in slots.iter().flatten() {
                 if let Some(row) = code

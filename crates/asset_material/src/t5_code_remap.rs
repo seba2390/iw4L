@@ -777,9 +777,9 @@ pub fn post_t5_code_bank(t5: u16) -> Option<u16> {
         }
         // An entity's script vectors, which its client scripts map
         // (`mapShaderConstant`).
-        T5_CODE_GENERIC_PARAM0..=T5_CODE_GENERIC_PARAM3 => Some(
-            render_material::CODE_T6_SCRIPT_VECTOR[usize::from(t5 - T5_CODE_GENERIC_PARAM0)],
-        ),
+        T5_CODE_GENERIC_PARAM0..=T5_CODE_GENERIC_PARAM3 => {
+            Some(render_material::CODE_T6_SCRIPT_VECTOR[usize::from(t5 - T5_CODE_GENERIC_PARAM0)])
+        }
         _ => None,
     }
 }

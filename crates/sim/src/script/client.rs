@@ -989,8 +989,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
-            let script_vectors =
-                super::host::natives::t5_client::script_vectors(&mut client.world);
+            let script_vectors = super::host::natives::t5_client::script_vectors(&mut client.world);
             let mut frame = crate::frame::FrameWorld::from_world(server);
             if frame.client_meta(crate::ClientId(0)).is_some() {
                 let screen = &mut frame
