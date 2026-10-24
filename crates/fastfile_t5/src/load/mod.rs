@@ -4,6 +4,7 @@ use crate::zone::{Ptr, Result, XFILE_BLOCK_TEMP, ZoneError, ZonePtr, ZoneStream}
 
 mod clipmap;
 mod destructible;
+mod forward;
 mod fx;
 mod gfxworld;
 mod glass;
@@ -15,6 +16,8 @@ mod sound;
 mod weapon;
 mod world;
 mod xanim;
+
+pub use forward::{LinkForward, forward_link};
 
 pub fn load_asset_body(s: &mut ZoneStream<'_>, ty: AssetType) -> Result<()> {
     load_asset_body_observed(s, ty, &mut IgnoreAssetLinks)
