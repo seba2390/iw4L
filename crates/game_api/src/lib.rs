@@ -811,6 +811,8 @@ pub trait GameMenus: Sync {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuSetting {
     MasterVolume,
+    /// The master volume, every sound playing at its square.
+    SquaredMasterVolume,
     MouseSensitivity,
     FieldOfView,
     /// The display's gamma ramp: each level to the power of one over the
