@@ -3,7 +3,7 @@
 //! warning drawn by that time's fade.
 
 use fastfile_t5::weapon_def::WeaponDefView;
-use game_api::hud::{LowAmmoWarning, WeaponInfoRules, WeaponInfoView};
+use game_api::hud::{LowAmmoWarning, WeaponInfoAmmo, WeaponInfoRules, WeaponInfoView};
 use movement_t5::state::{Buttons, PlayerState, buttons};
 use movement_t5::weapon::state as ws;
 
@@ -13,7 +13,19 @@ pub(crate) static WEAPON_INFO: WeaponInfoRules = WeaponInfoRules {
     bind_label,
     low_ammo,
     slot_hint,
+    fade,
+    ammo_fade,
+    ammo_text,
+    name_fade,
+    name_right_gap: NAME_RIGHT_GAP,
 };
+
+/// The weapon name shows for 1.8 s after the selection changes.
+const NAME_SHOW_MS: i32 = 1800;
+/// The weapon name ends this far left of its item's right edge.
+const NAME_RIGHT_GAP: f32 = 28.0;
+/// The rounds beside the clip turn this colour when low.
+const LOW_STOCK_RGB: [f32; 3] = [1.0, 0.3, 0.3];
 
 /// `hud_fade_ammodisplay`: how long the weapon info shows, in seconds.
 const FADE_AMMO_DISPLAY: f32 = 8.0;
@@ -67,8 +79,8 @@ const PULSE_MAX: f32 = 1.5;
 
 /// The client restarts the weapon info when its weapon selection changes,
 /// an action slot key is pressed, the fire, left-hand fire, reload or
-/// grenade keys are held, or its weapon is low on rounds; it lets it go
-/// once `hud_fade_ammodisplay` has passed.
+/// grenade keys are held, or its weapon is low on rounds; it fades once
+/// `hud_fade_ammodisplay` has passed.
 fn update(view: &WeaponInfoView<'_>, shown_at: i32) -> i32 {
     let mut player = *view.player;
     let (ps, last) = crate::movement::unpack(&mut player);
@@ -92,10 +104,11 @@ fn update(view: &WeaponInfoView<'_>, shown_at: i32) -> i32 {
     if low_stock(view, &ps, weapon) || low_clip(view, weapon) {
         stamp(&mut shown_at);
     }
-    let fade = fade_seconds(view);
-    if fade != 0.0 && shown_at != 0 && fade * 1000.0 < (now - shown_at) as f32 {
-        shown_at = 0;
-    }
+    // Black Ops lets the weapon info go (its time back to 0) once it has
+    // faded; its selection and action slot stamps are single events there.
+    // Here they are times the view keeps, so the faded time stays: a zero
+    // would take the old selection time again next frame, and the fade
+    // reads the same nothing from either.
     shown_at
 }
 
@@ -240,14 +253,59 @@ fn max_stock(
 /// The weapon info's alpha by the time it was shown: whole until its last
 /// 700 ms, then down to nothing; nothing while `cg_drawpaused` is off.
 fn fade(view: &WeaponInfoView<'_>, shown_at: i32) -> f32 {
+    let seconds = fade_seconds(view);
+    let ms = (f64::from(seconds * 1000.0) + 9.313_225_746_154_785e-10).round_ties_even() as i32;
+    fade_for(view, shown_at, ms)
+}
+
+/// The round counts take the weapon info's fade, and draw nothing while the
+/// weapon flags hide the weapon info.
+fn ammo_fade(view: &WeaponInfoView<'_>, shown_at: i32) -> f32 {
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    if ps.weap_flags & WEAP_FLAG_HIDE_INFO != 0 {
+        return 0.0;
+    }
+    fade(view, shown_at)
+}
+
+/// The weapon name shows for 1.8 s from the last change of selection, by
+/// the same fade.
+fn name_fade(view: &WeaponInfoView<'_>) -> f32 {
+    fade_for(view, view.selected_at, NAME_SHOW_MS)
+}
+
+/// The clip printed to the digits of the weapon's clip size (`%01i`,
+/// `%02i`, `%03i`), the stock as `/ %i`, red when low.
+fn ammo_text(view: &WeaponInfoView<'_>, clip: i32, stock: i32) -> WeaponInfoAmmo {
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    let weapon = current_weapon(view, &ps);
+    let size = def(view, weapon).map_or(0, |def| clip_size(&def));
+    let digits = if size < 10 {
+        1
+    } else if size < 100 {
+        2
+    } else {
+        3
+    };
+    WeaponInfoAmmo {
+        clip: format!("{clip:0digits$}"),
+        stock: format!("/ {stock}"),
+        stock_rgb: low_stock(view, &ps, weapon).then_some(LOW_STOCK_RGB),
+    }
+}
+
+/// Alpha for something shown at `shown_at` for `ms`: whole until its last
+/// 700 ms, then down to nothing; whole while `hud_fade_ammodisplay` is 0,
+/// nothing while `cg_drawpaused` is off.
+fn fade_for(view: &WeaponInfoView<'_>, shown_at: i32, ms: i32) -> f32 {
     if (view.dvar)("cg_drawpaused").unwrap_or(1.0) == 0.0 {
         return 0.0;
     }
-    let seconds = fade_seconds(view);
-    if seconds == 0.0 {
+    if fade_seconds(view) == 0.0 {
         return 1.0;
     }
-    let ms = (f64::from(seconds * 1000.0) + 9.313_225_746_154_785e-10).round_ties_even() as i32;
     if shown_at == 0 {
         return 0.0;
     }

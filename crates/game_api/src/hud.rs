@@ -129,6 +129,27 @@ pub struct WeaponInfoRules {
     /// The invalid command hint (the game's number) pressing the action
     /// slot `slot_pressed` raises.
     pub slot_hint: fn(&WeaponInfoView<'_>) -> Option<i32>,
+    /// The weapon info's alpha (its background picture) given the time it
+    /// was shown.
+    pub fade: fn(&WeaponInfoView<'_>, i32) -> f32,
+    /// The alpha of the weapon's round counts given the time the weapon
+    /// info was shown.
+    pub ammo_fade: fn(&WeaponInfoView<'_>, i32) -> f32,
+    /// What the clip and the rounds beside it show, given their counts.
+    pub ammo_text: fn(&WeaponInfoView<'_>, i32, i32) -> WeaponInfoAmmo,
+    /// The weapon name's alpha, by the time the selection last changed.
+    pub name_fade: fn(&WeaponInfoView<'_>) -> f32,
+    /// The gap the weapon name keeps from its item's right edge.
+    pub name_right_gap: f32,
+}
+
+/// The weapon info's round counts as the game prints them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WeaponInfoAmmo {
+    pub clip: String,
+    pub stock: String,
+    /// The stock's colour in place of its item's, when the game recolours it.
+    pub stock_rgb: Option<[f32; 3]>,
 }
 
 /// What a game's weapon info reads of the local player.
