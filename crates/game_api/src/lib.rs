@@ -788,6 +788,13 @@ pub trait GameMenus: Sync {
     fn menu_dvars(&self) -> &'static [MenuDvar] {
         &[]
     }
+
+    /// The config script in the game's zones that binds its default keys; a
+    /// session of the game keeps its own key binds, starting from these.
+    /// `None` uses the runtime's shared binds.
+    fn default_controls(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 /// A runtime setting a game's menus show and set through a dvar of their own.
