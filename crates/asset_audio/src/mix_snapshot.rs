@@ -24,6 +24,16 @@ pub struct ReverbPreset {
     pub values: [f32; 15],
 }
 
+/// A master preset of a game's sound driver: its name's hash and the
+/// parameters of the two effects ahead of the master voice, the master bus's
+/// (24) and the bus's ahead of it (7), in the order the game passes them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MasterPreset {
+    pub hash: u32,
+    pub master_bus: [f32; 24],
+    pub no_voice_bus: [f32; 7],
+}
+
 /// A game's mix snapshots and how many snapshot groups its sound driver
 /// declares.
 #[derive(Clone, Debug, Default, PartialEq)]

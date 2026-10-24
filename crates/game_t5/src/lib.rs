@@ -418,6 +418,26 @@ impl game_api::GameMenus for T5 {
         &MENU_DVARS
     }
 
+    /// Black Ops' table by `snd_menu_speaker_setup` (TV, surround,
+    /// headphones) and `snd_menu_listen_level` (quiet, loud), each held to
+    /// its dvar's range.
+    fn master_preset(&self, dvar: &dyn Fn(&str) -> Option<String>) -> Option<&'static str> {
+        const PRESETS: [[&str; 2]; 3] = [
+            ["tv_quiet", "tv_loud"],
+            ["surround_quiet", "surround_loud"],
+            ["headphone_quiet", "headphone_loud"],
+        ];
+        let int = |name: &str, max: i32| {
+            dvar(name)
+                .and_then(|value| value.trim().parse::<f32>().ok())
+                .filter(|value| value.is_finite())
+                .map_or(0, |value| (value as i32).clamp(0, max))
+        };
+        let speakers = int("snd_menu_speaker_setup", 2) as usize;
+        let level = int("snd_menu_listen_level", 1) as usize;
+        Some(PRESETS[speakers][level])
+    }
+
     /// `default.cfg` runs `default_controls.cfg` (the localized
     /// `code_pre_gfx`): `unbindall`, then Black Ops' own keyboard binds.
     fn default_controls(&self) -> Option<&'static str> {
@@ -431,8 +451,9 @@ impl game_api::GameMenus for T5 {
 /// `r_gamma` sets the display's gamma ramp; a sound plays at the square of
 /// its mixer group category's volume: `snd_menu_sfx` for categories 0 and
 /// 3, `snd_menu_music` for 1, `snd_menu_voice` for 2. `snd_menu_cinematic`
-/// is the cinematics' (docs/fidelity/t5.md).
-const MENU_DVARS: [game_api::MenuDvar; 14] = {
+/// is the cinematics' (docs/fidelity/t5.md). `snd_menu_speaker_setup` and
+/// `snd_menu_listen_level` pick the sound driver's master preset.
+const MENU_DVARS: [game_api::MenuDvar; 16] = {
     use game_api::{MenuDvar, MenuSetting};
     const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
         MenuDvar {
@@ -473,6 +494,8 @@ const MENU_DVARS: [game_api::MenuDvar; 14] = {
             setting: Some(MenuSetting::CategoryVolume(&[2])),
         },
         shown("snd_menu_cinematic", "1"),
+        shown("snd_menu_speaker_setup", "0"),
+        shown("snd_menu_listen_level", "0"),
         MenuDvar {
             name: "r_gamma",
             default: "0.9",

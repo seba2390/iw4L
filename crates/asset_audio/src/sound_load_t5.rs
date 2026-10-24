@@ -132,6 +132,36 @@ impl AssetLinkSink for T5SoundCapture {
         Ok(())
     }
 
+    fn capture_snd_masters(
+        &mut self,
+        s: &ZoneStream<'_>,
+        rows: Ptr,
+        count: usize,
+    ) -> ZoneResult<()> {
+        let mut presets = Vec::with_capacity(count);
+        for i in 0..count {
+            let row = rows.at(i * sz::SND_MASTER);
+            let floats = |from: usize, into: &mut [f32]| -> ZoneResult<()> {
+                for (at, value) in into.iter_mut().enumerate() {
+                    *value = s.f32_at(row, from + at * 4)?;
+                }
+                Ok(())
+            };
+            let mut master_bus = [0.0; 24];
+            let mut no_voice_bus = [0.0; 7];
+            floats(sz::SND_MASTER_BUS_OFF, &mut master_bus[..17])?;
+            floats(sz::SND_MASTER_COMPRESSOR_OFF, &mut master_bus[17..])?;
+            floats(sz::SND_MASTER_NO_VOICE_OFF, &mut no_voice_bus)?;
+            presets.push(crate::MasterPreset {
+                hash: s.u32_at(row, sz::SND_MASTER_HASH_OFF)?,
+                master_bus,
+                no_voice_bus,
+            });
+        }
+        self.catalog.ingest_master_presets(NAMESPACE, presets);
+        Ok(())
+    }
+
     fn capture_snd_snapshots(
         &mut self,
         s: &ZoneStream<'_>,

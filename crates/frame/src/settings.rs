@@ -218,6 +218,11 @@ impl GameSettings {
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
 pub struct DisplayGamma(pub Option<f32>);
 
+/// The master preset of its sound driver a game's menus pick, while the
+/// game's menus have one.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MasterPreset(pub Option<&'static str>);
+
 /// The volumes a game's menus set for the sounds of each mixer group
 /// category, as (category, volume); a sound plays at its category's
 /// volume squared.

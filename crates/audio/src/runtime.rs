@@ -302,6 +302,22 @@ impl AudioRuntime {
             .cloned()
     }
 
+    /// The game's master chain: its parameters and the bus it runs on (none
+    /// stops it).
+    pub(crate) fn set_master_chain(
+        &self,
+        chain: Option<(
+            crate::master_chain::MasterChainParameters,
+            asset_core::AssetNamespace,
+        )>,
+    ) {
+        *self
+            .shared
+            .master_chain
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = chain;
+    }
+
     /// The game's reverb: its parameters and the bus it joins (none stops
     /// it), and the room's dry and wet levels.
     pub(crate) fn set_reverb(

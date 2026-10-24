@@ -9,6 +9,7 @@ mod decode_budget;
 mod emit;
 mod entity_events;
 mod frontend;
+mod master_mix;
 mod media_queue;
 mod messages;
 mod pcm;
@@ -72,6 +73,7 @@ pub use admission::AdmissionFailure;
 pub use render_core::InstanceStatus;
 pub use runtime::{AudioDiagnostics, AudioRuntime};
 
+mod master_chain;
 mod media;
 mod mix_bus;
 

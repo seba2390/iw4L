@@ -26,6 +26,7 @@ impl CueCompiler for T6CueCompiler {
             mixer_group_supported: true,
             zero_volume_unity: false,
             streamed_decode: crate::StreamedDecodePolicy::Detected,
+            master_bus_direct: false,
             secondary: (
                 SecondaryActivation::OnResolution,
                 SecondaryPolicySource::IndependentLayers,

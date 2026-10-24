@@ -30,8 +30,9 @@ fn stage(namespace: AssetNamespace) -> BusStage {
             trim_db: -2.5,
             compressor: None,
         },
+        // Black Ops' master chain runs on its bus ahead of this.
         AssetNamespace::T5 => BusStage {
-            trim_db: 7.0,
+            trim_db: 0.0,
             compressor: None,
         },
         AssetNamespace::T6 => BusStage {

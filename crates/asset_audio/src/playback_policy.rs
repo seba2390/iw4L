@@ -206,6 +206,9 @@ pub struct AliasPlaybackPolicy {
     /// What it sends to the game's reverb, for a game whose aliases carry a
     /// send.
     pub reverb: Option<ReverbSendPolicy>,
+    /// The voice skips the game's bus ahead of its master bus (that bus's
+    /// compressor) and joins the master bus directly.
+    pub master_bus_direct: bool,
     pub loaded_binding_origin: crate::LoadedBindingOrigin,
 }
 
