@@ -187,6 +187,8 @@ pub struct SimState {
 
     content_components: crate::ContentComponents,
 
+    content_prefix: Option<Arc<crate::content::ContentPrefix>>,
+
     events: EventJournal,
 
     shot_collision_verdicts: Vec<crate::combat::ShotCollisionVerdict>,
@@ -322,6 +324,7 @@ impl Default for SimState {
             collision_runtime: CollisionRuntime::default(),
             content_digest: 0,
             content_components: crate::ContentComponents::default(),
+            content_prefix: None,
             events: EventJournal::default(),
             shot_collision_verdicts: Vec::new(),
             projectile_impacts: Vec::new(),
@@ -1168,34 +1171,14 @@ impl SimState {
     }
 
     fn recompute_content_digest(&mut self) {
-        self.content_digest = crate::content::content_digest(
-            &self.content.weapons().weapon_combat,
-            &self.content.weapons().bullet_pen,
-            &self.content.weapons().weapon_runnable,
-            &self.content.weapons().unlock_requirements,
-            self.content.weapons().rank_progression.as_ref(),
-            &self.content.weapons().weapon_transition_groups,
-            &self.content.weapons().weapon_camouflage_slots,
-            &self.content.weapons().equipment_runtime,
+        let prefix = crate::content::ContentPrefix::reuse_or_hash(
+            self.content_prefix.take(),
+            &self.content,
             &self.bootstrap,
-            self.content.clip_brushes(),
-            &self.entity_collision_capabilities,
-            self.content.map(),
         );
-        self.content_components = crate::content::content_components(
-            &self.content.weapons().weapon_combat,
-            &self.content.weapons().bullet_pen,
-            &self.content.weapons().weapon_runnable,
-            &self.content.weapons().unlock_requirements,
-            self.content.weapons().rank_progression.as_ref(),
-            &self.content.weapons().weapon_transition_groups,
-            &self.content.weapons().weapon_camouflage_slots,
-            &self.content.weapons().equipment_runtime,
-            &self.bootstrap,
-            self.content.clip_brushes(),
-            &self.entity_collision_capabilities,
-            self.content.map(),
-        );
+        (self.content_digest, self.content_components) =
+            prefix.finish(&self.entity_collision_capabilities);
+        self.content_prefix = Some(prefix);
     }
 
     /// Read-only weapon timing and magazine facts, as the combat step reads

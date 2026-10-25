@@ -855,8 +855,8 @@ pattern crates/sim/src/combat.rs movement_iw4:: 16
 pattern crates/sim/src/combat.rs playerstate_iw4:: 8
 pattern crates/sim/src/combat.rs trace_iw4:: 1
 pattern crates/sim/src/combat.rs weapon_iw4:: 24
-pattern crates/sim/src/content.rs gamemode_iw4:: 6
-pattern crates/sim/src/content.rs weapon_iw4:: 6
+pattern crates/sim/src/content.rs gamemode_iw4:: 2
+pattern crates/sim/src/content.rs weapon_iw4:: 4
 pattern crates/sim/src/corpse.rs entity_iw4:: 3
 pattern crates/sim/src/corpse.rs playerstate_iw4:: 1
 pattern crates/sim/src/corpse.rs trace_iw4:: 7
