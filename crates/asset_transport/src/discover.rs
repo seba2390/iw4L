@@ -114,14 +114,15 @@ fn folder_holds_zone_version(folder: &Path, version: u32) -> bool {
             continue;
         };
         for path in entries.flatten().map(|entry| entry.path()) {
-            if path.is_dir() {
+            let metadata = std::fs::metadata(&path).ok();
+            if metadata.as_ref().is_some_and(std::fs::Metadata::is_dir) {
                 if depth < 2 {
                     pending.push((path, depth + 1));
                 }
             } else if path
                 .extension()
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("ff"))
-                && peek_zone_version(&path) == Some(version)
+                && seen_zone_version(&path, metadata.as_ref()) == Some(version)
             {
                 return true;
             }
@@ -261,6 +262,42 @@ fn game_root_for_shortcut_target(target: &Path) -> Result<PathBuf, String> {
 
 pub fn peek_zone_version(path: &Path) -> Option<u32> {
     read_zone_version(path).ok()
+}
+
+/// The zone versions read so far, by file, with the length and modification
+/// time the file had when it was read. Every zone lookup asks every games root
+/// which game it holds, and the answer is a header read per `.ff`.
+static SEEN_ZONE_VERSIONS: std::sync::Mutex<
+    BTreeMap<PathBuf, (u64, std::time::SystemTime, Option<u32>)>,
+> = std::sync::Mutex::new(BTreeMap::new());
+
+/// `peek_zone_version`, without opening a file again whose length and
+/// modification time are what they were when it was read.
+fn seen_zone_version(path: &Path, metadata: Option<&std::fs::Metadata>) -> Option<u32> {
+    let Some((len, modified)) =
+        metadata.and_then(|metadata| Some((metadata.len(), metadata.modified().ok()?)))
+    else {
+        return peek_zone_version(path);
+    };
+    let seen = |cache: &BTreeMap<PathBuf, (u64, std::time::SystemTime, Option<u32>)>| {
+        cache
+            .get(path)
+            .filter(|(seen_len, seen_modified, _)| *seen_len == len && *seen_modified == modified)
+            .map(|(_, _, version)| *version)
+    };
+    let cache = SEEN_ZONE_VERSIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(version) = seen(&cache) {
+        return version;
+    }
+    drop(cache);
+    let version = peek_zone_version(path);
+    SEEN_ZONE_VERSIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(path.to_path_buf(), (len, modified, version));
+    version
 }
 
 fn read_zone_version(path: &Path) -> Result<u32, String> {
