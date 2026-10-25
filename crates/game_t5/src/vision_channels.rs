@@ -36,9 +36,13 @@ const HALF_PI: f32 = f32::from_bits(0x3fc9_0fdb);
 
 static GAPS: [&Unknown; 1] = [unknown!(
     "t5.vision.special_channels",
-    "the channels Black Ops picks from its client state ahead of or after last stand and damage: flare (the player's vision lerp ratio), mission failed (the server's mission-failed command), underwater (the water check), infrared, missile camera, extra camera and night vision (weapon states); none of their conditions is passed in, so a frame never picks them",
-    "the player state's vision lerp ratio and weapon states, the mission-failed command and the water check reaching the renderer"
+    "the channels Black Ops picks from its client state besides mission failed, last stand and damage: flare (the player's vision lerp ratio), underwater (the water check), infrared, missile camera, extra camera and night vision (weapon states); none of their conditions is passed in, so a frame never picks them",
+    "the player state's vision lerp ratio and weapon states and the water check reaching the renderer"
 )];
+
+/// `cg_deathScreenFadeInTime` (registered 2 s): how long the mission-failed
+/// channel takes to blend into `death`.
+const DEATH_SCREEN_FADE_IN_MS: i32 = 2000;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Blend {
@@ -63,6 +67,9 @@ pub(crate) struct Channels {
     names: [String; CHANNELS],
     /// Client time the damage channel is picked until.
     damage_until: i32,
+    /// The server's mission-failed command arrived: the mission-failed
+    /// channel is picked from then on.
+    mission_failed: bool,
     /// The vision the last frame drew with, and its channel.
     presented: VisionSlot,
     picked: usize,
@@ -76,6 +83,7 @@ pub(crate) fn new_channels() -> Box<dyn VisionChannels> {
         channels: [Channel::default(); CHANNELS],
         names: Default::default(),
         damage_until: 0,
+        mission_failed: false,
         presented: VisionSlot::default(),
         picked: NAKED,
         messages: Vec::new(),
@@ -199,7 +207,9 @@ impl Channels {
     }
 
     fn pick(&self, view: VisionView) -> usize {
-        if view.last_stand {
+        if self.mission_failed {
+            MISSION_FAILED
+        } else if view.last_stand {
             LAST_STAND
         } else if view.now_ms < self.damage_until {
             DAMAGE
@@ -349,6 +359,21 @@ impl VisionChannels for Channels {
         if self.names[NAKED].is_empty() {
             self.names[NAKED] = "default".to_owned();
             self.preload(NAKED, files);
+        }
+        // The mission-failed command: the channel starts from what the
+        // naked channel shows and blends into `death`.
+        if view.mission_failed && !self.mission_failed {
+            self.mission_failed = true;
+            self.channels[MISSION_FAILED].result = self.channels[NAKED].result;
+            self.channels[MISSION_FAILED].blend.style = STYLE_EASE;
+            self.set(
+                MISSION_FAILED,
+                STYLE_EASE,
+                "death",
+                DEATH_SCREEN_FADE_IN_MS,
+                view.now_ms,
+                files,
+            );
         }
         for channel in &mut self.channels {
             advance(channel, view.now_ms);
