@@ -61,6 +61,7 @@ pub(crate) fn update_crosshair(
     settings: Res<frame::GameSettings>,
     pause: Option<Res<frame::MatchPause>>,
     mode: Option<Res<game_api::ModeRules>>,
+    aim: Res<net::ViewweaponAim>,
     mut pass: ResMut<HudTessPass>,
     mut ads: Local<AdsDirection>,
     mut reported: Local<HashSet<&'static str>>,
@@ -121,6 +122,11 @@ pub(crate) fn update_crosshair(
             dual_wield: facts.dual_wield,
             ads_overlay: facts.overlay_reticle != 0
                 || weapons.registry().overlay_material_of(index).is_some(),
+            ads_zoom_in_frac: facts.ads_zoom_in_frac,
+            ads_zoom_out_frac: facts.ads_zoom_out_frac,
+            ads_overlay_width: facts.ads_overlay_width,
+            ads_overlay_height: facts.ads_overlay_height,
+            ads_overlay_alpha_scale: facts.ads_overlay_alpha_scale,
             color_change: facts.crosshair_color_change,
             human_gun: weapons.registry().name_of(index).starts_with("humangun_"),
         })
@@ -138,6 +144,11 @@ pub(crate) fn update_crosshair(
         third_person,
         to_ads: ads.to_ads,
         tan_half_fov_y: tan_half,
+        gun_offset: if aim.live {
+            [aim.xhair_x, aim.xhair_y]
+        } else {
+            [0.0; 2]
+        },
         paused: pause.is_some_and(|pause| pause.0),
         dvar: &dvar,
     });
@@ -147,14 +158,24 @@ pub(crate) fn update_crosshair(
         }
     }
     let index = crate::reticle::viewmodel_weapon(ps);
+    let mut quads = Vec::new();
+    if let Some(overlay) = &crosshair.sight_overlay
+        && let Some(material) = weapons.registry().overlay_material_of(index)
+    {
+        let namespace = weapons
+            .registry()
+            .component_namespace_of(index, asset_game::WeaponComponent::OverlayImage)
+            .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+        sight_overlay_quads(&surface, overlay, material, namespace, &mut quads);
+    }
     let Some(reticle) = weapons.registry().reticle_of(index) else {
+        pass.game_crosshair = TessJob::Quads(quads);
         return;
     };
     let namespace = weapons
         .registry()
         .component_namespace_of(index, asset_game::WeaponComponent::Material)
         .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
-    let mut quads = Vec::new();
     for picture in crosshair.pictures {
         let name = if picture.side {
             reticle
@@ -195,6 +216,61 @@ pub(crate) fn update_crosshair(
         });
     }
     pass.game_crosshair = TessJob::Quads(quads);
+}
+
+/// A sight overlay's pictures, and the screen around them filled from the
+/// picture's outer edge: its first column beside them, its first row above
+/// and below.
+fn sight_overlay_quads(
+    surface: &Hud2dSurface,
+    overlay: &game_api::hud::SightOverlay,
+    material: &str,
+    namespace: asset_core::AssetNamespace,
+    quads: &mut Vec<Draw2dQuad>,
+) {
+    let color = [1.0, 1.0, 1.0, overlay.alpha];
+    let mut push = |x: f32, y: f32, w: f32, h: f32, [s0, t0, s1, t1]: [f32; 4]| {
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        quads.push(Draw2dQuad {
+            xy: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+            st: [[s0, t0], [s1, t0], [s1, t1], [s0, t1]],
+            color,
+            material: material.to_owned(),
+            material_namespace: namespace,
+            provenance: Draw2dProvenance::CgDraw {
+                site: "sight_overlay",
+            },
+            layer: 0,
+            clip: None,
+        });
+    };
+    for picture in &overlay.pictures {
+        let r = surface.apply_rect(
+            picture.x,
+            picture.y,
+            picture.w,
+            picture.h,
+            ALIGN_CENTER,
+            ALIGN_CENTER,
+        );
+        push(r.x, r.y, r.w, r.h, picture.st);
+    }
+    let [x, y, w, h] = overlay.frame;
+    let r = surface.apply_rect(x, y, w, h, ALIGN_CENTER, ALIGN_CENTER);
+    let (screen_w, screen_h) = (surface.width(), surface.height());
+    let (left, right, top, bottom) = (r.x, r.x + r.w, r.y, r.y + r.h);
+    push(0.0, 0.0, left, screen_h, [0.0, 0.0, 0.0, 1.0]);
+    push(right, 0.0, screen_w - right, screen_h, [0.0, 0.0, 0.0, 1.0]);
+    push(left, 0.0, right - left, top, [0.0, 0.0, 1.0, 0.0]);
+    push(
+        left,
+        bottom,
+        right - left,
+        screen_h - bottom,
+        [0.0, 0.0, 1.0, 0.0],
+    );
 }
 
 /// The game's grenade indicators, drawn after its crosshair.

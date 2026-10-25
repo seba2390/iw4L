@@ -5,8 +5,9 @@
 //! (`_gameskill`).
 
 use game_api::hud::{
-    CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, DamageFlash,
-    DamageIcons, GameCodeHud, OwnerHint, OwnerHintView, ScoreAlign, ScoreColumn, ScoreValue,
+    CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, CrosshairWeapon,
+    DamageFlash, DamageIcons, GameCodeHud, OverlayPicture, OwnerHint, OwnerHintView, ScoreAlign,
+    ScoreColumn, ScoreValue, SightOverlay,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::weapon::state as ws;
@@ -58,6 +59,8 @@ pub(crate) const HINT_TARGET_NOT_ENOUGH_CLEARANCE: i32 = 10;
 /// `cg_invalidCmdHintDuration`, `cg_invalidCmdHintBlinkInterval`.
 const INVALID_CMD_HINT_DURATION: f32 = 1800.0;
 const INVALID_CMD_HINT_BLINK_INTERVAL: f32 = 600.0;
+/// The least share of its window a sight overlay shows at.
+const SIGHT_OVERLAY_MIN: f32 = 0.01;
 /// The last movement type that shows the invalid command hint.
 const PM_TYPE_LAST_HINT: i32 = 8;
 
@@ -266,9 +269,61 @@ fn tan(x: f32) -> f32 {
 fn crosshair_unrun() -> &'static Unknown {
     unknown!(
         "t5.hud.crosshair",
-        "Black Ops' crosshair: a weapon's sight overlay and the crosshair fade it brings, the vehicle and turret crosshairs, the vision-set lerp and timed screen effects that hide it, and the stereo 3D depth are not run",
+        "Black Ops' crosshair: the vehicle and turret crosshairs, the vision-set lerp and timed screen effects that hide it, the sight overlay's low-detail material, and the stereo 3D depth are not run",
         "those pieces of the crosshair draw (executable)"
     )
+}
+
+/// How far the weapon's sight overlay shows: past the zoom window's start
+/// of the sights' travel (the window raising them comes in by, or lowering
+/// them goes by), as a share of the window, from 0.01 up to whole.
+fn sight_overlay_shown(view: &CrosshairView<'_>, def: CrosshairWeapon, frac: f32) -> Option<f32> {
+    if !def.ads_overlay || frac == 0.0 {
+        return None;
+    }
+    let window = if view.to_ads {
+        def.ads_zoom_in_frac
+    } else {
+        def.ads_zoom_out_frac
+    };
+    let mut shown = frac - (1.0 - window);
+    if 0.0 < shown {
+        shown /= window;
+    }
+    (SIGHT_OVERLAY_MIN < shown).then(|| shown.min(1.0))
+}
+
+/// Black Ops' sight overlay about where the gun aims: one picture when it is
+/// wider than half the screen or taller than half of it, else its picture
+/// four times about that point, mirrored into each quarter.
+fn sight_overlay(view: &CrosshairView<'_>, def: CrosshairWeapon, alpha: f32) -> SightOverlay {
+    let (w, h) = (def.ads_overlay_width, def.ads_overlay_height);
+    let [cx, cy] = view.gun_offset;
+    if 320.0 < w || 240.0 < h {
+        let (x, y) = (cx - w * 0.5, cy - h * 0.5);
+        return SightOverlay {
+            pictures: vec![OverlayPicture {
+                x,
+                y,
+                w,
+                h,
+                st: [0.0, 0.0, 1.0, 1.0],
+            }],
+            frame: [x, y, w, h],
+            alpha,
+        };
+    }
+    let picture = |x, y, st| OverlayPicture { x, y, w, h, st };
+    SightOverlay {
+        pictures: vec![
+            picture(cx - w, cy - h, [0.0, 0.0, 1.0, 1.0]),
+            picture(cx, cy - h, [1.0, 0.0, 0.0, 1.0]),
+            picture(cx - w, cy, [0.0, 1.0, 1.0, 0.0]),
+            picture(cx, cy, [1.0, 1.0, 0.0, 0.0]),
+        ],
+        frame: [cx - w, cy - h, w * 2.0, h * 2.0],
+        alpha,
+    }
 }
 
 /// The crosshair's colour: white, unless the weapon changes it (or the
@@ -358,10 +413,15 @@ fn crosshair(view: &CrosshairView<'_>) -> Crosshair {
     let held = (view.weapon)(ps.weapon).unwrap_or(def);
     out.unrun.push(crosshair_unrun());
     let frac = ps.weapon_pos_frac;
-    if def.ads_overlay && frac != 0.0 {
-        return out;
+    // The weapon's sight overlay, which fades the crosshair by as much as it
+    // shows.
+    let mut fade = 1.0;
+    if let Some(shown) = sight_overlay_shown(view, def, frac) {
+        let alpha = shown / def.ads_overlay_alpha_scale.max(1.0);
+        out.sight_overlay = Some(sight_overlay(view, def, alpha));
+        fade = 1.0 - alpha;
     }
-    let alpha = dvar("cg_crosshairAlpha", 1.0);
+    let alpha = dvar("cg_crosshairAlpha", 1.0) * fade;
     if !(0.01 <= alpha) {
         return out;
     }

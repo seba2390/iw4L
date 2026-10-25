@@ -188,6 +188,8 @@ pub(crate) struct WeaponBodyFacts {
     pub ads_overlay_width: f32,
 
     pub ads_overlay_height: f32,
+    /// What the sight overlay's alpha is divided by (Black Ops).
+    pub ads_overlay_alpha_scale: f32,
 
     pub melee_time_ms: i32,
 
