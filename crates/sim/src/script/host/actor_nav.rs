@@ -2873,9 +2873,7 @@ pub(crate) fn trim_path_to_goal(world: &mut World, actor: u64) {
 
 /// Black Ops' random bit (its `rand`, the low bit of the high word).
 pub(crate) fn random_bit(world: &mut World) -> usize {
-    let mut rand = world.get_resource_or_insert_with(ActorRand::default);
-    rand.0 = rand.0.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
-    ((rand.0 >> 17) & 1) as usize
+    (rand_step(world) & 1) as usize
 }
 
 /// Black Ops' "goal" notify, after each think that did not end in death:
@@ -3668,9 +3666,14 @@ pub(crate) fn update_blocker(world: &mut World, actor: u64) {
 struct ActorRand(u32);
 
 fn crandom(world: &mut World) -> f32 {
+    rand_step(world) as f32 * (1.0 / 16384.0) - 1.0
+}
+
+/// One step of that seed: its high 15 bits.
+fn rand_step(world: &mut World) -> u32 {
     let mut rand = world.get_resource_or_insert_with(ActorRand::default);
     rand.0 = rand.0.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
-    (rand.0 >> 17) as f32 * (1.0 / 16384.0) - 1.0
+    rand.0 >> 17
 }
 
 /// Whether a move from `from` to `to` ends within 30 of an actor (other
