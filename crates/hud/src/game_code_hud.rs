@@ -197,6 +197,153 @@ pub(crate) fn update_crosshair(
     pass.game_crosshair = TessJob::Quads(quads);
 }
 
+/// The game's grenade indicators, drawn after its crosshair.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn update_grenade_indicators(
+    surface: Res<Hud2dSurface>,
+    presented: Res<PresentedSnapshot>,
+    local: Res<LocalPresentClient>,
+    weapons: Option<Res<PreparedWeapons>>,
+    view: Res<ViewSubject>,
+    settings: Res<frame::GameSettings>,
+    clock: Res<net::FrameClock>,
+    mode: Option<Res<game_api::ModeRules>>,
+    hud_images: Res<crate::images::HudImages>,
+    mut pass: ResMut<HudTessPass>,
+    mut reported: Local<HashSet<&'static str>>,
+) {
+    let Some(draw) = game_hud(mode.as_deref()).and_then(|hud| hud.grenade_indicators) else {
+        return;
+    };
+    let (Some(ps), Some(snap), Some(weapons)) = (
+        presented.player(local.0),
+        presented.snapshot(),
+        weapons.as_deref(),
+    ) else {
+        return;
+    };
+    if !surface.is_ready() {
+        return;
+    }
+    let time = clock.time();
+    let team = |client: sim::ClientId| {
+        snap.meta
+            .clients
+            .iter()
+            .find(|(id, _)| *id == client)
+            .map_or(0, |(_, meta)| meta.client_state_team)
+    };
+    let local_team = team(local.0);
+    let missiles: Vec<_> = presented
+        .presented_projectiles()
+        .iter()
+        .map(|row| game_api::hud::IndicatorMissile {
+            weapon: row.weapon(),
+            origin: row.origin_at(time),
+            delta: row.pos().tr_delta,
+            time: row.launch_time(),
+            owner_local: row.owner() == local.0,
+            owner_teammate: local_team != 0 && team(row.owner()) == local_team,
+        })
+        .collect();
+    let epoch = presented.weapon_epoch();
+    let weapon = |index: u32| {
+        let facts = weapons
+            .snapshot_weapon(epoch, index)
+            .ok()
+            .and_then(|weapon| weapon.hud_facts())?;
+        Some(game_api::hud::IndicatorWeapon {
+            weap_type: facts.weap_type,
+            proj_explosion_type: facts.proj_explosion_type,
+            show_indicator: facts.show_indicator,
+            timed_detonation: facts.timed_detonation,
+            explosion_radius: facts.explosion_radius,
+            indicator_radius: facts.indicator_radius,
+            stickiness: facts.stickiness,
+            fuse_time_ms: facts.fuse_time_ms,
+            has_icon: indicator_icon(weapons, index).is_some(),
+            ads_overlay: facts.overlay_reticle != 0
+                || weapons.registry().overlay_material_of(index).is_some(),
+        })
+    };
+    let dvars = snap.meta.script_dvars(local.0);
+    let dvar = |name: &str| dvars.float(name);
+    let player = ps.move_player(local.0.0 as i32, false);
+    let indicators = draw(&game_api::hud::GrenadeIndicatorView {
+        player: &player,
+        missiles: &missiles,
+        weapon: &weapon,
+        third_person: crate::reticle::rendering_third_person(
+            ps, &presented, local.0, &view, &settings,
+        ),
+        time,
+        dvar: &dvar,
+    });
+    for gap in indicators.unrun {
+        if reported.insert(gap.id) {
+            diag::info!(Ui, "game gap {}: {}", gap.id, gap.what);
+        }
+    }
+    let mut quads = Vec::new();
+    for picture in indicators.pictures {
+        let material = match picture.material {
+            game_api::hud::IndicatorMaterial::Named(name) => name,
+            game_api::hud::IndicatorMaterial::WeaponIcon(index) => {
+                let Some(name) = indicator_icon(weapons, index) else {
+                    continue;
+                };
+                name
+            }
+        };
+        // The game's own materials are in its zones' images when the match
+        // loaded them there, else in the code zone the menus come from.
+        let namespace = hud_images
+            .map_namespace()
+            .filter(|ns| hud_images.has_zone_image(*ns, material))
+            .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+        let r = surface.apply_rect(
+            picture.x,
+            picture.y,
+            picture.w,
+            picture.h,
+            ALIGN_CENTER,
+            ALIGN_CENTER,
+        );
+        let center = [r.x + r.w * 0.5, r.y + r.h * 0.5];
+        let (sin, cos) = picture.rotation.to_radians().sin_cos();
+        let (hw, hh) = (r.w * 0.5, r.h * 0.5);
+        let xy = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]
+            .map(|[x, y]| [center[0] + cos * x - sin * y, center[1] + sin * x + cos * y]);
+        quads.push(Draw2dQuad {
+            xy,
+            st: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            color: picture.color,
+            material: material.into(),
+            material_namespace: namespace,
+            provenance: Draw2dProvenance::CgDraw {
+                site: "grenade_indicators",
+            },
+            layer: 0,
+            clip: None,
+        });
+    }
+    if quads.is_empty() {
+        return;
+    }
+    match &mut pass.game_crosshair {
+        TessJob::Quads(drawn) => drawn.extend(quads),
+        job => *job = TessJob::Quads(quads),
+    }
+}
+
+fn indicator_icon(weapons: &PreparedWeapons, index: u32) -> Option<&str> {
+    weapons
+        .registry()
+        .reticle_of(index)?
+        .indicator_icon
+        .as_deref()
+}
+
 /// When the board was last held, for its fade.
 #[derive(Default)]
 pub(crate) struct ScoreboardFade {

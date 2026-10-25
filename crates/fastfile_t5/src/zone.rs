@@ -401,6 +401,8 @@ pub struct WeaponGeometry {
     pub overlay_material_lowres_name: Option<Ptr>,
     pub reticle_center_name: Option<Ptr>,
     pub reticle_side_name: Option<Ptr>,
+    /// `indicatorIcon`: the grenade indicator's icon.
+    pub indicator_icon_name: Option<Ptr>,
     pub name: Option<Ptr>,
     pub alternate_weapon_name: Option<Ptr>,
     /// The variant's `ammoName` and `clipName`.

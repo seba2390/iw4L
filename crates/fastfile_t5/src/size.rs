@@ -745,6 +745,12 @@ const _: () = assert!(WEAPON_DEF_RETICLE_SIDE_SIZE_OFF == WEAPON_DEF_RETICLE_SID
 const _: () = assert!(WEAPON_DEF_RETICLE_MIN_OFS_OFF == WEAPON_DEF_RETICLE_SIDE_SIZE_OFF + 4);
 
 pub const WEAPON_DEF_HUD_ICON_OFF: usize = 0x320;
+/// `indicatorIcon`: the grenade indicator's icon.
+pub const WEAPON_DEF_INDICATOR_ICON_OFF: usize = 0x328;
+/// `showIndicator`, `indicatorRadius`: the grenade indicator for a
+/// projectile that is not a grenade, and its range.
+pub const WEAPON_DEF_SHOW_INDICATOR_OFF: usize = 0x5a9;
+pub const WEAPON_DEF_INDICATOR_RADIUS_OFF: usize = 0x5b8;
 pub const WEAPON_DEF_KILL_ICON_OFF: usize = 0x578;
 /// `worldClipModel`: the clip model an AI's weapon drops on a reload.
 pub const WEAPON_DEF_WORLD_CLIP_MODEL_OFF: usize = 0x310;
