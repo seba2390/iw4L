@@ -68,6 +68,8 @@ pub(crate) struct CueExecutionPolicy {
     pub master_bus_direct: bool,
     /// The mix snapshot the sound applies while it plays.
     pub voice_snapshot: Option<asset_audio::VoiceSnapshotPolicy>,
+    /// The game's per-voice low-pass.
+    pub lowpass: Option<asset_audio::VoiceLowpassPolicy>,
     pub priority: Option<asset_audio::VoicePriority>,
     pub spatial: Option<Result<CueSpatialPolicy, StartFailure>>,
     admission: AdmissionPolicy,
@@ -105,6 +107,7 @@ impl CueExecutionPolicy {
             reverb: policy.reverb.clone(),
             master_bus_direct: policy.master_bus_direct,
             voice_snapshot: policy.voice_snapshot,
+            lowpass: policy.lowpass,
             priority: policy.priority.clone(),
             spatial,
             admission: alias_admission(bound.revision(), bound.alias_index(), policy),

@@ -1279,6 +1279,12 @@ fn publish_snapshot_voices(
 
 fn update_spatial(request: &StartRequest, listener: Option<ListenerSnapshot>) {
     if let (Some(spatial), Some(listener)) = (&request.spatial, listener) {
+        if let Some(lowpass) = &request.media.lowpass {
+            lowpass.set_distance(crate::distance_inches(
+                listener.origin_inches,
+                spatial.origin_inches,
+            ));
+        }
         let parameters = spatial.evaluate(listener);
         if let Some(pan) = &request.media.pan {
             pan.set(parameters.gains[0], parameters.gains[1]);

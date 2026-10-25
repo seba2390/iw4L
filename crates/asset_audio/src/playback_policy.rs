@@ -188,6 +188,29 @@ pub struct VoiceSnapshotPolicy {
     pub by_distance: bool,
 }
 
+/// Black Ops' per-voice low-pass: how many decibels its one-pole filter
+/// takes off at the reference frequency. A sound is filtered by its
+/// snapshot group's low-pass value (`(1 - value) x snapshot_db`) and, for an
+/// alias flagged for it, by its distance; the stronger of the two applies.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VoiceLowpassPolicy {
+    /// The attenuation at a snapshot low-pass value of 0
+    /// (`snd_occlusion_attenuation`).
+    pub snapshot_db: f32,
+    /// The distance low-pass: none at `min`, `db` at `max` and beyond.
+    pub distance: Option<DistanceLowpass>,
+    /// A big sound's distance low-pass is scaled in from none at the
+    /// listener to all of it at this distance.
+    pub big_distance: Option<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DistanceLowpass {
+    pub min: f32,
+    pub max: f32,
+    pub db: f32,
+}
+
 #[derive(Clone, Debug)]
 pub struct AliasPlaybackPolicy {
     pub namespace: AssetNamespace,
@@ -207,6 +230,8 @@ pub struct AliasPlaybackPolicy {
     pub snapshot_group: Option<u8>,
     /// The mix snapshot the alias applies while it plays.
     pub voice_snapshot: Option<VoiceSnapshotPolicy>,
+    /// The game's per-voice low-pass, for a game that runs one.
+    pub lowpass: Option<VoiceLowpassPolicy>,
     /// The game's whole-mix fade leaves the sound alone: Black Ops spares a
     /// one-shot whose group is in sound category 3.
     pub master_fade_exempt: bool,
