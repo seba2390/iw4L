@@ -479,9 +479,10 @@ impl movement_t5::MoveWorld for World<'_> {
         contentmask: u32,
     ) -> movement_t5::Trace {
         let pass = shared_entity(pass_entity);
-        let hit = self.physics.as_ref().and_then(|physics| {
-            physics.ground_trace(start, end, mins, maxs, pass, contentmask)
-        });
+        let hit = self
+            .physics
+            .as_ref()
+            .and_then(|physics| physics.ground_trace(start, end, mins, maxs, pass, contentmask));
         match hit {
             Some(hit) => physics_hit(hit),
             None => movement_t5::MoveWorld::trace(

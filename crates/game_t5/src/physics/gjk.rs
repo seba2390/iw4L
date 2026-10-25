@@ -48,7 +48,11 @@ pub(super) struct Frame {
 
 impl Frame {
     fn to_local(&self, d: V3) -> V3 {
-        [dot(self.rows[0], d), dot(self.rows[1], d), dot(self.rows[2], d)]
+        [
+            dot(self.rows[0], d),
+            dot(self.rows[1], d),
+            dot(self.rows[2], d),
+        ]
     }
 
     fn to_outer(&self, p: V3) -> V3 {
@@ -377,10 +381,7 @@ impl Gjk<'_> {
                     }
                 }
             }
-            if self.flags & FLAG_FROZEN == 0
-                && vw > 0.0
-                && margin * margin * self.v2 <= vw * vw
-            {
+            if self.flags & FLAG_FROZEN == 0 && vw > 0.0 && margin * margin * self.v2 <= vw * vw {
                 let length = self.v2.sqrt();
                 let approach = -dot(self.delta, self.v);
                 let gap = vw - length * margin;

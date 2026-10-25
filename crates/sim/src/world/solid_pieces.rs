@@ -37,10 +37,7 @@ fn overlaps(a_mins: [f32; 3], a_maxs: [f32; 3], b_mins: [f32; 3], b_maxs: [f32; 
 /// A brush's box from its first six planes (+x, -x, +y, -y, +z, -z).
 fn brush_box(brush: &SimBrush) -> Option<([f32; 3], [f32; 3])> {
     let p = brush.planes.get(..6)?;
-    Some((
-        [-p[1][3], -p[3][3], -p[5][3]],
-        [p[0][3], p[2][3], p[4][3]],
-    ))
+    Some(([-p[1][3], -p[3][3], -p[5][3]], [p[0][3], p[2][3], p[4][3]]))
 }
 
 /// The axial sides' surface flags, min x, y, z then max x, y, z.
@@ -49,11 +46,7 @@ fn brush_axial_flags(brush: &SimBrush) -> [u32; 6] {
     [f(1), f(3), f(5), f(0), f(2), f(4)]
 }
 
-fn placed_box(
-    mins: [f32; 3],
-    maxs: [f32; 3],
-    placement: &Placement,
-) -> ([f32; 3], [f32; 3]) {
+fn placed_box(mins: [f32; 3], maxs: [f32; 3], placement: &Placement) -> ([f32; 3], [f32; 3]) {
     let mut lo = [f32::MAX; 3];
     let mut hi = [f32::MIN; 3];
     for corner in 0..8 {
@@ -267,12 +260,10 @@ fn entities<'s>(
     out: &mut Vec<SolidPiece<'s>>,
 ) {
     for linked in scene.linked {
-        let Some(cmodel) = clip_handle_to_model(&scene.cmodels.models, linked.cmodel_handle)
-        else {
+        let Some(cmodel) = clip_handle_to_model(&scene.cmodels.models, linked.cmodel_handle) else {
             continue;
         };
-        let Some(transform) = CmodelTransform::new(linked.origin, linked.angles)
-        else {
+        let Some(transform) = CmodelTransform::new(linked.origin, linked.angles) else {
             continue;
         };
         let placement = Placement {

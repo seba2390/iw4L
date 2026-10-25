@@ -131,7 +131,15 @@ impl Convex for Character {
             let half = self.half_height - self.radius;
             let top = self.center + half;
             let bottom = self.center - half;
-            return [0.0, 0.0, if 0.0 <= d[2] * (top - bottom) { top } else { bottom }];
+            return [
+                0.0,
+                0.0,
+                if 0.0 <= d[2] * (top - bottom) {
+                    top
+                } else {
+                    bottom
+                },
+            ];
         }
         let mut angle = f64::from(d[1]).atan2(f64::from(d[0])) as f32;
         if angle < 0.0 {

@@ -66,7 +66,9 @@ fn physics_slide<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, gravity: bool) -> 
 /// Moves the player along its velocity for the frame, sliding along what it
 /// hits. Returns whether anything was hit.
 pub(crate) fn slide_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml, gravity: bool) -> bool {
-    if pm.physics && let Some(slid) = physics_slide(pm, pml, gravity) {
+    if pm.physics
+        && let Some(slid) = physics_slide(pm, pml, gravity)
+    {
         return slid;
     }
     let mut primal = pm.ps.velocity;

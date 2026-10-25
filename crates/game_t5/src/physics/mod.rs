@@ -324,8 +324,7 @@ impl<'w> PhysicsWorld<'w> {
                 break;
             }
             let piece = pieces[index];
-            let Some(found) = cast(body, piece, start, delta, cap, SKIN, sweep.keep_leaving)
-            else {
+            let Some(found) = cast(body, piece, start, delta, cap, SKIN, sweep.keep_leaving) else {
                 continue;
             };
             if found.fraction < cap {
@@ -342,11 +341,7 @@ impl<'w> PhysicsWorld<'w> {
             if better {
                 contacts.best = Some(contacts.all.len() - 1);
             }
-            if sweep.stop_on_solid
-                && contacts
-                    .best
-                    .is_some_and(|b| contacts.all[b].dist < 0.0)
-            {
+            if sweep.stop_on_solid && contacts.best.is_some_and(|b| contacts.all[b].dist < 0.0) {
                 break;
             }
         }
@@ -579,7 +574,11 @@ fn piece_walkable(piece: &SolidPiece<'_>, contact: V3) -> bool {
         Some(p) => {
             let rel = sub(contact, p.origin);
             (
-                [dot(p.axis[0], rel), dot(p.axis[1], rel), dot(p.axis[2], rel)],
+                [
+                    dot(p.axis[0], rel),
+                    dot(p.axis[1], rel),
+                    dot(p.axis[2], rel),
+                ],
                 [p.axis[0][2], p.axis[1][2], p.axis[2][2]],
             )
         }

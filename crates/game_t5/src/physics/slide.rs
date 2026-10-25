@@ -86,11 +86,7 @@ impl<'w> PhysicsWorld<'w> {
             touched: [0; 32],
             touched_count: 0,
         };
-        let first = self.slide_pass(slide, pass, false, &mut out)?;
-        match first { Pass::Stuck => "STUCK".to_string(), Pass::Done(c) => format!("done c={c}") }, out.origin, out.velocity);
-            }
-        }
-        match first {
+        match self.slide_pass(slide, pass, false, &mut out)? {
             Pass::Done(contacted) => out.contacted = contacted,
             Pass::Stuck => {
                 if let Some(origin) = self.push_out(slide, pass, &mut out)? {
@@ -229,8 +225,7 @@ impl<'w> PhysicsWorld<'w> {
             keep_leaving: true,
         };
         for _ in 0..PUSH_TRIES {
-            let contacts =
-                self.sweep(&mut body, origin, pos, pass, slide.contentmask, sweep)?;
+            let contacts = self.sweep(&mut body, origin, pos, pass, slide.contentmask, sweep)?;
             if contacts.best.is_none() {
                 break;
             }
