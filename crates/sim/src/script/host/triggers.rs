@@ -1249,6 +1249,18 @@ pub(crate) fn is_touching(world: &mut World, a: u64, b: u64) -> bool {
     touching.unwrap_or(false)
 }
 
+/// Whether a point lies in a trigger's volume.
+pub(crate) fn point_in_volume(world: &mut World, trigger: u64, point: [f32; 3]) -> bool {
+    let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
+    let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
+    let inside = {
+        let frame = FrameWorld::from_world(world);
+        volume(&mut runtime, &frame, trigger).map(|volume| volume.touches(point, point))
+    };
+    *world.resource_mut::<RoundScript>() = runtime;
+    inside.unwrap_or(false)
+}
+
 pub(crate) fn is_touching_swept(
     world: &mut World,
     a: u64,
