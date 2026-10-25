@@ -46,8 +46,8 @@ pub(crate) fn draw(view: &GrenadeIndicatorView<'_>) -> GrenadeIndicators {
     let mut out = GrenadeIndicators::default();
     out.unrun.push(unknown!(
         "t5.hud.grenade_indicators",
-        "Black Ops' grenade indicators are drawn, but the height test does not take the clearance above the player (a trace up from his origin every 50 ms, plus 70) as a limit; the throwback icon (the player's cursor hint on the grenade) is not drawn, the cursor hint not being kept; while a sight overlay shows they are not drawn (Black Ops centres them on the gun's projected position); and the screen scale Black Ops multiplies in is taken as 1",
-        "the client trace up, the cursor hint in the player state, the gun position's projection and that scale (executable)"
+        "Black Ops' grenade indicators are drawn, but the height test does not take the clearance above the player (a trace up from his origin every 50 ms, plus 70) as a limit; the throwback icon (the player's cursor hint on the grenade) is not drawn, the cursor hint not being kept; and the screen scale Black Ops multiplies in is taken as 1",
+        "the client trace up, the cursor hint in the player state and that scale (executable)"
     ));
     let dvar = |name: &str, default: f32| (view.dvar)(name).unwrap_or(default);
     let mut player = *view.player;
@@ -58,9 +58,14 @@ pub(crate) fn draw(view: &GrenadeIndicatorView<'_>) -> GrenadeIndicators {
     {
         return out;
     }
-    if (view.weapon)(ps.weapon).is_some_and(|held| held.ads_overlay) && ps.weapon_pos_frac != 0.0 {
+    // In a sight overlay they are drawn about where the gun aims, while
+    // `cg_hudGrenadeIconInScope`.
+    let in_scope =
+        (view.weapon)(ps.weapon).is_some_and(|held| held.ads_overlay) && ps.weapon_pos_frac != 0.0;
+    if in_scope && dvar("cg_hudGrenadeIconInScope", 1.0) == 0.0 {
         return out;
     }
+    let centre = if in_scope { view.gun_offset } else { [0.0; 2] };
     let max_speed = dvar("bg_maxGrenadeIndicatorSpeed", 100.0);
     let friendly_fire = dvar("scr_friendlyfire", 0.0) != 0.0;
     let mut entries = Vec::new();
@@ -134,7 +139,7 @@ pub(crate) fn draw(view: &GrenadeIndicatorView<'_>) -> GrenadeIndicators {
         let color = [rgb[0], rgb[1], rgb[2], alpha];
         let yaw = angle_normalize_180(vectoyaw(delta) - ps.viewangles[1]);
         let (sin, cos) = yaw.to_radians().sin_cos();
-        let at = [-sin * offset, -cos * offset];
+        let at = [centre[0] - sin * offset, centre[1] - cos * offset];
         // The pointer turns by the negated yaw about its pivot, placed at
         // the icon's offset.
         let (w, h) = (
