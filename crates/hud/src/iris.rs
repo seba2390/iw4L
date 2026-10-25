@@ -146,6 +146,7 @@ pub(crate) fn update_iris(
     mut gaps: ResMut<HudPresentationGaps>,
     mut fill: ResMut<IrisLetterboxFill>,
     aim: Res<ViewweaponAim>,
+    mode: Option<Res<game_api::ModeRules>>,
     mut overlay: Query<
         (&mut Node, &mut ImageNode, &AdsIrisOverlay),
         (With<AdsIrisOverlay>, Without<AdsIrisLetterbox>),
@@ -160,7 +161,12 @@ pub(crate) fn update_iris(
         Without<AdsIrisOverlay>,
     >,
 ) {
-    let Some(ps) = presented.player(local.0) else {
+    // A game with its own code HUD draws its sight overlay with its
+    // crosshair.
+    let Some(ps) = presented
+        .player(local.0)
+        .filter(|_| crate::game_code_hud::game_hud(mode.as_deref()).is_none())
+    else {
         gaps.clear(HudGap::AdsOverlay);
         hide_overlay(&mut overlay);
         hide_letterbox(&mut letterbox);
