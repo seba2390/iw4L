@@ -285,6 +285,7 @@ pub(crate) fn update_grenade_indicators(
     clock: Res<net::FrameClock>,
     mode: Option<Res<game_api::ModeRules>>,
     hud_images: Res<crate::images::HudImages>,
+    aim: Res<net::ViewweaponAim>,
     mut pass: ResMut<HudTessPass>,
     mut reported: Local<HashSet<&'static str>>,
 ) {
@@ -352,6 +353,11 @@ pub(crate) fn update_grenade_indicators(
         third_person: crate::reticle::rendering_third_person(
             ps, &presented, local.0, &view, &settings,
         ),
+        gun_offset: if aim.live {
+            [aim.xhair_x, aim.xhair_y]
+        } else {
+            [0.0; 2]
+        },
         time,
         dvar: &dvar,
     });

@@ -372,6 +372,8 @@ pub struct GrenadeIndicatorView<'a> {
     pub weapon: &'a dyn Fn(u32) -> Option<IndicatorWeapon>,
     /// The view is not the player's own eyes.
     pub third_person: bool,
+    /// Where the gun aims on the virtual screen, from its centre.
+    pub gun_offset: [f32; 2],
     /// The client's time, in milliseconds.
     pub time: i32,
     /// A client dvar's value, when the client keeps it.
