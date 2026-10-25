@@ -282,7 +282,8 @@ pub struct WeaponSelect {
 
     pub time: i32,
 
-    pub life_sequence: u32,
+    /// The match's epoch and the life the selection is of.
+    pub life_sequence: (u64, u32),
 
     pub held_index: u32,
 
@@ -298,7 +299,7 @@ pub struct WeaponSelect {
 pub fn follow_held_weapon_select(
     select: &mut WeaponSelect,
     ps_weapon: u32,
-    life_sequence: u32,
+    life_sequence: (u64, u32),
     cg_time: i32,
 ) {
     if ps_weapon == 0 {
@@ -899,9 +900,10 @@ pub fn sample_client_input(
         Res<crate::client::input::AimKick>,
         ResMut<crate::client::input::CursorAim>,
         Option<Res<game_api::ModeRules>>,
+        Option<Res<frame::ScopeEpoch<frame::MatchScope>>>,
     ),
 ) {
-    let (mut cursor, aim, driven, kick, mut cursor_aim, mode) = aim_cursor;
+    let (mut cursor, aim, driven, kick, mut cursor_aim, mode, match_epoch) = aim_cursor;
     let movement = mode.as_deref().and_then(|mode| match mode.movement {
         game_api::Rule::Known(game_api::MovementRules::Game(m)) => Some(m),
         _ => None,
@@ -1092,11 +1094,14 @@ pub fn sample_client_input(
         .and_then(|snapshot| snapshot.meta.for_client(local.0))
         .map(|meta| meta.life_sequence.0)
         .unwrap_or(0);
+    // A life is one of this match's: a new level's first life starts afresh
+    // even when it has the old level's number.
+    let life = (match_epoch.map_or(0, |epoch| epoch.0), life_sequence);
     let mut forced_stances = Vec::new();
-    if actions.stance_life != Some(life_sequence) {
+    if actions.stance_life != Some(life) {
         actions.client.stance_latch = 0;
         actions.game_input = game_api::movement::ClientInputState::default();
-        actions.stance_life = Some(life_sequence);
+        actions.stance_life = Some(life);
         actions.stance_event_sequence = ps.map_or(0, |ps| ps.event_sequence);
     } else if let Some(ps) = ps {
         let pending = ps
@@ -1128,7 +1133,7 @@ pub fn sample_client_input(
             actions.stance_event_sequence = ps.event_sequence;
         }
     }
-    follow_held_weapon_select(&mut select, ps_weapon, life_sequence, clock.time());
+    follow_held_weapon_select(&mut select, ps_weapon, life, clock.time());
     if let Some(ps) = ps
         && select.index == ps.weapon
     {
