@@ -112,9 +112,9 @@ pub fn release_freed_heap() -> std::time::Duration {
     at.elapsed()
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 static BACKING: mimalloc::MiMalloc = mimalloc::MiMalloc;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 static BACKING: std::alloc::System = std::alloc::System;
 
 pub struct ProcessCountingAllocator;

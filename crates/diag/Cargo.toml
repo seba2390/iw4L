@@ -12,8 +12,10 @@ layer = "neutral"
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 
 [lints]
