@@ -13,6 +13,7 @@ mod menu_expression;
 mod missile;
 mod movement;
 mod overlay;
+mod physics;
 mod post_chain;
 mod radius;
 mod shake;

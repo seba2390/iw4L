@@ -629,6 +629,10 @@ pub struct ClipMapGeometry {
 
     pub tri_edge_is_walkable: Option<Ptr>,
 
+    /// The partitions' distinct vertex numbers.
+    pub uinds: Option<Ptr>,
+    pub uind_count: usize,
+
     pub materials: Option<Ptr>,
     pub material_count: usize,
 

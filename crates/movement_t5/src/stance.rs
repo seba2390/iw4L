@@ -19,7 +19,12 @@ fn in_last_stand(pm_type: i32) -> bool {
 pub(crate) fn fits<W: MoveWorld>(pm: &mut Pm<'_, W>, mins: [f32; 3], maxs: [f32; 3]) -> bool {
     let o = pm.ps.origin;
     let mask = pm.tracemask & !STANCE_PLAYER_CONTENTS;
-    !pm.trace_with_mask(o, o, mins, maxs, mask).allsolid
+    let trace = pm.trace(o, o, mins, maxs, mask);
+    if pm.physics {
+        !trace.startsolid
+    } else {
+        !trace.allsolid
+    }
 }
 
 fn stance_fits<W: MoveWorld>(pm: &mut Pm<'_, W>) -> bool {

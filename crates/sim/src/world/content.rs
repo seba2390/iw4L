@@ -132,6 +132,9 @@ impl SimContent {
     pub fn clip_cmodels(&self) -> &SimClipCmodels {
         &self.data.clip_cmodels
     }
+    pub fn clip_hulls(&self) -> Option<&game_api::collision::HullTables> {
+        self.data.clip_hulls.as_deref()
+    }
 }
 
 /// Resolves any animation of the match by name; installed by the session from
@@ -178,6 +181,7 @@ struct ContentData {
     clip_bsp: SimClipBsp,
     clip_mesh: SimClipMesh,
     clip_cmodels: SimClipCmodels,
+    clip_hulls: Option<Arc<game_api::collision::HullTables>>,
     /// By soldier kit: the allies', the axis', then the extra kits.
     player_kits: Vec<PlayerKitCollision>,
     player_anim_tree: Option<Arc<xmodel_runtime::XAnimTreeDefinition>>,
@@ -239,6 +243,7 @@ impl SimContentBuilder {
                 clip_bsp: Default::default(),
                 clip_mesh: Default::default(),
                 clip_cmodels: Default::default(),
+                clip_hulls: None,
                 player_kits: vec![PlayerKitCollision::default(); 2],
                 player_anim_tree: Default::default(),
                 player_anim_node_names: Default::default(),
@@ -443,6 +448,7 @@ impl SimContentBuilder {
         self.data.clip_bsp = SimClipBsp::default();
         self.data.clip_mesh = SimClipMesh::default();
         self.data.clip_cmodels = SimClipCmodels::default();
+        self.data.clip_hulls = None;
     }
 
     pub fn set_clip_map(
@@ -456,6 +462,12 @@ impl SimContentBuilder {
         self.data.clip_bsp = bsp;
         self.data.clip_mesh = mesh;
         self.data.clip_cmodels = cmodels;
+        self.data.clip_hulls = None;
+    }
+
+    /// The convex point sets beside the clip map's brushes and partitions.
+    pub fn set_clip_hulls(&mut self, hulls: Option<Arc<game_api::collision::HullTables>>) {
+        self.data.clip_hulls = hulls;
     }
 }
 

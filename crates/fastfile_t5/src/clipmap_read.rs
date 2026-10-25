@@ -14,6 +14,8 @@ const BRUSH_MAXS: usize = 16;
 const BRUSH_NUMSIDES: usize = 28;
 const BRUSH_SIDES: usize = 32;
 const BRUSH_AXIAL_SFLAGS: usize = 0x3c;
+const BRUSH_NUMVERTS: usize = 0x54;
+const BRUSH_VERTS: usize = 0x58;
 const CBRUSH_SIDE: usize = 12;
 const CBRUSH_SIDE_SFLAGS: usize = 8;
 
@@ -28,7 +30,7 @@ pub enum ClipReadError {
 use ClipReadError::{MissingTables, Truncated};
 
 /// A `cbrush_t`: its box, contents, the axial sides' surface flags (in the
-/// zone's order), and its other sides that have a plane.
+/// zone's order), its other sides that have a plane and its corner points.
 #[derive(Clone, Debug)]
 pub struct ClipBrushRead {
     pub mins: [f32; 3],
@@ -36,6 +38,7 @@ pub struct ClipBrushRead {
     pub contents: u32,
     pub axial_sflags: [u32; 6],
     pub sides: Vec<([f32; 4], u32)>,
+    pub verts: Vec<[f32; 3]>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -57,6 +60,9 @@ pub struct ClipMeshRead {
     pub materials: Vec<(String, u32, u32)>,
     /// Each partition's triangle count and first triangle.
     pub partitions: Vec<(u8, i32)>,
+    /// Each partition's distinct vertex count and first entry in `uinds`.
+    pub partition_uinds: Vec<(i32, i32)>,
+    pub uinds: Vec<u16>,
     pub aabb_trees: Vec<ClipAabbRead>,
 }
 
@@ -160,12 +166,23 @@ impl ClipMapView<'_, '_> {
                 }
             }
         }
+        let numverts = self.u32(brush, BRUSH_NUMVERTS)? as usize;
+        let mut verts = Vec::new();
+        if numverts != 0
+            && let Ok(ZonePtr::Offset(table)) = self.s.ptr_at(brush, BRUSH_VERTS)
+        {
+            let table = self.s.resolve_alias(table);
+            for j in 0..numverts {
+                verts.push(self.vec3(table, j * 12)?);
+            }
+        }
         Ok(ClipBrushRead {
             mins,
             maxs,
             contents,
             axial_sflags,
             sides,
+            verts,
         })
     }
 
@@ -207,6 +224,13 @@ impl ClipMapView<'_, '_> {
                 let p = parts.at(i * sz::COLLISION_PARTITION);
                 mesh.partitions
                     .push((self.s.u8_at(p, 0).map_err(|_| Truncated)?, self.i32(p, 4)?));
+                mesh.partition_uinds
+                    .push((self.i32(p, 8)?, self.i32(p, 12)?));
+            }
+        }
+        if let Some(uinds) = g.uinds {
+            for i in 0..g.uind_count {
+                mesh.uinds.push(self.u16(uinds, i * 2)?);
             }
         }
         if let Some(trees) = g.collision_aabb_trees {

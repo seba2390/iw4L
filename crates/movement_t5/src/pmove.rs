@@ -127,7 +127,7 @@ fn foliage_sound<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     ];
     let o = pm.ps.origin;
     if pm
-        .trace(o, o, mins, maxs, tuning::FOLIAGE_CONTENTS)
+        .trace_beside(o, o, mins, maxs, tuning::FOLIAGE_CONTENTS)
         .startsolid
     {
         pm.event(crate::events::event::FOLIAGE_SOUND, 0);

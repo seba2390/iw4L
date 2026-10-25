@@ -3,6 +3,7 @@
 //! its place — never another game's rule.
 
 pub mod blur;
+pub mod collision;
 pub mod fire;
 pub mod fog;
 pub mod hud;

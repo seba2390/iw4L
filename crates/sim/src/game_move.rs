@@ -48,6 +48,7 @@ struct MatchMoveWorld<'a> {
     id: ClientId,
     content: std::sync::Arc<crate::SimContent>,
     trace: &'a MoveTraceFn<'a>,
+    solids: Option<&'a crate::world::solid_pieces::SolidScene<'a>>,
 }
 
 impl MoveWorld for MatchMoveWorld<'_> {
@@ -61,6 +62,34 @@ impl MoveWorld for MatchMoveWorld<'_> {
         mask: u32,
     ) -> MoveTrace {
         (self.trace)(start, end, mins, maxs, mask)
+    }
+
+    fn lists_solid_pieces(&self) -> bool {
+        self.solids.is_some()
+    }
+
+    fn solid_pieces<'s>(
+        &'s self,
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        mask: u32,
+        pass_entity: i32,
+        out: &mut Vec<game_api::collision::SolidPiece<'s>>,
+    ) -> bool {
+        let Some(scene) = self.solids else {
+            return false;
+        };
+        crate::world::solid_pieces::gather(scene, mins, maxs, mask, pass_entity, out);
+        true
+    }
+
+    fn clip_material_surface_flags(&self, name: &str) -> Option<u32> {
+        self.content
+            .clip_hulls()?
+            .materials
+            .iter()
+            .find(|material| material.0 == name)
+            .map(|material| material.1)
     }
 
     fn is_player(&self, entity: i32) -> bool {
@@ -204,6 +233,7 @@ pub(crate) fn run(
     id: ClientId,
     cmd: MoveCommand,
     trace: &MoveTraceFn<'_>,
+    solids: Option<&crate::world::solid_pieces::SolidScene<'_>>,
     tick: crate::world::Tick,
 ) -> MoveOutcome {
     let Some(ps) = world.player(id).copied() else {
@@ -231,6 +261,7 @@ pub(crate) fn run(
             id,
             content: world.content(),
             trace,
+            solids,
         };
         movement.pmove(&mut player, &cmd, &MoveCommand::default(), &around, context)
     };

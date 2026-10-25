@@ -209,6 +209,12 @@ impl CmodelTransform {
         })
     }
 
+    /// Its axis by rows (forward, left, up): a local point `p` sits at
+    /// `origin + p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2]`.
+    pub fn axis(self) -> [[f32; 3]; 3] {
+        self.matrix
+    }
+
     pub fn local_point(self, point: [f32; 3]) -> [f32; 3] {
         let mut local = core::array::from_fn(|i| point[i] - self.origin[i]);
         rotate_point(&mut local, &self.matrix);

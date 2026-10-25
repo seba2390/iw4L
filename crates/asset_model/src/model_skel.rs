@@ -1156,6 +1156,7 @@ pub fn capture_xmodel_skel_t5(
             planes: brush.planes,
             contents: brush.contents,
             plane_surface_flags: brush.plane_surface_flags,
+            points: brush.verts,
         })
         .collect();
     Some(ModelSkel {

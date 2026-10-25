@@ -63,7 +63,7 @@ pub(crate) fn check<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
         dir[1] * reach + o[1],
         dir[2] * reach + o[2],
     ];
-    let trace = pm.trace(o, end, mins, maxs, pm.tracemask);
+    let trace = pm.trace_beside(o, end, mins, maxs, pm.tracemask);
     if 1.0 > trace.fraction
         && trace.surface_flags & SURF_LADDER != 0
         && (!pml.walking || pm.cmd.forwardmove > 0)
@@ -79,7 +79,7 @@ pub(crate) fn check<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
             -l[1] * reach + o[1],
             -l[2] * reach + o[2],
         ];
-        let trace = pm.trace(o, end, mins, maxs, pm.tracemask);
+        let trace = pm.trace_beside(o, end, mins, maxs, pm.tracemask);
         if 1.0 > trace.fraction && trace.surface_flags & SURF_LADDER != 0 {
             pm.ps.pm_flags |= pm_flags::LADDER;
             return;

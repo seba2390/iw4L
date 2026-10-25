@@ -500,6 +500,24 @@ fn run_players_system(ecs: &mut World) {
             };
             if let Some(movement) = crate::game_move::rules(&world) {
                 let moved_from = ps.origin;
+                let solid_models = if content.clip_hulls().is_some() {
+                    crate::world::solid_pieces::solid_models(world.entity_collision_capabilities())
+                } else {
+                    Vec::new()
+                };
+                let solids =
+                    content
+                        .clip_hulls()
+                        .map(|hulls| crate::world::solid_pieces::SolidScene {
+                            brushes,
+                            bsp,
+                            mesh,
+                            hulls,
+                            cmodels: content.clip_cmodels(),
+                            linked: &linked_brushes,
+                            models: &solid_models,
+                            bodies: &bodies,
+                        });
                 let trace = |start, end, mins, maxs, tracemask| {
                     CollisionBackend::trace(
                         &backend,
@@ -519,6 +537,7 @@ fn run_players_system(ecs: &mut World) {
                     *id,
                     cmd.move_command(),
                     &trace,
+                    solids.as_ref(),
                     tick,
                 );
                 for gap in outcome.gaps {
@@ -2264,11 +2283,11 @@ pub(crate) fn log_forced_spawn(
 
 /// A body a sweep meets: a live player's, or (in an actor's sweep) a live
 /// actor's, with its box.
-struct PlayerBodyClip {
-    entnum: u16,
-    origin: [f32; 3],
-    mins: [f32; 3],
-    maxs: [f32; 3],
+pub(crate) struct PlayerBodyClip {
+    pub(crate) entnum: u16,
+    pub(crate) origin: [f32; 3],
+    pub(crate) mins: [f32; 3],
+    pub(crate) maxs: [f32; 3],
 }
 
 /// A free spectator's command under the game's own spectator move.
@@ -2323,8 +2342,33 @@ fn spectator_game_move(
         )
         .move_trace()
     };
+    let solid_models = if content.clip_hulls().is_some() {
+        crate::world::solid_pieces::solid_models(world.entity_collision_capabilities())
+    } else {
+        Vec::new()
+    };
+    let solids = content
+        .clip_hulls()
+        .map(|hulls| crate::world::solid_pieces::SolidScene {
+            brushes: content.clip_brushes(),
+            bsp: content.clip_bsp(),
+            mesh: content.clip_mesh(),
+            hulls,
+            cmodels: content.clip_cmodels(),
+            linked: &linked_brushes,
+            models: &solid_models,
+            bodies: &[],
+        });
     let before = ps.command_time;
-    let outcome = crate::game_move::run(world, movement, id, cmd.move_command(), &trace, tick);
+    let outcome = crate::game_move::run(
+        world,
+        movement,
+        id,
+        cmd.move_command(),
+        &trace,
+        solids.as_ref(),
+        tick,
+    );
     for gap in outcome.gaps {
         world.report_game_gap(gap);
     }

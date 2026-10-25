@@ -2,8 +2,12 @@ mod bodies;
 mod collision;
 mod content;
 mod events;
+pub(crate) mod solid_pieces;
 use bodies::{PlayerAnimInputs, PlayerBodyRuntime};
-use clipmap_iw4::{brush_ref, transformed_capsule_trace};
+use clipmap_iw4::{
+    ClipMapRef, CmodelTransform, TraceExtents, brush_ref, clip_handle_to_model,
+    transformed_capsule_trace, walk_clip_tree,
+};
 use collision::{CollisionRuntime, LagcompPlan};
 pub use content::{
     AnimClipLookup, PlayerKitCollision, SimBrush, SimClipBsp, SimClipCmodels, SimClipMesh,

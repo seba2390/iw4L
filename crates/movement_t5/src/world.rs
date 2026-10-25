@@ -64,6 +64,26 @@ pub trait MoveWorld {
         contentmask: u32,
     ) -> Trace;
 
+    /// Whether the player sweeps through Black Ops' physics world, its
+    /// default collision, rather than the clip map.
+    fn physics_collision(&self) -> bool {
+        false
+    }
+
+    /// The player's sweep through the physics world, ignoring
+    /// `pass_entity`.
+    fn physics_trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        contentmask: u32,
+    ) -> Trace {
+        self.trace(start, end, mins, maxs, pass_entity, contentmask)
+    }
+
     /// Whether the player may stand on `entity`.
     fn can_stand_on(&self, entity: i32) -> bool;
 
