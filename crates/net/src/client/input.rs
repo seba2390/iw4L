@@ -91,7 +91,8 @@ impl CursorAim {
 #[derive(Resource, Clone, Debug)]
 pub struct ClientActionInput {
     pub client: ClientInput,
-    pub(crate) stance_life: Option<u32>,
+    /// The match's epoch and the life the stance state is of.
+    pub(crate) stance_life: Option<(u64, u32)>,
     pub(crate) stance_event_sequence: i32,
     pub(crate) game_input: game_api::movement::ClientInputState,
 
