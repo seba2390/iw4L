@@ -96,6 +96,8 @@ pub(crate) struct State {
     /// that tag's frame.
     pub(crate) link: LinkTag,
     pub(crate) link_offset: [f32; 3],
+    /// How it is turned in that frame, in short angles (65536 a turn).
+    pub(crate) link_angles: [i16; 3],
 }
 
 /// What a grenade is linked to on the entity it struck.
@@ -152,6 +154,11 @@ impl State {
             last_ping_at: i(40),
             link: LinkTag::from_code(u16::from_le_bytes([game[44], game[45]])),
             link_offset: [f(48), f(52), f(56)],
+            link_angles: [
+                i16::from_le_bytes([game[46], game[47]]),
+                i16::from_le_bytes([game[60], game[61]]),
+                i16::from_le_bytes([game[62], game[63]]),
+            ],
         }
     }
 
@@ -173,6 +180,10 @@ impl State {
         for (i, c) in self.link_offset.iter().enumerate() {
             game[48 + i * 4..52 + i * 4].copy_from_slice(&c.to_le_bytes());
         }
+        let [pitch, yaw, roll] = self.link_angles.map(i16::to_le_bytes);
+        game[46..48].copy_from_slice(&pitch);
+        game[60..62].copy_from_slice(&yaw);
+        game[62..64].copy_from_slice(&roll);
     }
 }
 
@@ -218,6 +229,41 @@ pub(crate) fn vectoangles(v: [f32; 3]) -> [f32; 3] {
         movement_t5::math::vectoyaw(v)
     };
     [movement_t5::math::vectopitch(v), yaw, 0.0]
+}
+
+/// Black Ops' axis to angles: the forward axis's pitch and yaw, and the
+/// roll that turns the left axis, unpitched and unyawed, back level.
+pub(crate) fn axis_to_angles(axis: [[f32; 3]; 3]) -> [f32; 3] {
+    const DEG2RAD: f32 = 0.017_453_292;
+    let mut angles = vectoangles(axis[0]);
+    let left = axis[1];
+    let (s, c) = (f64::from(-angles[1] * DEG2RAD)).sin_cos();
+    let (s, c) = (s as f32, c as f32);
+    let y = left[0] * s + left[1] * c;
+    let x = left[0] * c - left[1] * s;
+    let (s, c) = (f64::from(-angles[0] * DEG2RAD)).sin_cos();
+    let (s, c) = (s as f32, c as f32);
+    let v = [left[2] * s + x * c, y, left[2] * c - x * s];
+    let atan = if v[1] == 0.0 && v[0] == 0.0 {
+        if -v[2] >= 0.0 { 90.0 } else { -90.0 }
+    } else {
+        let flat = (v[1] * v[1] + v[0] * v[0]).sqrt();
+        f64::from(v[2]).atan2(f64::from(flat)) as f32 * -57.295_776
+    };
+    angles[2] = if y >= 0.0 {
+        -atan
+    } else if atan < 0.0 {
+        180.0 + atan
+    } else {
+        -180.0 + atan
+    };
+    angles
+}
+
+/// The axis (forward, left, up) of `angles`.
+pub(crate) fn angles_to_axis(angles: [f32; 3]) -> [[f32; 3]; 3] {
+    let (forward, right, up) = movement_t5::math::angle_vectors(angles);
+    [forward, right.map(|v| -v), up]
 }
 
 /// The server's random point in the unit circle (not seeded by the shot).

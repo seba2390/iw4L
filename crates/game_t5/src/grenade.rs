@@ -13,8 +13,8 @@ use game_api::{Unknown, unknown};
 
 use crate::fire::{DEG2RAD, MEANS, hit_id, sentient};
 use crate::missile::{
-    LinkTag, State, clipmask, evaluate, evaluate_delta, mad, missile_trace, surface_type,
-    vectoangles,
+    LinkTag, State, angles_to_axis, axis_to_angles, clipmask, evaluate, evaluate_delta, mad,
+    missile_trace, surface_type, vectoangles,
 };
 
 const MOD_GRENADE_SPLASH: usize = 4;
@@ -288,7 +288,7 @@ pub(crate) fn leave_grenade(
         return;
     };
     let link = (stuck.on != ENTITY_WORLD)
-        .then(|| link_to(world, stuck, start))
+        .then(|| link_to(world, stuck, start, vectoangles(dir)))
         .flatten();
     let fuse = def.fuse_time();
     spawn_grenade(
@@ -308,13 +308,14 @@ pub(crate) fn leave_grenade(
     );
 }
 
-/// What a grenade stuck at `point` links to on the entity struck, and where
-/// it sits in that tag's frame.
+/// What a grenade stuck at `point` (turned by `angles`) links to on the
+/// entity struck, and where and how it sits in that tag's frame.
 fn link_to(
     world: &mut dyn FireWorld,
     stuck: Stuck,
     point: [f32; 3],
-) -> Option<(LinkTag, [f32; 3])> {
+    angles: [f32; 3],
+) -> Option<Link> {
     let kind = world.entity(stuck.on)?.kind;
     let mut tag = LinkTag::Origin;
     if matches!(kind, FireEntityKind::Player | FireEntityKind::Actor) {
@@ -335,8 +336,15 @@ fn link_to(
         point[2] - origin[2],
     ];
     let offset = axis.map(|row| row[0] * d[0] + row[1] * d[1] + row[2] * d[2]);
-    Some((tag, offset))
+    let own = angles_to_axis(angles);
+    let turned = own.map(|row| axis.map(|tag| tag[0] * row[0] + tag[1] * row[1] + tag[2] * row[2]));
+    let turn = axis_to_angles(turned).map(|angle| (angle * 65536.0 / 360.0).round() as i32 as i16);
+    Some((tag, offset, turn))
 }
+
+/// What a grenade links to, its place in that tag's frame and its turn
+/// there (short angles).
+type Link = (LinkTag, [f32; 3], [i16; 3]);
 
 /// The world position and axis (forward, left, up) of what a grenade is
 /// linked to on an entity.
@@ -378,6 +386,21 @@ pub(crate) fn follow_link(
     let at = std::array::from_fn(|i| {
         origin[i] + axis[0][i] * o[0] + axis[1][i] * o[1] + axis[2][i] * o[2]
     });
+    let turn = angles_to_axis(
+        state
+            .link_angles
+            .map(|angle| f32::from(angle) * (360.0 / 65536.0)),
+    );
+    let own = turn.map(|row| {
+        std::array::from_fn(|i| row[0] * axis[0][i] + row[1] * axis[1][i] + row[2] * axis[2][i])
+    });
+    missile.angles = GameTrajectory {
+        kind: TrajectoryKind::Stationary,
+        time: 0,
+        duration: 0,
+        base: axis_to_angles(own),
+        delta: [0.0; 3],
+    };
     missile.origin = at;
     missile.position = GameTrajectory {
         kind: TrajectoryKind::Stationary,
@@ -403,7 +426,7 @@ fn spawn_grenade(
     rotate: bool,
     launched: bool,
     stuck: Option<Stuck>,
-    link: Option<(LinkTag, [f32; 3])>,
+    link: Option<Link>,
     fuse: i32,
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
@@ -452,8 +475,9 @@ fn spawn_grenade(
         launched,
         ground: stuck.map_or(ENTITY_NONE, |stuck| stuck.on),
         rest_normal: stuck.map_or([0.0; 3], |stuck| stuck.normal),
-        link: link.map_or(LinkTag::None, |(tag, _)| tag),
-        link_offset: link.map_or([0.0; 3], |(_, offset)| offset),
+        link: link.map_or(LinkTag::None, |(tag, _, _)| tag),
+        link_offset: link.map_or([0.0; 3], |(_, offset, _)| offset),
+        link_angles: link.map_or([0; 3], |(_, _, turn)| turn),
         explode_at: light_fuse(owner, def, fuse, level, world),
         spawned_at: level,
         ..State::default()
