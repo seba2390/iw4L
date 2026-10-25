@@ -104,6 +104,9 @@ pub(crate) struct CueMix {
     pub channels: Arc<HashMap<asset_audio::ChannelKey, LiveGain>>,
     /// The mix snapshot volume of each snapshot group, by namespace.
     pub snapshot_groups: Arc<HashMap<(asset_core::AssetNamespace, u8), LiveGain>>,
+    /// The mix snapshots' low-pass value of each snapshot group, by
+    /// namespace.
+    pub snapshot_lowpass: Arc<HashMap<(asset_core::AssetNamespace, u8), LiveGain>>,
     /// The menu volume of each sound category.
     pub categories: Arc<HashMap<i32, LiveGain>>,
     /// Each sound context's current value, by context (name hashes).
@@ -335,6 +338,15 @@ impl CueWork {
                 .volume_category
                 .and_then(|category| mix.categories.get(&category))
                 .cloned();
+            media.lowpass = cue.policy.lowpass.map(|policy| {
+                crate::media::VoiceLowpass::new(
+                    policy,
+                    cue.policy
+                        .snapshot_group
+                        .and_then(|key| mix.snapshot_lowpass.get(&key))
+                        .cloned(),
+                )
+            });
         }
         let mut priority = cue
             .policy

@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
@@ -202,6 +202,84 @@ impl CueRelease {
     }
 }
 
+/// Black Ops' per-voice low-pass, as the voice plays: its policy, its
+/// snapshot group's low-pass value and what its distance asks for (in
+/// decibels, set as the listener moves).
+#[derive(Clone)]
+pub(crate) struct VoiceLowpass {
+    pub policy: asset_audio::VoiceLowpassPolicy,
+    pub snapshot: Option<LiveGain>,
+    distance_db: Arc<AtomicU32>,
+}
+
+impl VoiceLowpass {
+    pub fn new(policy: asset_audio::VoiceLowpassPolicy, snapshot: Option<LiveGain>) -> Self {
+        Self {
+            policy,
+            snapshot,
+            distance_db: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        }
+    }
+
+    /// What the voice's distance from the listener asks for: the distance
+    /// low-pass, scaled in near the listener for a big sound.
+    pub fn set_distance(&self, distance: f32) {
+        let lerp = |min: f32, max: f32, from: f32, to: f32, x: f32| {
+            let span = max - min;
+            let along = x - min;
+            let t = if -along >= 0.0 { 0.0 } else { along.min(span) };
+            t / span * to + (1.0 - t / span) * from
+        };
+        let mut db = self
+            .policy
+            .distance
+            .map_or(0.0, |d| lerp(d.min, d.max, 0.0, d.db, distance).min(0.0));
+        if let Some(big) = self.policy.big_distance {
+            db = lerp(0.0, big, 0.0, db, distance);
+        }
+        self.distance_db.store(db.to_bits(), Ordering::Relaxed);
+    }
+
+    /// The attenuation the voice is filtered by at `frame`: the stronger of
+    /// its snapshot group's and its distance's.
+    pub fn db(&self, frame: u64) -> f32 {
+        let value = self.snapshot.as_ref().map_or(1.0, |gain| {
+            let mut envelope = GainEnvelope::default();
+            gain.snapshot(&mut envelope);
+            envelope.sample(frame)
+        });
+        let snapshot = (1.0 - value) * self.policy.snapshot_db;
+        let distance = f32::from_bits(self.distance_db.load(Ordering::Relaxed));
+        if snapshot - distance < 0.0 {
+            snapshot
+        } else {
+            distance
+        }
+    }
+}
+
+/// Black Ops' one-pole low-pass coefficients for an attenuation in
+/// decibels: `None` leaves the voice unfiltered; else `(a, k)` for
+/// `y = a x + k y'`, the pole placed so the response at 5 kHz is the
+/// attenuation's 0.75 share in power and its 0.25 share is a flat gain.
+pub(crate) fn lowpass_coefficients(db: f32) -> Option<(f32, f32)> {
+    const SHARE: f32 = 0.25;
+    if !(db < -1.528_79e-5) {
+        return None;
+    }
+    let d = db.clamp(-80.0, 0.0);
+    if -1.0e-6 <= f64::from(d) {
+        return Some((1.0, 0.0));
+    }
+    let g = 10f64.powf(f64::from((1.0 - SHARE) * d * 0.1)) as f32;
+    // The effect's rate is fixed at 48 kHz.
+    let c = f64::from(31_415.928_f32 / 48_000.0).cos() as f32;
+    let root = ((1.0 - c) * g * 2.0 - (1.0 - c * c) * g * g).sqrt();
+    let k = ((1.0 - c * g) - root) / (1.0 - g);
+    let flat = 10f64.powf(f64::from(SHARE * d * 0.05)) as f32;
+    Some((flat * (1.0 - k), k))
+}
+
 /// How many live gains a voice plays at.
 pub(crate) const GAIN_STAGES: usize = 6;
 
@@ -221,6 +299,8 @@ pub(crate) struct RenderMedia {
     /// The menu volume of the sound's category.
     pub category_gain: Option<LiveGain>,
     pub release: Option<Arc<CueRelease>>,
+    /// The game's low-pass on the voice, when it runs one.
+    pub lowpass: Option<VoiceLowpass>,
     pub bus: asset_core::AssetNamespace,
     /// While the game's master chain runs, the voice joins its master bus
     /// directly, past the bus ahead of it.
@@ -435,6 +515,7 @@ impl RenderMedia {
             master_gain: None,
             category_gain: None,
             release: None,
+            lowpass: None,
             bus: asset_core::AssetNamespace::Iw4,
             master_bus_direct: false,
         }

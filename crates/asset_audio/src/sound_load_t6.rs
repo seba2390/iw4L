@@ -369,6 +369,7 @@ pub fn capture_t6_sounds<'n>(
                 // The duck group whose volume the voice plays at.
                 snapshot_group: Some(row[95]),
                 voice_snapshot: None,
+                lowpass: None,
                 // The context type and the value the variant plays in.
                 context: Some([le32(row, 36), le32(row, 40)]),
                 voice_priority: Some(crate::VoicePriority {

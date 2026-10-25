@@ -155,6 +155,8 @@ struct Cursor {
     voice: RenderVoiceId,
     position: f64,
     gains: [crate::media::GainEnvelope; crate::media::GAIN_STAGES],
+    /// The game's low-pass's last output, per side.
+    lowpass: [f32; 2],
 }
 
 struct RenderState {
@@ -250,6 +252,7 @@ impl RenderShared {
                     voice: RenderVoiceId(0),
                     position: 0.0,
                     gains: [crate::media::GainEnvelope::default(); crate::media::GAIN_STAGES],
+                    lowpass: [0.0; 2],
                 }; PHYSICAL_VOICES],
                 buses: Default::default(),
                 limiter: Default::default(),
@@ -486,6 +489,7 @@ fn render_assignment(
         cursor.voice = assignment.voice;
         cursor.position = assignment.start_cursor;
         cursor.gains = [crate::media::GainEnvelope::default(); crate::media::GAIN_STAGES];
+        cursor.lowpass = [0.0; 2];
         if assignment.looping && !instance.paused.load(Ordering::Relaxed) {
             cursor.position += frame.saturating_sub(assignment.start_frame) as f64 * step;
         }
@@ -512,6 +516,13 @@ fn render_assignment(
     let gain = f32::from_bits(instance.gain.load(Ordering::Relaxed));
     let frames = assignment.media.frames();
     let gains = assignment.media.gains(&mut cursor.gains);
+    // The game's low-pass takes its coefficients once a block; while it
+    // passes the voice unfiltered its last output is kept.
+    let lowpass = assignment
+        .media
+        .lowpass
+        .as_ref()
+        .and_then(|lowpass| crate::media::lowpass_coefficients(lowpass.db(frame)));
     let mut rendered = 0;
     for (offset, target) in output[first..].iter_mut().enumerate() {
         let audio_frame = frame + first as u64 + offset as u64;
@@ -539,9 +550,15 @@ fn render_assignment(
                 return (true, rendered);
             }
         }
-        let sample = assignment
+        let mut sample = assignment
             .media
             .interpolate(cursor.position, assignment.looping);
+        if let Some((a, k)) = lowpass {
+            for (value, last) in sample.iter_mut().zip(cursor.lowpass.iter_mut()) {
+                *value = *value * a + *last * k;
+                *last = *value;
+            }
+        }
         let (gains, sends) = gains.sample(audio_frame);
         target[0] += sample[0] * gain * gains[0] * dry;
         target[1] += sample[1] * gain * gains[1] * dry;

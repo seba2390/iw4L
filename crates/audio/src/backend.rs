@@ -134,6 +134,7 @@ pub(crate) fn publish_audio_context(
                     categories: mix.categories.clone(),
                     channels: channels.bindings(),
                     snapshot_groups: snapshots.bindings(),
+                    snapshot_lowpass: snapshots.lowpass_bindings(),
                     contexts: snapshots.contexts(),
                 },
             ),

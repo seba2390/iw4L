@@ -35,6 +35,8 @@ struct Slot {
     hash: Option<u32>,
     weight: f32,
     current: [f32; GROUPS],
+    /// The low-pass value of each group, from the snapshot's linked one.
+    lowpass: [f32; GROUPS],
 }
 
 impl Default for Slot {
@@ -43,6 +45,7 @@ impl Default for Slot {
             hash: None,
             weight: 1.0,
             current: [1.0; GROUPS],
+            lowpass: [1.0; GROUPS],
         }
     }
 }
@@ -55,6 +58,8 @@ pub(crate) struct SnapshotMix {
     /// starts them there instead of easing in.
     settled: bool,
     gains: Arc<HashMap<(AssetNamespace, u8), LiveGain>>,
+    /// Each group's low-pass value, which the voices' low-pass reads.
+    lowpass: Arc<HashMap<(AssetNamespace, u8), LiveGain>>,
     pending: std::collections::VecDeque<(u8, String, f32)>,
     /// Each sound context's current value (name hashes), shared with the
     /// cue resolver that picks alias variants by them.
@@ -73,15 +78,8 @@ impl Default for SnapshotMix {
             epoch: 0,
             slots: [Slot::default(); SLOTS],
             settled: false,
-            gains: Arc::new(
-                AssetNamespace::ALL
-                    .into_iter()
-                    .flat_map(|namespace| {
-                        (0..GROUPS as u8)
-                            .map(move |group| ((namespace, group), LiveGain::default()))
-                    })
-                    .collect(),
-            ),
+            gains: group_gains(),
+            lowpass: group_gains(),
             pending: Default::default(),
             contexts: Default::default(),
             contexts_ready: false,
@@ -91,9 +89,24 @@ impl Default for SnapshotMix {
     }
 }
 
+fn group_gains() -> Arc<HashMap<(AssetNamespace, u8), LiveGain>> {
+    Arc::new(
+        AssetNamespace::ALL
+            .into_iter()
+            .flat_map(|namespace| {
+                (0..GROUPS as u8).map(move |group| ((namespace, group), LiveGain::default()))
+            })
+            .collect(),
+    )
+}
+
 impl SnapshotMix {
     pub(crate) fn bindings(&self) -> Arc<HashMap<(AssetNamespace, u8), LiveGain>> {
         self.gains.clone()
+    }
+
+    pub(crate) fn lowpass_bindings(&self) -> Arc<HashMap<(AssetNamespace, u8), LiveGain>> {
+        self.lowpass.clone()
     }
 
     pub(crate) fn contexts(&self) -> Arc<std::sync::RwLock<HashMap<u32, u32>>> {
@@ -118,7 +131,7 @@ impl SnapshotMix {
             if let Ok(mut contexts) = self.contexts.write() {
                 contexts.clear();
             }
-            for gain in self.gains.values() {
+            for gain in self.gains.values().chain(self.lowpass.values()) {
                 gain.set(1.0);
             }
         }
@@ -208,22 +221,36 @@ pub(crate) fn update_snapshot_mix(
     let now = runtime.audio_frame();
     let listener = runtime.listener();
     let mut volume = [1.0f32; GROUPS];
-    let voices = voice_volumes(
+    let mut lowpass = [1.0f32; GROUPS];
+    let (voices, voice_lowpass) = voice_volumes(
         &runtime.snapshot_voices(),
         snapshots,
+        default,
         |hash| bank.0.curve_knots_by_hash(namespace, hash),
         listener.map(|listener| listener.origin_inches),
         now,
     );
-    for ((current, lowest), target) in mix.slots[0]
+    let slot0 = &mut mix.slots[0];
+    for (current, (lowest, target)) in slot0
         .current
         .iter_mut()
-        .zip(volume.iter_mut())
-        .zip(voices)
         .take(groups)
+        .chain(slot0.lowpass.iter_mut().take(groups))
+        .zip(
+            volume
+                .iter_mut()
+                .take(groups)
+                .chain(lowpass.iter_mut().take(groups))
+                .zip(
+                    voices
+                        .iter()
+                        .take(groups)
+                        .chain(voice_lowpass.iter().take(groups)),
+                ),
+        )
     {
         if settle {
-            *current = target;
+            *current = *target;
         } else {
             let diff = target - *current;
             *current += (VOICE_RATE * dt).min(diff.abs()).copysign(diff);
@@ -235,50 +262,60 @@ pub(crate) fn update_snapshot_mix(
             .hash
             .and_then(|hash| snapshots.find(hash))
             .unwrap_or(default);
-        let rate = if snapshot.fade_in - FADE_MIN < 0.0 {
-            0.0
-        } else {
-            1.0 / snapshot.fade_in
-        };
-        for ((current, lowest), authored) in slot
-            .current
-            .iter_mut()
-            .zip(volume.iter_mut())
-            .zip(snapshot.volumes)
-            .take(groups)
-        {
-            let target = 1.0 - (1.0 - authored) * slot.weight;
-            if settle || !(0.0 < rate) {
-                *current = target;
+        let linked = snapshots.find(snapshot.linked).unwrap_or(default);
+        for (snapshot, currents, lowests) in [
+            (snapshot, &mut slot.current, &mut volume),
+            (linked, &mut slot.lowpass, &mut lowpass),
+        ] {
+            let rate = if snapshot.fade_in - FADE_MIN < 0.0 {
+                0.0
             } else {
-                let diff = target - *current;
-                let step = (rate * dt).min(diff.abs());
-                *current += step.copysign(diff);
-            }
-            if *current < *lowest {
-                *lowest = *current;
+                1.0 / snapshot.fade_in
+            };
+            for ((current, lowest), authored) in currents
+                .iter_mut()
+                .zip(lowests.iter_mut())
+                .zip(snapshot.volumes)
+                .take(groups)
+            {
+                let target = 1.0 - (1.0 - authored) * slot.weight;
+                if settle || !(0.0 < rate) {
+                    *current = target;
+                } else {
+                    let diff = target - *current;
+                    let step = (rate * dt).min(diff.abs());
+                    *current += step.copysign(diff);
+                }
+                if *current < *lowest {
+                    *lowest = *current;
+                }
             }
         }
     }
     let frames = (f64::from(dt) * f64::from(crate::render_core::SAMPLE_RATE)) as u64;
-    for (group, volume) in volume.iter().enumerate().take(groups) {
-        if let Some(gain) = mix.gains.get(&(namespace, group as u8)) {
-            gain.fade(now, *volume, frames);
+    for (gains, values) in [(&mix.gains, &volume), (&mix.lowpass, &lowpass)] {
+        for (group, value) in values.iter().enumerate().take(groups) {
+            if let Some(gain) = gains.get(&(namespace, group as u8)) {
+                gain.fade(now, *value, frames);
+            }
         }
     }
 }
 
-/// Each group's lowest volume over the playing sounds' snapshots.
+/// Each group's lowest volume over the playing sounds' snapshots, and
+/// its lowest low-pass value over their linked snapshots.
 fn voice_volumes<'a>(
     voices: &[crate::runtime::SnapshotVoice],
     snapshots: &asset_audio::MixSnapshots,
+    default: &asset_audio::MixSnapshot,
     curve: impl Fn(u32) -> Option<&'a [(f32, f32)]>,
     listener: Option<[f32; 3]>,
     now: u64,
-) -> [f32; GROUPS] {
+) -> ([f32; GROUPS], [f32; GROUPS]) {
     let default_curve = asset_transport::sab::snd_hash_name("default");
     let eval = |hash: u32, x: f32| curve(hash).map_or(1.0, |knots| curve_value(knots, x));
     let mut volume = [1.0f32; GROUPS];
+    let mut lowpass = [1.0f32; GROUPS];
     for voice in voices {
         let Some(snapshot) = snapshots.find(voice.policy.hash) else {
             continue;
@@ -307,11 +344,15 @@ fn voice_volumes<'a>(
             };
             weight = weight.min(eval(default_curve, distance / snapshot.distance));
         }
+        let linked = snapshots.find(snapshot.linked).unwrap_or(default);
         for (lowest, authored) in volume.iter_mut().zip(snapshot.volumes) {
             *lowest = lowest.min(authored * weight + (1.0 - weight));
         }
+        for (lowest, authored) in lowpass.iter_mut().zip(linked.volumes) {
+            *lowest = lowest.min(authored * weight + (1.0 - weight));
+        }
     }
-    volume
+    (volume, lowpass)
 }
 
 /// A sound curve at `x` (clamped to one; at or below zero, its value at

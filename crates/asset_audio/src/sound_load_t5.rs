@@ -565,12 +565,46 @@ impl T5SoundCapture {
                         .u32_at(row, sz::SND_ALIAS_FLAGS_OFF)
                         .is_ok_and(|flags| flags & 2 != 0),
                 }),
+            lowpass: Some(voice_lowpass(
+                s.u32_at(row, sz::SND_ALIAS_FLAGS_OFF).unwrap_or(0),
+            )),
             context: s
                 .u32_at(row, sz::SND_ALIAS_CONTEXT_TYPE_OFF)
                 .ok()
                 .zip(s.u32_at(row, sz::SND_ALIAS_CONTEXT_VALUE_OFF).ok())
                 .map(|(ty, value)| [ty, value]),
         }
+    }
+}
+
+/// `snd_occlusion_attenuation`, `snd_dlpf_min_distance`,
+/// `snd_dlpf_max_distance`, `snd_dlpf_attenuation` and `snd_isbig_distance`
+/// at the executable's registered defaults (no zombies script sets them).
+const OCCLUSION_DB: f32 = -35.0;
+const DLPF_MIN: f32 = 800.0;
+const DLPF_MAX: f32 = 3000.0;
+const DLPF_DB: f32 = -30.0;
+const BIG_DISTANCE: f32 = 1000.0;
+/// Alias flags: the sound is placed by distance; low-passed by distance;
+/// a big sound; its occlusion is off.
+const FLAG_DISTANCE: u32 = 1 << 1;
+const FLAG_DLPF: u32 = 1 << 3;
+const FLAG_BIG: u32 = 1 << 5;
+const FLAG_NO_OCCLUSION: u32 = 1 << 6;
+
+/// Black Ops' per-voice low-pass for an alias with `flags`: the snapshot
+/// group's always, the distance's for a placed sound with occlusion that
+/// asks for it (scaled in near the listener for a big one).
+fn voice_lowpass(flags: u32) -> crate::VoiceLowpassPolicy {
+    let occluded = flags & FLAG_DISTANCE != 0 && flags & FLAG_NO_OCCLUSION == 0;
+    crate::VoiceLowpassPolicy {
+        snapshot_db: OCCLUSION_DB,
+        distance: (occluded && flags & FLAG_DLPF != 0).then_some(crate::DistanceLowpass {
+            min: DLPF_MIN,
+            max: DLPF_MAX,
+            db: DLPF_DB,
+        }),
+        big_distance: (occluded && flags & FLAG_BIG != 0).then_some(BIG_DISTANCE),
     }
 }
 
