@@ -39,9 +39,36 @@ fn dot_yzx(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[1] * b[1] + a[2] * b[2] + a[0] * b[0]
 }
 
+/// The slide through the physics world: Black Ops' own solver moves the
+/// player and bends its velocity.
+fn physics_slide<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml, gravity: bool) -> Option<bool> {
+    let slide = crate::PhysicsSlide {
+        origin: pm.ps.origin,
+        velocity: pm.ps.velocity,
+        mins: pm.mins,
+        maxs: pm.maxs,
+        contentmask: pm.tracemask,
+        frametime: pml.frametime,
+        gravity: gravity.then_some(pm.ps.gravity as f32),
+        stick_to_ground: !gravity
+            && pml.ground_plane
+            && pm.ps.pm_flags & crate::state::pm_flags::LADDER == 0,
+    };
+    let slid = pm.world.physics_slide(&slide, pm.client_num())?;
+    pm.ps.origin = slid.origin;
+    pm.ps.velocity = slid.velocity;
+    for &entity in &slid.touched[..slid.touched_count] {
+        pm.touch(entity);
+    }
+    Some(slid.contacted)
+}
+
 /// Moves the player along its velocity for the frame, sliding along what it
 /// hits. Returns whether anything was hit.
 pub(crate) fn slide_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml, gravity: bool) -> bool {
+    if pm.physics && let Some(slid) = physics_slide(pm, pml, gravity) {
+        return slid;
+    }
     let mut primal = pm.ps.velocity;
     let mut end_velocity = pm.ps.velocity;
     if gravity {
@@ -278,14 +305,19 @@ pub(crate) fn step_slide_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml, g
         if on_ground {
             down[2] -= 9.0;
         }
-        let trace = pm.trace(o, down, pm.mins, pm.maxs, pm.tracemask);
+        let trace = if pm.physics {
+            pm.world
+                .physics_ground_trace(o, down, pm.mins, pm.maxs, pm.client_num(), pm.tracemask)
+        } else {
+            pm.trace(o, down, pm.mins, pm.maxs, pm.tracemask)
+        };
         if trace.entity < crate::tuning::MAX_CLIENTS {
             pm.ps.origin = down_o;
             pm.ps.velocity = down_v;
             return;
         }
         if 1.0 > trace.fraction {
-            if !trace.walkable && 0.3 > trace.normal[2] {
+            if !trace.walkable && (pm.physics || 0.3 > trace.normal[2]) {
                 pm.ps.origin = down_o;
                 pm.ps.velocity = down_v;
                 return;
@@ -311,7 +343,11 @@ pub(crate) fn step_slide_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml, g
             let trace = pm.trace(o, down, pm.mins, pm.maxs, pm.tracemask);
             if 1.0 > trace.fraction {
                 pm.ps.origin = lerp_to(o, down, trace.fraction);
-                pm.ps.velocity = clip_velocity(pm.ps.velocity, trace.normal);
+                if pm.physics {
+                    crate::physics::project_onto_ground(&mut pm.ps.velocity, trace.normal);
+                } else {
+                    pm.ps.velocity = clip_velocity(pm.ps.velocity, trace.normal);
+                }
             }
         }
     }

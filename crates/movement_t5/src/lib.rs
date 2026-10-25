@@ -33,7 +33,7 @@ pub use pml::Pml;
 pub use pmove::{MoveOutput, pmove};
 pub use state::{Buttons, PlayerState, UserCmd};
 pub use world::{
-    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Shellshock, Trace, Weapon,
+    MoveWorld, PhysicsSlid, PhysicsSlide, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Shellshock, Trace, Weapon,
 };
 
 /// A part of Black Ops' movement the player reached that IW4L does not run.

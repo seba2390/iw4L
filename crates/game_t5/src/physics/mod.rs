@@ -5,12 +5,13 @@
 
 mod gjk;
 mod shape;
+mod slide;
 
 use core::cell::RefCell;
 
 use game_api::collision::{Placement, SolidPiece, SolidShape};
 use game_api::movement::MoveWorld;
-use gjk::{CastInput, Contact, Frame, V3, add, dot, scale, sub};
+use gjk::{CastInput, Frame, V3, add, dot, scale, sub};
 use shape::{BoxShape, Character, Indexed, Points, ROUNDING};
 
 /// How far short of a contact a sweep still counts as touching.
@@ -30,6 +31,11 @@ const ON_PLANE: f32 = f32::from_bits(0x3f7f_be77);
 const NOT_OUTSIDE: f32 = -100_000.0;
 const MIN_TRIANGLE: f32 = f32::from_bits(0x38d1_b717);
 const SIDE_FIRST: f32 = -10.0;
+/// The ground sweep weighs contacts within this much height of the
+/// earliest.
+const GROUND_REACH: f32 = 0.5;
+/// A partition contact counts as this much earlier in the ground sweep.
+const PARTITION_PREFERENCE: f32 = f32::from_bits(0x3a83_126f);
 const NO_FLAGS: u32 = 0x7fff_ffff;
 const NO_CAULK: u32 = 0x7fff_fffe;
 
@@ -44,6 +50,73 @@ pub(crate) struct Hit {
     pub(crate) contents: u32,
     /// `None` when nothing was met.
     pub(crate) entity: Option<i32>,
+}
+
+impl Hit {
+    const NONE: Self = Self {
+        fraction: 1.0,
+        normal: [0.0; 3],
+        startsolid: false,
+        walkable: false,
+        surface_flags: 0,
+        contents: 0,
+        entity: None,
+    };
+}
+
+/// How a sweep keeps its contacts.
+#[derive(Clone, Copy, Debug)]
+struct Sweep {
+    /// Contacts up to this far past the earliest one are kept.
+    cap_add: f32,
+    /// The sweep ends at the first contact that starts inside.
+    stop_on_solid: bool,
+    /// A contact the body moves away from still stops it.
+    keep_leaving: bool,
+}
+
+impl Sweep {
+    const PLAYER: Self = Self {
+        cap_add: 0.0,
+        stop_on_solid: true,
+        keep_leaving: false,
+    };
+}
+
+/// One contact a sweep met.
+#[derive(Clone, Copy, Debug)]
+struct Contact<'w> {
+    fraction: f32,
+    /// How far apart the two are at the contact, short of the skin;
+    /// negative when the body starts inside.
+    dist: f32,
+    normal: V3,
+    /// The contact on the body, in its own space.
+    point_a: V3,
+    /// The contact on what was met, in the world.
+    contact: V3,
+    /// The contact lies on the body's foot.
+    foot: bool,
+    piece: SolidPiece<'w>,
+}
+
+impl Contact<'_> {
+    /// Whether the body may stand on what it met there.
+    fn walkable(&self) -> bool {
+        self.foot
+            && (WALKABLE_NORMAL <= self.normal[2] || piece_walkable(&self.piece, self.contact))
+    }
+
+    /// The contact met a player's or an actor's body.
+    fn character(&self) -> bool {
+        matches!(self.piece.shape, SolidShape::Body { .. })
+    }
+}
+
+/// Every contact a sweep kept, in the order met, and the earliest.
+struct Contacts<'w> {
+    all: Vec<Contact<'w>>,
+    best: Option<usize>,
 }
 
 struct Listed<'w> {
@@ -83,93 +156,74 @@ impl<'w> PhysicsWorld<'w> {
         pass: i32,
         mask: u32,
     ) -> Option<Hit> {
-        let mut player = Character::from_bounds(mins, maxs, 0.0);
-        let (lo, hi) = player.bounds();
-        let shape_lo = lo.map(|v| v - BOX_MARGIN);
-        let shape_hi = hi.map(|v| v + BOX_MARGIN);
-        let delta = sub(end, start);
-        let sweep_lo: V3 =
-            core::array::from_fn(|i| start[i].min(end[i]) + shape_lo[i] - BOX_MARGIN);
-        let sweep_hi: V3 =
-            core::array::from_fn(|i| start[i].max(end[i]) + shape_hi[i] + BOX_MARGIN);
-        let mut listed = self.listed.borrow_mut();
-        let fresh = listed.as_ref().is_some_and(|l| {
-            l.mask == mask
-                && l.pass == pass
-                && (0..3).all(|i| l.mins[i] <= sweep_lo[i] && sweep_hi[i] <= l.maxs[i])
-        });
-        if !fresh {
-            let list_lo = sweep_lo.map(|v| v - LIST_MARGIN);
-            let list_hi = sweep_hi.map(|v| v + LIST_MARGIN);
-            let mut pieces = listed.take().map(|l| l.pieces).unwrap_or_else(Vec::new);
-            pieces.clear();
-            if !self
-                .world
-                .solid_pieces(list_lo, list_hi, mask, pass, &mut pieces)
-            {
-                return None;
+        let mut body = Character::from_bounds(mins, maxs, 0.0);
+        let contacts = self.sweep(&mut body, start, end, pass, mask, Sweep::PLAYER)?;
+        Some(match contacts.best {
+            Some(best) => {
+                let contact = &contacts.all[best];
+                self.hit(contact, contact.walkable())
             }
-            *listed = Some(Listed {
-                mins: list_lo,
-                maxs: list_hi,
-                mask,
-                pass,
-                pieces,
-            });
-        }
-        let pieces = &listed.as_ref()?.pieces;
-        let mut order: Vec<(f32, usize)> = pieces
-            .iter()
-            .enumerate()
-            .filter_map(|(i, piece)| {
-                let (piece_lo, piece_hi) = piece_box(piece);
-                let lo = sub(piece_lo, shape_hi);
-                let hi = sub(piece_hi, shape_lo);
-                entry(start, delta, lo, hi).map(|f| (f, i))
-            })
-            .collect();
-        order.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let mut cap = 1.0f32;
-        let mut best: Option<(Found, usize)> = None;
-        for (enter, index) in order {
-            if cap < enter {
-                break;
-            }
-            let piece = &pieces[index];
-            let Some(found) = self.cast(&mut player, piece, start, delta, cap) else {
-                continue;
-            };
-            if found.fraction < cap {
-                cap = (found.fraction).min(1.0);
-            }
-            let better = match &best {
-                None => true,
-                Some((b, _)) => {
-                    found.fraction < b.fraction
-                        || (found.fraction == 0.0 && found.dist < b.dist)
-                }
-            };
-            if better {
-                best = Some((found, index));
-            }
-            if best.as_ref().is_some_and(|(b, _)| b.dist < 0.0) {
-                break;
-            }
-        }
-        let Some((found, index)) = best else {
-            return Some(Hit {
-                fraction: 1.0,
-                normal: [0.0; 3],
-                startsolid: false,
-                walkable: false,
-                surface_flags: 0,
-                contents: 0,
-                entity: None,
-            });
+            None => Hit::NONE,
+        })
+    }
+
+    /// The ground sweep: of the contacts within half a unit of height of
+    /// the earliest, a walkable one is preferred, then the earliest.
+    pub(crate) fn ground_trace(
+        &self,
+        start: V3,
+        end: V3,
+        mins: V3,
+        maxs: V3,
+        pass: i32,
+        mask: u32,
+    ) -> Option<Hit> {
+        let drop = start[2] - end[2];
+        let sweep = Sweep {
+            cap_add: if GROUND_REACH <= drop {
+                GROUND_REACH / drop
+            } else {
+                1.0
+            },
+            stop_on_solid: false,
+            keep_leaving: false,
         };
-        let piece = &pieces[index];
-        let walkable = found.foot
-            && (WALKABLE_NORMAL <= found.normal[2] || piece_walkable(piece, found.contact));
+        let mut body = Character::from_bounds(mins, maxs, 0.0);
+        let contacts = self.sweep(&mut body, start, end, pass, mask, sweep)?;
+        let Some(best) = contacts.best else {
+            return Some(Hit::NONE);
+        };
+        let height = |f: f32| (end[2] - start[2]) * f + start[2];
+        let best_height = height(contacts.all[best].fraction);
+        let mut pick = 0;
+        let mut pick_fraction = contacts.all[0].fraction;
+        let mut pick_walkable = contacts.all[0].walkable();
+        for (i, contact) in contacts.all.iter().enumerate().skip(1) {
+            let mut fraction = contact.fraction;
+            let at = height(fraction);
+            if matches!(contact.piece.shape, SolidShape::Partition { .. }) {
+                fraction -= PARTITION_PREFERENCE;
+            }
+            if best_height - at > GROUND_REACH {
+                continue;
+            }
+            if !pick_walkable {
+                let walkable = contact.walkable();
+                if fraction < pick_fraction || walkable {
+                    pick = i;
+                    pick_fraction = fraction;
+                    pick_walkable = walkable;
+                }
+            } else if fraction < pick_fraction && contact.walkable() {
+                pick = i;
+                pick_fraction = fraction;
+            }
+        }
+        Some(self.hit(&contacts.all[pick], pick_walkable))
+    }
+
+    fn hit(&self, contact: &Contact<'_>, walkable: bool) -> Hit {
+        let piece = &contact.piece;
         let (surface_flags, contents) = match piece.shape {
             SolidShape::Brush {
                 axial_surface_flags,
@@ -183,104 +237,221 @@ impl<'w> PhysicsWorld<'w> {
             SolidShape::Partition { surface_flags, .. } => (surface_flags, piece.contents),
             SolidShape::Body { .. } => (0, 0),
         };
-        Some(Hit {
-            fraction: found.fraction,
-            normal: found.normal,
-            startsolid: found.dist < 0.0,
+        Hit {
+            fraction: contact.fraction,
+            normal: contact.normal,
+            startsolid: contact.dist < 0.0,
             walkable,
             surface_flags,
             contents,
             entity: Some(piece.entity),
-        })
+        }
     }
 
-    fn cast(
+    /// Lists the pieces near a sweep of `body` from `start` to `end`;
+    /// `false` when the match cannot list them.
+    fn list(&self, body: &Character, start: V3, end: V3, pass: i32, mask: u32) -> bool {
+        let (shape_lo, shape_hi) = widened(body);
+        let sweep_lo: V3 =
+            core::array::from_fn(|i| start[i].min(end[i]) + shape_lo[i] - BOX_MARGIN);
+        let sweep_hi: V3 =
+            core::array::from_fn(|i| start[i].max(end[i]) + shape_hi[i] + BOX_MARGIN);
+        let mut listed = self.listed.borrow_mut();
+        let fresh = listed.as_ref().is_some_and(|l| {
+            l.mask == mask
+                && l.pass == pass
+                && (0..3).all(|i| l.mins[i] <= sweep_lo[i] && sweep_hi[i] <= l.maxs[i])
+        });
+        if fresh {
+            return true;
+        }
+        let list_lo = sweep_lo.map(|v| v - LIST_MARGIN);
+        let list_hi = sweep_hi.map(|v| v + LIST_MARGIN);
+        let mut pieces = listed.take().map(|l| l.pieces).unwrap_or_else(Vec::new);
+        pieces.clear();
+        if !self
+            .world
+            .solid_pieces(list_lo, list_hi, mask, pass, &mut pieces)
+        {
+            return false;
+        }
+        *listed = Some(Listed {
+            mins: list_lo,
+            maxs: list_hi,
+            mask,
+            pass,
+            pieces,
+        });
+        true
+    }
+
+    /// Casts `body` from `start` to `end` against the pieces it may meet,
+    /// nearest first.
+    fn sweep(
         &self,
-        player: &mut Character,
-        piece: &SolidPiece<'_>,
+        body: &mut Character,
         start: V3,
-        delta: V3,
-        cap: f32,
-    ) -> Option<Found> {
-        let points;
-        let indexed;
-        let boxed;
-        let body;
-        let (other, brush, radius_b): (&dyn gjk::Convex, bool, f32) = match piece.shape {
-            SolidShape::Brush {
-                mins,
-                maxs,
-                sides,
-                points: hull,
-                ..
-            } => {
-                if sides.is_empty() || hull.is_empty() {
-                    boxed = BoxShape {
-                        center: scale(add(mins, maxs), 0.5),
-                        half: scale(sub(maxs, mins), 0.5),
-                    };
-                    (&boxed, true, 0.0)
-                } else {
-                    points = Points(hull);
-                    (&points, true, 0.0)
-                }
-            }
-            SolidShape::Partition {
-                verts,
-                points: hull,
-                ..
-            } => {
-                if hull.is_empty() {
-                    return None;
-                }
-                indexed = Indexed {
-                    verts,
-                    points: hull,
-                };
-                (&indexed, false, 0.0)
-            }
-            SolidShape::Body { mins, maxs } => {
-                body = body_shape(mins, maxs);
-                (&body, false, ROUNDING)
-            }
-        };
-        player.capsule = !brush;
-        let placement = piece.placement.unwrap_or(Placement::at([0.0; 3]));
-        let frame = Frame {
-            rows: placement.axis,
-            origin: sub(placement.origin, start),
-        };
-        let input = CastInput {
-            a: &*player,
-            b: other,
-            frame,
-            delta,
-            cap,
-            radius_a: player.rounding(),
-            radius_b,
-            skin: SKIN,
-        };
-        let contact: Contact = gjk::cast(&input)?;
-        let along = dot(contact.normal, delta);
-        let dist = dot(contact.normal, sub(contact.point_a, contact.point_b))
-            + contact.fraction * along
-            + SKIN;
-        let fraction = if along < 0.0 || dist <= LEAVING_SLACK {
-            contact.fraction
-        } else {
-            1.0
-        };
-        if !(fraction < cap || dist < 0.0) {
+        end: V3,
+        pass: i32,
+        mask: u32,
+        sweep: Sweep,
+    ) -> Option<Contacts<'w>> {
+        if !self.list(body, start, end, pass, mask) {
             return None;
         }
-        Some(Found {
-            fraction,
-            dist,
-            normal: contact.normal,
-            foot: player.foot(contact.point_a),
-            contact: add(start, contact.point_b),
-        })
+        let listed = self.listed.borrow();
+        let pieces = &listed.as_ref()?.pieces;
+        let (shape_lo, shape_hi) = widened(body);
+        let delta = sub(end, start);
+        let mut order: Vec<(f32, usize)> = pieces
+            .iter()
+            .enumerate()
+            .filter_map(|(i, piece)| {
+                let (piece_lo, piece_hi) = piece_box(piece);
+                let lo = sub(piece_lo, shape_hi);
+                let hi = sub(piece_hi, shape_lo);
+                entry(start, delta, lo, hi).map(|f| (f, i))
+            })
+            .collect();
+        order.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut cap = 1.0f32;
+        let mut contacts = Contacts {
+            all: Vec::new(),
+            best: None,
+        };
+        for (enter, index) in order {
+            if cap < enter {
+                break;
+            }
+            let piece = pieces[index];
+            let Some(found) = cast(body, piece, start, delta, cap, SKIN, sweep.keep_leaving)
+            else {
+                continue;
+            };
+            if found.fraction < cap {
+                cap = (sweep.cap_add + found.fraction).min(1.0);
+            }
+            let better = match contacts.best {
+                None => true,
+                Some(b) => {
+                    let b = &contacts.all[b];
+                    found.fraction < b.fraction || (found.fraction == 0.0 && found.dist < b.dist)
+                }
+            };
+            contacts.all.push(found);
+            if better {
+                contacts.best = Some(contacts.all.len() - 1);
+            }
+            if sweep.stop_on_solid
+                && contacts
+                    .best
+                    .is_some_and(|b| contacts.all[b].dist < 0.0)
+            {
+                break;
+            }
+        }
+        Some(contacts)
     }
+}
+
+/// The body's box for the broad test, widened.
+fn widened(body: &Character) -> (V3, V3) {
+    let (lo, hi) = body.bounds();
+    (lo.map(|v| v - BOX_MARGIN), hi.map(|v| v + BOX_MARGIN))
+}
+
+/// Casts `body` from `start` along `delta` against `piece`; `None` when it
+/// misses or reaches it past `cap`. `reach_skin` widens how far apart the
+/// two may be and still be measured.
+fn cast<'w>(
+    body: &mut Character,
+    piece: SolidPiece<'w>,
+    start: V3,
+    delta: V3,
+    cap: f32,
+    reach_skin: f32,
+    keep_leaving: bool,
+) -> Option<Contact<'w>> {
+    let points;
+    let indexed;
+    let boxed;
+    let other_body;
+    let (other, brush, radius_b): (&dyn gjk::Convex, bool, f32) = match piece.shape {
+        SolidShape::Brush {
+            mins,
+            maxs,
+            sides,
+            points: hull,
+            ..
+        } => {
+            if sides.is_empty() || hull.is_empty() {
+                boxed = BoxShape {
+                    center: scale(add(mins, maxs), 0.5),
+                    half: scale(sub(maxs, mins), 0.5),
+                };
+                (&boxed, true, 0.0)
+            } else {
+                points = Points(hull);
+                (&points, true, 0.0)
+            }
+        }
+        SolidShape::Partition {
+            verts,
+            points: hull,
+            ..
+        } => {
+            if hull.is_empty() {
+                return None;
+            }
+            indexed = Indexed {
+                verts,
+                points: hull,
+            };
+            (&indexed, false, 0.0)
+        }
+        SolidShape::Body { mins, maxs } => {
+            other_body = body_shape(mins, maxs);
+            (&other_body, false, ROUNDING)
+        }
+    };
+    body.capsule = !brush;
+    let placement = piece.placement.unwrap_or(Placement::at([0.0; 3]));
+    let frame = Frame {
+        rows: placement.axis,
+        origin: sub(placement.origin, start),
+    };
+    let input = CastInput {
+        a: &*body,
+        b: other,
+        frame,
+        delta,
+        cap,
+        radius_a: body.rounding(),
+        radius_b,
+        skin: reach_skin,
+    };
+    let contact: gjk::Contact = gjk::cast(&input)?;
+    let along = dot(contact.normal, delta);
+    let dist = dot(contact.normal, sub(contact.point_a, contact.point_b))
+        + contact.fraction * along
+        + SKIN;
+    let fraction = if along < 0.0 || dist <= LEAVING_SLACK || keep_leaving {
+        contact.fraction
+    } else {
+        1.0
+    };
+    if !(fraction < cap || dist < 0.0) {
+        return None;
+    }
+    Some(Contact {
+        fraction,
+        dist,
+        normal: contact.normal,
+        point_a: contact.point_a,
+        contact: add(start, contact.point_b),
+        foot: body.foot(contact.point_a),
+        piece,
+    })
 }
 
 fn body_shape(mins: V3, maxs: V3) -> Character {
@@ -301,14 +472,6 @@ fn piece_box(piece: &SolidPiece<'_>) -> (V3, V3) {
         }
         _ => (piece.mins, piece.maxs),
     }
-}
-
-struct Found {
-    fraction: f32,
-    dist: f32,
-    normal: V3,
-    foot: bool,
-    contact: V3,
 }
 
 /// The fraction at which the sweep from `start` along `delta` enters the box

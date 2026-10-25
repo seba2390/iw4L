@@ -103,6 +103,20 @@ pub(crate) fn weapon_unknown() -> &'static Unknown {
     )
 }
 
+fn physics_hit(hit: crate::physics::Hit) -> movement_t5::Trace {
+    movement_t5::Trace {
+        normal: hit.normal,
+        fraction: hit.fraction,
+        surface_flags: hit.surface_flags,
+        contents: hit.contents,
+        entity: hit.entity.map_or(ENTITYNUM_NONE, t5_entity),
+        allsolid: false,
+        startsolid: hit.startsolid,
+        walkable: hit.walkable,
+        glass: false,
+    }
+}
+
 /// Black Ops numbers the world and no entity at the top of its entities.
 fn t5_entity(entity: i32) -> i32 {
     match entity {
@@ -441,8 +455,9 @@ impl movement_t5::MoveWorld for World<'_> {
             .physics
             .as_ref()
             .and_then(|physics| physics.trace(start, end, mins, maxs, pass, contentmask));
-        let Some(hit) = hit else {
-            return movement_t5::MoveWorld::trace(
+        match hit {
+            Some(hit) => physics_hit(hit),
+            None => movement_t5::MoveWorld::trace(
                 self,
                 start,
                 end,
@@ -450,19 +465,50 @@ impl movement_t5::MoveWorld for World<'_> {
                 maxs,
                 pass_entity,
                 contentmask,
-            );
-        };
-        movement_t5::Trace {
-            normal: hit.normal,
-            fraction: hit.fraction,
-            surface_flags: hit.surface_flags,
-            contents: hit.contents,
-            entity: hit.entity.map_or(ENTITYNUM_NONE, t5_entity),
-            allsolid: false,
-            startsolid: hit.startsolid,
-            walkable: hit.walkable,
-            glass: false,
+            ),
         }
+    }
+
+    fn physics_ground_trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        contentmask: u32,
+    ) -> movement_t5::Trace {
+        let pass = shared_entity(pass_entity);
+        let hit = self.physics.as_ref().and_then(|physics| {
+            physics.ground_trace(start, end, mins, maxs, pass, contentmask)
+        });
+        match hit {
+            Some(hit) => physics_hit(hit),
+            None => movement_t5::MoveWorld::trace(
+                self,
+                start,
+                end,
+                mins,
+                maxs,
+                pass_entity,
+                contentmask,
+            ),
+        }
+    }
+
+    fn physics_slide(
+        &self,
+        slide: &movement_t5::PhysicsSlide,
+        pass_entity: i32,
+    ) -> Option<movement_t5::PhysicsSlid> {
+        let mut slid = self
+            .physics
+            .as_ref()?
+            .slide(slide, shared_entity(pass_entity))?;
+        for entity in &mut slid.touched[..slid.touched_count] {
+            *entity = t5_entity(*entity);
+        }
+        Some(slid)
     }
 
     fn can_stand_on(&self, entity: i32) -> bool {
