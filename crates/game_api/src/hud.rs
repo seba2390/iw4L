@@ -253,6 +253,8 @@ pub struct CrosshairView<'a> {
     pub to_ads: bool,
     /// The tangent of half the vertical field of view.
     pub tan_half_fov_y: f32,
+    /// Where the gun aims on the virtual screen, from its centre.
+    pub gun_offset: [f32; 2],
     /// The offline game is paused.
     pub paused: bool,
     /// A client dvar's value, when the client keeps it.
@@ -280,6 +282,13 @@ pub struct CrosshairWeapon {
     pub dual_wield: bool,
     /// The weapon draws a sight overlay when aimed.
     pub ads_overlay: bool,
+    /// How far into raising (lowering) the sights the overlay comes in
+    /// (goes), its size and what its alpha is divided by.
+    pub ads_zoom_in_frac: f32,
+    pub ads_zoom_out_frac: f32,
+    pub ads_overlay_width: f32,
+    pub ads_overlay_height: f32,
+    pub ads_overlay_alpha_scale: f32,
     /// The crosshair takes the colour of what it is on.
     pub color_change: bool,
     /// The weapon is Black Ops' human gun (its name starts `humangun_`).
@@ -289,8 +298,33 @@ pub struct CrosshairWeapon {
 #[derive(Debug, Default)]
 pub struct Crosshair {
     pub pictures: Vec<CrosshairPicture>,
+    /// The weapon's sight overlay, drawn before the crosshair.
+    pub sight_overlay: Option<SightOverlay>,
     /// The parts of the game's rule the runtime does not run.
     pub unrun: Vec<&'static Unknown>,
+}
+
+/// A weapon's sight overlay in the virtual 640x480 screen with its origin
+/// at the screen's centre: pictures of the weapon's overlay material, the
+/// rectangle they cover (the screen around it is filled from the picture's
+/// outer edge) and its alpha.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SightOverlay {
+    pub pictures: Vec<OverlayPicture>,
+    /// `[x, y, w, h]`.
+    pub frame: [f32; 4],
+    pub alpha: f32,
+}
+
+/// One picture of a sight overlay and its texture coordinates
+/// (`[s0, t0, s1, t1]`, which mirror it when reversed).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverlayPicture {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub st: [f32; 4],
 }
 
 /// One picture of the crosshair, placed in the virtual 640x480 screen with

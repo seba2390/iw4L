@@ -376,6 +376,7 @@ impl WeaponCatalog {
                 overlay_interface: geometry.overlay_interface,
                 ads_overlay_width: geometry.ads_overlay_width,
                 ads_overlay_height: geometry.ads_overlay_height,
+                ads_overlay_alpha_scale: 0.0,
                 melee_time_ms: geometry.melee_time_ms,
                 melee_delay_ms: geometry.melee_delay_ms,
                 melee_charge_time_ms: geometry.melee_charge_time_ms,

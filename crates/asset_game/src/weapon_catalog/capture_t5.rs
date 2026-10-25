@@ -497,6 +497,8 @@ pub(super) fn capture_t5_body_facts(
         .map(|off| w.variant_f32(off));
         facts.ads_zoom_in_frac = w.variant_f32(sz::WEAPON_VARIANT_ADS_ZOOM_IN_FRAC_OFF);
         facts.ads_zoom_out_frac = w.variant_f32(sz::WEAPON_VARIANT_ADS_ZOOM_OUT_FRAC_OFF);
+        facts.ads_overlay_alpha_scale =
+            w.variant_f32(sz::WEAPON_VARIANT_ADS_OVERLAY_ALPHA_SCALE_OFF);
     }
     if geometry.weap_def.is_none() {
         return (facts, None);

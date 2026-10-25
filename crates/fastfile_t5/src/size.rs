@@ -571,6 +571,9 @@ pub const WEAPON_VARIANT_ADS_ZOOM_FOV2_OFF: usize = 0x68;
 pub const WEAPON_VARIANT_ADS_ZOOM_FOV3_OFF: usize = 0x6c;
 pub const WEAPON_VARIANT_ADS_ZOOM_IN_FRAC_OFF: usize = 0x70;
 pub const WEAPON_VARIANT_ADS_ZOOM_OUT_FRAC_OFF: usize = 0x74;
+/// `adsOverlayAlphaScale`: the sight overlay's alpha is divided by it
+/// (when it is above 1).
+pub const WEAPON_VARIANT_ADS_OVERLAY_ALPHA_SCALE_OFF: usize = 0x78;
 
 pub const WEAPON_VARIANT_ADS_VIEW_KICK_CENTER_SPEED_OFF: usize = 0x5c;
 
