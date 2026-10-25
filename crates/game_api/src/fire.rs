@@ -315,6 +315,19 @@ pub trait FireWorld {
     /// Applies a blast's world effects (dynamic entity damage and impulse,
     /// destructible pieces, glass, and client physics explosion event).
     fn blast_effects(&mut self, _blast: &RadiusDamage) {}
+
+    /// The name of a bone on an entity's model, by the number a trace gives
+    /// it; `None` when the match does not know it.
+    fn bone_tag(&mut self, _entity: i32, _bone: u16) -> Option<String> {
+        None
+    }
+
+    /// A tag's world position and axis (forward, left, up) on an entity's
+    /// posed model; `None` when the entity has no posed model or not the
+    /// tag.
+    fn tag_pose(&mut self, _entity: i32, _tag: &str) -> Option<([f32; 3], [[f32; 3]; 3])> {
+        None
+    }
 }
 
 /// An AI perception event a shot, missile, grenade or explosion broadcasts

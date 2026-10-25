@@ -709,6 +709,13 @@ fn tag_lookup(world: &mut World, object: u64, tag: &str) -> Option<Option<[f32; 
     })
 }
 
+/// The name of a bone on an entity's posed model, by its number there.
+pub(crate) fn bone_name(world: &mut World, object: u64, bone: u16) -> Option<String> {
+    with_tag_dobj(world, object, |dobj| {
+        dobj.bone_name(usize::from(bone)).map(str::to_owned)
+    })
+}
+
 pub(crate) fn tag_world(
     world: &mut World,
     object: u64,

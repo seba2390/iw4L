@@ -5,15 +5,16 @@
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
-    BulletTrace, FireWorld, GAME_MISSILE_BYTES, GameMissile, GameTrajectory, MissileExplosion,
-    MissileRun, NotifyArg, RadiusDamage, TrajectoryKind,
+    BulletTrace, FireEntityKind, FireWorld, GAME_MISSILE_BYTES, GameMissile, GameTrajectory,
+    MissileExplosion, MissileRun, NotifyArg, RadiusDamage, TrajectoryKind,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD};
 use game_api::{Unknown, unknown};
 
 use crate::fire::{DEG2RAD, MEANS, hit_id, sentient};
 use crate::missile::{
-    State, clipmask, evaluate, evaluate_delta, mad, missile_trace, surface_type, vectoangles,
+    LinkTag, State, clipmask, evaluate, evaluate_delta, mad, missile_trace, surface_type,
+    vectoangles,
 };
 
 const MOD_GRENADE_SPLASH: usize = 4;
@@ -85,8 +86,8 @@ pub(crate) const SURFACE_NAMES: [&str; 31] = [
 fn grenade_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.grenade",
-        "a grenade that sticks to entities, a smoke, flash, gas or molotov grenade, a grenade landing on another missile or a mover, or one exploding in water, does not do what Black Ops does with it",
-        "Black Ops' grenades sticking to entities, explosion tags, smoke, flash, gas and molotov effects, grenades riding entities and water explosions"
+        "a thrown grenade that sticks to entities, a smoke, flash, gas or molotov grenade, a grenade landing on another missile or a mover, or one exploding in water, does not do what Black Ops does with it",
+        "Black Ops' thrown grenades sticking to entities, explosion tags, smoke, flash, gas and molotov effects, grenades riding movers and water explosions"
     )
 }
 
@@ -200,7 +201,7 @@ pub(crate) fn fire_grenade(
         ]
     });
     spawn_grenade(
-        owner, weapon, def, muzzle, vel, carried, true, false, None, fuse, world, gaps,
+        owner, weapon, def, muzzle, vel, carried, true, false, None, None, fuse, world, gaps,
     );
 }
 
@@ -245,6 +246,7 @@ pub(crate) fn launch_grenade(
         false,
         true,
         None,
+        None,
         def.fuse_time(),
         world,
         gaps,
@@ -257,11 +259,14 @@ pub(crate) fn launch_grenade(
 pub(crate) struct Stuck {
     pub(crate) on: i32,
     pub(crate) normal: [f32; 3],
+    /// The bone struck on the entity's model.
+    pub(crate) bone: Option<u16>,
 }
 
 /// A bolt's grenade (its weapon's `grenadeWeapon`) left where the bolt
-/// struck: stuck there, its fuse the grenade weapon's. Black Ops links it
-/// to the entity and bone struck; here it stays at the point.
+/// struck: stuck there, its fuse the grenade weapon's, linked to the entity
+/// struck (a player's or actor's bone struck, an actor's right knee when
+/// that bone cannot be linked, else the entity itself).
 pub(crate) fn leave_grenade(
     owner: i32,
     weapon: u32,
@@ -282,9 +287,9 @@ pub(crate) fn leave_grenade(
         gaps.push(crate::movement::weapon_unknown());
         return;
     };
-    if stuck.on != ENTITY_WORLD {
-        gaps.push(grenade_unknown());
-    }
+    let link = (stuck.on != ENTITY_WORLD)
+        .then(|| link_to(world, stuck, start))
+        .flatten();
     let fuse = def.fuse_time();
     spawn_grenade(
         owner,
@@ -296,10 +301,92 @@ pub(crate) fn leave_grenade(
         false,
         false,
         Some(stuck),
+        link,
         fuse,
         world,
         gaps,
     );
+}
+
+/// What a grenade stuck at `point` links to on the entity struck, and where
+/// it sits in that tag's frame.
+fn link_to(
+    world: &mut dyn FireWorld,
+    stuck: Stuck,
+    point: [f32; 3],
+) -> Option<(LinkTag, [f32; 3])> {
+    let kind = world.entity(stuck.on)?.kind;
+    let mut tag = LinkTag::Origin;
+    if matches!(kind, FireEntityKind::Player | FireEntityKind::Actor) {
+        if let Some(bone) = stuck.bone
+            && link_pose(world, stuck.on, LinkTag::Bone(bone)).is_some()
+        {
+            tag = LinkTag::Bone(bone);
+        } else if kind == FireEntityKind::Actor
+            && link_pose(world, stuck.on, LinkTag::KneeRight).is_some()
+        {
+            tag = LinkTag::KneeRight;
+        }
+    }
+    let (origin, axis) = link_pose(world, stuck.on, tag)?;
+    let d = [
+        point[0] - origin[0],
+        point[1] - origin[1],
+        point[2] - origin[2],
+    ];
+    let offset = axis.map(|row| row[0] * d[0] + row[1] * d[1] + row[2] * d[2]);
+    Some((tag, offset))
+}
+
+/// The world position and axis (forward, left, up) of what a grenade is
+/// linked to on an entity.
+fn link_pose(
+    world: &mut dyn FireWorld,
+    entity: i32,
+    tag: LinkTag,
+) -> Option<([f32; 3], [[f32; 3]; 3])> {
+    match tag {
+        LinkTag::None => None,
+        LinkTag::Origin => {
+            let entity = world.entity(entity)?;
+            let (forward, right, up) = movement_t5::math::angle_vectors(entity.angles);
+            Some((entity.origin, [forward, right.map(|v| -v), up]))
+        }
+        LinkTag::KneeRight => world.tag_pose(entity, "j_knee_ri"),
+        LinkTag::Bone(bone) => {
+            let name = world.bone_tag(entity, bone)?;
+            world.tag_pose(entity, &name)
+        }
+    }
+}
+
+/// A grenade linked to the entity it rests on moves with that tag; one
+/// whose entity or tag is gone is let go to fall. Answers whether it rides.
+pub(crate) fn follow_link(
+    missile: &mut GameMissile,
+    state: &mut State,
+    world: &mut dyn FireWorld,
+) -> bool {
+    if state.link == LinkTag::None || state.ground == ENTITY_NONE {
+        return false;
+    }
+    let Some((origin, axis)) = link_pose(world, state.ground, state.link) else {
+        state.link = LinkTag::None;
+        return false;
+    };
+    let o = state.link_offset;
+    let at = std::array::from_fn(|i| {
+        origin[i] + axis[0][i] * o[0] + axis[1][i] * o[1] + axis[2][i] * o[2]
+    });
+    missile.origin = at;
+    missile.position = GameTrajectory {
+        kind: TrajectoryKind::Stationary,
+        time: 0,
+        duration: 0,
+        base: at,
+        delta: [0.0; 3],
+    };
+    true
 }
 
 /// A grenade put in the match: falling from `start` at `vel` (in whole
@@ -316,11 +403,12 @@ fn spawn_grenade(
     rotate: bool,
     launched: bool,
     stuck: Option<Stuck>,
+    link: Option<(LinkTag, [f32; 3])>,
     fuse: i32,
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
 ) -> Option<i32> {
-    if sticks_to_entities(def) {
+    if stuck.is_none() && sticks_to_entities(def) {
         gaps.push(grenade_unknown());
     }
     let level = world.level_time();
@@ -364,6 +452,8 @@ fn spawn_grenade(
         launched,
         ground: stuck.map_or(ENTITY_NONE, |stuck| stuck.on),
         rest_normal: stuck.map_or([0.0; 3], |stuck| stuck.normal),
+        link: link.map_or(LinkTag::None, |(tag, _)| tag),
+        link_offset: link.map_or([0.0; 3], |(_, offset)| offset),
         explode_at: light_fuse(owner, def, fuse, level, world),
         spawned_at: level,
         ..State::default()
@@ -978,6 +1068,6 @@ pub(crate) fn drop_grenade(
 ) {
     let start = [origin[0], origin[1], origin[2] + 40.0];
     spawn_grenade(
-        owner, weapon, def, start, [0.0; 3], [0.0; 3], false, false, None, fuse, world, gaps,
+        owner, weapon, def, start, [0.0; 3], [0.0; 3], false, false, None, None, fuse, world, gaps,
     );
 }
