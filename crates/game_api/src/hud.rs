@@ -278,6 +278,10 @@ pub struct CrosshairWeapon {
     pub dual_wield: bool,
     /// The weapon draws a sight overlay when aimed.
     pub ads_overlay: bool,
+    /// The crosshair takes the colour of what it is on.
+    pub color_change: bool,
+    /// The weapon is Black Ops' human gun (its name starts `humangun_`).
+    pub human_gun: bool,
 }
 
 #[derive(Debug, Default)]

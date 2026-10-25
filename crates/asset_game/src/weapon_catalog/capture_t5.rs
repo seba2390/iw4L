@@ -537,6 +537,7 @@ pub(super) fn capture_t5_body_facts(
     facts.projectile_rotates = def_flag(sz::WEAPON_DEF_ROTATE_OFF);
     facts.cook_off_hold = def_flag(sz::WEAPON_DEF_COOK_OFF_HOLD_OFF);
     facts.keep_crosshair_when_ads = def_flag(sz::WEAPON_DEF_KEEP_CROSSHAIR_WHEN_ADS_OFF);
+    facts.crosshair_color_change = def_flag(sz::WEAPON_DEF_CROSSHAIR_COLOR_CHANGE_OFF);
     facts.offhand_hold_is_cancelable =
         Some(def_flag(sz::WEAPON_DEF_OFFHAND_HOLD_IS_CANCELABLE_OFF));
     facts.parallel_bounce = w.def_f32_array(sz::WEAPON_DEF_PARALLEL_BOUNCE_OFF);
