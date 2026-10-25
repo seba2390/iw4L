@@ -12,6 +12,10 @@ pub struct MixSnapshot {
     pub fade_out: f32,
     /// The distance a sound carrying it applies it over.
     pub distance: f32,
+    /// The curves (name hashes) a sound carrying it fades it in and out
+    /// by.
+    pub fade_in_curve: u32,
+    pub fade_out_curve: u32,
     /// The volume of each snapshot group.
     pub volumes: [f32; 64],
 }

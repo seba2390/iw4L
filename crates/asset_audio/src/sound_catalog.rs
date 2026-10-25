@@ -369,6 +369,27 @@ impl SoundCatalog {
         self.mix_snapshots.get(&namespace)
     }
 
+    /// A Black Ops sound curve by its name hash, as the sound driver finds
+    /// one: the `default` curve when no curve has the hash, else its first.
+    pub fn curve_knots_by_hash(
+        &self,
+        namespace: AssetNamespace,
+        hash: u32,
+    ) -> Option<&[(f32, f32)]> {
+        let by_hash = |hash: u32| {
+            self.curves
+                .get(&(namespace, format!("t5/curve_hash/{hash}")))
+                .map(|curve| curve.knots.as_slice())
+        };
+        by_hash(hash)
+            .or_else(|| by_hash(asset_transport::sab::snd_hash_name("default")))
+            .or_else(|| {
+                self.curves
+                    .get(&(namespace, "t5/curve/0".to_owned()))
+                    .map(|curve| curve.knots.as_slice())
+            })
+    }
+
     /// Reverb rooms a zone's sound banks carry, the first of each hash kept.
     pub fn ingest_reverb_presets(
         &mut self,

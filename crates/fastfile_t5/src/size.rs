@@ -418,7 +418,13 @@ pub const SND_SNAPSHOT_LINKED_OFF: usize = 0x44;
 pub const SND_SNAPSHOT_FADE_IN_OFF: usize = 0x48;
 pub const SND_SNAPSHOT_FADE_OUT_OFF: usize = 0x4c;
 pub const SND_SNAPSHOT_DISTANCE_OFF: usize = 0x50;
+pub const SND_SNAPSHOT_FADE_IN_CURVE_OFF: usize = 0x54;
+pub const SND_SNAPSHOT_FADE_OUT_CURVE_OFF: usize = 0x58;
 pub const SND_SNAPSHOT_VOLUMES_OFF: usize = 0x5c;
+/// A curve's name hash.
+pub const SND_CURVE_HASH_OFF: usize = 0x20;
+/// An alias's snapshot (name hash; 0 for none).
+pub const SND_ALIAS_SNAPSHOT_OFF: usize = 0x18;
 const _: () = assert!(SND_SNAPSHOT_VOLUMES_OFF + 64 * 4 == SND_SNAPSHOT);
 pub const SND_PATCH: usize = 20;
 pub const SOUND_FILE: usize = 8;

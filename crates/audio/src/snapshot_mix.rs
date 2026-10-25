@@ -4,6 +4,12 @@
 //! toward `1 - (1 - volume) x weight` at one over the snapshot's fade-in
 //! time per second (at once when it has none), and a sound plays at the
 //! lowest of the slots' volumes for its alias's snapshot group.
+//!
+//! Slot 0 is the snapshots sounds carry while they play: each playing
+//! sound's snapshot pulls each group toward its volume by a weight that its
+//! fade-in and fade-out curves (and, for a sound that applies it by
+//! distance, the default curve over its distance) give, the lowest per
+//! group kept; the slot eases toward that at thirty per second.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -14,12 +20,14 @@ use frame::ScopeApp;
 
 use crate::media::LiveGain;
 
-/// The slots scripts set; slot 0 (the snapshots sounds carry while they
-/// play) is not run.
+/// The slots scripts set; slot 0 holds the snapshots sounds carry while
+/// they play.
 const SLOTS: usize = 11;
 const GROUPS: usize = 64;
 /// A fade-in shorter than this takes effect at once.
 const FADE_MIN: f32 = 0.00001;
+/// How fast slot 0 eases toward its playing sounds' volumes, per second.
+const VOICE_RATE: f32 = 30.0;
 
 #[derive(Clone, Copy)]
 struct Slot {
@@ -197,7 +205,31 @@ pub(crate) fn update_snapshot_mix(
     let dt = time.delta_secs();
     let settle = !mix.settled;
     mix.settled = true;
+    let now = runtime.audio_frame();
+    let listener = runtime.listener();
     let mut volume = [1.0f32; GROUPS];
+    let voices = voice_volumes(
+        &runtime.snapshot_voices(),
+        snapshots,
+        |hash| bank.0.curve_knots_by_hash(namespace, hash),
+        listener.map(|listener| listener.origin_inches),
+        now,
+    );
+    for ((current, lowest), target) in mix.slots[0]
+        .current
+        .iter_mut()
+        .zip(volume.iter_mut())
+        .zip(voices)
+        .take(groups)
+    {
+        if settle {
+            *current = target;
+        } else {
+            let diff = target - *current;
+            *current += (VOICE_RATE * dt).min(diff.abs()).copysign(diff);
+        }
+        *lowest = current.min(*lowest);
+    }
     for slot in mix.slots.iter_mut().skip(1) {
         let snapshot = slot
             .hash
@@ -228,13 +260,82 @@ pub(crate) fn update_snapshot_mix(
             }
         }
     }
-    let now = runtime.audio_frame();
     let frames = (f64::from(dt) * f64::from(crate::render_core::SAMPLE_RATE)) as u64;
     for (group, volume) in volume.iter().enumerate().take(groups) {
         if let Some(gain) = mix.gains.get(&(namespace, group as u8)) {
             gain.fade(now, *volume, frames);
         }
     }
+}
+
+/// Each group's lowest volume over the playing sounds' snapshots.
+fn voice_volumes<'a>(
+    voices: &[crate::runtime::SnapshotVoice],
+    snapshots: &asset_audio::MixSnapshots,
+    curve: impl Fn(u32) -> Option<&'a [(f32, f32)]>,
+    listener: Option<[f32; 3]>,
+    now: u64,
+) -> [f32; GROUPS] {
+    let default_curve = asset_transport::sab::snd_hash_name("default");
+    let eval = |hash: u32, x: f32| curve(hash).map_or(1.0, |knots| curve_value(knots, x));
+    let mut volume = [1.0f32; GROUPS];
+    for voice in voices {
+        let Some(snapshot) = snapshots.find(voice.policy.hash) else {
+            continue;
+        };
+        let elapsed =
+            (now as f64 - voice.start_frame as f64) / f64::from(crate::render_core::SAMPLE_RATE);
+        let (elapsed, length) = (elapsed as f32, voice.length_s);
+        if elapsed < 0.0 || !(voice.looping || snapshot.fade_in + snapshot.fade_out <= length) {
+            continue;
+        }
+        let mut weight = if elapsed < snapshot.fade_in {
+            eval(snapshot.fade_in_curve, elapsed / snapshot.fade_in)
+        } else if !voice.looping && 0.0 < snapshot.fade_out && length - snapshot.fade_out < elapsed
+        {
+            eval(
+                snapshot.fade_out_curve,
+                1.0 - (length - elapsed) / snapshot.fade_out,
+            )
+        } else {
+            1.0
+        };
+        if 1.0 <= snapshot.distance && voice.policy.by_distance {
+            let distance = match (listener, voice.origin_inches) {
+                (Some(listener), Some(origin)) => crate::distance_inches(listener, origin),
+                _ => 0.0,
+            };
+            weight = weight.min(eval(default_curve, distance / snapshot.distance));
+        }
+        for (lowest, authored) in volume.iter_mut().zip(snapshot.volumes) {
+            *lowest = lowest.min(authored * weight + (1.0 - weight));
+        }
+    }
+    volume
+}
+
+/// A sound curve at `x` (clamped to one; at or below zero, its value at
+/// zero): straight lines between its knots, flat past its ends.
+fn curve_value(knots: &[(f32, f32)], x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    let Some(&(first_x, first_y)) = knots.first() else {
+        return 1.0;
+    };
+    if x <= first_x {
+        return first_y;
+    }
+    for pair in knots.windows(2) {
+        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+        if x < x1 {
+            let t = if x1 - x0 > 0.0 {
+                (x - x0) / (x1 - x0)
+            } else {
+                1.0
+            };
+            return y0 * (1.0 - t) + y1 * t;
+        }
+    }
+    knots.last().map_or(1.0, |knot| knot.1)
 }
 
 /// The sound system starts the match's contexts at their starting values;
