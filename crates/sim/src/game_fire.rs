@@ -977,6 +977,16 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         );
     }
 
+    fn bone_tag(&mut self, entity: i32, bone: u16) -> Option<String> {
+        let object = self.object_of(entity)?;
+        crate::script::host::presence::bone_name(self.world.ecs(), object, bone)
+    }
+
+    fn tag_pose(&mut self, entity: i32, tag: &str) -> Option<([f32; 3], [[f32; 3]; 3])> {
+        let object = self.object_of(entity)?;
+        crate::script::host::presence::tag_world(self.world.ecs(), object, tag)
+    }
+
     fn set_entity_pose(&mut self, entity: i32, origin: [f32; 3], angles: [f32; 3]) {
         let Some(object) = self.object_of(entity) else {
             return;

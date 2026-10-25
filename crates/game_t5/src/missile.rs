@@ -92,6 +92,43 @@ pub(crate) struct State {
     pub(crate) spawned_at: i32,
     /// When the grenade last broadcast its AI ping.
     pub(crate) last_ping_at: i32,
+    /// What on the entity it rests on it is linked to, and where it sits in
+    /// that tag's frame.
+    pub(crate) link: LinkTag,
+    pub(crate) link_offset: [f32; 3],
+}
+
+/// What a grenade is linked to on the entity it struck.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum LinkTag {
+    #[default]
+    None,
+    /// The entity's origin and angles.
+    Origin,
+    /// An actor's right knee, when the bone struck could not be linked.
+    KneeRight,
+    /// The bone struck, by its number on the entity's model.
+    Bone(u16),
+}
+
+impl LinkTag {
+    fn code(self) -> u16 {
+        match self {
+            Self::None => 0,
+            Self::Origin => 1,
+            Self::KneeRight => 2,
+            Self::Bone(bone) => bone.saturating_add(3),
+        }
+    }
+
+    fn from_code(code: u16) -> Self {
+        match code {
+            0 => Self::None,
+            1 => Self::Origin,
+            2 => Self::KneeRight,
+            code => Self::Bone(code - 3),
+        }
+    }
 }
 
 impl State {
@@ -113,6 +150,8 @@ impl State {
             rest_normal: [f(24), f(28), f(32)],
             spawned_at: i(36),
             last_ping_at: i(40),
+            link: LinkTag::from_code(u16::from_le_bytes([game[44], game[45]])),
+            link_offset: [f(48), f(52), f(56)],
         }
     }
 
@@ -130,6 +169,10 @@ impl State {
         }
         game[36..40].copy_from_slice(&self.spawned_at.to_le_bytes());
         game[40..44].copy_from_slice(&self.last_ping_at.to_le_bytes());
+        game[44..46].copy_from_slice(&self.link.code().to_le_bytes());
+        for (i, c) in self.link_offset.iter().enumerate() {
+            game[48 + i * 4..52 + i * 4].copy_from_slice(&c.to_le_bytes());
+        }
     }
 }
 
@@ -305,6 +348,16 @@ pub(crate) fn run_missile(
     };
     let mut state = State::read(&missile.game);
     let level = world.level_time();
+    // A grenade linked to what it struck rides it and does not fly.
+    if crate::grenade::follow_link(missile, &mut state, world) {
+        state.write(&mut missile.game);
+        if state.explode_at != 0 && state.explode_at <= level {
+            let run = crate::grenade::explode(missile, &def, &mut state, world, &mut gaps);
+            state.write(&mut missile.game);
+            return (run, gaps);
+        }
+        return (MissileRun::Flying, gaps);
+    }
     if state.grenade {
         if def.offhand_class() != 0 && level - state.last_ping_at > 250 {
             world.ai_event(AiEvent::Point {
@@ -621,6 +674,7 @@ fn impact(
                 crate::grenade::Stuck {
                     on,
                     normal: trace.normal,
+                    bone: trace.bone,
                 },
                 world,
                 gaps,
