@@ -837,6 +837,16 @@ impl PlayerMovement for T5Movement {
         Some(outcome)
     }
 
+    fn crosshair_scan(
+        &self,
+        player: &mut MovePlayer,
+        scan: &game_api::movement::CrosshairScan<'_>,
+    ) {
+        let (mut ps, mut last) = unpack(player);
+        crate::crosshair_scan::scan(&mut ps, scan);
+        pack(player, &mut ps, &mut last);
+    }
+
     fn cursor_hints(&self) -> &'static [&'static str] {
         &[
             "HINT_NONE",

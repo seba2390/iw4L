@@ -921,3 +921,6 @@ pub const PATH_NODE_ANGLE_OFF: usize = 0x20;
 pub const PATH_LINK_DISTANCE_OFF: usize = 0;
 pub const PATH_LINK_NODE_OFF: usize = 4;
 pub const PATH_LINK_NEGOTIATION_OFF: usize = 7;
+
+/// `crosshairColorChange`.
+pub const WEAPON_DEF_CROSSHAIR_COLOR_CHANGE_OFF: usize = 0x4a4;

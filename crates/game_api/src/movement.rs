@@ -504,6 +504,40 @@ pub struct MeleeAim<'a> {
     pub dvar: &'a dyn Fn(&str) -> Option<String>,
 }
 
+/// What a line from a player's eye meets, for the game's crosshair scan.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CrosshairHit {
+    pub entity: i32,
+    /// The entity's origin.
+    pub origin: [f32; 3],
+    pub kind: CrosshairHitKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CrosshairHitKind {
+    /// An actor; `allied` when it is on the player's team.
+    Actor {
+        allied: bool,
+    },
+    /// Another player; `allied` when on the player's team.
+    Player {
+        allied: bool,
+    },
+    Other,
+}
+
+/// What the game's end-of-frame crosshair scan reads.
+pub struct CrosshairScan<'a> {
+    /// The entity a line from `start` to `end` first meets through what
+    /// `mask` stops, and how far along it is (0 to 1); `None` when it meets
+    /// the world or nothing.
+    pub trace: &'a dyn Fn([f32; 3], [f32; 3], u32) -> Option<(CrosshairHit, f32)>,
+    pub weapon: &'a dyn Fn(u32) -> Option<&'a GameWeapon>,
+    pub dvar: &'a dyn Fn(&str) -> Option<String>,
+    /// The level's time in milliseconds.
+    pub level_time: i32,
+}
+
 /// The target a client's command names for a melee lunge.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MeleeTarget {
@@ -826,6 +860,10 @@ pub trait PlayerMovement: Sync {
 
     /// The target a client's command names for a melee lunge; `None` when
     /// the game picks none.
+    /// The end of a server frame: marks what the player's crosshair is on
+    /// in the player's state.
+    fn crosshair_scan(&self, _player: &mut MovePlayer, _scan: &CrosshairScan<'_>) {}
+
     fn melee_target(&self, _aim: &MeleeAim<'_>) -> Option<MeleeTarget> {
         None
     }

@@ -71,8 +71,12 @@ pub mod weap_flags {
     /// The offhand is in hand.
     pub const OFFHAND_ACTIVE: u32 = 0x2;
     pub const HOLD_BREATH: u32 = 0x4;
-    /// A grenade throw is cancelled.
+    /// A grenade throw is cancelled. The server's crosshair scan sets it
+    /// while a friend within `g_friendlyfireDist` is under the crosshair.
     pub const CANCEL_GRENADE: u32 = 0x8;
+    /// The server's crosshair scan: an enemy within the weapon's
+    /// `enemyCrosshairRange` is under the crosshair.
+    pub const ENEMY_IN_CROSSHAIR: u32 = 0x10;
     pub const NO_ADS: u32 = 0x20;
     pub const NIGHTVISION: u32 = 0x40;
     /// `disableweapons`.
@@ -94,6 +98,9 @@ pub mod weap_flags {
     /// The offhand was thrown with no weapon raised.
     pub const OFFHAND_EMPTY_HANDED: u32 = 0x8_0000;
     pub const FIRING_GUIDED: u32 = 0x10_0000;
+    /// The server's crosshair scan: in zombies, the human gun's (or an
+    /// upgraded ballistic knife's) target is under the crosshair.
+    pub const ZOMBIE_GUN_TARGET: u32 = 0x20_0000;
     /// Scripts force a viewmodel animation.
     pub const FORCED_ANIM: u32 = 0x40_0000;
     /// A smoke throw is cancelled.
