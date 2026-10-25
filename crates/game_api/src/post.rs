@@ -141,6 +141,9 @@ pub struct VisionView {
     pub now_ms: i32,
     /// The client's player is down in last stand.
     pub last_stand: bool,
+    /// The server told the client its level failed (the failed level's
+    /// client dvar is set).
+    pub mission_failed: bool,
 }
 
 /// The game's vision files, by path (`vision/<name>.vision`, lower case).

@@ -315,6 +315,10 @@ pub(crate) fn update_post_vision(
     local: Res<net::LocalPresentClient>,
     mut state: ResMut<PostVisionState>,
 ) {
+    let failed_dvar = rules
+        .as_ref()
+        .and_then(|rules| rules.level_failed)
+        .map(|failed| failed.client_dvar);
     let Some(chain) = rules.and_then(|rules| rules.post_chain) else {
         return;
     };
@@ -406,6 +410,13 @@ pub(crate) fn update_post_vision(
         last_stand: presented
             .player(local.0)
             .is_some_and(|ps| ps.in_last_stand()),
+        mission_failed: failed_dvar.is_some_and(|(name, value)| {
+            meta.is_some_and(|meta| {
+                meta.client_dvars
+                    .iter()
+                    .any(|(key, set)| key.eq_ignore_ascii_case(name) && set == value)
+            })
+        }),
     };
     let words = channels.frame(view, &files);
     if scene.post_vision.as_deref() != Some(words) {
