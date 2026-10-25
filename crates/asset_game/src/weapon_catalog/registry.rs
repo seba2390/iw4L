@@ -1267,6 +1267,13 @@ impl WeaponRegistry {
         self.component_namespace_of(index, WeaponComponent::HudIconImage)
     }
 
+    /// The weapon's HUD icon material.
+    pub fn hud_icon_of(&self, index: u32) -> Option<&str> {
+        self.rows
+            .get(index as usize)
+            .and_then(|row| row.hud_icon.as_deref())
+    }
+
     pub fn hud_icon_image_of(&self, index: u32) -> Option<&str> {
         self.rows
             .get(index as usize)

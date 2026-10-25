@@ -403,6 +403,8 @@ pub struct WeaponGeometry {
     pub reticle_side_name: Option<Ptr>,
     /// `indicatorIcon`: the grenade indicator's icon.
     pub indicator_icon_name: Option<Ptr>,
+    /// `hudIcon`.
+    pub hud_icon_name: Option<Ptr>,
     pub name: Option<Ptr>,
     pub alternate_weapon_name: Option<Ptr>,
     /// The variant's `ammoName` and `clipName`.

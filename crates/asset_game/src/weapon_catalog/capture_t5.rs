@@ -56,7 +56,8 @@ impl WeaponCatalog {
             iw5_anim_overrides: Vec::new(),
             iw5_fx_overrides: Vec::new(),
             iw5_notetrack_overrides: Vec::new(),
-            hud_icon: bare_owned(w.def_asset_name(sz::WEAPON_DEF_HUD_ICON_OFF)),
+            hud_icon: bare_owned(w.cstr(geometry.hud_icon_name))
+                .or_else(|| bare_owned(w.def_asset_name(sz::WEAPON_DEF_HUD_ICON_OFF))),
             hud_icon_slot: t5_to_iw4_ptr(w.def_slot(sz::WEAPON_DEF_HUD_ICON_OFF)),
 
             pickup_icon: None,

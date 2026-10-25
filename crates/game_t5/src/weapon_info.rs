@@ -3,7 +3,9 @@
 //! warning drawn by that time's fade.
 
 use fastfile_t5::weapon_def::WeaponDefView;
-use game_api::hud::{LowAmmoWarning, WeaponInfoAmmo, WeaponInfoRules, WeaponInfoView};
+use game_api::hud::{
+    LowAmmoWarning, OffhandIcons, WeaponInfoAmmo, WeaponInfoRules, WeaponInfoView,
+};
 use movement_t5::state::{Buttons, PlayerState, buttons};
 use movement_t5::weapon::state as ws;
 
@@ -18,6 +20,7 @@ pub(crate) static WEAPON_INFO: WeaponInfoRules = WeaponInfoRules {
     ammo_text,
     name_fade,
     name_right_gap: NAME_RIGHT_GAP,
+    offhand,
 };
 
 /// The weapon name shows for 1.8 s after the selection changes.
@@ -29,6 +32,21 @@ const LOW_STOCK_RGB: [f32; 3] = [1.0, 0.3, 0.3];
 
 /// `hud_fade_ammodisplay`: how long the weapon info shows, in seconds.
 const FADE_AMMO_DISPLAY: f32 = 8.0;
+/// `hud_fade_offhand`: how long the offhand icons show, in seconds.
+const FADE_OFFHAND: f32 = 8.0;
+/// Each next offhand icon is this share of the item's width further right
+/// and this much dimmer.
+const OFFHAND_STEP: f32 = 0.22;
+const OFFHAND_FALLOFF: f32 = 0.8;
+/// Weapon flags that hide the offhand icons.
+const WEAP_FLAG_HIDE_OFFHAND: u32 = 0x180;
+/// Entity flags: the player sees through another crosshair.
+const EF_OTHER_CROSSHAIR: u32 = 0x4000;
+/// The weapon states on a turret or a vehicle that keep the offhand icons.
+const WS_VEHICLE_OFFHAND: std::ops::RangeInclusive<i32> = 0x24..=0x26;
+/// Offhand slots a held-back grenade counts for in zombies: lethal and
+/// special.
+const OFFHAND_SLOTS_THROWBACK: [i32; 2] = [1, 4];
 /// The weapon info fades out over its last 700 ms.
 const FADE_OUT_MS: i32 = 700;
 /// A lit arrow's alpha.
@@ -258,6 +276,54 @@ fn fade(view: &WeaponInfoView<'_>, shown_at: i32) -> f32 {
     fade_for(view, shown_at, ms)
 }
 
+/// An offhand class's icons. They show while the player lives and nothing
+/// hides them, with the time the weapon info was shown (Black Ops shows
+/// both together) and their own `hud_fade_offhand`; the weapon is the
+/// first held of that class with rounds (in zombies, a lethal or special
+/// one while a grenade is held back), else the first held of it; one icon
+/// per round in the clips of the class's weapons.
+fn offhand(view: &WeaponInfoView<'_>, class: i32, shown_at: i32) -> Option<OffhandIcons> {
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    let on_vehicle =
+        ps.e_flags & EF_TURRET_OR_VEHICLE != 0 && !WS_VEHICLE_OFFHAND.contains(&ps.weaponstate);
+    if PM_TYPE_LAST_INFO < ps.pm_type
+        || ps.weap_flags & WEAP_FLAG_HIDE_OFFHAND != 0
+        || ps.e_flags & EF_OTHER_CROSSHAIR != 0
+        || (view.dvar)("cg_drawpaused").unwrap_or(1.0) == 0.0
+        || shown_at == 0
+        || on_vehicle
+    {
+        return None;
+    }
+    let held: Vec<(u32, WeaponDefView<'_>)> = ps
+        .held_weapons
+        .iter()
+        .filter(|held| held.weapon != 0)
+        .filter_map(|held| Some((held.weapon, def(view, held.weapon)?)))
+        .filter(|(_, def)| def.offhand_class() == class)
+        .collect();
+    let weapon = held
+        .iter()
+        .find(|(weapon, def)| {
+            (0 < ps.throw_back_grenade_time_left
+                && OFFHAND_SLOTS_THROWBACK.contains(&def.offhand_slot()))
+                || 0 < (view.clip)(*weapon) + (view.stock)(*weapon)
+        })
+        .or(held.first())
+        .map(|(weapon, _)| *weapon)?;
+    let seconds = (view.dvar)("hud_fade_offhand").unwrap_or(FADE_OFFHAND);
+    let ms = (f64::from(seconds * 1000.0) + 9.313_225_746_154_785e-10).round_ties_even() as i32;
+    let alpha = fade_by(view, seconds, shown_at, ms);
+    (alpha != 0.0).then(|| OffhandIcons {
+        weapon,
+        count: held.iter().map(|(weapon, _)| (view.clip)(*weapon)).sum(),
+        alpha,
+        step: OFFHAND_STEP,
+        falloff: OFFHAND_FALLOFF,
+    })
+}
+
 /// The round counts take the weapon info's fade, and draw nothing while the
 /// weapon flags hide the weapon info.
 fn ammo_fade(view: &WeaponInfoView<'_>, shown_at: i32) -> f32 {
@@ -300,10 +366,15 @@ fn ammo_text(view: &WeaponInfoView<'_>, clip: i32, stock: i32) -> WeaponInfoAmmo
 /// 700 ms, then down to nothing; whole while `hud_fade_ammodisplay` is 0,
 /// nothing while `cg_drawpaused` is off.
 fn fade_for(view: &WeaponInfoView<'_>, shown_at: i32, ms: i32) -> f32 {
+    fade_by(view, fade_seconds(view), shown_at, ms)
+}
+
+/// [`fade_for`] by a fade time other than `hud_fade_ammodisplay`'s.
+fn fade_by(view: &WeaponInfoView<'_>, seconds: f32, shown_at: i32, ms: i32) -> f32 {
     if (view.dvar)("cg_drawpaused").unwrap_or(1.0) == 0.0 {
         return 0.0;
     }
-    if fade_seconds(view) == 0.0 {
+    if seconds == 0.0 {
         return 1.0;
     }
     if shown_at == 0 {
