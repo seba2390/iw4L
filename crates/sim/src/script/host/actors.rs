@@ -565,6 +565,8 @@ pub(crate) fn register_damage(registry: &mut NativeRegistry) {
 
 fn ai_event_mask(name: &str) -> Result<u32, String> {
     match name {
+        "pain" => Ok(1 << 5),
+        "death" => Ok(1 << 7),
         "explosion" => Ok(1 << 8),
         "grenade danger" => Ok((1 << 9) | (1 << 10)),
         "gunshot" => Ok(1 << 11),
@@ -781,6 +783,24 @@ pub(crate) fn broadcast_ai_event(
                     "silenced_shot",
                     ai_event_dist(world, "ai_eventDistSilencedShot", 128.0),
                 ),
+                AiPointEvent::Pain => (
+                    1u32 << 5,
+                    "pain",
+                    ai_event_dist(world, "ai_eventDistPain", 512.0),
+                ),
+                AiPointEvent::Death => (
+                    1u32 << 7,
+                    "death",
+                    ai_event_dist(world, "ai_eventDistDeath", 1024.0),
+                ),
+            };
+            // A pain or a death tells the actors around about the
+            // originator's last attacker.
+            let attacker = match kind {
+                AiPointEvent::Pain | AiPointEvent::Death => originator
+                    .and_then(|orig| super::actor_brain::last_attacker(world, orig))
+                    .filter(|&attacker| super::actor_brain::is_sentient(world, attacker)),
+                _ => None,
             };
             let dist_sq = dist * dist;
             let owner_team = originator
@@ -831,6 +851,11 @@ pub(crate) fn broadcast_ai_event(
                         }
                     }
                     AiPointEvent::Gunshot | AiPointEvent::SilencedShot => {}
+                    AiPointEvent::Pain | AiPointEvent::Death => {
+                        if let Some(attacker) = attacker {
+                            super::actor_brain::hear(world, actor, attacker);
+                        }
+                    }
                 }
             }
             for (listener, mask, _, at) in listeners {

@@ -246,9 +246,13 @@ impl ActorPaths {
                 .iter()
                 .map(|(name, n)| format!("{name}={n}"))
                 .collect();
+            let other = nodes
+                .iter()
+                .filter(|node| node.kind == NavNodeKind::Other)
+                .count();
             diag::info!(
                 Sim,
-                "actor paths: {} nodes, {} traversal scripts: {}",
+                "actor paths: {} nodes ({other} neither path nor traversal), {} traversal scripts: {}",
                 nodes.len(),
                 counts.len(),
                 summary.join(", ")
@@ -562,6 +566,9 @@ pub(crate) enum Orient {
     Enemy,
     /// The enemy while standing (or with no path), else the motion.
     EnemyOrMotion,
+    /// The reacquire sidestep's: the enemy or the motion, by the path test
+    /// alone.
+    Sidestep,
     /// Its claimed node's way.
     Goal,
     Angle(f32),
@@ -1840,14 +1847,14 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                 face_motion(&movement, moving, angles[1])
             }
             Orient::Angle(yaw) => Some(yaw),
-            Orient::Enemy => enemy_position(world, actor).map(|enemy| yaw_to(origin, enemy)),
-            Orient::EnemyOrMotion => {
-                match face_enemy_or_motion(world, actor, origin, now, &movement) {
-                    Some(enemy) => Some(yaw_to(origin, enemy)),
-                    None => {
-                        facing_motion = true;
-                        face_motion(&movement, moving, angles[1])
-                    }
+            Orient::Enemy => face_enemy(world, actor, origin),
+            Orient::EnemyOrMotion | Orient::Sidestep => {
+                let sidestep = orient == Orient::Sidestep;
+                if face_enemy_or_motion(world, actor, origin, now, &movement, sidestep) {
+                    face_enemy(world, actor, origin)
+                } else {
+                    facing_motion = true;
+                    face_motion(&movement, moving, angles[1])
                 }
             }
             // A claimed node's angle; zombies claim none.
@@ -2159,30 +2166,48 @@ fn face_motion(movement: &ActorMove, moving: bool, yaw: f32) -> Option<f32> {
     Some(dir[1].atan2(dir[0]).to_degrees())
 }
 
-/// "face enemy or motion": the enemy (where to face it) without a path or
-/// standing; on the move the motion, unless a seen enemy stands within 350
-/// and the zombie path test faces it: a path just planned or nearly done,
-/// or a lookahead long enough for how far the enemy lies off it.
+/// "face enemy": toward the enemy while the actor sees it, else where it
+/// last knew it to be (unless that is within a unit across).
+fn face_enemy(world: &mut World, actor: u64, origin: [f32; 3]) -> Option<f32> {
+    let at = super::actor_brain::enemy_face_point(world, actor)?;
+    let d = [at[0] - origin[0], at[1] - origin[1]];
+    (d[0] * d[0] + d[1] * d[1] >= 1.0).then(|| yaw_to(origin, at))
+}
+
+/// Whether "face enemy or motion" faces the enemy: without a path or
+/// standing it does; on the move it faces the motion, unless a seen enemy
+/// stands within 350 and the zombie path test faces it (a path just
+/// planned or nearly done, or a lookahead long enough for how far the enemy
+/// lies off it). The reacquire sidestep runs the path test with any enemy,
+/// near or not, seen or not.
 fn face_enemy_or_motion(
     world: &mut World,
     actor: u64,
     origin: [f32; 3],
     now: i64,
     movement: &ActorMove,
-) -> Option<[f32; 3]> {
+    sidestep: bool,
+) -> bool {
     let standing = movement.velocity[0] == 0.0 && movement.velocity[1] == 0.0;
     if !movement.has_path() || standing {
-        return enemy_position(world, actor);
+        return true;
     }
-    let enemy = super::actor_brain::seen_enemy(world, actor)?;
+    let enemy = if sidestep {
+        enemy_position(world, actor)
+    } else {
+        super::actor_brain::seen_enemy(world, actor)
+    };
+    let Some(enemy) = enemy else {
+        return sidestep;
+    };
     let d = [
         enemy[0] - origin[0],
         enemy[1] - origin[1],
         enemy[2] - origin[2],
     ];
     let dist_sq = d.iter().map(|v| v * v).sum::<f32>();
-    if dist_sq > FACE_ENEMY_DIST_SQ {
-        return None;
+    if !sidestep && dist_sq > FACE_ENEMY_DIST_SQ {
+        return false;
     }
     let len = dist_sq.sqrt();
     let to = if len > 0.0 {
@@ -2192,17 +2217,13 @@ fn face_enemy_or_motion(
     };
     let age = now - movement.path.time;
     if age < FACE_ENEMY_NEW_MS || !movement.path.longer_than(FACE_ENEMY_PATH) {
-        return Some(enemy);
+        return true;
     }
     let look = movement.path.look_dir;
     let agree = (look[1] * to[1] + to[0] * look[0] + 1.0) * 0.5;
     let short = FACE_MOTION_DIST - agree * FACE_MOTION_DIST_AGREE;
-    if movement.path.look_dist < short
-        || agree * FACE_MOTION_MS_AGREE + FACE_MOTION_MS <= age as f32
-    {
-        return None;
-    }
-    Some(enemy)
+    !(movement.path.look_dist < short
+        || agree * FACE_MOTION_MS_AGREE + FACE_MOTION_MS <= age as f32)
 }
 
 fn species(world: &mut World, actor: u64) -> usize {
@@ -2558,7 +2579,7 @@ fn plan_path(
                 .any(|&(to, _, negotiation)| to == b && negotiation)
     };
     let mut probe = LookaheadProbe { world, actor };
-    let (made, _, _) = movement.path.build(
+    let made = movement.path.build(
         &route,
         traversal,
         start,
@@ -2749,6 +2770,112 @@ fn find_to_goal(
         return false;
     };
     plan_path(world, actor, (origin, start_node), at, true, now, movement)
+}
+
+/// Whether `point` lies within the actor's code goal.
+pub(crate) fn in_code_goal(world: &mut World, actor: u64, point: [f32; 3]) -> bool {
+    code_goal(world, actor).is_some_and(|goal| in_goal_shape(world, actor, point, goal))
+}
+
+/// The reacquire step's trace adds contents bit 4 to the actor's clipmask.
+const REACQUIRE_STEP_CONTENTS: u32 = 0x4;
+
+/// Whether the actor's box steps from `from` to `to` (Black Ops' step trace
+/// with the actor's clipmask).
+pub(crate) fn may_step(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3]) -> bool {
+    let mask = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map_or(MASK_ACTOR_SOLID, actor_mask)
+        | REACQUIRE_STEP_CONTENTS;
+    step_trace(world, actor, from, to, mask)
+}
+
+/// Black Ops' path to a point: a path already ending within 2 of it (and
+/// not to be planned again) stays; standing within 2 of it, the actor
+/// needs none; else one is planned from the actor's nearest node.
+pub(crate) fn plan_to(world: &mut World, actor: u64, goal: [f32; 3], allow_negotiation: bool) {
+    let now = super::players::now_ms(world);
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let Some(mut movement) = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .cloned()
+    else {
+        return;
+    };
+    let near = |at: [f32; 3]| {
+        let dz = at[2] - goal[2];
+        dz * dz <= AT_GOAL_HEIGHT_SQ
+            && (goal[1] - at[1]).powi(2) + (goal[0] - at[0]).powi(2) <= AT_GOAL_FLAT_SQ
+    };
+    let keep = if movement.has_path() {
+        let replan = movement
+            .path
+            .needs_replan(&mut LookaheadProbe { world, actor });
+        if !replan && near(movement.path.final_goal) {
+            true
+        } else {
+            movement.clear_path(origin);
+            false
+        }
+    } else {
+        near(origin)
+    };
+    if !keep
+        && let Some(paths) = FrameWorld::from_world(world).actor_paths()
+        && let Some(start_node) = nearest_node(world, &paths, origin)
+    {
+        plan_path(
+            world,
+            actor,
+            (origin, start_node),
+            goal,
+            allow_negotiation,
+            now,
+            &mut movement,
+        );
+    }
+    world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .insert(actor, movement);
+}
+
+/// The path is cut back to the last point within the code goal; it is
+/// dropped when the actor's current point lies outside.
+pub(crate) fn trim_path_to_goal(world: &mut World, actor: u64) {
+    let Some(goal) = code_goal(world, actor) else {
+        return;
+    };
+    let Some(mut movement) = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .cloned()
+    else {
+        return;
+    };
+    let kept = movement
+        .path
+        .trim_to_goal(|point| in_goal_shape(world, actor, point, goal));
+    if !kept {
+        let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+        movement.clear_path(origin);
+    }
+    world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .insert(actor, movement);
+}
+
+/// Black Ops' random bit (its `rand`, the low bit of the high word).
+pub(crate) fn random_bit(world: &mut World) -> usize {
+    let mut rand = world.get_resource_or_insert_with(ActorRand::default);
+    rand.0 = rand.0.wrapping_mul(0x343fd).wrapping_add(0x269ec3);
+    ((rand.0 >> 17) & 1) as usize
 }
 
 /// Black Ops' "goal" notify, after each think that did not end in death:

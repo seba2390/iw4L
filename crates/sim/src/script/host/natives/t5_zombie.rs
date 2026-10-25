@@ -466,42 +466,51 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "disableinvulnerability", |world, receiver, _| {
         set_invulnerable(world, receiver, false)
     });
-    // No search for a spot that sees a lost enemy: the reacquire steps fail
-    // and the animscripts fall back to running at the enemy along the paths.
+    // The zombie combat script's reacquire attempts: a step aside from
+    // where the enemy is seen, a path straight to the enemy, the move along
+    // it, and giving up on the enemy.
     registry.register(Method, "reacquirestep", |world, receiver, args| {
-        let id = super::engine::entity_id(world, receiver)?;
-        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
-            return Err("not an actor".into());
-        }
-        let _ = super::super::args::float(args, 0)?;
-        Ok(Value::Int(0))
+        let id = reacquire_actor(world, receiver)?;
+        let dist = super::super::args::float(args, 0)?;
+        Ok(Value::Int(
+            super::super::actor_brain::reacquire_step(world, id, dist).into(),
+        ))
     });
-    registry.register(Method, "usereacquirenode", |world, receiver, _| {
-        let id = super::engine::entity_id(world, receiver)?;
-        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
-            return Err("not an actor".into());
-        }
-        Ok(Value::Int(0))
+    registry.register(Method, "findreacquiredirectpath", |world, receiver, _| {
+        let id = reacquire_actor(world, receiver)?;
+        super::super::actor_brain::find_reacquire_direct_path(world, id);
+        Ok(Value::Undefined)
     });
-    registry.register(Method, "reacquiremove", |world, receiver, _| {
-        let id = super::engine::entity_id(world, receiver)?;
-        if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
-            return Err("not an actor".into());
-        }
-        Ok(Value::Int(0))
-    });
-    for name in [
-        "findreacquirenode",
-        "getreacquirenode",
-        "findreacquiredirectpath",
+    registry.register(
+        Method,
         "findreacquireproximatepath",
-        "flagenemyunattackable",
-    ] {
+        |world, receiver, _| {
+            let id = reacquire_actor(world, receiver)?;
+            super::super::actor_brain::find_reacquire_proximate_path(world, id);
+            Ok(Value::Undefined)
+        },
+    );
+    registry.register(Method, "reacquiremove", |world, receiver, _| {
+        let id = reacquire_actor(world, receiver)?;
+        Ok(Value::Int(
+            super::super::actor_brain::reacquire_move(world, id)?.into(),
+        ))
+    });
+    registry.register(Method, "flagenemyunattackable", |world, receiver, _| {
+        let id = reacquire_actor(world, receiver)?;
+        super::super::actor_brain::flag_enemy_unattackable(world, id);
+        Ok(Value::Undefined)
+    });
+    // A level with no cover, guard or exposed nodes (Kino and Five have
+    // only path and traversal nodes) has no reacquire node: the search keeps
+    // none, and none is answered.
+    registry.register(Method, "usereacquirenode", |world, receiver, _| {
+        reacquire_actor(world, receiver)?;
+        Ok(Value::Int(0))
+    });
+    for name in ["findreacquirenode", "getreacquirenode"] {
         registry.register(Method, name, |world, receiver, _| {
-            let id = super::engine::entity_id(world, receiver)?;
-            if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
-                return Err("not an actor".into());
-            }
+            reacquire_actor(world, receiver)?;
             Ok(Value::Undefined)
         });
     }
@@ -1596,4 +1605,13 @@ fn timed_flame(
     } else {
         super::t6::flame_overlay::start(world, client, kind, ms);
     }
+}
+
+/// The actor a reacquire builtin runs on.
+fn reacquire_actor(world: &World, receiver: &Value) -> Result<u64, String> {
+    let id = super::engine::entity_id(world, receiver)?;
+    if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
+        return Err("not an actor".into());
+    }
+    Ok(id)
 }
