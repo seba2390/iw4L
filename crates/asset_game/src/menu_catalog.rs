@@ -1186,8 +1186,10 @@ impl MenuSink {
         }
         materials.sort_unstable();
         materials.dedup();
+        // The games tree is walked for its mains once, not once per image.
+        let mut mains = None;
         for material in materials {
-            self.install_ui_image(&material, games);
+            self.install_ui_image(&material, games, &mut mains);
         }
     }
 
@@ -1197,7 +1199,12 @@ impl MenuSink {
         self.catalog
     }
 
-    fn install_ui_image(&mut self, material: &str, games: Option<&Path>) {
+    fn install_ui_image(
+        &mut self,
+        material: &str,
+        games: Option<&Path>,
+        mains: &mut Option<Vec<Vec<std::path::PathBuf>>>,
+    ) {
         let bare = AssetRef::bare_name(material);
         if bare.is_empty() {
             return;
@@ -1225,7 +1232,8 @@ impl MenuSink {
                 );
                 return;
             };
-            match asset_material::decode_ui_archive_image(root, &image.name) {
+            let mains = mains.get_or_insert_with(|| asset_transport::game_mains_by_root(root));
+            match asset_material::decode_ui_archive_image_among(mains, &image.name) {
                 Ok(Some(rgba)) => Some((rgba, "iwd")),
                 Ok(None) => {
                     diag::warn!(

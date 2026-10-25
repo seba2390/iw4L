@@ -809,8 +809,17 @@ pub fn decode_ui_archive_image(
     games_root: &Path,
     image_name: &str,
 ) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+    decode_ui_archive_image_among(&asset_transport::game_mains_by_root(games_root), image_name)
+}
+
+/// `decode_ui_archive_image` over `game_mains_by_root` groups the caller has
+/// already listed, for a caller decoding many images from one games root.
+pub fn decode_ui_archive_image_among(
+    mains_by_root: &[Vec<PathBuf>],
+    image_name: &str,
+) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
     let name = crate::AssetRef::bare_name(image_name);
-    for main in ui_decode_mains(games_root) {
+    for main in ui_mains_among(mains_by_root.to_vec()) {
         if let Some(image) = decode_ui_image_from_main(&main, name)? {
             return Ok(Some(image));
         }
@@ -849,8 +858,13 @@ pub fn decode_ui_image_from_main(
 }
 
 fn ui_decode_mains(games_root: &Path) -> Vec<PathBuf> {
+    ui_mains_among(asset_transport::game_mains_by_root(games_root))
+}
+
+/// Each root's mains, the archives already indexed first, in root order.
+fn ui_mains_among(mains_by_root: Vec<Vec<PathBuf>>) -> Vec<PathBuf> {
     let mut mains: Vec<PathBuf> = Vec::new();
-    for mut group in asset_transport::game_mains_by_root(games_root) {
+    for mut group in mains_by_root {
         group.sort_by_key(|main| !IwdIndex::is_cached(main));
         for main in group {
             if !mains.contains(&main) {
