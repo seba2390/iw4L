@@ -136,6 +136,7 @@ impl Plugin for HudPlugin {
                             update_targetmap,
                             crate::damage_direction::update.in_set(frame::InMatch),
                             crate::game_code_hud::update_crosshair.in_set(frame::InMatch),
+                            crate::game_code_hud::update_grenade_indicators.in_set(frame::InMatch),
                             crate::game_code_hud::update_scoreboard.in_set(frame::InMatch),
                             crate::menus::update_script_menus,
                             crate::menus::sync_game_menu_dvars,

@@ -307,6 +307,10 @@ pub(crate) struct WeaponBodyFacts {
     pub detonate_time_ms: i32,
     pub projectile_rotates: bool,
     pub timed_detonation: bool,
+    /// The grenade indicator shows the weapon's projectiles, and within
+    /// what range (0: the game's own).
+    pub show_indicator: bool,
+    pub indicator_radius: i32,
 
     pub proj_impact_explode: bool,
 
@@ -780,6 +784,10 @@ pub struct WeaponReticleAssets {
     pub center_authored: bool,
 
     pub side_authored: bool,
+
+    /// The material the grenade indicator draws for the weapon's
+    /// projectiles, when the weapon names one.
+    pub indicator_icon: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

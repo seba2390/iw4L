@@ -8,6 +8,7 @@ mod fire_autosim;
 mod fire_sound;
 mod front_end_catalog;
 mod grenade;
+mod grenade_indicator;
 mod menu_expression;
 mod missile;
 mod movement;

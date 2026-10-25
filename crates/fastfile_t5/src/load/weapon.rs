@@ -19,6 +19,11 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
                     kill_icon: material_name_at(s, links, body.at(sz::WEAPON_DEF_KILL_ICON_OFF)),
                     reticle_center: material_name_at(s, links, body.at(0x1a0)),
                     reticle_side: material_name_at(s, links, body.at(0x1a4)),
+                    indicator_icon: material_name_at(
+                        s,
+                        links,
+                        body.at(sz::WEAPON_DEF_INDICATOR_ICON_OFF),
+                    ),
                     ..WeaponAssets::default()
                 },
             )
@@ -81,6 +86,7 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         overlay_material_lowres_name,
         reticle_center_name: assets.reticle_center,
         reticle_side_name: assets.reticle_side,
+        indicator_icon_name: assets.indicator_icon,
         alternate_weapon_name,
         ammo_name,
         clip_name,
@@ -172,7 +178,7 @@ fn load_weapon_def(
         follow_name(s, p, off)?;
     }
     let kill_icon = follow_material_name(s, links, p.at(sz::WEAPON_DEF_KILL_ICON_OFF))?;
-    asset_ptr_at(s, links, AssetType::Material, p.at(0x328))?;
+    let indicator_icon = follow_material_name(s, links, p.at(sz::WEAPON_DEF_INDICATOR_ICON_OFF))?;
     follow_name(s, p, 0x58c)?;
     follow_name(s, p, 0x590)?;
     let projectile = follow_xmodel_ptr(s, links, p.at(0x5e8))?;
@@ -251,6 +257,7 @@ fn load_weapon_def(
         clip,
         reticle_center,
         reticle_side,
+        indicator_icon,
     })
 }
 
@@ -428,4 +435,5 @@ struct WeaponAssets {
     clip: Option<Ptr>,
     reticle_center: Option<Ptr>,
     reticle_side: Option<Ptr>,
+    indicator_icon: Option<Ptr>,
 }
