@@ -62,6 +62,11 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     ("ai_slowdownMaxYawDiff", "90"),
     ("ai_meleeRange", "64"),
     ("ai_turnRate", "220"),
+    // The hellhound's turn test and turn animscript, and its weave.
+    ("dog_turn90_angle", "70"),
+    ("dog_turn180_angle", "135"),
+    ("dog_turn_min_goal_dist", "40"),
+    ("ai_pathMomentum", "0.78"),
     // Black Ops registers it true; `_zombiemode_load` sets
     // `level.clientscripts` from it, which `clientNotify` reads.
     ("cg_usingClientScripts", "1"),

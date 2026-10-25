@@ -194,6 +194,11 @@ impl ActorPath {
         self.curr
     }
 
+    /// Whether the lookahead grew on its last update.
+    pub(crate) fn grew(&self) -> bool {
+        self.flags & GREW != 0
+    }
+
     /// The traversal's begin node, when the path's first traversal is
     /// next.
     pub(crate) fn negotiation_node(&self) -> Option<u16> {

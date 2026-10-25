@@ -142,6 +142,8 @@ enum SpeciesScript {
     Move,
     Scripted,
     Stop,
+    /// The hellhound's turn on the run.
+    Turn,
 }
 
 impl SpeciesScript {
@@ -153,6 +155,7 @@ impl SpeciesScript {
             Self::Move => "move",
             Self::Scripted => "scripted",
             Self::Stop => "stop",
+            Self::Turn => "turn",
         }
     }
 }
@@ -806,8 +809,13 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
                 .is_some_and(|movement| movement.anim_mode == AnimMode::Normal);
         if !moving {
             with_brain(world, actor, |brain| brain.movemode = MOVE_STOP);
+            let negotiating = brain(world, actor).is_some_and(|brain| brain.top() == NEGOTIATION);
             with_movement(world, actor, |movement| {
-                movement.anim_mode = AnimMode::Normal
+                movement.anim_mode = AnimMode::Normal;
+                // A move starting outside a traversal weaves afresh.
+                if !negotiating {
+                    movement.momentum_dir = [0.0; 2];
+                }
             });
         }
     }
@@ -1099,6 +1107,12 @@ pub(crate) fn hear(world: &mut World, actor: u64, target: u64) {
     if recent {
         return;
     }
+    know(world, actor, target);
+}
+
+/// The actor knows now where `target` is.
+fn know(world: &mut World, actor: u64, target: u64) {
+    let now = super::players::now_ms(world);
     let at = target_origin(world, target);
     with_brain(world, actor, |brain| {
         let sighting = brain.sightings.entry(target).or_default();
@@ -1543,22 +1557,46 @@ fn goal_shape(world: &mut World, actor: u64) -> Option<([f32; 3], [f32; 3], [f32
     Some((origin, path_end, goal, radius, height))
 }
 
-/// The hellhound's exposed think: it bites (the combat animscript) once
-/// its attack spot is reached, or while its bite may not be cut off, and
-/// otherwise runs its path or stands.
+/// The hellhound's exposed think: once a frame it knows where each
+/// enemy-team sentient is; it bites (the combat animscript) once its attack
+/// spot is reached, or while its bite may not be cut off. Its code goal is
+/// its claimed spot, else the script's goal; a path ending more than 15
+/// from it is dropped, and with an enemy and no path it plans to the node
+/// nearest the enemy. Otherwise it turns (the turn animscript) when its
+/// lookahead turns far from its facing, runs its path, or stands.
 fn dog_exposed_think(world: &mut World, actor: u64) -> u8 {
+    let now = super::players::now_ms(world);
+    if brain(world, actor).is_some_and(|brain| brain.sensed_at != Some(now)) {
+        know_enemy_team(world, actor);
+    }
     sense(world, actor);
-    let combat_running = brain(world, actor)
-        .is_some_and(|brain| brain.script == Some(AnimScript::Species(SpeciesScript::Combat)))
-        && script_running(world, actor);
+    let enemy = enemy(world, actor);
+    let combat_running = running_species_script(world, actor, SpeciesScript::Combat);
     let locked = combat_running && !safe_to_change_script(world, actor);
-    let bite = if locked {
-        false
-    } else {
-        super::actor_dog::think(world, actor)
+    let (bite, spot) = match enemy {
+        Some(enemy) if !locked => super::actor_dog::think(world, actor, enemy),
+        _ => (false, None),
     };
+    super::actor_nav::set_claimed_spot(world, actor, spot);
+    super::actor_nav::drop_far_path(world, actor);
+    let planned = match enemy {
+        None => {
+            super::actor_nav::update_path(world, actor);
+            false
+        }
+        Some(enemy) if !has_path(world, actor) => {
+            super::actor_nav::plan_to_enemy_node(world, actor, enemy);
+            true
+        }
+        Some(_) => false,
+    };
+    world.resource_mut::<RoundScript>().set_object_field(
+        actor,
+        "nododgemove",
+        Value::Int(i32::from(!planned)),
+    );
     if locked || bite {
-        if enemy(world, actor).is_some() {
+        if enemy.is_some() {
             let combat_ended = brain(world, actor).is_some_and(|brain| {
                 brain.script == Some(AnimScript::Species(SpeciesScript::Combat))
             }) && !script_running(world, actor);
@@ -1573,14 +1611,82 @@ fn dog_exposed_think(world: &mut World, actor: u64) -> u8 {
                 AnimMode::Normal,
             );
         }
-    } else if has_path(world, actor) {
-        set_code_orient(world, actor, Orient::Motion);
-        start_move(world, actor, true);
-    } else {
+    } else if !has_path(world, actor) {
         start_stop(world, actor);
+    } else {
+        let turn_locked = running_species_script(world, actor, SpeciesScript::Turn)
+            && !safe_to_change_script(world, actor);
+        if code_moving(world, actor)
+            && !turn_locked
+            && super::actor_nav::wants_dog_turn(world, actor)
+        {
+            set_code_orient(world, actor, Orient::Motion);
+            set_anim_script(
+                world,
+                actor,
+                AnimScript::Species(SpeciesScript::Turn),
+                MOVE_RUN,
+                AnimMode::Normal,
+            );
+        } else if !turn_locked {
+            set_code_orient(world, actor, Orient::Motion);
+            start_move(world, actor, true);
+        }
     }
     begin_negotiation(world, actor);
     THINK_DONE
+}
+
+/// Whether `script` is the actor's animscript and still runs.
+fn running_species_script(world: &mut World, actor: u64, script: SpeciesScript) -> bool {
+    brain(world, actor).is_some_and(|brain| brain.script == Some(AnimScript::Species(script)))
+        && script_running(world, actor)
+}
+
+/// Whether the engine moves the actor along its path: the normal anim
+/// mode with a moving movemode.
+fn code_moving(world: &World, actor: u64) -> bool {
+    brain(world, actor).is_some_and(|brain| brain.movemode != MOVE_STOP)
+        && world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&actor)
+            .is_some_and(|movement| movement.anim_mode == AnimMode::Normal)
+}
+
+/// The hellhound knows where each live sentient of the team it fights is.
+fn know_enemy_team(world: &mut World, actor: u64) {
+    let targets: Vec<u64> = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        let enemy_team = match runtime.object_field(actor, "team") {
+            Value::String(team) if &*team == "axis" => "allies",
+            Value::String(team) if &*team == "allies" => "axis",
+            _ => return,
+        };
+        let ids: Vec<(u64, bool)> = runtime
+            .entities
+            .iter()
+            .filter_map(|(&id, entity)| match entity.kind {
+                super::entities::EntityKind::Player => Some((id, true)),
+                super::entities::EntityKind::Actor => Some((id, false)),
+                _ => None,
+            })
+            .collect();
+        ids.into_iter()
+            .filter(|&(id, player)| {
+                id != actor
+                    && runtime.live(&id)
+                    && match runtime.peek_object_field(id, "team") {
+                        Some(Value::String(team)) => &*team == enemy_team,
+                        _ => player && enemy_team == "allies",
+                    }
+            })
+            .map(|(id, _)| id)
+            .collect()
+    };
+    for target in targets {
+        know(world, actor, target);
+    }
 }
 
 // --- Negotiation --------------------------------------------------------
@@ -1621,6 +1727,7 @@ fn negotiation_start(world: &mut World, actor: u64) -> bool {
     }
     set_code_orient(world, actor, Orient::Current);
     with_brain(world, actor, |brain| brain.traverse_mode = 2);
+    with_movement(world, actor, |movement| movement.momentum_dir = [0.0; 2]);
     true
 }
 
