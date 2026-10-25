@@ -81,9 +81,6 @@ const MOVE_STOP: u8 = 0;
 const MOVE_STOP_SOON: u8 = 1;
 const MOVE_WALK: u8 = 2;
 const MOVE_RUN: u8 = 3;
-/// A running actor this close in time to its path's end, at its speed, runs
-/// the stop animscript with `movemode = "stop_soon"`.
-const STOP_SOON_SECONDS: f32 = 0.2;
 /// A blocked actor slower than this, squared, starts to stop.
 const BLOCKED_STILL_SQ: f32 = 1.0;
 
@@ -397,7 +394,9 @@ pub(crate) fn think(world: &mut World) {
         .keys()
         .copied()
         .collect();
+    super::actor_nav::install_clip(world);
     for actor in actors {
+        super::actor_nav::clip_actor(world, actor);
         super::actor_nav::update_blocker(world, actor);
         let mut result = THINK_DONE;
         for round in 0..THINK_LIMIT {
@@ -417,8 +416,11 @@ pub(crate) fn think(world: &mut World) {
         }
         if result == THINK_FINISHED {
             finish_death(world, actor);
+        } else if brain(world, actor).is_some() {
+            super::actor_nav::goal_notify(world, actor);
         }
     }
+    super::actor_nav::remove_clip(world);
 }
 
 fn think_once(world: &mut World, actor: u64) -> u8 {
@@ -707,7 +709,29 @@ fn has_path(world: &World, actor: u64) -> bool {
 }
 
 fn clear_path(world: &mut World, actor: u64) {
-    with_movement(world, actor, |movement| movement.drop_path());
+    super::actor_nav::clear_path(world, actor);
+}
+
+/// The actor's movemode (0 stop, 1 stop soon, 2 walk, 3 run).
+pub(crate) fn movemode(world: &World, actor: u64) -> u8 {
+    brain(world, actor).map_or(MOVE_STOP, |brain| brain.movemode)
+}
+
+/// Whether the actor is a hellhound.
+pub(crate) fn is_dog(world: &World, actor: u64) -> bool {
+    brain(world, actor).is_some_and(|brain| brain.dog)
+}
+
+/// Where the actor's enemy stands, when the actor sees it.
+pub(crate) fn seen_enemy(world: &mut World, actor: u64) -> Option<[f32; 3]> {
+    let enemy = enemy(world, actor)?;
+    if !can_see_enemy(world, actor) {
+        return None;
+    }
+    match super::players::entity_field(world, enemy, "origin") {
+        Value::Vector(at) => Some(at),
+        _ => None,
+    }
 }
 
 fn safe_to_change_script(world: &mut World, actor: u64) -> bool {
@@ -767,25 +791,10 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
         start_blocked(world, actor);
         return;
     }
+    // Running, the path's end ease about to end stops it.
     let stop_soon = run && {
-        let mut runtime = world.resource_mut::<RoundScript>();
-        let origin = vector_field(&mut runtime, actor, "origin");
-        let movement = runtime
-            .actor_moves
-            .get(&actor)
-            .filter(|movement| movement.traversal.is_none() && movement.waypoints.len() == 1);
-        let end = movement.and_then(super::actor_nav::ActorMove::path_end);
-        let speed_sq = movement.map_or(0.0, |movement| {
-            movement.velocity[0].powi(2) + movement.velocity[1].powi(2)
-        });
-        match (origin, end) {
-            (Some(origin), Some(end)) => {
-                let dx = end[0] - origin[0];
-                let dy = end[1] - origin[1];
-                speed_sq > 0.0 && dx * dx + dy * dy <= speed_sq * STOP_SOON_SECONDS.powi(2)
-            }
-            _ => false,
-        }
+        let now = super::players::now_ms(world);
+        super::actor_nav::ends_soon(world, actor, now)
     };
     if stop_soon {
         set_anim_script(
@@ -1161,6 +1170,7 @@ fn exposed_think(world: &mut World, actor: u64) -> u8 {
     pick_substate(world, actor);
     match brain(world, actor).map(ActorBrain::substate) {
         Some(EXPOSED_COMBAT) => {
+            super::actor_nav::update_path(world, actor);
             if has_path(world, actor) && can_see_enemy(world, actor) && stop_to_fight(world, actor)
             {
                 clear_path(world, actor);
@@ -1184,6 +1194,7 @@ fn exposed_think(world: &mut World, actor: u64) -> u8 {
 /// `walkdist` of the path's end, facing its motion (its enemy or motion
 /// once at its goal); without one it fights an enemy or stands, facing it.
 fn noncombat(world: &mut World, actor: u64) {
+    super::actor_nav::update_path(world, actor);
     if has_path(world, actor) {
         let run = {
             let mut runtime = world.resource_mut::<RoundScript>();
@@ -1415,10 +1426,7 @@ fn negotiation_think(world: &mut World, actor: u64) -> u8 {
                 at[2]
             );
         }
-        with_movement(world, actor, |movement| {
-            movement.velocity = [0.0; 3];
-            movement.finish_traversal();
-        });
+        super::actor_nav::finish_traversal(world, actor);
         with_brain(world, actor, ActorBrain::pop);
         return THINK_CHANGED;
     }

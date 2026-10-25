@@ -2,6 +2,7 @@ pub mod actor_anims;
 pub mod actor_brain;
 pub(crate) mod actor_dog;
 pub mod actor_nav;
+pub(crate) mod actor_path;
 pub(crate) mod actors;
 pub mod args;
 pub mod arrays;

@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
 use bevy_ecs::prelude::{Resource, World};
 
+use super::actor_path::{ActorPath, LeanRing, Probe};
 use super::args::{arg, float, int, string, vector};
 use super::dynamic_paths;
 use super::entities::EntityKind;
@@ -380,6 +381,105 @@ impl ActorPaths {
         None
     }
 
+    /// Black Ops' path search from `start` to `goal` over the standing
+    /// links: the cost so far plus the flat distance to the goal position,
+    /// with each other actor already headed for a traversal node (and a node
+    /// the start stands within the use distance of) costing more; the open
+    /// list ordered by that, a node reached cheaper opened again. Links in a
+    /// badplace for the actor's teams and nodes marked unusable are skipped.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn search(
+        &self,
+        start: u16,
+        goal: u16,
+        start_pos: [f32; 3],
+        goal_pos: [f32; 3],
+        edits: &LinkEdits,
+        badplace_teams: u8,
+        users: &BTreeMap<u16, u32>,
+    ) -> Option<Vec<u16>> {
+        struct Visit {
+            cost: f32,
+            heuristic: f32,
+            parent: Option<u16>,
+        }
+        let mut visits: BTreeMap<u16, Visit> = BTreeMap::new();
+        visits.insert(
+            start,
+            Visit {
+                cost: 0.0,
+                heuristic: 0.0,
+                parent: None,
+            },
+        );
+        // Ordered by cost plus heuristic; a node goes before the first that
+        // is not cheaper.
+        let mut open: Vec<(f32, u16)> = vec![(0.0, start)];
+        while !open.is_empty() {
+            let (_, node) = open.remove(0);
+            if node == goal {
+                let mut route = vec![goal];
+                let mut cursor = goal;
+                while let Some(parent) = visits.get(&cursor).and_then(|visit| visit.parent) {
+                    route.push(parent);
+                    cursor = parent;
+                }
+                route.reverse();
+                return Some(route);
+            }
+            let cost = visits[&node].cost;
+            for (next, length, _) in self.links(node, edits) {
+                if edits.link_in_badplace((node, next), badplace_teams) {
+                    continue;
+                }
+                let target = &self.nodes[usize::from(next)];
+                if target
+                    .fields
+                    .as_ref()
+                    .is_some_and(|fields| fields.spawnflags & NODE_DONT_USE != 0)
+                {
+                    continue;
+                }
+                let reached = cost + length;
+                let heuristic = match visits.get(&next) {
+                    Some(visit) => {
+                        if visit.cost <= reached {
+                            continue;
+                        }
+                        open.retain(|&(_, open_node)| open_node != next);
+                        visit.heuristic
+                    }
+                    None => {
+                        let o = target.origin;
+                        let mut h = ((goal_pos[1] - o[1]).powi(2) + (goal_pos[0] - o[0]).powi(2))
+                            .sqrt()
+                            + users.get(&next).copied().unwrap_or(0) as f32 * OVERLAP_COST;
+                        let min_use = target.fields.as_ref().map_or(0.0, |f| f.min_use_dist_sq);
+                        if 1.0 < min_use && distance_sq(start_pos, o) < min_use {
+                            h += OVERLAP_COST;
+                        }
+                        h
+                    }
+                };
+                visits.insert(
+                    next,
+                    Visit {
+                        cost: reached,
+                        heuristic,
+                        parent: Some(node),
+                    },
+                );
+                let f = reached + heuristic;
+                let at = open
+                    .iter()
+                    .position(|&(other, _)| other >= f)
+                    .unwrap_or(open.len());
+                open.insert(at, (f, next));
+            }
+        }
+        None
+    }
+
     /// The node sequence from the node serving `from` to the one serving `to`.
     fn plan(
         &self,
@@ -462,10 +562,9 @@ pub(crate) enum Orient {
     Enemy,
     /// The enemy while standing (or with no path), else the motion.
     EnemyOrMotion,
-    /// Its goal node's way.
+    /// Its claimed node's way.
     Goal,
     Angle(f32),
-    Point([f32; 3]),
     /// The way it already faces.
     #[default]
     Current,
@@ -488,11 +587,22 @@ pub(crate) struct ActorMove {
     /// Where the engine's own think sends the actor ahead of its goal: a
     /// hellhound runs to the path node nearest its enemy.
     pursuit: Option<[f32; 3]>,
-    /// Where the path was planned to; an entity goal replans when it moves.
-    planned_to: Option<[f32; 3]>,
-    pub(crate) waypoints: Vec<[f32; 3]>,
-    /// The path node each waypoint stands on; the goal point has none.
-    pub(crate) waypoint_nodes: Vec<Option<u16>>,
+    /// Where the hellhound's path was planned to.
+    pursued_to: Option<[f32; 3]>,
+    /// Black Ops' path and lookahead.
+    pub(crate) path: ActorPath,
+    /// The facing smoothing the path steer feeds.
+    lean: LeanRing,
+    /// No path is looked for again before this after one was not found.
+    retry_at: i64,
+    /// No path is looked for before this.
+    path_wait: i64,
+    /// The goal position the AI last worked to (`goal_changed`).
+    code_goal: Option<[f32; 3]>,
+    /// The yaw the AI's facing last asked for.
+    desired_yaw: Option<f32>,
+    /// Where the actor stood after its last move.
+    last_origin: Option<[f32; 3]>,
     /// The traversal the actor is playing between two negotiation nodes.
     pub(crate) traversal: Option<Traversal>,
     pub(crate) anim_mode: AnimMode,
@@ -554,9 +664,14 @@ impl Default for ActorMove {
             goal_yaw: None,
             goal_volume: None,
             pursuit: None,
-            planned_to: None,
-            waypoints: Vec::new(),
-            waypoint_nodes: Vec::new(),
+            pursued_to: None,
+            path: ActorPath::default(),
+            lean: LeanRing::default(),
+            retry_at: 0,
+            path_wait: 0,
+            code_goal: None,
+            desired_yaw: None,
+            last_origin: None,
             traversal: None,
             anim_mode: AnimMode::Normal,
             anim_mode_override: None,
@@ -604,22 +719,25 @@ struct Scripted {
 
 impl ActorMove {
     pub(crate) fn has_path(&self) -> bool {
-        !self.waypoints.is_empty()
+        self.path.has_path()
     }
 
-    fn clear_path(&mut self) {
-        self.waypoints.clear();
-        self.waypoint_nodes.clear();
+    /// Drops the path at `origin` (its area back onto the lookahead
+    /// amount).
+    fn clear_path(&mut self, origin: [f32; 3]) {
+        self.path.clear(origin);
     }
 
-    /// Ends the path the AI follows; the goal stays, replanned once it moves.
+    /// Ends the path the AI follows where the actor last stood; the goal
+    /// stays.
     pub(crate) fn drop_path(&mut self) {
-        self.clear_path();
+        let at = self.last_origin.unwrap_or(self.path.current());
+        self.clear_path(at);
     }
 
     /// Where the path ends.
     pub(crate) fn path_end(&self) -> Option<[f32; 3]> {
-        self.waypoints.last().copied()
+        self.has_path().then_some(self.path.final_goal)
     }
 
     /// "face default": the script's facing is let go of, the AI keeping the
@@ -639,31 +757,13 @@ impl ActorMove {
     pub(crate) fn scripted_playing(&self) -> bool {
         self.scripted.is_some()
     }
-
-    fn drop_waypoint(&mut self) {
-        self.waypoints.remove(0);
-        if !self.waypoint_nodes.is_empty() {
-            self.waypoint_nodes.remove(0);
-        }
-    }
-
-    /// Ends a finished traversal; the path resumes past its end node.
-    pub(crate) fn finish_traversal(&mut self) {
-        let Some(traversal) = self.traversal.take() else {
-            return;
-        };
-        if self.waypoint_nodes.first() == Some(&Some(traversal.end)) {
-            self.drop_waypoint();
-        }
-    }
 }
 
-/// A goal set this close to the current one keeps the current path.
-const SAME_GOAL_DISTANCE: f32 = 16.0;
-/// A goal entity that moves farther than this is chased with a new path.
+/// A hellhound's pursuit point that moves farther than this is chased with
+/// a new path.
 const REPLAN_DISTANCE: f32 = 64.0;
-/// A waypoint closer than this is passed.
-const WAYPOINT_REACHED: f32 = 16.0;
+/// A hellhound's pursuit ends this close to its point.
+const PURSUIT_REACHED: f32 = 16.0;
 /// When a script names no radius.
 const DEFAULT_GOAL_RADIUS: f32 = 32.0;
 /// When a script names no goal height.
@@ -900,7 +1000,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 yaw: angles[1],
                 node,
             });
-            movement.clear_path();
+            movement.drop_path();
         })
     });
     registry.register(Method, "stopanimscripted", |world, receiver, _| {
@@ -1166,7 +1266,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let clear = name != "none" && matches!(args.get(1), Some(Value::Int(n)) if *n != 0);
         with_move(world, receiver, |movement| {
             if clear {
-                movement.clear_path();
+                movement.drop_path();
             }
             movement.anim_mode_override = mode;
             if let Some(mode) = mode {
@@ -1188,7 +1288,19 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 }
                 Some(Orient::Angle(dir[1].atan2(dir[0]).to_degrees()))
             }
-            "face point" => Some(Orient::Point(vector(args, 1)?)),
+            // Black Ops turns toward the point once, as the call is made
+            // (not when it stands within a unit across).
+            "face point" => {
+                let point = vector(args, 1)?;
+                let id = actor_id(world, receiver)?;
+                let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
+                let d = [point[0] - origin[0], point[1] - origin[1]];
+                if d[0] * d[0] + d[1] * d[1] >= 1.0 {
+                    Some(Orient::Angle(yaw_to(origin, point)))
+                } else {
+                    Some(Orient::Current)
+                }
+            }
             "face current" => Some(Orient::Current),
             "face default" => None,
             _ => {
@@ -1265,8 +1377,8 @@ fn force_teleport(world: &mut World, receiver: &Value, args: &[Value]) -> Result
         runtime.set_object_field(id, "angles", Value::Vector(angles));
     }
     let movement = runtime.actor_moves.entry(id).or_default();
-    movement.clear_path();
-    movement.planned_to = None;
+    movement.clear_path(origin);
+    movement.last_origin = Some(origin);
     Ok(Value::Undefined)
 }
 
@@ -1277,24 +1389,12 @@ fn set_goal(
     yaw: Option<f32>,
 ) -> Result<Value, String> {
     let id = actor_id(world, receiver)?;
+    // Black Ops keeps the path: the path think plans again once its end
+    // leaves the goal, and tells `goal_changed`.
     let mut runtime = world.resource_mut::<RoundScript>();
     let movement = runtime.actor_moves.entry(id).or_default();
-    // Scripts re-issue the same goal every frame; only a goal that moved
-    // replans, as an entity goal does once it strays from the plan.
-    let same = match (&movement.goal, &goal) {
-        (Some(Goal::Position(old)), Goal::Position(new)) => {
-            distance_sq(*old, *new) < SAME_GOAL_DISTANCE * SAME_GOAL_DISTANCE
-        }
-        (Some(Goal::Entity(old)), Goal::Entity(new)) => old == new,
-        _ => false,
-    };
     movement.goal = Some(goal);
     movement.goal_yaw = yaw;
-    if !same {
-        movement.planned_to = None;
-        movement.clear_path();
-        raise(world, Value::Object(id), "goal_changed", Vec::new());
-    }
     Ok(Value::Undefined)
 }
 
@@ -1443,6 +1543,14 @@ fn model_anim_scripted(
 }
 
 pub(crate) fn locomote(world: &mut World, seconds: f32) {
+    install_clip(world);
+    locomote_actors(world, seconds);
+    world.remove_resource::<ActorClipTick>();
+}
+
+/// Gathers what actors' sweeps meet this tick: the world's movers, the
+/// players' and the live actors' bodies.
+pub(crate) fn install_clip(world: &mut World) {
     let mut clip = crate::step::ActorClip::gather(&FrameWorld::from_world(world));
     // Live actors' bodies block each other's sweeps (their contents are a
     // body's, which the actor clipmask names).
@@ -1458,10 +1566,24 @@ pub(crate) fn locomote(world: &mut World, seconds: f32) {
         }
     }
     world.insert_resource(ActorClipTick(clip, u16::MAX));
-    locomote_actors(world, seconds);
+}
+
+/// The actor whose own body the gathered sweeps skip.
+pub(crate) fn clip_actor(world: &mut World, actor: u64) {
+    let entnum = entity_number(world, actor);
+    if let Some(mut clip) = world.get_resource_mut::<ActorClipTick>() {
+        clip.1 = entnum;
+    }
+}
+
+pub(crate) fn remove_clip(world: &mut World) {
     world.remove_resource::<ActorClipTick>();
 }
 
+/// The movement mode's frame: Black Ops' actor movement. In the normal
+/// mode a moving actor with a path is steered along its lookahead at its
+/// animation's speed (and eased onto the path's end); in the others the
+/// animation moves it and the path catches up with where it went.
 fn locomote_actors(world: &mut World, seconds: f32) {
     let now = super::players::now_ms(world);
     if let Some(mut edits) = world.get_resource_mut::<LinkEdits>() {
@@ -1474,7 +1596,6 @@ fn locomote_actors(world: &mut World, seconds: f32) {
         .keys()
         .copied()
         .collect();
-    let paths = FrameWorld::from_world(world).actor_paths();
     for actor in actors {
         if !world
             .resource::<RoundScript>()
@@ -1493,58 +1614,13 @@ fn locomote_actors(world: &mut World, seconds: f32) {
         if let Some(mut clip) = world.get_resource_mut::<ActorClipTick>() {
             clip.1 = entnum;
         }
-        let goal_radius = goal_radius(world, actor);
-        let goal_at = goal_position(world, actor);
         let mut movement = world.resource::<RoundScript>().actor_moves[&actor].clone();
-        let mut events: Vec<&'static str> = Vec::new();
+        let mut events: Vec<(&'static str, Vec<Value>)> = Vec::new();
         let prev_ground = movement.ground_ent_type;
+        // What the last move hit, as the lookahead reads it.
+        let last_hit_body = movement.hit_body;
         movement.hit_ent_type = HIT_NONE;
         movement.deflected = false;
-        // A pursuit ends where its path does; it is no script goal.
-        let pursuing = movement.pursuit.is_some();
-        let goal_radius = if pursuing {
-            WAYPOINT_REACHED
-        } else {
-            goal_radius
-        };
-
-        let edits = world
-            .get_resource::<LinkEdits>()
-            .cloned()
-            .unwrap_or_else(LinkEdits::default);
-        let badplace_teams = actor_badplace_teams(world, actor);
-        if let Some(goal_at) = goal_at {
-            let path_blocked =
-                path_uses_blocked_link(&movement.waypoint_nodes, &edits, badplace_teams);
-            let stale = path_blocked
-                || movement.planned_to.is_none_or(|planned| {
-                    distance_sq(planned, goal_at) > REPLAN_DISTANCE * REPLAN_DISTANCE
-                });
-            if stale {
-                movement.planned_to = Some(goal_at);
-                movement.clear_path();
-                if horizontal_distance(origin, goal_at) > goal_radius {
-                    let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
-                    let planned = paths.as_deref().and_then(|paths| {
-                        paths.plan(origin, goal_at, &edits, badplace_teams, &mut reach)
-                    });
-                    match planned {
-                        Some(nodes) => {
-                            let paths = paths.as_deref().unwrap();
-                            movement.waypoints = nodes
-                                .iter()
-                                .map(|&node| paths.nodes[node as usize].origin)
-                                .collect();
-                            movement.waypoint_nodes =
-                                nodes.iter().map(|&node| Some(node)).collect();
-                            movement.waypoints.push(goal_at);
-                            movement.waypoint_nodes.push(None);
-                        }
-                        None => events.push("bad_path"),
-                    }
-                }
-            }
-        }
 
         if let Some(scripted) = movement.scripted.clone() {
             match super::actor_anims::node_clip(world, actor, scripted.node) {
@@ -1575,6 +1651,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             if seconds > 0.0 {
                 movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
             }
+            movement.last_origin = Some(origin);
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
             runtime.set_object_field(actor, "angles", Value::Vector(angles));
@@ -1591,7 +1668,10 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             (local[0] * sin + local[1] * cos) * scale,
             local[2] * scale,
         ];
+        let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+        let moving = super::actor_brain::movemode(world, actor) != 0;
         let mut heading = None;
+        let mut code_move = false;
         match movement.anim_mode {
             _ if movement.traversal.is_some() => {
                 for axis in 0..3 {
@@ -1607,43 +1687,67 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                 angles[1] += turned;
             }
             AnimMode::Normal => {
-                while movement
-                    .waypoints
-                    .first()
-                    .is_some_and(|&next| horizontal_distance(origin, next) < WAYPOINT_REACHED)
-                    && movement.waypoints.len() > 1
-                {
-                    if let Some(traversal) = paths
-                        .as_deref()
-                        .and_then(|paths| traversal_at(paths, &movement.waypoint_nodes))
-                    {
-                        movement.drop_waypoint();
-                        movement.traversal = Some(traversal);
-                        break;
+                code_move = true;
+                let held = held_blocker(world, &movement);
+                if moving && movement.has_path() && held.is_none() {
+                    let mut wish = steer(
+                        world,
+                        actor,
+                        origin,
+                        step,
+                        last_hit_body,
+                        now,
+                        seconds,
+                        &mut movement,
+                    );
+                    path_end(
+                        world,
+                        actor,
+                        origin,
+                        now,
+                        seconds,
+                        &mut movement,
+                        &mut events,
+                        &mut wish,
+                    );
+                    if wish[0] != 0.0 || wish[1] != 0.0 {
+                        heading = Some(wish[1].atan2(wish[0]).to_degrees());
                     }
-                    movement.drop_waypoint();
-                }
-                if let Some(&next) = movement.waypoints.first() {
-                    let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
-                    let to = [next[0] - origin[0], next[1] - origin[1]];
-                    let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
-                    let wish = if length > 0.001 {
-                        let advance = step.min(length);
-                        heading = Some(to[1].atan2(to[0]).to_degrees());
-                        [to[0] / length * advance, to[1] / length * advance, 0.0]
+                    origin = if movement.has_path() {
+                        walk(world, actor, origin, wish, seconds, &mut movement)
                     } else {
-                        [0.0; 3]
-                    };
-                    // Holding a blocker, it steps away from it instead.
-                    origin = match held_blocker(world, &movement) {
-                        Some(blocker) => {
-                            step_away(world, actor, origin, blocker, step, seconds, &mut movement)
-                        }
-                        None => walk_path(world, origin, wish, seconds, &mut movement),
+                        physics_move(
+                            world,
+                            origin,
+                            [wish[0], wish[1], 0.0],
+                            seconds,
+                            &mut movement,
+                        )
+                        .0
                     };
                 } else {
-                    let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
-                    origin = match held_blocker(world, &movement) {
+                    if movement.has_path() {
+                        let decrease = lookahead_decrease(last_hit_body, &movement);
+                        let kept = movement.path.update(
+                            origin,
+                            (decrease, false, true),
+                            now,
+                            &mut LookaheadProbe { world, actor },
+                        );
+                        if !kept {
+                            replan_lookahead(world, actor, origin, now, &mut movement);
+                        }
+                        // Every tenth frame the smoothing steps on.
+                        let look = movement.path.look_dir;
+                        let lean = [look[0] * LEAN_STANDING, look[1] * LEAN_STANDING];
+                        if (now / FRAME_MS) % 10 != 0 {
+                            movement.lean.add(lean);
+                        } else {
+                            movement.lean.step();
+                            movement.lean.set(lean);
+                        }
+                    }
+                    origin = match held {
                         Some(blocker) => {
                             step_away(world, actor, origin, blocker, step, seconds, &mut movement)
                         }
@@ -1652,7 +1756,6 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                 }
             }
             AnimMode::PosDeltas => {
-                let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
                 origin = match held_blocker(world, &movement) {
                     Some(blocker) => {
                         step_away(world, actor, origin, blocker, step, seconds, &mut movement)
@@ -1670,7 +1773,6 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                 };
             }
             AnimMode::Gravity => {
-                let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
                 origin = match held_blocker(world, &movement) {
                     Some(blocker) => {
                         step_away(world, actor, origin, blocker, step, seconds, &mut movement)
@@ -1689,7 +1791,6 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                 angles[1] += turned;
             }
             AnimMode::ZOnlyPhysics => {
-                let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
                 origin = match held_blocker(world, &movement) {
                     Some(blocker) => {
                         step_away(world, actor, origin, blocker, step, seconds, &mut movement)
@@ -1700,18 +1801,33 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             }
             AnimMode::AngleDeltas => {
                 if let Some(blocker) = held_blocker(world, &movement) {
-                    let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
                     origin = step_away(world, actor, origin, blocker, step, seconds, &mut movement);
                 }
                 angles[1] += turned;
             }
         }
+        // A move the AI did not steer: the path catches up with it.
+        if !code_move && movement.has_path() {
+            let from = movement.last_origin.unwrap_or(before);
+            let kept = movement.path.non_code_move(
+                from,
+                origin,
+                now,
+                &mut LookaheadProbe { world, actor },
+            );
+            if !kept {
+                replan_lookahead(world, actor, origin, now, &mut movement);
+            }
+        }
 
         if movement.ground_ent_type != prev_ground {
-            events.push("groundEntChanged");
+            events.push(("groundEntChanged", Vec::new()));
         }
 
         movement.heading = heading;
+        if seconds > 0.0 {
+            movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
+        }
         let orient = movement
             .orient
             .clone()
@@ -1721,27 +1837,26 @@ fn locomote_actors(world: &mut World, seconds: f32) {
         let facing = match orient {
             Orient::Motion => {
                 facing_motion = true;
-                heading
+                face_motion(&movement, moving, angles[1])
             }
             Orient::Angle(yaw) => Some(yaw),
-            Orient::Point(point) => Some(yaw_to(origin, point)),
             Orient::Enemy => enemy_position(world, actor).map(|enemy| yaw_to(origin, enemy)),
             Orient::EnemyOrMotion => {
-                // The enemy without a path or while standing; on the move the
-                // motion, unless a seen enemy stands within 350 units, where
-                // Black Ops' path test (not ported) may face it instead.
-                let standing = movement.velocity[0] == 0.0 && movement.velocity[1] == 0.0;
-                if !movement.has_path() || standing {
-                    enemy_position(world, actor).map(|enemy| yaw_to(origin, enemy))
-                } else {
-                    facing_motion = true;
-                    heading
+                match face_enemy_or_motion(world, actor, origin, now, &movement) {
+                    Some(enemy) => Some(yaw_to(origin, enemy)),
+                    None => {
+                        facing_motion = true;
+                        face_motion(&movement, moving, angles[1])
+                    }
                 }
             }
-            Orient::Goal => movement.goal_yaw,
-            Orient::Current => None,
+            // A claimed node's angle; zombies claim none.
+            Orient::Goal | Orient::Current => None,
         };
-        if let Some(wanted) = facing {
+        if facing.is_some() {
+            movement.desired_yaw = facing;
+        }
+        if let Some(wanted) = movement.desired_yaw {
             let turn = math_iw4::angle_subtract(wanted, angles[1]);
             let rate = actor_turn_rate(world, actor);
             let limit = rate * seconds;
@@ -1749,7 +1864,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             if math_iw4::angle_subtract(wanted, angles[1]).abs() <= 0.01 {
                 if !movement.orient_notified {
                     movement.orient_notified = true;
-                    events.push("orientdone");
+                    events.push(("orientdone", Vec::new()));
                 }
             } else {
                 movement.orient_notified = false;
@@ -1761,36 +1876,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             angles[0] = (angles[0] + diff.clamp(-PITCH_STEP_PER_TICK, PITCH_STEP_PER_TICK))
                 .clamp(-PITCH_LIMIT, PITCH_LIMIT);
         }
-
-        if let Some(goal_at) = goal_at
-            && horizontal_distance(origin, goal_at) <= goal_radius
-            && (origin[2] - goal_at[2]).abs() <= goal_height(world, actor)
-            && movement.planned_to.is_some()
-            && (movement.waypoints.len() <= 1)
-        {
-            if !pursuing && (movement.has_path() || !matches!(movement.goal, Some(Goal::Entity(_))))
-            {
-                events.push("goal");
-            }
-            movement.clear_path();
-            if !pursuing && matches!(movement.goal, Some(Goal::Position(_))) {
-                movement.goal = None;
-            }
-        }
-
-        if seconds > 0.0 {
-            movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
-        }
-        // The way along the path ahead: toward the next waypoint.
-        let (lookahead, lookahead_dist) = movement
-            .waypoints
-            .first()
-            .and_then(|next| {
-                let to = [next[0] - origin[0], next[1] - origin[1]];
-                let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
-                (length > 0.001).then(|| ([to[0] / length, to[1] / length, 0.0], length))
-            })
-            .unzip();
+        movement.last_origin = Some(origin);
         {
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
@@ -1798,47 +1884,937 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             runtime.set_object_field(
                 actor,
                 "desiredangle",
-                Value::Float(facing.unwrap_or(angles[1])),
+                Value::Float(movement.desired_yaw.unwrap_or(angles[1])),
             );
             runtime.set_object_field(actor, "isfacingmotion", Value::Int(facing_motion.into()));
-            if let Some(dir) = lookahead {
-                runtime.set_object_field(actor, "lookaheaddir", Value::Vector(dir));
-            }
+            runtime.set_object_field(actor, "lookaheaddir", Value::Vector(movement.path.look_dir));
             runtime.set_object_field(
                 actor,
                 "lookaheaddist",
-                Value::Float(lookahead_dist.unwrap_or(0.0)),
+                Value::Float(movement.path.look_dist),
             );
-            if let Some(end) = movement.path_end().or(goal_at) {
-                runtime.set_object_field(actor, "pathgoalpos", Value::Vector(end));
+            if movement.has_path() || movement.path.time != 0 {
+                runtime.set_object_field(
+                    actor,
+                    "pathgoalpos",
+                    Value::Vector(movement.path.final_goal),
+                );
             }
             runtime.actor_moves.insert(actor, movement);
         }
         move_body(world, entnum, origin);
-        for event in events {
-            raise(world, Value::Object(actor), event, Vec::new());
+        for (event, args) in events {
+            raise(world, Value::Object(actor), event, args);
         }
     }
 }
 
-/// The traversal starting at the path's first node, when the link to the
-/// second is a negotiation link.
-fn traversal_at(paths: &ActorPaths, nodes: &[Option<u16>]) -> Option<Traversal> {
-    let (Some(Some(begin)), Some(Some(end))) = (nodes.first(), nodes.get(1)) else {
-        return None;
+/// The frame time the path's clocks are counted in.
+const FRAME_MS: i64 = crate::MATCH_TICK_MS as i64;
+/// A standing actor's facing smoothing takes this much of the lookahead.
+const LEAN_STANDING: f32 = 0.1;
+/// The run speed each species leans its path steer at: human, dog, zombie,
+/// zombie dog.
+const RUN_SPEED: [f32; 4] = [190.0, 300.0, 190.0, 300.0];
+/// The steer slows to `share ^ 0.333` (at least 0.6) of the speed as the
+/// forward lookahead turns from the lookahead.
+const SPEED_SHARE_EXP: f32 = 0.333;
+const MIN_SPEED_SHARE: f32 = 0.6;
+const MIN_SHARE: f32 = 0.000_001;
+/// The path's end ease: it starts a quarter second out and lasts 500 ms.
+const END_EASE_MS: i64 = 500;
+const END_EASE_START_SQ: f32 = 0.0625;
+/// A traversal starts when the actor would reach its begin node within
+/// this share of its speed.
+const NEGOTIATION_REACH: f32 = 0.005;
+const NEGOTIATION_SLACK: f32 = 0.000_001;
+/// "face motion" keeps the facing at the path's end when the lookahead is
+/// this close and behind; standing, it keeps it while the motion lies
+/// within this cosine of it.
+const FACE_END_DIST: f32 = 60.0;
+const FACE_STILL_COS: f32 = 0.9;
+/// "face enemy or motion" faces an enemy seen this close (squared).
+const FACE_ENEMY_DIST_SQ: f32 = 122_500.0;
+/// A path planned this recently (ms), or this short, faces the enemy.
+const FACE_ENEMY_NEW_MS: i64 = 300;
+const FACE_ENEMY_PATH: f32 = 128.0;
+/// The motion wins when the lookahead is shorter than `72 − 48·agree`, or
+/// the path older than `1500 + 3500·agree` ms (`agree`: how far the enemy
+/// lies along the lookahead, 0..1).
+const FACE_MOTION_DIST: f32 = 72.0;
+const FACE_MOTION_DIST_AGREE: f32 = 48.0;
+const FACE_MOTION_MS: f32 = 1500.0;
+const FACE_MOTION_MS_AGREE: f32 = 3500.0;
+
+/// Whether the lookahead shrinks instead of tracing this frame, by what the
+/// last move hit: a body (a sentient) only while the actor dodges it (never
+/// here: the dodge scan is not ported); anything else (nothing hit counts
+/// as the unused entity, which never cut paths) once the path is older
+/// than the level's first frame.
+fn lookahead_decrease(last_hit_body: Option<u16>, movement: &ActorMove) -> bool {
+    match last_hit_body {
+        Some(_) => false,
+        None => movement.path.time > 0,
+    }
+}
+
+/// Black Ops' path steer: the lookahead set again from where the actor
+/// stands, then the animation's speed along it (slowed as the forward
+/// lookahead turns away, and no further than the lookahead); the facing
+/// smoothing takes the steer's lean.
+#[allow(clippy::too_many_arguments)]
+fn steer(
+    world: &mut World,
+    actor: u64,
+    origin: [f32; 3],
+    step: f32,
+    last_hit_body: Option<u16>,
+    now: i64,
+    seconds: f32,
+    movement: &mut ActorMove,
+) -> [f32; 3] {
+    let decrease = lookahead_decrease(last_hit_body, movement);
+    let kept = movement.path.update(
+        origin,
+        (decrease, false, true),
+        now,
+        &mut LookaheadProbe { world, actor },
+    );
+    if !kept {
+        replan_lookahead(world, actor, origin, now, movement);
+        if !movement.has_path() {
+            return [0.0; 3];
+        }
+    }
+    let dir = movement.path.look_dir;
+    let forward = movement.path.forward_dir;
+    let run = RUN_SPEED[species(world, actor).min(3)] * 0.5;
+    let per_second = if seconds > 0.0 { step / seconds } else { 0.0 };
+    let lerp = (per_second - run) / run;
+    let lean = if lerp <= 0.0 {
+        [dir[0], dir[1]]
+    } else if lerp >= 1.0 {
+        forward
+    } else {
+        let v = [
+            dir[0] * (1.0 - lerp) + lerp * forward[0],
+            dir[1] * (1.0 - lerp) + forward[1] * lerp,
+        ];
+        let len = (v[0] * v[0] + v[1] * v[1]).sqrt();
+        let scale = if -len >= 0.0 { 1.0 } else { 1.0 / len };
+        [v[0] * scale, v[1] * scale]
     };
-    let node = &paths.nodes[*begin as usize];
-    let negotiation = node
-        .links
+    let share = (dir[1] * forward[1] + forward[0] * dir[0]).max(MIN_SHARE);
+    let share = share.powf(SPEED_SHARE_EXP).max(MIN_SPEED_SHARE);
+    let speed = (share * step).min(movement.path.look_dist);
+    movement.lean.set(lean);
+    movement.lean.step();
+    [dir[0] * speed, dir[1] * speed, dir[2] * speed]
+}
+
+/// The path's end (`stopanimdistsq`'s notifies, the traversal's start and
+/// the end ease): `wish` becomes the step onto the path's end, or onto the
+/// traversal's begin node.
+#[allow(clippy::too_many_arguments)]
+fn path_end(
+    world: &mut World,
+    actor: u64,
+    origin: [f32; 3],
+    now: i64,
+    seconds: f32,
+    movement: &mut ActorMove,
+    events: &mut Vec<(&'static str, Vec<Value>)>,
+    wish: &mut [f32; 3],
+) {
+    let stop_dist_sq = float_field(world, actor, "stopanimdistsq").unwrap_or(0.0);
+    if stop_dist_sq > 0.0 {
+        let end = movement.path.final_goal;
+        let d2 = (origin[0] - end[0]).powi(2) + (origin[1] - end[1]).powi(2);
+        if movement.path.end_notified {
+            if stop_dist_sq < d2 {
+                events.push(("run", Vec::new()));
+                movement.path.end_notified = false;
+            }
+        } else if d2 < stop_dist_sq && movement.path.at_end() {
+            events.push(("stop_soon", vec![Value::Float(d2.sqrt())]));
+            movement.path.end_notified = true;
+        }
+    }
+    if end_actions_skip(world, origin, movement, wish) || stop_dist_sq > 0.0 {
+        return;
+    }
+    let at = movement.path.point(movement.path.negotiation_start).origin;
+    let d = [at[0] - origin[0], at[1] - origin[1], at[2] - origin[2]];
+    if movement.path.end_time == 0 {
+        let flat = d[0] * d[0] + d[1] * d[1];
+        if flat != 0.0 && !movement.path.at_end() {
+            return;
+        }
+        let speed = movement.velocity[0].powi(2) + movement.velocity[1].powi(2);
+        if speed * END_EASE_START_SQ < flat {
+            return;
+        }
+        movement.path.end_time = now + END_EASE_MS;
+    }
+    let left = movement.path.end_time - now;
+    if left < 1 {
+        movement.clear_path(origin);
+        movement.path.end_time = 0;
+        *wish = d;
+        return;
+    }
+    let slope = match movement.ground_normal {
+        Some(normal) if normal[2] != 0.0 => 1.0 / normal[2],
+        _ => 1.0,
+    };
+    let frame = (seconds * 1000.0).max(1.0);
+    let f = frame / left as f32;
+    let s = (2.0 - f) * f * slope;
+    *wish = [d[0] * s, d[1] * s, d[2] * s];
+}
+
+/// Whether the end ease waits: it runs already, the actor is in the air,
+/// the lookahead is not at the path's end, a traversal is next (and starts
+/// when the actor reaches its begin node this frame), or the stop
+/// notifies were sent.
+fn end_actions_skip(
+    world: &mut World,
+    origin: [f32; 3],
+    movement: &mut ActorMove,
+    wish: &mut [f32; 3],
+) -> bool {
+    if movement.path.end_time != 0 {
+        return false;
+    }
+    if movement.ground_normal.is_none() && movement.ground_ent_type == HIT_NONE {
+        return true;
+    }
+    if !movement.path.looks_at_end() {
+        return true;
+    }
+    if movement.path.negotiation_start > 0 {
+        let at = movement.path.point(movement.path.negotiation_start).origin;
+        let d = [at[0] - origin[0], at[1] - origin[1], at[2] - origin[2]];
+        let speed_sq = movement.velocity.iter().map(|v| v * v).sum::<f32>();
+        if speed_sq * NEGOTIATION_REACH + NEGOTIATION_SLACK >= d[0] * d[0] + d[1] * d[1]
+            && let Some(traversal) = negotiation_at(world, movement)
+        {
+            movement.traversal = Some(traversal);
+            *wish = d;
+        }
+        return true;
+    }
+    // An AI whose goal is its enemy and attacks from `meleeattackdist` also
+    // waits; zombies never take their enemy as the goal
+    // (`pathenemyfightdist` is 0).
+    movement.path.end_notified
+}
+
+/// The traversal whose begin node the path's lookahead stopped at.
+fn negotiation_at(world: &mut World, movement: &ActorMove) -> Option<Traversal> {
+    let begin = movement.path.negotiation_node()?;
+    let end = movement
+        .path
+        .point(movement.path.negotiation_start - 1)
+        .node?;
+    let paths = FrameWorld::from_world(world).actor_paths()?;
+    let node = &paths.nodes[usize::from(begin)];
+    (!node.animscript.is_empty()).then(|| Traversal {
+        begin,
+        end,
+        script: node.animscript.clone(),
+    })
+}
+
+/// "face motion": the facing smoothing's way along a path walked in the
+/// normal mode. At the path's end with the lookahead close behind the
+/// actor, or with no way at all, the actor keeps the way it faces;
+/// standing, it keeps it while the way lies within 25 degrees of it.
+fn face_motion(movement: &ActorMove, moving: bool, yaw: f32) -> Option<f32> {
+    if !movement.has_path() || movement.anim_mode != AnimMode::Normal {
+        return None;
+    }
+    let look = movement.path.look_dir;
+    let (sin, cos) = yaw.to_radians().sin_cos();
+    if moving
+        && movement.path.at_end()
+        && movement.path.look_dist < FACE_END_DIST
+        && cos * look[0] + sin * look[1] < 0.0
+    {
+        return Some(yaw);
+    }
+    let dir = movement.lean.sum();
+    if dir[0] == 0.0 && dir[1] == 0.0 {
+        return Some(yaw);
+    }
+    if !moving {
+        let len = (dir[0] * dir[0] + dir[1] * dir[1]).sqrt();
+        let n = [dir[0] / len, dir[1] / len];
+        let wanted = movement.desired_yaw.unwrap_or(yaw);
+        let (sin, cos) = wanted.to_radians().sin_cos();
+        if cos * n[0] + sin * n[1] >= FACE_STILL_COS {
+            return Some(yaw);
+        }
+    }
+    Some(dir[1].atan2(dir[0]).to_degrees())
+}
+
+/// "face enemy or motion": the enemy (where to face it) without a path or
+/// standing; on the move the motion, unless a seen enemy stands within 350
+/// and the zombie path test faces it: a path just planned or nearly done,
+/// or a lookahead long enough for how far the enemy lies off it.
+fn face_enemy_or_motion(
+    world: &mut World,
+    actor: u64,
+    origin: [f32; 3],
+    now: i64,
+    movement: &ActorMove,
+) -> Option<[f32; 3]> {
+    let standing = movement.velocity[0] == 0.0 && movement.velocity[1] == 0.0;
+    if !movement.has_path() || standing {
+        return enemy_position(world, actor);
+    }
+    let enemy = super::actor_brain::seen_enemy(world, actor)?;
+    let d = [
+        enemy[0] - origin[0],
+        enemy[1] - origin[1],
+        enemy[2] - origin[2],
+    ];
+    let dist_sq = d.iter().map(|v| v * v).sum::<f32>();
+    if dist_sq > FACE_ENEMY_DIST_SQ {
+        return None;
+    }
+    let len = dist_sq.sqrt();
+    let to = if len > 0.0 {
+        [d[0] / len, d[1] / len]
+    } else {
+        [0.0; 2]
+    };
+    let age = now - movement.path.time;
+    if age < FACE_ENEMY_NEW_MS || !movement.path.longer_than(FACE_ENEMY_PATH) {
+        return Some(enemy);
+    }
+    let look = movement.path.look_dir;
+    let agree = (look[1] * to[1] + to[0] * look[0] + 1.0) * 0.5;
+    let short = FACE_MOTION_DIST - agree * FACE_MOTION_DIST_AGREE;
+    if movement.path.look_dist < short
+        || agree * FACE_MOTION_MS_AGREE + FACE_MOTION_MS <= age as f32
+    {
+        return None;
+    }
+    Some(enemy)
+}
+
+fn species(world: &mut World, actor: u64) -> usize {
+    if super::actor_brain::is_dog(world, actor) {
+        3
+    } else {
+        2
+    }
+}
+
+fn float_field(world: &mut World, actor: u64, name: &str) -> Option<f32> {
+    match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, name)
+    {
+        Value::Int(n) => Some(n as f32),
+        Value::Float(f) => Some(f),
+        _ => None,
+    }
+}
+
+// --- Path search --------------------------------------------------------
+
+/// Black Ops' actor mask for path traces: the world and monster clip,
+/// without bodies.
+const MASK_PATH: u32 = 0x0082_0011;
+/// The lookahead trace's box: the actor's above its step height.
+const STEP_MINS: [f32; 3] = [-15.0, -15.0, 18.0];
+const STEP_MAXS: [f32; 3] = [15.0, 15.0, 72.0];
+const STEP_DROP: f32 = 72.0;
+const STEP_BLOCKED_SQ: f32 = 225.0;
+const STEP_MIN_FRACTION: f32 = 0.0001;
+/// The nearest-node search: within 192 across, and (in zombie mode) from 50
+/// below (`zombiemode_path_minz_bias`) 64 up; a node's box, and the thin box
+/// traced to it.
+const NODE_SEARCH_RADIUS: f32 = 192.0;
+const NODE_SEARCH_MAX: usize = 64;
+const NODE_SEARCH_UP: f32 = 64.0;
+const MINZ_BIAS: f32 = 50.0;
+const NODE_BOX_MINS: [f32; 3] = [-16.0, -16.0, -1.0];
+const NODE_BOX_MAXS: [f32; 3] = [16.0, 16.0, 73.0];
+const NODE_TRACE_MINS: [f32; 3] = [-1.0, -1.0, 17.0];
+const NODE_TRACE_MAXS: [f32; 3] = [1.0, 1.0, 72.0];
+/// A node a path cannot use.
+const NODE_NOT_LINKED: u32 = 0x1;
+const NODE_DONT_USE: u32 = 0x200;
+/// The path search's cost of each other actor already headed for a
+/// traversal (`ai_pathNegotiationOverlapCost`).
+const OVERLAP_COST: f32 = 300.0;
+/// No path is looked for again before this long after one was not found,
+/// or after the AI let one go at its goal.
+const PATH_RETRY_MS: i64 = 500;
+/// A code goal's least radius and height.
+const GOAL_MIN_RADIUS: f32 = 4.0;
+const GOAL_MIN_HEIGHT: f32 = 80.0;
+/// Standing this close to a goal it has no path to, the actor needs none.
+const AT_GOAL_HEIGHT_SQ: f32 = 6400.0;
+const AT_GOAL_FLAT_SQ: f32 = 4.0;
+
+/// What the path asks of the world for one actor.
+struct LookaheadProbe<'w> {
+    world: &'w mut World,
+    actor: u64,
+}
+
+impl Probe for LookaheadProbe<'_> {
+    fn clear(&mut self, from: [f32; 3], to: [f32; 3], dodge: Option<u16>) -> bool {
+        let mut mask = MASK_PATH;
+        if let Some(entnum) = dodge {
+            if let Some(other) = actor_by_entnum(self.world, entnum) {
+                if dodge_actor_blocks(self.world, other, from, to) {
+                    return false;
+                }
+            } else {
+                mask |= crate::world::CONTENTS_BODY;
+            }
+        }
+        step_trace(self.world, self.actor, from, to, mask)
+    }
+
+    fn linked(&mut self, node: u16) -> bool {
+        node_linked(self.world, node)
+    }
+}
+
+/// Whether a node has a link standing.
+fn node_linked(world: &mut World, node: u16) -> bool {
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return false;
+    };
+    match world.get_resource::<LinkEdits>() {
+        Some(edits) => paths.links(node, edits).next().is_some(),
+        None => paths.links(node, &LinkEdits::default()).next().is_some(),
+    }
+}
+
+/// The live actor with this entity number.
+fn actor_by_entnum(world: &World, entnum: u16) -> Option<u64> {
+    let runtime = world.resource::<RoundScript>();
+    runtime.actor_moves.keys().copied().find(|&id| {
+        runtime
+            .entities
+            .get(&id)
+            .is_some_and(|entity| u16::try_from(entity.number).ok() == Some(entnum))
+    })
+}
+
+/// The lookahead trace against a dodged actor alone: its box swept from
+/// `from` to `to` meets the actor's.
+fn dodge_actor_blocks(world: &mut World, other: u64, from: [f32; 3], to: [f32; 3]) -> bool {
+    let Some(at) = as_vector(super::players::entity_field(world, other, "origin")) else {
+        return false;
+    };
+    let (mins, maxs) = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&other)
+        .map_or((ACTOR_MINS, ACTOR_MAXS), actor_box);
+    let lo = [
+        at[0] + mins[0] - STEP_MAXS[0],
+        at[1] + mins[1] - STEP_MAXS[1],
+    ];
+    let hi = [
+        at[0] + maxs[0] - STEP_MINS[0],
+        at[1] + maxs[1] - STEP_MINS[1],
+    ];
+    if from[2] + STEP_MAXS[2] < at[2] + mins[2] || from[2] + STEP_MINS[2] > at[2] + maxs[2] {
+        return false;
+    }
+    // The swept centre against the box grown by the trace's own.
+    let d = [to[0] - from[0], to[1] - from[1]];
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for axis in 0..2 {
+        if d[axis] == 0.0 {
+            if from[axis] < lo[axis] || from[axis] > hi[axis] {
+                return false;
+            }
+            continue;
+        }
+        let a = (lo[axis] - from[axis]) / d[axis];
+        let b = (hi[axis] - from[axis]) / d[axis];
+        t0 = t0.max(a.min(b));
+        t1 = t1.min(a.max(b));
+    }
+    t0 <= t1
+}
+
+/// One sweep of a box through what actors meet: how far it went, the plane
+/// it stopped on, whether it started or stayed in solid, and the body it
+/// met.
+struct BoxTrace {
+    fraction: f32,
+    normal: [f32; 3],
+    startsolid: bool,
+    allsolid: bool,
+    body: Option<u16>,
+}
+
+fn clip_trace(
+    world: &mut World,
+    start: [f32; 3],
+    end: [f32; 3],
+    mins: [f32; 3],
+    maxs: [f32; 3],
+    mask: u32,
+) -> BoxTrace {
+    let clip = world.remove_resource::<ActorClipTick>();
+    let frame = FrameWorld::from_world(world);
+    let trace = match &clip {
+        Some(clip) => clip.0.trace(&frame, start, end, mins, maxs, mask, clip.1),
+        None => frame.trace_clip(start, end, mins, maxs, mask),
+    };
+    let body = clip.as_ref().and_then(|clip| clip.0.hit_body(&trace));
+    if let Some(clip) = clip {
+        world.insert_resource(clip);
+    }
+    BoxTrace {
+        fraction: trace.fraction,
+        normal: trace.normal,
+        startsolid: trace.startsolid != 0,
+        allsolid: trace.allsolid != 0,
+        body,
+    }
+}
+
+fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    std::array::from_fn(|i| (b[i] - a[i]) * t + a[i])
+}
+
+/// Black Ops' step trace: the actor's box above its step height swept flat
+/// from `from` toward `to`; what it meets is stepped over (dropped onto,
+/// then swept again from a step above), unless it is a wall within 15 of
+/// the start, a player, or the ground there is too steep. Through, the box
+/// drops to the ground, which must lie within 72 of `to`'s height.
+fn step_trace(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], mut mask: u32) -> bool {
+    let mut s = from;
+    let mut e = [to[0], to[1], from[2]];
+    let mut tr = clip_trace(world, s, e, STEP_MINS, STEP_MAXS, mask);
+    let mut out = lerp(s, e, tr.fraction);
+    if tr.fraction < STEP_MIN_FRACTION {
+        return false;
+    }
+    loop {
+        if !tr.allsolid && tr.fraction == 1.0 {
+            break;
+        }
+        match tr.body {
+            None => {
+                if (s[1] - out[1]).powi(2) + (s[0] - out[0]).powi(2) < STEP_BLOCKED_SQ {
+                    return false;
+                }
+            }
+            Some(entnum) => {
+                // A player stops it; actors are not met by these masks in
+                // Black Ops (their contents are not a body's).
+                if actor_by_entnum(world, entnum).is_none_or(|other| other == actor) {
+                    return false;
+                }
+                mask &= !crate::world::CONTENTS_BODY;
+            }
+        }
+        s = [out[0], out[1], s[2]];
+        let down = [s[0], s[1], s[2] - STEP_DROP];
+        tr = clip_trace(world, s, down, STEP_MINS, STEP_MAXS, mask);
+        let ground = lerp(s, down, tr.fraction);
+        if s[2] <= ground[2] && tr.fraction != 1.0 && tr.normal[2] < MIN_WALK_NORMAL {
+            return false;
+        }
+        s = [ground[0], ground[1], ground[2] + STEP_MINS[2]];
+        e[2] = s[2];
+        tr = clip_trace(world, s, e, STEP_MINS, STEP_MAXS, mask);
+        out = lerp(s, e, tr.fraction);
+        if tr.fraction < STEP_MIN_FRACTION {
+            return false;
+        }
+    }
+    s = [out[0], out[1], s[2]];
+    let down = [s[0], s[1], s[2] - STEP_DROP];
+    let tr = clip_trace(world, s, down, STEP_MINS, STEP_MAXS, mask);
+    let ground = lerp(s, down, tr.fraction)[2];
+    (ground < s[2] || tr.fraction == 1.0 || tr.normal[2] >= MIN_WALK_NORMAL)
+        && (ground + STEP_MINS[2] - to[2]).abs() < STEP_DROP
+}
+
+/// Black Ops' nearest node to `pos`: of the nodes within 192 across and the
+/// height window, the linked ones first and nearest first, the one the
+/// position stands in or a thin box reaches; else the last searched.
+fn nearest_node(world: &mut World, paths: &ActorPaths, pos: [f32; 3]) -> Option<u16> {
+    let edits = world
+        .get_resource::<LinkEdits>()
+        .cloned()
+        .unwrap_or_else(LinkEdits::default);
+    let base = pos[2] - MINZ_BIAS;
+    let height = MINZ_BIAS + NODE_SEARCH_UP;
+    let mut found: Vec<(bool, f32, u16)> = paths
+        .nodes
         .iter()
-        .any(|&(to, _, negotiation)| to == *end && negotiation);
-    (node.kind == NavNodeKind::NegotiationBegin && negotiation && !node.animscript.is_empty()).then(
-        || Traversal {
-            begin: *begin,
-            end: *end,
-            script: node.animscript.clone(),
-        },
-    )
+        .enumerate()
+        .filter(|(_, node)| node.kind != NavNodeKind::Bad)
+        .filter(|(_, node)| {
+            node.fields
+                .as_ref()
+                .is_none_or(|fields| fields.spawnflags & NODE_NOT_LINKED == 0)
+        })
+        .filter_map(|(index, node)| {
+            let d2 = (node.origin[1] - pos[1]).powi(2) + (node.origin[0] - pos[0]).powi(2);
+            let dz = node.origin[2] - base;
+            (d2 <= NODE_SEARCH_RADIUS * NODE_SEARCH_RADIUS && dz * dz <= height * height).then(
+                || {
+                    let index = index as u16;
+                    (paths.links(index, &edits).next().is_some(), d2, index)
+                },
+            )
+        })
+        .collect();
+    // At most 64 are searched (the nearest here), linked ones first.
+    found.sort_by(|a, b| a.1.total_cmp(&b.1));
+    found.truncate(NODE_SEARCH_MAX);
+    found.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.total_cmp(&b.1)));
+    let reaches = |world: &mut World, node: u16| {
+        let at = paths.nodes[usize::from(node)].origin;
+        let tr = clip_trace(world, pos, at, NODE_TRACE_MINS, NODE_TRACE_MAXS, MASK_PATH);
+        !tr.startsolid && !tr.allsolid && tr.fraction >= 1.0
+    };
+    for &(linked, _, node) in found.iter().filter(|entry| entry.0) {
+        let at = paths.nodes[usize::from(node)].origin;
+        let inside =
+            (0..3).all(|i| at[i] + NODE_BOX_MINS[i] < pos[i] && pos[i] < at[i] + NODE_BOX_MAXS[i]);
+        if linked && (inside || reaches(world, node)) {
+            return Some(node);
+        }
+    }
+    for &(_, _, node) in found.iter().filter(|entry| !entry.0) {
+        if reaches(world, node) {
+            return Some(node);
+        }
+    }
+    found.last().map(|entry| entry.2)
+}
+
+/// How many actors' paths head for each traversal begin node.
+fn negotiation_users(world: &World, actor: u64) -> BTreeMap<u16, u32> {
+    let mut users = BTreeMap::new();
+    for (&id, movement) in &world.resource::<RoundScript>().actor_moves {
+        if id == actor || !movement.has_path() {
+            continue;
+        }
+        if let Some(node) = movement.path.negotiation_node() {
+            *users.entry(node).or_default() += 1;
+        }
+    }
+    users
+}
+
+/// Plans the actor's path from `start` (from `start_node`) to `goal` as
+/// Black Ops does; answers whether it has one.
+fn plan_path(
+    world: &mut World,
+    actor: u64,
+    (start, start_node): ([f32; 3], u16),
+    goal: [f32; 3],
+    allow_negotiation: bool,
+    now: i64,
+    movement: &mut ActorMove,
+) -> bool {
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return false;
+    };
+    let Some(goal_node) = nearest_node(world, &paths, goal) else {
+        return false;
+    };
+    let edits = world
+        .get_resource::<LinkEdits>()
+        .cloned()
+        .unwrap_or_else(LinkEdits::default);
+    let users = negotiation_users(world, actor);
+    let teams = actor_badplace_teams(world, actor);
+    let Some(route) = paths.search(start_node, goal_node, start, goal, &edits, teams, &users)
+    else {
+        return false;
+    };
+    let route: Vec<(u16, [f32; 3])> = route
+        .iter()
+        .map(|&node| (node, paths.nodes[usize::from(node)].origin))
+        .collect();
+    let traversal = |a: u16, b: u16| {
+        let node = &paths.nodes[usize::from(a)];
+        node.kind == NavNodeKind::NegotiationBegin
+            && paths.nodes[usize::from(b)].kind == NavNodeKind::NegotiationEnd
+            && node
+                .links
+                .iter()
+                .any(|&(to, _, negotiation)| to == b && negotiation)
+    };
+    let mut probe = LookaheadProbe { world, actor };
+    let (made, _, _) = movement.path.build(
+        &route,
+        traversal,
+        start,
+        goal,
+        allow_negotiation,
+        now,
+        &mut probe,
+    );
+    made && movement.has_path()
+}
+
+/// The lookahead asked for a new path from where the actor stands to the
+/// path's end; the old one stays when none is found.
+fn replan_lookahead(
+    world: &mut World,
+    actor: u64,
+    origin: [f32; 3],
+    now: i64,
+    movement: &mut ActorMove,
+) {
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return;
+    };
+    let Some(start_node) = nearest_node(world, &paths, origin) else {
+        return;
+    };
+    let goal = movement.path.final_goal;
+    let negotiation = movement.path.flags & 0x10 != 0;
+    let mut planned = movement.clone();
+    if plan_path(
+        world,
+        actor,
+        (origin, start_node),
+        goal,
+        negotiation,
+        now,
+        &mut planned,
+    ) {
+        *movement = planned;
+    }
+}
+
+/// The path planned again from where the actor stands to its end (after
+/// a block or a traversal): the new path starts with the lookahead a
+/// replanned path takes.
+pub(crate) fn replan_from_here(
+    world: &mut World,
+    actor: u64,
+    origin: [f32; 3],
+    movement: &mut ActorMove,
+) {
+    if !movement.has_path() {
+        return;
+    }
+    let now = super::players::now_ms(world);
+    let goal = movement.path.final_goal;
+    movement.clear_path(origin);
+    movement.path.flags |= super::actor_path::REPLANNED;
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return;
+    };
+    if let Some(start_node) = nearest_node(world, &paths, origin)
+        && plan_path(
+            world,
+            actor,
+            (origin, start_node),
+            goal,
+            true,
+            now,
+            movement,
+        )
+    {
+        movement.path.flags |= super::actor_path::REPLANNED;
+    }
+}
+
+/// The AI's code goal: its goal entity's origin or its goal position, the
+/// radius at least 4 and the height at least 80.
+fn code_goal(world: &mut World, actor: u64) -> Option<([f32; 3], f32, f32)> {
+    let goal = goal_position(world, actor)?;
+    Some((
+        goal,
+        goal_radius(world, actor).max(GOAL_MIN_RADIUS),
+        goal_height(world, actor).max(GOAL_MIN_HEIGHT),
+    ))
+}
+
+/// Whether `point` lies within the goal's height, radius and volume.
+fn in_goal_shape(
+    world: &mut World,
+    actor: u64,
+    point: [f32; 3],
+    (goal, radius, height): ([f32; 3], f32, f32),
+) -> bool {
+    let dz = point[2] - goal[2];
+    if height * height < dz * dz {
+        return false;
+    }
+    let d = [goal[0] - point[0], goal[1] - point[1]];
+    if radius * radius < d[0] * d[0] + d[1] * d[1] {
+        return false;
+    }
+    let volume = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .and_then(|movement| movement.goal_volume);
+    volume.is_none_or(|volume| super::triggers::point_in_volume(world, volume, point))
+}
+
+/// Black Ops' path think, at the start of the AI's exposed think: the code
+/// goal follows the script's (`goal_changed` when it moved); a path whose
+/// end left the goal is planned again, one with no path planned when the
+/// actor is outside it; a search that finds none waits half a second
+/// (`bad_path`).
+pub(crate) fn update_path(world: &mut World, actor: u64) {
+    let now = super::players::now_ms(world);
+    let Some(mut movement) = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .cloned()
+    else {
+        return;
+    };
+    if !movement.has_path() && now < movement.path_wait {
+        return;
+    }
+    let Some(goal) = code_goal(world, actor) else {
+        return;
+    };
+    let mut events = Vec::new();
+    if movement.code_goal.is_some_and(|old| old != goal.0) {
+        events.push("goal_changed");
+    }
+    movement.code_goal = Some(goal.0);
+    if movement.has_path() || now >= movement.retry_at {
+        let found = find_to_goal(world, actor, goal, now, &mut movement);
+        if !movement.has_path() && !found {
+            movement.retry_at = now + PATH_RETRY_MS;
+            movement.path_wait = now + PATH_RETRY_MS;
+            events.push("bad_path");
+        }
+    }
+    world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .insert(actor, movement);
+    for event in events {
+        raise(world, Value::Object(actor), event, Vec::new());
+    }
+}
+
+/// The path to the code goal: kept while it is not to be planned again
+/// and ends within the goal; none needed at the goal; else a new one.
+fn find_to_goal(
+    world: &mut World,
+    actor: u64,
+    goal: ([f32; 3], f32, f32),
+    now: i64,
+    movement: &mut ActorMove,
+) -> bool {
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    if movement.has_path() {
+        let replan = movement
+            .path
+            .needs_replan(&mut LookaheadProbe { world, actor });
+        if !replan && in_goal_shape(world, actor, movement.path.final_goal, goal) {
+            return true;
+        }
+        movement.clear_path(origin);
+    } else if float_field(world, actor, "meleeattackdist").unwrap_or(0.0) == 0.0
+        && in_goal_shape(world, actor, origin, goal)
+    {
+        return true;
+    }
+    let (at, _, _) = goal;
+    let dz = origin[2] - at[2];
+    if dz * dz <= AT_GOAL_HEIGHT_SQ
+        && (at[1] - origin[1]).powi(2) + (at[0] - origin[0]).powi(2) <= AT_GOAL_FLAT_SQ
+    {
+        return true;
+    }
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return false;
+    };
+    let Some(start_node) = nearest_node(world, &paths, origin) else {
+        return false;
+    };
+    plan_path(world, actor, (origin, start_node), at, true, now, movement)
+}
+
+/// Black Ops' "goal" notify, after each think that did not end in death:
+/// while the actor stands within its goal (and its path, if any, ends
+/// there).
+pub(crate) fn goal_notify(world: &mut World, actor: u64) {
+    let Some(at) = goal_position(world, actor) else {
+        return;
+    };
+    let shape = (at, goal_radius(world, actor), goal_height(world, actor));
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    if !in_goal_shape(world, actor, origin, shape) {
+        return;
+    }
+    let end = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .and_then(ActorMove::path_end);
+    if end.is_some_and(|end| !in_goal_shape(world, actor, end, shape)) {
+        return;
+    }
+    raise(world, Value::Object(actor), "goal", Vec::new());
+}
+
+/// A finished traversal: the path is planned again from where the actor
+/// landed.
+pub(crate) fn finish_traversal(world: &mut World, actor: u64) {
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let Some(mut movement) = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .cloned()
+    else {
+        return;
+    };
+    movement.traversal = None;
+    movement.velocity = [0.0; 3];
+    replan_from_here(world, actor, origin, &mut movement);
+    world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .insert(actor, movement);
+}
+
+/// Drops the actor's path where it stands.
+pub(crate) fn clear_path(world: &mut World, actor: u64) {
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    if let Some(movement) = world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .get_mut(&actor)
+    {
+        movement.clear_path(origin);
+    }
+}
+
+/// Whether the actor's path run (`stop_soon`) is to end: the path's end
+/// ease ends within 200 ms.
+pub(crate) fn ends_soon(world: &World, actor: u64, now: i64) -> bool {
+    world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .is_some_and(|movement| movement.path.end_time != 0 && movement.path.end_time - now < 201)
 }
 
 fn goal_radius(world: &mut World, actor: u64) -> f32 {
@@ -1915,17 +2891,6 @@ fn actor_badplace_teams(world: &mut World, actor: u64) -> u8 {
         },
         _ => 0,
     }
-}
-
-fn path_uses_blocked_link(nodes: &[Option<u16>], edits: &LinkEdits, badplace_teams: u8) -> bool {
-    nodes.windows(2).any(|pair| {
-        let (Some(a), Some(b)) = (pair[0], pair[1]) else {
-            return false;
-        };
-        edits.removed.contains(&(a, b))
-            || edits.cut_by.get(&(a, b)).is_some_and(|&c| c > 0)
-            || edits.link_in_badplace((a, b), badplace_teams)
-    })
 }
 
 /// One actor move through the world, as Black Ops' actor physics runs it
@@ -2340,16 +3305,20 @@ fn settle_physics(phys: &Phys, movement: &mut ActorMove) {
     }
 }
 
-/// The walk along a path: the physics move, and when it hits something and
-/// falls short, up to two shorter tries turned aside along what it hit.
-/// Blocked still, the path is planned again from where the actor stands.
-fn walk_path(
+/// Black Ops' walk along a path: the physics move, and when it hits
+/// something and falls short, up to two shorter tries turned aside along
+/// what it hit (to the side the current path segment passes it). A body in
+/// the way becomes the entity the path dodges; anything else that blocks
+/// the walk has the path planned again from where the actor stood.
+fn walk(
     world: &mut World,
+    actor: u64,
     origin: [f32; 3],
     wish: [f32; 3],
     seconds: f32,
     movement: &mut ActorMove,
 ) -> [f32; 3] {
+    let wish = [wish[0], wish[1], 0.0];
     let (ground, fall) = (movement.ground_normal, movement.fall_speed);
     let (mut result, mut hit) = physics_move(world, origin, wish, seconds, movement);
     let wish_length = (wish[0] * wish[0] + wish[1] * wish[1]).sqrt();
@@ -2362,8 +3331,8 @@ fn walk_path(
         + (result[1] - (origin[1] + wish[1])).powi(2))
     .sqrt();
     if miss / wish_length > DEFLECT_MISS {
-        let next = movement.waypoints.first().copied().unwrap_or(origin);
-        let dir = [wish[0] / wish_length, wish[1] / wish_length];
+        let seg = movement.path.segment_dir();
+        let curr = movement.path.current();
         let mut length = wish_length;
         for _ in 0..DEFLECT_TRIES {
             let Some((normal, at)) = hit else {
@@ -2376,7 +3345,7 @@ fn walk_path(
                 [1.0, 0.0]
             };
             length *= DEFLECT_SCALE;
-            let left = dir[0] * (next[1] - at[1]) - dir[1] * (next[0] - at[0]) <= 0.0;
+            let left = seg[0] * (curr[1] - at[1]) <= (curr[0] - at[0]) * seg[1];
             let (side, other) = if left { (16, 8) } else { (8, 16) };
             let turn = if left {
                 [-n[1] * length, n[0] * length]
@@ -2408,11 +3377,12 @@ fn walk_path(
     } else {
         0.0
     };
-    // A sentient in the way (a player) does not replan the path: Black Ops
-    // keeps it as the blocker.
-    if gained < length * BLOCKED_PROGRESS && movement.hit_body.is_none() {
-        // Planned again on the next step; the path stands until then.
-        movement.planned_to = None;
+    match movement.hit_body {
+        Some(body) => movement.path.bumped(body),
+        None if gained < length * BLOCKED_PROGRESS => {
+            replan_from_here(world, actor, origin, movement);
+        }
+        None => {}
     }
     result
 }
@@ -2554,10 +3524,8 @@ pub(crate) fn update_blocker(world: &mut World, actor: u64) {
             if movement.anim_mode != AnimMode::Normal || !movement.has_path() {
                 return None;
             }
-            let next = movement.waypoints.first()?;
-            let to = [next[0] - origin[0], next[1] - origin[1]];
-            let length = (to[0] * to[0] + to[1] * to[1]).sqrt();
-            (length > 0.001).then(|| [to[0] / length, to[1] / length])
+            let look = movement.path.look_dir;
+            Some([look[0], look[1]])
         })
     };
     if let Some(dir) = ahead
@@ -3017,12 +3985,7 @@ fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
 /// Sends the actor toward `pursuit` ahead of its goal, or back to its goal.
 pub(crate) fn set_pursuit(world: &mut World, actor: u64, pursuit: Option<[f32; 3]>) {
     let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
-    let paths = FrameWorld::from_world(world).actor_paths();
-    let edits = world
-        .get_resource::<LinkEdits>()
-        .cloned()
-        .unwrap_or_else(LinkEdits::default);
-    let badplace_teams = actor_badplace_teams(world, actor);
+    let now = super::players::now_ms(world);
     let Some(mut movement) = world
         .resource::<RoundScript>()
         .actor_moves
@@ -3035,35 +3998,34 @@ pub(crate) fn set_pursuit(world: &mut World, actor: u64, pursuit: Option<[f32; 3
         Some(goal_at) => {
             let stale = !movement.has_path()
                 || movement.pursuit.is_none()
-                || movement.planned_to.is_none_or(|planned| {
+                || movement.pursued_to.is_none_or(|planned| {
                     distance_sq(planned, goal_at) > REPLAN_DISTANCE * REPLAN_DISTANCE
                 });
             movement.pursuit = Some(goal_at);
             if stale {
-                movement.planned_to = Some(goal_at);
-                movement.clear_path();
-                if horizontal_distance(origin, goal_at) > WAYPOINT_REACHED {
-                    let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
-                    if let Some(paths) = paths.as_deref()
-                        && let Some(nodes) =
-                            paths.plan(origin, goal_at, &edits, badplace_teams, &mut reach)
-                    {
-                        movement.waypoints = nodes
-                            .iter()
-                            .map(|&node| paths.nodes[node as usize].origin)
-                            .collect();
-                        movement.waypoint_nodes = nodes.iter().map(|&node| Some(node)).collect();
-                        movement.waypoints.push(goal_at);
-                        movement.waypoint_nodes.push(None);
-                    }
+                movement.pursued_to = Some(goal_at);
+                movement.clear_path(origin);
+                if horizontal_distance(origin, goal_at) > PURSUIT_REACHED
+                    && let Some(paths) = FrameWorld::from_world(world).actor_paths()
+                    && let Some(start_node) = nearest_node(world, &paths, origin)
+                {
+                    plan_path(
+                        world,
+                        actor,
+                        (origin, start_node),
+                        goal_at,
+                        true,
+                        now,
+                        &mut movement,
+                    );
                 }
             }
         }
         None => {
             if movement.pursuit.is_some() {
                 movement.pursuit = None;
-                movement.planned_to = None;
-                movement.clear_path();
+                movement.pursued_to = None;
+                movement.clear_path(origin);
             }
         }
     }
