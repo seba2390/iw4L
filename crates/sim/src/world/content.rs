@@ -471,7 +471,7 @@ impl SimContent {
         self.weapons().hit_locations?.get(location).copied()
     }
 
-    pub(super) fn weapons(&self) -> &Arc<crate::SimWeaponContent> {
+    pub(crate) fn weapons(&self) -> &Arc<crate::SimWeaponContent> {
         &self.data.weapons
     }
     pub(super) fn script_sound_aliases(

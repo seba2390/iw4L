@@ -1,10 +1,11 @@
 use crate::spawn::{AuthoredSpawnPoint, MatchBootstrap};
-use crate::world::SimBrush;
+use crate::world::{SimBrush, SimContent};
+use std::sync::Arc;
 use weapon_iw4::WeaponCombatFacts;
 
 pub const CONTENT_DIGEST_SCHEME: u64 = 21;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Digest(u64);
 
 impl Digest {
@@ -357,37 +358,6 @@ fn hash_camouflage_slots(h: &mut Digest, slots: &[Vec<u8>]) {
     }
 }
 
-pub fn content_digest(
-    combat: &[WeaponCombatFacts],
-    penetration: &[weapon_iw4::BulletPenFacts],
-    runnable: &[bool],
-    unlocks: &[Result<gamemode_iw4::progression::UnlockRequirement, String>],
-    ranks: Option<&gamemode_iw4::progression::RankProgression>,
-    transition_groups: &[u32],
-    camouflage_slots: &[Vec<u8>],
-    equipment: &[crate::EquipmentRuntimeFacts],
-    bootstrap: &MatchBootstrap,
-    clip_brushes: &[SimBrush],
-    script_models: &[crate::EntityCollisionCapabilities],
-    map_content: &asset_core::MapContentDefinition,
-) -> u64 {
-    let mut h = Digest::new();
-    h.u64(CONTENT_DIGEST_SCHEME);
-    hash_combat(&mut h, combat);
-    hash_penetration(&mut h, penetration);
-    hash_weapon_admission(&mut h, runnable, transition_groups);
-    hash_camouflage_slots(&mut h, camouflage_slots);
-    hash_equipment(&mut h, equipment);
-    hash_unlocks(&mut h, unlocks);
-    hash_ranks(&mut h, ranks);
-    hash_class_catalog(&mut h);
-    hash_spawns(&mut h, &bootstrap.spawns);
-    hash_collision(&mut h, clip_brushes);
-    hash_map_content(&mut h, map_content);
-    hash_script_models(&mut h, script_models);
-    h.finish()
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ContentComponents {
     pub map: u64,
@@ -399,53 +369,133 @@ pub struct ContentComponents {
     pub classes: u64,
 }
 
-pub fn content_components(
-    combat: &[WeaponCombatFacts],
-    penetration: &[weapon_iw4::BulletPenFacts],
-    runnable: &[bool],
-    unlocks: &[Result<gamemode_iw4::progression::UnlockRequirement, String>],
-    ranks: Option<&gamemode_iw4::progression::RankProgression>,
-    transition_groups: &[u32],
-    camouflage_slots: &[Vec<u8>],
-    equipment: &[crate::EquipmentRuntimeFacts],
-    bootstrap: &MatchBootstrap,
-    clip_brushes: &[SimBrush],
-    script_models: &[crate::EntityCollisionCapabilities],
-    map_content: &asset_core::MapContentDefinition,
-) -> ContentComponents {
-    let component = |tag: u8| {
-        let mut h = Digest::new();
-        h.u64(CONTENT_DIGEST_SCHEME);
-        h.byte(tag);
-        h
-    };
+/// What the content digest and its components owe to the match content and
+/// the authored spawns: everything but the script models, hashed up to where
+/// the models begin. The content is shared and never changed in place, so a
+/// prefix taken from the same `Arc` and the same spawns is the one a full
+/// rehash would reach; recomputing after a script model moved hashes the
+/// models alone.
+#[derive(Clone, Debug)]
+pub(crate) struct ContentPrefix {
+    content: Arc<SimContent>,
+    spawns: Vec<AuthoredSpawnPoint>,
+    digest: Digest,
+    map: u64,
+    weapons: u64,
+    classes: u64,
+}
 
-    let mut map = component(b'M');
-    hash_spawns(&mut map, &bootstrap.spawns);
-    hash_collision(&mut map, clip_brushes);
-    hash_map_content(&mut map, map_content);
-
-    let mut models = component(b'D');
-    hash_script_models(&mut models, script_models);
-
-    let mut weapons = component(b'W');
-    hash_combat(&mut weapons, combat);
-    hash_penetration(&mut weapons, penetration);
-    hash_weapon_admission(&mut weapons, runnable, transition_groups);
-    hash_camouflage_slots(&mut weapons, camouflage_slots);
-    hash_equipment(&mut weapons, equipment);
-    hash_unlocks(&mut weapons, unlocks);
-    hash_ranks(&mut weapons, ranks);
-
-    let mut classes = component(b'C');
-    hash_class_catalog(&mut classes);
-
-    ContentComponents {
-        map: map.finish(),
-        models: models.finish(),
-        weapons: weapons.finish(),
-        classes: classes.finish(),
+impl ContentPrefix {
+    /// `cached` when it was taken from this content and these spawns, a new
+    /// prefix otherwise.
+    pub(crate) fn reuse_or_hash(
+        cached: Option<Arc<Self>>,
+        content: &Arc<SimContent>,
+        bootstrap: &MatchBootstrap,
+    ) -> Arc<Self> {
+        match cached {
+            Some(prefix)
+                if Arc::ptr_eq(&prefix.content, content)
+                    && same_hashed_spawns(&prefix.spawns, &bootstrap.spawns) =>
+            {
+                prefix
+            }
+            _ => Arc::new(Self::hash(content, bootstrap)),
+        }
     }
+
+    fn hash(content: &Arc<SimContent>, bootstrap: &MatchBootstrap) -> Self {
+        let weapons_content = content.weapons();
+        let combat = &weapons_content.weapon_combat;
+        let penetration = &weapons_content.bullet_pen;
+        let runnable = &weapons_content.weapon_runnable;
+        let unlocks = &weapons_content.unlock_requirements;
+        let ranks = weapons_content.rank_progression.as_ref();
+        let transition_groups = &weapons_content.weapon_transition_groups;
+        let camouflage_slots = &weapons_content.weapon_camouflage_slots;
+        let equipment = &weapons_content.equipment_runtime;
+        let clip_brushes = content.clip_brushes();
+        let map_content = content.map();
+
+        let mut digest = Digest::new();
+        digest.u64(CONTENT_DIGEST_SCHEME);
+        hash_combat(&mut digest, combat);
+        hash_penetration(&mut digest, penetration);
+        hash_weapon_admission(&mut digest, runnable, transition_groups);
+        hash_camouflage_slots(&mut digest, camouflage_slots);
+        hash_equipment(&mut digest, equipment);
+        hash_unlocks(&mut digest, unlocks);
+        hash_ranks(&mut digest, ranks);
+        hash_class_catalog(&mut digest);
+        hash_spawns(&mut digest, &bootstrap.spawns);
+        hash_collision(&mut digest, clip_brushes);
+        hash_map_content(&mut digest, map_content);
+
+        let mut map = component(b'M');
+        hash_spawns(&mut map, &bootstrap.spawns);
+        hash_collision(&mut map, clip_brushes);
+        hash_map_content(&mut map, map_content);
+
+        let mut weapons = component(b'W');
+        hash_combat(&mut weapons, combat);
+        hash_penetration(&mut weapons, penetration);
+        hash_weapon_admission(&mut weapons, runnable, transition_groups);
+        hash_camouflage_slots(&mut weapons, camouflage_slots);
+        hash_equipment(&mut weapons, equipment);
+        hash_unlocks(&mut weapons, unlocks);
+        hash_ranks(&mut weapons, ranks);
+
+        let mut classes = component(b'C');
+        hash_class_catalog(&mut classes);
+
+        Self {
+            content: Arc::clone(content),
+            spawns: bootstrap.spawns.clone(),
+            digest,
+            map: map.finish(),
+            weapons: weapons.finish(),
+            classes: classes.finish(),
+        }
+    }
+
+    /// The content digest and its components, with these script models.
+    pub(crate) fn finish(
+        &self,
+        script_models: &[crate::EntityCollisionCapabilities],
+    ) -> (u64, ContentComponents) {
+        let mut digest = self.digest;
+        hash_script_models(&mut digest, script_models);
+        let mut models = component(b'D');
+        hash_script_models(&mut models, script_models);
+        (
+            digest.finish(),
+            ContentComponents {
+                map: self.map,
+                models: models.finish(),
+                weapons: self.weapons,
+                classes: self.classes,
+            },
+        )
+    }
+}
+
+fn component(tag: u8) -> Digest {
+    let mut h = Digest::new();
+    h.u64(CONTENT_DIGEST_SCHEME);
+    h.byte(tag);
+    h
+}
+
+/// Whether two spawn lists feed `hash_spawns` the same bytes: the fields it
+/// reads, floats by their bits.
+fn same_hashed_spawns(a: &[AuthoredSpawnPoint], b: &[AuthoredSpawnPoint]) -> bool {
+    let bits = |v: [f32; 3]| v.map(f32::to_bits);
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(a, b)| {
+            a.classname == b.classname
+                && bits(a.origin) == bits(b.origin)
+                && bits(a.angles) == bits(b.angles)
+        })
 }
 
 fn hash_unlocks(
