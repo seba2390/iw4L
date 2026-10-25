@@ -57,6 +57,16 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x6c))
     }
 
+    /// `enemyCrosshairRange`
+    pub fn enemy_crosshair_range(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x4a0))
+    }
+
+    /// `crosshairColorChange`
+    pub fn crosshair_color_change(&self) -> bool {
+        self.def[0x4a4] != 0
+    }
+
     /// `fireType`
     pub fn fire_type(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x30))

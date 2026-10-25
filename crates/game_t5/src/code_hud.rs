@@ -264,9 +264,53 @@ fn tan(x: f32) -> f32 {
 fn crosshair_unrun() -> &'static Unknown {
     unknown!(
         "t5.hud.crosshair",
-        "Black Ops' crosshair draws white: its colour over a friend or an enemy needs the client's crosshair entity scan, which is not run; a weapon's sight overlay and the crosshair fade it brings, the vehicle and turret crosshairs, the vision-set lerp and timed screen effects that hide it, and the stereo 3D depth are not run either",
-        "the client crosshair entity scan and those pieces of the crosshair draw (executable)"
+        "Black Ops' crosshair: a weapon's sight overlay and the crosshair fade it brings, the vehicle and turret crosshairs, the vision-set lerp and timed screen effects that hide it, and the stereo 3D depth are not run",
+        "those pieces of the crosshair draw (executable)"
     )
+}
+
+/// The crosshair's colour: white, unless the weapon changes it (or the
+/// player is on a vehicle) and the server's crosshair scan marked what it
+/// is on: a friend in its team's colour, an enemy in the enemy team's
+/// (while `cg_crosshairEnemyColor`), the human gun's target in its own
+/// (`team_indicator` 3 takes the alternate team colours).
+fn crosshair_rgb(
+    view: &CrosshairView<'_>,
+    ps: &movement_t5::state::PlayerState,
+    def: game_api::hud::CrosshairWeapon,
+) -> [f32; 3] {
+    use movement_t5::state::weap_flags::{CANCEL_GRENADE, ENEMY_IN_CROSSHAIR, ZOMBIE_GUN_TARGET};
+    const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
+    if !def.color_change && ps.e_flags & EF_OTHER_CROSSHAIR == 0 {
+        return WHITE;
+    }
+    let dvar = |name: &str, default: f32| (view.dvar)(name).unwrap_or(default);
+    let alt = dvar("team_indicator", 0.0) == 3.0;
+    let flags = ps.weap_flags;
+    if flags & CANCEL_GRENADE != 0 {
+        // `g_TeamColor_MyTeam` / `_MyTeamAlt`.
+        return if alt {
+            [0.35, 1.0, 1.0]
+        } else {
+            [0.4, 0.7, 0.4]
+        };
+    }
+    if flags & ENEMY_IN_CROSSHAIR != 0 && dvar("cg_crosshairEnemyColor", 1.0) != 0.0 {
+        // `g_TeamColor_EnemyTeam` / `_EnemyTeamAlt`.
+        return if alt {
+            [1.0, 0.5, 0.0]
+        } else {
+            [1.0, 0.315, 0.35]
+        };
+    }
+    if dvar("zombiemode", 0.0) == 0.0 || flags & ZOMBIE_GUN_TARGET == 0 {
+        return WHITE;
+    }
+    if def.human_gun {
+        [1.0, 1.0, 0.0]
+    } else {
+        [0.0, 1.0, 1.0]
+    }
 }
 
 /// Black Ops' crosshair: the weapon's centre picture, and its side picture
@@ -356,7 +400,8 @@ fn crosshair(view: &CrosshairView<'_>) -> Crosshair {
         }
     }
     let x = 0.0;
-    let white = [1.0, 1.0, 1.0, alpha];
+    let rgb = crosshair_rgb(view, &ps, def);
+    let white = [rgb[0], rgb[1], rgb[2], alpha];
     if def.has_center {
         let mut size = def.center_size as f32;
         if matches!(def.weap_type, WEAPTYPE_GRENADE | WEAPTYPE_MINE)
@@ -404,7 +449,7 @@ fn crosshair(view: &CrosshairView<'_>) -> Crosshair {
     let gy = v - s * def.side_pos;
     let e = s * 0.125;
     let h = s * 0.5;
-    let color = [1.0, 1.0, 1.0, side_alpha];
+    let color = [rgb[0], rgb[1], rgb[2], side_alpha];
     for (px, py, rotation) in [
         (x - h, y - s - gy - e, 0.0),
         (x + gx, y - h, 90.0),

@@ -296,6 +296,10 @@ pub(crate) struct WeaponBodyFacts {
     /// The crosshair stays up with the sights raised.
     pub keep_crosshair_when_ads: bool,
 
+    /// The crosshair takes the colour of what it is on
+    /// (`crosshairColorChange`).
+    pub crosshair_color_change: bool,
+
     pub clip_only: bool,
 
     pub has_detonator: bool,
