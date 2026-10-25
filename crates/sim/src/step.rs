@@ -87,6 +87,7 @@ pub(crate) fn schedule() -> Schedule {
                 dispatch_touches_system,
                 crate::script::sync_engine_events,
                 crate::script::host::client_scripts::advance,
+                crate::script::host::crosshair::scan_players,
                 finalize_system,
                 crate::save_game::write_requested,
                 crate::script::host::natives::iw4::deliver_local_presentation_dvars,

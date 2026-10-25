@@ -121,6 +121,8 @@ pub(crate) fn update_crosshair(
             dual_wield: facts.dual_wield,
             ads_overlay: facts.overlay_reticle != 0
                 || weapons.registry().overlay_material_of(index).is_some(),
+            color_change: facts.crosshair_color_change,
+            human_gun: weapons.registry().name_of(index).starts_with("humangun_"),
         })
     };
     let dvars = presented
