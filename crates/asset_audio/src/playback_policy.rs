@@ -180,6 +180,14 @@ impl LoopingPolicy {
     }
 }
 
+/// A mix snapshot a sound applies while it plays (Black Ops' voice slot):
+/// its name hash, and whether the sound's distance weakens it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VoiceSnapshotPolicy {
+    pub hash: u32,
+    pub by_distance: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct AliasPlaybackPolicy {
     pub namespace: AssetNamespace,
@@ -197,6 +205,8 @@ pub struct AliasPlaybackPolicy {
     pub stereo_speaker_gains: Option<[[f32; 2]; 2]>,
     /// The snapshot group whose mix snapshot volume the alias plays at.
     pub snapshot_group: Option<u8>,
+    /// The mix snapshot the alias applies while it plays.
+    pub voice_snapshot: Option<VoiceSnapshotPolicy>,
     /// The game's whole-mix fade leaves the sound alone: Black Ops spares a
     /// one-shot whose group is in sound category 3.
     pub master_fade_exempt: bool,

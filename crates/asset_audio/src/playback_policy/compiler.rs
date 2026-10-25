@@ -95,6 +95,7 @@ pub(super) fn compile(
         ),
         stereo_speaker_gains: semantics.speaker_gains,
         snapshot_group: row.snapshot_group,
+        voice_snapshot: row.voice_snapshot,
         loaded_binding_origin: row.loaded_binding_origin,
         channel,
         channel_admission: channel

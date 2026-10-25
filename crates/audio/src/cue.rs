@@ -66,6 +66,8 @@ pub(crate) struct CueExecutionPolicy {
     pub reverb: Option<asset_audio::ReverbSendPolicy>,
     /// The sound joins the game's master bus directly.
     pub master_bus_direct: bool,
+    /// The mix snapshot the sound applies while it plays.
+    pub voice_snapshot: Option<asset_audio::VoiceSnapshotPolicy>,
     pub priority: Option<asset_audio::VoicePriority>,
     pub spatial: Option<Result<CueSpatialPolicy, StartFailure>>,
     admission: AdmissionPolicy,
@@ -102,6 +104,7 @@ impl CueExecutionPolicy {
             volume_category: policy.volume_category,
             reverb: policy.reverb.clone(),
             master_bus_direct: policy.master_bus_direct,
+            voice_snapshot: policy.voice_snapshot,
             priority: policy.priority.clone(),
             spatial,
             admission: alias_admission(bound.revision(), bound.alias_index(), policy),

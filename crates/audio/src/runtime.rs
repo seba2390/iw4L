@@ -56,6 +56,21 @@ struct StartRequest {
     protect_attack: bool,
     /// The entity whose origin the sound follows while it plays.
     follow: Option<u32>,
+    /// The mix snapshot the sound applies while it plays, and how long it
+    /// plays after its start delay, in seconds.
+    snapshot: Option<(asset_audio::VoiceSnapshotPolicy, f32)>,
+}
+
+/// A playing sound that carries a mix snapshot, as the mixer reads it.
+#[derive(Clone, Copy)]
+pub(crate) struct SnapshotVoice {
+    pub policy: asset_audio::VoiceSnapshotPolicy,
+    pub looping: bool,
+    /// The audio frame it starts at, after its start delay.
+    pub start_frame: u64,
+    pub length_s: f32,
+    /// Where it plays, when it plays in the world.
+    pub origin_inches: Option<[f32; 3]>,
 }
 
 #[derive(Clone, Copy)]
@@ -91,6 +106,7 @@ pub struct AudioRuntime {
     fire_verdicts: Arc<Mutex<net::FireVerdictState>>,
     source_publisher: Mutex<SourcePublisher>,
     rejections: Arc<[AtomicU64; 7]>,
+    snapshot_voices: Arc<Mutex<Vec<SnapshotVoice>>>,
     shutdown: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
@@ -124,6 +140,8 @@ impl AudioRuntime {
         let control_rejections = rejections.clone();
         let cue_budget = crate::pending::PendingBudget::default();
         let control_budget = cue_budget.clone();
+        let snapshot_voices = Arc::new(Mutex::new(Vec::new()));
+        let control_snapshot_voices = snapshot_voices.clone();
         let worker = std::thread::Builder::new()
             .name("audio-control".into())
             .spawn(move || {
@@ -139,6 +157,7 @@ impl AudioRuntime {
                     control_ids,
                     control_rejections,
                     control_budget,
+                    control_snapshot_voices,
                 )
             })
             .expect("cannot start audio control thread");
@@ -155,6 +174,7 @@ impl AudioRuntime {
             fire_verdicts,
             source_publisher: Mutex::new(SourcePublisher::new()),
             rejections,
+            snapshot_voices,
             shutdown,
             worker: Some(worker),
         }
@@ -172,6 +192,14 @@ impl AudioRuntime {
 
     pub fn audio_frame(&self) -> u64 {
         self.shared.frame.load(Ordering::Acquire)
+    }
+
+    /// The playing sounds that carry a mix snapshot.
+    pub(crate) fn snapshot_voices(&self) -> Vec<SnapshotVoice> {
+        self.snapshot_voices
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone()
     }
 
     pub fn diagnostics(&self) -> AudioDiagnostics {
@@ -271,6 +299,10 @@ impl AudioRuntime {
 
     pub(crate) fn set_listener(&self, listener: Option<ListenerSnapshot>) {
         self.listener.set(listener);
+    }
+
+    pub(crate) fn listener(&self) -> Option<ListenerSnapshot> {
+        self.listener.get()
     }
 
     /// The origins of the entities sounds may follow, this frame.
@@ -481,6 +513,7 @@ fn control(
     next_id: Arc<AtomicU64>,
     rejections: Arc<[AtomicU64; 7]>,
     cue_budget: crate::pending::PendingBudget,
+    snapshot_voices: Arc<Mutex<Vec<SnapshotVoice>>>,
 ) {
     assets::session_load::use_process_cpus();
     crate::diagnostics::thread("audio-control");
@@ -879,9 +912,19 @@ fn control(
                         start.rate * source.map_or(1.0, |source| source.rate),
                         source.is_none_or(|source| source.audible),
                     );
+                    let snapshot = work
+                        .resolved
+                        .as_ref()
+                        .and_then(|cue| cue.policy.voice_snapshot)
+                        .map(|policy| {
+                            let length =
+                                start.media.frames() as f32 / start.media.rate().max(1) as f32;
+                            (policy, length - start_delay_ms as f32 * 0.001)
+                        });
                     admit(
                         StartRequest {
                             event: work.request.execution.event,
+                            snapshot,
                             start_deadline: (work.source.is_none() && !start.looping)
                                 .then_some(work.request.execution.deadline + start_delay),
                             protect_attack: work.source.is_none()
@@ -1024,6 +1067,7 @@ fn control(
             true
         });
         let diag_stage = crate::diagnostics::slow_stage("voice_scheduling", diag_stage);
+        publish_snapshot_voices(&instances, &emitters, &snapshot_voices);
         if !shared.cancelled.load(Ordering::Acquire) {
             present_sources.clear();
             present_sources.extend(instances.iter().filter_map(|logical| {
@@ -1203,6 +1247,34 @@ fn executable_source(scene: &SourceScene, key: SourceKey, version: u64) -> bool 
         .binary_search_by_key(&key, |source| source.key)
         .ok()
         .is_some_and(|index| scene.sources[index].version == version)
+}
+
+fn publish_snapshot_voices(
+    instances: &[LogicalInstance],
+    emitters: &std::collections::HashMap<u32, [f32; 3]>,
+    out: &Mutex<Vec<SnapshotVoice>>,
+) {
+    let voices = instances
+        .iter()
+        .filter_map(|logical| {
+            let request = &logical.request;
+            let (policy, length_s) = request.snapshot?;
+            (request.instance.status() != InstanceStatus::Retired).then(|| SnapshotVoice {
+                policy,
+                looping: request.looping,
+                start_frame: request.frame,
+                length_s,
+                origin_inches: request
+                    .follow
+                    .and_then(|entity| emitters.get(&entity).copied())
+                    .or(request
+                        .spatial
+                        .as_ref()
+                        .map(|spatial| spatial.origin_inches)),
+            })
+        })
+        .collect();
+    *out.lock().unwrap_or_else(|poison| poison.into_inner()) = voices;
 }
 
 fn update_spatial(request: &StartRequest, listener: Option<ListenerSnapshot>) {

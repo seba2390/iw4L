@@ -82,6 +82,16 @@ impl AssetLinkSink for T5SoundCapture {
                 knots.push((s.f32_at(row, 36 + n * 8)?, s.f32_at(row, 40 + n * 8)?));
             }
             let name = format!("t5/curve/{i}");
+            // Mix snapshots name their fade curves by hash.
+            let hash = s.u32_at(row, sz::SND_CURVE_HASH_OFF)?;
+            let by_hash = format!("t5/curve_hash/{hash}");
+            self.catalog.curves.insert(
+                (NAMESPACE, by_hash.clone()),
+                CapturedSndCurve {
+                    name: by_hash,
+                    knots: knots.clone(),
+                },
+            );
             self.catalog
                 .curves
                 .insert((NAMESPACE, name.clone()), CapturedSndCurve { name, knots });
@@ -185,6 +195,8 @@ impl AssetLinkSink for T5SoundCapture {
                 fade_in: s.f32_at(row, sz::SND_SNAPSHOT_FADE_IN_OFF)?,
                 fade_out: s.f32_at(row, sz::SND_SNAPSHOT_FADE_OUT_OFF)?,
                 distance: s.f32_at(row, sz::SND_SNAPSHOT_DISTANCE_OFF)?,
+                fade_in_curve: s.u32_at(row, sz::SND_SNAPSHOT_FADE_IN_CURVE_OFF)?,
+                fade_out_curve: s.u32_at(row, sz::SND_SNAPSHOT_FADE_OUT_CURVE_OFF)?,
                 volumes,
             });
         }
@@ -543,6 +555,16 @@ impl T5SoundCapture {
             limit_count: s.u8_at(row, sz::SND_ALIAS_LIMIT_COUNT_OFF).ok(),
             entity_limit_count: s.u8_at(row, sz::SND_ALIAS_ENTITY_LIMIT_COUNT_OFF).ok(),
             snapshot_group: s.u8_at(row, sz::SND_ALIAS_SNAPSHOT_GROUP_OFF).ok(),
+            voice_snapshot: s
+                .u32_at(row, sz::SND_ALIAS_SNAPSHOT_OFF)
+                .ok()
+                .filter(|&hash| hash != 0)
+                .map(|hash| crate::VoiceSnapshotPolicy {
+                    hash,
+                    by_distance: s
+                        .u32_at(row, sz::SND_ALIAS_FLAGS_OFF)
+                        .is_ok_and(|flags| flags & 2 != 0),
+                }),
             context: s
                 .u32_at(row, sz::SND_ALIAS_CONTEXT_TYPE_OFF)
                 .ok()

@@ -204,6 +204,8 @@ pub struct CapturedAlias {
     pub entity_limit_count: Option<u8>,
     /// The snapshot group whose snapshot volume the alias plays at.
     pub snapshot_group: Option<u8>,
+    /// The mix snapshot the alias applies while it plays.
+    pub voice_snapshot: Option<crate::VoiceSnapshotPolicy>,
     /// The sound context the alias plays in and the value it needs (name
     /// hashes; 0 when unset).
     pub context: Option<[u32; 2]>,

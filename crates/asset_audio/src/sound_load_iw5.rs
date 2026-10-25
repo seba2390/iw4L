@@ -462,6 +462,7 @@ impl Iw5SoundCapture {
             limit_count: None,
             entity_limit_count: None,
             snapshot_group: None,
+            voice_snapshot: None,
             context: None,
         }
     }
