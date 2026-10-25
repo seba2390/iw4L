@@ -24,6 +24,7 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
                         links,
                         body.at(sz::WEAPON_DEF_INDICATOR_ICON_OFF),
                     ),
+                    hud_icon: material_name_at(s, links, body.at(sz::WEAPON_DEF_HUD_ICON_OFF)),
                     ..WeaponAssets::default()
                 },
             )
@@ -87,6 +88,7 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         reticle_center_name: assets.reticle_center,
         reticle_side_name: assets.reticle_side,
         indicator_icon_name: assets.indicator_icon,
+        hud_icon_name: assets.hud_icon,
         alternate_weapon_name,
         ammo_name,
         clip_name,
@@ -170,7 +172,7 @@ fn load_weapon_def(
         asset_ptr_at(s, links, AssetType::XModel, p.at(off))?;
     }
 
-    asset_ptr_at(s, links, AssetType::Material, p.at(0x320))?;
+    let hud_icon = follow_material_name(s, links, p.at(sz::WEAPON_DEF_HUD_ICON_OFF))?;
     asset_ptr_at(s, links, AssetType::Material, p.at(0x330))?;
     follow_name(s, p, 0x34c)?;
 
@@ -258,6 +260,7 @@ fn load_weapon_def(
         reticle_center,
         reticle_side,
         indicator_icon,
+        hud_icon,
     })
 }
 
@@ -436,4 +439,5 @@ struct WeaponAssets {
     reticle_center: Option<Ptr>,
     reticle_side: Option<Ptr>,
     indicator_icon: Option<Ptr>,
+    hud_icon: Option<Ptr>,
 }

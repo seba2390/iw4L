@@ -145,6 +145,22 @@ pub struct WeaponInfoRules {
     pub name_fade: fn(&WeaponInfoView<'_>) -> f32,
     /// The gap the weapon name keeps from its item's right edge.
     pub name_right_gap: f32,
+    /// The icons of an offhand class (the game's number), given the time
+    /// the weapon info was shown.
+    pub offhand: fn(&WeaponInfoView<'_>, i32, i32) -> Option<OffhandIcons>,
+}
+
+/// An offhand class's icons: the weapon's HUD icon `count` times, the
+/// first at the item, each next a `step` of the item's width further right
+/// and its colour times `falloff` once more; all at `alpha` times the
+/// item's.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OffhandIcons {
+    pub weapon: u32,
+    pub count: i32,
+    pub alpha: f32,
+    pub step: f32,
+    pub falloff: f32,
 }
 
 /// The weapon info's round counts as the game prints them.

@@ -10,9 +10,9 @@
 use asset_game::{LocalizeCatalog, MenuCatalog, T5_HUD_MENU_LISTS};
 use assets::BoundWeapons;
 use hud_iw4::{ExprError, ExprHost, Operand};
-use playerstate_iw4::{PM_TYPE_DEAD, PlayerState};
+use playerstate_iw4::PlayerState;
 
-use crate::ammo::{WeaponbarAmmo, offhand_weapon_index};
+use crate::ammo::WeaponbarAmmo;
 use crate::chrome::{
     ChromeAssets, ChromeFrame, ChromeGapKind, ChromeMenuAnim, MenuVisOnError, OwnerDrawArgs,
     OwnerDrawPaint, execute_chrome_menu_ex, push_owner_text,
@@ -648,6 +648,55 @@ fn push_pic(
     );
 }
 
+/// An offhand class's icons by the game's rule: the frag owner draw shows
+/// the first class, the smoke and flash one the second.
+fn paint_offhand_icons(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let (Some(info), Some(weapons)) = (state.weapon_info.as_ref(), state.weapons) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let class = if args.item.owner_draw == CG_OFFHAND_WEAPON_ICON_FRAG {
+        1
+    } else {
+        2
+    };
+    let Some(icons) = (info.rules.offhand)(info.view, class, info.shown_at) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let registry = weapons.registry();
+    let (Some(image), Some(namespace)) = (
+        registry.hud_icon_of(icons.weapon),
+        registry.component_namespace_of(icons.weapon, asset_game::WeaponComponent::Material),
+    ) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::MaterialExp);
+    };
+    let rect = args.rect;
+    for i in (0..icons.count).rev() {
+        let dim = icons.falloff.powi(i);
+        let color = [
+            args.color[0] * dim,
+            args.color[1] * dim,
+            args.color[2] * dim,
+            args.color[3] * icons.alpha * dim,
+        ];
+        push_pic_at(
+            args,
+            namespace,
+            image.to_owned(),
+            rect.x + rect.w * icons.step * i as f32,
+            rect.y,
+            rect.w,
+            rect.h,
+            color,
+            frame,
+        );
+    }
+    OwnerDrawPaint::Painted
+}
+
 fn text(args: &OwnerDrawArgs<'_>, value: &str, frame: &mut ChromeFrame) -> OwnerDrawPaint {
     match push_owner_text(args, value, args.color, frame) {
         Ok(()) => OwnerDrawPaint::Painted,
@@ -1107,31 +1156,7 @@ fn paint_owner(
             _ => OwnerDrawPaint::Painted,
         },
         CG_OFFHAND_WEAPON_ICON_FRAG | CG_OFFHAND_WEAPON_ICON_SMOKEFLASH => {
-            if state.ps.pm_type >= PM_TYPE_DEAD || state.hide_ammo {
-                return OwnerDrawPaint::Painted;
-            }
-            let Some(weapons) = state.weapons else {
-                return OwnerDrawPaint::Painted;
-            };
-            let class = if args.item.owner_draw == CG_OFFHAND_WEAPON_ICON_FRAG {
-                state.ps.offhand_primary
-            } else {
-                state.ps.offhand_secondary
-            };
-            let Some(index) = offhand_weapon_index(state.ps, weapons, class) else {
-                return OwnerDrawPaint::Painted;
-            };
-            let registry = weapons.registry();
-            match (
-                registry.hud_icon_image_of(index),
-                registry.hud_icon_namespace_of(index),
-            ) {
-                (Some(image), Some(namespace)) => {
-                    push_pic(&args, namespace, image.to_owned(), frame);
-                    OwnerDrawPaint::Painted
-                }
-                _ => OwnerDrawPaint::Gap(ChromeGapKind::MaterialExp),
-            }
+            paint_offhand_icons(state, &args, frame)
         }
         slot @ CG_PLAYER_ACTIONSLOT_1..=CG_PLAYER_ACTIONSLOT_4 => {
             let slot = slot - CG_PLAYER_ACTIONSLOT_1;
