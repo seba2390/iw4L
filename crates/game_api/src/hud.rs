@@ -33,6 +33,8 @@ pub struct GameCodeHud {
     /// hint an event raised this frame (by the game's number) and the
     /// client time.
     pub command_hint: Option<CommandHintFn>,
+    /// The game's grenade indicators.
+    pub grenade_indicators: Option<GrenadeIndicatorFn>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
@@ -297,6 +299,86 @@ pub struct Crosshair {
 pub struct CrosshairPicture {
     /// The weapon's side picture; else its centre picture.
     pub side: bool,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    /// Turned about its centre, in degrees.
+    pub rotation: f32,
+    pub color: [f32; 4],
+}
+
+/// What a game's grenade indicators draw this frame.
+pub type GrenadeIndicatorFn = fn(&GrenadeIndicatorView<'_>) -> GrenadeIndicators;
+
+/// What a game's grenade indicators read.
+pub struct GrenadeIndicatorView<'a> {
+    /// The local player as the game's movement keeps him.
+    pub player: &'a MovePlayer,
+    /// The match's missiles, as the client presents them.
+    pub missiles: &'a [IndicatorMissile],
+    /// A weapon's indicator fields; `None` when the client does not know
+    /// it.
+    pub weapon: &'a dyn Fn(u32) -> Option<IndicatorWeapon>,
+    /// The view is not the player's own eyes.
+    pub third_person: bool,
+    /// The client's time, in milliseconds.
+    pub time: i32,
+    /// A client dvar's value, when the client keeps it.
+    pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+}
+
+/// A missile as the grenade indicators read it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IndicatorMissile {
+    pub weapon: u32,
+    pub origin: [f32; 3],
+    /// Its trajectory's velocity.
+    pub delta: [f32; 3],
+    /// The time it is drawn from.
+    pub time: i32,
+    /// Its owner is the local player, or on the local player's team.
+    pub owner_local: bool,
+    pub owner_teammate: bool,
+}
+
+/// A weapon definition's grenade indicator fields.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct IndicatorWeapon {
+    pub weap_type: i32,
+    pub proj_explosion_type: i32,
+    pub show_indicator: bool,
+    pub timed_detonation: bool,
+    pub explosion_radius: i32,
+    pub indicator_radius: i32,
+    pub stickiness: i32,
+    pub fuse_time_ms: i32,
+    /// The weapon names its own indicator icon.
+    pub has_icon: bool,
+    /// The weapon's sights draw an overlay.
+    pub ads_overlay: bool,
+}
+
+/// What the grenade indicators draw.
+#[derive(Debug, Default)]
+pub struct GrenadeIndicators {
+    pub pictures: Vec<IndicatorPicture>,
+    /// The parts of the game's rule the runtime does not run.
+    pub unrun: Vec<&'static Unknown>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum IndicatorMaterial {
+    Named(&'static str),
+    /// The icon the weapon names.
+    WeaponIcon(u32),
+}
+
+/// One picture of the grenade indicators, placed in the virtual 640x480
+/// screen with its origin at the screen's centre.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IndicatorPicture {
+    pub material: IndicatorMaterial,
     pub x: f32,
     pub y: f32,
     pub w: f32,

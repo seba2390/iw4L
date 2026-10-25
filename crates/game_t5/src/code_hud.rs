@@ -1,5 +1,6 @@
 //! Black Ops zombies' code-drawn HUD, read from its executable: the
-//! crosshair, the damage icons and the TAB scoreboard. Black Ops draws no
+//! crosshair, the damage icons, the grenade indicators and the TAB
+//! scoreboard. Black Ops draws no
 //! blood overlay of its own; zombies' damage overlay is scripted
 //! (`_gameskill`).
 
@@ -36,9 +37,10 @@ pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     owner_hint,
     weapon_info: Some(&crate::weapon_info::WEAPON_INFO),
     command_hint: Some(command_hint),
+    grenade_indicators: Some(crate::grenade_indicator::draw),
     undrawn: &[unknown!(
         "t5.hud.code_hud",
-        "Black Ops' other code-drawn HUD pieces are not drawn: grenade indicators, friendly names, the players-in-view scan, chat lines and the night vision overlay",
+        "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
         "those pieces of its 2D draw (executable)"
     )],
 };

@@ -39,6 +39,8 @@ impl WeaponCatalog {
                     bare_owned(w.cstr(geometry.reticle_center_name)).or(reticle.center_material);
                 reticle.side_material =
                     bare_owned(w.cstr(geometry.reticle_side_name)).or(reticle.side_material);
+                reticle.indicator_icon =
+                    bare_owned(w.cstr(geometry.indicator_icon_name)).or(reticle.indicator_icon);
                 reticle
             },
             hud_material_edges: WeaponHudMaterialEdges::default(),
@@ -298,6 +300,7 @@ pub(super) fn leftover_t5_reticle(w: &WeaponView<'_, '_>) -> WeaponReticleAssets
         side_authored: w.def_slot(sz::WEAPON_DEF_RETICLE_SIDE_OFF).is_some(),
         center_size: w.def_i32(sz::WEAPON_DEF_RETICLE_CENTER_SIZE_OFF),
         side_size: w.def_i32(sz::WEAPON_DEF_RETICLE_SIDE_SIZE_OFF),
+        indicator_icon: bare_owned(w.def_asset_name(sz::WEAPON_DEF_INDICATOR_ICON_OFF)),
         ..WeaponReticleAssets::default()
     }
 }
@@ -534,6 +537,8 @@ pub(super) fn capture_t5_body_facts(
     facts.stick_to_players = matches!(facts.stickiness, 1 | 5);
     facts.has_detonator = def_flag(sz::WEAPON_DEF_HAS_DETONATOR_OFF);
     facts.timed_detonation = def_flag(sz::WEAPON_DEF_TIMED_DETONATION_OFF);
+    facts.show_indicator = def_flag(sz::WEAPON_DEF_SHOW_INDICATOR_OFF);
+    facts.indicator_radius = def_i32(sz::WEAPON_DEF_INDICATOR_RADIUS_OFF);
     facts.projectile_rotates = def_flag(sz::WEAPON_DEF_ROTATE_OFF);
     facts.cook_off_hold = def_flag(sz::WEAPON_DEF_COOK_OFF_HOLD_OFF);
     facts.keep_crosshair_when_ads = def_flag(sz::WEAPON_DEF_KEEP_CROSSHAIR_WHEN_ADS_OFF);
