@@ -249,29 +249,21 @@ impl ActorPath {
         self.amount += perp(&q, pos) * (q.len - self.curr_len) + best_area;
     }
 
-    /// Drops the path at `pos`; answers the traversal node it held.
-    pub(crate) fn clear(&mut self, pos: [f32; 3]) -> Option<u16> {
+    /// Drops the path at `pos`.
+    pub(crate) fn clear(&mut self, pos: [f32; 3]) {
         if self.len == 0 {
-            return None;
+            return;
         }
         self.restore_area(pos);
-        let released = self.release_negotiation();
+        self.negotiation_start = 0;
         self.len = 0;
         self.orig_len = 0;
-        released
-    }
-
-    fn release_negotiation(&mut self) -> Option<u16> {
-        let node = self.negotiation_node();
-        self.negotiation_start = 0;
-        node
     }
 
     /// Builds the path through `route` (its nodes from the start node to
     /// the goal node) as Black Ops does, then sets the lookahead for it.
     /// `traversal(a, b)` tells whether the link from `a` to `b` crosses a
-    /// traversal. Answers whether a path was made, and the traversal nodes
-    /// the old path let go of and the new one holds.
+    /// traversal. Answers whether a path was made.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn build(
         &mut self,
@@ -282,9 +274,9 @@ impl ActorPath {
         allow_negotiation: bool,
         now: i64,
         probe: &mut dyn Probe,
-    ) -> (bool, Option<u16>, Option<u16>) {
+    ) -> bool {
         let Some(&(goal_node, goal_node_at)) = route.last() else {
-            return (false, None, None);
+            return false;
         };
         self.restore_area(start);
         if self.pts.is_empty() {
@@ -308,7 +300,7 @@ impl ActorPath {
             }
             self.final_goal = self.pts[0].origin;
         }
-        let released = self.release_negotiation();
+        self.negotiation_start = 0;
         self.len = 0;
         self.orig_len = 0;
         self.dodge_count = 0;
@@ -318,7 +310,7 @@ impl ActorPath {
         for j in (0..route.len() - 1).rev() {
             if traversal(route[j].0, route[j + 1].0) {
                 if !allow_negotiation {
-                    return (false, released, None);
+                    return false;
                 }
                 negotiation = n - 1 - j;
             }
@@ -344,7 +336,6 @@ impl ActorPath {
             };
         }
         self.negotiation_start = negotiation;
-        let held = self.negotiation_node();
         self.pts[n - 1].dir = [0.0; 2];
         self.pts[n - 1].len = 0.0;
         self.curr = self.pts[n - 1].origin;
@@ -384,7 +375,7 @@ impl ActorPath {
                 self.keep_similar(start, now, probe);
             }
         }
-        (true, released, held)
+        true
     }
 
     /// A new path keeps the lookahead the actor had when the path bends
@@ -971,6 +962,71 @@ impl ActorPath {
             self.amount = NON_CODE_MOVE_AMOUNT;
         }
         self.update(to, (false, false, false), now, probe)
+    }
+
+    /// Cuts the path back to the last point within the goal, walking from
+    /// the actor's current point; answers false (for the caller to drop
+    /// the path) when the current point itself lies outside it. Answers the
+    /// traversal node the cut let go of, if any.
+    pub(crate) fn trim_to_goal(&mut self, mut in_goal: impl FnMut([f32; 3]) -> bool) -> bool {
+        if self.len == 0 {
+            return true;
+        }
+        if !in_goal(self.curr) {
+            return false;
+        }
+        let mut i = self.len as isize - 2;
+        while i >= 0 {
+            if !in_goal(self.pts[i as usize].origin) {
+                self.drop_end((i + 1) as usize);
+                return true;
+            }
+            i -= 1;
+        }
+        true
+    }
+
+    /// Drops the `count` points nearest the path's end: the path now ends
+    /// at the next one (at the current point when fewer than two stay).
+    fn drop_end(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let k = count as i32;
+        self.len = (self.len as i32 - k).max(0) as usize;
+        self.orig_len = (self.orig_len as i32 - k).max(0) as usize;
+        if self.dodge_count >= 0 {
+            self.dodge_count = (self.dodge_count - k).max(0);
+        }
+        let next = self.next as i32 - k;
+        if next < 0 {
+            self.next = 0;
+            self.to_next = 0.0;
+        } else {
+            self.next = next as usize;
+        }
+        let negotiation = self.negotiation_start as i32 - k;
+        if negotiation < 1 {
+            self.negotiation_start = 0;
+        } else {
+            self.negotiation_start = negotiation as usize;
+        }
+        if self.len < 2 {
+            self.pts.truncate(1);
+            self.pts[0] = Point {
+                origin: self.curr,
+                dir: [0.0; 2],
+                len: 0.0,
+                node: None,
+            };
+            self.orig_len = 1;
+            self.curr_len = 0.0;
+        } else {
+            self.pts.drain(..count);
+        }
+        self.final_goal = self.pts[0].origin;
+        self.flags &= !TRUNCATED;
+        self.end_time = 0;
     }
 
     /// Whether more than `limit` of the path lies past the lookahead

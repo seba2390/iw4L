@@ -35,6 +35,8 @@ const STACK_LEVELS: usize = 6;
 /// Exposed's substates: fighting an enemy, and having none.
 const EXPOSED_COMBAT: i32 = 100;
 const EXPOSED_NONCOMBAT: i32 = 101;
+/// Moving to see a lost enemy again (`reacquirestep`, `reacquiremove`).
+const EXPOSED_REACQUIRE: i32 = 102;
 /// Death's substates: the death animscript plays; the actor was let go of.
 const DEATH_PLAYING: i32 = 200;
 const DEATH_RELEASED: i32 = 201;
@@ -53,6 +55,10 @@ const THINK_LIMIT: usize = 16;
 const DEATH_RELEASE_MS: i64 = 800;
 /// An enemy seen this recently is still fought (ms).
 const ENEMY_MEMORY_MS: i64 = 10_000;
+/// A sentient known of this recently is not heard of again (ms).
+const HEARD_RECENTLY_MS: i64 = 2000;
+/// Half a second into a pain the AI around hears of the attacker (ms).
+const PAIN_EVENT_MS: i64 = 500;
 /// How old a sight check of the enemy (and `cansee`'s, by default) may be
 /// (ms).
 pub(crate) const SIGHT_MAX_AGE_MS: i64 = 250;
@@ -167,12 +173,18 @@ enum CustomScript {
     Traverse(String),
 }
 
-/// What an actor knows of seeing one target.
+/// What an actor knows of one target: whether the last sight check saw it
+/// and when, when it was last seen, and when and where it was last known
+/// to be (seen or heard of).
 #[derive(Clone, Copy, Debug, Default)]
 struct Sighting {
     visible: bool,
     checked: Option<i64>,
     seen: Option<i64>,
+    known: Option<i64>,
+    known_at: [f32; 3],
+    /// `flagenemyunattackable` until it is seen again.
+    unattackable: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -202,6 +214,11 @@ pub(crate) struct ActorBrain {
     /// The frame the senses last updated.
     sensed_at: Option<i64>,
     sightings: std::collections::BTreeMap<u64, Sighting>,
+    /// The entity that last hurt the actor, until its pain tells the AI
+    /// around.
+    last_attacker: Option<u64>,
+    /// A reacquire path search made the path `reacquiremove` may take.
+    reacquire_path: bool,
 }
 
 impl ActorBrain {
@@ -375,6 +392,8 @@ pub(crate) fn begin(world: &mut World, actor: u64) -> Result<(), String> {
             movemode: MOVE_STOP,
             sensed_at: None,
             sightings: Default::default(),
+            last_attacker: None,
+            reacquire_path: false,
         },
     );
     let movement = runtime.actor_moves.entry(actor).or_default();
@@ -551,6 +570,9 @@ fn start(world: &mut World, actor: u64, state: AiState) -> bool {
 }
 
 fn finish(world: &mut World, actor: u64, state: AiState) {
+    if state == PAIN {
+        pain_event(world, actor);
+    }
     if state == ANIM_SCRIPTED {
         // Its scripted animation goes with it.
         with_movement(world, actor, |movement| movement.stop_scripted());
@@ -696,7 +718,13 @@ fn set_movemode_field(world: &mut World, actor: u64, movemode: u8) {
         .set_object_field(actor, "movemode", Value::string(name));
 }
 
+/// The AI's facing; held as it is while in a synced melee.
 fn set_code_orient(world: &mut World, actor: u64, orient: Orient) {
+    let orient = if in_synced_melee(world, actor) {
+        Orient::Current
+    } else {
+        orient
+    };
     with_movement(world, actor, |movement| movement.code_orient = orient);
 }
 
@@ -807,6 +835,7 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
         return;
     }
     let movemode = if run { MOVE_RUN } else { MOVE_WALK };
+    let was_moving = is_moving(world, actor);
     set_anim_script(
         world,
         actor,
@@ -814,6 +843,20 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
         movemode,
         AnimMode::Normal,
     );
+    // Starting to move, the path's end ease starts over.
+    if !was_moving && is_moving(world, actor) {
+        with_movement(world, actor, |movement| movement.path.end_time = 0);
+    }
+}
+
+/// Moving: a movemode other than stop in the normal movement mode.
+fn is_moving(world: &World, actor: u64) -> bool {
+    brain(world, actor).is_some_and(|brain| brain.movemode != MOVE_STOP)
+        && world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&actor)
+            .is_some_and(|movement| movement.anim_mode == AnimMode::Normal)
 }
 
 /// The combat animscript, gravity movement; it looks for a blocker first,
@@ -1016,6 +1059,7 @@ pub(crate) fn sight(
 /// seen; an actor that newly sees its enemy is told `enemy_visible`.
 fn remember(world: &mut World, actor: u64, target: u64, visible: bool) {
     let now = super::players::now_ms(world);
+    let at = target_origin(world, target);
     let Some(was) = with_brain(world, actor, |brain| {
         let sighting = brain.sightings.entry(target).or_default();
         let was = sighting.visible;
@@ -1023,6 +1067,9 @@ fn remember(world: &mut World, actor: u64, target: u64, visible: bool) {
         sighting.checked = Some(now);
         if visible {
             sighting.seen = Some(now);
+            sighting.unattackable = false;
+            sighting.known = Some(now);
+            sighting.known_at = at;
         }
         was
     }) else {
@@ -1030,6 +1077,52 @@ fn remember(world: &mut World, actor: u64, target: u64, visible: bool) {
     };
     if visible && !was && enemy(world, actor) == Some(target) {
         raise(world, Value::Object(actor), "enemy_visible", Vec::new());
+    }
+}
+
+fn target_origin(world: &mut World, target: u64) -> [f32; 3] {
+    match super::players::entity_field(world, target, "origin") {
+        Value::Vector(at) => at,
+        _ => [0.0; 3],
+    }
+}
+
+/// The actor hears of a sentient (a pain or a death near it named the
+/// sentient as the attacker): unless it knew where it was within the last
+/// two seconds, it knows now.
+pub(crate) fn hear(world: &mut World, actor: u64, target: u64) {
+    let now = super::players::now_ms(world);
+    let recent = brain(world, actor)
+        .and_then(|brain| brain.sightings.get(&target))
+        .and_then(|sighting| sighting.known)
+        .is_some_and(|known| known > 0 && now - known < HEARD_RECENTLY_MS);
+    if recent {
+        return;
+    }
+    let at = target_origin(world, target);
+    with_brain(world, actor, |brain| {
+        let sighting = brain.sightings.entry(target).or_default();
+        sighting.known = Some(now);
+        sighting.known_at = at;
+    });
+}
+
+/// The entity that last hurt the actor, while it holds one.
+pub(crate) fn last_attacker(world: &World, actor: u64) -> Option<u64> {
+    brain(world, actor).and_then(|brain| brain.last_attacker)
+}
+
+/// Where the actor faces its enemy: the enemy itself while the last sight
+/// check saw it, else where the actor last knew it to be.
+pub(crate) fn enemy_face_point(world: &mut World, actor: u64) -> Option<[f32; 3]> {
+    let enemy = enemy(world, actor)?;
+    let remembered = brain(world, actor)
+        .and_then(|brain| brain.sightings.get(&enemy))
+        .filter(|sighting| !sighting.visible)
+        .map_or_else(|| None, |sighting| Some(sighting.known_at));
+    match remembered {
+        Some(at) => Some(at),
+        None => Some(target_origin(world, enemy)),
     }
 }
 
@@ -1151,16 +1244,25 @@ fn enemy_known(world: &mut World, actor: u64) -> bool {
 // --- Exposed ------------------------------------------------------------
 
 /// Exposed's substate: none without an enemy, fighting once a missing
-/// enemy is known again.
+/// enemy is known again; a reacquire move fights again once its path ends
+/// or a blocker holds it (Black Ops' other way back, seeing the enemy and
+/// being able to shoot it from the weapon's flash tag, never opens for a
+/// zombie, which carries no such tag).
 fn pick_substate(world: &mut World, actor: u64) {
     if enemy(world, actor).is_none() {
         with_brain(world, actor, |brain| brain.set_substate(EXPOSED_NONCOMBAT));
         return;
     }
-    if brain(world, actor).is_some_and(|brain| brain.substate() == EXPOSED_NONCOMBAT)
-        && enemy_known(world, actor)
-    {
-        with_brain(world, actor, |brain| brain.set_substate(EXPOSED_COMBAT));
+    match brain(world, actor).map(ActorBrain::substate) {
+        Some(EXPOSED_NONCOMBAT) if enemy_known(world, actor) => {
+            with_brain(world, actor, |brain| brain.set_substate(EXPOSED_COMBAT));
+        }
+        Some(EXPOSED_REACQUIRE)
+            if !has_path(world, actor) || super::actor_nav::has_blocker(world, actor) =>
+        {
+            with_brain(world, actor, |brain| brain.set_substate(EXPOSED_COMBAT));
+        }
+        _ => {}
     }
 }
 
@@ -1184,10 +1286,136 @@ fn exposed_think(world: &mut World, actor: u64) -> u8 {
             }
         }
         Some(EXPOSED_NONCOMBAT) => noncombat(world, actor),
+        Some(EXPOSED_REACQUIRE) => {
+            set_code_orient(world, actor, Orient::Sidestep);
+            start_move(world, actor, true);
+        }
         _ => {}
     }
     begin_negotiation(world, actor);
     THINK_DONE
+}
+
+// --- Reacquire ------------------------------------------------------------
+
+/// The actor's enemy, while its top state is exposed.
+fn exposed_enemy(world: &mut World, actor: u64) -> Option<u64> {
+    if brain(world, actor).is_none_or(|brain| brain.top() != EXPOSED) {
+        return None;
+    }
+    enemy(world, actor)
+}
+
+/// `reacquirestep(dist)`: a step `dist` to either side (a random one first)
+/// from where the enemy would be seen; the actor plans a path there when it
+/// can step there within its goal, and moves (facing its enemy) on it.
+pub(crate) fn reacquire_step(world: &mut World, actor: u64, dist: f32) -> bool {
+    let Some(enemy) = exposed_enemy(world, actor) else {
+        return false;
+    };
+    let origin = target_origin(world, actor);
+    let enemy_at = target_origin(world, enemy);
+    let d = [enemy_at[0] - origin[0], enemy_at[1] - origin[1]];
+    let d2 = d[0] * d[0] + d[1] * d[1];
+    if d2 <= 1.0 {
+        return false;
+    }
+    let len = d2.sqrt();
+    let side = [d[1] / len, -(d[0] / len)];
+    let Some(target_eye) =
+        super::natives::t5_turret::sentient_view(world, enemy).map(|view| view.eye)
+    else {
+        return false;
+    };
+    let (eye, _) = eye_view(world, actor);
+    let (_, max_sight_sq) = sight_limits(world, actor);
+    let first = super::actor_nav::random_bit(world);
+    for i in 0..2usize {
+        let sign = if i ^ first == 0 { -1.0 } else { 1.0 };
+        let off = sign * dist;
+        let from = [eye[0] + side[0] * off, eye[1] + side[1] * off, eye[2]];
+        let sight_sq = (target_eye[0] - from[0]).powi(2)
+            + (target_eye[2] - from[2]).powi(2)
+            + (target_eye[1] - from[1]).powi(2);
+        if max_sight_sq != 0.0 && (max_sight_sq < sight_sq || FOG_SIGHT_DIST_SQ < sight_sq) {
+            continue;
+        }
+        if !sight_trace(world, actor, from, target_eye, enemy) {
+            continue;
+        }
+        let to = [
+            origin[0] + side[0] * off,
+            origin[1] + side[1] * off,
+            origin[2],
+        ];
+        if super::actor_nav::may_step(world, actor, origin, to)
+            && super::actor_nav::in_code_goal(world, actor, to)
+        {
+            super::actor_nav::plan_to(world, actor, to, false);
+            if has_path(world, actor) {
+                with_brain(world, actor, |brain| brain.set_substate(EXPOSED_REACQUIRE));
+                set_code_orient(world, actor, Orient::Enemy);
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// `findreacquiredirectpath`: a path to the enemy (kept when it already
+/// ends there), cut back to the goal when the enemy stands outside it; the
+/// path `reacquiremove` may take.
+pub(crate) fn find_reacquire_direct_path(world: &mut World, actor: u64) {
+    let Some(enemy) = exposed_enemy(world, actor) else {
+        clear_path(world, actor);
+        return;
+    };
+    let at = target_origin(world, enemy);
+    super::actor_nav::plan_to(world, actor, at, true);
+    if !super::actor_nav::in_code_goal(world, actor, at) {
+        super::actor_nav::trim_path_to_goal(world, actor);
+    }
+    let marked = has_path(world, actor);
+    with_brain(world, actor, |brain| brain.reacquire_path = marked);
+}
+
+/// `findreacquireproximatepath`: the path is dropped; Black Ops' search
+/// for a node near the enemy within the goal is not ported, so none is
+/// found.
+pub(crate) fn find_reacquire_proximate_path(world: &mut World, actor: u64) {
+    clear_path(world, actor);
+    with_brain(world, actor, |brain| brain.reacquire_path = false);
+}
+
+/// `reacquiremove`: the reacquire path is taken (the reacquire move
+/// substate) when there is one and an enemy.
+pub(crate) fn reacquire_move(world: &mut World, actor: u64) -> Result<bool, String> {
+    let marked = brain(world, actor).is_some_and(|brain| brain.reacquire_path);
+    if has_path(world, actor) && !marked {
+        return Err(
+            "ReacquireMove may only called after calling FindReacquireDirectPath or \
+             FindReacquireProximatePath"
+                .into(),
+        );
+    }
+    with_brain(world, actor, |brain| brain.reacquire_path = false);
+    if exposed_enemy(world, actor).is_some() && has_path(world, actor) {
+        with_brain(world, actor, |brain| brain.set_substate(EXPOSED_REACQUIRE));
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// `flagenemyunattackable`: the enemy is marked unattackable until seen
+/// again, and the actor goes back to not fighting.
+pub(crate) fn flag_enemy_unattackable(world: &mut World, actor: u64) {
+    let Some(enemy) = exposed_enemy(world, actor) else {
+        return;
+    };
+    with_brain(world, actor, |brain| {
+        brain.sightings.entry(enemy).or_default().unattackable = true;
+        brain.set_substate(EXPOSED_NONCOMBAT);
+    });
 }
 
 /// Exposed with no enemy known: along a path it runs, walking within
@@ -1473,15 +1701,75 @@ pub(crate) fn pain(
         }
         runtime.set_object_field(actor, "attacker", attacker.clone());
     }
+    let attacker = match attacker {
+        Value::Object(id) => Some(*id),
+        _ => None,
+    };
+    with_brain(world, actor, |brain| brain.last_attacker = attacker);
     let allowed = !matches!(
         world
             .resource_mut::<RoundScript>()
             .object_field(actor, "allowpain"),
         Value::Int(0)
     );
-    if allowed && with_brain(world, actor, |brain| brain.push(PAIN)).unwrap_or(false) {
+    if allowed
+        && !in_synced_melee(world, actor)
+        && with_brain(world, actor, |brain| brain.push(PAIN)).unwrap_or(false)
+    {
         kill_anim_script(world, actor, false);
     }
+}
+
+/// Whether the actor is held in a synced melee (`syncedmeleetarget`).
+fn in_synced_melee(world: &mut World, actor: u64) -> bool {
+    matches!(
+        world
+            .resource_mut::<RoundScript>()
+            .object_field(actor, "syncedmeleetarget"),
+        Value::Object(_)
+    )
+}
+
+/// The pain's attacker is let go of, and the actor's team around hears of
+/// it.
+fn pain_event(world: &mut World, actor: u64) {
+    if last_attacker(world, actor).is_none() {
+        return;
+    }
+
+    ai_event(world, actor, game_api::fire::AiPointEvent::Pain);
+    with_brain(world, actor, |brain| brain.last_attacker = None);
+}
+
+/// A pain or death AI event from the actor to its own team.
+fn ai_event(world: &mut World, actor: u64, kind: game_api::fire::AiPointEvent) {
+    let origin = match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "origin")
+    {
+        Value::Vector(at) => at,
+        _ => return,
+    };
+    let team = match world
+        .resource_mut::<RoundScript>()
+        .object_field(actor, "team")
+    {
+        Value::String(team) => match &*team {
+            "free" => 1 << 0,
+            "axis" => 1 << 1,
+            "allies" => 1 << 2,
+            "neutral" => 1 << 3,
+            _ => 0,
+        },
+        _ => 0,
+    };
+    let event = game_api::fire::AiEvent::Point {
+        originator: -1,
+        kind,
+        teams: Some(team),
+        origin,
+    };
+    super::actors::broadcast_ai_event(world, event, Some(actor), None);
 }
 
 fn pain_start(world: &mut World, actor: u64) -> bool {
@@ -1506,8 +1794,9 @@ fn pain_think(world: &mut World, actor: u64) -> u8 {
         with_brain(world, actor, ActorBrain::pop);
         return THINK_CHANGED;
     }
-    // Half a second in, Black Ops also forgets the pain's attacker and
-    // tells the AI around it (not ported).
+    if now - pain_time >= PAIN_EVENT_MS {
+        pain_event(world, actor);
+    }
     sense(world, actor);
     set_code_orient(world, actor, Orient::Current);
     set_anim_script(
@@ -1569,6 +1858,7 @@ pub(crate) fn die(
     world
         .resource_mut::<RoundScript>()
         .set_object_field(actor, "attacker", attacker.clone());
+    with_brain(world, actor, |brain| brain.last_attacker = None);
     super::actor_dog::release(&mut world.resource_mut::<RoundScript>(), actor);
     kill_anim_script(world, actor, false);
 }
@@ -1604,6 +1894,7 @@ fn death_think(world: &mut World, actor: u64) -> u8 {
 /// its contents move to `death_contents` (`0x0400_2000` default, or what
 /// `setdeathcontents` set).
 fn release_dead(world: &mut World, actor: u64) {
+    ai_event(world, actor, game_api::fire::AiPointEvent::Death);
     clear_path(world, actor);
     with_brain(world, actor, |brain| brain.set_substate(DEATH_RELEASED));
     let mut runtime = world.resource_mut::<RoundScript>();

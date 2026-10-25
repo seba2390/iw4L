@@ -366,6 +366,12 @@ pub enum AiPointEvent {
     Gunshot,
     /// Event 12: `silenced_shot` (`ai_eventDistSilencedShot` 128).
     SilencedShot,
+    /// Event 5: `pain` (`ai_eventDistPain` 512), from a pained actor to its
+    /// own team.
+    Pain,
+    /// Event 7: `death` (`ai_eventDistDeath` 1024), from a dying actor to
+    /// its own team.
+    Death,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
