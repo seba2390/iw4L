@@ -16,6 +16,7 @@ const ANIMSCRIPT_MODULES: &[&str] = &[
     "animscripts/zombie_dog_death",
     "animscripts/zombie_dog_pain",
     "animscripts/zombie_dog_scripted",
+    "animscripts/zombie_dog_turn",
     // Black Ops' human species (the front end's actors).
     "animscripts/init",
     "animscripts/stop",

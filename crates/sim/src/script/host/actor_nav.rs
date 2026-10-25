@@ -591,11 +591,12 @@ pub(crate) struct ActorMove {
     pub(crate) goal_yaw: Option<f32>,
     /// Optional goal volume entity (`setgoalvolume`).
     pub(crate) goal_volume: Option<u64>,
-    /// Where the engine's own think sends the actor ahead of its goal: a
-    /// hellhound runs to the path node nearest its enemy.
-    pursuit: Option<[f32; 3]>,
-    /// Where the hellhound's path was planned to.
-    pursued_to: Option<[f32; 3]>,
+    /// The hellhound's claimed attack spot: its code goal in place of the
+    /// script's while it holds one.
+    claimed_spot: Option<[f32; 3]>,
+    /// The way the hellhound's last weave moved it (`ai_pathMomentum`
+    /// blends it into the next).
+    pub(crate) momentum_dir: [f32; 2],
     /// Black Ops' path and lookahead.
     pub(crate) path: ActorPath,
     /// The facing smoothing the path steer feeds.
@@ -670,8 +671,8 @@ impl Default for ActorMove {
             goal: None,
             goal_yaw: None,
             goal_volume: None,
-            pursuit: None,
-            pursued_to: None,
+            claimed_spot: None,
+            momentum_dir: [0.0; 2],
             path: ActorPath::default(),
             lean: LeanRing::default(),
             retry_at: 0,
@@ -766,11 +767,17 @@ impl ActorMove {
     }
 }
 
-/// A hellhound's pursuit point that moves farther than this is chased with
-/// a new path.
-const REPLAN_DISTANCE: f32 = 64.0;
-/// A hellhound's pursuit ends this close to its point.
-const PURSUIT_REACHED: f32 = 16.0;
+/// A hellhound's path whose end lies farther than this (flat, squared)
+/// from its code goal is dropped.
+const FAR_PATH_END_SQ: f32 = 225.0;
+/// The hellhound weaves only a move longer than this.
+const WEAVE_MIN_STEP: f32 = 15.0;
+/// Within this height and flat distance (squared) of the traversal it
+/// heads for next, the weave starts again.
+const WEAVE_NEGOTIATION_HEIGHT_SQ: f32 = 6400.0;
+const WEAVE_NEGOTIATION_FLAT_SQ: f32 = 10_000.0;
+/// `ai_pathMomentum`'s registered default.
+const PATH_MOMENTUM: f32 = 0.78;
 /// When a script names no radius.
 const DEFAULT_GOAL_RADIUS: f32 = 32.0;
 /// When a script names no goal height.
@@ -1112,6 +1119,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .get(&id)
             .map_or(HIT_NONE, |movement| movement.hit_ent_type);
         Ok(Value::string(kind))
+    });
+    registry.register(Method, "getdeltaturnyaw", |world, receiver, _| {
+        let id = actor_id(world, receiver)?;
+        Ok(Value::Float(delta_turn_yaw(world, id)))
     });
     registry.register(Method, "gethityaw", |world, receiver, _| {
         let id = actor_id(world, receiver)?;
@@ -2014,9 +2025,65 @@ fn steer(
     let share = (dir[1] * forward[1] + forward[0] * dir[0]).max(MIN_SHARE);
     let share = share.powf(SPEED_SHARE_EXP).max(MIN_SPEED_SHARE);
     let speed = (share * step).min(movement.path.look_dist);
+    let mut dir = dir;
+    let speed = if matches!(species(world, actor), 1 | 3) && movement.path.grew() {
+        weave(world, actor, origin, &mut dir, speed, movement)
+    } else {
+        speed
+    };
     movement.lean.set(lean);
     movement.lean.step();
     [dir[0] * speed, dir[1] * speed, dir[2] * speed]
+}
+
+/// Black Ops' dog weave, on a path whose lookahead grew: `leanamount` is
+/// how far this move turns from the last (the cosine, its sign the turn's
+/// side while under 90 degrees), the move slows to as little as half in a
+/// turn, and its way takes in the last one by `ai_pathMomentum`. Near the
+/// traversal the path heads for next, the weave starts over.
+fn weave(
+    world: &mut World,
+    actor: u64,
+    origin: [f32; 3],
+    dir: &mut [f32; 3],
+    speed: f32,
+    movement: &mut ActorMove,
+) -> f32 {
+    let mut speed = speed;
+    if speed > WEAVE_MIN_STEP {
+        let path = &movement.path;
+        let near_negotiation = path.len >= 2 && path.negotiation_start + 2 == path.len && {
+            let at = path.point(path.negotiation_start).origin;
+            let dz = origin[2] - at[2];
+            dz * dz <= WEAVE_NEGOTIATION_HEIGHT_SQ
+                && (at[1] - origin[1]).powi(2) + (at[0] - origin[0]).powi(2)
+                    <= WEAVE_NEGOTIATION_FLAT_SQ
+        };
+        let prev = if near_negotiation {
+            [0.0; 2]
+        } else {
+            movement.momentum_dir
+        };
+        let mut lean = prev[0] * dir[0] + prev[1] * dir[1];
+        speed = ((lean + 1.0) * 0.5 + 1.0) * speed * 0.5;
+        if lean > 0.0 && prev[1] * dir[0] - prev[0] * dir[1] < 0.0 {
+            lean = -lean;
+        }
+        let momentum = dvar_f32(world, "ai_pathMomentum", PATH_MOMENTUM);
+        let x = (prev[0] - dir[0]) * momentum + dir[0];
+        let y = (prev[1] - dir[1]) * momentum + dir[1];
+        let len = (y * y + x * x).sqrt();
+        let len = if -len >= 0.0 { 1.0 } else { len };
+        dir[0] = x / len;
+        dir[1] = y / len;
+        world.resource_mut::<RoundScript>().set_object_field(
+            actor,
+            "leanamount",
+            Value::Float(lean),
+        );
+    }
+    movement.momentum_dir = [dir[0], dir[1]];
+    speed
 }
 
 /// The path's end (`stopanimdistsq`'s notifies, the traversal's start and
@@ -2555,6 +2622,31 @@ fn plan_path(
     let Some(goal_node) = nearest_node(world, &paths, goal) else {
         return false;
     };
+    plan_path_to_node(
+        world,
+        actor,
+        (start, start_node),
+        (goal_node, goal),
+        allow_negotiation,
+        now,
+        movement,
+    )
+}
+
+/// Plans the actor's path from `start` (from `start_node`) to `goal`
+/// (from `goal_node`).
+fn plan_path_to_node(
+    world: &mut World,
+    actor: u64,
+    (start, start_node): ([f32; 3], u16),
+    (goal_node, goal): (u16, [f32; 3]),
+    allow_negotiation: bool,
+    now: i64,
+    movement: &mut ActorMove,
+) -> bool {
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return false;
+    };
     let edits = world
         .get_resource::<LinkEdits>()
         .cloned()
@@ -2656,13 +2748,24 @@ pub(crate) fn replan_from_here(
     }
 }
 
-/// The AI's code goal: its goal entity's origin or its goal position, the
-/// radius at least 4 and the height at least 80.
+/// The AI's code goal: its goal entity's origin or its goal position (a
+/// hellhound's claimed attack spot first, with `pathenemyfightdist` for
+/// the radius), the radius at least 4 and the height at least 80.
 fn code_goal(world: &mut World, actor: u64) -> Option<([f32; 3], f32, f32)> {
     let goal = goal_position(world, actor)?;
+    let claimed = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .is_some_and(|movement| movement.claimed_spot.is_some());
+    let radius = if claimed {
+        float_field(world, actor, "pathenemyfightdist").unwrap_or(0.0)
+    } else {
+        goal_radius(world, actor)
+    };
     Some((
         goal,
-        goal_radius(world, actor).max(GOAL_MIN_RADIUS),
+        radius.max(GOAL_MIN_RADIUS),
         goal_height(world, actor).max(GOAL_MIN_HEIGHT),
     ))
 }
@@ -4102,8 +4205,8 @@ pub(crate) fn goal_point(world: &mut World, actor: u64) -> Option<[f32; 3]> {
 
 fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
     let movement = world.resource::<RoundScript>().actor_moves.get(&actor)?;
-    if let Some(pursuit) = movement.pursuit {
-        return Some(pursuit);
+    if let Some(spot) = movement.claimed_spot {
+        return Some(spot);
     }
     let goal = movement.goal.clone()?;
     match goal {
@@ -4112,10 +4215,55 @@ fn goal_position(world: &mut World, actor: u64) -> Option<[f32; 3]> {
     }
 }
 
-/// Sends the actor toward `pursuit` ahead of its goal, or back to its goal.
-pub(crate) fn set_pursuit(world: &mut World, actor: u64, pursuit: Option<[f32; 3]>) {
+/// The hellhound's claimed attack spot becomes its code goal (with the
+/// radius `pathenemyfightdist`), or, with none, the script's goal is again.
+pub(crate) fn set_claimed_spot(world: &mut World, actor: u64, spot: Option<[f32; 3]>) {
+    if let Some(movement) = world
+        .resource_mut::<RoundScript>()
+        .actor_moves
+        .get_mut(&actor)
+    {
+        movement.claimed_spot = spot;
+    }
+}
+
+/// The hellhound drops a path whose end lies more than 15 (flat) from its
+/// code goal.
+pub(crate) fn drop_far_path(world: &mut World, actor: u64) {
+    let Some((goal, _, _)) = code_goal(world, actor) else {
+        return;
+    };
     let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let Some(movement) = runtime.actor_moves.get_mut(&actor) else {
+        return;
+    };
+    let end = movement.path.final_goal;
+    if movement.has_path()
+        && (end[1] - goal[1]).powi(2) + (end[0] - goal[0]).powi(2) > FAR_PATH_END_SQ
+    {
+        movement.clear_path(origin);
+    }
+}
+
+/// The hellhound's path to its enemy: from its own nearest node to the
+/// node nearest the enemy, traversals allowed. With no node near the
+/// enemy, the path think to the code goal runs instead.
+pub(crate) fn plan_to_enemy_node(world: &mut World, actor: u64, enemy: u64) {
+    let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
+        return;
+    };
+    let goal_node = as_vector(super::players::entity_field(world, enemy, "origin"))
+        .and_then(|at| nearest_node(world, &paths, at));
+    let Some(goal_node) = goal_node else {
+        update_path(world, actor);
+        return;
+    };
     let now = super::players::now_ms(world);
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let Some(start_node) = nearest_node(world, &paths, origin) else {
+        return;
+    };
     let Some(mut movement) = world
         .resource::<RoundScript>()
         .actor_moves
@@ -4124,53 +4272,74 @@ pub(crate) fn set_pursuit(world: &mut World, actor: u64, pursuit: Option<[f32; 3
     else {
         return;
     };
-    match pursuit {
-        Some(goal_at) => {
-            let stale = !movement.has_path()
-                || movement.pursuit.is_none()
-                || movement.pursued_to.is_none_or(|planned| {
-                    distance_sq(planned, goal_at) > REPLAN_DISTANCE * REPLAN_DISTANCE
-                });
-            movement.pursuit = Some(goal_at);
-            if stale {
-                movement.pursued_to = Some(goal_at);
-                movement.clear_path(origin);
-                if horizontal_distance(origin, goal_at) > PURSUIT_REACHED
-                    && let Some(paths) = FrameWorld::from_world(world).actor_paths()
-                    && let Some(start_node) = nearest_node(world, &paths, origin)
-                {
-                    plan_path(
-                        world,
-                        actor,
-                        (origin, start_node),
-                        goal_at,
-                        true,
-                        now,
-                        &mut movement,
-                    );
-                }
-            }
-        }
-        None => {
-            if movement.pursuit.is_some() {
-                movement.pursuit = None;
-                movement.pursued_to = None;
-                movement.clear_path(origin);
-            }
-        }
-    }
+    plan_path_to_node(
+        world,
+        actor,
+        (origin, start_node),
+        (goal_node, paths.nodes[usize::from(goal_node)].origin),
+        true,
+        now,
+        &mut movement,
+    );
     world
         .resource_mut::<RoundScript>()
         .actor_moves
         .insert(actor, movement);
 }
 
-/// Where the path node serving `at` stands.
-pub(crate) fn nearest_node_origin(world: &mut World, at: [f32; 3]) -> Option<[f32; 3]> {
-    let paths = FrameWorld::from_world(world).actor_paths()?;
-    let mut reach = |from: [f32; 3], to: [f32; 3]| walkable(world, from, to);
-    let node = paths.nearest(at, &mut reach)?;
-    Some(paths.nodes[node as usize].origin)
+/// The hellhound's turn test: moving along a lookahead at least
+/// `dog_turn_min_goal_dist` long whose way lies more than
+/// `dog_turn90_angle` from the way it faces.
+pub(crate) fn wants_dog_turn(world: &mut World, actor: u64) -> bool {
+    let min_dist = dvar_f32(world, "dog_turn_min_goal_dist", DOG_TURN_MIN_GOAL_DIST);
+    let angle = dvar_f32(world, "dog_turn90_angle", DOG_TURN90_ANGLE);
+    let Some(look_dist) = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map(|movement| movement.path.look_dist)
+    else {
+        return false;
+    };
+    min_dist <= look_dist && delta_turn_yaw(world, actor).abs() > angle
+}
+
+/// How far the lookahead's way turns from the way the actor faces
+/// (`getdeltaturnyaw`), in degrees.
+fn delta_turn_yaw(world: &mut World, actor: u64) -> f32 {
+    let look = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map_or([0.0; 3], |movement| movement.path.look_dir);
+    let (_, angles) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let look_yaw = if look[0] == 0.0 && look[1] == 0.0 {
+        0.0
+    } else {
+        look[1].atan2(look[0]).to_degrees()
+    };
+    angle_delta(look_yaw, angles[1])
+}
+
+/// Black Ops' angle difference: both wrapped to [0, 360), the difference to
+/// [-180, 180).
+fn angle_delta(a: f32, b: f32) -> f32 {
+    let wrap = |x: f32| (x / 360.0 - (x / 360.0).floor()) * 360.0;
+    let d = (wrap(a) - wrap(b)) / 360.0;
+    (d - (d + 0.5).floor()) * 360.0
+}
+
+/// `dog_turn_min_goal_dist`'s and `dog_turn90_angle`'s registered defaults.
+const DOG_TURN_MIN_GOAL_DIST: f32 = 40.0;
+const DOG_TURN90_ANGLE: f32 = 70.0;
+
+fn dvar_f32(world: &World, name: &str, default: f32) -> f32 {
+    world
+        .resource::<crate::script::MatchScript>()
+        .dvars
+        .get(name)
+        .and_then(|v| v.trim().parse::<f32>().ok())
+        .unwrap_or(default)
 }
 
 /// Angles from `actor` toward the next path node toward its closest enemy,

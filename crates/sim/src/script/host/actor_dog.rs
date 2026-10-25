@@ -1,8 +1,8 @@
 //! The hellhound's (`zombie_dog` species) exposed think, as Black Ops runs it
 //! for an actor with an enemy outside Dead Ops Arcade: it aims at where the
 //! enemy will be a quarter second from now, claims one of four attack spots
-//! around it, runs to the path node nearest the enemy, and bites once it is
-//! close and on its spot's side.
+//! around it (its code goal), and bites once it is close and on its spot's
+//! side. Its path, to the node nearest the enemy, is the brain think's.
 
 use bevy_ecs::prelude::World;
 
@@ -34,22 +34,11 @@ const MASK_ACTOR_SOLID: u32 = 0x0282_0011;
 /// An enemy's four attack spots, each held by the dog that claimed it.
 pub(crate) type AttackSpots = [Option<u64>; 4];
 
-/// Runs the hellhound's think for `actor` and returns whether it should bite
-/// now. Its movement is left heading for the node nearest its enemy, or for
-/// nothing when it has none.
-pub(crate) fn think(world: &mut World, actor: u64) -> bool {
-    let enemy = match world
-        .resource_mut::<RoundScript>()
-        .object_field(actor, "enemy")
-    {
-        Value::Object(enemy) => enemy,
-        _ => {
-            super::actor_nav::set_pursuit(world, actor, None);
-            return false;
-        }
-    };
+/// The hellhound's bite test against `enemy`: whether it should bite now,
+/// and the attack spot it claimed, which becomes its code goal.
+pub(crate) fn think(world: &mut World, actor: u64, enemy: u64) -> (bool, Option<[f32; 3]>) {
     let Some(dog) = vector(world, actor, "origin") else {
-        return false;
+        return (false, None);
     };
     let (target, reach) = predicted_target(world, actor, enemy);
     let height = dog[2] - target[2];
@@ -60,12 +49,7 @@ pub(crate) fn think(world: &mut World, actor: u64) -> bool {
         Some(spot) => close && spot_facing(spot, target, dog) > SPOT_FACING_DOT,
         None => close && clear(world, dog, target),
     };
-    let pursuit = spot.or_else(|| {
-        vector(world, enemy, "origin")
-            .and_then(|at| super::actor_nav::nearest_node_origin(world, at))
-    });
-    super::actor_nav::set_pursuit(world, actor, pursuit);
-    bite
+    (bite, spot)
 }
 
 /// Where the dog aims, and how far its bite reaches.
