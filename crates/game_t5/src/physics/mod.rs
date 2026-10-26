@@ -66,21 +66,50 @@ impl Hit {
 
 /// How a sweep keeps its contacts.
 #[derive(Clone, Copy, Debug)]
-struct Sweep {
+struct Sweep<'a> {
     /// Contacts up to this far past the earliest one are kept.
     cap_add: f32,
     /// The sweep ends at the first contact that starts inside.
     stop_on_solid: bool,
     /// A contact the body moves away from still stops it.
     keep_leaving: bool,
+    /// Pieces the sweep leaves out: those its slide already holds as
+    /// planes.
+    skip: &'a [PieceKey],
 }
 
-impl Sweep {
-    const PLAYER: Self = Self {
+impl Sweep<'_> {
+    const PLAYER: Sweep<'static> = Sweep {
         cap_add: 0.0,
         stop_on_solid: true,
         keep_leaving: false,
+        skip: &[],
     };
+}
+
+/// Tells one piece from another.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PieceKey {
+    entity: i32,
+    shape: usize,
+    mins: [u32; 3],
+}
+
+impl PieceKey {
+    fn of(piece: &SolidPiece<'_>) -> Self {
+        let shape = match piece.shape {
+            SolidShape::Brush { sides, points, .. } => {
+                sides.as_ptr() as usize ^ points.as_ptr() as usize
+            }
+            SolidShape::Partition { tris, .. } => tris.as_ptr() as usize,
+            SolidShape::Body { .. } => 0,
+        };
+        Self {
+            entity: piece.entity,
+            shape,
+            mins: piece.mins.map(f32::to_bits),
+        }
+    }
 }
 
 /// One contact a sweep met.
@@ -187,6 +216,7 @@ impl<'w> PhysicsWorld<'w> {
             },
             stop_on_solid: false,
             keep_leaving: false,
+            skip: &[],
         };
         let mut body = Character::from_bounds(mins, maxs, 0.0);
         let contacts = self.sweep(&mut body, start, end, pass, mask, sweep)?;
@@ -286,7 +316,7 @@ impl<'w> PhysicsWorld<'w> {
     }
 
     /// Casts `body` from `start` to `end` against the pieces it may meet,
-    /// nearest first.
+    /// nearest first, but for those `sweep` skips.
     fn sweep(
         &self,
         body: &mut Character,
@@ -294,7 +324,7 @@ impl<'w> PhysicsWorld<'w> {
         end: V3,
         pass: i32,
         mask: u32,
-        sweep: Sweep,
+        sweep: Sweep<'_>,
     ) -> Option<Contacts<'w>> {
         if !self.list(body, start, end, pass, mask) {
             return None;
@@ -306,6 +336,9 @@ impl<'w> PhysicsWorld<'w> {
         let mut order: Vec<(f32, usize)> = pieces
             .iter()
             .enumerate()
+            .filter(|(_, piece)| {
+                sweep.skip.is_empty() || !sweep.skip.contains(&PieceKey::of(piece))
+            })
             .filter_map(|(i, piece)| {
                 let (piece_lo, piece_hi) = piece_box(piece);
                 let lo = sub(piece_lo, shape_hi);
@@ -610,7 +643,7 @@ fn piece_walkable(piece: &SolidPiece<'_>, contact: V3) -> bool {
             }
             let vert = |i: u32| verts.get(i as usize).copied().unwrap_or([0.0; 3]);
             let mut footing = Footing::new();
-            for tri in tris.chunks_exact(3) {
+            for tri in tris.as_chunks::<3>().0 {
                 let v0 = vert(tri[0]);
                 let a = sub(v0, vert(tri[1]));
                 let b = sub(v0, vert(tri[2]));

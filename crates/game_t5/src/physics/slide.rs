@@ -3,10 +3,14 @@
 //! plane it may not cross, and the move and the velocity are bent to stay
 //! clear of every plane met so far; a body that ends up inside something is
 //! pushed out, and one walking on the ground is kept on it.
+//!
+//! A piece met once is held by its plane from then on: the later casts of
+//! the same slide leave it out. That is what lets a body that starts a
+//! little inside something (a spawn beside a sloped clip) move out of it.
 
 use super::gjk::{V3, add, dot, scale, sub};
 use super::shape::Character;
-use super::{Contact, PhysicsWorld, Sweep};
+use super::{Contact, PhysicsWorld, PieceKey, Sweep};
 
 use movement_t5::{PhysicsSlid as SlideResult, PhysicsSlide as Slide};
 
@@ -132,6 +136,7 @@ impl<'w> PhysicsWorld<'w> {
         let mut used = 0.0f32;
         let mut steps = 0;
         let mut planes: Vec<Plane<'w>> = Vec::new();
+        let mut touched: Vec<PieceKey> = Vec::new();
         loop {
             let remaining = ft - used;
             let cap_add = if SHORT_STEP <= remaining {
@@ -143,6 +148,7 @@ impl<'w> PhysicsWorld<'w> {
                 cap_add,
                 stop_on_solid: false,
                 keep_leaving: false,
+                skip: &touched,
             };
             let contacts = self.sweep(
                 &mut body,
@@ -178,6 +184,7 @@ impl<'w> PhysicsWorld<'w> {
                 if planes.len() < MAX_PLANES {
                     planes.push(Plane::new(contact));
                 }
+                touched.push(PieceKey::of(&contact.piece));
                 touch(out, contact.piece.entity);
             }
             for plane in &mut planes {
@@ -219,12 +226,14 @@ impl<'w> PhysicsWorld<'w> {
         let origin = slide.origin;
         let mut pos = origin;
         let mut planes: Vec<Plane<'w>> = Vec::new();
-        let sweep = Sweep {
-            cap_add: 1.0,
-            stop_on_solid: false,
-            keep_leaving: true,
-        };
+        let mut touched: Vec<PieceKey> = Vec::new();
         for _ in 0..PUSH_TRIES {
+            let sweep = Sweep {
+                cap_add: 1.0,
+                stop_on_solid: false,
+                keep_leaving: true,
+                skip: &touched,
+            };
             let contacts = self.sweep(&mut body, origin, pos, pass, slide.contentmask, sweep)?;
             if contacts.best.is_none() {
                 break;
@@ -233,6 +242,7 @@ impl<'w> PhysicsWorld<'w> {
                 if planes.len() < MAX_PLANES {
                     planes.push(Plane::new(contact));
                 }
+                touched.push(PieceKey::of(&contact.piece));
                 touch(out, contact.piece.entity);
             }
             for plane in &mut planes {

@@ -47,7 +47,7 @@ pub(super) struct Frame {
 }
 
 impl Frame {
-    fn to_local(&self, d: V3) -> V3 {
+    fn local(self, d: V3) -> V3 {
         [
             dot(self.rows[0], d),
             dot(self.rows[1], d),
@@ -55,7 +55,7 @@ impl Frame {
         ]
     }
 
-    fn to_outer(&self, p: V3) -> V3 {
+    fn outer(self, p: V3) -> V3 {
         let r = &self.rows;
         [
             self.origin[0] + r[0][0] * p[0] + r[1][0] * p[1] + r[2][0] * p[2],
@@ -225,12 +225,12 @@ impl Gjk<'_> {
 
     fn support_b(&self, dir: V3) -> V3 {
         let frame = &self.input.frame;
-        frame.to_outer(self.input.b.support(frame.to_local(dir)))
+        frame.outer(self.input.b.support(frame.local(dir)))
     }
 
     fn initial_dir(&self) -> V3 {
         let frame = &self.input.frame;
-        let center_b = frame.to_outer(self.input.b.center());
+        let center_b = frame.outer(self.input.b.center());
         let v = sub(self.input.a.center(), center_b);
         if dot(v, v) >= TINY {
             v
