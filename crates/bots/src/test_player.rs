@@ -112,6 +112,15 @@
 //! for 3 s, logging where he is every quarter second; the movement log
 //! shows the mantle starting and ending.
 //!
+//! `IW4L_TEST_ROUND=<n>` (with any mode, or none): once the zombie
+//! scripts have defined `level.round_number`, it sets `level.first_round`
+//! false and `level.round_number` to n, the two fields the game's own late
+//! starts set, so the first round runs the scripts' count and health for
+//! round n. `IW4L_TEST_DOGS=<n>`: once the dog round tracker has defined
+//! `level.next_dog_round`, it sets it to n, so the round loop's own check
+//! makes round n a dog round. Each is set once and logged; the scripts do
+//! the rest.
+//!
 //! `IW4L_TEST_WALK=1` (with any fighting mode): every 20 s, 10 s in, he
 //! walks toward a path node in a clear line 600 to 1200 units away: a jump, a walk, a
 //! sprint, then standing still crouched and prone. He only presses buttons
@@ -378,6 +387,9 @@ pub(crate) struct TestPlayer {
     /// The walk test's walk under way, and when it next walks.
     walk: Option<Walk>,
     next_walk_ms: i32,
+    /// `IW4L_TEST_ROUND` and `IW4L_TEST_DOGS`, until they are set.
+    start_round: Option<i32>,
+    dog_round: Option<i32>,
 }
 
 /// What the walk test has seen of one walk: where each phase started, the
@@ -412,8 +424,40 @@ impl TestPlayer {
                     UseKind::Power,
                 ]
             },
+            start_round: round_from_env("IW4L_TEST_ROUND"),
+            dog_round: round_from_env("IW4L_TEST_DOGS"),
             ..Self::default()
         }
+    }
+}
+
+fn round_from_env(name: &str) -> Option<i32> {
+    std::env::var(name).ok()?.trim().parse().ok()
+}
+
+/// `IW4L_TEST_ROUND` and `IW4L_TEST_DOGS`: each sets its level fields once
+/// the scripts have defined them.
+pub(crate) fn force_test_rounds(mut test: ResMut<TestPlayer>, mut world: ResMut<AuthorityWorld>) {
+    if test.start_round.is_none() && test.dog_round.is_none() {
+        return;
+    }
+    if let Some(round) = test.start_round
+        && world
+            .0
+            .script_int(ScriptOwner::Level, "round_number")
+            .is_some()
+    {
+        world.0.set_level_int("first_round", 0);
+        world.0.set_level_int("round_number", round);
+        test.start_round = None;
+        diag::info!(Sim, "test player: round_number set to {round}");
+    }
+    if let Some(round) = test.dog_round
+        && let Some(was) = world.0.script_int(ScriptOwner::Level, "next_dog_round")
+    {
+        world.0.set_level_int("next_dog_round", round);
+        test.dog_round = None;
+        diag::info!(Sim, "test player: next_dog_round {was} set to {round}");
     }
 }
 

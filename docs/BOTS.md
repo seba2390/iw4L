@@ -69,5 +69,12 @@ change with how long the last state lasted (reload and fire times). Each hit tha
 lowers its health is logged. With a game's own movement it
 also logs each change of the ladder, mantle, no-melee, no-cycling and being-revived
 flags, and each hit on the damage timer.
+`IW4L_TEST_ROUND=<n>` starts a zombies match at round n: once the scripts have
+defined `level.round_number` it sets `level.first_round` false and
+`level.round_number` to n, as the game's own late starts do, so the first round
+runs the scripts' count and health for round n. `IW4L_TEST_DOGS=<n>` sets
+`level.next_dog_round` to n once the dog round tracker has defined it, so the
+round loop's own check makes round n (2 or later) a dog round. Both work with
+any mode or none, set each field once and log it; they spawn nothing.
 With `IW4L_TIMESCALE` a headless run plays faster than real time; the test player
 runs each tick, so it acts the same.

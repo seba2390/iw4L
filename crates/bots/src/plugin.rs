@@ -134,6 +134,7 @@ impl Plugin for BotsPlugin {
                 (
                     evict_bots_claiming_local_client.in_set(frame::InMatch),
                     think_bots.in_set(frame::InMatch),
+                    crate::test_player::force_test_rounds.in_set(frame::InMatch),
                     crate::test_player::drive_test_player.in_set(frame::InMatch),
                 )
                     .chain()

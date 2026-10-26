@@ -249,6 +249,19 @@ impl SimWorld {
         crate::script::host::sightings::script_int(&self.ecs, owner, name)
     }
 
+    /// Sets an integer field of `level`, for a test player: only one the
+    /// scripts already gave a value; false while it is undefined.
+    pub fn set_level_int(&mut self, name: &str, value: i32) -> bool {
+        let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() else {
+            return false;
+        };
+        if runtime.peek_object_field(0, name).is_none() {
+            return false;
+        }
+        runtime.set_object_field(0, name, crate::script::Value::Int(value));
+        true
+    }
+
     /// The specialties a player currently holds, sorted by name.
     pub fn player_perks(&self, id: ClientId) -> Vec<String> {
         let Some(runtime) = self.ecs.get_resource::<crate::script::RoundScript>() else {
