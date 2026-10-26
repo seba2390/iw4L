@@ -234,14 +234,19 @@ fn prone_move_override<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     }
 }
 
+/// A player who stops moving of itself lets go of a ladder.
+fn leave_ladder(ps: &mut crate::PlayerState) {
+    if ps.pm_flags & pm_flags::LADDER != 0 {
+        ps.pm_flags = (ps.pm_flags & !pm_flags::LADDER) | pm_flags::LADDER_FALL;
+    }
+}
+
 /// A player linked to an entity: it carries the player, so the player
 /// stands on nothing and does not move of itself, but the stance, sprint,
 /// aim, footsteps and both hands' weapons run on.
 fn linked_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
     let ps = &mut *pm.ps;
-    if ps.pm_flags & pm_flags::LADDER != 0 {
-        ps.pm_flags = (ps.pm_flags & !pm_flags::LADDER) | pm_flags::LADDER_FALL;
-    }
+    leave_ladder(ps);
     ps.ground_entity_num = ENTITYNUM_NONE;
     pml.ground_plane = false;
     pml.almost_ground_plane = false;
@@ -352,8 +357,37 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
             linked_move(pm, &mut pml);
             return output(pm, &pml);
         }
-        pm_type::NOCLIP | pm_type::UFO | pm_type::SPECTATOR | pm_type::INTERMISSION => {
-            pm.gap(Gap::SpecialMove);
+        pm_type::NOCLIP | pm_type::UFO => {
+            pm.ps.ground_entity_num = ENTITYNUM_NONE;
+            leave_ladder(pm.ps);
+            crate::weapon::update_ads_intent(pm, &pml);
+            sprint::update(pm);
+            crate::weapon::update_sight_aiming(pm);
+            drop_timers(pm, &pml);
+            if pm.ps.pm_type == pm_type::NOCLIP {
+                crate::special::noclip_move(pm, &pml);
+            } else {
+                crate::special::ufo_move(pm, &pml);
+            }
+            crate::weapon::ads_lerp(pm, &pml);
+            return output(pm, &pml);
+        }
+        pm_type::SPECTATOR => {
+            leave_ladder(pm.ps);
+            crate::weapon::update_ads_intent(pm, &pml);
+            sprint::update(pm);
+            crate::weapon::update_sight_aiming(pm);
+            stance::check_duck(pm, &pml);
+            drop_timers(pm, &pml);
+            crate::special::spectator_move(pm, &mut pml);
+            crate::weapon::ads_lerp(pm, &pml);
+            return output(pm, &pml);
+        }
+        pm_type::INTERMISSION => {
+            leave_ladder(pm.ps);
+            crate::weapon::update_ads_intent(pm, &pml);
+            sprint::update(pm);
+            crate::weapon::ads_lerp(pm, &pml);
             return output(pm, &pml);
         }
         pm_type::LAST_STAND | pm_type::LAST_STAND_REVIVED => {

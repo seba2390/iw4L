@@ -66,11 +66,6 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops' scripted animation lock on a player",
             "the player animation script durations that end the lock"
         ),
-        Gap::SpecialMove => unknown!(
-            "t5.movement.special",
-            "Black Ops' noclip, ufo, spectator and intermission moves",
-            "those player moves from its executable"
-        ),
         Gap::PhysicsWorld => unknown!(
             "t5.movement.physics_world",
             "the match cannot list Black Ops' physics world, so the player sweeps the clip map (Black Ops' collision mode 0)",

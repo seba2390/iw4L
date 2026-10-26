@@ -20,6 +20,8 @@ pub const SPRINT_SPEED_SCALE: f32 = 1.5;
 pub const SPRINT_STRAFE_SPEED_SCALE: f32 = 0.666999996;
 pub const ENDURANCE_SPEED_SCALE: f32 = 1.7;
 pub const SPECTATE_SPEED_SCALE: f32 = 1.0;
+/// `cg_ufo_scaler`: how much faster than walking a ufo player flies.
+pub const UFO_SCALER: f32 = 6.0;
 
 pub const SPRINT_TIME: f32 = 4.0;
 pub const SPRINT_MIN_TIME: f32 = 1.0;

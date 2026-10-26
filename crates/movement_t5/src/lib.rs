@@ -16,6 +16,7 @@ mod pml;
 mod pmove;
 mod prone;
 mod slide;
+mod special;
 mod sprint;
 mod stance;
 pub mod state;
@@ -50,7 +51,6 @@ pub enum Gap {
     ShellshockTorso = 16,
     Launched = 32,
     AnimLock = 64,
-    SpecialMove = 128,
     /// A weapon that overheats: its heat is not kept.
     Overheat = 256,
     /// The match cannot list the physics world: the player sweeps the clip
@@ -278,7 +278,6 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::ShellshockTorso,
             Gap::Launched,
             Gap::AnimLock,
-            Gap::SpecialMove,
             Gap::Overheat,
             Gap::PhysicsWorld,
         ]

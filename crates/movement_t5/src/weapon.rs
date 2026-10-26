@@ -451,7 +451,7 @@ pub(crate) fn update_sight_aiming<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 }
 
 /// The sights come up or go down at the weapon's rates.
-fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
+pub(crate) fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let weapon = view_weapon(pm);
     let w = def(pm, weapon);
     let d = w.def;
