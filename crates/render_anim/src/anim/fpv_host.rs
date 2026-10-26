@@ -110,6 +110,9 @@ pub struct FpvPoseProduct {
     pub drawgun: Option<i32>,
     pub kind: FpvPoseKind,
     pub camo: u8,
+    /// The held weapon's options word (Black Ops' lens, reticle and reticle
+    /// colour; zero for games without them).
+    pub weapon_options: u32,
     /// The pose of the game's camera bone in the viewmodel's model space,
     /// which places the view (its camera animations).
     pub camera_tag: Option<Mat4>,

@@ -505,6 +505,8 @@ impl WeaponBuild {
             vehicle_turrets: HashMap::new(),
             vehicle_compass: HashMap::new(),
             vehicle_accel: HashMap::new(),
+            t5_optics: Arc::default(),
+            t5_reticle_colours: Arc::new([]),
             revision: mint_weapon_revision(),
         };
         registry.rebuild_name_maps();

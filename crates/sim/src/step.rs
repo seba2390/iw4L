@@ -1664,6 +1664,7 @@ fn apply_configuration_change(
     let mut next = ps;
     next.weapons[slot] = to as i32;
     next.weapon_data[slot * 5..slot * 5 + 5].fill(0);
+    next.weapon_options[slot] = 0;
     weapon_iw4::latch_weapon_dual_wield(&next.weapons, &mut next.weapon_data, to, akimbo);
     next.weapon = to;
     next.weapon_primary = to;
@@ -1902,6 +1903,7 @@ fn apply_give_weapon(
     {
         next.weapons[slot] = weapon as i32;
         next.weapon_data[slot * 5..slot * 5 + 5].fill(0);
+        next.weapon_options[slot] = 0;
         replaced = true;
     }
     if replaced {
