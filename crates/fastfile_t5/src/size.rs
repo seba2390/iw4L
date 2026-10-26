@@ -478,6 +478,9 @@ pub const SND_ALIAS_ENVELOP_PERCENTAGE_OFF: usize = 66;
 pub const SND_ALIAS_PRIORITY_MIN_THRESHOLD_OFF: usize = 68;
 pub const SND_ALIAS_PRIORITY_MAX_THRESHOLD_OFF: usize = 69;
 pub const SND_ALIAS_PROBABILITY_OFF: usize = 70;
+/// The alias's occlusion level and its dry/wet occlusion blend (bytes).
+pub const SND_ALIAS_OCCLUSION_LEVEL_OFF: usize = 71;
+pub const SND_ALIAS_OCCLUSION_BLEND_OFF: usize = 72;
 pub const SND_ALIAS_PRIORITY_MIN_OFF: usize = 73;
 pub const SND_ALIAS_PRIORITY_MAX_OFF: usize = 74;
 
