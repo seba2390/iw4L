@@ -3,8 +3,9 @@
 //! eased toward over time.
 //!
 //! A voice's first trace runs as it starts (two rays a fan). After that a
-//! batch on a worker traces every placed voice again (four rays a fan); when
-//! it is done its findings become the voices' targets and the next batch
+//! batch on a worker traces every placed voice again (four rays a fan), then
+//! the reverb proximity's fans; when it is done its findings become the
+//! voices' targets, the proximity gains take a step and the next batch
 //! starts.
 
 use bevy::prelude::*;
@@ -30,15 +31,17 @@ const EPSILON: f32 = f32::from_bits(0x3780_4000);
 const MIN_SHARE: f32 = 0.2;
 
 pub(crate) fn register(app: &mut App) {
-    app.init_resource::<OcclusionJobs>();
+    app.init_resource::<OcclusionJobs>()
+        .init_resource::<crate::proximity::ProximityGains>();
 }
 
-/// Each traced voice's last blocker, kept from batch to batch, and the
-/// batch the worker is tracing.
+/// Each traced voice's last blocker, kept from batch to batch, the batch
+/// the worker is tracing and the last batch's proximity measures.
 #[derive(Resource, Default)]
 pub(crate) struct OcclusionJobs {
     caches: HashMap<u64, Option<SightBlocker>>,
-    batch: Option<Task<Vec<Job>>>,
+    batch: Option<Task<(Vec<Job>, [f32; 4])>>,
+    proximity: [f32; 4],
 }
 
 /// One voice's trace in a batch: where the listener and the voice were when
@@ -169,14 +172,18 @@ pub(crate) fn trace_voice_occlusion(
     runtime: Res<AudioRuntime>,
     prediction: Option<Res<net::ClientPredictionState>>,
     time: Res<Time>,
-    mut jobs: ResMut<OcclusionJobs>,
+    (mut jobs, mut gains): (
+        ResMut<OcclusionJobs>,
+        ResMut<crate::proximity::ProximityGains>,
+    ),
 ) {
     let voices = runtime.occlusion_voices();
     let world = prediction
         .as_ref()
         .filter(|prediction| prediction.0.is_armed() && prediction.0.world().has_world_clip())
         .map(|prediction| prediction.0.world().content());
-    let listener = runtime.listener().map(|listener| listener.origin_inches);
+    let pose = runtime.listener();
+    let listener = pose.map(|listener| listener.origin_inches);
     let jobs = &mut *jobs;
     jobs.caches
         .retain(|id, _| voices.iter().any(|voice| voice.id == *id));
@@ -194,6 +201,8 @@ pub(crate) fn trace_voice_occlusion(
         && let Some(done) = future::block_on(future::poll_once(batch))
     {
         jobs.batch = None;
+        let (done, proximity) = done;
+        jobs.proximity = proximity;
         for job in done {
             if let (Some(voice), Some(cache)) = (
                 voices.iter().find(|voice| voice.id == job.id),
@@ -204,10 +213,14 @@ pub(crate) fn trace_voice_occlusion(
             }
         }
     }
+    if jobs.batch.is_none() {
+        gains.step(&jobs.proximity);
+    }
     if jobs.batch.is_none()
-        && let (Some(world), Some(listener)) = (world, listener)
+        && let (Some(world), Some(pose)) = (world, pose)
         && !voices.is_empty()
     {
+        let listener = pose.origin_inches;
         let batch: Vec<Job> = voices
             .iter()
             .map(|voice| Job {
@@ -218,7 +231,12 @@ pub(crate) fn trace_voice_occlusion(
                 result: 0.0,
             })
             .collect();
-        jobs.batch = Some(AsyncComputeTaskPool::get().spawn(trace_batch(world, batch)));
+        jobs.batch = Some(AsyncComputeTaskPool::get().spawn(trace_batch(
+            world,
+            batch,
+            listener,
+            pose.forward,
+        )));
     }
     let seconds = time.delta_secs();
     for voice in &voices {
@@ -226,8 +244,14 @@ pub(crate) fn trace_voice_occlusion(
     }
 }
 
-/// The worker's batch: every scheduled voice traced in turn.
-async fn trace_batch(world: Arc<SimContent>, mut batch: Vec<Job>) -> Vec<Job> {
+/// The worker's batch: every scheduled voice traced in turn, then the
+/// walls around the listener.
+async fn trace_batch(
+    world: Arc<SimContent>,
+    mut batch: Vec<Job>,
+    listener: [f32; 3],
+    forward: [f32; 3],
+) -> (Vec<Job>, [f32; 4]) {
     let mut rays = Rays {
         world: &world,
         start_solid: false,
@@ -235,7 +259,8 @@ async fn trace_batch(world: Arc<SimContent>, mut batch: Vec<Job>) -> Vec<Job> {
     for job in &mut batch {
         job.result = rays.occlusion(&mut job.cache, 4, job.listener, job.voice);
     }
-    batch
+    let proximity = crate::proximity::measure(&world, listener, forward);
+    (batch, proximity)
 }
 
 /// A voice's occlusion as it starts: none for an alias without an

@@ -147,6 +147,7 @@ pub(crate) fn publish_audio_context(
     runtime.set_listener(pose.map(|pose| crate::spatial::ListenerSnapshot {
         origin_inches: crate::transform_inches(pose.translation),
         right: (pose.rotation * Vec3::X).to_array(),
+        forward: (pose.rotation * Vec3::NEG_Z).to_array(),
     }));
 }
 
@@ -207,6 +208,7 @@ fn submit_presented_audio(
     runtime.set_listener(pose.map(|pose| crate::spatial::ListenerSnapshot {
         origin_inches: crate::transform_inches(pose.translation),
         right: (pose.rotation * Vec3::X).to_array(),
+        forward: (pose.rotation * Vec3::NEG_Z).to_array(),
     }));
     // The game's menus may make their own gain of the master volume.
     if let Some(gain) = master_gain.and_then(|gain| gain.0) {
