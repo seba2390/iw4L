@@ -64,6 +64,17 @@ pub struct FpvWeaponView {
     pub rigs: FpvRigSet,
     pub census: FpvViewCensus,
     pub camos: Vec<(u8, Result<Arc<HashMap<usize, SmodelPassMaterial>>, String>)>,
+    pub optics: Arc<FpvOptics>,
+}
+
+/// Black Ops' optic options as material swaps by authored material, for
+/// each lens and reticle row (row 0 draws as authored).
+#[derive(Default)]
+pub struct FpvOptics {
+    pub lens: HashMap<u8, HashMap<usize, SmodelPassMaterial>>,
+    pub reticle: HashMap<u8, HashMap<usize, SmodelPassMaterial>>,
+    /// The reticle colour rows, by the options' reticle colour.
+    pub reticle_colours: Vec<[f32; 4]>,
 }
 
 impl FpvWeaponView {

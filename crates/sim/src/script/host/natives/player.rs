@@ -1221,9 +1221,10 @@ fn register_body(registry: &mut NativeRegistry) {
         let pending = std::mem::take(&mut slot.pending_weapons);
         let spawn_weapon = slot.pending_spawn_weapon.take();
         let mut frame = FrameWorld::from_world(world);
-        for (weapon, model) in pending {
+        for (weapon, model, options) in pending {
             script_player::give_weapon(&mut frame, ClientId(client), weapon, false)?;
             script_player::set_weapon_model(&mut frame, ClientId(client), weapon, model);
+            script_player::set_weapon_options(&mut frame, ClientId(client), weapon, options);
         }
         if let Some(weapon) = spawn_weapon {
             script_player::set_spawn_weapon(&mut frame, ClientId(client), weapon)?;
@@ -1940,8 +1941,13 @@ pub(crate) fn give_weapon(
         .as_ref()
         .map(|program| program.rules())
         == Some(crate::script::Realm::T5);
+    let options = if t5 {
+        optional(args, 2, int)?.unwrap_or(0)
+    } else {
+        0
+    };
     let model = if t5 {
-        (optional(args, 2, int)?.unwrap_or(0) & 63) as u8
+        (options & 63) as u8
     } else {
         optional(args, 1, int)?.unwrap_or(0).clamp(0, 15) as u8
     };
@@ -1952,11 +1958,14 @@ pub(crate) fn give_weapon(
     };
     let akimbo = !t5 && optional(args, 2, int)?.unwrap_or(0) != 0;
     if t5 && FrameWorld::from_world(world).player(id).is_none() {
-        slot(world, id.0)?.pending_weapons.push((weapon, model));
+        slot(world, id.0)?
+            .pending_weapons
+            .push((weapon, model, options));
         return Ok((id, weapon));
     }
     script_player::give_weapon(&mut FrameWorld::from_world(world), id, weapon, akimbo)?;
     script_player::set_weapon_model(&mut FrameWorld::from_world(world), id, weapon, model);
+    script_player::set_weapon_options(&mut FrameWorld::from_world(world), id, weapon, options);
     super::super::players::give_carried_insertion(world, id.0, receiver, named)?;
     Ok((id, weapon))
 }

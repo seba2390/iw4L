@@ -333,6 +333,7 @@ ps_netfields! {
     weapon_shot_count_secondary: i32 = Replication::Replicated, Validation::Exact;
     weapons: i32array = Replication::Replicated, Validation::Exact;
     weapon_data: opaque = Replication::Replicated, Validation::Exact;
+    weapon_options: i32array = Replication::Replicated, Validation::Exact;
     off_hand_index: i32 = Replication::Replicated, Validation::Exact;
     offhand_primary: i32 = Replication::Replicated, Validation::Exact;
     offhand_secondary: i32 = Replication::Replicated, Validation::Exact;

@@ -809,6 +809,12 @@ pub fn tick_fpv_viewmodel(
     product.camo = presented.viewweapon_player(local.0).map_or(0, |ps| {
         weapon_iw4::weapon_model_for_held(&ps.weapons, &ps.weapon_data, held)
     });
+    product.weapon_options = presented.viewweapon_player(local.0).map_or(0, |ps| {
+        ps.weapons
+            .iter()
+            .position(|&w| w != 0 && w == held as i32)
+            .map_or(0, |slot| ps.weapon_options[slot] as u32)
+    });
     let SessionFpvMeshesHandles {
         fpv: equipped,
         active_rig,
@@ -935,7 +941,11 @@ fn skin_fpv_geometry(
                 crate::clear_fpv_draw_plan(&mut fpv_plan, handle);
                 return;
             }
-            if fpv_plan.rig_generation != rig.generation() || fpv_plan.camo != product.camo {
+            let optics = weapon_optics(product.weapon_options);
+            if fpv_plan.rig_generation != rig.generation()
+                || fpv_plan.camo != product.camo
+                || fpv_plan.optics != optics
+            {
                 let camo = match session.map(|session| session.view.camo(product.camo)) {
                     Some(Ok(camo)) => camo,
                     Some(Err(reason)) => {
@@ -954,14 +964,18 @@ fn skin_fpv_geometry(
                         return;
                     }
                 };
+                let view = session.map(|session| &session.view);
+                let swaps = optic_swaps(camo.map(|swaps| &**swaps), view, optics);
                 crate::install_prepared_fpv_plan(
                     &mut fpv_plan,
                     &rig.geometry,
-                    camo.map(|swaps| &**swaps),
+                    swaps.as_ref(),
                     handle,
                 );
                 fpv_plan.rig_generation = rig.generation();
                 fpv_plan.camo = product.camo;
+                fpv_plan.optics = optics;
+                fpv_plan.script_vector3 = reticle_colour(view, optics.2);
             }
             let Some(jobs) = rig.gpu_skin_jobs(&frame.poses) else {
                 let cause = RenderGapCause::FpvDependencyUnresolved {
@@ -1410,4 +1424,59 @@ pub fn register_fpv_present_systems(app: &mut App) {
                 .in_set(ClientSet::Present))
             .in_set(frame::InMatch),
         );
+}
+
+/// The lens, reticle and reticle colour of a weapon options word.
+fn weapon_optics(options: u32) -> (u8, u8, u8) {
+    (
+        ((options >> 6) & 0xf) as u8,
+        ((options >> 10) & 0x3f) as u8,
+        ((options >> 16) & 0x7) as u8,
+    )
+}
+
+/// Black Ops' fourth script vector for the viewmodel: the reticle colour
+/// row with one taken off its first component, zero for colour 0; none in
+/// a game without reticle colours.
+fn reticle_colour(
+    view: Option<&std::sync::Arc<crate::FpvWeaponView>>,
+    colour: u8,
+) -> Option<[f32; 4]> {
+    let colours = &view?.optics.reticle_colours;
+    if colours.is_empty() {
+        return None;
+    }
+    if colour == 0 {
+        return Some([0.0; 4]);
+    }
+    let [r, g, b, a] = colours
+        .get(usize::from(colour))
+        .copied()
+        .unwrap_or([-1.0; 4]);
+    Some([r - 1.0, g, b, a])
+}
+
+/// The camouflage's material swaps with Black Ops' optic options laid over
+/// them: the chosen lens row's and reticle row's variants of each material
+/// that has one. `None` when nothing is swapped.
+fn optic_swaps(
+    camo: Option<&std::collections::HashMap<usize, render_scene::SmodelPassMaterial>>,
+    view: Option<&std::sync::Arc<crate::FpvWeaponView>>,
+    (lens, reticle, _): (u8, u8, u8),
+) -> Option<std::collections::HashMap<usize, render_scene::SmodelPassMaterial>> {
+    let optics = view.map(|view| &view.optics);
+    let lens = optics
+        .and_then(|optics| optics.lens.get(&lens))
+        .filter(|_| lens != 0);
+    let reticle = optics
+        .and_then(|optics| optics.reticle.get(&reticle))
+        .filter(|_| reticle != 0);
+    if lens.is_none() && reticle.is_none() {
+        return camo.cloned();
+    }
+    let mut swaps = camo.cloned().unwrap_or_else(std::collections::HashMap::new);
+    for (from, to) in lens.into_iter().chain(reticle).flatten() {
+        swaps.insert(*from, to.clone());
+    }
+    Some(swaps)
 }

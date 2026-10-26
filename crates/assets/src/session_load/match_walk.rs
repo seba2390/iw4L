@@ -247,9 +247,13 @@ pub(super) async fn walk_prepared_match(
         .iter()
         .flat_map(|options| {
             (0..options.rows as i32)
-                .filter(move |&row| matches!(options.cell(row, 1), "gold" | "black"))
+                .filter(move |&row| {
+                    matches!(options.cell(row, 1), "gold" | "black" | "lens" | "reticle")
+                })
                 .flat_map(move |row| {
-                    (2..options.columns as i32).map(move |col| options.cell(row, col))
+                    // A lens row's first column is its tint, not an image.
+                    let first = if options.cell(row, 1) == "lens" { 3 } else { 2 };
+                    (first..options.columns as i32).map(move |col| options.cell(row, col))
                 })
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned)
@@ -672,6 +676,10 @@ pub(super) async fn walk_prepared_match(
         report.push(format!(
             "zombie camouflage: {dressed} weapon configurations prepared"
         ));
+        let optics = weapons.prepare_t5_optics(options, &mut global);
+        report.push(format!(
+            "zombie optics: {optics} materials take lens or reticle options"
+        ));
     }
     let provisional_map_ids: Vec<usize> = (0..global.materials.len()).collect();
     if iw5_mat_n > 0 {
@@ -832,6 +840,7 @@ pub(super) async fn walk_prepared_match(
                         .iter()
                         .flat_map(|camo| camo.materials.iter().map(|(_, to)| to.clone()))
                 })
+                .chain(weapons.optic_variants().map(|optic| optic.material.clone()))
                 .collect();
             let stage = progress.begin_scoped(StageId::Images, "zombie camouflage", None);
             let decoded = asset_material::material_images::decode_images_for_keys(
