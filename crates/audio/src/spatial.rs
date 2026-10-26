@@ -8,6 +8,7 @@ use crate::attenuation::distance_attenuation;
 pub(crate) struct ListenerSnapshot {
     pub origin_inches: [f32; 3],
     pub right: [f32; 3],
+    pub forward: [f32; 3],
 }
 
 /// The listener, and the origins of the entities whose sounds follow them
