@@ -675,6 +675,11 @@ impl Default for ScriptMoverGentity {
 }
 
 impl ScriptMoverGentity {
+    /// The mover is on its way, by either trajectory.
+    pub(crate) fn moving(&self) -> bool {
+        self.state.tr_type != TR_STATIONARY || self.state.apos_tr_type != TR_STATIONARY
+    }
+
     /// Poses a script mover's state at `time_ms`: moving on from where it stood
     /// one tick before at the speed between the two, else standing.
     pub(crate) fn pose(&mut self, time_ms: i32, origin: [f32; 3], angles: [f32; 3]) {

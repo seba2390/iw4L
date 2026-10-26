@@ -1,3 +1,4 @@
+mod actor_physics;
 mod ammo;
 mod catalog;
 mod client_catalog;
@@ -63,6 +64,8 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     ("ai_slowdownMaxYawDiff", "90"),
     ("ai_meleeRange", "64"),
     ("ai_turnRate", "220"),
+    // Actors move through the physics world (registered 1, 0 to 1).
+    ("phys_ai_collision_mode", "1"),
     // The hellhound's turn test and turn animscript, and its weave.
     ("dog_turn90_angle", "70"),
     ("dog_turn180_angle", "135"),
@@ -252,6 +255,11 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     bullet_mask: None,
     melee_mask: None,
     missiles: None,
+    // Black Ops moves its actors through its physics world
+    // (`phys_ai_collision_mode` 1, its default).
+    actor_physics: Some(game_api::actor::ActorPhysicsRules(
+        &actor_physics::ACTOR_PHYSICS,
+    )),
     // A player spawn sets health and max health to `g_player_maxhealth`
     // (registered 100, 10 to 2000; no script sets it), never the stored
     // max health.

@@ -410,7 +410,7 @@ pub enum VolumeColumn {
 }
 
 /// The match around a moving player.
-pub trait MoveWorld {
+pub trait MoveWorld: crate::collision::SolidSource {
     /// Sweeps `mins`..`maxs` from `start` to `end` against what `mask`
     /// names, ignoring `pass_entity`.
     fn trace(
@@ -473,30 +473,6 @@ pub trait MoveWorld {
     /// The entity's velocity (what its state carries as its trajectory's
     /// delta); `None` when the match cannot tell.
     fn entity_velocity(&self, _entity: i32) -> Option<[f32; 3]> {
-        None
-    }
-
-    /// Whether [`MoveWorld::solid_pieces`] can list the pieces.
-    fn lists_solid_pieces(&self) -> bool {
-        false
-    }
-
-    /// Adds to `out` every solid piece whose box meets `mins`..`maxs` and
-    /// whose contents `mask` names, but `pass_entity`'s own; `false` when
-    /// the match cannot list them.
-    fn solid_pieces<'s>(
-        &'s self,
-        _mins: [f32; 3],
-        _maxs: [f32; 3],
-        _mask: u32,
-        _pass_entity: i32,
-        _out: &mut Vec<crate::collision::SolidPiece<'s>>,
-    ) -> bool {
-        false
-    }
-
-    /// The surface flags of the clip material named `name`.
-    fn clip_material_surface_flags(&self, _name: &str) -> Option<u32> {
         None
     }
 }

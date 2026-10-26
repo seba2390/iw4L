@@ -134,7 +134,7 @@ Only the top-level items count.
 - [x] Zombies path to the player and get through barriers.
   - [x] All ten of Kino's traversal scripts (54 `Begin` nodes: `zombie_mantle_over_40`, `zombie_jump_down_40`, `_72`, `_120`, `_127`, `_190`, `_240`, `_286`, `zombie_wall_crawl_drop` and `zombie_wall_crawl_drop_quick`) run from their start node to their end node.
   - [x] Actors collide with the world while walking: Black Ops' actor box slides along walls, steps stairs, falls, and turns aside or plans again when blocked; doors, debris and window clips cut and rejoin their path links (`connectpaths`/`disconnectpaths`), badplaces keep paths out.
-  - [ ] Actors block each other and the player (Black Ops' blocking actor steps them apart, they collide with player bodies and brush entities, `pushplayer`); their slide is Black Ops' trace slide, not its default physics capsule (#465).
+  - [x] Actors block each other and the player: Black Ops' blocking actor steps them apart, and they move in its default physics collision (#599), the player's character shape cast against the world, brush entities and player bodies (`pushplayer`), pushed out of what they start inside.
 - [x] Shots and melee kill zombies, zombies hurt the player, kills and hits earn points.
 - [x] Rounds advance past round 1.
 - [x] Wall weapons and the Mystery Box.

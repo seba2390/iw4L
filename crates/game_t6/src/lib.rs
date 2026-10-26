@@ -279,6 +279,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     bullet_mask: Some(0x0280_e833),
     melee_mask: Some(0x0280_e893),
     missiles: Some(game_api::fire::MissileRules(&missile::MISSILES)),
+    actor_physics: None,
     spawn_health: game_api::SpawnHealth::Stored,
     aitype_spawners: false,
     connect_team: None,

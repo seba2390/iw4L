@@ -2395,11 +2395,19 @@ fn spectator_game_move(
 pub(crate) struct ActorClip {
     linked_brushes: Vec<LinkedBrushCollisionBrush>,
     model_brushes: Vec<SimBrush>,
+    /// The players' bodies, then the live actors'.
     bodies: Vec<PlayerBodyClip>,
+    players: usize,
+    /// The solid models with movement brushes, for a game's own sweep.
+    solid_models: Vec<(
+        game_api::collision::Placement,
+        std::sync::Arc<xmodel_runtime::RetainedModelCapability>,
+    )>,
 }
 
 impl ActorClip {
     pub(crate) fn gather(world: &FrameWorld) -> Self {
+        let bodies = alive_body_clips(world);
         Self {
             linked_brushes: world
                 .entity_collision_capabilities()
@@ -2407,8 +2415,49 @@ impl ActorClip {
                 .flat_map(|c| c.solid_brushes().iter().cloned())
                 .collect(),
             model_brushes: world.model_movement_brushes(),
-            bodies: alive_body_clips(world),
+            players: bodies.len(),
+            bodies,
+            solid_models: if world.content().clip_hulls().is_some()
+                && world
+                    .bootstrap_ref()
+                    .mode
+                    .is_some_and(|mode| mode.actor_physics.is_some())
+            {
+                crate::world::solid_pieces::solid_models(world.entity_collision_capabilities())
+            } else {
+                Vec::new()
+            },
         }
+    }
+
+    /// What a game's own actor sweep may meet, when the map keeps its
+    /// pieces' points: the world, the movers, the solid models and the
+    /// players' bodies. The actors' bodies are not among them: their
+    /// contents are an actor's, which the clipmask the sweep is given
+    /// leaves out.
+    pub(crate) fn solid_scene<'a>(
+        &'a self,
+        content: &'a crate::SimContent,
+    ) -> Option<crate::world::solid_pieces::SolidScene<'a>> {
+        content
+            .clip_hulls()
+            .map(|hulls| crate::world::solid_pieces::SolidScene {
+                brushes: content.clip_brushes(),
+                bsp: content.clip_bsp(),
+                mesh: content.clip_mesh(),
+                hulls,
+                cmodels: content.clip_cmodels(),
+                linked: &self.linked_brushes,
+                models: &self.solid_models,
+                bodies: &self.bodies[..self.players],
+            })
+    }
+
+    /// Entity `entnum` is a body the actors' sweeps meet.
+    pub(crate) fn is_body(&self, entnum: i32) -> bool {
+        self.bodies
+            .iter()
+            .any(|body| i32::from(body.entnum) == entnum)
     }
 
     /// A live actor's body, as entity `entnum` with its box at `origin`.

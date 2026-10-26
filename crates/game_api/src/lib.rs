@@ -2,6 +2,7 @@
 //! is [`Rule::Unknown`]: the caller reports it as a gap and applies nothing in
 //! its place — never another game's rule.
 
+pub mod actor;
 pub mod blur;
 pub mod collision;
 pub mod fire;
@@ -360,6 +361,9 @@ pub struct ModeRules {
     pub melee_mask: Option<u32>,
     /// How the game launches, moves and detonates its missiles.
     pub missiles: Option<fire::MissileRules>,
+    /// How the game moves its actors through the world; `None` moves them
+    /// by the runtime's trace slide.
+    pub actor_physics: Option<actor::ActorPhysicsRules>,
     /// The health a spawning player starts at.
     pub spawn_health: SpawnHealth,
     /// Each actor spawner runs its aitype script's `spawner()` when the level

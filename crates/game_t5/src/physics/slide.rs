@@ -1,4 +1,5 @@
-//! Black Ops' physics slide, its player slide move in physics collision:
+//! Black Ops' physics slide, its player and actor slide move in physics
+//! collision:
 //! the body is cast along its move again and again, each contact becomes a
 //! plane it may not cross, and the move and the velocity are bent to stay
 //! clear of every plane met so far; a body that ends up inside something is
@@ -80,9 +81,16 @@ enum Pass {
 }
 
 impl<'w> PhysicsWorld<'w> {
-    /// The player's slide: where it ends and with what velocity; `None`
-    /// when the match cannot list the pieces.
-    pub(crate) fn slide(&self, slide: &Slide, pass: i32) -> Option<SlideResult> {
+    /// A character's slide: where it ends and with what velocity; `None`
+    /// when the match cannot list the pieces. `on_contact` hears every
+    /// contact the slide takes as a plane: what was met, the plane's normal
+    /// and the contact on what was met.
+    pub(crate) fn slide(
+        &self,
+        slide: &Slide,
+        pass: i32,
+        on_contact: &mut dyn FnMut(i32, V3, V3),
+    ) -> Option<SlideResult> {
         let mut out = SlideResult {
             origin: slide.origin,
             velocity: slide.velocity,
@@ -90,13 +98,15 @@ impl<'w> PhysicsWorld<'w> {
             touched: [0; 32],
             touched_count: 0,
         };
-        match self.slide_pass(slide, pass, false, &mut out)? {
+        match self.slide_pass(slide, pass, false, &mut out, on_contact)? {
             Pass::Done(contacted) => out.contacted = contacted,
             Pass::Stuck => {
-                if let Some(origin) = self.push_out(slide, pass, &mut out)? {
+                if let Some(origin) = self.push_out(slide, pass, &mut out, on_contact)? {
                     out.origin = origin;
                     out.velocity = slide.velocity;
-                } else if let Pass::Stuck = self.slide_pass(slide, pass, true, &mut out)? {
+                } else if let Pass::Stuck =
+                    self.slide_pass(slide, pass, true, &mut out, on_contact)?
+                {
                     out.origin = slide.origin;
                     out.velocity = slide.velocity;
                 }
@@ -112,6 +122,7 @@ impl<'w> PhysicsWorld<'w> {
         pass: i32,
         second: bool,
         out: &mut SlideResult,
+        on_contact: &mut dyn FnMut(i32, V3, V3),
     ) -> Option<Pass> {
         let mut body = Character::from_bounds(slide.mins, slide.maxs, 0.0);
         let ft = slide.frametime;
@@ -186,6 +197,7 @@ impl<'w> PhysicsWorld<'w> {
                 }
                 touched.push(PieceKey::of(&contact.piece));
                 touch(out, contact.piece.entity);
+                on_contact(contact.piece.entity, contact.normal, contact.contact);
             }
             for plane in &mut planes {
                 plane.rhs = plane.inside(pos);
@@ -221,7 +233,13 @@ impl<'w> PhysicsWorld<'w> {
 
     /// Pushes a stuck body out of what it is inside, where it stands;
     /// `Some(None)` when that fails.
-    fn push_out(&self, slide: &Slide, pass: i32, out: &mut SlideResult) -> Option<Option<V3>> {
+    fn push_out(
+        &self,
+        slide: &Slide,
+        pass: i32,
+        out: &mut SlideResult,
+        on_contact: &mut dyn FnMut(i32, V3, V3),
+    ) -> Option<Option<V3>> {
         let mut body = Character::from_bounds(slide.mins, slide.maxs, 0.0);
         let origin = slide.origin;
         let mut pos = origin;
@@ -244,6 +262,7 @@ impl<'w> PhysicsWorld<'w> {
                 }
                 touched.push(PieceKey::of(&contact.piece));
                 touch(out, contact.piece.entity);
+                on_contact(contact.piece.entity, contact.normal, contact.contact);
             }
             for plane in &mut planes {
                 plane.rhs = plane.inside(origin);

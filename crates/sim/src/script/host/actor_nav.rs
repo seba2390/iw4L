@@ -10,6 +10,8 @@ use super::entities::EntityKind;
 use crate::frame::FrameWorld;
 use crate::script::runtime::raise;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
+use game_api::actor::{ActorPhysicsKind, ActorPhysicsMove, ActorWorld};
+use game_api::collision::SolidSource;
 
 /// Black Ops' actor clipmask (`MASK_ACTORSOLID`): solid world, monster clip
 /// and body contents, without player clip.
@@ -552,6 +554,8 @@ pub(crate) enum AnimMode {
     /// The animation moves the actor in 3D, swept against the world and
     /// entities without gravity (`ePhysicsType = 4`).
     NoGravity,
+    /// The animation moves the actor relative to what it rides.
+    PointRelative,
     /// The animation moves the actor freely without collision (`noclip` /
     /// `nophysics`).
     NoClip,
@@ -649,6 +653,11 @@ pub(crate) struct ActorMove {
     ground_normal: Option<[f32; 3]>,
     /// Vertical speed while airborne.
     fall_speed: f32,
+    /// What the actor stands on, by entity number, as the game's own
+    /// physics left it.
+    ground_entity: Option<i32>,
+    /// The velocity the game's own physics left the actor with.
+    phys_velocity: [f32; 3],
     /// The side the last deflection turned to (8 or 16), kept while the
     /// actor keeps hitting something.
     deflect_side: u8,
@@ -698,6 +707,8 @@ impl Default for ActorMove {
             deflected: false,
             ground_normal: Some([0.0, 0.0, 1.0]),
             fall_speed: 0.0,
+            ground_entity: Some(game_api::movement::ENTITY_WORLD),
+            phys_velocity: [0.0; 3],
             deflect_side: 0,
             orient_notified: false,
             push_player: false,
@@ -1276,7 +1287,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             "pos deltas" => Some(AnimMode::PosDeltas),
             "gravity" => Some(AnimMode::Gravity),
             "zonly_physics" => Some(AnimMode::ZOnlyPhysics),
-            "nogravity" | "point relative" => Some(AnimMode::NoGravity),
+            "nogravity" => Some(AnimMode::NoGravity),
+            "point relative" => Some(AnimMode::PointRelative),
             "noclip" | "nophysics" => Some(AnimMode::NoClip),
             "angle deltas" => Some(AnimMode::AngleDeltas),
             _ => return Err("illegal call to animmode()\n".into()),
@@ -1697,8 +1709,34 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                 }
                 angles[1] += turned;
             }
-            // Black Ops adds a nogravity animation's delta as it is.
-            AnimMode::NoGravity | AnimMode::NoClip => {
+            // A game whose own physics moves its actors slides a nogravity
+            // animation's step through the world.
+            AnimMode::NoGravity if game_physics(world) => {
+                origin = match held_blocker(world, &movement) {
+                    Some(blocker) => step_away(
+                        world,
+                        actor,
+                        origin,
+                        blocker,
+                        (step, ActorPhysicsKind::Slide),
+                        seconds,
+                        &mut movement,
+                    ),
+                    None => {
+                        physics_move(
+                            world,
+                            origin,
+                            world_delta,
+                            ActorPhysicsKind::Slide,
+                            seconds,
+                            &mut movement,
+                        )
+                        .0
+                    }
+                };
+                angles[1] += turned;
+            }
+            AnimMode::NoGravity | AnimMode::PointRelative | AnimMode::NoClip => {
                 for axis in 0..3 {
                     origin[axis] += world_delta[axis];
                 }
@@ -1738,6 +1776,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                             world,
                             origin,
                             [wish[0], wish[1], 0.0],
+                            ActorPhysicsKind::Ground,
                             seconds,
                             &mut movement,
                         )
@@ -1766,23 +1805,46 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                         }
                     }
                     origin = match held {
-                        Some(blocker) => {
-                            step_away(world, actor, origin, blocker, step, seconds, &mut movement)
+                        Some(blocker) => step_away(
+                            world,
+                            actor,
+                            origin,
+                            blocker,
+                            (step, ActorPhysicsKind::Ground),
+                            seconds,
+                            &mut movement,
+                        ),
+                        None => {
+                            physics_move(
+                                world,
+                                origin,
+                                [0.0; 3],
+                                ActorPhysicsKind::Ground,
+                                seconds,
+                                &mut movement,
+                            )
+                            .0
                         }
-                        None => physics_move(world, origin, [0.0; 3], seconds, &mut movement).0,
                     };
                 }
             }
             AnimMode::PosDeltas => {
                 origin = match held_blocker(world, &movement) {
-                    Some(blocker) => {
-                        step_away(world, actor, origin, blocker, step, seconds, &mut movement)
-                    }
+                    Some(blocker) => step_away(
+                        world,
+                        actor,
+                        origin,
+                        blocker,
+                        (step, ActorPhysicsKind::Ground),
+                        seconds,
+                        &mut movement,
+                    ),
                     None => {
                         physics_move(
                             world,
                             origin,
                             [world_delta[0], world_delta[1], 0.0],
+                            ActorPhysicsKind::Ground,
                             seconds,
                             &mut movement,
                         )
@@ -1792,14 +1854,21 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             }
             AnimMode::Gravity => {
                 origin = match held_blocker(world, &movement) {
-                    Some(blocker) => {
-                        step_away(world, actor, origin, blocker, step, seconds, &mut movement)
-                    }
+                    Some(blocker) => step_away(
+                        world,
+                        actor,
+                        origin,
+                        blocker,
+                        (step, ActorPhysicsKind::Ground),
+                        seconds,
+                        &mut movement,
+                    ),
                     None => {
                         physics_move(
                             world,
                             origin,
                             [world_delta[0], world_delta[1], 0.0],
+                            ActorPhysicsKind::Ground,
                             seconds,
                             &mut movement,
                         )
@@ -1810,16 +1879,42 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             }
             AnimMode::ZOnlyPhysics => {
                 origin = match held_blocker(world, &movement) {
-                    Some(blocker) => {
-                        step_away(world, actor, origin, blocker, step, seconds, &mut movement)
-                    }
+                    Some(blocker) => step_away(
+                        world,
+                        actor,
+                        origin,
+                        blocker,
+                        (step, ActorPhysicsKind::Across),
+                        seconds,
+                        &mut movement,
+                    ),
                     None => zonly_move(world, origin, world_delta, seconds, &mut movement),
                 };
                 angles[1] += turned;
             }
             AnimMode::AngleDeltas => {
                 if let Some(blocker) = held_blocker(world, &movement) {
-                    origin = step_away(world, actor, origin, blocker, step, seconds, &mut movement);
+                    origin = step_away(
+                        world,
+                        actor,
+                        origin,
+                        blocker,
+                        (step, ActorPhysicsKind::Ground),
+                        seconds,
+                        &mut movement,
+                    );
+                } else if let Some((moved, _)) = game_move(
+                    world,
+                    origin,
+                    [0.0; 3],
+                    ActorPhysicsKind::Ground,
+                    seconds,
+                    &mut movement,
+                ) {
+                    // A game whose own physics moves its actors runs the
+                    // move with no step: on the ground it stays, in the air
+                    // it falls.
+                    origin = moved;
                 }
                 angles[1] += turned;
             }
@@ -3453,14 +3548,19 @@ fn actor_box(movement: &ActorMove) -> ([f32; 3], [f32; 3]) {
 type Hit = Option<([f32; 3], [f32; 3])>;
 
 /// Runs one physics move from `origin` with the horizontal `wish`, on the
-/// ground or falling, and records what it hit and stands on.
+/// ground or falling, and records what it hit and stands on. A game whose
+/// own physics moves its actors runs it as `kind`.
 fn physics_move(
     world: &mut World,
     origin: [f32; 3],
     wish: [f32; 3],
+    kind: ActorPhysicsKind,
     seconds: f32,
     movement: &mut ActorMove,
 ) -> ([f32; 3], Hit) {
+    if let Some(moved) = game_move(world, origin, wish, kind, seconds, movement) {
+        return moved;
+    }
     let (mins, maxs) = actor_box(movement);
     let mut phys = Phys {
         origin,
@@ -3492,6 +3592,18 @@ fn zonly_move(
     seconds: f32,
     movement: &mut ActorMove,
 ) -> [f32; 3] {
+    // The game's own physics takes the step across and leaves the height
+    // to gravity and the ground.
+    if let Some((moved, _)) = game_move(
+        world,
+        origin,
+        [delta[0], delta[1], 0.0],
+        ActorPhysicsKind::Across,
+        seconds,
+        movement,
+    ) {
+        return moved;
+    }
     let (mins, maxs) = actor_box(movement);
     let mut phys = Phys {
         origin,
@@ -3533,6 +3645,183 @@ fn settle_physics(phys: &Phys, movement: &mut ActorMove) {
     }
 }
 
+/// The movement state a physics move changes, kept to try the move again
+/// from where it started.
+#[derive(Clone, Copy)]
+struct PhysicsState {
+    ground_normal: Option<[f32; 3]>,
+    fall_speed: f32,
+    ground_entity: Option<i32>,
+    phys_velocity: [f32; 3],
+}
+
+impl PhysicsState {
+    fn of(movement: &ActorMove) -> Self {
+        Self {
+            ground_normal: movement.ground_normal,
+            fall_speed: movement.fall_speed,
+            ground_entity: movement.ground_entity,
+            phys_velocity: movement.phys_velocity,
+        }
+    }
+
+    fn restore(self, movement: &mut ActorMove) {
+        movement.ground_normal = self.ground_normal;
+        movement.fall_speed = self.fall_speed;
+        movement.ground_entity = self.ground_entity;
+        movement.phys_velocity = self.phys_velocity;
+    }
+}
+
+/// The match's game moves its actors by its own physics.
+fn game_physics(world: &mut World) -> bool {
+    FrameWorld::from_world(world)
+        .bootstrap_ref()
+        .mode
+        .is_some_and(|mode| mode.actor_physics.is_some())
+}
+
+/// One move by the game's own actor physics, when the match's game has one
+/// and runs this move by it: where it ended and what it hit, with the
+/// actor's movement state settled from it.
+fn game_move(
+    world: &mut World,
+    origin: [f32; 3],
+    delta: [f32; 3],
+    kind: ActorPhysicsKind,
+    seconds: f32,
+    movement: &mut ActorMove,
+) -> Option<([f32; 3], Hit)> {
+    let rules = FrameWorld::from_world(world)
+        .bootstrap_ref()
+        .mode?
+        .actor_physics?;
+    let clip = match world.remove_resource::<ActorClipTick>() {
+        Some(clip) => clip,
+        None => ActorClipTick(
+            crate::step::ActorClip::gather(&FrameWorld::from_world(world)),
+            u16::MAX,
+        ),
+    };
+    let (mins, maxs) = actor_box(movement);
+    let actor_move = ActorPhysicsMove {
+        origin,
+        velocity: movement.phys_velocity,
+        delta,
+        kind,
+        mins,
+        maxs,
+        mask: actor_mask(movement),
+        entity: i32::from(clip.1),
+        ground_entity: movement.ground_entity,
+        gravity: ACTOR_GRAVITY,
+        seconds,
+        prone: false,
+    };
+    let answer = {
+        let frame = FrameWorld::from_world(world);
+        let content = frame.content();
+        let view = ActorView {
+            scene: clip.0.solid_scene(&content),
+            content: &content,
+            world: frame.ecs_ref(),
+        };
+        rules.0.physics(&view, &actor_move)
+    };
+    let hit_body = |entity: i32| {
+        clip.0
+            .is_body(entity)
+            .then(|| u16::try_from(entity).ok())
+            .flatten()
+    };
+    let result = match answer {
+        game_api::Rule::Known(result) => result,
+        game_api::Rule::Unknown(gap) => {
+            FrameWorld::from_world(world).report_game_gap(gap);
+            None
+        }
+    };
+    let moved = result.map(|result| {
+        movement.phys_velocity = result.velocity;
+        movement.ground_entity = result.ground_entity;
+        movement.ground_normal = result.walking;
+        movement.fall_speed = if result.walking.is_some() {
+            0.0
+        } else {
+            result.velocity[2]
+        };
+        movement.ground_ent_type = if result.ground_entity.is_some() {
+            HIT_WORLD
+        } else {
+            HIT_NONE
+        };
+        movement.deflected = result.deflected;
+        movement.hit_body = result.hit.and_then(|hit| hit_body(hit.entity));
+        match result.hit {
+            Some(hit) => {
+                movement.hit_ent_type = HIT_WORLD;
+                let yaw = (-hit.normal[1]).atan2(-hit.normal[0]).to_degrees();
+                movement.hit_yaw = if yaw < 0.0 { yaw + 360.0 } else { yaw };
+            }
+            None => movement.hit_ent_type = HIT_NONE,
+        }
+        (
+            result.origin,
+            result.hit.map(|hit| (hit.normal, hit.origin)),
+        )
+    });
+    world.insert_resource(clip);
+    moved
+}
+
+/// The match around an actor moving by its game's own physics: the pieces
+/// its sweeps meet, the movers and the dvars.
+struct ActorView<'a> {
+    scene: Option<crate::world::solid_pieces::SolidScene<'a>>,
+    content: &'a crate::SimContent,
+    world: &'a World,
+}
+
+impl SolidSource for ActorView<'_> {
+    fn lists_solid_pieces(&self) -> bool {
+        self.scene.is_some()
+    }
+
+    fn solid_pieces<'s>(
+        &'s self,
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        mask: u32,
+        pass_entity: i32,
+        out: &mut Vec<game_api::collision::SolidPiece<'s>>,
+    ) -> bool {
+        let Some(scene) = &self.scene else {
+            return false;
+        };
+        crate::world::solid_pieces::gather(scene, mins, maxs, mask, pass_entity, out);
+        true
+    }
+
+    fn clip_material_surface_flags(&self, name: &str) -> Option<u32> {
+        crate::world::solid_pieces::clip_material_surface_flags(self.content, name)
+    }
+}
+
+impl ActorWorld for ActorView<'_> {
+    /// A script mover on its way.
+    fn moving(&self, entity: i32) -> bool {
+        crate::frame::script_mover_by_number(self.world, entity).is_some_and(|mover| mover.moving())
+    }
+
+    fn dvar(&self, name: &str) -> Option<&str> {
+        self.world
+            .get_resource::<crate::script::MatchScript>()?
+            .dvars
+            .get(name)
+            .map(String::as_str)
+    }
+}
+
 /// Black Ops' walk along a path: the physics move, and when it hits
 /// something and falls short, up to two shorter tries turned aside along
 /// what it hit (to the side the current path segment passes it). A body in
@@ -3547,8 +3836,15 @@ fn walk(
     movement: &mut ActorMove,
 ) -> [f32; 3] {
     let wish = [wish[0], wish[1], 0.0];
-    let (ground, fall) = (movement.ground_normal, movement.fall_speed);
-    let (mut result, mut hit) = physics_move(world, origin, wish, seconds, movement);
+    let saved = PhysicsState::of(movement);
+    let (mut result, mut hit) = physics_move(
+        world,
+        origin,
+        wish,
+        ActorPhysicsKind::Ground,
+        seconds,
+        movement,
+    );
     let wish_length = (wish[0] * wish[0] + wish[1] * wish[1]).sqrt();
     if hit.is_none() || wish_length <= 0.0 {
         movement.deflect_side = 0;
@@ -3590,10 +3886,18 @@ fn walk(
                 [turn[0], turn[1], 0.0]
             };
             movement.deflect_side = side;
-            movement.ground_normal = ground;
-            movement.fall_speed = fall;
-            (result, hit) = physics_move(world, origin, current, seconds, movement);
+            saved.restore(movement);
+            // A game whose own physics moves the actor says whether the try
+            // met anything.
             movement.deflected = true;
+            (result, hit) = physics_move(
+                world,
+                origin,
+                current,
+                ActorPhysicsKind::Ground,
+                seconds,
+                movement,
+            );
             if hit.is_none() {
                 return result;
             }
@@ -3818,11 +4122,11 @@ fn step_away(
     actor: u64,
     origin: [f32; 3],
     (blocker_at, blocker): ([f32; 3], u64),
-    step: f32,
+    (step, kind): (f32, ActorPhysicsKind),
     seconds: f32,
     movement: &mut ActorMove,
 ) -> [f32; 3] {
-    let (ground, fall) = (movement.ground_normal, movement.fall_speed);
+    let saved = PhysicsState::of(movement);
     let away = [origin[0] - blocker_at[0], origin[1] - blocker_at[1]];
     let apart = (away[0] * away[0] + away[1] * away[1]).sqrt();
     let dir = if apart == 0.0 {
@@ -3842,7 +4146,7 @@ fn step_away(
             && !steps_into_actor(world, actor, blocker, origin, result)
     };
     let mut current = [dir[0] * length, dir[1] * length, 0.0];
-    let (first_result, mut hit) = physics_move(world, origin, current, seconds, movement);
+    let (first_result, mut hit) = physics_move(world, origin, current, kind, seconds, movement);
     if stands(world, first_result, progress_sq) {
         movement.deflect_side = 0;
         return first_result;
@@ -3878,18 +4182,16 @@ fn step_away(
         } else {
             [turn[0], turn[1], 0.0]
         };
-        movement.ground_normal = ground;
-        movement.fall_speed = fall;
+        saved.restore(movement);
         let result;
-        (result, hit) = physics_move(world, origin, current, seconds, movement);
+        (result, hit) = physics_move(world, origin, current, kind, seconds, movement);
         if stands(world, result, progress_sq) {
             movement.deflect_side = side;
             return result;
         }
     }
     movement.deflect_side = 0;
-    movement.ground_normal = ground;
-    movement.fall_speed = fall;
+    saved.restore(movement);
     give_blocker(world, blocker, actor);
     origin
 }

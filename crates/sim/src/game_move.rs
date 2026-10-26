@@ -51,19 +51,7 @@ struct MatchMoveWorld<'a> {
     solids: Option<&'a crate::world::solid_pieces::SolidScene<'a>>,
 }
 
-impl MoveWorld for MatchMoveWorld<'_> {
-    fn trace(
-        &self,
-        start: [f32; 3],
-        end: [f32; 3],
-        mins: [f32; 3],
-        maxs: [f32; 3],
-        _pass_entity: i32,
-        mask: u32,
-    ) -> MoveTrace {
-        (self.trace)(start, end, mins, maxs, mask)
-    }
-
+impl game_api::collision::SolidSource for MatchMoveWorld<'_> {
     fn lists_solid_pieces(&self) -> bool {
         self.solids.is_some()
     }
@@ -84,12 +72,21 @@ impl MoveWorld for MatchMoveWorld<'_> {
     }
 
     fn clip_material_surface_flags(&self, name: &str) -> Option<u32> {
-        self.content
-            .clip_hulls()?
-            .materials
-            .iter()
-            .find(|material| material.0 == name)
-            .map(|material| material.1)
+        crate::world::solid_pieces::clip_material_surface_flags(&self.content, name)
+    }
+}
+
+impl MoveWorld for MatchMoveWorld<'_> {
+    fn trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        _pass_entity: i32,
+        mask: u32,
+    ) -> MoveTrace {
+        (self.trace)(start, end, mins, maxs, mask)
     }
 
     fn is_player(&self, entity: i32) -> bool {
