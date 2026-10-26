@@ -26,7 +26,7 @@ mod table;
 pub use table::FpvOwnerInputs;
 use table::FpvPreparationOwner;
 pub use table::{
-    BoundFpvTable, FpvBindingRefusal, FpvPreparationCensus, FpvRigSet, FpvViewCensus,
+    BoundFpvTable, FpvBindingRefusal, FpvOptics, FpvPreparationCensus, FpvRigSet, FpvViewCensus,
     FpvWeaponSlot, FpvWeaponTable, FpvWeaponView,
 };
 
@@ -52,6 +52,7 @@ struct FpvPreparationJob {
     next_model: usize,
     camouflage_materials: Vec<usize>,
     next_camouflage: usize,
+    optics: Option<Arc<FpvOptics>>,
     admission: FpvMaterialAdmission,
     image_cache: HashMap<u32, Handle<Image>>,
 
@@ -180,6 +181,11 @@ impl FpvPreparationJob {
                 }
             }
         }
+        for optic in registry.optic_variants() {
+            if let Some(material) = owner.materials.material_for_key(&optic.material) {
+                camouflage_materials.insert(usize::from(material.asset_id.0));
+            }
+        }
         let mut camouflage_materials: Vec<_> = camouflage_materials.into_iter().collect();
         camouflage_materials.sort_unstable();
         let work_total = (models.len()
@@ -203,6 +209,7 @@ impl FpvPreparationJob {
             next_model: 0,
             camouflage_materials,
             next_camouflage: 0,
+            optics: None,
             admission,
             image_cache: HashMap::new(),
             layouts_queue,
@@ -534,6 +541,51 @@ impl FpvPreparationJob {
             .collect()
     }
 
+    /// Black Ops' optic options as material swaps: for each lens or reticle
+    /// row, each source material's admitted variant by authored material.
+    fn optic_swaps(&mut self) -> Arc<FpvOptics> {
+        if let Some(optics) = &self.optics {
+            return Arc::clone(optics);
+        }
+        let mut optics = FpvOptics {
+            reticle_colours: self.owner.weapons.reticle_colours().to_vec(),
+            ..FpvOptics::default()
+        };
+        for (source, variants) in self.owner.weapons.optic_sources() {
+            let Some(source) = self.owner.materials.material_for_key(source) else {
+                continue;
+            };
+            for optic in variants {
+                let Some(row) = self
+                    .owner
+                    .materials
+                    .material_for_key(&optic.material)
+                    .and_then(|target| {
+                        self.admission
+                            .by_authored
+                            .get(&usize::from(target.asset_id.0))
+                    })
+                else {
+                    continue;
+                };
+                let Some(material) = self.admission.materials.get(*row as usize) else {
+                    continue;
+                };
+                let swaps = match optic.kind {
+                    asset_game::OpticKind::Lens => &mut optics.lens,
+                    asset_game::OpticKind::Reticle => &mut optics.reticle,
+                };
+                swaps
+                    .entry(optic.index)
+                    .or_default()
+                    .insert(usize::from(source.asset_id.0), material.clone());
+            }
+        }
+        let optics = Arc::new(optics);
+        self.optics = Some(Arc::clone(&optics));
+        optics
+    }
+
     fn prepare_next_weapon(&mut self, fpv: &FpvMeshCatalog, xanims: &XAnimCatalog) {
         let registry = Arc::clone(&self.owner.weapons);
         let (id, parent) = if self.next_weapon as usize > registry.len() {
@@ -613,6 +665,7 @@ impl FpvPreparationJob {
             .unwrap_or_else(String::new);
         let census = self.census_of(fpv, gun_index);
         let camos = self.camo_swaps(fpv, id, gun_index);
+        let optics = self.optic_swaps();
         let right_orders: Vec<Option<usize>> = right.clip_orders().to_vec();
         let left_orders: Vec<Option<usize>> = left
             .as_ref()
@@ -783,6 +836,7 @@ impl FpvPreparationJob {
                     rigs,
                     census: census.clone(),
                     camos: camos.clone(),
+                    optics: Arc::clone(&optics),
                 }))
             })
             .collect();

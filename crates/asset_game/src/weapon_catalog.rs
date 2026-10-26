@@ -1689,6 +1689,10 @@ pub struct WeaponRegistry {
     vehicle_compass: HashMap<String, ([String; 2], [i32; 2])>,
     vehicle_accel: HashMap<String, f32>,
 
+    /// Black Ops' optic option variants of each material they apply to.
+    t5_optics: Arc<HashMap<crate::MaterialKey, Vec<crate::WeaponOptic>>>,
+    t5_reticle_colours: Arc<[[f32; 4]]>,
+
     revision: u64,
 }
 
@@ -1903,6 +1907,32 @@ impl std::ops::Deref for WeaponBuild {
     }
 }
 
+impl WeaponRegistry {
+    /// The optic option variants of `material`, none when it has none.
+    pub fn optic_variants_of(&self, material: &crate::MaterialKey) -> &[crate::WeaponOptic] {
+        self.t5_optics.get(material).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every optic option variant, for loading their images.
+    pub fn optic_variants(&self) -> impl Iterator<Item = &crate::WeaponOptic> {
+        self.t5_optics.values().flatten()
+    }
+
+    /// Black Ops' reticle colour rows, by the options' reticle colour.
+    pub fn reticle_colours(&self) -> &[[f32; 4]] {
+        &self.t5_reticle_colours
+    }
+
+    /// Each material with optic option variants, and its variants.
+    pub fn optic_sources(
+        &self,
+    ) -> impl Iterator<Item = (&crate::MaterialKey, &[crate::WeaponOptic])> {
+        self.t5_optics
+            .iter()
+            .map(|(key, optics)| (key, optics.as_slice()))
+    }
+}
+
 impl WeaponBuild {
     pub fn hand_xmodel_of(&self, index: u32) -> Option<&str> {
         self.rows
@@ -1914,6 +1944,20 @@ impl WeaponBuild {
         self.rows
             .get(weapon as usize)
             .map_or(&[], |row| &row.material_camos)
+    }
+
+    /// Prepares Black Ops' optic options from its `weaponoptions.csv`;
+    /// returns how many materials take them.
+    pub fn prepare_t5_optics(
+        &mut self,
+        table: &crate::CapturedStringTable,
+        materials: &mut asset_material::MaterialCatalog,
+    ) -> usize {
+        let optics = crate::weapon_camo::prepare_t5_optics(table, materials);
+        let count = optics.len();
+        self.registry.t5_optics = Arc::new(optics);
+        self.registry.t5_reticle_colours = crate::weapon_camo::t5_reticle_colours(table).into();
+        count
     }
 
     pub fn set_family_tables(

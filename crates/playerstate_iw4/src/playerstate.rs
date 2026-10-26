@@ -88,6 +88,9 @@ pub struct PlayerState {
     pub weapon_shot_count_secondary: i32,
     pub weapons: [i32; 15],
     pub weapon_data: [u8; 76],
+    /// Black Ops' weapon options word of each held weapon (camo, lens,
+    /// reticle and reticle colour), by the slot in `weapons`.
+    pub weapon_options: [i32; 15],
     pub off_hand_index: i32,
     pub offhand_primary: i32,
     pub offhand_secondary: i32,
@@ -312,6 +315,7 @@ impl PlayerState {
         weapon_shot_count_secondary: 0,
         weapons: [0; 15],
         weapon_data: [0; 76],
+        weapon_options: [0; 15],
         off_hand_index: 0,
         offhand_primary: 0,
         offhand_secondary: 0,
