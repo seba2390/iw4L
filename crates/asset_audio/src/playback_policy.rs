@@ -202,6 +202,25 @@ pub struct VoiceLowpassPolicy {
     /// A big sound's distance low-pass is scaled in from none at the
     /// listener to all of it at this distance.
     pub big_distance: Option<f32>,
+    /// Black Ops' occlusion of the voice: how much world lies between it
+    /// and the listener, traced for a placed sound.
+    pub occlusion: VoiceOcclusionPolicy,
+}
+
+/// Black Ops' occlusion bytes of an alias and what they act on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VoiceOcclusionPolicy {
+    /// The alias's occlusion level: its share of the occlusion low-pass, and
+    /// with `blend` how much occlusion moves the dry and wet levels.
+    pub level: u8,
+    pub blend: u8,
+    /// A placed sound, whose occlusion is traced.
+    pub traced: bool,
+    /// Its occlusion low-pass runs (a placed sound with occlusion on).
+    pub lowpass: bool,
+    /// The sound is low-passed by distance: far away it starts at half its
+    /// occlusion level instead of being traced.
+    pub distance_lowpass: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

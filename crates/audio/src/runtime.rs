@@ -107,6 +107,7 @@ pub struct AudioRuntime {
     source_publisher: Mutex<SourcePublisher>,
     rejections: Arc<[AtomicU64; 7]>,
     snapshot_voices: Arc<Mutex<Vec<SnapshotVoice>>>,
+    occlusion_voices: Arc<Mutex<Vec<OcclusionVoice>>>,
     shutdown: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
@@ -142,6 +143,8 @@ impl AudioRuntime {
         let control_budget = cue_budget.clone();
         let snapshot_voices = Arc::new(Mutex::new(Vec::new()));
         let control_snapshot_voices = snapshot_voices.clone();
+        let occlusion_voices = Arc::new(Mutex::new(Vec::new()));
+        let control_occlusion_voices = occlusion_voices.clone();
         let worker = std::thread::Builder::new()
             .name("audio-control".into())
             .spawn(move || {
@@ -158,6 +161,7 @@ impl AudioRuntime {
                     control_rejections,
                     control_budget,
                     control_snapshot_voices,
+                    control_occlusion_voices,
                 )
             })
             .expect("cannot start audio control thread");
@@ -175,6 +179,7 @@ impl AudioRuntime {
             source_publisher: Mutex::new(SourcePublisher::new()),
             rejections,
             snapshot_voices,
+            occlusion_voices,
             shutdown,
             worker: Some(worker),
         }
@@ -192,6 +197,14 @@ impl AudioRuntime {
 
     pub fn audio_frame(&self) -> u64 {
         self.shared.frame.load(Ordering::Acquire)
+    }
+
+    /// The placed sounds whose occlusion is traced.
+    pub(crate) fn occlusion_voices(&self) -> Vec<OcclusionVoice> {
+        self.occlusion_voices
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone()
     }
 
     /// The playing sounds that carry a mix snapshot.
@@ -514,6 +527,7 @@ fn control(
     rejections: Arc<[AtomicU64; 7]>,
     cue_budget: crate::pending::PendingBudget,
     snapshot_voices: Arc<Mutex<Vec<SnapshotVoice>>>,
+    occlusion_voices: Arc<Mutex<Vec<OcclusionVoice>>>,
 ) {
     assets::session_load::use_process_cpus();
     crate::diagnostics::thread("audio-control");
@@ -1068,6 +1082,7 @@ fn control(
         });
         let diag_stage = crate::diagnostics::slow_stage("voice_scheduling", diag_stage);
         publish_snapshot_voices(&instances, &emitters, &snapshot_voices);
+        publish_occlusion_voices(&instances, &occlusion_voices);
         if !shared.cancelled.load(Ordering::Acquire) {
             present_sources.clear();
             present_sources.extend(instances.iter().filter_map(|logical| {
@@ -1277,6 +1292,36 @@ fn publish_snapshot_voices(
     *out.lock().unwrap_or_else(|poison| poison.into_inner()) = voices;
 }
 
+/// A placed voice whose occlusion Black Ops traces: where it plays, and
+/// its occlusion state.
+#[derive(Clone)]
+pub(crate) struct OcclusionVoice {
+    pub id: u64,
+    pub origin_inches: [f32; 3],
+    pub policy: asset_audio::VoiceOcclusionPolicy,
+    pub occlusion: Arc<crate::media::VoiceOcclusion>,
+}
+
+fn publish_occlusion_voices(instances: &[LogicalInstance], out: &Mutex<Vec<OcclusionVoice>>) {
+    let voices = instances
+        .iter()
+        .filter_map(|logical| {
+            let request = &logical.request;
+            let lowpass = request.media.lowpass.as_ref()?;
+            let spatial = request.spatial.as_ref()?;
+            (lowpass.policy.occlusion.traced
+                && request.instance.status() != InstanceStatus::Retired)
+                .then(|| OcclusionVoice {
+                    id: request.instance.id,
+                    origin_inches: spatial.origin_inches,
+                    policy: lowpass.policy.occlusion,
+                    occlusion: lowpass.occlusion.clone(),
+                })
+        })
+        .collect();
+    *out.lock().unwrap_or_else(|poison| poison.into_inner()) = voices;
+}
+
 fn update_spatial(request: &StartRequest, listener: Option<ListenerSnapshot>) {
     if let (Some(spatial), Some(listener)) = (&request.spatial, listener) {
         if let Some(lowpass) = &request.media.lowpass {
@@ -1286,13 +1331,21 @@ fn update_spatial(request: &StartRequest, listener: Option<ListenerSnapshot>) {
             ));
         }
         let parameters = spatial.evaluate(listener);
+        // Black Ops' occlusion moves the dry level and the reverb send.
+        let (dry, wet) = request
+            .media
+            .lowpass
+            .as_ref()
+            .map_or((1.0, 1.0), |lowpass| {
+                (lowpass.dry_level(), lowpass.wet_level())
+            });
         if let Some(pan) = &request.media.pan {
-            pan.set(parameters.gains[0], parameters.gains[1]);
+            pan.set(parameters.gains[0] * dry, parameters.gains[1] * dry);
         }
         if let (Some(pan), Some([left, right])) =
             (&request.media.reverb_pan, parameters.reverb_gains)
         {
-            pan.set(left, right);
+            pan.set(left * wet, right * wet);
         }
         request.instance.priority.store(
             if parameters.priority.is_finite() {

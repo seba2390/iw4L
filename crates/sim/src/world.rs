@@ -5,8 +5,9 @@ mod events;
 pub(crate) mod solid_pieces;
 use bodies::{PlayerAnimInputs, PlayerBodyRuntime};
 use clipmap_iw4::{
-    ClipMapRef, CmodelTransform, TraceExtents, brush_ref, clip_handle_to_model,
-    transformed_capsule_trace, walk_clip_tree,
+    ClipMapRef, ClipMeshRef, ClipWorldWinner, CmodelTransform, MeshWalkCensus, TraceExtents,
+    brush_ref, clip_handle_to_model, finish_mesh_forest_fallback, leaves_have_coll_aabb,
+    trace_leaf_mesh_into, trace_through_mesh_into, transformed_capsule_trace, walk_clip_tree,
 };
 use collision::{CollisionRuntime, LagcompPlan};
 pub use content::{
@@ -41,7 +42,7 @@ use crate::world_objects::WorldObjectState;
 use crate::{WeaponScriptSounds, WeaponSetup};
 use std::collections::HashMap;
 use std::sync::Arc;
-use trace_iw4::{Trace, trace_capsule};
+use trace_iw4::{Trace, trace_box, trace_capsule};
 use weapon_iw4::{BulletPenFacts, WeaponCombatFacts};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -3739,6 +3740,193 @@ pub(crate) fn clip_trace(
         );
     }
     best
+}
+
+impl SimContent {
+    /// A sight trace of the static clip world, as loaded, from `start` to
+    /// `end`: what blocks the segment first along the clip tree, brushes
+    /// before the clip mesh in each leaf, and whether the segment started
+    /// inside it. `None` when nothing blocks it.
+    pub fn sight_trace_static_world(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mask: u32,
+    ) -> Option<SightHit> {
+        sight_trace(
+            self.clip_brushes(),
+            self.clip_bsp(),
+            self.clip_mesh(),
+            start,
+            end,
+            mask,
+        )
+    }
+
+    /// Whether the segment from `start` to `end` meets clip brush `brush`,
+    /// as a sight trace that blocked on it before would find.
+    pub fn segment_meets_brush(&self, brush: u16, start: [f32; 3], end: [f32; 3]) -> bool {
+        self.clip_brushes()
+            .get(usize::from(brush))
+            .is_some_and(|brush| {
+                let brush = brush_ref(brush);
+                brush_blocks(trace_box(
+                    std::iter::once(brush),
+                    start,
+                    end,
+                    [0.0; 3],
+                    [0.0; 3],
+                    brush.contents,
+                ))
+            })
+    }
+}
+
+/// What blocked a sight trace through the static world.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SightBlocker {
+    /// A clip brush, by index.
+    Brush(u16),
+    /// The clip mesh.
+    Mesh,
+}
+
+/// A sight trace's blocker, and whether the segment started inside it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SightHit {
+    pub blocker: SightBlocker,
+    pub start_solid: bool,
+}
+
+fn brush_blocks(trace: Trace) -> bool {
+    trace.fraction < 1.0 || trace.startsolid != 0
+}
+
+/// The first piece of the clip world that blocks a point segment, walking
+/// the clip tree from the start: each leaf's brushes in order, then its
+/// part of the clip mesh.
+fn sight_trace(
+    brushes: &[SimBrush],
+    bsp: &SimClipBsp,
+    mesh: &SimClipMesh,
+    start: [f32; 3],
+    end: [f32; 3],
+    mask: u32,
+) -> Option<SightHit> {
+    use std::cell::Cell;
+
+    let map = ClipMapRef {
+        nodes: &bsp.nodes,
+        leaves: &bsp.leaves,
+        leafbrushes: &bsp.leafbrushes,
+        brushes,
+    };
+    let ext = TraceExtents::new(start, end, [0.0; 3], [0.0; 3], mask);
+    let mesh_ref = ClipMeshRef {
+        verts: &mesh.tables.verts,
+        tri_indices: &mesh.tables.tri_indices,
+        tri_edge_is_walkable: &mesh.tables.tri_edge_is_walkable,
+        tri_surface_flags: &mesh.tables.tri_surface_flags,
+        tri_content_flags: &mesh.tables.tri_content_flags,
+        aabb_trees: &mesh.tables.aabb_trees,
+        partitions: &mesh.tables.partitions,
+        borders: &mesh.tables.borders,
+        aabb_roots: &mesh.tables.aabb_roots,
+    };
+    let no_mesh = mesh_ref.tri_indices.len() < 3;
+    let open = || Trace {
+        fraction: 1.0,
+        endpos: ext.end,
+        ..Trace::default()
+    };
+    let brush_hit = |id: u16| {
+        let brush = brushes.get(usize::from(id))?;
+        let trace = trace_box(
+            std::iter::once(brush_ref(brush)),
+            ext.start,
+            ext.end,
+            [0.0; 3],
+            [0.0; 3],
+            mask,
+        );
+        brush_blocks(trace).then_some(SightHit {
+            blocker: SightBlocker::Brush(id),
+            start_solid: trace.startsolid != 0,
+        })
+    };
+    let mesh_hit = |trace: Trace| {
+        brush_blocks(trace).then_some(SightHit {
+            blocker: SightBlocker::Mesh,
+            start_solid: trace.startsolid != 0,
+        })
+    };
+
+    if map.nodes.is_empty() || map.leaves.is_empty() {
+        if let Some(hit) = (0..brushes.len()).find_map(|id| brush_hit(id as u16)) {
+            return Some(hit);
+        }
+        if no_mesh {
+            return None;
+        }
+        let mut trace = open();
+        let mut census = MeshWalkCensus::default();
+        trace_through_mesh_into(&mesh_ref, &ext, &mut trace, &mut census);
+        return mesh_hit(trace);
+    }
+
+    let has_leaf_aabbs = !no_mesh && leaves_have_coll_aabb(map.leaves);
+    let found: Cell<Option<SightHit>> = Cell::new(None);
+    LEAF_AABB_SCRATCH.with(|scratch| {
+        let mut scratch = scratch.borrow_mut();
+        walk_clip_tree(
+            &map,
+            &ext,
+            &|| if found.get().is_some() { 0.0 } else { 1.0 },
+            &mut |leaf| {
+                if found.get().is_some() {
+                    return;
+                }
+                let first = leaf.first_brush as usize;
+                let ids = map
+                    .leafbrushes
+                    .get(first..first + leaf.num_brushes as usize)
+                    .unwrap_or(&[]);
+                if let Some(hit) = ids.iter().find_map(|&id| brush_hit(id)) {
+                    found.set(Some(hit));
+                    return;
+                }
+                if !no_mesh {
+                    let mut trace = open();
+                    let mut census = MeshWalkCensus::default();
+                    trace_leaf_mesh_into(
+                        &mesh_ref,
+                        leaf,
+                        &ext,
+                        has_leaf_aabbs,
+                        &mut trace,
+                        &mut census,
+                        &mut scratch,
+                    );
+                    found.set(mesh_hit(trace));
+                }
+            },
+        );
+    });
+    if found.get().is_none() && !no_mesh {
+        let mut trace = open();
+        let mut census = MeshWalkCensus::default();
+        let mut ignored_winner = ClipWorldWinner::Open;
+        finish_mesh_forest_fallback(
+            &mesh_ref,
+            has_leaf_aabbs,
+            &ext,
+            &mut trace,
+            &mut ignored_winner,
+            &mut census,
+        );
+        found.set(mesh_hit(trace));
+    }
+    found.get()
 }
 
 pub(crate) fn gsc_give_weapon_is_akimbo(script_name: &str) -> bool {

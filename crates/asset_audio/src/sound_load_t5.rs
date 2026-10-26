@@ -567,6 +567,8 @@ impl T5SoundCapture {
                 }),
             lowpass: Some(voice_lowpass(
                 s.u32_at(row, sz::SND_ALIAS_FLAGS_OFF).unwrap_or(0),
+                s.u8_at(row, sz::SND_ALIAS_OCCLUSION_LEVEL_OFF).unwrap_or(0),
+                s.u8_at(row, sz::SND_ALIAS_OCCLUSION_BLEND_OFF).unwrap_or(0),
             )),
             context: s
                 .u32_at(row, sz::SND_ALIAS_CONTEXT_TYPE_OFF)
@@ -593,9 +595,10 @@ const FLAG_BIG: u32 = 1 << 5;
 const FLAG_NO_OCCLUSION: u32 = 1 << 6;
 
 /// Black Ops' per-voice low-pass for an alias with `flags`: the snapshot
-/// group's always, the distance's for a placed sound with occlusion that
-/// asks for it (scaled in near the listener for a big one).
-fn voice_lowpass(flags: u32) -> crate::VoiceLowpassPolicy {
+/// group's always, the occlusion's and the distance's for a placed sound
+/// with occlusion that asks for them (the distance's scaled in near the
+/// listener for a big one).
+fn voice_lowpass(flags: u32, level: u8, blend: u8) -> crate::VoiceLowpassPolicy {
     let occluded = flags & FLAG_DISTANCE != 0 && flags & FLAG_NO_OCCLUSION == 0;
     crate::VoiceLowpassPolicy {
         snapshot_db: OCCLUSION_DB,
@@ -605,6 +608,13 @@ fn voice_lowpass(flags: u32) -> crate::VoiceLowpassPolicy {
             db: DLPF_DB,
         }),
         big_distance: (occluded && flags & FLAG_BIG != 0).then_some(BIG_DISTANCE),
+        occlusion: crate::VoiceOcclusionPolicy {
+            level,
+            blend,
+            traced: flags & FLAG_DISTANCE != 0,
+            lowpass: occluded,
+            distance_lowpass: flags & FLAG_DLPF != 0,
+        },
     }
 }
 

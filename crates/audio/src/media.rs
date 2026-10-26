@@ -203,14 +203,62 @@ impl CueRelease {
 }
 
 /// Black Ops' per-voice low-pass, as the voice plays: its policy, its
-/// snapshot group's low-pass value and what its distance asks for (in
-/// decibels, set as the listener moves).
+/// snapshot group's low-pass value, its occlusion and what its occlusion and
+/// distance ask for (in decibels, set as the listener moves).
 #[derive(Clone)]
 pub(crate) struct VoiceLowpass {
     pub policy: asset_audio::VoiceLowpassPolicy,
     pub snapshot: Option<LiveGain>,
     distance_db: Arc<AtomicU32>,
+    pub occlusion: Arc<VoiceOcclusion>,
 }
+
+/// Black Ops' occlusion of a voice: what its traces last found and where
+/// the voice's occlusion has eased to (0 in the open, 1 fully behind the
+/// world).
+#[derive(Default)]
+pub(crate) struct VoiceOcclusion {
+    target: AtomicU32,
+    current: AtomicU32,
+}
+
+impl VoiceOcclusion {
+    pub fn current(&self) -> f32 {
+        f32::from_bits(self.current.load(Ordering::Relaxed))
+    }
+
+    /// What the traces found; the first finding is where the voice starts.
+    pub fn set_target(&self, value: f32, first: bool) {
+        self.target.store(value.to_bits(), Ordering::Relaxed);
+        if first {
+            self.current.store(value.to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    /// Eases toward what the traces found by at most `rate` a second;
+    /// a rate of 0 or less takes it at once.
+    pub fn ease(&self, rate: f32, seconds: f32) {
+        let target = f32::from_bits(self.target.load(Ordering::Relaxed));
+        let current = self.current();
+        let next = if -rate >= 0.0 {
+            target
+        } else {
+            let gap = target - current;
+            let step = (rate * seconds).min(gap.abs());
+            if 0.0 <= gap {
+                current + step
+            } else {
+                current - step
+            }
+        };
+        self.current.store(next.to_bits(), Ordering::Relaxed);
+    }
+}
+
+/// `snd_occlusion_attenuation`'s weight per level step: the level is a byte.
+const LEVEL_SCALE: f32 = f32::from_bits(0x3b80_8081);
+/// The dry and wet blend: the two occlusion bytes' product over 255².
+const BLEND_SCALE: f32 = f32::from_bits(0x3781_0182);
 
 impl VoiceLowpass {
     pub fn new(policy: asset_audio::VoiceLowpassPolicy, snapshot: Option<LiveGain>) -> Self {
@@ -218,11 +266,14 @@ impl VoiceLowpass {
             policy,
             snapshot,
             distance_db: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+            occlusion: Arc::new(VoiceOcclusion::default()),
         }
     }
 
-    /// What the voice's distance from the listener asks for: the distance
-    /// low-pass, scaled in near the listener for a big sound.
+    /// What the voice's occlusion and distance from the listener ask for:
+    /// the occlusion's share of the occlusion attenuation, then the distance
+    /// low-pass where stronger, scaled in near the listener for a big sound
+    /// that is not wholly occluded.
     pub fn set_distance(&self, distance: f32) {
         let lerp = |min: f32, max: f32, from: f32, to: f32, x: f32| {
             let span = max - min;
@@ -230,14 +281,46 @@ impl VoiceLowpass {
             let t = if -along >= 0.0 { 0.0 } else { along.min(span) };
             t / span * to + (1.0 - t / span) * from
         };
-        let mut db = self
-            .policy
-            .distance
-            .map_or(0.0, |d| lerp(d.min, d.max, 0.0, d.db, distance).min(0.0));
-        if let Some(big) = self.policy.big_distance {
+        let occlusion = self.occlusion.current();
+        let mut db = if self.policy.occlusion.lowpass {
+            f32::from(self.policy.occlusion.level)
+                * self.policy.snapshot_db
+                * LEVEL_SCALE
+                * occlusion
+        } else {
+            0.0
+        };
+        if let Some(d) = self.policy.distance {
+            db = db.min(lerp(d.min, d.max, 0.0, d.db, distance));
+        }
+        if let Some(big) = self.policy.big_distance
+            && occlusion < 1.0
+        {
             db = lerp(0.0, big, 0.0, db, distance);
         }
         self.distance_db.store(db.to_bits(), Ordering::Relaxed);
+    }
+
+    /// The voice's dry level for its occlusion: Black Ops weighs the open
+    /// share by `1.25 - level x blend / 255²`, held to 0..1.
+    pub fn dry_level(&self) -> f32 {
+        let occlusion = self.occlusion.current();
+        let weight = (1.0 - self.blend() + 0.25).clamp(0.0, 1.0);
+        (1.0 - occlusion) * weight + occlusion
+    }
+
+    /// The voice's reverb send for its occlusion: the occluded share is
+    /// weighed by `0.75 + level x blend / 255²`, held to 0..1.
+    pub fn wet_level(&self) -> f32 {
+        let occlusion = self.occlusion.current();
+        let weight = (self.blend() + 1.0 - 0.25).clamp(0.0, 1.0);
+        (1.0 - occlusion) + occlusion * weight
+    }
+
+    fn blend(&self) -> f32 {
+        f32::from(self.policy.occlusion.blend)
+            * f32::from(self.policy.occlusion.level)
+            * BLEND_SCALE
     }
 
     /// The attenuation the voice is filtered by at `frame`: the stronger of
