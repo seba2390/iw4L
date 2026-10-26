@@ -17,6 +17,7 @@ mod pcm;
 mod pcm_budget;
 mod playback;
 mod plugin;
+mod proximity;
 mod radverb;
 mod reverb_mix;
 mod rumble;

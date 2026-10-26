@@ -3791,10 +3791,12 @@ pub enum SightBlocker {
     Mesh,
 }
 
-/// A sight trace's blocker, and whether the segment started inside it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A sight trace's blocker, how far along the segment it was met and
+/// whether the segment started inside it.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SightHit {
     pub blocker: SightBlocker,
+    pub fraction: f32,
     pub start_solid: bool,
 }
 
@@ -3851,12 +3853,14 @@ fn sight_trace(
         );
         brush_blocks(trace).then_some(SightHit {
             blocker: SightBlocker::Brush(id),
+            fraction: trace.fraction,
             start_solid: trace.startsolid != 0,
         })
     };
     let mesh_hit = |trace: Trace| {
         brush_blocks(trace).then_some(SightHit {
             blocker: SightBlocker::Mesh,
+            fraction: trace.fraction,
             start_solid: trace.startsolid != 0,
         })
     };

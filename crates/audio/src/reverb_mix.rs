@@ -141,15 +141,13 @@ impl ReverbMix {
 }
 
 /// The reverb's parameters for a room's preset: the sample rate, the
-/// preset's values (its fourth value four times over), the listener's
-/// surroundings' late gains and the matrix choice.
-fn parameters(values: &[f32; 15]) -> ReverbParameters {
+/// preset's values (its fourth value four times over), the late gains by
+/// the walls on each side of the listener and the matrix choice.
+fn parameters(values: &[f32; 15], proximity: [f32; 4]) -> ReverbParameters {
     let mut p = [0.0; 25];
     p[0] = SAMPLE_RATE;
     p[1..6].copy_from_slice(&values[0..5]);
-    // The late gains by the walls around the listener; unscaled while
-    // their traces are not run.
-    p[6..10].fill(1.0);
+    p[6..10].copy_from_slice(&[proximity[3], proximity[1], proximity[2], proximity[0]]);
     p[10..15].copy_from_slice(&values[5..10]);
     p[15..19].fill(values[10]);
     p[19..23].copy_from_slice(&values[11..15]);
@@ -165,6 +163,7 @@ fn update_reverb_mix(
     local: Option<Res<net::LocalPresentClient>>,
     runtime: Res<crate::AudioRuntime>,
     time: Res<Time>,
+    proximity: Res<crate::proximity::ProximityGains>,
 ) {
     let local = local.map(|local| local.0);
     for event in events.read() {
@@ -198,7 +197,7 @@ fn update_reverb_mix(
             .0
             .reverb_preset(namespace, room)
             .or_else(|| bank.0.reverb_preset(namespace, default_hash()))?;
-        Some((parameters(&preset.values), namespace))
+        Some((parameters(&preset.values, proximity.0), namespace))
     });
     let room = mix.rooms[mix.current];
     runtime.set_reverb(reverb, room.dry, room.wet);
