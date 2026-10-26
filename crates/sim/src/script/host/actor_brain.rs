@@ -927,7 +927,7 @@ fn sense(world: &mut World, actor: u64) {
     let _ = can_see_enemy(world, actor);
 }
 
-fn enemy(world: &mut World, actor: u64) -> Option<u64> {
+pub(crate) fn enemy(world: &mut World, actor: u64) -> Option<u64> {
     match world
         .resource_mut::<RoundScript>()
         .object_field(actor, "enemy")
@@ -939,7 +939,7 @@ fn enemy(world: &mut World, actor: u64) -> Option<u64> {
 
 /// Whether the actor sees its enemy: a sentient by a sight check reused for
 /// a quarter second, any other entity by a fresh one.
-fn can_see_enemy(world: &mut World, actor: u64) -> bool {
+pub(crate) fn can_see_enemy(world: &mut World, actor: u64) -> bool {
     let Some(enemy) = enemy(world, actor) else {
         return false;
     };
@@ -1253,6 +1253,19 @@ fn enemy_known(world: &mut World, actor: u64) -> bool {
         .and_then(|brain| brain.sightings.get(&enemy))
         .and_then(|sighting| sighting.seen)
         .is_some_and(|seen| now - seen < ENEMY_MEMORY_MS)
+}
+
+/// Whether the enemy was known (seen or heard of) within the last ten
+/// seconds.
+pub(crate) fn enemy_known_lately(world: &mut World, actor: u64) -> bool {
+    let Some(enemy) = enemy(world, actor) else {
+        return false;
+    };
+    let now = super::players::now_ms(world);
+    brain(world, actor)
+        .and_then(|brain| brain.sightings.get(&enemy))
+        .and_then(|sighting| sighting.known)
+        .is_some_and(|known| now - known < ENEMY_MEMORY_MS)
 }
 
 // --- Exposed ------------------------------------------------------------

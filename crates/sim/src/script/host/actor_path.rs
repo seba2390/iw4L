@@ -150,6 +150,23 @@ impl Default for ActorPath {
     }
 }
 
+/// The flat distance (squared) from `at` to a segment of length `len`
+/// running along `dir` to `end`: off its side within it, to `end` once
+/// past it; none when `at` lies behind its start.
+fn segment_dist_sq(end: [f32; 2], dir: [f32; 2], len: f32, at: [f32; 2]) -> Option<f32> {
+    let d = [end[0] - at[0], end[1] - at[1]];
+    let along = dir[0] * d[0] + dir[1] * d[1];
+    if along >= len {
+        return None;
+    }
+    Some(if along > 0.0 {
+        let side = dir[1] * d[0] - dir[0] * d[1];
+        side * side
+    } else {
+        d[1] * d[1] + d[0] * d[0]
+    })
+}
+
 fn flat_len(v: [f32; 2]) -> f32 {
     (v[0] * v[0] + v[1] * v[1]).sqrt()
 }
@@ -192,6 +209,51 @@ impl ActorPath {
     /// Where the actor's current segment starts.
     pub(crate) fn current(&self) -> [f32; 3] {
         self.curr
+    }
+
+    /// Whether `at` lies (flat) within `reach` of the way ahead: of the
+    /// actor's own spot, of the way to the lookahead, of the way on to the
+    /// lookahead's next point, then of the segments beyond while the
+    /// length so far stays below `fight_dist`.
+    pub(crate) fn passes_near(
+        &self,
+        origin: [f32; 3],
+        at: [f32; 2],
+        reach: f32,
+        fight_dist: f32,
+    ) -> bool {
+        let reach_sq = reach * reach;
+        let dy = at[1] - origin[1];
+        if dy * dy + (at[0] - origin[0]) * (at[0] - origin[0]) < reach_sq {
+            return true;
+        }
+        let look = [self.look_dir[0], self.look_dir[1]];
+        let look_at = [
+            origin[0] + look[0] * self.look_dist,
+            origin[1] + look[1] * self.look_dist,
+        ];
+        if segment_dist_sq(look_at, look, self.look_dist, at).is_some_and(|d| d < reach_sq) {
+            return true;
+        }
+        let Some(next) = self.pts.get(self.next) else {
+            return false;
+        };
+        let end = [next.origin[0], next.origin[1]];
+        if segment_dist_sq(end, next.dir, self.to_next, at).is_some_and(|d| d < reach_sq) {
+            return true;
+        }
+        let mut along = self.to_next + self.look_dist;
+        let mut i = self.next;
+        while along < fight_dist && i > 0 {
+            i -= 1;
+            let p = &self.pts[i];
+            let end = [p.origin[0], p.origin[1]];
+            if segment_dist_sq(end, p.dir, p.len, at).is_some_and(|d| d < reach_sq) {
+                return true;
+            }
+            along += p.len;
+        }
+        false
     }
 
     /// Whether the lookahead grew on its last update.
