@@ -43,10 +43,10 @@ use weapon_iw4::{
     GunRecoilResponse, PLACEMENT_ASSEMBLE_STEP_COUNT, StanceTransitionFadeGlobals, WeaponBobInputs,
     WeaponBobWaveformInputs, WeaponMovementKinematics, WeaponPlacementAssembleStep,
     WeaponPlacementPsInputs, WeaponPlacementState, WeaponStanceStaticOfsInputs,
-    calculate_weapon_movement_bob_waveform, clip_table_key, dual_wield_view_model_origin_add,
-    get_clip_for_hand, get_viewmodel_weapon_index, viewmodel_rocket_should_be_attached,
-    viewweapon_iron_ads_saves_composed_axis, viewweapon_save_gun_pitch_yaw,
-    viewweapon_view_to_world_delta, weapon_placement_assemble,
+    calculate_weapon_movement_bob_waveform, clip_row_present, clip_table_key,
+    dual_wield_view_model_origin_add, get_clip_for_hand, get_viewmodel_weapon_index,
+    viewmodel_rocket_should_be_attached, viewweapon_iron_ads_saves_composed_axis,
+    viewweapon_save_gun_pitch_yaw, viewweapon_view_to_world_delta, weapon_placement_assemble,
 };
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -721,9 +721,17 @@ pub fn tick_fpv_viewmodel(
             let clip_ammo = |hand| match (ps, table) {
                 (Some(ps), Some(table)) => {
                     let viewmodel = fpv_viewmodel_weapon(ps, table);
-                    table.facts_of(viewmodel).map(|facts| {
+                    table.facts_of(viewmodel).and_then(|facts| {
                         let key = clip_table_key(facts.clip_index, viewmodel);
-                        get_clip_for_hand(&ps.ammoclip, key, hand)
+                        if clip_row_present(&ps.ammoclip, key) {
+                            return Some(get_clip_for_hand(&ps.ammoclip, key, hand));
+                        }
+                        // A game that keeps rounds by its own clip numbers:
+                        // the held weapon's clip as the match state mirrors
+                        // it (as the HUD reads it), none for anything else.
+                        (hand == 0 && viewmodel == ps.weapon)
+                            .then(|| snap.meta.for_client(local.0).map(|m| m.ammo_clip))
+                            .flatten()
                     })
                 }
                 _ => None,
