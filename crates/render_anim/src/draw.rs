@@ -282,6 +282,11 @@ pub struct FpvDrawPlan {
     pub rig_generation: u64,
 
     pub camo: u8,
+    /// The lens, reticle and reticle colour options the plan was built for.
+    pub optics: (u8, u8, u8),
+    /// The reticle colour the viewmodel's materials read as their fourth
+    /// script vector; `None` when the options name none.
+    pub script_vector3: Option<[f32; 4]>,
 
     pub(crate) packed_vertices: asset_world::PackedVertexPayload,
 }

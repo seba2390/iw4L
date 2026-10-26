@@ -951,6 +951,7 @@ pub(crate) fn open_frame_products(
     mut mat_frame: ResMut<MaterialFrameInputs>,
     presented: Option<Res<net::PresentedSnapshot>>,
     local: Option<Res<net::LocalPresentClient>>,
+    fpv: Option<Res<super::tess::xmodel::FpvDrawPlan>>,
 ) {
     spot_casters.clear_frame();
     spot_lights.0.clear();
@@ -979,10 +980,17 @@ pub(crate) fn open_frame_products(
         .map_or(&[][..], |meta| {
             meta.view_effects.client_screen.script_vectors.as_slice()
         });
-    if script_vectors.len() != inputs.script_vectors.len()
+    // Black Ops gives its first-person weapon the reticle colour of the
+    // weapon's options as the fourth script vector.
+    let viewmodel = fpv
+        .as_ref()
+        .and_then(|fpv| fpv.script_vector3)
+        .map(|row| (crate::SCENE_VIEWMODEL_ENTNUM, [None, None, None, Some(row)]));
+    if script_vectors.len() + usize::from(viewmodel.is_some()) != inputs.script_vectors.len()
         || script_vectors.iter().any(|entity| {
             inputs.script_vectors.get(&u32::from(entity.number)) != Some(&entity.rows)
         })
+        || viewmodel.is_some_and(|(entity, rows)| inputs.script_vectors.get(&entity) != Some(&rows))
     {
         if script_vectors.len() != inputs.script_vectors.len() {
             diag::info!(
@@ -995,6 +1003,7 @@ pub(crate) fn open_frame_products(
             script_vectors
                 .iter()
                 .map(|entity| (u32::from(entity.number), entity.rows))
+                .chain(viewmodel)
                 .collect(),
         );
     }

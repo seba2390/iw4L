@@ -1109,7 +1109,8 @@ pub(crate) struct PlayerSlot {
     pub link: Option<PlayerLink>,
     /// Weapons (with camo model) and the spawn weapon a T5 script handed a
     /// connected player before it spawned; they are applied by `spawn`.
-    pub pending_weapons: Vec<(u32, u8)>,
+    /// Weapons given before the first spawn: weapon, model and options.
+    pub pending_weapons: Vec<(u32, u8, i32)>,
     pub pending_spawn_weapon: Option<u32>,
     /// Where a script placed the player before it spawned.
     pub pending_origin: Option<[f32; 3]>,

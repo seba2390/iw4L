@@ -35,7 +35,7 @@ mod weapon_anim_dispatch;
 mod weapon_animations;
 mod weapon_camo;
 mod weapon_catalog;
-pub use weapon_camo::WeaponCamouflage;
+pub use weapon_camo::{OpticKind, WeaponCamouflage, WeaponOptic};
 mod weapon_families;
 mod weapon_semantics;
 mod weapon_t6;

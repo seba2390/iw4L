@@ -906,6 +906,18 @@ pub(crate) fn set_weapon_model(world: &mut FrameWorld, id: ClientId, weapon: u32
     }
 }
 
+/// Black Ops' weapon options word for a held weapon, kept with its slot.
+pub(crate) fn set_weapon_options(world: &mut FrameWorld, id: ClientId, weapon: u32, options: i32) {
+    if let Some(ps) = world.player_mut(id)
+        && let Some(slot) = ps
+            .weapons
+            .iter()
+            .position(|&w| w != 0 && w == weapon as i32)
+    {
+        ps.weapon_options[slot] = options;
+    }
+}
+
 /// The melee-only weapon each player was last given, which the
 /// simulation's weapons do not hold: the one a player stabs with.
 #[derive(bevy_ecs::prelude::Resource, Default)]
@@ -936,6 +948,7 @@ pub(crate) fn take_weapon(world: &mut FrameWorld, id: ClientId, weapon: u32) {
     if let Some(slot) = ps.weapons.iter().position(|&w| w == weapon as i32) {
         ps.weapons[slot] = 0;
         ps.weapon_data[slot * 5..slot * 5 + 5].fill(0);
+        ps.weapon_options[slot] = 0;
     }
     if ps.weapon == weapon {
         ps.weapon = 0;
@@ -958,6 +971,7 @@ pub(crate) fn take_all_weapons(world: &mut FrameWorld, id: ClientId) {
     };
     ps.weapons = [0; 15];
     ps.weapon_data.fill(0);
+    ps.weapon_options = [0; 15];
     ps.ammo.fill(0);
     ps.ammoclip.fill(0);
     ps.weapon = 0;
