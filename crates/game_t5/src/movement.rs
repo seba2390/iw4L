@@ -71,6 +71,11 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
             "Black Ops' linked, noclip, ufo, spectator and intermission moves",
             "those player moves from its executable"
         ),
+        Gap::PhysicsWorld => unknown!(
+            "t5.movement.physics_world",
+            "the match cannot list Black Ops' physics world, so the player sweeps the clip map (Black Ops' collision mode 0)",
+            "the map's brush corner points and partition vertices in the match's collision"
+        ),
     }
 }
 
@@ -96,6 +101,20 @@ pub(crate) fn weapon_unknown() -> &'static Unknown {
         "a weapon without Black Ops' definition is read with every field zero",
         "the weapon's Black Ops weapon definition"
     )
+}
+
+fn physics_hit(hit: crate::physics::Hit) -> movement_t5::Trace {
+    movement_t5::Trace {
+        normal: hit.normal,
+        fraction: hit.fraction,
+        surface_flags: hit.surface_flags,
+        contents: hit.contents,
+        entity: hit.entity.map_or(ENTITYNUM_NONE, t5_entity),
+        allsolid: false,
+        startsolid: hit.startsolid,
+        walkable: hit.walkable,
+        glass: false,
+    }
 }
 
 /// Black Ops numbers the world and no entity at the top of its entities.
@@ -382,6 +401,7 @@ pub(crate) fn pack(player: &mut MovePlayer, ps: &mut PlayerState, last: &mut Use
 
 struct World<'a> {
     world: &'a dyn MoveWorld,
+    physics: Option<crate::physics::PhysicsWorld<'a>>,
     weapon_unknown: core::cell::Cell<bool>,
     water_unknown: core::cell::Cell<bool>,
 }
@@ -415,6 +435,81 @@ impl movement_t5::MoveWorld for World<'_> {
             walkable: t.walkable,
             glass: t.glass,
         }
+    }
+
+    fn physics_collision(&self) -> bool {
+        self.physics.is_some()
+    }
+
+    fn physics_trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        contentmask: u32,
+    ) -> movement_t5::Trace {
+        let pass = shared_entity(pass_entity);
+        let hit = self
+            .physics
+            .as_ref()
+            .and_then(|physics| physics.trace(start, end, mins, maxs, pass, contentmask));
+        match hit {
+            Some(hit) => physics_hit(hit),
+            None => movement_t5::MoveWorld::trace(
+                self,
+                start,
+                end,
+                mins,
+                maxs,
+                pass_entity,
+                contentmask,
+            ),
+        }
+    }
+
+    fn physics_ground_trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        contentmask: u32,
+    ) -> movement_t5::Trace {
+        let pass = shared_entity(pass_entity);
+        let hit = self
+            .physics
+            .as_ref()
+            .and_then(|physics| physics.ground_trace(start, end, mins, maxs, pass, contentmask));
+        match hit {
+            Some(hit) => physics_hit(hit),
+            None => movement_t5::MoveWorld::trace(
+                self,
+                start,
+                end,
+                mins,
+                maxs,
+                pass_entity,
+                contentmask,
+            ),
+        }
+    }
+
+    fn physics_slide(
+        &self,
+        slide: &movement_t5::PhysicsSlide,
+        pass_entity: i32,
+    ) -> Option<movement_t5::PhysicsSlid> {
+        let mut slid = self
+            .physics
+            .as_ref()?
+            .slide(slide, shared_entity(pass_entity))?;
+        for entity in &mut slid.touched[..slid.touched_count] {
+            *entity = t5_entity(*entity);
+        }
+        Some(slid)
     }
 
     fn can_stand_on(&self, entity: i32) -> bool {
@@ -536,6 +631,9 @@ impl PlayerMovement for T5Movement {
         };
         let adapter = World {
             world,
+            physics: world
+                .lists_solid_pieces()
+                .then(|| crate::physics::PhysicsWorld::new(world)),
             weapon_unknown: core::cell::Cell::new(false),
             water_unknown: core::cell::Cell::new(false),
         };

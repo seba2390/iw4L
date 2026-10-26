@@ -38,13 +38,24 @@ pub(crate) fn clear_jumping(ps: &mut crate::PlayerState) {
     ps.jump_origin_z = 0.0;
 }
 
+/// The ground sweep: through the physics world it prefers a walkable
+/// contact among those near the earliest.
+fn ground_sweep<W: MoveWorld>(pm: &mut Pm<'_, W>, start: [f32; 3], end: [f32; 3]) -> Trace {
+    if pm.physics {
+        pm.world
+            .physics_ground_trace(start, end, pm.mins, pm.maxs, pm.client_num(), pm.tracemask)
+    } else {
+        pm.trace(start, end, pm.mins, pm.maxs, pm.tracemask)
+    }
+}
+
 /// Finds out what the player stands on.
 pub(crate) fn ground_trace<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
     pm.ps.ground_surface_type = 0;
     let o = pm.ps.origin;
     let mut start = [o[0], o[1], o[2] + 0.25];
     let end = [o[0], o[1], o[2] - 0.25];
-    let mut trace = pm.trace(start, end, pm.mins, pm.maxs, pm.tracemask);
+    let mut trace = ground_sweep(pm, start, end);
     pml.ground_trace = trace;
     pm.ps.ground_surface_type = trace.surface_type();
     if pml.ground_trace.surface_flags & SURF_SLICK != 0 {
@@ -69,7 +80,7 @@ pub(crate) fn ground_trace<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
     }
     if trace.startsolid {
         start[2] = pm.ps.origin[2] - 0.001;
-        trace = pm.trace(start, end, pm.mins, pm.maxs, pm.tracemask);
+        trace = ground_sweep(pm, start, end);
         if trace.startsolid {
             pm.ps.ground_entity_num = trace.entity;
             pml.ground_plane = true;
@@ -84,7 +95,8 @@ pub(crate) fn ground_trace<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
         return;
     }
     let ps = &*pm.ps;
-    if ps.pm_flags & pm_flags::LADDER == 0
+    if !pm.physics
+        && ps.pm_flags & pm_flags::LADDER == 0
         && ps.velocity[2] > 0.0
         && ps.velocity[2] * trace.normal[2]
             + ps.velocity[1] * trace.normal[1]

@@ -2228,6 +2228,7 @@ fn install_clip_and_player(
             .collect(),
     };
     content.set_clip_map(brushes, bsp, mesh, cmodels);
+    content.set_clip_hulls(clip.hulls.clone());
     sim.install_content(content.finish());
     sim.install_model_library(authority_models.models);
     let owner_count = authority_models.capabilities.len();

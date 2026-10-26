@@ -475,6 +475,30 @@ pub trait MoveWorld {
     fn entity_velocity(&self, _entity: i32) -> Option<[f32; 3]> {
         None
     }
+
+    /// Whether [`MoveWorld::solid_pieces`] can list the pieces.
+    fn lists_solid_pieces(&self) -> bool {
+        false
+    }
+
+    /// Adds to `out` every solid piece whose box meets `mins`..`maxs` and
+    /// whose contents `mask` names, but `pass_entity`'s own; `false` when
+    /// the match cannot list them.
+    fn solid_pieces<'s>(
+        &'s self,
+        _mins: [f32; 3],
+        _maxs: [f32; 3],
+        _mask: u32,
+        _pass_entity: i32,
+        _out: &mut Vec<crate::collision::SolidPiece<'s>>,
+    ) -> bool {
+        false
+    }
+
+    /// The surface flags of the clip material named `name`.
+    fn clip_material_surface_flags(&self, _name: &str) -> Option<u32> {
+        None
+    }
 }
 
 /// A body a client may lunge at with a melee: an enemy player or an actor

@@ -118,6 +118,7 @@ pub struct XModelBrushRead {
     pub planes: Vec<[f32; 4]>,
     pub contents: u32,
     pub plane_surface_flags: Vec<u32>,
+    pub verts: Vec<[f32; 3]>,
 }
 
 impl XModelGeometry {
@@ -271,10 +272,23 @@ impl XModelGeometry {
                     plane_surface_flags.push(s.u32_at(side, 8).ok()?);
                 }
             }
+            let vert_count = s.u32_at(brush, size::BRUSH_WRAPPER_NUMVERTS_OFF).ok()? as usize;
+            let mut verts = Vec::with_capacity(vert_count);
+            if vert_count != 0 {
+                let table = pointer(brush, size::BRUSH_WRAPPER_VERTS_OFF)?;
+                for j in 0..vert_count {
+                    verts.push([
+                        s.f32_at(table, j * 12).ok()?,
+                        s.f32_at(table, j * 12 + 4).ok()?,
+                        s.f32_at(table, j * 12 + 8).ok()?,
+                    ]);
+                }
+            }
             brushes.push(XModelBrushRead {
                 planes,
                 contents: s.u32_at(brush, 12).ok()?,
                 plane_surface_flags,
+                verts,
             });
         }
         Some(brushes)

@@ -542,6 +542,7 @@ fn capture_movement_brushes(
                 planes,
                 contents: r.u32(brush.at(12))?,
                 plane_surface_flags,
+                points: Vec::new(),
             });
         }
     }

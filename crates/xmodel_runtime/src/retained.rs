@@ -80,9 +80,13 @@ pub struct RetainedModelCapability {
 
 #[derive(Clone, Debug)]
 pub struct ModelMovementBrush {
+    /// The axial sides first (min x, y, z, then max x, y, z), then the
+    /// others.
     pub planes: Vec<[f32; 4]>,
     pub contents: u32,
     pub plane_surface_flags: Vec<u32>,
+    /// Its corner points, when the model stores them.
+    pub points: Vec<[f32; 3]>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

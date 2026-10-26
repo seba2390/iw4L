@@ -15,6 +15,33 @@ pub struct Trace {
     pub glass: bool,
 }
 
+/// One slide through the physics world.
+#[derive(Clone, Copy, Debug)]
+pub struct PhysicsSlide {
+    pub origin: [f32; 3],
+    pub velocity: [f32; 3],
+    pub mins: [f32; 3],
+    pub maxs: [f32; 3],
+    pub contentmask: u32,
+    pub frametime: f32,
+    /// The gravity pulling the player through the slide, when it does.
+    pub gravity: Option<f32>,
+    /// A player walking on the ground stays on it.
+    pub stick_to_ground: bool,
+}
+
+/// Where the slide ended.
+#[derive(Clone, Copy, Debug)]
+pub struct PhysicsSlid {
+    pub origin: [f32; 3],
+    pub velocity: [f32; 3],
+    /// The slide met something.
+    pub contacted: bool,
+    /// What it met, in the order met.
+    pub touched: [i32; 32],
+    pub touched_count: usize,
+}
+
 pub const SURF_SLICK: u32 = 0x2;
 pub const SURF_NOFALLDAMAGE: u32 = 0x1;
 pub const SURF_NOSTEPS: u32 = 0x2000;
@@ -63,6 +90,46 @@ pub trait MoveWorld {
         pass_entity: i32,
         contentmask: u32,
     ) -> Trace;
+
+    /// Whether the player sweeps through Black Ops' physics world, its
+    /// default collision, rather than the clip map.
+    fn physics_collision(&self) -> bool {
+        false
+    }
+
+    /// The player's sweep through the physics world, ignoring
+    /// `pass_entity`.
+    fn physics_trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        contentmask: u32,
+    ) -> Trace {
+        self.trace(start, end, mins, maxs, pass_entity, contentmask)
+    }
+
+    /// The ground sweep through the physics world: of the contacts near
+    /// the earliest, a walkable one is preferred.
+    fn physics_ground_trace(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        pass_entity: i32,
+        contentmask: u32,
+    ) -> Trace {
+        self.physics_trace(start, end, mins, maxs, pass_entity, contentmask)
+    }
+
+    /// The player's slide through the physics world; `None` when the match
+    /// cannot run it.
+    fn physics_slide(&self, _slide: &PhysicsSlide, _pass_entity: i32) -> Option<PhysicsSlid> {
+        None
+    }
 
     /// Whether the player may stand on `entity`.
     fn can_stand_on(&self, entity: i32) -> bool;

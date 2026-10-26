@@ -33,7 +33,8 @@ pub use pml::Pml;
 pub use pmove::{MoveOutput, pmove};
 pub use state::{Buttons, PlayerState, UserCmd};
 pub use world::{
-    MoveWorld, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK, Shellshock, Trace, Weapon,
+    MoveWorld, PhysicsSlid, PhysicsSlide, SURF_LADDER, SURF_NOFALLDAMAGE, SURF_NOSTEPS, SURF_SLICK,
+    Shellshock, Trace, Weapon,
 };
 
 /// A part of Black Ops' movement the player reached that IW4L does not run.
@@ -52,6 +53,9 @@ pub enum Gap {
     SpecialMove = 128,
     /// A weapon that overheats: its heat is not kept.
     Overheat = 256,
+    /// The match cannot list the physics world: the player sweeps the clip
+    /// map, Black Ops' other collision mode.
+    PhysicsWorld = 512,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -82,6 +86,8 @@ pub struct Pm<'a, W: MoveWorld> {
     out: [Option<MoveEvent>; MAX_OUT],
     numout: usize,
     gaps: u32,
+    /// The player sweeps through the physics world.
+    pub(crate) physics: bool,
 }
 
 impl<'a, W: MoveWorld> Pm<'a, W> {
@@ -110,7 +116,12 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             numtouch: 0,
             out: [None; MAX_OUT],
             numout: 0,
-            gaps: 0,
+            gaps: if world.physics_collision() {
+                0
+            } else {
+                Gap::PhysicsWorld as u32
+            },
+            physics: world.physics_collision(),
         }
     }
 
@@ -118,8 +129,9 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
         self.ps.client_num
     }
 
-    /// The player's own sweep: when it starts inside another body, that
-    /// body is touched and bodies stop blocking this player for the step.
+    /// The player's own sweep: through the physics world, or on the clip
+    /// map, where one that starts inside another body touches it and bodies
+    /// stop blocking this player for the step.
     pub(crate) fn trace(
         &mut self,
         start: [f32; 3],
@@ -128,10 +140,32 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
         maxs: [f32; 3],
         mask: u32,
     ) -> Trace {
-        self.trace_with_mask(start, end, mins, maxs, mask)
+        if self.physics {
+            return self
+                .world
+                .physics_trace(start, end, mins, maxs, self.client_num(), mask);
+        }
+        self.clip_player_trace(start, end, mins, maxs, mask)
     }
 
-    pub(crate) fn trace_with_mask(
+    /// The ladder, ladder-step and foliage sweeps: the clip map when the
+    /// player sweeps the physics world, else the player's sweep.
+    pub(crate) fn trace_beside(
+        &mut self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        mask: u32,
+    ) -> Trace {
+        if self.physics {
+            self.trace_plain(start, end, mins, maxs, mask)
+        } else {
+            self.clip_player_trace(start, end, mins, maxs, mask)
+        }
+    }
+
+    fn clip_player_trace(
         &mut self,
         start: [f32; 3],
         end: [f32; 3],
@@ -246,6 +280,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::AnimLock,
             Gap::SpecialMove,
             Gap::Overheat,
+            Gap::PhysicsWorld,
         ]
         .into_iter()
         .filter(|g| self.gaps & *g as u32 != 0)

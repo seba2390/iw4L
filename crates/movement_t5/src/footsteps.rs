@@ -119,7 +119,7 @@ fn ladder_step<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     let mins = [pm.mins[0] + 6.0, pm.mins[1] + 6.0, 8.0];
     let maxs = [pm.maxs[0] - 6.0, pm.maxs[1] - 6.0, pm.maxs[2].max(8.0)];
     let mask = pm.tracemask & LADDER_STEP_MASK;
-    let trace = pm.trace(o, end, mins, maxs, mask);
+    let trace = pm.trace_beside(o, end, mins, maxs, mask);
     let mut surface = trace.surface_type();
     if trace.fraction == 1.0 || surface == 0 {
         surface = LADDER_SURFACE;

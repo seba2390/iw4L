@@ -56,6 +56,10 @@ pub struct ClipCollision {
     pub trigger_models: Vec<Vec<crate::MapTriggerHull>>,
 
     pub static_models: Vec<ClipPlacedStaticModel>,
+
+    /// The convex point sets the map stores beside its brushes and
+    /// partitions, for a game whose collision sweep reads them.
+    pub hulls: Option<Arc<game_api::collision::HullTables>>,
 }
 
 #[derive(Clone, Debug)]
@@ -1735,8 +1739,13 @@ pub fn build_t5_clip_collision(
         ..ClipCollision::default()
     };
 
+    let mut hulls = game_api::collision::HullTables::default();
     for i in 0..g.brush_count {
         let brush = clip.brush(i)?;
+        hulls
+            .brush_ranges
+            .push([hulls.brush_points.len() as u32, brush.verts.len() as u32]);
+        hulls.brush_points.extend_from_slice(&brush.verts);
         let (mins, maxs) = (brush.mins, brush.maxs);
         let mut planes = Vec::with_capacity(6);
         planes.push([1.0, 0.0, 0.0, maxs[0]]);
@@ -1764,9 +1773,22 @@ pub fn build_t5_clip_collision(
     }
 
     if let Some(mesh) = clip.mesh()? {
+        for &(count, first) in &mesh.partition_uinds {
+            hulls
+                .partition_ranges
+                .push([hulls.partition_points.len() as u32, count.max(0) as u32]);
+            let first = first.max(0) as usize;
+            let points = mesh
+                .uinds
+                .get(first..first + count.max(0) as usize)
+                .unwrap_or(&[]);
+            hulls.partition_points.extend_from_slice(points);
+        }
+        hulls.materials = mesh.materials.clone();
         extract_t5_mesh_tables(mesh, g.tri_count, &mut out);
     }
     extract_t5_bsp_tables(clip, &mut out)?;
+    out.hulls = Some(Arc::new(hulls));
 
     Ok(out)
 }
