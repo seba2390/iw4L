@@ -308,7 +308,7 @@ fn def<'a, W: MoveWorld>(pm: &Pm<'a, W>, weapon: u32) -> crate::Weapon<'a> {
 
 /// The weapon the viewmodel shows: the offhand while one is thrown, the melee
 /// weapon while knifing, else the held weapon.
-pub(crate) fn view_weapon<W: MoveWorld>(pm: &Pm<'_, W>) -> u32 {
+pub fn view_weapon<W: MoveWorld>(pm: &Pm<'_, W>) -> u32 {
     let ps = &*pm.ps;
     if ps.weap_flags & weap_flags::OFFHAND_ACTIVE != 0
         && ps.weaponstate > ws::MELEE_END
