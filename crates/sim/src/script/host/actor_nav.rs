@@ -2953,6 +2953,10 @@ fn enemy_reached(
     goal: ([f32; 3], f32, f32),
     had_path: bool,
 ) -> bool {
+    // The hellhound's think runs only the path search.
+    if super::actor_brain::is_dog(world, actor) {
+        return false;
+    }
     let Some(enemy) = super::actor_brain::enemy(world, actor) else {
         return false;
     };
