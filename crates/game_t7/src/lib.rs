@@ -184,6 +184,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
     bullet_mask: None,
     melee_mask: None,
     missiles: None,
+    actor_physics: None,
     spawn_health: game_api::SpawnHealth::Default,
     aitype_spawners: false,
     connect_team: Some("allies"),

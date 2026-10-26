@@ -1,5 +1,5 @@
-//! Black Ops' player sweep through its physics world, its default player
-//! collision: the player's body cast against the brushes, partitions,
+//! Black Ops' sweep through its physics world, its default player and actor
+//! collision: a character's body cast against the brushes, partitions,
 //! entity brushes and bodies near the sweep, nearest first, keeping the
 //! earliest contact.
 
@@ -9,8 +9,7 @@ mod slide;
 
 use core::cell::RefCell;
 
-use game_api::collision::{Placement, SolidPiece, SolidShape};
-use game_api::movement::MoveWorld;
+use game_api::collision::{Placement, SolidPiece, SolidShape, SolidSource};
 use gjk::{CastInput, Frame, V3, add, dot, scale, sub};
 use shape::{BoxShape, Character, Indexed, Points, ROUNDING};
 
@@ -156,15 +155,15 @@ struct Listed<'w> {
     pieces: Vec<SolidPiece<'w>>,
 }
 
-/// The physics world around one player's move.
+/// The physics world around one character's move.
 pub(crate) struct PhysicsWorld<'w> {
-    world: &'w dyn MoveWorld,
+    world: &'w dyn SolidSource,
     caulk: u32,
     listed: RefCell<Option<Listed<'w>>>,
 }
 
 impl<'w> PhysicsWorld<'w> {
-    pub(crate) fn new(world: &'w dyn MoveWorld) -> Self {
+    pub(crate) fn new(world: &'w dyn SolidSource) -> Self {
         Self {
             world,
             caulk: world
@@ -174,7 +173,7 @@ impl<'w> PhysicsWorld<'w> {
         }
     }
 
-    /// Sweeps the player's body for `mins`..`maxs` from `start` to `end`;
+    /// Sweeps the character's body for `mins`..`maxs` from `start` to `end`;
     /// `None` when the match cannot list the pieces.
     pub(crate) fn trace(
         &self,
@@ -207,6 +206,21 @@ impl<'w> PhysicsWorld<'w> {
         pass: i32,
         mask: u32,
     ) -> Option<Hit> {
+        self.ground_trace_first(start, end, mins, maxs, pass, mask)
+            .map(|(hit, _)| hit)
+    }
+
+    /// The ground sweep, and the earliest contact's fraction (1 when it met
+    /// nothing).
+    pub(crate) fn ground_trace_first(
+        &self,
+        start: V3,
+        end: V3,
+        mins: V3,
+        maxs: V3,
+        pass: i32,
+        mask: u32,
+    ) -> Option<(Hit, f32)> {
         let drop = start[2] - end[2];
         let sweep = Sweep {
             cap_add: if GROUND_REACH <= drop {
@@ -221,8 +235,9 @@ impl<'w> PhysicsWorld<'w> {
         let mut body = Character::from_bounds(mins, maxs, 0.0);
         let contacts = self.sweep(&mut body, start, end, pass, mask, sweep)?;
         let Some(best) = contacts.best else {
-            return Some(Hit::NONE);
+            return Some((Hit::NONE, 1.0));
         };
+        let first = contacts.all[best].fraction;
         let height = |f: f32| (end[2] - start[2]) * f + start[2];
         let best_height = height(contacts.all[best].fraction);
         let mut pick = 0;
@@ -249,7 +264,7 @@ impl<'w> PhysicsWorld<'w> {
                 pick_fraction = fraction;
             }
         }
-        Some(self.hit(&contacts.all[pick], pick_walkable))
+        Some((self.hit(&contacts.all[pick], pick_walkable), first))
     }
 
     fn hit(&self, contact: &Contact<'_>, walkable: bool) -> Hit {

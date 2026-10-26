@@ -385,3 +385,13 @@ pub(crate) fn solid_models(
         })
         .collect()
 }
+
+/// The surface flags of the map's clip material named `name`.
+pub(crate) fn clip_material_surface_flags(content: &crate::SimContent, name: &str) -> Option<u32> {
+    content
+        .clip_hulls()?
+        .materials
+        .iter()
+        .find(|material| material.0 == name)
+        .map(|material| material.1)
+}

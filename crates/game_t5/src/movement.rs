@@ -497,10 +497,10 @@ impl movement_t5::MoveWorld for World<'_> {
         slide: &movement_t5::PhysicsSlide,
         pass_entity: i32,
     ) -> Option<movement_t5::PhysicsSlid> {
-        let mut slid = self
-            .physics
-            .as_ref()?
-            .slide(slide, shared_entity(pass_entity))?;
+        let mut slid =
+            self.physics
+                .as_ref()?
+                .slide(slide, shared_entity(pass_entity), &mut |_, _, _| {})?;
         for entity in &mut slid.touched[..slid.touched_count] {
             *entity = t5_entity(*entity);
         }
