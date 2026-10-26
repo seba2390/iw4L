@@ -642,12 +642,14 @@ impl PlayerMovement for T5Movement {
         });
         movement_t5::load_held(&mut ps, &adapter, &held);
         let mut outcome = MoveOutcome::default();
+        let view_weapon;
         {
             let mut pm = Pm::new(&mut ps, t5cmd, last, mask, &adapter);
             pm.zombiemode = self.zombies;
             pm.client_side = context.predicting;
             pm.move_yaw = context.move_yaw;
             let out = movement_t5::pmove(&mut pm);
+            view_weapon = movement_t5::weapon::view_weapon(&pm);
             outcome.walking = out.walking;
             outcome.bounds = Some((out.mins, out.maxs));
             outcome.touched = pm.touched().iter().map(|&e| shared_entity(e)).collect();
@@ -683,6 +685,9 @@ impl PlayerMovement for T5Movement {
             };
         }
         pack(player, &mut ps, &mut last);
+        // The viewmodel shows Black Ops' view weapon: the knife while
+        // knifing, the offhand while one is thrown.
+        player.view_weapon = (view_weapon != player.weapon).then_some(view_weapon);
         outcome
     }
 
