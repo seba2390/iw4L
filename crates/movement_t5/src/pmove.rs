@@ -234,6 +234,41 @@ fn prone_move_override<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     }
 }
 
+/// A player linked to an entity: it carries the player, so the player
+/// stands on nothing and does not move of itself, but the stance, sprint,
+/// aim, footsteps and both hands' weapons run on.
+fn linked_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
+    let ps = &mut *pm.ps;
+    if ps.pm_flags & pm_flags::LADDER != 0 {
+        ps.pm_flags = (ps.pm_flags & !pm_flags::LADDER) | pm_flags::LADDER_FALL;
+    }
+    ps.ground_entity_num = ENTITYNUM_NONE;
+    pml.ground_plane = false;
+    pml.almost_ground_plane = false;
+    pml.walking = false;
+    ps.velocity = [0.0; 3];
+    if ps.pm_flags & pm_flags::ANIM_LOCK != 0 {
+        pm.gap(Gap::AnimLock);
+    }
+    crate::weapon::update_ads_intent(pm, pml);
+    sprint::update(pm);
+    crate::weapon::update_sight_aiming(pm);
+    drop_timers(pm, pml);
+    stance::check_duck(pm, pml);
+    footsteps::footsteps(pm, pml);
+    crate::weapon::pm_weapon(pm, pml);
+    pm.ps.left_hand = true;
+    crate::weapon::pm_weapon(pm, pml);
+    pm.ps.left_hand = false;
+    // A player in a vehicle's view hands the command to the vehicle.
+    if pm.ps.e_flags & e_flags::VEHICLE_VIEW != 0 {
+        pm.gap(Gap::MountedView);
+    }
+    if pm.ps.pm_flags & pm_flags::DIVING != 0 && pm.ps.pm_type == pm_type::NORMAL_LINKED {
+        crate::dive::abort(pm);
+    }
+}
+
 fn snap_velocity(v: &mut [f32; 3]) {
     for c in v.iter_mut() {
         *c = libm::rintf(*c);
@@ -313,12 +348,11 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     }
 
     match pm.ps.pm_type {
-        pm_type::NORMAL_LINKED
-        | pm_type::DEAD_LINKED
-        | pm_type::NOCLIP
-        | pm_type::UFO
-        | pm_type::SPECTATOR
-        | pm_type::INTERMISSION => {
+        pm_type::NORMAL_LINKED | pm_type::DEAD_LINKED => {
+            linked_move(pm, &mut pml);
+            return output(pm, &pml);
+        }
+        pm_type::NOCLIP | pm_type::UFO | pm_type::SPECTATOR | pm_type::INTERMISSION => {
             pm.gap(Gap::SpecialMove);
             return output(pm, &pml);
         }

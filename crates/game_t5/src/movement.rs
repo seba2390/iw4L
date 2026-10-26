@@ -68,7 +68,7 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
         ),
         Gap::SpecialMove => unknown!(
             "t5.movement.special",
-            "Black Ops' linked, noclip, ufo, spectator and intermission moves",
+            "Black Ops' noclip, ufo, spectator and intermission moves",
             "those player moves from its executable"
         ),
         Gap::PhysicsWorld => unknown!(
