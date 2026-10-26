@@ -2274,8 +2274,7 @@ fn end_actions_skip(
         return true;
     }
     // An AI whose goal is its enemy and attacks from `meleeattackdist` also
-    // waits; zombies never take their enemy as the goal
-    // (`pathenemyfightdist` is 0).
+    // waits; a zombie's enemy goal never lasts until its path's end.
     movement.path.end_notified
 }
 
@@ -2903,7 +2902,8 @@ pub(crate) fn update_path(world: &mut World, actor: u64) {
     else {
         return;
     };
-    if !movement.has_path() && now < movement.path_wait {
+    let had_path = movement.has_path();
+    if !had_path && now < movement.path_wait {
         return;
     }
     let Some(goal) = code_goal(world, actor) else {
@@ -2922,6 +2922,11 @@ pub(crate) fn update_path(world: &mut World, actor: u64) {
             events.push("bad_path");
         }
     }
+    if movement.has_path() && enemy_reached(world, actor, &movement, goal, had_path) {
+        let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+        movement.clear_path(origin);
+        movement.path_wait = now + PATH_RETRY_MS;
+    }
     world
         .resource_mut::<RoundScript>()
         .actor_moves
@@ -2929,6 +2934,63 @@ pub(crate) fn update_path(world: &mut World, actor: u64) {
     for event in events {
         raise(world, Value::Object(actor), event, Vec::new());
     }
+}
+
+/// Without a path at the start of the path think, the enemy counts as near
+/// the way ahead from this much farther than `pathenemylookahead`.
+const ENEMY_NEAR_NEW_PATH: f32 = 256.0;
+
+/// Whether the path ends here because the enemy is reached: it stands
+/// within `pathenemyfightdist` (flat, and within the goal's height) and is
+/// seen, and it lies on the way to the lookahead within the lookahead's
+/// length, or the actor stands in its goal; or, its enemy known within the
+/// last ten seconds and the actor outside its goal, the enemy lies within
+/// `pathenemylookahead` of the way ahead.
+fn enemy_reached(
+    world: &mut World,
+    actor: u64,
+    movement: &ActorMove,
+    goal: ([f32; 3], f32, f32),
+    had_path: bool,
+) -> bool {
+    let Some(enemy) = super::actor_brain::enemy(world, actor) else {
+        return false;
+    };
+    let Some(at) = as_vector(super::players::entity_field(world, enemy, "origin")) else {
+        return false;
+    };
+    let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+    let fight_dist = float_field(world, actor, "pathenemyfightdist").unwrap_or(0.0);
+    let dy = origin[1] - at[1];
+    let dx = origin[0] - at[0];
+    if dy * dy + dx * dx >= fight_dist * fight_dist || (origin[2] - at[2]).abs() > goal.2 {
+        return false;
+    }
+    if !super::actor_brain::can_see_enemy(world, actor) {
+        return false;
+    }
+    let path = &movement.path;
+    let look = [path.look_dir[0], path.look_dir[1]];
+    let to = [
+        look[0] * path.look_dist + origin[0] - at[0],
+        look[1] * path.look_dist + origin[1] - at[1],
+    ];
+    if look[1] * to[1] + look[0] * to[0] > 0.0
+        && to[1] * to[1] + to[0] * to[0] < path.look_dist * path.look_dist
+    {
+        return true;
+    }
+    if in_goal_shape(world, actor, origin, goal) {
+        return true;
+    }
+    if !super::actor_brain::enemy_known_lately(world, actor) {
+        return false;
+    }
+    let mut reach = float_field(world, actor, "pathenemylookahead").unwrap_or(0.0);
+    if !had_path {
+        reach += ENEMY_NEAR_NEW_PATH;
+    }
+    path.passes_near(origin, [at[0], at[1]], reach, fight_dist)
 }
 
 /// The path to the code goal: kept while it is not to be planned again
