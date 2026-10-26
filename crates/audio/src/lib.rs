@@ -12,6 +12,7 @@ mod frontend;
 mod master_mix;
 mod media_queue;
 mod messages;
+mod occlusion;
 mod pcm;
 mod pcm_budget;
 mod playback;

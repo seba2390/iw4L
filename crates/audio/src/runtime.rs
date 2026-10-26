@@ -1298,6 +1298,7 @@ fn publish_snapshot_voices(
 pub(crate) struct OcclusionVoice {
     pub id: u64,
     pub origin_inches: [f32; 3],
+    pub policy: asset_audio::VoiceOcclusionPolicy,
     pub occlusion: Arc<crate::media::VoiceOcclusion>,
 }
 
@@ -1313,6 +1314,7 @@ fn publish_occlusion_voices(instances: &[LogicalInstance], out: &Mutex<Vec<Occlu
                 .then(|| OcclusionVoice {
                     id: request.instance.id,
                     origin_inches: spatial.origin_inches,
+                    policy: lowpass.policy.occlusion,
                     occlusion: lowpass.occlusion.clone(),
                 })
         })

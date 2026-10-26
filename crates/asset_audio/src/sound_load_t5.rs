@@ -613,6 +613,7 @@ fn voice_lowpass(flags: u32, level: u8, blend: u8) -> crate::VoiceLowpassPolicy 
             blend,
             traced: flags & FLAG_DISTANCE != 0,
             lowpass: occluded,
+            distance_lowpass: flags & FLAG_DLPF != 0,
         },
     }
 }

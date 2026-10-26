@@ -218,6 +218,9 @@ pub struct VoiceOcclusionPolicy {
     pub traced: bool,
     /// Its occlusion low-pass runs (a placed sound with occlusion on).
     pub lowpass: bool,
+    /// The sound is low-passed by distance: far away it starts at half its
+    /// occlusion level instead of being traced.
+    pub distance_lowpass: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

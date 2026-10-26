@@ -23,6 +23,7 @@ pub(crate) fn register(app: &mut App) {
     app.world()
         .resource::<AudioRuntime>()
         .set_fire_verdicts(verdicts);
+    crate::occlusion::register(app);
     app.init_resource::<ScopeEpoch<MatchScope>>()
         .add_systems(
             Update,
@@ -36,6 +37,7 @@ pub(crate) fn register(app: &mut App) {
                 submit_presented_audio,
                 publish_emitter_origins,
                 cancel_audio_on_exit.after(submit_presented_audio),
+                crate::occlusion::trace_voice_occlusion.after(submit_presented_audio),
             ),
         );
 }
