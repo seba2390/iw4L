@@ -1742,10 +1742,9 @@ pub fn build_t5_clip_collision(
     let mut hulls = game_api::collision::HullTables::default();
     for i in 0..g.brush_count {
         let brush = clip.brush(i)?;
-        hulls.brush_ranges.push([
-            hulls.brush_points.len() as u32,
-            brush.verts.len() as u32,
-        ]);
+        hulls
+            .brush_ranges
+            .push([hulls.brush_points.len() as u32, brush.verts.len() as u32]);
         hulls.brush_points.extend_from_slice(&brush.verts);
         let (mins, maxs) = (brush.mins, brush.maxs);
         let mut planes = Vec::with_capacity(6);
@@ -1775,10 +1774,9 @@ pub fn build_t5_clip_collision(
 
     if let Some(mesh) = clip.mesh()? {
         for &(count, first) in &mesh.partition_uinds {
-            hulls.partition_ranges.push([
-                hulls.partition_points.len() as u32,
-                count.max(0) as u32,
-            ]);
+            hulls
+                .partition_ranges
+                .push([hulls.partition_points.len() as u32, count.max(0) as u32]);
             let first = first.max(0) as usize;
             let points = mesh
                 .uinds
