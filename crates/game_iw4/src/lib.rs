@@ -47,6 +47,7 @@ const MODE: ModeRules = ModeRules {
     melee_mask: None,
     missiles: None,
     actor_physics: None,
+    players_meet_actors: false,
     spawn_health: game_api::SpawnHealth::Stored,
     aitype_spawners: false,
     connect_team: None,
