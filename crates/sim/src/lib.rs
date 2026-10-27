@@ -20,6 +20,7 @@ pub mod hudelem;
 pub mod identities;
 pub mod input;
 mod item;
+pub mod launched;
 mod local_profile;
 pub use game_api::movement::MoveStatus;
 pub use item::ITEM_USE_HOLD_MS;

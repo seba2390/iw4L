@@ -171,6 +171,18 @@ pub(super) fn load_xmodel(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         coll_lod: s.i16_at(p, 218)?,
         contents: s.u32_at(p, 180)?,
         radius: Some(s.f32_at(p, sz::XMODEL_RADIUS_OFF)?),
+        bounds: Some((
+            [
+                s.f32_at(p, sz::XMODEL_MINS_OFF)?,
+                s.f32_at(p, sz::XMODEL_MINS_OFF + 4)?,
+                s.f32_at(p, sz::XMODEL_MINS_OFF + 8)?,
+            ],
+            [
+                s.f32_at(p, sz::XMODEL_MAXS_OFF)?,
+                s.f32_at(p, sz::XMODEL_MAXS_OFF + 4)?,
+                s.f32_at(p, sz::XMODEL_MAXS_OFF + 8)?,
+            ],
+        )),
         collision_maps: retained_ptr(sz::XMODEL_COLLMAPS_OFF)?,
         collision_map_count: num_collmaps,
         phys_preset: retained_ptr(sz::XMODEL_PHYS_PRESET_OFF)?,

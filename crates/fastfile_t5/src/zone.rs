@@ -369,6 +369,9 @@ pub struct XModelGeometry {
 
     pub radius: Option<f32>,
 
+    /// The model's box, mins then maxs.
+    pub bounds: Option<([f32; 3], [f32; 3])>,
+
     pub collision_maps: Option<Ptr>,
 
     pub collision_map_count: usize,
