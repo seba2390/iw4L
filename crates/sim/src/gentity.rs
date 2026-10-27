@@ -3,7 +3,7 @@ use entity_iw4::{
     SCRIPT_MOVER_BMODEL_SOLID, TR_LINEAR, TR_LINEAR_STOP, TR_STATIONARY, Trajectory,
     evaluate_trajectory,
 };
-use playerstate_iw4::{GENTITY_SPAWN_BASE, buttons};
+use playerstate_iw4::{GENTITY_SPAWN_BASE, buttons, eflags};
 use trace_iw4::ENTITYNUM_WORLD;
 
 use crate::identities::ScriptModelId;
@@ -683,15 +683,21 @@ impl ScriptMoverGentity {
     /// Poses a script mover's state at `time_ms`: moving on from where it stood
     /// one tick before at the speed between the two, else standing.
     pub(crate) fn pose(&mut self, time_ms: i32, origin: [f32; 3], angles: [f32; 3]) {
+        const TELEPORT_DIST_SQ: f32 = 10_000.0;
         let state = &mut self.state;
+        let step_sq: f32 = (0..3).map(|i| (origin[i] - state.tr_base[i]).powi(2)).sum();
+        let teleported = state.tr_time != 0 && step_sq > TELEPORT_DIST_SQ;
+        if teleported {
+            state.e_flags ^= eflags::TELEPORT;
+        }
         let per_sec = 1000.0 / crate::MATCH_TICK_MS as f32;
         let consecutive = time_ms - crate::MATCH_TICK_MS as i32;
-        let delta: [f32; 3] = if state.tr_time == consecutive {
+        let delta: [f32; 3] = if !teleported && state.tr_time == consecutive {
             core::array::from_fn(|i| (origin[i] - state.tr_base[i]) * per_sec)
         } else {
             [0.0; 3]
         };
-        let apos_delta: [f32; 3] = if state.apos_tr_time == consecutive {
+        let apos_delta: [f32; 3] = if !teleported && state.apos_tr_time == consecutive {
             core::array::from_fn(|i| {
                 math_iw4::angle_subtract(angles[i], state.apos_tr_base[i]) * per_sec
             })

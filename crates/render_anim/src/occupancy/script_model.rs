@@ -359,13 +359,72 @@ fn sync_spawned_scene_models(
     }
 }
 
-fn apply_presented_script_model_dobjs(
-    presented: Option<Res<net::PresentedSnapshot>>,
-    mut owners: Query<(&mut WorldScriptModelInstance, &mut Visibility)>,
-) {
-    let Some(snapshot) = presented.as_ref().and_then(|value| value.snapshot()) else {
+fn sub_tick_elapsed_ms(
+    base_time_ms: i32,
+    at_time_ms: i32,
+    snap_time_ms: i32,
+    cg_clock: Option<&net::FrameClock>,
+    fixed: Option<&Time<Fixed>>,
+) -> f32 {
+    let overstep_ms = fixed.map(|f| f.overstep().as_millis() as i32);
+    let sub_ms = match (fixed, overstep_ms) {
+        (Some(f), Some(ms)) if at_time_ms.wrapping_sub(snap_time_ms) == ms => {
+            (f.overstep().as_secs_f32() * 1000.0).fract()
+        }
+        _ => cg_clock.map_or(0.0, net::FrameClock::frac_ms),
+    };
+    (at_time_ms.wrapping_sub(base_time_ms) as f32) + sub_ms
+}
+
+fn interpolate_dobj_tree(state: &mut xmodel_runtime::DObjSemanticState, fraction: f32) {
+    const TICK_SECS: f32 = sim::MATCH_TICK_MS as f32 * 0.001;
+    let Some(tree) = state.tree.as_mut() else {
         return;
     };
+    for node in &mut tree.nodes {
+        let cycles = f32::from(node.state.cycle_count - node.state.old_cycle_count);
+        let delta = node.state.time - node.state.old_time + cycles;
+        if delta > 0.0 {
+            let raw = node.state.old_time + fraction * delta;
+            node.state.time = if cycles > 0.0 && raw >= 1.0 {
+                raw.fract()
+            } else {
+                raw.clamp(0.0, 1.0)
+            };
+        }
+        if node.state.goal_time > 0.0 && node.state.weight != node.state.goal_weight {
+            let step = (TICK_SECS / node.state.goal_time).min(1.0);
+            let old_weight = (node.state.weight
+                - (node.state.goal_weight - node.state.weight) * step)
+                .clamp(0.0, 1.0);
+            node.state.weight = old_weight + fraction * (node.state.weight - old_weight);
+        }
+    }
+}
+
+fn apply_presented_script_model_dobjs(
+    presented: Option<Res<net::PresentedSnapshot>>,
+    slots: Option<Res<net::CEntitySlots>>,
+    runtimes: Query<&net::CEntityRuntime>,
+    cg_clock: Option<Res<net::FrameClock>>,
+    fixed: Option<Res<Time<Fixed>>>,
+    mut owners: Query<(&mut WorldScriptModelInstance, &mut Visibility)>,
+) {
+    let Some(presented) = presented.as_ref() else {
+        return;
+    };
+    let Some(snapshot) = presented.snapshot() else {
+        return;
+    };
+    let clock_started = cg_clock.as_ref().is_some_and(|clock| clock.started());
+    let snap_time = sim::level_time_ms(snapshot.tick);
+    let at_time = cg_clock
+        .as_ref()
+        .filter(|clock| clock.started())
+        .map(|clock| clock.time())
+        .unwrap_or(snap_time);
+    let at_time = presented.trajectory_time_ms(at_time);
+    let archived = presented.is_archived_replay();
     let mut by_owner: std::collections::BTreeMap<
         sim::AuthorityModelOwner,
         &xmodel_runtime::DObjSemanticState,
@@ -389,8 +448,34 @@ fn apply_presented_script_model_dobjs(
         if owner.current_model.0 != base.model {
             owner.current_model = asset_world::MapXModelAssetKey(base.model.clone());
         }
-        if owner.dobj_state != *state {
-            owner.dobj_state = state.clone();
+        let mut next_state = state.clone();
+        if clock_started && next_state.tree.is_some() {
+            let runtime = owner
+                .gentity_number
+                .and_then(|number| slots.as_ref()?.entity_for_number(number))
+                .and_then(|entity| runtimes.get(entity).ok());
+            if let Some(rt) = runtime
+                && let Some((_, previous_time)) = rt.previous_pose
+                && rt.pose_time_ms > previous_time
+            {
+                let span = (rt.pose_time_ms - previous_time) as f32;
+                let base_time = if archived {
+                    previous_time
+                } else {
+                    rt.pose_time_ms
+                };
+                let elapsed = sub_tick_elapsed_ms(
+                    base_time,
+                    at_time,
+                    snap_time,
+                    cg_clock.as_deref(),
+                    fixed.as_deref(),
+                );
+                interpolate_dobj_tree(&mut next_state, (elapsed / span).clamp(0.0, 1.0));
+            }
+        }
+        if owner.dobj_state != next_state {
+            owner.dobj_state = next_state;
         }
 
         *visibility = Visibility::Inherited;
@@ -400,10 +485,39 @@ fn apply_presented_script_model_dobjs(
 fn sample_script_mover_pose(
     runtime: &net::CEntityRuntime,
     at_time_ms: i32,
+    snap_time_ms: i32,
+    clock_started: bool,
+    archived: bool,
+    cg_clock: Option<&net::FrameClock>,
+    fixed: Option<&Time<Fixed>>,
 ) -> ([f32; 3], [f32; 3]) {
+    use entity_iw4::evaluate_trajectory as eval;
+    if clock_started
+        && let Some((previous, previous_time)) = runtime.previous_pose
+        && runtime.pose_time_ms > previous_time
+    {
+        let span = (runtime.pose_time_ms - previous_time) as f32;
+        let base_time = if archived {
+            previous_time
+        } else {
+            runtime.pose_time_ms
+        };
+        let elapsed = sub_tick_elapsed_ms(base_time, at_time_ms, snap_time_ms, cg_clock, fixed);
+        let fraction = (elapsed / span).clamp(0.0, 1.0);
+        let old_origin = eval(&previous.pos, previous_time);
+        let old_angles = eval(&previous.apos, previous_time);
+        let new_origin = eval(&runtime.current.pos, runtime.pose_time_ms);
+        let new_angles = eval(&runtime.current.apos, runtime.pose_time_ms);
+        let origin =
+            std::array::from_fn(|i| old_origin[i] + fraction * (new_origin[i] - old_origin[i]));
+        let angles = std::array::from_fn(|i| {
+            old_angles[i] + fraction * math_iw4::angle_subtract(new_angles[i], old_angles[i])
+        });
+        return (origin, angles);
+    }
     (
-        entity_iw4::evaluate_trajectory(&runtime.current.pos, at_time_ms),
-        entity_iw4::evaluate_trajectory(&runtime.current.apos, at_time_ms),
+        eval(&runtime.current.pos, at_time_ms),
+        eval(&runtime.current.apos, at_time_ms),
     )
 }
 
@@ -411,9 +525,10 @@ fn apply_script_mover_centity_pose(
     slots: Option<Res<net::CEntitySlots>>,
     presented: Option<Res<net::PresentedSnapshot>>,
     runtimes: Query<&net::CEntityRuntime>,
-    mut owners: Query<(&WorldScriptModelInstance, &mut Transform)>,
+    mut owners: Query<(&mut WorldScriptModelInstance, &mut Transform)>,
     mut persist: ResMut<ScriptModelDobjs>,
     cg_clock: Option<Res<net::FrameClock>>,
+    fixed: Option<Res<Time<Fixed>>>,
 ) {
     persist.mover_pose.clear();
     let Some(slots) = slots else {
@@ -425,13 +540,16 @@ fn apply_script_mover_centity_pose(
     let Some(snapshot) = presented.snapshot() else {
         return;
     };
+    let clock_started = cg_clock.as_ref().is_some_and(|clock| clock.started());
+    let snap_time = sim::level_time_ms(snapshot.tick);
     let at_time = cg_clock
         .as_ref()
         .filter(|clock| clock.started())
         .map(|clock| clock.time())
-        .unwrap_or_else(|| sim::level_time_ms(snapshot.tick));
+        .unwrap_or(snap_time);
     let at_time = presented.trajectory_time_ms(at_time);
-    for (owner, mut transform) in &mut owners {
+    let archived = presented.is_archived_replay();
+    for (mut owner, mut transform) in &mut owners {
         let mapent = owner.id.source_ordinal();
         let Some(number) = owner.gentity_number else {
             continue;
@@ -448,7 +566,15 @@ fn apply_script_mover_centity_pose(
                 .insert(mapent, ScriptMoverCentitySample::skip("no_runtime"));
             continue;
         };
-        let (origin, angles) = sample_script_mover_pose(runtime, at_time);
+        let (origin, angles) = sample_script_mover_pose(
+            runtime,
+            at_time,
+            snap_time,
+            clock_started,
+            archived,
+            cg_clock.as_deref(),
+            fixed.as_deref(),
+        );
         let [pitch, yaw, roll] = angles;
         transform.rotation = Quat::from_euler(
             EulerRot::ZYX,
@@ -457,6 +583,16 @@ fn apply_script_mover_centity_pose(
             roll.to_radians(),
         );
         transform.translation = Vec3::from_array(origin);
+        if SPAWNED_PRESENCE.contains(&mapent) {
+            let lighting = if owner.dobj_state.tree.is_some() {
+                [origin[0], origin[1], origin[2] + 32.0]
+            } else {
+                origin
+            };
+            if owner.lighting_origin != lighting {
+                owner.lighting_origin = lighting;
+            }
+        }
         persist
             .mover_pose
             .insert(mapent, ScriptMoverCentitySample::posed(angles));

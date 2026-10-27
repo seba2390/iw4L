@@ -54,9 +54,9 @@ pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
         return;
     }
     let seconds = crate::MATCH_TICK_MS as f32 / 1000.0;
+    host::actor_brain::think(world);
     host::actor_anims::advance(world, seconds);
     host::actor_nav::locomote(world, seconds);
-    host::actor_brain::think(world);
     let ticks = match world.get_resource::<NativeRegistry>() {
         Some(registry) => registry.ticks(),
         None => Vec::new(),
