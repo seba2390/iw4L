@@ -1730,7 +1730,7 @@ fn bullet_trace_filtered(
         {
             continue;
         }
-        if !pose.bones.is_empty() {
+        if query.ignore.is_some() && !pose.bones.is_empty() {
             if let Some((mins, maxs)) = pose_bones_aabb(pose)
                 && matches!(
                     ray_aabb_box(query.start, entity_end, mins, maxs),

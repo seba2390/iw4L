@@ -1137,7 +1137,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let to = vector(args, 0)?;
         let check_drop = optional(args, 1, int)?.unwrap_or(1) != 0;
         let (from, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
-        Ok(Value::Int(may_move(world, id, from, to, check_drop).into()))
+        Ok(Value::Int(
+            may_move(world, id, from, to, check_drop, true).into(),
+        ))
     });
     registry.register(
         Method,
@@ -1146,7 +1148,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             let id = actor_id(world, receiver)?;
             let (from, to) = (vector(args, 0)?, vector(args, 1)?);
             let check_drop = optional(args, 2, int)?.unwrap_or(1) != 0;
-            Ok(Value::Int(may_move(world, id, from, to, check_drop).into()))
+            Ok(Value::Int(
+                may_move(world, id, from, to, check_drop, false).into(),
+            ))
         },
     );
     registry.register(Method, "isingoal", |world, receiver, args| {
@@ -2683,7 +2687,7 @@ fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
 /// the start, a player, or the ground there is too steep. Through, the box
 /// drops to the ground, which must lie within 72 of `to`'s height.
 fn step_trace(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], mask: u32) -> bool {
-    step_trace_out(world, actor, from, to, mask, false).0
+    step_trace_out(world, actor, from, to, mask, false, true).0
 }
 
 /// The dodge's step trace with the actor's own clipmask: where it stopped
@@ -2703,7 +2707,7 @@ pub(crate) fn dodge_step_trace(
         .get(&actor)
         .map_or(MASK_ACTOR_SOLID, actor_mask)
         | DODGE_MASK_EXTRA;
-    step_trace_out(world, actor, from, to, mask, actors_met)
+    step_trace_out(world, actor, from, to, mask, actors_met, true)
 }
 
 /// The step trace, answering also where the box stopped (on the ground,
@@ -2715,12 +2719,13 @@ fn step_trace_out(
     to: [f32; 3],
     mut mask: u32,
     actors_met: bool,
+    allow_startsolid: bool,
 ) -> (bool, [f32; 3]) {
     let mut s = from;
     let mut e = [to[0], to[1], from[2]];
     let mut tr = clip_trace(world, s, e, STEP_MINS, STEP_MAXS, mask);
     let mut out = lerp(s, e, tr.fraction);
-    if tr.fraction < STEP_MIN_FRACTION {
+    if tr.fraction < STEP_MIN_FRACTION || (tr.startsolid && !allow_startsolid) {
         return (false, out);
     }
     loop {
@@ -2758,7 +2763,7 @@ fn step_trace_out(
         e[2] = s[2];
         tr = clip_trace(world, s, e, STEP_MINS, STEP_MAXS, mask);
         out = lerp(s, e, tr.fraction);
-        if tr.fraction < STEP_MIN_FRACTION {
+        if tr.fraction < STEP_MIN_FRACTION || (tr.startsolid && !allow_startsolid) {
             return (false, out);
         }
     }
@@ -3247,40 +3252,56 @@ pub(crate) fn may_step(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 
     step_trace(world, actor, from, to, mask)
 }
 
-/// Black Ops' `maymovetopoint` / `maymovefrompointtopoint`: with `check_drop`,
-/// checks that ground lies within 72 below `from` and then steps the actor's
-/// box from `from` to `to`; without `check_drop`, sweeps the actor's box
-/// straight from `from` to `to`.
-fn may_move(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], check_drop: bool) -> bool {
-    install_clip(world);
+/// Black Ops' `maymovetopoint` / `maymovefrompointtopoint`: traces a point
+/// vertically through `to` (checking that `to`'s ground is no more than 32
+/// below `from` for `maymovetopoint`), then steps the actor's box from
+/// `from` to `to`.
+fn may_move(
+    world: &mut World,
+    actor: u64,
+    from: [f32; 3],
+    mut to: [f32; 3],
+    check_drop: bool,
+    check_pitch: bool,
+) -> bool {
+    let prev_clip = world.get_resource::<ActorClipTick>().map(|clip| clip.1);
+    if prev_clip.is_none() {
+        install_clip(world);
+    }
     clip_actor(world, actor);
     let mask = world
         .resource::<RoundScript>()
         .actor_moves
         .get(&actor)
         .map_or(MASK_ACTOR_SOLID, actor_mask);
-    let ok = if check_drop {
-        let tr = clip_trace(
+    let top = [to[0], to[1], to[2] + STEP_DROP];
+    let bottom = [to[0], to[1], to[2] - STEP_DROP];
+    let tr = clip_trace(world, top, bottom, [0.0; 3], [0.0; 3], mask | 0x6000);
+    let mut ok = !tr.allsolid;
+    if ok && check_pitch {
+        to = lerp(top, bottom, tr.fraction);
+        ok = from[2] - to[2] <= 32.0;
+    }
+    if ok {
+        ok = step_trace_out(
             world,
+            actor,
             from,
-            [from[0], from[1], from[2] - STEP_DROP],
-            STEP_MINS,
-            STEP_MAXS,
-            mask | REACQUIRE_STEP_CONTENTS,
-        );
-        !tr.allsolid
-            && tr.fraction != 1.0
-            && step_trace(world, actor, from, to, mask | REACQUIRE_STEP_CONTENTS)
-    } else {
-        let (mins, maxs) = world
-            .resource::<RoundScript>()
-            .actor_moves
-            .get(&actor)
-            .map_or((ACTOR_MINS, ACTOR_MAXS), actor_box);
-        let tr = clip_trace(world, from, to, mins, maxs, mask);
-        !tr.startsolid && !tr.allsolid && tr.fraction >= 1.0
-    };
-    remove_clip(world);
+            to,
+            mask | DODGE_MASK_EXTRA | REACQUIRE_STEP_CONTENTS,
+            true,
+            check_drop,
+        )
+        .0;
+    }
+    match prev_clip {
+        Some(entnum) => {
+            if let Some(mut clip) = world.get_resource_mut::<ActorClipTick>() {
+                clip.1 = entnum;
+            }
+        }
+        None => remove_clip(world),
+    }
     ok
 }
 

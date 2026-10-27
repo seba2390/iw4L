@@ -121,6 +121,13 @@ impl ActorAnim {
             .set_goal_weight(XAnimNodeId(node), weight, time);
     }
 
+    fn clear_goal(&mut self, node: u16, time: f32) {
+        for desc in self.tree.descendants(node) {
+            self.set_goal(desc, 0.0, time);
+            self.flags.remove(&desc);
+        }
+    }
+
     fn state(&self, node: u16) -> xmodel_runtime::XAnimNodeState {
         self.runtime.states()[node as usize]
     }
@@ -244,9 +251,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Ok(Value::Undefined);
         }
         with_anim(world, receiver, args, 0, |anim, node| {
-            for node in anim.tree.descendants(node) {
-                anim.set_goal(node, 0.0, time);
-            }
+            anim.clear_goal(node, time);
             Ok(Value::Undefined)
         })
     });
@@ -442,7 +447,7 @@ fn set_anim(
         }
         if mode.knob {
             for sibling in tree.siblings(node).collect::<Vec<_>>() {
-                anim.set_goal(sibling, 0.0, time);
+                anim.clear_goal(sibling, time);
             }
         }
         let mut parent = tree.parent(node);
@@ -453,7 +458,7 @@ fn set_anim(
                     break;
                 }
                 for sibling in tree.siblings(ancestor).collect::<Vec<_>>() {
-                    anim.set_goal(sibling, 0.0, time);
+                    anim.clear_goal(sibling, time);
                 }
             } else if !mode.limited && anim.state(ancestor).goal_weight == 0.0 {
                 anim.set_goal(ancestor, 1.0, time);
