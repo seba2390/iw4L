@@ -120,6 +120,8 @@ pub fn drive_class_select_screen(
     mut load: Option<ResMut<assets::MapLoadProcess>>,
     signon: Res<SignonState>,
     has_world: Option<Res<State<frame::MatchScope>>>,
+    reveal: RevealGate,
+    mut held_since: Local<Option<std::time::Instant>>,
 ) {
     let world_installed = has_world.is_some_and(|world| *world.get() == frame::MatchScope::Live);
     let admitted = signon.may_select_class();
@@ -156,11 +158,50 @@ pub fn drive_class_select_screen(
     // presented snapshot arms it in `ClientSet::Present`, one set ahead of here —
     // and gating the overlay on the screen too left it up for the whole demo,
     // hiding the world behind `UiLayer::Loading` and holding back map ambience.
-    if let Some(loading) = loading.as_deref_mut() {
+    if let Some(loading) = loading.as_deref_mut()
+        && !reveal.awaits_script_spawn(&mut held_since)
+    {
         loading.finish();
     }
     if matches!(*screen, AppScreen::Loading | AppScreen::MainMenu) {
         *screen = AppScreen::ClassSelect;
+    }
+}
+
+/// Whether the world may be shown yet. In a mode whose scripts spawn the
+/// player, the client stands at a spectator spot until they do; the overlay
+/// stays up over that (with the scoreboard a spectator gets) until the local
+/// player first presents alive, or a few seconds have passed.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct RevealGate<'w> {
+    role: Res<'w, RuntimeRole>,
+    mode: Option<Res<'w, game_api::ModeRules>>,
+    presented: Option<Res<'w, net::PresentedSnapshot>>,
+    local: Option<Res<'w, net::LocalPresentClient>>,
+}
+
+impl RevealGate<'_> {
+    const LONGEST_HOLD: std::time::Duration = std::time::Duration::from_secs(10);
+
+    fn awaits_script_spawn(&self, held_since: &mut Option<std::time::Instant>) -> bool {
+        if *self.role == RuntimeRole::Replay
+            || !self.mode.as_ref().is_some_and(|m| m.scripts_spawn_players)
+        {
+            return false;
+        }
+        let alive = self
+            .presented
+            .as_ref()
+            .and_then(|presented| presented.snapshot())
+            .zip(self.local.as_ref())
+            .and_then(|(snap, local)| snap.meta.for_client(local.0))
+            .is_some_and(|meta| meta.lifecycle == sim::ClientLifecycle::Alive);
+        let since = *held_since.get_or_insert_with(std::time::Instant::now);
+        if alive || since.elapsed() >= Self::LONGEST_HOLD {
+            *held_since = None;
+            return false;
+        }
+        true
     }
 }
 
