@@ -77,6 +77,7 @@ pub(crate) fn encode_script_audio(out: &mut WireWriter, command: &ScriptAudioCom
             origin,
             volume,
             fade_in_ms,
+            delay_ms,
         } => {
             out.put_u8(5);
             out.put_u32(client.0);
@@ -94,6 +95,7 @@ pub(crate) fn encode_script_audio(out: &mut WireWriter, command: &ScriptAudioCom
             }
             out.put_f32(*volume);
             out.put_i32(*fade_in_ms);
+            out.put_u16(*delay_ms);
         }
         ScriptAudioCommand::ClientSoundStop { client, id } => {
             out.put_u8(6);
@@ -257,6 +259,7 @@ pub(crate) fn decode_script_audio(
                 origin,
                 volume: input.get_f32()?,
                 fade_in_ms: input.get_i32()?,
+                delay_ms: input.get_u16()?,
             }
         }
         6 => ScriptAudioCommand::ClientSoundStop {

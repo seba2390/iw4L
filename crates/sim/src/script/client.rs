@@ -193,7 +193,9 @@ pub(crate) enum ClientMessage {
     /// (a negative one), for every client.
     Exploder(i32),
     /// A player stepped (client number, movement type and surface).
-    Footstep(u32, &'static str, &'static str),
+    /// A step of a player's (its client, movement type, surface), at the
+    /// server time of the command that took it.
+    Footstep(u32, &'static str, &'static str, i32),
     /// A player jumped, landed or triggered a movement event (client number
     /// and event).
     JumpLand(u32, game_api::movement::JumpLand),
@@ -313,6 +315,7 @@ pub(crate) fn footstep(
     client: crate::ClientId,
     kind: &'static str,
     surface: &'static str,
+    at_ms: i32,
 ) {
     if !server.contains_resource::<ClientScripts>()
         && !server.contains_resource::<super::host::client_scripts::ClientScripts>()
@@ -322,7 +325,7 @@ pub(crate) fn footstep(
     if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
         runtime
             .client_messages
-            .push(ClientMessage::Footstep(client.0, kind, surface));
+            .push(ClientMessage::Footstep(client.0, kind, surface, at_ms));
     }
 }
 
@@ -1529,22 +1532,40 @@ fn run_frame(
                     _ => continue,
                 }
             }
-            ClientMessage::Footstep(client_num, kind, surface) => {
+            ClientMessage::Footstep(client_num, kind, surface, at_ms) => {
                 if client_num != 0 {
                     continue;
                 }
                 let player = world.resource::<ClientView>().locals[0].object;
-                (
-                    callbacks.footstep,
-                    vec![
-                        Value::Int(0),
-                        Value::Object(player),
-                        Value::string(kind),
-                        Value::string(surface),
-                        Value::Int(1),
-                        Value::Int(0),
-                    ],
-                )
+                let args = vec![
+                    Value::Int(0),
+                    Value::Object(player),
+                    Value::string(kind),
+                    Value::string(surface),
+                    Value::Int(1),
+                    Value::Int(0),
+                ];
+                // Black Ops' client plays a step as its own predicted move
+                // takes it. Here the step reaches the client a server frame
+                // or two late, so its sounds start the same time after the
+                // step as every other step's, and the steps keep their pace.
+                let now = i64::from(crate::level_time_ms(tick));
+                let first = world.resource::<ClientOutput>().sound_commands.len();
+                if let Err(fault) =
+                    super::runtime::run_now(world, callbacks.footstep, Value::level(), args, now)
+                {
+                    diag::warn!(Sim, "csc: {} not started: {fault}", callbacks.footstep);
+                }
+                let delay_ms = footstep_delay_ms(at_ms, crate::level_time_ms(tick));
+                for command in &mut world.resource_mut::<ClientOutput>().sound_commands[first..] {
+                    if let crate::ScriptAudioCommand::ClientSound {
+                        delay_ms: delay, ..
+                    } = command
+                    {
+                        *delay = delay_ms;
+                    }
+                }
+                continue;
             }
             ClientMessage::WeaponDeathEffects {
                 entity,
@@ -1650,6 +1671,16 @@ fn run_frame(
     }
 }
 
+/// How long after a step its sounds wait: the client hears every step
+/// `FOOTSTEP_LATENCY_MS` after the command that took it, or at once when
+/// it arrives later than that.
+const FOOTSTEP_LATENCY_MS: i32 = 3 * crate::MATCH_TICK_MS as i32;
+
+fn footstep_delay_ms(at_ms: i32, now_ms: i32) -> u16 {
+    let delay = at_ms.saturating_add(FOOTSTEP_LATENCY_MS) - now_ms;
+    u16::try_from(delay.clamp(0, FOOTSTEP_LATENCY_MS)).unwrap_or(0)
+}
+
 fn play_local_code_sound(world: &mut World, alias: String) {
     let mut output = world.resource_mut::<ClientOutput>();
     let id = output.sound_id();
@@ -1663,6 +1694,7 @@ fn play_local_code_sound(world: &mut World, alias: String) {
             origin: None,
             volume: 1.0,
             fade_in_ms: 0,
+            delay_ms: 0,
         });
 }
 

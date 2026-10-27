@@ -1394,6 +1394,7 @@ fn play(world: &mut World, alias: String, origin: Option<[f32; 3]>, volume: f32)
             origin,
             volume,
             fade_in_ms: 0,
+            delay_ms: 0,
         });
     Value::Int(id)
 }

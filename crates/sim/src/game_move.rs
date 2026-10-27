@@ -294,7 +294,7 @@ pub(crate) fn run(
     if world.publishes_snapshot() {
         for signal in &outcome.signals {
             if let Some((kind, surface)) = movement.footstep(signal) {
-                crate::script::client::footstep(world.ecs(), id, kind, surface);
+                crate::script::client::footstep(world.ecs(), id, kind, surface, cmd.server_time);
             }
             if let Some(kind) = movement.command_hint(signal) {
                 let meta = world.client_meta_mut(id);
