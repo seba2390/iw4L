@@ -32,24 +32,29 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         Ok(play(world, alias, origin, volume))
     });
     // `ent playSound(local, alias, [origin], [volume])`: at the entity's
-    // origin unless exactly an origin follows the alias.
+    // origin unless exactly an origin follows the alias. A sound on the
+    // local player plays at the listener, as one on the client's own entity
+    // does, so a footstep is not left behind where the step began.
     registry.register(Method, "playsound", |world, receiver, args| {
         local_index(args)?;
         let id = super::engine::entity_id(world, receiver)?;
         let alias = string(args, 1)?;
         let origin = match args.get(2) {
-            Some(_) if args.len() == 3 => vector(args, 2)?,
-            _ => match super::super::players::entity_field(world, id, "origin") {
-                Value::Vector(origin) => origin,
-                _ => [0.0; 3],
-            },
+            Some(_) if args.len() == 3 => Some(vector(args, 2)?),
+            _ if locals(world).contains(&id) => None,
+            _ => Some(
+                match super::super::players::entity_field(world, id, "origin") {
+                    Value::Vector(origin) => origin,
+                    _ => [0.0; 3],
+                },
+            ),
         };
         let volume = if args.len() == 4 {
             sound_volume(args, 3)?
         } else {
             1.0
         };
-        Ok(play(world, alias, Some(origin), volume))
+        Ok(play(world, alias, origin, volume))
     });
     register_sound_ids(registry);
     register_weapon_models(registry);
