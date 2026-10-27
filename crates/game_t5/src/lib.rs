@@ -260,6 +260,9 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     actor_physics: Some(game_api::actor::ActorPhysicsRules(
         &actor_physics::ACTOR_PHYSICS,
     )),
+    // A live actor's contents are `CONTENTS_ACTOR` (0x4000), which the
+    // player's clip mask (0x0281c011) names: zombies block the player.
+    players_meet_actors: true,
     // A player spawn sets health and max health to `g_player_maxhealth`
     // (registered 100, 10 to 2000; no script sets it), never the stored
     // max health.

@@ -364,6 +364,9 @@ pub struct ModeRules {
     /// How the game moves its actors through the world; `None` moves them
     /// by the runtime's trace slide.
     pub actor_physics: Option<actor::ActorPhysicsRules>,
+    /// A player's move meets live actors' bodies (their contents are in the
+    /// player's clip mask).
+    pub players_meet_actors: bool,
     /// The health a spawning player starts at.
     pub spawn_health: SpawnHealth,
     /// Each actor spawner runs its aitype script's `spawner()` when the level

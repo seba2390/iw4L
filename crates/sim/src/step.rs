@@ -484,7 +484,8 @@ fn run_players_system(ecs: &mut World) {
                 .iter()
                 .flat_map(|c| c.solid_brushes().iter().cloned())
                 .collect();
-            let bodies = alive_body_clips(&world);
+            let mut bodies = alive_body_clips(&world);
+            bodies.extend(actor_body_clips(&world));
             let glass_damage = world.world_objects().glass_damage_pairs();
             let backend = ClipBackend {
                 brushes,
@@ -2550,6 +2551,32 @@ fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
                 maxs: PLAYER_MAXS,
             }),
     );
+    bodies
+}
+
+/// The live actors' bodies, where the game's player move meets them: each
+/// actor's box where its entity last stood, read from the entities the
+/// clients are sent, so prediction meets the same bodies.
+fn actor_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
+    const ACTOR_MINS: [f32; 3] = [-15.0, -15.0, 0.0];
+    const ACTOR_MAXS: [f32; 3] = [15.0, 15.0, 72.0];
+    let mut bodies = Vec::new();
+    if world
+        .bootstrap_ref()
+        .mode
+        .is_some_and(|mode| mode.players_meet_actors)
+    {
+        world.visit_script_movers(|mover| {
+            if mover.aim_target && !mover.nonsolid {
+                bodies.push(PlayerBodyClip {
+                    entnum: mover.state.number as u16,
+                    origin: mover.state.tr_base,
+                    mins: ACTOR_MINS,
+                    maxs: ACTOR_MAXS,
+                });
+            }
+        });
+    }
     bodies
 }
 
