@@ -34,6 +34,8 @@ pub struct XModelRead {
     /// `None` when the collision maps' brushes are malformed.
     pub movement_brushes: Option<Vec<XModelBrushRead>>,
     pub radius: Option<f32>,
+    /// The model's box, mins then maxs.
+    pub bounds: Option<([f32; 3], [f32; 3])>,
     pub contents: u32,
     pub coll_lod: i16,
     pub num_lods: i16,
@@ -175,6 +177,7 @@ impl XModelGeometry {
             collision: self.read_collision(s),
             movement_brushes: self.read_movement_brushes(s),
             radius: self.radius,
+            bounds: self.bounds,
             contents: self.contents,
             coll_lod: self.coll_lod,
             num_lods: self.num_lods,

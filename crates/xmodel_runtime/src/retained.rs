@@ -76,6 +76,23 @@ pub struct RetainedModelCapability {
     pub bounds: Option<([f32; 3], [f32; 3])>,
 
     pub radius: Option<f32>,
+
+    /// The model's own physics preset, when its zone gives it one.
+    pub phys_preset: Option<PhysPreset>,
+}
+
+/// What a launched body of a model weighs and how it moves: the mass the
+/// launch impulse divides by, its bounce and friction, the share of the
+/// bullet force it takes, its share of gravity, and where its centre of
+/// mass sits off its origin.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PhysPreset {
+    pub mass: f32,
+    pub bounce: f32,
+    pub friction: f32,
+    pub bullet_force_scale: f32,
+    pub gravity_scale: f32,
+    pub center_of_mass_offset: [f32; 3],
 }
 
 #[derive(Clone, Debug)]

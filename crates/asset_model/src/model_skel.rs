@@ -170,6 +170,7 @@ impl ModelSkel {
             movement_brushes: self.movement_brushes.clone(),
             bounds: self.bounds,
             radius: self.radius,
+            phys_preset: None,
         })
     }
 
@@ -1180,7 +1181,13 @@ pub fn capture_xmodel_skel_t5(
         blend_verts,
         packed_vertices: packed_vertices.into(),
         radius: read.radius,
-        bounds: None,
+        // The model's box as its centre and half size.
+        bounds: read.bounds.map(|(mins, maxs)| {
+            (
+                core::array::from_fn(|i| (mins[i] + maxs[i]) * 0.5),
+                core::array::from_fn(|i| (maxs[i] - mins[i]) * 0.5),
+            )
+        }),
         contents: Some(read.contents),
         coll_lod: read.coll_lod,
         coll_surfs,

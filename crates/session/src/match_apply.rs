@@ -2047,13 +2047,32 @@ struct AuthorityEntityModelInstall {
 fn retained(
     asset: Option<&asset_world::MapXModelSceneAsset>,
 ) -> Option<std::sync::Arc<xmodel_runtime::RetainedModelCapability>> {
+    retained_with_preset(asset, None)
+}
+
+/// The model's capability with its physics preset, for the server's
+/// launched bodies.
+fn retained_with_preset(
+    asset: Option<&asset_world::MapXModelSceneAsset>,
+    preset: Option<&asset_world::OwnedPhysPreset>,
+) -> Option<std::sync::Arc<xmodel_runtime::RetainedModelCapability>> {
     match asset {
         Some(
             asset_world::MapXModelSceneAsset::Iw4(model)
             | asset_world::MapXModelSceneAsset::Iw5(model)
             | asset_world::MapXModelSceneAsset::T6(model)
             | asset_world::MapXModelSceneAsset::T5(model),
-        ) => model.retained_capability().map(std::sync::Arc::new),
+        ) => model.retained_capability().map(|mut capability| {
+            capability.phys_preset = preset.map(|preset| xmodel_runtime::PhysPreset {
+                mass: preset.mass,
+                bounce: preset.bounce,
+                friction: preset.friction,
+                bullet_force_scale: preset.bullet_force_scale,
+                gravity_scale: preset.gravity_scale,
+                center_of_mass_offset: preset.center_of_mass_offset,
+            });
+            std::sync::Arc::new(capability)
+        }),
         Some(asset_world::MapXModelSceneAsset::Unavailable { .. }) | None => None,
     }
 }
@@ -2107,7 +2126,10 @@ fn authority_entity_model_install(world: &assets::PreparedWorld) -> AuthorityEnt
     let models = world
         .map_xmodel_scene_assets
         .iter()
-        .map(|(key, asset)| (key.0.clone(), retained(Some(asset))))
+        .map(|(key, asset)| {
+            let preset = world.map_xmodel_scene_assets.phys_preset(key);
+            (key.0.clone(), retained_with_preset(Some(asset), preset))
+        })
         .collect();
     AuthorityEntityModelInstall {
         capabilities,

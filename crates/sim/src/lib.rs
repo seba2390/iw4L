@@ -17,6 +17,7 @@ mod game_fire;
 mod game_move;
 mod gentity;
 pub mod hudelem;
+pub mod launched;
 pub mod identities;
 pub mod input;
 mod item;

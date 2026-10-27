@@ -12,6 +12,9 @@ pub(crate) struct Mechanics {
     motions: BTreeMap<u64, Vec<Motion>>,
     bodies: BTreeMap<u64, Body>,
     slides: BTreeMap<u64, Slide>,
+    /// Bodies the runtime's integrator moves until they sleep, with the
+    /// notify they raise then.
+    launched: BTreeMap<u64, (crate::launched::Body, &'static str)>,
     finished: Vec<(u64, &'static str)>,
 }
 
@@ -38,6 +41,7 @@ impl Mechanics {
         if motion.field == "origin" {
             self.bodies.remove(&object);
             self.slides.remove(&object);
+            self.launched.remove(&object);
         }
         let motions = self.motions.entry(object).or_default();
         motions.retain(|m| m.field != motion.field);
@@ -90,6 +94,30 @@ impl Mechanics {
         self.motions.remove(&object);
         self.bodies.remove(&object);
         self.slides.remove(&object);
+        self.launched.remove(&object);
+    }
+
+    /// The entity moves as `body` until it sleeps, then raises `notify`.
+    pub(crate) fn launch_body(
+        &mut self,
+        object: u64,
+        body: crate::launched::Body,
+        notify: &'static str,
+    ) {
+        self.motions.remove(&object);
+        self.slides.remove(&object);
+        self.bodies.remove(&object);
+        self.launched.insert(object, (body, notify));
+    }
+
+    /// Whether the entity moves as a launched body.
+    pub(crate) fn is_launched(&self, object: u64) -> bool {
+        self.launched.contains_key(&object)
+    }
+
+    /// `notify` is raised on the entity with the mechanics' next notifies.
+    pub(crate) fn notify_later(&mut self, object: u64, notify: &'static str) {
+        self.finished.push((object, notify));
     }
 
     pub(crate) fn slide(&mut self, object: u64, slide: Slide) {
@@ -173,6 +201,7 @@ pub(crate) fn advance_mechanics(world: &mut World) {
     }
     advance_motions(world, now);
     advance_bodies(world);
+    advance_launched(world);
     advance_slides(world);
     apply_entity_links(world);
     super::players::apply_player_links(world);
@@ -288,6 +317,71 @@ fn advance_bodies(world: &mut World) {
     for (victim, pusher, point) in crushed {
         super::players::crush_player(world, victim, pusher, point);
     }
+}
+
+/// The world a launched body is swept through on the server: the static
+/// world's clip.
+pub(crate) struct StaticWorld<'w>(pub(crate) crate::frame::FrameWorld<'w>);
+
+impl crate::launched::BodyWorld for StaticWorld<'_> {
+    fn sweep(
+        &self,
+        start: [f32; 3],
+        end: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+        mask: u32,
+    ) -> crate::launched::Sweep {
+        let trace = self.0.trace_static_world(start, end, mins, maxs, mask);
+        crate::launched::Sweep {
+            fraction: trace.fraction,
+            endpos: std::array::from_fn(|i| (end[i] - start[i]) * trace.fraction + start[i]),
+            normal: trace.normal,
+            startsolid: trace.startsolid != 0,
+            allsolid: trace.allsolid != 0,
+        }
+    }
+}
+
+/// Launched bodies take one tick's step; each entity follows its body, and
+/// one that sleeps raises its notify and stays where it rests.
+fn advance_launched(world: &mut World) {
+    world.resource_scope::<Mechanics, _>(|world, mut mechanics| {
+        let Mechanics {
+            launched, finished, ..
+        } = &mut *mechanics;
+        launched.retain(|object, (body, notify)| {
+            if !world
+                .resource::<RoundScript>()
+                .entities
+                .contains_key(object)
+            {
+                return false;
+            }
+            {
+                let sweep = StaticWorld(crate::frame::FrameWorld::from_world(world));
+                let mut remain = crate::MATCH_TICK_MS as i32;
+                while remain > 0 {
+                    let step = remain.min(crate::launched::STEP_MS);
+                    body.step(Some(&sweep), step as f32 / 1000.0);
+                    remain -= step;
+                }
+            }
+            let (yaw, pitch, roll) = body.rot.to_euler(glam::EulerRot::ZYX);
+            let mut runtime = world.resource_mut::<RoundScript>();
+            runtime.set_object_field(*object, "origin", Value::Vector(body.origin.to_array()));
+            runtime.set_object_field(
+                *object,
+                "angles",
+                Value::Vector([pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()]),
+            );
+            if body.rest(crate::MATCH_TICK_MS as i32) {
+                finished.push((*object, *notify));
+                return false;
+            }
+            true
+        });
+    });
 }
 
 fn crush_victims(

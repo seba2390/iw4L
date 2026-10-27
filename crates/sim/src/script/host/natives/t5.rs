@@ -2131,8 +2131,7 @@ fn register_refused(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     // `ent PhysicsLaunch([point, force])`: Black Ops hands the entity to
-    // its rigid-body physics; the runtime has none, so the entity stays
-    // where it is.
+    // a physics body until it comes to rest (`t5_physics`).
     registry.register(Method, "physicslaunch", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
         let (number, classname) = {
@@ -2147,11 +2146,7 @@ fn register_refused(registry: &mut NativeRegistry) {
                 "entity {number} is not a script_brushmodel, script_model, script_origin, or light"
             ));
         }
-        if args.len() == 2 {
-            vector(args, 0)?;
-            vector(args, 1)?;
-        }
-        Ok(Value::Undefined)
+        super::t5_physics::launch(world, id, args)
     });
     refused!(Function: "spawntimedfx", "boundswouldtelefrag", "testspawnpoint"
         => "not simulated");

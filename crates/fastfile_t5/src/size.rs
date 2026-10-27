@@ -88,6 +88,9 @@ pub const XMODEL_NUM_COLL_SURFS_OFF: usize = 176;
 pub const XMODEL_BONE_INFO_OFF: usize = 184;
 
 pub const XMODEL_RADIUS_OFF: usize = 188;
+/// The model's box: its mins, then its maxs.
+pub const XMODEL_MINS_OFF: usize = 192;
+pub const XMODEL_MAXS_OFF: usize = 204;
 pub const XMODEL_STREAM_INFO_OFF: usize = 220;
 pub const XMODEL_PHYS_PRESET_OFF: usize = 236;
 pub const XMODEL_NUM_COLLMAPS_OFF: usize = 240;
