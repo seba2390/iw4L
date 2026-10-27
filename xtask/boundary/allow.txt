@@ -734,7 +734,7 @@ pattern crates/render_frontend/src/assemble/drawsurf/tess/xmodel.rs render_fx:: 
 pattern crates/render_frontend/src/assemble/drawsurf/thermal_body.rs playerstate_iw4:: 1
 pattern crates/render_frontend/src/assemble/pack.rs render_frame:: 1
 pattern crates/render_frontend/src/prepare/scene/cull.rs dpvs_iw4:: 5
-pattern crates/render_frontend/src/prepare/scene/gfx_scene.rs entity_iw4:: 6
+pattern crates/render_frontend/src/prepare/scene/gfx_scene.rs entity_iw4:: 4
 pattern crates/render_frontend/src/prepare/scene/model_lighting_cache.rs anim_iw4:: 1
 pattern crates/render_frontend/src/prepare/scene/model_lighting_cache.rs lighting_iw4:: 10
 pattern crates/render_frontend/src/prepare/scene/smodel_geom_cache.rs lighting_iw4:: 5

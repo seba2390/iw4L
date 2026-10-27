@@ -521,6 +521,29 @@ fn sample_script_mover_pose(
     )
 }
 
+/// Where a script mover stands this frame: between its last two snapshots at
+/// the frame's time, as script models and actors are drawn.
+pub fn present_script_mover_pose(
+    runtime: &net::CEntityRuntime,
+    presented: &net::PresentedSnapshot,
+    cg_clock: Option<&net::FrameClock>,
+    fixed: Option<&Time<Fixed>>,
+) -> Option<([f32; 3], [f32; 3])> {
+    let snapshot = presented.snapshot()?;
+    let clock = cg_clock.filter(|clock| clock.started());
+    let snap_time = sim::level_time_ms(snapshot.tick);
+    let at_time = presented.trajectory_time_ms(clock.map_or(snap_time, |clock| clock.time()));
+    Some(sample_script_mover_pose(
+        runtime,
+        at_time,
+        snap_time,
+        clock.is_some(),
+        presented.is_archived_replay(),
+        cg_clock,
+        fixed,
+    ))
+}
+
 fn apply_script_mover_centity_pose(
     slots: Option<Res<net::CEntitySlots>>,
     presented: Option<Res<net::PresentedSnapshot>>,

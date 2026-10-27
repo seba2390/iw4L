@@ -10,6 +10,7 @@ pub use render_scene::{
 pub(crate) use render_scene::{clear_host_gfx_scene, snapshot_spot_shadow_occupancy};
 
 use bevy::prelude::*;
+use render_anim::occupancy::script_model::present_script_mover_pose;
 use render_scene::AddDObjPose;
 
 pub(crate) fn apply_anim_dobj_scene_submissions(
@@ -65,6 +66,8 @@ pub(crate) fn occupy_script_brush_scene(
     world: Option<Res<crate::prepare::scene::world::WorldScene>>,
     presented: Option<Res<net::PresentedSnapshot>>,
     runtimes: Query<(&net::CEntity, &net::CEntityRuntime)>,
+    cg_clock: Option<Res<net::FrameClock>>,
+    fixed: Option<Res<Time<Fixed>>>,
     mut gfx_scene: ResMut<HostGfxScene>,
 ) {
     let Some(world) = world else {
@@ -75,11 +78,6 @@ pub(crate) fn occupy_script_brush_scene(
         .as_ref()
         .map(|cull| cull.brush_models.as_slice())
         .unwrap_or(&[]);
-    let at_time = presented
-        .as_ref()
-        .and_then(|value| value.snapshot())
-        .map(|snapshot| net::ServerTime::from_tick(snapshot.tick).ms())
-        .unwrap_or(0);
     let mut live = Vec::new();
     for (cent, runtime) in &runtimes {
         let entnum = u32::from(cent.number());
@@ -101,8 +99,11 @@ pub(crate) fn occupy_script_brush_scene(
         let Ok(model_index) = u32::try_from(runtime.next_state.index) else {
             continue;
         };
-        let origin = entity_iw4::evaluate_trajectory(&runtime.current.pos, at_time);
-        let angles = entity_iw4::evaluate_trajectory(&runtime.current.apos, at_time);
+        let Some((origin, angles)) = presented.as_deref().and_then(|presented| {
+            present_script_mover_pose(runtime, presented, cg_clock.as_deref(), fixed.as_deref())
+        }) else {
+            continue;
+        };
         live.push(ScriptMoverBmodelClaim {
             model_index,
             origin,
