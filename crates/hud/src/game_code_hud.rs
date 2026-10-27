@@ -426,9 +426,10 @@ fn indicator_icon(weapons: &PreparedWeapons, index: u32) -> Option<&str> {
         .as_deref()
 }
 
-/// When the board was last held, for its fade.
+/// When the board was last released, for its fade.
 #[derive(Default)]
 pub(crate) struct ScoreboardFade {
+    held: bool,
     released_at: Option<i32>,
 }
 
@@ -457,20 +458,26 @@ pub(crate) fn update_scoreboard(
     }
     let now = clock.time();
     let held = actions.as_ref().is_some_and(|a| a.client.kb.scores.active);
+    // Only a release fades the board: a match starting with the key up
+    // shows none.
     let alpha = if held {
+        fade.held = true;
         fade.released_at = None;
         1.0
     } else {
-        let released = *fade.released_at.get_or_insert(now);
+        if std::mem::take(&mut fade.held) {
+            fade.released_at = Some(now);
+        }
+        let Some(released) = fade.released_at else {
+            return;
+        };
         let age = now - released;
         if age < 0 || age >= board.fade_ms || board.fade_ms <= 0 {
+            fade.released_at = None;
             return;
         }
         (board.fade_ms - age) as f32 / board.fade_ms as f32
     };
-    if !held && fade.released_at == Some(now) && alpha >= 1.0 {
-        return;
-    }
     let Some(catalog) = menus.as_ref().and_then(|m| m.0.as_deref()) else {
         return;
     };
