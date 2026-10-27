@@ -486,8 +486,10 @@ fn fx_on_tag(world: &mut World, args: &[Value], stop: bool) -> Result<Value, Str
     Ok(Value::Undefined)
 }
 
-/// Plays (or stops) an effect on an entity's tag for an audience; without
-/// the entity's tag, a played effect plays at its origin.
+/// Plays (or stops) an effect on an entity's tag for an audience. When the
+/// entity's model names no such tag the runtime can read, the effect rides
+/// the entity itself, so it moves and ends with it; an entity with no
+/// number plays it at its origin.
 pub(crate) fn effect_on_tag(
     world: &mut World,
     name: &str,
@@ -500,12 +502,14 @@ pub(crate) fn effect_on_tag(
     let (number, bone, pose) = tag_bolt(world, entity, tag);
     let (origin, direction) = pose.unwrap_or(fallback);
     let index = crate::frame::FrameWorld::from_world(world).effect_name_index(name);
+    // A bolt's bone field all ones names the entity itself.
+    let on_entity = 0x7ff;
     tag_effect_event(
         world,
         audience,
         stop,
         index,
-        number.zip(bone),
+        number.map(|number| (number, bone.unwrap_or(on_entity))),
         (origin, direction),
     );
     Ok(())
