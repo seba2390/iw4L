@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use bevy_ecs::prelude::{Resource, World};
 
 use super::actor_path::{ActorPath, LeanRing, Probe};
-use super::args::{arg, float, int, string, vector};
+use super::args::{arg, float, int, optional, string, vector};
 use super::dynamic_paths;
 use super::entities::EntityKind;
 use crate::frame::FrameWorld;
@@ -598,6 +598,9 @@ pub(crate) struct ActorMove {
     /// The hellhound's claimed attack spot: its code goal in place of the
     /// script's while it holds one.
     claimed_spot: Option<[f32; 3]>,
+    /// Reaching the enemy sets the code goal to the enemy's known position
+    /// (with `pathenemyfightdist` for the radius) until the next path think.
+    enemy_goal: bool,
     /// The way the hellhound's last weave moved it (`ai_pathMomentum`
     /// blends it into the next).
     pub(crate) momentum_dir: [f32; 2],
@@ -681,6 +684,7 @@ impl Default for ActorMove {
             goal_yaw: None,
             goal_volume: None,
             claimed_spot: None,
+            enemy_goal: false,
             momentum_dir: [0.0; 2],
             path: ActorPath::default(),
             lean: LeanRing::default(),
@@ -775,6 +779,26 @@ impl ActorMove {
     /// Whether a scripted animation still places the actor.
     pub(crate) fn scripted_playing(&self) -> bool {
         self.scripted.is_some()
+    }
+
+    /// Adds an animation's root yaw turn to the actor's yaw, desired yaw,
+    /// and any fixed-angle orient modes so the turn clamp that follows does
+    /// not undo the animation's turn.
+    fn turn(&mut self, angles: &mut [f32; 3], turned: f32) {
+        if turned == 0.0 {
+            return;
+        }
+        let wrap = |yaw: f32| (yaw + turned).rem_euclid(360.0);
+        angles[1] = wrap(angles[1]);
+        if let Some(desired) = &mut self.desired_yaw {
+            *desired = wrap(*desired);
+        }
+        if let Some(Orient::Angle(yaw)) = &mut self.orient {
+            *yaw = wrap(*yaw);
+        }
+        if let Orient::Angle(yaw) = &mut self.code_orient {
+            *yaw = wrap(*yaw);
+        }
     }
 }
 
@@ -1095,32 +1119,27 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "maymovetopoint", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         let to = vector(args, 0)?;
+        let check_drop = optional(args, 1, int)?.unwrap_or(1) != 0;
         let (from, _) = pose(&mut world.resource_mut::<RoundScript>(), id);
-        Ok(Value::Int(walkable(world, from, to).into()))
+        Ok(Value::Int(may_move(world, id, from, to, check_drop).into()))
     });
-    registry.register(Method, "maymovefrompointtopoint", |world, _, args| {
-        let (from, to) = (vector(args, 0)?, vector(args, 1)?);
-        Ok(Value::Int(walkable(world, from, to).into()))
-    });
+    registry.register(
+        Method,
+        "maymovefrompointtopoint",
+        |world, receiver, args| {
+            let id = actor_id(world, receiver)?;
+            let (from, to) = (vector(args, 0)?, vector(args, 1)?);
+            let check_drop = optional(args, 2, int)?.unwrap_or(1) != 0;
+            Ok(Value::Int(may_move(world, id, from, to, check_drop).into()))
+        },
+    );
     registry.register(Method, "isingoal", |world, receiver, args| {
         let id = actor_id(world, receiver)?;
         if args.len() != 1 {
             return Err("illegal call to isingoal()\n".into());
         }
         let point = vector(args, 0)?;
-        let radius = goal_radius(world, id);
-        let height = goal_height(world, id);
-        let volume = world
-            .resource::<RoundScript>()
-            .actor_moves
-            .get(&id)
-            .and_then(|movement| movement.goal_volume);
-        let inside = goal_position(world, id).is_none_or(|goal| {
-            let dz = point[2] - goal[2];
-            dz * dz <= height * height && horizontal_distance(goal, point) <= radius
-        }) && volume
-            .is_none_or(|volume| super::triggers::is_touching(world, id, volume));
-        Ok(Value::Int(inside.into()))
+        Ok(Value::Int(in_code_goal(world, id, point).into()))
     });
     registry.register(Method, "gethitenttype", |world, receiver, _| {
         let id = actor_id(world, receiver)?;
@@ -1293,7 +1312,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             "angle deltas" => Some(AnimMode::AngleDeltas),
             _ => return Err("illegal call to animmode()\n".into()),
         };
-        let clear = name != "none" && matches!(args.get(1), Some(Value::Int(n)) if *n != 0);
+        let clear = name != "none" && optional(args, 1, int)?.unwrap_or(1) != 0;
         with_move(world, receiver, |movement| {
             if clear {
                 movement.drop_path();
@@ -1707,7 +1726,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                 for axis in 0..3 {
                     origin[axis] += world_delta[axis];
                 }
-                angles[1] += turned;
+                movement.turn(&mut angles, turned);
             }
             // A game whose own physics moves its actors slides a nogravity
             // animation's step through the world.
@@ -1734,13 +1753,13 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                         .0
                     }
                 };
-                angles[1] += turned;
+                movement.turn(&mut angles, turned);
             }
             AnimMode::NoGravity | AnimMode::PointRelative | AnimMode::NoClip => {
                 for axis in 0..3 {
                     origin[axis] += world_delta[axis];
                 }
-                angles[1] += turned;
+                movement.turn(&mut angles, turned);
             }
             AnimMode::Normal => {
                 code_move = true;
@@ -1875,7 +1894,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                         .0
                     }
                 };
-                angles[1] += turned;
+                movement.turn(&mut angles, turned);
             }
             AnimMode::ZOnlyPhysics => {
                 origin = match held_blocker(world, &movement) {
@@ -1890,7 +1909,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                     ),
                     None => zonly_move(world, origin, world_delta, seconds, &mut movement),
                 };
-                angles[1] += turned;
+                movement.turn(&mut angles, turned);
             }
             AnimMode::AngleDeltas => {
                 if let Some(blocker) = held_blocker(world, &movement) {
@@ -1916,7 +1935,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                     // it falls.
                     origin = moved;
                 }
-                angles[1] += turned;
+                movement.turn(&mut angles, turned);
             }
         }
         // A move the AI did not steer: the path catches up with it.
@@ -2060,11 +2079,14 @@ const FACE_MOTION_MS: f32 = 1500.0;
 const FACE_MOTION_MS_AGREE: f32 = 3500.0;
 
 /// Whether the lookahead shrinks instead of tracing this frame, by what the
-/// last move hit: a body (a sentient) only while the actor dodges it (never
-/// here: the dodge scan is not ported); anything else (nothing hit counts
-/// as the unused entity, which never cut paths) once the path is older
-/// than the level's first frame.
+/// last move hit: nothing hit (`ENTITYNUM_NONE`, which carries `FL_OBSTACLE`
+/// in Black Ops) never shrinks it; a body (a sentient) only while the actor
+/// dodges it (never here: the dodge scan is not ported); anything else once
+/// the path is older than the level's first frame.
 fn lookahead_decrease(last_hit_body: Option<u16>, movement: &ActorMove) -> bool {
+    if movement.hit_ent_type == HIT_NONE {
+        return false;
+    }
     match last_hit_body {
         Some(_) => false,
         None => movement.path.time > 0,
@@ -2842,17 +2864,25 @@ pub(crate) fn replan_from_here(
     }
 }
 
-/// The AI's code goal: its goal entity's origin or its goal position (a
-/// hellhound's claimed attack spot first, with `pathenemyfightdist` for
-/// the radius), the radius at least 4 and the height at least 80.
+/// The AI's code goal: its enemy's known position after `enemy_reached`, a
+/// hellhound's claimed attack spot, or its goal entity's origin or goal
+/// position (the first two with `pathenemyfightdist` for the radius), the
+/// radius at least 4 and the height at least 80.
 fn code_goal(world: &mut World, actor: u64) -> Option<([f32; 3], f32, f32)> {
-    let goal = goal_position(world, actor)?;
-    let claimed = world
+    let (enemy_goal, claimed_spot) = world
         .resource::<RoundScript>()
         .actor_moves
         .get(&actor)
-        .is_some_and(|movement| movement.claimed_spot.is_some());
-    let radius = if claimed {
+        .map_or((false, None), |m| (m.enemy_goal, m.claimed_spot));
+    let (goal, fight_radius) =
+        if enemy_goal && let Some(at) = super::actor_brain::enemy_face_point(world, actor) {
+            (at, true)
+        } else if let Some(spot) = claimed_spot {
+            (spot, true)
+        } else {
+            (goal_position(world, actor)?, false)
+        };
+    let radius = if fight_radius {
         float_field(world, actor, "pathenemyfightdist").unwrap_or(0.0)
     } else {
         goal_radius(world, actor)
@@ -2906,7 +2936,7 @@ pub(crate) fn update_path(world: &mut World, actor: u64) {
     if !had_path && now < movement.path_wait {
         return;
     }
-    let Some(goal) = code_goal(world, actor) else {
+    let Some(mut goal) = code_goal(world, actor) else {
         return;
     };
     let mut events = Vec::new();
@@ -2914,7 +2944,20 @@ pub(crate) fn update_path(world: &mut World, actor: u64) {
         events.push("goal_changed");
     }
     movement.code_goal = Some(goal.0);
-    if movement.has_path() || now >= movement.retry_at {
+    if movement.enemy_goal {
+        movement.enemy_goal = false;
+        world
+            .resource_mut::<RoundScript>()
+            .actor_moves
+            .insert(actor, movement.clone());
+        if let Some(updated) = code_goal(world, actor) {
+            if movement.code_goal.is_some_and(|old| old != updated.0) {
+                events.push("goal_changed");
+            }
+            movement.code_goal = Some(updated.0);
+            goal = updated;
+        }
+    } else if movement.has_path() || now >= movement.retry_at {
         let found = find_to_goal(world, actor, goal, now, &mut movement);
         if !movement.has_path() && !found {
             movement.retry_at = now + PATH_RETRY_MS;
@@ -2924,8 +2967,19 @@ pub(crate) fn update_path(world: &mut World, actor: u64) {
     }
     if movement.has_path() && enemy_reached(world, actor, &movement, goal, had_path) {
         let (origin, _) = pose(&mut world.resource_mut::<RoundScript>(), actor);
+        movement.enemy_goal = true;
         movement.clear_path(origin);
         movement.path_wait = now + PATH_RETRY_MS;
+        world
+            .resource_mut::<RoundScript>()
+            .actor_moves
+            .insert(actor, movement.clone());
+        if let Some(updated) = code_goal(world, actor) {
+            if movement.code_goal.is_some_and(|old| old != updated.0) {
+                events.push("goal_changed");
+            }
+            movement.code_goal = Some(updated.0);
+        }
     }
     world
         .resource_mut::<RoundScript>()
@@ -3054,6 +3108,43 @@ pub(crate) fn may_step(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 
         .map_or(MASK_ACTOR_SOLID, actor_mask)
         | REACQUIRE_STEP_CONTENTS;
     step_trace(world, actor, from, to, mask)
+}
+
+/// Black Ops' `maymovetopoint` / `maymovefrompointtopoint`: with `check_drop`,
+/// checks that ground lies within 72 below `from` and then steps the actor's
+/// box from `from` to `to`; without `check_drop`, sweeps the actor's box
+/// straight from `from` to `to`.
+fn may_move(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], check_drop: bool) -> bool {
+    install_clip(world);
+    clip_actor(world, actor);
+    let mask = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map_or(MASK_ACTOR_SOLID, actor_mask);
+    let ok = if check_drop {
+        let tr = clip_trace(
+            world,
+            from,
+            [from[0], from[1], from[2] - STEP_DROP],
+            STEP_MINS,
+            STEP_MAXS,
+            mask | REACQUIRE_STEP_CONTENTS,
+        );
+        !tr.allsolid
+            && tr.fraction != 1.0
+            && step_trace(world, actor, from, to, mask | REACQUIRE_STEP_CONTENTS)
+    } else {
+        let (mins, maxs) = world
+            .resource::<RoundScript>()
+            .actor_moves
+            .get(&actor)
+            .map_or((ACTOR_MINS, ACTOR_MAXS), actor_box);
+        let tr = clip_trace(world, from, to, mins, maxs, mask);
+        !tr.startsolid && !tr.allsolid && tr.fraction >= 1.0
+    };
+    remove_clip(world);
+    ok
 }
 
 /// Black Ops' path to a point: a path already ending within 2 of it (and
@@ -4769,10 +4860,6 @@ fn walkable(world: &mut World, from: [f32; 3], to: [f32; 3]) -> bool {
 
 fn yaw_to(from: [f32; 3], to: [f32; 3]) -> f32 {
     (to[1] - from[1]).atan2(to[0] - from[0]).to_degrees()
-}
-
-fn horizontal_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
 }
 
 fn distance_sq(a: [f32; 3], b: [f32; 3]) -> f32 {

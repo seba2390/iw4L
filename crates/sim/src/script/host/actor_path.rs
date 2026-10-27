@@ -135,7 +135,7 @@ impl Default for ActorPath {
             look_dir: [0.0; 3],
             look_dist: 0.0,
             forward_dir: [0.0; 2],
-            amount: 0.0,
+            amount: END_AMOUNT,
             to_next: 0.0,
             min_look: 0,
             flags: 0,

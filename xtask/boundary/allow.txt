@@ -602,7 +602,7 @@ pattern crates/render_anim/src/occupancy/remote_body.rs render_frame:: 5
 pattern crates/render_anim/src/occupancy/screen_effects.rs hud_iw4:: 5
 pattern crates/render_anim/src/occupancy/screen_effects.rs playerstate_iw4:: 1
 pattern crates/render_anim/src/occupancy/script_model.rs dpvs_iw4:: 3
-pattern crates/render_anim/src/occupancy/script_model.rs entity_iw4:: 3
+pattern crates/render_anim/src/occupancy/script_model.rs entity_iw4:: 2
 pattern crates/render_anim/src/occupancy/script_model.rs render_frame:: 1
 pattern crates/render_anim/src/occupancy/third_person.rs playerstate_iw4:: 2
 pattern crates/render_anim/src/occupancy/view_kick.rs hud_iw4:: 1

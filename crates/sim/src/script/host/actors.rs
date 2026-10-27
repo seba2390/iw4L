@@ -307,6 +307,9 @@ fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, 
             ("walkdist", 128.0),
             ("badplaceawareness", 0.75),
             ("animtranslationscale", 1.0),
+            ("meleeattackdist", 0.0),
+            ("pathenemyfightdist", 192.0),
+            ("pathenemylookahead", 192.0),
         ] {
             if runtime.object_field(id, name) == Value::Undefined {
                 runtime.set_object_field(id, name, Value::Float(value));
