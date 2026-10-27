@@ -49,6 +49,8 @@ pub enum ScriptAudioCommand {
         /// How long it fades in from silence, in msec (0 starts at its
         /// volume).
         fade_in_ms: i32,
+        /// How long after it reaches the client it starts, in msec.
+        delay_ms: u16,
     },
     /// The client's scripts stop a sound they played (`stopSound`).
     ClientSoundStop {

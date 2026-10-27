@@ -28,6 +28,8 @@ pub(crate) struct ClientSounds {
     voices: BTreeMap<i32, Voice>,
     /// Sounds that could not start, reported once as not playing.
     refused: Vec<i32>,
+    /// Sounds told to start later: when, in which match, and the sound.
+    delayed: Vec<(std::time::Instant, u64, sim::ScriptAudioCommand)>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -43,8 +45,33 @@ pub(crate) fn update_client_sounds(
     authority: Option<ResMut<net::AuthorityWorld>>,
 ) {
     let frame = runtime.audio_frame();
+    let now = std::time::Instant::now();
+    let mut commands = Vec::new();
+    sounds.delayed.retain(|(due, match_epoch, command)| {
+        if *match_epoch != epoch.0 {
+            return false;
+        }
+        if *due > now {
+            return true;
+        }
+        commands.push(command.clone());
+        false
+    });
     for event in events.read() {
         match &event.0 {
+            sim::ScriptAudioCommand::ClientSound { delay_ms, .. } if *delay_ms > 0 => {
+                let mut command = event.0.clone();
+                if let sim::ScriptAudioCommand::ClientSound { delay_ms, .. } = &mut command {
+                    let due = now + std::time::Duration::from_millis(u64::from(*delay_ms));
+                    *delay_ms = 0;
+                    sounds.delayed.push((due, epoch.0, command));
+                }
+            }
+            command => commands.push(command.clone()),
+        }
+    }
+    for command in &commands {
+        match command {
             sim::ScriptAudioCommand::ClientSound {
                 client,
                 id,
@@ -52,6 +79,7 @@ pub(crate) fn update_client_sounds(
                 origin,
                 volume,
                 fade_in_ms,
+                ..
             } if *client == local.0 => {
                 let (Some(bank), Some(family)) = (bank.as_deref(), family.as_deref()) else {
                     sounds.refused.push(*id);

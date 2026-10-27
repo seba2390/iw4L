@@ -42,6 +42,7 @@ pub(super) fn play(
             origin,
             volume,
             fade_in_ms,
+            delay_ms: 0,
         });
     id
 }
