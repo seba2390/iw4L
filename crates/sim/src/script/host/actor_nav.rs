@@ -610,8 +610,9 @@ pub(crate) struct ActorMove {
     lean: LeanRing,
     /// No path is looked for again before this after one was not found.
     retry_at: i64,
-    /// No path is looked for before this.
-    path_wait: i64,
+    /// No path is looked for before this; the path step is not taken
+    /// again before it either.
+    pub(crate) path_wait: i64,
     /// The goal position the AI last worked to (`goal_changed`).
     code_goal: Option<[f32; 3]>,
     /// The yaw the AI's facing last asked for.
@@ -671,10 +672,20 @@ pub(crate) struct ActorMove {
     pub(crate) push_player: bool,
     /// The body (a player's or an actor's, by entity number) that stopped
     /// the last move.
-    hit_body: Option<u16>,
+    pub(crate) hit_body: Option<u16>,
     /// Black Ops' blocking actor: the actor this one steps away from while
     /// it holds it.
     pub(crate) blocker: Option<u64>,
+    /// A dodge made, or a wait begun, holds until this.
+    pub(crate) dodge_time: i64,
+    /// The follow chain: the actor heading the wait this one is in (itself
+    /// when it heads one), and the entity that actor waits behind.
+    pub(crate) chain: Option<u64>,
+    pub(crate) chain_ent: Option<u16>,
+    /// The step the actor's movement wished for this frame, flat.
+    pub(crate) wish_delta: [f32; 2],
+    /// When the actor thinks next.
+    pub(crate) next_think: i64,
 }
 
 impl Default for ActorMove {
@@ -718,6 +729,11 @@ impl Default for ActorMove {
             push_player: false,
             hit_body: None,
             blocker: None,
+            dodge_time: 0,
+            chain: None,
+            chain_ent: None,
+            wish_delta: [0.0; 2],
+            next_think: 0,
         }
     }
 }
@@ -747,7 +763,7 @@ impl ActorMove {
 
     /// Drops the path at `origin` (its area back onto the lookahead
     /// amount).
-    fn clear_path(&mut self, origin: [f32; 3]) {
+    pub(crate) fn clear_path(&mut self, origin: [f32; 3]) {
         self.path.clear(origin);
     }
 
@@ -1700,6 +1716,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             if seconds > 0.0 {
                 movement.velocity = std::array::from_fn(|i| (origin[i] - before[i]) / seconds);
             }
+            movement.wish_delta = [origin[0] - before[0], origin[1] - before[1]];
             movement.last_origin = Some(origin);
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(actor, "origin", Value::Vector(origin));
@@ -1718,6 +1735,8 @@ fn locomote_actors(world: &mut World, seconds: f32) {
             local[2] * scale,
         ];
         let step = (world_delta[0].powi(2) + world_delta[1].powi(2)).sqrt();
+        // The animation's step is the wish until a path steer replaces it.
+        movement.wish_delta = [world_delta[0], world_delta[1]];
         let moving = super::actor_brain::movemode(world, actor) != 0;
         let mut heading = None;
         let mut code_move = false;
@@ -1785,6 +1804,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                         &mut events,
                         &mut wish,
                     );
+                    movement.wish_delta = [wish[0], wish[1]];
                     if wish[0] != 0.0 || wish[1] != 0.0 {
                         heading = Some(wish[1].atan2(wish[0]).to_degrees());
                     }
@@ -1803,7 +1823,7 @@ fn locomote_actors(world: &mut World, seconds: f32) {
                     };
                 } else {
                     if movement.has_path() {
-                        let decrease = lookahead_decrease(last_hit_body, &movement);
+                        let decrease = lookahead_decrease(last_hit_body, &movement, now);
                         let kept = movement.path.update(
                             origin,
                             (decrease, false, true),
@@ -2080,15 +2100,15 @@ const FACE_MOTION_MS_AGREE: f32 = 3500.0;
 
 /// Whether the lookahead shrinks instead of tracing this frame, by what the
 /// last move hit: nothing hit (`ENTITYNUM_NONE`, which carries `FL_OBSTACLE`
-/// in Black Ops) never shrinks it; a body (a sentient) only while the actor
-/// dodges it (never here: the dodge scan is not ported); anything else once
-/// the path is older than the level's first frame.
-fn lookahead_decrease(last_hit_body: Option<u16>, movement: &ActorMove) -> bool {
+/// in Black Ops) never shrinks it; a body (a sentient) only while a dodge
+/// holds; anything else once the path is older than the level's first
+/// frame.
+fn lookahead_decrease(last_hit_body: Option<u16>, movement: &ActorMove, now: i64) -> bool {
     if movement.hit_ent_type == HIT_NONE {
         return false;
     }
     match last_hit_body {
-        Some(_) => false,
+        Some(_) => now < movement.dodge_time,
         None => movement.path.time > 0,
     }
 }
@@ -2108,7 +2128,7 @@ fn steer(
     seconds: f32,
     movement: &mut ActorMove,
 ) -> [f32; 3] {
-    let decrease = lookahead_decrease(last_hit_body, movement);
+    let decrease = lookahead_decrease(last_hit_body, movement, now);
     let kept = movement.path.update(
         origin,
         (decrease, false, true),
@@ -2409,6 +2429,48 @@ fn face_enemy_or_motion(
         || agree * FACE_MOTION_MS_AGREE + FACE_MOTION_MS <= age as f32)
 }
 
+/// The actor's species' run speed (Black Ops' per-species table).
+pub(crate) fn run_speed(world: &mut World, actor: u64) -> f32 {
+    RUN_SPEED[species(world, actor).min(3)]
+}
+
+/// Where an actor (or any script entity) stands.
+pub(crate) fn origin_of(world: &mut World, id: u64) -> [f32; 3] {
+    pose(&mut world.resource_mut::<RoundScript>(), id).0
+}
+
+/// Whether the actor has a path.
+pub(crate) fn has_path_of(world: &World, actor: u64) -> bool {
+    world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .is_some_and(ActorMove::has_path)
+}
+
+/// The actor's movement mode.
+pub(crate) fn anim_mode_of(world: &World, actor: u64) -> Option<AnimMode> {
+    world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map(|movement| movement.anim_mode)
+}
+
+/// Where the entity with this number stands.
+pub(crate) fn entity_origin_by_number(world: &mut World, entnum: u16) -> Option<[f32; 3]> {
+    let id = world
+        .resource::<RoundScript>()
+        .entities
+        .iter()
+        .find(|(_, entity)| u16::try_from(entity.number).ok() == Some(entnum))
+        .map(|(&id, _)| id)?;
+    match super::players::entity_field(world, id, "origin") {
+        Value::Vector(at) => Some(at),
+        _ => None,
+    }
+}
+
 fn species(world: &mut World, actor: u64) -> usize {
     if super::actor_brain::is_dog(world, actor) {
         3
@@ -2417,7 +2479,7 @@ fn species(world: &mut World, actor: u64) -> usize {
     }
 }
 
-fn float_field(world: &mut World, actor: u64, name: &str) -> Option<f32> {
+pub(crate) fn float_field(world: &mut World, actor: u64, name: &str) -> Option<f32> {
     match world
         .resource_mut::<RoundScript>()
         .object_field(actor, name)
@@ -2439,6 +2501,8 @@ const STEP_MAXS: [f32; 3] = [15.0, 15.0, 72.0];
 const STEP_DROP: f32 = 72.0;
 const STEP_BLOCKED_SQ: f32 = 225.0;
 const STEP_MIN_FRACTION: f32 = 0.0001;
+/// The contents the dodge's step trace adds to the actor's clipmask.
+const DODGE_MASK_EXTRA: u32 = 0x4;
 /// The nearest-node search: within 192 across, and (in zombie mode) from 50
 /// below (`zombiemode_path_minz_bias`) 64 up; a node's box, and the thin box
 /// traced to it.
@@ -2474,17 +2538,7 @@ struct LookaheadProbe<'w> {
 
 impl Probe for LookaheadProbe<'_> {
     fn clear(&mut self, from: [f32; 3], to: [f32; 3], dodge: Option<u16>) -> bool {
-        let mut mask = MASK_PATH;
-        if let Some(entnum) = dodge {
-            if let Some(other) = actor_by_entnum(self.world, entnum) {
-                if dodge_actor_blocks(self.world, other, from, to) {
-                    return false;
-                }
-            } else {
-                mask |= crate::world::CONTENTS_BODY;
-            }
-        }
-        step_trace(self.world, self.actor, from, to, mask)
+        lookahead_clear(self.world, self.actor, from, to, dodge)
     }
 
     fn linked(&mut self, node: u16) -> bool {
@@ -2492,8 +2546,30 @@ impl Probe for LookaheadProbe<'_> {
     }
 }
 
+/// The lookahead trace: the step trace with the path mask, and the entity
+/// the path dodges (an actor's box alone, or a player's body).
+pub(crate) fn lookahead_clear(
+    world: &mut World,
+    actor: u64,
+    from: [f32; 3],
+    to: [f32; 3],
+    dodge: Option<u16>,
+) -> bool {
+    let mut mask = MASK_PATH;
+    if let Some(entnum) = dodge {
+        if let Some(other) = actor_by_entnum(world, entnum) {
+            if dodge_actor_blocks(world, other, from, to) {
+                return false;
+            }
+        } else {
+            mask |= crate::world::CONTENTS_BODY;
+        }
+    }
+    step_trace(world, actor, from, to, mask)
+}
+
 /// Whether a node has a link standing.
-fn node_linked(world: &mut World, node: u16) -> bool {
+pub(crate) fn node_linked(world: &mut World, node: u16) -> bool {
     let Some(paths) = FrameWorld::from_world(world).actor_paths() else {
         return false;
     };
@@ -2504,7 +2580,7 @@ fn node_linked(world: &mut World, node: u16) -> bool {
 }
 
 /// The live actor with this entity number.
-fn actor_by_entnum(world: &World, entnum: u16) -> Option<u64> {
+pub(crate) fn actor_by_entnum(world: &World, entnum: u16) -> Option<u64> {
     let runtime = world.resource::<RoundScript>();
     runtime.actor_moves.keys().copied().find(|&id| {
         runtime
@@ -2516,7 +2592,12 @@ fn actor_by_entnum(world: &World, entnum: u16) -> Option<u64> {
 
 /// The lookahead trace against a dodged actor alone: its box swept from
 /// `from` to `to` meets the actor's.
-fn dodge_actor_blocks(world: &mut World, other: u64, from: [f32; 3], to: [f32; 3]) -> bool {
+pub(crate) fn dodge_actor_blocks(
+    world: &mut World,
+    other: u64,
+    from: [f32; 3],
+    to: [f32; 3],
+) -> bool {
     let Some(at) = as_vector(super::players::entity_field(world, other, "origin")) else {
         return false;
     };
@@ -2601,13 +2682,46 @@ fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
 /// then swept again from a step above), unless it is a wall within 15 of
 /// the start, a player, or the ground there is too steep. Through, the box
 /// drops to the ground, which must lie within 72 of `to`'s height.
-fn step_trace(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], mut mask: u32) -> bool {
+fn step_trace(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], mask: u32) -> bool {
+    step_trace_out(world, actor, from, to, mask, false).0
+}
+
+/// The dodge's step trace with the actor's own clipmask: where it stopped
+/// along with whether it got through. `actors_met`: the mask meets actors
+/// (Black Ops' actor contents), so an actor in the way stops it unless it
+/// walks or waits on this one.
+pub(crate) fn dodge_step_trace(
+    world: &mut World,
+    actor: u64,
+    from: [f32; 3],
+    to: [f32; 3],
+    actors_met: bool,
+) -> (bool, [f32; 3]) {
+    let mask = world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map_or(MASK_ACTOR_SOLID, actor_mask)
+        | DODGE_MASK_EXTRA;
+    step_trace_out(world, actor, from, to, mask, actors_met)
+}
+
+/// The step trace, answering also where the box stopped (on the ground,
+/// a step up, when it got through).
+fn step_trace_out(
+    world: &mut World,
+    actor: u64,
+    from: [f32; 3],
+    to: [f32; 3],
+    mut mask: u32,
+    actors_met: bool,
+) -> (bool, [f32; 3]) {
     let mut s = from;
     let mut e = [to[0], to[1], from[2]];
     let mut tr = clip_trace(world, s, e, STEP_MINS, STEP_MAXS, mask);
     let mut out = lerp(s, e, tr.fraction);
     if tr.fraction < STEP_MIN_FRACTION {
-        return false;
+        return (false, out);
     }
     loop {
         if !tr.allsolid && tr.fraction == 1.0 {
@@ -2616,14 +2730,19 @@ fn step_trace(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], mut m
         match tr.body {
             None => {
                 if (s[1] - out[1]).powi(2) + (s[0] - out[0]).powi(2) < STEP_BLOCKED_SQ {
-                    return false;
+                    return (false, out);
                 }
             }
             Some(entnum) => {
-                // A player stops it; actors are not met by these masks in
-                // Black Ops (their contents are not a body's).
-                if actor_by_entnum(world, entnum).is_none_or(|other| other == actor) {
-                    return false;
+                // A player stops it; an actor is met only by a mask with
+                // actors' contents in Black Ops, and then stops it unless
+                // it walks or waits on the tracing actor.
+                let Some(other) = actor_by_entnum(world, entnum).filter(|&other| other != actor)
+                else {
+                    return (false, out);
+                };
+                if actors_met && !walks_or_waits_on(world, other, actor) {
+                    return (false, out);
                 }
                 mask &= !crate::world::CONTENTS_BODY;
             }
@@ -2631,24 +2750,42 @@ fn step_trace(world: &mut World, actor: u64, from: [f32; 3], to: [f32; 3], mut m
         s = [out[0], out[1], s[2]];
         let down = [s[0], s[1], s[2] - STEP_DROP];
         tr = clip_trace(world, s, down, STEP_MINS, STEP_MAXS, mask);
-        let ground = lerp(s, down, tr.fraction);
-        if s[2] <= ground[2] && tr.fraction != 1.0 && tr.normal[2] < MIN_WALK_NORMAL {
-            return false;
+        out = lerp(s, down, tr.fraction);
+        if s[2] <= out[2] && tr.fraction != 1.0 && tr.normal[2] < MIN_WALK_NORMAL {
+            return (false, out);
         }
-        s = [ground[0], ground[1], ground[2] + STEP_MINS[2]];
+        s = [out[0], out[1], out[2] + STEP_MINS[2]];
         e[2] = s[2];
         tr = clip_trace(world, s, e, STEP_MINS, STEP_MAXS, mask);
         out = lerp(s, e, tr.fraction);
         if tr.fraction < STEP_MIN_FRACTION {
-            return false;
+            return (false, out);
         }
     }
     s = [out[0], out[1], s[2]];
     let down = [s[0], s[1], s[2] - STEP_DROP];
     let tr = clip_trace(world, s, down, STEP_MINS, STEP_MAXS, mask);
-    let ground = lerp(s, down, tr.fraction)[2];
-    (ground < s[2] || tr.fraction == 1.0 || tr.normal[2] >= MIN_WALK_NORMAL)
-        && (ground + STEP_MINS[2] - to[2]).abs() < STEP_DROP
+    out = lerp(s, down, tr.fraction);
+    if out[2] < s[2] || tr.fraction == 1.0 || tr.normal[2] >= MIN_WALK_NORMAL {
+        out[2] += STEP_MINS[2];
+        if (out[2] - to[2]).abs() < STEP_DROP {
+            return (true, out);
+        }
+    }
+    (false, out)
+}
+
+/// An actor a step trace passes: it walks a path in the normal movement
+/// mode, or the follow chain it is in is headed by `tracer`.
+fn walks_or_waits_on(world: &World, other: u64, tracer: u64) -> bool {
+    let walking = super::actor_brain::movemode(world, other) != 0;
+    world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&other)
+        .is_some_and(|movement| {
+            (movement.anim_mode == AnimMode::Normal && walking) || movement.chain == Some(tracer)
+        })
 }
 
 /// Black Ops' nearest node to `pos`: of the nodes within 192 across and the
@@ -3287,14 +3424,16 @@ pub(crate) fn clear_path(world: &mut World, actor: u64) {
     }
 }
 
-/// Whether the actor's path run (`stop_soon`) is to end: the path's end
-/// ease ends within 200 ms.
-pub(crate) fn ends_soon(world: &World, actor: u64, now: i64) -> bool {
+/// Whether the actor's path move (`stop_soon`) is to end: the path's end
+/// ease ends within `within` ms.
+pub(crate) fn ends_soon(world: &World, actor: u64, now: i64, within: i64) -> bool {
     world
         .resource::<RoundScript>()
         .actor_moves
         .get(&actor)
-        .is_some_and(|movement| movement.path.end_time != 0 && movement.path.end_time - now < 201)
+        .is_some_and(|movement| {
+            movement.path.end_time != 0 && movement.path.end_time - now < within
+        })
 }
 
 fn goal_radius(world: &mut World, actor: u64) -> f32 {
@@ -4076,7 +4215,7 @@ fn walk(
     result
 }
 
-fn entity_number(world: &World, actor: u64) -> u16 {
+pub(crate) fn entity_number(world: &World, actor: u64) -> u16 {
     world
         .resource::<RoundScript>()
         .entities
@@ -4180,8 +4319,9 @@ pub(crate) fn has_blocker(world: &World, actor: u64) -> bool {
 
 /// The blocker's lifetime, at the start of each think: one no longer alive
 /// is let go; one beyond 37.5 flat is let go (and lets go of this actor if
-/// it held it); one 30 or more away and behind the actor along its path is
-/// let go.
+/// it held it); one waiting behind this actor in a follow chain is let go;
+/// outside a follow chain, one 30 or more away and behind the actor along
+/// its path is let go.
 pub(crate) fn update_blocker(world: &mut World, actor: u64) {
     let Some(blocker) = blocker_of(world, actor) else {
         return;
@@ -4207,10 +4347,23 @@ pub(crate) fn update_blocker(world: &mut World, actor: u64) {
         set_blocker(world, actor, None);
         return;
     }
+    let entnum = entity_number(world, actor);
+    if world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&blocker)
+        .is_some_and(|other| other.chain_ent == Some(entnum))
+    {
+        set_blocker(world, actor, None);
+        return;
+    }
     let ahead = {
         let runtime = world.resource::<RoundScript>();
         runtime.actor_moves.get(&actor).and_then(|movement| {
-            if movement.anim_mode != AnimMode::Normal || !movement.has_path() {
+            if movement.anim_mode != AnimMode::Normal
+                || !movement.has_path()
+                || movement.chain.is_some()
+            {
                 return None;
             }
             let look = movement.path.look_dir;
@@ -4792,7 +4945,7 @@ fn angle_delta(a: f32, b: f32) -> f32 {
 const DOG_TURN_MIN_GOAL_DIST: f32 = 40.0;
 const DOG_TURN90_ANGLE: f32 = 70.0;
 
-fn dvar_f32(world: &World, name: &str, default: f32) -> f32 {
+pub(crate) fn dvar_f32(world: &World, name: &str, default: f32) -> f32 {
     world
         .resource::<crate::script::MatchScript>()
         .dvars
