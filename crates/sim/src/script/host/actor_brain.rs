@@ -30,10 +30,10 @@ pub(crate) const ANIM_CUSTOM: AiState = 10;
 pub(crate) const NEGOTIATION: AiState = 11;
 
 /// The levels of the state stack.
-const STACK_LEVELS: usize = 6;
+pub(crate) const STACK_LEVELS: usize = 6;
 
 /// Exposed's substates: fighting an enemy, and having none.
-const EXPOSED_COMBAT: i32 = 100;
+pub(crate) const EXPOSED_COMBAT: i32 = 100;
 const EXPOSED_NONCOMBAT: i32 = 101;
 /// Moving to see a lost enemy again (`reacquirestep`, `reacquiremove`).
 const EXPOSED_REACQUIRE: i32 = 102;
@@ -417,8 +417,12 @@ pub(crate) fn think(world: &mut World) {
         .copied()
         .collect();
     super::actor_nav::install_clip(world);
+    let now = super::players::now_ms(world);
     for actor in actors {
         super::actor_nav::clip_actor(world, actor);
+        with_movement(world, actor, |movement| {
+            movement.next_think = now + i64::from(crate::MATCH_TICK_MS);
+        });
         super::actor_nav::update_blocker(world, actor);
         let mut result = THINK_DONE;
         for round in 0..THINK_LIMIT {
@@ -749,6 +753,15 @@ pub(crate) fn movemode(world: &World, actor: u64) -> u8 {
 }
 
 /// Whether the actor is a hellhound.
+/// The AI's state stack as the move decision reads it: the depth, the
+/// state there, and each level's substate.
+pub(crate) fn stack_view(
+    world: &World,
+    actor: u64,
+) -> Option<(usize, AiState, [i32; STACK_LEVELS])> {
+    brain(world, actor).map(|brain| (brain.depth, brain.top(), brain.substates))
+}
+
 pub(crate) fn is_dog(world: &World, actor: u64) -> bool {
     brain(world, actor).is_some_and(|brain| brain.dog)
 }
@@ -793,13 +806,17 @@ fn start_stop(world: &mut World, actor: u64) {
 /// The move animscript along the path, running or walking; the stop
 /// animscript with no path (or with `stop_soon` right before the path's
 /// end). An actor not yet moving starts from stop and the normal movement
-/// mode.
-fn start_move(world: &mut World, actor: u64, run: bool) {
+/// mode. Black Ops' path step decides first whether the actor moves on,
+/// stops behind what is in its way, or walks; `wide` and `goal_check` are
+/// the step's (the actor's `interval` for its ranges, an actor at its goal
+/// counting as arrived).
+fn start_move(world: &mut World, actor: u64, run: bool, (wide, goal_check): (bool, bool)) {
     let zonly = world
         .resource::<RoundScript>()
         .actor_moves
         .get(&actor)
         .is_some_and(|movement| movement.anim_mode == AnimMode::ZOnlyPhysics);
+    let mut step = super::actor_dodge::MOVE_ON;
     if !zonly {
         let moving = brain(world, actor).is_some_and(|brain| brain.movemode != MOVE_STOP)
             && world
@@ -818,8 +835,9 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
                 }
             });
         }
+        step = super::actor_dodge::path_step(world, actor, wide, goal_check);
     }
-    if !has_path(world, actor) {
+    if !has_path(world, actor) || step == super::actor_dodge::STOP {
         start_stop(world, actor);
         return;
     }
@@ -827,10 +845,12 @@ fn start_move(world: &mut World, actor: u64, run: bool) {
         start_blocked(world, actor);
         return;
     }
-    // Running, the path's end ease about to end stops it.
-    let stop_soon = run && {
+    // The path's end ease about to end stops it (running, within 200 ms;
+    // walking, within 199).
+    let run = run && step != super::actor_dodge::WALK;
+    let stop_soon = {
         let now = super::players::now_ms(world);
-        super::actor_nav::ends_soon(world, actor, now)
+        super::actor_nav::ends_soon(world, actor, now, if run { 201 } else { 200 })
     };
     if stop_soon {
         set_anim_script(
@@ -1306,7 +1326,7 @@ fn exposed_think(world: &mut World, actor: u64) -> u8 {
             }
             if has_path(world, actor) && safe_to_change_script(world, actor) {
                 set_code_orient(world, actor, Orient::EnemyOrMotion);
-                start_move(world, actor, true);
+                start_move(world, actor, true, (true, true));
             } else {
                 start_combat(world, actor);
                 set_code_orient(world, actor, Orient::Enemy);
@@ -1315,7 +1335,7 @@ fn exposed_think(world: &mut World, actor: u64) -> u8 {
         Some(EXPOSED_NONCOMBAT) => noncombat(world, actor),
         Some(EXPOSED_REACQUIRE) => {
             set_code_orient(world, actor, Orient::Sidestep);
-            start_move(world, actor, true);
+            start_move(world, actor, true, (false, true));
         }
         _ => {}
     }
@@ -1467,7 +1487,7 @@ fn noncombat(world: &mut World, actor: u64) {
                 _ => true,
             }
         };
-        start_move(world, actor, run);
+        start_move(world, actor, run, (true, true));
         let orient = if in_goal(world, actor) {
             Orient::EnemyOrMotion
         } else {
@@ -1500,7 +1520,7 @@ fn noncombat(world: &mut World, actor: u64) {
 }
 
 /// Whether the actor stands at its goal, and its path (if any) ends there.
-fn in_goal(world: &mut World, actor: u64) -> bool {
+pub(crate) fn in_goal(world: &mut World, actor: u64) -> bool {
     let Some(goal) = super::actor_nav::goal_point(world, actor) else {
         return false;
     };
@@ -1643,7 +1663,7 @@ fn dog_exposed_think(world: &mut World, actor: u64) -> u8 {
             );
         } else if !turn_locked {
             set_code_orient(world, actor, Orient::Motion);
-            start_move(world, actor, true);
+            start_move(world, actor, true, (false, false));
         }
     }
     begin_negotiation(world, actor);

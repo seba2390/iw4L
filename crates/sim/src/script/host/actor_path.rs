@@ -62,6 +62,10 @@ const NON_CODE_MOVE_MIN_SQ: f32 = 9.0;
 /// The corner a two-node script lookahead turns into three.
 const CORNER_STRAIGHT: f32 = 0.866;
 const CORNER_TURN: f32 = 0.173;
+/// A dodge rejoins no nearer than this (squared) to the actor, and backs
+/// its point ahead off by this much when it rejoins at the lookahead.
+const DODGE_NEAR_SQ: f32 = 1406.25;
+const DODGE_BACK_OFF: f32 = 15.0;
 
 /// A point of the path: where it is, the flat direction and length of the
 /// segment that ends at it (from the next point toward this one), and the
@@ -1126,6 +1130,246 @@ impl ActorPath {
         }
         false
     }
+
+    /// How many points a dodge put before the actor (below zero while it
+    /// keeps clear of the entity it bumped into).
+    pub(crate) fn dodge_count(&self) -> i32 {
+        self.dodge_count
+    }
+
+    pub(crate) fn set_dodge_count(&mut self, count: i32) {
+        self.dodge_count = count;
+    }
+
+    /// The lookahead amount ran out.
+    pub(crate) fn amount_spent(&self) -> bool {
+        self.amount <= MIN_AMOUNT
+    }
+
+    /// How far the lookahead lies from the next point along the path.
+    pub(crate) fn to_next(&self) -> f32 {
+        self.to_next
+    }
+
+    /// The point a dodge rejoins the path at: from the lookahead's next
+    /// point (or the first before the dodge's points) toward the path's
+    /// end, the first as far from `origin` as `reach_sq`; below the first
+    /// traversal's begin when none is.
+    pub(crate) fn rejoin_index(&self, origin: [f32; 3], reach_sq: f32) -> isize {
+        let last = self.len as isize - 1;
+        let mut i = (last - self.dodge_count.max(0) as isize).min(self.next as isize);
+        let far = |p: [f32; 3]| (origin[1] - p[1]).powi(2) + (origin[0] - p[0]).powi(2) >= reach_sq;
+        if i == last {
+            if far(self.curr) {
+                return i;
+            }
+            i -= 1;
+        }
+        while i >= self.negotiation_start as isize {
+            if far(self.pts[i as usize].origin) {
+                return i;
+            }
+            i -= 1;
+        }
+        i
+    }
+
+    /// A point a little way along the lookahead (60 at most), unless the
+    /// path is a single point or the lookahead reached its end.
+    pub(crate) fn look_point(&self, origin: [f32; 3]) -> Option<[f32; 2]> {
+        if self.len <= 1 || self.flags & AT_END != 0 {
+            return None;
+        }
+        let reach = if FORWARD_REACH - self.look_dist < 0.0 {
+            FORWARD_REACH
+        } else {
+            self.look_dist
+        };
+        Some([
+            self.look_dir[0] * reach + origin[0],
+            self.look_dir[1] * reach + origin[1],
+        ])
+    }
+
+    /// Room for `after` more points past `index`: the points nearest the
+    /// end go when the path would grow past its 32.
+    fn room(&mut self, index: &mut usize, after: usize) {
+        let over = *index as isize + after as isize - (MAX_POINTS as isize - 1);
+        if over > 0 {
+            self.drop_end(over as usize);
+            *index -= over as usize;
+        }
+    }
+
+    /// Black Ops' dodge path around a body in the way: the actor's box is
+    /// swept from `origin` toward `beside` (behind the body, off its side)
+    /// and on toward `past` (ahead of it); the path then runs from where
+    /// those sweeps stopped back onto itself at point `index`, or, failing
+    /// that, a little nearer the actor. With `fallback` a path that cannot
+    /// rejoin there rejoins at the lookahead instead. Answers whether the
+    /// path was changed.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn dodge_around(
+        &mut self,
+        origin: [f32; 3],
+        beside: [f32; 3],
+        past: [f32; 3],
+        index: isize,
+        fallback: bool,
+        now: i64,
+        probe: &mut dyn DodgeProbe,
+    ) -> bool {
+        let a = probe.sweep(origin, beside).1;
+        let mut b = probe.sweep(a, past).1;
+        let mut join = None;
+        if index >= self.negotiation_start as isize {
+            let index = index as usize;
+            if probe.sweep(b, self.pts[index].origin).0 == Sweep::Clear {
+                join = Some(index);
+            } else {
+                let limit = self.len as isize - 2 - self.dodge_count.max(0) as isize;
+                if (index as isize) < limit {
+                    let mut j = index;
+                    loop {
+                        j += 1;
+                        let q = self.pts[j + 1].origin;
+                        if (origin[1] - q[1]).powi(2) + (origin[0] - q[0]).powi(2) < DODGE_NEAR_SQ
+                            || (j + 1) as isize >= limit
+                        {
+                            break;
+                        }
+                    }
+                    if probe.sweep(b, self.pts[j].origin).0 == Sweep::Clear {
+                        join = Some(j);
+                    }
+                }
+            }
+        }
+        let k = match join {
+            Some(mut j) => {
+                self.room(&mut j, 2);
+                j
+            }
+            None => {
+                if !fallback {
+                    return false;
+                }
+                let d = [b[0] - a[0], b[1] - a[1]];
+                let len = flat_len(d);
+                if DODGE_BACK_OFF >= len {
+                    b = a;
+                } else {
+                    let scale = 1.0 / safe(len);
+                    b[0] -= d[0] * scale * DODGE_BACK_OFF;
+                    b[1] -= d[1] * scale * DODGE_BACK_OFF;
+                }
+                let mut i = self.next;
+                if self.pts.len() < i + 2 {
+                    self.pts.resize(i + 2, Point::default());
+                }
+                let mut look = [
+                    self.look_dir[0] * self.look_dist + origin[0],
+                    self.look_dir[1] * self.look_dist + origin[1],
+                    self.pts[i].origin[2],
+                ];
+                match probe.sweep(b, look).0 {
+                    Sweep::Blocked => return false,
+                    Sweep::Body => {
+                        let t = self.look_dir[1] * (b[1] - origin[1])
+                            + self.look_dir[0] * (b[0] - origin[0])
+                            + DODGE_BACK_OFF;
+                        look[0] = t * self.look_dir[0] + origin[0];
+                        look[1] = self.look_dir[1] * t + origin[1];
+                        if probe.sweep(b, look).0 != Sweep::Clear
+                            || probe.sweep(look, self.pts[i].origin).0 != Sweep::Clear
+                        {
+                            return false;
+                        }
+                        self.room(&mut i, 3);
+                        let p = &mut self.pts[i];
+                        let d = [p.origin[0] - look[0], p.origin[1] - look[1]];
+                        let len = flat_len(d);
+                        p.dir = [d[0] / len, d[1] / len];
+                        p.len = len;
+                        self.pts[i + 1] = Point {
+                            origin: look,
+                            node: None,
+                            ..Point::default()
+                        };
+                    }
+                    Sweep::Clear => {
+                        if probe.sweep(look, self.pts[i].origin).0 != Sweep::Clear {
+                            return false;
+                        }
+                        self.room(&mut i, 3);
+                        let p = self.pts[i];
+                        let to_next = self.to_next;
+                        let q = &mut self.pts[i + 1];
+                        q.origin = [
+                            p.origin[0] - p.dir[0] * to_next,
+                            p.origin[1] - p.dir[1] * to_next,
+                            p.origin[2] - (p.origin[2] - q.origin[2]) / p.len * to_next,
+                        ];
+                        q.node = None;
+                        self.pts[i].len = to_next;
+                        self.next = i + 1;
+                        self.to_next = 0.0;
+                    }
+                }
+                i + 1
+            }
+        };
+        // The way from the rejoin point back to `past`'s stop, then to
+        // `beside`'s, which the actor heads from.
+        if self.pts.len() < k + 3 {
+            self.pts.resize(k + 3, Point::default());
+        }
+        let mut k = k;
+        self.dodge_count = 0;
+        for at in [b, a] {
+            let p = &mut self.pts[k];
+            if p.origin[0] == at[0] && p.origin[1] == at[1] {
+                continue;
+            }
+            let d = [p.origin[0] - at[0], p.origin[1] - at[1]];
+            let len = flat_len(d);
+            p.dir = [d[0] / len, d[1] / len];
+            p.len = len;
+            k += 1;
+            self.dodge_count += 1;
+            self.pts[k] = Point {
+                origin: at,
+                node: None,
+                ..Point::default()
+            };
+        }
+        self.curr_len = self.pts[k.saturating_sub(1)].len;
+        self.curr = a;
+        self.pts[k].len = 0.0;
+        self.pts[k].dir = [0.0; 2];
+        self.flags &= !(AT_END | GREW | LOOK_AT_END | GREW_TWICE);
+        self.len = k + 1;
+        self.orig_len = k + 1;
+        self.pts.truncate(k + 1);
+        self.keep_similar(origin, now, probe);
+        true
+    }
+}
+
+/// What a dodge sweep met.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Sweep {
+    Clear,
+    Blocked,
+    /// One of the bodies the dodge looks out for, before anything else.
+    Body,
+}
+
+/// What a dodge asks of the world beyond the lookahead's trace.
+pub(crate) trait DodgeProbe: Probe {
+    /// The actor's step sweep from `from` toward `to`, and where it
+    /// stopped (`from` when a watched body is in the way).
+    fn sweep(&mut self, from: [f32; 3], to: [f32; 3]) -> (Sweep, [f32; 3]);
 }
 
 /// Black Ops' facing smoothing: the last ten flat steer directions,
