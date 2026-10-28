@@ -122,36 +122,71 @@ impl MixBuses {
     }
 }
 
+/// The output's peak limiter. It hears each frame `LIMITER_LOOKAHEAD`
+/// frames before it plays it and eases the gain down to what that frame
+/// needs by the time it plays, so a loud transient (a sprint's footsteps
+/// under Black Ops' master chain go well past full scale) is turned down
+/// smoothly instead of the gain jumping on the peak itself, which crackles.
 pub(crate) struct MasterLimiter {
+    delay: [[f32; 2]; LIMITER_LOOKAHEAD],
+    at: usize,
     gain: f32,
+    /// Where the gain is easing down to, and in how many frames.
+    target: f32,
+    ramp: usize,
+    /// Frames until the quietest frame still in the delay has played.
+    hold: usize,
 }
 
 impl Default for MasterLimiter {
     fn default() -> Self {
-        Self { gain: 1.0 }
+        Self {
+            delay: [[0.0; 2]; LIMITER_LOOKAHEAD],
+            at: 0,
+            gain: 1.0,
+            target: 1.0,
+            ramp: 0,
+            hold: 0,
+        }
     }
 }
 
 const LIMITER_CEILING: f32 = 0.95;
 const LIMITER_RELEASE_S: f32 = 0.08;
+/// 5 ms.
+const LIMITER_LOOKAHEAD: usize = SAMPLE_RATE as usize / 200;
 
 impl MasterLimiter {
     pub(crate) fn apply(&mut self, output: &mut [[f32; 2]; QUANTUM]) {
         let release = coefficient(LIMITER_RELEASE_S);
         for frame in output {
             let peak = frame[0].abs().max(frame[1].abs());
-            let target = if peak > LIMITER_CEILING {
-                LIMITER_CEILING / peak
-            } else {
-                1.0
-            };
-            self.gain = if target < self.gain {
-                target
-            } else {
-                self.gain + (target - self.gain) * release
-            };
-            frame[0] *= self.gain;
-            frame[1] *= self.gain;
+            if peak > LIMITER_CEILING {
+                let need = LIMITER_CEILING / peak;
+                // A lower ramp from here reaches each earlier frame's need
+                // in time as well.
+                let planned = if self.ramp > 0 {
+                    self.target
+                } else {
+                    self.gain
+                };
+                if need < planned {
+                    self.target = need;
+                    self.ramp = LIMITER_LOOKAHEAD;
+                }
+                self.hold = LIMITER_LOOKAHEAD + 1;
+            }
+            if self.ramp > 0 {
+                self.gain += (self.target - self.gain) / self.ramp as f32;
+                self.ramp -= 1;
+            } else if self.hold == 0 {
+                self.gain += (1.0 - self.gain) * release;
+            }
+            self.hold = self.hold.saturating_sub(1);
+            let delayed = std::mem::replace(&mut self.delay[self.at], *frame);
+            self.at = (self.at + 1) % LIMITER_LOOKAHEAD;
+            frame[0] = delayed[0] * self.gain;
+            frame[1] = delayed[1] * self.gain;
         }
     }
 }
