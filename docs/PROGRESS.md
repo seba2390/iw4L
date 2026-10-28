@@ -194,6 +194,7 @@ Only the top-level items count.
   - [ ] Moon (`t5:zombie_moon`): offered by the library, not tried.
 - [ ] Co-op: friends join, revive one another and play to game over.
   - [x] A lobby host picks Kino; a joined player spawns at its co-op spawns, gets points and sees the zombies.
+  - [x] A hosted game is Black Ops' online private match: `wait_network_frame` paces on the clients' snapshot acknowledgements, and the game over exits to the lobby (#445).
   - [ ] Revive, bleeding out, spectating; no two-machine test.
   - [ ] Other players' footsteps reach the client scripts (#458).
   - [ ] Actor state reaches clients through the shared entity path; its cost with many zombies is not measured.

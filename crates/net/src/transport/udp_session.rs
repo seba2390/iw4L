@@ -691,7 +691,16 @@ impl UdpAuthorityHub {
                     }
                     if let Some(peer) = self.replication.get_mut(&header.connection) {
                         peer.in_ack = header.sequence;
-                        let _ = peer.baseline.ack(snapshot_seq);
+                        let acked = peer.baseline.ack(snapshot_seq);
+                        // The game's scripts read which snapshot each client
+                        // has acknowledged (Black Ops' `wait_network_frame`).
+                        if let (Some(tick), Some(client), Some(world)) = (
+                            acked,
+                            self.connections.client_of(header.connection),
+                            account_world.as_deref_mut(),
+                        ) {
+                            world.note_snapshot_ack(ClientId(client), tick);
+                        }
                     }
                 }
             }

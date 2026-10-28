@@ -265,6 +265,7 @@ pub fn apply_prepared_match(
             gametype_settings,
             script_dvars,
             engine_dvars,
+            hosted_dvars,
             account_defaults,
             script_sound_aliases,
             script_sound_playback_ms,
@@ -758,6 +759,24 @@ pub fn apply_prepared_match(
         for (name, value) in &script_dvars {
             sim.set_gsc_dvar(name, value);
         }
+        // A match hosted for other players (a lobby or a dedicated server)
+        // is the game's hosted session, unless `IW4L_SCRIPT_DVARS` says
+        // otherwise.
+        let hosted = *role == frame::RuntimeRole::Dedicated
+            || bridge.as_ref().is_some_and(|bridge| {
+                matches!(bridge.state(), net::MasterBridgeState::Hosting { .. })
+            });
+        if hosted {
+            let overrides = script_dvar_overrides();
+            for (name, value) in &hosted_dvars {
+                if !overrides
+                    .iter()
+                    .any(|(set, _)| set.eq_ignore_ascii_case(name))
+                {
+                    sim.set_gsc_dvar(name, value);
+                }
+            }
+        }
         sim.set_gametype_settings(gametype_settings);
         for name in &engine_dvars {
             sim.publish_gsc_dvar(name);
@@ -1015,6 +1034,8 @@ struct MatchInstallPlan {
     script_dvars: Vec<(String, String)>,
     /// The game's own engine dvars, which its clients read too.
     engine_dvars: Vec<String>,
+    /// What a match hosted for other players sets over them.
+    hosted_dvars: Vec<(String, String)>,
     account_defaults: Option<sim::PlayerDataDefaults>,
     script_sound_aliases: Option<std::collections::BTreeMap<String, Option<bool>>>,
     script_sound_playback_ms: std::collections::BTreeMap<String, i32>,
@@ -1605,6 +1626,11 @@ fn preflight_match_install(
         .iter()
         .map(|(name, _)| (*name).to_owned())
         .collect();
+    let hosted_dvars = game_scripts
+        .hosted_dvars(gametype)
+        .iter()
+        .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+        .collect();
     for (name, value) in rules.map_or(&[][..], |rules| &rules.0) {
         match script_dvars
             .iter_mut()
@@ -1711,6 +1737,7 @@ fn preflight_match_install(
         gametype_settings,
         script_dvars,
         engine_dvars,
+        hosted_dvars,
         account_defaults,
         objective_weapons,
         kind,
