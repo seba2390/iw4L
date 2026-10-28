@@ -226,19 +226,26 @@ pub(crate) fn consume_menu_binding(
     view.revision = view.revision.wrapping_add(1);
 }
 
+/// A command's binds as the menus show them: its keys, and its pad buttons
+/// while a gamepad is connected.
 pub(crate) fn sync_binding_view(
     binds: Res<KeyBinds>,
     mut view: ResMut<ui::BindingView>,
     mut dvars: ResMut<frame::UiMenuDvars>,
+    gamepads: Query<(), With<bevy::input::gamepad::Gamepad>>,
+    mut pad_shown: Local<Option<bool>>,
 ) {
-    if !binds.is_changed() {
+    let pad = !gamepads.is_empty();
+    if !binds.is_changed() && *pad_shown == Some(pad) {
         return;
     }
+    *pad_shown = Some(pad);
     let mut chords = std::collections::BTreeMap::<u32, (Vec<String>, Vec<String>)>::new();
     for (button, id) in binds.iter() {
         let (keys, buttons) = chords.entry(id).or_default();
         match button {
-            BindButton::Pad(pad) => buttons.push(pad.icon_prompt().to_owned()),
+            BindButton::Pad(button) if pad => buttons.push(button.icon_prompt().to_owned()),
+            BindButton::Pad(_) => {}
             _ => keys.push(display_button(button)),
         }
     }

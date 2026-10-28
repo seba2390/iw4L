@@ -476,7 +476,7 @@ impl game_api::GameMenus for T5 {
 /// 3, `snd_menu_music` for 1, `snd_menu_voice` for 2. `snd_menu_cinematic`
 /// is the cinematics' (docs/fidelity/t5.md). `snd_menu_speaker_setup` and
 /// `snd_menu_listen_level` pick the sound driver's master preset.
-const MENU_DVARS: [game_api::MenuDvar; 16] = {
+const MENU_DVARS: [game_api::MenuDvar; 40] = {
     use game_api::{MenuDvar, MenuSetting};
     const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
         MenuDvar {
@@ -534,6 +534,46 @@ const MENU_DVARS: [game_api::MenuDvar; 16] = {
         // (archived booleans, registered 1) are on.
         shown("zombiefive_discovered", "1"),
         shown("zombietron_discovered", "1"),
+        // The graphics options edit `ui_` copies, which `ui/options_graphics.cfg`
+        // fills from these on opening and `ui/options_graphics_set.cfg`
+        // writes back on Apply.
+        MenuDvar {
+            name: "r_fullscreen",
+            default: "1",
+            setting: Some(MenuSetting::Fullscreen),
+        },
+        MenuDvar {
+            name: "r_vsync",
+            default: "1",
+            setting: Some(MenuSetting::VerticalSync),
+        },
+        shown("r_aaSamples", "1"),
+        shown("r_aspectRatio", "auto"),
+        shown("r_picmip", "0"),
+        shown("r_picmip_bump", "0"),
+        shown("r_picmip_spec", "0"),
+        shown("r_picmip_manual", "0"),
+        shown("r_shaderWarming", "0"),
+        shown("r_texFilterMipMode", "Unchanged"),
+        shown("sm_enable", "1"),
+        shown("fx_marks", "1"),
+        shown("ai_corpseCount", "5"),
+        shown("snd_losOcclusion", "1"),
+        shown("cl_voice", "1"),
+        shown("cg_subtitles", "1"),
+        shown("monkeytoy", "1"),
+        shown("hud_enable", "1"),
+        // The look options' invert toggle, which sets `m_pitch`'s sign.
+        MenuDvar {
+            name: "ui_mousePitch",
+            default: "0",
+            setting: Some(MenuSetting::InvertMouse),
+        },
+        shown("gpad_enabled", "0"),
+        shown("gpad_buttonsConfig", "buttons_default"),
+        shown("gpad_sticksConfig", "thumbstick_default"),
+        shown("input_invertPitch", "0"),
+        shown("input_viewSensitivity", "1"),
     ]
 };
 
