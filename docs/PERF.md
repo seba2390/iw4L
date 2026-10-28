@@ -44,3 +44,25 @@ which writes one `iw4l-artifacts/dumps/*.txt`; it contains no history or timing.
 Per-item overlay/draw spans are forbidden. `IW4L_PERF_FOCUS` admits one owner;
 without it there is no owner census. Semantic events stay rare (`player_tick`,
 death, feel, …).
+
+## Without a trace: the host's ten-second summaries
+
+A host logs, every ten seconds, each peer's snapshots (`snapshots to …`:
+sent, held by the 25 kB/s rate, bytes per second, average and largest
+packet, entities in the last one) and its authority steps (`authority
+steps: …`: average and longest step against the 50 ms tick). Black Ops
+Zombies co-op, Kino round 5 (`IW4L_SCRIPT_DVARS='set mutator_quickStart 1'`),
+host and one joined client both headless on one M1 Pro (16 GiB), over the
+first minute as zombies come in (#257):
+
+| window | snapshots (held) | bytes/s | average / largest | entities | step avg / longest |
+|---|---|---|---|---|---|
+| 0–10 s | 196 (1) | 4351 | 221 / 2403 | 506 | 4.6 / 231 ms |
+| 10–20 s | 200 (0) | 8386 | 419 / 1607 | 512 | 4.4 / 6 ms |
+| 20–30 s | 200 (0) | 12835 | 641 / 1994 | 515 | 21.7 / 75 ms |
+| 30–40 s | 199 (1) | 16988 | 853 / 2432 | 520 | 40.7 / 96 ms |
+| 40–50 s | 189 (11) | 20451 | 1082 / 3254 | 524 | 47.3 / 122 ms |
+| 50–60 s | 200 (0) | 13756 | 687 / 1260 | 524 | 44.6 / 83 ms |
+
+With a crowd the snapshots near the 25 kB/s rate and the host's step nears
+its 50 ms tick (the joined client runs on the same machine).

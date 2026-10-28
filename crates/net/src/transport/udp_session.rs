@@ -210,6 +210,52 @@ struct PeerReplicationState {
     account: Option<PeerAccount>,
     pace: SnapshotPace,
     held_ack: Option<(ClientId, CmdSeq)>,
+    sent: SendWindow,
+}
+
+/// How many snapshots a peer was sent over a window, logged at its end.
+#[derive(Debug, Default)]
+struct SendWindow {
+    started: Option<Tick>,
+    snapshots: u32,
+    paced_out: u32,
+    bytes: u64,
+    largest: usize,
+    entities: usize,
+}
+
+/// The window the snapshot summary covers, in authority ticks (10 s).
+const SEND_WINDOW_TICKS: u32 = (10_000 / crate::authority::inbox::AUTHORITY_MS) as u32;
+
+impl SendWindow {
+    /// Starts the window at `tick`, or logs it and starts the next one once
+    /// it has run its length.
+    fn roll(&mut self, tick: Tick, target: MemberId) {
+        let Some(started) = self.started else {
+            self.started = Some(tick);
+            return;
+        };
+        if tick.0.saturating_sub(started.0) < SEND_WINDOW_TICKS {
+            return;
+        }
+        let seconds = f64::from(tick.0 - started.0)
+            * f64::from(crate::authority::inbox::AUTHORITY_MS)
+            / 1000.0;
+        diag::info!(
+            Net,
+            "snapshots to {target:?}: {} in {seconds:.1}s ({} held by the rate), {:.0} bytes/s, average {} bytes, largest {} bytes, last carried {} entities",
+            self.snapshots,
+            self.paced_out,
+            self.bytes as f64 / seconds,
+            self.bytes / u64::from(self.snapshots.max(1)),
+            self.largest,
+            self.entities
+        );
+        *self = SendWindow {
+            started: Some(tick),
+            ..SendWindow::default()
+        };
+    }
 }
 
 const SNAPSHOT_RATE_BYTES_PER_SEC: i64 = 25_000;
@@ -287,6 +333,7 @@ impl PeerReplicationState {
             control_drops_sent: 0,
             account: None,
             pace: SnapshotPace::default(),
+            sent: SendWindow::default(),
             held_ack: None,
         }
     }
@@ -1033,7 +1080,9 @@ impl UdpAuthorityHub {
                 && !matches!(peer.admission, PeerAdmission::Committed { .. });
             let unacked =
                 (baseline_seq != 0).then(|| peer.next_snap_seq.wrapping_sub(baseline_seq));
+            peer.sent.roll(snapshot.tick, target);
             if !via_bootstrap && !peer.pace.ready(snapshot.tick, unacked) {
+                peer.sent.paced_out += 1;
                 continue;
             }
             let mut encoder = std::mem::take(&mut peer.encoder);
@@ -1179,6 +1228,10 @@ impl UdpAuthorityHub {
                 last_err = Some(e);
             } else if let Some(peer) = self.replication.get_mut(&conn) {
                 peer.pace.charge(bytes.len());
+                peer.sent.snapshots += 1;
+                peer.sent.bytes += bytes.len() as u64;
+                peer.sent.largest = peer.sent.largest.max(bytes.len());
+                peer.sent.entities = snapshot.meta.entities.len();
                 peer.sent_ticks.push_back(snapshot.tick);
                 while peer.sent_ticks.len() > 32 {
                     peer.sent_ticks.pop_front();
