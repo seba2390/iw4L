@@ -529,6 +529,14 @@ impl ExprHost for MenuHost<'_> {
     fn in_game(&self) -> Result<i32, ExprError> {
         Ok(i32::from(self.world.in_game))
     }
+    fn fullscreen_menu_open(&self) -> Result<i32, ExprError> {
+        let catalog = self.world.catalog.ok_or(ExprError::Host("menu catalog"))?;
+        Ok(i32::from(self.open.iter().any(|open| {
+            catalog
+                .get(&open.name)
+                .is_some_and(|def| def.fullscreen != 0)
+        })))
+    }
     fn weapon_lock(&self) -> Result<WeaponLockView, ExprError> {
         Err(ExprError::Host("weapon lock"))
     }

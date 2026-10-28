@@ -13,6 +13,7 @@ pub use menu::{
 
 pub fn register_ui_contracts(app: &mut App) {
     app.init_resource::<UiMenuDvars>()
+        .init_resource::<crate::CinematicInput>()
         .init_resource::<UnifiedFrontend>()
         .init_resource::<NativeGameMenu>()
         .init_resource::<MatchPause>()

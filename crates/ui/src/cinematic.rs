@@ -1,6 +1,6 @@
 //! A full-screen cinematic before a game's front end: decoded on a worker
-//! thread, shown at its own frame rate with its sound, and skipped by any key
-//! or mouse button from its first frame.
+//! thread, shown at its own frame rate with its sound over the front end's
+//! loading, and skipped by any key or mouse button from its first frame.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,29 +12,24 @@ use bevy::prelude::*;
 
 /// Decoded frames the worker may run ahead of the screen.
 const FRAMES_AHEAD: usize = 8;
+/// How long the cinematic plays before it says how to skip it.
+const SKIP_HINT_AFTER_SECS: f64 = 3.0;
 
-/// The launcher's cinematic: it asks for one with [`Cinematic::play`] and
-/// learns it is over from [`Cinematic::take_finished`].
+/// The launcher's cinematic, asked for with [`Cinematic::play`].
 #[derive(Resource, Default)]
 pub(crate) struct Cinematic {
     requested: Option<PathBuf>,
     playing: Option<Playing>,
-    finished: bool,
 }
 
 impl Cinematic {
     pub(crate) fn play(&mut self, path: PathBuf) {
         self.requested = Some(path);
-        self.finished = false;
     }
 
     /// Whether one is asked for or showing.
     pub(crate) fn active(&self) -> bool {
         self.requested.is_some() || self.playing.is_some()
-    }
-
-    pub(crate) fn take_finished(&mut self) -> bool {
-        std::mem::take(&mut self.finished)
     }
 }
 
@@ -59,6 +54,7 @@ struct Playing {
     image: Option<Handle<Image>>,
     root: Entity,
     picture: Entity,
+    hint: Entity,
     /// When the first frame showed.
     started: Option<Instant>,
     shown: usize,
@@ -120,7 +116,11 @@ fn decode(path: PathBuf, tx: std::sync::mpsc::SyncSender<Decoded>, stop: Arc<Ato
     }
 }
 
-fn start(mut cinematic: ResMut<Cinematic>, mut commands: Commands) {
+fn start(
+    mut cinematic: ResMut<Cinematic>,
+    mut commands: Commands,
+    font: Option<Res<crate::layers::GameUiFont>>,
+) {
     let Some(path) = cinematic.requested.take() else {
         return;
     };
@@ -133,10 +133,10 @@ fn start(mut cinematic: ResMut<Cinematic>, mut commands: Commands) {
         .spawn(move || decode(path, tx, worker_stop))
         .is_err()
     {
-        cinematic.finished = true;
         return;
     }
     let mut picture = Entity::PLACEHOLDER;
+    let mut hint = Entity::PLACEHOLDER;
     let root = commands
         .spawn((
             Node {
@@ -158,6 +158,21 @@ fn start(mut cinematic: ResMut<Cinematic>, mut commands: Commands) {
                     ..default()
                 })
                 .id();
+            let mut text = root.spawn((
+                Text::new("PRESS ANY KEY TO SKIP"),
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(48.0),
+                    bottom: Val::Px(40.0),
+                    ..default()
+                },
+                Visibility::Hidden,
+            ));
+            if let Some(font) = &font {
+                text.insert(crate::layers::game_text_font(&font.0, 18.0));
+            }
+            hint = text.id();
         })
         .id();
     cinematic.playing = Some(Playing {
@@ -167,6 +182,7 @@ fn start(mut cinematic: ResMut<Cinematic>, mut commands: Commands) {
         image: None,
         root,
         picture,
+        hint,
         started: None,
         shown: 0,
         armed: false,
@@ -181,7 +197,11 @@ fn show(
     mouse: Res<ButtonInput<MouseButton>>,
     mut sound: MessageWriter<frame::UiPlayCinematic>,
     mut stop_sound: MessageWriter<frame::UiStopCinematic>,
+    mut input: ResMut<frame::CinematicInput>,
 ) {
+    // The frame a cinematic ends keeps its input, so the skipping press
+    // reaches nothing under it.
+    input.0 = cinematic.playing.is_some();
     let Some(playing) = cinematic.playing.as_mut() else {
         return;
     };
@@ -263,6 +283,12 @@ fn show(
                 }
             }
         }
+        if playing
+            .started
+            .is_some_and(|started| started.elapsed().as_secs_f64() >= SKIP_HINT_AFTER_SECS)
+        {
+            commands.entity(playing.hint).insert(Visibility::Inherited);
+        }
         let length = header.frames as f64 / header.fps;
         if playing
             .started
@@ -287,5 +313,4 @@ fn show(
         if skipped { "skipped" } else { "ended" },
         playing.shown
     );
-    cinematic.finished = true;
 }

@@ -99,8 +99,6 @@ struct Menu {
     /// A game's own front end is starting: its lobby is the launcher's
     /// plumbing, never shown.
     starting_front_end: bool,
-    /// The game whose front end starts once its cinematic is over.
-    intro: Option<Game>,
 }
 
 impl Menu {
@@ -206,7 +204,7 @@ struct ScrollContent;
 enum Action {
     Page(Page),
     Select(Game),
-    /// The game's own front end starts (after its cinematic).
+    /// The game's own front end starts.
     StartFrontEnd(Game),
     /// A zombies map, with the gametype and start location to run, when
     /// not the mode's own.
@@ -609,31 +607,28 @@ fn activate(
             }
             menu.navigate(Page::Lobby);
         }
-        // A game with its own front end starts it, after its cinematic: its
-        // menus pick the map.
+        // A game with its own front end starts it: its menus pick the map.
         Action::Select(game)
             if inventory
                 .installation(game)
                 .is_some_and(|entry| entry.front_end.is_some()) =>
         {
-            match inventory
+            // The front end loads while its cinematic plays over it.
+            if let Some(intro) = inventory
                 .installation(game)
                 .and_then(|entry| entry.intro.clone())
             {
-                Some(intro) => {
-                    menu.intro = Some(game);
-                    cinematic.play(intro);
-                }
-                None => activate(
-                    Action::StartFrontEnd(game),
-                    menu,
-                    inventory,
-                    dvars,
-                    exec,
-                    browser,
-                    cinematic,
-                ),
+                cinematic.play(intro);
             }
+            activate(
+                Action::StartFrontEnd(game),
+                menu,
+                inventory,
+                dvars,
+                exec,
+                browser,
+                cinematic,
+            );
         }
         Action::StartFrontEnd(game) => {
             let Some(map) = inventory
@@ -874,23 +869,8 @@ fn input(
         }
         return;
     }
-    // The library takes no input while a game's cinematic plays; the press
-    // that skips it starts nothing else.
-    if cinematic.take_finished()
-        && let Some(game) = menu.intro.take()
-    {
-        activate(
-            Action::StartFrontEnd(game),
-            &mut menu,
-            &mut inventory,
-            &mut dvars,
-            &mut exec,
-            browser.as_deref(),
-            &mut cinematic,
-        );
-        return;
-    }
-    if cinematic.active() || menu.intro.is_some() {
+    // The library takes no input while a game's cinematic plays.
+    if cinematic.active() {
         return;
     }
     let mut actions = Vec::new();
