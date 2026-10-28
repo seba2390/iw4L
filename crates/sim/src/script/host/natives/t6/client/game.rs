@@ -754,7 +754,7 @@ fn process_movement_messages(
 
     for message in messages {
         let client_num = match &message {
-            ClientMessage::Footstep(c, _, _, _) | ClientMessage::JumpLand(c, _) => *c,
+            ClientMessage::Footstep(c, _, _, _, _) | ClientMessage::JumpLand(c, _, _) => *c,
             _ => continue,
         };
         let number = client_num as i32;
@@ -780,7 +780,7 @@ fn process_movement_messages(
             && player_perk(server, LOCAL_CLIENT as u32, "specialty_loudenemies")
             && player_team(server, client_num) != player_team(server, LOCAL_CLIENT as u32);
         match message {
-            ClientMessage::Footstep(_, kind, mut surface, _) => {
+            ClientMessage::Footstep(_, _, kind, mut surface, _) => {
                 if mat_override != 0
                     && let Some(&overridden) =
                         super::super::entity::SURFACES.get(usize::from(mat_override))
@@ -816,7 +816,7 @@ fn process_movement_messages(
                     );
                 }
             }
-            ClientMessage::JumpLand(_, event) => match event {
+            ClientMessage::JumpLand(_, _, event) => match event {
                 JumpLand::Jump(surface) => {
                     if let (Some(player), Some(name)) = (player_object, &callbacks.player_jump) {
                         run(
