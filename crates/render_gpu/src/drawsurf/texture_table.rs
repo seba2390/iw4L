@@ -8,10 +8,10 @@ use super::gpu_resources::{DecodedSampler, UploadedTextureBind, UploadedTextureI
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::{
-    BindGroup, BindGroupEntry, BindGroupLayoutDescriptor, BindingResource, Extent3d, Sampler,
-    SamplerDescriptor, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-    TextureView, TextureViewDescriptor, TextureViewDimension, TextureViewId, WgpuSampler,
-    WgpuTextureView,
+    BindGroup, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutId, BindingResource,
+    Extent3d, Sampler, SamplerDescriptor, SamplerId, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension,
+    TextureViewId, WgpuSampler, WgpuTextureView,
 };
 use bevy::render::renderer::RenderDevice;
 use d3d9_sm3::{TEXTURE_TABLE_BINDING_2D, TEXTURE_TABLE_BINDING_3D, TEXTURE_TABLE_BINDING_CUBE};
@@ -85,9 +85,25 @@ pub(super) struct ExactTextureTable {
     sampler_index: HashMap<SamplerKey, u16>,
     placeholders: Option<Placeholders>,
     binds: Option<TextureTableBinds>,
+    views_binds: HashMap<ViewsBindKey, (BindGroup, u64)>,
+    views_calls: u64,
 
     pub rebuild_n: u32,
 }
+
+/// What a views bind group is made of: the same layout, views and samplers
+/// make the same group, so post passes reuse it instead of creating one (a
+/// Metal argument buffer) per pass per frame. View ids are never reused.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct ViewsBindKey {
+    layout: BindGroupLayoutId,
+    views: Vec<TextureViewId>,
+    samplers: Vec<SamplerId>,
+}
+
+/// Views bind groups not asked for within this many calls are dropped, so a
+/// resized target's old views are released a few frames later.
+const VIEWS_BIND_RETAIN: u64 = 256;
 
 const fn dimension_lane(dimension: SamplerTextureDimension) -> usize {
     match dimension {
@@ -213,6 +229,34 @@ impl ExactTextureTable {
     }
 
     pub fn views_bind_group(
+        &mut self,
+        device: &RenderDevice,
+        bgl: &bevy::render::render_resource::BindGroupLayout,
+        label: &'static str,
+        views: &[&TextureView],
+        samplers: &[&Sampler],
+    ) -> BindGroup {
+        self.views_calls += 1;
+        let key = ViewsBindKey {
+            layout: bgl.id(),
+            views: views.iter().map(|v| v.id()).collect(),
+            samplers: samplers.iter().map(|s| s.id()).collect(),
+        };
+        if let Some((group, last)) = self.views_binds.get_mut(&key) {
+            *last = self.views_calls;
+            return group.clone();
+        }
+        if self.views_binds.len() >= 64 {
+            let oldest = self.views_calls.saturating_sub(VIEWS_BIND_RETAIN);
+            self.views_binds.retain(|_, (_, last)| *last >= oldest);
+        }
+        let group = self.create_views_bind_group(device, bgl, label, views, samplers);
+        self.views_binds
+            .insert(key, (group.clone(), self.views_calls));
+        group
+    }
+
+    fn create_views_bind_group(
         &mut self,
         device: &RenderDevice,
         bgl: &bevy::render::render_resource::BindGroupLayout,

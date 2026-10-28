@@ -21,6 +21,7 @@ mod iris;
 mod killcam_skip;
 mod killfeed;
 mod mantle_hint;
+mod menu_cursor;
 mod menus;
 mod overhead_names;
 mod playercard;

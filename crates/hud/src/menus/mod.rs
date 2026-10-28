@@ -260,6 +260,7 @@ pub(crate) struct MenuOutputs<'w> {
     rules: Option<Res<'w, game_api::ModeRules>>,
     ui3d: ResMut<'w, crate::gpu_list::Ui3dHudFrame>,
     blur: Option<ResMut<'w, frame::MenuBlur>>,
+    cursor: ResMut<'w, crate::menu_cursor::MenuCursorRequest>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -304,6 +305,7 @@ pub(crate) fn update_script_menus(
     pass.script_menus = TessJob::Hide;
     out.ui3d.windows.clear();
     menus.draws_cursor = false;
+    out.cursor.0 = None;
     if let Some(blur) = out.blur.as_deref_mut() {
         blur.0 = 0.0;
     }
@@ -948,7 +950,24 @@ pub(crate) fn update_script_menus(
         .ok()
         .and_then(|w| w.cursor_position())
         .filter(|_| !input.cinematic.0);
-    menus.draws_cursor = push_cursor(menus, catalog, &surface, pointer, &mut list);
+    let window = input.windows.single().ok();
+    let cursor = (!input.cinematic.0)
+        .then(|| menu_cursor(menus, catalog, &surface))
+        .flatten();
+    if let Some((namespace, material, [w, h])) = cursor {
+        hud_images.ensure_rgba(namespace, material);
+        if hud_images.rgba(namespace, material).is_some() {
+            let scale = window.map_or(1.0, |w| w.resolution.scale_factor());
+            out.cursor.0 = Some(crate::menu_cursor::CursorSpec {
+                namespace,
+                material: material.to_owned(),
+                size: crate::menu_cursor::cursor_image_size(w, h, scale),
+            });
+        } else if let Some(pointer) = pointer {
+            push_cursor(menus, namespace, material, [w, h], pointer, &mut list);
+            menus.draws_cursor = true;
+        }
+    }
     let mut fonts: HashMap<String, &asset_game::FontDef> = HashMap::new();
     for cmd in list
         .cmds
@@ -983,36 +1002,42 @@ pub(crate) fn update_script_menus(
     }
 }
 
-/// A 3D UI window's rect in its texture's pixels, `[x, y, w, h]`: Black Ops
-/// truncates each fraction of the texture's size.
-/// The game's cursor over the menus that take the mouse: its material at
-/// its virtual size, centred on the pointer while the pointer is in the
-/// window and the menu holding the keys paints on the screen.
-fn push_cursor(
+/// The game's cursor over the menus that take the mouse: its material and
+/// its virtual size in window units, while the menu holding the keys paints
+/// on the screen.
+fn menu_cursor(
     menus: &ScriptMenus,
     catalog: &MenuCatalog,
     surface: &crate::surface::Hud2dSurface,
-    pointer: Option<Vec2>,
-    list: &mut Draw2dList,
-) -> bool {
+) -> Option<(asset_core::AssetNamespace, &'static str, [f32; 2])> {
     let assets = ChromeAssets {
         catalog: Some(catalog),
         localize: None,
     };
-    let (Some((material, size)), Some(pointer), Some(menu)) = (
-        assets.layout().and_then(|layout| layout.cursor()),
-        pointer,
-        menus.input_menu(),
-    ) else {
-        return false;
-    };
+    let (material, size) = assets.layout()?.cursor()?;
+    let menu = menus.input_menu()?;
     if menu.ui3d {
-        return false;
+        return None;
     }
     let [sx, sy] = surface.scale_virtual_to_real();
-    let (w, h) = (size * sx, size * sy);
+    Some((assets.namespace(), material, [size * sx, size * sy]))
+}
+
+/// The cursor drawn into the frame, centred on the pointer, when the window
+/// system cannot carry it (its texels are not decoded).
+fn push_cursor(
+    menus: &ScriptMenus,
+    namespace: asset_core::AssetNamespace,
+    material: &str,
+    [w, h]: [f32; 2],
+    pointer: Vec2,
+    list: &mut Draw2dList,
+) {
+    let Some(menu) = menus.input_menu() else {
+        return;
+    };
     list.cmds.push(Draw2dCmd {
-        material_namespace: assets.namespace(),
+        material_namespace: namespace,
         x: pointer.x - w * 0.5,
         y: pointer.y - h * 0.5,
         w,
@@ -1030,9 +1055,10 @@ fn push_cursor(
         },
         layer: 1,
     });
-    true
 }
 
+/// A 3D UI window's rect in its texture's pixels, `[x, y, w, h]`: Black Ops
+/// truncates each fraction of the texture's size.
 fn ui3d_window_pixels(size: [u32; 2], [x, y, w, h]: [f32; 4]) -> [u32; 4] {
     let [width, height] = size.map(|n| n as f32);
     [

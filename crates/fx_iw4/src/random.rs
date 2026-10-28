@@ -1,4 +1,4 @@
-pub const FX_RANDOM_VERSION: u32 = 1;
+pub const FX_RANDOM_VERSION: u32 = 2;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
@@ -37,54 +37,52 @@ pub enum FxRandomChannel {
     Size1 = 31,
 }
 
-const EFFECT_DOMAIN: &[u8; 24] = b"iw4l.random.effect......";
-const ELEMENT_DOMAIN: &[u8; 24] = b"iw4l.random.element.....";
-const TRAIL_DOMAIN: &[u8; 24] = b"iw4l.random.trail.......";
-const SAMPLE_DOMAIN: &[u8; 24] = b"iw4l.random.sample......";
+// Each draw is a keyed integer mix, not a cryptographic digest: the FX
+// update and draw take several samples per live element per frame, and a
+// BLAKE3 digest per sample was the hottest leaf of a Kino frame. The domain
+// constants keep the four kinds of key apart; bump FX_RANDOM_VERSION when
+// the mix changes, since every effect's random look changes with it.
+const EFFECT_DOMAIN: u64 = 0x6566_6665_6374_0001;
+const ELEMENT_DOMAIN: u64 = 0x656c_656d_656e_0002;
+const TRAIL_DOMAIN: u64 = 0x7472_6169_6c00_0003;
+const SAMPLE_DOMAIN: u64 = 0x7361_6d70_6c65_0004;
 
-fn digest_word(tuple: &[u8]) -> u64 {
-    let digest = blake3::hash(tuple);
-    let mut bytes = [0_u8; 8];
-    bytes.copy_from_slice(&digest.as_bytes()[..8]);
-    u64::from_le_bytes(bytes)
+/// The 64-bit finalizer of MurmurHash3: every input bit reaches every output bit.
+const fn avalanche(mut x: u64) -> u64 {
+    x ^= x >> 33;
+    x = x.wrapping_mul(0xff51_afd7_ed55_8ccd);
+    x ^= x >> 33;
+    x = x.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+    x ^ (x >> 33)
+}
+
+fn digest_word(domain: u64, a: u64, b: u64) -> u64 {
+    let version = u64::from(FX_RANDOM_VERSION).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    avalanche(avalanche(a ^ domain ^ version).wrapping_add(b.wrapping_mul(0xd6e8_feb8_6659_fd93)))
 }
 
 pub fn effect_random_key(instance: u64, begin_msec: i32) -> u64 {
-    let mut tuple = [0_u8; 40];
-    tuple[..24].copy_from_slice(EFFECT_DOMAIN);
-    tuple[24..28].copy_from_slice(&FX_RANDOM_VERSION.to_le_bytes());
-    tuple[28..36].copy_from_slice(&instance.to_le_bytes());
-    tuple[36..40].copy_from_slice(&begin_msec.to_le_bytes());
-    digest_word(&tuple)
+    digest_word(EFFECT_DOMAIN, instance, u64::from(begin_msec as u32))
 }
 
 pub fn elem_random_seed(effect_key: u64, sequence: u8, begin_msec: i32) -> u64 {
-    let mut tuple = [0_u8; 41];
-    tuple[..24].copy_from_slice(ELEMENT_DOMAIN);
-    tuple[24..28].copy_from_slice(&FX_RANDOM_VERSION.to_le_bytes());
-    tuple[28..36].copy_from_slice(&effect_key.to_le_bytes());
-    tuple[36] = sequence;
-    tuple[37..41].copy_from_slice(&begin_msec.to_le_bytes());
-    digest_word(&tuple)
+    digest_word(
+        ELEMENT_DOMAIN,
+        effect_key,
+        u64::from(sequence) << 32 | u64::from(begin_msec as u32),
+    )
 }
 
 pub fn trail_random_seed(effect_key: u64, sequence: i8) -> u64 {
-    let mut tuple = [0_u8; 37];
-    tuple[..24].copy_from_slice(TRAIL_DOMAIN);
-    tuple[24..28].copy_from_slice(&FX_RANDOM_VERSION.to_le_bytes());
-    tuple[28..36].copy_from_slice(&effect_key.to_le_bytes());
-    tuple[36..37].copy_from_slice(&sequence.to_le_bytes());
-    digest_word(&tuple)
+    digest_word(TRAIL_DOMAIN, effect_key, u64::from(sequence as u8))
 }
 
 fn sample_word(key: u64, channel: FxRandomChannel, index: u64) -> u64 {
-    let mut tuple = [0_u8; 48];
-    tuple[..24].copy_from_slice(SAMPLE_DOMAIN);
-    tuple[24..28].copy_from_slice(&FX_RANDOM_VERSION.to_le_bytes());
-    tuple[28..36].copy_from_slice(&key.to_le_bytes());
-    tuple[36..40].copy_from_slice(&(channel as u32).to_le_bytes());
-    tuple[40..48].copy_from_slice(&index.to_le_bytes());
-    digest_word(&tuple)
+    digest_word(
+        SAMPLE_DOMAIN,
+        key,
+        (u64::from(channel as u32) << 56) ^ index,
+    )
 }
 
 pub fn sample_u16(key: u64, channel: FxRandomChannel) -> u16 {
