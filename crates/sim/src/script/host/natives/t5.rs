@@ -1579,7 +1579,44 @@ fn register_player(registry: &mut NativeRegistry) {
     });
 }
 
+/// Black Ops' height with no water under the map's water grid.
+const NO_WATER_HEIGHT: f32 = -131_072.0;
+/// How far above and below the point `getWaterHeight` looks for water.
+const WATER_REACH: f32 = 200.0;
+const CONTENTS_WATER: u32 = 0x20;
+
 fn register_entity(registry: &mut NativeRegistry) {
+    // `getWaterHeight(point)`: the top of the water found from 200 above the
+    // point to 200 below it, else the map's water grid height there, which
+    // is -131072 where the grid holds none (the grid is not read).
+    registry.register(Function, "getwaterheight", |world, _, args| {
+        let at = vector(args, 0)?;
+        let start = [at[0], at[1], at[2] + WATER_REACH];
+        let end = [at[0], at[1], at[2] - WATER_REACH];
+        let hit = super::engine::trace(world, start, end, [0.0; 3], [0.0; 3], CONTENTS_WATER);
+        let surface = (hit.fraction < 1.0).then(|| start[2] + (end[2] - start[2]) * hit.fraction);
+        Ok(Value::Float(
+            surface.map_or(NO_WATER_HEIGHT, |z| z.max(NO_WATER_HEIGHT)),
+        ))
+    });
+    // `getLinkedEnt()`: the entity a player or entity is linked to.
+    registry.register(Method, "getlinkedent", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let runtime = world.resource::<RoundScript>();
+        let parent = match runtime.player_client(id) {
+            Some(client) => runtime
+                .players
+                .get(&client)
+                .and_then(|slot| slot.link.as_ref())
+                .map(|link| link.parent),
+            None => runtime
+                .entities
+                .get(&id)
+                .and_then(|entity| entity.linked_to.as_ref())
+                .map(|link| link.parent),
+        };
+        Ok(parent.map_or(Value::Undefined, Value::Object))
+    });
     registry.register(Method, "setclientflag", |world, receiver, args| {
         let (id, bit) = (super::engine::entity_id(world, receiver)?, int(args, 0)?);
         if !(0..16).contains(&bit) {

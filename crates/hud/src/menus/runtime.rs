@@ -76,7 +76,7 @@ impl Runner<'_, '_> {
             match event {
                 MenuEvent::Script(text) => {
                     last_if = None;
-                    self.run_script(menu, item, text);
+                    self.run_script(menu, item, text, false);
                 }
                 MenuEvent::T5Script(link) => {
                     last_if = None;
@@ -117,8 +117,8 @@ impl Runner<'_, '_> {
         self.depth -= 1;
     }
 
-    fn run_script(&mut self, menu: &str, item: Option<usize>, text: &str) {
-        for command in script::parse(text) {
+    fn run_script(&mut self, menu: &str, item: Option<usize>, text: &str, black_ops: bool) {
+        for command in script::parse(text, black_ops) {
             self.command(menu, item, command);
         }
     }
@@ -138,7 +138,7 @@ impl Runner<'_, '_> {
         const CONDITION_ELSE: i32 = 3;
         const MAX_OUTCOMES: usize = 64;
         if link.block == 0 && link.construct == 0 {
-            self.run_script(menu, item, &link.action);
+            self.run_script(menu, item, &link.action, true);
             return;
         }
         let ready = link.prerequisites.iter().all(|wait| {
@@ -164,7 +164,7 @@ impl Runner<'_, '_> {
                 self.truth(menu, &link.condition).unwrap_or(false) == link.fire_on_true
             };
             if passed {
-                self.run_script(menu, item, &link.action);
+                self.run_script(menu, item, &link.action, true);
             }
         }
         if outcomes.len() < MAX_OUTCOMES {
@@ -372,7 +372,25 @@ impl Runner<'_, '_> {
 
     /// `toggle` and cfg `exec` land in the menu dvars before the next script
     /// command runs, so a following `execNowOnDvarIntValue` sees the result.
+    /// A console command line from a menu. A `set` takes effect at once, so
+    /// a script reading the dvar after `execNow set name value` sees it.
     pub(crate) fn exec(&mut self, text: String) {
+        let statements = script::statements(&text);
+        if statements.len() > 1 {
+            for statement in statements {
+                self.exec(statement);
+            }
+            return;
+        }
+        if let [command, name, value @ ..] = script::tokens(&text).as_slice()
+            && matches!(
+                command.to_ascii_lowercase().as_str(),
+                "set" | "seta" | "setdvar"
+            )
+        {
+            self.set_dvar(name, &value.join(" "));
+            return;
+        }
         let words: Vec<&str> = text
             .split_whitespace()
             .map(|word| word.trim_matches('"'))
@@ -488,6 +506,35 @@ impl Runner<'_, '_> {
                 apply(state);
             }
         }
+    }
+
+    /// Black Ops' `onKey` handlers for key -1, the menu's and its focused
+    /// item's, run on any key; the key goes no further when one ran.
+    pub(crate) fn any_key(&mut self, menu: &str) -> bool {
+        const ANY_KEY: i32 = -1;
+        let Some(def) = self.catalog.get(menu) else {
+            return false;
+        };
+        let focus = self
+            .menus
+            .position(menu)
+            .and_then(|at| self.menus.stack[at].focus);
+        let handlers = |keys: &[(i32, Vec<MenuEvent>)]| -> Vec<MenuEvent> {
+            keys.iter()
+                .filter(|(key, _)| *key == ANY_KEY)
+                .flat_map(|(_, events)| events.iter().cloned())
+                .collect()
+        };
+        let menu_events = handlers(&def.handlers.keys);
+        let item_events = focus
+            .and_then(|index| def.items.get(index))
+            .map_or_else(Vec::new, |item| handlers(&item.handlers.keys));
+        if menu_events.is_empty() && item_events.is_empty() {
+            return false;
+        }
+        self.run_events(menu, None, &menu_events);
+        self.run_events(menu, focus, &item_events);
+        true
     }
 
     pub(crate) fn open(&mut self, name: &str) {
