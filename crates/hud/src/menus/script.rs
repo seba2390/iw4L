@@ -68,32 +68,63 @@ pub(crate) enum LocalVarKind {
 }
 
 pub(crate) fn tokens(script: &str) -> Vec<String> {
+    spanned_tokens(script)
+        .into_iter()
+        .map(|(token, _)| token)
+        .collect()
+}
+
+/// A console line's commands, split at each `;` outside quotes.
+pub(crate) fn statements(line: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let mut chars = script.chars().peekable();
-    while let Some(&c) = chars.peek() {
+    let mut quoted = false;
+    let mut start = 0;
+    for (at, c) in line.char_indices() {
+        match c {
+            '"' => quoted = !quoted,
+            ';' | '\n' if !quoted => {
+                out.push(line[start..at].trim().to_owned());
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(line[start..].trim().to_owned());
+    out.retain(|statement| !statement.is_empty());
+    out
+}
+
+/// Each token with the byte offset just past it in `script`.
+fn spanned_tokens(script: &str) -> Vec<(String, usize)> {
+    let mut out = Vec::new();
+    let mut chars = script.char_indices().peekable();
+    while let Some(&(_, c)) = chars.peek() {
         if c.is_whitespace() || c == ';' {
             chars.next();
             continue;
         }
         let mut token = String::new();
+        let mut end = script.len();
         if c == '"' {
             chars.next();
-            for c in chars.by_ref() {
+            for (at, c) in chars.by_ref() {
                 if c == '"' {
+                    end = at + 1;
                     break;
                 }
                 token.push(c);
             }
         } else {
-            while let Some(&c) = chars.peek() {
+            while let Some(&(at, c)) = chars.peek() {
                 if c.is_whitespace() || c == ';' || c == '"' {
+                    end = at;
                     break;
                 }
                 token.push(c);
                 chars.next();
             }
         }
-        out.push(token);
+        out.push((token, end));
     }
     fold_expression_args(out)
 }
@@ -102,21 +133,29 @@ pub(crate) fn tokens(script: &str) -> Vec<String> {
 /// function of the menu expressions, `name ( args )`, folded to one token.
 pub(crate) const EXPRESSION_ARG: char = '\u{1}';
 
-fn fold_expression_args(tokens: Vec<String>) -> Vec<String> {
+fn fold_expression_args(tokens: Vec<(String, usize)>) -> Vec<(String, usize)> {
     let mut out = Vec::with_capacity(tokens.len());
     let mut i = 0;
     while i < tokens.len() {
         let call = tokens[i]
+            .0
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_')
-            && tokens.get(i + 1).is_some_and(|t| t == "(");
+            && tokens.get(i + 1).is_some_and(|(t, _)| t == "(");
         let close = call
-            .then(|| tokens[i + 2..].iter().position(|t| t == ")"))
+            .then(|| tokens[i + 2..].iter().position(|(t, _)| t == ")"))
             .flatten();
         match close {
             Some(close) => {
-                let args = tokens[i + 2..i + 2 + close].join(" ");
-                out.push(format!("{EXPRESSION_ARG}{}({args})", tokens[i]));
+                let args: Vec<&str> = tokens[i + 2..i + 2 + close]
+                    .iter()
+                    .map(|(t, _)| t.as_str())
+                    .collect();
+                let end = tokens[i + 2 + close].1;
+                out.push((
+                    format!("{EXPRESSION_ARG}{}({})", tokens[i].0, args.join(" ")),
+                    end,
+                ));
                 i += close + 3;
             }
             None => {
@@ -128,8 +167,57 @@ fn fold_expression_args(tokens: Vec<String>) -> Vec<String> {
     out
 }
 
-pub(crate) fn parse(script: &str) -> Vec<Command> {
-    let toks = tokens(script);
+/// Black Ops' `exec` / `execNow` argument: the rest of the statement, up to
+/// the first `;` outside quotes (an escaped `\"` is no quote), with the
+/// quotes taken off when one pair encloses it all. Returns the command and
+/// the byte offset past what it read.
+fn statement_rest(script: &str, from: usize) -> (String, usize) {
+    let mut text: Vec<char> = Vec::new();
+    let (mut quotes, mut first_quote, mut last_quote) = (0, None, None);
+    let (mut first_solid, mut last_solid) = (None, None);
+    let mut end = script.len();
+    let mut prev = script[..from].chars().next_back();
+    for (at, c) in script[from..].char_indices() {
+        let index = text.len();
+        text.push(c);
+        if c == '"' && prev != Some('\\') {
+            quotes += 1;
+            first_quote.get_or_insert(index);
+            last_quote = Some(index);
+        }
+        if c != ' ' && c != '\t' {
+            first_solid.get_or_insert(index);
+            if c != ';' {
+                last_solid = Some(index);
+            }
+        }
+        prev = Some(c);
+        if c == ';' && quotes % 2 == 0 {
+            end = from + at + 1;
+            break;
+        }
+    }
+    if quotes == 2
+        && let (Some(open), Some(close)) = (first_quote, last_quote)
+        && first_solid == Some(open)
+        && last_solid == Some(close)
+    {
+        text[open] = ' ';
+        text[close] = ' ';
+    }
+    let text: String = text.into_iter().collect();
+    let text = text.trim();
+    (
+        text.strip_suffix(';').unwrap_or(text).trim().to_owned(),
+        end,
+    )
+}
+
+/// A script's commands. With `exec_takes_statement` (Black Ops), `exec` and
+/// `execNow` run the rest of their statement; otherwise one token.
+pub(crate) fn parse(script: &str, exec_takes_statement: bool) -> Vec<Command> {
+    let spanned = spanned_tokens(script);
+    let toks: Vec<String> = spanned.iter().map(|(t, _)| t.clone()).collect();
     let mut out = Vec::new();
     let mut i = 0;
     let arg = |i: usize| toks.get(i).cloned().unwrap_or_else(String::new);
@@ -140,6 +228,15 @@ pub(crate) fn parse(script: &str) -> Vec<Command> {
     };
     while i < toks.len() {
         let name = toks[i].to_ascii_lowercase();
+        if exec_takes_statement && (name == "exec" || name == "execnow") {
+            let (text, end) = statement_rest(script, spanned[i].1);
+            out.push(Command::Exec(text));
+            i += 1;
+            while spanned.get(i).is_some_and(|(_, at)| *at <= end) {
+                i += 1;
+            }
+            continue;
+        }
         let (command, used) = match name.as_str() {
             "open" | "ingameopen" => (Command::Open(arg(i + 1)), 2),
             "close" | "ingameclose" => (Command::Close(arg(i + 1)), 2),

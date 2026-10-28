@@ -139,7 +139,7 @@ fn custom_class_slot(item: &asset_game::MenuItem) -> Option<usize> {
     fn response(events: &[asset_game::MenuEvent]) -> Option<usize> {
         events.iter().find_map(|event| match event {
             asset_game::MenuEvent::Script(text) => {
-                script::parse(text).into_iter().find_map(|cmd| {
+                script::parse(text, false).into_iter().find_map(|cmd| {
                     let script::Command::ScriptMenuResponse(value) = cmd else {
                         return None;
                     };
@@ -238,6 +238,9 @@ struct Pressed {
     end: bool,
     backspace: bool,
     delete: bool,
+    /// A key other than Escape or a mouse button went down: Black Ops'
+    /// `onKey` handlers for key -1 run on it.
+    any: bool,
     text: Vec<String>,
 }
 
@@ -519,7 +522,18 @@ pub(crate) fn update_script_menus(
         pressed.end |= keys.just_pressed(KeyCode::End);
         pressed.backspace |= keys.just_pressed(KeyCode::Backspace);
         pressed.delete |= keys.just_pressed(KeyCode::Delete);
+        pressed.any |= keys.get_just_pressed().any(|key| *key != KeyCode::Escape)
+            || input.mouse.get_just_pressed().next().is_some();
     }
+    pressed.any |= pressed.enter
+        || pressed.up
+        || pressed.down
+        || pressed.left
+        || pressed.right
+        || pressed.home
+        || pressed.end
+        || pressed.backspace
+        || pressed.delete;
     for event in input.keyboard.read() {
         if pointer
             && event.state.is_pressed()
@@ -1193,6 +1207,9 @@ fn handle_input(
     let Some(top) = runner.menus.input_menu().map(|m| m.name.clone()) else {
         return;
     };
+    if pressed.any && runner.any_key(&top) {
+        return;
+    }
 
     if pressed.down {
         runner.focus_nav(&top, 0, 1);
