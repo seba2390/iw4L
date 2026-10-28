@@ -81,7 +81,6 @@ enum Page {
     Browser,
     Communities,
     Installations,
-    Settings,
     WorkInProgress,
     Password,
 }
@@ -92,9 +91,7 @@ struct Menu {
     selected: Option<Game>,
     map_page: usize,
     browser_page: usize,
-    settings_tab: usize,
     focus: usize,
-    editing_name: bool,
     notice: String,
     wip_mode: String,
     editing_lobby: bool,
@@ -108,7 +105,6 @@ impl Menu {
     fn navigate(&mut self, page: Page) {
         self.page = page;
         self.focus = 0;
-        self.editing_name = false;
         self.notice.clear();
     }
 
@@ -130,7 +126,7 @@ impl Menu {
                     Page::Browser
                 }
             }
-            Page::Installations | Page::Settings => {
+            Page::Installations => {
                 if self.selected.is_some() {
                     Page::Game
                 } else {
@@ -215,9 +211,6 @@ enum Action {
     Pick(Game),
     Scan,
     Rescan,
-    Setting(&'static str),
-    SettingsTab(usize),
-    Bind(&'static str),
     Map(String),
     MapPage(bool),
     Mode,
@@ -543,86 +536,12 @@ fn command(exec: &mut MessageWriter<UiExecCommand>, text: impl Into<String>) {
     exec.write(UiExecCommand { text: text.into() });
 }
 
-fn setting(key: &str, settings: &mut GameSettings, menu: &mut Menu) {
-    match key {
-        "resolution" => {
-            let options = [
-                (960, 540),
-                (1280, 720),
-                (1600, 900),
-                (1920, 1080),
-                (2560, 1440),
-                (3840, 2160),
-            ];
-            let index = options
-                .iter()
-                .position(|&(w, h)| {
-                    settings.resolution.width == w && settings.resolution.height == h
-                })
-                .unwrap_or(0);
-            let (w, h) = options[(index + 1) % options.len()];
-            settings.resolution = frame::DisplayResolution::new(w, h);
-        }
-        "fullscreen" => settings.fullscreen = !settings.fullscreen,
-        "vsync" => settings.vsync = !settings.vsync,
-        "fov" => {
-            settings.fov = if settings.fov >= 110.0 {
-                65.0
-            } else {
-                settings.fov + 5.0
-            }
-        }
-        "brightness" => {
-            settings.brightness = if settings.brightness >= 0.19 {
-                -0.2
-            } else {
-                settings.brightness + 0.05
-            }
-        }
-        "shadows" => settings.shadows = !settings.shadows,
-        "bloom" => settings.bloom = !settings.bloom,
-        "dof" => settings.depth_of_field = !settings.depth_of_field,
-        "volume" => {
-            settings.master_volume = if settings.master_volume >= 0.99 {
-                0.0
-            } else {
-                settings.master_volume + 0.1
-            }
-        }
-        "sensitivity" => {
-            settings.sensitivity = if settings.sensitivity >= 15.0 {
-                0.5
-            } else {
-                settings.sensitivity + 0.5
-            }
-        }
-        "invert" => settings.invert_mouse = !settings.invert_mouse,
-        "name" => {
-            menu.editing_name = !menu.editing_name;
-            return;
-        }
-        "vibration" => settings.pad_vibration = !settings.pad_vibration,
-        "reset" => {
-            let folders = settings.game_folders.clone();
-            let name = settings.player_name.clone();
-            *settings = GameSettings::default();
-            settings.game_folders = folders;
-            settings.player_name = name;
-        }
-        _ => return,
-    }
-    settings.sanitize();
-    settings.touch();
-}
-
 fn activate(
     action: Action,
     menu: &mut Menu,
-    settings: &mut GameSettings,
     inventory: &mut Inventory,
     dvars: &mut frame::UiMenuDvars,
     exec: &mut MessageWriter<UiExecCommand>,
-    binds: &mut MessageWriter<frame::UiBindRequest>,
     browser: Option<&net::MasterBrowser>,
 ) {
     match action {
@@ -688,11 +607,9 @@ fn activate(
             activate(
                 Action::ZombieMap(map, None),
                 menu,
-                settings,
                 inventory,
                 dvars,
                 exec,
-                binds,
                 browser,
             );
             command(exec, "ui_start_match");
@@ -737,17 +654,6 @@ fn activate(
         Action::Rescan => {
             inventory.folders = None;
             menu.notice = "Scanning installed games…".into();
-        }
-        Action::Setting(key) => setting(key, settings, menu),
-        Action::SettingsTab(tab) => {
-            menu.settings_tab = tab;
-            menu.focus = 0;
-            menu.editing_name = false;
-        }
-        Action::Bind(key) => {
-            binds.write(frame::UiBindRequest {
-                command: key.into(),
-            });
         }
         Action::Map(map) => {
             if menu.editing_lobby {
@@ -899,10 +805,8 @@ fn input(
     mut requests: MessageReader<UiMenuRequest>,
     mut menu: ResMut<Menu>,
     mut inventory: ResMut<Inventory>,
-    mut settings: ResMut<GameSettings>,
     mut dvars: ResMut<frame::UiMenuDvars>,
     mut exec: MessageWriter<UiExecCommand>,
-    mut binds: MessageWriter<frame::UiBindRequest>,
     browser: Option<Res<net::MasterBrowser>>,
     mut buttons: Query<(
         Entity,
@@ -974,7 +878,6 @@ fn input(
             let action = match parts.next() {
                 None | Some("home") => Some(Action::Home),
                 Some("game") => parts.next().and_then(Game::from_key).map(Action::Select),
-                Some("settings") => Some(Action::Page(Page::Settings)),
                 Some("installations") => Some(Action::Page(Page::Installations)),
                 Some("multiplayer") => Some(Action::Page(Page::Multiplayer)),
                 Some("host") => Some(Action::Page(Page::Host)),
@@ -987,13 +890,6 @@ fn input(
                         Action::Wip("Zombies")
                     },
                 ),
-                Some("setting") => match parts.next() {
-                    Some("vsync") => Some(Action::Setting("vsync")),
-                    Some("fullscreen") => Some(Action::Setting("fullscreen")),
-                    Some("volume") => Some(Action::Setting("volume")),
-                    Some("resolution") => Some(Action::Setting("resolution")),
-                    _ => None,
-                },
                 _ => None,
             };
             if let Some(action) = action {
@@ -1029,71 +925,38 @@ fn input(
             }
             dvars.set("ui_password_input", password);
         }
-        if menu.editing_name {
-            for event in typing.iter().filter(|event| event.state.is_pressed()) {
-                if let bevy::input::keyboard::Key::Character(text) = &event.logical_key {
-                    for ch in text.chars().filter(|ch| !ch.is_control()) {
-                        if settings.player_name.chars().count() < 24 {
-                            settings.player_name.push(ch);
-                        }
-                    }
-                    settings.touch();
-                }
-            }
-            if keys.just_pressed(KeyCode::Backspace)
-                || menu_keys.contains(&frame::UiMenuKey::Backspace)
-            {
-                settings.player_name.pop();
-                settings.touch();
-            }
-            if keys.just_pressed(KeyCode::Enter)
-                || keys.just_pressed(KeyCode::Escape)
-                || menu_keys.contains(&frame::UiMenuKey::Enter)
-                || menu_keys.contains(&frame::UiMenuKey::Escape)
-            {
-                if settings.player_name.trim().is_empty() {
-                    settings.player_name = "Player".into();
-                }
-                menu.editing_name = false;
-                settings.sanitize();
-                settings.touch();
-            }
-        } else {
-            if keys.just_pressed(KeyCode::Escape) || menu_keys.contains(&frame::UiMenuKey::Escape) {
-                actions.push(if menu.page == Page::Password {
-                    Action::PasswordCancel
-                } else if menu.page == Page::Lobby {
-                    Action::Leave
-                } else {
-                    Action::Back
-                });
-            }
-            let direction = if keys.just_pressed(KeyCode::ArrowDown)
-                || keys.just_pressed(KeyCode::Tab)
-                || menu_keys.contains(&frame::UiMenuKey::Down)
-            {
-                1
-            } else if keys.just_pressed(KeyCode::ArrowUp)
-                || menu_keys.contains(&frame::UiMenuKey::Up)
-            {
-                -1
+        if keys.just_pressed(KeyCode::Escape) || menu_keys.contains(&frame::UiMenuKey::Escape) {
+            actions.push(if menu.page == Page::Password {
+                Action::PasswordCancel
+            } else if menu.page == Page::Lobby {
+                Action::Leave
             } else {
-                0
-            };
-            if direction != 0 && !available.is_empty() {
-                let current = available
-                    .iter()
-                    .position(|(order, _)| *order == menu.focus)
-                    .unwrap_or(0);
-                let index =
-                    (current as isize + direction).rem_euclid(available.len() as isize) as usize;
-                menu.focus = available[index].0;
-            }
-            if (keys.just_pressed(KeyCode::Enter) || menu_keys.contains(&frame::UiMenuKey::Enter))
-                && let Some((_, action)) = available.iter().find(|(order, _)| *order == menu.focus)
-            {
-                actions.push(action.clone());
-            }
+                Action::Back
+            });
+        }
+        let direction = if keys.just_pressed(KeyCode::ArrowDown)
+            || keys.just_pressed(KeyCode::Tab)
+            || menu_keys.contains(&frame::UiMenuKey::Down)
+        {
+            1
+        } else if keys.just_pressed(KeyCode::ArrowUp) || menu_keys.contains(&frame::UiMenuKey::Up) {
+            -1
+        } else {
+            0
+        };
+        if direction != 0 && !available.is_empty() {
+            let current = available
+                .iter()
+                .position(|(order, _)| *order == menu.focus)
+                .unwrap_or(0);
+            let index =
+                (current as isize + direction).rem_euclid(available.len() as isize) as usize;
+            menu.focus = available[index].0;
+        }
+        if (keys.just_pressed(KeyCode::Enter) || menu_keys.contains(&frame::UiMenuKey::Enter))
+            && let Some((_, action)) = available.iter().find(|(order, _)| *order == menu.focus)
+        {
+            actions.push(action.clone());
         }
         for (_, hovered, button, _, _) in &buttons {
             if button.enabled && hovered.get() && mouse.just_pressed(MouseButton::Left) {
@@ -1106,11 +969,9 @@ fn input(
         activate(
             action,
             &mut menu,
-            &mut settings,
             &mut inventory,
             &mut dvars,
             &mut exec,
-            &mut binds,
             browser.as_deref(),
         );
     }
@@ -1196,10 +1057,6 @@ fn button(
                 }),
             ));
         });
-}
-
-fn on(value: bool) -> &'static str {
-    if value { "ON" } else { "OFF" }
 }
 
 fn scroll(
@@ -1333,8 +1190,6 @@ fn rebuild(
             menu.selected,
             menu.map_page,
             menu.browser_page,
-            menu.settings_tab,
-            menu.editing_name,
             &menu.notice,
             &menu.wip_mode,
             dvars.get("ui_password_input").unwrap_or("").chars().count(),
@@ -1447,18 +1302,16 @@ fn rebuild(
                 Page::Browser => "FIND LOBBIES".into(),
                 Page::Communities => "COMMUNITY SERVERS".into(),
                 Page::Installations => "GAME INSTALLATIONS".into(),
-                Page::Settings => "SETTINGS".into(),
                 Page::WorkInProgress => menu.wip_mode.to_uppercase(),
             };
             label(body, &font.0, title, 46.0, Color::srgb(0.96,0.97,0.95));
             label(body, &font.0, match menu.page {
                 Page::Library => "YOUR GAMES. ONE RUNTIME.",
                 Page::Installations => "SELECT YOUR GAME INSTALLATION FOLDERS.",
-                Page::Settings => "CHANGES APPLY IMMEDIATELY AND ARE SAVED AUTOMATICALLY.",
                 _ => game.map_or("IW4L", Game::title),
             }, 13.0, accent);
             body.spawn(Node { flex_grow: 1.0, min_height: Val::Px(0.0), width: Val::Percent(100.0), margin: UiRect::top(Val::Px(20.0)), column_gap: Val::Px(32.0), ..default() }).with_children(|columns| {
-                columns.spawn((ScrollContent, scroll_position, Node { width: Val::Percent(if matches!(menu.page, Page::Installations | Page::Settings | Page::Browser) { 68.0 } else { 47.0 }), max_width: Val::Px(780.0), flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), ..default() })).with_children(|content| {
+                columns.spawn((ScrollContent, scroll_position, Node { width: Val::Percent(if matches!(menu.page, Page::Installations | Page::Browser) { 68.0 } else { 47.0 }), max_width: Val::Px(780.0), flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), ..default() })).with_children(|content| {
                     match menu.page {
                         Page::Library => {
                             let mut listed = 0;
@@ -1477,20 +1330,17 @@ fn rebuild(
                                 button(content, &font.0, &mut order, "SCAN A FOLDER FOR GAMES", Action::Scan, true, accent);
                             }
                             button(content, &font.0, &mut order, "GAME INSTALLATIONS", Action::Page(Page::Installations), true, accent);
-                            button(content, &font.0, &mut order, "SETTINGS", Action::Page(Page::Settings), true, accent);
                         }
                         Page::Game => {
                             button(content, &font.0, &mut order, "MULTIPLAYER", Action::Page(Page::Multiplayer), true, accent);
                             button(content, &font.0, &mut order, "CAMPAIGN", Action::Wip("Campaign"), true, accent);
                             if game.and_then(Game::zombies).is_some() { button(content, &font.0, &mut order, "ZOMBIES", Action::Page(Page::Zombies), true, accent); }
-                            button(content, &font.0, &mut order, "SETTINGS", Action::Page(Page::Settings), true, accent);
                             button(content, &font.0, &mut order, "GAME INSTALLATIONS", Action::Page(Page::Installations), true, accent);
                             button(content, &font.0, &mut order, "CHANGE GAME", Action::Home, true, accent);
                         }
                         Page::Multiplayer => {
                             button(content, &font.0, &mut order, "CREATE MATCH", Action::Page(Page::Host), runnable, accent);
                             button(content, &font.0, &mut order, "FIND LOBBIES", Action::Page(Page::Browser), runnable, accent);
-                            button(content, &font.0, &mut order, "SETTINGS", Action::Page(Page::Settings), true, accent);
                             if !installed { label(content, &font.0, "Choose a valid installation in Game Installations.", 17.0, accent); }
                             else if !runnable { label(content, &font.0, "CoD4 gameplay is not available in this build.\nIts installation and game menus are supported.", 17.0, accent); }
                             button(content, &font.0, &mut order, "BACK", Action::Back, true, accent);
@@ -1536,38 +1386,6 @@ fn rebuild(
                                 button(content, &font.0, &mut order, format!("{}\n{}", game.title().to_uppercase(), folder), Action::Pick(game), true, game.accent());
                             }
                             button(content, &font.0, &mut order, "RESCAN INSTALLATIONS", Action::Rescan, inventory.task.is_none(), accent);
-                            button(content, &font.0, &mut order, "BACK", Action::Back, true, accent);
-                        }
-                        Page::Settings => {
-                            content.spawn(Node { column_gap: Val::Px(8.0), ..default() }).with_children(|tabs| {
-                                for (index, title) in ["DISPLAY", "AUDIO", "CONTROLS"].into_iter().enumerate() {
-                                    button(tabs, &font.0, &mut order, format!("{}{}", if menu.settings_tab == index { "> " } else { "" }, title), Action::SettingsTab(index), true, accent);
-                                }
-                            });
-                            let rows = match menu.settings_tab {
-                                0 => vec![
-                                    ("resolution", format!("RESOLUTION     {}", settings.resolution)),
-                                    ("fullscreen", format!("FULLSCREEN     {}", on(settings.fullscreen))),
-                                    ("vsync", format!("VSYNC     {}", on(settings.vsync))),
-                                    ("fov", format!("FIELD OF VIEW     {:.0}°", settings.fov)),
-                                    ("brightness", format!("BRIGHTNESS     {:+.2}", settings.brightness)),
-                                    ("shadows", format!("SHADOWS     {}", on(settings.shadows))),
-                                    ("bloom", format!("BLOOM     {}", on(settings.bloom))),
-                                    ("dof", format!("DEPTH OF FIELD     {}", on(settings.depth_of_field))),
-                                ],
-                                1 => vec![("volume", format!("MASTER VOLUME     {:.0}%", settings.master_volume * 100.0))],
-                                _ => vec![
-                                    ("sensitivity", format!("MOUSE SENSITIVITY     {:.1}", settings.sensitivity)),
-                                    ("invert", format!("INVERT MOUSE     {}", on(settings.invert_mouse))),
-                                    ("vibration", format!("CONTROLLER VIBRATION     {}", on(settings.pad_vibration))),
-                                    ("name", format!("PLAYER NAME     {}{}", settings.player_name, if menu.editing_name { "_" } else { "" })),
-                                ],
-                            };
-                            for (key, text) in rows { button(content, &font.0, &mut order, text, Action::Setting(key), true, accent); }
-                            if menu.settings_tab == 2 {
-                                for (key, title) in [("+attack", "BIND FIRE"), ("+speed_throw", "BIND AIM"), ("+gostand", "BIND JUMP"), ("+reload", "BIND RELOAD")] { button(content, &font.0, &mut order, title, Action::Bind(key), true, accent); }
-                            }
-                            button(content, &font.0, &mut order, "RESTORE SETTINGS DEFAULTS", Action::Setting("reset"), true, accent);
                             button(content, &font.0, &mut order, "BACK", Action::Back, true, accent);
                         }
                         Page::Host => {
@@ -1650,16 +1468,10 @@ fn rebuild(
                             label(detail, &font.0, if party.is_host { "Choose the map and rules, then start the match when your group is ready." } else { "Waiting for the host to start the match. Your group stays together between matches." }, 16.0, Color::srgb(0.7,0.74,0.76));
                         }
                         Page::WorkInProgress => { label(detail, &font.0, "MORE TO COME", 21.0, accent); label(detail, &font.0, "Return to Multiplayer to explore the modes currently available.", 16.0, Color::srgb(0.7,0.74,0.76)); }
-                        Page::Settings => {
-                            label(detail, &font.0, "PERSONALIZE YOUR GAME", 21.0, accent);
-                            label(detail, &font.0, "Select an option to change it.\n\nArrow keys move focus. Enter selects. Esc goes back.\n\nFor controls, select a binding and press the new key.", 16.0, Color::srgb(0.7,0.74,0.76));
-                            if let Some(key) = &binding.command { label(detail, &font.0, format!("PRESS A KEY FOR {key}"), 18.0, accent); }
-                            if menu.editing_name { label(detail, &font.0, "TYPE YOUR NAME\nENTER TO SAVE", 18.0, accent); }
-                        }
                         _ => {
                             label(detail, &font.0, if menu.page == Page::Zombies { "ZOMBIES SURVIVAL" } else { "WELCOME BACK" }, 22.0, accent);
                             label(detail, &font.0, game.map_or("Choose a game from your library.", Game::title), 20.0, Color::WHITE);
-                            label(detail, &font.0, if menu.page == Page::Zombies { "Survive the rounds. Earn points for hits and kills, buy weapons and perks, and revive your teammates.\n\nSelect a map to set up your match." } else if game.is_none() { "Select an installation, tune your settings, and enter Multiplayer." } else if installed { "Owned installation detected.\n\nCampaign is Work in Progress." } else { "Add your owned installation in Game Installations to enable Multiplayer." }, 16.0, Color::srgb(0.7,0.74,0.76));
+                            label(detail, &font.0, if menu.page == Page::Zombies { "Survive the rounds. Earn points for hits and kills, buy weapons and perks, and revive your teammates.\n\nSelect a map to set up your match." } else if game.is_none() { "Select an installation and enter its game." } else if installed { "Owned installation detected.\n\nCampaign is Work in Progress." } else { "Add your owned installation in Game Installations to enable Multiplayer." }, 16.0, Color::srgb(0.7,0.74,0.76));
                             if menu.page == Page::Library { label(detail, &font.0, "MODERN WARFARE  /  BLACK OPS", 13.0, accent); }
                         }
                     }
