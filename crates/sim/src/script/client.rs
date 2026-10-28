@@ -192,13 +192,12 @@ pub(crate) enum ClientMessage {
     /// A client exploder the server started (a positive id) or stopped
     /// (a negative one), for every client.
     Exploder(i32),
-    /// A player stepped (client number, movement type and surface).
-    /// A step of a player's (its client, movement type, surface), at the
-    /// server time of the command that took it.
-    Footstep(u32, &'static str, &'static str, i32),
-    /// A player jumped, landed or triggered a movement event (client number
-    /// and event).
-    JumpLand(u32, game_api::movement::JumpLand),
+    /// A step of a player's (its client, its server object, movement type,
+    /// surface), at the server time of the command that took it.
+    Footstep(u32, Option<u64>, &'static str, &'static str, i32),
+    /// A player jumped, landed or triggered a movement event (client number,
+    /// its server object and the event).
+    JumpLand(u32, Option<u64>, game_api::movement::JumpLand),
     /// An entity plays its weapon death effect (`playweapondeatheffects`,
     /// client event 0xc1).
     WeaponDeathEffects {
@@ -302,10 +301,11 @@ pub(crate) fn jump_land(
     {
         return;
     }
+    let object = super::host::entity_damage::player_object_id(server, client.0);
     if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
         runtime
             .client_messages
-            .push(ClientMessage::JumpLand(client.0, event));
+            .push(ClientMessage::JumpLand(client.0, object, event));
     }
 }
 
@@ -322,10 +322,11 @@ pub(crate) fn footstep(
     {
         return;
     }
+    let object = super::host::entity_damage::player_object_id(server, client.0);
     if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
-        runtime
-            .client_messages
-            .push(ClientMessage::Footstep(client.0, kind, surface, at_ms));
+        runtime.client_messages.push(ClientMessage::Footstep(
+            client.0, object, kind, surface, at_ms,
+        ));
     }
 }
 
@@ -1470,11 +1471,19 @@ fn run_frame(
             }
             ClientMessage::Exploder(id) => (callbacks.activate_exploder, vec![Value::Int(id)]),
             // Black Ops calls these for the first person, never quiet.
-            ClientMessage::JumpLand(client_num, event) => {
-                if client_num != 0 {
-                    continue;
-                }
-                let player_obj = world.resource::<ClientView>().locals[0].object;
+            ClientMessage::JumpLand(client_num, object, event) => {
+                // Another player's jump, landing and foliage are their
+                // entity's, heard as someone else's; the code sounds below
+                // are the local player's own.
+                let (player_obj, first_person) = if client_num == 0 {
+                    (world.resource::<ClientView>().locals[0].object, 1)
+                } else {
+                    let Some(mirrored) = object.and_then(|object| client.mirrored.get(&object))
+                    else {
+                        continue;
+                    };
+                    (mirrored.client_object, 0)
+                };
                 let player = Value::Object(player_obj);
                 match event {
                     game_api::movement::JumpLand::Jump(surface) => (
@@ -1483,7 +1492,7 @@ fn run_frame(
                             Value::Int(0),
                             player,
                             Value::string(surface),
-                            Value::Int(1),
+                            Value::Int(first_person),
                             Value::Int(0),
                         ],
                     ),
@@ -1493,15 +1502,21 @@ fn run_frame(
                             Value::Int(0),
                             player,
                             Value::string(surface),
-                            Value::Int(1),
+                            Value::Int(first_person),
                             Value::Int(0),
                             Value::Int(hurt.into()),
                         ],
                     ),
                     game_api::movement::JumpLand::Foliage => (
                         callbacks.player_foliage,
-                        vec![Value::Int(0), player, Value::Int(1), Value::Int(0)],
+                        vec![
+                            Value::Int(0),
+                            player,
+                            Value::Int(first_person),
+                            Value::Int(0),
+                        ],
                     ),
+                    _ if client_num != 0 => continue,
                     game_api::movement::JumpLand::Mantle => {
                         play_local_code_sound(world, "chr_launch_exert_plr".to_owned());
                         continue;
@@ -1532,17 +1547,24 @@ fn run_frame(
                     _ => continue,
                 }
             }
-            ClientMessage::Footstep(client_num, kind, surface, at_ms) => {
-                if client_num != 0 {
-                    continue;
-                }
-                let player = world.resource::<ClientView>().locals[0].object;
+            ClientMessage::Footstep(client_num, object, kind, surface, at_ms) => {
+                // The local player's own step is first person; another
+                // player's is their entity's, heard as someone else's.
+                let (player, first_person) = if client_num == 0 {
+                    (world.resource::<ClientView>().locals[0].object, 1)
+                } else {
+                    let Some(mirrored) = object.and_then(|object| client.mirrored.get(&object))
+                    else {
+                        continue;
+                    };
+                    (mirrored.client_object, 0)
+                };
                 let args = vec![
                     Value::Int(0),
                     Value::Object(player),
                     Value::string(kind),
                     Value::string(surface),
-                    Value::Int(1),
+                    Value::Int(first_person),
                     Value::Int(0),
                 ];
                 // Black Ops' client plays a step as its own predicted move
