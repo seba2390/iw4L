@@ -4,8 +4,10 @@
 //! mode, team, arcs, convergence and drop pitch and read what the turret
 //! keeps. The game's own think runs every think interval and its shot fires
 //! for `shootturret`, both through the match's fire world; the sentients
-//! they search are kept in the game's slot order here. A player using a
-//! turret is not run (`t5.turret.use`).
+//! they search are kept in the game's slot order here. `useby` puts a
+//! player on a turret (or takes them off it): the game's turret use clamps
+//! their view and holds their stance, and while they stay on it, alive,
+//! the game's think for its user aims the gun with their view and fires it.
 
 use super::super::args::{arg, float, string};
 use super::super::entities::EntityKind;
@@ -44,6 +46,8 @@ struct Turret {
     target: Option<u64>,
     /// A player is on the turret (`getturretowner`).
     in_use: bool,
+    /// The client on the turret, and the stance they mounted in.
+    user: Option<(u32, game_api::movement::Stance)>,
     /// `setturretowner`.
     owner: Option<u64>,
 }
@@ -161,6 +165,7 @@ fn spawn(world: &mut World, rules: &TurretRules, id: u64) -> Result<Turret, Stri
         manual_target: None,
         target: None,
         in_use: false,
+        user: None,
         owner: None,
     })
 }
@@ -397,6 +402,106 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     // Black Ops' handler for it does nothing.
     registry.register(Method, "setturretaccuracy", |_, _, _| Ok(Value::Undefined));
+    // The player on the turret asks to get off; any other player gets on a
+    // turret no one uses, which hears `trigger` first.
+    registry.register(Method, "useby", |world, receiver, args| {
+        let id = turret(world, receiver, NOT_A_TURRET)?;
+        let player = entity_id(world, arg(args, 0)?)?;
+        let client = world
+            .resource::<RoundScript>()
+            .player_client(player)
+            .ok_or("not a player entity")?;
+        let used_by = world.resource::<Turrets>().0[&id].user;
+        if used_by.is_some_and(|(user, _)| user == client) {
+            stop_using(world, id);
+            return Ok(Value::Undefined);
+        }
+        crate::script::runtime::raise(
+            world,
+            Value::Object(id),
+            "trigger",
+            vec![Value::Object(player)],
+        );
+        if used_by.is_none() {
+            start_using(world, id, client, player);
+        }
+        Ok(Value::Undefined)
+    });
+}
+
+/// The game's turret use: the player takes the turret's view clamp and
+/// stance, the turret takes them as its owner.
+fn start_using(world: &mut World, id: u64, client: u32, player: u64) {
+    let Some(rules) = rules(world) else {
+        return;
+    };
+    let Some(user) = user_of(world, client, player) else {
+        return;
+    };
+    let mut mount = None;
+    with_turret(world, id, |turret, around| {
+        mount = Some((rules.mount)(turret, &user, around));
+        Vec::new()
+    });
+    let Some(mount) = mount else {
+        return;
+    };
+    crate::game_move::mount_turret(
+        &mut FrameWorld::from_world(world),
+        crate::ClientId(client),
+        Some(&mount),
+    );
+    if let Some(turret) = world.resource_mut::<Turrets>().0.get_mut(&id) {
+        turret.in_use = true;
+        turret.owner = Some(player);
+        turret.user = Some((client, user.stance));
+    }
+    crate::script::runtime::raise(world, Value::Object(id), "turretownerchange", Vec::new());
+}
+
+/// The player gets off the turret: they take back the stance they mounted
+/// in, and the turret has no owner and stops firing.
+fn stop_using(world: &mut World, id: u64) {
+    let Some((client, stance)) = world
+        .resource_mut::<Turrets>()
+        .0
+        .get_mut(&id)
+        .and_then(|t| {
+            t.in_use = false;
+            t.owner = None;
+            t.game.state.manned = false;
+            t.game.state.user_firing = false;
+            t.game.state.fire_latched = false;
+            t.game.state.fire_sound_ms = 0;
+            t.user.take()
+        })
+    else {
+        return;
+    };
+    let mut frame = FrameWorld::from_world(world);
+    crate::game_move::mount_turret(&mut frame, crate::ClientId(client), None);
+    let stance = match stance {
+        game_api::movement::Stance::Prone => "prone",
+        game_api::movement::Stance::Crouch => "crouch",
+        game_api::movement::Stance::Stand => "stand",
+    };
+    crate::game_move::set_stance(&mut frame, crate::ClientId(client), stance);
+    crate::script::runtime::raise(world, Value::Object(id), "turretownerchange", Vec::new());
+}
+
+/// The player on the turret, as the game's turret rules read them; `None`
+/// once they are gone.
+fn user_of(world: &mut World, client: u32, player: u64) -> Option<game_api::turret::TurretUser> {
+    let number = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&player)?
+        .number;
+    crate::game_move::turret_user(
+        &mut FrameWorld::from_world(world),
+        crate::ClientId(client),
+        number,
+    )
 }
 
 /// The error a call the game's turret rules do not run fails with.
@@ -413,6 +518,19 @@ fn unrun(world: &mut World, which: fn(&TurretRules) -> &'static game_api::Unknow
 /// Runs a turret rule (its think, its shot) on one turret against the
 /// match, keeping what it changed; gaps it reaches are reported.
 fn run(world: &mut World, id: u64, rule: game_api::turret::TurretThinkFn) {
+    with_turret(world, id, |turret, around| rule(turret, around));
+}
+
+/// Runs a game rule on one turret against the match, keeping what it
+/// changed; gaps it reaches are reported.
+fn with_turret(
+    world: &mut World,
+    id: u64,
+    rule: impl FnOnce(
+        &mut GameTurret,
+        &mut crate::game_fire::MatchFireWorld<'_, '_>,
+    ) -> Vec<&'static game_api::Unknown>,
+) {
     let Some(mut turret) = world
         .get_resource::<Turrets>()
         .and_then(|turrets| turrets.0.get(&id).cloned())
@@ -482,6 +600,23 @@ pub(crate) fn advance(world: &mut World) {
     order.sort_unstable();
     for (_, id) in order {
         run(world, id, rules.think);
+        let Some((client, _)) = world.resource::<Turrets>().0.get(&id).and_then(|t| t.user) else {
+            continue;
+        };
+        let player = world.resource::<Turrets>().0[&id].owner;
+        let alive = player.is_some_and(|player| world.resource::<RoundScript>().live(&player))
+            && FrameWorld::from_world(world)
+                .player(crate::ClientId(client))
+                .is_some_and(|ps| ps.health > 0);
+        match player
+            .filter(|_| alive)
+            .and_then(|player| user_of(world, client, player))
+        {
+            Some(user) => with_turret(world, id, |turret, around| {
+                (rules.user_think)(turret, &user, around)
+            }),
+            None => stop_using(world, id),
+        }
     }
 }
 

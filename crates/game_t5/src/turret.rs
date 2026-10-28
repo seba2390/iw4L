@@ -2,14 +2,17 @@
 //! the spawn keys a map sets, else the turret weapon's own definition; its
 //! turret think (every 50 ms) cools the gun, searches the sentients for a
 //! target, aims at it with convergence and keeps the firing state; its
-//! `shootturret` fires one shot of the turret weapon.
+//! `shootturret` fires one shot of the turret weapon. A player who uses a
+//! turret takes its view clamp and stance, turns its gun with their view
+//! and fires it while holding attack.
 
 use crate::fire::{Bullets, WeaponParms};
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::FireTeam;
-use game_api::movement::GameWeapon;
+use game_api::movement::{GameWeapon, Stance};
 use game_api::turret::{
-    GameTurret, Sentient, TurretArcs, TurretRules, TurretSpawn, TurretTag, TurretWorld,
+    GameTurret, Sentient, TurretArcs, TurretMount, TurretRules, TurretSpawn, TurretTag, TurretUser,
+    TurretWorld,
 };
 use game_api::{Unknown, unknown};
 
@@ -26,6 +29,14 @@ const DEFAULT_HEALTH: i32 = 100;
 
 /// The think's interval, ms.
 const THINK_MS: i32 = 50;
+/// A turret's user aims its gun no further up or down than this.
+const USER_PITCH_LIMIT: f32 = 15.0;
+/// A user's turret stops firing at this heat.
+const USER_MAX_HEAT: f32 = 100.0;
+/// `fireType` single shot: one shot each press of attack.
+const FIRETYPE_SINGLE: i32 = 1;
+/// The weapon state of a weapon being deployed.
+const WEAPON_DEPLOYING: i32 = 0x24;
 /// Black Ops' sentient pool.
 const SENTIENTS: usize = 36;
 
@@ -72,6 +83,8 @@ pub(crate) const TURRETS: TurretRules = TurretRules {
     think,
     shoot,
     bone_controls,
+    mount,
+    user_think,
     restore_drop_pitch: unknown!(
         "t5.turret.drop_pitch",
         "`restoredefaultdroppitch` does not trace for the turret's drop pitch: the turret keeps the one it has",
@@ -79,8 +92,8 @@ pub(crate) const TURRETS: TurretRules = TurretRules {
     ),
     player_use: unknown!(
         "t5.turret.use",
-        "a player cannot mount a usable Black Ops turret, so `getturretowner` answers undefined",
-        "Black Ops' turret use (activate, the player's view and fire on the turret, dismount)"
+        "a player on a turret stays where they stood: Black Ops places them behind the gun by its player animation on `tag_weapon`, and its use search does not offer turrets (only `useby` mounts one)",
+        "the turret's player animations and placement, and Black Ops' use search for turrets, from its executable"
     ),
 };
 
@@ -305,9 +318,150 @@ fn think(turret: &mut GameTurret, world: &mut dyn TurretWorld) -> Vec<&'static U
     } else if flags & FLAG_AI != 0 {
         // No actor uses a turret here, so one the AI aims has no gunner.
         think.stop(false);
-    } else {
+    } else if !think.turret.state.manned {
         think.gaps.push(manned_unknown());
     }
+    gaps
+}
+
+/// A player starts to use the turret: its gun turns to their view within
+/// its arcs, their view is clamped about the middle of the arcs, and the
+/// turret weapon's stance holds them.
+fn mount(turret: &mut GameTurret, user: &TurretUser, world: &mut dyn TurretWorld) -> TurretMount {
+    let (_, base) = world.turret_pose(turret.entity);
+    let arcs = turret.spawn.arcs;
+    turret.state.manned = true;
+    turret.state.gun_angles = [
+        clamp_pitch(angle_normalize_180(user.view[0] - base[0]), &arcs),
+        clamp_yaw(angle_normalize_180(user.view[1] - base[1]), &arcs),
+        0.0,
+    ];
+    let range = [
+        (arcs.bottom - arcs.top) * 0.5,
+        (arcs.left - arcs.right) * 0.5,
+    ];
+    TurretMount {
+        clamp_base: [
+            angle_normalize_360(arcs.bottom + base[0] - range[0]),
+            angle_normalize_360(base[1] + arcs.left - range[1]),
+        ],
+        clamp_range: range,
+        stance: turret_stance(&*world, turret.weapon),
+    }
+}
+
+/// The stance the turret weapon's definition names: prone (2), crouched
+/// (1), else standing.
+fn turret_stance(world: &dyn TurretWorld, weapon: u32) -> Stance {
+    let stance = weapon_def(world, weapon)
+        .and_then(|(def, variant)| WeaponDefView::new(&def, &variant).map(|def| def.stance()));
+    match stance {
+        Some(2) => Stance::Prone,
+        Some(1) => Stance::Crouch,
+        _ => Stance::Stand,
+    }
+}
+
+/// The gun's pitch within the arcs (the bottom first, then the top).
+fn clamp_pitch(pitch: f32, arcs: &TurretArcs) -> f32 {
+    let mut clamped = pitch;
+    if pitch - arcs.bottom >= 0.0 {
+        clamped = arcs.bottom;
+    }
+    if arcs.top - pitch >= 0.0 {
+        clamped = arcs.top;
+    }
+    clamped
+}
+
+/// The gun's yaw within the arcs.
+fn clamp_yaw(yaw: f32, arcs: &TurretArcs) -> f32 {
+    let below_left = if yaw - arcs.left < 0.0 {
+        yaw
+    } else {
+        arcs.left
+    };
+    if arcs.right - yaw < 0.0 {
+        below_left
+    } else {
+        arcs.right
+    }
+}
+
+/// `angle` wrapped into [0, 360), in single precision.
+fn angle_normalize_360(angle: f32) -> f32 {
+    let turns = angle * INV_360;
+    let wrapped = (turns - turns.floor()) * 360.0;
+    if wrapped - 360.0 >= 0.0 {
+        wrapped - 360.0
+    } else {
+        wrapped
+    }
+}
+
+/// The turret's think while a player uses it: the gun follows their view
+/// (within its arcs and 15 degrees up or down), and each fire time while
+/// they hold attack it fires one shot, unless they are frozen, their weapon
+/// is deploying, or the gun is too hot; a single-shot weapon waits for
+/// attack to be let go.
+fn user_think(
+    turret: &mut GameTurret,
+    user: &TurretUser,
+    world: &mut dyn TurretWorld,
+) -> Vec<&'static Unknown> {
+    let mut gaps = vec![TURRETS.player_use];
+    let (_, base) = world.turret_pose(turret.entity);
+    let arcs = turret.spawn.arcs;
+    let pitch = clamp_pitch(angle_normalize_180(user.view[0] - base[0]), &arcs);
+    let pitch = if -USER_PITCH_LIMIT - pitch < 0.0 {
+        pitch.min(USER_PITCH_LIMIT)
+    } else {
+        -USER_PITCH_LIMIT
+    };
+    let yaw = clamp_yaw(angle_normalize_180(user.view[1] - base[1]), &arcs);
+    turret.state.gun_angles = [pitch, yaw, 0.0];
+    let Some((def_bytes, variant_bytes)) = weapon_def(&*world, turret.weapon) else {
+        gaps.push(crate::movement::weapon_unknown());
+        return gaps;
+    };
+    let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
+        gaps.push(crate::movement::weapon_unknown());
+        return gaps;
+    };
+    turret.state.fire_timer -= THINK_MS;
+    if turret.state.fire_timer > 0 {
+        return gaps;
+    }
+    turret.state.fire_timer = 0;
+    if user.frozen
+        || user.weapon_state == WEAPON_DEPLOYING
+        || !user.attack
+        || turret.state.heat >= USER_MAX_HEAT
+        || turret.state.overheating
+    {
+        turret.state.fire_latched = false;
+        turret.state.user_firing = false;
+        return gaps;
+    }
+    if def.fire_type() == FIRETYPE_SINGLE && turret.state.fire_latched {
+        return gaps;
+    }
+    turret.state.fire_latched = true;
+    turret.state.fire_timer = def.fire_time();
+    if turret.spawn.flags & FLAG_FIRE_DISABLED == 0 {
+        turret.state.fire_sound_ms = def.fire_time() * 3;
+        let elapsed = (world.level_time() - world.previous_level_time()) as f32;
+        let mut think = Think {
+            turret,
+            world,
+            gaps: &mut gaps,
+        };
+        think.fire_as(&def, false, Some(user.entity));
+        if def.overheat_weapon() != 0 {
+            turret.state.heat += elapsed * def.overheat_rate() * 0.001;
+        }
+    }
+    turret.state.user_firing = true;
     gaps
 }
 
@@ -334,7 +488,7 @@ fn shoot(turret: &mut GameTurret, world: &mut dyn TurretWorld) -> Vec<&'static U
         world,
         gaps: &mut gaps,
     };
-    think.fire(&def, aiming);
+    think.fire_as(&def, aiming, None);
     gaps
 }
 
@@ -347,6 +501,11 @@ struct Think<'a> {
 impl Think<'_> {
     fn time(&self) -> i32 {
         self.world.level_time()
+    }
+
+    /// A player on the turret is firing it (the game's manned turret).
+    fn firing_user(&self) -> bool {
+        self.turret.state.manned && self.turret.state.user_firing
     }
 
     fn flags(&mut self) -> &mut u32 {
@@ -369,8 +528,9 @@ impl Think<'_> {
             self.gaps.push(crate::movement::weapon_unknown());
             return;
         };
-        // Only a player on the turret could keep it from cooling.
-        if def.overheat_weapon() == 0 {
+        // A player on the turret keeps it from cooling unless the weapon
+        // cools while firing.
+        if def.overheat_weapon() == 0 || (self.firing_user() && !def.cool_while_firing()) {
             return;
         }
         let elapsed = (self.time() - self.world.previous_level_time()) as f32;
@@ -399,8 +559,9 @@ impl Think<'_> {
             self.gaps.push(crate::movement::weapon_unknown());
             return;
         };
-        let fire_loop = weapon.fire_loop_sounds[0].clone();
-        let fire_stop = weapon.fire_stop_sounds[0].clone();
+        let variant = usize::from(self.firing_user());
+        let fire_loop = weapon.fire_loop_sounds[variant].clone();
+        let fire_stop = weapon.fire_stop_sounds[variant].clone();
         self.world.turret_loop_sound(entity, fire_loop.as_deref());
         self.turret.state.fire_sound_ms -= THINK_MS;
         if self.turret.state.fire_sound_ms <= 0
@@ -880,7 +1041,9 @@ impl Think<'_> {
     /// One shot: from the barrel along the gun (its base angles turned by
     /// the gun's), noting whether the aim point is outside the gun's cone,
     /// with the weapon's AI spread. A two-barrelled turret alternates.
-    fn fire(&mut self, def: &WeaponDefView<'_>, aiming: bool) {
+    /// One shot: the turret's own, or its user's (who takes the hit as
+    /// theirs, with the turret's player spread).
+    fn fire_as(&mut self, def: &WeaponDefView<'_>, aiming: bool, shooter: Option<i32>) {
         let Some(flash) = self.tag("tag_flash") else {
             return;
         };
@@ -908,14 +1071,16 @@ impl Think<'_> {
                 self.gaps.push(aim_refine_unknown());
             }
         }
-        // The turret fires for itself: no owner here is a player or an
-        // entity of its own.
-        let spread = self.turret.spawn.ai_spread;
+        // The turret fires for itself, or for the player on it.
+        let spread = match shooter {
+            Some(_) => self.turret.spawn.player_spread,
+            None => self.turret.spawn.ai_spread,
+        };
         if def.weapon_type() == WEAPTYPE_BULLET {
             let time = self.time();
             let entity = self.turret.entity;
             Bullets {
-                attacker: entity,
+                attacker: shooter.unwrap_or(entity),
                 weapon_entity: entity,
                 hand: 0,
                 zombies: true,

@@ -728,6 +728,17 @@ pub trait PlayerMovement: Sync {
     /// down.
     fn clear_damage_timer(&self, _player: &mut MovePlayer) {}
 
+    /// Puts the player on a turret (`Some`: its view clamp and the stance it
+    /// holds them in) or takes them off it; false when the game's movement
+    /// has no turrets.
+    fn mount_turret(
+        &self,
+        _player: &mut MovePlayer,
+        _mount: Option<&crate::turret::TurretMount>,
+    ) -> bool {
+        false
+    }
+
     /// A script hides (`hideviewmodel`) or shows the player's viewmodel: what
     /// the game does to the player's weapon state, with the events it sends;
     /// `None` when the game's movement has no such rule.

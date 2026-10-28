@@ -293,6 +293,11 @@ impl SimWorld {
                 .ok_or_else(|| format!("no entity named {spec}"))?;
             Ok(Value::Object(id))
         };
+        let player = |ecs: &bevy_ecs::world::World, spec: &str| {
+            spec.strip_prefix("player")
+                .and_then(|n| n.parse().ok())
+                .map(|client| crate::script::host::players::player_object(ecs, client))
+        };
         let receiver = match receiver.strip_prefix("player") {
             Some(n) => {
                 let client = n.parse().map_err(|_| format!("bad receiver {receiver}"))?;
@@ -308,6 +313,10 @@ impl SimWorld {
         for arg in args {
             if let Some(spec) = arg.strip_prefix("targetname=") {
                 parsed_args.push(find_target(&mut self.ecs, spec)?);
+                continue;
+            }
+            if let Some(object) = player(&self.ecs, arg) {
+                parsed_args.push(object);
                 continue;
             }
             if let Ok(n) = arg.parse::<i32>() {
@@ -328,6 +337,14 @@ impl SimWorld {
                 [x, y, z] => Value::Vector([*x, *y, *z]),
                 _ => Value::String(arg.as_str().into()),
             });
+        }
+        // A name with no module is a builtin, called at the next frame.
+        if !name.contains("::") {
+            self.ecs
+                .resource_mut::<crate::script::RoundScript>()
+                .console_calls
+                .push((name.to_ascii_lowercase(), receiver, parsed_args));
+            return Ok(());
         }
         crate::script::start(&mut self.ecs, name, receiver, parsed_args)
             .map(|_| ())

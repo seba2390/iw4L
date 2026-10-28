@@ -14,7 +14,7 @@ use game_api::movement::{
 use game_api::{Unknown, unknown};
 use movement_t5::events::event;
 use movement_t5::state::{
-    ENTITYNUM_NONE, ENTITYNUM_WORLD, buttons, pm_flags, pm_type, view_height,
+    ENTITYNUM_NONE, ENTITYNUM_WORLD, buttons, e_flags, pm_flags, pm_type, view_height,
 };
 use movement_t5::{Buttons, Gap, MoveEvent, PlayerState, Pm, UserCmd};
 
@@ -43,8 +43,8 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
         ),
         Gap::MountedView => unknown!(
             "t5.movement.mounted",
-            "Black Ops' movement on turrets and vehicles",
-            "Black Ops' turret and vehicle player moves from its executable"
+            "Black Ops' movement in vehicles, and the view clamp a link's arcs set",
+            "Black Ops' vehicle player move and its link clamp update from its executable"
         ),
         Gap::ShellshockTorso => unknown!(
             "t5.movement.shellshock_torso",
@@ -65,6 +65,11 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
             "t5.movement.anim_lock",
             "Black Ops' scripted animation lock on a player",
             "the player animation script durations that end the lock"
+        ),
+        Gap::TurretWeapon => unknown!(
+            "t5.weapons.turret_weapon",
+            "the held weapon's own rules on a turret (its forced viewmodel animations, its ready and fire checks) are not run",
+            "Black Ops' weapon rules for a player on a turret from its executable"
         ),
         Gap::PhysicsWorld => unknown!(
             "t5.movement.physics_world",
@@ -328,6 +333,10 @@ fn game_state(
     b.flag(&mut being_revived, write);
     if !write && ps.pm_type == pm_type::LAST_STAND && being_revived {
         ps.pm_type = pm_type::LAST_STAND_REVIVED;
+    }
+    for i in 0..2 {
+        b.f(&mut ps.view_angle_clamp_base[i], write);
+        b.f(&mut ps.view_angle_clamp_range[i], write);
     }
 }
 
@@ -859,6 +868,28 @@ impl PlayerMovement for T5Movement {
     /// Black Ops' `startrevive` (`true`) and `stoprevive` (`false`): switches
     /// the downed player between `LAST_STAND_REVIVED` (which freezes crawling
     /// in `pmove`) and `LAST_STAND`.
+    /// The turret's stance bits in the player's entity flags (both for
+    /// standing) and its view clamp; off the turret, neither bit.
+    fn mount_turret(
+        &self,
+        player: &mut MovePlayer,
+        mount: Option<&game_api::turret::TurretMount>,
+    ) -> bool {
+        let (mut ps, mut last) = unpack(player);
+        ps.e_flags &= !e_flags::TURRET;
+        if let Some(mount) = mount {
+            ps.e_flags |= match mount.stance {
+                Stance::Prone => e_flags::TURRET_PRONE,
+                Stance::Crouch => e_flags::TURRET_CROUCH,
+                Stance::Stand => e_flags::TURRET,
+            };
+            ps.view_angle_clamp_base = mount.clamp_base;
+            ps.view_angle_clamp_range = mount.clamp_range;
+        }
+        pack(player, &mut ps, &mut last);
+        true
+    }
+
     fn set_being_revived(&self, player: &mut MovePlayer, being_revived: bool) {
         let (mut ps, mut last) = unpack(player);
         if matches!(

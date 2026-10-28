@@ -57,6 +57,12 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x6c))
     }
 
+    /// `stance`: the stance a turret of this weapon holds its user in (0
+    /// standing, 1 crouched, 2 prone).
+    pub fn stance(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x70))
+    }
+
     /// `enemyCrosshairRange`
     pub fn enemy_crosshair_range(&self) -> f32 {
         f32::from_le_bytes(Self::word(self.def, 0x4a0))
