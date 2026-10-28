@@ -4,7 +4,7 @@ pub mod audio;
 pub mod input;
 pub mod menu;
 
-pub use audio::{UiPlayMusic, UiPlaySound, UiStopMusic};
+pub use audio::{UiPlayCinematic, UiPlayMusic, UiPlaySound, UiStopCinematic, UiStopMusic};
 pub use input::{UiBindRequest, UiBindingCapture};
 pub use menu::{
     AssetFamilies, FrontendContentLoading, HostMatchRules, MatchPause, NativeGameMenu,
@@ -22,6 +22,8 @@ pub fn register_ui_contracts(app: &mut App) {
         .add_message::<UiPlaySound>()
         .add_message::<UiPlayMusic>()
         .add_message::<UiStopMusic>()
+        .add_message::<UiPlayCinematic>()
+        .add_message::<UiStopCinematic>()
         .add_message::<UiExecCommand>()
         .add_message::<UiMenuRequest>();
 }

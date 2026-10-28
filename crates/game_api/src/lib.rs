@@ -967,6 +967,9 @@ pub struct LibraryMode {
     /// library starts it, and its menus choose the map (`None`: the
     /// library's own pages do).
     pub front_end: Option<&'static str>,
+    /// The cinematic the game plays before its front end, by its path in
+    /// the installation (`None`: none). Any key or mouse button skips it.
+    pub intro: Option<&'static str>,
     /// Other gametypes and start locations offered on those maps.
     pub starts: &'static [LibraryStart],
     /// A patch zone the game downloads at launch that the mode's own

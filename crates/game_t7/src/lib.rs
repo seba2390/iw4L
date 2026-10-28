@@ -253,6 +253,7 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     gametype: "zclassic",
     note: "Runs the map's own compiled scripts; the map's world, weapons and movement are not read yet (docs/fidelity/t7.md).",
     front_end: None,
+    intro: None,
     maps: &[("zm_zod", "SHADOWS OF EVIL")],
     starts: &[],
     capture: None,

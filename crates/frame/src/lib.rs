@@ -47,5 +47,6 @@ pub use settings::{
 pub use ui::{
     AssetFamilies, FrontendContentLoading, HostMatchRules, MatchPause, NativeGameMenu,
     UiBindRequest, UiBindingCapture, UiExecCommand, UiMenuDvars, UiMenuKey, UiMenuRequest,
-    UiPartyState, UiPlayMusic, UiPlaySound, UiStopMusic, UnifiedFrontend, register_ui_contracts,
+    UiPartyState, UiPlayCinematic, UiPlayMusic, UiPlaySound, UiStopCinematic, UiStopMusic,
+    UnifiedFrontend, register_ui_contracts,
 };
