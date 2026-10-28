@@ -17,6 +17,9 @@ fn setting_value(settings: &frame::GameSettings, setting: MenuSetting) -> Option
         }
         MenuSetting::MouseSensitivity => Some(settings.sensitivity),
         MenuSetting::FieldOfView => Some(settings.fov),
+        MenuSetting::Fullscreen => Some(f32::from(u8::from(settings.fullscreen))),
+        MenuSetting::VerticalSync => Some(f32::from(u8::from(settings.vsync))),
+        MenuSetting::InvertMouse => Some(f32::from(u8::from(settings.invert_mouse))),
         MenuSetting::DisplayGamma | MenuSetting::CategoryVolume(_) => None,
     }
 }
@@ -28,6 +31,9 @@ fn set_setting(settings: &mut frame::GameSettings, setting: MenuSetting, value: 
         }
         MenuSetting::MouseSensitivity => settings.sensitivity = value,
         MenuSetting::FieldOfView => settings.fov = value,
+        MenuSetting::Fullscreen => settings.fullscreen = value != 0.0,
+        MenuSetting::VerticalSync => settings.vsync = value != 0.0,
+        MenuSetting::InvertMouse => settings.invert_mouse = value != 0.0,
         MenuSetting::DisplayGamma | MenuSetting::CategoryVolume(_) => {}
     }
 }

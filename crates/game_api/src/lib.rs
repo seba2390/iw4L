@@ -832,6 +832,12 @@ pub enum MenuSetting {
     /// The volume of the sounds whose mixer group has one of these
     /// categories: they play at the value's square.
     CategoryVolume(&'static [i32]),
+    /// The window fills the screen while the value is 1.
+    Fullscreen,
+    /// Frames wait for the display's refresh while the value is 1.
+    VerticalSync,
+    /// The mouse's vertical look is inverted while the value is 1.
+    InvertMouse,
 }
 
 /// One of a game's dvars behind its menus: its registered default, which the
