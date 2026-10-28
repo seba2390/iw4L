@@ -40,7 +40,7 @@ impl AudioDecoder {
             11
         };
         let frame_len = 1usize << frame_bits;
-        let half_rate = (rate + 1) / 2;
+        let half_rate = rate.div_ceil(2);
         let root = frame_len as f32 / ((frame_len as f32).sqrt() * 32768.0);
         let quant = std::array::from_fn(|i| (i as f32 * QUANT_STEP).exp() * root);
         let mut band_count = 1;
@@ -151,9 +151,14 @@ impl AudioDecoder {
         let count = (self.overlap * self.channels) as f32;
         for (ch, coeffs) in out.iter_mut().enumerate() {
             if !self.first {
-                for i in 0..self.overlap {
+                for (i, (sample, previous)) in coeffs
+                    .iter_mut()
+                    .zip(&self.previous[ch])
+                    .take(self.overlap)
+                    .enumerate()
+                {
                     let j = (ch + i * self.channels) as f32;
-                    coeffs[i] = (self.previous[ch][i] * (count - j) + coeffs[i] * j) / count;
+                    *sample = (previous * (count - j) + *sample * j) / count;
                 }
             }
             let tail = self.frame_len - self.overlap;
@@ -192,19 +197,15 @@ impl Fft {
     /// place.
     fn dct3(&mut self, data: &mut [f32]) {
         let n = data.len();
-        let big = self.size;
         let scale = 2.0 / n as f64;
-        for k in 0..big {
-            let (re, im) = if k < n {
-                let angle = std::f64::consts::PI * k as f64 / (2 * n) as f64;
-                let weight = if k == 0 { 0.5 } else { 1.0 } * scale;
-                let value = f64::from(data[k]) * weight;
-                ((value * angle.cos()) as f32, (value * angle.sin()) as f32)
-            } else {
-                (0.0, 0.0)
-            };
-            self.re[k] = re;
-            self.im[k] = im;
+        self.re.fill(0.0);
+        self.im.fill(0.0);
+        for (k, &coeff) in data.iter().enumerate() {
+            let angle = std::f64::consts::PI * k as f64 / (2 * n) as f64;
+            let weight = if k == 0 { 0.5 } else { 1.0 } * scale;
+            let value = f64::from(coeff) * weight;
+            self.re[k] = (value * angle.cos()) as f32;
+            self.im[k] = (value * angle.sin()) as f32;
         }
         self.inverse();
         data.copy_from_slice(&self.re[..n]);
