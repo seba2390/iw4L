@@ -847,6 +847,41 @@ pub(crate) fn die(
     })
 }
 
+/// Puts the player on a turret (its view clamp and stance) or takes them off
+/// it through the game's own movement; false when it has no turrets.
+pub(crate) fn mount_turret(
+    world: &mut FrameWorld,
+    id: ClientId,
+    mount: Option<&game_api::turret::TurretMount>,
+) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| movement.mount_turret(player, mount)).unwrap_or(false)
+}
+
+/// The player as a turret's use and think read them: their entity number,
+/// view, stance, frozen controls, weapon state and whether they hold
+/// attack.
+pub(crate) fn turret_user(
+    world: &mut FrameWorld,
+    id: ClientId,
+    entity: i32,
+) -> Option<game_api::turret::TurretUser> {
+    let frozen = frozen(world, id);
+    let player = world.player(id)?.move_player(id.0 as i32, frozen);
+    let attack =
+        crate::script_player::buttons(world, id) & crate::script::command_buttons("+attack") != 0;
+    Some(game_api::turret::TurretUser {
+        entity,
+        view: player.viewangles,
+        stance: player.stance,
+        frozen,
+        weapon_state: player.weapon_state,
+        attack,
+    })
+}
+
 /// Clears the damage timer of the game's own movement; false when the match
 /// runs the simulation's.
 pub(crate) fn clear_damage_timer(world: &mut FrameWorld, id: ClientId) -> bool {

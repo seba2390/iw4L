@@ -1,6 +1,8 @@
 use crate::math::angle_vectors;
 use crate::physics::{effective_stance, sqrt};
-use crate::state::{ENTITYNUM_NONE, buttons, e_flags, e_flags2, pm_flags, pm_type, weapon_state};
+use crate::state::{
+    ENTITYNUM_NONE, buttons, e_flags, e_flags2, pm_flags, pm_type, weap_flags, weapon_state,
+};
 use crate::{
     Gap, MoveWorld, Pm, Pml, footsteps, ground, moves, sprint, stance, tuning, view_angles,
 };
@@ -274,6 +276,72 @@ fn linked_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
     }
 }
 
+/// A deploying weapon is deployed once its player is on a turret; a
+/// deployed one breaks down, once, when its clip is empty or its player is
+/// off the turret.
+fn deployed_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+    use crate::weapon::state as ws;
+    let on_turret = pm.ps.e_flags & e_flags::TURRET != 0;
+    if pm.ps.weaponstate == ws::DEPLOYING && on_turret {
+        pm.ps.weaponstate = ws::DEPLOYED;
+    }
+    if pm.ps.weaponstate == ws::DEPLOYED && pm.ps.weap_flags & weap_flags::BREAKDOWN == 0 {
+        let weapon = pm.world.weapon(pm.ps.weapon);
+        if crate::inventory::clip(pm.ps, &weapon) <= 0 || !on_turret {
+            pm.ps.weap_flags |= weap_flags::BREAKDOWN;
+            pm.event(crate::events::event::WEAPON_BREAKING_DOWN, 0);
+        }
+    }
+}
+
+/// A player on a turret: the turret holds them, so they stand on nothing
+/// and do not move, but the stance, sprint, sights, night vision,
+/// footsteps and the held weapon's state run on.
+fn turret_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
+    use crate::weapon::state as ws;
+    leave_ladder(pm.ps);
+    pm.ps.ground_entity_num = ENTITYNUM_NONE;
+    pml.ground_plane = false;
+    pml.almost_ground_plane = false;
+    pml.walking = false;
+    pm.ps.velocity = [0.0; 3];
+    crate::weapon::update_ads_intent(pm, pml);
+    sprint::update(pm);
+    crate::weapon::update_sight_aiming(pm);
+    toggle_nightvision(pm);
+    drop_timers(pm, pml);
+    stance::check_duck(pm, pml);
+    crate::weapon::ads_lerp(pm, pml);
+    footsteps::footsteps(pm, pml);
+    if !matches!(
+        pm.ps.weaponstate,
+        ws::DEPLOYING | ws::DEPLOYED | ws::BREAKING_DOWN
+    ) {
+        crate::weapon::reset_state(pm.ps);
+    }
+    if pm.ps.pm_type > pm_type::LAST_STAND_GETTING_UP {
+        pm.ps.weapon = 0;
+    } else {
+        pm.gap(Gap::TurretWeapon);
+    }
+}
+
+/// Pressing hold breath on a turret puts the night vision on or takes it
+/// off at once.
+fn toggle_nightvision<W: MoveWorld>(pm: &mut Pm<'_, W>) {
+    if pm.oldcmd.buttons.held(buttons::HOLD_BREATH) || !pm.cmd.buttons.held(buttons::HOLD_BREATH) {
+        return;
+    }
+    let event = if pm.ps.weap_flags & weap_flags::NIGHTVISION != 0 {
+        pm.ps.weap_flags &= !weap_flags::NIGHTVISION;
+        crate::events::event::NIGHTVISION_REMOVE
+    } else {
+        pm.ps.weap_flags |= weap_flags::NIGHTVISION;
+        crate::events::event::NIGHTVISION_WEAR
+    };
+    pm.event(event, 0);
+}
+
 fn snap_velocity(v: &mut [f32; 3]) {
     for c in v.iter_mut() {
         *c = libm::rintf(*c);
@@ -398,7 +466,12 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         }
         _ => {}
     }
-    if pm.ps.e_flags & e_flags::TURRET != 0 || pm.ps.e_flags2 & e_flags2::MOUNTED != 0 {
+    deployed_weapon(pm);
+    if pm.ps.e_flags & e_flags::TURRET != 0 {
+        turret_move(pm, &mut pml);
+        return output(pm, &pml);
+    }
+    if pm.ps.e_flags2 & e_flags2::MOUNTED != 0 {
         pm.gap(Gap::MountedView);
         return output(pm, &pml);
     }

@@ -141,8 +141,8 @@ pub(crate) fn fire_unknown() -> &'static Unknown {
 fn mounted_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.mounted_fire",
-        "a shot from a player on a turret or in a vehicle is not fired",
-        "Black Ops' turret and vehicle fire for players"
+        "a shot from a player in a vehicle is not fired",
+        "Black Ops' vehicle fire for players"
     )
 }
 

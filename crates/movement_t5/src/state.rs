@@ -289,6 +289,10 @@ pub struct PlayerState {
     pub dive_end_time: i32,
     pub prone_check_torso_pitch: f32,
     pub prone_check_waist_pitch: f32,
+    /// The pitch and yaw a turret's user looks about, and how far either
+    /// way (an axis whose range is 180 or more is free).
+    pub view_angle_clamp_base: [f32; 2],
+    pub view_angle_clamp_range: [f32; 2],
     pub launch_time: i32,
     pub move_speed_scale_multiplier: f32,
     /// The running shellshock: its precache number (0 for none), start time

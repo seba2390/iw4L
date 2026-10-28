@@ -56,6 +56,9 @@ pub enum Gap {
     /// The match cannot list the physics world: the player sweeps the clip
     /// map, Black Ops' other collision mode.
     PhysicsWorld = 512,
+    /// The held weapon's own rules on a turret (its forced animations, its
+    /// ready and fire checks).
+    TurretWeapon = 1024,
 }
 
 const PLAYER_BODY_CONTENTS: u32 = 0x0200_c000;
@@ -280,6 +283,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             Gap::AnimLock,
             Gap::Overheat,
             Gap::PhysicsWorld,
+            Gap::TurretWeapon,
         ]
         .into_iter()
         .filter(|g| self.gaps & *g as u32 != 0)

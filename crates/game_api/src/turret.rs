@@ -4,7 +4,7 @@
 
 use crate::Unknown;
 use crate::fire::{FireTeam, FireWorld};
-use crate::movement::GameWeapon;
+use crate::movement::{GameWeapon, Stance};
 
 /// How the game spawns and runs its map turrets.
 #[derive(Clone, Copy, Debug)]
@@ -32,9 +32,52 @@ pub struct TurretRules {
     pub bone_controls: TurretBonesFn,
     /// What `restoredefaultdroppitch` does that is not run.
     pub restore_drop_pitch: &'static Unknown,
+    /// A player starting to use the turret (the game's use handler): the
+    /// gun turns to their view and the player takes the view clamp and
+    /// stance the mount answers.
+    pub mount: TurretMountFn,
+    /// The turret's think while a player uses it: it aims where the player
+    /// looks and fires while they hold attack.
+    pub user_think: TurretUserThinkFn,
     /// What a player using a turret does that is not run.
     pub player_use: &'static Unknown,
 }
+
+/// A player on a turret, as the game's turret use and think read them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TurretUser {
+    /// Their entity number.
+    pub entity: i32,
+    /// Their view angles.
+    pub view: [f32; 3],
+    pub stance: Stance,
+    /// A script froze their controls.
+    pub frozen: bool,
+    /// Their weapon state, in the game's numbering.
+    pub weapon_state: i32,
+    /// They hold attack.
+    pub attack: bool,
+}
+
+/// What a player mounting a turret takes from it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TurretMount {
+    /// The pitch and yaw their view stays about, and how far either way.
+    pub clamp_base: [f32; 2],
+    pub clamp_range: [f32; 2],
+    /// The stance the turret holds them in.
+    pub stance: Stance,
+}
+
+/// The game's turret use for a player.
+pub type TurretMountFn =
+    fn(turret: &mut GameTurret, user: &TurretUser, world: &mut dyn TurretWorld) -> TurretMount;
+
+pub type TurretUserThinkFn = fn(
+    turret: &mut GameTurret,
+    user: &TurretUser,
+    world: &mut dyn TurretWorld,
+) -> Vec<&'static Unknown>;
 
 pub type TurretSpawnFn = fn(
     weapon: Option<&GameWeapon>,
@@ -147,6 +190,14 @@ pub struct TurretState {
     pub owner: Option<i32>,
     /// Its gun's pitch, yaw and pitch offset, relative to its base angles.
     pub gun_angles: [f32; 3],
+    /// A player uses it: they aim and fire it.
+    pub manned: bool,
+    /// How long until its user's next shot, ms.
+    pub fire_timer: i32,
+    /// Its user fired a single-shot weapon and has not let go of attack.
+    pub fire_latched: bool,
+    /// Its user is firing it (the entity's firing flag).
+    pub user_firing: bool,
 }
 
 /// A tag on a posed model.

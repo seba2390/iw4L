@@ -145,6 +145,20 @@ pub mod weap_anim {
 
 use state as ws;
 
+/// The weapon's state as at rest: no offhand, timers and states cleared,
+/// both hands' animations restarted at none.
+pub(crate) fn reset_state(ps: &mut crate::PlayerState) {
+    ps.weap_flags &= !weap_flags::OFFHAND_ACTIVE;
+    ps.pm_flags &= !pm_flags::PRONEMOVE_OVERRIDDEN;
+    ps.weapon_time = 0;
+    ps.weapon_delay = 0;
+    ps.weaponstate = 0;
+    ps.weapon_time_left = 0;
+    ps.weapon_delay_left = 0;
+    ps.weaponstate_left = 0;
+    start_anim_both(ps, 0);
+}
+
 /// Starts a viewmodel animation on the right hand.
 fn start_anim(ps: &mut crate::PlayerState, anim: u32) {
     if ps.pm_type < pm_type::DEAD {

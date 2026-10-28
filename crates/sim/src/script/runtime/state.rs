@@ -103,6 +103,9 @@ pub(crate) struct RoundScript {
     pub(crate) lingering: Vec<(i64, u64)>,
     /// Lobby members the match waits for before play starts.
     pub(crate) expected_players: usize,
+    /// Builtins the console asked to call, run at the next authority frame:
+    /// the name, its receiver and its arguments.
+    pub(crate) console_calls: Vec<(String, Value, Vec<Value>)>,
     /// The newest snapshot each remote client has acknowledged, by tick
     /// (local clients and bots take every one at once).
     pub(crate) snapshot_acks: BTreeMap<u32, crate::Tick>,
@@ -211,6 +214,7 @@ impl RoundScript {
             grenade_touches: Default::default(),
             lingering: Default::default(),
             expected_players: Default::default(),
+            console_calls: Default::default(),
             snapshot_acks: Default::default(),
             client: Default::default(),
             timed_notifies: Default::default(),

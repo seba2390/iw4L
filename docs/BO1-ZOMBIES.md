@@ -60,6 +60,13 @@ wait a few seconds first. The turret fires only once zombies reach its arcs
 (about 15 s into the first round). `fx_dump 1000` logs the effects near the
 camera (`def=…`), which shows a muzzle flash a screenshot misses.
 
+`script` with a builtin's bare name calls it at the next frame. A player on
+Kino's stage turret (`useby` again takes them off):
+
+```
+set sv_cheats 1; wait world; god; wait 5s; move 0 900 74 90 0; wait 2s; script useby targetname=pf54_auto1 player0; wait 1s; hold +attack; wait 2s; release +attack; script getturretowner targetname=pf54_auto1; wait 1s; quit
+```
+
 The projector's film plays once power is on and the screen is down (about
 25 s); look at it from `move 0 350 120 90 0`. A teleport, from the pad by the
 projector room:

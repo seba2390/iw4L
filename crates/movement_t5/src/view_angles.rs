@@ -46,6 +46,33 @@ fn angles_from_cmd<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     }
 }
 
+/// A turret's user looks no further than its range either way of the
+/// clamp's base, on each axis whose range is under 180; the delta angles
+/// take up what the command asked for past it.
+fn clamp_view_angles(ps: &mut crate::PlayerState) {
+    for i in 0..2 {
+        let range = ps.view_angle_clamp_range[i];
+        if range >= 180.0 {
+            continue;
+        }
+        let mut delta = angle_delta(ps.view_angle_clamp_base[i], ps.viewangles[i]);
+        if !(delta > range || -range > delta) {
+            continue;
+        }
+        if delta > range {
+            delta -= range;
+        } else {
+            delta += range;
+        }
+        ps.delta_angles[i] += delta;
+        ps.viewangles[i] = if delta > 0.0 {
+            wrap_360(ps.view_angle_clamp_base[i] - range)
+        } else {
+            wrap_360(ps.view_angle_clamp_base[i] + range)
+        };
+    }
+}
+
 /// Leaning around corners, stopped by what is beside the head.
 fn update_lean<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
     let ps = &*pm.ps;
@@ -323,7 +350,13 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32) {
     angles_from_cmd(pm);
     let ps = &*pm.ps;
     let linked = ps.pm_type == pm_type::NORMAL_LINKED && ps.pm_flags & pm_flags::VIEW_LINKED == 0;
-    if ps.e_flags & (e_flags::TURRET | e_flags::VEHICLE_VIEW) != 0 || linked {
+    if ps.e_flags & e_flags::TURRET != 0 {
+        clamp_view_angles(pm.ps);
+        return;
+    }
+    // The vehicle's view and a link's arcs set the same clamp: neither is
+    // kept here.
+    if ps.e_flags & e_flags::VEHICLE_VIEW != 0 || linked {
         pm.gap(crate::Gap::MountedView);
         return;
     }

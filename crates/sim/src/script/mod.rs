@@ -64,7 +64,29 @@ pub(crate) fn advance_actors(world: &mut bevy_ecs::prelude::World) {
     for tick in ticks {
         tick(world);
     }
+    call_console_builtins(world);
     host::natives::engine::deliver_timed_notifies(world);
+}
+
+/// The builtins the console asked for, each logged with its answer.
+fn call_console_builtins(world: &mut bevy_ecs::prelude::World) {
+    let calls = std::mem::take(&mut world.resource_mut::<RoundScript>().console_calls);
+    for (name, receiver, args) in calls {
+        let namespace = if receiver == Value::level() {
+            Namespace::Function
+        } else {
+            Namespace::Method
+        };
+        let native = world
+            .get_resource::<NativeRegistry>()
+            .and_then(|registry| registry.get(namespace, &name));
+        let Some(native) = native else {
+            diag::warn!(Sim, "script: no builtin {name}");
+            continue;
+        };
+        let answer = native(world, &receiver, &args);
+        diag::info!(Sim, "script: {name} = {answer:?}");
+    }
 }
 pub(crate) use gsc::ArrayKey;
 pub use gsc::{FileSources, SourceOrigin, SourceResolver, decode_source, normalize_module};
