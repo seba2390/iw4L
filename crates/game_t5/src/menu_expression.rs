@@ -400,7 +400,7 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         // one and the level is no menu level (`menu_`). The front end
         // answers 0 too, as Black Ops behaves there (`t5.hud.front_end_in_game`).
         T5_FN_ISINGAME => {
-            let map = host.dvar_string("mapname").unwrap_or_default();
+            let map = host.dvar_string("mapname")?;
             let menu_level = map.starts_with("menu_") || map == crate::FRONT_END_LEVEL;
             Operand::Int(i32::from(
                 host.in_game()? != 0 && host.fullscreen_menu_open()? == 0 && !menu_level,
