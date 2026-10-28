@@ -47,6 +47,7 @@ impl Plugin for HudPlugin {
             .init_resource::<frame::MasterPreset>()
             .init_resource::<frame::MasterVolumeGain>()
             .init_resource::<HudImages>()
+            .init_resource::<crate::menu_cursor::MenuCursorRequest>()
             .init_resource::<HudPresentationGaps>()
             .init_resource::<ReticleAdsLatch>()
             .init_resource::<IrisLetterboxFill>()
@@ -139,6 +140,7 @@ impl Plugin for HudPlugin {
                             crate::game_code_hud::update_grenade_indicators.in_set(frame::InMatch),
                             crate::game_code_hud::update_scoreboard.in_set(frame::InMatch),
                             crate::menus::update_script_menus,
+                            crate::menu_cursor::apply_menu_cursor,
                             crate::menus::sync_game_menu_dvars,
                             crate::connection_notice::update.in_set(frame::InMatch),
                             hud_stage_close::<7>,

@@ -380,7 +380,7 @@ pub(super) fn prepare_camera_colour(lane: CameraLane<'_>) {
         forward_z: false,
         use_world_pretess: true,
     };
-    let textures = std::sync::Mutex::new(SceneTextureState {
+    let textures = std::sync::RwLock::new(SceneTextureState {
         slots: std::mem::take(&mut binding_cache.textures),
         tables: std::mem::take(&mut texture_table.0),
     });
@@ -902,7 +902,7 @@ struct CameraRowsInput<'a> {
     queue: &'a RenderQueue,
     uploaded: &'a RuntimeUploadedImageRegistry,
     sampler_table: &'a SamplerTable,
-    textures: &'a std::sync::Mutex<SceneTextureState>,
+    textures: &'a std::sync::RwLock<SceneTextureState>,
     skinned: &'a std::sync::Mutex<smodel_skinned::SmodelSkinnedTess>,
     exec_view: Option<MaterialExecView<'a>>,
     prepare_target: ExactPrepareTarget,

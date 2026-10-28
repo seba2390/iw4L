@@ -253,6 +253,7 @@ fn draw_post_chain(
     mut context: RenderContext,
     mut texture_table: ResMut<super::texture_table::ExactTextureTable>,
     mut reported: Local<Option<String>>,
+    mut written: Local<HashMap<BufferId, Vec<u8>>>,
 ) {
     let Some(chain) = extracted.post_chain.as_ref() else {
         return;
@@ -475,10 +476,22 @@ fn draw_post_chain(
             scene = &frame.view;
         }
         let material = &gpu.materials[draw.material];
-        queue.write_buffer(&material.constants_arena, 0, &draw.bytes);
-        queue.write_buffer(
+        // A pass's constants and quad rarely change between frames; each write
+        // is a staging buffer wgpu allocates and frees, so an unchanged one is
+        // skipped (the buffer still holds it).
+        let mut write_changed = |buffer: &Buffer, bytes: &[u8]| {
+            if written.get(&buffer.id()).is_some_and(|old| old == bytes) {
+                return;
+            }
+            queue.write_buffer(buffer, 0, bytes);
+            if written.len() >= 64 {
+                written.clear();
+            }
+            written.insert(buffer.id(), bytes.to_vec());
+        };
+        write_changed(&material.constants_arena, &draw.bytes);
+        write_changed(
             &material.vertex,
-            0,
             &packed_fullscreen_vertices(draw.size.x, draw.size.y),
         );
         let views: Vec<&TextureView> = draw

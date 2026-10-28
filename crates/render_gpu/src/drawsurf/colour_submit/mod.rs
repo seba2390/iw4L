@@ -1735,11 +1735,26 @@ impl ExactPrepare<'_> {
                 .map_err(GpuSubmitRefusal::TextureBind)?;
             texture_slot_words(device, table, &textures)
         };
+        // The camera's lanes share the scene tables, and nearly every draw is a
+        // hit: hits take the read side so the lanes never queue behind one
+        // another, and only a miss takes the write side (and looks again).
+        if let PrepareTextureTables::SceneShared(shared) = &self.textures {
+            let hit = shared
+                .read()
+                .expect("scene texture tables are never poisoned")
+                .slots[scene_index]
+                .get(&key)
+                .cloned();
+            if let Some(slots) = hit {
+                self.cost.tex_bind_hit_n = self.cost.tex_bind_hit_n.saturating_add(1);
+                return Ok(slots);
+            }
+        }
         let mut shared_guard;
         let (texture_slots, table) = match &mut self.textures {
             PrepareTextureTables::SceneShared(shared) => {
                 shared_guard = shared
-                    .lock()
+                    .write()
                     .expect("scene texture tables are never poisoned");
                 let refs = &mut *shared_guard;
                 (&mut refs.slots[scene_index], &mut refs.tables[scene_index])
@@ -1790,7 +1805,7 @@ struct SceneTextureState {
 }
 
 enum PrepareTextureTables<'a> {
-    SceneShared(&'a std::sync::Mutex<SceneTextureState>),
+    SceneShared(&'a std::sync::RwLock<SceneTextureState>),
     Shadow {
         slots: &'a mut HashMap<BoundTextureKey, Arc<[u32]>>,
         table: &'a mut ExactTextureTable,

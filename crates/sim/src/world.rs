@@ -3586,6 +3586,39 @@ pub(crate) fn brush_model_line_hits(
     Some(hit.fraction != 1.0)
 }
 
+/// The sweep's box never meets the model's bounds placed at `origin` (a
+/// rotated model by the sphere around them), so its trace cannot hit: every
+/// linked model is otherwise traced brush by brush, for every particle and
+/// sight trace in the frame. Bounds that are not a box cull nothing.
+fn bmodel_out_of_reach(
+    [lo, hi]: [[f32; 3]; 2],
+    origin: [f32; 3],
+    angles: [f32; 3],
+    [start, end, mins, maxs]: [[f32; 3]; 4],
+) -> bool {
+    const MARGIN: f32 = 1.0;
+    if (0..3).any(|i| !(lo[i] <= hi[i])) {
+        return false;
+    }
+    let (model_lo, model_hi) = if angles == [0.0; 3] {
+        (
+            std::array::from_fn::<f32, 3, _>(|i| origin[i] + lo[i]),
+            std::array::from_fn::<f32, 3, _>(|i| origin[i] + hi[i]),
+        )
+    } else {
+        let r = (0..3)
+            .map(|i| lo[i].abs().max(hi[i].abs()).powi(2))
+            .sum::<f32>()
+            .sqrt();
+        (origin.map(|o| o - r), origin.map(|o| o + r))
+    };
+    (0..3).any(|i| {
+        let sweep_lo = start[i].min(end[i]) + mins[i] - MARGIN;
+        let sweep_hi = start[i].max(end[i]) + maxs[i] + MARGIN;
+        model_lo[i] > sweep_hi || model_hi[i] < sweep_lo
+    })
+}
+
 pub(crate) fn clip_move_to_bmodels<'a>(
     mut hit: trace_iw4::Trace,
     cmodels: &[clipmap_iw4::ClipCmodel],
@@ -3601,6 +3634,14 @@ pub(crate) fn clip_move_to_bmodels<'a>(
         let Some(cmodel) = clipmap_iw4::clip_handle_to_model(cmodels, brush.cmodel_handle) else {
             continue;
         };
+        if bmodel_out_of_reach(
+            [cmodel.mins, cmodel.maxs],
+            brush.origin,
+            brush.angles,
+            [input.start, input.end, input.mins, input.maxs],
+        ) {
+            continue;
+        }
         let other = transformed_capsule_trace(
             cmodel,
             leafbrushes,
