@@ -682,6 +682,39 @@ fn gather_authority_input(
     });
 }
 
+/// How long the authority's steps took over a window of ten seconds,
+/// logged at its end.
+#[derive(Default)]
+struct StepWindow {
+    started: Option<u32>,
+    steps: u32,
+    total: std::time::Duration,
+    longest: std::time::Duration,
+}
+
+impl StepWindow {
+    fn note(&mut self, tick: u32, took: std::time::Duration) {
+        let started = *self.started.get_or_insert(tick);
+        self.steps += 1;
+        self.total += took;
+        self.longest = self.longest.max(took);
+        if tick.saturating_sub(started) * (crate::AUTHORITY_MS as u32) < 10_000 {
+            return;
+        }
+        diag::info!(
+            Net,
+            "authority steps: {} in the last 10 s, average {:.2} ms, longest {:.2} ms",
+            self.steps,
+            self.total.as_secs_f64() * 1000.0 / f64::from(self.steps),
+            self.longest.as_secs_f64() * 1000.0
+        );
+        *self = StepWindow {
+            started: Some(tick),
+            ..StepWindow::default()
+        };
+    }
+}
+
 fn step_authority(
     mut world: ResMut<AuthorityWorld>,
     clock: Res<AuthorityClock>,
@@ -690,6 +723,7 @@ fn step_authority(
     mut pending_svc: ResMut<crate::PendingSvcSounds>,
     mut exit_level: MessageWriter<ExitLevelCalled>,
     trace: Option<ResMut<AuthorityPhaseTrace>>,
+    mut window: Local<StepWindow>,
 ) {
     push_phase(trace, "Step");
     pending_svc.occupy_cs(&mut world.0);
@@ -697,6 +731,7 @@ fn step_authority(
         return;
     };
 
+    let started = std::time::Instant::now();
     let stepped = sim::try_step(
         &mut world.0,
         sim::Tick(clock.tick),
@@ -704,6 +739,7 @@ fn step_authority(
         crate::AUTHORITY_MS,
         sim::StepReason::AuthorityFrame,
     );
+    window.note(clock.tick, started.elapsed());
     // A terminal script error drops the match to the lobby;
     // the world stays frozen until the swap replaces it.
     let Ok(result) = stepped else {
