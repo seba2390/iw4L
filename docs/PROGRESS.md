@@ -198,7 +198,7 @@ Only the top-level items count.
   - [x] A hosted game is Black Ops' online private match: `wait_network_frame` paces on the clients' snapshot acknowledgements, and the game over exits to the lobby (#445).
   - [x] Revive, bleeding out, spectating and the respawn on one Mac (a local master and two windows, #257).
   - [ ] A second player over the network (two machines) not tried.
-  - [ ] Other players' footsteps reach the client scripts (#458).
+  - [x] Other players' footsteps, jumps and landings reach the host's client scripts (their `_npc` form, #458); a joined client runs no client scripts, and other players' legs and torso animations are not played.
   - [ ] Actor state reaches clients through the shared entity path; its cost with many zombies is not measured.
 - [ ] The game's fidelity ledger ([`fidelity/t5.md`](fidelity/t5.md)) has no open item.
 
