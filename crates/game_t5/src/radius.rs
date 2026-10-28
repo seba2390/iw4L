@@ -243,7 +243,6 @@ pub(crate) fn radius_damage(
         let at = entity.origin;
         let dir = [at[0] - o[0], at[1] - o[1], (at[2] - o[2]) + 24.0];
         damage(
-            &mut gaps,
             blast.attacker,
             blast.inflictor,
             entity,

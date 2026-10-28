@@ -64,7 +64,7 @@ pub struct FireEntity {
     pub bounds: Option<([f32; 3], [f32; 3])>,
     /// A brush model's own bounds, in its model space.
     pub model_bounds: Option<([f32; 3], [f32; 3])>,
-    /// An actor's eye.
+    /// An actor's or a player's eye.
     pub eye: Option<[f32; 3]>,
     /// A script model: a blast reaches it by its model's bounds.
     pub script_model: bool,

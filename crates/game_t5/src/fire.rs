@@ -122,6 +122,8 @@ const MELEE_OFFSETS: [(f32, f32); 9] = [
     (-1.0, -1.0),
 ];
 const MOD_BAYONET: usize = 8;
+/// How far to the side of a player's eye a bullet may hit them.
+const PLAYER_HIT_REACH: f32 = 8.0;
 /// The most surfaces a bullet that does not penetrate passes through.
 const BULLET_EXTENDED_SEGMENTS: i32 = 12;
 /// The eye heights hip spread blends between: prone to crouched, then
@@ -159,14 +161,6 @@ fn impact_explode_unknown() -> &'static Unknown {
         "t5.weapons.impact_explode",
         "a bullet that explodes on impact does not explode",
         "Black Ops' bullet impact explosion"
-    )
-}
-
-fn player_hit_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.weapons.player_hits",
-        "a bullet reaching another player neither hits nor passes them with Black Ops' rules",
-        "the other player's eye position for Black Ops' hit test and its player damage path"
     )
 }
 
@@ -247,9 +241,7 @@ pub(crate) fn server_events(
             // Black Ops' scripts hear a detonation key as the player's notify.
             ev::DETONATE => world.notify(ps.client_num, "detonate", &[]),
             ev::GRENADE_SUICIDE => grenade_suicide(ps, zombies, &mut gaps, world),
-            ev::FALL_DAMAGE..=FALL_DAMAGE_LAST => {
-                fall_damage(ps.client_num, parm, &mut gaps, world)
-            }
+            ev::FALL_DAMAGE..=FALL_DAMAGE_LAST => fall_damage(ps.client_num, parm, world),
             _ => {}
         }
     }
@@ -774,7 +766,6 @@ impl Shot<'_> {
         let dir = [forward[0], forward[1], forward[2] + 0.25];
         let weapon = self.damage_weapon(world);
         self::damage(
-            self.gaps,
             attacker,
             attacker,
             entity,
@@ -981,7 +972,6 @@ pub(crate) fn actor_melee(
     let amount = damage + world.rand() % 5;
     let dir = [forward[0], forward[1], forward[2] + 0.25];
     self::damage(
-        &mut gaps,
         melee.attacker,
         melee.attacker,
         entity,
@@ -1092,7 +1082,7 @@ impl Bullets<'_> {
             if entity.is_some_and(sentient) && br.trace.surface_flags == 0 {
                 br.trace.surface_flags = surf::FLESH;
             }
-            br.ignore_hit_entity = self.ignore_hit_entity(hit, entity);
+            br.ignore_hit_entity = self.ignore_hit_entity(hit, entity, bp.dir, br.hit_pos);
         }
         br.depth_surface_type = br.surface_type();
         if br.trace.surface_flags & surf::NOPENETRATE != 0 {
@@ -1105,17 +1095,36 @@ impl Bullets<'_> {
         (true, br)
     }
 
-    /// A bullet passes through its shooter; another player it reaches is
-    /// tested against that player's eye, which the match does not give.
-    fn ignore_hit_entity(&mut self, hit: i32, entity: Option<FireEntity>) -> bool {
+    /// A bullet passes through its shooter, and through another player
+    /// unless it hits them within 8 units of their eye, side to side across
+    /// its flat direction.
+    fn ignore_hit_entity(
+        &mut self,
+        hit: i32,
+        entity: Option<FireEntity>,
+        dir: [f32; 3],
+        hit_pos: [f32; 3],
+    ) -> bool {
         if hit == self.attacker() {
             return true;
         }
-        if entity.is_some_and(|e| e.kind == FireEntityKind::Player) {
-            self.gaps.push(player_hit_unknown());
-            return true;
+        let Some(eye) = entity
+            .filter(|e| e.kind == FireEntityKind::Player)
+            .and_then(|e| e.eye)
+        else {
+            return false;
+        };
+        let across = -dir[0];
+        let along = dir[1];
+        let mut length = (across * across + along * along).sqrt();
+        if -length >= 0.0 {
+            length = 1.0;
         }
-        false
+        let inverse = 1.0 / length;
+        let side = across * inverse * (hit_pos[1] - eye[1])
+            + inverse * 0.0 * (hit_pos[2] - eye[2])
+            + inverse * along * (hit_pos[0] - eye[0]);
+        side.abs() > PLAYER_HIT_REACH
     }
 
     /// A bullet that does not penetrate goes on only
@@ -1352,7 +1361,6 @@ impl Bullets<'_> {
             }
             let attacker = self.attacker();
             self::damage(
-                self.gaps,
                 attacker,
                 attacker,
                 entity,
@@ -1492,7 +1500,6 @@ fn grenade_suicide(
         }
     }
     damage(
-        gaps,
         client,
         client,
         entity,
@@ -1521,7 +1528,6 @@ const PERK_FLAKJACKET: u32 = 0x3000;
 /// own multipliers, an actor's hit location multipliers, then the entity's
 /// damage callback.
 pub(crate) fn damage(
-    gaps: &mut Vec<&'static Unknown>,
     attacker: i32,
     inflictor: i32,
     entity: FireEntity,
@@ -1540,14 +1546,6 @@ pub(crate) fn damage(
         bone,
     } = hit;
     if entity.kind == FireEntityKind::Player {
-        if target != attacker
-            && world
-                .entity(attacker)
-                .is_some_and(|e| e.kind == FireEntityKind::Player)
-        {
-            gaps.push(player_hit_unknown());
-            return;
-        }
         let Some(player) = world.player(target) else {
             return;
         };
@@ -1575,8 +1573,12 @@ pub(crate) fn damage(
     {
         return;
     }
-    if entity.kind == FireEntityKind::Actor
-        && !entity.ignore_locational_damage
+    // A player's hit locations count against another team's player only.
+    let enemy_player = entity.kind == FireEntityKind::Player
+        && world
+            .entity(inflictor)
+            .is_some_and(|e| e.kind == FireEntityKind::Player && e.team != entity.team);
+    if ((entity.kind == FireEntityKind::Actor && !entity.ignore_locational_damage) || enemy_player)
         && means != MOD_MELEE
     {
         let scale = location_multiplier(location, weapon, world);
@@ -1663,12 +1665,7 @@ const FALL_DAMAGE_FULL: f32 = 1.1;
 
 /// A player's fall: the event's percent of its maximum health (110% from
 /// 100 up), no attacker.
-fn fall_damage(
-    client: i32,
-    percent: i32,
-    gaps: &mut Vec<&'static Unknown>,
-    world: &mut dyn FireWorld,
-) {
+fn fall_damage(client: i32, percent: i32, world: &mut dyn FireWorld) {
     let Some(entity) = world.entity(client) else {
         return;
     };
@@ -1685,7 +1682,6 @@ fn fall_damage(
     }
     let amount = (entity.max_health as f32 * share) as i32;
     damage(
-        gaps,
         ENTITY_WORLD,
         ENTITY_WORLD,
         entity,

@@ -436,7 +436,11 @@ impl FireWorld for MatchFireWorld<'_, '_> {
                 contents: 0,
                 bounds,
                 model_bounds: None,
-                eye: None,
+                eye: Some([
+                    ps.origin[0],
+                    ps.origin[1],
+                    ps.origin[2] + ps.view_height_current,
+                ]),
                 script_model: false,
                 corpse: false,
                 blast_handler: false,
