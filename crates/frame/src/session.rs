@@ -51,6 +51,11 @@ pub struct UiPointerFree(pub bool);
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct UiOverlayInput(pub bool);
 
+/// A full-screen cinematic holds the keyboard, mouse and pad: the game and
+/// its menus take none of it, the key that skips it included.
+#[derive(Resource, Default, Debug, Clone, Copy)]
+pub struct CinematicInput(pub bool);
+
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct HudDraw(pub bool);
 

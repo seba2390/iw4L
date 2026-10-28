@@ -54,6 +54,10 @@ pub trait GameQueries {
     /// `text`'s width in virtual pixels in font `font` at `scale`.
     fn text_width(&self, text: &str, font: i32, scale: f32) -> Result<i32, ExprError>;
     fn in_game(&self) -> Result<i32, ExprError>;
+    /// Whether an open menu is a full-screen one.
+    fn fullscreen_menu_open(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("fullscreen menu"))
+    }
     /// Whether the local player's weapon is an airburst weapon (Black Ops
     /// 2's `isairburstweapon`).
     fn airburst_weapon(&self) -> Result<i32, ExprError> {

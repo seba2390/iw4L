@@ -414,9 +414,11 @@ impl RenderShared {
             state.master_direct = [[0.0; 2]; QUANTUM];
         }
         state.buses.mix_into(output);
+        // A full-screen cinematic plays alone: the game's sound waits under it.
         if let Ok(mut cinematic) = self.cinematic.try_lock()
             && let Some(stream) = cinematic.as_mut()
         {
+            output.fill([0.0; 2]);
             for sample in output.iter_mut() {
                 let Some(pair) = stream.samples.get(stream.frame * 2..stream.frame * 2 + 2) else {
                     break;

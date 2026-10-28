@@ -15,7 +15,8 @@ picks its folder by hand. Choices are validated, saved and rescanned. Empty
 choices use normal game discovery.
 The library has no settings page: each game's own menus hold its settings.
 A game with a startup cinematic (Black Ops: `number_lady_intro`) plays it
-full screen before its front end; any key or mouse button skips it.
+full screen while its front end loads behind it; any key or mouse button
+skips it, and a hint says so after 3 s.
 Use the mouse, arrow keys, Enter and Escape; the mouse wheel scrolls long lists.
 
 Multiplayer provides map selection, mode and limits, lobby creation, privacy,

@@ -46,7 +46,7 @@ pub static GAME: T5 = T5;
 const ZOMBIES: &str = "zom";
 
 /// Black Ops' front-end level: the main menu draws over it.
-const FRONT_END_LEVEL: &str = "frontend";
+pub(crate) const FRONT_END_LEVEL: &str = "frontend";
 
 /// Engine dvars the zombie scripts read without setting: the mode itself and
 /// the AI locomotion tuning the run animscript reads, at the defaults the

@@ -332,6 +332,9 @@ pub trait ExprHost {
     fn in_game(&self) -> Result<i32, ExprError> {
         Err(ExprError::Host("isingame"))
     }
+    fn fullscreen_menu_open(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("fullscreen menu"))
+    }
     fn action_slot_usable(&self, _slot: i32) -> Result<i32, ExprError> {
         Err(ExprError::Host("actionslotusable"))
     }
@@ -520,6 +523,9 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn in_game(&self) -> Result<i32, ExprError> {
         self.0.in_game()
+    }
+    fn fullscreen_menu_open(&self) -> Result<i32, ExprError> {
+        self.0.fullscreen_menu_open()
     }
 }
 
