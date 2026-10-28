@@ -1059,7 +1059,11 @@ impl PlayerMovement for T6Movement {
         pack(player, &mut ps, &mut last);
     }
 
-    fn footstep(&self, signal: &MoveSignal) -> Option<(&'static str, &'static str)> {
+    fn footstep(
+        &self,
+        signal: &MoveSignal,
+        _player: &MovePlayer,
+    ) -> Option<(&'static str, &'static str)> {
         let MoveSignal::Event { event, parm } = *signal else {
             return None;
         };

@@ -293,7 +293,7 @@ pub(crate) fn run(
     }
     if world.publishes_snapshot() {
         for signal in &outcome.signals {
-            if let Some((kind, surface)) = movement.footstep(signal) {
+            if let Some((kind, surface)) = movement.footstep(signal, &player) {
                 crate::script::client::footstep(world.ecs(), id, kind, surface, cmd.server_time);
             }
             if let Some(kind) = movement.command_hint(signal) {
