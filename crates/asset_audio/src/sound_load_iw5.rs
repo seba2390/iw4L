@@ -459,6 +459,7 @@ impl Iw5SoundCapture {
             speaker_map: speaker_map_name(s, row),
             stereo_speaker_gains: stereo_speaker_gains(s, row),
             t6_speaker_pan: None,
+            t5_pan: None,
             limit_count: None,
             entity_limit_count: None,
             snapshot_group: None,

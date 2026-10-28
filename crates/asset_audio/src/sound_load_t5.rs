@@ -120,6 +120,24 @@ impl AssetLinkSink for T5SoundCapture {
         Ok(())
     }
 
+    fn capture_snd_pans(&mut self, s: &ZoneStream<'_>, rows: Ptr, count: usize) -> ZoneResult<()> {
+        let mut pans = Vec::with_capacity(count);
+        for i in 0..count {
+            let row = rows.at(i * sz::SND_PAN);
+            let level = |n: usize| s.f32_at(row, sz::SND_PAN_LEVELS_OFF + n * 4);
+            pans.push(crate::SpeakerPan {
+                front: level(0)?,
+                back: level(1)?,
+                center: level(2)?,
+                lfe: level(3)?,
+                left: level(4)?,
+                right: level(5)?,
+            });
+        }
+        self.catalog.ingest_speaker_pans(NAMESPACE, pans);
+        Ok(())
+    }
+
     fn capture_snd_radverbs(
         &mut self,
         s: &ZoneStream<'_>,
@@ -552,6 +570,7 @@ impl T5SoundCapture {
             speaker_map: None,
             stereo_speaker_gains: None,
             t6_speaker_pan: None,
+            t5_pan: s.u8_at(row, sz::SND_ALIAS_PAN_OFF).ok(),
             limit_count: s.u8_at(row, sz::SND_ALIAS_LIMIT_COUNT_OFF).ok(),
             entity_limit_count: s.u8_at(row, sz::SND_ALIAS_ENTITY_LIMIT_COUNT_OFF).ok(),
             snapshot_group: s.u8_at(row, sz::SND_ALIAS_SNAPSHOT_GROUP_OFF).ok(),

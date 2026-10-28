@@ -817,8 +817,14 @@ pub trait PlayerMovement: Sync {
     }
 
     /// A footstep a movement signal is, as the game's client scripts are
-    /// told of it: its movement type and the surface's name.
-    fn footstep(&self, _signal: &MoveSignal) -> Option<(&'static str, &'static str)> {
+    /// told of it: its movement type and the surface's name; `player` is
+    /// the player after the move that raised it. `None` when the client
+    /// would not tell its scripts of it.
+    fn footstep(
+        &self,
+        _signal: &MoveSignal,
+        _player: &MovePlayer,
+    ) -> Option<(&'static str, &'static str)> {
         None
     }
 

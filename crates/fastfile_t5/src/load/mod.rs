@@ -67,12 +67,14 @@ fn load_asset_body_observed(
     }
 }
 
-/// The sound rows a loader hands its sink: a sound driver's mixer groups
-/// and falloff curves, and a sound bank's reverb presets.
+/// The sound rows a loader hands its sink: a sound driver's mixer groups,
+/// falloff curves, speaker pans and master presets, and a sound bank's
+/// reverb presets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SndRows {
     Groups,
     Curves,
+    Pans,
     Radverbs,
     Masters,
 }
@@ -150,9 +152,16 @@ pub trait AssetLinkSink {
         match kind {
             SndRows::Groups => self.capture_snd_groups(s, rows, count),
             SndRows::Curves => self.capture_snd_curves(s, rows, count),
+            SndRows::Pans => self.capture_snd_pans(s, rows, count),
             SndRows::Radverbs => self.capture_snd_radverbs(s, rows, count),
             SndRows::Masters => self.capture_snd_masters(s, rows, count),
         }
+    }
+
+    /// The sound driver's speaker pans (60-byte rows).
+    fn capture_snd_pans(&mut self, s: &ZoneStream<'_>, rows: Ptr, count: usize) -> Result<()> {
+        let _ = (s, rows, count);
+        Ok(())
     }
 
     /// The sound driver's master presets (176-byte rows).

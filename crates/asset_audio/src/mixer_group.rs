@@ -6,6 +6,39 @@ pub struct MixerGroup {
     pub category: Option<i32>,
 }
 
+/// A Black Ops speaker pan, one of the sound driver's named routings for an
+/// unplaced sound: its levels to the front, back, center and LFE speakers,
+/// and to the left and right.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SpeakerPan {
+    pub front: f32,
+    pub back: f32,
+    pub center: f32,
+    pub lfe: f32,
+    pub left: f32,
+    pub right: f32,
+}
+
+impl SpeakerPan {
+    /// The left and right gains on stereo output, for a mono source and
+    /// for a stereo one (each side from its own channel), as Black Ops'
+    /// sound driver builds its output matrix: a mono source takes the
+    /// front and back levels together, held to 0..1; a stereo source takes
+    /// half of them. The center and LFE levels reach only surround output.
+    pub fn stereo_gains(self) -> Option<[[f32; 2]; 2]> {
+        let levels = [self.front, self.back, self.left, self.right];
+        if levels.iter().any(|level| !level.is_finite()) {
+            return None;
+        }
+        let mono = (self.front + self.back).clamp(0.0, 1.0);
+        let stereo = (self.front + self.back) * 0.5;
+        Some([
+            [self.left * mono, self.right * mono],
+            [self.left * stereo, self.right * stereo],
+        ])
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MixerGroupError {
     Cycle { group: usize },

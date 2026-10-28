@@ -1,8 +1,11 @@
 use super::*;
 
-pub(super) struct T5CueCompiler;
+/// Black Ops' compiler, with the sound driver's speaker pans.
+pub(super) struct T5CueCompiler<'a> {
+    pub(super) pans: &'a [crate::SpeakerPan],
+}
 
-impl CueCompiler for T5CueCompiler {
+impl CueCompiler for T5CueCompiler<'_> {
     fn prepare(&self, row: &CapturedAlias, _channel: Option<&EntChannel>) -> CueSemantics {
         CueSemantics {
             spatial: match row.flags {
@@ -17,7 +20,13 @@ impl CueCompiler for T5CueCompiler {
             group: row.flags.map_or(GroupSelection::Unknown, |flags| {
                 GroupSelection::Index((flags >> 16) & 0x3f)
             }),
-            speaker_gains: None,
+            // An unplaced sound plays through its alias's speaker pan.
+            speaker_gains: row
+                .flags
+                .filter(|flags| flags & 2 == 0)
+                .and(row.t5_pan)
+                .and_then(|pan| self.pans.get(usize::from(pan)))
+                .and_then(|pan| pan.stereo_gains()),
             mixer_group_supported: false,
             zero_volume_unity: false,
             streamed_decode: crate::StreamedDecodePolicy::WmaContainerWithWaveCompatibility,

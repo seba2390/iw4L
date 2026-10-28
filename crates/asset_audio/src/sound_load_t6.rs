@@ -364,6 +364,7 @@ pub fn capture_t6_sounds<'n>(
                     pan.map_or_else(|| format!("t6/pan/{}", row[92]), |(name, _)| name.clone()),
                 ),
                 t6_speaker_pan: pan.map(|(_, gains)| *gains),
+                t5_pan: None,
                 limit_count: Some(row[93]),
                 entity_limit_count: Some(row[94]),
                 // The duck group whose volume the voice plays at.

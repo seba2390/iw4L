@@ -1340,12 +1340,23 @@ impl PlayerMovement for T5Movement {
     }
 
     /// Black Ops' client names a footstep event's movement type and its
-    /// parm's surface for `CodeCallback_PlayerFootstep`.
-    fn footstep(&self, signal: &MoveSignal) -> Option<(&'static str, &'static str)> {
+    /// parm's surface for `CodeCallback_PlayerFootstep`. Movement raises a
+    /// footstep at each quarter of the bob cycle, but the client calls the
+    /// script only while the snapshot's bob cycle is in the first half of a
+    /// 128-count period (`(bob & 0x7f) <= 0x3f`), so two of the four steps
+    /// sound, one for each bob of the view.
+    fn footstep(
+        &self,
+        signal: &MoveSignal,
+        player: &MovePlayer,
+    ) -> Option<(&'static str, &'static str)> {
         use movement_t5::events::event;
         let MoveSignal::Event { event, parm } = *signal else {
             return None;
         };
+        if player.bob_cycle & 0x7f > 0x3f {
+            return None;
+        }
         let kind = match event {
             event::FOOTSTEP_SPRINT => "sprint",
             event::FOOTSTEP_RUN => "run",

@@ -3,7 +3,7 @@ pub const SND_DRIVER_GLOBALS: usize = 52;
 pub const SND_DRIVER_GLOBAL_ARRAYS: [(usize, usize, usize); 6] = [
     (4, 8, 80),
     (12, 16, 100),
-    (20, 24, 60),
+    (20, 24, SND_PAN),
     (28, 32, 32),
     (36, 40, 40),
     (44, 48, 176),
@@ -415,6 +415,11 @@ pub const SND_MASTER_BUS_OFF: usize = 0x34;
 pub const SND_MASTER_NO_VOICE_OFF: usize = 0x78;
 pub const SND_MASTER_COMPRESSOR_OFF: usize = 0x94;
 const _: () = assert!(SND_MASTER_COMPRESSOR_OFF + 7 * 4 == SND_MASTER);
+/// A speaker pan (the sound driver's third array): its name, then its
+/// front, back, center, LFE, left and right levels.
+pub const SND_PAN: usize = 60;
+pub const SND_PAN_LEVELS_OFF: usize = 0x24;
+const _: () = assert!(SND_PAN_LEVELS_OFF + 6 * 4 == SND_PAN);
 pub const SND_SNAPSHOT: usize = 348;
 pub const SND_SNAPSHOT_HASH_OFF: usize = 0x20;
 pub const SND_SNAPSHOT_LINKED_OFF: usize = 0x44;
@@ -487,6 +492,8 @@ pub const SND_ALIAS_OCCLUSION_BLEND_OFF: usize = 72;
 pub const SND_ALIAS_PRIORITY_MIN_OFF: usize = 73;
 pub const SND_ALIAS_PRIORITY_MAX_OFF: usize = 74;
 
+/// The speaker pan an unplaced alias plays through (a byte).
+pub const SND_ALIAS_PAN_OFF: usize = 75;
 pub const SND_ALIAS_LIMIT_COUNT_OFF: usize = 80;
 pub const SND_ALIAS_ENTITY_LIMIT_COUNT_OFF: usize = 81;
 pub const SND_ALIAS_SNAPSHOT_GROUP_OFF: usize = 82;

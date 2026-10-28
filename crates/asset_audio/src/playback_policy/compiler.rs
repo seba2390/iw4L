@@ -42,10 +42,13 @@ pub(super) fn compile(
         .ent_channel(variant)
         .map(|id| ChannelKey { namespace, id });
     let channel_info = channel.and_then(|key| channels?.get(key.id as usize));
+    let t5 = t5::T5CueCompiler {
+        pans: catalog.speaker_pans_in(namespace),
+    };
     let compiler: &dyn CueCompiler = match namespace {
         AssetNamespace::Iw4 => &iw4::Iw4CueCompiler,
         AssetNamespace::Iw5 => &iw5::Iw5CueCompiler,
-        AssetNamespace::T5 => &t5::T5CueCompiler,
+        AssetNamespace::T5 => &t5,
         AssetNamespace::T6 => &t6::T6CueCompiler,
         _ => return None,
     };
