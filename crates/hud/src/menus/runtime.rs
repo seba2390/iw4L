@@ -432,6 +432,11 @@ impl Runner<'_, '_> {
                         (Some("set" | "seta"), Some(name), value) => {
                             self.set_dvar(name, value.unwrap_or("").trim_matches('"'));
                         }
+                        (Some("setfromdvar"), Some(name), Some(source)) => {
+                            if let Some(value) = self.dvar(source).map(str::to_owned) {
+                                self.set_dvar(name, &value);
+                            }
+                        }
                         (Some("reset"), Some(name), _) => {
                             if let Some(value) = defaults.lines().find_map(|line| {
                                 let mut words = line.split_whitespace();

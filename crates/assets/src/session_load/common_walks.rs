@@ -1408,7 +1408,8 @@ pub(super) fn walk_zombie_commons(
     } else {
         &[]
     };
-    for zone in ["code_post_gfx", "patch"]
+    // `code_pre_gfx` holds the config scripts the options menus run.
+    for zone in ["code_pre_gfx", "code_post_gfx", "patch"]
         .into_iter()
         .chain(front_end_menus.iter().copied())
     {
