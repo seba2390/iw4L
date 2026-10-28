@@ -356,7 +356,7 @@ fn publish_client_action_input(
     console: Res<ConsoleState>,
     chat: Option<Res<crate::chat::ChatState>>,
     script_menus: hud::MenuState<'_>,
-    overlay: Res<frame::UiOverlayInput>,
+    (overlay, cinematic): (Res<frame::UiOverlayInput>, Res<frame::CinematicInput>),
     mut hud_input: ResMut<frame::HudInputView>,
     settings: Res<frame::GameSettings>,
     mut out: ResMut<ClientActionInput>,
@@ -416,11 +416,12 @@ fn publish_client_action_input(
         || script_menus.is_some_and(|menus| menus.captures_input())
         || keys.just_pressed(KeyCode::Escape)
         || pad.is_some_and(|pad| pad.just_pressed(bevy::input::gamepad::GamepadButton::Start));
-    let captured = !devices.focused || modal_captured || overlay.0;
+    let captured = !devices.focused || modal_captured || overlay.0 || cinematic.0;
     // A menu painted into a UI3D window keeps the keys and leaves the mouse
     // to the view (the front end's chair look).
     let mouse_looks = devices.focused
         && !overlay.0
+        && !cinematic.0
         && !console.open
         && !native_menu.0
         && !chat.as_ref().is_some_and(|chat| chat.captures_input())

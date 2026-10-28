@@ -33,12 +33,12 @@ pub use script_notify::{
     ExitLevelCalled, LevelChangeCalled, LevelReloadCalled, register_script_notify,
 };
 pub use session::{
-    AdmissionKey, AppScreen, BotNavigationReady, CacWeaponOffer, ClassSelectHandoff,
-    DisplayEncodedCamera, Headless, HostClassLoadouts, HostClassSlot, HudDraw, HudInputView,
-    InstalledMatch, LaunchIdentity, LaunchReport, LifeEndCause, LifeEnded, LifeStartReason,
-    LifeStarted, LocalLoadKey, LocalSpawnArmed, MapLoadApproved, MapLoadFailed, MatchKey,
-    ReadinessState, RuntimeRole, TeardownReason, UiCamera, UiDraw, UiOverlayInput, UiPointerFree,
-    ViewSubject, WorldGeneration, WorldProducts, WorldReadiness, WorldStamp,
+    AdmissionKey, AppScreen, BotNavigationReady, CacWeaponOffer, CinematicInput,
+    ClassSelectHandoff, DisplayEncodedCamera, Headless, HostClassLoadouts, HostClassSlot, HudDraw,
+    HudInputView, InstalledMatch, LaunchIdentity, LaunchReport, LifeEndCause, LifeEnded,
+    LifeStartReason, LifeStarted, LocalLoadKey, LocalSpawnArmed, MapLoadApproved, MapLoadFailed,
+    MatchKey, ReadinessState, RuntimeRole, TeardownReason, UiCamera, UiDraw, UiOverlayInput,
+    UiPointerFree, ViewSubject, WorldGeneration, WorldProducts, WorldReadiness, WorldStamp,
 };
 pub use settings::{
     DisplayGamma, DisplayResolution, GameSettings, MasterPreset, MasterVolumeGain, OtherGame,

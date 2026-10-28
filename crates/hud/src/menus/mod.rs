@@ -206,6 +206,7 @@ pub(crate) struct MenuInputs<'w, 's> {
     mode: Option<Res<'w, game_api::ModeRules>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
     overlay: Res<'w, frame::UiOverlayInput>,
+    cinematic: Res<'w, frame::CinematicInput>,
     keyboard: MessageReader<'w, 's, bevy::input::keyboard::KeyboardInput>,
     mouse: Res<'w, ButtonInput<MouseButton>>,
     windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
@@ -508,7 +509,7 @@ pub(crate) fn update_script_menus(
     if frontend && runner.dvars.get("ui_map_error") == Some("1") {
         runner.open("iw4l_map_error");
     }
-    let pointer = !console_open && !input.overlay.0;
+    let pointer = !console_open && !input.overlay.0 && !input.cinematic.0;
     if pointer {
         let keys = &input.keys;
         pressed.escape |= keys.just_pressed(KeyCode::Escape);
@@ -940,11 +941,13 @@ pub(crate) fn update_script_menus(
     if let Some(blur) = out.blur.as_deref_mut() {
         blur.0 = f32::sqrt(blur_squares);
     }
+    // A full-screen cinematic hides the menus' cursor.
     let pointer = input
         .windows
         .single()
         .ok()
-        .and_then(|w| w.cursor_position());
+        .and_then(|w| w.cursor_position())
+        .filter(|_| !input.cinematic.0);
     menus.draws_cursor = push_cursor(menus, catalog, &surface, pointer, &mut list);
     let mut fonts: HashMap<String, &asset_game::FontDef> = HashMap::new();
     for cmd in list
