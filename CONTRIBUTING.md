@@ -63,7 +63,7 @@ Before opening a pull request, run what CI runs:
 
 ```bash
 make publish-check                       # the tracked tree is the product and nothing else
-cargo check --workspace --all-targets    # no rustc warning (CI: Linux and macOS)
+cargo check --workspace --all-targets    # no rustc warning (CI: Linux)
 cargo xtask lints --enforce              # clippy/rustc warnings never grow (xtask/lints/allow.txt)
 cargo fmt --all -- --check
 ruff check scripts && ruff format --check scripts
