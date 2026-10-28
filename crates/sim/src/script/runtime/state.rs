@@ -103,6 +103,9 @@ pub(crate) struct RoundScript {
     pub(crate) lingering: Vec<(i64, u64)>,
     /// Lobby members the match waits for before play starts.
     pub(crate) expected_players: usize,
+    /// The newest snapshot each remote client has acknowledged, by tick
+    /// (local clients and bots take every one at once).
+    pub(crate) snapshot_acks: BTreeMap<u32, crate::Tick>,
     /// A client VM's runtime (Black Ops' client scripts), not the server's.
     pub(crate) client: bool,
     /// Notifies the engine raises later (a sound or animation done): when,
@@ -208,6 +211,7 @@ impl RoundScript {
             grenade_touches: Default::default(),
             lingering: Default::default(),
             expected_players: Default::default(),
+            snapshot_acks: Default::default(),
             client: Default::default(),
             timed_notifies: Default::default(),
             sound_notifies: Default::default(),

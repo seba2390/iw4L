@@ -1296,6 +1296,10 @@ pub(crate) fn apply_disconnects(world: &mut World) {
 
 pub(crate) fn disconnect_player(world: &mut World, client: u32) {
     super::triggers::release_client_claims(world, client);
+    world
+        .resource_mut::<RoundScript>()
+        .snapshot_acks
+        .remove(&client);
     {
         world
             .resource_mut::<RoundScript>()

@@ -527,6 +527,14 @@ impl SimWorld {
         crate::script::host::client_scripts::install(&mut self.ecs, client, natives)
     }
 
+    /// A remote client acknowledged the snapshot of `tick`.
+    pub fn note_snapshot_ack(&mut self, id: ClientId, tick: Tick) {
+        if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
+            let acked = runtime.snapshot_acks.entry(id.0).or_insert(tick);
+            *acked = (*acked).max(tick);
+        }
+    }
+
     pub fn set_expected_players(&mut self, count: usize) {
         if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
             runtime.expected_players = count;
