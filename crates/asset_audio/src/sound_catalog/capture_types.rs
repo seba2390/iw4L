@@ -198,6 +198,9 @@ pub struct CapturedAlias {
     pub stereo_speaker_gains: Option<[[f32; 2]; 2]>,
 
     pub t6_speaker_pan: Option<[f32; 6]>,
+    /// The sound driver's speaker pan an unplaced Black Ops alias plays
+    /// through, by number.
+    pub t5_pan: Option<u8>,
 
     pub limit_count: Option<u8>,
 

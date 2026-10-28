@@ -77,6 +77,8 @@ pub struct SoundCatalog {
 
     group_volumes: HashMap<AssetNamespace, Vec<std::result::Result<f32, crate::MixerGroupError>>>,
     mixer_groups: HashMap<AssetNamespace, Vec<crate::MixerGroup>>,
+    /// Each game's speaker pans, by number, for a game that has them.
+    speaker_pans: HashMap<AssetNamespace, Vec<crate::SpeakerPan>>,
     mix_snapshots: HashMap<AssetNamespace, crate::MixSnapshots>,
     /// Each game's reverb rooms, the first of each hash kept.
     reverb_presets: HashMap<AssetNamespace, Vec<crate::ReverbPreset>>,
@@ -158,6 +160,9 @@ impl SoundCatalog {
         }
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
+        }
+        for (ns, pans) in other.speaker_pans {
+            self.speaker_pans.entry(ns).or_insert(pans);
         }
         for (ns, snapshots) in other.mix_snapshots {
             self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
@@ -250,6 +255,9 @@ impl SoundCatalog {
         for (ns, groups) in other.mixer_groups {
             self.mixer_groups.entry(ns).or_insert(groups);
         }
+        for (ns, pans) in other.speaker_pans {
+            self.speaker_pans.entry(ns).or_insert(pans);
+        }
         for (ns, snapshots) in other.mix_snapshots {
             self.mix_snapshots.entry(ns).or_default().absorb(snapshots);
         }
@@ -335,6 +343,15 @@ impl SoundCatalog {
     /// them (Black Ops 2).
     pub fn sound_mix_names(&self) -> Option<&crate::SoundMixNames> {
         self.mix_names.as_ref()
+    }
+
+    pub fn ingest_speaker_pans(&mut self, namespace: AssetNamespace, pans: Vec<crate::SpeakerPan>) {
+        self.speaker_pans.insert(namespace, pans);
+        self.playback.clear();
+    }
+
+    pub(crate) fn speaker_pans_in(&self, namespace: AssetNamespace) -> &[crate::SpeakerPan] {
+        self.speaker_pans.get(&namespace).map_or(&[], Vec::as_slice)
     }
 
     pub fn ingest_mixer_groups(
