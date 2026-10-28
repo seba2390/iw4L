@@ -54,6 +54,9 @@ const EXEMPT: &[&str] = &[
     // entry's 24-bit prefix boundary falls in the range this gate reads as
     // an offset.
     "crates/asset_audio/src/wma_t5/table.rs",
+    // Bink 1's quantizer tables, read from the install's `binkw32.dll`: the
+    // larger quantizers fall in the range this gate reads as an offset.
+    "crates/bink/src/tables.rs",
     // Generated table of Black Ops 3's map key types, keyed by the same
     // 32-bit name hashes.
     "crates/game_t7/src/key_types.rs",

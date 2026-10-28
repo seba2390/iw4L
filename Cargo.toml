@@ -21,6 +21,7 @@ members = [
     "crates/assets",
     "crates/bootstrap",
     "crates/audio",
+    "crates/bink",
     "crates/bots",
     "crates/clipmap_iw4",
     "crates/console",
@@ -148,6 +149,7 @@ d3d9_decl = { path = "crates/d3d9_decl" }
 d3d9_sm3 = { path = "crates/d3d9_sm3" }
 dxbc_sm5 = { path = "crates/dxbc_sm5" }
 d3d9_state = { path = "crates/d3d9_state" }
+bink = { path = "crates/bink" }
 diag = { path = "crates/diag" }
 dpvs_iw4 = { path = "crates/dpvs_iw4" }
 entity_iw4 = { path = "crates/entity_iw4" }

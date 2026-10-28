@@ -60,7 +60,12 @@ pub(crate) fn register_frontend_audio(app: &mut App) {
         )
         .add_systems(
             Update,
-            (play_ui_sound_messages, play_ui_music_messages).in_set(ClientSet::Effects),
+            (
+                play_ui_sound_messages,
+                play_ui_music_messages,
+                play_cinematic_messages,
+            )
+                .in_set(ClientSet::Effects),
         );
 }
 
@@ -212,6 +217,24 @@ fn play_ui_sound_messages(
         if outcome.allows_binding_fallback() {
             gaps.record(&event.alias);
         }
+    }
+}
+
+fn play_cinematic_messages(
+    mut play: MessageReader<frame::UiPlayCinematic>,
+    mut stop: MessageReader<frame::UiStopCinematic>,
+    runtime: Res<crate::AudioRuntime>,
+) {
+    if stop.read().count() > 0 {
+        runtime.stop_cinematic();
+    }
+    for cinematic in play.read() {
+        runtime.play_cinematic(
+            &cinematic.samples,
+            cinematic.rate,
+            usize::from(cinematic.channels),
+            1.0,
+        );
     }
 }
 

@@ -210,6 +210,14 @@ struct VoiceOutputs<'a> {
     reverb: Option<(&'a mut [[f32; 4]; QUANTUM], f32)>,
 }
 
+/// A cinematic's sound: interleaved stereo at the internal rate, mixed over
+/// the game's buses, under the master volume.
+pub(crate) struct CinematicStream {
+    pub samples: Arc<[f32]>,
+    pub frame: usize,
+    pub gain: f32,
+}
+
 pub(crate) struct RenderShared {
     slots: [Slot; PHYSICAL_VOICES],
     rendering: AtomicBool,
@@ -228,6 +236,7 @@ pub(crate) struct RenderShared {
     pub peak: AtomicU32,
     pub reverb: ReverbControl,
     pub master_chain: std::sync::Mutex<Option<MasterChainControl>>,
+    pub cinematic: std::sync::Mutex<Option<CinematicStream>>,
 }
 
 // The bounded rendering lease exclusively owns RenderState. Slot payload access
@@ -278,6 +287,7 @@ impl RenderShared {
             peak: AtomicU32::new(0),
             reverb: ReverbControl::default(),
             master_chain: std::sync::Mutex::new(None),
+            cinematic: std::sync::Mutex::new(None),
         }
     }
 
@@ -404,6 +414,18 @@ impl RenderShared {
             state.master_direct = [[0.0; 2]; QUANTUM];
         }
         state.buses.mix_into(output);
+        if let Ok(mut cinematic) = self.cinematic.try_lock()
+            && let Some(stream) = cinematic.as_mut()
+        {
+            for sample in output.iter_mut() {
+                let Some(pair) = stream.samples.get(stream.frame * 2..stream.frame * 2 + 2) else {
+                    break;
+                };
+                sample[0] += pair[0] * stream.gain;
+                sample[1] += pair[1] * stream.gain;
+                stream.frame += 1;
+            }
+        }
         let master = f32::from_bits(self.master.load(Ordering::Relaxed));
         for sample in output.iter_mut().flatten() {
             let value = *sample * master;

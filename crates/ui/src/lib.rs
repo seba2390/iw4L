@@ -1,4 +1,5 @@
 pub mod barracks;
+mod cinematic;
 pub mod classes;
 mod community_servers;
 pub mod frontend;

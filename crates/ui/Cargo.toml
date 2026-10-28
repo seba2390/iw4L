@@ -16,6 +16,7 @@ asset_game.workspace = true
 asset_material.workspace = true
 asset_transport.workspace = true
 assets.workspace = true
+bink.workspace = true
 frame.workspace = true
 hud_iw4.workspace = true
 net = { path = "../net" }

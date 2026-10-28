@@ -236,6 +236,46 @@ impl AudioRuntime {
         self.rejections[reason as usize - 1].load(Ordering::Relaxed)
     }
 
+    /// Plays a cinematic's sound (interleaved, `channels` of them at `rate`)
+    /// over the game's at `gain`, replacing one already playing.
+    pub fn play_cinematic(&self, samples: &[f32], rate: u32, channels: usize, gain: f32) {
+        if channels == 0 || rate == 0 {
+            return;
+        }
+        let frames = samples.len() / channels;
+        let out_frames =
+            (frames as u64 * u64::from(crate::render_core::SAMPLE_RATE) / u64::from(rate)) as usize;
+        let step = f64::from(rate) / f64::from(crate::render_core::SAMPLE_RATE);
+        let mut stereo = Vec::with_capacity(out_frames * 2);
+        let side = |frame: usize, side: usize| samples[frame * channels + side.min(channels - 1)];
+        for i in 0..out_frames {
+            let at = i as f64 * step;
+            let (frame, frac) = (at as usize, (at - at.floor()) as f32);
+            let next = (frame + 1).min(frames - 1);
+            for s in 0..2 {
+                stereo.push(side(frame, s) * (1.0 - frac) + side(next, s) * frac);
+            }
+        }
+        *self
+            .shared
+            .cinematic
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) =
+            Some(crate::render_core::CinematicStream {
+                samples: stereo.into(),
+                frame: 0,
+                gain,
+            });
+    }
+
+    pub fn stop_cinematic(&self) {
+        *self
+            .shared
+            .cinematic
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = None;
+    }
+
     pub fn set_master_volume(&self, gain: f32) {
         let gain = if gain.is_finite() { gain.max(0.0) } else { 0.0 };
         self.shared.master.store(gain.to_bits(), Ordering::Release);

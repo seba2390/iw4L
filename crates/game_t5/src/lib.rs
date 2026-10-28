@@ -834,6 +834,9 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     gametype: ZOMBIES,
     note: "Runs the map's own zombie scripts. Kino der Toten and Five play solo; gaps are listed in docs/fidelity/t5.md.",
     front_end: Some(FRONT_END_LEVEL),
+    // The executable queues it once per run, while `com_startupIntroPlayed`
+    // is 0, before the front end's menus.
+    intro: Some("main/video/number_lady_intro.bik"),
     maps: &[
         ("zombie_theater", "KINO DER TOTEN"),
         ("zombie_pentagon", "\"FIVE\""),
