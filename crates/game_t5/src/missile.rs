@@ -651,7 +651,6 @@ fn impact(
             velocity = [0.0, 0.0, 1.0];
         }
         damage(
-            gaps,
             missile.owner,
             missile.entity,
             entity,
