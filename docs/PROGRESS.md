@@ -199,7 +199,7 @@ Only the top-level items count.
   - [x] Revive, bleeding out, spectating and the respawn on one Mac (a local master and two windows, #257).
   - [ ] A second player over the network (two machines) not tried.
   - [ ] Other players' footsteps reach the client scripts (#458).
-  - [ ] Actor state reaches clients through the shared entity path; its cost with many zombies is not measured.
+  - [x] Actor state reaches clients through the shared entity path; with a round 5 crowd on Kino a client's snapshots near the 25 kB/s rate and the host's step nears its 50 ms tick ([`PERF.md`](PERF.md), #257).
 - [ ] The game's fidelity ledger ([`fidelity/t5.md`](fidelity/t5.md)) has no open item.
 
 ### Technical debt
