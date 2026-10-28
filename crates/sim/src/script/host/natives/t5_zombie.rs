@@ -112,7 +112,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             })
             .collect();
         let now = super::super::players::now_ms(world);
-        values.push(Value::Int(i32::try_from(now + 1000).map_err(|_| "time overflow")?));
+        values.push(Value::Int(
+            i32::try_from(now + 1000).map_err(|_| "time overflow")?,
+        ));
         new_array(world, values)
     });
     // Black Ops answers 1 unless a client in the game has acknowledged a
