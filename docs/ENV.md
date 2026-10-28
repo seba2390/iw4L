@@ -47,6 +47,7 @@ headless runs; their meaning is beside the code that reads them.
 |---|---|---|
 | `IW4L_PRESENT_MODE` | `Fifo`, `Mailbox`, `Immediate` or `AutoNoVsync` | `Fifo` |
 | `IW4L_PIPELINED_RENDERING` | Switch; off renders in the main frame | on |
+| `IW4L_MAIN_MULTI_THREADED` | Switch; runs the main frame schedules on bevy's multi-threaded executor | off |
 | `IW4L_FRAME_LATENCY` | Frames the CPU may run ahead of the GPU | `2` on macOS, `1` elsewhere |
 | `IW4L_PERF` | Switch; records a Perfetto trace (Linux and macOS only) | off |
 | `IW4L_PERF_FOCUS` | The one owner the trace follows, e.g. `script_model:192` | none |

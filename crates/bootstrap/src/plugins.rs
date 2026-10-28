@@ -1,6 +1,7 @@
 use assets::AssetPlugin;
 use audio::AudioPlugin;
 use bevy::{
+    ecs::schedule::ScheduleLabel,
     log::LogPlugin,
     prelude::*,
     render::{
@@ -49,6 +50,33 @@ pub fn add_runtime_plugins_with_role(app: &mut App, role: RuntimeRole) {
         .add_plugins(SessionPlugin);
     app.insert_resource(hud::GameMenuParsers(session::games::menu_parsers()));
     hud::register_game_menus(session::games::menus);
+
+    if single_threaded_main_schedules() {
+        // Measured on Kino: of `Update`'s ~400 systems most run in chains, and the
+        // multi-threaded executor spent about a third of the schedule's wall
+        // handing each one to a worker with nothing running (97 → 121 fps).
+        // The systems that fan out (camera products, sun casters, FX's own
+        // schedule) open their own task scopes and stay parallel. The fixed
+        // step gains too (6.8 → 6.0 ms a tick).
+        for label in [
+            First.intern(),
+            PreUpdate.intern(),
+            bevy::state::state::StateTransition.intern(),
+            RunFixedMainLoop.intern(),
+            FixedFirst.intern(),
+            FixedPreUpdate.intern(),
+            FixedUpdate.intern(),
+            FixedPostUpdate.intern(),
+            FixedLast.intern(),
+            Update.intern(),
+            PostUpdate.intern(),
+            Last.intern(),
+        ] {
+            app.edit_schedule(label, |schedule| {
+                schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
+            });
+        }
+    }
 
     if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
         // Measured: multithreaded render schedules compete with camera prepare's own
@@ -124,6 +152,14 @@ pub fn default_plugins_with_quiet_log(mut window: WindowPlugin) -> bevy::app::Pl
     } else {
         plugins.disable::<PipelinedRenderingPlugin>()
     }
+}
+
+const MAIN_EXECUTOR_ENV: &str = "IW4L_MAIN_MULTI_THREADED";
+
+/// Run the main app's per-frame schedules on one thread; the variable set to
+/// `1` brings back bevy's multi-threaded executor for them.
+fn single_threaded_main_schedules() -> bool {
+    !perf::switch(MAIN_EXECUTOR_ENV)
 }
 
 const PIPELINED_RENDERING_ENV: &str = "IW4L_PIPELINED_RENDERING";
