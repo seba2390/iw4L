@@ -88,6 +88,7 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
     // A solo game is offline: neither a system link nor an online game.
     ("systemlink", "0"),
     ("onlinegame", "0"),
+    ("xblive_privatematch", "0"),
     // Registered from the executable's content flag, which this build
     // sets: the zombie scripts gib zombies (`is_mature`) only with it.
     ("cg_mature", "1"),
@@ -191,6 +192,17 @@ impl game_api::GameScripts for T5 {
     fn engine_dvars(&self, gametype: &str) -> &'static [(&'static str, &'static str)] {
         if gametype == ZOMBIES {
             ZOMBIE_ENGINE_DVARS
+        } else {
+            &[]
+        }
+    }
+
+    /// A co-op game is hosted as Black Ops' front end hosts its online
+    /// zombies party: an online private match (`onlinegame 1`,
+    /// `xblive_privatematch 1`).
+    fn hosted_dvars(&self, gametype: &str) -> &'static [(&'static str, &'static str)] {
+        if gametype == ZOMBIES {
+            &[("onlinegame", "1"), ("xblive_privatematch", "1")]
         } else {
             &[]
         }

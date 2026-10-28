@@ -6,6 +6,7 @@ use bevy_ecs::prelude::World;
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
     super::t5_vision::register(registry);
+    registry.on_tick(raise_client_messages);
     registry.register(Function, "getplayers", |world, _, args| {
         let team = optional_team(args)?;
         let players = players(world)
@@ -82,11 +83,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 });
         Ok(Value::Int(waiting.into()))
     });
-    // Script pacing on snapshot acknowledgement is left to the network layer:
-    // scripts see no remote clients and wait a tenth of a second instead.
-    // Offline (neither an online nor a system link game) there are none;
-    // otherwise the party's other members, which the session counts as its
-    // other players.
+    // Offline (neither an online nor a system link game) there are no remote
+    // clients; otherwise the party's other members, which the session counts
+    // as its other players.
     registry.register(Function, "numremoteclients", |world, _, args| {
         no_args(args)?;
         let online = dvar_set(world, "onlinegame") || dvar_set(world, "systemlink");
@@ -96,6 +95,68 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             0
         };
         Ok(Value::Int(remote))
+    });
+    // Each client slot's next snapshot (undefined for a slot with no client
+    // in the game), then the server's time plus a second.
+    registry.register(Function, "getsnapshotindexarray", |world, _, args| {
+        no_args(args)?;
+        let next = Value::Int(snapshot_tick(world) + 1);
+        let begun = begun_slots(world);
+        let mut values: Vec<Value> = (0..SNAPSHOT_SLOTS)
+            .map(|slot| {
+                if begun.contains(&slot) {
+                    next.clone()
+                } else {
+                    Value::Undefined
+                }
+            })
+            .collect();
+        let now = super::super::players::now_ms(world);
+        values.push(Value::Int(
+            i32::try_from(now + 1000).map_err(|_| "time overflow")?,
+        ));
+        new_array(world, values)
+    });
+    // Black Ops answers 1 unless a client in the game has acknowledged a
+    // snapshot past the one its slot names; a later element (the array's
+    // time) past the server's time answers 1 whatever the slots say.
+    // Otherwise undefined.
+    registry.register(Function, "snapshotacknowledged", |world, _, args| {
+        let array = args.first().ok_or("Parameter (0) must be an array")?;
+        if !matches!(array, Value::Array(_)) {
+            return Err(format!(
+                "Parameter ({}) must be an array",
+                super::super::args::kind(array)
+            ));
+        }
+        let values = super::super::arrays::array_values(world, array)?;
+        let begun = begun_slots(world);
+        let now = super::super::players::now_ms(world);
+        let current = snapshot_tick(world);
+        let mut acknowledged = true;
+        for (slot, value) in values.iter().enumerate() {
+            let Value::Int(index) = *value else {
+                continue;
+            };
+            let slot = slot as u32;
+            if slot < SNAPSHOT_SLOTS {
+                let acked = world
+                    .resource::<RoundScript>()
+                    .snapshot_acks
+                    .get(&slot)
+                    .map_or(current, |tick| i32::try_from(tick.0).unwrap_or(i32::MAX));
+                if begun.contains(&slot) && index < acked {
+                    acknowledged = false;
+                }
+            } else if i64::from(index) <= now {
+                acknowledged = true;
+            }
+        }
+        Ok(if acknowledged {
+            Value::Int(1)
+        } else {
+            Value::Undefined
+        })
     });
     // `g_gameskill` names the difficulty (registered 1, "medium").
     registry.register(Function, "getdifficulty", |world, _, args| {
@@ -1072,6 +1133,48 @@ fn no_args(args: &[Value]) -> Result<(), String> {
 }
 
 /// Player entities in client order.
+/// The client slots `getsnapshotindexarray` reports and `snapshotacknowledged`
+/// checks: a zombies party's four players.
+const SNAPSHOT_SLOTS: u32 = 4;
+
+/// The newest snapshot the server has sent its clients: the previous frame's.
+fn snapshot_tick(world: &World) -> i32 {
+    let tick = world.resource::<crate::step::StepRequest>().tick.0;
+    i32::try_from(tick.saturating_sub(1)).unwrap_or(i32::MAX)
+}
+
+/// Client slots whose player has begun (Black Ops' active clients).
+fn begun_slots(world: &World) -> Vec<u32> {
+    world
+        .resource::<RoundScript>()
+        .players
+        .iter()
+        .filter(|(_, slot)| slot.begun)
+        .map(|(client, _)| *client)
+        .collect()
+}
+
+/// Black Ops raises the level's `snapacknowledged` each time the server
+/// reads a client's message; here, once for each client whose commands this
+/// frame carries.
+fn raise_client_messages(world: &mut World) {
+    if world.resource::<RoundScript>().client {
+        return;
+    }
+    let mut senders: Vec<u32> = world
+        .resource::<crate::step::StepRequest>()
+        .input
+        .cmds
+        .iter()
+        .map(|command| command.client.0)
+        .collect();
+    senders.sort_unstable();
+    senders.dedup();
+    for _ in senders {
+        crate::script::runtime::raise(world, Value::level(), "snapacknowledged", Vec::new());
+    }
+}
+
 fn players(world: &mut World) -> Vec<u64> {
     let mut players: Vec<(i32, u64)> = world
         .resource::<RoundScript>()
