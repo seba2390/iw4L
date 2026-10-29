@@ -106,10 +106,13 @@ Each open section names the issue that works it.
 ## Player, movement and weapons (#647, #648, #649, #650)
 
 - [ ] **G** The multiplayer player moves by `movement_t5` with
-      `zombiemode` 0 (`movement::MULTIPLAYER`); its tuning is the one read
-      from `BlackOps.exe`, not checked against `BlackOpsMP.exe`. Dive to
-      prone, ladders and mantles on a multiplayer map (#461), fall damage
-      and the multiplayer movement dvars' defaults are not verified (#647).
+      `zombiemode` 0 and `BlackOpsMP.exe`'s own registered defaults where
+      they differ from `BlackOps.exe` (`bg_fallDamageMaxHeight` 300,
+      `bg_prone_yawcap` 45, `player_breath_hold_lerp` 1,
+      `player_sliding_wishspeed` 4000). Dive to prone (hold the stance key
+      while sprinting), ladders and mantles on a multiplayer map are not
+      verified in a run yet (#461, #647); a dump shows only the shared
+      player state, not the dive's flags.
 - [ ] **G** Multiplayer weapons: attachment variants, underbarrel grenade
       launcher, flamethrower and Masterkey (`alt` weapons), dual wield,
       the ballistic knife's pickup, the crossbow's explosive bolts, weapon

@@ -215,7 +215,7 @@ fn prone_yaw_cap<W: MoveWorld>(pm: &mut Pm<'_, W>, msec: f32, old_yaw: f32) {
     let yaw_at_entry = pm.ps.viewangles[1];
     let mut blocked = false;
     let d0 = angle_delta(pm.ps.prone_direction, yaw_at_entry);
-    let soft_cap = tuning::PRONE_YAWCAP - 5.0;
+    let soft_cap = pm.tuning.prone_yawcap - 5.0;
     let outside = d0 > soft_cap || -soft_cap > d0;
     let turning = (pm.cmd.forwardmove != 0 || pm.cmd.rightmove != 0) && d0 != 0.0;
     if outside || turning {
@@ -296,7 +296,7 @@ fn clamp_yaw_to_body<W: MoveWorld>(
     old_yaw: f32,
     yaw_at_entry: f32,
 ) {
-    let cap = tuning::PRONE_YAWCAP;
+    let cap = pm.tuning.prone_yawcap;
     if d > cap || -cap > d {
         let excess = if d > cap { d - cap } else { cap + d };
         pm.ps.delta_angles[1] += excess;
