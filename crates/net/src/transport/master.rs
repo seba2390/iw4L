@@ -289,6 +289,8 @@ fn master_target() -> Result<Option<MasterTarget>> {
 #[derive(Clone, Debug)]
 struct HostConfig {
     password: String,
+    /// Left out of the master's room lists: friends join with the room's id.
+    unlisted: bool,
     auto_start_map: bool,
     target: MasterTarget,
     name: String,
@@ -350,6 +352,7 @@ impl MasterLaunchIntent {
                     // No password when unset.
                     password: std::env::var("IW4L_MASTER_PASSWORD")
                         .unwrap_or_else(|_| String::new()),
+                    unlisted: !listed_from_env(),
                     auto_start_map: true,
                     target,
                     name,
@@ -456,6 +459,8 @@ pub enum MasterMenuAction {
     },
     Host {
         password: String,
+        /// Left out of the master's room lists (joined by invite code).
+        unlisted: bool,
         map: String,
         mode: String,
     },
@@ -475,12 +480,19 @@ pub enum MasterMenuAction {
     },
     VoteToSkip,
     LeaveLobby,
+    /// The host removes a lobby member.
+    Kick {
+        member_id: MemberId,
+    },
 }
 
 #[derive(Clone, Debug)]
 enum MasterBridgeCommand {
     SetPassword {
         password: String,
+    },
+    Kick {
+        member_id: MemberId,
     },
     UpdateLobby {
         map: String,
@@ -938,6 +950,12 @@ fn apply_master_menu_action(
             }
             return;
         }
+        MasterMenuAction::Kick { member_id } => {
+            if let Some(bridge) = bridge {
+                bridge.send(MasterBridgeCommand::Kick { member_id });
+            }
+            return;
+        }
         MasterMenuAction::UpdateLobby { map, mode } => {
             if let Some(bridge) = bridge {
                 if let Some(families) = bridge.state().families()
@@ -1008,6 +1026,7 @@ fn apply_master_menu_action(
     match action {
         MasterMenuAction::Refresh
         | MasterMenuAction::SetPassword { .. }
+        | MasterMenuAction::Kick { .. }
         | MasterMenuAction::UpdateLobby { .. }
         | MasterMenuAction::StartMatch { .. }
         | MasterMenuAction::VoteToSkip
@@ -1016,6 +1035,7 @@ fn apply_master_menu_action(
             map,
             mode,
             password,
+            unlisted,
         } => {
             let requires = match frame::AssetFamilies::from_inventory(browser.have.0, &dvars)
                 .and_then(|families| {
@@ -1030,6 +1050,7 @@ fn apply_master_menu_action(
             };
             intent.0 = MasterLaunchMode::Host(HostConfig {
                 password,
+                unlisted,
                 auto_start_map: false,
                 target: browser.target,
                 name: settings.player_name.clone(),
@@ -1802,6 +1823,7 @@ async fn session_main(
                 requires: config.requires,
                 available: config.have,
                 password: config.password.clone(),
+                unlisted: config.unlisted,
             },
         }
     } else {
@@ -2254,6 +2276,16 @@ fn handle_command(
                 ControlFrame::Request(ControlRequest {
                     request_id: take_id(request_id),
                     body: RequestBody::SetPassword { password },
+                }),
+                role,
+            )?;
+        }
+        MasterBridgeCommand::Kick { member_id } => {
+            enqueue_control(
+                control_tx,
+                ControlFrame::Request(ControlRequest {
+                    request_id: take_id(request_id),
+                    body: RequestBody::KickMember { member_id },
                 }),
                 role,
             )?;
@@ -3458,4 +3490,10 @@ fn refresh_relay_authority_hello(
         );
     }
     hub.hello.content = content;
+}
+
+/// A hosted lobby is left out of the master's room lists unless
+/// `IW4L_MASTER_LISTED=1`: friends join it with its invite code.
+fn listed_from_env() -> bool {
+    std::env::var("IW4L_MASTER_LISTED").is_ok_and(|value| value == "1")
 }

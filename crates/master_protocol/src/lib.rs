@@ -4,7 +4,7 @@ use core::{fmt, str::FromStr};
 
 pub mod congestion;
 
-pub const PROTOCOL_VERSION: u16 = 10;
+pub const PROTOCOL_VERSION: u16 = 11;
 pub const ALPN: &[u8] = b"iw4l-master/10";
 pub const MAX_CONTROL_BYTES: usize = 16 * 1024;
 pub const MAX_OPAQUE_PAYLOAD: usize = 1100;
@@ -54,6 +54,7 @@ const TAG_ENTER_MATCH: u8 = 13;
 const TAG_VOTE_TO_SKIP: u8 = 14;
 const TAG_SET_PASSWORD: u8 = 16;
 const TAG_POPULATION: u8 = 17;
+const TAG_KICK_MEMBER: u8 = 18;
 pub const MAX_PASSWORD_BYTES: usize = 64;
 const TAG_ADMISSION_FAILED: u8 = 15;
 const TAG_ERROR: u8 = 0x7f;
@@ -298,6 +299,9 @@ pub struct RoomView {
     pub requires: ContentFlags,
     pub available: ContentFlags,
     pub password_protected: bool,
+    /// The room is left out of room lists: only a peer that has its id (the
+    /// host's invite code) can join it.
+    pub unlisted: bool,
 }
 
 impl RoomView {
@@ -369,6 +373,7 @@ pub enum RequestBody {
         requires: ContentFlags,
         available: ContentFlags,
         password: String,
+        unlisted: bool,
     },
     JoinRoom {
         room_id: AdvertId,
@@ -377,6 +382,10 @@ pub enum RequestBody {
     },
     SetPassword {
         password: String,
+    },
+    /// The host removes a member from its room.
+    KickMember {
+        member_id: MemberId,
     },
     LeaveRoom,
     SetOptions {
@@ -551,6 +560,8 @@ pub enum SessionCloseReason {
     HostLeft,
     LeaseExpired,
     Overload,
+    /// The host removed this member.
+    Kicked,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -825,6 +836,7 @@ fn encode_request_body(body: &RequestBody) -> Result<Vec<u8>, ProtocolError> {
             requires,
             available,
             password,
+            unlisted,
         } => {
             validate_advert(name, map, mode, *max_players)?;
             out.u8(TAG_CREATE_ROOM);
@@ -835,6 +847,7 @@ fn encode_request_body(body: &RequestBody) -> Result<Vec<u8>, ProtocolError> {
             out.u8(requires.0);
             out.u8(available.0);
             out.string(password, MAX_PASSWORD_BYTES)?;
+            out.u8(u8::from(*unlisted));
         }
         RequestBody::JoinRoom {
             room_id,
@@ -849,6 +862,10 @@ fn encode_request_body(body: &RequestBody) -> Result<Vec<u8>, ProtocolError> {
         RequestBody::SetPassword { password } => {
             out.u8(TAG_SET_PASSWORD);
             out.string(password, MAX_PASSWORD_BYTES)?;
+        }
+        RequestBody::KickMember { member_id } => {
+            out.u8(TAG_KICK_MEMBER);
+            out.bytes(&member_id.0);
         }
         RequestBody::LeaveRoom => out.u8(TAG_LEAVE_ROOM),
         RequestBody::SetOptions {
@@ -956,6 +973,7 @@ fn decode_request_body(body: &mut Reader<'_>) -> Result<RequestBody, ProtocolErr
             let requires = ContentFlags(body.u8()?);
             let available = ContentFlags(body.u8()?);
             let password = body.string(MAX_PASSWORD_BYTES)?;
+            let unlisted = bool_byte(body.u8()?)?;
             validate_advert(&name, &map, &mode, max_players)?;
             RequestBody::CreateRoom {
                 name,
@@ -965,6 +983,7 @@ fn decode_request_body(body: &mut Reader<'_>) -> Result<RequestBody, ProtocolErr
                 requires,
                 available,
                 password,
+                unlisted,
             }
         }
         TAG_JOIN_ROOM => RequestBody::JoinRoom {
@@ -974,6 +993,9 @@ fn decode_request_body(body: &mut Reader<'_>) -> Result<RequestBody, ProtocolErr
         },
         TAG_SET_PASSWORD => RequestBody::SetPassword {
             password: body.string(MAX_PASSWORD_BYTES)?,
+        },
+        TAG_KICK_MEMBER => RequestBody::KickMember {
+            member_id: MemberId(body.array()?),
         },
         TAG_LEAVE_ROOM => RequestBody::LeaveRoom,
         TAG_SET_OPTIONS => {
@@ -1169,6 +1191,7 @@ fn encode_room_view(view: &RoomView) -> Result<Vec<u8>, ProtocolError> {
     out.u8(view.requires.0);
     out.u8(view.available.0);
     out.u8(u8::from(view.password_protected));
+    out.u8(u8::from(view.unlisted));
     out.string(&view.name, MAX_ADVERT_NAME_BYTES)?;
     out.string(&view.map, MAX_MAP_BYTES)?;
     out.string(&view.mode, MAX_MODE_BYTES)?;
@@ -1196,6 +1219,7 @@ fn decode_room_view(body: &mut Reader<'_>) -> Result<RoomView, ProtocolError> {
     let requires = ContentFlags(body.u8()?);
     let available = ContentFlags(body.u8()?);
     let password_protected = bool_byte(body.u8()?)?;
+    let unlisted = bool_byte(body.u8()?)?;
     let name = body.string(MAX_ADVERT_NAME_BYTES)?;
     let map = body.string(MAX_MAP_BYTES)?;
     let mode = body.string(MAX_MODE_BYTES)?;
@@ -1226,6 +1250,7 @@ fn decode_room_view(body: &mut Reader<'_>) -> Result<RoomView, ProtocolError> {
         requires,
         available,
         password_protected,
+        unlisted,
     })
 }
 
@@ -1609,6 +1634,7 @@ impl SessionCloseReason {
             Self::HostLeft => 0,
             Self::LeaseExpired => 1,
             Self::Overload => 2,
+            Self::Kicked => 3,
         }
     }
 
@@ -1617,6 +1643,7 @@ impl SessionCloseReason {
             0 => Ok(Self::HostLeft),
             1 => Ok(Self::LeaseExpired),
             2 => Ok(Self::Overload),
+            3 => Ok(Self::Kicked),
             _ => Err(ProtocolError::InvalidBody),
         }
     }

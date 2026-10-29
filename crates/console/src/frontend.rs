@@ -80,6 +80,7 @@ pub(crate) fn register(registry: &mut ConsoleRegistry) {
         "ui_join_lobby",
         "ui_join_lobby_selected",
         "ui_join_lobby_id",
+        "ui_lobby_kick",
     ] {
         if registry.resolve(name).is_none() {
             registry.register(CommandSpec::new(name));
@@ -367,6 +368,9 @@ pub(crate) fn route(
                             map,
                             mode: mode.token().into(),
                             password: state.lobby_password.clone(),
+                            // Friends join by the lobby's invite code; the
+                            // master lists it only with `ui_lobby_listed 1`.
+                            unlisted: dvars.get("ui_lobby_listed") != Some("1"),
                         })?;
                     }
                     state.public = !state.public;
@@ -596,6 +600,27 @@ pub(crate) fn route(
                     let len = state.browser_order.len();
                     change_page(&mut state.browser_page, command, len);
                 }
+                "ui_lobby_kick" => {
+                    if !party.in_lobby || !party.is_host {
+                        return Err("Only the host can remove a lobby member".into());
+                    }
+                    let row = command
+                        .args
+                        .first()
+                        .and_then(|arg| arg.parse::<usize>().ok())
+                        .ok_or("usage: ui_lobby_kick <lobby row>")?;
+                    let member_id = match services.bridge.as_ref().map(|bridge| bridge.state()) {
+                        Some(net::MasterBridgeState::Hosting {
+                            members, identity, ..
+                        }) => members
+                            .get(row)
+                            .copied()
+                            .filter(|id| *id != identity.member_id)
+                            .ok_or("No other player in that lobby row")?,
+                        _ => return Err("Not hosting a lobby".into()),
+                    };
+                    services.submit(net::MasterMenuAction::Kick { member_id })?;
+                }
                 "ui_join_lobby" | "ui_join_lobby_id" | "ui_join_lobby_selected" => {
                     let (advert_id, map, mode) = {
                         let id = if command.name == "ui_join_lobby_id" {
@@ -623,17 +648,39 @@ pub(crate) fn route(
                                 .ok_or("Lobby is no longer available")?
                                 .id
                         };
-                        let advert = services
-                            .browser
-                            .as_ref()
-                            .and_then(|browser| {
-                                browser
-                                    .snapshot()
-                                    .adverts
-                                    .into_iter()
-                                    .find(|advert| advert.id == id)
-                            })
-                            .ok_or("Lobby is no longer available")?;
+                        let listed = services.browser.as_ref().and_then(|browser| {
+                            browser
+                                .snapshot()
+                                .adverts
+                                .into_iter()
+                                .find(|advert| advert.id == id)
+                        });
+                        let advert = match listed {
+                            Some(advert) => advert,
+                            // An unlisted lobby: join by its invite code
+                            // alone; the master checks its password, content
+                            // and room.
+                            None if command.name == "ui_join_lobby_id" => {
+                                let password = command.args.get(1).cloned().unwrap_or_default();
+                                if password.len() > master_protocol::MAX_PASSWORD_BYTES {
+                                    return Err("Password must be at most 64 bytes".into());
+                                }
+                                services.submit(net::MasterMenuAction::Join {
+                                    password,
+                                    advert_id: id,
+                                    map: String::new(),
+                                    mode: String::new(),
+                                })?;
+                                state.public = true;
+                                party.active = true;
+                                party.in_lobby = true;
+                                party.is_host = false;
+                                dvars.set("ui_frontend_status", "Joining lobby...");
+                                menus.write(UiMenuRequest::Open("game_lobby".into()));
+                                return Ok(());
+                            }
+                            None => return Err("Lobby is no longer available".into()),
+                        };
                         if let Some(message) =
                             frame::AssetFamilies(advert.missing.0).missing_notice(0)
                         {
@@ -765,6 +812,8 @@ pub(crate) fn route(
                 ..
             } => {
                 local_lobby_row = members.iter().position(|id| *id == identity.member_id);
+                // The invite code friends join with (`ui_join_lobby_id`).
+                dvars.set("ui_lobby_code", identity.room_id.to_string());
                 lobby_names = members
                     .iter()
                     .map(|id| {
@@ -794,6 +843,7 @@ pub(crate) fn route(
         }
     } else {
         dvars.set("ui_lobby_players", "PLAYERS: 1 / 18");
+        dvars.set("ui_lobby_code", "");
     }
     for row in 0..18 {
         let name = lobby_names.get(row);
