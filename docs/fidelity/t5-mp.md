@@ -152,9 +152,14 @@ Each open section names the issue that works it.
 
 ## HUD and menus (#651, #664)
 
-- [ ] **V** The multiplayer HUD from `ui_mp` (compass and minimap,
-      obituaries, hit markers, score popups, medals, team score, TAB
-      scoreboard) has not been drawn.
+- [ ] **V** The multiplayer HUD lists load as `CG_LoadHudMenus` does
+      (`ui_mp/hud_hardcore`, `hud_spectator`, `hud`, `hud_<g_gametype>`,
+      `hud_popups`, `hud_demo`, from `common_mp`), but their items' menu
+      expression ops 43, 117 and 291 are unsupported, so items those gate
+      (the final-killcam banner, the hardcore tint, the jammed minimap
+      static) paint all the time; the minimap, obituaries, hit markers,
+      score popups, medals, team score and TAB scoreboard are not drawn as
+      Black Ops draws them (#651).
 - [ ] **V** The scripts' class menu (`changeclass`, from `ui_mp`) opens on
       connect but 111 of its 125 items do not paint (menu expression ops 117
       and 291 unsupported), and the HUD's menu-response hook turns a
