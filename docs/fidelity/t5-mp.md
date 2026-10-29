@@ -91,11 +91,8 @@ Each open section names the issue that works it.
 ## Gametypes (#653, #654, #655)
 
 - [ ] **G** Free-for-all (`dm`) and Team Deathmatch (`tdm`).
-- [ ] **G** `istouchingswept` is not simulated: `_gameobjects`'
-      `shouldBeReset` faults when a dropped bomb is checked against the
-      reset triggers, so a bomb dropped into a reset trigger is not
-      returned. Demolition's second target, overtime and the side switch
-      are not verified (#654).
+- [ ] **G** Demolition's second target, overtime and the side switch are
+      not verified (#654).
 - [ ] **G** Wager matches: One in the Chamber (`oic`), Gun Game (`gun`),
       Sticks and Stones (`hlnd`), Sharpshooter (`shrp`);
       `getwagergametypelist` is refused.
@@ -266,3 +263,6 @@ Each open section names the issue that works it.
       45 s timer) and detonates, winning the round, and round 2 starts;
       the Sabotage bomb is picked up and planted on the enemy site and its
       detonation scores; a Demolition attacker plants at A (+100) (#654).
+- [x] **G** `istouchingswept` was refused, so `_gameobjects`'
+      `shouldBeReset` faulted when a dropped bomb was checked against the
+      minefield and hurt triggers; it takes the shared swept-touch test.
