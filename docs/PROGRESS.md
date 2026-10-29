@@ -262,7 +262,8 @@ Each milestone names its issues; open rules are in
   - [ ] RC-XD (#660).
   - [ ] Care Package, Attack Helicopter, Chopper Gunner and Gunship (#661).
   - [ ] Valkyrie Rockets and Attack Dogs (#662).
-- [ ] Combat Training bots join and fight (#652).
+- [x] Combat Training bots join and fight (#652).
+  - [x] Black Ops' `_bot.gsc` adds its bots (`addtestclient`) and picks their team, class and loadout; IW4L's host bots move and shoot them. Black Ops' own bot behaviour is #709.
 - [ ] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #665).
 - [ ] Two-machine play with prediction and lag compensation (#666).
 - [ ] Killcam, final killcam and spectating (#667).

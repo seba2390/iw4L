@@ -7,7 +7,7 @@
 |---|---|---|---|---|
 | Modern Warfare 2 — multiplayer | `████████████████░░░░` 83% | 10 / 12 | 0 / 13 | Rust: 460 / 460 (100%) |
 | Black Ops — Zombies | `█████████████████░░░` 85% | 18 / 21 | 58 / 69 | Kino der Toten: 490 / 610 (80%)<br>Five: 489 / 609 (80%) |
-| Black Ops — Multiplayer | `█░░░░░░░░░░░░░░░░░░░` 6% | 1 / 16 | 2 / 11 | Array: 599 / 629 (95%)<br>Havana: 599 / 629 (95%)<br>Launch: 601 / 631 (95%)<br>Cracked: 598 / 628 (95%)<br>Crisis: 599 / 629 (95%)<br>Grid: 599 / 629 (95%)<br>Firing Range: 599 / 629 (95%)<br>Hanoi: 598 / 628 (95%)<br>Jungle: 598 / 628 (95%)<br>Summit: 599 / 629 (95%)<br>Radiation: 601 / 631 (95%)<br>WMD: 599 / 629 (95%)<br>Villa: 599 / 629 (95%)<br>Nuketown: 601 / 631 (95%) |
+| Black Ops — Multiplayer | `██░░░░░░░░░░░░░░░░░░` 12% | 2 / 16 | 3 / 12 | Array: 599 / 629 (95%)<br>Havana: 599 / 629 (95%)<br>Launch: 601 / 631 (95%)<br>Cracked: 598 / 628 (95%)<br>Crisis: 599 / 629 (95%)<br>Grid: 599 / 629 (95%)<br>Firing Range: 599 / 629 (95%)<br>Hanoi: 598 / 628 (95%)<br>Jungle: 598 / 628 (95%)<br>Summit: 599 / 629 (95%)<br>Radiation: 601 / 631 (95%)<br>WMD: 599 / 629 (95%)<br>Villa: 599 / 629 (95%)<br>Nuketown: 601 / 631 (95%) |
 | Black Ops II — Zombies | `██████████████████░░` 90% | 19 / 21 | 72 / 77 | Nuketown: 692 / 692 (100%)<br>TranZit: 741 / 741 (100%)<br>Buried: 727 / 727 (100%) |
 | Black Ops II — Multiplayer | `░░░░░░░░░░░░░░░░░░░░` 0% | 0 / 16 | 1 / 11 | — |
 | Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |

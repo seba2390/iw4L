@@ -1115,6 +1115,9 @@ pub(crate) struct PlayerSlot {
     /// Where a script placed the player before it spawned.
     pub pending_origin: Option<[f32; 3]>,
     pub pending_angles: Option<[f32; 3]>,
+    /// A test client the scripts added: its connect callback runs on the
+    /// next tick, after the script that added it has its entity.
+    pub connect_pending: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1168,6 +1171,7 @@ impl PlayerSlot {
             pending_spawn_weapon: None,
             pending_origin: None,
             pending_angles: None,
+            connect_pending: false,
         }
     }
 }
@@ -1391,6 +1395,14 @@ pub(crate) fn sync_players(world: &mut World) {
             .get(&client)
             .cloned();
         match slot {
+            Some(slot) if slot.connect_pending => {
+                if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
+                    slot.connect_pending = false;
+                }
+                if run_now(world, CONNECT, Value::Object(slot.object), Vec::new(), now).is_err() {
+                    return;
+                }
+            }
             Some(slot) if !slot.begun && joined => {
                 raise(world, Value::Object(slot.object), "begin", Vec::new());
                 if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
@@ -1399,54 +1411,9 @@ pub(crate) fn sync_players(world: &mut World) {
             }
             Some(_) => {}
             None => {
-                let mut runtime = world.resource_mut::<RoundScript>();
-                let object = match runtime.create_player(client) {
-                    Ok(object) => object,
-                    Err(message) => {
-                        runtime.fault = Some(Fault::at(
-                            &Location {
-                                module: "<engine>".into(),
-                                function: "connect".into(),
-                                line: 0,
-                                column: 0,
-                            },
-                            message,
-                        ));
-                        return;
-                    }
+                let Some(object) = connect_player(world, client) else {
+                    return;
                 };
-                runtime.players.insert(client, PlayerSlot::new(object));
-                let kept = runtime.restored_pers.remove(&client);
-                let pers = match kept {
-                    Some(kept) => super::restart::attach(&mut runtime, kept),
-                    None => super::arrays::new_array(world, Vec::new()),
-                };
-                match pers {
-                    Ok(pers) => world
-                        .resource_mut::<RoundScript>()
-                        .set_object_field(object, "pers", pers),
-                    Err(_) => return,
-                }
-                if let Some(team) = FrameWorld::from_world(world)
-                    .bootstrap_ref()
-                    .mode
-                    .and_then(|mode| mode.connect_team)
-                {
-                    let team = Value::string(team);
-                    let _ = store_field(world, client, "sessionteam", &team);
-                    world
-                        .resource_mut::<RoundScript>()
-                        .set_object_field(object, "team", team);
-                }
-                let hooks: Vec<_> = world
-                    .get_resource::<crate::script::NativeRegistry>()
-                    .map(crate::script::NativeRegistry::connect_hooks)
-                    .into_iter()
-                    .flatten()
-                    .collect();
-                for hook in hooks {
-                    hook(world, object);
-                }
                 if !super::t6_gametype::active(world)
                     && run_now(world, CONNECT, Value::Object(object), Vec::new(), now).is_err()
                 {
@@ -1462,6 +1429,82 @@ pub(crate) fn sync_players(world: &mut World) {
         super::t6_gametype::advance(world);
     }
     settle_deaths(world);
+}
+
+/// A connecting client's script player: its entity, `pers`, its team where
+/// the mode connects players to one, and the natives' connect hooks.
+fn connect_player(world: &mut World, client: u32) -> Option<u64> {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let object = match runtime.create_player(client) {
+        Ok(object) => object,
+        Err(message) => {
+            runtime.fault = Some(Fault::at(
+                &Location {
+                    module: "<engine>".into(),
+                    function: "connect".into(),
+                    line: 0,
+                    column: 0,
+                },
+                message,
+            ));
+            return None;
+        }
+    };
+    runtime.players.insert(client, PlayerSlot::new(object));
+    let kept = runtime.restored_pers.remove(&client);
+    let pers = match kept {
+        Some(kept) => super::restart::attach(&mut runtime, kept),
+        None => super::arrays::new_array(world, Vec::new()),
+    };
+    match pers {
+        Ok(pers) => world
+            .resource_mut::<RoundScript>()
+            .set_object_field(object, "pers", pers),
+        Err(_) => return None,
+    }
+    if let Some(team) = FrameWorld::from_world(world)
+        .bootstrap_ref()
+        .mode
+        .and_then(|mode| mode.connect_team)
+    {
+        let team = Value::string(team);
+        let _ = store_field(world, client, "sessionteam", &team);
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(object, "team", team);
+    }
+    let hooks: Vec<_> = world
+        .get_resource::<crate::script::NativeRegistry>()
+        .map(crate::script::NativeRegistry::connect_hooks)
+        .into_iter()
+        .flatten()
+        .collect();
+    for hook in hooks {
+        hook(world, object);
+    }
+    Some(object)
+}
+
+/// `AddTestClient`: a new client the host's bots drive, joined at once; the
+/// scripts get its entity now and its connect callback runs next tick.
+pub(crate) fn add_test_client(world: &mut World) -> Option<u64> {
+    let client = {
+        let frame = FrameWorld::from_world(world);
+        let taken = frame.client_ids_sorted();
+        (1..crate::corpse::CLIENT_SLOTS).find(|id| !taken.contains(&ClientId(*id)))?
+    };
+    let mut frame = FrameWorld::from_world(world);
+    frame.client_meta_mut(ClientId(client)).lifecycle = crate::ClientLifecycle::ChoosingClass;
+    frame
+        .ecs()
+        .get_resource_or_insert_with(crate::TestClients::default)
+        .0
+        .insert(client);
+    let object = connect_player(world, client)?;
+    if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
+        slot.connect_pending = true;
+    }
+    Some(object)
 }
 
 pub(crate) fn team_name(team: i32) -> &'static str {

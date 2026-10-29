@@ -199,13 +199,18 @@ Each open section names the issue that works it.
 - [ ] **V** Black Ops' multiplayer front end and Private Match lobby menus
       (`ui_mp`, `patch_ui_mp`) are not reachable from the game library.
 
-## Bots (#652)
+## Bots (#652, #709)
 
-- [ ] **G** `addtestclient` and the bot builtins (`setscriptgoal`,
-      `clearscriptgoal`, `hasscriptgoal`, `pressattackbutton`,
-      `pressusebutton`, `throwbuttonpressed`, `getthreat`,
-      `setscriptenemy`, `clearscriptenemy`, `getlookaheaddir`,
-      `getlookaheaddist`) are refused.
+- [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
+      `_bot.gsc` (`addtestclient`; their team and class by `menuresponse`,
+      their loadout by `bot_give_loadout`), but IW4L's host bots move, aim
+      and shoot them, not Black Ops' engine bot code. The bot natives keep
+      what the scripts set: `setscriptgoal`/`hasscriptgoal`, the scripted
+      enemy (`getthreat` answers only that), the straight line to the goal
+      for `getlookaheaddist`/`getlookaheaddir`; the host bots ignore the
+      goal and `pressusebutton`/`pressattackbutton`, so bots do not pick up
+      care packages or revive. Bots fire rarely and seldom land kills on
+      Black Ops' weapons (#709).
 
 ## Audio (#668)
 
@@ -238,3 +243,5 @@ Each open section names the issue that works it.
       server's dvars, so a match's `scr_<gametype>_scorelimit` and
       `timelimit` could not be changed; Black Ops' host runs the server in
       its own process, as here (#646).
+- [x] **G** `addtestclient` and the bot natives were refused: Black Ops'
+      `_bot.gsc` now adds its bots (#652).
