@@ -86,11 +86,6 @@ Each open section names the issue that works it.
       spectator's own machine) is kept like a team; every machine here has
       one player, so it never changes whom a spectator may follow.
 
-- [ ] **G** A full Free-for-all on `mp_nuked` with bots runs to the time
-      limit and ends on Black Ops' own end screen (winner, placings,
-      intermission); a bot's kill scores its 50 points. The score-limit end
-      and a full Team Deathmatch are not verified yet, and the runtime's
-      bots rarely land kills on one another (#646, #652).
 - [ ] **G** `map_restart` on a multiplayer map reinstalls the scripts but
       the scene never reports spawned again, so a command after it waits
       out the console's gate (#646).
@@ -245,3 +240,8 @@ Each open section names the issue that works it.
       its own process, as here (#646).
 - [x] **G** `addtestclient` and the bot natives were refused: Black Ops'
       `_bot.gsc` now adds its bots (#652).
+- [x] **G** Free-for-all and Team Deathmatch on `mp_nuked` run on Black
+      Ops' own gametype scripts to the end: a kill scores, the time limit
+      (FFA) and the score limit (TDM) end the match on Black Ops' end
+      screen (winner, placings or team scores) and every client goes to
+      intermission. Leaving intermission for the lobby is #665 (#646).

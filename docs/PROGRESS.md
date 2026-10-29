@@ -249,7 +249,8 @@ Each milestone names its issues; open rules are in
   - [ ] The multiplayer client scripts (`clientscripts/mp`) run (#645).
 - [ ] Players move by Black Ops' multiplayer movement rules (#647).
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
-- [ ] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).
+- [x] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).
+  - [x] On `mp_nuked` with Black Ops' bots: a kill scores, a 2-minute FFA ends on its time limit and a TDM on its score limit, each on Black Ops' own end screen and intermission.
 - [ ] Every other gametype is verified in a match (#653, #654).
   - [ ] Domination, Headquarters and Capture the Flag (#653).
   - [ ] Search and Destroy, Sabotage and Demolition (#654).
