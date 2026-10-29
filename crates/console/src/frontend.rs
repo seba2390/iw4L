@@ -661,7 +661,9 @@ pub(crate) fn route(
                             // alone; the master checks its password, content
                             // and room.
                             None if command.name == "ui_join_lobby_id" => {
-                                let password = command.args.get(1).cloned().unwrap_or_default();
+                                // No password when the code comes alone.
+                                let password =
+                                    command.args.get(1).cloned().unwrap_or_else(String::new);
                                 if password.len() > master_protocol::MAX_PASSWORD_BYTES {
                                     return Err("Password must be at most 64 bytes".into());
                                 }
