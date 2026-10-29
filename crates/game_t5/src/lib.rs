@@ -382,6 +382,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     // one process: a menu's `setDvar` is what `GetDvar` reads (the front
     // end's map select sets `ui_load_level` for `ChangeLevel`).
     menu_dvars_reach_server: true,
+    runtime_class_slots: false,
     // A zombies map's 3D UI texture; the front end's is square
     // (`ui3d_size`).
     ui3d: Some(game_api::Ui3dRules { size: [1024, 512] }),
@@ -422,6 +423,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     },
     top_down: None,
     menu_dvars_reach_server: false,
+    runtime_class_slots: false,
     ..ZOMBIE_MODE
 };
 

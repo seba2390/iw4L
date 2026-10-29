@@ -61,6 +61,16 @@ pub(crate) struct T5HudState<'a> {
     pub hint: Option<T5Hint>,
     pub local_client: usize,
     pub scores: Vec<(usize, i32)>,
+    /// The local player's team (`TEAM_*`), the teams' scores by team and
+    /// the players' scores, highest first.
+    pub team: i32,
+    pub team_scores: [i32; 3],
+    pub rank_scores: Vec<i32>,
+    /// Milliseconds left on the match clock.
+    pub time_left_ms: i32,
+    /// The game's code-drawn HUD, which answers its visibility bits.
+    pub code_hud: Option<&'static game_api::hud::GameCodeHud>,
+    pub scoreboard: bool,
     pub deadquote_start_ms: Option<i32>,
     /// What the game's hint and message owner draws show, by number.
     pub owner_hints: Vec<(i32, OwnerHintText)>,
@@ -449,6 +459,36 @@ fn unset_dvar(name: &str) -> String {
     String::new()
 }
 
+/// The match's team numbers.
+pub(crate) const TEAM_FREE: i32 = 0;
+const TEAM_AXIS: i32 = 1;
+const TEAM_ALLIES: i32 = 2;
+const TEAM_SPECTATOR: i32 = 3;
+
+/// `team(name)` and `team(score)` for `team`.
+fn team_field(state: &T5HudState<'_>, team: i32, field: &str) -> Result<Operand, ExprError> {
+    if field.eq_ignore_ascii_case("name") {
+        let name = match team {
+            TEAM_FREE => "TEAM_FREE",
+            TEAM_AXIS => "TEAM_AXIS",
+            TEAM_ALLIES => "TEAM_ALLIES",
+            TEAM_SPECTATOR => "TEAM_SPECTATOR",
+            _ => "",
+        };
+        Ok(Operand::Str(name.to_owned()))
+    } else if field.eq_ignore_ascii_case("score") {
+        Ok(Operand::Int(
+            usize::try_from(team)
+                .ok()
+                .and_then(|team| state.team_scores.get(team))
+                .copied()
+                .unwrap_or(0),
+        ))
+    } else {
+        Err(ExprError::Host("team field"))
+    }
+}
+
 struct T5HudHost<'a, 'b> {
     state: &'a T5HudState<'b>,
     localize: Option<&'a LocalizeCatalog>,
@@ -468,23 +508,52 @@ impl ExprHost for T5HudHost<'_, '_> {
     fn static_dvar_int(&self, _index: i32) -> Result<i32, ExprError> {
         Err(ExprError::Host("static dvar"))
     }
-    fn team_field(&self, _field: &str) -> Result<Operand, ExprError> {
-        Err(ExprError::Host("team field"))
+    fn team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        team_field(self.state, self.state.team, field)
     }
     fn player_field(&self, _field: &str) -> Result<Operand, ExprError> {
         Err(ExprError::Host("player field"))
     }
-    fn other_team_field(&self, _field: &str) -> Result<Operand, ExprError> {
-        Err(ExprError::Host("other team field"))
+    fn other_team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        let other = match self.state.team {
+            TEAM_AXIS => TEAM_ALLIES,
+            TEAM_ALLIES => TEAM_AXIS,
+            team => team,
+        };
+        team_field(self.state, other, field)
     }
     fn local_var_string(&self, _name: &str) -> Result<Operand, ExprError> {
         Err(ExprError::Host("local var"))
     }
     fn time_left(&self) -> Result<i32, ExprError> {
-        Err(ExprError::Host("timeleft"))
+        Ok(self.state.time_left_ms)
     }
-    fn score_at_rank(&self, _rank: i32) -> Result<i32, ExprError> {
-        Err(ExprError::Host("score"))
+    fn visibility_bit(&self, bit: i32) -> Result<i32, ExprError> {
+        let rule = self
+            .state
+            .code_hud
+            .and_then(|hud| hud.visibility_bit)
+            .ok_or(ExprError::Host("isvisibilitybitset"))?;
+        let player = self
+            .state
+            .ps
+            .move_player(self.state.local_client as i32, false);
+        let view = game_api::hud::VisibilityView {
+            player: &player,
+            team: self.state.team,
+            scoreboard: self.state.scoreboard,
+            in_killcam: self.state.in_killcam,
+        };
+        rule(bit, &view)
+            .map(i32::from)
+            .map_err(|unknown| ExprError::Unknown(unknown.id))
+    }
+    fn score_at_rank(&self, rank: i32) -> Result<i32, ExprError> {
+        Ok(usize::try_from(rank)
+            .ok()
+            .and_then(|rank| self.state.rank_scores.get(rank))
+            .copied()
+            .unwrap_or(0))
     }
     fn gametype_name(&self) -> Result<Operand, ExprError> {
         Err(ExprError::Host("gametype"))
@@ -1477,7 +1546,7 @@ pub(crate) fn paint(
         let gametype = state
             .dvar("g_gametype")
             .or_else(|| state.dvar("ui_gametype"))
-            .unwrap_or_default();
+            .unwrap_or_else(String::new);
         asset_game::t5_mp_hud_menu_lists(gametype.trim())
     } else {
         T5_HUD_MENU_LISTS

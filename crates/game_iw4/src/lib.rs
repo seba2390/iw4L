@@ -87,6 +87,7 @@ const MODE: ModeRules = ModeRules {
     ammo_numbers: None,
     extra_camera: None,
     menu_dvars_reach_server: false,
+    runtime_class_slots: true,
     ui3d: None,
 };
 

@@ -445,6 +445,9 @@ pub struct ModeRules {
     /// The dvars the host's menus set are the server's: the game runs its
     /// menus and its level in one process with one dvar table.
     pub menu_dvars_reach_server: bool,
+    /// A class menu's `customN` response picks the runtime's own class slot
+    /// N; otherwise it reaches the game's scripts like any menu response.
+    pub runtime_class_slots: bool,
     /// The game's 3D UI texture, which menus with a window paint into and
     /// world materials sample; `None` has none.
     pub ui3d: Option<Ui3dRules>,
