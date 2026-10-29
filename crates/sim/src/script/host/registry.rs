@@ -168,6 +168,13 @@ impl NativeRegistry {
         super::actor_nav::register(&mut self);
         self
     }
+
+    /// Black Ops multiplayer's natives where its server's differ from the
+    /// zombies server's.
+    pub fn with_black_ops_multiplayer(mut self) -> Self {
+        natives::t5_objectives::register(&mut self);
+        self
+    }
 }
 impl NativeRegistry {
     /// Black Ops 3's builtins alone: none of the engine services above, which

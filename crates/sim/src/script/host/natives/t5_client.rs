@@ -454,19 +454,28 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .push((name.to_string(), value.to_string()));
         Ok(Value::Undefined)
     });
-    // `SetSavedDvar(name, value)`: the client's own dvar; the renderer reads
-    // none of the ones the multiplayer scripts set (`t5.csc.saved_dvars`).
+    // `SetSavedDvar(name, value)`: the client's own dvar, its value's double
+    // quotes turned to single ones; the renderer reads none of the ones the
+    // multiplayer scripts set, and whether the dvar exists with the saved flag
+    // is not checked (`t5.csc.saved_dvars`).
     registry.register(Function, "setsaveddvar", |world, _, args| {
         let name = super::player::text(arg(args, 0)?)?;
-        let value = super::player::text(arg(args, 1)?)?;
+        let value = arg(args, 1)?;
+        if matches!(value, Value::LocalizedString(_)) {
+            return Err("Cannot set saved dvar on client side with a string value".into());
+        }
+        let value = super::player::text(value)?.replace('"', "'");
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(format!("Dvar {name} has an invalid dvar name"));
+        }
         world
             .resource_mut::<ClientOutput>()
             .client_dvars
-            .push((name.to_string(), value.to_string()));
+            .push((name.to_string(), value));
         Ok(Value::Undefined)
     });
-    // `GetServerTime(local client)`: the server time of the client's
-    // snapshot.
+    // `GetServerTime(local client)`: the client's time, less a field of its
+    // current snapshot that is not identified yet (`t5.csc.server_time`).
     registry.register(Function, "getservertime", |world, _, args| {
         local_index(args)?;
         Ok(Value::Int(now_ms(world)))

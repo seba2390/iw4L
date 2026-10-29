@@ -2277,15 +2277,44 @@ fn bot_script<'a>(world: &'a mut World, receiver: &Value) -> Result<&'a mut BotS
         .or_default())
 }
 
-/// `ent IsTouchingSwept(other, [min z], [max z])`: whether the entity,
-/// swept between the heights, touches the other.
+/// `ent IsTouchingSwept(other, [min z], [max z])`: the box of whichever of
+/// the two is not a trigger volume (the receiver when neither is), stretched
+/// down to `min z` and up to `max z`, then grown in height to at least its
+/// width, against the other.
 fn register_swept(registry: &mut NativeRegistry) {
     registry.register(Method, "istouchingswept", |world, receiver, args| {
-        let a = super::engine::entity_id(world, receiver)?;
-        let b = super::engine::entity_id(world, arg(args, 0)?)?;
-        let min_z = optional(args, 1, float)?;
-        let max_z = optional(args, 2, float)?;
-        let hit = super::super::triggers::is_touching_swept(world, a, b, min_z, max_z)?;
+        let own = super::engine::entity_id(world, receiver)?;
+        let other = super::engine::entity_id(world, arg(args, 0)?)?;
+        let (swept, target) = if !super::super::triggers::has_volume(world, own) {
+            (own, other)
+        } else if super::super::triggers::has_volume(world, other) {
+            return Err("istouchingswept cannot be called on 2 brush/cylinder entities".into());
+        } else {
+            (other, own)
+        };
+        let (mut mins, mut maxs) = super::super::triggers::toucher_box(world, swept);
+        if args.len() > 1 {
+            let z = float(args, 1)?;
+            if mins[2] - z >= 0.0 {
+                mins[2] = z;
+            }
+        }
+        if args.len() > 2 {
+            let z = float(args, 2)?;
+            if z - maxs[2] >= 0.0 {
+                maxs[2] = z;
+            }
+        }
+        let height = maxs[2] - mins[2];
+        let x = maxs[0] - mins[0];
+        let y = maxs[1] - mins[1];
+        let width = if x - y < 0.0 { y } else { x };
+        if height < width {
+            let grow = (width - height) * 0.5;
+            mins[2] -= grow;
+            maxs[2] += grow;
+        }
+        let hit = super::super::triggers::box_touches(world, target, mins, maxs);
         Ok(Value::Int(hit.into()))
     });
 }
