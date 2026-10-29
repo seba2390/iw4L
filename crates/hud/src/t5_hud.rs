@@ -1472,21 +1472,33 @@ pub(crate) fn paint(
     let host = T5HudHost { state, localize };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
-    let mut lists: Vec<String> = T5_HUD_MENU_LISTS
-        .iter()
-        .map(|&name| name.to_owned())
-        .collect();
-    if dvar_truthy(state, "onlinegame") || dvar_truthy(state, "systemlink") {
-        lists.push(String::from("ui/hud_coop.txt"));
-    }
-    if let Some(map) = state.dvars.string("mapname").filter(|m| !m.is_empty()) {
-        lists.push(format!("ui/hud_{map}.txt"));
-    }
-    if state
-        .dvar("ui_gametype")
-        .is_some_and(|g| g.trim().eq_ignore_ascii_case("vs"))
-    {
-        lists.push(String::from("ui/hud_vs.txt"));
+    let multiplayer = dvar_truthy(state, "ui_multiplayer");
+    let mut lists: Vec<String> = if multiplayer {
+        let gametype = state
+            .dvar("g_gametype")
+            .or_else(|| state.dvar("ui_gametype"))
+            .unwrap_or_default();
+        asset_game::t5_mp_hud_menu_lists(gametype.trim())
+    } else {
+        T5_HUD_MENU_LISTS
+            .iter()
+            .map(|&name| name.to_owned())
+            .collect()
+    };
+    // The multiplayer client loads no co-op, map or versus HUD.
+    if !multiplayer {
+        if dvar_truthy(state, "onlinegame") || dvar_truthy(state, "systemlink") {
+            lists.push(String::from("ui/hud_coop.txt"));
+        }
+        if let Some(map) = state.dvars.string("mapname").filter(|m| !m.is_empty()) {
+            lists.push(format!("ui/hud_{map}.txt"));
+        }
+        if state
+            .dvar("ui_gametype")
+            .is_some_and(|g| g.trim().eq_ignore_ascii_case("vs"))
+        {
+            lists.push(String::from("ui/hud_vs.txt"));
+        }
     }
     let mut sorted: Vec<(u32, &asset_game::MenuDef)> = Vec::new();
     for name in lists

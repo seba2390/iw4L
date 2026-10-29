@@ -31,6 +31,22 @@ use crate::menu_catalog::{
 /// menu's own visibility decides when it shows.
 pub const T5_HUD_MENU_LISTS: &[&str] = &["ui/hud.txt", "ui/hud_zombie.txt"];
 
+/// The HUD menu lists Black Ops' multiplayer client loads
+/// (`CG_LoadHudMenus`), in its order: the hardcore and spectator HUDs, then
+/// (outside demo playback) the common HUD and the gametype's
+/// (`ui_mp/hud_<g_gametype>.txt`), then the popups and the demo HUD.
+pub fn t5_mp_hud_menu_lists(gametype: &str) -> Vec<String> {
+    [
+        "ui_mp/hud_hardcore.txt".to_owned(),
+        "ui_mp/hud_spectator.txt".to_owned(),
+        "ui_mp/hud.txt".to_owned(),
+        format!("ui_mp/hud_{gametype}.txt"),
+        "ui_mp/hud_popups.txt".to_owned(),
+        "ui_mp/hud_demo.txt".to_owned(),
+    ]
+    .into()
+}
+
 /// The menu lists a Black Ops zombies client loads in a match
 /// (`UI_LoadIngameMenus`): the pause menu and its options.
 pub const T5_INGAME_MENU_LISTS: &[&str] = &["ui/ingame.txt", "ui/ingame_options.txt"];
