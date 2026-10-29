@@ -150,12 +150,20 @@ Each open section names the issue that works it.
 
 ## Client scripts (#645)
 
-- [ ] **V** The multiplayer client scripts (`clientscripts/mp/*.csc`) have
-      not run: a multiplayer match has no client program
-      (`client_program` answers zombies only). Missing client builtins they call: `set_filter_pass_*`,
-      `set_overlay_*`, `animateui`, `setsaveddvar`,
-      `setinfraredvisionset`, `setstunned`, `shellshock`,
-      `setcompassicon`, `map_material`, the vehicle queries.
+- [ ] **V** The multiplayer client scripts (`clientscripts/mp/<map>`,
+      `clientscripts/mp/_callbacks`) compile against Black Ops' client
+      catalog plus the multiplayer client's own function and entity method
+      tables (`mp_client_catalog.rs`, 48 builtins from `BlackOpsMP.exe`)
+      and run on `mp_nuked`. Not implemented yet, each faulting the thread
+      that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
+      (the scope and guided-missile filters, #645); `animateui` (menu item
+      animations, #651); `setlocalradarenabled`, `setlocalradarposition`
+      and the scrambler methods (radar, jammer, #649, #657); the extra
+      camera builtins (camera spike, #649); `hasperk` (#650);
+      `gettotalammo` (#648); the vehicle queries (#660).
+- [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
+      but nothing reads the ones the multiplayer scripts set (wind,
+      `r_outdoorfeather`).
 
 ## HUD and menus (#651, #664)
 

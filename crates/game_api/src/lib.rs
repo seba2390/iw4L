@@ -239,8 +239,9 @@ pub trait GameScripts: Sync {
         None
     }
 
-    /// The functions the game's client engine calls in its client scripts.
-    fn client_callbacks(&self) -> Option<ClientCallbacks> {
+    /// The functions the game's client engine calls in its client scripts
+    /// for `gametype`.
+    fn client_callbacks(&self, _gametype: &str) -> Option<ClientCallbacks> {
         None
     }
 

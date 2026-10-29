@@ -1564,7 +1564,7 @@ fn preflight_match_install(
                         compiled.function_count(),
                         compiled.natives.len()
                     );
-                    Some((compiled, client.entries, game_scripts.client_callbacks()))
+                    Some((compiled, client.entries, game_scripts.client_callbacks(gametype)))
                 }
                 Err(error) => {
                     diag::warn!(Sim, "csc: client scripts do not compile: {error}");

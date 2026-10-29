@@ -1996,6 +1996,10 @@ fn shutdown_mirrored(
 }
 
 fn start_callback(world: &mut World, function: &str, receiver: Value, args: Vec<Value>) {
+    // A callback the game's client scripts do not have.
+    if function.is_empty() {
+        return;
+    }
     if let Err(fault) = super::runtime::start(world, function, receiver, args) {
         diag::warn!(Sim, "csc: {function} not started: {fault}");
     }

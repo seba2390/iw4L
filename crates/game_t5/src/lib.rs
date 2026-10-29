@@ -14,6 +14,7 @@ mod menu_expression;
 mod missile;
 mod movement;
 mod mp_catalog;
+mod mp_client_catalog;
 mod mp_startup;
 mod overlay;
 mod physics;
@@ -173,14 +174,27 @@ impl game_api::GameScripts for T5 {
         request: &ScriptRequest<'_>,
         _sources: &dyn gsc::SourceResolver,
     ) -> Option<ScriptProgram> {
-        (request.gametype == ZOMBIES).then(|| ScriptProgram {
-            catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, client_catalog::T5_CLIENT),
+        // A multiplayer map keeps its client scripts under `clientscripts/mp`.
+        let dir = if request.gametype == ZOMBIES {
+            "clientscripts"
+        } else if multiplayer(request.gametype) {
+            "clientscripts/mp"
+        } else {
+            return None;
+        };
+        let mut catalog =
+            gsc::Catalog::from_list(asset_core::FamilyId::T5, client_catalog::T5_CLIENT);
+        if multiplayer(request.gametype) {
+            catalog = catalog.extended(mp_client_catalog::T5_MP_CLIENT.iter().cloned());
+        }
+        Some(ScriptProgram {
+            catalog,
             roots: vec![
                 "codescripts/delete".to_owned(),
                 "codescripts/struct".to_owned(),
-                format!("clientscripts/{}", request.map),
+                format!("{dir}/{}", request.map),
             ],
-            entries: vec![format!("clientscripts/{}::main", request.map)],
+            entries: vec![format!("{dir}/{}::main", request.map)],
             built: None,
             settings: Vec::new(),
             key_types: Vec::new(),
@@ -189,8 +203,12 @@ impl game_api::GameScripts for T5 {
         })
     }
 
-    /// Black Ops' client engine calls `clientscripts/_callbacks`.
-    fn client_callbacks(&self) -> Option<game_api::ClientCallbacks> {
+    /// Black Ops' client engine calls `clientscripts/_callbacks`, and in
+    /// multiplayer `clientscripts/mp/_callbacks`.
+    fn client_callbacks(&self, gametype: &str) -> Option<game_api::ClientCallbacks> {
+        if multiplayer(gametype) {
+            return Some(MULTIPLAYER_CLIENT_CALLBACKS);
+        }
         Some(game_api::ClientCallbacks {
             local_client_connect: "clientscripts/_callbacks::localclientconnect",
             state_change: "clientscripts/_callbacks::statechange",
@@ -427,6 +445,30 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     menu_dvars_reach_server: true,
     runtime_class_slots: false,
     ..ZOMBIE_MODE
+};
+
+/// `clientscripts/mp/_callbacks`; the multiplayer client scripts have no
+/// exploder, zombie eye, weapon death effect or gib callback.
+const MULTIPLAYER_CLIENT_CALLBACKS: game_api::ClientCallbacks = game_api::ClientCallbacks {
+    local_client_connect: "clientscripts/mp/_callbacks::localclientconnect",
+    state_change: "clientscripts/mp/_callbacks::statechange",
+    activate_exploder: "",
+    deactivate_exploder: "",
+    footstep: "clientscripts/mp/_callbacks::codecallback_playerfootstep",
+    player_jump: "clientscripts/mp/_callbacks::codecallback_playerjump",
+    player_land: "clientscripts/mp/_callbacks::codecallback_playerland",
+    player_foliage: "clientscripts/mp/_callbacks::codecallback_playerfoliage",
+    entity_spawned: "clientscripts/mp/_callbacks::entityspawned",
+    player_spawned: "clientscripts/mp/_callbacks::playerspawned",
+    entity_shutdown: "clientscripts/mp/_callbacks::entityshutdown_callback",
+    client_flag: "clientscripts/mp/_callbacks::client_flag_callback",
+    client_flag_as_val: "clientscripts/mp/_callbacks::client_flagasval_callback",
+    zombie_eye: "",
+    play_weapon_death_effects: "",
+    gib_event: "",
+    trigger_delete: "codescripts/delete::main",
+    level_notify: "clientscripts/mp/_callbacks::level_notify",
+    ai_footstep: None,
 };
 
 /// Black Ops' 3D UI texture: 1024 by 1024 on the front end and the `menu_`

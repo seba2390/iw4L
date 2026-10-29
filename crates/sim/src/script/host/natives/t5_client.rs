@@ -454,6 +454,23 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .push((name.to_string(), value.to_string()));
         Ok(Value::Undefined)
     });
+    // `SetSavedDvar(name, value)`: the client's own dvar; the renderer reads
+    // none of the ones the multiplayer scripts set (`t5.csc.saved_dvars`).
+    registry.register(Function, "setsaveddvar", |world, _, args| {
+        let name = super::player::text(arg(args, 0)?)?;
+        let value = super::player::text(arg(args, 1)?)?;
+        world
+            .resource_mut::<ClientOutput>()
+            .client_dvars
+            .push((name.to_string(), value.to_string()));
+        Ok(Value::Undefined)
+    });
+    // `GetServerTime(local client)`: the server time of the client's
+    // snapshot.
+    registry.register(Function, "getservertime", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Int(now_ms(world)))
+    });
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));
