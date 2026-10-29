@@ -660,6 +660,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     register_entity(registry);
     register_platform(registry);
     register_refused(registry);
+    register_bots(registry);
     register_shellshock(registry);
     register_earthquake(registry);
 }
@@ -1917,7 +1918,6 @@ fn register_refused(registry: &mut NativeRegistry) {
             registry.register($namespace, $name, |_, _, _| Err($message.into()));
         )*};
     }
-    refused!(Function: "addtestclient" => "test clients join through the session");
     refused!(Function: "ban", "killserver" => "the host decides who stays and when the server stops");
     refused!(Function: "sethostmigrationstatus" => "host migration is not simulated");
     refused!(Function: "getcontractname", "getcontractrequiredcount", "getcontractrequirements",
@@ -1951,10 +1951,6 @@ fn register_refused(registry: &mut NativeRegistry) {
         "getnegotiationstartnode", "finishactordamage",
         "clearentitytarget", "playbattlechattertoteam"
         => "actors are not simulated");
-    refused!(Method: "setscriptgoal", "clearscriptgoal", "hasscriptgoal", "setscriptenemy",
-        "clearscriptenemy", "getthreat", "getlookaheaddir", "getlookaheaddist",
-        "pressattackbutton", "pressusebutton"
-        => "bots are driven by the session, not by script goals");
     refused!(Method: "canplayerplaceturret", "carryturret", "stopcarryturret", "relinktoturret",
         "setturretcarried", "setturrethint", "setturrettype", "setscanningpitch",
         "actionslotfourbuttonpressed"
@@ -2256,4 +2252,94 @@ fn entity_number_origin(
     let number = world.resource::<RoundScript>().entities[&id].number;
     let origin = super::engine::origin_of(world, receiver)?;
     Ok((number, origin))
+}
+
+/// What the scripts asked of each test client: its goal, its scripted
+/// enemy and the buttons it should press. The host's bots move and fight
+/// on their own (`t5.bots.host_ai`); these are kept for the scripts.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct BotScriptState(BTreeMap<u32, BotScript>);
+
+#[derive(Default)]
+struct BotScript {
+    goal: Option<([f32; 3], f32)>,
+    enemy: Option<Value>,
+}
+
+fn bot_script<'a>(world: &'a mut World, receiver: &Value) -> Result<&'a mut BotScript, String> {
+    let client = player_id(world, receiver)?;
+    Ok(world
+        .get_resource_or_insert_with(BotScriptState::default)
+        .into_inner()
+        .0
+        .entry(client)
+        .or_default())
+}
+
+/// Black Ops' test clients and the bot natives its `_bot.gsc` calls.
+fn register_bots(registry: &mut NativeRegistry) {
+    registry.register(Function, "addtestclient", |world, _, _| {
+        Ok(super::super::players::add_test_client(world).map_or(Value::Undefined, Value::Object))
+    });
+    registry.register(Method, "setscriptgoal", |world, receiver, args| {
+        let goal = vector(args, 0)?;
+        let radius = optional(args, 1, float)?.unwrap_or(0.0);
+        bot_script(world, receiver)?.goal = Some((goal, radius));
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "clearscriptgoal", |world, receiver, _| {
+        bot_script(world, receiver)?.goal = None;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "hasscriptgoal", |world, receiver, _| {
+        Ok(Value::Int(
+            bot_script(world, receiver)?.goal.is_some().into(),
+        ))
+    });
+    registry.register(Method, "setscriptenemy", |world, receiver, args| {
+        let enemy = arg(args, 0)?.clone();
+        bot_script(world, receiver)?.enemy = Some(enemy);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "clearscriptenemy", |world, receiver, _| {
+        bot_script(world, receiver)?.enemy = None;
+        Ok(Value::Undefined)
+    });
+    // The threat the scripts set; the host bots' own target is not shared.
+    registry.register(Method, "getthreat", |world, receiver, _| {
+        Ok(bot_script(world, receiver)?
+            .enemy
+            .clone()
+            .unwrap_or(Value::Undefined))
+    });
+    // The straight line to the scripts' goal stands in for the path's
+    // lookahead (`t5.bots.host_ai`).
+    registry.register(Method, "getlookaheaddist", |world, receiver, _| {
+        let origin = origin_of(world, receiver);
+        let goal = bot_script(world, receiver)?.goal;
+        Ok(Value::Float(goal.map_or(0.0, |(goal, _)| {
+            let d = sub(goal, origin);
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        })))
+    });
+    registry.register(Method, "getlookaheaddir", |world, receiver, _| {
+        let origin = origin_of(world, receiver);
+        let goal = bot_script(world, receiver)?.goal;
+        Ok(Value::Vector(goal.map_or([0.0; 3], |(goal, _)| {
+            let d = sub(goal, origin);
+            let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            if len > 0.0 {
+                [d[0] / len, d[1] / len, d[2] / len]
+            } else {
+                [0.0; 3]
+            }
+        })))
+    });
+    // The host bots press their own buttons (`t5.bots.host_ai`).
+    for name in ["pressattackbutton", "pressusebutton"] {
+        registry.register(Method, name, |world, receiver, _| {
+            player_id(world, receiver)?;
+            Ok(Value::Undefined)
+        });
+    }
 }

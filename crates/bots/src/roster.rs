@@ -195,6 +195,9 @@ pub struct BotSlot {
     pub class_picked_in: Option<LifeSequence>,
     pub class_picks: u32,
     pub side: Option<BotSide>,
+    /// Added by the game's scripts (`addtestclient`), which join it and
+    /// pick its team and class themselves.
+    pub scripted: bool,
 }
 
 #[derive(Resource, Debug)]
@@ -266,10 +269,38 @@ impl BotRoster {
                 class_picked_in: None,
                 class_picks: 0,
                 side,
+                scripted: false,
             });
             added.push(id);
         }
         added
+    }
+
+    /// Drives a test client the game's scripts added; `None` when the
+    /// roster is full or already holds it.
+    pub fn adopt(&mut self, id: ClientId) -> Option<&'static str> {
+        if self.bots.len() as u32 >= MAX_HOST_BOTS || self.is_bot(id) {
+            return None;
+        }
+        let name = BOT_NAMES
+            .iter()
+            .copied()
+            .find(|name| !self.bots.iter().any(|bot| bot.name == *name))?;
+        let mut account = [0; 16];
+        account[..4].copy_from_slice(&id.0.to_le_bytes());
+        account[15] = 1;
+        self.bots.push(BotSlot {
+            id,
+            name,
+            account: sim::AccountId(account),
+            brain: Some(HostController::new(self.seed ^ (u64::from(id.0) << 32))),
+            joined: true,
+            class_picked_in: None,
+            class_picks: 0,
+            side: None,
+            scripted: true,
+        });
+        Some(name)
     }
 
     fn claim_id(&mut self, taken: &[ClientId]) -> Option<ClientId> {

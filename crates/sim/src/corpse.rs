@@ -10,6 +10,9 @@ use playerstate_iw4::{
 
 use crate::bullet_collision::{MASK_PLAYER_SOLID, PLAYER_MAXS, PLAYER_MINS};
 
+/// The client slots: client entity numbers end where the corpses begin.
+pub(crate) const CLIENT_SLOTS: u32 = PLAYER_CORPSE_ENTITY_BASE as u32;
+
 pub const G_CLONE_PLAYER_MAX_VELOCITY: f32 = 80.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

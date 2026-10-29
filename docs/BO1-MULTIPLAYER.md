@@ -31,7 +31,14 @@ Presets: `smg_mp`, `cqb_mp`, `assault_mp`, `lmg_mp`, `sniper_mp`.
 
 The host's console sets the scripts' limits, read each second as in Black
 Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team
-Deathmatch: `scr_tdm_…`). `bot add N` adds IW4L's bots (#652). A headless
+Deathmatch: `scr_tdm_…`).
+
+Bots: Black Ops adds its own (Combat Training rules) from these dvars,
+read when the match starts. Offline, before launch:
+`IW4L_SCRIPT_DVARS="set splitscreen_playerCount 1; set splitscreen_botEnemies 3; set splitscreen_botFriends 2"`.
+In a hosted private match, from the console:
+`set scr_bots_managed_spawn 1; set scr_bots_managed_all 6`. IW4L's own
+bots drive them (#709); `bot add N` also works. A headless
 check: `--cmds "wait world; wait 3s; script … smg_mp; wait 10s; screenshot x; finish_run"`.
 
 ## Play with friends
@@ -52,6 +59,6 @@ The 14 base maps of the install: `mp_array`, `mp_cairo`, `mp_cosmodrome`,
 Parts of the multiplayer HUD (#651: the killcam and hardcore-list menus
 paint all the time, the compass is not drawn), client scripts (#645), the
 class menu's paint,
-create-a-class (#650), killstreaks (#656), bots (#652), the objective and
+create-a-class (#650), killstreaks (#656), Black Ops' own bot behaviour (#709), the objective and
 round gametypes (#653, #654) — see the issues labelled `game: Black Ops 1`,
 `mode: Multiplayer`.
