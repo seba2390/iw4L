@@ -225,8 +225,28 @@ Black Ops' own rules. Ranked play and public matchmaking are out of scope.
 Each milestone names its issues; open rules are in
 [`fidelity/t5-mp.md`](fidelity/t5-mp.md).
 
-- [ ] The install's multiplayer zones and scripts are read, and multiplayer maps load, render and collide (#643).
+| Map | Builtins not implemented yet |
+|---|---|
+| Array (`t5:mp_array`) | 30 of 629 |
+| Havana (`t5:mp_cairo`) | 30 of 629 |
+| Launch (`t5:mp_cosmodrome`) | 30 of 631 |
+| Cracked (`t5:mp_cracked`) | 30 of 628 |
+| Crisis (`t5:mp_crisis`) | 30 of 629 |
+| Grid (`t5:mp_duga`) | 30 of 629 |
+| Firing Range (`t5:mp_firingrange`) | 30 of 629 |
+| Hanoi (`t5:mp_hanoi`) | 30 of 628 |
+| Jungle (`t5:mp_havoc`) | 30 of 628 |
+| Summit (`t5:mp_mountain`) | 30 of 629 |
+| Radiation (`t5:mp_radiation`) | 30 of 631 |
+| WMD (`t5:mp_russianbase`) | 30 of 629 |
+| Villa (`t5:mp_villa`) | 30 of 629 |
+| Nuketown (`t5:mp_nuked`) | 30 of 631 |
+
+- [x] The install's multiplayer zones and scripts are read, and multiplayer maps load, render and collide (#643).
+  - [x] Each of the 14 base maps loads the multiplayer zone set and installs Black Ops' Team Deathmatch scripts with no script error; the scripts run the pre-match countdown.
 - [ ] A match starts on Black Ops' own multiplayer scripts and client scripts (#644, #645).
+  - [x] Free-for-all and Team Deathmatch install Black Ops' own startup; on Nuketown the scripts spawn the player with the picked class's weapons (#644).
+  - [ ] The multiplayer client scripts (`clientscripts/mp`) run (#645).
 - [ ] Players move by Black Ops' multiplayer movement rules (#647).
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
 - [ ] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).
