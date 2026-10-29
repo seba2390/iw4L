@@ -29,6 +29,7 @@ headless runs; their meaning is beside the code that reads them.
 | `IW4L_SCORE_LIMIT` | Score limit of a Modern Warfare 2 match | the mode's own |
 | `IW4L_CMDS` | Console script run at startup, like `--cmds` | none |
 | `IW4L_CONSOLE_STDIN` | `1` also reads console commands from standard input | off |
+| `IW4L_T6_LUI_HUD` | `1`: a Black Ops 2 multiplayer match runs Black Ops 2's own HUD (`LUI.createMenu.HUD`) instead of IW4L's compass, reward and scoreboard widgets; not yet checked on screen ([`fidelity/t6-mp.md`](fidelity/t6-mp.md)) | off |
 | `IW4L_TEST_PLAYER` | Headless test player: `1`, `rounds`, `use`, `down`, `revive`, `watch` ([`BOTS.md`](BOTS.md)) | off |
 
 **Online** ([`MASTER.md`](MASTER.md))

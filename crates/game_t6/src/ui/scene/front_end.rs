@@ -1,6 +1,6 @@
 //! Black Ops 2's front end: what the engine's LUI init runs outside a match.
 
-use super::{Host, Scene, key, text};
+use super::{Host, Scene, key, number, text};
 use crate::ui::Axis;
 use crate::ui::dvars::{DVARS, Kind};
 use crate::ui::script::tables::Tables;
@@ -50,6 +50,10 @@ const DDL_STRING: u32 = 7;
 /// The zombies gametypes table (gametypes, start locations).
 const GAMETYPES_TABLE: &str = "zm/gametypesTable.csv";
 
+/// The multiplayer items table: each item's index, group, name, reference,
+/// image and description, attachments, cost and slot.
+const STATS_TABLE: &str = "mp/statsTable.csv";
+
 /// The zombies maps table.
 const MAPS_TABLE: &str = "zm/mapsTable.csv";
 
@@ -57,7 +61,7 @@ const MAPS_TABLE: &str = "zm/mapsTable.csv";
 const GAMEMODE_THEATER: u32 = 5;
 
 /// `Com_SessionMode`'s zombies bit.
-const SESSION_ZOMBIES: u32 = 4;
+pub(super) const SESSION_ZOMBIES: u32 = 4;
 
 /// A mode argument's bit: its number, 0 when it is not one.
 fn mode_bit(value: Option<&Value>) -> u32 {
@@ -807,6 +811,63 @@ impl Host {
         match name {
             "missing:Engine.GetPlayerStats" => {
                 return Some(self.get_player_stats(args, tables));
+            }
+            // The multiplayer executable's online-service queries, as the
+            // service IW4L stands for answers them (t6.ui.live): signed in
+            // with multiplayer privileges, nothing to promote, no Elite
+            // membership, no chat restriction and no probation.
+            "missing:Engine.IsSignedInToDemonware" | "missing:Engine.HasMPPrivileges" => {
+                return Some(Ok(vec![Value::Boolean(1)]));
+            }
+            // The stats came with the profile's fetch (`IsDemonwareFetchingDone`).
+            "missing:UIExpression.AreStatsFetched" => return Some(Ok(vec![Value::Number(1.0)])),
+            "missing:Engine.ShouldShowDSPPromotion"
+            | "missing:Engine.ShouldShowGhostUpsellPopup"
+            | "missing:Engine.ShouldShowSPReminder"
+            | "missing:Engine.EMarketingOptInPopup_ShouldShow"
+            | "missing:Engine.IsChatRestricted"
+            | "missing:Engine.IsEliteAvailable"
+            | "missing:Engine.IsEliteButtonAvailable"
+            | "missing:Engine.IsPlayerEliteFounder"
+            | "missing:Engine.IsPlayerEliteRegistered"
+            | "missing:Engine.ProbationCheckForProbation"
+            | "missing:Engine.ProbationCheckInProbation"
+            | "missing:Engine.ProbationCheckParty"
+            | "missing:Engine.ProbationCheckForDashboardWarning" => {
+                return Some(Ok(vec![Value::Boolean(0)]));
+            }
+            // An item's reference name, from its row in the multiplayer
+            // stats table (index in column 0, reference in column 4).
+            "missing:UIExpression.GetItemRef" => {
+                return Some(number(args.get(1)).map(|index| {
+                    let index = (index as i32).to_string();
+                    vec![key(self.table_lookup(STATS_TABLE, 0, &index, 4))]
+                }));
+            }
+            // Whether the profile bought the item with an unlock token: its
+            // mark in the stats (`itemstats[index].purchased`).
+            "missing:UIExpression.IsItemPurchased" => {
+                let controller = args.first().cloned().unwrap_or(Value::Number(0.0));
+                let index = args.get(1).cloned().unwrap_or(Value::Number(0.0));
+                return Some(self.get_dstat(&[
+                    controller,
+                    key("itemstats"),
+                    index,
+                    key("purchased"),
+                ]));
+            }
+            // Challenges belong to ranked progression, which private matches
+            // keep none of: no challenge is listed (t6.ui.mp_progression).
+            "missing:Engine.GetChallengeInfoForImages" => {
+                return Some(tables.allocate().map(|list| vec![list]));
+            }
+            // A new profile has seen nothing new: the stats' new-item marks
+            // are all clear.
+            "missing:Engine.IsAnyEmblemIconNew"
+            | "missing:Engine.IsAnyEmblemBackgroundNew"
+            | "missing:Engine.IsAnythingInCACNew" => return Some(Ok(vec![Value::Boolean(0)])),
+            "missing:Engine.ERegPopup_ShouldShow" | "missing:Engine.EWelcomePopup_ShouldShow" => {
+                return Some(Ok(vec![Value::Number(0.0)]));
             }
             "DvarIndex" => return Some(self.dvar_index(args, tables)),
             "dvarobj:get" => {
@@ -1844,7 +1905,16 @@ impl Scene {
     pub(super) fn bootstrap_front_end(&mut self, input: &Input) -> Result<(), String> {
         self.bindings.input = input.clone();
         self.bindings.zero_profile_settings();
-        self.require_module(FRONT_END_MODULES[0])?;
+        // The multiplayer executable starts in a session without the
+        // zombies mode, and its launch patch's front-end module is not
+        // captured (t6.ui.mp_ffotd): it runs `T6.CoDRoot` and `T6.main`.
+        let modules: &[&str] = if input.zombies {
+            &FRONT_END_MODULES
+        } else {
+            self.bindings.front_end.session &= !(1 << SESSION_ZOMBIES);
+            &FRONT_END_MODULES[..2]
+        };
+        self.require_module(modules[0])?;
         let root = self
             .invoke(&["LUI", "CoDRoot", "new"], &[key(FRONT_END_ROOT)])?
             .first()
@@ -1863,7 +1933,7 @@ impl Scene {
             end: 0.0,
         };
         state.vertical = state.horizontal;
-        for name in &FRONT_END_MODULES[1..] {
+        for name in &modules[1..] {
             self.require_module(name)?;
         }
         let event = self

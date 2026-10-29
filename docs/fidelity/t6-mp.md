@@ -159,6 +159,37 @@ Each open section names the issue that works it.
       `HUD_FirstSnapshot_Multiplayer` constructor (`t6.ui.bootstrap`),
       compass contacts and objectives (`t6.ui.render`), score events and
       medals have not run (#697).
+- [ ] **V** With `IW4L_T6_LUI_HUD`, a multiplayer match runs Black Ops 2's
+      own HUD constructor (`LUI.createMenu.HUD`, `HUD_FirstSnapshot_Multiplayer`)
+      in a multiplayer session (the zombies session bit clear as
+      `t6mp.exe` starts); offline it builds and updates for 60 frames with
+      no fault and draws the weapon panel and the game timer. Not checked on
+      screen, so it is not the default. `setupIngameTalkers` draws nothing;
+      the objective slots the UI reads (`Engine.GetObjectiveName`: an
+      empty slot gives nothing) are not filled from the snapshot (#697).
+- [ ] **V** Black Ops 2's multiplayer front end (`T6.CoDRoot`, `T6.main`)
+      runs offline in a multiplayer session: the main menu (ONLINE, OPTIONS,
+      CAMPAIGN, ZOMBIES, QUIT) with `mus_mp_frontend`; ONLINE shows the
+      reset-classes notice a new profile gets (its stats from
+      `ddl_mp/stats.ddl`; arrays indexed by enum names), then opens the main
+      lobby as far as `checkclasses.lua`, which stops at
+      `UIExpression.GetDefaultClassSlot` (`t6.ui.mp_default_classes`: the
+      default classes are compiled into `t6mp.exe`'s
+      `bg_unlockable_items_mp`, which is not read). The zombies front end's
+      launch-patch module has a multiplayer twin in the uncaptured
+      multiplayer launch patch, which is not run (`t6.ui.mp_ffotd`). Nothing
+      in the library opens it yet (#698).
+- [ ] **I** `t6.ui.live` (the online service IW4L stands for): signed in to
+      Demonware with multiplayer privileges, the stats fetched
+      (`AreStatsFetched`), nothing to promote (`ShouldShowDSPPromotion`,
+      `ShouldShowGhostUpsellPopup`, `ShouldShowSPReminder`, the Elite
+      registration, welcome and marketing popups), no Elite membership, no
+      chat restriction and no probation; a new profile has no new emblems or
+      create-a-class items (#698).
+- [ ] **G** `t6.ui.mp_progression`: `Engine.GetChallengeInfoForImages` lists no
+      challenge (ranked progression is out of scope); with a new profile's
+      stats Black Ops 2 writes nothing either, but a profile with challenge
+      progress would differ (#698).
 - [ ] **V** Multiplayer create-a-class and pause menus are IW4L's layout over
       Black Ops 2 art (`ui/src/t6_menu.rs`; Zombies runs Black Ops 2's own LUI
       front end and pause menu in `game_t6::ui`). Black Ops 2's multiplayer front

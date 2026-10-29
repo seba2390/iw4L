@@ -26,7 +26,7 @@ fn text(value: &Value) -> Result<String, FaultKind> {
     }
 }
 
-fn number(value: Option<&Value>) -> Result<f32, FaultKind> {
+pub(super) fn number(value: Option<&Value>) -> Result<f32, FaultKind> {
     match value {
         Some(Value::Number(value)) => Ok(*value),
         Some(Value::Bytes(bytes)) => core::str::from_utf8(bytes)
@@ -112,6 +112,11 @@ pub struct Scene {
 impl Scene {
     fn bootstrap_hud(&mut self, input: &Input) -> Result<(), String> {
         self.bindings.input = input.clone();
+        // The multiplayer executable starts in a session without the
+        // zombies mode, which the modules read as they load (`CoD.isZombie`).
+        if !input.zombies {
+            self.bindings.front_end.session &= !(1 << front_end::SESSION_ZOMBIES);
+        }
         self.module("ui/t6/codroot.lua")?;
         self.module("ui/t6/codbase.lua")?;
         self.module("ui_mp/t6/hud.lua")?;
@@ -154,7 +159,10 @@ impl Scene {
         };
         state.vertical = state.horizontal;
         let controller = Value::Number(input.local_client as f32);
-        if !input.zombies {
+        // A multiplayer match draws Black Ops 2's own HUD constructor only
+        // when asked (`IW4L_T6_LUI_HUD`): it has run offline, not on screen.
+        let full_hud = input.zombies || std::env::var_os("IW4L_T6_LUI_HUD").is_some();
+        if !full_hud {
             let safe_area = self
                 .invoke(&["LUI", "UIElement", "new"], &[])?
                 .first()
@@ -1375,6 +1383,7 @@ impl Host {
             "setupGameTimerZombie",
             "setupPlayerEmblemServer",
             "setupVoipImage",
+            "setupIngameTalkers",
             "beginAnimation",
             "completeAnimation",
             "isInFocus",
@@ -1430,6 +1439,7 @@ impl Host {
                 "GetClientNum",
                 "IsGuest",
                 "SessionModeIsMode",
+                "GetObjectiveName",
                 "PartyGetPlayerCount",
                 "IsPlayerMuteToggled",
                 "IsDemoClipPlaying",
@@ -1913,6 +1923,16 @@ impl Bindings for Host {
                     }
                     _ => Err(FaultKind::Unknown(super::script::ENGINE_API)),
                 }
+            }
+            // An empty slot (state 0) gives nothing; a used one its name.
+            "GetObjectiveName" => {
+                let index = number(args.get(1))? as u32;
+                Ok(self
+                    .input
+                    .objectives
+                    .iter()
+                    .find(|objective| objective.index == index && objective.state != 0)
+                    .map_or_else(Vec::new, |objective| vec![key(&objective.name)]))
             }
             "SessionModeIsMode" => {
                 let mode = args.last().ok_or(FaultKind::Argument(1))?;
@@ -2679,7 +2699,8 @@ impl Bindings for Host {
             | "setEntityContainerFadeWhenTargeted"
             | "setEntityContainerStopUpdating"
             | "setEntityContainerScale"
-            | "setEntityContainerScaleClamp" => Ok(Vec::new()),
+            | "setEntityContainerScaleClamp"
+            | "setupIngameTalkers" => Ok(Vec::new()),
             "setRGB" => {
                 self.elements
                     .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?

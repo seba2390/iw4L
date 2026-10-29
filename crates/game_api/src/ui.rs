@@ -16,6 +16,20 @@ pub struct Table {
     pub cells: Vec<String>,
 }
 
+/// An objective slot of the local client's snapshot (`objective_add`), as a
+/// game's UI reads it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Objective {
+    pub index: u32,
+    /// The slot's state; 0 is an empty slot.
+    pub state: i32,
+    pub name: String,
+    pub origin: [f32; 3],
+    /// The entity the objective follows, if any.
+    pub entity: Option<u32>,
+    pub team: i32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Player {
     pub id: u32,
@@ -80,6 +94,8 @@ pub struct Input {
     pub tables: Arc<[Table]>,
     pub fonts: Arc<[Font]>,
     pub players: Vec<Player>,
+    /// The local client's objective slots that are in use.
+    pub objectives: Vec<Objective>,
     pub rewards: Vec<Reward>,
     pub rounds_played: i32,
     pub weapon_name: String,

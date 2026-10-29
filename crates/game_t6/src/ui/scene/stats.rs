@@ -1,5 +1,6 @@
 //! A player's stats as the UI scripts read them (`Engine.GetPlayerStats`):
-//! a state in the zombies stats layout (`ddl_zm/stats.ddl`) whose metatable
+//! a state in the session's stats layout (`ddl_zm/stats.ddl` in a zombies
+//! session, `ddl_mp/stats.ddl` otherwise) whose metatable
 //! is `ddlParentMetatable` (members by name), `ddlArrayMetatable` (elements
 //! by index, `#` the length) or `ddlLeafMetatable` (`get`, `set`,
 //! `increment`). A new profile's stats are all zero.
@@ -8,8 +9,10 @@ use super::{Host, key, number, text};
 use crate::ui::script::tables::Tables;
 use crate::ui::script::{FaultKind, Value};
 
-/// The data definition the zombies executable keeps a player's stats in.
-const STATS_LAYOUT: &str = "ddl_zm/stats.ddl";
+/// The data definitions the zombies and multiplayer executables keep a
+/// player's stats in.
+const ZOMBIES_STATS_LAYOUT: &str = "ddl_zm/stats.ddl";
+const MULTIPLAYER_STATS_LAYOUT: &str = "ddl_mp/stats.ddl";
 
 /// The stats locations `GetPlayerStats` takes (0 to 4).
 const LOCATIONS: usize = 5;
@@ -69,10 +72,15 @@ fn write_bits(buffer: &mut [u8], offset: u32, bits: u32, value: u64) {
 
 impl Host {
     fn stats_layout(&self) -> Result<&asset_core::BitLayout, FaultKind> {
+        let name = if self.front_end.session >> super::front_end::SESSION_ZOMBIES & 1 != 0 {
+            ZOMBIES_STATS_LAYOUT
+        } else {
+            MULTIPLAYER_STATS_LAYOUT
+        };
         self.input
             .layouts
             .iter()
-            .find(|layout| layout.name.eq_ignore_ascii_case(STATS_LAYOUT))
+            .find(|layout| layout.name.eq_ignore_ascii_case(name))
             .ok_or(FaultKind::Unknown(super::super::script::ENGINE_API))
     }
 
@@ -236,10 +244,27 @@ impl Host {
                 if name == "array_len" {
                     return Ok(vec![Value::Number(size as f32)]);
                 }
-                let Some(Value::Number(position)) = args.get(1) else {
-                    return Ok(vec![Value::Nil]);
+                // An array over an enum also takes the enum member's name.
+                let position = match args.get(1) {
+                    Some(Value::Number(position)) => *position as i32,
+                    Some(name @ Value::Bytes(_)) if member.enum_index >= 0 => {
+                        let name = text(name)?;
+                        let Some(found) =
+                            layout
+                                .enums
+                                .get(member.enum_index as usize)
+                                .and_then(|members| {
+                                    members
+                                        .iter()
+                                        .position(|member| member.eq_ignore_ascii_case(&name))
+                                })
+                        else {
+                            return Ok(vec![Value::Nil]);
+                        };
+                        found as i32
+                    }
+                    _ => return Ok(vec![Value::Nil]),
                 };
-                let position = *position as i32;
                 if position < 0 || position >= size {
                     return Ok(vec![Value::Nil]);
                 }
