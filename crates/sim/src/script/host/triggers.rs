@@ -1249,6 +1249,32 @@ pub(crate) fn is_touching(world: &mut World, a: u64, b: u64) -> bool {
     touching.unwrap_or(false)
 }
 
+/// Whether the entity is a trigger volume: a brush model, a cylinder or a box.
+pub(crate) fn has_volume(world: &mut World, object: u64) -> bool {
+    let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
+    let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
+    let found = volume(&mut runtime, &FrameWorld::from_world(world), object).is_some();
+    *world.resource_mut::<RoundScript>() = runtime;
+    found
+}
+
+/// Whether a box touches the entity: its volume, or the box it touches
+/// triggers with when it has none.
+pub(crate) fn box_touches(world: &mut World, target: u64, mins: [f32; 3], maxs: [f32; 3]) -> bool {
+    let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());
+    let mut runtime = std::mem::replace(&mut *world.resource_mut::<RoundScript>(), replacement);
+    let touching = {
+        let frame = FrameWorld::from_world(world);
+        let volume = volume(&mut runtime, &frame, target).unwrap_or_else(|| {
+            let (lo, hi) = toucher(&mut runtime, &frame, target);
+            Volume::Box { mins: lo, maxs: hi }
+        });
+        volume.touches(mins, maxs)
+    };
+    *world.resource_mut::<RoundScript>() = runtime;
+    touching
+}
+
 /// Whether a point lies in a trigger's volume.
 pub(crate) fn point_in_volume(world: &mut World, trigger: u64, point: [f32; 3]) -> bool {
     let replacement = RoundScript::new(world.resource::<crate::script::MatchScript>());

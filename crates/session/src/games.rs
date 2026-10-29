@@ -74,7 +74,8 @@ pub(crate) fn natives(family: FamilyId, mode: &game_api::ModeRules) -> sim::scri
     let services = sim::script::NativeRegistry::engine_services;
     match family {
         FamilyId::Iw4 => services().with_mw2_systems(),
-        FamilyId::T5 => services().with_black_ops(),
+        FamilyId::T5 if mode.hud.zombies => services().with_black_ops(),
+        FamilyId::T5 => services().with_black_ops().with_black_ops_multiplayer(),
         FamilyId::T6 if !mode.host_rules => sim::script::NativeRegistry::black_ops_2(),
         FamilyId::Iw5 | FamilyId::T6 => services(),
         FamilyId::T7 => sim::script::NativeRegistry::black_ops_3(),
