@@ -9,7 +9,8 @@ Ops — Multiplayer); open rules: [`fidelity/t5-mp.md`](fidelity/t5-mp.md).
 ## Start a match
 
 Free-for-all (`dm`), Team Deathmatch (`war`, Black Ops' `tdm`),
-Domination (`dom`), Headquarters (`koth`) and Capture the Flag (`ctf`) run;
+Domination (`dom`), Headquarters (`koth`), Capture the Flag (`ctf`), Search
+and Destroy (`sd`), Sabotage (`sab`) and Demolition (`dem`) run;
 every other gametype is refused (`t5.scripts.mp_gametypes`).
 
 ```bash
