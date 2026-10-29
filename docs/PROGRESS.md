@@ -408,6 +408,53 @@ Only the top-level items count. Runs are headless, with the test player
   the library greys those maps out and names the missing file and the
   folders instead of failing the launch.
 
+## Black Ops II — Multiplayer
+
+The goal is a private match between friends who each own the game and run
+this repository: a host opens a lobby nobody else can find, friends join,
+and every gametype, class, perk, wildcard and scorestreak of the installed
+game plays by Black Ops II's own rules. Ranked play, League Play, public
+matchmaking and the theater's file share are out of scope. Today Free for
+All and Team Deathmatch run on rules IW4L wrote ([`T6.md`](T6.md)); none of
+that counts here. Each milestone names its issues; open rules are in
+[`fidelity/t6-mp.md`](fidelity/t6-mp.md).
+
+- [ ] The install's multiplayer zones, factions and scripts are read (with the multiplayer launch patch), and every installed multiplayer map loads, renders and collides (#675, #676).
+  - [x] Cargo, Hijacked and Raid load, render and collide on a zone set IW4L picked, and play IW4L's Free for All and Team Deathmatch ([`T6.md`](T6.md)).
+- [ ] A match starts on Black Ops II's own multiplayer scripts and client scripts (#677, #678).
+- [ ] Players move by Black Ops II's multiplayer movement rules (#679).
+- [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops II's rules (#680, #681).
+- [ ] Free for All and Team Deathmatch run on Black Ops II's own gametype scripts to the end of a match (#682).
+- [ ] Every other gametype is verified in a match (#683, #684, #686).
+  - [ ] Domination, Kill Confirmed, Hardpoint, Headquarters, Capture the Flag and One Flag (#683).
+  - [ ] Search and Destroy and Demolition (#684).
+  - [ ] Multi-Team, three to six teams (#686).
+- [ ] Party games (#685).
+- [ ] Pick 10 create-a-class, perks and wildcards with private-match unlocks (#687).
+- [ ] Scorestreaks (#688).
+  - [ ] UAV, Counter-UAV and Orbital VSAT (#689).
+  - [ ] Hellstorm Missile, Lightning Strike and Warthog (#690).
+  - [ ] Care Package, Stealth Chopper, Escort Drone, VTOL Warship and Lodestar (#691).
+  - [ ] RC-XD, Dragonfire and A.G.R. (#692).
+  - [ ] Guardian and Sentry Gun (#693).
+  - [ ] Hunter Killer and Swarm (#694).
+  - [ ] EMP Systems and K9 Unit (#695).
+- [ ] Combat Training bots join and fight (#696).
+- [ ] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #699).
+- [ ] Two-machine play with prediction and lag compensation (#700).
+- [ ] Killcam, final killcam and spectating (#701).
+- [ ] Black Ops II's multiplayer HUD, front end and sound (#697, #698, #702).
+- [ ] Every installed map plays, with its destructibles and interactives (#703, #704).
+- [ ] The multiplayer fidelity ledger ([`fidelity/t6-mp.md`](fidelity/t6-mp.md)) has no open item.
+
+### Technical debt
+
+- IW4L's Free for All and Team Deathmatch host (`sim/src/script/host/t6_gametype.rs`),
+  its generated map startup (`game_t6/src/startup.rs`), the multiplayer HUD
+  bridge (`ui/src/t6_hud.rs`) and the class and pause menus
+  (`ui/src/t6_menu.rs`) are IW4L's own rules; they go as #682, #697 and
+  #698 replace them.
+
 ## Black Ops III — Zombies
 
 | Map | Builtins not implemented yet |
