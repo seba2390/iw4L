@@ -76,6 +76,8 @@ pub struct Pm<'a, W: MoveWorld> {
     pub world: &'a W,
     /// The match is a zombies game (the `zombiemode` dvar).
     pub zombiemode: bool,
+    /// The defaults of the executable the match runs.
+    pub tuning: tuning::ExeTuning,
     /// The step runs on a client predicting its own player.
     pub client_side: bool,
     /// A camera from above (`player_topDownCamMode` 2 and up) turns the
@@ -110,6 +112,7 @@ impl<'a, W: MoveWorld> Pm<'a, W> {
             maxs: [15.0, 15.0, 70.0],
             world,
             zombiemode: false,
+            tuning: tuning::SINGLEPLAYER,
             client_side: false,
             move_yaw: None,
             xyspeed: 0.0,

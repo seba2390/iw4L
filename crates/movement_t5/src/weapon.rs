@@ -675,7 +675,7 @@ fn hold_breath<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
             tuning::BREATH_GASP_LERP,
         )
     } else {
-        (0.0, tuning::BREATH_HOLD_LERP)
+        (0.0, pm.tuning.breath_hold_lerp)
     };
     ps.hold_breath_scale = lerp_towards(
         (target - 1.0) * ps.weapon_pos_frac + 1.0,
