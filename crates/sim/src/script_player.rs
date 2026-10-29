@@ -793,6 +793,11 @@ pub(crate) fn weapon_named(world: &FrameWorld, name: &str) -> Result<u32, String
     if name == "none" {
         return Ok(0);
     }
+    if crate::game_move::game_weapons(world)
+        && let Some(weapon) = world.game_weapon_index_by_script_name(name)
+    {
+        return Ok(weapon);
+    }
     world
         .weapon_index_by_script_name(name)
         .filter(|&w| w != 0)

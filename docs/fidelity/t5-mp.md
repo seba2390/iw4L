@@ -86,6 +86,15 @@ Each open section names the issue that works it.
       spectator's own machine) is kept like a team; every machine here has
       one player, so it never changes whom a spectator may follow.
 
+- [ ] **G** A full Free-for-all on `mp_nuked` with bots runs to the time
+      limit and ends on Black Ops' own end screen (winner, placings,
+      intermission); a bot's kill scores its 50 points. The score-limit end
+      and a full Team Deathmatch are not verified yet, and the runtime's
+      bots rarely land kills on one another (#646, #652).
+- [ ] **G** `map_restart` on a multiplayer map reinstalls the scripts but
+      the scene never reports spawned again, so a command after it waits
+      out the console's gate (#646).
+
 ## Gametypes (#653, #654, #655)
 
 - [ ] **G** Free-for-all (`dm`) and Team Deathmatch (`tdm`).
@@ -220,3 +229,12 @@ Each open section names the issue that works it.
 - [x] **V** The HUD's menu-response hook turned a `changeclass` response
       `customN` into the runtime's own class slot; Black Ops' class menu now
       answers its scripts like every other menu (#651).
+- [x] **G** A Black Ops weapon named like a Modern Warfare 2 one
+      (`mp5k_mp`, `aug_mp`, `famas_mp`, `spas12_mp`, …) resolved to Modern
+      Warfare 2's, so every class's primary spawned with no ammunition; a
+      game running its own weapons now resolves its scripts' names to its
+      own (#646).
+- [x] **G** The host's console and menus did not set the multiplayer
+      server's dvars, so a match's `scr_<gametype>_scorelimit` and
+      `timelimit` could not be changed; Black Ops' host runs the server in
+      its own process, as here (#646).

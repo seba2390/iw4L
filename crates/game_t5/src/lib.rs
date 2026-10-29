@@ -422,7 +422,9 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         ..ZOMBIE_MODE.hud
     },
     top_down: None,
-    menu_dvars_reach_server: false,
+    // The host runs the match in its own process: its menus and console set
+    // the server's dvars (the scripts' limits, `ui_*`); other machines' do not.
+    menu_dvars_reach_server: true,
     runtime_class_slots: false,
     ..ZOMBIE_MODE
 };
