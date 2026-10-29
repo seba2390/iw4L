@@ -962,6 +962,12 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             sync_weapon_models(server, &mut client.world);
             let player = local_player_view(server);
             client.world.resource_mut::<ClientView>().locals[0].player = player;
+            if let Some(perks) = server
+                .get_resource::<super::host::natives::t5_perks::PlayerPerks>()
+                .cloned()
+            {
+                client.world.insert_resource(perks);
+            }
             let snapshots = collect_server_entities(server);
             run_frame(&mut client, tick, reason, messages, snapshots);
             let commands =

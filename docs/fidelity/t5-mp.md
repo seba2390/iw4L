@@ -126,6 +126,16 @@ Each open section names the issue that works it.
       Semtex, tomahawk, concussion, Willy Pete, Nova gas, decoy, C4,
       tactical insertion, camera spike, jammer, motion sensor;
       `makegrenadedud` is refused.
+- [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
+      movement and weapon code tests (`specialty_bulletaccuracy`,
+      `_bulletpenetration`, `_fallheight`, `_fastmantle`, `_fastreload`,
+      `_fastweaponswitch`, `_grenadepulldeath`, `_longersprint`,
+      `_pin_back`, `_quieter`, `_scavenger`, `_shellshock`,
+      `_sprintrecovery`, `_twogrenades`, `_unlimitedsprint`, found by their
+      bit tests in `BlackOpsMP.exe`; others may be read elsewhere) are kept
+      but have no effect in the runtime's movement and weapons; setting one
+      logs the gap. The scripts' own perk rules (`hasperk` in the gametype,
+      damage and killstreak scripts) apply (#650).
 - [ ] **G** Create-a-class: `getcustomclassloadoutitem`,
       `getcustomclassmodifier` and `getpregameclass` are refused; custom
       classes have nowhere to live; perks and Pro perks have not run.
@@ -164,7 +174,7 @@ Each open section names the issue that works it.
       (the scope and guided-missile filters, #645); `animateui` (menu item
       animations, #651); `setlocalradarenabled`, `setlocalradarposition`
       and the scrambler methods (radar, jammer, #649, #657); the extra
-      camera builtins (camera spike, #649); `hasperk` (#650);
+      camera builtins (camera spike, #649);
       `gettotalammo` (#648); the vehicle queries (#660).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
@@ -243,6 +253,13 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `setperk`, `unsetperk`, `hasperk`, `clearperks` and
+      `getperks` took the zombies' perk table and Modern Warfare 2's script
+      perks, so a multiplayer perk could set a zombies perk's movement rule
+      or none at all. They now keep Black Ops multiplayer's own 52-perk
+      table, one bit per perk (`Unknown perk: <name>` for any other), and the
+      client's `hasperk` reads any player's perks (#650).
 
 - [x] **G** Hosted lobbies were listed on the master for anyone connected
       to it: now unlisted by default, joined by invite code, with host kick
