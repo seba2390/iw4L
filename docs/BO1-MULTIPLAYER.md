@@ -27,7 +27,11 @@ script maps/mp/gametypes/_globallogic_ui::menuclass player0 smg_mp
 In Team Deathmatch pick a team first:
 `script maps/mp/gametypes/_globallogic_ui::menuautoassign player0`.
 
-Presets: `smg_mp`, `cqb_mp`, `assault_mp`, `lmg_mp`, `sniper_mp`. A headless
+Presets: `smg_mp`, `cqb_mp`, `assault_mp`, `lmg_mp`, `sniper_mp`.
+
+The host's console sets the scripts' limits, read each second as in Black
+Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team
+Deathmatch: `scr_tdm_…`). `bot add N` adds IW4L's bots (#652). A headless
 check: `--cmds "wait world; wait 3s; script … smg_mp; wait 10s; screenshot x; finish_run"`.
 
 ## Play with friends
