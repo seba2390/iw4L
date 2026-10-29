@@ -90,7 +90,7 @@ impl GameModeKind {
     pub fn script_tokens(self) -> &'static [&'static str] {
         match self {
             Self::FreeForAll => &[ffa::GAMETYPE_TOKEN],
-            Self::Demolition => &[dd::GAMETYPE_TOKEN, "dem"],
+            Self::Demolition => &["dem", dd::GAMETYPE_TOKEN],
             Self::Domination => &[dom::GAMETYPE_TOKEN],
             Self::TeamDeathmatch => &["war", "tdm"],
             Self::SearchAndDestroy => &["sd"],
