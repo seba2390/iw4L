@@ -49,13 +49,13 @@ Each open section names the issue that works it.
 
 - [ ] **G** `t5.scripts.mp_gametypes` (`GameScripts::program`,
       `GameModes::mode`): Free-for-all (`dm`), Team Deathmatch (`tdm`, the
-      lobby's `war`), Domination (`dom`), Headquarters (`koth`) and Capture
-      the Flag (`ctf`) run Black Ops' own startup — the gametype's `main`,
-      the map's `main`, then `_callbacksetup`'s `CodeCallback_StartGameType`
-      (#644, #653). Search and Destroy, Sabotage, Demolition and the wager
-      gametypes have no script program and are refused at load (`gsc:
-      refused … stage=program unknown=t5.scripts.mp_gametypes`) (#654,
-      #655).
+      lobby's `war`), Domination (`dom`), Headquarters (`koth`), Capture
+      the Flag (`ctf`), Search and Destroy (`sd`), Sabotage (`sab`) and
+      Demolition (`dem`, the lobby's `dd`) run Black Ops' own startup — the
+      gametype's `main`, the map's `main`, then `_callbacksetup`'s
+      `CodeCallback_StartGameType` (#644, #653, #654). The wager gametypes
+      have no script program and are refused at load (`gsc: refused …
+      stage=program unknown=t5.scripts.mp_gametypes`) (#655).
 - [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): a downed
       multiplayer player (Second Chance) is briefly immune and dies when
       hurt, by the runtime's last stand. *Needs:* Black Ops' multiplayer
@@ -91,8 +91,11 @@ Each open section names the issue that works it.
 ## Gametypes (#653, #654, #655)
 
 - [ ] **G** Free-for-all (`dm`) and Team Deathmatch (`tdm`).
-- [ ] **G** Search and Destroy (`sd`), Sabotage (`sab`), Demolition
-      (`dem`): rounds, the bomb, side switch.
+- [ ] **G** `istouchingswept` is not simulated: `_gameobjects`'
+      `shouldBeReset` faults when a dropped bomb is checked against the
+      reset triggers, so a bomb dropped into a reset trigger is not
+      returned. Demolition's second target, overtime and the side switch
+      are not verified (#654).
 - [ ] **G** Wager matches: One in the Chamber (`oic`), Gun Game (`gun`),
       Sticks and Stones (`hlnd`), Sharpshooter (`shrp`);
       `getwagergametypelist` is refused.
@@ -258,3 +261,8 @@ Each open section names the issue that works it.
       `objective_position`, `objective_onentity`, `objective_team`,
       `objective_delete`): on `mp_nuked` a flag capture scores 5, a returned
       enemy flag 1 and a held HQ 30 (#653).
+- [x] **G** Search and Destroy, Sabotage and Demolition run on Black Ops'
+      own scripts: on `mp_nuked` the S&D bomb is picked up, planted (+500,
+      45 s timer) and detonates, winning the round, and round 2 starts;
+      the Sabotage bomb is picked up and planted on the enemy site and its
+      detonation scores; a Demolition attacker plants at A (+100) (#654).

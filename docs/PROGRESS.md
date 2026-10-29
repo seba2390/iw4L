@@ -251,9 +251,9 @@ Each milestone names its issues; open rules are in
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
 - [x] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).
   - [x] On `mp_nuked` with Black Ops' bots: a kill scores, a 2-minute FFA ends on its time limit and a TDM on its score limit, each on Black Ops' own end screen and intermission.
-- [ ] Every other gametype is verified in a match (#653, #654).
+- [x] Every other gametype is verified in a match (#653, #654).
   - [x] Domination, Headquarters and Capture the Flag (#653): on `mp_nuked` a flag capture, a captured enemy flag and a held HQ score on Black Ops' own scripts.
-  - [ ] Search and Destroy, Sabotage and Demolition (#654).
+  - [x] Search and Destroy, Sabotage and Demolition (#654): on `mp_nuked` bombs are picked up and planted, a detonation wins an S&D round and the next round starts.
 - [ ] Wager matches (#655).
 - [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650).
 - [ ] Killstreaks (#656).
