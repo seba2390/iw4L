@@ -9,7 +9,7 @@ Files here aim for ≤50 lines; `PROGRESS.md`, `fidelity/*` and `GSC-RUNTIME.md`
 |---|---|---|
 | **Status** | | |
 | [`PROGRESS.md`](PROGRESS.md) | each game's milestones and technical debt; the README table is generated from it (`cargo xtask progress --write`) | a pull request reaches or breaks a milestone |
-| [`fidelity/`](fidelity/) | per-game ledgers (`iw4`, `t5` with its multiplayer half `t5-mp`, `t6`, `t7`, `iw5`): every rule a game does not have yet, by `unknown!` id | before adding or closing a gap |
+| [`fidelity/`](fidelity/) | per-game ledgers (`iw4`, `t5` and `t6` with their multiplayer halves `t5-mp` and `t6-mp`, `t7`, `iw5`): every rule a game does not have yet, by `unknown!` id | before adding or closing a gap |
 | [`provenance/`](provenance/) | where MW2 movement, recoil, sentry, FX and solid-recovery code came from | authorship and source boundaries |
 | **Use** | | |
 | [`BUILD.md`](BUILD.md) | build dependencies for Linux, macOS, native Windows (MSVC) and Nix; what CI checks | before your first build |
