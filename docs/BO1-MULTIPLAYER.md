@@ -51,10 +51,29 @@ Black Ops install and the same IW4L build.
 
 ## Maps
 
-The 14 base maps of the install: `mp_array`, `mp_cairo`, `mp_cosmodrome`,
-`mp_cracked`, `mp_crisis`, `mp_duga`, `mp_firingrange`, `mp_hanoi`,
-`mp_havoc`, `mp_mountain`, `mp_nuked`, `mp_radiation`, `mp_russianbase`,
-`mp_villa`. Their state per map is in [`PROGRESS.md`](PROGRESS.md).
+The 14 base maps of the install, each played to the end of a Team
+Deathmatch with Black Ops' bots (`IW4L_SCRIPT_DVARS="set splitscreen_playerCount 1; set splitscreen_botEnemies 3; set splitscreen_botFriends 2; set scr_tdm_timelimit 1"`):
+
+| Map | Loads | Played to the end | Script faults |
+|---|---|---|---|
+| `mp_array` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_cairo` | yes | yes | none |
+| `mp_cosmodrome` | yes | yes | none |
+| `mp_cracked` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_crisis` | yes | yes | none |
+| `mp_duga` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_firingrange` | yes | yes | none |
+| `mp_hanoi` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_havoc` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_mountain` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_nuked` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_radiation` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_russianbase` | yes | yes | `testspawnpoint` (tactical insertion, #649) |
+| `mp_villa` | yes | yes | none |
+
+A tactical insertion fault depends on the bots' random loadouts, so it
+shows on some runs and not others. Destructibles and map interactives are
+#669; DLC maps are not in the owner's install.
 
 ## Not there yet
 

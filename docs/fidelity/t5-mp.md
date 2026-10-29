@@ -266,3 +266,6 @@ Each open section names the issue that works it.
 - [x] **G** `istouchingswept` was refused, so `_gameobjects`'
       `shouldBeReset` faulted when a dropped bomb was checked against the
       minefield and hurt triggers; it takes the shared swept-touch test.
+- [x] **G** Every base map loads and plays a Team Deathmatch to its end
+      with Black Ops' bots; the only script fault is `testspawnpoint`
+      when a bot carries a tactical insertion (#649) (#670).
