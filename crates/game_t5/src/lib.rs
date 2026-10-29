@@ -54,7 +54,10 @@ const ZOMBIES: &str = "zom";
 /// and Demolition (the lobby names it `dd`; Black Ops' script is `dem`).
 /// Every other gametype stays refused (`t5.scripts.mp_gametypes`).
 fn multiplayer(gametype: &str) -> bool {
-    matches!(gametype, "dm" | "tdm" | "war" | "dom" | "koth" | "ctf" | "sd" | "sab" | "dem" | "dd")
+    matches!(
+        gametype,
+        "dm" | "tdm" | "war" | "dom" | "koth" | "ctf" | "sd" | "sab" | "dem" | "dd"
+    )
 }
 
 /// Engine dvars a multiplayer match reads without setting, at the defaults
