@@ -22,7 +22,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "allowspectateteam", |world, receiver, args| {
         let client = player(world, receiver)?;
         let team = string(args, 0)?;
-        if !matches!(&*team, "axis" | "allies" | "none" | "freelook") {
+        // `localplayers` (Black Ops: players on the spectator's own machine)
+        // is kept like a team; every machine here has one player.
+        if !matches!(
+            &*team,
+            "axis" | "allies" | "none" | "freelook" | "localplayers"
+        ) {
             return Err(format!("invalid spectate team '{team}'"));
         }
         let on = int(args, 1)? != 0;

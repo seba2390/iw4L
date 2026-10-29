@@ -26,11 +26,21 @@ Each open section names the issue that works it.
 
 ## Maps and assets (#643, #669)
 
-- [ ] **G** A multiplayer map (`mp_*`) is refused before its zones load:
-      the match needs a gametype, and every gametype but `zom` is refused
-      (`t5.scripts.mp_gametypes`). The multiplayer zone set
-      (`code_pre_gfx_mp`, `code_post_gfx_mp`, `common_mp`, `ui_mp`,
-      `patch_mp`, `mp_<map>`) has not been loaded in a run.
+- [ ] **G** A multiplayer map (`mp_*`) takes the multiplayer zone set:
+      `code_post_gfx_mp`, `common_mp`, the map, then `patch_mp` over it for
+      scripts, weapons, effects and models; `code_pre_gfx_mp`,
+      `code_post_gfx_mp`, `patch_mp`, `ui_mp` and `patch_ui_mp` for menus;
+      the `en_` twins of `code_post_gfx_mp`, `common_mp`, `patch_mp`,
+      `ui_mp` and the map for strings (#643). Black Ops' own zone load
+      order (`code_pre_gfx_mp` first, the localized zones between) is not
+      checked against `BlackOpsMP.exe`.
+- [ ] **G** `spawncollision` (the maps' patch scripts' collision-only
+      models, `collision_wall_*` / `collision_geo_*`) spawns a solid script
+      model carrying the model; whether players and bullets collide with it
+      as in Black Ops is not checked.
+- [ ] **V** On Firing Range a jeep stands above the sandbags it should rest
+      on (seen from the pre-match spectator view); not yet traced to the
+      model, its destructible script or the map's entity data (#669).
 - [ ] **G** Destructibles (`_destructible.gsc`: cars, barrels), interactive
       objects, elevators, rotating objects, shutters and minefields have not
       run; `setdamagestage` is not implemented.
@@ -38,14 +48,23 @@ Each open section names the issue that works it.
 ## Game mode and flow (#644, #646, #667)
 
 - [ ] **G** `t5.scripts.mp_gametypes` (`GameScripts::program`,
-      `GameModes::mode`): Black Ops multiplayer gametypes (everything but
-      `zom`) have no script program, so a Black Ops multiplayer match is
-      refused at load (`gsc: refused … stage=program
-      unknown=t5.scripts.mp_gametypes`). Until that step they ran Modern
-      Warfare 2's gametype scripts and natives on the Black Ops map.
-      *Needs:* Black Ops' multiplayer startup (`_callbacksetup.gsc`, the
-      gametype script, `maps/mp/<map>.gsc`), its builtins bound to Black Ops
-      natives, and Black Ops' match phases.
+      `GameModes::mode`): Free-for-all (`dm`) and Team Deathmatch (`tdm`,
+      the lobby's `war`) run Black Ops' own startup — the gametype's
+      `main`, the map's `main`, then `_callbacksetup`'s
+      `CodeCallback_StartGameType` (#644). Every other multiplayer gametype
+      has no script program and is refused at load (`gsc: refused …
+      stage=program unknown=t5.scripts.mp_gametypes`). *Needs:* the
+      objective and round builtins (#653, #654, #655).
+- [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): a downed
+      multiplayer player (Second Chance) is briefly immune and dies when
+      hurt, by the runtime's last stand. *Needs:* Black Ops' multiplayer
+      last stand from `BlackOpsMP.exe` (#650).
+- [ ] **I** The engine dvars a multiplayer match starts with
+      (`MULTIPLAYER_ENGINE_DVARS`: `zombiemode` 0, `ui_multiplayer` 1,
+      `systemlink` 0, `onlinegame` 0, `cg_usingClientScripts` 1,
+      `cg_mature` 1, `cg_blood` 1; a hosted match adds `onlinegame` 1 and
+      `xblive_privatematch` 1) are taken from the zombies list and the
+      menus' rows; `BlackOpsMP.exe`'s registrations are not read yet.
 - [ ] **G** Spawn selection: the spawn influencer builtins
       (`addsphereinfluencer`, `addcylinderinfluencer`, …) and
       `_spawning.gsc`'s scoring have not run.
@@ -57,6 +76,15 @@ Each open section names the issue that works it.
       `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
 - [ ] **G** Killcam, final killcam and spectating (`_killcam.gsc`,
       `_spectating.gsc`) have not run.
+
+- [ ] **G** The builtins the multiplayer server binds beyond the shared T5
+      catalog (`mp_catalog.rs`, 187 functions and methods read from
+      `BlackOpsMP.exe`'s function, player, entity, helicopter and vehicle
+      tables) are named for the compiler; most have no native yet. Other
+      method tables (hud elems, actors, turrets) are not read.
+- [ ] **I** `allowspectateteam("localplayers", …)` (players on the
+      spectator's own machine) is kept like a team; every machine here has
+      one player, so it never changes whom a spectator may follow.
 
 ## Gametypes (#653, #654, #655)
 
@@ -73,8 +101,11 @@ Each open section names the issue that works it.
 
 ## Player, movement and weapons (#647, #648, #649, #650)
 
-- [ ] **G** Dive to prone, ladders and mantles on a multiplayer map (#461),
-      fall damage and the multiplayer movement dvars' defaults.
+- [ ] **G** The multiplayer player moves by `movement_t5` with
+      `zombiemode` 0 (`movement::MULTIPLAYER`); its tuning is the one read
+      from `BlackOps.exe`, not checked against `BlackOpsMP.exe`. Dive to
+      prone, ladders and mantles on a multiplayer map (#461), fall damage
+      and the multiplayer movement dvars' defaults are not verified (#647).
 - [ ] **G** Multiplayer weapons: attachment variants, underbarrel grenade
       launcher, flamethrower and Masterkey (`alt` weapons), dual wield,
       the ballistic knife's pickup, the crossbow's explosive bolts, weapon
@@ -113,7 +144,8 @@ Each open section names the issue that works it.
 ## Client scripts (#645)
 
 - [ ] **V** The multiplayer client scripts (`clientscripts/mp/*.csc`) have
-      not run. Missing client builtins they call: `set_filter_pass_*`,
+      not run: a multiplayer match has no client program
+      (`client_program` answers zombies only). Missing client builtins they call: `set_filter_pass_*`,
       `set_overlay_*`, `animateui`, `setsaveddvar`,
       `setinfraredvisionset`, `setstunned`, `shellshock`,
       `setcompassicon`, `map_material`, the vehicle queries.
@@ -123,6 +155,12 @@ Each open section names the issue that works it.
 - [ ] **V** The multiplayer HUD from `ui_mp` (compass and minimap,
       obituaries, hit markers, score popups, medals, team score, TAB
       scoreboard) has not been drawn.
+- [ ] **V** The scripts' class menu (`changeclass`, from `ui_mp`) opens on
+      connect but 111 of its 125 items do not paint (menu expression ops 117
+      and 291 unsupported), and the HUD's menu-response hook turns a
+      `changeclass` response `customN` into IW4L's own `spawn N` instead of
+      sending it to the scripts. A preset class (`smg_mp`, …) reaches
+      `menuClass` (#650, #651).
 - [ ] **V** Black Ops' multiplayer front end and Private Match lobby menus
       (`ui_mp`, `patch_ui_mp`) are not reachable from the game library.
 
@@ -142,8 +180,6 @@ Each open section names the issue that works it.
 
 ## Networking and private matches (#663, #665, #666)
 
-- [ ] **G** Lobbies are listed on the master for anyone connected to it;
-      there is no unlisted lobby, invite code or kick (#663).
 - [ ] **G** No private match: the end of a match does not return members
       to the lobby, classes do not reach the host, the host's game settings
       do not reach the scripts.
@@ -151,3 +187,7 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Hosted lobbies were listed on the master for anyone connected
+      to it: now unlisted by default, joined by invite code, with host kick
+      (#663, #672).

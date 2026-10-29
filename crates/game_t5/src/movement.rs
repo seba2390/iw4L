@@ -25,6 +25,8 @@ pub struct T5Movement {
 
 /// Black Ops' movement in its zombies mode.
 pub static ZOMBIES: T5Movement = T5Movement { zombies: true };
+/// The multiplayer executable's player move (`zombiemode` 0).
+pub static MULTIPLAYER: T5Movement = T5Movement { zombies: false };
 
 const PLAYER_CLIP_MASK: u32 = 0x0281_c011;
 const DEAD_CLIP_MASK: u32 = 0x0081_0011;
