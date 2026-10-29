@@ -534,9 +534,15 @@ fn error_ids_in(text: &str) -> Vec<String> {
     ids
 }
 
+/// A game's ledger is `docs/fidelity/<game>.md`, with its multiplayer half
+/// in `<game>-mp.md` where the game has one.
 fn ledger_lists(root: &Path, game: &str, id: &str) -> bool {
-    std::fs::read_to_string(root.join("docs/fidelity").join(format!("{game}.md")))
-        .is_ok_and(|ledger| ledger.contains(&format!("`{id}`")))
+    [format!("{game}.md"), format!("{game}-mp.md")]
+        .iter()
+        .any(|file| {
+            std::fs::read_to_string(root.join("docs/fidelity").join(file))
+                .is_ok_and(|ledger| ledger.contains(&format!("`{id}`")))
+        })
 }
 
 fn ownership(root: &Path, packages: &[Package]) -> Vec<String> {

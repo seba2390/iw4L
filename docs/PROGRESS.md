@@ -216,6 +216,40 @@ Only the top-level items count.
 - Shared crates Black Ops runs on (`sim`, `hud`, `render_*`) carry most of
   the shared debt listed under Shared technical debt below.
 
+## Black Ops — Multiplayer
+
+The goal is a private match between friends who each own the game and run
+this repository: a host opens a lobby nobody else can find, friends join,
+and every gametype, class, perk and killstreak of the base game plays by
+Black Ops' own rules. Ranked play and public matchmaking are out of scope.
+Each milestone names its issues; open rules are in
+[`fidelity/t5-mp.md`](fidelity/t5-mp.md).
+
+- [ ] The install's multiplayer zones and scripts are read, and multiplayer maps load, render and collide (#643).
+- [ ] A match starts on Black Ops' own multiplayer scripts and client scripts (#644, #645).
+- [ ] Players move by Black Ops' multiplayer movement rules (#647).
+- [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
+- [ ] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).
+- [ ] Every other gametype is verified in a match (#653, #654).
+  - [ ] Domination, Headquarters and Capture the Flag (#653).
+  - [ ] Search and Destroy, Sabotage and Demolition (#654).
+- [ ] Wager matches (#655).
+- [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650).
+- [ ] Killstreaks (#656).
+  - [ ] Spy Plane, Counter-Spy Plane and Blackbird (#657).
+  - [ ] Napalm Strike, Mortar Team and Rolling Thunder (#658).
+  - [ ] SAM Turret and Sentry Gun (#659).
+  - [ ] RC-XD (#660).
+  - [ ] Care Package, Attack Helicopter, Chopper Gunner and Gunship (#661).
+  - [ ] Valkyrie Rockets and Attack Dogs (#662).
+- [ ] Combat Training bots join and fight (#652).
+- [ ] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #665).
+- [ ] Two-machine play with prediction and lag compensation (#666).
+- [ ] Killcam, final killcam and spectating (#667).
+- [ ] Black Ops' multiplayer HUD, front end and sound (#651, #664, #668).
+- [ ] Every base map plays, with its destructibles and interactives (#669, #670).
+- [ ] The multiplayer fidelity ledger ([`fidelity/t5-mp.md`](fidelity/t5-mp.md)) has no open item.
+
 ## Black Ops II — Zombies
 
 Indented items are detail: they say what a milestone's runs have shown and
