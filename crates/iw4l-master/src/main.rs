@@ -834,6 +834,7 @@ async fn handle_request(
             requires,
             available,
             password,
+            unlisted,
         } => create_room(
             &mut state,
             connection_id,
@@ -844,6 +845,7 @@ async fn handle_request(
             requires,
             available,
             password,
+            unlisted,
         ),
         RequestBody::JoinRoom {
             room_id,
@@ -865,6 +867,7 @@ async fn handle_request(
             }
             Err(error) => (ResponseBody::Error(error), Vec::new()),
         },
+        RequestBody::KickMember { member_id } => kick_member(&mut state, connection_id, member_id),
         RequestBody::LeaveRoom => leave_room(&mut state, connection_id),
         RequestBody::SetOptions {
             map,
@@ -883,9 +886,11 @@ async fn handle_request(
             Err(error) => (ResponseBody::Error(error), Vec::new()),
         },
         RequestBody::ListRooms => {
+            // An unlisted room is joined by its id alone, never found here.
             let mut adverts: Vec<Advert> = state
                 .rooms
                 .values()
+                .filter(|room| !room.view.unlisted)
                 .map(|room| room.view.advert())
                 .collect();
             adverts.sort_by_key(|advert| advert.id);
@@ -979,6 +984,7 @@ fn create_room(
     requires: master_protocol::ContentFlags,
     available: master_protocol::ContentFlags,
     password: String,
+    unlisted: bool,
 ) -> (ResponseBody, Vec<(u64, ControlFrame)>) {
     if !master_protocol::ContentFlags::KNOWN.contains(requires)
         || !requires.contains(master_protocol::ContentFlags::IW4)
@@ -1017,6 +1023,7 @@ fn create_room(
         requires,
         available,
         password_protected: !password.is_empty(),
+        unlisted,
     };
     let mut member_of = HashMap::new();
     member_of.insert(connection_id, member_id);
@@ -1113,6 +1120,39 @@ fn join_room(
             view: view.clone(),
         },
         state.publish_view(room_id),
+    )
+}
+
+/// The host removes a member: the member is told its session closed
+/// (`Kicked`), the others see the room without it.
+fn kick_member(
+    state: &mut ServiceState,
+    connection_id: u64,
+    member_id: MemberId,
+) -> (ResponseBody, Vec<(u64, ControlFrame)>) {
+    let room_id = match state.host_of(connection_id) {
+        Ok(room_id) => room_id,
+        Err(error) => return (ResponseBody::Error(error), Vec::new()),
+    };
+    let room = &state.rooms[&room_id];
+    let Some(target) = room.connection_of.get(&member_id).copied() else {
+        return (ResponseBody::Error(ServiceError::NotMember), Vec::new());
+    };
+    if target == connection_id {
+        return (ResponseBody::Error(ServiceError::NotMember), Vec::new());
+    }
+    let closed = ControlFrame::Closed {
+        room_id,
+        epoch: room.view.epoch,
+        reason: SessionCloseReason::Kicked,
+    };
+    let mut publishes = state.remove_member(target);
+    publishes.push((target, closed));
+    (
+        ResponseBody::RoomUpdated {
+            view: state.rooms[&room_id].view.clone(),
+        },
+        publishes,
     )
 }
 

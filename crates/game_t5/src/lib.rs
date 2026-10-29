@@ -409,7 +409,10 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     level_failed: None,
     aitype_spawners: false,
     connect_team: None,
-    unlimited: Rule::Known(false),
+    // The gametype scripts keep their own score and time limits
+    // (`registerScoreLimitDvar`, `registerTimeLimitDvar`); the runtime sets
+    // none beside them.
+    unlimited: Rule::Known(true),
     zombie_zone_scripts: true,
     waits_for_lobby: false,
     binds_objectives: true,

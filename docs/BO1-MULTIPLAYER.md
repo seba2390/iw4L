@@ -22,6 +22,9 @@ do not paint yet; pick a preset class from the console:
 script maps/mp/gametypes/_globallogic_ui::menuclass player0 smg_mp
 ```
 
+In Team Deathmatch pick a team first:
+`script maps/mp/gametypes/_globallogic_ui::menuautoassign player0`.
+
 Presets: `smg_mp`, `cqb_mp`, `assault_mp`, `lmg_mp`, `sniper_mp`. A headless
 check: `--cmds "wait world; wait 3s; script … smg_mp; wait 10s; screenshot x; finish_run"`.
 

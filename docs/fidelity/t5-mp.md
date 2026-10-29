@@ -38,6 +38,9 @@ Each open section names the issue that works it.
       models, `collision_wall_*` / `collision_geo_*`) spawns a solid script
       model carrying the model; whether players and bullets collide with it
       as in Black Ops is not checked.
+- [ ] **V** On Firing Range a jeep stands above the sandbags it should rest
+      on (seen from the pre-match spectator view); not yet traced to the
+      model, its destructible script or the map's entity data (#669).
 - [ ] **G** Destructibles (`_destructible.gsc`: cars, barrels), interactive
       objects, elevators, rotating objects, shutters and minefields have not
       run; `setdamagestage` is not implemented.
