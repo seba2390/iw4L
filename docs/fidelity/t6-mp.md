@@ -33,7 +33,12 @@ Each open section names the issue that works it.
       install: every other multiplayer gametype module is in `patch_mp`, but
       this one comes with the patch zone the game downloads at launch
       (`ffotd_*_mp`), as the zombies one does (`t6.scripts.ffotd`). It has to
-      be captured from the owner's own running `t6mp.exe` (#676).
+      be captured from the owner's own running `t6mp.exe` (#676); a captured
+      `ffotd_*_mp*.ff` is read after `patch_mp`. Linked without it (logged
+      as `own multiplayer scripts:` on every multiplayer map), Black Ops 2's
+      multiplayer server program on Cargo is 135 modules and 3742 functions,
+      all translated, naming 806 builtins that Black Ops 2's server lists;
+      its only 55 unresolved imports call into the missing module.
 - [ ] **G** Revolution, Uprising and Apocalypse maps are not in the owner's
       install; the 14 base maps, Nuketown 2025 (`dlc0_load_mp`) and
       Vengeance's Detour, Cove, Rush and Uplink (`dlc3_load_mp`) can be
