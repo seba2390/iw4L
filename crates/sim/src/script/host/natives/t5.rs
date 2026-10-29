@@ -661,6 +661,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     register_platform(registry);
     register_refused(registry);
     register_bots(registry);
+    register_swept(registry);
     register_shellshock(registry);
     register_earthquake(registry);
 }
@@ -2207,7 +2208,7 @@ fn register_refused(registry: &mut NativeRegistry) {
         => "not simulated");
     refused!(Method: "launch", "fakefire",
         "spawnnapalmgroundflame", "revive", "docowardswayanims",
-        "ghost", "teleport", "istouchingswept", "istouchingvolume", "playersighttrace",
+        "ghost", "teleport", "istouchingvolume", "playersighttrace",
         "throwbuttonpressed", "actionslotonebuttonpressed", "depthinwater",
         "devaddpitch", "devaddroll", "devaddyaw"
         => "not simulated");
@@ -2274,6 +2275,19 @@ fn bot_script<'a>(world: &'a mut World, receiver: &Value) -> Result<&'a mut BotS
         .0
         .entry(client)
         .or_default())
+}
+
+/// `ent IsTouchingSwept(other, [min z], [max z])`: whether the entity,
+/// swept between the heights, touches the other.
+fn register_swept(registry: &mut NativeRegistry) {
+    registry.register(Method, "istouchingswept", |world, receiver, args| {
+        let a = super::engine::entity_id(world, receiver)?;
+        let b = super::engine::entity_id(world, arg(args, 0)?)?;
+        let min_z = optional(args, 1, float)?;
+        let max_z = optional(args, 2, float)?;
+        let hit = super::super::triggers::is_touching_swept(world, a, b, min_z, max_z)?;
+        Ok(Value::Int(hit.into()))
+    });
 }
 
 /// Black Ops' test clients and the bot natives its `_bot.gsc` calls.
