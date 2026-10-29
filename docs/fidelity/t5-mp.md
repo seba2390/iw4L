@@ -109,10 +109,19 @@ Each open section names the issue that works it.
       while sprinting), ladders and mantles on a multiplayer map are not
       verified in a run yet (#461, #647); a dump shows only the shared
       player state, not the dive's flags.
-- [ ] **G** Multiplayer weapons: attachment variants, underbarrel grenade
-      launcher, flamethrower and Masterkey (`alt` weapons), dual wield,
-      the ballistic knife's pickup, the crossbow's explosive bolts, weapon
-      drop and pickup.
+- [ ] **G** `dropitem` and dropped-weapon pickup (`_weapons.gsc`'s
+      `dropWeaponForDeath`, `itemweaponsetammo`) run the runtime's own item
+      rules. Black Ops' drop is read from `BlackOpsMP.exe`: an alternate
+      mode drops its base weapon, a weapon with no ammo is taken without a
+      drop, the launch speeds are the same four dvars with the same
+      defaults (10, 10, 5, 100), and the item is then moved to the dropping
+      player's weapon tag (traced from the player's centre) — the tag
+      placement, the item's ammo checks (`itemweaponsetammo`'s clip capped
+      at the clip size, its hand index 0–1 and error texts) and Black Ops'
+      pickup are not in place (#720).
+- [ ] **V** `t5.csc.total_ammo`: the client's `gettotalammo` answers the
+      weapon's stock and clip; Black Ops sums the clips of every held weapon
+      that shares the weapon's ammo cap instead, which is not applied.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
       Semtex, tomahawk, concussion, Willy Pete, Nova gas, decoy, C4,
       tactical insertion, camera spike, jammer, motion sensor;
@@ -156,7 +165,7 @@ Each open section names the issue that works it.
       animations, #651); `setlocalradarenabled`, `setlocalradarposition`
       and the scrambler methods (radar, jammer, #649, #657); the extra
       camera builtins (camera spike, #649); `hasperk` (#650);
-      `gettotalammo` (#648); the vehicle queries (#660).
+      the vehicle queries (#660).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
       `r_outdoorfeather`).
@@ -229,6 +238,15 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Multiplayer weapons fire, reload and aim by Black Ops' rules:
+      on `mp_nuked` each of the attachment variants (reflex, ACOG, variable
+      zoom, speed reloader), the underbarrel grenade launcher, flamethrower
+      and Masterkey (switched to with action slot 3, as `_class.gsc` binds
+      `altMode`), dual wield (Makarov, Skorpion), the explosive crossbow, the
+      ballistic knife, the L96A1, SPAS, M72 LAW, China Lake and Python fire
+      and reload on the game's own weapon definitions; the client's
+      `gettotalammo` is implemented (#648).
 
 - [x] **G** Hosted lobbies were listed on the master for anyone connected
       to it: now unlisted by default, joined by invite code, with host kick
