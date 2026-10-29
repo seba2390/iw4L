@@ -38,6 +38,7 @@ headless runs; their meaning is beside the code that reads them.
 | `IW4L_COMMUNITY` | The `.iw4l-server` descriptor to use (name beside the executable, or an absolute path) | the saved choice, or the only one |
 | `IW4L_MASTER_HOST_NAME` | Host a room with this name when launching with `map` | not hosting |
 | `IW4L_MASTER_JOIN` | Join the room with this advert ID; excludes `IW4L_MASTER_HOST_NAME` | not joining |
+| `IW4L_MASTER_LISTED` | `1` lists a hosted room in the master's room list | unlisted (join by invite code) |
 | `IW4L_MASTER_PASSWORD` | Room password for command-line hosting and joining | none |
 | `IW4L_MASTER_MAX_PLAYERS` | Room capacity including the host, `2`–`18` | `18` |
 
