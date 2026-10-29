@@ -48,13 +48,14 @@ Each open section names the issue that works it.
 ## Game mode and flow (#644, #646, #667)
 
 - [ ] **G** `t5.scripts.mp_gametypes` (`GameScripts::program`,
-      `GameModes::mode`): Free-for-all (`dm`) and Team Deathmatch (`tdm`,
-      the lobby's `war`) run Black Ops' own startup — the gametype's
-      `main`, the map's `main`, then `_callbacksetup`'s
-      `CodeCallback_StartGameType` (#644). Every other multiplayer gametype
-      has no script program and is refused at load (`gsc: refused …
-      stage=program unknown=t5.scripts.mp_gametypes`). *Needs:* the
-      objective and round builtins (#653, #654, #655).
+      `GameModes::mode`): Free-for-all (`dm`), Team Deathmatch (`tdm`, the
+      lobby's `war`), Domination (`dom`), Headquarters (`koth`) and Capture
+      the Flag (`ctf`) run Black Ops' own startup — the gametype's `main`,
+      the map's `main`, then `_callbacksetup`'s `CodeCallback_StartGameType`
+      (#644, #653). Search and Destroy, Sabotage, Demolition and the wager
+      gametypes have no script program and are refused at load (`gsc:
+      refused … stage=program unknown=t5.scripts.mp_gametypes`) (#654,
+      #655).
 - [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): a downed
       multiplayer player (Second Chance) is briefly immune and dies when
       hurt, by the runtime's last stand. *Needs:* Black Ops' multiplayer
@@ -68,9 +69,6 @@ Each open section names the issue that works it.
 - [ ] **G** Spawn selection: the spawn influencer builtins
       (`addsphereinfluencer`, `addcylinderinfluencer`, …) and
       `_spawning.gsc`'s scoring have not run.
-- [ ] **G** The objective builtins (`objective_add`, `objective_delete`,
-      `objective_icon`, `objective_position`, `objective_onentity`,
-      `objective_team`) are not implemented.
 - [ ] **G** `sendranks`, `setplayerteamrank` are not implemented;
       `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
       `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
@@ -93,8 +91,6 @@ Each open section names the issue that works it.
 ## Gametypes (#653, #654, #655)
 
 - [ ] **G** Free-for-all (`dm`) and Team Deathmatch (`tdm`).
-- [ ] **G** Domination (`dom`), Headquarters (`koth`), Capture the Flag
-      (`ctf`): `_gameobjects.gsc` has not run.
 - [ ] **G** Search and Destroy (`sd`), Sabotage (`sab`), Demolition
       (`dem`): rounds, the bomb, side switch.
 - [ ] **G** Wager matches: One in the Chamber (`oic`), Gun Game (`gun`),
@@ -256,3 +252,9 @@ Each open section names the issue that works it.
       (FFA) and the score limit (TDM) end the match on Black Ops' end
       screen (winner, placings or team scores) and every client goes to
       intermission. Leaving intermission for the lobby is #665 (#646).
+- [x] **G** Domination, Headquarters and Capture the Flag run on Black Ops'
+      own scripts (`_gameobjects.gsc`) with the objective builtins
+      (`objective_add`, `objective_state`, `objective_icon`,
+      `objective_position`, `objective_onentity`, `objective_team`,
+      `objective_delete`): on `mp_nuked` a flag capture scores 5, a returned
+      enemy flag 1 and a held HQ 30 (#653).

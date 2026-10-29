@@ -48,11 +48,12 @@ pub static GAME: T5 = T5;
 
 const ZOMBIES: &str = "zom";
 
-/// The multiplayer gametypes whose scripts run: Free-for-all and Team
-/// Deathmatch (the lobby names the latter `war`; Black Ops' script is
-/// `tdm`). Every other gametype stays refused (`t5.scripts.mp_gametypes`).
+/// The multiplayer gametypes whose scripts run: Free-for-all, Team
+/// Deathmatch (the lobby names it `war`; Black Ops' script is `tdm`),
+/// Domination, Headquarters and Capture the Flag. Every other gametype
+/// stays refused (`t5.scripts.mp_gametypes`).
 fn multiplayer(gametype: &str) -> bool {
-    matches!(gametype, "dm" | "tdm" | "war")
+    matches!(gametype, "dm" | "tdm" | "war" | "dom" | "koth" | "ctf")
 }
 
 /// Engine dvars a multiplayer match reads without setting, at the defaults
