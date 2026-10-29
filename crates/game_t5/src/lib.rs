@@ -13,6 +13,8 @@ mod grenade_indicator;
 mod menu_expression;
 mod missile;
 mod movement;
+mod mp_catalog;
+mod mp_startup;
 mod overlay;
 mod physics;
 mod post_chain;
@@ -44,6 +46,27 @@ pub struct T5;
 pub static GAME: T5 = T5;
 
 const ZOMBIES: &str = "zom";
+
+/// The multiplayer gametypes whose scripts run: Free-for-all and Team
+/// Deathmatch (the lobby names the latter `war`; Black Ops' script is
+/// `tdm`). Every other gametype stays refused (`t5.scripts.mp_gametypes`).
+fn multiplayer(gametype: &str) -> bool {
+    matches!(gametype, "dm" | "tdm" | "war")
+}
+
+/// Engine dvars a multiplayer match reads without setting, at the defaults
+/// `BlackOpsMP.exe` registers them with.
+const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
+    ("zombiemode", "0"),
+    // The multiplayer executable: menus show their multiplayer rows.
+    ("ui_multiplayer", "1"),
+    ("cg_usingClientScripts", "1"),
+    // A local match is neither online nor a system link.
+    ("systemlink", "0"),
+    ("onlinegame", "0"),
+    ("cg_mature", "1"),
+    ("cg_blood", "1"),
+];
 
 /// Black Ops' front-end level: the main menu draws over it.
 pub(crate) const FRONT_END_LEVEL: &str = "frontend";
@@ -101,11 +124,25 @@ impl game_api::GameScripts for T5 {
         request: &ScriptRequest<'_>,
         sources: &dyn gsc::SourceResolver,
     ) -> Rule<ScriptProgram> {
+        if multiplayer(request.gametype) {
+            let startup = mp_startup::T5MpStartup::new(sources, request.gametype, request.map);
+            return Rule::Known(ScriptProgram {
+                catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, catalog::T5)
+                    .extended(mp_catalog::T5_MP.iter().cloned()),
+                roots: startup.roots,
+                entries: startup.entries,
+                built: None,
+                settings: Vec::new(),
+                key_types: Vec::new(),
+                entity_fields: Vec::new(),
+                dvars: Vec::new(),
+            });
+        }
         if request.gametype != ZOMBIES {
             return Rule::Unknown(unknown!(
                 "t5.scripts.mp_gametypes",
-                "Black Ops multiplayer gametypes: their scripts need Black Ops' multiplayer natives and match flow",
-                "Black Ops' multiplayer builtins bound to Black Ops natives, and Black Ops' match phases"
+                "Black Ops multiplayer gametypes other than Free-for-all and Team Deathmatch: their scripts need Black Ops' objective natives and round flow",
+                "Black Ops' objective and round builtins bound to Black Ops natives"
             ));
         }
         let startup = zombie_startup::T5ZombieStartup::new(sources, request.map, request.entities);
@@ -192,6 +229,8 @@ impl game_api::GameScripts for T5 {
     fn engine_dvars(&self, gametype: &str) -> &'static [(&'static str, &'static str)] {
         if gametype == ZOMBIES {
             ZOMBIE_ENGINE_DVARS
+        } else if multiplayer(gametype) {
+            MULTIPLAYER_ENGINE_DVARS
         } else {
             &[]
         }
@@ -201,7 +240,8 @@ impl game_api::GameScripts for T5 {
     /// zombies party: an online private match (`onlinegame 1`,
     /// `xblive_privatematch 1`).
     fn hosted_dvars(&self, gametype: &str) -> &'static [(&'static str, &'static str)] {
-        if gametype == ZOMBIES {
+        // A hosted multiplayer match is Black Ops' private match.
+        if gametype == ZOMBIES || multiplayer(gametype) {
             &[("onlinegame", "1"), ("xblive_privatematch", "1")]
         } else {
             &[]
@@ -345,6 +385,41 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     // A zombies map's 3D UI texture; the front end's is square
     // (`ui3d_size`).
     ui3d: Some(game_api::Ui3dRules { size: [1024, 512] }),
+};
+
+/// A multiplayer match: Black Ops' multiplayer scripts run it from the
+/// multiplayer zones (`common_mp`, `patch_mp`) with the multiplayer
+/// executable's movement (`zombiemode` 0). Its HUD, class and spawn rules
+/// are the scripts'; what the runtime does not have yet is in
+/// docs/fidelity/t5-mp.md.
+const MULTIPLAYER_MODE: ModeRules = ModeRules {
+    // `_globallogic` notifies `prematch_over` when the prematch countdown
+    // ends; the players' controls are frozen until then.
+    play_starts_on: Some("prematch_over"),
+    movement: Rule::Known(MovementRules::Game(&movement::MULTIPLAYER)),
+    every_player_downs: Rule::Known(false),
+    downed: game_api::DownedRules {
+        unrun: Some(unknown!(
+            "t5.mp.second_chance",
+            "a downed multiplayer player (Second Chance) is briefly immune and dies when hurt, by the runtime's last stand",
+            "Black Ops' multiplayer last stand from BlackOpsMP.exe"
+        )),
+        ..game_api::DownedRules::BRIEFLY_IMMUNE
+    },
+    level_failed: None,
+    aitype_spawners: false,
+    connect_team: None,
+    unlimited: Rule::Known(false),
+    zombie_zone_scripts: true,
+    waits_for_lobby: false,
+    binds_objectives: true,
+    hud: HudRules {
+        zombies: false,
+        ..ZOMBIE_MODE.hud
+    },
+    top_down: None,
+    menu_dvars_reach_server: false,
+    ..ZOMBIE_MODE
 };
 
 /// Black Ops' 3D UI texture: 1024 by 1024 on the front end and the `menu_`
@@ -855,11 +930,14 @@ impl game_api::MenuLayout for MenuLayout {
 
 impl game_api::GameModes for T5 {
     fn mode(&self, gametype: &str) -> Rule<ModeRules> {
+        if multiplayer(gametype) {
+            return Rule::Known(MULTIPLAYER_MODE);
+        }
         if gametype != ZOMBIES {
             return Rule::Unknown(unknown!(
                 "t5.scripts.mp_gametypes",
-                "Black Ops multiplayer gametypes: their scripts need Black Ops' multiplayer natives and match flow",
-                "Black Ops' multiplayer builtins bound to Black Ops natives, and Black Ops' match phases"
+                "Black Ops multiplayer gametypes other than Free-for-all and Team Deathmatch: their scripts need Black Ops' objective natives and round flow",
+                "Black Ops' objective and round builtins bound to Black Ops natives"
             ));
         }
         Rule::Known(ZOMBIE_MODE)

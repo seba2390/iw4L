@@ -1527,6 +1527,28 @@ fn register_player(registry: &mut NativeRegistry) {
         }
         Ok(Value::Object(id))
     });
+    // `SpawnCollision(model, targetname, origin, angles)`: the multiplayer
+    // maps' patch scripts place collision-only models (`collision_wall_*`,
+    // `collision_geo_*`) as solid script models.
+    registry.register(Function, "spawncollision", |world, _, args| {
+        let model = super::super::args::string(args, 0)?;
+        let targetname = super::super::args::string(args, 1)?;
+        let origin = super::super::args::vector(args, 2)?;
+        let angles = super::super::args::vector(args, 3)?;
+        let entity = super::engine::spawn_entity(
+            world,
+            &[Value::string("script_model"), Value::Vector(origin)],
+        )?;
+        let id = super::engine::entity_id(world, &entity)?;
+        let mut runtime = world.resource_mut::<crate::script::RoundScript>();
+        runtime.set_object_field(id, "angles", Value::Vector(angles));
+        runtime.set_object_field(id, "targetname", Value::string(&targetname));
+        runtime.set_object_field(id, "model", Value::string(&model));
+        if let Some(entity) = runtime.entities.get_mut(&id) {
+            entity.solid = true;
+        }
+        Ok(entity)
+    });
     registry.register(Method, "disableweaponcycling", |world, receiver, _| {
         let client = player_id(world, receiver)?;
         crate::game_move::set_script_flag(

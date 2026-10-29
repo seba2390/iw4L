@@ -21,6 +21,7 @@ Files here aim for ≤50 lines; `PROGRESS.md`, `fidelity/*` and `GSC-RUNTIME.md`
 | [Approved scenarios](../crates/approved_tests/README.md) | gameplay lifecycle and two clients through the dev master | repeatable end-to-end checks |
 | **Per game** | | |
 | [`BO1-ZOMBIES.md`](BO1-ZOMBIES.md) | Black Ops Zombies: starting solo, headless and co-op, library maps, test-player variables | playing or extending BO1 Zombies |
+| [`BO1-MULTIPLAYER.md`](BO1-MULTIPLAYER.md) | Black Ops multiplayer: starting a match, picking a class, playing with friends, maps | playing or extending BO1 multiplayer |
 | [`BO2-ZOMBIES.md`](BO2-ZOMBIES.md) | Black Ops II Zombies: starting, proven and untested maps, FFOTD capture, Origins | playing or extending BO2 Zombies |
 | [`T6.md`](T6.md) | Black Ops II multiplayer bring-up and remaining gaps | loading a BO2 multiplayer map |
 | [`MULTIPLAYER-UI.md`](MULTIPLAYER-UI.md) | Black Ops II multiplayer pause menu, saved classes, settings and HUD | editing a BO2 loadout during a match |

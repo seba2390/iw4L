@@ -1307,12 +1307,26 @@ pub(super) fn walk_zombie_commons(
     // singleplayer zones a zombie map does, without the zombie ones.
     let is_zombie_map = stem.starts_with("zombie");
     let is_front_end = stem == T5_FRONT_END_LEVEL;
-    if !(is_zombie_map || is_front_end)
+    // A multiplayer map takes the multiplayer executable's zones: each
+    // singleplayer common zone's `_mp` twin, then `patch_mp` over the map.
+    let is_mp_map = stem.starts_with("mp_");
+    if !(is_zombie_map || is_front_end || is_mp_map)
         || asset_transport::zone_game_for_path(zone_ff) != Some(asset_core::ZoneGame::T5)
     {
         return commons;
     }
-    let map_patch = format!("{stem}_patch");
+    let common = |zone: &str| {
+        if is_mp_map {
+            format!("{zone}_mp")
+        } else {
+            zone.to_owned()
+        }
+    };
+    let map_patch = if is_mp_map {
+        "patch_mp".to_owned()
+    } else {
+        format!("{stem}_patch")
+    };
     let mut scripts = crate::ScriptSources::default();
     let mut script_names = std::collections::BTreeSet::new();
     let zombie_zones: &[&str] = if is_zombie_map {
@@ -1320,8 +1334,10 @@ pub(super) fn walk_zombie_commons(
     } else {
         &[]
     };
-    for zone in ["code_post_gfx", "common"]
-        .into_iter()
+    let common_zones = [common("code_post_gfx"), common("common")];
+    for zone in common_zones
+        .iter()
+        .map(String::as_str)
         .chain(zombie_zones.iter().copied())
         .chain([stem.as_str(), map_patch.as_str()])
     {
@@ -1408,17 +1424,32 @@ pub(super) fn walk_zombie_commons(
     } else {
         &[]
     };
+    // The multiplayer menus (its HUD, lobby and create-a-class) ship in
+    // `ui_mp`, patched by `patch_ui_mp`.
+    let mp_menus: &[&str] = if is_mp_map {
+        &["ui_mp", "patch_ui_mp"]
+    } else {
+        &[]
+    };
     // `code_pre_gfx` holds the config scripts the options menus run.
-    for zone in ["code_pre_gfx", "code_post_gfx", "patch"]
-        .into_iter()
+    let menu_commons = [
+        common("code_pre_gfx"),
+        common("code_post_gfx"),
+        common("patch"),
+    ];
+    for zone in menu_commons
+        .iter()
+        .map(String::as_str)
         .chain(front_end_menus.iter().copied())
+        .chain(mp_menus.iter().copied())
     {
         match asset_transport::find_zone_for_tree(zone_ff, zone) {
             Ok(found) => menu_zones.push((zone.to_owned(), found.path)),
             Err(error) => commons.report.push(format!("t5 menus {zone}: {error}")),
         }
     }
-    match asset_transport::discover::find_t5_localized_zone(zone_ff, None, "code_post_gfx") {
+    match asset_transport::discover::find_t5_localized_zone(zone_ff, None, &common("code_post_gfx"))
+    {
         Ok(Some(found)) => menu_zones.push((found.zone_name.clone(), found.path)),
         Ok(None) => commons
             .report
@@ -1426,7 +1457,8 @@ pub(super) fn walk_zombie_commons(
         Err(error) => commons.report.push(format!("t5 menus fonts: {error}")),
     }
     // The localized `code_pre_gfx` holds the game's default key binds.
-    match asset_transport::discover::find_t5_localized_zone(zone_ff, None, "code_pre_gfx") {
+    match asset_transport::discover::find_t5_localized_zone(zone_ff, None, &common("code_pre_gfx"))
+    {
         Ok(Some(found)) => menu_zones.push((found.zone_name.clone(), found.path)),
         Ok(None) => commons
             .report
@@ -1446,7 +1478,7 @@ pub(super) fn walk_zombie_commons(
             }
             Err(error) => commons.report.push(format!("t5 menus {zone}: {error}")),
         }
-        if matches!(zone.as_str(), "code_post_gfx" | "patch")
+        if (*zone == common("code_post_gfx") || *zone == common("patch"))
             && let Ok(image) = open_zone_shared(path)
         {
             let population = lane(image.game).load_material_population(
@@ -1493,13 +1525,22 @@ pub(super) fn walk_zombie_commons(
     ));
     commons.hud_menus = Some(hud_menus);
     // `en_patch` holds the strings the patched menus name (`@PATCH_*`).
-    for stem in [
-        "code_post_gfx",
-        "common",
-        "common_zombie",
-        "patch",
-        stem.as_str(),
-    ] {
+    let localized = if is_mp_map {
+        vec![
+            common("code_post_gfx"),
+            common("common"),
+            common("patch"),
+            "ui_mp".to_owned(),
+            stem.clone(),
+        ]
+    } else {
+        ["code_post_gfx", "common", "common_zombie", "patch"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain([stem.clone()])
+            .collect()
+    };
+    for stem in localized.iter().map(String::as_str) {
         let found = asset_transport::discover::find_t5_localized_zone(zone_ff, None, stem);
         // Localized zones also hold materials the zombie bodies draw with,
         // and the map's localized models (the lobby door tear-ins).
