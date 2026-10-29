@@ -266,3 +266,6 @@ Each open section names the issue that works it.
       45 s timer) and detonates, winning the round, and round 2 starts;
       the Sabotage bomb is picked up and planted on the enemy site and its
       detonation scores; a Demolition attacker plants at A (+100) (#654).
+- [x] **G** Every base map loads and plays a Team Deathmatch to its end
+      with Black Ops' bots; the only script fault is `testspawnpoint`
+      when a bot carries a tactical insertion (#649) (#670).

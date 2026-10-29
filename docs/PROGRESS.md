@@ -227,20 +227,20 @@ Each milestone names its issues; open rules are in
 
 | Map | Builtins not implemented yet |
 |---|---|
-| Array (`t5:mp_array`) | 30 of 629 |
-| Havana (`t5:mp_cairo`) | 30 of 629 |
-| Launch (`t5:mp_cosmodrome`) | 30 of 631 |
-| Cracked (`t5:mp_cracked`) | 30 of 628 |
-| Crisis (`t5:mp_crisis`) | 30 of 629 |
-| Grid (`t5:mp_duga`) | 30 of 629 |
-| Firing Range (`t5:mp_firingrange`) | 30 of 629 |
-| Hanoi (`t5:mp_hanoi`) | 30 of 628 |
-| Jungle (`t5:mp_havoc`) | 30 of 628 |
-| Summit (`t5:mp_mountain`) | 30 of 629 |
-| Radiation (`t5:mp_radiation`) | 30 of 631 |
-| WMD (`t5:mp_russianbase`) | 30 of 629 |
-| Villa (`t5:mp_villa`) | 30 of 629 |
-| Nuketown (`t5:mp_nuked`) | 30 of 631 |
+| Array (`t5:mp_array`) | 24 of 629 |
+| Havana (`t5:mp_cairo`) | 24 of 629 |
+| Launch (`t5:mp_cosmodrome`) | 24 of 631 |
+| Cracked (`t5:mp_cracked`) | 24 of 628 |
+| Crisis (`t5:mp_crisis`) | 24 of 629 |
+| Grid (`t5:mp_duga`) | 24 of 629 |
+| Firing Range (`t5:mp_firingrange`) | 24 of 629 |
+| Hanoi (`t5:mp_hanoi`) | 24 of 628 |
+| Jungle (`t5:mp_havoc`) | 24 of 628 |
+| Summit (`t5:mp_mountain`) | 24 of 629 |
+| Radiation (`t5:mp_radiation`) | 24 of 631 |
+| WMD (`t5:mp_russianbase`) | 24 of 629 |
+| Villa (`t5:mp_villa`) | 24 of 629 |
+| Nuketown (`t5:mp_nuked`) | 24 of 631 |
 
 - [x] The install's multiplayer zones and scripts are read, and multiplayer maps load, render and collide (#643).
   - [x] Each of the 14 base maps loads the multiplayer zone set and installs Black Ops' Team Deathmatch scripts with no script error; the scripts run the pre-match countdown.
@@ -270,6 +270,7 @@ Each milestone names its issues; open rules are in
 - [ ] Killcam, final killcam and spectating (#667).
 - [ ] Black Ops' multiplayer HUD, front end and sound (#651, #664, #668).
 - [ ] Every base map plays, with its destructibles and interactives (#669, #670).
+  - [x] Each of the 14 base maps plays a Team Deathmatch to its end with Black Ops' bots, its scripts faulting only on `testspawnpoint` when a bot carries a tactical insertion (#670).
 - [ ] The multiplayer fidelity ledger ([`fidelity/t5-mp.md`](fidelity/t5-mp.md)) has no open item.
 
 ## Black Ops II — Zombies
