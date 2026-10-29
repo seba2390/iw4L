@@ -1,5 +1,6 @@
 //! `cargo xtask ledger-guard [--base <ref>]` — a pull request that changes a
-//! game's own code also changes that game's ledger (`docs/fidelity/<game>.md`),
+//! game's own code also changes that game's ledger (`docs/fidelity/<game>.md`
+//! or its multiplayer half `<game>-mp.md`),
 //! or says why not in a line `Ledger: none — <reason>` of its body or of a
 //! commit message. Reads the pull request from the GitHub event payload;
 //! outside a pull request it reports that and passes.
@@ -43,7 +44,11 @@ pub fn run_cli(root: &Path, args: &[String]) -> Res<()> {
             .copied()
             .filter(|file| owned_by(file, &game))
             .collect();
-        if owned.is_empty() || changed.contains(&ledger.as_str()) {
+        let mp_ledger = format!("docs/fidelity/{game}-mp.md");
+        if owned.is_empty()
+            || changed.contains(&ledger.as_str())
+            || changed.contains(&mp_ledger.as_str())
+        {
             continue;
         }
         missing += 1;
@@ -117,7 +122,8 @@ fn ledgered_games(root: &Path) -> Vec<String> {
             let name = entry.file_name().into_string().ok()?;
             Some(name.strip_suffix(".md")?.to_owned())
         })
-        .filter(|game| game != SHARED)
+        // `<game>-mp.md` is the multiplayer half of `<game>.md`.
+        .filter(|game| game != SHARED && !game.ends_with("-mp"))
         .collect();
     games.sort();
     games
