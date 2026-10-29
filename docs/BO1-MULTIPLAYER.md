@@ -15,8 +15,10 @@ every other gametype is refused (`t5.scripts.mp_gametypes`).
 IW4L_GAMETYPE=dm make map ZONE=t5:mp_nuked
 ```
 
-On connect the scripts open Black Ops' class menu (`changeclass`). Its items
-do not paint yet; pick a preset class from the console:
+On connect the scripts open Black Ops' team and class menus; a pick in
+them goes to the scripts' `menuresponse`. Most class-menu items do not
+paint yet (create-a-class, #650); a preset class can also be picked from
+the console:
 
 ```
 script maps/mp/gametypes/_globallogic_ui::menuclass player0 smg_mp
@@ -43,7 +45,9 @@ The 14 base maps of the install: `mp_array`, `mp_cairo`, `mp_cosmodrome`,
 
 ## Not there yet
 
-The multiplayer HUD (#651), client scripts (#645), the class menu's paint,
+Parts of the multiplayer HUD (#651: the killcam and hardcore-list menus
+paint all the time, the compass is not drawn), client scripts (#645), the
+class menu's paint,
 create-a-class (#650), killstreaks (#656), bots (#652), the objective and
 round gametypes (#653, #654) — see the issues labelled `game: Black Ops 1`,
 `mode: Multiplayer`.

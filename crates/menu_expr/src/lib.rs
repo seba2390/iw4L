@@ -58,6 +58,44 @@ pub trait GameQueries {
     fn fullscreen_menu_open(&self) -> Result<i32, ExprError> {
         Err(ExprError::Host("fullscreen menu"))
     }
+    /// A field of the local player's team (`name`, `score`).
+    fn team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        let _ = field;
+        Err(ExprError::Host("the host does not answer team"))
+    }
+    /// A field of the team the local player plays against.
+    fn other_team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        let _ = field;
+        Err(ExprError::Host("the host does not answer otherteam"))
+    }
+    /// Time left on the match clock, in the game's units.
+    fn time_left(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("the host does not answer timeleft"))
+    }
+    /// The score of the player at `rank` (0 is the leader).
+    fn score_at_rank(&self, rank: i32) -> Result<i32, ExprError> {
+        let _ = rank;
+        Err(ExprError::Host("the host does not answer scoreatrank"))
+    }
+    /// The localized name of the match's gametype.
+    fn gametype_name(&self) -> Result<Operand, ExprError> {
+        Err(ExprError::Host("the host does not answer gametypename"))
+    }
+    /// The client number the local player follows as a spectator.
+    fn spectating_client(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("the host does not answer spectatingclient"))
+    }
+    /// Whether the match is in its intermission.
+    fn intermission(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("the host does not answer isintermission"))
+    }
+    /// Whether the local client's HUD visibility bit `bit` is set.
+    fn visibility_bit(&self, bit: i32) -> Result<i32, ExprError> {
+        let _ = bit;
+        Err(ExprError::Host(
+            "the host does not answer isvisibilitybitset",
+        ))
+    }
     /// Whether the local player's weapon is an airburst weapon (Black Ops
     /// 2's `isairburstweapon`).
     fn airburst_weapon(&self) -> Result<i32, ExprError> {

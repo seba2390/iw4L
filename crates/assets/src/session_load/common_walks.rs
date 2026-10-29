@@ -1427,7 +1427,8 @@ pub(super) fn walk_zombie_commons(
     // The multiplayer menus (its HUD, lobby and create-a-class) ship in
     // `ui_mp`, patched by `patch_ui_mp`.
     let mp_menus: &[&str] = if is_mp_map {
-        &["ui_mp", "patch_ui_mp"]
+        // `common_mp` carries the HUD lists (`ui_mp/hud*.txt`).
+        &["common_mp", "ui_mp", "patch_ui_mp"]
     } else {
         &[]
     };
@@ -1493,11 +1494,24 @@ pub(super) fn walk_zombie_commons(
         }
     }
     let mut hud_material_names = std::collections::BTreeSet::new();
+    // A multiplayer map draws every gametype's HUD list the match can load.
+    let mp_hud_lists: Vec<String> = if is_mp_map {
+        hud_menus
+            .list_menus
+            .keys()
+            .filter(|list| list.starts_with("ui_mp/hud"))
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
     for list in asset_game::T5_HUD_MENU_LISTS
         .iter()
         .chain(asset_game::T5_INGAME_MENU_LISTS)
+        .copied()
+        .chain(mp_hud_lists.iter().map(String::as_str))
     {
-        for menu in hud_menus.list_menus.get(*list).into_iter().flatten() {
+        for menu in hud_menus.list_menus.get(list).into_iter().flatten() {
             let Some(menu) = hud_menus.get(menu) else {
                 continue;
             };

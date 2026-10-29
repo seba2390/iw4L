@@ -152,15 +152,41 @@ Each open section names the issue that works it.
 
 ## HUD and menus (#651, #664)
 
-- [ ] **V** The multiplayer HUD from `ui_mp` (compass and minimap,
-      obituaries, hit markers, score popups, medals, team score, TAB
-      scoreboard) has not been drawn.
+- [ ] **V** The multiplayer HUD lists load as `CG_LoadHudMenus` does
+      (`ui_mp/hud_hardcore`, `hud_spectator`, `hud`, `hud_<g_gametype>`,
+      `hud_popups`, `hud_demo`, from `common_mp`), and their expressions
+      run on Black Ops' own functions (`team`, `otherteam`, `timeleft`,
+      `secondsascountdown`, `scoreatrank`, `select`, `min`, `max`,
+      `toupper`, `getlocalclientnum`, `isvisibilitybitset`); an item with
+      animation states paints its loaded state's colours. Open (#651):
+      the menus of `hud_hardcore` that only a killcam, the location
+      selector, the camera spike or a guided missile should show
+      (`killcam`, `killcam_*_text`, `spike_cam`, `fullscreenmap`,
+      `missile_fuel`) paint all the time: their menus and items carry no
+      visibility expression, owner-draw flag or hidden window flag, and the
+      client's rule that hides them is not found in `BlackOpsMP.exe` yet.
+      The compass owner draws (`compass_old`), obituaries, hit markers,
+      score popups, medals and the end-of-match scoreboard are not drawn as
+      Black Ops draws them; `gametypename`, `isintermission`,
+      `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
+      wager functions are not answered, so the items they gate do not draw.
+- [ ] **V** `t5.hud.visibility_bits` (`GameCodeHud::visibility_bit`):
+      Black Ops' client rebuilds 64 HUD visibility bits a frame; the team
+      bits (38–41), the scoreboard (44), the popups' bit (45), the
+      location selector (22, never open here), demo playback (20, never in
+      a match) and the player-flag bits (25, 47, 48) are answered. The
+      script UI flags (0–3), the vehicle, remote-view and guided-missile
+      bits and the rest are not, and bit 45 does not test the scoped sniper
+      view that hides popups.
+- [ ] **V** `t5.hud.killcam_visibility`: during a killcam the killcam
+      bits (4, 5) and the popups' bit are not answered (#667).
 - [ ] **V** The scripts' class menu (`changeclass`, from `ui_mp`) opens on
-      connect but 111 of its 125 items do not paint (menu expression ops 117
-      and 291 unsupported), and the HUD's menu-response hook turns a
-      `changeclass` response `customN` into IW4L's own `spawn N` instead of
-      sending it to the scripts. A preset class (`smg_mp`, …) reaches
-      `menuClass` (#650, #651).
+      connect and its responses (`custom1`…, the presets) reach the
+      scripts' `menuresponse`, but most of its items do not paint: the
+      create-a-class functions (`getitemindex`, `isitemlocked`,
+      `isitemnew`, `getitemname`, `getitemimage`, `getdefaultclassslot`,
+      `getcacitemindex`, `getitemequippedattachment`, …) read the item
+      table and the custom classes, which do not exist yet (#650).
 - [ ] **V** Black Ops' multiplayer front end and Private Match lobby menus
       (`ui_mp`, `patch_ui_mp`) are not reachable from the game library.
 
@@ -191,3 +217,6 @@ Each open section names the issue that works it.
 - [x] **G** Hosted lobbies were listed on the master for anyone connected
       to it: now unlisted by default, joined by invite code, with host kick
       (#663, #672).
+- [x] **V** The HUD's menu-response hook turned a `changeclass` response
+      `customN` into the runtime's own class slot; Black Ops' class menu now
+      answers its scripts like every other menu (#651).

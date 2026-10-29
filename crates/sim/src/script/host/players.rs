@@ -1,5 +1,5 @@
 use crate::frame::FrameWorld;
-use crate::script::runtime::{raise, run_now};
+use crate::script::runtime::{has_entry, raise, run_now};
 use crate::script::{Arc, BTreeMap, Fault, Location, RoundScript, Value, VecDeque};
 use crate::world::ClientId;
 use bevy_ecs::prelude::World;
@@ -411,9 +411,9 @@ pub(crate) fn answer_menu(world: &mut World, client: u32, menu: &str, response: 
 const MENU_MESSAGE: &str = "maps/_callbacksetup::codecallback_menumessage";
 
 /// Black Ops' `mlvl`: a menu's message runs the level's menu message
-/// callback with its two words.
+/// callback with its two words; scripts without one (multiplayer) take none.
 pub(crate) fn menu_message(world: &mut World, name: &str, arg: &str) {
-    if world.get_resource::<RoundScript>().is_none() {
+    if world.get_resource::<RoundScript>().is_none() || !has_entry(world, MENU_MESSAGE) {
         return;
     }
     let now = now_ms(world);

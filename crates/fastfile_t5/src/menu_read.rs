@@ -38,6 +38,14 @@ const MENU_ON_EVENT: usize = 0x10c;
 const MENU_ON_KEY: usize = 0x110;
 
 const ITEM_ON_EVENT: usize = 0x104;
+const ITEM_ANIM_INFO: usize = 0x108;
+/// `UI_AnimInfo`: the state the item shows now follows the state count
+/// and the states' list.
+const ANIM_INFO_CURRENT: usize = 8;
+const ANIM_PARAMS_NAME: usize = 0;
+const ANIM_PARAMS_RECT: usize = 4;
+const ANIM_PARAMS_FORE_COLOR: usize = 32;
+const ANIM_PARAMS_BACK_COLOR: usize = 48;
 
 const ITEM_TYPE: usize = 164;
 const ITEM_DVAR: usize = 176;
@@ -243,6 +251,17 @@ pub struct ItemRead {
     pub alpha_exp: String,
     pub handlers: Vec<EventHandlerRead>,
     pub focus: Option<FocusRead>,
+    /// The animation state the item shows as loaded, when it has states.
+    pub anim_state: Option<AnimStateRead>,
+}
+
+/// An item's animation state (`animParamsDef_t`).
+#[derive(Clone, Debug)]
+pub struct AnimStateRead {
+    pub name: Option<String>,
+    pub rect: MenuRectRead,
+    pub fore_color: [f32; 4],
+    pub back_color: [f32; 4],
 }
 
 /// A `menuDef_t`.
@@ -545,6 +564,15 @@ fn item(s: &ZoneStream<'_>, p: Ptr) -> ItemRead {
         alpha_exp: rpn_dump(s, p.at(ITEM_FORECOLOR_A_EXP)),
         handlers: event_handlers(s, ptr_at(s, p, ITEM_ON_EVENT)),
         focus,
+        anim_state: ptr_at(s, p, ITEM_ANIM_INFO).map(|info| {
+            let state = info.at(ANIM_INFO_CURRENT);
+            AnimStateRead {
+                name: string_at(s, state, ANIM_PARAMS_NAME),
+                rect: rect_at(s, state.at(ANIM_PARAMS_RECT)),
+                fore_color: color_at(s, state, ANIM_PARAMS_FORE_COLOR),
+                back_color: color_at(s, state, ANIM_PARAMS_BACK_COLOR),
+            }
+        }),
     }
 }
 

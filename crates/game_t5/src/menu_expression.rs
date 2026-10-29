@@ -35,6 +35,8 @@ const T5_BITNEG: i32 = 21;
 const T5_SHIFTLEFT: i32 = 22;
 const T5_SHIFTRIGHT: i32 = 23;
 
+const T5_FN_MIN: i32 = 26;
+const T5_FN_MAX: i32 = 27;
 const T5_FN_DVARINT: i32 = 30;
 const T5_FN_DVARBOOL: i32 = 31;
 const T5_FN_DVARSTRING: i32 = 33;
@@ -44,6 +46,8 @@ const T5_FN_INKILLCAM: i32 = 38;
 const T5_FN_ISDUALWIELD: i32 = 39;
 const T5_FN_ISFUELWEAPON: i32 = 40;
 const T5_FN_PLAYER: i32 = 41;
+const T5_FN_TEAM: i32 = 43;
+const T5_FN_OTHERTEAM: i32 = 44;
 const T5_FN_MENUISOPEN: i32 = 47;
 const T5_FN_INPRIVATEPARTY: i32 = 50;
 const T5_FN_PRIVATEPARTYHOST: i32 = 51;
@@ -53,13 +57,23 @@ const T5_FN_LOCSTRING: i32 = 64;
 const T5_FN_LOCALVARINT: i32 = 65;
 const T5_FN_LOCALVARBOOL: i32 = 66;
 const T5_FN_LOCALVARSTRING: i32 = 68;
+const T5_FN_TIMELEFT: i32 = 69;
+const T5_FN_SECONDSASCOUNTDOWN: i32 = 70;
 const T5_FN_INT: i32 = 72;
+const T5_FN_GAMETYPENAME: i32 = 75;
+const T5_FN_SCOREATRANK: i32 = 78;
+const T5_FN_SPECTATINGCLIENT: i32 = 80;
 const T5_FN_KEYBINDING: i32 = 81;
 const T5_FN_GAMEHOST: i32 = 86;
+const T5_FN_ISVISIBILITYBITSET: i32 = 87;
 const T5_FN_ISSPLITSCREEN: i32 = 88;
 const T5_FN_ISSPLITSCREENHOST: i32 = 89;
+const T5_FN_ISINTERMISSION: i32 = 104;
 const T5_FN_GETTEXTWIDTH: i32 = 204;
 const T5_FN_ISPROFILESIGNEDIN: i32 = 209;
+const T5_FN_SELECT: i32 = 291;
+const T5_FN_GETLOCALCLIENTNUM: i32 = 321;
+const T5_FN_TOUPPER: i32 = 425;
 // Not in `functions.txt`: the evaluator keeps its own number for these.
 const T5_FN_MENUHASFOCUS: i32 = 309;
 const T5_FN_ISINGAME: i32 = 355;
@@ -330,6 +344,18 @@ fn binary(op: i32, a: Operand, b: Operand) -> Result<Operand, ExprError> {
     })
 }
 
+/// `secondsascountdown`: milliseconds as minutes (two wide) and two-digit
+/// seconds, with tenths when asked; a negative count is zero.
+fn countdown(ms: i32, tenths: bool) -> String {
+    let ms = ms.max(0);
+    let seconds = ms / 1000;
+    if tenths {
+        format!("{:2}:{:02}.{}", seconds / 60, seconds % 60, ms % 1000 / 100)
+    } else {
+        format!("{:2}:{:02}", seconds / 60, seconds % 60)
+    }
+}
+
 fn pop(stack: &mut Vec<Value>) -> Result<Value, ExprError> {
     stack.pop().ok_or(ExprError::StackUnderflow)
 }
@@ -373,6 +399,60 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_ISSPLITSCREEN => Operand::Int(0),
         T5_FN_ISSPLITSCREENHOST => Operand::Int(1),
         T5_FN_ISPROFILESIGNEDIN => Operand::Int(1),
+        T5_FN_GETLOCALCLIENTNUM => Operand::Int(0),
+        T5_FN_MIN | T5_FN_MAX => {
+            let args = args()?;
+            let [a, b] = args.as_slice() else {
+                return Err(ExprError::Host("min and max take two arguments"));
+            };
+            let less = compare(a.clone(), b.clone(), |a, b| a < b, |a, b| a < b);
+            let pick_a = if op == T5_FN_MIN { less } else { !less };
+            let pick = if pick_a { a } else { b };
+            match (a, b) {
+                (Operand::Int(_), Operand::Int(_)) => pick.clone(),
+                _ => Operand::Float(source_float(pick)),
+            }
+        }
+        // `select(condition, then, else)`.
+        T5_FN_SELECT => {
+            let args = args()?;
+            let [condition, then, otherwise] = args.as_slice() else {
+                return Err(ExprError::Host("select takes three arguments"));
+            };
+            if source_float(condition) != 0.0 {
+                then.clone()
+            } else {
+                otherwise.clone()
+            }
+        }
+        T5_FN_TOUPPER => Operand::Str(
+            source_string(args()?.first().ok_or(ExprError::StackUnderflow)?).to_ascii_uppercase(),
+        ),
+        T5_FN_TEAM => host.team_field(&arg_str(&args()?)?)?,
+        T5_FN_OTHERTEAM => host.other_team_field(&arg_str(&args()?)?)?,
+        T5_FN_TIMELEFT => Operand::Int(host.time_left()?),
+        T5_FN_SECONDSASCOUNTDOWN => {
+            let args = args()?;
+            let (ms, tenths) = match args.as_slice() {
+                [ms] => (ms, false),
+                [ms, tenths] => (ms, source_float(tenths) != 0.0),
+                _ => {
+                    return Err(ExprError::Host(
+                        "secondsAsCountdown takes one or two arguments",
+                    ));
+                }
+            };
+            Operand::Str(countdown(source_float(ms) as i32, tenths))
+        }
+        T5_FN_GAMETYPENAME => host.gametype_name()?,
+        T5_FN_SCOREATRANK => Operand::Int(host.score_at_rank(source_int(
+            args()?.first().ok_or(ExprError::StackUnderflow)?,
+        ))?),
+        T5_FN_SPECTATINGCLIENT => Operand::Int(host.spectating_client()?),
+        T5_FN_ISINTERMISSION => Operand::Int(host.intermission()?),
+        T5_FN_ISVISIBILITYBITSET => Operand::Int(host.visibility_bit(source_int(
+            args()?.first().ok_or(ExprError::StackUnderflow)?,
+        ))?),
         T5_FN_LOCSTRING => Operand::Str(host.localize(&args()?)?),
         T5_FN_LOCALVARINT => Operand::Int(host.local_var_int(&arg_str(&args()?)?)?),
         T5_FN_LOCALVARBOOL => {

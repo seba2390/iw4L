@@ -35,6 +35,9 @@ pub struct GameCodeHud {
     pub command_hint: Option<CommandHintFn>,
     /// The game's grenade indicators.
     pub grenade_indicators: Option<GrenadeIndicatorFn>,
+    /// Whether the game's HUD visibility bit (its number, which a menu's
+    /// `isvisibilitybitset` tests) is set; `None` answers none.
+    pub visibility_bit: Option<VisibilityBitFn>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
@@ -49,6 +52,22 @@ pub struct CommandHint {
 }
 
 pub type CommandHintFn = fn(CommandHint, Option<i32>, i32) -> CommandHint;
+
+/// Whether a HUD visibility bit is set; a bit the runtime cannot answer is
+/// its ledger entry.
+pub type VisibilityBitFn = fn(i32, &VisibilityView<'_>) -> Result<bool, &'static Unknown>;
+
+/// What a game's HUD visibility bits read.
+pub struct VisibilityView<'a> {
+    /// The local player as the game's movement keeps him.
+    pub player: &'a MovePlayer,
+    /// The local player's team (`0` free, `1` axis, `2` allies, `3`
+    /// spectator).
+    pub team: i32,
+    /// The scoreboard is up.
+    pub scoreboard: bool,
+    pub in_killcam: bool,
+}
 
 /// What a game's hint or message owner draw (its number) shows this frame.
 pub type OwnerHintFn = fn(i32, &OwnerHintView<'_>) -> OwnerHint;
