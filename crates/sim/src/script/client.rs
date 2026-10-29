@@ -100,6 +100,8 @@ pub(crate) struct LocalPlayerView {
     pub(crate) eye: [f32; 3],
     /// Its weapons' clip ammo, by weapon name.
     pub(crate) clips: std::collections::BTreeMap<String, i32>,
+    /// Its weapons' ammo outside the clip, by weapon name.
+    pub(crate) stocks: std::collections::BTreeMap<String, i32>,
     /// The naked vision the server last set for it, `default` before any.
     pub(crate) naked_vision: String,
 }
@@ -144,14 +146,26 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
         16.0,
         20.0,
     );
-    let clips = ps
+    let held: Vec<u32> = ps
         .weapons
         .iter()
         .filter_map(|&held| u32::try_from(held).ok().filter(|&w| w != 0))
-        .map(|held| {
+        .collect();
+    let clips = held
+        .iter()
+        .map(|&held| {
             (
                 crate::script_player::weapon_name(&frame, held),
                 crate::script_player::ammo_clip(&frame, id, held),
+            )
+        })
+        .collect();
+    let stocks = held
+        .iter()
+        .map(|&held| {
+            (
+                crate::script_player::weapon_name(&frame, held),
+                crate::script_player::ammo_stock(&frame, id, held),
             )
         })
         .collect();
@@ -167,6 +181,7 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
         angles: ps.viewangles,
         eye,
         clips,
+        stocks,
         naked_vision,
     }
 }

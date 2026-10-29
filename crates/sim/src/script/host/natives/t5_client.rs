@@ -844,6 +844,20 @@ fn register_player_view(registry: &mut NativeRegistry) {
             player_view(world).clips.get(&weapon).copied().unwrap_or(0),
         ))
     });
+    // `GetTotalAmmo(local, weapon)`: the weapon's stock and clip together
+    // (`t5.csc.total_ammo` for weapons sharing an ammo cap).
+    registry.register(Function, "gettotalammo", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to GetTotalAmmo()\nUSAGE: GetTotalAmmo( <localClientNum>, <weaponName> )\n".into());
+        }
+        local_index(args)?;
+        let weapon = string(args, 1)?;
+        let view = player_view(world);
+        let ammo = |held: &std::collections::BTreeMap<String, i32>| {
+            held.get(&weapon).copied().unwrap_or(0)
+        };
+        Ok(Value::Int(ammo(&view.stocks) + ammo(&view.clips)))
+    });
     // `ent getSpeed()`: the local player's velocity, any other entity's
     // move between its last two snapshots, per second.
     registry.register(Method, "getspeed", |world, receiver, _| {

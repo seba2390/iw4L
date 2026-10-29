@@ -43,6 +43,24 @@ In a hosted private match, from the console:
 bots drive them (#709); `bot add N` also works. A headless
 check: `--cmds "wait world; wait 3s; script … smg_mp; wait 10s; screenshot x; finish_run"`.
 
+## Weapons
+
+Every base weapon fires, reloads and aims on Black Ops' own weapon
+definitions, with its attachment variants. An underbarrel grenade
+launcher, flamethrower or Masterkey is switched to with action slot 3
+(D-pad left), as the class scripts bind it; dual-wield pistols and SMGs
+fire the right gun with fire and the left with aim. With cheats on, the
+console gives a weapon by its family and attachments:
+
+```
+give weapon/t5:famas gl
+give weapon/t5:l96a1 vzoom
+```
+
+Use the `t5:` prefix: several Black Ops names (`famas`, `ak47`, `aug`)
+are also Modern Warfare 2 weapons. Dropped weapons still follow the
+runtime's own item rules (#720).
+
 ## Play with friends
 
 Host an unlisted lobby and hand your friends its invite code
