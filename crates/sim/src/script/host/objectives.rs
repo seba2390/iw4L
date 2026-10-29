@@ -4,7 +4,7 @@ use crate::script::runtime::type_name;
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
 use crate::{CompassObjective, ObjectiveMatch, ObjectiveState, ScriptEffect};
 use bevy_ecs::prelude::World;
-use gamemode_iw4::Team;
+pub(crate) use gamemode_iw4::Team;
 
 const MAX_OBJECTIVES: i32 = 32;
 const ENGINE_SERVER_INFO: &[&str] = &[
@@ -21,12 +21,12 @@ const ENGINE_SERVER_INFO: &[&str] = &[
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ScriptObjective {
-    state: ObjectiveState,
-    origin: [f32; 3],
-    entity: Option<Value>,
-    team: Team,
-    icon: String,
-    viewer: Option<u32>,
+    pub(crate) state: ObjectiveState,
+    pub(crate) origin: [f32; 3],
+    pub(crate) entity: Option<Value>,
+    pub(crate) team: Team,
+    pub(crate) icon: String,
+    pub(crate) viewer: Option<u32>,
 }
 
 impl ScriptObjective {
@@ -48,7 +48,7 @@ fn state(args: &[Value], at: usize) -> Result<ObjectiveState, String> {
     ObjectiveState::from_script(&name).ok_or_else(|| format!("Illegal objective state \"{name}\""))
 }
 
-fn objective(world: &mut World, index: u8) -> bevy_ecs::world::Mut<'_, ScriptObjective> {
+pub(crate) fn objective(world: &mut World, index: u8) -> bevy_ecs::world::Mut<'_, ScriptObjective> {
     world
         .resource_mut::<RoundScript>()
         .map_unchanged(|runtime| runtime.engine.objectives.entry(index).or_default())

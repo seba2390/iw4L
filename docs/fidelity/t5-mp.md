@@ -84,6 +84,15 @@ Each open section names the issue that works it.
       spectator's own machine) is kept like a team; every machine here has
       one player, so it never changes whom a spectator may follow.
 
+- [ ] **G** An objective following an entity (`objective_onentity`) is
+      drawn at the entity's current origin; Black Ops' per-frame copy of
+      that origin into the objective is not located in `BlackOpsMP.exe`, so
+      when it stops following (`objective_state` empty or invisible) it
+      keeps the position it was last given, not the entity's last one.
+      `objective_current`, `objective_setvisibletoplayer`,
+      `objective_setinvisibletoplayer`, `objective_setvisibletoall`,
+      `objective_setinvisibletoall`, `objective_setsize` and
+      `objective_setcolor` are not implemented.
 - [ ] **G** `map_restart` on a multiplayer map reinstalls the scripts but
       the scene never reports spawned again, so a command after it waits
       out the console's gate (#646).
@@ -159,7 +168,12 @@ Each open section names the issue that works it.
       `gettotalammo` (#648); the vehicle queries (#660).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
-      `r_outdoorfeather`).
+      `r_outdoorfeather`); Black Ops' refusal of a dvar that does not exist
+      or lacks the saved flag is not applied (the client has no dvar
+      registry with flags).
+- [ ] **I** `t5.csc.server_time`: `getservertime` answers the client's
+      time; Black Ops subtracts a field of the client's current snapshot
+      from it, which is not identified yet.
 
 ## HUD and menus (#651, #664)
 
@@ -265,7 +279,23 @@ Each open section names the issue that works it.
       detonation scores; a Demolition attacker plants at A (+100) (#654).
 - [x] **G** `istouchingswept` was refused, so `_gameobjects`'
       `shouldBeReset` faulted when a dropped bomb was checked against the
-      minefield and hurt triggers; it takes the shared swept-touch test.
+      minefield and hurt triggers. It now runs Black Ops' own test: the
+      non-volume entity's box (the receiver's when neither is a volume),
+      stretched to the given heights and grown to at least its width in
+      height, against the other; it had taken Black Ops II's, which pads the
+      box by a unit and answers false when neither is a volume.
+- [x] **G** The objective builtins were Modern Warfare 2's: they took a
+      `"done"` and `"failed"` state, an entity as `objective_add`'s
+      position, a player or `"free"` as `objective_team`'s team, reset the
+      icon and position on `objective_add`, and kept following an entity
+      after `objective_state` hid it. Black Ops' own now run: four states,
+      whole-unit positions, `objective_add` keeping the slot's icon and
+      position unless given, `objective_state` empty or invisible and
+      `objective_position` ending the follow, and Black Ops' icon-name and
+      team errors.
+- [x] **V** The client's `setsaveddvar` took any value; it now refuses a
+      localized string and an invalid dvar name and turns the value's
+      double quotes to single ones, as Black Ops' client does.
 - [x] **G** Every base map loads and plays a Team Deathmatch to its end
       with Black Ops' bots; the only script fault is `testspawnpoint`
       when a bot carries a tactical insertion (#649) (#670).
