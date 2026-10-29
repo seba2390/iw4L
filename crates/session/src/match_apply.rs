@@ -712,6 +712,7 @@ pub fn apply_prepared_match(
                 .map(|_| Default::default()),
             effect_lives: script_level.effect_lives.clone(),
             primary_lights: script_level.primary_lights.clone(),
+            dyn_ents: script_level.dyn_ents.clone(),
             ..Default::default()
         });
         sim.install_gsc_program(scripts, natives, script_level)
@@ -1435,10 +1436,25 @@ fn preflight_match_install(
             })
             .collect()
     });
+    let dyn_ents = [
+        &prepared.world.dyn_ents.models,
+        &prepared.world.dyn_ents.brushes,
+    ]
+    .into_iter()
+    .zip(0u8..)
+    .flat_map(|(defs, pool)| {
+        defs.iter().map(move |def| sim::script::MapDynEnt {
+            pool,
+            index: def.index,
+            origin: def.origin,
+        })
+    })
+    .collect();
     let mut script_level = sim::script::LevelData {
         absent_effects,
         effect_lives,
         primary_lights,
+        dyn_ents,
         client_keys,
         player_data_defaults: account_defaults.clone(),
         schemas: sources.0.schemas().clone(),

@@ -1,4 +1,4 @@
-//! Where Black Ops 2 keeps the compiled scripts a zombies map runs.
+//! Where Black Ops 2 keeps the compiled scripts a map runs.
 
 use std::sync::OnceLock;
 
@@ -10,11 +10,17 @@ pub static SCRIPT_ZONE_FORMAT: asset_core::ScriptZoneFormat = asset_core::Script
     mode_tables_zone: "patch_zm",
 };
 
-/// The engine loads the common zone, its patch, the gametype's zone, the map
-/// and the map's own patch, in that order.
+/// A zombies map: the engine loads the common zone, its patch, the
+/// gametype's zone, the map and the map's own patch, in that order. A
+/// multiplayer map: the common zone, the map, then `patch_mp`, which carries
+/// every multiplayer script and a newer copy of each map's; its place after
+/// the map is not checked against `t6mp.exe` (docs/fidelity/t6-mp.md).
 fn script_zones(map: &str, mode_zone: Option<&str>) -> Vec<String> {
     if !map.starts_with("zm_") {
-        return Vec::new();
+        return ["common_mp", map, "patch_mp"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
     }
     ["common_zm", "patch_zm"]
         .into_iter()

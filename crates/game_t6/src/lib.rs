@@ -88,8 +88,14 @@ impl game_api::GameScripts for T6 {
         request: &ScriptRequest<'_>,
         sources: &dyn gsc::SourceResolver,
     ) -> Option<Rule<game_api::ClientScriptProgram>> {
-        (own_gametype(request.gametype) && own_scripts(request.map))
-            .then(|| client::program(request, sources))
+        if own_gametype(request.gametype) && own_scripts(request.map) {
+            return Some(client::program(request, sources));
+        }
+        // Black Ops 2's multiplayer client scripts run on the multiplayer
+        // maps under the Free for All and Team Deathmatch that IW4L's rules
+        // still host (docs/fidelity/t6-mp.md).
+        (!request.map.starts_with("zm_") && matches!(request.gametype, "dm" | "war"))
+            .then(|| client::multiplayer_program(request, sources))
     }
 
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
@@ -121,6 +127,15 @@ fn own_scripts(map: &str) -> bool {
 /// Survival, Grief and Turned (the gametype rows of `zm/gametypestable.csv`).
 fn own_gametype(gametype: &str) -> bool {
     matches!(gametype, "zclassic" | "zstandard" | "zgrief" | "zcleansed")
+}
+
+/// A multiplayer gametype's script name: the lobby's `war` is Black Ops 2's
+/// Team Deathmatch, `tdm` (`maps/mp/gametypes/tdm`).
+fn script_gametype(gametype: &str) -> &str {
+    match gametype {
+        "war" => "tdm",
+        other => other,
+    }
 }
 
 /// The map whose Classic still runs IW4L's rules.

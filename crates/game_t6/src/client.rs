@@ -6,14 +6,12 @@ use game_api::{ClientScriptCallbacks, ClientScriptProgram, KeyType, Rule, Script
 
 use crate::{client_builtins, keys, startup};
 
-const CALLBACKS: &str = "clientscripts/mp/zombies/_callbacks";
+const ZOMBIES_CALLBACKS: &str = "clientscripts/mp/zombies/_callbacks";
+const MULTIPLAYER_CALLBACKS: &str = "clientscripts/mp/_callbacks";
 
-/// The modules the client loader asks for before the map's: the code
-/// scripts, the zombies callbacks and the engine's own client modules.
-const ENGINE_MODULES: [&str; 6] = [
-    "codescripts/delete",
-    "codescripts/struct",
-    CALLBACKS,
+/// The engine's own client modules the loader asks for after the code
+/// scripts and the callbacks, before the map's.
+const ENGINE_MODULES: [&str; 3] = [
     "clientscripts/mp/_dogs",
     "clientscripts/mp/_fx",
     "clientscripts/mp/_footsteps",
@@ -35,13 +33,40 @@ pub(crate) fn program(
             "the map's start location and gametype"
         ));
     };
+    build(request, sources, ZOMBIES_CALLBACKS, &start.gametype)
+}
+
+/// A multiplayer map's client scripts: `clientscripts/mp/_callbacks` and
+/// the gametype's own client module (`clientscripts/mp/gametypes/<g>`).
+/// `t6mp.exe`'s loader is not read: it is taken to ask for the same engine
+/// modules as `t6zm.exe`'s with the multiplayer callbacks in place of the
+/// zombies ones (`t6.csc.mp_loader`).
+pub(crate) fn multiplayer_program(
+    request: &ScriptRequest<'_>,
+    sources: &dyn gsc::SourceResolver,
+) -> Rule<ClientScriptProgram> {
+    build(
+        request,
+        sources,
+        MULTIPLAYER_CALLBACKS,
+        crate::script_gametype(request.gametype),
+    )
+}
+
+fn build(
+    request: &ScriptRequest<'_>,
+    sources: &dyn gsc::SourceResolver,
+    callbacks_module: &str,
+    gametype: &str,
+) -> Rule<ClientScriptProgram> {
     let entities = entity_pairs(request.entities);
     let aitypes = aitypes(&entities);
-    let gametype = format!("clientscripts/mp/gametypes/{}", start.gametype);
+    let gametype = format!("clientscripts/mp/gametypes/{gametype}");
     let map = format!("clientscripts/mp/{}", request.map);
-    let roots: Vec<String> = ENGINE_MODULES
-        .iter()
-        .map(|&module| module.to_owned())
+    let roots: Vec<String> = ["codescripts/delete", "codescripts/struct", callbacks_module]
+        .into_iter()
+        .chain(ENGINE_MODULES)
+        .map(str::to_owned)
         .chain(
             aitypes
                 .iter()
@@ -94,26 +119,26 @@ pub(crate) fn program(
     let starts = [
         format!("{gametype}::main"),
         format!("{map}::main"),
-        format!("{CALLBACKS}::codecallback_precachegametype"),
-        format!("{CALLBACKS}::codecallback_finalizeinitialization"),
-        format!("{CALLBACKS}::codecallback_startgametype"),
+        format!("{callbacks_module}::codecallback_precachegametype"),
+        format!("{callbacks_module}::codecallback_finalizeinitialization"),
+        format!("{callbacks_module}::codecallback_startgametype"),
     ]
     .iter()
     .filter_map(|name| has(name))
     .collect();
     let callbacks = ClientScriptCallbacks {
-        local_client_connect: has(&format!("{CALLBACKS}::localclientconnect")),
-        player_spawned: has(&format!("{CALLBACKS}::playerspawned")),
-        entity_spawned: has(&format!("{CALLBACKS}::entityspawned")),
-        entity_shutdown: has(&format!("{CALLBACKS}::entityshutdown_callback")),
-        state_change: has(&format!("{CALLBACKS}::statechange")),
-        activate_exploder: has(&format!("{CALLBACKS}::callback_activate_exploder")),
-        deactivate_exploder: has(&format!("{CALLBACKS}::callback_deactivate_exploder")),
-        gib_event: has(&format!("{CALLBACKS}::codecallback_gibevent")),
-        player_jump: has(&format!("{CALLBACKS}::codecallback_playerjump")),
-        player_land: has(&format!("{CALLBACKS}::codecallback_playerland")),
-        player_foliage: has(&format!("{CALLBACKS}::codecallback_playerfoliage")),
-        sound_set_ambient_state: has(&format!("{CALLBACKS}::soundsetambientstate")),
+        local_client_connect: has(&format!("{callbacks_module}::localclientconnect")),
+        player_spawned: has(&format!("{callbacks_module}::playerspawned")),
+        entity_spawned: has(&format!("{callbacks_module}::entityspawned")),
+        entity_shutdown: has(&format!("{callbacks_module}::entityshutdown_callback")),
+        state_change: has(&format!("{callbacks_module}::statechange")),
+        activate_exploder: has(&format!("{callbacks_module}::callback_activate_exploder")),
+        deactivate_exploder: has(&format!("{callbacks_module}::callback_deactivate_exploder")),
+        gib_event: has(&format!("{callbacks_module}::codecallback_gibevent")),
+        player_jump: has(&format!("{callbacks_module}::codecallback_playerjump")),
+        player_land: has(&format!("{callbacks_module}::codecallback_playerland")),
+        player_foliage: has(&format!("{callbacks_module}::codecallback_playerfoliage")),
+        sound_set_ambient_state: has(&format!("{callbacks_module}::soundsetambientstate")),
     };
     let (client_ents, entity_spawnflags) = client_entities(&entities, &key_types)
         .into_iter()

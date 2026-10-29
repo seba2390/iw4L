@@ -910,6 +910,9 @@ pub(crate) fn install(
         map: level.primary_lights.clone(),
         ..Default::default()
     });
+    world.insert_resource(
+        super::host::natives::t6::client::dynent::ClientDynEnts::new(level.dyn_ents.clone()),
+    );
     triggers::spawn(server, &mut world);
     server.insert_resource(present::ClientPresentation::default());
     server.insert_resource(ClientScripts {

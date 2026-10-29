@@ -19,7 +19,8 @@ pub(crate) use host::controls::{
     action_slot_command, command_buttons, player_commands, select_location,
 };
 pub use host::entities::{
-    KeyType, LevelData, MapPrimaryLight, StringTable, parse_entity_string, parse_radiant_keys,
+    KeyType, LevelData, MapDynEnt, MapPrimaryLight, StringTable, parse_entity_string,
+    parse_radiant_keys,
 };
 pub(crate) use host::entity_damage::{
     EntityHit, HitTarget, NotifyValue, ScriptBlast, ScriptHit, damage_entity, notify_entity,

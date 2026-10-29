@@ -4,6 +4,7 @@
 //! server's handler of the same name it is still ported from the client's.
 
 pub(crate) mod ambient;
+pub(crate) mod dynent;
 mod effects;
 pub(crate) mod entity;
 mod fields;
@@ -46,6 +47,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
     }
     pure::register(registry);
+    dynent::register(registry);
     entity::register(registry);
     fields::register(registry);
     effects::register(registry);
