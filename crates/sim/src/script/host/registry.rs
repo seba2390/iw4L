@@ -77,6 +77,7 @@ impl NativeRegistry {
         Self::client(server, |registry| {
             natives::t5_client::register(registry);
             natives::t5_viewmodel::register_client(registry);
+            natives::t5_perks::register_client(registry);
         })
     }
 
@@ -173,6 +174,7 @@ impl NativeRegistry {
     /// zombies server's.
     pub fn with_black_ops_multiplayer(mut self) -> Self {
         natives::t5_objectives::register(&mut self);
+        natives::t5_perks::register(&mut self);
         self
     }
 }
