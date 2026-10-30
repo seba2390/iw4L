@@ -921,13 +921,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "spawnvehicle", |world, _, args| {
         let model = super::string(args, 0)?;
         let targetname = super::string(args, 1)?;
-        let _veh_type = super::string(args, 2)?;
+        let vehicle_type = super::string(args, 2)?;
         let at = super::vector(args, 3)?;
         let angles = super::vector(args, 4)?;
         let mut runtime = world.resource_mut::<RoundScript>();
         let id = runtime.create_entity(EntityKind::Vehicle, "script_vehicle")?;
         runtime.set_object_field(id, "model", Value::String(model.into()));
         runtime.set_object_field(id, "targetname", Value::String(targetname.into()));
+        runtime.set_object_field(id, "vehicletype", Value::String(vehicle_type.into()));
         runtime.set_object_field(id, "origin", Value::Vector(at));
         runtime.set_object_field(id, "angles", Value::Vector(angles));
         Ok(Value::Object(id))

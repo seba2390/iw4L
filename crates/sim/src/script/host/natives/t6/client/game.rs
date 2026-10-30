@@ -200,6 +200,21 @@ fn snapshot(server: &mut World) -> Vec<SnapshotEntity> {
                 fields.push((name, value));
             }
             fields.push(("type", Value::string(type_name(etype))));
+            // A player's velocity, as the client's `getvelocity` reads it.
+            if let Some(client) = server.resource::<RoundScript>().player_client(id) {
+                let frame = crate::frame::FrameWorld::from_world(server);
+                let velocity = frame
+                    .player(crate::ClientId(client))
+                    .map_or([0.0; 3], |ps| ps.velocity);
+                fields.push(("velocity", Value::Vector(velocity)));
+            }
+            // A vehicle's type, and its class, which the vehicle definitions'
+            // data would give (t6.csc.vehicles.class).
+            if etype == 14 {
+                let value = crate::script::host::players::entity_field(server, id, "vehicletype");
+                fields.push(("vehicletype", value));
+                fields.push(("vehicleclass", Value::string("")));
+            }
             fields.push((
                 "weapon",
                 Value::string(&snapshot_weapon(server, id, number, etype)),

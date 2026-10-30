@@ -69,6 +69,11 @@ Each open section names the issue that works it.
       vehicle definitions' effects are not read (#692).
 - [ ] **G** `t6.heli.height_patches`: `setheliheightpatchenabled` keeps
       nothing until the helicopter runtime (#691).
+- [ ] **G** `t6.mp.touching_volume`: `gettouchingvolume` answers players by
+      their bounds and other entities by their origin, not by the engine's
+      area query over entity bounds and contents (#703).
+- [ ] **I** `t6.mp.entity_flags`: `allowbottargetting` and `setcheapflag` keep
+      nothing (#696, #703).
 - [ ] **G** `t6.bots.test_clients`: `istestclient` answers 0 (#696).
 - [ ] **G** `t6.weapons.attachments`: a weapon named with its attachments
       (`hk416_mp+reflex+dualclip`) is the base weapon: no attachment changes its
@@ -119,12 +124,13 @@ Each open section names the issue that works it.
 - [ ] **V** Team characters do not come from the map's factions
       (`faction_*_mp` and their `_sand`, `_wet` and `_snow` variants, picked by
       the map's team set) (#675).
-- [ ] **G** Cargo's crane (`mp_dockside_crane.gsc`) stops in `init` reading an
-      entity's `model`, undefined on an entity with none where the script
-      expects text, and does not lift its crates (#703).
 - [ ] **I** A headless run of Black Ops 2's own scripts sometimes ends in Metal
       `DeviceLost` (`Cannot allocate sample buffer`) soon after loading; the
-      cause is not traced, and IW4L's rules have not shown it.
+      cause is not traced. It has also ended a Nuketown zombies run, so it is not
+      particular to the multiplayer scripts.
+- [ ] **G** The 19 installed maps have each run 25 to 35 s of a Team
+      Deathmatch with bots, with no script error, on the recompiled copy of the
+      module. Only Cargo has been played to the end of a match (#704).
 - [ ] **G** Destructibles (`_destructible.gsc`), interactive objects and the
       maps' moving parts (Express's train, Cargo's crane) have not run;
       `setdamagestage` is not implemented (#703).
@@ -250,6 +256,12 @@ Each open section names the issue that works it.
 - [ ] **V** On Cargo `_fxanim.csc` stops in `fxanim_init` and
       `_fxanim_model_link`: `getent` finds more than one entity by a name, so
       its animated props do not link (#678).
+- [ ] **G** `t6.csc.vehicles.class`: a client vehicle's `vehicleclass` is empty:
+      the vehicle definitions' class is not read, so no script takes its
+      4-wheel or tank branch (#692).
+- [ ] **V** `t6.csc.velocity`: the client's `getvelocity` answers a player's
+      velocity, and none for another entity, whose position delta is not kept
+      (#678).
 - [ ] **V** `t6.csc.dynent.enabled` (`natives::t6::client::dynent`):
       `setdynentenabled` keeps the state the scripts set, but the renderer
       does not read it: a dynamic entity turned off (Cargo's at
