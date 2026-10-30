@@ -1013,6 +1013,17 @@ pub struct LibraryStart {
 pub trait GameModes: Sync {
     fn mode(&self, gametype: &str) -> Rule<ModeRules>;
 
+    /// The rules of a match, for games whose rules depend on the compiled
+    /// modules the map's zones carry (`has_module`).
+    fn mode_for_match(
+        &self,
+        map: &str,
+        gametype: &str,
+        _has_module: &dyn Fn(&str) -> bool,
+    ) -> Rule<ModeRules> {
+        self.mode_on_map(map, gametype)
+    }
+
     /// The mode's rules on one map, for games whose rules differ by map.
     fn mode_on_map(&self, _map: &str, gametype: &str) -> Rule<ModeRules> {
         self.mode(gametype)

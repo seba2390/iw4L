@@ -578,10 +578,31 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "sessionmodeisonlinegame", |_, _, _| {
         Ok(Value::Int((SESSION_FLAGS >> 2 & 1) as i32))
     });
-    registry.register(Function, "sessionmodeiszombiesgame", |_, _, _| {
-        Ok(Value::Int(1))
+    // Only a zombies game's client program links the zombies callbacks.
+    registry.register(Function, "sessionmodeiszombiesgame", |world, _, _| {
+        Ok(Value::Int(
+            world
+                .resource::<RoundScript>()
+                .program
+                .as_ref()
+                .is_some_and(|program| {
+                    program
+                        .names
+                        .contains_key("clientscripts/mp/zombies/_callbacks::localclientconnect")
+                })
+                .into(),
+        ))
     });
     registry.register(Function, "getmaxlocalclients", |_, _, _| Ok(Value::Int(1)));
+    // The compass's map coordinates and the local radar, which the compass
+    // does not read yet (t6.csc.radar).
+    registry.register(Function, "setmaplatlong", |_, _, _| Ok(Value::Undefined));
+    registry.register(Function, "setlocalradarenabled", |_, _, _| {
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setlocalradarposition", |_, _, _| {
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     // This build's split screen query is always false.
     registry.register(Function, "issplitscreen", |_, _, _| Ok(Value::Int(0)));

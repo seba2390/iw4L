@@ -19,7 +19,10 @@ pub(crate) fn player(world: &World, receiver: &Value) -> Result<u32, String> {
     }
 }
 
-fn slot(world: &mut World, client: u32) -> Result<&mut super::super::players::PlayerSlot, String> {
+pub(crate) fn slot(
+    world: &mut World,
+    client: u32,
+) -> Result<&mut super::super::players::PlayerSlot, String> {
     world
         .resource_mut::<RoundScript>()
         .into_inner()

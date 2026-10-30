@@ -3456,13 +3456,22 @@ impl ZoneLane for T6Lane {
                 "dlc/mounted.txt",
                 asset_transport::t6_content::T6ContentMode::dlc_packages(path).join("\n"),
             );
+            // The factions' scripts are in the factions' own zones.
+            let faction_zones = [&team_settings.allies_charset, &team_settings.axis_charset]
+                .into_iter()
+                .flatten()
+                .map(|faction| path.with_file_name(format!("faction_{faction}_mp.ff")));
             super::capture_script_zones(
                 path,
                 image,
-                mode.captured_patches(),
+                faction_zones.chain(mode.captured_patches()).collect(),
                 &mut scripts,
                 &mut report,
             );
+            for (module, bytes) in mode.captured_modules() {
+                report.push(format!("scripts: captured module {module}"));
+                scripts.capture_module(&module, bytes);
+            }
             if let Ok(ropes) = capture_t6_ropes(&load)
                 && !ropes.is_empty()
             {

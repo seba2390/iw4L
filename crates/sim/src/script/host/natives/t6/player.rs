@@ -832,12 +832,6 @@ fn register_rest(registry: &mut NativeRegistry) {
             Ok(Value::Undefined)
         },
     );
-    registry.register(Method, "getloadoutitem", |world, receiver, args| {
-        client_or_error(world, receiver)?;
-        int(args, 0)?;
-        super::string(args, 1)?;
-        Ok(Value::Int(0))
-    });
     registry.register(Method, "isbonuscardactive", |world, receiver, args| {
         super::super::engine::entity_id(world, receiver)?;
         let card = int(args, 0)?;
@@ -867,9 +861,15 @@ fn register_rest(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
+    // A multiplayer script waits for the menu's answer, which only comes to
+    // a menu that is open.
     registry.register(Method, "openmenu", |world, receiver, args| {
         client_or_error(world, receiver)?;
-        super::string(args, 0)?;
+        let menu = super::string(args, 0)?.to_ascii_lowercase();
+        if super::multiplayer::is_multiplayer(world) {
+            let client = super::client_of(world, receiver)?;
+            super::super::player::slot(world, client)?.menu = Some(menu.into());
+        }
         Ok(Value::Int(1))
     });
     registry.register(Method, "suicide", |world, receiver, _| {

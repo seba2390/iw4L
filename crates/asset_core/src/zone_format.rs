@@ -223,6 +223,8 @@ pub struct ZoneWeapon {
     pub damage_curve: [(i32, f32); 6],
     /// How a fire uses the barrels (the game's number).
     pub fire_barrels: i32,
+    /// Milliseconds between shots.
+    pub fire_time: i32,
     pub penetrate_type: i32,
     /// A bullet weapon's rifle (else pistol) bullets.
     pub rifle_bullet: bool,

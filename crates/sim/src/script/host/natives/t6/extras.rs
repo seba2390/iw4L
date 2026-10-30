@@ -1042,26 +1042,33 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 super::int(args, 4)?;
             }
         }
-        let list: Vec<Value> = world
+        let influencer_team = super::team(args, 1)?;
+        let points = world
             .get_resource::<SpawnPoints>()
             .and_then(|s| s.0.get(&team))
-            .map_or_else(Vec::new, |pts| {
-                pts.iter().copied().map(Value::Object).collect()
-            });
-        super::super::super::arrays::new_array(world, list)
+            .cloned()
+            .unwrap_or_else(Vec::new);
+        // Scored here by IW4L's reading of the influencers (t6.spawn.scoring):
+        // the highest wins, the scripts take one.
+        let best = best_spawn_point(world, &points, influencer_team);
+        super::super::super::arrays::new_array(
+            world,
+            best.map_or_else(Vec::new, |point| vec![Value::Object(point)]),
+        )
     });
     registry.register(Function, "addsphereinfluencer", |world, _, args| {
         let kind = super::int(args, 0)?;
         if !(0..=7).contains(&kind) {
             return Err("USAGE: addsphereinfluencer type must be a value from 0 to 6\n".into());
         }
-        super::vector(args, 1)?;
-        super::float(args, 2)?;
-        super::float(args, 3)?;
-        super::int(args, 4)?;
+        let origin = super::vector(args, 1)?;
+        let radius = super::float(args, 2)?;
+        let score = super::float(args, 3)?;
+        let team_mask = super::int(args, 4)?;
         string(args, 5)?;
+        let mut curve = 0;
         if args.len() > 6 {
-            let curve = super::int(args, 6)?;
+            curve = super::int(args, 6)?;
             if !(0..=4).contains(&curve) {
                 return Err(
                     "USAGE: addsphereinfluencer curve must be a value from 0 to 4\n".into(),
@@ -1071,30 +1078,43 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if args.len() > 7 {
             super::float(args, 7)?;
         }
+        let mut entity = None;
         if args.len() > 8 {
-            super::super::engine::entity_id(world, super::arg(args, 8)?)?;
+            entity = Some(super::super::engine::entity_id(
+                world,
+                super::arg(args, 8)?,
+            )?);
         }
-        let mut inf = world.get_resource_or_insert_with(Influencers::default);
-        let id = inf.next;
-        inf.next += 1;
-        inf.live.insert(id);
-        Ok(Value::Int(id))
+        Ok(Value::Int(place_influencer(
+            world,
+            Influencer {
+                origin,
+                radius,
+                axis: None,
+                score,
+                team_mask,
+                curve,
+                entity,
+                enabled: true,
+            },
+        )))
     });
     registry.register(Function, "addcylinderinfluencer", |world, _, args| {
         let kind = super::int(args, 0)?;
         if !(0..=6).contains(&kind) {
             return Err("USAGE: addcylinderinfluencer type must be a value from 0 to 6\n".into());
         }
-        super::vector(args, 1)?;
-        super::vector(args, 2)?;
+        let origin = super::vector(args, 1)?;
+        let forward = super::vector(args, 2)?;
         super::vector(args, 3)?;
-        super::float(args, 4)?;
-        super::float(args, 5)?;
-        super::float(args, 6)?;
-        super::int(args, 7)?;
+        let radius = super::float(args, 4)?;
+        let length = super::float(args, 5)?;
+        let score = super::float(args, 6)?;
+        let team_mask = super::int(args, 7)?;
         string(args, 8)?;
+        let mut curve = 0;
         if args.len() > 9 {
-            let curve = super::int(args, 9)?;
+            curve = super::int(args, 9)?;
             if !(0..=4).contains(&curve) {
                 return Err(
                     "USAGE: addcylinderinfluencer curve must be a value from 0 to 4\n".into(),
@@ -1104,21 +1124,32 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         if args.len() > 10 {
             super::float(args, 10)?;
         }
+        let mut entity = None;
         if args.len() > 11 {
-            super::super::engine::entity_id(world, super::arg(args, 11)?)?;
+            entity = Some(super::super::engine::entity_id(
+                world,
+                super::arg(args, 11)?,
+            )?);
         }
-        let mut inf = world.get_resource_or_insert_with(Influencers::default);
-        let id = inf.next;
-        inf.next += 1;
-        inf.live.insert(id);
-        Ok(Value::Int(id))
+        Ok(Value::Int(place_influencer(
+            world,
+            Influencer {
+                origin,
+                radius,
+                axis: Some((forward, length)),
+                score,
+                team_mask,
+                curve,
+                entity,
+                enabled: true,
+            },
+        )))
     });
     registry.register(Function, "removeinfluencer", |world, _, args| {
         let id = super::int(args, 0)?;
-        let removed = world
-            .get_resource_or_insert_with(Influencers::default)
-            .live
-            .remove(&id);
+        let mut influencers = world.get_resource_or_insert_with(Influencers::default);
+        influencers.placed.remove(&id);
+        let removed = influencers.live.remove(&id);
         if !removed {
             return Err("Trying to remove influencer that does not exist\n".into());
         }
@@ -1126,18 +1157,30 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "enableinfluencer", |world, _, args| {
         let id = super::int(args, 0)?;
-        super::int(args, 1)?;
+        let enabled = super::int(args, 1)? != 0;
         let exists = world
             .get_resource::<Influencers>()
             .is_some_and(|inf| inf.live.contains(&id));
         if !exists {
             return Err("Trying to enable influencer that does not exist\n".into());
         }
+        if let Some(influencer) = world
+            .get_resource_or_insert_with(Influencers::default)
+            .placed
+            .get_mut(&id)
+        {
+            influencer.enabled = enabled;
+        }
         Ok(Value::Undefined)
     });
     registry.register(Function, "setinfluencerteammask", |world, _, args| {
         let id = super::int(args, 0)?;
-        super::int(args, 1)?;
+        let mask = super::int(args, 1)?;
+        if let Some(mut influencers) = world.get_resource_mut::<Influencers>()
+            && let Some(influencer) = influencers.placed.get_mut(&id)
+        {
+            influencer.team_mask = mask;
+        }
         let exists = world
             .get_resource::<Influencers>()
             .is_some_and(|inf| inf.live.contains(&id));
@@ -1242,10 +1285,112 @@ pub(super) fn register(registry: &mut NativeRegistry) {
 #[derive(Resource, Default)]
 struct SpawnPoints(BTreeMap<usize, Vec<u64>>);
 
+fn place_influencer(world: &mut World, influencer: Influencer) -> i32 {
+    let mut influencers = world.get_resource_or_insert_with(Influencers::default);
+    let id = influencers.next;
+    influencers.next += 1;
+    influencers.live.insert(id);
+    influencers.placed.insert(id, influencer);
+    id
+}
+
+/// How far an influencer's score reaches at a fraction of its range.
+fn curve_value(curve: i32, fraction: f32) -> f32 {
+    match curve {
+        1 => 1.0 - fraction,
+        2 => (1.0 - fraction) * (1.0 - fraction),
+        3 => fraction,
+        4 => 2.0 * fraction - 1.0,
+        _ => 1.0,
+    }
+}
+
+/// An influencer's score at a point, from its center or along its axis.
+fn influence(influencer: &Influencer, center: [f32; 3], point: [f32; 3]) -> f32 {
+    let delta = [
+        point[0] - center[0],
+        point[1] - center[1],
+        point[2] - center[2],
+    ];
+    let length2 = |v: [f32; 3]| v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    let distance = match influencer.axis {
+        None => length2(delta).sqrt(),
+        Some((axis, length)) => {
+            let along = delta[0] * axis[0] + delta[1] * axis[1] + delta[2] * axis[2];
+            if !(0.0..=length).contains(&along) {
+                return 0.0;
+            }
+            length2([
+                delta[0] - axis[0] * along,
+                delta[1] - axis[1] * along,
+                delta[2] - axis[2] * along,
+            ])
+            .sqrt()
+        }
+    };
+    if influencer.radius <= 0.0 || distance > influencer.radius {
+        return 0.0;
+    }
+    influencer.score * curve_value(influencer.curve, distance / influencer.radius)
+}
+
+/// The spawn point the influencers favour for a team, ties broken at random
+/// (t6.spawn.scoring).
+fn best_spawn_point(world: &mut World, points: &[u64], team: usize) -> Option<u64> {
+    let placed: Vec<Influencer> = world
+        .get_resource::<Influencers>()
+        .map(|influencers| influencers.placed.values().copied().collect())
+        .unwrap_or_else(Vec::new);
+    let mask = 1i32.checked_shl(team as u32).unwrap_or(0);
+    let centers: Vec<[f32; 3]> = placed
+        .iter()
+        .map(|influencer| {
+            influencer.entity.map_or(influencer.origin, |entity| {
+                super::movement::origin_of(world, entity)
+            })
+        })
+        .collect();
+    let mut best = None;
+    let mut best_score = f32::NEG_INFINITY;
+    for &point in points {
+        let origin = super::movement::origin_of(world, point);
+        let score: f32 = placed
+            .iter()
+            .zip(&centers)
+            .filter(|(influencer, _)| influencer.enabled && influencer.team_mask & mask != 0)
+            .map(|(influencer, center)| influence(influencer, *center, origin))
+            .sum();
+        let random = (super::next_rand(world) >> 17) as f32 / 32768.0;
+        let score = score + random;
+        if score > best_score {
+            best_score = score;
+            best = Some(point);
+        }
+    }
+    best
+}
+
+/// A spawn influencer as the scripts placed it.
+#[derive(Clone, Copy)]
+struct Influencer {
+    origin: [f32; 3],
+    /// A sphere's radius, or a cylinder's.
+    radius: f32,
+    /// A cylinder's axis and length, from its origin.
+    axis: Option<([f32; 3], f32)>,
+    score: f32,
+    team_mask: i32,
+    curve: i32,
+    /// The entity it follows.
+    entity: Option<u64>,
+    enabled: bool,
+}
+
 #[derive(Resource)]
 struct Influencers {
     next: i32,
     live: std::collections::BTreeSet<i32>,
+    placed: BTreeMap<i32, Influencer>,
 }
 
 impl Default for Influencers {
@@ -1253,6 +1398,7 @@ impl Default for Influencers {
         Self {
             next: 1,
             live: std::collections::BTreeSet::new(),
+            placed: BTreeMap::new(),
         }
     }
 }
