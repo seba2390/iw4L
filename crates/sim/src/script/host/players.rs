@@ -396,6 +396,15 @@ impl MenuAnswer {
     }
 }
 
+/// Whether a client's answer to a menu is already on its way.
+pub(crate) fn has_queued_answer(world: &World, client: u32) -> bool {
+    world
+        .resource::<RoundScript>()
+        .menu_answers
+        .get(&client)
+        .is_some_and(|queue| !queue.is_empty())
+}
+
 pub(crate) fn answer_menu(world: &mut World, client: u32, menu: &str, response: &str) {
     push_answer(
         world,

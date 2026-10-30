@@ -73,6 +73,7 @@ const LOCATION_TABLE_HEADER: &str = "LOCDMGTABLE";
 /// A dead actor's health goes no lower.
 const HEALTH_FLOOR: i32 = -999;
 const CALLBACKS: &str = "maps/mp/gametypes_zm/_callbacksetup";
+const MULTIPLAYER_CALLBACKS: &str = "maps/mp/gametypes/_callbacksetup";
 
 /// One `G_Damage`: who, from where, how much and how.
 pub(super) struct Hit {
@@ -207,7 +208,12 @@ fn callback(
     receiver: Value,
     args: Vec<Value>,
 ) -> Result<(), String> {
-    let entry = format!("{CALLBACKS}::{name}");
+    let module = if super::multiplayer::is_multiplayer(world) {
+        MULTIPLAYER_CALLBACKS
+    } else {
+        CALLBACKS
+    };
+    let entry = format!("{module}::{name}");
     let now = super::super::super::players::now_ms(world);
     run_now(world, &entry, receiver, args, now).map_err(|fault| format!("{entry}: {fault:?}"))
 }

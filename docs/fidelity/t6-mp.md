@@ -50,6 +50,9 @@ Each open section names the issue that works it.
       `mp/reset_classes.cfg`'s `equipdefaultclass`) come from
       `mp/statsTable.csv`'s class column, each class followed by the item's
       attachments or count.
+- [ ] **V** `t6.mp.class_menu`: Black Ops 2's own class menu does not run
+      (#698): when the scripts open it, a player with no answer on its way
+      takes `class_assault`.
 - [ ] **G** `t6.mp.custom_classes`: an edited custom class is not read: the
       stats' `cacloadouts` are not written (#687).
 - [ ] **V** `t6.mp.player_options`: `calcplayeroptions` answers 0: no camo,
@@ -116,6 +119,12 @@ Each open section names the issue that works it.
 - [ ] **V** Team characters do not come from the map's factions
       (`faction_*_mp` and their `_sand`, `_wet` and `_snow` variants, picked by
       the map's team set) (#675).
+- [ ] **G** Cargo's crane (`mp_dockside_crane.gsc`) stops in `init` reading an
+      entity's `model`, undefined on an entity with none where the script
+      expects text, and does not lift its crates (#703).
+- [ ] **I** A headless run of Black Ops 2's own scripts sometimes ends in Metal
+      `DeviceLost` (`Cannot allocate sample buffer`) soon after loading; the
+      cause is not traced, and IW4L's rules have not shown it.
 - [ ] **G** Destructibles (`_destructible.gsc`), interactive objects and the
       maps' moving parts (Express's train, Cargo's crane) have not run;
       `setdamagestage` is not implemented (#703).
@@ -238,6 +247,9 @@ Each open section names the issue that works it.
       `playrumbleonposition`, `stoprumble`), `setmaplatlong`, `getmapcenter`,
       `isads`, `tracepoint`, `setanim`, `unlink`, `setstunned`,
       `setflagasaway`, `setmultiextracamactive` (#678).
+- [ ] **V** On Cargo `_fxanim.csc` stops in `fxanim_init` and
+      `_fxanim_model_link`: `getent` finds more than one entity by a name, so
+      its animated props do not link (#678).
 - [ ] **V** `t6.csc.dynent.enabled` (`natives::t6::client::dynent`):
       `setdynentenabled` keeps the state the scripts set, but the renderer
       does not read it: a dynamic entity turned off (Cargo's at

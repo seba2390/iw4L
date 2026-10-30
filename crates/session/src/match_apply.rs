@@ -1669,7 +1669,15 @@ fn preflight_match_install(
     }
     script_dvars.extend(script_dvar_overrides());
     let script_entries = program.entries;
-    let gametype_settings = program.settings;
+    let mut gametype_settings = program.settings;
+    // A short test match's limit, over the gametype's own (`docs/ENV.md`).
+    if let Ok(limit) = std::env::var("IW4L_SCORE_LIMIT") {
+        for (name, value) in &mut gametype_settings {
+            if name == "scorelimit" {
+                value.clone_from(&limit);
+            }
+        }
+    }
     let key_type = |ty| match ty {
         game_api::KeyType::Int => sim::script::KeyType::Int,
         game_api::KeyType::Float => sim::script::KeyType::Float,

@@ -9,7 +9,7 @@
 | Black Ops — Zombies | `█████████████████░░░` 85% | 18 / 21 | 58 / 69 | Kino der Toten: 490 / 610 (80%)<br>Five: 489 / 609 (80%) |
 | Black Ops — Multiplayer | `█████░░░░░░░░░░░░░░░` 25% | 4 / 16 | 8 / 15 | Array: 605 / 629 (96%)<br>Havana: 605 / 629 (96%)<br>Launch: 607 / 631 (96%)<br>Cracked: 604 / 628 (96%)<br>Crisis: 605 / 629 (96%)<br>Grid: 605 / 629 (96%)<br>Firing Range: 605 / 629 (96%)<br>Hanoi: 604 / 628 (96%)<br>Jungle: 604 / 628 (96%)<br>Summit: 605 / 629 (96%)<br>Radiation: 607 / 631 (96%)<br>WMD: 605 / 629 (96%)<br>Villa: 605 / 629 (96%)<br>Nuketown: 607 / 631 (96%) |
 | Black Ops II — Zombies | `██████████████████░░` 90% | 19 / 21 | 72 / 77 | Nuketown: 692 / 692 (100%)<br>TranZit: 741 / 741 (100%)<br>Buried: 727 / 727 (100%) |
-| Black Ops II — Multiplayer | `░░░░░░░░░░░░░░░░░░░░` 0% | 0 / 16 | 3 / 13 | — |
+| Black Ops II — Multiplayer | `░░░░░░░░░░░░░░░░░░░░` 0% | 0 / 16 | 5 / 16 | — |
 | Black Ops III — Zombies | `░░░░░░░░░░░░░░░░░░░░` 4% | 1 / 21 | — | Shadows of Evil: 78 / 1244 (6%) |
 <!-- progress:end -->
 

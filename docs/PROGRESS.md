@@ -428,9 +428,12 @@ that counts here. Each milestone names its issues; open rules are in
   - [x] All 19 installed maps (the 14 base maps, Nuketown 2025, Detour, Cove, Rush and Uplink) load with their factions and spawn a player in a headless Team Deathmatch.
 - [ ] A match starts on Black Ops II's own multiplayer scripts and client scripts (#677, #678).
   - [x] Black Ops II's multiplayer client scripts (`clientscripts/mp`) run on all 19 installed maps, all of their functions translated, with no script stop (#678).
+  - [x] With a recompiled copy of `_globallogic` standing in for the launch patch (local, not in the repository): Black Ops II's server scripts install on Cargo with no unresolved import and spawn the player with the Assault class (#677).
 - [ ] Players move by Black Ops II's multiplayer movement rules (#679).
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops II's rules (#680, #681).
 - [ ] Free for All and Team Deathmatch run on Black Ops II's own gametype scripts to the end of a match (#682).
+  - [x] With that same copy: bots and the player fight on Cargo through the scripts' damage and kill callbacks, respawn, and both gametypes reach their score limit, go to intermission and leave for the lobby.
+  - [ ] On the captured launch patch itself (#676).
 - [ ] Every other gametype is verified in a match (#683, #684, #686).
   - [ ] Domination, Kill Confirmed, Hardpoint, Headquarters, Capture the Flag and One Flag (#683).
   - [ ] Search and Destroy and Demolition (#684).

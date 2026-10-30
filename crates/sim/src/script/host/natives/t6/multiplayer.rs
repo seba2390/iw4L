@@ -112,6 +112,11 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         "recordloadoutperksandkillstreaks",
         "bbclasschoice",
         "refreshshieldattachment",
+        "addrankxp",
+        "addrankxpvalue",
+        "recordmultikill",
+        "recordkillstreakevent",
+        "recordkillstreakendevent",
     ] {
         registry.register(Method, name, |_, _, _| Ok(Value::Undefined));
     }
@@ -133,6 +138,47 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     });
     // A shot for the match's accuracy stats, which a private match keeps none of.
     registry.register(Method, "trackweaponfirenative", |_, _, _| {
+        Ok(Value::Undefined)
+    });
+    // The entities that take damage, within a radius in the plane of a point
+    // when one is given.
+    registry.register(Function, "getdamageableentarray", |world, _, args| {
+        let center = if args.is_empty() {
+            None
+        } else {
+            Some((vector(args, 0)?, float(args, 1)?))
+        };
+        let candidates: Vec<u64> = {
+            let mut runtime = world.resource_mut::<RoundScript>();
+            let ids: Vec<u64> = runtime.entities.keys().copied().collect();
+            ids.into_iter()
+                .filter(|id| {
+                    runtime.player_client(*id).is_some()
+                        || matches!(runtime.object_field(*id, "takedamage"), Value::Int(1..))
+                })
+                .collect()
+        };
+        let mut found = Vec::new();
+        for id in candidates {
+            let inside = center.is_none_or(|(point, radius)| {
+                let origin = super::movement::origin_of(world, id);
+                let (x, y) = (point[0] - origin[0], point[1] - origin[1]);
+                x * x + y * y <= radius * radius
+            });
+            if inside {
+                found.push(Value::Object(id));
+            }
+        }
+        crate::script::host::arrays::new_array(world, found)
+    });
+    // The after-action report's rival, league team and film, which a private
+    // match keeps none of.
+    registry.register(Method, "setnemesisxuid", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "getleagueteamid", |_, _, _| Ok(Value::Int(0)));
+    registry.register(Function, "getdemofileid", |_, _, _| Ok(Value::Int(0)));
+    // The team's overhead icon, which nothing draws yet (#697).
+    registry.register(Function, "precacheheadicon", |_, _, args| {
+        string(args, 0)?;
         Ok(Value::Undefined)
     });
     // An angle into 0 to 360.

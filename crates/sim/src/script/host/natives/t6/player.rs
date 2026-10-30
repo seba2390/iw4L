@@ -868,6 +868,13 @@ fn register_rest(registry: &mut NativeRegistry) {
         let menu = super::string(args, 0)?.to_ascii_lowercase();
         if super::multiplayer::is_multiplayer(world) {
             let client = super::client_of(world, receiver)?;
+            // Black Ops 2's own class menu does not run yet: the player takes
+            // the scripts' default class (`t6.mp.class_menu`).
+            if menu.starts_with("changeclass")
+                && !super::super::super::players::has_queued_answer(world, client)
+            {
+                super::super::super::players::answer_menu(world, client, &menu, "class_assault");
+            }
             super::super::player::slot(world, client)?.menu = Some(menu.into());
         }
         Ok(Value::Int(1))
