@@ -35,9 +35,107 @@ pub struct GameCodeHud {
     pub command_hint: Option<CommandHintFn>,
     /// The game's grenade indicators.
     pub grenade_indicators: Option<GrenadeIndicatorFn>,
+    /// Whether the game's HUD visibility bit (its number, which a menu's
+    /// `isvisibilitybitset` tests) is set; `None` answers none.
+    pub visibility_bit: Option<VisibilityBitFn>,
+    /// The game's kill feed; `None` draws none.
+    pub killfeed: Option<&'static KillfeedRules>,
+    /// The game's compass owner draws; `None` draws none.
+    pub compass: Option<&'static CompassRules>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
+}
+
+/// A game's kill feed: the obituary lines its client prints to a game
+/// message window, drawn in a game message window item of its HUD menus.
+#[derive(Debug)]
+pub struct KillfeedRules {
+    /// The menu whose game message window item draws the lines.
+    pub menu: &'static str,
+    /// The window's index among the game's message windows.
+    pub window: i32,
+    pub timing: MessageWindow,
+    /// The kill icon of an obituary event's parameter: a means of death
+    /// (negative, `-1 - means`) or a weapon.
+    pub kill_icon: fn(i32) -> KillIcon,
+    /// The width and height of a kill icon, in font heights, by its
+    /// weapon's kill icon ratio.
+    pub icon_size: fn(i32) -> (f32, f32),
+    /// The colour of a name by the local player's team and the named
+    /// player's.
+    pub name_color: fn(i32, i32) -> NameColor,
+    /// The localized string a line with no attacker ends with, after the
+    /// victim's name and in its colour.
+    pub suicide: &'static str,
+    /// The victim of an obituary the client keeps no player for is an
+    /// error the game drops the client for; the runtime logs it.
+    pub out_of_range: &'static str,
+}
+
+/// A game's compass: the overhead map its menus' owner draws show around
+/// the player.
+#[derive(Debug)]
+pub struct CompassRules {
+    /// The owner draws of the map and of the player's arrow.
+    pub map_owner_draw: i32,
+    pub player_owner_draw: i32,
+    /// The defaults of the dvars the compass reads: its size scale, the
+    /// world distance the map spans, whether the map turns with the view,
+    /// and the arrow's size.
+    pub size: f32,
+    pub max_range: f32,
+    pub rotation: bool,
+    pub player_size: [f32; 2],
+    /// The map's frame from the map's two corner points and its north yaw
+    /// (degrees); `None` when the corners give none.
+    pub frame: fn([f32; 2], [f32; 2], f32) -> Option<CompassFrame>,
+    /// Whether the player's arrow shows at the map's centre, by the local
+    /// player's state.
+    pub player_arrow: fn(&MovePlayer) -> Result<bool, &'static Unknown>,
+}
+
+/// Where a compass map lies in the world: its north-west corner, the
+/// north direction, and its width (east) and height (south).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompassFrame {
+    pub upper_left: [f32; 2],
+    pub north: [f32; 2],
+    pub size: [f32; 2],
+}
+
+/// How long a game message window keeps a line and how it brings one in
+/// and out.
+#[derive(Clone, Copy, Debug)]
+pub struct MessageWindow {
+    pub msg_time_ms: i32,
+    /// Lines shown at once.
+    pub line_count: usize,
+    pub scroll_time_ms: i32,
+    pub fade_in_ms: i32,
+    pub fade_out_ms: i32,
+}
+
+/// A kill icon.
+#[derive(Clone, Copy, Debug)]
+pub enum KillIcon {
+    /// This material, at ratio 0, not flipped.
+    Material(&'static str),
+    /// The weapon's own kill icon with its ratio and flip; this material
+    /// when it has none.
+    Weapon { weapon: u32, none: &'static str },
+}
+
+/// A name's colour in the kill feed.
+#[derive(Clone, Copy, Debug)]
+pub enum NameColor {
+    White,
+    /// A colour dvar's red, green and blue (its default when unset), at
+    /// full alpha.
+    Dvar {
+        name: &'static str,
+        default: [f32; 3],
+    },
 }
 
 /// The invalid command hint a client keeps: the game's number for it and
@@ -49,6 +147,22 @@ pub struct CommandHint {
 }
 
 pub type CommandHintFn = fn(CommandHint, Option<i32>, i32) -> CommandHint;
+
+/// Whether a HUD visibility bit is set; a bit the runtime cannot answer is
+/// its ledger entry.
+pub type VisibilityBitFn = fn(i32, &VisibilityView<'_>) -> Result<bool, &'static Unknown>;
+
+/// What a game's HUD visibility bits read.
+pub struct VisibilityView<'a> {
+    /// The local player as the game's movement keeps him.
+    pub player: &'a MovePlayer,
+    /// The local player's team (`0` free, `1` axis, `2` allies, `3`
+    /// spectator).
+    pub team: i32,
+    /// The scoreboard is up.
+    pub scoreboard: bool,
+    pub in_killcam: bool,
+}
 
 /// What a game's hint or message owner draw (its number) shows this frame.
 pub type OwnerHintFn = fn(i32, &OwnerHintView<'_>) -> OwnerHint;

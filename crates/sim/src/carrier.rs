@@ -422,6 +422,14 @@ impl SimWorld {
         self.ecs.resource::<crate::PersistentDataStore>()
     }
 
+    /// The test clients: the host's bots, and those the scripts added.
+    pub fn test_clients(&self) -> Vec<crate::ClientId> {
+        self.ecs
+            .get_resource::<crate::TestClients>()
+            .map(|clients| clients.0.iter().map(|&id| crate::ClientId(id)).collect())
+            .unwrap_or_else(Vec::new)
+    }
+
     /// Marks a client as a test client: one of the host's bots.
     pub fn mark_test_client(&mut self, id: crate::ClientId) {
         self.ecs

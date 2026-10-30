@@ -491,111 +491,6 @@ fn stats_cell(world: &World, reference: &str, column: usize) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn profile_class(name: &str) -> Option<crate::ClassId> {
-    let (base, offset) = if let Some(n) = name.strip_prefix("customclass") {
-        (n, 0)
-    } else {
-        (name.strip_prefix("prestigeclass")?, 5)
-    };
-    let n: u32 = base.parse().ok()?;
-    (1..=5).contains(&n).then(|| crate::ClassId(n - 1 + offset))
-}
-
-fn stats_number(world: &World, reference: &str) -> i32 {
-    stats_cell(world, reference, 0).map_or(0, |n| super::iw4::atoi(&n))
-}
-
-fn profile_item(world: &mut World, client: u32, class: &str, slot: &str) -> i32 {
-    let Some(def) = profile_class(class)
-        .and_then(|id| super::super::players::personal_class(world, client, id))
-    else {
-        return 0;
-    };
-    let weapon_slot = |prefix: &str| slot.strip_prefix(prefix).map(|rest| rest.to_owned());
-    for (index, (prefix, weapon)) in [("primary", def.primary), ("secondary", def.secondary)]
-        .into_iter()
-        .enumerate()
-    {
-        let Some(rest) = weapon_slot(prefix) else {
-            continue;
-        };
-        if rest == "camo" {
-            return i32::from(def.camos[index]);
-        }
-        if rest == "grenade" {
-            break;
-        }
-        let weapon = super::super::players::stand_in_for(world, index, weapon).unwrap_or(weapon);
-        let (reference, attachments) = {
-            let frame = FrameWorld::from_world(world);
-            match frame.weapon_setup(weapon) {
-                Some(setup) => (setup.base.clone(), setup.attachments.clone()),
-                None => (
-                    weapon_reference(frame.weapon_script_name(weapon)).to_owned(),
-                    Vec::new(),
-                ),
-            }
-        };
-        if rest.is_empty() {
-            return stats_number(world, &reference);
-        }
-        let Some(position) = rest.strip_prefix("attachment") else {
-            return 0;
-        };
-        // Top, bottom, trigger, muzzle, filled in the order the weapon names them;
-        // dual wield is always the bottom one.
-        let mut placed: [Option<&str>; 4] = [None; 4];
-        let dual = attachments.iter().any(|a| a == "dw");
-        if dual {
-            placed[1] = Some("dw");
-        }
-        let mut free = (0..4).filter(|&at| !(dual && at == 1));
-        for attachment in attachments.iter().filter(|a| *a != "dw") {
-            if let Some(at) = free.next() {
-                placed[at] = Some(attachment);
-            }
-        }
-        let at = match position {
-            "top" => 0,
-            "bottom" => 1,
-            "trigger" => 2,
-            "muzzle" => 3,
-            _ => return 0,
-        };
-        let Some(attachment) = placed[at] else {
-            return 0;
-        };
-        return stats_cell(world, &reference, 8)
-            .and_then(|list| list.split_whitespace().position(|a| a == attachment))
-            .map_or(0, |i| i as i32 + 1);
-    }
-    let name = |world: &mut World, weapon: u32| {
-        weapon_reference(FrameWorld::from_world(world).weapon_script_name(weapon)).to_owned()
-    };
-    match slot {
-        "body" => stats_number(world, "standard_mp"),
-        "head" => stats_number(world, "head_standard_mp"),
-        "primarygrenade" if def.lethal != 0 => {
-            let weapon =
-                super::super::players::stand_in_for(world, 2, def.lethal).unwrap_or(def.lethal);
-            let reference = name(world, weapon);
-            stats_number(world, &reference)
-        }
-        "specialgrenade" if def.tactical != 0 => {
-            let weapon =
-                super::super::players::stand_in_for(world, 3, def.tactical).unwrap_or(def.tactical);
-            let reference = name(world, weapon);
-            stats_number(world, &reference)
-        }
-        "specialty1" | "specialty2" | "specialty3" => {
-            let index = usize::from(slot.as_bytes()[9] - b'1');
-            crate::match_state::class_catalog_perk_name(def.perks[index])
-                .map_or(0, |perk| stats_number(world, perk))
-        }
-        _ => 0,
-    }
-}
-
 fn weapon_reference(name: &str) -> &str {
     name.strip_suffix("_mp").unwrap_or(name)
 }
@@ -660,6 +555,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     register_entity(registry);
     register_platform(registry);
     register_refused(registry);
+    register_bots(registry);
+    register_swept(registry);
     register_shellshock(registry);
     register_earthquake(registry);
 }
@@ -1032,16 +929,6 @@ fn register_script(registry: &mut NativeRegistry) {
         "getweaponprojexplosionsound" => proj_explosion,
     );
     registry.register(Method, "dodamage", do_damage);
-    registry.register(
-        Method,
-        "getloadoutitemfromprofile",
-        |world, receiver, args| {
-            let class = string(args, 0)?;
-            let slot = string(args, 1)?.to_ascii_lowercase();
-            let client = player_id(world, receiver)?;
-            Ok(Value::Int(profile_item(world, client, &class, &slot)))
-        },
-    );
     registry.register(Method, "setenemymodel", |world, receiver, args| {
         string(args, 0)?;
         super::engine::entity_id(world, receiver)?;
@@ -1917,7 +1804,6 @@ fn register_refused(registry: &mut NativeRegistry) {
             registry.register($namespace, $name, |_, _, _| Err($message.into()));
         )*};
     }
-    refused!(Function: "addtestclient" => "test clients join through the session");
     refused!(Function: "ban", "killserver" => "the host decides who stays and when the server stops");
     refused!(Function: "sethostmigrationstatus" => "host migration is not simulated");
     refused!(Function: "getcontractname", "getcontractrequiredcount", "getcontractrequirements",
@@ -1931,9 +1817,6 @@ fn register_refused(registry: &mut NativeRegistry) {
         => "contracts are online-only; none are active");
     refused!(Function: "getgvrule", "getwagergametypelist", "pregamestartgame"
         => "game variants, wagers and the pregame lobby are not simulated");
-    refused!(Method: "getpregameclass" => "the pregame lobby is not simulated");
-    refused!(Function: "getcustomclassloadoutitem", "getcustomclassmodifier"
-        => "custom game mode classes are not loaded");
 
     refused!(Function: "getmaxvehicles"
         => "T5 vehicle limits are not configured");
@@ -1951,10 +1834,6 @@ fn register_refused(registry: &mut NativeRegistry) {
         "getnegotiationstartnode", "finishactordamage",
         "clearentitytarget", "playbattlechattertoteam"
         => "actors are not simulated");
-    refused!(Method: "setscriptgoal", "clearscriptgoal", "hasscriptgoal", "setscriptenemy",
-        "clearscriptenemy", "getthreat", "getlookaheaddir", "getlookaheaddist",
-        "pressattackbutton", "pressusebutton"
-        => "bots are driven by the session, not by script goals");
     refused!(Method: "canplayerplaceturret", "carryturret", "stopcarryturret", "relinktoturret",
         "setturretcarried", "setturrethint", "setturrettype", "setscanningpitch",
         "actionslotfourbuttonpressed"
@@ -2211,7 +2090,7 @@ fn register_refused(registry: &mut NativeRegistry) {
         => "not simulated");
     refused!(Method: "launch", "fakefire",
         "spawnnapalmgroundflame", "revive", "docowardswayanims",
-        "ghost", "teleport", "istouchingswept", "istouchingvolume", "playersighttrace",
+        "ghost", "teleport", "istouchingvolume", "playersighttrace",
         "throwbuttonpressed", "actionslotonebuttonpressed", "depthinwater",
         "devaddpitch", "devaddroll", "devaddyaw"
         => "not simulated");
@@ -2256,4 +2135,136 @@ fn entity_number_origin(
     let number = world.resource::<RoundScript>().entities[&id].number;
     let origin = super::engine::origin_of(world, receiver)?;
     Ok((number, origin))
+}
+
+/// What the scripts asked of each test client: its goal, its scripted
+/// enemy and the buttons it should press. The host's bots move and fight
+/// on their own (`t5.bots.host_ai`); these are kept for the scripts.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct BotScriptState(BTreeMap<u32, BotScript>);
+
+#[derive(Default)]
+struct BotScript {
+    goal: Option<([f32; 3], f32)>,
+    enemy: Option<Value>,
+}
+
+fn bot_script<'a>(world: &'a mut World, receiver: &Value) -> Result<&'a mut BotScript, String> {
+    let client = player_id(world, receiver)?;
+    Ok(world
+        .get_resource_or_insert_with(BotScriptState::default)
+        .into_inner()
+        .0
+        .entry(client)
+        .or_default())
+}
+
+/// `ent IsTouchingSwept(other, [min z], [max z])`: the box of whichever of
+/// the two is not a trigger volume (the receiver when neither is), stretched
+/// down to `min z` and up to `max z`, then grown in height to at least its
+/// width, against the other.
+fn register_swept(registry: &mut NativeRegistry) {
+    registry.register(Method, "istouchingswept", |world, receiver, args| {
+        let own = super::engine::entity_id(world, receiver)?;
+        let other = super::engine::entity_id(world, arg(args, 0)?)?;
+        let (swept, target) = if !super::super::triggers::has_volume(world, own) {
+            (own, other)
+        } else if super::super::triggers::has_volume(world, other) {
+            return Err("istouchingswept cannot be called on 2 brush/cylinder entities".into());
+        } else {
+            (other, own)
+        };
+        let (mut mins, mut maxs) = super::super::triggers::toucher_box(world, swept);
+        if args.len() > 1 {
+            let z = float(args, 1)?;
+            if mins[2] - z >= 0.0 {
+                mins[2] = z;
+            }
+        }
+        if args.len() > 2 {
+            let z = float(args, 2)?;
+            if z - maxs[2] >= 0.0 {
+                maxs[2] = z;
+            }
+        }
+        let height = maxs[2] - mins[2];
+        let x = maxs[0] - mins[0];
+        let y = maxs[1] - mins[1];
+        let width = if x - y < 0.0 { y } else { x };
+        if height < width {
+            let grow = (width - height) * 0.5;
+            mins[2] -= grow;
+            maxs[2] += grow;
+        }
+        let hit = super::super::triggers::box_touches(world, target, mins, maxs);
+        Ok(Value::Int(hit.into()))
+    });
+}
+
+/// Black Ops' test clients and the bot natives its `_bot.gsc` calls.
+fn register_bots(registry: &mut NativeRegistry) {
+    registry.register(Function, "addtestclient", |world, _, _| {
+        Ok(super::super::players::add_test_client(world).map_or(Value::Undefined, Value::Object))
+    });
+    registry.register(Method, "setscriptgoal", |world, receiver, args| {
+        let goal = vector(args, 0)?;
+        let radius = optional(args, 1, float)?.unwrap_or(0.0);
+        bot_script(world, receiver)?.goal = Some((goal, radius));
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "clearscriptgoal", |world, receiver, _| {
+        bot_script(world, receiver)?.goal = None;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "hasscriptgoal", |world, receiver, _| {
+        Ok(Value::Int(
+            bot_script(world, receiver)?.goal.is_some().into(),
+        ))
+    });
+    registry.register(Method, "setscriptenemy", |world, receiver, args| {
+        let enemy = arg(args, 0)?.clone();
+        bot_script(world, receiver)?.enemy = Some(enemy);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "clearscriptenemy", |world, receiver, _| {
+        bot_script(world, receiver)?.enemy = None;
+        Ok(Value::Undefined)
+    });
+    // The threat the scripts set; the host bots' own target is not shared.
+    registry.register(Method, "getthreat", |world, receiver, _| {
+        Ok(bot_script(world, receiver)?
+            .enemy
+            .clone()
+            .unwrap_or(Value::Undefined))
+    });
+    // The straight line to the scripts' goal stands in for the path's
+    // lookahead (`t5.bots.host_ai`).
+    registry.register(Method, "getlookaheaddist", |world, receiver, _| {
+        let origin = origin_of(world, receiver);
+        let goal = bot_script(world, receiver)?.goal;
+        Ok(Value::Float(goal.map_or(0.0, |(goal, _)| {
+            let d = sub(goal, origin);
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        })))
+    });
+    registry.register(Method, "getlookaheaddir", |world, receiver, _| {
+        let origin = origin_of(world, receiver);
+        let goal = bot_script(world, receiver)?.goal;
+        Ok(Value::Vector(goal.map_or([0.0; 3], |(goal, _)| {
+            let d = sub(goal, origin);
+            let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            if len > 0.0 {
+                [d[0] / len, d[1] / len, d[2] / len]
+            } else {
+                [0.0; 3]
+            }
+        })))
+    });
+    // The host bots press their own buttons (`t5.bots.host_ai`).
+    for name in ["pressattackbutton", "pressusebutton"] {
+        registry.register(Method, name, |world, receiver, _| {
+            player_id(world, receiver)?;
+            Ok(Value::Undefined)
+        });
+    }
 }

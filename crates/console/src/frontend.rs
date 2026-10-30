@@ -1149,3 +1149,51 @@ fn map_pages(maps: &ui::MenuMapList) -> Vec<(usize, usize, String)> {
         })
         .collect()
 }
+
+/// A game whose menus share the server's dvars runs its console on that
+/// table too: `set` in a match also sets the server's dvar.
+pub(crate) fn route_server_dvars(
+    mut events: MessageReader<ConsoleCommand>,
+    rules: Option<Res<game_api::ModeRules>>,
+    local: Option<Res<net::LocalPresentClient>>,
+    mut inbox: Option<ResMut<net::ClientActionInbox>>,
+    mut ids: ResMut<net::ActionRequestIds>,
+) {
+    for command in events.read() {
+        let (Some(local), Some(inbox)) = (local.as_ref(), inbox.as_mut()) else {
+            continue;
+        };
+        if !rules
+            .as_ref()
+            .is_some_and(|rules| rules.menu_dvars_reach_server)
+        {
+            continue;
+        }
+        if !matches!(command.name.as_str(), "set" | "seta") {
+            continue;
+        }
+        let [name, values @ ..] = command.args.as_slice() else {
+            continue;
+        };
+        if values.is_empty() {
+            continue;
+        }
+        let (Some(name), Some(value)) = (
+            sim::menu_response_field(name),
+            sim::menu_response_field(&values.join(" ")),
+        ) else {
+            continue;
+        };
+        let request_id = ids.allocate();
+        if let Err(error) = inbox.push(
+            local.0,
+            sim::ClientAction::ScriptDvar {
+                request_id,
+                name,
+                value,
+            },
+        ) {
+            diag::warn!(Console, "set: server dvar not sent: {error}");
+        }
+    }
+}

@@ -33,7 +33,7 @@ pub(crate) fn air_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
     let n = 1.0 / divisor(wishspeed);
     let wishdir = [n * wish_x, wish_y * n, n * 0.0];
     accelerate(pm.ps, pml, wishdir, wishspeed * scale, 1.0);
-    slick_accelerate(pm.ps, pml);
+    slick_accelerate(pm.ps, pml, pm.tuning);
     if pml.ground_plane {
         clip_into_ground(pm.ps, pml.ground_trace.normal);
     }
@@ -105,7 +105,7 @@ pub(crate) fn walk_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
         accel *= 0.25;
     }
     accelerate(pm.ps, pml, wishdir, wishspeed, accel);
-    slick_accelerate(pm.ps, pml);
+    slick_accelerate(pm.ps, pml, pm.tuning);
     if slick || pm.ps.pm_flags & pm_flags::TIME_KNOCKBACK != 0 {
         pm.ps.velocity[2] -= pm.ps.gravity as f32 * pml.frametime;
     }

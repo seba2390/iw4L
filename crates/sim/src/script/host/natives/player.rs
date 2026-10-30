@@ -579,7 +579,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 
 const PLAYER_ANIM_TREE: &str = "multiplayer";
 
-fn tick(world: &World) -> crate::Tick {
+pub(super) fn tick(world: &World) -> crate::Tick {
     world.resource::<crate::step::StepRequest>().tick
 }
 

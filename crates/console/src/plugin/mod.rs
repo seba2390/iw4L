@@ -185,6 +185,7 @@ impl Plugin for ConsolePlugin {
                         crate::feature_dispatch::route_hitvol_commands,
                         crate::feature_dispatch::route_debug_feature_commands
                             .in_set(frame::InMatch),
+                        crate::frontend::route_server_dvars.in_set(frame::InMatch),
                         crate::feature_dispatch::route_session_commands,
                         crate::feature_dispatch::resume_lifecycle_commands,
                         (

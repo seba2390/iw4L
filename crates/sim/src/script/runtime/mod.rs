@@ -225,6 +225,11 @@ pub(super) fn run_now(
     start_now(world, name, receiver, args, now).map(|_| ())
 }
 
+/// Whether the loaded program has the entry point `name`.
+pub(super) fn has_entry(world: &World, name: &str) -> bool {
+    entry(world, name).is_ok()
+}
+
 /// Runs `name` until it first waits; the thread's serial while it lives on.
 pub(super) fn start_now(
     world: &mut World,

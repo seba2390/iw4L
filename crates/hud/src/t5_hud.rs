@@ -61,12 +61,34 @@ pub(crate) struct T5HudState<'a> {
     pub hint: Option<T5Hint>,
     pub local_client: usize,
     pub scores: Vec<(usize, i32)>,
+    /// The local player's team (`TEAM_*`), the teams' scores by team and
+    /// the players' scores, highest first.
+    pub team: i32,
+    pub team_scores: [i32; 3],
+    pub rank_scores: Vec<i32>,
+    /// Milliseconds left on the match clock.
+    pub time_left_ms: i32,
+    /// The game's code-drawn HUD, which answers its visibility bits.
+    pub code_hud: Option<&'static game_api::hud::GameCodeHud>,
+    pub scoreboard: bool,
     pub deadquote_start_ms: Option<i32>,
     /// What the game's hint and message owner draws show, by number.
     pub owner_hints: Vec<(i32, OwnerHintText)>,
     /// The game's weapon info rules, what they read and the client time
     /// the weapon info was last shown.
     pub weapon_info: Option<WeaponInfoFrame<'a>>,
+    pub compass: Option<T5Compass>,
+}
+
+/// The game's compass for a frame: its rules, where its map lies, the map's
+/// material and the local player's place and view yaw.
+pub(crate) struct T5Compass {
+    pub rules: &'static game_api::hud::CompassRules,
+    pub frame: game_api::hud::CompassFrame,
+    pub north_yaw: f32,
+    pub material: String,
+    pub origin: [f32; 2],
+    pub yaw: f32,
 }
 
 /// The game's weapon info for a frame.
@@ -449,6 +471,36 @@ fn unset_dvar(name: &str) -> String {
     String::new()
 }
 
+/// The match's team numbers.
+pub(crate) const TEAM_FREE: i32 = 0;
+const TEAM_AXIS: i32 = 1;
+const TEAM_ALLIES: i32 = 2;
+const TEAM_SPECTATOR: i32 = 3;
+
+/// `team(name)` and `team(score)` for `team`.
+fn team_field(state: &T5HudState<'_>, team: i32, field: &str) -> Result<Operand, ExprError> {
+    if field.eq_ignore_ascii_case("name") {
+        let name = match team {
+            TEAM_FREE => "TEAM_FREE",
+            TEAM_AXIS => "TEAM_AXIS",
+            TEAM_ALLIES => "TEAM_ALLIES",
+            TEAM_SPECTATOR => "TEAM_SPECTATOR",
+            _ => "",
+        };
+        Ok(Operand::Str(name.to_owned()))
+    } else if field.eq_ignore_ascii_case("score") {
+        Ok(Operand::Int(
+            usize::try_from(team)
+                .ok()
+                .and_then(|team| state.team_scores.get(team))
+                .copied()
+                .unwrap_or(0),
+        ))
+    } else {
+        Err(ExprError::Host("team field"))
+    }
+}
+
 struct T5HudHost<'a, 'b> {
     state: &'a T5HudState<'b>,
     localize: Option<&'a LocalizeCatalog>,
@@ -468,23 +520,52 @@ impl ExprHost for T5HudHost<'_, '_> {
     fn static_dvar_int(&self, _index: i32) -> Result<i32, ExprError> {
         Err(ExprError::Host("static dvar"))
     }
-    fn team_field(&self, _field: &str) -> Result<Operand, ExprError> {
-        Err(ExprError::Host("team field"))
+    fn team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        team_field(self.state, self.state.team, field)
     }
     fn player_field(&self, _field: &str) -> Result<Operand, ExprError> {
         Err(ExprError::Host("player field"))
     }
-    fn other_team_field(&self, _field: &str) -> Result<Operand, ExprError> {
-        Err(ExprError::Host("other team field"))
+    fn other_team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        let other = match self.state.team {
+            TEAM_AXIS => TEAM_ALLIES,
+            TEAM_ALLIES => TEAM_AXIS,
+            team => team,
+        };
+        team_field(self.state, other, field)
     }
     fn local_var_string(&self, _name: &str) -> Result<Operand, ExprError> {
         Err(ExprError::Host("local var"))
     }
     fn time_left(&self) -> Result<i32, ExprError> {
-        Err(ExprError::Host("timeleft"))
+        Ok(self.state.time_left_ms)
     }
-    fn score_at_rank(&self, _rank: i32) -> Result<i32, ExprError> {
-        Err(ExprError::Host("score"))
+    fn visibility_bit(&self, bit: i32) -> Result<i32, ExprError> {
+        let rule = self
+            .state
+            .code_hud
+            .and_then(|hud| hud.visibility_bit)
+            .ok_or(ExprError::Host("isvisibilitybitset"))?;
+        let player = self
+            .state
+            .ps
+            .move_player(self.state.local_client as i32, false);
+        let view = game_api::hud::VisibilityView {
+            player: &player,
+            team: self.state.team,
+            scoreboard: self.state.scoreboard,
+            in_killcam: self.state.in_killcam,
+        };
+        rule(bit, &view)
+            .map(i32::from)
+            .map_err(|unknown| ExprError::Unknown(unknown.id))
+    }
+    fn score_at_rank(&self, rank: i32) -> Result<i32, ExprError> {
+        Ok(usize::try_from(rank)
+            .ok()
+            .and_then(|rank| self.state.rank_scores.get(rank))
+            .copied()
+            .unwrap_or(0))
     }
     fn gametype_name(&self) -> Result<Operand, ExprError> {
         Err(ExprError::Host("gametype"))
@@ -1202,11 +1283,172 @@ fn paint_owner(
         CG_PLAYER_WEAPON_LOW_AMMO_WARNING => paint_low_ammo_warning(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         CG_VEHICLE_HUD_2 | CG_AMITALKING => OwnerDrawPaint::Painted,
+        n if state
+            .compass
+            .as_ref()
+            .is_some_and(|c| c.rules.map_owner_draw == n) =>
+        {
+            paint_compass_map(state, &args, frame)
+        }
+        n if state
+            .compass
+            .as_ref()
+            .is_some_and(|c| c.rules.player_owner_draw == n) =>
+        {
+            paint_compass_player(state, &args, frame)
+        }
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
             None => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         },
     }
+}
+
+/// A compass dvar's value, or its registered default.
+fn compass_dvar(state: &T5HudState<'_>, name: &str, default: f32) -> f32 {
+    state
+        .dvar(name)
+        .and_then(|value| value.trim().parse::<f32>().ok())
+        .unwrap_or(default)
+}
+
+/// The compass item's rect, its size scaled by `compassSize`; `None` (an
+/// error the game prints) when it has no area.
+fn compass_rect(
+    state: &T5HudState<'_>,
+    compass: &T5Compass,
+    args: &OwnerDrawArgs<'_>,
+) -> Option<[f32; 4]> {
+    let size = compass_dvar(state, "compassSize", compass.rules.size);
+    let rect = [
+        args.rect.x,
+        args.rect.y,
+        args.rect.w * size,
+        args.rect.h * size,
+    ];
+    (rect[2] > 0.0 && rect[3] > 0.0).then_some(rect)
+}
+
+/// The compass map: the map's material around the player, `compassMaxRange`
+/// across, turned with the view when `compassRotation` is set.
+fn paint_compass_map(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let map = compass.frame;
+    let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    let [n0, n1] = map.north;
+    let [width, height] = map.size;
+    let dx = compass.origin[0] - map.upper_left[0];
+    let dy = compass.origin[1] - map.upper_left[1];
+    let center_s = (dy * -n0 + dx * n1) / width;
+    let center_t = (dy * -n1 + dx * -n0) / height;
+    let (radius_st, scale_final_s, scale_final_t) = if width <= height {
+        (max_range / height * 0.5, height / width, 1.0)
+    } else {
+        (max_range / width * 0.5, 1.0, width / height)
+    };
+    let deg = if rotation {
+        -(compass.yaw - compass.north_yaw)
+    } else {
+        0.0
+    };
+    let applied = args.surface.apply_rect(
+        x,
+        y,
+        w,
+        h,
+        args.rect.horz_align as i32,
+        args.rect.vert_align as i32,
+    );
+    frame.list.cmds.push(Draw2dCmd {
+        material_namespace: args
+            .assets
+            .catalog
+            .and_then(|c| c.namespace)
+            .unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+        x: applied.x,
+        y: applied.y,
+        w: applied.w,
+        h: applied.h,
+        s0: 0.0,
+        t0: 0.0,
+        s1: 1.0,
+        t1: 1.0,
+        color: args.color,
+        material: compass.material.clone(),
+        op: Draw2dOp::RotateSt {
+            center_s,
+            center_t,
+            radius_st,
+            scale_final_s,
+            scale_final_t,
+            deg,
+        },
+        provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+        layer: 1,
+    });
+    OwnerDrawPaint::Painted
+}
+
+/// The player's arrow at the compass's centre, pointing up while the map
+/// turns with the view.
+fn paint_compass_player(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let player = state.ps.move_player(state.local_client as i32, false);
+    match (compass.rules.player_arrow)(&player) {
+        Ok(true) => {}
+        Ok(false) => return OwnerDrawPaint::Painted,
+        Err(_) => return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+    }
+    // The arrow turns only on a map that does not.
+    if compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) == 0.0
+    {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    }
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let Some((namespace, material)) = background_key(&args.item.background) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::MaterialExp);
+    };
+    let size = compass_dvar(state, "compassSize", compass.rules.size);
+    let arrow_w = compass_dvar(state, "compassPlayerWidth", compass.rules.player_size[0]) * size;
+    let arrow_h = compass_dvar(state, "compassPlayerHeight", compass.rules.player_size[1]) * size;
+    push_pic_at(
+        args,
+        namespace,
+        material,
+        x + w * 0.5 - arrow_w * 0.5,
+        y + h * 0.5 - arrow_h * 0.5,
+        arrow_w,
+        arrow_h,
+        args.color,
+        frame,
+    );
+    OwnerDrawPaint::Painted
 }
 
 /// An action slot's arrow: the item's picture in its colour, with the alpha
@@ -1472,21 +1714,33 @@ pub(crate) fn paint(
     let host = T5HudHost { state, localize };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
-    let mut lists: Vec<String> = T5_HUD_MENU_LISTS
-        .iter()
-        .map(|&name| name.to_owned())
-        .collect();
-    if dvar_truthy(state, "onlinegame") || dvar_truthy(state, "systemlink") {
-        lists.push(String::from("ui/hud_coop.txt"));
-    }
-    if let Some(map) = state.dvars.string("mapname").filter(|m| !m.is_empty()) {
-        lists.push(format!("ui/hud_{map}.txt"));
-    }
-    if state
-        .dvar("ui_gametype")
-        .is_some_and(|g| g.trim().eq_ignore_ascii_case("vs"))
-    {
-        lists.push(String::from("ui/hud_vs.txt"));
+    let multiplayer = dvar_truthy(state, "ui_multiplayer");
+    let mut lists: Vec<String> = if multiplayer {
+        let gametype = state
+            .dvar("g_gametype")
+            .or_else(|| state.dvar("ui_gametype"))
+            .unwrap_or_else(String::new);
+        asset_game::t5_mp_hud_menu_lists(gametype.trim())
+    } else {
+        T5_HUD_MENU_LISTS
+            .iter()
+            .map(|&name| name.to_owned())
+            .collect()
+    };
+    // The multiplayer client loads no co-op, map or versus HUD.
+    if !multiplayer {
+        if dvar_truthy(state, "onlinegame") || dvar_truthy(state, "systemlink") {
+            lists.push(String::from("ui/hud_coop.txt"));
+        }
+        if let Some(map) = state.dvars.string("mapname").filter(|m| !m.is_empty()) {
+            lists.push(format!("ui/hud_{map}.txt"));
+        }
+        if state
+            .dvar("ui_gametype")
+            .is_some_and(|g| g.trim().eq_ignore_ascii_case("vs"))
+        {
+            lists.push(String::from("ui/hud_vs.txt"));
+        }
     }
     let mut sorted: Vec<(u32, &asset_game::MenuDef)> = Vec::new();
     for name in lists

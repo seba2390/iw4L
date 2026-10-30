@@ -2428,6 +2428,7 @@ dependencies = [
  "diag",
  "entity_iw4",
  "frame",
+ "game_api",
  "getrandom 0.3.4",
  "hud",
  "input_iw4",

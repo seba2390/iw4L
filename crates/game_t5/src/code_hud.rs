@@ -7,12 +7,38 @@
 use game_api::hud::{
     CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, CrosshairWeapon,
     DamageFlash, DamageIcons, GameCodeHud, OverlayPicture, OwnerHint, OwnerHintView, ScoreAlign,
-    ScoreColumn, ScoreValue, SightOverlay,
+    ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::weapon::state as ws;
 
-pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
+pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
+
+/// Black Ops multiplayer's: zombies' pieces and its kill feed.
+pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
+    killfeed: Some(&crate::killfeed::KILLFEED),
+    compass: Some(&crate::compass::COMPASS),
+    undrawn: &[
+        unknown!(
+            "t5.hud.code_hud",
+            "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
+            "those pieces of its 2D draw (executable)"
+        ),
+        unknown!(
+            "t5.hud.game_messages",
+            "Black Ops multiplayer's game message lines other than obituaries (script iprintln and iprintlnbold, connect and disconnect notices, subtitles) are not drawn",
+            "the client's print commands and the channels they print to (executable)"
+        ),
+        unknown!(
+            "t5.hud.obituary_popups",
+            "an obituary of the local player does not open Black Ops' killed / killed-by player card (`playercardpopup`, `rankpopup`, `killstringpopup`) nor print the Second Chance revive line (`CGAME_YOUREVIVED`)",
+            "the client's player card popup menus and centre print"
+        ),
+    ],
+    ..ZOMBIES_CODE_HUD
+};
+
+const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     blood: false,
     damage_flash: Some(DamageFlash {
         kick_scale: 0.2,
@@ -39,6 +65,9 @@ pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     weapon_info: Some(&crate::weapon_info::WEAPON_INFO),
     command_hint: Some(command_hint),
     grenade_indicators: Some(crate::grenade_indicator::draw),
+    visibility_bit: Some(visibility_bit),
+    killfeed: None,
+    compass: None,
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
@@ -601,3 +630,48 @@ static SCOREBOARD: CodeScoreboard = CodeScoreboard {
     footer_floor: 0.075,
     hostname: "BlackOpsZombie",
 };
+
+/// The killcam's visibility bits (which killcam plays) and the ones derived
+/// from them.
+const KILLCAM_BITS: &game_api::Unknown = unknown!(
+    "t5.hud.killcam_visibility",
+    "Black Ops' killcam visibility bits (final killcam, the killcam's HUD) are not answered during a killcam, so the menu items they gate do not draw",
+    "the client's killcam state the visibility bits read (executable)"
+);
+
+/// The visibility bits Black Ops' client sets from state the runtime does
+/// not keep (script UI flags, vehicle and remote views).
+const OTHER_BITS: &game_api::Unknown = unknown!(
+    "t5.hud.visibility_bits",
+    "Black Ops' HUD visibility bits other than the team, scoreboard, location selector, demo and player-flag bits are not answered, so the menu items they gate do not draw",
+    "the client state behind each remaining bit (executable)"
+);
+
+/// The player state's other flags whose bits hide the HUD's popups.
+const POPUP_HIDING_FLAGS: u32 = 0x1a;
+
+/// Black Ops' client visibility bits, rebuilt each frame from the client's
+/// state. The location selector never opens here (`isselectinglocation`
+/// stays 0) and no demo plays back in a match.
+fn visibility_bit(bit: i32, view: &VisibilityView<'_>) -> Result<bool, &'static game_api::Unknown> {
+    let other_flags = || {
+        let mut player = *view.player;
+        crate::movement::unpack(&mut player).0.other_flags
+    };
+    Ok(match bit {
+        4 | 5 if view.in_killcam => return Err(KILLCAM_BITS),
+        4 | 5 => false,
+        20 | 22 => false,
+        25 => other_flags() & POPUP_HIDING_FLAGS != 0,
+        38 => view.team == 0,
+        39 => view.team == 2,
+        40 => view.team == 1,
+        41 => view.team == 3,
+        44 => view.scoreboard,
+        45 if view.in_killcam => return Err(KILLCAM_BITS),
+        45 => other_flags() & POPUP_HIDING_FLAGS == 0 && !view.scoreboard,
+        47 => other_flags() & 0x10 != 0,
+        48 => other_flags() & 2 != 0,
+        _ => return Err(OTHER_BITS),
+    })
+}

@@ -381,6 +381,14 @@ pub trait ExprHost {
         Ok(0)
     }
 
+    fn intermission(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("isintermission"))
+    }
+
+    fn visibility_bit(&self, _bit: i32) -> Result<i32, ExprError> {
+        Err(ExprError::Host("isvisibilitybitset"))
+    }
+
     fn spectating_free(&self) -> Result<i32, ExprError> {
         Ok(0)
     }
@@ -526,6 +534,30 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn fullscreen_menu_open(&self) -> Result<i32, ExprError> {
         self.0.fullscreen_menu_open()
+    }
+    fn team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        self.0.team_field(field)
+    }
+    fn other_team_field(&self, field: &str) -> Result<Operand, ExprError> {
+        self.0.other_team_field(field)
+    }
+    fn time_left(&self) -> Result<i32, ExprError> {
+        self.0.time_left()
+    }
+    fn score_at_rank(&self, rank: i32) -> Result<i32, ExprError> {
+        self.0.score_at_rank(rank)
+    }
+    fn gametype_name(&self) -> Result<Operand, ExprError> {
+        self.0.gametype_name()
+    }
+    fn spectating_client(&self) -> Result<i32, ExprError> {
+        self.0.spectating_client()
+    }
+    fn intermission(&self) -> Result<i32, ExprError> {
+        self.0.intermission()
+    }
+    fn visibility_bit(&self, bit: i32) -> Result<i32, ExprError> {
+        self.0.visibility_bit(bit)
     }
 }
 

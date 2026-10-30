@@ -1,10 +1,34 @@
 //! Black Ops' movement constants: dvar defaults the code reads, and the
 //! values it reads through fixed getters.
 
+/// The dvar defaults Black Ops' two executables register differently.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ExeTuning {
+    pub sliding_wishspeed: f32,
+    pub fall_damage_max_height: f32,
+    pub prone_yawcap: f32,
+    pub breath_hold_lerp: f32,
+}
+
+/// `BlackOps.exe` (zombies).
+pub const SINGLEPLAYER: ExeTuning = ExeTuning {
+    sliding_wishspeed: 450.0,
+    fall_damage_max_height: 350.0,
+    prone_yawcap: 85.0,
+    breath_hold_lerp: 4.0,
+};
+
+/// `BlackOpsMP.exe`.
+pub const MULTIPLAYER: ExeTuning = ExeTuning {
+    sliding_wishspeed: 4000.0,
+    fall_damage_max_height: 300.0,
+    prone_yawcap: 45.0,
+    breath_hold_lerp: 1.0,
+};
+
 pub const STOPSPEED: f32 = 100.0;
 pub const FRICTION: f32 = 5.5;
 pub const SLIDING_FRICTION: f32 = 1.5;
-pub const SLIDING_WISHSPEED: f32 = 450.0;
 pub const SLIDING_VELOCITY_CAP: f32 = 500.0;
 pub const GRAVITY: f32 = 800.0;
 
@@ -32,7 +56,6 @@ pub const PERK_SPRINT_MULTIPLIER: f32 = 2.0;
 pub const VEHICLE_PERK_BOOST_DURATION: f32 = 0.74;
 
 pub const FALL_DAMAGE_MIN_HEIGHT: f32 = 128.0;
-pub const FALL_DAMAGE_MAX_HEIGHT: f32 = 350.0;
 
 pub const DMGTIMER_MAX_TIME: f32 = 750.0;
 pub const DMGTIMER_MIN_SCALE: f32 = 0.0;
@@ -40,7 +63,6 @@ pub const DMGTIMER_FLINCH_TIME: i32 = 500;
 
 pub const VIEW_PITCH_UP: f32 = 85.0;
 pub const VIEW_PITCH_DOWN: f32 = 85.0;
-pub const PRONE_YAWCAP: f32 = 85.0;
 pub const LADDER_YAWCAP: f32 = 100.0;
 
 pub const MOVE_THRESHOLD: f32 = 2.0;
@@ -91,7 +113,6 @@ pub const BREATH_FIRE_DELAY: f32 = 0.0;
 pub const BREATH_GASP_TIME: f32 = 1.0;
 pub const BREATH_GASP_SCALE: f32 = 4.5;
 pub const BREATH_GASP_LERP: f32 = 6.0;
-pub const BREATH_HOLD_LERP: f32 = 4.0;
 pub const DOOR_BREACH_WEAPON_DROP: bool = true;
 pub const MANTLE_ENABLE: bool = true;
 pub const MANTLE_CHECK_RANGE: f32 = 20.0;
