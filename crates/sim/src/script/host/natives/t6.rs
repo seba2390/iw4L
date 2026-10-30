@@ -28,9 +28,11 @@ mod entity;
 mod extras;
 pub(crate) mod flame_overlay;
 mod laststand;
+mod loadout;
 mod missile;
 mod movement;
 mod mover;
+pub(crate) mod multiplayer;
 mod path_follow;
 mod path_search;
 mod paths;
@@ -172,6 +174,40 @@ fn istring(args: &[Value], index: usize) -> Result<String, String> {
 const SESSION_FLAGS: u32 = 0x14;
 const GAME_MODE_FLAGS: u32 = 0x1;
 
+/// A multiplayer gametype's row in `mp/gametypestable.csv`, 0 when it has none.
+fn multiplayer_gametype_row(world: &World, name: &str) -> i32 {
+    world
+        .resource::<RoundScript>()
+        .tables
+        .get("mp/gametypestable.csv")
+        .and_then(|table| {
+            (0..table.rows).find(|&row| {
+                (0..table.columns).any(|column| {
+                    table
+                        .cell(row, column)
+                        .is_some_and(|cell| cell.eq_ignore_ascii_case(name))
+                })
+            })
+        })
+        .map_or(0, |row| row as i32)
+}
+
+fn session_flags(world: &World) -> u32 {
+    if multiplayer::is_multiplayer(world) {
+        multiplayer::SESSION_FLAGS
+    } else {
+        SESSION_FLAGS
+    }
+}
+
+fn game_mode_flags(world: &World) -> u32 {
+    if multiplayer::is_multiplayer(world) {
+        multiplayer::GAME_MODE_FLAGS
+    } else {
+        GAME_MODE_FLAGS
+    }
+}
+
 /// The names `clientsysregister` gave out, in order; the engine keeps eight.
 #[derive(Resource, Default)]
 struct ClientSystems(Vec<String>);
@@ -235,35 +271,34 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
 
     // Session and game mode flags.
-    registry.register(Function, "sessionmodeisonlinegame", |_, _, _| {
-        Ok(Value::Int((SESSION_FLAGS >> 2 & 1) as i32))
+    registry.register(Function, "sessionmodeisonlinegame", |world, _, _| {
+        Ok(Value::Int((session_flags(world) >> 2 & 1) as i32))
     });
-    registry.register(Function, "sessionmodeissystemlink", |_, _, _| {
-        Ok(Value::Int((SESSION_FLAGS >> 1 & 1) as i32))
+    registry.register(Function, "sessionmodeissystemlink", |world, _, _| {
+        Ok(Value::Int((session_flags(world) >> 1 & 1) as i32))
     });
-    registry.register(Function, "sessionmodeisprivate", |_, _, _| {
-        Ok(Value::Int((SESSION_FLAGS >> 3 & 1) as i32))
+    registry.register(Function, "sessionmodeisprivate", |world, _, _| {
+        Ok(Value::Int((session_flags(world) >> 3 & 1) as i32))
     });
-    registry.register(Function, "sessionmodeisprivateonlinegame", |_, _, _| {
-        Ok(Value::Int(
-            (SESSION_FLAGS >> 2 & SESSION_FLAGS >> 3 & 1) as i32,
-        ))
+    registry.register(Function, "sessionmodeisprivateonlinegame", |world, _, _| {
+        let flags = session_flags(world);
+        Ok(Value::Int((flags >> 2 & flags >> 3 & 1) as i32))
     });
-    registry.register(Function, "sessionmodeiszombiesgame", |_, _, _| {
-        Ok(Value::Int(1))
+    registry.register(Function, "sessionmodeiszombiesgame", |world, _, _| {
+        Ok(Value::Int((session_flags(world) >> 4 & 1) as i32))
     });
-    registry.register(Function, "gamemodeisusingxp", |_, _, _| {
-        Ok(Value::Int((GAME_MODE_FLAGS & 1) as i32))
+    registry.register(Function, "gamemodeisusingxp", |world, _, _| {
+        Ok(Value::Int((game_mode_flags(world) & 1) as i32))
     });
-    registry.register(Function, "gamemodeisusingstats", |_, _, _| {
-        Ok(Value::Int((GAME_MODE_FLAGS & 0x41 != 0).into()))
+    registry.register(Function, "gamemodeisusingstats", |world, _, _| {
+        Ok(Value::Int((game_mode_flags(world) & 0x41 != 0).into()))
     });
-    registry.register(Function, "gamemodeismode", |_, _, args| {
+    registry.register(Function, "gamemodeismode", |world, _, args| {
         let mode = int(args, 0)?;
         if !(0..=7).contains(&mode) {
             return Err(format!("Bad game mode {mode}"));
         }
-        Ok(Value::Int((GAME_MODE_FLAGS >> mode & 1) as i32))
+        Ok(Value::Int((game_mode_flags(world) >> mode & 1) as i32))
     });
 
     registry.register(Function, "getaitriggerflags", |_, _, _| Ok(Value::Int(7)));
@@ -1771,9 +1806,14 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         client_of(world, receiver)?;
         Ok(Value::Int(0))
     });
-    registry.register(Function, "getgametypeenumfromname", |_, _, args| {
+    registry.register(Function, "getgametypeenumfromname", |world, _, args| {
         let name = string(args, 0)?;
         int(args, 1)?;
+        // `t6mp.exe`'s list is not read: a multiplayer gametype's game history
+        // entry is its row of `mp/gametypestable.csv` (t6.stats.gametype_enum).
+        if multiplayer::is_multiplayer(world) {
+            return Ok(Value::Int(multiplayer_gametype_row(world, &name)));
+        }
         let index = ["zgrief", "zclassic", "zstandard", "zcleansed"]
             .iter()
             .position(|known| known.eq_ignore_ascii_case(&name))
@@ -2047,6 +2087,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     let shared = NativeRegistry::engine_services();
     for (namespace, name) in [
         (Function, "newhudelem"),
+        (Method, "setspawnweapon"),
+        (Method, "clearperks"),
+        (Method, "setoffhandprimaryclass"),
+        (Method, "setoffhandsecondaryclass"),
+        (Method, "switchtooffhand"),
         (Method, "setshader"),
         (Method, "setvalue"),
         (Method, "freezecontrols"),
@@ -2128,6 +2173,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         if let Some(native) = shared.get(namespace, name) {
             registry.register(namespace, name, native);
         }
+    }
+    // A client's score popup is a client hud element, of a type of its own
+    // that nothing draws apart (t6.mp.score_hud).
+    if let Some(native) = shared.get(Function, "newclienthudelem") {
+        registry.register(Function, "newscorehudelem", native);
     }
     for (dev_name, engine_name) in [
         ("devaddpitch", "addpitch"),
@@ -2407,7 +2457,9 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     effect::register(registry);
     entity::register(registry);
     laststand::register(registry);
+    loadout::register(registry);
     missile::register(registry);
+    multiplayer::register(registry);
     registry.on_use(usable::use_presses);
     mover::register(registry);
     paths::register(registry);
@@ -2716,8 +2768,10 @@ pub(crate) fn gametype_setting(world: &World, name: &str) -> Value {
     }
 }
 
-/// The layout of a zombies player's stats.
+/// The layouts of a zombies and a multiplayer player's stats; a map's zones
+/// carry one.
 const STATS_LAYOUT: &str = "ddl_zm/stats.ddl";
+const MULTIPLAYER_STATS_LAYOUT: &str = "ddl_mp/stats.ddl";
 /// The game settings' layout, whose members `getgametypesetting` reads.
 const SETTINGS_LAYOUT: &str = "ddl_mp/gametype_settings.ddl";
 
@@ -2749,8 +2803,13 @@ fn stat_path(
         .resource::<RoundScript>()
         .restart
         .as_ref()
-        .and_then(|plan| plan.layouts.get(STATS_LAYOUT).cloned())
-        .ok_or("the zombies stats layout is not in the zones")?;
+        .and_then(|plan| {
+            plan.layouts
+                .get(STATS_LAYOUT)
+                .or_else(|| plan.layouts.get(MULTIPLAYER_STATS_LAYOUT))
+                .cloned()
+        })
+        .ok_or("the stats layout is not in the zones")?;
     let Some(root) = layout.structs.first() else {
         return Ok(None);
     };
@@ -3379,7 +3438,7 @@ fn table_name(args: &[Value]) -> Result<String, String> {
 
 /// `tablelookup`: the table by name or number, then one to three column and
 /// value pairs and the column to answer; any miss answers "".
-fn table_lookup(world: &World, args: &[Value]) -> Result<String, String> {
+pub(super) fn table_lookup(world: &World, args: &[Value]) -> Result<String, String> {
     let name = match arg(args, 0)? {
         Value::Int(_) | Value::String(_) => table_name(args)?,
         _ => return Ok(String::new()),

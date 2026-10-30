@@ -14,6 +14,11 @@ const RECORDING: bool = SESSION_FLAGS & 0x4 != 0;
 /// An online session that is not a private one keeps stats.
 const STATS_KEPT: bool = SESSION_FLAGS & 0x4 != 0 && SESSION_FLAGS & 0x8 == 0;
 
+/// Whether this match keeps stats: a multiplayer match here is a private one.
+fn stats_kept(world: &World) -> bool {
+    STATS_KEPT && !super::multiplayer::is_multiplayer(world)
+}
+
 /// A bool dvar, `default` when the match has not set it.
 fn dvar_on(world: &World, name: &str, default: bool) -> bool {
     world
@@ -34,7 +39,7 @@ fn dvar_text(world: &World, name: &str) -> String {
 
 /// Stats are written: tracking is not turned off and the session keeps them.
 fn tracking(world: &World) -> bool {
-    !dvar_on(world, "scr_disablestattracking", false) && STATS_KEPT
+    !dvar_on(world, "scr_disablestattracking", false) && stats_kept(world)
 }
 
 /// The amount, the last argument: a float or an int.
@@ -387,7 +392,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "gamehistoryfinishmatch", |world, receiver, args| {
         client_of(world, receiver)
             .map_err(|_| String::from("setdstat: entity must be a player entity"))?;
-        if dvar_on(world, "scr_disablesetdstat", false) || !STATS_KEPT {
+        if dvar_on(world, "scr_disablesetdstat", false) || !stats_kept(world) {
             return Ok(Value::Undefined);
         }
         for index in 0..5 {

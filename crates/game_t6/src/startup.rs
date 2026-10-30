@@ -131,6 +131,13 @@ pub(crate) fn actor_scripts(entities: &str, traversals: &[String]) -> Vec<String
                 .map(|name| format!("maps/mp/animscripts/traverse/{name}")),
         )
         .collect();
+    scripts.extend(aitype_scripts(entities));
+    scripts
+}
+
+/// The script of each actor type the map's spawners name, once each.
+pub(crate) fn aitype_scripts(entities: &str) -> Vec<String> {
+    let mut scripts: Vec<String> = Vec::new();
     let mut tokens = entities.split('"').skip(1).step_by(2);
     while let Some(key) = tokens.next() {
         let Some(value) = tokens.next() else {
@@ -146,4 +153,32 @@ pub(crate) fn actor_scripts(entities: &str, traversals: &[String]) -> Vec<String
         }
     }
     scripts
+}
+
+/// The multiplayer actors' animscripts (the K9 Unit's dogs).
+pub(crate) const MULTIPLAYER_ANIMSCRIPTS: [&str; 11] = [
+    "dog_combat",
+    "dog_death",
+    "dog_flashed",
+    "dog_init",
+    "dog_jump",
+    "dog_move",
+    "dog_pain",
+    "dog_stop",
+    "dog_turn",
+    "shared",
+    "utility",
+];
+
+/// A multiplayer map's factions, allies then axis: its row of
+/// `mp/mapstable.csv`, map name in the first column.
+pub(crate) fn map_factions(table: &game_api::TableLookup<'_>, map: &str) -> Vec<String> {
+    let Some((columns, cells)) = table("mp/mapstable.csv").filter(|(columns, _)| *columns > 2)
+    else {
+        return Vec::new();
+    };
+    cells
+        .chunks_exact(columns)
+        .find(|row| row[0].eq_ignore_ascii_case(map))
+        .map_or_else(Vec::new, |row| vec![row[1].clone(), row[2].clone()])
 }

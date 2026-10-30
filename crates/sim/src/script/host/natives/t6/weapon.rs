@@ -38,6 +38,7 @@ const ITEM_GROUPS: [&str; 20] = [
 /// The groups whose items load as weapons.
 const WEAPON_GROUPS: [usize; 12] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15];
 const STATS_TABLE: &str = "zm/zm_statstable.csv";
+const MULTIPLAYER_STATS_TABLE: &str = "mp/statstable.csv";
 /// The newest content pack the owner's game had; a later item does not load.
 const OWNED_CONTENT: i32 = 13;
 
@@ -231,8 +232,13 @@ struct Item<'t> {
 /// its item number, as `<name>_zm`, with the attachments its item lists.
 fn table_weapons(world: &World) -> Vec<(usize, String, Vec<String>)> {
     let tables = world.resource::<RoundScript>().tables.clone();
-    let Some(table) = crate::script::host::tables::table(&tables, STATS_TABLE) else {
-        return Vec::new();
+    // A map's zones carry one of the two tables; its weapons take its suffix.
+    let (table, suffix) = match crate::script::host::tables::table(&tables, STATS_TABLE) {
+        Some(table) => (table, "zm"),
+        None => match crate::script::host::tables::table(&tables, MULTIPLAYER_STATS_TABLE) {
+            Some(table) => (table, "mp"),
+            None => return Vec::new(),
+        },
     };
     let cell = |row, column| table.cell(row, column).unwrap_or("");
     let items: Vec<Item> = (0..256)
@@ -275,14 +281,14 @@ fn table_weapons(world: &World) -> Vec<(usize, String, Vec<String>)> {
             let variants = attachments
                 .clone()
                 .flat_map(|first| {
-                    let one = format!("{}_{first}_zm", item.name);
+                    let one = format!("{}_{first}_{suffix}", item.name);
                     let two = attachments
                         .clone()
-                        .map(move |second| format!("{}_{first}_{second}_zm", item.name));
+                        .map(move |second| format!("{}_{first}_{second}_{suffix}", item.name));
                     std::iter::once(one).chain(two)
                 })
                 .collect();
-            names.push((item.index, format!("{}_zm", item.name), variants));
+            names.push((item.index, format!("{}_{suffix}", item.name), variants));
         }
     }
     names

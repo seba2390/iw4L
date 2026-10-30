@@ -128,11 +128,55 @@ impl T6ContentMode {
     /// user's IW4L folder (`~/.config/iw4l/captured/`), which every checkout
     /// and launch shares.
     pub fn captured_patches(self) -> Vec<std::path::PathBuf> {
-        captured_patch_files(match self {
+        captured_patch_files(self.capture_suffix())
+    }
+
+    /// Compiled modules captured one by one, which replace the zones' and
+    /// the captured patches' (`captured_script_modules`).
+    pub fn captured_modules(self) -> Vec<(String, Vec<u8>)> {
+        captured_script_modules(self.capture_suffix())
+    }
+
+    fn capture_suffix(self) -> &'static str {
+        match self {
             Self::Multiplayer => "_mp",
             Self::Zombies => "_zm",
-        })
+        }
     }
+}
+
+/// Compiled script modules the owner dumped one by one from the game's memory
+/// into `<capture folder>/scripts<suffix>/` (`maps/mp/gametypes/_globallogic.gsc`
+/// under it), by module path; the first folder's copy of a module wins.
+pub fn captured_script_modules(suffix: &str) -> Vec<(String, Vec<u8>)> {
+    fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<(String, Vec<u8>)>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for path in entries.filter_map(|entry| entry.ok().map(|entry| entry.path())) {
+            if path.is_dir() {
+                walk(root, &path, out);
+                continue;
+            }
+            let script = path
+                .extension()
+                .is_some_and(|ext| ext == "gsc" || ext == "csc");
+            if let (true, Ok(name), Ok(bytes)) =
+                (script, path.strip_prefix(root), std::fs::read(&path))
+            {
+                let name = name.to_string_lossy().replace('\\', "/");
+                if !out.iter().any(|(seen, _)| *seen == name) {
+                    out.push((name, bytes));
+                }
+            }
+        }
+    }
+    let mut modules = Vec::new();
+    for folder in capture_folders() {
+        let root = folder.join(format!("scripts{suffix}"));
+        walk(&root, &root, &mut modules);
+    }
+    modules
 }
 
 /// The folders captured patch zones are read from: `<artifacts>/captured/`,

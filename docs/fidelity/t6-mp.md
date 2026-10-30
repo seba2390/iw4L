@@ -27,6 +27,68 @@ not read yet).
 Severity: **V** visible, **A** audible, **G** gameplay, **I** invisible.
 Each open section names the issue that works it.
 
+## Black Ops 2's own scripts (#677, #682)
+
+- [ ] **G** `t6.scripts.mp_ffotd` (`GameScripts::program`): with
+      `maps/mp/gametypes/_globallogic` in the map's scripts (a captured
+      `ffotd_*_mp*.ff`, or the module dumped from memory into
+      `<capture folder>/scripts_mp/`), Free for All and Team Deathmatch run
+      Black Ops 2's own program; its imports left unresolved refuse the match.
+      Without the module IW4L's rules host the match. **Everything under this
+      heading has only run on a recompiled copy of the module**, from a
+      decompiled source outside the repository, kept out of it, used until
+      the real patch is captured (#676). None of it ticks a milestone.
+- [ ] **I** `t6.scripts.mp_startup`: the gametype's `main`, the map's `main`,
+      the factions' `_teamset_*::main`, then `_callbacksetup`'s start. The place
+      of the factions is what their scripts need (they read
+      `level.multiteam`, and the start reads what they set); it is not read
+      from `t6mp.exe`.
+- [ ] **I** `t6.session.private`: a multiplayer match answers as an online
+      private match (`sessionmode*`, `gamemode*`: not ranked, no zombies).
+- [ ] **G** `t6.mp.stats_table` (`natives::t6::loadout`): default classes
+      (10–14) and a new profile's custom slots (0–9, by
+      `mp/reset_classes.cfg`'s `equipdefaultclass`) come from
+      `mp/statsTable.csv`'s class column, each class followed by the item's
+      attachments or count.
+- [ ] **V** `t6.mp.class_menu`: Black Ops 2's own class menu does not run
+      (#698): when the scripts open it, a player with no answer on its way
+      takes `class_assault`.
+- [ ] **G** `t6.mp.custom_classes`: an edited custom class is not read: the
+      stats' `cacloadouts` are not written (#687).
+- [ ] **V** `t6.mp.player_options`: `calcplayeroptions` answers 0: no camo,
+      reticle or character options (#687).
+- [ ] **G** `t6.stats.gametype_enum`: `getgametypeenumfromname` answers the
+      gametype's row of `mp/gametypestable.csv`; `t6mp.exe`'s list is not read.
+      Only game history reads it, which a private match does not keep.
+- [ ] **V** `t6.mp.rank_state`: `setrank` checks its values and keeps nothing;
+      a private match has no ranks to show.
+- [ ] **G** `t6.mp.location_selection`: `precachelocationselector` keeps nothing
+      until location selection exists (#690).
+- [ ] **V** `t6.mp.killcam_fov`: `setfovforkillcam` keeps nothing (#701).
+- [ ] **G** `t6.vehicles.tread_fx`: `getvehicletreadfxarray` answers none: the
+      vehicle definitions' effects are not read (#692).
+- [ ] **G** `t6.heli.height_patches`: `setheliheightpatchenabled` keeps
+      nothing until the helicopter runtime (#691).
+- [ ] **G** `t6.bots.test_clients`: `istestclient` answers 0 (#696).
+- [ ] **G** `t6.weapons.attachments`: a weapon named with its attachments
+      (`hk416_mp+reflex+dualclip`) is the base weapon: no attachment changes its
+      model, sights, ammo or handling; the current weapon's name has none, the
+      stowed and alternate weapons are "none" (#680).
+- [ ] **G** `t6.spawn.scoring` (`natives::t6::extras`): `getsortedspawnpoints`
+      answers the point with the highest sum of the live influencers' scores
+      for the team: each influencer's score by its curve over its radius,
+      plus a random fraction. The influencers' numbers are the scripts', the
+      formula is IW4L's: the engine's scorer and its sight checks are not read,
+      so a point in view of an enemy can win (#682).
+- [ ] **V** `t6.mp.first_raise`: `initialweaponraise` keeps nothing (#680).
+- [ ] **G** `t6.weapons.lock_on`: `weaponlock*` and `setweaponheatpercent` keep
+      nothing (#694).
+- [ ] **V** `t6.mp.score_hud`: `newscorehudelem` is a client hud element (#697).
+- [ ] **G** `t6.mp.radar_flags`: `gpsjammeractive`, `spawnprotectionactive` and
+      their opposites keep nothing (#689).
+- [ ] **V** `t6.csc.radar`: `setmaplatlong`, `setlocalradarenabled` and
+      `setlocalradarposition` keep nothing (#689).
+
 ## Waiting on the maintainer
 
 - [ ] **G** `maps/mp/gametypes/_globallogic.gsc` is in no zone of the
@@ -57,6 +119,12 @@ Each open section names the issue that works it.
 - [ ] **V** Team characters do not come from the map's factions
       (`faction_*_mp` and their `_sand`, `_wet` and `_snow` variants, picked by
       the map's team set) (#675).
+- [ ] **G** Cargo's crane (`mp_dockside_crane.gsc`) stops in `init` reading an
+      entity's `model`, undefined on an entity with none where the script
+      expects text, and does not lift its crates (#703).
+- [ ] **I** A headless run of Black Ops 2's own scripts sometimes ends in Metal
+      `DeviceLost` (`Cannot allocate sample buffer`) soon after loading; the
+      cause is not traced, and IW4L's rules have not shown it.
 - [ ] **G** Destructibles (`_destructible.gsc`), interactive objects and the
       maps' moving parts (Express's train, Cargo's crane) have not run;
       `setdamagestage` is not implemented (#703).
@@ -179,6 +247,9 @@ Each open section names the issue that works it.
       `playrumbleonposition`, `stoprumble`), `setmaplatlong`, `getmapcenter`,
       `isads`, `tracepoint`, `setanim`, `unlink`, `setstunned`,
       `setflagasaway`, `setmultiextracamactive` (#678).
+- [ ] **V** On Cargo `_fxanim.csc` stops in `fxanim_init` and
+      `_fxanim_model_link`: `getent` finds more than one entity by a name, so
+      its animated props do not link (#678).
 - [ ] **V** `t6.csc.dynent.enabled` (`natives::t6::client::dynent`):
       `setdynentenabled` keeps the state the scripts set, but the renderer
       does not read it: a dynamic entity turned off (Cargo's at

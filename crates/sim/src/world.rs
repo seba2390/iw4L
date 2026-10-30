@@ -1029,6 +1029,9 @@ impl SimState {
     }
 
     pub fn weapon_index_by_script_name(&self, name: &str) -> Option<u32> {
+        // Black Ops 2 names a weapon with its attachments, `base_mp+a+b`: the
+        // weapon is the base's (`t6.weapons.attachments`).
+        let name = name.split('+').next().unwrap_or(name);
         if let Some(&weapon) = self.content.weapons().weapon_script_aliases.get(name) {
             return Some(weapon);
         }

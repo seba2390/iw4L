@@ -45,6 +45,12 @@ impl game_api::GameScripts for T6 {
         if own_gametype(request.gametype) && own_scripts(request.map) {
             return own_zombies(request, sources);
         }
+        if !zombies_map
+            && own_multiplayer_gametype(request.gametype)
+            && sources.read_module(GLOBAL_LOGIC).is_ok()
+        {
+            return own_multiplayer(request, sources);
+        }
         match (zombies_map, request.gametype) {
             (false, "dm" | "war") | (true, "zclassic") => {}
             (true, _) => {
@@ -68,9 +74,6 @@ impl game_api::GameScripts for T6 {
                     "Black Ops 2's rules for that mode"
                 ));
             }
-        }
-        if !zombies_map {
-            probe_multiplayer(request, sources);
         }
         let startup = startup::T6Startup::new(request.map);
         Rule::Known(ScriptProgram {
@@ -132,19 +135,45 @@ fn own_gametype(gametype: &str) -> bool {
     matches!(gametype, "zclassic" | "zstandard" | "zgrief" | "zcleansed")
 }
 
-/// Links Black Ops 2's own multiplayer server program (the callbacks, the
-/// gametype's script and the map's) and logs what it lacks, while IW4L's
-/// rules host Free for All and Team Deathmatch: without the launch patch
-/// (`ffotd_*_mp`) its `maps/mp/gametypes/_globallogic` is missing
-/// (docs/fidelity/t6-mp.md).
-fn probe_multiplayer(request: &ScriptRequest<'_>, sources: &dyn gsc::SourceResolver) {
+/// The module only Black Ops 2's multiplayer launch patch carries; its own
+/// multiplayer scripts run when the patch (or the module) has been captured.
+const GLOBAL_LOGIC: &str = "maps/mp/gametypes/_globallogic";
+
+/// The multiplayer gametypes Black Ops 2's own scripts run here.
+fn own_multiplayer_gametype(gametype: &str) -> bool {
+    matches!(gametype, "dm" | "war")
+}
+
+/// Black Ops 2's own multiplayer scripts: the callbacks, the gametype's
+/// script and the map's, started as a level starts.
+fn own_multiplayer(
+    request: &ScriptRequest<'_>,
+    sources: &dyn gsc::SourceResolver,
+) -> Rule<ScriptProgram> {
+    let script = script_gametype(request.gametype);
+    let gametype = format!("maps/mp/gametypes/{script}");
+    let map = format!("maps/mp/{}", request.map);
+    let callbacks = "maps/mp/gametypes/_callbacksetup";
+    let factions = startup::map_factions(request.table, request.map);
     let roots = [
         "codescripts/delete".to_owned(),
         "codescripts/struct".to_owned(),
-        "maps/mp/gametypes/_callbacksetup".to_owned(),
-        format!("maps/mp/gametypes/{}", script_gametype(request.gametype)),
-        format!("maps/mp/{}", request.map),
-    ];
+        callbacks.to_owned(),
+    ]
+    .into_iter()
+    .chain(
+        factions
+            .iter()
+            .map(|faction| format!("maps/mp/teams/_teamset_{faction}")),
+    )
+    .chain([gametype.clone(), map.clone()])
+    .chain(startup::aitype_scripts(request.entities))
+    .chain(
+        startup::MULTIPLAYER_ANIMSCRIPTS
+            .iter()
+            .map(|name| format!("maps/mp/animscripts/{name}")),
+    )
+    .collect::<Vec<_>>();
     let read = |name: &str| {
         sources.read_module(name).ok().map(|bytes| gsc_t6::Source {
             name: name.to_owned(),
@@ -159,18 +188,49 @@ fn probe_multiplayer(request: &ScriptRequest<'_>, sources: &dyn gsc::SourceResol
     };
     let built = gsc_t6::build(&modules, &builtins, asset_core::FamilyId::T6);
     for line in missing.iter().chain(&built.report) {
-        diag::info!(Sim, "own multiplayer scripts: {line}");
+        diag::info!(Sim, "{line}");
     }
-    let (scripts, other): (Vec<_>, Vec<_>) = built
-        .unresolved
-        .iter()
-        .partition(|line| line.contains("could not find script"));
-    diag::info!(
-        Sim,
-        "own multiplayer scripts: {} imports into modules the zones lack, {} others: {other:?}",
-        scripts.len(),
-        other.len()
-    );
+    if !built.unresolved.is_empty() {
+        return Rule::Unknown(unknown!(
+            "t6.scripts.mp_ffotd",
+            "Black Ops 2's multiplayer scripts call into modules the install does not carry (maps/mp/gametypes/_globallogic is in the patch zone the game downloads at launch)",
+            "the downloaded patch zone, captured into ~/.config/iw4l/captured/ (or <artifacts>/captured/)"
+        ));
+    }
+    // The factions' scripts read what the gametype's main sets
+    // (`level.multiteam`) and set what its start reads (`game["allies"]`, the
+    // team icons); their place is not read from `t6mp.exe`
+    // (t6.scripts.mp_startup).
+    let entries = [format!("{gametype}::main"), format!("{map}::main")]
+        .into_iter()
+        .chain(
+            factions
+                .iter()
+                .map(|faction| format!("maps/mp/teams/_teamset_{faction}::main")),
+        )
+        .chain([
+            format!("{callbacks}::codecallback_startgametype"),
+            format!("{callbacks}::codecallback_finalizeinitialization"),
+        ])
+        .filter(|entry| built.program.names.contains_key(entry))
+        .collect();
+    Rule::Known(ScriptProgram {
+        catalog: gsc::Catalog::from_list(asset_core::FamilyId::T6, &catalog())
+            .with_ordered_strings(),
+        roots,
+        entries,
+        built: Some(built.program),
+        settings: multiplayer_gametype_settings(request.config, script),
+        key_types: (request.config)("radiant/keys.txt").map_or_else(Vec::new, keys::parse),
+        entity_fields: keys::ENTITY_FIELDS
+            .iter()
+            .map(|&(name, ty)| (name.to_owned(), ty))
+            .collect(),
+        dvars: vec![
+            ("g_gametype".to_owned(), script.to_owned()),
+            ("ui_gametype".to_owned(), script.to_owned()),
+        ],
+    })
 }
 
 /// A multiplayer gametype's script name: the lobby's `war` is Black Ops 2's
@@ -280,9 +340,25 @@ pub(crate) fn gametype_settings<'a>(
     config: &dyn Fn(&str) -> Option<&'a str>,
     gametype: &str,
 ) -> Vec<(String, String)> {
+    settings_from(config, "zm", gametype)
+}
+
+/// A multiplayer gametype's settings, from `mp/gamesettings_*.cfg`.
+fn multiplayer_gametype_settings<'a>(
+    config: &dyn Fn(&str) -> Option<&'a str>,
+    gametype: &str,
+) -> Vec<(String, String)> {
+    settings_from(config, "mp", gametype)
+}
+
+fn settings_from<'a>(
+    config: &dyn Fn(&str) -> Option<&'a str>,
+    folder: &str,
+    gametype: &str,
+) -> Vec<(String, String)> {
     let mut settings: Vec<(String, String)> = Vec::new();
     for file in ["default", gametype] {
-        let Some(text) = config(&format!("zm/gamesettings_{file}.cfg")) else {
+        let Some(text) = config(&format!("{folder}/gamesettings_{file}.cfg")) else {
             continue;
         };
         for line in text.lines() {
@@ -386,6 +462,17 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     menu_dvars_reach_server: false,
     runtime_class_slots: false,
     ui3d: None,
+};
+
+/// Black Ops 2's own multiplayer scripts hold the match; the HUD is still
+/// IW4L's (docs/fidelity/t6-mp.md).
+const OWN_MULTIPLAYER_MODE: ModeRules = ModeRules {
+    scripts_spawn_players: true,
+    limits_from_config: false,
+    report_builtin_gaps: true,
+    binds_objectives: false,
+    host_rules: false,
+    ..MULTIPLAYER_MODE
 };
 
 const ZCLASSIC_MODE: ModeRules = ModeRules {
@@ -528,6 +615,19 @@ impl game_api::GameModes for T6 {
                 "Black Ops 2's rules for that mode"
             )),
         }
+    }
+
+    fn mode_for_match(
+        &self,
+        map: &str,
+        gametype: &str,
+        has_module: &dyn Fn(&str) -> bool,
+    ) -> Rule<ModeRules> {
+        if !map.starts_with("zm_") && own_multiplayer_gametype(gametype) && has_module(GLOBAL_LOGIC)
+        {
+            return Rule::Known(OWN_MULTIPLAYER_MODE);
+        }
+        self.mode_on_map(map, gametype)
     }
 
     fn mode_on_map(&self, map: &str, gametype: &str) -> Rule<ModeRules> {

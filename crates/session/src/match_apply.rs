@@ -1244,7 +1244,8 @@ fn preflight_match_install(
     let family = prepared_map
         .namespace
         .ok_or_else(|| InstallRefusal::new(format!("`{zone}` belongs to no game")))?;
-    let mode = match crate::games::modes(family).mode_on_map(zone, kind.token()) {
+    let has_module = |module: &str| prepared.scripts.module(module).is_some();
+    let mode = match crate::games::modes(family).mode_for_match(zone, kind.token(), &has_module) {
         game_api::Rule::Known(mode) => mode,
         game_api::Rule::Unknown(gap) => return Err(unknown_refusal(zone, kind.token(), gap)),
     };
@@ -1668,7 +1669,15 @@ fn preflight_match_install(
     }
     script_dvars.extend(script_dvar_overrides());
     let script_entries = program.entries;
-    let gametype_settings = program.settings;
+    let mut gametype_settings = program.settings;
+    // A short test match's limit, over the gametype's own (`docs/ENV.md`).
+    if let Ok(limit) = std::env::var("IW4L_SCORE_LIMIT") {
+        for (name, value) in &mut gametype_settings {
+            if name == "scorelimit" {
+                value.clone_from(&limit);
+            }
+        }
+    }
     let key_type = |ty| match ty {
         game_api::KeyType::Int => sim::script::KeyType::Int,
         game_api::KeyType::Float => sim::script::KeyType::Float,

@@ -256,6 +256,7 @@ fn zone_weapon(weapon: &fastfile_t6::weapon::WeaponView<'_>) -> Option<asset_cor
         ),
         damage_curve: weapon.damage_curve(),
         fire_barrels: weapon.def_i32(def::FIRE_BARRELS),
+        fire_time: weapon.def_i32(def::FIRE_TIME),
         penetrate_type: weapon.def_i32(def::PENETRATE_TYPE),
         rifle_bullet: weapon.def_bool(def::RIFLE_BULLET),
         armor_piercing: weapon.def_bool(def::ARMOR_PIERCING),

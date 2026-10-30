@@ -396,6 +396,15 @@ impl MenuAnswer {
     }
 }
 
+/// Whether a client's answer to a menu is already on its way.
+pub(crate) fn has_queued_answer(world: &World, client: u32) -> bool {
+    world
+        .resource::<RoundScript>()
+        .menu_answers
+        .get(&client)
+        .is_some_and(|queue| !queue.is_empty())
+}
+
 pub(crate) fn answer_menu(world: &mut World, client: u32, menu: &str, response: &str) {
     push_answer(
         world,
@@ -466,6 +475,28 @@ pub(crate) fn is_t5(world: &World) -> bool {
         .is_some_and(|p| p.rules() == crate::script::Realm::T5)
 }
 
+/// Black Ops 2's default classes, as its class menu answers them
+/// (`_class.gsc`'s `level.classmap`).
+const T6_DEFAULT_CLASSES: [&str; 5] = [
+    "class_assault",
+    "class_smg",
+    "class_cqb",
+    "class_lmg",
+    "class_sniper",
+];
+
+fn t6_own_multiplayer(world: &World) -> bool {
+    world
+        .resource::<RoundScript>()
+        .program
+        .as_ref()
+        .is_some_and(|program| {
+            program
+                .names
+                .contains_key("maps/mp/gametypes/_globallogic::init")
+        })
+}
+
 pub(crate) fn choose_default_class(world: &mut World, client: u32, index: u8) {
     world
         .resource_mut::<RoundScript>()
@@ -479,6 +510,9 @@ pub(crate) fn choose_default_class(world: &mut World, client: u32, index: u8) {
     let response = match realm {
         Some(crate::script::Realm::T5) => {
             T5_DEFAULT_CLASSES[index as usize % T5_DEFAULT_CLASSES.len()].to_owned()
+        }
+        _ if t6_own_multiplayer(world) => {
+            T6_DEFAULT_CLASSES[index as usize % T6_DEFAULT_CLASSES.len()].to_owned()
         }
         _ => format!("class{}", index % 5),
     };
