@@ -26,6 +26,9 @@ pub struct LevelData {
     /// The map's primary lights, by index, as a client's `makelight` reads
     /// them.
     pub primary_lights: Vec<MapPrimaryLight>,
+    /// The map's dynamic entities, model ones then brush ones, as a client's
+    /// `getdynentarray` walks them.
+    pub dyn_ents: Vec<MapDynEnt>,
     /// The types of the keys a client's structs and entities keep, when its
     /// game lists them apart from the server's.
     pub client_keys: Option<BTreeMap<String, KeyType>>,
@@ -45,6 +48,15 @@ pub struct LevelData {
     pub raw_files: BTreeMap<String, Arc<str>>,
     pub schemas: BTreeMap<String, Arc<structured_data_iw4::DefinitionSet>>,
     pub player_data_defaults: Option<crate::PlayerDataDefaults>,
+}
+
+/// A dynamic entity the map was compiled with: its pool (0 the model
+/// ones, 1 the brush ones), its index in the pool and where it stands.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MapDynEnt {
+    pub pool: u8,
+    pub index: u16,
+    pub origin: [f32; 3],
 }
 
 /// A primary light the map was compiled with.

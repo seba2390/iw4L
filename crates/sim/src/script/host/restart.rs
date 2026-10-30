@@ -23,6 +23,8 @@ pub(crate) struct RestartPlan {
     pub player_data_defaults: Option<Arc<crate::PlayerDataDefaults>>,
     /// The map's primary lights, for a client VM's `makelight`.
     pub primary_lights: Arc<Vec<super::entities::MapPrimaryLight>>,
+    /// The map's dynamic entities, for a client VM's `getdynentarray`.
+    pub dyn_ents: Arc<Vec<super::entities::MapDynEnt>>,
 }
 
 impl std::fmt::Debug for RestartPlan {

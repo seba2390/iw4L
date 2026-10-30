@@ -425,7 +425,9 @@ that counts here. Each milestone names its issues; open rules are in
 
 - [ ] The install's multiplayer zones, factions and scripts are read (with the multiplayer launch patch), and every installed multiplayer map loads, renders and collides (#675, #676).
   - [x] Cargo, Hijacked and Raid load, render and collide on a zone set IW4L picked, and play IW4L's Free for All and Team Deathmatch ([`T6.md`](T6.md)).
+  - [x] All 19 installed maps (the 14 base maps, Nuketown 2025, Detour, Cove, Rush and Uplink) load with their factions and spawn a player in a headless Team Deathmatch.
 - [ ] A match starts on Black Ops II's own multiplayer scripts and client scripts (#677, #678).
+  - [x] Black Ops II's multiplayer client scripts (`clientscripts/mp`) run on all 19 installed maps, all of their functions translated, with no script stop (#678).
 - [ ] Players move by Black Ops II's multiplayer movement rules (#679).
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops II's rules (#680, #681).
 - [ ] Free for All and Team Deathmatch run on Black Ops II's own gametype scripts to the end of a match (#682).
