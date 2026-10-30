@@ -145,9 +145,21 @@ Each open section names the issue that works it.
       but have no effect in the runtime's movement and weapons; setting one
       logs the gap. The scripts' own perk rules (`hasperk` in the gametype,
       damage and killstreak scripts) apply (#650).
-- [ ] **G** Create-a-class: `getcustomclassloadoutitem`,
-      `getcustomclassmodifier` and `getpregameclass` are refused; custom
-      classes have nowhere to live; perks and Pro perks have not run.
+- [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
+      stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
+      match, `onlinegame` 1). `getdstat` and `setdstat` keep a plain map of
+      paths, not Black Ops' DDL buffer: the `ddl` asset is walked but not
+      captured, no per-player stats buffer is kept, saved per profile or
+      sent to the host, and `ui_mp`'s create-a-class menus do not write
+      it, so a custom class has no items. Offline (`onlinegame` 0) the
+      scripts read `GetLoadoutItemFromProfile`, which is 0 on PC as in
+      Black Ops. `calcweaponoptions (class, slot)` still reads the
+      runtime's own class slots for the camo.
+- [ ] **G** The custom game mode class table that
+      `getcustomclassloadoutitem` and `getcustomclassmodifier` read is
+      never filled (no custom game settings reach the host); it reads as
+      Black Ops' zeroed table. `getpregameclass` answers undefined: no
+      pregame lobby runs.
 
 ## Killstreaks (#656–#662)
 
@@ -275,6 +287,12 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `getloadoutitemfromprofile` answered from the runtime's own
+      class slots; it now answers 0 for every slot as Black Ops' PC
+      executable does, and `getcustomclassloadoutitem`,
+      `getcustomclassmodifier` and `getpregameclass` (refused) answer as
+      Black Ops does with its own item and modifier names (#650).
 
 - [x] **V** The kill feed was Modern Warfare 2's and hidden under Black
       Ops' code HUD. Black Ops multiplayer's own now draws in
