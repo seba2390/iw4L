@@ -491,111 +491,6 @@ fn stats_cell(world: &World, reference: &str, column: usize) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn profile_class(name: &str) -> Option<crate::ClassId> {
-    let (base, offset) = if let Some(n) = name.strip_prefix("customclass") {
-        (n, 0)
-    } else {
-        (name.strip_prefix("prestigeclass")?, 5)
-    };
-    let n: u32 = base.parse().ok()?;
-    (1..=5).contains(&n).then(|| crate::ClassId(n - 1 + offset))
-}
-
-fn stats_number(world: &World, reference: &str) -> i32 {
-    stats_cell(world, reference, 0).map_or(0, |n| super::iw4::atoi(&n))
-}
-
-fn profile_item(world: &mut World, client: u32, class: &str, slot: &str) -> i32 {
-    let Some(def) = profile_class(class)
-        .and_then(|id| super::super::players::personal_class(world, client, id))
-    else {
-        return 0;
-    };
-    let weapon_slot = |prefix: &str| slot.strip_prefix(prefix).map(|rest| rest.to_owned());
-    for (index, (prefix, weapon)) in [("primary", def.primary), ("secondary", def.secondary)]
-        .into_iter()
-        .enumerate()
-    {
-        let Some(rest) = weapon_slot(prefix) else {
-            continue;
-        };
-        if rest == "camo" {
-            return i32::from(def.camos[index]);
-        }
-        if rest == "grenade" {
-            break;
-        }
-        let weapon = super::super::players::stand_in_for(world, index, weapon).unwrap_or(weapon);
-        let (reference, attachments) = {
-            let frame = FrameWorld::from_world(world);
-            match frame.weapon_setup(weapon) {
-                Some(setup) => (setup.base.clone(), setup.attachments.clone()),
-                None => (
-                    weapon_reference(frame.weapon_script_name(weapon)).to_owned(),
-                    Vec::new(),
-                ),
-            }
-        };
-        if rest.is_empty() {
-            return stats_number(world, &reference);
-        }
-        let Some(position) = rest.strip_prefix("attachment") else {
-            return 0;
-        };
-        // Top, bottom, trigger, muzzle, filled in the order the weapon names them;
-        // dual wield is always the bottom one.
-        let mut placed: [Option<&str>; 4] = [None; 4];
-        let dual = attachments.iter().any(|a| a == "dw");
-        if dual {
-            placed[1] = Some("dw");
-        }
-        let mut free = (0..4).filter(|&at| !(dual && at == 1));
-        for attachment in attachments.iter().filter(|a| *a != "dw") {
-            if let Some(at) = free.next() {
-                placed[at] = Some(attachment);
-            }
-        }
-        let at = match position {
-            "top" => 0,
-            "bottom" => 1,
-            "trigger" => 2,
-            "muzzle" => 3,
-            _ => return 0,
-        };
-        let Some(attachment) = placed[at] else {
-            return 0;
-        };
-        return stats_cell(world, &reference, 8)
-            .and_then(|list| list.split_whitespace().position(|a| a == attachment))
-            .map_or(0, |i| i as i32 + 1);
-    }
-    let name = |world: &mut World, weapon: u32| {
-        weapon_reference(FrameWorld::from_world(world).weapon_script_name(weapon)).to_owned()
-    };
-    match slot {
-        "body" => stats_number(world, "standard_mp"),
-        "head" => stats_number(world, "head_standard_mp"),
-        "primarygrenade" if def.lethal != 0 => {
-            let weapon =
-                super::super::players::stand_in_for(world, 2, def.lethal).unwrap_or(def.lethal);
-            let reference = name(world, weapon);
-            stats_number(world, &reference)
-        }
-        "specialgrenade" if def.tactical != 0 => {
-            let weapon =
-                super::super::players::stand_in_for(world, 3, def.tactical).unwrap_or(def.tactical);
-            let reference = name(world, weapon);
-            stats_number(world, &reference)
-        }
-        "specialty1" | "specialty2" | "specialty3" => {
-            let index = usize::from(slot.as_bytes()[9] - b'1');
-            crate::match_state::class_catalog_perk_name(def.perks[index])
-                .map_or(0, |perk| stats_number(world, perk))
-        }
-        _ => 0,
-    }
-}
-
 fn weapon_reference(name: &str) -> &str {
     name.strip_suffix("_mp").unwrap_or(name)
 }
@@ -1034,16 +929,6 @@ fn register_script(registry: &mut NativeRegistry) {
         "getweaponprojexplosionsound" => proj_explosion,
     );
     registry.register(Method, "dodamage", do_damage);
-    registry.register(
-        Method,
-        "getloadoutitemfromprofile",
-        |world, receiver, args| {
-            let class = string(args, 0)?;
-            let slot = string(args, 1)?.to_ascii_lowercase();
-            let client = player_id(world, receiver)?;
-            Ok(Value::Int(profile_item(world, client, &class, &slot)))
-        },
-    );
     registry.register(Method, "setenemymodel", |world, receiver, args| {
         string(args, 0)?;
         super::engine::entity_id(world, receiver)?;
@@ -1932,9 +1817,6 @@ fn register_refused(registry: &mut NativeRegistry) {
         => "contracts are online-only; none are active");
     refused!(Function: "getgvrule", "getwagergametypelist", "pregamestartgame"
         => "game variants, wagers and the pregame lobby are not simulated");
-    refused!(Method: "getpregameclass" => "the pregame lobby is not simulated");
-    refused!(Function: "getcustomclassloadoutitem", "getcustomclassmodifier"
-        => "custom game mode classes are not loaded");
 
     refused!(Function: "getmaxvehicles"
         => "T5 vehicle limits are not configured");

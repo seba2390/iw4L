@@ -173,6 +173,7 @@ impl NativeRegistry {
     /// Black Ops multiplayer's natives where its server's differ from the
     /// zombies server's.
     pub fn with_black_ops_multiplayer(mut self) -> Self {
+        natives::t5_classes::register(&mut self);
         natives::t5_objectives::register(&mut self);
         natives::t5_obituary::register(&mut self);
         natives::t5_perks::register(&mut self);
