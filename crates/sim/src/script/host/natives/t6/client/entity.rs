@@ -849,11 +849,13 @@ pub(super) fn register(registry: &mut NativeRegistry) {
 
     // clienthassnapshot(localclientnum): whether the local client has
     // received a snapshot.
+    // A snapshot always carries the client's own player: until the server's
+    // does, the client has none yet.
     registry.register(Function, "clienthassnapshot", |world, _, args| {
         local_client(args, 0)?;
         let has = world
             .get_resource::<ClientGame>()
-            .is_some_and(|game| game.has_snapshot);
+            .is_some_and(|game| game.has_snapshot && game.local_player.is_some());
         Ok(Value::Int(has.into()))
     });
 
@@ -1391,6 +1393,21 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             })
             .map(|(id, _)| Value::Object(*id));
         Ok(found.unwrap_or(Value::Undefined))
+    });
+
+    // ent getvelocity(): a player's, from the snapshot; another entity's
+    // position delta is not kept (t6.csc.velocity).
+    registry.register(Method, "getvelocity", |world, receiver, _| {
+        let (id, _, _) = receiver_entity(world, receiver)?;
+        Ok(
+            match world
+                .resource_mut::<RoundScript>()
+                .object_field(id, "velocity")
+            {
+                value @ Value::Vector(_) => value,
+                _ => Value::Vector([0.0; 3]),
+            },
+        )
     });
 
     // ent getentitynumber(): the entity's number.

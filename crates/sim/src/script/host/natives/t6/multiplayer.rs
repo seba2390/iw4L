@@ -181,6 +181,47 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         string(args, 0)?;
         Ok(Value::Undefined)
     });
+    // The entities in a box around a point: players by their bounds, others
+    // by their origin (t6.mp.touching_volume).
+    registry.register(Function, "gettouchingvolume", |world, _, args| {
+        let origin = vector(args, 0)?;
+        let mins = vector(args, 1)?;
+        let maxs = vector(args, 2)?;
+        let lo: [f32; 3] = std::array::from_fn(|i| origin[i] + mins[i]);
+        let hi: [f32; 3] = std::array::from_fn(|i| origin[i] + maxs[i]);
+        let ids: Vec<u64> = world
+            .resource::<RoundScript>()
+            .entities
+            .keys()
+            .copied()
+            .collect();
+        let mut found = Vec::new();
+        for id in ids {
+            let client = world.resource::<RoundScript>().player_client(id);
+            let at = super::movement::origin_of(world, id);
+            let (low, high) = match client {
+                Some(_) => (
+                    [at[0] - 15.0, at[1] - 15.0, at[2]],
+                    [at[0] + 15.0, at[1] + 15.0, at[2] + 70.0],
+                ),
+                None => (at, at),
+            };
+            if (0..3).all(|i| low[i] <= hi[i] && high[i] >= lo[i]) {
+                found.push(Value::Object(id));
+            }
+        }
+        crate::script::host::arrays::new_array(world, found)
+    });
+    // An entity's flags for what bots may target and for skipping costly
+    // updates, which nothing reads yet (t6.mp.entity_flags).
+    registry.register(Method, "allowbottargetting", |_, _, args| {
+        int(args, 0)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setcheapflag", |_, _, args| {
+        int(args, 0)?;
+        Ok(Value::Undefined)
+    });
     // An angle into 0 to 360.
     registry.register(Function, "absangleclamp360", |_, _, args| {
         Ok(Value::Float(float(args, 0)?.rem_euclid(360.0)))

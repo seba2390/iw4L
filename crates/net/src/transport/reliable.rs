@@ -4,6 +4,9 @@ use crate::transport::meta_wire::{decode_event, encode_event};
 use crate::transport::wire::{WireError, WireReader, WireWriter};
 
 pub const MAX_PENDING_RELIABLE: usize = 64;
+/// Script sounds held back while the window is full, before they count as
+/// an overflow.
+const MAX_SPILLED_AUDIO: usize = 2048;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionVerdict {
@@ -65,6 +68,8 @@ pub enum ReliableRow {
 pub struct ReliableEventQueue {
     next_seq: u16,
 
+    audio_spill: std::collections::VecDeque<ReliableRow>,
+
     ack_through: u16,
 
     pending: Vec<(u16, ReliableRow)>,
@@ -82,9 +87,21 @@ impl ReliableEventQueue {
 
     pub fn push(&mut self, row: ReliableRow) -> u16 {
         if self.pending.len() >= MAX_PENDING_RELIABLE {
+            // A map's ambient scripts start more sounds at once than the
+            // window holds: they wait for acks instead of faulting the peer.
+            if matches!(row, ReliableRow::ScriptAudio(_))
+                && self.audio_spill.len() < MAX_SPILLED_AUDIO
+            {
+                self.audio_spill.push_back(row);
+                return 0;
+            }
             self.dropped_oldest = self.dropped_oldest.saturating_add(1);
             return 0;
         }
+        self.enqueue(row)
+    }
+
+    fn enqueue(&mut self, row: ReliableRow) -> u16 {
         if self.next_seq == 0 {
             self.next_seq = 1;
         }
@@ -114,6 +131,12 @@ impl ReliableEventQueue {
         }
         let keep = self.ack_through;
         self.pending.retain(|(seq, _)| seq_after(*seq, keep));
+        while self.pending.len() < MAX_PENDING_RELIABLE {
+            let Some(row) = self.audio_spill.pop_front() else {
+                break;
+            };
+            self.enqueue(row);
+        }
     }
 
     pub fn ack_through(&self) -> u16 {

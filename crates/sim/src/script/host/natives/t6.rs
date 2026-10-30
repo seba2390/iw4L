@@ -1016,7 +1016,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 let spawn = NativeRegistry::engine_services()
                     .get(Function, "spawn")
                     .ok_or("spawn: no engine spawn")?;
-                spawn(world, receiver, args)
+                let entity = spawn(world, receiver, args)?;
+                // An entity with no model reads its model as empty text.
+                if let Value::Object(id) = entity {
+                    let mut runtime = world.resource_mut::<RoundScript>();
+                    if runtime.object_field(id, "model") == Value::Undefined {
+                        runtime.set_object_field(id, "model", Value::string(""));
+                    }
+                }
+                Ok(entity)
             }
             "trigger_radius" | "trigger_radius_use" | "trigger_box" | "trigger_box_use" => {
                 spawn_trigger(world, &classname, args)
@@ -1024,9 +1032,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             "info_volume" | "trigger_damage" => {
                 Err(format!("spawn {classname}: not implemented yet"))
             }
-            _ if classname.starts_with("weapon_")
-                || (classname.starts_with("mp_") && classname.contains("_spawn")) =>
-            {
+            // A map's own extra spawn point, found by its class name.
+            _ if classname.starts_with("mp_") && classname.contains("_spawn") => {
+                let origin = vector(args, 1)?;
+                let mut runtime = world.resource_mut::<RoundScript>();
+                let id = runtime
+                    .create_entity(super::super::entities::EntityKind::Spawned, &classname)?;
+                runtime.set_object_field(id, "origin", Value::Vector(origin));
+                runtime.set_object_field(id, "angles", Value::Vector([0.0; 3]));
+                runtime.set_object_field(id, "model", Value::string(""));
+                Ok(Value::Object(id))
+            }
+            _ if classname.starts_with("weapon_") => {
                 Err(format!("spawn {classname}: not implemented yet"))
             }
             _ => Err(format!("unable to spawn \"{classname}\" entity")),

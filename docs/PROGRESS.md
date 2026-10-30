@@ -433,6 +433,7 @@ that counts here. Each milestone names its issues; open rules are in
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops II's rules (#680, #681).
 - [ ] Free for All and Team Deathmatch run on Black Ops II's own gametype scripts to the end of a match (#682).
   - [x] With that same copy: bots and the player fight on Cargo through the scripts' damage and kill callbacks, respawn, and both gametypes reach their score limit, go to intermission and leave for the lobby.
+  - [x] With that same copy: all 19 installed maps run a short Team Deathmatch with bots and no script error (#704).
   - [ ] On the captured launch patch itself (#676).
 - [ ] Every other gametype is verified in a match (#683, #684, #686).
   - [ ] Domination, Kill Confirmed, Hardpoint, Headquarters, Capture the Flag and One Flag (#683).
