@@ -40,6 +40,8 @@ pub struct GameCodeHud {
     pub visibility_bit: Option<VisibilityBitFn>,
     /// The game's kill feed; `None` draws none.
     pub killfeed: Option<&'static KillfeedRules>,
+    /// The game's compass owner draws; `None` draws none.
+    pub compass: Option<&'static CompassRules>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
@@ -69,6 +71,37 @@ pub struct KillfeedRules {
     /// The victim of an obituary the client keeps no player for is an
     /// error the game drops the client for; the runtime logs it.
     pub out_of_range: &'static str,
+}
+
+/// A game's compass: the overhead map its menus' owner draws show around
+/// the player.
+#[derive(Debug)]
+pub struct CompassRules {
+    /// The owner draws of the map and of the player's arrow.
+    pub map_owner_draw: i32,
+    pub player_owner_draw: i32,
+    /// The defaults of the dvars the compass reads: its size scale, the
+    /// world distance the map spans, whether the map turns with the view,
+    /// and the arrow's size.
+    pub size: f32,
+    pub max_range: f32,
+    pub rotation: bool,
+    pub player_size: [f32; 2],
+    /// The map's frame from the map's two corner points and its north yaw
+    /// (degrees); `None` when the corners give none.
+    pub frame: fn([f32; 2], [f32; 2], f32) -> Option<CompassFrame>,
+    /// Whether the player's arrow shows at the map's centre, by the local
+    /// player's state.
+    pub player_arrow: fn(&MovePlayer) -> Result<bool, &'static Unknown>,
+}
+
+/// Where a compass map lies in the world: its north-west corner, the
+/// north direction, and its width (east) and height (south).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompassFrame {
+    pub upper_left: [f32; 2],
+    pub north: [f32; 2],
+    pub size: [f32; 2],
 }
 
 /// How long a game message window keeps a line and how it brings one in

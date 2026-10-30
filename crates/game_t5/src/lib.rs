@@ -3,6 +3,7 @@ mod ammo;
 mod catalog;
 mod client_catalog;
 mod code_hud;
+mod compass;
 mod crosshair_scan;
 mod fire;
 mod fire_autosim;

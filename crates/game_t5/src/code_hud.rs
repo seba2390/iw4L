@@ -17,6 +17,7 @@ pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
 /// Black Ops multiplayer's: zombies' pieces and its kill feed.
 pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     killfeed: Some(&crate::killfeed::KILLFEED),
+    compass: Some(&crate::compass::COMPASS),
     undrawn: &[
         unknown!(
             "t5.hud.code_hud",
@@ -66,6 +67,7 @@ const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     grenade_indicators: Some(crate::grenade_indicator::draw),
     visibility_bit: Some(visibility_bit),
     killfeed: None,
+    compass: None,
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
