@@ -93,6 +93,12 @@ A tactical insertion fault depends on the bots' random loadouts, so it
 shows on some runs and not others. Destructibles and map interactives are
 #669; DLC maps are not in the owner's install.
 
+## HUD
+
+The kill feed is Black Ops' own: each obituary prints in the bottom-left
+game message window with the weapon's or the means of death's kill icon and
+the names in the team colours the team-set scripts pick.
+
 ## Not there yet
 
 Parts of the multiplayer HUD (#651: the killcam and hardcore-list menus

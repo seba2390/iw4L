@@ -239,6 +239,10 @@ impl T5MenuSink {
             item.text_align_y = text.align_y;
             item.text_scale = text.scale;
             item.text_style = text.style;
+            if let Some([index, mode]) = text.game_msg_window {
+                item.game_msg_window_index = index;
+                item.game_msg_window_mode = mode;
+            }
         } else if let Some(exp) = read.material_exp {
             item.material_exp = exp;
         }

@@ -175,6 +175,8 @@ pub struct MenuItem {
     pub text_align_y: f32,
     pub text_style: i32,
     pub game_msg_window_index: i32,
+    /// How a game message window stacks its lines (the game's number).
+    pub game_msg_window_mode: i32,
     pub background: String,
     pub focus_sound: String,
     pub dvar: String,

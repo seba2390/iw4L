@@ -108,6 +108,7 @@ const MAX_CHAIN: usize = 4096;
 pub const ITEM_TYPE_IMAGE: i32 = 2;
 pub const ITEM_TYPE_OWNERDRAW: i32 = 6;
 pub const ITEM_TYPE_SLIDER: i32 = 8;
+pub const ITEM_TYPE_GAME_MESSAGE_WINDOW: i32 = 0xf;
 pub const ITEM_TYPE_MULTI: i32 = 0xa;
 
 /// `ItemDefType` values whose text def carries a `focusItemDef_s`.
@@ -206,6 +207,8 @@ pub struct TextDefRead {
     pub align_y: f32,
     pub scale: f32,
     pub style: i32,
+    /// A game message window's index and mode.
+    pub game_msg_window: Option<[i32; 2]>,
 }
 
 #[derive(Clone, Debug)]
@@ -517,6 +520,9 @@ fn item(s: &ZoneStream<'_>, p: Ptr) -> ItemRead {
             align_y: f32_at(s, data, TEXT_DEF_ALIGN_Y),
             scale: f32_at(s, data, TEXT_DEF_SCALE),
             style: i32_at(s, data, TEXT_DEF_STYLE),
+            game_msg_window: ptr_at(s, data, TEXT_DEF_TYPE_DATA)
+                .filter(|_| ty == ITEM_TYPE_GAME_MESSAGE_WINDOW)
+                .map(|msg| [i32_at(s, msg, 0), i32_at(s, msg, 4)]),
         });
     let material_exp = data
         .filter(|_| !item_has_text_def(ty) && ty == ITEM_TYPE_IMAGE)

@@ -10,6 +10,7 @@ mod fire_sound;
 mod front_end_catalog;
 mod grenade;
 mod grenade_indicator;
+mod killfeed;
 mod menu_expression;
 mod missile;
 mod movement;
@@ -441,6 +442,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     waits_for_lobby: false,
     binds_objectives: true,
     hud: HudRules {
+        code_hud: Rule::Known(game_api::hud::CodeHud::Game(&code_hud::MP_CODE_HUD)),
         zombies: false,
         ..ZOMBIE_MODE.hud
     },

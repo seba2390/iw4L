@@ -38,9 +38,71 @@ pub struct GameCodeHud {
     /// Whether the game's HUD visibility bit (its number, which a menu's
     /// `isvisibilitybitset` tests) is set; `None` answers none.
     pub visibility_bit: Option<VisibilityBitFn>,
+    /// The game's kill feed; `None` draws none.
+    pub killfeed: Option<&'static KillfeedRules>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
+}
+
+/// A game's kill feed: the obituary lines its client prints to a game
+/// message window, drawn in a game message window item of its HUD menus.
+#[derive(Debug)]
+pub struct KillfeedRules {
+    /// The menu whose game message window item draws the lines.
+    pub menu: &'static str,
+    /// The window's index among the game's message windows.
+    pub window: i32,
+    pub timing: MessageWindow,
+    /// The kill icon of an obituary event's parameter: a means of death
+    /// (negative, `-1 - means`) or a weapon.
+    pub kill_icon: fn(i32) -> KillIcon,
+    /// The width and height of a kill icon, in font heights, by its
+    /// weapon's kill icon ratio.
+    pub icon_size: fn(i32) -> (f32, f32),
+    /// The colour of a name by the local player's team and the named
+    /// player's.
+    pub name_color: fn(i32, i32) -> NameColor,
+    /// The localized string a line with no attacker ends with, after the
+    /// victim's name and in its colour.
+    pub suicide: &'static str,
+    /// The victim of an obituary the client keeps no player for is an
+    /// error the game drops the client for; the runtime logs it.
+    pub out_of_range: &'static str,
+}
+
+/// How long a game message window keeps a line and how it brings one in
+/// and out.
+#[derive(Clone, Copy, Debug)]
+pub struct MessageWindow {
+    pub msg_time_ms: i32,
+    /// Lines shown at once.
+    pub line_count: usize,
+    pub scroll_time_ms: i32,
+    pub fade_in_ms: i32,
+    pub fade_out_ms: i32,
+}
+
+/// A kill icon.
+#[derive(Clone, Copy, Debug)]
+pub enum KillIcon {
+    /// This material, at ratio 0, not flipped.
+    Material(&'static str),
+    /// The weapon's own kill icon with its ratio and flip; this material
+    /// when it has none.
+    Weapon { weapon: u32, none: &'static str },
+}
+
+/// A name's colour in the kill feed.
+#[derive(Clone, Copy, Debug)]
+pub enum NameColor {
+    White,
+    /// A colour dvar's red, green and blue (its default when unset), at
+    /// full alpha.
+    Dvar {
+        name: &'static str,
+        default: [f32; 3],
+    },
 }
 
 /// The invalid command hint a client keeps: the game's number for it and

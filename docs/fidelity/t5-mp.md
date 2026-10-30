@@ -208,11 +208,25 @@ Each open section names the issue that works it.
       `missile_fuel`) paint all the time: their menus and items carry no
       visibility expression, owner-draw flag or hidden window flag, and the
       client's rule that hides them is not found in `BlackOpsMP.exe` yet.
-      The compass owner draws (`compass_old`), obituaries, hit markers,
-      score popups, medals and the end-of-match scoreboard are not drawn as
+      The compass owner draws (`compass_old`), hit markers, score
+      popups, medals and the end-of-match scoreboard are not drawn as
       Black Ops draws them; `gametypename`, `isintermission`,
       `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
       wager functions are not answered, so the items they gate do not draw.
+- [ ] **V** `t5.hud.game_messages`: of Black Ops' three game message
+      windows (`gamemessages`, `boldgamemessages`, `subtitles`) only the
+      obituary lines are drawn; script `iprintln` and `iprintlnbold`,
+      connect and disconnect notices and subtitles are not, and the
+      channel filters (`con_gameMsgWindow%dFilter`: `gamenotify obituary`,
+      `boldgame`, `subtitle`) are not read as dvars. A window keeps every
+      line until it ends; Black Ops' cap on the lines a window keeps
+      beyond the four it shows is not read.
+- [ ] **V** `t5.hud.obituary_popups`: an obituary naming the local player
+      does not open Black Ops' killed / killed-by player card
+      (`playercard`, `playerkilled` in `hud_popups`: `CGAME_KILLED`,
+      `CGAME_KILLEDBY`, the team-kill strings, rank icon and clan tag),
+      and a Second Chance revive (`syrette_mp`) does not centre-print
+      `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED`.
 - [ ] **V** `t5.hud.visibility_bits` (`GameCodeHud::visibility_bit`):
       Black Ops' client rebuilds 64 HUD visibility bits a frame; the team
       bits (38–41), the scoreboard (44), the popups' bit (45), the
@@ -261,6 +275,18 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** The kill feed was Modern Warfare 2's and hidden under Black
+      Ops' code HUD. Black Ops multiplayer's own now draws in
+      `hud_hardcore`'s `gamemessages` window: its `obituary` builtin's
+      means of death (melee, head shot, crush, falling, suicide and
+      trigger hurt show a means icon, an impact kill shows the grenade
+      round icon unless the weapon's impact type shows the weapon) or the
+      weapon's kill icon with its ratio and flip (`hud_obit_death_suicide`
+      when it has none), names in `^8` (own team, the scripts'
+      `g_TeamColor_Allies`) and `^9` (enemy, `g_TeamColor_Axis`), a line
+      with no attacker ending in `CGAME_QUAKE_SUICIDE`, and window 0's
+      5 s, four lines, 0.25 s scroll and fade in and 0.5 s fade out (#651).
 
 - [x] **G** `setperk`, `unsetperk`, `hasperk`, `clearperks` and
       `getperks` took the zombies' perk table and Modern Warfare 2's script
