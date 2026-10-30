@@ -12,7 +12,32 @@ use game_api::hud::{
 use game_api::{Unknown, unknown};
 use movement_t5::weapon::state as ws;
 
-pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
+pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
+
+/// Black Ops multiplayer's: zombies' pieces and its kill feed.
+pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
+    killfeed: Some(&crate::killfeed::KILLFEED),
+    undrawn: &[
+        unknown!(
+            "t5.hud.code_hud",
+            "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
+            "those pieces of its 2D draw (executable)"
+        ),
+        unknown!(
+            "t5.hud.game_messages",
+            "Black Ops multiplayer's game message lines other than obituaries (script iprintln and iprintlnbold, connect and disconnect notices, subtitles) are not drawn",
+            "the client's print commands and the channels they print to (executable)"
+        ),
+        unknown!(
+            "t5.hud.obituary_popups",
+            "an obituary of the local player does not open Black Ops' killed / killed-by player card (`playercardpopup`, `rankpopup`, `killstringpopup`) nor print the Second Chance revive line (`CGAME_YOUREVIVED`)",
+            "the client's player card popup menus and centre print"
+        ),
+    ],
+    ..ZOMBIES_CODE_HUD
+};
+
+const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     blood: false,
     damage_flash: Some(DamageFlash {
         kick_scale: 0.2,
@@ -40,6 +65,7 @@ pub(crate) static CODE_HUD: GameCodeHud = GameCodeHud {
     command_hint: Some(command_hint),
     grenade_indicators: Some(crate::grenade_indicator::draw),
     visibility_bit: Some(visibility_bit),
+    killfeed: None,
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",

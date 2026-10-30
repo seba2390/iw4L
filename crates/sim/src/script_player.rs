@@ -583,10 +583,9 @@ pub(crate) fn obituary(
         _ => 0,
     };
     let attacker = attacker.unwrap_or(victim);
-    world.push_entity_event(
+    push_obituary(
+        world,
         tick,
-        EventAudience::All,
-        entity_iw4::EntityEventKind::OBITUARY,
         crate::EntityEventPayload {
             number: victim.0 as i32,
             other_entity_num: victim.0 as i32,
@@ -595,6 +594,20 @@ pub(crate) fn obituary(
             weapon,
             ..Default::default()
         },
+    );
+}
+
+/// The kill feed's event, to every client.
+pub(crate) fn push_obituary(
+    world: &mut FrameWorld,
+    tick: Tick,
+    payload: crate::EntityEventPayload,
+) {
+    world.push_entity_event(
+        tick,
+        EventAudience::All,
+        entity_iw4::EntityEventKind::OBITUARY,
+        payload,
     );
 }
 

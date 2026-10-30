@@ -8,6 +8,7 @@ pub(crate) mod shared;
 pub(crate) mod skill;
 pub mod t5;
 pub(crate) mod t5_client;
+pub(crate) mod t5_obituary;
 pub(crate) mod t5_objectives;
 pub(crate) mod t5_perks;
 pub(crate) mod t5_physics;
