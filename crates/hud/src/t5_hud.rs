@@ -77,6 +77,18 @@ pub(crate) struct T5HudState<'a> {
     /// The game's weapon info rules, what they read and the client time
     /// the weapon info was last shown.
     pub weapon_info: Option<WeaponInfoFrame<'a>>,
+    pub compass: Option<T5Compass>,
+}
+
+/// The game's compass for a frame: its rules, where its map lies, the map's
+/// material and the local player's place and view yaw.
+pub(crate) struct T5Compass {
+    pub rules: &'static game_api::hud::CompassRules,
+    pub frame: game_api::hud::CompassFrame,
+    pub north_yaw: f32,
+    pub material: String,
+    pub origin: [f32; 2],
+    pub yaw: f32,
 }
 
 /// The game's weapon info for a frame.
@@ -1271,11 +1283,172 @@ fn paint_owner(
         CG_PLAYER_WEAPON_LOW_AMMO_WARNING => paint_low_ammo_warning(state, &args, frame),
         CG_PLAYER_HEAT_VALUE => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         CG_VEHICLE_HUD_2 | CG_AMITALKING => OwnerDrawPaint::Painted,
+        n if state
+            .compass
+            .as_ref()
+            .is_some_and(|c| c.rules.map_owner_draw == n) =>
+        {
+            paint_compass_map(state, &args, frame)
+        }
+        n if state
+            .compass
+            .as_ref()
+            .is_some_and(|c| c.rules.player_owner_draw == n) =>
+        {
+            paint_compass_player(state, &args, frame)
+        }
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
             None => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
         },
     }
+}
+
+/// A compass dvar's value, or its registered default.
+fn compass_dvar(state: &T5HudState<'_>, name: &str, default: f32) -> f32 {
+    state
+        .dvar(name)
+        .and_then(|value| value.trim().parse::<f32>().ok())
+        .unwrap_or(default)
+}
+
+/// The compass item's rect, its size scaled by `compassSize`; `None` (an
+/// error the game prints) when it has no area.
+fn compass_rect(
+    state: &T5HudState<'_>,
+    compass: &T5Compass,
+    args: &OwnerDrawArgs<'_>,
+) -> Option<[f32; 4]> {
+    let size = compass_dvar(state, "compassSize", compass.rules.size);
+    let rect = [
+        args.rect.x,
+        args.rect.y,
+        args.rect.w * size,
+        args.rect.h * size,
+    ];
+    (rect[2] > 0.0 && rect[3] > 0.0).then_some(rect)
+}
+
+/// The compass map: the map's material around the player, `compassMaxRange`
+/// across, turned with the view when `compassRotation` is set.
+fn paint_compass_map(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let map = compass.frame;
+    let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    let [n0, n1] = map.north;
+    let [width, height] = map.size;
+    let dx = compass.origin[0] - map.upper_left[0];
+    let dy = compass.origin[1] - map.upper_left[1];
+    let center_s = (dy * -n0 + dx * n1) / width;
+    let center_t = (dy * -n1 + dx * -n0) / height;
+    let (radius_st, scale_final_s, scale_final_t) = if width <= height {
+        (max_range / height * 0.5, height / width, 1.0)
+    } else {
+        (max_range / width * 0.5, 1.0, width / height)
+    };
+    let deg = if rotation {
+        -(compass.yaw - compass.north_yaw)
+    } else {
+        0.0
+    };
+    let applied = args.surface.apply_rect(
+        x,
+        y,
+        w,
+        h,
+        args.rect.horz_align as i32,
+        args.rect.vert_align as i32,
+    );
+    frame.list.cmds.push(Draw2dCmd {
+        material_namespace: args
+            .assets
+            .catalog
+            .and_then(|c| c.namespace)
+            .unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+        x: applied.x,
+        y: applied.y,
+        w: applied.w,
+        h: applied.h,
+        s0: 0.0,
+        t0: 0.0,
+        s1: 1.0,
+        t1: 1.0,
+        color: args.color,
+        material: compass.material.clone(),
+        op: Draw2dOp::RotateSt {
+            center_s,
+            center_t,
+            radius_st,
+            scale_final_s,
+            scale_final_t,
+            deg,
+        },
+        provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+        layer: 1,
+    });
+    OwnerDrawPaint::Painted
+}
+
+/// The player's arrow at the compass's centre, pointing up while the map
+/// turns with the view.
+fn paint_compass_player(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let player = state.ps.move_player(state.local_client as i32, false);
+    match (compass.rules.player_arrow)(&player) {
+        Ok(true) => {}
+        Ok(false) => return OwnerDrawPaint::Painted,
+        Err(_) => return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+    }
+    // The arrow turns only on a map that does not.
+    if compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) == 0.0
+    {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    }
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let Some((namespace, material)) = background_key(&args.item.background) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::MaterialExp);
+    };
+    let size = compass_dvar(state, "compassSize", compass.rules.size);
+    let arrow_w = compass_dvar(state, "compassPlayerWidth", compass.rules.player_size[0]) * size;
+    let arrow_h = compass_dvar(state, "compassPlayerHeight", compass.rules.player_size[1]) * size;
+    push_pic_at(
+        args,
+        namespace,
+        material,
+        x + w * 0.5 - arrow_w * 0.5,
+        y + h * 0.5 - arrow_h * 0.5,
+        arrow_w,
+        arrow_h,
+        args.color,
+        frame,
+    );
+    OwnerDrawPaint::Painted
 }
 
 /// An action slot's arrow: the item's picture in its colour, with the alpha
