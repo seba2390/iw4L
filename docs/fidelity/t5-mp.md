@@ -220,11 +220,27 @@ Each open section names the issue that works it.
       `missile_fuel`) paint all the time: their menus and items carry no
       visibility expression, owner-draw flag or hidden window flag, and the
       client's rule that hides them is not found in `BlackOpsMP.exe` yet.
-      The compass owner draws (`compass_old`), hit markers, score
-      popups, medals and the end-of-match scoreboard are not drawn as
-      Black Ops draws them; `gametypename`, `isintermission`,
+      Hit markers, score popups, medals and the end-of-match scoreboard
+      are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
       `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
       wager functions are not answered, so the items they gate do not draw.
+- [ ] **V** The compass (`compass_old`) draws its map and the player's
+      arrow. Not drawn yet: friendlies (owner draw 158), objectives (152),
+      enemies (170, radar with #657), the grid (317, 319), the killstreak
+      icons (helicopters, planes, dogs, turrets, tanks, guided missiles,
+      artillery: 146–156) and the scrambler, static, flicker, radar and
+      fake-fire effects (312, 325, 328, 332, 376). The map's frame is
+      rebuilt on the client from the map's corner entities and `northyaw`
+      as `_compass.gsc`'s `setupMiniMap` and `setminimap` compute it;
+      Black Ops sends it (and the map's material) in a config string. The
+      compass's fade (`hud_fade_compass`, 0 by default: no fade) and the
+      static/jam fade are not applied, and the turned map is drawn by the
+      runtime's rotated-texture quad, not compared with Black Ops'
+      renderer command. With `compassRotation` 0 the arrow would turn,
+      which the runtime does not draw (a gap). The server's `setminimap`
+      is the shared one, which re-frames the corners it is given.
+- [ ] **V** `t5.hud.compass_mounted`: a player mounted on a vehicle is not
+      drawn on the compass.
 - [ ] **V** `t5.hud.game_messages`: of Black Ops' three game message
       windows (`gamemessages`, `boldgamemessages`, `subtitles`) only the
       obituary lines are drawn; script `iprintln` and `iprintlnbold`,

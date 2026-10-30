@@ -974,6 +974,21 @@ pub(crate) fn update_weaponbar(
             deadquote_start_ms,
             owner_hints,
             weapon_info,
+            compass: code_hud
+                .and_then(|hud| hud.compass)
+                .zip(compass.as_deref())
+                .and_then(|(rules, compass)| {
+                    let corners = compass.corners?;
+                    let north_yaw = compass.north_yaw.unwrap_or(0.0);
+                    Some(crate::t5_hud::T5Compass {
+                        rules,
+                        frame: (rules.frame)(corners.a, corners.b, north_yaw)?,
+                        north_yaw,
+                        material: compass.declaration.material.clone()?,
+                        origin: [ps.origin[0], ps.origin[1]],
+                        yaw: ps.viewangles[1],
+                    })
+                }),
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,

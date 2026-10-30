@@ -97,12 +97,13 @@ shows on some runs and not others. Destructibles and map interactives are
 
 The kill feed is Black Ops' own: each obituary prints in the bottom-left
 game message window with the weapon's or the means of death's kill icon and
-the names in the team colours the team-set scripts pick.
+the names in the team colours the team-set scripts pick. The compass shows
+the map turning with the view around the player's arrow.
 
 ## Not there yet
 
 Parts of the multiplayer HUD (#651: the killcam and hardcore-list menus
-paint all the time, the compass is not drawn), client scripts (#645), the
+paint all the time, the compass shows only its map and the player's arrow), client scripts (#645), the
 class menu's paint,
 create-a-class (#650), killstreaks (#656), Black Ops' own bot behaviour (#709), the objective and
 round gametypes (#653, #654) — see the issues labelled `game: Black Ops 1`,
