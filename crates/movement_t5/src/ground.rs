@@ -195,9 +195,8 @@ fn landing_surface(pm_water: i32, trace: &Trace) -> i32 {
 
 /// How hard a fall was, from how far the player fell this frame: the fall
 /// height, and the damage in percent of health.
-fn fall_damage_percent(ps: &crate::PlayerState, fall: f32) -> i32 {
+fn fall_damage_percent(ps: &crate::PlayerState, fall: f32, max: f32) -> i32 {
     let min = tuning::FALL_DAMAGE_MIN_HEIGHT;
-    let max = tuning::FALL_DAMAGE_MAX_HEIGHT;
     let mut damage = if min >= fall {
         0
     } else if fall >= max {
@@ -231,7 +230,7 @@ pub(crate) fn crash_land<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let t = (-vz - sqrt(den)) / (acc * 2.0);
     let vel = -(t * -g + vz);
     let fall = vel * vel / (g * 2.0);
-    let mut damage = fall_damage_percent(ps, fall);
+    let mut damage = fall_damage_percent(ps, fall, pm.tuning.fall_damage_max_height);
     if pm.zombiemode && ps.gravity < tuning::GRAVITY as i32 {
         damage = 0;
     }

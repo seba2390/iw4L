@@ -1403,6 +1403,10 @@ fn flush_outputs(menus: &mut ScriptMenus, out: &mut MenuOutputs, local: sim::Cli
             },
         );
     }
+    let runtime_class_slots = out
+        .rules
+        .as_ref()
+        .is_none_or(|rules| rules.runtime_class_slots);
     let paused = out.pause.0;
     for (text, pausable) in menus.menu_messages.drain(..) {
         if pausable && paused {
@@ -1429,7 +1433,8 @@ fn flush_outputs(menus: &mut ScriptMenus, out: &mut MenuOutputs, local: sim::Cli
         }
     }
     for (menu, response) in menus.responses.drain(..) {
-        if menu.eq_ignore_ascii_case("changeclass")
+        if runtime_class_slots
+            && menu.eq_ignore_ascii_case("changeclass")
             && let Some(slot) = response
                 .strip_prefix("custom")
                 .and_then(|n| n.parse::<usize>().ok())

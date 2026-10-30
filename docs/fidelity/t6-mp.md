@@ -33,7 +33,12 @@ Each open section names the issue that works it.
       install: every other multiplayer gametype module is in `patch_mp`, but
       this one comes with the patch zone the game downloads at launch
       (`ffotd_*_mp`), as the zombies one does (`t6.scripts.ffotd`). It has to
-      be captured from the owner's own running `t6mp.exe` (#676).
+      be captured from the owner's own running `t6mp.exe` (#676); a captured
+      `ffotd_*_mp*.ff` is read after `patch_mp`. Linked without it (logged
+      as `own multiplayer scripts:` on every multiplayer map), Black Ops 2's
+      multiplayer server program on Cargo is 135 modules and 3742 functions,
+      all translated, naming 806 builtins that Black Ops 2's server lists;
+      its only 55 unresolved imports call into the missing module.
 - [ ] **G** Revolution, Uprising and Apocalypse maps are not in the owner's
       install; the 14 base maps, Nuketown 2025 (`dlc0_load_mp`) and
       Vengeance's Detour, Cove, Rush and Uplink (`dlc3_load_mp`) can be
@@ -41,6 +46,10 @@ Each open section names the issue that works it.
 
 ## Maps and assets (#675, #703)
 
+- [ ] **G** A multiplayer map's compiled scripts are read from `common_mp`,
+      the map's zone, then `patch_mp`, a later zone's module replacing an
+      earlier one's (`patch_mp` carries a newer copy of each map's scripts);
+      that `t6mp.exe` loads `patch_mp` after the map is not checked (#675).
 - [ ] **G** A multiplayer map loads on a zone set IW4L picked; Black Ops 2's
       own order (`code_pre_gfx_mp`, `code_post_gfx_mp`, `common_mp`,
       `common_patch_mp`, `patch_mp`, `ui_mp`, `patch_ui_mp`, the map, its
@@ -148,8 +157,36 @@ Each open section names the issue that works it.
 
 ## Client scripts (#678)
 
-- [ ] **V** The multiplayer client scripts (`clientscripts/mp/*.csc`) do not
-      run; zombies runs its own on the client VM (#678).
+- [ ] **V** Black Ops 2's multiplayer client scripts run on every installed
+      map under IW4L's Free for All and Team Deathmatch:
+      `clientscripts/mp/_callbacks`, the gametype's client module
+      (`clientscripts/mp/gametypes/dm`, `tdm`) and the map's, 61–62 modules,
+      every function translated, none stopping in 60 s on Cargo or Express.
+      The server sets none of the client fields its own scripts would, so
+      what they drive (scorestreak, objective and vehicle visuals) does not
+      show (#677, #678).
+- [ ] **I** `t6.csc.mp_loader`: `t6mp.exe`'s client loader is not read; it is
+      taken to ask for the same engine modules as `t6zm.exe`'s
+      (`codescripts/delete`, `codescripts/struct`, the callbacks,
+      `clientscripts/mp/_dogs`, `_fx`, `_footsteps`) with
+      `clientscripts/mp/_callbacks` in place of the zombies callbacks (#678).
+- [ ] **G** About 45 of the ~250 client builtins the multiplayer client
+      scripts name are not implemented: the vehicle queries (`getthrottle`,
+      `getwheelsurface`, `iswheelcolliding`, `islocalclientdriver`, …), the
+      objectives (`objective_add` … `objective_setstencil`), local radar
+      (`setlocalradarenabled`, `setlocalradarposition`, `setenemyglobalscrambler`),
+      rumble (`precacherumble`, `playrumblelooponentity`,
+      `playrumbleonposition`, `stoprumble`), `setmaplatlong`, `getmapcenter`,
+      `isads`, `tracepoint`, `setanim`, `unlink`, `setstunned`,
+      `setflagasaway`, `setmultiextracamactive` (#678).
+- [ ] **V** `t6.csc.dynent.enabled` (`natives::t6::client::dynent`):
+      `setdynentenabled` keeps the state the scripts set, but the renderer
+      does not read it: a dynamic entity turned off (Cargo's at
+      (41, 3136, −65)) still draws and collides (#678).
+- [ ] **G** `t6.csc.dynent.name`: `getdynentarray` with a name (the engine
+      narrows the walk to the dynamic entities whose definition names it, a
+      16-bit field the definition carries) is refused: that field is not
+      read from the map (#678).
 
 ## HUD and menus (#697, #698)
 

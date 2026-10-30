@@ -806,6 +806,8 @@ pub(crate) fn update_weaponbar(
             })
             .collect();
         scores.sort_by_key(|&(idx, _)| idx);
+        let mut rank_scores: Vec<i32> = snap.meta.clients.iter().map(|(_, c)| c.score).collect();
+        rank_scores.sort_unstable_by(|a, b| b.cmp(a));
         let dvars = snap.meta.script_dvars(local.0);
         let deadquote_start_ms =
             client_input
@@ -942,7 +944,9 @@ pub(crate) fn update_weaponbar(
             ms,
             dvars,
             ui_dvars: client_input.ui_dvars.as_deref(),
-            zombies: true,
+            zombies: dvars
+                .string("ui_multiplayer")
+                .is_none_or(|v| v.trim() == "0"),
             input: client_input.input.as_deref(),
             vis: client_input.vis.read(&presented, local.0),
             in_killcam: view.as_deref().is_some_and(|v| v.in_killcam()),
@@ -955,9 +959,36 @@ pub(crate) fn update_weaponbar(
             hint,
             local_client: local.0.0 as usize,
             scores,
+            team: meta.map_or(crate::t5_hud::TEAM_FREE, |m| m.client_state_team),
+            team_scores: snap.meta.objectives.scores,
+            rank_scores,
+            time_left_ms: snap
+                .meta
+                .objectives
+                .time_left_ms(snap.tick.0.saturating_mul(sim::MATCH_TICK_MS) as i32),
+            code_hud,
+            scoreboard: client_input
+                .actions
+                .as_ref()
+                .is_some_and(|a| a.client.kb.scores.active),
             deadquote_start_ms,
             owner_hints,
             weapon_info,
+            compass: code_hud
+                .and_then(|hud| hud.compass)
+                .zip(compass.as_deref())
+                .and_then(|(rules, compass)| {
+                    let corners = compass.corners?;
+                    let north_yaw = compass.north_yaw.unwrap_or(0.0);
+                    Some(crate::t5_hud::T5Compass {
+                        rules,
+                        frame: (rules.frame)(corners.a, corners.b, north_yaw)?,
+                        north_yaw,
+                        material: compass.declaration.material.clone()?,
+                        origin: [ps.origin[0], ps.origin[1]],
+                        yaw: ps.viewangles[1],
+                    })
+                }),
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,

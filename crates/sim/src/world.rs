@@ -1041,6 +1041,19 @@ impl SimState {
             .filter(|&i| i != 0)
     }
 
+    /// The weapon of the running game named `name`: where two games ship a
+    /// weapon of the same name, the one the game's own rules hold.
+    pub(crate) fn game_weapon_index_by_script_name(&self, name: &str) -> Option<u32> {
+        let weapons = self.content.weapons();
+        weapons
+            .weapon_script_names
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(i, n)| *n == name && weapons.weapon_game.get(*i).is_some_and(Option::is_some))
+            .and_then(|(i, _)| u32::try_from(i).ok())
+    }
+
     pub(crate) fn equipment_facts_for(&self, weapon: u32) -> Option<EquipmentRuntimeFacts> {
         self.content
             .weapons()

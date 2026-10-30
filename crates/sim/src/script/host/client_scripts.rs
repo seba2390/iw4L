@@ -169,6 +169,15 @@ pub(crate) fn install(
         map: map_lights,
         ..Default::default()
     });
+    let map_dyn_ents = server
+        .resource::<RoundScript>()
+        .restart
+        .as_ref()
+        .map(|plan| plan.dyn_ents.as_ref().clone())
+        .unwrap_or_else(Vec::new);
+    world.insert_resource(super::natives::t6::client::dynent::ClientDynEnts::new(
+        map_dyn_ents,
+    ));
     let callbacks = &setup.callbacks;
     world.insert_resource(ClientCallbacks {
         local_client_connect: callbacks.local_client_connect.clone(),

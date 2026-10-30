@@ -100,6 +100,8 @@ pub(crate) struct LocalPlayerView {
     pub(crate) eye: [f32; 3],
     /// Its weapons' clip ammo, by weapon name.
     pub(crate) clips: std::collections::BTreeMap<String, i32>,
+    /// Its weapons' ammo outside the clip, by weapon name.
+    pub(crate) stocks: std::collections::BTreeMap<String, i32>,
     /// The naked vision the server last set for it, `default` before any.
     pub(crate) naked_vision: String,
 }
@@ -144,14 +146,26 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
         16.0,
         20.0,
     );
-    let clips = ps
+    let held: Vec<u32> = ps
         .weapons
         .iter()
         .filter_map(|&held| u32::try_from(held).ok().filter(|&w| w != 0))
-        .map(|held| {
+        .collect();
+    let clips = held
+        .iter()
+        .map(|&held| {
             (
                 crate::script_player::weapon_name(&frame, held),
                 crate::script_player::ammo_clip(&frame, id, held),
+            )
+        })
+        .collect();
+    let stocks = held
+        .iter()
+        .map(|&held| {
+            (
+                crate::script_player::weapon_name(&frame, held),
+                crate::script_player::ammo_stock(&frame, id, held),
             )
         })
         .collect();
@@ -167,6 +181,7 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
         angles: ps.viewangles,
         eye,
         clips,
+        stocks,
         naked_vision,
     }
 }
@@ -910,6 +925,9 @@ pub(crate) fn install(
         map: level.primary_lights.clone(),
         ..Default::default()
     });
+    world.insert_resource(
+        super::host::natives::t6::client::dynent::ClientDynEnts::new(level.dyn_ents.clone()),
+    );
     triggers::spawn(server, &mut world);
     server.insert_resource(present::ClientPresentation::default());
     server.insert_resource(ClientScripts {
@@ -962,6 +980,12 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             sync_weapon_models(server, &mut client.world);
             let player = local_player_view(server);
             client.world.resource_mut::<ClientView>().locals[0].player = player;
+            if let Some(perks) = server
+                .get_resource::<super::host::natives::t5_perks::PlayerPerks>()
+                .cloned()
+            {
+                client.world.insert_resource(perks);
+            }
             let snapshots = collect_server_entities(server);
             run_frame(&mut client, tick, reason, messages, snapshots);
             let commands =
@@ -1996,6 +2020,10 @@ fn shutdown_mirrored(
 }
 
 fn start_callback(world: &mut World, function: &str, receiver: Value, args: Vec<Value>) {
+    // A callback the game's client scripts do not have.
+    if function.is_empty() {
+        return;
+    }
     if let Err(fault) = super::runtime::start(world, function, receiver, args) {
         diag::warn!(Sim, "csc: {function} not started: {fault}");
     }

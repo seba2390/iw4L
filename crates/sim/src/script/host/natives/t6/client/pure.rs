@@ -181,6 +181,12 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Float(frand(world, min, max)))
     });
 
+    // `randomfloat(max)` is `randomfloatrange(0, max)` without its range check.
+    registry.register(Function, "randomfloat", |world, _, args| {
+        let max = float(args, 0)?;
+        Ok(Value::Float(frand(world, 0.0, max)))
+    });
+
     // Casts: a string is read as `atoi` and `atof` read it.
     registry.register(Function, "int", |_, _, args| match arg(args, 0)? {
         Value::String(text) => Ok(Value::Int(atoi(text.as_bytes()))),
@@ -237,6 +243,26 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         } else {
             b
         }))
+    });
+    // `b - a` not below zero gives `a`; otherwise, NaN too, `b`.
+    registry.register(Function, "min", |_, _, args| {
+        let (a, b) = (float(args, 0)?, float(args, 1)?);
+        Ok(Value::Float(if f64::from(b) - f64::from(a) >= 0.0 {
+            a
+        } else {
+            b
+        }))
+    });
+    // Degrees, turned to radians by the engine's single-precision factor
+    // and taken in the x87's precision.
+    registry.register(Function, "cos", |_, _, args| {
+        Ok(Value::Float(radians(float(args, 0)?).cos() as f32))
+    });
+    registry.register(Function, "sin", |_, _, args| {
+        Ok(Value::Float(radians(float(args, 0)?).sin() as f32))
+    });
+    registry.register(Function, "sqrt", |_, _, args| {
+        Ok(Value::Float(f64::from(float(args, 0)?).sqrt() as f32))
     });
     // The fraction is held to 0..1 (NaN stays NaN).
     registry.register(Function, "lerpfloat", |_, _, args| {
@@ -860,6 +886,11 @@ pub(super) fn irand(world: &mut World, min: i32, max: i32) -> i32 {
 }
 
 /// A random float in `min..max`, the state's top 15 bits scaling the span.
+/// Degrees to radians as the client's `cos` and `sin` take them.
+fn radians(degrees: f32) -> f64 {
+    f64::from(degrees) * f64::from(0.017_453_292_f32)
+}
+
 fn frand(world: &mut World, min: f32, max: f32) -> f32 {
     frand_wide(world, min, max) as f32
 }

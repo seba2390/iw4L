@@ -69,6 +69,9 @@ impl game_api::GameScripts for T6 {
                 ));
             }
         }
+        if !zombies_map {
+            probe_multiplayer(request, sources);
+        }
         let startup = startup::T6Startup::new(request.map);
         Rule::Known(ScriptProgram {
             catalog: gsc::Catalog::from_list(asset_core::FamilyId::T6, &catalog())
@@ -88,8 +91,14 @@ impl game_api::GameScripts for T6 {
         request: &ScriptRequest<'_>,
         sources: &dyn gsc::SourceResolver,
     ) -> Option<Rule<game_api::ClientScriptProgram>> {
-        (own_gametype(request.gametype) && own_scripts(request.map))
-            .then(|| client::program(request, sources))
+        if own_gametype(request.gametype) && own_scripts(request.map) {
+            return Some(client::program(request, sources));
+        }
+        // Black Ops 2's multiplayer client scripts run on the multiplayer
+        // maps under the Free for All and Team Deathmatch that IW4L's rules
+        // still host (docs/fidelity/t6-mp.md).
+        (!request.map.starts_with("zm_") && matches!(request.gametype, "dm" | "war"))
+            .then(|| client::multiplayer_program(request, sources))
     }
 
     fn engine_dvars(&self, _gametype: &str) -> &'static [(&'static str, &'static str)] {
@@ -121,6 +130,56 @@ fn own_scripts(map: &str) -> bool {
 /// Survival, Grief and Turned (the gametype rows of `zm/gametypestable.csv`).
 fn own_gametype(gametype: &str) -> bool {
     matches!(gametype, "zclassic" | "zstandard" | "zgrief" | "zcleansed")
+}
+
+/// Links Black Ops 2's own multiplayer server program (the callbacks, the
+/// gametype's script and the map's) and logs what it lacks, while IW4L's
+/// rules host Free for All and Team Deathmatch: without the launch patch
+/// (`ffotd_*_mp`) its `maps/mp/gametypes/_globallogic` is missing
+/// (docs/fidelity/t6-mp.md).
+fn probe_multiplayer(request: &ScriptRequest<'_>, sources: &dyn gsc::SourceResolver) {
+    let roots = [
+        "codescripts/delete".to_owned(),
+        "codescripts/struct".to_owned(),
+        "maps/mp/gametypes/_callbacksetup".to_owned(),
+        format!("maps/mp/gametypes/{}", script_gametype(request.gametype)),
+        format!("maps/mp/{}", request.map),
+    ];
+    let read = |name: &str| {
+        sources.read_module(name).ok().map(|bytes| gsc_t6::Source {
+            name: name.to_owned(),
+            bytes,
+            origin: sources.origin(name),
+        })
+    };
+    let (modules, missing) = gsc_t6::load(&read, &roots);
+    let builtins = gsc_t6::Builtins {
+        functions: &builtins::FUNCTIONS,
+        methods: &builtins::METHODS,
+    };
+    let built = gsc_t6::build(&modules, &builtins, asset_core::FamilyId::T6);
+    for line in missing.iter().chain(&built.report) {
+        diag::info!(Sim, "own multiplayer scripts: {line}");
+    }
+    let (scripts, other): (Vec<_>, Vec<_>) = built
+        .unresolved
+        .iter()
+        .partition(|line| line.contains("could not find script"));
+    diag::info!(
+        Sim,
+        "own multiplayer scripts: {} imports into modules the zones lack, {} others: {other:?}",
+        scripts.len(),
+        other.len()
+    );
+}
+
+/// A multiplayer gametype's script name: the lobby's `war` is Black Ops 2's
+/// Team Deathmatch, `tdm` (`maps/mp/gametypes/tdm`).
+fn script_gametype(gametype: &str) -> &str {
+    match gametype {
+        "war" => "tdm",
+        other => other,
+    }
 }
 
 /// The map whose Classic still runs IW4L's rules.
@@ -325,6 +384,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     ammo_numbers: None,
     extra_camera: None,
     menu_dvars_reach_server: false,
+    runtime_class_slots: false,
     ui3d: None,
 };
 

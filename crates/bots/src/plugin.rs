@@ -115,6 +115,7 @@ impl Plugin for BotsPlugin {
                 (
                     fill_bots_from_rules.in_set(frame::InMatch),
                     drain_bot_add_queue.in_set(frame::InMatch),
+                    adopt_script_test_clients.in_set(frame::InMatch),
                     evict_bots_claiming_local_client.in_set(frame::InMatch),
                     boot_bots.in_set(frame::InMatch),
                     apply_bot_tp.in_set(frame::InMatch),
@@ -223,6 +224,36 @@ fn drain_bot_add_queue(
     }
 }
 
+fn set_name(request_id: u32, name: &str) -> ClientAction {
+    ClientAction::SetName {
+        request_id,
+        name: entity_iw4::pack_client_state_name(name),
+    }
+}
+
+/// Test clients the game's scripts added (`addtestclient`) are driven like
+/// the host's own bots; the scripts join them and pick their classes.
+fn adopt_script_test_clients(
+    mut roster: ResMut<BotRoster>,
+    mut actions: ResMut<ClientActionInbox>,
+    mut request_ids: ResMut<net::ActionRequestIds>,
+    world: Option<Res<AuthorityWorld>>,
+) {
+    let Some(world) = world else {
+        return;
+    };
+    for id in world.0.test_clients() {
+        let Some(name) = roster.adopt(id) else {
+            continue;
+        };
+        let request_id = request_ids.allocate();
+        if let Err(error) = actions.push(id, set_name(request_id, name)) {
+            diag::warn!(Sim, "bots: script test client {} not named — {error}", id.0);
+        }
+        diag::info!(Sim, "bots: driving script test client {} as {name}", id.0);
+    }
+}
+
 // The link hands the local player its real id during signon, which can land
 // after a bot was already minted. A slot holding that id would make `is_bot`
 // claim the player, so retire it — loudly, because by then it is a bug.
@@ -323,13 +354,7 @@ fn boot_bots(
                     index,
                 },
             ),
-            actions.push(
-                bot.id,
-                ClientAction::SetName {
-                    request_id: name_request,
-                    name: entity_iw4::pack_client_state_name(bot.name),
-                },
-            ),
+            actions.push(bot.id, set_name(name_request, bot.name)),
         ];
         if let Some(error) = queued.into_iter().find_map(Result::err) {
             diag::warn!(Sim, "bots: client {} not booted — {error}", bot.id.0);
@@ -484,7 +509,7 @@ fn think_bots(mut p: ThinkBots) {
             }
             continue;
         }
-        if bot.class_picked_in != Some(meta.life_sequence) {
+        if !bot.scripted && bot.class_picked_in != Some(meta.life_sequence) {
             bot.class_picked_in = Some(meta.life_sequence);
             let index = default_class_index(seed, bot.id, bot.class_picks);
             let request_id = p.request_ids.allocate();

@@ -68,6 +68,7 @@ pub(crate) fn install(
         schemas: level.schemas,
         player_data_defaults: level.player_data_defaults.map(Arc::new),
         primary_lights: Arc::new(level.primary_lights),
+        dyn_ents: Arc::new(level.dyn_ents),
     };
     install_level(world, Arc::new(program), plan)
 }

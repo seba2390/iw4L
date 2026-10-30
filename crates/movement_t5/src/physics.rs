@@ -141,7 +141,7 @@ pub(crate) fn accelerate(
 }
 
 /// On a slick surface the player is pushed down its slope.
-pub(crate) fn slick_accelerate(ps: &mut PlayerState, pml: &Pml) {
+pub(crate) fn slick_accelerate(ps: &mut PlayerState, pml: &Pml, tuning: crate::tuning::ExeTuning) {
     if pml.ground_trace.surface_flags & SURF_SLICK == 0 {
         return;
     }
@@ -149,7 +149,7 @@ pub(crate) fn slick_accelerate(ps: &mut PlayerState, pml: &Pml) {
     let ny = pml.ground_trace.normal[1];
     let n = 1.0 / divisor(sqrt(ny * ny + nx * nx));
     let dir = [n * nx, ny * n, n * 0.0];
-    accelerate(ps, pml, dir, tuning::SLIDING_WISHSPEED, 2.0);
+    accelerate(ps, pml, dir, tuning.sliding_wishspeed, 2.0);
     let cap = tuning::SLIDING_VELOCITY_CAP;
     let v = ps.velocity;
     let speed = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);

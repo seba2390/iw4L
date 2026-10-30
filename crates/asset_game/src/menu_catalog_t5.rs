@@ -31,6 +31,22 @@ use crate::menu_catalog::{
 /// menu's own visibility decides when it shows.
 pub const T5_HUD_MENU_LISTS: &[&str] = &["ui/hud.txt", "ui/hud_zombie.txt"];
 
+/// The HUD menu lists Black Ops' multiplayer client loads
+/// (`CG_LoadHudMenus`), in its order: the hardcore and spectator HUDs, then
+/// (outside demo playback) the common HUD and the gametype's
+/// (`ui_mp/hud_<g_gametype>.txt`), then the popups and the demo HUD.
+pub fn t5_mp_hud_menu_lists(gametype: &str) -> Vec<String> {
+    [
+        "ui_mp/hud_hardcore.txt".to_owned(),
+        "ui_mp/hud_spectator.txt".to_owned(),
+        "ui_mp/hud.txt".to_owned(),
+        format!("ui_mp/hud_{gametype}.txt"),
+        "ui_mp/hud_popups.txt".to_owned(),
+        "ui_mp/hud_demo.txt".to_owned(),
+    ]
+    .into()
+}
+
 /// The menu lists a Black Ops zombies client loads in a match
 /// (`UI_LoadIngameMenus`): the pause menu and its options.
 pub const T5_INGAME_MENU_LISTS: &[&str] = &["ui/ingame.txt", "ui/ingame_options.txt"];
@@ -182,8 +198,16 @@ impl T5MenuSink {
             style: i32::from(window.style),
             owner_draw: window.owner_draw,
             rect: rect(window.rect),
-            fore_color: window.fore_color,
-            back_color: window.back_color,
+            // An item with animation states shows its current state's
+            // colours until a client script animates it.
+            fore_color: read
+                .anim_state
+                .as_ref()
+                .map_or(window.fore_color, |state| state.fore_color),
+            back_color: read
+                .anim_state
+                .as_ref()
+                .map_or(window.back_color, |state| state.back_color),
             rotation: window.rotation,
             frame: Self::window_frame(&window),
             border: (window.border != 0).then_some(MenuBorder {
@@ -215,6 +239,10 @@ impl T5MenuSink {
             item.text_align_y = text.align_y;
             item.text_scale = text.scale;
             item.text_style = text.style;
+            if let Some([index, mode]) = text.game_msg_window {
+                item.game_msg_window_index = index;
+                item.game_msg_window_mode = mode;
+            }
         } else if let Some(exp) = read.material_exp {
             item.material_exp = exp;
         }

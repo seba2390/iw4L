@@ -454,6 +454,32 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .push((name.to_string(), value.to_string()));
         Ok(Value::Undefined)
     });
+    // `SetSavedDvar(name, value)`: the client's own dvar, its value's double
+    // quotes turned to single ones; the renderer reads none of the ones the
+    // multiplayer scripts set, and whether the dvar exists with the saved flag
+    // is not checked (`t5.csc.saved_dvars`).
+    registry.register(Function, "setsaveddvar", |world, _, args| {
+        let name = super::player::text(arg(args, 0)?)?;
+        let value = arg(args, 1)?;
+        if matches!(value, Value::LocalizedString(_)) {
+            return Err("Cannot set saved dvar on client side with a string value".into());
+        }
+        let value = super::player::text(value)?.replace('"', "'");
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(format!("Dvar {name} has an invalid dvar name"));
+        }
+        world
+            .resource_mut::<ClientOutput>()
+            .client_dvars
+            .push((name.to_string(), value));
+        Ok(Value::Undefined)
+    });
+    // `GetServerTime(local client)`: the client's time, less a field of its
+    // current snapshot that is not identified yet (`t5.csc.server_time`).
+    registry.register(Function, "getservertime", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Int(now_ms(world)))
+    });
     registry.register(Function, "ispc", |_, _, _| Ok(Value::Int(1)));
     registry.register(Function, "isps3", |_, _, _| Ok(Value::Int(0)));
     registry.register(Function, "isxenon", |_, _, _| Ok(Value::Int(0)));
@@ -817,6 +843,20 @@ fn register_player_view(registry: &mut NativeRegistry) {
         Ok(Value::Int(
             player_view(world).clips.get(&weapon).copied().unwrap_or(0),
         ))
+    });
+    // `GetTotalAmmo(local, weapon)`: the weapon's stock and clip together
+    // (`t5.csc.total_ammo` for weapons sharing an ammo cap).
+    registry.register(Function, "gettotalammo", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to GetTotalAmmo()\nUSAGE: GetTotalAmmo( <localClientNum>, <weaponName> )\n".into());
+        }
+        local_index(args)?;
+        let weapon = string(args, 1)?;
+        let view = player_view(world);
+        let ammo = |held: &std::collections::BTreeMap<String, i32>| {
+            held.get(&weapon).copied().unwrap_or(0)
+        };
+        Ok(Value::Int(ammo(&view.stocks) + ammo(&view.clips)))
     });
     // `ent getSpeed()`: the local player's velocity, any other entity's
     // move between its last two snapshots, per second.

@@ -3,6 +3,7 @@ mod ammo;
 mod catalog;
 mod client_catalog;
 mod code_hud;
+mod compass;
 mod crosshair_scan;
 mod fire;
 mod fire_autosim;
@@ -10,10 +11,12 @@ mod fire_sound;
 mod front_end_catalog;
 mod grenade;
 mod grenade_indicator;
+mod killfeed;
 mod menu_expression;
 mod missile;
 mod movement;
 mod mp_catalog;
+mod mp_client_catalog;
 mod mp_startup;
 mod overlay;
 mod physics;
@@ -47,11 +50,16 @@ pub static GAME: T5 = T5;
 
 const ZOMBIES: &str = "zom";
 
-/// The multiplayer gametypes whose scripts run: Free-for-all and Team
-/// Deathmatch (the lobby names the latter `war`; Black Ops' script is
-/// `tdm`). Every other gametype stays refused (`t5.scripts.mp_gametypes`).
+/// The multiplayer gametypes whose scripts run: Free-for-all, Team
+/// Deathmatch (the lobby names it `war`; Black Ops' script is `tdm`),
+/// Domination, Headquarters, Capture the Flag, Search and Destroy, Sabotage
+/// and Demolition (the lobby names it `dd`; Black Ops' script is `dem`).
+/// Every other gametype stays refused (`t5.scripts.mp_gametypes`).
 fn multiplayer(gametype: &str) -> bool {
-    matches!(gametype, "dm" | "tdm" | "war")
+    matches!(
+        gametype,
+        "dm" | "tdm" | "war" | "dom" | "koth" | "ctf" | "sd" | "sab" | "dem" | "dd"
+    )
 }
 
 /// Engine dvars a multiplayer match reads without setting, at the defaults
@@ -173,14 +181,27 @@ impl game_api::GameScripts for T5 {
         request: &ScriptRequest<'_>,
         _sources: &dyn gsc::SourceResolver,
     ) -> Option<ScriptProgram> {
-        (request.gametype == ZOMBIES).then(|| ScriptProgram {
-            catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, client_catalog::T5_CLIENT),
+        // A multiplayer map keeps its client scripts under `clientscripts/mp`.
+        let dir = if request.gametype == ZOMBIES {
+            "clientscripts"
+        } else if multiplayer(request.gametype) {
+            "clientscripts/mp"
+        } else {
+            return None;
+        };
+        let mut catalog =
+            gsc::Catalog::from_list(asset_core::FamilyId::T5, client_catalog::T5_CLIENT);
+        if multiplayer(request.gametype) {
+            catalog = catalog.extended(mp_client_catalog::T5_MP_CLIENT.iter().cloned());
+        }
+        Some(ScriptProgram {
+            catalog,
             roots: vec![
                 "codescripts/delete".to_owned(),
                 "codescripts/struct".to_owned(),
-                format!("clientscripts/{}", request.map),
+                format!("{dir}/{}", request.map),
             ],
-            entries: vec![format!("clientscripts/{}::main", request.map)],
+            entries: vec![format!("{dir}/{}::main", request.map)],
             built: None,
             settings: Vec::new(),
             key_types: Vec::new(),
@@ -189,8 +210,12 @@ impl game_api::GameScripts for T5 {
         })
     }
 
-    /// Black Ops' client engine calls `clientscripts/_callbacks`.
-    fn client_callbacks(&self) -> Option<game_api::ClientCallbacks> {
+    /// Black Ops' client engine calls `clientscripts/_callbacks`, and in
+    /// multiplayer `clientscripts/mp/_callbacks`.
+    fn client_callbacks(&self, gametype: &str) -> Option<game_api::ClientCallbacks> {
+        if multiplayer(gametype) {
+            return Some(MULTIPLAYER_CLIENT_CALLBACKS);
+        }
         Some(game_api::ClientCallbacks {
             local_client_connect: "clientscripts/_callbacks::localclientconnect",
             state_change: "clientscripts/_callbacks::statechange",
@@ -382,6 +407,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     // one process: a menu's `setDvar` is what `GetDvar` reads (the front
     // end's map select sets `ui_load_level` for `ChangeLevel`).
     menu_dvars_reach_server: true,
+    runtime_class_slots: false,
     // A zombies map's 3D UI texture; the front end's is square
     // (`ui3d_size`).
     ui3d: Some(game_api::Ui3dRules { size: [1024, 512] }),
@@ -417,12 +443,40 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     waits_for_lobby: false,
     binds_objectives: true,
     hud: HudRules {
+        code_hud: Rule::Known(game_api::hud::CodeHud::Game(&code_hud::MP_CODE_HUD)),
         zombies: false,
         ..ZOMBIE_MODE.hud
     },
     top_down: None,
-    menu_dvars_reach_server: false,
+    // The host runs the match in its own process: its menus and console set
+    // the server's dvars (the scripts' limits, `ui_*`); other machines' do not.
+    menu_dvars_reach_server: true,
+    runtime_class_slots: false,
     ..ZOMBIE_MODE
+};
+
+/// `clientscripts/mp/_callbacks`; the multiplayer client scripts have no
+/// exploder, zombie eye, weapon death effect or gib callback.
+const MULTIPLAYER_CLIENT_CALLBACKS: game_api::ClientCallbacks = game_api::ClientCallbacks {
+    local_client_connect: "clientscripts/mp/_callbacks::localclientconnect",
+    state_change: "clientscripts/mp/_callbacks::statechange",
+    activate_exploder: "",
+    deactivate_exploder: "",
+    footstep: "clientscripts/mp/_callbacks::codecallback_playerfootstep",
+    player_jump: "clientscripts/mp/_callbacks::codecallback_playerjump",
+    player_land: "clientscripts/mp/_callbacks::codecallback_playerland",
+    player_foliage: "clientscripts/mp/_callbacks::codecallback_playerfoliage",
+    entity_spawned: "clientscripts/mp/_callbacks::entityspawned",
+    player_spawned: "clientscripts/mp/_callbacks::playerspawned",
+    entity_shutdown: "clientscripts/mp/_callbacks::entityshutdown_callback",
+    client_flag: "clientscripts/mp/_callbacks::client_flag_callback",
+    client_flag_as_val: "clientscripts/mp/_callbacks::client_flagasval_callback",
+    zombie_eye: "",
+    play_weapon_death_effects: "",
+    gib_event: "",
+    trigger_delete: "codescripts/delete::main",
+    level_notify: "clientscripts/mp/_callbacks::level_notify",
+    ai_footstep: None,
 };
 
 /// Black Ops' 3D UI texture: 1024 by 1024 on the front end and the `menu_`
