@@ -1334,10 +1334,14 @@ pub(super) fn walk_zombie_commons(
     } else {
         &[]
     };
+    // A multiplayer map also reads `code_pre_gfx_mp`'s configs: the stats
+    // reset's `mp/stats_init.cfg` is there.
+    let pre_gfx: &[&str] = if is_mp_map { &["code_pre_gfx_mp"] } else { &[] };
     let common_zones = [common("code_post_gfx"), common("common")];
-    for zone in common_zones
+    for zone in pre_gfx
         .iter()
-        .map(String::as_str)
+        .copied()
+        .chain(common_zones.iter().map(String::as_str))
         .chain(zombie_zones.iter().copied())
         .chain([stem.as_str(), map_patch.as_str()])
     {

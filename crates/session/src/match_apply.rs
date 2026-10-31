@@ -72,6 +72,7 @@ pub struct MatchInstallAuthority<'w> {
     input_gate: Res<'w, AuthorityInputGate>,
     cheats: Option<Res<'w, sim::HostCheats>>,
     profile: Option<Res<'w, sim::LocalPlayerProfile>>,
+    profile_stats: Option<Res<'w, sim::ProfileStats>>,
     previous: Option<Res<'w, AuthorityWorld>>,
     account: Option<Res<'w, crate::LocalAccount>>,
     local: Option<Res<'w, net::LocalPresentClient>>,
@@ -113,6 +114,7 @@ pub fn apply_prepared_match(
         input_gate,
         cheats,
         profile,
+        profile_stats,
         previous,
         account,
         local,
@@ -441,6 +443,13 @@ pub fn apply_prepared_match(
                 .or_else(|| profile.as_deref().copied())
                 .unwrap_or(sim::LocalPlayerProfile::default());
             sim.set_local_player_profile(profile);
+            let mut stats = previous
+                .as_ref()
+                .map(|authority| authority.0.profile_stats().clone())
+                .or_else(|| profile_stats.as_deref().cloned())
+                .unwrap_or_else(sim::ProfileStats::default);
+            stats.client = local.as_ref().map(|local| local.0);
+            sim.set_profile_stats(stats);
         }
         content.set_player_kit_collisions(
             (0..soldiers.kit_count())
