@@ -948,6 +948,20 @@ pub trait PlayerMovement: Sync {
         None
     }
 
+    /// Launches a weapon's missile from `origin` with `velocity`
+    /// (`launchbomb`): its entity number, or the game's refusal of the
+    /// weapon.
+    fn launch_bomb(
+        &self,
+        _owner: i32,
+        _weapon: u32,
+        _origin: [f32; 3],
+        _velocity: [f32; 3],
+        _world: &mut dyn crate::fire::FireWorld,
+    ) -> (Result<Option<i32>, &'static str>, Vec<&'static Unknown>) {
+        (Ok(None), Vec::new())
+    }
+
     /// One frame of a missile the game spawned.
     fn run_missile(
         &self,

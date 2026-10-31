@@ -2,9 +2,10 @@
 //! opens the client's full map with a selector of a type (generic,
 //! artillery, airstrike, mortar, napalm, comlink) and a radius, which the
 //! client sends back as `confirm_location`; `precacheLocationSelector`
-//! names the selector materials.
+//! names the selector materials. `launchBomb` launches what the strikes
+//! drop.
 
-use super::super::args::{float, string};
+use super::super::args::{float, string, vector};
 use crate::frame::FrameWorld;
 use crate::script::Namespace::{Function, Method};
 use crate::script::{NativeRegistry, RoundScript, Value};
@@ -63,7 +64,46 @@ fn begin(world: &mut World, receiver: &Value, args: &[Value], kind: u8) -> Resul
     Ok(Value::Undefined)
 }
 
+/// `player launchBomb(weapon, position, velocity)`: the weapon's missile
+/// from the position with the velocity, owned by the player.
+fn launch_bomb(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let id = super::engine::entity_id(world, receiver).map_err(|_| "not an entity".to_owned())?;
+    let Some(client) = world.resource::<RoundScript>().player_client(id) else {
+        return Err("LaunchBomb: entity must be a player entity".into());
+    };
+    if args.len() != 3 {
+        return Err("illegal call to LaunchBomb(<weapon>, <position>, <velocity>)".into());
+    }
+    let name = string(args, 0)?;
+    let weapon = crate::script_player::weapon_named(&FrameWorld::from_world(world), &name)
+        .ok()
+        .filter(|&w| w != 0)
+        .ok_or_else(|| {
+            if name.is_empty() {
+                "Invalid weapon name".to_owned()
+            } else {
+                format!("Invalid weapon name {name}")
+            }
+        })?;
+    let (origin, velocity) = (vector(args, 1)?, vector(args, 2)?);
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let launched = crate::game_fire::launch_game_bomb(
+        &mut FrameWorld::from_world(world),
+        ClientId(client),
+        weapon,
+        tick,
+        origin,
+        velocity,
+    )?;
+    let Some(projectile) = launched else {
+        return Ok(Value::Undefined);
+    };
+    let object = super::super::weapons::adopt(world, &projectile, "rocket")?;
+    Ok(Value::Object(object))
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    registry.register(Method, "launchbomb", launch_bomb);
     macro_rules! selectors {
         ($($name:literal => $kind:literal),* $(,)?) => {$(
             registry.register(Method, $name, |world, receiver, args| {
