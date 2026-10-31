@@ -1084,6 +1084,7 @@ impl Think<'_> {
                 weapon_entity: entity,
                 hand: 0,
                 zombies: true,
+                deep_penetration: false,
                 gaps: self.gaps,
             }
             .fire(

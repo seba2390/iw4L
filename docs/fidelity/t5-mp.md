@@ -143,17 +143,17 @@ Each open section names the issue that works it.
       tactical insertion, camera spike, jammer, motion sensor;
       `makegrenadedud` is refused.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
-      weapon, grenade and damage code tests (`specialty_bulletpenetration`,
-      `_grenadepulldeath`, `_pin_back`, `_quieter`, `_scavenger`,
-      `_shellshock`, `_twogrenades`, `_loudenemies`, `_nottargetedbyai`,
-      `_pistoldeath`, `_noname`; its client's `_reconnaissance`,
-      `_showenemyequipment`, `_bulletflinch`, `_gas_mask`) are kept but
-      have no effect; setting one logs the gap. `specialty_fastads`
-      divides the aim-down-sight lerp by `perk_weapAdsMultiplier` except
-      for two weapons the engine looks up, which are not identified, so it
-      is not applied. Lightweight's `specialty_movefaster` is tested only
-      by vehicle code (#660). The scripts' own perk rules (`hasperk` in
-      the gametype, damage and killstreak scripts) apply (#650).
+      code tests that have no effect here yet (setting one logs the gap):
+      the item pickup's `specialty_scavenger` (scavenger packs) and
+      `_twogrenades` (a second grenade picked up) (#720);
+      `_grenadepulldeath`, `_pin_back`, `_loudenemies`,
+      `_nottargetedbyai`, `_noname`, `_quieter` (footsteps the AI hears);
+      its client's `_reconnaissance`, `_showenemyequipment`,
+      `_bulletflinch`, `_gas_mask`. `specialty_fastads` divides the
+      aim-down-sight lerp by `perk_weapAdsMultiplier` except for two
+      weapons the engine looks up, which are not identified, so it is not
+      applied. Lightweight's `specialty_movefaster` is tested only by
+      vehicle code (#660). The scripts' own perk rules apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
       match, `onlinegame` 1). The listen host's own profile keeps Black
@@ -335,6 +335,14 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `specialty_bulletpenetration` (Hardened) and
+      `specialty_shellshock` had no effect, and `shellshock` kept a
+      longer running shock as zombies' does. Bullets of a player with
+      Hardened go `perk_bulletPenetrationMultiplier` times as deep (and
+      the exit depth with them), and Black Ops multiplayer's `shellshock`
+      replaces the running shock and shortens it by
+      `perk_shellShockReduction` for a player with the perk (#650).
 
 - [x] **G** Second Chance never downed a Black Ops player: the runtime
       tested Modern Warfare 2's perk bit. A lethally hurt player now goes
