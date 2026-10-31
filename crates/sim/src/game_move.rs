@@ -902,6 +902,22 @@ pub(crate) fn set_perk(world: &mut FrameWorld, id: ClientId, perk: &str, on: boo
     true
 }
 
+/// The player holds the perk at `bit` of the game movement's perk mask.
+pub(crate) fn has_perk_bit(world: &mut FrameWorld, id: ClientId, bit: u32) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| movement.has_perk_bit(player, bit)).unwrap_or(false)
+}
+
+/// The player is in water by the game movement's rules.
+pub(crate) fn in_water(world: &mut FrameWorld, id: ClientId) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| movement.in_water(player)).unwrap_or(false)
+}
+
 /// Sets every perk the game's own movement reads from the scripts' perk
 /// bits; false when the match runs the simulation's.
 pub(crate) fn set_perk_mask(world: &mut FrameWorld, id: ClientId, mask: u64) -> bool {

@@ -18,6 +18,9 @@ use movement_t5::state::{
 };
 use movement_t5::{Buttons, Gap, MoveEvent, PlayerState, Pm, UserCmd};
 
+/// `specialty_pistoldeath` in the multiplayer executable's perk mask.
+pub(crate) const PISTOL_DEATH: u32 = 37;
+
 pub struct T5Movement {
     /// The mode sets `zombiemode`.
     zombies: bool,
@@ -1462,6 +1465,17 @@ impl PlayerMovement for T5Movement {
         ps.perks = 0;
         ps.perks_high = 0;
         pack(player, &mut ps, &mut last);
+    }
+
+    fn has_perk_bit(&self, player: &MovePlayer, bit: u32) -> bool {
+        let mut player = *player;
+        let (ps, _) = unpack(&mut player);
+        !self.zombies && movement_t5::perks::mp::has(&ps, bit)
+    }
+
+    fn in_water(&self, player: &MovePlayer) -> bool {
+        let mut player = *player;
+        unpack(&mut player).0.water_level != 0
     }
 
     /// The multiplayer executable's two perk words.

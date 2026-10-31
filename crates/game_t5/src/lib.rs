@@ -315,6 +315,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         hurt_calls_back: true,
         sets_view_height: false,
         revive_restores_health: true,
+        perk_bit: None,
         unrun: None,
     },
     // Solo game over: every client is told the level failed, and a wall-clock
@@ -442,10 +443,15 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     movement: Rule::Known(MovementRules::Game(&movement::MULTIPLAYER)),
     every_player_downs: Rule::Known(false),
     downed: game_api::DownedRules {
+        // Black Ops' damage downs a lethally hurt player who holds
+        // `specialty_pistoldeath` (Second Chance), is out of water and not
+        // down already, and calls the last stand callback; hurt again, they
+        // die.
+        perk_bit: Some(movement::PISTOL_DEATH),
         unrun: Some(unknown!(
             "t5.mp.second_chance",
-            "a downed multiplayer player (Second Chance) is briefly immune and dies when hurt, by the runtime's last stand",
-            "Black Ops' multiplayer last stand from BlackOpsMP.exe"
+            "going down in multiplayer does not drop a deployed weapon or reset the weapon state as Black Ops does, and its 500 ms timer is taken as damage immunity",
+            "the rest of Black Ops' multiplayer last stand entry (BlackOpsMP.exe)"
         )),
         ..game_api::DownedRules::BRIEFLY_IMMUNE
     },

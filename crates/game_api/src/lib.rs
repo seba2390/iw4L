@@ -293,6 +293,10 @@ pub struct DownedRules {
     pub sets_view_height: bool,
     /// A revive gives the player back their max health.
     pub revive_restores_health: bool,
+    /// The game's own perk that downs a lethally hurt player, by its bit
+    /// in the game movement's perk mask, and only out of water; `None`:
+    /// the shared player state's last stand perk.
+    pub perk_bit: Option<u32>,
     /// What going down or being revived does that is not run.
     pub unrun: Option<&'static Unknown>,
 }
@@ -305,6 +309,7 @@ impl DownedRules {
         hurt_calls_back: false,
         sets_view_height: true,
         revive_restores_health: false,
+        perk_bit: None,
         unrun: None,
     };
 }
