@@ -32,6 +32,7 @@ pub use content::{
     AssetSink, AssetTable, ScriptStrings, XASSET_ENTRY_LEN, XASSET_LIST_LEN, load_zone,
     load_zone_observed, open_asset_table,
 };
+pub use ddl::{DdlDefRead, DdlEnumRead, DdlMemberRead, DdlRead, DdlStructRead};
 pub use envelope::{
     FILE_PREAMBLE_LEN, FileHeader, FileHeaderError, MAGIC_SIGNED, MAGIC_UNSIGNED, Signing,
     ZONE_VERSION_PC, parse_file_header, split_file,
@@ -49,7 +50,6 @@ pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,
     occupancy_test,
 };
-pub use ddl::{DdlDefRead, DdlEnumRead, DdlMemberRead, DdlRead, DdlStructRead};
 pub use string_table::StringTableRead;
 pub use weapon_view::WeaponView;
 pub use xanim::{XAnimDeltaQuat, XAnimDeltaTrans, XAnimRead};
