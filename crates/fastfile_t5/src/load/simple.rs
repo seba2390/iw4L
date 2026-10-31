@@ -10,7 +10,7 @@ fn linked_name<'a>(s: &'a ZoneStream<'_>, p: crate::zone::Ptr) -> &'a str {
     }
 }
 
-pub(super) fn load_ddl(s: &mut ZoneStream<'_>) -> Result<()> {
+pub(super) fn load_ddl(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink) -> Result<()> {
     let root = s.alloc_load(4, 8)?;
     s.push(XFILE_BLOCK_VIRTUAL)?;
     follow_name(s, root, 0)?;
@@ -44,6 +44,7 @@ pub(super) fn load_ddl(s: &mut ZoneStream<'_>) -> Result<()> {
         }
         slot = def.at(24);
     }
+    links.capture_ddl(s, root)?;
     s.pop()
 }
 

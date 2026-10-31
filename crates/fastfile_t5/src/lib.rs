@@ -6,6 +6,7 @@ extern crate alloc;
 mod asset_type;
 pub mod clipmap_read;
 mod content;
+mod ddl;
 mod envelope;
 mod fx;
 pub mod light_grid;
@@ -48,6 +49,7 @@ pub use size::{
     TECHNIQUE_OCCUPANCY_WORDS, TECHNIQUE_SLOT_COUNT, occupancy_any, occupancy_bit, occupancy_set,
     occupancy_test,
 };
+pub use ddl::{DdlDefRead, DdlEnumRead, DdlMemberRead, DdlRead, DdlStructRead};
 pub use string_table::StringTableRead;
 pub use weapon_view::WeaponView;
 pub use xanim::{XAnimDeltaQuat, XAnimDeltaTrans, XAnimRead};

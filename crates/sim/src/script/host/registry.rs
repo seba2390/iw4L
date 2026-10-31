@@ -177,6 +177,7 @@ impl NativeRegistry {
         natives::t5_objectives::register(&mut self);
         natives::t5_obituary::register(&mut self);
         natives::t5_perks::register(&mut self);
+        natives::t5_stats::register(&mut self);
         self
     }
 }

@@ -147,14 +147,20 @@ Each open section names the issue that works it.
       damage and killstreak scripts) apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
-      match, `onlinegame` 1). `getdstat` and `setdstat` keep a plain map of
-      paths, not Black Ops' DDL buffer: the `ddl` asset is walked but not
-      captured, no per-player stats buffer is kept, saved per profile or
-      sent to the host, and `ui_mp`'s create-a-class menus do not write
-      it, so a custom class has no items. Offline (`onlinegame` 0) the
+      match, `onlinegame` 1). The host never receives a human client's
+      stats: Black Ops' host reads each player's two stats files from
+      its online storage before it sends that player a snapshot; here no profile
+      keeps a stats buffer and none is sent, so a human client's integer
+      stats read 0 and `setdstat` writes nothing, and `ui_mp`'s
+      create-a-class menus (`uiScript equipClass…`) do not write one, so
+      a custom class has no items. A test client's stats arrive at once,
+      a zeroed buffer, as in Black Ops. Offline (`onlinegame` 0) the
       scripts read `GetLoadoutItemFromProfile`, which is 0 on PC as in
       Black Ops. `calcweaponoptions (class, slot)` still reads the
       runtime's own class slots for the camo.
+- [ ] **I** The bytes `setdstat` changed are recorded per client, as
+      Black Ops records them, but nothing sends them back to the client
+      or saves them (no stats upload in a private match here).
 - [ ] **G** The custom game mode class table that
       `getcustomclassloadoutitem` and `getcustomclassmodifier` read is
       never filled (no custom game settings reach the host); it reads as
@@ -303,6 +309,13 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `getdstat` and `setdstat` kept a plain map of paths. They now
+      walk Black Ops' own `ddl_mp/stats.ddl` (captured from
+      `code_post_gfx_mp`, newest version) over each client's two
+      0xa000-byte stats buffers with the executable's path rules, error
+      strings, version check, ranges, buffer choice by member permission
+      and Combat Training, and string and 64-bit forms (#650).
 
 - [x] **G** `getloadoutitemfromprofile` answered from the runtime's own
       class slots; it now answers 0 for every slot as Black Ops' PC

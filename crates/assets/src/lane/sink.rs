@@ -77,6 +77,42 @@ fn t5_string_table(read: fastfile_t5::StringTableRead) -> asset_game::CapturedSt
     }
 }
 
+/// A Black Ops stats layout at its newest version, the first the zone
+/// lists.
+fn t5_layout(read: DdlRead) -> Option<asset_core::BitLayout> {
+    let def = read.defs.into_iter().next()?;
+    Some(asset_core::BitLayout {
+        name: read.name,
+        version: def.version,
+        bits: def.bits,
+        structs: def
+            .structs
+            .into_iter()
+            .map(|s| asset_core::BitStruct {
+                name: s.name,
+                members: s
+                    .members
+                    .into_iter()
+                    .map(|m| asset_core::BitMember {
+                        name: m.name,
+                        bits: m.bits,
+                        offset: m.offset,
+                        kind: m.kind,
+                        external: m.external,
+                        range: 0,
+                        array_size: m.array_size,
+                        enum_index: m.enum_index,
+                        min: m.min,
+                        max: m.max,
+                        permission: m.permission,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        enums: def.enums.into_iter().map(|e| e.members).collect(),
+    })
+}
+
 fn iw4_string_table(s: &ZoneStream<'_>, header: Ptr) -> Option<asset_game::CapturedStringTable> {
     let name = match s.ptr_at(header, 0).ok() {
         Some(ZonePtr::Offset(p)) => s.cstr(s.resolve_alias(p)).ok().unwrap_or("").to_owned(),
@@ -121,7 +157,9 @@ use asset_material::MaterialCatalog;
 use asset_model::{BodyMeshBuild, FpvMeshBuild, SoldierKit, WorldWeaponBuild, soldier_kits};
 use asset_transport::StageHandle;
 use asset_world::{ModelKind, build_xmodel_mesh, model_kind};
-use fastfile_t5::AssetType as T5Asset;
+use fastfile_t5::{
+    AssetType as T5Asset, DdlRead, Ptr as T5Ptr, Result as T5Result, ZoneStream as T5Stream,
+};
 
 #[derive(Default)]
 pub(crate) struct ZoneWalkSink {
@@ -762,6 +800,13 @@ impl fastfile_t5::AssetSink for CommonWalkSink {
 }
 
 impl fastfile_t5::AssetLinkSink for CommonWalkSink {
+    fn capture_ddl(&mut self, s: &T5Stream<'_>, root: T5Ptr) -> T5Result<()> {
+        if let Some(layout) = s.read_ddl(root).and_then(t5_layout) {
+            self.scripts.capture_layout(layout);
+        }
+        Ok(())
+    }
+
     fn capture_impact_fx(&mut self, table: fastfile_t5::ImpactFxRead) -> fastfile_t5::Result<()> {
         self.impact_fx.capture_t5(table, &self.fx);
         Ok(())
