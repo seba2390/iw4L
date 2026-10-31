@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use entity_iw4::EntityEventKind;
 use frame::RuntimeRole;
-use playerstate_iw4::{PlayerState, UserCmd};
+use playerstate_iw4::{PlayerState, UserCmd, buttons as cmd_buttons};
 
 use crate::ServerTime;
 use crate::authority::inbox::{
@@ -1018,11 +1018,27 @@ pub fn sample_client_input(
     if frozen {
         actions.pad_look_delta = [0.0; 2];
     }
-    let choose_direction = presented
+    let selection = presented
         .snapshot()
         .and_then(|snapshot| snapshot.meta.for_client(local.0))
-        .and_then(|meta| meta.location_selection.as_ref())
-        .map(|selection| selection.choose_direction);
+        .and_then(|meta| meta.location_selection.as_ref());
+    let choose_direction = selection.map(|selection| selection.choose_direction);
+    let black_ops_selector = selection.and_then(|selection| {
+        selection
+            .kind
+            .map(|kind| (kind, selection.aspect, presented.snapshot()))
+    });
+    let selector_dvar = |name: &str, default: f32| {
+        black_ops_selector
+            .and_then(|(_, _, snapshot)| snapshot)
+            .and_then(|snapshot| snapshot.meta.script_dvars(local.0).float(name))
+            .unwrap_or(default)
+    };
+    let selector_speeds = [
+        selector_dvar("cg_mapLocationSelectionCursorSpeed", 0.6),
+        selector_dvar("cg_mapLocationSelectionRotationSpeed", 3.0),
+    ];
+    let black_ops_selector = black_ops_selector.map(|(kind, aspect, _)| (kind, aspect));
     let location_input = choose_direction.is_some().then(|| {
         let mouse = (actions.mouse_x, actions.mouse_y);
         let pad = LocationPad::capture(&actions);
@@ -1275,6 +1291,21 @@ pub fn sample_client_input(
         }
     }
     match location_input {
+        Some(((mouse_x, mouse_y), pad)) if let Some((kind, aspect)) = black_ops_selector => {
+            let held = cmd.buttons;
+            cmd.buttons &= cmd_buttons::CROUCH | cmd_buttons::PRONE;
+            let (location, buttons) = cursor.step_black_ops(
+                kind,
+                aspect,
+                selector_speeds,
+                held,
+                [mouse_x, mouse_y],
+                pad,
+                cls.frametime_secs(),
+            );
+            cmd.selected_location = location;
+            cmd.buttons |= buttons;
+        }
         Some(((mouse_x, mouse_y), pad)) => {
             let held = cmd.buttons;
             let directing =
@@ -1466,6 +1497,8 @@ pub struct LocationCursor {
     pub aim: [f32; 2],
     pub yaw: f32,
     pub directing: bool,
+    /// Black Ops' selector input.
+    pub black_ops: BlackOpsSelector,
 }
 
 impl Default for LocationCursor {
@@ -1475,9 +1508,36 @@ impl Default for LocationCursor {
             aim: [0.5, 0.5],
             yaw: 0.0,
             directing: false,
+            black_ops: BlackOpsSelector::default(),
         }
     }
 }
+
+/// Black Ops' location selector input: what the last key asked (`1`
+/// confirm, `2` turning the direction, `3`–`5` the weapon, reload and
+/// sprint keys, `6` cancel), whether this press has confirmed, the
+/// direction, and the mortar strikes placed so far.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BlackOpsSelector {
+    pub state: u8,
+    pub confirmed: bool,
+    pub direction: [f32; 2],
+    pub points: [Option<[f32; 2]>; 3],
+    held: u32,
+}
+
+/// The selector types whose direction is chosen: airstrike and napalm.
+fn black_ops_directed(kind: u8) -> bool {
+    matches!(kind, 2 | 4)
+}
+
+/// The commands whose keys do not cancel Black Ops' selector.
+const BLACK_OPS_SELECTOR_KEEPS: u32 = cmd_buttons::ATTACK
+    | cmd_buttons::USE_RELOAD
+    | cmd_buttons::RELOAD
+    | cmd_buttons::SPRINT
+    | cmd_buttons::BREATH
+    | cmd_buttons::STANCE_HELD;
 
 const LOCATION_CURSOR_SPEED: f32 = 0.6;
 
@@ -1508,6 +1568,111 @@ impl LocationPad {
 }
 
 impl LocationCursor {
+    /// Black Ops' selector a frame: its keys (`+attack` confirms, or turns
+    /// the direction of an airstrike or napalm until it is let go; the
+    /// reload and sprint keys do nothing; any other key cancels), then its
+    /// command: the cursor moved by the mouse and the left stick
+    /// (`cg_mapLocationSelectionCursorSpeed`, the map's aspect for up and
+    /// down), the direction by the mouse while turning
+    /// (`cg_mapLocationSelectionRotationSpeed`) or the right stick, and one
+    /// confirm or cancel per press.
+    #[allow(clippy::too_many_arguments)]
+    fn step_black_ops(
+        &mut self,
+        kind: u8,
+        aspect: f32,
+        [cursor_speed, rotation_speed]: [f32; 2],
+        held: u32,
+        [mouse_x, mouse_y]: [f32; 2],
+        pad: LocationPad,
+        dt: f32,
+    ) -> ([u8; 3], u32) {
+        let selector = &mut self.black_ops;
+        let pressed = held & !selector.held;
+        let released = selector.held & !held;
+        selector.held = held;
+        if pressed & cmd_buttons::ATTACK != 0 {
+            selector.state = if black_ops_directed(kind) { 2 } else { 1 };
+        } else if pressed & (cmd_buttons::USE_RELOAD | cmd_buttons::RELOAD) != 0 {
+            selector.state = 4;
+        } else if pressed & cmd_buttons::SPRINT != 0 {
+            selector.state = 5;
+        } else if pressed & !BLACK_OPS_SELECTOR_KEEPS != 0 {
+            selector.state = 6;
+        } else if released != 0 {
+            selector.state = if selector.state == 2 && black_ops_directed(kind) {
+                1
+            } else {
+                0
+            };
+        }
+        let yaw_of = |d: [f32; 2]| d[1].atan2(d[0]).to_degrees().rem_euclid(360.0);
+        if selector.state == 2 && (mouse_x != 0.0 || mouse_y != 0.0) {
+            let yaw =
+                yaw_of(selector.direction) + rotation_speed as i32 as f32 * mouse_x * dt * 2.0;
+            let (sin, cos) = yaw.to_radians().sin_cos();
+            selector.direction = [cos, sin];
+            return ([0; 3], 0);
+        }
+        if mouse_x != 0.0 || mouse_y != 0.0 {
+            self.at[0] += cursor_speed * mouse_x * dt * 0.1;
+            self.at[1] += cursor_speed * mouse_y * aspect * dt * 0.1;
+        }
+        let [mut lx, mut ly] = [pad.movement[1], pad.movement[0]];
+        let length = lx * lx + ly * ly;
+        if length > 1.0 {
+            let k = 1.0 / length.sqrt();
+            lx *= k;
+            ly *= k;
+        }
+        self.at[0] += cursor_speed * lx * dt;
+        self.at[1] -= cursor_speed * ly * aspect * dt;
+        let [rx, ry] = pad.look;
+        if black_ops_directed(kind) {
+            if ry != 0.0
+                && rx != 0.0
+                && (ry > 0.5
+                    || ry < -0.5
+                    || rx > 0.5
+                    || rx < -0.5
+                    || rx * ry < -0.125
+                    || rx * ry > 0.125)
+            {
+                selector.direction = [ry, rx];
+            }
+        } else {
+            self.at[0] += cursor_speed * rx * dt;
+            self.at[1] -= cursor_speed * ry * aspect * dt;
+            selector.direction = [0.0; 2];
+        }
+        self.at = [self.at[0].clamp(0.0, 1.0), self.at[1].clamp(0.0, 1.0)];
+        self.aim = self.at;
+        if matches!(selector.state, 0 | 2) {
+            selector.confirmed = false;
+            return ([0; 3], 0);
+        }
+        let byte = |v: f32| ((v * 255.0 + 0.5).floor() as i32 - 128) as i8 as u8;
+        let mut location = [byte(self.at[0]), byte(self.at[1]), 0];
+        let mut buttons = 0;
+        if !selector.confirmed && selector.state == 1 {
+            selector.confirmed = true;
+            if let Some(point) = selector.points.iter_mut().find(|p| p.is_none()) {
+                *point = Some(self.at);
+            }
+            let yaw = if selector.direction == [0.0; 2] {
+                0.0
+            } else {
+                yaw_of(selector.direction)
+            };
+            self.yaw = yaw;
+            location[2] = ((360.0 - yaw + 0.5).floor() as i32 / 2) as u8;
+            buttons |= cmd_buttons::LOCATION_SELECT;
+        } else if selector.state == 6 {
+            buttons |= cmd_buttons::LOCATION_CANCEL;
+        }
+        (location, buttons)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn step(
         &mut self,

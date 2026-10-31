@@ -33,6 +33,13 @@ pub struct LocationSelection {
     pub material: String,
     pub choose_direction: bool,
     pub radius: f32,
+    /// Black Ops' selector type (0 generic, 1 artillery, 2 airstrike, 3
+    /// mortar, 4 napalm, 5 comlink), whose radius is a share of the map's
+    /// height in fifteenths; `None` for Modern Warfare 2's selector.
+    pub kind: Option<u8>,
+    /// The map's width over its height (Black Ops' cursor moves up and
+    /// down by it).
+    pub aspect: f32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

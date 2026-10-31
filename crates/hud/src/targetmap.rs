@@ -330,10 +330,12 @@ pub(crate) fn update_targetmap(
         hide(&mut pass);
         return;
     };
+    // Black Ops' selector is its own HUD menu's (`fullscreenmap`).
     let Some(selection) = snapshot
         .meta
         .for_client(local.0)
         .and_then(|meta| meta.location_selection.as_ref())
+        .filter(|selection| selection.kind.is_none())
     else {
         hide(&mut pass);
         return;

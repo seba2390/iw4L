@@ -78,6 +78,8 @@ pub(crate) struct T5HudState<'a> {
     /// the weapon info was last shown.
     pub weapon_info: Option<WeaponInfoFrame<'a>>,
     pub compass: Option<T5Compass>,
+    /// The location selector while it is open.
+    pub selector: Option<T5Selector>,
     /// The visibility bits the scripts set (UI and match flags).
     pub ui_flags: u32,
 }
@@ -92,6 +94,18 @@ pub(crate) struct T5Compass {
     pub origin: [f32; 2],
     pub yaw: f32,
     pub radar: Option<T5CompassRadar>,
+}
+
+/// Black Ops' location selector for a frame: its material, radius (a share
+/// of the map's height), type, the cursor and direction, and the mortar
+/// strikes placed.
+pub(crate) struct T5Selector {
+    pub material: String,
+    pub radius: f32,
+    pub kind: u8,
+    pub at: [f32; 2],
+    pub direction: [f32; 2],
+    pub points: [Option<[f32; 2]>; 3],
 }
 
 /// The compass radar's draws for a frame.
@@ -569,6 +583,7 @@ impl ExprHost for T5HudHost<'_, '_> {
             in_killcam: self.state.in_killcam,
             ui_flags: self.state.ui_flags,
             dvar: &|name| self.state.dvars.float(name),
+            selecting_location: self.state.selector.is_some(),
         };
         rule(bit, &view)
             .map(i32::from)
@@ -1343,6 +1358,8 @@ fn paint_owner(
                 _ => OwnerDrawPaint::Painted,
             }
         }
+        FULL_MAP_MAP => paint_full_map(state, &args, frame),
+        FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
             None => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
@@ -1541,6 +1558,145 @@ fn menu_bits_shown(
         }
     }
     (shown, unknown)
+}
+
+/// The full map's owner draws: the map and the location selector.
+const FULL_MAP_MAP: i32 = 181;
+const FULL_MAP_LOCATOR: i32 = 186;
+
+/// The full map's rect: the item's, moved by the menu's origin (the x and
+/// y the menu paint hands the full map's owner draws), narrowed to the
+/// map's aspect and centred, then inset by `cg_hudMapBorderWidth` (at most
+/// a quarter of a side).
+fn full_map_rect(
+    state: &T5HudState<'_>,
+    compass: &T5Compass,
+    args: &OwnerDrawArgs<'_>,
+) -> Option<[f32; 4]> {
+    let [map_w, map_h] = compass.frame.size;
+    let mut r = args.rect;
+    r.x += args.menu.rect.x;
+    r.y += args.menu.rect.y;
+    if r.w <= 0.0 || r.h <= 0.0 || map_w <= 0.0 || map_h <= 0.0 {
+        return None;
+    }
+    let map_aspect = map_w / map_h;
+    let rect_aspect = r.w / r.h;
+    let [mut x, mut y, mut w, mut h] = if map_aspect <= rect_aspect {
+        let w = map_aspect / rect_aspect * r.w;
+        [r.w * 0.5 + r.x - w * 0.5, r.y, w, r.h]
+    } else {
+        let h = rect_aspect / map_aspect * r.h;
+        [r.x, r.h * 0.5 + r.y - h * 0.5, r.w, h]
+    };
+    let border = compass_dvar(state, "cg_hudMapBorderWidth", 2.0)
+        .min(w * 0.25)
+        .min(h * 0.25);
+    x += border;
+    y += border;
+    w -= border * 2.0;
+    h -= border * 2.0;
+    Some([x, y, w, h])
+}
+
+/// The full map: the compass's map material across the fitted rect.
+fn paint_full_map(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = full_map_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    push_pic_at(
+        args,
+        namespace,
+        compass.material.clone(),
+        x,
+        y,
+        w,
+        h,
+        args.color,
+        frame,
+    );
+    OwnerDrawPaint::Painted
+}
+
+/// The location selector on the full map: the mortar strikes placed (a
+/// mortar selector), then the selector at the cursor, as wide as the
+/// map's height times its radius times 0.04, turned to its direction.
+fn paint_locator(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let (Some(compass), Some(selector)) = (state.compass.as_ref(), state.selector.as_ref()) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = full_map_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    if selector.radius <= 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let map_h = compass.frame.size[1];
+    let size = if map_h <= 0.0 {
+        selector.radius * 250.0
+    } else {
+        map_h * selector.radius * 0.04
+    };
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    let place = |at: [f32; 2], turn: f32, frame: &mut ChromeFrame| {
+        let applied = args.surface.apply_rect(
+            at[0] * w + x - size * 0.5,
+            at[1] * h + y - size * 0.5,
+            size,
+            size,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: args.color,
+            material: selector.material.clone(),
+            op: Draw2dOp::RotatedPic { deg: turn },
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+    };
+    if selector.kind == 3 {
+        for point in selector.points.iter().flatten() {
+            place(*point, 0.0, frame);
+        }
+    }
+    let [dx, dy] = selector.direction;
+    let turn = if dx == 0.0 && dy == 0.0 {
+        0.0
+    } else {
+        dy.atan2(dx).to_degrees().rem_euclid(360.0)
+    };
+    place(selector.at, turn, frame);
+    OwnerDrawPaint::Painted
 }
 
 /// Where a world point falls on the compass, from the rect's centre, and

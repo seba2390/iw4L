@@ -225,8 +225,19 @@ Each open section names the issue that works it.
       plane's static (`compass_static`) is drawn as the runtime draws a HUD
       material, laid like the map; its look in Black Ops (an animated noise)
       is not compared.
-- [ ] **G** `launchbomb`, `spawnnapalmgroundflame`, `spawntimedfx` are
-      refused; the location selector has not run.
+- [ ] **G** `launchbomb` (#738), `spawnnapalmgroundflame` and
+      `spawntimedfx` are refused, so the Mortar Team, Napalm Strike and
+      artillery stop after their locations are chosen.
+- [ ] **V** `t5.hud.location_selector`: the location selector's full map
+      draws the map and the selector (and the mortar strikes placed); its
+      player arrow, friendlies, enemies, vehicles, grid and radar effects
+      (owner draws 175–190, 313, 318, 320, 326, 327, 333, 360) are not
+      drawn. The full map's owner draws are moved by the menu's origin,
+      which the menu's layout shows (its map then sits centred with its
+      bars) but the menu paint's call was not read. Black Ops cancels the
+      selector on any key not bound to `+attack`, `weapnext`, `+reload` or
+      `+sprint`; the runtime reads the keys by the commands they press, so
+      a movement key does not cancel it and `weapnext` does nothing.
 - [ ] **G** Carried turrets (`carryturret`, `stopcarryturret`,
       `canplayerplaceturret`, `setturretcarried`, `setturrettype`) are
       refused; `spawnturret`, `setturrettargetent`, `setturrettargetvec`,
@@ -367,6 +378,21 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** The location selector did not open:
+      `beginLocation…Selection` were accepted and ignored. They now open
+      Black Ops' own (`natives/t5_location.rs`): the selector type
+      (generic, artillery, airstrike, mortar, napalm, comlink), its radius
+      as a share of the map's height in fifteenths (0.15 without one; "Radius
+      of location selector must be greater than zero"), and
+      `precacheLocationSelector`'s 15 materials. The client's
+      `fullscreenmap` shows while it is open (visibility bits 22 and 30); its
+      cursor moves by `cg_mapLocationSelectionCursorSpeed`, an airstrike's
+      or napalm's direction turns while `+attack` is held
+      (`cg_mapLocationSelectionRotationSpeed`) and confirms on release, any
+      other press confirms once, and the server gives the scripts
+      `confirm_location` with the place and the yaw (twice the byte, an
+      int) (#658).
 
 - [x] **V** Black Ops' multiplayer HUD menus all painted at once: the
       menu's visibility masks (`menuDef_t` show bits and allowed bits,
