@@ -1765,7 +1765,7 @@ fn register_refused(registry: &mut NativeRegistry) {
         => "missile lock targets are not simulated");
     refused!(Method: "missile_settarget", "ismissileinsideheightlock", "getlockonradius",
         "getlockonspeed", "linkguidedmissilecamera", "unlinkguidedmissilecamera",
-        "makegrenadedud", "launchbomb"
+        "makegrenadedud"
         => "receiver is not a guided missile");
 
     // `player SetScoreMultiplier(n)` / `GetScoreMultiplier()`: a number the

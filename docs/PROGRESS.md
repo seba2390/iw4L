@@ -263,6 +263,7 @@ Each milestone names its issues; open rules are in
   - [x] Spy Plane, Counter-Spy Plane and Blackbird (#657): the sweep pings enemies on the compass, the Blackbird shows them live with their heading, an enemy counter-spy plane hides them under static.
   - [ ] Napalm Strike, Mortar Team and Rolling Thunder (#658).
     - [x] Black Ops' location selector opens its full map, places the strikes and confirms them to the scripts (#658).
+    - [x] The Mortar Team's shells (`launchbomb`) arc onto the chosen places (#738).
   - [ ] SAM Turret and Sentry Gun (#659).
   - [ ] RC-XD (#660).
   - [ ] Care Package, Attack Helicopter, Chopper Gunner and Gunship (#661).

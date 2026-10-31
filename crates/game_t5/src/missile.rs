@@ -374,6 +374,86 @@ fn spawn_rocket(
     });
 }
 
+/// `launchbomb`: Black Ops multiplayer's missile spawn with the velocity the
+/// script gives. A bullet, projectile, gas or bomb weapon only; the missile
+/// falls under `bg_gravity` from `origin`, pointed along the velocity,
+/// drawn once clear of a player owner. A missile that accelerates, curves,
+/// destabilises or is guided (other than ballistic) is a gap.
+pub(crate) fn launch_bomb(
+    owner: i32,
+    weapon: u32,
+    origin: [f32; 3],
+    velocity: [f32; 3],
+    world: &mut dyn FireWorld,
+) -> (Result<Option<i32>, &'static str>, Vec<&'static Unknown>) {
+    let Some((def_bytes, variant_bytes)) = world
+        .weapon(weapon)
+        .map(|w| (w.def.clone(), w.variant.clone()))
+    else {
+        return (Ok(None), vec![crate::movement::weapon_unknown()]);
+    };
+    let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
+        return (Ok(None), vec![crate::movement::weapon_unknown()]);
+    };
+    if !matches!(def.weapon_type(), 0 | WEAPTYPE_PROJECTILE | 4 | 5) {
+        return (
+            Err("LaunchBomb only support bullet, bomb, gas and projectile weapons\n"),
+            Vec::new(),
+        );
+    }
+    let mut gaps = Vec::new();
+    let guided = def.guided_missile_type();
+    if def.time_to_accelerate() > 0.0
+        || def.projectile_curvature() > 0.0
+        || !matches!(guided, 0 | 3)
+    {
+        gaps.push(missile_unknown());
+    }
+    let len =
+        (velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]).sqrt();
+    let len = if -len >= 0.0 { 1.0 } else { len };
+    let inv = 1.0 / len;
+    let dir = [velocity[0] * inv, velocity[1] * inv, velocity[2] * inv];
+    let level = world.level_time();
+    let hidden = if owner >= 0 && world.player(owner).is_some() {
+        let speed = def.projectile_speed() as f32;
+        ((speed * -35.0 * 0.00166666671 + 85.0) as i32).clamp(20, 50)
+    } else {
+        0
+    };
+    let mut game = [0u8; GAME_MISSILE_BYTES];
+    State {
+        bounce: def.force_bounce(),
+        ground: ENTITY_NONE,
+        spawned_at: level,
+        ..State::default()
+    }
+    .write(&mut game);
+    let entity = world.spawn_missile(GameMissile {
+        entity: ENTITY_NONE,
+        owner,
+        weapon,
+        position: GameTrajectory {
+            kind: TrajectoryKind::Gravity(dvar(world, "bg_gravity", 800.0)),
+            time: level,
+            duration: 0,
+            base: origin,
+            delta: velocity.map(|v| v as i32 as f32),
+        },
+        angles: GameTrajectory {
+            kind: TrajectoryKind::Stationary,
+            time: level,
+            duration: 0,
+            base: vectoangles(dir),
+            delta: [0.0; 3],
+        },
+        origin,
+        visible_at: level + hidden,
+        game,
+    });
+    (Ok(entity), gaps)
+}
+
 /// One frame of a missile: along its trajectory, traced against what its
 /// mask names (water too once clear of the muzzle), into its impact.
 pub(crate) fn run_missile(

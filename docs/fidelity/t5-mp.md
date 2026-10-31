@@ -225,9 +225,14 @@ Each open section names the issue that works it.
       plane's static (`compass_static`) is drawn as the runtime draws a HUD
       material, laid like the map; its look in Black Ops (an animated noise)
       is not compared.
-- [ ] **G** `launchbomb` (#738), `spawnnapalmgroundflame` and
-      `spawntimedfx` are refused, so the Mortar Team, Napalm Strike and
-      artillery stop after their locations are chosen.
+- [ ] **G** `spawnnapalmgroundflame` and `spawntimedfx` are refused, so
+      the Napalm Strike burns nothing where it lands.
+- [ ] **G** `t5.weapons.missile` (multiplayer): a missile `launchbomb` spawns
+      flies and strikes by the runtime's Black Ops missile think, which is
+      the zombies executable's; BlackOpsMP.exe's own think is not compared.
+      A player's rocket still spawns by the zombies rules (straight, its
+      speed added to the shooter's), where BlackOpsMP.exe's spawn falls
+      under gravity with the velocity its caller gives (#738).
 - [ ] **V** `t5.hud.location_selector`: the location selector's full map
       draws the map and the selector (and the mortar strikes placed); its
       player arrow, friendlies, enemies, vehicles, grid and radar effects
@@ -378,6 +383,17 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `launchbomb` was refused. It is BlackOpsMP.exe's: a player
+      only ("LaunchBomb: entity must be a player entity"), three arguments
+      ("illegal call to LaunchBomb(<weapon>, <position>, <velocity>)"), a
+      known weapon ("Invalid weapon name %s") of a bullet, projectile, gas
+      or bomb type ("LaunchBomb only support bullet, bomb, gas and
+      projectile weapons"); the missile spawns at the position falling under
+      `bg_gravity` with the velocity (cut to whole units), pointed along it,
+      classname `rocket`, drawn once clear of its owner. `bg_gravity` (800)
+      is now set for multiplayer scripts, which aim the mortar by it
+      (#738).
 
 - [x] **G** The location selector did not open:
       `beginLocation…Selection` were accepted and ignored. They now open

@@ -74,6 +74,8 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("onlinegame", "0"),
     ("cg_mature", "1"),
     ("cg_blood", "1"),
+    // Registered 800; the mortar, artillery and airstrike scripts aim by it.
+    ("bg_gravity", "800"),
 ];
 
 /// Black Ops' front-end level: the main menu draws over it.

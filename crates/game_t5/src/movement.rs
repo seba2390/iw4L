@@ -1140,6 +1140,17 @@ impl PlayerMovement for T5Movement {
         Some(crate::fire::actor_melee(melee, world))
     }
 
+    fn launch_bomb(
+        &self,
+        owner: i32,
+        weapon: u32,
+        origin: [f32; 3],
+        velocity: [f32; 3],
+        world: &mut dyn game_api::fire::FireWorld,
+    ) -> (Result<Option<i32>, &'static str>, Vec<&'static Unknown>) {
+        crate::missile::launch_bomb(owner, weapon, origin, velocity, world)
+    }
+
     fn run_missile(
         &self,
         missile: &mut game_api::fire::GameMissile,

@@ -1337,6 +1337,29 @@ pub(crate) fn spawn_game_grenade(
     world.projectile_by_number(entnum?)
 }
 
+/// `launchbomb` by the game's own missile rules: the missile, `Ok(None)`
+/// when the game has no such rule or launched none, or the game's refusal.
+pub(crate) fn launch_game_bomb(
+    world: &mut FrameWorld,
+    owner: ClientId,
+    weapon: u32,
+    tick: Tick,
+    origin: [f32; 3],
+    velocity: [f32; 3],
+) -> Result<Option<crate::ProjectileState>, &'static str> {
+    let Some(movement) = crate::game_move::rules(world) else {
+        return Ok(None);
+    };
+    let (launched, gaps) = {
+        let mut around = MatchFireWorld::new(world, tick, Some(owner));
+        movement.launch_bomb(owner.0 as i32, weapon, origin, velocity, &mut around)
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    Ok(launched?.and_then(|entnum| world.projectile_by_number(entnum)))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch_game_rocket(
     world: &mut FrameWorld,
