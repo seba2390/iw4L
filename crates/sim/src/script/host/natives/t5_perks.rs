@@ -63,13 +63,13 @@ const PERKS: [&str; 52] = [
 ];
 
 /// The perks the multiplayer executable's own code tests whose tests do
-/// not run here yet; its movement and weapon timing ones (`bulletaccuracy`,
-/// `fallheight`, `fastmantle`, `fastmeleerecovery`, `fastreload`,
-/// `fastweaponswitch`, `longersprint`, `sprintrecovery`,
-/// `unlimitedsprint`) run in the game's movement and fire rules.
-const ENGINE_PERKS: [&str; 16] = [
+/// not run here yet; its movement, weapon and damage ones (`bulletaccuracy`,
+/// `bulletpenetration`, `fallheight`, `fastmantle`, `fastmeleerecovery`,
+/// `fastreload`, `fastweaponswitch`, `longersprint`, `pistoldeath`,
+/// `shellshock`, `sprintrecovery`, `unlimitedsprint`) run in the game's
+/// movement, fire and damage rules and in `shellshock`.
+const ENGINE_PERKS: [&str; 13] = [
     "specialty_bulletflinch",
-    "specialty_bulletpenetration",
     "specialty_fastads",
     "specialty_gas_mask",
     "specialty_grenadepulldeath",
@@ -77,11 +77,9 @@ const ENGINE_PERKS: [&str; 16] = [
     "specialty_noname",
     "specialty_nottargetedbyai",
     "specialty_pin_back",
-    "specialty_pistoldeath",
     "specialty_quieter",
     "specialty_reconnaissance",
     "specialty_scavenger",
-    "specialty_shellshock",
     "specialty_showenemyequipment",
     "specialty_twogrenades",
 ];
@@ -163,6 +161,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         perks(world).0.remove(&client);
         sync(world, client);
         Ok(Value::Undefined)
+    });
+    // Black Ops multiplayer's shell shock tests `specialty_shellshock`.
+    registry.register(Method, "shellshock", |world, receiver, args| {
+        super::t5::shellshock(world, receiver, args, true)
     });
     // In the order of the perk table.
     registry.register(Method, "getperks", |world, receiver, _| {

@@ -615,55 +615,7 @@ fn register_shellshock(registry: &mut NativeRegistry) {
         }
     });
     registry.register(Method, "shellshock", |world, receiver, args| {
-        let id = ClientId(player_id(world, receiver)?);
-        let name = string(args, 0)?;
-        let duration = shock_milliseconds(float(args, 1)?);
-        if !(0..=60_000).contains(&duration) {
-            return Err(format!(
-                "duration {} should be >= 0 and <= 60",
-                duration as f32 * 0.001
-            ));
-        }
-        let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
-        let mut frame = FrameWorld::from_world(world);
-        let Some(ps) = frame.player(id) else {
-            return Ok(Value::Undefined);
-        };
-        // A shock replaces the running one when it is at least as long or
-        // the running one is over.
-        if ps.shellshock_duration > duration
-            && ps.shellshock_duration > now.wrapping_sub(ps.shellshock_time)
-        {
-            return Ok(Value::Undefined);
-        }
-        let index = frame
-            .ecs_ref()
-            .resource::<crate::script::MatchScript>()
-            .precached
-            .iter()
-            .find(|((kind, item), _)| *kind == "shellshock" && item.eq_ignore_ascii_case(&name))
-            .map(|(_, &index)| index)
-            .ok_or_else(|| format!("shellshock '{name}' was not precached"))?;
-        let file = frame
-            .shock_file(&name)
-            .ok_or_else(|| format!("shellshock '{name}' has no shock file"))?;
-        let shock = frame.shock(&file).cloned();
-        for gap in frame.shock_gaps(&file).to_vec() {
-            frame.report_game_gap(gap);
-        }
-        let start = game_api::movement::ShellshockStart {
-            index,
-            duration_ms: duration,
-            level_time: now,
-        };
-        crate::game_move::shellshock(&mut frame, id, Some(start));
-        if let Some(ps) = frame.player_mut(id) {
-            ps.shellshock_index = index;
-            ps.shellshock_time = now;
-            ps.shellshock_duration = duration;
-        }
-        frame.client_meta_mut(id).shellshock = shock;
-        Ok(Value::Undefined)
+        shellshock(world, receiver, args, false)
     });
     registry.register(Method, "stopshellshock", |world, receiver, args| {
         if !args.is_empty() {
@@ -2268,3 +2220,75 @@ fn register_bots(registry: &mut NativeRegistry) {
         });
     }
 }
+
+/// `player shellShock(name, seconds)`. Zombies' keeps a running shock that
+/// is longer and not over; Black Ops multiplayer's replaces it, and its
+/// `specialty_shellshock` shortens the shock by `perk_shellShockReduction`.
+pub(crate) fn shellshock(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    multiplayer: bool,
+) -> Result<Value, String> {
+    let id = ClientId(player_id(world, receiver)?);
+    let name = string(args, 0)?;
+    let mut duration = shock_milliseconds(float(args, 1)?);
+    if !(0..=60_000).contains(&duration) {
+        return Err(format!(
+            "duration {} should be >= 0 and <= 60",
+            duration as f32 * 0.001
+        ));
+    }
+    let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+    let mut frame = FrameWorld::from_world(world);
+    let Some(ps) = frame.player(id) else {
+        return Ok(Value::Undefined);
+    };
+    // A zombies shock replaces the running one when it is at least as
+    // long or the running one is over.
+    if !multiplayer
+        && ps.shellshock_duration > duration
+        && ps.shellshock_duration > now.wrapping_sub(ps.shellshock_time)
+    {
+        return Ok(Value::Undefined);
+    }
+    if multiplayer && crate::game_move::has_perk_bit(&mut frame, id, PERK_SHELLSHOCK) {
+        let scale = super::super::super::host::actor_nav::dvar_f32(
+            frame.ecs_ref(),
+            "perk_shellShockReduction",
+            0.5,
+        );
+        duration = (duration as f32 * scale) as i32;
+    }
+    let index = frame
+        .ecs_ref()
+        .resource::<crate::script::MatchScript>()
+        .precached
+        .iter()
+        .find(|((kind, item), _)| *kind == "shellshock" && item.eq_ignore_ascii_case(&name))
+        .map(|(_, &index)| index)
+        .ok_or_else(|| format!("shellshock '{name}' was not precached"))?;
+    let file = frame
+        .shock_file(&name)
+        .ok_or_else(|| format!("shellshock '{name}' has no shock file"))?;
+    let shock = frame.shock(&file).cloned();
+    for gap in frame.shock_gaps(&file).to_vec() {
+        frame.report_game_gap(gap);
+    }
+    let start = game_api::movement::ShellshockStart {
+        index,
+        duration_ms: duration,
+        level_time: now,
+    };
+    crate::game_move::shellshock(&mut frame, id, Some(start));
+    if let Some(ps) = frame.player_mut(id) {
+        ps.shellshock_index = index;
+        ps.shellshock_time = now;
+        ps.shellshock_duration = duration;
+    }
+    frame.client_meta_mut(id).shellshock = shock;
+    Ok(Value::Undefined)
+}
+
+/// `specialty_shellshock` in Black Ops multiplayer's perk mask.
+const PERK_SHELLSHOCK: u32 = 45;

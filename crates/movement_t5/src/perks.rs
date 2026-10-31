@@ -42,6 +42,7 @@ pub mod mp {
     use crate::PlayerState;
 
     pub const BULLET_ACCURACY: u32 = 2;
+    pub const BULLET_PENETRATION: u32 = 5;
     pub const FALL_HEIGHT: u32 = 13;
     pub const FAST_MANTLE: u32 = 16;
     pub const FAST_MELEE_RECOVERY: u32 = 17;

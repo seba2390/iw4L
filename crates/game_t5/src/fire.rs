@@ -684,6 +684,8 @@ impl Shot<'_> {
             weapon_entity: attacker,
             hand: self.hand,
             zombies: self.zombies,
+            deep_penetration: !self.zombies
+                && movement_t5::perks::mp::has(self.ps, movement_t5::perks::mp::BULLET_PENETRATION),
             gaps: self.gaps,
         }
         .fire(def, weapon, spread, parms, time, world);
@@ -1002,6 +1004,8 @@ pub(crate) struct Bullets<'a> {
     /// The hand that fired: 1 the left.
     pub(crate) hand: u8,
     pub(crate) zombies: bool,
+    /// The shooter holds multiplayer's `specialty_bulletpenetration`.
+    pub(crate) deep_penetration: bool,
     pub(crate) gaps: &'a mut Vec<&'static Unknown>,
 }
 
@@ -1191,6 +1195,10 @@ impl Bullets<'_> {
         }
         let count = dvar(world, "penetrationCount", 2i32);
         let min_fx = dvar(world, "bullet_penetrationMinFxDist", 30.0f32);
+        // Multiplayer's `specialty_bulletpenetration` goes deeper.
+        let perk_depth = self
+            .deep_penetration
+            .then(|| dvar(world, "perk_bulletPenetrationMultiplier", 2.0f32));
         let depth_of = |world: &dyn FireWorld, surface: i32| {
             if surface == 0 {
                 0.0
@@ -1204,6 +1212,9 @@ impl Bullets<'_> {
             let mut max_depth = depth_of(world, br.depth_surface_type);
             if br.trace.surface_flags & surf::SKY != 0 {
                 max_depth = 100.0;
+            }
+            if let Some(scale) = perk_depth {
+                max_depth *= scale;
             }
             if self.zombies && br.surface_type() == surf::WATER {
                 max_depth = 100.0;
@@ -1258,7 +1269,10 @@ impl Bullets<'_> {
             };
             let thickness = length_zyx(span).max(1.0);
             let depth = if rev_hit {
-                let rev_depth = depth_of(world, rev_br.depth_surface_type);
+                let mut rev_depth = depth_of(world, rev_br.depth_surface_type);
+                if let Some(scale) = perk_depth {
+                    rev_depth *= scale;
+                }
                 let depth = if rev_depth - max_depth < 0.0 {
                     rev_depth
                 } else {
