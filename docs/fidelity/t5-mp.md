@@ -195,8 +195,11 @@ Each open section names the issue that works it.
 
 ## Killstreaks (#656–#662)
 
-- [ ] **G** Killstreak earning and the dpad (`_hardpoints.gsc`,
-      `_killstreakrules.gsc`); the action slot button builtins are refused.
+- [ ] **G** The action slot button builtins
+      (`actionSlotOneButtonPressed` … `Four`) are refused: they read a
+      client button word whose layout is not matched to the runtime's
+      commands yet; only the Sentry Gun / SAM placement (#659) and the
+      camera spike read them.
 - [ ] **G** `spawnplane` is not implemented: spy plane, counter-spy plane,
       Blackbird, napalm and Rolling Thunder planes.
 - [ ] **G** `launchbomb`, `spawnnapalmgroundflame`, `spawntimedfx` are
@@ -335,6 +338,12 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Killstreak earning and the dpad (`_hardpoints.gsc`,
+      `_killstreakrules.gsc`, `_killstreak_weapons.gsc`) run on Black Ops'
+      own scripts: a kill streak earns the profile's killstreak, its
+      weapon sits on dpad slot 4 (`setActionSlot`, now Black Ops' own),
+      the button raises it and the killstreak starts (#656).
 
 - [x] **G** `specialty_bulletpenetration` (Hardened) and
       `specialty_shellshock` had no effect, and `shellshock` kept a
