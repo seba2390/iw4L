@@ -31,6 +31,14 @@ In Team Deathmatch pick a team first:
 
 Presets: `smg_mp`, `cqb_mp`, `assault_mp`, `lmg_mp`, `sniper_mp`.
 
+Custom classes (`custom1` … `custom5`) are your profile's Black Ops stats,
+kept in `profile_stats.dat` beside IW4L's settings (`IW4L_PROFILE_STATS_PATH`
+moves it). A hosted match (`onlinegame 1`) reads them; a fresh profile gets
+Black Ops' own default custom classes, as its `mp/stats_init.cfg` builds
+them (custom 1 is the MP5K and ASP with Lightweight, Hardened and Tactical
+Mask). Editing them in Black Ops' create-a-class menus is #729; a match not
+hosted reads the profile loadout, which Black Ops on PC leaves empty.
+
 The host's console sets the scripts' limits, read each second as in Black
 Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team
 Deathmatch: `scr_tdm_…`).

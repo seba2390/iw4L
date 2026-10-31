@@ -106,6 +106,8 @@ impl Plugin for ConsolePlugin {
             .init_resource::<crate::saved_position::SavedPosition>()
             .init_resource::<sim::LocalPlayerProfile>()
             .init_resource::<crate::local_profile::ProfilePersistence>()
+            .init_resource::<sim::ProfileStats>()
+            .init_resource::<crate::profile_stats::ProfileStatsPersistence>()
             .init_resource::<crate::local_account::AccountPersistence>()
             .init_resource::<sim::LocalPlayerData>()
             .add_message::<ConsoleCommand>()
@@ -116,6 +118,7 @@ impl Plugin for ConsolePlugin {
                     setup_console,
                     crate::user_settings::load_user_settings,
                     crate::local_profile::load,
+                    crate::profile_stats::load,
                     crate::local_account::load,
                 )
                     .chain(),
@@ -255,6 +258,7 @@ impl Plugin for ConsolePlugin {
                     paint_scrollback_selection,
                     crate::feature_dispatch::request_exit,
                     crate::local_profile::save,
+                    crate::profile_stats::save,
                     crate::local_account::save,
                     crate::feature_dispatch::exit_process,
                 )

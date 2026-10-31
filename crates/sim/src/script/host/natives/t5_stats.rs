@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 const LAYOUT: &str = "ddl_mp/stats.ddl";
 /// Each buffer's size; it starts with a header of `HEADER_BITS`.
-const BUFFER_BYTES: usize = 0xa000;
+pub(super) const BUFFER_BYTES: usize = 0xa000;
 const HEADER_BITS: i64 = 0x140;
 /// The header's version word.
 const VERSION_AT: usize = 4;
@@ -61,25 +61,25 @@ impl Default for ClientStats {
 /// Where a path has reached: a bit offset, the array index taken (-1 for
 /// none) and the member, by struct and position in it.
 #[derive(Clone, Copy)]
-struct Cursor {
-    offset: i64,
-    index: i32,
-    member: Option<(usize, usize)>,
+pub(super) struct Cursor {
+    pub(super) offset: i64,
+    pub(super) index: i32,
+    pub(super) member: Option<(usize, usize)>,
 }
 
-const ROOT: Cursor = Cursor {
+pub(super) const ROOT: Cursor = Cursor {
     offset: 0,
     index: -1,
     member: None,
 };
 
-fn member(layout: &BitLayout, at: Option<(usize, usize)>) -> Option<&BitMember> {
+pub(super) fn member(layout: &BitLayout, at: Option<(usize, usize)>) -> Option<&BitMember> {
     let (s, m) = at?;
     layout.structs.get(s)?.members.get(m)
 }
 
 /// An element's size in bits: an array member's size is all of it.
-fn element_bits(member: &BitMember) -> i64 {
+pub(super) fn element_bits(member: &BitMember) -> i64 {
     if member.array_size == 0 {
         return 0;
     }
@@ -128,7 +128,7 @@ fn index(layout: &BitLayout, at: Cursor, index: i32) -> Cursor {
 
 /// One step of a path by a name: a root member, an array index (by number
 /// or by the array's enum) or a struct's member.
-fn step_name(layout: &BitLayout, at: Cursor, name: &str) -> Option<Cursor> {
+pub(super) fn step_name(layout: &BitLayout, at: Cursor, name: &str) -> Option<Cursor> {
     let Some(current) = member(layout, at.member) else {
         let (s, m) = find_member(layout, 0, name)?;
         return Some(Cursor {
@@ -230,7 +230,7 @@ fn write_bits(buffer: &mut [u8], offset: i64, bits: i64, value: u32) {
 }
 
 /// A leaf the path reached inside the layout, or why not.
-fn leaf(layout: &BitLayout, at: Cursor) -> Option<&BitMember> {
+pub(super) fn leaf(layout: &BitLayout, at: Cursor) -> Option<&BitMember> {
     let Some(m) = member(layout, at.member) else {
         diag::warn!(Sim, "DDL: Member not found in path.");
         return None;
@@ -267,7 +267,7 @@ fn span(at: Cursor, bits: i64) -> Option<(i64, i64)> {
     Some((at.offset, bits))
 }
 
-fn read_int(m: &BitMember, at: Cursor, buffer: &[u8]) -> Option<u32> {
+pub(super) fn read_int(m: &BitMember, at: Cursor, buffer: &[u8]) -> Option<u32> {
     let (offset, bits) = span(at, element_bits(m))?;
     Some(m.min.wrapping_add(read_bits(buffer, offset, bits)))
 }
@@ -309,9 +309,34 @@ fn layout(world: &World) -> Option<std::sync::Arc<BitLayout>> {
         .and_then(|plan| plan.layouts.get(LAYOUT).cloned())
 }
 
-/// A client's stats; a test client's arrive at once, a zeroed client
-/// buffer.
+/// A client's stats. A test client's arrive at once, a zeroed client
+/// buffer. The local profile's arrive when its client first reads or
+/// writes one, reset first when the profile has none or keeps an older
+/// stats version; any other client's never arrive (nothing sends them).
 fn client_stats(world: &mut World, client: u32) -> &mut ClientStats {
+    let received = world
+        .get_resource::<PlayerStats>()
+        .and_then(|stats| stats.0.get(&client))
+        .is_some_and(|stats| stats.received);
+    let profile = (!received)
+        .then(|| world.get_resource::<crate::ProfileStats>())
+        .flatten()
+        .filter(|profile| profile.client == Some(crate::ClientId(client)))
+        .map(|profile| profile.bytes.clone());
+    let profile = match (profile, layout(world)) {
+        (Some(bytes), Some(layout)) => {
+            if super::t5_stats_reset::needs_reset(world, &layout, bytes.as_deref()) {
+                let bytes = super::t5_stats_reset::reset(world, &layout);
+                let mut stored = world.resource_mut::<crate::ProfileStats>();
+                stored.bytes = Some(bytes.clone());
+                stored.revision += 1;
+                Some(bytes)
+            } else {
+                bytes
+            }
+        }
+        _ => None,
+    };
     let test_client = world
         .get_resource::<crate::TestClients>()
         .is_some_and(|clients| clients.0.contains(&client));
@@ -321,7 +346,13 @@ fn client_stats(world: &mut World, client: u32) -> &mut ClientStats {
         .0
         .entry(client)
         .or_default();
-    if test_client && !stats.received {
+    if let Some(bytes) = profile {
+        let (own, server) = bytes.split_at(BUFFER_BYTES.min(bytes.len()));
+        stats.buffers[CLIENT][..own.len()].copy_from_slice(own);
+        stats.buffers[SERVER][..server.len().min(BUFFER_BYTES)]
+            .copy_from_slice(&server[..server.len().min(BUFFER_BYTES)]);
+        stats.received = true;
+    } else if test_client && !stats.received {
         stats.buffers[CLIENT].fill(0);
         stats.received = true;
     }
@@ -330,7 +361,7 @@ fn client_stats(world: &mut World, client: u32) -> &mut ClientStats {
 
 /// Checks `buffer` against the layout's version: a buffer with none is
 /// cleared and takes it.
-fn validate(layout: &BitLayout, buffer: &mut [u8]) -> bool {
+pub(super) fn validate(layout: &BitLayout, buffer: &mut [u8]) -> bool {
     let need = i64::from(layout.bits) + HEADER_BITS;
     if (buffer.len() as i64) * 8 < need {
         diag::warn!(
@@ -433,16 +464,10 @@ fn store(buffer: &mut [u8], offset: i64, bits: i64, value: u32) -> bool {
     true
 }
 
-fn set_int(layout: &BitLayout, stats: &mut ClientStats, at: Cursor, value: u32, training: bool) {
-    let m = member(layout, at.member);
-    let Some(buffer) = write_buffer(stats, layout, training) else {
-        return;
-    };
-    let current = leaf(layout, at).and_then(|m| read_int(m, at, buffer));
-    if current == Some(value) {
-        return;
-    }
-    let set = leaf(layout, at).is_some_and(|m| {
+/// An integer written into `buffer` as the client's and the server's set
+/// write it: within the member's range, stored less its minimum.
+pub(super) fn set_raw_int(layout: &BitLayout, buffer: &mut [u8], at: Cursor, value: u32) -> bool {
+    leaf(layout, at).is_some_and(|m| {
         if !(m.min..=m.max).contains(&value) {
             diag::warn!(
                 Sim,
@@ -456,53 +481,29 @@ fn set_int(layout: &BitLayout, stats: &mut ClientStats, at: Cursor, value: u32, 
         span(at, element_bits(m))
             .map(|(offset, bits)| store(buffer, offset, bits, value - m.min))
             .is_some()
-    });
-    if !set {
-        diag::warn!(Sim, "DDL: Could not set stat. DDL set error.");
-    }
-    mark_changed(stats, m, at);
+    })
 }
 
-fn set_u64(layout: &BitLayout, stats: &mut ClientStats, at: Cursor, value: u64, training: bool) {
-    let m = member(layout, at.member);
-    let Some(buffer) = write_buffer(stats, layout, training) else {
-        return;
-    };
-    let current = leaf(layout, at).and_then(|m| read_u64(m, at, buffer));
-    if current == Some(value) {
-        return;
-    }
-    let set = leaf(layout, at).is_some_and(|m| {
+/// A 64-bit value written as two 32-bit halves.
+pub(super) fn set_raw_u64(layout: &BitLayout, buffer: &mut [u8], at: Cursor, value: u64) -> bool {
+    leaf(layout, at).is_some_and(|m| {
         span(at, element_bits(m) / 2).is_some_and(|(offset, half)| {
             store(buffer, offset, half, value as u32);
             store(buffer, offset + 32, half, (value >> 32) as u32);
             true
         })
-    });
-    if !set {
-        diag::warn!(Sim, "DDL: Could not set stat. DDL set error.");
-    }
-    mark_changed(stats, m, at);
+    })
 }
 
-/// Writes the string's bytes, cut to the member's size, with no zero after
-/// them: a shorter string leaves the rest of an earlier one.
-fn set_string(
+/// The string's bytes, cut to the member's size, with no zero after them:
+/// a shorter string leaves the rest of an earlier one.
+pub(super) fn set_raw_string(
     layout: &BitLayout,
-    stats: &mut ClientStats,
+    buffer: &mut [u8],
     at: Cursor,
     value: &str,
-    training: bool,
-) {
-    let m = member(layout, at.member);
-    let Some(buffer) = write_buffer(stats, layout, training) else {
-        return;
-    };
-    let current = leaf(layout, at).map(|m| read_string(m, at, buffer));
-    if current.as_deref() == Some(value) {
-        return;
-    }
-    let set = leaf(layout, at).is_some_and(|m| {
+) -> bool {
+    leaf(layout, at).is_some_and(|m| {
         let room = (element_bits(m) / 8) as usize;
         let mut bytes = value.as_bytes();
         if bytes.len() > room {
@@ -522,8 +523,55 @@ fn set_string(
         }
         buffer[CHANGED_AT] |= 1;
         true
-    });
-    if !set {
+    })
+}
+
+fn set_int(layout: &BitLayout, stats: &mut ClientStats, at: Cursor, value: u32, training: bool) {
+    let m = member(layout, at.member);
+    let Some(buffer) = write_buffer(stats, layout, training) else {
+        return;
+    };
+    let current = leaf(layout, at).and_then(|m| read_int(m, at, buffer));
+    if current == Some(value) {
+        return;
+    }
+    if !set_raw_int(layout, buffer, at, value) {
+        diag::warn!(Sim, "DDL: Could not set stat. DDL set error.");
+    }
+    mark_changed(stats, m, at);
+}
+
+fn set_u64(layout: &BitLayout, stats: &mut ClientStats, at: Cursor, value: u64, training: bool) {
+    let m = member(layout, at.member);
+    let Some(buffer) = write_buffer(stats, layout, training) else {
+        return;
+    };
+    let current = leaf(layout, at).and_then(|m| read_u64(m, at, buffer));
+    if current == Some(value) {
+        return;
+    }
+    if !set_raw_u64(layout, buffer, at, value) {
+        diag::warn!(Sim, "DDL: Could not set stat. DDL set error.");
+    }
+    mark_changed(stats, m, at);
+}
+
+fn set_string(
+    layout: &BitLayout,
+    stats: &mut ClientStats,
+    at: Cursor,
+    value: &str,
+    training: bool,
+) {
+    let m = member(layout, at.member);
+    let Some(buffer) = write_buffer(stats, layout, training) else {
+        return;
+    };
+    let current = leaf(layout, at).map(|m| read_string(m, at, buffer));
+    if current.as_deref() == Some(value) {
+        return;
+    }
+    if !set_raw_string(layout, buffer, at, value) {
         diag::warn!(Sim, "DDL: Could not set stat. DDL set error.");
     }
     mark_changed(stats, m, at);
@@ -578,7 +626,7 @@ fn getdstat(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value
 }
 
 /// `_atoi64`: optional blanks and sign, then digits.
-fn atoi64(text: &str) -> u64 {
+pub(super) fn atoi64(text: &str) -> u64 {
     let text = text.trim_start();
     let (negative, digits) = match text.as_bytes().first() {
         Some(b'-') => (true, &text[1..]),

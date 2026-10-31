@@ -14,6 +14,7 @@ pub(crate) mod t5_objectives;
 pub(crate) mod t5_perks;
 pub(crate) mod t5_physics;
 pub(crate) mod t5_stats;
+pub(crate) mod t5_stats_reset;
 pub(crate) mod t5_turret;
 pub(crate) mod t5_use;
 pub(crate) mod t5_viewmodel;

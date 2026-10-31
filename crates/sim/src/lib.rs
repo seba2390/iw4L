@@ -40,6 +40,8 @@ pub use persistent_data::{
 };
 pub use persistent_defaults::PlayerDataDefaults;
 mod presence;
+mod profile_stats;
+pub use profile_stats::ProfileStats;
 mod remote_missile;
 mod save_game;
 pub mod script;

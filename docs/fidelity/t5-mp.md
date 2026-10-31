@@ -147,17 +147,34 @@ Each open section names the issue that works it.
       damage and killstreak scripts) apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
-      match, `onlinegame` 1). The host never receives a human client's
-      stats: Black Ops' host reads each player's two stats files from
-      its online storage before it sends that player a snapshot; here no profile
-      keeps a stats buffer and none is sent, so a human client's integer
-      stats read 0 and `setdstat` writes nothing, and `ui_mp`'s
-      create-a-class menus (`uiScript equipClass…`) do not write one, so
-      a custom class has no items. A test client's stats arrive at once,
-      a zeroed buffer, as in Black Ops. Offline (`onlinegame` 0) the
-      scripts read `GetLoadoutItemFromProfile`, which is 0 on PC as in
-      Black Ops. `calcweaponoptions (class, slot)` still reads the
-      runtime's own class slots for the camo.
+      match, `onlinegame` 1). The listen host's own profile keeps Black
+      Ops' two stats buffers (`profile_stats.dat`) and its client receives
+      them when it first reads one; a profile with none, or an older
+      `STATS_VERSION` than `stat_version` (10), gets Black Ops' stats
+      reset (`mp/stats_init.cfg`, Combat Training forced on). Open: a
+      remote client's stats are never sent to the host (two-machine play
+      sends none, #729), so its integer stats read 0 and `setdstat`
+      writes nothing; editing a class (`ui_mp`'s create-a-class commands)
+      is #729. Offline (`onlinegame` 0) the scripts read
+      `GetLoadoutItemFromProfile`, which is 0 on PC as in Black Ops.
+      `calcweaponoptions (class, slot)` still reads the runtime's own
+      class slots for the camo.
+- [ ] **I** Black Ops' host reads a player's two stats files from its
+      online storage, and the reset's upload fills them; which client
+      buffer the reset's upload lands in on the server's side is not
+      read, so a fresh profile's server buffer starts empty and the
+      reset's writes (all to the client buffer, Combat Training being
+      forced on) reach only the client buffer.
+- [ ] **I** `unknown!t5.mp.stats_init_command`,
+      `unknown!t5.mp.stats_init_condition`: the stats reset runs
+      `mp/stats_init.cfg`'s and `mp/playerstats_reset.cfg`'s commands
+      (`equipdefaultclass`, `equipdefaultglobalitems`, `statsetbyname`,
+      `statwriteddl`, `if ( dvarbool( … ) )`); any other command or
+      condition is logged and skipped. The class names
+      (`setFromLocString customclassN …`) and `clanName` are the client's
+      dvars and are not set. `equipdefaultclass`'s swap of a perk for its
+      unlocked Pro version is not applied (the reset unlocks Pro perks
+      only after it).
 - [ ] **I** The bytes `setdstat` changed are recorded per client, as
       Black Ops records them, but nothing sends them back to the client
       or saves them (no stats upload in a private match here).
@@ -309,6 +326,13 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** No profile kept Black Ops' stats, so a custom class spawned
+      empty. The listen host's profile now keeps them, and a fresh
+      profile gets Black Ops' stats reset (`mp/stats_init.cfg`): each
+      custom class is filled from Black Ops' default classes as
+      `mp/statsTable.csv` lists them, and the killstreaks are the
+      default ones (#650).
 
 - [x] **G** `getdstat` and `setdstat` kept a plain map of paths. They now
       walk Black Ops' own `ddl_mp/stats.ddl` (captured from
