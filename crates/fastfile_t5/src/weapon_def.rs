@@ -754,6 +754,11 @@ impl<'a> WeaponDefView<'a> {
         self.variant[0x84] != 0
     }
 
+    /// `rapidFire`
+    pub fn rapid_fire(&self) -> bool {
+        self.variant[0x88] != 0
+    }
+
     /// `noPing`
     pub fn no_ping(&self) -> bool {
         self.def[0x571] != 0

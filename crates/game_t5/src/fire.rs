@@ -660,8 +660,11 @@ impl Shot<'_> {
                 def.hip_spread_prone_max(),
             ],
             (def.fire_type() == FIRETYPE_STACKED).then(|| def.stack_fire_accuracy_decay()),
-            self.zombies
-                .then(|| dvar(world, "perk_weapSpreadMultiplier", 0.65f32)),
+            spread_perk_scale(
+                self.ps,
+                self.zombies,
+                dvar(world, "perk_weapSpreadMultiplier", 0.65f32),
+            ),
         )
     }
 
@@ -1839,15 +1842,26 @@ fn libm_tan(x: f32) -> f32 {
 }
 
 /// The hip spread at the player's eye height (stand, ducked and prone
-/// minimum and maximum), and what overrides it; in zombies Deadshot scales
-/// it by `deadshot_scale` while the sights are not fully up.
+/// minimum and maximum), and what overrides it, scaled by `perk_scale`.
 pub(crate) fn hip_spread(
     ps: &PlayerState,
     min: [f32; 3],
     max: [f32; 3],
-    deadshot_scale: Option<f32>,
+    perk_scale: Option<f32>,
 ) -> (f32, f32) {
-    hip_spread_stacked(ps, min, max, None, deadshot_scale)
+    hip_spread_stacked(ps, min, max, None, perk_scale)
+}
+
+/// The spread perk's scale (`perk_weapSpreadMultiplier`) when it applies:
+/// zombies' Deadshot while the sights are not fully up, multiplayer's
+/// `specialty_bulletaccuracy` always.
+pub(crate) fn spread_perk_scale(ps: &PlayerState, zombies: bool, scale: f32) -> Option<f32> {
+    let held = if zombies {
+        ps.perks & PERK_DEADSHOT != 0 && ps.weapon_pos_frac < 1.0
+    } else {
+        movement_t5::perks::mp::has(ps, movement_t5::perks::mp::BULLET_ACCURACY)
+    };
+    held.then_some(scale)
 }
 
 fn hip_spread_stacked(
@@ -1855,7 +1869,7 @@ fn hip_spread_stacked(
     min: [f32; 3],
     max: [f32; 3],
     stack_fire_decay: Option<f32>,
-    deadshot_scale: Option<f32>,
+    perk_scale: Option<f32>,
 ) -> (f32, f32) {
     let (mut lo, mut hi);
     if ps.spread_override_state == 2 {
@@ -1883,10 +1897,7 @@ fn hip_spread_stacked(
     if ps.spread_override_state == 1 {
         hi = ps.spread_override as f32;
     }
-    if let Some(scale) = deadshot_scale
-        && ps.perks & PERK_DEADSHOT != 0
-        && ps.weapon_pos_frac < 1.0
-    {
+    if let Some(scale) = perk_scale {
         lo *= scale;
         hi *= scale;
     }

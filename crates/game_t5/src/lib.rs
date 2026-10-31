@@ -279,6 +279,23 @@ impl game_api::GameScripts for T5 {
         None
     }
 
+    /// Black Ops' Private Match entry (`live_flyout`) runs
+    /// `default_xboxlive.cfg` (which runs `default_mp_gametypes.cfg`) and
+    /// `dvar_defaults.cfg`, and a private party then runs
+    /// `default_private.cfg`; they set the game settings the scripts read
+    /// (`scr_game_perks`, …).
+    fn front_end_configs(&self, gametype: &str) -> &'static [&'static str] {
+        if multiplayer(gametype) {
+            &[
+                "default_xboxlive.cfg",
+                "dvar_defaults.cfg",
+                "default_private.cfg",
+            ]
+        } else {
+            &[]
+        }
+    }
+
     fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
@@ -452,6 +469,8 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     // the server's dvars (the scripts' limits, `ui_*`); other machines' do not.
     menu_dvars_reach_server: true,
     runtime_class_slots: false,
+    viewmodel: Some(viewmodel::MP_VIEWMODEL),
+    client_fire: Some(fire_sound::MP_CLIENT_FIRE),
     ..ZOMBIE_MODE
 };
 

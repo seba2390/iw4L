@@ -35,6 +35,7 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
             "the client's player card popup menus and centre print"
         ),
     ],
+    crosshair: mp_crosshair,
     ..ZOMBIES_CODE_HUD
 };
 
@@ -402,6 +403,15 @@ fn crosshair_rgb(
 /// Black Ops' crosshair: the weapon's centre picture, and its side picture
 /// four times turned, pushed out by the gun's hip spread.
 fn crosshair(view: &CrosshairView<'_>) -> Crosshair {
+    crosshair_of(view, true)
+}
+
+/// Multiplayer's crosshair spreads by its own perk bits.
+fn mp_crosshair(view: &CrosshairView<'_>) -> Crosshair {
+    crosshair_of(view, false)
+}
+
+fn crosshair_of(view: &CrosshairView<'_>, zombies: bool) -> Crosshair {
     let mut out = Crosshair::default();
     let mut player = *view.player;
     let (ps, _) = crate::movement::unpack(&mut player);
@@ -529,7 +539,7 @@ fn crosshair(view: &CrosshairView<'_>) -> Crosshair {
         &ps,
         def.hip_spread_min,
         def.hip_spread_max,
-        Some(dvar("perk_weapSpreadMultiplier", 0.65)),
+        crate::fire::spread_perk_scale(&ps, zombies, dvar("perk_weapSpreadMultiplier", 0.65)),
     );
     let mut v = tan((aim * (max - min) + min) * scale * DEG2RAD) / tan_half * 240.0;
     let min_ofs = def.min_ofs as f32;

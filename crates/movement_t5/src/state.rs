@@ -286,6 +286,11 @@ pub struct PlayerState {
     pub last_sprint_start: i32,
     pub last_sprint_end: i32,
     pub sprint_start_max_length: i32,
+    /// The multiplayer executable's sprint length and recharge pause, in
+    /// ms, which its scripts set (`setSprintDuration`,
+    /// `setSprintCooldown`); zombies reads its dvars instead.
+    pub sprint_duration: i32,
+    pub sprint_cooldown: i32,
     pub dive_end_time: i32,
     pub prone_check_torso_pitch: f32,
     pub prone_check_waist_pitch: f32,
@@ -301,7 +306,11 @@ pub struct PlayerState {
     pub shellshock_time: i32,
     pub shellshock_duration: i32,
     pub anim_lock_end: i32,
+    /// Zombies' two bits a perk; the multiplayer executable's first word of
+    /// one bit a perk, in its perk table's order.
     pub perks: u32,
+    /// The multiplayer executable's second perk word.
+    pub perks_high: u32,
     pub aim_spread_scale: f32,
     pub water_level: i32,
     /// Set while something else steers the player: moves and most buttons are ignored.

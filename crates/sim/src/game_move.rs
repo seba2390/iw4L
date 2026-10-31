@@ -902,6 +902,32 @@ pub(crate) fn set_perk(world: &mut FrameWorld, id: ClientId, perk: &str, on: boo
     true
 }
 
+/// Sets every perk the game's own movement reads from the scripts' perk
+/// bits; false when the match runs the simulation's.
+pub(crate) fn set_perk_mask(world: &mut FrameWorld, id: ClientId, mask: u64) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| movement.set_perk_mask(player, mask)).unwrap_or(false)
+}
+
+/// The sprint length and recharge pause the scripts set; false when the
+/// match runs the simulation's movement.
+pub(crate) fn set_sprint_times(
+    world: &mut FrameWorld,
+    id: ClientId,
+    duration: Option<i32>,
+    cooldown: Option<i32>,
+) -> bool {
+    let Some(movement) = rules(world) else {
+        return false;
+    };
+    update(world, id, |player| {
+        movement.set_sprint_times(player, duration, cooldown)
+    })
+    .unwrap_or(false)
+}
+
 pub(crate) fn clear_perks(world: &mut FrameWorld, id: ClientId) -> bool {
     let Some(movement) = rules(world) else {
         return false;

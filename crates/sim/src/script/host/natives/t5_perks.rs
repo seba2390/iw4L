@@ -62,24 +62,28 @@ const PERKS: [&str; 52] = [
     "specialty_unlimitedsprint",
 ];
 
-/// The perks the multiplayer executable's own movement and weapon code
-/// tests; none of those tests runs here yet.
-const ENGINE_PERKS: [&str; 15] = [
-    "specialty_bulletaccuracy",
+/// The perks the multiplayer executable's own code tests whose tests do
+/// not run here yet; its movement and weapon timing ones (`bulletaccuracy`,
+/// `fallheight`, `fastmantle`, `fastmeleerecovery`, `fastreload`,
+/// `fastweaponswitch`, `longersprint`, `sprintrecovery`,
+/// `unlimitedsprint`) run in the game's movement and fire rules.
+const ENGINE_PERKS: [&str; 16] = [
+    "specialty_bulletflinch",
     "specialty_bulletpenetration",
-    "specialty_fallheight",
-    "specialty_fastmantle",
-    "specialty_fastreload",
-    "specialty_fastweaponswitch",
+    "specialty_fastads",
+    "specialty_gas_mask",
     "specialty_grenadepulldeath",
-    "specialty_longersprint",
+    "specialty_loudenemies",
+    "specialty_noname",
+    "specialty_nottargetedbyai",
     "specialty_pin_back",
+    "specialty_pistoldeath",
     "specialty_quieter",
+    "specialty_reconnaissance",
     "specialty_scavenger",
     "specialty_shellshock",
-    "specialty_sprintrecovery",
+    "specialty_showenemyequipment",
     "specialty_twogrenades",
-    "specialty_unlimitedsprint",
 ];
 
 /// Each player's perk bits, by client number. The client's player info
@@ -116,12 +120,24 @@ fn perks(world: &mut World) -> &mut PlayerPerks {
         .into_inner()
 }
 
+/// The player state's perk words take the scripts' bits, as Black Ops
+/// keeps one mask the movement reads.
+fn sync(world: &mut World, client: u32) {
+    let mask = perks(world).of(client);
+    crate::game_move::set_perk_mask(
+        &mut crate::frame::FrameWorld::from_world(world),
+        crate::world::ClientId(client),
+        mask,
+    );
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "setperk", |world, receiver, args| {
         let client = player(world, receiver)?;
         let name = string(args, 0)?;
         let bit = bit(&name)?;
         *perks(world).0.entry(client).or_default() |= bit;
+        sync(world, client);
         if let Some(perk) = ENGINE_PERKS.iter().find(|p| p.eq_ignore_ascii_case(&name)) {
             diag::warn!(
                 Sim,
@@ -134,6 +150,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let client = player(world, receiver)?;
         let bit = bit(&string(args, 0)?)?;
         *perks(world).0.entry(client).or_default() &= !bit;
+        sync(world, client);
         Ok(Value::Undefined)
     });
     registry.register(Method, "hasperk", |world, receiver, args| {
@@ -144,6 +161,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "clearperks", |world, receiver, _| {
         let client = player(world, receiver)?;
         perks(world).0.remove(&client);
+        sync(world, client);
         Ok(Value::Undefined)
     });
     // In the order of the perk table.

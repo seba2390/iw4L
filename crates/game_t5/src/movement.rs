@@ -265,12 +265,15 @@ fn game_state(
     b.i(&mut ps.last_sprint_start, write);
     b.i(&mut ps.last_sprint_end, write);
     b.i(&mut ps.sprint_start_max_length, write);
+    b.i(&mut ps.sprint_duration, write);
+    b.i(&mut ps.sprint_cooldown, write);
     b.i(&mut ps.dive_end_time, write);
     b.f(&mut ps.prone_check_torso_pitch, write);
     b.f(&mut ps.prone_check_waist_pitch, write);
     b.i(&mut ps.launch_time, write);
     b.i(&mut ps.anim_lock_end, write);
     b.word(&mut ps.perks, write);
+    b.word(&mut ps.perks_high, write);
     b.f(&mut ps.aim_spread_scale, write);
     b.i(&mut ps.move_disabled, write);
     b.i(&mut ps.shellshock_index, write);
@@ -1457,6 +1460,39 @@ impl PlayerMovement for T5Movement {
     fn clear_perks(&self, player: &mut MovePlayer) {
         let (mut ps, mut last) = unpack(player);
         ps.perks = 0;
+        ps.perks_high = 0;
         pack(player, &mut ps, &mut last);
+    }
+
+    /// The multiplayer executable's two perk words.
+    fn set_perk_mask(&self, player: &mut MovePlayer, mask: u64) -> bool {
+        if self.zombies {
+            return false;
+        }
+        let (mut ps, mut last) = unpack(player);
+        ps.perks = mask as u32;
+        ps.perks_high = (mask >> 32) as u32;
+        pack(player, &mut ps, &mut last);
+        true
+    }
+
+    fn set_sprint_times(
+        &self,
+        player: &mut MovePlayer,
+        duration: Option<i32>,
+        cooldown: Option<i32>,
+    ) -> bool {
+        if self.zombies {
+            return false;
+        }
+        let (mut ps, mut last) = unpack(player);
+        if let Some(duration) = duration {
+            ps.sprint_duration = duration;
+        }
+        if let Some(cooldown) = cooldown {
+            ps.sprint_cooldown = cooldown;
+        }
+        pack(player, &mut ps, &mut last);
+        true
     }
 }

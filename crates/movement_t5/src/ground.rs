@@ -237,6 +237,10 @@ pub(crate) fn crash_land<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     if pm.zombiemode && ps.perks & crate::perks::FALL_DAMAGE != 0 && damage > 0 {
         damage = 1;
     }
+    // Multiplayer's `specialty_fallheight` takes no fall damage.
+    if !pm.zombiemode && crate::perks::mp::has(ps, crate::perks::mp::FALL_HEIGHT) {
+        damage = 0;
+    }
     if pml.ground_trace.surface_flags & SURF_NOFALLDAMAGE != 0 || ps.pm_type >= pm_type::DEAD {
         damage = 0;
     }

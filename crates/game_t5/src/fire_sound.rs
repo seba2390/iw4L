@@ -14,6 +14,12 @@ const CLASS_TURRET: i32 = 7;
 const FIRE_SINGLE_SHOT: i32 = 1;
 const FIRE_MINIGUN: i32 = 6;
 
+/// Black Ops multiplayer's: zombies' with its own view kick.
+pub(crate) const MP_CLIENT_FIRE: ClientFireRules = ClientFireRules {
+    view_kick: Some(crate::view_kick::MP_RULES),
+    ..CLIENT_FIRE
+};
+
 pub(crate) const CLIENT_FIRE: ClientFireRules = ClientFireRules {
     sound,
     // Black Ops' client fire event marks the shooter's entity fired (right
