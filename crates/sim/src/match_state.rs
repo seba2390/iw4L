@@ -130,6 +130,10 @@ pub struct ClientMatchState {
     pub zombie_stats: [i32; 3],
     pub radar: RadarMode,
     pub radar_blocked: bool,
+    /// Black Ops' player state radar levels: spy plane, satellite.
+    pub radar_levels: [i32; 2],
+    /// Black Ops' client UI flags (`setClientUIVisibilityFlag`'s bits).
+    pub ui_flags: u8,
     pub remote_missile: Option<RemoteMissile>,
     pub linked_weapon_view: Option<LinkedWeaponView>,
 
@@ -249,6 +253,8 @@ impl ClientMatchState {
             zombie_stats: self.zombie_stats,
             radar: self.radar,
             radar_blocked: self.radar_blocked,
+            radar_levels: self.radar_levels,
+            ui_flags: self.ui_flags,
             remote_missile: self.remote_missile,
             linked_weapon_view: self.linked_weapon_view,
             ammo_by_weapon: self.ammo_by_weapon.clone(),
@@ -332,6 +338,8 @@ impl ClientMatchState {
         self.zombie_stats = meta.zombie_stats;
         self.radar = meta.radar;
         self.radar_blocked = meta.radar_blocked;
+        self.radar_levels = meta.radar_levels;
+        self.ui_flags = meta.ui_flags;
         self.remote_missile = meta.remote_missile;
         self.linked_weapon_view = meta.linked_weapon_view;
         self.ammo_by_weapon = meta.ammo_by_weapon.clone();

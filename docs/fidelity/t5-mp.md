@@ -200,8 +200,31 @@ Each open section names the issue that works it.
       client button word whose layout is not matched to the runtime's
       commands yet; only the Sentry Gun / SAM placement (#659) and the
       camera spike read them.
-- [ ] **G** `spawnplane` is not implemented: spy plane, counter-spy plane,
-      Blackbird, napalm and Rolling Thunder planes.
+- [ ] **G** `spawnplane` is not implemented: the napalm and Rolling
+      Thunder planes (the spy planes are script models).
+- [ ] **G** `t5.mp.target_offset`: `Target_Set`'s aim offset is read but not
+      kept, and its config string (offset, materials, flags) is not sent:
+      nothing that aims at a target or draws one is ported;
+      `Target_IsInCircle` (the lock-on's screen test), `Target_SetShader`
+      and the reticle lock-on builtins are refused or missing.
+- [ ] **V** `t5.hud.compass_fire_pings`: an enemy's unsuppressed shots are
+      not pinged on the compass (`compassping_enemyfiring`,
+      `compassSoundPingFadeTime`); Black Ops pings them from the client's
+      weapon-fire events for teammates, and for enemies while a spy plane
+      or satellite is up or a client flag is clear (not identified).
+- [ ] **V** `t5.hud.compass_jammers`: the local player's Jammers
+      (`compass_scrambler_large`, owner draw 325) are kept from
+      `addFriendlyScrambler` but not drawn; the nearest enemy Jammer
+      (`setNearestEnemyScrambler`) is not kept
+      (`t5.csc.nearest_enemy_scrambler`). Jamming fades the enemy icons.
+- [ ] **V** The compass radar follows every connected player the runtime's
+      snapshot carries; Black Ops' client sees only the players in its
+      snapshot plus one other client's packed position a frame, so an
+      enemy out of view pings later there than here. Players riding a
+      vehicle are pinged at their own place, not hidden. The counter-spy
+      plane's static (`compass_static`) is drawn as the runtime draws a HUD
+      material, laid like the map; its look in Black Ops (an animated noise)
+      is not compared.
 - [ ] **G** `launchbomb`, `spawnnapalmgroundflame`, `spawntimedfx` are
       refused; the location selector has not run.
 - [ ] **G** Carried turrets (`carryturret`, `stopcarryturret`,
@@ -229,7 +252,7 @@ Each open section names the issue that works it.
       that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
       (the scope and guided-missile filters, #645); `animateui` (menu item
       animations, #651); `setlocalradarenabled`, `setlocalradarposition`
-      and the scrambler methods (radar, jammer, #649, #657); the extra
+      (the motion sensor, #649); the extra
       camera builtins (camera spike, #649); the vehicle queries (#660).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
@@ -259,12 +282,13 @@ Each open section names the issue that works it.
       are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
       `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
       wager functions are not answered, so the items they gate do not draw.
-- [ ] **V** The compass (`compass_old`) draws its map and the player's
-      arrow. Not drawn yet: friendlies (owner draw 158), objectives (152),
-      enemies (170, radar with #657), the grid (317, 319), the killstreak
-      icons (helicopters, planes, dogs, turrets, tanks, guided missiles,
-      artillery: 146–156) and the scrambler, static, flicker, radar and
-      fake-fire effects (312, 325, 328, 332, 376). The map's frame is
+- [ ] **V** The compass (`compass_old`) draws its map, the player's
+      arrow, the enemies the radar shows (170), the spy plane's sweep line
+      (332) and the counter-spy plane's static (328). Not drawn yet:
+      friendlies (owner draw 158), objectives (152), the grid (317, 319),
+      the killstreak icons (helicopters, planes, dogs, turrets, tanks,
+      guided missiles, artillery: 146–156) and the Jammer, flicker and
+      fake-fire effects (325, 312, 376). The map's frame is
       rebuilt on the client from the map's corner entities and `northyaw`
       as `_compass.gsc`'s `setupMiniMap` and `setminimap` compute it;
       Black Ops sends it (and the map's material) in a config string. The
@@ -338,6 +362,21 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** The spy plane, counter-spy plane and Blackbird had no effect:
+      `setTeamSpyplane` / `setTeamSatellite` kept only the last call, the
+      players' `hasSpyplane` / `hasSatellite` were not read, `Target_Set`
+      and `Target_Remove` were refused, `setClientUIVisibilityFlag` set
+      nothing and the client's scrambler methods were missing. Each team's
+      levels and the players' own now give every player its radar levels
+      each frame as Black Ops' frame end does; the compass sweeps for
+      enemies (`compassRadarUpdateTime`, `…FastTime` at level 2; Ghost
+      hides from it), fades their pings (`compassRadarPingFadeTime`), shows
+      them live with their heading under a satellite
+      (`compassping_enemydirectional`, `compassStaticImageUpdateTime`,
+      `compassSatellitePingFadeTime`), draws the sweep line, and hides the
+      enemies under an enemy counter-spy plane (`setEnemyGlobalScrambler`)
+      with the map's static over it (#657).
 
 - [x] **G** Killstreak earning and the dpad (`_hardpoints.gsc`,
       `_killstreakrules.gsc`, `_killstreak_weapons.gsc`) run on Black Ops'

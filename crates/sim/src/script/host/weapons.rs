@@ -311,6 +311,7 @@ pub(crate) fn sync_engine_events(world: &mut World) {
     super::vehicles::advance(world);
     super::spectators::advance(world);
     super::players::publish_radar(world);
+    super::natives::t5_radar::publish(world);
     super::physics::select_usables(world);
 }
 

@@ -6,6 +6,10 @@ use asset_game::FontDef;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Draw2dOp {
     StretchPic,
+    /// The picture turned about its centre by `deg` (clockwise on screen).
+    RotatedPic {
+        deg: f32,
+    },
     RotateSt {
         center_s: f32,
         center_t: f32,
@@ -122,6 +126,7 @@ impl Draw2dList {
 fn op_name(op: &Draw2dOp) -> &'static str {
     match op {
         Draw2dOp::StretchPic => "StretchPic",
+        Draw2dOp::RotatedPic { .. } => "RotatedPic",
         Draw2dOp::RotateSt { .. } => "RotateST",
         Draw2dOp::ClipRect => "ClipRect",
         Draw2dOp::TextRun { .. } => "TextRun",
@@ -130,6 +135,7 @@ fn op_name(op: &Draw2dOp) -> &'static str {
 
 fn op_extra(op: &Draw2dOp) -> String {
     match op {
+        Draw2dOp::RotatedPic { deg } => format!(" deg={deg:.3}"),
         Draw2dOp::RotateSt {
             center_s,
             center_t,
@@ -406,7 +412,7 @@ fn tessellate_fonts_in(
                     hud_iw4::AddStretchPicCmd::Refused => overflow_n += 1,
                 }
             }
-            Draw2dOp::RotateSt { .. } => {
+            Draw2dOp::RotateSt { .. } | Draw2dOp::RotatedPic { .. } => {
                 slots.push(CmdSlot::Rotate(quad_from_cmd(cmd, clip)));
             }
         }
@@ -788,12 +794,25 @@ fn text_run_quads(
 }
 
 fn quad_from_cmd(cmd: &Draw2dCmd, clip: Option<[f32; 4]>) -> Draw2dQuad {
-    let xy = [
-        [cmd.x, cmd.y],
-        [cmd.x + cmd.w, cmd.y],
-        [cmd.x + cmd.w, cmd.y + cmd.h],
-        [cmd.x, cmd.y + cmd.h],
-    ];
+    let xy = match cmd.op {
+        Draw2dOp::RotatedPic { deg } => {
+            let (sin, cos) = deg.to_radians().sin_cos();
+            let (hw, hh) = (cmd.w * 0.5, cmd.h * 0.5);
+            let (cx, cy) = (cmd.x + hw, cmd.y + hh);
+            [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]].map(|[kx, ky]: [f32; 2]| {
+                [
+                    cx + kx * hw * cos - ky * hh * sin,
+                    cy + kx * hw * sin + ky * hh * cos,
+                ]
+            })
+        }
+        _ => [
+            [cmd.x, cmd.y],
+            [cmd.x + cmd.w, cmd.y],
+            [cmd.x + cmd.w, cmd.y + cmd.h],
+            [cmd.x, cmd.y + cmd.h],
+        ],
+    };
     let st = match &cmd.op {
         Draw2dOp::RotateSt {
             center_s,
@@ -810,7 +829,10 @@ fn quad_from_cmd(cmd: &Draw2dCmd, clip: Option<[f32; 4]>) -> Draw2dQuad {
             *scale_final_t,
             *deg,
         ),
-        Draw2dOp::StretchPic | Draw2dOp::ClipRect | Draw2dOp::TextRun { .. } => [
+        Draw2dOp::StretchPic
+        | Draw2dOp::RotatedPic { .. }
+        | Draw2dOp::ClipRect
+        | Draw2dOp::TextRun { .. } => [
             [cmd.s0, cmd.t0],
             [cmd.s1, cmd.t0],
             [cmd.s1, cmd.t1],

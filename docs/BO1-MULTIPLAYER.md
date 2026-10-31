@@ -42,10 +42,14 @@ hosted reads the profile loadout, which Black Ops on PC leaves empty.
 Killstreaks are your custom class's (a fresh profile has Spy Plane, Care
 Package and Attack Helicopter): a kill streak earns one, its weapon goes on
 the D-pad's right slot (`+actionslot 4`), and pressing it raises the
-weapon and calls the killstreak. Each killstreak itself (#657 … #662) still
-needs its own engine pieces; the Spy Plane's script stops at
-`target_set` today. To get one at once:
-`script maps/mp/gametypes/_hardpoints::givekillstreak player0 radar_mp`.
+weapon and calls the killstreak. The Spy Plane, Counter-Spy Plane and
+Blackbird work: the spy plane's sweep pings enemies on your team's compass
+(two at once sweep twice as fast; Ghost hides from it), the Blackbird shows
+them live with their heading, and an enemy counter-spy plane hides them and
+lays static over your compass. The other killstreaks (#658 … #662) still
+need their own engine pieces. To get one at once:
+`script maps/mp/gametypes/_hardpoints::givekillstreak player0 radar_mp`
+(`counteruav_mp`, `radardirection_mp`).
 
 The host's console sets the scripts' limits, read each second as in Black
 Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team

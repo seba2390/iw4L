@@ -260,7 +260,7 @@ Each milestone names its issues; open rules are in
   - [x] A custom class spawns with the profile's Black Ops stats (a fresh profile gets Black Ops' default classes), and the perks its movement, weapons and damage test apply, Second Chance among them (#650).
 - [ ] Killstreaks (#656).
   - [x] Killstreaks are earned by kill streaks, sit on the dpad and raise their weapon on Black Ops' own scripts; each killstreak is its own issue (#656).
-  - [ ] Spy Plane, Counter-Spy Plane and Blackbird (#657).
+  - [x] Spy Plane, Counter-Spy Plane and Blackbird (#657): the sweep pings enemies on the compass, the Blackbird shows them live with their heading, an enemy counter-spy plane hides them under static.
   - [ ] Napalm Strike, Mortar Team and Rolling Thunder (#658).
   - [ ] SAM Turret and Sentry Gun (#659).
   - [ ] RC-XD (#660).

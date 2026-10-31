@@ -1274,7 +1274,6 @@ fn register_player(registry: &mut NativeRegistry) {
         )*};
     }
     presented!(
-        "setclientuivisibilityflag",
         "displaychallengecomplete",
         "displaycontract",
         "displayendgame",
@@ -1722,32 +1721,10 @@ fn register_platform(registry: &mut NativeRegistry) {
         "setbombtimer",
         "reviveobituary",
         "artilleryiconlocation",
-        "setteamsatellite",
-        "setteamspyplane",
         "objective_setinvisibletoall",
         "objective_setinvisibletoplayer",
         "objective_setvisibletoplayer",
     );
-    registry.register(Function, "getteamsatellite", |world, _, args| {
-        let team = string(args, 0)?;
-        Ok(presented_team_flag(world, "setteamsatellite", &team))
-    });
-    registry.register(Function, "getteamspyplane", |world, _, args| {
-        let team = string(args, 0)?;
-        Ok(presented_team_flag(world, "setteamspyplane", &team))
-    });
-}
-
-fn presented_team_flag(world: &World, key: &str, team: &str) -> Value {
-    match world
-        .resource::<RoundScript>()
-        .presented
-        .get(key)
-        .map(Vec::as_slice)
-    {
-        Some([Value::String(t), value, ..]) if **t == *team => value.clone(),
-        _ => Value::Int(0),
-    }
 }
 
 fn register_refused(registry: &mut NativeRegistry) {
@@ -1790,8 +1767,7 @@ fn register_refused(registry: &mut NativeRegistry) {
         "setturretcarried", "setturrethint", "setturrettype", "setscanningpitch",
         "actionslotfourbuttonpressed"
         => "receiver is not a turret");
-    refused!(Function: "target_getarray", "target_isincircle", "target_istarget",
-        "target_remove", "target_set", "target_setturretaquire"
+    refused!(Function: "target_isincircle"
         => "missile lock targets are not simulated");
     refused!(Method: "missile_settarget", "ismissileinsideheightlock", "getlockonradius",
         "getlockonspeed", "linkguidedmissilecamera", "unlinkguidedmissilecamera",

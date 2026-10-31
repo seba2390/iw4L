@@ -78,6 +78,7 @@ impl NativeRegistry {
             natives::t5_client::register(registry);
             natives::t5_viewmodel::register_client(registry);
             natives::t5_perks::register_client(registry);
+            natives::t5_scrambler::register_client(registry);
         })
     }
 
@@ -178,8 +179,10 @@ impl NativeRegistry {
         natives::t5_objectives::register(&mut self);
         natives::t5_obituary::register(&mut self);
         natives::t5_perks::register(&mut self);
+        natives::t5_radar::register(&mut self);
         natives::t5_stats::register(&mut self);
         natives::t5_sprint::register(&mut self);
+        natives::t5_targets::register(&mut self);
         self
     }
 }
