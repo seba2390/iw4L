@@ -854,6 +854,17 @@ pub trait PlayerMovement: Sync {
 
     fn clear_perks(&self, player: &mut MovePlayer);
 
+    /// The player holds the perk at `bit` of the game's own perk mask
+    /// (`set_perk_mask`).
+    fn has_perk_bit(&self, _player: &MovePlayer, _bit: u32) -> bool {
+        false
+    }
+
+    /// The player is in water (the game's water level is above 0).
+    fn in_water(&self, _player: &MovePlayer) -> bool {
+        false
+    }
+
     /// Sets every perk at once from a game whose scripts keep the perks as
     /// one bit each in the order of its perk table; false when the game's
     /// movement keeps them otherwise.

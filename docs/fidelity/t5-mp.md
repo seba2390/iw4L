@@ -56,10 +56,11 @@ Each open section names the issue that works it.
       `CodeCallback_StartGameType` (#644, #653, #654). The wager gametypes
       have no script program and are refused at load (`gsc: refused …
       stage=program unknown=t5.scripts.mp_gametypes`) (#655).
-- [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): a downed
-      multiplayer player (Second Chance) is briefly immune and dies when
-      hurt, by the runtime's last stand. *Needs:* Black Ops' multiplayer
-      last stand from `BlackOpsMP.exe` (#650).
+- [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): going down
+      (Second Chance) does not drop a deployed weapon or reset the weapon
+      state as Black Ops' damage does, and the 500 ms timer it starts is
+      taken as the runtime's damage immunity; its stance animation event
+      is the zombies movement's (#650).
 - [ ] **I** The engine dvars a multiplayer match starts with
       (`MULTIPLAYER_ENGINE_DVARS`: `zombiemode` 0, `ui_multiplayer` 1,
       `systemlink` 0, `onlinegame` 0, `cg_usingClientScripts` 1,
@@ -334,6 +335,12 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Second Chance never downed a Black Ops player: the runtime
+      tested Modern Warfare 2's perk bit. A lethally hurt player now goes
+      down as `BlackOpsMP.exe`'s damage decides: holding
+      `specialty_pistoldeath`, out of water and not down already; the
+      scripts' last stand runs, and the next lethal hit kills (#650).
 
 - [x] **G** Black Ops multiplayer's perks never reached its movement, and
       its sprint ran on zombies' constants: `setSprintDuration` and

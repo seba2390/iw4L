@@ -383,7 +383,13 @@ pub(crate) fn finish_damage(
     if ps.health > 0 {
         return Finish::Hurt;
     }
-    let pistol_death = ps.perks[0] & playerstate_iw4::PERK_PISTOLDEATH != 0;
+    let shared_pistol_death = ps.perks[0] & playerstate_iw4::PERK_PISTOLDEATH != 0;
+    let pistol_death = match downed.perk_bit {
+        Some(bit) => {
+            crate::game_move::has_perk_bit(world, id, bit) && !crate::game_move::in_water(world, id)
+        }
+        None => shared_pistol_death,
+    };
     let forced = match world
         .bootstrap_ref()
         .mode
