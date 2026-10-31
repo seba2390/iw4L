@@ -699,6 +699,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     hint_gaps: Local<'s, std::collections::HashSet<&'static str>>,
     weapon_info_shown: Local<'s, i32>,
     command_hint_latch: Local<'s, crate::t5_hud::CommandHintLatch>,
+    compass_radar: Local<'s, game_api::hud::CompassRadar>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -940,6 +941,64 @@ pub(crate) fn update_weaponbar(
             ),
         };
         let ammo_widths = crate::t5_hud::ammo_widths(t5, stock_text, clip_text);
+        let t5_compass = code_hud
+            .and_then(|hud| hud.compass)
+            .zip(compass.as_deref())
+            .and_then(|(rules, compass)| {
+                let corners = compass.corners?;
+                let north_yaw = compass.north_yaw.unwrap_or(0.0);
+                let frame = (rules.frame)(corners.a, corners.b, north_yaw)?;
+                let radar = rules.radar.map(|radar| {
+                    let players: Vec<game_api::hud::CompassRadarPlayer> = snap
+                        .meta
+                        .clients
+                        .iter()
+                        .filter_map(|(id, client)| {
+                            Some(game_api::hud::CompassRadarPlayer {
+                                client: id.0 as usize,
+                                team: client.client_state_team,
+                                player: presented.player(*id)?.move_player(id.0 as i32, false),
+                            })
+                        })
+                        .collect();
+                    let now = cg_clock.time();
+                    let dvar = |name: &str| dvars.float(name);
+                    let view = game_api::hud::CompassRadarView {
+                        now,
+                        frame_ms: now - client_input.compass_radar.last_ms.unwrap_or(now),
+                        local_client: local.0.0 as usize,
+                        local_team: meta.map_or(crate::t5_hud::TEAM_FREE, |m| m.client_state_team),
+                        origin: [ps.origin[0], ps.origin[1]],
+                        view_yaw: ps.viewangles[1],
+                        north_yaw,
+                        frame,
+                        levels: meta.map_or([0; 2], |m| m.radar_levels),
+                        show_enemies: meta.is_some_and(|m| m.ui_flags & 2 != 0),
+                        players: &players,
+                        enemy_scrambler: meta
+                            .map_or(0.0, |m| m.view_effects.client_screen.enemy_scrambler),
+                        global_scrambler: meta
+                            .is_some_and(|m| m.view_effects.client_screen.global_scrambler),
+                        dvar: &dvar,
+                    };
+                    (radar.update)(&view, &mut client_input.compass_radar);
+                    crate::t5_hud::T5CompassRadar {
+                        rules: radar,
+                        jammed: view.global_scrambler,
+                        pings: (radar.pings)(&view, &client_input.compass_radar),
+                        line: (radar.line)(&view, &client_input.compass_radar),
+                    }
+                });
+                Some(crate::t5_hud::T5Compass {
+                    rules,
+                    frame,
+                    north_yaw,
+                    material: compass.declaration.material.clone()?,
+                    origin: [ps.origin[0], ps.origin[1]],
+                    yaw: ps.viewangles[1],
+                    radar,
+                })
+            });
         let state = crate::t5_hud::T5HudState {
             ms,
             dvars,
@@ -974,21 +1033,8 @@ pub(crate) fn update_weaponbar(
             deadquote_start_ms,
             owner_hints,
             weapon_info,
-            compass: code_hud
-                .and_then(|hud| hud.compass)
-                .zip(compass.as_deref())
-                .and_then(|(rules, compass)| {
-                    let corners = compass.corners?;
-                    let north_yaw = compass.north_yaw.unwrap_or(0.0);
-                    Some(crate::t5_hud::T5Compass {
-                        rules,
-                        frame: (rules.frame)(corners.a, corners.b, north_yaw)?,
-                        north_yaw,
-                        material: compass.declaration.material.clone()?,
-                        origin: [ps.origin[0], ps.origin[1]],
-                        yaw: ps.viewangles[1],
-                    })
-                }),
+            compass: t5_compass,
+            ui_flags: meta.map_or(0, |m| m.ui_flags),
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,

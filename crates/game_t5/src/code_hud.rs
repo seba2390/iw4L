@@ -669,6 +669,9 @@ fn visibility_bit(bit: i32, view: &VisibilityView<'_>) -> Result<bool, &'static 
         crate::movement::unpack(&mut player).0.other_flags
     };
     Ok(match bit {
+        // The scripts' UI flags: `g_compassShowEnemies`, `radar_client`,
+        // `killcam_nemesis`.
+        1..=3 => view.ui_flags & (1 << bit) != 0,
         4 | 5 if view.in_killcam => return Err(KILLCAM_BITS),
         4 | 5 => false,
         20 | 22 => false,

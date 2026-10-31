@@ -1107,6 +1107,10 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     }
     out.put_u8(meta.radar.wire_tag());
     out.put_u8(u8::from(meta.radar_blocked));
+    for level in meta.radar_levels {
+        out.put_i32(level);
+    }
+    out.put_u8(meta.ui_flags);
     match &meta.remote_missile {
         None => out.put_u8(0),
         Some(remote) => {
@@ -1386,6 +1390,8 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
     let radar = sim::RadarMode::from_wire_tag(input.get_u8()?)
         .ok_or(WireError::Malformed("bad radar mode"))?;
     let radar_blocked = input.get_u8()? != 0;
+    let radar_levels = [input.get_i32()?, input.get_i32()?];
+    let ui_flags = input.get_u8()?;
     let remote_missile = match input.get_u8()? {
         0 => None,
         1 => {
@@ -1675,6 +1681,8 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         zombie_stats,
         radar,
         radar_blocked,
+        radar_levels,
+        ui_flags,
         remote_missile,
         linked_weapon_view,
         ammo_by_weapon,
@@ -1883,6 +1891,13 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
         }
     }
     out.put_u8(screen.alternate_aim.into());
+    out.put_f32(screen.enemy_scrambler);
+    out.put_u8(screen.global_scrambler.into());
+    out.put_u8(screen.friendly_scramblers.len() as u8);
+    for xy in &screen.friendly_scramblers {
+        out.put_f32(xy[0]);
+        out.put_f32(xy[1]);
+    }
 }
 
 fn decode_flame_overlay(
@@ -2057,6 +2072,11 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         1 => true,
         _ => return Err(WireError::Malformed("bad alternate aim flag")),
     };
+    let enemy_scrambler = input.get_f32()?;
+    let global_scrambler = input.get_u8()? != 0;
+    let friendly_scramblers = (0..input.get_u8()?)
+        .map(|_| Ok([input.get_f32()?, input.get_f32()?]))
+        .collect::<Result<Vec<_>, WireError>>()?;
     Ok(sim::ClientScreen {
         hide_fade,
         lod_scale_rigid,
@@ -2069,6 +2089,9 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         extra_camera,
         ui3d_windows,
         alternate_aim,
+        enemy_scrambler,
+        global_scrambler,
+        friendly_scramblers,
     })
 }
 

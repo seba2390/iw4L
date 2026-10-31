@@ -151,6 +151,12 @@ pub struct ClientScreen {
     /// (`useAlternateAimParams`, Deadshot): the scope sways no more, and
     /// the hold-breath hints do not show.
     pub alternate_aim: bool,
+    /// Black Ops multiplayer's client scrambler state: how much the
+    /// nearest enemy Jammer jams, whether an enemy counter-spy plane is up,
+    /// and where the local player's own Jammers are.
+    pub enemy_scrambler: f32,
+    pub global_scrambler: bool,
+    pub friendly_scramblers: Vec<[f32; 2]>,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

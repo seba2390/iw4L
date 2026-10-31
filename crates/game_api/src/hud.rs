@@ -93,6 +93,119 @@ pub struct CompassRules {
     /// Whether the player's arrow shows at the map's centre, by the local
     /// player's state.
     pub player_arrow: fn(&MovePlayer) -> Result<bool, &'static Unknown>,
+    /// The enemies the radar shows, when the game's compass draws them.
+    pub radar: Option<&'static CompassRadarRules>,
+}
+
+/// A compass radar: the enemies a spy plane's sweep pings and a
+/// satellite shows live, and the sweep's line.
+#[derive(Debug)]
+pub struct CompassRadarRules {
+    /// The owner draws of the enemies, of the sweep's line and of the
+    /// static an enemy counter-spy plane lays over the map (the item's own
+    /// material, placed like the map but never turned).
+    pub enemies_owner_draw: i32,
+    pub line_owner_draw: i32,
+    pub static_owner_draw: i32,
+    /// Each frame: the enemies' latest places, the sweep's advance and the
+    /// pings it and the satellite give.
+    pub update: fn(&CompassRadarView<'_>, &mut CompassRadar),
+    /// The enemy icons to draw this frame, in draw order.
+    pub pings: fn(&CompassRadarView<'_>, &CompassRadar) -> Vec<CompassPing>,
+    /// The sweep line's place across the compass, when a spy plane is up:
+    /// the texture's centre `s` and its turn (degrees).
+    pub line: fn(&CompassRadarView<'_>, &CompassRadar) -> Option<CompassRadarLine>,
+}
+
+/// What the radar reads of a frame.
+pub struct CompassRadarView<'a> {
+    pub now: i32,
+    /// Milliseconds since the last frame.
+    pub frame_ms: i32,
+    pub local_client: usize,
+    /// The local player's team (`0` none, `3` spectator).
+    pub local_team: i32,
+    pub origin: [f32; 2],
+    /// The view's yaw and the compass's north yaw (degrees).
+    pub view_yaw: f32,
+    pub north_yaw: f32,
+    pub frame: CompassFrame,
+    /// The local player state's radar levels: spy plane, satellite.
+    pub levels: [i32; 2],
+    /// Enemies show live (the player's `g_compassShowEnemies` flag).
+    pub show_enemies: bool,
+    /// The other players the client knows of.
+    pub players: &'a [CompassRadarPlayer],
+    /// The enemy jamming's share and whether an enemy counter-spy plane is
+    /// up (the client scripts' scrambler state).
+    pub enemy_scrambler: f32,
+    pub global_scrambler: bool,
+    pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+}
+
+/// Another connected player as the client knows it.
+#[derive(Clone, Copy, Debug)]
+pub struct CompassRadarPlayer {
+    pub client: usize,
+    pub team: i32,
+    pub player: MovePlayer,
+}
+
+/// One player as the compass radar tracks it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CompassActor {
+    pub seen_ms: i32,
+    pub enemy: bool,
+    pub perks: u64,
+    pub pos: [f32; 2],
+    pub yaw: f32,
+    /// Where the last ping saw it and when.
+    pub ping_pos: [f32; 2],
+    pub radar_ms: i32,
+    /// The satellite's last ping and its still image.
+    pub satellite_ms: i32,
+    pub static_pos: [f32; 2],
+    pub static_ms: i32,
+}
+
+/// The radar's memory between frames.
+#[derive(Clone, Debug)]
+pub struct CompassRadar {
+    pub sweep: f32,
+    pub last_ms: Option<i32>,
+    pub actors: [CompassActor; 32],
+}
+
+impl Default for CompassRadar {
+    fn default() -> Self {
+        Self {
+            sweep: 0.0,
+            last_ms: None,
+            actors: [CompassActor::default(); 32],
+        }
+    }
+}
+
+/// An enemy icon: where it is in the world, its material, its alpha and,
+/// for a turned icon, its turn (degrees).
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompassPing {
+    pub pos: [f32; 2],
+    pub material: &'static str,
+    pub alpha: f32,
+    pub turn: Option<f32>,
+    /// Off the compass it is held at the edge (with `compassClampIcons`)
+    /// rather than hidden.
+    pub clamps: bool,
+}
+
+/// The sweep line's texture placement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompassRadarLine {
+    pub center_s: f32,
+    pub radius_st: f32,
+    pub turn: f32,
+    pub material: &'static str,
 }
 
 /// Where a compass map lies in the world: its north-west corner, the
@@ -162,6 +275,8 @@ pub struct VisibilityView<'a> {
     /// The scoreboard is up.
     pub scoreboard: bool,
     pub in_killcam: bool,
+    /// The flags the scripts set for the player's UI.
+    pub ui_flags: u8,
 }
 
 /// What a game's hint or message owner draw (its number) shows this frame.
