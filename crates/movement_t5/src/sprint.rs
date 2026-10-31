@@ -1,3 +1,4 @@
+use crate::perks::mp;
 use crate::state::{buttons, e_flags, pm_flags, pm_type};
 use crate::{MoveWorld, Pm, tuning};
 
@@ -14,16 +15,50 @@ fn weapon_state_using(state: i32) -> bool {
 /// Equipment (claymores, monkeys, …) may be thrown while sprinting.
 const OFFHAND_SLOT_EQUIPMENT: i32 = 3;
 
+/// Sprint never runs out: zombies' perk bits, or the multiplayer
+/// executable's `specialty_unlimitedsprint`.
+fn unlimited<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
+    if pm.zombiemode {
+        pm.ps.perks & crate::perks::SPRINT_UNLIMITED != 0
+    } else {
+        mp::has(pm.ps, mp::UNLIMITED_SPRINT)
+    }
+}
+
+/// How long an exhausted sprint waits to recharge, in ms: zombies' dvar,
+/// or in multiplayer the cooldown its scripts set (`setSprintCooldown`).
+fn recharge_pause<W: MoveWorld>(pm: &Pm<'_, W>) -> i32 {
+    if pm.zombiemode {
+        (tuning::SPRINT_RECHARGE_PAUSE * 1000.0) as i32
+    } else {
+        pm.ps.sprint_cooldown
+    }
+}
+
 /// The longest sprint the player has, in ms.
 fn max_sprint_time<W: MoveWorld>(pm: &Pm<'_, W>) -> i32 {
     let ps = &*pm.ps;
+    let scale = pm.world.weapon(ps.weapon).def.sprint_duration_scale();
     let base = if ps.e_flags & e_flags::VEHICLE_VIEW != 0 {
         tuning::VEHICLE_PERK_BOOST_DURATION * 1000.0
+    } else if pm.zombiemode {
+        scale * (tuning::SPRINT_TIME * 1000.0)
     } else {
-        pm.world.weapon(ps.weapon).def.sprint_duration_scale() * (tuning::SPRINT_TIME * 1000.0)
+        // Multiplayer: the length its scripts set (`setSprintDuration`).
+        ps.sprint_duration as f32 * scale
     };
-    let level = ps.perks & crate::perks::SPRINT_LEVEL;
-    let time = if level != 0 {
+    let level = if pm.zombiemode {
+        ps.perks & crate::perks::SPRINT_LEVEL
+    } else {
+        0
+    };
+    let time = if !pm.zombiemode {
+        if mp::has(ps, mp::LONGER_SPRINT) {
+            tuning::PERK_SPRINT_MULTIPLIER * base
+        } else {
+            base
+        }
+    } else if level != 0 {
         (f64::from(level)
             * f64::from(0.333333343_f32)
             * f64::from(tuning::PERK_SPRINT_MULTIPLIER)
@@ -39,15 +74,12 @@ fn sprint_left<W: MoveWorld>(pm: &Pm<'_, W>) -> i32 {
     let ps = &*pm.ps;
     let max = max_sprint_time(pm);
     let now = pm.cmd.server_time;
-    let left = if tuning::SPRINT_UNLIMITED
-        || ps.perks & crate::perks::SPRINT_UNLIMITED != 0
-        || ps.last_sprint_start == 0
-    {
+    let left = if tuning::SPRINT_UNLIMITED || unlimited(pm) || ps.last_sprint_start == 0 {
         max
     } else if ps.last_sprint_start > ps.last_sprint_end {
         ps.sprint_start_max_length - now + ps.last_sprint_start
     } else if ps.sprint_exhausted != 0 {
-        let pause = (tuning::SPRINT_RECHARGE_PAUSE * 1000.0) as i32;
+        let pause = recharge_pause(pm);
         -ps.last_sprint_end * 2 - pause + ps.sprint_start_max_length + ps.last_sprint_start + now
     } else {
         ps.sprint_start_max_length - ps.last_sprint_end * 2 + ps.last_sprint_start + now
@@ -171,7 +203,7 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>) {
     }
     let now = pm.cmd.server_time;
     if pm.ps.pm_flags & pm_flags::SPRINTING != 0 {
-        if pm.ps.perks & crate::perks::SPRINT_UNLIMITED == 0
+        if !unlimited(pm)
             && !tuning::SPRINT_UNLIMITED
             && now - pm.ps.last_sprint_start >= pm.ps.sprint_start_max_length
         {
@@ -187,9 +219,7 @@ pub(crate) fn update<W: MoveWorld>(pm: &mut Pm<'_, W>) {
         }
         return;
     }
-    if pm.ps.sprint_exhausted != 0
-        && tuning::SPRINT_RECHARGE_PAUSE * 1000.0 > (now - pm.ps.last_sprint_end) as f32
-    {
+    if pm.ps.sprint_exhausted != 0 && recharge_pause(pm) > now - pm.ps.last_sprint_end {
         return;
     }
     if !pm.cmd.buttons.held(buttons::SPRINT)

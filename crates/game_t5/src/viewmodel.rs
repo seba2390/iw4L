@@ -16,6 +16,14 @@ use movement_t5::{perks, tuning};
 const FIRE_LEFT: u32 = 3;
 const LAST_SHOT_LEFT: u32 = 5;
 
+const OFFHAND_SLOT_SPECIFIC_USE: i32 = 4;
+
+/// Black Ops multiplayer's: its client's own perk rates.
+pub(crate) const MP_VIEWMODEL: ViewmodelRules = ViewmodelRules {
+    rate: Some(mp_rate),
+    ..VIEWMODEL
+};
+
 pub(crate) const VIEWMODEL: ViewmodelRules = ViewmodelRules {
     anim,
     rate: Some(rate),
@@ -115,7 +123,7 @@ fn i32_at(bytes: &[u8], off: usize) -> Option<i32> {
 /// share of the reload multiplier) or by the rate of fire perk while the
 /// right hand rechambers. While the weapon mantles its mantle animations
 /// run over the mantle's own length.
-fn rate(start: &ViewmodelStart<'_>) -> f32 {
+fn base_rate(start: &ViewmodelStart<'_>) -> f32 {
     let ps = player(start.game);
     let time = match TIMES.get(start.anim).copied().unwrap_or(Time::Own) {
         _ if matches!(start.anim, a::MANTLE | a::MANTLE_CAMERA)
@@ -127,11 +135,16 @@ fn rate(start: &ViewmodelStart<'_>) -> f32 {
         Time::Variant(off) => i32_at(start.variant, off),
         Time::Own => None,
     };
-    let rate = match time {
+    match time {
         None => 1.0,
         Some(0) => 0.0,
         Some(time) => start.length_ms as f32 / time as f32,
-    };
+    }
+}
+
+fn rate(start: &ViewmodelStart<'_>) -> f32 {
+    let ps = player(start.game);
+    let rate = base_rate(start);
     let reloading = |s: i32| (ws::RELOADING..=ws::RELOADING_LEFT_INTERRUPT).contains(&s);
     if (reloading(ps.weaponstate) || reloading(ps.weaponstate_left))
         && ps.perks & perks::FAST_RELOAD != 0
@@ -154,6 +167,55 @@ fn rate(start: &ViewmodelStart<'_>) -> f32 {
         } else {
             rate / mult
         };
+    }
+    rate
+}
+
+/// The multiplayer client's rate: `specialty_fastreload` while either
+/// hand reloads, a Rapid Fire weapon while the right hand rechambers,
+/// `specialty_fastweaponswitch` while it raises or drops a weapon outside
+/// the "Specific use" offhand slot, `specialty_fastmeleerecovery` at a
+/// melee's end and `specialty_sprintrecovery` while the weapon comes up
+/// from a sprint each divide it by their `perk_*` multiplier.
+fn mp_rate(start: &ViewmodelStart<'_>) -> f32 {
+    use movement_t5::perks::mp;
+    let ps = player(start.game);
+    let rate = base_rate(start);
+    let divide = |mult: f32| {
+        if mult == 0.0 {
+            INSTANT_RATE
+        } else {
+            rate / mult
+        }
+    };
+    let reloading = |s: i32| (ws::RELOADING..=ws::RELOADING_LEFT_INTERRUPT).contains(&s);
+    let def = fastfile_t5::weapon_def::WeaponDefView::new(start.def, start.variant);
+    if (reloading(ps.weaponstate) || reloading(ps.weaponstate_left))
+        && mp::has(&ps, mp::FAST_RELOAD)
+    {
+        let mult = tuning::PERK_WEAP_RELOAD_MULTIPLIER;
+        return if mult == 0.0 {
+            INSTANT_RATE
+        } else {
+            rate / mult + rate * 0.0
+        };
+    }
+    if matches!(ps.weaponstate, ws::RECHAMBERING | ws::RECHAMBER_END)
+        && def.is_some_and(|d| d.rapid_fire())
+    {
+        return divide(tuning::PERK_WEAP_RATE_MULTIPLIER);
+    }
+    if mp::has(&ps, mp::FAST_WEAPON_SWITCH)
+        && (ws::RAISING..=ws::DROPPING_ALT).contains(&ps.weaponstate)
+        && def.is_some_and(|d| d.offhand_slot() != OFFHAND_SLOT_SPECIFIC_USE)
+    {
+        return rate / tuning::PERK_WEAP_SWITCH_MULTIPLIER;
+    }
+    if mp::has(&ps, mp::FAST_MELEE_RECOVERY) && ps.weaponstate == ws::MELEE_END {
+        return rate / tuning::PERK_WEAP_MELEE_MULTIPLIER;
+    }
+    if ps.weaponstate == ws::SPRINT_DROP && mp::has(&ps, mp::SPRINT_RECOVERY) {
+        return divide(tuning::PERK_SPRINT_RECOVERY_MULTIPLIER);
     }
     rate
 }

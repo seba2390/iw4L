@@ -854,6 +854,25 @@ pub trait PlayerMovement: Sync {
 
     fn clear_perks(&self, player: &mut MovePlayer);
 
+    /// Sets every perk at once from a game whose scripts keep the perks as
+    /// one bit each in the order of its perk table; false when the game's
+    /// movement keeps them otherwise.
+    fn set_perk_mask(&self, _player: &mut MovePlayer, _mask: u64) -> bool {
+        false
+    }
+
+    /// The sprint length and the exhausted sprint's recharge pause (ms) the
+    /// game's scripts set on the player; false when the game's movement
+    /// reads its own.
+    fn set_sprint_times(
+        &self,
+        _player: &mut MovePlayer,
+        _duration: Option<i32>,
+        _cooldown: Option<i32>,
+    ) -> bool {
+        false
+    }
+
     fn weapon_spin(&self, _player: &MovePlayer) -> f32 {
         0.0
     }

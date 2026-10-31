@@ -66,6 +66,12 @@ Each open section names the issue that works it.
       `cg_mature` 1, `cg_blood` 1; a hosted match adds `onlinegame` 1 and
       `xblive_privatematch` 1) are taken from the zombies list and the
       menus' rows; `BlackOpsMP.exe`'s registrations are not read yet.
+      Before them the match runs the `set` lines of the configs Black
+      Ops' Private Match entry runs (`default_xboxlive.cfg`, which runs
+      `default_mp_gametypes.cfg`, `dvar_defaults.cfg`,
+      `default_private.cfg`); their `reset`, `restoreDvars`,
+      `resetCustomGametype` and `if ( … )` lines (client stats, menus)
+      are not run, and the front end itself is #664.
 - [ ] **G** Spawn selection: the spawn influencer builtins
       (`addsphereinfluencer`, `addcylinderinfluencer`, …) and
       `_spawning.gsc`'s scoring have not run.
@@ -136,15 +142,17 @@ Each open section names the issue that works it.
       tactical insertion, camera spike, jammer, motion sensor;
       `makegrenadedud` is refused.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
-      movement and weapon code tests (`specialty_bulletaccuracy`,
-      `_bulletpenetration`, `_fallheight`, `_fastmantle`, `_fastreload`,
-      `_fastweaponswitch`, `_grenadepulldeath`, `_longersprint`,
-      `_pin_back`, `_quieter`, `_scavenger`, `_shellshock`,
-      `_sprintrecovery`, `_twogrenades`, `_unlimitedsprint`, found by their
-      bit tests in `BlackOpsMP.exe`; others may be read elsewhere) are kept
-      but have no effect in the runtime's movement and weapons; setting one
-      logs the gap. The scripts' own perk rules (`hasperk` in the gametype,
-      damage and killstreak scripts) apply (#650).
+      weapon, grenade and damage code tests (`specialty_bulletpenetration`,
+      `_grenadepulldeath`, `_pin_back`, `_quieter`, `_scavenger`,
+      `_shellshock`, `_twogrenades`, `_loudenemies`, `_nottargetedbyai`,
+      `_pistoldeath`, `_noname`; its client's `_reconnaissance`,
+      `_showenemyequipment`, `_bulletflinch`, `_gas_mask`) are kept but
+      have no effect; setting one logs the gap. `specialty_fastads`
+      divides the aim-down-sight lerp by `perk_weapAdsMultiplier` except
+      for two weapons the engine looks up, which are not identified, so it
+      is not applied. Lightweight's `specialty_movefaster` is tested only
+      by vehicle code (#660). The scripts' own perk rules (`hasperk` in
+      the gametype, damage and killstreak scripts) apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
       match, `onlinegame` 1). The listen host's own profile keeps Black
@@ -326,6 +334,21 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Black Ops multiplayer's perks never reached its movement, and
+      its sprint ran on zombies' constants: `setSprintDuration` and
+      `setSprintCooldown` did nothing. The scripts' perk bits now fill the
+      player state's two perk words; sprint runs for the length and
+      recharges after the pause the scripts set per body type, and
+      `specialty_longersprint`, `_unlimitedsprint`, `_sprintrecovery`,
+      `_fallheight`, `_fastmantle`, `_fastreload`, `_fastweaponswitch`,
+      `_fastmeleerecovery` and `_bulletaccuracy` change it (the weapon
+      timers, the client's viewmodel rates, the hip spread and the
+      crosshair) as `BlackOpsMP.exe` does with its `perk_*` dvar
+      defaults; a Rapid Fire weapon fires at `perk_weapRateMultiplier`.
+      No perk was ever set: `scr_game_perks`, which the class script
+      tests, comes from the configs Black Ops' Private Match entry runs,
+      and those now run (#650).
 
 - [x] **G** No profile kept Black Ops' stats, so a custom class spawned
       empty. The listen host's profile now keeps them, and a fresh

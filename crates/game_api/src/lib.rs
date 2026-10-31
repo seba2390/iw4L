@@ -272,6 +272,13 @@ pub trait GameScripts: Sync {
     fn match_config(&self) -> Option<&'static str> {
         Some("default_xboxlive.cfg")
     }
+
+    /// The configs the game's front end runs before it hosts `gametype`, in
+    /// order, after `match_config`; their `exec` lines run the configs they
+    /// name.
+    fn front_end_configs(&self, _gametype: &str) -> &'static [&'static str] {
+        &[]
+    }
 }
 
 /// What being in last stand does to a player.
