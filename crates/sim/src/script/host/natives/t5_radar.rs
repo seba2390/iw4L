@@ -3,7 +3,8 @@
 //! `hasSpyplane` and `hasSatellite` override. The client's compass sweeps
 //! for enemies by the player's spy plane level and shows them live by its
 //! satellite level. `setClientUIVisibilityFlag` sets the player's UI
-//! flags, which the client's HUD visibility bits and compass read.
+//! flags and `setMatchFlag` the match's flags: the client's HUD visibility
+//! bits 0–3 and 4–16, which its menus and compass read.
 
 use super::super::args::{int, string};
 use crate::frame::FrameWorld;
@@ -22,6 +23,53 @@ pub(crate) struct TeamRadar {
 /// The players' UI flags by client number.
 #[derive(Resource, Clone, Debug, Default)]
 pub(crate) struct UiFlags(std::collections::BTreeMap<u32, u8>);
+
+/// The match flags as visibility bits (`setMatchFlag`).
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub(crate) struct MatchFlags(u32);
+
+/// `setMatchFlag`'s names and the visibility bits they set.
+const MATCH_FLAGS: [(&str, u32); 13] = [
+    ("radar_allies", 6),
+    ("radar_axis", 7),
+    ("bomb_timer", 9),
+    ("bomb_timer_a", 10),
+    ("bomb_timer_b", 11),
+    ("ammocounterhide", 12),
+    ("enable_popups", 8),
+    ("hud_hardcore", 13),
+    ("pregame", 14),
+    ("final_killcam", 4),
+    ("round_end_killcam", 5),
+    ("cg_drawSpectatorMessages", 15),
+    ("disableIngameMenu", 16),
+];
+
+fn set_match_flag(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    // Any other count of arguments sets nothing.
+    if args.len() != 2 {
+        return Ok(Value::Undefined);
+    }
+    let name = string(args, 0)?;
+    let on = int(args, 1)? != 0;
+    let bit = MATCH_FLAGS
+        .iter()
+        .find(|(flag, _)| *flag == name)
+        .map(|(_, bit)| *bit)
+        .ok_or_else(|| {
+            format!("GScr_SetMatchFlag: Couldn't find a matching bit for flag name : {name} ")
+        })?;
+    let flags = &mut world
+        .get_resource_or_insert_with(MatchFlags::default)
+        .into_inner()
+        .0;
+    if on {
+        *flags |= 1 << bit;
+    } else {
+        *flags &= !(1 << bit);
+    }
+    Ok(Value::Undefined)
+}
 
 /// The UI flags by bit.
 const UI_FLAGS: [&str; 4] = [
@@ -104,17 +152,19 @@ fn player_int(world: &World, client: u32, name: &str) -> i32 {
 /// `hasSpyplane` / `hasSatellite` when set, else its team's.
 /// Only Black Ops' builtins keep these, so another game's match has none.
 pub(crate) fn publish(world: &mut World) {
-    let (teams, ui_flags) = match (
+    let (teams, ui_flags, match_flags) = match (
         world.get_resource::<TeamRadar>(),
         world.get_resource::<UiFlags>(),
+        world.get_resource::<MatchFlags>(),
     ) {
-        (None, None) => return,
-        (teams, flags) => (
+        (None, None, None) => return,
+        (teams, flags, match_flags) => (
             teams.copied().unwrap_or(TeamRadar {
                 spyplane: [0; 3],
                 satellite: [0; 3],
             }),
             flags.cloned().unwrap_or(UiFlags(Default::default())),
+            match_flags.copied().unwrap_or(MatchFlags(0)),
         ),
     };
     let clients: Vec<u32> = world
@@ -147,13 +197,15 @@ pub(crate) fn publish(world: &mut World) {
         if frame.client_meta(ClientId(client)).is_some() {
             let meta = frame.client_meta_mut(ClientId(client));
             meta.radar_levels = [spyplane, satellite];
-            meta.ui_flags = ui_flags.0.get(&client).copied().unwrap_or(0);
+            meta.ui_flags =
+                u32::from(ui_flags.0.get(&client).copied().unwrap_or(0)) | match_flags.0;
         }
     }
 }
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "setclientuivisibilityflag", set_ui_flag);
+    registry.register(Function, "setmatchflag", set_match_flag);
     registry.register(Function, "setteamspyplane", |world, _, args| {
         let team = team_index(args)?;
         let level = int(args, 1)?;

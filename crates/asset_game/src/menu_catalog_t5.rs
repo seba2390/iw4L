@@ -440,6 +440,7 @@ impl AssetLinkSink for T5MenuSink {
         def.focus_color = Some(read.focus_color);
         def.rect = rect(window.rect);
         def.vis_exp = read.vis_exp;
+        def.visibility_bits = Some([read.show_bits, read.allowed_bits]);
         for (key, dump) in [(0u32, read.rect_x_exp), (1, read.rect_y_exp)] {
             if !dump.is_empty() {
                 def.float_exp.push((key, dump));

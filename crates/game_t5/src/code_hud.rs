@@ -10,6 +10,7 @@ use game_api::hud::{
     ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
 };
 use game_api::{Unknown, unknown};
+use movement_t5::state::e_flags;
 use movement_t5::weapon::state as ws;
 
 pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
@@ -36,6 +37,7 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
         ),
     ],
     crosshair: mp_crosshair,
+    visibility_bit: Some(mp_visibility_bit),
     ..ZOMBIES_CODE_HUD
 };
 
@@ -686,5 +688,67 @@ fn visibility_bit(bit: i32, view: &VisibilityView<'_>) -> Result<bool, &'static 
         47 => other_flags() & 0x10 != 0,
         48 => other_flags() & 2 != 0,
         _ => return Err(OTHER_BITS),
+    })
+}
+
+/// The multiplayer visibility bits not answered yet.
+const MP_OTHER_BITS: &game_api::Unknown = unknown!(
+    "t5.hud.mp_visibility_bits",
+    "Black Ops multiplayer's HUD visibility bits other than the script flags, team, killcam, scoreboard, compass, location selector, demo, vehicle and player-flag bits are not answered: a menu needing one does not draw, one forbidding one draws, an item gated on one does not draw",
+    "the client state behind each remaining bit (executable)"
+);
+
+/// Black Ops multiplayer's client visibility bits, rebuilt each frame from
+/// the client's state. The location selector never opens here (#658) and
+/// no demo plays back in a match.
+fn mp_visibility_bit(
+    bit: i32,
+    view: &VisibilityView<'_>,
+) -> Result<bool, &'static game_api::Unknown> {
+    let other_flags = || {
+        let mut player = *view.player;
+        crate::movement::unpack(&mut player).0.other_flags
+    };
+    let flag = |bit: i32| view.ui_flags & (1 << bit) != 0;
+    let dvar = |name: &str| (view.dvar)(name).is_some_and(|value| value != 0.0);
+    Ok(match bit {
+        // The scripts' UI flags (`hud_visible`, `g_compassShowEnemies`,
+        // `radar_client`, `killcam_nemesis`) and match flags (`final_killcam`
+        // … `disableIngameMenu`).
+        0..=16 => flag(bit),
+        // A demo plays back; bit 37 is never set.
+        19 | 20 | 31 | 32 | 37 => false,
+        21 => view.in_killcam,
+        // The location selector (selecting, and a selector of its own).
+        22 | 30 => false,
+        25 => other_flags() & POPUP_HIDING_FLAGS != 0,
+        27 => {
+            let mut player = *view.player;
+            crate::movement::unpack(&mut player).0.e_flags & e_flags::VEHICLE_VIEW != 0
+        }
+        28 if other_flags() & 0x18 != 0 => true,
+        38 => view.team == 0,
+        39 => view.team == 2,
+        40 => view.team == 1,
+        41 => view.team == 3,
+        // The compass shows: not hardcore, or the player's team (or the
+        // player, without teams) has radar, or enemies show; and not in a
+        // popup-hiding state with the third-person view on.
+        42 => {
+            let radar = (flag(6) && view.team == 2)
+                || (flag(7) && view.team == 1)
+                || (flag(2) && view.team == 0)
+                || flag(1);
+            (!flag(13) || radar)
+                && (other_flags() & POPUP_HIDING_FLAGS == 0 || !dvar("cg_thirdPerson"))
+        }
+        43 => dvar("ui_hud_showobjicons"),
+        44 => view.scoreboard,
+        45 if view.in_killcam => return Err(KILLCAM_BITS),
+        45 => other_flags() & POPUP_HIDING_FLAGS == 0 && !view.scoreboard,
+        46 => dvar("ui_hud_obituaries"),
+        47 => other_flags() & 0x10 != 0,
+        48 => other_flags() & 2 != 0,
+        _ => return Err(MP_OTHER_BITS),
     })
 }

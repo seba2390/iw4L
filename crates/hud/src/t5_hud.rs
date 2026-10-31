@@ -78,8 +78,8 @@ pub(crate) struct T5HudState<'a> {
     /// the weapon info was last shown.
     pub weapon_info: Option<WeaponInfoFrame<'a>>,
     pub compass: Option<T5Compass>,
-    /// The flags the scripts set for the player's UI.
-    pub ui_flags: u8,
+    /// The visibility bits the scripts set (UI and match flags).
+    pub ui_flags: u32,
 }
 
 /// The game's compass for a frame: its rules, where its map lies, the map's
@@ -568,6 +568,7 @@ impl ExprHost for T5HudHost<'_, '_> {
             scoreboard: self.state.scoreboard,
             in_killcam: self.state.in_killcam,
             ui_flags: self.state.ui_flags,
+            dvar: &|name| self.state.dvars.float(name),
         };
         rule(bit, &view)
             .map(i32::from)
@@ -1511,6 +1512,37 @@ fn paint_compass_player(
     OwnerDrawPaint::Painted
 }
 
+/// Whether Black Ops paints a menu by its visibility masks: every bit of
+/// `show` set and none outside `allowed`. A bit the client cannot answer is
+/// taken as clear, and its unknown's id returned.
+fn menu_bits_shown(
+    host: &T5HudHost<'_, '_>,
+    show: u64,
+    allowed: u64,
+) -> (bool, Option<&'static str>) {
+    let mut unknown = None;
+    let mut shown = true;
+    for bit in 0..64 {
+        let required = show & (1 << bit) != 0;
+        let forbidden = allowed & (1 << bit) == 0;
+        if !required && !forbidden {
+            continue;
+        }
+        let set = match host.visibility_bit(bit) {
+            Ok(set) => set != 0,
+            Err(ExprError::Unknown(id)) => {
+                unknown.get_or_insert(id);
+                false
+            }
+            Err(_) => false,
+        };
+        if (required && !set) || (forbidden && set) {
+            shown = false;
+        }
+    }
+    (shown, unknown)
+}
+
 /// Where a world point falls on the compass, from the rect's centre, and
 /// whether it lay off the compass and was held at its edge.
 fn compass_offset(
@@ -1979,6 +2011,15 @@ pub(crate) fn paint(
         sorted.insert(idx, (hash, menu));
     }
     for (_, menu) in sorted {
+        if let Some([show, allowed]) = menu.visibility_bits.filter(|_| multiplayer) {
+            let (shown, unknown) = menu_bits_shown(&host, show, allowed);
+            if let Some(id) = unknown {
+                errors.push(format!("{} visibility bits: {id}", menu.name));
+            }
+            if !shown {
+                continue;
+            }
+        }
         let mut hook =
             |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| paint_owner(state, args, frame);
         let frame = execute_chrome_menu_ex(
