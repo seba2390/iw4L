@@ -271,13 +271,15 @@ Each open section names the issue that works it.
       run on Black Ops' own functions (`team`, `otherteam`, `timeleft`,
       `secondsascountdown`, `scoreatrank`, `select`, `min`, `max`,
       `toupper`, `getlocalclientnum`, `isvisibilitybitset`); an item with
-      animation states paints its loaded state's colours. Open (#651):
-      the menus of `hud_hardcore` that only a killcam, the location
-      selector, the camera spike or a guided missile should show
-      (`killcam`, `killcam_*_text`, `spike_cam`, `fullscreenmap`,
-      `missile_fuel`) paint all the time: their menus and items carry no
-      visibility expression, owner-draw flag or hidden window flag, and the
-      client's rule that hides them is not found in `BlackOpsMP.exe` yet.
+      animation states paints its loaded state's colours. A menu paints
+      only while Black Ops' visibility masks allow it (every bit of its
+      show mask set, none outside its allowed mask), so the killcam,
+      location selector, camera spike and guided missile menus no longer
+      paint all the time. Open (#651): `t5.hud.mp_visibility_bits` — the
+      bits not answered yet (a UI menu open, scoped aim, the spike and
+      guided missile cameras, the demo player's own states, …) are taken as
+      clear for a menu's masks; the menu window's static flags that hide it
+      while the screen flashes or a UI menu is open are not applied.
       Hit markers, score popups, medals and the end-of-match scoreboard
       are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
       `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
@@ -314,16 +316,19 @@ Each open section names the issue that works it.
       `CGAME_KILLEDBY`, the team-kill strings, rank icon and clan tag),
       and a Second Chance revive (`syrette_mp`) does not centre-print
       `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED`.
-- [ ] **V** `t5.hud.visibility_bits` (`GameCodeHud::visibility_bit`):
-      Black Ops' client rebuilds 64 HUD visibility bits a frame; the team
-      bits (38–41), the scoreboard (44), the popups' bit (45), the
-      location selector (22, never open here), demo playback (20, never in
-      a match) and the player-flag bits (25, 47, 48) are answered. The
-      script UI flags (0–3), the vehicle, remote-view and guided-missile
-      bits and the rest are not, and bit 45 does not test the scoped sniper
-      view that hides popups.
-- [ ] **V** `t5.hud.killcam_visibility`: during a killcam the killcam
-      bits (4, 5) and the popups' bit are not answered (#667).
+- [ ] **V** `t5.hud.mp_visibility_bits` (`GameCodeHud::visibility_bit`):
+      Black Ops' client rebuilds 64 HUD visibility bits a frame; the script
+      UI flags (0–3), the match flags (4–16), demo playback (19, 20, 31,
+      32: never in a match; 37 is never set), the killcam (21), the
+      location selector (22, 30: never open yet, #658), the player-flag
+      bits (25, 47, 48, and 28 when the player flags set it), the vehicle
+      view (27), the teams (38–41), the compass (42), the objective icon
+      and obituary dvars (43, 46), the scoreboard (44) and the popups' bit
+      (45) are answered. The rest are not (a UI menu open 24, scoped aim
+      33, the camera spike and guided missile 28/34/50, the flash 23, …),
+      and bit 45 does not test the scoped sniper view that hides popups.
+- [ ] **V** `t5.hud.killcam_visibility`: during a killcam the popups' bit
+      (45) is not answered (#667).
 - [ ] **V** The scripts' class menu (`changeclass`, from `ui_mp`) opens on
       connect and its responses (`custom1`…, the presets) reach the
       scripts' `menuresponse`, but most of its items do not paint: the
@@ -362,6 +367,16 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** Black Ops' multiplayer HUD menus all painted at once: the
+      menu's visibility masks (`menuDef_t` show bits and allowed bits,
+      checked by the client's HUD menu paint) were not read, so the killcam,
+      `fullscreenmap`, `spike_cam` and `missile_fuel` menus painted over the
+      match. The client visibility bits now also answer the script UI flags
+      (0–3), the match flags (`setMatchFlag`, 4–16, now Black Ops' own with
+      "GScr_SetMatchFlag: Couldn't find a matching bit for flag name : %s "),
+      the killcam (21), the vehicle view (27), the compass rule (42) and the
+      objective icon and obituary dvars (43, 46) (#651).
 
 - [x] **G** The spy plane, counter-spy plane and Blackbird had no effect:
       `setTeamSpyplane` / `setTeamSatellite` kept only the last call, the

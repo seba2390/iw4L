@@ -260,6 +260,10 @@ pub struct MenuDef {
     pub handlers: MenuHandlers,
 
     pub vis_exp: String,
+    /// Black Ops' visibility masks: the client visibility bits that must
+    /// all be set, and the bits allowed (any other set bit hides the menu).
+    #[serde(default)]
+    pub visibility_bits: Option<[u64; 2]>,
 
     pub float_exp: Vec<(u32, String)>,
 

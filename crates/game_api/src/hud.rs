@@ -275,8 +275,10 @@ pub struct VisibilityView<'a> {
     /// The scoreboard is up.
     pub scoreboard: bool,
     pub in_killcam: bool,
-    /// The flags the scripts set for the player's UI.
-    pub ui_flags: u8,
+    /// The visibility bits the scripts set: the player's UI flags (0–3)
+    /// and the match flags (4–16).
+    pub ui_flags: u32,
+    pub dvar: &'a dyn Fn(&str) -> Option<f32>,
 }
 
 /// What a game's hint or message owner draw (its number) shows this frame.

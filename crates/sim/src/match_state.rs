@@ -132,8 +132,8 @@ pub struct ClientMatchState {
     pub radar_blocked: bool,
     /// Black Ops' player state radar levels: spy plane, satellite.
     pub radar_levels: [i32; 2],
-    /// Black Ops' client UI flags (`setClientUIVisibilityFlag`'s bits).
-    pub ui_flags: u8,
+    /// The HUD visibility bits Black Ops' scripts set (UI and match flags).
+    pub ui_flags: u32,
     pub remote_missile: Option<RemoteMissile>,
     pub linked_weapon_view: Option<LinkedWeaponView>,
 

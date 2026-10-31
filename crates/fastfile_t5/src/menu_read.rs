@@ -30,6 +30,9 @@ const MENU_UI3D_WINDOW: usize = 172;
 const MENU_ITEM_COUNT: usize = 0xb0;
 const MENU_VISIBLE_EXP: usize = 276;
 const MENU_SOUND_NAME: usize = 316;
+/// The client visibility bits a menu needs set, and the ones it allows.
+const MENU_SHOW_BITS: usize = 0x128;
+const MENU_ALLOWED_BITS: usize = 0x130;
 const MENU_FOCUS_COLOR: usize = 328;
 const MENU_RECT_X_EXP: usize = 360;
 const MENU_RECT_Y_EXP: usize = 376;
@@ -277,6 +280,10 @@ pub struct MenuRead {
     pub ui3d_window: i32,
     pub focus_color: [f32; 4],
     pub vis_exp: String,
+    /// The visibility bits that must all be set for the menu to show, and
+    /// the bits it allows (any other set bit hides it).
+    pub show_bits: u64,
+    pub allowed_bits: u64,
     pub rect_x_exp: String,
     pub rect_y_exp: String,
     pub handlers: Vec<EventHandlerRead>,
@@ -321,6 +328,12 @@ fn ptr_at(s: &ZoneStream<'_>, p: Ptr, off: usize) -> Option<Ptr> {
 
 fn f32_at(s: &ZoneStream<'_>, p: Ptr, off: usize) -> f32 {
     s.f32_at(p, off).unwrap_or(0.0)
+}
+
+fn u64_at(s: &ZoneStream<'_>, p: Ptr, off: usize) -> u64 {
+    let low = i32_at(s, p, off) as u32;
+    let high = i32_at(s, p, off + 4) as u32;
+    u64::from(low) | u64::from(high) << 32
 }
 
 fn i32_at(s: &ZoneStream<'_>, p: Ptr, off: usize) -> i32 {
@@ -603,6 +616,8 @@ impl ZoneStream<'_> {
             ui3d_window: i32_at(s, p, MENU_UI3D_WINDOW),
             focus_color: color_at(s, p, MENU_FOCUS_COLOR),
             vis_exp: rpn_dump(s, p.at(MENU_VISIBLE_EXP)),
+            show_bits: u64_at(s, p, MENU_SHOW_BITS),
+            allowed_bits: u64_at(s, p, MENU_ALLOWED_BITS),
             rect_x_exp: rpn_dump(s, p.at(MENU_RECT_X_EXP)),
             rect_y_exp: rpn_dump(s, p.at(MENU_RECT_Y_EXP)),
             handlers: event_handlers(s, ptr_at(s, p, MENU_ON_EVENT)),

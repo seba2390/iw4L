@@ -1110,7 +1110,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     for level in meta.radar_levels {
         out.put_i32(level);
     }
-    out.put_u8(meta.ui_flags);
+    out.put_u32(meta.ui_flags);
     match &meta.remote_missile {
         None => out.put_u8(0),
         Some(remote) => {
@@ -1391,7 +1391,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         .ok_or(WireError::Malformed("bad radar mode"))?;
     let radar_blocked = input.get_u8()? != 0;
     let radar_levels = [input.get_i32()?, input.get_i32()?];
-    let ui_flags = input.get_u8()?;
+    let ui_flags = input.get_u32()?;
     let remote_missile = match input.get_u8()? {
         0 => None,
         1 => {
