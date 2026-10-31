@@ -279,6 +279,8 @@ pub struct VisibilityView<'a> {
     /// and the match flags (4–16).
     pub ui_flags: u32,
     pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+    /// The location selector is open.
+    pub selecting_location: bool,
 }
 
 /// What a game's hint or message owner draw (its number) shows this frame.

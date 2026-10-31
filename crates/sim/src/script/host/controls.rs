@@ -28,7 +28,7 @@ const NO_CLEARANCE: u8 = 32;
 pub(crate) struct MiniMap {
     upper_left: [f32; 2],
     north: [f32; 2],
-    size: [f32; 2],
+    pub(crate) size: [f32; 2],
 }
 
 fn with_player<T>(
@@ -322,6 +322,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                     material,
                     choose_direction,
                     radius,
+                    kind: None,
+                    aspect: 1.0,
                 });
         }
         Ok(Value::Undefined)
@@ -371,12 +373,13 @@ pub(crate) fn select_location(
     cmd: &mut playerstate_iw4::UserCmd,
     old_buttons: u32,
 ) {
-    let selecting = FrameWorld::from_world(world)
+    let Some(kind) = FrameWorld::from_world(world)
         .client_meta(ClientId(client))
-        .is_some_and(|m| m.location_selection.is_some());
-    if !selecting {
+        .and_then(|m| m.location_selection.as_ref())
+        .map(|selection| selection.kind)
+    else {
         return;
-    }
+    };
     let pressed = cmd.buttons & !old_buttons;
     let authority = world
         .resource::<crate::step::StepRequest>()
@@ -401,13 +404,19 @@ pub(crate) fn select_location(
                 ]
             });
             let north_yaw = map.map_or(0.0, |map| map.north[1].atan2(map.north[0]).to_degrees());
-            let yaw = (f32::from(cmd.selected_location[2]) * (360.0 / 256.0) + north_yaw)
-                .rem_euclid(360.0);
+            // Black Ops sends half the yaw and gives the scripts an int.
+            let yaw = match kind {
+                Some(_) => Value::Int(i32::from(cmd.selected_location[2]) * 2),
+                None => Value::Float(
+                    (f32::from(cmd.selected_location[2]) * (360.0 / 256.0) + north_yaw)
+                        .rem_euclid(360.0),
+                ),
+            };
             crate::script::runtime::raise(
                 world,
                 receiver,
                 "confirm_location",
-                vec![Value::Vector(location), Value::Float(yaw)],
+                vec![Value::Vector(location), yaw],
             );
         } else if pressed & buttons::LOCATION_CANCEL != 0 {
             crate::script::runtime::raise(world, receiver, "cancel_location", Vec::new());

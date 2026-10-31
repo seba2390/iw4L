@@ -1305,11 +1305,6 @@ fn register_player(registry: &mut NativeRegistry) {
         "enabledeathstreak",
         "setpregameclass",
         "setpregameteam",
-        "beginlocationairstrikeselection",
-        "beginlocationartilleryselection",
-        "beginlocationcomlinkselection",
-        "beginlocationmortarselection",
-        "beginlocationnapalmselection",
     );
     registry.register(Method, "setlaststandprevweap", |world, receiver, args| {
         let _ = player_id(world, receiver)?;

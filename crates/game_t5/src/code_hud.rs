@@ -699,8 +699,7 @@ const MP_OTHER_BITS: &game_api::Unknown = unknown!(
 );
 
 /// Black Ops multiplayer's client visibility bits, rebuilt each frame from
-/// the client's state. The location selector never opens here (#658) and
-/// no demo plays back in a match.
+/// the client's state. No demo plays back in a match.
 fn mp_visibility_bit(
     bit: i32,
     view: &VisibilityView<'_>,
@@ -719,8 +718,8 @@ fn mp_visibility_bit(
         // A demo plays back; bit 37 is never set.
         19 | 20 | 31 | 32 | 37 => false,
         21 => view.in_killcam,
-        // The location selector (selecting, and a selector of its own).
-        22 | 30 => false,
+        // The location selector is open (with a selector material).
+        22 | 30 => view.selecting_location,
         25 => other_flags() & POPUP_HIDING_FLAGS != 0,
         27 => {
             let mut player = *view.player;

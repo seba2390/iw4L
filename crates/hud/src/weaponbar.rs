@@ -700,6 +700,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     weapon_info_shown: Local<'s, i32>,
     command_hint_latch: Local<'s, crate::t5_hud::CommandHintLatch>,
     compass_radar: Local<'s, game_api::hud::CompassRadar>,
+    location_cursor: Res<'w, net::LocationCursor>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1035,6 +1036,17 @@ pub(crate) fn update_weaponbar(
             weapon_info,
             compass: t5_compass,
             ui_flags: meta.map_or(0, |m| m.ui_flags),
+            selector: meta
+                .and_then(|m| m.location_selection.as_ref())
+                .filter(|selection| selection.kind.is_some())
+                .map(|selection| crate::t5_hud::T5Selector {
+                    material: selection.material.clone(),
+                    radius: selection.radius,
+                    kind: selection.kind.unwrap_or(0),
+                    at: client_input.location_cursor.at,
+                    direction: client_input.location_cursor.black_ops.direction,
+                    points: client_input.location_cursor.black_ops.points,
+                }),
         };
         let (list, errors) = crate::t5_hud::paint(
             t5,

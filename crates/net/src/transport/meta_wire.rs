@@ -1333,6 +1333,8 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
             put_text(out, &selection.material);
             out.put_u8(selection.choose_direction.into());
             out.put_f32(selection.radius);
+            out.put_u8(selection.kind.unwrap_or(0xff));
+            out.put_f32(selection.aspect);
         }
     }
     let lock = meta.weapon_lock;
@@ -1649,6 +1651,11 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             material: get_text(input)?,
             choose_direction: input.get_u8()? != 0,
             radius: input.get_f32()?,
+            kind: match input.get_u8()? {
+                0xff => None,
+                kind => Some(kind),
+            },
+            aspect: input.get_f32()?,
         }),
         _ => return Err(WireError::Malformed("bad location selection tag")),
     };
