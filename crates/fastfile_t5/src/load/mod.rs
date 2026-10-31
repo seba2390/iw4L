@@ -62,7 +62,7 @@ fn load_asset_body_observed(
         Weapon => weapon::load_weapon(s, links),
         ImpactFx => load_impact_fx(s, links),
         StringTable => simple::load_string_table(s, links),
-        Ddl => simple::load_ddl(s),
+        Ddl => simple::load_ddl(s, links),
         other => Err(ZoneError::NoAssetLoader(other)),
     }
 }
@@ -107,6 +107,11 @@ pub trait AssetLinkSink {
     }
 
     fn capture_destructible(&mut self, _s: &ZoneStream<'_>, _header: Ptr) -> Result<()> {
+        Ok(())
+    }
+
+    /// A `ddl` asset, once its header at `root` is loaded (`read_ddl`).
+    fn capture_ddl(&mut self, _s: &ZoneStream<'_>, _root: Ptr) -> Result<()> {
         Ok(())
     }
 

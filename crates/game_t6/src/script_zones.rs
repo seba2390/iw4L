@@ -96,6 +96,7 @@ fn scripts(content: &[u8]) -> asset_core::ZoneScripts {
         {
             out.layouts.push(asset_core::BitLayout {
                 name: ddl.name,
+                version: def.version,
                 bits: def.structs.first().map_or(0, |root| root.size),
                 structs: def
                     .structs
@@ -114,6 +115,9 @@ fn scripts(content: &[u8]) -> asset_core::ZoneScripts {
                                 range: m.range,
                                 array_size: m.array_size,
                                 enum_index: m.enum_index,
+                                min: 0,
+                                max: 0,
+                                permission: 0,
                             })
                             .collect(),
                     })
