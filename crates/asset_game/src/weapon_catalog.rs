@@ -153,6 +153,9 @@ pub(crate) struct WeaponBodyFacts {
     pub thermal_scope: bool,
 
     pub silenced: bool,
+    /// A game's own rule for which weapons' fire puts no ping on the
+    /// compass; `None`: a grenade's or a silenced weapon's.
+    pub fire_ping_hidden: Option<bool>,
 
     pub ads_zoom_fov: f32,
     pub scope_zoom: weapon_iw4::ScopeZoom,

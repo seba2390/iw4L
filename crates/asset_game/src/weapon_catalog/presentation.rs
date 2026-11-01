@@ -177,7 +177,9 @@ impl WeaponEventFacts {
                 ProjectileCameraPolicy::Missile
             },
             rests_on_ground: matches!(f.stickiness, 3 | 4),
-            hides_fire_ping: f.weap_type == weapon_iw4::WEAPTYPE_GRENADE || f.silenced,
+            hides_fire_ping: f
+                .fire_ping_hidden
+                .unwrap_or(f.weap_type == weapon_iw4::WEAPTYPE_GRENADE || f.silenced),
         }
     }
 }

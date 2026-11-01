@@ -141,6 +141,9 @@ pub struct CompassRadarView<'a> {
     pub show_enemies: bool,
     /// The other players the client knows of.
     pub players: &'a [CompassRadarPlayer],
+    /// The shots this frame whose fire pings the compass: the shooter and
+    /// where the shot came from.
+    pub fires: &'a [CompassFire],
     /// The enemy jamming's share and whether an enemy counter-spy plane is
     /// up (the client scripts' scrambler state).
     pub enemy_scrambler: f32,
@@ -154,6 +157,13 @@ pub struct CompassRadarPlayer {
     pub client: usize,
     pub team: i32,
     pub player: MovePlayer,
+}
+
+/// A shot that pings the compass.
+#[derive(Clone, Copy, Debug)]
+pub struct CompassFire {
+    pub client: usize,
+    pub pos: [f32; 2],
 }
 
 /// One player as the compass radar tracks it.
@@ -171,6 +181,8 @@ pub struct CompassActor {
     pub satellite_ms: i32,
     pub static_pos: [f32; 2],
     pub static_ms: i32,
+    /// Until when its last shot's ping shows at full strength.
+    pub fire_ms: i32,
 }
 
 /// The radar's memory between frames.

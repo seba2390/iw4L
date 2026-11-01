@@ -97,6 +97,10 @@ fn catalog_compass(catalog: &MenuCatalog) -> Option<CatalogCompass<'_>> {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// This frame's shots that ping a game's own compass.
+#[derive(Resource, Default)]
+pub(crate) struct GameCompassFires(pub(crate) Vec<net::WeaponFirePing>);
+
 pub(crate) fn update_compass(
     surface: Res<crate::surface::Hud2dSurface>,
     presented: Res<PresentedSnapshot>,
@@ -108,20 +112,25 @@ pub(crate) fn update_compass(
     mut images: ResMut<Assets<Image>>,
     mut gaps: ResMut<HudPresentationGaps>,
     mut latch: ResMut<CompassPingLatch>,
-    mut ping_bus: ResMut<WeaponFirePingBus>,
+    (mut ping_bus, mut game_fires): (ResMut<WeaponFirePingBus>, ResMut<GameCompassFires>),
     mut pass: ResMut<HudTessPass>,
     view: Option<Res<frame::ViewSubject>>,
     local_vars: Res<crate::playercard::UiLocalVars>,
     hud_input: Option<Res<frame::HudInputView>>,
     mode: Option<Res<game_api::ModeRules>>,
 ) {
-    take_fire_pings(
-        &mut ping_bus,
-        &presented,
-        local.0,
-        cg_clock.time(),
-        &mut latch,
-    );
+    // A game whose code HUD keeps its own compass takes the shots for it.
+    if crate::game_code_hud::game_hud(mode.as_deref()).is_some_and(|hud| hud.compass.is_some()) {
+        game_fires.0 = std::mem::take(&mut ping_bus.pings);
+    } else {
+        take_fire_pings(
+            &mut ping_bus,
+            &presented,
+            local.0,
+            cg_clock.time(),
+            &mut latch,
+        );
+    }
     let killed_by_showing = (crate::scorebar::milliseconds() as i32)
         .wrapping_sub(local_vars.int("ui_show_killedBy"))
         < 4000;

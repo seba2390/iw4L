@@ -64,6 +64,7 @@ impl Plugin for HudPlugin {
             .init_resource::<crate::playercard::FrontendLocalVars>()
             .init_resource::<HudRootVisible>()
             .scoped::<crate::compass::CompassPingLatch>(frame::Timeline::Running)
+            .scoped::<crate::compass::GameCompassFires>(frame::Timeline::Running)
             .init_resource::<crate::surface::Hud2dSurface>()
             .init_resource::<HudPresentStamp>()
             .init_resource::<HudStageStamp>()
