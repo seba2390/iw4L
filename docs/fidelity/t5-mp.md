@@ -447,13 +447,21 @@ Each open section names the issue that works it.
 - [ ] **V** The compass (`compass_old`) draws its map, the player's
       arrow, the enemies the radar shows (170), the teammates (158), the
       spy plane's sweep line (332) and the counter-spy plane's static
-      (328). A teammate's icon is only ever `compassping_friendly_mp`:
-      the firing and yelling overlays (`compassping_friendlyfiring_mp`,
-      `_friendlyyelling_mp`, faded over `compassSoundPingFadeTime`) wait on
-      the fire pings, the chat blink (`objective_friendly_chat`) on voice
-      chat, the Second Chance icon on a teammate's last stand reaching the
-      client, and the squad icons (`compassping_squad_mp` and its overlays,
-      with `cg_drawFriendInColor`) on a friends list. Not drawn yet:
+      (328). A player's unsilenced shot (not a grenade's or a mine's)
+      pings the compass: an enemy's `compassping_enemyfiring` where it
+      fired, a teammate's `compassping_friendlyfiring_mp` over its arrow,
+      full for 200 ms and then faded over `compassSoundPingFadeTime`. The
+      executable also gates an enemy's shot ping on a bit of a client word
+      not read here (read as clear), takes the ping's place through a
+      helper not read, and fires pings for turret, vehicle-turret and
+      gunner shots with their own delay (here every shot is a weapon
+      shot's). Still not drawn: the yelling overlay
+      (`compassping_friendlyyelling_mp`), the chat blink
+      (`objective_friendly_chat`, voice chat), the Second Chance icon (a
+      teammate's last stand reaching the client), the squad icons
+      (`compassping_squad_mp` and its overlays, with
+      `cg_drawFriendInColor`; a friends list), and the wager's
+      `compassping_firstplace`. Not drawn yet:
       objectives (152), the grid (317, 319),
       the killstreak icons (helicopters, planes, dogs, turrets, tanks,
       guided missiles, artillery: 146–156) and the Jammer, flicker and

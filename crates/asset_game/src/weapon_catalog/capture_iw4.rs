@@ -358,6 +358,7 @@ impl WeaponCatalog {
                 silenced: geometry.weap_def.is_some_and(|body| {
                     stream.u8_at(body, stream.layout(0x670, 2168)).unwrap_or(0) != 0
                 }),
+                fire_ping_hidden: None,
                 ads_zoom_fov: geometry.ads_zoom_fov,
                 scope_zoom: weapon_iw4::ScopeZoom::NONE,
                 ads_zoom_fovs: [0.0; 3],

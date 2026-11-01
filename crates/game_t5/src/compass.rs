@@ -47,6 +47,23 @@ const PERK_SHOWONRADAR: u32 = 47;
 /// The client's team numbers with no teammates on the compass.
 const TEAM_FREE: i32 = 0;
 const TEAM_SPECTATOR: i32 = 3;
+/// A weapon shot's ping holds full strength this long, then fades over
+/// `compassSoundPingFadeTime`.
+const FIRE_PING_DELAY_MS: i32 = 200;
+
+/// How far a fire ping has faded: `1` until `at`, then down over
+/// `compassSoundPingFadeTime`; `None` once gone or when it never fired.
+fn fire_left(view: &CompassRadarView<'_>, at: i32) -> Option<f32> {
+    let fade = dvar(view, "compassSoundPingFadeTime", 2.0) * 1000.0;
+    if at == 0 || at as f32 + fade <= view.now as f32 {
+        return None;
+    }
+    Some(if at < view.now {
+        1.0 - (view.now - at) as f32 / fade
+    } else {
+        1.0
+    })
+}
 
 fn dvar(view: &CompassRadarView<'_>, name: &str, default: f32) -> f32 {
     (view.dvar)(name).unwrap_or(default)
@@ -153,6 +170,30 @@ fn radar_update(view: &CompassRadarView<'_>, radar: &mut CompassRadar) {
         actor.seen_ms = now;
         actor.yaw = yaw;
     }
+    // A shot pings its shooter: a teammate's firing mark, an enemy's place.
+    // The executable also gates an enemy's on a bit of a client word it
+    // keeps (cleared unless a teammate or a radar is up), not read here.
+    for fire in view.fires {
+        let Some(team) = view
+            .players
+            .iter()
+            .find(|p| p.client == fire.client)
+            .map(|p| p.team)
+        else {
+            continue;
+        };
+        let Some(actor) = radar.actors.get_mut(fire.client) else {
+            continue;
+        };
+        if fire.client == view.local_client || team == TEAM_SPECTATOR {
+            continue;
+        }
+        actor.fire_ms = now + FIRE_PING_DELAY_MS;
+        actor.enemy = view.local_team == TEAM_FREE || team != view.local_team;
+        if actor.enemy {
+            actor.ping_pos = fire.pos;
+        }
+    }
     if spyplane == 0 && satellite == 0 {
         radar.sweep = 0.0;
         return;
@@ -235,7 +276,8 @@ fn radar_pings(view: &CompassRadarView<'_>, radar: &CompassRadar) -> Vec<Compass
         let radar_shown = live || shown(actor.radar_ms, radar_fade);
         let satellite_shown = shown(actor.satellite_ms, satellite_fade);
         let static_shown = shown(actor.static_ms, static_fade);
-        if !(radar_shown || satellite_shown || static_shown) {
+        let firing = fire_left(view, actor.fire_ms);
+        if !(radar_shown || satellite_shown || static_shown || firing.is_some()) {
             continue;
         }
         let pos = if live { actor.pos } else { actor.ping_pos };
@@ -262,6 +304,15 @@ fn radar_pings(view: &CompassRadarView<'_>, radar: &CompassRadar) -> Vec<Compass
                 material: "compassping_enemydirectional",
                 alpha: alpha * scale,
                 turn: Some(turn_from - actor.yaw),
+                clamps: true,
+            });
+        }
+        if let Some(alpha) = firing.filter(|a| *a >= 0.0) {
+            pings.push(CompassPing {
+                pos,
+                material: "compassping_enemyfiring",
+                alpha: alpha * scale,
+                turn: None,
                 clamps: true,
             });
         }
@@ -307,12 +358,25 @@ fn friendly_pings(view: &CompassRadarView<'_>, radar: &CompassRadar) -> Vec<Comp
                 && now - SEEN_MS <= actor.seen_ms
                 && view.players.iter().any(|p| p.client == client)
         })
-        .map(|(_, actor)| CompassPing {
-            pos: actor.pos,
-            material: "compassping_friendly_mp",
-            alpha: scale,
-            turn: Some(turn_from - actor.yaw),
-            clamps: true,
+        .flat_map(|(_, actor)| {
+            let turn = Some(turn_from - actor.yaw);
+            let firing = fire_left(view, actor.fire_ms);
+            // At full strength the firing mark stands in for the arrow.
+            let arrow = (firing != Some(1.0)).then_some(CompassPing {
+                pos: actor.pos,
+                material: "compassping_friendly_mp",
+                alpha: scale,
+                turn,
+                clamps: true,
+            });
+            let mark = firing.map(|alpha| CompassPing {
+                pos: actor.pos,
+                material: "compassping_friendlyfiring_mp",
+                alpha: alpha.min(scale),
+                turn,
+                clamps: true,
+            });
+            arrow.into_iter().chain(mark)
         })
         .collect()
 }

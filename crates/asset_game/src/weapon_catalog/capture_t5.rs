@@ -437,6 +437,10 @@ pub(super) fn leftover_t5_sounds(w: &WeaponView<'_, '_>) -> WeaponSoundAliases {
 }
 
 /// The body facts, and the definition and variant as the zone holds them for
+/// Black Ops' `weapType` values whose fire puts no ping on the compass.
+const T5_WEAPTYPE_GRENADE: i32 = 1;
+const T5_WEAPTYPE_MINE: i32 = 6;
+
 /// Black Ops' own weapon rules.
 pub(super) fn capture_t5_body_facts(
     w: &WeaponView<'_, '_>,
@@ -469,6 +473,12 @@ pub(super) fn capture_t5_body_facts(
     }
     if geometry.variant.is_some() {
         facts.silenced = w.variant_u8(sz::WEAPON_VARIANT_SILENCED_OFF) != 0;
+        // Black Ops' fire routine pings the compass for a player's shot
+        // unless the weapon is silenced, a grenade (weapType 1) or a mine
+        // (6).
+        facts.fire_ping_hidden = Some(
+            facts.silenced || matches!(facts.weap_type, T5_WEAPTYPE_GRENADE | T5_WEAPTYPE_MINE),
+        );
         if w.variant_u8(sz::WEAPON_VARIANT_RAPID_FIRE_OFF) != 0 {
             facts.fire_time_ms = (facts.fire_time_ms as f32 * 0.75) as i32;
         }

@@ -691,6 +691,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     ui_dvars: Option<Res<'w, frame::UiMenuDvars>>,
     vis: HudPlayerVisInput<'w>,
     mode: Option<Res<'w, game_api::ModeRules>>,
+    game_fires: Res<'w, crate::compass::GameCompassFires>,
     hint_latch: Local<'s, crate::t5_hud::T5HintLatch>,
     score_latch: Local<'s, crate::t5_hud::T5ScoreLatch>,
     deadscreen_latch: Local<'s, crate::t5_hud::T5DeadscreenLatch>,
@@ -962,6 +963,17 @@ pub(crate) fn update_weaponbar(
                             })
                         })
                         .collect();
+                    let fires: Vec<game_api::hud::CompassFire> = client_input
+                        .game_fires
+                        .0
+                        .iter()
+                        .filter_map(|fire| {
+                            Some(game_api::hud::CompassFire {
+                                client: usize::try_from(fire.number).ok()?,
+                                pos: fire.origin_xy,
+                            })
+                        })
+                        .collect();
                     let now = cg_clock.time();
                     let dvar = |name: &str| dvars.float(name);
                     let view = game_api::hud::CompassRadarView {
@@ -976,6 +988,7 @@ pub(crate) fn update_weaponbar(
                         levels: meta.map_or([0; 2], |m| m.radar_levels),
                         show_enemies: meta.is_some_and(|m| m.ui_flags & 2 != 0),
                         players: &players,
+                        fires: &fires,
                         enemy_scrambler: meta
                             .map_or(0.0, |m| m.view_effects.client_screen.enemy_scrambler),
                         global_scrambler: meta
