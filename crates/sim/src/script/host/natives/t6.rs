@@ -2345,10 +2345,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             crate::script::host::entities::HudAudience::Client(client),
         )
     });
+    registry.register(Method, "starttanning", |world, receiver, _| {
+        set_charred(world, receiver, true)
+    });
+    registry.register(Method, "stopburning", |world, receiver, _| {
+        set_charred(world, receiver, false)
+    });
     // Black Ops' own player builtins of the same name.
     let black_ops = NativeRegistry::engine_services().with_black_ops();
     for (namespace, name) in [
-        (Method, "stopburning"),
         (Method, "setsprintduration"),
         (Method, "setsprintcooldown"),
         (Method, "playerknockback"),
@@ -3192,6 +3197,29 @@ const REVIVE_HINT_CLASSES: [&str; 4] = [
     "trigger_box",
 ];
 const SCRIPT_MOVERS: [&str; 3] = ["script_model", "script_brushmodel", "script_origin"];
+
+fn set_charred(world: &mut World, receiver: &Value, on: bool) -> Result<Value, String> {
+    let id = super::engine::entity_id(world, receiver)?;
+    let client = world.resource::<RoundScript>().player_client(id);
+    // Appearance flags are independent of timed screen overlays.
+    if let Some(client) = client {
+        crate::game_move::set_script_flag(
+            &mut crate::frame::FrameWorld::from_world(world),
+            crate::ClientId(client),
+            game_api::movement::ScriptFlag::Charred,
+            on,
+        )
+        .ok_or("charred player state unavailable")?;
+    } else {
+        world
+            .resource_mut::<RoundScript>()
+            .entities
+            .get_mut(&id)
+            .ok_or("not an entity")?
+            .charred = on;
+    }
+    Ok(Value::Undefined)
+}
 
 /// The cursor hints from 1.
 const CURSOR_HINTS: [&str; 6] = [

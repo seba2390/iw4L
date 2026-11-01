@@ -628,6 +628,7 @@ pub struct MoveStatus {
 /// A player flag a script builtin sets in the game's own movement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScriptFlag {
+    Charred,
     /// `allowmelee(false)`.
     NoMelee,
     /// `disableweaponcycling`.

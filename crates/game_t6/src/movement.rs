@@ -880,6 +880,7 @@ impl PlayerMovement for T6Movement {
     fn set_script_flag(&self, player: &mut MovePlayer, flag: ScriptFlag, on: bool) -> Option<bool> {
         let (mut ps, mut last) = unpack(player);
         let (word, bit) = match flag {
+            ScriptFlag::Charred => (&mut ps.e_flags, movement_t6::state::e_flags::CHARRED),
             ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
             ScriptFlag::NoWeaponCycling => (
                 &mut ps.weap_flags,

@@ -951,6 +951,7 @@ impl PlayerMovement for T5Movement {
             movement_t5::end_dive_for_disabled_weapons(&mut ps);
         }
         let (word, bit) = match flag {
+            ScriptFlag::Charred => return None,
             ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
             ScriptFlag::NoWeaponCycling => (&mut ps.weap_flags, weap_flags::CYCLING_DISABLED),
             ScriptFlag::WeaponsDisabled => (&mut ps.weap_flags, weap_flags::WEAPONS_DISABLED),
