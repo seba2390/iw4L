@@ -170,10 +170,12 @@ Each open section names the issue that works it.
       `STATS_VERSION` than `stat_version` (10), gets Black Ops' stats
       reset (`mp/stats_init.cfg`, Combat Training forced on). Open: a
       remote client's stats are never sent to the host (two-machine play
-      sends none, #729), so its integer stats read 0 and `setdstat`
+      sends none, #665), so its integer stats read 0 and `setdstat`
       writes nothing. Of `ui_mp`'s create-a-class commands, `equipClass`,
-      `equipClassItem`, `equipClassAttachment` and `copyclass` edit the
-      profile's classes (Closed); the rest are #729. Offline (`onlinegame` 0) the scripts read
+      `equipClassItem`, `equipClassAttachment`, `copyclass` and the
+      `equipDefault*` and clear commands edit the profile's classes
+      (Closed); the menus' current-item commands are #780. Offline
+      (`onlinegame` 0) the scripts read
       `GetLoadoutItemFromProfile`, which is 0 on PC as in Black Ops.
       `calcweaponoptions (class, slot)` still reads the runtime's own
       class slots for the camo.
