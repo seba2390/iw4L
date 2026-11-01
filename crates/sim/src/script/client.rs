@@ -1306,7 +1306,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             (
                 runtime.engine.world == Some(id),
                 runtime.engine.turrets.contains_key(&id),
-                runtime.planes.contains_key(&id),
+                runtime.planes.contains_key(&id) || runtime.t5.planes.contains_key(&id),
                 runtime.t5.client_flags.get(&id).copied().unwrap_or(0),
                 runtime.t5.has_eyes.contains(&id),
                 runtime.t5.transmit_targetname.contains(&id),
@@ -1347,6 +1347,8 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             EntityKind::Map | EntityKind::Spawned => {
                 if turret {
                     "mg42"
+                } else if plane {
+                    "plane"
                 } else if matches!(&*entity.classname, "script_model" | "script_brushmodel")
                     || (&*entity.classname == "script_origin"
                         && (entity.kind == EntityKind::Spawned
@@ -1407,8 +1409,13 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
                 Value::String(team) => Some(Value::String(team)),
                 _ => None,
             };
-            let owner = match runtime.object_field(id, "owner") {
-                Value::Object(owner) => runtime.entities.get(&owner).map(|e| e.number),
+            let owner = match (
+                runtime.object_field(id, "owner"),
+                runtime.t5.planes.get(&id),
+            ) {
+                (Value::Object(owner), _) | (_, Some(&owner)) => {
+                    runtime.entities.get(&owner).map(|e| e.number)
+                }
                 _ => None,
             };
             (

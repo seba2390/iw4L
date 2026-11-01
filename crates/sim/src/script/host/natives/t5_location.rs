@@ -3,7 +3,8 @@
 //! artillery, airstrike, mortar, napalm, comlink) and a radius, which the
 //! client sends back as `confirm_location`; `precacheLocationSelector`
 //! names the selector materials. `launchBomb` launches what the strikes
-//! drop.
+//! drop and `SpawnPlane` spawns the planes that fly them, which the client
+//! scripts see as planes owned by the player.
 
 use super::super::args::{float, string, vector};
 use crate::frame::FrameWorld;
@@ -102,8 +103,48 @@ fn launch_bomb(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
     Ok(Value::Object(object))
 }
 
+/// `SpawnPlane(owner, classname, origin, [spawnflags])`: an entity of the
+/// classname at the origin, a plane in its entity state with its owner.
+fn spawn_plane(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    let owner = args.first().ok_or("Owner entity is not a player")?;
+    let owner_id = super::engine::entity_id(world, owner)?;
+    if world
+        .resource::<RoundScript>()
+        .player_client(owner_id)
+        .is_none()
+    {
+        return Err("Owner entity is not a player".into());
+    }
+    let classname = string(args, 1)?.to_string();
+    let origin = vector(args, 2)?;
+    let flags = if args.len() >= 4 {
+        super::super::args::int(args, 3)?
+    } else {
+        0
+    };
+    let spawned = super::engine::spawn_entity(
+        world,
+        &[
+            Value::string(&classname),
+            Value::Vector(origin),
+            Value::Int(flags),
+        ],
+    )
+    .map_err(|_| format!("unable to spawn \"{classname}\" entity"))?;
+    let Value::Object(plane) = spawned else {
+        return Err(format!("unable to spawn \"{classname}\" entity"));
+    };
+    world
+        .resource_mut::<RoundScript>()
+        .t5
+        .planes
+        .insert(plane, owner_id);
+    Ok(spawned)
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "launchbomb", launch_bomb);
+    registry.register(Function, "spawnplane", spawn_plane);
     macro_rules! selectors {
         ($($name:literal => $kind:literal),* $(,)?) => {$(
             registry.register(Method, $name, |world, receiver, args| {
