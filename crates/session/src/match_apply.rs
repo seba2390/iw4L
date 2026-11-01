@@ -72,6 +72,7 @@ pub struct MatchInstallAuthority<'w> {
     input_gate: Res<'w, AuthorityInputGate>,
     cheats: Option<Res<'w, sim::HostCheats>>,
     profile: Option<Res<'w, sim::LocalPlayerProfile>>,
+    profile_stats: Option<Res<'w, sim::ProfileStats>>,
     previous: Option<Res<'w, AuthorityWorld>>,
     account: Option<Res<'w, crate::LocalAccount>>,
     local: Option<Res<'w, net::LocalPresentClient>>,
@@ -113,6 +114,7 @@ pub fn apply_prepared_match(
         input_gate,
         cheats,
         profile,
+        profile_stats,
         previous,
         account,
         local,
@@ -441,6 +443,13 @@ pub fn apply_prepared_match(
                 .or_else(|| profile.as_deref().copied())
                 .unwrap_or(sim::LocalPlayerProfile::default());
             sim.set_local_player_profile(profile);
+            let mut stats = previous
+                .as_ref()
+                .map(|authority| authority.0.profile_stats().clone())
+                .or_else(|| profile_stats.as_deref().cloned())
+                .unwrap_or_else(sim::ProfileStats::default);
+            stats.client = local.as_ref().map(|local| local.0);
+            sim.set_profile_stats(stats);
         }
         content.set_player_kit_collisions(
             (0..soldiers.kit_count())
@@ -1128,6 +1137,37 @@ fn config_sets(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// A config's `set` lines, with those of the configs its `exec` lines run
+/// where they run them; a config that is missing is reported.
+fn config_sets_with_execs(
+    name: &str,
+    text: &dyn Fn(&str) -> Option<String>,
+    depth: usize,
+) -> Vec<(String, String)> {
+    let Some(source) = text(name) else {
+        diag::warn!(
+            Sim,
+            "gsc: front end config {name} is in no zone the match read"
+        );
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for line in source.lines() {
+        let line = line.split("//").next().unwrap_or("").trim();
+        match line.strip_prefix("exec ") {
+            Some(file) if depth < 8 => {
+                out.extend(config_sets_with_execs(
+                    file.trim().trim_matches('"'),
+                    text,
+                    depth + 1,
+                ));
+            }
+            _ => out.extend(config_sets(line)),
+        }
+    }
+    out
+}
+
 fn script_dvar_overrides() -> Vec<(String, String)> {
     std::env::var("IW4L_SCRIPT_DVARS")
         .map(|text| config_sets(&text.replace(';', "\n")))
@@ -1613,6 +1653,28 @@ fn preflight_match_install(
             }
         }
     };
+    let config_text = |name: &str| {
+        sources
+            .0
+            .config(name)
+            .or_else(|| {
+                catalog
+                    .filter(|catalog| catalog.namespace == Some(family))
+                    .and_then(|catalog| catalog.rawfile_text(name))
+            })
+            .map(str::to_owned)
+    };
+    for name in game_scripts.front_end_configs(gametype) {
+        for (name, value) in config_sets_with_execs(name, &config_text, 0) {
+            match script_dvars
+                .iter_mut()
+                .find(|(set, _)| set.eq_ignore_ascii_case(&name))
+            {
+                Some((_, set)) => *set = value,
+                None => script_dvars.push((name, value)),
+            }
+        }
+    }
     for (name, value) in game_scripts.config_defaults() {
         if !script_dvars
             .iter()

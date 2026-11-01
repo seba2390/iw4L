@@ -11,6 +11,12 @@ use movement_t5::weapon::state as ws;
 
 pub(crate) const RULES: ViewKickRules = ViewKickRules { fire, frame, aim };
 
+/// Black Ops multiplayer's: its kick tests no perk.
+pub(crate) const MP_RULES: ViewKickRules = ViewKickRules {
+    aim: mp_aim,
+    ..RULES
+};
+
 /// `weapType` gas: its kick builds while it fires and does not ease back.
 const WEAPTYPE_GAS: i32 = 4;
 /// The view kick's ease back with no weapon, in degrees per second.
@@ -403,6 +409,10 @@ fn gun_kick(
         rem = next_rem;
     }
     kick.viewmodel_angles = [kick.gun_angles[0], kick.gun_angles[1], 0.0];
+}
+
+fn mp_aim(_player: &MovePlayer, _weapons: KickWeapons<'_>, kick: &ViewKick) -> [f32; 3] {
+    kick.angles
 }
 
 /// The aim the kick turns: its angles, a quarter of them with Deadshot in a

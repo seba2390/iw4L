@@ -74,6 +74,8 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("onlinegame", "0"),
     ("cg_mature", "1"),
     ("cg_blood", "1"),
+    // Registered 800; the mortar, artillery and airstrike scripts aim by it.
+    ("bg_gravity", "800"),
 ];
 
 /// Black Ops' front-end level: the main menu draws over it.
@@ -279,6 +281,23 @@ impl game_api::GameScripts for T5 {
         None
     }
 
+    /// Black Ops' Private Match entry (`live_flyout`) runs
+    /// `default_xboxlive.cfg` (which runs `default_mp_gametypes.cfg`) and
+    /// `dvar_defaults.cfg`, and a private party then runs
+    /// `default_private.cfg`; they set the game settings the scripts read
+    /// (`scr_game_perks`, …).
+    fn front_end_configs(&self, gametype: &str) -> &'static [&'static str] {
+        if multiplayer(gametype) {
+            &[
+                "default_xboxlive.cfg",
+                "dvar_defaults.cfg",
+                "default_private.cfg",
+            ]
+        } else {
+            &[]
+        }
+    }
+
     fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
@@ -298,6 +317,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
         hurt_calls_back: true,
         sets_view_height: false,
         revive_restores_health: true,
+        perk_bit: None,
         unrun: None,
     },
     // Solo game over: every client is told the level failed, and a wall-clock
@@ -425,10 +445,15 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     movement: Rule::Known(MovementRules::Game(&movement::MULTIPLAYER)),
     every_player_downs: Rule::Known(false),
     downed: game_api::DownedRules {
+        // Black Ops' damage downs a lethally hurt player who holds
+        // `specialty_pistoldeath` (Second Chance), is out of water and not
+        // down already, and calls the last stand callback; hurt again, they
+        // die.
+        perk_bit: Some(movement::PISTOL_DEATH),
         unrun: Some(unknown!(
             "t5.mp.second_chance",
-            "a downed multiplayer player (Second Chance) is briefly immune and dies when hurt, by the runtime's last stand",
-            "Black Ops' multiplayer last stand from BlackOpsMP.exe"
+            "going down in multiplayer does not drop a deployed weapon or reset the weapon state as Black Ops does, and its 500 ms timer is taken as damage immunity",
+            "the rest of Black Ops' multiplayer last stand entry (BlackOpsMP.exe)"
         )),
         ..game_api::DownedRules::BRIEFLY_IMMUNE
     },
@@ -452,6 +477,8 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     // the server's dvars (the scripts' limits, `ui_*`); other machines' do not.
     menu_dvars_reach_server: true,
     runtime_class_slots: false,
+    viewmodel: Some(viewmodel::MP_VIEWMODEL),
+    client_fire: Some(fire_sound::MP_CLIENT_FIRE),
     ..ZOMBIE_MODE
 };
 

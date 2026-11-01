@@ -53,6 +53,11 @@ pub const SPRINT_RECHARGE_PAUSE: f32 = 0.0;
 pub const SPRINT_FORWARD_MINIMUM: i32 = 105;
 pub const SPRINT_UNLIMITED: bool = false;
 pub const PERK_SPRINT_MULTIPLIER: f32 = 2.0;
+/// The multiplayer executable's perk dvars its movement reads.
+pub const PERK_SPRINT_RECOVERY_MULTIPLIER: f32 = 0.600000024;
+pub const PERK_MANTLE_REDUCTION: f32 = 0.5;
+pub const PERK_WEAP_SWITCH_MULTIPLIER: f32 = 0.5;
+pub const PERK_WEAP_MELEE_MULTIPLIER: f32 = 0.5;
 pub const VEHICLE_PERK_BOOST_DURATION: f32 = 0.74;
 
 pub const FALL_DAMAGE_MIN_HEIGHT: f32 = 128.0;

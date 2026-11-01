@@ -261,7 +261,7 @@ pub(crate) fn cmd_scale_walk<W: MoveWorld>(pm: &mut Pm<'_, W>, cmd: &UserCmd) ->
             }
         }
     }
-    if ps.perks & crate::perks::ENDURANCE != 0 {
+    if pm.zombiemode && ps.perks & crate::perks::ENDURANCE != 0 {
         scale *= tuning::ENDURANCE_SPEED_SCALE;
     }
     if ps.weapon != 0 {

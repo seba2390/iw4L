@@ -78,6 +78,10 @@ pub(crate) struct T5HudState<'a> {
     /// the weapon info was last shown.
     pub weapon_info: Option<WeaponInfoFrame<'a>>,
     pub compass: Option<T5Compass>,
+    /// The location selector while it is open.
+    pub selector: Option<T5Selector>,
+    /// The visibility bits the scripts set (UI and match flags).
+    pub ui_flags: u32,
 }
 
 /// The game's compass for a frame: its rules, where its map lies, the map's
@@ -89,6 +93,28 @@ pub(crate) struct T5Compass {
     pub material: String,
     pub origin: [f32; 2],
     pub yaw: f32,
+    pub radar: Option<T5CompassRadar>,
+}
+
+/// Black Ops' location selector for a frame: its material, radius (a share
+/// of the map's height), type, the cursor and direction, and the mortar
+/// strikes placed.
+pub(crate) struct T5Selector {
+    pub material: String,
+    pub radius: f32,
+    pub kind: u8,
+    pub at: [f32; 2],
+    pub direction: [f32; 2],
+    pub points: [Option<[f32; 2]>; 3],
+}
+
+/// The compass radar's draws for a frame.
+pub(crate) struct T5CompassRadar {
+    pub rules: &'static game_api::hud::CompassRadarRules,
+    /// An enemy counter-spy plane is up.
+    pub jammed: bool,
+    pub pings: Vec<game_api::hud::CompassPing>,
+    pub line: Option<game_api::hud::CompassRadarLine>,
 }
 
 /// The game's weapon info for a frame.
@@ -555,6 +581,9 @@ impl ExprHost for T5HudHost<'_, '_> {
             team: self.state.team,
             scoreboard: self.state.scoreboard,
             in_killcam: self.state.in_killcam,
+            ui_flags: self.state.ui_flags,
+            dvar: &|name| self.state.dvars.float(name),
+            selecting_location: self.state.selector.is_some(),
         };
         rule(bit, &view)
             .map(i32::from)
@@ -1297,6 +1326,40 @@ fn paint_owner(
         {
             paint_compass_player(state, &args, frame)
         }
+        n if state
+            .compass
+            .as_ref()
+            .and_then(|c| c.radar.as_ref())
+            .is_some_and(|r| r.rules.enemies_owner_draw == n) =>
+        {
+            paint_compass_enemies(state, &args, frame)
+        }
+        n if state
+            .compass
+            .as_ref()
+            .and_then(|c| c.radar.as_ref())
+            .is_some_and(|r| r.rules.line_owner_draw == n) =>
+        {
+            paint_compass_radar_line(state, &args, frame)
+        }
+        n if state
+            .compass
+            .as_ref()
+            .and_then(|c| c.radar.as_ref())
+            .is_some_and(|r| r.rules.static_owner_draw == n) =>
+        {
+            match state.compass.as_ref().and_then(|c| c.radar.as_ref()) {
+                Some(radar) if radar.jammed => match background_key(&args.item.background) {
+                    Some((_, material)) => {
+                        paint_compass_map_material(state, &args, material, false, frame)
+                    }
+                    None => OwnerDrawPaint::Gap(ChromeGapKind::MaterialExp),
+                },
+                _ => OwnerDrawPaint::Painted,
+            }
+        }
+        FULL_MAP_MAP => paint_full_map(state, &args, frame),
+        FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
             None => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
@@ -1339,6 +1402,21 @@ fn paint_compass_map(
     let Some(compass) = state.compass.as_ref() else {
         return OwnerDrawPaint::Painted;
     };
+    paint_compass_map_material(state, args, compass.material.clone(), true, frame)
+}
+
+/// A material laid over the compass like its map, turned with the view
+/// when `turns` and `compassRotation` is set.
+fn paint_compass_map_material(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    material: String,
+    turns: bool,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
     let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
         return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
     };
@@ -1360,7 +1438,7 @@ fn paint_compass_map(
     } else {
         (max_range / width * 0.5, 1.0, width / height)
     };
-    let deg = if rotation {
+    let deg = if rotation && turns {
         -(compass.yaw - compass.north_yaw)
     } else {
         0.0
@@ -1388,7 +1466,7 @@ fn paint_compass_map(
         s1: 1.0,
         t1: 1.0,
         color: args.color,
-        material: compass.material.clone(),
+        material,
         op: Draw2dOp::RotateSt {
             center_s,
             center_t,
@@ -1448,6 +1526,331 @@ fn paint_compass_player(
         args.color,
         frame,
     );
+    OwnerDrawPaint::Painted
+}
+
+/// Whether Black Ops paints a menu by its visibility masks: every bit of
+/// `show` set and none outside `allowed`. A bit the client cannot answer is
+/// taken as clear, and its unknown's id returned.
+fn menu_bits_shown(
+    host: &T5HudHost<'_, '_>,
+    show: u64,
+    allowed: u64,
+) -> (bool, Option<&'static str>) {
+    let mut unknown = None;
+    let mut shown = true;
+    for bit in 0..64 {
+        let required = show & (1 << bit) != 0;
+        let forbidden = allowed & (1 << bit) == 0;
+        if !required && !forbidden {
+            continue;
+        }
+        let set = match host.visibility_bit(bit) {
+            Ok(set) => set != 0,
+            Err(ExprError::Unknown(id)) => {
+                unknown.get_or_insert(id);
+                false
+            }
+            Err(_) => false,
+        };
+        if (required && !set) || (forbidden && set) {
+            shown = false;
+        }
+    }
+    (shown, unknown)
+}
+
+/// The full map's owner draws: the map and the location selector.
+const FULL_MAP_MAP: i32 = 181;
+const FULL_MAP_LOCATOR: i32 = 186;
+
+/// The full map's rect: the item's, moved by the menu's origin (the x and
+/// y the menu paint hands the full map's owner draws), narrowed to the
+/// map's aspect and centred, then inset by `cg_hudMapBorderWidth` (at most
+/// a quarter of a side).
+fn full_map_rect(
+    state: &T5HudState<'_>,
+    compass: &T5Compass,
+    args: &OwnerDrawArgs<'_>,
+) -> Option<[f32; 4]> {
+    let [map_w, map_h] = compass.frame.size;
+    let mut r = args.rect;
+    r.x += args.menu.rect.x;
+    r.y += args.menu.rect.y;
+    if r.w <= 0.0 || r.h <= 0.0 || map_w <= 0.0 || map_h <= 0.0 {
+        return None;
+    }
+    let map_aspect = map_w / map_h;
+    let rect_aspect = r.w / r.h;
+    let [mut x, mut y, mut w, mut h] = if map_aspect <= rect_aspect {
+        let w = map_aspect / rect_aspect * r.w;
+        [r.w * 0.5 + r.x - w * 0.5, r.y, w, r.h]
+    } else {
+        let h = rect_aspect / map_aspect * r.h;
+        [r.x, r.h * 0.5 + r.y - h * 0.5, r.w, h]
+    };
+    let border = compass_dvar(state, "cg_hudMapBorderWidth", 2.0)
+        .min(w * 0.25)
+        .min(h * 0.25);
+    x += border;
+    y += border;
+    w -= border * 2.0;
+    h -= border * 2.0;
+    Some([x, y, w, h])
+}
+
+/// The full map: the compass's map material across the fitted rect.
+fn paint_full_map(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = full_map_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    push_pic_at(
+        args,
+        namespace,
+        compass.material.clone(),
+        x,
+        y,
+        w,
+        h,
+        args.color,
+        frame,
+    );
+    OwnerDrawPaint::Painted
+}
+
+/// The location selector on the full map: the mortar strikes placed (a
+/// mortar selector), then the selector at the cursor, as wide as the
+/// map's height times its radius times 0.04, turned to its direction.
+fn paint_locator(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let (Some(compass), Some(selector)) = (state.compass.as_ref(), state.selector.as_ref()) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = full_map_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    if selector.radius <= 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let map_h = compass.frame.size[1];
+    let size = if map_h <= 0.0 {
+        selector.radius * 250.0
+    } else {
+        map_h * selector.radius * 0.04
+    };
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    let place = |at: [f32; 2], turn: f32, frame: &mut ChromeFrame| {
+        let applied = args.surface.apply_rect(
+            at[0] * w + x - size * 0.5,
+            at[1] * h + y - size * 0.5,
+            size,
+            size,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: args.color,
+            material: selector.material.clone(),
+            op: Draw2dOp::RotatedPic { deg: turn },
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+    };
+    if selector.kind == 3 {
+        for point in selector.points.iter().flatten() {
+            place(*point, 0.0, frame);
+        }
+    }
+    let [dx, dy] = selector.direction;
+    let turn = if dx == 0.0 && dy == 0.0 {
+        0.0
+    } else {
+        dy.atan2(dx).to_degrees().rem_euclid(360.0)
+    };
+    place(selector.at, turn, frame);
+    OwnerDrawPaint::Painted
+}
+
+/// Where a world point falls on the compass, from the rect's centre, and
+/// whether it lay off the compass and was held at its edge.
+fn compass_offset(
+    compass: &T5Compass,
+    rotation: bool,
+    max_range: f32,
+    [w, h]: [f32; 2],
+    pos: [f32; 2],
+) -> ([f32; 2], bool) {
+    let forward = if rotation {
+        let (sin, cos) = compass.yaw.to_radians().sin_cos();
+        [cos, sin]
+    } else {
+        compass.frame.north
+    };
+    let scale = h / max_range;
+    let dx = (pos[0] - compass.origin[0]) * scale;
+    let dy = (pos[1] - compass.origin[1]) * scale;
+    let mut p = [
+        forward[1] * dx - forward[0] * dy,
+        -(forward[1] * dy) - forward[0] * dx,
+    ];
+    let mut clamped = false;
+    for (axis, half) in [(0, w * 0.5), (1, h * 0.5)] {
+        if p[axis].abs() > half {
+            let k = half / p[axis].abs();
+            p = [p[0] * k, p[1] * k];
+            clamped = true;
+        }
+    }
+    (p, clamped)
+}
+
+/// The enemies the radar shows: each icon `compassFriendlyWidth` by
+/// `compassFriendlyHeight` (scaled by `compassSize`) at its place, the
+/// satellite's turned to the enemy's heading.
+fn paint_compass_enemies(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(radar) = compass.radar.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let size = compass_dvar(state, "compassSize", compass.rules.size);
+    let icon_w = compass_dvar(state, "compassFriendlyWidth", 18.75) * size;
+    let icon_h = compass_dvar(state, "compassFriendlyHeight", 18.75) * size;
+    let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    let clamp_icons = compass_dvar(state, "compassClampIcons", 1.0) != 0.0;
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    for ping in &radar.pings {
+        let ([dx, dy], clamped) = compass_offset(compass, rotation, max_range, [w, h], ping.pos);
+        if clamped && !(ping.clamps && clamp_icons) {
+            continue;
+        }
+        let [r, g, b, _] = args.color;
+        let applied = args.surface.apply_rect(
+            x + w * 0.5 - icon_w * 0.5 + dx,
+            y + h * 0.5 - icon_h * 0.5 + dy,
+            icon_w,
+            icon_h,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: [r, g, b, ping.alpha],
+            material: ping.material.into(),
+            op: match ping.turn {
+                Some(deg) => Draw2dOp::RotatedPic { deg },
+                None => Draw2dOp::StretchPic,
+            },
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+    }
+    OwnerDrawPaint::Painted
+}
+
+/// The spy plane's sweep line across the compass's map.
+fn paint_compass_radar_line(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(line) = compass.radar.as_ref().and_then(|r| r.line) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let applied = args.surface.apply_rect(
+        x,
+        y,
+        w,
+        h,
+        args.rect.horz_align as i32,
+        args.rect.vert_align as i32,
+    );
+    frame.list.cmds.push(Draw2dCmd {
+        material_namespace: args
+            .assets
+            .catalog
+            .and_then(|c| c.namespace)
+            .unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+        x: applied.x,
+        y: applied.y,
+        w: applied.w,
+        h: applied.h,
+        s0: 0.0,
+        t0: 0.0,
+        s1: 1.0,
+        t1: 1.0,
+        color: args.color,
+        material: line.material.into(),
+        op: Draw2dOp::RotateSt {
+            center_s: line.center_s,
+            center_t: 0.0,
+            radius_st: line.radius_st,
+            scale_final_s: 1.0,
+            scale_final_t: 1.0,
+            deg: line.turn,
+        },
+        provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+        layer: 1,
+    });
     OwnerDrawPaint::Painted
 }
 
@@ -1764,6 +2167,15 @@ pub(crate) fn paint(
         sorted.insert(idx, (hash, menu));
     }
     for (_, menu) in sorted {
+        if let Some([show, allowed]) = menu.visibility_bits.filter(|_| multiplayer) {
+            let (shown, unknown) = menu_bits_shown(&host, show, allowed);
+            if let Some(id) = unknown {
+                errors.push(format!("{} visibility bits: {id}", menu.name));
+            }
+            if !shown {
+                continue;
+            }
+        }
         let mut hook =
             |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| paint_owner(state, args, frame);
         let frame = execute_chrome_menu_ex(

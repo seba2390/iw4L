@@ -6,6 +6,7 @@ extern crate alloc;
 mod asset_type;
 pub mod clipmap_read;
 mod content;
+mod ddl;
 mod envelope;
 mod fx;
 pub mod light_grid;
@@ -31,6 +32,7 @@ pub use content::{
     AssetSink, AssetTable, ScriptStrings, XASSET_ENTRY_LEN, XASSET_LIST_LEN, load_zone,
     load_zone_observed, open_asset_table,
 };
+pub use ddl::{DdlDefRead, DdlEnumRead, DdlMemberRead, DdlRead, DdlStructRead};
 pub use envelope::{
     FILE_PREAMBLE_LEN, FileHeader, FileHeaderError, MAGIC_SIGNED, MAGIC_UNSIGNED, Signing,
     ZONE_VERSION_PC, parse_file_header, split_file,

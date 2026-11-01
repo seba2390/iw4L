@@ -42,6 +42,12 @@ pub struct ClientSnapshotMeta {
     pub zombie_stats: [i32; 3],
     pub radar: RadarMode,
     pub radar_blocked: bool,
+    /// Black Ops' player state radar levels: spy plane, satellite.
+    pub radar_levels: [i32; 2],
+    /// The HUD visibility bits Black Ops' scripts set: the player's UI flags
+    /// (bits 0–3, `setClientUIVisibilityFlag`) and the match flags (4–16,
+    /// `setMatchFlag`).
+    pub ui_flags: u32,
     pub remote_missile: Option<RemoteMissile>,
     pub linked_weapon_view: Option<LinkedWeaponView>,
 

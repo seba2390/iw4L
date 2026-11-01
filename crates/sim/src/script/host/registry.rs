@@ -78,6 +78,7 @@ impl NativeRegistry {
             natives::t5_client::register(registry);
             natives::t5_viewmodel::register_client(registry);
             natives::t5_perks::register_client(registry);
+            natives::t5_scrambler::register_client(registry);
         })
     }
 
@@ -173,10 +174,17 @@ impl NativeRegistry {
     /// Black Ops multiplayer's natives where its server's differ from the
     /// zombies server's.
     pub fn with_black_ops_multiplayer(mut self) -> Self {
+        natives::t5_actionslot::register(&mut self);
         natives::t5_classes::register(&mut self);
+        natives::t5_location::register(&mut self);
+        natives::t5_napalm::register(&mut self);
         natives::t5_objectives::register(&mut self);
         natives::t5_obituary::register(&mut self);
         natives::t5_perks::register(&mut self);
+        natives::t5_radar::register(&mut self);
+        natives::t5_stats::register(&mut self);
+        natives::t5_sprint::register(&mut self);
+        natives::t5_targets::register(&mut self);
         self
     }
 }

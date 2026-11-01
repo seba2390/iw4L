@@ -56,16 +56,23 @@ Each open section names the issue that works it.
       `CodeCallback_StartGameType` (#644, #653, #654). The wager gametypes
       have no script program and are refused at load (`gsc: refused …
       stage=program unknown=t5.scripts.mp_gametypes`) (#655).
-- [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): a downed
-      multiplayer player (Second Chance) is briefly immune and dies when
-      hurt, by the runtime's last stand. *Needs:* Black Ops' multiplayer
-      last stand from `BlackOpsMP.exe` (#650).
+- [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): going down
+      (Second Chance) does not drop a deployed weapon or reset the weapon
+      state as Black Ops' damage does, and the 500 ms timer it starts is
+      taken as the runtime's damage immunity; its stance animation event
+      is the zombies movement's (#650).
 - [ ] **I** The engine dvars a multiplayer match starts with
       (`MULTIPLAYER_ENGINE_DVARS`: `zombiemode` 0, `ui_multiplayer` 1,
       `systemlink` 0, `onlinegame` 0, `cg_usingClientScripts` 1,
       `cg_mature` 1, `cg_blood` 1; a hosted match adds `onlinegame` 1 and
       `xblive_privatematch` 1) are taken from the zombies list and the
       menus' rows; `BlackOpsMP.exe`'s registrations are not read yet.
+      Before them the match runs the `set` lines of the configs Black
+      Ops' Private Match entry runs (`default_xboxlive.cfg`, which runs
+      `default_mp_gametypes.cfg`, `dvar_defaults.cfg`,
+      `default_private.cfg`); their `reset`, `restoreDvars`,
+      `resetCustomGametype` and `if ( … )` lines (client stats, menus)
+      are not run, and the front end itself is #664.
 - [ ] **G** Spawn selection: the spawn influencer builtins
       (`addsphereinfluencer`, `addcylinderinfluencer`, …) and
       `_spawning.gsc`'s scoring have not run.
@@ -136,25 +143,50 @@ Each open section names the issue that works it.
       tactical insertion, camera spike, jammer, motion sensor;
       `makegrenadedud` is refused.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
-      movement and weapon code tests (`specialty_bulletaccuracy`,
-      `_bulletpenetration`, `_fallheight`, `_fastmantle`, `_fastreload`,
-      `_fastweaponswitch`, `_grenadepulldeath`, `_longersprint`,
-      `_pin_back`, `_quieter`, `_scavenger`, `_shellshock`,
-      `_sprintrecovery`, `_twogrenades`, `_unlimitedsprint`, found by their
-      bit tests in `BlackOpsMP.exe`; others may be read elsewhere) are kept
-      but have no effect in the runtime's movement and weapons; setting one
-      logs the gap. The scripts' own perk rules (`hasperk` in the gametype,
-      damage and killstreak scripts) apply (#650).
+      code tests that have no effect here yet (setting one logs the gap):
+      the item pickup's `specialty_scavenger` (scavenger packs) and
+      `_twogrenades` (a second grenade picked up) (#720);
+      `_grenadepulldeath`, `_pin_back`, `_loudenemies`,
+      `_nottargetedbyai`, `_noname`, `_quieter` (footsteps the AI hears);
+      its client's `_reconnaissance`, `_showenemyequipment`,
+      `_bulletflinch`, `_gas_mask`. `specialty_fastads` divides the
+      aim-down-sight lerp by `perk_weapAdsMultiplier` except for two
+      weapons the engine looks up, which are not identified, so it is not
+      applied. Lightweight's `specialty_movefaster` is tested only by
+      vehicle code (#660). The scripts' own perk rules apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
-      match, `onlinegame` 1). `getdstat` and `setdstat` keep a plain map of
-      paths, not Black Ops' DDL buffer: the `ddl` asset is walked but not
-      captured, no per-player stats buffer is kept, saved per profile or
-      sent to the host, and `ui_mp`'s create-a-class menus do not write
-      it, so a custom class has no items. Offline (`onlinegame` 0) the
-      scripts read `GetLoadoutItemFromProfile`, which is 0 on PC as in
-      Black Ops. `calcweaponoptions (class, slot)` still reads the
-      runtime's own class slots for the camo.
+      match, `onlinegame` 1). The listen host's own profile keeps Black
+      Ops' two stats buffers (`profile_stats.dat`) and its client receives
+      them when it first reads one; a profile with none, or an older
+      `STATS_VERSION` than `stat_version` (10), gets Black Ops' stats
+      reset (`mp/stats_init.cfg`, Combat Training forced on). Open: a
+      remote client's stats are never sent to the host (two-machine play
+      sends none, #729), so its integer stats read 0 and `setdstat`
+      writes nothing; editing a class (`ui_mp`'s create-a-class commands)
+      is #729. Offline (`onlinegame` 0) the scripts read
+      `GetLoadoutItemFromProfile`, which is 0 on PC as in Black Ops.
+      `calcweaponoptions (class, slot)` still reads the runtime's own
+      class slots for the camo.
+- [ ] **I** Black Ops' host reads a player's two stats files from its
+      online storage, and the reset's upload fills them; which client
+      buffer the reset's upload lands in on the server's side is not
+      read, so a fresh profile's server buffer starts empty and the
+      reset's writes (all to the client buffer, Combat Training being
+      forced on) reach only the client buffer.
+- [ ] **I** `unknown!t5.mp.stats_init_command`,
+      `unknown!t5.mp.stats_init_condition`: the stats reset runs
+      `mp/stats_init.cfg`'s and `mp/playerstats_reset.cfg`'s commands
+      (`equipdefaultclass`, `equipdefaultglobalitems`, `statsetbyname`,
+      `statwriteddl`, `if ( dvarbool( … ) )`); any other command or
+      condition is logged and skipped. The class names
+      (`setFromLocString customclassN …`) and `clanName` are the client's
+      dvars and are not set. `equipdefaultclass`'s swap of a perk for its
+      unlocked Pro version is not applied (the reset unlocks Pro perks
+      only after it).
+- [ ] **I** The bytes `setdstat` changed are recorded per client, as
+      Black Ops records them, but nothing sends them back to the client
+      or saves them (no stats upload in a private match here).
 - [ ] **G** The custom game mode class table that
       `getcustomclassloadoutitem` and `getcustomclassmodifier` read is
       never filled (no custom game settings reach the host); it reads as
@@ -163,12 +195,57 @@ Each open section names the issue that works it.
 
 ## Killstreaks (#656–#662)
 
-- [ ] **G** Killstreak earning and the dpad (`_hardpoints.gsc`,
-      `_killstreakrules.gsc`); the action slot button builtins are refused.
-- [ ] **G** `spawnplane` is not implemented: spy plane, counter-spy plane,
-      Blackbird, napalm and Rolling Thunder planes.
-- [ ] **G** `launchbomb`, `spawnnapalmgroundflame`, `spawntimedfx` are
-      refused; the location selector has not run.
+- [ ] **G** The action slot button builtins
+      (`actionSlotOneButtonPressed` … `Four`) are refused: they read a
+      client button word whose layout is not matched to the runtime's
+      commands yet; only the Sentry Gun / SAM placement (#659) and the
+      camera spike read them.
+- [ ] **G** `t5.mp.target_offset`: `Target_Set`'s aim offset is read but not
+      kept, and its config string (offset, materials, flags) is not sent:
+      nothing that aims at a target or draws one is ported;
+      `Target_IsInCircle` (the lock-on's screen test), `Target_SetShader`
+      and the reticle lock-on builtins are refused or missing.
+- [ ] **V** `t5.hud.compass_fire_pings`: an enemy's unsuppressed shots are
+      not pinged on the compass (`compassping_enemyfiring`,
+      `compassSoundPingFadeTime`); Black Ops pings them from the client's
+      weapon-fire events for teammates, and for enemies while a spy plane
+      or satellite is up or a client flag is clear (not identified).
+- [ ] **V** `t5.hud.compass_jammers`: the local player's Jammers
+      (`compass_scrambler_large`, owner draw 325) are kept from
+      `addFriendlyScrambler` but not drawn; the nearest enemy Jammer
+      (`setNearestEnemyScrambler`) is not kept
+      (`t5.csc.nearest_enemy_scrambler`). Jamming fades the enemy icons.
+- [ ] **V** The compass radar follows every connected player the runtime's
+      snapshot carries; Black Ops' client sees only the players in its
+      snapshot plus one other client's packed position a frame, so an
+      enemy out of view pings later there than here. Players riding a
+      vehicle are pinged at their own place, not hidden. The counter-spy
+      plane's static (`compass_static`) is drawn as the runtime draws a HUD
+      material, laid like the map; its look in Black Ops (an animated noise)
+      is not compared.
+- [ ] **G** `spawntimedfx` is refused (the artillery script's).
+- [ ] **V** `t5.mp.strike_visuals`: the client's Rolling Thunder bombs
+      (`_airstrike.csc`'s `callStrike_bomb`) stop at the client's
+      `bulletTrace`, which the client scripts cannot run (no collision world
+      on the client VM), and the planes' compass icons (`setCompassIcon`)
+      are not set; an entity's burnt look (`startTanning`, its entity flag
+      0x200000) is kept but not drawn.
+- [ ] **G** `t5.weapons.missile` (multiplayer): a missile `launchbomb` spawns
+      flies and strikes by the runtime's Black Ops missile think, which is
+      the zombies executable's; BlackOpsMP.exe's own think is not compared.
+      A player's rocket still spawns by the zombies rules (straight, its
+      speed added to the shooter's), where BlackOpsMP.exe's spawn falls
+      under gravity with the velocity its caller gives (#738).
+- [ ] **V** `t5.hud.location_selector`: the location selector's full map
+      draws the map and the selector (and the mortar strikes placed); its
+      player arrow, friendlies, enemies, vehicles, grid and radar effects
+      (owner draws 175–190, 313, 318, 320, 326, 327, 333, 360) are not
+      drawn. The full map's owner draws are moved by the menu's origin,
+      which the menu's layout shows (its map then sits centred with its
+      bars) but the menu paint's call was not read. Black Ops cancels the
+      selector on any key not bound to `+attack`, `weapnext`, `+reload` or
+      `+sprint`; the runtime reads the keys by the commands they press, so
+      a movement key does not cancel it and `weapnext` does nothing.
 - [ ] **G** Carried turrets (`carryturret`, `stopcarryturret`,
       `canplayerplaceturret`, `setturretcarried`, `setturrettype`) are
       refused; `spawnturret`, `setturrettargetent`, `setturrettargetvec`,
@@ -194,7 +271,7 @@ Each open section names the issue that works it.
       that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
       (the scope and guided-missile filters, #645); `animateui` (menu item
       animations, #651); `setlocalradarenabled`, `setlocalradarposition`
-      and the scrambler methods (radar, jammer, #649, #657); the extra
+      (the motion sensor, #649); the extra
       camera builtins (camera spike, #649); the vehicle queries (#660).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
@@ -213,23 +290,26 @@ Each open section names the issue that works it.
       run on Black Ops' own functions (`team`, `otherteam`, `timeleft`,
       `secondsascountdown`, `scoreatrank`, `select`, `min`, `max`,
       `toupper`, `getlocalclientnum`, `isvisibilitybitset`); an item with
-      animation states paints its loaded state's colours. Open (#651):
-      the menus of `hud_hardcore` that only a killcam, the location
-      selector, the camera spike or a guided missile should show
-      (`killcam`, `killcam_*_text`, `spike_cam`, `fullscreenmap`,
-      `missile_fuel`) paint all the time: their menus and items carry no
-      visibility expression, owner-draw flag or hidden window flag, and the
-      client's rule that hides them is not found in `BlackOpsMP.exe` yet.
+      animation states paints its loaded state's colours. A menu paints
+      only while Black Ops' visibility masks allow it (every bit of its
+      show mask set, none outside its allowed mask), so the killcam,
+      location selector, camera spike and guided missile menus no longer
+      paint all the time. Open (#651): `t5.hud.mp_visibility_bits` — the
+      bits not answered yet (a UI menu open, scoped aim, the spike and
+      guided missile cameras, the demo player's own states, …) are taken as
+      clear for a menu's masks; the menu window's static flags that hide it
+      while the screen flashes or a UI menu is open are not applied.
       Hit markers, score popups, medals and the end-of-match scoreboard
       are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
       `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
       wager functions are not answered, so the items they gate do not draw.
-- [ ] **V** The compass (`compass_old`) draws its map and the player's
-      arrow. Not drawn yet: friendlies (owner draw 158), objectives (152),
-      enemies (170, radar with #657), the grid (317, 319), the killstreak
-      icons (helicopters, planes, dogs, turrets, tanks, guided missiles,
-      artillery: 146–156) and the scrambler, static, flicker, radar and
-      fake-fire effects (312, 325, 328, 332, 376). The map's frame is
+- [ ] **V** The compass (`compass_old`) draws its map, the player's
+      arrow, the enemies the radar shows (170), the spy plane's sweep line
+      (332) and the counter-spy plane's static (328). Not drawn yet:
+      friendlies (owner draw 158), objectives (152), the grid (317, 319),
+      the killstreak icons (helicopters, planes, dogs, turrets, tanks,
+      guided missiles, artillery: 146–156) and the Jammer, flicker and
+      fake-fire effects (325, 312, 376). The map's frame is
       rebuilt on the client from the map's corner entities and `northyaw`
       as `_compass.gsc`'s `setupMiniMap` and `setminimap` compute it;
       Black Ops sends it (and the map's material) in a config string. The
@@ -255,16 +335,19 @@ Each open section names the issue that works it.
       `CGAME_KILLEDBY`, the team-kill strings, rank icon and clan tag),
       and a Second Chance revive (`syrette_mp`) does not centre-print
       `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED`.
-- [ ] **V** `t5.hud.visibility_bits` (`GameCodeHud::visibility_bit`):
-      Black Ops' client rebuilds 64 HUD visibility bits a frame; the team
-      bits (38–41), the scoreboard (44), the popups' bit (45), the
-      location selector (22, never open here), demo playback (20, never in
-      a match) and the player-flag bits (25, 47, 48) are answered. The
-      script UI flags (0–3), the vehicle, remote-view and guided-missile
-      bits and the rest are not, and bit 45 does not test the scoped sniper
-      view that hides popups.
-- [ ] **V** `t5.hud.killcam_visibility`: during a killcam the killcam
-      bits (4, 5) and the popups' bit are not answered (#667).
+- [ ] **V** `t5.hud.mp_visibility_bits` (`GameCodeHud::visibility_bit`):
+      Black Ops' client rebuilds 64 HUD visibility bits a frame; the script
+      UI flags (0–3), the match flags (4–16), demo playback (19, 20, 31,
+      32: never in a match; 37 is never set), the killcam (21), the
+      location selector (22, 30: never open yet, #658), the player-flag
+      bits (25, 47, 48, and 28 when the player flags set it), the vehicle
+      view (27), the teams (38–41), the compass (42), the objective icon
+      and obituary dvars (43, 46), the scoreboard (44) and the popups' bit
+      (45) are answered. The rest are not (a UI menu open 24, scoped aim
+      33, the camera spike and guided missile 28/34/50, the flash 23, …),
+      and bit 45 does not test the scoped sniper view that hides popups.
+- [ ] **V** `t5.hud.killcam_visibility`: during a killcam the popups' bit
+      (45) is not answered (#667).
 - [ ] **V** The scripts' class menu (`changeclass`, from `ui_mp`) opens on
       connect and its responses (`custom1`…, the presets) reach the
       scripts' `menuresponse`, but most of its items do not paint: the
@@ -303,6 +386,119 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** The Napalm Strike and Rolling Thunder stopped at `SpawnPlane`
+      (missing) and the napalm's ground flames (`spawnNapalmGroundFlame`,
+      refused); `startTanning` and `stopBurning` faulted on a corpse. They are
+      BlackOpsMP.exe's: `SpawnPlane(owner, classname, origin, [flags])`
+      spawns the classname and makes it a plane whose entity state names the
+      owner ("Owner entity is not a player", "unable to spawn \"%s\"
+      entity"), which the client scripts see as a `plane` with that owner;
+      `spawnNapalmGroundFlame(origin, fx, angles, [seconds])` turns the
+      entity into the effect at the whole-unit origin for 10 seconds (or
+      the time given) and frees it; `startTanning` / `stopBurning` set and
+      clear any entity's burnt flag. Both strikes kill where they are called
+      (#658).
+
+- [x] **G** `launchbomb` was refused. It is BlackOpsMP.exe's: a player
+      only ("LaunchBomb: entity must be a player entity"), three arguments
+      ("illegal call to LaunchBomb(<weapon>, <position>, <velocity>)"), a
+      known weapon ("Invalid weapon name %s") of a bullet, projectile, gas
+      or bomb type ("LaunchBomb only support bullet, bomb, gas and
+      projectile weapons"); the missile spawns at the position falling under
+      `bg_gravity` with the velocity (cut to whole units), pointed along it,
+      classname `rocket`, drawn once clear of its owner. `bg_gravity` (800)
+      is now set for multiplayer scripts, which aim the mortar by it
+      (#738).
+
+- [x] **G** The location selector did not open:
+      `beginLocation…Selection` were accepted and ignored. They now open
+      Black Ops' own (`natives/t5_location.rs`): the selector type
+      (generic, artillery, airstrike, mortar, napalm, comlink), its radius
+      as a share of the map's height in fifteenths (0.15 without one; "Radius
+      of location selector must be greater than zero"), and
+      `precacheLocationSelector`'s 15 materials. The client's
+      `fullscreenmap` shows while it is open (visibility bits 22 and 30); its
+      cursor moves by `cg_mapLocationSelectionCursorSpeed`, an airstrike's
+      or napalm's direction turns while `+attack` is held
+      (`cg_mapLocationSelectionRotationSpeed`) and confirms on release, any
+      other press confirms once, and the server gives the scripts
+      `confirm_location` with the place and the yaw (twice the byte, an
+      int) (#658).
+
+- [x] **V** Black Ops' multiplayer HUD menus all painted at once: the
+      menu's visibility masks (`menuDef_t` show bits and allowed bits,
+      checked by the client's HUD menu paint) were not read, so the killcam,
+      `fullscreenmap`, `spike_cam` and `missile_fuel` menus painted over the
+      match. The client visibility bits now also answer the script UI flags
+      (0–3), the match flags (`setMatchFlag`, 4–16, now Black Ops' own with
+      "GScr_SetMatchFlag: Couldn't find a matching bit for flag name : %s "),
+      the killcam (21), the vehicle view (27), the compass rule (42) and the
+      objective icon and obituary dvars (43, 46) (#651).
+
+- [x] **G** The spy plane, counter-spy plane and Blackbird had no effect:
+      `setTeamSpyplane` / `setTeamSatellite` kept only the last call, the
+      players' `hasSpyplane` / `hasSatellite` were not read, `Target_Set`
+      and `Target_Remove` were refused, `setClientUIVisibilityFlag` set
+      nothing and the client's scrambler methods were missing. Each team's
+      levels and the players' own now give every player its radar levels
+      each frame as Black Ops' frame end does; the compass sweeps for
+      enemies (`compassRadarUpdateTime`, `…FastTime` at level 2; Ghost
+      hides from it), fades their pings (`compassRadarPingFadeTime`), shows
+      them live with their heading under a satellite
+      (`compassping_enemydirectional`, `compassStaticImageUpdateTime`,
+      `compassSatellitePingFadeTime`), draws the sweep line, and hides the
+      enemies under an enemy counter-spy plane (`setEnemyGlobalScrambler`)
+      with the map's static over it (#657).
+
+- [x] **G** Killstreak earning and the dpad (`_hardpoints.gsc`,
+      `_killstreakrules.gsc`, `_killstreak_weapons.gsc`) run on Black Ops'
+      own scripts: a kill streak earns the profile's killstreak, its
+      weapon sits on dpad slot 4 (`setActionSlot`, now Black Ops' own),
+      the button raises it and the killstreak starts (#656).
+
+- [x] **G** `specialty_bulletpenetration` (Hardened) and
+      `specialty_shellshock` had no effect, and `shellshock` kept a
+      longer running shock as zombies' does. Bullets of a player with
+      Hardened go `perk_bulletPenetrationMultiplier` times as deep (and
+      the exit depth with them), and Black Ops multiplayer's `shellshock`
+      replaces the running shock and shortens it by
+      `perk_shellShockReduction` for a player with the perk (#650).
+
+- [x] **G** Second Chance never downed a Black Ops player: the runtime
+      tested Modern Warfare 2's perk bit. A lethally hurt player now goes
+      down as `BlackOpsMP.exe`'s damage decides: holding
+      `specialty_pistoldeath`, out of water and not down already; the
+      scripts' last stand runs, and the next lethal hit kills (#650).
+
+- [x] **G** Black Ops multiplayer's perks never reached its movement, and
+      its sprint ran on zombies' constants: `setSprintDuration` and
+      `setSprintCooldown` did nothing. The scripts' perk bits now fill the
+      player state's two perk words; sprint runs for the length and
+      recharges after the pause the scripts set per body type, and
+      `specialty_longersprint`, `_unlimitedsprint`, `_sprintrecovery`,
+      `_fallheight`, `_fastmantle`, `_fastreload`, `_fastweaponswitch`,
+      `_fastmeleerecovery` and `_bulletaccuracy` change it (the weapon
+      timers, the client's viewmodel rates, the hip spread and the
+      crosshair) as `BlackOpsMP.exe` does with its `perk_*` dvar
+      defaults; a Rapid Fire weapon fires at `perk_weapRateMultiplier`.
+      No perk was ever set: `scr_game_perks`, which the class script
+      tests, comes from the configs Black Ops' Private Match entry runs,
+      and those now run (#650).
+
+- [x] **G** No profile kept Black Ops' stats, so a custom class spawned
+      empty. The listen host's profile now keeps them, and a fresh
+      profile gets Black Ops' stats reset (`mp/stats_init.cfg`): each
+      custom class is filled from Black Ops' default classes as
+      `mp/statsTable.csv` lists them, and the killstreaks are the
+      default ones (#650).
+
+- [x] **G** `getdstat` and `setdstat` kept a plain map of paths. They now
+      walk Black Ops' own `ddl_mp/stats.ddl` (captured from
+      `code_post_gfx_mp`, newest version) over each client's two
+      0xa000-byte stats buffers with the executable's path rules, error
+      strings, version check, ranges, buffer choice by member permission
+      and Combat Training, and string and 64-bit forms (#650).
 
 - [x] **G** `getloadoutitemfromprofile` answered from the runtime's own
       class slots; it now answers 0 for every slot as Black Ops' PC

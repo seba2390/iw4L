@@ -311,6 +311,8 @@ pub struct ZoneTable {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BitLayout {
     pub name: String,
+    /// The layout's version number; 0 where the game keeps none.
+    pub version: u32,
     /// The buffer's size in bits.
     pub bits: u32,
     pub structs: Vec<BitStruct>,
@@ -327,6 +329,9 @@ pub struct BitStruct {
 /// A member: its size in bits (all of an array), its offset in bits, the
 /// game's type number, the struct it holds, the fraction bits of a fixed
 /// point number, its array length and the enum that names its indices.
+/// A layout that keeps them also gives the range a stored integer may take
+/// (`min` to `max`, stored less `min`) and who may write the member (the
+/// game's permission number); both are 0 where it does not.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BitMember {
     pub name: String,
@@ -337,6 +342,9 @@ pub struct BitMember {
     pub range: u32,
     pub array_size: i32,
     pub enum_index: i32,
+    pub min: u32,
+    pub max: u32,
+    pub permission: u32,
 }
 
 /// Where a game whose zones `asset_transport` opens itself keeps the compiled

@@ -1339,6 +1339,7 @@ fn capture_weapon_icons(
             {
                 layouts.push(asset_core::BitLayout {
                     name: ddl.name,
+                    version: def.version,
                     bits: def.structs.first().map_or(0, |r| r.size),
                     structs: def
                         .structs
@@ -1357,6 +1358,9 @@ fn capture_weapon_icons(
                                     range: m.range,
                                     array_size: m.array_size,
                                     enum_index: m.enum_index,
+                                    min: 0,
+                                    max: 0,
+                                    permission: 0,
                                 })
                                 .collect(),
                         })

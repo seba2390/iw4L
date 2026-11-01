@@ -7,6 +7,7 @@
 
 use crate::events::{anim, event};
 use crate::inventory::{self as inv, hand_clip, hand_clip_empty, hand_weapon};
+use crate::perks::mp;
 use crate::state::{buttons, e_flags, e_flags2, pm_flags, pm_type, weap_flags};
 use crate::{MoveWorld, Pm, Pml, tuning};
 
@@ -646,7 +647,7 @@ fn hold_breath<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
         && d.ads_overlay_reticle() != 0
         && d.weapon_class() != weapon_class::ITEM
         && pm.cmd.buttons.held(buttons::HOLD_BREATH)
-        && ps.perks & crate::perks::DEADSHOT == 0
+        && !(pm.zombiemode && ps.perks & crate::perks::DEADSHOT != 0)
     {
         if ps.hold_breath_timer == 0 {
             ps.weap_flags |= weap_flags::HOLD_BREATH;
@@ -804,6 +805,49 @@ fn floor_half(x: f32) -> f32 {
     if y < r { r - 1.0 } else { r }
 }
 
+const OFFHAND_SLOT_SPECIFIC_USE: i32 = 4;
+
+/// The multiplayer executable's weapon time step: `specialty_fastreload`
+/// while reloading, a Rapid Fire weapon while firing,
+/// `specialty_fastweaponswitch` while raising or dropping a weapon, and `specialty_fastmeleerecovery` at a melee's end each
+/// divide the frame's ms by their `perk_weap*Multiplier`; a weapon in the
+/// "Specific use" offhand slot switches at its own speed.
+fn mp_weapon_step(
+    ps: &crate::PlayerState,
+    d: &fastfile_t5::weapon_def::WeaponDefView<'_>,
+    s: i32,
+    msec: i32,
+    instant: i32,
+) -> i32 {
+    let ms = msec as f32;
+    if ws::is_reloading(s) && mp::has(ps, mp::FAST_RELOAD) {
+        if tuning::PERK_WEAP_RELOAD_MULTIPLIER == 0.0 {
+            instant
+        } else {
+            crate::math::round_nudged(ms / tuning::PERK_WEAP_RELOAD_MULTIPLIER + ms * 0.0)
+        }
+    } else if matches!(
+        s,
+        ws::FIRING | ws::RECHAMBERING | ws::RECHAMBER_END | ws::CONT_FIRE_LOOP
+    ) && d.rapid_fire()
+    {
+        if tuning::PERK_WEAP_RATE_MULTIPLIER == 0.0 {
+            instant
+        } else {
+            crate::math::round_nudged(ms / tuning::PERK_WEAP_RATE_MULTIPLIER)
+        }
+    } else if mp::has(ps, mp::FAST_WEAPON_SWITCH)
+        && (ws::RAISING..=ws::DROPPING_ALT).contains(&s)
+        && d.offhand_slot() != OFFHAND_SLOT_SPECIFIC_USE
+    {
+        crate::math::round_nudged(ms / tuning::PERK_WEAP_SWITCH_MULTIPLIER)
+    } else if s == ws::MELEE_END && mp::has(ps, mp::FAST_MELEE_RECOVERY) {
+        crate::math::round_nudged(ms / tuning::PERK_WEAP_MELEE_MULTIPLIER)
+    } else {
+        msec
+    }
+}
+
 /// Counts the hand's weapon time and delay down, faster with Speed Cola while
 /// reloading and with Double Tap while firing; a burst's end waits for
 /// `player_burstFireCooldown`. True when the delay ran out this frame.
@@ -818,7 +862,9 @@ fn weapon_timers<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) -> bool {
     let s = hand.state(ps);
     let perks = ps.perks;
     let instant = |ps: &crate::PlayerState| hand.delay(ps).max(hand.time(ps));
-    let step = if ws::is_reloading(s) && perks & crate::perks::FAST_RELOAD != 0 {
+    let step = if !pm.zombiemode {
+        mp_weapon_step(ps, &d, s, pml.msec, instant(ps))
+    } else if ws::is_reloading(s) && perks & crate::perks::FAST_RELOAD != 0 {
         if tuning::PERK_WEAP_RELOAD_MULTIPLIER == 0.0 {
             instant(ps)
         } else {
@@ -1970,7 +2016,11 @@ fn sprint_loop<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 }
 
 fn sprint_drop<W: MoveWorld>(pm: &mut Pm<'_, W>) {
-    let t = def(pm, pm.ps.weapon).def.sprint_out_time();
+    let mut t = def(pm, pm.ps.weapon).def.sprint_out_time();
+    // Multiplayer's `specialty_sprintrecovery` brings the weapon up sooner.
+    if !pm.zombiemode && mp::has(pm.ps, mp::SPRINT_RECOVERY) {
+        t = (t as f32 * tuning::PERK_SPRINT_RECOVERY_MULTIPLIER) as i32;
+    }
     set_pose(pm.ps, ws::SPRINT_DROP, t);
     pose_anim(pm, weap_anim::SPRINT_OUT, weap_anim::SPRINT_EMPTY_OUT);
 }

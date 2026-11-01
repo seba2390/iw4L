@@ -854,6 +854,36 @@ pub trait PlayerMovement: Sync {
 
     fn clear_perks(&self, player: &mut MovePlayer);
 
+    /// The player holds the perk at `bit` of the game's own perk mask
+    /// (`set_perk_mask`).
+    fn has_perk_bit(&self, _player: &MovePlayer, _bit: u32) -> bool {
+        false
+    }
+
+    /// The player is in water (the game's water level is above 0).
+    fn in_water(&self, _player: &MovePlayer) -> bool {
+        false
+    }
+
+    /// Sets every perk at once from a game whose scripts keep the perks as
+    /// one bit each in the order of its perk table; false when the game's
+    /// movement keeps them otherwise.
+    fn set_perk_mask(&self, _player: &mut MovePlayer, _mask: u64) -> bool {
+        false
+    }
+
+    /// The sprint length and the exhausted sprint's recharge pause (ms) the
+    /// game's scripts set on the player; false when the game's movement
+    /// reads its own.
+    fn set_sprint_times(
+        &self,
+        _player: &mut MovePlayer,
+        _duration: Option<i32>,
+        _cooldown: Option<i32>,
+    ) -> bool {
+        false
+    }
+
     fn weapon_spin(&self, _player: &MovePlayer) -> f32 {
         0.0
     }
@@ -916,6 +946,20 @@ pub trait PlayerMovement: Sync {
         _world: &mut dyn crate::fire::FireWorld,
     ) -> Option<(i32, Vec<&'static Unknown>)> {
         None
+    }
+
+    /// Launches a weapon's missile from `origin` with `velocity`
+    /// (`launchbomb`): its entity number, or the game's refusal of the
+    /// weapon.
+    fn launch_bomb(
+        &self,
+        _owner: i32,
+        _weapon: u32,
+        _origin: [f32; 3],
+        _velocity: [f32; 3],
+        _world: &mut dyn crate::fire::FireWorld,
+    ) -> (Result<Option<i32>, &'static str>, Vec<&'static Unknown>) {
+        (Ok(None), Vec::new())
     }
 
     /// One frame of a missile the game spawned.

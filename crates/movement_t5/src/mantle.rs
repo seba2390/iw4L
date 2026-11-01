@@ -27,6 +27,8 @@ pub mod flag {
     pub const DONE: u32 = 0x100;
     /// A mounted weapon is set down on a ledge: no mantle is offered.
     pub const MOUNTED: u32 = 0x200;
+    /// Multiplayer's `specialty_fastmantle`: the climb runs short.
+    pub const FAST: u32 = 0x800;
 }
 
 /// The `PLAYER_MANTLE` animation tree, in Black Ops' order.
@@ -98,7 +100,10 @@ fn transition_of(ps: &PlayerState) -> (usize, usize, f32) {
 /// mantle does not go over).
 fn lengths<W: MoveWorld>(pm: &Pm<'_, W>, ps: &PlayerState) -> Option<(i32, i32)> {
     let (up, over, _) = transition_of(ps);
-    let up_len = pm.world.anim_length_ms(ANIMS[up])?;
+    let mut up_len = pm.world.anim_length_ms(ANIMS[up])?;
+    if !pm.zombiemode && ps.mantle_flags & flag::FAST != 0 {
+        up_len = (up_len as f32 * tuning::PERK_MANTLE_REDUCTION) as i32;
+    }
     let over_len = if ps.mantle_flags & flag::OVER != 0 {
         pm.world.anim_length_ms(ANIMS[over])?
     } else {
@@ -323,6 +328,9 @@ fn start<W: MoveWorld>(pm: &mut Pm<'_, W>, results: &Results) {
     ps.mantle_length = total;
     let end = results.end_pos;
     ps.origin = [end[0] - delta[0], end[1] - delta[1], end[2] - delta[2]];
+    if !pm.zombiemode && crate::perks::mp::has(ps, crate::perks::mp::FAST_MANTLE) {
+        ps.mantle_flags |= flag::FAST;
+    }
     ps.pm_flags |= pm_flags::MANTLE;
     pm.event(event::MANTLE, 0);
 }

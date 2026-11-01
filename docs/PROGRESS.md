@@ -256,10 +256,12 @@ Each milestone names its issues; open rules are in
   - [x] Domination, Headquarters and Capture the Flag (#653): on `mp_nuked` a flag capture, a captured enemy flag and a held HQ score on Black Ops' own scripts.
   - [x] Search and Destroy, Sabotage and Demolition (#654): on `mp_nuked` bombs are picked up and planted, a detonation wins an S&D round and the next round starts.
 - [ ] Wager matches (#655).
-- [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650).
+- [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650, #729, #734).
+  - [x] A custom class spawns with the profile's Black Ops stats (a fresh profile gets Black Ops' default classes), and the perks its movement, weapons and damage test apply, Second Chance among them (#650).
 - [ ] Killstreaks (#656).
-  - [ ] Spy Plane, Counter-Spy Plane and Blackbird (#657).
-  - [ ] Napalm Strike, Mortar Team and Rolling Thunder (#658).
+  - [x] Killstreaks are earned by kill streaks, sit on the dpad and raise their weapon on Black Ops' own scripts; each killstreak is its own issue (#656).
+  - [x] Spy Plane, Counter-Spy Plane and Blackbird (#657): the sweep pings enemies on the compass, the Blackbird shows them live with their heading, an enemy counter-spy plane hides them under static.
+  - [x] Napalm Strike, Mortar Team and Rolling Thunder (#658): Black Ops' location selector places them, the planes (`SpawnPlane`) and shells (`launchbomb`) strike there and kill, and napalm leaves its ground flames.
   - [ ] SAM Turret and Sentry Gun (#659).
   - [ ] RC-XD (#660).
   - [ ] Care Package, Attack Helicopter, Chopper Gunner and Gunship (#661).

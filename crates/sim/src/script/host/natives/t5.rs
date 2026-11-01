@@ -37,6 +37,9 @@ pub(crate) struct T5State {
     randomness: f32,
     base_weights: Vec<(i32, [f32; 3], f32, f32)>,
     pub(crate) client_flags: BTreeMap<u64, u16>,
+    /// `SpawnPlane`'s planes and the player each names as its owner in
+    /// its entity state.
+    pub(crate) planes: BTreeMap<u64, u64>,
     pub(crate) has_eyes: std::collections::BTreeSet<u64>,
     pub(crate) transmit_targetname: std::collections::BTreeSet<u64>,
     pub(crate) blood_impact: BTreeMap<u64, BloodImpact>,
@@ -52,7 +55,9 @@ pub(crate) struct T5State {
     score_multipliers: BTreeMap<u32, i32>,
     /// Entities taken out of player collision (`setplayercollision`).
     pub(crate) no_player_collision: std::collections::BTreeSet<u64>,
-    statuses: std::collections::BTreeSet<(u32, &'static str)>,
+    pub(crate) statuses: std::collections::BTreeSet<(u32, &'static str)>,
+    /// Entities whose `startTanning` flag is set (a burnt look).
+    pub(crate) tanned: std::collections::BTreeSet<u64>,
     client_systems: Vec<Arc<str>>,
     spawn_ids: BTreeMap<u32, i32>,
 }
@@ -102,7 +107,7 @@ const STATS_REFERENCE: usize = 4;
 const STATS_CLASSES: usize = 11;
 const STATS_SLOT: usize = 13;
 
-fn t5(world: &mut World) -> &mut T5State {
+pub(crate) fn t5(world: &mut World) -> &mut T5State {
     &mut world.resource_mut::<RoundScript>().into_inner().t5
 }
 
@@ -615,55 +620,7 @@ fn register_shellshock(registry: &mut NativeRegistry) {
         }
     });
     registry.register(Method, "shellshock", |world, receiver, args| {
-        let id = ClientId(player_id(world, receiver)?);
-        let name = string(args, 0)?;
-        let duration = shock_milliseconds(float(args, 1)?);
-        if !(0..=60_000).contains(&duration) {
-            return Err(format!(
-                "duration {} should be >= 0 and <= 60",
-                duration as f32 * 0.001
-            ));
-        }
-        let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
-        let mut frame = FrameWorld::from_world(world);
-        let Some(ps) = frame.player(id) else {
-            return Ok(Value::Undefined);
-        };
-        // A shock replaces the running one when it is at least as long or
-        // the running one is over.
-        if ps.shellshock_duration > duration
-            && ps.shellshock_duration > now.wrapping_sub(ps.shellshock_time)
-        {
-            return Ok(Value::Undefined);
-        }
-        let index = frame
-            .ecs_ref()
-            .resource::<crate::script::MatchScript>()
-            .precached
-            .iter()
-            .find(|((kind, item), _)| *kind == "shellshock" && item.eq_ignore_ascii_case(&name))
-            .map(|(_, &index)| index)
-            .ok_or_else(|| format!("shellshock '{name}' was not precached"))?;
-        let file = frame
-            .shock_file(&name)
-            .ok_or_else(|| format!("shellshock '{name}' has no shock file"))?;
-        let shock = frame.shock(&file).cloned();
-        for gap in frame.shock_gaps(&file).to_vec() {
-            frame.report_game_gap(gap);
-        }
-        let start = game_api::movement::ShellshockStart {
-            index,
-            duration_ms: duration,
-            level_time: now,
-        };
-        crate::game_move::shellshock(&mut frame, id, Some(start));
-        if let Some(ps) = frame.player_mut(id) {
-            ps.shellshock_index = index;
-            ps.shellshock_time = now;
-            ps.shellshock_duration = duration;
-        }
-        frame.client_meta_mut(id).shellshock = shock;
-        Ok(Value::Undefined)
+        shellshock(world, receiver, args, false)
     });
     registry.register(Method, "stopshellshock", |world, receiver, args| {
         if !args.is_empty() {
@@ -1304,7 +1261,6 @@ fn register_player(registry: &mut NativeRegistry) {
         )*};
     }
     status!(
-        "stopburning" => "burning" = false,
         "startpoisoning" => "poisoned" = true,
         "stoppoisoning" => "poisoned" = false,
     );
@@ -1322,7 +1278,6 @@ fn register_player(registry: &mut NativeRegistry) {
         )*};
     }
     presented!(
-        "setclientuivisibilityflag",
         "displaychallengecomplete",
         "displaycontract",
         "displayendgame",
@@ -1339,7 +1294,6 @@ fn register_player(registry: &mut NativeRegistry) {
         "directionalhitindicator",
         "visionsetlerpratio",
         "setplayerrenderoptions",
-        "starttanning",
         "setsprintduration",
         "setsprintcooldown",
         "setblockweaponpickup",
@@ -1354,11 +1308,6 @@ fn register_player(registry: &mut NativeRegistry) {
         "enabledeathstreak",
         "setpregameclass",
         "setpregameteam",
-        "beginlocationairstrikeselection",
-        "beginlocationartilleryselection",
-        "beginlocationcomlinkselection",
-        "beginlocationmortarselection",
-        "beginlocationnapalmselection",
     );
     registry.register(Method, "setlaststandprevweap", |world, receiver, args| {
         let _ = player_id(world, receiver)?;
@@ -1765,37 +1714,14 @@ fn register_platform(registry: &mut NativeRegistry) {
         "settimescale",
         "announcement",
         "clientannouncement",
-        "setmatchflag",
         "setscoreboardcolumns",
         "setbombtimer",
         "reviveobituary",
         "artilleryiconlocation",
-        "setteamsatellite",
-        "setteamspyplane",
         "objective_setinvisibletoall",
         "objective_setinvisibletoplayer",
         "objective_setvisibletoplayer",
     );
-    registry.register(Function, "getteamsatellite", |world, _, args| {
-        let team = string(args, 0)?;
-        Ok(presented_team_flag(world, "setteamsatellite", &team))
-    });
-    registry.register(Function, "getteamspyplane", |world, _, args| {
-        let team = string(args, 0)?;
-        Ok(presented_team_flag(world, "setteamspyplane", &team))
-    });
-}
-
-fn presented_team_flag(world: &World, key: &str, team: &str) -> Value {
-    match world
-        .resource::<RoundScript>()
-        .presented
-        .get(key)
-        .map(Vec::as_slice)
-    {
-        Some([Value::String(t), value, ..]) if **t == *team => value.clone(),
-        _ => Value::Int(0),
-    }
 }
 
 fn register_refused(registry: &mut NativeRegistry) {
@@ -1838,12 +1764,11 @@ fn register_refused(registry: &mut NativeRegistry) {
         "setturretcarried", "setturrethint", "setturrettype", "setscanningpitch",
         "actionslotfourbuttonpressed"
         => "receiver is not a turret");
-    refused!(Function: "target_getarray", "target_isincircle", "target_istarget",
-        "target_remove", "target_set", "target_setturretaquire"
+    refused!(Function: "target_isincircle"
         => "missile lock targets are not simulated");
     refused!(Method: "missile_settarget", "ismissileinsideheightlock", "getlockonradius",
         "getlockonspeed", "linkguidedmissilecamera", "unlinkguidedmissilecamera",
-        "makegrenadedud", "launchbomb"
+        "makegrenadedud"
         => "receiver is not a guided missile");
 
     // `player SetScoreMultiplier(n)` / `GetScoreMultiplier()`: a number the
@@ -2089,7 +2014,7 @@ fn register_refused(registry: &mut NativeRegistry) {
     refused!(Function: "spawntimedfx", "boundswouldtelefrag", "testspawnpoint"
         => "not simulated");
     refused!(Method: "launch", "fakefire",
-        "spawnnapalmgroundflame", "revive", "docowardswayanims",
+        "revive", "docowardswayanims",
         "ghost", "teleport", "istouchingvolume", "playersighttrace",
         "throwbuttonpressed", "actionslotonebuttonpressed", "depthinwater",
         "devaddpitch", "devaddroll", "devaddyaw"
@@ -2268,3 +2193,75 @@ fn register_bots(registry: &mut NativeRegistry) {
         });
     }
 }
+
+/// `player shellShock(name, seconds)`. Zombies' keeps a running shock that
+/// is longer and not over; Black Ops multiplayer's replaces it, and its
+/// `specialty_shellshock` shortens the shock by `perk_shellShockReduction`.
+pub(crate) fn shellshock(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+    multiplayer: bool,
+) -> Result<Value, String> {
+    let id = ClientId(player_id(world, receiver)?);
+    let name = string(args, 0)?;
+    let mut duration = shock_milliseconds(float(args, 1)?);
+    if !(0..=60_000).contains(&duration) {
+        return Err(format!(
+            "duration {} should be >= 0 and <= 60",
+            duration as f32 * 0.001
+        ));
+    }
+    let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+    let mut frame = FrameWorld::from_world(world);
+    let Some(ps) = frame.player(id) else {
+        return Ok(Value::Undefined);
+    };
+    // A zombies shock replaces the running one when it is at least as
+    // long or the running one is over.
+    if !multiplayer
+        && ps.shellshock_duration > duration
+        && ps.shellshock_duration > now.wrapping_sub(ps.shellshock_time)
+    {
+        return Ok(Value::Undefined);
+    }
+    if multiplayer && crate::game_move::has_perk_bit(&mut frame, id, PERK_SHELLSHOCK) {
+        let scale = super::super::super::host::actor_nav::dvar_f32(
+            frame.ecs_ref(),
+            "perk_shellShockReduction",
+            0.5,
+        );
+        duration = (duration as f32 * scale) as i32;
+    }
+    let index = frame
+        .ecs_ref()
+        .resource::<crate::script::MatchScript>()
+        .precached
+        .iter()
+        .find(|((kind, item), _)| *kind == "shellshock" && item.eq_ignore_ascii_case(&name))
+        .map(|(_, &index)| index)
+        .ok_or_else(|| format!("shellshock '{name}' was not precached"))?;
+    let file = frame
+        .shock_file(&name)
+        .ok_or_else(|| format!("shellshock '{name}' has no shock file"))?;
+    let shock = frame.shock(&file).cloned();
+    for gap in frame.shock_gaps(&file).to_vec() {
+        frame.report_game_gap(gap);
+    }
+    let start = game_api::movement::ShellshockStart {
+        index,
+        duration_ms: duration,
+        level_time: now,
+    };
+    crate::game_move::shellshock(&mut frame, id, Some(start));
+    if let Some(ps) = frame.player_mut(id) {
+        ps.shellshock_index = index;
+        ps.shellshock_time = now;
+        ps.shellshock_duration = duration;
+    }
+    frame.client_meta_mut(id).shellshock = shock;
+    Ok(Value::Undefined)
+}
+
+/// `specialty_shellshock` in Black Ops multiplayer's perk mask.
+const PERK_SHELLSHOCK: u32 = 45;

@@ -33,6 +33,13 @@ pub struct LocationSelection {
     pub material: String,
     pub choose_direction: bool,
     pub radius: f32,
+    /// Black Ops' selector type (0 generic, 1 artillery, 2 airstrike, 3
+    /// mortar, 4 napalm, 5 comlink), whose radius is a share of the map's
+    /// height in fifteenths; `None` for Modern Warfare 2's selector.
+    pub kind: Option<u8>,
+    /// The map's width over its height (Black Ops' cursor moves up and
+    /// down by it).
+    pub aspect: f32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -151,6 +158,12 @@ pub struct ClientScreen {
     /// (`useAlternateAimParams`, Deadshot): the scope sways no more, and
     /// the hold-breath hints do not show.
     pub alternate_aim: bool,
+    /// Black Ops multiplayer's client scrambler state: how much the
+    /// nearest enemy Jammer jams, whether an enemy counter-spy plane is up,
+    /// and where the local player's own Jammers are.
+    pub enemy_scrambler: f32,
+    pub global_scrambler: bool,
+    pub friendly_scramblers: Vec<[f32; 2]>,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

@@ -6,8 +6,9 @@ use crate::script::Namespace::{Function, Method};
 use crate::script::{NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
 
-/// The custom game mode class table's item names, one byte each.
-const ITEMS: [&str; 39] = [
+/// The loadout slots: the custom game mode class table's item names, one
+/// byte each, and the stats' class members, in Black Ops' slot order.
+pub(crate) const ITEMS: [&str; 39] = [
     "primary",
     "primaryattachment",
     "primaryattachmenttop",

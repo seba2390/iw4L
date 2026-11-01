@@ -534,6 +534,8 @@ pub(crate) struct ClientOutput {
     /// The local client takes the alternate aim parameters
     /// (`useAlternateAimParams`).
     pub(crate) alternate_aim: bool,
+    /// Black Ops multiplayer's scrambler state (`_scrambler.csc`).
+    pub(crate) scrambler: super::host::natives::t5_scrambler::ClientScrambler,
     /// Each entity's named shader constants (`mapShaderConstant`): its
     /// number, and per slot the code constant mapped and its vector.
     pub(crate) shader_constants:
@@ -822,13 +824,18 @@ struct ServerEntitySnapshot {
     is_dog: Option<bool>,
     weapon: Option<String>,
     targetname: Option<Value>,
-    /// An actor's team.
+    /// The entity's team and its owner's entity number.
     team: Option<Value>,
+    owner: Option<i32>,
     client_flags: u16,
     has_eyes: bool,
     hidden: bool,
     dobj: Option<crate::AuthorityDObjState>,
 }
+
+/// Each client entity's owner, by entity number (`getOwner`).
+#[derive(Resource, Default)]
+pub(crate) struct ClientOwners(pub(crate) std::collections::BTreeMap<u64, i32>);
 
 /// The client VM: its world, and the entries it starts with once the
 /// client has a snapshot.
@@ -1017,6 +1024,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
+            let scrambler = client.world.resource::<ClientOutput>().scrambler.screen();
             let script_vectors = super::host::natives::t5_client::script_vectors(&mut client.world);
             let mut frame = crate::frame::FrameWorld::from_world(server);
             if frame.client_meta(crate::ClientId(0)).is_some() {
@@ -1027,6 +1035,11 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                 screen.extra_camera = extra_camera;
                 screen.ui3d_windows = ui3d_windows;
                 screen.alternate_aim = alternate_aim;
+                (
+                    screen.enemy_scrambler,
+                    screen.global_scrambler,
+                    screen.friendly_scramblers,
+                ) = scrambler;
                 screen.script_vectors = script_vectors;
             }
             // Its screen overlays past their time stop and fade, and fades
@@ -1293,7 +1306,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             (
                 runtime.engine.world == Some(id),
                 runtime.engine.turrets.contains_key(&id),
-                runtime.planes.contains_key(&id),
+                runtime.planes.contains_key(&id) || runtime.t5.planes.contains_key(&id),
                 runtime.t5.client_flags.get(&id).copied().unwrap_or(0),
                 runtime.t5.has_eyes.contains(&id),
                 runtime.t5.transmit_targetname.contains(&id),
@@ -1334,6 +1347,8 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             EntityKind::Map | EntityKind::Spawned => {
                 if turret {
                     "mg42"
+                } else if plane {
+                    "plane"
                 } else if matches!(&*entity.classname, "script_model" | "script_brushmodel")
                     || (&*entity.classname == "script_origin"
                         && (entity.kind == EntityKind::Spawned
@@ -1349,7 +1364,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             }
             EntityKind::HudElem | EntityKind::Item(_) => continue,
         };
-        let (mut origin, mut angles, model, species, is_dog, targetname, team) = {
+        let (mut origin, mut angles, model, species, is_dog, targetname, team, owner) = {
             let mut runtime = server.resource_mut::<RoundScript>();
             let origin = match runtime.object_field(id, "origin") {
                 Value::Vector(v) => v,
@@ -1388,11 +1403,24 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             } else {
                 None
             };
-            let team = match (&entity.kind, runtime.object_field(id, "team")) {
-                (EntityKind::Actor, Value::String(team)) => Some(Value::String(team)),
+            // The entity state's team (`setTeam`, a player's team) and owner
+            // (`setOwner`).
+            let team = match runtime.object_field(id, "team") {
+                Value::String(team) => Some(Value::String(team)),
                 _ => None,
             };
-            (origin, angles, model, species, is_dog, targetname, team)
+            let owner = match (
+                runtime.object_field(id, "owner"),
+                runtime.t5.planes.get(&id),
+            ) {
+                (Value::Object(owner), _) | (_, Some(&owner)) => {
+                    runtime.entities.get(&owner).map(|e| e.number)
+                }
+                _ => None,
+            };
+            (
+                origin, angles, model, species, is_dog, targetname, team, owner,
+            )
         };
         if entity.kind == EntityKind::Player
             && let Some(ps) =
@@ -1430,6 +1458,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             weapon,
             targetname,
             team,
+            owner,
             client_flags: flags,
             has_eyes,
             hidden: entity.hidden,
@@ -1867,6 +1896,13 @@ fn sync_snapshot_entities(
                 runtime.set_object_field(client_object, "team", team.clone());
             }
         }
+        let mut owners = client
+            .world
+            .get_resource_or_insert_with(ClientOwners::default);
+        match snap.owner {
+            Some(owner) => owners.0.insert(client_object, owner),
+            None => owners.0.remove(&client_object),
+        };
         if let Some(dobj) = &snap.dobj {
             dobjs.insert(client_object, dobj.clone());
         }

@@ -660,8 +660,11 @@ impl Shot<'_> {
                 def.hip_spread_prone_max(),
             ],
             (def.fire_type() == FIRETYPE_STACKED).then(|| def.stack_fire_accuracy_decay()),
-            self.zombies
-                .then(|| dvar(world, "perk_weapSpreadMultiplier", 0.65f32)),
+            spread_perk_scale(
+                self.ps,
+                self.zombies,
+                dvar(world, "perk_weapSpreadMultiplier", 0.65f32),
+            ),
         )
     }
 
@@ -681,6 +684,8 @@ impl Shot<'_> {
             weapon_entity: attacker,
             hand: self.hand,
             zombies: self.zombies,
+            deep_penetration: !self.zombies
+                && movement_t5::perks::mp::has(self.ps, movement_t5::perks::mp::BULLET_PENETRATION),
             gaps: self.gaps,
         }
         .fire(def, weapon, spread, parms, time, world);
@@ -999,6 +1004,8 @@ pub(crate) struct Bullets<'a> {
     /// The hand that fired: 1 the left.
     pub(crate) hand: u8,
     pub(crate) zombies: bool,
+    /// The shooter holds multiplayer's `specialty_bulletpenetration`.
+    pub(crate) deep_penetration: bool,
     pub(crate) gaps: &'a mut Vec<&'static Unknown>,
 }
 
@@ -1188,6 +1195,10 @@ impl Bullets<'_> {
         }
         let count = dvar(world, "penetrationCount", 2i32);
         let min_fx = dvar(world, "bullet_penetrationMinFxDist", 30.0f32);
+        // Multiplayer's `specialty_bulletpenetration` goes deeper.
+        let perk_depth = self
+            .deep_penetration
+            .then(|| dvar(world, "perk_bulletPenetrationMultiplier", 2.0f32));
         let depth_of = |world: &dyn FireWorld, surface: i32| {
             if surface == 0 {
                 0.0
@@ -1201,6 +1212,9 @@ impl Bullets<'_> {
             let mut max_depth = depth_of(world, br.depth_surface_type);
             if br.trace.surface_flags & surf::SKY != 0 {
                 max_depth = 100.0;
+            }
+            if let Some(scale) = perk_depth {
+                max_depth *= scale;
             }
             if self.zombies && br.surface_type() == surf::WATER {
                 max_depth = 100.0;
@@ -1255,7 +1269,10 @@ impl Bullets<'_> {
             };
             let thickness = length_zyx(span).max(1.0);
             let depth = if rev_hit {
-                let rev_depth = depth_of(world, rev_br.depth_surface_type);
+                let mut rev_depth = depth_of(world, rev_br.depth_surface_type);
+                if let Some(scale) = perk_depth {
+                    rev_depth *= scale;
+                }
                 let depth = if rev_depth - max_depth < 0.0 {
                     rev_depth
                 } else {
@@ -1839,15 +1856,26 @@ fn libm_tan(x: f32) -> f32 {
 }
 
 /// The hip spread at the player's eye height (stand, ducked and prone
-/// minimum and maximum), and what overrides it; in zombies Deadshot scales
-/// it by `deadshot_scale` while the sights are not fully up.
+/// minimum and maximum), and what overrides it, scaled by `perk_scale`.
 pub(crate) fn hip_spread(
     ps: &PlayerState,
     min: [f32; 3],
     max: [f32; 3],
-    deadshot_scale: Option<f32>,
+    perk_scale: Option<f32>,
 ) -> (f32, f32) {
-    hip_spread_stacked(ps, min, max, None, deadshot_scale)
+    hip_spread_stacked(ps, min, max, None, perk_scale)
+}
+
+/// The spread perk's scale (`perk_weapSpreadMultiplier`) when it applies:
+/// zombies' Deadshot while the sights are not fully up, multiplayer's
+/// `specialty_bulletaccuracy` always.
+pub(crate) fn spread_perk_scale(ps: &PlayerState, zombies: bool, scale: f32) -> Option<f32> {
+    let held = if zombies {
+        ps.perks & PERK_DEADSHOT != 0 && ps.weapon_pos_frac < 1.0
+    } else {
+        movement_t5::perks::mp::has(ps, movement_t5::perks::mp::BULLET_ACCURACY)
+    };
+    held.then_some(scale)
 }
 
 fn hip_spread_stacked(
@@ -1855,7 +1883,7 @@ fn hip_spread_stacked(
     min: [f32; 3],
     max: [f32; 3],
     stack_fire_decay: Option<f32>,
-    deadshot_scale: Option<f32>,
+    perk_scale: Option<f32>,
 ) -> (f32, f32) {
     let (mut lo, mut hi);
     if ps.spread_override_state == 2 {
@@ -1883,10 +1911,7 @@ fn hip_spread_stacked(
     if ps.spread_override_state == 1 {
         hi = ps.spread_override as f32;
     }
-    if let Some(scale) = deadshot_scale
-        && ps.perks & PERK_DEADSHOT != 0
-        && ps.weapon_pos_frac < 1.0
-    {
+    if let Some(scale) = perk_scale {
         lo *= scale;
         hi *= scale;
     }
