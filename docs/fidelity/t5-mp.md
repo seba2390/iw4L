@@ -150,7 +150,11 @@ Each open section names the issue that works it.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
       Semtex, tomahawk, concussion, Willy Pete, Nova gas, decoy, C4,
       tactical insertion, camera spike, jammer, motion sensor;
-      `makegrenadedud` is refused.
+      `makegrenadedud` is refused. A flash grenade's own explosion event
+      (Black Ops sends flash grenades a client event of their own) is the
+      plain explosion's here, and `t5.mp.flash_vehicle`: Black Ops' flash
+      also reaches the RC-XD's driver through the car (#660), which it
+      does not here.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
       code tests that have no effect here yet (setting one logs the gap):
       `_twogrenades` (a second grenade picked up);
@@ -573,6 +577,15 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Flash grenades (#649): a flash grenade's blast tells each
+      player who takes damage within its `explosionRadius` (searched in a
+      box √2 times as wide) and whose eye it sees `flashbang` with how near
+      it was (1 inside `explosionRadiusMin`, at least 1, falling to 0 at
+      the outer radius, measured to the player's bounds), how much the
+      player faced it (Black Ops' fast inverse square root on the eye's
+      line to the blast), the thrower and the grenade's team; Black Ops'
+      `_flashgrenades.gsc` then flashes the player.
 
 - [x] **V** Compass objectives (#651, owner draw 152): each active or
       current objective the local player sees draws its icon
