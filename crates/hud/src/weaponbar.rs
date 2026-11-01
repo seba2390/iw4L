@@ -987,6 +987,7 @@ pub(crate) fn update_weaponbar(
                         rules: radar,
                         jammed: view.global_scrambler,
                         pings: (radar.pings)(&view, &client_input.compass_radar),
+                        friendlies: (radar.friendlies)(&view, &client_input.compass_radar),
                         line: (radar.line)(&view, &client_input.compass_radar),
                     }
                 });

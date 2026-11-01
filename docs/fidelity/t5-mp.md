@@ -445,9 +445,16 @@ Each open section names the issue that works it.
       `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
       wager functions are not answered, so the items they gate do not draw.
 - [ ] **V** The compass (`compass_old`) draws its map, the player's
-      arrow, the enemies the radar shows (170), the spy plane's sweep line
-      (332) and the counter-spy plane's static (328). Not drawn yet:
-      friendlies (owner draw 158), objectives (152), the grid (317, 319),
+      arrow, the enemies the radar shows (170), the teammates (158), the
+      spy plane's sweep line (332) and the counter-spy plane's static
+      (328). A teammate's icon is only ever `compassping_friendly_mp`:
+      the firing and yelling overlays (`compassping_friendlyfiring_mp`,
+      `_friendlyyelling_mp`, faded over `compassSoundPingFadeTime`) wait on
+      the fire pings, the chat blink (`objective_friendly_chat`) on voice
+      chat, the Second Chance icon on a teammate's last stand reaching the
+      client, and the squad icons (`compassping_squad_mp` and its overlays,
+      with `cg_drawFriendInColor`) on a friends list. Not drawn yet:
+      objectives (152), the grid (317, 319),
       the killstreak icons (helicopters, planes, dogs, turrets, tanks,
       guided missiles, artillery: 146–156) and the Jammer, flicker and
       fake-fire effects (325, 312, 376). The map's frame is
