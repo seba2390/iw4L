@@ -1470,6 +1470,8 @@ fn capture_weapon_icons(
                         iwi,
                         state: capture_ui_state(load, asset),
                         rgba: None,
+                        sampler: None,
+                        scanline: None,
                     },
                 )),
                 Err(error) => failed.push(format!("{name}: {error}")),
@@ -1500,6 +1502,8 @@ fn capture_weapon_icons(
                             iwi,
                             state: None,
                             rgba: None,
+                            sampler: None,
+                            scanline: None,
                         },
                     ));
                 }
@@ -3439,6 +3443,8 @@ impl ZoneLane for T6Lane {
                                 iwi,
                                 state: capture_ui_state(&load, asset),
                                 rgba: None,
+                                sampler: None,
+                                scanline: None,
                             },
                         )),
                         Err(error) => report.push(format!("T6 compass material {name}: {error}")),

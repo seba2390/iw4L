@@ -5,11 +5,12 @@
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
     AiEvent, AiLineEvent, AiPointEvent, BulletHitType, BulletTrace, FireWorld, GAME_MISSILE_BYTES,
-    GameMissile, GameTrajectory, MissileExplosion, MissileRun, NotifyArg, RadiusDamage,
-    TrajectoryKind,
+    GameMissile, GameTrajectory, GuidedInput, MissileExplosion, MissileRun, NotifyArg,
+    RadiusDamage, TrajectoryKind,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD};
 use game_api::{Unknown, unknown};
+use movement_t5::state::weap_flags;
 
 use crate::fire::{DEG2RAD, Hit, MEANS, damage, dvar, hit_id};
 
@@ -103,6 +104,13 @@ pub(crate) struct State {
     pub(crate) curve_push: [f32; 3],
     /// Multiplayer: the entity a guided missile homes on.
     pub(crate) target: Option<i32>,
+    /// A remote-guided missile: the boost and attack buttons were let go
+    /// since it left, and it is boosting now.
+    pub(crate) boost_released: bool,
+    pub(crate) attack_released: bool,
+    pub(crate) boosting: bool,
+    /// When a remote-guided missile last burnt its owner's fuel.
+    pub(crate) burnt_at: i32,
 }
 
 /// What a grenade is linked to on the entity it struck.
@@ -167,6 +175,10 @@ impl State {
             curve_push: [f(64), f(68), f(72)],
             // Kept one up: 0 is none.
             target: Some(i(76) - 1).filter(|&t| t >= 0),
+            boost_released: game[6] & 1 != 0,
+            attack_released: game[6] & 2 != 0,
+            boosting: game[6] & 4 != 0,
+            burnt_at: i(80),
         }
     }
 
@@ -196,6 +208,10 @@ impl State {
             game[64 + i * 4..68 + i * 4].copy_from_slice(&c.to_le_bytes());
         }
         game[76..80].copy_from_slice(&self.target.map_or(0, |t| t + 1).to_le_bytes());
+        game[6] = u8::from(self.boost_released)
+            | u8::from(self.attack_released) << 1
+            | u8::from(self.boosting) << 2;
+        game[80..84].copy_from_slice(&self.burnt_at.to_le_bytes());
     }
 }
 
@@ -445,10 +461,10 @@ pub(crate) fn spawn_rocket_mp(
         let (_, right, _) = movement_t5::math::angle_vectors(owner_angles.unwrap_or([0.0; 3]));
         start = mad(start, right, 10.0);
     }
-    if guided == 6 {
+    if guided == GUIDED_REMOTE {
         start = mad(start, dir, 13.0);
     }
-    if !matches!(guided, 0 | GUIDED_HOMING) {
+    if !matches!(guided, 0 | GUIDED_HOMING | GUIDED_REMOTE) {
         gaps.push(missile_unknown());
     }
     let level = world.level_time();
@@ -483,17 +499,21 @@ pub(crate) fn spawn_rocket_mp(
         _ if accelerates || curvature > 0.0 || guided != 0 => TrajectoryKind::Stationary,
         _ => TrajectoryKind::Linear,
     };
+    // It explodes when its life runs out, a minute at most.
+    let life = ((def.projectile_lifetime() * -1000.0) as i32).wrapping_neg();
     let mut game = [0u8; GAME_MISSILE_BYTES];
     State {
         bounce: def.force_bounce(),
         ground: ENTITY_NONE,
         spawned_at: level,
+        explode_at: (level + life).min(level + MISSILE_LIFE_CAP_MS),
         curve_push,
         target,
+        burnt_at: level,
         ..State::default()
     }
     .write(&mut game);
-    world.spawn_missile(GameMissile {
+    let entity = world.spawn_missile(GameMissile {
         entity: ENTITY_NONE,
         owner,
         weapon,
@@ -514,7 +534,75 @@ pub(crate) fn spawn_rocket_mp(
         origin: start,
         visible_at: level + hidden,
         game,
-    })
+    });
+    if guided == GUIDED_REMOTE
+        && let Some(entity) = entity
+    {
+        launch_remote(owner, entity, world);
+    }
+    entity
+}
+
+/// A remote-guided missile leaving: its owner's camera may now follow it,
+/// they may not cycle weapons, and the fuel of the weapon in hand starts
+/// over.
+fn launch_remote(owner: i32, entity: i32, world: &mut dyn FireWorld) {
+    let Some(mut player) = world.player(owner) else {
+        return;
+    };
+    let (mut ps, mut last) = crate::movement::unpack(&mut player);
+    ps.weap_flags = (ps.weap_flags & !weap_flags::FIRING_GUIDED) | weap_flags::CYCLING_DISABLED;
+    let held = ps.weapon;
+    movement_t5::set_fuel(&mut ps, held, 0);
+    crate::movement::pack(&mut player, &mut ps, &mut last);
+    world.store_player(owner, &player);
+    world.set_guided_missile(owner, Some(entity));
+}
+
+/// A remote-guided missile ending: its owner may cycle weapons again and
+/// the camera has no missile to follow (their view stays where it is until
+/// `unlinkguidedmissilecamera`).
+fn release_remote(missile: &GameMissile, world: &mut dyn FireWorld) {
+    let Some(mut player) = world.player(missile.owner) else {
+        return;
+    };
+    let (mut ps, mut last) = crate::movement::unpack(&mut player);
+    ps.weap_flags &= !weap_flags::CYCLING_DISABLED;
+    crate::movement::pack(&mut player, &mut ps, &mut last);
+    world.store_player(missile.owner, &player);
+    world.set_guided_missile(missile.owner, None);
+}
+
+/// A remote-guided missile's fuel: the seconds it may fly are its weapon's
+/// `projectileLifetime`, burnt from the owner's weapon in hand, twice as fast
+/// while boosting. False when it has burnt out.
+fn burn_fuel(
+    missile: &GameMissile,
+    def: &WeaponDefView<'_>,
+    state: &mut State,
+    level: i32,
+    world: &mut dyn FireWorld,
+) -> bool {
+    let Some(mut player) = world.player(missile.owner) else {
+        return true;
+    };
+    let (mut ps, mut last) = crate::movement::unpack(&mut player);
+    let held = ps.weapon;
+    if held == 0 {
+        return true;
+    }
+    let burnt = (level - state.burnt_at) * if state.boosting { 2 } else { 1 };
+    movement_t5::add_fuel(&mut ps, held, burnt);
+    let life = def.projectile_lifetime() * 1000.0;
+    let out = life < movement_t5::fuel(&ps, held) as f32;
+    if out {
+        movement_t5::set_fuel(&mut ps, held, life as i32);
+    } else {
+        state.burnt_at = level;
+    }
+    crate::movement::pack(&mut player, &mut ps, &mut last);
+    world.store_player(missile.owner, &player);
+    !out
 }
 
 /// `value` held within `-limit..=limit`, tested as the game does.
@@ -525,6 +613,12 @@ fn cap(value: f32, limit: f32) -> f32 {
 
 /// The guided missile type that homes on its target (the SAM Turret's).
 const GUIDED_HOMING: i32 = 1;
+/// The guided missile type its owner steers (the Valkyrie Rockets').
+const GUIDED_REMOTE: i32 = 6;
+/// The longest a missile lives.
+const MISSILE_LIFE_CAP_MS: i32 = 60_000;
+/// How far ahead a remote-guided missile aims at its steered angles.
+const REMOTE_AIM_DISTANCE: f32 = 300.0;
 
 /// BlackOpsMP.exe's step for a missile its think moves (one not flying
 /// straight, once drawn, not of the fifth weapon type or guided type 4):
@@ -536,7 +630,7 @@ const GUIDED_HOMING: i32 = 1;
 fn step_mp(
     missile: &mut GameMissile,
     def: &WeaponDefView<'_>,
-    state: &State,
+    state: &mut State,
     level: i32,
     world: &mut dyn FireWorld,
 ) {
@@ -579,13 +673,189 @@ fn step_mp(
     if guided == 3 {
         return;
     }
+    let mut roll = 0.0;
+    if guided == GUIDED_REMOTE {
+        let input = remote_input(missile, world);
+        roll = missile.angles.base[2];
+        if accelerated {
+            roll = steer_remote(missile, def, input, world);
+        }
+        let tr = &mut missile.position;
+        for i in 0..3 {
+            tr.base[i] += tr.delta[i] * frame;
+        }
+        boost_remote(missile, def, state, input, world);
+    }
     let tr = &mut missile.position;
     for i in 0..3 {
         tr.base[i] += tr.delta[i] * frame;
     }
     if guided != 0 && accelerated {
         missile.angles.base = vectoangles(tr.delta);
+        if guided == GUIDED_REMOTE {
+            missile.angles.base[2] = roll;
+        }
     }
+}
+
+/// BlackOpsMP.exe's steering of a remote-guided missile, by the owner's look
+/// axes: past the deadzone pitch and yaw turn the point it climbs toward by
+/// `missileTVGuidedTurnRate` at the axis's end, and yaw also pushes it
+/// sideways by up to `maxSteeringAccel` and rolls it toward
+/// `missileTVGuidedMaxRollAngle`; pitching alone rolls it back level. Inside
+/// the deadzone the axes add to the aim as whole degrees and the roll stays.
+/// Returns the roll.
+fn steer_remote(
+    missile: &mut GameMissile,
+    def: &WeaponDefView<'_>,
+    input: GuidedInput,
+    world: &dyn FireWorld,
+) -> f32 {
+    const AXIS: f32 = 0.007_936_508;
+    let deadzone = dvar(world, "missileTVGuidedStickDeadzone", 15i32);
+    let turn_rate = dvar(world, "missileTVGuidedTurnRate", 3.0f32);
+    let max_roll = dvar(world, "missileTVGuidedMaxRollAngle", 35.0f32);
+    let accel = def.max_steering_accel();
+    let [mut pitch, mut yaw, mut roll] = missile.angles.base;
+    let (pitch_axis, yaw_axis) = (i32::from(input.pitch), i32::from(input.yaw));
+    let past = |axis: i32| axis > deadzone || axis < -deadzone;
+    let mut moved = false;
+    if past(pitch_axis) {
+        pitch += pitch_axis as f32 * AXIS * turn_rate;
+        moved = true;
+    }
+    let (roll_goal, roll_rate, side_accel) = if past(yaw_axis) {
+        let stick = yaw_axis as f32 * AXIS;
+        yaw += stick * turn_rate;
+        moved = true;
+        (
+            -(max_roll * stick),
+            dvar(world, "missileTVGuidedTurningRollAccel", 1.5f32),
+            -(accel * stick),
+        )
+    } else {
+        (
+            0.0,
+            dvar(world, "missileTVGuidedFlatteningRollAccel", 2.0f32),
+            0.0,
+        )
+    };
+    let previous_roll = roll;
+    if roll > roll_goal {
+        roll += (roll_goal - roll) * roll_rate * 0.05;
+    } else if roll < roll_goal {
+        roll -= (roll - roll_goal) * roll_rate * 0.05;
+    }
+    if !moved {
+        pitch += pitch_axis as f32;
+        yaw += yaw_axis as f32;
+        // BlackOpsMP.exe keeps the roll it had, floored at the limit, here.
+        roll = previous_roll.max(-max_roll);
+    }
+    let (forward, _, _) = movement_t5::math::angle_vectors([pitch, yaw, roll]);
+    let target = mad(missile.origin, forward, REMOTE_AIM_DISTANCE);
+    let v = missile.position.delta;
+    let speed_xy = (v[0] * v[0] + v[1] * v[1]).sqrt();
+    let inverse = 1.0 / if 0.0 <= -speed_xy { 1.0 } else { speed_xy };
+    let heading = [v[0] * inverse, v[1] * inverse];
+    let side = [heading[1], -heading[0]];
+    let at = missile.position.base;
+    let (dx, dy, dz) = (target[0] - at[0], target[1] - at[1], target[2] - at[2]);
+    let ahead = dy * heading[1] + dx * heading[0];
+    let across = dy * side[1] + dx * side[0];
+    let push = [
+        side_accel * side[0],
+        side_accel * side[1],
+        climb(ahead, across, dz, speed_xy, v[2], accel),
+    ];
+    for (d, p) in missile.position.delta.iter_mut().zip(push) {
+        *d += p * 0.05;
+    }
+    roll
+}
+
+fn remote_input(missile: &GameMissile, world: &mut dyn FireWorld) -> GuidedInput {
+    match world.guided_input(missile.owner) {
+        Some(input) => input,
+        None => GuidedInput::default(),
+    }
+}
+
+/// The boost: while the secondary offhand button is held (let go once since
+/// launch) a remote-guided missile speeds up to `missileTVGuidedBoost` times
+/// over its weapon's speed, else it falls back to its speed.
+fn boost_remote(
+    missile: &mut GameMissile,
+    def: &WeaponDefView<'_>,
+    state: &mut State,
+    input: GuidedInput,
+    world: &dyn FireWorld,
+) {
+    let (forward, _, _) = movement_t5::math::angle_vectors(missile.angles.base);
+    let v = missile.position.delta;
+    let along = v[1] * forward[1] + v[2] * forward[2] + v[0] * forward[0];
+    let speed = def.projectile_speed() as f32;
+    let add = if input.boost && state.boost_released {
+        let goal = dvar(world, "missileTVGuidedBoost", 2.0f32) * speed + speed;
+        state.boosting = true;
+        let up = dvar(world, "missileTVGuidedBoostSpeedUp", 1000i32) as f32 * 0.05;
+        if along < goal && up < goal {
+            up
+        } else if along < goal {
+            goal - up
+        } else {
+            goal - along
+        }
+    } else {
+        if !input.boost {
+            state.boost_released = true;
+        }
+        state.boosting = false;
+        if speed <= along {
+            dvar(world, "missileTVGuidedBoostSpeedDown", -1000i32) as f32 * 0.05
+        } else {
+            speed - along
+        }
+    };
+    for (d, f) in missile.position.delta.iter_mut().zip(forward) {
+        *d += add * f;
+    }
+}
+
+/// The attack button detonates a remote-guided missile, once it was let go
+/// after launch.
+fn attack_detonates(state: &mut State, input: GuidedInput) -> bool {
+    if !input.attack {
+        state.attack_released = true;
+    }
+    input.attack && state.attack_released
+}
+
+/// `detonate`: the missile explodes where it is now.
+pub(crate) fn detonate(
+    missile: &mut GameMissile,
+    world: &mut dyn FireWorld,
+) -> (MissileRun, Vec<&'static Unknown>) {
+    let mut gaps = Vec::new();
+    let Some((def_bytes, variant_bytes)) = world
+        .weapon(missile.weapon)
+        .map(|w| (w.def.clone(), w.variant.clone()))
+    else {
+        gaps.push(crate::movement::weapon_unknown());
+        return (MissileRun::Gone, gaps);
+    };
+    let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
+        gaps.push(crate::movement::weapon_unknown());
+        return (MissileRun::Gone, gaps);
+    };
+    let mut state = State::read(&missile.game);
+    if def.guided_missile_type() == GUIDED_REMOTE {
+        release_remote(missile, world);
+    }
+    state.explode_at = 0;
+    let run = crate::grenade::explode(missile, &def, &mut state, world, &mut gaps);
+    state.write(&mut missile.game);
+    (run, gaps)
 }
 
 /// A homing missile's steering, in the horizontal plane by the turn radius
@@ -627,14 +897,21 @@ fn steer(missile: &mut GameMissile, def: &WeaponDefView<'_>, target: [f32; 3]) {
         push[0] = side[0] * a;
         push[1] = side[1] * a;
     }
-    let distance_xy = (ahead * ahead + across * across).sqrt();
-    if distance_xy != 0.0 && ahead >= 0.0 {
-        let climb = ((ahead / distance_xy * speed_xy).abs() / distance_xy * dz - v[2]) * 20.0;
-        push[2] = cap(climb, accel);
-    }
+    push[2] = climb(ahead, across, dz, speed_xy, v[2], accel);
     for (d, p) in missile.position.delta.iter_mut().zip(push) {
         *d += p * 0.05;
     }
+}
+
+/// The vertical push that brings a guided missile to its target's height as
+/// it arrives, capped at `maxSteeringAccel`.
+fn climb(ahead: f32, across: f32, dz: f32, speed_xy: f32, vz: f32, accel: f32) -> f32 {
+    let distance_xy = (ahead * ahead + across * across).sqrt();
+    if distance_xy == 0.0 || ahead < 0.0 {
+        return 0.0;
+    }
+    let climb = ((ahead / distance_xy * speed_xy).abs() / distance_xy * dz - vz) * 20.0;
+    cap(climb, accel)
 }
 
 /// `launchbomb`: Black Ops multiplayer's missile spawn with the velocity the
@@ -723,6 +1000,22 @@ pub(crate) fn run_missile(
     missile: &mut GameMissile,
     world: &mut dyn FireWorld,
 ) -> (MissileRun, Vec<&'static Unknown>) {
+    let (run, gaps) = run_frame(missile, world);
+    if run != MissileRun::Flying
+        && multiplayer(world)
+        && let Some(weapon) = world.weapon(missile.weapon)
+        && WeaponDefView::new(&weapon.def, &weapon.variant)
+            .is_some_and(|def| def.guided_missile_type() == GUIDED_REMOTE)
+    {
+        release_remote(missile, world);
+    }
+    (run, gaps)
+}
+
+fn run_frame(
+    missile: &mut GameMissile,
+    world: &mut dyn FireWorld,
+) -> (MissileRun, Vec<&'static Unknown>) {
     let mut gaps = Vec::new();
     let Some((def_bytes, variant_bytes)) = world
         .weapon(missile.weapon)
@@ -793,14 +1086,22 @@ fn fly(
     gaps: &mut Vec<&'static Unknown>,
 ) -> MissileRun {
     let old = missile.origin;
-    if multiplayer(world) {
+    let multiplayer = multiplayer(world);
+    let remote = multiplayer && def.guided_missile_type() == GUIDED_REMOTE;
+    if multiplayer {
         step_mp(missile, def, state, level, world);
+    }
+    if remote && attack_detonates(state, remote_input(missile, world)) {
+        return crate::grenade::explode(missile, def, state, world, gaps);
     }
     let new = evaluate(&missile.position, level);
     let d = [new[0] - old[0], new[1] - old[1], new[2] - old[2]];
     let len = (d[2] * d[2] + d[1] * d[1] + d[0] * d[0]).sqrt();
     if len < 0.00100000005 {
         return MissileRun::Flying;
+    }
+    if remote && !burn_fuel(missile, def, state, level, world) {
+        return crate::grenade::explode(missile, def, state, world, gaps);
     }
     if def.weapon_type() == WEAPTYPE_PROJECTILE && def.proj_explosion_type() == 9 {
         gaps.push(missile_unknown());

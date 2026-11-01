@@ -18,6 +18,7 @@ use crate::missile::{
 };
 
 const MOD_GRENADE_SPLASH: usize = 4;
+const MOD_PROJECTILE_SPLASH: usize = 6;
 /// `stickiness`: stick to the ground, and to the ground keeping the yaw.
 const STICK_GROUND: i32 = 3;
 const STICK_GROUND_KEEP_YAW: i32 = 4;
@@ -1026,7 +1027,11 @@ pub(crate) fn explode(
                 radius: def.explosion_radius() as f32,
                 cone: cone.map(|cos| (cos, forward)),
                 ignore: missile.entity,
-                means: MEANS[MOD_GRENADE_SPLASH],
+                means: MEANS[if state.grenade {
+                    MOD_GRENADE_SPLASH
+                } else {
+                    MOD_PROJECTILE_SPLASH
+                }],
                 weapon: missile.weapon,
                 script: false,
             },

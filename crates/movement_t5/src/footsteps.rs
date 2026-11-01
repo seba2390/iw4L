@@ -223,7 +223,7 @@ fn flinching<W: MoveWorld>(pm: &Pm<'_, W>) -> bool {
     ps.damage_timer > left
 }
 
-fn idle_movetype<W: MoveWorld>(pm: &mut Pm<'_, W>, may_flinch: bool) {
+pub(crate) fn idle_movetype<W: MoveWorld>(pm: &mut Pm<'_, W>, may_flinch: bool) {
     if pm.xyspeed < 1.0 && pm.ps.water_level < 3 {
         pm.ps.bob_cycle = 0;
     }

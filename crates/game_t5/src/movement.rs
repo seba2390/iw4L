@@ -955,6 +955,10 @@ impl PlayerMovement for T5Movement {
             ScriptFlag::NoWeaponCycling => (&mut ps.weap_flags, weap_flags::CYCLING_DISABLED),
             ScriptFlag::WeaponsDisabled => (&mut ps.weap_flags, weap_flags::WEAPONS_DISABLED),
             ScriptFlag::OffhandsDisabled => (&mut ps.weap_flags, weap_flags::OFFHANDS_DISABLED),
+            ScriptFlag::GuidedCamera => (
+                &mut ps.e_flags2,
+                movement_t5::state::e_flags2::MOUNTED | movement_t5::state::e_flags2::ADS_RESET,
+            ),
         };
         let was = *word & bit != 0;
         if on {
@@ -1166,6 +1170,14 @@ impl PlayerMovement for T5Movement {
         world: &dyn game_api::fire::FireWorld,
     ) {
         crate::missile::reset_detonation_time(missile, after_ms, world);
+    }
+
+    fn detonate_missile(
+        &self,
+        missile: &mut game_api::fire::GameMissile,
+        world: &mut dyn game_api::fire::FireWorld,
+    ) -> Option<(game_api::fire::MissileRun, Vec<&'static Unknown>)> {
+        crate::missile::multiplayer(world).then(|| crate::missile::detonate(missile, world))
     }
 
     /// Black Ops' client turns these events of its own player into its

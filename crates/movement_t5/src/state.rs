@@ -122,6 +122,7 @@ pub mod e_flags2 {
     pub const SPINNING: u32 = 0x40_0000;
     /// A grenade throw cannot be cancelled now.
     pub const GRENADE_HELD: u32 = 0x2000_0000;
+    /// The player's view is not theirs: BlackOpsMP.exe's `EF2_REMOTE_CONTROL`.
     pub const MOUNTED: u32 = 0x1000_0000;
     pub const CONTROLS_LOCKED: u32 = 0x4000_0000;
 }

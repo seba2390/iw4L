@@ -15,7 +15,7 @@ use crate::authority::runtime::{AuthorityInputGate, AuthorityWorld, ClientShotSa
 use crate::client::frame_clock::{FrameClock, GameActive, GameJoinCensus};
 use crate::client::input::{
     ClientActionInput, LookState, accumulate_look, apply_game_client_input, build_usercmd,
-    frame_time_msec, key_frame_msec, remote_control_axes,
+    frame_time_msec, guided_missile_axes, key_frame_msec, remote_control_axes,
 };
 use crate::client::predict::{ClientPrediction, CmdSeq};
 use crate::client::presentation::presented::{
@@ -1056,8 +1056,8 @@ pub fn sample_client_input(
         .and_then(|snapshot| snapshot.meta.for_client(local.0))
         .and_then(|meta| meta.remote_missile)
         .filter(|link| link.unlink_at_ms.is_none())
-        .map(|_| {
-            let mouse = (actions.mouse_x, actions.mouse_y);
+        .map(|link| {
+            let mouse = (actions.mouse_x, actions.mouse_y, link.guided);
             actions.mouse_x = 0.0;
             actions.mouse_y = 0.0;
             actions.pad_look_delta = [0.0; 2];
@@ -1272,9 +1272,13 @@ pub fn sample_client_input(
     {
         cmd.gun_angle_offset = aim.angle_offset;
     }
-    if let Some((mouse_x, mouse_y)) = remote_mouse {
-        cmd.remote_control = remote_control_axes(&actions, mouse_x, mouse_y);
-        cmd.buttons |= playerstate_iw4::buttons::REMOTE_CONTROL;
+    if let Some((mouse_x, mouse_y, guided)) = remote_mouse {
+        if guided {
+            cmd.remote_control = guided_missile_axes(&actions, mouse_x, mouse_y);
+        } else {
+            cmd.remote_control = remote_control_axes(&actions, mouse_x, mouse_y);
+            cmd.buttons |= playerstate_iw4::buttons::REMOTE_CONTROL;
+        }
     }
 
     cmd.weapon = select.index as u16;

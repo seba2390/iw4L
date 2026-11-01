@@ -54,17 +54,17 @@ pub(crate) fn set_dual_mag(ps: &mut PlayerState, w: &Weapon<'_>, weapon: u32, sw
     }
 }
 
-pub(crate) fn fuel(ps: &PlayerState, weapon: u32) -> i32 {
+pub fn fuel(ps: &PlayerState, weapon: u32) -> i32 {
     held(ps, weapon).map_or(0, |h| h.fuel)
 }
 
-pub(crate) fn set_fuel(ps: &mut PlayerState, weapon: u32, fuel: i32) {
+pub fn set_fuel(ps: &mut PlayerState, weapon: u32, fuel: i32) {
     if let Some(h) = held_mut(ps, weapon) {
         h.fuel = fuel;
     }
 }
 
-pub(crate) fn add_fuel(ps: &mut PlayerState, weapon: u32, fuel: i32) {
+pub fn add_fuel(ps: &mut PlayerState, weapon: u32, fuel: i32) {
     if let Some(h) = held_mut(ps, weapon) {
         h.fuel += fuel;
     }

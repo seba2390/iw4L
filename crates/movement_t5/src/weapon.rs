@@ -585,7 +585,7 @@ pub mod fire_type {
 }
 
 /// A minigun spins up while fire is held or aimed, down otherwise.
-fn spin<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
+pub(crate) fn spin<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
     let weapon = view_weapon(pm);
     let d = def(pm, weapon).def;
     let ps = &mut *pm.ps;

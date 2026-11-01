@@ -337,7 +337,7 @@ fn frame(a: [f32; 2], b: [f32; 2], north_yaw: f32) -> Option<CompassFrame> {
 fn player_arrow(player: &MovePlayer) -> Result<bool, &'static Unknown> {
     let mut player = *player;
     let ps = crate::movement::unpack(&mut player).0;
-    if ps.e_flags2 & e_flags2::MOUNTED != 0 {
+    if ps.e_flags2 & e_flags2::MOUNTED != 0 && ps.e_flags & e_flags::VEHICLE_VIEW != 0 {
         return Err(unknown!(
             "t5.hud.compass_mounted",
             "a player mounted on a vehicle is not drawn on Black Ops' compass (its arrow at the vehicle, turned by the vehicle's yaw)",

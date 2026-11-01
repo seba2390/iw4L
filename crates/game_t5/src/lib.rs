@@ -76,6 +76,15 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("cg_blood", "1"),
     // Registered 800; the mortar, artillery and airstrike scripts aim by it.
     ("bg_gravity", "800"),
+    // A TV-guided missile's steering and boost.
+    ("missileTVGuidedStickDeadzone", "15"),
+    ("missileTVGuidedTurnRate", "3"),
+    ("missileTVGuidedBoost", "2"),
+    ("missileTVGuidedBoostSpeedUp", "1000"),
+    ("missileTVGuidedBoostSpeedDown", "-1000"),
+    ("missileTVGuidedMaxRollAngle", "35"),
+    ("missileTVGuidedTurningRollAccel", "1.5"),
+    ("missileTVGuidedFlatteningRollAccel", "2"),
     // The turrets' target times and lead, and where a carried turret may be
     // put down.
     ("turret_SentryTargetTime", "1000"),

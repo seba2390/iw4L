@@ -348,6 +348,25 @@ fn snap_velocity(v: &mut [f32; 3]) {
     }
 }
 
+/// A player whose view is on a guided missile: they stay where they stand,
+/// falling if in the air, and their weapon keeps running. BlackOpsMP.exe's
+/// branch of the player's move.
+fn remote_control_move<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &mut Pml) {
+    ground::ground_trace(pm, pml);
+    crate::weapon::update_ads_intent(pm, pml);
+    drop_timers(pm, pml);
+    crate::weapon::spin(pm, pml);
+    crate::weapon::ads_lerp(pm, pml);
+    let gravity = !pml.ground_plane;
+    crate::slide::step_slide_move(pm, pml, gravity);
+    pm.ps.damage_timer = (pm.ps.damage_timer - (pml.frametime * 1000.0) as i32).max(0);
+    crate::footsteps::idle_movetype(pm, true);
+    crate::weapon::pm_weapon(pm, pml);
+    pm.ps.left_hand = true;
+    crate::weapon::pm_weapon(pm, pml);
+    pm.ps.left_hand = false;
+}
+
 fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
     set_bounds(pm);
     pm.ps.water_level = 0;
@@ -472,7 +491,7 @@ fn pmove_single<W: MoveWorld>(pm: &mut Pm<'_, W>) -> MoveOutput {
         return output(pm, &pml);
     }
     if pm.ps.e_flags2 & e_flags2::MOUNTED != 0 {
-        pm.gap(Gap::MountedView);
+        remote_control_move(pm, &mut pml);
         return output(pm, &pml);
     }
     if pm.ps.pm_flags & pm_flags::MANTLE == 0 {

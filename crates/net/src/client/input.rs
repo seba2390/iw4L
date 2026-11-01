@@ -273,6 +273,27 @@ pub fn build_usercmd(input: &mut ClientActionInput, look: &LookState, server_tim
     })
 }
 
+/// Black Ops' look axes for a guided missile: the mouse's move this frame
+/// after its sensitivity and acceleration, cut at 127 before `m_pitch`'s sign
+/// turns the pitch. Down and left are positive.
+pub fn guided_missile_axes(input: &ClientActionInput, mouse_x: f32, mouse_y: f32) -> [u8; 2] {
+    let (mx, my) = apply_mouse_sensitivity(
+        mouse_x,
+        mouse_y,
+        mouse_x.abs() + mouse_y.abs(),
+        input.frame_msec.max(1) as f32,
+        input.sensitivity,
+        input.mouse_accel,
+        input.fov_scale,
+    );
+    let pitch_sign = if input.m_pitch > 0.0 { 1 } else { -1 };
+    let axis = |v: i32| v.clamp(-128, 127) as i8 as u8;
+    [
+        axis(my.min(127.0) as i32 * pitch_sign),
+        axis(-(mx.min(127.0) as i32)),
+    ]
+}
+
 pub fn remote_control_axes(input: &ClientActionInput, mouse_x: f32, mouse_y: f32) -> [u8; 2] {
     let (mx, my) = apply_mouse_sensitivity(
         mouse_x,

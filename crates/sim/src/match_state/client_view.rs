@@ -261,6 +261,9 @@ pub struct RemoteMissile {
     pub boosted: bool,
     pub attack: bool,
     pub unlink_at_ms: Option<i32>,
+    /// Black Ops' guided missile camera: the game's rules fly the missile
+    /// and the camera only follows it.
+    pub guided: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

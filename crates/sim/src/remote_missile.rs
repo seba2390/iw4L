@@ -136,7 +136,11 @@ pub(crate) fn advance(world: &mut FrameWorld, tick: Tick) {
     forget_gone_missiles(world);
     let now = crate::level_time_ms(tick);
     for id in world.client_ids_sorted() {
-        let Some(mut link) = world.client_meta(id).and_then(|m| m.remote_missile) else {
+        let Some(mut link) = world
+            .client_meta(id)
+            .and_then(|m| m.remote_missile)
+            .filter(|link| !link.guided)
+        else {
             continue;
         };
         let alive = world

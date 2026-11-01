@@ -636,6 +636,8 @@ pub enum ScriptFlag {
     WeaponsDisabled,
     /// `disableoffhandweapons`.
     OffhandsDisabled,
+    /// `linkguidedmissilecamera`: the player's view is on their missile.
+    GuidedCamera,
 }
 
 /// What a script may forbid a player.
@@ -980,6 +982,16 @@ pub trait PlayerMovement: Sync {
         _after_ms: Option<i32>,
         _world: &dyn crate::fire::FireWorld,
     ) {
+    }
+
+    /// A missile exploding now (`detonate`); `None` when the game does not
+    /// explode its missiles this way.
+    fn detonate_missile(
+        &self,
+        _missile: &mut crate::fire::GameMissile,
+        _world: &mut dyn crate::fire::FireWorld,
+    ) -> Option<(crate::fire::MissileRun, Vec<&'static Unknown>)> {
+        None
     }
 }
 
