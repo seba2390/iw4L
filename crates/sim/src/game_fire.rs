@@ -173,6 +173,8 @@ impl<'w, 'a> MatchFireWorld<'w, 'a> {
             mins: view.mins,
             maxs: view.maxs,
             pm_type: view.pm_type,
+            spectating: view.spectating,
+            perks: view.perks,
         })
     }
 
@@ -1582,6 +1584,26 @@ impl game_api::turret::TurretWorld for MatchFireWorld<'_, '_> {
             .contains(&object)
             .then(|| self.sentient_at(object))
             .flatten()
+    }
+
+    fn turret_targets(&mut self) -> Vec<Option<game_api::turret::TurretTarget>> {
+        let slots = crate::script::host::natives::t5_targets::slots(self.world.ecs_ref());
+        slots
+            .into_iter()
+            .map(|slot| {
+                let (object, no_turret_acquire) = slot?;
+                let entity = self.number_of_object(object);
+                let view =
+                    crate::script::host::natives::t5_targets::owner_team(self.world.ecs(), object);
+                Some(game_api::turret::TurretTarget {
+                    entity,
+                    origin: view.origin,
+                    team: view.team,
+                    owner: view.owner,
+                    no_turret_acquire,
+                })
+            })
+            .collect()
     }
 
     fn turret_loop_sound(&mut self, turret: i32, alias: Option<&str>) {

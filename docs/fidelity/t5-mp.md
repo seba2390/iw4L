@@ -196,10 +196,11 @@ Each open section names the issue that works it.
 ## Killstreaks (#656–#662)
 
 - [ ] **G** The action slot button builtins
-      (`actionSlotOneButtonPressed` … `Four`) are refused: they read a
-      client button word whose layout is not matched to the runtime's
-      commands yet; only the Sentry Gun / SAM placement (#659) and the
-      camera spike read them.
+      (`actionSlotOneButtonPressed` … `Four`) read a slot as pressed for the
+      server tick its press arrives in and the next: the client sends a
+      press, not the slot's held state, where BlackOpsMP.exe reads bits
+      18–15 of the client's current and previous button words. A slot held
+      down reads as pressed for those two ticks only.
 - [ ] **G** `t5.mp.target_offset`: `Target_Set`'s aim offset is read but not
       kept, and its config string (offset, materials, flags) is not sent:
       nothing that aims at a target or draws one is ported;
@@ -246,11 +247,34 @@ Each open section names the issue that works it.
       selector on any key not bound to `+attack`, `weapnext`, `+reload` or
       `+sprint`; the runtime reads the keys by the commands they press, so
       a movement key does not cancel it and `weapnext` does nothing.
-- [ ] **G** Carried turrets (`carryturret`, `stopcarryturret`,
-      `canplayerplaceturret`, `setturretcarried`, `setturrettype`) are
-      refused; `spawnturret`, `setturrettargetent`, `setturrettargetvec`,
-      `clearturrettarget` are not implemented.
-- [ ] **G** Vehicles: `spawnvehicle`, `usevehicle`, `setspeed`,
+- [ ] **G** `t5.mp.turret_missile`: the SAM Turret searches, aims, sweeps
+      and keeps its firing state, but its `shootturret` launches no missile:
+      its projectile shot goes through BlackOpsMP.exe's missile spawn and
+      guided-missile think (#738), with its target from the lock-on list.
+      `t5.mp.turret_weapon_type`: a turret weapon of the fourth weapon type
+      does not shoot.
+- [ ] **G** `t5.mp.entity_owner_bits`: `SetTeam` and `SetOwner` keep the
+      entity's `team` and `owner` script fields where Black Ops writes the
+      team and owning client into the entity's state; the SAM Turret's
+      target filter (another team, not its owner's) reads those fields.
+- [ ] **G** A carried turret's placement (`canPlayerPlaceTurret`) traces
+      from 60 units over the player's origin without their lean and view
+      bob, and its box and feet traces meet the world but not players or
+      other entities; the carried turret stays solid (Black Ops clears its
+      contents while carried and sets them back when it is put down).
+- [ ] **V** A turret's entity flags (its type, carried, just put down,
+      firing) are kept but not sent: the clients do not draw a carried
+      turret's look. The turret's shot event on the clients (flash, shake,
+      fire sound) is the zombies client's MG42 event; BlackOpsMP.exe's
+      client handler is not compared. `iscarryingturret`'s client flag is
+      kept but nothing ported reads it. A carried turret's gun points at
+      its unfilled drop pitch (-90, barrels up): its first think's drop-pitch
+      trace is `t5.turret.drop_pitch`.
+- [ ] **G** A turret's search passes by no player on a turret or vehicle and
+      no player riding a vehicle its owner drives (none can be here yet).
+- [ ] **G** Vehicles: `setturrettargetent`, `setturrettargetvec` and
+      `clearturrettarget` (vehicle turret methods), `spawnvehicle`,
+      `usevehicle`, `setspeed`,
       `getspeed`, `finishvehicledamage`, `finishvehicleradiusdamage`,
       `getvehoccupants`, `getoccupantseat` and the other vehicle builtins
       are refused or missing; the client's wheel queries
@@ -386,6 +410,33 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Carried turrets (`carryturret`, `stopcarryturret`,
+      `canplayerplaceturret`, `setturretcarried`, `setturrettype`,
+      `setturrethint`, `setscanningpitch`, `iscarryingturret`) were refused
+      and `spawnturret` missing; the action slot button builtins were
+      refused. They are BlackOpsMP.exe's: `spawnturret(classname, origin,
+      weaponinfo)` spawns a turret with no keys and no team (at most 32);
+      `setturrettype` makes it a Sentry Gun or a SAM Turret ("%s, Unknown
+      turret type." printed); `setturretteam` also takes `free`;
+      `carryturret` links the turret in front of the player and marks them
+      carrying it (weapon flag 0x400000, which multiplayer keeps for this
+      and zombies for forced animations); `canPlayerPlaceTurret` runs Black
+      Ops' placement (the `turret_placement_*` dvars: a box dropped ahead
+      of the eye onto ground no steeper than 0.7, then four feet traced down,
+      the turret sunk and tilted to them) and keeps the "cannot place" flag
+      the hint reads. The multiplayer turret think is its own: a turret not
+      aiming by itself drops its gun; the Sentry Gun searches the 48-slot
+      sentient pool for the next enemy (or teamless) sentient, not its
+      owner, not spectating, dead or holding `specialty_nottargetedbyai`, in
+      range, within its arcs at its eye led by `turret_TargetLeadBias` and in
+      sight (`turret_SentryTargetTime` 1000), aims with convergence and
+      fires; the SAM Turret takes the first lock-on target of another team,
+      not its owner's, that turrets may acquire (`turret_KillstreakTargetTime`
+      4000) and starts firing only once on its aim; with no target both sweep
+      their arcs by the weapon's `scanSpeed`, `scanAccel` and
+      `scanPauseTime` (`turret_scan_start` / `turret_scan_stop`). The shot
+      is the turret's own, with its AI spread and no aim refinement (#659).
 
 - [x] **G** The Napalm Strike and Rolling Thunder stopped at `SpawnPlane`
       (missing) and the napalm's ground flames (`spawnNapalmGroundFlame`,

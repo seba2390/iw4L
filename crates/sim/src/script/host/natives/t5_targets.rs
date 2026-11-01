@@ -77,6 +77,49 @@ fn remove(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String>
     }
 }
 
+/// The list slot by slot: each target and whether turrets may not acquire
+/// it.
+pub(crate) fn slots(world: &World) -> Vec<Option<(u64, bool)>> {
+    let Some(list) = world.get_resource::<TargetList>() else {
+        return vec![None; SLOTS];
+    };
+    list.0
+        .iter()
+        .map(|t| t.map(|t| (t.entity, t.flags & NO_TURRET_ACQUIRE != 0)))
+        .collect()
+}
+
+/// What a turret reads off a target: where it is and the team and owning
+/// client its state carries. `SetTeam` and `SetOwner` keep those as the
+/// entity's `team` and `owner` (ledger `t5.mp.entity_owner_bits`).
+pub(crate) struct TargetView {
+    pub(crate) origin: [f32; 3],
+    pub(crate) team: i32,
+    pub(crate) owner: i32,
+}
+
+pub(crate) fn owner_team(world: &mut World, object: u64) -> TargetView {
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let origin = match runtime.object_field(object, "origin") {
+        Value::Vector(v) => v,
+        _ => [0.0; 3],
+    };
+    let team = match runtime.object_field(object, "team") {
+        Value::String(team) if team.as_bytes().eq_ignore_ascii_case(b"axis") => 1,
+        Value::String(team) if team.as_bytes().eq_ignore_ascii_case(b"allies") => 2,
+        _ => 0,
+    };
+    let owner = match runtime.object_field(object, "owner") {
+        Value::Object(owner) => runtime.player_client(owner).map_or(0, |c| c as i32),
+        _ => 0,
+    };
+    TargetView {
+        origin,
+        team,
+        owner,
+    }
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "target_set", set);
     registry.register(Function, "target_remove", remove);

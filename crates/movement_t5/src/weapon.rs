@@ -3208,6 +3208,10 @@ fn check_change_weapon<W: MoveWorld>(pm: &mut Pm<'_, W>) {
 /// A viewmodel animation scripts force on a weapon: it plays, then the held
 /// weapon returns. True while it holds the weapon.
 fn forced_anim<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) -> bool {
+    // Multiplayer has no forced animation; its bit marks a carried turret.
+    if !pm.zombiemode {
+        return false;
+    }
     let ps = &*pm.ps;
     if ps.weap_flags & weap_flags::FORCED_ANIM == 0 {
         return false;

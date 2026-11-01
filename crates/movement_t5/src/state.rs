@@ -101,8 +101,14 @@ pub mod weap_flags {
     /// The server's crosshair scan: in zombies, the human gun's (or an
     /// upgraded ballistic knife's) target is under the crosshair.
     pub const ZOMBIE_GUN_TARGET: u32 = 0x20_0000;
-    /// Scripts force a viewmodel animation.
+    /// Scripts force a viewmodel animation (zombies).
     pub const FORCED_ANIM: u32 = 0x40_0000;
+    /// Multiplayer keeps the same bit for a player carrying a turret
+    /// (`carryturret`).
+    pub const CARRYING_TURRET: u32 = 0x40_0000;
+    /// The carried turret cannot be put down here (`setturrethint`,
+    /// `canplayerplaceturret`).
+    pub const TURRET_CANNOT_PLACE: u32 = 0x80_0000;
     /// A smoke throw is cancelled.
     pub const CANCEL_SMOKE: u32 = 0x100_0000;
     pub const NO_FIRE: u32 = 0x200_0000;

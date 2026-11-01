@@ -76,6 +76,19 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("cg_blood", "1"),
     // Registered 800; the mortar, artillery and airstrike scripts aim by it.
     ("bg_gravity", "800"),
+    // The turrets' target times and lead, and where a carried turret may be
+    // put down.
+    ("turret_SentryTargetTime", "1000"),
+    ("turret_KillstreakTargetTime", "4000"),
+    ("turret_TargetLeadBias", "1"),
+    ("turret_placement_feet_offset", "17 20 10"),
+    ("turret_placement_feet_trace_dist_z", "20"),
+    ("turret_placement_trace_maxs", "30"),
+    ("turret_placement_trace_mins", "-30"),
+    ("turret_placement_trace_radius_canon_safety", "5"),
+    ("turret_placement_trace_dist", "42"),
+    ("turret_placement_trace_pitch", "20"),
+    ("turret_placement_trace_min_normal", "0.7"),
 ];
 
 /// Black Ops' front-end level: the main menu draws over it.
@@ -479,6 +492,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     runtime_class_slots: false,
     viewmodel: Some(viewmodel::MP_VIEWMODEL),
     client_fire: Some(fire_sound::MP_CLIENT_FIRE),
+    turrets: Some(turret::mp::TURRETS),
     ..ZOMBIE_MODE
 };
 

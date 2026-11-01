@@ -480,7 +480,32 @@ pub(crate) fn player_commands(world: &mut World, client: u32, cmd_buttons: u32, 
     });
 }
 
+/// The tick each client last pressed each action slot in. The client sends
+/// a press, not the slot's held state.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+pub(crate) struct ActionSlotPresses(pub(crate) std::collections::BTreeMap<u32, [Option<u32>; 4]>);
+
+/// Whether a client pressed the action slot (0-3) in this tick or the last.
+pub(crate) fn action_slot_pressed(world: &World, client: u32, slot: usize) -> bool {
+    let tick = world.resource::<crate::step::StepRequest>().tick.0;
+    world
+        .get_resource::<ActionSlotPresses>()
+        .and_then(|presses| presses.0.get(&client))
+        .and_then(|slots| slots.get(slot).copied().flatten())
+        .is_some_and(|pressed| tick.saturating_sub(pressed) <= 1)
+}
+
 pub(crate) fn action_slot_command(world: &mut World, client: u32, slot: u8) {
+    let tick = world.resource::<crate::step::StepRequest>().tick.0;
+    if let Some(pressed) = world
+        .get_resource_or_insert_with(ActionSlotPresses::default)
+        .0
+        .entry(client)
+        .or_default()
+        .get_mut(usize::from(slot))
+    {
+        *pressed = Some(tick);
+    }
     let command = format!("+actionslot {}", u32::from(slot) + 1);
     raise_commands(world, client, |bound| bound == command);
 }

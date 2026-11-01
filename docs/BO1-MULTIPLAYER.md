@@ -46,17 +46,21 @@ weapon and calls the killstreak. The Spy Plane, Counter-Spy Plane and
 Blackbird work: the spy plane's sweep pings enemies on your team's compass
 (two at once sweep twice as fast; Ghost hides from it), the Blackbird shows
 them live with their heading, and an enemy counter-spy plane hides them and
-lays static over your compass. The other killstreaks (#658 … #662) still
-need their own engine pieces. To get one at once:
+lays static over your compass. The Napalm Strike, Mortar Team and
+Rolling Thunder are placed on the map and strike. The Sentry Gun is
+carried in front of you (yellow where it fits, red where it does not; fire
+to put it down, the slot button again to keep it) and shoots enemies it
+sees; the SAM Turret tracks enemy aircraft but fires no missile yet (#738).
+The other killstreaks (#660 … #662) still need their own engine pieces. To get one at once:
 `script maps/mp/gametypes/_hardpoints::givekillstreak player0 radar_mp`
-(`counteruav_mp`, `radardirection_mp`).
+(`counteruav_mp`, `radardirection_mp`, `autoturret_mp`, `auto_tow_mp`).
 
 The host's console sets the scripts' limits, read each second as in Black
 Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team
 Deathmatch: `scr_tdm_…`).
 
 Bots: Black Ops adds its own (Combat Training rules) from these dvars,
-read when the match starts. Offline, before launch:
+read when the match starts, in Team Deathmatch and Free-for-All only. Offline, before launch:
 `IW4L_SCRIPT_DVARS="set splitscreen_playerCount 1; set splitscreen_botEnemies 3; set splitscreen_botFriends 2"`.
 In a hosted private match, from the console:
 `set scr_bots_managed_spawn 1; set scr_bots_managed_all 6`. IW4L's own

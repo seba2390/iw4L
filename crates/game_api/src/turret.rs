@@ -198,6 +198,16 @@ pub struct TurretState {
     pub fire_latched: bool,
     /// Its user is firing it (the entity's firing flag).
     pub user_firing: bool,
+    /// The pitch its scanning gun levels to (`setscanningpitch`).
+    pub scanning_pitch: f32,
+    /// Its scanning sweep: the yaw speed (degrees a second), the yaw left
+    /// at which it starts to slow, and when its pause before moving ends.
+    pub scan_speed: f32,
+    pub scan_slow_at: f32,
+    pub scan_pause_until: i32,
+    /// The entity flags the clients see that the turret's rules set (it
+    /// fires, it is carried, it was just put down).
+    pub entity_flags: u32,
 }
 
 /// A tag on a posed model.
@@ -223,6 +233,23 @@ pub struct Sentient {
     pub maxs: [f32; 3],
     /// A player's movement type; `None` for an actor.
     pub pm_type: Option<i32>,
+    /// A player watching as a spectator.
+    pub spectating: bool,
+    /// A player's perk bits, in the game's perk order; 0 for an actor.
+    pub perks: u64,
+}
+
+/// An entity on the game's lock-on target list, as a turret that searches
+/// it reads it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TurretTarget {
+    pub entity: i32,
+    pub origin: [f32; 3],
+    /// The team and owning client the entity's state carries.
+    pub team: i32,
+    pub owner: i32,
+    /// Turrets may not acquire it.
+    pub no_turret_acquire: bool,
 }
 
 /// The match around a turret's think.
@@ -240,6 +267,10 @@ pub trait TurretWorld: FireWorld {
 
     /// The sentient an entity is.
     fn sentient_of(&mut self, entity: i32) -> Option<Sentient>;
+
+    /// The game's lock-on target list, slot by slot; `None` for a free
+    /// slot.
+    fn turret_targets(&mut self) -> Vec<Option<TurretTarget>>;
 
     /// The turret entity's loop sound, an alias, or none.
     fn turret_loop_sound(&mut self, turret: i32, alias: Option<&str>);

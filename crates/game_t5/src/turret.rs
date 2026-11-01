@@ -16,6 +16,8 @@ use game_api::turret::{
 };
 use game_api::{Unknown, unknown};
 
+pub(crate) mod mp;
+
 /// The weapon class a turret's `weaponinfo` must have.
 const WEAPCLASS_TURRET: i32 = 7;
 /// `weapType` bullet.
@@ -922,8 +924,10 @@ impl Think<'_> {
             let left = self.turret.spawn.convergence_ms[1] - time + state.target_time;
             let gun = state.gun_angles;
             let mut firing = state.firing;
+            // A multiplayer SAM Turret starts only once on its aim.
+            let tow = self.turret.spawn.flags & mp::FLAG_TOW != 0;
             if firing == 0
-                && (time >= state.target_time + 250
+                && ((time >= state.target_time + 250 && !tow)
                     || (angle_normalize_180(gun[0] - angles[0]).abs() < 5.0
                         && movement_t5::math::angle_delta(gun[1], angles[1]).abs() < 5.0))
             {
