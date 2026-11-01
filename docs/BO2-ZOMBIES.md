@@ -17,6 +17,16 @@ IW4L_SOUND=off IW4L_GAMETYPE=zclassic IW4L_TEST_PLAYER=rounds cargo run --profil
   -p launcher -- serve t6:zm_nuked --cmds 'wait world; wait 300s; quit'   # headless
 ```
 
+TranZit starts with a black intro drawn by its own server scripts, with
+controls frozen. Once players and textures are ready, the script holds the
+black screen for five seconds, then fades it over 1.5 seconds and releases
+controls. A black frame immediately after loading is not by itself a render
+failure: `wait world` means the world is GPU-ready, not that this intro has
+finished. A solo graphical run showed black/frozen at five game seconds and
+visible geometry with controls released at eight seconds. For a startup
+render probe, allow the intro to finish, for example
+`--cmds 'wait world; wait 15s; screenshot tranzit-start; finish_run'`.
+
 The test player (`IW4L_TEST_PLAYER=1|rounds|use|down|revive`) is steered by
 `IW4L_TEST_USE`, `_PERK`, `_GOTO`, `_BUILD`, `_WIELD`, `_PLACE`, `_GRAB` and logs
 `level.zombie_vars` with `_VARS`; all of them are in [BOTS.md](BOTS.md#test-player).
