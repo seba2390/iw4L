@@ -61,6 +61,7 @@ pub mod e_flags {
     pub const VEHICLE_VIEW: u32 = 0x4000;
     pub const MANTLE: u32 = 0x8000;
     pub const TALKING: u32 = 0x2_0000;
+    pub const CHARRED: u32 = 0x20_0000;
 }
 
 /// The player state's weapon flags (the low word of Black Ops 2's 64-bit
