@@ -1627,10 +1627,11 @@ fn capture_icon(
     };
     for index in 0..count {
         let def = table.at(index * MATERIAL_TEXTURE_DEF);
-        if !matches!(
+        if !(matches!(
             load.blocks.u32_at(def).ok(),
             Some(COLOR_MAP_HASH | FONT_MAP_HASH)
-        ) {
+        ) || (header_str(load, header, 0) == Some("ui_globe_zm") && index == 0))
+        {
             continue;
         }
         let image = load

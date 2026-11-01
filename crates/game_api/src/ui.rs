@@ -114,6 +114,7 @@ pub struct Input {
     pub layouts: Arc<[asset_core::BitLayout]>,
     /// The maps whose zones are installed, by zone name.
     pub installed_maps: Arc<[String]>,
+    pub unavailable_maps: Arc<[(String, String)]>,
 }
 
 /// An event the engine sends the scene's roots.
@@ -161,6 +162,10 @@ pub enum UiRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Content {
     Image(String),
+    Globe {
+        material: String,
+        rotation: [f32; 4],
+    },
     GameTimer,
     PlayerEmblem(u32),
     Voice(u32),

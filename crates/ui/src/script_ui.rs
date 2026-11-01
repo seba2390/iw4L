@@ -21,6 +21,7 @@ pub(crate) struct ScriptHud {
     root: Option<Entity>,
     slots: HashMap<u32, (Entity, Entity, Draw)>,
     map_images: HashMap<u32, Entity>,
+    globes: HashMap<u32, Handle<super::t6_globe::GlobeMaterial>>,
     input: Input,
     client_field_serial: u32,
     lui_notify_serial: u32,
@@ -31,6 +32,7 @@ pub(crate) struct ScriptHud {
 }
 
 pub(crate) fn register(app: &mut App) {
+    super::t6_globe::register(app);
     app.init_resource::<ScriptHud>().add_systems(
         Update,
         refresh
@@ -223,6 +225,7 @@ fn refresh(
     mut state: ResMut<ScriptHud>,
     mut art: ResMut<super::t6_art::T6Art>,
     mut images: ResMut<Assets<Image>>,
+    mut globes: ResMut<Assets<super::t6_globe::GlobeMaterial>>,
     code_hud: Res<super::t6_code_hud::CodeHudDraws>,
 ) {
     let (screen, mut menu, local, clock, font, weapons, time, settings, t6_front_end) = view;
@@ -253,6 +256,7 @@ fn refresh(
         state.front_end = false;
         state.slots.clear();
         state.map_images.clear();
+        state.globes.clear();
         state.publication = None;
         state.client_field_serial = 0;
         state.lui_notify_serial = 0;
@@ -290,6 +294,7 @@ fn refresh(
             }
             state.slots.clear();
             state.map_images.clear();
+            state.globes.clear();
             state.logged_texts.clear();
             state.publication = Some(publication.id());
             state.front_end = true;
@@ -325,6 +330,41 @@ fn refresh(
             return;
         }
         state.input.viewport = [window.width(), window.height()];
+        if first_frame && state.input.zombies {
+            let captured = !asset_transport::t6_content::captured_patch_files("_zm").is_empty()
+                || asset_transport::t6_content::captured_script_modules("_zm")
+                    .iter()
+                    .any(|(name, bytes)| {
+                        name == "maps/mp/gametypes_zm/_globallogic.gsc" && !bytes.is_empty()
+                    });
+            if let Some(mode) = session::games::modes(namespace).zombies() {
+                state.input.unavailable_maps = mode
+                    .maps
+                    .iter()
+                    .filter_map(|(map, _)| {
+                        let reason = if !state
+                            .input
+                            .installed_maps
+                            .iter()
+                            .any(|installed| installed == map)
+                        {
+                            "Map not installed."
+                        } else if !captured
+                            && mode
+                                .capture
+                                .as_ref()
+                                .is_some_and(|capture| !capture.exempt.contains(map))
+                        {
+                            "Zombies patch capture required."
+                        } else {
+                            return None;
+                        };
+                        Some(((*map).to_owned(), reason.to_owned()))
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
+            }
+        }
         let dt = ((time.delta_secs() * 1000.0).round() as i32).clamp(1, 100);
         state.input.time = state.input.time.wrapping_add(dt);
         state.input.players = vec![Player {
@@ -447,6 +487,7 @@ fn refresh(
             }
             state.slots.clear();
             state.map_images.clear();
+            state.globes.clear();
             state.client_field_serial = 0;
             state.lui_notify_serial = 0;
             state.logged_texts.clear();
@@ -672,6 +713,7 @@ fn refresh(
                 }
                 state.slots.clear();
                 state.map_images.clear();
+                state.globes.clear();
                 return;
             }
         };
@@ -804,7 +846,34 @@ fn refresh(
             UiTransform::from_rotation(Rot2::degrees(draw.rotation)),
             Visibility::Inherited,
         ));
+        if !matches!(draw.content, Content::Globe { .. }) {
+            commands
+                .entity(entity)
+                .remove::<MaterialNode<super::t6_globe::GlobeMaterial>>();
+        }
         match &draw.content {
+            Content::Globe { material, rotation } => {
+                commands
+                    .entity(entity)
+                    .remove::<(Text, ImageNode, BackgroundColor)>()
+                    .insert(node(rectangle));
+                if let Some(map) = art.image(material, &mut images) {
+                    let value = super::t6_globe::GlobeMaterial {
+                        color: Vec4::from_array(draw.color),
+                        rotation: Vec4::from_array(*rotation),
+                        map,
+                    };
+                    let handle = state
+                        .globes
+                        .entry(draw.id)
+                        .or_insert_with(|| globes.add(value.clone()))
+                        .clone();
+                    if let Some(mut material) = globes.get_mut(&handle) {
+                        *material = value;
+                    }
+                    commands.entity(entity).insert(MaterialNode(handle));
+                }
+            }
             Content::Text {
                 value,
                 font: font_name,
@@ -981,4 +1050,5 @@ fn refresh(
         }
     });
     state.map_images.retain(|id, _| seen.contains(id));
+    state.globes.retain(|id, _| seen.contains(id));
 }
